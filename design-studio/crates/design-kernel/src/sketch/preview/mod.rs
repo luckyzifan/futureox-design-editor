@@ -562,6 +562,7 @@ pub fn compile_preview(session: &Session, request: &PreviewRequest) -> Result<Pr
     )?;
     let extent = Rect::new(0, 0, request.width, request.height);
     let mut scene = GpuScene {
+        page_paint_rects: None,
         software_raster: false,
         output: None,
         root_input_box: None,

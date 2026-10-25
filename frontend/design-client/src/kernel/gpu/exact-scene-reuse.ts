@@ -32,7 +32,7 @@ export function reuseExactSceneSources(previous: GpuScene, next: GpuScene, trans
     const before = previous.nodes[id]
     // The frame context already shared this exact immutable compiled node.
     if (!before || n.previewDynamic || n.captureReplay || n.textureReplay) continue
-    const source=before.previewSource||before,certified=sameCompiledSource(source,n)
+    const source=before.previewSource||before,certified=sameCompiledSource(source,n,previous,next)
     if(certified===false)continue
     if(certified===undefined&&!sameSourceSemantics(source,n))continue
     // Only the validated native transform entry may supply this closure. Rust

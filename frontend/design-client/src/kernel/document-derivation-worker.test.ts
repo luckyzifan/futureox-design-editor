@@ -20,7 +20,8 @@ const cleanup: (() => void)[] = []
 afterEach(() => { cleanup.splice(0).forEach(f => f()); channels.splice(0).forEach(pair => { pair.port1.close(); pair.port2.close() }); vi.unstubAllGlobals() })
 async function fixture(guarded = true) {
   vi.resetModules()
-  const kernel = await import('../generated/design-kernel/design_kernel'); await kernel.default({ module_or_path: wasm })
+  const kernel = await import('../generated/design-kernel/design_kernel')
+  const {initializeKernelModule}=await import('./module');await initializeKernelModule(wasm)
   const prepScope: any = {}; vi.stubGlobal('self', prepScope)
   await import('./preparation-worker')
   const pair = new NativeMessageChannel(); channels.push(pair)
@@ -89,6 +90,24 @@ test('real WASM derive crosses both preparation boundaries without a full payloa
   const png = await f.finish(3); expect(png.error).toBeUndefined()
   const request = [...f.requests].reverse().find(r => r.method === 'render_png' || r.method === 'render_color_png')
   expect(new Uint8Array(png.buffer)).toEqual(reference.render_png(request.args[0]))
+})
+test('first pose derives and applies native transforms without a full document load and preserves the canvas lane',async()=>{
+  const f=await fixture(),{result,receipt}=await f.initial(),id=f.doc.pages[0].children[0]
+  const transform=[1,0,0,1,3.125,5.25],loads=f.requests.filter(r=>r.method==='load_document').length
+  f.send({id:2,channel:'interaction',deriveFrom:receipt,derivedTransforms:{[id]:transform},documentRevision:1})
+  const pose=await f.finish(2);expect(pose.error).toBeUndefined()
+  expect(f.messages.some(m=>m.id===2&&m.documentFallback)).toBe(false)
+  expect(f.requests.filter(r=>r.method==='load_document')).toHaveLength(loads)
+  expect(f.requests.filter(r=>r.method==='apply_interaction_transforms')).toHaveLength(1)
+  const reference=new f.kernel.VectorEngine();cleanup.push(()=>reference.free())
+  reference.load_font(resources.font!);reference.load_document(JSON.stringify({...f.doc,nodes:{...f.doc.nodes,[id]:{...f.doc.nodes[id],transform}}}))
+  f.send({id:3,channel:'interaction',documentRevision:1,png:true,readback:true})
+  const png=await f.finish(3);expect(png.error).toBeUndefined()
+  const request=[...f.requests].reverse().find(r=>r.method==='render_png'||r.method==='render_color_png')
+  expect(new Uint8Array(png.buffer)).toEqual(reference.render_png(request.args[0]))
+  f.send({id:4,channel:'canvas',documentRevision:1})
+  const unchanged=await f.finish(4);expect(unchanged.error).toBeUndefined()
+  expect(new Uint8Array(unchanged.buffer)).toEqual(new Uint8Array(result.buffer))
 })
 test('rejected target CAS requests exact captured fallback and leaves the ordered lane usable', async () => {
   const f = await fixture(), { receipt } = await f.initial(); f.rejectDerive()
@@ -181,7 +200,10 @@ test('real acknowledged edit→derive→undo→redo avoids full payload and matc
       const renderOptions = [...f.requests].reverse().find(r => r.method === 'render_cpu_frame').args[0]
       expect(new Uint8Array(result.buffer)).toEqual(reference.render_rgba(renderOptions))
       const packet = await f.directPreparation('interaction', 'compile_gpu_packet', [renderOptions])
-      expect(packet.value).toEqual(reference.compile_gpu_packet(renderOptions))
+      // FGSC carries producer-specific resource IDs/receipts. Compare every
+      // material/geometry value after binding; wire scope is intentionally distinct.
+      const {decodeScenePacket}=await import('./gpu/scene-packet')
+      expect(decodeScenePacket(packet.value)).toEqual(decodeScenePacket(reference.compile_gpu_packet(renderOptions)))
       const png = await f.directPreparation('interaction', 'render_png', [renderOptions])
       expect(png.value).toEqual(reference.render_png(renderOptions))
     } finally { reference.free() }

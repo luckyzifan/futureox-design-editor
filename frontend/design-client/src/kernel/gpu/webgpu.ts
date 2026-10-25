@@ -1,7 +1,8 @@
+import { pageBackgroundProof, pageBackgroundSource } from './page-background'
 import { captureDeviceDiagnosticRequest, deviceDiagnosticFields, registerDeviceDiagnosticOwner, recordDeviceLifecycle, recordDeviceDiagnostic, recordDeviceCallback, deviceLifecyclePhase, deviceLostReason } from './device-lifecycle-diagnostics'
 import { markRenderFailure, renderFailureFields, withRenderFailureStage } from '../render-failure-telemetry'
 import { recordGpuDiagnostic, gpuDiagnosticsEnabled } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
-import { QueueWaitStats, type QueueWaitReason } from './queue-wait-stats'
+import { QueueWaitStats, queueWaitReasons, type QueueWaitReason } from './queue-wait-stats'
 import { textureByteLength } from './texture-byte-length'
 /// <reference types="@webgpu/types" />
 import vectorShader from '../../../../../design-studio/crates/design-kernel/shaders/vector.wgsl?raw'
@@ -34,8 +35,11 @@ import byteSamplingShader from '../../../../../design-studio/crates/design-kerne
 import { areaShaderWgsl } from './area-shader'
 import { sampleOnlyAreaShaderWgsl } from './sample-only-area-shader'
 import { SampleOnlyAreaPrograms } from './sample-only-area-programs'
-import type { Driver, Texture, PathMesh, Rect, GpuScene, GpuAdmissionDiagnostic } from './types'
-import { parameters, previewUniforms, type PreviewPresentation } from './types'
+import { opaqueSolidShader } from './opaque-solid-shader'
+import { hasOpaqueSolidGroups } from './scene-index'
+import { rational_tent_kernel_rgba,certified_tent_prefix_plan } from '../../generated/design-kernel/design_kernel'
+import type { Driver, Texture, PathMesh, Rect, GpuScene, GpuAdmissionDiagnostic, OpaqueSolidBatch } from './types'
+import { parameters, intersect, previewUniforms, type PreviewPresentation } from './types'
 import { MAX_SOLID_INSTANCES, SOLID_INSTANCE_FLOATS } from './solid-batch'
 import { GpuBindingCache } from './binding-cache'
 import { ResidentGeometry } from './resident-geometry'
@@ -127,7 +131,7 @@ export class WebGpuDriver implements Driver {
     }
     const sampled = diagnosticIdentity.deviceFenceId % 32 === 1
     const enabled = gpuDiagnosticsEnabled(), started = enabled ? performance.now() : 0
-    const reasonCode = ['readback','timing','prefix-scratch','interaction','periodic','admission','checkpoint','cancel','initialization','park','image-table-scratch'].indexOf(reason)+1
+    const reasonCode = queueWaitReasons.indexOf(reason)+1
     if (enabled && sampled) recordDeviceDiagnostic('fence', { ...admission, ...diagnosticIdentity, reasonCode, deviceFencePhase: 1, deviceFenceTraceSkipped: this.fenceTraceSkipped || 0 })
     // A background completion observation is not a blocking finish wait. Keep
     // it out of QueueWaitStats' cpu-queue-completion-wait totals/histogram.
@@ -187,15 +191,17 @@ export class WebGpuDriver implements Driver {
   private sampleOnlyCoverageLifetimePasses = 0
   private sampleOnlyCoverageLifetimePixels = 0
   private sampleOnlyCoverageEligibleScenes = 0
+  private backgroundScene?: ReturnType<typeof pageBackgroundSource>
   captureDisplay = false
   private presenter?: ResidentPresenter
+  private presentationDevice?:GPUDevice
   private lifecycleFields() {
     const counters = this.presenter?.diagnosticFields()
     return { ...counters, ...deviceDiagnosticFields(this), deviceCounterMask: counters?.deviceCounterMask ?? 0 }
   }
   attachPresenter(canvas: OffscreenCanvas, report: (stats: Record<string, unknown>) => void) {
     if(this.presenter)this.presenter.attachCanvas(canvas)
-    else this.presenter=new ResidentPresenter(this.device, canvas, this.format, report)
+    else this.presenter=new ResidentPresenter(this.presentationDevice||this.device, canvas, this.format, report)
   }
   presentFrame(frame: ResidentFrame) { this.presenter?.draw(frame) }
   releasePresented(ids: number[]) { this.presenter?.release(ids) }
@@ -462,6 +468,12 @@ export class WebGpuDriver implements Driver {
   private binaryPipelines = new Map<number, GPURenderPipeline>()
   private overPipeline!: GPURenderPipeline
   private solidPipeline!: GPURenderPipeline
+  private nativeTentKernels=new WeakMap<Texture,{operator:'rational-tent'|'certified-tent';radius:number;resource:unknown;width:number;height:number;boundBits:number}>()
+  private certifiedTentPasses=0
+  private opaqueSolidPipeline?: GPURenderPipeline
+  private opaqueSolidRequested = false
+  private opaqueSolidBatches = new WeakMap<OpaqueSolidBatch, {data:Float32Array;rect:Rect;buffer:GPUBuffer;epoch:number}>()
+  private opaqueSolidDraws = 0
   private solidLayout!: GPUBindGroupLayout
   private solidBuffer?: GPUBuffer
   private solidBind?: GPUBindGroup
@@ -599,6 +611,25 @@ export class WebGpuDriver implements Driver {
     if (adapter.features.has('float32-filterable')) requiredFeatures.push('float32-filterable')
     this.device = await adapter.requestDevice({ requiredFeatures })
       .catch(error => { throw new Error(`GPU_UNAVAILABLE: ${String(error)}`, { cause: error }) })
+    if(!this.hdr&&import.meta.env.VITE_DESIGN_SEPARATE_PRESENT_DEVICE==='1'){
+      // GPUAdapter is single-use on current Chromium. The same hardware class
+      // supplies a presentation-only queue; all document pixel work stays on
+      // this existing renderer and its unchanged working-resource budget.
+      const displayAdapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'})
+      if(!displayAdapter||displayAdapter.info.isFallbackAdapter)throw Error('Hardware presentation adapter unavailable')
+      this.presentationDevice=await displayAdapter.requestDevice({requiredLimits:{maxTextureDimension2D:this.device.limits.maxTextureDimension2D}})
+      this.presentationDevice.lost.then(info=>{
+        if(this.terminal)return
+        this.terminal=true
+        this.errors.push(info.message||'Presentation device lost')
+        // Existing abort paths may skip fences only for a truly lost producer.
+        // Retire that producer too instead of falsely marking it as lost.
+        this.device.destroy()
+      })
+      this.presentationDevice.addEventListener('uncapturederror',event=>{
+        this.errors.push(event.error.message);this.presentationDevice?.destroy()
+      })
+    }
     if (this.dynamicUniformBindings) {
       const alignment = this.device.limits.minUniformBufferOffsetAlignment
       if (!Number.isInteger(alignment) || alignment < 1 || 1024 % alignment !== 0)
@@ -617,6 +648,7 @@ export class WebGpuDriver implements Driver {
         return
       }
       this.lost = true
+      this.presentationDevice?.destroy()
       this.submittedBoundaryReady = false; this.submittedBoundaryGeneration++
       if (this.disposed) {
         recordDeviceCallback(this, diagnosticIdentity, deviceLifecyclePhase.callbackDiscarded, { ...fields, deviceCallbackDisposition: 3 })
@@ -879,6 +911,14 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       primitive: { topology: 'triangle-list' },
     })
     })
+    this.pipelines.register('opaque-solid', async () => {
+      const module=this.device.createShaderModule({code:opaqueSolidShader,label:'Exact opaque four-sample group'})
+      this.opaqueSolidPipeline=await this.device.createRenderPipelineAsync({
+        layout:this.device.createPipelineLayout({bindGroupLayouts:[this.layout,this.solidLayout]}),
+        vertex:{module,entryPoint:'vertex'},fragment:{module,entryPoint:'fragment',targets:[{format:this.layerFormat}]},
+        primitive:{topology:'triangle-list'},
+      })
+    },false)
     for (const rule of this.managed ? [] : ['evenodd', 'nonzero', 'union']) register(`mask:${rule}`, async () => {
       const op: GPUStencilOperation =
         rule === 'evenodd' ? 'invert' : rule === 'union' ? 'replace' : 'increment-wrap'
@@ -989,7 +1029,12 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     })
   }
   async prepareScene(scene: GpuScene, displayOnly = false) {
+    this.backgroundScene=pageBackgroundSource(scene)
+    this.certifiedTentPasses=0
     this.sampleOnlyPrograms.resetFrame()
+    this.opaqueSolidBatches=new WeakMap();this.opaqueSolidDraws=0
+    this.opaqueSolidRequested=import.meta.env.VITE_DESIGN_OPAQUE_SOLID_BATCH==='1' && this.managed===true &&
+      scene.coherentSamples===true && !scene.softwareRaster && !scene.interactionRetained && hasOpaqueSolidGroups(scene)
     // Bitmap-assembly display leaves intentionally set captureDisplay=false.
     // Transport is independent of the real render(readback,present) contract;
     // callers omitting its explicit display intent retain the original area.
@@ -1015,6 +1060,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     const required = new Set([this.emptySceneComposeEnabled && emptyManagedComposeScene(scene, this.managed)
       ? 'compose:empty-copy' : 'compose'])
     if (paths.length) required.add('solid')
+    if (this.opaqueSolidRequested) required.add('opaque-solid')
     if (paths.some(p => p.area && p.count)) required.add('area')
     if (this.managed && paths.length) { required.add('binary'); required.add('scalar') }
     if (!this.managed) for (const path of paths)
@@ -1298,12 +1344,20 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     for (const lease of this.byteTentLeases?.keys() || []) lease.disposeAfterDeviceLoss()
     this.byteTentLeases?.clear()
   }
-  private prefixPolicy(u: Float32Array, channels: number, filter?: {kind: 'tent'; radius: number}, kernel?: Texture) {
+  private certifiedTentPair(kernel:Texture|undefined,certificate:Texture|undefined,radius:number){
+    if(import.meta.env.VITE_DESIGN_CERTIFIED_TENT_PREFIX!=='1'||!kernel||!certificate||radius<32||radius>512)return false
+    const a=this.nativeTentKernels.get(kernel),b=this.nativeTentKernels.get(certificate)
+    return !!(a&&b&&a.operator==='rational-tent'&&b.operator==='certified-tent'&&Object.is(a.radius,radius)&&Object.is(b.radius,radius)&&
+      a.resource===kernel.resource&&b.resource===certificate.resource&&a.width===kernel.width&&a.height===kernel.height&&
+      b.width===certificate.width&&b.height===certificate.height&&b.boundBits>0&&b.boundBits<=120&&this.textures.has(kernel)&&this.textures.has(certificate))
+  }
+  private prefixPolicy(u: Float32Array, channels: number, filter?: {kind: 'tent'; radius: number}, kernel?: Texture,certificate?:Texture) {
     // Actual operator measurements: alpha-only remains faster on the old path;
     // eligible RGBA lines can use 4 MiB bands from the measured crossover.
     return !!(!displayFilterPass(this.displayFilters, this.displayFilterRadiusLimit, !!this.displayFilterPipeline, u, channels, filter) &&
-      this.prefix && filter?.kind === 'tent' && filter.radius >= PREFIX_MIN_RADIUS &&
-      !((!Number.isInteger(filter.radius) || filter.radius > 512) && kernel?.prefixRationalUnsupported === true) && channels === 15 && u[16] === 22)
+      this.prefix && filter?.kind === 'tent' && channels===15 && u[16]===22 &&
+      (this.certifiedTentPair(kernel,certificate,filter.radius)||filter.radius>=PREFIX_MIN_RADIUS&&
+      !((!Number.isInteger(filter.radius)||filter.radius>512)&&kernel?.prefixRationalUnsupported===true)))
   }
   private rationalKernelBoundBits(kernel: Texture | undefined, radius: number) {
     const proof = kernel && this.rationalKernelBounds?.get(kernel)
@@ -1316,7 +1370,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   }
   private prepareWindowFilterPass(target: Texture, u: Float32Array, inputs: Texture[], channels: number,
     filter: {kind: 'tent'; radius: number}, availableBytes: number, sourceWindow?: FilterSourceWindow) {
-    if (!this.prefixPolicy(u, channels, filter, inputs[1]) || this.prefix!.scratchBytes) return
+    if (!this.prefixPolicy(u, channels, filter, inputs[1],inputs[2]) || this.prefix!.scratchBytes) return
     recordGpuDiagnostic('prefix',{reasonCode:availableBytes<PREFIX_SCRATCH_BYTES?1:0,availableBytes,scratchBytes:PREFIX_SCRATCH_BYTES,radius:filter.radius,width:u[2],height:u[3]})
     const sources = [0, 1, 2].map((i) => (inputs[i] || this.blank).resource as GPUTexture)
     if (availableBytes < PREFIX_SCRATCH_BYTES || !this.prefix!.canEncode(target.resource as GPUTexture, sources, u, filter.radius, filter.kind, {x:u[0],y:u[1],w:u[2],h:u[3]}, channels,255,sourceWindow)) return
@@ -1466,7 +1520,8 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       :this.curveMirror.update(curves.byteLength ? curves : new Float32Array(4))
     if(curveUpdate){this.device.queue.writeBuffer(this.curves,curveUpdate.offset,curveUpdate.data);this.geometryUploadBytes+=curveUpdate.data.byteLength}
     if(programs)this.programGpuValid=true
-    if (this.sampleOnlyRequested && this.sampleOnlyCoverageEnabled && this.sampleOnlyScalarPipeline && programs && this.curves)
+    if ((this.sampleOnlyRequested && this.sampleOnlyCoverageEnabled && this.sampleOnlyScalarPipeline ||
+        this.opaqueSolidRequested && this.opaqueSolidPipeline) && programs && this.curves)
       this.sampleOnlyPrograms.bind(programs.words, programs.offsets, this.scenePrograms!, this.curves, this.resourceEpoch)
     else this.sampleOnlyPrograms.reset()
     this.encoder = this.device.createCommandEncoder()
@@ -1600,6 +1655,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     return t
   }
   private invalidateTextureCertificates(texture: Texture) {
+    this.nativeTentKernels?.delete(texture)
     this.rationalKernelBounds?.delete(texture)
     this.imageRanges?.delete(texture)
     this.displayImageUploads?.delete(texture)
@@ -1659,6 +1715,25 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     if(import.meta.env.VITE_DESIGN_EXACT_IMAGE_X_TABLE !== '0' && values.buffer instanceof ArrayBuffer &&
         height===2 && values[3]===-1 && width<=8192)this.imageAxisPrograms.set(t,values.slice())
     return t
+  }
+  uploadExactTentKernel(bytes:Uint8Array,width:number,height:number,operator:'rational-tent'|'certified-tent',radius:number):Texture{
+    // Core-generated bytes are checked before the synchronous upload. The
+    // private association follows the actual resource and is revoked on any
+    // write; public texture fields or matching radii cannot grant reuse.
+    if(!Number.isFinite(radius)||radius<8||radius>512||height!==1||width*4!==bytes.byteLength||bytes.byteLength>65536||
+      !(bytes.buffer instanceof ArrayBuffer)||!['rational-tent','certified-tent'].includes(operator))throw Error('Invalid exact tent upload')
+    let boundBits=0
+    if(operator==='rational-tent'){
+      const expected=rational_tent_kernel_rgba(radius)
+      if(expected.length!==bytes.length||expected.some((value,index)=>value!==bytes[index]))throw Error('Exact tent bytes differ from core coefficients')
+    }else{
+      const plan=certified_tent_prefix_plan(radius,bytes)
+      if(plan.length!==3||plan[1]!==Math.floor(radius)-1||plan[2]!==Math.ceil(radius))throw Error('Exact tent bytes differ from core coefficients')
+      boundBits=plan[0]
+    }
+    const texture=this.uploadRgba8(bytes,width,height)
+    this.nativeTentKernels.set(texture,{operator,radius,resource:texture.resource,width,height,boundBits})
+    return texture
   }
   uploadRgba8(bytes: Uint8Array, width: number, height: number) {
     if (bytes.length !== width * height * 4) throw new Error('无效的 RGBA8 数据纹理')
@@ -2151,6 +2226,41 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     return Math.max(0, Math.floor((this.solidData.length - this.solidOffset) / SOLID_INSTANCE_FLOATS))
   }
   solidBatch(target: Texture, u: Float32Array, data: Float32Array, clip?: Texture) {
+    this.drawSolidInstances(target,u,data,this.solidPipeline,clip)
+  }
+  prepareOpaqueSolids(nodes:readonly {path:PathMesh;bounds:Rect}[],target:Rect,color:readonly number[]):OpaqueSolidBatch|undefined {
+    if(!this.opaqueSolidRequested||!this.opaqueSolidPipeline||!this.curves||this.lost||this.disposed||
+      nodes.length<8||nodes.length>this.solidBatchRemaining()||color.length!==4||color[3]!==1||
+      !color.every(v=>Number.isFinite(Math.fround(v)))||
+      ![target.x,target.y,target.w,target.h].every(v=>Number.isSafeInteger(v)&&Math.fround(v)===v))return
+    const rows:number[]=[];let pixels=0
+    for(const {path,bounds}of nodes){
+      const region=intersect(intersect(path.rect,bounds),target),first=path.area&&this.programOffsets?.get(path.area.first)
+      if(!region.w||!region.h)continue
+      if(![region.x,region.y,region.w,region.h,path.rect.x,path.rect.y,path.rect.w,path.rect.h].every(v=>Number.isSafeInteger(v)&&Math.fround(v)===v)||
+        !this.sampleOnlyPrograms.accepts(path,0,target,first,this.curves,this.resourceEpoch)||first!>=16777216)return
+      rows.push(path.rect.x,path.rect.y,path.rect.w,path.rect.h,first!,0,0,0,0,0,0,0,
+        ...color.map(v=>Math.fround(v)||0),region.x,region.y,region.w,region.h)
+      pixels+=region.w*region.h
+    }
+    if(!rows.length)return
+    const batch=Object.freeze({count:rows.length/SOLID_INSTANCE_FLOATS,pixels})
+    this.opaqueSolidBatches.set(batch,{data:new Float32Array(rows),rect:{...target},buffer:this.curves,epoch:this.resourceEpoch})
+    return batch
+  }
+  drawOpaqueSolids(batch:OpaqueSolidBatch,target:Texture,sample:number):boolean {
+    const proof=this.opaqueSolidBatches.get(batch)
+    if(!proof||!this.opaqueSolidPipeline||proof.buffer!==this.curves||proof.epoch!==this.resourceEpoch||
+      this.lost||this.disposed||!Number.isInteger(sample)||sample<0||sample>3||
+      target.width!==proof.rect.w||target.height!==proof.rect.h||target.binaryCoverage||target.scalarCoverage||
+      !this.solidRanges.has(proof.data)&&batch.count>this.solidBatchRemaining())return false
+    const u=parameters(proof.rect);u[37]=sample
+    this.drawSolidInstances(target,u,proof.data,this.opaqueSolidPipeline)
+    this.opaqueSolidDraws++
+    recordGpuDiagnostic('cache',{opaqueSolidDraws:1,opaqueSolidInstances:batch.count,opaqueSolidPixels:batch.pixels})
+    return true
+  }
+  private drawSolidInstances(target:Texture,u:Float32Array,data:Float32Array,pipeline:GPURenderPipeline,clip?:Texture){
     this.invalidateTextureCertificates(target)
     if (clip === target) throw new Error('GPU texture feedback loop')
     this.closeOver()
@@ -2180,7 +2290,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
         { view: this.bindingCache.view((target.resource as GPUTexture)), loadOp: 'load', storeOp: 'store' },
       ],
     })
-    pass.setPipeline(this.solidPipeline)
+    pass.setPipeline(pipeline)
     pass.setBindGroup(0, bind.group, bind.offsets)
     pass.setBindGroup(1, this.solidBind!)
     const count = data.length / SOLID_INSTANCE_FLOATS
@@ -2224,20 +2334,24 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.invalidateTextureCertificates(target)
     this.closeOver()
     if (inputs.includes(target)) throw new Error('GPU texture feedback loop')
-    const rationalBoundBits = filter ? this.rationalKernelBoundBits(inputs[1], filter.radius) : 0
-    if (this.prefixPolicy(u, channels, filter, inputs[1]) && filter && !region && channels===15 &&
+    const certifiedTent=!!filter&&this.certifiedTentPair(inputs[1],inputs[2],filter.radius)
+    const rationalBoundBits=certifiedTent?this.nativeTentKernels.get(inputs[2])!.boundBits:filter?this.rationalKernelBoundBits(inputs[1],filter.radius):0
+    if (this.prefixPolicy(u, channels, filter, inputs[1],inputs[2]) && filter && !region && channels===15 &&
         !this.displayMath && inputs[0]?.opaqueAlpha && import.meta.env.VITE_DESIGN_OPAQUE_TENT !== '0') {
       const complete=completeFilterAxisSupport({x:u[4],y:u[5],w:u[6],h:u[7]},
         {x:u[0],y:u[1],w:u[2],h:u[3]},u[37],filter.radius)
       if(complete && this.prefix!.encode(()=>this.encoder,target.resource as GPUTexture,
           [0,1,2].map(i=>(inputs[i]||this.blank).resource as GPUTexture),u,filter.radius,filter.kind,
-          {x:u[0],y:u[1],w:u[2],h:u[3]},7,255,true,rationalBoundBits,sourceWindow)) {
+          {x:u[0],y:u[1],w:u[2],h:u[3]},7,255,true,rationalBoundBits,sourceWindow,certifiedTent)) {
+        if(certifiedTent){this.certifiedTentPasses++;recordGpuDiagnostic('prefix',{certifiedTentPasses:1,radius:filter.radius,width:target.width,height:target.height})}
         this.drawCalls+=this.prefix!.lastRenderPasses;this.opaqueTentPasses++;target.opaqueAlpha=true;return
       }
     }
-    if (this.prefixPolicy(u, channels, filter, inputs[1]) && filter && !region && this.prefix!.encode(() => this.encoder, target.resource as GPUTexture,
+    if (this.prefixPolicy(u, channels, filter, inputs[1],inputs[2]) && filter && !region && this.prefix!.encode(() => this.encoder, target.resource as GPUTexture,
       [0, 1, 2].map((i) => (inputs[i] || this.blank).resource as GPUTexture), u, filter.radius, filter.kind,
-      {x:u[0],y:u[1],w:u[2],h:u[3]}, channels,255,false,rationalBoundBits,sourceWindow)) { this.drawCalls += this.prefix!.lastRenderPasses; return }
+      {x:u[0],y:u[1],w:u[2],h:u[3]}, channels,255,false,rationalBoundBits,sourceWindow,certifiedTent)) {
+        if(certifiedTent){this.certifiedTentPasses++;recordGpuDiagnostic('prefix',{certifiedTentPasses:1,radius:filter.radius,width:target.width,height:target.height})}
+        this.drawCalls += this.prefix!.lastRenderPasses; return }
     const bind = this.bind(u, inputs)
     // With integer origins/sizes bounded by 2^20, pixel centres and every
     // subtraction/addition forming q/base are exactly representable binary32
@@ -2400,6 +2514,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     outputRect?: Rect,
   ) {
     let captured: { id: number; texture: GPUTexture } | undefined
+    let transfer:ReturnType<ResidentPresenter['reserveBitmapImport']>|undefined
     try {
     this.collectCompletedImageTables()
     this.closeOver()
@@ -2408,7 +2523,13 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     // readback target, MAP_READ staging). Pure accounting.
     let finishTransient = 0
     if (present) {
-    if (this.captureDisplay && this.presenter && !readback && !this.hdr) captured = withRenderFailureStage(10, () => this.presenter!.capture(width, height))
+    if (this.captureDisplay && this.presenter && !readback && !this.hdr) {
+      const background=this.backgroundScene&&!preview?pageBackgroundProof(this.backgroundScene,outputRect||{x:0,y:0,w:width,h:height},width,height):undefined
+      if(this.presentationDevice){
+        transfer=withRenderFailureStage(10,()=>this.presenter!.reserveBitmapImport(width,height,background))
+        finishTransient+=width*height*4
+      }else captured=withRenderFailureStage(10,()=>this.presenter!.capture(width,height,background))
+    }
     if (this.canvas.width !== width) this.canvas.width = width
     if (this.canvas.height !== height) this.canvas.height = height
     const u = parameters(outputRect || { x: 0, y: 0, w: width, h: height }, r)
@@ -2489,7 +2610,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       !this.transientTargets.length && !this.transient.length && !this.transientBytes && this.canDeferImageTables()
     // Keep the existing interaction/periodic backpressure. Only per-tile waits
     // whose purpose was scratch destruction or diagnostic counters disappear.
-    const waitReason: QueueWaitReason | undefined = readback ? 'readback' : timingRead ? 'timing' :
+    const waitReason: QueueWaitReason | undefined = readback ? 'readback' : timingRead ? 'timing' : transfer ? 'presentation-transfer' :
       this.byteTentLeases?.size ? 'prefix-scratch' :
       !retainFilterScratch && this.prefix?.scratchBytes ? 'prefix-scratch' :
       !deferImageScratch && this.imageTables.size ? 'image-table-scratch' : this.interactionPresentation &&
@@ -2580,12 +2701,18 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       straightRgba = minifiedPreviewRgba8(rgba)
       rgba = undefined
     }
-    const bitmap = present && !captured ? withRenderFailureStage(10, () => this.canvas.transferToImageBitmap()) : undefined
+    let bitmap = present && !captured ? withRenderFailureStage(10, () => this.canvas.transferToImageBitmap()) : undefined
     if (bitmap) this.crossDeviceBitmaps++
+    if(transfer&&bitmap){
+      const source=bitmap;bitmap=undefined
+      const id=withRenderFailureStage(10,()=>transfer!.copy(source))
+      captured={id,texture:transfer.texture}
+    }
     if (captured) this.residentCaptures++
     this.submittedBoundaryReady = true
     return { gpuTile: captured?.id, bitmap, rgba, linear, straightRgba }
     } catch (error) {
+      transfer?.cancel()
       if (captured) this.presenter?.release([captured.id])
       if (isDisplayBudgetError(error)) await this.abortFrameAndReleaseFilterScratch()
       throw error
@@ -2603,6 +2730,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       finishTransientBytes: this.finishTransientBytes,
       frameScratchBytes: this.frameScratchBytes,
       prefixCounterSamples: this.prefixCounterSamples,
+      certifiedTentPasses:this.certifiedTentPasses,
       prefixCounterDeferredFrames: this.prefixCounterDeferredFrames,
       scratchBytes: this.scratchBytes,
       vertexBufferBytes: this.vertexCapacity,
@@ -2613,6 +2741,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       // in ResidentPresenter are separate from ordinary canvas presentation.
       rasterReadbackBytes:this.rasterReadbackBytes,
       crossDeviceBitmaps:this.crossDeviceBitmaps,residentCaptures:this.residentCaptures,
+      separatePresentationDevice:Number(!!this.presentationDevice),
       geometryMirrorBytes: this.curveMirror.bytes + this.vertexMirror.bytes,
       residentProgramBytes:this.programArena.bytes,
       residentProgramHits:this.programHits,residentProgramHitBytes:this.programHitBytes,
@@ -2632,6 +2761,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       boundedDisplayFilterPasses: this.boundedDisplayFilterPasses,
       byteTentAlphaPasses: this.byteTentAlphaPasses,
       sampleOnlyCoveragePasses: this.sampleOnlyCoveragePasses,
+      opaqueSolidDraws:this.opaqueSolidDraws,
       sampleOnlyCoveragePixels: this.sampleOnlyCoveragePixels,
       sampleOnlyCoverageLifetimePasses: this.sampleOnlyCoverageLifetimePasses,
       sampleOnlyCoverageLifetimePixels: this.sampleOnlyCoverageLifetimePixels,
@@ -2690,6 +2820,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.terminal = true
     recordDeviceLifecycle(this, deviceLifecyclePhase.disposed, this.lifecycleFields())
     this.presenter?.dispose(); this.presenter = undefined
+    this.presentationDevice?.destroy();this.presentationDevice=undefined
     this.parkedForReuse = false
     this.closeOver()
     // Explicit device destruction, unlike an ordinary rejected queue fence,

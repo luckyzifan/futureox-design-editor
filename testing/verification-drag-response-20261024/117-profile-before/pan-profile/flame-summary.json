@@ -1,0 +1,386 @@
+[
+  {
+    "thread": "UI 主线程",
+    "sampledWallMs": 2543.1600000000017,
+    "idleOrUnassignedMs": 2289.6359999999977,
+    "activeSampleMs": 253.52399999999997,
+    "focus": [
+      {
+        "name": "(anonymous) · src/Canvas.tsx:737",
+        "selfMs": 0,
+        "inclusiveMs": 7.557
+      },
+      {
+        "name": "Jx.mt.current · src/Canvas.tsx:725",
+        "selfMs": 0,
+        "inclusiveMs": 6.053
+      },
+      {
+        "name": "Canvas · src/Canvas.tsx:224",
+        "selfMs": 3.044,
+        "inclusiveMs": 3.044
+      },
+      {
+        "name": "(anonymous) · src/engine.ts:502",
+        "selfMs": 0,
+        "inclusiveMs": 3.016
+      },
+      {
+        "name": "set · src/engine.ts:381",
+        "selfMs": 0,
+        "inclusiveMs": 3.016
+      },
+      {
+        "name": "setState · src/engine.ts:384",
+        "selfMs": 1.506,
+        "inclusiveMs": 3.016
+      },
+      {
+        "name": "ze · src/Canvas.tsx:477",
+        "selfMs": 0,
+        "inclusiveMs": 3.004
+      },
+      {
+        "name": "(anonymous) · src/Canvas.tsx:477",
+        "selfMs": 0,
+        "inclusiveMs": 3.004
+      },
+      {
+        "name": "Be · src/Canvas.tsx:478",
+        "selfMs": 0,
+        "inclusiveMs": 3.004
+      },
+      {
+        "name": "move · src/Canvas.tsx:1508",
+        "selfMs": 0,
+        "inclusiveMs": 3.004
+      },
+      {
+        "name": "(anonymous) · src/CanvasEditPreview.tsx:16",
+        "selfMs": 2.997,
+        "inclusiveMs": 2.997
+      },
+      {
+        "name": "end · src/Canvas.tsx:1864",
+        "selfMs": 0,
+        "inclusiveMs": 1.516
+      },
+      {
+        "name": "(anonymous) · src/Canvas.tsx:1865",
+        "selfMs": 0,
+        "inclusiveMs": 1.516
+      },
+      {
+        "name": "endImpl · src/Canvas.tsx:1867",
+        "selfMs": 0,
+        "inclusiveMs": 1.516
+      },
+      {
+        "name": "finishDragTrace · src/Canvas.tsx:445",
+        "selfMs": 0,
+        "inclusiveMs": 1.516
+      },
+      {
+        "name": "(anonymous) · src/Canvas.tsx:278",
+        "selfMs": 0,
+        "inclusiveMs": 1.51
+      },
+      {
+        "name": "restore · src/CanvasEditPreview.tsx:59",
+        "selfMs": 1.51,
+        "inclusiveMs": 1.51
+      },
+      {
+        "name": "onPointerDown · src/Canvas.tsx:2146",
+        "selfMs": 1.506,
+        "inclusiveMs": 1.506
+      },
+      {
+        "name": "(anonymous) · src/Canvas.tsx:1509",
+        "selfMs": 1.505,
+        "inclusiveMs": 1.505
+      },
+      {
+        "name": "suspendNavigationHover · src/Canvas.tsx:600",
+        "selfMs": 0,
+        "inclusiveMs": 1.504
+      },
+      {
+        "name": "CanvasGuides · src/CanvasGuides.tsx:10",
+        "selfMs": 1.059,
+        "inclusiveMs": 1.059
+      },
+      {
+        "name": "kernelBounds · src/kernel/picking.ts:530",
+        "selfMs": 0.064,
+        "inclusiveMs": 0.078
+      },
+      {
+        "name": "s · src/kernel/picking.ts:539",
+        "selfMs": 0.014,
+        "inclusiveMs": 0.014
+      }
+    ],
+    "topSelf": [
+      {
+        "name": "tick",
+        "selfMs": 17.436999999999998,
+        "inclusiveMs": 17.436999999999998
+      },
+      {
+        "name": "ProgressiveSurfaceImpl · src/kernel/ProgressiveSurface.tsx:367",
+        "selfMs": 14.625,
+        "inclusiveMs": 39.48
+      },
+      {
+        "name": "present · src/kernel/client.ts:412",
+        "selfMs": 13.367999999999999,
+        "inclusiveMs": 17.885
+      },
+      {
+        "name": "(garbage collector)",
+        "selfMs": 10.748000000000001,
+        "inclusiveMs": 10.748000000000001
+      },
+      {
+        "name": "Ob.u.current · src/kernel/ResidentCompositeSurface.tsx:74",
+        "selfMs": 10.559,
+        "inclusiveMs": 32.138000000000005
+      },
+      {
+        "name": "commitHostUpdate · ../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:9218",
+        "selfMs": 10.549,
+        "inclusiveMs": 24.104
+      },
+      {
+        "name": "sanitizeFields · src/render-terminal-diagnostics.mjs:54",
+        "selfMs": 10.247,
+        "inclusiveMs": 10.247
+      },
+      {
+        "name": "sanitizeRecord · src/render-terminal-diagnostics.mjs:118",
+        "selfMs": 9.116,
+        "inclusiveMs": 12.012
+      },
+      {
+        "name": "renderWithHooks · ../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:4627",
+        "selfMs": 9.079,
+        "inclusiveMs": 63.22900000000001
+      },
+      {
+        "name": "updateProperties · ../../../../design-client/node_modules/react-dom/cjs/react-dom-client.production.js:15035",
+        "selfMs": 9.033,
+        "inclusiveMs": 12.03
+      },
+      {
+        "name": "nextGeneration · src/kernel/interaction-renderer.ts:72",
+        "selfMs": 7.5649999999999995,
+        "inclusiveMs": 9.094
+      },
+      {
+        "name": "estimatedTileResidencyBytes · src/kernel/page-memory-policy.ts:22",
+        "selfMs": 6.064000000000001,
+        "inclusiveMs": 6.064000000000001
+      },
+      {
+        "name": "getBoundingClientRect",
+        "selfMs": 6.053,
+        "inclusiveMs": 6.053
+      },
+      {
+        "name": "(anonymous) · src/kernel/ProgressiveSurface.tsx:2222",
+        "selfMs": 4.5440000000000005,
+        "inclusiveMs": 4.5440000000000005
+      },
+      {
+        "name": "e.onmessage · src/kernel/client.ts:501",
+        "selfMs": 4.426,
+        "inclusiveMs": 46.486000000000004
+      },
+      {
+        "name": "Canvas · src/Canvas.tsx:224",
+        "selfMs": 3.044,
+        "inclusiveMs": 3.044
+      },
+      {
+        "name": "KernelSurface · src/kernel/Surface.tsx:545",
+        "selfMs": 3.032,
+        "inclusiveMs": 3.032
+      },
+      {
+        "name": "tilesCoverBounds · src/kernel/tile-cache.ts:218",
+        "selfMs": 3.0279999999999996,
+        "inclusiveMs": 3.0279999999999996
+      },
+      {
+        "name": "(anonymous)",
+        "selfMs": 3.02,
+        "inclusiveMs": 3.02
+      },
+      {
+        "name": "fn · src/kernel/ProgressiveSurface.tsx:2205",
+        "selfMs": 3.0149999999999997,
+        "inclusiveMs": 3.0149999999999997
+      },
+      {
+        "name": "localRecord · src/render-terminal-diagnostics.mjs:128",
+        "selfMs": 3.0060000000000002,
+        "inclusiveMs": 9.038
+      },
+      {
+        "name": "onPresented · src/kernel/ProgressiveSurface.tsx:2411",
+        "selfMs": 3.0060000000000002,
+        "inclusiveMs": 3.0060000000000002
+      },
+      {
+        "name": "(anonymous) · src/CanvasEditPreview.tsx:16",
+        "selfMs": 2.997,
+        "inclusiveMs": 2.997
+      },
+      {
+        "name": "visit · src/geometry.ts:282",
+        "selfMs": 2.338,
+        "inclusiveMs": 7.527
+      },
+      {
+        "name": "residentFrameSignature · src/kernel/gpu/resident-frame.ts:64",
+        "selfMs": 2.203,
+        "inclusiveMs": 2.203
+      }
+    ]
+  },
+  {
+    "thread": "design-app://app/assets/render-worker-BBJov43n.js",
+    "sampledWallMs": 2446.4720000000016,
+    "idleOrUnassignedMs": 1591.1720000000016,
+    "activeSampleMs": 855.3000000000002,
+    "focus": [],
+    "topSelf": [
+      {
+        "name": "certifyExactImageRange · src/kernel/gpu/exact-image-x-table.ts:15",
+        "selfMs": 58.873000000000005,
+        "inclusiveMs": 58.873000000000005
+      },
+      {
+        "name": "group · src/kernel/gpu/binding-cache.ts:21",
+        "selfMs": 49.278999999999996,
+        "inclusiveMs": 107.70100000000001
+      },
+      {
+        "name": "value · src/kernel/gpu/frame-wire.ts:7",
+        "selfMs": 46.335,
+        "inclusiveMs": 292.65900000000033
+      },
+      {
+        "name": "beginRenderPass",
+        "selfMs": 40.225,
+        "inclusiveMs": 40.225
+      },
+      {
+        "name": "encodePass · src/kernel/gpu/webgpu.ts:2221",
+        "selfMs": 38.38599999999999,
+        "inclusiveMs": 206.84099999999987
+      },
+      {
+        "name": "(garbage collector)",
+        "selfMs": 33.493,
+        "inclusiveMs": 33.493
+      },
+      {
+        "name": "createBindGroup",
+        "selfMs": 32.92,
+        "inclusiveMs": 32.92
+      },
+      {
+        "name": "acquire · src/kernel/gpu/renderer.ts:786",
+        "selfMs": 25.307,
+        "inclusiveMs": 47.914
+      },
+      {
+        "name": "get · src/kernel/gpu/coverage-cache.ts:30",
+        "selfMs": 25.071999999999996,
+        "inclusiveMs": 32.183
+      },
+      {
+        "name": "create · src/kernel/gpu/webgpu.ts:2132",
+        "selfMs": 23.991,
+        "inclusiveMs": 58.42200000000001
+      },
+      {
+        "name": "put · src/kernel/gpu/coverage-cache.ts:40",
+        "selfMs": 23.868000000000006,
+        "inclusiveMs": 31.042
+      },
+      {
+        "name": "decode",
+        "selfMs": 23.363,
+        "inclusiveMs": 23.363
+      },
+      {
+        "name": "writeBuffer",
+        "selfMs": 22.279,
+        "inclusiveMs": 22.279
+      },
+      {
+        "name": "decodeScenePacket · src/kernel/gpu/scene-packet.ts:17",
+        "selfMs": 17.168999999999997,
+        "inclusiveMs": 108.33900000000003
+      },
+      {
+        "name": "run · src/kernel/gpu/renderer.ts:1130",
+        "selfMs": 16.381,
+        "inclusiveMs": 123.69700000000002
+      },
+      {
+        "name": "parameters · src/kernel/gpu/types.ts:490",
+        "selfMs": 15.843,
+        "inclusiveMs": 15.843
+      },
+      {
+        "name": "set · src/kernel/gpu/reverse-index-map.ts:8",
+        "selfMs": 11.004000000000001,
+        "inclusiveMs": 11.004000000000001
+      },
+      {
+        "name": "release · src/kernel/gpu/renderer.ts:962",
+        "selfMs": 10.625,
+        "inclusiveMs": 10.625
+      },
+      {
+        "name": "transform · src/kernel/gpu/renderer.ts:1707",
+        "selfMs": 10.587,
+        "inclusiveMs": 10.587
+      },
+      {
+        "name": "createTexture",
+        "selfMs": 10.575999999999999,
+        "inclusiveMs": 10.575999999999999
+      },
+      {
+        "name": "createFormat · src/kernel/gpu/webgpu.ts:1573",
+        "selfMs": 10.439999999999998,
+        "inclusiveMs": 21.016000000000002
+      },
+      {
+        "name": "sanitizeFields · src/render-terminal-diagnostics.mjs:54",
+        "selfMs": 9.029,
+        "inclusiveMs": 9.029
+      },
+      {
+        "name": "compositeDrawPlan · src/kernel/gpu/composite-draw-plan.ts:61",
+        "selfMs": 9.028,
+        "inclusiveMs": 16.597
+      },
+      {
+        "name": "(anonymous) · src/kernel/gpu/coverage-cache.ts:32",
+        "selfMs": 8.635,
+        "inclusiveMs": 8.635
+      },
+      {
+        "name": "self.onmessage · src/kernel/render-worker.ts:453",
+        "selfMs": 7.574,
+        "inclusiveMs": 9.087
+      }
+    ]
+  }
+]

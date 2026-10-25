@@ -5,6 +5,8 @@ export type PresentedFragment = {
   sourceWidth: number; sourceHeight: number
   uv: readonly [number, number, number, number]
   blend?: boolean
+  /** Compiler-certified, phase-independent constant background draw. */
+  constant?:boolean
 }
 
 /** Diagnostics of the actual clipped GPU draws, in physical display pixels.
@@ -16,6 +18,7 @@ export type PresentedFragment = {
 export function presentedFragmentQuality(fragments: readonly PresentedFragment[], width: number, height: number) {
   const integer = (value: number) => Number.isFinite(value) && Math.abs(value - Math.round(value)) < 1e-7
   const rows = fragments.map(row => {
+    if(row.constant)return {...row,density:1,native:true,phase:true}
     const dx = row.sourceWidth * row.uv[2] / row.width, dy = row.sourceHeight * row.uv[3] / row.height
     const density = Number.isFinite(dx) && Number.isFinite(dy) ? Math.max(0, Math.min(dx, dy)) : 0
     return { ...row, density, native: density >= 1 - 1e-10,

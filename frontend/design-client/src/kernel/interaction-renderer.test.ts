@@ -539,17 +539,61 @@ test('fractional retained promotion coalesces newer poses and commits the last n
   expect(owner.presentedInput.sequence).toBe(3)
 })
 
-test('fractional input during initial retained warm-up publishes then rerasterizes without cancelling useful work', async () => {
+test('coalesced pointer poses do not enumerate the complete node dictionary before the running capture finishes',async()=>{
+  const doc=blank(),root=node('frame',0,0,100,100);root.effects=[effect('glass')]
+  doc.nodes[root.id]=root;doc.pages[0].children=[root.id]
+  let enumerations=0
+  doc.nodes=new Proxy(doc.nodes,{ownKeys(target){enumerations++;return Reflect.ownKeys(target)}})
+  const owner=new InteractionRenderer(vi.fn());owners.push(owner)
+  owner.prepare({document:doc,selection:[root.id],active:true,epoch:1,control:{current:null},onReady(){}},
+    doc.pages[0].id,{x:0,y:0,zoom:1},1,'analytic','webgpu')
+  expect(worker.jobs).toHaveLength(1);enumerations=0
+  for(let i=1;i<=60;i++)owner.control.apply(doc,{[root.id]:{transform:[1,0,0,1,i/8,0]}})
+  expect(worker.jobs).toHaveLength(1)
+  expect(enumerations).toBe(0)
+  worker.jobs[0].resolve()
+  await vi.waitFor(()=>expect(worker.jobs).toHaveLength(2))
+  expect(worker.jobs[1].document.nodes[root.id].transform[4]).toBe(7.5)
+  worker.jobs[1].resolve();await vi.waitFor(()=>expect(owner.presentedInput.sequence).toBe(60))
+})
+
+test('fractional input cancels unusable initial retained capture and starts the exact pose immediately', async () => {
   const { doc, root, owner, view } = fixture(false, 32, 10)
   owner.control.apply(doc, { [root.id]: { transform: [1, 0, 0, 1, .1, 0] } })
-  expect(worker.jobs).toHaveLength(1)
+  expect(worker.jobs).toHaveLength(2)
+  expect(worker.jobs[1].options.interactionNative).toBe(true)
+  expect(worker.jobs[1].options.view.zoom).toBe(32)
+  expect(worker.jobs[1].document.nodes[root.id].transform[4]).toBe(.1)
+  expect(owner.ready).toBe(false)
+  expect(owner.presentedInput.sequence).toBe(0)
   worker.jobs[0].resolve()
-  await vi.waitFor(() => expect(worker.jobs).toHaveLength(2))
-  expect(owner.ready).toBe(true)
-  const previous = owner.items(view)![0]
-  expect(previous.placement!.left).toBe(previous.tile.x / previous.tile.zoom * view.zoom)
+  await Promise.resolve(); await Promise.resolve()
+  expect(worker.jobs).toHaveLength(2)
+  expect(owner.ready).toBe(false)
   worker.jobs[1].resolve()
-  await vi.waitFor(() => expect(owner.mode).toBe('live-kernel'))
+  await vi.waitFor(() => expect(owner.ready).toBe(true))
+  expect(owner.mode).toBe('live-kernel')
+  expect(owner.items(view)).not.toBeNull()
+  expect(owner.presentedInput.sequence).toBe(1)
+})
+
+test('late initial shared capture cannot replace the current pose and retires only its own handle', async () => {
+  const doc=blank(),root=node('frame',0,0,10,10);root.blend='normal'
+  doc.nodes[root.id]=root;doc.pages[0].children=[root.id]
+  const shared=new KernelClient(),owner=new InteractionRenderer(vi.fn(),shared);owners.push(owner)
+  owner.prepare({document:doc,selection:[root.id],active:false,epoch:1,control:{current:null},onReady(){}},
+    doc.pages[0].id,{x:0,y:0,zoom:32},1,'analytic','webgpu')
+  owner.control.apply(doc,{[root.id]:{transform:[1,0,0,1,.1,0]}})
+  expect(worker.jobs[0].signal.aborted).toBe(true)
+  expect(worker.jobs[1].signal.aborted).toBe(false)
+  worker.jobs[1].resolve({gpuTile:802,bytes:new Uint8Array()})
+  await vi.waitFor(()=>expect(owner.ready).toBe(true))
+  worker.jobs[0].resolve({gpuTile:801,bytes:new Uint8Array()})
+  await vi.waitFor(()=>expect(worker.released).toContain(801))
+  expect(owner.tiles[0].gpuTile).toBe(802)
+  expect(worker.released).not.toContain(802)
+  expect(owner.presentedInput.sequence).toBe(1)
+  shared.dispose()
 })
 
 test('failed retained warm-up admits a changed native density once without a same-request retry loop', async () => {
@@ -667,15 +711,17 @@ test('page translation hands fractional native motion to the GPU renderer withou
   expect(worker.jobs[0].document.nodes[root.id].transform[4]).toBe(1 / 32)
   expect(page.prepare(props, doc.pages[0].id, doc, items, doc, true)).toBe(false)
   owner.prepare(props, doc.pages[0].id, view, 1, 'analytic', 'webgpu', doc, size)
-  expect(worker.jobs).toHaveLength(1)
+  expect(worker.jobs).toHaveLength(2)
   worker.jobs[0].resolve({ gpuTile: 71 })
-  await vi.waitFor(() => expect(worker.jobs).toHaveLength(2))
-  expect(owner.ready).toBe(true)
+  await vi.waitFor(() => expect(worker.released).toContain(71))
+  expect(owner.ready).toBe(false)
+  expect(page.items(view)![0].placement!.left).toBe(accepted)
   expect(worker.jobs[1].document.nodes[root.id].transform[4]).toBe(.1)
   expect(worker.jobs[1].options.interactionNative).toBe(true)
   owner.prepare(props, doc.pages[0].id, view, 1, 'analytic', 'webgpu', doc, size)
   worker.jobs[1].resolve({ gpuTile: 72, residentInteraction: true })
-  await vi.waitFor(() => expect(owner.mode).toBe('live-kernel'))
+  await vi.waitFor(() => expect(owner.ready).toBe(true))
+  expect(owner.mode).toBe('live-kernel')
   expect(worker.jobs).toHaveLength(2)
   const moved = { ...doc, nodes: { ...doc.nodes, [root.id]: { ...root, transform: [1, 0, 0, 1, .1, 0] as typeof root.transform } } }
   owner.control.end(moved)

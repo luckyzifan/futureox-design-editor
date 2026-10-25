@@ -1,0 +1,29 @@
+{
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/drag-response-20261024-6lnpejll/baseline-host",
+  "scope": "sampled real Electron native-input integration; UI and existing browser workers, native Rust process and GPU execution are not V8 CPU stacks",
+  "startedAt": 1792852618063,
+  "endedAt": 1792852620417,
+  "results": [
+    {
+      "target": {
+        "type": "renderer",
+        "title": "UI 主线程"
+      },
+      "file": "cpu-0.cpuprofile"
+    },
+    {
+      "target": {
+        "attached": true,
+        "browserContextId": "8C2FD3B423AD4C5948B1B54A1B622AF8",
+        "canAccessOpener": false,
+        "parentFrameId": "03CEA115DE3706486C15D6EA3C5047CE",
+        "parentId": "03CEA115DE3706486C15D6EA3C5047CE",
+        "targetId": "3083510A82E3D5AA1EB598E9DB592EA8",
+        "title": "design-app://app/assets/render-worker-BBJov43n.js",
+        "type": "worker",
+        "url": "design-app://app/assets/render-worker-BBJov43n.js"
+      },
+      "file": "cpu-1.cpuprofile"
+    }
+  ]
+}

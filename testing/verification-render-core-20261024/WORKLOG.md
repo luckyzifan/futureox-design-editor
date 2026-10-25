@@ -15,3 +15,10 @@ No full completion or performance claim until these gates pass. Resource complet
 - Ordinary and object-gesture compilation now share the frame/resource path. Removed separate Rust SceneDelta, JS full-node/full-array delta reconstruction, old packet cache and their production toggles. Pose tests are being moved to frame resources; old source is kept only in the private baseline, not bundled production.
 - Typecheck and initial codec/planner tests passed. Font fixture tests first failed for missing pinned fonttools, then for an unrelated shared temporary cache. A task-private venv and TMPDIR are used; the other cache was not removed.
 - Still required: finish updated tests/byte identity regressions, hardware comparison against old renderer + full JSON oracle, full builds/foreground tests/profiles, latest-camera native-density scheduling and GPU plan scope work, cleanup audit and all acceptance gates.
+
+
+## 2026-10-24/25 后续验证
+
+- core-frame-hardware-1：5 个真实 FIG/117/拓扑区域、WebGPU/WebGL2、reference/frame 各 cold/warm 三次，60 次读回，所有 float word 相同。原始 JSON 和旧 renderer 为 oracle；这不证明运动/GUI 完成。
+- source-identity 现在与解码时的 vertices/curves 数组及不可变节点表绑定。复制整个 packet 时重新绑定私有存储；替换任一几何数组时不再获得原生 source ID 快路，回退逐位验证。已增加 bound-resource 反例。
+- 持续的交互修复见 ../verification-drag-response-20261024/WORKLOG.md。该记录同时保留尚未解决的运动相位、细化延迟、FIG 拖动主线程序列化，以及普通画板大文件集成的未完成项。

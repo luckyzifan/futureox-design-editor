@@ -2182,9 +2182,17 @@ export class Editor {
     }
     if (!free || transaction.flow) return
     const base = transaction.previewBase || transaction.doc, parents = (transaction.dropIndex ??= createCanvasDropIndex(base,this.state.page)).parents
+    // Read-only eligibility must precede the Immer draft. Merely reading
+    // draft.nodes prepares a shallow copy of the entire node dictionary,
+    // even when a free-frame drag has no flow sizing to change.
+    const eligible=ids.filter(id=>{
+      const n=base.nodes[id],parent=base.nodes[parents.get(id)!]
+      return parent?.layout&&parent.layout.mode!=='none'&&!n.sizing?.absolute
+    })
+    if(!eligible.length)return
     const sizing = new Map<string, DesignNode['sizing']>()
     const document = produceDraft(base, draft => {
-      for (const id of ids) {
+      for (const id of eligible) {
         const n = draft.nodes[id], parent = draft.nodes[parents.get(id)!]
         if (parent?.layout && parent.layout.mode !== 'none' && !n.sizing?.absolute) {
           sizing.set(id, cloneValue(n.sizing))

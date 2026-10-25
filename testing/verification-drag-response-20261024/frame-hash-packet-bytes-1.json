@@ -1,0 +1,115 @@
+{
+  "scope": "real previous/current WASM packet bytes, not GPU or GUI acceptance",
+  "hashes": {
+    "reference": "5254aedac758271c2a6cbda7ad270bc08cea6d32291b5dfe9ff8eb041f4fe739",
+    "candidate": "5f10b58da82561a98eb49a5a9c8c8b872a08f5f0544112e2a26ee2d49b9d6897"
+  },
+  "cases": [
+    {
+      "name": "117",
+      "iteration": 0,
+      "bytes": 1184404,
+      "resourceIds": 48,
+      "sha256": "7d9719ac6d8a1a5afbafcd30738c12408ec4519ee8b244fdfe81b4b670e70b08"
+    },
+    {
+      "name": "117",
+      "iteration": 1,
+      "bytes": 313676,
+      "resourceIds": 48,
+      "sha256": "75a7de2e674415a855ee08bac3ffca539341f1404abe8281c5eb863d24eedfe6"
+    },
+    {
+      "name": "117",
+      "iteration": 2,
+      "bytes": 403658,
+      "resourceIds": 93,
+      "sha256": "0ce3186f86ea243eb2657efaff66b56d395b4fa16536837e47905318d23616ca"
+    },
+    {
+      "name": "117",
+      "iteration": 3,
+      "bytes": 304964,
+      "resourceIds": 93,
+      "sha256": "d19289e0fedd497ff1bb3c1d1eadf8d0512f3faf5ca519ec002c0b4db9c49fdb"
+    },
+    {
+      "name": "117",
+      "iteration": 4,
+      "bytes": 1019,
+      "resourceIds": 94,
+      "sha256": "9132b591581035bbc9bbc93e4bd9a61881984dd0f9ad7e0a2956d22d620875c6"
+    },
+    {
+      "name": "fig",
+      "iteration": 0,
+      "bytes": 1135353,
+      "resourceIds": 72,
+      "sha256": "f389b4adf7f176726b4e732739fa00664d7796030c5213022e554e928c6ba21e"
+    },
+    {
+      "name": "fig",
+      "iteration": 1,
+      "bytes": 1048540,
+      "resourceIds": 72,
+      "sha256": "fa55a3189c19da53e37e6a4dccb5215686bad654a037a3610657e12c344aff59"
+    },
+    {
+      "name": "fig",
+      "iteration": 2,
+      "bytes": 1135426,
+      "resourceIds": 145,
+      "sha256": "534d70921d5e721ad7de34d088d3f21e29cbf3647d4d59c57350a6233efbafc8"
+    },
+    {
+      "name": "fig",
+      "iteration": 3,
+      "bytes": 1047616,
+      "resourceIds": 145,
+      "sha256": "c25f15976d17a575ff9c8c37d6eab7c961cb6ba9d4eb39b1b6551c519026788f"
+    },
+    {
+      "name": "fig",
+      "iteration": 4,
+      "bytes": 591963,
+      "resourceIds": 178,
+      "sha256": "54d3b27a500458222d21f25642d12f6393aca090387da51b0ec541916a9a43cf"
+    },
+    {
+      "name": "controls",
+      "iteration": 0,
+      "bytes": 33244,
+      "resourceIds": 13,
+      "sha256": "fb79fb3a95b99a78f202d3e88c79c2396324467740fbfa2bcacee330998b6aa1"
+    },
+    {
+      "name": "controls",
+      "iteration": 1,
+      "bytes": 18528,
+      "resourceIds": 13,
+      "sha256": "9313bbb9de53089d1f6343f86bcfe5b79aa63d82f1f1a0df96e373d2e4d65243"
+    },
+    {
+      "name": "controls",
+      "iteration": 2,
+      "bytes": 29568,
+      "resourceIds": 25,
+      "sha256": "45fca77f4da363e2faa565878d3247513093ff7799045d8957c04426c86af590"
+    },
+    {
+      "name": "controls",
+      "iteration": 3,
+      "bytes": 18288,
+      "resourceIds": 25,
+      "sha256": "c8d38d484ccc747e11ed2d830a416efd58deaa0a085ab2e03084d11994875128"
+    },
+    {
+      "name": "controls",
+      "iteration": 4,
+      "bytes": 7133,
+      "resourceIds": 28,
+      "sha256": "effcf4858ec00c296f108be48c588e4b17269997c228b109984b5a9110f1f760"
+    }
+  ],
+  "status": "passed"
+}

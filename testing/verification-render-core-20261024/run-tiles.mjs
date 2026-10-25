@@ -12,7 +12,7 @@ for (const dir of ['bin', 'sidecar', 'fonts']) await cp(path.join(baseline.host,
 await writeFile(path.join(host, 'package.json'), JSON.stringify({ name: 'owned-heavy-tiles', version: '0.0.0', type: 'module', main: 'src/main.mjs' }))
 const { build } = await import(path.join(client, 'node_modules/vite/dist/node/index.js'))
 await build({ plugins:[{name:'owned-reference-renderer',enforce:'pre',load(id){
-  if(id.endsWith('/factory.ts?reference'))return readFile(path.join(client,'src/kernel/gpu/factory.ts'),'utf8').then(text=>text.replace("from './renderer'","from './renderer?reference'"))
+  if(id.endsWith('/factory.ts?reference'))return readFile(path.join(client,'src/kernel/gpu/factory.ts'),'utf8').then(text=>text.replaceAll("from './renderer'","from './renderer?reference'"))
   if(id.endsWith('/renderer.ts?reference'))return readFile(path.join(baseline.runtime,'baseline-source/frontend/design-client/src/kernel/gpu/renderer.ts'),'utf8')
 }}], root: out, publicDir: path.join(client, 'public'), configFile: path.join(client, 'vite.config.ts'), base: './', build: { outDir: path.join(host, 'dist/renderer'), emptyOutDir: true, rolldownOptions: { input: path.join(out, 'tile-check.html') } } })
 async function entry(dir) { for (const value of await readdir(dir, { withFileTypes: true })) { const p = path.join(dir, value.name); if (value.isDirectory()) { const result = await entry(p); if (result) return result } else if (value.name === 'tile-check.html') return p } }

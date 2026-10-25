@@ -1,0 +1,792 @@
+{
+  "status": "captured",
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/drag-response-20261024-6lnpejll/candidate-host-4",
+  "kind": "117",
+  "scope": "independent foreground Electron; native mouse input, rAF DOM cameras and compositor acknowledgements; no physical scanout claim",
+  "phases": [
+    {
+      "label": "pan",
+      "start": 1792856428517,
+      "stopped": 1792856429483,
+      "ended": 1792856430801,
+      "dispatch": [
+        {
+          "at": 1792856428535,
+          "x": 736,
+          "y": 493
+        },
+        {
+          "at": 1792856428552,
+          "x": 739,
+          "y": 495
+        },
+        {
+          "at": 1792856428568,
+          "x": 742,
+          "y": 496
+        },
+        {
+          "at": 1792856428584,
+          "x": 745,
+          "y": 497
+        },
+        {
+          "at": 1792856428599,
+          "x": 748,
+          "y": 499
+        },
+        {
+          "at": 1792856428616,
+          "x": 751,
+          "y": 500
+        },
+        {
+          "at": 1792856428632,
+          "x": 754,
+          "y": 501
+        },
+        {
+          "at": 1792856428648,
+          "x": 757,
+          "y": 503
+        },
+        {
+          "at": 1792856428664,
+          "x": 760,
+          "y": 504
+        },
+        {
+          "at": 1792856428680,
+          "x": 763,
+          "y": 505
+        },
+        {
+          "at": 1792856428696,
+          "x": 766,
+          "y": 507
+        },
+        {
+          "at": 1792856428711,
+          "x": 769,
+          "y": 508
+        },
+        {
+          "at": 1792856428728,
+          "x": 772,
+          "y": 509
+        },
+        {
+          "at": 1792856428744,
+          "x": 775,
+          "y": 511
+        },
+        {
+          "at": 1792856428760,
+          "x": 778,
+          "y": 512
+        },
+        {
+          "at": 1792856428776,
+          "x": 781,
+          "y": 513
+        },
+        {
+          "at": 1792856428792,
+          "x": 784,
+          "y": 515
+        },
+        {
+          "at": 1792856428808,
+          "x": 787,
+          "y": 516
+        },
+        {
+          "at": 1792856428824,
+          "x": 790,
+          "y": 517
+        },
+        {
+          "at": 1792856428838,
+          "x": 793,
+          "y": 519
+        },
+        {
+          "at": 1792856428855,
+          "x": 796,
+          "y": 520
+        },
+        {
+          "at": 1792856428869,
+          "x": 799,
+          "y": 521
+        },
+        {
+          "at": 1792856428888,
+          "x": 802,
+          "y": 523
+        },
+        {
+          "at": 1792856428904,
+          "x": 805,
+          "y": 524
+        },
+        {
+          "at": 1792856428919,
+          "x": 808,
+          "y": 525
+        },
+        {
+          "at": 1792856428936,
+          "x": 811,
+          "y": 527
+        },
+        {
+          "at": 1792856428952,
+          "x": 814,
+          "y": 528
+        },
+        {
+          "at": 1792856428966,
+          "x": 817,
+          "y": 529
+        },
+        {
+          "at": 1792856428983,
+          "x": 820,
+          "y": 531
+        },
+        {
+          "at": 1792856429000,
+          "x": 823,
+          "y": 532
+        },
+        {
+          "at": 1792856429016,
+          "x": 826,
+          "y": 533
+        },
+        {
+          "at": 1792856429031,
+          "x": 829,
+          "y": 535
+        },
+        {
+          "at": 1792856429048,
+          "x": 832,
+          "y": 536
+        },
+        {
+          "at": 1792856429064,
+          "x": 835,
+          "y": 537
+        },
+        {
+          "at": 1792856429078,
+          "x": 838,
+          "y": 539
+        },
+        {
+          "at": 1792856429097,
+          "x": 841,
+          "y": 540
+        },
+        {
+          "at": 1792856429111,
+          "x": 844,
+          "y": 541
+        },
+        {
+          "at": 1792856429128,
+          "x": 847,
+          "y": 543
+        },
+        {
+          "at": 1792856429144,
+          "x": 850,
+          "y": 544
+        },
+        {
+          "at": 1792856429160,
+          "x": 853,
+          "y": 545
+        },
+        {
+          "at": 1792856429174,
+          "x": 856,
+          "y": 547
+        },
+        {
+          "at": 1792856429192,
+          "x": 859,
+          "y": 548
+        },
+        {
+          "at": 1792856429208,
+          "x": 862,
+          "y": 549
+        },
+        {
+          "at": 1792856429224,
+          "x": 865,
+          "y": 551
+        },
+        {
+          "at": 1792856429240,
+          "x": 868,
+          "y": 552
+        },
+        {
+          "at": 1792856429256,
+          "x": 871,
+          "y": 553
+        },
+        {
+          "at": 1792856429270,
+          "x": 874,
+          "y": 555
+        },
+        {
+          "at": 1792856429288,
+          "x": 877,
+          "y": 556
+        },
+        {
+          "at": 1792856429303,
+          "x": 880,
+          "y": 557
+        },
+        {
+          "at": 1792856429320,
+          "x": 883,
+          "y": 559
+        },
+        {
+          "at": 1792856429334,
+          "x": 886,
+          "y": 560
+        },
+        {
+          "at": 1792856429352,
+          "x": 889,
+          "y": 561
+        },
+        {
+          "at": 1792856429367,
+          "x": 892,
+          "y": 563
+        },
+        {
+          "at": 1792856429383,
+          "x": 895,
+          "y": 564
+        },
+        {
+          "at": 1792856429400,
+          "x": 898,
+          "y": 565
+        },
+        {
+          "at": 1792856429416,
+          "x": 901,
+          "y": 567
+        },
+        {
+          "at": 1792856429432,
+          "x": 904,
+          "y": 568
+        },
+        {
+          "at": 1792856429447,
+          "x": 907,
+          "y": 569
+        },
+        {
+          "at": 1792856429464,
+          "x": 910,
+          "y": 571
+        },
+        {
+          "at": 1792856429480,
+          "x": 913,
+          "y": 572
+        }
+      ],
+      "frames": 268,
+      "events": 63,
+      "final": {
+        "t": 9498.7,
+        "requested": {
+          "x": 385.32258064516134,
+          "y": 135.9032258064517,
+          "z": 0.4032258064516129
+        },
+        "shown": {
+          "x": 385.32258064516134,
+          "y": 135.9032258064517,
+          "z": 0.4032258064516129
+        },
+        "compositor": {
+          "compositor": "webgpu-resident",
+          "frameVisible": "true",
+          "inputTrace": "[]",
+          "contentSequence": "0",
+          "interactionReady": "true",
+          "interactionActive": "false",
+          "interactionWarming": "false",
+          "interactionError": "",
+          "interactionMoves": "0",
+          "interactionEnd": "",
+          "interactionMode": "retained-page",
+          "interactionSamples": "0",
+          "interactionSampleMs": "0.00",
+          "interactionCompileMs": "0.00",
+          "interactionGraphMs": "0.00",
+          "interactionGeometryReused": "true",
+          "interactionGroupHits": "0",
+          "residentAttached": "true",
+          "residentAttachmentReason": "attached",
+          "deviceWorkerScope": "279028930236110",
+          "deviceIncarnation": "1",
+          "deviceOwner": "2",
+          "deviceScope": "2",
+          "deviceCounterMask": "15",
+          "devicePendingCaptures": "0",
+          "devicePendingCapturePayloadBytes": "0",
+          "devicePendingReadbacks": "0",
+          "deviceLogicalPayloadBytes": "93496172",
+          "deviceRetiringPayloadBytes": "0",
+          "coverageDeferred": "0",
+          "backgroundCoverage": "0",
+          "diagnosticSequence": "196",
+          "submittedEpoch": "1792856430791.7",
+          "gridVisible": "false",
+          "dpr": "2",
+          "coverageMeasured": "true",
+          "coverageAt": "7714",
+          "compositorFrames": "126",
+          "compositorTransformUploadBytes": "0",
+          "compositorUploads": "0",
+          "compositorCaptures": "68",
+          "compositorBytes": "93496172",
+          "compositorOverlayBytes": "2243484",
+          "compositorTiles": "67",
+          "compositorDraws": "16",
+          "linearBlend": "false",
+          "missingTextureCount": "0",
+          "coverage": "1",
+          "sharpCoverage": "1",
+          "nativePhaseCoverage": "1",
+          "maxUpscale": "1",
+          "pixelCoverageComplete": "true",
+          "nativeCoverageComplete": "true",
+          "qualitySequence": "3",
+          "qualityRevision": "1",
+          "pageToken": "1",
+          "documentRevision": "1",
+          "generation": "2",
+          "fillGeneration": "8",
+          "qualityTerminal": "true",
+          "coverageDeferredDraws": "58",
+          "backgroundDecline": "4",
+          "backgroundDensitySources": "19",
+          "backgroundPhaseError": "1.1368683772161603e-13"
+        }
+      }
+    },
+    {
+      "label": "object",
+      "start": 1792856431668,
+      "stopped": 1792856432632,
+      "ended": 1792856434954,
+      "dispatch": [
+        {
+          "at": 1792856431685,
+          "x": 736,
+          "y": 493
+        },
+        {
+          "at": 1792856431700,
+          "x": 739,
+          "y": 495
+        },
+        {
+          "at": 1792856431718,
+          "x": 742,
+          "y": 496
+        },
+        {
+          "at": 1792856431766,
+          "x": 745,
+          "y": 497
+        },
+        {
+          "at": 1792856431766,
+          "x": 748,
+          "y": 499
+        },
+        {
+          "at": 1792856431766,
+          "x": 751,
+          "y": 500
+        },
+        {
+          "at": 1792856431780,
+          "x": 754,
+          "y": 501
+        },
+        {
+          "at": 1792856431798,
+          "x": 757,
+          "y": 503
+        },
+        {
+          "at": 1792856431814,
+          "x": 760,
+          "y": 504
+        },
+        {
+          "at": 1792856431826,
+          "x": 763,
+          "y": 505
+        },
+        {
+          "at": 1792856431846,
+          "x": 766,
+          "y": 507
+        },
+        {
+          "at": 1792856431873,
+          "x": 769,
+          "y": 508
+        },
+        {
+          "at": 1792856431876,
+          "x": 772,
+          "y": 509
+        },
+        {
+          "at": 1792856431893,
+          "x": 775,
+          "y": 511
+        },
+        {
+          "at": 1792856431909,
+          "x": 778,
+          "y": 512
+        },
+        {
+          "at": 1792856431924,
+          "x": 781,
+          "y": 513
+        },
+        {
+          "at": 1792856431940,
+          "x": 784,
+          "y": 515
+        },
+        {
+          "at": 1792856431957,
+          "x": 787,
+          "y": 516
+        },
+        {
+          "at": 1792856431973,
+          "x": 790,
+          "y": 517
+        },
+        {
+          "at": 1792856431989,
+          "x": 793,
+          "y": 519
+        },
+        {
+          "at": 1792856432006,
+          "x": 796,
+          "y": 520
+        },
+        {
+          "at": 1792856432022,
+          "x": 799,
+          "y": 521
+        },
+        {
+          "at": 1792856432038,
+          "x": 802,
+          "y": 523
+        },
+        {
+          "at": 1792856432053,
+          "x": 805,
+          "y": 524
+        },
+        {
+          "at": 1792856432069,
+          "x": 808,
+          "y": 525
+        },
+        {
+          "at": 1792856432085,
+          "x": 811,
+          "y": 527
+        },
+        {
+          "at": 1792856432102,
+          "x": 814,
+          "y": 528
+        },
+        {
+          "at": 1792856432117,
+          "x": 817,
+          "y": 529
+        },
+        {
+          "at": 1792856432134,
+          "x": 820,
+          "y": 531
+        },
+        {
+          "at": 1792856432150,
+          "x": 823,
+          "y": 532
+        },
+        {
+          "at": 1792856432165,
+          "x": 826,
+          "y": 533
+        },
+        {
+          "at": 1792856432180,
+          "x": 829,
+          "y": 535
+        },
+        {
+          "at": 1792856432196,
+          "x": 832,
+          "y": 536
+        },
+        {
+          "at": 1792856432213,
+          "x": 835,
+          "y": 537
+        },
+        {
+          "at": 1792856432230,
+          "x": 838,
+          "y": 539
+        },
+        {
+          "at": 1792856432246,
+          "x": 841,
+          "y": 540
+        },
+        {
+          "at": 1792856432261,
+          "x": 844,
+          "y": 541
+        },
+        {
+          "at": 1792856432277,
+          "x": 847,
+          "y": 543
+        },
+        {
+          "at": 1792856432293,
+          "x": 850,
+          "y": 544
+        },
+        {
+          "at": 1792856432308,
+          "x": 853,
+          "y": 545
+        },
+        {
+          "at": 1792856432325,
+          "x": 856,
+          "y": 547
+        },
+        {
+          "at": 1792856432341,
+          "x": 859,
+          "y": 548
+        },
+        {
+          "at": 1792856432355,
+          "x": 862,
+          "y": 549
+        },
+        {
+          "at": 1792856432374,
+          "x": 865,
+          "y": 551
+        },
+        {
+          "at": 1792856432389,
+          "x": 868,
+          "y": 552
+        },
+        {
+          "at": 1792856432404,
+          "x": 871,
+          "y": 553
+        },
+        {
+          "at": 1792856432422,
+          "x": 874,
+          "y": 555
+        },
+        {
+          "at": 1792856432436,
+          "x": 877,
+          "y": 556
+        },
+        {
+          "at": 1792856432453,
+          "x": 880,
+          "y": 557
+        },
+        {
+          "at": 1792856432470,
+          "x": 883,
+          "y": 559
+        },
+        {
+          "at": 1792856432485,
+          "x": 886,
+          "y": 560
+        },
+        {
+          "at": 1792856432502,
+          "x": 889,
+          "y": 561
+        },
+        {
+          "at": 1792856432516,
+          "x": 892,
+          "y": 563
+        },
+        {
+          "at": 1792856432534,
+          "x": 895,
+          "y": 564
+        },
+        {
+          "at": 1792856432549,
+          "x": 898,
+          "y": 565
+        },
+        {
+          "at": 1792856432565,
+          "x": 901,
+          "y": 567
+        },
+        {
+          "at": 1792856432581,
+          "x": 904,
+          "y": 568
+        },
+        {
+          "at": 1792856432598,
+          "x": 907,
+          "y": 569
+        },
+        {
+          "at": 1792856432613,
+          "x": 910,
+          "y": 571
+        },
+        {
+          "at": 1792856432630,
+          "x": 913,
+          "y": 572
+        }
+      ],
+      "frames": 389,
+      "events": 59,
+      "final": {
+        "t": 13657.3,
+        "requested": {
+          "x": 205.3225806451613,
+          "y": 55.903225806451644,
+          "z": 0.4032258064516129
+        },
+        "shown": {
+          "x": 205.3225806451613,
+          "y": 55.903225806451644,
+          "z": 0.4032258064516129
+        },
+        "compositor": {
+          "compositor": "webgpu-resident",
+          "frameVisible": "true",
+          "inputTrace": "[]",
+          "contentSequence": "0",
+          "interactionReady": "true",
+          "interactionActive": "false",
+          "interactionWarming": "false",
+          "interactionError": "",
+          "interactionMoves": "0",
+          "interactionEnd": "",
+          "interactionMode": "retained-page",
+          "interactionSamples": "0",
+          "interactionSampleMs": "0.00",
+          "interactionCompileMs": "0.00",
+          "interactionGraphMs": "0.00",
+          "interactionGeometryReused": "true",
+          "interactionGroupHits": "0",
+          "residentAttached": "true",
+          "residentAttachmentReason": "attached",
+          "deviceWorkerScope": "279028930236110",
+          "deviceIncarnation": "1",
+          "deviceOwner": "2",
+          "deviceScope": "2",
+          "deviceCounterMask": "15",
+          "devicePendingCaptures": "0",
+          "devicePendingCapturePayloadBytes": "0",
+          "devicePendingReadbacks": "0",
+          "deviceLogicalPayloadBytes": "55640092",
+          "deviceRetiringPayloadBytes": "23901204",
+          "coverageDeferred": "0",
+          "backgroundCoverage": "0",
+          "diagnosticSequence": "214",
+          "submittedEpoch": "1792856434941.3",
+          "gridVisible": "false",
+          "dpr": "2",
+          "coverageMeasured": "true",
+          "coverageAt": "11863.600000023842",
+          "compositorFrames": "142",
+          "compositorTransformUploadBytes": "0",
+          "compositorUploads": "0",
+          "compositorCaptures": "83",
+          "compositorBytes": "55640092",
+          "compositorOverlayBytes": "2243484",
+          "compositorTiles": "38",
+          "compositorDraws": "20",
+          "linearBlend": "false",
+          "missingTextureCount": "0",
+          "coverage": "1",
+          "sharpCoverage": "1",
+          "nativePhaseCoverage": "1",
+          "maxUpscale": "1",
+          "pixelCoverageComplete": "true",
+          "nativeCoverageComplete": "true",
+          "qualitySequence": "5",
+          "qualityRevision": "2",
+          "pageToken": "1",
+          "documentRevision": "2",
+          "generation": "4",
+          "fillGeneration": "11",
+          "qualityTerminal": "true",
+          "coverageDeferredDraws": "58",
+          "backgroundDecline": "4",
+          "backgroundDensitySources": "19",
+          "backgroundPhaseError": "1.1368683772161603e-13"
+        }
+      }
+    }
+  ],
+  "errors": [],
+  "instance": {
+    "pid": 56208,
+    "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/drag-response-20261024-6lnpejll/117-diagnostic-4/forma-desktop-manual-52462dd3-dd8d-41da-be1e-6a068eb6722c-PYraEJ"
+  },
+  "fixture": "/Users/Apple/Downloads/117.sketch"
+}

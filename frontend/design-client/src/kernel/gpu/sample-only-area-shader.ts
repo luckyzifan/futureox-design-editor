@@ -9,8 +9,8 @@ const samplesEnd = areaWgsl.indexOf('fn areaCoverage(')
 if (bitsEnd < 0 || samplesStart < bitsEnd || samplesEnd < samplesStart)
   throw Error('Unexpected shared sample coverage shader boundaries')
 
-export const sampleOnlyAreaShaderWgsl = areaWgsl.slice(0, bitsEnd) +
-  areaWgsl.slice(samplesStart, samplesEnd) + `
+export const sampleCoverageKernelWgsl=areaWgsl.slice(0,bitsEnd)+areaWgsl.slice(samplesStart,samplesEnd)
+export const sampleOnlyAreaShaderWgsl = sampleCoverageKernelWgsl + `
 struct AreaParams { values:array<vec4<f32>,64> }
 @group(0) @binding(0) var<uniform> params:AreaParams;
 @group(0) @binding(4) var<storage,read> curves:array<vec4<f32>>;

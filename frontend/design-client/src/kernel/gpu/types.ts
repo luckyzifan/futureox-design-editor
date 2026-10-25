@@ -139,6 +139,7 @@ export type GpuPaint = Paint & {
   fixedGradient?: { bits: number; words: number[][] }
 }
 export type GpuScene = {
+  pagePaintRects?: number[][];
   /** Transient viewport inside a larger geometry capture. Never exported. */
   interactionWindow?: Rect
   compactImageFields?: boolean
@@ -254,7 +255,10 @@ export type GpuAdmissionDiagnostic = Readonly<{
 }>
 
 export type ExactImageTable = { resource: unknown; width: number; height: number; bytes: number; opaqueAlpha?: true; nonnegativeResolved?: true }
+export type OpaqueSolidBatch = Readonly<{count:number;pixels:number}>
 export interface Driver {
+  prepareOpaqueSolids?(nodes:readonly {path:PathMesh;bounds:Rect}[],target:Rect,color:readonly number[]):OpaqueSolidBatch|undefined
+  drawOpaqueSolids?(batch:OpaqueSolidBatch,target:Texture,sample:number):boolean
   usesDisplayFilter?(radius: number, channels?: number): boolean
   /** True only for this driver's actual immutable finite image upload. */
   usesDisplayImageSource?(image: Texture): boolean
@@ -393,6 +397,7 @@ export interface Driver {
   destroy(texture: Texture): void
   upload(bitmap: ImageBitmap): Texture
   uploadRgba8?(bytes: Uint8Array, width: number, height: number): Texture
+  uploadExactTentKernel?(bytes:Uint8Array,width:number,height:number,operator:'rational-tent'|'certified-tent',radius:number):Texture
   uploadLinear?(values: Float32Array, width: number, height: number): Texture
   /** Write a sub-rect of an existing texture (atlas slot). The rect stays
    * inside the texture; zero padding around slots reproduces standalone

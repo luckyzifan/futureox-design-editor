@@ -91,7 +91,7 @@ export class InteractionRenderer {
   private completePageOrder = 0
   private livePendingOrder = 0
   private liveRequestedOrder = -1
-  private livePending?: DesignDocument
+  private livePending?: DesignDocument | (()=>DesignDocument)
   private liveRunning = false
   private liveRequested?: DesignDocument
   private liveCancelled = false
@@ -143,6 +143,19 @@ export class InteractionRenderer {
       this.inputs.set(this.latestCandidate,this.lastInput)
     }
     return this.latestCandidate
+  }
+  private pendingLiveDocument(){
+    if(typeof this.livePending==='function')this.livePending=this.livePending()
+    return this.livePending
+  }
+  private queueLivePose(){
+    if(!this.liveRunning||!this.latestPatch){this.renderLive(this.candidateDocument()!);return}
+    const {document,patches}=this.latestPatch,input=this.lastInput
+    // Only the newest compact pose waits behind an in-flight capture. Copying
+    // the complete node dictionary for every coalesced pointer sample blocks
+    // the UI even though none of those intermediate documents can be rendered.
+    this.livePending=()=>{const candidate=interactionPatchedDocument(document,patches);this.inputs.set(candidate,input);return candidate}
+    this.livePendingOrder=this.sourceOrder;this.liveRequested=undefined
   }
   private inlineDisabled = false
   private recoverySerial = 0
@@ -225,12 +238,30 @@ export class InteractionRenderer {
         if (!wasActive) this.props?.onReady()
         if (retainedRebase) {
           if (r.tiles.length) this.promoteRetained(this.candidateDocument()!)
-          else if (affine) { this.nextGeneration(); this.pending = undefined; r.live = true; this.renderLive(this.candidateDocument()!) }
+          else {
+            // No isolated pixels exist yet, and this pose cannot reuse them
+            // even when they arrive. Keep the complete page underneath and
+            // spend this owner's work on the latest exact pose immediately.
+            this.nextGeneration(); this.pending = undefined; this.pendingDensity = undefined; this.warming = false
+            if (this.props && this.props.document !== document) {
+              // PageTranslation can hand off from its displayed translated
+              // snapshot while input still belongs to the authored document.
+              // Adopt that validated owner before starting the async sample;
+              // the following React prepare must not treat it as an older edit.
+              this.props = { ...this.props, document }; this.sourceOrder++
+              if (this.lastSettledDocument === document) this.completePageOrder = this.sourceOrder
+            }
+            r.live = true
+            if (!r.parentMatrices) Object.assign(r, buildInteractionDependencyScope(document,r.plan.pageId,
+              this.props?.scene?.entriesFor(document,r.plan.pageId,this.props.epoch) ?? scene(document,r.plan.pageId),
+              r.plan.ids,{zoom:this.qualityZoom,dpr:this.viewport?.dpr||1,allowFixedBackdrop:!affine}))
+            this.renderLive(this.candidateDocument()!)
+          }
         }
         else if (r.live) {
           if(this.sharedClient&&r.workerPoses&&!this.inlineDisabled&&r.tiles[0]?.gpuTile){
             this.sharedClient.moveResidentInteraction(r.tiles[0].gpuTile,transforms,this.lastInput)
-          }else this.renderLive(this.candidateDocument()!)
+          }else this.queueLivePose()
         }
         const id = r.plan.ids[0], next = patches[id]?.transform, current = document.nodes[id].transform
         const m = r.parentLinear?.get(id) || [1, 0, 0, 1], dx = next ? next[4] - current[4] : 0, dy = next ? next[5] - current[5] : 0
@@ -708,6 +739,7 @@ export class InteractionRenderer {
             height = Math.max(1, Math.ceil((b.y + b.height) * scale) - originY)
             try {
               result = await client.render(layer.document, { pageId, width, height,
+                gpuRoots: layer.roots,
                 view: { x: -originX + phaseX, y: -originY + phaseY, zoom: scale },
                 interactionOwner: this.interactionOwner, interactionGeneration: token, interactionBranch: 1,
                 transparent: true, grid: false, rasterProfile: profile, livePreview: true, renderIntent: 'preview', interactionChannel: !!this.sharedClient,
@@ -944,7 +976,7 @@ export class InteractionRenderer {
           captureSerial = this.recoverySerial; captureHadScope = !!this.recoveryScope
           const started = performance.now()
           const viewportRevision = this.viewportRevision
-          const document = this.livePending, sampleOrder = this.livePendingOrder; this.livePending = undefined
+          const document = this.pendingLiveDocument()!, sampleOrder = this.livePendingOrder; this.livePending = undefined
           this.traceHandoff(3,0,sampleOrder,token)
           // A capture of an authored baseline is not the latest pointer pose.
           // Never acknowledge a newer input that merely arrived during setup.
@@ -1145,7 +1177,7 @@ export class InteractionRenderer {
             if (this.sampleTrace.length > 120) this.sampleTrace.shift()
           }
           // Pointer tasks can replace this field across the awaited capture.
-          const pending = this.livePending as DesignDocument | undefined
+          const pending = this.pendingLiveDocument()
           const pendingInput = pending && this.inputs.get(pending)
           if (import.meta.env.VITE_DESIGN_RESIDENT_PENDING_POSE !== '0' && pending && pendingInput &&
               pendingInput.sequence > input.sequence && current() &&
@@ -1227,7 +1259,7 @@ export class InteractionRenderer {
         // pool can park this idle GPU without destroying that state when an
         // export or another consumer needs its device slot.
         // A new owner may have queued work while the old job was unwinding.
-        if (this.livePending && !this.disposed) { const pending = this.livePending, order = this.livePendingOrder; this.liveRequested = undefined; this.renderLive(pending, order) }
+        if (this.livePending && !this.disposed) { const pending = this.pendingLiveDocument()!, order = this.livePendingOrder; this.liveRequested = undefined; this.renderLive(pending, order) }
       }
     })()
   }

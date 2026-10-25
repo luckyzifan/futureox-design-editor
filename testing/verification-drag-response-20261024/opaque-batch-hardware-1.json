@@ -1,0 +1,73 @@
+{
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/render-core-20261024-s_4b1g9z/opaque-batch-hardware-1",
+  "cpuSampler": false,
+  "status": "failed",
+  "scope": "exact opaque solid group against original renderer on the complete native 117 viewport",
+  "cases": [
+    {
+      "fixture": "117.json",
+      "sample": {
+        "capture": true,
+        "view": {
+          "x": 343.7199978379716,
+          "y": 2.9791359888789657,
+          "zoom": 0.9276401603687316
+        },
+        "region": {
+          "x": 0,
+          "y": 0,
+          "w": 1710,
+          "h": 1672
+        }
+      },
+      "runs": []
+    }
+  ],
+  "runtime": {
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) futureox-desgin/0.0.0 Chrome/152.0.7977.130 Electron/44.7.0 Safari/537.36",
+    "dpr": 2,
+    "visibility": "visible",
+    "webgpuExposed": true,
+    "executionPolicy": {
+      "cpuOnly": false,
+      "hdrCompositing": false,
+      "imageMips": false,
+      "imageAtlas": false,
+      "desktopFullMath": true,
+      "desktopDisplay": true
+    },
+    "host": {
+      "host": "electron",
+      "electron": "44.7.0",
+      "chromium": "152.0.7977.130",
+      "platform": "darwin",
+      "arch": "arm64",
+      "cpuOnly": false,
+      "gpuFeatureStatus": {
+        "2d_canvas": "enabled",
+        "direct_rendering_display_compositor": "disabled_off_ok",
+        "gpu_compositing": "enabled",
+        "multiple_raster_threads": "enabled_on",
+        "opengl": "enabled_on",
+        "rasterization": "enabled",
+        "raw_draw": "disabled_off_ok",
+        "skia_graphite": "enabled_on",
+        "trees_in_viz": "disabled_off",
+        "video_decode": "enabled",
+        "video_encode": "enabled",
+        "webgl": "enabled",
+        "webgpu": "enabled",
+        "webnn": "disabled_off"
+      },
+      "windowVisible": true,
+      "windowFocused": false
+    }
+  },
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "device": "",
+    "fallback": false
+  },
+  "error": "Error: Unknown GPU pipeline opaque-solid"
+}

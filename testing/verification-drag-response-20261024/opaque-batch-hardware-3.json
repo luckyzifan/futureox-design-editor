@@ -1,0 +1,590 @@
+{
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/render-core-20261024-s_4b1g9z/opaque-batch-hardware-3",
+  "cpuSampler": false,
+  "status": "failed",
+  "scope": "exact opaque solid group against original renderer on the complete native 117 viewport",
+  "cases": [
+    {
+      "fixture": "117.json",
+      "sample": {
+        "capture": true,
+        "view": {
+          "x": 343.7199978379716,
+          "y": 2.9791359888789657,
+          "zoom": 0.9276401603687316
+        },
+        "region": {
+          "x": 0,
+          "y": 0,
+          "w": 1710,
+          "h": 1672
+        }
+      },
+      "runs": [
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 0,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 11436480,
+          "mismatches": 0,
+          "graphMs": 1585.3000000715256,
+          "finishMs": 475.09999990463257,
+          "opaqueSolidDraws": 0,
+          "passes": [
+            [
+              25,
+              {
+                "calls": 24,
+                "pixels": 45454080
+              }
+            ],
+            [
+              3,
+              {
+                "calls": 1574,
+                "pixels": 39568402
+              }
+            ],
+            [
+              31,
+              {
+                "calls": 2732,
+                "pixels": 23088052
+              }
+            ],
+            [
+              47,
+              {
+                "calls": 2276,
+                "pixels": 18184012
+              }
+            ],
+            [
+              29,
+              {
+                "calls": 32,
+                "pixels": 15632236
+              }
+            ],
+            [
+              2,
+              {
+                "calls": 436,
+                "pixels": 13601548
+              }
+            ],
+            [
+              0,
+              {
+                "calls": 2606,
+                "pixels": 13072948
+              }
+            ],
+            [
+              48,
+              {
+                "calls": 4,
+                "pixels": 7419040
+              }
+            ],
+            [
+              22,
+              {
+                "calls": 20,
+                "pixels": 4075334
+              }
+            ],
+            [
+              23,
+              {
+                "calls": 3,
+                "pixels": 3114126
+              }
+            ],
+            [
+              27,
+              {
+                "calls": 6,
+                "pixels": 333924
+              }
+            ],
+            [
+              50,
+              {
+                "calls": 4,
+                "pixels": 237952
+              }
+            ],
+            [
+              26,
+              {
+                "calls": 6,
+                "pixels": 110053
+              }
+            ],
+            [
+              49,
+              {
+                "calls": 1,
+                "pixels": 59488
+              }
+            ],
+            [
+              1,
+              {
+                "calls": 68,
+                "pixels": 21704
+              }
+            ],
+            [
+              12,
+              {
+                "calls": 1,
+                "pixels": 1
+              }
+            ]
+          ],
+          "workingBytes": 725310180,
+          "passPixels": 158025728,
+          "drawCalls": 9847
+        },
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 1,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 11436480,
+          "mismatches": 0,
+          "graphMs": 268.1999999284744,
+          "finishMs": 495.60000002384186,
+          "opaqueSolidDraws": 0,
+          "passes": [
+            [
+              25,
+              {
+                "calls": 24,
+                "pixels": 45454080
+              }
+            ],
+            [
+              3,
+              {
+                "calls": 1574,
+                "pixels": 39568402
+              }
+            ],
+            [
+              47,
+              {
+                "calls": 2276,
+                "pixels": 18184012
+              }
+            ],
+            [
+              31,
+              {
+                "calls": 2728,
+                "pixels": 15939572
+              }
+            ],
+            [
+              29,
+              {
+                "calls": 32,
+                "pixels": 15632236
+              }
+            ],
+            [
+              2,
+              {
+                "calls": 436,
+                "pixels": 13601548
+              }
+            ],
+            [
+              0,
+              {
+                "calls": 2606,
+                "pixels": 13072948
+              }
+            ],
+            [
+              48,
+              {
+                "calls": 4,
+                "pixels": 7419040
+              }
+            ],
+            [
+              22,
+              {
+                "calls": 20,
+                "pixels": 4075334
+              }
+            ],
+            [
+              23,
+              {
+                "calls": 3,
+                "pixels": 3114126
+              }
+            ],
+            [
+              27,
+              {
+                "calls": 6,
+                "pixels": 333924
+              }
+            ],
+            [
+              50,
+              {
+                "calls": 4,
+                "pixels": 237952
+              }
+            ],
+            [
+              26,
+              {
+                "calls": 6,
+                "pixels": 110053
+              }
+            ],
+            [
+              49,
+              {
+                "calls": 1,
+                "pixels": 59488
+              }
+            ],
+            [
+              1,
+              {
+                "calls": 68,
+                "pixels": 21704
+              }
+            ],
+            [
+              12,
+              {
+                "calls": 1,
+                "pixels": 1
+              }
+            ]
+          ],
+          "workingBytes": 711013220,
+          "passPixels": 158025728,
+          "drawCalls": 9843
+        },
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 2,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 11436480,
+          "mismatches": 0,
+          "graphMs": 199.20000004768372,
+          "finishMs": 525.6000000238419,
+          "opaqueSolidDraws": 0,
+          "passes": [
+            [
+              25,
+              {
+                "calls": 48,
+                "pixels": 90908160
+              }
+            ],
+            [
+              3,
+              {
+                "calls": 3148,
+                "pixels": 79136804
+              }
+            ],
+            [
+              31,
+              {
+                "calls": 5464,
+                "pixels": 46176104
+              }
+            ],
+            [
+              47,
+              {
+                "calls": 4552,
+                "pixels": 36368024
+              }
+            ],
+            [
+              29,
+              {
+                "calls": 64,
+                "pixels": 31264472
+              }
+            ],
+            [
+              2,
+              {
+                "calls": 872,
+                "pixels": 27203096
+              }
+            ],
+            [
+              0,
+              {
+                "calls": 5212,
+                "pixels": 26145896
+              }
+            ],
+            [
+              48,
+              {
+                "calls": 8,
+                "pixels": 14838080
+              }
+            ],
+            [
+              22,
+              {
+                "calls": 40,
+                "pixels": 8150668
+              }
+            ],
+            [
+              23,
+              {
+                "calls": 6,
+                "pixels": 6228252
+              }
+            ],
+            [
+              27,
+              {
+                "calls": 12,
+                "pixels": 667848
+              }
+            ],
+            [
+              50,
+              {
+                "calls": 8,
+                "pixels": 475904
+              }
+            ],
+            [
+              26,
+              {
+                "calls": 12,
+                "pixels": 220106
+              }
+            ],
+            [
+              49,
+              {
+                "calls": 2,
+                "pixels": 118976
+              }
+            ],
+            [
+              1,
+              {
+                "calls": 136,
+                "pixels": 43408
+              }
+            ],
+            [
+              12,
+              {
+                "calls": 2,
+                "pixels": 2
+              }
+            ]
+          ],
+          "workingBytes": 689567780,
+          "passPixels": 158025728,
+          "drawCalls": 9847
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 0,
+          "packetBytes": 12436240,
+          "payloadBytes": 4855080,
+          "words": 11436480,
+          "mismatches": 0,
+          "graphMs": 196.19999992847443,
+          "finishMs": 581.6000000238419,
+          "opaqueSolidDraws": 0,
+          "passes": [
+            [
+              25,
+              {
+                "calls": 24,
+                "pixels": 45454080
+              }
+            ],
+            [
+              3,
+              {
+                "calls": 1574,
+                "pixels": 39568402
+              }
+            ],
+            [
+              31,
+              {
+                "calls": 2732,
+                "pixels": 23088052
+              }
+            ],
+            [
+              47,
+              {
+                "calls": 2276,
+                "pixels": 18184012
+              }
+            ],
+            [
+              29,
+              {
+                "calls": 32,
+                "pixels": 15632236
+              }
+            ],
+            [
+              2,
+              {
+                "calls": 436,
+                "pixels": 13601548
+              }
+            ],
+            [
+              0,
+              {
+                "calls": 2606,
+                "pixels": 13072948
+              }
+            ],
+            [
+              48,
+              {
+                "calls": 4,
+                "pixels": 7419040
+              }
+            ],
+            [
+              22,
+              {
+                "calls": 20,
+                "pixels": 4075334
+              }
+            ],
+            [
+              23,
+              {
+                "calls": 3,
+                "pixels": 3114126
+              }
+            ],
+            [
+              27,
+              {
+                "calls": 6,
+                "pixels": 333924
+              }
+            ],
+            [
+              50,
+              {
+                "calls": 4,
+                "pixels": 237952
+              }
+            ],
+            [
+              26,
+              {
+                "calls": 6,
+                "pixels": 110053
+              }
+            ],
+            [
+              49,
+              {
+                "calls": 1,
+                "pixels": 59488
+              }
+            ],
+            [
+              1,
+              {
+                "calls": 68,
+                "pixels": 21704
+              }
+            ],
+            [
+              12,
+              {
+                "calls": 1,
+                "pixels": 1
+              }
+            ]
+          ],
+          "workingBytes": 725310180,
+          "passPixels": 158025728,
+          "drawCalls": 9847
+        }
+      ]
+    }
+  ],
+  "runtime": {
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) futureox-desgin/0.0.0 Chrome/152.0.7977.130 Electron/44.7.0 Safari/537.36",
+    "dpr": 2,
+    "visibility": "visible",
+    "webgpuExposed": true,
+    "executionPolicy": {
+      "cpuOnly": false,
+      "hdrCompositing": false,
+      "imageMips": false,
+      "imageAtlas": false,
+      "desktopFullMath": true,
+      "desktopDisplay": true
+    },
+    "host": {
+      "host": "electron",
+      "electron": "44.7.0",
+      "chromium": "152.0.7977.130",
+      "platform": "darwin",
+      "arch": "arm64",
+      "cpuOnly": false,
+      "gpuFeatureStatus": {
+        "2d_canvas": "enabled",
+        "direct_rendering_display_compositor": "disabled_off_ok",
+        "gpu_compositing": "enabled",
+        "multiple_raster_threads": "enabled_on",
+        "opengl": "enabled_on",
+        "rasterization": "enabled",
+        "raw_draw": "disabled_off_ok",
+        "skia_graphite": "enabled_on",
+        "trees_in_viz": "disabled_off",
+        "video_decode": "enabled",
+        "video_encode": "enabled",
+        "webgl": "enabled",
+        "webgpu": "enabled",
+        "webnn": "disabled_off"
+      },
+      "windowVisible": true,
+      "windowFocused": false
+    }
+  },
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "device": "",
+    "fallback": false
+  },
+  "error": "Error: Candidate batch was not exercised"
+}

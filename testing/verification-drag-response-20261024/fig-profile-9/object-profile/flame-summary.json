@@ -1,0 +1,437 @@
+[
+  {
+    "thread": "UI 主线程",
+    "sampledWallMs": 2369.019,
+    "idleOrUnassignedMs": 1737.0630000000026,
+    "activeSampleMs": 631.9559999999991,
+    "focus": [
+      {
+        "name": "end · src/Canvas.tsx:1864",
+        "selfMs": 0,
+        "inclusiveMs": 286.1459999999999
+      },
+      {
+        "name": "(anonymous) · src/Canvas.tsx:1865",
+        "selfMs": 0,
+        "inclusiveMs": 284.6779999999999
+      },
+      {
+        "name": "endImpl · src/Canvas.tsx:1867",
+        "selfMs": 0,
+        "inclusiveMs": 284.6779999999999
+      },
+      {
+        "name": "commit · src/engine.ts:951",
+        "selfMs": 0,
+        "inclusiveMs": 193.384
+      },
+      {
+        "name": "(anonymous) · src/engine.ts:953",
+        "selfMs": 0,
+        "inclusiveMs": 193.384
+      },
+      {
+        "name": "commitCore · src/engine.ts:955",
+        "selfMs": 0,
+        "inclusiveMs": 193.384
+      },
+      {
+        "name": "move · src/Canvas.tsx:1508",
+        "selfMs": 0,
+        "inclusiveMs": 123.97400000000003
+      },
+      {
+        "name": "(anonymous) · src/Canvas.tsx:1509",
+        "selfMs": 0,
+        "inclusiveMs": 122.46700000000003
+      },
+      {
+        "name": "moveImpl · src/Canvas.tsx:1511",
+        "selfMs": 14.309999999999999,
+        "inclusiveMs": 122.46700000000003
+      },
+      {
+        "name": "(anonymous) · src/Canvas.tsx:490",
+        "selfMs": 0,
+        "inclusiveMs": 122.46400000000003
+      },
+      {
+        "name": "(anonymous) · src/engine.ts:972",
+        "selfMs": 0.131,
+        "inclusiveMs": 109.727
+      },
+      {
+        "name": "push · src/engine.ts:553",
+        "selfMs": 0,
+        "inclusiveMs": 109.596
+      },
+      {
+        "name": "(anonymous) · src/engine.ts:964",
+        "selfMs": 15.066999999999998,
+        "inclusiveMs": 72.056
+      },
+      {
+        "name": "(anonymous) · src/Canvas.tsx:1898",
+        "selfMs": 0,
+        "inclusiveMs": 64.6
+      },
+      {
+        "name": "preview · src/engine.ts:884",
+        "selfMs": 0,
+        "inclusiveMs": 63.089999999999996
+      },
+      {
+        "name": "(anonymous) · src/engine.ts:885",
+        "selfMs": 1.021,
+        "inclusiveMs": 63.089999999999996
+      },
+      {
+        "name": "previewCore · src/engine.ts:888",
+        "selfMs": 4.503,
+        "inclusiveMs": 62.068999999999996
+      },
+      {
+        "name": "(anonymous) · src/engine.ts:915",
+        "selfMs": 1.374,
+        "inclusiveMs": 34.882
+      },
+      {
+        "name": "hit · src/engine.ts:1213",
+        "selfMs": 0,
+        "inclusiveMs": 29.426000000000002
+      },
+      {
+        "name": "captureOverrides · src/components.ts:170",
+        "selfMs": 18.647,
+        "inclusiveMs": 29.409
+      },
+      {
+        "name": "finishCanvasMove · src/engine.ts:2309",
+        "selfMs": 0,
+        "inclusiveMs": 26.694000000000003
+      },
+      {
+        "name": "(anonymous) · src/Canvas.tsx:737",
+        "selfMs": 0,
+        "inclusiveMs": 24.928
+      },
+      {
+        "name": "Yx.pt.current · src/Canvas.tsx:725",
+        "selfMs": 0,
+        "inclusiveMs": 24.928
+      },
+      {
+        "name": "an · src/Canvas.tsx:723",
+        "selfMs": 0,
+        "inclusiveMs": 24.928
+      },
+      {
+        "name": "hoverHit · src/engine.ts:1210",
+        "selfMs": 0,
+        "inclusiveMs": 24.928
+      },
+      {
+        "name": "(anonymous) · src/Canvas.tsx:1728",
+        "selfMs": 18.581,
+        "inclusiveMs": 24.415999999999997
+      },
+      {
+        "name": "equalValue · src/document-patch.ts:19",
+        "selfMs": 11.56,
+        "inclusiveMs": 23.6
+      },
+      {
+        "name": "shareDocument · src/document-patch.ts:41",
+        "selfMs": 21.137,
+        "inclusiveMs": 21.147
+      },
+      {
+        "name": "onPointerDown · src/Canvas.tsx:2146",
+        "selfMs": 0,
+        "inclusiveMs": 19.644000000000002
+      },
+      {
+        "name": "start · src/Canvas.tsx:1211",
+        "selfMs": 0,
+        "inclusiveMs": 19.644000000000002
+      }
+    ],
+    "topSelf": [
+      {
+        "name": "validateDocument · src/model.ts:655",
+        "selfMs": 35.22800000000001,
+        "inclusiveMs": 56.989
+      },
+      {
+        "name": "allParents · src/geometry.ts:330",
+        "selfMs": 34.043000000000006,
+        "inclusiveMs": 49.13099999999999
+      },
+      {
+        "name": "ht · src/repeat-transforms.ts:19",
+        "selfMs": 31.342999999999993,
+        "inclusiveMs": 32.43899999999999
+      },
+      {
+        "name": "tick",
+        "selfMs": 25.421000000000003,
+        "inclusiveMs": 25.421000000000003
+      },
+      {
+        "name": "shareDocument · src/document-patch.ts:41",
+        "selfMs": 21.137,
+        "inclusiveMs": 21.147
+      },
+      {
+        "name": "augment · src/kernel/op-sync.ts:72",
+        "selfMs": 19.956999999999997,
+        "inclusiveMs": 22.933999999999997
+      },
+      {
+        "name": "captureOverrides · src/components.ts:170",
+        "selfMs": 18.647,
+        "inclusiveMs": 29.409
+      },
+      {
+        "name": "(anonymous) · src/Canvas.tsx:1728",
+        "selfMs": 18.581,
+        "inclusiveMs": 24.415999999999997
+      },
+      {
+        "name": "$p · src/kernel/op-sync.ts:217",
+        "selfMs": 18.087,
+        "inclusiveMs": 18.087
+      },
+      {
+        "name": "invoke · sandbox_bundle:2",
+        "selfMs": 17.639999999999997,
+        "inclusiveMs": 18.451999999999998
+      },
+      {
+        "name": "(anonymous) · src/geometry.ts:333",
+        "selfMs": 15.088,
+        "inclusiveMs": 27.169999999999995
+      },
+      {
+        "name": "(anonymous) · src/canvas-smart-guides.ts:22",
+        "selfMs": 15.078999999999997,
+        "inclusiveMs": 15.078999999999997
+      },
+      {
+        "name": "(anonymous) · src/engine.ts:964",
+        "selfMs": 15.066999999999998,
+        "inclusiveMs": 72.056
+      },
+      {
+        "name": "moveImpl · src/Canvas.tsx:1511",
+        "selfMs": 14.309999999999999,
+        "inclusiveMs": 122.46700000000003
+      },
+      {
+        "name": "visit · src/geometry.ts:282",
+        "selfMs": 13.108,
+        "inclusiveMs": 94.12299999999995
+      },
+      {
+        "name": "ComponentPanel · src/ComponentPanel.tsx:52",
+        "selfMs": 12.030000000000001,
+        "inclusiveMs": 12.030000000000001
+      },
+      {
+        "name": "equalValue · src/document-patch.ts:19",
+        "selfMs": 11.56,
+        "inclusiveMs": 23.6
+      },
+      {
+        "name": "(anonymous) · src/document-patch.ts:34",
+        "selfMs": 10.528,
+        "inclusiveMs": 13.540000000000001
+      },
+      {
+        "name": "interactionOffsets · src/kernel/interaction-layers.ts:108",
+        "selfMs": 9.065,
+        "inclusiveMs": 9.065
+      },
+      {
+        "name": "interactionPatchedDocument · src/kernel/interaction-document-source.ts:7",
+        "selfMs": 9.034,
+        "inclusiveMs": 9.034
+      },
+      {
+        "name": "interactionTransformsOnly · src/kernel/interaction-layers.ts:140",
+        "selfMs": 8.679,
+        "inclusiveMs": 8.679
+      },
+      {
+        "name": "translationOnlyChanges · src/kernel/translation-preview.ts:42",
+        "selfMs": 8.336,
+        "inclusiveMs": 8.336
+      },
+      {
+        "name": "compileEditOps · src/kernel/op-sync.ts:225",
+        "selfMs": 8.216000000000001,
+        "inclusiveMs": 79.30899999999998
+      },
+      {
+        "name": "sanitizeFields · src/render-terminal-diagnostics.mjs:54",
+        "selfMs": 7.8469999999999995,
+        "inclusiveMs": 7.8469999999999995
+      },
+      {
+        "name": "compile · src/kernel/op-sync.ts:258",
+        "selfMs": 7.616,
+        "inclusiveMs": 71.09299999999999
+      }
+    ]
+  },
+  {
+    "thread": "design-app://app/assets/render-worker-CRa2Y4_z.js",
+    "sampledWallMs": 2216.2060000000015,
+    "idleOrUnassignedMs": 1901.8030000000024,
+    "activeSampleMs": 314.40299999999996,
+    "focus": [
+      {
+        "name": "equalValue · src/document-patch.ts:19",
+        "selfMs": 9.027,
+        "inclusiveMs": 19.955
+      },
+      {
+        "name": "(anonymous) · src/document-patch.ts:34",
+        "selfMs": 0,
+        "inclusiveMs": 10.928
+      },
+      {
+        "name": "applyDocumentPatch · src/document-patch.ts:191",
+        "selfMs": 10.545,
+        "inclusiveMs": 10.545
+      }
+    ],
+    "topSelf": [
+      {
+        "name": "decodeScenePacket · src/kernel/gpu/scene-packet.ts:17",
+        "selfMs": 20.219,
+        "inclusiveMs": 62.56500000000002
+      },
+      {
+        "name": "value · src/kernel/gpu/frame-wire.ts:7",
+        "selfMs": 19.587,
+        "inclusiveMs": 132.75199999999992
+      },
+      {
+        "name": "put · src/kernel/gpu/coverage-cache.ts:40",
+        "selfMs": 19.261999999999997,
+        "inclusiveMs": 24.415999999999997
+      },
+      {
+        "name": "group · src/kernel/gpu/binding-cache.ts:21",
+        "selfMs": 16.357,
+        "inclusiveMs": 28.111999999999995
+      },
+      {
+        "name": "decode",
+        "selfMs": 13.09,
+        "inclusiveMs": 13.09
+      },
+      {
+        "name": "plan · src/kernel/gpu/resident-programs.ts:53",
+        "selfMs": 11.941,
+        "inclusiveMs": 17.982
+      },
+      {
+        "name": "beginRenderPass",
+        "selfMs": 10.584,
+        "inclusiveMs": 10.584
+      },
+      {
+        "name": "applyDocumentPatch · src/document-patch.ts:191",
+        "selfMs": 10.545,
+        "inclusiveMs": 10.545
+      },
+      {
+        "name": "encodePass · src/kernel/gpu/webgpu.ts:2224",
+        "selfMs": 10.539000000000001,
+        "inclusiveMs": 56.43300000000001
+      },
+      {
+        "name": "equalValue · src/document-patch.ts:19",
+        "selfMs": 9.027,
+        "inclusiveMs": 19.955
+      },
+      {
+        "name": "(garbage collector)",
+        "selfMs": 7.582,
+        "inclusiveMs": 7.582
+      },
+      {
+        "name": "create · src/kernel/gpu/webgpu.ts:2135",
+        "selfMs": 7.393999999999999,
+        "inclusiveMs": 11.754999999999999
+      },
+      {
+        "name": "(anonymous) · src/kernel/render-worker.ts:588",
+        "selfMs": 6.669,
+        "inclusiveMs": 33.891000000000005
+      },
+      {
+        "name": "certifyExactImageRange · src/kernel/gpu/exact-image-x-table.ts:15",
+        "selfMs": 6.0489999999999995,
+        "inclusiveMs": 6.0489999999999995
+      },
+      {
+        "name": "parameters · src/kernel/gpu/types.ts:491",
+        "selfMs": 5.997,
+        "inclusiveMs": 9.064
+      },
+      {
+        "name": "immutable · src/kernel/gpu/scene-packet.ts:8",
+        "selfMs": 5.755,
+        "inclusiveMs": 13.006
+      },
+      {
+        "name": "equal · src/kernel/gpu/resident-programs.ts:32",
+        "selfMs": 4.536,
+        "inclusiveMs": 4.536
+      },
+      {
+        "name": "writeBuffer",
+        "selfMs": 4.531,
+        "inclusiveMs": 4.531
+      },
+      {
+        "name": "self.onmessage · src/kernel/render-worker.ts:453",
+        "selfMs": 4.51,
+        "inclusiveMs": 4.51
+      },
+      {
+        "name": "transform · src/kernel/gpu/renderer.ts:1707",
+        "selfMs": 4.51,
+        "inclusiveMs": 4.51
+      },
+      {
+        "name": "snapshot · src/kernel/gpu/translation-patch-session.ts:93",
+        "selfMs": 4.505,
+        "inclusiveMs": 4.505
+      },
+      {
+        "name": "createBindGroup",
+        "selfMs": 4.361,
+        "inclusiveMs": 4.361
+      },
+      {
+        "name": "sanitizeFields · src/render-terminal-diagnostics.mjs:54",
+        "selfMs": 3.891,
+        "inclusiveMs": 3.891
+      },
+      {
+        "name": "createTexture",
+        "selfMs": 3.332,
+        "inclusiveMs": 3.332
+      },
+      {
+        "name": "drawList · src/kernel/gpu/renderer.ts:2522",
+        "selfMs": 3.303,
+        "inclusiveMs": 111.26600000000005
+      }
+    ]
+  }
+]

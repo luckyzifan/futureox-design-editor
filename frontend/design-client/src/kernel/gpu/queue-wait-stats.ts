@@ -2,7 +2,7 @@ import { markRenderFailure } from '../render-failure-telemetry'
 /** CPU-side queue-completion observations, never GPU timestamp duration or
  * queue.submit return/acknowledgement latency. Fixed-size driver-lifetime data.
  * Timing is opt-in; counts remain available without clock reads or samples. */
-export const queueWaitReasons = ['readback', 'timing', 'prefix-scratch', 'interaction', 'periodic', 'admission', 'checkpoint', 'cancel', 'initialization', 'park', 'image-table-scratch'] as const
+export const queueWaitReasons = ['readback', 'timing', 'prefix-scratch', 'interaction', 'periodic', 'admission', 'checkpoint', 'cancel', 'initialization', 'park', 'image-table-scratch', 'presentation-transfer'] as const
 export type QueueWaitReason = typeof queueWaitReasons[number]
 const upperBoundsMs = [1, 4, 8, 16, 33, 100, 1000] as const
 const counter = () => ({ started: 0, completed: 0, rejected: 0, deviceLost: 0, pending: 0, cpuWaitMs: 0, maxCpuWaitMs: 0 })

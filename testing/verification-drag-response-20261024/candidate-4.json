@@ -1,0 +1,13 @@
+{
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/drag-response-20261024-6lnpejll/candidate-host-4",
+  "configuration": {
+    "VITE_DESIGN_PRESENT_ALPHA_TRACE": "0",
+    "VITE_DESIGN_MOTION_QUALITY_TRACE": "1"
+  },
+  "artifacts": {
+    "dist/build-manifest.json": "9901e0908ec5ca73fc636b5f17a50958a545776ae5f829e83732776b37b3c6de",
+    "dist/renderer/kernel/design_kernel_bg.wasm": "3771be09676ae084f5a062816036f0034897e5af221c442b2bdd2ec1a7d16269",
+    "dist/bin/design-prepare": "bc8b2db981466afb32ea430a55dc5bf96660265d9961071c350e9cb04593badb",
+    "dist/sidecar/futureox-design-desktop-backend": "852815b84acd8eceb1d5eb0323c543d7c5d92b622cf87d2fe2a6f7c4d746f6c4"
+  }
+}

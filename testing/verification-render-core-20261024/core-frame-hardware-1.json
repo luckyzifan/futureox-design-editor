@@ -1,0 +1,864 @@
+{
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/render-core-20261024-s_4b1g9z/core-frame-hardware-1",
+  "cpuSampler": false,
+  "status": "passed",
+  "scope": "previous renderer + JSON scene oracle versus current renderer + frame-resource transport; actual device target readback; no GUI/latency claim",
+  "cases": [
+    {
+      "fixture": "fig.json",
+      "sample": {
+        "view": {
+          "x": 0,
+          "y": 0,
+          "zoom": 0.25
+        },
+        "region": {
+          "x": -1,
+          "y": -1,
+          "w": 514,
+          "h": 514
+        }
+      },
+      "runs": [
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 0,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 164.80000001192093,
+          "finishMs": 221.19999998807907,
+          "workingBytes": 34229548
+        },
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 1,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 50.10000002384186,
+          "finishMs": 83.5,
+          "workingBytes": 34229548
+        },
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 2,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 35.80000001192093,
+          "finishMs": 82,
+          "workingBytes": 34229548
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 0,
+          "packetBytes": 4095941,
+          "payloadBytes": 861145,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 38.60000002384186,
+          "finishMs": 168.5,
+          "workingBytes": 34229548
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 1,
+          "packetBytes": 3234796,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 36.40000003576279,
+          "finishMs": 74.89999997615814,
+          "workingBytes": 34229548
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 2,
+          "packetBytes": 3234796,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 30.599999964237213,
+          "finishMs": 68.60000002384186,
+          "workingBytes": 34229548
+        },
+        {
+          "backend": "webgl2",
+          "variant": "reference",
+          "iteration": 0,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 1291.300000011921,
+          "finishMs": 11,
+          "workingBytes": 55463200
+        },
+        {
+          "backend": "webgl2",
+          "variant": "reference",
+          "iteration": 1,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 41.89999997615814,
+          "finishMs": 48.10000002384186,
+          "workingBytes": 55490272
+        },
+        {
+          "backend": "webgl2",
+          "variant": "reference",
+          "iteration": 2,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 23,
+          "finishMs": 61.10000002384186,
+          "workingBytes": 55490272
+        },
+        {
+          "backend": "webgl2",
+          "variant": "frame",
+          "iteration": 0,
+          "packetBytes": 3234796,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 447.39999997615814,
+          "finishMs": 32.69999998807907,
+          "workingBytes": 55463200
+        },
+        {
+          "backend": "webgl2",
+          "variant": "frame",
+          "iteration": 1,
+          "packetBytes": 3234796,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 40.30000001192093,
+          "finishMs": 43.89999997615814,
+          "workingBytes": 55490272
+        },
+        {
+          "backend": "webgl2",
+          "variant": "frame",
+          "iteration": 2,
+          "packetBytes": 3234796,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 24.69999998807907,
+          "finishMs": 57.80000001192093,
+          "workingBytes": 55490272
+        }
+      ]
+    },
+    {
+      "fixture": "117.json",
+      "sample": {
+        "view": {
+          "x": 0,
+          "y": 0,
+          "zoom": 3.5290997520720855
+        },
+        "region": {
+          "x": 511,
+          "y": 2559,
+          "w": 514,
+          "h": 514
+        }
+      },
+      "runs": [
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 0,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 1360.2999999523163,
+          "finishMs": 75.70000004768372,
+          "workingBytes": 94575616
+        },
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 1,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 6,
+          "finishMs": 50.90000003576279,
+          "workingBytes": 94575616
+        },
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 2,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 5.199999988079071,
+          "finishMs": 49.30000001192093,
+          "workingBytes": 94575616
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 0,
+          "packetBytes": 4225193,
+          "payloadBytes": 3999645,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 33.60000002384186,
+          "finishMs": 53.5,
+          "workingBytes": 94575616
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 1,
+          "packetBytes": 225548,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 5.800000011920929,
+          "finishMs": 47.5,
+          "workingBytes": 94575616
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 2,
+          "packetBytes": 225548,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 4.600000023841858,
+          "finishMs": 46.89999997615814,
+          "workingBytes": 94575616
+        },
+        {
+          "backend": "webgl2",
+          "variant": "reference",
+          "iteration": 0,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 1681.4000000357628,
+          "finishMs": 18.30000001192093,
+          "workingBytes": 214115520
+        },
+        {
+          "backend": "webgl2",
+          "variant": "reference",
+          "iteration": 1,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 83.69999998807907,
+          "finishMs": 8.300000011920929,
+          "workingBytes": 214115520
+        },
+        {
+          "backend": "webgl2",
+          "variant": "reference",
+          "iteration": 2,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 81.39999997615814,
+          "finishMs": 7.400000035762787,
+          "workingBytes": 214115520
+        },
+        {
+          "backend": "webgl2",
+          "variant": "frame",
+          "iteration": 0,
+          "packetBytes": 225548,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 633.6999999880791,
+          "finishMs": 18.80000001192093,
+          "workingBytes": 214115520
+        },
+        {
+          "backend": "webgl2",
+          "variant": "frame",
+          "iteration": 1,
+          "packetBytes": 225548,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 80.5,
+          "finishMs": 7.800000011920929,
+          "workingBytes": 214115520
+        },
+        {
+          "backend": "webgl2",
+          "variant": "frame",
+          "iteration": 2,
+          "packetBytes": 225548,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 81.10000002384186,
+          "finishMs": 7.300000011920929,
+          "workingBytes": 214115520
+        }
+      ]
+    },
+    {
+      "fixture": "117.json",
+      "sample": {
+        "view": {
+          "x": 0,
+          "y": 0,
+          "zoom": 1
+        },
+        "region": {
+          "x": -1,
+          "y": 1023,
+          "w": 514,
+          "h": 514
+        }
+      },
+      "runs": [
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 0,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 51.80000001192093,
+          "finishMs": 115.30000001192093,
+          "workingBytes": 132277408
+        },
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 1,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 26.100000023841858,
+          "finishMs": 92,
+          "workingBytes": 132277408
+        },
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 2,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 26.899999976158142,
+          "finishMs": 91.10000002384186,
+          "workingBytes": 132277408
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 0,
+          "packetBytes": 1074506,
+          "payloadBytes": 197986,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 51.69999998807907,
+          "finishMs": 101.30000001192093,
+          "workingBytes": 132277408
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 1,
+          "packetBytes": 876520,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 25.399999976158142,
+          "finishMs": 75.5,
+          "workingBytes": 132277408
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 2,
+          "packetBytes": 876520,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 23.600000023841858,
+          "finishMs": 75.29999995231628,
+          "workingBytes": 132277408
+        },
+        {
+          "backend": "webgl2",
+          "variant": "reference",
+          "iteration": 0,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 854,
+          "finishMs": 4.399999976158142,
+          "workingBytes": 226697184
+        },
+        {
+          "backend": "webgl2",
+          "variant": "reference",
+          "iteration": 1,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 32.30000001192093,
+          "finishMs": 48.90000003576279,
+          "workingBytes": 226811424
+        },
+        {
+          "backend": "webgl2",
+          "variant": "reference",
+          "iteration": 2,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 23.69999998807907,
+          "finishMs": 56.80000001192093,
+          "workingBytes": 226811424
+        },
+        {
+          "backend": "webgl2",
+          "variant": "frame",
+          "iteration": 0,
+          "packetBytes": 876520,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 824.8999999761581,
+          "finishMs": 4.5,
+          "workingBytes": 226697184
+        },
+        {
+          "backend": "webgl2",
+          "variant": "frame",
+          "iteration": 1,
+          "packetBytes": 876520,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 35.30000001192093,
+          "finishMs": 50.89999997615814,
+          "workingBytes": 226811424
+        },
+        {
+          "backend": "webgl2",
+          "variant": "frame",
+          "iteration": 2,
+          "packetBytes": 876520,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 25.400000035762787,
+          "finishMs": 57.5,
+          "workingBytes": 226811424
+        }
+      ]
+    },
+    {
+      "fixture": "117.json",
+      "sample": {
+        "view": {
+          "x": 137.99050400455386,
+          "y": -3282.5842223116624,
+          "zoom": 5.150237399886167
+        },
+        "region": {
+          "x": -376,
+          "y": 1324,
+          "w": 514,
+          "h": 514
+        }
+      },
+      "runs": [
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 0,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 48.5,
+          "finishMs": 142.30000001192093,
+          "workingBytes": 288878264
+        },
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 1,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 18.69999998807907,
+          "finishMs": 131.10000002384186,
+          "workingBytes": 276090488
+        },
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 2,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 9.699999988079071,
+          "finishMs": 136.39999997615814,
+          "workingBytes": 268272472
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 0,
+          "packetBytes": 1393297,
+          "payloadBytes": 75233,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 47.10000002384186,
+          "finishMs": 135.10000002384186,
+          "workingBytes": 288878264
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 1,
+          "packetBytes": 1318064,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 16.5,
+          "finishMs": 129.69999998807907,
+          "workingBytes": 276090488
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 2,
+          "packetBytes": 1318064,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 7.699999988079071,
+          "finishMs": 135.80000001192093,
+          "workingBytes": 268272472
+        },
+        {
+          "backend": "webgl2",
+          "variant": "reference",
+          "iteration": 0,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 1398.6000000238419,
+          "finishMs": 22.80000001192093,
+          "workingBytes": 530632688
+        },
+        {
+          "backend": "webgl2",
+          "variant": "reference",
+          "iteration": 1,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 669.8000000119209,
+          "finishMs": 39.80000001192093,
+          "workingBytes": 466334256
+        },
+        {
+          "backend": "webgl2",
+          "variant": "reference",
+          "iteration": 2,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 672,
+          "finishMs": 42,
+          "workingBytes": 464188816
+        },
+        {
+          "backend": "webgl2",
+          "variant": "frame",
+          "iteration": 0,
+          "packetBytes": 1318064,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 1393.699999988079,
+          "finishMs": 16.599999964237213,
+          "workingBytes": 530632688
+        },
+        {
+          "backend": "webgl2",
+          "variant": "frame",
+          "iteration": 1,
+          "packetBytes": 1318064,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 669.6000000238419,
+          "finishMs": 50.299999952316284,
+          "workingBytes": 466334256
+        },
+        {
+          "backend": "webgl2",
+          "variant": "frame",
+          "iteration": 2,
+          "packetBytes": 1318064,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 667.3000000119209,
+          "finishMs": 38,
+          "workingBytes": 464188816
+        }
+      ]
+    },
+    {
+      "fixture": "controls.json",
+      "sample": {
+        "view": {
+          "x": 0,
+          "y": 0,
+          "zoom": 16
+        },
+        "region": {
+          "x": 41983,
+          "y": 22527,
+          "w": 514,
+          "h": 514
+        }
+      },
+      "runs": [
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 0,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 699.2000000476837,
+          "finishMs": 57.39999997615814,
+          "workingBytes": 179492288
+        },
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 1,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 348.4000000357628,
+          "finishMs": 39.19999998807907,
+          "workingBytes": 179492288
+        },
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 2,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 348.80000001192093,
+          "finishMs": 50.39999997615814,
+          "workingBytes": 179492288
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 0,
+          "packetBytes": 479421,
+          "payloadBytes": 14877,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 697.3999999761581,
+          "finishMs": 52.60000002384186,
+          "workingBytes": 179492288
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 1,
+          "packetBytes": 464544,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 348.60000002384186,
+          "finishMs": 45.10000002384186,
+          "workingBytes": 179492288
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 2,
+          "packetBytes": 464544,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 348.80000001192093,
+          "finishMs": 51.30000001192093,
+          "workingBytes": 179492288
+        },
+        {
+          "backend": "webgl2",
+          "variant": "reference",
+          "iteration": 0,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 1018.2999999523163,
+          "finishMs": 43.40000003576279,
+          "workingBytes": 263060672
+        },
+        {
+          "backend": "webgl2",
+          "variant": "reference",
+          "iteration": 1,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 335.0999999642372,
+          "finishMs": 54.30000001192093,
+          "workingBytes": 263060672
+        },
+        {
+          "backend": "webgl2",
+          "variant": "reference",
+          "iteration": 2,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 335.5999999642372,
+          "finishMs": 56.700000047683716,
+          "workingBytes": 263060672
+        },
+        {
+          "backend": "webgl2",
+          "variant": "frame",
+          "iteration": 0,
+          "packetBytes": 464544,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 998.0999999642372,
+          "finishMs": 47.80000001192093,
+          "workingBytes": 263060672
+        },
+        {
+          "backend": "webgl2",
+          "variant": "frame",
+          "iteration": 1,
+          "packetBytes": 464544,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 335.30000001192093,
+          "finishMs": 57,
+          "workingBytes": 263060672
+        },
+        {
+          "backend": "webgl2",
+          "variant": "frame",
+          "iteration": 2,
+          "packetBytes": 464544,
+          "payloadBytes": 0,
+          "words": 1056784,
+          "mismatches": 0,
+          "graphMs": 336.69999998807907,
+          "finishMs": 79.5,
+          "workingBytes": 263060672
+        }
+      ]
+    }
+  ],
+  "runtime": {
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) futureox-desgin/0.0.0 Chrome/152.0.7977.130 Electron/44.7.0 Safari/537.36",
+    "dpr": 2,
+    "visibility": "visible",
+    "webgpuExposed": true,
+    "executionPolicy": {
+      "cpuOnly": false,
+      "hdrCompositing": false,
+      "imageMips": false,
+      "imageAtlas": false,
+      "desktopFullMath": true,
+      "desktopDisplay": true
+    },
+    "host": {
+      "host": "electron",
+      "electron": "44.7.0",
+      "chromium": "152.0.7977.130",
+      "platform": "darwin",
+      "arch": "arm64",
+      "cpuOnly": false,
+      "gpuFeatureStatus": {
+        "2d_canvas": "enabled",
+        "direct_rendering_display_compositor": "disabled_off_ok",
+        "gpu_compositing": "enabled",
+        "multiple_raster_threads": "enabled_on",
+        "opengl": "enabled_on",
+        "rasterization": "enabled",
+        "raw_draw": "disabled_off_ok",
+        "skia_graphite": "enabled_on",
+        "trees_in_viz": "disabled_off",
+        "video_decode": "enabled",
+        "video_encode": "enabled",
+        "webgl": "enabled",
+        "webgpu": "enabled",
+        "webnn": "disabled_off"
+      },
+      "windowVisible": true,
+      "windowFocused": true
+    }
+  },
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "device": "",
+    "fallback": false
+  }
+}

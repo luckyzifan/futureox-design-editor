@@ -1,0 +1,29 @@
+{
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/drag-response-20261024-6lnpejll/candidate-host-backdrop-admission-2",
+  "scope": "sampled real Electron native-input integration; UI and existing browser workers, native Rust process and GPU execution are not V8 CPU stacks",
+  "startedAt": 1792882574153,
+  "endedAt": 1792882576183,
+  "results": [
+    {
+      "target": {
+        "type": "renderer",
+        "title": "UI 主线程"
+      },
+      "file": "cpu-0.cpuprofile"
+    },
+    {
+      "target": {
+        "attached": true,
+        "browserContextId": "53731CC4DD4798EE302D31CA4EEC71E0",
+        "canAccessOpener": false,
+        "parentFrameId": "AE7E44C26D4C779073E85C6D25034EF1",
+        "parentId": "AE7E44C26D4C779073E85C6D25034EF1",
+        "targetId": "3074B63EC353AA77AF3AFD860013C622",
+        "title": "design-app://app/assets/render-worker-DwXqSKf9.js",
+        "type": "worker",
+        "url": "design-app://app/assets/render-worker-DwXqSKf9.js"
+      },
+      "file": "cpu-1.cpuprofile"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 import type { GpuNode, GpuScene } from './types'
 import { bindScenePlan, type NativeScenePlan } from './scene-index'
 import { decodeFrameValue } from './frame-wire'
-import { bindSourceIdentity } from './source-identity'
+import { bindSourceIdentity, bindSourcePrograms } from './source-identity'
 import { FrameResources, frameResource, identicalResource, type FrameResource, type ResourceLease } from './frame-resources'
 const decoded=new WeakMap<Uint8Array,GpuScene>()
 const witnesses=new WeakMap<Uint8Array,Uint8Array>()
@@ -63,8 +63,10 @@ export function decodeScenePacket(input:Uint8Array,store?:FrameResources,lease?:
     bindSourceIdentity(node,resourceScope,entry.value.sourceIdentity)
     Object.defineProperty(nodes,id,{value:node,writable:true,enumerable:true,configurable:true})
   }
+  Object.freeze(nodes)
   const scene={...fields,nodes,vertices:new Float32Array(bytes.buffer,bytes.byteOffset+start,nv),
     curves:new Float32Array(bytes.buffer,bytes.byteOffset+start+nv*4,nc)} as GpuScene
+  bindSourcePrograms(scene)
   bindScenePlan(scene,resource(scenePlan,3).value as NativeScenePlan)
   // No partial dictionary publication on malformed data or missing dependencies.
   if(store&&lease){store.commit(resourceScope,incoming,lease);for(const id of used)if(lease.scope===resourceScope&&lease.entries.has(id))store.touch(id)}
@@ -85,7 +87,8 @@ export function copyScenePacket(input:Uint8Array):Uint8Array {
   if(scene){
     const header=new DataView(copy.buffer),start=Math.ceil((24+header.getUint32(8,true))/4)*4
     const vertices=header.getUint32(12,true),curves=header.getUint32(16,true)
-    decoded.set(copy,{...scene,vertices:new Float32Array(copy.buffer,start,vertices),curves:new Float32Array(copy.buffer,start+vertices*4,curves)})
+    const copied={...scene,vertices:new Float32Array(copy.buffer,start,vertices),curves:new Float32Array(copy.buffer,start+vertices*4,curves)}
+    bindSourcePrograms(copied); decoded.set(copy,copied)
     const witness=witnesses.get(input);if(witness)witnesses.set(copy,witness.slice())
   }
   return copy

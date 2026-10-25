@@ -400,17 +400,12 @@ fn union_box(a: &mut [f64; 4], b: [f64; 4]) {
 /// node's effects expand the union of its own geometry and completed children.
 /// Invisible nodes still contribute bounds when they might become the
 /// difference between revisions; the caller unions both revisions.
-fn subtree_bounds(
-    doc: &Document,
-    parents: &BTreeMap<&str, &str>,
-    id: &str,
-    fonts: Option<&Fonts>,
-) -> Option<[f64; 4]> {
-    fn visit(
+fn subtree_bounds_from(
         doc: &Document,
         id: &str,
         matrix: Transform,
         fonts: Option<&Fonts>,
+        device: bool,
     ) -> Option<[f64; 4]> {
         let Some(node) = doc.nodes.get(id) else {
             return None;
@@ -430,7 +425,7 @@ fn subtree_bounds(
         let halo = effect_margin(node, m);
         // Preserve the original operation order for this node's geometry,
         // including leaves: p +/- ((halo + strokes) + 2).
-        let margin = halo + stroke_margin(node, m) + 2.;
+        let margin = if device { halo.ceil() + stroke_margin(node,m).ceil() + 4. } else { halo + stroke_margin(node,m) + 2. };
         if !margin.is_finite() || !halo.is_finite() || halo < 0. {
             return None;
         }
@@ -494,7 +489,7 @@ fn subtree_bounds(
         // in world units, including their own effects; never transform twice.
         let mut children: Option<[f64; 4]> = None;
         for child in &node.children {
-            let child = visit(doc, child, m, fonts)?;
+            let child = subtree_bounds_from(doc, child, m, fonts, device)?;
             if let Some(children) = &mut children {
                 union_box(children, child);
             } else {
@@ -507,6 +502,7 @@ fn subtree_bounds(
         // changing the original leaf arithmetic or adding ancestor stroke/AA.
         // None avoids expanding an empty +/-infinity child sentinel.
         if let Some(children) = children {
+            let halo = if device { halo.ceil() + 4. } else { halo };
             let expanded = [
                 children[0] - halo,
                 children[1] - halo,
@@ -522,6 +518,13 @@ fn subtree_bounds(
             && (bounds[3] - bounds[1]).is_finite())
             .then_some(bounds)
     }
+
+fn subtree_bounds(
+    doc: &Document,
+    parents: &BTreeMap<&str, &str>,
+    id: &str,
+    fonts: Option<&Fonts>,
+) -> Option<[f64; 4]> {
     let mut ancestors = Vec::new();
     let mut cursor = id;
     while let Some(parent) = parents.get(cursor) {
@@ -538,7 +541,21 @@ fn subtree_bounds(
         .into_iter()
         .rev()
         .fold(Transform::default(), Transform::concat);
-    visit(doc, id, matrix, fonts)
+    subtree_bounds_from(doc, id, matrix, fonts, false)
+}
+
+/// Complete conservative page paint support at this exact physical sampling
+/// scale. No viewport culling; unknown effects decline the certificate.
+/// Extra device pixels cover rounding/filter neighbours through every ancestor.
+pub(crate) fn page_paint_rects(doc:&Document,page:&str,fonts:&Fonts,camera:Transform)->Option<Vec<[f64;4]>> {
+    // Marker geometry has its own support; the generic stroke-width margin
+    // cannot certify an arbitrarily extended marker as empty background.
+    if crate::stroke::has_markers(doc) { return None; }
+    if doc.nodes.values().any(|n|n.effects.iter().any(|e|e.visible&&!matches!(e.kind.as_str(),
+        "blur"|"shadow"|"inner-shadow"|"background-blur"|"glass"|"noise"|"texture"))) {return None;}
+    let page=doc.pages.iter().find(|p|p.id==page)?;
+    let rects:Vec<_>=page.children.iter().map(|id|subtree_bounds_from(doc,id,camera,Some(fonts),true)).collect::<Option<_>>()?;
+    rects.iter().all(|b|b.iter().all(|v|v.is_finite()&&v.abs()<=16_000_000.)).then_some(rects)
 }
 
 type BoundsCache = BTreeMap<String, Option<[f64; 4]>>;

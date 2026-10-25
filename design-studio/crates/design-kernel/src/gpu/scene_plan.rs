@@ -17,9 +17,13 @@ pub struct ScenePlan {
     pub image_uses: Vec<(String, u8, usize)>,
     /// replay, filters, ordinary prefix filter, backdrop prefix filter.
     pub features: u8,
+    /// Parent ID and one opaque solid colour shared by every contributing leaf.
+    /// GPU adapters still certify the actual uploaded four-sample programs.
+    pub opaque_solid_groups: Vec<(String,String)>,
 }
 #[derive(Deserialize)]
-struct PaintInput { #[serde(default)] kind: String, image: Option<String> }
+struct PaintInput { #[serde(default)] kind: String, image: Option<String>, #[serde(default)] color:String,
+    #[serde(default)] visible:bool, #[serde(default)] opacity:f64, #[serde(default)] blend:String }
 #[derive(Deserialize)]
 struct StrokeInput { paint: PaintInput }
 #[derive(Deserialize)]
@@ -36,9 +40,14 @@ struct NodeInput {
     #[serde(default)] fills: Vec<PaintInput>,
     #[serde(default)] strokes: Vec<StrokeInput>,
     texture_replay: Option<ReplayInput>,
+    #[serde(default)] opacity:f64,#[serde(default)] blend:String,#[serde(default)] clip:bool,
+    #[serde(default)] mask:bool,#[serde(default)] passthrough:bool,fill:Option<PathInput>,
 }
+#[derive(Deserialize)]#[serde(rename_all="camelCase")]
+struct PathInput{sample_count:Option<u32>,area:Option<serde::de::IgnoredAny>}
 fn identity() -> [f64; 6] { [1.,0.,0.,1.,0.,0.] }
-struct NodePlan<'a> { children: &'a [String], matrix: [f64;6], effects: Vec<EffectPlan<'a>>, replay: bool, images: Vec<(u8,usize)> }
+struct NodePlan<'a> { children: &'a [String], matrix: [f64;6], effects: Vec<EffectPlan<'a>>, replay: bool, images: Vec<(u8,usize)>,opaque_solid:Option<&'a str> }
+fn opaque_hex(value:&str)->bool{value.len()==7&&value.starts_with('#')&&value.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit)}
 fn images<'a>(fills: impl Iterator<Item = (&'a str, Option<&'a str>)>, strokes: impl Iterator<Item = (&'a str, Option<&'a str>)>) -> Vec<(u8,usize)> {
     let mut uses = Vec::new();
     for (kind, paints) in [fills.collect::<Vec<_>>(), strokes.collect::<Vec<_>>()].into_iter().enumerate() {
@@ -83,12 +92,24 @@ fn build(roots: &[String], nodes: BTreeMap<&str, NodePlan<'_>>) -> ScenePlan {
     for id in unknown { let mut next=parents.get(&id); while let Some(parent)=next {
         if !propagated.insert(parent.clone()) {break;} next=parents.get(parent);
     }}
+    let mut opaque_solid_groups=Vec::new();
+    for (&id,parent) in &nodes {
+        let children=parent.children.iter().filter_map(|id|nodes.get(id.as_str())).collect::<Vec<_>>();
+        if children.len()<8{continue;}
+        if let Some(color)=children[0].opaque_solid {
+            if children.iter().all(|child|child.opaque_solid==Some(color)) {opaque_solid_groups.push((id.to_owned(),color.to_owned()));}
+        }
+    }
     ScenePlan {version:1,nodes:order.into_iter().map(str::to_owned).collect(),roots:roots.to_vec(),parents:parents.into_iter().collect(),
-        root_for:root_for.into_iter().collect(),unknown_effect_subtrees:propagated.into_iter().collect(),image_uses:uses,features}
+        root_for:root_for.into_iter().collect(),unknown_effect_subtrees:propagated.into_iter().collect(),image_uses:uses,features,opaque_solid_groups}
 }
 impl GpuScene {
     pub fn scene_plan(&self) -> ScenePlan {
         build(&self.roots,self.nodes.iter().map(|(id,n)| (id.as_str(),NodePlan {children:&n.children,matrix:n.matrix.0,effects:n.effects.iter().map(|e|EffectPlan {kind:&e.kind,visible:e.visible,radius:e.radius,glass:e.glass.is_some()}).collect(),
+            opaque_solid:if n.opacity==1.&&n.blend=="normal"&&!n.clip&&!n.mask&&!n.passthrough&&n.children.is_empty()&&n.strokes.is_empty()&&
+                n.effects.iter().all(|e|!e.visible)&&n.texture_replay.is_none()&&n.fill.sample_count==Some(4)&&n.fill.area.is_some()&&n.fills.len()==1&&
+                n.fills[0].visible&&n.fills[0].kind=="solid"&&n.fills[0].blend=="normal"&&n.fills[0].opacity==1.&&opaque_hex(&n.fills[0].color)
+                {Some(n.fills[0].color.as_str())}else{None},
             replay:n.texture_replay.is_some(),images:images(n.fills.iter().map(|p|(p.kind.as_str(),p.image.as_deref())),
                 n.strokes.iter().map(|s|(s.paint.kind.as_str(),s.paint.image.as_deref())))})).collect())
     }
@@ -99,6 +120,10 @@ pub fn from_json(source: &str) -> Result<String,String> {
     #[derive(Deserialize)] struct Input { roots: Vec<String>, nodes: BTreeMap<String,NodeInput> }
     let input:Input=serde_json::from_str(source).map_err(|e|e.to_string())?;
     let nodes=input.nodes.iter().map(|(id,n)|(id.as_str(),NodePlan {children:&n.children,matrix:n.matrix,effects:n.effects.iter().map(|e|EffectPlan {kind:&e.kind,visible:e.visible,radius:e.radius.unwrap_or(f64::NAN),glass:e.glass.is_some()}).collect(),
+        opaque_solid:if n.opacity==1.&&n.blend=="normal"&&!n.clip&&!n.mask&&!n.passthrough&&n.children.is_empty()&&n.strokes.is_empty()&&n.effects.iter().all(|e|!e.visible)&&
+            n.texture_replay.is_none()&&n.fill.as_ref().is_some_and(|p|p.sample_count==Some(4)&&p.area.is_some())&&n.fills.len()==1&&
+            n.fills[0].visible&&n.fills[0].kind=="solid"&&n.fills[0].blend=="normal"&&n.fills[0].opacity==1.&&opaque_hex(&n.fills[0].color)
+            {Some(n.fills[0].color.as_str())}else{None},
         replay:n.texture_replay.is_some(),images:images(n.fills.iter().map(|p|(p.kind.as_str(),p.image.as_deref())),
             n.strokes.iter().map(|s|(s.paint.kind.as_str(),s.paint.image.as_deref())))})).collect();
     serde_json::to_string(&build(&input.roots,nodes)).map_err(|e|e.to_string())
@@ -120,4 +145,36 @@ pub fn source_value(mut value:serde_json::Value)->serde_json::Value {
 pub fn source_key_json(source:&str)->Result<Vec<u8>,String>{
     let value=serde_json::from_str(source).map_err(|e|format!("Invalid compiled source: {e}"))?;
     super::frame_wire::encode(&source_value(value))
+}
+
+#[cfg(test)]
+mod opaque_group_tests {
+    use super::*;
+    use serde_json::{json,Value};
+    fn scene()->Value {
+        let mut nodes=serde_json::Map::new();
+        for i in 0..8 {nodes.insert(i.to_string(),json!({"opacity":1,"blend":"normal",
+            "fill":{"sampleCount":4,"area":{"first":0,"count":7}},
+            "fills":[{"kind":"solid","color":"#2b74ff","visible":true,"opacity":1,"blend":"normal"}]}));}
+        nodes.insert("parent".into(),json!({"children":(0..8).map(|i|i.to_string()).collect::<Vec<_>>()}));
+        json!({"roots":["parent"],"nodes":nodes})
+    }
+    fn groups(scene:&Value)->Value {serde_json::from_str::<Value>(&from_json(&scene.to_string()).unwrap()).unwrap()["opaqueSolidGroups"].clone()}
+    #[test] fn native_group_requires_every_leaf_to_be_the_same_opaque_solid() {
+        assert_eq!(groups(&scene()),json!([["parent","#2b74ff"]]));
+        for (path,value) in [
+            ("/nodes/0/opacity",json!(0.5)),("/nodes/0/blend",json!("multiply")),
+            ("/nodes/0/fill/sampleCount",json!(16)),("/nodes/0/fill/area",Value::Null),
+            ("/nodes/0/fills/0/color",json!("#2b74fe")),("/nodes/0/fills/0/color",json!("#2b74ff80")),
+            ("/nodes/0/fills/0/opacity",json!(0.9)),("/nodes/0/fills/0/visible",json!(false)),
+            ("/nodes/0/fills/0/kind",json!("gradient")),("/nodes/0/fills/0/blend",json!("screen")),
+        ] {let mut s=scene();*s.pointer_mut(path).unwrap()=value;assert_eq!(groups(&s),json!([]),"{path}");}
+        for (key,value) in [("clip",json!(true)),("mask",json!(true)),("passthrough",json!(true)),
+            ("textureReplay",json!({})),("children",json!(["other"])),
+            ("effects",json!([{"kind":"unknown","visible":true}])),
+            ("strokes",json!([{"paint":{"kind":"solid"}}]))] {
+            let mut s=scene();s["nodes"]["0"][key]=value;assert_eq!(groups(&s),json!([]),"{key}");
+        }
+        let mut s=scene();s["nodes"]["parent"]["children"].as_array_mut().unwrap().pop();assert_eq!(groups(&s),json!([]));
+    }
 }

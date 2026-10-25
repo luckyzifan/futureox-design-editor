@@ -1,0 +1,29 @@
+{
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/drag-response-20261024-6lnpejll/candidate-host-9",
+  "scope": "sampled real Electron native-input integration; UI and existing browser workers, native Rust process and GPU execution are not V8 CPU stacks",
+  "startedAt": 1792861255962,
+  "endedAt": 1792861258084,
+  "results": [
+    {
+      "target": {
+        "type": "renderer",
+        "title": "UI 主线程"
+      },
+      "file": "cpu-0.cpuprofile"
+    },
+    {
+      "target": {
+        "attached": true,
+        "browserContextId": "3A18D8C1700CE6BFE55F58267A15AF0A",
+        "canAccessOpener": false,
+        "parentFrameId": "20FFC98DA8B81D5C5AABD248B7A863E0",
+        "parentId": "20FFC98DA8B81D5C5AABD248B7A863E0",
+        "targetId": "114B5B43090FA65FD527EF0E2640C1E9",
+        "title": "design-app://app/assets/render-worker-CRa2Y4_z.js",
+        "type": "worker",
+        "url": "design-app://app/assets/render-worker-CRa2Y4_z.js"
+      },
+      "file": "cpu-1.cpuprofile"
+    }
+  ]
+}

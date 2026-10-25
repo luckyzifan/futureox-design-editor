@@ -1,0 +1,803 @@
+{
+  "status": "captured",
+  "probeVersion": 2,
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/drag-response-20261024-6lnpejll/candidate-host-phase-diagnostic-2",
+  "kind": "117",
+  "scope": "independent foreground Electron; native mouse input, rAF DOM cameras and compositor acknowledgements; no physical scanout claim",
+  "phases": [
+    {
+      "label": "pan",
+      "start": 1792873505222,
+      "stopped": 1792873506187,
+      "ended": 1792873507131,
+      "dispatch": [
+        {
+          "at": 1792873505239,
+          "x": 736,
+          "y": 493
+        },
+        {
+          "at": 1792873505256,
+          "x": 739,
+          "y": 495
+        },
+        {
+          "at": 1792873505272,
+          "x": 742,
+          "y": 496
+        },
+        {
+          "at": 1792873505288,
+          "x": 745,
+          "y": 497
+        },
+        {
+          "at": 1792873505304,
+          "x": 748,
+          "y": 499
+        },
+        {
+          "at": 1792873505320,
+          "x": 751,
+          "y": 500
+        },
+        {
+          "at": 1792873505337,
+          "x": 754,
+          "y": 501
+        },
+        {
+          "at": 1792873505352,
+          "x": 757,
+          "y": 503
+        },
+        {
+          "at": 1792873505368,
+          "x": 760,
+          "y": 504
+        },
+        {
+          "at": 1792873505383,
+          "x": 763,
+          "y": 505
+        },
+        {
+          "at": 1792873505400,
+          "x": 766,
+          "y": 507
+        },
+        {
+          "at": 1792873505416,
+          "x": 769,
+          "y": 508
+        },
+        {
+          "at": 1792873505432,
+          "x": 772,
+          "y": 509
+        },
+        {
+          "at": 1792873505449,
+          "x": 775,
+          "y": 511
+        },
+        {
+          "at": 1792873505464,
+          "x": 778,
+          "y": 512
+        },
+        {
+          "at": 1792873505480,
+          "x": 781,
+          "y": 513
+        },
+        {
+          "at": 1792873505497,
+          "x": 784,
+          "y": 515
+        },
+        {
+          "at": 1792873505511,
+          "x": 787,
+          "y": 516
+        },
+        {
+          "at": 1792873505526,
+          "x": 790,
+          "y": 517
+        },
+        {
+          "at": 1792873505543,
+          "x": 793,
+          "y": 519
+        },
+        {
+          "at": 1792873505561,
+          "x": 796,
+          "y": 520
+        },
+        {
+          "at": 1792873505576,
+          "x": 799,
+          "y": 521
+        },
+        {
+          "at": 1792873505592,
+          "x": 802,
+          "y": 523
+        },
+        {
+          "at": 1792873505608,
+          "x": 805,
+          "y": 524
+        },
+        {
+          "at": 1792873505625,
+          "x": 808,
+          "y": 525
+        },
+        {
+          "at": 1792873505640,
+          "x": 811,
+          "y": 527
+        },
+        {
+          "at": 1792873505656,
+          "x": 814,
+          "y": 528
+        },
+        {
+          "at": 1792873505671,
+          "x": 817,
+          "y": 529
+        },
+        {
+          "at": 1792873505688,
+          "x": 820,
+          "y": 531
+        },
+        {
+          "at": 1792873505705,
+          "x": 823,
+          "y": 532
+        },
+        {
+          "at": 1792873505721,
+          "x": 826,
+          "y": 533
+        },
+        {
+          "at": 1792873505736,
+          "x": 829,
+          "y": 535
+        },
+        {
+          "at": 1792873505751,
+          "x": 832,
+          "y": 536
+        },
+        {
+          "at": 1792873505768,
+          "x": 835,
+          "y": 537
+        },
+        {
+          "at": 1792873505782,
+          "x": 838,
+          "y": 539
+        },
+        {
+          "at": 1792873505799,
+          "x": 841,
+          "y": 540
+        },
+        {
+          "at": 1792873505817,
+          "x": 844,
+          "y": 541
+        },
+        {
+          "at": 1792873505831,
+          "x": 847,
+          "y": 543
+        },
+        {
+          "at": 1792873505848,
+          "x": 850,
+          "y": 544
+        },
+        {
+          "at": 1792873505864,
+          "x": 853,
+          "y": 545
+        },
+        {
+          "at": 1792873505880,
+          "x": 856,
+          "y": 547
+        },
+        {
+          "at": 1792873505896,
+          "x": 859,
+          "y": 548
+        },
+        {
+          "at": 1792873505912,
+          "x": 862,
+          "y": 549
+        },
+        {
+          "at": 1792873505928,
+          "x": 865,
+          "y": 551
+        },
+        {
+          "at": 1792873505944,
+          "x": 868,
+          "y": 552
+        },
+        {
+          "at": 1792873505960,
+          "x": 871,
+          "y": 553
+        },
+        {
+          "at": 1792873505976,
+          "x": 874,
+          "y": 555
+        },
+        {
+          "at": 1792873505991,
+          "x": 877,
+          "y": 556
+        },
+        {
+          "at": 1792873506006,
+          "x": 880,
+          "y": 557
+        },
+        {
+          "at": 1792873506023,
+          "x": 883,
+          "y": 559
+        },
+        {
+          "at": 1792873506040,
+          "x": 886,
+          "y": 560
+        },
+        {
+          "at": 1792873506055,
+          "x": 889,
+          "y": 561
+        },
+        {
+          "at": 1792873506072,
+          "x": 892,
+          "y": 563
+        },
+        {
+          "at": 1792873506086,
+          "x": 895,
+          "y": 564
+        },
+        {
+          "at": 1792873506104,
+          "x": 898,
+          "y": 565
+        },
+        {
+          "at": 1792873506120,
+          "x": 901,
+          "y": 567
+        },
+        {
+          "at": 1792873506136,
+          "x": 904,
+          "y": 568
+        },
+        {
+          "at": 1792873506152,
+          "x": 907,
+          "y": 569
+        },
+        {
+          "at": 1792873506169,
+          "x": 910,
+          "y": 571
+        },
+        {
+          "at": 1792873506184,
+          "x": 913,
+          "y": 572
+        }
+      ],
+      "frames": 208,
+      "events": 53,
+      "final": {
+        "t": 8365.6,
+        "requested": {
+          "x": 385.32258064516134,
+          "y": 135.9032258064517,
+          "z": 0.4032258064516129
+        },
+        "shown": {
+          "x": 385.32258064516134,
+          "y": 135.9032258064517,
+          "z": 0.4032258064516129
+        },
+        "settled": {
+          "x": 385.32258064516134,
+          "y": 135.9032258064517,
+          "z": 0.4032258064516129
+        },
+        "compositor": {
+          "compositor": "webgpu-resident",
+          "frameVisible": "true",
+          "inputTrace": "[]",
+          "contentSequence": "0",
+          "interactionReady": "true",
+          "interactionActive": "false",
+          "interactionWarming": "false",
+          "interactionError": "",
+          "interactionMoves": "0",
+          "interactionEnd": "",
+          "interactionMode": "retained-page",
+          "interactionSamples": "0",
+          "interactionSampleMs": "0.00",
+          "interactionCompileMs": "0.00",
+          "interactionGraphMs": "0.00",
+          "interactionGeometryReused": "true",
+          "interactionGroupHits": "0",
+          "residentAttached": "true",
+          "residentAttachmentReason": "attached",
+          "deviceWorkerScope": "184592343610582",
+          "deviceIncarnation": "2",
+          "deviceOwner": "2",
+          "deviceScope": "2",
+          "deviceCounterMask": "15",
+          "devicePendingCaptures": "0",
+          "devicePendingCapturePayloadBytes": "0",
+          "devicePendingReadbacks": "0",
+          "deviceLogicalPayloadBytes": "104932652",
+          "deviceRetiringPayloadBytes": "0",
+          "coverageDeferred": "0",
+          "backgroundCoverage": "0",
+          "diagnosticSequence": "202",
+          "submittedEpoch": "1792873507126.5999",
+          "gridVisible": "false",
+          "dpr": "2",
+          "coverageMeasured": "true",
+          "coverageAt": "6654.400000095367",
+          "compositorFrames": "169",
+          "compositorTransformUploadBytes": "0",
+          "compositorUploads": "66",
+          "compositorCaptures": "66",
+          "compositorBytes": "104932652",
+          "compositorOverlayBytes": "2243484",
+          "compositorTiles": "65",
+          "compositorDraws": "16",
+          "linearBlend": "false",
+          "missingTextureCount": "0",
+          "coverage": "1",
+          "sharpCoverage": "1",
+          "nativePhaseCoverage": "1",
+          "maxUpscale": "1",
+          "pixelCoverageComplete": "true",
+          "nativeCoverageComplete": "true",
+          "qualitySequence": "3",
+          "qualityRevision": "1",
+          "pageToken": "1",
+          "documentRevision": "1",
+          "generation": "2",
+          "fillGeneration": "8",
+          "qualityTerminal": "true",
+          "coverageDeferredDraws": "29",
+          "backgroundDecline": "5",
+          "backgroundDensitySources": "8",
+          "backgroundPhaseError": "0"
+        }
+      }
+    },
+    {
+      "label": "object",
+      "start": 1792873507990,
+      "stopped": 1792873508954,
+      "ended": 1792873510084,
+      "dispatch": [
+        {
+          "at": 1792873508008,
+          "x": 736,
+          "y": 493
+        },
+        {
+          "at": 1792873508022,
+          "x": 739,
+          "y": 495
+        },
+        {
+          "at": 1792873508039,
+          "x": 742,
+          "y": 496
+        },
+        {
+          "at": 1792873508056,
+          "x": 745,
+          "y": 497
+        },
+        {
+          "at": 1792873508073,
+          "x": 748,
+          "y": 499
+        },
+        {
+          "at": 1792873508086,
+          "x": 751,
+          "y": 500
+        },
+        {
+          "at": 1792873508105,
+          "x": 754,
+          "y": 501
+        },
+        {
+          "at": 1792873508119,
+          "x": 757,
+          "y": 503
+        },
+        {
+          "at": 1792873508136,
+          "x": 760,
+          "y": 504
+        },
+        {
+          "at": 1792873508152,
+          "x": 763,
+          "y": 505
+        },
+        {
+          "at": 1792873508167,
+          "x": 766,
+          "y": 507
+        },
+        {
+          "at": 1792873508183,
+          "x": 769,
+          "y": 508
+        },
+        {
+          "at": 1792873508201,
+          "x": 772,
+          "y": 509
+        },
+        {
+          "at": 1792873508216,
+          "x": 775,
+          "y": 511
+        },
+        {
+          "at": 1792873508232,
+          "x": 778,
+          "y": 512
+        },
+        {
+          "at": 1792873508246,
+          "x": 781,
+          "y": 513
+        },
+        {
+          "at": 1792873508263,
+          "x": 784,
+          "y": 515
+        },
+        {
+          "at": 1792873508278,
+          "x": 787,
+          "y": 516
+        },
+        {
+          "at": 1792873508296,
+          "x": 790,
+          "y": 517
+        },
+        {
+          "at": 1792873508311,
+          "x": 793,
+          "y": 519
+        },
+        {
+          "at": 1792873508328,
+          "x": 796,
+          "y": 520
+        },
+        {
+          "at": 1792873508344,
+          "x": 799,
+          "y": 521
+        },
+        {
+          "at": 1792873508360,
+          "x": 802,
+          "y": 523
+        },
+        {
+          "at": 1792873508376,
+          "x": 805,
+          "y": 524
+        },
+        {
+          "at": 1792873508392,
+          "x": 808,
+          "y": 525
+        },
+        {
+          "at": 1792873508408,
+          "x": 811,
+          "y": 527
+        },
+        {
+          "at": 1792873508421,
+          "x": 814,
+          "y": 528
+        },
+        {
+          "at": 1792873508440,
+          "x": 817,
+          "y": 529
+        },
+        {
+          "at": 1792873508457,
+          "x": 820,
+          "y": 531
+        },
+        {
+          "at": 1792873508472,
+          "x": 823,
+          "y": 532
+        },
+        {
+          "at": 1792873508488,
+          "x": 826,
+          "y": 533
+        },
+        {
+          "at": 1792873508504,
+          "x": 829,
+          "y": 535
+        },
+        {
+          "at": 1792873508521,
+          "x": 832,
+          "y": 536
+        },
+        {
+          "at": 1792873508534,
+          "x": 835,
+          "y": 537
+        },
+        {
+          "at": 1792873508552,
+          "x": 838,
+          "y": 539
+        },
+        {
+          "at": 1792873508568,
+          "x": 841,
+          "y": 540
+        },
+        {
+          "at": 1792873508584,
+          "x": 844,
+          "y": 541
+        },
+        {
+          "at": 1792873508600,
+          "x": 847,
+          "y": 543
+        },
+        {
+          "at": 1792873508616,
+          "x": 850,
+          "y": 544
+        },
+        {
+          "at": 1792873508632,
+          "x": 853,
+          "y": 545
+        },
+        {
+          "at": 1792873508646,
+          "x": 856,
+          "y": 547
+        },
+        {
+          "at": 1792873508664,
+          "x": 859,
+          "y": 548
+        },
+        {
+          "at": 1792873508678,
+          "x": 862,
+          "y": 549
+        },
+        {
+          "at": 1792873508696,
+          "x": 865,
+          "y": 551
+        },
+        {
+          "at": 1792873508710,
+          "x": 868,
+          "y": 552
+        },
+        {
+          "at": 1792873508726,
+          "x": 871,
+          "y": 553
+        },
+        {
+          "at": 1792873508743,
+          "x": 874,
+          "y": 555
+        },
+        {
+          "at": 1792873508759,
+          "x": 877,
+          "y": 556
+        },
+        {
+          "at": 1792873508777,
+          "x": 880,
+          "y": 557
+        },
+        {
+          "at": 1792873508792,
+          "x": 883,
+          "y": 559
+        },
+        {
+          "at": 1792873508807,
+          "x": 886,
+          "y": 560
+        },
+        {
+          "at": 1792873508824,
+          "x": 889,
+          "y": 561
+        },
+        {
+          "at": 1792873508840,
+          "x": 892,
+          "y": 563
+        },
+        {
+          "at": 1792873508856,
+          "x": 895,
+          "y": 564
+        },
+        {
+          "at": 1792873508872,
+          "x": 898,
+          "y": 565
+        },
+        {
+          "at": 1792873508887,
+          "x": 901,
+          "y": 567
+        },
+        {
+          "at": 1792873508904,
+          "x": 904,
+          "y": 568
+        },
+        {
+          "at": 1792873508921,
+          "x": 907,
+          "y": 569
+        },
+        {
+          "at": 1792873508936,
+          "x": 910,
+          "y": 571
+        },
+        {
+          "at": 1792873508952,
+          "x": 913,
+          "y": 572
+        }
+      ],
+      "frames": 220,
+      "events": 63,
+      "final": {
+        "t": 11315.5,
+        "requested": {
+          "x": 205.3225806451613,
+          "y": 55.903225806451644,
+          "z": 0.4032258064516129
+        },
+        "shown": {
+          "x": 205.3225806451613,
+          "y": 55.903225806451644,
+          "z": 0.4032258064516129
+        },
+        "settled": {
+          "x": 205.3225806451613,
+          "y": 55.903225806451644,
+          "z": 0.4032258064516129
+        },
+        "compositor": {
+          "compositor": "webgpu-resident",
+          "frameVisible": "true",
+          "inputTrace": "[]",
+          "contentSequence": "0",
+          "interactionReady": "true",
+          "interactionActive": "false",
+          "interactionWarming": "false",
+          "interactionError": "",
+          "interactionMoves": "0",
+          "interactionEnd": "",
+          "interactionMode": "retained-page",
+          "interactionSamples": "0",
+          "interactionSampleMs": "0.00",
+          "interactionCompileMs": "0.00",
+          "interactionGraphMs": "0.00",
+          "interactionGeometryReused": "true",
+          "interactionGroupHits": "0",
+          "residentAttached": "true",
+          "residentAttachmentReason": "attached",
+          "deviceWorkerScope": "184592343610582",
+          "deviceIncarnation": "2",
+          "deviceOwner": "2",
+          "deviceScope": "2",
+          "deviceCounterMask": "15",
+          "devicePendingCaptures": "0",
+          "devicePendingCapturePayloadBytes": "0",
+          "devicePendingReadbacks": "0",
+          "deviceLogicalPayloadBytes": "51536044",
+          "deviceRetiringPayloadBytes": "12681408",
+          "coverageDeferred": "0",
+          "backgroundCoverage": "0",
+          "diagnosticSequence": "220",
+          "submittedEpoch": "1792873510078.5999",
+          "gridVisible": "false",
+          "dpr": "2",
+          "coverageMeasured": "true",
+          "coverageAt": "9606.400000095367",
+          "compositorFrames": "187",
+          "compositorTransformUploadBytes": "0",
+          "compositorUploads": "69",
+          "compositorCaptures": "70",
+          "compositorBytes": "51536044",
+          "compositorOverlayBytes": "2243484",
+          "compositorTiles": "26",
+          "compositorDraws": "1",
+          "linearBlend": "false",
+          "missingTextureCount": "0",
+          "coverage": "1",
+          "sharpCoverage": "1",
+          "nativePhaseCoverage": "1",
+          "maxUpscale": "1",
+          "pixelCoverageComplete": "true",
+          "nativeCoverageComplete": "true",
+          "qualitySequence": "5",
+          "qualityRevision": "2",
+          "pageToken": "1",
+          "documentRevision": "2",
+          "generation": "4",
+          "fillGeneration": "11",
+          "qualityTerminal": "true",
+          "coverageDeferredDraws": "29",
+          "backgroundDecline": "5",
+          "backgroundDensitySources": "8",
+          "backgroundPhaseError": "0"
+        }
+      }
+    }
+  ],
+  "errors": [],
+  "instance": {
+    "pid": 25656,
+    "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/drag-response-20261024-6lnpejll/117-phase-diagnostic-2/forma-desktop-manual-9ecb2893-f96b-402f-be19-a4302dc9acc3-FYPwb5"
+  },
+  "fixture": "/Users/Apple/Downloads/117.sketch"
+}

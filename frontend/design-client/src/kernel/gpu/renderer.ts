@@ -38,7 +38,7 @@ import { backdropOverlap, exactBlendLattice, interactionEffectRegion, interactio
 import { gradient_blur_composite_uniforms } from '../../generated/design-kernel/design_kernel'
 import { inverse } from '../../geometry'
 import { EncodeYield } from './encode-yield'
-import { sceneIndex, sceneScale as scale, type SceneIndex } from './scene-index'
+import { sceneIndex, opaqueSolidGroup, sceneScale as scale, type SceneIndex } from './scene-index'
 import type {
   Driver,
   GpuAdmissionDiagnostic,
@@ -940,6 +940,9 @@ export class GpuRenderer {
   private budgetError(message: string, allocationKind = 0, buildKind = 0, allocationSite = 0, passMode = -1): Error {
     const diagnostic = this.lastBudgetFailure
     this.lastBudgetFailure = undefined
+    if(import.meta.env.VITE_DESIGN_ALLOCATION_STACK==='1'&&gpuDiagnosticsEnabled())
+      console.debug('DESIGN_ALLOCATION_SITE '+JSON.stringify({allocationKind,allocationSite,passMode,
+        stack:new Error().stack?.split('\n').slice(0,12).join('\n')}))
     const error = markRenderFailure(markRuntimeConfiguration(renderErrorWithBudget(message, undefined, diagnostic), this.activeRuntimeConfiguration),
       { failureStage: 13, failureCategory: 3, failureCode: 200 })
     if (gpuDiagnosticsEnabled()) try {
@@ -2519,7 +2522,36 @@ export class GpuRenderer {
       return { path: s.path, paint: s.paint }
     return undefined
   }
+  private async drawOpaqueGroup(ids:string[],targets:Surface[],samples:number[]):Promise<Surface[]|undefined>{
+    if(!this.optimized||!this.driver.prepareOpaqueSolids||!this.driver.drawOpaqueSolids||this.interactionCapturing||
+      this.scene.interactionRetained||targets.some(t=>!t.texture.transparentZero||t.logicalBounds)||
+      samples.some(s=>!Number.isInteger(s)||s<0||s>3))return
+    const color=opaqueSolidGroup(this.scene,ids)
+    if(!color||this.alpha(color)!==1)return
+    const r=targets[0].rect
+    if(targets.some(t=>t.rect.x!==r.x||t.rect.y!==r.y||t.rect.w!==r.w||t.rect.h!==r.h))return
+    const nodes=ids.flatMap(id=>{const n=this.scene.nodes[id];return n?[{path:n.fill,bounds:n.rect}]:[]})
+    const batch=this.driver.prepareOpaqueSolids(nodes,r,[...this.color(color),1])
+    if(!batch)return
+    const outputs:Surface[]=[]
+    try{
+      for(const sample of samples){
+        await this.reclaimForSurface(r)
+        const out=this.acquire(r,false,false,SurfaceAllocationSite.empty);outputs.push(out)
+        this.driver.clear(out.texture)
+        if(!this.driver.drawOpaqueSolids(batch,out.texture,sample)){
+          this.release(...outputs);return
+        }
+        this.passPixels+=batch.pixels
+      }
+    }catch(error){this.release(...outputs);throw error}
+    this.release(...targets)
+    return outputs
+  }
   private async drawList(ids: string[], target: Surface, clip?: Surface, skip?: string): Promise<Surface> {
+    if(import.meta.env.VITE_DESIGN_OPAQUE_SOLID_BATCH==='1'&&!clip&&!skip&&this.sampleIndex!==undefined){
+      const batched=await this.drawOpaqueGroup(ids,[target],[this.sampleIndex]);if(batched)return batched[0]
+    }
     let pendingSurfaceAdmission: Surface | Promise<Surface>
     const children = skip ? ids.filter((id) => id !== skip) : ids
     for (let i = 0; i < children.length; ) {
@@ -2626,7 +2658,7 @@ export class GpuRenderer {
     // Child capture can consume the remaining headroom after the node's
     // admission check. Reclaim completed scratch before allocating its final
     // blend target, while both live inputs remain pinned.
-    if(this.driver.managed&&this.scene.interactionRetained)
+    if(this.driver.managed&&(this.scene.interactionRetained||this.surfaceNeedsAdmission(target.rect)))
       await this.reclaimForSurface(target.rect)
     const next = n.passthrough
       ? this.interpolate(source, target, n.opacity, clip)
@@ -2750,12 +2782,19 @@ export class GpuRenderer {
       }
     })()
   }
+  private surfaceNeedsAdmission(r:Rect,copies=1){
+    const available=this.free.get(`${r.w}:${r.h}`)?.length||0
+    const missing=Math.max(0,copies-available)
+    return missing>0&&this.workingBytes+r.w*r.h*(this.driver.managed?16:4)*missing>this.frameBudget
+  }
   private async reclaimForSurface(r:Rect,copies=1) {
+    this.checkFrameCurrent()
     // A free surface is already reusable in queue order. Do not wait for the
     // GPU and destroy it merely to "make room" for the same dimensions.
     const available=this.free.get(`${r.w}:${r.h}`)?.length||0
     const missing=Math.max(0,copies-available)
     if(missing)await this.reclaimScratch(r.w*r.h*(this.driver.managed?16:4)*missing)
+    this.checkFrameCurrent()
   }
   /** Forced image retirement still excludes an exact-table source. Atlas
    * slots share that ownership with their entire page, including empty pages. */
@@ -3171,6 +3210,9 @@ export class GpuRenderer {
     prefix?: { plan: NestedPrefixPlan; policy: string },
     compactSource = false,
   ): Promise<Surface[]> {
+    if(import.meta.env.VITE_DESIGN_OPAQUE_SOLID_BATCH==='1'&&!clip&&!prefix&&!compactSource&&targets.length===4){
+      const batched=await this.drawOpaqueGroup(ids,targets,[0,1,2,3]);if(batched)return batched
+    }
     let pendingSurfaceAdmission: Surface | Promise<Surface>
     const previousNode = this.activeNode
     const previousCapturing = this.interactionCapturing
@@ -3399,6 +3441,7 @@ export class GpuRenderer {
           n.clip && clip ? masks.map((mask, i) => this.combine(mask, clip[i], n.rect)) : undefined
         targets = await this.drawBundle(n.children, targets, combined || (n.clip ? masks : clip))
         if (combined) this.release(...combined)
+        this.retireLeafMasks(n, undefined, clip, targets, true)
         continue
       }
       const first = n.fills.find((p) => p.visible)
@@ -3429,7 +3472,7 @@ export class GpuRenderer {
           }
         }
         targets = await this.drawBundle(n.children, targets, n.clip ? masks : undefined)
-        this.retireLeafMasks(n, undefined, clip, targets)
+        this.retireLeafMasks(n, undefined, clip, targets, true)
         continue
       }
       let layers: Surface[] = []
@@ -3466,7 +3509,9 @@ export class GpuRenderer {
           }
         }
         if (cropped && background) {
-          const expanded = this.run(27, this.backdropConsumptionRect(n, background), [background])
+          const consumption=this.backdropConsumptionRect(n,background)
+          if(this.surfaceNeedsAdmission(consumption))await this.reclaimForSurface(consumption)
+          const expanded = this.run(27, consumption, [background])
           this.release(background)
           background = expanded
         }
@@ -3478,6 +3523,8 @@ export class GpuRenderer {
             n.glassShape && fx.glass ? this.glass(base, masks[i], n, fx, true, i) : undefined
           // Backdrop capture/blur/optics never reads the empty isolation layers.
           // Allocate each only when its sample is actually composed.
+          const copies=n.passthrough&&!layers[i]?2:1
+          if(this.surfaceNeedsAdmission(childInput,copies))await this.reclaimForSurface(childInput,copies)
           const filled = this.compose(optical || base, layer(i), 'normal', 1, masks[i])
           if (optical) this.release(optical)
           this.release(layers[i])
@@ -3488,12 +3535,19 @@ export class GpuRenderer {
         // consume cached coverage read-only, with its original global rect;
         // sampling outside that rect remains transparent, like the copied form.
         coverage.owned = !this.optimized || n.effects.some((fx) => fx.visible && fx.kind === 'blur' && fx.radius > 0)
-        coverage.value = coverage.owned ? masks.map((m) => this.copy(m, n.rect)) : masks
+        if(coverage.owned){
+          coverage.value=[]
+          for(const mask of masks){
+            if(this.surfaceNeedsAdmission(n.rect))await this.reclaimForSurface(n.rect)
+            coverage.value.push(this.copy(mask,n.rect))
+          }
+        }else coverage.value=masks
       }
       for (let i = 0; i < 4; i++) {
         await this.reclaimScratch()
         this.sampleIndex = i
         if (streamBlur && needsFillCoverage) masks[i] = ((pendingSurfaceAdmission = this.nodeMask(n, true), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission))
+        if(n.passthrough&&!layers[i]&&this.surfaceNeedsAdmission(childInput))await this.reclaimForSurface(childInput)
         layer(i)
         for (const paint of n.fills) {
           if (!paint.visible) continue
@@ -3506,6 +3560,7 @@ export class GpuRenderer {
           // Foreground blur first resolves its four independent leaf samples.
           // Preserve meanFourRN's scale-each then left-to-right additions, but
           // consume each plane immediately instead of pinning all four.
+          if(this.surfaceNeedsAdmission(n.rect))await this.reclaimForSurface(n.rect)
           const next = this.run(48, n.rect, resolvedFirstBlur ? [layers[i], resolvedFirstBlur] : [layers[i]], u => { u[17] = i })
           this.release(layers[i], resolvedFirstBlur)
           resolvedFirstBlur = next
@@ -3538,19 +3593,30 @@ export class GpuRenderer {
           maskTargets = await this.drawBundle([maskId], maskTargets)
         }
         if (this.scene.nodes[maskId]?.maskType === 'luminance')
-          maskTargets = maskTargets.map((s) => {
+          for(let i=0;i<maskTargets.length;i++){
+            const s=maskTargets[i]
+            if(this.surfaceNeedsAdmission(s.rect))await this.reclaimForSurface(s.rect)
             const out = this.run(30, s.rect, [s])
             this.release(s)
-            return out
-          })
-        let content = n.passthrough?layers.map(layer=>this.copy(layer)):this.emptyBundle(n.rect)
+            maskTargets[i]=out
+          }
+        let content:Surface[]=[]
+        if(n.passthrough){
+          for(const layer of layers){
+            if(this.surfaceNeedsAdmission(layer.rect))await this.reclaimForSurface(layer.rect)
+            content.push(this.copy(layer))
+          }
+        }else content=this.emptyBundle(n.rect)
         content = await this.drawBundle(
           n.children.filter((id) => id !== maskId),
           content,
           n.clip ? masks : undefined,
         )
         for (let i = 0; i < 4; i++) {
-          await this.reclaimScratch()
+          // Account for the upcoming destination, not merely bytes already
+          // allocated. Pool storage pending on this queue needs a real fence
+          // before it may be destroyed to fit a differently sized surface.
+          await this.reclaimForSurface(layers[i].rect)
           const combined = n.passthrough
             ? this.interpolate(content[i], layers[i], 1, maskTargets[i])
             : this.compose(content[i], layers[i], 'normal', 1, maskTargets[i])
@@ -3658,7 +3724,10 @@ export class GpuRenderer {
         this.release(layers[i])
       }
       this.release(...layers, ...(coverage.owned ? coverage.value || [] : []))
-      this.retireLeafMasks(n, undefined, clip, targets)
+      // All children, masks and effects of this group have now been encoded.
+      // Match the single-plane path's completed-owner retirement; ancestor
+      // clips, output aliases and shared mask owners remain protected.
+      this.retireLeafMasks(n, undefined, clip, targets, true)
     }
     this.sampleIndex = undefined
     // Only the explicit isolated source consumer above receives compact
@@ -3685,7 +3754,9 @@ export class GpuRenderer {
     if (blurred !== background) this.release(background)
     background = blurred
     if (cropped) {
-      const expanded = this.run(27, this.backdropConsumptionRect(n, background), [background])
+      const consumption=this.backdropConsumptionRect(n,background)
+      if(this.surfaceNeedsAdmission(consumption))await this.reclaimForSurface(consumption)
+      const expanded = this.run(27, consumption, [background])
       this.release(background)
       background = expanded
     }
@@ -4688,7 +4759,10 @@ export class GpuRenderer {
         texture = this.driver.uploadLinear(values, width, height)
       } else {
         if (!this.driver.uploadRgba8) throw new Error('Backend cannot upload exact coefficients')
-        texture = this.driver.uploadRgba8(values, width, height)
+        texture = import.meta.env.VITE_DESIGN_CERTIFIED_TENT_PREFIX==='1' && this.driver.uploadExactTentKernel &&
+          (operator==='rational-tent'||operator==='certified-tent') && radius>=32 && radius<=512
+          ? this.driver.uploadExactTentKernel(values,width,height,operator,radius)
+          : this.driver.uploadRgba8(values, width, height)
       }
       if (operator === 'rational-tent' && values instanceof Uint8Array)
         texture.prefixRationalUnsupported = prefixRationalUnsupported(values)
@@ -5505,7 +5579,10 @@ export class GpuRenderer {
       const blurred=await this.interactionBackdropDisplay(n,backdrop,(backdropRadius(background!) * scale(n.matrix))/2)
       layer=this.run(15,n.rect,[blurred,blurred,fill],u=>u.set([15,0,1,1],16))
       this.release(blurred)
-    }else layer=n.passthrough ? this.copy(backdrop,n.rect) : this.empty(n.rect)
+    }else{
+      if(n.passthrough&&this.surfaceNeedsAdmission(n.rect))await this.reclaimForSurface(n.rect)
+      layer=n.passthrough?this.copy(backdrop,n.rect):this.empty(n.rect)
+    }
     if (n.fills.length || n.clip || background) fill = ((pendingSurfaceAdmission = this.mask(n.fill, true), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission))
     if (background && fill && !directBackdrop) {
       const blur = await this.interactionBackdropDisplay(n,backdrop,(backdropRadius(background) * scale(n.matrix)) / 2)
@@ -5519,7 +5596,7 @@ export class GpuRenderer {
     for (const p of n.fills) {
       if (!p.visible) continue
       const painted = ((pendingSurfaceAdmission = this.paint(n, p, fill || ((pendingSurfaceAdmission = this.mask(n.fill, true), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission)), undefined, true), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission))
-      if(this.driver.managed&&this.scene.interactionRetained)
+      if(this.driver.managed&&(this.scene.interactionRetained||this.surfaceNeedsAdmission(layer.rect)))
         await this.reclaimForSurface(layer.rect)
       const next = this.merge(painted, layer, p.blend)
       this.release(painted)
@@ -5532,8 +5609,10 @@ export class GpuRenderer {
       const empty = this.empty(n.rect),
         raw = await this.nodeSource(maskId, empty)
       if (raw) {
+        if(this.surfaceNeedsAdmission(empty.rect))await this.reclaimForSurface(empty.rect)
         maskSurface = this.compose(raw, empty, 'normal', this.scene.nodes[maskId].opacity)
         if (this.scene.nodes[maskId].maskType === 'luminance') {
+          if(this.surfaceNeedsAdmission(maskSurface.rect))await this.reclaimForSurface(maskSurface.rect)
           const next = this.run(30, maskSurface.rect, [maskSurface])
           this.release(maskSurface)
           maskSurface = next
@@ -5543,12 +5622,14 @@ export class GpuRenderer {
       } else maskSurface = empty
     }
     if (maskSurface) {
+      if(n.passthrough&&this.surfaceNeedsAdmission(layer.rect))await this.reclaimForSurface(layer.rect)
       const content = await this.drawList(
         n.children,
         n.passthrough ? this.copy(layer) : this.empty(n.rect),
         clip,
         maskId,
       )
+      if(this.surfaceNeedsAdmission(layer.rect))await this.reclaimForSurface(layer.rect)
       const combined = n.passthrough
         ? this.interpolate(content, layer, 1, maskSurface)
         : this.compose(content, layer, 'normal', 1, maskSurface)
@@ -5565,7 +5646,7 @@ export class GpuRenderer {
         strokeMask = clipped
       }
       const painted = ((pendingSurfaceAdmission = this.paint(n, s.paint, strokeMask, undefined, true), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission))
-      if(this.driver.managed&&this.scene.interactionRetained)
+      if(this.driver.managed&&(this.scene.interactionRetained||this.surfaceNeedsAdmission(layer.rect)))
         await this.reclaimForSurface(layer.rect)
       const next = this.merge(painted, layer, s.paint.blend)
       this.release(painted, clipped)

@@ -1,0 +1,38 @@
+{
+  "status": "failed",
+  "scope": "owned isolated Electron; real source import/Canvas/edit/save/export; preset save-dialog destination; visibility recorded explicitly; not physical scanout/FPS",
+  "cases": [],
+  "exportFile": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/drag-response-20261024-6lnpejll/sketch-workbench-2/topology-verified.sketch",
+  "foreground": [
+    {
+      "at": 1792872568516,
+      "visible": "visible",
+      "focused": true
+    },
+    {
+      "at": 1792872620311,
+      "visible": "visible",
+      "focused": true
+    }
+  ],
+  "visibility": "visible",
+  "nativeVisible": true,
+  "directCanvasImports": [
+    {
+      "file": "/Users/Apple/Downloads/拓扑素材.sketch",
+      "layers": 26,
+      "notice": "当前画板 / 对象已载入：4,022 个场景节点。已导入，可以继续编辑 · 3 项兼容提示×查看兼容说明部分 Sketch 专有属性暂不支持完整编辑，建议保留原始 .sketch 文件。文件未嵌入所用字体，已使用内置字体；可在文字面板导入并匹配字体。布尔组合已转换为本地矢量结构，原始设置已保留。",
+      "canvas": true
+    }
+  ],
+  "layouts": [
+    {
+      "key": "1:5",
+      "mountedRows": 26,
+      "listHeight": 440,
+      "scrollHeight": 128704,
+      "navigationHeight": 804
+    }
+  ],
+  "error": "TimeoutError: locator.innerText: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.canvas-workspace .view-menu summary')\u001b[22m\n"
+}

@@ -1,0 +1,86 @@
+{
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/render-core-20261024-s_4b1g9z/bitmap-hardware-2",
+  "cpuSampler": false,
+  "status": "failed",
+  "scope": "same WebGPU producer: resident presenter versus existing ImageBitmap/WebGL presenter; exact displayed RGBA, not timing or fresh-motion certification",
+  "cases": [
+    {
+      "fixture": "fig.json",
+      "sample": {
+        "view": {
+          "x": 0,
+          "y": 0,
+          "zoom": 0.25
+        },
+        "region": {
+          "x": -1,
+          "y": -1,
+          "w": 514,
+          "h": 514
+        }
+      },
+      "transparent": false,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 1
+      },
+      "bytes": 65536,
+      "differences": 0
+    },
+    {
+      "fixture": "fig.json",
+      "sample": {
+        "view": {
+          "x": 0,
+          "y": 0,
+          "zoom": 0.25
+        },
+        "region": {
+          "x": -1,
+          "y": -1,
+          "w": 514,
+          "h": 514
+        }
+      },
+      "transparent": false,
+      "view": {
+        "x": 3,
+        "y": -2,
+        "zoom": 1
+      },
+      "bytes": 65536,
+      "differences": 0
+    },
+    {
+      "fixture": "fig.json",
+      "sample": {
+        "view": {
+          "x": 0,
+          "y": 0,
+          "zoom": 0.25
+        },
+        "region": {
+          "x": -1,
+          "y": -1,
+          "w": 514,
+          "h": 514
+        }
+      },
+      "transparent": false,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 1.3
+      },
+      "bytes": 65536,
+      "differences": 517
+    }
+  ],
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "fallback": false
+  },
+  "error": "Error: Presentation transport changed output bytes"
+}

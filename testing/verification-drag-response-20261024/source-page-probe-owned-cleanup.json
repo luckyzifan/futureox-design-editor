@@ -1,0 +1,7 @@
+{
+  "pid": 32997,
+  "parent": 32996,
+  "reason": "owned source conversion probe completed; app.close timed out and SIGTERM did not exit",
+  "verifiedCommand": "32996 /Users/Apple/project/design-kernel/frontend/design-desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron --inspect=0 --remote-debugging-port=0 /var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/drag-response-20261024-6lnpejll/candidate-host-7 --desktop-isolated-profile",
+  "signal": "SIGKILL"
+}

@@ -1,0 +1,19 @@
+{
+  "nodes": 831,
+  "plainSolidLeaves": 515,
+  "eligibleGroups": 1,
+  "eligibleLeaves": 375,
+  "groups": [
+    {
+      "id": "5F3A8E35-3DF2-4D96-905B-3A0F21F1474F",
+      "name": "背景",
+      "children": 375,
+      "rect": {
+        "x": -35,
+        "y": 335,
+        "w": 1780,
+        "h": 1006
+      }
+    }
+  ]
+}

@@ -1,0 +1,191 @@
+{
+  "status": "passed",
+  "scope": "visible independent Electron; real native input, WebGPU, Editor/WASM, SQLite and external FD; only save-dialog path preset; no physical scanout/FPS claim",
+  "checks": [
+    {
+      "name": "quick-zoom",
+      "uiIntervalMaxMs": 25.200000000000728,
+      "uiStalls": 0
+    },
+    {
+      "name": "property-undo-redo",
+      "uiIntervalMaxMs": 174.79999999999927,
+      "uiStalls": 0
+    }
+  ],
+  "stages": [
+    {
+      "name": "import-original",
+      "ms": 10253.167625
+    },
+    {
+      "name": "read-imported-sqlite",
+      "ms": 14146.802333
+    },
+    {
+      "name": "quick-zoom",
+      "ms": 1964.6744580000013
+    },
+    {
+      "name": "property-undo-redo",
+      "ms": 3112.8485839999994
+    },
+    {
+      "name": "save-sqlite",
+      "ms": 20864.7075
+    },
+    {
+      "name": "save-external-fd",
+      "ms": 2544.6513750000013
+    },
+    {
+      "name": "normal-close",
+      "ms": 436.8171250000014
+    },
+    {
+      "name": "reopen-external-fd",
+      "ms": 23877.882834000004
+    }
+  ],
+  "stage": "reopen-external-fd",
+  "fixture": "/Users/Apple/Downloads/01有料素材 (Copy).fig",
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/drag-response-20261024-6lnpejll/candidate-host-opaque-native-1",
+  "instances": [
+    {
+      "pid": 92521,
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/drag-response-20261024-6lnpejll/fig-operations-opaque-native-1/forma-desktop-manual-a8bac035-d917-489e-863c-9668328814ef-ljOu44",
+      "visible": true,
+      "versions": {
+        "node": "24.21.0",
+        "acorn": "8.18.0",
+        "ada": "4.0.0",
+        "amaro": "1.1.11",
+        "ares": "1.34.8",
+        "brotli": "1.2.0",
+        "cldr": "48.0",
+        "icu": "78.2",
+        "llhttp": "9.4.3",
+        "merve": "1.2.2",
+        "modules": "149",
+        "napi": "10",
+        "nbytes": "0.1.4",
+        "ncrypto": "0.0.1",
+        "nghttp2": "1.70.0",
+        "nghttp3": "",
+        "ngtcp2": "",
+        "openssl": "0.0.0",
+        "simdjson": "4.6.7",
+        "simdutf": "7.7.0",
+        "sqlite": "3.53.4",
+        "tz": "2026d",
+        "undici": "7.29.1",
+        "unicode": "17.0",
+        "uv": "1.52.1",
+        "uvwasi": "0.0.23",
+        "v8": "15.2.124.28-electron.0",
+        "zlib": "1.3.2.1-motley",
+        "zstd": "1.6.0",
+        "electron": "44.7.0",
+        "chrome": "152.0.7977.130"
+      },
+      "preferences": {
+        "allowRunningInsecureContent": false,
+        "contextIsolation": true,
+        "disableDialogs": false,
+        "disablePopups": false,
+        "enableBlinkFeatures": "",
+        "experimentalFeatures": false,
+        "javascript": true,
+        "nodeIntegration": false,
+        "nodeIntegrationInSubFrames": false,
+        "nodeIntegrationInWorker": false,
+        "safeDialogs": false,
+        "safeDialogsMessage": "",
+        "sandbox": true,
+        "webSecurity": true,
+        "webviewTag": false
+      }
+    },
+    {
+      "pid": 93755,
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/drag-response-20261024-6lnpejll/fig-operations-opaque-native-1/forma-desktop-manual-07d07291-ff70-4548-81c0-a768d0bce511-1cXoN1",
+      "visible": true,
+      "versions": {
+        "node": "24.21.0",
+        "acorn": "8.18.0",
+        "ada": "4.0.0",
+        "amaro": "1.1.11",
+        "ares": "1.34.8",
+        "brotli": "1.2.0",
+        "cldr": "48.0",
+        "icu": "78.2",
+        "llhttp": "9.4.3",
+        "merve": "1.2.2",
+        "modules": "149",
+        "napi": "10",
+        "nbytes": "0.1.4",
+        "ncrypto": "0.0.1",
+        "nghttp2": "1.70.0",
+        "nghttp3": "",
+        "ngtcp2": "",
+        "openssl": "0.0.0",
+        "simdjson": "4.6.7",
+        "simdutf": "7.7.0",
+        "sqlite": "3.53.4",
+        "tz": "2026d",
+        "undici": "7.29.1",
+        "unicode": "17.0",
+        "uv": "1.52.1",
+        "uvwasi": "0.0.23",
+        "v8": "15.2.124.28-electron.0",
+        "zlib": "1.3.2.1-motley",
+        "zstd": "1.6.0",
+        "electron": "44.7.0",
+        "chrome": "152.0.7977.130"
+      },
+      "preferences": {
+        "allowRunningInsecureContent": false,
+        "contextIsolation": true,
+        "disableDialogs": false,
+        "disablePopups": false,
+        "enableBlinkFeatures": "",
+        "experimentalFeatures": false,
+        "javascript": true,
+        "nodeIntegration": false,
+        "nodeIntegrationInSubFrames": false,
+        "nodeIntegrationInWorker": false,
+        "safeDialogs": false,
+        "safeDialogsMessage": "",
+        "sandbox": true,
+        "webSecurity": true,
+        "webviewTag": false
+      }
+    }
+  ],
+  "motionStart": 1792872012198,
+  "foreground": [
+    {
+      "at": 1792872012202,
+      "visible": "visible",
+      "focused": true
+    },
+    {
+      "at": 1792872014168,
+      "visible": "visible",
+      "focused": true
+    }
+  ],
+  "motionEnd": 1792872014163,
+  "propertyStart": 1792872014164,
+  "propertyEnd": 1792872017141,
+  "fd": {
+    "path": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/drag-response-20261024-6lnpejll/fig-operations-opaque-native-1/verified-fig.fd",
+    "bytes": 11775648,
+    "sha256": "f9d1caca3aa8c1db35063df78dff90d0eb78a9b871bb1313a2bbc86baa87c750"
+  },
+  "importCopyIds": {
+    "saved": "eec86a92-33af-4245-b4d7-5f4163774111",
+    "reopened": "5d7b3f99-b243-439c-b77d-c0098f7a08a7"
+  },
+  "reopenExactExceptImportCopyId": true
+}

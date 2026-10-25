@@ -1,0 +1,143 @@
+{
+  "status": "passed",
+  "scope": "owned isolated Electron; real source import/Canvas/edit/save/export; preset save-dialog destination; visibility recorded explicitly; not physical scanout/FPS",
+  "cases": [
+    {
+      "uiStalls": 0,
+      "uiIntervalMaxMs": 141.40000000000146,
+      "propertyUndoRedo": true,
+      "quickZoom": true,
+      "key": "1:5",
+      "id": "08856B36-020D-46FC-AC59-55F38CDB82BE",
+      "imported": true,
+      "webgpu": true,
+      "renameUndoRedo": true,
+      "saved": true,
+      "elapsedMs": 27299.530749999998,
+      "screenshot": "/Users/Apple/project/design-kernel/testing/verification-drag-response-20261024/sketch-operations-uniform-1/1-5.png",
+      "screenshotSha256": "87971418e658f97bf4b2b09c26f348f5c4f0e56d221eb95fd1b29a2de3735dca",
+      "guiReopened": true
+    },
+    {
+      "uiStalls": 0,
+      "uiIntervalMaxMs": 117,
+      "propertyUndoRedo": true,
+      "quickZoom": true,
+      "key": "1:32480",
+      "id": "45648D97-7B7E-40F0-8EAB-96DB4F941522",
+      "imported": true,
+      "webgpu": true,
+      "renameUndoRedo": true,
+      "saved": true,
+      "elapsedMs": 14342.45358300001,
+      "screenshot": "/Users/Apple/project/design-kernel/testing/verification-drag-response-20261024/sketch-operations-uniform-1/1-32480.png",
+      "screenshotSha256": "68254a78c1587e71f99ed0430f08bf6e6456f4162a5ab061041bc06d07a83ccc",
+      "guiReopened": true
+    },
+    {
+      "uiStalls": 0,
+      "uiIntervalMaxMs": 107.89999999999418,
+      "propertyUndoRedo": true,
+      "quickZoom": true,
+      "key": "1:81474",
+      "id": "918953D3-4C42-461C-8C03-6F6F011359C0",
+      "imported": true,
+      "webgpu": true,
+      "renameUndoRedo": true,
+      "saved": true,
+      "elapsedMs": 13598.537958,
+      "screenshot": "/Users/Apple/project/design-kernel/testing/verification-drag-response-20261024/sketch-operations-uniform-1/1-81474.png",
+      "screenshotSha256": "68254a78c1587e71f99ed0430f08bf6e6456f4162a5ab061041bc06d07a83ccc",
+      "guiReopened": true
+    }
+  ],
+  "exportFile": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/drag-response-20261024-6lnpejll/sketch-operations-uniform-1/topology-verified.sketch",
+  "foreground": [
+    {
+      "at": 1792884917664,
+      "visible": "visible",
+      "focused": true
+    },
+    {
+      "at": 1792884970887,
+      "visible": "visible",
+      "focused": true
+    },
+    {
+      "at": 1792884987194,
+      "visible": "visible",
+      "focused": true
+    },
+    {
+      "at": 1792885000613,
+      "visible": "visible",
+      "focused": true
+    },
+    {
+      "at": 1792885018507,
+      "visible": "visible",
+      "focused": true
+    }
+  ],
+  "visibility": "visible",
+  "nativeVisible": true,
+  "directCanvasImports": [
+    {
+      "file": "/Users/Apple/Downloads/拓扑素材.sketch",
+      "layers": 26,
+      "notice": "当前画板 / 对象已载入：4,022 个场景节点。已导入，可以继续编辑 · 3 项兼容提示×查看兼容说明部分 Sketch 专有属性暂不支持完整编辑，建议保留原始 .sketch 文件。文件未嵌入所用字体，已使用内置字体；可在文字面板导入并匹配字体。布尔组合已转换为本地矢量结构，原始设置已保留。",
+      "canvas": true
+    },
+    {
+      "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/drag-response-20261024-6lnpejll/sketch-operations-uniform-1/topology-verified.sketch",
+      "layers": 26,
+      "notice": "当前画板 / 对象已载入：4,022 个场景节点。已导入，可以继续编辑 · 3 项兼容提示×查看兼容说明部分 Sketch 专有属性暂不支持完整编辑，建议保留原始 .sketch 文件。文件未嵌入所用字体，已使用内置字体；可在文字面板导入并匹配字体。布尔组合已转换为本地矢量结构，原始设置已保留。",
+      "canvas": true
+    }
+  ],
+  "layouts": [
+    {
+      "key": "1:5",
+      "mountedRows": 26,
+      "listHeight": 440,
+      "scrollHeight": 128704,
+      "navigationHeight": 804
+    },
+    {
+      "key": "1:32480",
+      "mountedRows": 26,
+      "listHeight": 440,
+      "scrollHeight": 245184,
+      "navigationHeight": 804
+    },
+    {
+      "key": "1:81474",
+      "mountedRows": 26,
+      "listHeight": 440,
+      "scrollHeight": 245184,
+      "navigationHeight": 804
+    },
+    {
+      "key": "1:5",
+      "mountedRows": 26,
+      "listHeight": 440,
+      "scrollHeight": 128704,
+      "navigationHeight": 804
+    },
+    {
+      "key": "1:32480",
+      "mountedRows": 26,
+      "listHeight": 440,
+      "scrollHeight": 245184,
+      "navigationHeight": 804
+    },
+    {
+      "key": "1:81474",
+      "mountedRows": 26,
+      "listHeight": 440,
+      "scrollHeight": 245184,
+      "navigationHeight": 804
+    }
+  ],
+  "exportBytes": 119392758
+}
