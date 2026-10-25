@@ -449,6 +449,9 @@ pub struct GpuNode {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GpuScene {
+    /// Complete page support, in device coordinates; only for uniform screen backgrounds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_paint_rects: Option<Vec<[f64;4]>>,
     /// Persisted, deterministic SDR arithmetic; independent of GPU vendor.
     pub software_raster: bool,
     /// Global device-pixel output rectangle. Cropping must not rebase camera
@@ -1721,8 +1724,17 @@ impl Engine {
     pub fn compile_gpu_request(&mut self, request: &str) -> Result<GpuScene, String> {
         let mut value: serde_json::Value = serde_json::from_str(request).map_err(|e| e.to_string())?;
         let object = value.as_object_mut().ok_or("Render options must be an object")?;
+        if let Some(roots)=object.remove("gpuRoots") {
+            let roots:Vec<String>=serde_json::from_value(roots).map_err(|_|"Invalid render roots")?;
+            let page=object.get("pageId").and_then(|v|v.as_str()).ok_or("Missing render page")?;
+            let mut scoped=self.snapshot_render_roots(page,&roots)?;
+            return scoped.compile_gpu_request(&value.to_string());
+        }
         // Allocation changes remain opt-in until the independent GPU/whole-app
         // gates pass. This is a trusted request policy, never document state.
+        let page_background=match object.remove("gpuPageBackground") {
+            None=>false,Some(serde_json::Value::Bool(v))=>v,_=>return Err("Invalid page background policy".into()),
+        };
         let painter_support = match object.remove("gpuPainterSupport") {
             None => false,
             Some(serde_json::Value::Bool(value)) => value,
@@ -1752,14 +1764,25 @@ impl Engine {
         // This stricter allocation candidate has no authority over exports,
         // pixel preview or the ordinary whole-document compile API.
         let capture_reads = capture_reads && !options.raster_profile.is_export() && options.pixel_preview.is_none();
-        if let Some(capture) = capture {
+        let mut scene = if let Some(capture) = capture {
             if options.pixel_preview.is_some() || options.raster_profile.is_export() { return Err("Native capture is a canvas operation".into()); }
-            return self.compile_gpu_region_impl(&options, capture, prepare.or(Some(capture)), true, painter_support, capture_reads);
-        }
-        match region {
+            self.compile_gpu_region_impl(&options,capture,prepare.or(Some(capture)),true,painter_support,capture_reads)?
+        } else { match region {
             Some(region) => self.compile_gpu_region_impl(&options, region, prepare.or(Some(region)), false, painter_support, capture_reads),
             None => self.compile_gpu(&options),
+        }? };
+        if page_background && !scene.transparent && !scene.grid && !scene.checkerboard &&
+            !scene.software_raster && scene.resolve.is_none() && scene.presentation.is_none() && options.animation.is_none() {
+            let key=(self.geo_revision,options.page_id.clone(),options.view.zoom.to_bits(),self.fonts.glyph_origin_quantization());
+            if self.page_support.as_ref().is_none_or(|(old,_)|old!=&key) {
+                let bounds=self.doc.as_ref().and_then(|doc|crate::dirty_region::page_paint_rects(doc,&options.page_id,&self.fonts,
+                    Transform([options.view.zoom,0.,0.,options.view.zoom,0.,0.])));
+                self.page_support=Some((key,bounds));
+            }
+            scene.page_paint_rects=self.page_support.as_ref().and_then(|(_,bounds)|bounds.as_ref()).map(|bounds|bounds.iter()
+                .map(|b|[b[0]+options.view.x,b[1]+options.view.y,b[2]+options.view.x,b[3]+options.view.y]).collect());
         }
+        Ok(scene)
     }
 
     pub fn compile_gpu(&mut self, options: &RenderOptions) -> Result<GpuScene, String> {
@@ -2260,6 +2283,7 @@ impl Engine {
             }
         }
         Ok(GpuScene {
+            page_paint_rects: None,
             software_raster: options.raster_profile.is_software() && doc.color_management.is_none(),
             output: None,
             root_input_box,
@@ -2769,6 +2793,46 @@ mod incremental_prepare_tests {
         }
         json!({"schemaVersion":1,"id":"large-prepare","name":"Large prepare",
             "pages":[{"id":"p","name":"Page","children":children,"background":"#ffffff"}],"nodes":nodes})
+    }
+    #[test]
+    fn page_background_support_is_unculled_and_camera_revision_fenced() {
+        let mut doc=document();
+        doc["nodes"]["frame"]["clip"]=json!(false);
+        doc["nodes"]["moving"]["transform"]=json!([1,0,0,1,-900,30]);
+        let mut engine=Engine::new();engine.load_document(&doc.to_string()).unwrap();
+        let mut options=json!({"pageId":"p","width":64,"height":64,"view":{"x":0,"y":0,"zoom":2},
+            "grid":false,"transparent":false,"rasterProfile":"figmaSubpixel","gpuPageBackground":true});
+        let first=engine.compile_gpu_request(&options.to_string()).unwrap().page_paint_rects.unwrap();
+        // Child outside the frame and another offscreen root both participate.
+        assert_eq!(first.len(),2);assert!(first[0][0] < -1700.);assert!(first[1][2]>2000.);
+        options["view"]["x"]=json!(17);options["view"]["y"]=json!(-9);
+        let moved=engine.compile_gpu_request(&options.to_string()).unwrap().page_paint_rects.unwrap();
+        for (a,b) in first.iter().zip(&moved){assert_eq!(*b,[a[0]+17.,a[1]-9.,a[2]+17.,a[3]-9.]);}
+        doc["nodes"]["fixed"]["transform"]=json!([1,0,0,1,2000,120]);
+        engine.load_document(&doc.to_string()).unwrap();
+        let changed=engine.compile_gpu_request(&options.to_string()).unwrap().page_paint_rects.unwrap();
+        assert!(changed[1][0]>3900.);
+        options["transparent"]=json!(true);
+        assert!(engine.compile_gpu_request(&options.to_string()).unwrap().page_paint_rects.is_none());
+        options["transparent"]=json!(false);options["grid"]=json!(true);
+        assert!(engine.compile_gpu_request(&options.to_string()).unwrap().page_paint_rects.is_none());
+    }
+    #[test]
+    fn render_root_scope_matches_hidden_document_without_mutating_source() {
+        for profile in ["analytic","figmaSubpixel"] {
+            let doc=document();let mut engine=Engine::new();engine.load_document(&doc.to_string()).unwrap();
+            let options=json!({"pageId":"p","width":128,"height":128,"view":{"x":3.125,"y":-2.25,"zoom":0.5},
+                "transparent":true,"grid":false,"rasterProfile":profile});
+            let before=engine.compile_gpu_request(&options.to_string()).unwrap().into_packet().unwrap();
+            let mut selected=options.clone();selected["gpuRoots"]=json!(["frame"]);
+            let actual=engine.compile_gpu_request(&selected.to_string()).unwrap().into_packet().unwrap();
+            let mut hidden=doc.clone();hidden["nodes"]["fixed"]["visible"]=json!(false);
+            let mut reference=Engine::new();reference.load_document(&hidden.to_string()).unwrap();
+            assert_eq!(actual,reference.compile_gpu_request(&options.to_string()).unwrap().into_packet().unwrap());
+            assert_eq!(before,engine.compile_gpu_request(&options.to_string()).unwrap().into_packet().unwrap());
+            selected["gpuRoots"]=json!(["moving"]);assert!(engine.compile_gpu_request(&selected.to_string()).is_err());
+            selected["gpuRoots"]=json!(["frame","frame"]);assert!(engine.compile_gpu_request(&selected.to_string()).is_err());
+        }
     }
     #[test]
     fn partial_prepare_reuses_large_map_without_changing_packets() {

@@ -41,7 +41,7 @@ export class PageTranslation {
   readonly backgroundLinear = undefined
   constructor(private changed: () => void, private fractionalPose?: (
     document: DesignDocument, patches: Parameters<GpuMoveControl['apply']>[1], displayed: DesignDocument,
-  ) => ReturnType<GpuMoveControl['apply']>) {}
+  ) => ReturnType<GpuMoveControl['apply']>, private reportPhase?: (fields:Record<string,number>)=>void) {}
   get handingOff() { return this.phaseRevoked }
   private reusableOffset(offset: { x: number; y: number }) {
     return this.residents.length > 0 && this.residents.every(tile =>
@@ -49,10 +49,23 @@ export class PageTranslation {
   }
   private rebase(document: DesignDocument, patches: Parameters<GpuMoveControl['apply']>[1]) {
     this.phaseRevoked = true
+    if(this.reportPhase){
+      // Uniform translation was checked by the caller. Inspect one transform
+      // and the bounded resident list; diagnostics never clone the document.
+      const id=this.plan!.ids[0],before=this.plan!.document.nodes[id].transform,after=patches[id]?.transform||document.nodes[id].transform
+      let error=0
+      for(const tile of this.residents)for(const shift of [(after[4]-before[4])*tile.zoom,(after[5]-before[5])*tile.zoom])
+        error=Math.max(error,Math.abs(shift-Math.round(shift)))
+      this.reportPhase({retainedPhaseRejects:1,retainedPhaseSamples:this.residents.length*2,retainedPhaseError:error})
+    }
     return this.fractionalPose?.(document, patches, this.displayedDocument()) ?? null
   }
   private displayedDocument() {
     const document = this.plan!.document
+    // No pixels have moved yet. Preserve the authored snapshot's private
+    // native receipt instead of cloning every node and forcing a full bridge
+    // serialization merely to hand the first fractional pose to the kernel.
+    if (this.offset.x === 0 && this.offset.y === 0) return document
     return { ...document, nodes: { ...document.nodes,
       ...Object.fromEntries(this.plan!.ids.map(id => {
         const node = document.nodes[id], transform = [...node.transform] as typeof node.transform

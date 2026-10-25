@@ -37,6 +37,7 @@ export function ResidentCompositeSurface(props: {
   settledDocument?: DesignDocument
   onReady: (key: string, serial: number, managed: boolean) => void
   sourceDocument: DesignDocument
+  contentRevision: number
   translationItems: CompositeItem[]
   allowPageTranslation: boolean
   onGone: (key: string, serial: number) => void
@@ -156,6 +157,9 @@ export function ResidentCompositeSurface(props: {
       dpr: p.dpr,
       interaction: !!moved,
       allowEmpty: !!moved && moving?.mode !== 'live-kernel',
+      allowBackground: !moved && p.allowPageTranslation && p.items.filter(i=>i.active).every(i=>
+        (i.tile as unknown as {document?:DesignDocument;revision?:number}).document===p.sourceDocument &&
+        (i.tile as unknown as {revision?:number}).revision===p.contentRevision),
       linearBlend:
         !!moved && moving?.mode === 'retained-layers' && !!p.interaction?.document.colorManagement,
       backgroundLinear: moving?.backgroundLinear,
@@ -301,7 +305,7 @@ export function ResidentCompositeSurface(props: {
         renderer.prepare({ ...p.interaction, document: displayed }, p.pageId, p.view, p.dpr,
           p.rasterProfile, p.backend, p.settledDocument, { width: p.width, height: p.height })
         return renderer.control.apply(document, patches)
-      })
+      }, p.client.presentationDiagnosticsEnabled?.() ? fields=>latest.current.client.recordViewportDiagnostic(fields) : undefined)
     } catch (error) {
       p.onFailure(String(error))
     }

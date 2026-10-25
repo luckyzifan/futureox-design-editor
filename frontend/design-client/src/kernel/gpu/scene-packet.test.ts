@@ -71,10 +71,10 @@ test('a changed descendant revokes its containing compiled-source identity',asyn
   const options={...f.options,pageId:doc.pages[0].id}
   const compile=()=>{const lease=store.capture();try{return decodeScenePacket(f.engine.compile_gpu_packet(JSON.stringify({...options,frameResources:lease.acknowledgement})),store,lease)}finally{lease.release()}}
   try{
-    const first=compile(),again=compile();expect(sameCompiledSource(first.nodes[parent.id],again.nodes[parent.id])).toBe(true)
+    const first=compile(),again=compile();expect(sameCompiledSource(first.nodes[parent.id],again.nodes[parent.id],first,again)).toBe(true)
     const changed={...f.shape,fills:[paint('#ff0000')]};store.invalidate()
     f.engine.apply_document_patch_with_damage(JSON.stringify({fields:{},nodes:{[changed.id]:changed}}))
-    const next=compile();expect(sameCompiledSource(first.nodes[parent.id],next.nodes[parent.id])).toBe(false)
+    const next=compile();expect(sameCompiledSource(first.nodes[parent.id],next.nodes[parent.id],first,next)).toBe(false)
     expect(()=>{next.nodes[parent.id].opacity=.5}).toThrow()
   }finally{f.engine.free()}
 })

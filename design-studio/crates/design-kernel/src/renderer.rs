@@ -210,6 +210,7 @@ pub struct Engine {
     pending_camera: Option<(SharedDocument, crate::gpu::CameraPrepare, bool)>,
     pub(crate) camera_residency: crate::gpu::CameraResidency,
     pub(crate) frame_scene: crate::gpu::FrameSceneContext,
+    pub(crate) page_support: Option<((u64,String,u64,bool),Option<Vec<[f64;4]>>)>,
     render_index: Option<Arc<crate::render_index::RenderIndex>>,
     /// Sketch-parity tiled renderer state (tile residency, instructions,
     /// caches, telemetry). Lazily created so export-only engines pay nothing.
@@ -254,6 +255,7 @@ impl Engine {
             pending_camera: None,
             camera_residency: crate::gpu::CameraResidency::default(),
             frame_scene: crate::gpu::FrameSceneContext::default(),
+            page_support: None,
             render_index: None,
             tiled: None,
         }
@@ -1774,6 +1776,7 @@ impl Engine {
             pending_camera: None,
             camera_residency: crate::gpu::CameraResidency::default(),
             frame_scene: crate::gpu::FrameSceneContext::default(),
+            page_support: None,
             render_index: self.render_index.clone(),
             tiled: None,
         }
@@ -1785,6 +1788,27 @@ impl Engine {
         let source = self.source_doc.as_ref()?;
         if !source.animations.is_empty() || self.animation_sample.is_some() { return None; }
         Some(self.snapshot_worker())
+    }
+    /// Render-only root scope over the same authoritative document. The
+    /// existing COW snapshot and patch admission keep component dependencies
+    /// reachable without sending a second whole document through the UI.
+    pub(crate) fn snapshot_render_roots(&self, page_id: &str, roots: &[String]) -> Result<Engine,String> {
+        let source=self.source_doc.as_ref().ok_or("Load document before selecting render roots")?;
+        let page=source.pages.iter().find(|page|page.id==page_id).ok_or("Unknown render page")?;
+        let selected:std::collections::HashSet<_>=roots.iter().collect();
+        if selected.len()!=roots.len() || roots.iter().any(|id|!page.children.contains(id)) {
+            return Err("Render roots must be unique roots of the requested page".into());
+        }
+        let mut scoped=self.snapshot_static_worker().ok_or("Animated render root scope is unsupported")?;
+        let mut patch=crate::editing::DocumentPatch{fields:Default::default(),nodes:Default::default()};
+        for id in &page.children {
+            if !selected.contains(id) && source.nodes[id].visible {
+                let mut node=source.nodes[id].clone();node.visible=false;
+                patch.nodes.insert(id.clone(),Some(node));
+            }
+        }
+        if !patch.nodes.is_empty(){scoped.apply_document_patch_with_damage(&patch)?;}
+        Ok(scoped)
     }
     /// Renew a native lane certificate after ordered patches. Compare the full
     /// canonical authored representation, including float spelling/sign and

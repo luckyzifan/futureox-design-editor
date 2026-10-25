@@ -600,6 +600,13 @@ mod wasm {
             .map_err(|e| JsValue::from_str(&e))
     }
     #[wasm_bindgen]
+    pub fn certified_tent_prefix_plan(radius:f64,bytes:&[u8])->Result<Vec<u32>,JsValue>{
+        if !radius.is_finite()||!(8. ..=512.).contains(&radius){return Ok(Vec::new());}
+        let kernel=crate::rational_filter::RationalKernel::tent(radius).map_err(|e|JsValue::from_str(&e))?;
+        let interior=radius.floor()as usize-1;
+        Ok(kernel.certified_prefix_plan(interior,bytes).map(|bits|vec![bits,interior as u32,kernel.reach()as u32]).unwrap_or_default())
+    }
+    #[wasm_bindgen]
     pub fn certified_box_kernel_rgba(radius: u32) -> Result<Vec<u8>, JsValue> {
         crate::rational_filter::RationalKernel::uniform_box(radius)
             .map(|kernel| kernel.certified_encoded())

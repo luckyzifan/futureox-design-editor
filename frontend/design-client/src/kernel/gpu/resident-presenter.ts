@@ -9,7 +9,8 @@ import { compositeDrawPlan, compositeRasterQuad } from './composite-draw-plan'
 import { DISPLAY_TEXTURE_BUDGET } from './display-budget'
 import { CanvasOverlayRenderer, translateOverlay, transformOverlay, type CanvasOverlay } from './canvas-overlay'
 import { ResidentUniforms } from './resident-uniforms'
-import { physicalCoverage, physicalPixelCoverage } from './physical-coverage'
+import { physicalCoverage, physicalPixelCoverage, physicalCoverageGaps } from './physical-coverage'
+import { backgroundPaintRects, type PageBackgroundProof } from './page-background'
 import { presentedFragmentQuality } from './presented-fragment-quality'
 import { PresenterAlphaTrace } from './presenter-alpha-trace'
 
@@ -32,6 +33,7 @@ export type ResidentFrame = {
   dpr: number
   interaction?: boolean
   allowEmpty?: boolean
+  allowBackground?: boolean
   linearBlend?: boolean
   backgroundLinear?: [number, number, number, number]
   input?: { sequence: number; at: number; owner?:string }
@@ -70,7 +72,7 @@ export class ResidentPresenter {
   private linearTarget?: { texture: GPUTexture; bind: GPUBindGroup; width: number; height: number; payload: PayloadToken }
   private sampler: GPUSampler
   private uniforms: GPUBuffer
-  private textures = new Map<number, { texture: GPUTexture; bytes: number; bind: GPUBindGroup; payload: PayloadToken }>()
+  private textures = new Map<number, { texture: GPUTexture; bytes: number; bind: GPUBindGroup; payload: PayloadToken; background?:PageBackgroundProof }>()
   private terminalQualityGate = new TerminalQualityGate()
   private latest?: ResidentFrame
   private drawn?: ResidentFrame
@@ -187,7 +189,7 @@ export class ResidentPresenter {
     })
     recordDeviceLifecycle(this, deviceLifecyclePhase.attached, this.diagnosticFields())
   }
-  capture(width: number, height: number) {
+  capture(width: number, height: number, background?:PageBackgroundProof) {
     if (this.disposed) throw Error('Display device retired')
     const bytes = width * height * 4
     const payload = this.payload.reserve(bytes)
@@ -212,7 +214,7 @@ export class ResidentPresenter {
         ],
       })
       this.payload.commit(payload)
-      this.textures.set(id, { texture, bytes, bind, payload })
+      this.textures.set(id, { texture, bytes, bind, payload, background })
       this.bytes += bytes
       this.captures++
       return { id, texture }
@@ -240,6 +242,34 @@ export class ResidentPresenter {
     } finally {
       // Ownership arrives here even when resident admission rejects the copy.
       bitmap.close()
+    }
+  }
+
+  /** Reserve both the destination and the temporary bitmap before the producer
+   * creates an output. The transfer remains charged through destination-queue
+   * completion; closing ImageBitmap is not a GPU completion certificate. */
+  reserveBitmapImport(width:number,height:number,background?:PageBackgroundProof){
+    const transfer=this.payload.reserve(width*height*4)
+    let capture:ReturnType<ResidentPresenter['capture']>
+    try{capture=this.capture(width,height,background)}catch(error){this.payload.cancel(transfer);throw error}
+    let consumed=false
+    return {
+      id:capture.id,texture:capture.texture,
+      cancel:()=>{if(!consumed){consumed=true;this.payload.cancel(transfer)}this.release([capture.id])},
+      copy:(bitmap:ImageBitmap)=>{
+        let queued=false
+        try{
+          if(consumed)throw Error('Display transfer already consumed')
+          this.payload.assertOpen()
+          if(bitmap.width!==width||bitmap.height!==height)throw Error('Display transfer dimensions changed')
+          this.device.queue.copyExternalImageToTexture({source:bitmap},{texture:capture.texture,premultipliedAlpha:true},[width,height])
+          queued=true;this.imports++;return capture.id
+        }finally{
+          try{bitmap.close()}finally{
+            if(!consumed){consumed=true;if(queued)this.payload.retire(transfer);else{this.payload.cancel(transfer);this.release([capture.id])}}
+          }
+        }
+      },
     }
   }
 
@@ -364,8 +394,9 @@ export class ResidentPresenter {
       throw Error('Display dimensions exceed device limits')
     const rows: {
       item: ResidentItem
-      entry: { texture: GPUTexture; bytes: number; bind: GPUBindGroup }
+      entry: { texture: GPUTexture; bytes: number; bind: GPUBindGroup; background?:PageBackgroundProof }
       raster: NonNullable<ReturnType<typeof compositeRasterQuad>>
+      constant?:boolean
     }[] = []
     // A nonresident tile cannot occlude a valid lower-density source. Filter
     // before planning, not after covered rectangles have removed that source.
@@ -400,8 +431,36 @@ export class ResidentPresenter {
     // Check the actual surviving physical draws before resizing, allocating,
     // clearing or acknowledging this camera. Explicit empty interaction
     // captures retain their existing separate clear/background contract.
-    if (!frame.allowEmpty && !physicalPixelCoverage(rows.map(row => ({ ...row.raster, blend: row.item.blend })), w, h)) {
-      this.report({ coverageDeferred: 1, coverageDeferredDraws: rows.length,
+    let complete=physicalPixelCoverage(rows.map(row=>({...row.raster,blend:row.item.blend})),w,h),backgroundAdded=false
+    let backgroundDecline=complete?0:1
+    if(!complete&&frame.allowBackground&&!frame.interaction&&!frame.linearBlend){
+      // Draw order starts with overview/history. Those certificates describe
+      // their own sampling density, so choose a density-matched native source
+      // instead of letting the first coarse row veto the entire frame.
+      const source=rows.find(row=>row.entry.background?.pixel&&
+        backgroundPaintRects(row.entry.background,view,dpr,w,h)!==undefined),proof=source?.entry.background
+      backgroundDecline=rows.some(row=>row.entry.background)?3:2
+      if(!source&&rows.some(row=>row.entry.background?.pixel))backgroundDecline=4
+      if(source&&proof&&rows.every(row=>row.entry.background?.owner===proof.owner)){
+        backgroundDecline=4
+        const paint=backgroundPaintRects(proof,view,dpr,w,h)
+        const gaps=paint&&physicalCoverageGaps(rows.map(row=>({...row.raster,blend:row.item.blend})),w,h)
+        if(paint)backgroundDecline=5
+        if(paint&&gaps?.every(gap=>!paint.some(b=>gap.x<b.x+b.width&&gap.x+gap.width>b.x&&gap.y<b.y+b.height&&gap.y+gap.height>b.y))){
+          const [u,v]=proof.pixel!
+          rows.unshift({item:{...source.item,blend:false},entry:source.entry,constant:true,
+            raster:{x:0,y:0,width:w,height:h,box:[0,0,width,height],uv:[u,v,0,0]}})
+          complete=true;backgroundAdded=true;backgroundDecline=0
+        }
+      }
+    }
+    if (!frame.allowEmpty && !complete) {
+      const densityProofs=rows.flatMap(row=>row.entry.background?.pixel&&row.entry.background.view.zoom===view.zoom*dpr?[row.entry.background]:[])
+      const backgroundPhaseError=densityProofs.length?Math.min(...densityProofs.map(p=>{
+        const dx=view.x*dpr-p.view.x,dy=view.y*dpr-p.view.y;return Math.max(Math.abs(dx-Math.round(dx)),Math.abs(dy-Math.round(dy)))
+      })):0
+      this.report({ coverageDeferred: 1, coverageDeferredDraws: rows.length, backgroundDecline,
+        backgroundDensitySources:densityProofs.length,backgroundPhaseError,
         diagnosticSequence: frame.diagnosticSequence, missingTextureCount: missing.length })
       return
     }
@@ -528,6 +587,7 @@ export class ResidentPresenter {
     this.report({
       ...this.diagnosticFields(),
       coverageDeferred: 0,
+      backgroundCoverage: Number(backgroundAdded),
       diagnosticSequence: frame.diagnosticSequence, submittedEpoch,
       gridVisible: !!frame.overlay?.pixelGrid && view.zoom>=4, dpr,
       ...(terminalQuality ? { ...terminalQuality, qualityTerminal: true } : {}),
@@ -557,11 +617,11 @@ export class ResidentPresenter {
       },
       input: frame.input,
       missingTextureCount: missing.length,
-      ...(strictSharpDiagnostics || traceQuality ? presentedFragmentQuality(rows.map(row => ({ ...row.raster,
+      ...(strictSharpDiagnostics || traceQuality || backgroundAdded ? presentedFragmentQuality(rows.map(row => ({ ...row.raster,constant:row.constant,
         sourceWidth: row.entry.texture.width, sourceHeight: row.entry.texture.height, blend: row.item.blend })), w, h) :
         measureCoverage ? { ...presentationQuality(available as CompositeItem[], view, width, height, dpr),
           ...physicalCoverage(rows.map(row=>({...row.raster,
-            blend:row.item.blend,native:Math.min(row.item.tile.width*row.raster.uv[2]/row.raster.box[2],row.item.tile.height*row.raster.uv[3]/row.raster.box[3])>=dpr*(1-1e-10)})),w,h) } : {}),
+            blend:row.item.blend,native:!!row.constant||Math.min(row.item.tile.width*row.raster.uv[2]/row.raster.box[2],row.item.tile.height*row.raster.uv[3]/row.raster.box[3])>=dpr*(1-1e-10)})),w,h) } : {}),
       // Diagnostic geometry of pixels actually submitted, excluding missing
       // textures. Tests can distinguish absent document content from the known
       // empty page background outside the document's paint bounds.

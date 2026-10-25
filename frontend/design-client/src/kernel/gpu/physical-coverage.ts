@@ -13,3 +13,19 @@ export function physicalCoverage(rows: readonly { x:number;y:number;width:number
   const bounds={x:0,y:0,width,height}
   return {pixelCoverageComplete:tilesCoverBounds(items,bounds),nativeCoverageComplete:tilesCoverBounds(items.filter(r=>r.native),bounds)}
 }
+
+/** Exact uncovered physical rectangles. Adjacent strips can stay separate:
+ * this is a conservative admission proof, never a sampled quality estimate. */
+export function physicalCoverageGaps(rows:readonly PhysicalRect[],width:number,height:number):PhysicalRect[]{
+  const rects=rows.filter(r=>!r.blend&&r.width>0&&r.height>0)
+  const xs=[...new Set([0,width,...rects.flatMap(r=>[Math.max(0,Math.min(width,r.x)),Math.max(0,Math.min(width,r.x+r.width))])])].sort((a,b)=>a-b)
+  const gaps:PhysicalRect[]=[]
+  for(let i=1;i<xs.length;i++){
+    const left=xs[i-1],right=xs[i];if(right<=left)continue
+    const ys=rects.filter(r=>r.x<=left&&r.x+r.width>=right).map(r=>[Math.max(0,r.y),Math.min(height,r.y+r.height)]).filter(([a,b])=>b>a).sort((a,b)=>a[0]-b[0])
+    let y=0
+    for(const [a,b] of ys){if(a>y)gaps.push({x:left,y,width:right-left,height:a-y});y=Math.max(y,b)}
+    if(y<height)gaps.push({x:left,y,width:right-left,height:height-y})
+  }
+  return gaps
+}

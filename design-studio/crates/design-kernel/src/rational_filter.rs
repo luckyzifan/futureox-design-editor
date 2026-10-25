@@ -249,6 +249,34 @@ impl RationalKernel {
     /// center outwards. Shifting Q64 by 16 recovers the identical Q48 floor.
     /// The upper endpoint is q+1, including exactly representable coefficients.
     pub fn certified_encoded(&self) -> Vec<u8> {
+        self.certified_packet(None).0
+    }
+    /// Bound the exact signed intermediates of the proposed Q64 prefix.
+    /// This is tied to complete actual packet bytes, never a radius-only hint.
+    pub fn certified_prefix_plan(&self, interior: usize, bytes: &[u8]) -> Option<u32> {
+        let (expected, bound) = self.certified_packet(Some(interior));
+        (expected == bytes).then_some(bound).flatten()
+    }
+    fn certified_prefix_bound(weights: &[u128], interior: usize) -> Option<u32> {
+        let reach=weights.len().checked_sub(1)?;
+        if !(7..=511).contains(&interior)||reach<interior||reach-interior>4{return None;}
+        let slope=weights[1].checked_sub(weights[2])?;let intercept=weights[1].checked_add(slope)?;
+        for (d,&actual) in weights.iter().enumerate().take(interior+1).skip(1){
+            let approximate=intercept.checked_sub(slope.checked_mul(d as u128)?)?;
+            if actual.abs_diff(approximate)>(d+2)as u128{return None;}
+        }
+        let bits=|value:u128|128-value.leading_zeros();
+        let tails=weights.iter().skip(interior+1).try_fold(0_u128,|sum,value|sum.checked_add(*value))?.checked_mul(2)?;
+        let width=(interior*interior+7*interior+1+2*(reach-interior))as u128;
+        // Five absolute terms: center, interior sum, distance moment, tails,
+        // and enclosure width. Three extra bits dominate their total, even
+        // with arbitrary mixed signs and cancellation in the real samples.
+        let bound=[bits(weights[0]),bits(intercept)+bits(2*interior as u128),
+            bits(slope)+bits((interior*(interior+1))as u128),bits(tails),bits(width)]
+            .into_iter().max()?.checked_add(3)?;
+        (bound<=120).then_some(bound)
+    }
+    fn certified_packet(&self, interior: Option<usize>) -> (Vec<u8>,Option<u32>) {
         // The old Q48 certificate is recovered exactly by discarding 16 low
         // bits. Prefix filtering uses the full Q64 coefficient to avoid a
         // radius-squared enclosure error at high zoom. A unit coefficient
@@ -256,11 +284,13 @@ impl RationalKernel {
         let wide = self.reach() >= 3 && self.weights[0].cmp(&self.denominator).is_lt();
         let precision = if wide { 64 } else { 48 };
         let mut words = vec![CERTIFIED_KERNEL_MAGIC, self.reach() as u32, 48, if wide {64} else {0}];
-        for weight in self.certified_weights_at(precision) {
+        let weights=self.certified_weights_at(precision);
+        let bound=if wide{interior.and_then(|n|Self::certified_prefix_bound(&weights,n))}else{None};
+        for weight in weights {
             words.push(weight as u32);
             words.push((weight >> 32) as u32);
         }
-        words.into_iter().flat_map(u32::to_le_bytes).collect()
+        (words.into_iter().flat_map(u32::to_le_bytes).collect(),bound)
     }
     /// Portable reference for the Q48 GPU certificate. No floating-point
     /// arithmetic participates in acceptance. None means use the exact path.
@@ -508,5 +538,81 @@ mod large_tent_tests {
             }
         }
         assert!(RationalKernel::tent(2048.0001).is_err());
+    }
+}
+
+#[cfg(test)]
+mod certified_prefix_interval_tests {
+    use super::*;
+    // Independent CPU model of the GPU enclosure. Its accepted bits are
+    // compared with the general 44-word exact convolution, including borders.
+    fn prefix(kernel:&RationalKernel,radius:f64,line:&[f32],x:usize,q:&[u128],bound:u32)->Option<u32>{
+        let interior=radius.floor() as usize-1;
+        let exponents=line.iter().filter(|v|v.to_bits()&0x7fff_ffff!=0).map(|v|((v.to_bits()>>23)&255).max(1)).collect::<Vec<_>>();
+        if line.iter().any(|v|!v.is_finite()){return None;}
+        if exponents.is_empty(){return Some(0);}
+        let minimum=*exponents.iter().min()?;let maximum=*exponents.iter().max()?;let span=maximum-minimum;
+        if span>40||24+span+bound>123{return None;}
+        let slope=q[1].checked_sub(q[2])?;let intercept=q[1]+slope;
+        for (d,&actual) in q.iter().enumerate().take(interior+1).skip(1){
+            let approximate=intercept.checked_sub(slope*d as u128)?;
+            if actual.abs_diff(approximate)>(d+2) as u128{return None;}
+        }
+        let values=line.iter().map(|v|{
+            let bits=v.to_bits();let exponent=(bits>>23)&255;
+            let mantissa=(bits&0x7f_ffff)|if exponent==0{0}else{0x80_0000};if mantissa==0{return 0;}
+            let magnitude=i128::from(mantissa)<<(exponent.max(1)-minimum);
+            if bits>>31==0{magnitude}else{-magnitude}
+        }).collect::<Vec<_>>();
+        let mut sums=vec![0_i128;values.len()+1];let mut moments=sums.clone();
+        for (i,&v)in values.iter().enumerate(){sums[i+1]=sums[i]+v;moments[i+1]=moments[i]+v*i as i128;}
+        let lo=x.saturating_sub(interior);let hi=(x+interior+1).min(values.len());
+        let left=sums[x]-sums[lo];let right=sums[hi]-sums[x+1];
+        let distances=left*x as i128-(moments[x]-moments[lo])+(moments[hi]-moments[x+1])-right*x as i128;
+        let mut n=values[x]*q[0] as i128+(left+right)*intercept as i128-distances*slope as i128;
+        for (d,&weight)in q.iter().enumerate().skip(interior+1){
+            let a=x.checked_sub(d).and_then(|i|values.get(i)).copied().unwrap_or(0);
+            let b=values.get(x+d).copied().unwrap_or(0);n+=(a+b)*weight as i128;
+        }
+        let maximum=(0xff_ffff_i128)<<span;
+        let error=maximum*(interior*interior+7*interior+1+2*(kernel.reach()-interior))as i128;
+        let low=round_certified_dyadic(n-error,minimum as i32-214);let high=round_certified_dyadic(n+error,minimum as i32-214);
+        (low==high&&low&0x7f80_0000!=0x7f80_0000).then_some(low)
+    }
+    #[test]
+    fn q64_prefix_acceptance_matches_full_rational_bits_for_signed_hdr_subnormal_and_border_inputs(){
+        let mut accepted=0;let mut declined=0;let mut seed=0x57851392_u32;
+        for radius in [8.,8.872759199349778,17.062998120031647,17.5,31.999999999999996,32.,33.75523176884158,63.25,128.1927301,511.99999999,512.]{
+            let kernel=RationalKernel::tent(radius).unwrap();
+            let q=kernel.certified_weights_at(64);
+            let bound=kernel.certified_prefix_plan(radius.floor()as usize-1,&kernel.certified_encoded()).unwrap();
+            for shape in 0..8 {
+                let line=(0..97).map(|i|{seed=seed.wrapping_mul(1664525).wrapping_add(1013904223);match shape {
+                    0=>0.,1=>0.25,2=>(i%7)as f32/7.,
+                    3=>f32::from_bits((seed&0x807f_ffff)|((117+seed%9)<<23)),
+                    4=>f32::from_bits((seed&0x807f_ffff)|((220+seed%6)<<23)),
+                    5=>f32::from_bits(seed&0x807f_ffff),
+                    6=>if i==47{f32::MAX}else{f32::from_bits(1)},
+                    _=>if i==47{f32::NAN}else{1.},
+                }}).collect::<Vec<_>>();
+                for clamp in [false,true]{
+                    let reach=kernel.reach();let pad=if clamp{reach}else{0};
+                    let extended=(0..line.len()+pad*2).map(|i|line[i.saturating_sub(pad).min(line.len()-1)]).collect::<Vec<_>>();
+                    for x in [0,1,8,19,47,48,80,95,96]{
+                        match prefix(&kernel,radius,&extended,x+pad,&q,bound){
+                            None=>declined+=1,
+                            Some(bits)=>{
+                                let taps=(0..reach*2+1).map(|i|{let at=x as isize+i as isize-reach as isize;
+                                    if clamp{line[at.clamp(0,line.len()as isize-1)as usize]}
+                                    else{usize::try_from(at).ok().and_then(|i|line.get(i)).copied().unwrap_or(0.)}
+                                }).collect::<Vec<_>>();
+                                assert_eq!(bits,kernel.exact(&taps).to_bits(),"r={radius} shape={shape} x={x} clamp={clamp}");accepted+=1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert!(accepted>400,"actual certified cases {accepted}");assert!(declined>200,"actual declined cases {declined}");
     }
 }

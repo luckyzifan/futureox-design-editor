@@ -210,3 +210,29 @@ test.each([false, true])('Shift+Mod+N never becomes new-document; Sketch page sh
   await act(async () => { input.remove(); canvas().focus() })
   await key('n', { code: 'KeyN', metaKey: true }); expect(replace).toHaveBeenCalledOnce()
 })
+
+test('source workset uses normal App panels and never enters FD recovery or browser autosave',async()=>{
+ const sourceEditor=new Editor(blank('Loaded board')),layer=node('rectangle',0,0,80,80)
+ sourceEditor.change('fixture',doc=>{doc.nodes[layer.id]=layer;doc.pages[0].children=[layer.id]})
+ editor=sourceEditor
+ const start=vi.spyOn(DesktopSession.prototype,'start'),save=vi.fn(async()=>{}),exportFile=vi.fn(async()=>{})
+ Object.defineProperty(window,'coreDesktop',{configurable:true,value:{version:1,renderPolicy:{cpuOnly:true},
+  onCommand:()=>()=>{},onCloseRequested:()=>()=>{},setDirty:async()=>({status:'ok'})}as unknown as DesktopBridge})
+ const source:import('./LargeDocumentWorkspace').SourceWorkspace={editor:sourceEditor,ready:true,busy:false,locked:false,dirty:false,
+  name:'Full source.sketch',notice:'Loaded board',error:'',canvas:{current:null},navigation:<nav>Source pages</nav>,showLayers:true,warnings:[],
+  dismissWarnings(){},cancel(){},save,exportFile,leave:async()=>{},openFile:async()=>{}}
+ await act(async()=>{root.render(<App sourceWorkspace={source}/>);for(let i=0;i<30;i++)await Promise.resolve()})
+ expect(document.querySelector('.app-shell[data-source-document="true"]')).not.toBeNull()
+ expect(document.querySelector('.editor-workspace .layers-panel')).not.toBeNull()
+ expect(canvas()).not.toBeNull();expect(document.querySelector('.source-workspace')).toBeNull()
+ expect(document.querySelector<HTMLInputElement>('[aria-label="文档名称"]')!.value).toBe('Full source.sketch')
+ await act(async()=>sourceEditor.updateProperties([layer.id],n=>{n.width=90}))
+ await act(async()=>new Promise(resolve=>setTimeout(resolve,450)))
+ expect(start).not.toHaveBeenCalled();expect(localStore.localOpen).not.toHaveBeenCalled()
+ expect(localStore.SaveCoordinator.prototype.save).not.toHaveBeenCalled();expect(startupPreview.readStartupPreview).not.toHaveBeenCalled()
+ const saveButton=[...document.querySelectorAll<HTMLButtonElement>('.header-right>button')].find(b=>b.textContent==='保存')!
+ await act(async()=>saveButton.click());expect(save).toHaveBeenCalledOnce()
+ await act(async()=>document.querySelector<HTMLButtonElement>('[aria-label="文件菜单"]')!.click())
+ await act(async()=>button('导出完整文件…').click());expect(exportFile).toHaveBeenCalledOnce()
+ expect(localStore.SaveCoordinator.prototype.save).not.toHaveBeenCalled()
+})

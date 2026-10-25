@@ -36,6 +36,38 @@ test('acknowledged exact canvas identity admits empty derivation with zero full 
     f.ack(two, null); f.finish(two); await second
   } finally { f.client.dispose() }
 })
+test('isolated render roots use the original canvas receipt without serializing another document',async()=>{
+  const f=await fixture(),a=node('frame',0,0,20,20),b=node('frame',30,0,20,20)
+  f.document.nodes[a.id]=a;f.document.nodes[b.id]=b;f.document.pages[0].children=[a.id,b.id]
+  try{
+    const first=f.render(),one=await f.next(1);f.ack(one);f.finish(one);await first
+    const calls=f.native.request.mock.calls.length
+    const next=f.render(f.document,{interactionChannel:true,gpuRoots:[a.id]}),two=await f.next(2)
+    expect(two.deriveFrom).toEqual(receipt());expect(two.document).toBeUndefined();expect(two.documentPatch).toBeUndefined()
+    expect(two.options.gpuRoots).toEqual([a.id]);expect(f.native.request).toHaveBeenCalledTimes(calls)
+    expect(f.document.nodes[b.id].visible).toBe(true)
+    f.ack(two,null);f.finish(two);await next
+  }finally{f.client.dispose()}
+})
+test('a privately constructed first pose derives the original receipt and sends only transforms',async()=>{
+  const f=await fixture(),shape=node('frame',0,0,20,20)
+  const {interactionPatchedDocument}=await import('./interaction-document-source')
+  f.document.nodes[shape.id]=shape;f.document.pages[0].children=[shape.id]
+  try{
+    const first=f.render(),one=await f.next(1);f.ack(one);f.finish(one);await first
+    const transform:[number,number,number,number,number,number]=[1,0,0,1,.125,3.5]
+    const pose=interactionPatchedDocument(f.document,{[shape.id]:{transform}}),calls=f.native.request.mock.calls.length
+    transform[4]=999 // The caller's draft cannot rewrite the certified pose.
+    const next=f.render(pose,{interactionChannel:true}),two=await f.next(2)
+    expect(two.deriveFrom).toEqual(receipt());expect(two.document).toBeUndefined();expect(two.documentPatch).toBeUndefined()
+    expect(two.derivedTransforms).toEqual({[shape.id]:[1,0,0,1,.125,3.5]})
+    expect(f.native.request).toHaveBeenCalledTimes(calls)
+    f.ack(two,null);f.finish(two);await next
+    const copy={...pose},third=f.render(copy,{interactionChannel:true}),three=await f.next(3)
+    expect(three.deriveFrom).toBeUndefined();expect(three.derivedTransforms).toBeUndefined()
+    f.finish(three);await third
+  }finally{f.client.dispose()}
+})
 test('same ID but different authored object, missing acknowledgment, and post-patch binding all fall back', async () => {
   const f = await fixture()
   try {
