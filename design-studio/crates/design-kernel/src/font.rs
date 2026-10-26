@@ -19,14 +19,23 @@ use unicode_segmentation::UnicodeSegmentation;
 /// Inspect only the selected file. Browser/local file imports use these face
 /// indices instead of assuming a collection's first face matches its name.
 pub fn faces_json(bytes: &[u8]) -> Result<String, String> {
-    if bytes.len() > 20 * 1024 * 1024 { return Err("Font file exceeds 20 MiB".into()); }
+    if bytes.len() > 20 * 1024 * 1024 {
+        return Err("Font file exceeds 20 MiB".into());
+    }
     let count = ttf_parser::fonts_in_collection(bytes).unwrap_or(1);
-    if count > 256 { return Err("Font collection exceeds 256 faces".into()); }
+    if count > 256 {
+        return Err("Font collection exceeds 256 faces".into());
+    }
     let mut faces = Vec::new();
     for index in 0..count {
         let face = ttf_parser::Face::parse(bytes, index).map_err(|_| "Invalid font face")?;
-        let name = |id| face.names().into_iter().filter(|n| n.name_id == id)
-            .find_map(|n| n.to_string()).unwrap_or_default();
+        let name = |id| {
+            face.names()
+                .into_iter()
+                .filter(|n| n.name_id == id)
+                .find_map(|n| n.to_string())
+                .unwrap_or_default()
+        };
         faces.push(serde_json::json!({"index":index,
             "family":name(ttf_parser::name_id::FAMILY),
             "style":name(ttf_parser::name_id::SUBFAMILY),
@@ -64,8 +73,27 @@ pub struct TextStyle {
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub enum TextCase { #[default] Original, Upper, Lower }
-impl TextCase { fn is_original(&self) -> bool { *self == Self::Original } }
+pub enum TextCase {
+    #[default]
+    Original,
+    Upper,
+    Lower,
+    /// kiwi `TextCase` ordinal 3 — uppercase the first cased letter of each
+    /// word, lowercase the rest (display layer in `text_case.rs`).
+    Title,
+    /// kiwi ordinal 4 — OpenType `smcp` small caps. The display layer keeps
+    /// the authored string until the font shaper applies the feature; the
+    /// value round-trips through import/export unchanged.
+    SmallCaps,
+    /// kiwi ordinal 5 — OpenType `smcp`+`c2sc` forced small caps (uppercase
+    /// letters are also replaced).
+    SmallCapsForced,
+}
+impl TextCase {
+    fn is_original(&self) -> bool {
+        *self == Self::Original
+    }
+}
 /// One named variation-axis coordinate on a variable font.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -164,7 +192,10 @@ struct FontFaceCache {
 }
 impl Default for FontFaceCache {
     fn default() -> Self {
-        Self { inner: crate::read_cache::ReadCache::new(128 * 1024 * 1024, 64), builds: 0 }
+        Self {
+            inner: crate::read_cache::ReadCache::new(128 * 1024 * 1024, 64),
+            builds: 0,
+        }
     }
 }
 impl ParsedFontFace {
@@ -174,16 +205,26 @@ impl ParsedFontFace {
         // subtable vectors beyond its inline face; ttf-parser tables are views.
         // Include Vec growth slack and count repeated lookup offsets separately.
         let face = self.borrow_face();
-        let mut bytes = self.borrow_bytes().capacity()
+        let mut bytes = self
+            .borrow_bytes()
+            .capacity()
             .saturating_add(std::mem::size_of::<rustybuzz::Face<'_>>() + 512)
             .saturating_add(self.borrow_key().axes.capacity() * 36);
-        for table in [face.tables().gsub, face.tables().gpos].into_iter().flatten() {
+        for table in [face.tables().gsub, face.tables().gpos]
+            .into_iter()
+            .flatten()
+        {
             bytes = bytes.saturating_add(usize::from(table.lookups.len()).max(4) * 256);
             for lookup in table.lookups {
-                let subtable_size = std::mem::size_of::<ttf_parser::gsub::SubstitutionSubtable<'_>>()
-                    .max(std::mem::size_of::<ttf_parser::gpos::PositioningSubtable<'_>>());
-                bytes = bytes.saturating_add(usize::from(lookup.subtables.len()).max(4)
-                    .saturating_mul(subtable_size).saturating_mul(2));
+                let subtable_size =
+                    std::mem::size_of::<ttf_parser::gsub::SubstitutionSubtable<'_>>()
+                        .max(std::mem::size_of::<ttf_parser::gpos::PositioningSubtable<'_>>());
+                bytes = bytes.saturating_add(
+                    usize::from(lookup.subtables.len())
+                        .max(4)
+                        .saturating_mul(subtable_size)
+                        .saturating_mul(2),
+                );
             }
         }
         bytes
@@ -210,7 +251,10 @@ struct ShapedRunCache {
 }
 impl Default for ShapedRunCache {
     fn default() -> Self {
-        Self { inner: crate::read_cache::ReadCache::new(8 * 1024 * 1024, 1024), builds: 0 }
+        Self {
+            inner: crate::read_cache::ReadCache::new(8 * 1024 * 1024, 1024),
+            builds: 0,
+        }
     }
 }
 #[derive(Clone, Default)]
@@ -232,7 +276,12 @@ pub struct Fonts {
     quantize_glyph_origins: bool,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum OutlineOutput { None, Geometry, Spans, Svg }
+enum OutlineOutput {
+    None,
+    Geometry,
+    Spans,
+    Svg,
+}
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Glyph {
@@ -402,7 +451,8 @@ pub fn expand_rich_text(doc: &mut crate::scene::Document, fonts: &Fonts) -> Resu
         .collect();
     for id in ids {
         let original = doc.nodes[&id].clone();
-        let layout = fonts.node_outline_layout(&original, Some(original.width), OutlineOutput::Spans)?;
+        let layout =
+            fonts.node_outline_layout(&original, Some(original.width), OutlineOutput::Spans)?;
         let mut children = Vec::new();
         for (i, span) in layout.spans.into_iter().enumerate() {
             if span.outline.commands.is_empty() {
@@ -458,7 +508,9 @@ pub fn expand_rich_text(doc: &mut crate::scene::Document, fonts: &Fonts) -> Resu
             // a legacy 40k business threshold must not reject an admitted scene.
             // Per-text glyph/outline guards above remain independently bounded.
             crate::capacity::check_document_counts(
-                doc.nodes.len().saturating_add(usize::from(!doc.nodes.contains_key(&n.id))),
+                doc.nodes
+                    .len()
+                    .saturating_add(usize::from(!doc.nodes.contains_key(&n.id))),
                 doc.pages.len(),
             )?;
             children.push(n.id.clone());
@@ -518,7 +570,11 @@ impl Fonts {
                 return Err("Invalid font resource identity".into());
             }
             let digest: [u8; 32] = Sha256::digest(resource.data.as_bytes()).into();
-            let font = if let Some(cached) = self.named.get(id).filter(|f| f.digest == digest && f.index == resource.index) {
+            let font = if let Some(cached) = self
+                .named
+                .get(id)
+                .filter(|f| f.digest == digest && f.index == resource.index)
+            {
                 cached.clone()
             } else {
                 if resource.data.len() > 28 * 1024 * 1024 {
@@ -550,9 +606,14 @@ impl Fonts {
             }
             next.named.insert(id.clone(), font);
         }
-        if next.named.len()==self.named.len() && next.named.iter().all(|(id,font)|
-            self.named.get(id).is_some_and(|old|old.digest==font.digest&&old.index==font.index)) {
-            next.text_paths=self.text_paths.clone();
+        if next.named.len() == self.named.len()
+            && next.named.iter().all(|(id, font)| {
+                self.named
+                    .get(id)
+                    .is_some_and(|old| old.digest == font.digest && old.index == font.index)
+            })
+        {
+            next.text_paths = self.text_paths.clone();
         }
         Ok(next)
     }
@@ -587,12 +648,28 @@ impl Fonts {
         let (bytes, digest, index) = if id == "default" {
             (&self.data, self.data_digest, 0)
         } else {
-            let font = self.named.get(id).ok_or_else(|| format!("Missing font resource: {id}"))?;
+            let font = self
+                .named
+                .get(id)
+                .ok_or_else(|| format!("Missing font resource: {id}"))?;
             (&font.bytes, font.digest, font.index)
         };
-        let key = FontFaceKey { font: digest, index, weight: weight.to_bits(),
-            axes: extra.iter().map(|v| (v.tag.to_bytes(), v.value.to_bits())).collect() };
-        if let Some(face) = self.faces.read().map_err(|_| "Font face cache poisoned")?.inner.get(&key) {
+        let key = FontFaceKey {
+            font: digest,
+            index,
+            weight: weight.to_bits(),
+            axes: extra
+                .iter()
+                .map(|v| (v.tag.to_bytes(), v.value.to_bits()))
+                .collect(),
+        };
+        if let Some(face) = self
+            .faces
+            .read()
+            .map_err(|_| "Font face cache poisoned")?
+            .inner
+            .get(&key)
+        {
             return Ok(face);
         }
         let face = ParsedFontFaceTryBuilder {
@@ -602,13 +679,15 @@ impl Fonts {
                 let mut face = rustybuzz::Face::from_slice(bytes, index)
                     .ok_or_else(|| format!("Font must be loaded: {id}"))?;
                 let mut variations = vec![rustybuzz::Variation {
-                    tag: ttf_parser::Tag::from_bytes(b"wght"), value: weight,
+                    tag: ttf_parser::Tag::from_bytes(b"wght"),
+                    value: weight,
                 }];
                 variations.extend_from_slice(extra);
                 face.set_variations(&variations);
                 Ok::<_, String>(face)
             },
-        }.try_build()?;
+        }
+        .try_build()?;
         let charge = face.residency_charge();
         let mut cache = self.faces.write().map_err(|_| "Font face cache poisoned")?;
         cache.builds += 1;
@@ -626,31 +705,67 @@ impl Fonts {
         // Keep the actual resolved script/language/direction and feature ranges
         // in the key, rather than assuming all same-text runs shape alike.
         let key = ShapedRunKey {
-            face: face.borrow_key().clone(), text: text.to_owned(),
-            features: features.iter().map(|f| (f.tag.to_bytes(), f.value, f.start, f.end)).collect(),
-            direction: buffer.direction() as u8, script: buffer.script(),
-            language: buffer.language(), flags: buffer.flags().bits(),
+            face: face.borrow_key().clone(),
+            text: text.to_owned(),
+            features: features
+                .iter()
+                .map(|f| (f.tag.to_bytes(), f.value, f.start, f.end))
+                .collect(),
+            direction: buffer.direction() as u8,
+            script: buffer.script(),
+            language: buffer.language(),
+            flags: buffer.flags().bits(),
             cluster_level: buffer.cluster_level() as u8,
         };
-        if let Some(shaped) = self.shaped_runs.read().map_err(|_| "Shaping cache poisoned")?.inner.get(&key) {
+        if let Some(shaped) = self
+            .shaped_runs
+            .read()
+            .map_err(|_| "Shaping cache poisoned")?
+            .inner
+            .get(&key)
+        {
             return Ok(shaped);
         }
         let shaped = rustybuzz::shape(face.borrow_face(), features, buffer);
-        let value = ShapedRun { infos: shaped.glyph_infos().to_vec(), positions: shaped.glyph_positions().to_vec() };
-        let charge = 512 + 2 * (key.text.capacity() + key.features.capacity() * 16 + key.face.axes.capacity() * 12
-            + key.language.as_ref().map_or(0, |l| l.as_str().len()))
+        let value = ShapedRun {
+            infos: shaped.glyph_infos().to_vec(),
+            positions: shaped.glyph_positions().to_vec(),
+        };
+        let charge = 512
+            + 2 * (key.text.capacity()
+                + key.features.capacity() * 16
+                + key.face.axes.capacity() * 12
+                + key.language.as_ref().map_or(0, |l| l.as_str().len()))
             + value.infos.capacity() * std::mem::size_of::<rustybuzz::GlyphInfo>()
             + value.positions.capacity() * std::mem::size_of::<rustybuzz::GlyphPosition>();
-        let mut cache = self.shaped_runs.write().map_err(|_| "Shaping cache poisoned")?;
+        let mut cache = self
+            .shaped_runs
+            .write()
+            .map_err(|_| "Shaping cache poisoned")?;
         cache.builds += 1;
         Ok(cache.inner.insert(key, value, charge))
     }
     /// Bounded derived-cache diagnostics; neither cache changes authored font
     /// identity, typography, layout precision or the fallback chain.
     pub fn shaping_cache_stats(&self) -> serde_json::Value {
-        let stats = |cache: &FontFaceCache| { let mut v = cache.inner.stats(); v["builds"] = cache.builds.into(); v };
-        let faces = self.faces.read().map(|c| stats(&c)).unwrap_or_else(|_| serde_json::json!({"error":"Font face cache poisoned"}));
-        let shapes = self.shaped_runs.read().map(|c| { let mut v = c.inner.stats(); v["builds"] = c.builds.into(); v })
+        let stats = |cache: &FontFaceCache| {
+            let mut v = cache.inner.stats();
+            v["builds"] = cache.builds.into();
+            v
+        };
+        let faces = self
+            .faces
+            .read()
+            .map(|c| stats(&c))
+            .unwrap_or_else(|_| serde_json::json!({"error":"Font face cache poisoned"}));
+        let shapes = self
+            .shaped_runs
+            .read()
+            .map(|c| {
+                let mut v = c.inner.stats();
+                v["builds"] = c.builds.into();
+                v
+            })
             .unwrap_or_else(|_| serde_json::json!({"error":"Shaping cache poisoned"}));
         serde_json::json!({"faces":faces,"runs":shapes})
     }
@@ -685,21 +800,56 @@ impl Fonts {
             Err(_) => serde_json::json!({"error":"Glyph cache poisoned"}),
         }
     }
-    fn glyph_outline(&self, glyph: &Glyph) -> Result<Arc<crate::font_glyph_cache::Outline>, String> {
+    fn glyph_outline(
+        &self,
+        glyph: &Glyph,
+    ) -> Result<Arc<crate::font_glyph_cache::Outline>, String> {
         use crate::font_glyph_cache::{Key, Outline};
-        let digest = if glyph.font_id == "default" { self.data_digest } else {
-            self.named.get(&glyph.font_id).ok_or_else(||format!("Missing font resource: {}",glyph.font_id))?.digest
+        let digest = if glyph.font_id == "default" {
+            self.data_digest
+        } else {
+            self.named
+                .get(&glyph.font_id)
+                .ok_or_else(|| format!("Missing font resource: {}", glyph.font_id))?
+                .digest
         };
-        let key = Key { font: digest, face: self.face_index(&glyph.font_id), glyph: glyph.id, weight: glyph.weight.to_bits(),
-            axes: glyph.vars.iter().map(|v|(v.tag.to_bytes(),v.value.to_bits())).collect() };
-        if let Some(outline) = self.outlines.read().map_err(|_|"Glyph cache poisoned")?.get(&key) { return Ok(outline); }
+        let key = Key {
+            font: digest,
+            face: self.face_index(&glyph.font_id),
+            glyph: glyph.id,
+            weight: glyph.weight.to_bits(),
+            axes: glyph
+                .vars
+                .iter()
+                .map(|v| (v.tag.to_bytes(), v.value.to_bits()))
+                .collect(),
+        };
+        if let Some(outline) = self
+            .outlines
+            .read()
+            .map_err(|_| "Glyph cache poisoned")?
+            .get(&key)
+        {
+            return Ok(outline);
+        }
         let face = self.face_with(&glyph.font_id, glyph.weight, &glyph.vars)?;
         let face = face.borrow_face();
-        let mut outline = Outline { units_per_em: face.units_per_em(),
-            weight_axis: face.tables().fvar.is_some_and(|table|table.axes.into_iter().any(|axis|axis.tag == ttf_parser::Tag::from_bytes(b"wght"))),
-            ..Outline::default() };
+        let mut outline = Outline {
+            units_per_em: face.units_per_em(),
+            weight_axis: face.tables().fvar.is_some_and(|table| {
+                table
+                    .axes
+                    .into_iter()
+                    .any(|axis| axis.tag == ttf_parser::Tag::from_bytes(b"wght"))
+            }),
+            ..Outline::default()
+        };
         face.outline_glyph(ttf_parser::GlyphId(glyph.id), &mut outline);
-        Ok(self.outlines.write().map_err(|_|"Glyph cache poisoned")?.insert(key, outline))
+        Ok(self
+            .outlines
+            .write()
+            .map_err(|_| "Glyph cache poisoned")?
+            .insert(key, outline))
     }
     /// Horizontal advance of `glyph` in font units, evaluated on the exact
     /// variation instance shaping used (weight plus style axes), so exported
@@ -709,24 +859,52 @@ impl Fonts {
         let face = self
             .face_with(&glyph.font_id, glyph.weight, &glyph.vars)
             .ok()?;
-        face.borrow_face().glyph_hor_advance(ttf_parser::GlyphId(glyph.id))
+        face.borrow_face()
+            .glyph_hor_advance(ttf_parser::GlyphId(glyph.id))
     }
     pub fn path(&self, text: &str, size: f64) -> Result<Path, String> {
         Ok(self
-            .layout(text, size, &TextStyle::default(), &[], None, OutlineOutput::Geometry, None)?
+            .layout(
+                text,
+                size,
+                &TextStyle::default(),
+                &[],
+                None,
+                OutlineOutput::Geometry,
+                None,
+            )?
             .path)
     }
     pub fn measure(&self, text: &str, size: f64) -> Result<(f64, f64), String> {
-        let l = self.layout(text, size, &TextStyle::default(), &[], None, OutlineOutput::None, None)?;
+        let l = self.layout(
+            text,
+            size,
+            &TextStyle::default(),
+            &[],
+            None,
+            OutlineOutput::None,
+            None,
+        )?;
         Ok((l.width.max(0.01), l.height))
     }
     pub fn node_layout(&self, node: &Node, width: Option<f64>) -> Result<TextLayout, String> {
         self.node_outline_layout(node, width, OutlineOutput::Svg)
     }
-    fn node_outline_layout(&self, node: &Node, width: Option<f64>, output: OutlineOutput) -> Result<TextLayout, String> {
+    fn node_outline_layout(
+        &self,
+        node: &Node,
+        width: Option<f64>,
+        output: OutlineOutput,
+    ) -> Result<TextLayout, String> {
         validate_node(node)?;
         let fallback;
-        let style = match &node.text_style { Some(style) => style, None => { fallback = TextStyle::default(); &fallback } };
+        let style = match &node.text_style {
+            Some(style) => style,
+            None => {
+                fallback = TextStyle::default();
+                &fallback
+            }
+        };
         self.layout(
             &node.text,
             node.font_size,
@@ -740,7 +918,13 @@ impl Fonts {
     pub fn node_measure(&self, node: &Node, width: Option<f64>) -> Result<TextLayout, String> {
         validate_node(node)?;
         let fallback;
-        let style = match &node.text_style { Some(style) => style, None => { fallback = TextStyle::default(); &fallback } };
+        let style = match &node.text_style {
+            Some(style) => style,
+            None => {
+                fallback = TextStyle::default();
+                &fallback
+            }
+        };
         self.layout(
             &node.text,
             node.font_size,
@@ -756,16 +940,39 @@ impl Fonts {
     }
     pub fn node_path_shared(&self, node: &Node) -> Result<Arc<Path>, String> {
         validate_node(node)?;
-        let key=serde_json::to_vec(&(&node.text,node.font_size.to_bits(),node.width.to_bits(),
-            &node.text_style,&node.text_runs,&node.text_path,self.quantize_glyph_origins)).map_err(|e|e.to_string())?;
-        let cached=self.text_paths.read().map_err(|_|"Text path cache poisoned")?.get(&key);
-        if let Some(path)=cached {return Ok(path)}
-        let path=self.node_outline_layout(node, Some(node.width), OutlineOutput::Geometry)?.path;
-        let path=self.text_paths.write().map_err(|_|"Text path cache poisoned")?.insert(key,path);
+        let key = serde_json::to_vec(&(
+            &node.text,
+            node.font_size.to_bits(),
+            node.width.to_bits(),
+            &node.text_style,
+            &node.text_runs,
+            &node.text_path,
+            self.quantize_glyph_origins,
+        ))
+        .map_err(|e| e.to_string())?;
+        let cached = self
+            .text_paths
+            .read()
+            .map_err(|_| "Text path cache poisoned")?
+            .get(&key);
+        if let Some(path) = cached {
+            return Ok(path);
+        }
+        let path = self
+            .node_outline_layout(node, Some(node.width), OutlineOutput::Geometry)?
+            .path;
+        let path = self
+            .text_paths
+            .write()
+            .map_err(|_| "Text path cache poisoned")?
+            .insert(key, path);
         Ok(path)
     }
-    pub fn text_path_cache_stats(&self)->serde_json::Value {
-        match self.text_paths.read() {Ok(cache)=>cache.stats(),Err(_)=>serde_json::json!({"error":"Text path cache poisoned"})}
+    pub fn text_path_cache_stats(&self) -> serde_json::Value {
+        match self.text_paths.read() {
+            Ok(cache) => cache.stats(),
+            Err(_) => serde_json::json!({"error":"Text path cache poisoned"}),
+        }
     }
     /// Caret geometry at one UTF-16 offset. Offsets normally sit on grapheme
     /// boundaries (the grid `TextRun` ranges are validated against); an
@@ -962,8 +1169,14 @@ impl Fonts {
                     // the next candidate; a genuinely unusable primary is
                     // reported by the shaping call below.
                     let key = (*id, weight.to_bits());
-                    if coverage_faces.len() >= 64 && !coverage_faces.contains_key(&key) { coverage_faces.clear(); }
-                    let Some(face) = coverage_faces.entry(key).or_insert_with(|| self.face(id, weight).ok()).as_ref() else {
+                    if coverage_faces.len() >= 64 && !coverage_faces.contains_key(&key) {
+                        coverage_faces.clear();
+                    }
+                    let Some(face) = coverage_faces
+                        .entry(key)
+                        .or_insert_with(|| self.face(id, weight).ok())
+                        .as_ref()
+                    else {
                         continue;
                     };
                     if cluster.chars().all(|c| {
@@ -1014,12 +1227,9 @@ impl Fonts {
                     rustybuzz::Direction::LeftToRight
                 });
                 let shaped = self.shape_run(&face, &text[start..end], &features, buffer)?;
-                for (index, (glyph, p)) in shaped.infos
-                    .iter()
-                    .zip(&shaped.positions)
-                    .enumerate()
-                {
-                    let last_in_cluster = shaped.infos
+                for (index, (glyph, p)) in shaped.infos.iter().zip(&shaped.positions).enumerate() {
+                    let last_in_cluster = shaped
+                        .infos
                         .get(index + 1)
                         .is_none_or(|next| next.cluster != glyph.cluster);
                     glyphs.push(Glyph {
@@ -1048,18 +1258,40 @@ impl Fonts {
     }
     #[allow(clippy::too_many_arguments)]
     fn layout(
-        &self, text: &str, size: f64, style: &TextStyle, runs: &[TextRun],
-        width: Option<f64>, output: OutlineOutput, text_path: Option<&crate::text_path::TextPath>,
+        &self,
+        text: &str,
+        size: f64,
+        style: &TextStyle,
+        runs: &[TextRun],
+        width: Option<f64>,
+        output: OutlineOutput,
+        text_path: Option<&crate::text_path::TextPath>,
     ) -> Result<TextLayout, String> {
-        if style.text_case == TextCase::Original && runs.iter().all(|r| r.text_case.is_none_or(|c| c == TextCase::Original)) {
-            return self.layout_raw(text,size,style,runs,width,output,text_path);
+        if style.text_case == TextCase::Original
+            && runs
+                .iter()
+                .all(|r| r.text_case.is_none_or(|c| c == TextCase::Original))
+        {
+            return self.layout_raw(text, size, style, runs, width, output, text_path);
         }
-        let display=crate::text_case::display_text(text,style.text_case,runs);
-        let mut result=self.layout_raw(&display.text,size,style,&display.runs,width,output,text_path)?;
+        let display = crate::text_case::display_text(text, style.text_case, runs);
+        let mut result = self.layout_raw(
+            &display.text,
+            size,
+            style,
+            &display.runs,
+            width,
+            output,
+            text_path,
+        )?;
         for glyph in &mut result.glyphs {
-            glyph.cluster=display.starts[glyph.cluster]; glyph.cluster_end=display.ends[glyph.cluster_end];
+            glyph.cluster = display.starts[glyph.cluster];
+            glyph.cluster_end = display.ends[glyph.cluster_end];
         }
-        for line in &mut result.lines { line.start=display.starts[line.start]; line.end=display.ends[line.end]; }
+        for line in &mut result.lines {
+            line.start = display.starts[line.start];
+            line.end = display.ends[line.end];
+        }
         Ok(result)
     }
     fn layout_raw(
@@ -1394,7 +1626,8 @@ impl Fonts {
             // entirely; synthesize bold with the classic four-way sub-pixel
             // outline smear (QuickDraw fake bold). Advances stay shaped, so
             // layout, wrapping and exported width tables are unaffected.
-            let bold = self.synthetic_bold_delta(glyph_outline.weight_axis, glyph.weight, glyph.size);
+            let bold =
+                self.synthetic_bold_delta(glyph_outline.weight_axis, glyph.weight, glyph.size);
             let offsets: &[(f64, f64)] = if bold > 0. {
                 &[(0., 0.), (bold, 0.), (0., bold), (bold, bold)]
             } else {
@@ -1459,20 +1692,20 @@ impl Fonts {
             if output == OutlineOutput::Geometry {
                 path.commands.extend(outline.commands);
             } else {
-              path.commands.extend(outline.commands.clone());
-              if let Some(span) = spans
-                .last_mut()
-                .filter(|s| s.color == color && s.link == link)
-            {
-                span.outline.commands.extend(outline.commands);
-            } else {
-                spans.push(TextSpan {
-                    path: String::new(),
-                    color,
-                    link,
-                    outline,
-                });
-              }
+                path.commands.extend(outline.commands.clone());
+                if let Some(span) = spans
+                    .last_mut()
+                    .filter(|s| s.color == color && s.link == link)
+                {
+                    span.outline.commands.extend(outline.commands);
+                } else {
+                    spans.push(TextSpan {
+                        path: String::new(),
+                        color,
+                        link,
+                        outline,
+                    });
+                }
             }
             if path.commands.len() > 2_000_000 {
                 return Err("Text outline work budget exceeded".into());
@@ -1482,7 +1715,9 @@ impl Fonts {
             spans: spans
                 .into_iter()
                 .map(|mut s| {
-                    if output == OutlineOutput::Svg { s.path = s.outline.svg_data(); }
+                    if output == OutlineOutput::Svg {
+                        s.path = s.outline.svg_data();
+                    }
                     s
                 })
                 .collect(),
@@ -1490,7 +1725,11 @@ impl Fonts {
             height: y,
             lines,
             glyphs,
-            bounds: if output == OutlineOutput::Svg { crate::bounds::path_bounds(&path, crate::math::Transform::default()) } else { None },
+            bounds: if output == OutlineOutput::Svg {
+                crate::bounds::path_bounds(&path, crate::math::Transform::default())
+            } else {
+                None
+            },
             path,
         })
     }
@@ -1753,7 +1992,6 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod glyph_quantization_tests {
     use super::*;
@@ -1805,19 +2043,17 @@ mod glyph_quantization_tests {
             "fractional letter spacing must produce fractional pen origins"
         );
         assert!(
-            default_fracts.len() > 2
-                && default_fracts.iter().filter(|f| **f > 1e-9).count() >= 2,
+            default_fracts.len() > 2 && default_fracts.iter().filter(|f| **f > 1e-9).count() >= 2,
             "default painted origins carry the fractional pen"
         );
         fonts.set_glyph_origin_quantization(true);
         let quantized_fracts = move_x_fracts(&fonts, &node);
-        let distinct =
-            |fracts: &[f64]| -> usize {
-                let mut sorted = fracts.to_vec();
-                sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
-                sorted.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
-                sorted.len()
-            };
+        let distinct = |fracts: &[f64]| -> usize {
+            let mut sorted = fracts.to_vec();
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
+            sorted.len()
+        };
         // "i" paints two contours per glyph: with snapped origins only the
         // two per-contour offsets survive as fractional parts.
         assert!(
@@ -1844,27 +2080,55 @@ mod shared_path_tests {
     use super::*;
     #[test]
     fn text_outline_hits_share_owners_and_font_reload_invalidates_them() {
-        let bytes=std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"),"/../../../frontend/design-client/public/fonts/NotoSansSC.ttf")).unwrap();
-        let mut fonts=Fonts::new();fonts.load(&bytes).unwrap();
+        let bytes = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../frontend/design-client/public/fonts/NotoSansSC.ttf"
+        ))
+        .unwrap();
+        let mut fonts = Fonts::new();
+        fonts.load(&bytes).unwrap();
         let mut node:Node=serde_json::from_value(serde_json::json!({"id":"text","kind":"text","text":"Cache 中文 ffi","fontSize":24,"width":300,"height":50})).unwrap();
-        let a=fonts.node_path_shared(&node).unwrap();let b=fonts.node_path_shared(&node).unwrap();
-        assert!(Arc::ptr_eq(&a,&b));assert_eq!(*a,fonts.node_path(&node).unwrap());
-        node.id="moved".into();node.transform.0[4]=17.375;node.opacity=0.5;
-        assert!(Arc::ptr_eq(&a,&fonts.node_path_shared(&node).unwrap()));
-        node.font_size=25.;assert!(!Arc::ptr_eq(&a,&fonts.node_path_shared(&node).unwrap()));
-        node.font_size=24.;fonts.load(&bytes).unwrap();assert!(!Arc::ptr_eq(&a,&fonts.node_path_shared(&node).unwrap()));
+        let a = fonts.node_path_shared(&node).unwrap();
+        let b = fonts.node_path_shared(&node).unwrap();
+        assert!(Arc::ptr_eq(&a, &b));
+        assert_eq!(*a, fonts.node_path(&node).unwrap());
+        node.id = "moved".into();
+        node.transform.0[4] = 17.375;
+        node.opacity = 0.5;
+        assert!(Arc::ptr_eq(&a, &fonts.node_path_shared(&node).unwrap()));
+        node.font_size = 25.;
+        assert!(!Arc::ptr_eq(&a, &fonts.node_path_shared(&node).unwrap()));
+        node.font_size = 24.;
+        fonts.load(&bytes).unwrap();
+        assert!(!Arc::ptr_eq(&a, &fonts.node_path_shared(&node).unwrap()));
     }
     #[test]
     fn preloaded_font_engines_share_font_bytes_but_keep_request_state_isolated() {
-        let bytes=std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"),"/../../../frontend/design-client/public/fonts/NotoSansSC.ttf")).unwrap();
-        let mut fonts=Fonts::new();fonts.load(&bytes).unwrap();
-        let mut a=crate::Engine::with_fonts(fonts.clone());let mut b=crate::Engine::with_fonts(fonts.clone());
-        let document=|color:&str|serde_json::json!({"schemaVersion":1,"id":"request","name":"request","pages":[{"id":"p","name":"p","background":"#ffffff","children":["r"]}],"nodes":{"r":{"id":"r","kind":"rectangle","width":8,"height":8,"fills":[{"kind":"solid","color":color}]}}}).to_string();
-        a.load_document(&document("#ff0000")).unwrap();b.load_document(&document("#00ff00")).unwrap();
-        assert!(Arc::ptr_eq(&a.fonts.data,&b.fonts.data));assert!(Arc::ptr_eq(&fonts.data,&a.fonts.data));
-        let options:crate::RenderOptions=serde_json::from_value(serde_json::json!({"pageId":"p","width":8,"height":8,"view":{"x":0,"y":0,"zoom":1}})).unwrap();
-        assert_eq!(&a.render(&options).unwrap()[..4],&[255,0,0,255]);assert_eq!(&b.render(&options).unwrap()[..4],&[0,255,0,255]);
-        a.load_font(&bytes).unwrap();assert!(!Arc::ptr_eq(&a.fonts.data,&b.fonts.data));assert!(Arc::ptr_eq(&fonts.data,&b.fonts.data));
+        let bytes = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../frontend/design-client/public/fonts/NotoSansSC.ttf"
+        ))
+        .unwrap();
+        let mut fonts = Fonts::new();
+        fonts.load(&bytes).unwrap();
+        let mut a = crate::Engine::with_fonts(fonts.clone());
+        let mut b = crate::Engine::with_fonts(fonts.clone());
+        let document = |color: &str| {
+            serde_json::json!({"schemaVersion":1,"id":"request","name":"request","pages":[{"id":"p","name":"p","background":"#ffffff","children":["r"]}],"nodes":{"r":{"id":"r","kind":"rectangle","width":8,"height":8,"fills":[{"kind":"solid","color":color}]}}}).to_string()
+        };
+        a.load_document(&document("#ff0000")).unwrap();
+        b.load_document(&document("#00ff00")).unwrap();
+        assert!(Arc::ptr_eq(&a.fonts.data, &b.fonts.data));
+        assert!(Arc::ptr_eq(&fonts.data, &a.fonts.data));
+        let options: crate::RenderOptions = serde_json::from_value(
+            serde_json::json!({"pageId":"p","width":8,"height":8,"view":{"x":0,"y":0,"zoom":1}}),
+        )
+        .unwrap();
+        assert_eq!(&a.render(&options).unwrap()[..4], &[255, 0, 0, 255]);
+        assert_eq!(&b.render(&options).unwrap()[..4], &[0, 255, 0, 255]);
+        a.load_font(&bytes).unwrap();
+        assert!(!Arc::ptr_eq(&a.fonts.data, &b.fonts.data));
+        assert!(Arc::ptr_eq(&fonts.data, &b.fonts.data));
     }
 }
 
@@ -1873,8 +2137,11 @@ mod persistent_font_cache_tests {
     use super::*;
 
     fn bytes() -> Vec<u8> {
-        std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"),
-            "/../../../frontend/design-client/public/fonts/NotoSansSC.ttf")).unwrap()
+        std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../frontend/design-client/public/fonts/NotoSansSC.ttf"
+        ))
+        .unwrap()
     }
     fn fonts() -> Fonts {
         let mut fonts = Fonts::new();
@@ -1884,10 +2151,12 @@ mod persistent_font_cache_tests {
     fn uncached(fonts: &Fonts) -> Fonts {
         let mut result = fonts.clone();
         result.faces = Arc::new(RwLock::new(FontFaceCache {
-            inner: crate::read_cache::ReadCache::new(0, 0), builds: 0,
+            inner: crate::read_cache::ReadCache::new(0, 0),
+            builds: 0,
         }));
         result.shaped_runs = Arc::new(RwLock::new(ShapedRunCache {
-            inner: crate::read_cache::ReadCache::new(0, 0), builds: 0,
+            inner: crate::read_cache::ReadCache::new(0, 0),
+            builds: 0,
         }));
         result.outlines = Default::default();
         result.text_paths = Default::default();
@@ -1898,27 +2167,53 @@ mod persistent_font_cache_tests {
             "id":"text", "kind":"text", "text":text,
             "fontSize":19.25, "width":89.5, "height":200,
             "textStyle":style,
-        })).unwrap()
+        }))
+        .unwrap()
     }
     fn assert_layout_equal(cached: &Fonts, reference: &Fonts, node: &Node) {
-        let a = cached.node_outline_layout(node, Some(node.width), OutlineOutput::Svg).unwrap();
-        let b = reference.node_outline_layout(node, Some(node.width), OutlineOutput::Svg).unwrap();
-        assert_eq!(serde_json::to_value(&a).unwrap(), serde_json::to_value(&b).unwrap());
+        let a = cached
+            .node_outline_layout(node, Some(node.width), OutlineOutput::Svg)
+            .unwrap();
+        let b = reference
+            .node_outline_layout(node, Some(node.width), OutlineOutput::Svg)
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(&a).unwrap(),
+            serde_json::to_value(&b).unwrap()
+        );
         assert_eq!(a.path, b.path);
         for offset in [0, node.text.encode_utf16().count()] {
-            assert_eq!(serde_json::to_value(cached.caret_at(node, offset).unwrap()).unwrap(),
-                serde_json::to_value(reference.caret_at(node, offset).unwrap()).unwrap());
+            assert_eq!(
+                serde_json::to_value(cached.caret_at(node, offset).unwrap()).unwrap(),
+                serde_json::to_value(reference.caret_at(node, offset).unwrap()).unwrap()
+            );
         }
     }
     fn shaped_signature(run: &ShapedRun) -> Vec<(u32, u32, i32, i32, i32, i32)> {
-        run.infos.iter().zip(&run.positions).map(|(i, p)|
-            (i.glyph_id, i.cluster, p.x_advance, p.y_advance, p.x_offset, p.y_offset)).collect()
+        run.infos
+            .iter()
+            .zip(&run.positions)
+            .map(|(i, p)| {
+                (
+                    i.glyph_id,
+                    i.cluster,
+                    p.x_advance,
+                    p.y_advance,
+                    p.x_offset,
+                    p.y_offset,
+                )
+            })
+            .collect()
     }
     fn buffer(text: &str, rtl: bool, language: &str) -> rustybuzz::UnicodeBuffer {
         let mut buffer = rustybuzz::UnicodeBuffer::new();
         buffer.push_str(text);
         buffer.guess_segment_properties();
-        buffer.set_direction(if rtl { rustybuzz::Direction::RightToLeft } else { rustybuzz::Direction::LeftToRight });
+        buffer.set_direction(if rtl {
+            rustybuzz::Direction::RightToLeft
+        } else {
+            rustybuzz::Direction::LeftToRight
+        });
         buffer.set_language(language.parse().unwrap());
         buffer
     }
@@ -1929,24 +2224,54 @@ mod persistent_font_cache_tests {
         let reference = uncached(&fonts);
         let cases = [
             node("AV ffi 中 e\u{301} 😀", serde_json::json!({})),
-            node("AV ffi 中字", serde_json::json!({"weight":725,"features":["-kern","-liga"]})),
-            node("中文AV文字\n下一行", serde_json::json!({"wrap":true,"letterSpacing":0.375,"paragraphIndent":7.25,"paragraphSpacing":3.5})),
-            node("中文AV文字下一行", serde_json::json!({"writingMode":"vertical","wrap":true})),
-            node("abc שלום العربية 字", serde_json::json!({"direction":"rtl"})),
-            node("中文 fallback", serde_json::json!({"fontId":"missing","fallbacks":["also-missing"]})),
-            node("aBc ß 中", serde_json::json!({"textCase":"upper","align":"center"})),
+            node(
+                "AV ffi 中字",
+                serde_json::json!({"weight":725,"features":["-kern","-liga"]}),
+            ),
+            node(
+                "中文AV文字\n下一行",
+                serde_json::json!({"wrap":true,"letterSpacing":0.375,"paragraphIndent":7.25,"paragraphSpacing":3.5}),
+            ),
+            node(
+                "中文AV文字下一行",
+                serde_json::json!({"writingMode":"vertical","wrap":true}),
+            ),
+            node(
+                "abc שלום العربية 字",
+                serde_json::json!({"direction":"rtl"}),
+            ),
+            node(
+                "中文 fallback",
+                serde_json::json!({"fontId":"missing","fallbacks":["also-missing"]}),
+            ),
+            node(
+                "aBc ß 中",
+                serde_json::json!({"textCase":"upper","align":"center"}),
+            ),
         ];
-        for n in &cases { assert_layout_equal(&fonts, &reference, n); }
+        for n in &cases {
+            assert_layout_equal(&fonts, &reference, n);
+        }
         let n = &cases[0];
         let before = fonts.shaping_cache_stats();
-        for _ in 0..3 { fonts.node_layout(n, Some(n.width)).unwrap(); }
+        for _ in 0..3 {
+            fonts.node_layout(n, Some(n.width)).unwrap();
+        }
         let after = fonts.shaping_cache_stats();
         assert_eq!(before["faces"]["builds"], after["faces"]["builds"]);
         assert_eq!(before["runs"]["builds"], after["runs"]["builds"]);
-        assert!(after["faces"]["hits"].as_u64().unwrap() > before["faces"]["hits"].as_u64().unwrap());
+        assert!(
+            after["faces"]["hits"].as_u64().unwrap() > before["faces"]["hits"].as_u64().unwrap()
+        );
         assert!(after["runs"]["hits"].as_u64().unwrap() > before["runs"]["hits"].as_u64().unwrap());
         let mut rich = node("ffi中文AV", serde_json::json!({"letterSpacing":0.25}));
-        rich.text_runs = vec![TextRun { start: 0, end: 3, font_size: Some(31.5), weight: Some(850.), ..Default::default() }];
+        rich.text_runs = vec![TextRun {
+            start: 0,
+            end: 3,
+            font_size: Some(31.5),
+            weight: Some(850.),
+            ..Default::default()
+        }];
         assert_layout_equal(&fonts, &reference, &rich);
     }
 
@@ -1954,30 +2279,65 @@ mod persistent_font_cache_tests {
     fn shaping_keys_include_axes_features_ranges_direction_script_and_language() {
         let fonts = fonts();
         let a = fonts.face("default", 400.).unwrap();
-        assert!(Arc::ptr_eq(&a, &fonts.clone().face("default", 400.).unwrap()));
+        assert!(Arc::ptr_eq(
+            &a,
+            &fonts.clone().face("default", 400.).unwrap()
+        ));
         let b = fonts.face("default", 800.).unwrap();
         assert!(!Arc::ptr_eq(&a, &b));
-        let axes = [rustybuzz::Variation { tag: ttf_parser::Tag::from_bytes(b"wdth"), value: 75. }];
+        let axes = [rustybuzz::Variation {
+            tag: ttf_parser::Tag::from_bytes(b"wdth"),
+            value: 75.,
+        }];
         let c = fonts.face_with("default", 400., &axes).unwrap();
         assert!(!Arc::ptr_eq(&a, &c));
         let text = "AV ffi 字";
         let features = vec![rustybuzz::Feature::from_str("kern[0:2]=0").unwrap()];
-        let first = fonts.shape_run(&a, text, &features, buffer(text, false, "en")).unwrap();
-        assert!(Arc::ptr_eq(&first, &fonts.shape_run(&a, text, &features, buffer(text, false, "en")).unwrap()));
-        let cases = [(&a, features.clone(), false, "zh"), (&a, features.clone(), true, "en"),
-            (&a, vec![], false, "en"), (&b, features.clone(), false, "en"), (&c, features.clone(), false, "en"),
-            (&a, vec![rustybuzz::Feature::from_str("kern[1:3]=0").unwrap()], false, "en")];
+        let first = fonts
+            .shape_run(&a, text, &features, buffer(text, false, "en"))
+            .unwrap();
+        assert!(Arc::ptr_eq(
+            &first,
+            &fonts
+                .shape_run(&a, text, &features, buffer(text, false, "en"))
+                .unwrap()
+        ));
+        let cases = [
+            (&a, features.clone(), false, "zh"),
+            (&a, features.clone(), true, "en"),
+            (&a, vec![], false, "en"),
+            (&b, features.clone(), false, "en"),
+            (&c, features.clone(), false, "en"),
+            (
+                &a,
+                vec![rustybuzz::Feature::from_str("kern[1:3]=0").unwrap()],
+                false,
+                "en",
+            ),
+        ];
         for (face, features, rtl, language) in cases {
-            let cached = fonts.shape_run(face, text, &features, buffer(text, rtl, language)).unwrap();
+            let cached = fonts
+                .shape_run(face, text, &features, buffer(text, rtl, language))
+                .unwrap();
             assert!(!Arc::ptr_eq(&first, &cached));
-            let direct = rustybuzz::shape(face.borrow_face(), &features, buffer(text, rtl, language));
-            assert_eq!(shaped_signature(&cached), shaped_signature(&ShapedRun {
-                infos: direct.glyph_infos().to_vec(), positions: direct.glyph_positions().to_vec(),
-            }));
+            let direct =
+                rustybuzz::shape(face.borrow_face(), &features, buffer(text, rtl, language));
+            assert_eq!(
+                shaped_signature(&cached),
+                shaped_signature(&ShapedRun {
+                    infos: direct.glyph_infos().to_vec(),
+                    positions: direct.glyph_positions().to_vec(),
+                })
+            );
         }
         let mut changed_script = buffer(text, false, "en");
         changed_script.set_script(rustybuzz::script::ARABIC);
-        assert!(!Arc::ptr_eq(&first, &fonts.shape_run(&a, text, &features, changed_script).unwrap()));
+        assert!(!Arc::ptr_eq(
+            &first,
+            &fonts
+                .shape_run(&a, text, &features, changed_script)
+                .unwrap()
+        ));
     }
 
     // Build a small TTC wrapper with two directories sharing all font data,
@@ -1986,21 +2346,25 @@ mod persistent_font_cache_tests {
     fn collection(mut font: Vec<u8>) -> Vec<u8> {
         let tables = usize::from(u16::from_be_bytes(font[4..6].try_into().unwrap()));
         let directory_len = 12 + tables * 16;
-        let hhea = (0..tables).map(|i| 12 + i * 16).find(|i| &font[*i..*i+4] == b"hhea").unwrap();
-        let hhea_offset = u32::from_be_bytes(font[hhea+8..hhea+12].try_into().unwrap()) as usize;
-        let hhea_len = u32::from_be_bytes(font[hhea+12..hhea+16].try_into().unwrap()) as usize;
-        let mut alternate_hhea = font[hhea_offset..hhea_offset+hhea_len].to_vec();
+        let hhea = (0..tables)
+            .map(|i| 12 + i * 16)
+            .find(|i| &font[*i..*i + 4] == b"hhea")
+            .unwrap();
+        let hhea_offset =
+            u32::from_be_bytes(font[hhea + 8..hhea + 12].try_into().unwrap()) as usize;
+        let hhea_len = u32::from_be_bytes(font[hhea + 12..hhea + 16].try_into().unwrap()) as usize;
+        let mut alternate_hhea = font[hhea_offset..hhea_offset + hhea_len].to_vec();
         let ascent = i16::from_be_bytes(alternate_hhea[4..6].try_into().unwrap());
         alternate_hhea[4..6].copy_from_slice(&(ascent - 31).to_be_bytes());
         for i in 0..tables {
             let offset = 12 + i * 16 + 8;
-            let value = u32::from_be_bytes(font[offset..offset+4].try_into().unwrap()) + 20;
-            font[offset..offset+4].copy_from_slice(&value.to_be_bytes());
+            let value = u32::from_be_bytes(font[offset..offset + 4].try_into().unwrap()) + 20;
+            font[offset..offset + 4].copy_from_slice(&value.to_be_bytes());
         }
         let second_offset = (20 + font.len() + 3) & !3;
         let alternate_offset = second_offset + directory_len;
         let mut second = font[..directory_len].to_vec();
-        second[hhea+8..hhea+12].copy_from_slice(&(alternate_offset as u32).to_be_bytes());
+        second[hhea + 8..hhea + 12].copy_from_slice(&(alternate_offset as u32).to_be_bytes());
         let mut output = b"ttcf\0\x01\0\0\0\0\0\x02".to_vec();
         output.extend_from_slice(&20u32.to_be_bytes());
         output.extend_from_slice(&(second_offset as u32).to_be_bytes());
@@ -2017,26 +2381,54 @@ mod persistent_font_cache_tests {
         let original = fonts.clone();
         let a = fonts.face("default", 400.).unwrap();
         let ttc = collection(bytes());
-        let resource = |index| FontResource { family: "Test".into(),
-            data: base64::engine::general_purpose::STANDARD.encode(&ttc).into(), index, postscript: None };
+        let resource = |index| FontResource {
+            family: "Test".into(),
+            data: base64::engine::general_purpose::STANDARD
+                .encode(&ttc)
+                .into(),
+            index,
+            postscript: None,
+        };
         let mut resources = BTreeMap::from([("named".into(), resource(0))]);
         let first = fonts.with_resources(&resources).unwrap();
         let face0 = first.face("named", 400.).unwrap();
-        assert!(Arc::ptr_eq(&face0, &first.with_resources(&resources).unwrap().face("named", 400.).unwrap()));
+        assert!(Arc::ptr_eq(
+            &face0,
+            &first
+                .with_resources(&resources)
+                .unwrap()
+                .face("named", 400.)
+                .unwrap()
+        ));
         resources.insert("named".into(), resource(1));
         let second = first.with_resources(&resources).unwrap();
         let face1 = second.face("named", 400.).unwrap();
         assert!(!Arc::ptr_eq(&face0, &face1));
-        assert_ne!(face0.borrow_face().ascender(), face1.borrow_face().ascender());
-        assert_layout_equal(&second, &uncached(&second), &node("中文 AV", serde_json::json!({"fontId":"named"})));
+        assert_ne!(
+            face0.borrow_face().ascender(),
+            face1.borrow_face().ascender()
+        );
+        assert_layout_equal(
+            &second,
+            &uncached(&second),
+            &node("中文 AV", serde_json::json!({"fontId":"named"})),
+        );
         fonts.load(&ttc).unwrap();
         let replaced = fonts.face("default", 400.).unwrap();
         assert!(!Arc::ptr_eq(&a, &replaced));
         assert!(Arc::ptr_eq(&a, &original.face("default", 400.).unwrap()));
-        assert_layout_equal(&fonts, &uncached(&fonts), &node("reload 字", serde_json::json!({})));
+        assert_layout_equal(
+            &fonts,
+            &uncached(&fonts),
+            &node("reload 字", serde_json::json!({})),
+        );
         let removed = second.with_resources(&BTreeMap::new()).unwrap();
         assert!(removed.face("named", 400.).is_err());
-        assert_layout_equal(&removed, &uncached(&removed), &node("中文", serde_json::json!({"fontId":"named"})));
+        assert_layout_equal(
+            &removed,
+            &uncached(&removed),
+            &node("中文", serde_json::json!({"fontId":"named"})),
+        );
     }
 
     #[test]
@@ -2046,37 +2438,58 @@ mod persistent_font_cache_tests {
         assert_send_sync::<ParsedFontFace>();
         let mut fonts = fonts();
         fonts.faces = Arc::new(RwLock::new(FontFaceCache {
-            inner: crate::read_cache::ReadCache::new(128 * 1024 * 1024, 2), builds: 0,
+            inner: crate::read_cache::ReadCache::new(128 * 1024 * 1024, 2),
+            builds: 0,
         }));
         fonts.shaped_runs = Arc::new(RwLock::new(ShapedRunCache {
-            inner: crate::read_cache::ReadCache::new(4096, 2), builds: 0,
+            inner: crate::read_cache::ReadCache::new(4096, 2),
+            builds: 0,
         }));
         let weak_bytes = Arc::downgrade(&fonts.data);
         let held = fonts.face("default", 400.).unwrap();
-        for weight in [500., 600., 700., 800., 900.] { fonts.face("default", weight).unwrap(); }
+        for weight in [500., 600., 700., 800., 900.] {
+            fonts.face("default", weight).unwrap();
+        }
         assert_eq!(fonts.shaping_cache_stats()["faces"]["entries"], 2);
         assert!(held.borrow_face().glyph_index('字').is_some());
         let rebuilt = fonts.face("default", 400.).unwrap();
         assert!(!Arc::ptr_eq(&held, &rebuilt));
         for text in ["one", "two", "three", "four"] {
-            fonts.shape_run(&held, text, &[], buffer(text, false, "en")).unwrap();
+            fonts
+                .shape_run(&held, text, &[], buffer(text, false, "en"))
+                .unwrap();
         }
         assert_eq!(fonts.shaping_cache_stats()["runs"]["entries"], 2);
         let large = "over budget".repeat(1000);
-        let run = fonts.shape_run(&held, &large, &[], buffer(&large, false, "en")).unwrap();
+        let run = fonts
+            .shape_run(&held, &large, &[], buffer(&large, false, "en"))
+            .unwrap();
         assert!(!run.infos.is_empty());
-        assert!(fonts.shaping_cache_stats()["runs"]["bytes"].as_u64().unwrap() <= 4096);
+        assert!(
+            fonts.shaping_cache_stats()["runs"]["bytes"]
+                .as_u64()
+                .unwrap()
+                <= 4096
+        );
         std::thread::scope(|scope| {
             for _ in 0..4 {
                 let fonts = &fonts;
-                scope.spawn(move || { fonts.measure("thread 字", 20.).unwrap(); });
+                scope.spawn(move || {
+                    fonts.measure("thread 字", 20.).unwrap();
+                });
             }
         });
         drop(rebuilt);
         drop(fonts);
-        assert!(weak_bytes.upgrade().is_some(), "live face retains its backing bytes after eviction and Fonts drop");
+        assert!(
+            weak_bytes.upgrade().is_some(),
+            "live face retains its backing bytes after eviction and Fonts drop"
+        );
         assert!(held.borrow_face().glyph_index('字').is_some());
         drop(held);
-        assert!(weak_bytes.upgrade().is_none(), "last face drop releases its backing bytes without a leak");
+        assert!(
+            weak_bytes.upgrade().is_none(),
+            "last face drop releases its backing bytes without a leak"
+        );
     }
 }

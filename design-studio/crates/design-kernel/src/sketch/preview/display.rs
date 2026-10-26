@@ -443,6 +443,7 @@ impl Projection<'_> {
                     glass: None,
                     texture: None,
                     gradient_blur: None,
+                    show_shadow_behind_node: false,
                 })
             }
         }
@@ -467,6 +468,7 @@ impl Projection<'_> {
                 glass: None,
                 texture: None,
                 gradient_blur: None,
+                show_shadow_behind_node: false,
             });
         }
         if yes(&style["colorControls"], "isEnabled", false) {
@@ -493,8 +495,15 @@ impl Projection<'_> {
             self.text(&v, &mut n)?
         }
         n.children = self.children(layer)?;
-        let compound = class=="shapeGroup" && layer.children().iter().all(|child|
-            child.fields().get("booleanOperation").and_then(Value::as_i64).unwrap_or(-1)==-1);
+        let compound = class == "shapeGroup"
+            && layer.children().iter().all(|child| {
+                child
+                    .fields()
+                    .get("booleanOperation")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(-1)
+                    == -1
+            });
         let union_only = class == "shapeGroup"
             && layer.children().iter().all(|child| {
                 matches!(
@@ -511,8 +520,18 @@ impl Projection<'_> {
             // growing prefixes of native compound artwork (e.g. map masks).
             n.kind = "vector".into();
             n.boolean_operation = Some(if compound {
-                if v.pointer("/style/windingRule").or_else(||v.get("windingRule")).and_then(Value::as_i64)==Some(0){Operation::CompoundNonzero}else{Operation::CompoundEvenodd}
-            }else{Operation::Union});
+                if v.pointer("/style/windingRule")
+                    .or_else(|| v.get("windingRule"))
+                    .and_then(Value::as_i64)
+                    == Some(0)
+                {
+                    Operation::CompoundNonzero
+                } else {
+                    Operation::CompoundEvenodd
+                }
+            } else {
+                Operation::Union
+            });
         } else if class == "shapeGroup" && n.children.len() > 1 {
             // Native operations live on each operand. Preserve the left fold
             // with identity synthetic groups; styling stays on the outer shape.
@@ -644,7 +663,7 @@ impl Projection<'_> {
             let font_name = font["name"].as_str().unwrap_or("default");
             self.fonts.insert(font_name.into());
             n.text_runs.push(TextRun {
-            text_case: None,
+                text_case: None,
                 start,
                 end,
                 color: Some(color(&a["MSAttributedStringColorAttribute"])?),
@@ -726,7 +745,14 @@ pub fn display_snapshot(session: &Session, page_id: &str) -> Result<DisplaySnaps
         .collect();
     let mut document = DisplayDocument {
         fd_compatibility: None,
-        schema_version: if p.nodes.values().any(|n|n.boolean_operation.is_some_and(|op|op.compound_rule().is_some())){16}else{11},
+        schema_version: if p.nodes.values().any(|n| {
+            n.boolean_operation
+                .is_some_and(|op| op.compound_rule().is_some())
+        }) {
+            16
+        } else {
+            11
+        },
         id: session.owner().document_id.clone(),
         name,
         pages: vec![Page {

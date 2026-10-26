@@ -6,6 +6,7 @@
 use base64::Engine as _;
 use futureox_design_kernel::math::{Point, Rect, Transform};
 use futureox_design_kernel::paint::{Images, Sampler};
+use futureox_design_kernel::pattern_fill;
 use futureox_design_kernel::pattern_fill::{PatternTile, STAGGER_HORIZONTAL, STAGGER_VERTICAL};
 use futureox_design_kernel::scene::{Document, Node, Paint};
 
@@ -66,6 +67,10 @@ fn tile(mode: &str, size: [f64; 2], offset: [f64; 2]) -> PatternTile {
         mode: mode.into(),
         size,
         offset,
+        alignment: [
+            pattern_fill::ALIGN_START.into(),
+            pattern_fill::ALIGN_START.into(),
+        ],
     }
 }
 
@@ -75,7 +80,8 @@ fn absent_and_none_tiles_are_bit_identical() {
     let mut images = Images::default();
     let (plain_paint, plain_node) = image_node(&uri, None, 16., 16.);
     let plain = sampler(&plain_paint, &plain_node, &mut images);
-    let (none_paint, none_node) = image_node(&uri, Some(tile("none", [4., 4.], [3., 3.])), 16., 16.);
+    let (none_paint, none_node) =
+        image_node(&uri, Some(tile("none", [4., 4.], [3., 3.])), 16., 16.);
     let inactive = sampler(&none_paint, &none_node, &mut images);
     for y in 0..16 {
         for x in 0..16 {
@@ -102,7 +108,10 @@ fn grid_tiles_repeat_with_authored_period() {
             assert_eq!(s.at(Point::new(device.x + 8., device.y)), base, "x period");
             assert_eq!(s.at(Point::new(device.x + 16., device.y)), base);
             assert_eq!(s.at(Point::new(device.x, device.y + 8.)), base, "y period");
-            assert_eq!(s.at_rgba8(device), s.at_rgba8(Point::new(device.x + 24., device.y)));
+            assert_eq!(
+                s.at_rgba8(device),
+                s.at_rgba8(Point::new(device.x + 24., device.y))
+            );
         }
     }
 }
@@ -141,8 +150,16 @@ fn seam_samples_clamp_to_the_half_texel_guard() {
     )
     .unwrap();
     let index = (3 * 32 + 3) * 4;
-    assert!((grid[index] - 7.).abs() < 1e-6, "seam cell: {}", grid[index]);
-    assert!(grid[index + 2].abs() < 1e-6, "seam frac: {}", grid[index + 2]);
+    assert!(
+        (grid[index] - 7.).abs() < 1e-6,
+        "seam cell: {}",
+        grid[index]
+    );
+    assert!(
+        grid[index + 2].abs() < 1e-6,
+        "seam frac: {}",
+        grid[index + 2]
+    );
 }
 
 #[test]
@@ -152,10 +169,15 @@ fn stagger_shifts_alternate_bands_by_half_a_tile() {
     // is a 2px horizontal offset on odd bands only.
     let uri = gradient_png(8, 8);
     let mut images = Images::default();
-    let (grid_paint, grid_node) = image_node(&uri, Some(tile("grid", [4., 4.], [0., 0.])), 16., 16.);
+    let (grid_paint, grid_node) =
+        image_node(&uri, Some(tile("grid", [4., 4.], [0., 0.])), 16., 16.);
     let grid = sampler(&grid_paint, &grid_node, &mut images);
-    let (stag_paint, stag_node) =
-        image_node(&uri, Some(tile(STAGGER_HORIZONTAL, [4., 4.], [0., 0.])), 16., 16.);
+    let (stag_paint, stag_node) = image_node(
+        &uri,
+        Some(tile(STAGGER_HORIZONTAL, [4., 4.], [0., 0.])),
+        16.,
+        16.,
+    );
     let stagger = sampler(&stag_paint, &stag_node, &mut images);
     for x in 0..16 {
         let device = Point::new(x as f64 + 0.5, 0.5);
@@ -172,8 +194,12 @@ fn stagger_shifts_alternate_bands_by_half_a_tile() {
         );
     }
     // patternTileType 2 mirrors the coupling: columns shift by y parity.
-    let (vert_paint, vert_node) =
-        image_node(&uri, Some(tile(STAGGER_VERTICAL, [4., 4.], [0., 0.])), 16., 16.);
+    let (vert_paint, vert_node) = image_node(
+        &uri,
+        Some(tile(STAGGER_VERTICAL, [4., 4.], [0., 0.])),
+        16.,
+        16.,
+    );
     let vertical = sampler(&vert_paint, &vert_node, &mut images);
     for y in 0..16 {
         assert_eq!(
@@ -196,13 +222,22 @@ fn offset_moves_the_pattern_origin_and_stagger_parity() {
     // stagger from band 0, and a half-period y offset splits the band.
     let uri = gradient_png(8, 8);
     let mut images = Images::default();
-    let (grid_paint, grid_node) = image_node(&uri, Some(tile("grid", [4., 4.], [0., 0.])), 16., 16.);
+    let (grid_paint, grid_node) =
+        image_node(&uri, Some(tile("grid", [4., 4.], [0., 0.])), 16., 16.);
     let grid = sampler(&grid_paint, &grid_node, &mut images);
-    let (moved_x_paint, moved_x_node) =
-        image_node(&uri, Some(tile(STAGGER_HORIZONTAL, [4., 4.], [2., 0.])), 16., 16.);
+    let (moved_x_paint, moved_x_node) = image_node(
+        &uri,
+        Some(tile(STAGGER_HORIZONTAL, [4., 4.], [2., 0.])),
+        16.,
+        16.,
+    );
     let moved_x = sampler(&moved_x_paint, &moved_x_node, &mut images);
-    let (moved_y_paint, moved_y_node) =
-        image_node(&uri, Some(tile(STAGGER_HORIZONTAL, [4., 4.], [0., 2.])), 16., 16.);
+    let (moved_y_paint, moved_y_node) = image_node(
+        &uri,
+        Some(tile(STAGGER_HORIZONTAL, [4., 4.], [0., 2.])),
+        16.,
+        16.,
+    );
     let moved_y = sampler(&moved_y_paint, &moved_y_node, &mut images);
     for x in 0..16 {
         let device = Point::new(x as f64 + 0.5, 0.5);
@@ -325,7 +360,8 @@ fn serde_defaults_and_round_trip() {
     assert_eq!(native.resolve([64., 32.]), [64., 32.]);
     // Authored values survive a round trip and 0 keeps native semantics.
     let authored = tile(STAGGER_VERTICAL, [12.5, 0.], [-3., 4.]);
-    let round: PatternTile = serde_json::from_str(&serde_json::to_string(&authored).unwrap()).unwrap();
+    let round: PatternTile =
+        serde_json::from_str(&serde_json::to_string(&authored).unwrap()).unwrap();
     assert_eq!(round, authored);
     assert_eq!(round.resolve([64., 32.]), [12.5, 32.]);
     // The paint field skips serialization when absent (old documents stay
@@ -358,7 +394,10 @@ fn document_validation_gates_schema_kind_and_ranges() {
     let err = build(14, "solid", Some(tile("grid", [8., 8.], [0., 0.])))
         .validate()
         .unwrap_err();
-    assert!(err.contains("Pattern tiling requires an image paint"), "{err}");
+    assert!(
+        err.contains("Pattern tiling requires an image paint"),
+        "{err}"
+    );
     let err = build(14, "image", Some(tile("grid", [-8., 8.], [0., 0.])))
         .validate()
         .unwrap_err();
@@ -369,10 +408,7 @@ fn document_validation_gates_schema_kind_and_ranges() {
     assert!(err.contains("Pattern tiling"), "{err}");
     // NaN cannot travel through JSON; inject it post-parse.
     let mut nan = build(14, "image", Some(tile("grid", [8., 8.], [0., 0.])));
-    nan.nodes
-        .get_mut("n")
-        .unwrap()
-        .fills[0]
+    nan.nodes.get_mut("n").unwrap().fills[0]
         .tile
         .as_mut()
         .unwrap()
@@ -380,9 +416,11 @@ fn document_validation_gates_schema_kind_and_ranges() {
     let err = nan.validate().unwrap_err();
     assert!(err.contains("Pattern tiling"), "{err}");
     // `mode: none` renders legacy but still needs the field's schema.
-    assert!(build(14, "image", Some(tile("none", [8., 8.], [0., 0.])))
-        .validate()
-        .is_ok());
+    assert!(
+        build(14, "image", Some(tile("none", [8., 8.], [0., 0.])))
+            .validate()
+            .is_ok()
+    );
     assert!(build(14, "image", None).validate().is_ok());
 }
 

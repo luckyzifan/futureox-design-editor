@@ -10,7 +10,7 @@ import { DISPLAY_TEXTURE_BUDGET } from './display-budget'
 import { CanvasOverlayRenderer, translateOverlay, transformOverlay, type CanvasOverlay } from './canvas-overlay'
 import { ResidentUniforms } from './resident-uniforms'
 import { physicalCoverage, physicalPixelCoverage, physicalCoverageGaps } from './physical-coverage'
-import { backgroundPaintRects, type PageBackgroundProof } from './page-background'
+import { backgroundPaintRects, pageBackgroundProof, type PageBackgroundProof } from './page-background'
 import { presentedFragmentQuality } from './presented-fragment-quality'
 import { PresenterAlphaTrace } from './presenter-alpha-trace'
 
@@ -34,6 +34,9 @@ export type ResidentFrame = {
   interaction?: boolean
   allowEmpty?: boolean
   allowBackground?: boolean
+  /** Uniform translation of all authored page roots, in world units. Only
+   * changes the compiler-owned paint support used for background gap proof. */
+  backgroundTranslation?: { x: number; y: number }
   linearBlend?: boolean
   backgroundLinear?: [number, number, number, number]
   input?: { sequence: number; at: number; owner?:string }
@@ -76,6 +79,8 @@ export class ResidentPresenter {
   private terminalQualityGate = new TerminalQualityGate()
   private latest?: ResidentFrame
   private drawn?: ResidentFrame
+  private translatedProof?:{frame:ResidentFrame;source:PageBackgroundProof;offset:{x:number;y:number}}
+  private translatedProofChecks=0
   private backbuffer?: { texture: GPUTexture; width: number; height: number; payload: PayloadToken }
   private payload: PresenterPayloadLedger
   private diagnosticCoverageAt = -Infinity
@@ -301,16 +306,34 @@ export class ResidentPresenter {
     this.textures.delete(next)
     this.textures.set(slot, replacement)
   }
-  snapshot() {
+  snapshot(background?:PageBackgroundProof) {
     if (!this.backbuffer || !this.drawn || this.disposed) return
     const { width, height, texture } = this.backbuffer
-    const captured = this.capture(width, height)
+    const captured = this.capture(width, height, background)
     try {
       const encoder = this.device.createCommandEncoder()
       encoder.copyTextureToTexture({ texture }, { texture: captured.texture }, [width, height])
       this.device.queue.submit([encoder.finish()])
       return { gpuTile: captured.id, frame: this.drawn }
     } catch (error) { this.release([captured.id]); throw error }
+  }
+  snapshotPageTranslation(sourceOwner:object,targetOwner:object,offset:{x:number;y:number},width:number,height:number,scale:number,contract:string){
+    const proof=this.translatedProof,frame=this.drawn
+    const decline=(reason:number)=>{if(gpuDiagnosticsDetail())this.report({pageCommitStage:2,pageCommitReason:reason,pageCommitChecks:this.translatedProofChecks});return undefined}
+    if(!proof||!frame)return decline(1)
+    if(proof.frame!==frame)return decline(2)
+    if(proof.source.owner!==sourceOwner)return decline(3)
+    if(!contract||proof.source.contract!==contract)return decline(4)
+    if(proof.offset.x!==offset.x||proof.offset.y!==offset.y)return decline(5)
+    if(frame.view.zoom*frame.dpr!==scale||Math.ceil(frame.width*frame.dpr)!==width||Math.ceil(frame.height*frame.dpr)!==height)return decline(6)
+    const dx=frame.view.x*frame.dpr-proof.source.view.x+offset.x*scale
+    const dy=frame.view.y*frame.dpr-proof.source.view.y+offset.y*scale
+    if(![dx,dy].every(Number.isSafeInteger))return decline(7)
+    const source={owner:targetOwner,contract,view:{x:frame.view.x*frame.dpr,y:frame.view.y*frame.dpr,zoom:scale},
+      bounds:proof.source.bounds.map(b=>[b[0]+dx,b[1]+dy,b[2]+dx,b[3]+dy])}
+    const result=this.snapshot(pageBackgroundProof(source,{x:0,y:0,w:width,h:height},width,height))
+    if(result&&gpuDiagnosticsDetail())this.report({pageCommitStage:2,pageCommitReason:10,pageCommitChecks:this.translatedProofChecks})
+    return result
   }
 
   private contentFrame() {
@@ -433,17 +456,20 @@ export class ResidentPresenter {
     // captures retain their existing separate clear/background contract.
     let complete=physicalPixelCoverage(rows.map(row=>({...row.raster,blend:row.item.blend})),w,h),backgroundAdded=false
     let backgroundDecline=complete?0:1
-    if(!complete&&frame.allowBackground&&!frame.interaction&&!frame.linearBlend){
+    if(!complete&&frame.allowBackground&&!frame.linearBlend){
       // Draw order starts with overview/history. Those certificates describe
       // their own sampling density, so choose a density-matched native source
       // instead of letting the first coarse row veto the entire frame.
+      const backgroundView=frame.backgroundTranslation ? {
+        ...view,x:view.x+frame.backgroundTranslation.x*view.zoom,y:view.y+frame.backgroundTranslation.y*view.zoom,
+      } : view
       const source=rows.find(row=>row.entry.background?.pixel&&
-        backgroundPaintRects(row.entry.background,view,dpr,w,h)!==undefined),proof=source?.entry.background
+        backgroundPaintRects(row.entry.background,backgroundView,dpr,w,h)!==undefined),proof=source?.entry.background
       backgroundDecline=rows.some(row=>row.entry.background)?3:2
       if(!source&&rows.some(row=>row.entry.background?.pixel))backgroundDecline=4
       if(source&&proof&&rows.every(row=>row.entry.background?.owner===proof.owner)){
         backgroundDecline=4
-        const paint=backgroundPaintRects(proof,view,dpr,w,h)
+        const paint=backgroundPaintRects(proof,backgroundView,dpr,w,h)
         const gaps=paint&&physicalCoverageGaps(rows.map(row=>({...row.raster,blend:row.item.blend})),w,h)
         if(paint)backgroundDecline=5
         if(paint&&gaps?.every(gap=>!paint.some(b=>gap.x<b.x+b.width&&gap.x+gap.width>b.x&&gap.y<b.y+b.height&&gap.y+gap.height>b.y))){
@@ -454,13 +480,17 @@ export class ResidentPresenter {
         }
       }
     }
-    if (!frame.allowEmpty && !complete) {
+    // Empty background is intentional for isolated interaction layers, but a
+    // missing source is never intentional transparency. Do not clear the
+    // accepted backing when an imported/released interaction handle is absent.
+    if (!frame.allowEmpty && !complete || frame.allowEmpty && missing.length > 0) {
       const densityProofs=rows.flatMap(row=>row.entry.background?.pixel&&row.entry.background.view.zoom===view.zoom*dpr?[row.entry.background]:[])
       const backgroundPhaseError=densityProofs.length?Math.min(...densityProofs.map(p=>{
         const dx=view.x*dpr-p.view.x,dy=view.y*dpr-p.view.y;return Math.max(Math.abs(dx-Math.round(dx)),Math.abs(dy-Math.round(dy)))
       })):0
       this.report({ coverageDeferred: 1, coverageDeferredDraws: rows.length, backgroundDecline,
         backgroundDensitySources:densityProofs.length,backgroundPhaseError,
+        ...(frame.interaction ? { interactionCoverageMissing: true, input: frame.input } : {}),
         diagnosticSequence: frame.diagnosticSequence, missingTextureCount: missing.length })
       return
     }
@@ -579,6 +609,28 @@ export class ResidentPresenter {
     alpha?.submitted()
     const submittedEpoch = performance.timeOrigin + performance.now()
     this.drawn = frame
+    this.translatedProof=undefined
+    const translation=frame.backgroundTranslation,sourceProof=rows[0]?.entry.background
+    this.translatedProofChecks=Number(complete)|Number(!!frame.interaction)<<1|Number(!!translation)<<2|Number(!!sourceProof)<<3|
+      Number(!!sourceProof?.contract)<<4|Number(sourceProof?.view.zoom===view.zoom*dpr)<<5|
+      Number(!!sourceProof&&rows.every(row=>row.entry.background?.owner===sourceProof.owner))<<6|
+      Number(!!sourceProof&&rows.every(row=>row.entry.background?.contract===sourceProof.contract))<<7
+    if(complete&&frame.interaction&&translation&&sourceProof&&sourceProof.view.zoom===view.zoom*dpr&&
+      Number.isSafeInteger(width*dpr)&&Number.isSafeInteger(height*dpr)&&
+      [translation.x*view.zoom*dpr,translation.y*view.zoom*dpr].every(Number.isSafeInteger)&&
+      rows.every(row=>!row.item.blend&&row.entry.background?.owner===sourceProof.owner&&row.entry.background.contract===sourceProof.contract&&
+        (row.constant||(()=>{
+          const tile=row.item.tile,s=view.zoom/tile.zoom,p=row.item.placement
+          return !!p&&tile.zoom===view.zoom*dpr&&tile.width===row.entry.texture.width&&tile.height===row.entry.texture.height&&
+            [p.left*dpr,p.top*dpr].every(Number.isSafeInteger)&&p.width*dpr===row.entry.texture.width&&p.height*dpr===row.entry.texture.height&&
+            p.left===(tile.x-(tile.phaseX||0))*s+view.x+translation.x*view.zoom&&
+            p.top===(tile.y-(tile.phaseY||0))*s+view.y+translation.y*view.zoom&&
+            p.width===tile.width*s&&p.height===tile.height*s
+        })()))){
+      // Strict pixel-lattice checks above and complete integer scissors are
+      // authority here. The sparse/toleranced quality diagnostics are not.
+      this.translatedProof={frame,source:sourceProof,offset:{...translation}}
+    }
     this.frames++
     const coverageAt=performance.now()
     const terminalQuality = this.terminalQualityGate.claim(frame.terminalQuality, detailedDiagnostics)

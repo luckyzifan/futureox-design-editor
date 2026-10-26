@@ -20,14 +20,40 @@ test.each(['0','1'])('Rust topology, material references and filter capabilities
     nodes.sibling.textureReplay={paint:{kind:'image',image:'replay-owned-separately'}}
     const scene={roots:['root','backdrop','glass','missing-root'],nodes} as unknown as GpuScene
     const expected=referenceSceneIndex(scene), actual=sceneIndex(scene)
-    expect(actual).toEqual(expected)
+    const {sampleIndependentNodes,...priorFields}=actual
+    expect(priorFields).toEqual(expected)
     expect(sceneIndex(scene)).toBe(actual)
   }
 })
 test('compiled plan is bound only to its exact node table and roots',()=>{
   const scene={roots:['a'],nodes:{a:shape('a')}} as unknown as GpuScene
   const plan=JSON.parse(compiled_scene_plan_json(JSON.stringify(scene)))
-  expect(bindScenePlan(scene,plan)).toEqual(referenceSceneIndex(scene))
+  const {sampleIndependentNodes,...priorFields}=bindScenePlan(scene,plan)
+  expect(priorFields).toEqual(referenceSceneIndex(scene))
+  expect(sampleIndependentNodes).toEqual(new Set(['a']))
   expect(()=>bindScenePlan({...scene,roots:['other']},plan)).toThrow('identity')
   expect(()=>bindScenePlan({...scene,nodes:{}},plan)).toThrow('identity')
+})
+
+test('Rust owns sample independence across masks, hidden effects, missing children and nested dependencies',()=>{
+  const nodes:any={root:shape('root',['plain','nested','missing']),plain:shape('plain'),nested:shape('nested',['effect']),
+    effect:shape('effect',[],[{kind:'blur',visible:false}]),detached:shape('detached')}
+  const scene=()=>({roots:['root'],nodes:structuredClone(nodes)}) as unknown as GpuScene
+  expect(sceneIndex(scene()).sampleIndependentNodes).toEqual(new Set(Object.keys(nodes)))
+  for(const patch of [{clip:true},{mask:true},{maskId:'mask-owner'},{passthrough:true},{effects:[{kind:'blur',visible:true}]}]) {
+    const changed=scene();Object.assign(changed.nodes.effect,patch)
+    expect(sceneIndex(changed).sampleIndependentNodes).toEqual(new Set(['plain','detached']))
+  }
+})
+
+test('immutable native plans reuse logical topology while each frame binds its own sources',()=>{
+  const a={roots:['a'],nodes:{a:shape('a')}} as unknown as GpuScene
+  const plan=JSON.parse(compiled_scene_plan_json(JSON.stringify(a)))
+  const freeze=(v:any)=>{if(v&&typeof v==='object'){for(const child of Object.values(v))freeze(child);Object.freeze(v)}}
+  freeze(plan)
+  const b={roots:['a'],nodes:{a:shape('a')}} as unknown as GpuScene
+  const x=bindScenePlan(a,plan),y=bindScenePlan(b,plan)
+  expect(x.parents).toBe(y.parents);expect(x.rootFor).toBe(y.rootFor)
+  expect(x.sources).not.toBe(y.sources)
+  expect(y.sources.has(b.nodes.a)).toBe(true);expect(y.sources.has(a.nodes.a)).toBe(false)
 })

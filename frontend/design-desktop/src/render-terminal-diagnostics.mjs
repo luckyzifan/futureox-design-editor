@@ -40,6 +40,9 @@ const fields = new Set(('importBytes importFormat importMode poseSubmittedSequen
 Object.assign(tileCostLimits, {certifiedTentPasses:1e9,retainedPhaseRejects:1e9,retainedPhaseSamples:1e9,retainedPhaseError:1,opaqueSolidDraws:1e9,opaqueSolidInstances:1e9,opaqueSolidPixels:1e12,imageXTablePrograms:4e6,imageXTableDuplicateBytesSaved:17179869184,
  backdropRegionBuilds:1e9,backdropRegionSourcePixels:1e12,backdropRegionResultPixels:1e12,
  displayTentRadiusPasses:1e9,displayTentRadiusPixels:1e12})
+const pageCommitLimits={pageCommitStage:3,pageCommitChecks:255,pageCommitReason:10}
+tileCostLimits.wideTentPasses=1e9
+for (const key of Object.keys(pageCommitLimits)) fields.add(key)
 for (const key of [...Object.keys(tileCostLimits), ...Object.keys(admissionLimits)]) fields.add(key)
 for (const key of Object.keys(failureLimits)) fields.add(key)
 for (const key of [...Object.keys(poseLifecycleLimits),...Object.keys(handoffLimits)]) fields.add(key)
@@ -59,6 +62,10 @@ export function sanitizeFields(value) {
     // Most records contain only a handful of the shared scalar fields. An
     // absent value cannot pass any validator; avoid probing every limit map.
     if (v === undefined) continue
+    if(Object.hasOwn(pageCommitLimits,key)){
+      if(Number.isSafeInteger(v)&&v>=0&&v<=pageCommitLimits[key])out[key]=v
+      continue
+    }
     if (Object.hasOwn(imageFieldRegionLimits,key)) {
       if (Number.isSafeInteger(v) && v >= 0 && v <= imageFieldRegionLimits[key]) out[key] = v
       continue

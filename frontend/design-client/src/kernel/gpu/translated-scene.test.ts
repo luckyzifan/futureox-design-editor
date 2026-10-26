@@ -47,7 +47,7 @@ test('integer root placement reuses local coverage and matches a fresh kernel co
 test('content changes, replay dependencies, and newly exposed clipped geometry recompile', () => {
   const { doc, a, kernel, compile } = fixture()
   try {
-    const old = compile(doc), moved = { ...doc, nodes: { ...doc.nodes,
+    const old = structuredClone(compile(doc)), moved = { ...doc, nodes: { ...doc.nodes,
       [a.id]: { ...a, transform: [1, 0, 0, 1, 90, 20] as typeof a.transform } } }
     expect(translatePreviewScene(old, doc, moved)).toBeNull()
     expect(translatePreviewScene(old, doc, { ...doc, nodes: { ...doc.nodes, [a.id]: { ...a, opacity: .5 } } })).toBeNull()
@@ -70,7 +70,7 @@ test('subpixel root movement regenerates coverage instead of filtering an old ma
 test.each(['backdropOutputBox','shadowOutputBox'] as const)('native painter %s is reissued after movement, never translated as geometry', field=>{
   const{doc,a,kernel,compile}=fixture()
   try{
-    const source=compile(doc),box:[number,number,number,number]=[20,20,30,30]
+    const source=structuredClone(compile(doc)),box:[number,number,number,number]=[20,20,30,30]
     source.nodes[a.id][field]=box
     const next={...doc,nodes:{...doc.nodes,[a.id]:{...a,transform:[1,0,0,1,25,24] as typeof a.transform}}}
     expect(translatePreviewScene(source,doc,next)).toBeNull()
@@ -83,7 +83,7 @@ test.each(['backdropOutputBox','shadowOutputBox'] as const)('native painter %s i
 test('guarded viewport permits clipped geometry motion but bounds cumulative travel', () => {
   const { doc, a, kernel, compile } = fixture()
   try {
-    const source = compile(doc)
+    const source = structuredClone(compile(doc))
     source.interactionWindow = { x: 20, y: 20, w: 60, h: 60 }
     source.nodes[a.id].rect = { ...source.nodes[a.id].rect, x: source.extent.x }
     const at = (x: number) => ({ ...doc, nodes: { ...doc.nodes, [a.id]: { ...a, transform: [1, 0, 0, 1, x, 20] as typeof a.transform } } })

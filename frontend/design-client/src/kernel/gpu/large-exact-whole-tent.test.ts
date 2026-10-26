@@ -86,7 +86,7 @@ test('old <=512 axis calls do not carry the new row policy', () => {
 })
 
 test.each(['off', 'unset', 'truthy', 'too-large', 'infinite', 'webgl', 'unmanaged', 'display-math', 'display-source',
-  'display-image', 'software', 'retained', 'capturing', 'logical', 'compact', 'identity', 'fractional-origin', 'large-origin',
+  'display-image', 'software', 'logical', 'compact', 'identity', 'fractional-origin', 'large-origin',
   'size-mismatch', 'bytes-mismatch', 'binary', 'foreign', 'released', 'driver-decline', 'missing-proof'] as const)(
   '%s keeps the old guard without a large-path coefficient build or pass', mode => {
     const f = fixture(); let radius = 513
@@ -101,8 +101,6 @@ test.each(['off', 'unset', 'truthy', 'too-large', 'infinite', 'webgl', 'unmanage
     if (mode === 'display-source') f.renderer.scene.displayMaterialSource = true
     if (mode === 'display-image') f.renderer.scene.displayImageSource = true
     if (mode === 'software') f.renderer.scene.softwareRaster = true
-    if (mode === 'retained') f.renderer.scene.interactionRetained = true
-    if (mode === 'capturing') f.renderer.interactionCapturing = true
     if (mode === 'logical') f.input.logicalBounds = { ...f.input.rect }
     if (mode === 'compact') f.input.compactMaxAbs = [1, 1, 1, 1]
     if (mode === 'identity') f.input.imageZeroOverIdentity = true
@@ -300,4 +298,29 @@ test.each(['byte', 'scalar', 'resource', 'dimensions', 'bytes', 'format', 'array
   if (mode === 'display-filter') raw.displayFilters = true
   if (mode === 'disposed') raw.disposed = true
   expect(f.driver.supportsExactWholeTentSource(f.source)).toBe(false)
+})
+
+
+test.each(['retained','capturing'])('explicit exact operator retains full source ownership during %s interaction',mode=>{
+  const f=fixture()
+  if(mode==='retained')f.renderer.scene.interactionRetained=true
+  else f.renderer.interactionCapturing=true
+  const result=f.blur(513) as Surface
+  expect(f.calls.map(call=>call.u[37])).toEqual([0,1])
+  expect(f.calls[0].source).toBe(f.input.texture)
+  expect(f.renderer.releasedAliases.has(f.input)).toBe(false)
+  f.renderer.release(result)
+})
+
+test('banded exact retained filter keeps complete H as V input and releases strips without completion credit',async()=>{
+  const f=fixture();f.renderer.scene.interactionRetained=true
+  const copies:any[]=[]
+  ;(f.driver as any).copyRegion=(to:Texture,from:Texture,region:Rect,origin:number[])=>copies.push({to,from,region,origin})
+  const result=await f.blur(513,true,true)
+  expect(copies).toHaveLength(2)
+  expect(copies[0].to).toBe(f.calls[1].source)
+  expect(copies[1].to).toBe(result.texture)
+  expect(copies.map(c=>c.origin)).toEqual([[0,0],[0,0]])
+  expect(f.driver.completedResourceEpoch).toBe(1)
+  expect([...f.renderer.busy]).toEqual([f.input.texture,result.texture])
 })

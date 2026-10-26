@@ -115,10 +115,10 @@ test('physical preparation telemetry keeps original owner after cancellation and
   owner = 11
   const load = client.request('interaction', 'load_document', ['doc'])
   await new Promise(resolve => setTimeout(resolve, 10)); controller.abort(); await packet
-  expect(rows.find(r => r.phase === 3)).toMatchObject({ requestId: 10, methodCode: 8, superseded: true })
+  expect(rows.find(r => r.phase === 3)).toMatchObject({ requestId: 10, methodCode: 6, superseded: true })
   pair.port2.postMessage({ id: received[0].id, value: new Uint8Array() })
   await new Promise(resolve => setTimeout(resolve, 10))
-  expect(rows.find(r => r.phase === 4)).toMatchObject({ requestId: 10, methodCode: 8, superseded: true })
+  expect(rows.find(r => r.phase === 4)).toMatchObject({ requestId: 10, methodCode: 6, superseded: true })
   const dispatch = rows.find(r => r.phase === 2 && r.requestId === 11)
   expect(dispatch.waitMs).toBeGreaterThanOrEqual(0); expect(dispatch.methodCode).toBe(3)
   pair.port2.postMessage({ id: received[1].id, documentFork: true }); await load

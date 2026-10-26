@@ -1102,6 +1102,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               </button>
             </div>
             <button
+              disabled={!ready || desktopStatus.busy}
               onClick={() => {
                 if(source){setMenu(false);void source.exportFile()}
                 else if (desktopSession) { setMenu(false); void desktopSession.save(true) }

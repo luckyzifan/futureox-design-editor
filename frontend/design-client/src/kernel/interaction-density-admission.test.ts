@@ -14,11 +14,13 @@ vi.mock('./client', () => ({ KernelClient: class {
       resolve: () => resolve({ bytes: new Uint8Array(options.width * options.height * 4) }) }))
   }
 } }))
-vi.mock('../geometry', () => ({
+vi.mock('../geometry', async original => ({
+  ...await original<any>(),
   scene() { throw Error('Unexpected geometry path in density scheduling contract') },
   unionBounds() { throw Error('Unexpected geometry path in density scheduling contract') },
 }))
-vi.mock('./interaction-layers', () => ({
+vi.mock('./interaction-layers', async original => ({
+  ...await original<any>(),
   planInteractionLayers: (document: unknown, pageId: string, ids: string[]) => ({ document, pageId, ids,
     layers: [{ document, bounds: { x: 0, y: 0, width: 2, height: 2 }, moving: 'selected' }] }),
   interactionOffsets: (plan: any, document: any) => new Map(plan.ids.map((id: string) => [id, {

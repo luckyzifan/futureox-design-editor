@@ -35,7 +35,8 @@ self.onmessage = event => {
   const port = event.data.port as MessagePort
   let queue = Promise.resolve()
   port.onmessage = event => {
-    const { id, lane, method, args, diagnostics } = event.data as { id: number; lane: string; method: PreparationMethod; args: unknown[]; diagnostics?: unknown }
+    if (event.data.cancel) return // Without shared memory, retain the physical fence until completion.
+    const { id, lane, method, args, diagnostics, cancellation } = event.data as { id: number; lane: string; method: PreparationMethod; args: unknown[]; diagnostics?: unknown; cancellation?: SharedArrayBuffer }
     const receivedAt = performance.now()
     const progress = (boundaryCode: number) => { const elapsed = performance.now() - receivedAt; if (diagnostics) port.postMessage({ id, progress: { backendCode: 1, boundaryCode, ...(elapsed <= 120000 ? { boundaryDurationMs: elapsed } : {}) } }) }
     progress(1)
@@ -90,6 +91,10 @@ self.onmessage = event => {
         if (method === 'initialize') { kernel.set_image_mips(args[0] === true); snapshots.initialize(lane, args[0] === true) }
         else if (method === 'load_document' && documentFork) value = undefined
         else if (method === 'render_cpu_frame') value = renderCpuFrame(kernel, args[0] as string, args[1] as Parameters<typeof renderCpuFrame>[2])
+        else if (method === 'compile_gpu_packet' && typeof SharedArrayBuffer !== 'undefined' && cancellation instanceof SharedArrayBuffer && cancellation.byteLength === 4) {
+          const flag = new Int32Array(cancellation)
+          value = kernel.compile_gpu_packet_cancellable(args[0] as string, () => Atomics.load(flag, 0) !== 0)
+        }
         else value = (kernel[method] as (...args: any[]) => unknown).apply(kernel, method === 'apply_document_patch_with_damage' ? args.slice(0, 1) : args)
         progress(3)
         commitSnapshot?.()

@@ -101,6 +101,7 @@ contextBridge.exposeInMainWorld(
     renderPolicy: Object.freeze({ cpuOnly: process.argv.includes('--core-cpu-only'), ...(gpuWorkingBudgetMiB === undefined ? {} : { gpuWorkingBudgetMiB }) }),
     preparation: Object.freeze({
       open: () => ipcRenderer.invoke('native-preparation:open'),
+      cancel: (session, cancellationId) => ipcRenderer.invoke('native-preparation:cancel', session, cancellationId),
       request: (session, request) => ipcRenderer.invoke('native-preparation:request', session, request),
       close: session => ipcRenderer.invoke('native-preparation:close', session),
     }),

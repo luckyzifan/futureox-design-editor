@@ -3,8 +3,34 @@ import { progressiveTileLayer } from './progressive-quality'
 import { compositeDrawPlan } from './gpu/composite-draw-plan'
 import { presentationQuality } from './gpu/presentation-quality'
 import type { CompositeItem } from './gpu/tile-compositor'
+import {tileHasNativePhase} from './tile-preview'
 
 const view = { x: 0, y: 0, zoom: 1 }
+
+test('exact-phase native history fills before denser resampling, and current native pixels remain first',()=>{
+  const native=item(101,1,false),denser=item(102,2,false),fresh=item(103,1,true)
+  const layer=(fine:boolean,nativePhase:boolean)=>progressiveTileLayer({fine,cached:!fine,coarse:false,
+    sameContent:true,refining:true,cameraDependent:false,nativeDensity:true,nativePhase})
+  native.layer=layer(false,true);denser.layer=layer(false,false);fresh.layer=layer(true,true)
+  expect(compositeDrawPlan([native,denser],view,100,100).map(row=>row.item.tile.serial)).toEqual([101])
+  expect(compositeDrawPlan([native,denser,fresh],view,100,100).map(row=>row.item.tile.serial)).toEqual([103])
+  expect(layer(false,true)).toBeGreaterThan(layer(false,false))
+  expect(progressiveTileLayer({fine:false,cached:true,coarse:false,sameContent:false,refining:true,
+    cameraDependent:false,nativeDensity:true,nativePhase:true})).toBeLessThan(native.layer)
+  expect(progressiveTileLayer({fine:false,cached:true,coarse:false,sameContent:true,refining:true,
+    cameraDependent:true,nativeDensity:true,nativePhase:true})).toBeLessThan(native.layer)
+})
+
+test('native-phase priority rejects fractional placement and both lower/higher sampling densities',()=>{
+  const camera={x:.125,y:.375,zoom:4},dpr=2
+  const tile={key:'phase',x:-1,y:-1,width:514,height:514,zoom:8,phaseX:.25,phaseY:.75}
+  expect(tileHasNativePhase(tile,camera,dpr)).toBe(true)
+  expect(tileHasNativePhase(tile,{...camera,x:camera.x+3},dpr)).toBe(true)
+  expect(tileHasNativePhase(tile,{...camera,x:camera.x+.125},dpr)).toBe(false)
+  for(const zoom of [4,16,NaN])expect(tileHasNativePhase({...tile,zoom},camera,dpr)).toBe(false)
+  expect(tileHasNativePhase({...tile,phaseX:0},camera,dpr)).toBe(false)
+  expect(tileHasNativePhase(tile,camera,0)).toBe(false)
+})
 const item = (serial: number, density: number, fine: boolean, sameContent = true, cameraDependent = false): CompositeItem => ({
   active: true, gutter: 0,
   layer: progressiveTileLayer({ fine, cached: !fine && sameContent, coarse: false, refining: true, sameContent, cameraDependent }),

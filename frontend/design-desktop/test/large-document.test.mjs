@@ -89,3 +89,24 @@ test('page DTO chunks retain exact hash, revision and window ownership',async()=
   await assert.rejects(()=>host.scene(request),/chunk|hash/)
   await assert.rejects(()=>host.scene({...request,expectedRevision:1}),/Stale/)
 })
+
+test('page range receipts must match the requested offset and advance within the source',async()=>{
+ const {createHash}=await import('node:crypto')
+ const bytes=Buffer.from('{}'),hash=createHash('sha256').update(bytes).digest('hex')
+ const window={isDestroyed:()=>false};let range={offset:2,end:4,totalRoots:6,nextOffset:4}
+ const calls=[]
+ const host=new LargeDocumentHost(async(method,params)=>{
+   calls.push({method,params})
+   if(method==='large.open')return {...status({documentId:params.documentId,sessionEpoch:params.sessionEpoch}),format:'sketch'}
+   if(method==='large.scene')return {bytes:bytes.length,hash,warnings:[],nodes:0,pageRange:range}
+   if(method==='large.sceneRead')return {offset:params.offset,bytes:bytes.length,hash,data:bytes.toString('base64')}
+   throw Error(method)
+ },{showOpenDialog:async()=>({canceled:false,filePaths:['/approved/source.sketch']})},()=>window)
+ const opened=await host.open(),request={owner:opened.owner,expectedRevision:0,key:'1:0',offset:2}
+ assert.deepEqual((await host.scene(request)).pageRange,range)
+ assert.equal(calls.find(c=>c.method==='large.scene').params.offset,2)
+ for(const bad of [{...range,offset:0},{...range,nextOffset:2},{...range,end:7},{...range,totalRoots:NaN}]){
+   range=bad;await assert.rejects(()=>host.scene(request),/page range/)
+ }
+ await assert.rejects(()=>host.scene({...request,offset:-1}),/offset/)
+})

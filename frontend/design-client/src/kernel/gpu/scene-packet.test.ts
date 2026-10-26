@@ -1,10 +1,11 @@
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { VectorEngine } from '../../generated/design-kernel/design_kernel'
 import { blank, node, paint } from '../../model'
 import { decodeScenePacket, copyScenePacket, scenePacketWitness } from './scene-packet'
 import { FrameResources, frameResource } from './frame-resources'
 import { decodeFrameValue } from './frame-wire'
 import { emptyFrame, frameValue } from './frame-wire.test-helper'
+import {copyWitness} from '../compilation-witness'
 const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jhxsAAAAASUVORK5CYII='
 function fixture(){
   const doc=blank(),shape=node('rectangle',.3,-.7,43.8,27.9),image={...paint('#ffffff'),kind:'image' as const,image:png}
@@ -41,12 +42,45 @@ test('acknowledged frame resources remove repeated payloads and retain exact sha
     expect(scenePacketWitness(rebound.bytes)).not.toEqual(scenePacketWitness(first.bytes))
   }finally{f.engine.free()}
 })
+test('program storage owns only geometry while its exact witness retains the original complete byte proof',()=>{
+  const f=fixture();f.engine.bind_frame_scene_scope('independent-program-storage')
+  try{
+    const packet=f.engine.compile_gpu_packet(JSON.stringify(f.options)),header=new DataView(packet.buffer,packet.byteOffset)
+    const start=Math.ceil((24+header.getUint32(8,true))/4)*4,nv=header.getUint32(12,true),nc=header.getUint32(16,true)
+    const expected=packet.slice(0,start+(nv+nc)*4);new DataView(expected.buffer).setUint32(20,0,true)
+    const scene=decodeScenePacket(packet)
+    if(!(scene.vertices instanceof Float32Array)||!(scene.curves instanceof Float32Array))throw Error('Decoder did not retain exact typed program storage')
+    expect(scene.vertices.buffer).not.toBe(packet.buffer);expect(scene.curves.buffer).toBe(scene.vertices.buffer)
+    expect(scene.vertices.buffer.byteLength).toBe((nv+nc)*4)
+    expect(copyWitness(scenePacketWitness(packet))).toEqual(expected)
+    const programs=new Uint8Array(scene.vertices.buffer),before=programs.slice()
+    packet[start]^=1
+    expect(programs).toEqual(before);expect(copyWitness(scenePacketWitness(packet))).toEqual(expected)
+  }finally{f.engine.free()}
+})
 test('retired acknowledged resources stay charged until their old request lease releases',()=>{
   const store=new FrameResources(),lease=store.capture(),entry=frameResource(1,1,new TextEncoder().encode('resource'))
   store.commit('A',new Map([[1,entry]]),lease);lease.release();const pinned=store.capture(),before=store.bytes
   store.clear();expect(store.bytes).toBe(before)
   store.commit('A',new Map([[1,entry]]),pinned);expect(store.capture().entries.size).toBe(0)
   pinned.release();pinned.release();expect(store.bytes).toBe(0)
+})
+test('a materialization hit validates every image dependency without allocating fill or stroke arrays',()=>{
+  const f=fixture(),store=new FrameResources();f.engine.bind_frame_scene_scope('materialization')
+  const firstLease=store.capture()
+  const first=decodeScenePacket(f.engine.compile_gpu_packet(JSON.stringify({...f.options,frameResources:firstLease.acknowledgement})),store,firstLease)
+  firstLease.release();const lease=store.capture()
+  try{
+    const raw=[...lease.entries.values()].find(entry=>entry.kind===2&&entry.value.node.id===f.shape.id)!.value.node
+    const packet=f.engine.compile_gpu_packet(JSON.stringify({...f.options,frameResources:lease.acknowledgement}))
+    const mapping=vi.spyOn(Array.prototype,'map')
+    let next,mapped=0
+    try{next=decodeScenePacket(packet,store,lease);mapped=mapping.mock.contexts.filter(context=>context===raw.fills||context===raw.strokes).length}finally{mapping.mockRestore()}
+    expect(next.nodes[f.shape.id]).toBe(first.nodes[f.shape.id])
+    expect(mapped).toBe(0)
+    const withoutImages={...lease,entries:new Map([...lease.entries].filter(([,entry])=>entry.kind!==1))}
+    expect(()=>decodeScenePacket(packet.slice(),undefined,withoutImages)).toThrow('Missing frame resource')
+  }finally{lease.release();f.engine.free()}
 })
 test('old packet formats, truncation, extra bytes and invalid binary tags fail before publication',()=>{
   const bytes=emptyFrame(7)

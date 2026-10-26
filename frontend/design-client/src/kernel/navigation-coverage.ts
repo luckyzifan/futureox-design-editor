@@ -41,7 +41,7 @@ export type NavigationCoverageFlight<T> = {
   readonly cancellationRequested: boolean
   /** Revoke only an unfinished, narrower old navigation capture after quiet.
    * Its original run still owns done and late-payload retirement. */
-  cancelObsoleteZoomOut(view: CanvasCamera, width: number, height: number): boolean
+  cancelObsoleteZoomOut(view: CanvasCamera, width: number, height: number, minimumRatio?: number): boolean
 }
 export function navigationCoverageFlight<T>(contract: object, generation: number, capture?: NavigationCoverageCapture): NavigationCoverageFlight<T> {
   let finish!: () => void
@@ -51,9 +51,10 @@ export function navigationCoverageFlight<T>(contract: object, generation: number
   return { contract, generation, done,
     get cancellationRequested() { return cancellationRequested },
     finish: () => { pending = undefined; finish() },
-    cancelObsoleteZoomOut: (view, width, height) => {
+    cancelObsoleteZoomOut: (view, width, height, minimumRatio = 1) => {
       const source = pending
-      if (!source || !Number.isFinite(view.zoom) || view.zoom <= 0 || !(view.zoom < source.zoom)) return false
+      if (!source || !Number.isFinite(view.zoom) || view.zoom <= 0 || !(view.zoom < source.zoom) ||
+          !Number.isFinite(minimumRatio) || minimumRatio < 1 || source.zoom < view.zoom * minimumRatio) return false
       const target = navigationCoverageBounds(view, width, height), bounds = source.bounds
       if (![target.x, target.y, target.width, target.height].every(Number.isFinite) ||
           target.width <= 0 || target.height <= 0) return false

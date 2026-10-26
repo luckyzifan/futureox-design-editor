@@ -8,6 +8,7 @@ vi.mock('../generated/design-kernel/design_kernel',()=>({default:async()=>{},con
   constructor(){counts.engines++}
   load_font(){counts.fonts++}
   set_image_mips(value:boolean){this.mips=value}
+  bind_frame_scene_scope(_scope:string){}
   color_settings(){return 'null'}
   load_document(value:string){counts.loads++;if(value==='invalid')throw Error('Invalid document');this.doc=value}
   apply_document_patch_with_damage(){this.doc='patched';return '{}'}

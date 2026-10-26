@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { residentFrameMessage } from './resident-frame'
+import { residentFrameMessage, residentFrameSignature } from './resident-frame'
 import type { ResidentFrame } from './resident-presenter'
 test('camera messages cannot carry document trees, pixels, or raster diagnostics', () => {
   const tile = {
@@ -32,4 +32,14 @@ test('camera messages cannot carry document trees, pixels, or raster diagnostics
   expect(wire.items[0].tile.gpuTile).toBe(42)
   expect(wire.presentationId).toBe('scope:12')
   expect(wire.items[0].clip).toEqual(frame.items[0].clip)
+})
+
+test('translated background support survives the bounded wire and has its own presentation identity',()=>{
+  const frame:ResidentFrame={view:{x:0,y:0,zoom:1},width:100,height:100,dpr:2,items:[],interaction:true,
+    allowBackground:true,backgroundTranslation:{x:20,y:40}}
+  const wire=residentFrameMessage(frame),signature=residentFrameSignature(frame)
+  expect(wire.backgroundTranslation).toEqual({x:20,y:40})
+  frame.backgroundTranslation!.x=30
+  expect(wire.backgroundTranslation!.x).toBe(20)
+  expect(residentFrameSignature(frame)).not.toBe(signature)
 })

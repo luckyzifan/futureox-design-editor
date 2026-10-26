@@ -202,7 +202,7 @@ test('an artificially reduced tiny budget rejects allocation and fences scratch 
   await vi.waitFor(() => expect(f.events).toContain('whole-admission'))
   f.releaseAdmission()
   await vi.waitFor(() => expect(f.events).toContain('abort'))
-  expect(budgetError).toHaveBeenCalledWith('GPU 表面内存预算超限')
+  expect(budgetError).toHaveBeenCalledWith('GPU 表面内存预算超限',1,0,18,-1)
   expect(f.renderer.workingBytes).toBeLessThanOrEqual(f.renderer.frameBudget)
   expect(f.allocations.some(texture => texture.width === f.input.w && texture.height === f.input.h)).toBe(false)
   expect(f.tableAlive).toBe(true); expect(f.completedAbort).toBe(false)

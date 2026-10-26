@@ -5,6 +5,7 @@ import type { PreparationMethod } from './preparation-channel'
  * Browser builds retain their WASM preparation worker. GPU objects stay local. */
 export function connectNativePreparation(bridge: NonNullable<DesktopBridge['preparation']>, port: MessagePort, onFailure?: (error: Error) => void, record?: (fields: Record<string, number>) => void) {
   let closed = false
+  const active = new Map<number, () => void>()
   const failed = (error: unknown) => {
     if (closed) return
     const failure = error instanceof Error ? error : new Error(String(error))
@@ -14,7 +15,11 @@ export function connectNativePreparation(bridge: NonNullable<DesktopBridge['prep
   const session = bridge.open()
   session.catch(failed)
   port.onmessage = async event => {
-    const { id, lane, method, args, diagnostics } = event.data as { id: number; lane: string; method: PreparationMethod; args: unknown[]; diagnostics?: { originChannelId: number; requestId: number } }
+    if (event.data.cancel) { active.get(event.data.cancel)?.(); return }
+    const { id, lane, method, args, diagnostics, cancellable, cancellation } = event.data as { id: number; lane: string; method: PreparationMethod; args: unknown[]; diagnostics?: { originChannelId: number; requestId: number }; cancellable?: boolean; cancellation?: SharedArrayBuffer }
+    let timer: ReturnType<typeof setInterval> | undefined
+    let cancelled = false
+    active.set(id, () => { cancelled = true })
     const receivedAt = diagnostics ? performance.now() : 0
     const boundary = (boundaryCode: number) => {
       const bridgeBoundaryAt = performance.timeOrigin + performance.now()
@@ -34,7 +39,18 @@ export function connectNativePreparation(bridge: NonNullable<DesktopBridge['prep
       const owner = await session
       if (closed) return
       progress(5)
-      const reply = await bridge.request(owner, { lane, method, args, ...(diagnostics ? { diagnostics: { originChannelId: diagnostics.originChannelId, requestId: diagnostics.requestId, preparationId: id } } : {}) })
+      const cancellationId = cancellable && method === 'compile_gpu_packet' ? id : undefined
+      let notified = false
+      const flag = typeof SharedArrayBuffer !== 'undefined' && cancellation instanceof SharedArrayBuffer && cancellation.byteLength === 4 ? new Int32Array(cancellation) : undefined
+      const poll = () => {
+        if (!notified && (cancelled || flag && Atomics.load(flag, 0))) {
+          notified = true
+          if (cancellationId !== undefined) void bridge.cancel?.(owner, cancellationId).catch(failed)
+        }
+      }
+      const pending = bridge.request(owner, { lane, method, args, ...(cancellationId === undefined ? {} : { cancellationId }), ...(diagnostics ? { diagnostics: { originChannelId: diagnostics.originChannelId, requestId: diagnostics.requestId, preparationId: id } } : {}) })
+      if (cancellationId !== undefined) { timer = setInterval(poll, 4); poll() }
+      const reply = await pending
       progress(6)
       if (closed) return
       const transfer = reply.value instanceof Uint8Array || reply.value instanceof Float32Array ? [reply.value.buffer] : []
@@ -46,7 +62,7 @@ export function connectNativePreparation(bridge: NonNullable<DesktopBridge['prep
       // transport failed: retire the session without replaying this job.
       if (method === 'preparation_capabilities_v1') port.postMessage({ id, error: 'DERIVATION_UNSUPPORTED' })
       else failed(error)
-    }
+    } finally { clearInterval(timer); active.delete(id) }
   }
   port.start()
   const close = () => {

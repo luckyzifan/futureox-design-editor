@@ -49,6 +49,8 @@ export class NativePreparation {
   if(!request||!['canvas','interaction'].includes(request.lane)||!methods.has(request.method)||!Array.isArray(request.args)||request.args.length>3)
    return Promise.reject(Error('Invalid native preparation request'))
   if(this.pending.size>=32||this.sequence>=0xffffffff)return Promise.reject(Error('Native preparation queue or sequence limit exceeded'))
+  if(request.cancellationId!==undefined&&(request.method!=='compile_gpu_packet'||!Number.isSafeInteger(request.cancellationId)||request.cancellationId<=0||
+    [...this.pending.values()].some(p=>p.cancellationId===request.cancellationId)))return Promise.reject(Error('Invalid preparation cancellation owner'))
   const id=this.sequence+1
   const input=request.diagnostics
   const diagnostic=this.diagnostics.enabled&&input&&Number.isSafeInteger(input.originChannelId)&&input.originChannelId>=0&&input.originChannelId<=0xffffffffffff&&Number.isSafeInteger(input.requestId)&&input.requestId>=0&&Number.isSafeInteger(input.preparationId)&&input.preparationId>0
@@ -65,11 +67,18 @@ export class NativePreparation {
   this.sequence=id
   return new Promise((resolve,reject)=>{
    const timer=setTimeout(()=>this.close(Error('Native preparation timed out')),120000)
-   this.pending.set(id,{resolve,reject,timer,diagnostic,release})
+   this.pending.set(id,{resolve,reject,timer,diagnostic,release,method:request.method,cancellationId:request.cancellationId})
    if(diagnostic)this.diagnostics.record('preparation',{...diagnostic,phase:5,backendCode:2,boundaryCode:8})
    try{this.worker.postMessage(message)}
    catch(error){this.pending.delete(id);clearTimeout(timer);this.release(release);reject(error)}
   })
+ }
+ cancel(cancellationId){
+  if(!Number.isSafeInteger(cancellationId)||cancellationId<=0)throw Error('Invalid preparation cancellation')
+  if(this.closed)return
+  for(const [id,pending]of this.pending)if(pending.method==='compile_gpu_packet'&&pending.cancellationId===cancellationId){
+   this.worker.postMessage({cancel:id});break
+  }
  }
  release(release){release();this.reservations.delete(release)}
  releaseAll(){for(const release of this.reservations)release();this.reservations.clear()}
@@ -112,6 +121,7 @@ export function registerNativePreparation(ipcMain,{resourcesRoot,assertSender}){
   return id
  })
  const session=(event,id)=>{assertSender(event);const s=sessions.get(id);if(!s||s.owner!==event.sender.id)throw Error('Unknown native preparation session');return s}
+ ipcMain.handle('native-preparation:cancel',(event,id,cancellationId)=>session(event,id).worker.cancel(cancellationId))
  ipcMain.handle('native-preparation:request',(event,id,request)=>session(event,id).worker.request(request))
  ipcMain.handle('native-preparation:close',(event,id)=>{const s=session(event,id);sessions.delete(id);return close(s.worker)})
  return ()=>{for(const s of sessions.values())close(s.worker);for(const codec of codecs.values())close(codec);sessions.clear();codecs.clear();return Promise.all([...retiring])}

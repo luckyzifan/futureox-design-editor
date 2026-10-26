@@ -5,9 +5,11 @@ export type NavigationRefinementGoal = {
   scope: string
   /** One credit per sampled navigation camera, not per raw pointer event. */
   sequence: number
+  continuous?: boolean
+  budgetMs?: number
   current(): boolean
   /** Resolve one current visible native miss at execution time, then await it. */
-  run(): Promise<void>
+  run(): Promise<void | boolean>
   failed(error: unknown): void
 }
 
@@ -32,6 +34,9 @@ export class NavigationRefinementScheduler {
     this.credit = { scope: requested.scope, sequence: requested.sequence }
     const owns = () => this.goal?.scope === requested.scope && this.goal.current()
     try {
+      let more = false, spent = 0, turns = 0
+      do {
+      more = false
       await this.mailbox.run(owns, async () => {
         // Read the latest goal only after older preview work releases the
         // mailbox. Never refine the obsolete camera which earned the turn.
@@ -40,9 +45,15 @@ export class NavigationRefinementScheduler {
           // A queued turn may retarget to a newer sample. Spend that actual
           // sample's credit as well, so it cannot earn a second identical turn.
           this.credit = { scope: goal.scope, sequence: goal.sequence }
-          await goal.run()
+          const started = performance.now()
+          more = await goal.run() === true && goal.continuous === true
+          spent += performance.now() - started
         }
       })
+      turns++
+      // Release queue ownership after every tile. Actual measured work bounds
+      // a burst; a slow tile cannot imply a millisecond preemption guarantee.
+      } while (more && owns() && turns < 4 && spent < (this.goal?.budgetMs ?? Infinity))
       return true
     } catch (error) {
       if (!String(error).includes('PREVIEW_CANCELLED') && owns()) this.goal!.failed(error)

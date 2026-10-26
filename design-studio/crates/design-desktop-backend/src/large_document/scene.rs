@@ -124,12 +124,30 @@ fn unique_window_bytes(full: &Document, window: &Document, bytes: usize) -> Resu
     Ok(added)
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct PageRange {
+    pub offset: usize,
+    pub end: usize,
+    pub total_roots: usize,
+    pub next_offset: Option<usize>,
+}
+
+#[cfg(test)]
 pub(super) fn build(
     s: &Session,
     p: usize,
     n: usize,
     cancel: &AtomicBool,
 ) -> Result<(Document, Vec<String>)> {
+    let (doc, warnings, _) = build_range(s, p, n, cancel, 0, false, capacity::document_byte_limit())?;
+    Ok((doc, warnings))
+}
+
+pub(super) fn build_range(
+    s: &Session, p: usize, n: usize, cancel: &AtomicBool,
+    offset: usize, segmented: bool, byte_limit: usize,
+) -> Result<(Document, Vec<String>, Option<PageRange>)> {
     if s.format != "sketch" {
         return Err(issue(
             "Choose a shared design node for JSON canvas editing; arbitrary JSON has no canvas geometry",
@@ -158,73 +176,106 @@ pub(super) fn build(
     } else {
         vec![n]
     };
+    if offset >= roots.len() || (entry.kind != "page" && offset != 0) {
+        return Err(issue("Invalid page working-set offset"));
+    }
+    let total_roots = roots.len();
+    let mut end = offset;
+    let byte_limit = byte_limit.min(capacity::document_byte_limit());
+    let context = projection::SketchContext::new(s)?;
     let mut full: Option<Document> = None;
     let mut warnings = std::collections::BTreeSet::new();
     // Account each conversion before retaining it. The source window can be
     // large while its typed representation still obeys normal scene admission.
     let mut retained = 0usize;
-    for root in roots {
+    // At most two conversion windows, only with enough trusted startup memory.
+    // Merge in source order and join every worker before returning on failure
+    // or cancellation. No detached jobs or new Tokio blocking lanes.
+    let concurrency = if capacity::memory_budget_bytes() >= 2 * 1024 * 1024 * 1024 { 2 } else { 1 };
+    'windows: for batch in roots[offset..].chunks(concurrency) {
         check_cancel(cancel).map_err(issue)?;
-        let (mut doc, _, notes) = projection::sketch_window(s, p, root, 64 * 1024 * 1024)?;
-        let window_bytes = serde_json::to_vec(&doc).map_err(issue)?.len();
-        capacity::check_document_bytes(window_bytes).map_err(issue)?;
-        // Each window includes its shared fonts/component dependencies. Charge
-        // their retained values once, while keeping map keys/metadata overhead
-        // conservatively counted. The incoming window is independently bounded.
-        let added = if let Some(full) = &full {
-            unique_window_bytes(full, &doc, window_bytes)?
-        } else { window_bytes };
-        retained = retained.checked_add(added).ok_or_else(|| issue("Scene byte overflow"))?;
-        capacity::check_document_bytes(retained).map_err(issue)?;
-        warnings.extend(notes);
-        if let Some(full) = &mut full {
-            full.schema_version = full.schema_version.max(doc.schema_version);
-            full.pages[0].children.append(&mut doc.pages[0].children);
-            for id in &doc.pages[1].children {
-                if !full.pages[1].children.contains(id) {
-                    full.pages[1].children.push(id.clone());
-                }
+        let convert = |root| {
+            check_cancel(cancel).map_err(issue)?;
+            let (doc, _, notes) = projection::sketch_window_in(s, p, root, 64 * 1024 * 1024, &context)?;
+            check_cancel(cancel).map_err(issue)?;
+            Ok::<_, BackendError>((doc, notes))
+        };
+        let converted = std::thread::scope(|scope| {
+            let next = batch.get(1).map(|root| scope.spawn(move || convert(*root)));
+            let first = convert(batch[0]);
+            let mut results = vec![first];
+            if let Some(next) = next {
+                results.push(next.join().unwrap_or_else(|_| Err(issue("Source conversion worker failed"))));
             }
-            for (id, node) in doc.nodes {
-                if let Some(previous) = full.nodes.get(&id) {
-                    if serde_json::to_value(previous).map_err(issue)?
-                        != serde_json::to_value(&node).map_err(issue)?
-                    {
-                        return Err(issue("Conflicting source node in page dependency closure"));
+            results
+        });
+        for converted in converted {
+            check_cancel(cancel).map_err(issue)?;
+            let (mut doc, notes) = converted?;
+            let window_bytes = serde_json::to_vec(&doc).map_err(issue)?.len();
+            capacity::check_document_bytes(window_bytes).map_err(issue)?;
+            // Each window includes its shared fonts/component dependencies. Charge
+            // their retained values once, while keeping map keys/metadata overhead
+            // conservatively counted. The incoming window is independently bounded.
+            let added = if let Some(full) = &full {
+                unique_window_bytes(full, &doc, window_bytes)?
+            } else { window_bytes };
+            let next_retained = retained.checked_add(added).ok_or_else(|| issue("Scene byte overflow"))?;
+            if next_retained > byte_limit {
+                if segmented && entry.kind == "page" && full.is_some() { break 'windows; }
+                return Err(issue(format!("DOCUMENT_RESOURCE_LIMIT: page working set needs {next_retained} bytes; allowance is {byte_limit} bytes. Select a smaller source object.")));
+            }
+            retained = next_retained;
+            capacity::check_document_bytes(retained).map_err(issue)?;
+            warnings.extend(notes);
+            if let Some(full) = &mut full {
+                full.schema_version = full.schema_version.max(doc.schema_version);
+                full.pages[0].children.append(&mut doc.pages[0].children);
+                for id in &doc.pages[1].children {
+                    if !full.pages[1].children.contains(id) {
+                        full.pages[1].children.push(id.clone());
                     }
-                } else {
-                    full.nodes.insert(id, node);
                 }
-            }
-            match (&mut full.design_system, doc.design_system) {
-                (Some(a), Some(b)) => {
-                    let mut value = serde_json::to_value(&*a).map_err(issue)?;
-                    merge(&mut value, serde_json::to_value(b).map_err(issue)?)?;
-                    *a = serde_json::from_value(value).map_err(issue)?;
-                }
-                (a @ None, Some(b)) => *a = Some(b),
-                _ => {}
-            }
-            if full.color_management != doc.color_management {
-                return Err(issue("Page window color contract changed"));
-            }
-            for (id, font) in doc.fonts {
-                if !full.fonts.contains_key(&id) {
-                    full.fonts.insert(id, font);
-                }
-            }
-            if let Some(b) = doc.prototype {
-                if let Some(a) = &mut full.prototype {
-                    a.interactions.extend(b.interactions);
-                    if a.start_node.is_none() {
-                        a.start_node = b.start_node;
+                for (id, node) in doc.nodes {
+                    if let Some(previous) = full.nodes.get(&id) {
+                        if previous != &node {
+                            return Err(issue("Conflicting source node in page dependency closure"));
+                        }
+                    } else {
+                        full.nodes.insert(id, node);
                     }
-                } else {
-                    full.prototype = Some(b);
                 }
+                match (&mut full.design_system, doc.design_system) {
+                    (Some(a), Some(b)) => {
+                        let mut value = serde_json::to_value(&*a).map_err(issue)?;
+                        merge(&mut value, serde_json::to_value(b).map_err(issue)?)?;
+                        *a = serde_json::from_value(value).map_err(issue)?;
+                    }
+                    (a @ None, Some(b)) => *a = Some(b),
+                    _ => {}
+                }
+                if full.color_management != doc.color_management {
+                    return Err(issue("Page window color contract changed"));
+                }
+                for (id, font) in doc.fonts {
+                    if !full.fonts.contains_key(&id) {
+                        full.fonts.insert(id, font);
+                    }
+                }
+                if let Some(b) = doc.prototype {
+                    if let Some(a) = &mut full.prototype {
+                        a.interactions.extend(b.interactions);
+                        if a.start_node.is_none() {
+                            a.start_node = b.start_node;
+                        }
+                    } else {
+                        full.prototype = Some(b);
+                    }
+                }
+            } else {
+                full = Some(doc);
             }
-        } else {
-            full = Some(doc);
+            end += 1;
         }
     }
     let mut doc = full.ok_or_else(|| issue("This page has no drawable source layers"))?;
@@ -243,11 +294,14 @@ pub(super) fn build(
         RasterProfile::Analytic
     });
     doc.validate().map_err(issue)?;
-    Ok((doc, warnings.into_iter().collect()))
+    let range = (entry.kind == "page").then_some(PageRange {
+        offset, end, total_roots, next_offset: (end < total_roots).then_some(end),
+    });
+    Ok((doc, warnings.into_iter().collect(), range))
 }
 pub(super) fn load(s: &mut Session, request: Request, cancel: &AtomicBool) -> Result<Value> {
     let (p, n) = location(s, request.key.as_deref())?;
-    let (document, warnings) = build(s, p, n, cancel)?;
+    let (document, warnings, range) = build_range(s, p, n, cancel, request.offset, true, capacity::document_byte_limit())?;
     let bytes = serde_json::to_vec(&document).map_err(issue)?;
     capacity::check_document_bytes(bytes.len()).map_err(issue)?;
     check_cancel(cancel).map_err(issue)?;
@@ -255,7 +309,7 @@ pub(super) fn load(s: &mut Session, request: Request, cancel: &AtomicBool) -> Re
     fs::write(&path, &bytes).map_err(issue)?;
     let hash = digest(&bytes);
     let key = request.key.unwrap();
-    let result = json!({"owner":s.owner,"revision":s.revision,"key":key,"bytes":bytes.len(),"hash":hash,"nodes":document.nodes.len(),"warnings":warnings});
+    let result = json!({"owner":s.owner,"revision":s.revision,"key":key,"bytes":bytes.len(),"hash":hash,"nodes":document.nodes.len(),"warnings":warnings,"pageRange":range});
     s.scene = Some(Scene {
         key,
         revision: s.revision,

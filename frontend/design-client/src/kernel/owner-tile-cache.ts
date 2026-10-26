@@ -1,4 +1,5 @@
 import { ExactTileCache } from './exact-tile-cache'
+import type {CompilationWitness,WitnessLookup} from './compilation-witness'
 
 /** Owner partitions share one payload budget and one global LRU. A lane switch
  * is not invalidation. Configuration/device changes still invalidate all owners.
@@ -21,11 +22,11 @@ export class OwnerTileCache<T> {
     const current = (ticket: { owner: string; epoch: number; generation: number }) =>
       ticket.owner === owner && ticket.epoch === this.epoch && ticket.generation === generation()
     return {
-      get: (slot: string, witness: Uint8Array) => this.cache.get(key(slot), witness),
+      get: (slot: string, witness: WitnessLookup) => this.cache.get(key(slot), witness),
       certified: (slot: string) => this.cache.certified(key(slot)),
       capture: () => ({ owner, epoch: this.epoch, generation: generation() }),
       current,
-      set: (slot: string, witness: Uint8Array, value: T, bytes: number,
+      set: (slot: string, witness: CompilationWitness, value: T, bytes: number,
         ticket?: { owner: string; epoch: number; generation: number }) => {
         if (ticket && !current(ticket)) return false
         this.cache.set(key(slot), witness, value, bytes)

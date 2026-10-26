@@ -10,6 +10,8 @@ use crate::{
 };
 use serde::Serialize;
 mod suffix;
+mod fragments;
+#[cfg(test)] mod page_dependency_tests;
 pub mod scene_plan;
 /// One shader source for native wgpu and the browser WebGPU driver.
 pub const VECTOR_SHADER: &str = concat!(
@@ -68,23 +70,27 @@ pub(crate) struct CameraPrepare {
     pub(crate) key: CameraPrepareKey,
     pub(crate) prepared: Arc<HashMap<String, crate::geometry_snapshot::Prepared>>,
     programs: ProgramCache,
+    fragments: fragments::FragmentCache,
     metadata: Option<CameraMetadata>,
     reuses: u64,
     incomplete: bool,
     retained_nodes: usize,
+    incremental: bool,
 }
 impl CameraPrepare {
     fn retained_bytes(&self) -> usize {
         let contours = |cs: &Vec<crate::path::Contour>| cs.capacity()*std::mem::size_of::<crate::path::Contour>() +
             cs.iter().map(|c|c.points.capacity()*std::mem::size_of::<Point>()).sum::<usize>();
-        self.programs.bytes + self.prepared.capacity()*192 + self.prepared.iter().map(|(id,p)|
+        self.programs.bytes + self.fragments.bytes + self.prepared.capacity()*192 + self.prepared.iter().map(|(id,p)|
             id.capacity()+contours(&p.fill)+p.strokes.iter().map(|s|contours(s)).sum::<usize>()).sum::<usize>()
     }
-    pub(crate) fn paint_changed(&mut self, revision: u64) {
+    pub(crate) fn paint_changed(&mut self, revision: u64, doc:&Document, ids:impl Iterator<Item=String>, parents:&HashMap<String,String>) {
         self.key.0 = revision;
         // Opacity can change whether a backdrop chain is active. Refresh this
         // summary even when all exact coverage programs remain reusable.
         self.metadata = None;
+        self.fragments.invalidate_tree(doc,ids,parents); self.programs.reserve(self.fragments.bytes);
+        self.incremental=true;
     }
     /// Affine interaction edits (rotation/scale) reuse the translation dirty
     /// set — moved subtree plus ancestors — but a changed linear part can move
@@ -115,10 +121,12 @@ impl CameraPrepare {
         let prepared = Arc::make_mut(&mut self.prepared);
         for id in &dirty { prepared.remove(id); }
         self.programs.retain_nodes(&dirty);
+        self.fragments.invalidate(&dirty); self.programs.reserve(self.fragments.bytes);
         self.key.0 = revision;
         // Rigid translation leaves effect radii, linear transforms and
         // dependency topology unchanged; camera metadata stays valid.
         self.incomplete = true;
+        self.incremental = true;
         self.retained_nodes = self.prepared.len();
     }
     fn covers(&self, key: &CameraPrepareKey) -> bool {
@@ -230,12 +238,23 @@ struct ProgramCache {
     next_order: u64,
     count: usize,
     bytes: usize,
+    reserved_bytes: usize,
     hits: u64,
     builds: u64,
 }
 struct ProgramEntry { order: u64, program: Arc<CachedProgram> }
 impl ProgramCache {
     const LIMIT: usize = 32 * 1024 * 1024;
+    fn reserve(&mut self, bytes:usize) {
+        self.reserved_bytes=bytes;
+        while self.bytes>Self::LIMIT.saturating_sub(bytes) {
+            let Some((_,(id,shape)))=self.order.pop_first()else{break};
+            if let Some(entries)=self.entries.get_mut(&id){
+                if let Some(entry)=entries.remove(&shape){self.bytes-=Self::program_bytes(&id,&entry.program);self.count-=1;}
+                if entries.is_empty(){self.entries.remove(&id);}
+            }
+        }
+    }
     fn program_bytes(id: &str, program: &CachedProgram) -> usize {
         program.data.len()*4 + id.len()*2 + 512
     }
@@ -272,7 +291,7 @@ impl ProgramCache {
     fn insert(&mut self, id: &str, shape: ProgramShape, program: Arc<CachedProgram>) {
         self.builds += 1;
         let size = Self::program_bytes(id, &program);
-        if size > Self::LIMIT { return; }
+        if size > Self::LIMIT.saturating_sub(self.reserved_bytes) { return; }
         // Replacement is one live entry. Retire its old size/FIFO record
         // before admitting the new version, including at the byte limit.
         if let Some(old) = self.entries.get_mut(id).and_then(|entries| entries.remove(&shape)) {
@@ -280,7 +299,7 @@ impl ProgramCache {
             self.count -= 1;
             self.order.remove(&old.order);
         }
-        while self.bytes + size > Self::LIMIT {
+        while self.bytes + size > Self::LIMIT.saturating_sub(self.reserved_bytes) {
             let Some((_, (old_id, old_shape))) = self.order.pop_first() else { break; };
             if let Some(entries) = self.entries.get_mut(&old_id) {
                 if let Some(old) = entries.remove(&old_shape) {
@@ -335,7 +354,7 @@ pub struct AreaPath {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fingerprint: Option<[u32;2]>,
 }
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GpuPaint {
     #[serde(flatten)]
@@ -388,14 +407,14 @@ impl GpuPaint {
         })
     }
 }
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GpuStroke {
     pub path: GpuPath,
     pub paint: GpuPaint,
     pub align: String,
 }
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GpuNode {
     /// The entire working rectangle lies inside an opaque, simple fill.
@@ -1372,6 +1391,9 @@ struct Compiler<'a> {
     stages: Option<PainterStages>,
     curves: Vec<f32>,
     area_paths: HashMap<ProgramIdentity, AreaPath>,
+    fragments: fragments::FragmentCache,
+    fragment_targets: std::collections::HashSet<String>,
+    compiled_order: Vec<String>,
     programs: ProgramCache,
     nodes: BTreeMap<String, GpuNode>,
     vertices: Vec<f32>,
@@ -1394,6 +1416,28 @@ impl Compiler<'_> {
             let program = Arc::new(CachedProgram::new(crate::area_program::AreaProgram::compile_crop(contours,crop,even_odd,self.compatible)?));
             self.programs.insert(slot.0,input,Arc::clone(&program)); program
         };
+        let area = self.install_program(Arc::clone(&program))?;
+        Ok(GpuPath {
+            opaque_rect: crate::coverage::rectangle(contours).and_then(|b| {
+                let left=b[0].max(f64::from(program.rect.x)).ceil();let top=b[1].max(f64::from(program.rect.y)).ceil();
+                let right=b[2].min(f64::from(program.rect.right())).floor();let bottom=b[3].min(f64::from(program.rect.bottom())).floor();
+                (right>left&&bottom>top).then(||Rect::new(left as i32,top as i32,(right-left) as u32,(bottom-top) as u32))
+            }),
+            area: Some(area),
+            analytic: None,
+            analytic_rect: None,
+            sample_count: None,
+            rect: if program.rect.empty() {
+                Rect::new(limit.x, limit.y, 1, 1)
+            } else {
+                program.rect
+            },
+            first: 0,
+            count: if program.rect.empty() { 0 } else { 3 },
+            rule: if even_odd { "evenodd" } else { "nonzero" }.into(),
+        })
+    }
+    fn install_program(&mut self, program:Arc<CachedProgram>)->Result<AreaPath,String>{
         let key = ProgramIdentity(Arc::clone(&program));
         let area = if let Some(area) = self.area_paths.get(&key) {
             area.clone()
@@ -1420,32 +1464,15 @@ impl Compiler<'_> {
             self.area_paths.insert(key, area.clone());
             area
         };
-        Ok(GpuPath {
-            opaque_rect: crate::coverage::rectangle(contours).and_then(|b| {
-                let left=b[0].max(f64::from(program.rect.x)).ceil();let top=b[1].max(f64::from(program.rect.y)).ceil();
-                let right=b[2].min(f64::from(program.rect.right())).floor();let bottom=b[3].min(f64::from(program.rect.bottom())).floor();
-                (right>left&&bottom>top).then(||Rect::new(left as i32,top as i32,(right-left) as u32,(bottom-top) as u32))
-            }),
-            area: Some(area),
-            analytic: None,
-            analytic_rect: None,
-            sample_count: None,
-            rect: if program.rect.empty() {
-                Rect::new(limit.x, limit.y, 1, 1)
-            } else {
-                program.rect
-            },
-            first: 0,
-            count: if program.rect.empty() { 0 } else { 3 },
-            rule: if even_odd { "evenodd" } else { "nonzero" }.into(),
-        })
+        Ok(area)
     }
-    fn node(
+    fn compile_node(
         &mut self,
         id: &str,
         parent: Transform,
         requested: Option<Rect>,
     ) -> Result<Rect, String> {
+        crate::render_cancellation::checkpoint()?;
         let n = &self.doc.nodes[id];
         if !n.visible {
             return Ok(Rect::default());
@@ -1621,6 +1648,7 @@ impl Compiler<'_> {
             });
         }
         let opaque_coverage = opaque_interior(n, matrix, extent);
+        self.compiled_order.push(id.to_owned());
         self.nodes.insert(
             id.to_owned(),
             GpuNode {
@@ -1722,13 +1750,15 @@ impl Engine {
     /// Shared JSON request envelope; geometry travels separately in the browser
     /// packet so decimal formatting never sits on the interactive hot path.
     pub fn compile_gpu_request(&mut self, request: &str) -> Result<GpuScene, String> {
-        let mut value: serde_json::Value = serde_json::from_str(request).map_err(|e| e.to_string())?;
+        self.compile_gpu_request_value(serde_json::from_str(request).map_err(|e|e.to_string())?)
+    }
+    pub(crate) fn compile_gpu_request_value(&mut self, mut value:serde_json::Value)->Result<GpuScene,String>{
         let object = value.as_object_mut().ok_or("Render options must be an object")?;
         if let Some(roots)=object.remove("gpuRoots") {
             let roots:Vec<String>=serde_json::from_value(roots).map_err(|_|"Invalid render roots")?;
             let page=object.get("pageId").and_then(|v|v.as_str()).ok_or("Missing render page")?;
             let mut scoped=self.snapshot_render_roots(page,&roots)?;
-            return scoped.compile_gpu_request(&value.to_string());
+            return scoped.compile_gpu_request_value(value);
         }
         // Allocation changes remain opt-in until the independent GPU/whole-app
         // gates pass. This is a trusted request policy, never document state.
@@ -1870,10 +1900,11 @@ impl Engine {
         Ok(scene)
     }
     pub fn gpu_compile_cache_stats(&self) -> serde_json::Value {
-        self.camera_prepare.as_ref().map(|cache|serde_json::json!({"hits":cache.programs.hits,
-            "builds":cache.programs.builds,"bytes":cache.programs.bytes,"entries":cache.programs.len(),
+        let mut stats=self.camera_prepare.as_ref().map(|cache|serde_json::json!({"hits":cache.programs.hits,
+            "builds":cache.programs.builds,"bytes":cache.programs.bytes+cache.fragments.bytes,"fragmentHits":cache.fragments.hits,"fragmentBuilds":cache.fragments.builds,"entries":cache.programs.len(),
             "preparedNodes":cache.prepared.len(),"pathNodes":self.paths.len(),"prepareReuses":cache.reuses,"retainedNodes":cache.retained_nodes,"textPaths":self.fonts.text_path_cache_stats(),"residentStrokes":self.local_strokes.stats(),"cameraResidency":self.camera_residency.stats()}))
-            .unwrap_or_else(||serde_json::json!({"hits":0,"builds":0,"bytes":0,"entries":0}))
+            .unwrap_or_else(||serde_json::json!({"hits":0,"builds":0,"bytes":0,"entries":0}));
+        stats["frameScene"]=self.frame_scene.stats();stats
     }
     fn compile_gpu_scene(
         &mut self,
@@ -1883,6 +1914,7 @@ impl Engine {
         painter_support: bool,
         capture_reads: bool,
     ) -> Result<GpuScene, String> {
+        crate::render_cancellation::checkpoint()?;
         self.resolve_layout()?;
         if options.width == 0
             || options.height == 0
@@ -1939,19 +1971,27 @@ impl Engine {
                 cache.key.4 == compatible && cache.key.5 == options.animation
         }).and_then(|cache| cache.metadata).unwrap_or_else(|| {
             let padding = page.children.iter().map(|id| margin(doc, id, camera)).max().unwrap_or(0);
-            let noise_guard = doc.nodes.values().any(|n| n.effects.iter().any(|e| e.visible && e.kind == "noise"))
+            // Only this page can contribute to its painter dependency graph.
+            // An unrelated page's noise/backdrop must not disable regional
+            // allocation or enlarge the current page's noise address proof.
+            let mut page_nodes=Vec::new();let mut seen=std::collections::HashSet::new();
+            let mut stack=page.children.iter().map(String::as_str).collect::<Vec<_>>();
+            while let Some(id)=stack.pop(){if !seen.insert(id){continue}if let Some(node)=doc.nodes.get(id){
+                page_nodes.push(node);stack.extend(node.render_children().iter().map(String::as_str));
+            }}
+            let noise_guard = page_nodes.iter().any(|n| n.effects.iter().any(|e| e.visible && e.kind == "noise"))
                 .then(|| {
                     // A dependency path has at most one visit per node, each
                     // adding two texels. A blur-only leaf's per-effect ceil
                     // can exceed the general halo by at most its effect count.
-                    let extra = doc.nodes.len().saturating_mul(2).saturating_add(
-                        doc.nodes.values().map(|n| n.effects.len()).max().unwrap_or(0));
+                    let extra = page_nodes.len().saturating_mul(2).saturating_add(
+                        page_nodes.iter().map(|n| n.effects.len()).max().unwrap_or(0));
                     padding.saturating_add(i32::try_from(extra).unwrap_or(i32::MAX))
                 });
             CameraMetadata {
                 padding,
                 backdrop_chain: single_backdrop_support_chain(doc, &page.children),
-                foreground_only: doc.color_management.is_some() && doc.nodes.values().all(|n| {
+                foreground_only: doc.color_management.is_some() && page_nodes.iter().all(|n| {
                     // Noise is pointwise, but changing a neighbouring filter's
                     // crop must not change its sample phase. Newly admitted
                     // noise scenes use only solid paints and integer-tap
@@ -2061,8 +2101,8 @@ impl Engine {
                     cache.prepared = prepared.clone(); cache.metadata = Some(metadata); cache.incomplete = false;
                 } else {
                     self.camera_prepare = Some(CameraPrepare {
-                        key: key.clone(), prepared: prepared.clone(), programs: ProgramCache::default(),
-                        metadata: Some(metadata), reuses: 0, incomplete: false, retained_nodes: 0,
+                        key: key.clone(), prepared: prepared.clone(), programs: ProgramCache::default(), fragments: fragments::FragmentCache::default(),
+                        metadata: Some(metadata), reuses: 0, incomplete: false, retained_nodes: 0, incremental:false,
                     });
                 }
             }
@@ -2215,6 +2255,18 @@ impl Engine {
         let PainterSupport { backdrop_outputs, shadow_outputs, stages, .. } = painter_support.unwrap_or_else(||
             PainterSupport { extent, backdrop_outputs: HashMap::new(), shadow_outputs: HashMap::new(), stages: None });
         let root_input_box = stages.as_ref().map(|s| device_box(s.root_input));
+        // Retained interaction geometry proves exact dirty subtrees. Keep a
+        // non-overlapping frontier, never one duplicated snapshot per ancestor.
+        // Painter-stage demand changes depend on siblings and retain full compilation.
+        let retain_fragments=(self.camera_prepare.as_ref().is_some_and(|cache|cache.incremental)||self.interaction_transform_revision.as_ref().is_some_and(|(_,next,_)|*next==self.geo_revision))
+            && options.animation.is_none() && stages.is_none() && backdrop_outputs.is_empty() && shadow_outputs.is_empty();
+        let mut fragments=self.camera_prepare.as_mut().map(|c|std::mem::take(&mut c.fragments)).unwrap_or_default();
+        let policy=serde_json::to_string(&(options,viewport,extent,regional_foreground,backdrop_chain)).map_err(|e|e.to_string())?;
+        if !retain_fragments||fragments.policy!=policy {fragments.clear();}
+        fragments.policy=policy;
+        let fragment_targets=if retain_fragments {page.children.iter().flat_map(|id|{
+            let n=&doc.nodes[id];if n.render_children().is_empty(){vec![id.clone()]}else{n.render_children().to_vec()}
+        }).collect()}else{Default::default()};
         let mut compiler = Compiler {
             doc,
             fonts: &self.fonts,
@@ -2231,6 +2283,7 @@ impl Engine {
             stages,
             curves: Vec::new(),
             area_paths: HashMap::new(),
+            fragments, fragment_targets, compiled_order:Vec::new(),
             programs,
             nodes: BTreeMap::new(),
             vertices: Vec::new(),
@@ -2239,7 +2292,7 @@ impl Engine {
             compiler.node(root, camera, regional_foreground.then_some(viewport))?;
         }
         if cache_key.is_some() {
-            if let Some(cache) = self.camera_prepare.as_mut() { cache.programs = compiler.programs; }
+            if let Some(cache) = self.camera_prepare.as_mut() { cache.programs = compiler.programs; cache.fragments=compiler.fragments; }
         }
         let mut nodes = compiler.nodes;
         if has_region && doc.color_management.is_some() && !options.interactive_effects

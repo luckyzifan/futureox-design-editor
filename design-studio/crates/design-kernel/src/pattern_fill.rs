@@ -39,6 +39,12 @@ pub const STAGGER_HORIZONTAL: &str = "stagger_horizontal";
 pub const STAGGER_VERTICAL: &str = "stagger_vertical";
 /// Authored "off" — same rendering path as an absent field.
 pub const NONE: &str = "none";
+/// kiwi `PatternAlignment` ordinal 0 — cells anchor at the fill's start edge.
+pub const ALIGN_START: &str = "start";
+/// kiwi `PatternAlignment` ordinal 1 — cells center within the fill.
+pub const ALIGN_CENTER: &str = "center";
+/// kiwi `PatternAlignment` ordinal 2 — cells anchor at the end edge.
+pub const ALIGN_END: &str = "end";
 
 /// `patternTileType` value for a mode name.
 pub fn tile_type(mode: &str) -> Option<i32> {
@@ -65,10 +71,26 @@ pub struct PatternTile {
     /// folded in — same pre-fract translation, opposite sign).
     #[serde(default)]
     pub offset: [f64; 2],
+    /// kiwi `verticalAlignment`/`horizontalAlignment` (`PatternAlignment`:
+    /// start/center/end), axis order [x, y]. The engine-side mapping of an
+    /// alignment to shader uniforms was not recovered, so the authored
+    /// values are carried verbatim (import/export round-trip) without
+    /// perturbing `tile_uv`.
+    #[serde(default = "default_alignment")]
+    pub alignment: [String; 2],
 }
 
 fn grid_mode() -> String {
     GRID.into()
+}
+
+fn default_alignment() -> [String; 2] {
+    [ALIGN_START.into(), ALIGN_START.into()]
+}
+
+/// A valid kiwi `PatternAlignment` name.
+pub fn is_alignment(mode: &str) -> bool {
+    matches!(mode, ALIGN_START | ALIGN_CENTER | ALIGN_END)
 }
 
 impl PatternTile {
@@ -79,6 +101,7 @@ impl PatternTile {
             mode: GRID.into(),
             size: [0., 0.],
             offset: [0., 0.],
+            alignment: default_alignment(),
         }
     }
     /// `false` renders through the legacy single-placement image path.
@@ -105,10 +128,13 @@ impl PatternTile {
     /// `scene::Document::validate`.
     pub fn validate(&self) -> bool {
         (tile_type(&self.mode).is_some() || self.mode == NONE)
-            && self.size.iter().chain(self.offset.iter()).all(|v| {
-                v.is_finite() && v.abs() <= 1e7
-            })
+            && self
+                .size
+                .iter()
+                .chain(self.offset.iter())
+                .all(|v| v.is_finite() && v.abs() <= 1e7)
             && self.size.iter().all(|v| *v >= 0.)
+            && self.alignment.iter().all(|a| is_alignment(a))
     }
 }
 

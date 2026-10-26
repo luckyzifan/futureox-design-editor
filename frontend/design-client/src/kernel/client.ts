@@ -850,8 +850,20 @@ export class KernelClient {
           if (deriveFrom) { /* Empty derivation carries no authored JSON or patch. */ }
           else if (snapshot?.id === document.id) {
             const transition = beforeReceipt ? prepareAuthoredPatchTransition(snapshot, document) : { patch: documentPatch(snapshot, document), canAcknowledge: false }
-            patch = nativeSerializer ? await nativeSerializer(transition.patch) : JSON.stringify(transition.patch)
-            if (beforeReceipt && transition.canAcknowledge && boundedPatchWire(patch)) patchBaseReceipt = beforeReceipt
+            // Workset adoption/replacement already sends every node and new
+            // page structure. A bulk patch cannot renew a property-patch
+            // receipt, leaving later gestures to serialize this same graph.
+            // Full synchronization establishes actual native source authority
+            // once; any partial edit/append keeps the incremental path.
+            const completeNativeWorkset = !!nativeSerializer && !interaction && Object.hasOwn(transition.patch.fields, 'pages') &&
+              Object.keys(document.nodes).length > 0 &&
+              Object.keys(snapshot.nodes).every(id => Object.hasOwn(transition.patch.nodes, id)) &&
+              Object.keys(document.nodes).every(id => !!transition.patch.nodes[id])
+            if (completeNativeWorkset) serialized = currentPreparedDocumentJson(document) ?? await nativeSerializer!(document)
+            else {
+              patch = nativeSerializer ? await nativeSerializer(transition.patch) : JSON.stringify(transition.patch)
+              if (beforeReceipt && transition.canAcknowledge && boundedPatchWire(patch)) patchBaseReceipt = beforeReceipt
+            }
           } else serialized = currentPreparedDocumentJson(document) ??
             (nativeSerializer ? await nativeSerializer(document) : JSON.stringify(document))
           if (this.disposed || this.worker !== worker) throw new Error('渲染器已关闭')

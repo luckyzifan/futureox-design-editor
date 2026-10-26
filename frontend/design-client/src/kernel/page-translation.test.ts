@@ -4,6 +4,42 @@ import { PageTranslation, isolatedOpaqueBoard } from './page-translation'
 import type { InteractionProps } from './interaction-layers'
 import { compositeDrawPlan } from './gpu/composite-draw-plan'
 
+test('a rejected viewport-only page move requests native coverage once for the exact live pose',()=>{
+  const doc=blank(),a=node('frame',0,0,1000,1000);doc.nodes[a.id]=a;doc.pages[0].children=[a.id]
+  const native=vi.fn<NonNullable<ConstructorParameters<typeof PageTranslation>[1]>>(()=>({x:40,y:0})),movement=new PageTranslation(vi.fn(),native)
+  const props:InteractionProps={document:doc,selection:[a.id],active:true,epoch:1,control:{current:null},onReady(){}}
+  const tile={key:'crop',serial:1,gpuTile:7,bytes:new Uint8Array(),x:0,y:0,width:128,height:128,zoom:1,gutter:0}
+  movement.prepare(props,doc.pages[0].id,doc,[{tile,active:true,layer:0}],doc,true)
+  movement.control.apply(doc,{[a.id]:{transform:[1,0,0,1,20,0]}})
+  movement.control.apply(doc,{[a.id]:{transform:[1,0,0,1,40,0]}})
+  expect(movement.backgroundTranslation).toEqual({x:40,y:0})
+  expect(movement.repairMissingCoverage(1)).toBe(false)
+  expect(native).not.toHaveBeenCalled()
+  expect(movement.repairMissingCoverage(2)).toBe(true)
+  expect(native).toHaveBeenCalledTimes(1)
+  expect(native.mock.calls[0][1][a.id].transform).toEqual([1,0,0,1,40,0])
+  expect(movement.repairMissingCoverage(2)).toBe(false)
+  movement.clear();expect(movement.repairMissingCoverage(2)).toBe(false)
+})
+
+test('uncommitted whole-page coverage uses original world tiles and failed work rebases only its live owner',()=>{
+  const doc=blank(),a=node('frame',0,0,1000,1000);doc.nodes[a.id]=a;doc.pages[0].children=[a.id]
+  const native=vi.fn<NonNullable<ConstructorParameters<typeof PageTranslation>[1]>>(()=>({x:40,y:0}))
+  const fill=vi.fn<NonNullable<ConstructorParameters<typeof PageTranslation>[3]>>(()=>true)
+  const movement=new PageTranslation(vi.fn(),native,undefined,fill)
+  const props:InteractionProps={document:doc,selection:[a.id],active:true,epoch:1,control:{current:null},onReady(){}}
+  const tile={key:'crop',serial:1,gpuTile:7,bytes:new Uint8Array(),x:0,y:0,width:128,height:128,zoom:1,gutter:0}
+  movement.prepare(props,doc.pages[0].id,doc,[{tile,active:true,layer:0}],doc,true)
+  movement.control.apply(doc,{[a.id]:{transform:[1,0,0,1,20,0]}})
+  expect(movement.repairMissingCoverage(1)).toBe(true)
+  expect(fill.mock.calls[0].slice(0,3)).toEqual([doc,{x:20,y:0},1])
+  expect(native).not.toHaveBeenCalled();expect(movement.handingOff).toBe(false)
+  movement.control.apply(doc,{[a.id]:{transform:[1,0,0,1,40,0]}})
+  fill.mock.calls[0][3]()
+  expect(native.mock.calls[0][1][a.id].transform).toEqual([1,0,0,1,40,0])
+  movement.clear();fill.mock.calls[0][3]();expect(native).toHaveBeenCalledTimes(1)
+})
+
 test('one isolated opaque board lifts from existing tiles without raster work and preserves its final pose', () => {
   const doc = blank(), a = node('frame', 20, 20, 100, 100), b = node('frame', 200, 20, 100, 100)
   for (const root of [a, b]) { root.blend = 'normal'; root.clip = true; doc.nodes[root.id] = root }

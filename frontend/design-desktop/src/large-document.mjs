@@ -101,18 +101,24 @@ export class LargeDocumentHost {
     return {status:'ok',...active.status}
   }) }
   async scene(value) { return this.#exclusive(async()=>{
-    const active=this.#check(value,['owner','expectedRevision','key']);this.#key(value.key)
+    const active=this.#check(value,['owner','expectedRevision','key','offset']);this.#key(value.key)
+    if(!integer(value.offset??0))throw Error('Invalid page working-set offset')
     if(active.status.format==='json') {
-      const result=await this.project(value)
+      if(value.offset)throw Error('JSON objects do not have page working sets')
+      const {offset,...projectRequest}=value
+      const result=await this.project(projectRequest)
       return {...result,bytes:Buffer.byteLength(result.json),nodes:Object.keys(JSON.parse(result.json).nodes).length}
     }
     const result=await this.request('large.scene',value)
-    this.#check(value,['owner','expectedRevision','key'])
+    this.#check(value,['owner','expectedRevision','key','offset'])
     if(!object(result)||!integer(result.bytes)||result.bytes>DOCUMENT_BYTE_LIMIT||!/^[0-9a-f]{64}$/.test(result.hash)||!Array.isArray(result.warnings)||result.warnings.some(v=>typeof v!=='string'))throw Error('Invalid source scene response')
+    const range=result.pageRange
+    if(value.offset&&range==null)throw Error('Missing source page range')
+    if(range!=null&&(!object(range)||!integer(range.offset)||!integer(range.end)||!integer(range.totalRoots)||range.offset!==(value.offset??0)||range.end<=range.offset||range.end>range.totalRoots||range.nextOffset!==(range.end<range.totalRoots?range.end:null)))throw Error('Invalid source page range')
     const bytes=Buffer.alloc(result.bytes)
     for(let offset=0;offset<bytes.length;){
       const chunk=await this.request('large.sceneRead',{...value,offset})
-      this.#check(value,['owner','expectedRevision','key'])
+      this.#check(value,['owner','expectedRevision','key','offset'])
       if(chunk?.offset!==offset||chunk.bytes!==result.bytes||chunk.hash!==result.hash||typeof chunk.data!=='string'||chunk.data.length>700000)throw Error('Invalid source scene chunk')
       const data=Buffer.from(chunk.data,'base64')
       if(!data.length||data.length>512*1024||offset+data.length>bytes.length||data.toString('base64')!==chunk.data)throw Error('Invalid source scene chunk size')

@@ -101,6 +101,77 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn page_ranges_cover_every_source_root_in_order_and_reject_cancelled_or_invalid_requests() {
+    let mut page: Value = serde_json::from_str(SOURCE_PAGE).unwrap();
+    let rectangle = page["layers"][0].clone();
+    page["layers"] = Value::Array((0..7).map(|n| {
+        let mut layer = rectangle.clone();
+        layer["do_objectID"] = json!(format!("10000000-0000-4000-8000-{n:012}"));
+        layer["name"] = json!(format!("Root {n}"));
+        layer
+    }).collect());
+    let (f, status) = Fixture::new(&page.to_string());
+    let key = f.key(PAGE);
+    f.call(&status, "large.scene", json!({"key":key})).unwrap();
+    let snapshot = f.snapshot();
+    {
+        let slot = f.sessions.current.lock().unwrap();
+        let s = slot.as_ref().unwrap();
+        let (p, n) = location(s, Some(&key)).unwrap();
+        let (full, _) = scene::build(s, p, n, &AtomicBool::new(false)).unwrap();
+        let limit = serde_json::to_vec(&full).unwrap().len() / 2;
+        let mut offset = 0;
+        let mut roots = Vec::new();
+        let mut segments = 0;
+        loop {
+            let (doc, _, range) = scene::build_range(s, p, n, &AtomicBool::new(false), offset, true, limit).unwrap();
+            let range = range.unwrap();
+            assert_eq!(range.offset, offset);
+            assert_eq!(range.total_roots, 7);
+            assert!(range.end > offset);
+            assert!(serde_json::to_vec(&doc).unwrap().len() <= limit);
+            for (id, node) in &doc.nodes { assert_eq!(full.nodes[id], *node); }
+            roots.extend(doc.pages[0].children.clone());
+            segments += 1;
+            match range.next_offset { Some(next) => offset = next, None => break }
+        }
+        assert!(segments > 1);
+        assert_eq!(roots, full.pages[0].children);
+        assert!(scene::build_range(s, p, n, &AtomicBool::new(false), 7, true, limit).is_err());
+        assert!(scene::build_range(s, p, n, &AtomicBool::new(true), 0, true, limit).is_err());
+        assert!(scene::build_range(s, p, n, &AtomicBool::new(false), 0, false, limit).is_err());
+    }
+    assert_eq!(snapshot, f.snapshot());
+    assert_eq!(f.export_members(&status, "complete.sketch"), f.members);
+}
+
+#[test]
+fn later_page_range_edits_preserve_cold_roots_and_reopen_all_members() {
+    let (f, status) = Fixture::new(SOURCE_PAGE);
+    let key = f.key(PAGE);
+    let loaded = f.call(&status, "large.scene", json!({"key":key,"offset":1})).unwrap();
+    assert_eq!(loaded["pageRange"], json!({"offset":1,"end":2,"totalRoots":2,"nextOffset":null}));
+    let changed = f.call(&status, "large.sceneCommit", json!({"key":key,"requestId":"range-edit","json":json!({OTHER:{"patch":{"name":"edited later range"}}}).to_string()})).unwrap();
+    let members = f.export_members(&changed, "range-edit.sketch");
+    for (name, bytes) in &f.members {
+        if !name.starts_with("pages/") { assert_eq!(&members[name], bytes); }
+    }
+    let original: Value = serde_json::from_str(SOURCE_PAGE).unwrap();
+    let edited: Value = serde_json::from_slice(&members[&format!("pages/{PAGE}.json")]).unwrap();
+    assert_eq!(original["layers"][0], edited["layers"][0]);
+    assert_eq!(edited["layers"][1]["name"], "edited later range");
+    f.call(&changed, "large.close", json!({})).unwrap();
+    let reopened = f.sessions.open(Open { path:f.root.join("range-edit.sketch"), document_id:"range-reopen".into(), session_epoch:2 }, &AtomicBool::new(false)).unwrap();
+    let key = f.key(PAGE);
+    let loaded = f.call(&reopened, "large.scene", json!({"key":key})).unwrap();
+    assert_eq!(loaded["pageRange"]["end"], 2);
+    let slot = f.sessions.current.lock().unwrap();
+    let doc = &slot.as_ref().unwrap().scene.as_ref().unwrap().document;
+    assert_eq!(doc.nodes[RECT].name, "original rectangle");
+    assert_eq!(doc.nodes[OTHER].name, "edited later range");
+}
+
+#[test]
 fn rejected_scene_edits_keep_source_revision_history_and_initial_dto_exact() {
     let (f, status) = Fixture::new(SOURCE_PAGE);
     let key = f.key(PAGE);

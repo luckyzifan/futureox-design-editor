@@ -7,11 +7,12 @@ import * as preflight from './prefix-preflight'
 
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks() })
 const radius = 38.25948715209961
-function fixture() {
+function fixture(wide = false) {
   vi.stubEnv('VITE_DESIGN_PREFIX_TIGHT_BOUND', '1')
+  vi.stubEnv('VITE_DESIGN_WIDE_RATIONAL_PREFIX', wide ? '1' : '0')
   vi.stubGlobal('OffscreenCanvas', class { constructor(readonly width: number, readonly height: number) {} })
   vi.stubGlobal('GPUTextureUsage', { TEXTURE_BINDING: 1, RENDER_ATTACHMENT: 2, COPY_SRC: 4, COPY_DST: 8 })
-  const encode = vi.fn(() => true), writes = vi.fn(), draws = vi.fn(), copies = vi.fn()
+  const encode = vi.fn((..._args: unknown[]) => true), writes = vi.fn(), draws = vi.fn(), copies = vi.fn()
   const renderPass = { setPipeline() {}, setBindGroup() {}, setScissorRect() {}, draw: draws, end() {} }
   const driver = new WebGpuDriver(true)
   Object.assign(driver, {
@@ -82,10 +83,31 @@ test('shared, malformed and non-byte-upload metadata stays on the original prefi
   expect(linear.finitePixels).toBe(true); expect(f.dispatch(linear)).toBe(0)
 })
 
+test('wide arithmetic uses only its uploaded original kernel and actual resource owner', () => {
+  const f = fixture(true), bytes = rational_tent_kernel_rgba(48.1234567890123), kernel = f.upload(bytes)
+  const dispatch = () => f.dispatch(kernel, false, 48.1234567890123)
+  const bound = dispatch()
+  expect(bound).toBeGreaterThan(120); expect(bound).toBeLessThanOrEqual(184)
+  expect(f.encode.mock.calls.at(-1)?.[13]).toBe(true)
+  bytes.fill(0); expect(dispatch()).toBe(bound)
+  const resource = kernel.resource
+  kernel.resource = {}; expect(dispatch()).toBe(0); kernel.resource = resource
+  kernel.width++; expect(dispatch()).toBe(0); kernel.width--
+  ;(f.driver as any).textures.delete(kernel); expect(dispatch()).toBe(0)
+  ;(f.driver as any).textures.add(kernel); expect(dispatch()).toBe(bound)
+  for (const flag of [undefined, '', '0', 'true']) {
+    vi.stubEnv('VITE_DESIGN_WIDE_RATIONAL_PREFIX', flag); expect(dispatch()).toBe(0)
+    expect(f.encode.mock.calls.at(-1)?.[13]).toBe(false)
+  }
+  vi.stubEnv('VITE_DESIGN_WIDE_RATIONAL_PREFIX', '1')
+  ;(f.driver as any).certifiedFilter = false; expect(dispatch()).toBe(0)
+})
+
 test.each(['clear', 'pass', 'mask', 'solid', 'copy', 'atlas-float', 'atlas-byte', 'replay', 'over', 'table', 'destroy'] as const)(
   'actual %s writer revokes bound ownership even if finitePixels is reasserted', writer => {
-    const f = fixture(), kernel = f.upload()
+    const f = fixture(true), kernel = f.upload()
     expect(f.dispatch(kernel)).toBeGreaterThan(0)
+    expect(f.encode.mock.calls.at(-1)?.[13]).toBe(true)
     // A public flag reassignment must not revive any private upload proof.
     const imageProof = { pixels: kernel.width, opaqueAlpha: true }
     ;(f.driver as any).imageRanges.set(kernel,imageProof)
@@ -119,6 +141,7 @@ test.each(['clear', 'pass', 'mask', 'solid', 'copy', 'atlas-float', 'atlas-byte'
     kernel.finitePixels = true
     expect(f.dispatch(kernel)).toBe(0)
     expect((f.driver as any).rationalKernelBounds.has(kernel)).toBe(false)
+    expect((f.driver as any).wideKernelBounds.has(kernel)).toBe(false)
     expect(f.driver.imageTableRange(kernel)).toBeUndefined()
     expect(f.driver.imageTableAxes(kernel)).toBeUndefined()
   },

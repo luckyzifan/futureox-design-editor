@@ -406,6 +406,17 @@ pub struct Effect {
         skip_serializing_if = "Option::is_none"
     )]
     pub gradient_blur: Option<GradientBlurParameters>,
+    /// kiwi `Effect.showShadowBehindNode` (ordinal 8): the drop shadow also
+    /// draws behind the node's own pixels instead of being clipped to the
+    /// silhouette. Carried verbatim from FIG; the renderer's shadow clip
+    /// behavior follows the existing effect kinds and does not branch on
+    /// this flag yet.
+    #[serde(
+        default,
+        rename = "showShadowBehindNode",
+        skip_serializing_if = "crate::components::is_false"
+    )]
+    pub show_shadow_behind_node: bool,
 }
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -476,7 +487,8 @@ impl Effect {
         if let Some(g) = &self.glass
             && (self.kind != "glass"
                 || self.texture.is_some()
-                || g.bevel_size.is_some_and(|b| !b.is_finite() || !(0.001..=1000.).contains(&b))
+                || g.bevel_size
+                    .is_some_and(|b| !b.is_finite() || !(0.001..=1000.).contains(&b))
                 || !g.depth.is_finite()
                 || !(1. ..=1000.).contains(&g.depth)
                 || !g.light_angle.is_finite()
@@ -573,8 +585,11 @@ pub struct Network {
 }
 impl Node {
     pub fn fill_even_odd(&self) -> bool {
-        self.vector_geometry.as_ref().map(|g| g.fill_rule.as_str())
-            .or_else(|| self.network.as_ref().map(|g| g.fill_rule.as_str())) != Some("nonzero")
+        self.vector_geometry
+            .as_ref()
+            .map(|g| g.fill_rule.as_str())
+            .or_else(|| self.network.as_ref().map(|g| g.fill_rule.as_str()))
+            != Some("nonzero")
     }
     pub fn requires_schema4(&self) -> bool {
         self.boolean_operation.is_some()
@@ -849,7 +864,10 @@ impl Network {
 impl Node {
     pub fn paths(&self) -> Result<(Path, Path), String> {
         if let Some(brush) = &self.vector_brush {
-            let guide = self.network.as_ref().ok_or("Vector brush requires a guide network")?;
+            let guide = self
+                .network
+                .as_ref()
+                .ok_or("Vector brush requires a guide network")?;
             let path = crate::vector_brush::paths(guide, brush)?;
             return Ok((path.clone(), path));
         }
@@ -886,10 +904,7 @@ impl Node {
                     } else {
                         crate::boolean::Operation::Subtract
                     },
-                    &[
-                        self.fill_even_odd(),
-                        false,
-                    ],
+                    &[self.fill_even_odd(), false],
                 )?
             };
             let mut path = Path::default();
@@ -905,7 +920,9 @@ impl Node {
         if let Some(g) = &self.network {
             return g.paths();
         }
-        if let Some(geometry) = &self.vector_geometry { return geometry.paths(); }
+        if let Some(geometry) = &self.vector_geometry {
+            return geometry.paths();
+        }
         let p = match self.kind.as_str() {
             "ellipse" => self.arc.map_or_else(
                 || Path::ellipse(self.width, self.height),
@@ -970,26 +987,44 @@ impl Document {
         nodes: impl IntoIterator<Item = (&'a String, &'a Node)>,
     ) -> Result<(), String> {
         for (id, n) in nodes {
-            if self.schema_version<16 && n.boolean_operation.is_some_and(|op|op.compound_rule().is_some()) {
+            if self.schema_version < 16
+                && n.boolean_operation
+                    .is_some_and(|op| op.compound_rule().is_some())
+            {
                 return Err("Compound paths require schema 16".into());
             }
             if let Some(geometry) = &n.vector_geometry {
-                if self.schema_version < 16 || n.kind != "vector" || n.network.is_some() || n.vector_brush.is_some() {
+                if self.schema_version < 16
+                    || n.kind != "vector"
+                    || n.network.is_some()
+                    || n.vector_brush.is_some()
+                {
                     return Err("Vector render geometry requires schema 16 and one authoritative vector representation".into());
                 }
                 geometry.validate()?;
             }
-            if self.schema_version < 15 && (n.vector_brush.is_some()
-                || n.component.as_ref().is_some_and(|c| !c.slots.is_empty())
-                || n.instance.as_ref().is_some_and(|i| !i.slot_contents.is_empty())) {
+            if self.schema_version < 15
+                && (n.vector_brush.is_some()
+                    || n.component.as_ref().is_some_and(|c| !c.slots.is_empty())
+                    || n.instance
+                        .as_ref()
+                        .is_some_and(|i| !i.slot_contents.is_empty()))
+            {
                 return Err("Vector brushes and component slots require schema 15".into());
             }
-            if self.schema_version < 15 && (n.text_style.as_ref().is_some_and(|s| s.text_case != crate::font::TextCase::Original)
-                || n.text_runs.iter().any(|r| r.text_case.is_some())) {
+            if self.schema_version < 15
+                && (n
+                    .text_style
+                    .as_ref()
+                    .is_some_and(|s| s.text_case != crate::font::TextCase::Original)
+                    || n.text_runs.iter().any(|r| r.text_case.is_some()))
+            {
                 return Err("Display text case requires schema 15".into());
             }
             if let Some(repeat) = &n.repeat {
-                if self.schema_version < 15 { return Err("Repeated transforms require schema 15".into()); }
+                if self.schema_version < 15 {
+                    return Err("Repeated transforms require schema 15".into());
+                }
                 repeat.validate()?;
             }
             validate_guides(&n.guides, self.schema_version)?;
@@ -997,7 +1032,12 @@ impl Document {
                 return Err("Only frames and sections own ruler guides".into());
             }
             if let Some(brush) = &n.vector_brush {
-                if n.kind != "vector" || n.network.is_none() || n.path_offset != 0. || n.boolean_operation.is_some() || !n.children.is_empty() {
+                if n.kind != "vector"
+                    || n.network.is_none()
+                    || n.path_offset != 0.
+                    || n.boolean_operation.is_some()
+                    || !n.children.is_empty()
+                {
                     return Err("Vector brush requires a vector guide without offsets, booleans or children".into());
                 }
                 brush.validate()?;
@@ -1165,7 +1205,13 @@ impl Document {
                     || !matches!(paint.fit.as_str(), "cover" | "contain" | "stretch")
                     || paint.stops.len() > MAX_GRADIENT_STOPS
                 {
-                    return Err(format!("Invalid paint parameters (kind={}, opacity={}, stops={}, transformInvertible={})", paint.kind, paint.opacity, paint.stops.len(), paint.transform.is_none_or(|t| t.inverse().is_ok())));
+                    return Err(format!(
+                        "Invalid paint parameters (kind={}, opacity={}, stops={}, transformInvertible={})",
+                        paint.kind,
+                        paint.opacity,
+                        paint.stops.len(),
+                        paint.transform.is_none_or(|t| t.inverse().is_ok())
+                    ));
                 }
                 if paint.adjust.is_some()
                     && (paint.kind != "image"
@@ -1238,7 +1284,11 @@ impl Document {
                         .iter()
                         .any(|e| [e.c1, e.c2].into_iter().flatten().any(|p| !p.finite())))
             {
-                return Err(format!("Invalid vector network ({} vertices, {} edges; finite coordinates within the admitted range are required)", g.vertices.len(), g.edges.len()));
+                return Err(format!(
+                    "Invalid vector network ({} vertices, {} edges; finite coordinates within the admitted range are required)",
+                    g.vertices.len(),
+                    g.edges.len()
+                ));
             }
             for e in &n.effects {
                 e.validate_material()?;
@@ -1257,7 +1307,9 @@ impl Document {
         Ok(())
     }
     pub fn validate(&self) -> Result<(), String> {
-        if let Some(compatibility) = &self.fd_compatibility { compatibility.validate()?; }
+        if let Some(compatibility) = &self.fd_compatibility {
+            compatibility.validate()?;
+        }
         crate::reviews::validate(self)?;
         crate::connectors::validate(self)?;
         let has_gradient = self
@@ -1344,7 +1396,6 @@ impl Document {
             || self.name.trim().is_empty()
             || self.name.encode_utf16().count() > 200
             || self.fonts.len() > 32
-
         {
             return Err("Document limits exceeded".into());
         }

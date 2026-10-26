@@ -41,3 +41,49 @@ export function estimatedTileResidencyBytes(tiles: Iterable<{
   }
   return bytes
 }
+
+type ResidentTile = Parameters<typeof estimatedTileResidencyBytes>[0] extends Iterable<infer T> ? T : never
+/** Transaction-local accounting. A shared handle keeps the first remaining
+ * owner's charge, exactly like the independent enumeration above. Duplicate
+ * tile objects (including held display aliases) own one set of allocations. */
+export class TileResidencyLedger {
+  private objects = new Map<ResidentTile, Set<number>>()
+  private sequence = 0
+  private resources = new Map<object | number, Map<number, number>>()
+  bytes = 0
+  constructor(tiles: Iterable<ResidentTile>) { for (const tile of tiles) this.add(tile) }
+  private allocations(tile: ResidentTile): [object | number, number][] {
+    const allocations = new Map<object | number, number>()
+    for (const data of [tile.bytes, tile.linear])
+      if (data?.byteLength) allocations.set(data.buffer, data.buffer.byteLength)
+    if (tile.gpuTile !== undefined) allocations.set(tile.gpuTile, tile.width * tile.height * 4)
+    else {
+      if (tile.bitmap) allocations.set(tile.bitmap, tile.width * tile.height * 4)
+      // Canvas storage belongs to this distinct mounted tile object.
+      allocations.set(tile, tile.width * tile.height * (tile.color ? 8 : 4))
+    }
+    return [...allocations]
+  }
+  add(tile: ResidentTile) {
+    const ticket = ++this.sequence, tickets = this.objects.get(tile) || new Set<number>()
+    tickets.add(ticket); this.objects.set(tile, tickets)
+    for (const [key, size] of this.allocations(tile)) {
+      let owners = this.resources.get(key)
+      if (!owners) { owners = new Map(); this.resources.set(key, owners); this.bytes += size }
+      owners.set(ticket, size)
+    }
+  }
+  remove(tile: ResidentTile) {
+    const tickets = this.objects.get(tile), ticket = tickets?.values().next().value
+    if (ticket === undefined) throw Error('Unknown tile residency owner')
+    tickets!.delete(ticket)
+    if (!tickets!.size) this.objects.delete(tile)
+    for (const [key] of this.allocations(tile)) {
+      const owners = this.resources.get(key)!
+      const before = owners.values().next().value!
+      owners.delete(ticket)
+      this.bytes += (owners.values().next().value ?? 0) - before
+      if (!owners.size) this.resources.delete(key)
+    }
+  }
+}

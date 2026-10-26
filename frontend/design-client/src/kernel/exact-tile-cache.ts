@@ -1,5 +1,6 @@
 /** One complete immutable compilation witness per coordinate
  * slot. No approximate hashes or geometry canonicalization participate in hits. */
+import {copyWitness,sameWitness,type CompilationWitness,type WitnessLookup} from './compilation-witness'
 export function sameBytes(a: Uint8Array, b: Uint8Array) {
   if (a.byteLength !== b.byteLength) return false
   for (let i = 0; i < a.byteLength; i++) if (a[i] !== b[i]) return false
@@ -33,10 +34,10 @@ export class ExactTileCache<T> {
     if (!Number.isSafeInteger(limit) || limit < 0) throw new Error('Invalid exact cache budget')
   }
   private report(reasonCode:number) {try{this.diagnostic?.(reasonCode,this.bytes)}catch{}}
-  get(slot: string, witness: Uint8Array): T | undefined {
+  get(slot: string, witness: WitnessLookup): T | undefined {
     const entry = this.values.get(slot)
     if (!entry) {this.report(10);return}
-    if (!sameBytes(entry.witness, witness)) {
+    if (!sameWitness(entry.witness,typeof witness==='function'?witness():witness)) {
       // Retire this coordinate's obsolete payload before new work is inserted.
       // Otherwise a growing content-key LRU can evict later unchanged tiles.
       this.report(11)
@@ -59,7 +60,7 @@ export class ExactTileCache<T> {
   revoke(predicate: (value: T, slot: string) => boolean) {
     for (const [slot, entry] of this.values) if (predicate(entry.value, slot)) entry.certified = false
   }
-  set(slot: string, witness: Uint8Array, value: T, payloadBytes: number) {
+  set(slot: string, witness: CompilationWitness, value: T, payloadBytes: number) {
     if (!Number.isSafeInteger(payloadBytes) || payloadBytes < 0)
       throw new Error('Invalid exact cache payload budget')
     const bytes = payloadBytes + witness.byteLength + slot.length * 2 + ExactTileCache.entryOverhead
@@ -70,7 +71,7 @@ export class ExactTileCache<T> {
       this.evictions++
       this.report(14)
     }
-    this.values.set(slot, { witness: witness.slice(), value, bytes, certified: true })
+    this.values.set(slot, { witness: copyWitness(witness), value, bytes, certified: true })
     this.bytes += bytes
   }
   delete(slot: string) {

@@ -7,10 +7,10 @@ export type PreparationReply = { progress?: PreparationProgress; bridgeBoundaryA
 
 const methods: PreparationMethod[] = ['warm_resources','initialize','load_document','apply_document_patch_with_damage','apply_interaction_transforms','compile_gpu_packet','render_linear','render_png','render_color_png','render_region_png','render_cpu_frame','stats','gpu_memory_breakdown','preparation_capabilities_v1','derive_document_v1']
 type Diagnostics = { enabled: () => boolean; owner: () => number; record: (event: string, fields: Record<string, number | boolean>) => void }
-type Job = { owner?: number; queuedAt?: number; startedAt?: number; id: number; lane: string; method: PreparationMethod; args: unknown[];
+type Job = { cancellation?: Int32Array<SharedArrayBuffer>; cancellable?: boolean; owner?: number; queuedAt?: number; startedAt?: number; id: number; lane: string; method: PreparationMethod; args: unknown[];
   resolve: (reply: PreparationReply) => void; reject: (error: Error) => void; cleanup?: () => void; cancelled?: boolean; backendCode?: number; boundaryCode?: number; diagnosticTimer?: ReturnType<typeof setTimeout> }
 /** CPU preparation has its own event loop. Keep at most one physical job in
- * flight: its synchronous WASM/native call cannot be interrupted. Later packet
+ * flight until its actual reply, including cooperative cancellation. Later packet
  * jobs remain here so superseded consumers can remove them before dispatch.
  * Document mutations, delta sessions and exact outputs are never cancellable. */
 export class PreparationChannel {
@@ -95,12 +95,15 @@ export class PreparationChannel {
     if (signal?.aborted) return Promise.reject(new Error('PREVIEW_CANCELLED'))
     if (this.queued.length + Number(!!this.active) >= 128) return Promise.reject(new Error('CPU preparation request budget exceeded'))
     return new Promise((resolve, reject) => {
-      const job: Job = { id: ++this.sequence, lane, method, args, resolve, reject }
+      const job: Job = { id: ++this.sequence, lane, method, args, resolve, reject, cancellable: !!signal }
+      if (signal && typeof SharedArrayBuffer !== 'undefined') job.cancellation = new Int32Array(new SharedArrayBuffer(4))
       if (this.diagnostics?.enabled()) { job.owner = this.diagnostics.owner(); job.queuedAt = performance.now() }
       this.trace(job, 1)
       if (signal) {
         const cancel = () => {
           job.cancelled = true
+          if (job.cancellation) Atomics.store(job.cancellation, 0, 1)
+          else if (this.active === job) this.port.postMessage({ cancel: job.id })
           this.trace(job, 3)
           const index = this.queued.indexOf(job)
           if (index >= 0) this.queued.splice(index, 1)
@@ -139,7 +142,7 @@ export class PreparationChannel {
     if (this.diagnostics?.enabled()) job.startedAt = performance.now()
     this.trace(job, 2, { waitMs: (job.startedAt ?? 0) - (job.queuedAt ?? 0) })
     this.watch(job)
-    try { this.port.postMessage({ id: job.id, lane: job.lane, method: job.method, args: job.args, ...(this.diagnostics?.enabled() ? { diagnostics: { originChannelId: this.originChannelId, requestId: job.owner ?? 0 } } : {}) }) }
+    try { this.port.postMessage({ id: job.id, lane: job.lane, method: job.method, args: job.args, ...(job.cancellable ? { cancellable: true, cancellation: job.cancellation?.buffer } : {}), ...(this.diagnostics?.enabled() ? { diagnostics: { originChannelId: this.originChannelId, requestId: job.owner ?? 0 } } : {}) }) }
     catch (error) {
       clearTimeout(job.diagnosticTimer); this.trace(job, 7, { reasonCode: 1 }); this.active = undefined; job.cleanup?.(); job.reject(error as Error); this.dispatch()
     }

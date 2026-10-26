@@ -53,7 +53,8 @@ async function harness(kind:'rotate'|'scale'='rotate',workerPoses=false,options:
  const ids=[n.id]
  for(let i=1;i<(options.selectedCount||(options.multiple?2:1));i++){const next=node('frame',i*50,0,50,50);next.blend='normal';next.effects=[effect('glass')];doc.nodes[next.id]=next;doc.pages[0].children.push(next.id);ids.push(next.id)}
  const pageSlot=gpu.presenter.capture(100,100).id
- const page={tile:{key:'page',serial:1,gpuTile:pageSlot,x:0,y:0,width:100,height:100,zoom:1,bytes:new Uint8Array()},active:true,layer:0}
+ // This fixture is a complete viewport capture, not a guttered world tile.
+ const page={tile:{key:'page',serial:1,gpuTile:pageSlot,x:0,y:0,width:100,height:100,zoom:1,bytes:new Uint8Array()},active:true,layer:0,gutter:0}
  const control={current:null as any},view={x:0,y:0,zoom:4}
  const interaction={document:doc,selection:ids,active:true,gestureKind:kind,epoch:1,control,onReady:vi.fn()}
  const overlay=(document:any,ui:Ui={})=>canvasContext(document,ids,ui)

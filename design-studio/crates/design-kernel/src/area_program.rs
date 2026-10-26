@@ -69,6 +69,7 @@ fn check_scanline_work_limit(
     let rows = u64::from(rect.h) * u64::from(samples);
     for contour in contours.iter().filter(|c| c.closed && c.points.len() >= 3) {
         for (index, a) in contour.points.iter().enumerate() {
+            if index % 256 == 0 { crate::render_cancellation::checkpoint()?; }
             let b = contour.points[(index + 1) % contour.points.len()];
             // Match the selected scanner: visit_sample_spans preserves even
             // sub-epsilon non-horizontal edges; visit_spans skips them.
@@ -159,8 +160,10 @@ impl AreaProgram {
         let header = interval_header(rect.h, 4)?;
         let mut data = vec![0.; header];
         data[..4].copy_from_slice(&[3., 1., rect.w as f32, rect.h as f32]);
+        let mut checked_row=None;
         let complete =
             raster::visit_sample_spans(contours, rect, even_odd, None, |row, left, right| {
+                if checked_row!=Some(row)&&row%32==0{checked_row=Some(row);if crate::render_cancellation::checkpoint().is_err(){return false}}
                 let left = left.max(f64::from(rect.x));
                 let right = right.min(f64::from(rect.right()));
                 if right <= left {
@@ -182,6 +185,7 @@ impl AreaProgram {
                 true
             });
         if !complete {
+            crate::render_cancellation::checkpoint()?;
             return Err("Sample interval program budget exceeded".into());
         }
         Ok(Self { rect, data })
@@ -226,7 +230,9 @@ impl AreaProgram {
         let header = interval_header(rect.h, 8)?;
         let mut data = vec![0.; header];
         data[..4].copy_from_slice(&[0., 1., rect.w as f32, rect.h as f32]);
+        let mut checked_row=None;
         let complete = raster::visit_spans(contours, rect, even_odd, |row, left, right| {
+            if checked_row!=Some(row)&&row%32==0{checked_row=Some(row);if crate::render_cancellation::checkpoint().is_err(){return false}}
             if data.len() + 12 > MAX_FLOATS {
                 return false;
             }
@@ -243,6 +249,7 @@ impl AreaProgram {
             true
         });
         if !complete {
+            crate::render_cancellation::checkpoint()?;
             return Err("Analytic scanline interval budget exceeded".into());
         }
         Ok(Self { rect, data })

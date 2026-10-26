@@ -2048,6 +2048,70 @@ mod tests {
         println!("complete page: {} nodes, {} source roots, {} model bytes; edited property persisted in full {}-member export",loaded["nodes"],doc.pages[0].children.len(),loaded["bytes"],exported.len());
     }
     #[test]
+    #[ignore = "real source page ranges under the unchanged session allowance"]
+    fn actual_source_page_segments() {
+        let f = Fixture::new();
+        let opened = f.open(PathBuf::from(std::env::var("CORE_LARGE_SKETCH_INPUT").unwrap()));
+        for (name, expected) in [("控件",42), ("深色",55), ("浅色",209)] {
+            let key = {
+                let slot = f.sessions.current.lock().unwrap();
+                let s = slot.as_ref().unwrap();
+                let p = s.parts.iter().position(|p| p.index.entries.first().is_some_and(|e| e.kind == "page" && e.name == name)).unwrap();
+                format!("{p}:0")
+            };
+            let mut offset = 0;
+            let mut roots = Vec::new();
+            let mut segments = 0;
+            loop {
+                let start = std::time::Instant::now();
+                let loaded = call(&f, &opened, "large.scene", json!({"key":key,"offset":offset}));
+                let range = &loaded["pageRange"];
+                assert_eq!(range["offset"], offset);
+                assert_eq!(range["totalRoots"], expected);
+                assert!(loaded["bytes"].as_u64().unwrap() <= futureox_design_kernel::capacity::document_byte_limit() as u64);
+                {
+                    let slot = f.sessions.current.lock().unwrap();
+                    let doc = &slot.as_ref().unwrap().scene.as_ref().unwrap().document;
+                    assert_eq!(doc.pages[0].children.len(), range["end"].as_u64().unwrap() as usize - offset);
+                    roots.extend(doc.pages[0].children.clone());
+                }
+                println!("page={name} range={range} nodes={} bytes={} seconds={:.6}", loaded["nodes"], loaded["bytes"], start.elapsed().as_secs_f64());
+                segments += 1;
+                match range["nextOffset"].as_u64() { Some(next) => offset = next as usize, None => break }
+            }
+            assert_eq!(roots.len(), expected);
+            assert_eq!(roots.iter().collect::<HashSet<_>>().len(), expected);
+            println!("complete page={name} segments={segments} roots={}", roots.len());
+        }
+    }
+    #[test]
+    #[ignore = "real source page conversion timing and model oracle"]
+    fn actual_source_page_load_measurement() {
+        let f = Fixture::new();
+        f.open(PathBuf::from(std::env::var("CORE_LARGE_SKETCH_INPUT").unwrap()));
+        let slot = f.sessions.current.lock().unwrap();
+        let s = slot.as_ref().unwrap();
+        let names = std::env::var("CORE_SOURCE_PAGES").unwrap_or("控件,深色,浅色".into());
+        for name in names.split(',') {
+            let p = s.parts.iter().position(|p| p.index.entries.first().is_some_and(|e| e.kind == "page" && e.name == name)).unwrap();
+            for round in 0..2 {
+                let start = std::time::Instant::now();
+                match scene::build(s, p, 0, &AtomicBool::new(false)) {
+                    Ok((document, warnings)) => {
+                        let seconds = start.elapsed().as_secs_f64();
+                        let bytes = serde_json::to_vec(&document).unwrap();
+                        println!("page={name} round={round} seconds={seconds:.6} roots={} nodes={} bytes={} warnings={}", document.pages[0].children.len(), document.nodes.len(), bytes.len(), warnings.len());
+                        if let Ok(dir) = std::env::var("CORE_SOURCE_MEASUREMENT_OUTPUT") {
+                            fs::create_dir_all(&dir).unwrap();
+                            fs::write(PathBuf::from(&dir).join(format!("{name}.json")), &bytes).unwrap();
+                        }
+                    }
+                    Err(error) => println!("page={name} round={round} seconds={:.6} ERROR={error}", start.elapsed().as_secs_f64()),
+                }
+            }
+        }
+    }
+    #[test]
     #[ignore = "real Sketch bounded page-conversion measurement"]
     fn actual_topology_page_conversion_windows() {
         let f = Fixture::new();

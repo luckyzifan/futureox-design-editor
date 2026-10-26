@@ -5,6 +5,31 @@ import { blank } from '../model'
 import { PreparationChannel } from './preparation-channel'
 import { RenderKernel } from './render-kernel'
 
+test('native no-paint metadata proof preserves pixel identity but never document or render-policy changes',async()=>{
+ let damage={full:false,bounds:null as null|number[]}
+ const engine={bind_frame_scene_scope(){},color_settings(){return 'null'},apply_document_patch_with_damage(){return JSON.stringify(damage)}}
+ const kernel=new RenderKernel(engine as unknown as VectorEngine,'canvas'),original=kernel.contentIdentity
+ await kernel.apply_document_patch_with_damage(JSON.stringify({fields:{name:'renamed'},nodes:{}}))
+ expect(kernel.contentIdentity).toBe(original)
+ await kernel.apply_document_patch_with_damage(JSON.stringify({fields:{id:'new-document'},nodes:{}}))
+ expect(kernel.contentIdentity).not.toBe(original)
+ const before=kernel.contentIdentity
+ damage={full:false,bounds:[0,0,1,1]}
+ await kernel.apply_document_patch_with_damage(JSON.stringify({fields:{},nodes:{}}))
+ expect(kernel.contentIdentity).not.toBe(before)
+})
+
+test('late no-paint completion cannot restore an earlier pixel owner over a newer mutation',async()=>{
+ let complete!:(value:string)=>void,calls=0
+ const engine={bind_frame_scene_scope(){},color_settings(){return 'null'},apply_document_patch_with_damage(){
+   return ++calls===1?new Promise<string>(resolve=>complete=resolve):JSON.stringify({full:true,bounds:null})}}
+ const kernel=new RenderKernel(engine as unknown as VectorEngine,'canvas'),original=kernel.contentIdentity
+ const first=kernel.apply_document_patch_with_damage(JSON.stringify({fields:{name:'old'},nodes:{}}))
+ await kernel.apply_document_patch_with_damage(JSON.stringify({fields:{},nodes:{}}));const current=kernel.contentIdentity
+ complete(JSON.stringify({full:false,bounds:null}));await first
+ expect(kernel.contentIdentity).toBe(current);expect(current).not.toBe(original)
+})
+
 // Deliberately adversarial transport for cache revision race tests. Production
 // PreparationChannel now fences physical jobs, just like the serial worker;
 // these tests must still cover late/out-of-order replies independently of it.

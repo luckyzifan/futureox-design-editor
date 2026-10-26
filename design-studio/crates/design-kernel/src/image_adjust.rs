@@ -41,7 +41,11 @@ fn linear_to_srgb(c: [f32; 3]) -> [f32; 3] {
 /// exposure stage as `globalExposure + delta`.
 fn highlight_shadow_delta(c: [f32; 3], shadows: f32, highlights: f32, threshold: f32) -> f32 {
     let h = dot_luma(c) - threshold.powf(2.2);
-    let scale = if h > 0.0 { highlights } else { -shadows * 0.999 };
+    let scale = if h > 0.0 {
+        highlights
+    } else {
+        -shadows * 0.999
+    };
     0.75 * h / (1.0 + 4.0 * h * h).sqrt() * scale
 }
 
@@ -139,7 +143,11 @@ fn lab_adjust(
     const HALF_WIDTH: f32 = 30.0;
     let dark_target = (lab[0] - midpoint) * 0.2 + 50.0;
     let bright_target = smootherstep(midpoint - HALF_WIDTH, midpoint + HALF_WIDTH, lab[0]) * 100.0;
-    let amount = if contrast < 0.0 { contrast + 1.0 } else { contrast };
+    let amount = if contrast < 0.0 {
+        contrast + 1.0
+    } else {
+        contrast
+    };
     // mix(ae, af, ag) expanded.
     lab[0] = if contrast < 0.0 {
         dark_target + (lab[0] - dark_target) * amount
@@ -218,6 +226,20 @@ pub struct ImageAdjust {
     /// assumption and the fixed UI value.
     #[serde(default = "mid_threshold")]
     pub highlight_shadow_threshold: f64,
+    /// kiwi `PaintFilterMessage.detail` (ordinal 3). Present in the wire
+    /// schema; the engine-side render uniform for it was not recovered, so
+    /// the authored value is carried (and round-trips) without changing the
+    /// seven-consumer pipeline above.
+    #[serde(default)]
+    pub detail: f64,
+    /// kiwi `PaintFilterMessage.vignette` (ordinal 6). Carried verbatim;
+    /// not consumed by the ported shader math yet.
+    #[serde(default)]
+    pub vignette: f64,
+    /// kiwi `PaintFilterMessage.brightness` (ordinal 10). Carried verbatim;
+    /// not consumed by the ported shader math yet.
+    #[serde(default)]
+    pub brightness: f64,
 }
 
 fn mid_threshold() -> f64 {
@@ -228,8 +250,11 @@ impl ImageAdjust {
     pub const fn mid_threshold() -> f64 {
         0.5
     }
-    /// All seven sliders at zero is a no-op for every threshold value, so old
+    /// All sliders at zero is a no-op for every threshold value, so old
     /// documents render unchanged whether or not a threshold round-tripped.
+    /// The three carried-only fields (detail/vignette/brightness) join the
+    /// identity check so a non-zero authored value is still preserved by the
+    /// importer instead of collapsing to "no adjustment".
     pub fn is_identity(&self) -> bool {
         self.exposure == 0.0
             && self.contrast == 0.0
@@ -238,6 +263,9 @@ impl ImageAdjust {
             && self.highlights == 0.0
             && self.shadows == 0.0
             && self.color == 0.0
+            && self.detail == 0.0
+            && self.vignette == 0.0
+            && self.brightness == 0.0
     }
     /// Sliders span [-1,1] (the shader itself clamps `globalColor` to that
     /// range; exposure's `10^(2j)` saturates beyond it); the threshold is a
@@ -251,6 +279,9 @@ impl ImageAdjust {
             self.highlights,
             self.shadows,
             self.color,
+            self.detail,
+            self.vignette,
+            self.brightness,
         ]
         .iter()
         .all(|v| v.is_finite() && (-1.0..=1.0).contains(v))

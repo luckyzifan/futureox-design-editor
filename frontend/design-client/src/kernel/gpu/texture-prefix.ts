@@ -257,6 +257,7 @@ export class TexturePrefix {
     rationalBoundBits = 0,
     sourceWindow?: FilterSourceWindow,
     certifiedTent = false,
+    wideRational = false,
   ): boolean {
     this.lastRenderPasses = 0
     this.lastComputePasses = 0
@@ -271,11 +272,12 @@ export class TexturePrefix {
     base = filterSourceWindowUniforms(base, window)
     // The caller obtains this bound from the actual immutable coefficient
     // upload. Zero/unknown values retain the existing shader admission gate.
-    const boundBits = Number.isInteger(rationalBoundBits) && rationalBoundBits >= 1 && rationalBoundBits <= 120
+    wideRational=wideRational&&import.meta.env.VITE_DESIGN_WIDE_RATIONAL_PREFIX==='1'&&!certifiedTent
+    const boundBits = Number.isInteger(rationalBoundBits) && rationalBoundBits >= 1 && rationalBoundBits <= (wideRational?184:120)
       ? rationalBoundBits : 0
     if (import.meta.env.VITE_DESIGN_PREFIX_RGB_RESOLVE !== '0' && opaqueAlpha && channels === 7 &&
         this.solveRgb && this.resolveRgb)
-      return this.encodeOpaqueRgb(getEncoder, target, inputs, base, originalRadius, rect, maxBandLines, boundBits,certifiedTent)
+      return this.encodeOpaqueRgb(getEncoder, target, inputs, base, originalRadius, rect, maxBandLines, boundBits,certifiedTent,wideRational)
     const geometry = prefixSamplingGeometry(base, originalRadius, import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1')!
     const axis = base[37],
       length = geometry.length,
@@ -292,7 +294,7 @@ export class TexturePrefix {
         const count = Math.min(bandSize, lineCount - first)
         const u = base.slice()
         u.set([length, first, count, axis], 192)
-        u.set([channel, rational||certifiedTent ? Math.floor(originalRadius) - 1 : originalRadius, certifiedTent?2:rational ? 1 : 0, boundBits], 196)
+        u.set([channel, rational||certifiedTent||wideRational ? Math.floor(originalRadius) - 1 : originalRadius, wideRational?3:certifiedTent?2:rational ? 1 : 0, boundBits], 196)
         u.set([offset, outputLength, crossOffset, geometry.padding], 200)
         const group = this.device.createBindGroup({
           layout: this.sourceLayout,
@@ -351,7 +353,7 @@ export class TexturePrefix {
    * scans/solves before one full-RGB resolve. Uniform allocation may roll the
    * encoder between channels; always reacquire it after creating the group. */
   private encodeOpaqueRgb(getEncoder: () => GPUCommandEncoder, target: GPUTexture, inputs: GPUTexture[],
-    base: Float32Array, radius: number, rect: Rectangle, maxBandLines: number, rationalBoundBits: number,certifiedTent=false): boolean {
+    base: Float32Array, radius: number, rect: Rectangle, maxBandLines: number, rationalBoundBits: number,certifiedTent=false,wideRational=false): boolean {
     const geometry = prefixSamplingGeometry(base, radius, import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1')!
     const axis = base[37], length = geometry.length
     const outputLength = axis === 0 ? rect.w : rect.h, lineCount = axis === 0 ? rect.h : rect.w
@@ -367,7 +369,7 @@ export class TexturePrefix {
       for (let channel = 0; channel < 3; channel++) {
         const u = base.slice()
         u.set([length, first, count, axis], 192)
-        u.set([channel, rational||certifiedTent ? Math.floor(radius) - 1 : radius, certifiedTent?2:rational ? 1 : 0, rationalBoundBits], 196)
+        u.set([channel, rational||certifiedTent||wideRational ? Math.floor(radius) - 1 : radius, wideRational?3:certifiedTent?2:rational ? 1 : 0, rationalBoundBits], 196)
         u.set([offset, outputLength, crossOffset, geometry.padding], 200)
         lastGroup = this.device.createBindGroup({ layout: this.sourceLayout, entries: [
           { binding: 0, resource: this.uniform(u) },
