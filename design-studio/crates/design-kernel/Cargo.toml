@@ -30,6 +30,9 @@ zip.workspace = true
 ruzstd.workspace = true
 miniz_oxide.workspace = true
 
+[target.'cfg(target_os = "macos")'.dependencies]
+sysinfo = { version = "=0.37.2", default-features = false, features = ["system"] }
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen.workspace = true
 js-sys.workspace = true

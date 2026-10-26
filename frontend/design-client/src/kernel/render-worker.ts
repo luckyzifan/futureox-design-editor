@@ -39,6 +39,7 @@ import {
 } from './render-policy'
 import type { GpuRenderer } from './gpu/renderer'
 import { decodeScenePacket, scenePacketWitness } from './gpu/scene-packet'
+import type {CompilationWitness} from './compilation-witness'
 import type { ColorSettings } from '../color'
 import type { BackendPreference, GpuScene } from './gpu/types'
 import type { KernelOptions } from './client'
@@ -65,6 +66,8 @@ import { GPU_PRIORITY_BURST, RenderWorkQueue } from './render-work-queue'
 import { paintDamageIntersects, type PaintDamage } from './paint-damage'
 import {residentFrameSignature} from './gpu/resident-frame'
 import { canCommitResidentFrame } from './gpu/retained-commit'
+import { pageTranslationCommit } from './gpu/page-translation-commit'
+import { pixelSourceContract } from './gpu/page-background'
 import { PreparationChannel } from './preparation-channel'
 import { RenderKernel } from './render-kernel'
 import { RenderLaneStates, type RenderLaneName } from './render-lane-state'
@@ -139,7 +142,7 @@ let navigationTextureSet: number[] = [], navigationTextureSequence = 0
 const reportDisplay = (presentation: Record<string, unknown>) => {
   if(terminalDiagnostics.enabled && presentation.gridVisible !== undefined)gridMeasurements.record({gridKind:5,gridVisible:Number(presentation.gridVisible),gridSpacingClass:Number(presentation.gridVisible)?2:1,gridRedrawReason:0,dpr:Number(presentation.dpr)})
   const presented = presentation.presented as {view?:{x:number;y:number;zoom:number};width?:number;height?:number;dpr?:number} | undefined
-  terminalDiagnostics.record(presentation.error ? 'error' : presentation.alphaFrame ? 'frame-alpha' : presentation.coverageDeferred ? 'skip' : 'camera-submit',{...(presentation.error ? { ...renderFailureFields(presentation.error), failureStage:10 } : {}),...presentation,...presented?.view,width:presented?.width,height:presented?.height,dpr:presented?.dpr,sequence:displayOrderSequence,reasonCode:presentation.error?4:0})
+  terminalDiagnostics.record(presentation.error ? 'error' : presentation.pageCommitStage ? 'cache' : presentation.alphaFrame ? 'frame-alpha' : presentation.coverageDeferred ? 'skip' : 'camera-submit',{...(presentation.error ? { ...renderFailureFields(presentation.error), failureStage:10 } : {}),...presentation,...presented?.view,width:presented?.width,height:presented?.height,dpr:presented?.dpr,sequence:displayOrderSequence,reasonCode:presentation.error?4:0})
   // Preserve the one forced terminal sample before another burst fills the bounded journal.
   if (presentation.qualityTerminal === true) terminalDiagnostics.flush()
   if (navigationJournal.recording) {
@@ -280,24 +283,27 @@ const managedImageLoader = managedSceneImageLoader(diskImageCache, () => {
 /** Capture after ordered synchronization. Only a proven same-document fork
  * shares residency; request/lane ownership and async cancellation stay separate. */
 function sceneImageHydration(kernel: RenderKernel, current: () => boolean) {
-  const lane = activeLane, generation = laneState.documentGeneration, resources = laneState.resourceGeneration, promise = laneState.enginePromise
+  const lane = activeLane, state = laneState, generation = state.documentGeneration, resources = state.resourceGeneration, promise = state.enginePromise
   const owner = laneState.decodedImageOwner
-  const context: ImageContext = { kernel, settings: kernel.color_settings(),
+  const context: ImageContext = { kernel, resourceOwner: owner, settings: kernel.color_settings(),
     scope: decodedImageScope(owner, kernel.color_settings()) }
-  const ownerCurrent = () => activeLane === lane && laneState.documentGeneration === generation &&
-    laneState.resourceGeneration === resources && laneState.enginePromise === promise && laneState.decodedImageOwner === owner &&
+  const ownerCurrent = () => lanes.get(lane) === state && state.documentGeneration === generation &&
+    state.resourceGeneration === resources && state.enginePromise === promise && state.decodedImageOwner === owner &&
     kernel.color_settings() === context.settings
   context.ownerCurrent = ownerCurrent
   const hydration = new SceneImageHydration(diskImageCache, context, imagePersistence, ownerCurrent, current)
   return async (scene: GpuScene, isCurrent = current) => {
+    const requestCurrent=()=>activeLane===lane&&laneState===state&&ownerCurrent()&&isCurrent()
+    if(!requestCurrent())throw Error('PREVIEW_CANCELLED')
     const hydrationStarted=terminalDiagnostics.enabled?performance.now():0
     terminalDiagnostics.record('hydrate-start',{requestId:diagnosticRequestId})
-    await failureAttempt(6, () => hydration.hydrate(scene, isCurrent))
+    await failureAttempt(6, () => hydration.hydrate(scene, requestCurrent))
     terminalDiagnostics.record('hydrate',{requestId:diagnosticRequestId,durationMs:performance.now()-hydrationStarted})
     // RenderWorkQueue owns the entire gpu.render promise. Its only priority
     // yield is after completed tile delivery, so another lane cannot rebind
     // this decoder while a GPU render is awaiting driver work.
-    renderingImages = { ...context, current: () => ownerCurrent() && isCurrent() }
+    if(!requestCurrent())throw Error('PREVIEW_CANCELLED')
+    renderingImages = { ...context, current: requestCurrent }
   }
 }
 type HydrateSceneImages = ReturnType<typeof sceneImageHydration>
@@ -756,6 +762,7 @@ self.onmessage = (e) => {
       // Keep the immutable authored snapshot in both lanes. It also proves
       // whether the last displayed pose is exactly the patch being committed.
       let paintDamage: PaintDamage | undefined
+      let translatedPageCommit:{sourceOwner:object;targetOwner:object;offset:{x:number;y:number}}|undefined
       let derived = false
       let derivedSource: { document: DesignDocument; json?: string } | undefined
       let derivedImageOwner:ReturnType<typeof createDecodedImageOwner>|undefined
@@ -886,18 +893,32 @@ self.onmessage = (e) => {
         const canAcknowledge = canGuard && boundedPatchWire(request.documentPatch) && supportsAcknowledgedPropertyPatch(actualBefore!, patch)
         const transforms = channel === 'interaction' && retainInteraction && interactionNative &&
           laneState.synchronizedInteractionDocument && interactionPatchTransforms(laneState.synchronizedInteractionDocument, patch, interactionSelection || [])
+        const priorPixelOwner=kernel.contentIdentity
         const nativePose = !!transforms && await kernel.apply_interaction_transforms(JSON.stringify(transforms))
         const damage = nativePose ? { full: true, bounds: null, reason: 'native-interaction-pose' } : defer ? { full: true, bounds: null, reason: 'transient-translation' } :
           JSON.parse(await kernel.apply_document_patch_with_damage(request.documentPatch, canGuard ? request.patchBaseReceipt : undefined).catch(error => {
             if (canGuard) laneState.interactionDocument = priorAuthoredDocument
             throw error
-          })) as {full:boolean;bounds:[number,number,number,number]|null;rects?:[number,number,number,number][];reason?:string}
+          })) as {full:boolean;translationOnly?:boolean;bounds:[number,number,number,number]|null;rects?:[number,number,number,number][];reason?:string}
         if(!defer)laneState.synchronizedInteractionDocument=laneState.interactionDocument
         acknowledgedSource = canAcknowledge
         if (defer) laneState.deferredInteractionDocument = laneState.interactionDocument
         // Kernel-tiled frames consume the same damage: full repaint, bounded
         // world rects, or no paint change.
-        paintDamage = {full:damage.full,bounds:damage.bounds??undefined,rects:damage.rects,reason:damage.reason}
+        paintDamage = {full:damage.full,translationOnly:damage.translationOnly,bounds:damage.bounds??undefined,rects:damage.rects,reason:damage.reason}
+        if(channel==='canvas'){
+          const offset=actualBefore&&laneState.interactionDocument&&pageTranslationCommit(actualBefore,laneState.interactionDocument,renderOptions.pageId,patch,paintDamage)
+          // This is private display reuse after an accepted native mutation,
+          // not renewal of an authored-document derivation receipt. Optional
+          // wire projection differences may withhold that public receipt even
+          // though these exact synchronized pixels and native translation proof
+          // remain valid. A deferred/unsynchronized source cannot qualify.
+          const synchronizedPixels=!wasDeferred&&!!actualBefore&&actualBefore===priorAuthoredDocument
+          if(synchronizedPixels&&priorPixelOwner&&offset)translatedPageCommit={sourceOwner:priorPixelOwner,targetOwner:kernel.contentIdentity,offset}
+          if(terminalDiagnostics.detail)terminalDiagnostics.record('cache',{requestId:request.id,pageCommitStage:1,
+            pageCommitChecks:Number(synchronizedPixels)|Number(damage.translationOnly===true)<<1|Number(!!actualBefore)<<2|
+              Number(!!laneState.interactionDocument)<<3|Number(!!priorPixelOwner)<<4|Number(!!offset)<<5|Number(canAcknowledge)<<6})
+        }
         // Report paint damage before any tile of this request so the surface
         // can evict stale residents before replacements arrive.
         self.postMessage({
@@ -1007,6 +1028,29 @@ self.onmessage = (e) => {
               throw new Error('Invalid tile request')
             if (tileFillPriorities !== undefined && !validTileFillPriorities(tileFillPriorities, tileViewport.length))
               throw new Error('Invalid tile priority hints')
+            if(channel==='canvas'&&translatedPageCommit&&!tileViewport.length&&renderIntent==='canvas'&&
+              !request.readback&&!request.png&&!exportFormat&&!renderOptions.exportRegion&&
+              !renderOptions.grid&&!renderOptions.checkerboard&&!renderOptions.pixelPreview&&allowsResidentSdr(executionPolicy)&&
+              executionPolicy.desktopFullMath&&!canvasDisplayFilters&&!previewDisplayFilters&&!canvasMath&&!canvasTentRadius&&
+              !canvasImageSource&&!canvasMaterialSource&&gpu?.driver.snapshotPageTranslation){
+              // Give the already queued final display command its ordinary
+              // task boundary. Only the presenter's actual accepted backing,
+              // never that requested frame, may certify the following copy.
+              await yieldPreviewTask()
+              if(generation!==previewGenerations.canvas)throw Error('PREVIEW_CANCELLED')
+              let snapshot:ReturnType<NonNullable<typeof gpu.driver.snapshotPageTranslation>>
+              try{snapshot=gpu.driver.snapshotPageTranslation(translatedPageCommit.sourceOwner,translatedPageCommit.targetOwner,
+                translatedPageCommit.offset,renderOptions.width,renderOptions.height,renderOptions.view.zoom,pixelSourceContract(renderOptions))}
+              catch(error){if(!isDisplayBudgetError(error))throw error}
+              if(snapshot){
+                const {view,dpr,width,height}=snapshot.frame
+                self.postMessage({id:request.id,tile:{key:`commit:${laneState.loadedRevision}:${snapshot.gpuTile}`,
+                  x:-view.x*dpr,y:-view.y*dpr,width:Math.ceil(width*dpr),height:Math.ceil(height*dpr),zoom:view.zoom*dpr,
+                  gutter:0,committedViewport:true,viewportPreview:true,gpuTile:snapshot.gpuTile,backend,description:'retained native page translation',cached:false}})
+                self.postMessage({id:request.id,backend,milliseconds:performance.now()-start,compileMs:0,loadMs,retainedCommit:true})
+                return
+              }
+            }
             if (channel === 'canvas' && request.documentPatch && !tileViewport.length && poseQueued) {
               // The final pointer pose may arrive while the CPU worker applies
               // this patch. Complete that higher-priority GPU job before proving
@@ -1143,7 +1187,7 @@ self.onmessage = (e) => {
               const compileStarted = performance.now()
               let speculativeSavedMs = 0
               let result: TileRender | undefined = disableExactCache || request.debug?.disableCertifiedTileReuse ? undefined : tileCache.certified(cacheKey)
-              let witness: Uint8Array = new Uint8Array(), preparedScene: GpuScene | undefined
+              let witness:(()=>CompilationWitness)|undefined, preparedScene: GpuScene | undefined
               let cameraFallback = false
               if (result) { await ahead.drain(); certifiedHits++ }
               else try {
@@ -1164,7 +1208,7 @@ self.onmessage = (e) => {
                   cameraFallback = !retainCoverage && !cameraDependent && preparedTileCanFill(tile, displayFrame)
                   if (!cameraFallback) throw Error('PREVIEW_CANCELLED')
                 }
-                witness = scenePacketWitness(rawScene)
+                witness = () => scenePacketWitness(rawScene)
                 result = disableExactCache ? undefined : tileCache.get(cacheKey, witness)
                 preparedScene = result ? undefined : decodeScenePacket(rawScene)
               } catch (error) {
@@ -1210,8 +1254,8 @@ self.onmessage = (e) => {
                 if ((packetWait?.controller.signal.aborted || generation !== previewGenerations[channel])) throw new Error('PREVIEW_CANCELLED')
                 // Only the exact scene actually rendered once certifies these pixels.
                 // Budget-subdivided assemblies have no accepted single-scene witness.
-                if (!disableExactCache && witness.byteLength && result.previewTiles === 1 && ownsExactTileBytes(result) && cacheOwner.current(cacheTicket))
-                  cacheOwner.set(cacheKey, witness, {...result,tileCost:undefined,worldBounds:[
+                if (!disableExactCache && witness && result.previewTiles === 1 && ownsExactTileBytes(result) && cacheOwner.current(cacheTicket))
+                  cacheOwner.set(cacheKey, witness(), {...result,tileCost:undefined,worldBounds:[
                     (crop.x-renderOptions.view.x-2)/tile.zoom,(crop.y-renderOptions.view.y-2)/tile.zoom,
                     (tile.width+4)/tile.zoom,(tile.height+4)/tile.zoom,
                   ]},

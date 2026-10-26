@@ -257,7 +257,7 @@ export type GpuAdmissionDiagnostic = Readonly<{
 export type ExactImageTable = { resource: unknown; width: number; height: number; bytes: number; opaqueAlpha?: true; nonnegativeResolved?: true }
 export type OpaqueSolidBatch = Readonly<{count:number;pixels:number}>
 export interface Driver {
-  prepareOpaqueSolids?(nodes:readonly {path:PathMesh;bounds:Rect}[],target:Rect,color:readonly number[]):OpaqueSolidBatch|undefined
+  prepareOpaqueSolids?(nodes:readonly {path:PathMesh;bounds:Rect}[],target:Rect,color:readonly number[],region?:Rect):OpaqueSolidBatch|undefined
   drawOpaqueSolids?(batch:OpaqueSolidBatch,target:Texture,sample:number):boolean
   usesDisplayFilter?(radius: number, channels?: number): boolean
   /** True only for this driver's actual immutable finite image upload. */
@@ -281,6 +281,8 @@ export interface Driver {
   releasePresented?(ids: number[]): void
   replacePresented?(slot:number,next:number):void
   snapshotPresented?(): { gpuTile: number; frame: import('./resident-presenter').ResidentFrame } | undefined
+  snapshotPageTranslation?(sourceOwner:object,targetOwner:object,offset:{x:number;y:number},width:number,height:number,scale:number,contract:string):
+    {gpuTile:number;frame:import('./resident-presenter').ResidentFrame}|undefined
   readContentPixel?(u:number,v:number,expected?:import('../resident-presentation').ResidentAcknowledgement):Promise<{contentPixel:number[];contentFrame:import('../resident-presentation').ResidentAcknowledgement}>
   captureContentBitmap?():Promise<{bitmap:ImageBitmap;contentFrame:import('../resident-presentation').ResidentAcknowledgement}>
   importPresented?(bitmap: ImageBitmap): number

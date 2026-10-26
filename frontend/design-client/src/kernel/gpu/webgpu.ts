@@ -18,6 +18,7 @@ import { ByteTentPrefix, type ByteTentPrefixLease, planByteTentPrefix, type Byte
 import { prefixModule } from './prefix-module'
 import { PREFIX_MIN_RADIUS } from './prefix-band'
 import { certifyPrefixRationalBound, prefixRationalBoundBits, type PrefixRationalBoundCertificate } from './prefix-preflight'
+import {certifyWidePrefix,widePrefixBoundBits,type WidePrefixCertificate} from './prefix-wide-bound'
 import { completeFilterAxisSupport } from './opaque-filter'
 import { filterSourceWindowUniforms, snapshotFilterSourceWindow, type FilterSourceWindow } from './filter-source-window'
 import { displayFilterWgsl, pairedDisplayFilterWgsl } from './display-filter'
@@ -159,6 +160,7 @@ export class WebGpuDriver implements Driver {
   resourceEpoch = 0
   completedResourceEpoch = 0
   private rationalKernelBounds = new WeakMap<Texture, { packet: PrefixRationalBoundCertificate; resource: unknown; width: number; height: number }>()
+  private wideKernelBounds = new WeakMap<Texture,{packet:WidePrefixCertificate;resource:unknown;width:number;height:number}>()
   private pipelines = new PipelineRegistry()
   private readonly emptySceneComposeEnabled = import.meta.env.VITE_DESIGN_EMPTY_SCENE_COMPOSE === '1'
   private curveMirror = new ResidentGeometry()
@@ -207,6 +209,9 @@ export class WebGpuDriver implements Driver {
   releasePresented(ids: number[]) { this.presenter?.release(ids) }
   replacePresented(slot:number,next:number){this.presenter?.replace(slot,next)}
   snapshotPresented(){return this.presenter?.snapshot()}
+  snapshotPageTranslation(sourceOwner:object,targetOwner:object,offset:{x:number;y:number},width:number,height:number,scale:number,contract:string){
+    return this.presenter?.snapshotPageTranslation(sourceOwner,targetOwner,offset,width,height,scale,contract)
+  }
   async readContentPixel(u:number,v:number,expected?:import('../resident-presentation').ResidentAcknowledgement){if(!this.presenter)throw Error('No resident display');return this.presenter.readContentPixel(u,v,expected)}
   async captureContentBitmap(){if(!this.presenter)throw Error('No resident display');return this.presenter.captureContentBitmap()}
   importPresented(bitmap: ImageBitmap) {
@@ -1034,7 +1039,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.sampleOnlyPrograms.resetFrame()
     this.opaqueSolidBatches=new WeakMap();this.opaqueSolidDraws=0
     this.opaqueSolidRequested=import.meta.env.VITE_DESIGN_OPAQUE_SOLID_BATCH==='1' && this.managed===true &&
-      scene.coherentSamples===true && !scene.softwareRaster && !scene.interactionRetained && hasOpaqueSolidGroups(scene)
+      scene.coherentSamples===true && !scene.softwareRaster && hasOpaqueSolidGroups(scene)
     // Bitmap-assembly display leaves intentionally set captureDisplay=false.
     // Transport is independent of the real render(readback,present) contract;
     // callers omitting its explicit display intent retain the original area.
@@ -1356,7 +1361,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     // eligible RGBA lines can use 4 MiB bands from the measured crossover.
     return !!(!displayFilterPass(this.displayFilters, this.displayFilterRadiusLimit, !!this.displayFilterPipeline, u, channels, filter) &&
       this.prefix && filter?.kind === 'tent' && channels===15 && u[16]===22 &&
-      (this.certifiedTentPair(kernel,certificate,filter.radius)||filter.radius>=PREFIX_MIN_RADIUS&&
+      (this.wideKernelBoundBits(kernel,filter.radius)>0||this.certifiedTentPair(kernel,certificate,filter.radius)||filter.radius>=PREFIX_MIN_RADIUS&&
       !((!Number.isInteger(filter.radius)||filter.radius>512)&&kernel?.prefixRationalUnsupported===true)))
   }
   private rationalKernelBoundBits(kernel: Texture | undefined, radius: number) {
@@ -1364,6 +1369,12 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     if (!proof || !this.textures.has(kernel!) || kernel!.resource !== proof.resource ||
         kernel!.width !== proof.width || kernel!.height !== proof.height) return 0
     return prefixRationalBoundBits(proof.packet, radius)
+  }
+  private wideKernelBoundBits(kernel:Texture|undefined,radius:number){
+    if(import.meta.env.VITE_DESIGN_WIDE_RATIONAL_PREFIX!=='1'||!this.managed||!this.certifiedFilter||Number.isInteger(radius))return 0
+    const proof=kernel&&this.wideKernelBounds?.get(kernel)
+    if(!proof||!this.textures.has(kernel!)||kernel!.resource!==proof.resource||kernel!.width!==proof.width||kernel!.height!==proof.height)return 0
+    return widePrefixBoundBits(proof.packet,radius)
   }
   prepareFilterPass(target: Texture, u: Float32Array, inputs: Texture[], channels: number, filter: {kind: 'tent'; radius: number}, availableBytes: number) {
     this.prepareWindowFilterPass(target, u, inputs, channels, filter, availableBytes)
@@ -1657,6 +1668,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   private invalidateTextureCertificates(texture: Texture) {
     this.nativeTentKernels?.delete(texture)
     this.rationalKernelBounds?.delete(texture)
+    this.wideKernelBounds?.delete(texture)
     this.imageRanges?.delete(texture)
     this.displayImageUploads?.delete(texture)
     this.imageAxisPrograms?.delete(texture)
@@ -1741,6 +1753,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     // parser's small immutable coefficient proof, never an image-sized copy.
     const packet = import.meta.env.VITE_DESIGN_PREFIX_TIGHT_BOUND === '1' && bytes.buffer instanceof ArrayBuffer
       ? certifyPrefixRationalBound(bytes) : undefined
+    const wide=import.meta.env.VITE_DESIGN_WIDE_RATIONAL_PREFIX==='1'?certifyWidePrefix(bytes):undefined
     if (this.managed) {
       const t = this.uploadLinear(
         Float32Array.from(bytes, (v) => v / 255),
@@ -1748,6 +1761,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
         height,
       )
       if (packet) this.rationalKernelBounds.set(t, { packet, resource: t.resource, width, height })
+      if (wide) this.wideKernelBounds.set(t,{packet:wide,resource:t.resource,width,height})
       return t
     }
     const t = this.create(width, height)
@@ -1758,6 +1772,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       [width, height],
     )
     if (packet) this.rationalKernelBounds.set(t, { packet, resource: t.resource, width, height })
+    if (wide) this.wideKernelBounds.set(t,{packet:wide,resource:t.resource,width,height})
     return t
   }
   get exactFilterPacketMaxDimension(): number | undefined {
@@ -2228,14 +2243,17 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   solidBatch(target: Texture, u: Float32Array, data: Float32Array, clip?: Texture) {
     this.drawSolidInstances(target,u,data,this.solidPipeline,clip)
   }
-  prepareOpaqueSolids(nodes:readonly {path:PathMesh;bounds:Rect}[],target:Rect,color:readonly number[]):OpaqueSolidBatch|undefined {
+  prepareOpaqueSolids(nodes:readonly {path:PathMesh;bounds:Rect}[],target:Rect,color:readonly number[],scissor?:Rect):OpaqueSolidBatch|undefined {
     if(!this.opaqueSolidRequested||!this.opaqueSolidPipeline||!this.curves||this.lost||this.disposed||
       nodes.length<8||nodes.length>this.solidBatchRemaining()||color.length!==4||color[3]!==1||
       !color.every(v=>Number.isFinite(Math.fround(v)))||
       ![target.x,target.y,target.w,target.h].every(v=>Number.isSafeInteger(v)&&Math.fround(v)===v))return
+    if(scissor&&(!Object.values(scissor).every(Number.isSafeInteger)||scissor.x<0||scissor.y<0||scissor.w<0||scissor.h<0||
+      scissor.x+scissor.w>target.w||scissor.y+scissor.h>target.h))return
+    const output=scissor?{x:target.x+scissor.x,y:target.y+scissor.y,w:scissor.w,h:scissor.h}:target
     const rows:number[]=[];let pixels=0
     for(const {path,bounds}of nodes){
-      const region=intersect(intersect(path.rect,bounds),target),first=path.area&&this.programOffsets?.get(path.area.first)
+      const region=intersect(intersect(path.rect,bounds),output),first=path.area&&this.programOffsets?.get(path.area.first)
       if(!region.w||!region.h)continue
       if(![region.x,region.y,region.w,region.h,path.rect.x,path.rect.y,path.rect.w,path.rect.h].every(v=>Number.isSafeInteger(v)&&Math.fround(v)===v)||
         !this.sampleOnlyPrograms.accepts(path,0,target,first,this.curves,this.resourceEpoch)||first!>=16777216)return
@@ -2334,22 +2352,25 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.invalidateTextureCertificates(target)
     this.closeOver()
     if (inputs.includes(target)) throw new Error('GPU texture feedback loop')
-    const certifiedTent=!!filter&&this.certifiedTentPair(inputs[1],inputs[2],filter.radius)
-    const rationalBoundBits=certifiedTent?this.nativeTentKernels.get(inputs[2])!.boundBits:filter?this.rationalKernelBoundBits(inputs[1],filter.radius):0
+    const wideBound=filter?this.wideKernelBoundBits(inputs[1],filter.radius):0,wideRational=wideBound>0
+    const certifiedTent=!wideRational&&!!filter&&this.certifiedTentPair(inputs[1],inputs[2],filter.radius)
+    const rationalBoundBits=wideBound|| (certifiedTent?this.nativeTentKernels.get(inputs[2])!.boundBits:filter?this.rationalKernelBoundBits(inputs[1],filter.radius):0)
     if (this.prefixPolicy(u, channels, filter, inputs[1],inputs[2]) && filter && !region && channels===15 &&
         !this.displayMath && inputs[0]?.opaqueAlpha && import.meta.env.VITE_DESIGN_OPAQUE_TENT !== '0') {
       const complete=completeFilterAxisSupport({x:u[4],y:u[5],w:u[6],h:u[7]},
         {x:u[0],y:u[1],w:u[2],h:u[3]},u[37],filter.radius)
       if(complete && this.prefix!.encode(()=>this.encoder,target.resource as GPUTexture,
           [0,1,2].map(i=>(inputs[i]||this.blank).resource as GPUTexture),u,filter.radius,filter.kind,
-          {x:u[0],y:u[1],w:u[2],h:u[3]},7,255,true,rationalBoundBits,sourceWindow,certifiedTent)) {
+          {x:u[0],y:u[1],w:u[2],h:u[3]},7,255,true,rationalBoundBits,sourceWindow,certifiedTent,wideRational)) {
+        if(wideRational)recordGpuDiagnostic('prefix',{wideTentPasses:1,radius:filter.radius,width:target.width,height:target.height})
         if(certifiedTent){this.certifiedTentPasses++;recordGpuDiagnostic('prefix',{certifiedTentPasses:1,radius:filter.radius,width:target.width,height:target.height})}
         this.drawCalls+=this.prefix!.lastRenderPasses;this.opaqueTentPasses++;target.opaqueAlpha=true;return
       }
     }
     if (this.prefixPolicy(u, channels, filter, inputs[1],inputs[2]) && filter && !region && this.prefix!.encode(() => this.encoder, target.resource as GPUTexture,
       [0, 1, 2].map((i) => (inputs[i] || this.blank).resource as GPUTexture), u, filter.radius, filter.kind,
-      {x:u[0],y:u[1],w:u[2],h:u[3]}, channels,255,false,rationalBoundBits,sourceWindow,certifiedTent)) {
+      {x:u[0],y:u[1],w:u[2],h:u[3]}, channels,255,false,rationalBoundBits,sourceWindow,certifiedTent,wideRational)) {
+        if(wideRational)recordGpuDiagnostic('prefix',{wideTentPasses:1,radius:filter.radius,width:target.width,height:target.height})
         if(certifiedTent){this.certifiedTentPasses++;recordGpuDiagnostic('prefix',{certifiedTentPasses:1,radius:filter.radius,width:target.width,height:target.height})}
         this.drawCalls += this.prefix!.lastRenderPasses; return }
     const bind = this.bind(u, inputs)

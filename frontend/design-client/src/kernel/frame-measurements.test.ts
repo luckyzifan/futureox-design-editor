@@ -40,7 +40,11 @@ test('grid sinks scope and release; SVG world-integer phase agrees with GPU loop
 test('production explicit wire carries numeric sequence only; actual post-submit hook and lifecycle remain attached',()=>{
  const wire=residentFrameMessage({view,width:10,height:10,dpr:1,items:[],diagnosticSequence:4} as any);expect(wire.diagnosticSequence).toBe(4)
  expect(residentFrameMessage({...wire,diagnosticSequence:'secret'} as any).diagnosticSequence).toBeUndefined()
- const presenter=readFileSync(new URL('./gpu/resident-presenter.ts',import.meta.url),'utf8');expect(presenter).toMatch(/queue.submit\(\[encoder.finish\(\)\]\)\s+const submittedEpoch/)
+ const presenter=readFileSync(new URL('./gpu/resident-presenter.ts',import.meta.url),'utf8')
+ const submit=presenter.indexOf('try { this.device.queue.submit([encoder.finish()]) } catch'),epoch=presenter.indexOf('const submittedEpoch',submit)
+ expect(submit).toBeGreaterThanOrEqual(0);expect(epoch).toBeGreaterThan(submit)
+ expect(presenter.slice(submit,epoch)).toContain('throw error')
+ expect(presenter.indexOf('diagnosticSequence: frame.diagnosticSequence, submittedEpoch',epoch)).toBeGreaterThan(epoch)
  const client=readFileSync(new URL('./client.ts',import.meta.url),'utf8');expect(client).toContain('this.frameMeasurements.submit(stats.diagnosticSequence');expect(client).toContain("document.removeEventListener('visibilitychange',visibility)")
 })
 

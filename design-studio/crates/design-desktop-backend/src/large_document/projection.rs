@@ -4,6 +4,41 @@
 use super::*;
 use futureox_design_kernel::{interop, scene::Document};
 use std::collections::HashMap;
+use std::sync::OnceLock;
+
+/// Shared only within one immutable source revision/build. The metadata and
+/// symbol locator cache never survive a save, undo or source replacement.
+pub(super) struct SketchContext {
+    document: Value,
+    symbols: OnceLock<Option<HashMap<String, (usize, usize)>>>,
+}
+impl SketchContext {
+    pub fn new(s: &Session) -> Result<Self> {
+        Ok(Self { document: json_part(s, "document.json")?, symbols: OnceLock::new() })
+    }
+    fn symbol(&self, s: &Session, symbol: &str) -> Option<(usize, usize)> {
+        let lookup = self.symbols.get_or_init(|| {
+            let mut result = HashMap::new();
+            let mut bytes = 0usize;
+            for (p, part) in s.parts.iter().enumerate() {
+                for (n, _) in part.index.entries.iter().enumerate().filter(|(_, e)| e.kind == "symbolMaster") {
+                    let Some(id) = field(s, p, n, "symbolID").ok().and_then(|v| serde_json::from_slice::<String>(&v).ok()) else { continue; };
+                    bytes = bytes.saturating_add(id.len() + 128);
+                    // A huge catalog keeps the original bounded on-demand scan.
+                    if bytes > 4 * 1024 * 1024 { return None; }
+                    result.entry(id).or_insert((p, n));
+                }
+            }
+            Some(result)
+        });
+        if let Some(lookup) = lookup { return lookup.get(symbol).copied(); }
+        s.parts.iter().enumerate().find_map(|(p, part)| {
+            part.index.entries.iter().enumerate().filter(|(_, e)| e.kind == "symbolMaster")
+                .find(|(n, _)| field(s, p, *n, "symbolID").ok().and_then(|v| serde_json::from_slice::<String>(&v).ok()).as_deref() == Some(symbol))
+                .map(|(n, _)| (p, n))
+        })
+    }
+}
 
 #[cfg_attr(test, derive(Clone, Debug, PartialEq))]
 pub(super) struct Projection {
@@ -101,6 +136,15 @@ pub(super) fn sketch_window(
     n: usize,
     limit: u64,
 ) -> Result<(Document, Value, Vec<String>)> {
+    sketch_window_in(s, p, n, limit, &SketchContext::new(s)?)
+}
+pub(super) fn sketch_window_in(
+    s: &Session,
+    p: usize,
+    n: usize,
+    limit: u64,
+    context: &SketchContext,
+) -> Result<(Document, Value, Vec<String>)> {
     let mut source_bytes = s.parts[p].index.entries[n].span.len();
     let root: Value =
         serde_json::from_slice(&read_window(s, p, s.parts[p].index.entries[n].span, limit)?)
@@ -113,7 +157,7 @@ pub(super) fn sketch_window(
     {
         return Err(issue("Select a layer/subtree for canvas editing"));
     }
-    let mut document = json_part(s, "document.json")?;
+    let mut document = context.document.clone();
     let mut symbols = HashSet::new();
     let mut images = HashSet::new();
     refs(&root, &mut symbols, &mut images);
@@ -124,33 +168,17 @@ pub(super) fn sketch_window(
         if masters.contains_key(&symbol) {
             continue;
         }
-        let mut found = None;
-        'find: for (p, part) in s.parts.iter().enumerate() {
-            for (n, entry) in part
-                .index
-                .entries
-                .iter()
-                .enumerate()
-                .filter(|(_, e)| e.kind == "symbolMaster")
-            {
-                if field(s, p, n, "symbolID")
-                    .ok()
-                    .and_then(|v| serde_json::from_slice::<String>(&v).ok())
-                    .as_deref()
-                    == Some(&symbol)
-                {
+        let found = if let Some((p, n)) = context.symbol(s, &symbol) {
+                    let entry = &s.parts[p].index.entries[n];
                     source_bytes = source_bytes.saturating_add(entry.span.len());
                     if source_bytes > limit {
                         return Err(issue("Choose a smaller component dependency working set"));
                     }
-                    found = Some(
+                    Some(
                         serde_json::from_slice::<Value>(&read_span(s, p, entry.span)?)
                             .map_err(issue)?,
-                    );
-                    break 'find;
-                }
-            }
-        }
+                    )
+        } else { None };
         if let Some(master) = found {
             refs(&master, &mut unresolved, &mut images);
             masters.insert(symbol, master);

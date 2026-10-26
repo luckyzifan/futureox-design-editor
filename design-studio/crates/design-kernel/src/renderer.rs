@@ -274,6 +274,11 @@ impl Engine {
     pub fn color_settings(&self) -> Option<crate::color::ColorSettings> {
         self.doc.as_ref().and_then(|d| d.color_management)
     }
+    pub(crate) fn static_scene_revision(&self) -> Option<(u64,bool,bool)> {
+        let source=self.source_doc.as_ref()?;
+        (!self.layout_dirty&&source.animations.is_empty()&&self.animation_sample.is_none())
+            .then(||(self.geo_revision,self.fonts.glyph_origin_quantization(),self.image_mips()))
+    }
     /// Rendering-side glyph-origin quantisation (Sketch's
     /// `allowFontSubpixelQuantization` counterpart). Default off; toggling
     /// does not bump the content revision because layout and caret geometry
@@ -314,8 +319,7 @@ impl Engine {
         // proven translation need not clone the entire authored document just
         // to discover that same conservative certificate.
         if self.source_doc_bytes.is_some() && patch.nodes.len() <= 16 && self.can_retain_translation(patch)
-            && self.source_doc.as_ref().unwrap().nodes.values().any(|n|
-                n.backdrop_effect().is_some_and(|e| e.kind != "background-blur")) {
+            && crate::dirty_region::has_unbounded_backdrop_for_patch(self.source_doc.as_ref().unwrap(), patch) {
             let transforms = patch.nodes.iter().map(|(id,n)| (id.clone(), n.as_ref().unwrap().transform)).collect();
             if self.apply_interaction_transforms(&transforms)? {
                 return Ok(crate::dirty_region::PatchDamage { full:true,reason:Some("glass-effect"),
@@ -329,8 +333,14 @@ impl Engine {
             .ok_or("Load document before applying a patch")?;
         let (next, next_bytes) = patch.apply_with_size(source)
             .map_err(|e| e.to_string())?.into_parts();
-        let mut damage =
-            crate::dirty_region::patch_damage_with_fonts(source, &next, patch, &self.fonts);
+        let retained_paint = self.retainable_paint_changes(patch);
+        let mut damage = if retained_paint.as_ref().is_some_and(Vec::is_empty) {
+            // Certify once from resolved placement. The exact material proof
+            // preserves geometry, effect support and optical isolation.
+            crate::dirty_region::resolved_material_damage(self.doc.as_ref().unwrap(), patch, &self.fonts)
+        } else {
+            crate::dirty_region::patch_damage_with_fonts(source, &next, patch, &self.fonts)
+        };
         if crate::repeat::has_repeats(source) || crate::repeat::has_repeats(&next) {
             damage.full = true; damage.reason = Some("repeat-derived-scene"); damage.bounds = None; damage.rects = None;
         }
@@ -353,7 +363,7 @@ impl Engine {
                 cache.translated(self.doc.as_ref().unwrap(), patch.nodes.keys().cloned(), self.geo_revision, &self.render_index.as_ref().unwrap().parents);
             }
             damage.translation_only = Some(true);
-        } else if let Some(bounds_dirty) = self.retainable_paint_changes(patch) {
+        } else if let Some(bounds_dirty) = retained_paint {
             for (id, node) in &patch.nodes {
                 let node = node.as_ref().unwrap();
                 crate::derived_invalidation::apply_paint(self.doc.as_mut().unwrap().nodes.get_mut(id).unwrap(), node);
@@ -369,7 +379,7 @@ impl Engine {
                 if !bounds_dirty.is_empty() {
                     cache.translated(self.doc.as_ref().unwrap(), bounds_dirty.into_iter(), self.geo_revision, &self.render_index.as_ref().unwrap().parents);
                 }
-                cache.paint_changed(self.geo_revision);
+                cache.paint_changed(self.geo_revision,self.doc.as_ref().unwrap(),patch.nodes.keys().cloned(),&self.render_index.as_ref().unwrap().parents);
             }
         } else {
             let retain_index=crate::render_index::RenderIndex::preserved_by(source,patch);

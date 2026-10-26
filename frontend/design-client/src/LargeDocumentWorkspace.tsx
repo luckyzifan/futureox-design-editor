@@ -6,12 +6,14 @@ import { commitPendingEdits, hasPendingEdits, registerPendingEdit, pendingEditsC
 import { prepareDocumentJson, prepareDocumentJsonInWorker } from './prepared-document'
 import { documentPreparationRuntime } from './document-preparation-identity'
 import { dispatchEditorCommand, resolveDesktopEditorCommand } from './editor-commands'
-import { desktopBridge, type LargeDocumentBridge, type LargeDocumentRow, type LargeDocumentStatus, type DesktopResult } from './desktop'
+import { desktopBridge, type LargeDocumentBridge, type LargeDocumentRow, type LargeDocumentPageRange, type LargeDocumentStatus, type DesktopResult } from './desktop'
 import { apply, bounds, boxPoints, unionBounds } from './geometry'
 import { sourceNodeEdit,type SourceNodeEdit } from './source-scene-patch'
 
 const admitted=<T,>(result:DesktopResult<T>):T=>{if(result.status!=='ok')throw Error(result.status==='cancelled'?'操作已取消':result.message);return result as T}
 const sameSource=(a:LargeDocumentStatus|null,b:LargeDocumentStatus|null)=>!!a&&!!b&&a.owner.documentId===b.owner.documentId&&a.owner.sessionEpoch===b.owner.sessionEpoch&&a.revision===b.revision
+type CanvasSelection=LargeDocumentRow&{sceneOffset?:number;previousOffsets?:number[]}
+const sceneRequest=(row:CanvasSelection)=>({key:row.key,...(row.sceneOffset?{offset:row.sceneOffset}:{})})
 export type SourceWorkspace = {
   editor:Editor; ready:boolean; busy:boolean; locked:boolean; dirty:boolean; name:string; notice:string; error:string
   canvas:RefObject<HTMLDivElement|null>; navigation:ReactNode; showLayers:boolean; warnings:string[]
@@ -24,11 +26,12 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   const state=useSyncExternalStore(editor.subscribe,editor.panelSnapshot)
   const [status,setStatus]=useState<LargeDocumentStatus|null>(null),statusRef=useRef<LargeDocumentStatus|null>(null)
   const [rows,setRows]=useState<LargeDocumentRow[]>([]),[parents,setParents]=useState<LargeDocumentRow[]>([]),[offset,setOffset]=useState(0),[total,setTotal]=useState(0)
-  const [query,setQuery]=useState(''),[filter,setFilter]=useState(''),[active,setActive]=useState<LargeDocumentRow|null>(null)
+  const [query,setQuery]=useState(''),[filter,setFilter]=useState(''),[active,setActive]=useState<CanvasSelection|null>(null)
+  const [pageRange,setPageRange]=useState<LargeDocumentPageRange|null>(null)
   const [busy,setBusy]=useState(false),busyRef=useRef(false),[error,setError]=useState(''),[notice,setNotice]=useState('')
   const [viewTab,setViewTab]=useState<'source'|'layers'>('source')
   const [editorLocked,setEditorLocked]=useState(false),[warnings,setWarnings]=useState<string[]>([])
-  const queuedLoad=useRef<LargeDocumentRow|null>(null),drainingLoads=useRef(false),preparingSource=useRef(false)
+  const queuedLoad=useRef<CanvasSelection|null>(null),drainingLoads=useRef(false),preparingSource=useRef(false)
   const alive=useRef(true),started=useRef(false),baseline=useRef<DesignDocument|null>(null),canvas=useRef<HTMLDivElement>(null),abort=useRef<AbortController|null>(null)
   const activeRef=useRef(active);activeRef.current=active
   const clearNavigation=()=>{setRows([]);setParents([]);setOffset(0);setTotal(0);setFilter('');setQuery('')}
@@ -45,7 +48,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   const invalidateCanvas=()=>{
     // Call only after saving/dirty checks. Keep the Editor and its history in
     // memory; a new source selection is required before any further source edit.
-    baseline.current=null;activeRef.current=null;setActive(null);setViewTab('source')
+    baseline.current=null;activeRef.current=null;setActive(null);setPageRange(null);setViewTab('source')
     setNotice('源文件版本已变化。请重新选择页面或对象，避免使用旧的源对象位置。')
   }
   const request=()=>{const value=statusRef.current;if(!value)throw Error('源文件尚未打开');return {owner:value.owner,expectedRevision:value.revision}}
@@ -60,7 +63,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     try{while(alive.current&&queuedLoad.current){const row=queuedLoad.current;queuedLoad.current=null;await run(()=>load(row))}}
     finally{drainingLoads.current=false}
   }
-  const requestLoad=(row:LargeDocumentRow)=>{
+  const requestLoad=(row:CanvasSelection)=>{
     queuedLoad.current=row
     if(preparingSource.current){abort.current?.abort();void bridge.cancel().catch(()=>{})}
     void drainLoads()
@@ -104,7 +107,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     const box=unionBounds(entries),zoom=Math.max(.001,Math.min(2,(host.clientWidth-96)/Math.max(1,box.width),(host.clientHeight-96)/Math.max(1,box.height)))
     editor.set({view:{x:(host.clientWidth-box.width*zoom)/2-box.x*zoom,y:(host.clientHeight-box.height*zoom)/2-box.y*zoom,zoom}})
   }
-  const load=async(row:LargeDocumentRow)=>{
+  const load=async(row:CanvasSelection)=>{
     const selectedSource=statusRef.current
     await save()
     if(queuedLoad.current)return
@@ -113,7 +116,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     const previousRow=activeRef.current
     const owner=request();setNotice(`正在准备 ${row.name}…`);preparingSource.current=true
     try {
-    const result=admitted(await bridge.scene({...owner,key:row.key}))
+    const result=admitted(await bridge.scene({...owner,...sceneRequest(row)}))
     if(!alive.current)return
     if(queuedLoad.current)throw new DOMException('源对象请求已过期','AbortError')
     const controller=new AbortController();abort.current=controller
@@ -122,14 +125,16 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     if(!current()||editor.authoredDocument!==previous||hasPendingEdits(editor)||editor.interactionActive)throw Error('页面准备期间产生了新修改；当前画布已保留。')
     if(!editor.load(prepared))throw Error(editor.state.message||'页面未能进入画布')
     baseline.current=editor.authoredDocument;activeRef.current=row;setActive(row);setViewTab('layers')
-    setWarnings(result.warnings);setNotice(`${row.kind==='page'?'完整页面':'当前画板 / 对象'}已载入：${result.nodes.toLocaleString()} 个场景节点。`)
+    setPageRange(result.pageRange??null)
+    const range=result.pageRange,partial=range&&(range.offset>0||range.end<range.totalRoots)
+    setWarnings(result.warnings);setNotice(partial?`${row.name}：已载入第 ${range.offset+1}–${range.end} 个画板 / 对象，共 ${range.totalRoots} 个。可切换上一部分 / 下一部分；完整导出包含全部内容。`:`${row.kind==='page'?'完整页面':'当前画板 / 对象'}已载入：${result.nodes.toLocaleString()} 个场景节点。`)
     requestAnimationFrame(fit)
     } catch(error) {
       preparingSource.current=false
       // Native preparation stages its source baseline before the WASM/UI gate.
       // A failed admission must leave the displayed canvas saveable as well.
       if(previousRow&&alive.current&&statusRef.current?.owner===owner.owner&&statusRef.current.revision===owner.expectedRevision){
-        try{admitted(await bridge.scene({...owner,key:previousRow.key}))}
+        try{admitted(await bridge.scene({...owner,...sceneRequest(previousRow)}))}
         catch(restoreError){throw Error(`${error instanceof Error?error.message:String(error)}；原画布仍保留，但保存基线恢复失败，请重新载入原页面：${restoreError instanceof Error?restoreError.message:String(restoreError)}`)}
       }
       throw error
@@ -138,14 +143,14 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   const openInitialCanvas=async()=>{
     const top=admitted(await bridge.children({...request(),limit:100})).items
     let row=top.find(row=>row.kind==='page')||top.find(row=>!['document','rect','style'].includes(row.kind))
-    // An archive page can contain hundreds of independent boards. Enter its
-    // first board immediately; cold siblings remain in the complete source.
+    // Enter one board quickly, while leaving the complete page list visible.
+    // Selecting a page uses budgeted consecutive ranges with explicit paging.
     if(row?.kind==='page'&&row.hasChildren){
       const page=row,children=admitted(await bridge.children({...request(),key:page.key,limit:100})).items
       const board=children.find(row=>['artboard','symbolMaster','frame','group'].includes(row.kind))
-      if(board){setParents([page]);row=board}
+      if(board)row=board
     }
-    if(row)await load(row)
+    if(row){await load(row);setViewTab('source')}
     else setNotice('此文件没有可显示的页面或画板。')
   }
   useEffect(()=>{
@@ -193,13 +198,14 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     if(statusRef.current)admitted(await bridge.close(request()))
     if(!/\.(json|sketch)$/i.test(file.name)){flushSync(()=>onExit(file));return}
     const next=admitted(await bridge.openFile(file));if(!alive.current)return
-    baseline.current=null;activeRef.current=null;setActive(null);updateStatus(next)
+    baseline.current=null;activeRef.current=null;setActive(null);setPageRange(null);updateStatus(next)
     await openInitialCanvas()
   },true)
   const navigation=<div className="source-board-navigation" data-listing={viewTab==='source'}>
     <nav><button aria-pressed={viewTab==='source'} onClick={()=>setViewTab('source')}>页面 / 画板</button><button disabled={!active} aria-pressed={viewTab==='layers'} onClick={()=>setViewTab('layers')}>图层</button></nav>
+    {active&&pageRange&&(pageRange.offset>0||pageRange.nextOffset!==null)&&<nav aria-label="页面分段"><span>{active.name} · {pageRange.offset+1}–{pageRange.end} / {pageRange.totalRoots}</span><button disabled={busy||!active.previousOffsets?.length} onClick={()=>{const previous=active.previousOffsets!;requestLoad({...active,sceneOffset:previous.at(-1),previousOffsets:previous.slice(0,-1)})}}>上一部分</button><button disabled={busy||pageRange.nextOffset===null} onClick={()=>requestLoad({...active,sceneOffset:pageRange.nextOffset!,previousOffsets:[...(active.previousOffsets??[]),pageRange.offset]})}>下一部分</button></nav>}
     {viewTab==='source'&&<><form onSubmit={event=>{event.preventDefault();setFilter(query);setOffset(0)}}><input aria-label="搜索源对象" placeholder="搜索页面或画板" value={query} maxLength={256} onChange={event=>setQuery(event.target.value)}/><button>搜索</button></form><nav><button disabled={busy} onClick={()=>{setParents([]);setOffset(0);setFilter('');setQuery('')}}>全部页面</button>{parents.map((row,index)=><button key={row.key} disabled={busy} onClick={()=>{setParents(parents.slice(0,index+1));setOffset(0)}}>{row.name}</button>)}</nav>
-      <div className="source-workspace-rows">{rows.map(row=><div key={row.key} data-source-key={row.key}><button disabled={['document','rect','style','exportOptions','rulerData','MSImmutableFreeformGroupLayout'].includes(row.kind)} onClick={()=>requestLoad(row)} title={`${row.kind} · ${(row.bytes/1024**2).toFixed(1)} MiB`}>{row.name||row.kind}<small>{row.kind==='page'?'完整页面':row.kind}</small></button>{row.hasChildren&&<button aria-label={`展开 ${row.name}`} disabled={busy} onClick={()=>{setParents([...parents,row]);setFilter('');setOffset(0)}}>›</button>}</div>)}</div><footer><button disabled={busy||offset===0} onClick={()=>setOffset(Math.max(0,offset-100))}>上一页</button><span>{total}</span><button disabled={busy||offset+100>=total} onClick={()=>setOffset(offset+100)}>下一页</button></footer>
+      <div className="source-workspace-rows">{rows.map(row=><div key={row.key} data-source-key={row.key}><button disabled={['document','rect','style','exportOptions','rulerData','MSImmutableFreeformGroupLayout'].includes(row.kind)} onClick={()=>requestLoad(row)} title={`${row.kind} · ${(row.bytes/1024**2).toFixed(1)} MiB`}>{row.name||row.kind}<small>{row.kind==='page'?'载入页面':row.kind}</small></button>{row.hasChildren&&<button aria-label={`展开 ${row.name}`} disabled={busy} onClick={()=>{setParents([...parents,row]);setFilter('');setOffset(0)}}>›</button>}</div>)}</div><footer><button disabled={busy||offset===0} onClick={()=>setOffset(Math.max(0,offset-100))}>上一页</button><span>{total}</span><button disabled={busy||offset+100>=total} onClick={()=>setOffset(offset+100)}>下一页</button></footer>
       <button disabled={busy||!status?.undoCount} onClick={()=>void history('undo')}>撤销已保存修改</button><button disabled={busy||!status?.redoCount} onClick={()=>void history('redo')}>重做已保存修改</button>
     </>}
   </div>

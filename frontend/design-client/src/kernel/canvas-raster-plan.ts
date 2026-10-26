@@ -167,10 +167,15 @@ export function preservesNativePanPhase(
   view: CanvasCamera, dpr: number, scale: number, cameraDependent: boolean,
   previous?: { view: CanvasCamera; dpr: number; rasterScale: number; samplingMode: string } | null,
 ) {
-  if (!previous || cameraDependent || previous.samplingMode !== 'native' ||
+  if (!previous || cameraDependent || !['native', 'density-cache'].includes(previous.samplingMode) ||
       ![view.x, view.y, view.zoom, dpr, scale, previous.view.x, previous.view.y, previous.view.zoom].every(Number.isFinite) ||
       dpr <= 0 || view.zoom <= 0 || previous.dpr !== dpr || previous.view.zoom !== view.zoom ||
       scale !== view.zoom * dpr || previous.rasterScale !== scale) return false
+  // Canonical world tiles are already native when the original camera lands
+  // on integer device pixels. Their mode name must not force a low-density
+  // viewport recapture before repairing the newly exposed strips of a pan.
+  if (previous.samplingMode === 'density-cache' &&
+      (!Number.isInteger(previous.view.x*dpr) || !Number.isInteger(previous.view.y*dpr))) return false
   const sameAxis = (current: number, prior: number) => {
     const a = current * dpr, b = prior * dpr
     // Exact equality avoids issuing a new floating-point phase key or silently

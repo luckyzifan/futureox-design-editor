@@ -27,7 +27,7 @@ function next(){
  const frames=documentWrites(writing.bytes,String(writing.id),68*1024*1024)
  const send=()=>{
   if(stopped||active!==writing)return
-  const item=frames.next();if(item.done)return
+  const item=frames.next();if(item.done){writing.sent=true;if(writing.cancelled)child.stdin.write(JSON.stringify({cancel:writing.id})+'\n');return}
   const accepted=child.stdin.write(item.value,error=>{if(error)fail(error)})
   if(accepted)setImmediate(send);else child.stdin.once('drain',send)
  }
@@ -48,6 +48,15 @@ child.stdout.on('data',part=>{
  }catch(error){fail(error)}
 })
 parentPort.on('message',message=>{
+ if(message.cancel){
+  const queued=queue.findIndex(job=>job.id===message.cancel&&job.method==='compile_gpu_packet')
+  if(queued>=0){const [job]=queue.splice(queued,1);queuedBytes-=job.bytes.length;parentPort.postMessage({id:job.id,reply:{id:job.id,error:'PREVIEW_CANCELLED'}})}
+  else if(active?.id===message.cancel&&active.method==='compile_gpu_packet'){
+   active.cancelled=true
+   if(active.sent)child.stdin.write(JSON.stringify({cancel:active.id})+'\n')
+  }
+  return
+ }
  if(message.stop){fail(Error('Native preparation closed'));return}
  try{
   if(message.method==='serialize'){
@@ -65,7 +74,7 @@ parentPort.on('message',message=>{
   const bytes=Buffer.from(JSON.stringify(request))
   if(stopped||queue.length>=32||bytes.length>DOCUMENT_TRANSFER_BYTES||queuedBytes+bytes.length>DOCUMENT_TRANSFER_BYTES+8*1024*1024)
    throw Error('Native preparation request budget exceeded')
-  queue.push({id:message.id,bytes,diagnostics,receivedAt});queuedBytes+=bytes.length;next()
+  queue.push({id:message.id,method:message.method,bytes,diagnostics,receivedAt});queuedBytes+=bytes.length;next()
  }catch(error){parentPort.postMessage({id:message.id,reply:{id:message.id,error:error.message}})}
 })
 parentPort.on('close',()=>{if(!stopped)child.kill('SIGTERM')})

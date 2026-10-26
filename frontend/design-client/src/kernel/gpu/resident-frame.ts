@@ -22,6 +22,7 @@ export function residentFrameMessage(frame: ResidentFrame): ResidentFrame {
     interaction: frame.interaction,
     allowEmpty: frame.allowEmpty,
     allowBackground: frame.allowBackground,
+    backgroundTranslation: frame.backgroundTranslation ? { x: frame.backgroundTranslation.x, y: frame.backgroundTranslation.y } : undefined,
     linearBlend: frame.linearBlend,
     backgroundLinear: frame.backgroundLinear ? [...frame.backgroundLinear] : undefined,
     input: frame.input ? { sequence: frame.input.sequence, at: frame.input.at,owner:frame.input.owner } : undefined,
@@ -74,6 +75,7 @@ export function residentFrameSignature(frame: ResidentFrame) {
     frame.interaction,
     frame.allowEmpty,
     frame.allowBackground,
+    frame.backgroundTranslation,
     frame.linearBlend,
     frame.backgroundLinear,
     frame.items

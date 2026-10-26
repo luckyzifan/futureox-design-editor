@@ -530,6 +530,28 @@ fn anchor_of_constraint(v: &str) -> Result<Anchor, Error> {
     })
 }
 
+/// The six kiwi `TextCase` members (wire names; ordinals 0-5).
+const TEXT_CASES: [&str; 6] = [
+    "ORIGINAL",
+    "UPPER",
+    "LOWER",
+    "TITLE",
+    "SMALL_CAPS",
+    "SMALL_CAPS_FORCED",
+];
+
+fn text_case_of(v: Option<&str>) -> Option<crate::font::TextCase> {
+    Some(match v? {
+        "ORIGINAL" => crate::font::TextCase::Original,
+        "UPPER" => crate::font::TextCase::Upper,
+        "LOWER" => crate::font::TextCase::Lower,
+        "TITLE" => crate::font::TextCase::Title,
+        "SMALL_CAPS" => crate::font::TextCase::SmallCaps,
+        "SMALL_CAPS_FORCED" => crate::font::TextCase::SmallCapsForced,
+        _ => return None,
+    })
+}
+
 fn size_mode_of(v: &str) -> Result<SizeMode, Error> {
     Ok(match v {
         "FIXED" => SizeMode::Fixed,
@@ -641,19 +663,52 @@ impl FigImporter {
                     Some("FILL") => "stretch".into(),
                     Some("FIT") => "contain".into(),
                     Some("TILE") => {
-                        // TILE renders through the pattern-fill pipeline.
-                        // The kiwi `Paint` (field table below) carries NO
-                        // tiling parameters — no patternTileType / tile
-                        // size / offset fields exist in it — so those are
-                        // recorded as unsupported and only the base behavior
-                        // is mapped: a regular grid at the image's native
-                        // size with zero offset. Figma-side stagger settings
-                        // cannot be recovered from this input; deliberately
-                        // not guessed.
-                        untranslated.push(
-                            "imageScaleMode=TILE(平铺参数不支持:按规则平铺+原始尺寸导入)".into(),
-                        );
-                        paint.tile = Some(crate::pattern_fill::PatternTile::native());
+                        // TILE renders through the pattern-fill pipeline. The
+                        // kiwi `Paint` message carries the authored tiling
+                        // parameters (v106 schema, ordinals 27-30):
+                        // spacing (cell period), patternTileType
+                        // (RECTANGULAR / HORIZONTAL_HEXAGONAL /
+                        // VERTICAL_HEXAGONAL) and the two PatternAlignment
+                        // axes. Missing fields keep the base mapping (a
+                        // regular grid at the image's native size).
+                        let mut tile = crate::pattern_fill::PatternTile::native();
+                        if let Some(mode) = str_of(p, "patternTileType") {
+                            tile.mode = match mode {
+                                "RECTANGULAR" => crate::pattern_fill::GRID.into(),
+                                "HORIZONTAL_HEXAGONAL" => {
+                                    crate::pattern_fill::STAGGER_HORIZONTAL.into()
+                                }
+                                "VERTICAL_HEXAGONAL" => {
+                                    crate::pattern_fill::STAGGER_VERTICAL.into()
+                                }
+                                other => {
+                                    untranslated.push(format!("patternTileType={other}"));
+                                    crate::pattern_fill::GRID.into()
+                                }
+                            };
+                        }
+                        let spacing = f64_of(Some(p), "spacing");
+                        if spacing > 0. {
+                            tile.size = [spacing, spacing];
+                        }
+                        let mut alignment_of = |key: &str| {
+                            str_of(p, key)
+                                .map(|v| match v {
+                                    "START" => crate::pattern_fill::ALIGN_START.to_string(),
+                                    "CENTER" => crate::pattern_fill::ALIGN_CENTER.to_string(),
+                                    "END" => crate::pattern_fill::ALIGN_END.to_string(),
+                                    other => {
+                                        untranslated.push(format!("{key}={other}"));
+                                        crate::pattern_fill::ALIGN_START.to_string()
+                                    }
+                                })
+                                .unwrap_or_else(|| crate::pattern_fill::ALIGN_START.into())
+                        };
+                        tile.alignment = [
+                            alignment_of("horizontalAlignment"),
+                            alignment_of("verticalAlignment"),
+                        ];
+                        paint.tile = Some(tile);
                         "cover".into()
                     }
                     Some("CROP") => {
@@ -667,16 +722,44 @@ impl FigImporter {
                 // Verified by plugin -> native FIG -> exported pixel centers.
                 // Native negative contrast is already scaled; do not apply
                 // the public plugin slider's 0.3 conversion a second time.
-                if let Some(filter)=p.get("paintFilter").or_else(||p.get("filterColorAdjust")) {
-                    let value=|key:&str|filter.get(key).and_then(Value::as_f64).unwrap_or(0.);
-                    let adjust=crate::image_adjust::ImageAdjust { exposure:value("exposure"),contrast:value("contrast"),
-                        color:value("vibrance"),temperature:value("temperature"),tint:value("tint"),
-                        highlights:value("highlights"),shadows:value("shadows"),highlight_shadow_threshold:0.5 };
-                    if adjust.validate() && !adjust.is_identity() { paint.adjust=Some(adjust); }
-                    if !adjust.validate() { untranslated.push(format!("invalid paintFilter={filter}")); }
-                    if let Some(fields)=filter.as_object() {
-                        for (key,v) in fields {
-                            if !["exposure","contrast","vibrance","temperature","tint","highlights","shadows"].contains(&key.as_str()) && v.as_f64()!=Some(0.) {
+                if let Some(filter) = p.get("paintFilter").or_else(|| p.get("filterColorAdjust")) {
+                    let value = |key: &str| filter.get(key).and_then(Value::as_f64).unwrap_or(0.);
+                    let adjust = crate::image_adjust::ImageAdjust {
+                        exposure: value("exposure"),
+                        contrast: value("contrast"),
+                        color: value("vibrance"),
+                        temperature: value("temperature"),
+                        tint: value("tint"),
+                        highlights: value("highlights"),
+                        shadows: value("shadows"),
+                        highlight_shadow_threshold: 0.5,
+                        detail: value("detail"),
+                        vignette: value("vignette"),
+                        brightness: value("brightness"),
+                    };
+                    if adjust.validate() && !adjust.is_identity() {
+                        paint.adjust = Some(adjust);
+                    }
+                    if !adjust.validate() {
+                        untranslated.push(format!("invalid paintFilter={filter}"));
+                    }
+                    if let Some(fields) = filter.as_object() {
+                        for (key, v) in fields {
+                            if ![
+                                "exposure",
+                                "contrast",
+                                "vibrance",
+                                "temperature",
+                                "tint",
+                                "highlights",
+                                "shadows",
+                                "detail",
+                                "vignette",
+                                "brightness",
+                            ]
+                            .contains(&key.as_str())
+                                && v.as_f64() != Some(0.)
+                            {
                                 untranslated.push(format!("paintFilter.{key}={v}"));
                             }
                         }
@@ -716,7 +799,7 @@ impl FigImporter {
         }
     }
 
-    fn node(&self, change: &Value, untranslated: &mut Vec<String>) -> Result<Node,Error> {
+    fn node(&self, change: &Value, untranslated: &mut Vec<String>) -> Result<Node, Error> {
         let fig_type = str_of(change, "type").unwrap_or("GROUP");
         let kind = kind_of(fig_type).unwrap_or("group");
         let id = guid_string(change.get("guid").unwrap_or(&Value::Null));
@@ -893,9 +976,7 @@ impl FigImporter {
                 if let Some(mode) = str_of(e, "blendMode").filter(|m| *m != "NORMAL") {
                     untranslated.push(format!("effectBlendMode={mode}"));
                 }
-                if bool_of(e, "showShadowBehindNode").unwrap_or(false) {
-                    untranslated.push("showShadowBehindNode=true".into());
-                }
+                let show_shadow_behind_node = bool_of(e, "showShadowBehindNode").unwrap_or(false);
                 node.effects.push(Effect {
                     id: String::new(),
                     kind: kind.into(),
@@ -913,6 +994,7 @@ impl FigImporter {
                     glass: None,
                     texture: None,
                     gradient_blur: None,
+                    show_shadow_behind_node,
                 });
             }
         }
@@ -1274,28 +1356,84 @@ impl FigImporter {
             && let Some(vd) = change.get("vectorData")
             && let Some(blob_id) = vd.get("vectorNetworkBlob").and_then(Value::as_u64)
         {
-            let scale = vd.get("normalizedSize").map(|size|(node.width/f64_of(Some(size),"x"),node.height/f64_of(Some(size),"y"))).unwrap_or((1.,1.));
-            let blob=self.kiwi_blobs.get(blob_id as usize).ok_or_else(||Error::Malformed("FIG vector blob is missing".into()))?;
-            let decoded=crate::fig_geometry::decode_network(blob,scale.0,scale.1).map_err(Error::Malformed)?;
-            if decoded.vertex_styles.iter().chain(&decoded.region_styles).any(|id|*id!=0) {untranslated.push("vector vertex/region style overrides require source style mapping".into());}
-            node.network=decoded.network;
-            node.vector_geometry=decoded.vector_geometry;
-        }
-        if fig_type=="VECTOR" && let Some(entries)=change.get("fillGeometry").and_then(Value::as_array).filter(|v|!v.is_empty()) {
-            let mut fill=crate::path::Path::default();let mut rule=None;
-            for entry in entries {
-                let index=entry.get("commandsBlob").and_then(Value::as_u64).ok_or_else(||Error::Malformed("FIG fill geometry blob missing".into()))?;
-                let blob=self.kiwi_blobs.get(index as usize).ok_or_else(||Error::Malformed("FIG fill geometry blob unavailable".into()))?;
-                let current=if matches!(str_of(entry,"windingRule"),Some("ODD"|"EVENODD")){"evenodd"}else{"nonzero"};
-                if rule.is_some_and(|r|r!=current){return Err(Error::Unsupported("Mixed FIG fill winding requires separate paint geometry".into()));}rule=Some(current);
-                fill.commands.extend(crate::fig_geometry::decode_commands(blob).map_err(Error::Malformed)?.commands);
+            let scale = vd
+                .get("normalizedSize")
+                .map(|size| {
+                    (
+                        node.width / f64_of(Some(size), "x"),
+                        node.height / f64_of(Some(size), "y"),
+                    )
+                })
+                .unwrap_or((1., 1.));
+            let blob = self
+                .kiwi_blobs
+                .get(blob_id as usize)
+                .ok_or_else(|| Error::Malformed("FIG vector blob is missing".into()))?;
+            let decoded = crate::fig_geometry::decode_network(blob, scale.0, scale.1)
+                .map_err(Error::Malformed)?;
+            if decoded
+                .vertex_styles
+                .iter()
+                .chain(&decoded.region_styles)
+                .any(|id| *id != 0)
+            {
+                untranslated.push(
+                    "vector vertex/region style overrides require source style mapping".into(),
+                );
             }
-            let stroke=if let Some(geometry)=&node.vector_geometry {geometry.paths().map_err(Error::Malformed)?.1}
-                else if let Some(network)=&node.network {network.paths().map_err(Error::Malformed)?.1}
-                else if node.strokes.iter().any(|s|s.visible&&s.width>0.) {return Err(Error::Unsupported("FIG fill outline has no corresponding stroke path".into()));}
-                else {fill.clone()};
-            node.vector_geometry=Some(crate::vector_geometry::VectorGeometry::from_paths(&fill,&stroke,rule.unwrap()).map_err(Error::Malformed)?);
-            node.network=None;
+            node.network = decoded.network;
+            node.vector_geometry = decoded.vector_geometry;
+        }
+        if fig_type == "VECTOR"
+            && let Some(entries) = change
+                .get("fillGeometry")
+                .and_then(Value::as_array)
+                .filter(|v| !v.is_empty())
+        {
+            let mut fill = crate::path::Path::default();
+            let mut rule = None;
+            for entry in entries {
+                let index = entry
+                    .get("commandsBlob")
+                    .and_then(Value::as_u64)
+                    .ok_or_else(|| Error::Malformed("FIG fill geometry blob missing".into()))?;
+                let blob = self
+                    .kiwi_blobs
+                    .get(index as usize)
+                    .ok_or_else(|| Error::Malformed("FIG fill geometry blob unavailable".into()))?;
+                let current = if matches!(str_of(entry, "windingRule"), Some("ODD" | "EVENODD")) {
+                    "evenodd"
+                } else {
+                    "nonzero"
+                };
+                if rule.is_some_and(|r| r != current) {
+                    return Err(Error::Unsupported(
+                        "Mixed FIG fill winding requires separate paint geometry".into(),
+                    ));
+                }
+                rule = Some(current);
+                fill.commands.extend(
+                    crate::fig_geometry::decode_commands(blob)
+                        .map_err(Error::Malformed)?
+                        .commands,
+                );
+            }
+            let stroke = if let Some(geometry) = &node.vector_geometry {
+                geometry.paths().map_err(Error::Malformed)?.1
+            } else if let Some(network) = &node.network {
+                network.paths().map_err(Error::Malformed)?.1
+            } else if node.strokes.iter().any(|s| s.visible && s.width > 0.) {
+                return Err(Error::Unsupported(
+                    "FIG fill outline has no corresponding stroke path".into(),
+                ));
+            } else {
+                fill.clone()
+            };
+            node.vector_geometry = Some(
+                crate::vector_geometry::VectorGeometry::from_paths(&fill, &stroke, rule.unwrap())
+                    .map_err(Error::Malformed)?,
+            );
+            node.network = None;
         }
         Ok(node)
     }
@@ -1353,11 +1491,15 @@ impl FigImporter {
                 None => untranslated.push(format!("letterSpacing={ls}")),
             }
         }
-        match str_of(change, "textCase") {
-            Some("UPPER") => style.text_case = crate::font::TextCase::Upper,
-            Some("LOWER") => style.text_case = crate::font::TextCase::Lower,
-            Some(case) if case != "ORIGINAL" => untranslated.push(format!("textCase={case}")),
-            _ => {},
+        match text_case_of(str_of(change, "textCase")) {
+            Some(case) => style.text_case = case,
+            None if str_of(change, "textCase").is_some() => {
+                untranslated.push(format!(
+                    "textCase={}",
+                    str_of(change, "textCase").unwrap_or_default()
+                ));
+            }
+            _ => {}
         }
         if let Some(v) = str_of(change, "textAlignVertical").filter(|v| *v != "TOP") {
             untranslated.push(format!("textAlignVertical={v}"));
@@ -1428,7 +1570,7 @@ impl FigImporter {
                 let underline = str_of(change, "textDecoration") == Some("UNDERLINE");
                 if node.text_runs.is_empty() {
                     node.text_runs.push(crate::font::TextRun {
-            text_case: None,
+                        text_case: None,
                         color: None,
                         underline,
                         strikethrough: !underline,
@@ -1509,10 +1651,7 @@ fn styled_text_runs(
         utf16 = end;
         let entry = entry.expect("checked");
         let mut run = crate::font::TextRun {
-            text_case: match str_of(entry,"textCase") {
-                Some("UPPER")=>Some(crate::font::TextCase::Upper),Some("LOWER")=>Some(crate::font::TextCase::Lower),
-                Some("ORIGINAL")=>Some(crate::font::TextCase::Original),_=>None,
-            },
+            text_case: text_case_of(str_of(entry, "textCase")),
             color: None,
             underline: false,
             strikethrough: false,
@@ -1547,16 +1686,12 @@ fn styled_text_runs(
             _ => {}
         }
         // keys with no kernel home must not vanish
-        for key in [
-            "lineHeight",
-            "letterSpacing",
-            "textAlignHorizontal",
-        ] {
+        for key in ["lineHeight", "letterSpacing", "textAlignHorizontal"] {
             if let Some(v) = entry.get(key).filter(|v| !v.is_null()) {
                 dropped.push(format!("{key}={v}"));
             }
         }
-        if let Some(case)=str_of(entry,"textCase").filter(|c| !["ORIGINAL","UPPER","LOWER"].contains(c)) {
+        if let Some(case) = str_of(entry, "textCase").filter(|c| !TEXT_CASES.contains(c)) {
             dropped.push(format!("textCase={case}"));
         }
         runs.push(run);
@@ -2092,12 +2227,40 @@ pub fn document_from_canvas(
     {
         version = version.max(10);
     }
-    if doc.nodes.values().any(|n| n.text_style.as_ref().is_some_and(|s| s.text_case != crate::font::TextCase::Original)
-        || n.text_runs.iter().any(|r| r.text_case.is_some())) { version=version.max(15); }
-    if doc.nodes.values().any(|n| n.fills.iter().chain(n.strokes.iter().map(|s|&s.paint)).any(|p|p.adjust.is_some())) { version=version.max(13); }
-    if doc.nodes.values().any(|n| n.fills.iter().chain(n.strokes.iter().map(|s|&s.paint)).any(|p|p.tile.is_some())) { version=version.max(14); }
-    if doc.nodes.values().any(|n|n.vector_geometry.is_some()){version=version.max(16);}
-    if doc.nodes.values().any(|n|n.network.as_ref().is_some_and(|g|g.filled_faces.is_some())){version=version.max(10);}
+    if doc.nodes.values().any(|n| {
+        n.text_style
+            .as_ref()
+            .is_some_and(|s| s.text_case != crate::font::TextCase::Original)
+            || n.text_runs.iter().any(|r| r.text_case.is_some())
+    }) {
+        version = version.max(15);
+    }
+    if doc.nodes.values().any(|n| {
+        n.fills
+            .iter()
+            .chain(n.strokes.iter().map(|s| &s.paint))
+            .any(|p| p.adjust.is_some())
+    }) {
+        version = version.max(13);
+    }
+    if doc.nodes.values().any(|n| {
+        n.fills
+            .iter()
+            .chain(n.strokes.iter().map(|s| &s.paint))
+            .any(|p| p.tile.is_some())
+    }) {
+        version = version.max(14);
+    }
+    if doc.nodes.values().any(|n| n.vector_geometry.is_some()) {
+        version = version.max(16);
+    }
+    if doc
+        .nodes
+        .values()
+        .any(|n| n.network.as_ref().is_some_and(|g| g.filled_faces.is_some()))
+    {
+        version = version.max(10);
+    }
     doc.schema_version = version;
     Ok(doc)
 }
@@ -2407,6 +2570,11 @@ mod tests {
                         ("transform", 5, false, 6),
                         ("image", 51, false, 7),
                         ("imageScaleMode", 52, false, 8),
+                        ("paintFilter", 61, false, 14),
+                        ("spacing", -5, false, 27),
+                        ("patternTileType", 59, false, 28),
+                        ("horizontalAlignment", 60, false, 29),
+                        ("verticalAlignment", 60, false, 30),
                     ],
                 ), // 6
                 (
@@ -2914,7 +3082,41 @@ mod tests {
                         ("value", -5, false, 2),
                     ],
                 ), // 58
-                ("Message", 2, vec![("nodeChanges", 20, true, 1)]), // 44
+                (
+                    "PatternTileType",
+                    0,
+                    vec![
+                        ("RECTANGULAR", 0, false, 0),
+                        ("HORIZONTAL_HEXAGONAL", 0, false, 1),
+                        ("VERTICAL_HEXAGONAL", 0, false, 2),
+                    ],
+                ), // 59
+                (
+                    "PatternAlignment",
+                    0,
+                    vec![
+                        ("START", 0, false, 0),
+                        ("CENTER", 0, false, 1),
+                        ("END", 0, false, 2),
+                    ],
+                ), // 60
+                (
+                    "PaintFilterMessage",
+                    2,
+                    vec![
+                        ("tint", -5, false, 1),
+                        ("shadows", -5, false, 2),
+                        ("highlights", -5, false, 3),
+                        ("detail", -5, false, 4),
+                        ("exposure", -5, false, 5),
+                        ("vignette", -5, false, 6),
+                        ("temperature", -5, false, 7),
+                        ("vibrance", -5, false, 8),
+                        ("contrast", -5, false, 9),
+                        ("brightness", -5, false, 10),
+                    ],
+                ), // 61
+                ("Message", 2, vec![("nodeChanges", 20, true, 1)]), // 62
             ]
         }
 
@@ -3420,8 +3622,8 @@ mod tests {
             assert!((style.paragraph_spacing - 4.).abs() < 1e-9);
             assert!((style.weight - 600.).abs() < 1e-9);
             assert!(style.wrap);
-            assert_eq!(style.text_case,crate::font::TextCase::Upper);
-            assert_eq!(doc.schema_version,15);
+            assert_eq!(style.text_case, crate::font::TextCase::Upper);
+            assert_eq!(doc.schema_version, 15);
             let note = n.bindings.get("figUntranslated").unwrap();
             assert!(!note.contains("textCase=UPPER"), "{note}");
             assert!(note.contains("fontName.family=Inter"), "{note}");
@@ -3470,8 +3672,12 @@ mod tests {
             assert_eq!(runs[1].end, 4);
             assert_eq!(runs[1].font_size, Some(10.));
             assert!(runs[1].strikethrough);
-            assert_eq!(runs[0].text_case,Some(crate::font::TextCase::Lower));
-            assert!(!n.bindings.get("figUntranslated").is_some_and(|note|note.contains("textCase=")));
+            assert_eq!(runs[0].text_case, Some(crate::font::TextCase::Lower));
+            assert!(
+                !n.bindings
+                    .get("figUntranslated")
+                    .is_some_and(|note| note.contains("textCase="))
+            );
         }
 
         // ---------------- prototype ----------------
@@ -4001,19 +4207,22 @@ mod tests {
             assert_eq!(node_of(&doc, 1, 2).fills[0].fit, "stretch");
             assert_eq!(node_of(&doc, 1, 3).fills[0].fit, "contain");
             assert_eq!(node_of(&doc, 1, 4).fills[0].fit, "cover");
-            let note = node_of(&doc, 1, 4)
-                .bindings
-                .get("figUntranslated")
-                .expect("tile mode reported");
-            assert!(note.contains("imageScaleMode=TILE"), "{note}");
-            // TILE maps to the pattern-fill grid at the image's native size;
-            // kiwi-side stagger/size/offset parameters do not exist in the
-            // Paint table, so only the base behavior maps.
-            let tile = node_of(&doc, 1, 4).fills[0].tile.as_ref().expect("grid tile");
+            // TILE maps to the pattern-fill grid; without authored tiling
+            // parameters (v106 Paint ordinals 27-30) the base mapping is a
+            // regular grid at the image's native size — and it is fully
+            // supported, so nothing lands in the untranslated report.
+            let tile = node_of(&doc, 1, 4).fills[0]
+                .tile
+                .as_ref()
+                .expect("grid tile");
             assert_eq!(tile.mode, "grid");
             assert_eq!(tile.size, [0., 0.], "0 = native patternTexSizePixels");
             assert_eq!(tile.offset, [0., 0.]);
-            assert!(note.contains("不支持"), "{note}");
+            assert!(tile.alignment == ["start", "start"], "{:?}", tile.alignment);
+            assert!(
+                !node_of(&doc, 1, 4).bindings.contains_key("figUntranslated"),
+                "plain TILE must not be reported unsupported"
+            );
             // EMOJI paint must not masquerade as a solid fill
             assert!(node_of(&doc, 1, 5).fills.is_empty());
             let note = node_of(&doc, 1, 5)
@@ -4024,36 +4233,156 @@ mod tests {
         }
 
         #[test]
-        fn native_image_filters_use_shader_domain_values() {
-            let importer=FigImporter {images:BTreeMap::new(),kiwi_blobs:vec![]};
-            let mut untranslated=Vec::new();
-            let paint=importer.paint(&json!({"type":"IMAGE","paintFilter":{
-                "contrast":-0.09300000220537186,"vibrance":0.4699999988079071,"exposure":0.23000000417232513
-            }}),&mut untranslated).unwrap();
-            let adjust=paint.adjust.unwrap();
-            assert_eq!(adjust.contrast,-0.09300000220537186);
-            assert_eq!(adjust.color,0.4699999988079071);
-            assert_eq!(adjust.exposure,0.23000000417232513);
-            assert!(untranslated.is_empty());
-            let identity=importer.paint(&json!({"type":"IMAGE","filterColorAdjust":{"exposure":0,"vignette":0.2}}),&mut untranslated).unwrap();
-            assert!(identity.adjust.is_none());assert!(untranslated.iter().any(|s|s.contains("vignette")));
+        fn tile_authored_tiling_parameters_map() {
+            let mut changes = canvas_only();
+            let mut a = base_change("RECTANGLE", 1, 2);
+            a["fillPaints"] = json!([{
+                "type": "IMAGE",
+                "image": {"dataRef": "missing-ref"},
+                "imageScaleMode": "TILE",
+                "patternTileType": "HORIZONTAL_HEXAGONAL",
+                "spacing": 96.,
+                "horizontalAlignment": "CENTER",
+                "verticalAlignment": "END",
+            }]);
+            let mut b = base_change("RECTANGLE", 1, 3);
+            b["fillPaints"] = json!([{
+                "type": "IMAGE",
+                "image": {"dataRef": "missing-ref"},
+                "imageScaleMode": "TILE",
+                "patternTileType": "VERTICAL_HEXAGONAL",
+            }]);
+            changes.extend([a, b]);
+            let doc = doc_with(changes).unwrap();
+            // kiwi Paint ordinals 27-30 (v106 schema): spacing → cell period,
+            // patternTileType → pattern-fill mode, alignments carried.
+            let tile = node_of(&doc, 1, 2).fills[0].tile.as_ref().unwrap();
+            assert_eq!(tile.mode, crate::pattern_fill::STAGGER_HORIZONTAL);
+            assert_eq!(tile.size, [96., 96.]);
+            assert_eq!(tile.alignment, ["center", "end"]);
+            assert!(tile.validate());
+            let tile = node_of(&doc, 1, 3).fills[0].tile.as_ref().unwrap();
+            assert_eq!(tile.mode, crate::pattern_fill::STAGGER_VERTICAL);
+            // no authored spacing keeps the 0 = native convention
+            assert_eq!(tile.size, [0., 0.]);
         }
 
         #[test]
-        fn effect_blend_mode_and_shadow_behind_node_report() {
+        fn unknown_pattern_tile_type_is_reported_not_guessed() {
+            // canvas_with serializes enum members strictly from the schema,
+            // so the unknown-member path is exercised through the importer
+            // directly.
+            let importer = FigImporter {
+                images: BTreeMap::new(),
+                kiwi_blobs: vec![],
+            };
+            let mut notes = Vec::new();
+            let paint = importer
+                .paint(
+                    &json!({
+                        "type":"IMAGE","image":{"dataRef":"missing-ref"},
+                        "imageScaleMode":"TILE","patternTileType":"HEXAGONAL_MYSTIC"
+                    }),
+                    &mut notes,
+                )
+                .unwrap();
+            let tile = paint.tile.as_ref().unwrap();
+            assert_eq!(tile.mode, crate::pattern_fill::GRID);
+            assert!(
+                notes
+                    .iter()
+                    .any(|s| s.contains("patternTileType=HEXAGONAL_MYSTIC")),
+                "{notes:?}"
+            );
+        }
+
+        #[test]
+        fn text_case_full_enum_maps() {
+            let importer = FigImporter {
+                images: BTreeMap::new(),
+                kiwi_blobs: vec![],
+            };
+            let cases = [
+                ("TITLE", crate::font::TextCase::Title),
+                ("SMALL_CAPS", crate::font::TextCase::SmallCaps),
+                ("SMALL_CAPS_FORCED", crate::font::TextCase::SmallCapsForced),
+            ];
+            for (wire, want) in cases {
+                let mut node = crate::facet::sample_node("n", "text");
+                let mut notes = Vec::new();
+                importer.import_text(&mut node, &json!({"textCase":wire}), &mut notes);
+                assert_eq!(
+                    node.text_style.as_ref().unwrap().text_case,
+                    want,
+                    "wire {wire}"
+                );
+                assert!(!notes.iter().any(|s| s.contains("textCase")), "{notes:?}");
+            }
+            // unknown members keep the historical report
+            let mut node = crate::facet::sample_node("n", "text");
+            let mut notes = Vec::new();
+            importer.import_text(&mut node, &json!({"textCase":"WELSH"}), &mut notes);
+            assert!(
+                notes.iter().any(|s| s.contains("textCase=WELSH")),
+                "{notes:?}"
+            );
+        }
+
+        #[test]
+        fn native_image_filters_use_shader_domain_values() {
+            let importer = FigImporter {
+                images: BTreeMap::new(),
+                kiwi_blobs: vec![],
+            };
+            let mut untranslated = Vec::new();
+            let paint=importer.paint(&json!({"type":"IMAGE","paintFilter":{
+                "contrast":-0.09300000220537186,"vibrance":0.4699999988079071,"exposure":0.23000000417232513
+            }}),&mut untranslated).unwrap();
+            let adjust = paint.adjust.unwrap();
+            assert_eq!(adjust.contrast, -0.09300000220537186);
+            assert_eq!(adjust.color, 0.4699999988079071);
+            assert_eq!(adjust.exposure, 0.23000000417232513);
+            assert!(untranslated.is_empty());
+            // detail/vignette/brightness are kiwi PaintFilterMessage members
+            // (ordinals 3/6/10): carried into ImageAdjust even though the
+            // ported shader math does not consume them yet.
+            let carried=importer.paint(&json!({"type":"IMAGE","filterColorAdjust":{"exposure":0,"vignette":0.2,"detail":-0.3,"brightness":0.1}}),&mut untranslated).unwrap();
+            let adjust = carried.adjust.expect("carried-only fields preserved");
+            assert_eq!(adjust.vignette, 0.2);
+            assert_eq!(adjust.detail, -0.3);
+            assert_eq!(adjust.brightness, 0.1);
+            assert!(
+                untranslated.iter().all(|s| !s.contains("vignette")
+                    && !s.contains("detail")
+                    && !s.contains("brightness")),
+                "{untranslated:?}"
+            );
+        }
+
+        #[test]
+        fn effect_blend_mode_reported_and_shadow_behind_node_carried() {
             let mut changes = canvas_only();
             let mut frame = base_change("FRAME", 1, 2);
             frame["effects"] = json!([
                 {"type": "DROP_SHADOW", "radius": 4, "visible": true,
                  "blendMode": "MULTIPLY", "showShadowBehindNode": true},
             ]);
+            let mut plain = base_change("FRAME", 1, 3);
+            plain["effects"] = json!([
+                {"type": "DROP_SHADOW", "radius": 4, "visible": true},
+            ]);
             changes.push(frame);
+            changes.push(plain);
             let doc = doc_with(changes).unwrap();
             let n = node_of(&doc, 1, 2);
             assert_eq!(n.effects.len(), 1);
+            // kiwi Effect ordinal 8 is a real model slot now: carried, not
+            // reported. The per-effect blend mode still has no slot.
+            assert!(n.effects[0].show_shadow_behind_node);
             let note = n.bindings.get("figUntranslated").unwrap();
             assert!(note.contains("effectBlendMode=MULTIPLY"), "{note}");
-            assert!(note.contains("showShadowBehindNode"), "{note}");
+            assert!(!note.contains("showShadowBehindNode"), "{note}");
+            assert!(!node_of(&doc, 1, 3).effects[0].show_shadow_behind_node);
         }
 
         // ---------------- text variants ----------------

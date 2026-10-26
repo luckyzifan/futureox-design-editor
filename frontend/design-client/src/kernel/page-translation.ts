@@ -23,6 +23,7 @@ export class PageTranslation {
   private offset = { x: 0, y: 0 }
   private epoch = -1
   private input = { sequence: 0, at: 0 }
+  private pendingPose?: { document: DesignDocument; patches: Parameters<GpuMoveControl['apply']>[1] }
   private board?: Bounds
   private checkedDocument?: DesignDocument
   private checkedOffset: { x: number; y: number } | null = null
@@ -41,8 +42,28 @@ export class PageTranslation {
   readonly backgroundLinear = undefined
   constructor(private changed: () => void, private fractionalPose?: (
     document: DesignDocument, patches: Parameters<GpuMoveControl['apply']>[1], displayed: DesignDocument,
-  ) => ReturnType<GpuMoveControl['apply']>, private reportPhase?: (fields:Record<string,number>)=>void) {}
+  ) => ReturnType<GpuMoveControl['apply']>, private reportPhase?: (fields:Record<string,number>)=>void,
+    private fillCoverage?: (source:DesignDocument,offset:{x:number;y:number},sequence:number,failed:()=>void)=>boolean) {}
   get handingOff() { return this.phaseRevoked }
+  get backgroundTranslation() { return this.board ? undefined : { ...this.offset } }
+  /** A viewport crop is not a complete page. If translating it exposes paint
+   * absent from the retained textures, keep the accepted backing and ask the
+   * existing native interaction lane for that pose. Late owner/pose replies
+   * cannot restart a retired or superseded owner. */
+  repairMissingCoverage(sequence: number) {
+    const pending = this.pendingPose
+    if (!this.active || this.phaseRevoked || sequence !== this.input.sequence || !pending) return false
+    // An uncommitted whole-page translation can fill the missing original
+    // world tiles through the canvas's existing owner/budget/queue. No document
+    // patch or enlarged capture is needed. Other edits retain the native lane.
+    const owner=this.plan
+    if (!this.board && this.fillCoverage?.(owner!.document, {...this.offset}, sequence,()=>{
+      const latest=this.pendingPose
+      if(this.plan===owner&&this.active&&!this.phaseRevoked&&latest)this.rebase(latest.document,latest.patches)
+    })) return true
+    this.rebase(pending.document, pending.patches)
+    return true
+  }
   private reusableOffset(offset: { x: number; y: number }) {
     return this.residents.length > 0 && this.residents.every(tile =>
       [offset.x * tile.zoom, offset.y * tile.zoom].every(Number.isSafeInteger))
@@ -124,6 +145,8 @@ export class PageTranslation {
       this.active = true
       this.moves++
       this.input = { sequence: this.moves, at: performance.now() }
+      this.pendingPose = { document, patches: Object.fromEntries(this.plan.ids.map(id =>
+        [id, { transform: [...(patches[id]?.transform || document.nodes[id].transform)] }])) }
       this.changed()
       if (!wasActive) this.props?.onReady()
       return { x: after[4] - before[4], y: after[5] - before[5] }
@@ -266,6 +289,7 @@ export class PageTranslation {
     this.board = undefined
     this.active = false
     this.phaseRevoked = false
+    this.pendingPose = undefined
     this.offset = { x: 0, y: 0 }
   }
 }

@@ -3,7 +3,17 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+
+2026-10-26 源页面载入修复见[本轮记录](../../../testing/verification-source-page-load-20261026/README.md)：macOS 原生内存探测、显式页面分段与有界转换并行分别验收。保留归档/文档/GPU 预算，逐段覆盖全部源对象不能代替整页同时渲染或 G2/G5。
 # Futureox Design：渲染优先
+
+2026-10-26 局部材质失效优化见[真实文件记录](../../../testing/verification-local-edit-cache-20261026/README.md)：只在既有 Rust 材质证明成立时使用已解析布局计算脏区，嵌套蒙版限制到消费容器，背景依赖按页面/隔离边界传播。页面根蒙版、结构变化与相关未知光学读取继续保守失效。FIG 小蒙版重绘从 20 块降为 1 块；117 大蒙版的减少绘制不等于端到端改善。性能受后台编译干扰的样本与截图叠层失配必须保留并分开报告，不以本轮关闭完整 G2/G5。
+
+2026-10-26 大文件编辑续轮见[配对 GUI 记录](../../../testing/verification-large-edit-20261026/README.md)：取消已释放的首捕获、原生瓦片优先、完整工作集同步减少了重复绘制及交互中反复复制 52 MB 文档。完整源确认仍由既有 native full-load 提供，局部编辑仍增量，不放宽 receipt/CAS。保留真实 pointerup 与代理时间区别，约 16.6→6.7 秒仍不是即时编辑。维护检查与非零平移关联候选未采用；局部测试不能替代真实路径收益。
+
+2026-10-26 的透明缺口、准入与取消修复见[本轮证据](../../../testing/verification-motion-continuity-20261025/README.md)。零透明、覆盖与原生密度不能证明对象及时跟随输入；保留旧帧也可能得到这些指标。宽整数精确滤波候选继续默认关闭，真实快速缩放与拓扑编辑收敛仍失败，不得把局部通过说成用户全部目标完成。
+
+2026-10-25 的依赖范围、编译片段、准备取消、资源身份、调度、维护与批绘改动见[本轮记录](../../../testing/verification-render-pipeline-20261025/README.md)。局部精确像素和定向回归不自动关闭既有运动失败；保留默认关闭、无共享内存浏览器取消回退及未完成全 G5 的边界。
 
 本 Skill 是项目工程规范，不授予额外操作权限，也不把设计目标当成已实现功能。
 

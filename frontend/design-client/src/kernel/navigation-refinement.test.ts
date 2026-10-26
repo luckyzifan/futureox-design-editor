@@ -50,3 +50,41 @@ test('obsolete scope failures cannot poison replacement ownership', async () => 
   const latest = goal('replacement'); scheduler.update(latest); gate.resolve(); await turn
   expect(latest.failed).not.toHaveBeenCalled(); expect(await scheduler.request()).toBe(true)
 })
+
+test('continuous native turns release the mailbox and resolve the newest camera until there is no miss', async () => {
+  const mailbox = new RenderMailbox(), scheduler = new NavigationRefinementScheduler(mailbox), gate = deferred()
+  const order: string[] = []
+  const first = { ...goal(), continuous: true, run: vi.fn(async () => { order.push('first'); await gate.promise; return true }) }
+  scheduler.update(first); const turn = scheduler.request()
+  await vi.waitFor(() => expect(first.run).toHaveBeenCalledOnce())
+  const other = mailbox.run(() => true, async () => { order.push('coverage') })
+  let misses = 2
+  const latest = { ...goal('one', 100), continuous: true,
+    run: vi.fn(async () => { order.push('latest'); return --misses > 0 }) }
+  for (let i = 2; i <= 100; i++) { scheduler.update({ ...latest, sequence: i }); expect(await scheduler.request()).toBe(false) }
+  gate.resolve(); expect(await turn).toBe(true); await other
+  expect(order).toEqual(['first', 'coverage', 'latest', 'latest'])
+  expect(await scheduler.request()).toBe(false)
+  expect(latest.failed).not.toHaveBeenCalled()
+})
+
+test.each(['quiet', 'scope', 'failure'] as const)('continuous refinement stops at %s without retrying failed GPU work', async boundary => {
+  const scheduler = new NavigationRefinementScheduler(new RenderMailbox()), gate = deferred()
+  const first = { ...goal(), continuous: true, run: vi.fn(async () => { await gate.promise; if (boundary === 'failure') throw Error('GPU budget'); return true }) }
+  scheduler.update(first); const turn = scheduler.request()
+  await vi.waitFor(() => expect(first.run).toHaveBeenCalledOnce())
+  if (boundary === 'quiet') scheduler.update()
+  if (boundary === 'scope') scheduler.update(goal('other'))
+  gate.resolve(); expect(await turn).toBe(boundary !== 'failure')
+  expect(first.run).toHaveBeenCalledOnce()
+  expect(first.failed).toHaveBeenCalledTimes(boundary === 'failure' ? 1 : 0)
+})
+
+test('continuous work obeys measured time and the hard four-job burst ceiling',async()=>{
+  for(const budgetMs of [0,Infinity]){
+    const scheduler=new NavigationRefinementScheduler(new RenderMailbox())
+    const current={...goal(),continuous:true,budgetMs,run:vi.fn(async()=>true)}
+    scheduler.update(current);expect(await scheduler.request()).toBe(true)
+    expect(current.run).toHaveBeenCalledTimes(budgetMs===0?1:4)
+  }
+})

@@ -26,6 +26,9 @@ fn adjust(
         shadows,
         color,
         highlight_shadow_threshold: 0.5,
+        detail: 0.,
+        vignette: 0.,
+        brightness: 0.,
     }
 }
 
@@ -49,7 +52,11 @@ fn reference_ah(
     let mut c = [rgb[0].powf(2.2), rgb[1].powf(2.2), rgb[2].powf(2.2)];
     // e(c, shadows, highlights)
     let h = lum(c) - threshold.powf(2.2);
-    let pick = if h > 0.0 { global_highlights } else { -global_shadows * 0.999 };
+    let pick = if h > 0.0 {
+        global_highlights
+    } else {
+        -global_shadows * 0.999
+    };
     let delta = 0.75 * h / (1.0 + 4.0 * h * h).sqrt() * pick;
     // w(c, temperature, tint, contrast) — XYZ via the column-major mat3
     // constructors evaluated as explicit row forms.
@@ -145,7 +152,11 @@ fn reference_ah(
         }
     }
     // d(c): pow 1/2.2 — the shader leaves `o`'s epsilon overshoot unclamped.
-    [c[0].powf(1.0 / 2.2), c[1].powf(1.0 / 2.2), c[2].powf(1.0 / 2.2)]
+    [
+        c[0].powf(1.0 / 2.2),
+        c[1].powf(1.0 / 2.2),
+        c[2].powf(1.0 / 2.2),
+    ]
 }
 
 fn sample_pixels() -> Vec<[f32; 3]> {
@@ -170,7 +181,11 @@ fn identity_adjust_is_exact_zero_diff() {
     assert_eq!(parsed.highlight_shadow_threshold, 0.5);
     for rgb in sample_pixels() {
         assert_eq!(identity.apply_srgb(rgb), rgb, "srgb identity moved {rgb:?}");
-        assert_eq!(identity.apply_linear(rgb), rgb, "linear identity moved {rgb:?}");
+        assert_eq!(
+            identity.apply_linear(rgb),
+            rgb,
+            "linear identity moved {rgb:?}"
+        );
     }
 }
 
@@ -229,11 +244,17 @@ fn every_axis_moves_color_in_its_documented_direction() {
     // temperature + warms (Lab b+ → yellow: blue falls), − cools (blue rises)
     let warm = adjust(0., 0., 0.6, 0., 0., 0., 0.).apply_srgb(mid_gray);
     let cool = adjust(0., 0., -0.6, 0., 0., 0., 0.).apply_srgb(mid_gray);
-    assert!(warm[2] < mid_gray[2] && cool[2] > mid_gray[2], "{warm:?} {cool:?}");
+    assert!(
+        warm[2] < mid_gray[2] && cool[2] > mid_gray[2],
+        "{warm:?} {cool:?}"
+    );
     // tint + is Lab a+ (magenta: green falls relative to red/blue), − green
     let magenta = adjust(0., 0., 0., 0.6, 0., 0., 0.).apply_srgb(mid_gray);
     let green = adjust(0., 0., 0., -0.6, 0., 0., 0.).apply_srgb(mid_gray);
-    assert!(magenta[1] < mid_gray[1] && green[1] > mid_gray[1], "{magenta:?} {green:?}");
+    assert!(
+        magenta[1] < mid_gray[1] && green[1] > mid_gray[1],
+        "{magenta:?} {green:?}"
+    );
     // color + saturates (channels spread), − desaturates (towards luminance)
     let saturated = adjust(0., 0., 0., 0., 0., 0., 0.8).apply_srgb(red_green);
     let desaturated = adjust(0., 0., 0., 0., 0., 0., -0.8).apply_srgb(red_green);
@@ -394,7 +415,8 @@ fn sampler_applies_adjustments_after_sampling_and_identity_is_bit_equal() {
         }
     }
     // Serialization round-trip keeps the authored values.
-    let round: Paint = serde_json::from_value(serde_json::to_value(&exposure_paint).unwrap()).unwrap();
+    let round: Paint =
+        serde_json::from_value(serde_json::to_value(&exposure_paint).unwrap()).unwrap();
     assert_eq!(round.adjust, exposure_paint.adjust);
     // Old documents without the field deserialize to identity-absent.
     assert_eq!(plain_paint.adjust, None);
@@ -431,8 +453,6 @@ fn document_validation_gates_schema_kind_and_ranges() {
     assert!(err.contains("image paint"), "{err}");
     let mut bad_threshold = adjust(0., 0., 0., 0., 0., 0., 0.);
     bad_threshold.highlight_shadow_threshold = 1.2;
-    assert!(build(13, "image", Some(bad_threshold))
-        .validate()
-        .is_err());
+    assert!(build(13, "image", Some(bad_threshold)).validate().is_err());
     assert!(build(13, "image", None).validate().is_ok());
 }

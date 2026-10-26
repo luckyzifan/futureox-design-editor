@@ -348,12 +348,17 @@ export class InteractionRenderer {
         }
         const contentRelease = this.props?.active && this.props.gestureKind === 'resize'
         if (this.sharedClient && r.live && (r.active || contentRelease) &&
-            (contentRelease || (r.tiledExact || r.tiles.length > 0) && (offsets && !r.workerPoses || affine)) &&
+            (contentRelease || offsets && !r.workerPoses || affine) &&
             this.viewport && this.props && this.sessionEpoch !== undefined && this.props.epoch === this.sessionEpoch &&
             document.id === r.plan.document.id && this.props.document.id === document.id &&
             this.sameIds(this.props.selection) && document.pages.some(page => page.id === r.plan.pageId) &&
             r.plan.ids.every(id => !!document.nodes[id])) {
           this.nextGeneration()
+          // A released first capture has no useful successor in this lane.
+          // Waiting for it to become tiled/complete first can enqueue an entire
+          // old capture and a final capture ahead of the exact canvas repair.
+          // Its private abort retains the physical request's completion fence;
+          // empty residents remain unready and cannot certify any new pixels.
           this.livePending = this.liveRequested = undefined
           this.pending = undefined; this.pendingDensity = undefined
           this.handoff = { resident: r, document, previousDocument: this.props.document, epoch: this.sessionEpoch,

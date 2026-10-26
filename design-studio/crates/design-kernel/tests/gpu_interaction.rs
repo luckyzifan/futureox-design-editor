@@ -1,5 +1,6 @@
 use futureox_design_kernel::Engine;
 use serde_json::{json, Value};
+#[path="support/frame_scene.rs"] mod frame_scene;
 
 fn engine() -> Engine {
     let mut engine = Engine::new();
@@ -51,12 +52,10 @@ fn binary_packet_preserves_every_geometry_word_and_scene_field() {
     metadata["vertices"] = json!([]); metadata["curves"] = json!([]);
     let packet = scene.into_packet().unwrap();
     let word = |offset| u32::from_le_bytes(packet[offset..offset+4].try_into().unwrap()) as usize;
-    assert_eq!(&packet[..4], b"FGPK"); assert_eq!(word(4), 1);
+    assert_eq!(&packet[..4], b"FGSC"); assert_eq!(word(4), 1);
     assert_eq!(word(12), expected_vertices.len()); assert_eq!(word(16), expected_curves.len());
-    assert_eq!(serde_json::from_slice::<Value>(&packet[24..24+word(8)]).unwrap(), metadata);
-    let offset = (24 + word(8) + 3) & !3;
-    let actual: Vec<_> = packet[offset..].chunks_exact(4)
-        .map(|b| u32::from_le_bytes(b.try_into().unwrap())).collect();
+    frame_scene::assert_fields(&frame_scene::scene(&packet),&metadata);
+    let actual=frame_scene::geometry_words(&packet);
     let expected: Vec<_> = expected_vertices.iter().chain(&expected_curves).map(|v| v.to_bits()).collect();
     assert_eq!(actual, expected);
 }

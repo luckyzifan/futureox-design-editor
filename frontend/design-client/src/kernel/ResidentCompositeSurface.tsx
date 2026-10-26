@@ -50,6 +50,7 @@ export function ResidentCompositeSurface(props: {
   /** Actual queued page/movement composition, retaining the source objects.
    * This is not a GPU completion or a rendered-pixel quality certificate. */
   onCompositeItems?: (items: readonly CompositeItem[]) => void
+  onTranslatedCoverage?: (source:DesignDocument,offset:{x:number;y:number},sequence:number,failed:()=>void)=>boolean
 }) {
   const trace=useRef<HandoffTrace|null>(null)
   if(!trace.current)trace.current=createHandoffTrace()
@@ -91,12 +92,6 @@ export function ResidentCompositeSurface(props: {
     const keep = new Set(all.map((t) => t.serial)),
       keepGpu = new Set(all.map((t) => t.gpuTile)),
       release = new Set<number>()
-    for (const [serial, tile] of published.current)
-      if (!keep.has(serial)) {
-        if (!keepGpu.has(tile.gpuTile)) release.add(tile.gpuTile)
-        published.current.delete(serial)
-        p.onGone(tile.key, serial)
-      }
     const pageTiles = new Set(p.items.map(item => item.tile))
     for (const tile of all) {
       if (published.current.has(tile.serial)) continue
@@ -133,6 +128,11 @@ export function ResidentCompositeSurface(props: {
       moved && moving?.mode === 'live-kernel'
         ? [...p.items, ...moved.map((item) => ({ ...item, layer: 4 }))]
         : moved || p.items
+    // Retained layers authorize a transparent background, not an incomplete
+    // cohort. Bitmap imports finish independently; publishing their filtered
+    // subset would clear the previous page between arrivals. Keep its owners
+    // until every active replacement source has reached the display device.
+    if (moved && moving?.mode !== 'live-kernel' && items.some(item => item.active && !item.tile.gpuTile)) return
     let presentationId: string | undefined
     const scopedOverlay = p.presentation && p.overlay &&
       p.overlay.pageId === p.presentation.pageId && p.overlay.epoch === p.presentation.epoch ? p.overlay : undefined
@@ -156,10 +156,11 @@ export function ResidentCompositeSurface(props: {
       height: p.height,
       dpr: p.dpr,
       interaction: !!moved,
-      allowEmpty: !!moved && moving?.mode !== 'live-kernel',
-      allowBackground: !moved && p.allowPageTranslation && p.items.filter(i=>i.active).every(i=>
+      allowEmpty: !!moved && moving === interaction.current && moving?.mode !== 'live-kernel',
+      allowBackground: !!moved && moving === pageTranslation.current || !moved && p.allowPageTranslation && p.items.filter(i=>i.active).every(i=>
         (i.tile as unknown as {document?:DesignDocument;revision?:number}).document===p.sourceDocument &&
         (i.tile as unknown as {revision?:number}).revision===p.contentRevision),
+      backgroundTranslation: moved && moving === pageTranslation.current ? pageTranslation.current?.backgroundTranslation : undefined,
       linearBlend:
         !!moved && moving?.mode === 'retained-layers' && !!p.interaction?.document.colorManagement,
       backgroundLinear: moving?.backgroundLinear,
@@ -193,6 +194,12 @@ export function ResidentCompositeSurface(props: {
       p.client.present(frame)
       p.onCompositeItems?.(items)
     }
+    for (const [serial, tile] of published.current)
+      if (!keep.has(serial)) {
+        if (!keepGpu.has(tile.gpuTile)) release.add(tile.gpuTile)
+        published.current.delete(serial)
+        p.onGone(tile.key, serial)
+      }
     p.client.releasePresented([...release])
     if (canvas.current && moving)
       Object.assign(canvas.current.dataset, {
@@ -240,6 +247,9 @@ export function ResidentCompositeSurface(props: {
       p.client.attachPresentation(el.transferControlToOffscreen())
       attached.current = true
       p.client.onPresentation = (stats) => {
+        const deferredInput = stats.input as ResidentFrame['input']
+        if (stats.interactionCoverageMissing && deferredInput?.owner === inputOwner.current && usePageTranslation.current)
+          pageTranslation.current?.repairMissingCoverage(deferredInput.sequence)
         if (Array.isArray(stats.missingGpuTiles)) {
           const missing = new Set(stats.missingGpuTiles)
           for (const item of latest.current.items) if (missing.has(item.tile.gpuTile))
@@ -260,7 +270,9 @@ export function ResidentCompositeSurface(props: {
         for (const [key, value] of Object.entries(stats))
           if (key !== 'presented' && key !== 'input' && key !== 'residentSample' && key !== 'missingGpuTiles')
             el.dataset[key] = String(value)
-        const input = stats.input as { sequence: number; at: number;owner?:string } | undefined
+        // A coverage rejection carries pose identity only for recovery. It
+        // has not displayed that input and must not advance feedback or ACKs.
+        const input = stats.coverageDeferred ? undefined : stats.input as { sequence: number; at: number;owner?:string } | undefined
         if (input?.sequence && input.owner===inputOwner.current && input.sequence > (inputTrace.current.at(-1)?.sequence || 0)) {
           inputTrace.current.push({
             sequence: input.sequence,
@@ -305,7 +317,8 @@ export function ResidentCompositeSurface(props: {
         renderer.prepare({ ...p.interaction, document: displayed }, p.pageId, p.view, p.dpr,
           p.rasterProfile, p.backend, p.settledDocument, { width: p.width, height: p.height })
         return renderer.control.apply(document, patches)
-      }, p.client.presentationDiagnosticsEnabled?.() ? fields=>latest.current.client.recordViewportDiagnostic(fields) : undefined)
+      }, p.client.presentationDiagnosticsEnabled?.() ? fields=>latest.current.client.recordViewportDiagnostic(fields) : undefined,
+        (source,offset,sequence,failed)=>latest.current.onTranslatedCoverage?.(source,offset,sequence,failed)===true)
     } catch (error) {
       p.onFailure(String(error))
     }

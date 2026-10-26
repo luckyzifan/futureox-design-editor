@@ -1,6 +1,8 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import { readFile } from 'node:fs/promises'
 import { PreparationChannel } from './preparation-channel'
+import {decodeScenePacket} from './gpu/scene-packet'
+import {decodeFrameValue} from './gpu/frame-wire'
 vi.mock('./kernel-resources', () => ({ loadKernelResources: async () => {
   return new Uint8Array(await readFile(new URL('../../public/fonts/NotoSansSC.ttf', import.meta.url)))
 } }))
@@ -33,7 +35,10 @@ test('real WASM empty derivation matches fresh packet and PNG after source repla
   await expect(client.request('interaction','derive_document_v1',[{...request,operationId:2,expectedTarget:derived.stateReceipt}])).rejects.toThrow('STALE_BASE')
   expect((await client.request('interaction','render_png',[options])).value).toEqual(pixels)
   await client.request('interaction','load_document',[json])
-  expect((await client.request('interaction','compile_gpu_packet',[options])).value).toEqual(packet)
+  const reloaded=(await client.request('interaction','compile_gpu_packet',[options])).value as Uint8Array
+  const scope=(bytes:Uint8Array)=>decodeFrameValue(bytes.subarray(24,24+new DataView(bytes.buffer,bytes.byteOffset).getUint32(8,true))).resourceScope
+  expect(scope(reloaded)).not.toBe(scope(packet as Uint8Array))
+  expect(decodeScenePacket(reloaded)).toEqual(decodeScenePacket(packet as Uint8Array))
   expect((await client.request('interaction','render_png',[options])).value).toEqual(pixels)
   const animated = {...document(),animations:[{id:'a',name:'a',pageId:'p',durationMs:100,tracks:[{nodeId:'r',keyframes:[{timeMs:0,value:{...document().nodes.r,opacity:1,radii:[0,0,0,0],smoothing:0,strokes:[],effects:[]}}]}]}]}
   const animation = await client.request('canvas','load_document',[JSON.stringify(animated)])

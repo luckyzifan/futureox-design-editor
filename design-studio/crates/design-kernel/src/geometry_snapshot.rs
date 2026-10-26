@@ -39,6 +39,7 @@ pub(crate) fn prepare_node_geometry(
     prepared: &mut HashMap<String, Prepared>,
     segments: &mut usize,
 ) -> Result<Rect, String> {
+    crate::render_cancellation::checkpoint()?;
     if let Some(cached) = prepared.get(id) {
         *segments += cached.segments;
         if *segments > 2_000_000 { return Err("Scene path budget exceeded".into()); }

@@ -71,8 +71,16 @@ fn prefixScan(@builtin(workgroup_id) group:vec3<u32>,@builtin(local_invocation_i
   if(length==0u||length>16384u||radius==0u||radius>2048u||(!rational&&radius>512u)){reason=1u;}
   if(maximum==255u){reason=2u;}
   let span=select(maximum-minimum,0u,maximum==0u);
-  if(span>40u){reason=3u;}
-  if(PREFIX_CERTIFIED_TENT&&u(49u).z==2.){
+  if(PREFIX_WIDE_RATIONAL&&u(49u).z==3.){
+   // The same signed-128 sums/moments can safely scan wider finite exponent
+   // spans when the complete line's absolute bound still fits.
+   if(24u+span+2u*(bsHigh(length)+1u)>123u){reason=3u;}
+  }else if(span>40u){reason=3u;}
+  if(PREFIX_WIDE_RATIONAL&&u(49u).z==3.){
+   let bound=u(49u).w;
+   if(rfLoad(0u)==0u||rfLoad(0u)>6u||bound<1.||bound>184.||floor(bound)!=bound){reason=4u;}
+   if(24u+span+u32(bound)>251u){reason=5u;}
+  }else if(PREFIX_CERTIFIED_TENT&&u(49u).z==2.){
    if(!prefixCertifiedCoefficients(radius)){reason=4u;}
    // Every term and both enclosure endpoints fit signed-128. This is an
    // absolute intermediate bound, so cancellation never grants admission.
@@ -202,6 +210,10 @@ fn prefixSolve(@builtin(global_invocation_id) id:vec3<u32>){
  prefixResults[resultIndex]=vec2<u32>(0u);let lineInfo=prefixMetadata.lines[localLine];if(lineInfo.z==0u){return;}
  let base=localLine*(length+1u);let left=u32(max(0,i32(x)-i32(radius)+1));let right=min(length,x+radius);
  if(PREFIX_CERTIFIED_TENT&&u(49u).z==2.){prefixResults[resultIndex]=prefixCertified(base,x,length,radius,lineInfo.x,lineInfo.y);return;}
+ if(PREFIX_WIDE_RATIONAL&&u(49u).z==3.){
+  if(rfLoad(0u)<=4u&&prefix_high(prefixDenominator())<=95&&24u+lineInfo.y-lineInfo.x+u32(u(49u).w)<=123u){
+   let narrow=prefixRational(base,x,length,radius,i32(lineInfo.x)-150);if(narrow.y!=0u){prefixResults[resultIndex]=narrow;return;}}
+  prefixResults[resultIndex]=prefixRational256(base,x,length,radius,i32(lineInfo.x)-150);return;}
  if(u(49u).z>0.5){prefixResults[resultIndex]=prefixRational(base,x,length,radius,i32(lineInfo.x)-150);return;}
  let before=prefixPairAt(base,left);let center=prefixPairAt(base,x+1u);let after=prefixPairAt(base,right);
  let a=prefix_mul_i32(prefix_sub(center.sum,before.sum),i32(radius)-i32(x));
@@ -234,6 +246,10 @@ fn prefixSolveRgb(@builtin(global_invocation_id) id:vec3<u32>){
  prefixStoreRgbResult(resultIndex,vec2<u32>(0u));let lineInfo=prefixMetadata.lines[localLine];if(lineInfo.z==0u){return;}
  let base=localLine*(length+1u);let left=u32(max(0,i32(x)-i32(radius)+1));let right=min(length,x+radius);
  if(PREFIX_CERTIFIED_TENT&&u(49u).z==2.){prefixStoreRgbResult(resultIndex,prefixCertified(base,x,length,radius,lineInfo.x,lineInfo.y));return;}
+ if(PREFIX_WIDE_RATIONAL&&u(49u).z==3.){
+  if(rfLoad(0u)<=4u&&prefix_high(prefixDenominator())<=95&&24u+lineInfo.y-lineInfo.x+u32(u(49u).w)<=123u){
+   let narrow=prefixRational(base,x,length,radius,i32(lineInfo.x)-150);if(narrow.y!=0u){prefixStoreRgbResult(resultIndex,narrow);return;}}
+  prefixStoreRgbResult(resultIndex,prefixRational256(base,x,length,radius,i32(lineInfo.x)-150));return;}
  if(u(49u).z>0.5){prefixStoreRgbResult(resultIndex,prefixRational(base,x,length,radius,i32(lineInfo.x)-150));return;}
  let before=prefixPairAt(base,left);let center=prefixPairAt(base,x+1u);let after=prefixPairAt(base,right);
  let a=prefix_mul_i32(prefix_sub(center.sum,before.sum),i32(radius)-i32(x));

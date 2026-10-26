@@ -58,6 +58,7 @@ export type LargeDocumentOwner = Readonly<{documentId:string;sessionEpoch:number
 export type LargeDocumentStatus = Readonly<{owner:LargeDocumentOwner;revision:number;name:string;format:'json'|'sketch';expandedBytes:number;maxExpandedBytes:number;indexedObjects:number;dirty:boolean;undoCount:number;redoCount:number;saveWarning?:string}>
 export type LargeDocumentRequest = {owner:LargeDocumentOwner;expectedRevision:number}
 export type LargeDocumentRow = {key:string;id:string;name:string;kind:string;bytes:number;part:string;hasChildren:boolean}
+export type LargeDocumentPageRange = {offset:number;end:number;totalRoots:number;nextOffset:number|null}
 export interface LargeDocumentBridge {
   progress():Promise<DesktopResult<{phase:string;processedBytes:number;totalBytes:number}>>
   cancel():Promise<DesktopResult<{requested:number;running:boolean;cancelled:boolean}>>
@@ -67,7 +68,7 @@ export interface LargeDocumentBridge {
   read(request:LargeDocumentRequest&{key:string}):Promise<DesktopResult<{key:string;json:string;hash:string;omittedFields:string[]}>>
   apply(request:LargeDocumentRequest&{key:string;json:string;expectedHash:string}):Promise<DesktopResult<LargeDocumentStatus>>
   project(request:LargeDocumentRequest&{key:string}):Promise<DesktopResult<{key:string;json:string;warnings:string[]}>>
-  scene(request:LargeDocumentRequest&{key:string}):Promise<DesktopResult<{key:string;json:string;warnings:string[];nodes:number;bytes:number}>>
+  scene(request:LargeDocumentRequest&{key:string;offset?:number}):Promise<DesktopResult<{key:string;json:string;warnings:string[];nodes:number;bytes:number;pageRange?:LargeDocumentPageRange|null}>>
   sceneCommit(request:LargeDocumentRequest&{key:string;json:string}):Promise<DesktopResult<LargeDocumentStatus&{key:string}>>
   commitCanvas(request:LargeDocumentRequest&{key:string;json:string}):Promise<DesktopResult<LargeDocumentStatus&{key:string}>>
   undo(request:LargeDocumentRequest):Promise<DesktopResult<LargeDocumentStatus>>
@@ -111,8 +112,9 @@ export interface DesktopBridge {
   readonly automation?: import('./automation/bridge').DesktopAutomationTransport
   readonly documentCodec?: { readonly decoding?: 'json-parse-v1'; readonly encoding?: 'json-stringify-v1'; encode(document: unknown): Promise<string>; decode(json: string): Promise<unknown>; encodeIncremental?(request: import('./resident-document-encoder').CodecDelta): Promise<import('./resident-document-encoder').CodecReceipt> }
   readonly preparation?: {
+    cancel?(session: string, cancellationId: number): Promise<void>
     open(): Promise<string>
-    request(session: string, request: { lane: string; method: string; args: unknown[]; diagnostics?: { originChannelId: number; requestId: number; preparationId: number } }): Promise<import('./kernel/preparation-channel').PreparationReply>
+    request(session: string, request: { lane: string; method: string; args: unknown[]; cancellationId?: number; diagnostics?: { originChannelId: number; requestId: number; preparationId: number } }): Promise<import('./kernel/preparation-channel').PreparationReply>
     close(session: string): Promise<void>
   }
   readonly sketchSession?: SketchSessionBridge

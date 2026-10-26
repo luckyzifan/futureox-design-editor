@@ -8,8 +8,8 @@
 //! Unknown fields are ignored on import and
 //! omitted on export — Sketch itself defaults-absent fields, so a subset
 //! document opens cleanly.
-use crate::math::Transform;
 use crate::color::{ColorSettings, ColorSpace};
+use crate::math::Transform;
 use crate::scene::{Document, Effect, ExportSetting, Node, Page, Paint, Stroke};
 use serde::Serialize;
 use serde_json::{Map, Value, json};
@@ -103,12 +103,16 @@ fn read_zip_bounded(bytes: &[u8], limits: ArchiveLimits) -> Result<BTreeMap<Stri
     // ZIP32's end record has a bounded comment. Compute the physical directory
     // start from its size so ordinary prepended/self-extracting data still works.
     let end = (bytes.len().saturating_sub(22 + u16::MAX as usize)..bytes.len().saturating_sub(21))
-        .rev().find(|&at| {
+        .rev()
+        .find(|&at| {
             bytes.get(at..at + 4) == Some(b"PK\x05\x06")
-                && at + 22 + u16::from_le_bytes([bytes[at + 20], bytes[at + 21]]) as usize == bytes.len()
-        }).ok_or_else(|| Error::NotAZip("missing ZIP32 end record".into()))?;
+                && at + 22 + u16::from_le_bytes([bytes[at + 20], bytes[at + 21]]) as usize
+                    == bytes.len()
+        })
+        .ok_or_else(|| Error::NotAZip("missing ZIP32 end record".into()))?;
     let directory_size = u32::from_le_bytes(bytes[end + 12..end + 16].try_into().unwrap()) as usize;
-    let directory_start = end.checked_sub(directory_size)
+    let directory_start = end
+        .checked_sub(directory_size)
         .ok_or_else(|| Error::NotAZip("invalid central directory size".into()))?;
     let mut at = directory_start;
     // zip 2.x deduplicates central-directory names. Count original records so
@@ -116,10 +120,12 @@ fn read_zip_bounded(bytes: &[u8], limits: ArchiveLimits) -> Result<BTreeMap<Stri
     // strict Sketch adapter, accept ZIP32 only; never extract to the filesystem.
     let mut records = 0;
     while bytes.get(at..at.saturating_add(4)) == Some(b"PK\x01\x02") {
-        let header = bytes.get(at..at.saturating_add(46))
+        let header = bytes
+            .get(at..at.saturating_add(46))
             .ok_or_else(|| Error::NotAZip("truncated central directory".into()))?;
         let length = |offset| u16::from_le_bytes([header[offset], header[offset + 1]]) as usize;
-        at = at.checked_add(46 + length(28) + length(30) + length(32))
+        at = at
+            .checked_add(46 + length(28) + length(30) + length(32))
             .filter(|end| *end <= bytes.len())
             .ok_or_else(|| Error::NotAZip("truncated central entry".into()))?;
         records += 1;
@@ -128,15 +134,21 @@ fn read_zip_bounded(bytes: &[u8], limits: ArchiveLimits) -> Result<BTreeMap<Stri
         }
     }
     if at != end || bytes.get(at..at.saturating_add(4)) != Some(b"PK\x05\x06") {
-        return Err(Error::Unsupported("non-ZIP32 or unsupported central directory trailer".into()));
+        return Err(Error::Unsupported(
+            "non-ZIP32 or unsupported central directory trailer".into(),
+        ));
     }
     let cursor = std::io::Cursor::new(bytes);
     let mut archive = zip::ZipArchive::new(cursor).map_err(|e| Error::NotAZip(e.to_string()))?;
     if archive.central_directory_start() != directory_start as u64 {
-        return Err(Error::NotAZip("inconsistent central directory offset".into()));
+        return Err(Error::NotAZip(
+            "inconsistent central directory offset".into(),
+        ));
     }
     if records != archive.len() {
-        return Err(Error::NotAZip("duplicate central directory identity".into()));
+        return Err(Error::NotAZip(
+            "duplicate central directory identity".into(),
+        ));
     }
     let mut out = BTreeMap::new();
     let mut names = std::collections::BTreeSet::new();
@@ -146,9 +158,14 @@ fn read_zip_bounded(bytes: &[u8], limits: ArchiveLimits) -> Result<BTreeMap<Stri
         let name = file.name().to_owned();
         let path = name.strip_suffix('/').unwrap_or(&name);
         if !crate::sketch::archive::safe_path(path) || !names.insert(path.to_owned()) {
-            return Err(Error::NotAZip(format!("unsafe/duplicate archive path: {name}")));
+            return Err(Error::NotAZip(format!(
+                "unsafe/duplicate archive path: {name}"
+            )));
         }
-        if file.unix_mode().is_some_and(|mode| mode & 0o170000 == 0o120000) {
+        if file
+            .unix_mode()
+            .is_some_and(|mode| mode & 0o170000 == 0o120000)
+        {
             return Err(Error::NotAZip("archive symlink".into()));
         }
         if file.is_dir() {
@@ -156,7 +173,11 @@ fn read_zip_bounded(bytes: &[u8], limits: ArchiveLimits) -> Result<BTreeMap<Stri
         }
         let declared = file.size();
         let remaining = limits.total.saturating_sub(total);
-        let entry_limit = if name == "document.json" { limits.document_entry } else { limits.entry };
+        let entry_limit = if name == "document.json" {
+            limits.document_entry
+        } else {
+            limits.entry
+        };
         if declared > entry_limit {
             return Err(archive_limit("entry expanded bytes"));
         }
@@ -167,7 +188,9 @@ fn read_zip_bounded(bytes: &[u8], limits: ArchiveLimits) -> Result<BTreeMap<Stri
         // Never reserve according to untrusted metadata. Read at most the
         // remaining budget plus one sentinel byte, including when size lies.
         let mut data = Vec::new();
-        file.by_ref().take(allowed.saturating_add(1)).read_to_end(&mut data)
+        file.by_ref()
+            .take(allowed.saturating_add(1))
+            .read_to_end(&mut data)
             .map_err(|e| Error::Io(e.to_string()))?;
         let actual = data.len() as u64;
         if actual > allowed {
@@ -187,6 +210,29 @@ fn read_zip_bounded(bytes: &[u8], limits: ArchiveLimits) -> Result<BTreeMap<Stri
 }
 
 fn write_zip(entries: &[(String, Vec<u8>)]) -> Result<Vec<u8>> {
+    // The writer obeys the same per-entry/total expanded budgets the reader
+    // enforces, so an oversized payload fails loudly at export instead of
+    // producing an archive this codec (and the strict Sketch adapter) would
+    // refuse to reopen.
+    let limits = ARCHIVE_LIMITS;
+    if entries.len() > limits.entries {
+        return Err(archive_limit("entry count"));
+    }
+    let mut total = 0u64;
+    for (name, data) in entries {
+        let limit = if name == "document.json" {
+            limits.document_entry
+        } else {
+            limits.entry
+        };
+        if data.len() as u64 > limit {
+            return Err(archive_limit("entry expanded bytes"));
+        }
+        total = total.saturating_add(data.len() as u64);
+        if total > limits.total {
+            return Err(archive_limit("total expanded bytes"));
+        }
+    }
     let mut sink = std::io::Cursor::new(Vec::new());
     {
         let mut zip = zip::ZipWriter::new(&mut sink);
@@ -284,6 +330,59 @@ fn bool_at(v: &Value, key: &str) -> bool {
     v.get(key).and_then(Value::as_bool).unwrap_or(false)
 }
 
+/// Archived borderOptions marker code → kernel stroke marker. The enum is
+/// the Sketch 74–93 / fig2sketch archive set (fig2sketch `MarkerType`, 8
+/// values): 0=None, 1=FilledArrow, 2=Line, 3=OpenCircle, 4=FilledCircle,
+/// 5=OpenSquare, 6=FilledSquare, 7=OpenArrow. The 2025 public schema
+/// re-numbers 0=OpenArrow and drops None — imported against the archive
+/// set the real corpus uses; approximations are reported, never silent.
+fn marker_of(code: i64, lossy: &mut Vec<String>) -> crate::stroke::Marker {
+    use crate::stroke::Marker;
+    match code {
+        0 => Marker::None,
+        // FilledArrow's filled head renders closest to the equilateral
+        // kernel triangle marker.
+        1 => Marker::Triangle,
+        // Sketch "Line" is a perpendicular tick across the endpoint — the
+        // kernel Bar marker.
+        2 => Marker::Bar,
+        3 => {
+            note_lossy(lossy, "marker-open-circle->filled-circle");
+            Marker::Circle
+        }
+        4 => Marker::Circle,
+        5 => {
+            note_lossy(lossy, "marker-open-square->filled-square");
+            Marker::Square
+        }
+        6 => Marker::Square,
+        7 => Marker::Arrow,
+        other => {
+            note_lossy(lossy, &format!("marker-type-{other}-unsupported"));
+            Marker::None
+        }
+    }
+}
+
+/// Kernel stroke marker → archived borderOptions code (inverse of
+/// `marker_of`; markers without a Sketch home are noted, never dropped
+/// silently into a different shape).
+fn marker_code(marker: crate::stroke::Marker, lossy: &mut Vec<String>) -> i64 {
+    use crate::stroke::Marker;
+    match marker {
+        Marker::None => 0,
+        Marker::Arrow => 7,
+        Marker::Triangle => 1,
+        Marker::Circle => 4,
+        Marker::Square => 6,
+        Marker::Bar => 2,
+        Marker::Diamond => {
+            note_lossy(lossy, "marker-diamond-not-expressible");
+            0
+        }
+    }
+}
+
 fn color_hex(color: &Value) -> String {
     let color = adaptable_resolved(color);
     let r = (f64_at(color, "red").clamp(0., 1.) * 255.).round() as u8;
@@ -301,11 +400,18 @@ fn gradient_stop_color(color: &Value, space: ColorSpace) -> String {
     if color_alpha(color) == 1. {
         return color_hex(color);
     }
-    format!("color({} {} {} {} / {})",
-        if space == ColorSpace::DisplayP3 { "display-p3" } else { "srgb" },
+    format!(
+        "color({} {} {} {} / {})",
+        if space == ColorSpace::DisplayP3 {
+            "display-p3"
+        } else {
+            "srgb"
+        },
         f64_at(resolved, "red").clamp(0., 1.),
         f64_at(resolved, "green").clamp(0., 1.),
-        f64_at(resolved, "blue").clamp(0., 1.), color_alpha(color))
+        f64_at(resolved, "blue").clamp(0., 1.),
+        color_alpha(color)
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -329,12 +435,8 @@ fn adaptable_is_adaptable(color: &Value) -> bool {
         .is_some_and(|c| c.contains("AdaptableColor"))
         || (color.get("light").is_some_and(Value::is_object)
             && color.get("dark").is_some_and(Value::is_object))
-        || (color
-            .get("lightColor")
-            .is_some_and(Value::is_object)
-            && color
-                .get("darkColor")
-                .is_some_and(Value::is_object))
+        || (color.get("lightColor").is_some_and(Value::is_object)
+            && color.get("darkColor").is_some_and(Value::is_object))
 }
 
 /// The default-appearance (light) value of a possibly-adaptable color.
@@ -427,7 +529,10 @@ fn adaptable_slot_in_style<'a>(style: &'a mut Value, slot: &str) -> Option<&'a m
 /// Locate the color dict addressed by a slot inside an exported layer dict:
 /// style parts delegate to the style, `run.N` addresses the attributed
 /// string's color attribute, `background` the artboard background color.
-fn adaptable_slot_in_layer<'a>(layer: &'a mut Map<String, Value>, slot: &str) -> Option<&'a mut Value> {
+fn adaptable_slot_in_layer<'a>(
+    layer: &'a mut Map<String, Value>,
+    slot: &str,
+) -> Option<&'a mut Value> {
     match slot.split('.').next()? {
         "background" => layer.get_mut("backgroundColor"),
         "run" => {
@@ -562,12 +667,26 @@ fn solid_paint(color: &Value, base_opacity: f64, blend: &str) -> Paint {
 }
 
 fn blur_projection(effects: &[Effect]) -> Vec<Effect> {
-    effects.iter().filter(|effect| matches!(effect.kind.as_str(), "blur" | "background-blur" | "glass"))
-        .cloned().map(|mut effect| { effect.id.clear(); effect }).collect()
+    effects
+        .iter()
+        .filter(|effect| matches!(effect.kind.as_str(), "blur" | "background-blur" | "glass"))
+        .cloned()
+        .map(|mut effect| {
+            effect.id.clear();
+            effect
+        })
+        .collect()
 }
 
-fn gradient_paint(gradient: &Value, fill_type: u64, size: [f64; 2], space: ColorSpace) -> Option<Paint> {
-    let native_type = gradient.get("gradientType").and_then(Value::as_u64)
+fn gradient_paint(
+    gradient: &Value,
+    fill_type: u64,
+    size: [f64; 2],
+    space: ColorSpace,
+) -> Option<Paint> {
+    let native_type = gradient
+        .get("gradientType")
+        .and_then(Value::as_u64)
         .unwrap_or(fill_type.saturating_sub(1));
     let kind = match native_type {
         0 => "linear",
@@ -584,9 +703,13 @@ fn gradient_paint(gradient: &Value, fill_type: u64, size: [f64; 2], space: Color
         // axis-aligned gradients can discard an out-of-range perpendicular
         // translation without changing any sample. Keep the raw source anchors
         // in sketchSourceGradients for unchanged compatibility export.
-        if kind=="linear" {
-            if dx==0. && dy!=0. && x.abs()>1e7 {x=0.;}
-            if dy==0. && dx!=0. && y.abs()>1e7 {y=0.;}
+        if kind == "linear" {
+            if dx == 0. && dy != 0. && x.abs() > 1e7 {
+                x = 0.;
+            }
+            if dy == 0. && dx != 0. && y.abs() > 1e7 {
+                y = 0.;
+            }
         }
         if dx * dx + dy * dy > 1e-12 {
             paint.transform = Some(if kind == "radial" {
@@ -596,12 +719,21 @@ fn gradient_paint(gradient: &Value, fill_type: u64, size: [f64; 2], space: Color
                 // to normalized coordinates; otherwise non-square layers turn
                 // a native circle into an ellipse. elipseLength scales that
                 // perpendicular radius. Verified against native Sketch exports.
-                let ratio = gradient.get("elipseLength").and_then(Value::as_f64)
-                    .filter(|value| *value > 0.).unwrap_or(1.);
+                let ratio = gradient
+                    .get("elipseLength")
+                    .and_then(Value::as_f64)
+                    .filter(|value| *value > 0.)
+                    .unwrap_or(1.);
                 let cross_x = -dy * size[1] / size[0].max(1e-8) * ratio;
                 let cross_y = dx * size[0] / size[1].max(1e-8) * ratio;
-                Transform([2. * dx, 2. * dy, 2. * cross_x, 2. * cross_y,
-                    x - dx - cross_x, y - dy - cross_y])
+                Transform([
+                    2. * dx,
+                    2. * dy,
+                    2. * cross_x,
+                    2. * cross_y,
+                    x - dx - cross_x,
+                    y - dy - cross_y,
+                ])
             } else {
                 Transform([dx, dy, -dy, dx, x + dy * 0.5, y - dx * 0.5])
             });
@@ -687,29 +819,104 @@ impl<'a> Importer<'a> {
             .map(|b| image_data_uri(b))
     }
 
+    /// Whether `paint_part` would admit this part, checked without building
+    /// the paint (no base64 data-URI pass) so fidelity scans stay cheap on
+    /// large archives. Mirrors `paint_part`'s admission branches exactly.
+    fn part_admitted(&self, part: &Value) -> bool {
+        if !bool_at(part, "isEnabled") {
+            return false;
+        }
+        let fill_type = part.get("fillType").and_then(Value::as_u64).unwrap_or(0);
+        match fill_type {
+            0 if part.get("image").is_some() => self.image_resolves(part),
+            0 => part.get("color").is_some(),
+            1..=3 => part
+                .get("gradient")
+                .map(|g| {
+                    g.get("gradientType")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(fill_type - 1)
+                        <= 2
+                })
+                .unwrap_or(false),
+            4 => self.image_resolves(part),
+            _ => false,
+        }
+    }
+
+    fn image_resolves(&self, part: &Value) -> bool {
+        part.get("image")
+            .and_then(|i| i.get("_ref"))
+            .and_then(Value::as_str)
+            .map(|r| {
+                self.files.contains_key(&format!("images/{r}")) || self.files.contains_key(r)
+            })
+            .unwrap_or(false)
+    }
+
     /// One archived fill/border part → kernel paint (shared by layer styles
     /// and the document-level shared style containers).
-    fn paint_part(&self, part: &Value, base_opacity: f64, blend: &str, size: [f64; 2]) -> Option<Paint> {
+    fn paint_part(
+        &self,
+        part: &Value,
+        base_opacity: f64,
+        blend: &str,
+        size: [f64; 2],
+    ) -> Option<Paint> {
         if !bool_at(part, "isEnabled") {
             return None;
         }
         let (part_opacity, part_blend) = blend_of(part);
         let base_opacity = base_opacity * part_opacity;
-        let blend = if part.get("contextSettings").and_then(|v| v.get("blendMode")).is_some() {
+        let blend = if part
+            .get("contextSettings")
+            .and_then(|v| v.get("blendMode"))
+            .is_some()
+        {
             part_blend.as_str()
-        } else { blend };
+        } else {
+            blend
+        };
         let fill_type = part.get("fillType").and_then(Value::as_u64).unwrap_or(0);
+        // Pattern placement follows the archived `patternFillType`
+        // (Tile=0/Fill=1/Stretch=2/Fit=3, official file-format enum):
+        // Fill keeps aspect while covering (cover), Stretch distorts
+        // (stretch), Fit letterboxes (contain), Tile repeats at the image's
+        // native cell period — `Paint.tile` with `size: 0` per axis.
+        // `patternTileScale ≠ 1` has no kernel slot (the cell period would
+        // need the source bitmap extent); the caller records it as source
+        // fidelity instead of silently normalizing it away.
+        let image_paint = |part: &Value| {
+            self.image_ref(part).map(|uri| {
+                let mut p = blank_paint("image");
+                p.image = Some(uri);
+                match part.get("patternFillType").and_then(Value::as_i64) {
+                    Some(2) => p.fit = "stretch".into(),
+                    Some(3) => p.fit = "contain".into(),
+                    Some(0) => {
+                        p.tile = Some(crate::pattern_fill::PatternTile {
+                            mode: crate::pattern_fill::GRID.into(),
+                            size: [0., 0.],
+                            offset: [0., 0.],
+                            alignment: [
+                                crate::pattern_fill::ALIGN_START.into(),
+                                crate::pattern_fill::ALIGN_START.into(),
+                            ],
+                        })
+                    }
+                    // 1 (Fill) is the kernel image-paint default (cover)
+                    _ => {}
+                }
+                p.opacity = base_opacity;
+                p.blend = blend.into();
+                p
+            })
+        };
         match fill_type {
             0 => {
                 // image (pattern) fills carry fillType 0 + an image ref in real files
                 if part.get("image").is_some() {
-                    self.image_ref(part).map(|uri| {
-                        let mut p = blank_paint("image");
-                        p.image = Some(uri);
-                        p.opacity = base_opacity;
-                        p.blend = blend.into();
-                        p
-                    })
+                    image_paint(part)
                 } else {
                     part.get("color")
                         .map(|c| solid_paint(c, base_opacity, blend))
@@ -721,13 +928,7 @@ impl<'a> Importer<'a> {
                 p.opacity *= base_opacity;
                 Some(p)
             }),
-            4 => self.image_ref(part).map(|uri| {
-                let mut p = blank_paint("image");
-                p.image = Some(uri);
-                p.opacity = base_opacity;
-                p.blend = blend.into();
-                p
-            }),
+            4 => image_paint(part),
             _ => None,
         }
     }
@@ -747,9 +948,10 @@ impl<'a> Importer<'a> {
         out
     }
 
-    fn strokes(&self, style: &Value, size: [f64; 2]) -> Vec<Stroke> {
+    fn strokes(&self, style: &Value, size: [f64; 2], lossy: &mut Vec<String>) -> Vec<Stroke> {
         // Dash/cap/join live on the style's borderOptions (one set shared by
-        // every border, per the archived schema).
+        // every border, per the archived schema); the endpoint markers ride
+        // the same shared options, so every border inherits them.
         let options = style.get("borderOptions").cloned().unwrap_or(Value::Null);
         let dash = options
             .get("dashPattern")
@@ -774,6 +976,16 @@ impl<'a> Importer<'a> {
             Some(2) => "bevel",
             _ => "miter",
         };
+        let start_marker = options
+            .get("startMarkerType")
+            .and_then(Value::as_i64)
+            .map(|code| marker_of(code, lossy))
+            .unwrap_or_default();
+        let end_marker = options
+            .get("endMarkerType")
+            .and_then(Value::as_i64)
+            .map(|code| marker_of(code, lossy))
+            .unwrap_or_default();
         let mut out = Vec::new();
         let Some(parts) = style.get("borders").and_then(Value::as_array) else {
             return out;
@@ -784,11 +996,13 @@ impl<'a> Importer<'a> {
             }
             // A border has the same paint carrier as a fill. Its `color`
             // can be an unused black fallback while fillType selects a gradient.
-            let Some(mut paint) = self.paint_part(part, 1., "normal", size) else { continue; };
+            let Some(mut paint) = self.paint_part(part, 1., "normal", size) else {
+                continue;
+            };
             paint.id = String::new();
             out.push(Stroke {
-                start_marker: Default::default(),
-                end_marker: Default::default(),
+                start_marker,
+                end_marker,
                 id: String::new(),
                 paint,
                 width: f64_at(part, "thickness").max(0.01),
@@ -835,6 +1049,7 @@ impl<'a> Importer<'a> {
                         glass: None,
                         texture: None,
                         gradient_blur: None,
+                        show_shadow_behind_node: false,
                     });
                 }
             }
@@ -864,6 +1079,7 @@ impl<'a> Importer<'a> {
                 glass: None,
                 texture: None,
                 gradient_blur: None,
+                show_shadow_behind_node: false,
             });
         }
         out
@@ -892,12 +1108,31 @@ impl<'a> Importer<'a> {
         // Import-side degradation ledger (mirror of the exporter's userInfo
         // lossy list, surfaced through bindings like figUntranslated).
         let mut import_lossy: Vec<String> = Vec::new();
-        if !matches!(class, "artboard" | "frame" | "canvasFrame" | "symbolMaster"
-            | "group" | "shapeGroup" | "symbolInstance" | "rectangle" | "oval"
-            | "star" | "polygon" | "triangle" | "shapePath" | "shape" | "text"
-            | "bitmap" | "slice" | "hotspot")
-        {
-            node.bindings.insert("interopLimited".into(), format!("sketch-unknown-layer-class:{class}"));
+        if !matches!(
+            class,
+            "artboard"
+                | "frame"
+                | "canvasFrame"
+                | "symbolMaster"
+                | "group"
+                | "shapeGroup"
+                | "symbolInstance"
+                | "rectangle"
+                | "oval"
+                | "star"
+                | "polygon"
+                | "triangle"
+                | "shapePath"
+                | "shape"
+                | "text"
+                | "bitmap"
+                | "slice"
+                | "hotspot"
+        ) {
+            node.bindings.insert(
+                "interopLimited".into(),
+                format!("sketch-unknown-layer-class:{class}"),
+            );
         }
         node.name = layer
             .get("name")
@@ -910,65 +1145,125 @@ impl<'a> Importer<'a> {
             .unwrap_or(true);
         node.locked = bool_at(layer, "isLocked");
         let frame = layer.get("frame").cloned().unwrap_or(Value::Null);
-        node.constrain_proportions = bool_at(&frame,"constrainProportions");
+        node.constrain_proportions = bool_at(&frame, "constrainProportions");
         node.width = f64_at(&frame, "width").max(0.);
         node.height = f64_at(&frame, "height").max(0.);
         let x = f64_at(&frame, "x");
         let y = f64_at(&frame, "y");
         node.transform = Transform([1., 0., 0., 1., x, y]);
         let rotation = f64_at(layer, "rotation");
-        let flip = [bool_at(layer, "isFlippedHorizontal"), bool_at(layer, "isFlippedVertical")];
+        let flip = [
+            bool_at(layer, "isFlippedHorizontal"),
+            bool_at(layer, "isFlippedVertical"),
+        ];
         if rotation != 0. || flip.iter().any(|v| *v) {
             node.transform = crate::sketch::geometry::layer_transform(
-                [x, y, node.width, node.height], rotation, flip);
-            node.bindings.insert("sketchSourceTransform".into(), json!({
-                "frame": [x,y,node.width,node.height], "rotation":rotation,
-                "flip":flip, "matrix":node.transform.0,
-            }).to_string());
+                [x, y, node.width, node.height],
+                rotation,
+                flip,
+            );
+            node.bindings.insert(
+                "sketchSourceTransform".into(),
+                json!({
+                    "frame": [x,y,node.width,node.height], "rotation":rotation,
+                    "flip":flip, "matrix":node.transform.0,
+                })
+                .to_string(),
+            );
         }
 
         let style = layer.get("style").cloned().unwrap_or(Value::Null);
         if !style.is_null() {
             let size = [node.width, node.height];
             node.fills = self.paints(&style, "fills", size);
-            let source_gradients: BTreeMap<String, Value> = style.get("fills").and_then(Value::as_array)
-                .into_iter().flatten().filter_map(|part| self.paint_part(part, 1., "normal", size)
-                    .map(|paint| (part, paint))).enumerate()
-                .filter_map(|(index, (part, paint))| part.get("gradient")
-                    .filter(|_| part.get("fillType").and_then(Value::as_u64) == Some(1))
-                    .map(|gradient| (index.to_string(), json!({"gradient":gradient,"paint":paint}))))
+            let source_gradients: BTreeMap<String, Value> = style
+                .get("fills")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|part| {
+                    self.paint_part(part, 1., "normal", size)
+                        .map(|paint| (part, paint))
+                })
+                .enumerate()
+                .filter_map(|(index, (part, paint))| {
+                    part.get("gradient")
+                        .filter(|_| part.get("fillType").and_then(Value::as_u64) == Some(1))
+                        .map(|gradient| {
+                            (
+                                index.to_string(),
+                                json!({"gradient":gradient,"paint":paint}),
+                            )
+                        })
+                })
                 .collect();
             if !source_gradients.is_empty() {
-                node.bindings.insert("sketchSourceGradients".into(), json!(source_gradients).to_string());
+                node.bindings.insert(
+                    "sketchSourceGradients".into(),
+                    json!(source_gradients).to_string(),
+                );
             }
-            node.strokes = self.strokes(&style, size);
-            let border_gradients: BTreeMap<String, Value> = style.get("borders").and_then(Value::as_array)
-                .into_iter().flatten().filter_map(|part| self.paint_part(part, 1., "normal", size).map(|paint|(part,paint))).enumerate()
-                .filter_map(|(index,(part,paint))| part.get("gradient")
-                    .filter(|_| matches!(paint.kind.as_str(),"linear"|"radial"|"angular"))
-                    .map(|gradient|(index.to_string(),json!({"gradient":gradient,"paint":paint,"size":size}))))
+            node.strokes = self.strokes(&style, size, &mut import_lossy);
+            let border_gradients: BTreeMap<String, Value> = style
+                .get("borders")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|part| {
+                    self.paint_part(part, 1., "normal", size)
+                        .map(|paint| (part, paint))
+                })
+                .enumerate()
+                .filter_map(|(index, (part, paint))| {
+                    part.get("gradient")
+                        .filter(|_| matches!(paint.kind.as_str(), "linear" | "radial" | "angular"))
+                        .map(|gradient| {
+                            (
+                                index.to_string(),
+                                json!({"gradient":gradient,"paint":paint,"size":size}),
+                            )
+                        })
+                })
                 .collect();
             if !border_gradients.is_empty() {
-                node.bindings.insert("sketchSourceStrokeGradients".into(),json!(border_gradients).to_string());
+                node.bindings.insert(
+                    "sketchSourceStrokeGradients".into(),
+                    json!(border_gradients).to_string(),
+                );
             }
             node.effects = self.effects(&style);
-            if let Some(blur) = style.get("blur")
+            if let Some(blur) = style
+                .get("blur")
                 .filter(|value| bool_at(value, "isEnabled") || f64_at(value, "radius") > 0.)
             {
-                node.bindings.insert("sketchSourceBlur".into(), json!({
-                    "blur":blur,"effects":blur_projection(&node.effects),
-                }).to_string());
+                node.bindings.insert(
+                    "sketchSourceBlur".into(),
+                    json!({
+                        "blur":blur,"effects":blur_projection(&node.effects),
+                    })
+                    .to_string(),
+                );
                 if bool_at(blur, "isEnabled") && f64_at(blur, "radius") > 0. {
                     match blur.get("type").and_then(Value::as_i64).unwrap_or(0) {
                         0 => {}
                         3 => {
-                            if blur.get("saturation").and_then(Value::as_f64).is_some_and(|value| value != 1.) {
-                                import_lossy.push("background-blur-saturation-not-modeled;source-blur-retained".into());
+                            if blur
+                                .get("saturation")
+                                .and_then(Value::as_f64)
+                                .is_some_and(|value| value != 1.)
+                            {
+                                import_lossy.push(
+                                    "background-blur-saturation-not-modeled;source-blur-retained"
+                                        .into(),
+                                );
                             }
                         }
-                        1 => import_lossy.push("motion-blur-not-modeled;source-blur-retained".into()),
+                        1 => {
+                            import_lossy.push("motion-blur-not-modeled;source-blur-retained".into())
+                        }
                         2 => import_lossy.push("zoom-blur-not-modeled;source-blur-retained".into()),
-                        _ => import_lossy.push("unknown-blur-type-not-modeled;source-blur-retained".into()),
+                        _ => import_lossy
+                            .push("unknown-blur-type-not-modeled;source-blur-retained".into()),
                     }
                 }
             }
@@ -976,7 +1271,11 @@ impl<'a> Importer<'a> {
             node.opacity = opacity;
             node.blend = blend;
             // P1-6: shared style reference survives as a style_ref
-            if let Some(shared) = layer.get("sharedStyleID").or_else(|| style.get("sharedStyleID")).and_then(Value::as_str) {
+            if let Some(shared) = layer
+                .get("sharedStyleID")
+                .or_else(|| style.get("sharedStyleID"))
+                .and_then(Value::as_str)
+            {
                 node.style_refs
                     .insert("sketchSharedStyleID".into(), shared.into());
             }
@@ -1002,6 +1301,73 @@ impl<'a> Importer<'a> {
                 "sketchAdaptableColor.updatableColors".into(),
                 serde_json::to_string(updatable).unwrap_or_default(),
             );
+        }
+        // 05-style.md remaining parts with no kernel home: noise fills
+        // (legacy fillType 4/5 without an image reference, or any noiseIndex
+        // payload) and colorControls (per-layer color matrix) are preserved
+        // verbatim for round-trip and reported — never silently dropped.
+        // Pattern fills whose `patternTileScale ≠ 1` render at the native
+        // cell period; the authored scale rides bindings the same way.
+        if !style.is_null() {
+            let mut noise = Map::new();
+            let mut pattern_scale = Map::new();
+            for parts_key in ["fills", "borders"] {
+                let mut admitted = 0usize;
+                let mut dropped = 0usize;
+                let Some(parts) = style.get(parts_key).and_then(Value::as_array) else {
+                    continue;
+                };
+                for part in parts {
+                    let is_noise = bool_at(part, "isEnabled")
+                        && part.get("image").is_none()
+                        && (part.get("noiseIndex").and_then(Value::as_u64).unwrap_or(0) != 0
+                            || !matches!(
+                                part.get("fillType").and_then(Value::as_u64).unwrap_or(0),
+                                0..=3
+                            ));
+                    if is_noise {
+                        noise.insert(format!("{parts_key}-{}", admitted + dropped), part.clone());
+                        dropped += 1;
+                        continue;
+                    }
+                    if !self.part_admitted(part) {
+                        continue;
+                    }
+                    if part.get("patternFillType").and_then(Value::as_i64) == Some(0)
+                        && let Some(scale) = part
+                            .get("patternTileScale")
+                            .and_then(Value::as_f64)
+                            .filter(|s| *s != 1.)
+                    {
+                        pattern_scale.insert(format!("{parts_key}-{admitted}"), json!(scale));
+                    }
+                    admitted += 1;
+                }
+            }
+            if !noise.is_empty() {
+                node.bindings.insert(
+                    "sketchSourceNoiseFills".into(),
+                    json!(noise).to_string(),
+                );
+                import_lossy.push("noise-fill-not-modeled;source-retained".into());
+            }
+            if !pattern_scale.is_empty() {
+                node.bindings.insert(
+                    "sketchSourcePatternScale".into(),
+                    json!(pattern_scale).to_string(),
+                );
+                import_lossy.push("pattern-tile-scale-not-modeled;source-retained".into());
+            }
+            if let Some(controls) = layer
+                .pointer("/style/colorControls")
+                .filter(|c| bool_at(c, "isEnabled"))
+            {
+                node.bindings.insert(
+                    "sketchSourceColorControls".into(),
+                    serde_json::to_string(controls).unwrap_or_default(),
+                );
+                import_lossy.push("color-controls-not-modeled;source-retained".into());
+            }
         }
         // P1-9: boolean groups (shapeGroup) carry the operation code;
         // -1 means "no boolean" and stays None. Winding rides in bindings.
@@ -1054,6 +1420,30 @@ impl<'a> Importer<'a> {
                 align: align(f64_at(group_layout, "alignItems") as i64),
                 ..crate::layout::Layout::default()
             });
+        } else if let Some(group_layout) = layer.get("groupLayout")
+            && matches!(
+                group_layout.get("_class").and_then(Value::as_str),
+                Some("MSImmutableInferredGroupLayout") | Some("MSInferredGroupLayout")
+            )
+        {
+            // Inferred (smart) group layout: the archived schema is
+            // axis(0=H/1=V) + layoutAnchor(0=min/1=middle/2=max) + optional
+            // min/maxSize. The kernel's inferred_layout.rs derives stack
+            // parameters from static geometry but has no authored storage
+            // slot, so the payload rides bindings verbatim and the static
+            // child frames — which Sketch itself laid out — are preserved.
+            let payload = json!({
+                "_class": "MSImmutableInferredGroupLayout",
+                "axis": group_layout.get("axis").cloned().unwrap_or(json!(1)),
+                "layoutAnchor": group_layout.get("layoutAnchor").cloned().unwrap_or(json!(0)),
+                "minSize": group_layout.get("minSize").cloned().unwrap_or(Value::Null),
+                "maxSize": group_layout.get("maxSize").cloned().unwrap_or(Value::Null),
+            });
+            node.bindings.insert(
+                "sketchInferredGroupLayout".into(),
+                serde_json::to_string(&payload).unwrap_or_default(),
+            );
+            import_lossy.push("inferred-group-layout-not-modeled;static-frames-preserved".into());
         }
 
         // Export-lossy notes travel in userInfo so round-trip callers see an
@@ -1078,9 +1468,15 @@ impl<'a> Importer<'a> {
                 // Shared rectangle corners use radii; cornerRadius belongs to
                 // polygon/star fillets and is invalid on a rectangle.
                 node.radii = [f64_at(layer, "fixedRadius"); 4];
-                if let Some(points) = layer.get("points").and_then(Value::as_array).filter(|p| p.len() == 4) {
+                if let Some(points) = layer
+                    .get("points")
+                    .and_then(Value::as_array)
+                    .filter(|p| p.len() == 4)
+                {
                     for (radius, point) in node.radii.iter_mut().zip(points) {
-                        if point.get("cornerRadius").is_some() { *radius = f64_at(point, "cornerRadius"); }
+                        if point.get("cornerRadius").is_some() {
+                            *radius = f64_at(point, "cornerRadius");
+                        }
                     }
                 }
             }
@@ -1095,19 +1491,36 @@ impl<'a> Importer<'a> {
                 if layer.get("isClosed").and_then(Value::as_bool) == Some(false) {
                     node.bindings.insert("sketchOpenPath".into(), "true".into());
                 }
-                if layer.get("userInfo")
+                if layer
+                    .get("userInfo")
                     .and_then(|u| u.get("com.futureox.design-kernel"))
-                    .and_then(|u| u.get("originalId")).is_none()
-                    || layer.pointer("/userInfo/com.futureox.design-kernel/geometryUnits").and_then(Value::as_str)==Some("normalized")
+                    .and_then(|u| u.get("originalId"))
+                    .is_none()
+                    || layer
+                        .pointer("/userInfo/com.futureox.design-kernel/geometryUnits")
+                        .and_then(Value::as_str)
+                        == Some("normalized")
                 {
-                    node.bindings.insert("sketchNormalizedCoordinates".into(), "true".into());
+                    node.bindings
+                        .insert("sketchNormalizedCoordinates".into(), "true".into());
                 }
                 if let Some(points) = layer.get("points").and_then(Value::as_array) {
                     let mut network = crate::scene::Network {
                         filled_faces: None,
                         vertices: Vec::new(),
                         edges: Vec::new(),
-                        fill_rule: if style.get("windingRule").or_else(||layer.get("windingRule")).and_then(Value::as_u64).unwrap_or(1)==0 {"nonzero"} else {"evenodd"}.into(),
+                        fill_rule: if style
+                            .get("windingRule")
+                            .or_else(|| layer.get("windingRule"))
+                            .and_then(Value::as_u64)
+                            .unwrap_or(1)
+                            == 0
+                        {
+                            "nonzero"
+                        } else {
+                            "evenodd"
+                        }
+                        .into(),
                     };
                     // Explicit handle flags own the rendered geometry, just
                     // as in sketch::CurveContour. curveMode is an editing
@@ -1193,7 +1606,10 @@ impl<'a> Importer<'a> {
                 // Official Sketch text sizing maps to the shared layout
                 // model: Flexible measures both axes, Fixed keeps its width,
                 // FixedWidthAndHeight preserves both source extents.
-                let behaviour = layer.get("textBehaviour").and_then(Value::as_i64).unwrap_or(0);
+                let behaviour = layer
+                    .get("textBehaviour")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0);
                 style.wrap = behaviour != 0;
                 // Native sizing remains authoritative. The namespaced payload
                 // preserves the independent kernel wrap switch, which Sketch
@@ -1201,7 +1617,8 @@ impl<'a> Importer<'a> {
                 // sizing-mode or text edit; ordinary foreign files need no metadata.
                 if let Some(own) = layer.pointer("/userInfo/com.futureox.design-kernel/textWrap") {
                     if own.get("textBehaviour").and_then(Value::as_i64) == Some(behaviour)
-                        && own.get("text").and_then(Value::as_str) == Some(node.text.as_str()) {
+                        && own.get("text").and_then(Value::as_str) == Some(node.text.as_str())
+                    {
                         if let Some(wrap) = own.get("wrap").and_then(Value::as_bool) {
                             style.wrap = wrap;
                         }
@@ -1209,20 +1626,29 @@ impl<'a> Importer<'a> {
                 }
                 if matches!(behaviour, 0..=2) {
                     node.sizing = Some(crate::layout::Sizing {
-                        width: if behaviour == 0 { crate::layout::SizeMode::Hug } else { crate::layout::SizeMode::Fixed },
-                        height: if behaviour == 2 { crate::layout::SizeMode::Fixed } else { crate::layout::SizeMode::Hug },
+                        width: if behaviour == 0 {
+                            crate::layout::SizeMode::Hug
+                        } else {
+                            crate::layout::SizeMode::Fixed
+                        },
+                        height: if behaviour == 2 {
+                            crate::layout::SizeMode::Fixed
+                        } else {
+                            crate::layout::SizeMode::Hug
+                        },
                         ..Default::default()
                     });
                     if let Some(frame) = layer.get("frame") {
-                        node.bindings.insert("sketchSourceTextFrameRaw".into(), frame.to_string());
+                        node.bindings
+                            .insert("sketchSourceTextFrameRaw".into(), frame.to_string());
                     }
                 }
                 if layer.get("textBehaviour").is_some() && !matches!(behaviour, 0 | 1) {
-                        node.bindings
-                            .insert("sketchTextBehaviour".into(), behaviour.to_string());
-                        if behaviour != 2 {
-                            import_lossy.push("textbehaviour-fixed-size-not-modeled".into());
-                        }
+                    node.bindings
+                        .insert("sketchTextBehaviour".into(), behaviour.to_string());
+                    if behaviour != 2 {
+                        import_lossy.push("textbehaviour-fixed-size-not-modeled".into());
+                    }
                 }
                 // lineSpacingBehaviour (1 = v2 常基线, 3 = 自定义) rides
                 // bindings only when it differs from what the line-height
@@ -1254,8 +1680,19 @@ impl<'a> Importer<'a> {
                             .and_then(Value::as_i64)
                             .unwrap_or(0)
                             > 0;
+                        // Official TextTransform enum: 0=None, 1=Uppercase,
+                        // 2=Lowercase — mapped per run into the kernel's
+                        // authored text-case slot (rendered by text_case.rs).
+                        let text_case = match a
+                            .get("MSAttributedStringTextTransformAttribute")
+                            .and_then(Value::as_i64)
+                        {
+                            Some(1) => Some(crate::font::TextCase::Upper),
+                            Some(2) => Some(crate::font::TextCase::Lower),
+                            _ => None,
+                        };
                         node.text_runs.push(crate::font::TextRun {
-            text_case: None,
+                            text_case,
                             start,
                             end: start + len,
                             color: color.clone(),
@@ -1269,8 +1706,12 @@ impl<'a> Importer<'a> {
                         });
                         // first run fills the defaults
                         if node.text_runs.len() == 1 {
-                            if let Some(font) = node.text_runs[0].font_id.as_ref() { style.font_id = font.clone(); }
-                            if let Some(weight) = node.text_runs[0].weight { style.weight = weight; }
+                            if let Some(font) = node.text_runs[0].font_id.as_ref() {
+                                style.font_id = font.clone();
+                            }
+                            if let Some(weight) = node.text_runs[0].weight {
+                                style.weight = weight;
+                            }
                             node.font_size = font_size.unwrap_or(14.);
                             if let Some(c) = &color {
                                 node.fills.push({
@@ -1322,10 +1763,8 @@ impl<'a> Importer<'a> {
                                     .and_then(Value::as_bool)
                                     == Some(true)
                                 {
-                                    node.bindings.insert(
-                                        "sketchTextAllowsTightening".into(),
-                                        "1".into(),
-                                    );
+                                    node.bindings
+                                        .insert("sketchTextAllowsTightening".into(), "1".into());
                                     import_lossy.push("paragraph-tightening-not-modeled".into());
                                 }
                             }
@@ -1348,8 +1787,7 @@ impl<'a> Importer<'a> {
                                     vertical.to_string(),
                                 );
                                 if vertical != 0 {
-                                    import_lossy
-                                        .push("text-vertical-alignment-not-modeled".into());
+                                    import_lossy.push("text-vertical-alignment-not-modeled".into());
                                 }
                             }
                             if let Some(transform) =
@@ -1357,12 +1795,13 @@ impl<'a> Importer<'a> {
                             {
                                 let active = transform.as_i64().is_some_and(|t| t != 0)
                                     || transform.as_bool() == Some(true);
-                                node.bindings.insert(
-                                    "sketchTextTransform".into(),
-                                    transform.to_string(),
-                                );
-                                if active {
-                                    import_lossy.push("text-transform-not-modeled".into());
+                                node.bindings
+                                    .insert("sketchTextTransform".into(), transform.to_string());
+                                // 0/1/2 are mapped per run into TextRun.text_case;
+                                // other payload shapes (bools, future enums) can
+                                // only round-trip through the binding.
+                                if active && transform.as_i64().is_none_or(|t| !matches!(t, 0..=2)) {
+                                    import_lossy.push("text-transform-value-not-modeled".into());
                                 }
                             }
                         }
@@ -1373,8 +1812,7 @@ impl<'a> Importer<'a> {
                     // archives as 3 (自定义), everything else as the v2-era
                     // default 2. Deviations (e.g. 1 = v2 常基线) need the
                     // binding to round-trip.
-                    let custom =
-                        style.line_height > 0. && (style.line_height - 1.35).abs() > 1e-9;
+                    let custom = style.line_height > 0. && (style.line_height - 1.35).abs() > 1e-9;
                     if spacing != if custom { 3 } else { 2 } {
                         node.bindings
                             .insert("sketchLineSpacingBehaviour".into(), spacing.to_string());
@@ -1405,8 +1843,7 @@ impl<'a> Importer<'a> {
                     .filter(|p| !p.is_empty())
                     && let Ok(raw) = serde_json::to_string(properties)
                 {
-                    node.bindings
-                        .insert("sketchOverrideProperties".into(), raw);
+                    node.bindings.insert("sketchOverrideProperties".into(), raw);
                 }
                 import_layout_grid(&mut node, layer, &mut import_lossy);
             }
@@ -1434,17 +1871,16 @@ impl<'a> Importer<'a> {
                             // a self-contained data URI so re-export cannot
                             // dangle. An unresolvable reference keeps the raw
                             // dict and is reported, never silently dropped.
-                            let value = match sketch_override_value_from_native(
-                                self.files, field, &raw,
-                            ) {
-                                Some(resolved) => resolved,
-                                None => {
-                                    import_lossy.push(format!(
-                                        "override-{ov_name}-image-ref-unresolved"
-                                    ));
-                                    raw
-                                }
-                            };
+                            let value =
+                                match sketch_override_value_from_native(self.files, field, &raw) {
+                                    Some(resolved) => resolved,
+                                    None => {
+                                        import_lossy.push(format!(
+                                            "override-{ov_name}-image-ref-unresolved"
+                                        ));
+                                        raw
+                                    }
+                                };
                             overrides
                                 .entry(clean_path)
                                 .or_default()
@@ -1543,7 +1979,9 @@ impl<'a> Importer<'a> {
         // overrideName spelling. Keep both representations explicit; native
         // overrides remain the fallback for ordinary external Sketch files.
         if let Some(instance) = user_ns.get("instance") {
-            if let Ok(instance) = serde_json::from_value::<crate::components::Instance>(instance.clone()) {
+            if let Ok(instance) =
+                serde_json::from_value::<crate::components::Instance>(instance.clone())
+            {
                 node.instance = Some(instance);
             }
         }
@@ -1603,6 +2041,45 @@ impl<'a> Importer<'a> {
                 reference_height: None,
             });
         }
+        // Sketch 2025 modern layout keys (horizontalPins/verticalPins uint
+        // masks, horizontalSizing/verticalSizing enums, per-child flexItem),
+        // archived under plain/`_`/`__` ivar spellings (08-layout.md; the
+        // double-underscore pair is the documented ivar mapping). The public
+        // file-format schema does not publish these enums yet — only the
+        // legacy 6-bit mask is decoded (22 号字典 §2) — so non-default values
+        // are preserved verbatim under their original spelling for lossless
+        // round-trip instead of guessed into kernel constraints.
+        {
+            let mut modern = Map::new();
+            for key in [
+                "horizontalPins",
+                "verticalPins",
+                "horizontalSizing",
+                "verticalSizing",
+                "flexItem",
+            ] {
+                let found = [format!("__{key}"), format!("_{key}"), key.to_string()]
+                    .iter()
+                    .find_map(|spelling| {
+                        layer
+                            .get(spelling)
+                            .filter(|v| {
+                                v.as_u64().is_none_or(|n| n != 0) && !v.is_null()
+                            })
+                            .map(|v| (spelling.clone(), v.clone()))
+                    });
+                if let Some((spelling, value)) = found {
+                    modern.insert(spelling, value);
+                }
+            }
+            if !modern.is_empty() {
+                node.bindings.insert(
+                    "sketchModernLayout".into(),
+                    json!(modern).to_string(),
+                );
+                import_lossy.push("modern-layout-fields-not-translated;source-retained".into());
+            }
+        }
         if let Some(formats) = layer
             .get("exportOptions")
             .and_then(|e| e.get("exportFormats"))
@@ -1617,7 +2094,11 @@ impl<'a> Importer<'a> {
                         .unwrap_or("png")
                         .to_lowercase(),
                     scale: f.get("scale").and_then(Value::as_f64).unwrap_or(1.),
-                    suffix: f.get("name").and_then(Value::as_str).unwrap_or_default().into(),
+                    suffix: f
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .into(),
                 });
             }
         }
@@ -1824,19 +2305,32 @@ fn validate_sketch_shared_style_ids(document: &Value) -> Result<()> {
     let mut wire_ids = std::collections::BTreeSet::new();
     let mut resolved_ids = std::collections::BTreeSet::new();
     for container in ["layerStyles", "layerTextStyles"] {
-        let Some(objects) = document.get(container).and_then(|c| c.get("objects")).and_then(Value::as_array) else { continue };
+        let Some(objects) = document
+            .get(container)
+            .and_then(|c| c.get("objects"))
+            .and_then(Value::as_array)
+        else {
+            continue;
+        };
         for object in objects {
-            let Some(wire) = object.get("do_objectID").and_then(Value::as_str) else { continue };
+            let Some(wire) = object.get("do_objectID").and_then(Value::as_str) else {
+                continue;
+            };
             if !wire_ids.insert(wire) {
-                return Err(Error::MalformedJson("duplicate shared style wire ID across definitions".into()));
+                return Err(Error::MalformedJson(
+                    "duplicate shared style wire ID across definitions".into(),
+                ));
             }
             let resolved = match aliases.and_then(|ids| ids.get(wire)) {
-                Some(value) => value.as_str().filter(|id| !id.is_empty())
-                    .ok_or_else(|| Error::MalformedJson("invalid shared style original-ID mapping".into()))?,
+                Some(value) => value.as_str().filter(|id| !id.is_empty()).ok_or_else(|| {
+                    Error::MalformedJson("invalid shared style original-ID mapping".into())
+                })?,
                 None => wire,
             };
             if !resolved_ids.insert(resolved) {
-                return Err(Error::MalformedJson("duplicate resolved shared style ID across definitions".into()));
+                return Err(Error::MalformedJson(
+                    "duplicate resolved shared style ID across definitions".into(),
+                ));
             }
         }
     }
@@ -1844,8 +2338,8 @@ fn validate_sketch_shared_style_ids(document: &Value) -> Result<()> {
 }
 
 pub fn import_sketch(bytes: &[u8]) -> Result<Document> {
-    let files = crate::sketch::archive::read(bytes)
-        .map_err(|e| Error::Unsupported(e.to_string()))?;
+    let files =
+        crate::sketch::archive::read(bytes).map_err(|e| Error::Unsupported(e.to_string()))?;
     import_sketch_files(&files)
 }
 
@@ -1875,7 +2369,11 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
     };
 
     let mut importer = Importer {
-        color_space: if document.get("colorSpace").and_then(Value::as_i64) == Some(2) { ColorSpace::DisplayP3 } else { ColorSpace::Srgb },
+        color_space: if document.get("colorSpace").and_then(Value::as_i64) == Some(2) {
+            ColorSpace::DisplayP3
+        } else {
+            ColorSpace::Srgb
+        },
         files: &files,
         nodes: BTreeMap::new(),
         uuids: BTreeMap::new(),
@@ -1900,12 +2398,18 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
     let mut ordered = Vec::new();
     if let Some(refs) = document.get("pages").and_then(Value::as_array) {
         for reference in refs {
-            let reference = reference.get("_ref").and_then(Value::as_str)
+            let reference = reference
+                .get("_ref")
+                .and_then(Value::as_str)
                 .ok_or_else(|| Error::MalformedJson("page reference requires _ref".into()))?;
-            let file_id = reference.trim_start_matches("pages/").trim_end_matches(".json");
-            let page = page_index.get(file_id)
+            let file_id = reference
+                .trim_start_matches("pages/")
+                .trim_end_matches(".json");
+            let page = page_index
+                .get(file_id)
                 .ok_or_else(|| Error::MissingPart(format!("pages/{file_id}.json")))?;
-            let kernel_id = page.get("userInfo")
+            let kernel_id = page
+                .get("userInfo")
                 .and_then(|u| u.get("com.futureox.design-kernel"))
                 .and_then(|u| u.get("originalId"))
                 .and_then(Value::as_str)
@@ -1935,6 +2439,7 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
             .collect();
     }
 
+    let mut ruler_pages: BTreeMap<String, Map<String, Value>> = BTreeMap::new();
     for (file_id, kernel_id, page_name) in ordered {
         let page_json = page_index
             .get(&file_id)
@@ -1948,9 +2453,51 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
             }
         }
         page_node.children = children.clone();
+        // Ruler guides (03-layer-tree.md `_horizontalRulerData`): the
+        // horizontal ruler archives vertical guide lines (x positions) and
+        // the vertical ruler horizontal ones (y positions). The kernel
+        // models {id, axis, position}; guide colors and other ruler payload
+        // survive in the raw rulerData container keyed by page id.
+        let mut guides = Vec::new();
+        let mut ruler_raw = Map::new();
+        for (data_key, axis) in [("horizontalRulerData", "x"), ("verticalRulerData", "y")] {
+            let Some(data) = page_json.get(data_key) else {
+                continue;
+            };
+            ruler_raw.insert(data_key.to_string(), data.clone());
+            let Some(list) = data.get("guides").and_then(Value::as_array) else {
+                continue;
+            };
+            for (i, guide) in list.iter().enumerate() {
+                if let Some(position) = guide
+                    .get("pos")
+                    .and_then(Value::as_f64)
+                    .filter(|p| p.is_finite() && p.abs() <= 1e7)
+                {
+                    guides.push(crate::scene::RulerGuide {
+                        id: format!("sketch-guide-{file_id}-{axis}-{i}"),
+                        axis: axis.into(),
+                        position,
+                    });
+                }
+            }
+        }
+        if guides.len() > 1000 {
+            page_node.bindings.insert(
+                "sketchGuidesTruncated".into(),
+                (guides.len() - 1000).to_string(),
+            );
+            guides.truncate(1000);
+        }
+        if !ruler_raw.is_empty() {
+            ruler_pages
+                .entry(kernel_id.clone())
+                .or_default()
+                .extend(ruler_raw);
+        }
         importer.nodes.insert(kernel_id.clone(), page_node);
         doc.pages.push(Page {
-            guides: vec![],
+            guides,
             id: kernel_id,
             name: page_name,
             children,
@@ -1990,15 +2537,23 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string();
-            let style_id = document.pointer("/userInfo/com.futureox.design-kernel/sharedStyleIds")
-                .and_then(|ids| ids.get(style_id)).and_then(Value::as_str).unwrap_or(style_id);
-            let style_object = object.get("value").or_else(|| object.get("style")).cloned().unwrap_or(Value::Null);
+            let style_id = document
+                .pointer("/userInfo/com.futureox.design-kernel/sharedStyleIds")
+                .and_then(|ids| ids.get(style_id))
+                .and_then(Value::as_str)
+                .unwrap_or(style_id);
+            let style_object = object
+                .get("value")
+                .or_else(|| object.get("style"))
+                .cloned()
+                .unwrap_or(Value::Null);
             // Full Sketch layer styles carry borders/shadows next to their
             // fills (22 号字典 §6); they survive as paint-style parts.
             let mut strokes = Vec::new();
             let mut effects = Vec::new();
+            let mut style_lossy: Vec<String> = Vec::new();
             if kind == "paint" && !style_object.is_null() {
-                strokes = importer.strokes(&style_object, [1., 1.]);
+                strokes = importer.strokes(&style_object, [1., 1.], &mut style_lossy);
                 effects = importer.effects(&style_object);
             }
             let value = match kind {
@@ -2058,12 +2613,17 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
                     serde_json::to_string(updatable).unwrap_or_default(),
                 ));
             }
+            if !style_lossy.is_empty() {
+                // Shared styles have no node bindings; marker degradations
+                // ride the fidelity map so export round-trips stay honest.
+                fidelity.push(("importLossy".into(), serde_json::to_string(&style_lossy).unwrap_or_default()));
+            }
             if !fidelity.is_empty() {
                 let mut colors = Map::new();
                 let mut swatches = Map::new();
                 let mut entry = Map::new();
                 for (key, raw) in fidelity {
-                    if key == "updatableColors" {
+                    if key == "updatableColors" || key == "importLossy" {
                         entry.insert(key, serde_json::from_str(&raw).unwrap_or(Value::Null));
                     } else if let Some(slot) = key.strip_prefix("sketchAdaptableColor.") {
                         colors.insert(
@@ -2102,6 +2662,7 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
         sketch_containers.insert("sharedStyleIds".into(), ids.clone());
     }
     for key in [
+        "assets",
         "sharedSwatches",
         "foreignLayerStyles",
         "foreignTextStyles",
@@ -2110,8 +2671,33 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
         "libraries",
     ] {
         if let Some(value) = document.get(key).filter(|v| !v.is_null()) {
-            sketch_containers.insert(key.to_string(), value.clone());
+            // Every document.json carries a default (empty) assets
+            // collection; keep it only when it actually holds content so
+            // ordinary round-trips do not grow a redundant container.
+            let meaningful = key != "assets"
+                || value
+                    .as_object()
+                    .is_some_and(|map| {
+                        map.values().any(|v| {
+                            v.as_array().is_some_and(|a| !a.is_empty())
+                                || v.as_object().is_some_and(|o| !o.is_empty())
+                        })
+                    });
+            if meaningful {
+                sketch_containers.insert(key.to_string(), value.clone());
+            }
         }
+    }
+    if !ruler_pages.is_empty() {
+        sketch_containers.insert(
+            "rulerData".into(),
+            Value::Object(
+                ruler_pages
+                    .into_iter()
+                    .map(|(page, raw)| (page, Value::Object(raw)))
+                    .collect(),
+            ),
+        );
     }
     if !style_fidelity.is_empty() {
         sketch_containers.insert(
@@ -2145,7 +2731,9 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
         }
     }
     if !text_layouts.is_empty() {
-        doc.design_system.get_or_insert_with(Default::default).sketch_containers
+        doc.design_system
+            .get_or_insert_with(Default::default)
+            .sketch_containers
             .insert("textSourceLayouts".into(), Value::Object(text_layouts));
     }
     let mut interactions: BTreeMap<String, Vec<crate::prototype::Interaction>> = BTreeMap::new();
@@ -2256,7 +2844,9 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
     // newly imported constraints/layouts/components/text styles need 4+,
     // stroke markers 8, slices 10
     let mut version = doc.schema_version.max(1);
-    if doc.color_management.is_some() { version = version.max(3); }
+    if doc.color_management.is_some() {
+        version = version.max(3);
+    }
     if doc.design_system.is_some() {
         // design systems (shared styles, swatch/foreign containers) need 4+
         version = version.max(4);
@@ -2274,16 +2864,23 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
     if doc.prototype.is_some() {
         version = version.max(4);
     }
-    if crate::stroke::has_markers(&doc)
-        || doc.nodes.values().any(|n| !n.export_settings.is_empty())
+    if crate::stroke::has_markers(&doc) || doc.nodes.values().any(|n| !n.export_settings.is_empty())
     {
         version = version.max(8);
     }
-    if doc.nodes.values().any(|n| n.arc.is_some() || n.corner_radius != 0. || n.constrain_proportions) {
+    if doc
+        .nodes
+        .values()
+        .any(|n| n.arc.is_some() || n.corner_radius != 0. || n.constrain_proportions)
+    {
         version = version.max(7);
     }
-    if doc.nodes.values().any(|n| n.kind == "slice"
-        || n.export_settings.iter().any(|s| !matches!(s.format.as_str(), "png" | "svg"))) {
+    if doc.nodes.values().any(|n| {
+        n.kind == "slice"
+            || n.export_settings
+                .iter()
+                .any(|s| !matches!(s.format.as_str(), "png" | "svg"))
+    }) {
         version = version.max(10);
     }
     // layout grids and shared-style strokes/effects are schema-12 facets
@@ -2295,6 +2892,17 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
         })
     {
         version = version.max(12);
+    }
+    // ruler guides (scene.rs validate_guides) and pattern tiling
+    // (Paint.tile) gate on schema 11 / 14 respectively
+    if doc.pages.iter().any(|p| !p.guides.is_empty()) {
+        version = version.max(11);
+    }
+    if doc.nodes.values().any(|n| {
+        n.fills.iter().any(|p| p.tile.is_some())
+            || n.strokes.iter().any(|s| s.paint.tile.is_some())
+    }) {
+        version = version.max(14);
     }
     doc.schema_version = version;
     Ok(doc)
@@ -2317,8 +2925,13 @@ fn admit_sketch_symbols(document: &mut Document) -> Result<()> {
     let mut symbols = BTreeMap::<String, String>::new();
     for node in document.nodes.values_mut() {
         if let Some(symbol) = node.bindings.get("symbolID") {
-            if symbols.insert(symbol.to_ascii_uppercase(), node.id.clone()).is_some() {
-                return Err(Error::Unsupported("ambiguous duplicate Sketch symbolID".into()));
+            if symbols
+                .insert(symbol.to_ascii_uppercase(), node.id.clone())
+                .is_some()
+            {
+                return Err(Error::Unsupported(
+                    "ambiguous duplicate Sketch symbolID".into(),
+                ));
             }
             node.component.get_or_insert_with(Default::default);
         }
@@ -2327,19 +2940,29 @@ fn admit_sketch_symbols(document: &mut Document) -> Result<()> {
     for node in document.nodes.values().filter(|n| n.component.is_some()) {
         let key = node.id.to_ascii_uppercase();
         if symbols.get(&key).is_some_and(|id| id != &node.id) {
-            return Err(Error::Unsupported("ambiguous Sketch symbol/node identity".into()));
+            return Err(Error::Unsupported(
+                "ambiguous Sketch symbol/node identity".into(),
+            ));
         }
         symbols.insert(key, node.id.clone());
     }
     for node in document.nodes.values_mut() {
         if let Some(instance) = &mut node.instance {
-            instance.component_id = symbols.get(&instance.component_id.to_ascii_uppercase()).cloned()
-                .ok_or_else(|| Error::Unsupported("Sketch instance requires an embedded symbol master".into()))?;
+            instance.component_id = symbols
+                .get(&instance.component_id.to_ascii_uppercase())
+                .cloned()
+                .ok_or_else(|| {
+                    Error::Unsupported("Sketch instance requires an embedded symbol master".into())
+                })?;
         }
         // Stable keys must survive the host's fresh node-ID assignment.
-        if !symbols.is_empty() { node.component_key.get_or_insert_with(|| node.id.clone()); }
+        if !symbols.is_empty() {
+            node.component_key.get_or_insert_with(|| node.id.clone());
+        }
     }
-    if !symbols.is_empty() { document.schema_version = document.schema_version.max(4); }
+    if !symbols.is_empty() {
+        document.schema_version = document.schema_version.max(4);
+    }
     fn native_path(document: &Document, root: &str, path: &str) -> Option<String> {
         let mut scope = root.to_owned();
         let mut keys = Vec::new();
@@ -2349,59 +2972,108 @@ fn admit_sketch_symbols(document: &mut Document) -> Result<()> {
             let mut found = None;
             let mut visited = std::collections::BTreeSet::new();
             while let Some(id) = pending.pop() {
-                if !visited.insert(id.clone()) || visited.len() > 20000 { return None }
+                if !visited.insert(id.clone()) || visited.len() > 20000 {
+                    return None;
+                }
                 let node = document.nodes.get(&id)?;
-                if id.eq_ignore_ascii_case(part) { found = Some(node); break }
-                if id == scope || node.instance.is_none() { pending.extend(node.children.iter().cloned()); }
+                if id.eq_ignore_ascii_case(part) {
+                    found = Some(node);
+                    break;
+                }
+                if id == scope || node.instance.is_none() {
+                    pending.extend(node.children.iter().cloned());
+                }
             }
             let node = found?;
             if index + 1 == parts.len() {
-                keys.push(if node.id == root { "$root".to_owned() }
-                    else { node.component_key.as_ref().unwrap_or(&node.id).clone() });
+                keys.push(if node.id == root {
+                    "$root".to_owned()
+                } else {
+                    node.component_key.as_ref().unwrap_or(&node.id).clone()
+                });
             } else if let Some(instance) = &node.instance {
                 keys.push(node.component_key.as_ref().unwrap_or(&node.id).clone());
                 scope = instance.component_id.clone();
-            } else { scope = node.id.clone(); }
+            } else {
+                scope = node.id.clone();
+            }
         }
         Some(keys.join("/"))
     }
     let mut replacements = Vec::new();
     for node in document.nodes.values() {
-        let Some(instance) = &node.instance else { continue };
+        let Some(instance) = &node.instance else {
+            continue;
+        };
         let mut overrides = crate::components::Overrides::new();
         for (path, fields) in &instance.overrides {
             for (field, value) in fields {
                 let (key, field, mut value) = if crate::components::FIELDS.contains(&field.as_str())
-                    || matches!(field.as_str(), "swapComponent" | "propertyValues") {
+                    || matches!(field.as_str(), "swapComponent" | "propertyValues")
+                {
                     (path.clone(), field.clone(), value.clone())
                 } else {
-                    let (layer, native_field) = field.rsplit_once('_')
-                        .ok_or_else(|| Error::Unsupported(format!("Sketch override `{field}` has no editable mapping")))?;
-                    let full_path = if path == "self" { layer.to_owned() } else { format!("{path}/{layer}") };
+                    let (layer, native_field) = field.rsplit_once('_').ok_or_else(|| {
+                        Error::Unsupported(format!(
+                            "Sketch override `{field}` has no editable mapping"
+                        ))
+                    })?;
+                    let full_path = if path == "self" {
+                        layer.to_owned()
+                    } else {
+                        format!("{path}/{layer}")
+                    };
                     let key = native_path(document, &instance.component_id, &full_path)
-                        .ok_or_else(|| Error::Unsupported(format!("Sketch override target `{full_path}` could not be resolved")))?;
+                        .ok_or_else(|| {
+                            Error::Unsupported(format!(
+                                "Sketch override target `{full_path}` could not be resolved"
+                            ))
+                        })?;
                     let field = match native_field {
                         "stringValue" if value.is_string() => "text",
                         "symbolID" if value.is_string() => "swapComponent",
                         "isVisible" if value.is_boolean() => "visible",
-                        _ => return Err(Error::Unsupported(format!("Sketch override `{native_field}` has no supported editable mapping; keep the original .sketch file"))),
+                        _ => {
+                            return Err(Error::Unsupported(format!(
+                                "Sketch override `{native_field}` has no supported editable mapping; keep the original .sketch file"
+                            )));
+                        }
                     };
                     (key, field.to_owned(), value.clone())
                 };
                 if field == "swapComponent" {
-                    let symbol = value.as_str().ok_or_else(|| Error::Unsupported("invalid Sketch symbol override".into()))?;
-                    value = json!(symbols.get(&symbol.to_ascii_uppercase())
-                        .ok_or_else(|| Error::Unsupported("Sketch symbol override requires an embedded master".into()))?);
+                    let symbol = value.as_str().ok_or_else(|| {
+                        Error::Unsupported("invalid Sketch symbol override".into())
+                    })?;
+                    value = json!(symbols.get(&symbol.to_ascii_uppercase()).ok_or_else(|| {
+                        Error::Unsupported(
+                            "Sketch symbol override requires an embedded master".into(),
+                        )
+                    })?);
                 }
-                if overrides.entry(key).or_default().insert(field, value).is_some() {
-                    return Err(Error::Unsupported("ambiguous Sketch overrides map to the same property".into()));
+                if overrides
+                    .entry(key)
+                    .or_default()
+                    .insert(field, value)
+                    .is_some()
+                {
+                    return Err(Error::Unsupported(
+                        "ambiguous Sketch overrides map to the same property".into(),
+                    ));
                 }
             }
         }
         replacements.push((node.id.clone(), overrides));
     }
     for (id, overrides) in replacements {
-        document.nodes.get_mut(&id).unwrap().instance.as_mut().unwrap().overrides = overrides;
+        document
+            .nodes
+            .get_mut(&id)
+            .unwrap()
+            .instance
+            .as_mut()
+            .unwrap()
+            .overrides = overrides;
     }
     Ok(())
 }
@@ -2415,13 +3087,21 @@ pub fn import_sketch_report(bytes: &[u8]) -> Result<SketchImportReport> {
 /// that subtree or applying the ordinary whole-archive expansion policy to it.
 /// This does not admit a larger live document or alter GPU resource policy.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn import_sketch_source_window(files: &BTreeMap<String, Vec<u8>>) -> Result<SketchImportReport> {
+pub fn import_sketch_source_window(
+    files: &BTreeMap<String, Vec<u8>>,
+) -> Result<SketchImportReport> {
     const ENTRY: usize = 64 * 1024 * 1024;
     const TOTAL: usize = 96 * 1024 * 1024;
-    if files.len() > 4096 || files.values().any(|v| v.len() > ENTRY)
-        || files.values().try_fold(0usize, |n, v| n.checked_add(v.len())).is_none_or(|n| n > TOTAL)
+    if files.len() > 4096
+        || files.values().any(|v| v.len() > ENTRY)
+        || files
+            .values()
+            .try_fold(0usize, |n, v| n.checked_add(v.len()))
+            .is_none_or(|n| n > TOTAL)
     {
-        return Err(Error::Unsupported("Source conversion window exceeds its memory allowance".into()));
+        return Err(Error::Unsupported(
+            "Source conversion window exceeds its memory allowance".into(),
+        ));
     }
     finish_sketch_report(import_sketch_files(files)?)
 }
@@ -2434,37 +3114,54 @@ fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
     // exposes native page wrappers for legacy inspection; they are not an
     // additional reachable canvas node in the application model.
     for page in &document.pages {
-        if document.nodes.get(&page.id).is_some_and(|node| node.kind == "page") {
+        if document
+            .nodes
+            .get(&page.id)
+            .is_some_and(|node| node.kind == "page")
+        {
             document.nodes.remove(&page.id);
         }
     }
     // Sketch archives normally name installed fonts without embedding their
     // bytes. Rendering requires portable resources; retain source identities
     // as format metadata and make the substitution visible before admission.
-    let mut large_booleans=Vec::new();
+    let mut large_booleans = Vec::new();
     for node in document.nodes.values_mut() {
-        if node.kind == "hotspot" || node.bindings.get("interopLimited")
-            .is_some_and(|value| value.starts_with("sketch-unknown-layer-class:"))
+        if node.kind == "hotspot"
+            || node
+                .bindings
+                .get("interopLimited")
+                .is_some_and(|value| value.starts_with("sketch-unknown-layer-class:"))
         {
             return Err(Error::Unsupported(format!(
                 "Sketch layer `{}` ({}) has no supported editable mapping; keep the original .sketch file",
-                node.id, node.kind)));
+                node.id, node.kind
+            )));
         }
         match node.kind.as_str() {
             "path" => node.kind = "vector".into(),
             "rect" | "image" => node.kind = "rectangle".into(),
-            "slice" | "frame" | "section" | "group" | "rectangle" | "ellipse"
-            | "polygon" | "star" | "line" | "vector" | "text" => {}
-            _ => return Err(Error::Unsupported(format!(
-                "Sketch layer `{}` kind `{}` has no supported editable mapping; keep the original .sketch file",
-                node.id, node.kind))),
+            "slice" | "frame" | "section" | "group" | "rectangle" | "ellipse" | "polygon"
+            | "star" | "line" | "vector" | "text" => {}
+            _ => {
+                return Err(Error::Unsupported(format!(
+                    "Sketch layer `{}` kind `{}` has no supported editable mapping; keep the original .sketch file",
+                    node.id, node.kind
+                )));
+            }
         }
-        if node.bindings.get("sketchOpenPath").is_some_and(|v| v == "true")
+        if node
+            .bindings
+            .get("sketchOpenPath")
+            .is_some_and(|v| v == "true")
             && let Some(network) = &mut node.network
         {
             network.edges.pop();
         }
-        if node.bindings.get("sketchNormalizedCoordinates").is_some_and(|v| v == "true")
+        if node
+            .bindings
+            .get("sketchNormalizedCoordinates")
+            .is_some_and(|v| v == "true")
             && let Some(network) = &mut node.network
         {
             for vertex in &mut network.vertices {
@@ -2481,51 +3178,101 @@ fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
             // encoding; never scale an already admitted document a second time.
             node.bindings.remove("sketchNormalizedCoordinates");
         }
-        if node.network.as_ref().is_some_and(|g| g.vertices.len()>10000) {
-            let closed=!node.bindings.get("sketchOpenPath").is_some_and(|v| v=="true");
-            node.vector_geometry=Some(crate::vector_geometry::VectorGeometry::ordered_network(node.network.as_ref().unwrap(),closed).map_err(Error::InvalidDocument)?);
-            node.network=None;
-            document.schema_version=document.schema_version.max(16);
+        if node
+            .network
+            .as_ref()
+            .is_some_and(|g| g.vertices.len() > 10000)
+        {
+            let closed = !node
+                .bindings
+                .get("sketchOpenPath")
+                .is_some_and(|v| v == "true");
+            node.vector_geometry = Some(
+                crate::vector_geometry::VectorGeometry::ordered_network(
+                    node.network.as_ref().unwrap(),
+                    closed,
+                )
+                .map_err(Error::InvalidDocument)?,
+            );
+            node.network = None;
+            document.schema_version = document.schema_version.max(16);
         }
         if let Some(group) = node.bindings.get("sketchSourceShapeGroup") {
-            let source: Value = serde_json::from_str(group).map_err(|e| Error::MalformedJson(e.to_string()))?;
+            let source: Value =
+                serde_json::from_str(group).map_err(|e| Error::MalformedJson(e.to_string()))?;
             let codes: Vec<i64> = serde_json::from_value(source["operations"].clone())
                 .map_err(|e| Error::MalformedJson(e.to_string()))?;
             if node.children.len() > 4096 || codes.len() != node.children.len() {
-                return Err(Error::Unsupported(format!("Sketch shapeGroup `{}` exceeds source conversion allowance ({} operands)", node.id,node.children.len())));
+                return Err(Error::Unsupported(format!(
+                    "Sketch shapeGroup `{}` exceeds source conversion allowance ({} operands)",
+                    node.id,
+                    node.children.len()
+                )));
             }
-            if node.children.len()>64 {large_booleans.push(node.id.clone());}
+            if node.children.len() > 64 {
+                large_booleans.push(node.id.clone());
+            }
             if node.children.is_empty() {
-                node.kind="vector".into();node.boolean_operation=None;
+                node.kind = "vector".into();
+                node.boolean_operation = None;
             } else {
-            let operations = codes.iter().skip(1).map(|code| match code {
-                -1 | 0 => Some(crate::boolean::Operation::Union),
-                value => boolean_from_code(*value),
-            }).collect::<Option<Vec<_>>>()
-                .ok_or_else(|| Error::Unsupported(format!("Sketch shapeGroup `{}` has an unknown operand operation", node.id)))?;
-            let ordinary = operations.first().copied().unwrap_or(crate::boolean::Operation::Union);
-            let compound=codes.iter().all(|code|*code == -1);
-            let operation=if compound {
-                document.schema_version=document.schema_version.max(16);
-                if source["windingRule"].as_i64()==Some(0){crate::boolean::Operation::CompoundNonzero}else{crate::boolean::Operation::CompoundEvenodd}
-            }else{ordinary};
-            if !compound && operations.iter().any(|other| *other != ordinary) {
-                return Err(Error::Unsupported(format!("Sketch shapeGroup `{}` uses mixed operand operations; keep the original .sketch file", node.id)));
-            }
-            node.kind = "vector".into();
-            node.boolean_operation = Some(operation);
-            node.bindings.insert("sketchShapeGroupMappedOperation".into(), serde_json::to_string(&operation)
-                .map_err(|e| Error::MalformedJson(e.to_string()))?);
+                let operations = codes
+                    .iter()
+                    .skip(1)
+                    .map(|code| match code {
+                        -1 | 0 => Some(crate::boolean::Operation::Union),
+                        value => boolean_from_code(*value),
+                    })
+                    .collect::<Option<Vec<_>>>()
+                    .ok_or_else(|| {
+                        Error::Unsupported(format!(
+                            "Sketch shapeGroup `{}` has an unknown operand operation",
+                            node.id
+                        ))
+                    })?;
+                let ordinary = operations
+                    .first()
+                    .copied()
+                    .unwrap_or(crate::boolean::Operation::Union);
+                let compound = codes.iter().all(|code| *code == -1);
+                let operation = if compound {
+                    document.schema_version = document.schema_version.max(16);
+                    if source["windingRule"].as_i64() == Some(0) {
+                        crate::boolean::Operation::CompoundNonzero
+                    } else {
+                        crate::boolean::Operation::CompoundEvenodd
+                    }
+                } else {
+                    ordinary
+                };
+                if !compound && operations.iter().any(|other| *other != ordinary) {
+                    return Err(Error::Unsupported(format!(
+                        "Sketch shapeGroup `{}` uses mixed operand operations; keep the original .sketch file",
+                        node.id
+                    )));
+                }
+                node.kind = "vector".into();
+                node.boolean_operation = Some(operation);
+                node.bindings.insert(
+                    "sketchShapeGroupMappedOperation".into(),
+                    serde_json::to_string(&operation)
+                        .map_err(|e| Error::MalformedJson(e.to_string()))?,
+                );
             }
         } else if let Some(operation) = node.boolean_operation {
-            node.bindings.insert("sketchOperandBooleanOperation".into(),
-                serde_json::to_string(&operation).map_err(|e| Error::MalformedJson(e.to_string()))?);
+            node.bindings.insert(
+                "sketchOperandBooleanOperation".into(),
+                serde_json::to_string(&operation)
+                    .map_err(|e| Error::MalformedJson(e.to_string()))?,
+            );
             node.boolean_operation = None;
             warnings.insert("Sketch: operand boolean flags remain source metadata; executable boolean groups use the shared vector model.".into());
         }
         if node.width == 0. || node.height == 0. {
-            node.bindings.insert("sketchSourceZeroExtent".into(),
-                json!({"width":node.width,"height":node.height}).to_string());
+            node.bindings.insert(
+                "sketchSourceZeroExtent".into(),
+                json!({"width":node.width,"height":node.height}).to_string(),
+            );
             // Degenerate native paths retain their existing absolute network
             // coordinates. Only the editable selection box gains an extent.
             node.width = node.width.max(1e-6);
@@ -2538,18 +3285,24 @@ fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
                 source_fonts.insert("style".into(), Value::String(style.font_id.clone()));
                 style.font_id = "default".into();
             }
-            let unavailable: Vec<String> = style.fallbacks.iter()
+            let unavailable: Vec<String> = style
+                .fallbacks
+                .iter()
                 .filter(|font| *font != "default" && !document.fonts.contains_key(*font))
-                .cloned().collect();
+                .cloned()
+                .collect();
             if !unavailable.is_empty() {
                 source_fonts.insert("fallbacks".into(), json!(unavailable));
-                style.fallbacks.retain(|font| font == "default" || document.fonts.contains_key(font));
+                style
+                    .fallbacks
+                    .retain(|font| font == "default" || document.fonts.contains_key(font));
             }
         }
         let mut runs = Map::new();
         for (index, run) in node.text_runs.iter_mut().enumerate() {
             if let Some(font) = run.font_id.as_mut()
-                && font != "default" && !document.fonts.contains_key(font)
+                && font != "default"
+                && !document.fonts.contains_key(font)
             {
                 runs.insert(index.to_string(), Value::String(font.clone()));
                 *font = "default".into();
@@ -2559,34 +3312,48 @@ fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
             source_fonts.insert("runs".into(), Value::Object(runs));
         }
         if !source_fonts.is_empty() {
-            node.bindings.insert("sketchSourceFonts".into(),
-                serde_json::to_string(&source_fonts).map_err(|e| Error::MalformedJson(e.to_string()))?);
+            node.bindings.insert(
+                "sketchSourceFonts".into(),
+                serde_json::to_string(&source_fonts)
+                    .map_err(|e| Error::MalformedJson(e.to_string()))?,
+            );
             warnings.insert("Sketch: fonts without embedded resources use the default font; source font names remain in metadata.".into());
         }
-        if let Some(source) = document.design_system.as_mut()
+        if let Some(source) = document
+            .design_system
+            .as_mut()
             .and_then(|system| system.sketch_containers.get_mut("textSourceLayouts"))
-            .and_then(|layouts| layouts.get_mut(&node.id)).and_then(Value::as_object_mut)
+            .and_then(|layouts| layouts.get_mut(&node.id))
+            .and_then(Value::as_object_mut)
         {
             // Admission's font fallback is derived state. Keep the raw source
             // frame while certifying against the actually editable text model.
             source.insert("signature".into(), text_layout_signature(node));
         }
     }
-    boolean_worksets::bound(&mut document,&large_booleans)?;
+    boolean_worksets::bound(&mut document, &large_booleans)?;
     let mut omitted = false;
     for node in document.nodes.values() {
-        for key in ["sketchImportLossy", "sketchExportLossy", "sketchFlowUntranslated", "interopLimited"] {
-            let Some(value) = node.bindings.get(key) else { continue };
+        for key in [
+            "sketchImportLossy",
+            "sketchExportLossy",
+            "sketchFlowUntranslated",
+            "interopLimited",
+        ] {
+            let Some(value) = node.bindings.get(key) else {
+                continue;
+            };
             // Aggregate by feature; never emit layer names, IDs or one line per
             // node. The cap also bounds unrecognized source extension strings.
-            let notes = serde_json::from_str::<Vec<String>>(value)
-                .unwrap_or_else(|_| vec![value.clone()]);
+            let notes =
+                serde_json::from_str::<Vec<String>>(value).unwrap_or_else(|_| vec![value.clone()]);
             for note in notes {
-                let note = if note.starts_with("override-") && note.ends_with("-image-ref-unresolved") {
-                    "image override reference unresolved; source value retained".into()
-                } else {
-                    note.chars().take(160).collect::<String>()
-                };
+                let note =
+                    if note.starts_with("override-") && note.ends_with("-image-ref-unresolved") {
+                        "image override reference unresolved; source value retained".into()
+                    } else {
+                        note.chars().take(160).collect::<String>()
+                    };
                 let warning = format!("Sketch: {note}");
                 if warnings.len() < MAX_IMPORT_WARNINGS - 1 || warnings.contains(&warning) {
                     warnings.insert(warning);
@@ -2597,33 +3364,59 @@ fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
         }
     }
     if document.design_system.as_ref().is_some_and(|system| {
-        system.sketch_containers.contains_key("foreignSymbolsUnresolved")
+        system
+            .sketch_containers
+            .contains_key("foreignSymbolsUnresolved")
     }) {
-        warnings.insert("Sketch: external symbols without an embedded master remain source data.".into());
+        warnings.insert(
+            "Sketch: external symbols without an embedded master remain source data.".into(),
+        );
     }
     if omitted {
-        warnings.insert("Sketch: additional compatibility notices omitted; inspect retained source fields.".into());
+        warnings.insert(
+            "Sketch: additional compatibility notices omitted; inspect retained source fields."
+                .into(),
+        );
     }
     // Turn native Sketch shared-style links into executable kernel references.
     // Keep unresolved IDs as source metadata rather than inventing definitions.
     if let Some(system) = &mut document.design_system {
-        for shared in system.styles.values_mut().filter(|style| style.kind == "text") {
-            if let Ok(mut style) = serde_json::from_value::<crate::font::TextStyle>(shared.value.clone()) {
+        for shared in system
+            .styles
+            .values_mut()
+            .filter(|style| style.kind == "text")
+        {
+            if let Ok(mut style) =
+                serde_json::from_value::<crate::font::TextStyle>(shared.value.clone())
+            {
                 if style.font_id != "default" && !document.fonts.contains_key(&style.font_id) {
                     style.font_id = "default".into();
                 }
-                shared.value = serde_json::to_value(style).map_err(|e| Error::MalformedJson(e.to_string()))?;
+                shared.value =
+                    serde_json::to_value(style).map_err(|e| Error::MalformedJson(e.to_string()))?;
             }
         }
         for node in document.nodes.values_mut() {
             if let Some(id) = node.style_refs.get("sketchSharedStyleID").cloned() {
-                let id = system.sketch_containers.get("sharedStyleIds")
-                    .and_then(|ids| ids.get(&id)).and_then(Value::as_str).unwrap_or(&id).to_owned();
+                let id = system
+                    .sketch_containers
+                    .get("sharedStyleIds")
+                    .and_then(|ids| ids.get(&id))
+                    .and_then(Value::as_str)
+                    .unwrap_or(&id)
+                    .to_owned();
                 if let Some(shared) = system.styles.get(&id) {
-                    let field = if shared.kind == "text" { "textStyle" } else { "fills" };
+                    let field = if shared.kind == "text" {
+                        "textStyle"
+                    } else {
+                        "fills"
+                    };
                     node.style_refs.insert(field.into(), id);
                 } else {
-                    warnings.insert("Sketch: unresolved shared style reference retained as source metadata.".into());
+                    warnings.insert(
+                        "Sketch: unresolved shared style reference retained as source metadata."
+                            .into(),
+                    );
                 }
             }
         }
@@ -2634,25 +3427,37 @@ fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
     for node in document.nodes.values_mut() {
         let mut bindings = BTreeMap::new();
         node.bindings.retain(|key, value| {
-            if key.starts_with("sketch") || matches!(key.as_str(), "symbolID" | "instanceOf" | "interopLimited") {
+            if key.starts_with("sketch")
+                || matches!(key.as_str(), "symbolID" | "instanceOf" | "interopLimited")
+            {
                 bindings.insert(key.clone(), value.clone());
                 false
-            } else { true }
+            } else {
+                true
+            }
         });
         let mut style_refs = BTreeMap::new();
         node.style_refs.retain(|key, value| {
             if key.starts_with("sketch") {
                 style_refs.insert(key.clone(), value.clone());
                 false
-            } else { true }
+            } else {
+                true
+            }
         });
         if !bindings.is_empty() || !style_refs.is_empty() {
-            metadata.insert(node.id.clone(), json!({"bindings":bindings,"styleRefs":style_refs}));
+            metadata.insert(
+                node.id.clone(),
+                json!({"bindings":bindings,"styleRefs":style_refs}),
+            );
         }
     }
     if !metadata.is_empty() {
-        document.design_system.get_or_insert_with(Default::default)
-            .sketch_containers.insert("nodeMetadata".into(), Value::Object(metadata));
+        document
+            .design_system
+            .get_or_insert_with(Default::default)
+            .sketch_containers
+            .insert("nodeMetadata".into(), Value::Object(metadata));
         document.schema_version = document.schema_version.max(4);
     }
     document.validate().map_err(Error::InvalidDocument)?;
@@ -2677,29 +3482,47 @@ fn hex_to_rgba(value: &str, alpha: f64, settings: ColorSettings) -> Result<Value
         // Keep the existing exact byte/255 path; color::parse uses f32 Pixel
         // for Hex and would perturb already-correct archived SDR coordinates.
         if value.len() != 7 || !value.is_ascii() {
-            return Err(Error::Unsupported(format!("Invalid Sketch color `{value}`")));
+            return Err(Error::Unsupported(format!(
+                "Invalid Sketch color `{value}`"
+            )));
         }
-        let channel = |start| u8::from_str_radix(&value[start..start + 2], 16)
-            .map(|v| f64::from(v) / 255.)
-            .map_err(|_| Error::Unsupported(format!("Invalid Sketch color `{value}`")));
-        return Ok(json!({"_class":"color", "red":channel(1)?, "green":channel(3)?,
-            "blue":channel(5)?, "alpha":alpha.clamp(0., 1.)}));
+        let channel = |start| {
+            u8::from_str_radix(&value[start..start + 2], 16)
+                .map(|v| f64::from(v) / 255.)
+                .map_err(|_| Error::Unsupported(format!("Invalid Sketch color `{value}`")))
+        };
+        return Ok(
+            json!({"_class":"color", "red":channel(1)?, "green":channel(3)?,
+            "blue":channel(5)?, "alpha":alpha.clamp(0., 1.)}),
+        );
     }
     let (source, rgb, intrinsic_alpha) = crate::color::parse(value, settings.document_space)
         .map_err(|reason| Error::Unsupported(format!("Sketch color `{value}`: {reason}")))?;
     if matches!(source, ColorSpace::Pq | ColorSpace::Hlg) {
-        return Err(Error::Unsupported(format!("Sketch cannot preserve HDR color `{value}`; use the native format or explicitly tone-map an SDR copy")));
+        return Err(Error::Unsupported(format!(
+            "Sketch cannot preserve HDR color `{value}`; use the native format or explicitly tone-map an SDR copy"
+        )));
     }
-    let rgb = if source == settings.document_space { rgb } else {
+    let rgb = if source == settings.document_space {
+        rgb
+    } else {
         settings.from_working(settings.to_working(rgb, source), settings.document_space)
     };
     const ROUND_OFF: f64 = 1e-10;
-    if rgb.iter().any(|v| !v.is_finite() || *v < -ROUND_OFF || *v > 1. + ROUND_OFF) {
-        return Err(Error::Unsupported(format!("Sketch color `{value}` is outside the target {:?} gamut; no implicit clipping or tone mapping is applied", settings.document_space)));
+    if rgb
+        .iter()
+        .any(|v| !v.is_finite() || *v < -ROUND_OFF || *v > 1. + ROUND_OFF)
+    {
+        return Err(Error::Unsupported(format!(
+            "Sketch color `{value}` is outside the target {:?} gamut; no implicit clipping or tone mapping is applied",
+            settings.document_space
+        )));
     }
     let [red, green, blue] = rgb.map(|v| v.clamp(0., 1.));
-    Ok(json!({"_class":"color", "red":red, "green":green, "blue":blue,
-        "alpha":(intrinsic_alpha * alpha).clamp(0., 1.)}))
+    Ok(
+        json!({"_class":"color", "red":red, "green":green, "blue":blue,
+        "alpha":(intrinsic_alpha * alpha).clamp(0., 1.)}),
+    )
 }
 
 fn data_uri_bytes(uri: &str) -> Option<(String, Vec<u8>)> {
@@ -2728,9 +3551,19 @@ fn hex(bytes: &[u8]) -> String {
 /// from our node id so re-exports stay stable, and stash the original id in
 /// userInfo for loss-free round-trips.
 fn sketch_shared_style_id(id: &str) -> String {
-    if id.len() == 36 && id.bytes().enumerate().all(|(i, b)| {
-        if matches!(i, 8 | 13 | 18 | 23) { b == b'-' } else { b.is_ascii_hexdigit() }
-    }) { id.to_owned() } else { sketch_id(id) }
+    if id.len() == 36
+        && id.bytes().enumerate().all(|(i, b)| {
+            if matches!(i, 8 | 13 | 18 | 23) {
+                b == b'-'
+            } else {
+                b.is_ascii_hexdigit()
+            }
+        })
+    {
+        id.to_owned()
+    } else {
+        sketch_id(id)
+    }
 }
 
 fn sketch_id(id: &str) -> String {
@@ -2748,7 +3581,11 @@ fn sketch_id(id: &str) -> String {
     .to_uppercase()
 }
 
-fn export_paint(paint: &Paint, images: &mut ExportedImages, size: [f64; 2]) -> Result<Option<Value>> {
+fn export_paint(
+    paint: &Paint,
+    images: &mut ExportedImages,
+    size: [f64; 2],
+) -> Result<Option<Value>> {
     if !paint.visible {
         return Ok(None);
     }
@@ -2771,7 +3608,9 @@ fn export_paint(paint: &Paint, images: &mut ExportedImages, size: [f64; 2]) -> R
                 ([center.x, center.y], [edge.x, edge.y])
             } else if let Some(matrix) = paint.transform {
                 if paint.kind == "linear" {
-                    let inverse = matrix.inverse().map_err(|e| Error::Unsupported(e.to_string()))?;
+                    let inverse = matrix
+                        .inverse()
+                        .map_err(|e| Error::Unsupported(e.to_string()))?;
                     let (a, b, c) = (inverse.0[0], inverse.0[2], inverse.0[4]);
                     let norm = a * a + b * b;
                     let d = [a / norm, b / norm];
@@ -2794,10 +3633,22 @@ fn export_paint(paint: &Paint, images: &mut ExportedImages, size: [f64; 2]) -> R
             let from = format!("{{{}, {}}}", from[0], from[1]);
             let to = format!("{{{}, {}}}", to[0], to[1]);
             let ellipse_length = if paint.kind == "radial" {
-                let primary = crate::math::Point::new(radial_matrix.0[0] * size[0], radial_matrix.0[1] * size[1]);
-                let perpendicular = crate::math::Point::new(radial_matrix.0[2] * size[0], radial_matrix.0[3] * size[1]);
-                if primary.length() > 0. { perpendicular.length() / primary.length() } else { 1. }
-            } else { 0. };
+                let primary = crate::math::Point::new(
+                    radial_matrix.0[0] * size[0],
+                    radial_matrix.0[1] * size[1],
+                );
+                let perpendicular = crate::math::Point::new(
+                    radial_matrix.0[2] * size[0],
+                    radial_matrix.0[3] * size[1],
+                );
+                if primary.length() > 0. {
+                    perpendicular.length() / primary.length()
+                } else {
+                    1.
+                }
+            } else {
+                0.
+            };
             let stops: Vec<Value> = paint
                 .stops
                 .iter()
@@ -2824,20 +3675,37 @@ fn export_paint(paint: &Paint, images: &mut ExportedImages, size: [f64; 2]) -> R
             }))
         }
         "image" => {
-            let Some(uri) = paint.image.as_deref() else { return Ok(None) };
-            let Some((mime, bytes)) = data_uri_bytes(uri) else { return Ok(None) };
+            let Some(uri) = paint.image.as_deref() else {
+                return Ok(None);
+            };
+            let Some((mime, bytes)) = data_uri_bytes(uri) else {
+                return Ok(None);
+            };
             let name = sha1_hex(&bytes);
             if images.seen.insert(name.clone()) {
                 images.entries.push((format!("images/{name}"), bytes));
             }
             let ext = mime.rsplit('/').next().unwrap_or("png");
             let _ = ext;
+            // Inverse of the import mapping: tiling (Paint.tile) archives as
+            // Tile(0) at the native cell period; otherwise the kernel fit
+            // picks Fill(1)/Stretch(2)/Fit(3). A non-unit patternTileScale is
+            // spliced back by the layer exporter from sketchSourcePatternScale.
+            let pattern_fill_type = if paint.tile.is_some() {
+                0
+            } else {
+                match paint.fit.as_str() {
+                    "stretch" => 2,
+                    "contain" => 3,
+                    _ => 1,
+                }
+            };
             Some(json!({
                 "_class": "fill", "isEnabled": true, "fillType": 4,
                 "color": hex_to_rgba("#000000", 1., images.color_settings)?,
                 "image": {"_class": "MSJSONFileReference", "_ref_class": "MSImageData", "_ref": name},
                 "noiseIndex": 0, "noiseIntensity": 0., "noiseFillType": 0,
-                "patternFillType": 1, "patternTileScale": 1.,
+                "patternFillType": pattern_fill_type, "patternTileScale": 1.,
                 "contextSettings": {"_class": "graphicsContextSettings", "blendMode": blend_code(&paint.blend), "opacity": paint.opacity.clamp(0., 1.), "isProgressive": false}
             }))
         }
@@ -2860,13 +3728,18 @@ fn export_style_parts(
     effects: &[Effect],
     lossy: &mut Vec<String>,
     images: &mut ExportedImages,
-    size: [f64;2],
+    size: [f64; 2],
 ) -> Result<(Vec<Value>, Vec<Value>, Vec<Value>, Value, Value)> {
     let settings = images.color_settings;
     // Native gradients share the fill encoding, including strict HDR/gamut
     // admission. Unsupported border carriers still reject instead of falling
     // back to an unrelated solid color, including when the stroke is hidden.
-    if let Some(stroke) = strokes.iter().find(|stroke| !matches!(stroke.paint.kind.as_str(), "solid"|"linear"|"radial"|"angular")) {
+    if let Some(stroke) = strokes.iter().find(|stroke| {
+        !matches!(
+            stroke.paint.kind.as_str(),
+            "solid" | "linear" | "radial" | "angular"
+        )
+    }) {
         return Err(Error::Unsupported(format!(
             "Sketch export cannot preserve {} stroke paints; use the native format instead",
             stroke.paint.kind
@@ -2923,12 +3796,19 @@ fn export_style_parts(
             {
                 note_lossy(lossy, "border-options-mixed-per-stroke");
             }
+            if strokes.iter().any(|s| {
+                s.start_marker != first.start_marker || s.end_marker != first.end_marker
+            }) {
+                note_lossy(lossy, "border-markers-mixed-per-stroke");
+            }
             if strokes.iter().any(|s| s.dash_offset != 0.) {
                 note_lossy(lossy, "border-dash-offset-omitted");
             }
             json!({"_class": "borderOptions",
                    "lineCapStyle": cap_code(&first.cap), "lineJoinStyle": join_code(&first.join),
-                   "dashPattern": dash_pattern(&first.dash), "startMarkerType": 0, "endMarkerType": 0,
+                   "dashPattern": dash_pattern(&first.dash),
+                   "startMarkerType": marker_code(first.start_marker, lossy),
+                   "endMarkerType": marker_code(first.end_marker, lossy),
                    "miterLimit": 10, "windingRule": 0})
         }
         None => json!({"_class": "borderOptions", "lineCapStyle": 0, "lineJoinStyle": 0,
@@ -2938,10 +3818,12 @@ fn export_style_parts(
     // Shadow alpha lives in the color payload; kernel keeps it separately
     // in Effect.opacity, so export multiplies it back into the color.
     let shadow_json = |e: &Effect| -> Result<Value> {
-        Ok(json!({"_class": "shadow", "isEnabled": e.visible, "blurRadius": e.radius,
+        Ok(
+            json!({"_class": "shadow", "isEnabled": e.visible, "blurRadius": e.radius,
                 "offsetX": e.x, "offsetY": e.y, "spread": e.spread,
                 "color": hex_to_rgba(&e.color, e.opacity.clamp(0., 1.), settings)?,
-                "contextSettings": {"_class": "graphicsContextSettings", "blendMode": 0, "opacity": 1., "isProgressive": false}}))
+                "contextSettings": {"_class": "graphicsContextSettings", "blendMode": 0, "opacity": 1., "isProgressive": false}}),
+        )
     };
     let shadows: Vec<Value> = effects
         .iter()
@@ -3056,7 +3938,9 @@ fn boolean_code(op: crate::boolean::Operation) -> i64 {
         crate::boolean::Operation::Subtract => 1,
         crate::boolean::Operation::Exclude => 2,
         crate::boolean::Operation::Intersect => 3,
-        crate::boolean::Operation::CompoundNonzero | crate::boolean::Operation::CompoundEvenodd => -1,
+        crate::boolean::Operation::CompoundNonzero | crate::boolean::Operation::CompoundEvenodd => {
+            -1
+        }
     }
 }
 
@@ -3075,7 +3959,11 @@ fn boolean_from_code(code: i64) -> Option<crate::boolean::Operation> {
 /// (curveTo). No handles → 1 (Straight); two handles collinear with the
 /// vertex → 2 (Mirrored) when equally long, 4 (Asymmetric) otherwise; a
 /// single handle or non-collinear pair → 3 (Disconnected).
-fn curve_mode_of(v: &crate::scene::Vertex, c1: Option<crate::math::Point>, c2: Option<crate::math::Point>) -> i64 {
+fn curve_mode_of(
+    v: &crate::scene::Vertex,
+    c1: Option<crate::math::Point>,
+    c2: Option<crate::math::Point>,
+) -> i64 {
     let (Some(a), Some(b)) = (c1, c2) else {
         return if c1.is_some() || c2.is_some() { 3 } else { 1 };
     };
@@ -3138,7 +4026,10 @@ fn sketch_override_value_from_native(
 /// verbatim; kernel paint objects convert — solid fills through
 /// [`override_object_to_sketch`], image fills archive their blob and
 /// reference it. Anything else returns `None` and is reported by the caller.
-fn sketch_override_value_to_native(value: &Value, images: &mut ExportedImages) -> Result<Option<Value>> {
+fn sketch_override_value_to_native(
+    value: &Value,
+    images: &mut ExportedImages,
+) -> Result<Option<Value>> {
     if value.get("_class").is_some() {
         return Ok(Some(value.clone()));
     }
@@ -3209,8 +4100,11 @@ fn sketch_text_behaviour(node: &Node) -> i64 {
     match node.sizing.as_ref() {
         Some(s) if s.width == SizeMode::Hug && s.height == SizeMode::Hug => 0,
         Some(s) if s.height == SizeMode::Hug => 1,
-        None => node.bindings.get("sketchTextBehaviour")
-            .and_then(|value| value.parse::<i64>().ok()).unwrap_or(2),
+        None => node
+            .bindings
+            .get("sketchTextBehaviour")
+            .and_then(|value| value.parse::<i64>().ok())
+            .unwrap_or(2),
         _ => 2,
     }
 }
@@ -3234,20 +4128,37 @@ fn restore_unedited_text_frame(node: &mut Node, source: Option<&Value>) -> bool 
     let Some(source) = source else { return false };
     // JS/IndexedDB/FD producers serialize integral doubles as integers. Compare
     // canonical typed fields rather than serde_json::Number's storage variant.
-    let Some(signature) = source.get("signature")
-        .and_then(|value| serde_json::from_value::<TextLayoutSignature>(value.clone()).ok()) else { return false };
-    let current = TextLayoutSignature {
-        text:node.text.clone(), font_size:node.font_size, text_style:node.text_style.clone(),
-        text_runs:node.text_runs.clone(), sizing:node.sizing.clone(),
+    let Some(signature) = source
+        .get("signature")
+        .and_then(|value| serde_json::from_value::<TextLayoutSignature>(value.clone()).ok())
+    else {
+        return false;
     };
-    if signature != current { return false }
+    let current = TextLayoutSignature {
+        text: node.text.clone(),
+        font_size: node.font_size,
+        text_style: node.text_style.clone(),
+        text_runs: node.text_runs.clone(),
+        sizing: node.sizing.clone(),
+    };
+    if signature != current {
+        return false;
+    }
     let (Some(width), Some(height), Some(transform), Some(sizing)) = (
-        source.get("width").and_then(Value::as_f64), source.get("height").and_then(Value::as_f64),
-        source.get("transform").and_then(|value| serde_json::from_value::<Transform>(value.clone()).ok()),
-        node.sizing.as_ref()
-    ) else { return false };
+        source.get("width").and_then(Value::as_f64),
+        source.get("height").and_then(Value::as_f64),
+        source
+            .get("transform")
+            .and_then(|value| serde_json::from_value::<Transform>(value.clone()).ok()),
+        node.sizing.as_ref(),
+    ) else {
+        return false;
+    };
     if (sizing.width != crate::layout::SizeMode::Hug && node.width != width)
-        || (sizing.height != crate::layout::SizeMode::Hug && node.height != height) { return false }
+        || (sizing.height != crate::layout::SizeMode::Hug && node.height != height)
+    {
+        return false;
+    }
     let mut expected = transform;
     if sizing.width == crate::layout::SizeMode::Hug {
         let shift = (width - node.width) * crate::layout::text_anchor_factor(node);
@@ -3258,7 +4169,9 @@ fn restore_unedited_text_frame(node: &mut Node, source: Option<&Value>) -> bool 
     }
     // Exact equality is deliberate: moving/scaling text is an authored edit.
     // Do not discard it using a broad geometric tolerance.
-    if node.transform != expected { return false }
+    if node.transform != expected {
+        return false;
+    }
     node.width = width;
     node.height = height;
     node.transform = transform;
@@ -3285,10 +4198,18 @@ fn sketch_font_name(doc: &Document, font_id: &str) -> String {
                 .map(str::to_owned)
                 .or_else(|| {
                     use base64::Engine as _;
-                    let data = resource.data.split_once(',').map(|(_, data)| data).unwrap_or(&resource.data);
-                    let bytes = base64::engine::general_purpose::STANDARD.decode(data).ok()?;
+                    let data = resource
+                        .data
+                        .split_once(',')
+                        .map(|(_, data)| data)
+                        .unwrap_or(&resource.data);
+                    let bytes = base64::engine::general_purpose::STANDARD
+                        .decode(data)
+                        .ok()?;
                     let face = ttf_parser::Face::parse(&bytes, resource.index).ok()?;
-                    face.names().into_iter().filter(|name| name.name_id == ttf_parser::name_id::POST_SCRIPT_NAME)
+                    face.names()
+                        .into_iter()
+                        .filter(|name| name.name_id == ttf_parser::name_id::POST_SCRIPT_NAME)
                         .find_map(|name| name.to_string())
                 })
                 .unwrap_or_else(|| resource.family.clone())
@@ -3296,17 +4217,34 @@ fn sketch_font_name(doc: &Document, font_id: &str) -> String {
         .unwrap_or_else(|| font_id.to_owned())
 }
 
-fn sketch_font_descriptor(doc: &Document, axes: &mut BTreeMap<String, bool>, font_id: &str, size: f64, weight: f32) -> Value {
+fn sketch_font_descriptor(
+    doc: &Document,
+    axes: &mut BTreeMap<String, bool>,
+    font_id: &str,
+    size: f64,
+    weight: f32,
+) -> Value {
     let mut descriptor = json!({"_class":"fontDescriptor", "attributes":{
         "name":sketch_font_name(doc, font_id), "size":size}});
     let has_weight = *axes.entry(font_id.into()).or_insert_with(|| {
-        let Some(resource) = doc.fonts.get(font_id) else { return false };
+        let Some(resource) = doc.fonts.get(font_id) else {
+            return false;
+        };
         use base64::Engine as _;
-        let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(resource.data.as_bytes()) else { return false };
-        let Ok(face) = ttf_parser::Face::parse(&bytes, resource.index) else { return false };
-        face.variation_axes().into_iter().any(|axis| axis.tag == ttf_parser::Tag::from_bytes(b"wght"))
+        let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(resource.data.as_bytes())
+        else {
+            return false;
+        };
+        let Ok(face) = ttf_parser::Face::parse(&bytes, resource.index) else {
+            return false;
+        };
+        face.variation_axes()
+            .into_iter()
+            .any(|axis| axis.tag == ttf_parser::Tag::from_bytes(b"wght"))
     });
-    if has_weight { descriptor["attributes"]["variation"] = json!({"2003265652":weight}); }
+    if has_weight {
+        descriptor["attributes"]["variation"] = json!({"2003265652":weight});
+    }
     descriptor
 }
 
@@ -3315,12 +4253,20 @@ fn exported_symbol_id(doc: &Document, id: &str) -> String {
         // Legacy archive inspection keeps the native symbol reference here.
         return id.to_owned();
     };
-    master.bindings.get("symbolID").cloned().or_else(|| doc.design_system.as_ref()
-        .and_then(|system| system.sketch_containers.get("nodeMetadata"))
-        .and_then(|metadata| metadata.get(id))
-        .and_then(|metadata| metadata.get("bindings"))
-        .and_then(|bindings| bindings.get("symbolID"))
-        .and_then(Value::as_str).map(str::to_owned))
+    master
+        .bindings
+        .get("symbolID")
+        .cloned()
+        .or_else(|| {
+            doc.design_system
+                .as_ref()
+                .and_then(|system| system.sketch_containers.get("nodeMetadata"))
+                .and_then(|metadata| metadata.get(id))
+                .and_then(|metadata| metadata.get("bindings"))
+                .and_then(|bindings| bindings.get("symbolID"))
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        })
         .unwrap_or_else(|| sketch_id(id))
 }
 
@@ -3333,17 +4279,25 @@ fn exported_override_path(doc: &Document, component: &str, path: &str) -> Option
         let mut visited = std::collections::BTreeSet::new();
         let mut found = None;
         while let Some(id) = pending.pop() {
-            if !visited.insert(id.clone()) || visited.len() > 20000 { return None }
+            if !visited.insert(id.clone()) || visited.len() > 20000 {
+                return None;
+            }
             let node = doc.nodes.get(&id)?;
             if (index == 0 && *part == "$root" && id == scope)
-                || node.component_key.as_deref().unwrap_or(&node.id) == *part {
-                found = Some(node); break;
+                || node.component_key.as_deref().unwrap_or(&node.id) == *part
+            {
+                found = Some(node);
+                break;
             }
-            if id == scope || node.instance.is_none() { pending.extend(node.children.iter().cloned()); }
+            if id == scope || node.instance.is_none() {
+                pending.extend(node.children.iter().cloned());
+            }
         }
         let node = found?;
         native.push(sketch_id(&node.id));
-        if index + 1 < parts.len() { scope = node.instance.as_ref()?.component_id.clone(); }
+        if index + 1 < parts.len() {
+            scope = node.instance.as_ref()?.component_id.clone();
+        }
     }
     Some(native.join("/"))
 }
@@ -3357,57 +4311,86 @@ fn sketch_placement(node: &Node) -> Option<([f64; 4], f64, [bool; 2])> {
         || (a * a + b * b - 1.).abs() > 1e-12
         || (c * c + d * d - 1.).abs() > 1e-12
         || (a * c + b * d).abs() > 1e-12
-        || (determinant.abs() - 1.).abs() > 1e-12 { return None }
+        || (determinant.abs() - 1.).abs() > 1e-12
+    {
+        return None;
+    }
     let flip = determinant < 0.;
     let sign = if flip { -1. } else { 1. };
     let rotation = -(b * sign).atan2(a * sign).to_degrees();
-    Some(([
-        x - node.width / 2. + a * node.width / 2. + c * node.height / 2.,
-        y - node.height / 2. + b * node.width / 2. + d * node.height / 2.,
-        node.width, node.height,
-    ], rotation, [flip, false]))
+    Some((
+        [
+            x - node.width / 2. + a * node.width / 2. + c * node.height / 2.,
+            y - node.height / 2. + b * node.width / 2. + d * node.height / 2.,
+            node.width,
+            node.height,
+        ],
+        rotation,
+        [flip, false],
+    ))
 }
 
 fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Result<Value> {
     export_layer_impl(doc, id, images, true)
 }
 
-fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, descendants: bool) -> Result<Value> {
+fn export_layer_impl(
+    doc: &Document,
+    id: &str,
+    images: &mut ExportedImages,
+    descendants: bool,
+) -> Result<Value> {
     let mut source_text_frame_restored = false;
-    let restored_node = doc.nodes.get(id).map(|node| -> Result<crate::scene::Node> {
-        let mut node = node.clone();
-        if let Some(geometry)=node.vector_geometry.take() {
-            node.network=Some(geometry.network(crate::vector_geometry::MAX_COMMANDS).map_err(Error::InvalidDocument)?);
-        }
-        let metadata = doc.design_system.as_ref()
-            .and_then(|system| system.sketch_containers.get("nodeMetadata"))
-            .and_then(|metadata| metadata.get(id));
-        if let Some(metadata) = metadata {
-            if let Some(bindings) = metadata.get("bindings")
-                .and_then(|v| serde_json::from_value::<BTreeMap<String, String>>(v.clone()).ok()) {
-                node.bindings.extend(bindings);
+    let restored_node = doc
+        .nodes
+        .get(id)
+        .map(|node| -> Result<crate::scene::Node> {
+            let mut node = node.clone();
+            if let Some(geometry) = node.vector_geometry.take() {
+                node.network = Some(
+                    geometry
+                        .network(crate::vector_geometry::MAX_COMMANDS)
+                        .map_err(Error::InvalidDocument)?,
+                );
             }
-            if let Some(style_refs) = metadata.get("styleRefs")
-                .and_then(|v| serde_json::from_value::<BTreeMap<String, String>>(v.clone()).ok()) {
-                node.style_refs.extend(style_refs);
+            let metadata = doc
+                .design_system
+                .as_ref()
+                .and_then(|system| system.sketch_containers.get("nodeMetadata"))
+                .and_then(|metadata| metadata.get(id));
+            if let Some(metadata) = metadata {
+                if let Some(bindings) = metadata.get("bindings").and_then(|v| {
+                    serde_json::from_value::<BTreeMap<String, String>>(v.clone()).ok()
+                }) {
+                    node.bindings.extend(bindings);
+                }
+                if let Some(style_refs) = metadata.get("styleRefs").and_then(|v| {
+                    serde_json::from_value::<BTreeMap<String, String>>(v.clone()).ok()
+                }) {
+                    node.style_refs.extend(style_refs);
+                }
             }
-        }
-        let source_text_layout = doc.design_system.as_ref()
-            .and_then(|system| system.sketch_containers.get("textSourceLayouts"))
-            .and_then(|layouts| layouts.get(id));
-        source_text_frame_restored = restore_unedited_text_frame(&mut node, source_text_layout);
-        if let Some(extent) = node.bindings.get("sketchSourceZeroExtent")
-            .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
-        {
-            if node.width == 1e-6 && extent.get("width").and_then(Value::as_f64) == Some(0.) {
-                node.width = 0.;
+            let source_text_layout = doc
+                .design_system
+                .as_ref()
+                .and_then(|system| system.sketch_containers.get("textSourceLayouts"))
+                .and_then(|layouts| layouts.get(id));
+            source_text_frame_restored = restore_unedited_text_frame(&mut node, source_text_layout);
+            if let Some(extent) = node
+                .bindings
+                .get("sketchSourceZeroExtent")
+                .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+            {
+                if node.width == 1e-6 && extent.get("width").and_then(Value::as_f64) == Some(0.) {
+                    node.width = 0.;
+                }
+                if node.height == 1e-6 && extent.get("height").and_then(Value::as_f64) == Some(0.) {
+                    node.height = 0.;
+                }
             }
-            if node.height == 1e-6 && extent.get("height").and_then(Value::as_f64) == Some(0.) {
-                node.height = 0.;
-            }
-        }
-        Ok(node)
-    }).transpose()?;
+            Ok(node)
+        })
+        .transpose()?;
     let node = restored_node.as_ref();
     let mut layer = Map::new();
     // Class refinement beyond pure kind (21 号 P1-5/P1-9): component frames
@@ -3431,8 +4414,13 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
             class = "symbolMaster";
         } else if matches!(n.kind.as_str(), "group" | "vector") && n.boolean_operation.is_some() {
             class = "shapeGroup";
-        } else if n.kind=="vector" && n.children.is_empty() && n.network.is_none() && n.vector_geometry.is_none() && n.bindings.contains_key("sketchSourceShapeGroup") {
-            class="shapeGroup";
+        } else if n.kind == "vector"
+            && n.children.is_empty()
+            && n.network.is_none()
+            && n.vector_geometry.is_none()
+            && n.bindings.contains_key("sketchSourceShapeGroup")
+        {
+            class = "shapeGroup";
         }
     }
     layer.insert("_class".into(), json!(class));
@@ -3441,11 +4429,24 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
     // unarchiver constructs these via initWithUnarchiver: even when default).
     layer.insert("booleanOperation".into(), json!(-1));
     layer.insert("clippingMaskMode".into(), json!(0));
+    // Authored export formats return in their archived shape (the importer
+    // reads fileFormat/scale/name back into ExportSetting); layers without
+    // settings keep the canonical empty container.
+    let export_formats: Vec<Value> = node
+        .into_iter()
+        .flat_map(|n| n.export_settings.iter())
+        .map(|setting| {
+            json!({"_class": "exportFormat", "absoluteSize": 0,
+                   "fileFormat": setting.format, "name": setting.suffix,
+                   "relativeAvailabilityMethod": 0, "scale": setting.scale,
+                   "visible": true})
+        })
+        .collect();
     layer.insert(
         "exportOptions".into(),
         json!({
             "_class": "exportOptions", "includedLayerIds": [], "layerOptions": 0,
-            "shouldTrim": false, "exportFormats": []
+            "shouldTrim": false, "exportFormats": export_formats
         }),
     );
     layer.insert("hasClippingMask".into(), json!(false));
@@ -3484,27 +4485,42 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
             layer.insert("isFlippedHorizontal".into(), json!(flip[0]));
             layer.insert("isFlippedVertical".into(), json!(flip[1]));
         }
-        if let Some(source) = n.bindings.get("sketchSourceTransform")
+        if let Some(source) = n
+            .bindings
+            .get("sketchSourceTransform")
             .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
-            && source.get("matrix").and_then(|v| serde_json::from_value::<[f64; 6]>(v.clone()).ok()) == Some(t)
-            && let Some(frame) = source.get("frame").and_then(|v| serde_json::from_value::<[f64; 4]>(v.clone()).ok())
-            && frame[2] == n.width && frame[3] == n.height
+            && source
+                .get("matrix")
+                .and_then(|v| serde_json::from_value::<[f64; 6]>(v.clone()).ok())
+                == Some(t)
+            && let Some(frame) = source
+                .get("frame")
+                .and_then(|v| serde_json::from_value::<[f64; 4]>(v.clone()).ok())
+            && frame[2] == n.width
+            && frame[3] == n.height
         {
             layer.insert("frame".into(), json!({"_class":"rect", "x":frame[0], "y":frame[1], "width":frame[2], "height":frame[3]}));
             layer.insert("rotation".into(), source["rotation"].clone());
             layer.insert("isFlippedHorizontal".into(), source["flip"][0].clone());
             layer.insert("isFlippedVertical".into(), source["flip"][1].clone());
         }
-        if source_text_frame_restored && let Some(frame) = doc.design_system.as_ref()
-            .and_then(|system| system.sketch_containers.get("textSourceLayouts"))
-            .and_then(|layouts| layouts.get(id)).and_then(|source| source.get("frame"))
+        if source_text_frame_restored
+            && let Some(frame) = doc
+                .design_system
+                .as_ref()
+                .and_then(|system| system.sketch_containers.get("textSourceLayouts"))
+                .and_then(|layouts| layouts.get(id))
+                .and_then(|source| source.get("frame"))
         {
             layer.insert("frame".into(), frame.clone());
         }
         if let Some(frame) = layer.get_mut("frame").and_then(Value::as_object_mut)
             && (n.constrain_proportions || frame.contains_key("constrainProportions"))
         {
-            frame.insert("constrainProportions".into(), json!(n.constrain_proportions));
+            frame.insert(
+                "constrainProportions".into(),
+                json!(n.constrain_proportions),
+            );
         }
         // P1-7: constraints → resizingConstraint bits (63 = Sketch's
         // measured default "free" value and must not re-import as a rule).
@@ -3514,15 +4530,32 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
             layer.insert("resizingConstraint".into(), json!(x | (y << 3)));
             layer.insert("hasExplicitConstraints".into(), json!(true));
         }
+        // Sketch 2025 modern layout fields return verbatim under their
+        // original archived spelling (plain/`_`/`__`), overriding the
+        // default zeros written above.
+        if let Some(modern) = n
+            .bindings
+            .get("sketchModernLayout")
+            .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+            && let Some(fields) = modern.as_object()
+        {
+            for (spelling, value) in fields {
+                layer.insert(spelling.clone(), value.clone());
+            }
+        }
         // P1-9: boolean groups carry their operation on shapeGroup.
         if let Some(op) = &n.boolean_operation {
             layer.insert("booleanOperation".into(), json!(boolean_code(*op)));
-        } else if let Some(op) = n.bindings.get("sketchOperandBooleanOperation")
+        } else if let Some(op) = n
+            .bindings
+            .get("sketchOperandBooleanOperation")
             .and_then(|raw| serde_json::from_str::<crate::boolean::Operation>(raw).ok())
         {
             layer.insert("booleanOperation".into(), json!(boolean_code(op)));
         }
-        let source_gradients = n.bindings.get("sketchSourceGradients")
+        let source_gradients = n
+            .bindings
+            .get("sketchSourceGradients")
             .and_then(|raw| serde_json::from_str::<Value>(raw).ok());
         let fills: Vec<Value> = n
             .fills
@@ -3536,46 +4569,176 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
                 }
                 if p.kind == "radial" {
                     let transform = p.transform.unwrap_or_default();
-                    let primary = crate::math::Point::new(transform.0[0] * n.width, transform.0[1] * n.height);
-                    let cross = crate::math::Point::new(transform.0[2] * n.width, transform.0[3] * n.height);
-                    if (primary.x * cross.x + primary.y * cross.y).abs() > 1e-10 * primary.length() * cross.length() {
+                    let primary = crate::math::Point::new(
+                        transform.0[0] * n.width,
+                        transform.0[1] * n.height,
+                    );
+                    let cross = crate::math::Point::new(
+                        transform.0[2] * n.width,
+                        transform.0[3] * n.height,
+                    );
+                    if (primary.x * cross.x + primary.y * cross.y).abs()
+                        > 1e-10 * primary.length() * cross.length()
+                    {
                         note_lossy(&mut lossy, "fill-radial-skew-approximated");
                     }
                 }
-                let Some(mut part) = export_paint(p, images, [n.width, n.height])? else { return Ok(None) };
-                if let Some(source) = source_gradients.as_ref().and_then(|source| source.get(index.to_string()))
-                    && source.get("paint").and_then(|value| serde_json::from_value::<Paint>(value.clone()).ok()).as_ref() == Some(p)
+                let Some(mut part) = export_paint(p, images, [n.width, n.height])? else {
+                    return Ok(None);
+                };
+                if let Some(source) = source_gradients
+                    .as_ref()
+                    .and_then(|source| source.get(index.to_string()))
+                    && source
+                        .get("paint")
+                        .and_then(|value| serde_json::from_value::<Paint>(value.clone()).ok())
+                        .as_ref()
+                        == Some(p)
                 {
                     part["gradient"] = source["gradient"].clone();
                 }
                 Ok(Some(part))
             })
-            .collect::<Result<Vec<_>>>()?.into_iter().flatten().collect();
-        let (mut borders, shadows, inner_shadows, mut blur, border_options) =
-            export_style_parts(&n.strokes, &n.effects, &mut lossy, images, [n.width,n.height])?;
-        if let Some(sources)=n.bindings.get("sketchSourceStrokeGradients").and_then(|raw|serde_json::from_str::<Value>(raw).ok()) {
-            for(index,stroke)in n.strokes.iter().enumerate(){
-                if let Some(source)=sources.get(index.to_string())
-                    && source.get("paint").and_then(|value|serde_json::from_value::<Paint>(value.clone()).ok()).as_ref()==Some(&stroke.paint)
-                    && (stroke.paint.kind=="linear" || source.get("size").and_then(|v|serde_json::from_value::<[f64;2]>(v.clone()).ok())==Some([n.width,n.height]))
-                {borders[index]["gradient"]=source["gradient"].clone();}
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+        // Pattern tile scales and dropped noise parts ride bindings; splice
+        // them back so the exported parts byte-match the imported source
+        // (indices address the admitted-paint sequence recorded on import).
+        let pattern_scale = n
+            .bindings
+            .get("sketchSourcePatternScale")
+            .and_then(|raw| serde_json::from_str::<Value>(raw).ok());
+        let noise_parts = n
+            .bindings
+            .get("sketchSourceNoiseFills")
+            .and_then(|raw| serde_json::from_str::<Value>(raw).ok());
+        let mut fills = fills;
+        if let Some(scales) = &pattern_scale {
+            for (index, part) in fills.iter_mut().enumerate() {
+                if let Some(scale) = scales.get(format!("fills-{index}")) {
+                    part["patternTileScale"] = scale.clone();
+                }
             }
         }
-        if let Some(source) = n.bindings.get("sketchSourceBlur")
+        if let Some(noise) = noise_parts
+            .as_ref()
+            .and_then(|n| n.as_object())
+        {
+            let mut inserts: Vec<(usize, &Value)> = noise
+                .iter()
+                .filter_map(|(key, part)| {
+                    key.strip_prefix("fills-")?
+                        .parse::<usize>()
+                        .ok()
+                        .map(|position| (position, part))
+                })
+                .collect();
+            inserts.sort_by_key(|(position, _)| *position);
+            for (position, part) in inserts {
+                let at = position.min(fills.len());
+                fills.insert(at, part.clone());
+            }
+        }
+        for paint in &n.fills {
+            if let Some(tile) = &paint.tile
+                && (tile.mode != crate::pattern_fill::GRID
+                    || tile.size != [0., 0.]
+                    || tile.offset != [0., 0.]
+                    || tile.alignment.iter().any(|a| a != crate::pattern_fill::ALIGN_START))
+            {
+                note_lossy(
+                    &mut lossy,
+                    "pattern-tile-stagger/offset/size-not-expressible",
+                );
+                break;
+            }
+        }
+        let (mut borders, shadows, inner_shadows, mut blur, border_options) = export_style_parts(
+            &n.strokes,
+            &n.effects,
+            &mut lossy,
+            images,
+            [n.width, n.height],
+        )?;
+        if let Some(sources) = n
+            .bindings
+            .get("sketchSourceStrokeGradients")
             .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
-            && source.get("effects").and_then(|value| serde_json::from_value::<Vec<Effect>>(value.clone()).ok())
-                .as_ref() == Some(&blur_projection(&n.effects))
+        {
+            for (index, stroke) in n.strokes.iter().enumerate() {
+                if let Some(source) = sources.get(index.to_string())
+                    && source
+                        .get("paint")
+                        .and_then(|value| serde_json::from_value::<Paint>(value.clone()).ok())
+                        .as_ref()
+                        == Some(&stroke.paint)
+                    && (stroke.paint.kind == "linear"
+                        || source
+                            .get("size")
+                            .and_then(|v| serde_json::from_value::<[f64; 2]>(v.clone()).ok())
+                            == Some([n.width, n.height]))
+                {
+                    borders[index]["gradient"] = source["gradient"].clone();
+                }
+            }
+        }
+        if let Some(source) = n
+            .bindings
+            .get("sketchSourceBlur")
+            .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+            && source
+                .get("effects")
+                .and_then(|value| serde_json::from_value::<Vec<Effect>>(value.clone()).ok())
+                .as_ref()
+                == Some(&blur_projection(&n.effects))
         {
             blur = source["blur"].clone();
         }
+        // Border-side twin of the fill splice: pattern tile scales and noise
+        // parts return at their recorded admitted-borders positions.
+        if let Some(scales) = &pattern_scale {
+            for (index, part) in borders.iter_mut().enumerate() {
+                if let Some(scale) = scales.get(format!("borders-{index}")) {
+                    part["patternTileScale"] = scale.clone();
+                }
+            }
+        }
+        if let Some(noise) = noise_parts.as_ref().and_then(|n| n.as_object()) {
+            let mut inserts: Vec<(usize, &Value)> = noise
+                .iter()
+                .filter_map(|(key, part)| {
+                    key.strip_prefix("borders-")?
+                        .parse::<usize>()
+                        .ok()
+                        .map(|position| (position, part))
+                })
+                .collect();
+            inserts.sort_by_key(|(position, _)| *position);
+            for (position, part) in inserts {
+                let at = position.min(borders.len());
+                borders.insert(at, part.clone());
+            }
+        }
         // P1-6: shared style reference (style_refs holds the Sketch uuid).
         let mut style = Map::new();
-        if let Some(shared) = n.style_refs.get("textStyle").or_else(|| n.style_refs.get("fills"))
-            .or_else(|| n.style_refs.get("sketchSharedStyleID")) {
-            layer.insert("sharedStyleID".into(), json!(sketch_shared_style_id(shared)));
+        if let Some(shared) = n
+            .style_refs
+            .get("textStyle")
+            .or_else(|| n.style_refs.get("fills"))
+            .or_else(|| n.style_refs.get("sketchSharedStyleID"))
+        {
+            layer.insert(
+                "sharedStyleID".into(),
+                json!(sketch_shared_style_id(shared)),
+            );
         }
         style.insert("_class".into(), json!("style"));
-        style.insert("windingRule".into(),json!(if n.fill_even_odd(){1}else{0}));
+        style.insert(
+            "windingRule".into(),
+            json!(if n.fill_even_odd() { 1 } else { 0 }),
+        );
         style.insert(
             "do_objectID".into(),
             json!(sketch_id(&format!("{id}-style"))),
@@ -3586,11 +4749,18 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
         style.insert("innerShadows".into(), Value::Array(inner_shadows));
         style.insert("blur".into(), blur);
         style.insert("borderOptions".into(), border_options);
-        style.insert(
-            "colorControls".into(),
-            json!({"_class": "colorControls", "isEnabled": false, "brightness": 0.,
-                                       "contrast": 1., "hue": 0., "saturation": 1.}),
-        );
+        // Per-layer color controls ride bindings verbatim when the source
+        // archived an enabled part; the default-disabled object covers the
+        // kernel-authored case.
+        let color_controls = n
+            .bindings
+            .get("sketchSourceColorControls")
+            .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+            .unwrap_or_else(|| {
+                json!({"_class": "colorControls", "isEnabled": false, "brightness": 0.,
+                                       "contrast": 1., "hue": 0., "saturation": 1.})
+            });
+        style.insert("colorControls".into(), color_controls);
         style.insert(
             "contextSettings".into(),
             json!({"_class": "graphicsContextSettings",
@@ -3600,7 +4770,14 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
         layer.insert("style".into(), Value::Object(style));
         match class {
             "rectangle" => {
-                layer.insert("fixedRadius".into(), json!(if n.radii.iter().all(|r| *r == n.radii[0]) { n.radii[0] } else { 0. }));
+                layer.insert(
+                    "fixedRadius".into(),
+                    json!(if n.radii.iter().all(|r| *r == n.radii[0]) {
+                        n.radii[0]
+                    } else {
+                        0.
+                    }),
+                );
                 let points = ["{0, 0}", "{1, 0}", "{1, 1}", "{0, 1}"].into_iter().zip(n.radii).map(|(point, radius)| json!({"_class":"curvePoint","point":point,"cornerRadius":radius,"curveMode":1,"hasCurveFrom":false,"hasCurveTo":false})).collect::<Vec<_>>();
                 layer.insert("points".into(), json!(points));
                 layer.insert("needsConversion".into(), json!(false));
@@ -3608,7 +4785,10 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
             "artboard" | "symbolMaster" => {
                 layer.insert("hasBackgroundColor".into(), json!(false));
                 layer.insert("includeBackgroundColorInExport".into(), json!(true));
-                layer.insert("backgroundColor".into(), hex_to_rgba("#ffffff", 0., images.color_settings)?);
+                layer.insert(
+                    "backgroundColor".into(),
+                    hex_to_rgba("#ffffff", 0., images.color_settings)?,
+                );
                 layer.insert(
                     "isFlowHome".into(),
                     json!(
@@ -3698,7 +4878,10 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
                 // (22 号字典 §5 syntax: "ancestor/layerID_field", bare names
                 // import back with the "self" path key).
                 if let Some(inst) = &n.instance {
-                    layer.insert("symbolID".into(), json!(exported_symbol_id(doc, &inst.component_id)));
+                    layer.insert(
+                        "symbolID".into(),
+                        json!(exported_symbol_id(doc, &inst.component_id)),
+                    );
                     layer.insert("scale".into(), json!(1.));
                     layer.insert("preservesSpaceWhenHidden".into(), json!(false));
                     let mut values = Vec::new();
@@ -3712,13 +4895,21 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
                                     "text" => "stringValue",
                                     "visible" => "isVisible",
                                     "swapComponent" => "symbolID",
-                                    _ => { note_lossy(&mut lossy, "component-overrides-in-userInfo"); continue; }
+                                    _ => {
+                                        note_lossy(&mut lossy, "component-overrides-in-userInfo");
+                                        continue;
+                                    }
                                 };
-                                let Some(native_path) = exported_override_path(doc, &inst.component_id, path) else {
-                                    note_lossy(&mut lossy, "component-override-path-in-userInfo"); continue;
+                                let Some(native_path) =
+                                    exported_override_path(doc, &inst.component_id, path)
+                                else {
+                                    note_lossy(&mut lossy, "component-override-path-in-userInfo");
+                                    continue;
                                 };
                                 if field == "swapComponent" {
-                                    if let Some(id) = value.as_str() { native_value = json!(exported_symbol_id(doc, id)); }
+                                    if let Some(id) = value.as_str() {
+                                        native_value = json!(exported_symbol_id(doc, id));
+                                    }
                                 }
                                 format!("{native_path}_{native_field}")
                             } else if path == "self" {
@@ -3736,9 +4927,7 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
                                     {
                                         let name = sha1_hex(&bytes);
                                         if images.seen.insert(name.clone()) {
-                                            images
-                                                .entries
-                                                .push((format!("images/{name}"), bytes));
+                                            images.entries.push((format!("images/{name}"), bytes));
                                         }
                                         Some(json!({"_class": "MSJSONFileReference",
                                                     "_ref_class": "MSImageData",
@@ -3750,8 +4939,7 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
                                 Value::Number(nb) => Some(json!(nb)),
                                 Value::Bool(b) => Some(json!(b)),
                                 Value::Object(_) => {
-                                    let converted =
-                                        sketch_override_value_to_native(value, images)?;
+                                    let converted = sketch_override_value_to_native(value, images)?;
                                     if converted.is_none() {
                                         note_lossy(
                                             &mut lossy,
@@ -3800,7 +4988,10 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
                 layer.insert("numberOfPoints".into(), json!(n.points));
             }
             "shapePath" => {
-                let closed = !n.bindings.get("sketchOpenPath").is_some_and(|v| v == "true");
+                let closed = !n
+                    .bindings
+                    .get("sketchOpenPath")
+                    .is_some_and(|v| v == "true");
                 layer.insert("isClosed".into(), json!(closed));
                 // Per-point corner radii imported from a native document
                 // ride bindings (the kernel has no per-vertex radius slot)
@@ -3836,9 +5027,16 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
                             .enumerate()
                             .map(|(i, v)| {
                                 let (c1, c2) = if ring {
-                                    (net.edges.get(i).and_then(|e| e.c1),
-                                     if i > 0 { net.edges[i - 1].c2 }
-                                     else if closed { net.edges[count - 1].c2 } else { None })
+                                    (
+                                        net.edges.get(i).and_then(|e| e.c1),
+                                        if i > 0 {
+                                            net.edges[i - 1].c2
+                                        } else if closed {
+                                            net.edges[count - 1].c2
+                                        } else {
+                                            None
+                                        },
+                                    )
                                 } else {
                                     (None, None)
                                 };
@@ -3892,18 +5090,25 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
                     .get("sketchTextAllowsTightening")
                     .is_some_and(|v| v == "1" || v == "true");
                 let mut attribute = |location: usize,
-                                 length: usize,
-                                 font: &str,
-                                 size: f64,
-                                 weight: f32,
-                                 color: Option<&str>,
-                                 underline: bool,
-                                 strikethrough: bool|
+                                     length: usize,
+                                     font: &str,
+                                     size: f64,
+                                     weight: f32,
+                                     color: Option<&str>,
+                                     underline: bool,
+                                     strikethrough: bool,
+                                     case: Option<&crate::font::TextCase>|
                  -> Result<Value> {
                     let mut attrs = Map::new();
                     attrs.insert(
                         "MSAttributedStringFontAttribute".into(),
-                        sketch_font_descriptor(doc, &mut images.font_weight_axes, font, size, weight),
+                        sketch_font_descriptor(
+                            doc,
+                            &mut images.font_weight_axes,
+                            font,
+                            size,
+                            weight,
+                        ),
                     );
                     if let Some(c) = color {
                         attrs.insert(
@@ -3923,8 +5128,26 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
                     if let Some(v) = vertical_alignment {
                         attrs.insert("textStyleVerticalAlignmentKey".into(), json!(v));
                     }
-                    if let Some(t) = &text_transform {
-                        attrs.insert("MSAttributedStringTextTransformAttribute".into(), t.clone());
+                    // Official TextTransform enum (0=None/1=Uppercase/
+                    // 2=Lowercase): the kernel's authored run case writes
+                    // directly; variants Sketch cannot express fall back to
+                    // the imported binding payload (their degradation was
+                    // already noted at the call site).
+                    let case_code = match case {
+                        Some(crate::font::TextCase::Upper) => Some(1),
+                        Some(crate::font::TextCase::Lower) => Some(2),
+                        _ => None,
+                    };
+                    if let Some(code) = case_code {
+                        attrs.insert(
+                            "MSAttributedStringTextTransformAttribute".into(),
+                            json!(code),
+                        );
+                    } else if let Some(t) = &text_transform {
+                        attrs.insert(
+                            "MSAttributedStringTextTransformAttribute".into(),
+                            t.clone(),
+                        );
                     }
                     let mut para = Map::new();
                     para.insert("_class".into(), json!("paragraphStyle"));
@@ -3947,8 +5170,10 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
                         json!(allows_tightening),
                     );
                     attrs.insert("textStyleBasicParagraphStyle".into(), Value::Object(para));
-                    Ok(json!({"_class": "stringAttribute", "attributes": Value::Object(attrs),
-                           "location": location, "length": length}))
+                    Ok(
+                        json!({"_class": "stringAttribute", "attributes": Value::Object(attrs),
+                           "location": location, "length": length}),
+                    )
                 };
                 let total = utf16_len(&n.text);
                 let mut runs: Vec<&crate::font::TextRun> = n
@@ -3965,6 +5190,23 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
                     if end <= start {
                         continue;
                     }
+                    if let Some(case) = run.text_case.as_ref()
+                        && !matches!(
+                            case,
+                            crate::font::TextCase::Original
+                                | crate::font::TextCase::Upper
+                                | crate::font::TextCase::Lower
+                        )
+                    {
+                        note_lossy(
+                            &mut lossy,
+                            match case {
+                                crate::font::TextCase::Title => "text-case-title",
+                                crate::font::TextCase::SmallCaps => "text-case-smallcaps",
+                                _ => "text-case-smallcaps-forced",
+                            },
+                        );
+                    }
                     if start > cursor {
                         // gap between runs keeps the node-level defaults
                         attributes.push(attribute(
@@ -3976,6 +5218,7 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
                             default_color.as_deref(),
                             false,
                             false,
+                            None,
                         )?);
                     }
                     attributes.push(attribute(
@@ -3987,6 +5230,7 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
                         run.color.as_deref().or(default_color.as_deref()),
                         run.underline,
                         run.strikethrough,
+                        run.text_case.as_ref(),
                     )?);
                     cursor = end;
                 }
@@ -4000,6 +5244,7 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
                         default_color.as_deref(),
                         false,
                         false,
+                        None,
                     )?);
                 }
                 layer.insert(
@@ -4017,13 +5262,17 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
                 let behaviour = sketch_text_behaviour(n);
                 if n.sizing.as_ref().is_some_and(|s| {
                     use crate::layout::SizeMode;
-                    s.width == SizeMode::Fill || s.height == SizeMode::Fill
+                    s.width == SizeMode::Fill
+                        || s.height == SizeMode::Fill
                         || (s.width == SizeMode::Hug && s.height != SizeMode::Hug)
                 }) {
                     note_lossy(&mut lossy, "text-sizing-not-representable-in-native-sketch");
                 }
                 if style.is_some_and(|s| s.wrap) != (behaviour != 0) {
-                    note_lossy(&mut lossy, "text-wrap-in-userInfo-native-sketch-may-wrap-differently");
+                    note_lossy(
+                        &mut lossy,
+                        "text-wrap-in-userInfo-native-sketch-may-wrap-differently",
+                    );
                 }
                 layer.insert("textBehaviour".into(), json!(behaviour));
                 // lineSpacingBehaviour: stored binding wins; a custom line
@@ -4034,13 +5283,15 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
                     .bindings
                     .get("sketchLineSpacingBehaviour")
                     .and_then(|s| s.parse::<i64>().ok())
-                    .unwrap_or(if style.is_some_and(|s| {
-                        s.line_height > 0. && (s.line_height - 1.35).abs() > 1e-9
-                    }) {
-                        3
-                    } else {
-                        2
-                    });
+                    .unwrap_or(
+                        if style.is_some_and(|s| {
+                            s.line_height > 0. && (s.line_height - 1.35).abs() > 1e-9
+                        }) {
+                            3
+                        } else {
+                            2
+                        },
+                    );
                 layer.insert("lineSpacingBehaviour".into(), json!(spacing_behaviour));
                 layer.insert(
                     "glyphBounds".into(),
@@ -4111,6 +5362,15 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
             if l.line_gap != 0. {
                 note_lossy(&mut lossy, "stack-line-gap-omitted");
             }
+        } else if n.layout.is_none()
+            && let Some(payload) = n
+                .bindings
+                .get("sketchInferredGroupLayout")
+                .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+        {
+            // Imported inferred (smart) group layouts return verbatim; the
+            // kernel keeps the static child frames they produced.
+            layer.insert("groupLayout".into(), payload);
         } else if let Some(l) = &n.layout
             && !matches!(l.mode, crate::layout::Flow::None)
         {
@@ -4188,16 +5448,27 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
             .filter(|_| descendants)
             .map(|c| export_layer(doc, c, images))
             .collect::<Result<Vec<_>>>()?;
-        if class == "shapeGroup" && let Some(operation) = n.boolean_operation {
-            if let Some(rule)=operation.compound_rule(){
-                if let Some(style)=layer.get_mut("style"){style["windingRule"]=json!(if rule=="nonzero"{0}else{1});}
+        if class == "shapeGroup"
+            && let Some(operation) = n.boolean_operation
+        {
+            if let Some(rule) = operation.compound_rule() {
+                if let Some(style) = layer.get_mut("style") {
+                    style["windingRule"] = json!(if rule == "nonzero" { 0 } else { 1 });
+                }
             }
-            let source = n.bindings.get("sketchSourceShapeGroup")
+            let source = n
+                .bindings
+                .get("sketchSourceShapeGroup")
                 .and_then(|raw| serde_json::from_str::<Value>(raw).ok());
             let unchanged = source.as_ref().is_some_and(|source| {
-                serde_json::from_value::<Vec<String>>(source["children"].clone()).ok().as_ref() == Some(&n.children)
-                    && n.bindings.get("sketchShapeGroupMappedOperation")
-                        .and_then(|raw| serde_json::from_str::<crate::boolean::Operation>(raw).ok()) == Some(operation)
+                serde_json::from_value::<Vec<String>>(source["children"].clone())
+                    .ok()
+                    .as_ref()
+                    == Some(&n.children)
+                    && n.bindings
+                        .get("sketchShapeGroupMappedOperation")
+                        .and_then(|raw| serde_json::from_str::<crate::boolean::Operation>(raw).ok())
+                        == Some(operation)
             });
             if unchanged {
                 let source = source.as_ref().unwrap();
@@ -4213,8 +5484,8 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
         }
         if !children.is_empty() {
             layer.insert("layers".into(), Value::Array(children));
-        } else if class=="shapeGroup" {
-            layer.insert("layers".into(),json!([]));
+        } else if class == "shapeGroup" {
+            layer.insert("layers".into(), json!([]));
         }
         if n.mask {
             layer.insert("hasClippingMask".into(), json!(true));
@@ -4229,20 +5500,29 @@ fn export_layer_impl(doc: &Document, id: &str, images: &mut ExportedImages, desc
             let behaviour = sketch_text_behaviour(n);
             let wrap = n.text_style.as_ref().is_some_and(|s| s.wrap);
             if wrap != (behaviour != 0) {
-                user_info.insert("textWrap".into(), json!({"textBehaviour": behaviour, "text": n.text, "wrap": wrap}));
+                user_info.insert(
+                    "textWrap".into(),
+                    json!({"textBehaviour": behaviour, "text": n.text, "wrap": wrap}),
+                );
             }
         }
-        if let Some(key) = &n.component_key { user_info.insert("componentKey".into(), json!(key)); }
-        if n.component_set { user_info.insert("componentSet".into(), json!(true)); }
-        if let Some(c) = &n.component
-        {
+        if let Some(key) = &n.component_key {
+            user_info.insert("componentKey".into(), json!(key));
+        }
+        if n.component_set {
+            user_info.insert("componentSet".into(), json!(true));
+        }
+        if let Some(c) = &n.component {
             user_info.insert(
                 "component".into(),
                 serde_json::to_value(c).unwrap_or(Value::Null),
             );
         }
         if let Some(instance) = &n.instance {
-            user_info.insert("instance".into(), serde_json::to_value(instance).unwrap_or(Value::Null));
+            user_info.insert(
+                "instance".into(),
+                serde_json::to_value(instance).unwrap_or(Value::Null),
+            );
         }
         if let Some(inst) = &n.instance
             && !inst.property_values.is_empty()
@@ -4381,16 +5661,31 @@ fn foreign_symbol_export(doc: &Document, images: &mut ExportedImages) -> Result<
 /// Source-backed property commits use the same codec, excluding cold children.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn export_sketch_layer_fields(doc: &Document, id: &str) -> Result<Value> {
-    let node = doc.nodes.get(id).ok_or_else(|| Error::MissingPart("Source node".into()))?;
+    let node = doc
+        .nodes
+        .get(id)
+        .ok_or_else(|| Error::MissingPart("Source node".into()))?;
     if node.vector_brush.is_some() || node.repeat.is_some() || sketch_placement(node).is_none() {
-        return Err(Error::Unsupported("Sketch cannot preserve this edited geometry; keep the source draft".into()));
+        return Err(Error::Unsupported(
+            "Sketch cannot preserve this edited geometry; keep the source draft".into(),
+        ));
     }
     let settings = doc.color_management.unwrap_or_default();
     settings.validate().map_err(Error::InvalidDocument)?;
-    if !matches!(settings.document_space, ColorSpace::Srgb | ColorSpace::DisplayP3) {
-        return Err(Error::Unsupported("Sketch requires an explicit SDR profile conversion".into()));
+    if !matches!(
+        settings.document_space,
+        ColorSpace::Srgb | ColorSpace::DisplayP3
+    ) {
+        return Err(Error::Unsupported(
+            "Sketch requires an explicit SDR profile conversion".into(),
+        ));
     }
-    let mut images = ExportedImages { font_weight_axes:BTreeMap::new(), color_settings:settings, entries:Vec::new(), seen:Default::default() };
+    let mut images = ExportedImages {
+        font_weight_axes: BTreeMap::new(),
+        color_settings: settings,
+        entries: Vec::new(),
+        seen: Default::default(),
+    };
     export_layer_impl(doc, id, &mut images, false)
 }
 
@@ -4400,11 +5695,24 @@ pub fn export_sketch_layer_fields(doc: &Document, id: &str) -> Result<Value> {
 /// oracle. Preserve ordinary paint/stroke/effect and new-subtree behavior until
 /// their kind-specific semantic and identity contracts are separately proven.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn export_sketch_layer_edit(before: &Document, after: &Document, id: &str) -> Result<(Value, Value)> {
-    let old = before.nodes.get(id).ok_or_else(|| Error::MissingPart("Existing source node".into()))?;
-    let next = after.nodes.get(id).ok_or_else(|| Error::MissingPart("Edited source node".into()))?;
+pub fn export_sketch_layer_edit(
+    before: &Document,
+    after: &Document,
+    id: &str,
+) -> Result<(Value, Value)> {
+    let old = before
+        .nodes
+        .get(id)
+        .ok_or_else(|| Error::MissingPart("Existing source node".into()))?;
+    let next = after
+        .nodes
+        .get(id)
+        .ok_or_else(|| Error::MissingPart("Edited source node".into()))?;
     let unsupported = if old.smoothing != next.smoothing
-        && matches!(next.kind.as_str(), "rectangle" | "rect" | "frame" | "section" | "slice") {
+        && matches!(
+            next.kind.as_str(),
+            "rectangle" | "rect" | "frame" | "section" | "slice"
+        ) {
         // Neither Importer::layer nor export_layer_impl has a smoothing codec.
         Some("smoothing")
     } else if old.clip != next.clip {
@@ -4413,22 +5721,31 @@ pub fn export_sketch_layer_edit(before: &Document, after: &Document, id: &str) -
     } else if old.arc != next.arc && next.kind == "ellipse" {
         Some("arc")
     } else if old.corner_radius != next.corner_radius
-        && matches!(next.kind.as_str(), "polygon" | "star") {
+        && matches!(next.kind.as_str(), "polygon" | "star")
+    {
         // Rectangle cornerRadius point fields encode Node.radii, not the
         // polygon/star fillet property Node.corner_radius.
         Some("cornerRadius")
-    } else if old.radii != next.radii && matches!(next.kind.as_str(), "frame" | "section" | "slice") {
+    } else if old.radii != next.radii && matches!(next.kind.as_str(), "frame" | "section" | "slice")
+    {
         // Only the rectangle class emits fixedRadius and four curve-point radii.
         Some("radii")
     } else if old.export_settings != next.export_settings {
         // Import reads exportFormats; export currently always writes [].
         Some("exportSettings")
-    } else { None };
+    } else {
+        None
+    };
     if let Some(field) = unsupported {
         // Fixed schema field names only: no arbitrary nested keys or source text.
-        return Err(Error::Unsupported(format!("Source field {field} is not supported by the Sketch save codec; keep the draft or save a native document")));
+        return Err(Error::Unsupported(format!(
+            "Source field {field} is not supported by the Sketch save codec; keep the draft or save a native document"
+        )));
     }
-    Ok((export_sketch_layer_fields(before, id)?, export_sketch_layer_fields(after, id)?))
+    Ok((
+        export_sketch_layer_fields(before, id)?,
+        export_sketch_layer_fields(after, id)?,
+    ))
 }
 
 /// Admit the six source-proven omissions for a newly authored source layer.
@@ -4438,7 +5755,10 @@ pub fn export_sketch_layer_edit(before: &Document, after: &Document, id: &str) -
 #[cfg(not(target_arch = "wasm32"))]
 pub fn validate_sketch_new_layer_for_source_save(node: &Node) -> Result<()> {
     let unsupported = if node.smoothing != 0.
-        && matches!(node.kind.as_str(), "rectangle" | "rect" | "frame" | "section" | "slice") {
+        && matches!(
+            node.kind.as_str(),
+            "rectangle" | "rect" | "frame" | "section" | "slice"
+        ) {
         // Preserve authored smoothing even with zero radii or no visible pixels.
         Some("smoothing")
     } else if node.clip {
@@ -4448,42 +5768,60 @@ pub fn validate_sketch_new_layer_for_source_save(node: &Node) -> Result<()> {
     } else if node.arc.is_some() && node.kind == "ellipse" {
         // Even an explicit full-circle arc is authored state, unlike None.
         Some("arc")
-    } else if node.corner_radius != 0.
-        && matches!(node.kind.as_str(), "polygon" | "star") {
+    } else if node.corner_radius != 0. && matches!(node.kind.as_str(), "polygon" | "star") {
         Some("cornerRadius")
     } else if node.radii.iter().any(|radius| *radius != 0.)
-        && matches!(node.kind.as_str(), "frame" | "section" | "slice") {
+        && matches!(node.kind.as_str(), "frame" | "section" | "slice")
+    {
         // Rectangle radii have a native mapping and remain admissible.
         Some("radii")
     } else if !node.export_settings.is_empty() {
         Some("exportSettings")
-    } else { None };
+    } else {
+        None
+    };
     if let Some(field) = unsupported {
         // Match the existing-node guard's fixed, actionable error contract.
-        return Err(Error::Unsupported(format!("Source field {field} is not supported by the Sketch save codec; keep the draft or save a native document")));
+        return Err(Error::Unsupported(format!(
+            "Source field {field} is not supported by the Sketch save codec; keep the draft or save a native document"
+        )));
     }
     Ok(())
 }
 
 /// Export the kernel document as a `.sketch` bundle Sketch can open.
 pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
-    let source=boolean_worksets::source_view(doc)?;
-    let doc=source.as_ref();
+    let source = boolean_worksets::source_view(doc)?;
+    let doc = source.as_ref();
     if let Some(node) = doc.nodes.values().find(|n| n.vector_brush.is_some()) {
-        return Err(Error::Unsupported(format!("Sketch cannot preserve editable vector brush on layer `{}`; preserve the native FD document or explicitly bake the brush before exporting", node.id)));
+        return Err(Error::Unsupported(format!(
+            "Sketch cannot preserve editable vector brush on layer `{}`; preserve the native FD document or explicitly bake the brush before exporting",
+            node.id
+        )));
     }
     if let Some(node) = doc.nodes.values().find(|n| n.repeat.is_some()) {
-        return Err(Error::Unsupported(format!("Sketch cannot preserve non-destructive repeated transforms on layer `{}`; save native FD/JSON to retain editability, or export PNG/SVG/PDF for visual output", node.id)));
+        return Err(Error::Unsupported(format!(
+            "Sketch cannot preserve non-destructive repeated transforms on layer `{}`; save native FD/JSON to retain editability, or export PNG/SVG/PDF for visual output",
+            node.id
+        )));
     }
     let settings = doc.color_management.unwrap_or_default();
-    if !matches!(settings.document_space, ColorSpace::Srgb | ColorSpace::DisplayP3) {
-        return Err(Error::Unsupported(format!("Sketch only supports sRGB or Display P3 document profiles, not {:?}; preserve the native file or explicitly convert an SDR copy", settings.document_space)));
+    if !matches!(
+        settings.document_space,
+        ColorSpace::Srgb | ColorSpace::DisplayP3
+    ) {
+        return Err(Error::Unsupported(format!(
+            "Sketch only supports sRGB or Display P3 document profiles, not {:?}; preserve the native file or explicitly convert an SDR copy",
+            settings.document_space
+        )));
     }
     settings.validate().map_err(Error::InvalidDocument)?;
     for node in doc.nodes.values() {
         if sketch_placement(node).is_none() {
             return Err(Error::Unsupported(format!(
-                "Sketch export cannot represent scaled or sheared affine placement on layer `{}` without changing editable geometry; use the native document format", node.id)));
+                "Sketch export cannot represent scaled or sheared affine placement on layer `{}` without changing editable geometry; use the native document format",
+                node.id
+            )));
         }
     }
     let mut images = ExportedImages {
@@ -4502,9 +5840,59 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
             if let Value::Object(map) = &mut page_layer {
                 map.insert("_class".into(), json!("page"));
                 map.insert("name".into(), json!(page.name));
-                map.insert("layers".into(), Value::Array(page.children.iter()
-                    .map(|id| export_layer(doc, id, &mut images)).collect::<Result<Vec<_>>>()?));
-                map.insert("userInfo".into(), json!({"com.futureox.design-kernel":{"originalId":page.id}}));
+                map.insert(
+                    "layers".into(),
+                    Value::Array(
+                        page.children
+                            .iter()
+                            .map(|id| export_layer(doc, id, &mut images))
+                            .collect::<Result<Vec<_>>>()?,
+                    ),
+                );
+                map.insert(
+                    "userInfo".into(),
+                    json!({"com.futureox.design-kernel":{"originalId":page.id}}),
+                );
+                // Ruler guides (schema-11 Page.guides): the raw imported
+                // rulerData is authoritative while its guide count still
+                // matches the modeled guides (preserving colors and other
+                // payload); otherwise the modeled {axis, position} pairs
+                // rebuild the containers. The horizontal ruler archives
+                // vertical lines (x), the vertical one horizontal (y).
+                let raw_rulers = doc
+                    .design_system
+                    .as_ref()
+                    .and_then(|s| s.sketch_containers.get("rulerData"))
+                    .and_then(|r| r.get(&page.id));
+                let counts_match = |raw: &Value| {
+                    let raw_count = |key: &str| {
+                        raw.get(key)
+                            .and_then(|d| d.get("guides"))
+                            .and_then(Value::as_array)
+                            .map(|a| a.len())
+                            .unwrap_or(0)
+                    };
+                    raw_count("horizontalRulerData")
+                        == page.guides.iter().filter(|g| g.axis == "x").count()
+                        && raw_count("verticalRulerData")
+                            == page.guides.iter().filter(|g| g.axis == "y").count()
+                };
+                if let Some(raw) = raw_rulers.filter(|raw| counts_match(raw)) {
+                    for key in ["horizontalRulerData", "verticalRulerData"] {
+                        if let Some(value) = raw.get(key) {
+                            map.insert(key.into(), value.clone());
+                        }
+                    }
+                } else if !page.guides.is_empty() {
+                    let build = |axis: &str| {
+                        json!({"_class": "rulerData", "noLabelsOnExport": false,
+                               "guides": page.guides.iter().filter(|g| g.axis == axis)
+                                   .map(|g| json!({"_class": "rulerGuide", "pos": g.position}))
+                                   .collect::<Vec<_>>()})
+                    };
+                    map.insert("horizontalRulerData".into(), build("x"));
+                    map.insert("verticalRulerData".into(), build("y"));
+                }
                 map.remove("frame");
                 map.remove("style");
             }
@@ -4529,7 +5917,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
         }));
         page_entries.push((
             format!("pages/{}.json", sketch_id(&page.id)),
-            serde_json::to_vec_pretty(&page_json).map_err(|e| Error::Io(e.to_string()))?,
+            serde_json::to_vec(&page_json).map_err(|e| Error::Io(e.to_string()))?,
         ));
     }
 
@@ -4557,7 +5945,8 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                     if let Some(values) = shared.value.as_array() {
                         for value in values {
                             if let Ok(paint) = serde_json::from_value::<Paint>(value.clone())
-                                && let Some(part) = export_paint(&paint, &mut images, [1., 1.])? {
+                                && let Some(part) = export_paint(&paint, &mut images, [1., 1.])?
+                            {
                                 paints.push(part);
                             }
                         }
@@ -4567,7 +5956,13 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                     // layer with these strokes/effects would.
                     let mut style_lossy = Vec::new();
                     let (borders, shadows, inner_shadows, blur, border_options) =
-                        export_style_parts(&shared.strokes, &shared.effects, &mut style_lossy, &mut images, [1.,1.])?;
+                        export_style_parts(
+                            &shared.strokes,
+                            &shared.effects,
+                            &mut style_lossy,
+                            &mut images,
+                            [1., 1.],
+                        )?;
                     json!({"_class":"sharedStyle", "do_objectID": sketch_shared_style_id(style_id), "name": shared.name,
                            "value": {"_class": "style", "do_objectID": sketch_id(style_id),
                                      "fills": paints, "borders": borders,
@@ -4610,7 +6005,9 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                 if let Some(parts) = value.get_mut(field).and_then(Value::as_array_mut) {
                     for part in parts {
                         part.as_object_mut().unwrap().remove("noiseFillType");
-                        if let Some(settings) = part["contextSettings"].as_object_mut() { settings.remove("isProgressive"); }
+                        if let Some(settings) = part["contextSettings"].as_object_mut() {
+                            settings.remove("isProgressive");
+                        }
                         if part.get("gradient").is_none() {
                             part["gradient"] = json!({"_class":"gradient", "gradientType":0, "elipseLength":0,
                                 "from":"{0.5, 0}", "to":"{0.5, 1}", "stops":[
@@ -4620,20 +6017,36 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                     }
                 }
             }
-            if value.pointer("/textStyle/encodedAttributes/paragraphStyle/firstLineHeadIndent").and_then(Value::as_f64) == Some(0.) {
-                value["textStyle"]["encodedAttributes"]["paragraphStyle"].as_object_mut().unwrap().remove("firstLineHeadIndent");
+            if value
+                .pointer("/textStyle/encodedAttributes/paragraphStyle/firstLineHeadIndent")
+                .and_then(Value::as_f64)
+                == Some(0.)
+            {
+                value["textStyle"]["encodedAttributes"]["paragraphStyle"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("firstLineHeadIndent");
             }
             value["startMarkerType"] = json!(0);
             value["endMarkerType"] = json!(0);
             value["miterLimit"] = json!(10);
             value["windingRule"] = json!(1);
-            if value.get("innerShadows").is_none() { value["innerShadows"] = json!([]); }
+            if value.get("innerShadows").is_none() {
+                value["innerShadows"] = json!([]);
+            }
             if value.get("borderOptions").is_none() {
                 value["borderOptions"] = json!({"_class":"borderOptions", "isEnabled":true,
                     "dashPattern":[], "lineCapStyle":0, "lineJoinStyle":0});
             }
             if let Some(options) = value["borderOptions"].as_object_mut() {
-                for field in ["startMarkerType", "endMarkerType", "miterLimit", "windingRule"] { options.remove(field); }
+                for field in [
+                    "startMarkerType",
+                    "endMarkerType",
+                    "miterLimit",
+                    "windingRule",
+                ] {
+                    options.remove(field);
+                }
                 options.insert("isEnabled".into(), json!(true));
             }
             value["colorControls"] = json!({"_class":"colorControls", "isEnabled":false,
@@ -4664,8 +6077,11 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
         "layerTextStyles": {"_class": "sharedTextStyleContainer", "objects": layer_text_styles}
     });
     if let Some(system) = &doc.design_system {
-        let ids: Map<String, Value> = system.styles.keys()
-            .map(|id| (sketch_shared_style_id(id), json!(id))).collect();
+        let ids: Map<String, Value> = system
+            .styles
+            .keys()
+            .map(|id| (sketch_shared_style_id(id), json!(id)))
+            .collect();
         document["userInfo"] = json!({"com.futureox.design-kernel":{"sharedStyleIds":ids}});
     }
     // P1-13: verbatim document-level containers (sharedSwatches, foreign
@@ -4674,7 +6090,15 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
     // no embedded copy appended raw.
     if let Some(system) = &doc.design_system {
         for (key, value) in &system.sketch_containers {
-            if matches!(key.as_str(), "sharedStyleFidelity" | "sharedStyleIds" | "foreignSymbolsUnresolved" | "nodeMetadata" | "textSourceLayouts") {
+            if matches!(
+                key.as_str(),
+                "sharedStyleFidelity"
+                    | "sharedStyleIds"
+                    | "foreignSymbolsUnresolved"
+                    | "nodeMetadata"
+                    | "textSourceLayouts"
+                    | "rulerData"
+            ) {
                 continue;
             }
             document[key] = value.clone();
@@ -4708,10 +6132,13 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
     });
 
     let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
+    // Compact JSON halves the archive weight versus pretty printing (native
+    // Sketch serializes compactly too) and keeps large real documents inside
+    // the reader's per-entry budget.
     let push_json = |entries: &mut Vec<(String, Vec<u8>)>, name: &str, value: &Value| {
         entries.push((
             name.to_string(),
-            serde_json::to_vec_pretty(value).unwrap_or_default(),
+            serde_json::to_vec(value).unwrap_or_default(),
         ));
     };
     push_json(&mut entries, "meta.json", &meta);
@@ -4809,42 +6236,154 @@ mod tests {
     #[test]
     fn large_source_boolean_is_bounded_for_render_and_exports_original_hierarchy() {
         for code in 0..4 {
-        let layers=(0..204).map(|i|json!({"_class":"rectangle","do_objectID":format!("rect{i}"),"booleanOperation":code,"frame":{"x":i*3,"y":0,"width":1,"height":10}})).collect::<Vec<_>>();
-        let files=BTreeMap::from([("meta.json".into(),br#"{"version":136}"#.to_vec()),("document.json".into(),br#"{"colorSpace":1,"pages":[{"_ref":"pages/p"}]}"#.to_vec()),("pages/p.json".into(),serde_json::to_vec(&json!({"_class":"page","layers":[{"_class":"shapeGroup","do_objectID":"n","frame":{"width":612,"height":10},"layers":layers,"style":{"fills":[{"isEnabled":true,"fillType":0,"color":{"red":0.2,"green":0.4,"blue":0.8,"alpha":1}}]}}]})).unwrap())]);
-        let report=finish_sketch_report(import_sketch_files(&files).unwrap()).unwrap();let mut document=report.document;document.raster_profile=Some(crate::fidelity::RasterProfile::FigmaSoftware);
-        document.validate().unwrap();assert!(document.nodes.values().filter(|n|n.boolean_operation.is_some()).all(|n|n.children.len()<=64));
-        let bytes=export_sketch(&document).unwrap();let parts=crate::sketch::archive::read(&bytes).unwrap();let page:Value=serde_json::from_slice(parts.iter().find(|(name,_)|name.starts_with("pages/")).unwrap().1).unwrap();assert_eq!(page["layers"][0]["layers"].as_array().unwrap().len(),204);
-        let mut reference=boolean_worksets::source_view(&document).unwrap().into_owned();let fills=reference.nodes["n"].fills.clone();
-        for (i,id) in reference.nodes["n"].children.clone().into_iter().enumerate(){let child=reference.nodes.get_mut(&id).unwrap();child.fills=fills.clone();child.visible=match code {1=>i==0,3=>false,_=>true};}
-        let root=reference.nodes.get_mut("n").unwrap();root.kind="group".into();root.boolean_operation=None;root.fills.clear();
-        let mut a=crate::Engine::new();let mut b=crate::Engine::new();a.load_document(&serde_json::to_string(&document).unwrap()).unwrap();b.load_document(&serde_json::to_string(&reference).unwrap()).unwrap();
-        let options=crate::RenderOptions{page_id:"p".into(),width:620,height:16,view:crate::View{x:0.,y:0.,zoom:1.},transparent:true,grid:false,pixel_preview:None,animation:None,raster_profile:crate::fidelity::RasterProfile::FigmaSoftware,interactive_effects:false,checkerboard:false};
-        let actual=a.render_linear(&options).unwrap();let expected=b.render_linear(&options).unwrap();let changed=actual.iter().zip(&expected).filter(|(a,b)|a!=b).count();assert_eq!(changed,0,"Sketch boolean code {code}");
+            let layers=(0..204).map(|i|json!({"_class":"rectangle","do_objectID":format!("rect{i}"),"booleanOperation":code,"frame":{"x":i*3,"y":0,"width":1,"height":10}})).collect::<Vec<_>>();
+            let files=BTreeMap::from([("meta.json".into(),br#"{"version":136}"#.to_vec()),("document.json".into(),br#"{"colorSpace":1,"pages":[{"_ref":"pages/p"}]}"#.to_vec()),("pages/p.json".into(),serde_json::to_vec(&json!({"_class":"page","layers":[{"_class":"shapeGroup","do_objectID":"n","frame":{"width":612,"height":10},"layers":layers,"style":{"fills":[{"isEnabled":true,"fillType":0,"color":{"red":0.2,"green":0.4,"blue":0.8,"alpha":1}}]}}]})).unwrap())]);
+            let report = finish_sketch_report(import_sketch_files(&files).unwrap()).unwrap();
+            let mut document = report.document;
+            document.raster_profile = Some(crate::fidelity::RasterProfile::FigmaSoftware);
+            document.validate().unwrap();
+            assert!(
+                document
+                    .nodes
+                    .values()
+                    .filter(|n| n.boolean_operation.is_some())
+                    .all(|n| n.children.len() <= 64)
+            );
+            let bytes = export_sketch(&document).unwrap();
+            let parts = crate::sketch::archive::read(&bytes).unwrap();
+            let page: Value = serde_json::from_slice(
+                parts
+                    .iter()
+                    .find(|(name, _)| name.starts_with("pages/"))
+                    .unwrap()
+                    .1,
+            )
+            .unwrap();
+            assert_eq!(page["layers"][0]["layers"].as_array().unwrap().len(), 204);
+            let mut reference = boolean_worksets::source_view(&document)
+                .unwrap()
+                .into_owned();
+            let fills = reference.nodes["n"].fills.clone();
+            for (i, id) in reference.nodes["n"]
+                .children
+                .clone()
+                .into_iter()
+                .enumerate()
+            {
+                let child = reference.nodes.get_mut(&id).unwrap();
+                child.fills = fills.clone();
+                child.visible = match code {
+                    1 => i == 0,
+                    3 => false,
+                    _ => true,
+                };
+            }
+            let root = reference.nodes.get_mut("n").unwrap();
+            root.kind = "group".into();
+            root.boolean_operation = None;
+            root.fills.clear();
+            let mut a = crate::Engine::new();
+            let mut b = crate::Engine::new();
+            a.load_document(&serde_json::to_string(&document).unwrap())
+                .unwrap();
+            b.load_document(&serde_json::to_string(&reference).unwrap())
+                .unwrap();
+            let options = crate::RenderOptions {
+                page_id: "p".into(),
+                width: 620,
+                height: 16,
+                view: crate::View {
+                    x: 0.,
+                    y: 0.,
+                    zoom: 1.,
+                },
+                transparent: true,
+                grid: false,
+                pixel_preview: None,
+                animation: None,
+                raster_profile: crate::fidelity::RasterProfile::FigmaSoftware,
+                interactive_effects: false,
+                checkerboard: false,
+            };
+            let actual = a.render_linear(&options).unwrap();
+            let expected = b.render_linear(&options).unwrap();
+            let changed = actual.iter().zip(&expected).filter(|(a, b)| a != b).count();
+            assert_eq!(changed, 0, "Sketch boolean code {code}");
         }
     }
     #[test]
     fn sketch_style_winding_controls_render_fill_and_survives_export() {
-        for (rule,inside) in [(0,true),(1,false)] {
+        for (rule, inside) in [(0, true), (1, false)] {
             let points=[[0.,0.],[1.,0.],[1.,1.],[0.,1.],[0.,0.],[1.,0.],[1.,1.],[0.,1.]].into_iter().map(|p|json!({"point":format!("{{{}, {}}}",p[0],p[1]),"hasCurveFrom":false,"hasCurveTo":false})).collect::<Vec<_>>();
             let files=BTreeMap::from([("meta.json".into(),br#"{"version":136}"#.to_vec()),("document.json".into(),br#"{"pages":[{"_ref":"pages/p"}]}"#.to_vec()),("pages/p.json".into(),serde_json::to_vec(&json!({"_class":"page","layers":[{"_class":"shapePath","do_objectID":"n","isClosed":true,"frame":{"width":20,"height":20},"points":points,"style":{"windingRule":rule,"fills":[{"fillType":0,"isEnabled":true,"color":{"red":1,"green":0,"blue":0,"alpha":1}}]}}]})).unwrap())]);
-            let report=finish_sketch_report(import_sketch_files(&files).unwrap()).unwrap();
-            assert_eq!(crate::hit_test_fill_device(&report.document.nodes["n"],crate::math::Point::new(10.,10.),Transform::default()).unwrap(),inside);
-            let back=import_sketch_report(&export_sketch(&report.document).unwrap()).unwrap();assert_eq!(back.document.nodes["n"].network.as_ref().unwrap().fill_rule,if rule==0{"nonzero"}else{"evenodd"});
+            let report = finish_sketch_report(import_sketch_files(&files).unwrap()).unwrap();
+            assert_eq!(
+                crate::hit_test_fill_device(
+                    &report.document.nodes["n"],
+                    crate::math::Point::new(10., 10.),
+                    Transform::default()
+                )
+                .unwrap(),
+                inside
+            );
+            let back = import_sketch_report(&export_sketch(&report.document).unwrap()).unwrap();
+            assert_eq!(
+                back.document.nodes["n"].network.as_ref().unwrap().fill_rule,
+                if rule == 0 { "nonzero" } else { "evenodd" }
+            );
         }
     }
     #[test]
     fn extreme_perpendicular_linear_anchor_has_identical_mapping_and_keeps_raw_source() {
-        let source=json!({"gradientType":0,"from":"{510351200223232, 0}","to":"{510351200223232, 1}","stops":[{"position":0,"color":{"red":0.,"green":0.,"blue":0.,"alpha":1.}},{"position":1,"color":{"red":1.,"green":1.,"blue":1.,"alpha":1.}}]});
-        let mut reference=source.clone();reference["from"]=json!("{0, 0}");reference["to"]=json!("{0, 1}");
-        let a=gradient_paint(&source,1,[0.1,146.],ColorSpace::Srgb).unwrap();let b=gradient_paint(&reference,1,[0.1,146.],ColorSpace::Srgb).unwrap();assert_eq!(a,b);
+        let source = json!({"gradientType":0,"from":"{510351200223232, 0}","to":"{510351200223232, 1}","stops":[{"position":0,"color":{"red":0.,"green":0.,"blue":0.,"alpha":1.}},{"position":1,"color":{"red":1.,"green":1.,"blue":1.,"alpha":1.}}]});
+        let mut reference = source.clone();
+        reference["from"] = json!("{0, 0}");
+        reference["to"] = json!("{0, 1}");
+        let a = gradient_paint(&source, 1, [0.1, 146.], ColorSpace::Srgb).unwrap();
+        let b = gradient_paint(&reference, 1, [0.1, 146.], ColorSpace::Srgb).unwrap();
+        assert_eq!(a, b);
         let files=BTreeMap::from([("meta.json".into(),br#"{"version":136}"#.to_vec()),("document.json".into(),br#"{"pages":[{"_ref":"pages/p"}]}"#.to_vec()),("pages/p.json".into(),serde_json::to_vec(&json!({"_class":"page","layers":[{"_class":"rectangle","do_objectID":"n","frame":{"width":10,"height":146},"style":{"fills":[{"isEnabled":true,"fillType":1,"gradient":source}]}}]})).unwrap())]);
-        let report=finish_sketch_report(import_sketch_files(&files).unwrap()).unwrap();let bytes=export_sketch(&report.document).unwrap();let parts=crate::sketch::archive::read(&bytes).unwrap();let page:Value=serde_json::from_slice(parts.iter().find(|(name,_)|name.starts_with("pages/")).unwrap().1).unwrap();assert_eq!(page["layers"][0]["style"]["fills"][0]["gradient"]["from"],source["from"]);
+        let report = finish_sketch_report(import_sketch_files(&files).unwrap()).unwrap();
+        let bytes = export_sketch(&report.document).unwrap();
+        let parts = crate::sketch::archive::read(&bytes).unwrap();
+        let page: Value = serde_json::from_slice(
+            parts
+                .iter()
+                .find(|(name, _)| name.starts_with("pages/"))
+                .unwrap()
+                .1,
+        )
+        .unwrap();
+        assert_eq!(
+            page["layers"][0]["style"]["fills"][0]["gradient"]["from"],
+            source["from"]
+        );
     }
     #[test]
     fn empty_sketch_shape_group_stays_empty_and_round_trips_as_a_group() {
         let files=BTreeMap::from([("meta.json".into(),br#"{"version":136}"#.to_vec()),("document.json".into(),br#"{"pages":[{"_ref":"pages/p"}]}"#.to_vec()),("pages/p.json".into(),serde_json::to_vec(&json!({"_class":"page","layers":[{"_class":"shapeGroup","do_objectID":"n","frame":{"width":10,"height":10},"layers":[]}]})).unwrap())]);
-        let report=finish_sketch_report(import_sketch_files(&files).unwrap()).unwrap();assert!(report.document.nodes["n"].paths().unwrap().0.commands.is_empty());assert!(report.document.nodes["n"].boolean_operation.is_none());
-        let bytes=export_sketch(&report.document).unwrap();let parts=crate::sketch::archive::read(&bytes).unwrap();let page:Value=serde_json::from_slice(parts.iter().find(|(name,_)|name.starts_with("pages/")).unwrap().1).unwrap();assert_eq!(page["layers"][0]["_class"],"shapeGroup");assert_eq!(page["layers"][0]["layers"],json!([]));
+        let report = finish_sketch_report(import_sketch_files(&files).unwrap()).unwrap();
+        assert!(
+            report.document.nodes["n"]
+                .paths()
+                .unwrap()
+                .0
+                .commands
+                .is_empty()
+        );
+        assert!(report.document.nodes["n"].boolean_operation.is_none());
+        let bytes = export_sketch(&report.document).unwrap();
+        let parts = crate::sketch::archive::read(&bytes).unwrap();
+        let page: Value = serde_json::from_slice(
+            parts
+                .iter()
+                .find(|(name, _)| name.starts_with("pages/"))
+                .unwrap()
+                .1,
+        )
+        .unwrap();
+        assert_eq!(page["layers"][0]["_class"], "shapeGroup");
+        assert_eq!(page["layers"][0]["layers"], json!([]));
     }
     #[test]
     fn rectangle_corners_and_proportion_lock_admit_and_round_trip() {
@@ -4853,12 +6392,13 @@ mod tests {
             ("document.json".into(),br#"{"pages":[{"_ref":"pages/00000000-0000-4000-8000-000000000001"}]}"#.to_vec()),
             ("pages/00000000-0000-4000-8000-000000000001.json".into(),serde_json::to_vec(&json!({"_class":"page","layers":[{"_class":"rectangle","do_objectID":"00000000-0000-4000-8000-000000000002","frame":{"x":0,"y":0,"width":100,"height":100,"constrainProportions":true},"fixedRadius":12,"points":[{"cornerRadius":1},{"cornerRadius":2},{"cornerRadius":3},{"cornerRadius":4}]}]})).unwrap())
         ]);
-        let report=finish_sketch_report(import_sketch_files(&files).unwrap()).unwrap();
-        let node=report.document.nodes.values().next().unwrap();
-        assert_eq!(node.radii,[1.,2.,3.,4.]);assert_eq!(node.corner_radius,0.);
-        assert!(report.document.schema_version>=7);
-        let roundtrip=import_sketch_report(&export_sketch(&report.document).unwrap()).unwrap();
-        assert_eq!(roundtrip.document.nodes[&node.id].radii,node.radii);
+        let report = finish_sketch_report(import_sketch_files(&files).unwrap()).unwrap();
+        let node = report.document.nodes.values().next().unwrap();
+        assert_eq!(node.radii, [1., 2., 3., 4.]);
+        assert_eq!(node.corner_radius, 0.);
+        assert!(report.document.schema_version >= 7);
+        let roundtrip = import_sketch_report(&export_sketch(&report.document).unwrap()).unwrap();
+        assert_eq!(roundtrip.document.nodes[&node.id].radii, node.radii);
         assert!(roundtrip.document.nodes[&node.id].constrain_proportions);
     }
     #[test]
@@ -4871,7 +6411,13 @@ mod tests {
     }
 
     fn archive_test_limits() -> ArchiveLimits {
-        ArchiveLimits { input: 16 * 1024, entries: 4, entry: 1024, document_entry:1024, total: 1536 }
+        ArchiveLimits {
+            input: 16 * 1024,
+            entries: 4,
+            entry: 1024,
+            document_entry: 1024,
+            total: 1536,
+        }
     }
 
     fn patch_zip_sizes(bytes: &mut [u8], size: u32) {
@@ -4881,7 +6427,9 @@ mod tests {
                 Some(24)
             } else if &bytes[at..at + 4] == b"PK\x03\x04" {
                 Some(22)
-            } else { None };
+            } else {
+                None
+            };
             if let Some(offset) = offset {
                 bytes[at + offset..at + offset + 4].copy_from_slice(&size.to_le_bytes());
             }
@@ -4890,17 +6438,25 @@ mod tests {
 
     #[test]
     fn bounded_archive_valid_exact_limits_and_high_compression() {
-        let entries = vec![("canvas.fig".into(), vec![0; 1024]),
-            ("images/a".into(), vec![1; 512])];
+        let entries = vec![
+            ("canvas.fig".into(), vec![0; 1024]),
+            ("images/a".into(), vec![1; 512]),
+        ];
         let bytes = write_zip(&entries).unwrap();
         let mut limits = archive_test_limits();
         limits.input = bytes.len();
         limits.entries = entries.len();
-        assert_eq!(read_zip_bounded(&bytes, limits).unwrap(), entries.into_iter().collect());
+        assert_eq!(
+            read_zip_bounded(&bytes, limits).unwrap(),
+            entries.into_iter().collect()
+        );
         // High compression is supported; the expanded-byte budget is the guard.
         let bytes = write_zip(&[("canvas.fig".into(), vec![0; 256 * 1024])]).unwrap();
         assert!(bytes.len() < 2048);
-        assert_eq!(read_zip_public(&bytes).unwrap()["canvas.fig"].len(), 256 * 1024);
+        assert_eq!(
+            read_zip_public(&bytes).unwrap()["canvas.fig"].len(),
+            256 * 1024
+        );
     }
 
     #[test]
@@ -4916,10 +6472,48 @@ mod tests {
     fn bounded_archive_rejects_each_budget() {
         let bytes = write_zip(&[("a".into(), vec![0; 1024]), ("b".into(), vec![1; 513])]).unwrap();
         let limits = archive_test_limits();
-        assert!(read_zip_bounded(&bytes, limits).unwrap_err().to_string().contains("total expanded"));
-        assert!(read_zip_bounded(&bytes, ArchiveLimits { entries: 1, ..limits }).unwrap_err().to_string().contains("entry count"));
-        assert!(read_zip_bounded(&bytes, ArchiveLimits { input: bytes.len() - 1, ..limits }).unwrap_err().to_string().contains("input bytes"));
-        assert!(read_zip_bounded(&bytes, ArchiveLimits { entry: 1023, ..limits }).unwrap_err().to_string().contains("entry expanded"));
+        assert!(
+            read_zip_bounded(&bytes, limits)
+                .unwrap_err()
+                .to_string()
+                .contains("total expanded")
+        );
+        assert!(
+            read_zip_bounded(
+                &bytes,
+                ArchiveLimits {
+                    entries: 1,
+                    ..limits
+                }
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("entry count")
+        );
+        assert!(
+            read_zip_bounded(
+                &bytes,
+                ArchiveLimits {
+                    input: bytes.len() - 1,
+                    ..limits
+                }
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("input bytes")
+        );
+        assert!(
+            read_zip_bounded(
+                &bytes,
+                ArchiveLimits {
+                    entry: 1023,
+                    ..limits
+                }
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("entry expanded")
+        );
     }
 
     #[test]
@@ -4928,22 +6522,32 @@ mod tests {
         for declared in [0, 1, 1024, u32::MAX] {
             let mut forged = bytes.clone();
             patch_zip_sizes(&mut forged, declared);
-            let error = read_zip_bounded(&forged, archive_test_limits()).unwrap_err().to_string();
-            assert!(error.contains("entry expanded bytes"), "declared={declared}: {error}");
+            let error = read_zip_bounded(&forged, archive_test_limits())
+                .unwrap_err()
+                .to_string();
+            assert!(
+                error.contains("entry expanded bytes"),
+                "declared={declared}: {error}"
+            );
         }
         // A lying second entry must also stop at the remaining total allowance.
-        let mut bytes = write_zip(&[("a".into(), vec![0; 800]), ("b".into(), vec![1; 800])]).unwrap();
+        let mut bytes =
+            write_zip(&[("a".into(), vec![0; 800]), ("b".into(), vec![1; 800])]).unwrap();
         for at in 0..bytes.len().saturating_sub(47) {
             let offset = if &bytes[at..at + 4] == b"PK\x01\x02" && bytes[at + 46] == b'b' {
                 Some(24)
             } else if &bytes[at..at + 4] == b"PK\x03\x04" && bytes[at + 30] == b'b' {
                 Some(22)
-            } else { None };
+            } else {
+                None
+            };
             if let Some(offset) = offset {
                 bytes[at + offset..at + offset + 4].copy_from_slice(&0u32.to_le_bytes());
             }
         }
-        let error = read_zip_bounded(&bytes, archive_test_limits()).unwrap_err().to_string();
+        let error = read_zip_bounded(&bytes, archive_test_limits())
+            .unwrap_err()
+            .to_string();
         assert!(error.contains("total expanded"), "{error}");
     }
 
@@ -4951,24 +6555,59 @@ mod tests {
     fn bounded_archive_rejects_paths_duplicates_and_symlinks() {
         for name in ["../a", "/a", "C:a", "a\\b", "a//b", "./a"] {
             let bytes = write_zip(&[(name.into(), vec![1])]).unwrap();
-            assert!(read_zip(&bytes).unwrap_err().to_string().contains("archive path"), "{name}");
+            assert!(
+                read_zip(&bytes)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("archive path"),
+                "{name}"
+            );
         }
         let mut duplicate = write_zip(&[("a".into(), vec![1]), ("b".into(), vec![2])]).unwrap();
         // ZipWriter itself refuses duplicate names: forge an actual ZIP instead.
         for at in 0..duplicate.len().saturating_sub(46) {
-            if &duplicate[at..at + 4] == b"PK\x01\x02" { duplicate[at + 46] = b'a'; }
-            if &duplicate[at..at + 4] == b"PK\x03\x04" { duplicate[at + 30] = b'a'; }
+            if &duplicate[at..at + 4] == b"PK\x01\x02" {
+                duplicate[at + 46] = b'a';
+            }
+            if &duplicate[at..at + 4] == b"PK\x03\x04" {
+                duplicate[at + 30] = b'a';
+            }
         }
-        assert!(read_zip(&duplicate).unwrap_err().to_string().contains("duplicate"));
+        assert!(
+            read_zip(&duplicate)
+                .unwrap_err()
+                .to_string()
+                .contains("duplicate")
+        );
         let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
-        writer.add_symlink("link", "document.json", zip::write::SimpleFileOptions::default()).unwrap();
+        writer
+            .add_symlink(
+                "link",
+                "document.json",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
         let bytes = writer.finish().unwrap().into_inner();
-        assert!(read_zip(&bytes).unwrap_err().to_string().contains("symlink"));
+        assert!(
+            read_zip(&bytes)
+                .unwrap_err()
+                .to_string()
+                .contains("symlink")
+        );
         let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
-        writer.add_directory("a/", zip::write::SimpleFileOptions::default()).unwrap();
-        writer.start_file("a", zip::write::SimpleFileOptions::default()).unwrap();
+        writer
+            .add_directory("a/", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        writer
+            .start_file("a", zip::write::SimpleFileOptions::default())
+            .unwrap();
         let bytes = writer.finish().unwrap().into_inner();
-        assert!(read_zip(&bytes).unwrap_err().to_string().contains("duplicate"));
+        assert!(
+            read_zip(&bytes)
+                .unwrap_err()
+                .to_string()
+                .contains("duplicate")
+        );
     }
 
     #[test]
@@ -5261,6 +6900,7 @@ mod tests {
             glass: None,
             texture: None,
             gradient_blur: None,
+            show_shadow_behind_node: false,
         });
         let back = import_sketch(&export_sketch(&doc).unwrap()).unwrap();
         let node = back.nodes.get("n1").unwrap();
@@ -5523,7 +7163,9 @@ mod tests {
         assert!((c2.x + 0.1).abs() < 1e-9 && (c2.y - 1.).abs() < 1e-9);
         // Per-point corner radii ride bindings with an explicit lossy note
         assert_eq!(
-            node.bindings.get("sketchPointCornerRadii").map(String::as_str),
+            node.bindings
+                .get("sketchPointCornerRadii")
+                .map(String::as_str),
             Some("[2.0,0.0,0.0,0.0]")
         );
         assert!(
@@ -5551,8 +7193,10 @@ mod tests {
         assert_eq!(points[1]["hasCurveTo"], true);
         let reopened = import_sketch(&re).unwrap();
         assert_eq!(reopened.nodes["n3"].network, node.network);
-        assert_eq!(reopened.nodes["n3"].bindings.get("sketchPointCornerRadii"),
-            node.bindings.get("sketchPointCornerRadii"));
+        assert_eq!(
+            reopened.nodes["n3"].bindings.get("sketchPointCornerRadii"),
+            node.bindings.get("sketchPointCornerRadii")
+        );
     }
 
     #[test]
@@ -5578,7 +7222,7 @@ mod tests {
         });
         text.text_runs = vec![
             crate::font::TextRun {
-            text_case: None,
+                text_case: None,
                 start: 5,
                 end: 8,
                 color: Some("#ff0000".into()),
@@ -5590,7 +7234,7 @@ mod tests {
                 weight: Some(600.),
             },
             crate::font::TextRun {
-            text_case: None,
+                text_case: None,
                 start: 8,
                 end: 13,
                 color: Some("#00ff00".into()),
@@ -5743,9 +7387,7 @@ mod tests {
             Some("1")
         );
         assert_eq!(
-            node.bindings
-                .get("sketchTextTransform")
-                .map(String::as_str),
+            node.bindings.get("sketchTextTransform").map(String::as_str),
             Some("1")
         );
         assert_eq!(node.text_runs.len(), 2);
@@ -5765,7 +7407,10 @@ mod tests {
         assert_eq!(attrs.len(), 2);
         for run in attrs {
             assert_eq!(run["attributes"]["textStyleVerticalAlignmentKey"], 1);
-            assert_eq!(run["attributes"]["MSAttributedStringTextTransformAttribute"], 1);
+            assert_eq!(
+                run["attributes"]["MSAttributedStringTextTransformAttribute"],
+                1
+            );
         }
         assert_eq!(attrs[0]["attributes"]["kerning"], 0.909);
         assert_eq!(attrs[0]["attributes"]["underlineStyle"], 1);
@@ -5877,6 +7522,7 @@ mod tests {
             glass: None,
             texture: None,
             gradient_blur: None,
+            show_shadow_behind_node: false,
         }
     }
 
@@ -5914,7 +7560,7 @@ mod tests {
         let mut instance = crate::facet::sample_node("n4", "frame");
         instance.name = "Button instance".into();
         instance.instance = Some(crate::components::Instance {
-                        slot_contents: Default::default(),
+            slot_contents: Default::default(),
             component_id: "SYMBOL-UUID-1".into(),
             overrides: {
                 let mut overrides = crate::components::Overrides::new();
@@ -6513,6 +8159,430 @@ mod tests {
             .expect("unmapped flow fields reported");
         assert!(note.contains("overlaySettings"), "{note}");
         assert!(note.contains("maintainScrollPosition"), "{note}");
+    }
+
+    /// Shared fixture builder for the 2026-10-26 gap-closure tests: a
+    /// one-page .sketch zip with a document.json the test can extend.
+    fn gap_test_files(page_layers: Value, document_extra: Value) -> Vec<u8> {
+        let mut document = json!({"pages": [{"_ref": "pages/p"}]});
+        if let (Some(target), Some(extra)) = (document.as_object_mut(), document_extra.as_object())
+        {
+            for (key, value) in extra {
+                target.insert(key.clone(), value.clone());
+            }
+        }
+        let files = BTreeMap::from([
+            (
+                "meta.json".to_owned(),
+                br#"{"version":136}"#.to_vec(),
+            ),
+            ("document.json".to_owned(), serde_json::to_vec(&document).unwrap()),
+            (
+                "pages/p.json".to_owned(),
+                serde_json::to_vec(&json!({
+                    "_class": "page", "do_objectID": "page-p", "name": "P",
+                    "layers": page_layers
+                }))
+                .unwrap(),
+            ),
+        ]);
+        write_zip(&files.into_iter().collect::<Vec<_>>()).unwrap()
+    }
+
+    /// Import-side degradation ledger for the gap-closure tests (the
+    /// pre-existing `lossy_of` reads the export ledger).
+    fn import_lossy_of(node: &crate::scene::Node) -> Vec<String> {
+        node.bindings
+            .get("sketchImportLossy")
+            .and_then(|raw| serde_json::from_str::<Vec<String>>(raw).ok())
+            .unwrap_or_default()
+    }
+
+    fn first_exported_page(re_files: &BTreeMap<String, Vec<u8>>) -> Value {
+        let name = re_files
+            .keys()
+            .find(|n| n.starts_with("pages/"))
+            .map(|n| &re_files[n])
+            .expect("exported page entry");
+        serde_json::from_slice(name).unwrap()
+    }
+
+    #[test]
+    fn pattern_fills_map_fit_and_tile_and_round_trip() {
+        let png = [
+            0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4,
+        ];
+        let files = BTreeMap::from([
+            (
+                "meta.json".to_owned(),
+                br#"{"version":136}"#.to_vec(),
+            ),
+            (
+                "document.json".to_owned(),
+                br#"{"pages":[{"_ref":"pages/p"}]}"#.to_vec(),
+            ),
+            ("images/abc".to_owned(), png.to_vec()),
+            (
+                "pages/p.json".to_owned(),
+                serde_json::to_vec(&json!({
+                    "_class": "page", "name": "P",
+                    "layers": [
+                        {"_class": "shapePath", "do_objectID": "n1", "frame": {"x":0,"y":0,"width":40,"height":20},
+                         "points": [{"point":"{0,0}"},{"point":"{1,0}"},{"point":"{1,1}"},{"point":"{0,1}"}],
+                         "isClosed": true,
+                         "style": {"fills": [
+                            {"isEnabled": true, "fillType": 0, "image": {"_ref": "abc"},
+                             "patternFillType": 1, "patternTileScale": 1.},
+                            {"isEnabled": true, "fillType": 0, "image": {"_ref": "abc"},
+                             "patternFillType": 2, "patternTileScale": 1.},
+                            {"isEnabled": true, "fillType": 0, "image": {"_ref": "abc"},
+                             "patternFillType": 3, "patternTileScale": 1.},
+                            {"isEnabled": true, "fillType": 0, "image": {"_ref": "abc"},
+                             "patternFillType": 0, "patternTileScale": 2.5}
+                         ]}}
+                    ]
+                }))
+                .unwrap(),
+            ),
+        ]);
+        let encoded = write_zip(&files.into_iter().collect::<Vec<_>>()).unwrap();
+        let back = import_sketch(&encoded).unwrap();
+        let node = &back.nodes["n1"];
+        assert_eq!(node.fills.len(), 4);
+        assert_eq!(node.fills[0].fit, "cover");
+        assert_eq!(node.fills[1].fit, "stretch");
+        assert_eq!(node.fills[2].fit, "contain");
+        let tile = node.fills[3].tile.as_ref().expect("tile mode mapped");
+        assert_eq!(tile.mode, crate::pattern_fill::GRID);
+        // Non-unit tile scale cannot be expressed in the authored slot; it
+        // rides bindings and is reported instead of normalized away.
+        let scale = node
+            .bindings
+            .get("sketchSourcePatternScale")
+            .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+            .expect("tile scale retained");
+        assert_eq!(scale["fills-3"], json!(2.5));
+        assert!(import_lossy_of(node)
+            .iter()
+            .any(|n| n.contains("pattern-tile-scale")));
+        // Pattern tiling gated the document onto schema 14.
+        assert!(back.schema_version >= 14);
+
+        let re = export_sketch(&back).unwrap();
+        let re_files = read_zip(&re).unwrap();
+        let page = first_exported_page(&re_files);
+        let fills = &page["layers"][0]["style"]["fills"];
+        assert_eq!(fills[0]["patternFillType"], json!(1));
+        assert_eq!(fills[1]["patternFillType"], json!(2));
+        assert_eq!(fills[2]["patternFillType"], json!(3));
+        assert_eq!(fills[3]["patternFillType"], json!(0));
+        assert_eq!(fills[3]["patternTileScale"], json!(2.5));
+    }
+
+    #[test]
+    fn noise_fills_and_color_controls_round_trip_instead_of_dropping() {
+        let encoded = gap_test_files(
+            json!([{"_class": "shapePath", "do_objectID": "n1",
+                    "frame": {"x":0,"y":0,"width":10,"height":10},
+                    "points": [{"point":"{0,0}"},{"point":"{1,0}"},{"point":"{1,1}"},{"point":"{0,1}"}],
+                    "isClosed": true,
+                    "style": {
+                        "fills": [
+                            {"isEnabled": true, "fillType": 0, "color": {"red":1,"green":0,"blue":0,"alpha":1}},
+                            {"isEnabled": true, "fillType": 4, "noiseIndex": 3, "noiseIntensity": 0.5}
+                        ],
+                        "colorControls": {"_class": "colorControls", "isEnabled": true,
+                                          "brightness": 0.2, "contrast": 1.4, "hue": 0.1, "saturation": 0.8}
+                    }}]),
+            json!({}),
+        );
+        let back = import_sketch(&encoded).unwrap();
+        let node = &back.nodes["n1"];
+        // Only the solid fill became a paint; the noise part and the color
+        // matrix survive verbatim with explicit degradation notes.
+        assert_eq!(node.fills.len(), 1);
+        let noise = node
+            .bindings
+            .get("sketchSourceNoiseFills")
+            .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+            .expect("noise fill retained");
+        assert_eq!(noise["fills-1"]["noiseIndex"], json!(3));
+        let controls = node
+            .bindings
+            .get("sketchSourceColorControls")
+            .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+            .expect("color controls retained");
+        assert_eq!(controls["brightness"], json!(0.2));
+        let lossy = import_lossy_of(node);
+        assert!(lossy.iter().any(|n| n.contains("noise-fill-not-modeled")));
+        assert!(lossy.iter().any(|n| n.contains("color-controls-not-modeled")));
+
+        let re = export_sketch(&back).unwrap();
+        let re_files = read_zip(&re).unwrap();
+        let page = first_exported_page(&re_files);
+        let style = &page["layers"][0]["style"];
+        let fills = style["fills"].as_array().unwrap();
+        assert_eq!(fills.len(), 2, "noise part returns in place");
+        assert_eq!(fills[1]["noiseIndex"], json!(3));
+        assert_eq!(style["colorControls"]["brightness"], json!(0.2));
+        assert_eq!(style["colorControls"]["isEnabled"], json!(true));
+    }
+
+    #[test]
+    fn border_markers_map_both_directions_with_honest_approximations() {
+        let encoded = gap_test_files(
+            json!([{"_class": "shapePath", "do_objectID": "n1",
+                    "frame": {"x":0,"y":0,"width":30,"height":10},
+                    "points": [{"point":"{0,0}"},{"point":"{1,1}"}],
+                    "isClosed": false,
+                    "style": {
+                        "borders": [{"isEnabled": true, "fillType": 0, "thickness": 2,
+                                     "color": {"red":0,"green":0,"blue":0,"alpha":1}}],
+                        "borderOptions": {"lineCapStyle": 0, "lineJoinStyle": 0,
+                                          "startMarkerType": 7, "endMarkerType": 1}
+                    }}]),
+            json!({}),
+        );
+        let back = import_sketch(&encoded).unwrap();
+        let node = &back.nodes["n1"];
+        let stroke = &node.strokes[0];
+        assert_eq!(stroke.start_marker, crate::stroke::Marker::Arrow);
+        assert_eq!(stroke.end_marker, crate::stroke::Marker::Triangle);
+        // Open markers approximate to their filled kernel shapes and say so.
+        assert!(import_lossy_of(node).is_empty(), "exact codes need no note");
+
+        let re = export_sketch(&back).unwrap();
+        let re_files = read_zip(&re).unwrap();
+        let page = first_exported_page(&re_files);
+        let options = &page["layers"][0]["style"]["borderOptions"];
+        assert_eq!(options["startMarkerType"], json!(7));
+        assert_eq!(options["endMarkerType"], json!(1));
+
+        // Open variants map to the nearest filled shape with a note.
+        let encoded = gap_test_files(
+            json!([{"_class": "shapePath", "do_objectID": "n1",
+                    "frame": {"x":0,"y":0,"width":30,"height":10},
+                    "points": [{"point":"{0,0}"},{"point":"{1,1}"}],
+                    "isClosed": false,
+                    "style": {
+                        "borders": [{"isEnabled": true, "fillType": 0, "thickness": 2,
+                                     "color": {"red":0,"green":0,"blue":0,"alpha":1}}],
+                        "borderOptions": {"startMarkerType": 3, "endMarkerType": 0}
+                    }}]),
+            json!({}),
+        );
+        let back = import_sketch(&encoded).unwrap();
+        let node = &back.nodes["n1"];
+        assert_eq!(node.strokes[0].start_marker, crate::stroke::Marker::Circle);
+        assert!(import_lossy_of(node)
+            .iter()
+            .any(|n| n.contains("marker-open-circle")));
+    }
+
+    #[test]
+    fn per_run_text_transform_maps_to_authored_text_case() {
+        let encoded = gap_test_files(
+            json!([{"_class": "text", "do_objectID": "n1",
+                    "frame": {"x":0,"y":0,"width":120,"height":20},
+                    "textBehaviour": 0,
+                    "attributedString": {"string": "Big small",
+                        "attributes": [
+                            {"location": 0, "length": 3,
+                             "attributes": {"MSAttributedStringFontAttribute": {"_class": "fontDescriptor", "attributes": {"name": "A", "size": 12}},
+                                            "MSAttributedStringTextTransformAttribute": 1}},
+                            {"location": 3, "length": 6,
+                             "attributes": {"MSAttributedStringFontAttribute": {"_class": "fontDescriptor", "attributes": {"name": "A", "size": 12}},
+                                            "MSAttributedStringTextTransformAttribute": 2}}
+                        ]}}]),
+            json!({}),
+        );
+        let back = import_sketch(&encoded).unwrap();
+        let node = &back.nodes["n1"];
+        assert_eq!(
+            node.text_runs[0].text_case,
+            Some(crate::font::TextCase::Upper)
+        );
+        assert_eq!(
+            node.text_runs[1].text_case,
+            Some(crate::font::TextCase::Lower)
+        );
+        assert!(!import_lossy_of(node).iter().any(|n| n.contains("transform")));
+
+        let re = export_sketch(&back).unwrap();
+        let re_files = read_zip(&re).unwrap();
+        let page = first_exported_page(&re_files);
+        let attrs = &page["layers"][0]["attributedString"]["attributes"];
+        assert_eq!(attrs[0]["attributes"]["MSAttributedStringTextTransformAttribute"], json!(1));
+        assert_eq!(attrs[1]["attributes"]["MSAttributedStringTextTransformAttribute"], json!(2));
+    }
+
+    #[test]
+    fn modern_layout_fields_and_inferred_groups_round_trip() {
+        let encoded = gap_test_files(
+            json!([
+                {"_class": "group", "do_objectID": "g1",
+                 "frame": {"x":0,"y":0,"width":100,"height":100},
+                 "groupLayout": {"_class": "MSImmutableInferredGroupLayout", "axis": 1, "layoutAnchor": 0},
+                 "layers": [
+                    {"_class": "shapePath", "do_objectID": "n1",
+                     "frame": {"x":0,"y":0,"width":30,"height":10},
+                     "__horizontalPins": 5, "__horizontalSizing": 1,
+                     "_flexItem": {"_class": "MSImmutableFlexItem", "flexGrow": 1.5},
+                     "points": [{"point":"{0,0}"},{"point":"{1,0}"},{"point":"{1,1}"},{"point":"{0,1}"}],
+                     "isClosed": true}
+                 ]}
+            ]),
+            json!({}),
+        );
+        let back = import_sketch(&encoded).unwrap();
+        let group = &back.nodes["g1"];
+        let inferred = group
+            .bindings
+            .get("sketchInferredGroupLayout")
+            .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+            .expect("inferred payload retained");
+        assert_eq!(inferred["_class"], json!("MSImmutableInferredGroupLayout"));
+        assert_eq!(inferred["axis"], json!(1));
+        assert!(group.layout.is_none(), "static frames, no stack");
+        assert!(import_lossy_of(group)
+            .iter()
+            .any(|n| n.contains("inferred-group-layout")));
+        let child = &back.nodes["n1"];
+        let modern = child
+            .bindings
+            .get("sketchModernLayout")
+            .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+            .expect("modern fields retained");
+        // Original ivar spellings survive for exact round-trip.
+        assert_eq!(modern["__horizontalPins"], json!(5));
+        assert_eq!(modern["__horizontalSizing"], json!(1));
+        assert_eq!(modern["_flexItem"]["flexGrow"], json!(1.5));
+        assert!(import_lossy_of(child)
+            .iter()
+            .any(|n| n.contains("modern-layout-fields")));
+
+        let re = export_sketch(&back).unwrap();
+        let re_files = read_zip(&re).unwrap();
+        let page = first_exported_page(&re_files);
+        let group = &page["layers"][0];
+        assert_eq!(group["groupLayout"]["_class"], json!("MSImmutableInferredGroupLayout"));
+        assert_eq!(group["groupLayout"]["axis"], json!(1));
+        let child = &group["layers"][0];
+        assert_eq!(child["__horizontalPins"], json!(5));
+        assert_eq!(child["__horizontalSizing"], json!(1));
+        assert_eq!(child["_flexItem"]["flexGrow"], json!(1.5));
+    }
+
+    /// Local real-corpus gate (skipped by default): point
+    /// CORPUS_SKETCH at a native .sketch file (e.g. the 111/117 reference
+    /// archives) to verify the 2026-10-26 gap-closure slots import, export
+    /// and re-import with stable counts.
+    #[test]
+    #[ignore = "set CORPUS_SKETCH=/path/to/file.sketch to run"]
+    fn real_corpus_gap_slots_round_trip_stably() {
+        let path = std::env::var("CORPUS_SKETCH").expect("CORPUS_SKETCH");
+        let bytes = std::fs::read(&path).expect("corpus file readable");
+        let profile = |doc: &Document| serde_json::json!({
+            "pages": doc.pages.len(),
+            "guidePages": doc.pages.iter().filter(|p| !p.guides.is_empty()).count(),
+            "guides": doc.pages.iter().map(|p| p.guides.len()).sum::<usize>(),
+            "tileFills": doc.nodes.values().filter(|n| n.fills.iter().any(|f| f.tile.is_some())).count(),
+            "markers": doc.nodes.values().filter(|n| n.strokes.iter().any(|s| !s.start_marker.is_none() || !s.end_marker.is_none())).count(),
+            "caseRuns": doc.nodes.values().map(|n| n.text_runs.iter().filter(|r| r.text_case.is_some()).count()).sum::<usize>(),
+            "modernLayout": doc.nodes.values().filter(|n| n.bindings.contains_key("sketchModernLayout")).count(),
+            "inferred": doc.nodes.values().filter(|n| n.bindings.contains_key("sketchInferredGroupLayout")).count(),
+            "noiseFills": doc.nodes.values().filter(|n| n.bindings.contains_key("sketchSourceNoiseFills")).count(),
+            "colorControls": doc.nodes.values().filter(|n| n.bindings.contains_key("sketchSourceColorControls")).count(),
+            "patternScale": doc.nodes.values().filter(|n| n.bindings.contains_key("sketchSourcePatternScale")).count(),
+            "assets": doc.design_system.as_ref().is_some_and(|d| d.sketch_containers.contains_key("assets")),
+            "rulerData": doc.design_system.as_ref().is_some_and(|d| d.sketch_containers.contains_key("rulerData")),
+            "schema": doc.schema_version,
+        });
+        let first = import_sketch(&bytes).expect("corpus import");
+        let profile_first = profile(&first);
+        let exported = export_sketch(&first).expect("corpus export");
+        if let Ok(path) = std::env::var("CORPUS_DUMP") {
+            std::fs::write(&path, &exported).expect("dump export");
+        }
+        {
+            // Diagnostic: largest entries of the produced archive, so a
+            // self-inflicted entry-limit miss is visible next to the counts.
+            let mut sizes: Vec<(usize, String)> = read_zip(&exported)
+                .expect("own export readable as zip")
+                .iter()
+                .map(|(name, data)| (data.len(), name.clone()))
+                .collect();
+            sizes.sort_by_key(|(size, _)| std::cmp::Reverse(*size));
+            println!("largest entries: {:?}", &sizes[..sizes.len().min(4)]);
+        }
+        let second = import_sketch(&exported).expect("re-import of own export");
+        let profile_second = profile(&second);
+        assert_eq!(profile_first, profile_second, "round-trip changed fidelity slots");
+        println!("corpus {path}");
+        println!("{}", serde_json::to_string_pretty(&profile_first).unwrap());
+    }
+
+    #[test]
+    fn ruler_guides_and_assets_round_trip() {
+        let encoded = gap_test_files(
+            json!([{"_class": "shapePath", "do_objectID": "n1",
+                    "frame": {"x":0,"y":0,"width":10,"height":10},
+                    "points": [{"point":"{0,0}"},{"point":"{1,0}"},{"point":"{1,1}"},{"point":"{0,1}"}],
+                    "isClosed": true}]),
+            json!({"assets": {"_class": "assetCollection", "colors": [],
+                              "gradients": [], "images": [],
+                              "colorAssets": [{"_class": "colorAsset", "name": "brand",
+                                               "color": {"red":1,"green":0,"blue":0,"alpha":1}}]}}),
+        );
+        // Patch the page to carry ruler guides.
+        let mut files: BTreeMap<String, Vec<u8>> = read_zip(&encoded).unwrap();
+        let mut page: Value = serde_json::from_slice(&files["pages/p.json"]).unwrap();
+        page["horizontalRulerData"] = json!({"_class": "rulerData", "noLabelsOnExport": false,
+            "guides": [{"_class": "rulerGuide", "pos": 24.5, "color": {"red":1,"green":0,"blue":0,"alpha":1}}]});
+        page["verticalRulerData"] = json!({"_class": "rulerData", "noLabelsOnExport": false,
+            "guides": [{"_class": "rulerGuide", "pos": -3.0}]});
+        files.insert("pages/p.json".into(), serde_json::to_vec(&page).unwrap());
+        let encoded = write_zip(&files.into_iter().collect::<Vec<_>>()).unwrap();
+
+        let back = import_sketch(&encoded).unwrap();
+        let guides = &back.pages[0].guides;
+        assert_eq!(guides.len(), 2);
+        assert_eq!(guides[0].axis, "x");
+        assert_eq!(guides[0].position, 24.5);
+        assert_eq!(guides[1].axis, "y");
+        assert_eq!(guides[1].position, -3.0);
+        assert!(back.schema_version >= 11, "guides gate schema 11");
+        let containers = &back
+            .design_system
+            .as_ref()
+            .unwrap()
+            .sketch_containers;
+        assert!(containers.contains_key("rulerData"));
+        let assets = containers.get("assets").expect("assets retained");
+        assert_eq!(assets["colorAssets"].as_array().unwrap().len(), 1);
+
+        let re = export_sketch(&back).unwrap();
+        let re_files = read_zip(&re).unwrap();
+        let re_page = first_exported_page(&re_files);
+        // Raw ruler payload is authoritative while guide counts match, so
+        // even the guide color survives.
+        assert_eq!(
+            re_page["horizontalRulerData"]["guides"][0]["pos"], json!(24.5)
+        );
+        assert_eq!(
+            re_page["horizontalRulerData"]["guides"][0]["color"]["red"].as_f64(),
+            Some(1.0),
+            "raw ruler payload preferred over modeled rebuild"
+        );
+        assert_eq!(re_page["verticalRulerData"]["guides"][0]["pos"], json!(-3.0));
+        let document: Value = serde_json::from_slice(&re_files["document.json"]).unwrap();
+        assert_eq!(
+            document["assets"]["colorAssets"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
     }
 }
 

@@ -144,6 +144,29 @@ test('an incomplete initial capture is aborted without declaring any preview pix
   expect(f.owner.control.isActive()).toBe(false)
 })
 
+test.each(['success', 'cancel'] as const)('release before the first whole capture completes retires its %s without a second capture', async outcome => {
+  const f = fixture(new KernelClient(), true, 'analytic'), initial = worker.jobs[0]
+  expect(initial.options.interactionBranch).toBe(3)
+  expect(f.owner.ready).toBe(false)
+  expect(f.apply(20)).not.toBeNull()
+  const final = f.moved(20)
+  f.owner.control.end(final)
+  expect(initial.signal.aborted).toBe(true)
+  expect(worker.channelCancels).toBe(0)
+  const committed = { ...f.props, document: final, active: false }
+  f.prepare(committed, undefined, f.view, f.size, 2, 'analytic')
+  f.prepare(committed, undefined, f.view, f.size, 2, 'analytic')
+  if (outcome === 'success') initial.resolve({ gpuTile: 100 })
+  else initial.reject(Error('PREVIEW_CANCELLED'))
+  await microtasks()
+  expect(worker.jobs).toHaveLength(1)
+  expect(f.owner.ready).toBe(false)
+  expect(f.owner.items(f.view)).toBeNull()
+  expect(worker.released).toEqual(outcome === 'success' ? [100] : [])
+  f.prepare(committed, final, f.view, f.size, 2, 'analytic')
+  expect(f.owner.control.isActive()).toBe(false)
+})
+
 test('release cancellation does not cancel another owner on the shared client', async () => {
   const shared = new KernelClient(), first = fixture(shared)
   await complete(worker.jobs[0], 100)
