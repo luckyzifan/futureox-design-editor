@@ -1,0 +1,1282 @@
+{
+  "status": "captured",
+  "probeVersion": 3,
+  "onlyPan": true,
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-continuity-5",
+  "kind": "sketch",
+  "scope": "independent foreground Electron; native mouse input, rAF DOM cameras and compositor acknowledgements; no physical scanout claim",
+  "phases": [
+    {
+      "label": "pan",
+      "start": 1792945564748,
+      "stopped": 1792945564947,
+      "ended": 1792945564986,
+      "cameraBefore": {
+        "x": -6782.5,
+        "y": -5112,
+        "z": 1
+      },
+      "cameraAfter": {
+        "x": -6782.5,
+        "y": -5112,
+        "z": 1
+      },
+      "poseBefore": {
+        "x": 6460,
+        "y": 4648,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "poseAfter": {
+        "x": 6820,
+        "y": 4808,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "dispatch": [
+        {
+          "at": 1792945564759,
+          "x": 748,
+          "y": 524
+        },
+        {
+          "at": 1792945564766,
+          "x": 763,
+          "y": 530
+        },
+        {
+          "at": 1792945564774,
+          "x": 778,
+          "y": 537
+        },
+        {
+          "at": 1792945564782,
+          "x": 793,
+          "y": 544
+        },
+        {
+          "at": 1792945564789,
+          "x": 808,
+          "y": 550
+        },
+        {
+          "at": 1792945564797,
+          "x": 823,
+          "y": 557
+        },
+        {
+          "at": 1792945564807,
+          "x": 838,
+          "y": 564
+        },
+        {
+          "at": 1792945564817,
+          "x": 853,
+          "y": 570
+        },
+        {
+          "at": 1792945564821,
+          "x": 868,
+          "y": 577
+        },
+        {
+          "at": 1792945564832,
+          "x": 883,
+          "y": 584
+        },
+        {
+          "at": 1792945564841,
+          "x": 898,
+          "y": 590
+        },
+        {
+          "at": 1792945564848,
+          "x": 913,
+          "y": 597
+        },
+        {
+          "at": 1792945564854,
+          "x": 928,
+          "y": 604
+        },
+        {
+          "at": 1792945564862,
+          "x": 943,
+          "y": 610
+        },
+        {
+          "at": 1792945564870,
+          "x": 958,
+          "y": 617
+        },
+        {
+          "at": 1792945564879,
+          "x": 973,
+          "y": 624
+        },
+        {
+          "at": 1792945564887,
+          "x": 988,
+          "y": 630
+        },
+        {
+          "at": 1792945564894,
+          "x": 1003,
+          "y": 637
+        },
+        {
+          "at": 1792945564902,
+          "x": 1018,
+          "y": 644
+        },
+        {
+          "at": 1792945564912,
+          "x": 1033,
+          "y": 650
+        },
+        {
+          "at": 1792945564917,
+          "x": 1048,
+          "y": 657
+        },
+        {
+          "at": 1792945564927,
+          "x": 1063,
+          "y": 664
+        },
+        {
+          "at": 1792945564933,
+          "x": 1078,
+          "y": 670
+        },
+        {
+          "at": 1792945564943,
+          "x": 1093,
+          "y": 677
+        }
+      ],
+      "frames": 116,
+      "events": 21,
+      "final": {
+        "t": 61682.1,
+        "requested": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "shown": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "settled": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "compositor": {
+          "compositor": "webgpu-resident",
+          "frameVisible": "true",
+          "inputTrace": "[]",
+          "contentSequence": "0",
+          "interactionReady": "false",
+          "interactionActive": "false",
+          "interactionWarming": "false",
+          "interactionError": "",
+          "interactionMoves": "1",
+          "interactionEnd": "",
+          "interactionMode": "live-kernel",
+          "interactionSamples": "0",
+          "interactionSampleMs": "0.00",
+          "interactionCompileMs": "0.00",
+          "interactionGraphMs": "0.00",
+          "interactionGeometryReused": "false",
+          "interactionGroupHits": "0",
+          "residentAttached": "true",
+          "residentAttachmentReason": "attached",
+          "deviceWorkerScope": "256010144044320",
+          "deviceIncarnation": "2",
+          "deviceOwner": "4",
+          "deviceScope": "2",
+          "deviceCounterMask": "15",
+          "devicePendingCaptures": "0",
+          "devicePendingCapturePayloadBytes": "0",
+          "devicePendingReadbacks": "1",
+          "deviceLogicalPayloadBytes": "89834804",
+          "deviceRetiringPayloadBytes": "0",
+          "coverageDeferred": "0",
+          "backgroundCoverage": "0",
+          "diagnosticSequence": "151",
+          "submittedEpoch": "1792945565982.2",
+          "gridVisible": "false",
+          "dpr": "2",
+          "coverageMeasured": "true",
+          "coverageAt": "59831.39999997616",
+          "compositorFrames": "93",
+          "compositorTransformUploadBytes": "5120",
+          "compositorUploads": "4",
+          "compositorCaptures": "134",
+          "compositorBytes": "89834804",
+          "compositorOverlayBytes": "2275700",
+          "compositorTiles": "68",
+          "compositorDraws": "20",
+          "linearBlend": "false",
+          "missingTextureCount": "0",
+          "coverage": "1",
+          "sharpCoverage": "1",
+          "nativePhaseCoverage": "1",
+          "maxUpscale": "1",
+          "pixelCoverageComplete": "true",
+          "nativeCoverageComplete": "true",
+          "qualitySequence": "5",
+          "qualityRevision": "3",
+          "pageToken": "2",
+          "documentRevision": "3",
+          "generation": "4",
+          "fillGeneration": "12",
+          "qualityTerminal": "true",
+          "alphaFrame": "93",
+          "alphaSequence": "151",
+          "alphaWidth": "1710",
+          "alphaHeight": "1736",
+          "alphaSubmitted": "1",
+          "alphaProbeCode": "0",
+          "alphaMinimum": "255",
+          "alphaNonOpaquePixels": "0",
+          "alphaZeroPixels": "0",
+          "alphaPixelCount": "2968560",
+          "coverageDeferredDraws": "12",
+          "backgroundDecline": "3",
+          "backgroundDensitySources": "0",
+          "backgroundPhaseError": "0",
+          "interactionCoverageMissing": "true"
+        }
+      }
+    },
+    {
+      "label": "pan-return",
+      "start": 1792945566971,
+      "stopped": 1792945567165,
+      "ended": 1792945567202,
+      "cameraBefore": {
+        "x": -6782.5,
+        "y": -5112,
+        "z": 1
+      },
+      "cameraAfter": {
+        "x": -6782.5,
+        "y": -5112,
+        "z": 1
+      },
+      "poseBefore": {
+        "x": 6820,
+        "y": 4808,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "poseAfter": {
+        "x": 6460,
+        "y": 4648,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "dispatch": [
+        {
+          "at": 1792945566982,
+          "x": 718,
+          "y": 510
+        },
+        {
+          "at": 1792945566988,
+          "x": 703,
+          "y": 504
+        },
+        {
+          "at": 1792945566994,
+          "x": 688,
+          "y": 497
+        },
+        {
+          "at": 1792945567004,
+          "x": 673,
+          "y": 490
+        },
+        {
+          "at": 1792945567019,
+          "x": 658,
+          "y": 484
+        },
+        {
+          "at": 1792945567020,
+          "x": 643,
+          "y": 477
+        },
+        {
+          "at": 1792945567028,
+          "x": 628,
+          "y": 470
+        },
+        {
+          "at": 1792945567036,
+          "x": 613,
+          "y": 464
+        },
+        {
+          "at": 1792945567043,
+          "x": 598,
+          "y": 457
+        },
+        {
+          "at": 1792945567051,
+          "x": 583,
+          "y": 450
+        },
+        {
+          "at": 1792945567060,
+          "x": 568,
+          "y": 444
+        },
+        {
+          "at": 1792945567068,
+          "x": 553,
+          "y": 437
+        },
+        {
+          "at": 1792945567077,
+          "x": 538,
+          "y": 430
+        },
+        {
+          "at": 1792945567084,
+          "x": 523,
+          "y": 424
+        },
+        {
+          "at": 1792945567092,
+          "x": 508,
+          "y": 417
+        },
+        {
+          "at": 1792945567101,
+          "x": 493,
+          "y": 410
+        },
+        {
+          "at": 1792945567108,
+          "x": 478,
+          "y": 404
+        },
+        {
+          "at": 1792945567117,
+          "x": 463,
+          "y": 397
+        },
+        {
+          "at": 1792945567125,
+          "x": 448,
+          "y": 390
+        },
+        {
+          "at": 1792945567132,
+          "x": 433,
+          "y": 384
+        },
+        {
+          "at": 1792945567140,
+          "x": 418,
+          "y": 377
+        },
+        {
+          "at": 1792945567149,
+          "x": 403,
+          "y": 370
+        },
+        {
+          "at": 1792945567156,
+          "x": 388,
+          "y": 364
+        },
+        {
+          "at": 1792945567164,
+          "x": 373,
+          "y": 357
+        }
+      ],
+      "frames": 30,
+      "events": 24,
+      "final": {
+        "t": 62297.3,
+        "requested": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "shown": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "settled": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "compositor": {
+          "compositor": "webgpu-resident",
+          "frameVisible": "true",
+          "inputTrace": "[]",
+          "contentSequence": "0",
+          "interactionReady": "false",
+          "interactionActive": "false",
+          "interactionWarming": "false",
+          "interactionError": "",
+          "interactionMoves": "22",
+          "interactionEnd": "-360,-160",
+          "interactionMode": "live-kernel",
+          "interactionSamples": "0",
+          "interactionSampleMs": "0.00",
+          "interactionCompileMs": "0.00",
+          "interactionGraphMs": "0.00",
+          "interactionGeometryReused": "false",
+          "interactionGroupHits": "0",
+          "residentAttached": "true",
+          "residentAttachmentReason": "attached",
+          "deviceWorkerScope": "256010144044320",
+          "deviceIncarnation": "2",
+          "deviceOwner": "4",
+          "deviceScope": "2",
+          "deviceCounterMask": "15",
+          "devicePendingCaptures": "0",
+          "devicePendingCapturePayloadBytes": "0",
+          "devicePendingReadbacks": "1",
+          "deviceLogicalPayloadBytes": "89834804",
+          "deviceRetiringPayloadBytes": "0",
+          "coverageDeferred": "0",
+          "backgroundCoverage": "0",
+          "diagnosticSequence": "155",
+          "submittedEpoch": "1792945567317.4001",
+          "gridVisible": "false",
+          "dpr": "2",
+          "coverageMeasured": "true",
+          "coverageAt": "61166.59999990463",
+          "compositorFrames": "97",
+          "compositorTransformUploadBytes": "0",
+          "compositorUploads": "4",
+          "compositorCaptures": "134",
+          "compositorBytes": "89834804",
+          "compositorOverlayBytes": "2275700",
+          "compositorTiles": "68",
+          "compositorDraws": "20",
+          "linearBlend": "false",
+          "missingTextureCount": "0",
+          "coverage": "1",
+          "sharpCoverage": "1",
+          "nativePhaseCoverage": "1",
+          "maxUpscale": "1",
+          "pixelCoverageComplete": "true",
+          "nativeCoverageComplete": "true",
+          "qualitySequence": "5",
+          "qualityRevision": "3",
+          "pageToken": "2",
+          "documentRevision": "3",
+          "generation": "4",
+          "fillGeneration": "12",
+          "qualityTerminal": "true",
+          "alphaFrame": "95",
+          "alphaSequence": "153",
+          "alphaWidth": "1710",
+          "alphaHeight": "1736",
+          "alphaSubmitted": "1",
+          "alphaProbeCode": "0",
+          "alphaMinimum": "255",
+          "alphaNonOpaquePixels": "0",
+          "alphaZeroPixels": "0",
+          "alphaPixelCount": "2968560",
+          "coverageDeferredDraws": "12",
+          "backgroundDecline": "3",
+          "backgroundDensitySources": "0",
+          "backgroundPhaseError": "0",
+          "interactionCoverageMissing": "true"
+        }
+      }
+    },
+    {
+      "label": "pan-again",
+      "start": 1792945567533,
+      "stopped": 1792945567727,
+      "ended": 1792945567764,
+      "cameraBefore": {
+        "x": -6782.5,
+        "y": -5112,
+        "z": 1
+      },
+      "cameraAfter": {
+        "x": -6782.5,
+        "y": -5112,
+        "z": 1
+      },
+      "poseBefore": {
+        "x": 6460,
+        "y": 4648,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "poseAfter": {
+        "x": 6820,
+        "y": 4808,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "dispatch": [
+        {
+          "at": 1792945567541,
+          "x": 748,
+          "y": 524
+        },
+        {
+          "at": 1792945567550,
+          "x": 763,
+          "y": 530
+        },
+        {
+          "at": 1792945567564,
+          "x": 778,
+          "y": 537
+        },
+        {
+          "at": 1792945567566,
+          "x": 793,
+          "y": 544
+        },
+        {
+          "at": 1792945567577,
+          "x": 808,
+          "y": 550
+        },
+        {
+          "at": 1792945567581,
+          "x": 823,
+          "y": 557
+        },
+        {
+          "at": 1792945567590,
+          "x": 838,
+          "y": 564
+        },
+        {
+          "at": 1792945567602,
+          "x": 853,
+          "y": 570
+        },
+        {
+          "at": 1792945567605,
+          "x": 868,
+          "y": 577
+        },
+        {
+          "at": 1792945567615,
+          "x": 883,
+          "y": 584
+        },
+        {
+          "at": 1792945567659,
+          "x": 898,
+          "y": 590
+        },
+        {
+          "at": 1792945567659,
+          "x": 913,
+          "y": 597
+        },
+        {
+          "at": 1792945567659,
+          "x": 928,
+          "y": 604
+        },
+        {
+          "at": 1792945567659,
+          "x": 943,
+          "y": 610
+        },
+        {
+          "at": 1792945567659,
+          "x": 958,
+          "y": 617
+        },
+        {
+          "at": 1792945567662,
+          "x": 973,
+          "y": 624
+        },
+        {
+          "at": 1792945567670,
+          "x": 988,
+          "y": 630
+        },
+        {
+          "at": 1792945567678,
+          "x": 1003,
+          "y": 637
+        },
+        {
+          "at": 1792945567686,
+          "x": 1018,
+          "y": 644
+        },
+        {
+          "at": 1792945567694,
+          "x": 1033,
+          "y": 650
+        },
+        {
+          "at": 1792945567700,
+          "x": 1048,
+          "y": 657
+        },
+        {
+          "at": 1792945567710,
+          "x": 1063,
+          "y": 664
+        },
+        {
+          "at": 1792945567718,
+          "x": 1078,
+          "y": 670
+        },
+        {
+          "at": 1792945567726,
+          "x": 1093,
+          "y": 677
+        }
+      ],
+      "frames": 25,
+      "events": 16,
+      "final": {
+        "t": 62822.2,
+        "requested": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "shown": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "settled": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "compositor": {
+          "compositor": "webgpu-resident",
+          "frameVisible": "true",
+          "inputTrace": "[]",
+          "contentSequence": "0",
+          "interactionReady": "false",
+          "interactionActive": "false",
+          "interactionWarming": "false",
+          "interactionError": "",
+          "interactionMoves": "35",
+          "interactionEnd": "0,0",
+          "interactionMode": "live-kernel",
+          "interactionSamples": "0",
+          "interactionSampleMs": "0.00",
+          "interactionCompileMs": "0.00",
+          "interactionGraphMs": "0.00",
+          "interactionGeometryReused": "false",
+          "interactionGroupHits": "0",
+          "residentAttached": "true",
+          "residentAttachmentReason": "attached",
+          "deviceWorkerScope": "256010144044320",
+          "deviceIncarnation": "2",
+          "deviceOwner": "4",
+          "deviceScope": "2",
+          "deviceCounterMask": "15",
+          "devicePendingCaptures": "0",
+          "devicePendingCapturePayloadBytes": "0",
+          "devicePendingReadbacks": "1",
+          "deviceLogicalPayloadBytes": "89834804",
+          "deviceRetiringPayloadBytes": "0",
+          "coverageDeferred": "0",
+          "backgroundCoverage": "0",
+          "diagnosticSequence": "161",
+          "submittedEpoch": "1792945567854.6",
+          "gridVisible": "false",
+          "dpr": "2",
+          "coverageMeasured": "true",
+          "coverageAt": "61703.799999952316",
+          "compositorFrames": "103",
+          "compositorTransformUploadBytes": "0",
+          "compositorUploads": "4",
+          "compositorCaptures": "134",
+          "compositorBytes": "89834804",
+          "compositorOverlayBytes": "2275700",
+          "compositorTiles": "68",
+          "compositorDraws": "20",
+          "linearBlend": "false",
+          "missingTextureCount": "0",
+          "coverage": "1",
+          "sharpCoverage": "1",
+          "nativePhaseCoverage": "1",
+          "maxUpscale": "1",
+          "pixelCoverageComplete": "true",
+          "nativeCoverageComplete": "true",
+          "qualitySequence": "5",
+          "qualityRevision": "3",
+          "pageToken": "2",
+          "documentRevision": "3",
+          "generation": "4",
+          "fillGeneration": "12",
+          "qualityTerminal": "true",
+          "alphaFrame": "101",
+          "alphaSequence": "159",
+          "alphaWidth": "1710",
+          "alphaHeight": "1736",
+          "alphaSubmitted": "1",
+          "alphaProbeCode": "0",
+          "alphaMinimum": "255",
+          "alphaNonOpaquePixels": "0",
+          "alphaZeroPixels": "0",
+          "alphaPixelCount": "2968560",
+          "coverageDeferredDraws": "12",
+          "backgroundDecline": "3",
+          "backgroundDensitySources": "0",
+          "backgroundPhaseError": "0",
+          "interactionCoverageMissing": "true"
+        }
+      }
+    },
+    {
+      "label": "pan-reverse",
+      "start": 1792945568317,
+      "stopped": 1792945568511,
+      "ended": 1792945568549,
+      "cameraBefore": {
+        "x": -6782.5,
+        "y": -5112,
+        "z": 1
+      },
+      "cameraAfter": {
+        "x": -6782.5,
+        "y": -5112,
+        "z": 1
+      },
+      "poseBefore": {
+        "x": 6820,
+        "y": 4808,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "poseAfter": {
+        "x": 6460,
+        "y": 4648,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "dispatch": [
+        {
+          "at": 1792945568326,
+          "x": 718,
+          "y": 510
+        },
+        {
+          "at": 1792945568334,
+          "x": 703,
+          "y": 504
+        },
+        {
+          "at": 1792945568342,
+          "x": 688,
+          "y": 497
+        },
+        {
+          "at": 1792945568357,
+          "x": 673,
+          "y": 490
+        },
+        {
+          "at": 1792945568359,
+          "x": 658,
+          "y": 484
+        },
+        {
+          "at": 1792945568367,
+          "x": 643,
+          "y": 477
+        },
+        {
+          "at": 1792945568375,
+          "x": 628,
+          "y": 470
+        },
+        {
+          "at": 1792945568381,
+          "x": 613,
+          "y": 464
+        },
+        {
+          "at": 1792945568390,
+          "x": 598,
+          "y": 457
+        },
+        {
+          "at": 1792945568399,
+          "x": 583,
+          "y": 450
+        },
+        {
+          "at": 1792945568406,
+          "x": 568,
+          "y": 444
+        },
+        {
+          "at": 1792945568415,
+          "x": 553,
+          "y": 437
+        },
+        {
+          "at": 1792945568422,
+          "x": 538,
+          "y": 430
+        },
+        {
+          "at": 1792945568431,
+          "x": 523,
+          "y": 424
+        },
+        {
+          "at": 1792945568439,
+          "x": 508,
+          "y": 417
+        },
+        {
+          "at": 1792945568446,
+          "x": 493,
+          "y": 410
+        },
+        {
+          "at": 1792945568453,
+          "x": 478,
+          "y": 404
+        },
+        {
+          "at": 1792945568463,
+          "x": 463,
+          "y": 397
+        },
+        {
+          "at": 1792945568471,
+          "x": 448,
+          "y": 390
+        },
+        {
+          "at": 1792945568478,
+          "x": 433,
+          "y": 384
+        },
+        {
+          "at": 1792945568486,
+          "x": 418,
+          "y": 377
+        },
+        {
+          "at": 1792945568495,
+          "x": 403,
+          "y": 370
+        },
+        {
+          "at": 1792945568503,
+          "x": 388,
+          "y": 364
+        },
+        {
+          "at": 1792945568510,
+          "x": 373,
+          "y": 357
+        }
+      ],
+      "frames": 28,
+      "events": 24,
+      "final": {
+        "t": 63589.1,
+        "requested": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "shown": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "settled": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "compositor": {
+          "compositor": "webgpu-resident",
+          "frameVisible": "true",
+          "inputTrace": "[]",
+          "contentSequence": "0",
+          "interactionReady": "false",
+          "interactionActive": "false",
+          "interactionWarming": "false",
+          "interactionError": "",
+          "interactionMoves": "56",
+          "interactionEnd": "-360,-160",
+          "interactionMode": "live-kernel",
+          "interactionSamples": "0",
+          "interactionSampleMs": "0.00",
+          "interactionCompileMs": "0.00",
+          "interactionGraphMs": "0.00",
+          "interactionGeometryReused": "false",
+          "interactionGroupHits": "0",
+          "residentAttached": "true",
+          "residentAttachmentReason": "attached",
+          "deviceWorkerScope": "256010144044320",
+          "deviceIncarnation": "2",
+          "deviceOwner": "4",
+          "deviceScope": "2",
+          "deviceCounterMask": "15",
+          "devicePendingCaptures": "0",
+          "devicePendingCapturePayloadBytes": "0",
+          "devicePendingReadbacks": "1",
+          "deviceLogicalPayloadBytes": "89834804",
+          "deviceRetiringPayloadBytes": "0",
+          "coverageDeferred": "0",
+          "backgroundCoverage": "0",
+          "diagnosticSequence": "167",
+          "submittedEpoch": "1792945568623.6",
+          "gridVisible": "false",
+          "dpr": "2",
+          "coverageMeasured": "true",
+          "coverageAt": "62472.799999952316",
+          "compositorFrames": "108",
+          "compositorTransformUploadBytes": "0",
+          "compositorUploads": "4",
+          "compositorCaptures": "134",
+          "compositorBytes": "89834804",
+          "compositorOverlayBytes": "2275700",
+          "compositorTiles": "68",
+          "compositorDraws": "20",
+          "linearBlend": "false",
+          "missingTextureCount": "0",
+          "coverage": "1",
+          "sharpCoverage": "1",
+          "nativePhaseCoverage": "1",
+          "maxUpscale": "1",
+          "pixelCoverageComplete": "true",
+          "nativeCoverageComplete": "true",
+          "qualitySequence": "5",
+          "qualityRevision": "3",
+          "pageToken": "2",
+          "documentRevision": "3",
+          "generation": "4",
+          "fillGeneration": "12",
+          "qualityTerminal": "true",
+          "alphaFrame": "106",
+          "alphaSequence": "165",
+          "alphaWidth": "1710",
+          "alphaHeight": "1736",
+          "alphaSubmitted": "1",
+          "alphaProbeCode": "0",
+          "alphaMinimum": "255",
+          "alphaNonOpaquePixels": "0",
+          "alphaZeroPixels": "0",
+          "alphaPixelCount": "2968560",
+          "coverageDeferredDraws": "12",
+          "backgroundDecline": "3",
+          "backgroundDensitySources": "0",
+          "backgroundPhaseError": "0",
+          "interactionCoverageMissing": "true"
+        }
+      }
+    }
+  ],
+  "errors": [],
+  "instance": {
+    "pid": 81913,
+    "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-v/forma-desktop-manual-e0fe203c-a50a-4d65-ab67-5b7293473bd6-jGzRm5"
+  },
+  "fixture": "/Users/Apple/Downloads/拓扑素材.sketch",
+  "topologyTarget": {
+    "key": "1:5",
+    "id": "08856B36-020D-46FC-AC59-55F38CDB82BE"
+  },
+  "canvasBox": {
+    "x": 305,
+    "y": 40,
+    "width": 855,
+    "height": 868
+  },
+  "motionFrameSets": [
+    {
+      "label": "pan",
+      "frames": [
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-v/pan-png/0000.png",
+          "receivedAt": 1792945564824,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945564.753943
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-v/pan-png/0001.png",
+          "receivedAt": 1792945564872,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945564.799128
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-v/pan-png/0002.png",
+          "receivedAt": 1792945564888,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945564.810745
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-v/pan-png/0003.png",
+          "receivedAt": 1792945564913,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945564.827885
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-v/pan-png/0004.png",
+          "receivedAt": 1792945564960,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945564.883524
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-v/pan-png/0005.png",
+          "receivedAt": 1792945564972,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945564.907769
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-v/pan-png/0006.png",
+          "receivedAt": 1792945564993,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945564.917682
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-v/pan-png/0007.png",
+          "receivedAt": 1792945565198,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945565.141518
+          }
+        }
+      ]
+    },
+    {
+      "label": "pan-return",
+      "frames": [
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-v/pan-return-png/0000.png",
+          "receivedAt": 1792945567046,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945566.978133
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-v/pan-return-png/0001.png",
+          "receivedAt": 1792945567066,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945566.999356
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-v/pan-return-png/0002.png",
+          "receivedAt": 1792945567087,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945567.006469
+          }
+        }
+      ]
+    },
+    {
+      "label": "pan-again",
+      "frames": [
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-v/pan-again-png/0000.png",
+          "receivedAt": 1792945567603,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945567.537772
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-v/pan-again-png/0001.png",
+          "receivedAt": 1792945567624,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945567.558733
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-v/pan-again-png/0002.png",
+          "receivedAt": 1792945567644,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945567.566267
+          }
+        }
+      ]
+    },
+    {
+      "label": "pan-reverse",
+      "frames": [
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-v/pan-reverse-png/0000.png",
+          "receivedAt": 1792945568383,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945568.322304
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-v/pan-reverse-png/0001.png",
+          "receivedAt": 1792945568407,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945568.348145
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-v/pan-reverse-png/0002.png",
+          "receivedAt": 1792945568427,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945568.357159
+          }
+        }
+      ]
+    }
+  ],
+  "sparseCapture": [
+    {
+      "label": "pan-return",
+      "frames": 3
+    },
+    {
+      "label": "pan-again",
+      "frames": 3
+    },
+    {
+      "label": "pan-reverse",
+      "frames": 3
+    }
+  ],
+  "finalInputStopped": 1792945568802,
+  "finalSettled": 1792945585638,
+  "savedOutsideMotionWindow": true
+}

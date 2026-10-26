@@ -33,6 +33,16 @@ export function tilePlacementAtView(tile: RasterTile, view: CanvasCamera) {
   }
 }
 
+/** Exact screen sample lattice, not merely enough texture density. A cached
+ * denser or fractionally placed image cannot outrank these native samples. */
+export function tileHasNativePhase(tile:RasterTile,view:CanvasCamera,dpr:number){
+  if(!Number.isFinite(dpr)||dpr<=0||!Number.isFinite(view.zoom)||view.zoom<=0||
+      tile.zoom!==view.zoom*dpr||!Number.isSafeInteger(tile.width)||!Number.isSafeInteger(tile.height)||
+      tile.width<1||tile.height<1)return false
+  const placement=tilePlacementAtView(tile,view)
+  return Number.isInteger(placement.left*dpr)&&Number.isInteger(placement.top*dpr)
+}
+
 /** Gutters are display overlap, not content coverage. A cached tile elsewhere
  * on the page cannot make this viewport's preview appear available. */
 export function tileIntersectsView(tile: RasterTile, view: CanvasCamera, size: CanvasSize) {

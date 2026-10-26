@@ -5,6 +5,7 @@ import { rect, type Driver, type GpuNode, type PathMesh, type Rect, type Texture
 
 type Lifetime = {
   bytes: number
+  frameBudget:number
   activeNode: string
   masks: Map<string, Surface>
   maskOwners: Map<Texture, Set<string>>
@@ -26,7 +27,7 @@ function fixture() {
   }
   const renderer = new GpuRenderer(driver as unknown as Driver), lifetime = renderer as unknown as Lifetime
   // Simulate already-live ancestor surfaces without allocating large CPU/GPU buffers.
-  lifetime.bytes = 96 * 1024 * 1024
+  lifetime.bytes = lifetime.frameBudget * .375
   lifetime.coverage.begin(); lifetime.activeNode = 'leaf'
   const path: PathMesh = { rect: rect(0, 0, 2, 2), first: 0, count: 0, rule: 'nonzero' }
   const node = { id: 'leaf', children: [], rect: path.rect, fill: path } as unknown as GpuNode

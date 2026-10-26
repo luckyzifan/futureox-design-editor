@@ -1,0 +1,22 @@
+[
+  {
+    "name": "final-5-functional-sketch-b-retry",
+    "case": "1:32480",
+    "exit": 0,
+    "status": "captured",
+    "error": null,
+    "dragUndoRedoExact": true,
+    "savedAfterDrag": true,
+    "reopenedDragPose": true
+  },
+  {
+    "name": "final-5-functional-sketch-c-retry",
+    "case": "1:81474",
+    "exit": 0,
+    "status": "captured",
+    "error": null,
+    "dragUndoRedoExact": true,
+    "savedAfterDrag": true,
+    "reopenedDragPose": true
+  }
+]

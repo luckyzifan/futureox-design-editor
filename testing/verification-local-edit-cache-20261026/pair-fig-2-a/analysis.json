@@ -1,0 +1,113 @@
+{
+  "status": "captured",
+  "pixelQaOnly": false,
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-local-edit-cache-QJkKeb/baseline-host",
+  "kind": "fig",
+  "target": {
+    "id": "5c7b99e5-1efd-46af-be30-a5a46fb84cb6",
+    "name": "Add image here",
+    "mask": true,
+    "width": 36,
+    "height": 36,
+    "path": "7.1.0.1"
+  },
+  "camera": {
+    "x": 60.10243902439021,
+    "y": 164.92439024390242,
+    "z": 0.4609756097560976
+  },
+  "undoRedoExact": true,
+  "reopenedMaterialExact": true,
+  "savedFile": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-local-edit-cache-QJkKeb/pair-fig-2-a/local-edit.fd",
+  "edits": [
+    {
+      "value": "50",
+      "elapsedMs": 1251,
+      "damage": [
+        {
+          "full": true,
+          "reason": "masked-chain"
+        }
+      ],
+      "viewportTilesSubmitted": 20,
+      "tiles": 20,
+      "drawCalls": 2825,
+      "compileMs": 765.6999996900558,
+      "graphMs": 142.5000001192093,
+      "checkpointMs": 0,
+      "failures": [],
+      "uiStalls": 0,
+      "competing": [],
+      "blur": [],
+      "mutationObserved": true,
+      "performanceAdmissible": true
+    },
+    {
+      "value": "100",
+      "elapsedMs": 1442,
+      "damage": [
+        {
+          "full": true,
+          "reason": "masked-chain"
+        }
+      ],
+      "viewportTilesSubmitted": 20,
+      "tiles": 20,
+      "drawCalls": 2825,
+      "compileMs": 1058.4999997615814,
+      "graphMs": 132.90000021457672,
+      "checkpointMs": 0,
+      "failures": [],
+      "uiStalls": 0,
+      "competing": [],
+      "blur": [],
+      "mutationObserved": true,
+      "performanceAdmissible": true
+    },
+    {
+      "value": "50",
+      "elapsedMs": 966,
+      "damage": [
+        {
+          "full": true,
+          "reason": "masked-chain"
+        }
+      ],
+      "viewportTilesSubmitted": 20,
+      "tiles": 20,
+      "drawCalls": 2825,
+      "compileMs": 597.1999998092651,
+      "graphMs": 149.5000001192093,
+      "checkpointMs": 0,
+      "failures": [],
+      "uiStalls": 0,
+      "competing": [],
+      "blur": [],
+      "mutationObserved": true,
+      "performanceAdmissible": true
+    },
+    {
+      "value": "100",
+      "elapsedMs": 1592,
+      "damage": [
+        {
+          "full": true,
+          "reason": "masked-chain"
+        }
+      ],
+      "viewportTilesSubmitted": 20,
+      "tiles": 20,
+      "drawCalls": 2825,
+      "compileMs": 682.0000002384186,
+      "graphMs": 154.80000030994415,
+      "checkpointMs": 0,
+      "failures": [],
+      "uiStalls": 0,
+      "competing": [],
+      "blur": [],
+      "mutationObserved": true,
+      "performanceAdmissible": true
+    }
+  ],
+  "semantics": "Foreground GUI UI-edit start to existing exact-content readiness (includes harness settle check); draw/tile counters, not physical scanout or GPU timestamp. Screenshots are outside timing."
+}

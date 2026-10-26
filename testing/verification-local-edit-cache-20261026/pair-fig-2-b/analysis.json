@@ -1,0 +1,165 @@
+{
+  "status": "captured",
+  "pixelQaOnly": false,
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-local-edit-cache-QJkKeb/candidate-host",
+  "kind": "fig",
+  "target": {
+    "id": "3b33080f-b3f3-453c-af44-014639fb8b7b",
+    "name": "Add image here",
+    "mask": true,
+    "width": 36,
+    "height": 36,
+    "path": "7.1.0.1"
+  },
+  "camera": {
+    "x": 60.10243902439021,
+    "y": 164.92439024390242,
+    "z": 0.4609756097560976
+  },
+  "undoRedoExact": true,
+  "reopenedMaterialExact": true,
+  "savedFile": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-local-edit-cache-QJkKeb/pair-fig-2-b/local-edit.fd",
+  "edits": [
+    {
+      "value": "50",
+      "elapsedMs": 722,
+      "damage": [
+        {
+          "full": false,
+          "bounds": [
+            1439,
+            -251,
+            40,
+            40
+          ],
+          "rects": [
+            [
+              1439,
+              -251,
+              40,
+              40
+            ]
+          ]
+        }
+      ],
+      "viewportTilesSubmitted": 1,
+      "tiles": 1,
+      "drawCalls": 163,
+      "compileMs": 146.60000002384186,
+      "graphMs": 5.5,
+      "checkpointMs": 0,
+      "failures": [],
+      "uiStalls": 0,
+      "competing": [],
+      "blur": [],
+      "mutationObserved": true,
+      "performanceAdmissible": true
+    },
+    {
+      "value": "100",
+      "elapsedMs": 567,
+      "damage": [
+        {
+          "full": false,
+          "bounds": [
+            1439,
+            -251,
+            40,
+            40
+          ],
+          "rects": [
+            [
+              1439,
+              -251,
+              40,
+              40
+            ]
+          ]
+        }
+      ],
+      "viewportTilesSubmitted": 1,
+      "tiles": 1,
+      "drawCalls": 163,
+      "compileMs": 147.10000002384186,
+      "graphMs": 5.399999976158142,
+      "checkpointMs": 0,
+      "failures": [],
+      "uiStalls": 0,
+      "competing": [],
+      "blur": [],
+      "mutationObserved": true,
+      "performanceAdmissible": true
+    },
+    {
+      "value": "50",
+      "elapsedMs": 522,
+      "damage": [
+        {
+          "full": false,
+          "bounds": [
+            1439,
+            -251,
+            40,
+            40
+          ],
+          "rects": [
+            [
+              1439,
+              -251,
+              40,
+              40
+            ]
+          ]
+        }
+      ],
+      "viewportTilesSubmitted": 1,
+      "tiles": 1,
+      "drawCalls": 163,
+      "compileMs": 129.39999997615814,
+      "graphMs": 4.299999952316284,
+      "checkpointMs": 0,
+      "failures": [],
+      "uiStalls": 0,
+      "competing": [],
+      "blur": [],
+      "mutationObserved": true,
+      "performanceAdmissible": true
+    },
+    {
+      "value": "100",
+      "elapsedMs": 523,
+      "damage": [
+        {
+          "full": false,
+          "bounds": [
+            1439,
+            -251,
+            40,
+            40
+          ],
+          "rects": [
+            [
+              1439,
+              -251,
+              40,
+              40
+            ]
+          ]
+        }
+      ],
+      "viewportTilesSubmitted": 1,
+      "tiles": 1,
+      "drawCalls": 163,
+      "compileMs": 142.69999992847443,
+      "graphMs": 4.799999952316284,
+      "checkpointMs": 0,
+      "failures": [],
+      "uiStalls": 0,
+      "competing": [],
+      "blur": [],
+      "mutationObserved": true,
+      "performanceAdmissible": true
+    }
+  ],
+  "semantics": "Foreground GUI UI-edit start to existing exact-content readiness (includes harness settle check); draw/tile counters, not physical scanout or GPU timestamp. Screenshots are outside timing."
+}

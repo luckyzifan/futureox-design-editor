@@ -1,0 +1,214 @@
+diff --git a/frontend/design-client/src/kernel/ProgressiveSurface.tsx b/frontend/design-client/src/kernel/ProgressiveSurface.tsx
+index 5e12755..95673c2 100644
+--- a/frontend/design-client/src/kernel/ProgressiveSurface.tsx
++++ b/frontend/design-client/src/kernel/ProgressiveSurface.tsx
+@@ -1362,12 +1362,13 @@ export function ProgressiveSurfaceImpl(
+     // Filtered navigation used to return after CSS-density continuity for the
+     // entire held gesture. Give actual screen-density work a bounded turn,
+     // without turning every intermediate camera into an unbounded tile fill.
+-    if (navigationZoom.active && view.zoom >= 1 && residentDisplay && filteredContent && !nativeNavigation &&
+-        dpr > navigationPreviewDensity(dpr, width, height) &&
++    if (navigationZoom.active && (nativeNavigation || view.zoom >= 1 && filteredContent &&
++        dpr > navigationPreviewDensity(dpr, width, height)) && residentDisplay &&
+         !hdrCompositing && !props.interaction?.active && navigationZoom.sample) {
+       const refinementScope = JSON.stringify([contract.revision, width, height, dpr, generation,
+         previewDevice.current.client === c ? previewDevice.current.key : undefined])
+       navigationRefinement.update({ scope: refinementScope, sequence: navigationZoom.sample.sequence,
++        continuous: nativeNavigation,
+         current: () => current() && latestNavigationZoom.current.active && !latestNavigationZoom.current.suspended &&
+           latestContext.current.visible !== false && coverageGeneration.current === generation,
+         failed,
+@@ -1377,10 +1378,13 @@ export function ProgressiveSurfaceImpl(
+               latestContext.current.visible === false || coverageGeneration.current !== generation ||
+               sequentialContext.current.width !== width || sequentialContext.current.height !== height || sequentialContext.current.dpr !== dpr) return
+           const target = latestContext.current.requestedView || latestContext.current.view
+-          if (target.zoom < 1) return
++          if (!nativeNavigation && target.zoom < 1) return
+           // Native density, unchanged four-sample/render policy and canonical
+           // moving-camera phase. Final native-phase certification stays below.
+-          const native = canvasRasterPlan(target, dpr, width, height, { rasterProfile, exactPhase: false })
++          const scale = nativeNavigation && !cameraDependent
++            ? nativeTileMotionScale(target, dpr, width, height) : target.zoom * dpr
++          const native = canvasRasterPlan(target, dpr, width, height,
++            { rasterProfile, exactPhase: false, samplingScale: scale })
+           const bounds = { x: -target.x / target.zoom, y: -target.y / target.zoom,
+             width: width / target.zoom, height: height / target.zoom }
+           const plan = planTilesAligned(bounds, native.scale, budgetTileLimit(displayTileBudget(width, height, dpr, false), false), native.phase)
+@@ -1399,10 +1403,16 @@ export function ProgressiveSurfaceImpl(
+           // tile can still be expensive; this never promises a GPU time bound.
+           const protectedAtStart = protectedKeys.current
+           protectedAtStart.add(tile.key)
++          if (nativeNavigation) desired.current.push(tile.key)
+           const deviceAtStart = previewDevice.current.client === c ? previewDevice.current.key : undefined
++          let delivered = false
+           const receiveRefinement = (result: TileResult) => {
+             if (sameContent() && coverageGeneration.current === generation &&
+-                (!deviceAtStart || previewDevice.current.client === c && previewDevice.current.key === deviceAtStart)) return receive(result)
++                (!deviceAtStart || previewDevice.current.client === c && previewDevice.current.key === deviceAtStart)) {
++              const tile = receive(result)
++              delivered = !!tile
++              return tile
++            }
+             // Content, suspension and actual device replacement revoke late
+             // delivery. A pan alone does not: its world tile remains history.
+             try { retireRejectedTile(result, [...tileRef.current.values(), ...pageResidency.values(),
+@@ -1422,6 +1432,9 @@ export function ProgressiveSurfaceImpl(
+             }, false, backend, false, false, undefined, receiveRefinement)
+             if (sameContent() && coverageGeneration.current === generation) syncedDoc.current = doc
+           } finally { protectedAtStart.delete(tile.key) }
++          // Another turn resolves its tile from the newest camera rather
++          // than continuing the plan captured before this GPU job started.
++          return delivered
+         },
+       })
+     }
+@@ -1437,6 +1450,16 @@ export function ProgressiveSurfaceImpl(
+         if (navigationZoom.active) {
+           const sample = navigationZoom.sample
+           if (!sample) return
++          if (nativeNavigation && hasReadyCoverage()) {
++            // Complete acknowledged same-content coverage remains the bottom
++            // layer. Spend the raster queue on the current visible native
++            // misses instead of repeatedly capturing an obsolete full frame.
++            navigationIntentOwner.reset(c)
++            if (previewAdmission.current.key !== 'native-visible-refinement') c.cancelPreview()
++            previewAdmission.current = { contract, key: 'native-visible-refinement', active: true }
++            void navigationRefinement.request()
++            return
++          }
+           const ratio = navigationPreviewDensity(dpr, width, height, nativeNavigation), scale = sample.view.zoom * ratio
+           const w = Math.max(1, Math.ceil(width * ratio)), h = Math.max(1, Math.ceil(height * ratio))
+           const camera = { x: sample.view.x * ratio, y: sample.view.y * ratio, zoom: scale }
+diff --git a/frontend/design-client/src/kernel/navigation-refinement-surface.test.tsx b/frontend/design-client/src/kernel/navigation-refinement-surface.test.tsx
+index c07e226..a6b1ea9 100644
+--- a/frontend/design-client/src/kernel/navigation-refinement-surface.test.tsx
++++ b/frontend/design-client/src/kernel/navigation-refinement-surface.test.tsx
+@@ -64,15 +64,48 @@ async function fixture(zoom = 32, document = blank()) {
+   let props: any = { document, pageId: document.pages[0].id, width: 855, height: 888,
+     view: { x: 0, y: 0, zoom }, grid: false, backend: 'webgpu', onFallback: vi.fn() }
+   const render = async (extra: any = {}) => { props = { ...props, ...extra }; await act(async () => root.render(<ProgressiveSurfaceImpl {...props} />)) }
+-  const complete = async (index: number) => {
++  const complete = async (index: number, extra: any = {}) => {
+     const request = state.pending[index]
+     await act(async () => request.resolve({ bitmap: { width: request.options.width, height: request.options.height, close: vi.fn() },
+-      bytes: new Uint8Array(0), backend: 'webgpu', milliseconds: 1 }))
++      bytes: new Uint8Array(0), backend: 'webgpu', milliseconds: 1, ...extra }))
+   }
+   await render(); await vi.waitFor(() => expect(state.pending).toHaveLength(1))
+   return { render, complete, root, container, get props() { return props } }
+ }
+ 
++test.each([false, true])('native navigation requires acknowledged complete coverage before replacing full capture with visible turns (ack=%s)', async acknowledged => {
++  vi.stubEnv('VITE_DESIGN_NATIVE_NAVIGATION', '1'); vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX', '1')
++  const f = await fixture(1)
++  try {
++    expect(state.pending[0].options.width).toBe(1710)
++    await f.complete(0, { gpuTile: 91 })
++    await vi.waitFor(() => expect(state.pending).toHaveLength(2))
++    expect(state.pending[1].options.tileViewport).toHaveLength(1)
++    // Finish the first bounded turn without delivering a tile. A declined
++    // delivery must stop, rather than repeatedly rasterizing the same miss.
++    await f.complete(1)
++    await act(async () => { await Promise.resolve(); await Promise.resolve() })
++    expect(state.pending).toHaveLength(2)
++    if (acknowledged) {
++      const item = state.composites.at(-1).items.find((item: any) => item.tile.gpuTile === 91)
++      expect(item).toBeDefined()
++      await act(async () => state.composites.at(-1).onReady(item.tile.key, item.tile.serial, false))
++      const client = state.clients[0]
++      await act(async () => state.composites.at(-1).onPresented(
++        { ids: [91], view: f.props.view, width: f.props.width, height: f.props.height, dpr: 2, interaction: false }, undefined,
++        { client, deviceWorkerScope: 1, deviceIncarnation: 1, deviceOwner: 1 }))
++    }
++    state.sequence++
++    await f.render({ view: { x: 0, y: 0, zoom: 2 } })
++    await vi.waitFor(() => expect(state.pending).toHaveLength(3))
++    const next = state.pending[2].options
++    expect(!!next.tileViewport).toBe(acknowledged)
++    expect(next.livePreview === true).toBe(!acknowledged)
++    if (acknowledged) expect(next.tileViewport[0].zoom).toBeGreaterThanOrEqual(4)
++    expect(f.container.querySelector('[data-detail-ready="true"]')).toBeNull()
++  } finally { await act(async () => f.root.unmount()) }
++})
++
+ test('continuous DPR2 navigation gives one real native tile a turn without increasing preview density', async () => {
+   const f = await fixture()
+   try {
+diff --git a/frontend/design-client/src/kernel/navigation-refinement.test.ts b/frontend/design-client/src/kernel/navigation-refinement.test.ts
+index 6b862fd..5ed4196 100644
+--- a/frontend/design-client/src/kernel/navigation-refinement.test.ts
++++ b/frontend/design-client/src/kernel/navigation-refinement.test.ts
+@@ -50,3 +50,32 @@ test('obsolete scope failures cannot poison replacement ownership', async () =>
+   const latest = goal('replacement'); scheduler.update(latest); gate.resolve(); await turn
+   expect(latest.failed).not.toHaveBeenCalled(); expect(await scheduler.request()).toBe(true)
+ })
++
++test('continuous native turns release the mailbox and resolve the newest camera until there is no miss', async () => {
++  const mailbox = new RenderMailbox(), scheduler = new NavigationRefinementScheduler(mailbox), gate = deferred()
++  const order: string[] = []
++  const first = { ...goal(), continuous: true, run: vi.fn(async () => { order.push('first'); await gate.promise; return true }) }
++  scheduler.update(first); const turn = scheduler.request()
++  await vi.waitFor(() => expect(first.run).toHaveBeenCalledOnce())
++  const other = mailbox.run(() => true, async () => { order.push('coverage') })
++  let misses = 2
++  const latest = { ...goal('one', 100), continuous: true,
++    run: vi.fn(async () => { order.push('latest'); return --misses > 0 }) }
++  for (let i = 2; i <= 100; i++) { scheduler.update({ ...latest, sequence: i }); expect(await scheduler.request()).toBe(false) }
++  gate.resolve(); expect(await turn).toBe(true); await other
++  expect(order).toEqual(['first', 'coverage', 'latest', 'latest'])
++  expect(await scheduler.request()).toBe(false)
++  expect(latest.failed).not.toHaveBeenCalled()
++})
++
++test.each(['quiet', 'scope', 'failure'] as const)('continuous refinement stops at %s without retrying failed GPU work', async boundary => {
++  const scheduler = new NavigationRefinementScheduler(new RenderMailbox()), gate = deferred()
++  const first = { ...goal(), continuous: true, run: vi.fn(async () => { await gate.promise; if (boundary === 'failure') throw Error('GPU budget'); return true }) }
++  scheduler.update(first); const turn = scheduler.request()
++  await vi.waitFor(() => expect(first.run).toHaveBeenCalledOnce())
++  if (boundary === 'quiet') scheduler.update()
++  if (boundary === 'scope') scheduler.update(goal('other'))
++  gate.resolve(); expect(await turn).toBe(boundary !== 'failure')
++  expect(first.run).toHaveBeenCalledOnce()
++  expect(first.failed).toHaveBeenCalledTimes(boundary === 'failure' ? 1 : 0)
++})
+diff --git a/frontend/design-client/src/kernel/navigation-refinement.ts b/frontend/design-client/src/kernel/navigation-refinement.ts
+index deb3016..50676f1 100644
+--- a/frontend/design-client/src/kernel/navigation-refinement.ts
++++ b/frontend/design-client/src/kernel/navigation-refinement.ts
+@@ -7,7 +7,11 @@ export type NavigationRefinementGoal = {
+   sequence: number
+   current(): boolean
+   /** Resolve one current visible native miss at execution time, then await it. */
+-  run(): Promise<void>
++  run(): Promise<boolean | void>
++  /** Native navigation keeps resolving visible misses while complete
++   * same-content coverage supplies continuity. Each turn re-enters the shared
++   * mailbox and reads the latest goal; no per-camera fill queue is retained. */
++  continuous?: boolean
+   failed(error: unknown): void
+ }
+ 
+@@ -32,7 +36,9 @@ export class NavigationRefinementScheduler {
+     this.credit = { scope: requested.scope, sequence: requested.sequence }
+     const owns = () => this.goal?.scope === requested.scope && this.goal.current()
+     try {
+-      await this.mailbox.run(owns, async () => {
++      let more: boolean | void
++      do {
++        more = await this.mailbox.run(owns, async () => {
+         // Read the latest goal only after older preview work releases the
+         // mailbox. Never refine the obsolete camera which earned the turn.
+         const goal = this.goal
+@@ -40,9 +46,10 @@ export class NavigationRefinementScheduler {
+           // A queued turn may retarget to a newer sample. Spend that actual
+           // sample's credit as well, so it cannot earn a second identical turn.
+           this.credit = { scope: goal.scope, sequence: goal.sequence }
+-          await goal.run()
++          return goal.run()
+         }
+-      })
++        })
++      } while (more === true && owns() && this.goal?.continuous)
+       return true
+     } catch (error) {
+       if (!String(error).includes('PREVIEW_CANCELLED') && owns()) this.goal!.failed(error)

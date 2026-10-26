@@ -1,0 +1,1460 @@
+{
+  "status": "failed",
+  "probeVersion": 3,
+  "onlyPan": true,
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-continuity-5",
+  "kind": "sketch",
+  "scope": "independent foreground Electron; native mouse input, rAF DOM cameras and compositor acknowledgements; no physical scanout claim",
+  "phases": [
+    {
+      "label": "pan",
+      "start": 1792945646103,
+      "stopped": 1792945646298,
+      "ended": 1792945646334,
+      "cameraBefore": {
+        "x": -6782.5,
+        "y": -5112,
+        "z": 1
+      },
+      "cameraAfter": {
+        "x": -6422.5,
+        "y": -4952,
+        "z": 1
+      },
+      "poseBefore": {
+        "x": 6460,
+        "y": 4648,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "poseAfter": {
+        "x": 6460,
+        "y": 4648,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "dispatch": [
+        {
+          "at": 1792945646112,
+          "x": 748,
+          "y": 524
+        },
+        {
+          "at": 1792945646123,
+          "x": 763,
+          "y": 530
+        },
+        {
+          "at": 1792945646129,
+          "x": 778,
+          "y": 537
+        },
+        {
+          "at": 1792945646138,
+          "x": 793,
+          "y": 544
+        },
+        {
+          "at": 1792945646150,
+          "x": 808,
+          "y": 550
+        },
+        {
+          "at": 1792945646157,
+          "x": 823,
+          "y": 557
+        },
+        {
+          "at": 1792945646162,
+          "x": 838,
+          "y": 564
+        },
+        {
+          "at": 1792945646169,
+          "x": 853,
+          "y": 570
+        },
+        {
+          "at": 1792945646176,
+          "x": 868,
+          "y": 577
+        },
+        {
+          "at": 1792945646186,
+          "x": 883,
+          "y": 584
+        },
+        {
+          "at": 1792945646192,
+          "x": 898,
+          "y": 590
+        },
+        {
+          "at": 1792945646203,
+          "x": 913,
+          "y": 597
+        },
+        {
+          "at": 1792945646210,
+          "x": 928,
+          "y": 604
+        },
+        {
+          "at": 1792945646218,
+          "x": 943,
+          "y": 610
+        },
+        {
+          "at": 1792945646229,
+          "x": 958,
+          "y": 617
+        },
+        {
+          "at": 1792945646232,
+          "x": 973,
+          "y": 624
+        },
+        {
+          "at": 1792945646241,
+          "x": 988,
+          "y": 630
+        },
+        {
+          "at": 1792945646250,
+          "x": 1003,
+          "y": 637
+        },
+        {
+          "at": 1792945646265,
+          "x": 1018,
+          "y": 644
+        },
+        {
+          "at": 1792945646265,
+          "x": 1033,
+          "y": 650
+        },
+        {
+          "at": 1792945646273,
+          "x": 1048,
+          "y": 657
+        },
+        {
+          "at": 1792945646280,
+          "x": 1063,
+          "y": 664
+        },
+        {
+          "at": 1792945646290,
+          "x": 1078,
+          "y": 670
+        },
+        {
+          "at": 1792945646297,
+          "x": 1093,
+          "y": 677
+        }
+      ],
+      "frames": 28,
+      "events": 23,
+      "final": {
+        "t": 59030.6,
+        "requested": {
+          "x": -6422.5,
+          "y": -4952,
+          "z": 1
+        },
+        "shown": {
+          "x": -6422.5,
+          "y": -4952,
+          "z": 1
+        },
+        "settled": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "compositor": {
+          "compositor": "webgpu-resident",
+          "frameVisible": "true",
+          "inputTrace": "[]",
+          "contentSequence": "0",
+          "interactionReady": "false",
+          "interactionActive": "false",
+          "interactionWarming": "false",
+          "interactionError": "",
+          "interactionMoves": "0",
+          "interactionEnd": "",
+          "interactionMode": "retained-layers",
+          "interactionSamples": "0",
+          "interactionSampleMs": "0.00",
+          "interactionCompileMs": "0.00",
+          "interactionGraphMs": "0.00",
+          "interactionGeometryReused": "false",
+          "interactionGroupHits": "0",
+          "residentAttached": "true",
+          "residentAttachmentReason": "attached",
+          "deviceWorkerScope": "58950143392679",
+          "deviceIncarnation": "2",
+          "deviceOwner": "4",
+          "deviceScope": "2",
+          "deviceCounterMask": "15",
+          "devicePendingCaptures": "0",
+          "devicePendingCapturePayloadBytes": "0",
+          "devicePendingReadbacks": "2",
+          "deviceLogicalPayloadBytes": "93005156",
+          "deviceRetiringPayloadBytes": "0",
+          "coverageDeferred": "0",
+          "backgroundCoverage": "0",
+          "diagnosticSequence": "194",
+          "submittedEpoch": "1792945646321.4",
+          "gridVisible": "false",
+          "dpr": "2",
+          "coverageMeasured": "true",
+          "coverageAt": "57926.39999997616",
+          "compositorFrames": "142",
+          "compositorTransformUploadBytes": "0",
+          "compositorUploads": "4",
+          "compositorCaptures": "137",
+          "compositorBytes": "93005156",
+          "compositorOverlayBytes": "2275700",
+          "compositorTiles": "71",
+          "compositorDraws": "17",
+          "linearBlend": "false",
+          "missingTextureCount": "0",
+          "coverage": "1",
+          "sharpCoverage": "0.75",
+          "nativePhaseCoverage": "0.75",
+          "maxUpscale": "2.2791878172588835",
+          "pixelCoverageComplete": "true",
+          "nativeCoverageComplete": "false",
+          "qualitySequence": "5",
+          "qualityRevision": "3",
+          "pageToken": "2",
+          "documentRevision": "3",
+          "generation": "4",
+          "fillGeneration": "12",
+          "qualityTerminal": "true",
+          "alphaFrame": "87",
+          "alphaSequence": "132",
+          "alphaWidth": "1710",
+          "alphaHeight": "1736",
+          "alphaSubmitted": "1",
+          "alphaProbeCode": "0",
+          "alphaMinimum": "255",
+          "alphaNonOpaquePixels": "0",
+          "alphaZeroPixels": "0",
+          "alphaPixelCount": "2968560",
+          "coverageDeferredDraws": "0",
+          "backgroundDecline": "2",
+          "backgroundDensitySources": "0",
+          "backgroundPhaseError": "0"
+        }
+      }
+    },
+    {
+      "label": "pan-return",
+      "start": 1792945646518,
+      "stopped": 1792945646712,
+      "ended": 1792945646747,
+      "cameraBefore": {
+        "x": -6422.5,
+        "y": -4952,
+        "z": 1
+      },
+      "cameraAfter": {
+        "x": -6782.5,
+        "y": -5112,
+        "z": 1
+      },
+      "poseBefore": {
+        "x": 6460,
+        "y": 4648,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "poseAfter": {
+        "x": 6460,
+        "y": 4648,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "dispatch": [
+        {
+          "at": 1792945646527,
+          "x": 718,
+          "y": 510
+        },
+        {
+          "at": 1792945646538,
+          "x": 703,
+          "y": 504
+        },
+        {
+          "at": 1792945646545,
+          "x": 688,
+          "y": 497
+        },
+        {
+          "at": 1792945646551,
+          "x": 673,
+          "y": 490
+        },
+        {
+          "at": 1792945646560,
+          "x": 658,
+          "y": 484
+        },
+        {
+          "at": 1792945646567,
+          "x": 643,
+          "y": 477
+        },
+        {
+          "at": 1792945646576,
+          "x": 628,
+          "y": 470
+        },
+        {
+          "at": 1792945646582,
+          "x": 613,
+          "y": 464
+        },
+        {
+          "at": 1792945646591,
+          "x": 598,
+          "y": 457
+        },
+        {
+          "at": 1792945646599,
+          "x": 583,
+          "y": 450
+        },
+        {
+          "at": 1792945646606,
+          "x": 568,
+          "y": 444
+        },
+        {
+          "at": 1792945646616,
+          "x": 553,
+          "y": 437
+        },
+        {
+          "at": 1792945646622,
+          "x": 538,
+          "y": 430
+        },
+        {
+          "at": 1792945646633,
+          "x": 523,
+          "y": 424
+        },
+        {
+          "at": 1792945646639,
+          "x": 508,
+          "y": 417
+        },
+        {
+          "at": 1792945646647,
+          "x": 493,
+          "y": 410
+        },
+        {
+          "at": 1792945646655,
+          "x": 478,
+          "y": 404
+        },
+        {
+          "at": 1792945646669,
+          "x": 463,
+          "y": 397
+        },
+        {
+          "at": 1792945646671,
+          "x": 448,
+          "y": 390
+        },
+        {
+          "at": 1792945646679,
+          "x": 433,
+          "y": 384
+        },
+        {
+          "at": 1792945646686,
+          "x": 418,
+          "y": 377
+        },
+        {
+          "at": 1792945646697,
+          "x": 403,
+          "y": 370
+        },
+        {
+          "at": 1792945646702,
+          "x": 388,
+          "y": 364
+        },
+        {
+          "at": 1792945646710,
+          "x": 373,
+          "y": 357
+        }
+      ],
+      "frames": 26,
+      "events": 25,
+      "final": {
+        "t": 59429.5,
+        "requested": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "shown": {
+          "x": -6767.5,
+          "y": -5105,
+          "z": 1
+        },
+        "settled": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "compositor": {
+          "compositor": "webgpu-resident",
+          "frameVisible": "true",
+          "inputTrace": "[]",
+          "contentSequence": "0",
+          "interactionReady": "false",
+          "interactionActive": "false",
+          "interactionWarming": "false",
+          "interactionError": "",
+          "interactionMoves": "0",
+          "interactionEnd": "",
+          "interactionMode": "retained-layers",
+          "interactionSamples": "0",
+          "interactionSampleMs": "0.00",
+          "interactionCompileMs": "0.00",
+          "interactionGraphMs": "0.00",
+          "interactionGeometryReused": "false",
+          "interactionGroupHits": "0",
+          "residentAttached": "true",
+          "residentAttachmentReason": "attached",
+          "deviceWorkerScope": "58950143392679",
+          "deviceIncarnation": "2",
+          "deviceOwner": "4",
+          "deviceScope": "2",
+          "deviceCounterMask": "15",
+          "devicePendingCaptures": "0",
+          "devicePendingCapturePayloadBytes": "0",
+          "devicePendingReadbacks": "1",
+          "deviceLogicalPayloadBytes": "93005156",
+          "deviceRetiringPayloadBytes": "0",
+          "coverageDeferred": "0",
+          "backgroundCoverage": "0",
+          "diagnosticSequence": "257",
+          "submittedEpoch": "1792945646705.2",
+          "gridVisible": "false",
+          "dpr": "2",
+          "coverageMeasured": "true",
+          "coverageAt": "58310.200000047684",
+          "compositorFrames": "199",
+          "compositorTransformUploadBytes": "0",
+          "compositorUploads": "4",
+          "compositorCaptures": "138",
+          "compositorBytes": "93005156",
+          "compositorOverlayBytes": "2275700",
+          "compositorTiles": "71",
+          "compositorDraws": "20",
+          "linearBlend": "false",
+          "missingTextureCount": "0",
+          "coverage": "1",
+          "sharpCoverage": "1",
+          "nativePhaseCoverage": "1",
+          "maxUpscale": "1",
+          "pixelCoverageComplete": "true",
+          "nativeCoverageComplete": "true",
+          "qualitySequence": "5",
+          "qualityRevision": "3",
+          "pageToken": "2",
+          "documentRevision": "3",
+          "generation": "4",
+          "fillGeneration": "12",
+          "qualityTerminal": "true",
+          "alphaFrame": "142",
+          "alphaSequence": "194",
+          "alphaWidth": "1710",
+          "alphaHeight": "1736",
+          "alphaSubmitted": "1",
+          "alphaProbeCode": "0",
+          "alphaMinimum": "255",
+          "alphaNonOpaquePixels": "0",
+          "alphaZeroPixels": "0",
+          "alphaPixelCount": "2968560",
+          "coverageDeferredDraws": "0",
+          "backgroundDecline": "2",
+          "backgroundDensitySources": "0",
+          "backgroundPhaseError": "0"
+        }
+      }
+    },
+    {
+      "label": "pan-again",
+      "start": 1792945646948,
+      "stopped": 1792945647141,
+      "ended": 1792945647178,
+      "cameraBefore": {
+        "x": -6782.5,
+        "y": -5112,
+        "z": 1
+      },
+      "cameraAfter": {
+        "x": -6422.5,
+        "y": -4952,
+        "z": 1
+      },
+      "poseBefore": {
+        "x": 6460,
+        "y": 4648,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "poseAfter": {
+        "x": 6460,
+        "y": 4648,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "dispatch": [
+        {
+          "at": 1792945646957,
+          "x": 748,
+          "y": 524
+        },
+        {
+          "at": 1792945646968,
+          "x": 763,
+          "y": 530
+        },
+        {
+          "at": 1792945646977,
+          "x": 778,
+          "y": 537
+        },
+        {
+          "at": 1792945646982,
+          "x": 793,
+          "y": 544
+        },
+        {
+          "at": 1792945646991,
+          "x": 808,
+          "y": 550
+        },
+        {
+          "at": 1792945646999,
+          "x": 823,
+          "y": 557
+        },
+        {
+          "at": 1792945647008,
+          "x": 838,
+          "y": 564
+        },
+        {
+          "at": 1792945647012,
+          "x": 853,
+          "y": 570
+        },
+        {
+          "at": 1792945647020,
+          "x": 868,
+          "y": 577
+        },
+        {
+          "at": 1792945647029,
+          "x": 883,
+          "y": 584
+        },
+        {
+          "at": 1792945647038,
+          "x": 898,
+          "y": 590
+        },
+        {
+          "at": 1792945647044,
+          "x": 913,
+          "y": 597
+        },
+        {
+          "at": 1792945647052,
+          "x": 928,
+          "y": 604
+        },
+        {
+          "at": 1792945647067,
+          "x": 943,
+          "y": 610
+        },
+        {
+          "at": 1792945647068,
+          "x": 958,
+          "y": 617
+        },
+        {
+          "at": 1792945647077,
+          "x": 973,
+          "y": 624
+        },
+        {
+          "at": 1792945647084,
+          "x": 988,
+          "y": 630
+        },
+        {
+          "at": 1792945647093,
+          "x": 1003,
+          "y": 637
+        },
+        {
+          "at": 1792945647101,
+          "x": 1018,
+          "y": 644
+        },
+        {
+          "at": 1792945647112,
+          "x": 1033,
+          "y": 650
+        },
+        {
+          "at": 1792945647117,
+          "x": 1048,
+          "y": 657
+        },
+        {
+          "at": 1792945647124,
+          "x": 1063,
+          "y": 664
+        },
+        {
+          "at": 1792945647134,
+          "x": 1078,
+          "y": 670
+        },
+        {
+          "at": 1792945647140,
+          "x": 1093,
+          "y": 677
+        }
+      ],
+      "frames": 34,
+      "events": 21,
+      "final": {
+        "t": 59955.4,
+        "requested": {
+          "x": -6422.5,
+          "y": -4952,
+          "z": 1
+        },
+        "shown": {
+          "x": -6422.5,
+          "y": -4952,
+          "z": 1
+        },
+        "settled": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "compositor": {
+          "compositor": "webgpu-resident",
+          "frameVisible": "true",
+          "inputTrace": "[]",
+          "contentSequence": "0",
+          "interactionReady": "false",
+          "interactionActive": "false",
+          "interactionWarming": "false",
+          "interactionError": "",
+          "interactionMoves": "0",
+          "interactionEnd": "",
+          "interactionMode": "retained-layers",
+          "interactionSamples": "0",
+          "interactionSampleMs": "0.00",
+          "interactionCompileMs": "0.00",
+          "interactionGraphMs": "0.00",
+          "interactionGeometryReused": "false",
+          "interactionGroupHits": "0",
+          "residentAttached": "true",
+          "residentAttachmentReason": "attached",
+          "deviceWorkerScope": "58950143392679",
+          "deviceIncarnation": "2",
+          "deviceOwner": "4",
+          "deviceScope": "2",
+          "deviceCounterMask": "15",
+          "devicePendingCaptures": "0",
+          "devicePendingCapturePayloadBytes": "0",
+          "devicePendingReadbacks": "1",
+          "deviceLogicalPayloadBytes": "94061940",
+          "deviceRetiringPayloadBytes": "0",
+          "coverageDeferred": "0",
+          "backgroundCoverage": "0",
+          "diagnosticSequence": "323",
+          "submittedEpoch": "1792945647164.5",
+          "gridVisible": "false",
+          "dpr": "2",
+          "coverageMeasured": "true",
+          "coverageAt": "58769.5",
+          "compositorFrames": "246",
+          "compositorTransformUploadBytes": "0",
+          "compositorUploads": "4",
+          "compositorCaptures": "139",
+          "compositorBytes": "94061940",
+          "compositorOverlayBytes": "2275700",
+          "compositorTiles": "72",
+          "compositorDraws": "16",
+          "linearBlend": "false",
+          "missingTextureCount": "0",
+          "coverage": "1",
+          "sharpCoverage": "0.875",
+          "nativePhaseCoverage": "0.875",
+          "maxUpscale": "2.2791878172588835",
+          "pixelCoverageComplete": "true",
+          "nativeCoverageComplete": "false",
+          "qualitySequence": "6",
+          "qualityRevision": "3",
+          "pageToken": "2",
+          "documentRevision": "3",
+          "generation": "6",
+          "fillGeneration": "19",
+          "qualityTerminal": "true",
+          "alphaFrame": "246",
+          "alphaSequence": "323",
+          "alphaWidth": "1710",
+          "alphaHeight": "1736",
+          "alphaSubmitted": "1",
+          "alphaProbeCode": "0",
+          "alphaMinimum": "255",
+          "alphaNonOpaquePixels": "0",
+          "alphaZeroPixels": "0",
+          "alphaPixelCount": "2968560",
+          "coverageDeferredDraws": "0",
+          "backgroundDecline": "2",
+          "backgroundDensitySources": "0",
+          "backgroundPhaseError": "0"
+        }
+      }
+    },
+    {
+      "label": "pan-reverse",
+      "start": 1792945647457,
+      "stopped": 1792945647662,
+      "ended": 1792945647700,
+      "cameraBefore": {
+        "x": -6422.5,
+        "y": -4952,
+        "z": 1
+      },
+      "cameraAfter": {
+        "x": -6782.5,
+        "y": -5112,
+        "z": 1
+      },
+      "poseBefore": {
+        "x": 6460,
+        "y": 4648,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "poseAfter": {
+        "x": 6460,
+        "y": 4648,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "dispatch": [
+        {
+          "at": 1792945647469,
+          "x": 718,
+          "y": 510
+        },
+        {
+          "at": 1792945647475,
+          "x": 703,
+          "y": 504
+        },
+        {
+          "at": 1792945647484,
+          "x": 688,
+          "y": 497
+        },
+        {
+          "at": 1792945647496,
+          "x": 673,
+          "y": 490
+        },
+        {
+          "at": 1792945647501,
+          "x": 658,
+          "y": 484
+        },
+        {
+          "at": 1792945647510,
+          "x": 643,
+          "y": 477
+        },
+        {
+          "at": 1792945647515,
+          "x": 628,
+          "y": 470
+        },
+        {
+          "at": 1792945647523,
+          "x": 613,
+          "y": 464
+        },
+        {
+          "at": 1792945647531,
+          "x": 598,
+          "y": 457
+        },
+        {
+          "at": 1792945647539,
+          "x": 583,
+          "y": 450
+        },
+        {
+          "at": 1792945647548,
+          "x": 568,
+          "y": 444
+        },
+        {
+          "at": 1792945647556,
+          "x": 553,
+          "y": 437
+        },
+        {
+          "at": 1792945647564,
+          "x": 538,
+          "y": 430
+        },
+        {
+          "at": 1792945647574,
+          "x": 523,
+          "y": 424
+        },
+        {
+          "at": 1792945647581,
+          "x": 508,
+          "y": 417
+        },
+        {
+          "at": 1792945647586,
+          "x": 493,
+          "y": 410
+        },
+        {
+          "at": 1792945647596,
+          "x": 478,
+          "y": 404
+        },
+        {
+          "at": 1792945647606,
+          "x": 463,
+          "y": 397
+        },
+        {
+          "at": 1792945647611,
+          "x": 448,
+          "y": 390
+        },
+        {
+          "at": 1792945647620,
+          "x": 433,
+          "y": 384
+        },
+        {
+          "at": 1792945647627,
+          "x": 418,
+          "y": 377
+        },
+        {
+          "at": 1792945647636,
+          "x": 403,
+          "y": 370
+        },
+        {
+          "at": 1792945647643,
+          "x": 388,
+          "y": 364
+        },
+        {
+          "at": 1792945647657,
+          "x": 373,
+          "y": 357
+        }
+      ],
+      "frames": 38,
+      "events": 24,
+      "final": {
+        "t": 60446.7,
+        "requested": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "shown": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "settled": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "compositor": {
+          "compositor": "webgpu-resident",
+          "frameVisible": "true",
+          "inputTrace": "[]",
+          "contentSequence": "0",
+          "interactionReady": "false",
+          "interactionActive": "false",
+          "interactionWarming": "false",
+          "interactionError": "",
+          "interactionMoves": "0",
+          "interactionEnd": "",
+          "interactionMode": "retained-layers",
+          "interactionSamples": "0",
+          "interactionSampleMs": "0.00",
+          "interactionCompileMs": "0.00",
+          "interactionGraphMs": "0.00",
+          "interactionGeometryReused": "false",
+          "interactionGroupHits": "0",
+          "residentAttached": "true",
+          "residentAttachmentReason": "attached",
+          "deviceWorkerScope": "58950143392679",
+          "deviceIncarnation": "2",
+          "deviceOwner": "4",
+          "deviceScope": "2",
+          "deviceCounterMask": "15",
+          "devicePendingCaptures": "0",
+          "devicePendingCapturePayloadBytes": "0",
+          "devicePendingReadbacks": "1",
+          "deviceLogicalPayloadBytes": "94061940",
+          "deviceRetiringPayloadBytes": "0",
+          "coverageDeferred": "0",
+          "backgroundCoverage": "0",
+          "diagnosticSequence": "388",
+          "submittedEpoch": "1792945647673.1",
+          "gridVisible": "false",
+          "dpr": "2",
+          "coverageMeasured": "true",
+          "coverageAt": "59278.10000002384",
+          "compositorFrames": "309",
+          "compositorTransformUploadBytes": "0",
+          "compositorUploads": "4",
+          "compositorCaptures": "139",
+          "compositorBytes": "94061940",
+          "compositorOverlayBytes": "2275700",
+          "compositorTiles": "72",
+          "compositorDraws": "20",
+          "linearBlend": "false",
+          "missingTextureCount": "0",
+          "coverage": "1",
+          "sharpCoverage": "1",
+          "nativePhaseCoverage": "1",
+          "maxUpscale": "1",
+          "pixelCoverageComplete": "true",
+          "nativeCoverageComplete": "true",
+          "qualitySequence": "6",
+          "qualityRevision": "3",
+          "pageToken": "2",
+          "documentRevision": "3",
+          "generation": "6",
+          "fillGeneration": "19",
+          "qualityTerminal": "true",
+          "alphaFrame": "308",
+          "alphaSequence": "387",
+          "alphaWidth": "1710",
+          "alphaHeight": "1736",
+          "alphaSubmitted": "1",
+          "alphaProbeCode": "0",
+          "alphaMinimum": "255",
+          "alphaNonOpaquePixels": "0",
+          "alphaZeroPixels": "0",
+          "alphaPixelCount": "2968560",
+          "coverageDeferredDraws": "0",
+          "backgroundDecline": "2",
+          "backgroundDensitySources": "0",
+          "backgroundPhaseError": "0"
+        }
+      }
+    }
+  ],
+  "errors": [],
+  "instance": {
+    "pid": 83704,
+    "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/forma-desktop-manual-b31f3cf8-e4a4-45e6-b164-2b8d4298f8d0-1wEW1n"
+  },
+  "fixture": "/Users/Apple/Downloads/拓扑素材.sketch",
+  "topologyTarget": {
+    "key": "1:5",
+    "id": "08856B36-020D-46FC-AC59-55F38CDB82BE"
+  },
+  "canvasBox": {
+    "x": 305,
+    "y": 40,
+    "width": 855,
+    "height": 868
+  },
+  "motionFrameSets": [
+    {
+      "label": "pan",
+      "frames": [
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-png/0000.png",
+          "receivedAt": 1792945646176,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945646.113158
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-png/0001.png",
+          "receivedAt": 1792945646198,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945646.118263
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-png/0002.png",
+          "receivedAt": 1792945646220,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945646.124413
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-png/0003.png",
+          "receivedAt": 1792945646257,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945646.198802
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-png/0004.png",
+          "receivedAt": 1792945646287,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945646.229493
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-png/0005.png",
+          "receivedAt": 1792945646306,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945646.232226
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-png/0006.png",
+          "receivedAt": 1792945646326,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945646.265161
+          }
+        }
+      ]
+    },
+    {
+      "label": "pan-return",
+      "frames": [
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-return-png/0000.png",
+          "receivedAt": 1792945646585,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945646.522845
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-return-png/0001.png",
+          "receivedAt": 1792945646608,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945646.530535
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-return-png/0002.png",
+          "receivedAt": 1792945646627,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945646.541165
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-return-png/0003.png",
+          "receivedAt": 1792945646659,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945646.602372
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-return-png/0004.png",
+          "receivedAt": 1792945646697,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945646.634373
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-return-png/0005.png",
+          "receivedAt": 1792945646725,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945646.644277
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-return-png/0006.png",
+          "receivedAt": 1792945646734,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945646.661011
+          }
+        }
+      ]
+    },
+    {
+      "label": "pan-again",
+      "frames": [
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-again-png/0000.png",
+          "receivedAt": 1792945647017,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945646.952757
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-again-png/0001.png",
+          "receivedAt": 1792945647041,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945646.9625
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-again-png/0002.png",
+          "receivedAt": 1792945647060,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945646.970415
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-again-png/0003.png",
+          "receivedAt": 1792945647096,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945647.035506
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-again-png/0004.png",
+          "receivedAt": 1792945647134,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945647.074408
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-again-png/0005.png",
+          "receivedAt": 1792945647162,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945647.080192
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-again-png/0006.png",
+          "receivedAt": 1792945647193,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945647.131506
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-again-png/0007.png",
+          "receivedAt": 1792945647213,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945647.155246
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-again-png/0008.png",
+          "receivedAt": 1792945647234,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945647.165324
+          }
+        }
+      ]
+    },
+    {
+      "label": "pan-reverse",
+      "frames": [
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-reverse-png/0000.png",
+          "receivedAt": 1792945647525,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945647.463908
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-reverse-png/0001.png",
+          "receivedAt": 1792945647547,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945647.476709
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-reverse-png/0002.png",
+          "receivedAt": 1792945647572,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945647.498252
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-reverse-png/0003.png",
+          "receivedAt": 1792945647601,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945647.54105
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-reverse-png/0004.png",
+          "receivedAt": 1792945647630,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945647.566046
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-reverse-png/0005.png",
+          "receivedAt": 1792945647648,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945647.575397
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-reverse-png/0006.png",
+          "receivedAt": 1792945647683,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945647.622828
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-reverse-png/0007.png",
+          "receivedAt": 1792945647706,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945647.649811
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/pan-reverse-png/0008.png",
+          "receivedAt": 1792945647728,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792945647.658217
+          }
+        }
+      ]
+    }
+  ],
+  "finalInputStopped": 1792945647893,
+  "finalSettled": 1792945648047,
+  "error": "Error: expect(locator).toContainText(expected) failed\n\nLocator: locator('.source-canvas-status')\nExpected substring: \"画布修改已保存到源文件缓存\"\nReceived string:    \"当前画板 / 对象已载入：4,022 个场景节点。已导入，可以继续编辑 · 3 项兼容提示×查看兼容说明部分 Sketch 专有属性暂不支持完整编辑，建议保留原始 .sketch 文件。文件未嵌入所用字体，已使用内置字体；可在文字面板导入并匹配字体。布尔组合已转换为本地矢量结构，原始设置已保留。\"\nTimeout: 180000ms\n\nCall log:\n  - Expect \"toContainText\" locator('.source-canvas-status') with timeout 180000ms\n  - waiting for locator('.source-canvas-status')\n    359 × locator resolved to <div class=\"source-canvas-status\">…</div>\n        - unexpected value \"当前画板 / 对象已载入：4,022 个场景节点。已导入，可以继续编辑 · 3 项兼容提示×查看兼容说明部分 Sketch 专有属性暂不支持完整编辑，建议保留原始 .sketch 文件。文件未嵌入所用字体，已使用内置字体；可在文字面板导入并匹配字体。布尔组合已转换为本地矢量结构，原始设置已保留。\"\n",
+  "stack": "Error: expect(locator).toContainText(expected) failed\n\nLocator: locator('.source-canvas-status')\nExpected substring: \"画布修改已保存到源文件缓存\"\nReceived string:    \"当前画板 / 对象已载入：4,022 个场景节点。已导入，可以继续编辑 · 3 项兼容提示×查看兼容说明部分 Sketch 专有属性暂不支持完整编辑，建议保留原始 .sketch 文件。文件未嵌入所用字体，已使用内置字体；可在文字面板导入并匹配字体。布尔组合已转换为本地矢量结构，原始设置已保留。\"\nTimeout: 180000ms\n\nCall log:\n  - Expect \"toContainText\" locator('.source-canvas-status') with timeout 180000ms\n  - waiting for locator('.source-canvas-status')\n    359 × locator resolved to <div class=\"source-canvas-status\">…</div>\n        - unexpected value \"当前画板 / 对象已载入：4,022 个场景节点。已导入，可以继续编辑 · 3 项兼容提示×查看兼容说明部分 Sketch 专有属性暂不支持完整编辑，建议保留原始 .sketch 文件。文件未嵌入所用字体，已使用内置字体；可在文字面板导入并匹配字体。布尔组合已转换为本地矢量结构，原始设置已保留。\"\n\n    at captureRawStack (/Users/Apple/project/design-kernel/frontend/design-client/node_modules/playwright-core/lib/coreBundle.js:8588:17)\n    at callMatcherAsStep (/Users/Apple/project/design-kernel/frontend/design-client/node_modules/playwright/lib/matchers/expect.js:13310:57)\n    at Object.toContainText (/Users/Apple/project/design-kernel/frontend/design-client/node_modules/playwright/lib/matchers/expect.js:13302:23)\n    at /Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/stress-drag.mjs:158:74"
+}

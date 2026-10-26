@@ -39,5 +39,30 @@ fn fixed_gradient_axis_fields_preserve_all_parameter_bits_and_original_limits(){
     }
     let p:Paint=serde_json::from_value(serde_json::json!({"kind":"linear","color":"#000000","angle":31})).unwrap();
     assert!(gradient_sampling_axes(r,Transform::default(),[100.,80.],&p,None).unwrap().is_empty());
-    assert!(gradient_sampling_axes(Rect::new(0,0,4097,1024),Transform::default(),[100.,80.],&p,None).is_err());
+    let large=Rect::new(0,0,4097,1024);
+    assert!(gradient_sampling_axes(large,Transform::default(),[100.,80.],&p,None).unwrap().is_empty());
+    assert!(gradient_sampling_grid(large,Transform::default(),[100.,80.],&p,None).unwrap_err().contains("64 MiB"));
+}
+
+#[test]
+fn logged_topology_gradient_uses_a_bounded_axis_without_admitting_an_oversized_dense_field(){
+    use futureox_design_kernel::{paint::{gradient_sampling_axes,gradient_sampling_grid},math::{Rect,Transform},scene::Paint};
+    let original=Rect::new(-668,-668,3046,2373);
+    let matrix=Transform([55.638927065523575,0.,0.,55.638927065523575,-2767.135138342918,-968.0845931622657]);
+    let paint:Paint=serde_json::from_value(json!({"kind":"linear","color":"#000000","angle":0,
+        "transform":[0.3129131610576916,0,0,0.3129131610576916,0.3471304086538467,0.4647264751940776],
+        "stops":[{"offset":0,"color":"#ffffff"},{"offset":0.5,"color":"#111111"},{"offset":1,"color":"#000000"}]})).unwrap();
+    for sample in [None,Some(0),Some(1),Some(2),Some(3)] {
+        let axis=gradient_sampling_axes(original,matrix,[130.,48.],&paint,sample).unwrap();
+        assert_eq!(&axis[..4],&[3046.,1.,0.,0.]);
+        assert_eq!(axis.len(),4+3046*4);
+        // Independently use the unchanged dense sampler at several scanlines.
+        // The original affine/fixed-point coefficients are invariant for this
+        // logged axis-aligned transform; compare every resulting IEEE word.
+        for y in [-668,-137,699,1704] {
+            let row=gradient_sampling_grid(Rect::new(-668,y,3046,1),matrix,[130.,48.],&paint,sample).unwrap();
+            assert_eq!(axis[4..].iter().map(|v|v.to_bits()).collect::<Vec<_>>(),row.iter().map(|v|v.to_bits()).collect::<Vec<_>>());
+        }
+        assert!(gradient_sampling_grid(original,matrix,[130.,48.],&paint,sample).unwrap_err().contains("64 MiB"));
+    }
 }

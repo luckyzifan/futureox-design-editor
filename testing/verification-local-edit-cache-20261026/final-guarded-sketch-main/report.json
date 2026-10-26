@@ -1,0 +1,6820 @@
+{
+  "status": "captured",
+  "probeVersion": 3,
+  "onlyPan": false,
+  "host": "/Users/Apple/project/design-kernel/frontend/design-desktop",
+  "kind": "sketch",
+  "scope": "independent foreground Electron; native mouse input, rAF DOM cameras and compositor acknowledgements; no physical scanout claim",
+  "phases": [],
+  "errors": [],
+  "harnessSha256": "11465eb4f0358b7b8665e353ed2540e05e0214afdbb820161226db38b1123e21",
+  "instance": {
+    "pid": 70943,
+    "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-local-edit-cache-QJkKeb/final-guarded-sketch-main/forma-desktop-manual-a357cf30-01a4-4040-8ab7-83d534c3fcb1-wyczJ3"
+  },
+  "inputIsolation": "Owned test window ignores OS mouse events and rejects keyboard keys outside each explicit scripted press; no production input code changed",
+  "gpu": {
+    "auxAttributes": {
+      "amdSwitchable": false,
+      "canSupportThreadedTextureMailbox": false,
+      "displayType": "ANGLE_METAL",
+      "glExtensions": "GL_AMD_performance_monitor GL_ANGLE_base_vertex_base_instance_shader_builtin GL_ANGLE_blob_cache GL_ANGLE_client_arrays GL_ANGLE_clip_cull_distance GL_ANGLE_compressed_texture_etc GL_ANGLE_depth_texture GL_ANGLE_framebuffer_blit GL_ANGLE_framebuffer_multisample GL_ANGLE_get_serialized_context_string GL_ANGLE_get_tex_level_parameter GL_ANGLE_instanced_arrays GL_ANGLE_memory_size GL_ANGLE_pack_reverse_row_order GL_ANGLE_polygon_mode GL_ANGLE_program_binary_readiness_query GL_ANGLE_program_cache_control GL_ANGLE_provoking_vertex GL_ANGLE_renderability_validation GL_ANGLE_request_extension GL_ANGLE_rgbx_internal_format GL_ANGLE_robust_client_memory GL_ANGLE_shader_pixel_local_storage GL_ANGLE_shader_pixel_local_storage_coherent GL_ANGLE_stencil_texturing GL_ANGLE_texture_compression_dxt3 GL_ANGLE_texture_compression_dxt5 GL_ANGLE_texture_multisample GL_ANGLE_translated_shader_source GL_APPLE_clip_distance GL_ARM_rgba8 GL_CHROMIUM_bind_generates_resource GL_CHROMIUM_bind_uniform_location GL_CHROMIUM_copy_texture GL_CHROMIUM_lose_context GL_EXT_base_instance GL_EXT_blend_func_extended GL_EXT_blend_minmax GL_EXT_clip_control GL_EXT_color_buffer_float GL_EXT_color_buffer_half_float GL_EXT_compressed_ETC1_RGB8_sub_texture GL_EXT_conservative_depth GL_EXT_debug_label GL_EXT_debug_marker GL_EXT_depth_clamp GL_EXT_discard_framebuffer GL_EXT_disjoint_timer_query GL_EXT_draw_buffers GL_EXT_draw_buffers_indexed GL_EXT_draw_elements_base_vertex GL_EXT_float_blend GL_EXT_frag_depth GL_EXT_instanced_arrays GL_EXT_map_buffer_range GL_EXT_multisampled_render_to_texture GL_EXT_occlusion_query_boolean GL_EXT_polygon_offset_clamp GL_EXT_pvrtc_sRGB GL_EXT_read_format_bgra GL_EXT_render_snorm GL_EXT_robustness GL_EXT_sRGB GL_EXT_shader_texture_lod GL_EXT_texture_compression_bptc GL_EXT_texture_compression_dxt1 GL_EXT_texture_compression_rgtc GL_EXT_texture_compression_s3tc_srgb GL_EXT_texture_filter_anisotropic GL_EXT_texture_format_BGRA8888 GL_EXT_texture_mirror_clamp_to_edge GL_EXT_texture_norm16 GL_EXT_texture_rg GL_EXT_texture_sRGB_R8 GL_EXT_texture_sRGB_RG8 GL_EXT_texture_shadow_lod GL_EXT_texture_storage GL_IMG_texture_compression_pvrtc GL_KHR_debug GL_KHR_parallel_shader_compile GL_KHR_robustness GL_KHR_texture_compression_astc_hdr GL_KHR_texture_compression_astc_ldr GL_KHR_texture_compression_astc_sliced_3d GL_MESA_framebuffer_flip_y GL_NV_fence GL_NV_framebuffer_blit GL_NV_pixel_buffer_object GL_NV_shader_noperspective_interpolation GL_OES_EGL_image GL_OES_EGL_sync GL_OES_compressed_ETC1_RGB8_texture GL_OES_depth24 GL_OES_depth32 GL_OES_depth_texture GL_OES_draw_buffers_indexed GL_OES_draw_elements_base_vertex GL_OES_element_index_uint GL_OES_fbo_render_mipmap GL_OES_get_program_binary GL_OES_mapbuffer GL_OES_packed_depth_stencil GL_OES_required_internalformat GL_OES_rgb8_rgba8 GL_OES_sample_variables GL_OES_shader_multisample_interpolation GL_OES_standard_derivatives GL_OES_surfaceless_context GL_OES_texture_3D GL_OES_texture_float GL_OES_texture_float_linear GL_OES_texture_half_float GL_OES_texture_half_float_linear GL_OES_texture_npot GL_OES_texture_stencil8 GL_OES_vertex_array_object GL_QCOM_render_shared_exponent ",
+      "glImplementationParts": "(gl=egl-angle,angle=metal)",
+      "glRenderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M2 Pro, Version 26.3 (Build 25D125))",
+      "glResetNotificationStrategy": 33362,
+      "glVendor": "Google Inc. (Apple)",
+      "glVersion": "OpenGL ES 3.0 (ANGLE 2.1.28499 git hash: a939d4098385)",
+      "inProcessGpu": false,
+      "initializationTime": 64.723,
+      "isAsan": false,
+      "isClangCoverage": false,
+      "jpegDecodeAcceleratorSupported": false,
+      "maxMsaaSamples": "4",
+      "optimus": false,
+      "passthroughCmdDecoder": true,
+      "pixelShaderVersion": "3.00",
+      "sandboxed": true,
+      "skiaBackendType": "GraphiteDawnMetal",
+      "subpixelFontRendering": true,
+      "targetCpuBits": 64,
+      "vertexShaderVersion": "3.00",
+      "videoDecodeAcceleratorSupportedProfile": {
+        "encrypted_only": false,
+        "maxResolutionHeight": 8192,
+        "maxResolutionWidth": 8192,
+        "minResolutionHeight": 16,
+        "minResolutionWidth": 16,
+        "profile": 29
+      },
+      "visibilityCallbackCallCount": 0
+    },
+    "gpuDevice": [
+      {
+        "active": true,
+        "deviceId": 0,
+        "deviceString": "ANGLE (Apple, ANGLE Metal Renderer: Apple M2 Pro, Version 26.3 (Build 25D125))",
+        "driverVendor": "Apple",
+        "driverVersion": "26.3",
+        "gpuPreference": 0,
+        "vendorId": 4203,
+        "vendorString": "Google Inc. (Apple)"
+      }
+    ],
+    "machineModelName": "Mac",
+    "machineModelVersion": "14.10"
+  },
+  "fixture": "/Users/Apple/Downloads/拓扑素材.sketch",
+  "topologyTarget": {
+    "key": "1:5",
+    "id": "08856B36-020D-46FC-AC59-55F38CDB82BE"
+  },
+  "sceneSummaries": [
+    {
+      "at": 1793002504835,
+      "id": 1,
+      "nodes": 0,
+      "pages": 1,
+      "kinds": {},
+      "roots": 0,
+      "serializedBytes": 223
+    },
+    {
+      "at": 1793002505021,
+      "id": 1,
+      "nodes": 0,
+      "pages": 1,
+      "kinds": {},
+      "roots": 0,
+      "serializedBytes": 223
+    },
+    {
+      "at": 1793002525162,
+      "id": 43,
+      "nodes": 4022,
+      "pages": 2,
+      "kinds": {
+        "vector": 3591,
+        "group": 340,
+        "text": 60,
+        "rectangle": 30,
+        "frame": 1
+      },
+      "roots": 1,
+      "serializedBytes": 53113446
+    },
+    {
+      "at": 1793002540000,
+      "id": 91,
+      "nodes": 4022,
+      "pages": 2,
+      "kinds": {
+        "vector": 3591,
+        "group": 340,
+        "text": 60,
+        "rectangle": 30,
+        "frame": 1
+      },
+      "roots": 1,
+      "serializedBytes": 53113446
+    }
+  ],
+  "target": {
+    "id": "8BFE928D-991B-4534-88F0-D335E5BD6246",
+    "name": "Vector",
+    "mask": true,
+    "width": 21.37109375,
+    "height": 11.716064453125
+  },
+  "foreground": {
+    "at": 1793002563126,
+    "visible": "visible",
+    "focused": true
+  },
+  "camera": {
+    "x": -2735.9075723830733,
+    "y": -1999.3229398663698,
+    "z": 0.43875278396436523
+  },
+  "initialDiagnostics": {
+    "rasterPlanner": "rust",
+    "checkerboard": "false",
+    "samplingMode": "native",
+    "rasterProfile": "figmaSubpixel",
+    "samplingScale": "0.8775055679287305",
+    "samplingDensity": "2",
+    "nativePixelReady": "true",
+    "rasterPhaseExact": "true",
+    "startupPreview": "false",
+    "renderer": "webgpu",
+    "tileCount": "54",
+    "pageCacheBytes": "0",
+    "pageCachePages": "0",
+    "pageCacheHits": "0",
+    "pageCacheMisses": "2",
+    "pageCacheEvictions": "0",
+    "pageCacheTier": "balanced",
+    "pageResidencyEstimatedBudget": "234881024",
+    "cacheHits": "45",
+    "tilesRendered": "184",
+    "viewportTilesRendered": "90",
+    "cacheBytes": "1024",
+    "tileScheduleFrames": "1",
+    "tileScheduleOnscreen": "25",
+    "tileScheduleOffscreen": "0",
+    "tileScheduleDeferred": "0",
+    "tileBudgetCutoffs": "0",
+    "tileBudgetCompletions": "1",
+    "tileBudgetCacheCutoffs": "0",
+    "tileCacheSkippedTiles": "0",
+    "residentBytes": "58978112",
+    "residentBudget": "234881024",
+    "activeResidentBudget": "134217728",
+    "cacheSteadyBudget": "134217728",
+    "cacheStagingLimit": "26419600",
+    "cacheAdmissionBudget": "160637328",
+    "cacheActiveBytes": "58978112",
+    "cacheActiveHighwater": "70602736",
+    "cacheTotalHighwater": "70602736",
+    "refineMs": "5091.60",
+    "compileMs": "1042.90",
+    "pipelineWallMs": "4404.30",
+    "preparationWaitMs": "290.90",
+    "overlappedPreparations": "67",
+    "frameResourceHits": "136",
+    "frameResourceBytes": "64764912",
+    "graphMs": "3947.50",
+    "finishMs": "74.40",
+    "checkpointMs": "2332.90",
+    "detailReady": "true",
+    "framePublication": "complete",
+    "retainedCommit": "false",
+    "retainedPageCommit": "false",
+    "lodScale": "0",
+    "lodTiles": "0",
+    "lodCacheBytes": "0",
+    "lodCacheBudget": "16777216",
+    "lodCacheHits": "0",
+    "previewActive": "false",
+    "progressiveTiles": "25",
+    "failedTiles": "0",
+    "cachedPreviewTiles": "0",
+    "overviewTiles": "0",
+    "overviewReuses": "0",
+    "residentEligible": "true",
+    "residentReason": "eligible",
+    "motionPreview": "false",
+    "motionRasterScale": "0.8775055679287305",
+    "cameraMoving": "false",
+    "navigationPendingAgeMs": "0",
+    "navigationZoomActive": "false",
+    "nativeNavigation": "false",
+    "nativeVisibleTiles": "false",
+    "navigationZoomSequence": "0",
+    "viewportPreviewTiles": "0",
+    "nativeCaptureTiles": "0",
+    "displayMode": "single-gpu-canvas",
+    "revision": "3",
+    "cameraX": "-2735.9075723830733",
+    "cameraY": "-1999.3229398663698",
+    "cameraZoom": "0.43875278396436523",
+    "requestedCameraX": "-2735.9075723830733",
+    "requestedCameraY": "-1999.3229398663698",
+    "requestedCameraZoom": "0.43875278396436523",
+    "requestedRevision": "3",
+    "pixelRatio": "2",
+    "firstDetailMs": "958.30",
+    "navigationMs": "4589.80"
+  },
+  "localEdits": [
+    {
+      "value": "50",
+      "start": 1793002568366,
+      "end": 1793002569310,
+      "priorRevision": "3",
+      "elapsedMs": 944,
+      "damage": [
+        {
+          "at": 1793002568715,
+          "id": 143,
+          "channel": "canvas",
+          "damage": {
+            "full": false,
+            "bounds": [
+              7435.312356387868,
+              5893.863524317741,
+              109.59037511488896,
+              105.87465711902132
+            ],
+            "rects": [
+              [
+                7477.0439438819885,
+                5899.624269366264,
+                25.37109375,
+                15.716064453125
+              ],
+              [
+                7477.0439438819885,
+                5893.863524317741,
+                30.149226188659668,
+                32.5363883972168
+              ],
+              [
+                7494.520120059743,
+                5920.458353196874,
+                50.38261144301396,
+                78.76737706801396
+              ],
+              [
+                7435.312356387868,
+                5920.212259446874,
+                50.14555089613896,
+                79.52592198988896
+              ]
+            ]
+          }
+        }
+      ],
+      "diagnostics": {
+        "rasterPlanner": "rust",
+        "checkerboard": "false",
+        "samplingMode": "native",
+        "rasterProfile": "figmaSubpixel",
+        "samplingScale": "0.8775055679287305",
+        "samplingDensity": "2",
+        "nativePixelReady": "true",
+        "rasterPhaseExact": "true",
+        "startupPreview": "false",
+        "renderer": "webgpu",
+        "tileCount": "90",
+        "pageCacheBytes": "0",
+        "pageCachePages": "0",
+        "pageCacheHits": "0",
+        "pageCacheMisses": "2",
+        "pageCacheEvictions": "0",
+        "pageCacheTier": "balanced",
+        "pageResidencyEstimatedBudget": "234881024",
+        "cacheHits": "119",
+        "tilesRendered": "224",
+        "viewportTilesRendered": "91",
+        "cacheBytes": "1024",
+        "tileScheduleFrames": "1",
+        "tileScheduleOnscreen": "1",
+        "tileScheduleOffscreen": "0",
+        "tileScheduleDeferred": "0",
+        "tileBudgetCutoffs": "0",
+        "tileBudgetCompletions": "1",
+        "tileBudgetCacheCutoffs": "0",
+        "tileCacheSkippedTiles": "0",
+        "residentBytes": "95110560",
+        "residentBudget": "234881024",
+        "activeResidentBudget": "134217728",
+        "cacheSteadyBudget": "134217728",
+        "cacheStagingLimit": "26419600",
+        "cacheAdmissionBudget": "160637328",
+        "cacheActiveBytes": "95110560",
+        "cacheActiveHighwater": "100192688",
+        "cacheTotalHighwater": "100192688",
+        "refineMs": "582.70",
+        "compileMs": "210.70",
+        "pipelineWallMs": "583.30",
+        "preparationWaitMs": "210.50",
+        "overlappedPreparations": "67",
+        "frameResourceHits": "176",
+        "frameResourceBytes": "67674464",
+        "graphMs": "190.70",
+        "finishMs": "179.80",
+        "checkpointMs": "0.00",
+        "detailReady": "true",
+        "framePublication": "complete",
+        "retainedCommit": "false",
+        "retainedPageCommit": "false",
+        "lodScale": "0",
+        "lodTiles": "0",
+        "lodCacheBytes": "0",
+        "lodCacheBudget": "16777216",
+        "lodCacheHits": "0",
+        "previewActive": "false",
+        "progressiveTiles": "25",
+        "failedTiles": "0",
+        "cachedPreviewTiles": "0",
+        "overviewTiles": "0",
+        "overviewReuses": "0",
+        "residentEligible": "true",
+        "residentReason": "eligible",
+        "motionPreview": "false",
+        "motionRasterScale": "0.8775055679287305",
+        "cameraMoving": "false",
+        "navigationPendingAgeMs": "0",
+        "navigationZoomActive": "false",
+        "nativeNavigation": "false",
+        "nativeVisibleTiles": "false",
+        "navigationZoomSequence": "0",
+        "viewportPreviewTiles": "0",
+        "nativeCaptureTiles": "0",
+        "displayMode": "single-gpu-canvas",
+        "revision": "4",
+        "cameraX": "-2735.9075723830733",
+        "cameraY": "-1999.3229398663698",
+        "cameraZoom": "0.43875278396436523",
+        "requestedCameraX": "-2735.9075723830733",
+        "requestedCameraY": "-1999.3229398663698",
+        "requestedCameraZoom": "0.43875278396436523",
+        "requestedRevision": "4",
+        "pixelRatio": "2",
+        "firstDetailMs": "749.40",
+        "navigationMs": "752.60"
+      }
+    },
+    {
+      "value": "100",
+      "start": 1793002574523,
+      "end": 1793002575673,
+      "priorRevision": "4",
+      "elapsedMs": 1150,
+      "damage": [
+        {
+          "at": 1793002574867,
+          "id": 145,
+          "channel": "canvas",
+          "damage": {
+            "full": false,
+            "bounds": [
+              7435.312356387868,
+              5893.863524317741,
+              109.59037511488896,
+              105.87465711902132
+            ],
+            "rects": [
+              [
+                7477.0439438819885,
+                5899.624269366264,
+                25.37109375,
+                15.716064453125
+              ],
+              [
+                7477.0439438819885,
+                5893.863524317741,
+                30.149226188659668,
+                32.5363883972168
+              ],
+              [
+                7494.520120059743,
+                5920.458353196874,
+                50.38261144301396,
+                78.76737706801396
+              ],
+              [
+                7435.312356387868,
+                5920.212259446874,
+                50.14555089613896,
+                79.52592198988896
+              ]
+            ]
+          }
+        }
+      ],
+      "diagnostics": {
+        "rasterPlanner": "rust",
+        "checkerboard": "false",
+        "samplingMode": "native",
+        "rasterProfile": "figmaSubpixel",
+        "samplingScale": "0.8775055679287305",
+        "samplingDensity": "2",
+        "nativePixelReady": "true",
+        "rasterPhaseExact": "true",
+        "startupPreview": "false",
+        "renderer": "webgpu",
+        "tileCount": "90",
+        "pageCacheBytes": "0",
+        "pageCachePages": "0",
+        "pageCacheHits": "0",
+        "pageCacheMisses": "2",
+        "pageCacheEvictions": "0",
+        "pageCacheTier": "balanced",
+        "pageResidencyEstimatedBudget": "234881024",
+        "cacheHits": "232",
+        "tilesRendered": "225",
+        "viewportTilesRendered": "92",
+        "cacheBytes": "1024",
+        "tileScheduleFrames": "1",
+        "tileScheduleOnscreen": "1",
+        "tileScheduleOffscreen": "0",
+        "tileScheduleDeferred": "0",
+        "tileBudgetCutoffs": "0",
+        "tileBudgetCompletions": "1",
+        "tileBudgetCacheCutoffs": "0",
+        "tileCacheSkippedTiles": "0",
+        "residentBytes": "95110560",
+        "residentBudget": "234881024",
+        "activeResidentBudget": "134217728",
+        "cacheSteadyBudget": "134217728",
+        "cacheStagingLimit": "26419600",
+        "cacheAdmissionBudget": "160637328",
+        "cacheActiveBytes": "95110560",
+        "cacheActiveHighwater": "100192688",
+        "cacheTotalHighwater": "100192688",
+        "refineMs": "782.60",
+        "compileMs": "150.70",
+        "pipelineWallMs": "782.90",
+        "preparationWaitMs": "150.50",
+        "overlappedPreparations": "67",
+        "frameResourceHits": "798",
+        "frameResourceBytes": "67714888",
+        "graphMs": "612.10",
+        "finishMs": "18.30",
+        "checkpointMs": "367.40",
+        "detailReady": "true",
+        "framePublication": "complete",
+        "retainedCommit": "false",
+        "retainedPageCommit": "false",
+        "lodScale": "0",
+        "lodTiles": "0",
+        "lodCacheBytes": "0",
+        "lodCacheBudget": "16777216",
+        "lodCacheHits": "0",
+        "previewActive": "false",
+        "progressiveTiles": "25",
+        "failedTiles": "0",
+        "cachedPreviewTiles": "0",
+        "overviewTiles": "0",
+        "overviewReuses": "0",
+        "residentEligible": "true",
+        "residentReason": "eligible",
+        "motionPreview": "false",
+        "motionRasterScale": "0.8775055679287305",
+        "cameraMoving": "false",
+        "navigationPendingAgeMs": "0",
+        "navigationZoomActive": "false",
+        "nativeNavigation": "false",
+        "nativeVisibleTiles": "false",
+        "navigationZoomSequence": "0",
+        "viewportPreviewTiles": "0",
+        "nativeCaptureTiles": "0",
+        "displayMode": "single-gpu-canvas",
+        "revision": "5",
+        "cameraX": "-2735.9075723830733",
+        "cameraY": "-1999.3229398663698",
+        "cameraZoom": "0.43875278396436523",
+        "requestedCameraX": "-2735.9075723830733",
+        "requestedCameraY": "-1999.3229398663698",
+        "requestedCameraZoom": "0.43875278396436523",
+        "requestedRevision": "5",
+        "pixelRatio": "2",
+        "firstDetailMs": "961.80",
+        "navigationMs": "965.70"
+      }
+    },
+    {
+      "value": "50",
+      "start": 1793002581020,
+      "end": 1793002582111,
+      "priorRevision": "5",
+      "elapsedMs": 1091,
+      "damage": [
+        {
+          "at": 1793002581307,
+          "id": 147,
+          "channel": "canvas",
+          "damage": {
+            "full": false,
+            "bounds": [
+              7435.312356387868,
+              5893.863524317741,
+              109.59037511488896,
+              105.87465711902132
+            ],
+            "rects": [
+              [
+                7477.0439438819885,
+                5899.624269366264,
+                25.37109375,
+                15.716064453125
+              ],
+              [
+                7477.0439438819885,
+                5893.863524317741,
+                30.149226188659668,
+                32.5363883972168
+              ],
+              [
+                7494.520120059743,
+                5920.458353196874,
+                50.38261144301396,
+                78.76737706801396
+              ],
+              [
+                7435.312356387868,
+                5920.212259446874,
+                50.14555089613896,
+                79.52592198988896
+              ]
+            ]
+          }
+        }
+      ],
+      "diagnostics": {
+        "rasterPlanner": "rust",
+        "checkerboard": "false",
+        "samplingMode": "native",
+        "rasterProfile": "figmaSubpixel",
+        "samplingScale": "0.8775055679287305",
+        "samplingDensity": "2",
+        "nativePixelReady": "true",
+        "rasterPhaseExact": "true",
+        "startupPreview": "false",
+        "renderer": "webgpu",
+        "tileCount": "90",
+        "pageCacheBytes": "0",
+        "pageCachePages": "0",
+        "pageCacheHits": "0",
+        "pageCacheMisses": "2",
+        "pageCacheEvictions": "0",
+        "pageCacheTier": "balanced",
+        "pageResidencyEstimatedBudget": "234881024",
+        "cacheHits": "345",
+        "tilesRendered": "226",
+        "viewportTilesRendered": "93",
+        "cacheBytes": "1024",
+        "tileScheduleFrames": "1",
+        "tileScheduleOnscreen": "1",
+        "tileScheduleOffscreen": "0",
+        "tileScheduleDeferred": "0",
+        "tileBudgetCutoffs": "0",
+        "tileBudgetCompletions": "1",
+        "tileBudgetCacheCutoffs": "0",
+        "tileCacheSkippedTiles": "0",
+        "residentBytes": "95110560",
+        "residentBudget": "234881024",
+        "activeResidentBudget": "134217728",
+        "cacheSteadyBudget": "134217728",
+        "cacheStagingLimit": "26419600",
+        "cacheAdmissionBudget": "160637328",
+        "cacheActiveBytes": "95110560",
+        "cacheActiveHighwater": "100192688",
+        "cacheTotalHighwater": "100192688",
+        "refineMs": "768.30",
+        "compileMs": "161.30",
+        "pipelineWallMs": "768.90",
+        "preparationWaitMs": "161.10",
+        "overlappedPreparations": "67",
+        "frameResourceHits": "1420",
+        "frameResourceBytes": "67755312",
+        "graphMs": "597.00",
+        "finishMs": "2.90",
+        "checkpointMs": "386.00",
+        "detailReady": "true",
+        "framePublication": "complete",
+        "retainedCommit": "false",
+        "retainedPageCommit": "false",
+        "lodScale": "0",
+        "lodTiles": "0",
+        "lodCacheBytes": "0",
+        "lodCacheBudget": "16777216",
+        "lodCacheHits": "0",
+        "previewActive": "false",
+        "progressiveTiles": "25",
+        "failedTiles": "0",
+        "cachedPreviewTiles": "0",
+        "overviewTiles": "0",
+        "overviewReuses": "0",
+        "residentEligible": "true",
+        "residentReason": "eligible",
+        "motionPreview": "false",
+        "motionRasterScale": "0.8775055679287305",
+        "cameraMoving": "false",
+        "navigationPendingAgeMs": "0",
+        "navigationZoomActive": "false",
+        "nativeNavigation": "false",
+        "nativeVisibleTiles": "false",
+        "navigationZoomSequence": "0",
+        "viewportPreviewTiles": "0",
+        "nativeCaptureTiles": "0",
+        "displayMode": "single-gpu-canvas",
+        "revision": "6",
+        "cameraX": "-2735.9075723830733",
+        "cameraY": "-1999.3229398663698",
+        "cameraZoom": "0.43875278396436523",
+        "requestedCameraX": "-2735.9075723830733",
+        "requestedCameraY": "-1999.3229398663698",
+        "requestedCameraZoom": "0.43875278396436523",
+        "requestedRevision": "6",
+        "pixelRatio": "2",
+        "firstDetailMs": "930.50",
+        "navigationMs": "944.10"
+      }
+    },
+    {
+      "value": "100",
+      "start": 1793002587248,
+      "end": 1793002588238,
+      "priorRevision": "6",
+      "elapsedMs": 990,
+      "damage": [
+        {
+          "at": 1793002587517,
+          "id": 149,
+          "channel": "canvas",
+          "damage": {
+            "full": false,
+            "bounds": [
+              7435.312356387868,
+              5893.863524317741,
+              109.59037511488896,
+              105.87465711902132
+            ],
+            "rects": [
+              [
+                7477.0439438819885,
+                5899.624269366264,
+                25.37109375,
+                15.716064453125
+              ],
+              [
+                7477.0439438819885,
+                5893.863524317741,
+                30.149226188659668,
+                32.5363883972168
+              ],
+              [
+                7494.520120059743,
+                5920.458353196874,
+                50.38261144301396,
+                78.76737706801396
+              ],
+              [
+                7435.312356387868,
+                5920.212259446874,
+                50.14555089613896,
+                79.52592198988896
+              ]
+            ]
+          }
+        }
+      ],
+      "diagnostics": {
+        "rasterPlanner": "rust",
+        "checkerboard": "false",
+        "samplingMode": "native",
+        "rasterProfile": "figmaSubpixel",
+        "samplingScale": "0.8775055679287305",
+        "samplingDensity": "2",
+        "nativePixelReady": "true",
+        "rasterPhaseExact": "true",
+        "startupPreview": "false",
+        "renderer": "webgpu",
+        "tileCount": "90",
+        "pageCacheBytes": "0",
+        "pageCachePages": "0",
+        "pageCacheHits": "0",
+        "pageCacheMisses": "2",
+        "pageCacheEvictions": "0",
+        "pageCacheTier": "balanced",
+        "pageResidencyEstimatedBudget": "234881024",
+        "cacheHits": "458",
+        "tilesRendered": "227",
+        "viewportTilesRendered": "94",
+        "cacheBytes": "1024",
+        "tileScheduleFrames": "1",
+        "tileScheduleOnscreen": "1",
+        "tileScheduleOffscreen": "0",
+        "tileScheduleDeferred": "0",
+        "tileBudgetCutoffs": "0",
+        "tileBudgetCompletions": "1",
+        "tileBudgetCacheCutoffs": "0",
+        "tileCacheSkippedTiles": "0",
+        "residentBytes": "95110560",
+        "residentBudget": "234881024",
+        "activeResidentBudget": "134217728",
+        "cacheSteadyBudget": "134217728",
+        "cacheStagingLimit": "26419600",
+        "cacheAdmissionBudget": "160637328",
+        "cacheActiveBytes": "95110560",
+        "cacheActiveHighwater": "100192688",
+        "cacheTotalHighwater": "100192688",
+        "refineMs": "649.90",
+        "compileMs": "148.40",
+        "pipelineWallMs": "650.40",
+        "preparationWaitMs": "148.20",
+        "overlappedPreparations": "67",
+        "frameResourceHits": "2042",
+        "frameResourceBytes": "67795736",
+        "graphMs": "493.40",
+        "finishMs": "4.70",
+        "checkpointMs": "301.60",
+        "detailReady": "true",
+        "framePublication": "complete",
+        "retainedCommit": "false",
+        "retainedPageCommit": "false",
+        "lodScale": "0",
+        "lodTiles": "0",
+        "lodCacheBytes": "0",
+        "lodCacheBudget": "16777216",
+        "lodCacheHits": "0",
+        "previewActive": "false",
+        "progressiveTiles": "25",
+        "failedTiles": "0",
+        "cachedPreviewTiles": "0",
+        "overviewTiles": "0",
+        "overviewReuses": "0",
+        "residentEligible": "true",
+        "residentReason": "eligible",
+        "motionPreview": "false",
+        "motionRasterScale": "0.8775055679287305",
+        "cameraMoving": "false",
+        "navigationPendingAgeMs": "0",
+        "navigationZoomActive": "false",
+        "nativeNavigation": "false",
+        "nativeVisibleTiles": "false",
+        "navigationZoomSequence": "0",
+        "viewportPreviewTiles": "0",
+        "nativeCaptureTiles": "0",
+        "displayMode": "single-gpu-canvas",
+        "revision": "7",
+        "cameraX": "-2735.9075723830733",
+        "cameraY": "-1999.3229398663698",
+        "cameraZoom": "0.43875278396436523",
+        "requestedCameraX": "-2735.9075723830733",
+        "requestedCameraY": "-1999.3229398663698",
+        "requestedCameraZoom": "0.43875278396436523",
+        "requestedRevision": "7",
+        "pixelRatio": "2",
+        "firstDetailMs": "802.30",
+        "navigationMs": "805.60"
+      }
+    }
+  ],
+  "pixelQaOnly": true,
+  "screenshotRequests": [
+    {
+      "filename": "original.png",
+      "requests": [
+        {
+          "at": 1793002563243,
+          "id": 104,
+          "channel": "canvas",
+          "width": 1710,
+          "height": 1736,
+          "view": {
+            "x": -5471.815144766147,
+            "y": -3998.6458797327396,
+            "zoom": 0.8775055679287305
+          },
+          "renderIntent": "canvas",
+          "tiles": 1,
+          "documentPatch": false,
+          "readback": false,
+          "derived": false,
+          "derivedTransforms": 0,
+          "serializedDocumentChars": 0
+        },
+        {
+          "at": 1793002563348,
+          "id": 105,
+          "channel": "canvas",
+          "width": 1710,
+          "height": 1736,
+          "view": {
+            "x": -5471.815144766147,
+            "y": -3998.6458797327396,
+            "zoom": 0.8775055679287305
+          },
+          "renderIntent": "canvas",
+          "tiles": 1,
+          "documentPatch": false,
+          "readback": false,
+          "derived": false,
+          "derivedTransforms": 0,
+          "serializedDocumentChars": 0
+        },
+        {
+          "at": 1793002563357,
+          "id": 106,
+          "channel": "canvas",
+          "width": 1710,
+          "height": 1736,
+          "view": {
+            "x": -5471.815144766147,
+            "y": -3998.6458797327396,
+            "zoom": 0.8775055679287305
+          },
+          "renderIntent": "canvas",
+          "tiles": 1,
+          "documentPatch": false,
+          "readback": false,
+          "derived": false,
+          "derivedTransforms": 0,
+          "serializedDocumentChars": 0
+        },
+        {
+          "at": 1793002563365,
+          "id": 107,
+          "channel": "canvas",
+          "width": 1710,
+          "height": 1736,
+          "view": {
+            "x": -5471.815144766147,
+            "y": -3998.6458797327396,
+            "zoom": 0.8775055679287305
+          },
+          "renderIntent": "canvas",
+          "tiles": 1,
+          "documentPatch": false,
+          "readback": false,
+          "derived": false,
+          "derivedTransforms": 0,
+          "serializedDocumentChars": 0
+        },
+        {
+          "at": 1793002563372,
+          "id": 108,
+          "channel": "canvas",
+          "width": 1710,
+          "height": 1736,
+          "view": {
+            "x": -5471.815144766147,
+            "y": -3998.6458797327396,
+            "zoom": 0.8775055679287305
+          },
+          "renderIntent": "canvas",
+          "tiles": 1,
+          "documentPatch": false,
+          "readback": false,
+          "derived": false,
+          "derivedTransforms": 0,
+          "serializedDocumentChars": 0
+        },
+        {
+          "at": 1793002563389,
+          "id": 109,
+          "channel": "canvas",
+          "width": 1710,
+          "height": 1736,
+          "view": {
+            "x": -5471.815144766147,
+            "y": -3998.6458797327396,
+            "zoom": 0.8775055679287305
+          },
+          "renderIntent": "canvas",
+          "tiles": 1,
+          "documentPatch": false,
+          "readback": false,
+          "derived": false,
+          "derivedTransforms": 0,
+          "serializedDocumentChars": 0
+        },
+        {
+          "at": 1793002563396,
+          "id": 110,
+          "channel": "canvas",
+          "width": 1710,
+          "height": 1736,
+          "view": {
+            "x": -5471.815144766147,
+            "y": -3998.6458797327396,
+            "zoom": 0.8775055679287305
+          },
+          "renderIntent": "canvas",
+          "tiles": 1,
+          "documentPatch": false,
+          "readback": false,
+          "derived": false,
+          "derivedTransforms": 0,
+          "serializedDocumentChars": 0
+        },
+        {
+          "at": 1793002563405,
+          "id": 111,
+          "channel": "canvas",
+          "width": 1710,
+          "height": 1736,
+          "view": {
+            "x": -5471.815144766147,
+            "y": -3998.6458797327396,
+            "zoom": 0.8775055679287305
+          },
+          "renderIntent": "canvas",
+          "tiles": 1,
+          "documentPatch": false,
+          "readback": false,
+          "derived": false,
+          "derivedTransforms": 0,
+          "serializedDocumentChars": 0
+        },
+        {
+          "at": 1793002563412,
+          "id": 112,
+          "channel": "canvas",
+          "width": 1710,
+          "height": 1736,
+          "view": {
+            "x": -5471.815144766147,
+            "y": -3998.6458797327396,
+            "zoom": 0.8775055679287305
+          },
+          "renderIntent": "canvas",
+          "tiles": 1,
+          "documentPatch": false,
+          "readback": false,
+          "derived": false,
+          "derivedTransforms": 0,
+          "serializedDocumentChars": 0
+        },
+        {
+          "at": 1793002563431,
+          "id": 113,
+          "channel": "canvas",
+          "width": 1710,
+          "height": 1736,
+          "view": {
+            "x": -5471.815144766147,
+            "y": -3998.6458797327396,
+            "zoom": 0.8775055679287305
+          },
+          "renderIntent": "canvas",
+          "tiles": 1,
+          "documentPatch": false,
+          "readback": false,
+          "derived": false,
+          "derivedTransforms": 0,
+          "serializedDocumentChars": 0
+        },
+        {
+          "at": 1793002563443,
+          "id": 114,
+          "channel": "canvas",
+          "width": 1710,
+          "height": 1736,
+          "view": {
+            "x": -5471.815144766147,
+            "y": -3998.6458797327396,
+            "zoom": 0.8775055679287305
+          },
+          "renderIntent": "canvas",
+          "tiles": 1,
+          "documentPatch": false,
+          "readback": false,
+          "derived": false,
+          "derivedTransforms": 0,
+          "serializedDocumentChars": 0
+        },
+        {
+          "at": 1793002563461,
+          "id": 115,
+          "channel": "canvas",
+          "width": 1710,
+          "height": 1736,
+          "view": {
+            "x": -5471.815144766147,
+            "y": -3998.6458797327396,
+            "zoom": 0.8775055679287305
+          },
+          "renderIntent": "canvas",
+          "tiles": 1,
+          "documentPatch": false,
+          "readback": false,
+          "derived": false,
+          "derivedTransforms": 0,
+          "serializedDocumentChars": 0
+        },
+        {
+          "at": 1793002563473,
+          "id": 116,
+          "channel": "canvas",
+          "width": 1710,
+          "height": 1736,
+          "view": {
+            "x": -5471.815144766147,
+            "y": -3998.6458797327396,
+            "zoom": 0.8775055679287305
+          },
+          "renderIntent": "canvas",
+          "tiles": 1,
+          "documentPatch": false,
+          "readback": false,
+          "derived": false,
+          "derivedTransforms": 0,
+          "serializedDocumentChars": 0
+        },
+        {
+          "at": 1793002563489,
+          "id": 117,
+          "channel": "canvas",
+          "width": 1710,
+          "height": 1736,
+          "view": {
+            "x": -5471.815144766147,
+            "y": -3998.6458797327396,
+            "zoom": 0.8775055679287305
+          },
+          "renderIntent": "canvas",
+          "tiles": 1,
+          "documentPatch": false,
+          "readback": false,
+          "derived": false,
+          "derivedTransforms": 0,
+          "serializedDocumentChars": 0
+        },
+        {
+          "at": 1793002563496,
+          "id": 118,
+          "channel": "canvas",
+          "width": 1710,
+          "height": 1736,
+          "view": {
+            "x": -5471.815144766147,
+            "y": -3998.6458797327396,
+            "zoom": 0.8775055679287305
+          },
+          "renderIntent": "canvas",
+          "tiles": 1,
+          "documentPatch": false,
+          "readback": false,
+          "derived": false,
+          "derivedTransforms": 0,
+          "serializedDocumentChars": 0
+        },
+        {
+          "at": 1793002563506,
+          "id": 119,
+          "channel": "canvas",
+          "width": 1710,
+          "height": 1736,
+          "view": {
+            "x": -5471.815144766147,
+            "y": -3998.6458797327396,
+            "zoom": 0.8775055679287305
+          },
+          "renderIntent": "canvas",
+          "tiles": 1,
+          "documentPatch": false,
+          "readback": false,
+          "derived": false,
+          "derivedTransforms": 0,
+          "serializedDocumentChars": 0
+        },
+        {
+          "at": 1793002563513,
+          "id": 120,
+          "channel": "canvas",
+          "width": 1710,
+          "height": 1736,
+          "view": {
+            "x": -5471.815144766147,
+            "y": -3998.6458797327396,
+            "zoom": 0.8775055679287305
+          },
+          "renderIntent": "canvas",
+          "tiles": 1,
+          "documentPatch": false,
+          "readback": false,
+          "derived": false,
+          "derivedTransforms": 0,
+          "serializedDocumentChars": 0
+        },
+        {
+          "at": 1793002563523,
+          "id": 121,
+          "channel": "canvas",
+          "width": 1710,
+          "height": 1736,
+          "view": {
+            "x": -5471.815144766147,
+            "y": -3998.6458797327396,
+            "zoom": 0.8775055679287305
+          },
+          "renderIntent": "canvas",
+          "tiles": 1,
+          "documentPatch": false,
+          "readback": false,
+          "derived": false,
+          "derivedTransforms": 0,
+          "serializedDocumentChars": 0
+        },
+        {
+          "at": 1793002563529,
+          "id": 122,
+          "channel": "canvas",
+          "width": 1710,
+          "height": 1736,
+          "view": {
+            "x": -5471.815144766147,
+            "y": -3998.6458797327396,
+            "zoom": 0.8775055679287305
+          },
+          "renderIntent": "canvas",
+          "tiles": 1,
+          "documentPatch": false,
+          "readback": false,
+          "derived": false,
+          "derivedTransforms": 0,
+          "serializedDocumentChars": 0
+        },
+        {
+          "at": 1793002563539,
+          "id": 123,
+          "channel": "canvas",
+          "width": 1710,
+          "height": 1736,
+          "view": {
+            "x": -5471.815144766147,
+            "y": -3998.6458797327396,
+            "zoom": 0.8775055679287305
+          },
+          "renderIntent": "canvas",
+          "tiles": 1,
+          "documentPatch": false,
+          "readback": false,
+          "derived": false,
+          "derivedTransforms": 0,
+          "serializedDocumentChars": 0
+        },
+        {
+          "at": 1793002563548,
+          "id": 124,
+          "channel": "canvas",
+          "width": 1710,
+          "height": 1736,
+          "view": {
+            "x": -5471.815144766147,
+            "y": -3998.6458797327396,
+            "zoom": 0.8775055679287305
+          },
+          "renderIntent": "canvas",
+          "tiles": 1,
+          "documentPatch": false,
+          "readback": false,
+          "derived": false,
+          "derivedTransforms": 0,
+          "serializedDocumentChars": 0
+        },
+        {
+          "at": 1793002563564,
+          "id": 125,
+          "channel": "canvas",
+          "width": 1710,
+          "height": 1736,
+          "view": {
+            "x": -5471.815144766147,
+            "y": -3998.6458797327396,
+            "zoom": 0.8775055679287305
+          },
+          "renderIntent": "canvas",
+          "tiles": 1,
+          "documentPatch": false,
+          "readback": false,
+          "derived": false,
+          "derivedTransforms": 0,
+          "serializedDocumentChars": 0
+        }
+      ]
+    },
+    {
+      "filename": "edit-0.png",
+      "requests": []
+    },
+    {
+      "filename": "edit-1.png",
+      "requests": []
+    },
+    {
+      "filename": "edit-2.png",
+      "requests": []
+    },
+    {
+      "filename": "edit-3.png",
+      "requests": []
+    }
+  ],
+  "motionStart": 1793002568366,
+  "motionEnd": 1793002588238,
+  "undoRedoExact": true,
+  "saveScope": "Existing source root opacity; tested leaf returned to its original value. Leaf-mask source-save refusal is separately recorded on the frozen baseline.",
+  "savedTarget": {
+    "id": "08856B36-020D-46FC-AC59-55F38CDB82BE",
+    "name": "140x140pt 30个（黑色背景）"
+  },
+  "savedFile": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-local-edit-cache-QJkKeb/final-guarded-sketch-main/local-edit.sketch",
+  "reopenedMaterialExact": true,
+  "competition": [
+    {
+      "at": 1793002548185,
+      "rows": [
+        "95483  32.2 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+      ]
+    },
+    {
+      "at": 1793002549187,
+      "rows": [
+        "95483   2.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "95495  74.7 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1793002550205,
+      "rows": [
+        "95483   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "95495  61.1 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1793002551200,
+      "rows": [
+        "95483   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "95495  88.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1793002552185,
+      "rows": [
+        "95483   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "95495  92.5 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1793002553228,
+      "rows": [
+        "95483   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "95495  96.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1793002554193,
+      "rows": [
+        "95483   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "95495  96.7 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1793002555187,
+      "rows": [
+        "95483   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "95495  83.8 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1793002556204,
+      "rows": [
+        "95483   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "95495  96.3 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1793002557189,
+      "rows": [
+        "95483   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "95495  97.6 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1793002658286,
+      "rows": [
+        "27920   6.8 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+      ]
+    },
+    {
+      "at": 1793002659280,
+      "rows": [
+        "27920   2.4 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+      ]
+    },
+    {
+      "at": 1793002660301,
+      "rows": [
+        "27920  21.6 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+      ]
+    },
+    {
+      "at": 1793002661290,
+      "rows": [
+        "27920  32.7 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+      ]
+    }
+  ],
+  "foregroundEvents": [],
+  "damage": [
+    {
+      "at": 1793002568715,
+      "id": 143,
+      "channel": "canvas",
+      "damage": {
+        "full": false,
+        "bounds": [
+          7435.312356387868,
+          5893.863524317741,
+          109.59037511488896,
+          105.87465711902132
+        ],
+        "rects": [
+          [
+            7477.0439438819885,
+            5899.624269366264,
+            25.37109375,
+            15.716064453125
+          ],
+          [
+            7477.0439438819885,
+            5893.863524317741,
+            30.149226188659668,
+            32.5363883972168
+          ],
+          [
+            7494.520120059743,
+            5920.458353196874,
+            50.38261144301396,
+            78.76737706801396
+          ],
+          [
+            7435.312356387868,
+            5920.212259446874,
+            50.14555089613896,
+            79.52592198988896
+          ]
+        ]
+      }
+    },
+    {
+      "at": 1793002574867,
+      "id": 145,
+      "channel": "canvas",
+      "damage": {
+        "full": false,
+        "bounds": [
+          7435.312356387868,
+          5893.863524317741,
+          109.59037511488896,
+          105.87465711902132
+        ],
+        "rects": [
+          [
+            7477.0439438819885,
+            5899.624269366264,
+            25.37109375,
+            15.716064453125
+          ],
+          [
+            7477.0439438819885,
+            5893.863524317741,
+            30.149226188659668,
+            32.5363883972168
+          ],
+          [
+            7494.520120059743,
+            5920.458353196874,
+            50.38261144301396,
+            78.76737706801396
+          ],
+          [
+            7435.312356387868,
+            5920.212259446874,
+            50.14555089613896,
+            79.52592198988896
+          ]
+        ]
+      }
+    },
+    {
+      "at": 1793002581307,
+      "id": 147,
+      "channel": "canvas",
+      "damage": {
+        "full": false,
+        "bounds": [
+          7435.312356387868,
+          5893.863524317741,
+          109.59037511488896,
+          105.87465711902132
+        ],
+        "rects": [
+          [
+            7477.0439438819885,
+            5899.624269366264,
+            25.37109375,
+            15.716064453125
+          ],
+          [
+            7477.0439438819885,
+            5893.863524317741,
+            30.149226188659668,
+            32.5363883972168
+          ],
+          [
+            7494.520120059743,
+            5920.458353196874,
+            50.38261144301396,
+            78.76737706801396
+          ],
+          [
+            7435.312356387868,
+            5920.212259446874,
+            50.14555089613896,
+            79.52592198988896
+          ]
+        ]
+      }
+    },
+    {
+      "at": 1793002587517,
+      "id": 149,
+      "channel": "canvas",
+      "damage": {
+        "full": false,
+        "bounds": [
+          7435.312356387868,
+          5893.863524317741,
+          109.59037511488896,
+          105.87465711902132
+        ],
+        "rects": [
+          [
+            7477.0439438819885,
+            5899.624269366264,
+            25.37109375,
+            15.716064453125
+          ],
+          [
+            7477.0439438819885,
+            5893.863524317741,
+            30.149226188659668,
+            32.5363883972168
+          ],
+          [
+            7494.520120059743,
+            5920.458353196874,
+            50.38261144301396,
+            78.76737706801396
+          ],
+          [
+            7435.312356387868,
+            5920.212259446874,
+            50.14555089613896,
+            79.52592198988896
+          ]
+        ]
+      }
+    },
+    {
+      "at": 1793002593388,
+      "id": 151,
+      "channel": "canvas",
+      "damage": {
+        "full": false,
+        "bounds": [
+          7435.312356387868,
+          5893.863524317741,
+          109.59037511488896,
+          105.87465711902132
+        ],
+        "rects": [
+          [
+            7477.0439438819885,
+            5899.624269366264,
+            25.37109375,
+            15.716064453125
+          ],
+          [
+            7477.0439438819885,
+            5893.863524317741,
+            30.149226188659668,
+            32.5363883972168
+          ],
+          [
+            7494.520120059743,
+            5920.458353196874,
+            50.38261144301396,
+            78.76737706801396
+          ],
+          [
+            7435.312356387868,
+            5920.212259446874,
+            50.14555089613896,
+            79.52592198988896
+          ]
+        ]
+      }
+    },
+    {
+      "at": 1793002594243,
+      "id": 153,
+      "channel": "canvas",
+      "damage": {
+        "full": false,
+        "bounds": [
+          7435.312356387868,
+          5893.863524317741,
+          109.59037511488896,
+          105.87465711902132
+        ],
+        "rects": [
+          [
+            7477.0439438819885,
+            5899.624269366264,
+            25.37109375,
+            15.716064453125
+          ],
+          [
+            7477.0439438819885,
+            5893.863524317741,
+            30.149226188659668,
+            32.5363883972168
+          ],
+          [
+            7494.520120059743,
+            5920.458353196874,
+            50.38261144301396,
+            78.76737706801396
+          ],
+          [
+            7435.312356387868,
+            5920.212259446874,
+            50.14555089613896,
+            79.52592198988896
+          ]
+        ]
+      }
+    },
+    {
+      "at": 1793002595148,
+      "id": 155,
+      "channel": "canvas",
+      "damage": {
+        "full": false,
+        "bounds": [
+          7435.312356387868,
+          5893.863524317741,
+          109.59037511488896,
+          105.87465711902132
+        ],
+        "rects": [
+          [
+            7477.0439438819885,
+            5899.624269366264,
+            25.37109375,
+            15.716064453125
+          ],
+          [
+            7477.0439438819885,
+            5893.863524317741,
+            30.149226188659668,
+            32.5363883972168
+          ],
+          [
+            7494.520120059743,
+            5920.458353196874,
+            50.38261144301396,
+            78.76737706801396
+          ],
+          [
+            7435.312356387868,
+            5920.212259446874,
+            50.14555089613896,
+            79.52592198988896
+          ]
+        ]
+      }
+    },
+    {
+      "at": 1793002595257,
+      "id": 156,
+      "channel": "canvas",
+      "damage": {
+        "full": false,
+        "bounds": [
+          7435.312356387868,
+          5893.863524317741,
+          109.59037511488896,
+          105.87465711902132
+        ],
+        "rects": [
+          [
+            7477.0439438819885,
+            5899.624269366264,
+            25.37109375,
+            15.716064453125
+          ],
+          [
+            7477.0439438819885,
+            5893.863524317741,
+            30.149226188659668,
+            32.5363883972168
+          ],
+          [
+            7494.520120059743,
+            5920.458353196874,
+            50.38261144301396,
+            78.76737706801396
+          ],
+          [
+            7435.312356387868,
+            5920.212259446874,
+            50.14555089613896,
+            79.52592198988896
+          ]
+        ]
+      }
+    },
+    {
+      "at": 1793002596658,
+      "id": 158,
+      "channel": "canvas",
+      "damage": {
+        "full": false,
+        "bounds": [
+          6453.071165748173,
+          4593.421689762788,
+          1519.0695919913705,
+          1852.5783102372116
+        ],
+        "rects": [
+          [
+            6453.071165748173,
+            4593.421689762788,
+            1519.0695919913705,
+            1852.5783102372116
+          ],
+          [
+            7762.684915637269,
+            5901.337746118798,
+            73.82352559706669,
+            105.5905811085413
+          ],
+          [
+            7174.521339809194,
+            5357.814736401334,
+            73.08366124770146,
+            77.3496371998499
+          ],
+          [
+            6654.276345615878,
+            4785.097879087224,
+            62.12908666274052,
+            72.10857503554325
+          ],
+          [
+            7215.0800575070525,
+            6233.975084637895,
+            60.94975011488896,
+            54.2686816944788
+          ],
+          [
+            7424.186020854641,
+            4758.336409631897,
+            70.92307864918439,
+            103.64913760914533
+          ],
+          [
+            6924.591654216542,
+            5943.747172301307,
+            71.82352941176396,
+            64.82352941176396
+          ],
+          [
+            7483.412455951467,
+            5325.643898879781,
+            72.82352941176396,
+            81.82352941176396
+          ],
+          [
+            6655.519035732045,
+            5663.060458456769,
+            47.661675621480754,
+            50.90062062880497
+          ],
+          [
+            6591.507180606618,
+            6190.660745238557,
+            69.9101726307581,
+            95.64721410414677
+          ],
+          [
+            6935.632669841542,
+            5615.117286717191,
+            60.87222402235966,
+            67.2328159107874
+          ],
+          [
+            6863.4686058812285,
+            5092.2070978038455,
+            72.96245687148075,
+            57.020352531881144
+          ],
+          [
+            7703.21860603024,
+            5329.4881336145545,
+            73.03352849623661,
+            105.94353215834599
+          ],
+          [
+            6870.591035730698,
+            4794.963472254136,
+            71.43375419167933,
+            73.74089835671839
+          ],
+          [
+            7203.551614200368,
+            5054.909036075368,
+            72.39672582289677,
+            81.82135503432255
+          ],
+          [
+            6654.905614291921,
+            5917.416847264066,
+            35.47733800551396,
+            84.93876378676396
+          ],
+          [
+            7204.503392612233,
+            5901.007609164014,
+            71.88879125258427,
+            107.48363988539677
+          ],
+          [
+            6921.177720967461,
+            4796.210801068474,
+            68.82017719044416,
+            69.52459155811994
+          ],
+          [
+            7494.520120059743,
+            5920.458353196874,
+            50.38261144301396,
+            78.76737706801396
+          ],
+          [
+            7485.150741640259,
+            4758.394272271325,
+            70.94119083180158,
+            103.48235141529767
+          ],
+          [
+            7435.312356387868,
+            5920.212259446874,
+            50.14555089613896,
+            79.52592198988896
+          ],
+          [
+            7493.703226482167,
+            5628.362893288627,
+            54.00352971693974,
+            87.40353124281864
+          ],
+          [
+            7143.523537670865,
+            5627.570412432447,
+            72.85352819106083,
+            78.54353063246708
+          ],
+          [
+            6583.460664636948,
+            5043.385347254136,
+            75.44248984841761,
+            90.92783759622034
+          ],
+          [
+            6924.586468225017,
+            6187.810689961209,
+            71.65109746596318,
+            106.46308629652958
+          ],
+          [
+            7697.39282182385,
+            4744.613541518941,
+            79.55577581068974,
+            115.3332568897913
+          ],
+          [
+            7495.526886379018,
+            5074.7339069597865,
+            59.83726613661747,
+            67.84821813246708
+          ],
+          [
+            6923.609232341542,
+            5092.2070978038455,
+            72.7584392323206,
+            57.00950734755497
+          ]
+        ]
+      }
+    }
+  ],
+  "renderRequests": [
+    {
+      "at": 1793002504835,
+      "id": 1,
+      "channel": "canvas",
+      "width": 2000,
+      "height": 1600,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 223
+    },
+    {
+      "at": 1793002505021,
+      "id": 1,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 223
+    },
+    {
+      "at": 1793002505164,
+      "id": 2,
+      "channel": "canvas",
+      "width": 855,
+      "height": 868,
+      "view": {
+        "x": 30,
+        "y": 35,
+        "zoom": 1
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505285,
+      "id": 3,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 25,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505366,
+      "id": 4,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505397,
+      "id": 5,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505402,
+      "id": 6,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505406,
+      "id": 7,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505410,
+      "id": 8,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505413,
+      "id": 9,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505419,
+      "id": 10,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505423,
+      "id": 11,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505427,
+      "id": 12,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505430,
+      "id": 13,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505435,
+      "id": 14,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505439,
+      "id": 15,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505443,
+      "id": 16,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505447,
+      "id": 17,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505452,
+      "id": 18,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505455,
+      "id": 19,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505459,
+      "id": 20,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505463,
+      "id": 21,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505467,
+      "id": 22,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505471,
+      "id": 23,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505476,
+      "id": 24,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505480,
+      "id": 25,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505484,
+      "id": 26,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505488,
+      "id": 27,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505492,
+      "id": 28,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505496,
+      "id": 29,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505501,
+      "id": 30,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505506,
+      "id": 31,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505509,
+      "id": 32,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505513,
+      "id": 33,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505517,
+      "id": 34,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505522,
+      "id": 35,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505525,
+      "id": 36,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505531,
+      "id": 37,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505538,
+      "id": 38,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505573,
+      "id": 39,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505576,
+      "id": 40,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505580,
+      "id": 41,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002505585,
+      "id": 42,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002525162,
+      "id": 43,
+      "channel": "canvas",
+      "width": 855,
+      "height": 868,
+      "view": {
+        "x": -2735.9075723830733,
+        "y": -1999.3229398663698,
+        "zoom": 0.43875278396436523
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 53113446
+    },
+    {
+      "at": 1793002526393,
+      "id": 44,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002526396,
+      "id": 45,
+      "channel": "canvas",
+      "width": 855,
+      "height": 868,
+      "view": {
+        "x": -2671.675946547884,
+        "y": -1949.9153674832962,
+        "zoom": 0.4298440979955457
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002528499,
+      "id": 46,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 20,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002533632,
+      "id": 47,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534306,
+      "id": 48,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534314,
+      "id": 49,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534331,
+      "id": 50,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534360,
+      "id": 51,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534367,
+      "id": 52,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534380,
+      "id": 53,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534391,
+      "id": 54,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534405,
+      "id": 55,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534412,
+      "id": 56,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534422,
+      "id": 57,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534447,
+      "id": 58,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534454,
+      "id": 59,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534463,
+      "id": 60,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534469,
+      "id": 61,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534481,
+      "id": 62,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534487,
+      "id": 63,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534497,
+      "id": 64,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534503,
+      "id": 65,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534514,
+      "id": 66,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534520,
+      "id": 67,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534530,
+      "id": 68,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534536,
+      "id": 69,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534546,
+      "id": 70,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534552,
+      "id": 71,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534588,
+      "id": 72,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534594,
+      "id": 73,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534605,
+      "id": 74,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534613,
+      "id": 75,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534622,
+      "id": 76,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534628,
+      "id": 77,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534638,
+      "id": 78,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534645,
+      "id": 79,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534655,
+      "id": 80,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534661,
+      "id": 81,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534673,
+      "id": 82,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534679,
+      "id": 83,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534689,
+      "id": 84,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534695,
+      "id": 85,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534705,
+      "id": 86,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534711,
+      "id": 87,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534722,
+      "id": 88,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534728,
+      "id": 89,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002534739,
+      "id": 90,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002540000,
+      "id": 91,
+      "channel": "canvas",
+      "width": 855,
+      "height": 868,
+      "view": {
+        "x": -2735.9075723830733,
+        "y": -1999.3229398663698,
+        "zoom": 0.43875278396436523
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 53113446
+    },
+    {
+      "at": 1793002541496,
+      "id": 92,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002541497,
+      "id": 93,
+      "channel": "canvas",
+      "width": 855,
+      "height": 868,
+      "view": {
+        "x": -2671.675946547884,
+        "y": -1949.9153674832962,
+        "zoom": 0.4298440979955457
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002543451,
+      "id": 94,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 20,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002548500,
+      "id": 95,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002549140,
+      "id": 96,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002549150,
+      "id": 97,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002549164,
+      "id": 98,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002549170,
+      "id": 99,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002549181,
+      "id": 100,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002549193,
+      "id": 101,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002549206,
+      "id": 102,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002549472,
+      "id": 103,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 25,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563243,
+      "id": 104,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563348,
+      "id": 105,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563357,
+      "id": 106,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563365,
+      "id": 107,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563372,
+      "id": 108,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563389,
+      "id": 109,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563396,
+      "id": 110,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563405,
+      "id": 111,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563412,
+      "id": 112,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563431,
+      "id": 113,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563443,
+      "id": 114,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563461,
+      "id": 115,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563473,
+      "id": 116,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563489,
+      "id": 117,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563496,
+      "id": 118,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563506,
+      "id": 119,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563513,
+      "id": 120,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563523,
+      "id": 121,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563529,
+      "id": 122,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563539,
+      "id": 123,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563548,
+      "id": 124,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563564,
+      "id": 125,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563665,
+      "id": 126,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563673,
+      "id": 127,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563682,
+      "id": 128,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563696,
+      "id": 129,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563707,
+      "id": 130,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563731,
+      "id": 131,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563738,
+      "id": 132,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563750,
+      "id": 133,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563757,
+      "id": 134,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563765,
+      "id": 135,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563772,
+      "id": 136,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563789,
+      "id": 137,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563797,
+      "id": 138,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563806,
+      "id": 139,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563815,
+      "id": 140,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563830,
+      "id": 141,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002563837,
+      "id": 142,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002568574,
+      "id": 143,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": true,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002568716,
+      "id": 144,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002574714,
+      "id": 145,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": true,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002574868,
+      "id": 146,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002581170,
+      "id": 147,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": true,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002581309,
+      "id": 148,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002587392,
+      "id": 149,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": true,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002587518,
+      "id": 150,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002593274,
+      "id": 151,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": true,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002593390,
+      "id": 152,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002594137,
+      "id": 153,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": true,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002594245,
+      "id": 154,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002594967,
+      "id": 155,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": true,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002595150,
+      "id": 156,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": true,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002595257,
+      "id": 157,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002596388,
+      "id": 158,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": true,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002596660,
+      "id": 159,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 15,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613353,
+      "id": 1,
+      "channel": "canvas",
+      "width": 2000,
+      "height": 1600,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 223
+    },
+    {
+      "at": 1793002613421,
+      "id": 1,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 223
+    },
+    {
+      "at": 1793002613653,
+      "id": 2,
+      "channel": "canvas",
+      "width": 855,
+      "height": 868,
+      "view": {
+        "x": 30,
+        "y": 35,
+        "zoom": 1
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613681,
+      "id": 3,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 25,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613774,
+      "id": 4,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613786,
+      "id": 5,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613798,
+      "id": 6,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613802,
+      "id": 7,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613806,
+      "id": 8,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613810,
+      "id": 9,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613815,
+      "id": 10,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613818,
+      "id": 11,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613823,
+      "id": 12,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613827,
+      "id": 13,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613832,
+      "id": 14,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613835,
+      "id": 15,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613840,
+      "id": 16,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613843,
+      "id": 17,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613848,
+      "id": 18,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613851,
+      "id": 19,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613856,
+      "id": 20,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613860,
+      "id": 21,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613872,
+      "id": 22,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613877,
+      "id": 23,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613881,
+      "id": 24,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613885,
+      "id": 25,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613890,
+      "id": 26,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613894,
+      "id": 27,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613901,
+      "id": 28,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613923,
+      "id": 29,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613928,
+      "id": 30,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613932,
+      "id": 31,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613935,
+      "id": 32,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613948,
+      "id": 33,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613954,
+      "id": 34,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613965,
+      "id": 35,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613969,
+      "id": 36,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613973,
+      "id": 37,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613978,
+      "id": 38,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613982,
+      "id": 39,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613985,
+      "id": 40,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613989,
+      "id": 41,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002613994,
+      "id": 42,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002634466,
+      "id": 43,
+      "channel": "canvas",
+      "width": 855,
+      "height": 868,
+      "view": {
+        "x": -2735.9075723830733,
+        "y": -1999.3229398663698,
+        "zoom": 0.43875278396436523
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 53113454
+    },
+    {
+      "at": 1793002635823,
+      "id": 44,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002635826,
+      "id": 45,
+      "channel": "canvas",
+      "width": 855,
+      "height": 868,
+      "view": {
+        "x": -2671.675946547884,
+        "y": -1949.9153674832962,
+        "zoom": 0.4298440979955457
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002637788,
+      "id": 46,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 20,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002643223,
+      "id": 47,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002643807,
+      "id": 48,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002643816,
+      "id": 49,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002643832,
+      "id": 50,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002643858,
+      "id": 51,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002643866,
+      "id": 52,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002643873,
+      "id": 53,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002643885,
+      "id": 54,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002643899,
+      "id": 55,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002643904,
+      "id": 56,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002643915,
+      "id": 57,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002643923,
+      "id": 58,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002643940,
+      "id": 59,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002643946,
+      "id": 60,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002643958,
+      "id": 61,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002643968,
+      "id": 62,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002643982,
+      "id": 63,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002643989,
+      "id": 64,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002643999,
+      "id": 65,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644017,
+      "id": 66,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644031,
+      "id": 67,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644049,
+      "id": 68,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644086,
+      "id": 69,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644107,
+      "id": 70,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644114,
+      "id": 71,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644124,
+      "id": 72,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644131,
+      "id": 73,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644142,
+      "id": 74,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644148,
+      "id": 75,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644157,
+      "id": 76,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644164,
+      "id": 77,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644181,
+      "id": 78,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644189,
+      "id": 79,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644198,
+      "id": 80,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644212,
+      "id": 81,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644225,
+      "id": 82,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644237,
+      "id": 83,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644249,
+      "id": 84,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644260,
+      "id": 85,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644274,
+      "id": 86,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644282,
+      "id": 87,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644291,
+      "id": 88,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644299,
+      "id": 89,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002644315,
+      "id": 90,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002650329,
+      "id": 91,
+      "channel": "canvas",
+      "width": 855,
+      "height": 868,
+      "view": {
+        "x": -2735.9075723830733,
+        "y": -1999.3229398663698,
+        "zoom": 0.43875278396436523
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 53113454
+    },
+    {
+      "at": 1793002651899,
+      "id": 92,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002651900,
+      "id": 93,
+      "channel": "canvas",
+      "width": 855,
+      "height": 868,
+      "view": {
+        "x": -2671.675946547884,
+        "y": -1949.9153674832962,
+        "zoom": 0.4298440979955457
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002653958,
+      "id": 94,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 20,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002660250,
+      "id": 95,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002660916,
+      "id": 96,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002660933,
+      "id": 97,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002660949,
+      "id": 98,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002660983,
+      "id": 99,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002660990,
+      "id": 100,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1793002661008,
+      "id": 101,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    }
+  ]
+}

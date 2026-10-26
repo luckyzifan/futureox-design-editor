@@ -1,0 +1,19 @@
+{
+  "path": "DesignMcpServer -> OperationBackend -> mounted editor bridge -> shared exporter -> actual Rust WASM CPU -> bounded byte chunks -> PNG decode",
+  "dimensions": [
+    [
+      24,
+      24
+    ],
+    [
+      48,
+      48
+    ],
+    [
+      72,
+      72
+    ]
+  ],
+  "realSocket": false,
+  "renderer": "cpu"
+}

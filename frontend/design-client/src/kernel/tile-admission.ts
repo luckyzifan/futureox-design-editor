@@ -1,6 +1,6 @@
 import { BitmapRetirement } from './bitmap-retirement'
 import { touchCompositeContributors } from './composite-cache-use'
-import { estimatedTileResidencyBytes } from './page-memory-policy'
+import { estimatedTileResidencyBytes, TileResidencyLedger } from './page-memory-policy'
 import { TILE_SIDE } from './tile-cache'
 
 type Payload = Parameters<typeof estimatedTileResidencyBytes>[0] extends Iterable<infer T> ? T : never
@@ -57,13 +57,13 @@ export function planTileAdmission<T extends AdmissionTile>(live: ReadonlyMap<str
   } else map.set(incoming.key, incoming)
   const held = [...new Set(options.held)].filter(tile => map.get(tile.key) !== tile)
   const pinned = new Set([...map].filter(([key, tile]) => options.pinned(key, tile)).map(([key]) => key))
-  const measure = () => estimatedTileResidencyBytes([...map.values(), ...held])
-  let bytes = measure()
+  const ledger = new TileResidencyLedger([...map.values(), ...held])
   for (const [key, tile] of map) {
-    if (bytes <= options.budget) break
+    if (ledger.bytes <= options.budget) break
     if (pinned.has(key) || options.used.has(tile)) continue
-    map.delete(key); retired.add(tile); bytes = measure()
+    map.delete(key); retired.add(tile); ledger.remove(tile)
   }
+  const bytes = ledger.bytes
   const diagnostic = Object.freeze({ proposedBytes: bytes, budgetBytes: options.budget, heldCount: held.length,
     usedCount: options.used.size, pinnedCount: pinned.size, incomingBytes: estimatedTileResidencyBytes([incoming]),
     reserveBytes: options.reserveBytes || 0 })

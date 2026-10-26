@@ -1,0 +1,1319 @@
+{
+  "status": "captured",
+  "probeVersion": 3,
+  "onlyPan": true,
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-continuity-9",
+  "kind": "117",
+  "scope": "independent foreground Electron; native mouse input, rAF DOM cameras and compositor acknowledgements; no physical scanout claim",
+  "phases": [
+    {
+      "label": "pan",
+      "start": 1792949883880,
+      "stopped": 1792949884853,
+      "ended": 1792949886368,
+      "cameraBefore": {
+        "x": -123.5,
+        "y": -480,
+        "z": 1
+      },
+      "cameraAfter": {
+        "x": -123.5,
+        "y": -480,
+        "z": 1
+      },
+      "poseBefore": {
+        "x": -410,
+        "y": 358,
+        "selection": [
+          "layer-ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3"
+        ]
+      },
+      "poseAfter": {
+        "x": -230,
+        "y": 438,
+        "selection": [
+          "layer-ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3"
+        ]
+      },
+      "dispatch": [
+        {
+          "at": 1792949883897,
+          "x": 736,
+          "y": 493
+        },
+        {
+          "at": 1792949883913,
+          "x": 739,
+          "y": 495
+        },
+        {
+          "at": 1792949883936,
+          "x": 742,
+          "y": 496
+        },
+        {
+          "at": 1792949883949,
+          "x": 745,
+          "y": 497
+        },
+        {
+          "at": 1792949883963,
+          "x": 748,
+          "y": 499
+        },
+        {
+          "at": 1792949883979,
+          "x": 751,
+          "y": 500
+        },
+        {
+          "at": 1792949884014,
+          "x": 754,
+          "y": 501
+        },
+        {
+          "at": 1792949884014,
+          "x": 757,
+          "y": 503
+        },
+        {
+          "at": 1792949884039,
+          "x": 760,
+          "y": 504
+        },
+        {
+          "at": 1792949884064,
+          "x": 763,
+          "y": 505
+        },
+        {
+          "at": 1792949884064,
+          "x": 766,
+          "y": 507
+        },
+        {
+          "at": 1792949884073,
+          "x": 769,
+          "y": 508
+        },
+        {
+          "at": 1792949884090,
+          "x": 772,
+          "y": 509
+        },
+        {
+          "at": 1792949884107,
+          "x": 775,
+          "y": 511
+        },
+        {
+          "at": 1792949884122,
+          "x": 778,
+          "y": 512
+        },
+        {
+          "at": 1792949884137,
+          "x": 781,
+          "y": 513
+        },
+        {
+          "at": 1792949884153,
+          "x": 784,
+          "y": 515
+        },
+        {
+          "at": 1792949884171,
+          "x": 787,
+          "y": 516
+        },
+        {
+          "at": 1792949884187,
+          "x": 790,
+          "y": 517
+        },
+        {
+          "at": 1792949884203,
+          "x": 793,
+          "y": 519
+        },
+        {
+          "at": 1792949884219,
+          "x": 796,
+          "y": 520
+        },
+        {
+          "at": 1792949884233,
+          "x": 799,
+          "y": 521
+        },
+        {
+          "at": 1792949884251,
+          "x": 802,
+          "y": 523
+        },
+        {
+          "at": 1792949884267,
+          "x": 805,
+          "y": 524
+        },
+        {
+          "at": 1792949884283,
+          "x": 808,
+          "y": 525
+        },
+        {
+          "at": 1792949884298,
+          "x": 811,
+          "y": 527
+        },
+        {
+          "at": 1792949884324,
+          "x": 814,
+          "y": 528
+        },
+        {
+          "at": 1792949884330,
+          "x": 817,
+          "y": 529
+        },
+        {
+          "at": 1792949884345,
+          "x": 820,
+          "y": 531
+        },
+        {
+          "at": 1792949884363,
+          "x": 823,
+          "y": 532
+        },
+        {
+          "at": 1792949884379,
+          "x": 826,
+          "y": 533
+        },
+        {
+          "at": 1792949884395,
+          "x": 829,
+          "y": 535
+        },
+        {
+          "at": 1792949884432,
+          "x": 832,
+          "y": 536
+        },
+        {
+          "at": 1792949884432,
+          "x": 835,
+          "y": 537
+        },
+        {
+          "at": 1792949884441,
+          "x": 838,
+          "y": 539
+        },
+        {
+          "at": 1792949884459,
+          "x": 841,
+          "y": 540
+        },
+        {
+          "at": 1792949884473,
+          "x": 844,
+          "y": 541
+        },
+        {
+          "at": 1792949884491,
+          "x": 847,
+          "y": 543
+        },
+        {
+          "at": 1792949884505,
+          "x": 850,
+          "y": 544
+        },
+        {
+          "at": 1792949884538,
+          "x": 853,
+          "y": 545
+        },
+        {
+          "at": 1792949884539,
+          "x": 856,
+          "y": 547
+        },
+        {
+          "at": 1792949884553,
+          "x": 859,
+          "y": 548
+        },
+        {
+          "at": 1792949884569,
+          "x": 862,
+          "y": 549
+        },
+        {
+          "at": 1792949884587,
+          "x": 865,
+          "y": 551
+        },
+        {
+          "at": 1792949884603,
+          "x": 868,
+          "y": 552
+        },
+        {
+          "at": 1792949884640,
+          "x": 871,
+          "y": 553
+        },
+        {
+          "at": 1792949884640,
+          "x": 874,
+          "y": 555
+        },
+        {
+          "at": 1792949884650,
+          "x": 877,
+          "y": 556
+        },
+        {
+          "at": 1792949884667,
+          "x": 880,
+          "y": 557
+        },
+        {
+          "at": 1792949884682,
+          "x": 883,
+          "y": 559
+        },
+        {
+          "at": 1792949884697,
+          "x": 886,
+          "y": 560
+        },
+        {
+          "at": 1792949884714,
+          "x": 889,
+          "y": 561
+        },
+        {
+          "at": 1792949884731,
+          "x": 892,
+          "y": 563
+        },
+        {
+          "at": 1792949884762,
+          "x": 895,
+          "y": 564
+        },
+        {
+          "at": 1792949884762,
+          "x": 898,
+          "y": 565
+        },
+        {
+          "at": 1792949884777,
+          "x": 901,
+          "y": 567
+        },
+        {
+          "at": 1792949884794,
+          "x": 904,
+          "y": 568
+        },
+        {
+          "at": 1792949884811,
+          "x": 907,
+          "y": 569
+        },
+        {
+          "at": 1792949884827,
+          "x": 910,
+          "y": 571
+        },
+        {
+          "at": 1792949884843,
+          "x": 913,
+          "y": 572
+        }
+      ],
+      "frames": 295,
+      "events": 56,
+      "final": {
+        "t": 10411.4,
+        "retainedPageCommit": "false",
+        "detailReady": "true",
+        "requested": {
+          "x": -123.5,
+          "y": -480,
+          "z": 1
+        },
+        "shown": {
+          "x": -123.5,
+          "y": -480,
+          "z": 1
+        },
+        "settled": {
+          "x": -123.5,
+          "y": -480,
+          "z": 1
+        },
+        "compositor": {
+          "compositor": "webgpu-resident",
+          "frameVisible": "true",
+          "inputTrace": "[]",
+          "contentSequence": "53",
+          "interactionReady": "true",
+          "interactionActive": "false",
+          "interactionWarming": "false",
+          "interactionError": "",
+          "interactionMoves": "53",
+          "interactionEnd": "180,80",
+          "interactionMode": "retained-page",
+          "interactionSamples": "0",
+          "interactionSampleMs": "0.00",
+          "interactionCompileMs": "0.00",
+          "interactionGraphMs": "0.00",
+          "interactionGeometryReused": "true",
+          "interactionGroupHits": "0",
+          "residentAttached": "true",
+          "residentAttachmentReason": "attached",
+          "deviceWorkerScope": "44737071466534",
+          "deviceIncarnation": "1",
+          "deviceOwner": "2",
+          "deviceScope": "2",
+          "deviceCounterMask": "15",
+          "devicePendingCaptures": "0",
+          "devicePendingCapturePayloadBytes": "0",
+          "devicePendingReadbacks": "1",
+          "deviceLogicalPayloadBytes": "56696876",
+          "deviceRetiringPayloadBytes": "21135680",
+          "coverageDeferred": "0",
+          "backgroundCoverage": "0",
+          "diagnosticSequence": "141",
+          "submittedEpoch": "1792949886044.3",
+          "gridVisible": "false",
+          "dpr": "2",
+          "coverageMeasured": "true",
+          "coverageAt": "8467",
+          "compositorFrames": "119",
+          "compositorTransformUploadBytes": "0",
+          "compositorUploads": "0",
+          "compositorCaptures": "80",
+          "compositorBytes": "56696876",
+          "compositorOverlayBytes": "2243484",
+          "compositorTiles": "39",
+          "compositorDraws": "20",
+          "linearBlend": "false",
+          "missingTextureCount": "0",
+          "coverage": "1",
+          "sharpCoverage": "1",
+          "nativePhaseCoverage": "1",
+          "maxUpscale": "1",
+          "pixelCoverageComplete": "true",
+          "nativeCoverageComplete": "true",
+          "alphaFrame": "119",
+          "alphaSequence": "141",
+          "alphaWidth": "1710",
+          "alphaHeight": "1672",
+          "alphaSubmitted": "1",
+          "alphaProbeCode": "0",
+          "alphaMinimum": "255",
+          "alphaNonOpaquePixels": "0",
+          "alphaZeroPixels": "0",
+          "alphaPixelCount": "2859120",
+          "qualitySequence": "4",
+          "qualityRevision": "2",
+          "pageToken": "1",
+          "documentRevision": "2",
+          "generation": "2",
+          "fillGeneration": "7",
+          "qualityTerminal": "true",
+          "coverageDeferredDraws": "19",
+          "backgroundDecline": "5",
+          "backgroundDensitySources": "5",
+          "backgroundPhaseError": "0",
+          "interactionCoverageMissing": "true",
+          "pageCommitStage": "2",
+          "pageCommitReason": "1",
+          "pageCommitChecks": "63"
+        }
+      }
+    },
+    {
+      "label": "pan-return",
+      "start": 1792949887477,
+      "stopped": 1792949888441,
+      "ended": 1792949888773,
+      "cameraBefore": {
+        "x": -123.5,
+        "y": -480,
+        "z": 1
+      },
+      "cameraAfter": {
+        "x": -123.5,
+        "y": -480,
+        "z": 1
+      },
+      "poseBefore": {
+        "x": -230,
+        "y": 438,
+        "selection": [
+          "layer-ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3"
+        ]
+      },
+      "poseAfter": {
+        "x": -410,
+        "y": 358,
+        "selection": [
+          "layer-ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3"
+        ]
+      },
+      "dispatch": [
+        {
+          "at": 1792949887494,
+          "x": 730,
+          "y": 491
+        },
+        {
+          "at": 1792949887511,
+          "x": 727,
+          "y": 489
+        },
+        {
+          "at": 1792949887528,
+          "x": 724,
+          "y": 488
+        },
+        {
+          "at": 1792949887543,
+          "x": 721,
+          "y": 487
+        },
+        {
+          "at": 1792949887580,
+          "x": 718,
+          "y": 485
+        },
+        {
+          "at": 1792949887580,
+          "x": 715,
+          "y": 484
+        },
+        {
+          "at": 1792949887627,
+          "x": 712,
+          "y": 483
+        },
+        {
+          "at": 1792949887627,
+          "x": 709,
+          "y": 481
+        },
+        {
+          "at": 1792949887627,
+          "x": 706,
+          "y": 480
+        },
+        {
+          "at": 1792949887638,
+          "x": 703,
+          "y": 479
+        },
+        {
+          "at": 1792949887655,
+          "x": 700,
+          "y": 477
+        },
+        {
+          "at": 1792949887671,
+          "x": 697,
+          "y": 476
+        },
+        {
+          "at": 1792949887686,
+          "x": 694,
+          "y": 475
+        },
+        {
+          "at": 1792949887702,
+          "x": 691,
+          "y": 473
+        },
+        {
+          "at": 1792949887719,
+          "x": 688,
+          "y": 472
+        },
+        {
+          "at": 1792949887734,
+          "x": 685,
+          "y": 471
+        },
+        {
+          "at": 1792949887750,
+          "x": 682,
+          "y": 469
+        },
+        {
+          "at": 1792949887767,
+          "x": 679,
+          "y": 468
+        },
+        {
+          "at": 1792949887783,
+          "x": 676,
+          "y": 467
+        },
+        {
+          "at": 1792949887798,
+          "x": 673,
+          "y": 465
+        },
+        {
+          "at": 1792949887814,
+          "x": 670,
+          "y": 464
+        },
+        {
+          "at": 1792949887829,
+          "x": 667,
+          "y": 463
+        },
+        {
+          "at": 1792949887847,
+          "x": 664,
+          "y": 461
+        },
+        {
+          "at": 1792949887863,
+          "x": 661,
+          "y": 460
+        },
+        {
+          "at": 1792949887889,
+          "x": 658,
+          "y": 459
+        },
+        {
+          "at": 1792949887893,
+          "x": 655,
+          "y": 457
+        },
+        {
+          "at": 1792949887909,
+          "x": 652,
+          "y": 456
+        },
+        {
+          "at": 1792949887925,
+          "x": 649,
+          "y": 455
+        },
+        {
+          "at": 1792949887942,
+          "x": 646,
+          "y": 453
+        },
+        {
+          "at": 1792949887960,
+          "x": 643,
+          "y": 452
+        },
+        {
+          "at": 1792949887975,
+          "x": 640,
+          "y": 451
+        },
+        {
+          "at": 1792949888004,
+          "x": 637,
+          "y": 449
+        },
+        {
+          "at": 1792949888012,
+          "x": 634,
+          "y": 448
+        },
+        {
+          "at": 1792949888022,
+          "x": 631,
+          "y": 447
+        },
+        {
+          "at": 1792949888040,
+          "x": 628,
+          "y": 445
+        },
+        {
+          "at": 1792949888055,
+          "x": 625,
+          "y": 444
+        },
+        {
+          "at": 1792949888070,
+          "x": 622,
+          "y": 443
+        },
+        {
+          "at": 1792949888103,
+          "x": 619,
+          "y": 441
+        },
+        {
+          "at": 1792949888103,
+          "x": 616,
+          "y": 440
+        },
+        {
+          "at": 1792949888117,
+          "x": 613,
+          "y": 439
+        },
+        {
+          "at": 1792949888134,
+          "x": 610,
+          "y": 437
+        },
+        {
+          "at": 1792949888151,
+          "x": 607,
+          "y": 436
+        },
+        {
+          "at": 1792949888166,
+          "x": 604,
+          "y": 435
+        },
+        {
+          "at": 1792949888203,
+          "x": 601,
+          "y": 433
+        },
+        {
+          "at": 1792949888203,
+          "x": 598,
+          "y": 432
+        },
+        {
+          "at": 1792949888214,
+          "x": 595,
+          "y": 431
+        },
+        {
+          "at": 1792949888230,
+          "x": 592,
+          "y": 429
+        },
+        {
+          "at": 1792949888247,
+          "x": 589,
+          "y": 428
+        },
+        {
+          "at": 1792949888262,
+          "x": 586,
+          "y": 427
+        },
+        {
+          "at": 1792949888279,
+          "x": 583,
+          "y": 425
+        },
+        {
+          "at": 1792949888312,
+          "x": 580,
+          "y": 424
+        },
+        {
+          "at": 1792949888312,
+          "x": 577,
+          "y": 423
+        },
+        {
+          "at": 1792949888325,
+          "x": 574,
+          "y": 421
+        },
+        {
+          "at": 1792949888342,
+          "x": 571,
+          "y": 420
+        },
+        {
+          "at": 1792949888359,
+          "x": 568,
+          "y": 419
+        },
+        {
+          "at": 1792949888376,
+          "x": 565,
+          "y": 417
+        },
+        {
+          "at": 1792949888412,
+          "x": 562,
+          "y": 416
+        },
+        {
+          "at": 1792949888412,
+          "x": 559,
+          "y": 415
+        },
+        {
+          "at": 1792949888423,
+          "x": 556,
+          "y": 413
+        },
+        {
+          "at": 1792949888438,
+          "x": 553,
+          "y": 412
+        }
+      ],
+      "frames": 156,
+      "events": 56,
+      "final": {
+        "t": 12820.7,
+        "retainedPageCommit": "true",
+        "detailReady": "true",
+        "requested": {
+          "x": -123.5,
+          "y": -480,
+          "z": 1
+        },
+        "shown": {
+          "x": -123.5,
+          "y": -480,
+          "z": 1
+        },
+        "settled": {
+          "x": -123.5,
+          "y": -480,
+          "z": 1
+        },
+        "compositor": {
+          "compositor": "webgpu-resident",
+          "frameVisible": "true",
+          "inputTrace": "[]",
+          "contentSequence": "106",
+          "interactionReady": "true",
+          "interactionActive": "false",
+          "interactionWarming": "false",
+          "interactionError": "",
+          "interactionMoves": "106",
+          "interactionEnd": "-180,-80",
+          "interactionMode": "retained-page",
+          "interactionSamples": "0",
+          "interactionSampleMs": "0.00",
+          "interactionCompileMs": "0.00",
+          "interactionGraphMs": "0.00",
+          "interactionGeometryReused": "true",
+          "interactionGroupHits": "0",
+          "residentAttached": "true",
+          "residentAttachmentReason": "attached",
+          "deviceWorkerScope": "44737071466534",
+          "deviceIncarnation": "1",
+          "deviceOwner": "2",
+          "deviceScope": "2",
+          "deviceCounterMask": "15",
+          "devicePendingCaptures": "0",
+          "devicePendingCapturePayloadBytes": "0",
+          "devicePendingReadbacks": "1",
+          "deviceLogicalPayloadBytes": "44138556",
+          "deviceRetiringPayloadBytes": "21135680",
+          "coverageDeferred": "0",
+          "backgroundCoverage": "0",
+          "diagnosticSequence": "209",
+          "submittedEpoch": "1792949888590.4001",
+          "gridVisible": "false",
+          "dpr": "2",
+          "coverageMeasured": "true",
+          "coverageAt": "11013.100000023842",
+          "compositorFrames": "162",
+          "compositorTransformUploadBytes": "0",
+          "compositorUploads": "0",
+          "compositorCaptures": "86",
+          "compositorBytes": "44138556",
+          "compositorOverlayBytes": "2243484",
+          "compositorTiles": "19",
+          "compositorDraws": "1",
+          "linearBlend": "false",
+          "missingTextureCount": "0",
+          "coverage": "1",
+          "sharpCoverage": "1",
+          "nativePhaseCoverage": "1",
+          "maxUpscale": "1",
+          "pixelCoverageComplete": "true",
+          "nativeCoverageComplete": "true",
+          "alphaFrame": "162",
+          "alphaSequence": "209",
+          "alphaWidth": "1710",
+          "alphaHeight": "1672",
+          "alphaSubmitted": "1",
+          "alphaProbeCode": "0",
+          "alphaMinimum": "255",
+          "alphaNonOpaquePixels": "0",
+          "alphaZeroPixels": "0",
+          "alphaPixelCount": "2859120",
+          "qualitySequence": "5",
+          "qualityRevision": "3",
+          "pageToken": "1",
+          "documentRevision": "3",
+          "generation": "3",
+          "fillGeneration": "8",
+          "qualityTerminal": "true",
+          "coverageDeferredDraws": "12",
+          "backgroundDecline": "3",
+          "backgroundDensitySources": "0",
+          "backgroundPhaseError": "0",
+          "interactionCoverageMissing": "true",
+          "pageCommitStage": "2",
+          "pageCommitReason": "10",
+          "pageCommitChecks": "127"
+        }
+      }
+    }
+  ],
+  "errors": [],
+  "instance": {
+    "pid": 74147,
+    "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/forma-desktop-manual-8857ac39-916c-4697-bfcf-9157dd96185e-JiMwkl"
+  },
+  "fixture": "/Users/Apple/Downloads/117.sketch",
+  "canvasBox": {
+    "x": 305,
+    "y": 32,
+    "width": 855,
+    "height": 836
+  },
+  "motionFrameSets": [
+    {
+      "label": "pan",
+      "frames": [
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-png/0000.png",
+          "receivedAt": 1792949884142,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949883.894774
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-png/0001.png",
+          "receivedAt": 1792949884250,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949883.914307
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-png/0002.png",
+          "receivedAt": 1792949884360,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949883.944929
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-png/0003.png",
+          "receivedAt": 1792949884460,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949884.230948
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-png/0004.png",
+          "receivedAt": 1792949884571,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949884.339532
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-png/0005.png",
+          "receivedAt": 1792949884676,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949884.447473
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-png/0006.png",
+          "receivedAt": 1792949884790,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949884.549142
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-png/0007.png",
+          "receivedAt": 1792949884893,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949884.667664
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-png/0008.png",
+          "receivedAt": 1792949884998,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949884.772496
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-png/0009.png",
+          "receivedAt": 1792949885098,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949884.882475
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-png/0010.png",
+          "receivedAt": 1792949885233,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949885.022077
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-png/0011.png",
+          "receivedAt": 1792949886136,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949885.92029
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-png/0012.png",
+          "receivedAt": 1792949886263,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949886.049999
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-png/0013.png",
+          "receivedAt": 1792949886365,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949886.055201
+          }
+        }
+      ]
+    },
+    {
+      "label": "pan-return",
+      "frames": [
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-return-png/0000.png",
+          "receivedAt": 1792949887702,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949887.484756
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-return-png/0001.png",
+          "receivedAt": 1792949887803,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949887.500401
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-return-png/0002.png",
+          "receivedAt": 1792949887907,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949887.496019
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-return-png/0003.png",
+          "receivedAt": 1792949888022,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949887.796967
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-return-png/0004.png",
+          "receivedAt": 1792949888134,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949887.910994
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-return-png/0005.png",
+          "receivedAt": 1792949888233,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949888.012209
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-return-png/0006.png",
+          "receivedAt": 1792949888345,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949888.112057
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-return-png/0007.png",
+          "receivedAt": 1792949888456,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949888.220366
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-return-png/0008.png",
+          "receivedAt": 1792949888554,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949888.320559
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-return-png/0009.png",
+          "receivedAt": 1792949888658,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949888.438857
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/pan-return-png/0010.png",
+          "receivedAt": 1792949888767,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792949888.551247
+          }
+        }
+      ]
+    }
+  ],
+  "parityReference": "Real opacity change and restore forces normal native rendering; same camera, same authored final opacity; outside timing window",
+  "finalDiagnostics": {
+    "rasterPlanner": "rust",
+    "checkerboard": "false",
+    "samplingMode": "density-cache",
+    "rasterProfile": "figmaSubpixel",
+    "samplingScale": "2",
+    "samplingDensity": "2",
+    "nativePixelReady": "false",
+    "rasterPhaseExact": "true",
+    "startupPreview": "false",
+    "renderer": "webgpu",
+    "tileCount": "39",
+    "pageCacheBytes": "0",
+    "pageCachePages": "0",
+    "pageCacheHits": "0",
+    "pageCacheMisses": "0",
+    "pageCacheEvictions": "0",
+    "pageCacheTier": "balanced",
+    "pageResidencyEstimatedBudget": "234881024",
+    "cacheHits": "104",
+    "tilesRendered": "127",
+    "viewportTilesRendered": "119",
+    "cacheBytes": "1024",
+    "tileScheduleFrames": "1",
+    "tileScheduleOnscreen": "20",
+    "tileScheduleOffscreen": "0",
+    "tileScheduleDeferred": "0",
+    "tileBudgetCutoffs": "0",
+    "tileBudgetCompletions": "1",
+    "tileBudgetCacheCutoffs": "0",
+    "tileCacheSkippedTiles": "0",
+    "residentBytes": "43016912",
+    "residentBudget": "234881024",
+    "activeResidentBudget": "134217728",
+    "cacheSteadyBudget": "134217728",
+    "cacheStagingLimit": "26419600",
+    "cacheAdmissionBudget": "160637328",
+    "cacheActiveBytes": "43016912",
+    "cacheActiveHighwater": "66700480",
+    "cacheTotalHighwater": "66700480",
+    "refineMs": "1037.70",
+    "compileMs": "461.50",
+    "pipelineWallMs": "744.20",
+    "preparationWaitMs": "134.70",
+    "overlappedPreparations": "106",
+    "frameResourceHits": "227",
+    "frameResourceBytes": "59519076",
+    "graphMs": "211.50",
+    "finishMs": "348.90",
+    "checkpointMs": "0.00",
+    "detailReady": "true",
+    "framePublication": "complete",
+    "retainedCommit": "false",
+    "retainedPageCommit": "false",
+    "lodScale": "0",
+    "lodTiles": "0",
+    "lodCacheBytes": "0",
+    "lodCacheBudget": "16777216",
+    "lodCacheHits": "0",
+    "previewActive": "false",
+    "progressiveTiles": "20",
+    "failedTiles": "0",
+    "cachedPreviewTiles": "0",
+    "overviewTiles": "0",
+    "overviewReuses": "0",
+    "residentEligible": "true",
+    "residentReason": "eligible",
+    "motionPreview": "false",
+    "motionRasterScale": "2",
+    "cameraMoving": "false",
+    "navigationPendingAgeMs": "0",
+    "navigationZoomActive": "false",
+    "nativeNavigation": "false",
+    "nativeVisibleTiles": "false",
+    "navigationZoomSequence": "0",
+    "viewportPreviewTiles": "0",
+    "nativeCaptureTiles": "0",
+    "displayMode": "single-gpu-canvas",
+    "revision": "5",
+    "cameraX": "-123.5",
+    "cameraY": "-480",
+    "cameraZoom": "1",
+    "requestedCameraX": "-123.5",
+    "requestedCameraY": "-480",
+    "requestedCameraZoom": "1",
+    "requestedRevision": "5",
+    "pixelRatio": "2",
+    "firstDetailMs": "342.50",
+    "navigationMs": "941.10"
+  },
+  "savedOutsideMotionWindow": true
+}

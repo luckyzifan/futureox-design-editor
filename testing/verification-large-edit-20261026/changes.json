@@ -1,0 +1,42 @@
+[
+  {
+    "path": "frontend/design-client/src/kernel/client.ts",
+    "baseline": "01ee6618d52b2916e29d1a5559f2e85a5c84ef9ffe4dca1d9931e1714ecb2da5",
+    "new": "bf5b59e0a0846e14472ec88cc778717745ea16a3b631545ddf04cec445bb425b"
+  },
+  {
+    "path": "frontend/design-client/src/kernel/document-derivation-client.test.ts",
+    "baseline": "206795e41d4d068cabb54de80e4916ba1db89397f4b4c5f4d13ec7291d958ebe",
+    "new": "87b46ddbab2c556ebf80831183d15f5e1647bd4ee095732fbb07af866a5089c6"
+  },
+  {
+    "path": "frontend/design-client/src/kernel/interaction-release-handoff.test.ts",
+    "baseline": "c5145250cd9fdef85c7f38e1db3506e6cd3f29733d690b717fb2b4930f6ef65d",
+    "new": "8d294e59559e4a388a47ee77962bcf89458674f350ca5ffa7ee688775aa6f951"
+  },
+  {
+    "path": "frontend/design-client/src/kernel/interaction-renderer.ts",
+    "baseline": "288ba9fb74a64d7fc28fedc85063039836112ca2a548653eeb8061bbeec5060b",
+    "new": "3accb821a6ce12492b507c0fc310cc815d730406f54343971a10b52303778ef2"
+  },
+  {
+    "path": "frontend/design-client/src/kernel/progressive-damage.test.tsx",
+    "baseline": "eafaae3a32fac1120aeaf82b5e0df48760befc7ea429c2d322042b7f8215d032",
+    "new": "bef03c93d70d46fc412cec64fa8be6b320f8edd2e969f74ea1f48c2537efc4e7"
+  },
+  {
+    "path": "frontend/design-client/src/kernel/ProgressiveSurface.tsx",
+    "baseline": "f7fdb00babd3bab0a86bee6fdacb0d445d9365effd84bb29d50acd492af5c208",
+    "new": "c23a17df6b73b7b5b8838fb79de5831ac5990bb5b44f3c7b57d877a77c2cc490"
+  },
+  {
+    "path": ".agents/skills/futureox-design-development/SKILL.md",
+    "baseline": "0964b5e882b51507be64ac07c00e3575f0d047908c57eaaac48732a467728ad8",
+    "new": "414c20dccf3cf04089b520719e097674eee21d25b57714529cd4e4d45c3ae0a0"
+  },
+  {
+    "path": ".agents/skills/futureox-rendering-first/SKILL.md",
+    "baseline": "ea4b92c0c622f6b88e9c3ff0b8cf4cf3a9340a3167ef3f978208a4ef5c4e391e",
+    "new": "4c240c2eacd3fd0b0c60e320da5ba8bd4cdb42fae5ba7eabe5fd707091964a3e"
+  }
+]

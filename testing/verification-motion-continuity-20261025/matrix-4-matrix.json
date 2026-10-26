@@ -1,0 +1,440 @@
+[
+  {
+    "name": "matrix-4-117-v",
+    "command": [
+      "node",
+      "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/stress-drag.mjs",
+      "117",
+      "matrix-4-117-v"
+    ],
+    "exit_code": 0,
+    "seconds": 18.390865802764893,
+    "summaryExit": 0,
+    "quality": {
+      "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+      "status": "captured",
+      "start": 1792943888075,
+      "end": 1792943895659,
+      "submits": 33,
+      "measured": 33,
+      "minCoverage": 1,
+      "minSharpCoverage": 1,
+      "minNativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "alphaFrames": 33,
+      "invalidAlpha": 0,
+      "transparentFrames": 1,
+      "maxTransparentPixels": 100890,
+      "failures": [],
+      "convergenceMs": 2059,
+      "phases": [
+        {
+          "label": "pan",
+          "settleMs": 37,
+          "events": 13
+        },
+        {
+          "label": "pan-return",
+          "settleMs": 36,
+          "events": 14
+        },
+        {
+          "label": "pan-again",
+          "settleMs": 35,
+          "events": 18
+        },
+        {
+          "label": "pan-reverse",
+          "settleMs": 36,
+          "events": 19
+        }
+      ],
+      "maxPipelineMs": 689.1000000238419,
+      "maxGraphMs": 1317.1999999284744,
+      "maxTileMs": 105.39999997615814,
+      "motionGate": "FAIL"
+    }
+  },
+  {
+    "name": "matrix-4-117-h",
+    "command": [
+      "node",
+      "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/stress-drag.mjs",
+      "117",
+      "matrix-4-117-h"
+    ],
+    "exit_code": 0,
+    "seconds": 13.531203031539917,
+    "summaryExit": 0,
+    "quality": {
+      "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+      "status": "captured",
+      "start": 1792943904322,
+      "end": 1792943909349,
+      "submits": 187,
+      "measured": 187,
+      "minCoverage": 1,
+      "minSharpCoverage": 0.9583333333333334,
+      "minNativePhaseCoverage": 0.9583333333333334,
+      "maxUpscale": 2.48,
+      "alphaFrames": 187,
+      "invalidAlpha": 0,
+      "transparentFrames": 0,
+      "maxTransparentPixels": 0,
+      "failures": [],
+      "convergenceMs": 156,
+      "phases": [
+        {
+          "label": "pan",
+          "settleMs": 35,
+          "events": 17
+        },
+        {
+          "label": "pan-return",
+          "settleMs": 36,
+          "events": 18
+        },
+        {
+          "label": "pan-again",
+          "settleMs": 38,
+          "events": 17
+        },
+        {
+          "label": "pan-reverse",
+          "settleMs": 37,
+          "events": 20
+        }
+      ],
+      "maxPipelineMs": 136.20000004768372,
+      "maxGraphMs": 38.199999928474426,
+      "maxTileMs": 136.10000002384186,
+      "motionGate": "FAIL"
+    }
+  },
+  {
+    "name": "matrix-4-117-zoom",
+    "command": [
+      "node",
+      "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/capture-workbench.mjs",
+      "117",
+      "matrix-4-117-zoom"
+    ],
+    "exit_code": 0,
+    "seconds": 13.815412998199463,
+    "summaryExit": 0,
+    "quality": {
+      "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+      "status": "captured",
+      "start": 1792943916996,
+      "end": 1792943922846,
+      "submits": 158,
+      "measured": 158,
+      "minCoverage": 1,
+      "minSharpCoverage": 0,
+      "minNativePhaseCoverage": 0,
+      "maxUpscale": 29.784688804847065,
+      "alphaFrames": 158,
+      "invalidAlpha": 0,
+      "transparentFrames": 0,
+      "maxTransparentPixels": 0,
+      "failures": [],
+      "convergenceMs": 3300,
+      "maxPipelineMs": 542.5999999046326,
+      "maxGraphMs": 134.5,
+      "maxTileMs": 327.6999999284744,
+      "motionGate": "FAIL"
+    }
+  },
+  {
+    "name": "matrix-4-fig-v",
+    "command": [
+      "node",
+      "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/stress-drag.mjs",
+      "fig",
+      "matrix-4-fig-v"
+    ],
+    "exit_code": 1,
+    "seconds": 33.594645977020264,
+    "summaryExit": 0,
+    "quality": {
+      "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+      "status": "captured",
+      "start": 1792943936632,
+      "end": 1792943939829,
+      "submits": 40,
+      "measured": 40,
+      "minCoverage": 1,
+      "minSharpCoverage": 1,
+      "minNativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "alphaFrames": 40,
+      "invalidAlpha": 0,
+      "transparentFrames": 11,
+      "maxTransparentPixels": 232408,
+      "failures": [],
+      "convergenceMs": 167,
+      "phases": [
+        {
+          "label": "pan",
+          "settleMs": 38,
+          "events": 17
+        },
+        {
+          "label": "pan-return",
+          "settleMs": 36,
+          "events": 20
+        },
+        {
+          "label": "pan-again",
+          "settleMs": 36,
+          "events": 16
+        },
+        {
+          "label": "pan-reverse",
+          "settleMs": 35,
+          "events": 21
+        }
+      ],
+      "maxPipelineMs": 0.09999990463256836,
+      "maxGraphMs": 47.89999997615814,
+      "maxTileMs": 0,
+      "motionGate": "FAIL"
+    }
+  },
+  {
+    "name": "matrix-4-fig-h",
+    "command": [
+      "node",
+      "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/stress-drag.mjs",
+      "fig",
+      "matrix-4-fig-h"
+    ],
+    "exit_code": 0,
+    "seconds": 14.34176778793335,
+    "summaryExit": 0,
+    "quality": {
+      "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+      "status": "captured",
+      "start": 1792943970210,
+      "end": 1792943972028,
+      "submits": 262,
+      "measured": 262,
+      "minCoverage": 1,
+      "minSharpCoverage": 1,
+      "minNativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "alphaFrames": 262,
+      "invalidAlpha": 0,
+      "transparentFrames": 0,
+      "maxTransparentPixels": 0,
+      "failures": [],
+      "convergenceMs": 158,
+      "phases": [
+        {
+          "label": "pan",
+          "settleMs": 36,
+          "events": 23
+        },
+        {
+          "label": "pan-return",
+          "settleMs": 35,
+          "events": 25
+        },
+        {
+          "label": "pan-again",
+          "settleMs": 35,
+          "events": 25
+        },
+        {
+          "label": "pan-reverse",
+          "settleMs": 36,
+          "events": 23
+        }
+      ],
+      "maxPipelineMs": null,
+      "maxGraphMs": null,
+      "maxTileMs": null,
+      "motionGate": "PASS"
+    }
+  },
+  {
+    "name": "matrix-4-fig-zoom",
+    "command": [
+      "node",
+      "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/capture-workbench.mjs",
+      "fig",
+      "matrix-4-fig-zoom"
+    ],
+    "exit_code": 0,
+    "seconds": 18.664716005325317,
+    "summaryExit": 0,
+    "quality": {
+      "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+      "status": "captured",
+      "start": 1792943984305,
+      "end": 1792943989627,
+      "submits": 158,
+      "measured": 158,
+      "minCoverage": 1,
+      "minSharpCoverage": 0,
+      "minNativePhaseCoverage": 0,
+      "maxUpscale": 29.763810060549705,
+      "alphaFrames": 158,
+      "invalidAlpha": 0,
+      "transparentFrames": 0,
+      "maxTransparentPixels": 0,
+      "failures": [],
+      "convergenceMs": 2762,
+      "maxPipelineMs": 1498.8999999761581,
+      "maxGraphMs": 235.19999957084656,
+      "maxTileMs": 310.39999997615814,
+      "motionGate": "FAIL"
+    }
+  },
+  {
+    "name": "matrix-4-sketch-v",
+    "command": [
+      "node",
+      "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/stress-drag.mjs",
+      "sketch",
+      "matrix-4-sketch-v"
+    ],
+    "exit_code": 0,
+    "seconds": 82.64255213737488,
+    "summaryExit": 0,
+    "quality": {
+      "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+      "status": "captured",
+      "start": 1792944052817,
+      "end": 1792944073304,
+      "submits": 31,
+      "measured": 31,
+      "minCoverage": 1,
+      "minSharpCoverage": 1,
+      "minNativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "alphaFrames": 29,
+      "invalidAlpha": 0,
+      "transparentFrames": 0,
+      "maxTransparentPixels": 0,
+      "failures": [],
+      "convergenceMs": 16697,
+      "phases": [
+        {
+          "label": "pan",
+          "settleMs": 36,
+          "events": 10
+        },
+        {
+          "label": "pan-return",
+          "settleMs": 37,
+          "events": 22
+        },
+        {
+          "label": "pan-again",
+          "settleMs": 38,
+          "events": 18
+        },
+        {
+          "label": "pan-reverse",
+          "settleMs": 36,
+          "events": 23
+        }
+      ],
+      "maxPipelineMs": 6256.899999976158,
+      "maxGraphMs": 4927.100000143051,
+      "maxTileMs": 516.9999998807907,
+      "motionGate": "PASS"
+    }
+  },
+  {
+    "name": "matrix-4-sketch-h",
+    "command": [
+      "node",
+      "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/stress-drag.mjs",
+      "sketch",
+      "matrix-4-sketch-h"
+    ],
+    "exit_code": 0,
+    "seconds": 63.35653471946716,
+    "summaryExit": 0,
+    "quality": {
+      "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+      "status": "captured",
+      "start": 1792944134931,
+      "end": 1792944136892,
+      "submits": 213,
+      "measured": 213,
+      "minCoverage": 1,
+      "minSharpCoverage": 0.75,
+      "minNativePhaseCoverage": 0.75,
+      "maxUpscale": 2.2791878172588835,
+      "alphaFrames": 213,
+      "invalidAlpha": 0,
+      "transparentFrames": 0,
+      "maxTransparentPixels": 0,
+      "failures": [],
+      "convergenceMs": 156,
+      "phases": [
+        {
+          "label": "pan",
+          "settleMs": 34,
+          "events": 23
+        },
+        {
+          "label": "pan-return",
+          "settleMs": 36,
+          "events": 20
+        },
+        {
+          "label": "pan-again",
+          "settleMs": 37,
+          "events": 25
+        },
+        {
+          "label": "pan-reverse",
+          "settleMs": 34,
+          "events": 21
+        }
+      ],
+      "maxPipelineMs": 84.60000002384186,
+      "maxGraphMs": 25.700000047683716,
+      "maxTileMs": 127.00000011920929,
+      "motionGate": "FAIL"
+    }
+  },
+  {
+    "name": "matrix-4-sketch-zoom",
+    "command": [
+      "node",
+      "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/capture-workbench.mjs",
+      "sketch",
+      "matrix-4-sketch-zoom"
+    ],
+    "exit_code": 1,
+    "seconds": 61.391213178634644,
+    "summaryExit": 0,
+    "quality": {
+      "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+      "status": "failed-render-recovery",
+      "start": 1792944190962,
+      "end": 1792944197321,
+      "submits": 180,
+      "measured": 180,
+      "minCoverage": 1,
+      "minSharpCoverage": 0,
+      "minNativePhaseCoverage": 0,
+      "maxUpscale": 72.93401015228427,
+      "alphaFrames": 180,
+      "invalidAlpha": 0,
+      "transparentFrames": 0,
+      "maxTransparentPixels": 0,
+      "failures": [],
+      "convergenceMs": 3810,
+      "maxPipelineMs": 2009.6000000238419,
+      "maxGraphMs": 867.6000001430511,
+      "maxTileMs": 1538.5,
+      "motionGate": "FAIL"
+    }
+  }
+]

@@ -1,3 +1,4 @@
+import {topologyTarget} from '../verification-navigation-priority-20261025/topology-target.mjs'
 import {renderFailures} from './render-failures.mjs'
 import { foreground } from './foreground.mjs'
 import assert from 'node:assert/strict'
@@ -40,15 +41,7 @@ try {
   }
   await page.locator('input[type=file][accept*=".fd"]').setInputFiles(file)
   if (kind === 'sketch') {
-    await expect(page.locator('.app-shell')).toHaveAttribute('data-source-document','true',{timeout:120000})
-    await expect(page.locator('.header-right').getByRole('button',{name:'保存',exact:true})).toBeEnabled({timeout:180000})
-    await settle();await page.getByRole('button',{name:'页面 / 画板',exact:true}).click()
-    await page.locator('[aria-label="搜索源对象"]').fill('控件'); await page.getByRole('button', { name: '搜索', exact: true }).click()
-    const item = page.locator('.source-workspace-rows > div').filter({ hasText: '完整页面' }); await expect(item).toHaveCount(1, { timeout: 30000 })
-    report.sourceKey = await item.getAttribute('data-source-key'); await item.locator('button').first().click()
-    await expect(page.locator('.source-canvas-status')).toContainText('已载入', { timeout: 120000 }); await settle()
-    await page.locator('[aria-label="搜索图层"]').fill('数据名称')
-    await page.getByTestId('layer-4F1BF005-CF98-4296-8A6B-9194F5146DAD').click()
+    report.topologyTarget=await topologyTarget(page,expect,settle)
   } else {
     await expect(page.locator('[aria-label="文档名称"]')).toHaveValue(kind === 'fig' ? '01有料素材 (Copy)' : '117', { timeout: 60000 })
     await settle(); await page.locator('[aria-label="搜索图层"]').fill(kind === 'fig' ? '01_Dashboard' : '117')

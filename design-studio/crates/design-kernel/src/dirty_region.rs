@@ -100,7 +100,7 @@ pub fn patch_damage(
     after: &Document,
     patch: &crate::editing::DocumentPatch,
 ) -> PatchDamage {
-    patch_damage_impl(before, after, patch, None)
+    patch_damage_impl(before, after, patch, None, false)
 }
 
 /// Rendering supplies its actual default and embedded fonts. Logical text
@@ -111,7 +111,57 @@ pub(crate) fn patch_damage_with_fonts(
     patch: &crate::editing::DocumentPatch,
     fonts: &Fonts,
 ) -> PatchDamage {
-    patch_damage_impl(before, after, patch, Some(fonts))
+    patch_damage_impl(before, after, patch, Some(fonts), false)
+}
+
+/// The Engine has proved that only material changes on an already resolved
+/// scene. Geometry, layout, effect support and backdrop isolation are unchanged.
+/// Use that resolved placement on both sides; authored child coordinates under
+/// auto-layout are not a paint certificate. No extra document clone is needed.
+pub(crate) fn resolved_material_damage(
+    resolved: &Document,
+    patch: &crate::editing::DocumentPatch,
+    fonts: &Fonts,
+) -> PatchDamage {
+    patch_damage_impl(resolved, resolved, patch, Some(fonts), true)
+}
+
+/// Backdrops read their nearest isolated ancestor (or page). An edit in a
+/// different scope cannot reach them. Ancestor edits remain conservative since
+/// they may change isolation or move the entire dependent subtree.
+fn backdrop_reads_edited_scope(
+    doc: &Document,
+    parents: &BTreeMap<&str, &str>,
+    backdrop: &str,
+    edited: &[&str],
+) -> bool {
+    let mut root = backdrop;
+    let scope = loop {
+        if let Some(parent) = parents.get(root).copied() {
+            if doc.nodes.get(parent).is_none_or(|n| !n.passes_backdrop()) { break Some(parent); }
+            root = parent;
+        } else {
+            break doc.pages.iter().find(|p|p.children.iter().any(|id|id==root)).map(|p|p.id.as_str());
+        }
+    };
+    let Some(scope) = scope else { return true; };
+    let contains = |ancestor: &str, child: &str| {
+        let mut at = child;
+        loop {
+            if at == ancestor { return true; }
+            if let Some(parent) = parents.get(at).copied() { at = parent; }
+            else { return doc.pages.iter().any(|p|p.id==ancestor&&p.children.iter().any(|id|id==at)); }
+        }
+    };
+    edited.iter().any(|id| doc.nodes.contains_key(*id) && (contains(scope,id) || contains(id,scope)))
+}
+
+pub(crate) fn has_unbounded_backdrop_for_patch(doc: &Document, patch: &crate::editing::DocumentPatch) -> bool {
+    let lenses: Vec<_> = doc.nodes.iter().filter(|(_,n)| n.backdrop_effect().is_some_and(|e|e.kind!="background-blur")).collect();
+    if lenses.is_empty() { return false; }
+    let parents = parent_index(doc);
+    let edited: Vec<_> = patch.nodes.keys().map(String::as_str).collect();
+    lenses.into_iter().any(|(id,_)|backdrop_reads_edited_scope(doc,&parents,id,&edited))
 }
 
 fn patch_damage_impl(
@@ -119,6 +169,7 @@ fn patch_damage_impl(
     after: &Document,
     patch: &crate::editing::DocumentPatch,
     fonts: Option<&Fonts>,
+    resolved_material: bool,
 ) -> PatchDamage {
     let full = |reason: &'static str| PatchDamage {
         translation_only: None,
@@ -190,10 +241,12 @@ fn patch_damage_impl(
     // moves. Ordinary backdrop blur has finite read support in the
     // propagation below; glass/refraction keeps the full fallback until its
     // nonlocal sampling dependency has a separate certificate.
-    let glass = |doc: &Document| {
+    let edited: Vec<&str> = patch.nodes.keys().map(String::as_str).collect();
+    let glass = |doc: &Document, parents: &BTreeMap<&str, &str>| {
         doc.nodes
-            .values()
-            .any(|n| n.backdrop_effect().is_some_and(|e| e.kind != "background-blur"))
+            .iter()
+            .any(|(id,n)| n.backdrop_effect().is_some_and(|e| e.kind != "background-blur") &&
+                backdrop_reads_edited_scope(doc,parents,id,&edited))
     };
     fn attached_endpoints<'a>(doc: &'a Document) -> Vec<&'a str> {
         let mut endpoints: Vec<&'a str> = doc
@@ -220,10 +273,9 @@ fn patch_damage_impl(
                 }
             }
         };
-    let edited: Vec<&str> = patch.nodes.keys().map(String::as_str).collect();
     let attached_before = attached_endpoints(before);
     let attached_after = attached_endpoints(after);
-    if glass(before) || glass(after) {
+    if glass(before, &parents_before) || glass(after, &parents_after) {
         // Non-background-blur backdrop sampling has no finite read
         // certificate yet.
         return full("glass-effect");
@@ -232,8 +284,8 @@ fn patch_damage_impl(
         if component_definition(before, id) || component_definition(after, id) {
             return full("component-definition");
         }
-        if propagation_chain(before, &parents_before, id)
-            || propagation_chain(after, &parents_after, id)
+        if !resolved_material && (propagation_chain(before, &parents_before, id)
+            || propagation_chain(after, &parents_after, id))
         {
             return full("propagation-chain");
         }
@@ -253,13 +305,17 @@ fn patch_damage_impl(
     let masked_chain = |doc: &Document, parents: &BTreeMap<&str, &str>, id: &str| {
         let mut current = Some(id);
         while let Some(node_id) = current {
-            if doc.nodes.get(node_id).is_some_and(|n| n.mask) {
+            if doc.nodes.get(node_id).is_some_and(|n| n.mask) &&
+                (!resolved_material || parents.get(node_id).and_then(|parent|doc.nodes.get(*parent)).is_none()) {
                 return true;
             }
             current = parents.get(node_id).copied();
         }
         false
     };
+    // A resolved material edit cannot move a mask or its consumers. The
+    // ancestor accumulation below encloses the entire consuming container.
+    // Page-root masks have no such container and retain the full fallback.
     if patch.nodes.keys().any(|id| {
         masked_chain(before, &parents_before, id) || masked_chain(after, &parents_after, id)
     }) {
@@ -608,6 +664,7 @@ fn propagate_background_reads<'a>(
         [&owned_parents[0], &owned_parents[1]]
     };
     let mut candidates = Vec::new();
+    let edited: Vec<_> = ops.iter().flat_map(op_targets).collect();
     for (revision, doc) in docs.iter().enumerate() {
         for (id, node) in &doc.nodes {
             if node
@@ -623,28 +680,7 @@ fn propagate_background_reads<'a>(
                     false
                 };
                 if ops.iter().flat_map(op_targets).all(is_descendant) { continue; }
-                // A backdrop inside an isolated container reads that container's
-                // earlier siblings, not unrelated page boards. If no edited node
-                // belongs to its scope, external propagation is handled by the
-                // container's own backdrop (which invalidates its full subtree).
-                let mut cursor = parents[revision].get(id.as_str()).copied();
-                let mut scope = None;
-                while let Some(parent) = cursor {
-                    let Some(container) = doc.nodes.get(parent) else { break; };
-                    if !container.passes_backdrop() { scope = Some(parent); break; }
-                    cursor = parents[revision].get(parent).copied();
-                }
-                if let Some(scope) = scope {
-                    let inside = |id: &str| {
-                        let mut cursor = Some(id);
-                        while let Some(at) = cursor {
-                            if at == scope { return true; }
-                            cursor = parents[revision].get(at).copied();
-                        }
-                        false
-                    };
-                    if !ops.iter().flat_map(op_targets).any(inside) { continue; }
-                }
+                if !backdrop_reads_edited_scope(doc, parents[revision], id, &edited) { continue; }
                 if candidates.len() >= 512 {
                     return false;
                 }

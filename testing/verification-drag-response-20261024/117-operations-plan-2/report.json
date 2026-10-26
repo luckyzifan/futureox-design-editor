@@ -1,0 +1,191 @@
+{
+  "status": "passed",
+  "scope": "visible independent Electron; real native input, WebGPU, Editor/WASM, SQLite and external FD; only save-dialog path preset; no physical scanout/FPS claim",
+  "checks": [
+    {
+      "name": "quick-zoom",
+      "uiIntervalMaxMs": 10.400000000000546,
+      "uiStalls": 0
+    },
+    {
+      "name": "property-undo-redo",
+      "uiIntervalMaxMs": 25.100000000000364,
+      "uiStalls": 0
+    }
+  ],
+  "stages": [
+    {
+      "name": "import-original",
+      "ms": 4410.091791
+    },
+    {
+      "name": "read-imported-sqlite",
+      "ms": 1037.5329590000001
+    },
+    {
+      "name": "quick-zoom",
+      "ms": 3021.1537499999995
+    },
+    {
+      "name": "property-undo-redo",
+      "ms": 3455.2439160000013
+    },
+    {
+      "name": "save-sqlite",
+      "ms": 1409.5830000000005
+    },
+    {
+      "name": "save-external-fd",
+      "ms": 243.74537500000042
+    },
+    {
+      "name": "normal-close",
+      "ms": 353.2027080000007
+    },
+    {
+      "name": "reopen-external-fd",
+      "ms": 5686.650749999999
+    }
+  ],
+  "stage": "reopen-external-fd",
+  "fixture": "/Users/Apple/Downloads/117.sketch",
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/drag-response-20261024-6lnpejll/candidate-host-plan-2",
+  "instances": [
+    {
+      "pid": 8180,
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/drag-response-20261024-6lnpejll/117-operations-plan-2/forma-desktop-manual-e3e68d25-6643-4234-a5a3-4d549a271d9b-ZONtEo",
+      "visible": true,
+      "versions": {
+        "node": "24.21.0",
+        "acorn": "8.18.0",
+        "ada": "4.0.0",
+        "amaro": "1.1.11",
+        "ares": "1.34.8",
+        "brotli": "1.2.0",
+        "cldr": "48.0",
+        "icu": "78.2",
+        "llhttp": "9.4.3",
+        "merve": "1.2.2",
+        "modules": "149",
+        "napi": "10",
+        "nbytes": "0.1.4",
+        "ncrypto": "0.0.1",
+        "nghttp2": "1.70.0",
+        "nghttp3": "",
+        "ngtcp2": "",
+        "openssl": "0.0.0",
+        "simdjson": "4.6.7",
+        "simdutf": "7.7.0",
+        "sqlite": "3.53.4",
+        "tz": "2026d",
+        "undici": "7.29.1",
+        "unicode": "17.0",
+        "uv": "1.52.1",
+        "uvwasi": "0.0.23",
+        "v8": "15.2.124.28-electron.0",
+        "zlib": "1.3.2.1-motley",
+        "zstd": "1.6.0",
+        "electron": "44.7.0",
+        "chrome": "152.0.7977.130"
+      },
+      "preferences": {
+        "allowRunningInsecureContent": false,
+        "contextIsolation": true,
+        "disableDialogs": false,
+        "disablePopups": false,
+        "enableBlinkFeatures": "",
+        "experimentalFeatures": false,
+        "javascript": true,
+        "nodeIntegration": false,
+        "nodeIntegrationInSubFrames": false,
+        "nodeIntegrationInWorker": false,
+        "safeDialogs": false,
+        "safeDialogsMessage": "",
+        "sandbox": true,
+        "webSecurity": true,
+        "webviewTag": false
+      }
+    },
+    {
+      "pid": 8440,
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/drag-response-20261024-6lnpejll/117-operations-plan-2/forma-desktop-manual-41519e65-2512-4cbb-826c-6b0f01c53452-Zu5awu",
+      "visible": true,
+      "versions": {
+        "node": "24.21.0",
+        "acorn": "8.18.0",
+        "ada": "4.0.0",
+        "amaro": "1.1.11",
+        "ares": "1.34.8",
+        "brotli": "1.2.0",
+        "cldr": "48.0",
+        "icu": "78.2",
+        "llhttp": "9.4.3",
+        "merve": "1.2.2",
+        "modules": "149",
+        "napi": "10",
+        "nbytes": "0.1.4",
+        "ncrypto": "0.0.1",
+        "nghttp2": "1.70.0",
+        "nghttp3": "",
+        "ngtcp2": "",
+        "openssl": "0.0.0",
+        "simdjson": "4.6.7",
+        "simdutf": "7.7.0",
+        "sqlite": "3.53.4",
+        "tz": "2026d",
+        "undici": "7.29.1",
+        "unicode": "17.0",
+        "uv": "1.52.1",
+        "uvwasi": "0.0.23",
+        "v8": "15.2.124.28-electron.0",
+        "zlib": "1.3.2.1-motley",
+        "zstd": "1.6.0",
+        "electron": "44.7.0",
+        "chrome": "152.0.7977.130"
+      },
+      "preferences": {
+        "allowRunningInsecureContent": false,
+        "contextIsolation": true,
+        "disableDialogs": false,
+        "disablePopups": false,
+        "enableBlinkFeatures": "",
+        "experimentalFeatures": false,
+        "javascript": true,
+        "nodeIntegration": false,
+        "nodeIntegrationInSubFrames": false,
+        "nodeIntegrationInWorker": false,
+        "safeDialogs": false,
+        "safeDialogsMessage": "",
+        "sandbox": true,
+        "webSecurity": true,
+        "webviewTag": false
+      }
+    }
+  ],
+  "motionStart": 1792900747692,
+  "foreground": [
+    {
+      "at": 1792900747697,
+      "visible": "visible",
+      "focused": true
+    },
+    {
+      "at": 1792900750726,
+      "visible": "visible",
+      "focused": true
+    }
+  ],
+  "motionEnd": 1792900750713,
+  "propertyStart": 1792900750713,
+  "propertyEnd": 1792900753670,
+  "fd": {
+    "path": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/drag-response-20261024-6lnpejll/117-operations-plan-2/verified-fig.fd",
+    "bytes": 4471007,
+    "sha256": "8439418e05aac45b44b3e133c8857d0228a1e6d26b94675ce15e0cfda995828e"
+  },
+  "importCopyIds": {
+    "saved": "2a916da1-4709-4790-ac0f-1107e609528a",
+    "reopened": "909c40ff-ada1-4996-aca1-693dc1cccf2b"
+  },
+  "reopenExactExceptImportCopyId": true
+}

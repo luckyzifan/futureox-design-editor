@@ -1,0 +1,3810 @@
+{
+  "status": "captured",
+  "probeVersion": 3,
+  "onlyPan": true,
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/large-edit-5-traced",
+  "kind": "sketch",
+  "scope": "independent foreground Electron; native mouse input, rAF DOM cameras and compositor acknowledgements; no physical scanout claim",
+  "phases": [
+    {
+      "label": "pan",
+      "start": 1792968477485,
+      "stopped": 1792968477681,
+      "ended": 1792968477718,
+      "cameraBefore": {
+        "x": -6782.5,
+        "y": -5112,
+        "z": 1
+      },
+      "cameraAfter": {
+        "x": -6782.5,
+        "y": -5112,
+        "z": 1
+      },
+      "poseBefore": {
+        "x": 6460,
+        "y": 4648,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "poseAfter": {
+        "x": 6820,
+        "y": 4808,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "dispatch": [
+        {
+          "at": 1792968477495,
+          "x": 748,
+          "y": 524
+        },
+        {
+          "at": 1792968477501,
+          "x": 763,
+          "y": 530
+        },
+        {
+          "at": 1792968477511,
+          "x": 778,
+          "y": 537
+        },
+        {
+          "at": 1792968477522,
+          "x": 793,
+          "y": 544
+        },
+        {
+          "at": 1792968477526,
+          "x": 808,
+          "y": 550
+        },
+        {
+          "at": 1792968477535,
+          "x": 823,
+          "y": 557
+        },
+        {
+          "at": 1792968477543,
+          "x": 838,
+          "y": 564
+        },
+        {
+          "at": 1792968477550,
+          "x": 853,
+          "y": 570
+        },
+        {
+          "at": 1792968477562,
+          "x": 868,
+          "y": 577
+        },
+        {
+          "at": 1792968477566,
+          "x": 883,
+          "y": 584
+        },
+        {
+          "at": 1792968477575,
+          "x": 898,
+          "y": 590
+        },
+        {
+          "at": 1792968477581,
+          "x": 913,
+          "y": 597
+        },
+        {
+          "at": 1792968477590,
+          "x": 928,
+          "y": 604
+        },
+        {
+          "at": 1792968477598,
+          "x": 943,
+          "y": 610
+        },
+        {
+          "at": 1792968477609,
+          "x": 958,
+          "y": 617
+        },
+        {
+          "at": 1792968477615,
+          "x": 973,
+          "y": 624
+        },
+        {
+          "at": 1792968477623,
+          "x": 988,
+          "y": 630
+        },
+        {
+          "at": 1792968477631,
+          "x": 1003,
+          "y": 637
+        },
+        {
+          "at": 1792968477641,
+          "x": 1018,
+          "y": 644
+        },
+        {
+          "at": 1792968477646,
+          "x": 1033,
+          "y": 650
+        },
+        {
+          "at": 1792968477658,
+          "x": 1048,
+          "y": 657
+        },
+        {
+          "at": 1792968477665,
+          "x": 1063,
+          "y": 664
+        },
+        {
+          "at": 1792968477670,
+          "x": 1078,
+          "y": 670
+        },
+        {
+          "at": 1792968477679,
+          "x": 1093,
+          "y": 677
+        }
+      ],
+      "frames": 35,
+      "events": 21,
+      "final": {
+        "t": 62410,
+        "retainedPageCommit": "false",
+        "detailReady": "false",
+        "requested": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "shown": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "settled": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "compositor": {
+          "compositor": "webgpu-resident",
+          "frameVisible": "true",
+          "inputTrace": "[]",
+          "contentSequence": "0",
+          "interactionReady": "false",
+          "interactionActive": "false",
+          "interactionWarming": "false",
+          "interactionError": "",
+          "interactionMoves": "1",
+          "interactionEnd": "",
+          "interactionMode": "live-kernel",
+          "interactionSamples": "0",
+          "interactionSampleMs": "0.00",
+          "interactionCompileMs": "0.00",
+          "interactionGraphMs": "0.00",
+          "interactionGeometryReused": "false",
+          "interactionGroupHits": "0",
+          "residentAttached": "true",
+          "residentAttachmentReason": "attached",
+          "deviceWorkerScope": "154157776805493",
+          "deviceIncarnation": "2",
+          "deviceOwner": "4",
+          "deviceScope": "2",
+          "deviceCounterMask": "15",
+          "devicePendingCaptures": "0",
+          "devicePendingCapturePayloadBytes": "0",
+          "devicePendingReadbacks": "1",
+          "deviceLogicalPayloadBytes": "96175508",
+          "deviceRetiringPayloadBytes": "0",
+          "coverageDeferred": "0",
+          "backgroundCoverage": "0",
+          "diagnosticSequence": "155",
+          "submittedEpoch": "1792968477934.9",
+          "gridVisible": "false",
+          "dpr": "2",
+          "coverageMeasured": "true",
+          "coverageAt": "61257.60000002384",
+          "compositorFrames": "95",
+          "compositorTransformUploadBytes": "5120",
+          "compositorUploads": "4",
+          "compositorCaptures": "140",
+          "compositorBytes": "96175508",
+          "compositorOverlayBytes": "2275700",
+          "compositorTiles": "74",
+          "compositorDraws": "20",
+          "linearBlend": "false",
+          "missingTextureCount": "0",
+          "coverage": "1",
+          "sharpCoverage": "1",
+          "nativePhaseCoverage": "1",
+          "maxUpscale": "1",
+          "pixelCoverageComplete": "true",
+          "nativeCoverageComplete": "true",
+          "qualitySequence": "5",
+          "qualityRevision": "3",
+          "pageToken": "2",
+          "documentRevision": "3",
+          "generation": "3",
+          "fillGeneration": "12",
+          "qualityTerminal": "true",
+          "alphaFrame": "94",
+          "alphaSequence": "140",
+          "alphaWidth": "1710",
+          "alphaHeight": "1736",
+          "alphaSubmitted": "1",
+          "alphaProbeCode": "0",
+          "alphaMinimum": "255",
+          "alphaNonOpaquePixels": "0",
+          "alphaZeroPixels": "0",
+          "alphaPixelCount": "2968560",
+          "coverageDeferredDraws": "12",
+          "backgroundDecline": "3",
+          "backgroundDensitySources": "0",
+          "backgroundPhaseError": "0",
+          "interactionCoverageMissing": "true"
+        }
+      }
+    },
+    {
+      "label": "pan-return",
+      "start": 1792968478168,
+      "stopped": 1792968478363,
+      "ended": 1792968478400,
+      "cameraBefore": {
+        "x": -6782.5,
+        "y": -5112,
+        "z": 1
+      },
+      "cameraAfter": {
+        "x": -6782.5,
+        "y": -5112,
+        "z": 1
+      },
+      "poseBefore": {
+        "x": 6820,
+        "y": 4808,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "poseAfter": {
+        "x": 6460,
+        "y": 4648,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "dispatch": [
+        {
+          "at": 1792968478179,
+          "x": 718,
+          "y": 510
+        },
+        {
+          "at": 1792968478185,
+          "x": 703,
+          "y": 504
+        },
+        {
+          "at": 1792968478192,
+          "x": 688,
+          "y": 497
+        },
+        {
+          "at": 1792968478201,
+          "x": 673,
+          "y": 490
+        },
+        {
+          "at": 1792968478213,
+          "x": 658,
+          "y": 484
+        },
+        {
+          "at": 1792968478218,
+          "x": 643,
+          "y": 477
+        },
+        {
+          "at": 1792968478225,
+          "x": 628,
+          "y": 470
+        },
+        {
+          "at": 1792968478234,
+          "x": 613,
+          "y": 464
+        },
+        {
+          "at": 1792968478241,
+          "x": 598,
+          "y": 457
+        },
+        {
+          "at": 1792968478249,
+          "x": 583,
+          "y": 450
+        },
+        {
+          "at": 1792968478258,
+          "x": 568,
+          "y": 444
+        },
+        {
+          "at": 1792968478264,
+          "x": 553,
+          "y": 437
+        },
+        {
+          "at": 1792968478274,
+          "x": 538,
+          "y": 430
+        },
+        {
+          "at": 1792968478280,
+          "x": 523,
+          "y": 424
+        },
+        {
+          "at": 1792968478289,
+          "x": 508,
+          "y": 417
+        },
+        {
+          "at": 1792968478298,
+          "x": 493,
+          "y": 410
+        },
+        {
+          "at": 1792968478305,
+          "x": 478,
+          "y": 404
+        },
+        {
+          "at": 1792968478313,
+          "x": 463,
+          "y": 397
+        },
+        {
+          "at": 1792968478321,
+          "x": 448,
+          "y": 390
+        },
+        {
+          "at": 1792968478330,
+          "x": 433,
+          "y": 384
+        },
+        {
+          "at": 1792968478337,
+          "x": 418,
+          "y": 377
+        },
+        {
+          "at": 1792968478345,
+          "x": 403,
+          "y": 370
+        },
+        {
+          "at": 1792968478354,
+          "x": 388,
+          "y": 364
+        },
+        {
+          "at": 1792968478361,
+          "x": 373,
+          "y": 357
+        }
+      ],
+      "frames": 42,
+      "events": 25,
+      "final": {
+        "t": 63101.6,
+        "retainedPageCommit": "false",
+        "detailReady": "false",
+        "requested": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "shown": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "settled": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "compositor": {
+          "compositor": "webgpu-resident",
+          "frameVisible": "true",
+          "inputTrace": "[]",
+          "contentSequence": "0",
+          "interactionReady": "false",
+          "interactionActive": "false",
+          "interactionWarming": "false",
+          "interactionError": "",
+          "interactionMoves": "23",
+          "interactionEnd": "-360,-160",
+          "interactionMode": "live-kernel",
+          "interactionSamples": "0",
+          "interactionSampleMs": "0.00",
+          "interactionCompileMs": "0.00",
+          "interactionGraphMs": "0.00",
+          "interactionGeometryReused": "false",
+          "interactionGroupHits": "0",
+          "residentAttached": "true",
+          "residentAttachmentReason": "attached",
+          "deviceWorkerScope": "154157776805493",
+          "deviceIncarnation": "2",
+          "deviceOwner": "4",
+          "deviceScope": "2",
+          "deviceCounterMask": "15",
+          "devicePendingCaptures": "0",
+          "devicePendingCapturePayloadBytes": "0",
+          "devicePendingReadbacks": "1",
+          "deviceLogicalPayloadBytes": "47967028",
+          "deviceRetiringPayloadBytes": "0",
+          "coverageDeferred": "0",
+          "backgroundCoverage": "0",
+          "diagnosticSequence": "161",
+          "submittedEpoch": "1792968478602.7",
+          "gridVisible": "false",
+          "dpr": "2",
+          "coverageMeasured": "true",
+          "coverageAt": "61925.299999952316",
+          "compositorFrames": "101",
+          "compositorTransformUploadBytes": "0",
+          "compositorUploads": "4",
+          "compositorCaptures": "140",
+          "compositorBytes": "47967028",
+          "compositorOverlayBytes": "2275700",
+          "compositorTiles": "32",
+          "compositorDraws": "20",
+          "linearBlend": "false",
+          "missingTextureCount": "0",
+          "coverage": "1",
+          "sharpCoverage": "1",
+          "nativePhaseCoverage": "1",
+          "maxUpscale": "1",
+          "pixelCoverageComplete": "true",
+          "nativeCoverageComplete": "true",
+          "qualitySequence": "5",
+          "qualityRevision": "3",
+          "pageToken": "2",
+          "documentRevision": "3",
+          "generation": "3",
+          "fillGeneration": "12",
+          "qualityTerminal": "true",
+          "alphaFrame": "97",
+          "alphaSequence": "157",
+          "alphaWidth": "1710",
+          "alphaHeight": "1736",
+          "alphaSubmitted": "1",
+          "alphaProbeCode": "0",
+          "alphaMinimum": "255",
+          "alphaNonOpaquePixels": "0",
+          "alphaZeroPixels": "0",
+          "alphaPixelCount": "2968560",
+          "coverageDeferredDraws": "12",
+          "backgroundDecline": "3",
+          "backgroundDensitySources": "0",
+          "backgroundPhaseError": "0",
+          "interactionCoverageMissing": "true",
+          "pageCommitStage": "2",
+          "pageCommitReason": "1",
+          "pageCommitChecks": "57"
+        }
+      }
+    },
+    {
+      "label": "pan-again",
+      "start": 1792968478847,
+      "stopped": 1792968479042,
+      "ended": 1792968479080,
+      "cameraBefore": {
+        "x": -6782.5,
+        "y": -5112,
+        "z": 1
+      },
+      "cameraAfter": {
+        "x": -6782.5,
+        "y": -5112,
+        "z": 1
+      },
+      "poseBefore": {
+        "x": 6460,
+        "y": 4648,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "poseAfter": {
+        "x": 6820,
+        "y": 4808,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "dispatch": [
+        {
+          "at": 1792968478857,
+          "x": 748,
+          "y": 524
+        },
+        {
+          "at": 1792968478865,
+          "x": 763,
+          "y": 530
+        },
+        {
+          "at": 1792968478871,
+          "x": 778,
+          "y": 537
+        },
+        {
+          "at": 1792968478880,
+          "x": 793,
+          "y": 544
+        },
+        {
+          "at": 1792968478892,
+          "x": 808,
+          "y": 550
+        },
+        {
+          "at": 1792968478896,
+          "x": 823,
+          "y": 557
+        },
+        {
+          "at": 1792968478905,
+          "x": 838,
+          "y": 564
+        },
+        {
+          "at": 1792968478916,
+          "x": 853,
+          "y": 570
+        },
+        {
+          "at": 1792968478920,
+          "x": 868,
+          "y": 577
+        },
+        {
+          "at": 1792968478929,
+          "x": 883,
+          "y": 584
+        },
+        {
+          "at": 1792968478935,
+          "x": 898,
+          "y": 590
+        },
+        {
+          "at": 1792968478945,
+          "x": 913,
+          "y": 597
+        },
+        {
+          "at": 1792968478953,
+          "x": 928,
+          "y": 604
+        },
+        {
+          "at": 1792968478959,
+          "x": 943,
+          "y": 610
+        },
+        {
+          "at": 1792968478968,
+          "x": 958,
+          "y": 617
+        },
+        {
+          "at": 1792968478976,
+          "x": 973,
+          "y": 624
+        },
+        {
+          "at": 1792968478983,
+          "x": 988,
+          "y": 630
+        },
+        {
+          "at": 1792968478993,
+          "x": 1003,
+          "y": 637
+        },
+        {
+          "at": 1792968479000,
+          "x": 1018,
+          "y": 644
+        },
+        {
+          "at": 1792968479009,
+          "x": 1033,
+          "y": 650
+        },
+        {
+          "at": 1792968479017,
+          "x": 1048,
+          "y": 657
+        },
+        {
+          "at": 1792968479026,
+          "x": 1063,
+          "y": 664
+        },
+        {
+          "at": 1792968479031,
+          "x": 1078,
+          "y": 670
+        },
+        {
+          "at": 1792968479041,
+          "x": 1093,
+          "y": 677
+        }
+      ],
+      "frames": 36,
+      "events": 22,
+      "final": {
+        "t": 63700.1,
+        "retainedPageCommit": "false",
+        "detailReady": "false",
+        "requested": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "shown": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "settled": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "compositor": {
+          "compositor": "webgpu-resident",
+          "frameVisible": "true",
+          "inputTrace": "[]",
+          "contentSequence": "0",
+          "interactionReady": "false",
+          "interactionActive": "false",
+          "interactionWarming": "false",
+          "interactionError": "",
+          "interactionMoves": "42",
+          "interactionEnd": "0,0",
+          "interactionMode": "live-kernel",
+          "interactionSamples": "0",
+          "interactionSampleMs": "0.00",
+          "interactionCompileMs": "0.00",
+          "interactionGraphMs": "0.00",
+          "interactionGeometryReused": "false",
+          "interactionGroupHits": "0",
+          "residentAttached": "true",
+          "residentAttachmentReason": "attached",
+          "deviceWorkerScope": "154157776805493",
+          "deviceIncarnation": "2",
+          "deviceOwner": "4",
+          "deviceScope": "2",
+          "deviceCounterMask": "15",
+          "devicePendingCaptures": "0",
+          "devicePendingCapturePayloadBytes": "0",
+          "devicePendingReadbacks": "1",
+          "deviceLogicalPayloadBytes": "47967028",
+          "deviceRetiringPayloadBytes": "0",
+          "coverageDeferred": "0",
+          "backgroundCoverage": "0",
+          "diagnosticSequence": "167",
+          "submittedEpoch": "1792968479240.0999",
+          "gridVisible": "false",
+          "dpr": "2",
+          "coverageMeasured": "true",
+          "coverageAt": "62562.700000047684",
+          "compositorFrames": "107",
+          "compositorTransformUploadBytes": "0",
+          "compositorUploads": "4",
+          "compositorCaptures": "140",
+          "compositorBytes": "47967028",
+          "compositorOverlayBytes": "2275700",
+          "compositorTiles": "32",
+          "compositorDraws": "20",
+          "linearBlend": "false",
+          "missingTextureCount": "0",
+          "coverage": "1",
+          "sharpCoverage": "1",
+          "nativePhaseCoverage": "1",
+          "maxUpscale": "1",
+          "pixelCoverageComplete": "true",
+          "nativeCoverageComplete": "true",
+          "qualitySequence": "5",
+          "qualityRevision": "3",
+          "pageToken": "2",
+          "documentRevision": "3",
+          "generation": "3",
+          "fillGeneration": "12",
+          "qualityTerminal": "true",
+          "alphaFrame": "103",
+          "alphaSequence": "163",
+          "alphaWidth": "1710",
+          "alphaHeight": "1736",
+          "alphaSubmitted": "1",
+          "alphaProbeCode": "0",
+          "alphaMinimum": "255",
+          "alphaNonOpaquePixels": "0",
+          "alphaZeroPixels": "0",
+          "alphaPixelCount": "2968560",
+          "coverageDeferredDraws": "12",
+          "backgroundDecline": "3",
+          "backgroundDensitySources": "0",
+          "backgroundPhaseError": "0",
+          "interactionCoverageMissing": "true",
+          "pageCommitStage": "2",
+          "pageCommitReason": "1",
+          "pageCommitChecks": "57"
+        }
+      }
+    },
+    {
+      "label": "pan-reverse",
+      "start": 1792968479441,
+      "stopped": 1792968479634,
+      "ended": 1792968479672,
+      "cameraBefore": {
+        "x": -6782.5,
+        "y": -5112,
+        "z": 1
+      },
+      "cameraAfter": {
+        "x": -6782.5,
+        "y": -5112,
+        "z": 1
+      },
+      "poseBefore": {
+        "x": 6820,
+        "y": 4808,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "poseAfter": {
+        "x": 6460,
+        "y": 4648,
+        "selection": [
+          "layer-08856B36-020D-46FC-AC59-55F38CDB82BE"
+        ]
+      },
+      "dispatch": [
+        {
+          "at": 1792968479451,
+          "x": 718,
+          "y": 510
+        },
+        {
+          "at": 1792968479459,
+          "x": 703,
+          "y": 504
+        },
+        {
+          "at": 1792968479465,
+          "x": 688,
+          "y": 497
+        },
+        {
+          "at": 1792968479474,
+          "x": 673,
+          "y": 490
+        },
+        {
+          "at": 1792968479486,
+          "x": 658,
+          "y": 484
+        },
+        {
+          "at": 1792968479491,
+          "x": 643,
+          "y": 477
+        },
+        {
+          "at": 1792968479500,
+          "x": 628,
+          "y": 470
+        },
+        {
+          "at": 1792968479506,
+          "x": 613,
+          "y": 464
+        },
+        {
+          "at": 1792968479513,
+          "x": 598,
+          "y": 457
+        },
+        {
+          "at": 1792968479522,
+          "x": 583,
+          "y": 450
+        },
+        {
+          "at": 1792968479531,
+          "x": 568,
+          "y": 444
+        },
+        {
+          "at": 1792968479539,
+          "x": 553,
+          "y": 437
+        },
+        {
+          "at": 1792968479546,
+          "x": 538,
+          "y": 430
+        },
+        {
+          "at": 1792968479555,
+          "x": 523,
+          "y": 424
+        },
+        {
+          "at": 1792968479562,
+          "x": 508,
+          "y": 417
+        },
+        {
+          "at": 1792968479571,
+          "x": 493,
+          "y": 410
+        },
+        {
+          "at": 1792968479578,
+          "x": 478,
+          "y": 404
+        },
+        {
+          "at": 1792968479587,
+          "x": 463,
+          "y": 397
+        },
+        {
+          "at": 1792968479595,
+          "x": 448,
+          "y": 390
+        },
+        {
+          "at": 1792968479601,
+          "x": 433,
+          "y": 384
+        },
+        {
+          "at": 1792968479610,
+          "x": 418,
+          "y": 377
+        },
+        {
+          "at": 1792968479618,
+          "x": 403,
+          "y": 370
+        },
+        {
+          "at": 1792968479627,
+          "x": 388,
+          "y": 364
+        },
+        {
+          "at": 1792968479633,
+          "x": 373,
+          "y": 357
+        }
+      ],
+      "frames": 27,
+      "events": 23,
+      "final": {
+        "t": 64208.9,
+        "retainedPageCommit": "false",
+        "detailReady": "false",
+        "requested": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "shown": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "settled": {
+          "x": -6782.5,
+          "y": -5112,
+          "z": 1
+        },
+        "compositor": {
+          "compositor": "webgpu-resident",
+          "frameVisible": "true",
+          "inputTrace": "[]",
+          "contentSequence": "0",
+          "interactionReady": "false",
+          "interactionActive": "false",
+          "interactionWarming": "false",
+          "interactionError": "",
+          "interactionMoves": "62",
+          "interactionEnd": "-360,-160",
+          "interactionMode": "live-kernel",
+          "interactionSamples": "0",
+          "interactionSampleMs": "0.00",
+          "interactionCompileMs": "0.00",
+          "interactionGraphMs": "0.00",
+          "interactionGeometryReused": "false",
+          "interactionGroupHits": "0",
+          "residentAttached": "true",
+          "residentAttachmentReason": "attached",
+          "deviceWorkerScope": "154157776805493",
+          "deviceIncarnation": "2",
+          "deviceOwner": "4",
+          "deviceScope": "2",
+          "deviceCounterMask": "15",
+          "devicePendingCaptures": "0",
+          "devicePendingCapturePayloadBytes": "0",
+          "devicePendingReadbacks": "1",
+          "deviceLogicalPayloadBytes": "47967028",
+          "deviceRetiringPayloadBytes": "0",
+          "coverageDeferred": "0",
+          "backgroundCoverage": "0",
+          "diagnosticSequence": "171",
+          "submittedEpoch": "1792968479746.2998",
+          "gridVisible": "false",
+          "dpr": "2",
+          "coverageMeasured": "true",
+          "coverageAt": "63068.89999997616",
+          "compositorFrames": "111",
+          "compositorTransformUploadBytes": "0",
+          "compositorUploads": "4",
+          "compositorCaptures": "140",
+          "compositorBytes": "47967028",
+          "compositorOverlayBytes": "2275700",
+          "compositorTiles": "32",
+          "compositorDraws": "20",
+          "linearBlend": "false",
+          "missingTextureCount": "0",
+          "coverage": "1",
+          "sharpCoverage": "1",
+          "nativePhaseCoverage": "1",
+          "maxUpscale": "1",
+          "pixelCoverageComplete": "true",
+          "nativeCoverageComplete": "true",
+          "qualitySequence": "5",
+          "qualityRevision": "3",
+          "pageToken": "2",
+          "documentRevision": "3",
+          "generation": "3",
+          "fillGeneration": "12",
+          "qualityTerminal": "true",
+          "alphaFrame": "109",
+          "alphaSequence": "169",
+          "alphaWidth": "1710",
+          "alphaHeight": "1736",
+          "alphaSubmitted": "1",
+          "alphaProbeCode": "0",
+          "alphaMinimum": "255",
+          "alphaNonOpaquePixels": "0",
+          "alphaZeroPixels": "0",
+          "alphaPixelCount": "2968560",
+          "coverageDeferredDraws": "12",
+          "backgroundDecline": "3",
+          "backgroundDensitySources": "0",
+          "backgroundPhaseError": "0",
+          "interactionCoverageMissing": "true",
+          "pageCommitStage": "2",
+          "pageCommitReason": "1",
+          "pageCommitChecks": "57"
+        }
+      }
+    }
+  ],
+  "errors": [],
+  "instance": {
+    "pid": 70281,
+    "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/forma-desktop-manual-d608587e-54c1-4b65-9b0b-f1fd84f65ad1-ueHt5i"
+  },
+  "fixture": "/Users/Apple/Downloads/拓扑素材.sketch",
+  "topologyTarget": {
+    "key": "1:5",
+    "id": "08856B36-020D-46FC-AC59-55F38CDB82BE"
+  },
+  "sceneSummaries": [
+    {
+      "at": 1792968416552,
+      "id": 1,
+      "nodes": 0,
+      "pages": 1,
+      "kinds": {},
+      "roots": 0,
+      "serializedBytes": 223
+    },
+    {
+      "at": 1792968416689,
+      "id": 1,
+      "nodes": 0,
+      "pages": 1,
+      "kinds": {},
+      "roots": 0,
+      "serializedBytes": 223
+    },
+    {
+      "at": 1792968442852,
+      "id": 43,
+      "nodes": 4022,
+      "pages": 2,
+      "kinds": {
+        "vector": 3591,
+        "group": 340,
+        "text": 60,
+        "rectangle": 30,
+        "frame": 1
+      },
+      "roots": 1,
+      "serializedBytes": 52340611
+    },
+    {
+      "at": 1792968456798,
+      "id": 91,
+      "nodes": 4022,
+      "pages": 2,
+      "kinds": {
+        "vector": 3591,
+        "group": 340,
+        "text": 60,
+        "rectangle": 30,
+        "frame": 1
+      },
+      "roots": 1,
+      "serializedBytes": 52340611
+    }
+  ],
+  "canvasBox": {
+    "x": 305,
+    "y": 40,
+    "width": 855,
+    "height": 868
+  },
+  "motionFrameSets": [
+    {
+      "label": "pan",
+      "frames": [
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-png/0000.png",
+          "receivedAt": 1792968477553,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968477.49029
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-png/0001.png",
+          "receivedAt": 1792968477583,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968477.522657
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-png/0002.png",
+          "receivedAt": 1792968477604,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968477.527747
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-png/0003.png",
+          "receivedAt": 1792968477629,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968477.566671
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-png/0004.png",
+          "receivedAt": 1792968477666,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968477.607298
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-png/0005.png",
+          "receivedAt": 1792968477688,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968477.624257
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-png/0006.png",
+          "receivedAt": 1792968477709,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968477.632305
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-png/0007.png",
+          "receivedAt": 1792968477777,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968477.721558
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-png/0008.png",
+          "receivedAt": 1792968477945,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968477.870838
+          }
+        }
+      ]
+    },
+    {
+      "label": "pan-return",
+      "frames": [
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-return-png/0000.png",
+          "receivedAt": 1792968478244,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968478.175826
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-return-png/0001.png",
+          "receivedAt": 1792968478265,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968478.196372
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-return-png/0002.png",
+          "receivedAt": 1792968478285,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968478.203451
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-return-png/0003.png",
+          "receivedAt": 1792968478586,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968478.523718
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-return-png/0004.png",
+          "receivedAt": 1792968478608,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968478.541006
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-return-png/0005.png",
+          "receivedAt": 1792968478629,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968478.549625
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-return-png/0006.png",
+          "receivedAt": 1792968478664,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968478.609568
+          }
+        }
+      ]
+    },
+    {
+      "label": "pan-again",
+      "frames": [
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-again-png/0000.png",
+          "receivedAt": 1792968478918,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968478.854549
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-again-png/0001.png",
+          "receivedAt": 1792968478939,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968478.873926
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-again-png/0002.png",
+          "receivedAt": 1792968478959,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968478.882833
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-again-png/0003.png",
+          "receivedAt": 1792968479219,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968479.160641
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-again-png/0004.png",
+          "receivedAt": 1792968479241,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968479.174471
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-again-png/0005.png",
+          "receivedAt": 1792968479261,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968479.17855
+          }
+        }
+      ]
+    },
+    {
+      "label": "pan-reverse",
+      "frames": [
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-reverse-png/0000.png",
+          "receivedAt": 1792968479510,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968479.449088
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-reverse-png/0001.png",
+          "receivedAt": 1792968479531,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968479.470656
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/pan-reverse-png/0002.png",
+          "receivedAt": 1792968479553,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792968479.475002
+          }
+        }
+      ]
+    }
+  ],
+  "sparseCapture": [
+    {
+      "label": "pan-reverse",
+      "frames": 3
+    }
+  ],
+  "finalInputStopped": 1792968479916,
+  "finalSettled": 1792968486434,
+  "finalDiagnostics": {
+    "rasterPlanner": "rust",
+    "checkerboard": "false",
+    "samplingMode": "density-cache",
+    "rasterProfile": "figmaSubpixel",
+    "samplingScale": "2",
+    "samplingDensity": "2",
+    "nativePixelReady": "false",
+    "rasterPhaseExact": "true",
+    "startupPreview": "false",
+    "renderer": "webgpu",
+    "tileCount": "32",
+    "pageCacheBytes": "0",
+    "pageCachePages": "0",
+    "pageCacheHits": "0",
+    "pageCacheMisses": "2",
+    "pageCacheEvictions": "0",
+    "pageCacheTier": "balanced",
+    "pageResidencyEstimatedBudget": "234881024",
+    "cacheHits": "60",
+    "tilesRendered": "223",
+    "viewportTilesRendered": "131",
+    "cacheBytes": "1024",
+    "tileScheduleFrames": "1",
+    "tileScheduleOnscreen": "20",
+    "tileScheduleOffscreen": "0",
+    "tileScheduleDeferred": "0",
+    "tileBudgetCutoffs": "0",
+    "tileBudgetCompletions": "1",
+    "tileBudgetCacheCutoffs": "0",
+    "tileCacheSkippedTiles": "0",
+    "residentBytes": "33817088",
+    "residentBudget": "234881024",
+    "activeResidentBudget": "134217728",
+    "cacheSteadyBudget": "134217728",
+    "cacheStagingLimit": "26419600",
+    "cacheAdmissionBudget": "160637328",
+    "cacheActiveBytes": "33817088",
+    "cacheActiveHighwater": "80968784",
+    "cacheTotalHighwater": "80968784",
+    "refineMs": "7191.60",
+    "compileMs": "1626.70",
+    "pipelineWallMs": "6217.10",
+    "preparationWaitMs": "196.30",
+    "overlappedPreparations": "105",
+    "frameResourceHits": "164",
+    "frameResourceBytes": "140938040",
+    "graphMs": "5012.40",
+    "finishMs": "191.40",
+    "checkpointMs": "3236.70",
+    "detailReady": "true",
+    "framePublication": "complete",
+    "retainedCommit": "false",
+    "retainedPageCommit": "false",
+    "lodScale": "0",
+    "lodTiles": "0",
+    "lodCacheBytes": "0",
+    "lodCacheBudget": "16777216",
+    "lodCacheHits": "0",
+    "previewActive": "false",
+    "progressiveTiles": "20",
+    "failedTiles": "0",
+    "cachedPreviewTiles": "0",
+    "overviewTiles": "0",
+    "overviewReuses": "0",
+    "residentEligible": "true",
+    "residentReason": "eligible",
+    "motionPreview": "false",
+    "motionRasterScale": "2",
+    "cameraMoving": "false",
+    "navigationPendingAgeMs": "0",
+    "navigationZoomActive": "false",
+    "nativeNavigation": "false",
+    "nativeVisibleTiles": "false",
+    "navigationZoomSequence": "0",
+    "viewportPreviewTiles": "0",
+    "nativeCaptureTiles": "0",
+    "displayMode": "single-gpu-canvas",
+    "revision": "7",
+    "cameraX": "-6782.5",
+    "cameraY": "-5112",
+    "cameraZoom": "1",
+    "requestedCameraX": "-6782.5",
+    "requestedCameraY": "-5112",
+    "requestedCameraZoom": "1",
+    "requestedRevision": "7",
+    "pixelRatio": "2",
+    "firstDetailMs": "869.70",
+    "navigationMs": "6599.10"
+  },
+  "savedOutsideMotionWindow": true,
+  "renderRequests": [
+    {
+      "at": 1792968416552,
+      "id": 1,
+      "channel": "canvas",
+      "width": 2000,
+      "height": 1600,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 223
+    },
+    {
+      "at": 1792968416689,
+      "id": 1,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 223
+    },
+    {
+      "at": 1792968416797,
+      "id": 2,
+      "channel": "canvas",
+      "width": 855,
+      "height": 868,
+      "view": {
+        "x": 30,
+        "y": 35,
+        "zoom": 1
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968416895,
+      "id": 3,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 25,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968416985,
+      "id": 4,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968416997,
+      "id": 5,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417002,
+      "id": 6,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417005,
+      "id": 7,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417011,
+      "id": 8,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417014,
+      "id": 9,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417018,
+      "id": 10,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417021,
+      "id": 11,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417026,
+      "id": 12,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417029,
+      "id": 13,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417034,
+      "id": 14,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417037,
+      "id": 15,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417043,
+      "id": 16,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417045,
+      "id": 17,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417053,
+      "id": 18,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417056,
+      "id": 19,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417060,
+      "id": 20,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417062,
+      "id": 21,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417070,
+      "id": 22,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417073,
+      "id": 23,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417076,
+      "id": 24,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417078,
+      "id": 25,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417084,
+      "id": 26,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417087,
+      "id": 27,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417093,
+      "id": 28,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417095,
+      "id": 29,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417101,
+      "id": 30,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417104,
+      "id": 31,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417110,
+      "id": 32,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417112,
+      "id": 33,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417120,
+      "id": 34,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417122,
+      "id": 35,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417127,
+      "id": 36,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417129,
+      "id": 37,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417133,
+      "id": 38,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417136,
+      "id": 39,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417143,
+      "id": 40,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417145,
+      "id": 41,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968417153,
+      "id": 42,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968442852,
+      "id": 43,
+      "channel": "canvas",
+      "width": 855,
+      "height": 868,
+      "view": {
+        "x": -2735.9075723830733,
+        "y": -1999.3229398663698,
+        "zoom": 0.43875278396436523
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 52340611
+    },
+    {
+      "at": 1792968444017,
+      "id": 44,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968444020,
+      "id": 45,
+      "channel": "canvas",
+      "width": 855,
+      "height": 868,
+      "view": {
+        "x": -2671.675946547884,
+        "y": -1949.9153674832962,
+        "zoom": 0.4298440979955457
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968446050,
+      "id": 46,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 20,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451052,
+      "id": 47,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451685,
+      "id": 48,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451691,
+      "id": 49,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451702,
+      "id": 50,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451707,
+      "id": 51,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451712,
+      "id": 52,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451736,
+      "id": 53,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451745,
+      "id": 54,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451753,
+      "id": 55,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451762,
+      "id": 56,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451777,
+      "id": 57,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451785,
+      "id": 58,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451793,
+      "id": 59,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451800,
+      "id": 60,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451810,
+      "id": 61,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451818,
+      "id": 62,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451826,
+      "id": 63,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451833,
+      "id": 64,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451843,
+      "id": 65,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451851,
+      "id": 66,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451860,
+      "id": 67,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451865,
+      "id": 68,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451877,
+      "id": 69,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451885,
+      "id": 70,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451893,
+      "id": 71,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451898,
+      "id": 72,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451903,
+      "id": 73,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451910,
+      "id": 74,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451918,
+      "id": 75,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451923,
+      "id": 76,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451955,
+      "id": 77,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451985,
+      "id": 78,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968451990,
+      "id": 79,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968452001,
+      "id": 80,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968452006,
+      "id": 81,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968452018,
+      "id": 82,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968452023,
+      "id": 83,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968452037,
+      "id": 84,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968452042,
+      "id": 85,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968452051,
+      "id": 86,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968452056,
+      "id": 87,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968452061,
+      "id": 88,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968452066,
+      "id": 89,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968452077,
+      "id": 90,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968456798,
+      "id": 91,
+      "channel": "canvas",
+      "width": 855,
+      "height": 868,
+      "view": {
+        "x": -2735.9075723830733,
+        "y": -1999.3229398663698,
+        "zoom": 0.43875278396436523
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 52340611
+    },
+    {
+      "at": 1792968457968,
+      "id": 92,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968457969,
+      "id": 93,
+      "channel": "canvas",
+      "width": 855,
+      "height": 868,
+      "view": {
+        "x": -2671.675946547884,
+        "y": -1949.9153674832962,
+        "zoom": 0.4298440979955457
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968459730,
+      "id": 94,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 20,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968464602,
+      "id": 95,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968465162,
+      "id": 96,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968465174,
+      "id": 97,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968465185,
+      "id": 98,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968465190,
+      "id": 99,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968465195,
+      "id": 100,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5343.351893095768,
+        "y": -3899.8307349665924,
+        "zoom": 0.8596881959910914
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968465438,
+      "id": 101,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": -5471.815144766147,
+        "y": -3998.6458797327396,
+        "zoom": 0.8775055679287305
+      },
+      "renderIntent": "canvas",
+      "tiles": 25,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968469575,
+      "id": 102,
+      "channel": "canvas",
+      "width": 855,
+      "height": 868,
+      "view": {
+        "x": -6782.5,
+        "y": -5112,
+        "zoom": 1
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968471096,
+      "id": 103,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 20,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968477571,
+      "id": 104,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 5,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968477894,
+      "id": 105,
+      "channel": "interaction",
+      "width": 2116,
+      "height": 2184,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "interactionChannel": true,
+      "retainInteractionGraph": true,
+      "interactionOwner": 4,
+      "interactionGeneration": 57,
+      "documentPatch": false,
+      "readback": false,
+      "derived": true,
+      "derivedTransforms": 1,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968477939,
+      "id": 106,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": true,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968478535,
+      "id": 107,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968478536,
+      "id": 108,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 20,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968478605,
+      "id": 109,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": true,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968478983,
+      "id": 110,
+      "channel": "interaction",
+      "width": 2116,
+      "height": 2184,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "interactionChannel": true,
+      "retainInteractionGraph": true,
+      "interactionOwner": 4,
+      "interactionGeneration": 59,
+      "documentPatch": true,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968478983,
+      "id": 111,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968479242,
+      "id": 112,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": true,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968479521,
+      "id": 113,
+      "channel": "interaction",
+      "width": 2116,
+      "height": 2184,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "interactionChannel": true,
+      "retainInteractionGraph": true,
+      "interactionOwner": 4,
+      "interactionGeneration": 60,
+      "documentPatch": true,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968479521,
+      "id": 114,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968479788,
+      "id": 115,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968479788,
+      "id": 116,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 20,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968479897,
+      "id": 117,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": true,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792968480200,
+      "id": 118,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1736,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 20,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    }
+  ]
+}

@@ -4,6 +4,27 @@ import { navigationPreviewDensity } from './navigation-zoom'
 import { compositeDrawPlan, compositeRasterQuad } from './gpu/composite-draw-plan'
 import { physicalCoverage } from './gpu/physical-coverage'
 
+test('large reversal revokes only the optional narrow capture and retains its physical completion fence',async()=>{
+  let cancelled=0,done=false
+  const flight=navigationCoverageFlight({},1,{zoom:8,bounds:{x:0,y:0,width:128,height:64},cancel:()=>cancelled++})
+  void flight.done.then(()=>{done=true})
+  expect(flight.cancelObsoleteZoomOut({x:0,y:0,zoom:6},1024,512,2)).toBe(false)
+  expect(flight.cancelObsoleteZoomOut({x:0,y:0,zoom:4},1024,512,2)).toBe(true)
+  expect(cancelled).toBe(1);expect(flight.cancellationRequested).toBe(true)
+  await Promise.resolve();expect(done).toBe(false)
+  expect(flight.cancelObsoleteZoomOut({x:0,y:0,zoom:2},1024,512,2)).toBe(false)
+  flight.finish();await flight.done;expect(done).toBe(true)
+})
+
+test('a covering capture and finished/capture-free flights never spend reversal cancellation',()=>{
+  const source={zoom:8,bounds:{x:-200,y:-200,width:1000,height:1000},cancel:()=>{throw Error('Unexpected cancel')}}
+  const flight=navigationCoverageFlight({},1,source)
+  expect(flight.cancelObsoleteZoomOut({x:0,y:0,zoom:4},1024,512,2)).toBe(false)
+  flight.finish()
+  expect(flight.cancelObsoleteZoomOut({x:0,y:0,zoom:1},1024,512)).toBe(false)
+  expect(navigationCoverageFlight({},1).cancelObsoleteZoomOut({x:0,y:0,zoom:1},1024,512)).toBe(false)
+})
+
 const document = {}, client = {}
 const owner = { document, client, revision: 4, resident: true, device: '11/1/1' }
 const tile = { key: 'high-zoom', document, revision: 4, x: 0, y: 0, width: 1024, height: 512,

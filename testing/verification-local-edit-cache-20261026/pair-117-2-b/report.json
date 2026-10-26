@@ -1,0 +1,2300 @@
+{
+  "status": "captured",
+  "probeVersion": 3,
+  "onlyPan": false,
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-local-edit-cache-QJkKeb/candidate-host",
+  "kind": "117",
+  "scope": "independent foreground Electron; native mouse input, rAF DOM cameras and compositor acknowledgements; no physical scanout claim",
+  "phases": [],
+  "errors": [],
+  "instance": {
+    "pid": 32732,
+    "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-local-edit-cache-QJkKeb/pair-117-2-b/forma-desktop-manual-90e05691-5d21-4afe-961d-3a71d41812b0-qyMR2B"
+  },
+  "gpu": {
+    "auxAttributes": {
+      "amdSwitchable": false,
+      "canSupportThreadedTextureMailbox": false,
+      "displayType": "ANGLE_METAL",
+      "glExtensions": "GL_AMD_performance_monitor GL_ANGLE_base_vertex_base_instance_shader_builtin GL_ANGLE_blob_cache GL_ANGLE_client_arrays GL_ANGLE_clip_cull_distance GL_ANGLE_compressed_texture_etc GL_ANGLE_depth_texture GL_ANGLE_framebuffer_blit GL_ANGLE_framebuffer_multisample GL_ANGLE_get_serialized_context_string GL_ANGLE_get_tex_level_parameter GL_ANGLE_instanced_arrays GL_ANGLE_memory_size GL_ANGLE_pack_reverse_row_order GL_ANGLE_polygon_mode GL_ANGLE_program_binary_readiness_query GL_ANGLE_program_cache_control GL_ANGLE_provoking_vertex GL_ANGLE_renderability_validation GL_ANGLE_request_extension GL_ANGLE_rgbx_internal_format GL_ANGLE_robust_client_memory GL_ANGLE_shader_pixel_local_storage GL_ANGLE_shader_pixel_local_storage_coherent GL_ANGLE_stencil_texturing GL_ANGLE_texture_compression_dxt3 GL_ANGLE_texture_compression_dxt5 GL_ANGLE_texture_multisample GL_ANGLE_translated_shader_source GL_APPLE_clip_distance GL_ARM_rgba8 GL_CHROMIUM_bind_generates_resource GL_CHROMIUM_bind_uniform_location GL_CHROMIUM_copy_texture GL_CHROMIUM_lose_context GL_EXT_base_instance GL_EXT_blend_func_extended GL_EXT_blend_minmax GL_EXT_clip_control GL_EXT_color_buffer_float GL_EXT_color_buffer_half_float GL_EXT_compressed_ETC1_RGB8_sub_texture GL_EXT_conservative_depth GL_EXT_debug_label GL_EXT_debug_marker GL_EXT_depth_clamp GL_EXT_discard_framebuffer GL_EXT_disjoint_timer_query GL_EXT_draw_buffers GL_EXT_draw_buffers_indexed GL_EXT_draw_elements_base_vertex GL_EXT_float_blend GL_EXT_frag_depth GL_EXT_instanced_arrays GL_EXT_map_buffer_range GL_EXT_multisampled_render_to_texture GL_EXT_occlusion_query_boolean GL_EXT_polygon_offset_clamp GL_EXT_pvrtc_sRGB GL_EXT_read_format_bgra GL_EXT_render_snorm GL_EXT_robustness GL_EXT_sRGB GL_EXT_shader_texture_lod GL_EXT_texture_compression_bptc GL_EXT_texture_compression_dxt1 GL_EXT_texture_compression_rgtc GL_EXT_texture_compression_s3tc_srgb GL_EXT_texture_filter_anisotropic GL_EXT_texture_format_BGRA8888 GL_EXT_texture_mirror_clamp_to_edge GL_EXT_texture_norm16 GL_EXT_texture_rg GL_EXT_texture_sRGB_R8 GL_EXT_texture_sRGB_RG8 GL_EXT_texture_shadow_lod GL_EXT_texture_storage GL_IMG_texture_compression_pvrtc GL_KHR_debug GL_KHR_parallel_shader_compile GL_KHR_robustness GL_KHR_texture_compression_astc_hdr GL_KHR_texture_compression_astc_ldr GL_KHR_texture_compression_astc_sliced_3d GL_MESA_framebuffer_flip_y GL_NV_fence GL_NV_framebuffer_blit GL_NV_pixel_buffer_object GL_NV_shader_noperspective_interpolation GL_OES_EGL_image GL_OES_EGL_sync GL_OES_compressed_ETC1_RGB8_texture GL_OES_depth24 GL_OES_depth32 GL_OES_depth_texture GL_OES_draw_buffers_indexed GL_OES_draw_elements_base_vertex GL_OES_element_index_uint GL_OES_fbo_render_mipmap GL_OES_get_program_binary GL_OES_mapbuffer GL_OES_packed_depth_stencil GL_OES_required_internalformat GL_OES_rgb8_rgba8 GL_OES_sample_variables GL_OES_shader_multisample_interpolation GL_OES_standard_derivatives GL_OES_surfaceless_context GL_OES_texture_3D GL_OES_texture_float GL_OES_texture_float_linear GL_OES_texture_half_float GL_OES_texture_half_float_linear GL_OES_texture_npot GL_OES_texture_stencil8 GL_OES_vertex_array_object GL_QCOM_render_shared_exponent ",
+      "glImplementationParts": "(gl=egl-angle,angle=metal)",
+      "glRenderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M2 Pro, Version 26.3 (Build 25D125))",
+      "glResetNotificationStrategy": 33362,
+      "glVendor": "Google Inc. (Apple)",
+      "glVersion": "OpenGL ES 3.0 (ANGLE 2.1.28499 git hash: a939d4098385)",
+      "inProcessGpu": false,
+      "initializationTime": 64.564,
+      "isAsan": false,
+      "isClangCoverage": false,
+      "jpegDecodeAcceleratorSupported": false,
+      "maxMsaaSamples": "4",
+      "optimus": false,
+      "passthroughCmdDecoder": true,
+      "pixelShaderVersion": "3.00",
+      "sandboxed": true,
+      "skiaBackendType": "GraphiteDawnMetal",
+      "subpixelFontRendering": true,
+      "targetCpuBits": 64,
+      "vertexShaderVersion": "3.00",
+      "videoDecodeAcceleratorSupportedProfile": {
+        "encrypted_only": false,
+        "maxResolutionHeight": 8192,
+        "maxResolutionWidth": 8192,
+        "minResolutionHeight": 16,
+        "minResolutionWidth": 16,
+        "profile": 29
+      },
+      "visibilityCallbackCallCount": 0
+    },
+    "gpuDevice": [
+      {
+        "active": true,
+        "deviceId": 0,
+        "deviceString": "ANGLE (Apple, ANGLE Metal Renderer: Apple M2 Pro, Version 26.3 (Build 25D125))",
+        "driverVendor": "Apple",
+        "driverVersion": "26.3",
+        "gpuPreference": 0,
+        "vendorId": 4203,
+        "vendorString": "Google Inc. (Apple)"
+      }
+    ],
+    "machineModelName": "Mac",
+    "machineModelVersion": "14.10"
+  },
+  "fixture": "/Users/Apple/Downloads/117.sketch",
+  "sceneSummaries": [
+    {
+      "at": 1792999451911,
+      "id": 1,
+      "nodes": 752,
+      "pages": 1,
+      "kinds": {
+        "text": 106,
+        "vector": 587,
+        "group": 41,
+        "frame": 9,
+        "rectangle": 9
+      },
+      "roots": 1,
+      "serializedBytes": 5385809
+    }
+  ],
+  "target": {
+    "id": "D72F942F-283C-4C72-91F3-900DF45D64F2",
+    "name": "椭圆 63",
+    "mask": true,
+    "width": 1393,
+    "height": 945
+  },
+  "preparation": "Enabled the existing hidden mask through normal visibility UI, before timing; original file remains unchanged",
+  "foreground": {
+    "at": 1792999459392,
+    "visible": "visible",
+    "focused": true
+  },
+  "camera": {
+    "x": 205.3225806451613,
+    "y": 55.903225806451644,
+    "z": 0.4032258064516129
+  },
+  "initialDiagnostics": {
+    "rasterPlanner": "rust",
+    "checkerboard": "false",
+    "samplingMode": "native",
+    "rasterProfile": "figmaSubpixel",
+    "samplingScale": "0.8064516129032258",
+    "samplingDensity": "2",
+    "nativePixelReady": "true",
+    "rasterPhaseExact": "true",
+    "startupPreview": "false",
+    "renderer": "webgpu",
+    "tileCount": "20",
+    "pageCacheBytes": "0",
+    "pageCachePages": "0",
+    "pageCacheHits": "0",
+    "pageCacheMisses": "0",
+    "pageCacheEvictions": "0",
+    "pageCacheTier": "balanced",
+    "pageResidencyEstimatedBudget": "234881024",
+    "cacheHits": "32",
+    "tilesRendered": "68",
+    "viewportTilesRendered": "65",
+    "cacheBytes": "1024",
+    "tileScheduleFrames": "1",
+    "tileScheduleOnscreen": "20",
+    "tileScheduleOffscreen": "0",
+    "tileScheduleDeferred": "0",
+    "tileBudgetCutoffs": "0",
+    "tileBudgetCompletions": "1",
+    "tileBudgetCacheCutoffs": "0",
+    "tileCacheSkippedTiles": "0",
+    "residentBytes": "21135680",
+    "residentBudget": "234881024",
+    "activeResidentBudget": "134217728",
+    "cacheSteadyBudget": "134217728",
+    "cacheStagingLimit": "26419600",
+    "cacheAdmissionBudget": "160637328",
+    "cacheActiveBytes": "21135680",
+    "cacheActiveHighwater": "54330304",
+    "cacheTotalHighwater": "54330304",
+    "refineMs": "1299.70",
+    "compileMs": "542.00",
+    "pipelineWallMs": "912.70",
+    "preparationWaitMs": "126.70",
+    "overlappedPreparations": "62",
+    "frameResourceHits": "98",
+    "frameResourceBytes": "39991844",
+    "graphMs": "604.80",
+    "finishMs": "130.60",
+    "checkpointMs": "0.00",
+    "detailReady": "true",
+    "framePublication": "complete",
+    "retainedCommit": "false",
+    "retainedPageCommit": "false",
+    "lodScale": "0",
+    "lodTiles": "0",
+    "lodCacheBytes": "0",
+    "lodCacheBudget": "16777216",
+    "lodCacheHits": "0",
+    "previewActive": "false",
+    "progressiveTiles": "20",
+    "failedTiles": "0",
+    "cachedPreviewTiles": "0",
+    "overviewTiles": "0",
+    "overviewReuses": "0",
+    "residentEligible": "true",
+    "residentReason": "eligible",
+    "motionPreview": "false",
+    "motionRasterScale": "0.8064516129032258",
+    "cameraMoving": "false",
+    "navigationPendingAgeMs": "0",
+    "navigationZoomActive": "false",
+    "nativeNavigation": "false",
+    "nativeVisibleTiles": "false",
+    "navigationZoomSequence": "0",
+    "viewportPreviewTiles": "0",
+    "nativeCaptureTiles": "0",
+    "displayMode": "single-gpu-canvas",
+    "revision": "2",
+    "cameraX": "205.3225806451613",
+    "cameraY": "55.903225806451644",
+    "cameraZoom": "0.4032258064516129",
+    "requestedCameraX": "205.3225806451613",
+    "requestedCameraY": "55.903225806451644",
+    "requestedCameraZoom": "0.4032258064516129",
+    "requestedRevision": "2",
+    "pixelRatio": "2",
+    "firstDetailMs": "251.50",
+    "navigationMs": "962.70"
+  },
+  "localEdits": [
+    {
+      "value": "50",
+      "start": 1792999460065,
+      "end": 1792999461103,
+      "priorRevision": "2",
+      "elapsedMs": 1038,
+      "damage": [
+        {
+          "at": 1792999460165,
+          "id": 11,
+          "channel": "canvas",
+          "damage": {
+            "full": false,
+            "bounds": [
+              -453.57593536376953,
+              311.21203231811523,
+              1970.3639030456543,
+              1128.7879676818848
+            ],
+            "rects": [
+              [
+                -149,
+                491,
+                1397,
+                949
+              ],
+              [
+                176.21203231811523,
+                311.21203231811523,
+                747.5759353637695,
+                183.57593536376953
+              ],
+              [
+                -453.57593536376953,
+                395.42406463623047,
+                607.1518707275391,
+                205.15187072753906
+              ],
+              [
+                -419.78796768188477,
+                1070.2120323181152,
+                536.5759353637695,
+                134.57593536376953
+              ],
+              [
+                -131.78796768188477,
+                910.2120323181152,
+                107.57593536376953,
+                107.57593536376953
+              ],
+              [
+                980.2120323181152,
+                1072.2120323181152,
+                536.5759353637695,
+                134.57593536376953
+              ],
+              [
+                980.2120323181152,
+                751.2120323181152,
+                536.5759353637695,
+                134.57593536376953
+              ]
+            ]
+          }
+        }
+      ],
+      "diagnostics": {
+        "rasterPlanner": "rust",
+        "checkerboard": "false",
+        "samplingMode": "native",
+        "rasterProfile": "figmaSubpixel",
+        "samplingScale": "0.8064516129032258",
+        "samplingDensity": "2",
+        "nativePixelReady": "true",
+        "rasterPhaseExact": "true",
+        "startupPreview": "false",
+        "renderer": "webgpu",
+        "tileCount": "20",
+        "pageCacheBytes": "0",
+        "pageCachePages": "0",
+        "pageCacheHits": "0",
+        "pageCacheMisses": "0",
+        "pageCacheEvictions": "0",
+        "pageCacheTier": "balanced",
+        "pageResidencyEstimatedBudget": "234881024",
+        "cacheHits": "42",
+        "tilesRendered": "78",
+        "viewportTilesRendered": "75",
+        "cacheBytes": "1024",
+        "tileScheduleFrames": "1",
+        "tileScheduleOnscreen": "10",
+        "tileScheduleOffscreen": "0",
+        "tileScheduleDeferred": "0",
+        "tileBudgetCutoffs": "0",
+        "tileBudgetCompletions": "1",
+        "tileBudgetCacheCutoffs": "0",
+        "tileCacheSkippedTiles": "0",
+        "residentBytes": "21135680",
+        "residentBudget": "234881024",
+        "activeResidentBudget": "134217728",
+        "cacheSteadyBudget": "134217728",
+        "cacheStagingLimit": "26419600",
+        "cacheAdmissionBudget": "160637328",
+        "cacheActiveBytes": "21135680",
+        "cacheActiveHighwater": "54330304",
+        "cacheTotalHighwater": "54330304",
+        "refineMs": "1303.10",
+        "compileMs": "493.80",
+        "pipelineWallMs": "922.40",
+        "preparationWaitMs": "86.00",
+        "overlappedPreparations": "71",
+        "frameResourceHits": "129",
+        "frameResourceBytes": "45999584",
+        "graphMs": "649.60",
+        "finishMs": "127.30",
+        "checkpointMs": "0.00",
+        "detailReady": "true",
+        "framePublication": "complete",
+        "retainedCommit": "false",
+        "retainedPageCommit": "false",
+        "lodScale": "0",
+        "lodTiles": "0",
+        "lodCacheBytes": "0",
+        "lodCacheBudget": "16777216",
+        "lodCacheHits": "0",
+        "previewActive": "false",
+        "progressiveTiles": "20",
+        "failedTiles": "0",
+        "cachedPreviewTiles": "0",
+        "overviewTiles": "0",
+        "overviewReuses": "0",
+        "residentEligible": "true",
+        "residentReason": "eligible",
+        "motionPreview": "false",
+        "motionRasterScale": "0.8064516129032258",
+        "cameraMoving": "false",
+        "navigationPendingAgeMs": "0",
+        "navigationZoomActive": "false",
+        "nativeNavigation": "false",
+        "nativeVisibleTiles": "false",
+        "navigationZoomSequence": "0",
+        "viewportPreviewTiles": "0",
+        "nativeCaptureTiles": "0",
+        "displayMode": "single-gpu-canvas",
+        "revision": "3",
+        "cameraX": "205.3225806451613",
+        "cameraY": "55.903225806451644",
+        "cameraZoom": "0.4032258064516129",
+        "requestedCameraX": "205.3225806451613",
+        "requestedCameraY": "55.903225806451644",
+        "requestedCameraZoom": "0.4032258064516129",
+        "requestedRevision": "3",
+        "pixelRatio": "2",
+        "firstDetailMs": "331.80",
+        "navigationMs": "975.60"
+      }
+    },
+    {
+      "value": "100",
+      "start": 1792999461669,
+      "end": 1792999462651,
+      "priorRevision": "3",
+      "elapsedMs": 982,
+      "damage": [
+        {
+          "at": 1792999461740,
+          "id": 13,
+          "channel": "canvas",
+          "damage": {
+            "full": false,
+            "bounds": [
+              -453.57593536376953,
+              311.21203231811523,
+              1970.3639030456543,
+              1128.7879676818848
+            ],
+            "rects": [
+              [
+                -149,
+                491,
+                1397,
+                949
+              ],
+              [
+                176.21203231811523,
+                311.21203231811523,
+                747.5759353637695,
+                183.57593536376953
+              ],
+              [
+                -453.57593536376953,
+                395.42406463623047,
+                607.1518707275391,
+                205.15187072753906
+              ],
+              [
+                -419.78796768188477,
+                1070.2120323181152,
+                536.5759353637695,
+                134.57593536376953
+              ],
+              [
+                -131.78796768188477,
+                910.2120323181152,
+                107.57593536376953,
+                107.57593536376953
+              ],
+              [
+                980.2120323181152,
+                1072.2120323181152,
+                536.5759353637695,
+                134.57593536376953
+              ],
+              [
+                980.2120323181152,
+                751.2120323181152,
+                536.5759353637695,
+                134.57593536376953
+              ]
+            ]
+          }
+        }
+      ],
+      "diagnostics": {
+        "rasterPlanner": "rust",
+        "checkerboard": "false",
+        "samplingMode": "native",
+        "rasterProfile": "figmaSubpixel",
+        "samplingScale": "0.8064516129032258",
+        "samplingDensity": "2",
+        "nativePixelReady": "true",
+        "rasterPhaseExact": "true",
+        "startupPreview": "false",
+        "renderer": "webgpu",
+        "tileCount": "20",
+        "pageCacheBytes": "0",
+        "pageCachePages": "0",
+        "pageCacheHits": "0",
+        "pageCacheMisses": "0",
+        "pageCacheEvictions": "0",
+        "pageCacheTier": "balanced",
+        "pageResidencyEstimatedBudget": "234881024",
+        "cacheHits": "52",
+        "tilesRendered": "88",
+        "viewportTilesRendered": "85",
+        "cacheBytes": "1024",
+        "tileScheduleFrames": "1",
+        "tileScheduleOnscreen": "10",
+        "tileScheduleOffscreen": "0",
+        "tileScheduleDeferred": "0",
+        "tileBudgetCutoffs": "0",
+        "tileBudgetCompletions": "1",
+        "tileBudgetCacheCutoffs": "0",
+        "tileCacheSkippedTiles": "0",
+        "residentBytes": "21135680",
+        "residentBudget": "234881024",
+        "activeResidentBudget": "134217728",
+        "cacheSteadyBudget": "134217728",
+        "cacheStagingLimit": "26419600",
+        "cacheAdmissionBudget": "160637328",
+        "cacheActiveBytes": "21135680",
+        "cacheActiveHighwater": "54330304",
+        "cacheTotalHighwater": "54330304",
+        "refineMs": "1320.90",
+        "compileMs": "520.00",
+        "pipelineWallMs": "896.50",
+        "preparationWaitMs": "74.10",
+        "overlappedPreparations": "80",
+        "frameResourceHits": "160",
+        "frameResourceBytes": "52007324",
+        "graphMs": "645.90",
+        "finishMs": "134.90",
+        "checkpointMs": "0.00",
+        "detailReady": "true",
+        "framePublication": "complete",
+        "retainedCommit": "false",
+        "retainedPageCommit": "false",
+        "lodScale": "0",
+        "lodTiles": "0",
+        "lodCacheBytes": "0",
+        "lodCacheBudget": "16777216",
+        "lodCacheHits": "0",
+        "previewActive": "false",
+        "progressiveTiles": "20",
+        "failedTiles": "0",
+        "cachedPreviewTiles": "0",
+        "overviewTiles": "0",
+        "overviewReuses": "0",
+        "residentEligible": "true",
+        "residentReason": "eligible",
+        "motionPreview": "false",
+        "motionRasterScale": "0.8064516129032258",
+        "cameraMoving": "false",
+        "navigationPendingAgeMs": "0",
+        "navigationZoomActive": "false",
+        "nativeNavigation": "false",
+        "nativeVisibleTiles": "false",
+        "navigationZoomSequence": "0",
+        "viewportPreviewTiles": "0",
+        "nativeCaptureTiles": "0",
+        "displayMode": "single-gpu-canvas",
+        "revision": "4",
+        "cameraX": "205.3225806451613",
+        "cameraY": "55.903225806451644",
+        "cameraZoom": "0.4032258064516129",
+        "requestedCameraX": "205.3225806451613",
+        "requestedCameraY": "55.903225806451644",
+        "requestedCameraZoom": "0.4032258064516129",
+        "requestedRevision": "4",
+        "pixelRatio": "2",
+        "firstDetailMs": "213.50",
+        "navigationMs": "922.70"
+      }
+    },
+    {
+      "value": "50",
+      "start": 1792999463212,
+      "end": 1792999464000,
+      "priorRevision": "4",
+      "elapsedMs": 788,
+      "damage": [
+        {
+          "at": 1792999463267,
+          "id": 15,
+          "channel": "canvas",
+          "damage": {
+            "full": false,
+            "bounds": [
+              -453.57593536376953,
+              311.21203231811523,
+              1970.3639030456543,
+              1128.7879676818848
+            ],
+            "rects": [
+              [
+                -149,
+                491,
+                1397,
+                949
+              ],
+              [
+                176.21203231811523,
+                311.21203231811523,
+                747.5759353637695,
+                183.57593536376953
+              ],
+              [
+                -453.57593536376953,
+                395.42406463623047,
+                607.1518707275391,
+                205.15187072753906
+              ],
+              [
+                -419.78796768188477,
+                1070.2120323181152,
+                536.5759353637695,
+                134.57593536376953
+              ],
+              [
+                -131.78796768188477,
+                910.2120323181152,
+                107.57593536376953,
+                107.57593536376953
+              ],
+              [
+                980.2120323181152,
+                1072.2120323181152,
+                536.5759353637695,
+                134.57593536376953
+              ],
+              [
+                980.2120323181152,
+                751.2120323181152,
+                536.5759353637695,
+                134.57593536376953
+              ]
+            ]
+          }
+        }
+      ],
+      "diagnostics": {
+        "rasterPlanner": "rust",
+        "checkerboard": "false",
+        "samplingMode": "native",
+        "rasterProfile": "figmaSubpixel",
+        "samplingScale": "0.8064516129032258",
+        "samplingDensity": "2",
+        "nativePixelReady": "true",
+        "rasterPhaseExact": "true",
+        "startupPreview": "false",
+        "renderer": "webgpu",
+        "tileCount": "20",
+        "pageCacheBytes": "0",
+        "pageCachePages": "0",
+        "pageCacheHits": "0",
+        "pageCacheMisses": "0",
+        "pageCacheEvictions": "0",
+        "pageCacheTier": "balanced",
+        "pageResidencyEstimatedBudget": "234881024",
+        "cacheHits": "62",
+        "tilesRendered": "98",
+        "viewportTilesRendered": "95",
+        "cacheBytes": "1024",
+        "tileScheduleFrames": "1",
+        "tileScheduleOnscreen": "10",
+        "tileScheduleOffscreen": "0",
+        "tileScheduleDeferred": "0",
+        "tileBudgetCutoffs": "0",
+        "tileBudgetCompletions": "1",
+        "tileBudgetCacheCutoffs": "0",
+        "tileCacheSkippedTiles": "0",
+        "residentBytes": "21135680",
+        "residentBudget": "234881024",
+        "activeResidentBudget": "134217728",
+        "cacheSteadyBudget": "134217728",
+        "cacheStagingLimit": "26419600",
+        "cacheAdmissionBudget": "160637328",
+        "cacheActiveBytes": "21135680",
+        "cacheActiveHighwater": "54330304",
+        "cacheTotalHighwater": "54330304",
+        "refineMs": "1029.80",
+        "compileMs": "378.40",
+        "pipelineWallMs": "716.10",
+        "preparationWaitMs": "45.30",
+        "overlappedPreparations": "89",
+        "frameResourceHits": "191",
+        "frameResourceBytes": "58015064",
+        "graphMs": "483.40",
+        "finishMs": "152.40",
+        "checkpointMs": "0.00",
+        "detailReady": "true",
+        "framePublication": "complete",
+        "retainedCommit": "false",
+        "retainedPageCommit": "false",
+        "lodScale": "0",
+        "lodTiles": "0",
+        "lodCacheBytes": "0",
+        "lodCacheBudget": "16777216",
+        "lodCacheHits": "0",
+        "previewActive": "false",
+        "progressiveTiles": "20",
+        "failedTiles": "0",
+        "cachedPreviewTiles": "0",
+        "overviewTiles": "0",
+        "overviewReuses": "0",
+        "residentEligible": "true",
+        "residentReason": "eligible",
+        "motionPreview": "false",
+        "motionRasterScale": "0.8064516129032258",
+        "cameraMoving": "false",
+        "navigationPendingAgeMs": "0",
+        "navigationZoomActive": "false",
+        "nativeNavigation": "false",
+        "nativeVisibleTiles": "false",
+        "navigationZoomSequence": "0",
+        "viewportPreviewTiles": "0",
+        "nativeCaptureTiles": "0",
+        "displayMode": "single-gpu-canvas",
+        "revision": "5",
+        "cameraX": "205.3225806451613",
+        "cameraY": "55.903225806451644",
+        "cameraZoom": "0.4032258064516129",
+        "requestedCameraX": "205.3225806451613",
+        "requestedCameraY": "55.903225806451644",
+        "requestedCameraZoom": "0.4032258064516129",
+        "requestedRevision": "5",
+        "pixelRatio": "2",
+        "firstDetailMs": "204.10",
+        "navigationMs": "746.50"
+      }
+    },
+    {
+      "value": "100",
+      "start": 1792999464559,
+      "end": 1792999465408,
+      "priorRevision": "5",
+      "elapsedMs": 849,
+      "damage": [
+        {
+          "at": 1792999464636,
+          "id": 17,
+          "channel": "canvas",
+          "damage": {
+            "full": false,
+            "bounds": [
+              -453.57593536376953,
+              311.21203231811523,
+              1970.3639030456543,
+              1128.7879676818848
+            ],
+            "rects": [
+              [
+                -149,
+                491,
+                1397,
+                949
+              ],
+              [
+                176.21203231811523,
+                311.21203231811523,
+                747.5759353637695,
+                183.57593536376953
+              ],
+              [
+                -453.57593536376953,
+                395.42406463623047,
+                607.1518707275391,
+                205.15187072753906
+              ],
+              [
+                -419.78796768188477,
+                1070.2120323181152,
+                536.5759353637695,
+                134.57593536376953
+              ],
+              [
+                -131.78796768188477,
+                910.2120323181152,
+                107.57593536376953,
+                107.57593536376953
+              ],
+              [
+                980.2120323181152,
+                1072.2120323181152,
+                536.5759353637695,
+                134.57593536376953
+              ],
+              [
+                980.2120323181152,
+                751.2120323181152,
+                536.5759353637695,
+                134.57593536376953
+              ]
+            ]
+          }
+        }
+      ],
+      "diagnostics": {
+        "rasterPlanner": "rust",
+        "checkerboard": "false",
+        "samplingMode": "native",
+        "rasterProfile": "figmaSubpixel",
+        "samplingScale": "0.8064516129032258",
+        "samplingDensity": "2",
+        "nativePixelReady": "true",
+        "rasterPhaseExact": "true",
+        "startupPreview": "false",
+        "renderer": "webgpu",
+        "tileCount": "20",
+        "pageCacheBytes": "0",
+        "pageCachePages": "0",
+        "pageCacheHits": "0",
+        "pageCacheMisses": "0",
+        "pageCacheEvictions": "0",
+        "pageCacheTier": "balanced",
+        "pageResidencyEstimatedBudget": "234881024",
+        "cacheHits": "72",
+        "tilesRendered": "108",
+        "viewportTilesRendered": "105",
+        "cacheBytes": "1024",
+        "tileScheduleFrames": "1",
+        "tileScheduleOnscreen": "10",
+        "tileScheduleOffscreen": "0",
+        "tileScheduleDeferred": "0",
+        "tileBudgetCutoffs": "0",
+        "tileBudgetCompletions": "1",
+        "tileBudgetCacheCutoffs": "0",
+        "tileCacheSkippedTiles": "0",
+        "residentBytes": "21135680",
+        "residentBudget": "234881024",
+        "activeResidentBudget": "134217728",
+        "cacheSteadyBudget": "134217728",
+        "cacheStagingLimit": "26419600",
+        "cacheAdmissionBudget": "160637328",
+        "cacheActiveBytes": "21135680",
+        "cacheActiveHighwater": "54330304",
+        "cacheTotalHighwater": "54330304",
+        "refineMs": "1057.00",
+        "compileMs": "385.10",
+        "pipelineWallMs": "754.10",
+        "preparationWaitMs": "60.20",
+        "overlappedPreparations": "98",
+        "frameResourceHits": "222",
+        "frameResourceBytes": "64022804",
+        "graphMs": "454.50",
+        "finishMs": "203.60",
+        "checkpointMs": "0.00",
+        "detailReady": "true",
+        "framePublication": "complete",
+        "retainedCommit": "false",
+        "retainedPageCommit": "false",
+        "lodScale": "0",
+        "lodTiles": "0",
+        "lodCacheBytes": "0",
+        "lodCacheBudget": "16777216",
+        "lodCacheHits": "0",
+        "previewActive": "false",
+        "progressiveTiles": "20",
+        "failedTiles": "0",
+        "cachedPreviewTiles": "0",
+        "overviewTiles": "0",
+        "overviewReuses": "0",
+        "residentEligible": "true",
+        "residentReason": "eligible",
+        "motionPreview": "false",
+        "motionRasterScale": "0.8064516129032258",
+        "cameraMoving": "false",
+        "navigationPendingAgeMs": "0",
+        "navigationZoomActive": "false",
+        "nativeNavigation": "false",
+        "nativeVisibleTiles": "false",
+        "navigationZoomSequence": "0",
+        "viewportPreviewTiles": "0",
+        "nativeCaptureTiles": "0",
+        "displayMode": "single-gpu-canvas",
+        "revision": "6",
+        "cameraX": "205.3225806451613",
+        "cameraY": "55.903225806451644",
+        "cameraZoom": "0.4032258064516129",
+        "requestedCameraX": "205.3225806451613",
+        "requestedCameraY": "55.903225806451644",
+        "requestedCameraZoom": "0.4032258064516129",
+        "requestedRevision": "6",
+        "pixelRatio": "2",
+        "firstDetailMs": "255.00",
+        "navigationMs": "802.80"
+      }
+    }
+  ],
+  "motionStart": 1792999460065,
+  "motionEnd": 1792999465408,
+  "undoRedoExact": true,
+  "savedFile": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-local-edit-cache-QJkKeb/pair-117-2-b/local-edit.fd",
+  "reopenedMaterialExact": true,
+  "competition": [
+    {
+      "at": 1792999454554,
+      "rows": [
+        "32790  11.4 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+      ]
+    },
+    {
+      "at": 1792999455504,
+      "rows": [
+        "32790   0.2 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+      ]
+    },
+    {
+      "at": 1792999456503,
+      "rows": [
+        "32817  35.2 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "32820   5.8 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1792999457510,
+      "rows": [
+        "32817   0.7 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "32820  43.4 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1792999458515,
+      "rows": [
+        "32817   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "32820  77.7 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1792999459523,
+      "rows": [
+        "32817   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "32820  32.7 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1792999460521,
+      "rows": [
+        "32817   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "32820  58.9 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1792999461510,
+      "rows": [
+        "32817   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "32820  65.2 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1792999462522,
+      "rows": [
+        "32817   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "32820  49.7 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1792999463516,
+      "rows": [
+        "32817   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "32820 143.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1792999464524,
+      "rows": [
+        "32817   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "32820  84.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1792999465512,
+      "rows": [
+        "32817   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "32820  54.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1792999466525,
+      "rows": [
+        "32817   0.4 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "33166  37.7 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33167  37.5 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1792999467525,
+      "rows": [
+        "32817   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "33166  68.2 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33167  64.2 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1792999468582,
+      "rows": [
+        "32817   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "33166  84.8 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33167  80.4 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1792999469614,
+      "rows": [
+        "32817   0.2 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "33166  54.7 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33420  33.2 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33421  32.3 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33422  39.8 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33423  31.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33424  34.7 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33425  39.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33426  30.3 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33427  27.6 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1792999470585,
+      "rows": [
+        "32817   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "33166  19.7 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33420  39.5 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33421  15.1 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33422   1.8 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33423  32.3 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33424  15.8 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33425   7.9 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33426  37.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33427  27.8 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1792999471767,
+      "rows": [
+        "32817   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "33166  16.7 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33420  11.2 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33421   0.4 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33423  11.7 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33424   0.7 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33425   0.1 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33426  12.5 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33427  12.6 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    },
+    {
+      "at": 1792999472657,
+      "rows": [
+        "32817   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+        "33166  25.9 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33420   0.3 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33423   0.3 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33425   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33426   1.5 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc",
+        "33427   1.6 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+      ]
+    }
+  ],
+  "foregroundEvents": [],
+  "damage": [
+    {
+      "at": 1792999457409,
+      "id": 9,
+      "channel": "canvas",
+      "damage": {
+        "full": true,
+        "reason": "masked-chain"
+      }
+    },
+    {
+      "at": 1792999460165,
+      "id": 11,
+      "channel": "canvas",
+      "damage": {
+        "full": false,
+        "bounds": [
+          -453.57593536376953,
+          311.21203231811523,
+          1970.3639030456543,
+          1128.7879676818848
+        ],
+        "rects": [
+          [
+            -149,
+            491,
+            1397,
+            949
+          ],
+          [
+            176.21203231811523,
+            311.21203231811523,
+            747.5759353637695,
+            183.57593536376953
+          ],
+          [
+            -453.57593536376953,
+            395.42406463623047,
+            607.1518707275391,
+            205.15187072753906
+          ],
+          [
+            -419.78796768188477,
+            1070.2120323181152,
+            536.5759353637695,
+            134.57593536376953
+          ],
+          [
+            -131.78796768188477,
+            910.2120323181152,
+            107.57593536376953,
+            107.57593536376953
+          ],
+          [
+            980.2120323181152,
+            1072.2120323181152,
+            536.5759353637695,
+            134.57593536376953
+          ],
+          [
+            980.2120323181152,
+            751.2120323181152,
+            536.5759353637695,
+            134.57593536376953
+          ]
+        ]
+      }
+    },
+    {
+      "at": 1792999461740,
+      "id": 13,
+      "channel": "canvas",
+      "damage": {
+        "full": false,
+        "bounds": [
+          -453.57593536376953,
+          311.21203231811523,
+          1970.3639030456543,
+          1128.7879676818848
+        ],
+        "rects": [
+          [
+            -149,
+            491,
+            1397,
+            949
+          ],
+          [
+            176.21203231811523,
+            311.21203231811523,
+            747.5759353637695,
+            183.57593536376953
+          ],
+          [
+            -453.57593536376953,
+            395.42406463623047,
+            607.1518707275391,
+            205.15187072753906
+          ],
+          [
+            -419.78796768188477,
+            1070.2120323181152,
+            536.5759353637695,
+            134.57593536376953
+          ],
+          [
+            -131.78796768188477,
+            910.2120323181152,
+            107.57593536376953,
+            107.57593536376953
+          ],
+          [
+            980.2120323181152,
+            1072.2120323181152,
+            536.5759353637695,
+            134.57593536376953
+          ],
+          [
+            980.2120323181152,
+            751.2120323181152,
+            536.5759353637695,
+            134.57593536376953
+          ]
+        ]
+      }
+    },
+    {
+      "at": 1792999463267,
+      "id": 15,
+      "channel": "canvas",
+      "damage": {
+        "full": false,
+        "bounds": [
+          -453.57593536376953,
+          311.21203231811523,
+          1970.3639030456543,
+          1128.7879676818848
+        ],
+        "rects": [
+          [
+            -149,
+            491,
+            1397,
+            949
+          ],
+          [
+            176.21203231811523,
+            311.21203231811523,
+            747.5759353637695,
+            183.57593536376953
+          ],
+          [
+            -453.57593536376953,
+            395.42406463623047,
+            607.1518707275391,
+            205.15187072753906
+          ],
+          [
+            -419.78796768188477,
+            1070.2120323181152,
+            536.5759353637695,
+            134.57593536376953
+          ],
+          [
+            -131.78796768188477,
+            910.2120323181152,
+            107.57593536376953,
+            107.57593536376953
+          ],
+          [
+            980.2120323181152,
+            1072.2120323181152,
+            536.5759353637695,
+            134.57593536376953
+          ],
+          [
+            980.2120323181152,
+            751.2120323181152,
+            536.5759353637695,
+            134.57593536376953
+          ]
+        ]
+      }
+    },
+    {
+      "at": 1792999464636,
+      "id": 17,
+      "channel": "canvas",
+      "damage": {
+        "full": false,
+        "bounds": [
+          -453.57593536376953,
+          311.21203231811523,
+          1970.3639030456543,
+          1128.7879676818848
+        ],
+        "rects": [
+          [
+            -149,
+            491,
+            1397,
+            949
+          ],
+          [
+            176.21203231811523,
+            311.21203231811523,
+            747.5759353637695,
+            183.57593536376953
+          ],
+          [
+            -453.57593536376953,
+            395.42406463623047,
+            607.1518707275391,
+            205.15187072753906
+          ],
+          [
+            -419.78796768188477,
+            1070.2120323181152,
+            536.5759353637695,
+            134.57593536376953
+          ],
+          [
+            -131.78796768188477,
+            910.2120323181152,
+            107.57593536376953,
+            107.57593536376953
+          ],
+          [
+            980.2120323181152,
+            1072.2120323181152,
+            536.5759353637695,
+            134.57593536376953
+          ],
+          [
+            980.2120323181152,
+            751.2120323181152,
+            536.5759353637695,
+            134.57593536376953
+          ]
+        ]
+      }
+    },
+    {
+      "at": 1792999466328,
+      "id": 19,
+      "channel": "canvas",
+      "damage": {
+        "full": false,
+        "bounds": [
+          -453.57593536376953,
+          311.21203231811523,
+          1970.3639030456543,
+          1128.7879676818848
+        ],
+        "rects": [
+          [
+            -149,
+            491,
+            1397,
+            949
+          ],
+          [
+            176.21203231811523,
+            311.21203231811523,
+            747.5759353637695,
+            183.57593536376953
+          ],
+          [
+            -453.57593536376953,
+            395.42406463623047,
+            607.1518707275391,
+            205.15187072753906
+          ],
+          [
+            -419.78796768188477,
+            1070.2120323181152,
+            536.5759353637695,
+            134.57593536376953
+          ],
+          [
+            -131.78796768188477,
+            910.2120323181152,
+            107.57593536376953,
+            107.57593536376953
+          ],
+          [
+            980.2120323181152,
+            1072.2120323181152,
+            536.5759353637695,
+            134.57593536376953
+          ],
+          [
+            980.2120323181152,
+            751.2120323181152,
+            536.5759353637695,
+            134.57593536376953
+          ]
+        ]
+      }
+    }
+  ],
+  "renderRequests": [
+    {
+      "at": 1792999451911,
+      "id": 1,
+      "channel": "canvas",
+      "width": 2000,
+      "height": 1600,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 5385809
+    },
+    {
+      "at": 1792999452237,
+      "id": 2,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999452239,
+      "id": 3,
+      "channel": "canvas",
+      "width": 855,
+      "height": 836,
+      "view": {
+        "x": 40,
+        "y": 40,
+        "zoom": 1
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999453390,
+      "id": 4,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 25,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999454127,
+      "id": 5,
+      "channel": "canvas",
+      "width": 2048,
+      "height": 1152,
+      "view": {
+        "x": 437.4516129032258,
+        "y": -380.09677419354836,
+        "zoom": 1.064516129032258
+      },
+      "renderIntent": "preview",
+      "tiles": 15,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999454283,
+      "id": 6,
+      "channel": "canvas",
+      "width": 855,
+      "height": 836,
+      "view": {
+        "x": -123.5,
+        "y": -480,
+        "zoom": 1
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999454470,
+      "id": 7,
+      "channel": "canvas",
+      "width": 855,
+      "height": 836,
+      "view": {
+        "x": 205.3225806451613,
+        "y": 55.903225806451644,
+        "zoom": 0.4032258064516129
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999455169,
+      "id": 8,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 20,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999457378,
+      "id": 9,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": true,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999457411,
+      "id": 10,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 20,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999460133,
+      "id": 11,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": true,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999460166,
+      "id": 12,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 10,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999461726,
+      "id": 13,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": true,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999461741,
+      "id": 14,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 10,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999463251,
+      "id": 15,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": true,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999463268,
+      "id": 16,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 10,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999464601,
+      "id": 17,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": true,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999464637,
+      "id": 18,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 10,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999466313,
+      "id": 19,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": true,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999466329,
+      "id": 20,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 10,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999468469,
+      "id": 21,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 223
+    },
+    {
+      "at": 1792999468550,
+      "id": 22,
+      "channel": "canvas",
+      "width": 855,
+      "height": 836,
+      "view": {
+        "x": 40,
+        "y": 40,
+        "zoom": 1
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999468608,
+      "id": 23,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 25,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999468696,
+      "id": 24,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999468710,
+      "id": 25,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999468720,
+      "id": 26,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999468728,
+      "id": 27,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999468738,
+      "id": 28,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999468742,
+      "id": 29,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999468753,
+      "id": 30,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999468762,
+      "id": 31,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999469047,
+      "id": 32,
+      "channel": "canvas",
+      "width": 855,
+      "height": 836,
+      "view": {
+        "x": 205.3225806451613,
+        "y": 55.903225806451644,
+        "zoom": 0.4032258064516129
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 5385810
+    },
+    {
+      "at": 1792999470835,
+      "id": 33,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999470838,
+      "id": 34,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 20,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999472358,
+      "id": 35,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999472429,
+      "id": 36,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999472579,
+      "id": 37,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999472589,
+      "id": 38,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999472597,
+      "id": 39,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999472602,
+      "id": 40,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999472617,
+      "id": 41,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999472629,
+      "id": 42,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999472637,
+      "id": 43,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999472644,
+      "id": 44,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999472654,
+      "id": 45,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999472662,
+      "id": 46,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999472680,
+      "id": 47,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999472690,
+      "id": 48,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999472729,
+      "id": 49,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999472744,
+      "id": 50,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999472754,
+      "id": 51,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999472761,
+      "id": 52,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792999472770,
+      "id": 53,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 410.6451612903226,
+        "y": 111.80645161290329,
+        "zoom": 0.8064516129032258
+      },
+      "renderIntent": "canvas",
+      "tiles": 1,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    }
+  ]
+}

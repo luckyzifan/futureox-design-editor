@@ -1,0 +1,442 @@
+[
+  {
+    "name": "matrix-5-117-v",
+    "command": [
+      "node",
+      "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/stress-drag.mjs",
+      "117",
+      "matrix-5-117-v"
+    ],
+    "exit_code": 0,
+    "seconds": 18.65217399597168,
+    "summaryExit": 0,
+    "quality": {
+      "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+      "status": "captured",
+      "start": 1792945407921,
+      "end": 1792945414914,
+      "submits": 37,
+      "measured": 37,
+      "minCoverage": 1,
+      "minSharpCoverage": 1,
+      "minNativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "alphaFrames": 37,
+      "invalidAlpha": 0,
+      "transparentFrames": 0,
+      "maxTransparentPixels": 0,
+      "failures": [],
+      "convergenceMs": 1925,
+      "phases": [
+        {
+          "label": "pan",
+          "settleMs": 34,
+          "events": 18
+        },
+        {
+          "label": "pan-return",
+          "settleMs": 36,
+          "events": 18
+        },
+        {
+          "label": "pan-again",
+          "settleMs": 36,
+          "events": 18
+        },
+        {
+          "label": "pan-reverse",
+          "settleMs": 39,
+          "events": 19
+        }
+      ],
+      "maxPipelineMs": 687.6000000238419,
+      "maxGraphMs": 764.6000000238419,
+      "maxTileMs": 162.9999998807907,
+      "motionGate": "PASS"
+    }
+  },
+  {
+    "name": "matrix-5-117-h",
+    "command": [
+      "node",
+      "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/stress-drag.mjs",
+      "117",
+      "matrix-5-117-h"
+    ],
+    "exit_code": 0,
+    "seconds": 13.856374025344849,
+    "summaryExit": 0,
+    "quality": {
+      "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+      "status": "captured",
+      "start": 1792945423866,
+      "end": 1792945428928,
+      "submits": 192,
+      "measured": 192,
+      "minCoverage": 1,
+      "minSharpCoverage": 0.96875,
+      "minNativePhaseCoverage": 0.96875,
+      "maxUpscale": 2.48,
+      "alphaFrames": 192,
+      "invalidAlpha": 0,
+      "transparentFrames": 0,
+      "maxTransparentPixels": 0,
+      "failures": [],
+      "convergenceMs": 157,
+      "phases": [
+        {
+          "label": "pan",
+          "settleMs": 36,
+          "events": 16
+        },
+        {
+          "label": "pan-return",
+          "settleMs": 37,
+          "events": 19
+        },
+        {
+          "label": "pan-again",
+          "settleMs": 38,
+          "events": 17
+        },
+        {
+          "label": "pan-reverse",
+          "settleMs": 37,
+          "events": 20
+        }
+      ],
+      "maxPipelineMs": 131.90000009536743,
+      "maxGraphMs": 40.60000002384186,
+      "maxTileMs": 131.5,
+      "motionGate": "FAIL"
+    }
+  },
+  {
+    "name": "matrix-5-117-zoom",
+    "command": [
+      "node",
+      "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/capture-workbench.mjs",
+      "117",
+      "matrix-5-117-zoom"
+    ],
+    "exit_code": 0,
+    "seconds": 13.51254916191101,
+    "summaryExit": 0,
+    "quality": {
+      "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+      "status": "captured",
+      "start": 1792945436857,
+      "end": 1792945442102,
+      "submits": 174,
+      "measured": 174,
+      "minCoverage": 1,
+      "minSharpCoverage": 0,
+      "minNativePhaseCoverage": 0,
+      "maxUpscale": 21.75840239619711,
+      "alphaFrames": 174,
+      "invalidAlpha": 0,
+      "transparentFrames": 0,
+      "maxTransparentPixels": 0,
+      "failures": [],
+      "convergenceMs": 2696,
+      "maxPipelineMs": 543.2000000476837,
+      "maxGraphMs": 194.90000009536743,
+      "maxTileMs": 323.39999997615814,
+      "motionGate": "FAIL"
+    }
+  },
+  {
+    "name": "matrix-5-fig-v",
+    "command": [
+      "node",
+      "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/stress-drag.mjs",
+      "fig",
+      "matrix-5-fig-v"
+    ],
+    "exit_code": 0,
+    "seconds": 20.51185894012451,
+    "summaryExit": 0,
+    "quality": {
+      "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+      "status": "captured",
+      "start": 1792945456290,
+      "end": 1792945459490,
+      "submits": 42,
+      "measured": 42,
+      "minCoverage": 1,
+      "minSharpCoverage": 1,
+      "minNativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "alphaFrames": 42,
+      "invalidAlpha": 0,
+      "transparentFrames": 0,
+      "maxTransparentPixels": 0,
+      "failures": [],
+      "convergenceMs": 168,
+      "phases": [
+        {
+          "label": "pan",
+          "settleMs": 38,
+          "events": 17
+        },
+        {
+          "label": "pan-return",
+          "settleMs": 35,
+          "events": 17
+        },
+        {
+          "label": "pan-again",
+          "settleMs": 38,
+          "events": 19
+        },
+        {
+          "label": "pan-reverse",
+          "settleMs": 36,
+          "events": 21
+        }
+      ],
+      "maxPipelineMs": 0,
+      "maxGraphMs": 42.10000002384186,
+      "maxTileMs": 0,
+      "motionGate": "PASS"
+    }
+  },
+  {
+    "name": "matrix-5-fig-h",
+    "command": [
+      "node",
+      "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/stress-drag.mjs",
+      "fig",
+      "matrix-5-fig-h"
+    ],
+    "exit_code": 0,
+    "seconds": 17.758111000061035,
+    "summaryExit": 0,
+    "quality": {
+      "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+      "status": "captured",
+      "start": 1792945476679,
+      "end": 1792945478547,
+      "submits": 270,
+      "measured": 270,
+      "minCoverage": 1,
+      "minSharpCoverage": 1,
+      "minNativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "alphaFrames": 270,
+      "invalidAlpha": 0,
+      "transparentFrames": 0,
+      "maxTransparentPixels": 0,
+      "failures": [],
+      "convergenceMs": 157,
+      "phases": [
+        {
+          "label": "pan",
+          "settleMs": 35,
+          "events": 23
+        },
+        {
+          "label": "pan-return",
+          "settleMs": 36,
+          "events": 24
+        },
+        {
+          "label": "pan-again",
+          "settleMs": 35,
+          "events": 26
+        },
+        {
+          "label": "pan-reverse",
+          "settleMs": 35,
+          "events": 25
+        }
+      ],
+      "maxPipelineMs": null,
+      "maxGraphMs": null,
+      "maxTileMs": null,
+      "motionGate": "PASS"
+    }
+  },
+  {
+    "name": "matrix-5-fig-zoom",
+    "command": [
+      "node",
+      "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/capture-workbench.mjs",
+      "fig",
+      "matrix-5-fig-zoom"
+    ],
+    "exit_code": 0,
+    "seconds": 21.68273091316223,
+    "summaryExit": 0,
+    "quality": {
+      "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+      "status": "captured",
+      "start": 1792945494085,
+      "end": 1792945499186,
+      "submits": 158,
+      "measured": 158,
+      "minCoverage": 1,
+      "minSharpCoverage": 0,
+      "minNativePhaseCoverage": 0,
+      "maxUpscale": 29.763810060549705,
+      "alphaFrames": 158,
+      "invalidAlpha": 0,
+      "transparentFrames": 0,
+      "maxTransparentPixels": 0,
+      "failures": [],
+      "convergenceMs": 2536,
+      "maxPipelineMs": 1699.5,
+      "maxGraphMs": 220.39999985694885,
+      "maxTileMs": 461.7000000476837,
+      "motionGate": "FAIL"
+    }
+  },
+  {
+    "name": "matrix-5-sketch-v",
+    "command": [
+      "node",
+      "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/stress-drag.mjs",
+      "sketch",
+      "matrix-5-sketch-v"
+    ],
+    "exit_code": 0,
+    "seconds": 82.05110120773315,
+    "summaryExit": 0,
+    "quality": {
+      "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+      "status": "captured",
+      "start": 1792945564748,
+      "end": 1792945585638,
+      "submits": 29,
+      "measured": 29,
+      "minCoverage": 1,
+      "minSharpCoverage": 1,
+      "minNativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "alphaFrames": 27,
+      "invalidAlpha": 0,
+      "transparentFrames": 0,
+      "maxTransparentPixels": 0,
+      "failures": [],
+      "convergenceMs": 16836,
+      "phases": [
+        {
+          "label": "pan",
+          "settleMs": 39,
+          "events": 21
+        },
+        {
+          "label": "pan-return",
+          "settleMs": 37,
+          "events": 24
+        },
+        {
+          "label": "pan-again",
+          "settleMs": 37,
+          "events": 16
+        },
+        {
+          "label": "pan-reverse",
+          "settleMs": 38,
+          "events": 24
+        }
+      ],
+      "maxPipelineMs": 6470.300000071526,
+      "maxGraphMs": 4929.399999976158,
+      "maxTileMs": 556.1000000238419,
+      "motionGate": "PASS"
+    }
+  },
+  {
+    "name": "matrix-5-sketch-h",
+    "command": [
+      "node",
+      "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/stress-drag.mjs",
+      "sketch",
+      "matrix-5-sketch-h"
+    ],
+    "exit_code": 1,
+    "seconds": 242.3603479862213,
+    "summaryExit": 0,
+    "quality": {
+      "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+      "status": "failed",
+      "start": 1792945646103,
+      "end": 1792945648047,
+      "submits": 225,
+      "measured": 225,
+      "minCoverage": 1,
+      "minSharpCoverage": 0.75,
+      "minNativePhaseCoverage": 0.75,
+      "maxUpscale": 2.2791878172588835,
+      "alphaFrames": 225,
+      "invalidAlpha": 0,
+      "transparentFrames": 0,
+      "maxTransparentPixels": 0,
+      "failures": [],
+      "convergenceMs": 154,
+      "phases": [
+        {
+          "label": "pan",
+          "settleMs": 36,
+          "events": 23
+        },
+        {
+          "label": "pan-return",
+          "settleMs": 35,
+          "events": 25
+        },
+        {
+          "label": "pan-again",
+          "settleMs": 37,
+          "events": 21
+        },
+        {
+          "label": "pan-reverse",
+          "settleMs": 38,
+          "events": 24
+        }
+      ],
+      "maxPipelineMs": null,
+      "maxGraphMs": null,
+      "maxTileMs": 150.70000004768372,
+      "error": "Error: expect(locator).toContainText(expected) failed\n\nLocator: locator('.source-canvas-status')\nExpected substring: \"\u753b\u5e03\u4fee\u6539\u5df2\u4fdd\u5b58\u5230\u6e90\u6587\u4ef6\u7f13\u5b58\"\nReceived string:    \"\u5f53\u524d\u753b\u677f / \u5bf9\u8c61\u5df2\u8f7d\u5165\uff1a4,022 \u4e2a\u573a\u666f\u8282\u70b9\u3002\u5df2\u5bfc\u5165\uff0c\u53ef\u4ee5\u7ee7\u7eed\u7f16\u8f91 \u00b7 3 \u9879\u517c\u5bb9\u63d0\u793a\u00d7\u67e5\u770b\u517c\u5bb9\u8bf4\u660e\u90e8\u5206 Sketch \u4e13\u6709\u5c5e\u6027\u6682\u4e0d\u652f\u6301\u5b8c\u6574\u7f16\u8f91\uff0c\u5efa\u8bae\u4fdd\u7559\u539f\u59cb .sketch \u6587\u4ef6\u3002\u6587\u4ef6\u672a\u5d4c\u5165\u6240\u7528\u5b57\u4f53\uff0c\u5df2\u4f7f\u7528\u5185\u7f6e\u5b57\u4f53\uff1b\u53ef\u5728\u6587\u5b57\u9762\u677f\u5bfc\u5165\u5e76\u5339\u914d\u5b57\u4f53\u3002\u5e03\u5c14\u7ec4\u5408\u5df2\u8f6c\u6362\u4e3a\u672c\u5730\u77e2\u91cf\u7ed3\u6784\uff0c\u539f\u59cb\u8bbe\u7f6e\u5df2\u4fdd\u7559\u3002\"\nTimeout: 180000ms\n\nCall log:\n  - Expect \"toContainText\" locator('.source-canvas-status') with timeout 180000ms\n  - waiting for locator('.source-canvas-status')\n    359 \u00d7 locator resolved to <div class=\"source-canvas-status\">\u2026</div>\n        - unexpected value \"\u5f53\u524d\u753b\u677f / \u5bf9\u8c61\u5df2\u8f7d\u5165\uff1a4,022 \u4e2a\u573a\u666f\u8282\u70b9\u3002\u5df2\u5bfc\u5165\uff0c\u53ef\u4ee5\u7ee7\u7eed\u7f16\u8f91 \u00b7 3 \u9879\u517c\u5bb9\u63d0\u793a\u00d7\u67e5\u770b\u517c\u5bb9\u8bf4\u660e\u90e8\u5206 Sketch \u4e13\u6709\u5c5e\u6027\u6682\u4e0d\u652f\u6301\u5b8c\u6574\u7f16\u8f91\uff0c\u5efa\u8bae\u4fdd\u7559\u539f\u59cb .sketch \u6587\u4ef6\u3002\u6587\u4ef6\u672a\u5d4c\u5165\u6240\u7528\u5b57\u4f53\uff0c\u5df2\u4f7f\u7528\u5185\u7f6e\u5b57\u4f53\uff1b\u53ef\u5728\u6587\u5b57\u9762\u677f\u5bfc\u5165\u5e76\u5339\u914d\u5b57\u4f53\u3002\u5e03\u5c14\u7ec4\u5408\u5df2\u8f6c\u6362\u4e3a\u672c\u5730\u77e2\u91cf\u7ed3\u6784\uff0c\u539f\u59cb\u8bbe\u7f6e\u5df2\u4fdd\u7559\u3002\"\n",
+      "motionGate": "FAIL"
+    }
+  },
+  {
+    "name": "matrix-5-sketch-zoom",
+    "command": [
+      "node",
+      "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/capture-workbench.mjs",
+      "sketch",
+      "matrix-5-sketch-zoom"
+    ],
+    "exit_code": 1,
+    "seconds": 240.84734725952148,
+    "summaryExit": 0,
+    "quality": {
+      "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+      "status": "failed",
+      "start": 1792945882014,
+      "end": 1792945888211,
+      "submits": 168,
+      "measured": 168,
+      "minCoverage": 1,
+      "minSharpCoverage": 0,
+      "minNativePhaseCoverage": 0,
+      "maxUpscale": 72.93401015228427,
+      "alphaFrames": 168,
+      "invalidAlpha": 0,
+      "transparentFrames": 0,
+      "maxTransparentPixels": 0,
+      "failures": [],
+      "convergenceMs": 3644,
+      "maxPipelineMs": 1858.8999999761581,
+      "maxGraphMs": 846,
+      "maxTileMs": 1429.2000000476837,
+      "error": "Error: expect(locator).toContainText(expected) failed\n\nLocator: locator('.source-canvas-status')\nExpected substring: \"\u753b\u5e03\u4fee\u6539\u5df2\u4fdd\u5b58\u5230\u6e90\u6587\u4ef6\u7f13\u5b58\"\nReceived string:    \"\u5f53\u524d\u753b\u677f / \u5bf9\u8c61\u5df2\u8f7d\u5165\uff1a4,022 \u4e2a\u573a\u666f\u8282\u70b9\u3002\u5df2\u5bfc\u5165\uff0c\u53ef\u4ee5\u7ee7\u7eed\u7f16\u8f91 \u00b7 3 \u9879\u517c\u5bb9\u63d0\u793a\u00d7\u67e5\u770b\u517c\u5bb9\u8bf4\u660e\u90e8\u5206 Sketch \u4e13\u6709\u5c5e\u6027\u6682\u4e0d\u652f\u6301\u5b8c\u6574\u7f16\u8f91\uff0c\u5efa\u8bae\u4fdd\u7559\u539f\u59cb .sketch \u6587\u4ef6\u3002\u6587\u4ef6\u672a\u5d4c\u5165\u6240\u7528\u5b57\u4f53\uff0c\u5df2\u4f7f\u7528\u5185\u7f6e\u5b57\u4f53\uff1b\u53ef\u5728\u6587\u5b57\u9762\u677f\u5bfc\u5165\u5e76\u5339\u914d\u5b57\u4f53\u3002\u5e03\u5c14\u7ec4\u5408\u5df2\u8f6c\u6362\u4e3a\u672c\u5730\u77e2\u91cf\u7ed3\u6784\uff0c\u539f\u59cb\u8bbe\u7f6e\u5df2\u4fdd\u7559\u3002\"\nTimeout: 180000ms\n\nCall log:\n  - Expect \"toContainText\" locator('.source-canvas-status') with timeout 180000ms\n  - waiting for locator('.source-canvas-status')\n    359 \u00d7 locator resolved to <div class=\"source-canvas-status\">\u2026</div>\n        - unexpected value \"\u5f53\u524d\u753b\u677f / \u5bf9\u8c61\u5df2\u8f7d\u5165\uff1a4,022 \u4e2a\u573a\u666f\u8282\u70b9\u3002\u5df2\u5bfc\u5165\uff0c\u53ef\u4ee5\u7ee7\u7eed\u7f16\u8f91 \u00b7 3 \u9879\u517c\u5bb9\u63d0\u793a\u00d7\u67e5\u770b\u517c\u5bb9\u8bf4\u660e\u90e8\u5206 Sketch \u4e13\u6709\u5c5e\u6027\u6682\u4e0d\u652f\u6301\u5b8c\u6574\u7f16\u8f91\uff0c\u5efa\u8bae\u4fdd\u7559\u539f\u59cb .sketch \u6587\u4ef6\u3002\u6587\u4ef6\u672a\u5d4c\u5165\u6240\u7528\u5b57\u4f53\uff0c\u5df2\u4f7f\u7528\u5185\u7f6e\u5b57\u4f53\uff1b\u53ef\u5728\u6587\u5b57\u9762\u677f\u5bfc\u5165\u5e76\u5339\u914d\u5b57\u4f53\u3002\u5e03\u5c14\u7ec4\u5408\u5df2\u8f6c\u6362\u4e3a\u672c\u5730\u77e2\u91cf\u7ed3\u6784\uff0c\u539f\u59cb\u8bbe\u7f6e\u5df2\u4fdd\u7559\u3002\"\n",
+      "motionGate": "FAIL"
+    }
+  }
+]

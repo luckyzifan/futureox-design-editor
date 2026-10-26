@@ -1,0 +1,32 @@
+[
+  {
+    "variant": "a",
+    "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-local-edit-cache-QJkKeb/pixels-sketch-2-a/local-edit.sketch",
+    "bytes": 119392825,
+    "sha256": "be05cb8b3195bac036a6e2dd2eb74e154b99e5760e9e3d705a5224608e382a7b",
+    "sameMembers": true,
+    "members": 64,
+    "changedMembers": [
+      "pages/b5e640b2-e777-404c-b121-8e866696d553.json"
+    ],
+    "savedTarget": {
+      "id": "08856B36-020D-46FC-AC59-55F38CDB82BE",
+      "name": "140x140pt 30个（黑色背景）"
+    }
+  },
+  {
+    "variant": "b",
+    "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-local-edit-cache-QJkKeb/pixels-sketch-2-b/local-edit.sketch",
+    "bytes": 119392825,
+    "sha256": "be05cb8b3195bac036a6e2dd2eb74e154b99e5760e9e3d705a5224608e382a7b",
+    "sameMembers": true,
+    "members": 64,
+    "changedMembers": [
+      "pages/b5e640b2-e777-404c-b121-8e866696d553.json"
+    ],
+    "savedTarget": {
+      "id": "08856B36-020D-46FC-AC59-55F38CDB82BE",
+      "name": "140x140pt 30个（黑色背景）"
+    }
+  }
+]

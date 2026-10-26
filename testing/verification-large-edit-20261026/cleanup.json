@@ -1,0 +1,463 @@
+{
+  "at": "2026-10-25T23:01:24.747480+00:00",
+  "scope": "Only closed owned test profiles enumerated from these two rounds reports; source inputs, source code, host builds, backups, exported files and visual evidence preserved",
+  "preservedRuns": [
+    "final-5-functional-117",
+    "final-5-functional-fig",
+    "final-5-functional-sketch-a"
+  ],
+  "freeBefore": 1176911872,
+  "freeAfter": 52489453568,
+  "deleted": [
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/wide-visible-13-117/forma-desktop-manual-58230cf9-e165-430e-999c-d2d46614787c-mueDtc",
+      "pid": 11327,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/wide-visible-13-117/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-fast-pan-117/forma-desktop-manual-0e0888c8-1d06-4302-b8e8-21f1f285767a-Lo4KWi",
+      "pid": 14732,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/candidate-fast-pan-117/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-11-117-zoom/forma-desktop-manual-a270c31c-c1cb-4d73-bbf0-7180813f9915-mkH1cG",
+      "pid": 24490,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/candidate-11-117-zoom/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/wide-12-sketch-object/forma-desktop-manual-36fda5be-960a-447e-aa2b-00b050930044-NEdd1O",
+      "pid": 12576,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/wide-12-sketch-object/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-7-117-long-commit/forma-desktop-manual-72161613-81ac-478f-9d8e-f181d3294782-bmb94n",
+      "pid": 51356,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/candidate-7-117-long-commit/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-3-fast-object-117/forma-desktop-manual-37a320b5-0cee-4866-a56c-253e9bd2a011-As7OxK",
+      "pid": 39184,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/candidate-3-fast-object-117/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-7-117-commit/forma-desktop-manual-6d0113d6-4193-4ca6-9cb0-1cee96aaea86-M4fcA9",
+      "pid": 46137,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/candidate-7-117-commit/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-h/forma-desktop-manual-b31f3cf8-e4a4-45e6-b164-2b8d4298f8d0-1wEW1n",
+      "pid": 83704,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/matrix-5-sketch-h/report.json",
+      "status": "failed"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/baseline-fast-117-2/forma-desktop-manual-60070f24-f538-4275-8b9f-3c285b8b36ae-aFqWvF",
+      "pid": 1976,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/baseline-fast-117-2/report.json",
+      "status": "failed"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-4-sketch-h/forma-desktop-manual-5d0057f8-dc0f-4250-bcec-83c564ef6333-w9mLqr",
+      "pid": 51418,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/matrix-4-sketch-h/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-4-117-v/forma-desktop-manual-4f6508b4-bdbe-4b85-aa35-1b11e1b4f661-DtwVPD",
+      "pid": 47006,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/matrix-4-117-v/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-fig-v/forma-desktop-manual-adc38a9c-618c-4b63-a9cf-febcdea1396b-cM6brd",
+      "pid": 80483,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/matrix-5-fig-v/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/baseline-zoom-117/forma-desktop-manual-e4d6d53b-c03c-419f-8f96-cc5cd7c9be04-hKA0Rc",
+      "pid": 88412,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/baseline-zoom-117/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/default-14-functional-fig/forma-desktop-manual-3e1db500-ce08-4511-9727-8d0943e30c61-6EAvPL",
+      "pid": 19896,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/default-14-functional-fig/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/prefix-abba-1/forma-desktop-manual-0e983404-4484-4b7d-bfc8-9bc343da008a-UZE12s",
+      "pid": 94344,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/prefix-abba-1/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/wide-12-117/forma-desktop-manual-86144927-c88e-4d27-b5e0-556c1fd3c677-xnUBCg",
+      "pid": 10066,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/wide-12-117/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/native-navigation-117-1/forma-desktop-manual-2d8ed219-67b0-433e-80f9-b81b48b8368e-yvAmbT",
+      "pid": 241,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/native-navigation-117-1/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/wide-native-12-117/forma-desktop-manual-28c743dc-af01-4fd4-b3cb-8e730a344dc9-Oey5Ru",
+      "pid": 9372,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/wide-native-12-117/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-117-v/forma-desktop-manual-24f6984d-ebb6-42c2-a5be-00f1323b62fb-3U4OvB",
+      "pid": 79332,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/matrix-5-117-v/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/main-default-built-smoke/forma-desktop-manual-69a5e6d1-c20b-4337-9703-c0044985317f-i74xA5",
+      "pid": 25722,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/main-default-built-smoke/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-4-sketch-zoom/forma-desktop-manual-8f8a9e12-dde3-483e-ab77-25fba64e6f57-XHPWPp",
+      "pid": 52907,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/matrix-4-sketch-zoom/report.json",
+      "status": "failed-render-recovery"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-4-fig-v/forma-desktop-manual-fa30e865-d91b-4b18-b1ca-cefd0a86bf62-9MgZZW",
+      "pid": 48244,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/matrix-4-fig-v/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/default-14-functional-117/forma-desktop-manual-a486320f-1cf1-497d-8eb8-a76f7f77cb94-dbRkNP",
+      "pid": 19108,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/default-14-functional-117/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-8-117-commit/forma-desktop-manual-4c4be948-80e9-4751-8233-d8a4a4164bda-oMikhT",
+      "pid": 62623,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/candidate-8-117-commit/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-2-fast-object-117/forma-desktop-manual-188e5ff6-58f8-46c3-8d10-46ef1ff7c5b6-KSNmw2",
+      "pid": 23056,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/candidate-2-fast-object-117/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-4-117-zoom/forma-desktop-manual-5198380a-4f71-4696-8f3e-75dbdaa96af5-wNt8SJ",
+      "pid": 47864,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/matrix-4-117-zoom/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-117-zoom/forma-desktop-manual-32dd2356-3389-466b-ad4b-76361a2a826b-DxBUxl",
+      "pid": 80202,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/matrix-5-117-zoom/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-2-fast-pan-117/forma-desktop-manual-7f16d7f2-2848-4521-b419-8a3af7f14287-9sjUtb",
+      "pid": 24448,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/candidate-2-fast-pan-117/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/baseline-pan-topology/forma-desktop-manual-31e4c915-b2e5-42da-8717-7a6ba9c3a858-2KKz8f",
+      "pid": 92628,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/baseline-pan-topology/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-4-fig-zoom/forma-desktop-manual-a5cf09d8-1ef5-48b5-96ef-5c446ceae075-8kqhP1",
+      "pid": 49272,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/matrix-4-fig-zoom/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-fig-zoom/forma-desktop-manual-fe2d0734-37e4-4883-88ea-72a951e459b8-vpY11B",
+      "pid": 81409,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/matrix-5-fig-zoom/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-4-117-h/forma-desktop-manual-2df13ddc-385b-4594-b58d-db6b80977ff9-tOaGkG",
+      "pid": 47504,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/matrix-4-117-h/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/prefix-abba-3/forma-desktop-manual-979b4557-514a-43b2-9569-1502ce2d7d42-2d68mS",
+      "pid": 95030,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/prefix-abba-3/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/prefix-abba-4/forma-desktop-manual-84d31066-1d6c-445f-aa88-b31343fed1aa-rEW4jK",
+      "pid": 95370,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/prefix-abba-4/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/default-14-functional-sketch/forma-desktop-manual-fc0bfc1a-a3b4-4ab0-8ef3-e0d0826d46cd-QoBMU0",
+      "pid": 21047,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/default-14-functional-sketch/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-fig-h/forma-desktop-manual-2a5149b8-440e-4d82-bd76-1ddb2fe8eb7d-xHx1y7",
+      "pid": 80948,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/matrix-5-fig-h/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/prefix-abba-2/forma-desktop-manual-9a8db03d-d806-43ad-9080-4ea93ac2e95d-hvr8ml",
+      "pid": 94659,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/prefix-abba-2/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-v/forma-desktop-manual-e0fe203c-a50a-4d65-ab67-5b7293473bd6-jGzRm5",
+      "pid": 81913,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/matrix-5-sketch-v/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-4-sketch-v/forma-desktop-manual-2150ce4f-bbbc-4ddf-a14d-2bd32eb54b2b-ANINlb",
+      "pid": 49617,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/matrix-4-sketch-v/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-fast-object-117/forma-desktop-manual-6a99477f-6e61-4c24-a7d2-65caac306b0b-yu3r4F",
+      "pid": 11862,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/candidate-fast-object-117/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/baseline-edit-117/forma-desktop-manual-4be99ef9-d94f-4550-88fe-83dc9f4821b5-PnXvyP",
+      "pid": 90743,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/baseline-edit-117/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/baseline-pan-117/forma-desktop-manual-feeb94a3-7a33-4f3e-bb61-3b4482bf00ce-dFJE3b",
+      "pid": 86799,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/baseline-pan-117/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-11-117-zoom-quiet/forma-desktop-manual-32dfbe3c-da82-491c-bc45-f7595824689a-ROWbWm",
+      "pid": 31897,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/candidate-11-117-zoom-quiet/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-sketch-zoom/forma-desktop-manual-fac465f9-4818-485f-8d43-52400a6e4fcb-PPkN2g",
+      "pid": 88871,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/matrix-5-sketch-zoom/report.json",
+      "status": "failed"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-9-117-commit/forma-desktop-manual-8857ac39-916c-4697-bfcf-9157dd96185e-JiMwkl",
+      "pid": 74147,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/candidate-9-117-commit/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/baseline-fast-117/forma-desktop-manual-6b082704-c739-44b0-85f9-21eb9e8e3ab1-MRa3RS",
+      "pid": 98749,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/baseline-fast-117/report.json",
+      "status": "failed"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-5-117-h/forma-desktop-manual-cbd4fbda-cf67-46c6-ab8d-a9f9bca2d024-hYPVZA",
+      "pid": 79828,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/matrix-5-117-h/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/baseline-fast-object-117/forma-desktop-manual-b700dfc7-b150-42b0-8f64-0d818d0ca7c8-hDZ5OC",
+      "pid": 13052,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/baseline-fast-object-117/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/matrix-4-fig-h/forma-desktop-manual-9bc21434-7b14-483b-9377-6de67b286e9f-jz4HZN",
+      "pid": 48929,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/matrix-4-fig-h/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-2-large-a-1/forma-desktop-manual-6494ecb9-5cc6-4835-8efb-bb8a8b27c6f1-eGoCXz",
+      "pid": 78629,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/candidate-2-large-a-1/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/final-functional-fig/forma-desktop-manual-e437a073-3a6a-4954-8e57-55110d41ae66-oLb3OW",
+      "pid": 92348,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/final-functional-fig/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-c/forma-desktop-manual-a249cf2a-6544-4be0-bfe8-af19d45a3cb3-glUzPW",
+      "pid": 56314,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/candidate-5-large-c/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-3-cpu-profile/forma-desktop-manual-998810f1-ce28-428e-b286-b3abbb76af0d-kmVhtV",
+      "pid": 12378,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/candidate-3-cpu-profile/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-b/forma-desktop-manual-5d7aba3e-5ff6-48f1-9213-8350fe589250-HrW8mR",
+      "pid": 54865,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/candidate-5-large-b/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/serialization-metadata/forma-desktop-manual-c9518c5e-02ff-4fcb-8f6b-3bfedf5065f6-aiLQ4I",
+      "pid": 19391,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/serialization-metadata/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/final-functional-117/forma-desktop-manual-ed9a27df-af7f-44e6-bf55-d7482afdfcdf-ZL73Cl",
+      "pid": 91700,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/final-functional-117/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/final-functional-sketch-a/forma-desktop-manual-53be5a31-6d2c-4c16-abb7-9d582667b935-K8yezP",
+      "pid": 93606,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/final-functional-sketch-a/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/final-5-functional-sketch-b/forma-desktop-manual-1f42fc52-85c5-4630-8743-6dc2422ad96f-rR7dVh",
+      "pid": 77010,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/final-5-functional-sketch-b/report.json",
+      "status": "failed"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-cpu-profile/forma-desktop-manual-2ad3c70b-fc00-4fe1-866b-93c23ff0bd18-uv37h9",
+      "pid": 47333,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/candidate-5-cpu-profile/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-large-c-1/forma-desktop-manual-865bdfbe-722b-4b12-a46f-70d4ae53925f-XEcVLy",
+      "pid": 75069,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/candidate-large-c-1/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/final-main-pixels/forma-desktop-manual-6adce00d-66f6-4ee3-b6a4-b2ac374bef17-8FriP4",
+      "pid": 89621,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/final-main-pixels/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/baseline-large-b-1/forma-desktop-manual-7a7a6094-8e19-4c2f-823e-845d6594f03f-kvjKwD",
+      "pid": 70869,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/baseline-large-b-1/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/final-5-functional-sketch-c/forma-desktop-manual-b79fe12e-2051-410b-8709-fa30fded1207-fr76i1",
+      "pid": 82772,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/final-5-functional-sketch-c/report.json",
+      "status": "failed"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/main-cpu-profile-1/forma-desktop-manual-72957803-6506-4947-9703-16cbd8d4898f-txzRZq",
+      "pid": 4451,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/main-cpu-profile-1/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a-repeat/forma-desktop-manual-d608587e-54c1-4b65-9b0b-f1fd84f65ad1-ueHt5i",
+      "pid": 70281,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/candidate-5-large-a-repeat/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/serialization-cause/forma-desktop-manual-4fb875d0-e977-4bea-8e24-fe647ccc5496-kVPkwR",
+      "pid": 29295,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/serialization-cause/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-large-b-1/forma-desktop-manual-cabc207f-1db7-4e18-8111-7714c884e1c0-TIWsam",
+      "pid": 72286,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/candidate-large-b-1/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/baseline-large-c-1/forma-desktop-manual-8bf06145-31f6-4e4f-96e6-449a4d61103f-jZDfLQ",
+      "pid": 73570,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/baseline-large-c-1/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/baseline-large-2/forma-desktop-manual-1fcd7de9-78c9-4619-bd55-06090983d9bb-UJ0QTD",
+      "pid": 58474,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/baseline-large-2/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-large-1/forma-desktop-manual-232e7d3c-32c8-4390-841c-a64865591b48-SkVweq",
+      "pid": 63754,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/candidate-large-1/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-5-large-a/forma-desktop-manual-5e85354a-dcc4-4762-9bde-d44fc16713a2-LO6mgg",
+      "pid": 52971,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/candidate-5-large-a/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/final-functional-sketch-c/forma-desktop-manual-6a504685-4199-4fec-af17-6fcc182dbba2-Yf343U",
+      "pid": 99856,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/final-functional-sketch-c/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-4-cpu-profile/forma-desktop-manual-39331a76-e10a-42e7-85b5-566c78ccae60-iH8sbg",
+      "pid": 39316,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/candidate-4-cpu-profile/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-1-large-a-repeat/forma-desktop-manual-108609f8-4b2b-4900-a5cf-98896b7d3710-plnXHz",
+      "pid": 80608,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/candidate-1-large-a-repeat/report.json",
+      "status": "captured"
+    },
+    {
+      "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/final-functional-sketch-b/forma-desktop-manual-027306c5-ec2e-4a69-82f8-2d96125f931d-WuAsvD",
+      "pid": 97070,
+      "report": "/Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/final-functional-sketch-b/report.json",
+      "status": "captured"
+    }
+  ]
+}

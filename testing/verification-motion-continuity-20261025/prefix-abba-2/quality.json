@@ -1,0 +1,22 @@
+{
+  "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+  "status": "captured",
+  "start": 1792950859573,
+  "end": 1792950863349,
+  "submits": 154,
+  "measured": 154,
+  "minCoverage": 1,
+  "minSharpCoverage": 0,
+  "minNativePhaseCoverage": 0,
+  "maxUpscale": 29.784688804847065,
+  "alphaFrames": 154,
+  "invalidAlpha": 0,
+  "transparentFrames": 0,
+  "maxTransparentPixels": 0,
+  "failures": [],
+  "convergenceMs": 1227,
+  "maxPipelineMs": 557,
+  "maxGraphMs": 156.39999961853027,
+  "maxTileMs": 409.90000009536743,
+  "motionGate": "FAIL"
+}

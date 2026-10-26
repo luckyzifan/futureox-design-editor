@@ -1,0 +1,49 @@
+[
+  {
+    "name": "main-build",
+    "command": [
+      "bun",
+      "run",
+      "build",
+      "--fast"
+    ],
+    "cwd": "/Users/Apple/project/design-kernel/frontend/design-desktop",
+    "start": 1793001424.3499122,
+    "end": 1793001711.4663029,
+    "exitCode": 0
+  },
+  {
+    "name": "main-local-tests",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--manifest-path",
+      "/Users/Apple/project/design-kernel/design-studio/Cargo.toml",
+      "-p",
+      "futureox-design-kernel",
+      "--profile",
+      "desktop-dev",
+      "--test",
+      "local_edit_damage",
+      "--",
+      "--nocapture"
+    ],
+    "cwd": "/Users/Apple/project/design-kernel",
+    "start": 1793001711.467614,
+    "end": 1793001806.450408,
+    "exitCode": 0
+  },
+  {
+    "name": "main-wasm",
+    "command": [
+      "node",
+      "/Users/Apple/project/design-kernel/testing/verification-local-edit-cache-20261026/wasm-check.mjs",
+      "/Users/Apple/project/design-kernel"
+    ],
+    "cwd": "/Users/Apple/project/design-kernel",
+    "start": 1793001806.4513578,
+    "end": 1793001806.674426,
+    "exitCode": 0
+  }
+]

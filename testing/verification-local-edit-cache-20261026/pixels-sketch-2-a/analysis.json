@@ -1,0 +1,284 @@
+{
+  "status": "captured",
+  "pixelQaOnly": true,
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-local-edit-cache-QJkKeb/baseline-host",
+  "kind": "sketch",
+  "target": {
+    "id": "8BFE928D-991B-4534-88F0-D335E5BD6246",
+    "name": "Vector",
+    "mask": true,
+    "width": 21.37109375,
+    "height": 11.716064453125
+  },
+  "camera": {
+    "x": -2735.9075723830733,
+    "y": -1999.3229398663698,
+    "z": 0.43875278396436523
+  },
+  "undoRedoExact": true,
+  "reopenedMaterialExact": true,
+  "savedFile": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-local-edit-cache-QJkKeb/pixels-sketch-2-a/local-edit.sketch",
+  "edits": [
+    {
+      "value": "50",
+      "elapsedMs": 5058,
+      "damage": [
+        {
+          "full": true,
+          "reason": "masked-chain"
+        }
+      ],
+      "viewportTilesSubmitted": 25,
+      "tiles": 25,
+      "drawCalls": 55449,
+      "compileMs": 1410.3000001907349,
+      "graphMs": 4192.599999904633,
+      "checkpointMs": 2362.800004005432,
+      "failures": [],
+      "uiStalls": 0,
+      "competing": [
+        {
+          "at": 1793000840244,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000841254,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000842375,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000843274,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000844261,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000845250,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000846250,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        }
+      ],
+      "blur": [],
+      "mutationObserved": true,
+      "performanceAdmissible": false
+    },
+    {
+      "value": "100",
+      "elapsedMs": 4974,
+      "damage": [
+        {
+          "full": true,
+          "reason": "masked-chain"
+        }
+      ],
+      "viewportTilesSubmitted": 25,
+      "tiles": 25,
+      "drawCalls": 55433,
+      "compileMs": 1390.1999999284744,
+      "graphMs": 4026.699999809265,
+      "checkpointMs": 2351.400000333786,
+      "failures": [],
+      "uiStalls": 0,
+      "competing": [
+        {
+          "at": 1793000850268,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000851268,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000852316,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000853260,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000854276,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000855252,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000856277,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        }
+      ],
+      "blur": [],
+      "mutationObserved": true,
+      "performanceAdmissible": false
+    },
+    {
+      "value": "50",
+      "elapsedMs": 5015,
+      "damage": [
+        {
+          "full": true,
+          "reason": "masked-chain"
+        }
+      ],
+      "viewportTilesSubmitted": 25,
+      "tiles": 25,
+      "drawCalls": 55224,
+      "compileMs": 1280.9000002145767,
+      "graphMs": 4130.899999856949,
+      "checkpointMs": 2504.3000007867813,
+      "failures": [],
+      "uiStalls": 0,
+      "competing": [
+        {
+          "at": 1793000861262,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000862285,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000863273,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000864261,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000865274,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000866270,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000867264,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        }
+      ],
+      "blur": [],
+      "mutationObserved": true,
+      "performanceAdmissible": false
+    },
+    {
+      "value": "100",
+      "elapsedMs": 5334,
+      "damage": [
+        {
+          "full": true,
+          "reason": "masked-chain"
+        }
+      ],
+      "viewportTilesSubmitted": 25,
+      "tiles": 25,
+      "drawCalls": 55363,
+      "compileMs": 1644.0000002384186,
+      "graphMs": 4354.699999928474,
+      "checkpointMs": 2475.5999997854233,
+      "failures": [],
+      "uiStalls": 0,
+      "competing": [
+        {
+          "at": 1793000871273,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000872318,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000873332,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000874292,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000875284,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000876293,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        },
+        {
+          "at": 1793000877272,
+          "rows": [
+            "84267   0.0 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo"
+          ]
+        }
+      ],
+      "blur": [],
+      "mutationObserved": true,
+      "performanceAdmissible": false
+    }
+  ],
+  "semantics": "Foreground GUI UI-edit start to existing exact-content readiness (includes harness settle check); draw/tile counters, not physical scanout or GPU timestamp. Screenshots are outside timing."
+}

@@ -1,0 +1,29 @@
+{
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/large-edit-4",
+  "scope": "sampled real Electron native-input integration; UI and existing browser workers, native Rust process and GPU execution are not V8 CPU stacks",
+  "startedAt": 1792967032065,
+  "endedAt": 1792967044165,
+  "results": [
+    {
+      "target": {
+        "type": "renderer",
+        "title": "UI 主线程"
+      },
+      "file": "cpu-0.cpuprofile"
+    },
+    {
+      "target": {
+        "attached": true,
+        "browserContextId": "6DA42183C2A77DB31A12EDD7C7C95B20",
+        "canAccessOpener": false,
+        "parentFrameId": "FED7AFEFA77D28DF5A5949ABC06D7B29",
+        "parentId": "FED7AFEFA77D28DF5A5949ABC06D7B29",
+        "targetId": "3698031515D125BD7370C21564F23E8F",
+        "title": "design-app://app/assets/render-worker-BWIr7ijp.js",
+        "type": "worker",
+        "url": "design-app://app/assets/render-worker-BWIr7ijp.js"
+      },
+      "file": "cpu-1.cpuprofile"
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+  "status": "failed",
+  "start": 1792945646103,
+  "end": 1792945648047,
+  "submits": 225,
+  "measured": 225,
+  "minCoverage": 1,
+  "minSharpCoverage": 0.75,
+  "minNativePhaseCoverage": 0.75,
+  "maxUpscale": 2.2791878172588835,
+  "alphaFrames": 225,
+  "invalidAlpha": 0,
+  "transparentFrames": 0,
+  "maxTransparentPixels": 0,
+  "failures": [],
+  "convergenceMs": 154,
+  "phases": [
+    {
+      "label": "pan",
+      "settleMs": 36,
+      "events": 23
+    },
+    {
+      "label": "pan-return",
+      "settleMs": 35,
+      "events": 25
+    },
+    {
+      "label": "pan-again",
+      "settleMs": 37,
+      "events": 21
+    },
+    {
+      "label": "pan-reverse",
+      "settleMs": 38,
+      "events": 24
+    }
+  ],
+  "maxPipelineMs": null,
+  "maxGraphMs": null,
+  "maxTileMs": 150.70000004768372,
+  "error": "Error: expect(locator).toContainText(expected) failed\n\nLocator: locator('.source-canvas-status')\nExpected substring: \"画布修改已保存到源文件缓存\"\nReceived string:    \"当前画板 / 对象已载入：4,022 个场景节点。已导入，可以继续编辑 · 3 项兼容提示×查看兼容说明部分 Sketch 专有属性暂不支持完整编辑，建议保留原始 .sketch 文件。文件未嵌入所用字体，已使用内置字体；可在文字面板导入并匹配字体。布尔组合已转换为本地矢量结构，原始设置已保留。\"\nTimeout: 180000ms\n\nCall log:\n  - Expect \"toContainText\" locator('.source-canvas-status') with timeout 180000ms\n  - waiting for locator('.source-canvas-status')\n    359 × locator resolved to <div class=\"source-canvas-status\">…</div>\n        - unexpected value \"当前画板 / 对象已载入：4,022 个场景节点。已导入，可以继续编辑 · 3 项兼容提示×查看兼容说明部分 Sketch 专有属性暂不支持完整编辑，建议保留原始 .sketch 文件。文件未嵌入所用字体，已使用内置字体；可在文字面板导入并匹配字体。布尔组合已转换为本地矢量结构，原始设置已保留。\"\n",
+  "motionGate": "FAIL"
+}

@@ -1,0 +1,161 @@
+[
+  {
+    "name": "candidate-5-large-a",
+    "case": "1:5",
+    "exit": 0,
+    "quality": {
+      "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+      "status": "captured",
+      "start": 1792967676831,
+      "end": 1792967685582,
+      "submits": 29,
+      "measured": 29,
+      "minCoverage": 1,
+      "minSharpCoverage": 1,
+      "minNativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "alphaFrames": 29,
+      "invalidAlpha": 0,
+      "transparentFrames": 0,
+      "maxTransparentPixels": 0,
+      "failures": [],
+      "convergenceMs": 6411,
+      "deliveredPointerUpToSettledMs": 6729.10009765625,
+      "phases": [
+        {
+          "label": "pan",
+          "settleMs": 35,
+          "events": 21
+        },
+        {
+          "label": "pan-return",
+          "settleMs": 38,
+          "events": 24
+        },
+        {
+          "label": "pan-again",
+          "settleMs": 36,
+          "events": 24
+        },
+        {
+          "label": "pan-reverse",
+          "settleMs": 37,
+          "events": 22
+        }
+      ],
+      "maxPipelineMs": 6142.899999976158,
+      "maxGraphMs": 4904.799999594688,
+      "maxTileMs": 489.5,
+      "coverageGate": "PASS",
+      "poseLatencyGate": "NOT_MEASURED",
+      "physicalLatencyGate": "BLOCKED_THRESHOLD_UNREGISTERED",
+      "motionGate": "INCOMPLETE"
+    }
+  },
+  {
+    "name": "candidate-5-large-b",
+    "case": "1:32480",
+    "exit": 0,
+    "quality": {
+      "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+      "status": "captured",
+      "start": 1792967755970,
+      "end": 1792967760820,
+      "submits": 25,
+      "measured": 25,
+      "minCoverage": 1,
+      "minSharpCoverage": 1,
+      "minNativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "alphaFrames": 25,
+      "invalidAlpha": 0,
+      "transparentFrames": 0,
+      "maxTransparentPixels": 0,
+      "failures": [],
+      "convergenceMs": 2011,
+      "deliveredPointerUpToSettledMs": 2498.5,
+      "phases": [
+        {
+          "label": "pan",
+          "settleMs": 35,
+          "events": 21
+        },
+        {
+          "label": "pan-return",
+          "settleMs": 38,
+          "events": 20
+        },
+        {
+          "label": "pan-again",
+          "settleMs": 38,
+          "events": 22
+        },
+        {
+          "label": "pan-reverse",
+          "settleMs": 37,
+          "events": 22
+        }
+      ],
+      "maxPipelineMs": 1923.2000000476837,
+      "maxGraphMs": 1259.0000002384186,
+      "maxTileMs": 865.8000000715256,
+      "coverageGate": "PASS",
+      "poseLatencyGate": "NOT_MEASURED",
+      "physicalLatencyGate": "BLOCKED_THRESHOLD_UNREGISTERED",
+      "motionGate": "INCOMPLETE"
+    }
+  },
+  {
+    "name": "candidate-5-large-c",
+    "case": "1:81474",
+    "exit": 0,
+    "quality": {
+      "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+      "status": "captured",
+      "start": 1792967816077,
+      "end": 1792967821668,
+      "submits": 29,
+      "measured": 29,
+      "minCoverage": 1,
+      "minSharpCoverage": 1,
+      "minNativePhaseCoverage": 1,
+      "maxUpscale": 1,
+      "alphaFrames": 27,
+      "invalidAlpha": 0,
+      "transparentFrames": 0,
+      "maxTransparentPixels": 0,
+      "failures": [],
+      "convergenceMs": 2658,
+      "deliveredPointerUpToSettledMs": 3153.2998046875,
+      "phases": [
+        {
+          "label": "pan",
+          "settleMs": 37,
+          "events": 19
+        },
+        {
+          "label": "pan-return",
+          "settleMs": 37,
+          "events": 20
+        },
+        {
+          "label": "pan-again",
+          "settleMs": 38,
+          "events": 20
+        },
+        {
+          "label": "pan-reverse",
+          "settleMs": 38,
+          "events": 19
+        }
+      ],
+      "maxPipelineMs": 2596,
+      "maxGraphMs": 2283.399999856949,
+      "maxTileMs": 740.9999998807907,
+      "coverageGate": "PASS",
+      "poseLatencyGate": "NOT_MEASURED",
+      "physicalLatencyGate": "BLOCKED_THRESHOLD_UNREGISTERED",
+      "motionGate": "INCOMPLETE"
+    }
+  }
+]

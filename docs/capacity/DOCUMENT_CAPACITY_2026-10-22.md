@@ -1,5 +1,21 @@
 # Resource-aware local document capacity
 
+## Frame resources, 2026-10-25
+
+The native FGSC producer and JavaScript frame-resource receiver no longer have
+a fixed 32 MiB retention ceiling. Both use the trusted startup `memoryBytes`
+policy already pinned for their runtime. Documents and packet metadata cannot
+raise it. Native immutable resources and the retained same-request frame share
+that native allowance; cache statistics report the actual limit and its source.
+JavaScript retains charges for retired resources until every outstanding ACK
+cohort releases them, including retransmission of a previously evicted entry.
+
+This explicitly requested capacity change is separate from a performance result.
+It does not change GPU working-set admission, single-resource/device limits,
+sampling, effects or export precision. Per-runtime cache accounting is not a
+process-wide RSS guarantee. The earlier document/source policy below still
+applies independently.
+
 Candidate based on main 5494bb50. This describes implementation and remaining
 limits, not an unlimited-memory or production acceptance claim. See the final
 verification record for exact build hashes, completed tests and actual ten-copy
@@ -173,3 +189,18 @@ A paged document model with per-page/asset persistent chunks, incremental
 admission and bounded materialization would be a separate architectural change.
 It must preserve arbitrary authored values, references, history, native FD
 compatibility and atomic commits, rather than merely substituting a higher cap.
+
+
+## macOS native startup detection, 2026-10-26
+
+Native macOS processes without an inherited launch policy now query available
+memory through the safe `sysinfo` 0.37.2 platform adapter (RAM refresh only).
+They retain the existing half-memory headroom, wasm32 ceiling, 16× document
+reserve and once-per-process pin. The kernel still forbids unsafe code. Explicit
+trusted overrides retain their precedence and fail-closed validation. Electron
+continues passing its exact startup policy to every participant.
+
+A small actual available-memory reading can still yield a small document
+allowance. Large source pages therefore use explicit consecutive working sets;
+this is separate from raising a budget or claiming a full-page live scene.
+See [the measured regression record](../../testing/verification-source-page-load-20261026/README.md).

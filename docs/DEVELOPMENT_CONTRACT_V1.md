@@ -35,6 +35,8 @@ Validate schemas and all batch wrapper/leaf permissions before mutation callback
 
 ## Performance, rendering and interaction acceptance
 
+The [2026-10-25 rendering pipeline increment](../testing/verification-render-pipeline-20261025/README.md) adds bounded subtree fragments, transport-independent exact source identities and cooperative preparation cancellation. These do not authorize approximate hashes, expanded memory budgets, cancellation of ordered mutations, or early release of in-flight resources. Preserve its per-backend cancellation and opt-in large-filter boundaries; scoped hardware pixel equality remains separate from whole-editor motion acceptance.
+
 Performance work must preserve authored semantics, typography, transforms, clipping, material/effect output, HDR/float data, undo/redo and query results. Optimize from actual CPU profiles and named hot paths, not synthetic scheduling estimates. Keep baseline/candidate workloads, source/build hashes, timing units, warm-up, sample counts, run order, profiler overhead and correctness comparisons. A single sequential sampler-on run cannot support a general speedup claim. V8 symbols are real JS symbols; stripped WASM function indexes are not resolved Rust stacks.
 
 CPU fallback must use the existing exact-frame handoff and handle missing adapters/device loss without reusing a GPU-transferred canvas as a CPU canvas. Cancellation or invalid input is not a rendering failure to hide. SDR presentation must visibly disclose retained HDR/float document data; HDR exports and data preservation do not prove HDR display output.

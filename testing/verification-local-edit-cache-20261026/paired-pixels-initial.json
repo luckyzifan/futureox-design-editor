@@ -1,0 +1,302 @@
+[
+  {
+    "kind": "fig",
+    "repeat": 1,
+    "file": "original.png",
+    "size": [
+      1710,
+      1672
+    ],
+    "differentChannels": 0,
+    "bbox": null,
+    "baselineSha256": "fb39ad257e90a0bbe1c872d9c31f79321aa5e627c1e7faca989f92d40bc2f594",
+    "candidateSha256": "fb39ad257e90a0bbe1c872d9c31f79321aa5e627c1e7faca989f92d40bc2f594"
+  },
+  {
+    "kind": "fig",
+    "repeat": 1,
+    "file": "edit-0.png",
+    "size": [
+      1710,
+      1672
+    ],
+    "differentChannels": 0,
+    "bbox": null,
+    "baselineSha256": "166921bd0a832df6ef2454baadbcb6c33d1ada974dcb5c99bcf9e36b1a11f1d5",
+    "candidateSha256": "166921bd0a832df6ef2454baadbcb6c33d1ada974dcb5c99bcf9e36b1a11f1d5"
+  },
+  {
+    "kind": "fig",
+    "repeat": 1,
+    "file": "edit-1.png",
+    "size": [
+      1710,
+      1672
+    ],
+    "differentChannels": 0,
+    "bbox": null,
+    "baselineSha256": "78974b46b840898896a65560d11fdf741fedf2dfd831d6f493b319e8bd57ec2b",
+    "candidateSha256": "78974b46b840898896a65560d11fdf741fedf2dfd831d6f493b319e8bd57ec2b"
+  },
+  {
+    "kind": "fig",
+    "repeat": 1,
+    "file": "edit-2.png",
+    "size": [
+      1710,
+      1672
+    ],
+    "differentChannels": 109992,
+    "bbox": [
+      8,
+      1644,
+      1678,
+      1666
+    ],
+    "baselineSha256": "333eb766e7b04b5d717fb6b27701446d38c8a584c1cadf252448377b042c6464",
+    "candidateSha256": "166921bd0a832df6ef2454baadbcb6c33d1ada974dcb5c99bcf9e36b1a11f1d5"
+  },
+  {
+    "kind": "fig",
+    "repeat": 1,
+    "file": "edit-3.png",
+    "size": [
+      1710,
+      1672
+    ],
+    "differentChannels": 0,
+    "bbox": null,
+    "baselineSha256": "78974b46b840898896a65560d11fdf741fedf2dfd831d6f493b319e8bd57ec2b",
+    "candidateSha256": "78974b46b840898896a65560d11fdf741fedf2dfd831d6f493b319e8bd57ec2b"
+  },
+  {
+    "kind": "fig",
+    "repeat": 2,
+    "file": "original.png",
+    "size": [
+      1710,
+      1672
+    ],
+    "differentChannels": 0,
+    "bbox": null,
+    "baselineSha256": "fb39ad257e90a0bbe1c872d9c31f79321aa5e627c1e7faca989f92d40bc2f594",
+    "candidateSha256": "fb39ad257e90a0bbe1c872d9c31f79321aa5e627c1e7faca989f92d40bc2f594"
+  },
+  {
+    "kind": "fig",
+    "repeat": 2,
+    "file": "edit-0.png",
+    "size": [
+      1710,
+      1672
+    ],
+    "differentChannels": 5129,
+    "bbox": [
+      888,
+      808,
+      918,
+      1071
+    ],
+    "baselineSha256": "166921bd0a832df6ef2454baadbcb6c33d1ada974dcb5c99bcf9e36b1a11f1d5",
+    "candidateSha256": "1deb25d62adbc6a71a88cbfb5011ab6ad552d0b0f6f76a512af843c98b3a6c72"
+  },
+  {
+    "kind": "fig",
+    "repeat": 2,
+    "file": "edit-1.png",
+    "size": [
+      1710,
+      1672
+    ],
+    "differentChannels": 0,
+    "bbox": null,
+    "baselineSha256": "78974b46b840898896a65560d11fdf741fedf2dfd831d6f493b319e8bd57ec2b",
+    "candidateSha256": "78974b46b840898896a65560d11fdf741fedf2dfd831d6f493b319e8bd57ec2b"
+  },
+  {
+    "kind": "fig",
+    "repeat": 2,
+    "file": "edit-2.png",
+    "size": [
+      1710,
+      1672
+    ],
+    "differentChannels": 0,
+    "bbox": null,
+    "baselineSha256": "166921bd0a832df6ef2454baadbcb6c33d1ada974dcb5c99bcf9e36b1a11f1d5",
+    "candidateSha256": "166921bd0a832df6ef2454baadbcb6c33d1ada974dcb5c99bcf9e36b1a11f1d5"
+  },
+  {
+    "kind": "fig",
+    "repeat": 2,
+    "file": "edit-3.png",
+    "size": [
+      1710,
+      1672
+    ],
+    "differentChannels": 0,
+    "bbox": null,
+    "baselineSha256": "78974b46b840898896a65560d11fdf741fedf2dfd831d6f493b319e8bd57ec2b",
+    "candidateSha256": "78974b46b840898896a65560d11fdf741fedf2dfd831d6f493b319e8bd57ec2b"
+  },
+  {
+    "kind": "fig",
+    "repeat": 3,
+    "file": "original.png",
+    "size": [
+      1710,
+      1672
+    ],
+    "differentChannels": 4517,
+    "bbox": [
+      472,
+      1200,
+      692,
+      1366
+    ],
+    "baselineSha256": "690a40b401519abf9eb1993e5afff8f58c8f81f5f08abbdc6ec81cbaba4aeee3",
+    "candidateSha256": "fb39ad257e90a0bbe1c872d9c31f79321aa5e627c1e7faca989f92d40bc2f594"
+  },
+  {
+    "kind": "fig",
+    "repeat": 3,
+    "file": "edit-0.png",
+    "size": [
+      1710,
+      1672
+    ],
+    "differentChannels": 0,
+    "bbox": null,
+    "baselineSha256": "166921bd0a832df6ef2454baadbcb6c33d1ada974dcb5c99bcf9e36b1a11f1d5",
+    "candidateSha256": "166921bd0a832df6ef2454baadbcb6c33d1ada974dcb5c99bcf9e36b1a11f1d5"
+  },
+  {
+    "kind": "fig",
+    "repeat": 3,
+    "file": "edit-1.png",
+    "size": [
+      1710,
+      1672
+    ],
+    "differentChannels": 5019,
+    "bbox": [
+      554,
+      1267,
+      745,
+      1504
+    ],
+    "baselineSha256": "80d02eeab72eb05cf4e80cc4291c93169af9a436f94e97910b193ea871a71faf",
+    "candidateSha256": "78974b46b840898896a65560d11fdf741fedf2dfd831d6f493b319e8bd57ec2b"
+  },
+  {
+    "kind": "fig",
+    "repeat": 3,
+    "file": "edit-2.png",
+    "size": [
+      1710,
+      1672
+    ],
+    "differentChannels": 3813,
+    "bbox": [
+      560,
+      1288,
+      719,
+      1465
+    ],
+    "baselineSha256": "a123ade0dd163e6d2996caaccc030b67c8c825583da49ed0b6b716ec5ae75b83",
+    "candidateSha256": "166921bd0a832df6ef2454baadbcb6c33d1ada974dcb5c99bcf9e36b1a11f1d5"
+  },
+  {
+    "kind": "fig",
+    "repeat": 3,
+    "file": "edit-3.png",
+    "size": [
+      1710,
+      1672
+    ],
+    "differentChannels": 3813,
+    "bbox": [
+      560,
+      1288,
+      719,
+      1465
+    ],
+    "baselineSha256": "3da2132a8838b5e3ad33025024c5b2d54e51339fd0132bf9f0812251afd5b9bd",
+    "candidateSha256": "78974b46b840898896a65560d11fdf741fedf2dfd831d6f493b319e8bd57ec2b"
+  },
+  {
+    "kind": "117",
+    "repeat": 1,
+    "file": "original.png",
+    "size": [
+      1710,
+      1672
+    ],
+    "differentChannels": 37480,
+    "bbox": [
+      79,
+      399,
+      1630,
+      1273
+    ],
+    "baselineSha256": "9c2d2d14278e2d4d36fceddd596c4dcd36ba6cb2aee3101bff4f2ca859b44b0c",
+    "candidateSha256": "7e729cfa33cb589547b53648b2f47cb2bff9a4c6c3c55357fd8eac0d80dc0ab2"
+  },
+  {
+    "kind": "117",
+    "repeat": 1,
+    "file": "edit-0.png",
+    "size": [
+      1710,
+      1672
+    ],
+    "differentChannels": 0,
+    "bbox": null,
+    "baselineSha256": "1640e7b4d249f8ed2872aa1cc0489d674610da9910f3874dfacf9c79a3ffc9b2",
+    "candidateSha256": "1640e7b4d249f8ed2872aa1cc0489d674610da9910f3874dfacf9c79a3ffc9b2"
+  },
+  {
+    "kind": "117",
+    "repeat": 1,
+    "file": "edit-1.png",
+    "size": [
+      1710,
+      1672
+    ],
+    "differentChannels": 0,
+    "bbox": null,
+    "baselineSha256": "9c2d2d14278e2d4d36fceddd596c4dcd36ba6cb2aee3101bff4f2ca859b44b0c",
+    "candidateSha256": "9c2d2d14278e2d4d36fceddd596c4dcd36ba6cb2aee3101bff4f2ca859b44b0c"
+  },
+  {
+    "kind": "117",
+    "repeat": 1,
+    "file": "edit-2.png",
+    "size": [
+      1710,
+      1672
+    ],
+    "differentChannels": 1588,
+    "bbox": [
+      262,
+      763,
+      339,
+      782
+    ],
+    "baselineSha256": "1640e7b4d249f8ed2872aa1cc0489d674610da9910f3874dfacf9c79a3ffc9b2",
+    "candidateSha256": "1cfe4af2ac0f719aefb9b3e462174c7360574b1737c85979c189977ed00e5911"
+  },
+  {
+    "kind": "117",
+    "repeat": 1,
+    "file": "edit-3.png",
+    "size": [
+      1710,
+      1672
+    ],
+    "differentChannels": 0,
+    "bbox": null,
+    "baselineSha256": "9c2d2d14278e2d4d36fceddd596c4dcd36ba6cb2aee3101bff4f2ca859b44b0c",
+    "candidateSha256": "9c2d2d14278e2d4d36fceddd596c4dcd36ba6cb2aee3101bff4f2ca859b44b0c"
+  }
+]

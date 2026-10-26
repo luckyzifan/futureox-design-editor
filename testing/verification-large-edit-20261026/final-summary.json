@@ -1,0 +1,88 @@
+{
+  "at": "2026-10-25T23:08:49.788471+00:00",
+  "functional": [
+    {
+      "run": "final-5-functional-117",
+      "status": "passed",
+      "undoRedo": true,
+      "saved": true,
+      "exported": true,
+      "reopened": true,
+      "export": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/final-5-functional-117/drag-verified.fd",
+      "exportBytes": 4470999,
+      "exportSha256": "dc5ea0f0917a7e3a3adb4c74308f2ed0d023eb867479575b26374f9da2086b3d"
+    },
+    {
+      "run": "final-5-functional-fig",
+      "status": "passed",
+      "undoRedo": true,
+      "saved": true,
+      "exported": true,
+      "reopened": true,
+      "export": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/final-5-functional-fig/drag-verified.fd",
+      "exportBytes": 11786450,
+      "exportSha256": "c89008c412d5ddc673c838461a3a51097c054b07ee9c03ab489e7e82590796fc"
+    },
+    {
+      "run": "final-5-functional-sketch-a",
+      "status": "passed",
+      "undoRedo": true,
+      "saved": true,
+      "exported": true,
+      "reopened": true,
+      "export": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/final-5-functional-sketch-a/drag-verified.sketch",
+      "exportBytes": 119392744,
+      "exportSha256": "410da9f52a84d27cc367bb104b530ac8b7cd00f012b64bb29e5db946076b5d33"
+    },
+    {
+      "run": "final-5-functional-sketch-b-retry",
+      "status": "passed",
+      "undoRedo": true,
+      "saved": true,
+      "exported": true,
+      "reopened": true,
+      "export": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/final-5-functional-sketch-b-retry/drag-verified.sketch",
+      "exportBytes": 119392734,
+      "exportSha256": "23053cc072e92afab960bec772b6f1a6f588761a1ac118987a86ff08dccf61cc"
+    },
+    {
+      "run": "final-5-functional-sketch-c-retry",
+      "status": "passed",
+      "undoRedo": true,
+      "saved": true,
+      "exported": true,
+      "reopened": true,
+      "export": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/final-5-functional-sketch-c-retry/drag-verified.sketch",
+      "exportBytes": 119392719,
+      "exportSha256": "3f91214ef15119add877a7babc95887c00494a2116c3bb04fbe71f572f7c390e"
+    }
+  ],
+  "fixtures": [
+    {
+      "file": "/Users/Apple/Downloads/117.sketch",
+      "bytes": 5013257,
+      "sha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "unchanged": true
+    },
+    {
+      "file": "/Users/Apple/Downloads/\u62d3\u6251\u7d20\u6750.sketch",
+      "bytes": 118272240,
+      "sha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "unchanged": true
+    },
+    {
+      "file": "/Users/Apple/Downloads/01\u6709\u6599\u7d20\u6750 (Copy).fig",
+      "bytes": 649304,
+      "sha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "unchanged": true
+    }
+  ],
+  "sourceFiles": 8,
+  "testResults": {
+    "combinedPassed": 369,
+    "preexistingFailures": 5,
+    "additionalClientPassed": 50,
+    "typecheck": "passed"
+  },
+  "scope": "Focused large-file edit improvement, not full rendering acceptance"
+}

@@ -994,7 +994,6 @@ impl GradientCoordinates {
 /// coordinate map has a zero coefficient. Empty means use the dense field.
 /// Header is [width,height,0,0], followed by unchanged RGBA32F parameters.
 pub fn gradient_sampling_axes(rect:Rect,matrix:Transform,size:[f64;2],paint:&Paint,sample:Option<usize>)->Result<Vec<f32>,String>{
-    if u64::from(rect.w)*u64::from(rect.h)>4_194_304{return Err("Parameter field exceeds 64 MiB".into());}
     if paint.kind!="linear"||rect.w==0||rect.h==0{return Ok(Vec::new());}
     let coordinates=GradientCoordinates::new(paint,size,matrix,rect)?;
     let Some(fixed)=coordinates.fixed_gradient.as_ref() else{return Ok(Vec::new())};
@@ -1003,7 +1002,11 @@ pub fn gradient_sampling_axes(rect:Rect,matrix:Transform,size:[f64;2],paint:&Pai
     if !no_x&&!no_y{return Ok(Vec::new());}
     let region=Rect::new(rect.x,rect.y,if no_x{1}else{rect.w},if no_y{1}else{rect.h});
     let mut result=vec![region.w as f32,region.h as f32,0.,0.];
-    result.extend(gradient_sampling_grid_region(rect,region,matrix,size,paint,sample)?);
+    // Charge the field that is actually allocated, not the unallocated dense
+    // rectangle. Keep coefficients certified against the ORIGINAL geometry
+    // domain and let parameter_grid enforce the unchanged 64 MiB allocation
+    // and endpoint guards. Dense/nonseparable fields keep their original cap.
+    result.extend(gradient_parameters(region,&coordinates,sample)?);
     Ok(result)
 }
 
@@ -1030,6 +1033,9 @@ pub fn gradient_sampling_grid_region(
         return Err("Gradient field region exceeds original geometry domain".into());
     }
     let coordinates = GradientCoordinates::new(paint, size, matrix, original)?;
+    gradient_parameters(rect,&coordinates,sample)
+}
+fn gradient_parameters(rect:Rect,coordinates:&GradientCoordinates,sample:Option<usize>)->Result<Vec<f32>,String>{
     let offset = match sample {
         Some(i) => *crate::fidelity::SAMPLE_OFFSETS
             .get(i)

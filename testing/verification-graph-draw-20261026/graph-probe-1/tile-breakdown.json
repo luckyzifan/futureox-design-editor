@@ -1,0 +1,3014 @@
+{
+  "scope": "real foreground Electron/native preparation/hardware rendering; overlapping elapsed stages, not GPU timestamps or physical scanout",
+  "requestId": 117,
+  "target": {
+    "key": "1:5",
+    "id": "08856B36-020D-46FC-AC59-55F38CDB82BE"
+  },
+  "camera": {
+    "x": -6782.5,
+    "y": -5112,
+    "z": 1
+  },
+  "pointerupToSettledMs": 7364.60009765625,
+  "pipelineWallMs": 6788.200000047684,
+  "compileTotalMs": 1988.2000004053116,
+  "exposedPreparationWaitMs": 204.79999995231628,
+  "graphTotalMs": 5270.299999952316,
+  "graphCheckpointMs": 2931.6000003814697,
+  "graphOtherElapsedMs": 2338.6999995708466,
+  "finishTotalMs": 339.099999666214,
+  "materialFieldBuildMs": 152.20000112056732,
+  "materialFieldUploadBytes": 77810368,
+  "drawCalls": 82155,
+  "submissions": 951,
+  "deviceIncarnations": [
+    "49534625527048:2"
+  ],
+  "cacheInvalidations": 4,
+  "peakTextureBytes": 1033352140,
+  "workingTextureBytes": 594922724,
+  "nativeCalls": 32,
+  "nativeSuccesses": 24,
+  "nativeRejected": [
+    {
+      "at": 1792991226385,
+      "duration": 28.557750000007218,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 243
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13823,
+        "y": 10239,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      }
+    },
+    {
+      "at": 1792991226723,
+      "duration": 27.040416999996523,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 245
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13823,
+        "y": 10239,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      }
+    },
+    {
+      "at": 1792991228599,
+      "duration": 30.91812500001106,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 254
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13311,
+        "y": 10239,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      }
+    },
+    {
+      "at": 1792991229001,
+      "duration": 28.057042000000365,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 256
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13311,
+        "y": 10239,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      }
+    },
+    {
+      "at": 1792991229498,
+      "duration": 41.42866700000013,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 259
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13823,
+        "y": 9727,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      }
+    },
+    {
+      "at": 1792991229842,
+      "duration": 54.9857090000005,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 261
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13823,
+        "y": 9727,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      }
+    },
+    {
+      "at": 1792991230796,
+      "duration": 24.00504199998977,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 266
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      }
+    },
+    {
+      "at": 1792991231100,
+      "duration": 33.02399999999034,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 267
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      }
+    }
+  ],
+  "boundaries": {
+    "9": {
+      "count": 32,
+      "totalMs": 0.03603999997721985,
+      "maxMs": 0.0024160000029951334
+    },
+    "10": {
+      "count": 32,
+      "totalMs": 20.38316599999962,
+      "maxMs": 1.043082999996841
+    },
+    "11": {
+      "count": 32,
+      "totalMs": 1575.018665999989,
+      "maxMs": 180.81674999999814
+    }
+  },
+  "fences": [
+    {
+      "reason": 6,
+      "waitMs": 162.60000002384186,
+      "pressure": 0,
+      "working": 671641824
+    },
+    {
+      "reason": 6,
+      "waitMs": 2.299999952316284,
+      "pressure": 0,
+      "working": 673783940
+    },
+    {
+      "reason": 6,
+      "waitMs": 71.70000004768372,
+      "pressure": 0,
+      "working": 955241304
+    },
+    {
+      "reason": 6,
+      "waitMs": 1.5,
+      "pressure": 0,
+      "working": 756587136
+    },
+    {
+      "reason": 6,
+      "waitMs": 91.60000002384186,
+      "pressure": 0,
+      "working": 807511920
+    },
+    {
+      "reason": 6,
+      "waitMs": 0.8999999761581421,
+      "pressure": 0,
+      "working": 621636960
+    },
+    {
+      "reason": 6,
+      "waitMs": 1.399999976158142,
+      "pressure": 0,
+      "working": 759498992
+    },
+    {
+      "reason": 6,
+      "waitMs": 1.7000000476837158,
+      "pressure": 0,
+      "working": 778042232
+    },
+    {
+      "reason": 6,
+      "waitMs": 144.5,
+      "pressure": 0,
+      "working": 1011862752
+    },
+    {
+      "reason": 9,
+      "waitMs": 9.299999952316284
+    },
+    {
+      "reason": 6,
+      "waitMs": 126.69999992847443,
+      "pressure": 0,
+      "working": 368708612
+    },
+    {
+      "reason": 5,
+      "waitMs": 59.700000047683716
+    },
+    {
+      "reason": 6,
+      "waitMs": 130.20000004768372,
+      "pressure": 0,
+      "working": 682475188
+    },
+    {
+      "reason": 6,
+      "waitMs": 115.5,
+      "pressure": 0,
+      "working": 875871588
+    },
+    {
+      "reason": 6,
+      "waitMs": 1.5999999046325684,
+      "pressure": 0,
+      "working": 788801404
+    },
+    {
+      "reason": 6,
+      "waitMs": 145.29999995231628,
+      "pressure": 0,
+      "working": 761405580
+    },
+    {
+      "reason": 6,
+      "waitMs": 1.5,
+      "pressure": 0,
+      "working": 795198088
+    },
+    {
+      "reason": 6,
+      "waitMs": 1.5,
+      "pressure": 0,
+      "working": 763182752
+    },
+    {
+      "reason": 6,
+      "waitMs": 115.70000004768372,
+      "pressure": 0,
+      "working": 904350088
+    },
+    {
+      "reason": 6,
+      "waitMs": 123.10000002384186,
+      "pressure": 0,
+      "working": 875918976
+    },
+    {
+      "reason": 6,
+      "waitMs": 1.7000000476837158,
+      "pressure": 0,
+      "working": 805225116
+    },
+    {
+      "reason": 9,
+      "waitMs": 9.600000023841858
+    },
+    {
+      "reason": 5,
+      "waitMs": 50.5
+    },
+    {
+      "reason": 6,
+      "waitMs": 132.60000002384186,
+      "pressure": 0,
+      "working": 532224920
+    },
+    {
+      "reason": 6,
+      "waitMs": 144.19999992847443,
+      "pressure": 0,
+      "working": 961296092
+    },
+    {
+      "reason": 6,
+      "waitMs": 1.1999999284744263,
+      "pressure": 0,
+      "working": 920664464
+    },
+    {
+      "reason": 5,
+      "waitMs": 66.20000004768372
+    },
+    {
+      "reason": 6,
+      "waitMs": 115.79999995231628,
+      "pressure": 0,
+      "working": 595343796
+    },
+    {
+      "reason": 6,
+      "waitMs": 115.80000007152557,
+      "pressure": 0,
+      "working": 836783896
+    },
+    {
+      "reason": 6,
+      "waitMs": 2,
+      "pressure": 0,
+      "working": 800041728
+    },
+    {
+      "reason": 6,
+      "waitMs": 157.10000002384186,
+      "pressure": 0,
+      "working": 1033352108
+    },
+    {
+      "reason": 6,
+      "waitMs": 2.0999999046325684,
+      "pressure": 0,
+      "working": 789544820
+    },
+    {
+      "reason": 5,
+      "waitMs": 49.10000002384186
+    },
+    {
+      "reason": 6,
+      "waitMs": 124.5,
+      "pressure": 0,
+      "working": 526539484
+    }
+  ],
+  "ui": {
+    "diagnosticStalls": 0,
+    "diagnosticMaxMs": 200.70000000000437,
+    "phaseRafStalls": 0,
+    "phaseRafMaxMs": 200.70000000000437,
+    "windows": [
+      {
+        "v": 1,
+        "session": 232112287158,
+        "source": "main",
+        "seq": 2064,
+        "at": 1792991222842,
+        "event": "frame-window",
+        "softwareRateValid": 1,
+        "submitSpanCapped": 0,
+        "windowCapped": 0,
+        "uiIntervalCapped": 0,
+        "submitIntervalCapped": 0,
+        "inputPresentCapped": 0,
+        "pendingInputAgeCapped": 0,
+        "submitIntervalCount": 10,
+        "submitSampleSpanMs": 1162.5,
+        "uncorrelatedSubmits": 0,
+        "pendingInputAgeMs": 0,
+        "windowMs": 1008.4000000000015,
+        "uiFrames": 90,
+        "uiFps": 89.25029750099154,
+        "uiIntervalP95Ms": 16.7,
+        "uiIntervalMaxMs": 200.70000000000437,
+        "uiLongFrames": 1,
+        "uiStalls": 0,
+        "softwareSubmits": 10,
+        "softwareSubmitHz": 8.602150537634408,
+        "submitIntervalP95Ms": 1000,
+        "submitIntervalMaxMs": 409,
+        "inputPresentCount": 0,
+        "inputPresentP95Ms": 0,
+        "inputPresentMaxMs": 0,
+        "staleCameraSubmits": 4,
+        "outOfOrderSubmits": 0,
+        "transformMismatch": 0,
+        "phaseChanges": 0,
+        "sameCameraSubmits": 10,
+        "changedCameraSubmits": 0,
+        "windowResetReason": 0
+      },
+      {
+        "v": 1,
+        "session": 232112287158,
+        "source": "main",
+        "seq": 2118,
+        "at": 1792991223849,
+        "event": "frame-window",
+        "softwareRateValid": 1,
+        "submitSpanCapped": 0,
+        "windowCapped": 0,
+        "uiIntervalCapped": 0,
+        "submitIntervalCapped": 0,
+        "inputPresentCapped": 0,
+        "pendingInputAgeCapped": 0,
+        "submitIntervalCount": 12,
+        "submitSampleSpanMs": 1223.60009765625,
+        "uncorrelatedSubmits": 0,
+        "pendingInputAgeMs": 0,
+        "windowMs": 1007.3000000000029,
+        "uiFrames": 87,
+        "uiFps": 86.36950263079494,
+        "uiIntervalP95Ms": 16.7,
+        "uiIntervalMaxMs": 149.6999999999971,
+        "uiLongFrames": 2,
+        "uiStalls": 0,
+        "softwareSubmits": 12,
+        "softwareSubmitHz": 9.807125729219416,
+        "submitIntervalP95Ms": 1000,
+        "submitIntervalMaxMs": 319.39990234375,
+        "inputPresentCount": 0,
+        "inputPresentP95Ms": 0,
+        "inputPresentMaxMs": 0,
+        "staleCameraSubmits": 5,
+        "outOfOrderSubmits": 0,
+        "transformMismatch": 0,
+        "phaseChanges": 0,
+        "sameCameraSubmits": 12,
+        "changedCameraSubmits": 0,
+        "windowResetReason": 0
+      },
+      {
+        "v": 1,
+        "session": 232112287158,
+        "source": "main",
+        "seq": 2164,
+        "at": 1792991224850,
+        "event": "frame-window",
+        "softwareRateValid": 1,
+        "submitSpanCapped": 0,
+        "windowCapped": 0,
+        "uiIntervalCapped": 0,
+        "submitIntervalCapped": 0,
+        "inputPresentCapped": 0,
+        "pendingInputAgeCapped": 0,
+        "submitIntervalCount": 6,
+        "submitSampleSpanMs": 538.10009765625,
+        "uncorrelatedSubmits": 0,
+        "pendingInputAgeMs": 0,
+        "windowMs": 1001,
+        "uiFrames": 106,
+        "uiFps": 105.89410589410589,
+        "uiIntervalP95Ms": 16.7,
+        "uiIntervalMaxMs": 116.69999999999709,
+        "uiLongFrames": 1,
+        "uiStalls": 0,
+        "softwareSubmits": 6,
+        "softwareSubmitHz": 11.150341778664627,
+        "submitIntervalP95Ms": 1000,
+        "submitIntervalMaxMs": 287.5,
+        "inputPresentCount": 0,
+        "inputPresentP95Ms": 0,
+        "inputPresentMaxMs": 0,
+        "staleCameraSubmits": 3,
+        "outOfOrderSubmits": 0,
+        "transformMismatch": 0,
+        "phaseChanges": 0,
+        "sameCameraSubmits": 6,
+        "changedCameraSubmits": 0,
+        "windowResetReason": 0
+      },
+      {
+        "v": 1,
+        "session": 232112287158,
+        "source": "main",
+        "seq": 2192,
+        "at": 1792991225859,
+        "event": "frame-window",
+        "softwareRateValid": 1,
+        "submitSpanCapped": 0,
+        "windowCapped": 0,
+        "uiIntervalCapped": 0,
+        "submitIntervalCapped": 0,
+        "inputPresentCapped": 0,
+        "pendingInputAgeCapped": 0,
+        "submitIntervalCount": 1,
+        "submitSampleSpanMs": 977.89990234375,
+        "uncorrelatedSubmits": 0,
+        "pendingInputAgeMs": 0,
+        "windowMs": 1008.1999999999971,
+        "uiFrames": 121,
+        "uiFps": 120.0158698670902,
+        "uiIntervalP95Ms": 16.7,
+        "uiIntervalMaxMs": 9.39999999999418,
+        "uiLongFrames": 0,
+        "uiStalls": 0,
+        "softwareSubmits": 1,
+        "softwareSubmitHz": 1.0225995499163896,
+        "submitIntervalP95Ms": 1000,
+        "submitIntervalMaxMs": 977.89990234375,
+        "inputPresentCount": 0,
+        "inputPresentP95Ms": 0,
+        "inputPresentMaxMs": 0,
+        "staleCameraSubmits": 0,
+        "outOfOrderSubmits": 0,
+        "transformMismatch": 0,
+        "phaseChanges": 0,
+        "sameCameraSubmits": 1,
+        "changedCameraSubmits": 0,
+        "windowResetReason": 0
+      },
+      {
+        "v": 1,
+        "session": 232112287158,
+        "source": "main",
+        "seq": 2224,
+        "at": 1792991226859,
+        "event": "frame-window",
+        "softwareRateValid": 0,
+        "submitSpanCapped": 0,
+        "windowCapped": 0,
+        "uiIntervalCapped": 0,
+        "submitIntervalCapped": 0,
+        "inputPresentCapped": 0,
+        "pendingInputAgeCapped": 0,
+        "submitIntervalCount": 0,
+        "submitSampleSpanMs": 0,
+        "uncorrelatedSubmits": 0,
+        "pendingInputAgeMs": 0,
+        "windowMs": 1000.1000000000058,
+        "uiFrames": 120,
+        "uiFps": 119.9880011998793,
+        "uiIntervalP95Ms": 16.7,
+        "uiIntervalMaxMs": 9.30000000000291,
+        "uiLongFrames": 0,
+        "uiStalls": 0,
+        "softwareSubmits": 0,
+        "softwareSubmitHz": 0,
+        "submitIntervalP95Ms": 0,
+        "submitIntervalMaxMs": 0,
+        "inputPresentCount": 0,
+        "inputPresentP95Ms": 0,
+        "inputPresentMaxMs": 0,
+        "staleCameraSubmits": 0,
+        "outOfOrderSubmits": 0,
+        "transformMismatch": 0,
+        "phaseChanges": 0,
+        "sameCameraSubmits": 0,
+        "changedCameraSubmits": 0,
+        "windowResetReason": 0
+      },
+      {
+        "v": 1,
+        "session": 232112287158,
+        "source": "main",
+        "seq": 2258,
+        "at": 1792991227859,
+        "event": "frame-window",
+        "softwareRateValid": 0,
+        "submitSpanCapped": 0,
+        "windowCapped": 0,
+        "uiIntervalCapped": 0,
+        "submitIntervalCapped": 0,
+        "inputPresentCapped": 0,
+        "pendingInputAgeCapped": 0,
+        "submitIntervalCount": 0,
+        "submitSampleSpanMs": 0,
+        "uncorrelatedSubmits": 0,
+        "pendingInputAgeMs": 0,
+        "windowMs": 1000,
+        "uiFrames": 120,
+        "uiFps": 120,
+        "uiIntervalP95Ms": 16.7,
+        "uiIntervalMaxMs": 9.30000000000291,
+        "uiLongFrames": 0,
+        "uiStalls": 0,
+        "softwareSubmits": 0,
+        "softwareSubmitHz": 0,
+        "submitIntervalP95Ms": 0,
+        "submitIntervalMaxMs": 0,
+        "inputPresentCount": 0,
+        "inputPresentP95Ms": 0,
+        "inputPresentMaxMs": 0,
+        "staleCameraSubmits": 0,
+        "outOfOrderSubmits": 0,
+        "transformMismatch": 0,
+        "phaseChanges": 0,
+        "sameCameraSubmits": 0,
+        "changedCameraSubmits": 0,
+        "windowResetReason": 0
+      },
+      {
+        "v": 1,
+        "session": 232112287158,
+        "source": "main",
+        "seq": 2280,
+        "at": 1792991228859,
+        "event": "frame-window",
+        "softwareRateValid": 0,
+        "submitSpanCapped": 0,
+        "windowCapped": 0,
+        "uiIntervalCapped": 0,
+        "submitIntervalCapped": 0,
+        "inputPresentCapped": 0,
+        "pendingInputAgeCapped": 0,
+        "submitIntervalCount": 0,
+        "submitSampleSpanMs": 0,
+        "uncorrelatedSubmits": 0,
+        "pendingInputAgeMs": 0,
+        "windowMs": 1000,
+        "uiFrames": 120,
+        "uiFps": 120,
+        "uiIntervalP95Ms": 16.7,
+        "uiIntervalMaxMs": 9.39999999999418,
+        "uiLongFrames": 0,
+        "uiStalls": 0,
+        "softwareSubmits": 0,
+        "softwareSubmitHz": 0,
+        "submitIntervalP95Ms": 0,
+        "submitIntervalMaxMs": 0,
+        "inputPresentCount": 0,
+        "inputPresentP95Ms": 0,
+        "inputPresentMaxMs": 0,
+        "staleCameraSubmits": 0,
+        "outOfOrderSubmits": 0,
+        "transformMismatch": 0,
+        "phaseChanges": 0,
+        "sameCameraSubmits": 0,
+        "changedCameraSubmits": 0,
+        "windowResetReason": 0
+      },
+      {
+        "v": 1,
+        "session": 232112287158,
+        "source": "main",
+        "seq": 2324,
+        "at": 1792991229859,
+        "event": "frame-window",
+        "softwareRateValid": 0,
+        "submitSpanCapped": 0,
+        "windowCapped": 0,
+        "uiIntervalCapped": 0,
+        "submitIntervalCapped": 0,
+        "inputPresentCapped": 0,
+        "pendingInputAgeCapped": 0,
+        "submitIntervalCount": 0,
+        "submitSampleSpanMs": 0,
+        "uncorrelatedSubmits": 0,
+        "pendingInputAgeMs": 0,
+        "windowMs": 1000,
+        "uiFrames": 120,
+        "uiFps": 120,
+        "uiIntervalP95Ms": 16.7,
+        "uiIntervalMaxMs": 9.39999999999418,
+        "uiLongFrames": 0,
+        "uiStalls": 0,
+        "softwareSubmits": 0,
+        "softwareSubmitHz": 0,
+        "submitIntervalP95Ms": 0,
+        "submitIntervalMaxMs": 0,
+        "inputPresentCount": 0,
+        "inputPresentP95Ms": 0,
+        "inputPresentMaxMs": 0,
+        "staleCameraSubmits": 0,
+        "outOfOrderSubmits": 0,
+        "transformMismatch": 0,
+        "phaseChanges": 0,
+        "sameCameraSubmits": 0,
+        "changedCameraSubmits": 0,
+        "windowResetReason": 0
+      },
+      {
+        "v": 1,
+        "session": 232112287158,
+        "source": "main",
+        "seq": 2354,
+        "at": 1792991230859,
+        "event": "frame-window",
+        "softwareRateValid": 0,
+        "submitSpanCapped": 0,
+        "windowCapped": 0,
+        "uiIntervalCapped": 0,
+        "submitIntervalCapped": 0,
+        "inputPresentCapped": 0,
+        "pendingInputAgeCapped": 0,
+        "submitIntervalCount": 0,
+        "submitSampleSpanMs": 0,
+        "uncorrelatedSubmits": 0,
+        "pendingInputAgeMs": 0,
+        "windowMs": 1000,
+        "uiFrames": 120,
+        "uiFps": 120,
+        "uiIntervalP95Ms": 16.7,
+        "uiIntervalMaxMs": 9.39999999999418,
+        "uiLongFrames": 0,
+        "uiStalls": 0,
+        "softwareSubmits": 0,
+        "softwareSubmitHz": 0,
+        "submitIntervalP95Ms": 0,
+        "submitIntervalMaxMs": 0,
+        "inputPresentCount": 0,
+        "inputPresentP95Ms": 0,
+        "inputPresentMaxMs": 0,
+        "staleCameraSubmits": 0,
+        "outOfOrderSubmits": 0,
+        "transformMismatch": 0,
+        "phaseChanges": 0,
+        "sameCameraSubmits": 0,
+        "changedCameraSubmits": 0,
+        "windowResetReason": 0
+      },
+      {
+        "v": 1,
+        "session": 232112287158,
+        "source": "main",
+        "seq": 2378,
+        "at": 1792991231859,
+        "event": "frame-window",
+        "softwareRateValid": 1,
+        "submitSpanCapped": 0,
+        "windowCapped": 0,
+        "uiIntervalCapped": 0,
+        "submitIntervalCapped": 0,
+        "inputPresentCapped": 0,
+        "pendingInputAgeCapped": 0,
+        "submitIntervalCount": 2,
+        "submitSampleSpanMs": 6182.89990234375,
+        "uncorrelatedSubmits": 0,
+        "pendingInputAgeMs": 0,
+        "windowMs": 1000,
+        "uiFrames": 120,
+        "uiFps": 120,
+        "uiIntervalP95Ms": 16.7,
+        "uiIntervalMaxMs": 9.30000000000291,
+        "uiLongFrames": 0,
+        "uiStalls": 0,
+        "softwareSubmits": 2,
+        "softwareSubmitHz": 0.32347280913311577,
+        "submitIntervalP95Ms": 120000,
+        "submitIntervalMaxMs": 6179.89990234375,
+        "inputPresentCount": 0,
+        "inputPresentP95Ms": 0,
+        "inputPresentMaxMs": 0,
+        "staleCameraSubmits": 0,
+        "outOfOrderSubmits": 0,
+        "transformMismatch": 0,
+        "phaseChanges": 0,
+        "sameCameraSubmits": 2,
+        "changedCameraSubmits": 0,
+        "windowResetReason": 0
+      }
+    ]
+  },
+  "tiles": [
+    {
+      "tileSourceIndex": 0,
+      "x": 14335,
+      "y": 10751,
+      "milliseconds": 574,
+      "compileMs": 204.80000007152557,
+      "graphMs": 365.2999999523163,
+      "checkpointMs": 202.60000014305115,
+      "finishMs": 1.8000000715255737,
+      "fieldBuildElapsedMs": 9.400000095367432,
+      "materialFieldBuilds": 324,
+      "materialFieldHits": 0,
+      "materialFieldUploadBytes": 4759488,
+      "packetNodeVisits": 319,
+      "tileDrawCalls": 3991,
+      "tileCommandSubmissions": 55
+    },
+    {
+      "tileSourceIndex": 1,
+      "x": 13823,
+      "y": 10751,
+      "milliseconds": 419.5000001192093,
+      "compileMs": 89.10000014305115,
+      "graphMs": 326.89999997615814,
+      "checkpointMs": 148.09999990463257,
+      "finishMs": 1.399999976158142,
+      "fieldBuildElapsedMs": 9.799999833106995,
+      "materialFieldBuilds": 308,
+      "materialFieldHits": 48,
+      "materialFieldUploadBytes": 4693504,
+      "packetNodeVisits": 342,
+      "tileDrawCalls": 4215,
+      "tileCommandSubmissions": 79
+    },
+    {
+      "tileSourceIndex": 2,
+      "x": 14335,
+      "y": 11263,
+      "milliseconds": 425.3000000715256,
+      "compileMs": 119.30000007152557,
+      "graphMs": 296.60000002384186,
+      "checkpointMs": 186.70000040531158,
+      "finishMs": 7.5,
+      "fieldBuildElapsedMs": 9.200000286102295,
+      "materialFieldBuilds": 352,
+      "materialFieldHits": 8,
+      "materialFieldUploadBytes": 5246144,
+      "packetNodeVisits": 360,
+      "tileDrawCalls": 4340,
+      "tileCommandSubmissions": 75
+    },
+    {
+      "tileSourceIndex": 3,
+      "x": 13823,
+      "y": 11263,
+      "milliseconds": 453.80000019073486,
+      "compileMs": 83.50000011920929,
+      "graphMs": 366.59999990463257,
+      "checkpointMs": 133.400000333786,
+      "finishMs": 1.100000023841858,
+      "fieldBuildElapsedMs": 8.699999928474426,
+      "materialFieldBuilds": 420,
+      "materialFieldHits": 0,
+      "materialFieldUploadBytes": 4472768,
+      "packetNodeVisits": 413,
+      "tileDrawCalls": 4941,
+      "tileCommandSubmissions": 91
+    },
+    {
+      "tileSourceIndex": 4,
+      "x": 14335,
+      "y": 10239,
+      "milliseconds": 403.40000009536743,
+      "compileMs": 124.30000007152557,
+      "graphMs": 275.1999999284744,
+      "checkpointMs": 187.30000030994415,
+      "finishMs": 1.8000000715255737,
+      "fieldBuildElapsedMs": 4.900000333786011,
+      "materialFieldBuilds": 304,
+      "materialFieldHits": 0,
+      "materialFieldUploadBytes": 2749440,
+      "packetNodeVisits": 313,
+      "tileDrawCalls": 3895,
+      "tileCommandSubmissions": 45
+    },
+    {
+      "tileSourceIndex": 5,
+      "x": 13823,
+      "y": 10239,
+      "milliseconds": 454.89999997615814,
+      "compileMs": 83.20000004768372,
+      "graphMs": 211.19999992847443,
+      "checkpointMs": 132.10000002384186,
+      "finishMs": 62.39999997615814,
+      "fieldBuildElapsedMs": 4.200000166893005,
+      "materialFieldBuilds": 284,
+      "materialFieldHits": 0,
+      "materialFieldUploadBytes": 1876672,
+      "packetNodeVisits": 361,
+      "tileDrawCalls": 4070,
+      "tileCommandSubmissions": 23
+    },
+    {
+      "tileSourceIndex": 6,
+      "x": 14847,
+      "y": 10751,
+      "milliseconds": 292.200000166893,
+      "compileMs": 67.00000011920929,
+      "graphMs": 222.60000002384186,
+      "checkpointMs": 148.30000019073486,
+      "finishMs": 1,
+      "fieldBuildElapsedMs": 5.999999761581421,
+      "materialFieldBuilds": 288,
+      "materialFieldHits": 0,
+      "materialFieldUploadBytes": 3959360,
+      "packetNodeVisits": 296,
+      "tileDrawCalls": 3547,
+      "tileCommandSubmissions": 28
+    },
+    {
+      "tileSourceIndex": 7,
+      "x": 14847,
+      "y": 11263,
+      "milliseconds": 350.59999990463257,
+      "compileMs": 80.69999992847443,
+      "graphMs": 266.10000002384186,
+      "checkpointMs": 173.0999995470047,
+      "finishMs": 1.899999976158142,
+      "fieldBuildElapsedMs": 4.100000262260437,
+      "materialFieldBuilds": 220,
+      "materialFieldHits": 128,
+      "materialFieldUploadBytes": 2251648,
+      "packetNodeVisits": 368,
+      "tileDrawCalls": 4272,
+      "tileCommandSubmissions": 54
+    },
+    {
+      "tileSourceIndex": 8,
+      "x": 13311,
+      "y": 10751,
+      "milliseconds": 110.299999833107,
+      "compileMs": 38.19999980926514,
+      "graphMs": 35.5,
+      "checkpointMs": 0,
+      "finishMs": 35.299999952316284,
+      "fieldBuildElapsedMs": 3.2000001668930054,
+      "materialFieldBuilds": 128,
+      "materialFieldHits": 0,
+      "materialFieldUploadBytes": 1790080,
+      "packetNodeVisits": 159,
+      "tileDrawCalls": 1677,
+      "tileCommandSubmissions": 9
+    },
+    {
+      "tileSourceIndex": 9,
+      "x": 14847,
+      "y": 10239,
+      "milliseconds": 375.700000166893,
+      "compileMs": 72.50000011920929,
+      "graphMs": 287.10000002384186,
+      "checkpointMs": 162.79999995231628,
+      "finishMs": 10,
+      "fieldBuildElapsedMs": 7.800000548362732,
+      "materialFieldBuilds": 280,
+      "materialFieldHits": 0,
+      "materialFieldUploadBytes": 3148032,
+      "packetNodeVisits": 297,
+      "tileDrawCalls": 3681,
+      "tileCommandSubmissions": 37
+    },
+    {
+      "tileSourceIndex": 10,
+      "x": 13311,
+      "y": 11263,
+      "milliseconds": 465.60000002384186,
+      "compileMs": 142.0000001192093,
+      "graphMs": 318.8000000715256,
+      "checkpointMs": 124.89999985694885,
+      "finishMs": 1.7999999523162842,
+      "fieldBuildElapsedMs": 12.600000143051147,
+      "materialFieldBuilds": 384,
+      "materialFieldHits": 0,
+      "materialFieldUploadBytes": 5140544,
+      "packetNodeVisits": 389,
+      "tileDrawCalls": 4633,
+      "tileCommandSubmissions": 84
+    },
+    {
+      "tileSourceIndex": 11,
+      "x": 14335,
+      "y": 11775,
+      "milliseconds": 355.5,
+      "compileMs": 118.80000007152557,
+      "graphMs": 232.79999995231628,
+      "checkpointMs": 139.19999969005585,
+      "finishMs": 1.899999976158142,
+      "fieldBuildElapsedMs": 6.0000001192092896,
+      "materialFieldBuilds": 280,
+      "materialFieldHits": 0,
+      "materialFieldUploadBytes": 3308224,
+      "packetNodeVisits": 337,
+      "tileDrawCalls": 3899,
+      "tileCommandSubmissions": 34
+    },
+    {
+      "tileSourceIndex": 12,
+      "x": 13823,
+      "y": 11775,
+      "milliseconds": 412.2999999523163,
+      "compileMs": 86.59999990463257,
+      "graphMs": 320.90000009536743,
+      "checkpointMs": 208.3000007867813,
+      "finishMs": 1.899999976158142,
+      "fieldBuildElapsedMs": 6.900000333786011,
+      "materialFieldBuilds": 348,
+      "materialFieldHits": 0,
+      "materialFieldUploadBytes": 3304960,
+      "packetNodeVisits": 385,
+      "tileDrawCalls": 4603,
+      "tileCommandSubmissions": 62
+    },
+    {
+      "tileSourceIndex": 13,
+      "x": 13311,
+      "y": 10239,
+      "milliseconds": 553.8999999761581,
+      "compileMs": 101.59999990463257,
+      "graphMs": 279.7000000476837,
+      "checkpointMs": 177.49999964237213,
+      "finishMs": 52.99999988079071,
+      "fieldBuildElapsedMs": 7.800000190734863,
+      "materialFieldBuilds": 384,
+      "materialFieldHits": 0,
+      "materialFieldUploadBytes": 4175808,
+      "packetNodeVisits": 446,
+      "tileDrawCalls": 5124,
+      "tileCommandSubmissions": 55
+    },
+    {
+      "tileSourceIndex": 14,
+      "x": 14335,
+      "y": 9727,
+      "milliseconds": 359.5000001192093,
+      "compileMs": 86.30000007152557,
+      "graphMs": 269.89999997615814,
+      "checkpointMs": 177.799999833107,
+      "finishMs": 1.5,
+      "fieldBuildElapsedMs": 9.299999713897705,
+      "materialFieldBuilds": 300,
+      "materialFieldHits": 0,
+      "materialFieldUploadBytes": 6859648,
+      "packetNodeVisits": 304,
+      "tileDrawCalls": 4012,
+      "tileCommandSubmissions": 40
+    },
+    {
+      "tileSourceIndex": 15,
+      "x": 13823,
+      "y": 9727,
+      "milliseconds": 531.3999999761581,
+      "compileMs": 136.60000002384186,
+      "graphMs": 171.89999997615814,
+      "checkpointMs": 0,
+      "finishMs": 98.59999990463257,
+      "fieldBuildElapsedMs": 12.100000143051147,
+      "materialFieldBuilds": 260,
+      "materialFieldHits": 0,
+      "materialFieldUploadBytes": 2112256,
+      "packetNodeVisits": 318,
+      "tileDrawCalls": 4158,
+      "tileCommandSubmissions": 31
+    },
+    {
+      "tileSourceIndex": 16,
+      "x": 14847,
+      "y": 11775,
+      "milliseconds": 275.9999998807907,
+      "compileMs": 64.99999988079071,
+      "graphMs": 207.39999997615814,
+      "checkpointMs": 116.10000002384186,
+      "finishMs": 1.399999976158142,
+      "fieldBuildElapsedMs": 5.800000190734863,
+      "materialFieldBuilds": 260,
+      "materialFieldHits": 0,
+      "materialFieldUploadBytes": 3393600,
+      "packetNodeVisits": 341,
+      "tileDrawCalls": 3885,
+      "tileCommandSubmissions": 20
+    },
+    {
+      "tileSourceIndex": 17,
+      "x": 13311,
+      "y": 11775,
+      "milliseconds": 372.9999998807907,
+      "compileMs": 94.09999990463257,
+      "graphMs": 275.5,
+      "checkpointMs": 174.20000004768372,
+      "finishMs": 1.899999976158142,
+      "fieldBuildElapsedMs": 6.499999642372131,
+      "materialFieldBuilds": 316,
+      "materialFieldHits": 0,
+      "materialFieldUploadBytes": 4688384,
+      "packetNodeVisits": 351,
+      "tileDrawCalls": 4191,
+      "tileCommandSubmissions": 49
+    },
+    {
+      "tileSourceIndex": 18,
+      "x": 14847,
+      "y": 9727,
+      "milliseconds": 371.1999999284744,
+      "compileMs": 79.89999997615814,
+      "graphMs": 286.8000000715256,
+      "checkpointMs": 195.49999976158142,
+      "finishMs": 2.299999952316284,
+      "fieldBuildElapsedMs": 9.399999856948853,
+      "materialFieldBuilds": 296,
+      "materialFieldHits": 0,
+      "materialFieldUploadBytes": 6744192,
+      "packetNodeVisits": 317,
+      "tileDrawCalls": 3968,
+      "tileCommandSubmissions": 44
+    },
+    {
+      "tileSourceIndex": 19,
+      "x": 13311,
+      "y": 9727,
+      "milliseconds": 468.7999999523163,
+      "compileMs": 114.70000004768372,
+      "graphMs": 253.5,
+      "checkpointMs": 143.69999992847443,
+      "finishMs": 50.60000002384186,
+      "fieldBuildElapsedMs": 8.499999403953552,
+      "materialFieldBuilds": 336,
+      "materialFieldHits": 4,
+      "materialFieldUploadBytes": 3135616,
+      "packetNodeVisits": 391,
+      "tileDrawCalls": 5053,
+      "tileCommandSubmissions": 36
+    }
+  ],
+  "preparation": [
+    {
+      "at": 1792991224937,
+      "duration": 187.90700000000652,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 238
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 14335,
+        "y": 10751,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 1211,
+        "bytes": 14993780,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 331,
+        "fragmentBuilds": 358,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 51208014,
+          "compilations": 93,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 11952688,
+          "semanticHits": 957
+        },
+        "hits": 4,
+        "pathNodes": 2594,
+        "prepareReuses": 6,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "at": 1792991225013,
+      "duration": 58.8758339999913,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 239
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13823,
+        "y": 10751,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 1449,
+        "bytes": 20628428,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 569,
+        "fragmentBuilds": 447,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 52417986,
+          "compilations": 94,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 12398128,
+          "semanticHits": 1057
+        },
+        "hits": 123,
+        "pathNodes": 2594,
+        "prepareReuses": 7,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "at": 1792991225411,
+      "duration": 77.7687089999963,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 240
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 14335,
+        "y": 11263,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 1653,
+        "bytes": 24721100,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 773,
+        "fragmentBuilds": 536,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 52276266,
+          "compilations": 95,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 11745728,
+          "semanticHits": 1116
+        },
+        "hits": 289,
+        "pathNodes": 2594,
+        "prepareReuses": 8,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "at": 1792991225726,
+      "duration": 57.40054100000998,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 241
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13823,
+        "y": 11263,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 1826,
+        "bytes": 28616772,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 946,
+        "fragmentBuilds": 625,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 55228796,
+          "compilations": 96,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 13479928,
+          "semanticHits": 1242
+        },
+        "hits": 544,
+        "pathNodes": 2594,
+        "prepareReuses": 9,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "at": 1792991226065,
+      "duration": 84.15170800000487,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 242
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 14335,
+        "y": 10239,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 2008,
+        "bytes": 32288724,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 1128,
+        "fragmentBuilds": 714,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 53685582,
+          "compilations": 97,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 12344904,
+          "semanticHits": 1242
+        },
+        "hits": 690,
+        "pathNodes": 2594,
+        "prepareReuses": 10,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "at": 1792991226385,
+      "duration": 28.557750000007218,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 243
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13823,
+        "y": 10239,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      }
+    },
+    {
+      "at": 1792991226691,
+      "duration": 52.41012499999488,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 244
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 14847,
+        "y": 10751,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 305,
+        "bytes": 14949960,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 305,
+        "fragmentBuilds": 90,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 51300786,
+          "compilations": 99,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 10515286,
+          "semanticHits": 1278
+        },
+        "hits": 0,
+        "pathNodes": 2594,
+        "prepareReuses": 12,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "at": 1792991226723,
+      "duration": 27.040416999996523,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 245
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13823,
+        "y": 10239,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      }
+    },
+    {
+      "at": 1792991226779,
+      "duration": 48.05570799999987,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 246
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13823,
+        "y": 10239,
+        "w": 257,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 312,
+        "bytes": 15274384,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 312,
+        "fragmentBuilds": 90,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 51649800,
+          "compilations": 101,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 10245288,
+          "semanticHits": 1278
+        },
+        "hits": 0,
+        "pathNodes": 2594,
+        "prepareReuses": 14,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "at": 1792991227019,
+      "duration": 10.564624999999069,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 247
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 14080,
+        "y": 10239,
+        "w": 257,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 366,
+        "bytes": 8765800,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 366,
+        "fragmentBuilds": 180,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 36848109,
+          "compilations": 102,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 917018,
+          "semanticHits": 1278
+        },
+        "hits": 4,
+        "pathNodes": 2594,
+        "prepareReuses": 15,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "at": 1792991227159,
+      "duration": 59.439666999998735,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 248
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 14847,
+        "y": 11263,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 737,
+        "bytes": 22890676,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 737,
+        "fragmentBuilds": 269,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 54581178,
+          "compilations": 103,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 11686484,
+          "semanticHits": 1278
+        },
+        "hits": 4,
+        "pathNodes": 2594,
+        "prepareReuses": 16,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "at": 1792991227352,
+      "duration": 22.02104099999997,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 249
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13311,
+        "y": 10751,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 892,
+        "bytes": 20318184,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 892,
+        "fragmentBuilds": 359,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 40944300,
+          "compilations": 104,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 3117408,
+          "semanticHits": 1278
+        },
+        "hits": 12,
+        "pathNodes": 2594,
+        "prepareReuses": 17,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "at": 1792991227660,
+      "duration": 53.82887500000652,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 250
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 14847,
+        "y": 10239,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 1204,
+        "bytes": 32899208,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 1204,
+        "fragmentBuilds": 449,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 53647188,
+          "compilations": 105,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 11068952,
+          "semanticHits": 1278
+        },
+        "hits": 12,
+        "pathNodes": 2594,
+        "prepareReuses": 18,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "at": 1792991227799,
+      "duration": 113.9577500000014,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 251
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13311,
+        "y": 11263,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 1598,
+        "bytes": 33530244,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 1205,
+        "fragmentBuilds": 538,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 59451131,
+          "compilations": 106,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 14211478,
+          "semanticHits": 1278
+        },
+        "hits": 21,
+        "pathNodes": 2594,
+        "prepareReuses": 19,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "at": 1792991228068,
+      "duration": 72.19070799999463,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 252
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 14335,
+        "y": 11775,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 1895,
+        "bytes": 33544788,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 1201,
+        "fragmentBuilds": 615,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 53544591,
+          "compilations": 107,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 9782445,
+          "semanticHits": 1278
+        },
+        "hits": 74,
+        "pathNodes": 2594,
+        "prepareReuses": 20,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "at": 1792991228383,
+      "duration": 57.453624999994645,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 253
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13823,
+        "y": 11775,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 2065,
+        "bytes": 33519576,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 1137,
+        "fragmentBuilds": 701,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 58550862,
+          "compilations": 108,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 12936506,
+          "semanticHits": 1386
+        },
+        "hits": 308,
+        "pathNodes": 2594,
+        "prepareReuses": 21,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "at": 1792991228599,
+      "duration": 30.91812500001106,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 254
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13311,
+        "y": 10239,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      }
+    },
+    {
+      "at": 1792991228966,
+      "duration": 69.76783299999079,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 255
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 14335,
+        "y": 9727,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 339,
+        "bytes": 15782780,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 339,
+        "fragmentBuilds": 89,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 58714786,
+          "compilations": 110,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 12779520,
+          "semanticHits": 1386
+        },
+        "hits": 0,
+        "pathNodes": 2594,
+        "prepareReuses": 23,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "at": 1792991229001,
+      "duration": 28.057042000000365,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 256
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13311,
+        "y": 10239,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      }
+    },
+    {
+      "at": 1792991229024,
+      "duration": 14.782875000004424,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 257
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13311,
+        "y": 10239,
+        "w": 257,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 82,
+        "bytes": 3240200,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 82,
+        "fragmentBuilds": 90,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 41863060,
+          "compilations": 112,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 2092566,
+          "semanticHits": 1386
+        },
+        "hits": 0,
+        "pathNodes": 2594,
+        "prepareReuses": 25,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "at": 1792991229170,
+      "duration": 56.22212500000023,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 258
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13568,
+        "y": 10239,
+        "w": 257,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 451,
+        "bytes": 16817188,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 451,
+        "fragmentBuilds": 179,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 58394825,
+          "compilations": 113,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 12129400,
+          "semanticHits": 1386
+        },
+        "hits": 4,
+        "pathNodes": 2594,
+        "prepareReuses": 26,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "at": 1792991229498,
+      "duration": 41.42866700000013,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 259
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13823,
+        "y": 9727,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      }
+    },
+    {
+      "at": 1792991229782,
+      "duration": 49.74733399999968,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 260
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 14847,
+        "y": 11775,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 346,
+        "bytes": 14417152,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 346,
+        "fragmentBuilds": 90,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 54603147,
+          "compilations": 115,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 9233137,
+          "semanticHits": 1386
+        },
+        "hits": 0,
+        "pathNodes": 2594,
+        "prepareReuses": 28,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "at": 1792991229842,
+      "duration": 54.9857090000005,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 261
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13823,
+        "y": 9727,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      }
+    },
+    {
+      "at": 1792991229934,
+      "duration": 80.67420800001128,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 262
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13823,
+        "y": 9727,
+        "w": 257,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 292,
+        "bytes": 14386904,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 292,
+        "fragmentBuilds": 90,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 55252085,
+          "compilations": 117,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 9584031,
+          "semanticHits": 1386
+        },
+        "hits": 0,
+        "pathNodes": 2594,
+        "prepareReuses": 30,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "at": 1792991230178,
+      "duration": 22.115290999994613,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 263
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 14080,
+        "y": 9727,
+        "w": 257,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 352,
+        "bytes": 8903648,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 352,
+        "fragmentBuilds": 180,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 42065825,
+          "compilations": 118,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 1357376,
+          "semanticHits": 1386
+        },
+        "hits": 5,
+        "pathNodes": 2594,
+        "prepareReuses": 31,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "at": 1792991230331,
+      "duration": 61.250874999997905,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 264
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13311,
+        "y": 11775,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 717,
+        "bytes": 24804804,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 717,
+        "fragmentBuilds": 265,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 61258054,
+          "compilations": 119,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 13227757,
+          "semanticHits": 1386
+        },
+        "hits": 5,
+        "pathNodes": 2594,
+        "prepareReuses": 32,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "at": 1792991230543,
+      "duration": 56.701499999995576,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 265
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 14847,
+        "y": 9727,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 1056,
+        "bytes": 31823404,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 1056,
+        "fragmentBuilds": 354,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 59932404,
+          "compilations": 120,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 12024243,
+          "semanticHits": 1386
+        },
+        "hits": 5,
+        "pathNodes": 2594,
+        "prepareReuses": 33,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "at": 1792991230796,
+      "duration": 24.00504199998977,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 266
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      }
+    },
+    {
+      "at": 1792991231100,
+      "duration": 33.02399999999034,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 267
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 514,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      }
+    },
+    {
+      "at": 1792991231120,
+      "duration": 15.112458000003244,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 268
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 257,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 91,
+        "bytes": 3227320,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 91,
+        "fragmentBuilds": 90,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 44171150,
+          "compilations": 123,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 1971486,
+          "semanticHits": 1386
+        },
+        "hits": 0,
+        "pathNodes": 2594,
+        "prepareReuses": 36,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    },
+    {
+      "at": 1792991231278,
+      "duration": 69.43912500000442,
+      "lane": "canvas",
+      "diagnostics": {
+        "originChannelId": 74293021935089,
+        "requestId": 117,
+        "preparationId": 269
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "viewport": {
+        "x": 13568,
+        "y": 9727,
+        "w": 257,
+        "h": 514
+      },
+      "prepareViewport": {
+        "x": 13311,
+        "y": 9727,
+        "w": 2050,
+        "h": 2562
+      },
+      "compileStats": {
+        "builds": 427,
+        "bytes": 12667268,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 2,
+          "restores": 1
+        },
+        "entries": 427,
+        "fragmentBuilds": 179,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 59392468,
+          "compilations": 124,
+          "limit": 2147483648,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 11210712,
+          "semanticHits": 1389
+        },
+        "hits": 7,
+        "pathNodes": 2594,
+        "prepareReuses": 37,
+        "preparedNodes": 2594,
+        "residentStrokes": {
+          "builds": 718,
+          "bytes": 1663051,
+          "entries": 718,
+          "hits": 1042
+        },
+        "retainedNodes": 0,
+        "textPaths": {
+          "bytes": 768347,
+          "entries": 59,
+          "hits": 421,
+          "limit": 16777216
+        }
+      }
+    }
+  ]
+}

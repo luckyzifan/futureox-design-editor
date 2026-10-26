@@ -1,0 +1,161 @@
+import {topologyTarget} from '../verification-navigation-priority-20261025/topology-target.mjs'
+import assert from 'node:assert/strict'
+import { readFile,writeFile,mkdir,appendFile,stat } from 'node:fs/promises'
+import { createRequire } from 'node:module'
+import path from 'node:path'
+import { foreground } from '../verification-drag-response-20261024/foreground.mjs'
+import { startProfiles,stopProfiles } from '../verification-drag-response-20261024/profile-helpers.mjs'
+const root=process.cwd(),out=path.join(root,'testing/verification-motion-continuity-20261025'),base=JSON.parse(await readFile(path.join(out,'runtime.json'),'utf8'))
+const kind=process.argv[2]||'117',name=process.argv[3]||kind+'-baseline',host=process.env.DRAG_HOST||base.host,run=path.join(out,name),tmp=path.join(base.runtime,name)
+await mkdir(run);await mkdir(tmp)
+const require=createRequire(path.join(root,'frontend/design-client/package.json')),{_electron,expect}=require('@playwright/test')
+const report={status:'running',probeVersion:3,onlyPan:process.env.DRAG_ONLY_PAN==='1',host,kind,scope:'independent foreground Electron; native mouse input, rAF DOM cameras and compositor acknowledgements; no physical scanout claim',phases:[],errors:[]}
+let app,page;const writes=[];const persist=()=>writeFile(path.join(run,'report.json'),JSON.stringify(report,null,2))
+const settle=async()=>{await page.waitForTimeout(150);await page.waitForFunction(()=>document.querySelector('.kernel-status.error')||document.querySelector('.kernel-tiles')?.dataset.detailReady==='true'&&document.querySelector('.kernel-presentation')?.dataset.presentationReady==='true',null,{timeout:120000});assert.deepEqual(await page.locator('.kernel-status.error').allTextContents(),[])}
+const pose=async()=>({x:Number(await page.getByLabel('X',{exact:true}).inputValue()),y:Number(await page.getByLabel('Y',{exact:true}).inputValue()),
+  selection:await page.locator('.layer-row.selected').evaluateAll(rows=>rows.map(row=>row.getAttribute('data-testid')))})
+const camera=()=>page.locator('.kernel-tiles').evaluate(e=>({x:+e.dataset.requestedCameraX,y:+e.dataset.requestedCameraY,z:+e.dataset.requestedCameraZoom}))
+async function replay(label,tool,direction=1){
+  await page.keyboard.press(tool);await page.getByTestId('canvas').focus();await settle();await foreground(app,page)
+  const box=await page.getByTestId('canvas').boundingBox(),x=Math.round(box.x+box.width*.5),y=Math.round(box.y+box.height*.55)
+  await page.evaluate(label=>{
+    window.__dragProbe={label,origin:performance.timeOrigin,start:performance.now(),events:[],frames:[]};const p=window.__dragProbe
+    const tick=t=>{const root=document.querySelector('.kernel-tiles'),shown=document.querySelector('.kernel-presentation'),c=document.querySelector('.kernel-compositor');p.frames.push({t,requested:root?{x:+root.dataset.requestedCameraX,y:+root.dataset.requestedCameraY,z:+root.dataset.requestedCameraZoom}:null,shown:shown?{x:+(shown.dataset.visualCameraX??shown.dataset.cameraX),y:+(shown.dataset.visualCameraY??shown.dataset.cameraY),z:+shown.dataset.cameraZoom}:null,settled:shown?{x:+shown.dataset.cameraX,y:+shown.dataset.cameraY,z:+shown.dataset.cameraZoom}:null,compositor:c?{...c.dataset}:null});p.raf=requestAnimationFrame(tick)};p.raf=requestAnimationFrame(tick)
+    for(const type of ['pointerdown','pointermove','pointerup'])document.addEventListener(type,e=>{if(window.__dragProbe===p)p.events.push({t:performance.now(),type,x:e.clientX,y:e.clientY,buttons:e.buttons,trusted:e.isTrusted,coalesced:e.getCoalescedEvents?.().length})},{capture:true})
+  },label)
+  const cameraBefore=await camera(),poseBefore=await pose()
+  let capture
+  if(process.env.CAPTURE_DRAG_MOTION==='1'){
+    const directory=path.join(tmp,label+'-png');await mkdir(directory)
+    const cdp=await page.context().newCDPSession(page),frames=[]
+    cdp.on('Page.screencastFrame',event=>{
+      const file=path.join(directory,String(frames.length).padStart(4,'0')+'.png')
+      frames.push({file,receivedAt:Date.now(),metadata:event.metadata})
+      void cdp.send('Page.screencastFrameAck',{sessionId:event.sessionId}).catch(()=>{})
+      writes.push(writeFile(file,Buffer.from(event.data,'base64')))
+    })
+    await cdp.send('Page.startScreencast',{format:'png',everyNthFrame:1})
+    capture={cdp,frames}
+  }
+  const start=Date.now();if(process.env.DRAG_PROFILE==='1')await startProfiles(app)
+  const dispatch=await app.evaluate(async({BrowserWindow},{x,y,direction})=>{
+    const w=BrowserWindow.getAllWindows()[0],rows=[]
+    w.webContents.sendInputEvent({type:'mouseMove',x,y})
+    w.webContents.sendInputEvent({type:'mouseDown',x,y,button:'left',clickCount:1})
+    const started=performance.now()
+    for(let i=1;i<=60;i++){
+      const wait=i*16-(performance.now()-started);if(wait>0)await new Promise(r=>setTimeout(r,wait))
+      const px=x+Math.round(direction*180*i/60),py=y+Math.round(direction*80*i/60)
+      w.webContents.sendInputEvent({type:'mouseMove',x:px,y:py,modifiers:['leftButtonDown']});rows.push({at:Date.now(),x:px,y:py})
+    }
+    w.webContents.sendInputEvent({type:'mouseUp',x:x+direction*180,y:y+direction*80,button:'left',clickCount:1});return rows
+  },{x,y,direction})
+  const stopped=Date.now();await settle();const ended=Date.now(),cameraAfter=await camera(),poseAfter=await pose()
+  if(capture){
+    await capture.cdp.send('Page.stopScreencast');await capture.cdp.detach()
+    report.motionFrameSets??=[];report.motionFrameSets.push({label,frames:capture.frames})
+    assert(capture.frames.length>3,'Missing actual compositor frames')
+  }
+  if(process.env.DRAG_PROFILE==='1'){const p=path.join(run,label+'-profile');await mkdir(p);await stopProfiles(app,p,host)}
+  const probe=await page.evaluate(()=>{const p=window.__dragProbe;cancelAnimationFrame(p.raf);window.__dragProbe=undefined;return p})
+  await writeFile(path.join(run,label+'-frames.json'),JSON.stringify(probe,null,2));await page.screenshot({path:path.join(run,label+'.png')})
+  report.phases.push({label,start,stopped,ended,cameraBefore,cameraAfter,poseBefore,poseAfter,dispatch,frames:probe.frames.length,events:probe.events.length,final:probe.frames.at(-1)});await persist()
+  assert(probe.events.some(e=>e.type==='pointerdown'&&e.trusted));assert(probe.events.some(e=>e.type==='pointerup'&&e.trusted))
+  if(tool==='h'){
+    assert(Math.abs(cameraAfter.x-cameraBefore.x-direction*180)<=2,'Pan X did not follow the native pointer trace')
+    assert(Math.abs(cameraAfter.y-cameraBefore.y-direction*80)<=2,'Pan Y did not follow the native pointer trace')
+    assert.equal(cameraAfter.z,cameraBefore.z)
+  }else{
+    assert.deepEqual(poseAfter.selection,poseBefore.selection,'Object drag changed the tested selection')
+    assert(Number.isFinite(poseBefore.x)&&Number.isFinite(poseBefore.y)&&Number.isFinite(poseAfter.x)&&Number.isFinite(poseAfter.y))
+    assert(Math.hypot(poseAfter.x-poseBefore.x,poseAfter.y-poseBefore.y)>0,'Native object drag did not commit a position change')
+  }
+}
+try{
+  app=await _electron.launch({executablePath:path.join(root,'frontend/design-desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron'),args:[host,'--desktop-isolated-profile'],cwd:host,env:{...Object.fromEntries(Object.entries(process.env).filter(([k])=>!['ELECTRON_RUN_AS_NODE','NODE_OPTIONS','CORE_GPU_WORKING_BUDGET_MIB'].includes(k))),TMPDIR:tmp,CORE_RENDER_DIAGNOSTICS:'detail'},timeout:60000})
+  for(const stream of [app.process().stdout,app.process().stderr])stream?.on('data',d=>writes.push(appendFile(path.join(run,'host.log'),d)))
+  page=await app.firstWindow();page.setDefaultTimeout(30000);page.on('pageerror',e=>report.errors.push(String(e)))
+  report.instance=await app.evaluate(({app,BrowserWindow})=>{const w=BrowserWindow.getAllWindows()[0];w.show();w.setTitle('独立平移与拖动验证');return {pid:process.pid,profile:app.getPath('userData')}})
+  if(kind==='sketch'&&process.env.SAVE_EXPORT_DELAY_REPRO==='1'){
+    await app.evaluate((_electron,filename)=>{
+      const require=process.getBuiltinModule('module').createRequire(filename)
+      const {LargeDocumentHost}=require(filename),original=LargeDocumentHost.prototype.sceneCommit
+      globalThis.__sourceSaveDelay={arm:false,held:false,release:undefined,restore:()=>{LargeDocumentHost.prototype.sceneCommit=original}}
+      LargeDocumentHost.prototype.sceneCommit=async function(...args){
+        const actual=await original.apply(this,args)
+        if(globalThis.__sourceSaveDelay.arm){
+          globalThis.__sourceSaveDelay.held=true
+          await new Promise(resolve=>{globalThis.__sourceSaveDelay.release=resolve})
+        }
+        return actual
+      }
+    },path.join(host,'src/large-document.mjs'))
+  }
+
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-desktop-ready','true',{timeout:60000})
+  const file=kind==='fig'?'/Users/Apple/Downloads/01有料素材 (Copy).fig':kind==='sketch'?'/Users/Apple/Downloads/拓扑素材.sketch':'/Users/Apple/Downloads/117.sketch'
+  report.fixture=file
+  if(kind==='sketch'){
+    await page.getByRole('button',{name:'新建设计',exact:true}).click();await page.getByRole('button',{name:'保存',exact:true}).click()
+    await expect(page.locator('.save-status')).toHaveText('已保存到本机',{timeout:60000})
+  }
+  await page.locator('input[type=file][accept*=".fd"]').setInputFiles(file)
+  if(kind==='sketch'){
+    report.topologyTarget=await topologyTarget(page,expect,settle)
+  }else{
+    await expect(page.getByLabel('文档名称',{exact:true})).toHaveValue(kind==='fig'?'01有料素材 (Copy)':'117',{timeout:90000});await settle()
+    await page.locator('[aria-label="搜索图层"]').fill(kind==='fig'?'01_Dashboard':'117');await page.locator('.layer-name').filter({hasText:kind==='fig'?/^01_Dashboard$/:/^117$/}).first().click()
+  }
+  await page.keyboard.press('Shift+2');await settle();await page.screenshot({path:path.join(run,'before.png')})
+  await replay('pan','h');await replay('pan-return','h',-1);
+  if(process.env.DRAG_ONLY_PAN!=='1'){
+  await page.keyboard.press('v');await page.keyboard.press('Shift+2');await settle();await replay('object','v');await replay('object-return','v',-1)
+  const last=report.phases.at(-1)
+  await page.keyboard.press('Meta+z');await settle();assert.deepEqual(await pose(),last.poseBefore)
+  await page.keyboard.press('Meta+Shift+z');await settle();assert.deepEqual(await pose(),last.poseAfter);report.dragUndoRedoExact=true
+  await page.locator('.header-right').getByRole('button',{name:'保存',exact:true}).click()
+  if(kind==='sketch')await expect(page.locator('.source-canvas-status')).toContainText('画布修改已保存到源文件缓存',{timeout:60000})
+  else await expect(page.locator('.save-status')).toHaveText('已保存到本机',{timeout:60000})
+  report.savedAfterDrag=true
+  // Persist a nonzero authored drag, rather than exporting only the returned
+  // starting position. Both directions and the last undo/redo were verified.
+  await page.keyboard.press('Meta+z');await settle();const expected=await pose();assert.deepEqual(expected,last.poseBefore)
+  const saveDelay=kind==='sketch'&&process.env.SAVE_EXPORT_DELAY_REPRO==='1'
+  if(saveDelay){
+    await app.evaluate(()=>{globalThis.__sourceSaveDelay.arm=true})
+    report.saveExportDelayInjected='actual native sceneCommit reply held after completion; only post-gesture functional race, excluded from timing'
+  }
+  await page.locator('.header-right').getByRole('button',{name:'保存',exact:true}).click()
+  if(kind==='sketch')await expect(page.locator('.source-canvas-status')).toContainText('画布修改已保存到源文件缓存',{timeout:60000})
+  else await expect(page.locator('.save-status')).toHaveText('已保存到本机',{timeout:60000})
+  const savedFile=path.join(tmp,kind==='sketch'?'drag-verified.sketch':'drag-verified.fd')
+  await app.evaluate(({dialog},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file})},savedFile)
+  if(saveDelay)await expect.poll(()=>app.evaluate(()=>globalThis.__sourceSaveDelay.held),{timeout:60000}).toBe(true)
+  await page.getByLabel('文件菜单',{exact:true}).click()
+  const exportButton=page.getByRole('button',{name:kind==='sketch'?'导出完整文件…':'另存为设计文件…',exact:true})
+  if(saveDelay){
+    try{await expect(exportButton).toBeDisabled();report.exportBlockedDuringSave=true}
+    finally{await app.evaluate(()=>{globalThis.__sourceSaveDelay.restore();globalThis.__sourceSaveDelay.release()})}
+  }
+  await exportButton.click()
+  await expect.poll(async()=>stat(savedFile).then(s=>s.size).catch(()=>0),{timeout:180000}).toBeGreaterThan(0)
+  if(kind==='sketch'){
+    await expect(page.locator('.source-canvas-status')).toContainText('完整文件已导出',{timeout:180000})
+    await page.locator('.document-location').click();await expect(page.locator('[data-source-document="true"]')).toHaveCount(0,{timeout:60000})
+  }else await expect(page.locator('.save-status')).toHaveText('已保存到本机',{timeout:60000})
+  await page.locator('input[type=file][accept*=".fd"]').setInputFiles(savedFile)
+  if(kind==='sketch')await topologyTarget(page,expect,settle)
+  else{
+    await expect(page.getByLabel('文档名称',{exact:true})).toHaveValue(kind==='fig'?'01有料素材 (Copy)':'117',{timeout:90000});await settle()
+    await page.getByLabel('搜索图层',{exact:true}).fill(kind==='fig'?'01_Dashboard':'117')
+    await page.getByTestId(expected.selection[0]).click()
+  }
+  await settle();assert.deepEqual(await pose(),expected);report.reopenedDragPose=true;report.dragFile=savedFile
+  await page.screenshot({path:path.join(run,'drag-reopened.png')})
+  }
+  report.status='captured'
+}catch(error){report.status='failed';report.error=String(error);report.stack=error.stack;if(page&&!page.isClosed())await page.screenshot({path:path.join(run,'failure.png')}).catch(()=>{});process.exitCode=1}
+finally{
+  if(app){const owned=app.process();let timer;try{await Promise.race([app.close(),new Promise((_,reject)=>timer=setTimeout(()=>reject(Error('owned close timeout')),15000))])}catch(e){report.closeError=String(e);process.exitCode=1;if(owned.exitCode===null&&owned.signalCode===null){owned.kill('SIGTERM');await new Promise(resolve=>setTimeout(resolve,3000));if(owned.exitCode===null&&owned.signalCode===null)owned.kill('SIGKILL')}}finally{clearTimeout(timer)}}
+  await Promise.allSettled(writes);await persist();console.log(JSON.stringify({status:report.status,error:report.error,phases:report.phases.map(p=>({label:p.label,settleMs:p.ended-p.stopped,events:p.events}))}))
+}

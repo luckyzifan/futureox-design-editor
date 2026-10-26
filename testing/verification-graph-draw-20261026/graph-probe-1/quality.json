@@ -1,0 +1,48 @@
+{
+  "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+  "status": "captured",
+  "start": 1792991222141,
+  "end": 1792991231547,
+  "submits": 29,
+  "measured": 29,
+  "minCoverage": 1,
+  "minSharpCoverage": 1,
+  "minNativePhaseCoverage": 1,
+  "maxUpscale": 1,
+  "alphaFrames": 29,
+  "invalidAlpha": 0,
+  "transparentFrames": 0,
+  "maxTransparentPixels": 0,
+  "failures": [],
+  "convergenceMs": 7061,
+  "deliveredPointerUpToSettledMs": 7364.60009765625,
+  "phases": [
+    {
+      "label": "pan",
+      "settleMs": 37,
+      "events": 25
+    },
+    {
+      "label": "pan-return",
+      "settleMs": 37,
+      "events": 24
+    },
+    {
+      "label": "pan-again",
+      "settleMs": 37,
+      "events": 24
+    },
+    {
+      "label": "pan-reverse",
+      "settleMs": 37,
+      "events": 25
+    }
+  ],
+  "maxPipelineMs": 6788.200000047684,
+  "maxGraphMs": 5270.299999952316,
+  "maxTileMs": 574,
+  "coverageGate": "PASS",
+  "poseLatencyGate": "NOT_MEASURED",
+  "physicalLatencyGate": "BLOCKED_THRESHOLD_UNREGISTERED",
+  "motionGate": "INCOMPLETE"
+}

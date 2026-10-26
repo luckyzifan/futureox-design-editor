@@ -1,0 +1,47 @@
+[
+  {
+    "file": "original.png",
+    "size": [
+      1710,
+      1736
+    ],
+    "differentChannels": 0,
+    "bbox": null
+  },
+  {
+    "file": "edit-0.png",
+    "size": [
+      1710,
+      1736
+    ],
+    "differentChannels": 0,
+    "bbox": null
+  },
+  {
+    "file": "edit-1.png",
+    "size": [
+      1710,
+      1736
+    ],
+    "differentChannels": 0,
+    "bbox": null
+  },
+  {
+    "file": "edit-2.png",
+    "size": [
+      1710,
+      1736
+    ],
+    "differentChannels": 0,
+    "bbox": null
+  },
+  {
+    "file": "edit-3.png",
+    "size": [
+      1710,
+      1736
+    ],
+    "differentChannels": 0,
+    "bbox": null
+  }
+]

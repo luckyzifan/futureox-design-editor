@@ -1,0 +1,42 @@
+[
+  {
+    "name": "wasm-cancellation",
+    "command": [
+      "node",
+      "testing/verification-render-pipeline-20261025/wasm-cancellation.mjs"
+    ],
+    "exit_code": 0,
+    "wallSeconds": 0.3895761966705322,
+    "log": "wasm-cancellation-final.log"
+  },
+  {
+    "name": "native-cancellation",
+    "command": [
+      "node",
+      "testing/verification-render-pipeline-20261025/native-cancellation.mjs"
+    ],
+    "exit_code": 1,
+    "wallSeconds": 1.1327660083770752,
+    "log": "native-cancellation-final.log"
+  },
+  {
+    "name": "run-hardware",
+    "command": [
+      "node",
+      "testing/verification-render-pipeline-20261025/run-hardware.mjs"
+    ],
+    "exit_code": 0,
+    "wallSeconds": 1.975234031677246,
+    "log": "run-hardware-final.log"
+  },
+  {
+    "name": "ledger-benchmark",
+    "command": [
+      "node",
+      "testing/verification-render-pipeline-20261025/ledger-benchmark.mjs"
+    ],
+    "exit_code": 0,
+    "wallSeconds": 8.60933804512024,
+    "log": "ledger-benchmark-final.log"
+  }
+]

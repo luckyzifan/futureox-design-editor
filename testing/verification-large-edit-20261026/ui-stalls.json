@@ -1,0 +1,32 @@
+[
+  {
+    "name": "baseline-large-2",
+    "fullWindows": 19,
+    "uiStalls": 0,
+    "maxUiIntervalMs": 140.90000000000873
+  },
+  {
+    "name": "candidate-large-1",
+    "fullWindows": 12,
+    "uiStalls": 2,
+    "maxUiIntervalMs": 1006.9000000000015
+  },
+  {
+    "name": "candidate-1-large-a-repeat",
+    "fullWindows": 12,
+    "uiStalls": 2,
+    "maxUiIntervalMs": 882.5
+  },
+  {
+    "name": "candidate-large-b-1",
+    "fullWindows": 5,
+    "uiStalls": 1,
+    "maxUiIntervalMs": 416.59999999999854
+  },
+  {
+    "name": "candidate-large-c-1",
+    "fullWindows": 5,
+    "uiStalls": 2,
+    "maxUiIntervalMs": 434.3000000000029
+  }
+]

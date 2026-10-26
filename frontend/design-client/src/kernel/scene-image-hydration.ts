@@ -1,4 +1,4 @@
-import { DecodedImageCache, validDecodedImage, type DecodedImage } from './decoded-image-cache'
+import { DecodedImageCache, decodedImageScope, validDecodedImage, type DecodedImage, type DecodedImageOwner } from './decoded-image-cache'
 import { sceneIndex } from './gpu/scene-index'
 import type { GpuScene } from './gpu/types'
 
@@ -17,6 +17,8 @@ export type ImageDecoder = {
   image_linear_at_level(uri: string, level: number): Float32Array
 }
 export type ImageContext = { kernel: ImageDecoder; scope: string; settings: string; current?: () => boolean;
+  /** Worker-issued after exact snapshot/derivation admission, never a file ID. */
+  resourceOwner?: DecodedImageOwner;
   /** Worker-owned document/resource/kernel fence, independent of one request. */
   ownerCurrent?: () => boolean }
 
@@ -45,7 +47,7 @@ export function imageLoaderResidencyOwner(loader: unknown): ImageResidencyOwner 
  * explicitly bound render context, never from the lane that created the GPU. */
 export function managedSceneImageLoader(cache: DecodedImageCache, context: () => ImageContext,
   persistence: ImagePersistence) {
-  let retained: { owner: ImageResidencyOwner; kernel: ImageDecoder; scope: string; settings: string } | undefined
+  let retained: { owner: ImageResidencyOwner; kernel: ImageDecoder; scope: string; settings: string; resourceOwner?: DecodedImageOwner } | undefined
   const revokedRequests = new WeakSet<ImageContext>()
   const checkRequest = (next: ImageContext) => {
     const current = !next.current || next.current()
@@ -101,14 +103,26 @@ export function managedSceneImageLoader(cache: DecodedImageCache, context: () =>
     // An obsolete request cannot borrow pixels, but does not revoke its still
     // synchronized document owner. The next request gets a fresh context.
     checkRequest(next)
-    if (retained && (!imageResidencyOwnerCurrent(retained.owner) || retained.kernel !== next.kernel ||
+    let resourceOwner: DecodedImageOwner | undefined
+    if (next.resourceOwner) {
+      try { if(decodedImageScope(next.resourceOwner,next.settings)===next.scope)resourceOwner=next.resourceOwner }
+      catch { /* Unknown caller tokens cannot authorize cross-decoder reuse. */ }
+    }
+    const shared=retained&&resourceOwner&&retained.resourceOwner===resourceOwner&&
+      retained.scope===next.scope&&retained.settings===next.settings
+    const entry=retained&&residencyOwners.get(retained.owner)
+    // Adopt the live snapshot's proof before querying the previous request's
+    // lifetime. A lane switch expires requests, not immutable shared pixels.
+    // A resource which was actually revoked is never revived by adoption.
+    if(shared&&entry&&!entry.revoked)entry.current=next.ownerCurrent!
+    if (retained && (!imageResidencyOwnerCurrent(retained.owner) || !shared&&retained.kernel !== next.kernel ||
         retained.scope !== next.scope || retained.settings !== next.settings)) {
       revokeOwner(retained.owner); retained = undefined
     }
     if (!retained) {
       const owner = Object.freeze({}) as ImageResidencyOwner
       residencyOwners.set(owner, { current: next.ownerCurrent!, revoked: false })
-      retained = { owner, kernel: next.kernel, scope: next.scope, settings: next.settings }
+      retained = { owner, kernel: next.kernel, scope: next.scope, settings: next.settings, resourceOwner }
     }
     return retained.owner
   })

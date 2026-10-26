@@ -1,0 +1,55 @@
+{
+  "status": "passed",
+  "scope": "actual WebGPU float pixels in the declared interaction window; no physical scanout or whole-editor claim",
+  "cases": [
+    {
+      "background": "#ffffff",
+      "transparent": false,
+      "comparedWords": 4096,
+      "differences": 0,
+      "alphaZero": 0
+    },
+    {
+      "background": "#ffffff",
+      "transparent": true,
+      "comparedWords": 4096,
+      "differences": 0,
+      "alphaZero": 1024
+    },
+    {
+      "background": "#f2f2f2",
+      "transparent": false,
+      "comparedWords": 4096,
+      "differences": 0,
+      "alphaZero": 0
+    },
+    {
+      "background": "#f2f2f2",
+      "transparent": true,
+      "comparedWords": 4096,
+      "differences": 0,
+      "alphaZero": 1024
+    },
+    {
+      "background": "color(srgb 2.5 -0.25 0.5 / 0.75)",
+      "transparent": false,
+      "comparedWords": 4096,
+      "differences": 0,
+      "alphaZero": 0
+    },
+    {
+      "background": "color(srgb 2.5 -0.25 0.5 / 0.75)",
+      "transparent": true,
+      "comparedWords": 4096,
+      "differences": 0,
+      "alphaZero": 1024
+    }
+  ],
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "device": "",
+    "fallback": false
+  },
+  "pageErrors": []
+}

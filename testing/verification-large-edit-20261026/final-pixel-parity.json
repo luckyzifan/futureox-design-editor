@@ -1,0 +1,11 @@
+{
+  "case": "actual rebuilt default desktop; exact native redraw after opacity change/restore",
+  "shape": [
+    1736,
+    1710,
+    3
+  ],
+  "differentChannels": 0,
+  "maxDelta": 0,
+  "footer": "hidden for both screenshots, no canvas geometry change"
+}

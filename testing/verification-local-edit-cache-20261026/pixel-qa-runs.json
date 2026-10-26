@@ -1,0 +1,77 @@
+[
+  {
+    "kind": "fig",
+    "repeat": 1,
+    "variant": "a",
+    "run": "pixels-fig-1-a",
+    "command": [
+      "node",
+      "/Users/Apple/project/design-kernel/testing/verification-local-edit-cache-20261026/pixel-qa.mjs",
+      "fig",
+      "pixels-fig-1-a"
+    ],
+    "start": 1793000005.803782,
+    "end": 1793000076.955814,
+    "exitCode": 0
+  },
+  {
+    "kind": "fig",
+    "repeat": 1,
+    "variant": "b",
+    "run": "pixels-fig-1-b",
+    "command": [
+      "node",
+      "/Users/Apple/project/design-kernel/testing/verification-local-edit-cache-20261026/pixel-qa.mjs",
+      "fig",
+      "pixels-fig-1-b"
+    ],
+    "start": 1793000081.223547,
+    "end": 1793000140.822315,
+    "exitCode": 0
+  },
+  {
+    "kind": "117",
+    "repeat": 1,
+    "variant": "a",
+    "run": "pixels-117-1-a",
+    "command": [
+      "node",
+      "/Users/Apple/project/design-kernel/testing/verification-local-edit-cache-20261026/pixel-qa.mjs",
+      "117",
+      "pixels-117-1-a"
+    ],
+    "start": 1793000145.092053,
+    "end": 1793000174.867417,
+    "exitCode": 0
+  },
+  {
+    "kind": "117",
+    "repeat": 1,
+    "variant": "b",
+    "run": "pixels-117-1-b",
+    "command": [
+      "node",
+      "/Users/Apple/project/design-kernel/testing/verification-local-edit-cache-20261026/pixel-qa.mjs",
+      "117",
+      "pixels-117-1-b"
+    ],
+    "start": 1793000179.1051772,
+    "end": 1793000207.629385,
+    "exitCode": 0
+  },
+  {
+    "kind": "sketch",
+    "repeat": 1,
+    "variant": "a",
+    "run": "pixels-sketch-1-a",
+    "command": [
+      "node",
+      "/Users/Apple/project/design-kernel/testing/verification-local-edit-cache-20261026/pixel-qa.mjs",
+      "sketch",
+      "pixels-sketch-1-a"
+    ],
+    "start": 1793000211.84613,
+    "end": 1793000313.080787,
+    "exitCode": 1
+  }
+]

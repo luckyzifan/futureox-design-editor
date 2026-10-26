@@ -1,0 +1,137 @@
+[
+  {
+    "kind": "fig",
+    "repeat": 1,
+    "variant": "a",
+    "run": "pair-fig-1-a",
+    "command": [
+      "node",
+      "/Users/Apple/project/design-kernel/testing/verification-local-edit-cache-20261026/local-edit.mjs",
+      "fig",
+      "pair-fig-1-a"
+    ],
+    "start": 1792997984.483562,
+    "end": 1792998050.28669,
+    "exitCode": 0
+  },
+  {
+    "kind": "fig",
+    "repeat": 1,
+    "variant": "b",
+    "run": "pair-fig-1-b",
+    "command": [
+      "node",
+      "/Users/Apple/project/design-kernel/testing/verification-local-edit-cache-20261026/local-edit.mjs",
+      "fig",
+      "pair-fig-1-b"
+    ],
+    "start": 1792998054.568861,
+    "end": 1792998106.710421,
+    "exitCode": 0
+  },
+  {
+    "kind": "fig",
+    "repeat": 2,
+    "variant": "a",
+    "run": "pair-fig-2-a",
+    "command": [
+      "node",
+      "/Users/Apple/project/design-kernel/testing/verification-local-edit-cache-20261026/local-edit.mjs",
+      "fig",
+      "pair-fig-2-a"
+    ],
+    "start": 1792998111.010994,
+    "end": 1792998155.7089899,
+    "exitCode": 0
+  },
+  {
+    "kind": "fig",
+    "repeat": 2,
+    "variant": "b",
+    "run": "pair-fig-2-b",
+    "command": [
+      "node",
+      "/Users/Apple/project/design-kernel/testing/verification-local-edit-cache-20261026/local-edit.mjs",
+      "fig",
+      "pair-fig-2-b"
+    ],
+    "start": 1792998159.943507,
+    "end": 1792998205.576912,
+    "exitCode": 0
+  },
+  {
+    "kind": "fig",
+    "repeat": 3,
+    "variant": "a",
+    "run": "pair-fig-3-a",
+    "command": [
+      "node",
+      "/Users/Apple/project/design-kernel/testing/verification-local-edit-cache-20261026/local-edit.mjs",
+      "fig",
+      "pair-fig-3-a"
+    ],
+    "start": 1792998209.7918148,
+    "end": 1792998257.002956,
+    "exitCode": 0
+  },
+  {
+    "kind": "fig",
+    "repeat": 3,
+    "variant": "b",
+    "run": "pair-fig-3-b",
+    "command": [
+      "node",
+      "/Users/Apple/project/design-kernel/testing/verification-local-edit-cache-20261026/local-edit.mjs",
+      "fig",
+      "pair-fig-3-b"
+    ],
+    "start": 1792998261.293744,
+    "end": 1792998312.7684941,
+    "exitCode": 0
+  },
+  {
+    "kind": "117",
+    "repeat": 1,
+    "variant": "a",
+    "run": "pair-117-1-a",
+    "command": [
+      "node",
+      "/Users/Apple/project/design-kernel/testing/verification-local-edit-cache-20261026/local-edit.mjs",
+      "117",
+      "pair-117-1-a"
+    ],
+    "start": 1792998317.0589619,
+    "end": 1792998337.360357,
+    "exitCode": 0
+  },
+  {
+    "kind": "117",
+    "repeat": 1,
+    "variant": "b",
+    "run": "pair-117-1-b",
+    "command": [
+      "node",
+      "/Users/Apple/project/design-kernel/testing/verification-local-edit-cache-20261026/local-edit.mjs",
+      "117",
+      "pair-117-1-b"
+    ],
+    "start": 1792998355.963648,
+    "end": 1792998376.347308,
+    "exitCode": 0
+  },
+  {
+    "kind": "sketch",
+    "repeat": 1,
+    "variant": "a",
+    "run": "pair-sketch-1-a",
+    "command": [
+      "node",
+      "/Users/Apple/project/design-kernel/testing/verification-local-edit-cache-20261026/local-edit.mjs",
+      "sketch",
+      "pair-sketch-1-a"
+    ],
+    "start": 1792998380.6532748,
+    "end": 1792998474.4171882,
+    "exitCode": 1
+  }
+]

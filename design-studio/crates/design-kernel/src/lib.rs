@@ -82,6 +82,7 @@ pub mod pdf_export;
 pub mod pdf_import;
 pub mod preview;
 pub mod preparation;
+pub mod render_cancellation;
 pub mod prototype;
 pub mod prototype_logic;
 pub mod protocol;
@@ -1848,6 +1849,11 @@ mod wasm {
         pub fn compile_gpu_packet(&mut self, options: &str) -> Result<Vec<u8>, JsValue> {
             self.inner.compile_gpu_packet_request(options)
                 .map_err(|e| JsValue::from_str(&e))
+        }
+        pub fn compile_gpu_packet_cancellable(&mut self, options: &str, probe: js_sys::Function) -> Result<Vec<u8>, JsValue> {
+            crate::render_cancellation::with_probe(move || probe.call0(&JsValue::NULL)
+                .ok().and_then(|v|v.as_bool()).unwrap_or(true), || self.inner.compile_gpu_packet_request(options))
+                .map_err(|e|JsValue::from_str(&e))
         }
     }
     #[wasm_bindgen]

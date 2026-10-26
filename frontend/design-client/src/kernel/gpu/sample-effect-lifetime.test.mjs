@@ -4,7 +4,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { existsSync, readFileSync } from 'node:fs'
-import { registerHooks, stripTypeScriptTypes } from 'node:module'
+import { registerHooks } from 'node:module'
+import {rendererTestTypes} from './renderer-test-types.mjs'
+import './renderer-test-plan.mjs'
 
 const rendererUrl = new URL('./renderer.ts', import.meta.url)
 const source = readFileSync(rendererUrl, 'utf8')
@@ -34,13 +36,14 @@ const hooks = registerHooks({
   },
   load(url, context, next) {
     if (url === 'sample-effect-test:kernel') return { format: 'module', shortCircuit: true,
-      source: kernelNames.map(name => boundaries[name]
+      source: kernelNames.filter(name=>name!=='compiled_scene_plan_json').map(name => boundaries[name]
         ? `export const ${name} = ${boundaries[name]};`
-        : `export function ${name}(){ throw Error('Unexpected WASM boundary: ${name}') }`).join('\n') }
+        : `export function ${name}(){ throw Error('Unexpected WASM boundary: ${name}') }`).join('\n')+
+        '\nexport {compiled_scene_plan_json} from '+JSON.stringify(new URL('./renderer-test-plan.mjs',import.meta.url).href) }
     if (url === 'sample-effect-test:geometry') return { format: 'module', shortCircuit: true,
       source: "export function inverse(){ throw Error('Unexpected geometry boundary') }" }
     if (url.startsWith('file:') && url.endsWith('.ts')) return { format: 'module', shortCircuit: true,
-      source: stripTypeScriptTypes(readFileSync(new URL(url), 'utf8'), { mode: 'transform' })
+      source: rendererTestTypes(readFileSync(new URL(url), 'utf8'),new URL(url).pathname)
         .replaceAll('import.meta.env', '({ DEV: false })') }
     return next(url, context)
   },
@@ -117,7 +120,7 @@ function recorder({ managed = true, captureDisplay = false } = {}) {
     get checkpoints() { return checkpoints }, failOnEffect(n) { failAt = n; effectCount = 0 } }
 }
 function setup(effects, side = 16, pattern = [0, 1, 2, 3]) {
-  const rec = recorder(), renderer = new GpuRenderer(rec.driver, true, false), n = node(side, effects)
+  const rec = recorder(), renderer = new GpuRenderer(rec.driver, true, false, undefined, false, false, 256), n = node(side, effects)
   renderer.scene = scene(n)
   const sources = new Map(), planes = pattern.map(i => {
     if (sources.has(i)) return renderer.retain(sources.get(i))
@@ -166,7 +169,7 @@ for (const fx of [effect('noise'), effect('texture'), material]) {
       assert.equal(current.renderer.memoryPolicy().workingBudgetBytes, 256 * MiB)
       await assert.rejects(legacyNoiseTexture(legacy.renderer, legacy.n, legacy.planes), /GPU 表面内存预算超限/)
       // Reference-only headroom measures the old peak; the production renderer
-      // above and below keeps its default unchanged 256 MiB admission.
+      // above and below keeps this explicit 256 MiB pressure fixture.
       reference.renderer.frameBudget = 512 * MiB
       const old = await legacyNoiseTexture(reference.renderer, reference.n, reference.planes)
       const output = await current.renderer.applySampleEffects(current.n, current.planes, {})

@@ -1,0 +1,106 @@
+--- a/frontend/design-client/src/kernel/gpu/renderer.ts
++++ b/frontend/design-client/src/kernel/gpu/renderer.ts
+@@ -2931,7 +2931,7 @@
+         pressure || imagesUnderPressure ||
+           !!retiredImageTableBytes || !!retiredImageAssetBytes,
+         this.workingBytes, this.frameBudget, poolBytes, transientBytes,
+-        this.driver.resourceEpoch, this.driver.completedResourceEpoch)
++        this.driver.resourceEpoch, this.driver.completedResourceEpoch, transientSet)
+       if (gpuDiagnosticsEnabled()) {
+         try { recordGpuDiagnostic('cache', { maintenanceDecision: reason,
+           maintenanceDeferredCount: this.maintenanceResidency.count, mandatoryReasonBits,
+--- a/frontend/design-client/src/kernel/gpu/maintenance-residency.ts
++++ b/frontend/design-client/src/kernel/gpu/maintenance-residency.ts
+@@ -1,20 +1,39 @@
+ /** Zero means defer without completion credit. Reusable pool storage stays
+  * charged by workingBytes; only transient retirement consumes the 64 MiB cap.
+  * Reasons: 1 invalid ledger/epoch, 2 mandatory boundary, 3 working watermark,
+- * 4 transient limit, 5 bounded consecutive deferrals exhausted. */
++ * 4 transient limit, 5 eight distinct deferred handles (or legacy checks). */
+ export class MaintenanceResidency {
+   private deferred = 0
++  private retained = new WeakSet<object>()
+   decide(required: number, mandatory: boolean, working: number, budget: number,
+-    pool: number, transient: number, epoch: number | undefined, completed: number | undefined): number {
++    pool: number, transient: number, epoch: number | undefined, completed: number | undefined,
++    cohort?: ReadonlySet<object>): number {
+     if (![required, working, budget, pool, transient, epoch, completed].every(v => Number.isSafeInteger(v) && v! >= 0) ||
+       !budget || completed! > epoch! || pool + transient > working) return 1
+     if (required !== 0 || mandatory) return 2
+     if (working > budget * .75) return 3
+     if (transient > Math.min(64 * 1024 * 1024, budget * .25)) return 4
++    if (cohort) {
++      // Rechecking the same still-owned resources creates no new retirement
++      // work. Count actual handles, not how often nested painter code asks.
++      // At most eight distinct handles may wait for an ordinary completion;
++      // a ninth, allocation pressure or either byte limit still fences now.
++      const added: object[] = []
++      for (const resource of cohort) {
++        if (!resource || typeof resource !== 'object') return 1
++        if (!this.retained.has(resource)) {
++          if (this.deferred + added.length >= 8) return 5
++          added.push(resource)
++        }
++      }
++      for (const resource of added) this.retained.add(resource)
++      this.deferred += added.length
++      return 0
++    }
+     if (this.deferred >= 8) return 5
+     this.deferred++
+     return 0
+   }
+-  completed() { this.deferred = 0 }
++  completed() { this.deferred = 0; this.retained = new WeakSet() }
+   get count() { return this.deferred }
+ }
+--- a/frontend/design-client/src/kernel/gpu/maintenance-residency.test.mjs
++++ b/frontend/design-client/src/kernel/gpu/maintenance-residency.test.mjs
+@@ -42,13 +42,44 @@
+  const {r,calls}=fixture();setup(r);await r.reclaimScratch(r.frameBudget===260*M?64*M:0);assert.equal(calls.wait,1)
+  }
+ })
+-test('eight deferrals retain bounded charge, ninth completes original retirement',async()=>{
+- const {r,calls}=fixture(400*M,300*M,20*M);for(let i=0;i<8;i++)await r.reclaimScratch();assert.equal(calls.wait,0);assert.equal(r.maintenanceResidency.count,8)
++test('eight deferred handles retain bounded charge, ninth completes original retirement',async()=>{
++ const {r,calls}=fixture(400*M,300*M,20*M)
++ for(let i=0;i<8;i++){if(i){r.coordinateMaps.add({bytes:1});r.bytes++;r.workingBytes++}await r.reclaimScratch()}
++ assert.equal(calls.wait,0);assert.equal(r.maintenanceResidency.count,8)
++ r.coordinateMaps.add({bytes:1});r.bytes++;r.workingBytes++
+  await r.reclaimScratch();assert.equal(calls.wait,1);assert.ok(calls.destroy>0);assert.equal(r.maintenanceResidency.count,0)
+ })
+ test('failed checkpoint never resets quota or destroys retained resources',async()=>{
+- const {r,calls}=fixture(400*M,300*M,20*M);for(let i=0;i<8;i++)await r.reclaimScratch();r.driver.checkpoint=async()=>{calls.wait++;throw Error('device lost')}
++ const {r,calls}=fixture(400*M,300*M,20*M)
++ for(let i=0;i<8;i++){if(i){r.coordinateMaps.add({bytes:1});r.bytes++;r.workingBytes++}await r.reclaimScratch()}
++ r.coordinateMaps.add({bytes:1});r.bytes++;r.workingBytes++
++ r.driver.checkpoint=async()=>{calls.wait++;throw Error('device lost')}
+  await assert.rejects(r.reclaimScratch(),/device lost/);assert.equal(calls.destroy,0);assert.equal(r.maintenanceResidency.count,8)
++})
++
++test('rechecking the same two owned coordinates never creates new retirement work',async()=>{
++ const {r,t,calls}=fixture(400*M,300*M,2048),other={bytes:672};r.coordinateMaps.add(other);r.bytes+=other.bytes;r.workingBytes+=other.bytes
++ const original=r.workingBytes
++ for(let i=0;i<64;i++)await r.reclaimScratch()
++ assert.equal(calls.wait,0);assert.equal(calls.destroy,0);assert.equal(r.workingBytes,original)
++ assert.deepEqual([...r.coordinateMaps],[t,other]);assert.equal(r.maintenanceResidency.count,2)
++ // The unchanged total watermark still forces the next completion.
++ r.workingBytes=r.bytes=769*M;await r.reclaimScratch();assert.equal(calls.wait,1)
++})
++
++test('equal byte counts cannot hide distinct replacement resources or revive a failed quota',()=>{
++ const d=new MaintenanceResidency()
++ for(let i=0;i<8;i++)assert.equal(d.decide(0,false,400*M,1024*M,300*M,1,2,1,new Set([{}])),0)
++ const ninth={};assert.equal(d.decide(0,false,400*M,1024*M,300*M,1,2,1,new Set([ninth])),5)
++ assert.equal(d.decide(0,false,400*M,1024*M,300*M,1,2,1,new Set([ninth])),5)
++ assert.equal(d.count,8);d.completed();assert.equal(d.decide(0,false,400*M,1024*M,300*M,1,3,2,new Set([ninth])),0)
++ assert.equal(d.count,1)
++})
++
++test('legacy callers without resource identities retain the original eight-check bound',()=>{
++ const d=new MaintenanceResidency()
++ for(let i=0;i<8;i++)assert.equal(d.decide(0,false,400*M,1024*M,300*M,20*M,2,1),0)
++ assert.equal(d.decide(0,false,400*M,1024*M,300*M,20*M,2,1),5)
+ })
+ test('invalid ledger or epochs fail closed',()=>{
+  for(const value of [NaN,Infinity,-1,.5,undefined])assert.equal(new MaintenanceResidency().decide(0,false,400*M,1024*M,300*M,20*M,value,1),1)

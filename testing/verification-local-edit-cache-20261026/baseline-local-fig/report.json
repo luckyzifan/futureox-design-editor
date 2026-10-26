@@ -1,0 +1,189 @@
+{
+  "status": "failed",
+  "probeVersion": 3,
+  "onlyPan": false,
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-local-edit-cache-QJkKeb/baseline-host",
+  "kind": "fig",
+  "scope": "independent foreground Electron; native mouse input, rAF DOM cameras and compositor acknowledgements; no physical scanout claim",
+  "phases": [],
+  "errors": [],
+  "instance": {
+    "pid": 2291,
+    "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-local-edit-cache-QJkKeb/baseline-local-fig/forma-desktop-manual-8386704c-0224-443c-8700-ecf1352c104f-u4IvqE"
+  },
+  "fixture": "/Users/Apple/Downloads/01有料素材 (Copy).fig",
+  "sceneSummaries": [
+    {
+      "at": 1792996635967,
+      "id": 1,
+      "nodes": 19949,
+      "pages": 14,
+      "kinds": {
+        "frame": 5465,
+        "vector": 7049,
+        "rectangle": 3492,
+        "text": 2724,
+        "ellipse": 1219
+      },
+      "roots": 79,
+      "serializedBytes": 27500721
+    }
+  ],
+  "error": "AssertionError [ERR_ASSERTION]: Missing frozen real node",
+  "stack": "AssertionError [ERR_ASSERTION]: Missing frozen real node\n    at file:///Users/Apple/project/design-kernel/testing/verification-local-edit-cache-20261026/local-edit.mjs:156:39",
+  "damage": [],
+  "renderRequests": [
+    {
+      "at": 1792996635967,
+      "id": 1,
+      "channel": "canvas",
+      "width": 2000,
+      "height": 1600,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 27500721
+    },
+    {
+      "at": 1792996639544,
+      "id": 2,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 0,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792996639547,
+      "id": 3,
+      "channel": "canvas",
+      "width": 855,
+      "height": 836,
+      "view": {
+        "x": 40,
+        "y": 40,
+        "zoom": 1
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792996641706,
+      "id": 4,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 25,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792996642659,
+      "id": 5,
+      "channel": "canvas",
+      "width": 2048,
+      "height": 594,
+      "view": {
+        "x": -9.29686274509804,
+        "y": 37.23960784313726,
+        "zoom": 0.13372549019607843
+      },
+      "renderIntent": "preview",
+      "tiles": 15,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792996643454,
+      "id": 6,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 0,
+        "y": 0,
+        "zoom": 2
+      },
+      "renderIntent": "canvas",
+      "tiles": 4,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792996643921,
+      "id": 7,
+      "channel": "canvas",
+      "width": 855,
+      "height": 836,
+      "view": {
+        "x": 60.10243902439021,
+        "y": 164.92439024390242,
+        "zoom": 0.4609756097560976
+      },
+      "livePreview": true,
+      "renderIntent": "preview",
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    },
+    {
+      "at": 1792996644464,
+      "id": 8,
+      "channel": "canvas",
+      "width": 1710,
+      "height": 1672,
+      "view": {
+        "x": 120.20487804878042,
+        "y": 329.84878048780485,
+        "zoom": 0.9219512195121952
+      },
+      "renderIntent": "canvas",
+      "tiles": 20,
+      "documentPatch": false,
+      "readback": false,
+      "derived": false,
+      "derivedTransforms": 0,
+      "serializedDocumentChars": 0
+    }
+  ]
+}

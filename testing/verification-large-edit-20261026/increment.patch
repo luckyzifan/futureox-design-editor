@@ -1,0 +1,228 @@
+--- a/frontend/design-client/src/kernel/client.ts
++++ b/frontend/design-client/src/kernel/client.ts
+@@ -850,8 +850,20 @@
+           if (deriveFrom) { /* Empty derivation carries no authored JSON or patch. */ }
+           else if (snapshot?.id === document.id) {
+             const transition = beforeReceipt ? prepareAuthoredPatchTransition(snapshot, document) : { patch: documentPatch(snapshot, document), canAcknowledge: false }
+-            patch = nativeSerializer ? await nativeSerializer(transition.patch) : JSON.stringify(transition.patch)
+-            if (beforeReceipt && transition.canAcknowledge && boundedPatchWire(patch)) patchBaseReceipt = beforeReceipt
++            // Workset adoption/replacement already sends every node and new
++            // page structure. A bulk patch cannot renew a property-patch
++            // receipt, leaving later gestures to serialize this same graph.
++            // Full synchronization establishes actual native source authority
++            // once; any partial edit/append keeps the incremental path.
++            const completeNativeWorkset = !!nativeSerializer && !interaction && Object.hasOwn(transition.patch.fields, 'pages') &&
++              Object.keys(document.nodes).length > 0 &&
++              Object.keys(snapshot.nodes).every(id => Object.hasOwn(transition.patch.nodes, id)) &&
++              Object.keys(document.nodes).every(id => !!transition.patch.nodes[id])
++            if (completeNativeWorkset) serialized = currentPreparedDocumentJson(document) ?? await nativeSerializer!(document)
++            else {
++              patch = nativeSerializer ? await nativeSerializer(transition.patch) : JSON.stringify(transition.patch)
++              if (beforeReceipt && transition.canAcknowledge && boundedPatchWire(patch)) patchBaseReceipt = beforeReceipt
++            }
+           } else serialized = currentPreparedDocumentJson(document) ??
+             (nativeSerializer ? await nativeSerializer(document) : JSON.stringify(document))
+           if (this.disposed || this.worker !== worker) throw new Error('渲染器已关闭')
+--- a/frontend/design-client/src/kernel/document-derivation-client.test.ts
++++ b/frontend/design-client/src/kernel/document-derivation-client.test.ts
+@@ -49,6 +49,47 @@
+     f.ack(two,null);f.finish(two);await next
+   }finally{f.client.dispose()}
+ })
++
++test('first native workset adoption synchronizes its full source once and derives later poses without serializing it again',async()=>{
++  const f=await fixture(),shape=node('frame',0,0,20,20)
++  try{
++    const first=f.render(),one=await f.next(1);f.ack(one);f.finish(one);await first
++    const populated={...f.document,nodes:{[shape.id]:shape},pages:[{...f.document.pages[0],children:[shape.id]}]}
++    const adopted=f.render(populated,{renderIntent:'canvas',tileViewport:[]}),two=await f.next(2)
++    expect(two.document).toBe(JSON.stringify(populated));expect(two.documentPatch).toBeUndefined()
++    expect(f.native.request).toHaveBeenCalledTimes(2)
++    f.ack(two,receipt('workset'));f.finish(two);await adopted
++    const {interactionPatchedDocument}=await import('./interaction-document-source')
++    const pose=interactionPatchedDocument(populated,{[shape.id]:{transform:[1,0,0,1,30,40]}})
++    const moving=f.render(pose,{interactionChannel:true,retainInteractionGraph:true}),three=await f.next(3)
++    expect(three.deriveFrom).toEqual(receipt('workset'));expect(three.derivedTransforms).toEqual({[shape.id]:[1,0,0,1,30,40]})
++    expect(three.document).toBeUndefined();expect(three.documentPatch).toBeUndefined();expect(f.native.request).toHaveBeenCalledTimes(2)
++    f.ack(three,null);f.finish(three);await moving
++    // Populated documents keep ordinary incremental mutation, including adds.
++    const added=node('rectangle'),later={...populated,nodes:{...populated.nodes,[added.id]:added}}
++    const edit=f.render(later),four=await f.next(4)
++    expect(four.document).toBeUndefined();expect(JSON.parse(four.documentPatch).nodes[added.id]).toEqual(added)
++    f.ack(four,null);f.finish(four);await edit
++  }finally{f.client.dispose()}
++})
++
++test.each([true,false])('native page replacement uses a full source only when every old/new node is in the patch: %s',async complete=>{
++  const f=await fixture(),a=node('frame'),b=node('frame')
++  f.document.nodes={[a.id]:a,[b.id]:b};f.document.pages[0].children=[a.id,b.id]
++  try{
++    const first=f.render(),one=await f.next(1);f.ack(one);f.finish(one);await first
++    const replacement={...f.document,pages:[{...f.document.pages[0],name:'reloaded'}],nodes:{
++      [a.id]:{...a,opacity:.5},[b.id]:complete?{...b,opacity:.5}:b}}
++    const loading=f.render(replacement,{renderIntent:'canvas',tileViewport:[]}),two=await f.next(2)
++    if(complete){expect(two.document).toBe(JSON.stringify(replacement));expect(two.documentPatch).toBeUndefined()}
++    else {expect(two.document).toBeUndefined();expect(JSON.parse(two.documentPatch).nodes[a.id]).toBeTruthy();expect(JSON.parse(two.documentPatch).nodes[b.id]).toBeUndefined()}
++    f.ack(two,complete?receipt('reloaded'):null);f.finish(two);await loading
++    const moving=f.render(replacement,{interactionChannel:true,gpuRoots:[a.id]}),three=await f.next(3)
++    if(complete){expect(three.deriveFrom).toEqual(receipt('reloaded'));expect(three.document).toBeUndefined()}
++    else expect(three.deriveFrom).toBeUndefined()
++    f.ack(three,null);f.finish(three);await moving
++  }finally{f.client.dispose()}
++})
+ test('a privately constructed first pose derives the original receipt and sends only transforms',async()=>{
+   const f=await fixture(),shape=node('frame',0,0,20,20)
+   const {interactionPatchedDocument}=await import('./interaction-document-source')
+--- a/frontend/design-client/src/kernel/interaction-release-handoff.test.ts
++++ b/frontend/design-client/src/kernel/interaction-release-handoff.test.ts
+@@ -144,6 +144,29 @@
+   expect(f.owner.control.isActive()).toBe(false)
+ })
+ 
++test.each(['success', 'cancel'] as const)('release before the first whole capture completes retires its %s without a second capture', async outcome => {
++  const f = fixture(new KernelClient(), true, 'analytic'), initial = worker.jobs[0]
++  expect(initial.options.interactionBranch).toBe(3)
++  expect(f.owner.ready).toBe(false)
++  expect(f.apply(20)).not.toBeNull()
++  const final = f.moved(20)
++  f.owner.control.end(final)
++  expect(initial.signal.aborted).toBe(true)
++  expect(worker.channelCancels).toBe(0)
++  const committed = { ...f.props, document: final, active: false }
++  f.prepare(committed, undefined, f.view, f.size, 2, 'analytic')
++  f.prepare(committed, undefined, f.view, f.size, 2, 'analytic')
++  if (outcome === 'success') initial.resolve({ gpuTile: 100 })
++  else initial.reject(Error('PREVIEW_CANCELLED'))
++  await microtasks()
++  expect(worker.jobs).toHaveLength(1)
++  expect(f.owner.ready).toBe(false)
++  expect(f.owner.items(f.view)).toBeNull()
++  expect(worker.released).toEqual(outcome === 'success' ? [100] : [])
++  f.prepare(committed, final, f.view, f.size, 2, 'analytic')
++  expect(f.owner.control.isActive()).toBe(false)
++})
++
+ test('release cancellation does not cancel another owner on the shared client', async () => {
+   const shared = new KernelClient(), first = fixture(shared)
+   await complete(worker.jobs[0], 100)
+--- a/frontend/design-client/src/kernel/interaction-renderer.ts
++++ b/frontend/design-client/src/kernel/interaction-renderer.ts
+@@ -348,12 +348,17 @@
+         }
+         const contentRelease = this.props?.active && this.props.gestureKind === 'resize'
+         if (this.sharedClient && r.live && (r.active || contentRelease) &&
+-            (contentRelease || (r.tiledExact || r.tiles.length > 0) && (offsets && !r.workerPoses || affine)) &&
++            (contentRelease || offsets && !r.workerPoses || affine) &&
+             this.viewport && this.props && this.sessionEpoch !== undefined && this.props.epoch === this.sessionEpoch &&
+             document.id === r.plan.document.id && this.props.document.id === document.id &&
+             this.sameIds(this.props.selection) && document.pages.some(page => page.id === r.plan.pageId) &&
+             r.plan.ids.every(id => !!document.nodes[id])) {
+           this.nextGeneration()
++          // A released first capture has no useful successor in this lane.
++          // Waiting for it to become tiled/complete first can enqueue an entire
++          // old capture and a final capture ahead of the exact canvas repair.
++          // Its private abort retains the physical request's completion fence;
++          // empty residents remain unready and cannot certify any new pixels.
+           this.livePending = this.liveRequested = undefined
+           this.pending = undefined; this.pendingDensity = undefined
+           this.handoff = { resident: r, document, previousDocument: this.props.document, epoch: this.sessionEpoch,
+--- a/frontend/design-client/src/kernel/progressive-damage.test.tsx
++++ b/frontend/design-client/src/kernel/progressive-damage.test.tsx
+@@ -2484,3 +2484,33 @@
+   expect(worker.clients[0].cancelPreview).toHaveBeenCalledTimes(cancellations)
+   native.resolve();await settleRejected()
+ })
++
++test.each(['same','camera','dpr','epoch','policy','document','device'] as const)('a committed edit with an acknowledged viewport selects native repair only for the same contract: %s',async change=>{
++  nativeNavigationHost();vi.stubEnv('VITE_DESIGN_NATIVE_NAVIGATION','0');vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX','0')
++  worker.dynamicPlan=true
++  const doc=blank(),item=makeNode('rectangle');doc.nodes[item.id]=item;doc.pages[0].children=[item.id]
++  const seeds=planTiles({x:0,y:0,width:512,height:256},2).map((tile,i)=>({...tile,gpuTile:19500+i}))
++  const h=harness(seeds,doc),base={width:512,height:256,view:{x:0,y:0,zoom:1},rasterProfile:'figmaSubpixel'}
++  h.render(base);await flushRasterWork()
++  let parts=surfaceParts(h.render(base))
++  const device={client:worker.clients[0],deviceWorkerScope:11,deviceIncarnation:1,deviceOwner:1}
++  parts.compositor.props.onPresented({view:base.view,width:512,height:256,dpr:2,interaction:false,ids:seeds.map(tile=>tile.gpuTile)},parts.compositor.props.presentation,device)
++  parts=surfaceParts(h.render(base));expect(parts.wrapper.props['data-detail-ready']).toBe('true')
++  const before=worker.calls.length,next={...doc,nodes:{...doc.nodes,[item.id]:{...item,opacity:.5}}},edit:any={...base,document:next}
++  if(change==='camera')edit.view={...base.view,x:-512}
++  if(change==='dpr')worker.dpr=3
++  if(change==='epoch')edit.presentationEpoch=1
++  if(change==='policy')edit.rasterProfile='analytic'
++  if(change==='document')edit.document={...next,id:'another-document'}
++  if(change==='device')parts.compositor.props.onPresented({view:base.view,width:512,height:256,dpr:2,interaction:false,ids:[]},undefined,{...device,deviceOwner:2})
++  h.render(edit);await settleRejected()
++  expect(worker.calls[before].options.tileViewport).toEqual([])
++  worker.clients[0].onDamage({full:true});worker.calls[before].resolve();await settleRejected()
++  if(change==='same'){
++    expect(worker.calls[before+1].options.livePreview).not.toBe(true)
++    expect(worker.calls[before+1].options.renderIntent).toBe('canvas')
++    expect(worker.calls[before+1].options.tileViewport.length).toBeGreaterThan(0)
++  }else expect(worker.calls[before+1].options.livePreview).toBe(true)
++  parts=surfaceParts(h.render(edit));expect(parts.wrapper.props['data-detail-ready']).toBe('false')
++  if(change==='same')expect(worker.clients[0].releasePresented.mock.calls.flat(2)).not.toContain(19500)
++})
+--- a/frontend/design-client/src/kernel/ProgressiveSurface.tsx
++++ b/frontend/design-client/src/kernel/ProgressiveSurface.tsx
+@@ -751,6 +751,21 @@
+   const reusableFrame = tilePreviewContractMatches(displayed ? {
+     ...displayed, pixelRatio: displayed.dpr,
+   } : null, requestedContract)
++  // Scheduling evidence only: an acknowledged backing at the unchanged edit
++  // viewport already supplies continuity. It remains the OLD document until
++  // exact repair publishes the new one; it must never satisfy complete/ACK.
++  const editBacking = displayed && !displayed.preview && displayed.document !== doc &&
++    displayed.document.id === doc.id && displayed.document.rasterProfile === doc.rasterProfile &&
++    displayed.document.colorManagement === doc.colorManagement &&
++    tilePreviewContractMatches({ ...displayed, document: doc, pixelRatio: displayed.dpr }, requestedContract) &&
++    displayed.view.x === requestedView.x && displayed.view.y === requestedView.y && displayed.view.zoom === requestedView.zoom
++  const actualBacking = acknowledged.current, backingDevice = previewDevice.current
++  const retainedEditViewport = residentDisplay && editBacking && actualBacking &&
++    actualBacking.width === width && actualBacking.height === height && actualBacking.dpr === dpr &&
++    actualBacking.view.x === requestedView.x && actualBacking.view.y === requestedView.y && actualBacking.view.zoom === requestedView.zoom &&
++    backingDevice.client === client.current && !!backingDevice.key && displayed.residents.size > 0 &&
++    [...displayed.residents.values()].every(tile => tile.gpuTile !== undefined &&
++      tile.residentDevice?.client === client.current && tile.residentDevice.key === backingDevice.key)
+   const readyHandler = useRef((id: string, serial: number, managed: boolean) => {
+     if (tileRef.current.get(id)?.serial !== serial) return
+     const tile = tileRef.current.get(id)!
+@@ -1019,7 +1034,7 @@
+     // progressive detail. Revisited cameras and edits with retained coverage
+     // do not pay for a second full-scene render.
+     const needsStartupPreview = !sharpNavigation && !nativeVisibleTiles && singleCanvas && !hdrCompositing && !props.grid && !props.checkerboard &&
+-      !props.pixelPreview && !reusableFrame && startupPreviewAttempt.current !== contract &&
++      !props.pixelPreview && !reusableFrame && !retainedEditViewport && startupPreviewAttempt.current !== contract &&
+       ![...tileRef.current.values()].some(tile => tile.document === doc && tile.revision === contract.revision &&
+         ready.current.has(tile.key) && tileIntersectsView(tile, requestedView, { width, height }))
+     const render = (...args: Parameters<KernelClient['render']>) => mailbox.run(current, () => c.render(...args))
+@@ -1918,7 +1933,7 @@
+         // zoom-out viewport. Admit one bounded continuity capture at any zoom,
+         // distinct from low-zoom LOD and final/native sampling policy. No retry
+         // ladder progressively degrades it; exact repair follows immediately.
+-        const continuityAllowed = !nativePanRepair && !sharpNavigation && !gestureHeadroom && !nativeNavigation && !nativeVisibleTiles && singleCanvas &&
++        const continuityAllowed = !retainedEditViewport && !nativePanRepair && !sharpNavigation && !gestureHeadroom && !nativeNavigation && !nativeVisibleTiles && singleCanvas &&
+           !hdrCompositing && !props.grid && !props.checkerboard && !props.pixelPreview && !props.interaction?.active
+         if (!needsStartupPreview && continuityAllowed &&
+             !hasReadyCoverage() && !pendingCoverage() && !plan.every(tile => tileRef.current.has(tile.key) && ready.current.has(tile.key))) {
+--- a/.agents/skills/futureox-design-development/SKILL.md
++++ b/.agents/skills/futureox-design-development/SKILL.md
+@@ -4,6 +4,8 @@
+ ---
+ 
+ # Futureox Design development
++
++- The 2026-10-26 large-file edit continuation is recorded in [its paired GUI evidence](../../../testing/verification-large-edit-20261026/README.md). Released initial interaction captures yield to exact repair; unchanged edit viewports avoid a redundant coarse pass without certifying stale content. Complete native workset replacements use actual full synchronization to establish their source receipt, avoiding repeated 52 MB interaction copies; partial edits remain incremental and receipt/CAS guards are unchanged. Three topology worksets improved, but the largest measured stop-to-refinement interval remains about 6.7 seconds. The maintenance-cohort and translated-source experiments were not adopted after real measurements; do not reintroduce them from isolated tests.
+ 
+ - The 2026-10-26 motion-continuity repair is recorded in [its evidence and remaining failures](../../../testing/verification-motion-continuity-20261025/README.md). Atomic layer import, exact background initialization, scoped cancellation and resource admission address reproduced transparency failures; retained-frame quality alone cannot establish timely object motion. The wide rational prefix candidate remains strictly opt-in. Real fast zoom and topology edit convergence still fail; do not call this a complete rendering fix.
+ 
+--- a/.agents/skills/futureox-rendering-first/SKILL.md
++++ b/.agents/skills/futureox-rendering-first/SKILL.md
+@@ -4,6 +4,8 @@
+ ---
+ 
+ # Futureox Design：渲染优先
++
++2026-10-26 大文件编辑续轮见[配对 GUI 记录](../../../testing/verification-large-edit-20261026/README.md)：取消已释放的首捕获、原生瓦片优先、完整工作集同步减少了重复绘制及交互中反复复制 52 MB 文档。完整源确认仍由既有 native full-load 提供，局部编辑仍增量，不放宽 receipt/CAS。保留真实 pointerup 与代理时间区别，约 16.6→6.7 秒仍不是即时编辑。维护检查与非零平移关联候选未采用；局部测试不能替代真实路径收益。
+ 
+ 2026-10-26 的透明缺口、准入与取消修复见[本轮证据](../../../testing/verification-motion-continuity-20261025/README.md)。零透明、覆盖与原生密度不能证明对象及时跟随输入；保留旧帧也可能得到这些指标。宽整数精确滤波候选继续默认关闭，真实快速缩放与拓扑编辑收敛仍失败，不得把局部通过说成用户全部目标完成。
+ 

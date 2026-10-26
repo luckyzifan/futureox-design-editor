@@ -12,6 +12,22 @@ pub const WASM_ADDRESS_BYTES: u64 = 1u64 << 32;
 pub const UNKNOWN_RUNTIME_MEMORY_BYTES: u64 = 512 * 1024 * 1024;
 static MEMORY_BYTES: OnceLock<u64> = OnceLock::new();
 
+#[cfg(target_os = "macos")]
+fn macos_available_memory_bytes() -> Option<u64> {
+    // Use the safe platform adapter; the kernel keeps forbid(unsafe_code).
+    // Refresh only memory, once at startup, never enumerate processes or spawn
+    // vm_stat. The adapter uses Mach available/reclaimable memory, not total RAM.
+    let system = sysinfo::System::new_with_specifics(
+        sysinfo::RefreshKind::nothing().with_memory(sysinfo::MemoryRefreshKind::nothing().with_ram()),
+    );
+    (system.total_memory() > 0).then(|| system.available_memory())
+}
+
+#[cfg(any(test, target_os = "macos", target_os = "linux"))]
+fn available_memory_budget(available: u64) -> u64 {
+    (available / 2).clamp(REPRESENTATION_RESERVE, WASM_ADDRESS_BYTES)
+}
+
 pub fn configure(memory_bytes: u64) -> Result<(), String> {
     if memory_bytes < REPRESENTATION_RESERVE || memory_bytes > WASM_ADDRESS_BYTES {
         return Err("Invalid trusted document memory budget".into());
@@ -47,8 +63,12 @@ fn detected_memory_bytes() -> u64 {
                         available = available.min(limit.saturating_sub(used));
                     }
                 }
-                return (available / 2).clamp(REPRESENTATION_RESERVE, WASM_ADDRESS_BYTES);
+                return available_memory_budget(available);
             }
+        }
+        #[cfg(target_os = "macos")]
+        if let Some(available) = macos_available_memory_bytes() {
+            return available_memory_budget(available);
         }
     }
     UNKNOWN_RUNTIME_MEMORY_BYTES
@@ -77,6 +97,24 @@ pub fn check_document_bytes(bytes: usize) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn detected_capacity_keeps_headroom_and_address_ceiling() {
+        assert_eq!(available_memory_budget(0), REPRESENTATION_RESERVE);
+        assert_eq!(available_memory_budget(512 * 1024 * 1024), 256 * 1024 * 1024);
+        assert_eq!(available_memory_budget(4 * 1024 * 1024 * 1024), 2 * 1024 * 1024 * 1024);
+        assert_eq!(available_memory_budget(u64::MAX), WASM_ADDRESS_BYTES);
+    }
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_queries_actual_available_memory_without_launch_override() {
+        let available = macos_available_memory_bytes().expect("Mach memory statistics");
+        assert!(available > 0);
+        println!("macOS available={available} working={} document={}", available_memory_budget(available), available_memory_budget(available) / REPRESENTATION_RESERVE);
+        // Run this native test in a fresh process to exercise automatic startup.
+        if std::env::var_os("CORE_DOCUMENT_MEMORY_BYTES").is_none() {
+            assert_ne!(memory_budget_bytes(), UNKNOWN_RUNTIME_MEMORY_BYTES);
+        }
+    }
     #[test]
     fn resource_allowance_has_exact_boundary_and_explains_its_source() {
         let limit = document_byte_limit();

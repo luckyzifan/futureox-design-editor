@@ -1,0 +1,56 @@
+{
+  "status": "passed",
+  "wasmSha256": "a7fc1fd7504fbf42247623cf1a7c4a7363d649ea33296f8dfe41d7c935a149bd",
+  "rows": [
+    {
+      "case": "resolved-layout-material",
+      "damage": {
+        "full": false,
+        "bounds": [
+          24,
+          24,
+          34,
+          34
+        ],
+        "rects": [
+          [
+            24,
+            24,
+            34,
+            34
+          ]
+        ]
+      },
+      "floatWords": 131072,
+      "exact": true
+    },
+    {
+      "case": "nested-mask",
+      "damage": {
+        "full": false,
+        "bounds": [
+          8,
+          8,
+          124,
+          84
+        ],
+        "rects": [
+          [
+            8,
+            8,
+            34,
+            34
+          ],
+          [
+            8,
+            8,
+            124,
+            84
+          ]
+        ]
+      },
+      "floatWords": 131072,
+      "exact": true
+    }
+  ]
+}

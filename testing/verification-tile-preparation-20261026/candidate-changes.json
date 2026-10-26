@@ -1,0 +1,42 @@
+[
+  {
+    "path": "design-studio/crates/design-kernel/src/gpu.rs",
+    "oldSha256": "ac058928201c1d94ff5326463432109e178e2904499a7227f73cfb9f8e8f3023",
+    "candidateSha256": "5d62ad7f6d3565a8fbae5a2c66c32b62c02c86e617bc9dbaa9e65420f8937e21"
+  },
+  {
+    "path": "design-studio/crates/design-kernel/src/gpu/tile_cache_tests.rs",
+    "oldSha256": null,
+    "candidateSha256": "99c74208663fdf0961bd5c9f1768a328c9f6f9261e510efd1433844a72d41a57"
+  },
+  {
+    "path": "frontend/design-client/src/kernel/preview-tiles.ts",
+    "oldSha256": "646f17917806e692ba0ce30f45ea6ed0225973f05b832f1b3397c1f75b8acb8f",
+    "candidateSha256": "e3de410b2dc49c3ba4db8d6ba844b78acaf1014d31b2465ac612c378ad1a5743"
+  },
+  {
+    "path": "frontend/design-client/src/kernel/preview-tiles.test.ts",
+    "oldSha256": "03a2b51c3a6bae34290d1bcf7b97f28290ced0bc31b91d087fcd3fa067ce7683",
+    "candidateSha256": "ebe93f4643ca333a0a1f4839a65efc9e42cd93349525d9e645bca737c897dfbc"
+  },
+  {
+    "path": "frontend/design-client/src/kernel/render-worker.ts",
+    "oldSha256": "3e5dacef15981bb29a3f8cff64d77647287445af49d0e7f4eb21e3158ccf48d6",
+    "candidateSha256": "40652756d3cd54770be173ab8662fc9dcf6d10b6e4a3f4d7607e743e250a6b25"
+  },
+  {
+    "path": "frontend/design-client/src/kernel/render-worker-image-hydration.test.ts",
+    "oldSha256": "f045abfb9720b254497be33f202d00941a9e954e6bc5614e8aa40abcf9858c47",
+    "candidateSha256": "1fba398e5fe71d1f06b1a2f71f546a516a48da48b6515235aab12f99979565c2"
+  },
+  {
+    "path": "frontend/design-client/src/kernel/tile-failure.ts",
+    "oldSha256": "6ae3bd31ae13cf8e018888cb3fc8ae2309ebcd423199e7cfb082c516ddd02f07",
+    "candidateSha256": "f322a972bab1a69ae36afcc5e431d1c8ef9b9689a51419283b78913019dc69fc"
+  },
+  {
+    "path": "frontend/design-client/src/kernel/tile-failure.test.ts",
+    "oldSha256": "0a01923ca39369704743eac907da1ba65a8e3d7c287815c87d54fa76763ff728",
+    "candidateSha256": "5f0a5be1572c10c8b9ee9e668dfddbb56a0656043dbb3926f42d681ff0de6911"
+  }
+]

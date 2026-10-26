@@ -317,6 +317,17 @@ test('same-density whole-device-pixel pan retains prior native phase through mov
   }
 })
 
+test('screen-aligned world tiles retain native pan reuse without requiring a fractional camera',()=>{
+  const initial={x:-123.5,y:-480,zoom:1},dpr=2
+  const raster=canvasRasterPlan(initial,dpr,855,836,{exactPhase:true})
+  expect(raster.mode).toBe('density-cache')
+  const previous={view:initial,dpr,rasterScale:raster.scale,samplingMode:raster.mode}
+  expect(preservesNativePanPhase({...initial,x:initial.x+360,y:initial.y+160},dpr,raster.scale,false,previous)).toBe(true)
+  expect(preservesNativePanPhase({...initial,x:initial.x+.25},dpr,raster.scale,false,previous)).toBe(false)
+  expect(preservesNativePanPhase({...initial,zoom:2},dpr,raster.scale,false,previous)).toBe(false)
+  expect(preservesNativePanPhase(initial,dpr,raster.scale,true,previous)).toBe(false)
+})
+
 test('phase retention refuses fractional motion, changed density/dpr and camera-dependent pixels', () => {
   const view = { x: .125, y: -.375, zoom: .3 }, dpr = 2, scale = .6
   const previous = { view, dpr, rasterScale: scale, samplingMode: 'native' }

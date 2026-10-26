@@ -2,6 +2,7 @@ import {expect,test,vi} from 'vitest'
 import {WebGpuDriver} from './webgpu'
 import {ResidentPrograms} from './resident-programs'
 import {SampleOnlyAreaPrograms} from './sample-only-area-programs'
+import {GpuRenderer} from './renderer'
 import type {PathMesh} from './types'
 
 function fixture(){
@@ -42,4 +43,28 @@ test('foreign handles, expired frames, changed programs, loss and exhausted aren
     const old=f.driver[key];f.driver[key]=value;expect(f.driver.drawOpaqueSolids(batch,f.target,0)).toBe(false);f.driver[key]=old
   }
   expect(f.driver.drawSolidInstances).not.toHaveBeenCalled()
+})
+
+test('compact logical bounds reject batching before any upload, clear or allocation', async()=>{
+  const rect={x:0,y:0,w:512,h:512},driver={name:'webgpu',managed:true,
+    prepareOpaqueSolids:vi.fn(),drawOpaqueSolids:vi.fn(),clear:vi.fn()}
+  const renderer=new GpuRenderer(driver as any,true,false) as any
+  renderer.scene={interactionRetained:true,interactionWindow:{x:128,y:128,w:64,h:64},
+    extent:rect,width:512,height:512}
+  renderer.acquire=vi.fn();renderer.reclaimForSurface=vi.fn()
+  expect(await renderer.drawOpaqueGroup([], [{rect,logicalBounds:rect,texture:{transparentZero:true}}], [0])).toBeUndefined()
+  expect(driver.prepareOpaqueSolids).not.toHaveBeenCalled();expect(driver.clear).not.toHaveBeenCalled()
+  expect(renderer.acquire).not.toHaveBeenCalled();expect(renderer.reclaimForSurface).not.toHaveBeenCalled()
+})
+
+test('suffix scissor restricts stored instance bounds without changing path/sample coordinates',()=>{
+  const f=fixture(),scissor={x:2,y:0,w:3,h:1}
+  const batch=f.driver.prepareOpaqueSolids(f.nodes,f.path.rect,[.2,.4,0,1],scissor)
+  expect(batch).toMatchObject({count:8,pixels:24});scissor.x=5
+  expect(f.driver.drawOpaqueSolids(batch,f.target,3)).toBe(true)
+  const call=f.driver.drawSolidInstances.mock.calls[0]
+  expect([...call[2].subarray(0,4)]).toEqual([-13,29,8,2])
+  expect([...call[2].subarray(16,20)]).toEqual([-11,29,3,1])
+  for(const region of [{x:.5,y:0,w:1,h:1},{x:-1,y:0,w:1,h:1},{x:0,y:0,w:9,h:1},{x:0,y:0,w:1,h:3}])
+    expect(f.driver.prepareOpaqueSolids(f.nodes,f.path.rect,[.2,.4,0,1],region)).toBeUndefined()
 })

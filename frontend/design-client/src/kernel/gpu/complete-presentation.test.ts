@@ -53,6 +53,16 @@ test('explicit empty interaction clears remain permitted instead of retaining de
   expect(f.reports.at(-1)).toMatchObject({ compositorDraws: 0, presented: { interaction: true } })
 })
 
+test('missing interaction sources cannot turn the empty-background contract into a partial clear',()=>{
+  const f=descriptorPresenter(()=>{}),full=f.presenter.capture(16,16),half=f.presenter.capture(8,16)
+  const original=frame([item(full.id,16)]);f.presenter.draw(original)
+  const epoch=f.queue.epoch
+  f.presenter.draw({...frame([item(half.id,8),item(999,8,8)]),interaction:true,allowEmpty:true})
+  expect(f.queue.epoch).toBe(epoch)
+  expect((f.presenter as any).drawn).toBe(original)
+  expect(f.reports.at(-1)).toMatchObject({coverageDeferred:1,missingTextureCount:1})
+})
+
 test('canvas reattachment copies the accepted backing even after its source tiles retire', () => {
   const f = descriptorPresenter(() => {}), full = f.presenter.capture(16, 16), half = f.presenter.capture(8, 16)
   const accepted = { ...frame([item(full.id, 16)]), presentationId: 'accepted' }
@@ -79,6 +89,26 @@ test('same-density integer pan fills only certified uniform page gaps without al
   expect((f.presenter as any).drawn).toBe(moved)
   expect(f.reports.at(-1)?.backgroundCoverage).toBe(1)
   expect(f.presenter.residentBytes).toBe(bytes)
+})
+
+test('whole-page movement uses translated paint support and refuses unseen entering content',()=>{
+  for(const bounds of [[[4,4,12,12]],[[-4,4,12,12]]]){
+    const f=descriptorPresenter(()=>{}),proof:PageBackgroundProof={owner:{},view:{x:0,y:0,zoom:1},bounds,pixel:[.5/16,.5/16]}
+    const tile=f.presenter.capture(16,16,proof),original=frame([item(tile.id,16)])
+    f.presenter.draw(original);const epoch=f.queue.epoch
+    const moved={...original,interaction:true,allowBackground:true,backgroundTranslation:{x:4,y:0},input:{sequence:7,at:1,owner:'page'},
+      items:[{...original.items[0],placement:{left:4,top:0,width:16,height:16}}]}
+    f.presenter.draw(moved)
+    if(bounds[0][0]<0){
+      expect(f.queue.epoch).toBe(epoch)
+      expect((f.presenter as any).drawn).toBe(original)
+      expect(f.reports.at(-1)).toMatchObject({coverageDeferred:1,interactionCoverageMissing:true,input:moved.input})
+    }else{
+      expect(f.queue.epoch).toBeGreaterThan(epoch)
+      expect(f.reports.at(-1)?.backgroundCoverage).toBe(1)
+      expect((f.presenter as any).drawn).toBe(moved)
+    }
+  }
 })
 
 test.each(['unseen-paint','zoom','disabled','mixed-owner'])(

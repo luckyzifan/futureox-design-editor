@@ -1,0 +1,12 @@
+{
+  "status": "failed",
+  "probeVersion": 3,
+  "onlyPan": true,
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-default-14",
+  "kind": "sketch",
+  "scope": "independent foreground Electron; native mouse input, rAF DOM cameras and compositor acknowledgements; no physical scanout claim",
+  "phases": [],
+  "errors": [],
+  "error": "TimeoutError: electron.launch: Timeout 60000ms exceeded.\nCall log:\n\u001b[2m  - <launching> /Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/frontend/design-desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron --inspect=0 --remote-debugging-port=0 /var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-default-14 --desktop-isolated-profile\u001b[22m\n\u001b[2m  - <launched> pid=54968\u001b[22m\n\u001b[2m  - [pid=54968][err] Debugger listening on ws://127.0.0.1:56294/fdbe58e6-b9b8-4261-82ee-0572020b118a\u001b[22m\n\u001b[2m  - [pid=54968][err] For help, see: https://nodejs.org/learn/getting-started/debugging\u001b[22m\n\u001b[2m  - <ws connecting> ws://127.0.0.1:56294/fdbe58e6-b9b8-4261-82ee-0572020b118a\u001b[22m\n\u001b[2m  - [pid=54968][err] Debugger attached.\u001b[22m\n\u001b[2m  - <ws connected> ws://127.0.0.1:56294/fdbe58e6-b9b8-4261-82ee-0572020b118a\u001b[22m\n",
+  "stack": "electron.launch: Timeout 60000ms exceeded.\nCall log:\n\u001b[2m  - <launching> /Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/frontend/design-desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron --inspect=0 --remote-debugging-port=0 /var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/candidate-default-14 --desktop-isolated-profile\u001b[22m\n\u001b[2m  - <launched> pid=54968\u001b[22m\n\u001b[2m  - [pid=54968][err] Debugger listening on ws://127.0.0.1:56294/fdbe58e6-b9b8-4261-82ee-0572020b118a\u001b[22m\n\u001b[2m  - [pid=54968][err] For help, see: https://nodejs.org/learn/getting-started/debugging\u001b[22m\n\u001b[2m  - <ws connecting> ws://127.0.0.1:56294/fdbe58e6-b9b8-4261-82ee-0572020b118a\u001b[22m\n\u001b[2m  - [pid=54968][err] Debugger attached.\u001b[22m\n\u001b[2m  - <ws connected> ws://127.0.0.1:56294/fdbe58e6-b9b8-4261-82ee-0572020b118a\u001b[22m\n\n    at async file:///Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-large-edit-20261026/stress-drag.mjs:76:7"
+}

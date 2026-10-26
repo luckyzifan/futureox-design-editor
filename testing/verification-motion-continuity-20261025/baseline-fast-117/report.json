@@ -1,0 +1,69 @@
+{
+  "status": "failed",
+  "probeVersion": 3,
+  "onlyPan": true,
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/diagnostic-host",
+  "kind": "117",
+  "scope": "independent foreground Electron; native mouse input, rAF DOM cameras and compositor acknowledgements; no physical scanout claim",
+  "phases": [],
+  "errors": [],
+  "instance": {
+    "pid": 98749,
+    "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/baseline-fast-117/forma-desktop-manual-6b082704-c739-44b0-85f9-21eb9e8e3ab1-MRa3RS"
+  },
+  "fixture": "/Users/Apple/Downloads/117.sketch",
+  "canvasBox": {
+    "x": 305,
+    "y": 32,
+    "width": 855,
+    "height": 836
+  },
+  "motionFrameSets": [
+    {
+      "label": "pan",
+      "frames": [
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/baseline-fast-117/pan-png/0000.png",
+          "receivedAt": 1792941870787,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792941870.453686
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/baseline-fast-117/pan-png/0001.png",
+          "receivedAt": 1792941870813,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792941870.470273
+          }
+        },
+        {
+          "file": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-motion-continuity-xryrhcb0/baseline-fast-117/pan-png/0002.png",
+          "receivedAt": 1792941870891,
+          "metadata": {
+            "offsetTop": 0,
+            "pageScaleFactor": 1,
+            "deviceWidth": 1440,
+            "deviceHeight": 908,
+            "scrollOffsetX": 0,
+            "scrollOffsetY": 0,
+            "timestamp": 1792941870.47849
+          }
+        }
+      ]
+    }
+  ],
+  "error": "AssertionError [ERR_ASSERTION]: Missing actual compositor frames",
+  "stack": "AssertionError [ERR_ASSERTION]: Missing actual compositor frames\n    at replay (file:///Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/stress-drag.mjs:58:5)\n    at async file:///Users/Apple/.codex/worktrees/render-motion-continuity/design-kernel/testing/verification-motion-continuity-20261025/stress-drag.mjs:111:3"
+}

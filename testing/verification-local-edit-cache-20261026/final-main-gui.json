@@ -1,0 +1,17 @@
+[
+  {
+    "kind": "fig",
+    "repeat": 1,
+    "variant": "main",
+    "run": "final-fig-main",
+    "command": [
+      "node",
+      "/Users/Apple/project/design-kernel/testing/verification-local-edit-cache-20261026/pixel-qa.mjs",
+      "fig",
+      "final-fig-main"
+    ],
+    "start": 1793002049.43038,
+    "end": 1793002115.917227,
+    "exitCode": 1
+  }
+]

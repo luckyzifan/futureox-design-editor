@@ -1,0 +1,21 @@
+{
+  "base": "39ff10be8037eead583d54eb0d6df5ba5f9e2b4a",
+  "workspace": "/Users/Apple/.codex/worktrees/render-owner-20261025/design-kernel",
+  "sourceFiles": {
+    "design-studio/crates/design-kernel/src/gpu/packet.rs": "fabe7e34d4fe05fea8184494610d249e3acd49976906c4e83bd22aa9d777aa24",
+    "design-studio/crates/design-kernel/src/gpu/scene_plan.rs": "771af72d878c4221ebd404d8f0b3dc475d829351a7f2b9978a633307d0dbacec",
+    "frontend/design-client/src/kernel/gpu/image-asset-residency.test.ts": "4a4cfee9c484ba7c8b3d2a154a2cf2137ea9b2c5e85b6042e1825d517e793737",
+    "frontend/design-client/src/kernel/gpu/opaque-solid-batch.test.ts": "971c4d68c4114e0ba8b32fbfffdcd74b6d372d27df6e1cad0dd243430046720c",
+    "frontend/design-client/src/kernel/gpu/renderer.ts": "52bd562fb216311a109954555bbd733807301be2eae1e22b2615d114c1e85ff1",
+    "frontend/design-client/src/kernel/gpu/scene-index.test.ts": "f90244a9eb36a68209e973a7ed04c4a8f5d9569263a168d4365c59740928963c",
+    "frontend/design-client/src/kernel/gpu/scene-index.ts": "a4ef9f9bf67971e64a058d8020de3c2a831c9b9a42cc0d359af7c0375df234b4",
+    "frontend/design-client/src/kernel/gpu/types.ts": "932595f8548c0f878f1af86859a78304e2c1f1cded76cd422d10798885c27b1c",
+    "frontend/design-client/src/kernel/gpu/webgpu.ts": "a722f3a1b3ba062a8bd7401de6243331da20d5f2576908d4537ed6e66500e29e",
+    "frontend/design-client/src/kernel/render-worker.ts": "e3db2f2d0da7f8aced355827b9f7c3b3c48d1442dc7aa9aaa233a47864e11f6f",
+    "frontend/design-client/src/kernel/scene-image-hydration.ts": "084bf07d7546eea68df7638d59c5ae83f0d03234fd4d299b6e908a0caceb8854"
+  },
+  "omittedExternalPaths": [
+    "frontend/design-client/src/kernel/navigation-refinement.test.ts",
+    "evidence/"
+  ]
+}

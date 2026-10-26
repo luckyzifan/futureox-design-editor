@@ -1,11 +1,13 @@
-// Standalone Node >=24 renderer unit tests. No generated WASM, dependencies,
-// browser or GPU is required. Uses the same cases as the Vitest suites and
+// Node renderer units with the generated Rust scene planner. No browser or
+// GPU is required. Uses the same cases as the Vitest suites and
 // executes production renderer/graph/cache code with explicit driver doubles.
 // Geometry/WASM boundaries fail loudly if an untested operation reaches them.
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, existsSync } from 'node:fs'
-import { registerHooks, stripTypeScriptTypes } from 'node:module'
+import { registerHooks } from 'node:module'
+import {rendererTestTypes} from './renderer-test-types.mjs'
+import './renderer-test-plan.mjs'
 
 const rendererUrl = new URL('./renderer.ts', import.meta.url)
 const rendererSource = readFileSync(rendererUrl, 'utf8')
@@ -27,13 +29,14 @@ const hooks = registerHooks({
   },
   load(url, context, nextLoad) {
     if (url === 'renderer-unit:kernel') return { format: 'module', shortCircuit: true,
-      source: kernelFunctions.map(unavailable).join('\n') }
+      source: kernelFunctions.filter(name=>name!=='compiled_scene_plan_json').map(unavailable).join('\n')+
+        '\nexport {compiled_scene_plan_json} from '+JSON.stringify(new URL('./renderer-test-plan.mjs',import.meta.url).href) }
     if (url === 'renderer-unit:geometry') return { format: 'module', shortCircuit: true,
       source: unavailable('inverse') }
     if (url.startsWith('file:') && url.endsWith('.ts')) {
       const source = readFileSync(new URL(url), 'utf8')
       return { format: 'module', shortCircuit: true,
-        source: stripTypeScriptTypes(source, { mode: 'transform' }).replaceAll('import.meta.env', '({ DEV: false })') }
+        source: rendererTestTypes(source,new URL(url).pathname).replaceAll('import.meta.env', '({ DEV: false })') }
     }
     return nextLoad(url, context)
   },

@@ -1,0 +1,403 @@
+{
+  "base": "39ff10be8037eead583d54eb0d6df5ba5f9e2b4a",
+  "source": "/Users/Apple/.codex/worktrees/render-owner-20261025/design-kernel",
+  "destination": "/Users/Apple/project/design-kernel",
+  "backup": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/drag-response-20261024-6lnpejll/render-owner-main-merge-ncc_j2gp",
+  "files": [
+    {
+      "path": "design-studio/crates/design-kernel/tests/support/frame_scene.rs",
+      "expectedMain": null,
+      "currentMain": null,
+      "new": "2ec99fd249ec5e9af4bf98d4e777798d7314d8d4892bbe64b8a6bb36f5fb0ddd",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/compilation-witness.test.ts",
+      "expectedMain": null,
+      "currentMain": null,
+      "new": "984710a0f6156aab8425aa008751b60d973819d29fb1520ef28400f73204d0e6",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/compilation-witness.ts",
+      "expectedMain": null,
+      "currentMain": null,
+      "new": "02da1edaa92e5fcd02d1d97f602a5cb9bfca7a5948de4928a24e9a795325eafd",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/frame-resource-capacity.test.ts",
+      "expectedMain": null,
+      "currentMain": null,
+      "new": "f419034b84037abaab1332f39a999dcabe393e2388b85ebfd82f4228daf8ee72",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/multi-surface-admission.test.ts",
+      "expectedMain": null,
+      "currentMain": null,
+      "new": "59710516848a2907fc24197d1f921f51c38f00c2cbbb833f80a6336d24906079",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer-test-plan.mjs",
+      "expectedMain": null,
+      "currentMain": null,
+      "new": "432f175a2ee157e9892248e6e14a62a51deb0a98cddb25f571dd6db42ba42862",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer-test-types.mjs",
+      "expectedMain": null,
+      "currentMain": null,
+      "new": "84e840e12efe352d7308ea2297d23824293e0999707eb8a3bfae08df58e7e70c",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/surface-pool.test.ts",
+      "expectedMain": null,
+      "currentMain": null,
+      "new": "92a7d9fb8593dea19d26f1740b5d6242a36440d60b3f0ee32f799330f67723c2",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/surface-pool.ts",
+      "expectedMain": null,
+      "currentMain": null,
+      "new": "83a81eca52f3a250300ccafc88191bd13f963ea25d84533dfd6c90fa409e0337",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "testing/verification-navigation-priority-20261025/canvas-actions.mjs",
+      "currentMain": null,
+      "new": "38c0c2efc185d955c1b614ea01d37945cea48d927f50079844c10f40fed136aa",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "testing/verification-navigation-priority-20261025/topology-target.mjs",
+      "currentMain": null,
+      "new": "9c4673f1c6010ccbc27f71c174b8abdb56449e57c89ffef119b84e9da755b472",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/gpu.rs",
+      "expectedMain": "df54c9f6d5a0e6c092f55e2ac98aa87b55b3cd6a2d05225b49db2a99fa8ad5f7",
+      "currentMain": "df54c9f6d5a0e6c092f55e2ac98aa87b55b3cd6a2d05225b49db2a99fa8ad5f7",
+      "new": "25ddee4c9fc02a547a76c35bd1bc579c7aae2ab11033be0ca7c872e2359b28e2",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/gpu/packet.rs",
+      "expectedMain": "fabe7e34d4fe05fea8184494610d249e3acd49976906c4e83bd22aa9d777aa24",
+      "currentMain": "fabe7e34d4fe05fea8184494610d249e3acd49976906c4e83bd22aa9d777aa24",
+      "new": "003a618233a837241618571b703e857830d7ce1ebd084cec1f9b911d450e3a80",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/paint.rs",
+      "expectedMain": "0694d563127cf1c21778c14a231bd975b55d4cee3eeac96d3d04ac0b940b0e59",
+      "currentMain": "0694d563127cf1c21778c14a231bd975b55d4cee3eeac96d3d04ac0b940b0e59",
+      "new": "7d890a5caa30f06c048211f1dc05ac26c402ce3f1356fb6b9e864666dfcfe502",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/preparation.rs",
+      "expectedMain": "c77fda4b57a3d5324bae01a035a358621cc5ae37a1c0cb269bb644b55c9e02c1",
+      "currentMain": "c77fda4b57a3d5324bae01a035a358621cc5ae37a1c0cb269bb644b55c9e02c1",
+      "new": "d97da8a985644df6d62279564657e0f7bfd85727b9ad4f1f0c46050a02b874a1",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/renderer.rs",
+      "expectedMain": "f73db6974079d0895363592d77101f3ac50a4059b95a8e2958a99f5db7899ec9",
+      "currentMain": "f73db6974079d0895363592d77101f3ac50a4059b95a8e2958a99f5db7899ec9",
+      "new": "1c413ab90e4ce8781154256d2295483ab58d790e7e46a6491b142cac53925a9d",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "design-studio/crates/design-kernel/tests/gpu_interaction.rs",
+      "expectedMain": "528e0ff5ca370467bbf36dd2d35a44685956969e6438bcc8075b539289174a1e",
+      "currentMain": "528e0ff5ca370467bbf36dd2d35a44685956969e6438bcc8075b539289174a1e",
+      "new": "e02e837f1ee05b7be836040e78809721a0d449370c23b5432ae8fc2d328e62eb",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "design-studio/crates/design-kernel/tests/gradient_stop_capacity.rs",
+      "expectedMain": "fdd8837a0d374f90108135b55f2cb3f05f7dc7b3c2a5a3d3e3fe402b44ec73ae",
+      "currentMain": "fdd8837a0d374f90108135b55f2cb3f05f7dc7b3c2a5a3d3e3fe402b44ec73ae",
+      "new": "32f2fdb054fd20dfe76b347902187a1565b0f3aa82a20478ee502a39b2a71762",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "design-studio/scripts/benchmark-kernel-hotpaths.mjs",
+      "expectedMain": "983ceb7c6a7c30767030dc35247120985b606b39f659cdf3e43c960bc172829b",
+      "currentMain": "983ceb7c6a7c30767030dc35247120985b606b39f659cdf3e43c960bc172829b",
+      "new": "32144e379c85955c7fee57c60e5ab2e92d2938583afb52d224c0e4d02fc55c94",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "docs/capacity/DOCUMENT_CAPACITY_2026-10-22.md",
+      "expectedMain": "fbf25c070bde093f890ff5b100b86918c04f09190523b6329b452e7564cdf303",
+      "currentMain": "fbf25c070bde093f890ff5b100b86918c04f09190523b6329b452e7564cdf303",
+      "new": "fc2e5b2adbe6187877beefaf5551bb674ccb0344ee9fda35cbf6ed3a48a84ca4",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/App.tsx",
+      "expectedMain": "989923a33463c7112fc155307c82f78201b445e9dcb36e5502634bfb37d44a36",
+      "currentMain": "989923a33463c7112fc155307c82f78201b445e9dcb36e5502634bfb37d44a36",
+      "new": "2d43d96aa7f420e7138303405fdb91a7df117a3d066309a3efff9337d39b3d2f",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/ProgressiveSurface.tsx",
+      "expectedMain": "9d48532e3f6ed2a6554536febddba5d9e3d0b4fa589dd637ed1ff2e8fa4dad6e",
+      "currentMain": "9d48532e3f6ed2a6554536febddba5d9e3d0b4fa589dd637ed1ff2e8fa4dad6e",
+      "new": "c59a88dcbc96fcae46f338858102e109a9e878b5540cee67c9f6611d45e1615e",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/exact-tile-cache.ts",
+      "expectedMain": "a6909c956895f5658cdbc4763cfba410bad046c885ba4a9db9e77dc71b379656",
+      "currentMain": "a6909c956895f5658cdbc4763cfba410bad046c885ba4a9db9e77dc71b379656",
+      "new": "b03e3f8e059c9a25aa4d82b035f27d0ab841a2c2887ddc135e02b755a2449075",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/frame-measurements.test.ts",
+      "expectedMain": "90495f356a9d67238d6cf07f15bdc1aae8c8b6e8012ac65196f8ec20930820a9",
+      "currentMain": "90495f356a9d67238d6cf07f15bdc1aae8c8b6e8012ac65196f8ec20930820a9",
+      "new": "1a0ecbf9c4733b41056d1ac4d38a047015847fa4769ca27f66f40d86179748b8",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/frame-resources.ts",
+      "expectedMain": "3fc6ca0534edcc0c1f1e84ff5eb95068be84326582d7fc4b12d7a6fa95edccce",
+      "currentMain": "3fc6ca0534edcc0c1f1e84ff5eb95068be84326582d7fc4b12d7a6fa95edccce",
+      "new": "2aba1c5e8f94dcad928dee2b8cb776c965a27227d65712ee25a820153208be7c",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/maintenance-residency.test.mjs",
+      "expectedMain": "55a902820625cea19e2807bcd6937a50e2eed4353fa5786df443a98ab76d3057",
+      "currentMain": "55a902820625cea19e2807bcd6937a50e2eed4353fa5786df443a98ab76d3057",
+      "new": "e20c8afd6825297c1a9c9671889aef318b5e1b2f3becd778cbe698d09bcaa8bf",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/mask-lifetime.test.ts",
+      "expectedMain": "ca4095e2da5f3b15de686a0e3220aef2481731b2c992464594daababf52ee612",
+      "currentMain": "ca4095e2da5f3b15de686a0e3220aef2481731b2c992464594daababf52ee612",
+      "new": "353b362b629126d42f5322b3a5fc28b3ba60ae9c26cd8cf3f48e82cee3c3dcf2",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/prefix-preflight.test.ts",
+      "expectedMain": "e2357d30e12f6b49d4649ee6f687f351f5eb795acfd826970aaf8f5e30a5170b",
+      "currentMain": "e2357d30e12f6b49d4649ee6f687f351f5eb795acfd826970aaf8f5e30a5170b",
+      "new": "2c322baebc08379e2b6b68bb795fbeeeb1a508815fa7347e5bdbaf8370cc6966",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer-regressions.test.mjs",
+      "expectedMain": "11472e632fbaad4b820e12969272322208510956127a129e365349343ecc0b3d",
+      "currentMain": "11472e632fbaad4b820e12969272322208510956127a129e365349343ecc0b3d",
+      "new": "9a35efd1f8215cf68bee9d632698c9f213f2965fa46847f8afdd500d386381c9",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer.ts",
+      "expectedMain": "52bd562fb216311a109954555bbd733807301be2eae1e22b2615d114c1e85ff1",
+      "currentMain": "52bd562fb216311a109954555bbd733807301be2eae1e22b2615d114c1e85ff1",
+      "new": "198f2d0fb2b2ae3b0e457e9f5d03f040b1f5de4cc12389a20979696b7426851a",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/sample-effect-lifetime.test.mjs",
+      "expectedMain": "da81fb8e3425b9ef0eaae0a2691af66e4d6d4e74ec1ec9e494bb9cefa3a71ac1",
+      "currentMain": "da81fb8e3425b9ef0eaae0a2691af66e4d6d4e74ec1ec9e494bb9cefa3a71ac1",
+      "new": "ac7d901fe8574ad3b05315acbdef47ae38f525b2fb0236ac92261f6547f42a73",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/scene-packet.test.ts",
+      "expectedMain": "871f296e0217b735314878a1001560027ca53e0435a88b6c3903229f8204b0f9",
+      "currentMain": "871f296e0217b735314878a1001560027ca53e0435a88b6c3903229f8204b0f9",
+      "new": "50eca939f21d8e2cad747f04182348102441ae386b997b4bfd075794f509abd9",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/scene-packet.ts",
+      "expectedMain": "b81b74d4ab7d752f40d7414a230a4814b9b3225dc95c10cbcadd0e2349481bfc",
+      "currentMain": "b81b74d4ab7d752f40d7414a230a4814b9b3225dc95c10cbcadd0e2349481bfc",
+      "new": "83e820043cc60d3b2fa67f8e82691c3342003f6fa48cd75d6988616673e6d1bc",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/translated-scene.test.ts",
+      "expectedMain": "3580121d69e5752e806ce07878c6a2b948e82a8ef1c9f91b350e349199f6470d",
+      "currentMain": "3580121d69e5752e806ce07878c6a2b948e82a8ef1c9f91b350e349199f6470d",
+      "new": "a1a80f2fd1ce23b1b29ad0ff62061022380967d3a96a96f78fbf38284e9ef11c",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/whole-image-filter.test.ts",
+      "expectedMain": "e7077d586c0f5d5eeea2a2462a804273eb25213b590d56df632dc66cbffcb9f8",
+      "currentMain": "e7077d586c0f5d5eeea2a2462a804273eb25213b590d56df632dc66cbffcb9f8",
+      "new": "4f6ad70dc35066e71f62ec1d2740142321dfaf5ae31132bc39284c908404787c",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-density-admission.test.ts",
+      "expectedMain": "30b7db96c7eb04a2076074e141e2489aec8b8bf4fe54611d361b806eb075c58a",
+      "currentMain": "30b7db96c7eb04a2076074e141e2489aec8b8bf4fe54611d361b806eb075c58a",
+      "new": "dd074b6a5bc19529a1a195813589cf4f0d01424cfb66bbc9c81f0ee842c2a49d",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/owner-tile-cache.ts",
+      "expectedMain": "16f0294b24de600a99df861ebd4b1c898920bede712d67334802812c310c6668",
+      "currentMain": "16f0294b24de600a99df861ebd4b1c898920bede712d67334802812c310c6668",
+      "new": "932003e626590f4dc09d996c992d4273a677be083174a0b523ba2de701054068",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preparation-channel.test.ts",
+      "expectedMain": "2f9eacf42cfe43e3eb062fa2f93925317990d6d02fccc823821be6e530da28be",
+      "currentMain": "2f9eacf42cfe43e3eb062fa2f93925317990d6d02fccc823821be6e530da28be",
+      "new": "32ada3d9ab7727647ebe9aa04b353221769cf6475ecd71c637aeb01ba44f4731",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preparation-worker-wasm.test.ts",
+      "expectedMain": "d94e94edf758afde4d687699cec82401d755dfb9d1952e217f98c27430a90e65",
+      "currentMain": "d94e94edf758afde4d687699cec82401d755dfb9d1952e217f98c27430a90e65",
+      "new": "ae2ac28c1790f8f411ab9c5236a6fb8aef9e13bd898229449c33c3422a9ef003",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preparation-worker.test.ts",
+      "expectedMain": "8c4cdfadcf5bccb1daf6e75da2584eefb73dbaa96848db6688d08f06cc12a114",
+      "currentMain": "8c4cdfadcf5bccb1daf6e75da2584eefb73dbaa96848db6688d08f06cc12a114",
+      "new": "9e6cb4d82f1ebd4ec6074e69871fac6ae4f6afcda2076483fd1d56831a488f03",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/progressive-damage.test.tsx",
+      "expectedMain": "da12a361b18cd29516dbc7f58f5fbc9febb9a4f53879e16f294d06cba7c0e303",
+      "currentMain": "da12a361b18cd29516dbc7f58f5fbc9febb9a4f53879e16f294d06cba7c0e303",
+      "new": "107c14467dcf8c1bdcad71ba44d88d21f5076cd42b2a50b71ed189016d8a52a5",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/progressive-quality.test.ts",
+      "expectedMain": "19444bab0413405090b3566ba2a55a227384f74993ea1b98086436fe5583a708",
+      "currentMain": "19444bab0413405090b3566ba2a55a227384f74993ea1b98086436fe5583a708",
+      "new": "3901499352e339bf6baf3dcb96a5a47f2cf7b1d7d072280e89827ed15f795b6f",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/progressive-quality.ts",
+      "expectedMain": "cbc4bcfb7f1854f384f576c4fe381e2ad5dc67573b5f0dfc409702d5c5e9d5ec",
+      "currentMain": "cbc4bcfb7f1854f384f576c4fe381e2ad5dc67573b5f0dfc409702d5c5e9d5ec",
+      "new": "71a485133938b6cab94c1b82433dfdbdd08754acc2b44bf52ee00557ed2a9154",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-worker.ts",
+      "expectedMain": "e3db2f2d0da7f8aced355827b9f7c3b3c48d1442dc7aa9aaa233a47864e11f6f",
+      "currentMain": "e3db2f2d0da7f8aced355827b9f7c3b3c48d1442dc7aa9aaa233a47864e11f6f",
+      "new": "1fd9cbf64d7a4a64a93be0dee4c2aa61e9f77a978a8fc3a5c129b210993845f4",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-preview.ts",
+      "expectedMain": "15623a9a06f9ab14e7e8ad11e1079d54449993e51e1b10a34e542637316099b4",
+      "currentMain": "15623a9a06f9ab14e7e8ad11e1079d54449993e51e1b10a34e542637316099b4",
+      "new": "16059bd18548d567030a07598ac05df131d8308b03d48193feef9769c68d673c",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "testing/verification-drag-response-20261024/capture-workbench.mjs",
+      "expectedMain": "7cc7d543ec27f6e1c64c8ae32cfb016b099aefd2c82a9bbd9437628eee42301c",
+      "currentMain": "7cc7d543ec27f6e1c64c8ae32cfb016b099aefd2c82a9bbd9437628eee42301c",
+      "new": "f35ea8f13fbcdec2edbe623dc0189d54a3a9238b0138ae26210b272fc258177e",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "testing/verification-drag-response-20261024/check-117-foreground.mjs",
+      "expectedMain": "66903860221dbb074a7f0940349298031c92d234bb9d7d644969bc935b22dc5c",
+      "currentMain": "66903860221dbb074a7f0940349298031c92d234bb9d7d644969bc935b22dc5c",
+      "new": "5c152fe3b8841a791f86eac2f9780f1b8dc8a619ca74d826ce780d60b60dad06",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "testing/verification-drag-response-20261024/check-fig-foreground.mjs",
+      "expectedMain": "d4ebdea9ecd9495ae47454015dc476758332dcd78923fd3cb340de5b6ee11fec",
+      "currentMain": "d4ebdea9ecd9495ae47454015dc476758332dcd78923fd3cb340de5b6ee11fec",
+      "new": "6cf71a6b5f32a1f758a7d275e344abbdc7bc79b006350f3f92a8e707cc22485c",
+      "status": "safe",
+      "mode": 420
+    },
+    {
+      "path": "testing/verification-drag-response-20261024/replay-workbench.mjs",
+      "expectedMain": "f01c2745132762b8201cc1498b88c68e1693f412e02a4387952aee9ff5930a7e",
+      "currentMain": "f01c2745132762b8201cc1498b88c68e1693f412e02a4387952aee9ff5930a7e",
+      "new": "598ef1ebc03076a0a95af705ed0b7765d0d5c6616778cf07c8ee9bc7da77fbf1",
+      "status": "safe",
+      "mode": 420
+    }
+  ],
+  "preservedExternal": [
+    "frontend/design-client/src/kernel/navigation-refinement.test.ts",
+    "evidence/"
+  ],
+  "generatedAssets": "Not replaced; isolated compiled hosts remain the verified runtime. Normal project build regenerates WASM/native assets."
+}

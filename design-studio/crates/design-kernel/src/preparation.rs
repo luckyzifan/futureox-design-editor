@@ -254,6 +254,9 @@ fn render_cpu_frame(
 }
 
 #[cfg(test)]
+#[path="../tests/support/frame_scene.rs"]
+mod frame_scene;
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -336,8 +339,10 @@ mod tests {
             let mut fresh = Preparation { lanes: [Lane::default(), Lane::default()], owner: session_owner(), sequence: 0, operation: 0 };
             fresh.request("interaction", "load_document", &[json!(target.to_string())]).unwrap();
             for method in ["compile_gpu_packet", "render_png"] {
-                assert_eq!(session.request("interaction", method, &[json!(options().to_string())]).unwrap().bytes,
-                    fresh.request("interaction", method, &[json!(options().to_string())]).unwrap().bytes);
+                let actual=session.request("interaction",method,&[json!(options().to_string())]).unwrap().bytes;
+                let expected=fresh.request("interaction",method,&[json!(options().to_string())]).unwrap().bytes;
+                if method=="compile_gpu_packet"{assert_ne!(frame_scene::scope(&actual),frame_scene::scope(&expected));frame_scene::assert_equivalent(&actual,&expected)}
+                else{assert_eq!(actual,expected)}
             }
         }
     }
@@ -435,8 +440,10 @@ mod tests {
         fresh.request("interaction", "load_document", &[json!(doc.to_string())]).unwrap();
         for method in ["compile_gpu_packet", "render_png"] {
             let args = [json!(options().to_string())];
-            assert_eq!(derived.request("interaction", method, &args).unwrap().bytes,
-                fresh.request("interaction", method, &args).unwrap().bytes);
+            let actual=derived.request("interaction",method,&args).unwrap().bytes;
+            let expected=fresh.request("interaction",method,&args).unwrap().bytes;
+            if method=="compile_gpu_packet"{assert_ne!(frame_scene::scope(&actual),frame_scene::scope(&expected));frame_scene::assert_equivalent(&actual,&expected)}
+            else{assert_eq!(actual,expected)}
         }
     }
 
@@ -450,8 +457,10 @@ mod tests {
         fresh.request("interaction", "load_document", &[json!(document().to_string())]).unwrap();
         for method in ["compile_gpu_packet", "render_png"] {
             let args = [json!(options().to_string())];
-            assert_eq!(derived.request("interaction", method, &args).unwrap().bytes,
-                fresh.request("interaction", method, &args).unwrap().bytes);
+            let actual=derived.request("interaction",method,&args).unwrap().bytes;
+            let expected=fresh.request("interaction",method,&args).unwrap().bytes;
+            if method=="compile_gpu_packet"{assert_ne!(frame_scene::scope(&actual),frame_scene::scope(&expected));frame_scene::assert_equivalent(&actual,&expected)}
+            else{assert_eq!(actual,expected)}
         }
     }
 
@@ -562,7 +571,8 @@ mod tests {
         assert_eq!(reply.metadata["documentFork"], true);
         let request = options().to_string();
         let canvas = session.request("canvas", "compile_gpu_packet", &[json!(&request)]).unwrap().bytes;
-        assert_eq!(canvas, session.request("interaction", "compile_gpu_packet", &[json!(&request)]).unwrap().bytes);
+        let interaction=session.request("interaction","compile_gpu_packet",&[json!(&request)]).unwrap().bytes;
+        assert_ne!(frame_scene::scope(&canvas),frame_scene::scope(&interaction));frame_scene::assert_equivalent(&canvas,&interaction);
         session.request("interaction", "apply_interaction_transforms", &[json!(r#"{"r":[1,0,0,1,18,8]}"#)]).unwrap();
         assert_eq!(canvas, session.request("canvas", "compile_gpu_packet", &[json!(&request)]).unwrap().bytes);
         assert_eq!(session.request("interaction", "load_document", &[json!(serde_json::to_string(&before).unwrap())]).unwrap().metadata["documentFork"], false);

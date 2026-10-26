@@ -41,7 +41,7 @@ const policy = WebGpuDriver.prototype as unknown as {
   prefixPolicy: (u: Float32Array, channels: number, filter: {kind:'tent';radius:number}, kernel?: Texture) => boolean
 }
 test('preflight only narrows the rational path; unknown metadata and integer <=512 stay unchanged', () => {
-  const driver = { prefix: {}, displayFilters: false }, u = new Float32Array(256); u[16] = 22
+  const driver = Object.assign(Object.create(WebGpuDriver.prototype),{ prefix: {}, displayFilters: false }), u = new Float32Array(256); u[16] = 22
   const kernel = { prefixRationalUnsupported: true } as Texture
   for (const radius of [48, 96, 512]) expect(policy.prefixPolicy.call(driver, u, 15, {kind:'tent',radius}, kernel)).toBe(true)
   for (const radius of [48.1, 513]) expect(policy.prefixPolicy.call(driver, u, 15, {kind:'tent',radius}, kernel)).toBe(false)
@@ -49,7 +49,7 @@ test('preflight only narrows the rational path; unknown metadata and integer <=5
   expect(policy.prefixPolicy.call(driver, u, 15, {kind:'tent',radius:48.1}, {prefixRationalUnsupported:false} as Texture)).toBe(true)
 })
 test('measured drag radius retains the same exactness, alpha and display guards', () => {
-  const driver = { prefix: {}, displayFilters: false }, u = new Float32Array(256); u[16] = 22
+  const driver = Object.assign(Object.create(WebGpuDriver.prototype),{ prefix: {}, displayFilters: false }), u = new Float32Array(256); u[16] = 22
   for (const radius of [32, 38.25948715209961]) {
     const filter = {kind:'tent' as const,radius}
     expect(policy.prefixPolicy.call(driver,u,15,filter,{prefixRationalUnsupported:false} as Texture)).toBe(true)

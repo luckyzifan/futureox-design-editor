@@ -1,0 +1,2385 @@
+{
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/render-core-20261024-s_4b1g9z/opaque-scissor-hardware-1",
+  "cpuSampler": false,
+  "status": "passed",
+  "scope": "exact opaque solid group against original renderer on the complete native 117 viewport",
+  "cases": [
+    {
+      "fixture": "117.json",
+      "sample": {
+        "capture": true,
+        "view": {
+          "x": 343.7199978379716,
+          "y": 2.9791359888789657,
+          "zoom": 0.9276401603687316
+        },
+        "region": {
+          "x": 0,
+          "y": 0,
+          "w": 1710,
+          "h": 1672
+        },
+        "window": {
+          "x": 100,
+          "y": 100,
+          "w": 1200,
+          "h": 1200
+        }
+      },
+      "runs": [
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 0,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 11436480,
+          "mismatches": 0,
+          "graphMs": 715.2999999523163,
+          "finishMs": 754.6000000238419,
+          "timingSkipped": 0,
+          "opaqueSolidDraws": 0,
+          "passes": [
+            [
+              25,
+              {
+                "calls": 24,
+                "pixels": 31971456
+              }
+            ],
+            [
+              3,
+              {
+                "calls": 1458,
+                "pixels": 31165870
+              }
+            ],
+            [
+              31,
+              {
+                "calls": 2732,
+                "pixels": 23088016
+              }
+            ],
+            [
+              47,
+              {
+                "calls": 2000,
+                "pixels": 13353664
+              }
+            ],
+            [
+              29,
+              {
+                "calls": 28,
+                "pixels": 11016588
+              }
+            ],
+            [
+              0,
+              {
+                "calls": 1749,
+                "pixels": 10360412
+              }
+            ],
+            [
+              2,
+              {
+                "calls": 308,
+                "pixels": 10026256
+              }
+            ],
+            [
+              48,
+              {
+                "calls": 4,
+                "pixels": 5226496
+              }
+            ],
+            [
+              22,
+              {
+                "calls": 16,
+                "pixels": 2890266
+              }
+            ],
+            [
+              23,
+              {
+                "calls": 1,
+                "pixels": 1628176
+              }
+            ],
+            [
+              50,
+              {
+                "calls": 4,
+                "pixels": 237952
+              }
+            ],
+            [
+              27,
+              {
+                "calls": 6,
+                "pixels": 221028
+              }
+            ],
+            [
+              26,
+              {
+                "calls": 6,
+                "pixels": 79021
+              }
+            ],
+            [
+              49,
+              {
+                "calls": 1,
+                "pixels": 59488
+              }
+            ],
+            [
+              1,
+              {
+                "calls": 60,
+                "pixels": 18008
+              }
+            ]
+          ],
+          "workingBytes": 740269260,
+          "passPixels": 115395561,
+          "drawCalls": 8439
+        },
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 1,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 11436480,
+          "mismatches": 0,
+          "graphMs": 103.30000007152557,
+          "finishMs": 559.8999999761581,
+          "timingSkipped": 0,
+          "opaqueSolidDraws": 0,
+          "passes": [
+            [
+              25,
+              {
+                "calls": 24,
+                "pixels": 31971456
+              }
+            ],
+            [
+              3,
+              {
+                "calls": 1458,
+                "pixels": 31165870
+              }
+            ],
+            [
+              31,
+              {
+                "calls": 2728,
+                "pixels": 15939536
+              }
+            ],
+            [
+              47,
+              {
+                "calls": 2000,
+                "pixels": 13353664
+              }
+            ],
+            [
+              29,
+              {
+                "calls": 28,
+                "pixels": 11016588
+              }
+            ],
+            [
+              0,
+              {
+                "calls": 1749,
+                "pixels": 10360412
+              }
+            ],
+            [
+              2,
+              {
+                "calls": 308,
+                "pixels": 10026256
+              }
+            ],
+            [
+              48,
+              {
+                "calls": 4,
+                "pixels": 5226496
+              }
+            ],
+            [
+              22,
+              {
+                "calls": 16,
+                "pixels": 2890266
+              }
+            ],
+            [
+              23,
+              {
+                "calls": 1,
+                "pixels": 1628176
+              }
+            ],
+            [
+              50,
+              {
+                "calls": 4,
+                "pixels": 237952
+              }
+            ],
+            [
+              27,
+              {
+                "calls": 6,
+                "pixels": 221028
+              }
+            ],
+            [
+              26,
+              {
+                "calls": 6,
+                "pixels": 79021
+              }
+            ],
+            [
+              49,
+              {
+                "calls": 1,
+                "pixels": 59488
+              }
+            ],
+            [
+              1,
+              {
+                "calls": 60,
+                "pixels": 18008
+              }
+            ]
+          ],
+          "workingBytes": 725972300,
+          "passPixels": 115395561,
+          "drawCalls": 8435
+        },
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 2,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 11436480,
+          "mismatches": 0,
+          "graphMs": 92.39999997615814,
+          "finishMs": 587.4000000953674,
+          "timingSkipped": 0,
+          "opaqueSolidDraws": 0,
+          "passes": [
+            [
+              25,
+              {
+                "calls": 384,
+                "pixels": 592773264
+              }
+            ],
+            [
+              3,
+              {
+                "calls": 24048,
+                "pixels": 571516072
+              }
+            ],
+            [
+              31,
+              {
+                "calls": 30192,
+                "pixels": 328043044
+              }
+            ],
+            [
+              47,
+              {
+                "calls": 20156,
+                "pixels": 184791208
+              }
+            ],
+            [
+              29,
+              {
+                "calls": 472,
+                "pixels": 204075120
+              }
+            ],
+            [
+              0,
+              {
+                "calls": 22518,
+                "pixels": 177078176
+              }
+            ],
+            [
+              2,
+              {
+                "calls": 5696,
+                "pixels": 181976152
+              }
+            ],
+            [
+              48,
+              {
+                "calls": 64,
+                "pixels": 96834424
+              }
+            ],
+            [
+              22,
+              {
+                "calls": 280,
+                "pixels": 53383140
+              }
+            ],
+            [
+              23,
+              {
+                "calls": 28,
+                "pixels": 34981834
+              }
+            ],
+            [
+              50,
+              {
+                "calls": 64,
+                "pixels": 3807232
+              }
+            ],
+            [
+              27,
+              {
+                "calls": 96,
+                "pixels": 4214094
+              }
+            ],
+            [
+              26,
+              {
+                "calls": 96,
+                "pixels": 1450960
+              }
+            ],
+            [
+              49,
+              {
+                "calls": 16,
+                "pixels": 951808
+              }
+            ],
+            [
+              1,
+              {
+                "calls": 1008,
+                "pixels": 311840
+              }
+            ]
+          ],
+          "workingBytes": 704526860,
+          "passPixels": 115395561,
+          "drawCalls": 8439
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 0,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 11436480,
+          "mismatches": 0,
+          "graphMs": 117.30000007152557,
+          "finishMs": 418.89999997615814,
+          "timingSkipped": 0,
+          "opaqueSolidDraws": 4,
+          "passes": [
+            [
+              25,
+              {
+                "calls": 24,
+                "pixels": 31971456
+              }
+            ],
+            [
+              3,
+              {
+                "calls": 1458,
+                "pixels": 31165870
+              }
+            ],
+            [
+              31,
+              {
+                "calls": 1232,
+                "pixels": 22457276
+              }
+            ],
+            [
+              29,
+              {
+                "calls": 28,
+                "pixels": 11016588
+              }
+            ],
+            [
+              2,
+              {
+                "calls": 308,
+                "pixels": 10026256
+              }
+            ],
+            [
+              0,
+              {
+                "calls": 729,
+                "pixels": 9867612
+              }
+            ],
+            [
+              47,
+              {
+                "calls": 500,
+                "pixels": 7599028
+              }
+            ],
+            [
+              48,
+              {
+                "calls": 4,
+                "pixels": 5226496
+              }
+            ],
+            [
+              22,
+              {
+                "calls": 16,
+                "pixels": 2890266
+              }
+            ],
+            [
+              23,
+              {
+                "calls": 1,
+                "pixels": 1628176
+              }
+            ],
+            [
+              50,
+              {
+                "calls": 4,
+                "pixels": 237952
+              }
+            ],
+            [
+              27,
+              {
+                "calls": 6,
+                "pixels": 221028
+              }
+            ],
+            [
+              26,
+              {
+                "calls": 6,
+                "pixels": 79021
+              }
+            ],
+            [
+              49,
+              {
+                "calls": 1,
+                "pixels": 59488
+              }
+            ],
+            [
+              1,
+              {
+                "calls": 60,
+                "pixels": 18008
+              }
+            ]
+          ],
+          "workingBytes": 740222296,
+          "passPixels": 109597085,
+          "drawCalls": 4423
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 1,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 11436480,
+          "mismatches": 0,
+          "graphMs": 59,
+          "finishMs": 420.3000000715256,
+          "timingSkipped": 0,
+          "opaqueSolidDraws": 4,
+          "passes": [
+            [
+              25,
+              {
+                "calls": 24,
+                "pixels": 31971456
+              }
+            ],
+            [
+              3,
+              {
+                "calls": 1458,
+                "pixels": 31165870
+              }
+            ],
+            [
+              31,
+              {
+                "calls": 1228,
+                "pixels": 15308796
+              }
+            ],
+            [
+              29,
+              {
+                "calls": 28,
+                "pixels": 11016588
+              }
+            ],
+            [
+              2,
+              {
+                "calls": 308,
+                "pixels": 10026256
+              }
+            ],
+            [
+              0,
+              {
+                "calls": 729,
+                "pixels": 9867612
+              }
+            ],
+            [
+              47,
+              {
+                "calls": 500,
+                "pixels": 7599028
+              }
+            ],
+            [
+              48,
+              {
+                "calls": 4,
+                "pixels": 5226496
+              }
+            ],
+            [
+              22,
+              {
+                "calls": 16,
+                "pixels": 2890266
+              }
+            ],
+            [
+              23,
+              {
+                "calls": 1,
+                "pixels": 1628176
+              }
+            ],
+            [
+              50,
+              {
+                "calls": 4,
+                "pixels": 237952
+              }
+            ],
+            [
+              27,
+              {
+                "calls": 6,
+                "pixels": 221028
+              }
+            ],
+            [
+              26,
+              {
+                "calls": 6,
+                "pixels": 79021
+              }
+            ],
+            [
+              49,
+              {
+                "calls": 1,
+                "pixels": 59488
+              }
+            ],
+            [
+              1,
+              {
+                "calls": 60,
+                "pixels": 18008
+              }
+            ]
+          ],
+          "workingBytes": 725925336,
+          "passPixels": 109597085,
+          "drawCalls": 4419
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 2,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 11436480,
+          "mismatches": 0,
+          "graphMs": 54.700000047683716,
+          "finishMs": 436,
+          "timingSkipped": 0,
+          "opaqueSolidDraws": 4,
+          "passes": [
+            [
+              25,
+              {
+                "calls": 312,
+                "pixels": 496858896
+              }
+            ],
+            [
+              3,
+              {
+                "calls": 19674,
+                "pixels": 478018462
+              }
+            ],
+            [
+              31,
+              {
+                "calls": 25000,
+                "pixels": 267188956
+              }
+            ],
+            [
+              29,
+              {
+                "calls": 388,
+                "pixels": 171025356
+              }
+            ],
+            [
+              2,
+              {
+                "calls": 4772,
+                "pixels": 151897384
+              }
+            ],
+            [
+              0,
+              {
+                "calls": 19311,
+                "pixels": 146982540
+              }
+            ],
+            [
+              47,
+              {
+                "calls": 17156,
+                "pixels": 156239488
+              }
+            ],
+            [
+              48,
+              {
+                "calls": 52,
+                "pixels": 81154936
+              }
+            ],
+            [
+              22,
+              {
+                "calls": 232,
+                "pixels": 44712342
+              }
+            ],
+            [
+              23,
+              {
+                "calls": 25,
+                "pixels": 30097306
+              }
+            ],
+            [
+              50,
+              {
+                "calls": 52,
+                "pixels": 3093376
+              }
+            ],
+            [
+              27,
+              {
+                "calls": 78,
+                "pixels": 3551010
+              }
+            ],
+            [
+              26,
+              {
+                "calls": 78,
+                "pixels": 1213897
+              }
+            ],
+            [
+              49,
+              {
+                "calls": 13,
+                "pixels": 773344
+              }
+            ],
+            [
+              1,
+              {
+                "calls": 828,
+                "pixels": 257816
+              }
+            ]
+          ],
+          "workingBytes": 704479896,
+          "passPixels": 109597085,
+          "drawCalls": 4423
+        }
+      ]
+    },
+    {
+      "fixture": "117.json",
+      "sample": {
+        "capture": true,
+        "view": {
+          "x": 343.8449978379716,
+          "y": 3.2291359888789657,
+          "zoom": 0.9276401603687316
+        },
+        "region": {
+          "x": 0,
+          "y": 0,
+          "w": 1710,
+          "h": 1672
+        },
+        "window": {
+          "x": 100.125,
+          "y": 100.25,
+          "w": 1200.125,
+          "h": 1200.25
+        }
+      },
+      "runs": [
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 0,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 11436480,
+          "mismatches": 0,
+          "graphMs": 172.89999997615814,
+          "finishMs": 666.2000000476837,
+          "timingSkipped": 0,
+          "opaqueSolidDraws": 0,
+          "passes": [
+            [
+              25,
+              {
+                "calls": 24,
+                "pixels": 32027160
+              }
+            ],
+            [
+              3,
+              {
+                "calls": 1458,
+                "pixels": 31213466
+              }
+            ],
+            [
+              31,
+              {
+                "calls": 2732,
+                "pixels": 23100204
+              }
+            ],
+            [
+              47,
+              {
+                "calls": 2000,
+                "pixels": 13368796
+              }
+            ],
+            [
+              29,
+              {
+                "calls": 28,
+                "pixels": 11035892
+              }
+            ],
+            [
+              0,
+              {
+                "calls": 1749,
+                "pixels": 10373156
+              }
+            ],
+            [
+              2,
+              {
+                "calls": 308,
+                "pixels": 10043640
+              }
+            ],
+            [
+              48,
+              {
+                "calls": 4,
+                "pixels": 5235700
+              }
+            ],
+            [
+              22,
+              {
+                "calls": 16,
+                "pixels": 2895012
+              }
+            ],
+            [
+              23,
+              {
+                "calls": 1,
+                "pixels": 1630729
+              }
+            ],
+            [
+              50,
+              {
+                "calls": 4,
+                "pixels": 237952
+              }
+            ],
+            [
+              27,
+              {
+                "calls": 6,
+                "pixels": 221073
+              }
+            ],
+            [
+              26,
+              {
+                "calls": 6,
+                "pixels": 79093
+              }
+            ],
+            [
+              49,
+              {
+                "calls": 1,
+                "pixels": 59488
+              }
+            ],
+            [
+              1,
+              {
+                "calls": 60,
+                "pixels": 18264
+              }
+            ]
+          ],
+          "workingBytes": 759824536,
+          "passPixels": 115580301,
+          "drawCalls": 8439
+        },
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 1,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 11436480,
+          "mismatches": 0,
+          "graphMs": 95.39999997615814,
+          "finishMs": 583.2000000476837,
+          "timingSkipped": 0,
+          "opaqueSolidDraws": 0,
+          "passes": [
+            [
+              25,
+              {
+                "calls": 24,
+                "pixels": 32027160
+              }
+            ],
+            [
+              3,
+              {
+                "calls": 1458,
+                "pixels": 31213466
+              }
+            ],
+            [
+              31,
+              {
+                "calls": 2728,
+                "pixels": 15944604
+              }
+            ],
+            [
+              47,
+              {
+                "calls": 2000,
+                "pixels": 13368796
+              }
+            ],
+            [
+              29,
+              {
+                "calls": 28,
+                "pixels": 11035892
+              }
+            ],
+            [
+              0,
+              {
+                "calls": 1749,
+                "pixels": 10373156
+              }
+            ],
+            [
+              2,
+              {
+                "calls": 308,
+                "pixels": 10043640
+              }
+            ],
+            [
+              48,
+              {
+                "calls": 4,
+                "pixels": 5235700
+              }
+            ],
+            [
+              22,
+              {
+                "calls": 16,
+                "pixels": 2895012
+              }
+            ],
+            [
+              23,
+              {
+                "calls": 1,
+                "pixels": 1630729
+              }
+            ],
+            [
+              50,
+              {
+                "calls": 4,
+                "pixels": 237952
+              }
+            ],
+            [
+              27,
+              {
+                "calls": 6,
+                "pixels": 221073
+              }
+            ],
+            [
+              26,
+              {
+                "calls": 6,
+                "pixels": 79093
+              }
+            ],
+            [
+              49,
+              {
+                "calls": 1,
+                "pixels": 59488
+              }
+            ],
+            [
+              1,
+              {
+                "calls": 60,
+                "pixels": 18264
+              }
+            ]
+          ],
+          "workingBytes": 752668936,
+          "passPixels": 115580301,
+          "drawCalls": 8435
+        },
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 2,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 11436480,
+          "mismatches": 0,
+          "graphMs": 84.80000007152557,
+          "finishMs": 570.6999999284744,
+          "timingSkipped": 0,
+          "opaqueSolidDraws": 0,
+          "passes": [
+            [
+              25,
+              {
+                "calls": 240,
+                "pixels": 400833120
+              }
+            ],
+            [
+              3,
+              {
+                "calls": 15300,
+                "pixels": 384425660
+              }
+            ],
+            [
+              31,
+              {
+                "calls": 18308,
+                "pixels": 205686872
+              }
+            ],
+            [
+              47,
+              {
+                "calls": 12656,
+                "pixels": 121902868
+              }
+            ],
+            [
+              29,
+              {
+                "calls": 304,
+                "pixels": 137936984
+              }
+            ],
+            [
+              0,
+              {
+                "calls": 15084,
+                "pixels": 116368616
+              }
+            ],
+            [
+              2,
+              {
+                "calls": 3848,
+                "pixels": 121783848
+              }
+            ],
+            [
+              48,
+              {
+                "calls": 40,
+                "pixels": 65457040
+              }
+            ],
+            [
+              22,
+              {
+                "calls": 184,
+                "pixels": 36032052
+              }
+            ],
+            [
+              23,
+              {
+                "calls": 22,
+                "pixels": 25207672
+              }
+            ],
+            [
+              50,
+              {
+                "calls": 40,
+                "pixels": 2379520
+              }
+            ],
+            [
+              27,
+              {
+                "calls": 60,
+                "pixels": 2887836
+              }
+            ],
+            [
+              26,
+              {
+                "calls": 60,
+                "pixels": 976690
+              }
+            ],
+            [
+              49,
+              {
+                "calls": 10,
+                "pixels": 594880
+              }
+            ],
+            [
+              1,
+              {
+                "calls": 648,
+                "pixels": 203280
+              }
+            ]
+          ],
+          "workingBytes": 731202136,
+          "passPixels": 115580301,
+          "drawCalls": 8439
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 0,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 11436480,
+          "mismatches": 0,
+          "graphMs": 131.29999995231628,
+          "finishMs": 495.8000000715256,
+          "timingSkipped": 0,
+          "opaqueSolidDraws": 4,
+          "passes": [
+            [
+              25,
+              {
+                "calls": 24,
+                "pixels": 32027160
+              }
+            ],
+            [
+              3,
+              {
+                "calls": 1458,
+                "pixels": 31213466
+              }
+            ],
+            [
+              31,
+              {
+                "calls": 1232,
+                "pixels": 22467784
+              }
+            ],
+            [
+              29,
+              {
+                "calls": 28,
+                "pixels": 11035892
+              }
+            ],
+            [
+              2,
+              {
+                "calls": 308,
+                "pixels": 10043640
+              }
+            ],
+            [
+              0,
+              {
+                "calls": 729,
+                "pixels": 9878564
+              }
+            ],
+            [
+              47,
+              {
+                "calls": 500,
+                "pixels": 7603396
+              }
+            ],
+            [
+              48,
+              {
+                "calls": 4,
+                "pixels": 5235700
+              }
+            ],
+            [
+              22,
+              {
+                "calls": 16,
+                "pixels": 2895012
+              }
+            ],
+            [
+              23,
+              {
+                "calls": 1,
+                "pixels": 1630729
+              }
+            ],
+            [
+              50,
+              {
+                "calls": 4,
+                "pixels": 237952
+              }
+            ],
+            [
+              27,
+              {
+                "calls": 6,
+                "pixels": 221073
+              }
+            ],
+            [
+              26,
+              {
+                "calls": 6,
+                "pixels": 79093
+              }
+            ],
+            [
+              49,
+              {
+                "calls": 1,
+                "pixels": 59488
+              }
+            ],
+            [
+              1,
+              {
+                "calls": 60,
+                "pixels": 18264
+              }
+            ]
+          ],
+          "workingBytes": 759761404,
+          "passPixels": 109770985,
+          "drawCalls": 4423
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 1,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 11436480,
+          "mismatches": 0,
+          "graphMs": 58.5,
+          "finishMs": 430.39999997615814,
+          "timingSkipped": 0,
+          "opaqueSolidDraws": 4,
+          "passes": [
+            [
+              25,
+              {
+                "calls": 24,
+                "pixels": 32027160
+              }
+            ],
+            [
+              3,
+              {
+                "calls": 1458,
+                "pixels": 31213466
+              }
+            ],
+            [
+              31,
+              {
+                "calls": 1228,
+                "pixels": 15312184
+              }
+            ],
+            [
+              29,
+              {
+                "calls": 28,
+                "pixels": 11035892
+              }
+            ],
+            [
+              2,
+              {
+                "calls": 308,
+                "pixels": 10043640
+              }
+            ],
+            [
+              0,
+              {
+                "calls": 729,
+                "pixels": 9878564
+              }
+            ],
+            [
+              47,
+              {
+                "calls": 500,
+                "pixels": 7603396
+              }
+            ],
+            [
+              48,
+              {
+                "calls": 4,
+                "pixels": 5235700
+              }
+            ],
+            [
+              22,
+              {
+                "calls": 16,
+                "pixels": 2895012
+              }
+            ],
+            [
+              23,
+              {
+                "calls": 1,
+                "pixels": 1630729
+              }
+            ],
+            [
+              50,
+              {
+                "calls": 4,
+                "pixels": 237952
+              }
+            ],
+            [
+              27,
+              {
+                "calls": 6,
+                "pixels": 221073
+              }
+            ],
+            [
+              26,
+              {
+                "calls": 6,
+                "pixels": 79093
+              }
+            ],
+            [
+              49,
+              {
+                "calls": 1,
+                "pixels": 59488
+              }
+            ],
+            [
+              1,
+              {
+                "calls": 60,
+                "pixels": 18264
+              }
+            ]
+          ],
+          "workingBytes": 752605804,
+          "passPixels": 109770985,
+          "drawCalls": 4419
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 2,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 11436480,
+          "mismatches": 0,
+          "graphMs": 53.89999997615814,
+          "finishMs": 428,
+          "timingSkipped": 0,
+          "opaqueSolidDraws": 4,
+          "passes": [
+            [
+              25,
+              {
+                "calls": 168,
+                "pixels": 304751640
+              }
+            ],
+            [
+              3,
+              {
+                "calls": 10926,
+                "pixels": 290785262
+              }
+            ],
+            [
+              31,
+              {
+                "calls": 13116,
+                "pixels": 144806700
+              }
+            ],
+            [
+              29,
+              {
+                "calls": 220,
+                "pixels": 104829308
+              }
+            ],
+            [
+              2,
+              {
+                "calls": 2924,
+                "pixels": 91652928
+              }
+            ],
+            [
+              0,
+              {
+                "calls": 11877,
+                "pixels": 86238332
+              }
+            ],
+            [
+              47,
+              {
+                "calls": 9656,
+                "pixels": 93327280
+              }
+            ],
+            [
+              48,
+              {
+                "calls": 28,
+                "pixels": 49749940
+              }
+            ],
+            [
+              22,
+              {
+                "calls": 136,
+                "pixels": 27347016
+              }
+            ],
+            [
+              23,
+              {
+                "calls": 19,
+                "pixels": 20315485
+              }
+            ],
+            [
+              50,
+              {
+                "calls": 28,
+                "pixels": 1665664
+              }
+            ],
+            [
+              27,
+              {
+                "calls": 42,
+                "pixels": 2224617
+              }
+            ],
+            [
+              26,
+              {
+                "calls": 42,
+                "pixels": 739411
+              }
+            ],
+            [
+              49,
+              {
+                "calls": 7,
+                "pixels": 416416
+              }
+            ],
+            [
+              1,
+              {
+                "calls": 468,
+                "pixels": 148488
+              }
+            ]
+          ],
+          "workingBytes": 731139004,
+          "passPixels": 109770985,
+          "drawCalls": 4423
+        }
+      ]
+    },
+    {
+      "fixture": "117.json",
+      "sample": {
+        "capture": true,
+        "view": {
+          "x": 343.7199978379716,
+          "y": 2.9791359888789657,
+          "zoom": 0.9276401603687316
+        },
+        "region": {
+          "x": 0,
+          "y": 0,
+          "w": 1710,
+          "h": 1672
+        },
+        "window": {
+          "x": -2,
+          "y": -2,
+          "w": 1714,
+          "h": 1676
+        }
+      },
+      "runs": [
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 0,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 11436480,
+          "mismatches": 0,
+          "graphMs": 117.5,
+          "finishMs": 659.6999999284744,
+          "timingSkipped": 0,
+          "opaqueSolidDraws": 0,
+          "passes": [
+            [
+              25,
+              {
+                "calls": 24,
+                "pixels": 45454080
+              }
+            ],
+            [
+              3,
+              {
+                "calls": 1578,
+                "pixels": 43261966
+              }
+            ],
+            [
+              31,
+              {
+                "calls": 2732,
+                "pixels": 23088016
+              }
+            ],
+            [
+              47,
+              {
+                "calls": 2276,
+                "pixels": 18183784
+              }
+            ],
+            [
+              29,
+              {
+                "calls": 32,
+                "pixels": 15632236
+              }
+            ],
+            [
+              2,
+              {
+                "calls": 436,
+                "pixels": 13601548
+              }
+            ],
+            [
+              0,
+              {
+                "calls": 2606,
+                "pixels": 13072560
+              }
+            ],
+            [
+              48,
+              {
+                "calls": 4,
+                "pixels": 7419040
+              }
+            ],
+            [
+              22,
+              {
+                "calls": 20,
+                "pixels": 4075334
+              }
+            ],
+            [
+              23,
+              {
+                "calls": 3,
+                "pixels": 3114126
+              }
+            ],
+            [
+              27,
+              {
+                "calls": 6,
+                "pixels": 333924
+              }
+            ],
+            [
+              50,
+              {
+                "calls": 4,
+                "pixels": 237952
+              }
+            ],
+            [
+              26,
+              {
+                "calls": 6,
+                "pixels": 110053
+              }
+            ],
+            [
+              49,
+              {
+                "calls": 1,
+                "pixels": 59488
+              }
+            ],
+            [
+              1,
+              {
+                "calls": 68,
+                "pixels": 21704
+              }
+            ],
+            [
+              12,
+              {
+                "calls": 1,
+                "pixels": 1
+              }
+            ]
+          ],
+          "workingBytes": 740269260,
+          "passPixels": 161718676,
+          "drawCalls": 9851
+        },
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 1,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 11436480,
+          "mismatches": 0,
+          "graphMs": 107.5,
+          "finishMs": 637.1000000238419,
+          "timingSkipped": 0,
+          "opaqueSolidDraws": 0,
+          "passes": [
+            [
+              25,
+              {
+                "calls": 24,
+                "pixels": 45454080
+              }
+            ],
+            [
+              3,
+              {
+                "calls": 1578,
+                "pixels": 43261966
+              }
+            ],
+            [
+              47,
+              {
+                "calls": 2276,
+                "pixels": 18183784
+              }
+            ],
+            [
+              31,
+              {
+                "calls": 2728,
+                "pixels": 15939536
+              }
+            ],
+            [
+              29,
+              {
+                "calls": 32,
+                "pixels": 15632236
+              }
+            ],
+            [
+              2,
+              {
+                "calls": 436,
+                "pixels": 13601548
+              }
+            ],
+            [
+              0,
+              {
+                "calls": 2606,
+                "pixels": 13072560
+              }
+            ],
+            [
+              48,
+              {
+                "calls": 4,
+                "pixels": 7419040
+              }
+            ],
+            [
+              22,
+              {
+                "calls": 20,
+                "pixels": 4075334
+              }
+            ],
+            [
+              23,
+              {
+                "calls": 3,
+                "pixels": 3114126
+              }
+            ],
+            [
+              27,
+              {
+                "calls": 6,
+                "pixels": 333924
+              }
+            ],
+            [
+              50,
+              {
+                "calls": 4,
+                "pixels": 237952
+              }
+            ],
+            [
+              26,
+              {
+                "calls": 6,
+                "pixels": 110053
+              }
+            ],
+            [
+              49,
+              {
+                "calls": 1,
+                "pixels": 59488
+              }
+            ],
+            [
+              1,
+              {
+                "calls": 68,
+                "pixels": 21704
+              }
+            ],
+            [
+              12,
+              {
+                "calls": 1,
+                "pixels": 1
+              }
+            ]
+          ],
+          "workingBytes": 725972300,
+          "passPixels": 161718676,
+          "drawCalls": 9847
+        },
+        {
+          "backend": "webgpu",
+          "variant": "reference",
+          "iteration": 2,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 11436480,
+          "mismatches": 0,
+          "graphMs": 91.10000002384186,
+          "finishMs": 605.1000000238419,
+          "timingSkipped": 0,
+          "opaqueSolidDraws": 0,
+          "passes": [
+            [
+              25,
+              {
+                "calls": 96,
+                "pixels": 181816320
+              }
+            ],
+            [
+              3,
+              {
+                "calls": 6312,
+                "pixels": 173047864
+              }
+            ],
+            [
+              31,
+              {
+                "calls": 6424,
+                "pixels": 83311364
+              }
+            ],
+            [
+              47,
+              {
+                "calls": 4604,
+                "pixels": 49356316
+              }
+            ],
+            [
+              29,
+              {
+                "calls": 128,
+                "pixels": 62528944
+              }
+            ],
+            [
+              2,
+              {
+                "calls": 1744,
+                "pixels": 54406192
+              }
+            ],
+            [
+              0,
+              {
+                "calls": 5936,
+                "pixels": 50214648
+              }
+            ],
+            [
+              48,
+              {
+                "calls": 16,
+                "pixels": 29676160
+              }
+            ],
+            [
+              22,
+              {
+                "calls": 80,
+                "pixels": 16301336
+              }
+            ],
+            [
+              23,
+              {
+                "calls": 12,
+                "pixels": 12456504
+              }
+            ],
+            [
+              27,
+              {
+                "calls": 24,
+                "pixels": 1335696
+              }
+            ],
+            [
+              50,
+              {
+                "calls": 16,
+                "pixels": 951808
+              }
+            ],
+            [
+              26,
+              {
+                "calls": 24,
+                "pixels": 440212
+              }
+            ],
+            [
+              49,
+              {
+                "calls": 4,
+                "pixels": 237952
+              }
+            ],
+            [
+              1,
+              {
+                "calls": 272,
+                "pixels": 86816
+              }
+            ],
+            [
+              12,
+              {
+                "calls": 4,
+                "pixels": 4
+              }
+            ]
+          ],
+          "workingBytes": 704526860,
+          "passPixels": 161718676,
+          "drawCalls": 9851
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 0,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 11436480,
+          "mismatches": 0,
+          "graphMs": 90.69999992847443,
+          "finishMs": 461.7000000476837,
+          "timingSkipped": 0,
+          "opaqueSolidDraws": 4,
+          "passes": [
+            [
+              25,
+              {
+                "calls": 24,
+                "pixels": 45454080
+              }
+            ],
+            [
+              3,
+              {
+                "calls": 1578,
+                "pixels": 43261966
+              }
+            ],
+            [
+              31,
+              {
+                "calls": 1232,
+                "pixels": 22457276
+              }
+            ],
+            [
+              29,
+              {
+                "calls": 32,
+                "pixels": 15632236
+              }
+            ],
+            [
+              2,
+              {
+                "calls": 436,
+                "pixels": 13601548
+              }
+            ],
+            [
+              0,
+              {
+                "calls": 1110,
+                "pixels": 12380696
+              }
+            ],
+            [
+              47,
+              {
+                "calls": 776,
+                "pixels": 10390844
+              }
+            ],
+            [
+              48,
+              {
+                "calls": 4,
+                "pixels": 7419040
+              }
+            ],
+            [
+              22,
+              {
+                "calls": 20,
+                "pixels": 4075334
+              }
+            ],
+            [
+              23,
+              {
+                "calls": 3,
+                "pixels": 3114126
+              }
+            ],
+            [
+              27,
+              {
+                "calls": 6,
+                "pixels": 333924
+              }
+            ],
+            [
+              50,
+              {
+                "calls": 4,
+                "pixels": 237952
+              }
+            ],
+            [
+              26,
+              {
+                "calls": 6,
+                "pixels": 110053
+              }
+            ],
+            [
+              49,
+              {
+                "calls": 1,
+                "pixels": 59488
+              }
+            ],
+            [
+              1,
+              {
+                "calls": 68,
+                "pixels": 21704
+              }
+            ],
+            [
+              12,
+              {
+                "calls": 1,
+                "pixels": 1
+              }
+            ]
+          ],
+          "workingBytes": 740222296,
+          "passPixels": 153864612,
+          "drawCalls": 5359
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 1,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 11436480,
+          "mismatches": 0,
+          "graphMs": 75,
+          "finishMs": 476.10000002384186,
+          "timingSkipped": 0,
+          "opaqueSolidDraws": 4,
+          "passes": [
+            [
+              25,
+              {
+                "calls": 24,
+                "pixels": 45454080
+              }
+            ],
+            [
+              3,
+              {
+                "calls": 1578,
+                "pixels": 43261966
+              }
+            ],
+            [
+              29,
+              {
+                "calls": 32,
+                "pixels": 15632236
+              }
+            ],
+            [
+              31,
+              {
+                "calls": 1228,
+                "pixels": 15308796
+              }
+            ],
+            [
+              2,
+              {
+                "calls": 436,
+                "pixels": 13601548
+              }
+            ],
+            [
+              0,
+              {
+                "calls": 1110,
+                "pixels": 12380696
+              }
+            ],
+            [
+              47,
+              {
+                "calls": 776,
+                "pixels": 10390844
+              }
+            ],
+            [
+              48,
+              {
+                "calls": 4,
+                "pixels": 7419040
+              }
+            ],
+            [
+              22,
+              {
+                "calls": 20,
+                "pixels": 4075334
+              }
+            ],
+            [
+              23,
+              {
+                "calls": 3,
+                "pixels": 3114126
+              }
+            ],
+            [
+              27,
+              {
+                "calls": 6,
+                "pixels": 333924
+              }
+            ],
+            [
+              50,
+              {
+                "calls": 4,
+                "pixels": 237952
+              }
+            ],
+            [
+              26,
+              {
+                "calls": 6,
+                "pixels": 110053
+              }
+            ],
+            [
+              49,
+              {
+                "calls": 1,
+                "pixels": 59488
+              }
+            ],
+            [
+              1,
+              {
+                "calls": 68,
+                "pixels": 21704
+              }
+            ],
+            [
+              12,
+              {
+                "calls": 1,
+                "pixels": 1
+              }
+            ]
+          ],
+          "workingBytes": 725925336,
+          "passPixels": 153864612,
+          "drawCalls": 5355
+        },
+        {
+          "backend": "webgpu",
+          "variant": "frame",
+          "iteration": 2,
+          "packetBytes": 0,
+          "payloadBytes": 0,
+          "words": 11436480,
+          "mismatches": 0,
+          "graphMs": 57.700000047683716,
+          "finishMs": 471,
+          "timingSkipped": 0,
+          "opaqueSolidDraws": 4,
+          "passes": [
+            [
+              25,
+              {
+                "calls": 24,
+                "pixels": 45454080
+              }
+            ],
+            [
+              3,
+              {
+                "calls": 1578,
+                "pixels": 43261966
+              }
+            ],
+            [
+              31,
+              {
+                "calls": 1232,
+                "pixels": 22457276
+              }
+            ],
+            [
+              29,
+              {
+                "calls": 32,
+                "pixels": 15632236
+              }
+            ],
+            [
+              2,
+              {
+                "calls": 436,
+                "pixels": 13601548
+              }
+            ],
+            [
+              0,
+              {
+                "calls": 1110,
+                "pixels": 12380696
+              }
+            ],
+            [
+              47,
+              {
+                "calls": 776,
+                "pixels": 10390844
+              }
+            ],
+            [
+              48,
+              {
+                "calls": 4,
+                "pixels": 7419040
+              }
+            ],
+            [
+              22,
+              {
+                "calls": 20,
+                "pixels": 4075334
+              }
+            ],
+            [
+              23,
+              {
+                "calls": 3,
+                "pixels": 3114126
+              }
+            ],
+            [
+              27,
+              {
+                "calls": 6,
+                "pixels": 333924
+              }
+            ],
+            [
+              50,
+              {
+                "calls": 4,
+                "pixels": 237952
+              }
+            ],
+            [
+              26,
+              {
+                "calls": 6,
+                "pixels": 110053
+              }
+            ],
+            [
+              49,
+              {
+                "calls": 1,
+                "pixels": 59488
+              }
+            ],
+            [
+              1,
+              {
+                "calls": 68,
+                "pixels": 21704
+              }
+            ],
+            [
+              12,
+              {
+                "calls": 1,
+                "pixels": 1
+              }
+            ]
+          ],
+          "workingBytes": 704479896,
+          "passPixels": 153864612,
+          "drawCalls": 5359
+        }
+      ]
+    }
+  ],
+  "runtime": {
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) futureox-desgin/0.0.0 Chrome/152.0.7977.130 Electron/44.7.0 Safari/537.36",
+    "dpr": 2,
+    "visibility": "visible",
+    "webgpuExposed": true,
+    "executionPolicy": {
+      "cpuOnly": false,
+      "hdrCompositing": false,
+      "imageMips": false,
+      "imageAtlas": false,
+      "desktopFullMath": true,
+      "desktopDisplay": true
+    },
+    "host": {
+      "host": "electron",
+      "electron": "44.7.0",
+      "chromium": "152.0.7977.130",
+      "platform": "darwin",
+      "arch": "arm64",
+      "cpuOnly": false,
+      "gpuFeatureStatus": {
+        "2d_canvas": "enabled",
+        "direct_rendering_display_compositor": "disabled_off_ok",
+        "gpu_compositing": "enabled",
+        "multiple_raster_threads": "enabled_on",
+        "opengl": "enabled_on",
+        "rasterization": "enabled",
+        "raw_draw": "disabled_off_ok",
+        "skia_graphite": "enabled_on",
+        "trees_in_viz": "disabled_off",
+        "video_decode": "enabled",
+        "video_encode": "enabled",
+        "webgl": "enabled",
+        "webgpu": "enabled",
+        "webnn": "disabled_off"
+      },
+      "windowVisible": true,
+      "windowFocused": true
+    }
+  },
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "device": "",
+    "fallback": false
+  }
+}

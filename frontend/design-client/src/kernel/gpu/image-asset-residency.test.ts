@@ -2,8 +2,8 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { GpuRenderer } from './renderer'
 import { WebGpuDriver } from './webgpu'
 import type { Driver, GpuScene, Texture } from './types'
-import { DecodedImageCache } from '../decoded-image-cache'
-import { imageLoaderResidencyOwner, managedSceneImageLoader, type ImageContext } from '../scene-image-hydration'
+import { DecodedImageCache, createDecodedImageOwner, decodedImageScope } from '../decoded-image-cache'
+import { imageLoaderResidencyOwner, imageResidencyOwnerCurrent, managedSceneImageLoader, type ImageContext } from '../scene-image-hydration'
 
 afterEach(() => vi.unstubAllEnvs())
 const A = 'data:image/png;base64,QQ==', B = 'data:image/png;base64,Qg=='
@@ -57,6 +57,36 @@ test('same private owner retains exact GPU assets for region A -> B -> A without
   expect(f.driver.waitForSubmittedWork).not.toHaveBeenCalled()
   expect(f.renderer.bytes).toBe(128); expect(f.renderer.imageAssetCounters).toEqual({ hits: 1, uploads: 2,
     scopeRetiredTextures: 0, legacyPrunes: 0, pressureEvictions: 0 })
+})
+
+test('admitted canvas / interaction snapshots share GPU pixels across decoder and request lifetimes',async()=>{
+  const f=fixture(),resourceOwner=createDecodedImageOwner(),scope=decodedImageScope(resourceOwner,'null')
+  let canvas=true,interaction=true
+  f.context={...f.context,resourceOwner,scope,ownerCurrent:()=>canvas}
+  await f.region([A]);const original=f.renderer.imageFor(A),proof=imageLoaderResidencyOwner(f.load)
+  canvas=false
+  f.context={...f.context,kernel:{...f.kernel},current:()=>true,ownerCurrent:()=>interaction}
+  await f.region([A]);expect(f.renderer.imageFor(A)).toBe(original)
+  expect(imageLoaderResidencyOwner(f.load)).toBe(proof)
+  expect(f.driver.uploadLinear).toHaveBeenCalledOnce();expect(f.driver.destroy).not.toHaveBeenCalled()
+  expect(f.driver.waitForSubmittedWork).not.toHaveBeenCalled()
+  interaction=false;expect(imageResidencyOwnerCurrent(proof!)).toBe(false)
+  f.context={...f.context,kernel:f.kernel,ownerCurrent:()=>true}
+  await f.region([A]);expect(f.renderer.imageFor(A).texture).not.toBe(original.texture)
+  expect(f.driver.uploadLinear).toHaveBeenCalledTimes(2)
+})
+
+test.each(['foreign-token','scope-mismatch','different-token','changed-settings'] as const)('cross-decoder %s cannot borrow the old GPU asset',async mode=>{
+  const f=fixture(),resourceOwner=createDecodedImageOwner(),scope=decodedImageScope(resourceOwner,'null')
+  f.context={...f.context,resourceOwner,scope}
+  await f.region([A]);const original=f.renderer.imageFor(A)
+  f.context={...f.context,kernel:{...f.kernel}}
+  if(mode==='foreign-token')f.context={...f.context,resourceOwner:{} as any}
+  if(mode==='scope-mismatch')f.context={...f.context,scope:'unproven'}
+  if(mode==='different-token')f.context={...f.context,resourceOwner:createDecodedImageOwner()}
+  if(mode==='changed-settings')f.context={...f.context,settings:'{}'}
+  await f.region([A]);expect(f.renderer.imageFor(A).texture).not.toBe(original.texture)
+  expect(f.driver.uploadLinear).toHaveBeenCalledTimes(2)
 })
 
 test('the existing filter candidate retains its image ownership policy', async () => {

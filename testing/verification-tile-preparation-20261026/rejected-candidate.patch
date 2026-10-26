@@ -1,0 +1,297 @@
+--- a/design-studio/crates/design-kernel/src/gpu.rs
++++ b/design-studio/crates/design-kernel/src/gpu.rs
+@@ -2288,12 +2288,16 @@
+             nodes: BTreeMap::new(),
+             vertices: Vec::new(),
+         };
+-        for root in &page.children {
+-            compiler.node(root, camera, regional_foreground.then_some(viewport))?;
+-        }
++        // Completed interval programs and fragments are immutable and already
++        // admitted. A later node may exceed the aggregate crop allowance; keep
++        // that valid shared preparation for exact subdivision/other tiles.
++        // No incomplete scene is published, and edits still invalidate by node.
++        let compiled = page.children.iter().try_for_each(|root|
++            compiler.node(root, camera, regional_foreground.then_some(viewport)).map(|_| ()));
+         if cache_key.is_some() {
+             if let Some(cache) = self.camera_prepare.as_mut() { cache.programs = compiler.programs; cache.fragments=compiler.fragments; }
+         }
++        compiled?;
+         let mut nodes = compiler.nodes;
+         if has_region && doc.color_management.is_some() && !options.interactive_effects
+             && options.raster_profile == crate::fidelity::RasterProfile::FigmaSubpixel && root_input_box.is_none() {
+@@ -3196,3 +3200,6 @@
+   assert_ne!(changed,second);assert_eq!(changed,reference.compile_gpu_region(&options,Rect::new(0,0,128,128),None).unwrap().into_packet().unwrap());
+  }
+ }
++
++#[cfg(test)]
++mod tile_cache_tests;
+--- /dev/null
++++ b/design-studio/crates/design-kernel/src/gpu/tile_cache_tests.rs
+@@ -0,0 +1,43 @@
++use super::*;
++use serde_json::json;
++
++#[test]
++fn final_tile_admission_failure_preserves_completed_programs_and_local_invalidation() {
++    let mut nodes=serde_json::Map::new();let mut ids=Vec::new();
++    for i in 0..100 {
++        let id=format!("r{i:03}");let angle=(i as f64+1.)*0.0001;
++        nodes.insert(id.clone(),json!({"id":id,"kind":"rectangle","width":512,"height":512,
++            "transform":[angle.cos(),angle.sin(),-angle.sin(),angle.cos(),30.,20.],
++            "fills":[{"kind":"solid","color":"#123456"}]}));ids.push(id);
++    }
++    let mut document=json!({"schemaVersion":3,"id":"d","name":"d",
++        "colorManagement":crate::color::ColorSettings::default(),
++        "pages":[{"id":"p","name":"p","background":"#ffffff","children":ids}],"nodes":nodes});
++    let mut engine=Engine::new();engine.load_document(&document.to_string()).unwrap();
++    let options:RenderOptions=serde_json::from_value(json!({"pageId":"p","width":514,"height":514,
++        "view":{"x":0.25,"y":0.5,"zoom":1},"rasterProfile":"figmaSubpixel"})).unwrap();
++    let guard=Rect::new(0,0,600,600);let half=Rect::new(0,0,514,257);
++    let expected=engine.compile_gpu_region(&options,half,Some(guard)).unwrap().into_packet().unwrap();
++    let key=engine.camera_prepare.as_ref().unwrap().programs.entries["r000"].keys().next().unwrap().clone();
++    let prior=engine.camera_prepare.as_mut().unwrap().programs.get("r000",&key).unwrap();
++    for _ in 0..2 {
++        assert_eq!(engine.compile_gpu_region(&options,Rect::new(0,0,514,514),Some(guard)).err().unwrap(),
++            "GPU analytic interval program budget exceeded");
++        let cache=engine.camera_prepare.as_mut().unwrap();
++        let retained=cache.programs.get("r000",&key).expect("failed crop discarded completed shared preparation");
++        assert!(Arc::ptr_eq(&prior,&retained));
++        assert!(cache.programs.bytes+cache.fragments.bytes<=ProgramCache::LIMIT);
++    }
++    assert_eq!(expected,engine.compile_gpu_region(&options,half,Some(guard)).unwrap().into_packet().unwrap());
++    let transform=Transform([1.,0.,0.,1.,32.25,22.5]);
++    assert!(engine.apply_interaction_transforms(&BTreeMap::from([("r050".into(),transform)])).unwrap());
++    assert!(!engine.camera_prepare.as_ref().unwrap().programs.entries.contains_key("r050"));
++    assert!(Arc::ptr_eq(&prior,&engine.camera_prepare.as_mut().unwrap().programs.get("r000",&key).unwrap()));
++    document["nodes"]["r050"]["transform"]=json!(transform.0);
++    let mut fresh=Engine::new();fresh.load_document(&document.to_string()).unwrap();
++    for crop in [half,Rect::new(0,257,514,257)] {
++        let actual=engine.compile_gpu_region(&options,crop,Some(guard)).unwrap();
++        let reference=fresh.compile_gpu_region(&options,crop,None).unwrap();
++        assert_eq!(serde_json::to_value(actual).unwrap(),serde_json::to_value(reference).unwrap());
++    }
++}
+--- a/frontend/design-client/src/kernel/preview-tiles.ts
++++ b/frontend/design-client/src/kernel/preview-tiles.ts
+@@ -35,6 +35,19 @@
+     if(!this.failed.some(size=>size.width<=tile.width&&size.height<=tile.height))
+       this.failed.push({width:tile.width,height:tile.height})
+     if(this.failed.length>16)this.failed.shift()
++  }
++}
++
++/** Geometry complexity belongs to this exact prepared region. Share only
++ * allocation-pressure learning with neighbouring regions of the same policy. */
++export class PreviewRegionAdmission extends PreviewAdmission {
++  constructor(private readonly allocations: PreviewAdmission) { super() }
++  override shouldSplit(tile: PreviewTile) {
++    return super.shouldSplit(tile) || this.allocations.shouldSplit(tile)
++  }
++  override observe(error: unknown, tile: PreviewTile) {
++    if(isAnalyticProgramBudget(error)||isScenePathBudget(error))super.observe(error,tile)
++    else this.allocations.observe(error,tile)
+   }
+ }
+ 
+--- a/frontend/design-client/src/kernel/preview-tiles.test.ts
++++ b/frontend/design-client/src/kernel/preview-tiles.test.ts
+@@ -198,3 +198,18 @@
+     expect(render).toHaveBeenCalledOnce()
+   }
+ })
++
++
++it('geometry failures stay local while actual allocation pressure is shared',async()=>{
++  const {PreviewRegionAdmission}=await import('./preview-tiles')
++  const shared=new PreviewAdmission(),tile={x:0,y:0,width:514,height:514}
++  const complex=new PreviewRegionAdmission(shared)
++  complex.observe(Error('GPU analytic interval program budget exceeded'),tile)
++  const first:number[]=[];await renderPreviewRegions(514,514,async t=>{first.push(t.width)},514,complex)
++  expect(first).toEqual([257,257]);expect(shared.shouldSplit(tile)).toBe(false)
++  const neighbour=new PreviewRegionAdmission(shared),next:number[]=[]
++  await renderPreviewRegions(514,514,async t=>{next.push(t.width)},514,neighbour)
++  expect(next).toEqual([514])
++  neighbour.observe(Error('GPU surface budget exceeded'),tile)
++  expect(new PreviewRegionAdmission(shared).shouldSplit(tile)).toBe(true)
++})
+--- a/frontend/design-client/src/kernel/render-worker.ts
++++ b/frontend/design-client/src/kernel/render-worker.ts
+@@ -52,7 +52,7 @@
+ import { tileComputationDependsOnCamera } from './tile-computation-key'
+ import { recoverFailedTileRenderer } from './tile-failure'
+ import { recoverPreviewBudget, isRecoverablePreviewBudget } from './preview-budget-recovery'
+-import { PreviewAdmission, isAnalyticProgramBudget, isScenePathBudget } from './preview-tiles'
++import { PreviewAdmission, PreviewRegionAdmission, isAnalyticProgramBudget, isScenePathBudget } from './preview-tiles'
+ import { isDisplayBudgetError } from './gpu/display-budget'
+ import { applyDocumentPatch, documentPatch, type DocumentPatch } from '../document-patch'
+ import type { DesignDocument, Matrix } from '../model'
+@@ -201,10 +201,10 @@
+   }
+   gpu.driver.captureDisplay = !!displayCanvas && capture
+ }
+-async function recoverTileFailure(error:unknown) {
++async function recoverTileFailure(error:unknown, preparationOnly=false) {
+   const owner = gpu?.driver, observation = beginDeviceRecovery(owner, 2, diagnosticRequestId)
+   try {
+-    if(!await recoverFailedTileRenderer(error,gpu,invalidateTileCache,!!displayCanvas)) {
++    if(!await recoverFailedTileRenderer(error,gpu,invalidateTileCache,!!displayCanvas,preparationOnly)) {
+       previousDeviceDiagnostic = { devicePreviousIncarnation: deviceDiagnosticFields(owner).deviceIncarnation || 0 }
+       gpu=undefined
+       observation.end(deviceLifecyclePhase.recoveryRetired)
+@@ -1188,7 +1188,7 @@
+               let speculativeSavedMs = 0
+               let result: TileRender | undefined = disableExactCache || request.debug?.disableCertifiedTileReuse ? undefined : tileCache.certified(cacheKey)
+               let witness:(()=>CompilationWitness)|undefined, preparedScene: GpuScene | undefined
+-              let cameraFallback = false
++              let cameraFallback = false, preparationFailure:unknown
+               if (result) { await ahead.drain(); certifiedHits++ }
+               else try {
+                 const waiting = performance.now()
+@@ -1217,6 +1217,7 @@
+                 // must not bypass the same recovery as a GPU allocation error.
+                 if (!/GPU surface budget exceeded|GPU 表面内存预算超限|Invalid GPU viewport/.test(String(error)) &&
+                     !isAnalyticProgramBudget(error) && !isScenePathBudget(error)) throw error
++                if(isAnalyticProgramBudget(error)||isScenePathBudget(error))preparationFailure=error
+               }
+               const verifyMs = performance.now() - compileStarted + speculativeSavedMs, cached = !!result
+               terminalDiagnostics.record('cache',{requestId:request.id,tileIndex,cached,reasonCode:cached?0:disableExactCache?3:request.debug?.disableCertifiedTileReuse?4:5,generation,fillGeneration})
+@@ -1249,7 +1250,7 @@
+                   import.meta.env.DEV && request.debug?.forceFirstTileBudgetFailure === true,
+                   prepareViewport, !request.readback, canvasDisplayFilters, canvasMath, reportRasterProgress,
+                   () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
+-                    tileCurrent(), hydrateImages, filterBatchLease, canvasImageSource, boundedDisplayLimit, canvasMaterialSource, canvasTentRadius)
++                    tileCurrent(), hydrateImages, filterBatchLease, canvasImageSource, boundedDisplayLimit, canvasMaterialSource, canvasTentRadius, preparationFailure)
+                 undelivered = result
+                 if ((packetWait?.controller.signal.aborted || generation !== previewGenerations[channel])) throw new Error('PREVIEW_CANCELLED')
+                 // Only the exact scene actually rendered once certifies these pixels.
+@@ -1860,6 +1861,7 @@
+   boundedDisplayLimit?: number,
+   canvasMaterialSource = false,
+   canvasTentRadius = false,
++  preparationFailure?: unknown,
+ ) {
+   const tileCost = createTileCostDiagnostics(terminalDiagnostics.enabled)
+   const checkCurrent = () => {
+@@ -1888,6 +1890,10 @@
+     admission=new PreviewAdmission();regionAdmissions.set(admissionKey,admission)
+     if(regionAdmissions.size>16)regionAdmissions.delete(regionAdmissions.keys().next().value!)
+   }
++  admission=new PreviewRegionAdmission(admission)
++  // This failure belongs to this exact crop and synchronized request. Avoid
++  // repeating its rejected full preparation before the existing exact split.
++  if(preparationFailure!==undefined&&crop)admission.observe(preparationFailure,crop)
+   const start = performance.now(),
+     nodes = new Set<string>()
+   let compileMs = 0,
+@@ -2015,6 +2021,7 @@
+   let skipFailedRegion = /GPU surface budget exceeded|GPU 表面内存预算超限|Invalid GPU viewport/.test(presentationFailure)
+   const rasterize = async (tile: import('./preview-tiles').PreviewTile) => {
+       let bitmap: ImageBitmap | undefined
++      let preparationOnly=true
+       try {
+         checkCurrent()
+         if (skipFailedRegion) {
+@@ -2032,6 +2039,8 @@
+           preparedScene = undefined
+           throw new Error('GPU 表面内存预算超限 (explicit first-attempt test injection)')
+         }
++        if(preparationFailure!==undefined&&tile.x===0&&tile.y===0&&tile.width===crop?.width&&tile.height===crop?.height)
++          throw preparationFailure
+         const t = performance.now()
+         const prepared = tile.x === 0 && tile.y === 0 &&
+           tile.width === crop?.width && tile.height === crop?.height ? preparedScene : undefined
+@@ -2052,6 +2061,7 @@
+           }
+           scene = decodeScenePacket(packet) as GpuScene
+         }
++        preparationOnly=false
+         scene.filterBatchLease = filterBatchLease
+         checkCurrent()
+         compileMs += performance.now() - t
+@@ -2169,7 +2179,7 @@
+               error: error instanceof Error ? error.stack : String(error),
+             }),
+           )
+-        await recoverTileFailure(error)
++        await recoverTileFailure(error,preparationOnly)
+         throw error
+       } finally {
+         bitmap?.close()
+--- a/frontend/design-client/src/kernel/render-worker-image-hydration.test.ts
++++ b/frontend/design-client/src/kernel/render-worker-image-hydration.test.ts
+@@ -574,3 +574,29 @@
+  expect(w.messages.find(m=>m.id===981&&m.damage)?.damage.reason).toBe('native-interaction-pose')
+  expect(state.scenes.at(-1).nodes['image-0'].matrix).toEqual(transform)
+ })
++
++test('real interval admission splits once without retiring the completed GPU preparation', async () => {
++  const w=await worker(true),ids=Array.from({length:100},(_,i)=>`r${i}`)
++  const doc=blank('worker budget');doc.id='worker-program-budget';doc.schemaVersion=3;doc.rasterProfile='figma'
++  doc.colorManagement={documentSpace:'srgb',referenceWhiteNits:203,peakLuminanceNits:1000}
++  doc.pages[0].id='p';doc.pages[0].children=ids
++  doc.nodes=Object.fromEntries(ids.map((id,i)=>{
++    const angle=(i+1)*.0001,n=node('rectangle',30,20,512,512);n.id=id
++    n.transform=[Math.cos(angle),Math.sin(angle),-Math.sin(angle),Math.cos(angle),30,20];n.fills=[paint('#123456')]
++    return [id,n]
++  }))
++  const options={pageId:'p',width:64,height:64,view:{x:.25,y:.5,zoom:1},rasterProfile:'figmaSubpixel',renderIntent:'canvas'}
++  const finish=async(id:number)=>{await vi.waitFor(()=>expect(w.messages.some(m=>m.id===id&&(m.backend||m.error))).toBe(true),{timeout:20000});return w.messages.find(m=>m.id===id&&(m.backend||m.error))}
++  w.send({id:981,backend:'webgpu',document:JSON.stringify(doc),documentRevision:1,options,readback:true})
++  expect((await finish(981)).error).toBeUndefined();expect(state.createCount).toBe(1)
++  const compile=vi.spyOn(w.kernel.VectorEngine.prototype,'compile_gpu_packet')
++  w.send({id:982,backend:'webgpu',documentRevision:1,options:{...options,width:512,height:514,
++    tileViewport:[{key:'heavy',x:0,y:0,width:512,height:514,zoom:1}]},readback:true})
++  const result=await finish(982)
++  expect(result.error).toBeUndefined();expect(result.previewTiles).toBe(1)
++  const attempts=compile.mock.calls.map(([value])=>JSON.parse(value))
++  expect(attempts.filter(o=>o.gpuViewport?.w===512&&o.gpuViewport?.h===514)).toHaveLength(1)
++  expect(attempts.filter(o=>o.gpuViewport?.h===257)).toHaveLength(2)
++  expect(state.disposed).toEqual([]);expect(state.createCount).toBe(1)
++  expect(state.renders.slice(1).every(r=>r.scene.view.x===.25&&r.scene.view.y===.5&&r.scene.view.zoom===1)).toBe(true)
++},30000)
+--- a/frontend/design-client/src/kernel/tile-failure.ts
++++ b/frontend/design-client/src/kernel/tile-failure.ts
+@@ -1,12 +1,16 @@
++import { isAnalyticProgramBudget, isScenePathBudget } from './preview-tiles'
+ type FailedRenderer = { driver: { lost?: boolean; abortFrameAndReleaseFilterScratch?():Promise<void> }; dispose(): void }
+ 
+ /** Working-surface pressure may be retried in smaller regions. A resident
+  * display still owns textures on this device: retire only the failed frame's
+  * commands/scratch, never the device containing the last complete picture. */
+ export async function recoverFailedTileRenderer(error:unknown, renderer:FailedRenderer|undefined,
+-  invalidate:()=>void, hasResidentDisplay:boolean):Promise<boolean> {
++  invalidate:()=>void, hasResidentDisplay:boolean, preparationOnly=false):Promise<boolean> {
+   const message=String(error)
+   const lost=renderer?.driver.lost||/device lost|GPU device|has been lost|设备已丢失/i.test(message)
++  // Only a classified CPU preparation failure before GPU work can preserve
++  // the device unchanged. Subdivision keeps the same document and exact math.
++  if(preparationOnly&&!lost&&(isAnalyticProgramBudget(error)||isScenePathBudget(error)))return true
+   const allocation=/^(?:Error: )?GPU 表面内存预算超限(?:$|\s|\()/.test(message)
+   if(hasResidentDisplay&&renderer?.driver.abortFrameAndReleaseFilterScratch&&!lost&&allocation){
+     try {await renderer.driver.abortFrameAndReleaseFilterScratch();return true}
+--- a/frontend/design-client/src/kernel/tile-failure.test.ts
++++ b/frontend/design-client/src/kernel/tile-failure.test.ts
+@@ -58,3 +58,21 @@
+   },dispose},invalidate,true)).rejects.toThrow(/recovery failed/)
+   expect(dispose).toHaveBeenCalledOnce();expect(invalidate).toHaveBeenCalledOnce()
+ })
++
++
++test('classified preparation failure preserves a completed GPU device only before GPU work', async()=>{
++  for(const message of ['GPU analytic interval program budget exceeded','Scene path budget exceeded']) {
++    const dispose=vi.fn(),invalidate=vi.fn(),abortFrameAndReleaseFilterScratch=vi.fn(),renderer={driver:{lost:false,abortFrameAndReleaseFilterScratch},dispose}
++    expect(await recoverFailedTileRenderer(Error(message),renderer,invalidate,true,true)).toBe(true)
++    expect(dispose).not.toHaveBeenCalled();expect(invalidate).not.toHaveBeenCalled();expect(abortFrameAndReleaseFilterScratch).not.toHaveBeenCalled()
++    expect(await recoverFailedTileRenderer(Error(message),renderer,invalidate,true,false)).toBe(false)
++    expect(dispose).toHaveBeenCalledOnce();expect(invalidate).toHaveBeenCalledOnce()
++  }
++})
++test('preparation phase cannot conceal device loss or an unknown compiler failure',async()=>{
++  for(const [message,lost]of [['GPU analytic interval program budget exceeded',true],['Unknown: GPU analytic interval program budget exceeded',false],['Scanline work budget exceeded',false]] as const){
++    const dispose=vi.fn(),invalidate=vi.fn()
++    expect(await recoverFailedTileRenderer(Error(message),{driver:{lost},dispose},invalidate,true,true)).toBe(false)
++    expect(dispose).toHaveBeenCalledOnce();expect(invalidate).toHaveBeenCalledOnce()
++  }
++})

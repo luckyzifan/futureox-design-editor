@@ -3,6 +3,13 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { MessageChannel } from 'node:worker_threads'
 import {createRenderDiagnostics,renderRequestCategories,renderResultReason,sanitizeRecord,sanitizeFields,snapshotResourceFields,PREFIX,setGpuDiagnosticSink,recordGpuDiagnostic} from '../src/render-terminal-diagnostics.mjs'
+test('page commit proof diagnostics contain only bounded numeric decisions',()=>{
+ const valid={pageCommitStage:2,pageCommitChecks:127,pageCommitReason:10}
+ assert.deepEqual(sanitizeFields({...valid,pageCommitOwner:{},pageCommitPolicy:'private'}),valid)
+ for(const value of [-1,.5,Infinity,NaN,'1',true,{},null])
+  assert.deepEqual(sanitizeFields({pageCommitStage:value,pageCommitChecks:value,pageCommitReason:value}),{})
+ assert.deepEqual(sanitizeFields({pageCommitStage:4,pageCommitChecks:256,pageCommitReason:11}),{})
+})
 test('schema rejects arbitrary content, nonfinite numbers and forged enums',()=>{
   const secret={text:'private document',path:'/private/file',url:'https://secret',stack:'credential',images:['image'],requestId:4,zoom:NaN,width:Infinity,cached:true}
   assert.deepEqual(sanitizeFields(secret),{requestId:4,cached:1})

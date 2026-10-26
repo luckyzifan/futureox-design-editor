@@ -6,7 +6,7 @@ import { blank } from '../model'
 import type { PaintDamage } from './paint-damage'
 import { renderCpuFrame } from './cpu-frame'
 import { PreparationChannel, type PreparationMethod } from './preparation-channel'
-import { bindContentOwner } from './gpu/page-background'
+import { bindContentOwner, pixelSourceContract } from './gpu/page-background'
 import { FrameResources } from './gpu/frame-resources'
 import { decodeScenePacket, copyScenePacket } from './gpu/scene-packet'
 import { PreparedPacket, waitForPacket } from './prepared-packet'
@@ -20,6 +20,8 @@ export class RenderKernel {
   private settings = 'null'
   private resources = new FrameResources()
   private contentOwner:object = {}
+  /** Worker-private identity bound to compiled pixel sources; never on wire. */
+  get contentIdentity() { return this.contentOwner }
   private revision = 0
   private pendingMutations = 0
   private pendingPackets = new Map<string, { revision: number; bytes: Promise<Uint8Array>; shared: boolean }>()
@@ -89,9 +91,23 @@ export class RenderKernel {
   }
   async apply_document_patch_with_damage(value: string, expectedBaseReceipt?: PreparationStateReceiptV1) {
     if (expectedBaseReceipt && !await this.supportsAcknowledgedPatches()) throw Error('PATCH_GUARD_UNSUPPORTED')
+    const previousPixelOwner=this.contentOwner
     this.contentOwner={}; this.revision++; this.pendingMutations++; this.pendingPackets.clear(); this.resources.invalidate()
+    const mutationRevision=this.revision
     try {
       const result = await this.call<string>('apply_document_patch_with_damage', expectedBaseReceipt ? [value, { expectedBaseReceipt }] : [value])
+      let samePixels=false
+      try{
+        const damage=JSON.parse(result) as PaintDamage
+        samePixels=damage.full===false&&damage.bounds==null&&(!damage.rects||Array.isArray(damage.rects)&&damage.rects.length===0)&&
+          Object.keys((JSON.parse(value) as {fields?:object}).fields||{}).every(key=>key==='name')
+      }catch{ /* An unavailable optional proof never authorizes pixel reuse. */ }
+      // Native no-paint proof can preserve existing pixels across names and
+      // inert node metadata. Keep transport revisions/resources independent;
+      // document identity, page structure and render-policy fields still revoke
+      // this owner, even when an older backend reports no visible damage.
+      if(this.revision===mutationRevision&&this.pendingMutations===1&&samePixels)
+        this.contentOwner=previousPixelOwner
       return result
     } catch (error) { this.resources.invalidate(); throw error }
     finally { this.pendingMutations-- }
@@ -141,7 +157,7 @@ export class RenderKernel {
       const request=JSON.stringify({...JSON.parse(options),frameResources:lease.acknowledgement})
       const bytes=await this.call<Uint8Array>('compile_gpu_packet',[request],signal)
       const scene=decodeScenePacket(bytes,revision===this.revision&&!this.pendingMutations?this.resources:undefined,lease)
-      bindContentOwner(scene,owner)
+      bindContentOwner(scene,owner,pixelSourceContract(JSON.parse(options)))
       return bytes
     } finally {lease.release()}
   }

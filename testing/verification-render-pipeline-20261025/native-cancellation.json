@@ -1,0 +1,6 @@
+{
+  "status": "passed",
+  "scope": "actual host Node worker and rebuilt Rust child; active cancellation, subsequent compile and late cancellation",
+  "nodes": 2000,
+  "packetBytes": 3326265
+}

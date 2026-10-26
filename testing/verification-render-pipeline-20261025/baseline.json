@@ -1,0 +1,2957 @@
+{
+  "head": "39ff10be8037eead583d54eb0d6df5ba5f9e2b4a",
+  "files": [
+    {
+      "path": "frontend/design-client/src/kernel/MeasurementOverlay.tsx",
+      "sha256": "2faccee6a69bf690b0df3c3687333e15e4062983760dc1a485035d3d6d4a4ad2"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/ProgressiveSurface.tsx",
+      "sha256": "c59a88dcbc96fcae46f338858102e109a9e878b5540cee67c9f6611d45e1615e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/ResidentCompositeSurface.tsx",
+      "sha256": "43b2d737292c0039019e4894166654735e486aa7cdd0d281eb30f7e71361d89f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/Surface.tsx",
+      "sha256": "3338f5384bb06827685918d2193c66cebe8fa7bba9db8935faa5c8b5d4c8cc86"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/TileCompositeSurface.tsx",
+      "sha256": "721ad5e8a661cda001a2cae8944a286b5be297e8ce1958e1248b72e43a375141"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/authored-patch-transition.test.ts",
+      "sha256": "56ace1050343a3084f6e679bb5257418bd192807743d8cc5e492618e77aa2b16"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/authored-patch-transition.ts",
+      "sha256": "fdf5a266c0b9b1a8a8ac4f35791599e359a9d60e54fbcd8a127ae8348e747e0b"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/authored-preparation-binding.test.ts",
+      "sha256": "8d78921e39b344b04724bba95e6b8a677057c614b4edb4fb4ac2cb94aa13ce6a"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/authored-preparation-binding.ts",
+      "sha256": "c0c87dc85669c0059602e16e15d45ecba0a603258dfbca5f7ffdb8d3ccbd3934"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/authored-snapshot.test.ts",
+      "sha256": "a022ae9a37f57a31c7a6e56d10705803f50d362da8f060b500b5b1fc07071b87"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/authored-snapshot.ts",
+      "sha256": "ca31ae2f1cdc35c75e7db68ada730808bc481dc747b90af1b57cbb40bd2dd3bf"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/bake-session.ts",
+      "sha256": "792b7ebef35e1e169d912659b7240579271c326b7dbd930167bfbf447b2973ed"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/binfmt.ts",
+      "sha256": "870252ea6d277aca5930e7b96faad7176f1c6aeee8a622e2a1ce24bf3f376e89"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/bitmap-retirement.test.ts",
+      "sha256": "e353ebf48b5026deb36c603384374cba79ddb221976d0d21ef86f79ba329e64e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/bitmap-retirement.ts",
+      "sha256": "ef9bcc31b9127a7f7bdedfb724265976ffbef5084937352bfcda1c396c75773b"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/canvas-effect-sampling.test.mjs",
+      "sha256": "95c85d5a25bdcf3b748a5f80467c5193f16a81bb18f370351930c0070e3d3cdd"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/canvas-effect-sampling.ts",
+      "sha256": "ac759b17c461ad32c0f281b4a681978d16546d07e0c1b296d2358136cf07405f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/canvas-performance-check.ts",
+      "sha256": "877ec89b60ec12f01057328f9ae7db2609e62711e60f0bb310e983a1f10421e7"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/canvas-raster-plan.test.ts",
+      "sha256": "f6b6a7112829b8959e94e8aee01abd11d5ef125190189326799ce0ebd509c604"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/canvas-raster-plan.ts",
+      "sha256": "7415239c60a57a13202d53606addf48edea7815dd2e525217e69564c8b09693d"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/canvas-sync-admission.test.ts",
+      "sha256": "268460415871891685b0fd072a9783de7c2c2198e207919581940885fe665b5c"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/client.test.ts",
+      "sha256": "ad48afb30c323c45bc1dff9fd814af310b5180893029a09479d73befb1cddf55"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/client.ts",
+      "sha256": "01ee6618d52b2916e29d1a5559f2e85a5c84ef9ffe4dca1d9931e1714ecb2da5"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/color-presenter.ts",
+      "sha256": "fc9e2e865f9573c08e9f8151177a0a90f3a8b2a6979f5cec1a8501b50e286e48"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/compilation-witness.test.ts",
+      "sha256": "984710a0f6156aab8425aa008751b60d973819d29fb1520ef28400f73204d0e6"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/compilation-witness.ts",
+      "sha256": "02da1edaa92e5fcd02d1d97f602a5cb9bfca7a5948de4928a24e9a795325eafd"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/composite-cache-use.test.ts",
+      "sha256": "23ec2d95adfbcedc7d3373c9ad586448e0312c0dd0799da934ade2009621622e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/composite-cache-use.ts",
+      "sha256": "cae13db25d84727c2caa3ca4b220c39f408d805c0d550fb1fe2607e2d056ca72"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/composite-frame-witness.test.tsx",
+      "sha256": "2d8598f405c94f550b075c08dec56b34331e1252266d6a3fe9df09cd8a8a4180"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/composite-frame-witness.ts",
+      "sha256": "f92934ac5f6147f96355c0aa766274744b356a15b29644f2fdd8f797543c0102"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/content-plane.ts",
+      "sha256": "8a505c7034d16b824f846f5a7aa71c5eb160840b4a827972164b8a3133aa90cf"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/coverage-priority.test.ts",
+      "sha256": "bfb1c928cca9db6b4f4d039d2f1bf6c5f4f8046f5878959c52306f300c828881"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/coverage-priority.ts",
+      "sha256": "68a225ae8703430c62ea9f594cc1da0e0496392443d5c31be2f996bb852b3db8"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/coverage-retention.test.ts",
+      "sha256": "b584f266afee6fa27e76cc665b8d8e84fd933713715c3438dfb1c5378d8421da"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/coverage-retention.ts",
+      "sha256": "a19253b156866a06ece84200526dbbade3ca7ce05030946b34d36f749bbcee6a"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/cpu-fallback.test.ts",
+      "sha256": "ac19a82f7d1aa08be043556f798fcdaa4a6481c5e679bdb2207dab93c53824eb"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/cpu-fallback.ts",
+      "sha256": "4553b56c7538d6f085d8d43027cb01b73ed69e3cb7251468eb325e289b2d6640"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/cpu-frame-contract.test.mjs",
+      "sha256": "c77a873d0c3a671357c8cd68562753e68784c1f3bf3947f852a4e5ea8ae7611a"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/cpu-frame.test.ts",
+      "sha256": "9ac68b4c79abfebe78b37c72602e61610cb34da4d44bbd0f27913cf50ea8f011"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/cpu-frame.ts",
+      "sha256": "c8b79f704c075b794da14c6d10c53e8d44ff8540d7001800f55fccdc6202f81c"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/decoded-image-cache.test.ts",
+      "sha256": "55f010bde68422d69bf0774afdb957a2b2a120da3c34b09010fc286ef95f6485"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/decoded-image-cache.ts",
+      "sha256": "de1f9bad1f6009c636d4449d38dd523f2a1c71937aed09e124cb44e5a550c812"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/descriptor-presenter.test-helper.ts",
+      "sha256": "8719b6275e066072766b176b66fca104d8575e1bc00e2a9d3fa0d49aaeb5ce9a"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/device-recovery-worker-contract.test.ts",
+      "sha256": "54f5907694b04304cc248a632433fc6c31ee0b5e5219fc0a5ab242d7f676a243"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/display-command-order.test.ts",
+      "sha256": "fececdf5aa90b30e5229381cfc41be176295b10e8ed7883807b0e7707205a3ca"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/display-command-order.ts",
+      "sha256": "410bddbddd8c8ee00ce1b7036148e5520ee07394389f1b94277b61069a341bfa"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/display-resource-check.ts",
+      "sha256": "2f12992657731352c2791e402eae6e2831b2987129ce238c3a8aac4d17fb3cc8"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/display-tent-radius-intent.test.ts",
+      "sha256": "4cd11b953f3cfbba1ae6dfd7cc8861add4ad1682fd41f2c50e963cd45e6dd389"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/display-tent-radius-intent.ts",
+      "sha256": "cababffd4eaabf49099fdf0f561b1e1196493694aa9151c16b336a71bd50d208"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/document-derivation-client.test.ts",
+      "sha256": "206795e41d4d068cabb54de80e4916ba1db89397f4b4c5f4d13ec7291d958ebe"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/document-derivation-worker.test.ts",
+      "sha256": "9cd6990c428a2971026653294bcc1f534b1ad76db14946adb595918c09f0f9fa"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/dynamic-density.test.ts",
+      "sha256": "64157084c08b2665034a5c54e439738d0f4be61c8e3064c1e88ce7e6e0250a25"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/electron/native-render-main.ts",
+      "sha256": "73eb3f9451e9854f37b3cf029b34296f7991c540a8e5d52e3a1e2528f504bfda"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/electron/native-render-preload.ts",
+      "sha256": "4936829b6ec3b58fe384e0546e8e962d717301f8085df148c78d8e678ee8fbe7"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/exact-tile-cache.test.ts",
+      "sha256": "98d13269fa615328db89ef74da6f4ab25f578ca6b50c8072f6a0fc1e060457e5"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/exact-tile-cache.ts",
+      "sha256": "b03e3f8e059c9a25aa4d82b035f27d0ab841a2c2887ddc135e02b755a2449075"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/fallback-presentation.test.ts",
+      "sha256": "bee88c38911efd4a91b53a4b6978867e13eeef2fe2dbfe65f46f5074e7558230"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/fallback-surface.test.tsx",
+      "sha256": "e3d4b9ca10775717f7e639cb57c45a3e0905eef17b99ae8c465967a2b36fe910"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/figma-tile-policy.test.ts",
+      "sha256": "43e0469bb74c7300c8ae4662959a33bf7bea921ca1fa614f18cdc3732dc6687b"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/filter-tile-order.test.ts",
+      "sha256": "62810e2b03215240a95e6c02dabc03afe54b5141631892e99ec8a0b29de31d02"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/filter-tile-order.ts",
+      "sha256": "6c09fadede5c765d25d3910fac062d5f201d22101f11aaeda90ff1ce43c24ceb"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/frame-debounced-value.ts",
+      "sha256": "2e7a4ce9babae3c6a4e3a82aa4005056c2a22f7197ef86a65b9ac368c2603b8e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/frame-measurements.test.ts",
+      "sha256": "1a0ecbf9c4733b41056d1ac4d38a047015847fa4769ca27f66f40d86179748b8"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/frame-measurements.ts",
+      "sha256": "defd022ebd04005577663cc24548a44ba3c80a66645a88244d734ce710c0c9b3"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/geometry-worker.ts",
+      "sha256": "9076112764ff7b19e04602d95db4a7125b2362ee38dc51e8544f1fb132664c23"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/adaptive-budget.ts",
+      "sha256": "e9e4203d952a3ea05649ad0c2a2b6ea871b98d9545844796a15193ddef3d68f9"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/advanced-batching.ts",
+      "sha256": "da8c2d667d6daaa4ff5389311051ed5df67a62ae4e833f75f394ca882b488b66"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/area-shader.ts",
+      "sha256": "119af509c5969f231aa2ba40b1b62d033f555252dd945156df74ceffb37eb35e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/area.glsl",
+      "sha256": "2b61541fb4a618875df47ec1ff72e6d6ac58cb7ea4c28d8a31e6b075ccac9ca7"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/arithmetic-probe.ts",
+      "sha256": "5ab9ace215e8baa5fae37317b0e434057ce740c6c9cb7c0951a97acea396cc82"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/backdrop-capture-admission.test.ts",
+      "sha256": "bfa645f377eb1cf62acc92a121066ff75ffef8b5af2c0843579639028616d5bf"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/backdrop-filter-region.ts",
+      "sha256": "c8e585664503d94e1a80bc780ac0b2d6091fb899aa6d2c2bd496b3d8a94daf73"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/backdrop-filter-renderer.test.ts",
+      "sha256": "7cce62bdcb3ad85b24d1c53a76a8fd4ea5c702daacad5a8a282d0764a9871c27"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/benchmark.ts",
+      "sha256": "2dbe12867449427b42f07acbbf844a86db0588eb8623501f30a445dd4ca25e66"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/binary-coverage.test.ts",
+      "sha256": "1861b2d889451ba39dc4a566a62a1b651b8f82fde1d847f2988aa78443205864"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/binding-cache.test.ts",
+      "sha256": "07797d8bbfd8a6f1f0b53b3147befa426daf145d863c5f80d10b309ca36ddd62"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/binding-cache.ts",
+      "sha256": "4d7c463ec741aefce728e947b1d354d38e1dd28cd1516b1676a49beb4dc378d3"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/bounded-display-filter.test.ts",
+      "sha256": "bf5ef9ab675e8db649c6f21bc4e5e2c5c5dc3f893268b9cbff433bd2aece1a46"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/budget-working-set-repro.test.ts",
+      "sha256": "125f59afee2d7c2faac7c1ec91a4d06585b8d5789f4a3c8d03de5f6a021cbb10"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/byte-driver-lifetime.test.ts",
+      "sha256": "55cd1a01f71b16bdf352840fe1a031810e35c58938921db5733b0d6530035006"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/byte-shadow-region.test.ts",
+      "sha256": "dde8d21e9f19d7cc202d5c7dde9976929498a7a929909e7d2169db6fed6a65cc"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/byte-shadow-region.ts",
+      "sha256": "dec73c99aab6e8d226ade73e695aeb5e87a0fa5c2c7fa20f2b91872dcc271213"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/byte-shadow-stream.test.ts",
+      "sha256": "420e10a7542a9a1fe86cd129adcd1d5dbbf4b6dccc4511805baa99451bff2803"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/byte-tent-prefix-plan.ts",
+      "sha256": "3152e26d4e4eae7a16d42aa497ef5bca3148019791b7c2eae3fa94ea1227c701"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/byte-tent-prefix-resolve.wgsl",
+      "sha256": "c19464735677064940125c76f9ce0e1e7b3b429bd8d9e40f7a7c44f527ba1df3"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/byte-tent-prefix-scan.wgsl",
+      "sha256": "ff52fd0fe4b1e7fa762771cc2eb42d74599b0379a36c6349450ba94e929b4b15"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/byte-tent-prefix.test.ts",
+      "sha256": "f31a2016a49820d5e15c6dc036abf15ecb5d7d9b73b0d40366b73c894b864938"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/byte-tent-prefix.ts",
+      "sha256": "c8c7c9f9a753d4318de50bbd3a9dd0dbc46c6132046eaf919d8ea25aa920d221"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/byte-tent-prefix.wgsl",
+      "sha256": "685073ee43e7022b925d8c85a5064aae276b655d25c365c7975e02120c0cb9e0"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/canvas-labels.ts",
+      "sha256": "bde5bad14e9b73886b8f0f99ebe57ea2f63b97cc44f8c5156924e61692244a8d"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/canvas-overlay.test.ts",
+      "sha256": "bb28a8f5fa5518e65c8c50284c330caebfcc3738c03994c1d47a399e5937e919"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/canvas-overlay.ts",
+      "sha256": "e84a831f9e29c83e8ff0f41ece0a361e39b285a472f98db8b608ddb346ed6ef0"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/certified-filter-probe.ts",
+      "sha256": "826bf04d0c86a54f39c793346ab51d67a2afdf02a2629abc24f5cd3161a8463a"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/certified-prefix-upload.test.ts",
+      "sha256": "7ce0a09acd4dec3024e6f3553611e952cbd5633789dd2ebe071747ac2468a185"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/certified-prefix.wgsl",
+      "sha256": "40dbe15cc12bea5bad49e59bb8b94d2a0b7c633cfc8d7c4eaeaf1d8cde1d6b36"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/certified-rational.glsl",
+      "sha256": "f765a40dc014984b2548adf5af4064f09176ff7ae47cd85857858f9a4af380ac"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/check.ts",
+      "sha256": "036c29bc90634d257484153ecfabfcfa77a76c69267396c4283a1597aca64fb1"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/coefficient-byte-cache.test.ts",
+      "sha256": "8ce63d6f6d6859be0fbd8068b14097c9fc49668086703c5d79c71754417383be"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/coefficient-byte-cache.ts",
+      "sha256": "c6ab8733a678a2f47b978ddb7e0b9c9b032af7a1a2fd07b8a87c961a93c57c7e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/compact-solid-target.test.ts",
+      "sha256": "19aaaf0e0ca158c959c7c2f287e223190d7125db3197eacb75199bf55e49e832"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/complete-presentation.test.ts",
+      "sha256": "53f9fd695a04825dfb513466c510a53d80b780e143051fa6d149035aab8e77b6"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/composite-draw-plan-cpu.test.mjs",
+      "sha256": "16ea3165c3d9e20717140af610b80974d4d45a8508585a7beeb48a4813aa6975"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/composite-draw-plan.test.ts",
+      "sha256": "db817452997deeb6db212b9594d556899b9a9276d957bef7942a634c728dd947"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/composite-draw-plan.ts",
+      "sha256": "8d9f7ee0a4679e7e53b2c9423b2ea0be1d4c6f4fca2d6896850edc90f02a157c"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/compositor-check.ts",
+      "sha256": "af71806ba30e97ca3fdb24d5c0efe12418ffa3358e6c77209cf0b1bc841c364e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/compositor-modes.ts",
+      "sha256": "24d7c7d530efc56cce1b18c7ce4c733e518bcf7fe4563598a3a0b90fd1d36e28"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/coverage-cache.test.ts",
+      "sha256": "75db17c0b4ba533f05ff7f29b48f7f4cd8be1116d4fd1bc611b4d09602d6a4c0"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/coverage-cache.ts",
+      "sha256": "1864dd6264e4eb8a1c7f2afb47d8ba9a26dcb6d7e26a9e20c96006eb9f4804e9"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/coverage-probe.ts",
+      "sha256": "6f6f7bd2eaff692c6b7352ca877543470686d128bdbc57a2fd5fc1bc383ff829"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/coverage64.glsl",
+      "sha256": "c674a93f0eced35c860607f10264e283d7023878401220d9cee40b08d0d17983"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/device-lifecycle-diagnostics.test.ts",
+      "sha256": "ec205eb9a65b8eb90284555b03c4f932674d123704e409e707c4d9c6d7cd3a2a"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/device-lifecycle-diagnostics.ts",
+      "sha256": "99a0cdc45da539ee4c68d97c3543b4ab2d8656fa5109ff5160122b119f2c51db"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/display-arithmetic.test.ts",
+      "sha256": "11bc3ff0d4c008e8c7873c0f81a745b3eec3d4b48409744dd8b9b59201e784a9"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/display-arithmetic.ts",
+      "sha256": "0960fd215625ce23ffd7d510f9d8d27331af07a1beb50e92e558918c89f7eee1"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/display-backdrop-bands.test.ts",
+      "sha256": "c9bd06791419aa3ddc6a3a795992695ee054c21595b0f3bd4854262a18485461"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/display-backdrop-bands.ts",
+      "sha256": "5f7c8eab05bf25281a4800c035e0d50a6b1e250af6df8c52a41566961052631b"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/display-budget.ts",
+      "sha256": "e2f29903886ccb1e9ac355db2e0d1a26b5d9c90caacee5e97abed44b3c7000b0"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/display-filter.test.ts",
+      "sha256": "a6f762e47caf5a04c5d279e1140eb4ae2ba761d8f3106d3dd079462cacfffbde"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/display-filter.ts",
+      "sha256": "fa33ad7755c096545b470f5406d2cd0271592be24e09aa9658e468b5bd80157e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/display-image-pipeline.test.ts",
+      "sha256": "d17813a43dcc073226c11fe3a5cf8d3ba5f9669fc0e20f4ab8235929f2f9c904"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/display-image-source.test.ts",
+      "sha256": "aa00ae98918563808a77a0c343979ebd56c4d6164bba37e7452a7cc4fc548ebc"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/display-image-source.ts",
+      "sha256": "297937b8c5c99274e95732f074e66aa82bd57e8e29d56710e71f46c314580036"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/display-material-renderer.test.ts",
+      "sha256": "3bdad8c14cfb9e1c75843e4dc92a728e1a468149bc64c9569a4e6dea181f0338"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/display-material-source.test.ts",
+      "sha256": "42f46f09f0859b8659cb00c4af1a1d6c14f9eb51dfed155315a2f50378c17e47"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/display-material-source.ts",
+      "sha256": "4d2f7e699f5411434353d7983dc30258dbe7f15b4fe4881759a4bca8a8eec0d7"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/display-order-check.ts",
+      "sha256": "200fc3cdec707b35db4a15e480ca97b0d444d73e74a2a6d80cc039de3f9496da"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/display-seams-check.ts",
+      "sha256": "ceaedf00302a15c25de8737b2f31ebc63d68cb19b7eab266eda0904add202c6a"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/display-tent-radius.test.ts",
+      "sha256": "6a0d79ac935880ef457baad4119f7f70233c5de6d842baea5ceeb2cf458aced9"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/display-tent-radius.ts",
+      "sha256": "b2dede4cc896c0d8627005e0ce2aa171f7977408c8e841b1d5bfb3b6c35a2ec6"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/effect-region.test.ts",
+      "sha256": "3978e4b12203b625ffad5a11456c10292a0447296cad9f8cb0c4cf119d87bd14"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/effect-region.ts",
+      "sha256": "65882ae03b4a76dea23c780e4e91f993d703dad3034626c4d72436a7d51d4bfc"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/empty-scene-compose.test.ts",
+      "sha256": "5f7a8989297d580bfbc93adc4d6198cb016bdef071457d51b00587c1253c7602"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/empty-scene-compose.ts",
+      "sha256": "a849ea924a06e4695c80fefb264c21786b645ac66066e0080e0988790a96c5d3"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/encode-submit-order.test.ts",
+      "sha256": "8194d0279e7f2307035fb59cf652ebaff606a0010bdaeaa86c00ae6a83b53088"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/encode-yield.ts",
+      "sha256": "007b52e423c677ff2699c1b120539c78ccc876107fd366af635f0500a02e7724"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/exact-filter-packet-layout.test.ts",
+      "sha256": "78a00494ece98f0ed9c40fb02200cf522e79d085bff0659e618c397a29ffc7bc"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/exact-filter-packet-layout.ts",
+      "sha256": "bf6c67b5100ca9003f513746ac0a9d9aedc0e94a17fddb476dc0d70a742294e4"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/exact-filter-pass.test.ts",
+      "sha256": "1cd8e12c269637ce2e33791d03a8f673d40861b7d032a3a16323be1d1e672a52"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/exact-filter.ts",
+      "sha256": "e5a523650cd295f01f0eed332df87d881aa130e261e45c70c4aaf3e725b12c37"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/exact-image-x-table.test.ts",
+      "sha256": "54fa6cf928083e612070d4e57048cb1c349006ee1bd71a1c6b5174687ccfe06b"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/exact-image-x-table.ts",
+      "sha256": "8ccf6dd24778cc9d274dcda2e04d3cce00da59b65b8d53eea538f1413babcece"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/exact-scene-reuse.test.ts",
+      "sha256": "35d777a9242bd0ea559a5781bdf4ec558c9b4377d2506d93ce83666929f08a6e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/exact-scene-reuse.ts",
+      "sha256": "e2e9d8cf06294c2e08b805de9cd0786f67bb41841aa10d32d744f2042359eeb0"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/factory-budget.test.ts",
+      "sha256": "f83d799d459f201f70bc4be61d570fca39073c83ad36dc199d7045a0d1857d56"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/factory.ts",
+      "sha256": "7eeae5fdcc478d13225cb5b739394f6edcc8953a2259faaf697223ec95eadec1"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/failure-origins.test.ts",
+      "sha256": "1f295fc927c28144ddcb4964afefa2db0d7594ec77eea3bc17f085b430d69a59"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/figma-reference-check.ts",
+      "sha256": "9d70f4ae6f8e8a0ea6d90bfbd1e121a5b80b1646c415eec687d393d4a53f9fb7"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/filter-probe.ts",
+      "sha256": "e9e6145dc390df5b89d0e05a563c1de33c79e27beea63f02e3e73e02c3ce7c1f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/filter-source-window.test.ts",
+      "sha256": "102bfc05a021b5546d3dc3ce505ea4dba14ae001fd87a33282cc4edecaa85036"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/filter-source-window.ts",
+      "sha256": "73cc97aa14ad634baff7fd20ab8a2a8b3849f4c5cb1dd413fe345ce5fe213c34"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/filter-table-nonseparable.test.ts",
+      "sha256": "0caf72d3fc3fd35170a3acee16144d5cdb23819608348bf3ef4de26f448357a6"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/frame-pose.test.ts",
+      "sha256": "49b3a31cefcf69ea306d036af1dc9156f304e2428ac172ebcad882fd95da13ec"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/frame-resource-capacity.test.ts",
+      "sha256": "f419034b84037abaab1332f39a999dcabe393e2388b85ebfd82f4228daf8ee72"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/frame-resources.ts",
+      "sha256": "2aba1c5e8f94dcad928dee2b8cb776c965a27227d65712ee25a820153208be7c"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/frame-wire.test-helper.ts",
+      "sha256": "f1b969d834f74acc04e7f09ff86f11098227e3379adda35e959529d1e7f679e2"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/frame-wire.ts",
+      "sha256": "de32ef0a2529841c48b69cfec982394d0dab1aca558054d11208768051549278"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/fresh-initialize-boundary.ts",
+      "sha256": "4646c5e89bf1520cb617f7d375e334d5faf937bca34d7106979f4ba5ab4fdbba"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/fresh-initialize-controls.test.ts",
+      "sha256": "72538027b27d5eaef3b7a476f507f7e488168a4eef8077e75cd86b5381a026e4"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/fresh-initialize-create-gap.test.ts",
+      "sha256": "e9b97ef7139ddaafa17f1b3848faae99135acaf3d672c62c32cfe0951f357236"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/fresh-initialize-held-fence.test.ts",
+      "sha256": "807cdfbc704c050f319ed7a1a26a2d4f9242e4846f096d679f74fc7f17439585"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/glass-effect-gpu.ts",
+      "sha256": "8f56b4a72c1b42b762201229958edb8ff71229d893a5900f6b04163952535f4e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/glass-sdf-shader.ts",
+      "sha256": "13e62b37b333f56442768b37fce93a970023d8b67da99c00926bc0a4502930d4"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/gpu-resource-boundary.test.ts",
+      "sha256": "395cbbe20e84fe15d8bcb941fe6ce3eb780fe5e17d4caf7a53028405905323e9"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/gradient-alpha-check.ts",
+      "sha256": "2f397363ab9c26d72863ad33fb6ac485bea17d38b266bc111e29656779ba95ee"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/gradient-stop-table.test.ts",
+      "sha256": "5c252dcdb5830664617dff25697356f6768910562d2eb6ba3bc93975ee8204e4"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/high-zoom.test.ts",
+      "sha256": "c6600f453e0b5952023d0ff07f03ca6d3fdcebffe043acc96687fcc9ee45dedb"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/horizontal-filter-cache.test.ts",
+      "sha256": "9eeab358eb51658fc459720a9bd3c52a590fab7f6c819ba496869cf0f98beb46"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/horizontal-filter-cache.ts",
+      "sha256": "64bce920e6cf526dc7d5d8b716e7dd1dc022133ceff2350ff08013475f6188ee"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/image-adjust.test.ts",
+      "sha256": "5421be7a4413c19d6557286db41eb2051f10f6c9a0f0bf1126e8225852ffb19c"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/image-adjust.ts",
+      "sha256": "c87be79546467a56c962214325080a8ee98591321522fdbff57019b29575de5f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/image-asset-residency.test.ts",
+      "sha256": "4a4cfee9c484ba7c8b3d2a154a2cf2137ea9b2c5e85b6042e1825d517e793737"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/image-band-composition.test.ts",
+      "sha256": "6de693d95201b2cd63988ccd9ae83709aa48f9c5350db7e23d54aeef2abde119"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/image-coordinate-source.ts",
+      "sha256": "622026f88a189e21724291f94885387c5f672930f30a922977f67d3bce8f7b3a"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/image-field-regions.test.ts",
+      "sha256": "15f700395111ff64dea150aec6c266881e1d7ccb322d5cbb844d8e88dd645206"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/image-resolve-step.test.ts",
+      "sha256": "7c87e767b5c0c6dbe4e0bcebf4787c74f4d4b1329fe06e0fdce6a91e7f9c654e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/image-resolve-step.ts",
+      "sha256": "790ea29548991d41f497638df17787c7663fc4d53b60399b34a9432fd39cdc5b"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/image-table-lifetime.test.ts",
+      "sha256": "e74ac9a3aead738ecedd13cfd93b5345a58d571990aaeb98704980e8a8deba2e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/image-table-quarter.test.ts",
+      "sha256": "7d025d96e8c766424ac031f46053212c817e7b80d3e6db77d0fbbf568b6dc4a4"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/image-table-quarter.ts",
+      "sha256": "734de3fc235244dab43b9be5a85d5d1b0ebfa7a8a2cfabe21ca7eff44c147804"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/image-upload-validation.test.ts",
+      "sha256": "719c7b95e9a755707842d6766cf8dbc86954b83785c152f3f93e2f2f13d2f5f6"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/image-x-table-gpu.ts",
+      "sha256": "914c549352523a448a00422e46bb14cab0391adf29ef7fa6731d07076d582747"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/immutable-kernel-cache.test.ts",
+      "sha256": "d8f2a6c6b2d6fcfecbcacf97e6f017dbf69d1c0350a807a2cc7e5262774275ea"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/immutable-kernel-cache.ts",
+      "sha256": "8458e905ea1b815b4678fc3bf44d75e8252ef91d2d6bcaa051cc79aab9db4bfa"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/large-blur-probe.ts",
+      "sha256": "43436b168351c80d2fdf432623388e0395aa0f464670127469d07454c4cb3f25"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/large-check.ts",
+      "sha256": "13e8b59798792aabb19d503ef062fc13760bace028a8c3b9eb1a4eb08b32ef1e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/large-exact-whole-tent.test.ts",
+      "sha256": "9a279c20904cd2bcaf2e5d68dad85ac1c430df24eba2154be7c92d6ba22de7ad"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/large-filter-admission.test.ts",
+      "sha256": "fdbdf70a50bc9d04400520f17554bc05b9d66e382f0039ab6513ffa7b8834f63"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/maintenance-display-mode.test.ts",
+      "sha256": "8c771952517c6c6da01661ef74ad49399e168acb6ec6e0d299b4358caa40c58c"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/maintenance-residency.test.mjs",
+      "sha256": "e20c8afd6825297c1a9c9671889aef318b5e1b2f3becd778cbe698d09bcaa8bf"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/maintenance-residency.ts",
+      "sha256": "d494222bf932783760ac298aa0d557d2b06b3222cfd5ccda5077194180d65eba"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/managed-background.test.ts",
+      "sha256": "92c1b2c4a8df1b732da5a7cadcdf0d97b688d7f51fdd97f26814b4f9ee78b3ed"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/managed-background.ts",
+      "sha256": "c7a534ecc565c48e5d2c1ce1761b4dd86f37eaa01f5f988462207c3aa3233d43"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/mask-binding-reuse.test.ts",
+      "sha256": "47ed0ad89b34818e6cc4b7f47d0fce8b2cbf9c31bd38a4c13ef6424b02df80dd"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/mask-lifetime.test.ts",
+      "sha256": "353b362b629126d42f5322b3a5fc28b3ba60ae9c26cd8cf3f48e82cee3c3dcf2"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/material-field-cache-capacity.test.ts",
+      "sha256": "fa5baa5e8152b5cf9ae6eaa472dd45202c52d254c32067567e31e95f3267f475"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/multi-surface-admission.test.ts",
+      "sha256": "59710516848a2907fc24197d1f921f51c38f00c2cbbb833f80a6336d24906079"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/nested-prefix-plan.test.ts",
+      "sha256": "86271daf59d87c0d79a1244e17bfebf58f5e45439352d6e5da8300286cd8de03"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/nested-prefix-plan.ts",
+      "sha256": "38a9f78ac4a41d2a77d303bf1dc204bdc18219fd3c2c1c8a47d6fa6d5904e8bc"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/nested-prefix-renderer.test.ts",
+      "sha256": "a0f041948aca654d545044ea48f3414d58becccdfef06a5a46502c16cb4f6f41"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/neutral-group.test.ts",
+      "sha256": "93214a4dc88015f75e47b6b6a68f8a33f9764d5a9ca8b7e7d8677f09cd52b872"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/neutral-group.ts",
+      "sha256": "4029123e0fdeb0e6d0346c1fc3817c624eab7661b21a4ffab08ced4850e54486"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/opaque-filter.test.ts",
+      "sha256": "2ec1f43154ff781b32e1fd861ca7bb32b71919ca7cfa48b249eaa69c5105cc18"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/opaque-filter.ts",
+      "sha256": "5555ee843611400e914e1d235c8c97505da10abb24e38ec029f137ee1f3ad7cd"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/opaque-solid-batch.test.ts",
+      "sha256": "971c4d68c4114e0ba8b32fbfffdcd74b6d372d27df6e1cad0dd243430046720c"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/opaque-solid-shader.ts",
+      "sha256": "db4a87c644266d7595020f869039d7e9c40a7f48b9f9a4f6224f0c566f58a075"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/optical-field-check.ts",
+      "sha256": "ab5bd7138af42fc08fd081514cd06af4c04f9768003c21b028c3a08e8037413a"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/page-background.test.ts",
+      "sha256": "23ffea50f5c8d562ff20417292a875166dc72e8174c8d69fca38069e32b6e6f5"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/page-background.ts",
+      "sha256": "2583ac8d6f09975e1e388912cd10d338651e3adb037c2f6664787a4fd4efaf4d"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/paint-merge-admission.test.ts",
+      "sha256": "b62dc791428ed226c03f816269b03d604e68a7c3e47ffb80fcaaa00a4eee0294"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/painter-stage.test.ts",
+      "sha256": "f8ab695b7cf61e5a0a20a10e1758de71c8d09d244099eb0089a0f0e8c653a4d8"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/painter-stage.ts",
+      "sha256": "644b091ead2df00c5c97de5150489bbfe90377911cc9cde618957cb808ac8f2f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/paired-tent-blur.test.ts",
+      "sha256": "f69c3c43cd70f5cf0737f59762d25d902fd2c838f1bfd030ee8185de57a1e83a"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/paired-tent-blur.ts",
+      "sha256": "4a8fa369366eda1bcff3f48f2e092e1958a01288a73e8b032b9b21055b223ec7"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/parallel-prefix-sum.wgsl.ts",
+      "sha256": "9fcf60ce3cfa3956606e08aa77c2dd76e1f49ac70faac21b6e31812376761bc7"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/parallel-rendering.test.ts",
+      "sha256": "e130ea2bdfa089878af8e2a16f30e5416533eaf762f1b0988241e867e72bc234"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/parameter-cache-check.ts",
+      "sha256": "56e9623916a59c7b907cbbe46ef161674ff8cc3769e9eabeb5990e61b7fbe629"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/passthrough-mask.test.ts",
+      "sha256": "2c6b0b7b7f30d36ee3e477550ee4b3e4a37a7dd39a5af12b1e5c3ebde8ea4dd1"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/path-batching.test.ts",
+      "sha256": "d428801f4f532844405ea2f27d336f9b77e6d5a7dfb38c699a4bfdaae565a777"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/path-batching.ts",
+      "sha256": "be6d1806c495c0c4b51aa4463ddd37533f14e57d3ccb9e7348cdb59d499a73eb"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/pending-pool-admission.test.ts",
+      "sha256": "0b8754bbb26668264b244ebe1ff75dc6d4708df2c8a928d10cb721a53a49a576"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/performance-check.ts",
+      "sha256": "c4b94a98a5e7dae982ea17e3cde9ccb2550872b25dd0b18d1d7f564af25e555b"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/physical-coverage.test.ts",
+      "sha256": "5d1c4c32bc786fd84880d8fc5166e0f1b1168f5bfde3c051146846d6f9ec27eb"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/physical-coverage.ts",
+      "sha256": "4c9f792e6c727d8c9f392cf12f7dd2ba4a8b20decb2ba18efaa1ff8e3e271b91"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/pipeline-registry.test.ts",
+      "sha256": "7be153fc1a5d9d552a10b9ced05974e4ad752d1475eec735ec364a609ead4e4f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/pipeline-registry.ts",
+      "sha256": "cea7f4b7819990489103ae6f126985c88c04e9f3b8f234a8126e84b7c40efac1"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/pixel-check.ts",
+      "sha256": "72e31d1afc47df55d3486e353db6ba3b7699ce878fd831703b9837b67f92321e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/prefix-band.test.ts",
+      "sha256": "33da3222196649a252d71ecd0ad6dedec43f5d559067513300b438b94e9315d1"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/prefix-band.ts",
+      "sha256": "1c3684edaab94f88c014a7f1329140449a2a8b959868d23d6f277baffefea316"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/prefix-bound-upload.test.ts",
+      "sha256": "0601c6395d3b8d7a9444d52e787af2fa7988c1913bc23a414f07e423d287cd75"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/prefix-budget.test.ts",
+      "sha256": "d14eed7b2de35d7fc6fc191ab9e0e25c2d182c99902813ec2c697da1b4342b70"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/prefix-int128-division.test.ts",
+      "sha256": "73c43f160e566bba6701ec458b88a4bb82e3eb7b59f7bad5134b8c61eefce489"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/prefix-int128.wgsl",
+      "sha256": "f71d9394281f51221d6c84d6b5bf85fc0397c0e98345b07fb1c0d88cd5dc09da"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/prefix-lifecycle.test.ts",
+      "sha256": "8144f7833e73505731e99dd008ad1f710192738300511a51a68600de5c2467be"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/prefix-module.ts",
+      "sha256": "e37121784faf4139d3e696ba4983efee69b2d20cd9d22a601ce112eb42eb6caf"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/prefix-mul-zero.test.ts",
+      "sha256": "a21aefaa431d48d1dc71fc92adf20bbdd1a10b0fe0eb3ee36dec6c13cf91e2dd"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/prefix-preflight.test.ts",
+      "sha256": "2c322baebc08379e2b6b68bb795fbeeeb1a508815fa7347e5bdbaf8370cc6966"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/prefix-preflight.ts",
+      "sha256": "f9dccd9fa73f6ab505b76cba11afac188a4d37fbdce315add51ef779400dba96"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/prefix-rgb-resolve.test.ts",
+      "sha256": "97b2a8fc596e9c16cdbafd2aea10c4c168cf77adbd4e9e71b4c08fa3cbf9f3d2"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/prefix-sampling-geometry.test.ts",
+      "sha256": "039eb9420fe1981aded906c1e85db0af58e3bae4fe7fb6b90db88c3e3172be9e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/prefix-sampling-geometry.ts",
+      "sha256": "ee3fd0ab053b99ee76363be180cfedf0330dc9af1d2ff2367cc8ad1f47d4b023"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/prefix-scan64.test.mjs",
+      "sha256": "53baaff70eb019cbc0bfd373e746f6f3d7fec960eed2571f7ae0971f1e932491"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/presentation-quality.test.ts",
+      "sha256": "edb6dd4936aebbf8bdaab8fbee0a29adf503c622423209d56632e930915d925b"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/presentation-quality.ts",
+      "sha256": "d2e4ab62bf0082d793362f09de3dde2456cdfd4572d63678122bde3813387d23"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/presentation-transfer.test.ts",
+      "sha256": "651a3038ef061652ff088c8cca754e9ce6eb2da97cf505f8547dd3ee889ba488"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/presented-fragment-quality.test.ts",
+      "sha256": "393f797aae931db069a84b55d118ea5c333b4f98bdd2837d725c9b55e7d0213e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/presented-fragment-quality.ts",
+      "sha256": "ef555c6921b1a042bd21764b85bd897edd4d1be6e45ae27577c12c4827b7b59a"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/presenter-alpha-trace.ts",
+      "sha256": "4c174bf964d47a383e8829881ecc09b633c1140cbb96903eb59a4f6438fc7715"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/presenter-payload-ledger.test.ts",
+      "sha256": "8f8b7188e95935f468aa306c63bce4b5df12e7f166d39810a52e35cb4cf8f0dd"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/presenter-payload-ledger.ts",
+      "sha256": "a478e3a7905e83e9eb38cba87bc406188113fe8d632d30344719f3bdd94f8c89"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/presenter-payload-retirement.test.ts",
+      "sha256": "78f61223f5e371d2ffb36a1b753753871fdaa7b9f3a6234eec753805892526fb"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/preview-check.ts",
+      "sha256": "3b1fc6e39254e1d37a120e1e5e623d2954d8c5d9a42a2fe9fbdd49021b1ce26f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/program-lifecycle.test.ts",
+      "sha256": "528db6f664a003b9d355010dae64f48b9b80157eaa03529a218d6744f1c01d53"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/queue-wait-stats.test.ts",
+      "sha256": "eeeedede1c7566ba5e5dc62a5f2d0076d71673d2b53caf9673234802f23b11e5"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/queue-wait-stats.ts",
+      "sha256": "8ef96bb70260e268b84596e8d5685c3b34888da42560ad02cd750f0797dce998"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/rational-filter.glsl",
+      "sha256": "86cfbce4a76d9b0abc809a53ac2308630f5c683e75c4ac98f8232eb89dc56a80"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/reclaim-maintenance.test.ts",
+      "sha256": "3adaf1e72e698c42553698c8643cf8e09931ed258e3084cd777f832d6d03a06c"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/rect-partition.test.ts",
+      "sha256": "223612671039af4e95e2e269fc9c8dfd2f228c24b2101b3028e16f83ca82e081"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/rect-partition.ts",
+      "sha256": "4c8e4b83a5af7bc160b472089ad94f2d81048b02e99e93de105938adb89a9445"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/render-cancellation.test.ts",
+      "sha256": "bb99ef393eb01411a2cdea36c046a00d91317c2c30fc5ba6cf23283d8976bb4a"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer-coefficient-cache.test.ts",
+      "sha256": "bc6c33a43f491d2b16d3dc89026de7fcf645856d42ccbdd7ec0a753fd2d98751"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer-optimizations.ts",
+      "sha256": "6510487ed83fb1e9ee74ab6c8c05f0616f0a446888454a7edd90a39a868a6244"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer-regression-cases.ts",
+      "sha256": "18cfea15c07b29d59258c643f08b45da6e5ed5289a263d76055636affd95a585"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer-regressions.test.mjs",
+      "sha256": "9a35efd1f8215cf68bee9d632698c9f213f2965fa46847f8afdd500d386381c9"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer-test-plan.mjs",
+      "sha256": "432f175a2ee157e9892248e6e14a62a51deb0a98cddb25f571dd6db42ba42862"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer-test-types.mjs",
+      "sha256": "84e840e12efe352d7308ea2297d23824293e0999707eb8a3bfae08df58e7e70c"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer.test.ts",
+      "sha256": "3a2b196b0126dc26af6d2e3b42cc4423411282da309439aeb5073e894d2a3e76"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer.ts",
+      "sha256": "198f2d0fb2b2ae3b0e457e9f5d03f040b1f5de4cc12389a20979696b7426851a"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/resident-affine-pose.ts",
+      "sha256": "b07163e7896c930ce016af5387cd74a13cc2abd97d0e196eafec0ce72adcdbc4"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/resident-device-diagnostics.test.ts",
+      "sha256": "f7b83a90bbcd9d8a7ffacdbace118c304d9e2e6a2db180a395cccbe6b576ab1b"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/resident-frame.test.ts",
+      "sha256": "b242252b356dcdc997230ce661057faf01c5b600339248839f60d6ee2765e52c"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/resident-frame.ts",
+      "sha256": "283eee27fc8afc06dd05c78e8ce5b8aac1f41e86821cc0aeb4530ca6ea8efc3e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/resident-geometry.test.ts",
+      "sha256": "be7040ccc6e08b6dd3b91b0e08f8b1cea62989cab1f4923258a4037f1c9f3e08"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/resident-geometry.ts",
+      "sha256": "60ecc54efa8168797d9ed5dd7b8fd31afaba076beee741cdc0dad17577eafdb1"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/resident-image-retirement.test.ts",
+      "sha256": "e4aaa01e41c15af15de7452582d1de531040135f5add7594ad85f54f8ec4d166"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/resident-import.test.ts",
+      "sha256": "e8c9b7bd97df7610ef4399279402c8a8fcecfe55c688bc782cccab7d22addbef"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/resident-pose-frame.test.ts",
+      "sha256": "8f21706f6646c2c8e2a16f69e1792a13c1e3084458ce09fcb963144f7c481fc4"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/resident-pose-frame.ts",
+      "sha256": "7955f1eb38bd4a7acba85ecda284bf33ae275238b579f243094090098d9365d6"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/resident-pose-origin.test.ts",
+      "sha256": "47a2b836f07634ad9c551743b47439e3d075e17ce2c809da839080a0619e0ae3"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/resident-pose-origin.ts",
+      "sha256": "7effbf46ef3b470bed9aeec6fabf7f0057a74defc8f6d82a8e365ab5a39b3b3f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/resident-presenter.ts",
+      "sha256": "40f1f421751955290a24180020480f1427f32a4b2a860fc44697757e58a27c00"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/resident-programs.test.ts",
+      "sha256": "1ce46312907da1c9d5f64bd899a0ade84cbbc977c776b2689c94f9f7f0920fca"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/resident-programs.ts",
+      "sha256": "345881387f145f15ed94dbe40c3978ea4bac67179d9526abbc8cde80233c0624"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/resident-uniforms.test.ts",
+      "sha256": "c0b36d9c8bf9e60d5e8e5098d6b77b607ac04389b6be12342a106c71c640394d"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/resident-uniforms.ts",
+      "sha256": "17cad383d7b8788846de561491e86c383b1d70dcc539695eb2ae7d42521fd9d3"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/retained-commit.test.ts",
+      "sha256": "22c3309fb99f0f45a857f96b6244b9c398b05374aa4c3433f3754ba147db64b7"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/retained-commit.ts",
+      "sha256": "50198dca9abd69f7cb90f2fd4ad625b5fff160bd6b177df47c63b6fae0b43d67"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/reverse-index-map.test.ts",
+      "sha256": "9d388b5af409a3131b5a5a1e92d0df4faa5fb3c6c42c362e555a7b6c0fec24e7"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/reverse-index-map.ts",
+      "sha256": "5de940849d3f8563b64c424e10c90df2678a08dcecf85b72a6deee9208c75170"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/rgba8.test.ts",
+      "sha256": "655b2b3f47a755026af84ac11131f1232d8e5e73664c044d4076049c6cef0858"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/rgba8.ts",
+      "sha256": "16bc9979da3d4cb03dec9f7d314f8f3941cc7aee6324335c8e2ea6b657559537"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/runtime-configuration.test.ts",
+      "sha256": "20744aa1d61f24c3b6bbfb4947ebd56d2cf0d94e54e5fd795a56c72587d471e3"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/sample-effect-lifetime.test.mjs",
+      "sha256": "ac7d901fe8574ad3b05315acbdef47ae38f525b2fb0236ac92261f6547f42a73"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/sample-equivalent-coverage.test.ts",
+      "sha256": "56966bbb666af841b46a5fca902e85f7ea8c6fb437cc66727827acb462c14c92"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/sample-equivalent-coverage.ts",
+      "sha256": "6087e603703b9a57236719c318e0be844eb2e8c8e10b5e3fc84db45275738494"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/sample-only-area-dispatch.test.ts",
+      "sha256": "2709b3273b9418b04c2bca77a3ec536a49c5c471e0dcded0578ac51f5c36f596"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/sample-only-area-programs.test.ts",
+      "sha256": "fd8b4acb46a273a3d67c50390c57a54784dea922cb781d792ea4918cbdab221f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/sample-only-area-programs.ts",
+      "sha256": "b723950215a29e866f223f1bdb04fd958d30aa1debb46e19d2d9ea74b7ccf3f2"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/sample-only-area-shader.ts",
+      "sha256": "ed92847850c1386f8ffc2b0715fbe15b8f12a878e0bf5a348d3d972df8af7de1"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/sample-only-display-intent.test.ts",
+      "sha256": "844f8260b18d18b97b7a915a4fea63cf188d0bf0fa4002218570c6cafcbff728"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/sampling-field-guard.test.ts",
+      "sha256": "e608cb678ebe433106532ed551c1e1092e155e96137511053f22beb99c021b70"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/sampling-probe.ts",
+      "sha256": "d8042c2037f199c5ff37aa1884834891c21b3d3093aa6f183a74d7efb7ad78af"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/sampling.glsl",
+      "sha256": "a21064601c5ca14dc8ebebf526a19146796886111609a327f79e5a97b94753e4"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/scalar-coverage.test.ts",
+      "sha256": "26b44a8c2d6de011cf01e495f3cfcc695bbae2b1ff2c7b0f23da757c559cb9d8"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/scalar-coverage.ts",
+      "sha256": "bd1e90d9502a034bf40afc5bb46f4ef2f1d1740d21ebd6989e147b7a7db339d2"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/scene-index-reference.test-helper.ts",
+      "sha256": "2636d605213303d4c18ae802949396fae9a14adcc1ad1aa020292c021bbd1017"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/scene-index.test.ts",
+      "sha256": "f90244a9eb36a68209e973a7ed04c4a8f5d9569263a168d4365c59740928963c"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/scene-index.ts",
+      "sha256": "a4ef9f9bf67971e64a058d8020de3c2a831c9b9a42cc0d359af7c0375df234b4"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/scene-packet.test.ts",
+      "sha256": "50eca939f21d8e2cad747f04182348102441ae386b997b4bfd075794f509abd9"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/scene-packet.ts",
+      "sha256": "83e820043cc60d3b2fa67f8e82691c3342003f6fa48cd75d6988616673e6d1bc"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/sequential-display-plan.test.ts",
+      "sha256": "668d54b5b6f8aae851cbfef061c06f84caf60d8cee3020c21d40c8b42b07bec2"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/sequential-display-plan.ts",
+      "sha256": "075af52624b39e69962d71822f95765cd1438b0b6d5c727745b4155349026815"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/sequential-display-renderer.test.ts",
+      "sha256": "2b82b9357f3df2869d90fbb220290797026912de1e4e9547003e8b08ceaee909"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/sharp-zoom-policy.test.ts",
+      "sha256": "9bf4654282dcbe3281e0a22389ddf4ac20ddfb2eb277ac196ea6d708ee43b838"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/sharp-zoom-policy.ts",
+      "sha256": "5f466d05287b85032a8d4507e69cbda4860e8bd2d93f6986108a1caa4aad9fcb"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/solid-batch-capacity.test.ts",
+      "sha256": "fbab5f43b1c23abcc43741fed8fc417dd4e1cfb3bf3127fc6a878e8906faecb2"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/solid-batch.test.ts",
+      "sha256": "6773b3e10624eb99c74fd3c0b30eda6a3fff8f8b4c214dd70094073b66a1f823"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/solid-batch.ts",
+      "sha256": "09b9cde7bdbbeb1d725b0ad57328e9826f4c7c23fabd47d7b80c2734f95a92b9"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/source-identity.ts",
+      "sha256": "4204f6fc696a9d96543488a0995321da17a893afdc763699cb18301f9e5b8da6"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/static-backdrop.test.ts",
+      "sha256": "a9f6773bd660bb23d9bbaf9976388e7a9ac4cd6c2570f98f0cfa0dca6993dcfe"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/static-backdrop.ts",
+      "sha256": "f49ca4cef51c33e4bb71283285f6425bb4f4e8964947992dd6933805a535afb5"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/static-image-blur-cache.test.ts",
+      "sha256": "8a1fc7a0a33eed50ea068d5a9b25235fa22351e4fc140d104ef64a4bf4849f2b"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/static-image-blur-cache.ts",
+      "sha256": "94a0030cd5149aaf84b5ed3bbc5cc819593dd0815e26abd62481c0a9c1b2972f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/static-image-blur-renderer.test.ts",
+      "sha256": "181720990e5a9e6c5acbc0f18115813783c28010a7dd1ab1fd9323c4b676ff85"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/stream-image-fields.test.ts",
+      "sha256": "189fc55386423490b57fbcda27d6ab81250796872825c234bdbb93d867d06158"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/stroke-compute.test.ts",
+      "sha256": "3a9136ec9b2803aa2285f557fc71edd8d88cc2442121d24613091274e76d9f89"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/stroke-compute.ts",
+      "sha256": "49439ec2451e76a7bebea5ac46553aae123e852c551ea55c2d5a6c8cb4a449d6"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/stroke-gpu-pipeline.ts",
+      "sha256": "b6c01bb27e4b9d939fa13acbd1facb623f257570e5ac471148aa85a2a3973ab4"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/submitted-boundary.test.ts",
+      "sha256": "7674ad627d80919229988844784c8ae7425c6f0e2aaf16c8a642f31062861ce3"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/surface-budget-diagnostics.test.ts",
+      "sha256": "76a8597725746d56e729a719f1e1f88befe74771267261f2e2026c222502ee7b"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/surface-lifetime-probe.ts",
+      "sha256": "687a22d7a6c9a2e49e157d842d0a33a11079642648be0375c32a61d790da007b"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/surface-pool.test.ts",
+      "sha256": "92a7d9fb8593dea19d26f1740b5d6242a36440d60b3f0ee32f799330f67723c2"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/surface-pool.ts",
+      "sha256": "83a81eca52f3a250300ccafc88191bd13f963ea25d84533dfd6c90fa409e0337"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/terminal-quality.test.ts",
+      "sha256": "55eb24e621a120038873989d8327ce0df3855b5c09f3f920f0807dee18582893"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/terminal-quality.ts",
+      "sha256": "fc6cf38804b3bf81a2f51675405cafa67181509789f3852d2a0af9cbb4b1311a"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/texture-byte-length.test.ts",
+      "sha256": "4aa6b657def92e7179ec6200db58bca84013514f99a922a1b80700e1b2c990b1"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/texture-byte-length.ts",
+      "sha256": "00f57af7011baafb8bc8deead68d3a07f9754cd337e7c33f9dd141c7eb08128a"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/texture-prefix-linear.test.ts",
+      "sha256": "a1621bd26e0d31b1c671687fa9354b4e90ef4cdbea6a85b8c893e878e0c51907"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/texture-prefix-scan.test.ts",
+      "sha256": "6900fcc2a575c8b571cd3dd09f94ff8c00da197f866cd67462feec518477d746"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/texture-prefix-tight-bound.test.ts",
+      "sha256": "1257673074dd7dfd1052229af891c9499b649dd7d4706d9a1bf4b08d75a9133c"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/texture-prefix-window.test.ts",
+      "sha256": "1a2aedf7dc825eff8dd0200dc17d94df0b8e89988b24283fcdb833fad59af8d8"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/texture-prefix.ts",
+      "sha256": "b324742013251f858f11dc08d5e46e102cc9f0f4efb92523c0b4b33b79eee3fc"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/texture-prefix.wgsl",
+      "sha256": "9e0c9d7a1167470d4c52cc642c44b7760a34c88df9514a192e675395a51a5604"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/tile-compositor.ts",
+      "sha256": "92cb4aee8960cfdbe42264cc3e1c762bc543567ecd71104e51a13bd0eef98aa8"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/tile-frame-check.ts",
+      "sha256": "047490f4d2de64b72b1fea9db83e190d678c4f13559e4938c2b814ca2b1d972b"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/tile-frame.test.ts",
+      "sha256": "efed6912b9168bb319aeb2abbedd2e71e7b129be0db6b7cf187d25ce9b16a140"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/tile-frame.ts",
+      "sha256": "d5fe07d678b4e49200b36e2bf9cddbad907673a5f5ca18433252fbc90979bd07"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/topology-repair-check.ts",
+      "sha256": "4886637a2295bb6e5bac3002931b5bb565487efee2abb28d4472310487bd6c78"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/translated-scene.test.ts",
+      "sha256": "a1a80f2fd1ce23b1b29ad0ff62061022380967d3a96a96f78fbf38284e9ef11c"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/translated-scene.ts",
+      "sha256": "ec398d491995c4e1a07a51534f1f77dca6ff972f01912507fe224ee74b0edd77"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/translation-contracts.test.ts",
+      "sha256": "df97a8d4b4a54031ab8578a6bed6d8e365f8ac55303848a2ff3255d84a06e669"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/translation-patch-session.test.ts",
+      "sha256": "a63bceb5df28222e2370aad5d7f7250597446dc28bf5a92c820b33c73004fbcd"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/translation-patch-session.ts",
+      "sha256": "5deb5ec8257ce77c0f65a91a4c65d1401ec252d8d62597aaa6cc8dc5d00267be"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/translation-regression-cases.ts",
+      "sha256": "6d32019775adad7bb59eee0cc55816729edabb043efcccc57f0e61f32301c9f4"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/transparent-zero.test.ts",
+      "sha256": "8ddea20e39274cde2a235fb41b1666795e8931fa1403030febafa5622210bb40"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/types.ts",
+      "sha256": "932595f8548c0f878f1af86859a78304e2c1f1cded76cd422d10798885c27b1c"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/vector.glsl",
+      "sha256": "37f7c4239a10296596337684c356f14ff5b7b8239ceaa9e29974580c63db8fe2"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/webgl-programs.test.ts",
+      "sha256": "5a79d8923aec163f888cd00cd70f35bbbd36d657ca51eed72c8b3e03feb0adfc"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/webgl.ts",
+      "sha256": "f81fba77494e22c3d9f6d2d8352a40f3b664e085aae9d91e11e1fb400d06797e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/webgpu-bindings.test.ts",
+      "sha256": "c759de8682eb770b5e489c044796c1edcb4f09d044e7cf6b0e3e27844bc453ba"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/webgpu.ts",
+      "sha256": "a722f3a1b3ba062a8bd7401de6243331da20d5f2576908d4537ed6e66500e29e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/whole-image-filter.test.ts",
+      "sha256": "4f6ad70dc35066e71f62ec1d2740142321dfaf5ae31132bc39284c908404787c"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/working-set-budget.test.ts",
+      "sha256": "c1336df761a9660c62d94a9010a486e4c621c52eabc079787db72add44a386a3"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/working-set-budget.ts",
+      "sha256": "b4fd072ed9742d82167e7edbdf8ca74f2ed6feb85b5cb022bfbe61b0958dd541"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu-diagnostics.ts",
+      "sha256": "6e8090b1d8726440ff3166f28be267992db1d97b3168929ff727c602d2c19066"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/graph-facet-contract.test.ts",
+      "sha256": "14ebc2d8275e3b07b9ac396c8743b757ea4007a1cc24adf5b8d462af0c15f864"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/graph-history-state.ts",
+      "sha256": "533a3550d7c81fd1a10c14df24822f8e016e33e1fedb9bbb02a65836b06ff852"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/graph-history.ts",
+      "sha256": "0f405f3eaa292be31e744dc6cc75150417c7952da3abc08e80fa30eca21a6d1e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/graph.ts",
+      "sha256": "f05e28524f1fc564ff89efbda0a9b76306c631976d8cae90ae764d1020aca7e9"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/grid-measurements.ts",
+      "sha256": "d1c248c6620ddf52e04e415ece7a4a5a992dcec2d0be76a6a7d242d558ed6192"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/handoff-trace.test.ts",
+      "sha256": "f190e99ec88d5835c0f5bda6b08e529100c6a3a1c681eba26e6af7ac75b952de"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/handoff-trace.ts",
+      "sha256": "6d32fa0043edcac0f947072381ac0bb79ebd8cece170d1161308bdd0f28abd18"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/hdr-render-check.ts",
+      "sha256": "2b78b8e2f6d909394fdec5851c475e183de31ec0b60c274ec60e99e44f67df3a"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/idle-raster-maintenance.test.ts",
+      "sha256": "f805bb657348472f1999ca43c331a5b0ea3bb99f4958471c97e7492c4a67d3cc"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/idle-raster-maintenance.ts",
+      "sha256": "7f2717e562785b46ba2fa09cf76df95b19e8233ad2a68ff3c7ee441a2678c0d9"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/image-mip-cache-storage.test.ts",
+      "sha256": "24a133a3a7a5afe8a28c6280fafe9b0a5c48ea5d08510fdf34843026fbba2e1d"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/image-mip-cache.test.ts",
+      "sha256": "e529bd3623698a9cbae162214190183e844f52b0ee56297897ce6a5244660e5a"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/image-mip-cache.ts",
+      "sha256": "139ee13e339f73616b25802518059ad4cb92673f20ebc62bc493734a65026b1b"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/initialization.ts",
+      "sha256": "d037d779ad7ae47de076eaaaf88ea806a594ace3af46575150b08487c83d8417"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-adaptive-density.test.ts",
+      "sha256": "436e0df8adbb4c2bb35d05f6b79d98f8e8ffe58487bc05f220327ea2b93c441d"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-adaptive-density.ts",
+      "sha256": "7aeb6c69b2434d57ede185b82d366e090c06efa98a7a4f9e4b8dd9cb01d52143"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-affine.test.ts",
+      "sha256": "784edd8623422cacafa3088ddcee4aa36d8475991b171b5d237985ef4f0553f5"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-capture-tiles.test.ts",
+      "sha256": "1a290f2302afe5371ceeab7f56737890e7b5eac9a485b66713ec5ec98425b48c"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-capture-tiles.ts",
+      "sha256": "9b8ffa1b098c10e052c4dea1cd7147c8321b649e77cfe1e8f1d1e76b52a03e8f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-check.ts",
+      "sha256": "1fcda47a700165395bf34fe39713b6d6dbec117b15b1997f2a23880fb31962bf"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-density-admission.test.ts",
+      "sha256": "dd074b6a5bc19529a1a195813589cf4f0d01424cfb66bbc9c81f0ee842c2a49d"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-density.test.ts",
+      "sha256": "ff3eb39695599fe6f5c9bc42353c3a854003b08012614ffbc1417767faee9f5e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-density.ts",
+      "sha256": "27afe087bc0a6781651e8587aa80bcd7b0254639fd8052cb69be9d865e3ba103"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-dependency-scope.test.ts",
+      "sha256": "1d47c77e055c29fa26e73d6a709888f7ffebf5907ca3a5deea798c28ca9ec633"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-document-source.ts",
+      "sha256": "ccb2cef31d0334556312ab0e8a69a2621a6bb199bc84a4340290f081ebab92da"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-editor-recovery.test.ts",
+      "sha256": "96b02cd2ba81fbc159a4aa8f692aa58b354b4e2ac57600aa01ec2db1b23e56e4"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-idle-warm.test.ts",
+      "sha256": "7fd6da68c4671535dcc57e8edb98c82c1049bff4763300d4577b4df34e535458"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-layers.test.ts",
+      "sha256": "8b4f0265d2af8c705c17039d5411520dafdf5dee50e41452f1f4c23507ea1bc0"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-layers.ts",
+      "sha256": "51823225ce7887bd45a1209788ff58c993d88739a875389efd4eacac7e3176cd"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-patch-transforms.ts",
+      "sha256": "78437118261492f933eba45c3eeb26a135fd3c33d738c8f7ac23446908686fe3"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-preview-recovery.ts",
+      "sha256": "5df23e74c020ede1fb9a915bdccda2998f721ca0044292bd962f1fd83830445d"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-release-handoff.test.ts",
+      "sha256": "c5145250cd9fdef85c7f38e1db3506e6cd3f29733d690b717fb2b4930f6ef65d"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-renderer.test.ts",
+      "sha256": "6852c06148ea76ceefabab95fff7cb760656a7f780f75ac002ef85cd8f7e298e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-renderer.ts",
+      "sha256": "288ba9fb74a64d7fc28fedc85063039836112ca2a548653eeb8061bbeec5060b"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-scene-bounds.test.ts",
+      "sha256": "7f1623583f856eef8d367bab46b213a75302afccfecdd48ebfe79655e3e9b0b7"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-scene-bounds.ts",
+      "sha256": "7086d70a59bd4b7fc06165fedf593d908919385f29b039fa277b7da0d801f0b4"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-surface-check.tsx",
+      "sha256": "136f01c6c9f1dfc56d7385d33921bff4499363986058210d76a4f329d6b879ec"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/kernel-resources.test.ts",
+      "sha256": "6698d3fd3495821ffe9bb5aec6cef1957e23358ffaa6c1e19e8e53ec4051f21f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/kernel-resources.ts",
+      "sha256": "c2cba0a807a1da382db6caf34596f48f554863507d14ae61404a5c3104dc7fb6"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/lod-batch-check.ts",
+      "sha256": "f90e827d21f6b275a9fda56ff4797caeedd7e06acaedcb1aeddddf0c587b26ce"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/lod-presentation.test.tsx",
+      "sha256": "bb8de65dd99de00c547279d5b31faf83e7efc92623056b36d0adf7682a739dbf"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/lod-snapshot-cache.test.ts",
+      "sha256": "a46927c6e7d489e63a0d34f7781ebfe77d3432c2a8c6c9c3ad23d67adc5d335f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/lod-snapshot-cache.ts",
+      "sha256": "7964f6bc53bb2ed8154dd3660199e64b68b448acf2e4bf8ea9018fbbdf07b259"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/measurement.ts",
+      "sha256": "f539af090141cfc70363152348c5d1b8ce97f52c21b733eeeb2310fb29bb7252"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/module-lifecycle.test.mjs",
+      "sha256": "a28f72470800a2146d76f5589bcca8228d5928ace06f7887745daefc12f6936f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/module.ts",
+      "sha256": "ba40e27af1b3cb6f295a70d62d06da81a24ba3bf247b6442576fee2f5931791c"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/motion-progress-check.tsx",
+      "sha256": "bc2cbb54a403510e4e805db77ed6732e9eed48ce287c9414721cb9967bc3092a"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/native-compile-failure-codes.test.ts",
+      "sha256": "ba7bbab8f6f588c77d47101cbe1f8c56b97c33703102dc2d6ea627fbb0ee1419"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/native-navigation-handoff.test.ts",
+      "sha256": "2b6f82454fff8b0fe54a14fe4718d07cebaee92a16f1393067203c8de67b5a12"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/native-navigation-handoff.ts",
+      "sha256": "3af0bd60031b3e684ea7364a742bdb195f37023f6e73c74fec2da1fa66a17678"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/native-navigation-surface.test.tsx",
+      "sha256": "99cfeaab778d04d66fa78c0608e80a547ff2641983e064e675932f3ec923c725"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/native-preparation.test.ts",
+      "sha256": "99db4815136c70ffe790fbd95facaf3acabe39d9165bc01064c1c4070c5727c3"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/native-preparation.ts",
+      "sha256": "a9406d0f8832e619daee595bf9733e830171afa6b8bdd53a09363b0da565651d"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/native-preview-tiles-policy.test.ts",
+      "sha256": "8bfb8d3997a3ef8aa94a0c7dab517f8b280b44fd5a147b7a10f8a2bb99cd7677"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/native-preview-tiles-policy.ts",
+      "sha256": "a8f42e786d727be8a66648780ce90716ed112afbb951a660faa9c114808e5d32"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/native-render-bridge.ts",
+      "sha256": "5c3e4fbdc249cee74844b29392dfc8e5a43bf2577be2ebe0164595861fd1ffce"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/native-render-pixels.ts",
+      "sha256": "6214f66648fb7d3d64566d0d37fe731f8f51cafb7132249ca645866a81d83b75"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/native-render-session.test.ts",
+      "sha256": "1d4c3e2143f0f41559be03384c484fb7a3e248925758363e0495b6eebb154810"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/native-render-session.ts",
+      "sha256": "086761eb3a2796f5df3b240482728fe915145bc0b505969c8c253bdd427219de"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/native-tile-motion-scale.test.ts",
+      "sha256": "63d357e5c57886c292a28b18c8a18ebe94ca75b9fe42111699d6da8146354ef5"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/navigation-budget-latch.ts",
+      "sha256": "b48282b53120a7d8b210712bfa932c4e8f555eb2077e1e39903f7ae12a24ef9b"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/navigation-coverage.test.ts",
+      "sha256": "ad71cc2c334000be99a2b1dba2f914489481dceda318b8452a72849b212b6fec"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/navigation-coverage.ts",
+      "sha256": "84339978eebcfee0bd20cb320eaeb3ee4585c47c5d3b263e3cdce28f99524e4b"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/navigation-input.test.ts",
+      "sha256": "ace50734951db2b78cd10477fa9550285b9f5812d916302db2f6201ac25c57d2"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/navigation-input.ts",
+      "sha256": "dbee9fa5000caf24416f68a90d22dcba5bb0a9a0f11f2d59f3d2029dd920f964"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/navigation-intent-owner.test.ts",
+      "sha256": "3eee3f1089e3111a1b631f37425408d35f92385bb5ff62477e48a1a737894564"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/navigation-intent-owner.ts",
+      "sha256": "b04e664299e15c81de681748b09818b457bceb47d80ce075057f26fc83e5c3cd"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/navigation-intent-surface.test.tsx",
+      "sha256": "c97468d4ae71fb22d9e585725cd0fe86c03f3aca0d04383b0df2b234f2b447cf"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/navigation-journal.test.ts",
+      "sha256": "3ae870b64b6f9fd8a2edc78e7f98e59d13bc47a232ed90d4ec761d0eb8c331b0"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/navigation-journal.ts",
+      "sha256": "5171ba42bf9827f8ba3aa4a7bdb394c534cc0c90aada1f1dafab2ecf4105a269"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/navigation-quality-check.tsx",
+      "sha256": "42f0fb44240fa150ede375e9b8e865d18bc640f36ac6cd2d032c3e6fdaa12270"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/navigation-refinement-surface.test.tsx",
+      "sha256": "7dfbfbb4fa22c34202abe3740d63e82578d6ca2cf2a2b95ac6d704b6d8fca775"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/navigation-refinement.test.ts",
+      "sha256": "15bd4767d90be7f91d2ccb0b7e028dc6c8d6d8a1355b19eeea072ccc1b1b1d47"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/navigation-refinement.ts",
+      "sha256": "fe1fb185aebb732050d504b580e01a90e8a6d81ccec57f7a17839d2609251c0a"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/navigation-zoom.test.ts",
+      "sha256": "1a273158bd678ad0dfc1145bc3032eaf146afb53aef557f8aba891edb351050f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/navigation-zoom.ts",
+      "sha256": "6e675fff5a2a6ea19fdf90ecc7823d41541f53db2aefede300737a58a161350d"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/op-sync-history.test.mjs",
+      "sha256": "111dbaf8db79862596568cf80cb196f837e62c58c174fd8914a45c1298fc48c3"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/op-sync.ts",
+      "sha256": "cbaebab87e59b499e24d223d5c121be41d2b8bee617e91a057bc4636cbd8bbd0"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/overview-coverage.test.ts",
+      "sha256": "6d9e0e1b87a4d3086b54b09150ae18b84fbe17193bdf5f0143c1a3d5feb7a5da"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/overview-coverage.ts",
+      "sha256": "0122f4f5ba031fa2ab6d04d58c3310c8bef113a414f1faa9429cbc290554474f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/owner-tile-cache.test.ts",
+      "sha256": "327717c2809bdca6920c5792bd5c3ac511208d18f6c060cd2309dba51ac2b69c"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/owner-tile-cache.ts",
+      "sha256": "932003e626590f4dc09d996c992d4273a677be083174a0b523ba2de701054068"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/owner-tile-worker-contract.test.ts",
+      "sha256": "fa5627d5389f36aa0bf41b3b826f416268ecc512bb196d89cf556b98d6bb0317"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/page-memory-policy.test.ts",
+      "sha256": "a793be86ab8b16bc8a5aa34bdf359649a07d6ac39a31724b2d103d8d705dd341"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/page-memory-policy.ts",
+      "sha256": "b0bbf3723ba38dfd95cafcc37a9a6b5e37f378213f5314676d89b595cdcff16d"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/page-residency-cache.test.ts",
+      "sha256": "240d730ac511dc099dfdb7d400acec1689ffacc83ce0aa7f3054a80be899d61f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/page-residency-cache.ts",
+      "sha256": "846c257fb40ce92de11f439db552310c55fb01ce0ef512d7b942561ef5ecb9f5"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/page-residency-shared-budget.test.ts",
+      "sha256": "5bbfe42835e00b995f78f84615c3487947550204274f410c69a270362865da80"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/page-translation.test.ts",
+      "sha256": "cc14e8b83ccdc1b6a8f2f5b21ad2d92f3b70c55b8240c940af0422247dce1926"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/page-translation.ts",
+      "sha256": "0623d1bc52c9bf821493f7f89d1d287169a2560d4235da1a159a889153c37def"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/paint-damage.test.ts",
+      "sha256": "3afa6481aaba19da4bec0187cea209ef590eefc093ed024fb706f54adbabfedc"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/paint-damage.ts",
+      "sha256": "7691eb7150e4c98523240c231935b126396cef54554f5a3623de6b8820fe4c7a"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/painter-support-policy.test.ts",
+      "sha256": "7ce5db1c775af46e534a3f914b27a21c8ee283dacf8ce664a2773e2ae9cd859f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/painter-support-policy.ts",
+      "sha256": "543294518fe3ac9688bd5b87103f500de15e45133414ae76e97e7fbb464a1c83"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/pan-phase-pixels.test.ts",
+      "sha256": "9a7e3def526ac705d802520a86b93594b188f0c265755cb940da3240f8794b4f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/pan-prefetch.test.ts",
+      "sha256": "fea9cdb341d08cc41c1df84890f0e1f71101324882e0b40bbff6a3c6fb82670e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/pan-prefetch.ts",
+      "sha256": "60c963f85a4efeec1b15875b6678adf10e33c17f472eb35dd15ea83db45042f7"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/picking-boundary.ts",
+      "sha256": "a9ee2094a1e8deb913756598f7cd597aa2064ca202ff118485d409ca80f75020"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/picking.ts",
+      "sha256": "7178863757e900b89ce19db6ca6a2f18c6bae9aa0e01e06d646d168f7c61ed8f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/pose-action-correlation.test.ts",
+      "sha256": "7a1ca0ade223d823522458c37c65dab114f0464e9e2353673073cf6cfa36f4ee"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/pose-action-correlation.ts",
+      "sha256": "8b6ab7b4d2deff80d66821ff7ef815f1eb2e0d7ac88b9226ff9b7777c77cc9fb"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/pose-diagnostics-sampling.test.ts",
+      "sha256": "afe986f9cd7d974daba573dd02d2c593e5c46814aa75ca6900b61f516fac834d"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/pose-diagnostics.ts",
+      "sha256": "6c89947f25a4cb57418a6276c94809ed3892e2c39ab26d5a3b6d96e3d54d8041"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/pose-failed-cause.test.ts",
+      "sha256": "bd113d60aaafbf02bbf30e4563cf9032ceffc39227080edb68cde60ab8925872"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/pose-failed-cause.ts",
+      "sha256": "b25f4ee21b51ebde2d4af2701e09d7974d2763aded9c597e520c668d715497c8"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/pose-feedback.test.mjs",
+      "sha256": "9a2a4635a5c4f182d27fc5cd476d396efc6a6c10761182d21f513efad692badb"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/pose-feedback.ts",
+      "sha256": "32dcbe31fccfe7f83e88c0bb6754e031348a17020b87b36a76d41a1bfca9c637"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preparation-boundaries.test.ts",
+      "sha256": "9a087a93638c7acd0972678a932beb9f6b28f813734fb65f45391bb6e65b5168"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preparation-channel.test.ts",
+      "sha256": "32ada3d9ab7727647ebe9aa04b353221769cf6475ecd71c637aeb01ba44f4731"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preparation-channel.ts",
+      "sha256": "285a24ae524e9e04f80a68a0cb5d7acfc17c0f966989cb42d0443f3b1621729d"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preparation-snapshot.test.ts",
+      "sha256": "69a944bc7ce854f066ac6c140ebb50dd814dc045747b0e1e39cd78c58aef4805"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preparation-snapshot.ts",
+      "sha256": "f97c26b22617a8ec663346b4614ac418e7ba4c4d0561b179805153f9b508fc11"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preparation-state.test.ts",
+      "sha256": "2aa9ccc7a06bacb11fa0ad5dd234efdc101f2ace027071cc217c7ae9babdc3f8"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preparation-state.ts",
+      "sha256": "ca09bc819d558f094a88a016f4176ea9816d2e3f5f1b8d01aa5ca863708f896e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preparation-worker-boundaries.test.ts",
+      "sha256": "42580512d75904c6d519807e6239a0c95b5312a92b765e3787a462810c552626"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preparation-worker-wasm.test.ts",
+      "sha256": "ae2ac28c1790f8f411ab9c5236a6fb8aef9e13bd898229449c33c3422a9ef003"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preparation-worker.test.ts",
+      "sha256": "9e6cb4d82f1ebd4ec6074e69871fac6ae4f6afcda2076483fd1d56831a488f03"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preparation-worker.ts",
+      "sha256": "2623a2e2929df302b4a6c99f99eac2e30a3ef05e25f9f7c18d7570f253196944"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/prepare-ahead.test.ts",
+      "sha256": "6762d0adcc7a1bb7680d7c2cab3be4aafa569d90c543311537af831df8fafe6c"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/prepare-ahead.ts",
+      "sha256": "75bb32265dee69b61dc282cb8717aea0301cd40d839cea50d7d5bf668848eef4"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/prepared-document-serialization.test.ts",
+      "sha256": "9b5469781b9210c7876db192064783faf28a32a948b4397fff5e9e51370fb217"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/prepared-packet.test.ts",
+      "sha256": "c08d55631659285ad34bad1bc5397d3e85e7154035b15506a689ecf1064943b3"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/prepared-packet.ts",
+      "sha256": "62ffc8d8fdbce19f0e19cc83c880a90c08b482e4957ab58909a338c73aad2fc0"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/prepared-tile-fallback.test.ts",
+      "sha256": "4fa27067a927b61d18da4c5d15c716f0de811674d3cad16946cb6ca274fb7411"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/prepared-tile-fallback.ts",
+      "sha256": "40bc314b53359eb32e4f49d94160fe581a2768a23f7d5530cde0a7872e7abc30"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/presentation-ownership.test.ts",
+      "sha256": "ee61d39e78c7fb8a70b87daff1fa068cd26a88eeaac360e6d11268ed5967be89"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/presentation-ownership.ts",
+      "sha256": "a91cb27d9dd85a6b534881dac81574910a928422293e3d86ca242ae46ddcae11"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/presentation.test.ts",
+      "sha256": "a48d044ea5c4127cc62d1a92eb3ee95c74462ad3e953d82a0e43dd33667b9fc0"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/presentation.ts",
+      "sha256": "b68acf6effbf59345dc17ed8399a173999e850f00d12efeb3549256f4589993d"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preview-budget-recovery.test.ts",
+      "sha256": "256ff234c8770f29bf624c13ba78ac93da6fc3dc7abaec3ac2375db6f7a7fef5"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preview-budget-recovery.ts",
+      "sha256": "7475142065c277a93de74ff406265fb54a45ef3115c31f4487b2c4bce206cea0"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preview-layout.test.ts",
+      "sha256": "eb69568c74bcb6335ae7d7dfe3ce1668fceea01b25a213e803f100591ae6f7bf"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preview-layout.ts",
+      "sha256": "a91cabb7913f3427d033fb291c87a795f85f244414f7716f8718575e3ebb8385"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preview-tiles.test.ts",
+      "sha256": "03a2b51c3a6bae34290d1bcf7b97f28290ced0bc31b91d087fcd3fa067ce7683"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/preview-tiles.ts",
+      "sha256": "646f17917806e692ba0ce30f45ea6ed0225973f05b832f1b3397c1f75b8acb8f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/profile-render.ts",
+      "sha256": "10624953e94c892a323ff2aa44d67b450031818101c209302bd7df6d83fd7079"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/program-budget-subdivision.test.ts",
+      "sha256": "9c89a74f35ee9e06378d05f6c5ccee89b2dbe43bad2d4e3cd8d143e5459f2279"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/progressive-damage.test.tsx",
+      "sha256": "107c14467dcf8c1bdcad71ba44d88d21f5076cd42b2a50b71ed189016d8a52a5"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/progressive-quality.test.ts",
+      "sha256": "3901499352e339bf6baf3dcb96a5a47f2cf7b1d7d072280e89827ed15f795b6f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/progressive-quality.ts",
+      "sha256": "71a485133938b6cab94c1b82433dfdbdd08754acc2b44bf52ee00557ed2a9154"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/release-overlay-ownership.integration.test.tsx",
+      "sha256": "dadb0e1e0e6f93468aa1321995b0a6f2240cfb8b74e2e9d30af46756c30c0c6d"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-budget-client.test.ts",
+      "sha256": "00deae50f6cb0c5c2b87ab8efa464ad681119f7e74e7abe3101a0c734ecdad13"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-dependency.test.ts",
+      "sha256": "982f53ffb3065d52a5722ca68bd812ef0313c50c220ebec22b272d9417f9ddac"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-dependency.ts",
+      "sha256": "ac43f1c2536c1c965469a61025452982d01b4c0da83b1051dc2be95528ec664f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-diagnostics.test.mjs",
+      "sha256": "a1fe0130ad3c8a22f46fc7801d93fd7525d4b170a042df98c4f133af32783ec4"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-diagnostics.ts",
+      "sha256": "48203144bcfea312a0c37cda87f980646a9188e590e414be563fd0b1877441bf"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-display-policy-client.test.ts",
+      "sha256": "26cabede5dbc0f808d6600977b0168113a08078a78b8218a69a8ca936dd33de2"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-failure-budget-fields.test.mjs",
+      "sha256": "ece658c770d0fbdc362a2fe7b29f8f844dc68f00cf966fc59310fcdef2bb65ea"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-failure-origin.test.mjs",
+      "sha256": "d409c294feeec330c073509d713847f405b8a3eab97d754b1976022441a6fe1e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-failure-telemetry.test.ts",
+      "sha256": "577486831f4ae1e523d4c6dcce5fd16909c742046950e915ad7be1745a0281f5"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-failure-telemetry.ts",
+      "sha256": "b0855cfb83e5048ebc456658e54dfa2ea4d240beeb25e108867918cde57e63aa"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-kernel.test.ts",
+      "sha256": "b441f6bad7e5232a82135ef457d0afc7cbc41c6806c6a91ad3cdb17b5f1e11c9"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-kernel.ts",
+      "sha256": "6ca7908405e0dec676c3df867bc19fb5eb2b1dacf47d5d137979729c5b0e5b5e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-lane-state.ts",
+      "sha256": "6304866859c89829f4d81202516bea3aa7b1440e638f9f28136be262f900793e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-mailbox.test.ts",
+      "sha256": "d4f4fd3903128833875c36a6013dd0b842824f1f32fb43ce1501fa7b7881df93"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-mailbox.ts",
+      "sha256": "b63e7b958c922ff4619e9d9fdfe418af88528e068900a6ffbad095c5d2b6e19f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-policy.test.ts",
+      "sha256": "c1b5b8c787de0ae47f293d206aeb8429f0e12b6ebe8ae04200fe69869002007a"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-policy.ts",
+      "sha256": "21b04ccea5277abc3e27e0f394dec57d690180d232f3ee873e788e5e1fdcf890"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-profile.test.ts",
+      "sha256": "2c44233950ecb6d11e7090cd550baf4f4f07e6da22ec6651785d8a87f54f8888"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-profile.ts",
+      "sha256": "5b074fb54a1245e0e822826242ff9be31091283cb1a0a0c91b627010c7ee3296"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-quality.test.ts",
+      "sha256": "4820b035949a1387e9bab54b78d0fb68af6c93abc935b7a131fa921afa4e9cea"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-quality.ts",
+      "sha256": "14ca96cc82eec2ef409e9d2d334c426360190b868dddaa9aee1b466314de3634"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-regression-check.tsx",
+      "sha256": "b326879da529b6ea8b3b2e96522ca4e6ec340d2d5af6fa0d097bb1f922af02cd"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-work-queue.test.ts",
+      "sha256": "08e0dffb43c975f32863fcab97d5139e85f6cdcd21dceba4ec99a0b6cf5eaeeb"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-work-queue.ts",
+      "sha256": "5586211fc0b20f7e255baf72fba423024992467f6e70e2882ff66d7ac00ef8fb"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-worker-image-hydration.test.ts",
+      "sha256": "f045abfb9720b254497be33f202d00941a9e954e6bc5614e8aa40abcf9858c47"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-worker.ts",
+      "sha256": "1fd9cbf64d7a4a64a93be0dee4c2aa61e9f77a978a8fc3a5c129b210993845f4"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/resident-budget-failure.integration.test.tsx",
+      "sha256": "c5d356b3f9726247642f4e39d9815a33b136848d7ba110160a4cc2c0e4f516a3"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/resident-display-check.ts",
+      "sha256": "948089ab8df5b66e0e9f43aa51c6a1c400fbae90faca1ea06137db308ba2e2f4"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/resident-import-ownership.test.ts",
+      "sha256": "eadf10621c1210d1fd3bf5979fa300af04342b19645027a5b888ae1921718871"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/resident-import-ownership.ts",
+      "sha256": "3731f5911b3e465b253c9d61bb1286a3f96178d5277e10faa5b507fa397c30db"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/resident-pose-order.integration.test.tsx",
+      "sha256": "16f433fb15122efbf47a95eeb656a0be89f138c949c4f96d66a58fbb43c64af6"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/resident-presentation.test.ts",
+      "sha256": "b5341ba873ea0b801b2e3032864f56493235d67ded2af1b061b0bce958a27e50"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/resident-presentation.ts",
+      "sha256": "9ff57a3cdf32fc5c23c75a5d824a661429dc4252a539898b709df28d474653c5"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/resident-shared-handle.integration.test.tsx",
+      "sha256": "ccd832570d4dbf0c9a71a9fa85aaa2cd5fb8dd429a1976090c32e47b475001a8"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/rotation-handoff.integration.test.tsx",
+      "sha256": "764eda09129b2e407e8a69779c8d42bbd5e6ae93f3935fe96ef5c3e60c05804e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/runtime-evidence.ts",
+      "sha256": "c34f4b8171e72c055e1c4adc990496c21a2471d3b67cdf9ba3acb9cfa40aa24e"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/scene-image-hydration.test.ts",
+      "sha256": "ff221054c71d1809e711dfce7e1c3cf4d3834b35f83130d3e883beec1ad92773"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/scene-image-hydration.ts",
+      "sha256": "084bf07d7546eea68df7638d59c5ae83f0d03234fd4d299b6e908a0caceb8854"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/shortcuts.ts",
+      "sha256": "6f8b005def183063216df69c5e1bcc69293830a1b323fd8a7c1e7abb20b3f779"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/surface-loading.test.tsx",
+      "sha256": "391817b561cdd0bfe007d06bc15f12223f4e24bcf6c9d5daf8666be8a7bf1211"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-admission.test.ts",
+      "sha256": "0ab9f092b20d97b526a7317b7c7a6357ca608041dc70a31bd468eadb96ef26cd"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-admission.ts",
+      "sha256": "dfdf8001a4cc0e82f4fa7c9b58f67de1dbe397b955be8d8e57fa801360476585"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-cache-boundaries.test.ts",
+      "sha256": "55af8da030175c5db4f0e8cab28b0e7ea339ace53d3e22c4f297405150559d69"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-cache.test.ts",
+      "sha256": "ffa60aeed7d933c9c93770e2057a7f9d5a6f5fa4f260b823b69b6b0598fc2bcf"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-cache.ts",
+      "sha256": "920ab1c2182452121b21ff95f1f7d9fe0588c54bdca9db40c4449a5d91c2d027"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-computation-key.test.ts",
+      "sha256": "973fa5f7ce5117f423b9bb7486fe0c93e390eaaf5c53db983844b7eeb40ce7e0"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-computation-key.ts",
+      "sha256": "b9780e3c3eb1689404a1d26cd12d0e3b81cce62ea53af6b5e880d1c1e6c59e0f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-cost-diagnostics.test.ts",
+      "sha256": "aaa68f70c5e20ee408c6aedb086cb72915722f262428e7da59bc8f60718b84d0"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-cost-diagnostics.ts",
+      "sha256": "afc2a841e54bd799662ca71d2e1b15c2f6c6dc57d928d3f92e066283660a2e00"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-coverage-sweep.test.ts",
+      "sha256": "e6ef065083028f2584d70d288be0085fe792c35bf2f8eb50408aa44e4c5f4705"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-damage.test.ts",
+      "sha256": "ea1fe382d68f9b37bd98b27cfd4f445574974aeca5fb99344fdde643294236e6"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-failure.test.ts",
+      "sha256": "0a01923ca39369704743eac907da1ba65a8e3d7c287815c87d54fa76763ff728"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-failure.ts",
+      "sha256": "6ae3bd31ae13cf8e018888cb3fc8ae2309ebcd423199e7cfb082c516ddd02f07"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-plan-aligned.test.ts",
+      "sha256": "5f8c99fef47cdade43745c43519f9f68844a80cdee0fb4b14d488715c5324bd7"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-plan-aligned.ts",
+      "sha256": "58eae232314332dd8db0bebd5ccde425c978fd925b4078871fac5134826d7cfa"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-prepare-viewport.test.ts",
+      "sha256": "b8f9a96f41b11df7478d15f3d23516bc5bfd2e6a7e28e3a770e3b056b71928e7"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-prepare-viewport.ts",
+      "sha256": "f8c72992fc61c2f8406d7bf92dab9a86c6d593dc6085033eb8f5e9a69f4b821c"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-presentation.test.tsx",
+      "sha256": "a6c98130930d04751e9ad2ff494248edf0b2f0482213dbbe89e02e9b14007be3"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-preview.test.ts",
+      "sha256": "300308cb48a4dea0c10f999fabe50f7f14696a8b7c03e86cef7739125a26dab8"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-preview.ts",
+      "sha256": "16059bd18548d567030a07598ac05df131d8308b03d48193feef9769c68d673c"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-replacement-budget.test.ts",
+      "sha256": "1ef7d3c5648c4e7682f798ed2c9b0bc803197c55fbe029120c3e406db579008f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-scheduler.test.ts",
+      "sha256": "db03c36c3f6ccc8ed19925f658d84c5fc1b10ddc99de3153624a4e48497832e2"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-scheduler.ts",
+      "sha256": "8536ae7967ef359941066bb02574de27501e5fba5811a18f5ec5941a56025296"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tiled-frame.test.ts",
+      "sha256": "e45b7c96e5021f55054cfd571c010ffc18939e616504d1c614b54a899654ee23"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/translation-preview-kernel.test.ts",
+      "sha256": "e2b641955ed8f63984aff202f03d18a57872e20a9782dddac4e6ead08594aaff"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/translation-preview.test.ts",
+      "sha256": "263709e2b5b8e5047e2c571caca7f77e02b7c2ffd54b1d8bba924167f404e382"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/translation-preview.ts",
+      "sha256": "bc6308cd1850cd1f1950d8a45fd87bb9cc5ee4463021fada3c6efccebbba249c"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/use-navigation-zoom.test.ts",
+      "sha256": "aa13497bcbbef349364db7aa85531bb6d6c81969c6a542201900151e48992a1a"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/use-navigation-zoom.ts",
+      "sha256": "80a3a589dd5ca00e7cf127e2d3c6f083c3b08fe55e062e5fca998750402ef231"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/use-raster-density.ts",
+      "sha256": "65ee65add951fb32f3e91f8b42c7134a17f9df4a8f61821e3b35684eb33feb00"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/use-sharp-zoom-activity.test.ts",
+      "sha256": "928939e33db5d44d15f7a6ac7fd715505279654fcb39b72a7ed9a72fe0fde5e9"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/use-sharp-zoom-activity.ts",
+      "sha256": "1f5bab8c1d0953adc53b8e4f5ba76c647081f67fcac4057644a38eb34e2e7e58"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/use-zoom-activity.test.mjs",
+      "sha256": "d40c6c526a8a940b566c4ed7352f09b7c7e55aace6e5c7331791de5d0e5db71a"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/use-zoom-activity.ts",
+      "sha256": "3e669b8e91a5f172a8f84d3567274be30d5bc1416f6eac3c7df006b41d9721c2"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/viewport-preview-cache.test.ts",
+      "sha256": "837690c864d32beeea6c9e5b62a8b5d7b8e8db24427161e80b8b9d60405f0213"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/viewport-preview-cache.ts",
+      "sha256": "da1c3a93650ca5d73606c03055d013299c928eac58f7bba757ac620584df0a3b"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/zoom-clarity-check.tsx",
+      "sha256": "29ca6eb05d0ee40e21ec0ed6c3dd3ca6eed295b821aefbaff2fa3ef9dad24586"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/analytic.rs",
+      "sha256": "51f2f33771ec7a20637c3596eaa0cf12e5ac210479b72d6495f0875bb3fc48aa"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/animation.rs",
+      "sha256": "3e2bf6f78afeb7062cfaea6a15ea480b833c9fc77388e4121842a7bdfb805ff0"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/animation_bake.rs",
+      "sha256": "3ae1d76b8568dc4f5728b47f81653c282ae88d523a7e6b6d626427e8f587caf9"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/animation_plan.rs",
+      "sha256": "42f00052b6a978c342ab308f597809b90982cf0ce305fc0ef8e78995146062a6"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/area_program.rs",
+      "sha256": "a6da1c8fa99abd981506a7a466f4015113a3fb2db441911de2161e347ebd307d"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/authoring_shapes.rs",
+      "sha256": "cf645d848793a4cf7b2f9a1ea2d1f589154792fb6f7b10ba51ec0cbce9571825"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/bin/design-prepare.rs",
+      "sha256": "d468fc61b6e9b449116899d2395ad40bd25cd78dc3951a88eb759516261c1ebd"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/bin/render.rs",
+      "sha256": "4f39072cf9d84d01b88537327d474103a73b8f8c27b37def103859d3dbea7a02"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/bin/sketch_import.rs",
+      "sha256": "31855099fa2a1423dbdc14d8af01fe57360cbf68cd50639a5f04f1132893a39b"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/bin/transport/mod.rs",
+      "sha256": "035797fa544b8add0f548462cc1459a3a2d4f848a312d72242cc3e5019c3dc1b"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/binfmt.rs",
+      "sha256": "707aeeb01cb0daf4e316e6d6158b00e864f71756f5ae8c971780345d9118850a"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/blend.rs",
+      "sha256": "6b6cdc8581703b7743bc8b9c5a4d96920b54fa2d7e13e9f8dd39b329caa49465"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/blend_prepared_tests.rs",
+      "sha256": "b12f879695e4cac53a66dbdcd58277b8f7c3d0296054b7d9c2303872ce955a2e"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/boolean.rs",
+      "sha256": "5846713d31a13980fe1728a054206247396422ce81dbb91757fcea7e73ed3cc1"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/boolean_properties.rs",
+      "sha256": "cbe5cf37d84c72b7cac18a415c1574e7cd610bdf28dab0c1b873dfa4cee7442a"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/bounds.rs",
+      "sha256": "21a8302ae69eef57a6c31ab81a8eee9d7a9fd998c2934a8a766e1682c5369e24"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/capacity.rs",
+      "sha256": "841846c1d0dcd6d0dc1f0fe98742b2c11ccb5817bbe93e89a198f36ef3a6a475"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/capture_plan.rs",
+      "sha256": "862774e93811c5be0657ca53a30d0c4d39cb8d75f78309807a465f80d657b762"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/certified_filter.rs",
+      "sha256": "b59f74ffe1df7a36ae50526c8dd32098b79d6bd8b569b76f724f7a252e26c054"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/code_blocks.rs",
+      "sha256": "94fbc775d9f57728e8b83ab71b71ef563ed243f1675e564064f79c0812d038eb"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/color.rs",
+      "sha256": "0b47ef36d2553671375d7be5fe9bbc066bf2df144cf48706607eed44376c175c"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/color_prepared_tests.rs",
+      "sha256": "b9ad752e1b11bf079f27a63518fec86507dec9d683d71e533a338f8461d4553e"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/component_updates.rs",
+      "sha256": "922513c9795a76db3b20a2a7a3e995be0900519dde436956a63d8f7b77bcbb14"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/components.rs",
+      "sha256": "b2d7b0a3a596e3e03dfb772a2e8cb72717884b7b76e2dec04871024cd889dae1"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/connectors.rs",
+      "sha256": "4a0773293cf744f8b9c85d77b8acca28d9090680aec8bfe88b52092fa2f3c518"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/constraint_projection.rs",
+      "sha256": "0d762e3c11278db4189b3bf9734806ad8c683918f609114e71499b06ced59093"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/coverage.rs",
+      "sha256": "daf312073138d5c75696048978d5c56146b3162345a0d82191288711eb5456b8"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/curve_boolean.rs",
+      "sha256": "9d1cb6e477bcc109cbbe77fd474aaa1202d5ed0ea925baba30c52926d98889a9"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/curve_boolean_cache.rs",
+      "sha256": "1e1ed244d268d28e06df87c73ad6b70acb648f1af27eda91088bc94eb861e164"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/derived_invalidation.rs",
+      "sha256": "396cb96ae63364a689b984e60b767ed62af20790ffb59aa03c34d82e416a7c4c"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/design_system.rs",
+      "sha256": "ed0ec4f05a092c544387334d84734ad23a73a264c2710dcacb45d3f557abb7ca"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/dirty_region.rs",
+      "sha256": "05ded0900e1c7f2cbe8d4a81c65fffd72bcaac056fa1bbb46e3f3b50f842fbd9"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/editing.rs",
+      "sha256": "ed0616da2c25e1a715aa0f50f4a46a22cd440eee8b0f78a28f81c03adb3c0f04"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/effects.rs",
+      "sha256": "11b9cfed6264e96d5ae69f76dc331acff6db9abc43acf8d2e74aee4b4de0b3c3"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/export.rs",
+      "sha256": "c7932bfab5a4e0b3a45fbfdf2cec069a81355326d4a3f79b405a7ebfb0a1b18f"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/export_formats.rs",
+      "sha256": "3db11b829970f6f4c5f5ee3a1c3293d8a8f0508c185e9127ecd8271599517600"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/facet.rs",
+      "sha256": "1efffc6cc4b5847f5e4b17528c01e29d7310602af78b37c2d109978867795ec4"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/fd_extensions.rs",
+      "sha256": "cdb0507d8dc42af91ffe2f7e18f91e36f6be1ea7432868cc5d6783b837c5cc27"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/fidelity.rs",
+      "sha256": "922615f182d1be18dad3f2c68ace3ffa1968f4af222001ee025feb01fc09b660"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/fig.rs",
+      "sha256": "63d667370cdbc39d03982771f37d012898dfc88d01693139e9068ee64d510cf5"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/fig_geometry.rs",
+      "sha256": "7dcde33f640c249990fea083c67b2c8cd1abcfc88ea727ca7661cb1a01fad03a"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/figma_gradient.rs",
+      "sha256": "510b6b9138e84aab8e724143b4df7e1583ccf108bfd8813e251e654407c92686"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/figma_sampling.rs",
+      "sha256": "d5c6f73e8cc26ae4c774e0941dbb47c8978cda6f5ee752bfb4dd7b051cf5513a"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/fixed_gradient.rs",
+      "sha256": "ac8e0d767a1f37f61b24b5ddb4d608db0373c85b432a1794977a4d2d56334d5e"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/font.rs",
+      "sha256": "bce7d4f4a59df0fc15008b02bc8d28569a69339a3973569c719c7246d8fc255f"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/font_glyph_cache.rs",
+      "sha256": "339e395d3e1b5d8c9060d78592fbd48d443f7a5e06896b3725b439daf587c549"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/freehand.rs",
+      "sha256": "7c22088c0d02d483cbd1e3d3fce0ea4050ca4c057fdfff06e70526dd307617c9"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/geometry_snapshot.rs",
+      "sha256": "b1b7064d6d2a81cd98a09f5fed2bed600e1b2f011364982bb59cdbe0ac25391c"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/glass_capture.rs",
+      "sha256": "ae7ea054baf39f5c3982746d163f5682c2a383f6a743956fddf149b32df419d0"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/gpu/frame_wire.rs",
+      "sha256": "ce49c3a0d90b9c442103a870cbb28f4b52927b779a09ed9993d892de6baad141"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/gpu/packet.rs",
+      "sha256": "003a618233a837241618571b703e857830d7ce1ebd084cec1f9b911d450e3a80"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/gpu/scene_plan.rs",
+      "sha256": "771af72d878c4221ebd404d8f0b3dc475d829351a7f2b9978a633307d0dbacec"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/gpu/suffix.rs",
+      "sha256": "d772c391becc2a2fde8015b981871c5499f42b599716cb684ed3deecc3378003"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/gpu.rs",
+      "sha256": "25ddee4c9fc02a547a76c35bd1bc579c7aae2ab11033be0ca7c872e2359b28e2"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/gradient_blur.rs",
+      "sha256": "d5e734fc559c7f9d349b3fb5546bade25ade0afec9406adb7988bd442c13b228"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/graph_api.rs",
+      "sha256": "074afb5df6e2421ad8753b50642dcfee7802b5b94c2868940b8d558481e959fc"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/handles.rs",
+      "sha256": "7df27a93970629233a8f6db57254cd68963cb2945cb6736cc4ffb2a9985ab08d"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/image_adjust.rs",
+      "sha256": "5804b15878845afac6fc0ec12e82559b7fa7fb03b1dfb359f37636fadeb26a77"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/image_color.rs",
+      "sha256": "3f0ee4fed34c11f09f478a70bfeddcc8eecdec15c10891cefceae4f8936f1afd"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/image_mipmap.rs",
+      "sha256": "876727a731c2dd7ad04a26d5a5f3e2197e71b750b5244f67c88cbad214451f2a"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/inferred_layout.rs",
+      "sha256": "4ff3e37a9b03a47280f62f288bef133b5a3556171bfd7bf34cd71125d1a3f66e"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/interop/boolean_worksets.rs",
+      "sha256": "ac959adbce0ca5864189b2ed08c5577fa0af51c4a2c0d9dd3cb42fc3cb7c8bfe"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/interop/source_edit_tests.rs",
+      "sha256": "f9b47e194f79b644469979efddfaca841ed649deb1fdb1f98c97084a00900748"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/interop.rs",
+      "sha256": "e2b4353199e9e6cb42423882575c4c22b63463e361efcac40f5e9c22feacf11e"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/interop_resources.rs",
+      "sha256": "504d9463fc53e9ce3261799590c847ac17921e047031dacab6e5777fb7cae97b"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/large_json/fragment_validation_tests.rs",
+      "sha256": "464141e03c3edad882637f1028cdd0dd8f7729a5c58dd6380d40fecf5e8fe4e3"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/large_json.rs",
+      "sha256": "99ba4386cbe15dffa575dfb62adb83898429a884b81bd7f76bee7222848e0e27"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/layout.rs",
+      "sha256": "8c87dbfbdfb58518961481bcd7d831fc08d4aafbb9eabe5c6dec3e592d6751a2"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/layout_grid.rs",
+      "sha256": "d54117362e5fa1daeb37bd9c6c5cc7f52f7facd97bacd960f47e5027806416a3"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/lib.rs",
+      "sha256": "31505268b28b244015d656c8554b984f8d4c2a5da12d21febc437419bf4a0567"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/material.rs",
+      "sha256": "847c742fc74621993f7137e56300b11612becfb5501be15f8470533f9d909a6e"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/math.rs",
+      "sha256": "974bc077bf224bd742d458e3125c50e463663f5023993f735a2463497ecc6c30"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/measurement.rs",
+      "sha256": "34fb114422d6d4765857ec4ac2600320f1193993df398291f3cc2218ca87785f"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/memory.rs",
+      "sha256": "d4ef827493dca2d1b7e821d5b1e4d3a6e846f063269bc025212689436dcad69e"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/mutation.rs",
+      "sha256": "c268ff8b8da3a245adeec5ef0069c2eeb182a76992b78d32cd5b10c609735a1d"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/ops.rs",
+      "sha256": "adcf7ace14a31bd84e1129a249a033a837177ad40215333853c83c6a937728c1"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/optics.rs",
+      "sha256": "d8d83497617d983e0e73f68f5a513f5a63c834ee0d168fe0af9c5a7c17f6365f"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/paint.rs",
+      "sha256": "7d890a5caa30f06c048211f1dc05ac26c402ce3f1356fb6b9e864666dfcfe502"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/path.rs",
+      "sha256": "c149aaa0e2be2a2373a81b052ea377b4749506e91ad248ad7df7f7197506762c"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/pattern_fill.rs",
+      "sha256": "f368031e2a63bde3fcfc41beb84ad65d4a86b3916e5e491b5388e27fc7788016"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/pdf_export.rs",
+      "sha256": "5992dd6286541ef88d9ebb4a085a3ee7f2856611476b55d46a69c285a8669d0f"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/pdf_import.rs",
+      "sha256": "2d13ce6f24090bfd811fff0961ab2afdd1fe76d3b11602f6b42b5296f0de1c3f"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/preparation.rs",
+      "sha256": "d97da8a985644df6d62279564657e0f7bfd85727b9ad4f1f0c46050a02b874a1"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/preview.rs",
+      "sha256": "592a3d47a4135f9b2b5e8b0051af5e4b501d4dc2d2112a3716831cb3fd30e47f"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/protocol.rs",
+      "sha256": "bd89d3cadb17dffabcb3a44952c1505d30f864ed6e20392b2ba1c3b81bfad8e5"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/prototype.rs",
+      "sha256": "e79a0ac861c7ca9e72efea0b6b100b9837bc23bb8d4257ed6c16761a16346431"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/prototype_logic.rs",
+      "sha256": "93c795d39a602ebad2852b5fdb634daa9ff565c4ad125759e603a84853a080e1"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/raster.rs",
+      "sha256": "6476fa3efe113337e4d46c407d44c685fa2c5aa4932c2a2dda52e9de54d796aa"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/raster_bucket_tests.rs",
+      "sha256": "9e05feccf5ca84dd18b35dd86583120dd82a6c2c2492b05e266dbc407b797fed"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/raster_surface.rs",
+      "sha256": "c8a32c2f69873fcc3a29f63a6de24b5ace246803771ad51d15e9ab4c9da5593d"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/rational_filter.rs",
+      "sha256": "377e9e7977f6f3a0320f368e21998ff62d60798694298f3cc0f766c57a66dd38"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/read_cache.rs",
+      "sha256": "4b0fdbd919fd8aa1780449fcd56a660a043cb4d8cac7119f3884aaf4217e0624"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/render_index.rs",
+      "sha256": "ef8d73ec4a80933e9928b548c52017588cf13935d3c30e414a46e1976d07ca90"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/render_instruction.rs",
+      "sha256": "38d59260e3cb806d3fb03b7f4c8a5d2f58144625058bdaed9edad58b5f62f070"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/render_telemetry.rs",
+      "sha256": "60a9df50c4c7b24e2c8979765356d50fffdbb79fcfba4bbd9f2522ca89f71865"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/renderer.rs",
+      "sha256": "1c413ab90e4ce8781154256d2295483ab58d790e7e46a6491b142cac53925a9d"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/renderer_tests/gpu_ledger.rs",
+      "sha256": "b82263c91737109fa4966b41a54d2985686bb5297e026d0ac6f063d4ce3a7b65"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/renderer_tests/linear_tile_residency.rs",
+      "sha256": "ecbb5a8e036566324a1f2c00fb2ca1712c3fe278ade7400dcfb49f9c0902f89a"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/renderer_tests/memory.rs",
+      "sha256": "212984a51034f2e93e0ce9cf22f022adaa564e7779e64de7605a2ab7a66bdde8"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/renderer_tests/solid_quantization.rs",
+      "sha256": "e5823e5d1e58f624edc065c4f1198b64ef8b87822a87533be9f24cbe26fb0c43"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/renderer_tests/translation_retention.rs",
+      "sha256": "811598da5d37cef3d51a47f0b0d2cd9f24fc860e5fe76894b49bc121a9e1bcc1"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/repeat.rs",
+      "sha256": "c516d5d5a8a105a3f4b345f68814c6f891b8d8d86755f6f541aa967bda7bcf9b"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/resident_strokes.rs",
+      "sha256": "7eb7e4826a1a170d0119393ab783dd2a08cbf0b52c49ab92da6f66230c466cb3"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/reviews.rs",
+      "sha256": "7515f4746f9c7960ab3a0cde9a95ed68517faeb359a0313e70e746067502546b"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/rounded.rs",
+      "sha256": "6f17a8718cb58c3d92d0560f84c869783be758e52e59b7f2bb93758bca8b7066"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/sampling.rs",
+      "sha256": "8a25531dcd1c99d762c156958125fdad1481e745869d45c713734da3724589f5"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/scene.rs",
+      "sha256": "c64b62605a94fc434e6811a95ab3d3deba7e17ad752675efce6c4443b6d33eb0"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/shape_builder.rs",
+      "sha256": "4c1c689a7ac53a9d4b12c910efd64fa547b4f90924b8b87e783d7b43b68f1a1b"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/shortcuts.rs",
+      "sha256": "38da3a561cc1190c2173c035b35d9882d9293a6efed91e0d7146033e34738e82"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/sketch/README.md",
+      "sha256": "fe7a0b43ef5e2579979f1f4c650768494fda901601f503e3f2ffec8d62a3f99e"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/sketch/archive.rs",
+      "sha256": "b63f0c35045330251106391aaa1e7205b0ebab0ce8bb3ab1c21bee3af8ddc5ad"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/sketch/curve.rs",
+      "sha256": "1442d7ea7390e791965a4e96ebc46e88e19d4b7567275551d20ec02d5241b58a"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/sketch/geometry.rs",
+      "sha256": "6ab78ac9ea621ebca760605d585673668c098942d660b0af6eec9887533dddb0"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/sketch/mod.rs",
+      "sha256": "4d92d96854d29f468456bbdd70094406248ade14c279cc4e3ef18fdf8ddb4e37"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/sketch/model.rs",
+      "sha256": "9124e493ab0afc68411a019587a49aa61c1077d3ef5edd3abb67828920f4960a"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/sketch/preview/display.rs",
+      "sha256": "8c862fab1161d4cd6cf1042ecd29d3f79eb30f697de66ef716ece561f6fb5853"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/sketch/preview/mod.rs",
+      "sha256": "0414ff2e801060b2bf8bccab1feb772177367a765506d4749d974a44f961fa19"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/sketch/raw_json.rs",
+      "sha256": "2890efdb8e56ccd970fc5984d6353d3d61a9b8820cabc6bdfb4303e3c093999d"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/sketch/resize.rs",
+      "sha256": "77e7655d8bf7639ce00958709ae1a3b1ef51caa14fab4a7417731f2c07b692ba"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/sketch/session.rs",
+      "sha256": "1717fc9499616f40a8b756bc5a612fb61616b614516a2f4577d803cd5864d2e9"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/smart_guides.rs",
+      "sha256": "a0b8fa5c60ac66baad610039c72feb3bde06e73ffe37067220275cfd811c3b26"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/snapshot.rs",
+      "sha256": "b8caaa73f72dd0fe4abca69a148f125c3f30991158b0bba0a7297812003fc0bd"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/software_raster/trigonometry.rs",
+      "sha256": "658339d95bdff316023902d40c287f2dce33d7472f3f8a2f19dc7e55166128fc"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/software_raster.rs",
+      "sha256": "917d82ad2d922ff5b27d1ffd6cd3555970076c7783b8ee8dedb66d11f43cd13d"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/stroke/markers.rs",
+      "sha256": "02b7d8c54b362d7ba65284ca22585c4d128266ab15f1fd07e7f3cea978a300c6"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/stroke/profile.rs",
+      "sha256": "123d3ac1e849610a54220f3045d3742f0aaa1991427ac521920124c60e0f78df"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/stroke.rs",
+      "sha256": "481d2cfffc623377e4a6fbcbf2417cf38a081615f7967f9d368b446ddcd16798"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/text_case.rs",
+      "sha256": "70afff36e3002300a1b1ee10dd8e1fd930b7da1bdfbc27cf4147d55b18cedafe"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/text_path.rs",
+      "sha256": "2b6551e7f974f001b3f75d580318ee7fb373cf3980ff45886cab835c5dd5e627"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/text_path_cache.rs",
+      "sha256": "dd175ddc2bd8fb3957925efeb729b5abd23580335b81f354e47d91c5f78ba4ff"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/texture_capture.rs",
+      "sha256": "612f6b34590be464319abc087e97541d607599cb0694c8f29355dafc470b8d1a"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/texture_capture_plan.rs",
+      "sha256": "973835f87f41ff35c7b9e8e4cda58582de262d451407a32418314849458231d7"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/texture_noise/clip-baseline-fifth-root.f32",
+      "sha256": "aa47fd46ef32ca55daf7262f05da2183d93a370258584b3e27537eb0b07f92b9"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/texture_noise/clip-residual-4bit.bin",
+      "sha256": "18f4d377a83f5b76ded6e5574cd9aebd754f4db81cebe0741f3315e7dc1c6527"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/texture_noise/clip-weight-metadata.json",
+      "sha256": "3478728d15f9480079e852555adbc964934f50566fa19203afc556daa8739da9"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/texture_noise/clip_weight.rs",
+      "sha256": "9ab9ab7a04e62495d38844189c8b97cec4ae74c1c460b9d85aa1b34c1486c764"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/texture_noise/coordinate-composed-q22-3bit.bin",
+      "sha256": "fb22ec959558f0ef2d9a096716e890eb6bebba5c85243b461685e5d8df18310f"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/texture_noise/coordinate-low-q22-3bit.bin",
+      "sha256": "f18a10a8408155590c42756c1b8d0bee972661ce46851ed558c93f9c5f863b90"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/texture_noise/gabor.rs",
+      "sha256": "15a810c0c584a6ca9edb384d2db47d459088eebef3df67eb28c8306c088f0049"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/texture_noise/gradient-low-q25-3bit.bin",
+      "sha256": "3c7a1abccdc84e053dead4b1327df4ba0eaaffec6192d1eef0fc8252b890e840"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/texture_noise/math-metadata.json",
+      "sha256": "88b9dd4f71a8803c2af3189266aa9e60c03140f2c634d5d2147774988af02f7a"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/texture_noise/positive-exponent--1-3bit.bin",
+      "sha256": "0464506536a460785110ce03d795fb9d2987f6f0e8ca7fdfb63503232dd6e1ee"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/texture_noise/positive-exponent--2-3bit.bin",
+      "sha256": "78d86087fa7bd5aec980660269a8ace44e6adfcf67cc7ed6be6c181a31ab8d11"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/texture_noise/positive-exponent-0-3bit.bin",
+      "sha256": "3085da58c32fa6c860ba3517ae1f1f515326a4cdd8d6437aec04a9af36fac8b1"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/texture_noise/positive-exponent-1-3bit.bin",
+      "sha256": "d9c69da32a1d04dbb45abfeea4f4cb9b23653628943a906c304615c529b2d808"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/texture_noise/q22-complete-residual-3bit.bin",
+      "sha256": "801db65d1316ff0fb06ae796d0053a852f594710e0d1db6f3c82ca6305dd039b"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/texture_noise/rsqrt-residual.bin",
+      "sha256": "5c81e7f88a7ec172e9a2100e32d80d472e21bb639991ac32197ea70e22fd38c2"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/texture_noise/sine-q19.bin",
+      "sha256": "7700b8984942195a45b7e9b4fa9b571666c44cad67013521d851cb5af5654622"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/texture_noise.rs",
+      "sha256": "4ecb5876f1430a5e832deb6fc648043e31267a42010756a2fa112ac331f711ba"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/texture_replay.rs",
+      "sha256": "83168f0ef96d6da8c56dad7793c7d91bebb60da2ad9b8fbec48b22a150d73418"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/tile_level.rs",
+      "sha256": "28196a17f8b406126fc13fe944a5197f207e0aea9b1f7082e86c30b5dead7a33"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/tile_stack.rs",
+      "sha256": "8e9d50c4c5c03fdd1dfd0903b05bab7e4147cda2c03c17bc607a9290f0b62c38"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/tiled_renderer.rs",
+      "sha256": "a8518149e2e22d608872119f63a8a2ed2b74ba06d323931544bc13d055d7eee3"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/vector_brush.rs",
+      "sha256": "fe262999eaf480091eac69068a66b22962412ca30f8b6ba0ddc7e5cc3a86a32d"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/vector_geometry.rs",
+      "sha256": "32a8da1b7b78b2e5eeaca5ec98a1909846da7468a48c47e5c257a32c8a97750b"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/vector_tools.rs",
+      "sha256": "6c5cb72eff017af273de8c773c340cccd0c0fcf23533d998487191770255c52d"
+    }
+  ]
+}

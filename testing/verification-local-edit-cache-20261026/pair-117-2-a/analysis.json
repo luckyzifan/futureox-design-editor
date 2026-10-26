@@ -1,0 +1,111 @@
+{
+  "status": "captured",
+  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-local-edit-cache-QJkKeb/baseline-host",
+  "kind": "117",
+  "target": {
+    "id": "D72F942F-283C-4C72-91F3-900DF45D64F2",
+    "name": "椭圆 63",
+    "mask": true,
+    "width": 1393,
+    "height": 945
+  },
+  "camera": {
+    "x": 205.3225806451613,
+    "y": 55.903225806451644,
+    "z": 0.4032258064516129
+  },
+  "preparation": "Enabled the existing hidden mask through normal visibility UI, before timing; original file remains unchanged",
+  "undoRedoExact": true,
+  "reopenedMaterialExact": true,
+  "savedFile": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-local-edit-cache-QJkKeb/pair-117-2-a/local-edit.fd",
+  "edits": [
+    {
+      "value": "50",
+      "elapsedMs": 903,
+      "damage": [
+        {
+          "full": true,
+          "reason": "masked-chain"
+        }
+      ],
+      "viewportTilesSubmitted": 20,
+      "tiles": 20,
+      "drawCalls": 14560,
+      "compileMs": 445.8999996185303,
+      "graphMs": 296.4000002145767,
+      "checkpointMs": 0,
+      "failures": [],
+      "uiStalls": 0,
+      "competing": [],
+      "blur": [],
+      "performanceAdmissible": true
+    },
+    {
+      "value": "100",
+      "elapsedMs": 172,
+      "damage": [],
+      "viewportTilesSubmitted": 20,
+      "tiles": 0,
+      "drawCalls": 0,
+      "compileMs": 0,
+      "graphMs": 0,
+      "checkpointMs": 0,
+      "failures": [],
+      "uiStalls": 0,
+      "competing": [],
+      "blur": [],
+      "performanceAdmissible": true
+    },
+    {
+      "value": "50",
+      "elapsedMs": 879,
+      "damage": [
+        {
+          "full": true,
+          "reason": "masked-chain"
+        }
+      ],
+      "viewportTilesSubmitted": 20,
+      "tiles": 20,
+      "drawCalls": 14640,
+      "compileMs": 462.2000004053116,
+      "graphMs": 318.10000002384186,
+      "checkpointMs": 0,
+      "failures": [],
+      "uiStalls": 0,
+      "competing": [],
+      "blur": [],
+      "performanceAdmissible": true
+    },
+    {
+      "value": "100",
+      "elapsedMs": 860,
+      "damage": [
+        {
+          "full": true,
+          "reason": "masked-chain"
+        }
+      ],
+      "viewportTilesSubmitted": 20,
+      "tiles": 20,
+      "drawCalls": 14560,
+      "compileMs": 441.09999990463257,
+      "graphMs": 259.9000002145767,
+      "checkpointMs": 0,
+      "failures": [],
+      "uiStalls": 0,
+      "competing": [
+        {
+          "at": 1792999226778,
+          "rows": [
+            "24982  22.8 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/cargo",
+            "24988  14.5 /Users/Apple/.rustup/toolchains/1.96.1-aarch64-apple-darwin/bin/rustc"
+          ]
+        }
+      ],
+      "blur": [],
+      "performanceAdmissible": false
+    }
+  ],
+  "semantics": "Foreground GUI UI-edit start to existing exact-content readiness (includes harness settle check); draw/tile counters, not physical scanout or GPU timestamp. Screenshots are outside timing."
+}

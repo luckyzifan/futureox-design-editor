@@ -5,7 +5,8 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { blank, node as makeNode, effect as makeEffect } from '../model'
 import { ProgressiveSurfaceImpl } from './ProgressiveSurface'
 import { NavigationZoom } from './navigation-zoom'
-import { compositeDrawPlan } from './gpu/composite-draw-plan'
+import { compositeDrawPlan, compositeRasterQuad } from './gpu/composite-draw-plan'
+import {presentedFragmentQuality} from './gpu/presented-fragment-quality'
 import { planTiles, type RasterTile } from './tile-cache'
 import { prioritizeTileFill } from './tile-scheduler'
 import { tileBatchPrepareViewport } from './tile-prepare-viewport'
@@ -153,7 +154,7 @@ function surfaceHarness(seedResidents: boolean | RasterTile[] = true, sourceDoc 
 }
 
 const harnesses: ReturnType<typeof surfaceHarness>[] = []
-const harness = (seedResidents: boolean | RasterTile[] = true) => { const value = surfaceHarness(seedResidents); harnesses.push(value); return value }
+const harness = (seedResidents: boolean | RasterTile[] = true, sourceDoc?:Parameters<typeof surfaceHarness>[1]) => { const value = surfaceHarness(seedResidents,sourceDoc); harnesses.push(value); return value }
 afterEach(() => {
   for (const h of harnesses) h.dispose()
   harnesses.length = 0; worker.calls.length = 0; worker.clients.length = 0
@@ -1134,7 +1135,7 @@ test('inactive page pixels are discarded on an edit, including undo/font/resourc
   expect(next.compositor.props.items.some((item: any) => item.tile.document === h.doc)).toBe(false)
 })
 
-test('fast zoom-out keeps the wider sampled viewport while the new wide capture is delayed', async () => {
+test('fast zoom-out prefers the wider phase-native viewport while the new wide capture is delayed', async () => {
   vi.stubGlobal('WebGL2RenderingContext', class {})
   vi.stubGlobal('requestAnimationFrame', () => 1)
   vi.stubGlobal('cancelAnimationFrame', () => {})
@@ -1157,7 +1158,13 @@ test('fast zoom-out keeps the wider sampled viewport while the new wide capture 
   const area = draws.reduce((sum, row) => sum + (row.clip.right - row.clip.left) * (row.clip.bottom - row.clip.top), 0)
   expect(area).toBe(1024 * 512)
   expect(draws.some(row => row.item.tile.zoom === .25)).toBe(true)
-  expect(draws.some(row => row.item.tile.zoom === 4)).toBe(true)
+  expect(draws.every(row => row.item.tile.zoom === .25)).toBe(true)
+  const quality=presentedFragmentQuality(draws.map(row=>({
+    ...compositeRasterQuad(row.placement,row.clip,1024,512,1)!,
+    sourceWidth:row.item.tile.width,sourceHeight:row.item.tile.height,
+  })),1024,512)
+  expect(quality.nativeCoverageComplete).toBe(true)
+  expect(quality.nativePhaseCoverage).toBe(1)
 })
 
 // A pinned whole-page overview proves geometry coverage, not navigation-tier
@@ -1409,6 +1416,28 @@ function nativeNavigationHost() {
   vi.stubGlobal('requestAnimationFrame', () => 1); vi.stubGlobal('cancelAnimationFrame', () => {})
   Object.assign(worker.policy, { desktopFullMath: true, desktopDisplay: true }); worker.dpr = 2
 }
+
+test.each(['0','1'])('same-phase native pan repairs exposed tiles without recapturing the complete viewport (native=%s)',async native=>{
+  nativeNavigationHost();vi.stubEnv('VITE_DESIGN_NATIVE_NAVIGATION',native);worker.dpr=1;worker.dynamicPlan=true
+  const first={x:.25,y:.75,zoom:4},width=1024,height=512
+  const bounds={x:-first.x/first.zoom,y:-first.y/first.zoom,width:width/first.zoom,height:height/first.zoom}
+  const seeds=planTiles(bounds,4,256,{x:.25,y:.75}).map((tile,index)=>({...tile,gpuTile:18000+index}))
+  const h=harness(seeds),options={width,height,view:first,rasterProfile:'figmaSubpixel'}
+  h.render(options);await flushRasterWork()
+  const ready=surfaceParts(h.render(options)).compositor
+  ready.props.onPresented({view:first,width,height,dpr:1,interaction:false,ids:seeds.map(tile=>tile.gpuTile)},undefined,
+    {client:worker.clients[0],deviceWorkerScope:11,deviceIncarnation:1,deviceOwner:1})
+  expect(surfaceParts(h.render(options)).wrapper.props['data-frame-publication']).toBe('complete')
+  const before=worker.calls.length,next={...options,view:{...first,x:first.x-20,y:first.y-10}}
+  worker.cameraMoving=true
+  worker.navigation={active:true,suspended:false,sample:{active:true,sequence:1,view:next.view}}
+  h.render(next);await settleRejected()
+  expect(worker.calls.length).toBeGreaterThan(before)
+  expect(worker.calls.slice(before).every(call=>!call.options.livePreview&&Array.isArray(call.options.tileViewport))).toBe(true)
+  expect(worker.calls[before].options.tileViewport.length).toBeGreaterThan(0)
+  const old=new Set(seeds.map(tile=>tile.key))
+  expect(worker.calls[before].options.tileViewport.every((tile:RasterTile)=>!old.has(tile.key))).toBe(true)
+})
 
 test.each([['0', '0', false], ['1', '0', false], ['0', '1', false], ['true', '1', false],
   ['1', 'true', false], ['1', '1', true]] as const)('native navigation requires strict flags %s/%s and retains physical DPR', async (native, clamp, expected) => {
@@ -2398,4 +2427,90 @@ test('cold resident preview accepts its first real device ACK then reveals one e
   expect(draws.reduce((area, row) => area + (row.clip.right - row.clip.left) * (row.clip.bottom - row.clip.top), 0)).toBe(options.width * options.height)
   expect(parts.wrapper.props['data-detail-ready']).toBe('false')
   expect(parts.wrapper.props['data-native-pixel-ready']).toBe('false')
+})
+
+test('whole-page translation fills original native world misses through the bounded existing canvas owner',async()=>{
+  vi.stubGlobal('WebGL2RenderingContext',class {});vi.stubGlobal('navigator',{gpu:{}})
+  Object.assign(worker.policy,{desktopFullMath:true,desktopDisplay:true});worker.dpr=2;worker.dynamicPlan=true
+  const seeds=planTiles({x:0,y:0,width:128,height:128},2).map((tile,i)=>({...tile,gpuTile:700+i}))
+  const h=harness(seeds),options:any={backend:'webgpu',width:128,height:128,view:{x:0,y:0,zoom:1}}
+  h.render(options);await flushRasterWork()
+  let parts=surfaceParts(h.render(options))
+  parts.compositor.props.onPresented({view:options.view,width:128,height:128,dpr:2,interaction:false,ids:seeds.map(tile=>tile.gpuTile)},
+    parts.compositor.props.presentation,{client:worker.clients[0],deviceWorkerScope:11,deviceIncarnation:1,deviceOwner:1})
+  options.interaction={document:h.doc,selection:['selected'],active:true,epoch:1,control:{current:null},onReady(){}}
+  h.render(options);await flushRasterWork();parts=surfaceParts(h.render(options))
+  const before=worker.calls.length,failed=vi.fn()
+  expect(parts.compositor.props.onTranslatedCoverage(h.doc,{x:256,y:0},1,failed)).toBe(true)
+  await vi.waitFor(()=>expect(worker.calls).toHaveLength(before+1))
+  const request=worker.calls.at(-1)
+  expect(request.document).toBe(h.doc);expect(request.options.view.zoom).toBe(2)
+  expect(request.options.tileViewport.every((tile:RasterTile)=>tile.x<0&&tile.zoom===2)).toBe(true)
+  expect(request.options.retainInteractionGraph).toBeUndefined()
+  expect(request.options.livePreview).not.toBe(true)
+  expect(parts.compositor.props.onTranslatedCoverage({...h.doc},{x:256,y:0},2,failed)).toBe(false)
+  expect(parts.compositor.props.onTranslatedCoverage(h.doc,{x:.1,y:0},2,failed)).toBe(false)
+  for(let i=2;i<50;i++)expect(parts.compositor.props.onTranslatedCoverage(h.doc,{x:256,y:0},i,failed)).toBe(true)
+  expect(worker.calls).toHaveLength(before+1)
+  request.resolve();await flushRasterWork();expect(failed).not.toHaveBeenCalled()
+})
+
+test('covering navigation history cannot globally cancel an in-flight native refinement',async()=>{
+  nativeNavigationHost();vi.stubEnv('VITE_DESIGN_NATIVE_NAVIGATION','0');vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX','0')
+  worker.dynamicPlan=true
+  const doc=blank(),blur=makeNode('rectangle');blur.effects=[makeEffect('blur')];doc.nodes[blur.id]=blur;doc.pages[0].children=[blur.id]
+  const seeds=planTiles({x:0,y:0,width:512,height:256},2).map((tile,i)=>({...tile,gpuTile:19000+i}))
+  const h=harness(seeds,doc),base={width:512,height:256,view:{x:0,y:0,zoom:1},rasterProfile:'figmaSubpixel'}
+  h.render(base);await flushRasterWork()
+  let parts=surfaceParts(h.render(base)),device={client:worker.clients[0],deviceWorkerScope:11,deviceIncarnation:1,deviceOwner:1}
+  parts.compositor.props.onPresented({view:base.view,width:512,height:256,dpr:2,interaction:false,ids:seeds.map(tile=>tile.gpuTile)},parts.compositor.props.presentation,device)
+  h.render(base);worker.zooming=true;worker.cameraMoving=true
+  const first={...base,view:{x:0,y:0,zoom:2}}
+  worker.navigation={active:true,suspended:false,sample:{active:true,sequence:1,view:first.view}}
+  h.render(first);await settleRejected()
+  const native=worker.calls.at(-1)
+  expect(native.options.tileViewport).toHaveLength(1);expect(native.options.view.zoom).toBe(4)
+  const left=(native.options.tileViewport[0].x+1)/4,top=(native.options.tileViewport[0].y+1)/4
+  const second={...base,view:{x:-left*4,y:-top*4,zoom:4}}
+  worker.navigation={active:true,suspended:false,sample:{active:true,sequence:2,view:second.view}}
+  h.render(second);await settleRejected()
+  const fine={...native.options.tileViewport[0],gpuTile:19100,bytes:new Uint8Array(),backend:'webgpu',cached:false}
+  native.progress(fine)
+  parts=surfaceParts(h.render(second));const entry=parts.compositor.props.items.find((i:any)=>i.tile.gpuTile===19100).tile
+  parts.compositor.props.onReady(entry.key,entry.serial,false)
+  parts=surfaceParts(h.render(second));parts.compositor.props.onPresented({view:second.view,width:512,height:256,dpr:2,interaction:false,ids:[19100]},parts.compositor.props.presentation,device)
+  const cancellations=worker.clients[0].cancelPreview.mock.calls.length
+  h.render({...second,view:{x:-left*4.1,y:-top*4.1,zoom:4.1}});await settleRejected()
+  expect(worker.clients[0].cancelPreview).toHaveBeenCalledTimes(cancellations)
+  native.resolve();await settleRejected()
+})
+
+test.each(['same','camera','dpr','epoch','policy','document','device'] as const)('a committed edit with an acknowledged viewport selects native repair only for the same contract: %s',async change=>{
+  nativeNavigationHost();vi.stubEnv('VITE_DESIGN_NATIVE_NAVIGATION','0');vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX','0')
+  worker.dynamicPlan=true
+  const doc=blank(),item=makeNode('rectangle');doc.nodes[item.id]=item;doc.pages[0].children=[item.id]
+  const seeds=planTiles({x:0,y:0,width:512,height:256},2).map((tile,i)=>({...tile,gpuTile:19500+i}))
+  const h=harness(seeds,doc),base={width:512,height:256,view:{x:0,y:0,zoom:1},rasterProfile:'figmaSubpixel'}
+  h.render(base);await flushRasterWork()
+  let parts=surfaceParts(h.render(base))
+  const device={client:worker.clients[0],deviceWorkerScope:11,deviceIncarnation:1,deviceOwner:1}
+  parts.compositor.props.onPresented({view:base.view,width:512,height:256,dpr:2,interaction:false,ids:seeds.map(tile=>tile.gpuTile)},parts.compositor.props.presentation,device)
+  parts=surfaceParts(h.render(base));expect(parts.wrapper.props['data-detail-ready']).toBe('true')
+  const before=worker.calls.length,next={...doc,nodes:{...doc.nodes,[item.id]:{...item,opacity:.5}}},edit:any={...base,document:next}
+  if(change==='camera')edit.view={...base.view,x:-512}
+  if(change==='dpr')worker.dpr=3
+  if(change==='epoch')edit.presentationEpoch=1
+  if(change==='policy')edit.rasterProfile='analytic'
+  if(change==='document')edit.document={...next,id:'another-document'}
+  if(change==='device')parts.compositor.props.onPresented({view:base.view,width:512,height:256,dpr:2,interaction:false,ids:[]},undefined,{...device,deviceOwner:2})
+  h.render(edit);await settleRejected()
+  expect(worker.calls[before].options.tileViewport).toEqual([])
+  worker.clients[0].onDamage({full:true});worker.calls[before].resolve();await settleRejected()
+  if(change==='same'){
+    expect(worker.calls[before+1].options.livePreview).not.toBe(true)
+    expect(worker.calls[before+1].options.renderIntent).toBe('canvas')
+    expect(worker.calls[before+1].options.tileViewport.length).toBeGreaterThan(0)
+  }else expect(worker.calls[before+1].options.livePreview).toBe(true)
+  parts=surfaceParts(h.render(edit));expect(parts.wrapper.props['data-detail-ready']).toBe('false')
+  if(change==='same')expect(worker.clients[0].releasePresented.mock.calls.flat(2)).not.toContain(19500)
 })

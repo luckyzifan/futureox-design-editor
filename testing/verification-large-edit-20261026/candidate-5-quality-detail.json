@@ -1,0 +1,40 @@
+{
+  "ui": [
+    {
+      "name": "candidate-5-large-a",
+      "diagnosticStalls": 0,
+      "diagnosticMaxMs": 166.3000000000029,
+      "phaseRafMaxMs": 166.3000000000029,
+      "phaseRafStalls": 0,
+      "derivedRequests": 1,
+      "fullDocumentCharsInMotion": 0
+    },
+    {
+      "name": "candidate-5-large-b",
+      "diagnosticStalls": 0,
+      "diagnosticMaxMs": 166.3000000000029,
+      "phaseRafMaxMs": 166.3000000000029,
+      "phaseRafStalls": 0,
+      "derivedRequests": 1,
+      "fullDocumentCharsInMotion": 0
+    },
+    {
+      "name": "candidate-5-large-c",
+      "diagnosticStalls": 0,
+      "diagnosticMaxMs": 183.70000000000437,
+      "phaseRafMaxMs": 183.70000000000437,
+      "phaseRafStalls": 0,
+      "derivedRequests": 1,
+      "fullDocumentCharsInMotion": 0
+    }
+  ],
+  "parity": {
+    "shape": [
+      1736,
+      1710,
+      3
+    ],
+    "differentChannels": 0,
+    "maxDelta": 0
+  }
+}

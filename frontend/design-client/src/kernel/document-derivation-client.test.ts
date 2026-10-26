@@ -49,6 +49,47 @@ test('isolated render roots use the original canvas receipt without serializing 
     f.ack(two,null);f.finish(two);await next
   }finally{f.client.dispose()}
 })
+
+test('first native workset adoption synchronizes its full source once and derives later poses without serializing it again',async()=>{
+  const f=await fixture(),shape=node('frame',0,0,20,20)
+  try{
+    const first=f.render(),one=await f.next(1);f.ack(one);f.finish(one);await first
+    const populated={...f.document,nodes:{[shape.id]:shape},pages:[{...f.document.pages[0],children:[shape.id]}]}
+    const adopted=f.render(populated,{renderIntent:'canvas',tileViewport:[]}),two=await f.next(2)
+    expect(two.document).toBe(JSON.stringify(populated));expect(two.documentPatch).toBeUndefined()
+    expect(f.native.request).toHaveBeenCalledTimes(2)
+    f.ack(two,receipt('workset'));f.finish(two);await adopted
+    const {interactionPatchedDocument}=await import('./interaction-document-source')
+    const pose=interactionPatchedDocument(populated,{[shape.id]:{transform:[1,0,0,1,30,40]}})
+    const moving=f.render(pose,{interactionChannel:true,retainInteractionGraph:true}),three=await f.next(3)
+    expect(three.deriveFrom).toEqual(receipt('workset'));expect(three.derivedTransforms).toEqual({[shape.id]:[1,0,0,1,30,40]})
+    expect(three.document).toBeUndefined();expect(three.documentPatch).toBeUndefined();expect(f.native.request).toHaveBeenCalledTimes(2)
+    f.ack(three,null);f.finish(three);await moving
+    // Populated documents keep ordinary incremental mutation, including adds.
+    const added=node('rectangle'),later={...populated,nodes:{...populated.nodes,[added.id]:added}}
+    const edit=f.render(later),four=await f.next(4)
+    expect(four.document).toBeUndefined();expect(JSON.parse(four.documentPatch).nodes[added.id]).toEqual(added)
+    f.ack(four,null);f.finish(four);await edit
+  }finally{f.client.dispose()}
+})
+
+test.each([true,false])('native page replacement uses a full source only when every old/new node is in the patch: %s',async complete=>{
+  const f=await fixture(),a=node('frame'),b=node('frame')
+  f.document.nodes={[a.id]:a,[b.id]:b};f.document.pages[0].children=[a.id,b.id]
+  try{
+    const first=f.render(),one=await f.next(1);f.ack(one);f.finish(one);await first
+    const replacement={...f.document,pages:[{...f.document.pages[0],name:'reloaded'}],nodes:{
+      [a.id]:{...a,opacity:.5},[b.id]:complete?{...b,opacity:.5}:b}}
+    const loading=f.render(replacement,{renderIntent:'canvas',tileViewport:[]}),two=await f.next(2)
+    if(complete){expect(two.document).toBe(JSON.stringify(replacement));expect(two.documentPatch).toBeUndefined()}
+    else {expect(two.document).toBeUndefined();expect(JSON.parse(two.documentPatch).nodes[a.id]).toBeTruthy();expect(JSON.parse(two.documentPatch).nodes[b.id]).toBeUndefined()}
+    f.ack(two,complete?receipt('reloaded'):null);f.finish(two);await loading
+    const moving=f.render(replacement,{interactionChannel:true,gpuRoots:[a.id]}),three=await f.next(3)
+    if(complete){expect(three.deriveFrom).toEqual(receipt('reloaded'));expect(three.document).toBeUndefined()}
+    else expect(three.deriveFrom).toBeUndefined()
+    f.ack(three,null);f.finish(three);await moving
+  }finally{f.client.dispose()}
+})
 test('a privately constructed first pose derives the original receipt and sends only transforms',async()=>{
   const f=await fixture(),shape=node('frame',0,0,20,20)
   const {interactionPatchedDocument}=await import('./interaction-document-source')

@@ -1,0 +1,23 @@
+{
+  "scope": "owned foreground GUI, native inputs, compositor submissions and hardware target Alpha; screencast enabled when recorded; not physical scanout",
+  "status": "failed",
+  "start": 1792945882014,
+  "end": 1792945888211,
+  "submits": 168,
+  "measured": 168,
+  "minCoverage": 1,
+  "minSharpCoverage": 0,
+  "minNativePhaseCoverage": 0,
+  "maxUpscale": 72.93401015228427,
+  "alphaFrames": 168,
+  "invalidAlpha": 0,
+  "transparentFrames": 0,
+  "maxTransparentPixels": 0,
+  "failures": [],
+  "convergenceMs": 3644,
+  "maxPipelineMs": 1858.8999999761581,
+  "maxGraphMs": 846,
+  "maxTileMs": 1429.2000000476837,
+  "error": "Error: expect(locator).toContainText(expected) failed\n\nLocator: locator('.source-canvas-status')\nExpected substring: \"画布修改已保存到源文件缓存\"\nReceived string:    \"当前画板 / 对象已载入：4,022 个场景节点。已导入，可以继续编辑 · 3 项兼容提示×查看兼容说明部分 Sketch 专有属性暂不支持完整编辑，建议保留原始 .sketch 文件。文件未嵌入所用字体，已使用内置字体；可在文字面板导入并匹配字体。布尔组合已转换为本地矢量结构，原始设置已保留。\"\nTimeout: 180000ms\n\nCall log:\n  - Expect \"toContainText\" locator('.source-canvas-status') with timeout 180000ms\n  - waiting for locator('.source-canvas-status')\n    359 × locator resolved to <div class=\"source-canvas-status\">…</div>\n        - unexpected value \"当前画板 / 对象已载入：4,022 个场景节点。已导入，可以继续编辑 · 3 项兼容提示×查看兼容说明部分 Sketch 专有属性暂不支持完整编辑，建议保留原始 .sketch 文件。文件未嵌入所用字体，已使用内置字体；可在文字面板导入并匹配字体。布尔组合已转换为本地矢量结构，原始设置已保留。\"\n",
+  "motionGate": "FAIL"
+}

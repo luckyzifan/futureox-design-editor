@@ -53,7 +53,7 @@ test('page uses shared main canvas, sends changed nodes and exports through the 
  await act(async()=>button('导出完整文件…').click())
  expect(exported).toHaveBeenCalledWith({owner:status.owner,expectedRevision:1})
  await act(async()=>button('页面 / 画板').click())
- await act(async()=>button('Unadmitted page完整页面').click())
+ await act(async()=>button('Unadmitted page载入页面').click())
  expect(scene.mock.calls.map(([request])=>request.key)).toEqual(['1:0','2:0','1:0'])
  expect(binding.editor!.authoredDocument.nodes[layer.id].width).toBe(180)
  await act(async()=>binding.editor!.updateProperties([layer.id],n=>{n.width=190}))
@@ -87,7 +87,7 @@ test('loading keeps the old canvas interactive and a late source cannot overwrit
  const row=(key:string,name:string)=>({key,id:key,name,kind:'page',bytes:100,part:'p',hasChildren:false})
  const bridge={open:async()=>({status:'ok',...status}),children:async()=>({status:'ok',items:[row('1:0','Loaded'),row('1:1','Slow')],total:2,hasMore:false}),scene,cancel:async()=>({status:'ok'})}as unknown as LargeDocumentBridge
  await act(async()=>root.render(<LargeDocumentWorkspace renderWorkbench={workbench} bridge={bridge} parentEditor={parent} onExit={()=>{}} onWindowClose={async()=>{}}/>))
- await act(async()=>button('页面 / 画板').click());await act(async()=>button('Slow完整页面').click())
+ await act(async()=>button('页面 / 画板').click());await act(async()=>button('Slow载入页面').click())
  expect(document.querySelector('.source-workspace-canvas')!.hasAttribute('inert')).toBe(false)
  await act(async()=>binding.editor!.updateProperties([layer.id],n=>{n.width=120}))
  await act(async()=>release({status:'ok',json:JSON.stringify(next),warnings:[],nodes:1,bytes:100}))
@@ -114,7 +114,7 @@ function sourceFixture(){
 async function loadFixture(f:ReturnType<typeof sourceFixture>,onExit=()=>{}){
  await act(async()=>root.render(<LargeDocumentWorkspace renderWorkbench={workbench} bridge={f.bridge} parentEditor={parent} onExit={onExit} onWindowClose={async()=>{}}/>))
  await act(async()=>document.querySelector<HTMLButtonElement>('[aria-label="展开 Source parent"]')!.click())
- await act(async()=>button('Full page完整页面').click())
+ await act(async()=>button('Full page载入页面').click())
  return binding.editor!
 }
 
@@ -148,7 +148,7 @@ test('a save while navigating fences the clicked row and retains the remapped ro
  const f=sourceFixture(),onExit=vi.fn(),loaded=await loadFixture(f,onExit)
  await act(async()=>loaded.updateProperties([f.layer.id],node=>{node.width=180}))
  await act(async()=>button('页面 / 画板').click())
- await act(async()=>button('Other page完整页面').click())
+ await act(async()=>button('Other page载入页面').click())
  expect(f.sceneCommit.mock.calls[0][0]).toMatchObject({key:'1:4',expectedRevision:1})
  expect(f.scene.mock.calls).toHaveLength(1)
  expect(document.querySelector('[role=alert]')!.textContent).toContain('从刷新后的列表重新选择')
@@ -196,4 +196,28 @@ test('automatic board entry and sidebar refresh never overlap the source operati
  await act(async()=>new Promise(resolve=>setTimeout(resolve,10)))
  expect(peak).toBe(1);expect(document.querySelector('[role=alert]')).toBeNull()
  expect(binding.editor!.authoredDocument.nodes[layer.id]).toBeDefined()
+ expect(document.querySelector('[data-source-key="1:0"]')).not.toBeNull()
+ expect(button('页面 / 画板').getAttribute('aria-pressed')).toBe('true')
+})
+
+test('page ranges navigate without dropping the current range on a failed load',async()=>{
+ const doc=blank('Page'),layer=node('rectangle',0,0,20,20);doc.nodes[layer.id]=layer;doc.pages[0].children=[layer.id]
+ const status={owner:{documentId:'source',sessionEpoch:1},revision:0,name:'source.sketch',format:'sketch',expandedBytes:100,maxExpandedBytes:1e12,indexedObjects:3,dirty:false,undoCount:0,redoCount:0}
+ const row={key:'1:0',id:'page',name:'Page',kind:'page',bytes:100,part:'p',hasChildren:false}
+ let fail=false
+ const scene=vi.fn(async({offset=0}:{offset?:number})=>({status:'ok',json:fail&&offset===0?'{}':JSON.stringify(doc),warnings:[],nodes:1,bytes:100,pageRange:{offset,end:offset+1,totalRoots:3,nextOffset:offset===2?null:offset+1}}))
+ const sceneCommit=vi.fn(async()=>({status:'ok',...status,revision:1,key:row.key}))
+ const bridge={open:async()=>({status:'ok',...status}),children:async()=>({status:'ok',items:[row],total:1,hasMore:false}),scene,sceneCommit}as unknown as LargeDocumentBridge
+ await act(async()=>root.render(<LargeDocumentWorkspace renderWorkbench={workbench} bridge={bridge} parentEditor={parent} onExit={()=>{}} onWindowClose={async()=>{}}/>))
+ expect(document.querySelector('.source-workspace-status')!.textContent).toContain('共 3 个')
+ await act(async()=>button('下一部分').click())
+ expect(scene.mock.calls.at(-1)![0].offset).toBe(1)
+ expect(document.querySelector('[aria-label="页面分段"]')!.textContent).toContain('2–2 / 3')
+ fail=true
+ await act(async()=>button('上一部分').click())
+ expect(scene.mock.calls.slice(-2).map(([r])=>r.offset??0)).toEqual([0,1])
+ expect(document.querySelector('[aria-label="页面分段"]')!.textContent).toContain('2–2 / 3')
+ await act(async()=>binding.editor!.updateProperties([layer.id],n=>{n.width=30}))
+ await act(async()=>button('保存修改').click())
+ expect(sceneCommit).toHaveBeenCalledTimes(1)
 })
