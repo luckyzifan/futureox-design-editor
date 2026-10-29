@@ -59,6 +59,15 @@ test('actual private resident upload/remap dispatches all four sample indices an
   expect(f.raw.sampleOnlyDispatch).toBeUndefined(); expect(f.writes.length).toBeGreaterThan(0)
 })
 
+test('sparse flag specializes the sample pipelines without changing their dispatch contract', async () => {
+  vi.stubEnv('VITE_DESIGN_SPARSE_COVERAGE', '1')
+  const f = fixture('1'); await f.begin()
+  expect(f.descriptors).toHaveLength(3)
+  expect(f.descriptors.every(descriptor => descriptor.fragment.constants.SPARSE_COVERAGE === true)).toBe(true)
+  f.driver.mask(f.path, f.target(), 0)
+  expect(f.chosen.at(-1).fragment.entryPoint).toBe('areaSampleFragment')
+})
+
 test('reference changes only the private enable bit; buffer and exact sample uniforms remain unchanged', async () => {
   const f = fixture('1'); await f.begin(); const target = f.target(), buffer = f.raw.curves
   f.driver.mask(f.path, target, 2); const original = f.uniforms.at(-1)
