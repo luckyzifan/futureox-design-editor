@@ -634,7 +634,7 @@ impl FigImporter {
                 }
                 if bool_of(value, "mask").unwrap_or(false) {
                     if let Some(kind) = str_of(value, "maskType") {
-                        if !matches!(kind, "ALPHA" | "LUMINANCE") { return Err(Error::Unsupported(format!("maskType={kind}"))); }
+                        if !matches!(kind, "ALPHA" | "LUMINANCE" | "OUTLINE") { return Err(Error::Unsupported(format!("maskType={kind}"))); }
                     }
                 }
                 for key in ["fillPaints", "strokePaints", "backgroundPaints"] {
@@ -924,7 +924,9 @@ impl FigImporter {
             ]);
         }
         node.mask = bool_of(change, "mask").unwrap_or(false);
-        if str_of(change, "maskType") == Some("LUMINANCE") {
+        if str_of(change, "maskType") == Some("OUTLINE") {
+            node.mask_type=Some("outline".into());
+        } else if str_of(change, "maskType") == Some("LUMINANCE") {
             node.mask_type = Some("luminance".into());
         } else if let Some(mt) = str_of(change, "maskType").filter(|mt| *mt != "ALPHA") {
             untranslated.push(format!("maskType={mt}"));
@@ -3915,7 +3917,7 @@ mod tests {
             mask["mask"]=json!(true);mask["maskType"]=json!("LUMINANCE");changes.push(mask.clone());
             let doc=doc_with(changes).unwrap();assert_eq!(node_of(&doc,1,2).mask_type.as_deref(),Some("luminance"));
             mask["maskType"]=json!("OUTLINE");let mut changes=canvas_only();changes.push(mask);
-            assert!(doc_with(changes).unwrap_err().to_string().contains("OUTLINE"));
+            assert_eq!(node_of(&doc_with(changes).unwrap(),1,2).mask_type.as_deref(),Some("outline"));
         }
 
         #[test]

@@ -618,7 +618,7 @@ export class Editor {
         if(draft.schemaVersion < 18 && hasSchema18Features(authored))draft.schemaVersion=18
         if(draft.schemaVersion < 20 && hasSchema20Features(authored))draft.schemaVersion=20
         if(draft.schemaVersion < 19 && hasSchema19Features(authored))draft.schemaVersion=19
-        draft.rasterProfile ??= before.doc.rasterProfile || 'analytic'
+        draft.rasterProfile ??= before.doc.rasterProfile || (draft.colorManagement ? 'figma' : 'analytic')
         // Before component/dependency cleanup, only root schema/profile fields
         // have changed. Inspect finalized authored nodes here to avoid creating
         // Immer proxies for every untouched node during legacy admission.

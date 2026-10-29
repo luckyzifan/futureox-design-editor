@@ -208,3 +208,7 @@ REAL117x10 必须经过实际 append/import 操作产生十个独立可编辑副
 ### 2026-10-29 场景运行时第三模块的验收边界
 
 [模块3记录](../testing/verification-scene-runtime-20261029/module-3/README.md)保留UI/Worker → 宿主授权源 → Rust准备通道 → 需求投影 → FGSC/资源协议。G3检查完整与按需编译的解码字段、几何浮点位、资源确认/切换/取消和修改撤销投影；不代替硬件或独立像素保真。G4分别记录完整源/目录构建、投影更换、复用和完整回退；未优化单次顺序耗时不能证明整体提速或关闭33/100ms。完整源仍驻留，不宣称首屏O(视口)或无限画布内存已解决。用户要求统一构建后才启动Electron真实回归，本模块不关闭G2/G5。
+
+### 2026-10-29 格式语义与全源平移证据
+
+[格式修复](../testing/verification-fig-sketch-interop-20261029/README.md)明确分开真实枚举/文件往返、编辑保存、跨渲染器像素；新 outline 语义不能用静默 alpha 替代。[源画布平移](../testing/verification-source-pan-20261029/README.md)的预取收益包含单列预热代价，先保持屏内回执、单 raster owner 和实际 GPU 资源完成边界。只删除相机 key 中整周期等价项，不能量化实际相机来制造 cache hit。部分视口的等待改善不关闭冷启动和全 G2/G5。

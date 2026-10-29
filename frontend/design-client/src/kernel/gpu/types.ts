@@ -124,7 +124,7 @@ export type GpuNode = {
   fills: GpuPaint[]
   strokes: { path: PathMesh; paint: GpuPaint; align: 'center' | 'inside' | 'outside' }[]
   children: string[]
-  maskType?: 'alpha' | 'luminance'
+  maskType?: 'alpha' | 'luminance' | 'outline'
   mask: boolean
   maskId?: string
   clip: boolean

@@ -485,9 +485,9 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       .toLowerCase()
       .replaceAll('_', '-') as typeof n.blend
     n.mask = !!r.mask
-    if (n.mask && r.maskType !== undefined && !['ALPHA', 'LUMINANCE'].includes(r.maskType))
+    if (n.mask && r.maskType !== undefined && !['ALPHA', 'LUMINANCE', 'OUTLINE'].includes(r.maskType))
       throw new Error(`FIG 蒙版 ${r.maskType} 暂不支持；原文件未修改`)
-    n.maskType = r.maskType === 'LUMINANCE' ? 'luminance' : 'alpha'
+    n.maskType = r.maskType === 'OUTLINE' ? 'outline' : r.maskType === 'LUMINANCE' ? 'luminance' : 'alpha'
     n.clip = kind === 'frame' && !r.frameMaskDisabled
     if (kind === 'polygon' || kind === 'star') { n.points = r.count ?? n.points; n.cornerRadius = r.cornerRadius ?? 0 }
     if (kind === 'ellipse' && r.arcData) {

@@ -1253,7 +1253,7 @@ impl Engine {
                 outputs.push(output);
             }
             for (root, output) in page.children.iter().zip(outputs.into_iter().rev()) {
-                painter.node_region(root, &mut target, None, regional.then_some(output), extent)?;
+                painter.node_region(root, &mut target, None, regional.then_some(output), extent, false)?;
             }
             Ok(vec![target])
         };
@@ -2174,13 +2174,20 @@ impl Painter<'_> {
         self.stats.backdrop_reads += 1;
         Ok(out)
     }
-    fn node_bundle(
+    fn node_bundle(&mut self,id:&str,targets:&mut [Surface;4],clip:Option<&AccountedSamples>)->Result<(),String>{
+        self.node_bundle_with_outline(id,targets,clip,false)
+    }
+    fn node_bundle_with_outline(
         &mut self,
         id: &str,
         targets: &mut [Surface; 4],
         clip: Option<&AccountedSamples>,
+        inherited_outline: bool,
     ) -> Result<(), String> {
         let n = &self.doc.nodes[id];
+        let geometric=inherited_outline || n.mask && n.mask_type.as_deref()==Some("outline");
+        let outline=n.outline_mask_node(inherited_outline);
+        let n=outline.as_ref().unwrap_or(n);
         if !n.visible || n.opacity <= 0. {
             return Ok(());
         }
@@ -2229,7 +2236,7 @@ impl Painter<'_> {
                 }
             }
             for child in n.render_children() {
-                self.node_bundle(child, targets, Some(&fill))?;
+                self.node_bundle_with_outline(child, targets, Some(&fill), geometric)?;
             }
             self.sample = None;
             return Ok(());
@@ -2386,7 +2393,7 @@ impl Painter<'_> {
         }
         if let Some(mask_id) = mask_id {
             let mut masks = self.allocate_bundle(r)?;
-            self.node_bundle(mask_id, &mut masks, None)?;
+            self.node_bundle_with_outline(mask_id, &mut masks, None, geometric)?;
             let mut content = self.allocate_bundle(r)?;
             if passthrough {
                 for sample in 0..4 {
@@ -2397,7 +2404,7 @@ impl Painter<'_> {
             }
             for child in n.render_children() {
                 if child != mask_id {
-                    self.node_bundle(child, &mut content, if n.clip { Some(&fill) } else { None })?;
+                    self.node_bundle_with_outline(child, &mut content, if n.clip { Some(&fill) } else { None }, geometric)?;
                 }
             }
             for sample in 0..4 {
@@ -2424,7 +2431,7 @@ impl Painter<'_> {
             }
         } else {
             for child in n.render_children() {
-                self.node_bundle(child, &mut layers, if n.clip { Some(&fill) } else { None })?;
+                self.node_bundle_with_outline(child, &mut layers, if n.clip { Some(&fill) } else { None }, geometric)?;
             }
         }
         for (i, stroke) in n.strokes.iter().enumerate().filter(|(_, s)| s.visible && s.width > 0.) {
@@ -2958,16 +2965,19 @@ impl Painter<'_> {
         }
         Ok(input)
     }
-    fn node(&mut self, id: &str, target: &mut Surface, clip: Option<&Mask>) -> Result<(), String> {
-        let original_target = target.rect;
-        self.node_region(id, target, clip, None, original_target)
+    fn node_with_outline(&mut self,id:&str,target:&mut Surface,clip:Option<&Mask>,inherited_outline:bool)->Result<(),String>{
+        let original_target=target.rect;
+        self.node_region(id,target,clip,None,original_target,inherited_outline)
     }
-    fn node_region(&mut self, id: &str, target: &mut Surface, clip: Option<&Mask>, output: Option<Rect>, original_target: Rect) -> Result<(), String> {
+    fn node_region(&mut self, id: &str, target: &mut Surface, clip: Option<&Mask>, output: Option<Rect>, original_target: Rect, inherited_outline:bool) -> Result<(), String> {
         let n = &self.doc.nodes[id];
+        let geometric=inherited_outline || n.mask && n.mask_type.as_deref()==Some("outline");
+        let outline=n.outline_mask_node(inherited_outline);
+        let n=outline.as_ref().unwrap_or(n);
         if !n.visible || n.opacity <= 0. {
             return Ok(());
         }
-        let Some(layer) = self.node_layer(id, target, true, output, original_target)? else {
+        let Some(layer) = self.node_layer(id, target, true, output, original_target, geometric)? else {
             return Ok(());
         };
         if n.passes_backdrop() {
@@ -3000,8 +3010,12 @@ impl Painter<'_> {
         apply_effects: bool,
         output: Option<Rect>,
         original_target: Rect,
+        inherited_outline: bool,
     ) -> Result<Option<Surface>, String> {
         let n = &self.doc.nodes[id];
+        let geometric=inherited_outline || n.mask && n.mask_type.as_deref()==Some("outline");
+        let outline=n.outline_mask_node(inherited_outline);
+        let n=outline.as_ref().unwrap_or(n);
         if !n.visible {
             return Ok(None);
         }
@@ -3105,7 +3119,7 @@ impl Painter<'_> {
         let mut mask_surface = None;
         if let Some(id) = mask_id {
             let mut mask = self.allocate(r)?;
-            self.node(id, &mut mask, None)?;
+            self.node_with_outline(id, &mut mask, None, geometric)?;
             mask_surface = Some(mask);
         }
         let child_mask = if n.clip { Some(&*fill) } else { None };
@@ -3116,7 +3130,7 @@ impl Painter<'_> {
             }
             for child in n.render_children() {
                 if Some(child) != mask_id {
-                    self.node(child, &mut content, child_mask)?;
+                    self.node_with_outline(child, &mut content, child_mask, geometric)?;
                 }
             }
             if passthrough {
@@ -3143,11 +3157,11 @@ impl Painter<'_> {
             let children: Vec<String> = n.render_children().to_vec();
             let (_, outputs) = self.regional_children(&children, basis.intersect(output.unwrap()))?;
             for (child, region) in children.iter().zip(outputs) {
-                self.node_region(child, &mut layer, child_mask, Some(region), basis)?;
+                self.node_region(child, &mut layer, child_mask, Some(region), basis, geometric)?;
             }
         } else {
             for child in n.render_children() {
-                self.node(child, &mut layer, child_mask)?;
+                self.node_with_outline(child, &mut layer, child_mask, geometric)?;
             }
         }
         for (i, s) in n.strokes.iter().enumerate() {
