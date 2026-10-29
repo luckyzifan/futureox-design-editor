@@ -43,14 +43,12 @@ fn firstSpan(pixel:i32,first:u32,count:u32)->u32{
  }
  return lo;
 }
-override SPARSE_COVERAGE:bool=false;
 fn sampleCoverage(pixel:vec2<i32>,index:u32)->f32{
  let header:vec4<f32>=cvFetch(0u);let offset:vec2<f32>=sampleOffset(index);
  if(header.x==4.){
   if(sampleInside(pixel.x,offset.x,cvFetch(1u),cvBits(cvFetch(3u)),cvBits(cvFetch(4u)))&&sampleInside(pixel.y,offset.y,cvFetch(2u),cvBits(cvFetch(5u)),cvBits(cvFetch(6u)))){return 1.;}return 0.;
  }
  let record:vec4<f32>=cvFetch(u32(header.y)+u32(pixel.y)*4u+index);
- if(SPARSE_COVERAGE&&record.z==1.){return 1.;}
  for(var span:u32=firstSpan(pixel.x,u32(record.x),u32(record.y));span<u32(record.y);span=span+1u){
   let at:u32=u32(record.x)+span*3u;let range:vec4<f32>=cvFetch(at);
   if(pixel.x<i32(range.x)){break;}

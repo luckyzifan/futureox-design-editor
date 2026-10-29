@@ -312,7 +312,7 @@ export type DesignNode = {
   styleRefs?: Record<string, string>
   /** Local collection selections, inherited by descendants. Instance roots keep authored placement only. */
   variableModes?: Record<string, string>
-  maskType?: 'alpha' | 'luminance'
+  maskType?: 'alpha' | 'luminance' | 'outline'
   id: string
   name: string
   kind: Kind
@@ -905,7 +905,7 @@ export function validateDocument(value: unknown): DesignDocument {
     // Match the kernel's Option<String>: omitted/null is the legacy default;
     // either explicit mask mode is extended authoring and requires schema 4.
     if (n?.maskType != null) {
-      if (!['alpha', 'luminance'].includes(n.maskType)) throw new Error('蒙版类型无效')
+      if (!['alpha', 'luminance', 'outline'].includes(n.maskType)) throw new Error('蒙版类型无效')
       if (d.schemaVersion < 4) throw new Error('显式蒙版类型需要设计文件版本 4')
     }
     // Node::requires_schema4 applies even to currently invisible/inactive content.

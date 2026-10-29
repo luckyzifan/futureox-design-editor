@@ -1530,9 +1530,13 @@ impl Compiler<'_> {
         id: &str,
         parent: Transform,
         requested: Option<Rect>,
+        inherited_outline: bool,
     ) -> Result<Rect, String> {
         crate::render_cancellation::checkpoint()?;
         let n = &self.doc.nodes[id];
+        let geometric=inherited_outline || n.mask && n.mask_type.as_deref()==Some("outline");
+        let outline=n.outline_mask_node(inherited_outline);
+        let n=outline.as_ref().unwrap_or(n);
         if !n.visible {
             return Ok(Rect::default());
         }
@@ -1642,7 +1646,7 @@ impl Compiler<'_> {
             .union(stroke_path.control_bounds(matrix));
         let own = rect;
         for child in n.render_children() {
-            let mut b = self.node(child, matrix, source_region)?;
+            let mut b = self.node_with_outline(child, matrix, source_region, geometric)?;
             if n.clip {
                 b = b.intersect(own);
             }

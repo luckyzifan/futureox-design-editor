@@ -219,3 +219,7 @@ Use the advertised `workspace.importCopy` schema with `rootHandle`, `format`, `m
 ### Text layout schema 20
 
 `node.update` / the published node property schema accept `textStyle.verticalAlign` (`top`, `center`, `bottom`) and `textRuns[].paragraph`. Paragraph values are `align`, absolute `minimumLineHeight` / `maximumLineHeight` (0 means unbounded), `spacing`, and `indent`; the run covering a paragraph's first UTF-16 character determines its paragraph style. Intrinsic measurement stays independent of vertical alignment; path and caret placement use the fixed text box. Existing lineHeight remains a multiplier. Directional prototype `transitionStyle` accepts `none` and `slide-left/right/top/bottom` for navigate/back; omission preserves existing smart-animation behavior. These authored fields require schema20 and still pass the existing native commit boundary.
+
+### Outline masks
+
+The shared node descriptors and granular updates accept `maskType: "alpha" | "luminance" | "outline"`. Outline rendering uses visible fill/stroke geometry and propagates through container descendants while retaining authored materials for history and native persistence. It does not grant new operations or permissions. Foreign Sketch conversion of this Figma-style mask contract remains explicitly unsupported until its independent native codec is verified; see [format evidence](../testing/verification-fig-sketch-interop-20261029/README.md).

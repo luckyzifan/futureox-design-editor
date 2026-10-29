@@ -856,22 +856,22 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       if (errors.length) throw new Error(errors.map((m) => `${m.lineNum}:${m.message}`).join('\n'))
       this.areaPipeline = await this.device.createRenderPipelineAsync({
         layout,
-        vertex: { module, entryPoint: 'areaQuad' },
+        vertex: { module: areaModule, entryPoint: 'areaQuad' },
         fragment: {
           module: areaModule,
-          entryPoint: 'areaFragment', constants: { SPARSE_COVERAGE: this.sparseCoverageEnabled },
+          entryPoint: 'areaFragment',
           targets: [{ format: this.layerFormat }],
         },
         primitive: { topology: 'triangle-list' },
       })
       if (this.managed) this.binaryAreaPipeline = await this.device.createRenderPipelineAsync({
         layout, vertex: { module: areaModule, entryPoint: 'areaQuad' },
-        fragment: { module: areaModule, entryPoint: 'areaFragment', constants: { SPARSE_COVERAGE: this.sparseCoverageEnabled }, targets: [{ format: 'rgba8unorm' }] },
+        fragment: { module: areaModule, entryPoint: 'areaFragment', targets: [{ format: 'rgba8unorm' }] },
         primitive: { topology: 'triangle-list' },
       })
       if (this.managed) this.scalarAreaPipeline = await this.device.createRenderPipelineAsync({
         layout, vertex:{module:areaModule,entryPoint:'areaQuad'},
-        fragment:{module:areaModule,entryPoint:'areaFragment',constants:{SPARSE_COVERAGE:this.sparseCoverageEnabled},targets:[{format:'r32float'}]},primitive:{topology:'triangle-list'},
+        fragment:{module:areaModule,entryPoint:'areaFragment',targets:[{format:'r32float'}]},primitive:{topology:'triangle-list'},
       })
     })
     if (this.managed) register('binary', () => {
@@ -1201,9 +1201,9 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
         const layout = await validated(() => this.device.createPipelineLayout({ bindGroupLayouts: [this.layout] }))
         const jobs = (['rgba32float', 'rgba8unorm', 'r32float'] as GPUTextureFormat[]).map(format =>
           validated(() => this.device.createRenderPipelineAsync({ layout, vertex: { module, entryPoint: 'areaQuad' },
-            fragment: { module, entryPoint: 'areaSampleFragment', constants: { SPARSE_COVERAGE: this.sparseCoverageEnabled }, targets: [{ format }] }, primitive: { topology: 'triangle-list' } })))
+            fragment: { module, entryPoint: this.sparseCoverageEnabled ? 'areaSampleFragmentSparse' : 'areaSampleFragment', targets: [{ format }] }, primitive: { topology: 'triangle-list' } })))
         if (this.packedCoverageEnabled) jobs.push(validated(() => this.device.createRenderPipelineAsync({ layout,
-          vertex: { module, entryPoint: 'areaQuad' }, fragment: { module, entryPoint: 'areaSamplesFragment', constants: { SPARSE_COVERAGE: this.sparseCoverageEnabled },
+          vertex: { module, entryPoint: 'areaQuad' }, fragment: { module, entryPoint: this.sparseCoverageEnabled ? 'areaSamplesFragmentSparse' : 'areaSamplesFragment',
             targets: Array.from({ length: 4 }, () => ({ format: 'rgba8unorm' as GPUTextureFormat })) }, primitive: { topology: 'triangle-list' } })))
         const results = await Promise.allSettled(jobs)
         const failure = results.find(result => result.status === 'rejected')

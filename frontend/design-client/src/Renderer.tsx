@@ -4,6 +4,7 @@ import { EditableSvgText } from './svg-editable-text'
 import { kernelTextLayout, kernelStrokePaths, kernelSvgPaths } from './kernel/picking'
 import React, { useMemo, useRef } from 'react'
 import { maskChild } from './model'
+import { outlineMaskForRendering } from './render-outline-mask'
 import type { DesignDocument, DesignNode, Paint, Effect, Matrix, Bounds, Point } from './model'
 import {
   shapeD as approximateShapeD,
@@ -375,8 +376,8 @@ export function Scene({ doc, pageId, viewport, exporting = false, retainedNodeId
   return (
     <>
       <defs>
-        {visible.map(({ id }) => {
-          const n = doc.nodes[id]
+        {visible.map(({ id, ancestors }) => {
+          const n = outlineMaskForRendering(doc.nodes[id],ancestors.some(id=>doc.nodes[id].mask&&doc.nodes[id].maskType==='outline'))
           const background = n.effects.find(
             (e) => e.visible && (e.kind === 'glass' || e.kind === 'background-blur'),
           )
@@ -423,7 +424,7 @@ export function Scene({ doc, pageId, viewport, exporting = false, retainedNodeId
                   y={-1e5}
                   width={2e5}
                   height={2e5}
-                  style={{ maskType: mask.maskType || 'alpha' }}
+                  style={{ maskType: mask.maskType === 'luminance' ? 'luminance' : 'alpha' }}
                 >
                   <use href={`#visual-${mask.id}`} />
                 </mask>

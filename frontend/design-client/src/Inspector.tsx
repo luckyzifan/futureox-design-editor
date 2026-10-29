@@ -702,11 +702,12 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
               value={n.maskType || 'alpha'}
               onChange={(e) =>
                 update((n) => {
-                  n.maskType = e.target.value as 'alpha' | 'luminance'
+                  n.maskType = e.target.value as 'alpha' | 'luminance' | 'outline'
                 })
               }
             >
               <option value="alpha">Alpha</option>
+              <option value="outline">{tr("轮廓")}</option>
               <option value="luminance">{tr("亮度")}</option>
             </select>
           </label>
