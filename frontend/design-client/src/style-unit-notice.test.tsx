@@ -98,9 +98,9 @@ test('scrub accessible description retains drag and modifier instructions with t
   const render = (unitDescription?: string) => renderToStaticMarkup(<NumberField label="字号" value={36} onChange={() => {}} unitDescription={unitDescription} />).match(/<span class="number-scrub"[^>]*>/)?.[0] ?? ''
   const instructions = '拖动调整数值；Shift 加速，Option 精细调整'
   const plain = render(), qualified = render(STYLE_UNIT_DESCRIPTION)
-  expect(plain).toContain(`title="${instructions}"`)
+  expect(plain).toContain(`title="字号: ${instructions}"`)
   expect(plain).not.toContain('aria-description=')
-  expect(qualified).toContain(`title="${instructions}"`)
+  expect(qualified).toContain(`title="字号: ${instructions}"`)
   expect(qualified).toContain(`aria-description="${instructions}；${STYLE_UNIT_DESCRIPTION}"`)
   expect(qualified).toContain('aria-label="拖动调整 字号"')
 })

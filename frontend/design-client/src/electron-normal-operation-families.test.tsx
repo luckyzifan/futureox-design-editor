@@ -131,11 +131,17 @@ for (const [label, axis, mode] of [
   ['左对齐', 'x', 'start'], ['水平居中', 'x', 'center'], ['右对齐', 'x', 'end'],
   ['顶对齐', 'y', 'start'], ['垂直居中', 'y', 'center'], ['底对齐', 'y', 'end'],
   ['水平等距分布', 'x', 'distribute'], ['垂直等距分布', 'y', 'distribute'],
-] as const) test(`actual Inspector button ${label} changes geometry, excludes lock, undo/redo`, async () => {
+] as const) test(`actual Inspector button ${label} rejects a locked mixed selection, then aligns unlocked selection with undo/redo`, async () => {
   const a = node('rectangle', 100, 100, 40, 30), b = node('rectangle', 200, 180, 60, 40), c = node('rectangle', 400, 350, 80, 50), locked = node('rectangle', 900, 900, 100, 100)
   locked.locked = true
   await render([a, b, c, locked]); await act(async () => { editor.select([a.id, b.id, c.id, locked.id]); root.render(<AlignmentControls editor={editor} />) })
-  const before = editor.state.doc, button = mount.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!
+  const before = editor.state.doc
+  const blocked = mount.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!
+  expect(blocked.disabled).toBe(true)
+  await act(async () => blocked.click())
+  expect(editor.state.doc).toBe(before)
+  await act(async () => { editor.select([a.id,b.id,c.id]); root.render(<AlignmentControls editor={editor} />) })
+  const button=mount.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!
   expect(button.disabled).toBe(false); await act(async () => button.click())
   const boxes = scene(editor.state.doc, editor.state.page).filter(e => [a.id, b.id, c.id].includes(e.id)).map(e => e.bounds)
   const size = axis === 'x' ? 'width' : 'height'

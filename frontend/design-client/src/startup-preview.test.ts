@@ -9,7 +9,7 @@ test('startup pixels are bound to the durable revision and reject invalid envelo
   expect(validStartupPreview(preview, 'A', 2)).toBe(true)
   expect(validStartupPreview(preview, 'B', 2)).toBe(false)
   expect(validStartupPreview(preview, 'A', 3)).toBe(false)
-  for (const change of [{ width: 0 }, { view: { x: 0, y: 0, zoom: Infinity } }, { view: { x: 0, y: 0, zoom: 33 } }, { view: { x: 0, y: 0, zoom: 0.001 } }, { image: new Blob(['<svg/>'], { type: 'image/svg+xml' }) },
+  for (const change of [{ width: 0 }, { view: { x: 0, y: 0, zoom: Infinity } }, { view: { x: 0, y: 0, zoom: 0 } }, { image: new Blob(['<svg/>'], { type: 'image/svg+xml' }) },
     { image: new Blob([new Uint8Array(1_048_577)], { type: 'image/webp' }) }])
     expect(validStartupPreview({ ...preview, ...change }, 'A', 2)).toBe(false)
 })

@@ -91,7 +91,9 @@ test('actual Editor preview and commit emit nested layout/native/history spans w
       const row = JSON.parse(line.slice('[render-diag] '.length)); return row.batch || [row]
     }).filter(row => row.event === 'cpu-stage')
     const stages = new Set(rows.filter(row => row.cpuPhase === 2).map(row => row.cpuStageCode))
-    for (const stage of [CpuStage.preview, CpuStage.previewPrepare, CpuStage.previewLayout, CpuStage.serialize,
+    // The derived-preview lane prepares inside the Rust-backed layout span;
+    // it does not execute the older JS previewPrepare branch.
+    for (const stage of [CpuStage.preview, CpuStage.previewLayout, CpuStage.serialize,
       CpuStage.resolveComponents, CpuStage.parse, CpuStage.commit, CpuStage.commitValidate, CpuStage.commitHistory, CpuStage.historyApply])
       expect(stages.has(stage), `missing actual stage ${stage}`).toBe(true)
     expect(rows.every(row => row.actionOwner > 0 && Number.isInteger(row.actionSession))).toBe(true)

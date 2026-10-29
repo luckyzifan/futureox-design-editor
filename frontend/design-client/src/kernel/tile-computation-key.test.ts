@@ -36,3 +36,14 @@ describe('pattern camera periods', () => {
     expect(key(128)).not.toBe(key(160))
   })
 })
+
+it('periodic computation identity preserves fractional and non-periodic dither differences', async()=>{
+ const {periodicComputationCamera}=await import('./tile-computation-key')
+ const options={rasterProfile:'figma'}
+ const a=periodicComputationCamera({x:.25,y:-.125,zoom:2},options,false)
+ expect(periodicComputationCamera({x:512.25,y:-1024.125,zoom:2},options,false)).toEqual(a)
+ expect(periodicComputationCamera({x:1.25,y:-.125,zoom:2},options,false)).not.toEqual(a)
+ for(const extra of [{grid:true},{checkerboard:true},{pixelPreview:1}]) {
+  const camera={x:512.25,y:0,zoom:2};expect(periodicComputationCamera(camera,{...options,...extra},false)).toBe(camera)
+ }
+})

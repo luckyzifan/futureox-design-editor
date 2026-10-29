@@ -84,8 +84,14 @@ test('bitmap display intent works without resident capture; lifetime hits surviv
     sampleOnlyCoverageLifetimePixels: 16, sampleOnlyCoverageEligibleScenes: 2 })
 })
 
-test.each([undefined, '0', 'true', '01'])('strict disabled flag %s leaves original area preparation/dispatch', async flag => {
+test.each([undefined, '1', 'true', '01'])('default and enabled flag %s select sample-only preparation/dispatch', async flag => {
   const f = fixture(flag); await f.begin(); f.driver.mask(f.path, f.target(), 0)
+  expect(f.descriptors).toHaveLength(3); expect(f.chosen.at(-1).fragment.entryPoint).toBe('areaSampleFragment')
+  expect(f.raw.sampleOnlyCoveragePasses).toBe(1)
+})
+
+test('explicit 0 leaves original area preparation/dispatch', async () => {
+  const f = fixture('0'); await f.begin(); f.driver.mask(f.path, f.target(), 0)
   expect(f.descriptors).toHaveLength(0); expect(f.chosen.at(-1)).toEqual({ legacy: 'scalar' }); expect(f.raw.sampleOnlyCoveragePasses).toBe(0)
 })
 

@@ -90,6 +90,12 @@ test('retained baseline is hash-verified and only declared repeat, SVG option an
         "  await initializePicking()\n  if (signal?.aborted) throw new Error('已取消导出')\n  ;({doc,target} = repeatExport(kernelLayout(doc),target))\n  doc = projectSlice(doc,pageId,target)\n  const box = targetBounds(doc, pageId, target)\n  const plans = scales.map((scale) => {\n"
     ]
 ]
+  deltas.push([
+    "    for(const entry of roots) doc.nodes[entry.id]={...doc.nodes[entry.id],transform:[...entry.matrix]}\n  }\n  const source = renderToStaticMarkup(\n",
+    "    for(const entry of roots) doc.nodes[entry.id]={...doc.nodes[entry.id],transform:[...entry.matrix]}\n  }\n  if (scene(doc,pageId).some(entry=>doc.nodes[entry.id].effects.some(e=>e.visible&&['motion-blur','zoom-blur'].includes(e.kind)))) throw new Error('运动模糊或缩放模糊需要保留视觉效果的 SVG 或位图导出')\n" +
+    "  if (scene(doc,pageId).some(entry => doc.nodes[entry.id].effects.some(e => e.visible && e.colorControls?.space === 'display-p3'))) throw new Error('Display-P3 编码域颜色调整需要保留视觉效果的 SVG 或位图导出')\n" +
+    "  const source = renderToStaticMarkup(\n",
+  ])
   let approved = retained
   for (const [before, after] of deltas) {
     expect(approved.split(before)).toHaveLength(2)

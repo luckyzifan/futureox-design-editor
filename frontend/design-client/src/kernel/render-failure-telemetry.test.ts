@@ -4,6 +4,13 @@ import { renderErrorWithBudget } from './render-diagnostics'
 import { QueueWaitStats } from './gpu/queue-wait-stats'
 import { sanitizeFields, createRenderDiagnostics } from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
 afterEach(()=>vi.unstubAllGlobals())
+test('native image admission reports a fixed code without copying dimensions or arbitrary text',()=>{
+ const message='Decoded image budget exceeded: 5162x2784 source pixels cannot fit without loss; automatic downsampling is disabled'
+ expect(renderFailureFields(message)).toMatchObject({failureCategory:3,failureCode:141})
+ expect(JSON.stringify(renderFailureFields(message))).not.toMatch(/5162|2784|source pixels/)
+ expect(renderFailureFields('private '+message).failureCode).toBe(0)
+ expect(renderFailureFields(message+' private').failureCode).toBe(0)
+})
 test('exact known error categories never export messages or infer from private substrings',()=>{
  const examples:[string,number,number][]=[['PREVIEW_CANCELLED',1,1],['DERIVATION_UNSUPPORTED',2,2],['GPU 图片总内存预算超限',3,22],['GPU 图片像素预算超限',3,24],['WebGPU 设备已丢失',4,30],['GPU texture feedback loop',5,32],['STALE_BASE',6,6]]
  for(const [text,category,code]of examples)expect(renderFailureFields(new Error(text))).toMatchObject({failureCategory:category,failureCode:code})
@@ -79,4 +86,20 @@ test('native compiler surface-area rejection keeps a distinct exact code and com
  expect(renderFailureFields(new Error('GPU 表面内存预算超限'))).toMatchObject({failureCategory:3,failureCode:20})
  expect(renderFailureFields(inheritRenderFailure(e,new Error('private wrapper')))).toMatchObject({failureCode:64,failureStage:5})
  expect(renderFailureFields(new Error('private GPU surface budget exceeded'))).toMatchObject({failureCategory:0,failureCode:0})
+})
+
+
+test('dependency halo and watchdog failures remain distinguishable without raw error text',()=>{
+ expect(renderFailureFields(new Error('Combined filter dependency halo exceeds 2048 device pixels'))).toMatchObject({failureCategory:3,failureCode:136})
+ expect(renderFailureFields(new Error('画布瓦片预览超时，请重试'))).toMatchObject({failureCategory:3,failureCode:137})
+ expect(sanitizeFields({renderResetCode:1,privateMessage:'private'})).toEqual({renderResetCode:1})
+ expect(sanitizeFields({renderResetCode:6})).toEqual({})
+})
+
+test('bounded shadow admission keeps radius, packet capacity and ownership failures distinct',()=>{
+ for(const [message,category,code] of [
+  ['Exact large blur radius must be in (2048,4096]',2,138],
+  ['Large exact filter packet exceeds 64 KiB',3,139],
+  ['Invalid bounded shadow coefficient packet',5,140],
+ ] as const) expect(renderFailureFields(new Error(message))).toMatchObject({failureCategory:category,failureCode:code})
 })
