@@ -1,0 +1,754 @@
+{
+  "status": "passed",
+  "cases": [
+    {
+      "kind": "motion",
+      "amount": 1,
+      "angle": 0,
+      "pattern": "normal",
+      "bits": 437,
+      "max": 7.682718083934503e-8,
+      "alpha": 5.960464477539063e-8,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 1,
+      "angle": 0,
+      "pattern": "zero",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 1,
+      "angle": 0,
+      "pattern": "signed",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 1,
+      "angle": 0,
+      "pattern": "max",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 1,
+      "angle": 0,
+      "pattern": "nonfinite",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 1,
+      "angle": 37,
+      "pattern": "normal",
+      "bits": 543,
+      "max": 6.382389894366014e-8,
+      "alpha": 1.1920928955078125e-7,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 1,
+      "angle": 37,
+      "pattern": "zero",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 1,
+      "angle": 37,
+      "pattern": "signed",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 1,
+      "angle": 37,
+      "pattern": "max",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 1,
+      "angle": 37,
+      "pattern": "nonfinite",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 1,
+      "angle": 90,
+      "pattern": "normal",
+      "bits": 364,
+      "max": 4.592418201276871e-8,
+      "alpha": 5.960464477539063e-8,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 1,
+      "angle": 90,
+      "pattern": "zero",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 1,
+      "angle": 90,
+      "pattern": "signed",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 1,
+      "angle": 90,
+      "pattern": "max",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 1,
+      "angle": 90,
+      "pattern": "nonfinite",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 8,
+      "angle": 0,
+      "pattern": "normal",
+      "bits": 822,
+      "max": 6.005064467906607e-8,
+      "alpha": 8.940696716308594e-8,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 8,
+      "angle": 0,
+      "pattern": "zero",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 8,
+      "angle": 0,
+      "pattern": "signed",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 8,
+      "angle": 0,
+      "pattern": "max",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 8,
+      "angle": 0,
+      "pattern": "nonfinite",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 8,
+      "angle": 37,
+      "pattern": "normal",
+      "bits": 871,
+      "max": 6.474492653119057e-8,
+      "alpha": 8.940696716308594e-8,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 8,
+      "angle": 37,
+      "pattern": "zero",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 8,
+      "angle": 37,
+      "pattern": "signed",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 8,
+      "angle": 37,
+      "pattern": "max",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 8,
+      "angle": 37,
+      "pattern": "nonfinite",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 8,
+      "angle": 90,
+      "pattern": "normal",
+      "bits": 759,
+      "max": 4.417790400168542e-8,
+      "alpha": 5.960464477539063e-8,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 8,
+      "angle": 90,
+      "pattern": "zero",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 8,
+      "angle": 90,
+      "pattern": "signed",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 8,
+      "angle": 90,
+      "pattern": "max",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 8,
+      "angle": 90,
+      "pattern": "nonfinite",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 32,
+      "angle": 0,
+      "pattern": "normal",
+      "bits": 993,
+      "max": 4.874816705857654e-8,
+      "alpha": 2.9802322387695312e-8,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 32,
+      "angle": 0,
+      "pattern": "zero",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 32,
+      "angle": 0,
+      "pattern": "signed",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 32,
+      "angle": 0,
+      "pattern": "max",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 32,
+      "angle": 0,
+      "pattern": "nonfinite",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 32,
+      "angle": 37,
+      "pattern": "normal",
+      "bits": 1049,
+      "max": 4.261832908802887e-8,
+      "alpha": 2.9802322387695312e-8,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 32,
+      "angle": 37,
+      "pattern": "zero",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 32,
+      "angle": 37,
+      "pattern": "signed",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 32,
+      "angle": 37,
+      "pattern": "max",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 32,
+      "angle": 37,
+      "pattern": "nonfinite",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 32,
+      "angle": 90,
+      "pattern": "normal",
+      "bits": 1002,
+      "max": 3.6079192300420004e-8,
+      "alpha": 1.4901161193847656e-8,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 32,
+      "angle": 90,
+      "pattern": "zero",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 32,
+      "angle": 90,
+      "pattern": "signed",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 32,
+      "angle": 90,
+      "pattern": "max",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "amount": 32,
+      "angle": 90,
+      "pattern": "nonfinite",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "zoom",
+      "amount": 1,
+      "angle": 0,
+      "pattern": "normal",
+      "bits": 1595,
+      "max": 5.471138159185429e-7,
+      "alpha": 5.960464477539062e-7,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "zoom",
+      "amount": 1,
+      "angle": 0,
+      "pattern": "zero",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "zoom",
+      "amount": 1,
+      "angle": 0,
+      "pattern": "signed",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "zoom",
+      "amount": 1,
+      "angle": 0,
+      "pattern": "max",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "zoom",
+      "amount": 1,
+      "angle": 0,
+      "pattern": "nonfinite",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "zoom",
+      "amount": 12,
+      "angle": 0,
+      "pattern": "normal",
+      "bits": 1573,
+      "max": 2.046548892575828e-7,
+      "alpha": 2.980232238769531e-7,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "zoom",
+      "amount": 12,
+      "angle": 0,
+      "pattern": "zero",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "zoom",
+      "amount": 12,
+      "angle": 0,
+      "pattern": "signed",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "zoom",
+      "amount": 12,
+      "angle": 0,
+      "pattern": "max",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "zoom",
+      "amount": 12,
+      "angle": 0,
+      "pattern": "nonfinite",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "zoom",
+      "amount": 60,
+      "angle": 0,
+      "pattern": "normal",
+      "bits": 1595,
+      "max": 1.859599123577027e-7,
+      "alpha": 2.384185791015625e-7,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "zoom",
+      "amount": 60,
+      "angle": 0,
+      "pattern": "zero",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "zoom",
+      "amount": 60,
+      "angle": 0,
+      "pattern": "signed",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "zoom",
+      "amount": 60,
+      "angle": 0,
+      "pattern": "max",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "zoom",
+      "amount": 60,
+      "angle": 0,
+      "pattern": "nonfinite",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 1
+    },
+    {
+      "kind": "motion",
+      "variant": "HDR",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 0
+    },
+    {
+      "kind": "zoom",
+      "variant": "HDR",
+      "bits": 0,
+      "max": 0,
+      "alpha": 0,
+      "nonfinite": 0,
+      "passes": 0
+    }
+  ],
+  "timings": [
+    {
+      "kind": "motion",
+      "amount": 8,
+      "times": [
+        [
+          6.700000047683716,
+          6.399999976158142,
+          6.600000023841858
+        ],
+        [
+          1.399999976158142,
+          1.5,
+          1.5
+        ]
+      ],
+      "controlMs": 6.600000023841858,
+      "candidateMs": 1.5,
+      "improvement": 0.7727272735482733
+    },
+    {
+      "kind": "motion",
+      "amount": 32,
+      "times": [
+        [
+          15.299999952316284,
+          15.200000047683716,
+          14.800000071525574
+        ],
+        [
+          2.5,
+          2.399999976158142,
+          2.399999976158142
+        ]
+      ],
+      "controlMs": 15.200000047683716,
+      "candidateMs": 2.399999976158142,
+      "improvement": 0.8421052652217675
+    },
+    {
+      "kind": "zoom",
+      "amount": 12,
+      "times": [
+        [
+          10,
+          10.200000047683716,
+          9.799999952316284
+        ],
+        [
+          1.5,
+          1.600000023841858,
+          1.5
+        ]
+      ],
+      "controlMs": 10,
+      "candidateMs": 1.5,
+      "improvement": 0.85
+    }
+  ],
+  "scope": "Native motion/zoom coordinate tables, isolated real Metal operator; synthetic boundary inputs supplement topology scenes.",
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "fallback": false
+  },
+  "current": {
+    "kind": "zoom",
+    "amount": 60,
+    "angle": 0,
+    "pattern": "nonfinite"
+  }
+}

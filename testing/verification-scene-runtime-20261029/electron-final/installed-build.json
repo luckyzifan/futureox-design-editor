@@ -1,0 +1,8 @@
+{
+  "installedAt": "2026-10-29T07:26:06.988Z",
+  "build": "2026-10-29T07:13:11.948Z",
+  "product": "/tmp/futureox-scene-runtime-cache-fix-20261029",
+  "backup": "/tmp/futureox-dist-before-cache-fix-SF4YFM/dist",
+  "destination": "/Users/Apple/project/design-kernel/frontend/design-desktop/dist",
+  "scope": "Install the coherent GUI-tested cache-fix build. Later edits in three GPU TypeScript files remain in source and are not part of this tested artifact."
+}

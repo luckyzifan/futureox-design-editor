@@ -1,0 +1,178 @@
+{
+  "design-studio/crates/design-kernel/src/raster.rs": {
+    "bytes": 10790,
+    "sha256": "b2148e23454c8ecdcd347a83a2d8895483d2122c9c23563cc0dd2e10919359ed"
+  },
+  "design-studio/crates/design-kernel/src/raster_scan.rs": {
+    "bytes": 11395,
+    "sha256": "24db4c62c4d3c812a581dc04210bf08a52d19a1e367d5285ff4fc2abacec5169"
+  },
+  "design-studio/crates/design-kernel/src/area_program.rs": {
+    "bytes": 14551,
+    "sha256": "cbff861e5dc9ea720fadb1c8beefe8fa9b0f51fb7ec9b0ff881981283764ea0b"
+  },
+  "design-studio/crates/design-kernel/src/math.rs": {
+    "bytes": 10851,
+    "sha256": "7661d19a0b1c308793bef240b856e56dc0bd3e7322bce27f007b8d71ac6d7950"
+  },
+  "design-studio/crates/design-kernel/src/renderer.rs": {
+    "bytes": 153668,
+    "sha256": "099f00fc2b5b9ec469b8cb83af6edcaf129d81111399773a8c4ab9c134fbaa35"
+  },
+  "design-studio/crates/design-kernel/src/renderer_tests/solid_quantization.rs": {
+    "bytes": 17871,
+    "sha256": "027872d12de9e24fedaff5c87a2eadac22f20ee005121cde771f5281a1d67bed"
+  },
+  "design-studio/crates/design-kernel/src/raster_bucket_tests.rs": {
+    "bytes": 3616,
+    "sha256": "b1664f00e7ad03149056f3128ac03b143656fce16bcc7d98b3ebbef44a922b65"
+  },
+  "design-studio/crates/design-kernel/tests/raster_safety.rs": {
+    "bytes": 7581,
+    "sha256": "dffcd297e2da9a1ff2a1b6b1e41337d02cc1fd7ba93a77a2b3e36af167beb9ca"
+  },
+  "design-studio/crates/design-kernel/tests/raster_oracle.rs": {
+    "bytes": 5122,
+    "sha256": "58651a5f4f61df8f4b16163e36e90215aa1891f476bfb2967e0d16212e83cb30"
+  },
+  "design-studio/crates/design-kernel/tests/sample_edges.rs": {
+    "bytes": 4640,
+    "sha256": "235e9c609d3bf407c04380af2837f9212857ae6b1540b91f7cce8ffe266daf70"
+  },
+  "design-studio/crates/design-kernel/benches/sample_edges.rs": {
+    "bytes": 5135,
+    "sha256": "292d392fa36160c8b582f6c4afe305c4acc42b4285663a53b1cf8cfbc59e4498"
+  },
+  "design-studio/crates/design-kernel/benches/raster.rs": {
+    "bytes": 2159,
+    "sha256": "c802a6a6159a3fcb9f61c20d7d916407be0d91755cc63ae9ea4643a5db72a7fa"
+  },
+  "design-studio/crates/design-kernel/Cargo.toml": {
+    "bytes": 1361,
+    "sha256": "be9323eea692e8095ba61635a4c9085be663e26f18c6f084c7098c4016719001"
+  },
+  "design-studio/Cargo.lock": {
+    "bytes": 84871,
+    "sha256": "c0782bdf419aa648ea9750142b0d2cbfea4db13ee8a634172ca122901645acf2"
+  },
+  ".agents/skills/futureox-design-development/SKILL.md": {
+    "bytes": 28437,
+    "sha256": "e904b4faa6bab0047d6adb3bfff8ec19fd446e90739fcb61265ce60a81818526"
+  },
+  ".agents/skills/futureox-rendering-first/SKILL.md": {
+    "bytes": 12285,
+    "sha256": "c51807fca6a5ae01ad5dadafe6f4bfc4cb60ee9f2806df8c7f5f81a29bd61dd5"
+  },
+  "frontend/design-client/public/kernel/design_kernel_bg.wasm": {
+    "bytes": 41384015,
+    "sha256": "811483cdb9ee02dceffa737db54695d533a28374fd8c1d8817e4bea15e7e6a81"
+  },
+  "frontend/design-client/src/generated/design-kernel/design_kernel.js": {
+    "bytes": 143390,
+    "sha256": "57a09416361f568320ecdd0cb3d72c33b7162ce2e2dedc2523ab7728b81a744c"
+  },
+  "frontend/design-client/src/generated/design-kernel/design_kernel_bg.wasm": {
+    "bytes": 41384015,
+    "sha256": "811483cdb9ee02dceffa737db54695d533a28374fd8c1d8817e4bea15e7e6a81"
+  },
+  "design-studio/target/release/deps/sample_edges-5338bd41221134a3": {
+    "bytes": 728576,
+    "sha256": "19398fe22d48fa3815b3ab85bb8917278833cda8b57647e4550a7ddaa8cb94f1"
+  },
+  "design-studio/target/release/deps/raster-6d21c8f99cac3389": {
+    "bytes": 37019840,
+    "sha256": "431afed5b4a619f6a92229d7aa1f873839356d22d7eb8263cb2e299951c6b67b"
+  },
+  "testing/verification-cpu-raster-20261029/raster-tests.log": {
+    "bytes": 2223,
+    "sha256": "394adb7848d1fb22f9d0bc47d4de80d2c1310cd1dd1665f3a84f4cb5630cc605"
+  },
+  "testing/verification-cpu-raster-20261029/scanner-unit-final.log": {
+    "bytes": 2133,
+    "sha256": "00ebe9b02c45a7c16825bbdbe3654bfae2696caf39879d8cc9bba2bbf59c255d"
+  },
+  "testing/verification-cpu-raster-20261029/bench-build.log": {
+    "bytes": 2643,
+    "sha256": "bf0c18bf9617a1998aeb21336a8bb05a975db3797d84bd44377c6d67db2b8a1b"
+  },
+  "testing/verification-cpu-raster-20261029/renderer-parity.log": {
+    "bytes": 7188,
+    "sha256": "02ef00852a91b5b943f583ae373ae401116f0f6309852ca1bc3c3b72643f0a70"
+  },
+  "testing/verification-cpu-raster-20261029/wasm-build.log": {
+    "bytes": 2487,
+    "sha256": "99bd88433b1d862a36be2421b1154f06cef7203f7f7d3887bdf6f891a45644b7"
+  },
+  "testing/verification-cpu-raster-20261029/raster-bench.log": {
+    "bytes": 1190,
+    "sha256": "a14ff72430a438048f4b5f5b8b0693e5a75d20797c75e6ad1823b7de8c67bc79"
+  },
+  "testing/verification-cpu-raster-20261029/bench-build-final.log": {
+    "bytes": 1188,
+    "sha256": "ea7d91c4d4378e523b1f1cee0e80673e97e00b0cd9c668f7ea348e5a7b66e177"
+  },
+  "testing/verification-cpu-raster-20261029/raster-tests-final.log": {
+    "bytes": 2350,
+    "sha256": "c970fc028ff1559b42e5bcf8df17479ce259f82476c2a87676e20c76dd277cfe"
+  },
+  "testing/verification-cpu-raster-20261029/sample-bench-before-degenerate.log": {
+    "bytes": 4392,
+    "sha256": "cda280dc0a2b0e275747d3824d5e8c248b2d1e3dcff41f668df43f71e23e917e"
+  },
+  "testing/verification-cpu-raster-20261029/lib-tests.log": {
+    "bytes": 69599,
+    "sha256": "e402089e72939f5f951e76312158997534da370459ddd68f6b729738a0d77d22"
+  },
+  "testing/verification-cpu-raster-20261029/wasm-smoke.log": {
+    "bytes": 1005,
+    "sha256": "dff7b3c57b2643c07babb83e0546886b8b238169c7a55a1985b359dece62cded"
+  },
+  "testing/verification-cpu-raster-20261029/final-tests.log": {
+    "bytes": 79972,
+    "sha256": "d91f73784ea3dd16786d3ddb54e4bab61f73b7c7f3feb8df8219bc02e290ba8d"
+  },
+  "testing/verification-cpu-raster-20261029/sample-bench.log": {
+    "bytes": 3297,
+    "sha256": "3411f5dcf2e6afa49f1c88b095eb5aa63cf09a0143e9bedc3a9e0efe5dd93d7f"
+  },
+  "testing/verification-cpu-raster-20261029/README.md": {
+    "bytes": 10530,
+    "sha256": "9fb781e492778f1b71dfd1356631fa52553688cadefe6a14fc7fa5c7cfcf1eda"
+  },
+  "testing/verification-cpu-raster-20261029/baseline.json": {
+    "bytes": 1288,
+    "sha256": "c52571c59fd14dbf4c7234da5bef8b7b24a31ea0f498c63ad3a325bf3f9153e7"
+  },
+  "testing/verification-cpu-raster-20261029/guidance-baseline.json": {
+    "bytes": 250,
+    "sha256": "2c7f5b3fcd9f9ba0a313f6f82cb6144a41c141f2a2665aae377061a9a0bea110"
+  },
+  "testing/verification-cpu-raster-20261029/renderer_parity.rs": {
+    "bytes": 3784,
+    "sha256": "de16679de355d196db161ca1ddb41ef6595eb1ee9e0d929b5936ae1ad0ac46e9"
+  },
+  "testing/verification-cpu-raster-20261029/run-parity.py": {
+    "bytes": 1700,
+    "sha256": "5987eda29b1f8cf303e3b8965ad7c164a5b595cbd8b87bea7fbce83e9abf77f6"
+  },
+  "testing/verification-cpu-raster-20261029/wasm-smoke.mjs": {
+    "bytes": 2035,
+    "sha256": "9de82d394d31f183e5cb8b612d7799aa806d0ce199141f91d1a018203518b532"
+  },
+  "testing/verification-cpu-raster-20261029/benchmark-runs.json": {
+    "bytes": 516,
+    "sha256": "a3ce68c253145df7315a77304cec73e07f605e2d89157ef310259f2aefc26b77"
+  },
+  "testing/verification-cpu-raster-20261029/benchmark-summary.json": {
+    "bytes": 1243,
+    "sha256": "d12dc2a09586d1d6905234e1e9df41f612852b7922c1641c3251fd8cbbae9894"
+  },
+  "testing/verification-cpu-raster-20261029/source-before-bench.json": {
+    "bytes": 1775,
+    "sha256": "244a2ade68f12f00bcc7514ffc288e35108fb9f7530109746af12f2e92250dcf"
+  },
+  "testing/verification-cpu-raster-20261029/source-after-bench.json": {
+    "bytes": 1775,
+    "sha256": "244a2ade68f12f00bcc7514ffc288e35108fb9f7530109746af12f2e92250dcf"
+  }
+}

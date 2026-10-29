@@ -1,0 +1,65 @@
+{
+  "status": "failed",
+  "backend": "webgpu",
+  "cases": [
+    {
+      "kind": "gaussian-blur",
+      "angle": 0,
+      "managed": true,
+      "hdr": false,
+      "preview": true,
+      "backend": "webgpu",
+      "changedVsUnfiltered": 3435,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "available": true,
+        "changed": 0,
+        "max": 0,
+        "index": -1,
+        "cpuPixel": [],
+        "gpuPixel": [],
+        "min": 0,
+        "maxValue": 0.9286144971847534
+      }
+    },
+    {
+      "kind": "motion-blur",
+      "angle": 0,
+      "managed": true,
+      "hdr": false,
+      "preview": true,
+      "backend": "webgpu",
+      "changedVsUnfiltered": 1528,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "available": true,
+        "changed": 682,
+        "max": 5.960464477539063e-8,
+        "index": 8254,
+        "cpuAtMax": 0.34004873037338257,
+        "gpuAtMax": 0.34004878997802734,
+        "cpuPixel": [
+          0.34004873037338257,
+          0.754346489906311,
+          0.027735190466046333,
+          0.11131715029478073
+        ],
+        "gpuPixel": [
+          0.34004878997802734,
+          0.754346489906311,
+          0.027735188603401184,
+          0.11131714284420013
+        ],
+        "min": 0,
+        "maxValue": 0.9345033168792725
+      }
+    }
+  ],
+  "error": "Error: Linear float differs from CPU or is unavailable"
+}

@@ -1,0 +1,10 @@
+{
+  "head": "2954a77fe22a12f806d91351ec95e5186f9b562a",
+  "files": {
+    "design-studio/crates/design-kernel/src/fig.rs": "fa8feecdc1d4ba61451e04f65d72301701c19dafcc2e8c1e13bd2409bf2bc3db",
+    "design-studio/crates/design-kernel/src/interop.rs": "3631771fa5e5f1ff9a5ac83747027ac0682e66f3733841944616f6ae7f75047f",
+    "design-studio/crates/design-kernel/src/sketch/preview/display.rs": "85ee0334faffaa6c1a348760ed686b087f208a25131764933e0d33d516f94b3f",
+    "frontend/design-client/src/import-fig.ts": "8bf5c5861732f5b3e32616f9b3eb3da25993aadeb55ab2e736b54b7824e86fad",
+    "frontend/design-client/src/import-fig-image.ts": "8600a5ef3e06d6a000f9386f2e46f8a161f5157f14429ea610bf84a9a1f6dbff"
+  }
+}

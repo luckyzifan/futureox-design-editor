@@ -1,0 +1,289 @@
+Window: "Futureox Design · 设计工作室", App: FutureoxSourceCapacityV6.
+0 standard window Futureox Design · 设计工作室, Secondary Actions: Raise
+	1 container Futureox Design · 设计工作室
+		2 container
+			3 HTML content Futureox Design · 设计工作室, URL: design-app://app/index.html
+				4 container
+					5 button 文件菜单
+					6 button 我的设计
+					7 text field Description: 文档名称, Value: topology-verified-20261027.sketch
+					8 toggle button Description: 收起界面, Help: 收起 / 展开界面 (⌘ ⇧ \), Value: 0
+					9 disclosure triangle 更多工作区操作
+					10 text 已保存到源文件缓存
+					11 button 保存
+					12 button 预览原型
+					13 button 导出
+					14 pop-up button Description: 打开设置, Help: 设置 (⌘ ,)
+					15 container 工作区导航
+						16 button 文件, Help: 本机设计文件
+						17 toggle button 图层, Help: 页面与图层, Value: 1
+						18 toggle button 资源, Help: 组件与资源, Value: 0
+						19 toggle button 工具, Help: 设计工具, Value: 0
+						20 button 变量, Help: 本地设计变量
+					21 container
+						22 container 源文件页面
+							23 container 侧栏视图
+								24 toggle button 页面 / 画板, Value: 1
+								25 toggle button 图层, Value: 0
+							26 text 页面
+							27 text 3
+							28 text field (settable) Description: 搜索源对象, Placeholder: 搜索页面…
+							29 content list 源页面列表
+								30 container
+									31 button Description: 载入页面 浅色, Help: 浅色
+										32 text 01
+										33 text 浅色
+									34 button Description: 展开 浅色, Help: 浏览画板与图层
+								35 container
+									36 button Description: 载入页面 深色, Help: 深色
+										37 text 02
+										38 text 深色
+									39 button Description: 展开 深色, Help: 浏览画板与图层
+								40 container
+									41 button Description: 载入页面 控件, Help: 控件
+										42 text 03
+										43 text 控件
+									44 button Description: 展开 控件, Help: 浏览画板与图层
+							45 container 页面分段
+								46 container 深色
+									47 text 内容  1 – 6  /  55
+								48 button (disabled) 上一部分
+								49 button 下一部分
+							50 container
+								51 text 全部内容随文件导出
+								52 button (disabled) 撤销已保存修改
+								53 button (disabled) 重做已保存修改
+						54 container 页面与图层
+							55 tab group 侧栏内容
+								56 tab (selected) 图层, Value: 1
+								57 tab (settable, integer) 组件, Value: 0
+							58 button 折叠全部图层
+							59 text 12212
+							60 container 图层
+								61 text field (settable) Description: 搜索图层, Placeholder: 搜索图层…
+								62 outline 图层
+									63 container
+										64 row 画板备份 6
+											65 button 折叠 画板备份 6
+											66 text 画板备份 6
+											67 button 锁定图层
+											68 button 隐藏图层
+										69 row 编组 42
+											70 button 折叠 编组 42
+											71 text 编组 42
+											72 button 锁定图层
+											73 button 隐藏图层
+										74 row 名称备份 5
+											75 button 折叠 名称备份 5
+											76 text 名称备份 5
+											77 button 锁定图层
+											78 button 隐藏图层
+										79 row 400备份
+											80 button 折叠 400备份
+											81 text 400备份
+											82 button 锁定图层
+											83 button 隐藏图层
+										84 row 路径 11备份
+											85 button 折叠 路径 11备份
+											86 text 路径 11备份
+											87 button 锁定图层
+											88 button 隐藏图层
+										89 row 路径
+											90 button 折叠 路径
+											91 text 路径
+											92 button 锁定图层
+											93 button 隐藏图层
+										94 row 路径
+											95 button 折叠 路径
+											96 text 路径
+											97 button 锁定图层
+											98 button 隐藏图层
+										99 row 路径
+											100 button 折叠 路径
+											101 text 路径
+											102 button 锁定图层
+											103 button 隐藏图层
+										104 row 路径
+											105 button 折叠 路径
+											106 text 路径
+											107 button 锁定图层
+											108 button 隐藏图层
+										109 row 路径
+											110 button 折叠 路径
+											111 text 路径
+											112 button 锁定图层
+											113 button 隐藏图层
+										114 row 路径
+											115 button 折叠 路径
+											116 text 路径
+											117 button 锁定图层
+											118 button 隐藏图层
+										119 row 路径
+											120 button 折叠 路径
+											121 text 路径
+											122 button 锁定图层
+											123 button 隐藏图层
+										124 row 路径
+											125 button 折叠 路径
+											126 text 路径
+											127 button 锁定图层
+											128 button 隐藏图层
+										129 row 路径
+											130 button 折叠 路径
+											131 text 路径
+											132 button 锁定图层
+											133 button 隐藏图层
+										134 row 路径
+											135 button 折叠 路径
+											136 text 路径
+											137 button 锁定图层
+											138 button 隐藏图层
+										139 row 路径
+											140 button 折叠 路径
+											141 text 路径
+											142 button 锁定图层
+											143 button 隐藏图层
+										144 row 路径
+											145 button 折叠 路径
+											146 text 路径
+											147 button 锁定图层
+											148 button 隐藏图层
+										149 row 路径
+											150 button 折叠 路径
+											151 text 路径
+											152 button 锁定图层
+											153 button 隐藏图层
+										154 row 路径
+											155 button 折叠 路径
+											156 text 路径
+											157 button 锁定图层
+											158 button 隐藏图层
+										159 row 路径
+											160 button 折叠 路径
+											161 text 路径
+											162 button 锁定图层
+											163 button 隐藏图层
+										164 row 路径
+											165 button 折叠 路径
+											166 text 路径
+											167 button 锁定图层
+											168 button 隐藏图层
+										169 row 路径
+											170 button 折叠 路径
+											171 text 路径
+											172 button 锁定图层
+											173 button 隐藏图层
+										174 row 路径
+											175 button 折叠 路径
+											176 text 路径
+											177 button 锁定图层
+											178 button 隐藏图层
+										179 row 路径
+											180 button 折叠 路径
+											181 text 路径
+											182 button 锁定图层
+											183 button 隐藏图层
+							184 button (disabled) 编组
+							185 button (disabled) 复制
+							186 splitter Description: 调整图层面板宽度, Value: 240
+						187 splitter Description: 调整面板宽度: 图层面板, Value: 248
+					188 container
+						189 container 源文件状态
+							190 container 导入兼容提示
+								191 disclosure triangle 7 项导入兼容提示
+									192 text 7
+									193 text  项导入兼容提示
+								194 button 关闭导入提示
+						195 container 设计画布编辑器
+							196 container 画布高清显示
+								197 text WebGPU · 清晰
+							198 container 设计画布
+								199 text 拼搭样式二备份
+								200 text 拼搭样式二
+								201 text 画板备份 11
+								202 text 画板备份 10
+								203 text 画板备份 9
+								204 text 画板备份 6
+							205 container
+								206 scroll bar Description: 水平画布滚动条, Value: 50
+								207 scroll bar Description: 垂直画布滚动条, Value: 50
+						208 toolbar 设计工具
+							209 container
+								210 toggle button Description: 选择, Value: 1
+								211 pop-up button 移动工具
+							212 container
+								213 toggle button Description: 画板, Value: 0
+								214 pop-up button 区域工具
+							215 container
+								216 toggle button Description: 矩形, Value: 0
+								217 pop-up button 形状工具
+							218 container
+								219 toggle button Description: 钢笔, Value: 0
+								220 pop-up button 绘图工具
+							221 toggle button Description: 评论, Value: 0
+							222 toggle button Description: 文字, Value: 0
+							223 container
+								224 toggle button Description: 橡皮, Value: 0
+								225 pop-up button 实用工具
+							226 button (disabled) 撤销
+							227 button (disabled) 重做
+							228 pop-up button 排列与编辑
+					229 container
+						230 splitter Description: 调整面板宽度: 属性面板, Value: 280
+						231 tab group 属性工作区
+							232 tab (selected) 设计, Value: 1
+							233 tab (settable, integer) 原型, Value: 0
+						234 disclosure triangle Description: 缩放与视图设置, Help: 6.2%⌄
+							235 text 6.2
+							236 text %
+							237 text ⌄
+						238 container 设计
+							239 container
+								240 text 属性
+								241 heading 页面, Value: 3
+									242 text 页面
+								243 container
+									244 colour well Description: 页面背景, Value: rgb 1.00000 1.00000 1.00000 1
+									245 button Description: 吸取页面背景, Help: 从画布取样
+									246 text 画布背景
+								247 Tick box 显示网格, Value: 0
+								248 Tick box 智能吸附, Value: 1
+								249 text ⌘
+								250 heading 为想法留一点空间, Value: 3
+									251 text 为想法留一点空间
+								252 text 选中图层，探索它的颜色、形状与质感。
+								253 definition list
+									254 container 选择 / 平移
+										255 text 选择 / 平移
+									256 text V / H
+									257 container 矩形 / 椭圆
+										258 text 矩形 / 椭圆
+									259 text R / O
+									260 container 画板 / 钢笔
+										261 text 画板 / 钢笔
+									262 text F / P
+									263 container 编组
+										264 text 编组
+									265 text ⌘ G
+									266 container 深层选择
+										267 text 深层选择
+									268 text ⌘ 点击
+									269 container 适合画布
+										270 text 适合画布
+									271 text ⇧ 1
+								272 text 独立工作空间 · 本地优先
+					273 button AI / MCP
+					274 text 设计已打开
+	275 close button
+	276 full screen button Help: this button also has an action to zoom the window, Secondary Actions: zoom the window
+	277 minimise button
+278 menu bar
+	279 FutureoxSourceCapacityV6
+	280 文件
+	281 编辑
+	282 对象
+	283 视图
+	284 自动化
+	285 窗口
+
+The focused UI element is 3 HTML content Futureox Design · 设计工作室, URL: design-app://app/index.html

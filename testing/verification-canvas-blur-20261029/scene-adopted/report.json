@@ -1,0 +1,709 @@
+{
+  "profiling": false,
+  "status": "passed",
+  "cases": [
+    {
+      "name": "117-overview",
+      "options": {
+        "pageId": "04FFEF29-E913-4B13-834C-D8576EC06381",
+        "width": 256,
+        "height": 192,
+        "view": {
+          "x": 102.375,
+          "y": -89.125,
+          "zoom": 0.25
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": true
+      },
+      "packetNodes": 293,
+      "integratedBlur": true,
+      "runs": [
+        [
+          {
+            "wallMs": 234.30000007152557,
+            "graphMs": 39.39999997615814,
+            "finishMs": 174,
+            "draws": 2441,
+            "pixels": 4649360,
+            "peakBytes": 56002688,
+            "canvasBlurPasses": 0
+          },
+          {
+            "wallMs": 217.89999997615814,
+            "graphMs": 38.300000071525574,
+            "finishMs": 161.79999995231628,
+            "draws": 2441,
+            "pixels": 4649360,
+            "peakBytes": 56002688,
+            "canvasBlurPasses": 0
+          },
+          {
+            "wallMs": 211,
+            "graphMs": 40.699999928474426,
+            "finishMs": 152.80000007152557,
+            "draws": 2441,
+            "pixels": 4649360,
+            "peakBytes": 56002688,
+            "canvasBlurPasses": 0
+          }
+        ],
+        [
+          {
+            "wallMs": 220.29999995231628,
+            "graphMs": 41.5,
+            "finishMs": 154.70000004768372,
+            "draws": 2441,
+            "pixels": 4649360,
+            "peakBytes": 56002688,
+            "canvasBlurPasses": 6
+          },
+          {
+            "wallMs": 203.60000002384186,
+            "graphMs": 42.5,
+            "finishMs": 141.5,
+            "draws": 2441,
+            "pixels": 4649360,
+            "peakBytes": 56002688,
+            "canvasBlurPasses": 6
+          },
+          {
+            "wallMs": 182.79999995231628,
+            "graphMs": 36.700000047683716,
+            "finishMs": 127.79999995231628,
+            "draws": 2441,
+            "pixels": 4649360,
+            "peakBytes": 56002688,
+            "canvasBlurPasses": 6
+          }
+        ]
+      ],
+      "cold": [
+        {
+          "wallMs": 972.6000000238419,
+          "graphMs": 693.3000000715256,
+          "finishMs": 252.39999997615814,
+          "draws": 2881,
+          "pixels": 4649360,
+          "peakBytes": 56002688,
+          "canvasBlurPasses": 0
+        },
+        {
+          "wallMs": 321.89999997615814,
+          "graphMs": 158.80000007152557,
+          "finishMs": 143,
+          "draws": 2881,
+          "pixels": 4649360,
+          "peakBytes": 56002688,
+          "canvasBlurPasses": 6
+        }
+      ],
+      "difference": {
+        "changedBits": 37108,
+        "maxEncoded": 8.715676735882028e-8,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      },
+      "exactOutput": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      }
+    },
+    {
+      "name": "117-detail",
+      "options": {
+        "pageId": "04FFEF29-E913-4B13-834C-D8576EC06381",
+        "width": 256,
+        "height": 192,
+        "view": {
+          "x": -190.125,
+          "y": -457.625,
+          "zoom": 1
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": true
+      },
+      "packetNodes": 47,
+      "integratedBlur": true,
+      "runs": [
+        [
+          {
+            "wallMs": 55.800000071525574,
+            "graphMs": 6.700000047683716,
+            "finishMs": 36.89999997615814,
+            "draws": 329,
+            "pixels": 4799806,
+            "peakBytes": 59705076,
+            "canvasBlurPasses": 0
+          },
+          {
+            "wallMs": 56.800000071525574,
+            "graphMs": 6.600000023841858,
+            "finishMs": 39.200000047683716,
+            "draws": 329,
+            "pixels": 4799806,
+            "peakBytes": 59705076,
+            "canvasBlurPasses": 0
+          },
+          {
+            "wallMs": 56.39999997615814,
+            "graphMs": 6.200000047683716,
+            "finishMs": 38.699999928474426,
+            "draws": 329,
+            "pixels": 4799806,
+            "peakBytes": 59705076,
+            "canvasBlurPasses": 0
+          }
+        ],
+        [
+          {
+            "wallMs": 39.700000047683716,
+            "graphMs": 6.5,
+            "finishMs": 23,
+            "draws": 329,
+            "pixels": 4799806,
+            "peakBytes": 59705076,
+            "canvasBlurPasses": 6
+          },
+          {
+            "wallMs": 40.299999952316284,
+            "graphMs": 6.399999976158142,
+            "finishMs": 23.299999952316284,
+            "draws": 329,
+            "pixels": 4799806,
+            "peakBytes": 59705076,
+            "canvasBlurPasses": 6
+          },
+          {
+            "wallMs": 39.700000047683716,
+            "graphMs": 6.399999976158142,
+            "finishMs": 22.800000071525574,
+            "draws": 329,
+            "pixels": 4799806,
+            "peakBytes": 59705076,
+            "canvasBlurPasses": 6
+          }
+        ]
+      ],
+      "cold": [
+        {
+          "wallMs": 548.1999999284744,
+          "graphMs": 468.39999997615814,
+          "finishMs": 68.90000009536743,
+          "draws": 401,
+          "pixels": 4799806,
+          "peakBytes": 59705076,
+          "canvasBlurPasses": 0
+        },
+        {
+          "wallMs": 149.30000007152557,
+          "graphMs": 102.70000004768372,
+          "finishMs": 34.10000002384186,
+          "draws": 401,
+          "pixels": 4799806,
+          "peakBytes": 59705076,
+          "canvasBlurPasses": 6
+        }
+      ],
+      "difference": {
+        "changedBits": 36371,
+        "maxEncoded": 7.430366022465051e-8,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      },
+      "exactOutput": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      }
+    },
+    {
+      "name": "117-zoom400",
+      "options": {
+        "pageId": "04FFEF29-E913-4B13-834C-D8576EC06381",
+        "width": 256,
+        "height": 192,
+        "view": {
+          "x": -760.125,
+          "y": -1831.625,
+          "zoom": 4
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": true
+      },
+      "packetNodes": 18,
+      "integratedBlur": true,
+      "runs": [
+        [
+          {
+            "wallMs": 112.29999995231628,
+            "graphMs": 7.600000023841858,
+            "finishMs": 100.79999995231628,
+            "draws": 193,
+            "pixels": 13506103,
+            "peakBytes": 64272416,
+            "canvasBlurPasses": 0
+          },
+          {
+            "wallMs": 108.09999990463257,
+            "graphMs": 6.100000023841858,
+            "finishMs": 98.19999992847443,
+            "draws": 193,
+            "pixels": 13506103,
+            "peakBytes": 64272416,
+            "canvasBlurPasses": 0
+          },
+          {
+            "wallMs": 108.79999995231628,
+            "graphMs": 6.100000023841858,
+            "finishMs": 98.80000007152557,
+            "draws": 193,
+            "pixels": 13506103,
+            "peakBytes": 64272416,
+            "canvasBlurPasses": 0
+          }
+        ],
+        [
+          {
+            "wallMs": 59.799999952316284,
+            "graphMs": 6.899999976158142,
+            "finishMs": 48.89999997615814,
+            "draws": 193,
+            "pixels": 13506103,
+            "peakBytes": 64272416,
+            "canvasBlurPasses": 6
+          },
+          {
+            "wallMs": 59.5,
+            "graphMs": 6.5,
+            "finishMs": 49,
+            "draws": 193,
+            "pixels": 13506103,
+            "peakBytes": 64272416,
+            "canvasBlurPasses": 6
+          },
+          {
+            "wallMs": 60.39999997615814,
+            "graphMs": 6.899999976158142,
+            "finishMs": 49.10000002384186,
+            "draws": 193,
+            "pixels": 13506103,
+            "peakBytes": 64272416,
+            "canvasBlurPasses": 6
+          }
+        ]
+      ],
+      "cold": [
+        {
+          "wallMs": 260.89999997615814,
+          "graphMs": 117.19999992847443,
+          "finishMs": 139.80000007152557,
+          "draws": 245,
+          "pixels": 13506103,
+          "peakBytes": 64272416,
+          "canvasBlurPasses": 0
+        },
+        {
+          "wallMs": 85.89999997615814,
+          "graphMs": 28.899999976158142,
+          "finishMs": 52.90000009536743,
+          "draws": 245,
+          "pixels": 13506103,
+          "peakBytes": 64272416,
+          "canvasBlurPasses": 6
+        }
+      ],
+      "difference": {
+        "changedBits": 111705,
+        "maxEncoded": 1.7806708874079646e-7,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      },
+      "exactOutput": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      }
+    },
+    {
+      "name": "117-zoom950",
+      "options": {
+        "pageId": "04FFEF29-E913-4B13-834C-D8576EC06381",
+        "width": 256,
+        "height": 192,
+        "view": {
+          "x": -1805.125,
+          "y": -4350.625,
+          "zoom": 9.5
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": true
+      },
+      "packetNodes": 14,
+      "integratedBlur": true,
+      "runs": [
+        [
+          {
+            "wallMs": 565.8000000715256,
+            "graphMs": 8.700000047683716,
+            "finishMs": 552.8999999761581,
+            "draws": 226,
+            "pixels": 37485154,
+            "peakBytes": 171378864,
+            "canvasBlurPasses": 0
+          },
+          {
+            "wallMs": 497.7000000476837,
+            "graphMs": 8.599999904632568,
+            "finishMs": 484.60000002384186,
+            "draws": 226,
+            "pixels": 37485154,
+            "peakBytes": 171378864,
+            "canvasBlurPasses": 0
+          },
+          {
+            "wallMs": 476.7999999523163,
+            "graphMs": 8.799999952316284,
+            "finishMs": 463.39999997615814,
+            "draws": 226,
+            "pixels": 37485154,
+            "peakBytes": 171378864,
+            "canvasBlurPasses": 0
+          }
+        ],
+        [
+          {
+            "wallMs": 254,
+            "graphMs": 9.299999952316284,
+            "finishMs": 240.20000004768372,
+            "draws": 226,
+            "pixels": 37485154,
+            "peakBytes": 171378864,
+            "canvasBlurPasses": 6
+          },
+          {
+            "wallMs": 228.39999997615814,
+            "graphMs": 8.700000047683716,
+            "finishMs": 215.39999997615814,
+            "draws": 226,
+            "pixels": 37485154,
+            "peakBytes": 171378864,
+            "canvasBlurPasses": 6
+          },
+          {
+            "wallMs": 242.60000002384186,
+            "graphMs": 7.700000047683716,
+            "finishMs": 230,
+            "draws": 226,
+            "pixels": 37485154,
+            "peakBytes": 171378864,
+            "canvasBlurPasses": 6
+          }
+        ]
+      ],
+      "cold": [
+        {
+          "wallMs": 589.1000000238419,
+          "graphMs": 66.5,
+          "finishMs": 518.5,
+          "draws": 266,
+          "pixels": 37485154,
+          "peakBytes": 171378864,
+          "canvasBlurPasses": 0
+        },
+        {
+          "wallMs": 296,
+          "graphMs": 31.200000047683716,
+          "finishMs": 259.89999997615814,
+          "draws": 266,
+          "pixels": 37485154,
+          "peakBytes": 171378864,
+          "canvasBlurPasses": 6
+        }
+      ],
+      "difference": {
+        "changedBits": 122693,
+        "maxEncoded": 2.6528809404791076e-7,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      },
+      "exactOutput": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      }
+    },
+    {
+      "name": "fig-cards",
+      "options": {
+        "pageId": "322ab0bf-43bb-4f3d-91ab-a7e64eb5f2b9",
+        "width": 256,
+        "height": 192,
+        "view": {
+          "x": -317.125,
+          "y": 221.375,
+          "zoom": 1
+        },
+        "rasterProfile": "analytic",
+        "transparent": true
+      },
+      "packetNodes": 31,
+      "integratedBlur": false,
+      "runs": [
+        [
+          {
+            "wallMs": 7.899999976158142,
+            "graphMs": 1.7999999523162842,
+            "finishMs": 4,
+            "draws": 58,
+            "pixels": 526848,
+            "peakBytes": 5803276,
+            "canvasBlurPasses": 0
+          },
+          {
+            "wallMs": 7.5,
+            "graphMs": 1.6999999284744263,
+            "finishMs": 4.100000023841858,
+            "draws": 58,
+            "pixels": 526848,
+            "peakBytes": 5803276,
+            "canvasBlurPasses": 0
+          },
+          {
+            "wallMs": 7.600000023841858,
+            "graphMs": 1.600000023841858,
+            "finishMs": 4.200000047683716,
+            "draws": 58,
+            "pixels": 526848,
+            "peakBytes": 5803276,
+            "canvasBlurPasses": 0
+          }
+        ],
+        [
+          {
+            "wallMs": 8.100000023841858,
+            "graphMs": 2,
+            "finishMs": 4.299999952316284,
+            "draws": 58,
+            "pixels": 526848,
+            "peakBytes": 5803276,
+            "canvasBlurPasses": 0
+          },
+          {
+            "wallMs": 7.5,
+            "graphMs": 1.600000023841858,
+            "finishMs": 4,
+            "draws": 58,
+            "pixels": 526848,
+            "peakBytes": 5803276,
+            "canvasBlurPasses": 0
+          },
+          {
+            "wallMs": 7.299999952316284,
+            "graphMs": 1.7000000476837158,
+            "finishMs": 3.799999952316284,
+            "draws": 58,
+            "pixels": 526848,
+            "peakBytes": 5803276,
+            "canvasBlurPasses": 0
+          }
+        ]
+      ],
+      "cold": [
+        {
+          "wallMs": 29.5,
+          "graphMs": 11,
+          "finishMs": 16.399999976158142,
+          "draws": 78,
+          "pixels": 526848,
+          "peakBytes": 5803276,
+          "canvasBlurPasses": 0
+        },
+        {
+          "wallMs": 31.199999928474426,
+          "graphMs": 10.600000023841858,
+          "finishMs": 18.700000047683716,
+          "draws": 78,
+          "pixels": 526848,
+          "peakBytes": 5803276,
+          "canvasBlurPasses": 0
+        }
+      ],
+      "difference": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      },
+      "exactOutput": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      }
+    }
+  ],
+  "timings": [
+    {
+      "name": "117-overview",
+      "controlMs": 217.89999997615814,
+      "candidateMs": 203.60000002384186,
+      "improvement": 0.06562643393245038,
+      "candidatePasses": 6
+    },
+    {
+      "name": "117-detail",
+      "controlMs": 56.39999997615814,
+      "candidateMs": 39.700000047683716,
+      "improvement": 0.2960992896371274,
+      "candidatePasses": 6
+    },
+    {
+      "name": "117-zoom400",
+      "controlMs": 108.79999995231628,
+      "candidateMs": 59.799999952316284,
+      "improvement": 0.4503676472562059,
+      "candidatePasses": 6
+    },
+    {
+      "name": "117-zoom950",
+      "controlMs": 497.7000000476837,
+      "candidateMs": 242.60000002384186,
+      "improvement": 0.5125577657211196,
+      "candidatePasses": 6
+    },
+    {
+      "name": "fig-cards",
+      "controlMs": 7.600000023841858,
+      "candidateMs": 7.5,
+      "improvement": 0.0131578978326512,
+      "candidatePasses": 0
+    }
+  ],
+  "scope": "Actual 117/FIG packets, production display graph, same source toggle. Test-only final float readback; no input latency/FPS claim.",
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "fallback": false
+  },
+  "sources": [
+    {
+      "name": "fig",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "documentSha256": "ba96034cfb9bcb5dc8145e4637a91db8281a2c003219a8ddf0055d50dc6849f3",
+      "nodes": 19277,
+      "roots": [
+        {
+          "page": "322ab0bf-43bb-4f3d-91ab-a7e64eb5f2b9",
+          "id": "4e2679ed-9922-4460-890f-6855b284bcda",
+          "name": "21_404_Error",
+          "kind": "frame",
+          "width": 1440,
+          "height": 1030,
+          "transform": [
+            1,
+            0,
+            0,
+            1,
+            13937,
+            -271
+          ]
+        },
+        {
+          "page": "322ab0bf-43bb-4f3d-91ab-a7e64eb5f2b9",
+          "id": "9caf7d10-46a7-4002-9fc0-b86de2561a6f",
+          "name": "20_Sign_Up",
+          "kind": "frame",
+          "width": 1440,
+          "height": 1030,
+          "transform": [
+            1,
+            0,
+            0,
+            1,
+            12397,
+            860
+          ]
+        },
+        {
+          "page": "322ab0bf-43bb-4f3d-91ab-a7e64eb5f2b9",
+          "id": "c495f6a1-c6c7-4fd5-88c3-19611cf33a6d",
+          "name": "19_Sign_In",
+          "kind": "frame",
+          "width": 1440,
+          "height": 1030,
+          "transform": [
+            1,
+            0,
+            0,
+            1,
+            12397,
+            -271
+          ]
+        },
+        {
+          "page": "322ab0bf-43bb-4f3d-91ab-a7e64eb5f2b9",
+          "id": "dcd0c8c1-f146-4d44-94d4-60fe139e9adb",
+          "name": "18_File_Manager_Upload_File",
+          "kind": "frame",
+          "width": 1440,
+          "height": 1030,
+          "transform": [
+            1,
+            0,
+            0,
+            1,
+            10857,
+            2059
+          ]
+        },
+        {
+          "page": "322ab0bf-43bb-4f3d-91ab-a7e64eb5f2b9",
+          "id": "1e9d5817-7872-4503-8ff6-84a2cebda3bd",
+          "name": "16_File_Manager_Card",
+          "kind": "frame",
+          "width": 1440,
+          "height": 1030,
+          "transform": [
+            1,
+            0,
+            0,
+            1,
+            10857,
+            860
+          ]
+        }
+      ]
+    },
+    {
+      "name": "117",
+      "sourceSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "documentSha256": "4cdb2ba3c16c1e7a18a617f93ac2daaf2b8b22c3b6df0522a4ae187d29adf426",
+      "nodes": 752,
+      "roots": [
+        {
+          "page": "04FFEF29-E913-4B13-834C-D8576EC06381",
+          "id": "ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+          "name": "117",
+          "kind": "frame",
+          "width": 1922,
+          "height": 1080,
+          "transform": [
+            1,
+            0,
+            0,
+            1,
+            -410,
+            358
+          ]
+        }
+      ]
+    }
+  ],
+  "current": "fig-cards"
+}

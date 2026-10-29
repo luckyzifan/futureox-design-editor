@@ -1,0 +1,49 @@
+{
+  "scope": "actual Sketch 2025.1.3 export vs production Rust CPU; synthetic opaque bitmap fixture; no GUI or hardware GPU acceptance",
+  "comparisons": [
+    {
+      "name": "neutral",
+      "size": [
+        128,
+        128
+      ],
+      "maxChannelError": 0,
+      "differentPixels": 0,
+      "sketchSha256": "9d205b8a6b0e1d76852a9af3473ede1af7497a1214a7d0c31c28f5620fefa4c7",
+      "kernelSha256": "3cbb4190ae4601f25a1f0c9350ee7677221b25375063f07db5c6e5f715003526"
+    },
+    {
+      "name": "saturation0",
+      "size": [
+        128,
+        128
+      ],
+      "maxChannelError": 0,
+      "differentPixels": 0,
+      "sketchSha256": "6a4595de8badcec8f2c7762601f423277f6fed4e5f37e9a341d18cc54ee8c3ca",
+      "kernelSha256": "29017e514d2dab6d8dcefe2cc11b6db5cb9cffc4ae4a77a7d5a938dd0240bee7"
+    },
+    {
+      "name": "contrast14",
+      "size": [
+        128,
+        128
+      ],
+      "maxChannelError": 0,
+      "differentPixels": 0,
+      "sketchSha256": "e8ce4ccd8c1945db8aa9ecdb92c819e5d0e7bf35adca365541499bb8b670d55f",
+      "kernelSha256": "a89cdaafb66aab39e2dc08c3355ee9b742788320a700bccfe695afd359d68c35"
+    },
+    {
+      "name": "hue07",
+      "size": [
+        128,
+        128
+      ],
+      "maxChannelError": 0,
+      "differentPixels": 0,
+      "sketchSha256": "92c3f1af9759dcc5ed09a3f479807bf766c9d8226ce216eb8177a74812733243",
+      "kernelSha256": "277bebe2b820fa6bc772fe1d47e23eebd03ea53e0952889d1678889357b97e59"
+    }
+  ]
+}

@@ -1,0 +1,182 @@
+{
+  "status": "passed",
+  "backend": "webgl2",
+  "cases": [
+    {
+      "kind": "gaussian-blur",
+      "angle": 0,
+      "managed": false,
+      "hdr": false,
+      "backend": "webgl2",
+      "changedVsUnfiltered": 2847,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "available": false,
+        "changed": 0,
+        "max": 0,
+        "index": -1,
+        "cpuPixel": [],
+        "gpuPixel": [],
+        "min": null,
+        "maxValue": null
+      }
+    },
+    {
+      "kind": "motion-blur",
+      "angle": 0,
+      "managed": false,
+      "hdr": false,
+      "backend": "webgl2",
+      "changedVsUnfiltered": 1715,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "available": false,
+        "changed": 0,
+        "max": 0,
+        "index": -1,
+        "cpuPixel": [],
+        "gpuPixel": [],
+        "min": null,
+        "maxValue": null
+      }
+    },
+    {
+      "kind": "motion-blur",
+      "angle": 37.5,
+      "managed": false,
+      "hdr": false,
+      "backend": "webgl2",
+      "changedVsUnfiltered": 1795,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "available": false,
+        "changed": 0,
+        "max": 0,
+        "index": -1,
+        "cpuPixel": [],
+        "gpuPixel": [],
+        "min": null,
+        "maxValue": null
+      }
+    },
+    {
+      "kind": "motion-blur",
+      "angle": 90,
+      "managed": false,
+      "hdr": false,
+      "backend": "webgl2",
+      "changedVsUnfiltered": 1258,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "available": false,
+        "changed": 0,
+        "max": 0,
+        "index": -1,
+        "cpuPixel": [],
+        "gpuPixel": [],
+        "min": null,
+        "maxValue": null
+      }
+    },
+    {
+      "kind": "gaussian-blur",
+      "angle": 0,
+      "managed": true,
+      "hdr": false,
+      "backend": "webgl2",
+      "changedVsUnfiltered": 3435,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "available": true,
+        "changed": 0,
+        "max": 0,
+        "index": -1,
+        "cpuPixel": [],
+        "gpuPixel": [],
+        "min": 0,
+        "maxValue": 0.928614616394043
+      }
+    },
+    {
+      "kind": "motion-blur",
+      "angle": 0,
+      "managed": true,
+      "hdr": false,
+      "backend": "webgl2",
+      "changedVsUnfiltered": 1528,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "available": true,
+        "changed": 0,
+        "max": 0,
+        "index": -1,
+        "cpuPixel": [],
+        "gpuPixel": [],
+        "min": 0,
+        "maxValue": 0.9345034956932068
+      }
+    },
+    {
+      "kind": "motion-blur",
+      "angle": 37.5,
+      "managed": true,
+      "hdr": false,
+      "backend": "webgl2",
+      "changedVsUnfiltered": 1844,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "available": true,
+        "changed": 0,
+        "max": 0,
+        "index": -1,
+        "cpuPixel": [],
+        "gpuPixel": [],
+        "min": 0,
+        "maxValue": 0.979649543762207
+      }
+    },
+    {
+      "kind": "motion-blur",
+      "angle": 90,
+      "managed": true,
+      "hdr": false,
+      "backend": "webgl2",
+      "changedVsUnfiltered": 1203,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "available": true,
+        "changed": 0,
+        "max": 0,
+        "index": -1,
+        "cpuPixel": [],
+        "gpuPixel": [],
+        "min": 0,
+        "maxValue": 0.9875533580780029
+      }
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "status": "passed",
+  "scope": "Actual default desktop build, automatic memory policy, real Sketch import and page browsing; no full-page motion claim",
+  "sourceHash": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+  "pid": 54817,
+  "capacity": {
+    "memoryBytes": 2103656448
+  },
+  "pages": [
+    "浅色",
+    "深色",
+    "控件"
+  ],
+  "rows": [
+    {
+      "height": 32,
+      "align": "left"
+    },
+    {
+      "height": 32,
+      "align": "left"
+    },
+    {
+      "height": 32,
+      "align": "left"
+    }
+  ],
+  "renderErrors": [],
+  "loadedPage": "控件",
+  "nodes": 773,
+  "lightPageRoots": 209,
+  "cleanup": {
+    "forced": false,
+    "exited": true
+  }
+}

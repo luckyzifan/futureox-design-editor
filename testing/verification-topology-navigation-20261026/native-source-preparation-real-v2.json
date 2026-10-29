@@ -1,0 +1,18 @@
+{
+  "scope": "native stream admission and compiler only; not GPU pixels",
+  "results": [
+    {
+      "stage": "native-stream-load",
+      "milliseconds": 11489.014875,
+      "error": null,
+      "receipt": true,
+      "settings": "{\"documentSpace\":\"srgb\",\"referenceWhiteNits\":203.0,\"peakLuminanceNits\":1000.0}"
+    },
+    {
+      "stage": "native-first-tile-compile",
+      "milliseconds": 16122.774082999998,
+      "error": null,
+      "bytes": 227344
+    }
+  ]
+}

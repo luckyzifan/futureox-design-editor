@@ -1,0 +1,51 @@
+{
+  "observed_at": "2026-10-28T20:04:49.953117+08:00",
+  "head": "2954a77fe22a12f806d91351ec95e5186f9b562a",
+  "scope": "Current dirty worktree snapshot at report completion, not proof of running V43 build and not an immutable baseline for earlier historical measurements. Runtime sources were not modified by this analysis.",
+  "sources": {
+    "frontend/design-client/src/Canvas.tsx": "e97ae6425f56f25842fb516a35c5ae95d0ccbb2cc127afcd351950cc3c9788b7",
+    "frontend/design-client/src/App.tsx": "ba595d24cc446abaa263640e37d313ce6ddf2ab56333b3e29200e960f39015c6",
+    "frontend/design-client/src/kernel/Surface.tsx": "3338f5384bb06827685918d2193c66cebe8fa7bba9db8935faa5c8b5d4c8cc86",
+    "frontend/design-client/src/kernel/ProgressiveSurface.tsx": "3ac12a521bc47c8f3dcaf4e71f6d86e63213751b6dac746e129a496bbedb6c0a",
+    "frontend/design-client/src/kernel/NativeSourceSurface.tsx": "208ddd63881cba3caecdfd112d1c13d367d5e18edd1465fff34eceec08652ff0",
+    "frontend/design-client/src/kernel/navigation-zoom.ts": "6e675fff5a2a6ea19fdf90ecc7823d41541f53db2aefede300737a58a161350d",
+    "frontend/design-client/src/kernel/use-navigation-zoom.ts": "80a3a589dd5ca00e7cf127e2d3c6f083c3b08fe55e062e5fca998750402ef231",
+    "frontend/design-client/src/kernel/canvas-raster-plan.ts": "c8d034329d20f1ae5d4039ddf027912580899cdaf919e4527fa4e9b39ae4311c",
+    "frontend/design-client/src/kernel/render-worker.ts": "f25c1515f7074dea69bbf90bfbd81dcc4ab7a29e0ec82bf5f66ce9e22e2db4c4",
+    "frontend/design-client/src/kernel/tile-plan-aligned.ts": "58eae232314332dd8db0bebd5ccde425c978fd925b4078871fac5134826d7cfa",
+    "frontend/design-client/src/kernel/tile-cache.ts": "920ab1c2182452121b21ff95f1f7d9fe0588c54bdca9db40c4449a5d91c2d027",
+    "frontend/design-client/src/kernel/gpu/renderer.ts": "6af77b4de861ab3655d52b1da940f4ae0b875ad81305693b492c1cdb70d55fb3",
+    "frontend/design-client/src/kernel/gpu/resident-presenter.ts": "4bd1e2ed9c5b7716fa866f3b070309f15f0b2c5b308940edfefb417fcb64bdda",
+    "frontend/design-client/src/kernel/gpu/presented-fragment-quality.ts": "ef555c6921b1a042bd21764b85bd897edd4d1be6e45ae27577c12c4827b7b59a",
+    "frontend/design-client/src/kernel/gpu/renderer-optimizations.ts": "6510487ed83fb1e9ee74ab6c8c05f0616f0a446888454a7edd90a39a868a6244",
+    "design-studio/crates/design-kernel/src/gpu.rs": "a1fc0d978bee82bceb243e578d41b7889e5d9e062e2bb5e371faa73a10a6f52f",
+    "design-studio/crates/design-kernel/src/geometry_snapshot.rs": "3e06f3846381d6e55bf487c11c517b0c46f4a1848ed203a3cfa67eb26e184a13",
+    "design-studio/crates/design-desktop-backend/src/large_document/canvas_snapshot.rs": "ce2d5e2c23d842e1b2b92048e6e67d38ec96691b1002430ae399fb118aaf4405",
+    "../core/figma-wasm-analysis/GLUE-JS-MINING.md": "c21d1c8d1a0832994e0390ee9c60c66f608b03450e1614fd37656959086dbd72",
+    "../core/figma-wasm-analysis/BIG-FILE-PIPELINE.md": "283e6fb01c4748d1e511ebc79eb3e50e0778eead17035a54ff4224b916706413",
+    "../core/figma-wasm-analysis/TILE-VRAM-TELEMETRY-FINAL.md": "28412dc94b85e969cdb8a15c6fa233d45e29ce7948bbaeefa47f432a46aa1858",
+    "../core/figma-wasm-analysis/RENDER-DETAILS-2026-10-26.md": "6a1b689df8eec899c5e449a0353f26ba8e7ebaf09c91180162bcbd203d102d01",
+    "testing/verification-tile-preparation-20261026/README.md": "20db99d01dee885148c917c56acd9198d6beea2482773da9e7c1bb089ee9027e",
+    "testing/verification-topology-navigation-20261026/README.md": "829abe5a3b788b7e8c5f4f5ac78c6c186b1ea2033b1d981237d2d8707cef9ad1"
+  },
+  "checks": {
+    "typecheck": {
+      "exit_code": 1,
+      "diagnostic": "App.tsx(1246,13) TS2322: nativeSource does not exist on Canvas props"
+    },
+    "targeted_vitest": {
+      "files": 4,
+      "passed": 85,
+      "exit_code": 0,
+      "tests": [
+        "canvas-raster-plan",
+        "navigation-zoom",
+        "progressive-quality",
+        "presented-fragment-quality"
+      ]
+    },
+    "gui": "Read-only V43 AX and screenshot: 100%, WebGPU ready. No performance measurement or build identity verification."
+  },
+  "report_sha256": "e5a54f6a4d0b500fc0ef8f777ff3c455673fbaa31acef6febd7b086192928d8b",
+  "local_report_links_valid": true
+}

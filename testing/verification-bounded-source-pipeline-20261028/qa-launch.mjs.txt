@@ -1,0 +1,6 @@
+import fs from 'node:fs';
+const log=fs.createWriteStream('/tmp/futureox-bounded-pipeline-host-20261028/host.log',{flags:'a'});
+for(const name of ['log','warn','error']){const original=console[name].bind(console);console[name]=(...args)=>{log.write(args.map(v=>typeof v==='string'?v:JSON.stringify(v)).join(' ')+'\n');original(...args)}}
+process.env.CORE_RENDER_DIAGNOSTICS='detail';
+process.argv.push('--desktop-isolated-profile','--desktop-render-check=source',"--desktop-render-check-root=/tmp/futureox-bounded-pipeline-qa-renderer-20261028","--desktop-render-check-fixture=/Users/Apple/.codex/worktrees/bounded-source-pipeline/design-kernel/testing/verification-bounded-source-pipeline-20261028/fixture.json");
+await import('./main.mjs');

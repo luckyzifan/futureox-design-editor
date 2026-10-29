@@ -1,0 +1,30 @@
+{
+  "status": "passed",
+  "scope": "hardware texture readback, complete f32 words; native row/full-color equivalence separately covered by Rust tests; no GUI FPS claim",
+  "cases": [
+    {
+      "case": "full-versus-row-upload",
+      "width": 73,
+      "height": 67,
+      "words": 19564,
+      "differences": 0
+    },
+    {
+      "case": "real-topology-PNG",
+      "width": 5162,
+      "height": 2784,
+      "words": 57484032,
+      "differences": 0,
+      "strips": 56,
+      "maxStripBytes": 4129600,
+      "wallMs": 4912.799999952316
+    }
+  ],
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "fallback": false
+  },
+  "sourceSha256": "88ebe42c99fdf37379c9429e2452bee055382f9520b8d9797883329a669179ba",
+  "legacyFullDecodeRejected": true
+}

@@ -1,0 +1,102 @@
+[
+  {
+    "pid": 2555,
+    "port": "60218",
+    "report": "testing/verification-render-work-reduction-20261028/hardware-v1.json"
+  },
+  {
+    "pid": 4797,
+    "port": "60225",
+    "report": "testing/verification-render-work-reduction-20261028/edge-final.json"
+  },
+  {
+    "pid": 6104,
+    "port": "60219",
+    "report": "testing/verification-render-work-reduction-20261028/hardware-v2.json"
+  },
+  {
+    "pid": 11374,
+    "port": "60220",
+    "report": "testing/verification-render-work-reduction-20261028/hardware-v3.json"
+  },
+  {
+    "pid": 11458,
+    "port": "60226",
+    "report": "testing/verification-render-work-reduction-20261028/edge-final2.json"
+  },
+  {
+    "pid": 20331,
+    "port": "60227",
+    "report": "testing/verification-render-work-reduction-20261028/edge-final3.json"
+  },
+  {
+    "pid": 27794,
+    "port": "60228",
+    "report": "testing/verification-render-work-reduction-20261028/synthetic-final.json"
+  },
+  {
+    "pid": 42756,
+    "port": "60221",
+    "report": "testing/verification-render-work-reduction-20261028/hardware-v5.json"
+  },
+  {
+    "pid": 45964,
+    "port": "60230",
+    "report": "testing/verification-render-work-reduction-20261028/synthetic-adopted.json"
+  },
+  {
+    "pid": 45965,
+    "port": "60229",
+    "report": "testing/verification-render-work-reduction-20261028/edge-adopted.json"
+  },
+  {
+    "pid": 45966,
+    "port": "60231",
+    "report": "testing/verification-render-work-reduction-20261028/real-adopted.json"
+  },
+  {
+    "pid": 61479,
+    "port": "60232",
+    "report": "testing/verification-render-work-reduction-20261028/synthetic-release.json"
+  },
+  {
+    "pid": 61482,
+    "port": "60233",
+    "report": "testing/verification-render-work-reduction-20261028/real-release.json"
+  },
+  {
+    "pid": 61689,
+    "port": "60234",
+    "report": "testing/verification-render-work-reduction-20261028/edge-release.json"
+  },
+  {
+    "pid": 65575,
+    "port": "60222",
+    "report": "testing/verification-render-work-reduction-20261028/hardware-v6.json"
+  },
+  {
+    "pid": 66731,
+    "port": "60235",
+    "report": "testing/verification-render-work-reduction-20261028/synthetic-default.json"
+  },
+  {
+    "pid": 66739,
+    "port": "60236",
+    "report": "testing/verification-render-work-reduction-20261028/real-default.json"
+  },
+  {
+    "pid": 66840,
+    "port": "60237",
+    "report": "testing/verification-render-work-reduction-20261028/edge-default.json"
+  },
+  {
+    "pid": 72342,
+    "port": "60223",
+    "report": "testing/verification-render-work-reduction-20261028/real-v6.json"
+  },
+  {
+    "pid": 80353,
+    "port": "60224",
+    "report": "testing/verification-render-work-reduction-20261028/real-v7.json"
+  }
+]

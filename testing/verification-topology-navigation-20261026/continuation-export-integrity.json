@@ -1,0 +1,28 @@
+{
+  "source": "/Users/Apple/Downloads/拓扑素材.sketch",
+  "export": "/Users/Apple/Downloads/topology-verified-20261027.sketch",
+  "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+  "exportSha256": "498098eb5e390e7088245c267a01896b1b832ad61098faddb1fba35f5ac8da86",
+  "sourceMembers": 64,
+  "exportMembers": 64,
+  "missing": [],
+  "extra": [],
+  "changedMembers": [],
+  "pages": [
+    {
+      "member": "pages/b5e640b2-e777-404c-b121-8e866696d553.json",
+      "name": "浅色",
+      "roots": 209
+    },
+    {
+      "member": "pages/FD2E5BD9-6AE9-41F7-A2BB-F30E54459927.json",
+      "name": "深色",
+      "roots": 55
+    },
+    {
+      "member": "pages/9A250616-D3C6-4F06-A6C9-F2CE1DA3611D.json",
+      "name": "控件",
+      "roots": 42
+    }
+  ]
+}

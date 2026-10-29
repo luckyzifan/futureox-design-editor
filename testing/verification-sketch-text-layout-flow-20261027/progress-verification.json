@@ -1,0 +1,158 @@
+{
+  "fixedKernelModules": 31,
+  "clientBeforeLastRustCleanup": {
+    "firstRun": {
+      "tests": 54,
+      "passed": 52,
+      "failed": 2
+    },
+    "followupRetest": {
+      "tests": 4,
+      "passed": 4
+    },
+    "combinedRerun": "PENDING"
+  },
+  "nativeSevenArtboards": {
+    "top": {
+      "nativeBounds": [
+        21,
+        28,
+        65,
+        44
+      ],
+      "portableBounds": [
+        21,
+        27,
+        65,
+        42
+      ],
+      "maxRGBA": 255,
+      "meanRGBA": 0.6189583333333334,
+      "nativeReexportMaxRGBA": 0,
+      "nativeReexportChangedChannels": 0
+    },
+    "center": {
+      "nativeBounds": [
+        21,
+        82,
+        65,
+        98
+      ],
+      "portableBounds": [
+        21,
+        82,
+        65,
+        97
+      ],
+      "maxRGBA": 171,
+      "meanRGBA": 0.26197916666666665,
+      "nativeReexportMaxRGBA": 0,
+      "nativeReexportChangedChannels": 0
+    },
+    "bottom": {
+      "nativeBounds": [
+        21,
+        138,
+        65,
+        154
+      ],
+      "portableBounds": [
+        21,
+        137,
+        65,
+        152
+      ],
+      "maxRGBA": 255,
+      "meanRGBA": 0.6189583333333334,
+      "nativeReexportMaxRGBA": 0,
+      "nativeReexportChangedChannels": 0
+    },
+    "paragraphs": {
+      "nativeBounds": [
+        20,
+        28,
+        219,
+        120
+      ],
+      "portableBounds": [
+        20,
+        27,
+        220,
+        119
+      ],
+      "maxRGBA": 255,
+      "meanRGBA": 1.9071701388888889,
+      "nativeReexportMaxRGBA": 0,
+      "nativeReexportChangedChannels": 0
+    },
+    "stack": {
+      "nativeBounds": [
+        16,
+        16,
+        224,
+        56
+      ],
+      "portableBounds": [
+        16,
+        16,
+        224,
+        56
+      ],
+      "maxRGBA": 0,
+      "meanRGBA": 0.0,
+      "nativeReexportMaxRGBA": 0,
+      "nativeReexportChangedChannels": 0
+    },
+    "home": {
+      "nativeBounds": [
+        20,
+        100,
+        200,
+        150
+      ],
+      "portableBounds": [
+        20,
+        100,
+        200,
+        150
+      ],
+      "maxRGBA": 130,
+      "meanRGBA": 0.2223726851851852,
+      "nativeReexportMaxRGBA": 0,
+      "nativeReexportChangedChannels": 0
+    },
+    "destination": {
+      "nativeBounds": [
+        0,
+        0,
+        240,
+        180
+      ],
+      "portableBounds": [
+        0,
+        0,
+        240,
+        180
+      ],
+      "maxRGBA": 0,
+      "meanRGBA": 0.0,
+      "nativeReexportMaxRGBA": 0,
+      "nativeReexportChangedChannels": 0
+    }
+  },
+  "realCorpus": [
+    "111:passed",
+    "117:passed"
+  ],
+  "gui": {
+    "browser": "IAB Chromium WebGPU worktree",
+    "textParagraphEdited": true,
+    "verticalAlignmentEdited": true,
+    "undoRedo": true,
+    "hotspotNavigateBack": true,
+    "libraryV1V2OverrideTextPreserved": true,
+    "savedFD": true,
+    "exportedSketchNativeOpened": true,
+    "reopenedFD": "PENDING"
+  }
+}

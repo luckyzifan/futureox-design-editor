@@ -1,0 +1,98 @@
+{
+  "status": "passed",
+  "backend": "webgpu",
+  "cases": [
+    {
+      "kind": "gaussian-blur",
+      "angle": 0,
+      "managed": true,
+      "hdr": false,
+      "preview": true,
+      "backend": "webgpu",
+      "changedVsUnfiltered": 3435,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "available": true,
+        "changed": 0,
+        "max": 0,
+        "index": -1,
+        "cpuPixel": [],
+        "gpuPixel": [],
+        "min": 0,
+        "maxValue": 0.9286144971847534
+      }
+    },
+    {
+      "kind": "motion-blur",
+      "angle": 0,
+      "managed": true,
+      "hdr": false,
+      "preview": true,
+      "backend": "webgpu",
+      "changedVsUnfiltered": 1528,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "available": true,
+        "changed": 0,
+        "max": 0,
+        "index": -1,
+        "cpuPixel": [],
+        "gpuPixel": [],
+        "min": 0,
+        "maxValue": 0.9345033168792725
+      }
+    },
+    {
+      "kind": "motion-blur",
+      "angle": 37.5,
+      "managed": true,
+      "hdr": false,
+      "preview": true,
+      "backend": "webgpu",
+      "changedVsUnfiltered": 1844,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "available": true,
+        "changed": 0,
+        "max": 0,
+        "index": -1,
+        "cpuPixel": [],
+        "gpuPixel": [],
+        "min": 0,
+        "maxValue": 0.979649543762207
+      }
+    },
+    {
+      "kind": "motion-blur",
+      "angle": 90,
+      "managed": true,
+      "hdr": false,
+      "preview": true,
+      "backend": "webgpu",
+      "changedVsUnfiltered": 1203,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "available": true,
+        "changed": 0,
+        "max": 0,
+        "index": -1,
+        "cpuPixel": [],
+        "gpuPixel": [],
+        "min": 0,
+        "maxValue": 0.9875532388687134
+      }
+    }
+  ]
+}

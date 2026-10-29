@@ -1,0 +1,15 @@
+{
+  "head": "2954a77fe22a12f806d91351ec95e5186f9b562a",
+  "files": {
+    "frontend/design-client/src/kernel/gpu/exact-filter.ts": "e5a523650cd295f01f0eed332df87d881aa130e261e45c70c4aaf3e725b12c37",
+    "frontend/design-client/src/kernel/gpu/webgpu.ts": "dba90e656c13bf1b35cf9c2e70ebc01d56edc15ade7a51d2f78c3bf3db2756dc",
+    "frontend/design-client/src/kernel/gpu/renderer.ts": "9a547a20c483ce78363acd564a45114969d29812577bd544c221aed43ab73bce",
+    "frontend/design-client/src/kernel/gpu/types.ts": "c6cd37368c43f6d5b4d74ebb8f34c54ce8659bcd863043e91c82851f12937145",
+    ".agents/skills/futureox-design-development/SKILL.md": "4c8dd65a8f9df621fe85b1ebd3adb6194ff5f868a05bcfd4b9cfb84defdf1fd5",
+    ".agents/skills/futureox-rendering-first/SKILL.md": "a672d377572f519444614a8cf588299c58c895f9a4216c253d98b82566f2d39a",
+    "docs/DEVELOPMENT_CONTRACT_V1.md": "d3db8df767e2c65dbae85dab1dd52124f8da7c9321f4a6d57e8df4c9515cff84",
+    "docs/RENDERING_FIRST_ENGINEERING_CONTRACT.zh-CN.md": "1996c7786d2a4f317779e97522bc5f4891cc350f5cb487450c34c29a5f244f30",
+    "design-studio/crates/design-kernel/src/interop.rs": "a770da5309ec70fecdf6c8c9af359cd117ffb9db0391bed5ba62cb614ea7d85b",
+    "design-studio/crates/design-kernel/tests/sketch_blur_import.rs": "6b665ce436ea565b9c9a7cc0c7d8200d0d00aa8d1c4b37088269ceeaaf181d72"
+  }
+}

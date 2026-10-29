@@ -1,0 +1,1462 @@
+--- a/design-studio/crates/design-kernel/src/lib.rs
++++ b/design-studio/crates/design-kernel/src/lib.rs
+@@ -110,6 +110,8 @@
+ pub mod scene;
+ #[cfg(not(target_arch = "wasm32"))]
+ pub mod scene_store;
++#[cfg(not(target_arch = "wasm32"))]
++pub mod scene_demand;
+ pub mod fd_extensions;
+ pub mod shortcuts;
+ pub mod smart_guides;
+--- a/design-studio/crates/design-kernel/src/world_support.rs
++++ b/design-studio/crates/design-kernel/src/world_support.rs
+@@ -51,8 +51,12 @@
+     }
+     bound.map_or(Bounds::Empty,Bounds::Box)
+ }
+-fn local_bounds(n:&Node,fonts:&Fonts)->Bounds {
+-    if n.mask||n.effects.iter().any(|e|e.visible&&(!matches!(e.kind.as_str(),"blur"|"shadow"|"inner-shadow"|"gaussian-blur"|"motion-blur")||e.gradient_blur.is_some()||e.glass.is_some()||e.texture.is_some()))||n.vector_brush.is_some()||n.path_offset!=0. {return Bounds::Unknown}
++fn local_bounds(n:&Node,fonts:&Fonts,output_only:bool)->Bounds {
++    // A mask/background blur cannot expand output beyond the union of its
++    // geometry and descendants. This mode proves output only; a separate
++    // demand planner MUST supply painter/backdrop inputs. Ordinary geometry
++    // culling keeps its existing, stricter semantics.
++    if (n.mask&&!output_only)||n.effects.iter().any(|e|e.visible&&(!(matches!(e.kind.as_str(),"blur"|"shadow"|"inner-shadow"|"gaussian-blur"|"motion-blur")||output_only&&matches!(e.kind.as_str(),"background-blur"|"color-controls"))||e.gradient_blur.is_some()||e.glass.is_some()||e.texture.is_some()))||n.vector_brush.is_some()||n.path_offset!=0. {return Bounds::Unknown}
+     if n.kind=="text" {return fonts.node_path_shared(n).map_or(Bounds::Unknown,|p|path_bounds(&p))}
+     if let Some(p)=&n.derived_path{return path_bounds(p)}
+     if let Some(r)=crate::geometry_support::leaf_control_bounds(n,Transform::default()) {
+@@ -63,7 +67,7 @@
+     if n.kind=="group"&&n.network.is_none()&&n.vector_geometry.is_none(){return Bounds::Empty}
+     n.paths().map_or(Bounds::Unknown,|(a,b)|path_bounds(&a).union(path_bounds(&b)))
+ }
+-fn world_entry(n:&Node,m:Transform,absolute:Transform,depth:u32,fonts:&Fonts)->Entry {
++fn world_entry(n:&Node,m:Transform,absolute:Transform,depth:u32,fonts:&Fonts,output_only:bool)->Entry {
+     let mut entry=Entry{bounds:Bounds::Unknown,magnitude:[0.;2],linear:absolute.0[..4].iter().copied().fold(0.,f64::max),
+         translation:absolute.0[4].max(absolute.0[5]),depth,max_depth:depth,own_halo:0.,path_halo:0.,own_fixed:0,fixed_path:0};
+     if depth>4096||m.0.iter().chain(absolute.0.iter()).any(|v|!v.is_finite()||v.abs()>1e12){return entry}
+@@ -83,7 +87,7 @@
+     entry.own_fixed=fixed;entry.fixed_path=fixed;
+     entry.path_halo=entry.own_halo;
+     if !entry.own_halo.is_finite(){return entry}
+-    entry.bounds=match local_bounds(n,fonts){
++    entry.bounds=match local_bounds(n,fonts,output_only){
+         Bounds::Box(b)=>{
+             let x=b[0].abs().max(b[2].abs());let y=b[1].abs().max(b[3].abs());let a=absolute.0;
+             entry.magnitude=[add(add(mul(a[0],x),mul(a[2],y)),a[4]),add(add(mul(a[1],x),mul(a[3],y)),a[5])];
+@@ -103,6 +107,18 @@
+     /// A new camera must not rebuild the same over-budget index on every tile.
+     pub(crate) fn disabled()->Self{Self{entries:HashMap::new(),bytes:0}}
+     pub(crate) fn build(doc:&Document,roots:&[String],fonts:&Fonts,budget:usize)->Result<Option<Self>,String>{
++        Self::build_mode(doc,roots,fonts,budget,false)
++    }
++    pub(crate) fn build_output(doc:&Document,roots:&[String],fonts:&Fonts,budget:usize)->Result<Option<Self>,String>{
++        Self::build_mode(doc,roots,fonts,budget,true)
++    }
++    pub(crate) fn retain_roots(&mut self,roots:&[String]) {
++        let mut kept=HashMap::with_capacity(roots.len());
++        for id in roots {if let Some(entry)=self.entries.remove(id){kept.insert(id.clone(),entry);}}
++        self.entries=kept;
++        self.bytes=self.entries.capacity()*(std::mem::size_of::<(String,Entry)>()+32)+self.entries.keys().map(String::len).sum::<usize>();
++    }
++    fn build_mode(doc:&Document,roots:&[String],fonts:&Fonts,budget:usize,output_only:bool)->Result<Option<Self>,String>{
+         let limit=LIMIT.min(budget);
+         let mut entries=HashMap::<String,Entry>::new();let mut key_bytes=0usize;
+         let frame_bytes=std::mem::size_of::<(&str,Transform,Transform,u32,bool)>();
+@@ -128,7 +144,7 @@
+                 entries.insert(id.to_owned(),entry);continue;
+             }
+             let matrix=parent.concat(n.transform);let absolute=absolute_concat(absolute,n.transform);
+-            let entry=if n.visible {world_entry(n,matrix,absolute,depth,fonts)}else{Entry{bounds:Bounds::Empty,magnitude:[0.;2],linear:0.,translation:0.,depth,max_depth:depth,own_halo:0.,path_halo:0.,own_fixed:0,fixed_path:0}};
++            let entry=if n.visible {world_entry(n,matrix,absolute,depth,fonts,output_only)}else{Entry{bounds:Bounds::Empty,magnitude:[0.;2],linear:0.,translation:0.,depth,max_depth:depth,own_halo:0.,path_halo:0.,own_fixed:0,fixed_path:0}};
+             let projected=(entries.len()+1).saturating_mul(2*(std::mem::size_of::<(String,Entry)>()+32))
+                 .saturating_add(key_bytes).saturating_add(id.len()).saturating_add(stack.capacity()*frame_bytes);
+             if projected>limit{return Ok(None)}
+@@ -142,6 +158,13 @@
+         }
+         let bytes=entries.capacity().saturating_mul(std::mem::size_of::<(String,Entry)>()+32).saturating_add(key_bytes);
+         Ok(Some(Self{entries,bytes}))
++    }
++    #[cfg(test)]
++    pub(crate) fn known_output(&self,id:&str)->bool{self.entries.get(id).is_some_and(|e|!matches!(e.bounds,Bounds::Unknown))}
++    #[cfg(test)]
++    pub(crate) fn output_center(&self,id:&str)->Option<Point>{
++        let Bounds::Box(b)=self.entries.get(id)?.bounds else{return None};
++        Some(Point::new((b[0]+b[2])*0.5,(b[1]+b[3])*0.5))
+     }
+     pub(crate) fn bytes(&self)->usize{self.bytes}
+     pub(crate) fn culls(&self,id:&str,camera:Transform,guard:Rect)->bool{
+--- a/design-studio/crates/design-kernel/src/preparation/source_snapshot.rs
++++ b/design-studio/crates/design-kernel/src/preparation/source_snapshot.rs
+@@ -1,36 +1,84 @@
+-//! Host-authorized immutable source snapshots. The renderer receives opaque
+-//! capabilities; only the desktop host can turn one into this file descriptor.
+-use crate::scene::Document;
++//! Only the desktop host may resolve an opaque source capability to this
++//! descriptor. The complete consumer remains explicit while viewport readers
++//! acquire records through scene_demand without a giant JSON intermediate.
++use crate::{scene::Document, scene_store};
+ use serde::Deserialize;
+-use sha2::{Digest, Sha256};
+-use std::{fs::File, io::{self, BufReader, Read}, path::PathBuf};
++use std::{path::PathBuf, sync::atomic::AtomicBool};
+ 
+-#[derive(Deserialize)]
++#[derive(Clone, Deserialize)]
+ #[serde(rename_all = "camelCase", deny_unknown_fields)]
+-struct Descriptor { path: PathBuf, bytes: u64, hash: String, document_id: String, page_id: String, stage_id: String, nodes: usize }
+-struct Source { file: File, bytes: u64, hash: Sha256 }
+-impl Read for Source {
+-    fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
+-        let count=self.file.read(bytes)?;
+-        self.bytes=self.bytes.checked_add(count as u64).ok_or_else(||io::Error::other("Source snapshot byte overflow"))?;
+-        self.hash.update(&bytes[..count]); Ok(count)
++struct Descriptor {
++    path: PathBuf,
++    store: scene_store::Descriptor,
++    document_id: String,
++    page_id: String,
++    stage_id: String,
++    nodes: usize,
++}
++#[derive(Clone)]
++pub(super) struct Access {
++    descriptor: Descriptor,
++    catalog: Option<std::sync::Arc<crate::scene_demand::Catalog>>,
++}
++impl Access {
++    pub(super) fn viewport(
++        &mut self,
++        fonts: &crate::font::Fonts,
++        camera: crate::math::Transform,
++        viewport: crate::math::Rect,
++        cancel: &AtomicBool,
++    ) -> Result<crate::scene_demand::LoadedDemand, String> {
++        let d = &self.descriptor;
++        if self.catalog.is_none() {
++            self.catalog = Some(crate::scene_demand::Catalog::open(
++                &d.path,
++                &d.store,
++                &d.stage_id,
++                fonts,
++                cancel,
++            )?);
++        }
++        self.catalog
++            .as_ref()
++            .unwrap()
++            .viewport(camera, viewport, cancel)?
++            .load(&d.path, &d.store, cancel)
+     }
+ }
+-pub(super) fn read(value: &serde_json::Value) -> Result<Document,String> {
+-    let descriptor:Descriptor=serde_json::from_value(value.clone()).map_err(|_|"Invalid source snapshot descriptor")?;
+-    if !descriptor.path.is_absolute() || descriptor.bytes==0 || descriptor.hash.len()!=64 || !descriptor.hash.bytes().all(|b|b.is_ascii_hexdigit()&&!b.is_ascii_uppercase()) {
++pub(super) fn read(value: &serde_json::Value) -> Result<(Document, Access), String> {
++    let descriptor: Descriptor =
++        serde_json::from_value(value.clone()).map_err(|_| "Invalid source snapshot descriptor")?;
++    if !descriptor.path.is_absolute()
++        || descriptor.store.document_id != descriptor.document_id
++        || descriptor.store.nodes != descriptor.nodes as u64
++    {
+         return Err("Invalid source snapshot descriptor".into());
+     }
+-    let metadata=std::fs::symlink_metadata(&descriptor.path).map_err(|e|e.to_string())?;
+-    if !metadata.is_file()||metadata.len()!=descriptor.bytes{return Err("Source snapshot file changed".into());}
+-    let mut source=Source{file:File::open(&descriptor.path).map_err(|e|e.to_string())?,bytes:0,hash:Sha256::new()};
+-    // The giant source never becomes a JSON String, a serde Value, or an IPC
+-    // clone. Hash exactly the bytes consumed before publishing the typed model.
+-    let doc:Document=serde_json::from_reader(BufReader::with_capacity(64*1024,&mut source)).map_err(|e|format!("Invalid source snapshot: {e}"))?;
+-    if source.bytes!=descriptor.bytes||format!("{:x}",source.hash.finalize())!=descriptor.hash{return Err("Source snapshot content changed".into());}
+-    if doc.id!=descriptor.document_id||doc.nodes.len()!=descriptor.nodes||doc.pages.first().is_none_or(|page|page.id!=descriptor.page_id||page.children!=[descriptor.stage_id.clone()])||
+-        doc.nodes.get(&descriptor.stage_id).is_none_or(|node|node.kind!="frame"){
++    let metadata = std::fs::symlink_metadata(&descriptor.path).map_err(|e| e.to_string())?;
++    if !metadata.is_file() || metadata.len() != descriptor.store.bytes {
++        return Err("Source snapshot file changed".into());
++    }
++    let cancel = AtomicBool::new(false);
++    let (doc, _) = scene_store::Reader::open(&descriptor.path, &descriptor.store, &cancel)
++        .and_then(|reader| reader.into_document(&cancel))
++        .map_err(|e| e.to_string())?;
++    if doc.id != descriptor.document_id
++        || doc.nodes.len() != descriptor.nodes
++        || doc.pages.first().is_none_or(|page| {
++            page.id != descriptor.page_id || page.children != [descriptor.stage_id.clone()]
++        })
++        || doc
++            .nodes
++            .get(&descriptor.stage_id)
++            .is_none_or(|node| node.kind != "frame")
++    {
+         return Err("Source snapshot canvas identity changed".into());
+     }
+-    Ok(doc)
++    Ok((
++        doc,
++        Access {
++            descriptor,
++            catalog: None,
++        },
++    ))
+ }
+--- a/design-studio/crates/design-kernel/src/preparation.rs
++++ b/design-studio/crates/design-kernel/src/preparation.rs
+@@ -6,7 +6,11 @@
+ mod source_snapshot;
+ 
+ #[derive(Default)]
+-struct Lane { engine: Engine, source: Option<String>, reusable: bool, receipt: Option<StateReceipt>, source_storage: bool }
++struct Lane {
++    engine: Engine, source: Option<String>, reusable: bool, receipt: Option<StateReceipt>, source_storage: bool,
++    #[cfg(not(target_arch = "wasm32"))]
++    source_access: Option<source_snapshot::Access>,
++}
+ pub struct Preparation {
+     lanes: [Lane; 2],
+     owner: String,
+@@ -34,6 +38,16 @@
+ }
+ pub struct Reply { pub metadata: Value, pub bytes: Vec<u8> }
+ impl Preparation {
++    /// Native acquisition boundary for the next renderer stage. This returns
++    /// authored records with explicit cold identities, never a partial Engine
++    /// or an edit/export baseline. Uses only the host-admitted lane descriptor.
++    #[cfg(not(target_arch = "wasm32"))]
++    pub fn source_viewport_demand(&mut self, lane: &str, camera: crate::math::Transform, viewport: crate::math::Rect, cancel: &std::sync::atomic::AtomicBool) -> Result<crate::scene_demand::LoadedDemand,String> {
++        let index=match lane {"canvas"=>0,"interaction"=>1,_=>return Err("Invalid preparation lane".into())};
++        let lane=&mut self.lanes[index];
++        if lane.receipt.is_none() {return Err("Unsynchronized source demand lane".into());}
++        lane.source_access.as_mut().ok_or("No immutable source demand owner")?.viewport(&lane.engine.fonts,camera,viewport,cancel)
++    }
+     pub fn new(font: &[u8]) -> Result<Self, String> {
+         let mut canvas = Lane::default(); canvas.engine.load_font(font)?;
+         let mut interaction = Lane::default(); interaction.engine.fonts = canvas.engine.fonts.clone();
+@@ -71,7 +85,10 @@
+         let candidate = self.lanes[0].engine.snapshot_static_worker().ok_or("DERIVE_UNSUPPORTED_STATE")?;
+         let settings = serde_json::to_string(&candidate.color_settings()).map_err(|e|e.to_string())?;
+         // All fallible work precedes publication. Immutable resources remain Arc-owned.
+-        self.lanes[1] = Lane { engine: candidate, reusable: true, source_storage:self.lanes[0].source_storage, ..Lane::default() };
++        self.lanes[1] = Lane { engine: candidate, reusable: true, source_storage:self.lanes[0].source_storage,
++            #[cfg(not(target_arch = "wasm32"))]
++            source_access:self.lanes[0].source_access.clone(),
++            ..Lane::default() };
+         let receipt = self.mint(1, Some(request.base_receipt), false);
+         Ok(Reply { metadata: json!({"stateReceipt":receipt,"settings":settings,"documentFork":true}), bytes: Vec::new() })
+     }
+@@ -100,6 +117,8 @@
+         let mutation = source_load || matches!(method, "initialize" | "load_document" | "apply_document_patch_with_damage" | "apply_interaction_transforms");
+         // Failed legacy mutation cannot leave a receipt claiming synchronization.
+         let previous = if mutation { self.lanes[index].receipt.take() } else { None };
++        #[cfg(not(target_arch = "wasm32"))]
++        if mutation {self.lanes[index].source_access=None;}
+         let string = |index: usize| -> Result<&str,String> {
+             let value = args.get(index).and_then(Value::as_str).ok_or("Expected string argument")?;
+             crate::capacity::check_document_bytes(value.len())?;
+@@ -137,11 +156,12 @@
+             #[cfg(not(target_arch = "wasm32"))]
+             "load_source_snapshot" => {
+                 if args.len()!=1 { return Err("Invalid source snapshot request".into()); }
+-                let document=source_snapshot::read(&args[0])?;
++                let (document,access)=source_snapshot::read(&args[0])?;
+                 value=json!({"documentId":document.id,"pageId":document.pages[0].id,"stageId":document.pages[0].children[0],"nodes":document.nodes.len()});
+                 lane.source=None; lane.reusable=false;
+                 engine.load_source_document(document)?;
+                 lane.reusable=true;lane.source_storage=true;
++                lane.source_access=Some(access);
+             }
+             "apply_document_patch_with_damage" => {
+                 lane.source = None; lane.reusable = false;
+@@ -316,27 +336,58 @@
+     #[test]
+     #[cfg(not(target_arch = "wasm32"))]
+     fn native_source_snapshot_checks_identity_and_bytes_before_replacing_pixels() {
+-        use sha2::{Digest,Sha256};
+         let mut source=document();source["nodes"]["r"]["kind"]=json!("frame");
+-        let bytes=source.to_string().into_bytes();
+-        let path=std::env::temp_dir().join(format!("native-source-snapshot-{}.json",session_owner()));
+-        std::fs::write(&path,&bytes).unwrap();
+-        let descriptor=json!({"path":path,"bytes":bytes.len(),"hash":format!("{:x}",Sha256::digest(&bytes)),"documentId":"cpu-preparation","pageId":"p","stageId":"r","nodes":1});
++        let path=std::env::temp_dir().join(format!("native-source-snapshot-{}.scene",session_owner()));
++        let doc:crate::scene::Document=serde_json::from_value(source.clone()).unwrap();
++        let store=crate::scene_store::write(&path,"test:0",&doc,&[],&std::sync::atomic::AtomicBool::new(false)).unwrap();
++        let descriptor=json!({"path":path,"store":store,"documentId":"cpu-preparation","pageId":"p","stageId":"r","nodes":1});
+         let mut actual=session();let mut expected=session();
+         expected.request("canvas","load_document",&[json!(source.to_string())]).unwrap();
+         let reply=actual.request("canvas","load_source_snapshot",&[descriptor.clone()]).unwrap();
+         assert!(reply.metadata["stateReceipt"].is_object());
+         assert_eq!(reply.metadata["settings"],"null");
+         let pixels=exact(&mut expected,&options());assert_eq!(exact(&mut actual,&options()),pixels);
+-        for (key,value) in [("hash",json!("0".repeat(64))),("bytes",json!(bytes.len()+1)),("documentId",json!("foreign")),("pageId",json!("foreign")),("stageId",json!("foreign")),("nodes",json!(2)),("unexpected",json!(true))] {
++        for (key,value) in [("store",json!({})),("documentId",json!("foreign")),("pageId",json!("foreign")),("stageId",json!("foreign")),("nodes",json!(2)),("unexpected",json!(true))] {
+             let mut invalid=descriptor.clone();invalid[key]=value;
+             assert!(actual.request("canvas","load_source_snapshot",&[invalid]).is_err(),"{key}");
+             assert_eq!(exact(&mut actual,&options()),pixels,"{key}");
+         }
+-        let replacement=source.to_string().replace("#ff0000","#00ff00");
+-        assert_eq!(replacement.len(),bytes.len());std::fs::write(&path,replacement).unwrap();
++        let mut bytes=std::fs::read(&path).unwrap();
++        let offset=bytes.windows(7).position(|w|w==b"#ff0000").unwrap();bytes[offset+1]=b'0';
++        std::fs::write(&path,bytes).unwrap();
+         assert!(actual.request("canvas","load_source_snapshot",&[descriptor]).err().unwrap().contains("content changed"));
+         assert_eq!(exact(&mut actual,&options()),pixels);
++        std::fs::remove_file(path).unwrap();
++    }
++
++    #[test]
++    #[cfg(not(target_arch = "wasm32"))]
++    fn source_demand_uses_admitted_lane_and_is_revoked_by_document_replacement() {
++        use crate::{math::{Transform,Rect},scene_demand::Lookup};
++        let mut source=document();
++        let mut cold=source["nodes"]["r"].clone();cold["id"]=json!("cold");cold["transform"]=json!([1,0,0,1,10000,0]);
++        source["nodes"]["cold"]=cold;
++        source["nodes"]["stage"]=json!({"id":"stage","kind":"frame","width":20000,"height":20000,"blend":"pass-through","children":["r","cold"]});
++        source["pages"][0]["children"]=json!(["stage"]);
++        let document:crate::scene::Document=serde_json::from_value(source.clone()).unwrap();
++        let path=std::env::temp_dir().join(format!("native-source-demand-{}.scene",session_owner()));
++        let cancel=std::sync::atomic::AtomicBool::new(false);
++        let store=crate::scene_store::write(&path,"test:0",&document,&[],&cancel).unwrap();
++        let descriptor=json!({"path":path,"store":store,"documentId":"cpu-preparation","pageId":"p","stageId":"stage","nodes":3});
++        let mut actual=session();
++        actual.request("canvas","load_source_snapshot",&[descriptor]).unwrap();
++        let before=exact(&mut actual,&options());
++        let loaded=actual.source_viewport_demand("canvas",Transform::default(),Rect::new(0,0,64,64),&cancel).unwrap();
++        assert!(matches!(loaded.lookup("r"),Lookup::Loaded(_)));
++        assert!(matches!(loaded.lookup("cold"),Lookup::Cold));
++        assert_eq!(loaded.reads().metadata_reads,0);
++        assert_eq!(before,exact(&mut actual,&options()));
++        let request=derive_request(&actual,1);
++        actual.request("interaction","derive_document_v1",&[request]).unwrap();
++        assert!(actual.source_viewport_demand("interaction",Transform::default(),Rect::new(0,0,64,64),&cancel).is_ok());
++        actual.request("canvas","load_document",&[json!(source.to_string())]).unwrap();
++        assert!(actual.source_viewport_demand("canvas",Transform::default(),Rect::new(0,0,64,64),&cancel).is_err());
++        assert!(actual.source_viewport_demand("foreign",Transform::default(),Rect::new(0,0,64,64),&cancel).is_err());
+         std::fs::remove_file(path).unwrap();
+     }
+ 
+--- a/design-studio/crates/design-desktop-backend/src/large_document/canvas_snapshot.rs
++++ b/design-studio/crates/design-desktop-backend/src/large_document/canvas_snapshot.rs
+@@ -1,10 +1,10 @@
+-//! A native, full-source canvas document. JSON stays on disk; it must never be
++//! A native, full-source indexed canvas. Node records stay on disk and must never be
+ //! returned as a giant renderer string or mistaken for an editable workset.
+ use super::*;
+ use futureox_design_kernel::{fidelity::RasterProfile, scene::Document};
+ 
+ pub(super) struct Snapshot {
+-    pub revision: u64, pub path: PathBuf, pub bytes: u64, pub hash: String,
++    pub revision: u64, pub path: PathBuf, pub store: futureox_design_kernel::scene_store::Descriptor,
+     pub page_id: String, pub stage_id: String, pub nodes: usize, pub roots: usize,
+     pub bounds: canvas_layout::Box2, pub warnings: Vec<String>,
+     pub raster_profile: RasterProfile,
+@@ -63,29 +63,18 @@
+     Ok((document,id,warnings.into_iter().collect()))
+ }
+ 
+-struct Output<'a> { file: BufWriter<File>, hash: Sha256, bytes: u64, cancel: &'a AtomicBool }
+-impl Write for Output<'_> {
+-    fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+-        check_cancel(self.cancel)?;
+-        let count=self.file.write(data)?; self.hash.update(&data[..count]);
+-        self.bytes=self.bytes.checked_add(count as u64).ok_or_else(||io::Error::other("Canvas snapshot byte overflow"))?;
+-        Ok(count)
+-    }
+-    fn flush(&mut self)->io::Result<()> {self.file.flush()}
+-}
+ pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool) -> Result<Value> {
+     if s.canvas_snapshot.as_ref().is_none_or(|snapshot|snapshot.revision!=s.revision) {
+         let layout=canvas_layout::build(s,cancel)?;
+         let (document,stage_id,warnings)=build(s,&layout,cancel)?;
+-        let path=s.directory.join(format!("canvas-native-{}.json",s.revision));
++        let path=s.directory.join(format!("canvas-native-{}.scene",s.revision));
+         let next=s.directory.join("canvas-native.next");
+         let result=(||{
+-            let mut out=Output{file:BufWriter::new(File::create(&next).map_err(issue)?),hash:Sha256::new(),bytes:0,cancel};
+-            serde_json::to_writer(&mut out,&document).map_err(issue)?; out.flush().map_err(issue)?;
++            let generation=format!("{}:{}:{}",s.owner.document_id,s.owner.session_epoch,s.revision);
++            let store=futureox_design_kernel::scene_store::write(&next,&generation,&document,&warnings,cancel).map_err(issue)?;
+             check_cancel(cancel).map_err(issue)?;
+-            let bytes=out.bytes; let hash=format!("{:x}",out.hash.finalize()); drop(out.file);
+             fs::rename(&next,&path).map_err(issue)?;
+-            Ok(Snapshot{revision:s.revision,path,bytes,hash,page_id:document.pages[0].id.clone(),stage_id,
++            Ok(Snapshot{revision:s.revision,path,store,page_id:document.pages[0].id.clone(),stage_id,
+                 nodes:document.nodes.len(),roots:layout.items.len(),bounds:layout.bounds,warnings,raster_profile:document.raster_profile.unwrap_or(RasterProfile::Analytic),color_managed:document.color_management.is_some()})
+         })();
+         if result.is_err(){let _=fs::remove_file(&next);}
+@@ -96,7 +85,7 @@
+     let snapshot=s.canvas_snapshot.as_ref().unwrap();
+     // This path is host-only. The preload must expose an owner-bound opaque
+     // capability, never forward this native filesystem descriptor to UI code.
+-    Ok(json!({"owner":s.owner,"revision":s.revision,"path":snapshot.path,"bytes":snapshot.bytes,"hash":snapshot.hash,
++    Ok(json!({"owner":s.owner,"revision":s.revision,"path":snapshot.path,"bytes":snapshot.store.bytes,"store":snapshot.store,
+         "pageId":snapshot.page_id,"stageId":snapshot.stage_id,"nodes":snapshot.nodes,"roots":snapshot.roots,
+         "bounds":snapshot.bounds,"warnings":snapshot.warnings,"rasterProfile":snapshot.raster_profile,"colorManaged":snapshot.color_managed}))
+ }
+--- a/design-studio/crates/design-desktop-backend/src/large_document/scene_roundtrip_tests.rs
++++ b/design-studio/crates/design-desktop-backend/src/large_document/scene_roundtrip_tests.rs
+@@ -109,8 +109,9 @@
+     assert_eq!(result["roots"],2);
+     let path=PathBuf::from(result["path"].as_str().unwrap());
+     let bytes=fs::read(&path).unwrap();assert_eq!(bytes.len() as u64,result["bytes"].as_u64().unwrap());
+-    assert_eq!(digest(&bytes),result["hash"].as_str().unwrap());
+-    let doc:futureox_design_kernel::scene::Document=serde_json::from_slice(&bytes).unwrap();
++    assert_eq!(&bytes[..8],b"FXSCENE1");
++    let store=serde_json::from_value(result["store"].clone()).unwrap();
++    let (doc,_)=futureox_design_kernel::scene_store::Reader::open(&path,&store,&AtomicBool::new(false)).unwrap().into_document(&AtomicBool::new(false)).unwrap();
+     let stage=result["stageId"].as_str().unwrap();
+     assert_eq!(doc.pages[0].children,vec![stage]);
+     assert_eq!(doc.nodes[stage].children,vec![RECT,OTHER]);
+--- a/frontend/design-desktop/src/large-document.mjs
++++ b/frontend/design-desktop/src/large-document.mjs
+@@ -99,15 +99,17 @@
+     this.#check(value,['owner','expectedRevision'])
+     const box=result?.bounds
+     if(!object(result)||result.owner?.documentId!==value.owner.documentId||result.owner?.sessionEpoch!==value.owner.sessionEpoch||result.revision!==value.expectedRevision||
+-      typeof result.path!=='string'||!path.isAbsolute(result.path)||path.normalize(result.path)!==result.path||path.basename(result.path)!==`canvas-native-${result.revision}.json`||
++      typeof result.path!=='string'||!path.isAbsolute(result.path)||path.normalize(result.path)!==result.path||path.basename(result.path)!==`canvas-native-${result.revision}.scene`||
+       !integer(result.bytes)||result.bytes===0||!integer(result.nodes)||!result.nodes||!integer(result.roots)||!result.roots||
+-      typeof result.hash!=='string'||!/^[0-9a-f]{64}$/.test(result.hash)||
++      !object(result.store)||Object.keys(result.store).sort().join(',')!=='bytes,documentId,footerHash,generation,nodes'||
++      result.store.generation!==`${value.owner.documentId}:${value.owner.sessionEpoch}:${result.revision}`||result.store.documentId!==value.owner.documentId||
++      result.store.bytes!==result.bytes||result.store.nodes!==result.nodes||!Array.isArray(result.store.footerHash)||result.store.footerHash.length!==32||result.store.footerHash.some(n=>!integer(n)||n>255)||
+       ['pageId','stageId'].some(key=>typeof result[key]!=='string'||!/^[a-z0-9-]{1,128}$/i.test(result[key]))||
+       !object(box)||!['x','y','width','height'].every(key=>typeof box[key]==='number'&&Number.isFinite(box[key]))||box.width<=0||box.height<=0||
+       !['analytic','figma','figmaSubpixel','figmaSoftware'].includes(result.rasterProfile)||typeof result.colorManaged!=='boolean'||
+       !Array.isArray(result.warnings)||result.warnings.some(value=>typeof value!=='string'))throw Error('Invalid native canvas snapshot')
+     const token=randomUUID(),revision=result.revision
+-    const descriptor=Object.freeze({path:result.path,bytes:result.bytes,hash:result.hash,documentId:value.owner.documentId,pageId:result.pageId,stageId:result.stageId,nodes:result.nodes})
++    const descriptor=Object.freeze({path:result.path,store:Object.freeze({...result.store,footerHash:Object.freeze([...result.store.footerHash])}),documentId:value.owner.documentId,pageId:result.pageId,stageId:result.stageId,nodes:result.nodes})
+     const snapshot={token,revision,descriptor,public:{owner:{...value.owner},revision,token,bytes:result.bytes,nodes:result.nodes,roots:result.roots,
+       pageId:result.pageId,stageId:result.stageId,bounds:{...box},warnings:[...result.warnings],rasterProfile:result.rasterProfile,colorManaged:result.colorManaged}}
+     active.snapshot=snapshot
+--- a/frontend/design-desktop/test/large-document.test.mjs
++++ b/frontend/design-desktop/test/large-document.test.mjs
+@@ -146,16 +146,16 @@
+  const window={isDestroyed:()=>false,webContents:{id:17}};let current=window,live,snapshotCalls=0
+  const host=new LargeDocumentHost(async(method,params)=>{
+   if(method==='large.open')return live={...status({documentId:params.documentId,sessionEpoch:params.sessionEpoch}),format:'sketch'}
+-  if(method==='large.canvasSnapshot'){snapshotCalls++;return {owner:live.owner,revision:live.revision,path:`/native/cache/canvas-native-${live.revision}.json`,bytes:600*1024**2,
+-   hash:'a'.repeat(64),nodes:124447,roots:306,pageId:'page',stageId:'stage',bounds:{x:0,y:0,width:20000,height:30000},warnings:[],rasterProfile:'figma',colorManaged:true}}
++  if(method==='large.canvasSnapshot'){snapshotCalls++;return {owner:live.owner,revision:live.revision,path:`/native/cache/canvas-native-${live.revision}.scene`,bytes:600*1024**2,
++   store:{generation:`${live.owner.documentId}:${live.owner.sessionEpoch}:${live.revision}`,documentId:live.owner.documentId,bytes:600*1024**2,nodes:124447,footerHash:Array(32).fill(42)},nodes:124447,roots:306,pageId:'page',stageId:'stage',bounds:{x:0,y:0,width:20000,height:30000},warnings:[],rasterProfile:'figma',colorManaged:true}}
+   if(method==='large.apply')return live={...live,revision:live.revision+1}
+   throw Error(method)
+  },{showOpenDialog:async()=>({canceled:false,filePaths:['/approved/source.sketch']})},()=>current)
+  const opened=await host.open(),request={owner:opened.owner,expectedRevision:0}
+  await assert.rejects(()=>host.canvasSnapshot({...request,path:'/renderer/forged'}),/Invalid/)
+  const snapshot=await host.canvasSnapshot(request)
+- assert.equal(snapshot.bytes,600*1024**2);assert.equal(Object.hasOwn(snapshot,'path'),false);assert.equal(Object.hasOwn(snapshot,'hash'),false)
+- const grant=host.resolveCanvasSnapshot(snapshot.token,17);assert.equal(grant.descriptor.path,'/native/cache/canvas-native-0.json');assert.equal(Object.isFrozen(grant.descriptor),true)
++ assert.equal(snapshot.bytes,600*1024**2);assert.equal(Object.hasOwn(snapshot,'path'),false);assert.equal(Object.hasOwn(snapshot,'hash'),false);assert.equal(Object.hasOwn(snapshot,'store'),false)
++ const grant=host.resolveCanvasSnapshot(snapshot.token,17);assert.equal(grant.descriptor.path,'/native/cache/canvas-native-0.scene');assert.equal(Object.isFrozen(grant.descriptor),true)
+  assert.throws(()=>host.resolveCanvasSnapshot(snapshot.token,18),/foreign/)
+  assert.throws(()=>host.resolveCanvasSnapshot({path:'/renderer/forged'},17),/foreign/)
+  assert.equal((await host.canvasSnapshot(request)).token,snapshot.token);assert.equal(snapshotCalls,1)
+--- a/frontend/design-desktop/test/preparation.test.mjs
++++ b/frontend/design-desktop/test/preparation.test.mjs
+@@ -35,7 +35,7 @@
+  const messages=[]
+  const owner=Object.assign(Object.create(NativePreparation.prototype),{pending:new Map(),sequence:0,closed:false,
+   admission:new PreparationAdmission(),reservations:new Set(),diagnostics:{enabled:false},worker:{postMessage:message=>messages.push(message)}})
+- const descriptor={path:'/owned/cache/canvas-native-0.json',bytes:600*1024**2,hash:'a'.repeat(64),documentId:'source',pageId:'page',stageId:'stage',nodes:124447}
++ const descriptor={path:'/owned/cache/canvas-native-0.scene',store:{generation:'source:1:0',documentId:'source',bytes:600*1024**2,nodes:124447,footerHash:Array(32).fill(42)},documentId:'source',pageId:'page',stageId:'stage',nodes:124447}
+  await assert.rejects(owner.request({lane:'canvas',method:'load_source_snapshot',args:[descriptor]}),/Invalid native preparation request/)
+  assert.equal(messages.length,0)
+  const pending=owner.loadSourceSnapshot(descriptor)
+--- a/design-studio/crates/design-kernel/src/scene_store.rs
++++ b/design-studio/crates/design-kernel/src/scene_store.rs
+@@ -684,15 +684,10 @@
+         check(cancel)?;
+         Ok(None)
+     }
+-    /// Compatibility consumer for existing complete-window conversion. Later
+-    /// demand loaders use read_node and never need this all-node materialization.
+-    pub fn into_document(mut self, cancel: &AtomicBool) -> io::Result<(Document, Vec<String>)> {
+-        self.ensure_metadata(cancel)?;
+-        let Metadata {
+-            mut document,
+-            warnings,
+-            ..
+-        } = self.metadata.take().unwrap();
++    /// Dense demand fallback: sequential authenticated node records without
++    /// decoding global metadata, building a JSON string or N binary searches.
++    pub fn read_all_nodes(&mut self, cancel: &AtomicBool) -> io::Result<BTreeMap<String, Node>> {
++        let mut nodes = BTreeMap::new();
+         let mut index = BufReader::new(RangeReader {
+             file: &self.file,
+             position: self.index_offset,
+@@ -741,7 +736,10 @@
+                 return Err(invalid("Scene node identity changed"));
+             }
+             previous = Some(key.clone());
+-            document.nodes.insert(key, node);
++            self.stats.key_reads += 1;
++            self.stats.node_reads += 1;
++            self.stats.node_bytes = sum(self.stats.node_bytes, row.value_bytes)?;
++            nodes.insert(key, node);
+         }
+         for _ in self.nodes..self.leaf_base {
+             check(cancel)?;
+@@ -751,6 +749,19 @@
+             return Err(invalid("Scene store index changed"));
+         }
+         check(cancel)?;
++        self.stats.index_bytes_verified =
++            sum(self.stats.index_bytes_verified, self.nodes * ROW_BYTES)?;
++        Ok(nodes)
++    }
++    /// Complete consumers explicitly acquire metadata and every node.
++    pub fn into_document(mut self, cancel: &AtomicBool) -> io::Result<(Document, Vec<String>)> {
++        self.ensure_metadata(cancel)?;
++        let Metadata {
++            mut document,
++            warnings,
++            ..
++        } = self.metadata.take().unwrap();
++        document.nodes = self.read_all_nodes(cancel)?;
+         Ok((document, warnings))
+     }
+ }
+--- a/design-studio/crates/design-kernel/src/scene_store/tests.rs
++++ b/design-studio/crates/design-kernel/src/scene_store/tests.rs
+@@ -304,3 +304,22 @@
+         "randomNodeBytes":reads.node_bytes,"metadataBytesDuringRandomReads":reads.metadata_bytes,"openFooterBytes":FOOTER_BYTES+8,"randomIndexProofBytes":reads.index_bytes_verified,"semanticRoundtripEqual":true,"seconds":started.elapsed().as_secs_f64()})
+     );
+ }
++
++#[test]
++fn dense_node_demand_streams_once_without_loading_metadata() {
++    let fixture = Fixture::new();
++    let doc = document(1001);
++    let descriptor = fixture.write(&doc);
++    let cancel = AtomicBool::new(false);
++    let mut reader = Reader::open(&fixture.path, &descriptor, &cancel).unwrap();
++    assert_eq!(reader.read_all_nodes(&cancel).unwrap(), doc.nodes);
++    let stats = reader.stats();
++    assert_eq!(stats.metadata_reads, 0);
++    assert_eq!(stats.node_reads, 1001);
++    assert_eq!(stats.key_reads, 1001);
++    assert_eq!(stats.index_bytes_verified, 1001 * ROW_BYTES);
++    assert_eq!(reader.metadata(&cancel).unwrap().id, doc.id);
++    let row = reader.row(1000, &cancel).unwrap();
++    modify(&fixture.path, row.value_offset, b"!");
++    assert!(reader.read_all_nodes(&cancel).is_err());
++}
+--- /dev/null
++++ b/design-studio/crates/design-kernel/src/scene_demand.rs
+@@ -0,0 +1,484 @@
++//! Native source acquisition. A demand is a revision-bound set of authored
++//! records, not a smaller Document. Cold records remain present in the source.
++//! The current complete render consumer can coexist with these reads while
++//! the renderer's global margin/capture state is migrated separately.
++use crate::{
++    Engine,
++    font::Fonts,
++    math::{Rect, Transform},
++    scene::{Document, Node},
++    scene_store::{Descriptor, ReadStats, Reader},
++    world_support::WorldSupport,
++};
++use std::{
++    collections::{BTreeMap, BTreeSet, HashMap},
++    path::Path,
++    sync::{
++        Arc,
++        atomic::{AtomicBool, Ordering},
++    },
++};
++
++fn check(cancel: &AtomicBool) -> Result<(), String> {
++    if cancel.load(Ordering::Acquire) {
++        Err("Scene demand cancelled".into())
++    } else {
++        crate::render_cancellation::checkpoint()
++    }
++}
++struct Unit {
++    nodes: Vec<String>,
++    dependencies: BTreeSet<usize>,
++    backdrop: bool,
++}
++
++/// Built against one immutable source and one resolved font/layout state.
++/// Private fields prevent callers from supplying layout hints as optical proof.
++pub struct Catalog {
++    descriptor: Descriptor,
++    owners: BTreeMap<String, usize>,
++    units: Vec<Unit>,
++    roots: Vec<(String, usize)>,
++    stage: String,
++    support: WorldSupport,
++    complete_only: bool,
++}
++pub struct Demand {
++    catalog: Arc<Catalog>,
++    units: BTreeSet<usize>,
++    visible: Vec<String>,
++    prefix_roots: usize,
++}
++#[derive(Debug, Clone, serde::Serialize)]
++#[serde(rename_all = "camelCase")]
++pub struct DemandStats {
++    pub total_nodes: usize,
++    pub required_nodes: usize,
++    pub visible_roots: usize,
++    pub painter_prefix_roots: usize,
++    pub dependency_units: usize,
++}
++
++/// Explicitly distinguishes an existing cold record from an absent identity.
++pub enum Lookup<'a> {
++    Loaded(&'a Node),
++    Cold,
++    Absent,
++}
++pub struct LoadedDemand {
++    demand: Demand,
++    nodes: BTreeMap<String, Node>,
++    reads: ReadStats,
++}
++impl LoadedDemand {
++    pub fn lookup(&self, id: &str) -> Lookup<'_> {
++        match self.nodes.get(id) {
++            Some(n) => Lookup::Loaded(n),
++            None if self.demand.catalog.owners.contains_key(id) => Lookup::Cold,
++            None => Lookup::Absent,
++        }
++    }
++    pub fn nodes(&self) -> &BTreeMap<String, Node> {
++        &self.nodes
++    }
++    pub fn stats(&self) -> DemandStats {
++        self.demand.stats()
++    }
++    pub fn reads(&self) -> ReadStats {
++        self.reads
++    }
++    pub fn visible_roots(&self) -> &[String] {
++        &self.demand.visible
++    }
++}
++
++fn references(
++    value: &serde_json::Value,
++    nodes: &BTreeMap<String, Node>,
++    out: &mut BTreeSet<String>,
++) {
++    match value {
++        serde_json::Value::String(s) if nodes.contains_key(s) => {
++            out.insert(s.clone());
++        }
++        serde_json::Value::Array(a) => {
++            for v in a {
++                references(v, nodes, out);
++            }
++        }
++        serde_json::Value::Object(o) => {
++            for (k, v) in o {
++                if nodes.contains_key(k) {
++                    out.insert(k.clone());
++                }
++                references(v, nodes, out);
++            }
++        }
++        _ => (),
++    }
++}
++fn node_references(node: &Node, document: &Document) -> Result<BTreeSet<String>, String> {
++    let mut refs = BTreeSet::new();
++    if let Some(instance) = &node.instance {
++        refs.insert(instance.component_id.clone());
++        refs.extend(instance.slot_contents.values().flatten().cloned());
++        // Includes component swaps in nested overrides/property values. Only
++        // these small semantic fields are visited, never image/path payloads.
++        references(
++            &serde_json::to_value(instance).map_err(|e| e.to_string())?,
++            &document.nodes,
++            &mut refs,
++        );
++    }
++    if let Some(component) = &node.component {
++        references(
++            &serde_json::to_value(component).map_err(|e| e.to_string())?,
++            &document.nodes,
++            &mut refs,
++        );
++    }
++    if let Some(connector) = &node.connector {
++        refs.extend(
++            [&connector.from, &connector.to]
++                .into_iter()
++                .filter_map(|e| e.node_id.clone()),
++        );
++    }
++    if let Some(origin) = &node.instance_origin {
++        references(
++            &serde_json::to_value(origin).map_err(|e| e.to_string())?,
++            &document.nodes,
++            &mut refs,
++        );
++    }
++    if refs.iter().any(|id| !document.nodes.contains_key(id)) {
++        return Err("Missing scene demand dependency".into());
++    }
++    Ok(refs)
++}
++fn reads_painter(n: &Node) -> bool {
++    n.mask
++        || !matches!(n.blend.as_str(), "normal" | "pass-through")
++        || n.effects.iter().any(|e| {
++            e.visible
++                && (!matches!(
++                    e.kind.as_str(),
++                    "blur"
++                        | "shadow"
++                        | "inner-shadow"
++                        | "gaussian-blur"
++                        | "motion-blur"
++                        | "color-controls"
++                ) || e.glass.is_some()
++                    || e.texture.is_some()
++                    || e.gradient_blur.is_some())
++        })
++}
++impl Catalog {
++    pub fn open(
++        path: &Path,
++        descriptor: &Descriptor,
++        stage: &str,
++        fonts: &Fonts,
++        cancel: &AtomicBool,
++    ) -> Result<Arc<Self>, String> {
++        let (document, _) = Reader::open(path, descriptor, cancel)
++            .and_then(|r| r.into_document(cancel))
++            .map_err(|e| e.to_string())?;
++        Self::build(&document, descriptor, stage, fonts, cancel)
++    }
++    /// This first catalog builder intentionally resolves the complete source
++    /// once. Incremental catalog publication is a later module; layout boxes
++    /// from the import directory are not used to discard records here.
++    fn build(
++        document: &Document,
++        descriptor: &Descriptor,
++        stage: &str,
++        fonts: &Fonts,
++        cancel: &AtomicBool,
++    ) -> Result<Arc<Self>, String> {
++        check(cancel)?;
++        if document.id != descriptor.document_id || document.nodes.len() as u64 != descriptor.nodes
++        {
++            return Err("Scene demand source identity mismatch".into());
++        }
++        let root = document.nodes.get(stage).ok_or("Missing source stage")?;
++        if document.pages.first().is_none_or(|p| p.children != [stage])
++            || root.kind != "frame"
++            || root.clip
++            || root.mask
++            || !root.visible
++            || root.opacity != 1.
++            || root.layout.is_some()
++            || root.sizing.is_some()
++            || root.constraints.is_some()
++            || root.instance.is_some()
++            || root.repeat.is_some()
++            || !root.fills.is_empty()
++            || !root.strokes.is_empty()
++            || !root.effects.is_empty()
++            || root.transform != Transform::default()
++            || root.blend != "pass-through"
++        {
++            return Err("Scene demand requires the neutral source stage".into());
++        }
++        crate::capacity::with_source_storage_scope(true, || {
++            let mut engine = Engine::new();
++            engine.fonts = fonts.clone();
++            engine.load_source_document(document.clone())?;
++            engine.resolve_layout()?;
++            check(cancel)?;
++            let resolved = engine.doc.as_ref().ok_or("Missing resolved source")?;
++            let mut support = WorldSupport::build_output(
++                resolved,
++                &[stage.to_owned()],
++                &engine.fonts,
++                64 * 1024 * 1024,
++            )?
++            .unwrap_or_else(WorldSupport::disabled);
++            support.retain_roots(&root.children);
++            let mut parents = HashMap::new();
++            for n in document.nodes.values() {
++                for id in &n.children {
++                    if !document.nodes.contains_key(id)
++                        || parents.insert(id.clone(), n.id.clone()).is_some()
++                    {
++                        return Err("Invalid source dependency tree".into());
++                    }
++                }
++            }
++            let mut unit_roots = root.children.clone();
++            unit_roots.extend(
++                document
++                    .nodes
++                    .keys()
++                    .filter(|id| id.as_str() != stage && !parents.contains_key(*id))
++                    .cloned(),
++            );
++            let mut units = Vec::new();
++            let mut owners = BTreeMap::new();
++            for id in unit_roots {
++                check(cancel)?;
++                let unit = units.len();
++                let mut ids = Vec::new();
++                let mut stack = vec![id];
++                while let Some(id) = stack.pop() {
++                    check(cancel)?;
++                    if id == stage || owners.insert(id.clone(), unit).is_some() {
++                        return Err("Overlapping source demand units".into());
++                    }
++                    stack.extend(document.nodes[&id].children.iter().rev().cloned());
++                    ids.push(id);
++                }
++                units.push(Unit {
++                    nodes: ids,
++                    dependencies: BTreeSet::new(),
++                    backdrop: false,
++                });
++            }
++            owners.insert(stage.to_owned(), units.len());
++            units.push(Unit {
++                nodes: vec![stage.to_owned()],
++                dependencies: BTreeSet::new(),
++                backdrop: false,
++            });
++            if owners.len() != document.nodes.len() {
++                return Err("Unreachable source dependency cycle".into());
++            }
++            for (id, n) in &document.nodes {
++                check(cancel)?;
++                if id == stage {
++                    continue;
++                }
++                let own = owners[id];
++                for dependency in node_references(n, document)? {
++                    units[own].dependencies.insert(owners[&dependency]);
++                }
++            }
++            // Use resolved descendants: generated instance children can carry
++            // a backdrop that is absent from the authored instance shell.
++            for id in &root.children {
++                let unit = owners[id];
++                let mut stack = vec![id.as_str()];
++                while let Some(id) = stack.pop() {
++                    check(cancel)?;
++                    let n = resolved
++                        .nodes
++                        .get(id)
++                        .ok_or("Resolved source root disappeared")?;
++                    units[unit].backdrop |= reads_painter(n);
++                    if let Some(instance) = &n.instance {
++                        if let Some(owner) = owners.get(&instance.component_id) {
++                            units[unit].dependencies.insert(*owner);
++                        }
++                    }
++                    stack.extend(n.render_children().iter().map(String::as_str));
++                }
++            }
++            let roots = root
++                .children
++                .iter()
++                .map(|id| (id.clone(), owners[id]))
++                .collect();
++            // Animation/global interaction references are not a partial scene
++            // contract. Preserve complete acquisition until separately planned.
++            let resolved_stage = &resolved.nodes[stage];
++            let changed_stage = resolved_stage.transform != Transform::default()
++                || resolved_stage.opacity != 1.
++                || resolved_stage.clip
++                || resolved_stage.mask
++                || !resolved_stage.effects.is_empty()
++                || !resolved_stage.fills.is_empty()
++                || !resolved_stage.strokes.is_empty();
++            let complete_only = changed_stage
++                || !document.animations.is_empty()
++                || document.prototype.is_some()
++                || !document.reviews.is_empty()
++                || root.children.iter().any(|id| resolved.nodes[id].mask);
++            Ok(Arc::new(Self {
++                descriptor: descriptor.clone(),
++                owners,
++                units,
++                roots,
++                stage: stage.into(),
++                support,
++                complete_only,
++            }))
++        })
++    }
++    pub fn viewport(
++        self: &Arc<Self>,
++        camera: Transform,
++        viewport: Rect,
++        cancel: &AtomicBool,
++    ) -> Result<Demand, String> {
++        check(cancel)?;
++        let m = camera.0;
++        if m.iter().any(|v| !v.is_finite())
++            || m[1] != 0.
++            || m[2] != 0.
++            || m[0] != m[3]
++            || !(0.001..=128.).contains(&m[0])
++            || viewport.w == 0
++            || viewport.h == 0
++            || [(viewport.x, viewport.w), (viewport.y, viewport.h)]
++                .iter()
++                .any(|(origin, size)| {
++                    i32::try_from(*size)
++                        .ok()
++                        .and_then(|size| origin.checked_add(size))
++                        .is_none()
++                })
++        {
++            return Err("Invalid source demand viewport".into());
++        }
++        let visible = self
++            .roots
++            .iter()
++            .filter(|(id, _)| self.complete_only || !self.support.culls(id, camera, viewport))
++            .map(|(id, _)| id.clone())
++            .collect::<Vec<_>>();
++        self.plan(visible, cancel)
++    }
++    /// Explicit navigation/inspection acquires whole owning units, including
++    /// hidden masters, parent layout/mode context and dependency subtrees.
++    pub fn objects(
++        self: &Arc<Self>,
++        ids: &[String],
++        cancel: &AtomicBool,
++    ) -> Result<Demand, String> {
++        self.plan(ids.to_vec(), cancel)
++    }
++    fn plan(self: &Arc<Self>, visible: Vec<String>, cancel: &AtomicBool) -> Result<Demand, String> {
++        let mut units = BTreeSet::from([self.owners[&self.stage]]);
++        let mut pending = visible
++            .iter()
++            .map(|id| {
++                self.owners
++                    .get(id)
++                    .copied()
++                    .ok_or_else(|| "Missing demanded source object".to_owned())
++            })
++            .collect::<Result<Vec<_>, _>>()?;
++        if self.complete_only || visible.contains(&self.stage) {
++            pending.extend(0..self.units.len());
++        }
++        let mut prefix_roots = 0;
++        // Dependency expansion and painter-prefix expansion share one work
++        // queue, so references that reveal another backdrop also close it.
++        while let Some(unit) = pending.pop() {
++            check(cancel)?;
++            if !units.insert(unit) {
++                continue;
++            }
++            pending.extend(self.units[unit].dependencies.iter().copied());
++            if self.units[unit].backdrop {
++                if let Some(rank) = self.roots.iter().position(|(_, u)| *u == unit) {
++                    if rank > prefix_roots {
++                        pending.extend(self.roots[prefix_roots..rank].iter().map(|(_, u)| *u));
++                        prefix_roots = rank;
++                    }
++                }
++            }
++        }
++        Ok(Demand {
++            catalog: self.clone(),
++            units,
++            visible,
++            prefix_roots,
++        })
++    }
++}
++impl Demand {
++    pub fn stats(&self) -> DemandStats {
++        DemandStats {
++            total_nodes: self.catalog.owners.len(),
++            required_nodes: self
++                .units
++                .iter()
++                .map(|u| self.catalog.units[*u].nodes.len())
++                .sum(),
++            visible_roots: self.visible.len(),
++            painter_prefix_roots: self.prefix_roots,
++            dependency_units: self.units.len(),
++        }
++    }
++    /// Atomic publication: cancellation, missing data and a changed generation
++    /// return an error, never a successful partial set of requested records.
++    pub fn load(
++        self,
++        path: &Path,
++        descriptor: &Descriptor,
++        cancel: &AtomicBool,
++    ) -> Result<LoadedDemand, String> {
++        check(cancel)?;
++        if descriptor != &self.catalog.descriptor {
++            return Err("Stale scene demand generation".into());
++        }
++        let mut reader = Reader::open(path, descriptor, cancel).map_err(|e| e.to_string())?;
++        let mut nodes = BTreeMap::new();
++        if self.stats().required_nodes == self.catalog.owners.len() {
++            nodes = reader.read_all_nodes(cancel).map_err(|e| e.to_string())?;
++        } else {
++            for unit in &self.units {
++                for id in &self.catalog.units[*unit].nodes {
++                    check(cancel)?;
++                    let node = reader
++                        .read_node(id, cancel)
++                        .map_err(|e| e.to_string())?
++                        .ok_or("Missing demanded scene record")?;
++                    nodes.insert(id.clone(), node);
++                }
++            }
++        }
++        check(cancel)?;
++        Ok(LoadedDemand {
++            demand: self,
++            nodes,
++            reads: reader.stats(),
++        })
++    }
++}
++
++#[cfg(test)]
++mod tests;
+--- /dev/null
++++ b/design-studio/crates/design-kernel/src/scene_demand/tests.rs
+@@ -0,0 +1,429 @@
++use super::*;
++use crate::scene_store;
++use serde_json::json;
++use std::{fs, path::PathBuf, sync::atomic::AtomicU64};
++
++struct Fixture {
++    path: PathBuf,
++    descriptor: Descriptor,
++    catalog: Arc<Catalog>,
++    document: Document,
++}
++impl Fixture {
++    fn new(document: Document) -> Self {
++        Self::with_fonts(document, &Fonts::new())
++    }
++    fn with_fonts(document: Document, fonts: &Fonts) -> Self {
++        static NEXT: AtomicU64 = AtomicU64::new(0);
++        let path = std::env::temp_dir().join(format!(
++            "futureox-demand-{}-{}.scene",
++            std::process::id(),
++            NEXT.fetch_add(1, Ordering::Relaxed)
++        ));
++        let cancel = AtomicBool::new(false);
++        let descriptor = scene_store::write(&path, "d:7", &document, &[], &cancel).unwrap();
++        let stage = document.pages[0].children[0].clone();
++        let result = Catalog::open(&path, &descriptor, &stage, fonts, &cancel);
++        if result.is_err() {
++            let _ = fs::remove_file(&path);
++        }
++        let catalog = result.unwrap();
++        Self {
++            path,
++            descriptor,
++            catalog,
++            document,
++        }
++    }
++    fn load(&self, ids: &[&str]) -> LoadedDemand {
++        let cancel = AtomicBool::new(false);
++        self.catalog
++            .objects(
++                &ids.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
++                &cancel,
++            )
++            .unwrap()
++            .load(&self.path, &self.descriptor, &cancel)
++            .unwrap()
++    }
++}
++impl Drop for Fixture {
++    fn drop(&mut self) {
++        let _ = fs::remove_file(&self.path);
++    }
++}
++fn document() -> Document {
++    serde_json::from_value(json!({"schemaVersion":20,"id":"d","name":"d","pages":[{"id":"p","name":"p","background":"#ffffff","children":["stage"]}],"nodes":{
++        "stage":{"id":"stage","kind":"frame","width":20000,"height":20000,"blend":"pass-through","children":["a","b","c"]},
++        "a":{"id":"a","kind":"rectangle","width":20,"height":20,"fills":[{"kind":"solid","color":"#ff0000"}]},
++        "b":{"id":"b","kind":"rectangle","width":20,"height":20,"transform":[1,0,0,1,10000,0],"fills":[{"kind":"solid","color":"#00ff00"}]},
++        "c":{"id":"c","kind":"rectangle","width":20,"height":20,"transform":[1,0,0,1,20000,0],"fills":[{"kind":"solid","color":"#0000ff"}]}
++    }})).unwrap()
++}
++#[test]
++fn viewport_reads_only_demanded_payload_and_keeps_cold_identity() {
++    let f = Fixture::new(document());
++    let cancel = AtomicBool::new(false);
++    let demand = f
++        .catalog
++        .viewport(Transform::default(), Rect::new(0, 0, 64, 64), &cancel)
++        .unwrap();
++    assert_eq!(demand.stats().required_nodes, 2);
++    let loaded = demand.load(&f.path, &f.descriptor, &cancel).unwrap();
++    assert!(matches!(loaded.lookup("a"), Lookup::Loaded(_)));
++    assert!(matches!(loaded.lookup("b"), Lookup::Cold));
++    assert!(matches!(loaded.lookup("missing"), Lookup::Absent));
++    assert_eq!(loaded.reads().node_reads, 2);
++    assert_eq!(loaded.reads().metadata_reads, 0);
++    assert_eq!(loaded.nodes()["a"], f.document.nodes["a"]);
++    let moved = f
++        .catalog
++        .viewport(
++            Transform([1., 0., 0., 1., -10000., 0.]),
++            Rect::new(0, 0, 64, 64),
++            &cancel,
++        )
++        .unwrap()
++        .load(&f.path, &f.descriptor, &cancel)
++        .unwrap();
++    assert!(matches!(moved.lookup("b"), Lookup::Loaded(_)));
++    assert!(matches!(moved.lookup("a"), Lookup::Cold));
++}
++#[test]
++fn backdrop_acquires_preceding_painter_inputs_but_not_later_roots() {
++    let mut d = document();
++    d.nodes.get_mut("b").unwrap().effects =
++        serde_json::from_value(json!([{"kind":"background-blur","radius":10,"color":"#000000"}]))
++            .unwrap();
++    let f = Fixture::new(d);
++    let cancel = AtomicBool::new(false);
++    let loaded = f
++        .catalog
++        .viewport(
++            Transform([1., 0., 0., 1., -10000., 0.]),
++            Rect::new(0, 0, 64, 64),
++            &cancel,
++        )
++        .unwrap()
++        .load(&f.path, &f.descriptor, &cancel)
++        .unwrap();
++    assert!(matches!(loaded.lookup("a"), Lookup::Loaded(_)));
++    assert!(matches!(loaded.lookup("b"), Lookup::Loaded(_)));
++    assert!(matches!(loaded.lookup("c"), Lookup::Cold));
++    assert_eq!(loaded.stats().painter_prefix_roots, 1);
++    // An offscreen backdrop is not itself a reason to read the entire page.
++    assert_eq!(
++        f.catalog
++            .viewport(Transform::default(), Rect::new(0, 0, 64, 64), &cancel)
++            .unwrap()
++            .stats()
++            .required_nodes,
++        2
++    );
++}
++#[test]
++fn components_and_connectors_promote_dependencies_to_whole_owning_units() {
++    let mut d = document();
++    d.nodes.get_mut("b").unwrap().kind = "frame".into();
++    d.nodes.get_mut("b").unwrap().component = Some(serde_json::from_value(json!({})).unwrap());
++    d.nodes.get_mut("a").unwrap().kind = "frame".into();
++    d.nodes.get_mut("a").unwrap().instance =
++        Some(serde_json::from_value(json!({"componentId":"b","overrides":{}})).unwrap());
++    d.nodes
++        .get_mut("stage")
++        .unwrap()
++        .children
++        .retain(|id| id != "b");
++    d.pages.push(crate::scene::Page {
++        id: "library".into(),
++        name: "library".into(),
++        children: vec!["b".into()],
++        background: "#ffffff".into(),
++        guides: vec![],
++    });
++    let f = Fixture::new(d);
++    let loaded = f.load(&["a"]);
++    assert!(matches!(loaded.lookup("b"), Lookup::Loaded(_)));
++    assert!(matches!(loaded.lookup("c"), Lookup::Cold));
++    let mut d = document();
++    d.nodes.get_mut("a").unwrap().kind = "vector".into();
++    d.nodes.get_mut("a").unwrap().connector=Some(serde_json::from_value(json!({"from":{"point":{"x":0,"y":0},"nodeId":"b","anchor":{"x":0,"y":0}},"to":{"point":{"x":10,"y":10},"nodeId":"c","anchor":{"x":1,"y":1}},"style":"straight"})).unwrap());
++    let f = Fixture::new(d);
++    let loaded = f.load(&["a"]);
++    assert_eq!(loaded.nodes().len(), 4);
++}
++#[test]
++fn generation_cancel_and_changed_content_never_publish_partial_success() {
++    let f = Fixture::new(document());
++    let cancel = AtomicBool::new(false);
++    let mut wrong = f.descriptor.clone();
++    wrong.generation = "d:8".into();
++    assert!(
++        f.catalog
++            .objects(&["a".into()], &cancel)
++            .unwrap()
++            .load(&f.path, &wrong, &cancel)
++            .is_err()
++    );
++    assert!(f.catalog.objects(&["missing".into()], &cancel).is_err());
++    assert!(
++        f.catalog
++            .viewport(
++                Transform::default(),
++                Rect::new(0, 0, 64, 64),
++                &AtomicBool::new(true)
++            )
++            .is_err()
++    );
++    let demand = f.catalog.objects(&["a".into()], &cancel).unwrap();
++    assert!(
++        demand
++            .load(&f.path, &f.descriptor, &AtomicBool::new(true))
++            .is_err()
++    );
++    let mut bytes = fs::read(&f.path).unwrap();
++    let at = bytes.windows(7).position(|b| b == b"#ff0000").unwrap();
++    bytes[at + 1] = b'0';
++    fs::write(&f.path, bytes).unwrap();
++    assert!(
++        f.catalog
++            .objects(&["a".into()], &cancel)
++            .unwrap()
++            .load(&f.path, &f.descriptor, &cancel)
++            .is_err()
++    );
++    assert!(Catalog::open(&f.path, &f.descriptor, "stage", &Fonts::new(), &cancel).is_err());
++}
++#[test]
++fn inspection_preserves_parent_layout_and_stage_request_is_complete() {
++    let mut d = document();
++    let leaf = d.nodes.remove("c").unwrap();
++    d.nodes
++        .get_mut("stage")
++        .unwrap()
++        .children
++        .retain(|id| id != "c");
++    d.nodes.get_mut("b").unwrap().kind = "group".into();
++    d.nodes.get_mut("b").unwrap().children.push("c".into());
++    d.nodes.insert("c".into(), leaf);
++    let f = Fixture::new(d);
++    let loaded = f.load(&["c"]);
++    assert!(matches!(loaded.lookup("b"), Lookup::Loaded(_)));
++    assert!(matches!(loaded.lookup("a"), Lookup::Cold));
++    assert_eq!(f.load(&["stage"]).nodes(), &f.document.nodes);
++}
++#[test]
++fn unknown_optics_and_page_masks_remain_conservative() {
++    let mut d = document();
++    d.nodes.get_mut("b").unwrap().path_offset = 1.;
++    let f = Fixture::new(d);
++    let cancel = AtomicBool::new(false);
++    let demand = f
++        .catalog
++        .viewport(Transform::default(), Rect::new(0, 0, 64, 64), &cancel)
++        .unwrap();
++    assert!(demand.visible.contains(&"b".to_owned()));
++    let mut d = document();
++    d.nodes.get_mut("a").unwrap().mask = true;
++    let f = Fixture::new(d);
++    assert_eq!(
++        f.catalog
++            .viewport(
++                Transform([1., 0., 0., 1., -10000., 0.]),
++                Rect::new(0, 0, 64, 64),
++                &cancel
++            )
++            .unwrap()
++            .stats()
++            .required_nodes,
++        4
++    );
++}
++#[test]
++fn optical_support_includes_child_overflow_and_shadow_casters() {
++    let mut d = document();
++    let mut child = d.nodes["a"].clone();
++    child.id = "leaf".into();
++    child.transform = Transform([1., 0., 0., 1., -10000., 0.]);
++    d.nodes.get_mut("b").unwrap().kind = "group".into();
++    d.nodes.get_mut("b").unwrap().children.push("leaf".into());
++    d.nodes.insert("leaf".into(), child);
++    d.nodes.get_mut("c").unwrap().effects =
++        serde_json::from_value(json!([{"kind":"shadow","radius":4,"x":-20000,"color":"#000000"}]))
++            .unwrap();
++    let f = Fixture::new(d);
++    let cancel = AtomicBool::new(false);
++    let demand = f
++        .catalog
++        .viewport(Transform::default(), Rect::new(0, 0, 64, 64), &cancel)
++        .unwrap();
++    assert_eq!(demand.visible, vec!["a", "b", "c"]);
++}
++
++#[test]
++#[ignore = "manual full topology source model; no GUI/GPU"]
++fn complete_topology_viewport_and_dependency_acquisition_matches_source() {
++    use sha2::{Digest, Sha256};
++    use std::io::{BufReader, Read};
++    struct Input {
++        file: fs::File,
++        hash: Sha256,
++    }
++    impl Read for Input {
++        fn read(&mut self, b: &mut [u8]) -> std::io::Result<usize> {
++            let n = self.file.read(b)?;
++            self.hash.update(&b[..n]);
++            Ok(n)
++        }
++    }
++    let started = std::time::Instant::now();
++    let path = std::env::var("FUTUREOX_TOPOLOGY_MODEL").expect("frozen topology source model");
++    let mut input = Input {
++        file: fs::File::open(path).unwrap(),
++        hash: Sha256::new(),
++    };
++    let doc: Document = serde_json::from_reader(BufReader::new(&mut input)).unwrap();
++    assert_eq!(
++        format!("{:x}", input.hash.finalize()),
++        "e1678121c271d815b218cd21c233f9c584dcce3d2246d13870ae4801bee6548e"
++    );
++    assert_eq!(doc.nodes.len(), 124447);
++    let stage = doc.pages[0].children[0].clone();
++    assert_eq!(doc.nodes[&stage].children.len(), 306);
++    let font_path = Path::new(env!("CARGO_MANIFEST_DIR"))
++        .join("../../../frontend/design-client/public/fonts/NotoSansSC.ttf");
++    let font = fs::read(font_path).unwrap();
++    let font_hash = format!("{:x}", Sha256::digest(&font));
++    let mut fonts = Fonts::new();
++    fonts.load(&font).unwrap();
++    eprintln!("topology: verified input; writing store and building resolved catalog");
++    let f = Fixture::with_fonts(doc, &fonts);
++    eprintln!("topology: catalog ready");
++    let cancel = AtomicBool::new(false);
++    let mut reports = Vec::new();
++    let backdrop = f
++        .catalog
++        .roots
++        .iter()
++        .enumerate()
++        .find(|(rank, (_, u))| *rank > 0 && f.catalog.units[*u].backdrop)
++        .unwrap();
++    let center = f.catalog.support.output_center(&backdrop.1.0).unwrap();
++    let first = f
++        .catalog
++        .support
++        .output_center(&f.catalog.roots[0].0)
++        .unwrap();
++    let scenarios = [
++        ("origin", 0., 0., 1.),
++        (
++            "material-950pct",
++            512. - first.x * 9.5,
++            384. - first.y * 9.5,
++            9.5,
++        ),
++        ("backdrop-material", 512. - center.x, 384. - center.y, 1.),
++        ("empty-corner", -16000., -30000., 1.),
++    ];
++    for (name, x, y, zoom) in scenarios {
++        let demand = f
++            .catalog
++            .viewport(
++                Transform([zoom, 0., 0., zoom, x, y]),
++                Rect::new(0, 0, 1024, 768),
++                &cancel,
++            )
++            .unwrap();
++        eprintln!(
++            "topology demand: {}",
++            serde_json::to_string(&demand.stats()).unwrap()
++        );
++        if name != "empty-corner" {
++            assert!(demand.stats().visible_roots > 0);
++        }
++        if name == "backdrop-material" {
++            assert!(demand.stats().painter_prefix_roots > 0);
++        }
++        let loaded = demand.load(&f.path, &f.descriptor, &cancel).unwrap();
++        for (id, node) in loaded.nodes() {
++            assert_eq!(node, &f.document.nodes[id]);
++        }
++        assert_eq!(loaded.reads().metadata_reads, 0);
++        assert_eq!(loaded.reads().node_reads, loaded.nodes().len() as u64);
++        for unit in &loaded.demand.units {
++            for dep in &f.catalog.units[*unit].dependencies {
++                assert!(loaded.demand.units.contains(dep));
++            }
++        }
++        reports.push(json!({"name":name,"camera":[x,y,zoom],"demand":loaded.stats(),"nodeBytes":loaded.reads().node_bytes,"proofBytes":loaded.reads().index_bytes_verified,"metadataReads":0,"sourceNodesEqual":true}));
++    }
++    let requested = f
++        .catalog
++        .roots
++        .iter()
++        .filter(|(_, u)| !f.catalog.units[*u].backdrop)
++        .min_by_key(|(_, u)| f.catalog.units[*u].nodes.len())
++        .unwrap()
++        .0
++        .as_str();
++    let loaded = f.load(&[requested]);
++    assert!(loaded.nodes().len() < f.document.nodes.len());
++    let unknown=f.catalog.roots.iter().enumerate().filter(|(_, (id,_))|!f.catalog.support.known_output(id)).map(|(rank,(id,u))|json!({"rank":rank,"name":f.document.nodes[id].name,"nodes":f.catalog.units[*u].nodes.len(),"backdrop":f.catalog.units[*u].backdrop})).collect::<Vec<_>>();
++    println!(
++        "{}",
++        json!({"scope":"complete topology native acquisition module, no renderer speed/GPU/GUI acceptance","nodes":124447,"roots":306,"fontHash":font_hash,"viewports":reports,"explicitObjectNodes":loaded.nodes().len(),"unknownRoots":unknown,"seconds":started.elapsed().as_secs_f64()})
++    );
++}
++
++#[test]
++fn pointwise_color_controls_do_not_require_offscreen_painter_inputs() {
++    let mut d = document();
++    d.nodes.get_mut("b").unwrap().effects=serde_json::from_value(json!([{"kind":"color-controls","radius":0,"color":"#000000","colorControls":{"brightness":0.2,"contrast":1.5,"saturation":0.5,"hue":0}}])).unwrap();
++    let f = Fixture::new(d);
++    let cancel = AtomicBool::new(false);
++    let demand = f
++        .catalog
++        .viewport(Transform::default(), Rect::new(0, 0, 64, 64), &cancel)
++        .unwrap();
++    assert_eq!(demand.stats().required_nodes, 2);
++    assert_eq!(demand.stats().painter_prefix_roots, 0);
++}
++
++#[test]
++fn viewport_rejects_unrepresentable_rectangles_before_support_queries() {
++    let f = Fixture::new(document());
++    let cancel = AtomicBool::new(false);
++    for viewport in [
++        Rect::new(i32::MAX, 0, 1, 1),
++        Rect::new(0, i32::MAX, 1, 1),
++        Rect::new(0, 0, u32::MAX, 1),
++        Rect::new(0, 0, 1, 0),
++    ] {
++        assert!(
++            f.catalog
++                .viewport(Transform::default(), viewport, &cancel)
++                .is_err()
++        );
++    }
++}
++
++#[test]
++fn cancellation_between_records_does_not_publish_or_poison_a_later_demand() {
++    let f = Fixture::new(document());
++    let cancel = AtomicBool::new(false);
++    let demand = f.catalog.objects(&["a".into()], &cancel).unwrap();
++    let calls = std::rc::Rc::new(std::cell::Cell::new(0));
++    let observed = calls.clone();
++    let result = crate::render_cancellation::with_probe(
++        move || {
++            observed.set(observed.get() + 1);
++            observed.get() > 2
++        },
++        || demand.load(&f.path, &f.descriptor, &cancel),
++    );
++    assert!(result.is_err());
++    assert!(calls.get() > 2);
++    let loaded = f.load(&["a"]);
++    assert_eq!(loaded.nodes()["a"], f.document.nodes["a"]);
++    assert_eq!(loaded.reads().node_reads, 2);
++}

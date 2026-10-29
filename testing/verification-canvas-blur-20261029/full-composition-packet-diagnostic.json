@@ -1,0 +1,313 @@
+{
+  "view": {
+    "x": -21140.140625,
+    "y": -65220.36516682516,
+    "zoom": 4
+  },
+  "extent": {
+    "x": -320,
+    "y": -320,
+    "w": 896,
+    "h": 832
+  },
+  "nodes": 28,
+  "selected": [
+    {
+      "id": "B4F79D9D-73A9-4CFA-A0C2-BA3610CC6105",
+      "node": {
+        "matrix": [
+          4,
+          0,
+          0,
+          4,
+          -4756.140625,
+          -2292.3651668251623
+        ],
+        "rect": {
+          "x": -320,
+          "y": -320,
+          "w": 896,
+          "h": 832
+        },
+        "fill": {
+          "opaqueRect": {
+            "x": -320,
+            "y": -320,
+            "w": 896,
+            "h": 832
+          },
+          "area": {
+            "first": 0,
+            "count": 7,
+            "fingerprint": [
+              654375677,
+              2355453545
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -320,
+            "y": -320,
+            "w": 896,
+            "h": 832
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "evenodd"
+        },
+        "fills": [],
+        "effects": [],
+        "children": 31
+      }
+    },
+    {
+      "id": "4B7242E2-1217-4A41-A69A-B53B5FBDF98F",
+      "node": {
+        "matrix": [
+          4,
+          0,
+          0,
+          4,
+          -242.34765625,
+          22.235907393587695
+        ],
+        "rect": {
+          "x": -320,
+          "y": -115,
+          "w": 585,
+          "h": 422
+        },
+        "fill": {
+          "area": {
+            "first": 130279,
+            "count": 2371,
+            "fingerprint": [
+              884229667,
+              1433373215
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -244,
+            "y": 21,
+            "w": 373,
+            "h": 150
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "evenodd"
+        },
+        "fills": [
+          {
+            "kind": "solid",
+            "opacity": 1,
+            "color": "#034673"
+          }
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "gaussian-blur",
+            "visible": true,
+            "radius": 11.03639030456543,
+            "x": 0,
+            "y": 0,
+            "spread": 0,
+            "color": "#000000",
+            "opacity": 1,
+            "amount": 0
+          }
+        ],
+        "children": 0
+      }
+    }
+  ],
+  "effectNodes": [
+    {
+      "id": "1EAF1856-5C33-44BC-B366-0A7D1B9F70D7",
+      "matrix": [
+        4,
+        0,
+        0,
+        4,
+        -282.38916015625,
+        -530.2418758095373
+      ],
+      "rect": {
+        "x": -320,
+        "y": -320,
+        "w": 337,
+        "h": 88
+      },
+      "effects": [
+        {
+          "id": "",
+          "kind": "gaussian-blur",
+          "visible": true,
+          "radius": 7.357593536376953,
+          "x": 0,
+          "y": 0,
+          "spread": 0,
+          "color": "#000000",
+          "opacity": 1,
+          "amount": 0
+        }
+      ]
+    },
+    {
+      "id": "2831DCA2-C049-48D9-978E-3486EA90E78F",
+      "matrix": [
+        4,
+        0,
+        0,
+        4,
+        -891.013671875,
+        -91.5350887001623
+      ],
+      "rect": {
+        "x": -320,
+        "y": -185,
+        "w": 896,
+        "h": 697
+      },
+      "effects": [
+        {
+          "id": "",
+          "kind": "gaussian-blur",
+          "visible": true,
+          "radius": 7.357593536376953,
+          "x": 0,
+          "y": 0,
+          "spread": 0,
+          "color": "#000000",
+          "opacity": 1,
+          "amount": 0
+        }
+      ]
+    },
+    {
+      "id": "2EBA84B7-DD83-4398-BFC0-F2A3CFD4B32C",
+      "matrix": [
+        4,
+        0,
+        0,
+        4,
+        -743.4140625,
+        -224.7347957314123
+      ],
+      "rect": {
+        "x": -320,
+        "y": -247,
+        "w": 896,
+        "h": 759
+      },
+      "effects": [
+        {
+          "id": "",
+          "kind": "gaussian-blur",
+          "visible": true,
+          "radius": 1.471518754959106,
+          "x": 0,
+          "y": 0,
+          "spread": 0,
+          "color": "#000000",
+          "opacity": 1,
+          "amount": 0
+        }
+      ]
+    },
+    {
+      "id": "4B7242E2-1217-4A41-A69A-B53B5FBDF98F",
+      "matrix": [
+        4,
+        0,
+        0,
+        4,
+        -242.34765625,
+        22.235907393587695
+      ],
+      "rect": {
+        "x": -320,
+        "y": -115,
+        "w": 585,
+        "h": 422
+      },
+      "effects": [
+        {
+          "id": "",
+          "kind": "gaussian-blur",
+          "visible": true,
+          "radius": 11.03639030456543,
+          "x": 0,
+          "y": 0,
+          "spread": 0,
+          "color": "#000000",
+          "opacity": 1,
+          "amount": 0
+        }
+      ]
+    },
+    {
+      "id": "8F4C9170-4FDA-4FC3-B76E-380FB1282363",
+      "matrix": [
+        4,
+        0,
+        0,
+        4,
+        -448.140625,
+        -646.8471004189123
+      ],
+      "rect": {
+        "x": -320,
+        "y": -320,
+        "w": 738,
+        "h": 300
+      },
+      "effects": [
+        {
+          "id": "",
+          "kind": "gaussian-blur",
+          "visible": true,
+          "radius": 3.678796768188477,
+          "x": 0,
+          "y": 0,
+          "spread": 0,
+          "color": "#000000",
+          "opacity": 1,
+          "amount": 0
+        }
+      ]
+    },
+    {
+      "id": "C3FEB848-00AA-4AC7-B6E9-6E288897FF9F",
+      "matrix": [
+        4,
+        0,
+        0,
+        4,
+        -391.32470703125,
+        -679.5419246376623
+      ],
+      "rect": {
+        "x": -320,
+        "y": -320,
+        "w": 896,
+        "h": 667
+      },
+      "effects": [
+        {
+          "id": "",
+          "kind": "inner-shadow",
+          "visible": true,
+          "radius": 40,
+          "x": 0,
+          "y": 0,
+          "spread": 0,
+          "color": "#00b5ff",
+          "opacity": 1,
+          "amount": 0
+        }
+      ]
+    }
+  ]
+}

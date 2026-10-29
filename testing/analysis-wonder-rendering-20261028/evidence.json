@@ -1,0 +1,123 @@
+{
+  "date": "2026-10-28",
+  "timezone": "Asia/Shanghai",
+  "scope": "Read-only browser interaction, public frontend asset inspection, current repository source review; no matched performance benchmark or source implementation changes.",
+  "git_head": "2954a77fe22a12f806d91351ec95e5186f9b562a",
+  "worktree_note": "Existing uncommitted source changes were present. Hashes identify reviewed files; HEAD alone is not the reviewed baseline.",
+  "wonder_public_release_marker": "c72067291063",
+  "public_assets": [
+    {
+      "url": "https://app.wonder.so/assets/Renderer-CDnDYIHg.js",
+      "bytes": 398872,
+      "sha256": "65086bdcf498cbbdebd75dfe684f81637e4afa71dc687c3a705de5acfc98b07c"
+    },
+    {
+      "url": "https://app.wonder.so/assets/text-caret-DmucM7y2.js",
+      "bytes": 187231,
+      "sha256": "595f1d4d08a8d527405a933bf2a130f530865474902e62c62f7b8835e0359b39"
+    },
+    {
+      "url": "https://app.wonder.so/assets/geometry-DZqCVhfg.js",
+      "bytes": 86324,
+      "sha256": "f0ba78aa797127e7eaec52b3993da60f1bca79d2906df5ed58f7867b2721a599"
+    },
+    {
+      "url": "https://app.wonder.so/assets/shader-gpu-COEveJQj.js",
+      "bytes": 1972,
+      "sha256": "1731570ab5f7e5f6770ff2e106bc561dd717f69bb0783f39b13c2136a9a4d880"
+    },
+    {
+      "url": "https://app.wonder.so/assets/store-BkbKs8G8.js",
+      "bytes": 321818,
+      "sha256": "b15a6a7c362a3446602c7f4c225a5b84338f487271f5c9d5ba6634fd4bfd5e5c"
+    },
+    {
+      "url": "https://app.wonder.so/assets/index-B5wXOBkl.css",
+      "bytes": 241760,
+      "sha256": "c590ee063753d8d0bbd9065f00c838f453fe401920fd9a1a1d6707439464bdb6"
+    }
+  ],
+  "reviewed_sources": [
+    {
+      "path": "frontend/design-client/src/Canvas.tsx",
+      "bytes": 155363,
+      "sha256": "e97ae6425f56f25842fb516a35c5ae95d0ccbb2cc127afcd351950cc3c9788b7"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/NativeSourceSurface.tsx",
+      "bytes": 12743,
+      "sha256": "208ddd63881cba3caecdfd112d1c13d367d5e18edd1465fff34eceec08652ff0"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-worker.ts",
+      "bytes": 142896,
+      "sha256": "f25c1515f7074dea69bbf90bfbd81dcc4ab7a29e0ec82bf5f66ce9e22e2db4c4"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-kernel.ts",
+      "bytes": 12181,
+      "sha256": "b989c931925dd181fdc61b79afd7d82b41018a90a9842c4aee44f063567aa100"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/interaction-renderer.ts",
+      "bytes": 87389,
+      "sha256": "3accb821a6ce12492b507c0fc310cc815d730406f54343971a10b52303778ef2"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/image-mip-cache.ts",
+      "bytes": 6044,
+      "sha256": "139ee13e339f73616b25802518059ad4cb92673f20ebc62bc493734a65026b1b"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/gpu.rs",
+      "bytes": 168377,
+      "sha256": "a1fc0d978bee82bceb243e578d41b7889e5d9e062e2bb5e371faa73a10a6f52f"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/renderer.rs",
+      "bytes": 149016,
+      "sha256": "e85c6767a955b3ec8b127c1d4f2e4b1f9cb5a7fc1d340951969a2c266b6ee71d"
+    },
+    {
+      "path": "docs/SOURCE_CANVAS_CAPACITY_20261027.zh-CN.md",
+      "bytes": 5855,
+      "sha256": "b1c735564d3cb86690d7287996e6fa9a5ea6e12ea7ef2905cac8fe543befdada"
+    }
+  ],
+  "ui_observations": {
+    "wonder_sample": "Wonder Basics",
+    "design_dom_marker_count": 2081,
+    "design_dom_marker_count_note": "Elements selector [data-node-id] matches; not asserted unique model-node count.",
+    "top_level_design_roots": 6,
+    "main_document_canvas_count": 1,
+    "initial_zoom_percent_rounded": 21,
+    "inspected_zoom_percent": 200,
+    "culled_roots_at_inspected_zoom": 4,
+    "initial_transform_scale": 0.211865,
+    "inspected_transform_scale": 2,
+    "canvas_docked_backing_pixels": [
+      1646,
+      1820
+    ],
+    "canvas_docked_css_pixels": [
+      823,
+      910
+    ],
+    "final_zoom_percent_rounded": 21,
+    "final_tool": "Move",
+    "devtools_final": "closed",
+    "futureox_running_app": "FutureoxTopologyRefinementV43",
+    "futureox_ui_layer_count": 8804,
+    "futureox_ui_zoom_percent": 159.4,
+    "futureox_ui_status": "WebGPU · 清晰",
+    "futureox_build_to_source_match": "NOT_VERIFIED"
+  },
+  "not_run": [
+    "matched-document A/B",
+    "physical input-to-photon latency",
+    "FPS benchmark",
+    "Wonder complex-effect export/HDR parity",
+    "full Futureox G2/G5",
+    "mutation/drag-edit/undo-save test"
+  ]
+}

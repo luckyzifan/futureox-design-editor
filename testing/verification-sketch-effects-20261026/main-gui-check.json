@@ -1,0 +1,21 @@
+{
+  "productionOrigin": "http://127.0.0.1:1441",
+  "fdReopen": {
+    "radius": 7.5,
+    "angle": 60
+  },
+  "angleHistory": [
+    60,
+    45,
+    60,
+    45,
+    60
+  ],
+  "gaussianZooms": [
+    937.5,
+    200
+  ],
+  "finalRenderer": "WebGPU · 清晰",
+  "observations": "Actual DOM controls and screenshots via CUA, no injected editor state",
+  "nativeExportPixelResult": "main-gui-native-pixels.json"
+}

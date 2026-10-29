@@ -1,0 +1,99 @@
+{
+  "status": "scoped increment integrated and verified; overall Sketch parity incomplete",
+  "mainBuild": {
+    "builtAt": "2026-10-27T02:01:40.397Z",
+    "checkedAt": "2026-10-27T02:14:46.534399+00:00",
+    "recordedInputsChecked": 2262,
+    "mismatches": [],
+    "wasmSha256": "df7f1c7ac712add60ba97a320b900247218c753729ec66c36b85a7d6ae9b4d40"
+  },
+  "changedFiles": 30,
+  "tests": {
+    "mainNativeKernel": {
+      "passed": 31,
+      "log": "main-kernel-tests.log"
+    },
+    "worktreeInterop": {
+      "passed": 48,
+      "ignored": 1,
+      "log": "interop-final.log"
+    },
+    "real111": {
+      "passed": true,
+      "sha256": "5e3d79aee11600192f0d7e19175418b4acdaa996d867af58d5ae993441a8cc50",
+      "log": "real-111.log"
+    },
+    "real117": {
+      "passed": true,
+      "sha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "log": "real-117.log"
+    },
+    "mainClientActualWasm": {
+      "files": 8,
+      "passed": 97,
+      "log": "main-client-tests.log"
+    },
+    "mainTypecheck": {
+      "passed": true,
+      "log": "main-typecheck2.log"
+    },
+    "diffWhitespace": "passed"
+  },
+  "nativePixels": {
+    "sevenNativeReferenceReexports": "RGBA difference 0",
+    "portableVsNativeText": "FAIL: remaining glyph/raster differences; see native-portable-pixels-final.json",
+    "mainSavedReopenedExportSevenArtboards": "RGBA difference 0 against previously edited native exports; see main-gui-native-pixels.json"
+  },
+  "gui": {
+    "surface": "IAB Chromium, main production bundle, WebGPU",
+    "textParagraphEndAndVerticalCenterReopened": true,
+    "libraryV2RedTextAndLocalLabelOverrideReopened": true,
+    "fillChildResize": {
+      "parentBefore": 240,
+      "parentAfter": 340,
+      "childBefore": 158,
+      "childAfter": 258,
+      "undoRedo": true,
+      "restored": true
+    },
+    "prototypeNavigateBack": true,
+    "zoom": {
+      "high": 800,
+      "final": 200,
+      "clear": true
+    },
+    "nativeWheelPanDownUp": true,
+    "currentTabErrorsOrWarnings": [],
+    "saved": "main-saved.fd",
+    "exported": "main-export.sketch",
+    "screenshot": "main-gui-final.jpg",
+    "electronGui": "NOT_RUN",
+    "frameByFrameTransitionTiming": "NOT_RUN"
+  },
+  "gates": {
+    "G1": "scoped actual Rust/WASM + build verified",
+    "G2": "scoped browser interactions; complete matrix NOT_RUN",
+    "G3": "scoped data/history/export verified; portable-native text pixel FAIL",
+    "G4": "NOT_RUN",
+    "G5": "NOT_RUN",
+    "G7": "partial; no physical presentation/pressure acceptance"
+  },
+  "remaining": [
+    "colored glyphs/emoji bitmap/COLR",
+    "tightening",
+    "full Inferred Smart Layout / Relative / flexItem",
+    "native overlay placement and animation",
+    "broader native blend/filter pixel equivalence",
+    "cloud library ecosystem",
+    "full G2/G4/G5/G7"
+  ],
+  "artifacts": {
+    "main-saved.fd": "0bb5f6d0c85f0aae745ef6009366ef996279777b4fffdd388061111c0ee41d53",
+    "main-export.sketch": "5e79ab5339561fad355d0543150a173c7c2424ddd7e443f3d461fd97f171fe7c",
+    "main-gui-final.jpg": "ed71b53b799c0c66d09f093901da31834aac42ccc9ca16989cfba82a5dc50434",
+    "native-input.sketch": "a03711afa291cd65ecd1ab17202ceb1ecc238285eb4cc6cce742f58e278b571b",
+    "foreign-consumer.sketch": "75fa305ed3bfb96018e39b97df00ebcf0073ec872e4e45b90404e13dce12236a",
+    "library-v1.sketch": "b535b61545d7e091b50cedc7d70843e85c08e33f0f060f674325d7f5c879a7b1",
+    "library-v2.sketch": "07cadd4d6f7cdf2a245deda0b2055382037370d43557a6a03f381fc4105424e4"
+  }
+}

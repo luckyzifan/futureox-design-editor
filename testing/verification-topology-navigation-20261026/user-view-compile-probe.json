@@ -1,0 +1,1826 @@
+[
+  {
+    "x": -40,
+    "y": -148,
+    "extent": {
+      "x": -42,
+      "y": -150,
+      "w": 518,
+      "h": 518
+    },
+    "nodes": [
+      {
+        "id": "4D85D82E-1CF0-4D02-9220-1A23665FA217",
+        "rect": {
+          "x": -3387,
+          "y": -2464,
+          "w": 7208,
+          "h": 6177
+        },
+        "fill": {
+          "area": {
+            "first": 81234,
+            "count": 37975,
+            "fingerprint": [
+              1475829150,
+              3594806732
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1992,
+            "y": 889,
+            "w": 4220,
+            "h": 2376
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 35,
+            "x": 10,
+            "y": 15,
+            "spread": 0,
+            "color": "#3ea8d0",
+            "opacity": 0.1607843190431595,
+            "amount": 0
+          }
+        ]
+      },
+      {
+        "id": "7131EEE0-3D81-4671-9CB1-1A47D53863E1",
+        "rect": {
+          "x": -2580,
+          "y": -1475,
+          "w": 5594,
+          "h": 4381
+        },
+        "fill": {
+          "area": {
+            "first": 7,
+            "count": 29343,
+            "fingerprint": [
+              26554183,
+              1041225841
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1654,
+            "y": 1071,
+            "w": 3541,
+            "h": 1835
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 32,
+            "x": 4,
+            "y": 4,
+            "spread": 0,
+            "color": "#1e586e",
+            "opacity": 0.05882352963089943,
+            "amount": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "x": 472,
+    "y": -148,
+    "extent": {
+      "x": 470,
+      "y": -150,
+      "w": 518,
+      "h": 518
+    },
+    "nodes": [
+      {
+        "id": "4D85D82E-1CF0-4D02-9220-1A23665FA217",
+        "rect": {
+          "x": -2875,
+          "y": -2464,
+          "w": 7208,
+          "h": 6177
+        },
+        "fill": {
+          "area": {
+            "first": 81234,
+            "count": 37975,
+            "fingerprint": [
+              1475829150,
+              3594806732
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1992,
+            "y": 889,
+            "w": 4220,
+            "h": 2376
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 35,
+            "x": 10,
+            "y": 15,
+            "spread": 0,
+            "color": "#3ea8d0",
+            "opacity": 0.1607843190431595,
+            "amount": 0
+          }
+        ]
+      },
+      {
+        "id": "7131EEE0-3D81-4671-9CB1-1A47D53863E1",
+        "rect": {
+          "x": -2068,
+          "y": -1475,
+          "w": 5594,
+          "h": 4381
+        },
+        "fill": {
+          "area": {
+            "first": 7,
+            "count": 29343,
+            "fingerprint": [
+              26554183,
+              1041225841
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1654,
+            "y": 1071,
+            "w": 3541,
+            "h": 1835
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 32,
+            "x": 4,
+            "y": 4,
+            "spread": 0,
+            "color": "#1e586e",
+            "opacity": 0.05882352963089943,
+            "amount": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "x": 984,
+    "y": -148,
+    "extent": {
+      "x": 982,
+      "y": -150,
+      "w": 518,
+      "h": 518
+    },
+    "nodes": [
+      {
+        "id": "4D85D82E-1CF0-4D02-9220-1A23665FA217",
+        "rect": {
+          "x": -2363,
+          "y": -2464,
+          "w": 7208,
+          "h": 6177
+        },
+        "fill": {
+          "area": {
+            "first": 80409,
+            "count": 37975,
+            "fingerprint": [
+              1475829150,
+              3594806732
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1992,
+            "y": 889,
+            "w": 4220,
+            "h": 2376
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 35,
+            "x": 10,
+            "y": 15,
+            "spread": 0,
+            "color": "#3ea8d0",
+            "opacity": 0.1607843190431595,
+            "amount": 0
+          }
+        ]
+      },
+      {
+        "id": "7131EEE0-3D81-4671-9CB1-1A47D53863E1",
+        "rect": {
+          "x": -1556,
+          "y": -1475,
+          "w": 5594,
+          "h": 4381
+        },
+        "fill": {
+          "area": {
+            "first": 7,
+            "count": 29343,
+            "fingerprint": [
+              2176016955,
+              1217387278
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1556,
+            "y": 1071,
+            "w": 3443,
+            "h": 1835
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 32,
+            "x": 4,
+            "y": 4,
+            "spread": 0,
+            "color": "#1e586e",
+            "opacity": 0.05882352963089943,
+            "amount": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "x": 1496,
+    "y": -148,
+    "extent": {
+      "x": 1494,
+      "y": -150,
+      "w": 518,
+      "h": 518
+    },
+    "nodes": [
+      {
+        "id": "4D85D82E-1CF0-4D02-9220-1A23665FA217",
+        "rect": {
+          "x": -1851,
+          "y": -2464,
+          "w": 7208,
+          "h": 6177
+        },
+        "fill": {
+          "area": {
+            "first": 73467,
+            "count": 37975,
+            "fingerprint": [
+              536634927,
+              3013927116
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1851,
+            "y": 889,
+            "w": 4079,
+            "h": 2376
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 35,
+            "x": 10,
+            "y": 15,
+            "spread": 0,
+            "color": "#3ea8d0",
+            "opacity": 0.1607843190431595,
+            "amount": 0
+          }
+        ]
+      },
+      {
+        "id": "7131EEE0-3D81-4671-9CB1-1A47D53863E1",
+        "rect": {
+          "x": -1044,
+          "y": -1475,
+          "w": 5478,
+          "h": 4381
+        },
+        "fill": {
+          "area": {
+            "first": 7,
+            "count": 29343,
+            "fingerprint": [
+              3552148671,
+              2376848282
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1044,
+            "y": 1071,
+            "w": 2931,
+            "h": 1835
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 32,
+            "x": 4,
+            "y": 4,
+            "spread": 0,
+            "color": "#1e586e",
+            "opacity": 0.05882352963089943,
+            "amount": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "x": -40,
+    "y": 364,
+    "extent": {
+      "x": -42,
+      "y": 362,
+      "w": 518,
+      "h": 518
+    },
+    "nodes": [
+      {
+        "id": "4D85D82E-1CF0-4D02-9220-1A23665FA217",
+        "rect": {
+          "x": -3387,
+          "y": -2464,
+          "w": 7208,
+          "h": 6689
+        },
+        "fill": {
+          "area": {
+            "first": 88653,
+            "count": 37975,
+            "fingerprint": [
+              1475829150,
+              3594806732
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1992,
+            "y": 889,
+            "w": 4220,
+            "h": 2376
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 35,
+            "x": 10,
+            "y": 15,
+            "spread": 0,
+            "color": "#3ea8d0",
+            "opacity": 0.1607843190431595,
+            "amount": 0
+          }
+        ]
+      },
+      {
+        "id": "7131EEE0-3D81-4671-9CB1-1A47D53863E1",
+        "rect": {
+          "x": -2580,
+          "y": -1475,
+          "w": 5594,
+          "h": 4893
+        },
+        "fill": {
+          "area": {
+            "first": 7,
+            "count": 31997,
+            "fingerprint": [
+              972764076,
+              1096217397
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1654,
+            "y": 1071,
+            "w": 3541,
+            "h": 2002
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 32,
+            "x": 4,
+            "y": 4,
+            "spread": 0,
+            "color": "#1e586e",
+            "opacity": 0.05882352963089943,
+            "amount": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "x": 472,
+    "y": 364,
+    "extent": {
+      "x": 470,
+      "y": 362,
+      "w": 518,
+      "h": 518
+    },
+    "nodes": [
+      {
+        "id": "4D85D82E-1CF0-4D02-9220-1A23665FA217",
+        "rect": {
+          "x": -2875,
+          "y": -2464,
+          "w": 7208,
+          "h": 6689
+        },
+        "fill": {
+          "area": {
+            "first": 88653,
+            "count": 37975,
+            "fingerprint": [
+              1475829150,
+              3594806732
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1992,
+            "y": 889,
+            "w": 4220,
+            "h": 2376
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 35,
+            "x": 10,
+            "y": 15,
+            "spread": 0,
+            "color": "#3ea8d0",
+            "opacity": 0.1607843190431595,
+            "amount": 0
+          }
+        ]
+      },
+      {
+        "id": "7131EEE0-3D81-4671-9CB1-1A47D53863E1",
+        "rect": {
+          "x": -2068,
+          "y": -1475,
+          "w": 5594,
+          "h": 4893
+        },
+        "fill": {
+          "area": {
+            "first": 7,
+            "count": 31997,
+            "fingerprint": [
+              972764076,
+              1096217397
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1654,
+            "y": 1071,
+            "w": 3541,
+            "h": 2002
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 32,
+            "x": 4,
+            "y": 4,
+            "spread": 0,
+            "color": "#1e586e",
+            "opacity": 0.05882352963089943,
+            "amount": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "x": 984,
+    "y": 364,
+    "extent": {
+      "x": 982,
+      "y": 362,
+      "w": 518,
+      "h": 518
+    },
+    "nodes": [
+      {
+        "id": "4D85D82E-1CF0-4D02-9220-1A23665FA217",
+        "rect": {
+          "x": -2363,
+          "y": -2464,
+          "w": 7208,
+          "h": 6689
+        },
+        "fill": {
+          "area": {
+            "first": 87828,
+            "count": 37975,
+            "fingerprint": [
+              1475829150,
+              3594806732
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1992,
+            "y": 889,
+            "w": 4220,
+            "h": 2376
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 35,
+            "x": 10,
+            "y": 15,
+            "spread": 0,
+            "color": "#3ea8d0",
+            "opacity": 0.1607843190431595,
+            "amount": 0
+          }
+        ]
+      },
+      {
+        "id": "7131EEE0-3D81-4671-9CB1-1A47D53863E1",
+        "rect": {
+          "x": -1556,
+          "y": -1475,
+          "w": 5594,
+          "h": 4893
+        },
+        "fill": {
+          "area": {
+            "first": 7,
+            "count": 31997,
+            "fingerprint": [
+              533167147,
+              416319844
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1556,
+            "y": 1071,
+            "w": 3443,
+            "h": 2002
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 32,
+            "x": 4,
+            "y": 4,
+            "spread": 0,
+            "color": "#1e586e",
+            "opacity": 0.05882352963089943,
+            "amount": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "x": 1496,
+    "y": 364,
+    "extent": {
+      "x": 1494,
+      "y": 362,
+      "w": 518,
+      "h": 518
+    },
+    "nodes": [
+      {
+        "id": "4D85D82E-1CF0-4D02-9220-1A23665FA217",
+        "rect": {
+          "x": -1851,
+          "y": -2464,
+          "w": 7208,
+          "h": 6689
+        },
+        "fill": {
+          "area": {
+            "first": 80886,
+            "count": 37975,
+            "fingerprint": [
+              536634927,
+              3013927116
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1851,
+            "y": 889,
+            "w": 4079,
+            "h": 2376
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 35,
+            "x": 10,
+            "y": 15,
+            "spread": 0,
+            "color": "#3ea8d0",
+            "opacity": 0.1607843190431595,
+            "amount": 0
+          }
+        ]
+      },
+      {
+        "id": "7131EEE0-3D81-4671-9CB1-1A47D53863E1",
+        "rect": {
+          "x": -1044,
+          "y": -1475,
+          "w": 5478,
+          "h": 4893
+        },
+        "fill": {
+          "area": {
+            "first": 7,
+            "count": 31997,
+            "fingerprint": [
+              1331106561,
+              1999576685
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1044,
+            "y": 1071,
+            "w": 2931,
+            "h": 2002
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 32,
+            "x": 4,
+            "y": 4,
+            "spread": 0,
+            "color": "#1e586e",
+            "opacity": 0.05882352963089943,
+            "amount": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "x": -40,
+    "y": 876,
+    "extent": {
+      "x": -42,
+      "y": 874,
+      "w": 518,
+      "h": 518
+    },
+    "nodes": [
+      {
+        "id": "4D85D82E-1CF0-4D02-9220-1A23665FA217",
+        "rect": {
+          "x": -3387,
+          "y": -2464,
+          "w": 7208,
+          "h": 7201
+        },
+        "fill": {
+          "area": {
+            "first": 88653,
+            "count": 37975,
+            "fingerprint": [
+              1475829150,
+              3594806732
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1992,
+            "y": 889,
+            "w": 4220,
+            "h": 2376
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 35,
+            "x": 10,
+            "y": 15,
+            "spread": 0,
+            "color": "#3ea8d0",
+            "opacity": 0.1607843190431595,
+            "amount": 0
+          }
+        ]
+      },
+      {
+        "id": "7131EEE0-3D81-4671-9CB1-1A47D53863E1",
+        "rect": {
+          "x": -2580,
+          "y": -1475,
+          "w": 5594,
+          "h": 5405
+        },
+        "fill": {
+          "area": {
+            "first": 7,
+            "count": 31997,
+            "fingerprint": [
+              972764076,
+              1096217397
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1654,
+            "y": 1071,
+            "w": 3541,
+            "h": 2002
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 32,
+            "x": 4,
+            "y": 4,
+            "spread": 0,
+            "color": "#1e586e",
+            "opacity": 0.05882352963089943,
+            "amount": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "x": 472,
+    "y": 876,
+    "extent": {
+      "x": 470,
+      "y": 874,
+      "w": 518,
+      "h": 518
+    },
+    "nodes": [
+      {
+        "id": "4D85D82E-1CF0-4D02-9220-1A23665FA217",
+        "rect": {
+          "x": -2875,
+          "y": -2464,
+          "w": 7208,
+          "h": 7201
+        },
+        "fill": {
+          "area": {
+            "first": 88653,
+            "count": 37975,
+            "fingerprint": [
+              1475829150,
+              3594806732
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1992,
+            "y": 889,
+            "w": 4220,
+            "h": 2376
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 35,
+            "x": 10,
+            "y": 15,
+            "spread": 0,
+            "color": "#3ea8d0",
+            "opacity": 0.1607843190431595,
+            "amount": 0
+          }
+        ]
+      },
+      {
+        "id": "7131EEE0-3D81-4671-9CB1-1A47D53863E1",
+        "rect": {
+          "x": -2068,
+          "y": -1475,
+          "w": 5594,
+          "h": 5405
+        },
+        "fill": {
+          "area": {
+            "first": 7,
+            "count": 31997,
+            "fingerprint": [
+              972764076,
+              1096217397
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1654,
+            "y": 1071,
+            "w": 3541,
+            "h": 2002
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 32,
+            "x": 4,
+            "y": 4,
+            "spread": 0,
+            "color": "#1e586e",
+            "opacity": 0.05882352963089943,
+            "amount": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "x": 984,
+    "y": 876,
+    "extent": {
+      "x": 982,
+      "y": 874,
+      "w": 518,
+      "h": 518
+    },
+    "nodes": [
+      {
+        "id": "4D85D82E-1CF0-4D02-9220-1A23665FA217",
+        "rect": {
+          "x": -2363,
+          "y": -2464,
+          "w": 7208,
+          "h": 7201
+        },
+        "fill": {
+          "area": {
+            "first": 87828,
+            "count": 37975,
+            "fingerprint": [
+              1475829150,
+              3594806732
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1992,
+            "y": 889,
+            "w": 4220,
+            "h": 2376
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 35,
+            "x": 10,
+            "y": 15,
+            "spread": 0,
+            "color": "#3ea8d0",
+            "opacity": 0.1607843190431595,
+            "amount": 0
+          }
+        ]
+      },
+      {
+        "id": "7131EEE0-3D81-4671-9CB1-1A47D53863E1",
+        "rect": {
+          "x": -1556,
+          "y": -1475,
+          "w": 5594,
+          "h": 5405
+        },
+        "fill": {
+          "area": {
+            "first": 7,
+            "count": 31997,
+            "fingerprint": [
+              533167147,
+              416319844
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1556,
+            "y": 1071,
+            "w": 3443,
+            "h": 2002
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 32,
+            "x": 4,
+            "y": 4,
+            "spread": 0,
+            "color": "#1e586e",
+            "opacity": 0.05882352963089943,
+            "amount": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "x": 1496,
+    "y": 876,
+    "extent": {
+      "x": 1494,
+      "y": 874,
+      "w": 518,
+      "h": 518
+    },
+    "nodes": [
+      {
+        "id": "4D85D82E-1CF0-4D02-9220-1A23665FA217",
+        "rect": {
+          "x": -1851,
+          "y": -2464,
+          "w": 7208,
+          "h": 7201
+        },
+        "fill": {
+          "area": {
+            "first": 80886,
+            "count": 37975,
+            "fingerprint": [
+              536634927,
+              3013927116
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1851,
+            "y": 889,
+            "w": 4079,
+            "h": 2376
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 35,
+            "x": 10,
+            "y": 15,
+            "spread": 0,
+            "color": "#3ea8d0",
+            "opacity": 0.1607843190431595,
+            "amount": 0
+          }
+        ]
+      },
+      {
+        "id": "7131EEE0-3D81-4671-9CB1-1A47D53863E1",
+        "rect": {
+          "x": -1044,
+          "y": -1475,
+          "w": 5478,
+          "h": 5405
+        },
+        "fill": {
+          "area": {
+            "first": 7,
+            "count": 31997,
+            "fingerprint": [
+              1331106561,
+              1999576685
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1044,
+            "y": 1071,
+            "w": 2931,
+            "h": 2002
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 32,
+            "x": 4,
+            "y": 4,
+            "spread": 0,
+            "color": "#1e586e",
+            "opacity": 0.05882352963089943,
+            "amount": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "x": -40,
+    "y": 1388,
+    "extent": {
+      "x": -42,
+      "y": 1386,
+      "w": 518,
+      "h": 518
+    },
+    "nodes": [
+      {
+        "id": "4D85D82E-1CF0-4D02-9220-1A23665FA217",
+        "rect": {
+          "x": -3387,
+          "y": -1959,
+          "w": 7208,
+          "h": 7208
+        },
+        "fill": {
+          "area": {
+            "first": 88653,
+            "count": 37975,
+            "fingerprint": [
+              1475829150,
+              3594806732
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1992,
+            "y": 889,
+            "w": 4220,
+            "h": 2376
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 35,
+            "x": 10,
+            "y": 15,
+            "spread": 0,
+            "color": "#3ea8d0",
+            "opacity": 0.1607843190431595,
+            "amount": 0
+          }
+        ]
+      },
+      {
+        "id": "7131EEE0-3D81-4671-9CB1-1A47D53863E1",
+        "rect": {
+          "x": -2580,
+          "y": -1152,
+          "w": 5594,
+          "h": 5594
+        },
+        "fill": {
+          "area": {
+            "first": 7,
+            "count": 31997,
+            "fingerprint": [
+              972764076,
+              1096217397
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1654,
+            "y": 1071,
+            "w": 3541,
+            "h": 2002
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 32,
+            "x": 4,
+            "y": 4,
+            "spread": 0,
+            "color": "#1e586e",
+            "opacity": 0.05882352963089943,
+            "amount": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "x": 472,
+    "y": 1388,
+    "extent": {
+      "x": 470,
+      "y": 1386,
+      "w": 518,
+      "h": 518
+    },
+    "nodes": [
+      {
+        "id": "4D85D82E-1CF0-4D02-9220-1A23665FA217",
+        "rect": {
+          "x": -2875,
+          "y": -1959,
+          "w": 7208,
+          "h": 7208
+        },
+        "fill": {
+          "area": {
+            "first": 88653,
+            "count": 37975,
+            "fingerprint": [
+              1475829150,
+              3594806732
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1992,
+            "y": 889,
+            "w": 4220,
+            "h": 2376
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 35,
+            "x": 10,
+            "y": 15,
+            "spread": 0,
+            "color": "#3ea8d0",
+            "opacity": 0.1607843190431595,
+            "amount": 0
+          }
+        ]
+      },
+      {
+        "id": "7131EEE0-3D81-4671-9CB1-1A47D53863E1",
+        "rect": {
+          "x": -2068,
+          "y": -1152,
+          "w": 5594,
+          "h": 5594
+        },
+        "fill": {
+          "area": {
+            "first": 7,
+            "count": 31997,
+            "fingerprint": [
+              972764076,
+              1096217397
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1654,
+            "y": 1071,
+            "w": 3541,
+            "h": 2002
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 32,
+            "x": 4,
+            "y": 4,
+            "spread": 0,
+            "color": "#1e586e",
+            "opacity": 0.05882352963089943,
+            "amount": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "x": 984,
+    "y": 1388,
+    "extent": {
+      "x": 982,
+      "y": 1386,
+      "w": 518,
+      "h": 518
+    },
+    "nodes": [
+      {
+        "id": "4D85D82E-1CF0-4D02-9220-1A23665FA217",
+        "rect": {
+          "x": -2363,
+          "y": -1959,
+          "w": 7208,
+          "h": 7208
+        },
+        "fill": {
+          "area": {
+            "first": 87828,
+            "count": 37975,
+            "fingerprint": [
+              1475829150,
+              3594806732
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1992,
+            "y": 889,
+            "w": 4220,
+            "h": 2376
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 35,
+            "x": 10,
+            "y": 15,
+            "spread": 0,
+            "color": "#3ea8d0",
+            "opacity": 0.1607843190431595,
+            "amount": 0
+          }
+        ]
+      },
+      {
+        "id": "7131EEE0-3D81-4671-9CB1-1A47D53863E1",
+        "rect": {
+          "x": -1556,
+          "y": -1152,
+          "w": 5594,
+          "h": 5594
+        },
+        "fill": {
+          "area": {
+            "first": 7,
+            "count": 31997,
+            "fingerprint": [
+              533167147,
+              416319844
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1556,
+            "y": 1071,
+            "w": 3443,
+            "h": 2002
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 32,
+            "x": 4,
+            "y": 4,
+            "spread": 0,
+            "color": "#1e586e",
+            "opacity": 0.05882352963089943,
+            "amount": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "x": 1496,
+    "y": 1388,
+    "extent": {
+      "x": 1494,
+      "y": 1386,
+      "w": 518,
+      "h": 518
+    },
+    "nodes": [
+      {
+        "id": "4D85D82E-1CF0-4D02-9220-1A23665FA217",
+        "rect": {
+          "x": -1851,
+          "y": -1959,
+          "w": 7208,
+          "h": 7208
+        },
+        "fill": {
+          "area": {
+            "first": 80886,
+            "count": 37975,
+            "fingerprint": [
+              536634927,
+              3013927116
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1851,
+            "y": 889,
+            "w": 4079,
+            "h": 2376
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 35,
+            "x": 10,
+            "y": 15,
+            "spread": 0,
+            "color": "#3ea8d0",
+            "opacity": 0.1607843190431595,
+            "amount": 0
+          }
+        ]
+      },
+      {
+        "id": "7131EEE0-3D81-4671-9CB1-1A47D53863E1",
+        "rect": {
+          "x": -1044,
+          "y": -1152,
+          "w": 5478,
+          "h": 5594
+        },
+        "fill": {
+          "area": {
+            "first": 7,
+            "count": 31997,
+            "fingerprint": [
+              1331106561,
+              1999576685
+            ]
+          },
+          "sampleCount": 4,
+          "rect": {
+            "x": -1044,
+            "y": 1071,
+            "w": 2931,
+            "h": 2002
+          },
+          "first": 0,
+          "count": 3,
+          "rule": "nonzero"
+        },
+        "clip": false,
+        "passthrough": false,
+        "children": 0,
+        "mask": false,
+        "strokes": 1,
+        "fills": [
+          "solid"
+        ],
+        "effects": [
+          {
+            "id": "",
+            "kind": "shadow",
+            "visible": true,
+            "radius": 32,
+            "x": 4,
+            "y": 4,
+            "spread": 0,
+            "color": "#1e586e",
+            "opacity": 0.05882352963089943,
+            "amount": 0
+          }
+        ]
+      }
+    ]
+  }
+]

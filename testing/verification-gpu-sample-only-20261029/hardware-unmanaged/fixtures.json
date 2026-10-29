@@ -1,0 +1,56 @@
+{
+  "documentSha256": "335e915d1785bcf207c25de83e5b5d2c1e4ae7cd9b8678bd787ecfb1fb026bb7",
+  "requestsSha256": "4e38d6df6dab97950fb744a829517e163a2f447bd1ea3d32869ab16486ef036f",
+  "executionRequestSha256": "3df486e1b35989bdd6740a054267a8ee70d016058cb40c61f3a30bbb537c99f1",
+  "wasmSha256": "0e63865554d41d951404226331b2932fb375415f08cddb1eb54a6ed1e0384c86",
+  "fontSha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+  "nativeSceneSha256": "333059cc4302693070dc298ffcca83a675a688b022cd4f5806668fe9a76d0aa8",
+  "benchmark": false,
+  "formatProbeOnly": true,
+  "unmanagedDriver": true,
+  "paths": [
+    {
+      "pathSha256": "c9e26e7af6713b0565843225196bcb5e9efc5d30369fe0454311bef9cd2c2260",
+      "width": 202,
+      "height": 94,
+      "header": 3,
+      "programWords": 11780
+    },
+    {
+      "pathSha256": "e18c7c00842cda1ba923831a5b56e896ece08616f61e3d019fa4295790fec31b",
+      "width": 101,
+      "height": 16,
+      "header": 3,
+      "programWords": 8576
+    },
+    {
+      "pathSha256": "61a42ee4a326d38b15de9ac48dc1f7193d7339ca126cbc418dfe247f1dec0d65",
+      "width": 86,
+      "height": 16,
+      "header": 3,
+      "programWords": 7532
+    },
+    {
+      "pathSha256": "360727869ce7f97ef15df7ed94f8d0914936efe7b355a092088ec1fe501faea0",
+      "width": 242,
+      "height": 182,
+      "header": 4,
+      "programWords": 28
+    },
+    {
+      "pathSha256": "6a1ef4da45832ab3f74a23bb4f186afbd4162c481b3132b90ffaa7957d7c9f93",
+      "width": 242,
+      "height": 182,
+      "header": 4,
+      "programWords": 28
+    },
+    {
+      "pathSha256": "c67426d17c54f8201b379c7b3f6170f721c064a58b23ef7a6b8e8e9d80fcbd40",
+      "width": 241,
+      "height": 182,
+      "header": 4,
+      "programWords": 28
+    }
+  ],
+  "scope": "Actual original area vs sample-only normal unmanaged packed RGBA8 masks for identical freshly compiled real programs, four phases and regional crops. Test explicitly enables owned-driver display policy; no ResidentPresenter or Electron attachment is exercised. No exclusive GPU time or app latency claim."
+}

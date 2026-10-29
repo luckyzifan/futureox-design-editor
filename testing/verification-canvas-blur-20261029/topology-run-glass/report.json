@@ -1,0 +1,156 @@
+{
+  "status": "passed",
+  "scope": "Requested topology archive, complete native-converted source roots; original and explicitly derived effects separately identified. Metal display graph plus final QA readback.",
+  "cases": [
+    {
+      "name": "derived-glass-blur",
+      "kind": "glass",
+      "sourceRoot": {
+        "part": "pages/9A250616-D3C6-4F06-A6C9-F2CE1DA3611D.json",
+        "offset": 17,
+        "id": "803292FE-AC77-4251-8660-1E93C7D7A0D6",
+        "name": "数据名称",
+        "nodes": 24,
+        "effects": {
+          "blur:type0": 2,
+          "shadows": 1
+        },
+        "fixture": "root-281.json"
+      },
+      "derived": true,
+      "targetId": "derived-glass-blur-probe",
+      "options": {
+        "pageId": "00000000-0000-4000-8000-000000000001",
+        "width": 256,
+        "height": 192,
+        "view": {
+          "x": -5164,
+          "y": -938,
+          "zoom": 2
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": true
+      },
+      "runs": [
+        [
+          {
+            "wallMs": 52.60000002384186,
+            "draws": 232,
+            "pixels": 9318813,
+            "peakBytes": 54172592,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 55.299999952316284,
+            "draws": 232,
+            "pixels": 9318813,
+            "peakBytes": 54172592,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 53.699999928474426,
+            "draws": 232,
+            "pixels": 9318813,
+            "peakBytes": 54172592,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          }
+        ],
+        [
+          {
+            "wallMs": 45.10000002384186,
+            "draws": 232,
+            "pixels": 9318813,
+            "peakBytes": 54172592,
+            "blur": 16,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 43.5,
+            "draws": 232,
+            "pixels": 9318813,
+            "peakBytes": 54172592,
+            "blur": 16,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 40.60000002384186,
+            "draws": 232,
+            "pixels": 9318813,
+            "peakBytes": 54172592,
+            "blur": 16,
+            "motion": 0,
+            "zoom": 0
+          }
+        ]
+      ],
+      "cold": [
+        {
+          "wallMs": 1817.6000000238419,
+          "draws": 292,
+          "pixels": 9318813,
+          "peakBytes": 54172592,
+          "blur": 0,
+          "motion": 0,
+          "zoom": 0
+        },
+        {
+          "wallMs": 119.19999992847443,
+          "draws": 292,
+          "pixels": 9318813,
+          "peakBytes": 54172592,
+          "blur": 16,
+          "motion": 0,
+          "zoom": 0
+        }
+      ],
+      "difference": {
+        "changedBits": 55537,
+        "maxEncoded": 1.6857316609275586e-7,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      },
+      "exactOutput": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      }
+    }
+  ],
+  "timings": [
+    {
+      "name": "derived-glass-blur",
+      "controlMs": 53.699999928474426,
+      "candidateMs": 43.5,
+      "improvement": 0.1899441329992605,
+      "counters": {
+        "wallMs": 45.10000002384186,
+        "draws": 232,
+        "pixels": 9318813,
+        "peakBytes": 54172592,
+        "blur": 16,
+        "motion": 0,
+        "zoom": 0
+      }
+    }
+  ],
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "fallback": false
+  },
+  "source": {
+    "path": "/Users/Apple/Downloads/拓扑素材.sketch",
+    "hash": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+    "nativeBinary": "02308b5bec7db4c653ff04151b65fced81af587b12610ab13f39cf858962fc57"
+  },
+  "current": "derived-glass-blur"
+}

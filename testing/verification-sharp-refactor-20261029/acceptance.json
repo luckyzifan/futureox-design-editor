@@ -1,0 +1,21 @@
+{
+  "confirmedAt": "2026-10-28T21:00:01.266Z",
+  "source": "Direct user reply",
+  "latestVisibleFrameP95Ms": 33,
+  "stopToNativeReadyMs": 100,
+  "maximumMotionUpscale": 1,
+  "transparentPixels": 0,
+  "staleContentAllowed": false,
+  "coldStart": "reported separately",
+  "environment": {
+    "platform": "macOS arm64",
+    "backend": "WebGPU / Metal-3",
+    "dpr": 2,
+    "sourceHarnessViewport": [
+      800,
+      600
+    ]
+  },
+  "status": "NOT_MET",
+  "evidence": "Prior new-view stop about 5849 ms; cached return about 111 ms; motion upscale 8x. Earlier reports retain their original unconfirmed-threshold status."
+}

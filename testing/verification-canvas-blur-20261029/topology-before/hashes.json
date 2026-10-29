@@ -1,0 +1,8 @@
+{
+  "frontend/design-client/src/kernel/gpu/webgpu.ts": "1bb352c25d634f43ffedefc318ce0b9233e908e0c19006e50aa9047fda52f86b",
+  "frontend/design-client/src/kernel/gpu/renderer.ts": "33d4e5088b2cb5e545b9bbbdf70c4c8cf81f63ce63140af1301c846630a783cf",
+  "frontend/design-client/src/kernel/gpu/exact-filter.ts": "532eb5ca71785f5cd6320cc3e2753a0a9ebf2f54e016c1e405b8e55490a09981",
+  "frontend/design-client/src/kernel/gpu/canvas-blur-filter.ts": "2440ef38c745014d0f93ad29c2c1ae983d837705fecbdaaac2dcab140c1d53a4",
+  "frontend/design-client/src/kernel/gpu/canvas-blur-filter.test.ts": "7c81f86cf0830b869b133cdb373f8c465c1320acd5a1db9492885511535babad",
+  "frontend/design-client/src/kernel/gpu/types.ts": "cdbb61f2a7bfc5d2b91acac71b2216826b53c855d41d4cccc5aef14d60a82998"
+}

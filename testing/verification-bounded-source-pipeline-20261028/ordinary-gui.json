@@ -1,0 +1,45 @@
+{
+  "execution": "actual native GUI through cua_repl; isolated Electron profile",
+  "profile": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/forma-desktop-manual-4ac735a5-a2b4-40db-ad90-0172ff566bc2-pMslfu",
+  "document": "有限流水线回归",
+  "created": {
+    "kind": "rectangle",
+    "x": 80,
+    "y": 96,
+    "width": 90,
+    "height": 70
+  },
+  "propertyEdit": {
+    "width": 180
+  },
+  "undoWidth": 90,
+  "redoWidth": 180,
+  "savedVersion": 5,
+  "reopened": {
+    "x": 80,
+    "y": 96,
+    "width": 180,
+    "height": 70,
+    "status": "WebGPU · 清晰"
+  },
+  "exportGeneratedSizes": [
+    [
+      180,
+      70
+    ],
+    [
+      360,
+      140
+    ],
+    [
+      540,
+      210
+    ]
+  ],
+  "exportWritten": {
+    "file": "ordinary-1x.png",
+    "sha256": "ce9f8ca0ad970be789c7dbab6114e846c737515cffb89f12696908e6711ce0a7"
+  },
+  "initialAutomationFailure": "AX setValue on width did not submit a valid numeric edit; escaped and used keyboard typing, then verified actual committed 180 value.",
+  "scope": "Basic ordinary editing/storage/export smoke, not full G2/G5 or HDR/export matrix."
+}

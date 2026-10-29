@@ -1,0 +1,172 @@
+{
+  "status": "passed",
+  "adapter": "metal-3",
+  "nonFallbackAdapterVerified": true,
+  "wordsCompared": 1049000,
+  "different": 0,
+  "rawMaskFormat": "r32float",
+  "records": [
+    {
+      "index": 0,
+      "width": 512,
+      "height": 512,
+      "phases": [
+        {
+          "phase": 0,
+          "candidate": false,
+          "actualPipelineHits": 0,
+          "comparedWords": 0,
+          "different": 0
+        },
+        {
+          "phase": 0,
+          "candidate": true,
+          "actualPipelineHits": 3,
+          "comparedWords": 262250,
+          "different": 0
+        },
+        {
+          "phase": 1,
+          "candidate": false,
+          "actualPipelineHits": 0,
+          "comparedWords": 0,
+          "different": 0
+        },
+        {
+          "phase": 1,
+          "candidate": true,
+          "actualPipelineHits": 3,
+          "comparedWords": 262250,
+          "different": 0
+        },
+        {
+          "phase": 2,
+          "candidate": false,
+          "actualPipelineHits": 0,
+          "comparedWords": 0,
+          "different": 0
+        },
+        {
+          "phase": 2,
+          "candidate": true,
+          "actualPipelineHits": 3,
+          "comparedWords": 262250,
+          "different": 0
+        },
+        {
+          "phase": 3,
+          "candidate": false,
+          "actualPipelineHits": 0,
+          "comparedWords": 0,
+          "different": 0
+        },
+        {
+          "phase": 3,
+          "candidate": true,
+          "actualPipelineHits": 3,
+          "comparedWords": 262250,
+          "different": 0
+        }
+      ]
+    }
+  ],
+  "batches": [
+    {
+      "block": 0,
+      "candidate": false,
+      "draws": 8,
+      "encodeMs": 0.20000004768371582,
+      "encodeAndQueueCompletionMs": 2.899999976158142,
+      "actualPipelineHits": 0
+    },
+    {
+      "block": 0,
+      "candidate": true,
+      "draws": 8,
+      "encodeMs": 0.10000002384185791,
+      "encodeAndQueueCompletionMs": 1.3000000715255737,
+      "actualPipelineHits": 8
+    },
+    {
+      "block": 0,
+      "candidate": true,
+      "draws": 8,
+      "encodeMs": 0.10000002384185791,
+      "encodeAndQueueCompletionMs": 1.2999999523162842,
+      "actualPipelineHits": 8
+    },
+    {
+      "block": 0,
+      "candidate": false,
+      "draws": 8,
+      "encodeMs": 0.10000002384185791,
+      "encodeAndQueueCompletionMs": 2.899999976158142,
+      "actualPipelineHits": 0
+    },
+    {
+      "block": 1,
+      "candidate": false,
+      "draws": 8,
+      "encodeMs": 0.10000002384185791,
+      "encodeAndQueueCompletionMs": 2.9000000953674316,
+      "actualPipelineHits": 0
+    },
+    {
+      "block": 1,
+      "candidate": true,
+      "draws": 8,
+      "encodeMs": 0,
+      "encodeAndQueueCompletionMs": 1.2999999523162842,
+      "actualPipelineHits": 8
+    },
+    {
+      "block": 1,
+      "candidate": true,
+      "draws": 8,
+      "encodeMs": 0,
+      "encodeAndQueueCompletionMs": 1,
+      "actualPipelineHits": 8
+    },
+    {
+      "block": 1,
+      "candidate": false,
+      "draws": 8,
+      "encodeMs": 0,
+      "encodeAndQueueCompletionMs": 2.700000047683716,
+      "actualPipelineHits": 0
+    },
+    {
+      "block": 2,
+      "candidate": false,
+      "draws": 8,
+      "encodeMs": 0,
+      "encodeAndQueueCompletionMs": 1.1999999284744263,
+      "actualPipelineHits": 0
+    },
+    {
+      "block": 2,
+      "candidate": true,
+      "draws": 8,
+      "encodeMs": 0,
+      "encodeAndQueueCompletionMs": 0.8000000715255737,
+      "actualPipelineHits": 8
+    },
+    {
+      "block": 2,
+      "candidate": true,
+      "draws": 8,
+      "encodeMs": 0,
+      "encodeAndQueueCompletionMs": 0.6999999284744263,
+      "actualPipelineHits": 8
+    },
+    {
+      "block": 2,
+      "candidate": false,
+      "draws": 8,
+      "encodeMs": 0,
+      "encodeAndQueueCompletionMs": 1.100000023841858,
+      "actualPipelineHits": 0
+    }
+  ],
+  "timingScope": "Optional warm mask batches include CPU encoding and real queue completion, balanced ABBA; not exclusive shader time, FPS or app input latency."
+}

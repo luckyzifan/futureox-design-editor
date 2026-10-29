@@ -1,0 +1,10 @@
+{
+  "checkedAt": "2026-10-28T15:13:37.089Z",
+  "producerSourceSha256": "6b3c59c9c2a5040997d0d8024d34713ee186621f0e44e0caa45c0c68986adc2b",
+  "changedAfterFreeze": [
+    "frontend/design-client/src/kernel/gpu/reduced-paint-work.test.ts",
+    "frontend/design-client/src/kernel/gpu/renderer.ts",
+    "frontend/design-client/src/kernel/gpu/types.ts",
+    "frontend/design-client/src/kernel/gpu/webgpu.ts"
+  ]
+}

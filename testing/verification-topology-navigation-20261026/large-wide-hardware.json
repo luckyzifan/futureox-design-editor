@@ -1,0 +1,203 @@
+{
+  "status": "passed",
+  "scope": "large original rational kernels: scalar exact shader versus 256-bit prefix, actual float readback; no editor FPS claim",
+  "cases": [
+    {
+      "width": 65,
+      "height": 3,
+      "radius": 513.00000000001,
+      "range": "regular",
+      "outputX": 0,
+      "outputWidth": 65,
+      "coefficientWords": 5,
+      "packetBytes": 10336,
+      "words": 780,
+      "differences": 0,
+      "runs": [
+        {
+          "candidate": false,
+          "dispatches": 0,
+          "wallMs": 17.5,
+          "scratch": 0
+        },
+        {
+          "candidate": true,
+          "dispatches": 2,
+          "wallMs": 8.700000047683716,
+          "counters": {
+            "acceptedLines": 272,
+            "declinedLines": 0,
+            "acceptedPixels": 1560,
+            "narrowLines": 263
+          },
+          "scratch": 4194304
+        }
+      ]
+    },
+    {
+      "width": 3072,
+      "height": 8,
+      "radius": 1360.058160514733,
+      "range": "regular",
+      "outputX": 1280,
+      "outputWidth": 514,
+      "coefficientWords": 5,
+      "packetBytes": 27276,
+      "words": 16448,
+      "differences": 0,
+      "runs": [
+        {
+          "candidate": false,
+          "dispatches": 0,
+          "wallMs": 177.70000004768372,
+          "scratch": 0
+        },
+        {
+          "candidate": true,
+          "dispatches": 2,
+          "wallMs": 15.5,
+          "counters": {
+            "acceptedLines": 2088,
+            "declinedLines": 0,
+            "acceptedPixels": 114752,
+            "narrowLines": 2064
+          },
+          "scratch": 4194304
+        }
+      ]
+    },
+    {
+      "width": 514,
+      "height": 16,
+      "radius": 2047.9999999999998,
+      "range": "regular",
+      "outputX": 0,
+      "outputWidth": 514,
+      "coefficientWords": 5,
+      "packetBytes": 41016,
+      "words": 32896,
+      "differences": 0,
+      "runs": [
+        {
+          "candidate": false,
+          "dispatches": 0,
+          "wallMs": 92.30000007152557,
+          "scratch": 0
+        },
+        {
+          "candidate": true,
+          "dispatches": 2,
+          "wallMs": 20.5,
+          "counters": {
+            "acceptedLines": 2120,
+            "declinedLines": 0,
+            "acceptedPixels": 65792,
+            "narrowLines": 2072
+          },
+          "scratch": 4194304
+        }
+      ]
+    },
+    {
+      "width": 128,
+      "height": 8,
+      "radius": 777.1760917227047,
+      "range": "extreme",
+      "outputX": 0,
+      "outputWidth": 128,
+      "coefficientWords": 5,
+      "packetBytes": 15616,
+      "words": 4096,
+      "differences": 0,
+      "runs": [
+        {
+          "candidate": false,
+          "dispatches": 0,
+          "wallMs": 18.09999990463257,
+          "scratch": 0
+        },
+        {
+          "candidate": true,
+          "dispatches": 2,
+          "wallMs": 12.100000023841858,
+          "counters": {
+            "acceptedLines": 415,
+            "declinedLines": 129,
+            "acceptedPixels": 7040,
+            "narrowLines": 392
+          },
+          "scratch": 4194304
+        }
+      ]
+    },
+    {
+      "width": 128,
+      "height": 8,
+      "radius": 777.1760917227047,
+      "range": "nonfinite",
+      "outputX": 0,
+      "outputWidth": 128,
+      "coefficientWords": 5,
+      "packetBytes": 15616,
+      "words": 4096,
+      "differences": 0,
+      "runs": [
+        {
+          "candidate": false,
+          "dispatches": 0,
+          "wallMs": 15.5,
+          "scratch": 0
+        },
+        {
+          "candidate": true,
+          "dispatches": 2,
+          "wallMs": 10.200000047683716,
+          "counters": {
+            "acceptedLines": 415,
+            "declinedLines": 129,
+            "acceptedPixels": 7040,
+            "narrowLines": 392
+          },
+          "scratch": 4194304
+        }
+      ]
+    },
+    {
+      "width": 514,
+      "height": 32,
+      "radius": 1243.4817467563273,
+      "range": "alpha",
+      "outputX": 0,
+      "outputWidth": 514,
+      "coefficientWords": 5,
+      "packetBytes": 24936,
+      "words": 65792,
+      "differences": 0,
+      "runs": [
+        {
+          "candidate": false,
+          "dispatches": 0,
+          "wallMs": 35.299999952316284,
+          "scratch": 0
+        },
+        {
+          "candidate": true,
+          "dispatches": 2,
+          "wallMs": 14.300000071525574,
+          "counters": {
+            "acceptedLines": 2184,
+            "declinedLines": 0,
+            "acceptedPixels": 131584,
+            "narrowLines": 2184
+          },
+          "scratch": 4194304
+        }
+      ]
+    }
+  ],
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "fallback": false
+  }
+}

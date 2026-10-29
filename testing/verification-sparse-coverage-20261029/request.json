@@ -1,0 +1,12 @@
+[
+  {
+    "pageId": "page",
+    "width": 512,
+    "height": 512,
+    "view": { "x": 0, "y": 0, "zoom": 1 },
+    "rasterProfile": "figmaSubpixel",
+    "transparent": false,
+    "grid": false,
+    "checkerboard": false
+  }
+]

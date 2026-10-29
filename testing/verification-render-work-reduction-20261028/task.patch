@@ -1,0 +1,1266 @@
+--- a/.agents/skills/futureox-design-development/SKILL.md
++++ b/.agents/skills/futureox-design-development/SKILL.md
+@@ -19,6 +19,8 @@
+ 
+ - The 2026-10-26 source page loading repair is recorded in [its verification record](../../../testing/verification-source-page-load-20261026/README.md). Native macOS detects available memory through a fixed OS memory query; inherited policy and all existing reserves remain authoritative. Oversized pages expose explicit consecutive ranges with prior-range recovery. Revision-scoped metadata reuse and at most two joined conversion windows retain source order and admission; complete export still includes cold roots. Range coverage is not full-page GPU acceptance.
+ # Futureox Design development
++
++- The 2026-10-28 exact work reduction adds independently bounded mixed solid runs, immutable constant coverage, and gradient paint/normal-over fusion. See [the scoped evidence](../../../testing/verification-render-work-reduction-20261028/README.md). `VITE_DESIGN_MIXED_SOLID_RUNS` and `VITE_DESIGN_FUSED_GRADIENT` default on; explicit `0` keeps their original paths. `VITE_DESIGN_CONSTANT_COVERAGE` remains opt-in (`1`): its exact pixels and lower cold work passed, but its warm latency failed the frozen 5% target. Scene-level screening avoids singleton gradient opportunities and unusable batch preparations. The older experimental stack remains off. Preserve four phases, the original writable ring, zero/NaN neighbours, RNE, upload-resource proofs, HDR/export fallbacks and budgets. Real-file and desktop checks are scoped evidence, not complete G2/G5 or universal latency improvement.
+ 
+ - The 2026-10-26 topology navigation increment uses a private, upload-bound coefficient proof for bounded SDR canvas shadows, including shifted and stroked sources. Existing whole-filter/wide-prefix experiments remain off; the legacy 2048 operator, 64 KiB packet cap, actual texture limits and GPU byte budget remain authoritative. The separate large-shadow constructor is not general support for every effect at radius 4096. See [the verification record](../../../testing/verification-topology-navigation-20261026/README.md) for hardware bit comparisons, measured views, failed candidates and pending GUI checks. Do not promote these cases to full G2/G5 acceptance.
+ 
+--- a/.agents/skills/futureox-rendering-first/SKILL.md
++++ b/.agents/skills/futureox-rendering-first/SKILL.md
+@@ -11,6 +11,8 @@
+ 2026-10-27 文本/布局/原型/本地库续轮见[验证记录](../../../testing/verification-sketch-text-layout-flow-20261027/README.md)。原生字典往返、Rust 字形/光标语义、真实库覆盖更新和 GUI 各自验收；本机 Sketch 重渲染零差异不能替代跨渲染器字形像素一致，G2/G5 全矩阵仍未关闭。
+ 
+ # Futureox Design：渲染优先
++
++2026-10-28 的精确绘制减量见[验证记录](../../../testing/verification-render-work-reduction-20261028/README.md)。连续纯色段与渐变填充/合成融合有默认入口和 `0` 回退；独立常量覆盖逐位一致且降低冷帧工作量，但热帧未达冻结的 5% 目标，继续仅 `1` 启用。旧实验开关保持原样。场景筛选跳过单个渐变机会和不可执行的批绘，保留四采样、合成邻域、浮点舍入和实际上传资源证明。诊断 v2 区分覆盖/填充/合成/效果/复制/解析，像素面积未测的 draw 明确标记。真实 117 全览收益不推广到局部视口、FIG 或完整 G2/G5；未达性能目标的场景仍单列。
+ 
+ 2026-10-26 拓扑高倍缩放续轮见[证据记录](../../../testing/verification-topology-navigation-20261026/README.md)：偏移/描边阴影按完整支持范围分条；私有上传证明绑定系数、半径和实际 GPU 资源，写入即撤销。默认受限入口仅用于非 HDR 画布，原有全局实验开关、普通滤镜上限和全部内存预算不变。硬件逐位比较、GPU 完成等待、当前密度覆盖和输入到呈现分别记录；已测 3200% 视口通过不代表所有视口或全 G2/G5 已通过。
+ 
+--- a/docs/DEVELOPMENT_CONTRACT_V1.md
++++ b/docs/DEVELOPMENT_CONTRACT_V1.md
+@@ -3,6 +3,8 @@
+ This is maintained project guidance, not a claim that every release gate has passed. Target: local application v1.0.0. Package manifests and the source increment must be checked separately before calling an artifact a 1.0.0 release.
+ 
+ ## Architecture and product boundary
++
++The [2026-10-28 exact work-reduction increment](../testing/verification-render-work-reduction-20261028/README.md) supplies separate default-on mixed-solid and bounded gradient-fusion paths, each disabled by its own explicit `0` flag. Constant coverage remains opt-in (`VITE_DESIGN_CONSTANT_COVERAGE=1`) because warm latency did not meet the frozen 5% target, despite exact pixels and reduced cold work. These do not enable the existing experimental painter/filter stack. Rust-authored bounded group plans and private actual-upload proofs remain mandatory. Gradient fusion preserves stored-paint rounding, the original normal-over writable ring and zero-weight neighbour behavior; HDR, nonfinite fields, unsupported clips and insufficient opportunities retain the original path. Diagnostics distinguish draw counts, measured rectangle area, cache rejection reasons and unmeasured work. Scoped hardware/real-file improvements are not full G2/G5 acceptance.
+ 
+ - Web and Electron reuse the same frontend, authored model, components, layout, typography, selection/edit semantics and history boundaries. Electron can provide native local acceleration, files, SQLite and scoped host dialogs; it must not become a second design product with divergent semantics.
+ - UI commands handle drafts, gestures and modal decisions. MCP translates discovered operations. Both reach the existing editor/domain implementation; automation stages a candidate and commits through Editor.change. Rust owns authoritative admission, layout and render semantics; TypeScript validation improves early diagnostics, not native authority.
+--- a/design-studio/crates/design-kernel/src/gpu/scene_plan.rs
++++ b/design-studio/crates/design-kernel/src/gpu/scene_plan.rs
+@@ -22,6 +22,10 @@
+     pub opaque_solid_groups: Vec<(String,String)>,
+     /// Consecutive opaque runs, in original painter order; no sorting by color.
+     pub opaque_solid_runs: Vec<(String,usize,usize,String)>,
++    /// Parents whose immediate leaves use bounded normal solid/gradient paints.
++    /// This proves finite intermediate colours for segmented opaque replacement;
++    /// actual coverage programs and resources are still checked by the GPU owner.
++    pub bounded_paint_groups: Vec<String>,
+     /// A subtree can execute each correlated sample independently only when
+     /// no descendant consumes a mask, clip, effect or pass-through backdrop.
+     pub sample_independent_nodes: Vec<String>,
+@@ -32,7 +36,10 @@
+ }
+ #[derive(Deserialize)]
+ struct PaintInput { #[serde(default)] kind: String, image: Option<String>, #[serde(default)] color:String,
+-    #[serde(default)] visible:bool, #[serde(default)] opacity:f64, #[serde(default)] blend:String }
++    #[serde(default)] visible:bool, #[serde(default)] opacity:f64, #[serde(default)] blend:String,
++    #[serde(default)] stops:Vec<StopInput> }
++#[derive(Deserialize)]
++struct StopInput { color:String, offset:f64 }
+ #[derive(Deserialize)]
+ struct StrokeInput { paint: PaintInput }
+ #[derive(Deserialize)]
+@@ -55,8 +62,13 @@
+ #[derive(Deserialize)]#[serde(rename_all="camelCase")]
+ struct PathInput{sample_count:Option<u32>,area:Option<serde::de::IgnoredAny>}
+ fn identity() -> [f64; 6] { [1.,0.,0.,1.,0.,0.] }
+-struct NodePlan<'a> { children: &'a [String], matrix: [f64;6], effects: Vec<EffectPlan<'a>>, replay: bool, images: Vec<(u8,usize)>,opaque_solid:Option<&'a str>,sample_independent:bool }
++struct NodePlan<'a> { children: &'a [String], matrix: [f64;6], effects: Vec<EffectPlan<'a>>, replay: bool, images: Vec<(u8,usize)>,opaque_solid:Option<&'a str>,sample_independent:bool,bounded_paint:bool }
+ fn opaque_hex(value:&str)->bool{value.len()==7&&value.starts_with('#')&&value.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit)}
++fn bounded_paint<'a>(kind:&str,color:&str,opacity:f64,blend:&str,stops:impl Iterator<Item=(&'a str,f64)>)->bool {
++    matches!(kind,"solid"|"linear"|"radial"|"angular"|"diamond") && opaque_hex(color) &&
++        (0.0..=1.0).contains(&opacity) && blend=="normal" &&
++        stops.into_iter().all(|(color,offset)|opaque_hex(color)&&(0.0..=1.0).contains(&offset))
++}
+ fn images<'a>(fills: impl Iterator<Item = (&'a str, Option<&'a str>)>, strokes: impl Iterator<Item = (&'a str, Option<&'a str>)>) -> Vec<(u8,usize)> {
+     let mut uses = Vec::new();
+     for (kind, paints) in [fills.collect::<Vec<_>>(), strokes.collect::<Vec<_>>()].into_iter().enumerate() {
+@@ -131,21 +143,31 @@
+         }
+     }
+     let mut opaque_solid_runs=Vec::new();
++    let mut bounded_paint_groups=Vec::new();
+     for (&id,parent) in &nodes {
+-        let colors=parent.children.iter().map(|id|nodes.get(id.as_str()).and_then(|n|n.opaque_solid)).collect::<Option<Vec<_>>>();
+-        let Some(colors)=colors else{continue};
+-        let mut runs=Vec::new();let mut start=0;
+-        while start<colors.len(){let mut end=start+1;while end<colors.len()&&colors[end]==colors[start]{end+=1;}
+-            runs.push((id.to_owned(),start,end,colors[start].to_owned()));start=end;}
+-        if runs.len()>1&&runs.iter().all(|(_,start,end,_)|end-start>=8){opaque_solid_runs.extend(runs);}
++        if !parent.children.is_empty() && parent.children.iter().all(|id|nodes.get(id.as_str()).is_some_and(|n|n.bounded_paint)) {
++            bounded_paint_groups.push(id.to_owned());
++        }
++        let colors=parent.children.iter().map(|id|nodes.get(id.as_str()).and_then(|n|n.opaque_solid)).collect::<Vec<_>>();
++        let mut start=0;
++        while start<colors.len(){
++            let Some(color)=colors[start] else{start+=1;continue};
++            let mut end=start+1;while end<colors.len()&&colors[end]==Some(color){end+=1;}
++            if end-start>=8 {opaque_solid_runs.push((id.to_owned(),start,end,color.to_owned()));}
++            start=end;
++        }
+     }
+     ScenePlan {version:1,nodes:order.into_iter().map(str::to_owned).collect(),roots:roots.to_vec(),parents:parents.into_iter().collect(),
+-        root_for:root_for.into_iter().collect(),unknown_effect_subtrees:propagated.into_iter().collect(),image_uses:uses,features,opaque_solid_groups,opaque_solid_runs,
++        root_for:root_for.into_iter().collect(),unknown_effect_subtrees:propagated.into_iter().collect(),image_uses:uses,features,opaque_solid_groups,opaque_solid_runs,bounded_paint_groups,
+         sample_independent_nodes:independent.into_iter().collect(),source_order}
+ }
+ impl GpuScene {
+     pub fn scene_plan(&self) -> ScenePlan {
+         build(&self.roots,self.nodes.iter().map(|(id,n)| (id.as_str(),NodePlan {children:&n.children,matrix:n.matrix.0,effects:n.effects.iter().map(|e|EffectPlan {kind:&e.kind,visible:e.visible,radius:e.radius,glass:e.glass.is_some()}).collect(),
++            bounded_paint:n.children.is_empty()&&!n.clip&&!n.mask&&n.mask_id.as_ref().is_none_or(String::is_empty)&&!n.passthrough&&n.strokes.is_empty()&&
++                n.effects.iter().all(|e|!e.visible)&&n.texture_replay.is_none()&&(0.0..=1.0).contains(&n.opacity)&&n.blend=="normal"&&
++                n.fill.sample_count==Some(4)&&n.fill.area.is_some()&&n.fills.len()<=64&&n.fills.iter().all(|p|
++                    bounded_paint(&p.kind,&p.color,p.opacity,&p.blend,p.stops.iter().map(|s|(s.color.as_str(),s.offset)))),
+             sample_independent:!n.passthrough&&!n.mask&&n.mask_id.as_ref().is_none_or(String::is_empty)&&!n.clip&&!n.effects.iter().any(|e|e.visible),
+             opaque_solid:if n.opacity==1.&&n.blend=="normal"&&!n.clip&&!n.mask&&!n.passthrough&&n.children.is_empty()&&n.strokes.is_empty()&&
+                 n.effects.iter().all(|e|!e.visible)&&n.texture_replay.is_none()&&n.fill.sample_count==Some(4)&&n.fill.area.is_some()&&n.fills.len()==1&&
+@@ -161,6 +183,10 @@
+     #[derive(Deserialize)] struct Input { roots: Vec<String>, nodes: BTreeMap<String,NodeInput> }
+     let input:Input=serde_json::from_str(source).map_err(|e|e.to_string())?;
+     let nodes=input.nodes.iter().map(|(id,n)|(id.as_str(),NodePlan {children:&n.children,matrix:n.matrix,effects:n.effects.iter().map(|e|EffectPlan {kind:&e.kind,visible:e.visible,radius:e.radius.unwrap_or(f64::NAN),glass:e.glass.is_some()}).collect(),
++        bounded_paint:n.children.is_empty()&&!n.clip&&!n.mask&&n.mask_id.as_ref().is_none_or(String::is_empty)&&!n.passthrough&&n.strokes.is_empty()&&
++            n.effects.iter().all(|e|!e.visible)&&n.texture_replay.is_none()&&(0.0..=1.0).contains(&n.opacity)&&n.blend=="normal"&&
++            n.fill.as_ref().is_some_and(|p|p.sample_count==Some(4)&&p.area.is_some())&&n.fills.len()<=64&&n.fills.iter().all(|p|
++                bounded_paint(&p.kind,&p.color,p.opacity,&p.blend,p.stops.iter().map(|s|(s.color.as_str(),s.offset)))),
+         sample_independent:!n.passthrough&&!n.mask&&n.mask_id.as_ref().is_none_or(String::is_empty)&&!n.clip&&!n.effects.iter().any(|e|e.visible),
+         opaque_solid:if n.opacity==1.&&n.blend=="normal"&&!n.clip&&!n.mask&&!n.passthrough&&n.children.is_empty()&&n.strokes.is_empty()&&n.effects.iter().all(|e|!e.visible)&&
+             n.texture_replay.is_none()&&n.fill.as_ref().is_some_and(|p|p.sample_count==Some(4)&&p.area.is_some())&&n.fills.len()==1&&
+@@ -234,7 +260,8 @@
+         let mut scene=json!({"roots":["root"],"nodes":nodes});
+         let runs=|s:&Value|serde_json::from_str::<Value>(&from_json(&s.to_string()).unwrap()).unwrap()["opaqueSolidRuns"].clone();
+         assert_eq!(runs(&scene),json!([["root",0,8,"#ff0000"],["root",8,16,"#0000ff"],["root",16,24,"#ff0000"]]));
+-        scene["nodes"]["n8"]["opacity"]=json!(0.5);assert_eq!(runs(&scene),json!([]));
++        scene["nodes"]["n8"]["opacity"]=json!(0.5);
++        assert_eq!(runs(&scene),json!([["root",0,8,"#ff0000"],["root",16,24,"#ff0000"]]));
+     }
+     fn independent(scene:&Value)->Value {
+         serde_json::from_str::<Value>(&from_json(&scene.to_string()).unwrap()).unwrap()["sampleIndependentNodes"].clone()
+@@ -259,7 +286,7 @@
+         let children=(0..10000).map(|i|if i+1<10000{vec![(i+1).to_string()]}else{vec![]}).collect::<Vec<_>>();
+         let ids=(0..children.len()).map(|i|i.to_string()).collect::<Vec<_>>();
+         let make=|children:&Vec<Vec<String>>|build(&[ids[0].clone()],ids.iter().enumerate().map(|(i,id)|(id.as_str(),NodePlan{
+-            children:&children[i],matrix:identity(),effects:vec![],replay:false,images:vec![],opaque_solid:None,sample_independent:true})).collect());
++            children:&children[i],matrix:identity(),effects:vec![],replay:false,images:vec![],opaque_solid:None,sample_independent:true,bounded_paint:false})).collect());
+         let plan=make(&children);assert_eq!(plan.sample_independent_nodes.len(),10000);
+         let order=plan.source_order.unwrap();assert_eq!(order.first(),Some(&ids[9999]));assert_eq!(order.last(),Some(&ids[0]));
+         let mut cyclic=children;cyclic[9999].push(ids[0].clone());let plan=make(&cyclic);
+--- a/frontend/design-client/src/Canvas.tsx
++++ b/frontend/design-client/src/Canvas.tsx
+@@ -60,6 +60,8 @@
+ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+ import type { Editor, Tool } from './engine'
+ import { KernelSurface, type PresentedFrame } from './kernel/Surface'
++import { NativeSourceSurface, type NativeSourceStatus } from './kernel/NativeSourceSurface'
++import type { SourceCanvasSnapshot } from './desktop'
+ import type { GpuMoveControl, InteractionProps } from './kernel/interaction-layers'
+ import {
+   type Point,
+@@ -221,9 +223,12 @@
+     this.listeners.forEach((listener) => listener())
+   }
+ }
+-export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome = false, startupPreview, loading = false, onCapturePreview }: {
++export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome = false, startupPreview, loading = false, onCapturePreview, nativeSource, onNativeSourceStatus, onOpenSourcePoint }: {
+   editor: Editor; peers?:LocalPeer[]; zoomControlsTarget?: HTMLElement | null; compactChrome?: boolean
+   startupPreview?: StartupPixels; loading?: boolean
++  nativeSource?:SourceCanvasSnapshot
++  onNativeSourceStatus?:(status:NativeSourceStatus)=>void
++  onOpenSourcePoint?:(point:Point)=>void
+   onCapturePreview?: (document: import('./model').DesignDocument, version: number, pixels: PreviewPixels) => Promise<void>
+ }) {
+   const canvasChromeSelector = 'button,input,select,textarea,[contenteditable="true"],.canvas-controls,.canvas-scrollbars,.pencil-controls,.rich-text-editor'
+@@ -1190,6 +1195,7 @@
+   function fitView(onlySelection = false) {
+     if (pencil.current || drag.current) return
+     flushView()
++    if(nativeSource){editor.set({view:fitBounds(nativeSource.bounds,size)});return}
+     const relevant = onlySelection ? selected : entries.filter((e) => e.depth === 0)
+     if (!relevant.length) return
+     const b = unionBounds(relevant.map((e) => e.bounds))
+@@ -2216,6 +2222,11 @@
+         setContextMenu({ x: e.clientX, y: e.clientY, worldPoint: point, candidates })
+       }}
+       onDoubleClick={(e) => {
++        if(nativeSource){
++          if(e.target instanceof Element&&e.target.closest(canvasChromeSelector))return
++          if(e.button===0)onOpenSourcePoint?.(screenToWorld(editor.flushPendingView(),{x:e.clientX-e.currentTarget.getBoundingClientRect().left,y:e.clientY-e.currentTarget.getBoundingClientRect().top}))
++          return
++        }
+         if (!displayedSnapshot || !displayedIndex) return
+         if (['pencil', 'brush', 'marker', 'washi-tape', 'hand'].includes(editor.state.tool) || space.current) return
+         if (penRef.current) {
+@@ -2293,7 +2304,7 @@
+         }
+         return false
+       }}/>
+-      <KernelSurface
++      {nativeSource?<NativeSourceSurface source={nativeSource} view={state.view} width={size.width} height={size.height} onStatus={onNativeSourceStatus}/>:<KernelSurface
+         navigationInputOwner={editor}
+         panGestureActive={panning}
+         overlay={overlay}
+@@ -2310,8 +2321,8 @@
+         grid={state.grid}
+         checkerboard={state.checkerboard}
+         pixelPreview={state.pixelPreview}
+-      />
+-      {showStartup && <StartupPreview preview={startupPreview!} view={state.view} loading={loading} width={size.width} height={size.height}/>}
++      />}
++      {!nativeSource&&showStartup && <StartupPreview preview={startupPreview!} view={state.view} loading={loading} width={size.width} height={size.height}/>}
+       {geometryReady && !gpuMove.current && <CanvasEditPreview document={renderedDocument} baseDocument={editBaseDocument.current} selection={state.selection} pageId={state.page}
+         vectorSupported={vectorPreviewSupported} sourceHost={host} control={retainedMove} canCapture={!state.grid && !state.checkerboard && !!presentationScopeMatches && presented.document === state.doc && !presented.preview}
+         view={displayView} size={size} visible={!!editPreviewVisible} inputAt={editInputAt.current}/>}
+@@ -2849,7 +2860,7 @@
+           </button>
+         </div>
+       )}
+-      <CanvasScrollbars editor={editor} entries={entries} view={state.view} size={size} onPanGestureChange={setPanning} />
++      <CanvasScrollbars editor={editor} entries={entries} view={state.view} size={size} onPanGestureChange={setPanning} contentBounds={nativeSource?.bounds}/>
+       {zoomControlsTarget ? createPortal(<ViewControls editor={editor} size={size} fit={fitView} compact />, zoomControlsTarget) : <ViewControls editor={editor} size={size} fit={fitView} compact={compactChrome} />}
+     </div>
+   )
+--- a/frontend/design-client/src/kernel/gpu/renderer.ts
++++ b/frontend/design-client/src/kernel/gpu/renderer.ts
+@@ -1,4 +1,6 @@
+ import { MAX_GRADIENT_STOPS } from '../../model'
++import { FastPathWork } from '../../../../design-desktop/src/render-pass-work.mjs'
++import { GRADIENT_PAINT_OVER_MODE, gradientFieldMaximumStop, gradientFusionWorthwhile } from './gradient-paint-over'
+ import { shadowFilterRegion } from './shadow-filter-region'
+ import { annotateTextureFailure } from '../../../../design-desktop/src/render-texture-failure.mjs'
+ import { MaintenanceResidency } from './maintenance-residency'
+@@ -37,11 +39,11 @@
+ import { DEFAULT_GPU_WORKING_BUDGET_BYTES, workingSetBudget, usesNativeNavigationWorkingBudget } from './working-set-budget'
+ import {rectangleBorder} from './rect-partition'
+ import {disjointNeutralGroup} from './neutral-group'
+-import { backdropOverlap, exactBlendLattice, interactionEffectRegion, interactionHalo } from './effect-region'
++import { backdropOverlap, exactBlendLattice, normalMergeRegion, interactionEffectRegion, interactionHalo } from './effect-region'
+ import { gradient_blur_composite_uniforms } from '../../generated/design-kernel/design_kernel'
+ import { inverse } from '../../geometry'
+ import { EncodeYield } from './encode-yield'
+-import { sceneIndex, opaqueSolidGroup, opaqueSolidRuns, sceneScale as scale, type SceneIndex } from './scene-index'
++import { sceneIndex, opaqueSolidGroup, opaqueSolidRuns, boundedPaintGroup, hasOpaqueSolidGroups, sceneScale as scale, type SceneIndex } from './scene-index'
+ import type {
+   Driver,
+   GpuAdmissionDiagnostic,
+@@ -649,6 +651,13 @@
+   private bytes = 0
+   private peak = 0
+   private passPixels = 0
++  private readonly fastWork = new FastPathWork()
++  private readonly constantCoverageEnabled = import.meta.env.VITE_DESIGN_CONSTANT_COVERAGE==='1'
++  private readonly mixedSolidRunsEnabled = import.meta.env.VITE_DESIGN_MIXED_SOLID_RUNS!=='0'
++  private constantCoverageActive=true
++  private gradientFusionActive=true
++  private solidRunsActive=true
++  private opaqueBatchEnabled(){return import.meta.env.VITE_DESIGN_OPAQUE_SOLID_BATCH==='1'||this.mixedSolidRunsEnabled&&this.solidRunsActive}
+   private hybridEffects = 0
+   private checkpointMs = 0
+   private activeNode = ''
+@@ -684,6 +693,7 @@
+   // Samples that cannot separate keep their original dense strip fallback.
+   private filterImageFields?: { rect: Rect; fields: Map<string, Surface | null>; pinned: Set<Texture> }
+   private imageGrids = new Map<GpuPaint, Map<number, Surface>>()
++  private readonly gradientFieldProofs = new WeakMap<Texture,{resource:Texture['resource'];maximumStop:number}>()
+   private gradientLookups = new Map<GpuPaint, Surface>()
+   private textureLookups = new Map<string, Surface>()
+   private textureMath: Surface | undefined
+@@ -771,6 +781,10 @@
+       if (this.overBudget(values.byteLength, width, height)) throw this.budgetError('GPU 表面内存预算超限', 3, fieldKind)
+       try { texture = upload.call(this.driver, values, width, height) }
+       catch (error) { throw this.failureOrigin(error, 7, fieldKind) }
++      if(this.driver.exactGradientPaintOver&&(inputs[0]==='gradient-grid'||inputs[0]==='gradient-axis-grid')&&values instanceof Float32Array){
++        const maximumStop=gradientFieldMaximumStop(values)
++        if(maximumStop!==undefined)this.gradientFieldProofs.set(texture,{resource:texture.resource,maximumStop})
++      }
+       this.fieldUploadBytes += values.byteLength
+       this.bytes += texture.bytes
+       this.peak = Math.max(this.peak, this.bytes)
+@@ -855,6 +869,7 @@
+     delete texture.uniformColor
+     delete texture.finitePixels
+     delete texture.opaqueAlpha
++    this.gradientFieldProofs.delete(texture)
+     this.touch(texture)
+     this.busy.add(texture)
+     this.used.add(texture)
+@@ -1248,6 +1263,7 @@
+       (this.interactionWarm||this.workingBytes<this.frameBudget*.875))return
+     const protectedTextures = new Set([...targets, ...(clip || [])].map((surface) => surface.texture))
+     for (const texture of masks ? new Set(masks.map((surface) => surface.texture)) : this.maskOwners.keysFor(n.id)) {
++      if(texture===this.constantTargets.get('coverage-one')?.texture)continue
+       const owners = this.maskOwners.get(texture)
+       if (!owners || owners.size !== 1 || !owners.has(n.id) || protectedTextures.has(texture) || !this.busy.has(texture)) continue
+       this.coverage.remove(texture)
+@@ -1345,20 +1361,39 @@
+   private nodeMask(n: GpuNode): Surface
+   private nodeMask(n: GpuNode, admit: true): Surface | Promise<Surface>
+   private nodeMask(n: GpuNode, admit = false): Surface | Promise<Surface> {
+-    const compact = this.painterStagesEnabled() && this.driver.managed && this.driver.constantTextureSampling
++    const independent=this.constantCoverageEnabled&&this.constantCoverageActive&&this.driver.name==='webgpu'&&!!this.driver.createConstantCoverage&&this.scene.coherentSamples===true&&
++      this.sampleIndex!==undefined&&this.sampleIndex>=0&&this.sampleIndex<4&&exactBlendLattice([n.rect,n.fill.rect])
++    const compact = (this.painterStagesEnabled()||independent) && this.driver.managed && this.driver.constantTextureSampling
+     const certifiedInterior = !n.opaqueCoverage && compact && n.fill.sampleCount === 4 && this.sampleIndex !== undefined &&
+       Number.isInteger(this.sampleIndex) && this.sampleIndex >= 0 && this.sampleIndex < 4 &&
+       containsRect(n.fill.opaqueRect, n.rect) && containsRect(n.fill.rect, n.rect) &&
+       exactBlendLattice([n.fill.rect, n.fill.opaqueRect!, n.rect])
+-    const opaque = n.opaqueCoverage || certifiedInterior || compact && fullSampleCoverage(n.fill, this.scene.curves, n.rect)
+-    if (!opaque || !this.optimized) return admit ? this.mask(n.fill, true) : this.mask(n.fill)
++    const opaque = n.opaqueCoverage || certifiedInterior || this.painterStagesEnabled() && compact && fullSampleCoverage(n.fill, this.scene.curves, n.rect)
++    if (!opaque || !this.optimized){if(independent)this.fastWork.add('fastCoverageRejected');return admit ? this.mask(n.fill, true) : this.mask(n.fill)}
+     const key = `opaque:${n.rect.x}:${n.rect.y}:${n.rect.w}:${n.rect.h}`
+     const known = this.masks.get(key)
+     if (known) return this.trackMask({ ...known, opaqueInterior: n.fill?.opaqueRect })
++    if(compact&&independent){
++      const shared=this.constantTargets.get('coverage-one')
++      if(shared){
++        const value={texture:shared.texture,rect:n.rect,opaqueInterior:n.fill?.opaqueRect}
++        this.masks.set(key,value);this.used.add(shared.texture)
++        this.fastWork.add('fastCoverageShared');this.fastWork.add('fastCoverageSavedPixels',n.rect.w*n.rect.h)
++        return this.trackMask(value)
++      }
++    }
+     if (admit) {
+       const pending = this.admitSurface(compact ? rect(0, 0, 1, 1) : n.rect, 1,
+         !!(this.driver.managed && this.driver.createBinaryCoverage), false, [], () => this.nodeMask(n))
+       if (pending) return pending
++    }
++    if(compact&&independent&&this.driver.createConstantCoverage){
++      const value:Surface=this.materialField(['constant-coverage-one'],rect(0,0,1,1),()=>new Uint8Array([255,255,255,255]),
++        ()=>this.driver.createConstantCoverage!(),undefined,4)
++      value.rect=n.rect;value.opaqueInterior=n.fill?.opaqueRect
++      this.constantTargets.set('coverage-one',value);this.masks.set(key,value)
++      this.fastWork.add('fastCoverageConstant');this.fastWork.add('fastCoverageSavedPixels',Math.max(0,n.rect.w*n.rect.h-1))
++      return this.trackMask(value)
+     }
+     const mask = this.acquire(compact ? rect(0, 0, 1, 1) : n.rect, !!(this.driver.managed && this.driver.createBinaryCoverage), false, SurfaceAllocationSite.nodeMask)
+     const u = parameters(mask.rect)
+@@ -1367,9 +1402,14 @@
+     this.driver.pass(mask.texture, u, [])
+     this.passPixels += mask.rect.w * mask.rect.h
+     if (compact) { mask.texture.uniformColor = true; mask.rect = n.rect }
++    if(compact&&independent){this.constantTargets.set('coverage-one',mask);this.fastWork.add('fastCoverageConstant');this.fastWork.add('fastCoverageSavedPixels',Math.max(0,n.rect.w*n.rect.h-1))}
+     mask.opaqueInterior = n.fill?.opaqueRect
+     this.masks.set(key, mask)
+     return this.trackMask(mask)
++  }
++  private fillMask(n:GpuNode):Surface|Promise<Surface>{
++    return this.constantCoverageEnabled&&this.constantCoverageActive&&this.driver.name==='webgpu'&&this.scene.coherentSamples&&this.sampleIndex!==undefined
++      ?this.nodeMask(n,true):this.mask(n.fill,true)
+   }
+   private combine(a: Surface, b: Surface, r: Rect, outside = false) {
+     return this.run(1, r, [a, b], (u) => {
+@@ -1390,14 +1430,14 @@
+    * in the copy so integer-centre sampling has the same inputs at the edge.
+    * Shared sample planes and texture feedback retain the full-target path. */
+   private regionalOverPlan(bounds: Rect, dst: Surface, sources: Surface[]) {
+-    if (!this.optimized || !this.driver.managed || (this.aliases.get(dst.texture) || 1) > 1 ||
+-        sources.some(s => s.texture === dst.texture) ||
+-        [bounds, dst.rect, ...sources.map(s => s.rect)].some(r =>
+-          Object.values(r).some(v => !Number.isInteger(v) || Math.abs(v) > 1048576))) return
++    if (!this.optimized || !this.driver.managed) return
++    if((this.aliases.get(dst.texture)||1)>1){this.fastWork.add('fastRegionalSharedReject');return}
++    if(sources.some(s=>s.texture===dst.texture)){this.fastWork.add('fastRegionalFeedbackReject');return}
++    if([bounds,dst.rect,...sources.map(s=>s.rect)].some(r=>Object.values(r).some(v=>!Number.isInteger(v)||Math.abs(v)>1048576))){this.fastWork.add('fastRegionalLatticeReject');return}
+     const region = intersect(bounds, dst.rect)
+     if (!region.w || !region.h) return { region, before: undefined }
+     // A full-surface update gains nothing from the extra copy.
+-    if (region.w * region.h * 2 >= dst.rect.w * dst.rect.h) return
++    if (region.w * region.h * 2 >= dst.rect.w * dst.rect.h){this.fastWork.add('fastRegionalLargeReject');return}
+     return { region, before: intersect({ ...region, w: region.w + 1, h: region.h + 1 }, dst.rect) }
+   }
+   private regionalOver(
+@@ -1409,6 +1449,8 @@
+     const { region } = plan
+     if (!plan.before) return dst
+     const before = this.run(0, plan.before, [dst])
++    this.fastWork.add('fastRegionalUsed');this.fastWork.add('fastRegionalPixels',region.w*region.h+plan.before.w*plan.before.h)
++    this.fastWork.add('fastRegionalFullPixels',dst.rect.w*dst.rect.h)
+     const u = parameters(dst.rect, before.rect, sources[0]?.rect, sources[1]?.rect)
+     u[16] = mode
+     configure(u)
+@@ -1555,10 +1597,11 @@
+     return this.reclaimScratch(required).then(() => this.checkFrameCurrent())
+   }
+   private paintOver(n: GpuNode, paint: GpuPaint, mask: Surface, dst: Surface, clip?: Surface): Surface
+-  private paintOver(n: GpuNode, paint: GpuPaint, mask: Surface, dst: Surface, clip: Surface | undefined, admitMerge: true, compactTarget?: boolean): Surface | Promise<Surface>
+-  private paintOver(n: GpuNode, paint: GpuPaint, mask: Surface, dst: Surface, clip?: Surface, admitMerge = false, compactTarget = false): Surface | Promise<Surface> {
++  private paintOver(n: GpuNode, paint: GpuPaint, mask: Surface, dst: Surface, clip: Surface | undefined, admitMerge: true, compactTarget?: boolean, skipGradientFusion?:boolean): Surface | Promise<Surface>
++  private paintOver(n: GpuNode, paint: GpuPaint, mask: Surface, dst: Surface, clip?: Surface, admitMerge = false, compactTarget = false, skipGradientFusion=false): Surface | Promise<Surface> {
+     const opaqueConstant = this.constantPaintOver(n, paint, mask, dst, clip)
+     if (opaqueConstant) return this.opaqueConstantTarget(dst, opaqueConstant)
++    if(admitMerge&&!skipGradientFusion&&this.gradientFusionEligible(n,paint,mask,dst,clip))return this.gradientPaintOver(n,paint,mask,dst,clip)
+     const compact = compactTarget && this.compactSolidPlan(n, paint, mask, dst, clip)
+     if (compact) {
+       if (compact.unchanged) return dst
+@@ -1665,6 +1708,50 @@
+     const source = admitMerge ? this.paintWithBoundedImageFields(n, paint, mask) : this.paint(n, paint, mask)
+     return source instanceof Promise ? source.then(compose) : compose(source)
+   }
++  private gradientFusionEligible(n:GpuNode,paint:GpuPaint,mask:Surface,dst:Surface,clip?:Surface){
++    if(!this.optimized||!this.gradientFusionActive||!this.driver.exactGradientPaintOver||!['linear','radial','angular','diamond'].includes(paint.kind))return false
++    if(paint.blend!=='normal'||!paint.visible||dst.logicalBounds||n.rect.w*n.rect.h>262144||clip&&paint.stops.length>32){this.fastWork.add('fastGradientPaintReject');return false}
++    if(!exactBlendLattice([n.rect,mask.rect,dst.rect,...(clip?[clip.rect]:[])])){this.fastWork.add('fastGradientLatticeReject');return false}
++    if(!mask.texture.binaryCoverage||clip&&!clip.texture.binaryCoverage){this.fastWork.add('fastGradientCoverageReject');return false}
++    const colors=[paint.color,...paint.stops.map(s=>s.color)]
++    if(!Number.isFinite(paint.opacity)||paint.opacity<0||paint.opacity>1||paint.stops.length>MAX_GRADIENT_STOPS||
++      colors.some(color=>[...this.color(color).map(Math.fround),Math.fround(this.alpha(color))].some(v=>!Number.isFinite(v)||v<0||v>1))){
++      this.fastWork.add('fastGradientColorReject');return false
++    }
++    return true
++  }
++  private gradientPaintOver(n:GpuNode,paint:GpuPaint,mask:Surface,dst:Surface,clip?:Surface):Surface|Promise<Surface>{
++    const field=this.gradientGrid(n,paint),second=clip||(paint.stops.length>32?this.gradientStopTable(paint):mask)
++    const proof=this.gradientFieldProofs.get(field.texture)
++    if(!proof||proof.resource!==field.texture.resource||proof.maximumStop>=paint.stops.length){
++      this.fastWork.add('fastGradientColorReject')
++      return this.paintOver(n,paint,mask,dst,clip,true,false,true)
++    }
++    const privateTarget=(this.aliases.get(dst.texture)||1)===1&&[mask,second,field].every(s=>s.texture!==dst.texture)
++    const plan=privateTarget&&import.meta.env.VITE_DESIGN_REGIONAL_BLEND!=='0'?normalMergeRegion(n.rect,dst.rect):undefined
++    if(plan&&!plan.before)return dst
++    const allocation=plan?.before||dst.rect
++    const draw=()=>{
++      this.checkFrameCurrent()
++      const before=plan?.before?this.copy(dst,plan.before):undefined,old=before||dst
++      try{
++        const u=parameters(dst.rect,mask.rect,second.rect,old.rect)
++        u[16]=GRADIENT_PAINT_OVER_MODE;this.configurePaint(u,n,paint)
++        u.set([n.rect.x,n.rect.y,n.rect.w,n.rect.h],36);u[19]=clip?1:0
++        const output=before?dst:this.acquire(dst.rect,false,false,SurfaceAllocationSite.passOutput,GRADIENT_PAINT_OVER_MODE)
++        try{
++          this.driver.pass(output.texture,u,[mask.texture,second.texture,old.texture,field.texture],plan?.region)
++        }catch(error){if(output!==dst)this.release(output);throw error}
++        const pixels=plan?plan.region.w*plan.region.h:dst.rect.w*dst.rect.h
++        this.passPixels+=pixels;this.fastWork.add('fastGradientFused');this.fastWork.add('fastGradientSavedPixels',n.rect.w*n.rect.h)
++        if(plan){this.fastWork.add('fastRegionalUsed');this.fastWork.add('fastRegionalPixels',pixels+allocation.w*allocation.h);this.fastWork.add('fastRegionalFullPixels',dst.rect.w*dst.rect.h)}
++        else this.release(dst)
++        return output
++      }finally{this.release(before)}
++    }
++    const pending=this.admitSurface(allocation,1,false,false,[mask,second,dst,field],draw)
++    return pending||draw()
++  }
+   /** Consumes dst; retains src/mask. Source-over writes only the affected area. */
+   private merge(src: Surface, dst: Surface, mode = 'normal', opacity = 1, mask?: Surface, output?: Rect) {
+     if (output) {
+@@ -1689,15 +1776,10 @@
+       // to the destination's own pixel lattice, retaining a bilinear halo on
+       // both source coverage and the saved destination. Paint order and blend
+       // equations are unchanged; untouched destination texels are preserved.
+-      const affected=intersect({x:src.rect.x-1,y:src.rect.y-1,w:src.rect.w+2,h:src.rect.h+2},dst.rect)
+-      const x=Math.max(0,Math.floor(affected.x-dst.rect.x)),y=Math.max(0,Math.floor(affected.y-dst.rect.y))
+-      const w=Math.max(0,Math.min(dst.rect.w,Math.ceil(affected.x+affected.w-dst.rect.x))-x)
+-      const h=Math.max(0,Math.min(dst.rect.h,Math.ceil(affected.y+affected.h-dst.rect.y))-y)
+-      if(!w||!h)return dst
+-      if(w*h*2<dst.rect.w*dst.rect.h){
+-        const left=Math.max(0,x-1),top=Math.max(0,y-1)
+-        const save={x:dst.rect.x+left,y:dst.rect.y+top,w:Math.min(dst.rect.w,x+w+2)-left,h:Math.min(dst.rect.h,y+h+2)-top}
+-        const before=this.copy(dst,save)
++      const plan=normalMergeRegion(src.rect,dst.rect)
++      if(plan&&!plan.before)return dst
++      if(plan?.before){
++        const {x,y,w,h}=plan.region,before=this.copy(dst,plan.before)
+         const u=parameters(dst.rect,src.rect,before.rect,mask?.rect)
+         const blend=blends.indexOf(mode)
+         if(blend<0)throw Error(`未知混合模式 ${mode}`)
+@@ -2579,16 +2661,25 @@
+     return undefined
+   }
+   private async drawOpaqueGroup(ids:string[],targets:Surface[],samples:number[]):Promise<Surface[]|undefined>{
++    if(ids.length<8)return
++    this.fastWork.add('fastSolidAttempts')
+     // Retained captures need the complete source for subsequent poses. They
+     // can use the same exact opaque union as an ordinary transparent group.
+     // A moving suffix keeps the very same integer drawRegion, applied to each
+     // instance without rebasing its original path/sample coordinates.
+     if(!this.optimized||!this.driver.prepareOpaqueSolids||!this.driver.drawOpaqueSolids||
+       targets.some(t=>!t.texture.transparentZero||t.logicalBounds)||
+-      samples.some(s=>!Number.isInteger(s)||s<0||s>3))return
++      samples.some(s=>!Number.isInteger(s)||s<0||s>3)){this.fastWork.add('fastSolidTargetReject');return}
+     const color=opaqueSolidGroup(this.scene,ids)
+     const runs=opaqueSolidRuns(this.scene,ids)||(color?[{start:0,end:ids.length,color}]:undefined)
+-    if(!runs||runs.some(run=>this.alpha(run.color)!==1)||ids.length>(this.driver.solidBatchRemaining?.()??Infinity))return
++    if(!runs?.length||runs.some(run=>this.alpha(run.color)!==1)){this.fastWork.add('fastSolidProofReject');return}
++    if(runs.reduce((n,run)=>n+run.end-run.start,0)>(this.driver.solidBatchRemaining?.()??Infinity)){this.fastWork.add('fastSolidCapacityReject');return}
++    const mixed=runs[0].start!==0||runs.at(-1)!.end!==ids.length||runs.some((run,i)=>i>0&&run.start!==runs[i-1].end)
++    // Opaque replacement is only idempotent over finite canonical colours.
++    // Rust proves every intervening leaf's bounded normal paint semantics;
++    // uploads still certify each batch's actual four binary coverage programs.
++    if(mixed&&(!this.mixedSolidRunsEnabled||this.painterStagesEnabled()||
++      !boundedPaintGroup(this.scene,ids))){this.fastWork.add('fastSolidProofReject');return}
+     const r=targets[0].rect
+     if(targets.some(t=>t.rect.x!==r.x||t.rect.y!==r.y||t.rect.w!==r.w||t.rect.h!==r.h))return
+     const batches=[]
+@@ -2602,13 +2693,32 @@
+     try{
+       for(const sample of samples){
+         await this.reclaimForSurface(r)
+-        const out=this.acquire(r,false,false,SurfaceAllocationSite.empty);outputs.push(out)
++        let out=this.acquire(r,false,false,SurfaceAllocationSite.empty);outputs.push(out)
+         this.driver.clear(out.texture)
+-        for(const batch of batches){
+-          if(!this.driver.drawOpaqueSolids(batch,out.texture,sample)){
+-            this.release(...outputs);return
++        let cursor=0
++        for(let index=0;index<batches.length;index++){
++          const run=runs[index],batch=batches[index]
++          if(cursor<run.start){
++            const oldSample=this.sampleIndex;this.sampleIndex=sample
++            try{out=await this.drawList(ids.slice(cursor,run.start),out)}finally{this.sampleIndex=oldSample}
++            outputs[outputs.length-1]=out
+           }
++          // A constant/aliased result of the ordinary span is immutable. Give
++          // this batch its own full-size writable destination before replacing.
++          if((this.aliases.get(out.texture)||1)>1||out.texture.uniformColor||out.texture.transparentZero){
++            await this.reclaimForSurface(r)
++            const copy=this.copy(out,r);this.release(out);out=copy;outputs[outputs.length-1]=out
++          }
++          this.checkFrameCurrent()
++          if(!this.driver.drawOpaqueSolids(batch,out.texture,sample))throw Error('Opaque batch ownership changed during rendering')
+           this.passPixels+=batch.pixels
++          this.fastWork.add('fastSolidBatches');this.fastWork.add('fastSolidNodes',batch.count)
++          cursor=run.end
++        }
++        if(cursor<ids.length){
++          const oldSample=this.sampleIndex;this.sampleIndex=sample
++          try{out=await this.drawList(ids.slice(cursor),out)}finally{this.sampleIndex=oldSample}
++          outputs[outputs.length-1]=out
+         }
+       }
+     }catch(error){this.release(...outputs);throw error}
+@@ -2616,7 +2726,7 @@
+     return outputs
+   }
+   private async drawList(ids: string[], target: Surface, clip?: Surface, skip?: string): Promise<Surface> {
+-    if(import.meta.env.VITE_DESIGN_OPAQUE_SOLID_BATCH==='1'&&!clip&&!skip&&this.sampleIndex!==undefined){
++    if(this.opaqueBatchEnabled()&&!clip&&!skip&&this.sampleIndex!==undefined){
+       const batched=await this.drawOpaqueGroup(ids,[target],[this.sampleIndex]);if(batched)return batched[0]
+     }
+     let pendingSurfaceAdmission: Surface | Promise<Surface>
+@@ -3278,7 +3388,7 @@
+     prefix?: { plan: NestedPrefixPlan; policy: string },
+     compactSource = false,
+   ): Promise<Surface[]> {
+-    if(import.meta.env.VITE_DESIGN_OPAQUE_SOLID_BATCH==='1'&&!clip&&!prefix&&!compactSource&&targets.length===4){
++    if(this.opaqueBatchEnabled()&&!clip&&!prefix&&!compactSource&&targets.length===4){
+       const batched=await this.drawOpaqueGroup(ids,targets,[0,1,2,3]);if(batched)return batched
+     }
+     let pendingSurfaceAdmission: Surface | Promise<Surface>
+@@ -5224,11 +5334,11 @@
+   private blur(input: Surface, sigma: number, clampEdges: boolean, alphaOnly: boolean, displayEligible: boolean, admit: true, largeExactSourceAllowed?: boolean, forceGaussian?: boolean): Surface | Promise<Surface>
+   private blur(input: Surface, sigma: number, clampEdges: boolean, alphaOnly: boolean, displayEligible: boolean, admit: false, largeExactSourceAllowed: boolean, forceGaussian?: boolean): Surface
+   private blur(input: Surface, sigma: number, clampEdges = false, alphaOnly = false, displayEligible = false, admit = false, largeExactSourceAllowed = true, forceGaussian = false): Surface | Promise<Surface> {
+-    const integrated = this.scene.integratedBlur && !forceGaussian
+     // Every finite normalized kernel maps the all-+0 field to itself, with
+     // either transparent or clamped edges. Filter pipelines can keep using
+     // physical inputs without allocating a transparent expansion first.
+     if (input.texture.transparentZero) return input
++    const integrated = this.scene.integratedBlur && !forceGaussian
+     const channels = this.optimized && this.driver.managed && alphaOnly ? 8 : 15
+     const displayFilter = !forceGaussian && this.displayFilterActive(sigma * 2, channels)
+     const scalarAlpha = this.optimized && alphaOnly && this.driver.managed &&
+@@ -5803,7 +5913,7 @@
+       // masked contribution. Avoid allocating a blank full-size destination
+       // and release the capture after the blur's final read is encoded, so
+       // the output can reuse that storage in queue order.
+-      fill=((pendingSurfaceAdmission = this.mask(n.fill, true), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission))
++      fill=((pendingSurfaceAdmission = this.fillMask(n), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission))
+       const raw=await this.interactionBackdropDisplay(n,backdrop,(backdropRadius(background!) * scale(n.matrix))/2)
+       const blurred=this.colorControls(raw, background!.colorControls)
+       if (blurred !== raw) this.release(raw)
+@@ -5813,7 +5923,7 @@
+       if(n.passthrough&&this.surfaceNeedsAdmission(n.rect))await this.reclaimForSurface(n.rect)
+       layer=n.passthrough?this.copy(backdrop,n.rect):this.empty(n.rect)
+     }
+-    if (n.fills.length || n.clip || background) fill = ((pendingSurfaceAdmission = this.mask(n.fill, true), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission))
++    if (n.fills.length || n.clip || background) fill = ((pendingSurfaceAdmission = this.fillMask(n), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission))
+     if (background && fill && !directBackdrop) {
+       const raw = await this.interactionBackdropDisplay(n,backdrop,(backdropRadius(background) * scale(n.matrix)) / 2)
+       const blur = this.colorControls(raw, background.colorControls)
+@@ -5827,7 +5937,11 @@
+     }
+     for (const p of n.fills) {
+       if (!p.visible) continue
+-      const painted = ((pendingSurfaceAdmission = this.paint(n, p, fill || ((pendingSurfaceAdmission = this.mask(n.fill, true), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission)), undefined, true), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission))
++      const mask=fill||((pendingSurfaceAdmission=this.fillMask(n),pendingSurfaceAdmission instanceof Promise?await pendingSurfaceAdmission:pendingSurfaceAdmission))
++      if(this.gradientFusionEligible(n,p,mask,layer)){
++        layer=await this.gradientPaintOver(n,p,mask,layer);continue
++      }
++      const painted = ((pendingSurfaceAdmission = this.paint(n, p, mask, undefined, true), pendingSurfaceAdmission instanceof Promise ? await pendingSurfaceAdmission : pendingSurfaceAdmission))
+       if(this.driver.managed&&(this.scene.interactionRetained||this.surfaceNeedsAdmission(layer.rect)))
+         await this.reclaimForSurface(layer.rect)
+       const next = this.merge(painted, layer, p.blend)
+@@ -6120,11 +6234,17 @@
+       else this.free.delete(key)
+     }
+     this.used.clear()
+-    this.coverage.begin()
++    this.coverage.begin(gpuDiagnosticsEnabled())
+     this.materialFields.begin()
+     this.fieldHits = this.fieldBuilds = this.fieldBuildMs = this.fieldUploadBytes = 0
+     this.scene = scene
++    this.solidRunsActive=hasOpaqueSolidGroups(scene)
++    this.gradientFusionActive=!!this.driver.exactGradientPaintOver&&gradientFusionWorthwhile(scene)
++    this.constantCoverageActive=this.constantCoverageEnabled&&scene.coherentSamples===true&&Object.values(scene.nodes).some(n=>
++      (n.clip||n.fills.some(p=>p.visible)||n.strokes.some(s=>s.align!=='center')||!!backdropEffect(n.effects))&&
++      (n.opaqueCoverage||n.fill.sampleCount===4&&containsRect(n.fill.opaqueRect,n.rect)&&containsRect(n.fill.rect,n.rect)))
+     this.passPixels = 0
++    this.fastWork.reset(gpuDiagnosticsEnabled())
+     this.checkpointMs = 0
+     this.maskHits = 0
+     this.maskRasterizations = 0
+@@ -6314,7 +6434,9 @@
+         kernelRetiredBytes: this.retiredKernels.reduce((sum, entry) => sum + entry.texture.bytes, 0),
+         backdropReads: this.backdropReads,
+         drawCalls: this.driver.drawCalls,
+-        drawWork: this.driver.drawWorkSnapshot?.(),
++        drawWork: {...this.driver.drawWorkSnapshot?.(),...this.fastWork.snapshot(),...(gpuDiagnosticsEnabled()?{
++          fastCoverageCacheHits:this.coverage.hits,fastCoverageCacheMissKeys:this.coverage.missKeys,fastCoverageCacheMissWords:this.coverage.missWords,
++          fastCoverageCacheOversize:this.coverage.rejectedOversize,fastCoverageCachePinned:this.coverage.rejectedPinned}: {})},
+         commandSubmissions: this.driver.commandSubmissions,
+         triangles: this.driver.triangles,
+         textureBytes: this.bytes,
+--- a/frontend/design-client/src/kernel/gpu/webgpu.ts
++++ b/frontend/design-client/src/kernel/gpu/webgpu.ts
+@@ -1,6 +1,7 @@
+ import { pageBackgroundProof, pageBackgroundSource } from './page-background'
+ import { textureAllocationError, annotateTextureFailure } from '../../../../design-desktop/src/render-texture-failure.mjs'
+ import { PassDrawWork } from '../../../../design-desktop/src/render-pass-work.mjs'
++import { GRADIENT_PAINT_OVER_MODE, gradientPaintOverWgsl, gradientFusionWorthwhile } from './gradient-paint-over'
+ import { captureDeviceDiagnosticRequest, deviceDiagnosticFields, registerDeviceDiagnosticOwner, recordDeviceLifecycle, recordDeviceDiagnostic, recordDeviceCallback, deviceLifecyclePhase, deviceLostReason } from './device-lifecycle-diagnostics'
+ import { markRenderFailure, renderFailureFields, withRenderFailureStage } from '../render-failure-telemetry'
+ import { recordGpuDiagnostic, gpuDiagnosticsEnabled } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
+@@ -96,7 +97,7 @@
+ export class WebGpuDriver implements Driver {
+   private drawWork = new PassDrawWork()
+   drawWorkSnapshot(){return this.drawWork?.snapshot()||{}}
+-  private noteDraw(mode:number,count=1){this.drawCalls+=count;this.drawWork?.draw(mode,count)}
++  private noteDraw(mode:number,count=1,pixels?:number){this.drawCalls+=count;this.drawWork?.draw(mode,count,pixels)}
+   private queueWaitStats = new QueueWaitStats(import.meta.env.VITE_DESIGN_QUEUE_WAIT_TIMING === '1')
+   private submissionSequence = 0
+   private completedSubmissionSequence = 0
+@@ -261,6 +262,7 @@
+   private softwareRaster = false
+   readonly name = 'webgpu' as const
+   readonly exactSolidPaintOver = true
++  get exactGradientPaintOver(){return this.managed&&!this.displayMath&&!this.hdr&&import.meta.env.VITE_DESIGN_FUSED_GRADIENT!=='0'}
+   readonly canvas = new OffscreenCanvas(1, 1)
+   description = 'WebGPU'
+   lost = false
+@@ -765,7 +767,7 @@
+  if(src.a<=0.){return dst;}if(dst.a<=0.){return src;}
+  return addRN4(src,mulRN4(dst,vec4<f32>(addRN(1.,-src.a))));
+ }`
+-    const addressedCode = this.managed ? scalarCoverageSource(imageCoordinateSource(compositorCode + imageResolveStepWgsl)) : compositorCode
++    const addressedCode = this.managed ? scalarCoverageSource(imageCoordinateSource(compositorCode + imageResolveStepWgsl + gradientPaintOverWgsl)) : compositorCode
+     if (this.managed && !this.displayMath && !this.hdr) this.displayImageBaseSource = addressedCode
+     const module = this.device.createShaderModule({
+       code: this.displayMath ? displayArithmeticSource(addressedCode, import.meta.env.VITE_DESIGN_NATIVE_DIVISION !== '0') : addressedCode,
+@@ -1062,7 +1064,7 @@
+     this.certifiedTentPasses=0
+     this.sampleOnlyPrograms.resetFrame()
+     this.opaqueSolidBatches=new WeakMap();this.opaqueSolidDraws=0
+-    this.opaqueSolidRequested=import.meta.env.VITE_DESIGN_OPAQUE_SOLID_BATCH==='1' && this.managed===true &&
++    this.opaqueSolidRequested=(import.meta.env.VITE_DESIGN_OPAQUE_SOLID_BATCH==='1'||import.meta.env.VITE_DESIGN_MIXED_SOLID_RUNS!=='0') && this.managed===true &&
+       scene.coherentSamples===true && !scene.softwareRaster && hasOpaqueSolidGroups(scene)
+     // Bitmap-assembly display leaves intentionally set captureDisplay=false.
+     // Transport is independent of the real render(readback,present) contract;
+@@ -1104,6 +1106,7 @@
+       if (this.sampleOnlyScalarPipeline) this.sampleOnlyCoverageEligibleScenes++
+     }
+     const modes = this.managed ? compositorModes(scene) : new Set([...compositorModes(scene)].filter(mode => mode === 61 || mode === 62))
++    if(this.exactGradientPaintOver&&gradientFusionWorthwhile(scene))modes.add(GRADIENT_PAINT_OVER_MODE)
+     const layout = this.device.createPipelineLayout({ bindGroupLayouts: [this.layout] })
+     const pending: string[] = []
+     for (const mode of modes) {
+@@ -1114,7 +1117,7 @@
+         ? (this.exactMotionModule ??= this.device.createShaderModule({code:this.exactMotionSource!,label:'Exact motion sampling and arithmetic'})) : this.compositorModule
+       const pipeline = await this.device.createRenderPipelineAsync({ layout,
+         vertex: { module, entryPoint: 'quad' },
+-        fragment: { module, entryPoint: 'fragment', constants: { COMPOSITOR_MODE: mode }, targets: [{ format: this.layerFormat }] },
++        fragment: { module, entryPoint: mode===GRADIENT_PAINT_OVER_MODE?'exactGradientPaintOver':'fragment', constants: mode===GRADIENT_PAINT_OVER_MODE?{}:{ COMPOSITOR_MODE: mode }, targets: [{ format: this.layerFormat }] },
+         primitive: { topology: 'triangle-list' } })
+       this.modePipelines.set(mode, pipeline)
+       })
+@@ -1652,6 +1655,13 @@
+   createBinaryCoverage(width: number, height: number): Texture {
+     const texture = this.createFormat(width, height, 'rgba8unorm')
+     texture.binaryCoverage = true
++    return texture
++  }
++  createConstantCoverage():Texture {
++    if(!this.managed)throw Error('Constant coverage requires managed sampling')
++    const texture=this.createBinaryCoverage(1,1)
++    this.device.queue.writeTexture({texture:texture.resource as GPUTexture},new Uint8Array([255,255,255,255]),{bytesPerRow:4},[1,1])
++    texture.uniformColor=true
+     return texture
+   }
+   createScalarCoverage(width:number,height:number):Texture {
+@@ -2485,7 +2495,7 @@
+         view: this.bindingCache.view((target.resource as GPUTexture)), loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 0],
+       }] })
+       pass.setPipeline(this.pairedDisplay.pipeline); pass.setBindGroup(0, bind); pass.draw(3); pass.end()
+-      this.noteDraw(u[16]); this.pairedFilterPasses++; return
++      this.noteDraw(u[16],1,target.width*target.height); this.pairedFilterPasses++; return
+     }
+     // Mode 6 composites a shadow from source + blurred alpha. The standalone
+     // SDF/chrome shaders have different uniforms and cannot share this mode;
+@@ -2531,7 +2541,7 @@
+         pass.setPipeline(pipeline)
+         pass.setBindGroup(0, bind.group, bind.offsets)
+         pass.draw(3)
+-        this.noteDraw(u[16])
++        this.noteDraw(u[16],1,target.width*target.height)
+       }
+       pass.end()
+       this.mergedExactFilterPasses++
+@@ -2559,7 +2569,7 @@
+     pass.draw(3)
+     pass.end()
+     drawn = true
+-    this.noteDraw(u[16])
++    this.noteDraw(u[16],1,(region?.w||target.width)*(region?.h||target.height))
+     if (sampleOnly) {
+       this.sampleOnlyCoveragePasses++; this.sampleOnlyCoveragePixels += target.width * target.height
+       this.sampleOnlyCoverageLifetimePasses++; this.sampleOnlyCoverageLifetimePixels += target.width * target.height
+@@ -2601,7 +2611,7 @@
+     pass.setBindGroup(0, bind.group, bind.offsets)
+     pass.setScissorRect(region.x, region.y, region.w, region.h)
+     pass.draw(3)
+-    this.noteDraw(3)
++    this.noteDraw(3,1,region.w*region.h)
+   }
+   private closeOver() {
+     this.activeOver?.end()
+--- a/frontend/design-client/src/kernel/gpu/types.ts
++++ b/frontend/design-client/src/kernel/gpu/types.ts
+@@ -294,6 +294,7 @@
+   readonly supportsDisplayFilters?: boolean
+   readonly zeroTextureSampling?: boolean
+   readonly constantTextureSampling?: boolean
++  createConstantCoverage?():Texture
+   /** Materialize each step of meanFourRN without changing its operation order. */
+   readonly sequentialSampleResolve?: boolean
+   /** Finite image paint + transparent normal blend + one exact resolve step. */
+@@ -364,6 +365,7 @@
+   abortFrameAndReleaseFilterScratch?(reason?: 'admission' | 'cancel'): Promise<void>
+   readonly certifiedFilter?: boolean
+   readonly exactSolidPaintOver?: boolean
++  readonly exactGradientPaintOver?: boolean
+   readonly managed?: boolean
+   readonly linearLight?: boolean
+   readonly hdr?: boolean
+--- a/frontend/design-client/src/kernel/gpu/scene-index.ts
++++ b/frontend/design-client/src/kernel/gpu/scene-index.ts
+@@ -7,6 +7,7 @@
+   unknownEffectSubtrees: string[]; imageUses: [string,number,number][]; features: number
+   opaqueSolidGroups?: [string,string][]
+   opaqueSolidRuns?: [string,number,number,string][]
++  boundedPaintGroups?: string[]
+   sampleIndependentNodes?: string[]
+ }
+ export type SceneIndex = {
+@@ -18,10 +19,19 @@
+ const opaqueGroups=new WeakMap<GpuScene['nodes'],Map<readonly string[],string>>()
+ type SolidRun={start:number;end:number;color:string}
+ const opaqueRuns=new WeakMap<GpuScene['nodes'],Map<readonly string[],readonly SolidRun[]>>()
++const boundedPaintGroups=new WeakMap<GpuScene['nodes'],Set<readonly string[]>>()
+ export function opaqueSolidRuns(scene:GpuScene,ids:readonly string[]){sceneIndex(scene);return opaqueRuns.get(scene.nodes)?.get(ids)}
++export function boundedPaintGroup(scene:GpuScene,ids:readonly string[]){sceneIndex(scene);return boundedPaintGroups.get(scene.nodes)?.has(ids)===true}
+ const logicalPlans=new WeakMap<NativeScenePlan,Pick<SceneIndex,'parents'|'roots'|'rootFor'|'sampleIndependentNodes'|'unknownEffectSubtrees'>>()
+ export function opaqueSolidGroup(scene:GpuScene,ids:readonly string[]){sceneIndex(scene);return opaqueGroups.get(scene.nodes)?.get(ids)}
+-export function hasOpaqueSolidGroups(scene:GpuScene){sceneIndex(scene);return !!opaqueGroups.get(scene.nodes)?.size||!!opaqueRuns.get(scene.nodes)?.size}
++export function hasOpaqueSolidGroups(scene:GpuScene){
++ sceneIndex(scene)
++ if(opaqueGroups.get(scene.nodes)?.size)return true
++ for(const [ids,runs]of opaqueRuns.get(scene.nodes)||[]){
++  if(boundedPaintGroups.get(scene.nodes)?.has(ids)||runs[0]?.start===0&&runs.at(-1)?.end===ids.length&&runs.every((run,i)=>i===0||run.start===runs[i-1].end))return true
++ }
++ return false
++}
+ export function sceneScale(m: number[]) {
+   const [a,b,c,d]=m,s=a*a+b*b+c*c+d*d,det=a*d-b*c
+   return Math.sqrt((s+Math.sqrt(Math.max(0,s*s-4*det*det)))/2)
+@@ -59,10 +69,15 @@
+   for(const [parent,start,end,color]of plan.opaqueSolidRuns||[]){
+     const ids=scene.nodes[parent]?.children
+     const prior=ids&&runs.get(ids)
+-    if(!ids||!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start!==(prior?.at(-1)?.end||0)||end-start<8||end>ids.length||!/^#[\da-f]{6}$/i.test(color))throw Error('Invalid compiled solid run')
++    if(!ids||!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<(prior?.at(-1)?.end||0)||end-start<8||end>ids.length||!/^#[\da-f]{6}$/i.test(color))throw Error('Invalid compiled solid run')
+     const next=prior||[];next.push({start,end,color});runs.set(ids,next)
+   }
+-  for(const [ids,plan]of runs)if(plan.at(-1)!.end!==ids.length)throw Error('Incomplete compiled solid run')
++  const bounded=new Set<readonly string[]>()
++  for(const parent of plan.boundedPaintGroups||[]){
++    if(!scene.nodes[parent])throw Error('Invalid compiled bounded paint group')
++    bounded.add(scene.nodes[parent].children)
++  }
++  boundedPaintGroups.set(scene.nodes,bounded)
+   opaqueRuns.set(scene.nodes,runs)
+   opaqueGroups.set(scene.nodes,groups)
+   indices.set(scene.nodes,{roots:scene.roots,index}); return index
+@@ -79,6 +94,7 @@
+   indices.set(nodes,{roots:source.roots,index:sceneIndex(source)})
+   const groups=opaqueGroups.get(source.nodes);if(groups)opaqueGroups.set(nodes,groups)
+   const runs=opaqueRuns.get(source.nodes);if(runs)opaqueRuns.set(nodes,runs)
++  const bounded=boundedPaintGroups.get(source.nodes);if(bounded)boundedPaintGroups.set(nodes,bounded)
+ }
+ /** Preview annotations change only local source bindings, never core topology,
+  * material dependencies or effect capabilities. */
+@@ -88,4 +104,5 @@
+   indices.set(target.nodes,{roots:target.roots,index})
+   const groups=opaqueGroups.get(source.nodes);if(groups)opaqueGroups.set(target.nodes,groups)
+   const runs=opaqueRuns.get(source.nodes);if(runs)opaqueRuns.set(target.nodes,runs)
++  const bounded=boundedPaintGroups.get(source.nodes);if(bounded)boundedPaintGroups.set(target.nodes,bounded)
+ }
+--- a/frontend/design-client/src/kernel/gpu/coverage-cache.ts
++++ b/frontend/design-client/src/kernel/gpu/coverage-cache.ts
+@@ -14,12 +14,17 @@
+   rejectedOversize = 0
+   rejectedPinned = 0
+   rejectedBytes = 0
++  private diagnostics = false
++  hits = 0
++  missKeys = 0
++  missWords = 0
+   constructor(
+     private limit: number,
+     private countLimit: number,
+     private destroy: (t: Texture) => void,
+   ) {}
+-  begin() {
++  begin(diagnostics = false) {
++    this.diagnostics=diagnostics;this.hits=this.missKeys=this.missWords=0
+     this.rejectedOversize = this.rejectedPinned = this.rejectedBytes = 0
+     this.frame++
+     this.eviction = this.entries.values()
+@@ -28,13 +33,16 @@
+     return this.textures.has(texture)
+   }
+   get(key: string, bits: Uint32Array): Texture | undefined {
+-    for (const e of this.buckets.get(key) || []) {
++    const bucket=this.buckets.get(key)
++    for (const e of bucket || []) {
+       if (bits.length !== e.bits.length || !bits.every((v, i) => v === e.bits[i])) continue
+       e.frame = this.frame
+       this.entries.delete(e)
+       this.entries.add(e)
++      if(this.diagnostics)this.hits++
+       return e.texture
+     }
++    if(this.diagnostics){if(bucket?.size)this.missWords++;else this.missKeys++}
+     return undefined
+   }
+   put(key: string, bits: Uint32Array, texture: Texture): boolean {
+--- a/frontend/design-client/src/kernel/gpu/effect-region.ts
++++ b/frontend/design-client/src/kernel/gpu/effect-region.ts
+@@ -5,6 +5,21 @@
+  * keep the full-target path: rebasing them can change sampling rounding. */
+ export function exactBlendLattice(rects: Rect[]): boolean {
+   return rects.every(r => Object.values(r).every(v => Number.isInteger(v) && Math.abs(v) <= 1048576))
++}
++
++/** Original normal-over writable footprint and saved bilinear neighbours.
++ * Fused paints must touch this same ring: even a transparent source can
++ * canonicalize destination zero/NaN neighbours at the sampling boundary. */
++export function normalMergeRegion(source:Rect,target:Rect):{region:Rect;before?:Rect}|undefined {
++  const affected=intersect({x:source.x-1,y:source.y-1,w:source.w+2,h:source.h+2},target)
++  const x=Math.max(0,Math.floor(affected.x-target.x)),y=Math.max(0,Math.floor(affected.y-target.y))
++  const w=Math.max(0,Math.min(target.w,Math.ceil(affected.x+affected.w-target.x))-x)
++  const h=Math.max(0,Math.min(target.h,Math.ceil(affected.y+affected.h-target.y))-y)
++  const region={x,y,w,h}
++  if(!w||!h)return {region}
++  if(w*h*2>=target.w*target.h)return
++  const left=Math.max(0,x-1),top=Math.max(0,y-1)
++  return {region,before:{x:target.x+left,y:target.y+top,w:Math.min(target.w,x+w+2)-left,h:Math.min(target.h,y+h+2)-top}}
+ }
+ 
+ /** Only pixels whose complete filter footprint exists in both captures can
+--- /dev/null
++++ b/frontend/design-client/src/kernel/gpu/gradient-paint-over.ts
+@@ -0,0 +1,76 @@
++import type {GpuScene} from './types'
++/** Reserved after the synthetic coverage/batch diagnostic modes. */
++export const GRADIENT_PAINT_OVER_MODE = 65
++
++/** Cost screening, never pixel authority. Avoid preparing/dispatching a new
++ * pipeline for a single tiny opportunity in an otherwise expensive scene.
++ * Runtime coverage, colour, field-resource and lattice proofs still apply. */
++export function gradientFusionWorthwhile(scene:GpuScene):boolean {
++ let count=0
++ const bounded=(color:string)=>{
++  const decoded=scene.colors?.[color]
++  if(decoded)return decoded.every(v=>Number.isFinite(Math.fround(v))&&v>=0&&v<=1)
++  return /^#[\da-f]{6}$/i.test(color)
++ }
++ for(const n of Object.values(scene.nodes)){
++  if(!n.rect||!n.fill||!n.strokes)continue
++  if(n.rect.w*n.rect.h>262144||!Object.values(n.rect).every(v=>Number.isInteger(v)&&Math.abs(v)<=1048576))continue
++  for(const {path,paint}of [{path:n.fill,paint:undefined},...n.strokes.map(s=>({path:s.path,paint:s.align==='center'?s.paint:undefined}))]){
++   if(path.sampleCount!==4||!path.area)continue
++   const header=scene.curves?.[path.area.first*4];if(header!==3&&header!==4)continue
++   for(const p of paint?[paint]:path===n.fill?n.fills:[]){
++    if(p.visible&&p.blend==='normal'&&['linear','radial','angular','diamond'].includes(p.kind)&&p.opacity>=0&&p.opacity<=1&&
++      p.stops.length<=64&&bounded(p.color)&&p.stops.every(s=>bounded(s.color))&&++count>=2)return true
++   }
++  }
++ }
++ return false
++}
++
++/** Exact uploaded fields must not introduce NaN through a zero-weight neighbour
++ * of the removed paint texture. Validate once at upload, not on every draw. */
++export function gradientFieldMaximumStop(values:Float32Array):number|undefined {
++ if(!values.length||values.length%4)return
++ let maximum=-1
++ for(let i=0;i<values.length;i+=4){
++  const x=values[i],y=values[i+1],weight=values[i+2]
++  if(!Number.isFinite(x)||!Number.isFinite(y)||!Number.isFinite(weight)||!Number.isFinite(values[i+3]))return
++  if(x<0)continue
++  if(!Number.isInteger(x)||!Number.isInteger(y)||y<0||x>=64||y>=64||weight<0||weight>1)return
++  maximum=Math.max(maximum,x,y)
++ }
++ return maximum
++}
++
++// The field is the ORIGINAL kernel-produced field, not a new gradient formula.
++// u(9) keeps its original paint rectangle while u(0) is the output rectangle.
++// Source slots: A=coverage, B=stop table or clip, C=destination, D=field.
++// Admission proves finite paint/coverage so integer-centre readback of the
++// former RGBA32F intermediate only canonicalizes signed zeros. Every multiply,
++// interpolation and source-over still uses the original RNE operations.
++export const gradientPaintOverWgsl = `
++fn fusedGradientValue(p:vec2<f32>)->vec4<f32>{
++ let bounds=u(9);
++ if(any(p<bounds.xy)||any(p>=bounds.xy+bounds.zw)){return vec4<f32>(0);}
++ var address=vec2<i32>(floor(p-bounds.xy));
++ let dimensions=vec2<i32>(textureDimensions(sourceD,0));
++ if(dimensions.x==1&&bounds.z>1.){address.x=0;}
++ if(dimensions.y==1&&bounds.w>1.){address.y=0;}
++ let grid=textureLoad(sourceD,address,0);
++ var color:vec4<f32>;
++ if(grid.x<0.){color=mulRN4(vec4<f32>(u(7).yzw,1.),vec4<f32>(u(60).y));}
++ else{
++  let left=linearGradientStop(u32(grid.x));color=left;
++  if(grid.x!=grid.y){let right=linearGradientStop(u32(grid.y));color=addRN4(left,mulRN4(addRN4(right,-left),vec4<f32>(grid.z)));}
++ }
++ let painted=mulRN4(color,vec4<f32>(u(8).x));
++ let covered=mulRN4(painted,vec4<f32>(at(sourceA,p,u(1)).a));
++ let bits=bitcast<vec4<u32>>(covered);
++ return bitcast<vec4<f32>>(select(bits,vec4<u32>(0),(bits&vec4<u32>(0x7fffffffu))==vec4<u32>(0)));
++}
++@fragment fn exactGradientPaintOver(@builtin(position) position:vec4<f32>)->@location(0) vec4<f32>{
++ let p=position.xy+u(0).xy;
++ var opacity=1.;if(u(4).w>0.5){opacity=mulRN(opacity,at(sourceB,p,u(2)).a);}
++ return over(integerSample(sourceC,p,u(3)),mulRN4(fusedGradientValue(p),vec4<f32>(opacity)),0);
++}
++`
+--- /dev/null
++++ b/frontend/design-client/src/kernel/gpu/reduced-paint-work.test.ts
+@@ -0,0 +1,157 @@
++import {afterEach,expect,test,vi} from 'vitest'
++import {GpuRenderer} from './renderer'
++import {WebGpuDriver} from './webgpu'
++import {paint} from '../../model'
++import {bindScenePlan,opaqueSolidRuns,boundedPaintGroup} from './scene-index'
++import {compiled_scene_plan_json} from '../../generated/design-kernel/design_kernel'
++import type {GpuNode,GpuScene,Rect,Texture} from './types'
++import {gradientFieldMaximumStop,gradientFusionWorthwhile} from './gradient-paint-over'
++import {CoverageCache} from './coverage-cache'
++
++afterEach(()=>vi.unstubAllEnvs())
++const bounds={x:0,y:0,w:64,h:64}
++const leaf=(id:string,kind='solid'):GpuNode=>({id,rect:bounds,matrix:[1,0,0,1,0,0],inverse:[1,0,0,1,0,0],size:[64,64],
++ fill:{first:0,count:3,rule:'nonzero',rect:bounds,sampleCount:4,area:{first:0,count:7},opaqueRect:bounds},
++ fills:[{...paint('#3478ab'),kind:kind as any,stops:[{offset:0,color:'#123456'},{offset:1,color:'#abcdef'}]}],
++ strokes:[],effects:[],children:[],mask:false,clip:false,opacity:1,blend:'normal'})
++function fixture(){
++ const create=(width:number,height:number,binary=false)=>({width,height,bytes:width*height*(binary?4:16),resource:{},...(binary?{binaryCoverage:true as const}:{})}) as Texture
++ const driver:any={name:'webgpu',managed:true,constantTextureSampling:true,zeroTextureSampling:true,exactGradientPaintOver:true,
++  create,createBinaryCoverage:(w:number,h:number)=>create(w,h,true),createConstantCoverage:vi.fn(()=>({...create(1,1,true),uniformColor:true})),clear:vi.fn(),pass:vi.fn(),destroy:vi.fn(),checkpoint:vi.fn(async()=>{})}
++ const renderer=new GpuRenderer(driver,true,false) as any
++ renderer.scene={coherentSamples:true,colorManagement:{documentSpace:'srgb',referenceWhiteNits:203,peakLuminanceNits:1000},curves:new Float32Array(0),extent:bounds,view:{x:0,y:0,zoom:1},nodes:{},roots:[]}
++ renderer.sampleIndex=0;renderer.fastWork.reset(true)
++ const surface=(r:Rect=bounds,binary=false)=>renderer.acquire(r,binary)
++ return {renderer,driver,surface}
++}
++function mixedScene(){
++ const ids=Array.from({length:27},(_,i)=>'n'+i),nodes:any={}
++ for(const [i,id]of ids.entries())nodes[id]=leaf(id,i===12?'linear':'solid')
++ nodes.n1.opacity=.5 // short 1-node prefix must not suppress later useful runs
++ nodes.parent={...leaf('parent'),children:ids,fills:[]}
++ const scene={roots:['parent'],nodes} as GpuScene
++ return {scene,ids}
++}
++test('native sparse runs retain both sides of a gradient and do not reorder short spans',()=>{
++ const {scene,ids}=mixedScene(),plan=JSON.parse(compiled_scene_plan_json(JSON.stringify(scene)))
++ bindScenePlan(scene,plan)
++ expect(opaqueSolidRuns(scene,ids)).toEqual([{start:2,end:12,color:'#3478ab'},{start:13,end:27,color:'#3478ab'}])
++ expect(boundedPaintGroup(scene,ids)).toBe(true)
++ for(const patch of [{effects:[{kind:'blur',visible:true}]},{mask:true},{blend:'multiply'},{children:['n0']},{opacity:Infinity}]){
++  const changed=structuredClone(scene);Object.assign(changed.nodes.n12,patch)
++  if(patch.opacity===Infinity)continue // invalid JSON numbers are rejected before a compiled scene
++  const p=JSON.parse(compiled_scene_plan_json(JSON.stringify(changed)));bindScenePlan(changed,p)
++  expect(boundedPaintGroup(changed,changed.nodes.parent.children)).toBe(false)
++ }
++ const overlap=structuredClone(plan);overlap.opaqueSolidRuns[1][1]=11
++ expect(()=>bindScenePlan(scene,overlap)).toThrow('solid run')
++})
++test('mixed execution alternates ordinary spans and private GPU batches for all four phases',async()=>{
++ vi.stubEnv('VITE_DESIGN_MIXED_SOLID_RUNS','1')
++ const f=fixture(),{scene,ids}=mixedScene();f.renderer.scene={...f.renderer.scene,...scene}
++ const events:any[]=[]
++ f.driver.prepareOpaqueSolids=vi.fn((nodes:any[])=>({count:nodes.length,pixels:nodes.length*4096}))
++ f.driver.solidBatchRemaining=()=>100
++ f.driver.drawOpaqueSolids=vi.fn((batch:any,_t:any,sample:number)=>{events.push(['batch',sample,batch.count]);return true})
++ f.renderer.drawList=vi.fn(async(ids:string[],dst:any)=>{events.push(['ordinary',f.renderer.sampleIndex,ids]);return dst})
++ const original=f.renderer.emptyBundle(bounds)
++ const out=await f.renderer.drawOpaqueGroup(ids,original,[0,1,2,3])
++ expect(out).toHaveLength(4)
++ for(let phase=0;phase<4;phase++)expect(events.slice(phase*4,phase*4+4)).toEqual([
++  ['ordinary',phase,['n0','n1']],['batch',phase,10],['ordinary',phase,['n12']],['batch',phase,14]])
++ expect(f.renderer.fastWork.snapshot()).toMatchObject({fastSolidBatches:8,fastSolidNodes:96})
++ expect(new Set(out.map((s:any)=>s.texture)).size).toBe(4)
++})
++test('mixed batches reject nontransparent destinations before prepare or writes',async()=>{
++ vi.stubEnv('VITE_DESIGN_MIXED_SOLID_RUNS','1')
++ const f=fixture(),{scene,ids}=mixedScene();f.renderer.scene={...f.renderer.scene,...scene}
++ f.driver.prepareOpaqueSolids=vi.fn();f.driver.drawOpaqueSolids=vi.fn()
++ expect(await f.renderer.drawOpaqueGroup(ids,[f.surface()],[0])).toBeUndefined()
++ expect(f.driver.prepareOpaqueSolids).not.toHaveBeenCalled();expect(f.driver.pass).not.toHaveBeenCalled()
++})
++test('independent constant coverage shares one texel with original logical bounds; partial shapes fall back',()=>{
++ vi.stubEnv('VITE_DESIGN_CONSTANT_COVERAGE','1');vi.stubEnv('VITE_DESIGN_EXACT_CLAMP_PREFIX','0')
++ const f=fixture(),a=leaf('a'),b=leaf('b');b.rect={x:20,y:30,w:8,h:8};b.fill={...b.fill,rect:b.rect,opaqueRect:b.rect}
++ const first=f.renderer.nodeMask(a),second=f.renderer.nodeMask(b)
++ expect(first.texture).toBe(second.texture);expect(second.rect).toBe(b.rect);expect(first.texture.bytes).toBe(4)
++ expect(f.driver.pass).not.toHaveBeenCalled();expect(f.driver.createConstantCoverage).toHaveBeenCalledTimes(1)
++ f.renderer.mask=vi.fn(()=>({fallback:true}));const partial=leaf('partial');partial.fill.opaqueRect={x:1,y:1,w:2,h:2}
++ expect(f.renderer.nodeMask(partial)).toEqual({fallback:true})
++ expect(f.renderer.fastWork.snapshot()).toMatchObject({fastCoverageConstant:1,fastCoverageShared:1,fastCoverageRejected:1})
++})
++test('gradient fusion retains the original field origin and clips only destination writes',async()=>{
++ const f=fixture(),n=leaf('gradient','linear');n.rect={x:8,y:10,w:8,h:6};n.fill.rect=n.rect
++ const mask=f.surface(n.rect,true),dst=f.surface(),field=f.surface({x:8,y:10,w:8,h:1})
++ f.renderer.gradientFieldProofs.set(field.texture,{resource:field.texture.resource,maximumStop:1})
++ f.renderer.gradientGrid=vi.fn(()=>field)
++ expect(f.renderer.gradientFusionEligible(n,n.fills[0],mask,dst)).toBe(true)
++ const out=await f.renderer.paintOver(n,n.fills[0],mask,dst,undefined,true)
++ expect(out).toBe(dst)
++ expect(f.driver.pass.mock.calls.map((c:any[])=>c[1][16])).toEqual([0,65])
++ const call=f.driver.pass.mock.calls[1]
++ expect([...call[1].slice(36,40)]).toEqual([8,10,8,6])
++ expect(call[2][0]).toBe(mask.texture);expect(call[2][3]).toBe(field.texture)
++ expect(call[3]).toEqual({x:7,y:9,w:10,h:8})
++ expect(f.renderer.fastWork.snapshot()).toMatchObject({fastGradientFused:1,fastGradientSavedPixels:48,fastRegionalUsed:1})
++})
++test.each(['fractional','continuous-coverage','wide-color','blend','large-field'])('gradient %s retains the original path',kind=>{
++ const f=fixture(),n=leaf('g','linear'),mask=f.surface(bounds,true),dst=f.surface()
++ if(kind==='fractional')n.rect={...bounds,x:.25}
++ if(kind==='continuous-coverage')delete mask.texture.binaryCoverage
++ if(kind==='wide-color'){n.fills[0].color='color(srgb-linear 2 0 0 / 1)';f.renderer.scene.colors={[n.fills[0].color]:[2,0,0,1]}}
++ if(kind==='blend')n.fills[0].blend='multiply'
++ if(kind==='large-field')n.rect={...bounds,w:1024,h:1024}
++ expect(f.renderer.gradientFusionEligible(n,n.fills[0],mask,dst)).toBe(false)
++ expect(f.driver.pass).not.toHaveBeenCalled()
++})
++test('gradient pending admission pins all input owners and cancellation publishes no fused pass',async()=>{
++ const f=fixture(),n=leaf('g','linear'),mask=f.surface(bounds,true),dst=f.surface(),field=f.surface()
++ f.renderer.gradientFieldProofs.set(field.texture,{resource:field.texture.resource,maximumStop:1})
++ f.renderer.gradientGrid=()=>field
++ let current=true,finish!:()=>void
++ f.renderer.frameCurrent=()=>current;f.renderer.bytes=f.renderer.frameBudget
++ f.renderer.reclaimScratch=vi.fn(()=>new Promise<void>(resolve=>{finish=()=>{f.renderer.bytes=0;resolve()}}))
++ const pending=f.renderer.paintOver(n,n.fills[0],mask,dst,undefined,true)
++ expect(pending).toBeInstanceOf(Promise)
++ for(const input of [mask,dst,field])expect(f.renderer.admissionPins.has(input.texture)).toBe(true)
++ current=false;finish();await expect(pending).rejects.toThrow('PREVIEW_CANCELLED')
++ expect(f.driver.pass).not.toHaveBeenCalled();expect(f.driver.destroy).not.toHaveBeenCalled()
++ expect(f.renderer.admissionPins.size).toBe(0)
++})
++test('gradient field proof rejects invalid indices, nonfinite neighbours and extrapolation',()=>{
++ expect(gradientFieldMaximumStop(new Float32Array([0,1,.5,0,-1,-1,0,0]))).toBe(1)
++ for(const row of [[0,1,NaN,0],[0,64,.5,0],[.5,1,.5,0],[0,1,1.1,0],[0,1,.5,Infinity]])
++  expect(gradientFieldMaximumStop(new Float32Array(row))).toBeUndefined()
++})
++test('a gradient field from another resource falls back to the actual two-pass path',async()=>{
++ const f=fixture(),n=leaf('g','linear'),mask=f.surface(bounds,true),dst=f.surface(),field=f.surface()
++ f.renderer.gradientGrid=()=>field
++ f.renderer.gradientFieldProofs.set(field.texture,{resource:{},maximumStop:1})
++ await f.renderer.paintOver(n,n.fills[0],mask,dst,undefined,true)
++ expect(f.driver.pass.mock.calls.map((c:any[])=>c[1][16])).toEqual([2,3])
++})
++test('coverage miss reasons separate absent keys from unequal exact geometry words without exposing content',()=>{
++ const f=fixture(),cache=new CoverageCache(1024,3,vi.fn()),words=new Uint32Array([1,2])
++ cache.begin(true);expect(cache.get('shape',words)).toBeUndefined()
++ cache.put('shape',words,f.surface({x:0,y:0,w:1,h:1}).texture)
++ expect(cache.get('shape',new Uint32Array([1,3]))).toBeUndefined()
++ expect(cache.get('shape',words)).toBeDefined()
++ expect([cache.missKeys,cache.missWords,cache.hits]).toEqual([1,1,1])
++ cache.begin();cache.get('absent',words);expect([cache.missKeys,cache.missWords,cache.hits]).toEqual([0,0,0])
++})
++test('scene cost screening avoids singleton gradients without authorizing pixels or changing unsupported paint',()=>{
++ const a=leaf('a','linear'),b=leaf('b','radial'),scene={nodes:{a},curves:new Float32Array([4,0,1,1])} as unknown as GpuScene
++ expect(gradientFusionWorthwhile(scene)).toBe(false)
++ scene.nodes.b=b;expect(gradientFusionWorthwhile(scene)).toBe(true)
++ b.fills[0].blend='multiply';expect(gradientFusionWorthwhile(scene)).toBe(false)
++ b.fills[0].blend='normal';scene.curves=new Float32Array([1,0,1,1]);expect(gradientFusionWorthwhile(scene)).toBe(false)
++})
++test('constant coverage allocates the promised RGBA8 resource instead of the managed float-image upload',()=>{
++ const texture={bytes:4,width:1,height:1,resource:{format:'rgba8unorm'},binaryCoverage:true}
++ const driver:any=Object.assign(Object.create(WebGpuDriver.prototype),{managed:true,createBinaryCoverage:vi.fn(()=>texture),
++  uploadRgba8:vi.fn(()=>{throw Error('Wrong managed upload path')}),device:{queue:{writeTexture:vi.fn()}}})
++ expect(driver.createConstantCoverage()).toBe(texture);expect(texture).toMatchObject({bytes:4,uniformColor:true,binaryCoverage:true})
++ expect(driver.createBinaryCoverage).toHaveBeenCalledWith(1,1)
++ expect(driver.device.queue.writeTexture.mock.calls[0][1]).toEqual(new Uint8Array([255,255,255,255]))
++ expect(driver.uploadRgba8).not.toHaveBeenCalled()
++})
+--- /dev/null
++++ b/frontend/design-client/src/canvas-native-source-wiring.test.tsx
+@@ -0,0 +1,45 @@
++// @ts-expect-error jsdom is a test runtime dependency.
++import {JSDOM} from 'jsdom'
++import React,{act} from 'react'
++import {createRoot} from 'react-dom/client'
++import {afterEach,expect,test,vi} from 'vitest'
++import {Canvas} from './Canvas'
++import {Editor} from './engine'
++import {blank} from './model'
++import type {SourceCanvasSnapshot} from './desktop'
++const boundary=vi.hoisted(()=>({native:undefined as any}))
++vi.mock('./kernel/Surface',()=>({KernelSurface:()=> <div data-testid="ordinary-surface"/>}))
++vi.mock('./kernel/NativeSourceSurface',()=>({NativeSourceSurface:(props:any)=>{boundary.native=props;return <div data-testid="native-source-surface"/>}}))
++vi.mock('./CanvasEditPreview',()=>({CanvasEditPreview:()=>null}))
++let cleanup=()=>{}
++afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals()})
++test('full source uses its actual surface and bounds, opens a material in hand mode, and restores the ordinary canvas',async()=>{
++ const dom=new JSDOM('<div id="root"></div>',{url:'https://design.invalid/'})
++ for(const key of ['window','document','navigator','HTMLElement','HTMLInputElement','HTMLTextAreaElement','HTMLCanvasElement','Element','Node','Event','MouseEvent','KeyboardEvent','localStorage'])vi.stubGlobal(key,key==='window'?dom.window:(dom.window as any)[key])
++ vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);vi.stubGlobal('devicePixelRatio',1)
++ vi.stubGlobal('CSS',{escape:(s:string)=>s});vi.stubGlobal('ResizeObserver',class{observe(){}disconnect(){}})
++ vi.stubGlobal('requestAnimationFrame',()=>1);vi.stubGlobal('cancelAnimationFrame',()=>{})
++ dom.window.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}})
++ Object.defineProperties(dom.window.HTMLElement.prototype,{clientWidth:{configurable:true,get:()=>1000},clientHeight:{configurable:true,get:()=>800}})
++ vi.spyOn(dom.window.HTMLElement.prototype,'getBoundingClientRect').mockReturnValue({left:0,top:0,width:1000,height:800,right:1000,bottom:800,x:0,y:0,toJSON(){}})
++ vi.spyOn(dom.window.HTMLCanvasElement.prototype,'getContext').mockReturnValue(null)
++ const editor=new Editor(blank()),root=createRoot(document.getElementById('root')!),open=vi.fn(),status=vi.fn()
++ cleanup=()=>{act(()=>root.unmount());editor.dispose();dom.window.close()}
++ editor.set({tool:'hand',view:{x:-100,y:-200,zoom:2}})
++ const source={owner:{documentId:'source',sessionEpoch:1},revision:1,token:'snapshot',bytes:100,nodes:100,roots:10,pageId:'p',stageId:'s',
++  bounds:{x:0,y:0,width:10000,height:8000},warnings:[],rasterProfile:'figma',colorManaged:true} as SourceCanvasSnapshot
++ await act(async()=>root.render(<Canvas editor={editor} nativeSource={source} onNativeSourceStatus={status} onOpenSourcePoint={open}/>))
++ expect(document.querySelector('[data-testid="native-source-surface"]')).not.toBeNull()
++ expect(document.querySelector('[data-testid="ordinary-surface"]')).toBeNull()
++ expect(boundary.native.source).toBe(source);expect(boundary.native.onStatus).toBe(status)
++ const host=document.querySelector('[data-testid="canvas"]')!
++ act(()=>host.dispatchEvent(new dom.window.MouseEvent('dblclick',{bubbles:true,button:0,clientX:300,clientY:400})))
++ expect(open).toHaveBeenCalledWith({x:200,y:300})
++ act(()=>document.querySelector('.horizontal')!.dispatchEvent(new dom.window.MouseEvent('dblclick',{bubbles:true,button:0,clientX:300,clientY:400})))
++ expect(open).toHaveBeenCalledTimes(1)
++ const nativeThumb=parseFloat((document.querySelector('.horizontal .canvas-scrollbar-thumb') as HTMLElement).style.width)
++ await act(async()=>root.render(<Canvas editor={editor}/>))
++ expect(document.querySelector('[data-testid="native-source-surface"]')).toBeNull()
++ expect(document.querySelector('[data-testid="ordinary-surface"]')).not.toBeNull()
++ expect(nativeThumb).toBeLessThan(parseFloat((document.querySelector('.horizontal .canvas-scrollbar-thumb') as HTMLElement).style.width))
++})
+--- a/frontend/design-client/src/kernel/tile-cost-diagnostics.ts
++++ b/frontend/design-client/src/kernel/tile-cost-diagnostics.ts
+@@ -29,7 +29,7 @@
+     observe(scene:GpuScene,result:{drawWork?:Record<string,number>;passPixels?:number;materialFieldBuildMs?:number;graphMs?:number;checkpointMs?:number;materialFieldBuilds?:number;materialFieldHits?:number;materialFieldUploadBytes?:number;materialFieldRejectedOversize?:number;materialFieldRejectedPinned?:number;materialFieldRejectedBytes?:number;drawCalls?:number;commandSubmissions?:number}) {
+       if(totals.tileCostSamples>=2048){totals.tileCostCapped=1;totals.tileCostUnavailable=63;totals.costSamplesOmitted=Math.min(1e9,totals.costSamplesOmitted+1);return}
+       totals.tileCostSamples++
+-      if(result.drawWork)for(const key of Object.keys(drawWorkLimits))if(result.drawWork[key]!==undefined)add(key,result.drawWork[key],2,key==='drawWorkCapped')
++      if(result.drawWork)for(const key of Object.keys(drawWorkLimits))if(result.drawWork[key]!==undefined)add(key,result.drawWork[key],2,key==='drawWorkCapped'||key==='drawWorkVersion')
+       const output=scene.output,source=scene.extent
+       if(output&&source&&[output.x,output.y,output.w,output.h,source.x,source.y,source.w,source.h].every(Number.isFinite)&&output.w>0&&output.h>0&&source.w>0&&source.h>0){
+         add('outputPixelVisits',output.w*output.h,1);add('sourcePixelVisits',source.w*source.h,1)
+--- a/frontend/design-desktop/src/render-pass-work.mjs
++++ b/frontend/design-desktop/src/render-pass-work.mjs
+@@ -1,21 +1,40 @@
+ // Encoded draw counts, not GPU time. Unknown modes retain their own bucket.
+ // Synthetic lanes: 64 = solid instance batch, 63 = stencil coverage.
+ // Shader modes 60/61/62 are color controls, motion blur and zoom blur.
+-const groups=['Coverage','Paint','Merge','Effect','Copy','Present','PaintMerge','Other']
+-export const drawWorkLimits={drawWorkCapped:1,clearPasses:1e9,...Object.fromEntries(groups.map(name=>['draw'+name,1e9])),
+-  ...Object.fromEntries(Array.from({length:65},(_,mode)=>['drawMode'+mode,1e9]))}
+-const group=mode=>[17,19,20,31,63].includes(mode)?'Coverage':mode===2?'Paint':mode===3?'Merge':[22,60,61,62].includes(mode)?'Effect':
+-  mode===0?'Copy':[14,33].includes(mode)?'Present':[47,64].includes(mode)?'PaintMerge':'Other'
++const groups=['Coverage','Paint','Merge','Effect','Copy','Present','PaintMerge','Resolve','Other']
++export const fastPathKeys=['fastSolidAttempts','fastSolidBatches','fastSolidNodes','fastSolidTargetReject','fastSolidProofReject','fastSolidCapacityReject',
++ 'fastCoverageConstant','fastCoverageShared','fastCoverageRejected','fastCoverageCacheHits','fastCoverageCacheMissKeys','fastCoverageCacheMissWords','fastCoverageCacheOversize','fastCoverageCachePinned',
++ 'fastGradientFused','fastGradientPaintReject','fastGradientLatticeReject','fastGradientCoverageReject','fastGradientColorReject',
++ 'fastRegionalUsed','fastRegionalSharedReject','fastRegionalFeedbackReject','fastRegionalLatticeReject','fastRegionalLargeReject',
++ 'fastRegionalPixels','fastRegionalFullPixels','fastGradientSavedPixels','fastCoverageSavedPixels']
++export const drawWorkLimits={drawWorkVersion:2,drawWorkCapped:1,clearPasses:1e9,drawPixelsMeasuredDraws:1e9,drawPixelsUnmeasuredDraws:1e9,...Object.fromEntries(groups.map(name=>['draw'+name,1e9])),
++  ...Object.fromEntries(groups.map(name=>['drawPixels'+name,1e15])),
++  ...Object.fromEntries(fastPathKeys.map(name=>[name,1e15])),
++  ...Object.fromEntries(Array.from({length:66},(_,mode)=>['drawMode'+mode,1e9]))}
++const group=mode=>[1,17,19,20,30,31,63].includes(mode)?'Coverage':[2,12].includes(mode)?'Paint':[3,15,25,28,29].includes(mode)?'Merge':
++ [4,5,6,7,8,9,10,11,22,34,40,41,43,45,46,50,60,61,62].includes(mode)?'Effect':
++ [0,27,44].includes(mode)?'Copy':[14,18,33].includes(mode)?'Present':[16,35,42,47,64,65].includes(mode)?'PaintMerge':
++ [21,23,24,26,36].includes(mode)?'Resolve':'Other'
+ export class PassDrawWork {
+   enabled=false
+   values={}
+-  reset(enabled){this.enabled=enabled;this.values=enabled?{drawWorkCapped:0,clearPasses:0,...Object.fromEntries(groups.map(name=>['draw'+name,0]))}:{} }
+-  add(key,count){const next=(this.values[key]||0)+count;this.values[key]=Math.min(1e9,next);if(next>1e9)this.values.drawWorkCapped=1}
+-  draw(mode,count=1){
++  reset(enabled){this.enabled=enabled;this.values=enabled?{drawWorkVersion:2,drawWorkCapped:0,clearPasses:0,...Object.fromEntries(groups.map(name=>['draw'+name,0]))}:{} }
++  add(key,count){const limit=drawWorkLimits[key]||1e9,next=(this.values[key]||0)+count;this.values[key]=Math.min(limit,next);if(next>limit)this.values.drawWorkCapped=1}
++  draw(mode,count=1,pixels){
+     if(!this.enabled||!Number.isInteger(count)||count<0)return
+     this.add('draw'+group(mode),count)
+-    if(Number.isInteger(mode)&&mode>=0&&mode<65)this.add('drawMode'+mode,count)
++    if(Number.isInteger(mode)&&mode>=0&&mode<66)this.add('drawMode'+mode,count)
++    if(Number.isSafeInteger(pixels)&&pixels>=0){this.add('drawPixels'+group(mode),pixels);this.add('drawPixelsMeasuredDraws',count)}
++    else this.add('drawPixelsUnmeasuredDraws',count)
+   }
+   clear(){if(this.enabled)this.add('clearPasses',1)}
+   snapshot(){return {...this.values}}
+ }
++/** Numeric reason counters only; never stores a node id or document payload. */
++export class FastPathWork {
++ enabled=false
++ values={}
++ reset(enabled){this.enabled=enabled;this.values={}}
++ add(key,count=1){if(this.enabled&&fastPathKeys.includes(key)&&Number.isSafeInteger(count)&&count>=0)this.values[key]=Math.min(1e15,(this.values[key]||0)+count)}
++ snapshot(){return {...this.values}}
++}
+--- a/frontend/design-desktop/src/render-pass-work.d.mts
++++ b/frontend/design-desktop/src/render-pass-work.d.mts
+@@ -2,7 +2,14 @@
+ export class PassDrawWork {
+   enabled:boolean
+   reset(enabled:boolean):void
+-  draw(mode:number,count?:number):void
++  draw(mode:number,count?:number,pixels?:number):void
+   clear():void
+   snapshot():Record<string,number>
+ }
++export const fastPathKeys:readonly string[]
++export class FastPathWork {
++ enabled:boolean
++ reset(enabled:boolean):void
++ add(key:string,count?:number):void
++ snapshot():Record<string,number>
++}
+--- a/frontend/design-desktop/test/render-work-diagnostics.test.mjs
++++ b/frontend/design-desktop/test/render-work-diagnostics.test.mjs
+@@ -1,6 +1,6 @@
+ import test from 'node:test'
+ import assert from 'node:assert/strict'
+-import {PassDrawWork} from '../src/render-pass-work.mjs'
++import {PassDrawWork,FastPathWork} from '../src/render-pass-work.mjs'
+ import {textureAllocationError,annotateTextureFailure,textureFailureFields,inheritTextureFailure} from '../src/render-texture-failure.mjs'
+ import {sanitizeFields} from '../src/render-terminal-diagnostics.mjs'
+ 
+@@ -26,6 +26,14 @@
+  const fields=work.snapshot();assert.equal(fields.drawEffect,2);assert.equal(fields.drawPaintMerge,1)
+  assert.deepEqual(sanitizeFields(fields),fields)
+ })
++test('pixel work and rejection reasons survive the numeric privacy boundary without payloads',()=>{
++ const draws=new PassDrawWork();draws.reset(true);draws.draw(65,1,4096);draws.draw(0,1,128)
++ const fast=new FastPathWork();fast.reset(true);fast.add('fastRegionalUsed');fast.add('fastRegionalPixels',128);fast.add('secret-node-id',5)
++ const values={...draws.snapshot(),...fast.snapshot()}
++ assert.equal(values.drawPixelsPaintMerge,4096);assert.equal(values.drawPixelsCopy,128)
++ assert.equal(values['secret-node-id'],undefined);assert.deepEqual(sanitizeFields(values),values)
++ fast.reset(false);fast.add('fastRegionalUsed');assert.deepEqual(fast.snapshot(),{})
++})
+ test('texture extent failures retain dimensions and site through classification without strings',()=>{
+  const error=textureAllocationError(32769,32,16384,4)
+  annotateTextureFailure(error,{textureAllocationSite:12,texturePass:32,textureAllocationKind:4,textureKernelRadius:1024.25,textureLogicalTexels:32769,secret:'private'})

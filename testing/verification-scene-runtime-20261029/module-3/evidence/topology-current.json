@@ -1,0 +1,592 @@
+{
+  "cases": [
+    {
+      "camera": [
+        -369.2813895642924,
+        -642.0,
+        1.0
+      ],
+      "candidateUnoptimizedMs": 19445.855125000002,
+      "compileCache": {
+        "builds": 663,
+        "bytes": 7248520,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 0,
+          "restores": 0
+        },
+        "entries": 663,
+        "fragmentBuilds": 0,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 18688036,
+          "compilations": 1,
+          "imageAllocationHits": 0,
+          "imageTransferHits": 0,
+          "limit": 1160060928,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 11258606,
+          "semanticHits": 0
+        },
+        "hits": 0,
+        "marginIndexBytes": 0,
+        "marginIndexNodes": 0,
+        "pathNodes": 1337,
+        "prepareReuses": 0,
+        "preparedNodes": 2278,
+        "residentStrokes": {
+          "builds": 31,
+          "bytes": 69853,
+          "entries": 31,
+          "hits": 0
+        },
+        "retainedNodes": 0,
+        "sourceDemand": {
+          "contextMarginBytes": 2267416,
+          "excludedNodePayloadCopies": 0,
+          "globalMarginEvaluations": 1,
+          "globalPadding": 200,
+          "mode": "demand",
+          "projectionRebuilds": 1,
+          "projectionReuses": 0,
+          "residentAuthoredNodes": 8615,
+          "residentAuthority": true,
+          "resolvedCompileNodes": 8770,
+          "scopeExpansions": 0,
+          "sourceNodes": 124447
+        },
+        "textPaths": {
+          "bytes": 1085,
+          "entries": 1,
+          "hits": 13,
+          "limit": 16777216
+        },
+        "worldSupportBytes": 1320676
+      },
+      "name": "local",
+      "packetBytes": 6313143,
+      "packetEquivalent": true,
+      "referenceUnoptimizedMs": 19249.857125,
+      "sourceDemand": {
+        "contextMarginBytes": 2267416,
+        "excludedNodePayloadCopies": 0,
+        "globalMarginEvaluations": 1,
+        "globalPadding": 200,
+        "mode": "demand",
+        "projectionRebuilds": 1,
+        "projectionReuses": 0,
+        "residentAuthoredNodes": 8615,
+        "residentAuthority": true,
+        "resolvedCompileNodes": 8770,
+        "scopeExpansions": 0,
+        "sourceNodes": 124447
+      }
+    },
+    {
+      "camera": [
+        -7860.173200860778,
+        -9363.000000000002,
+        9.5
+      ],
+      "candidateUnoptimizedMs": 403.55866699999996,
+      "compileCache": {
+        "builds": 11,
+        "bytes": 6792,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 0,
+          "restores": 0
+        },
+        "entries": 11,
+        "fragmentBuilds": 0,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 1158251,
+          "compilations": 2,
+          "imageAllocationHits": 0,
+          "imageTransferHits": 0,
+          "limit": 1160060928,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 84666,
+          "semanticHits": 0
+        },
+        "hits": 0,
+        "marginIndexBytes": 0,
+        "marginIndexNodes": 0,
+        "pathNodes": 473,
+        "prepareReuses": 0,
+        "preparedNodes": 1258,
+        "residentStrokes": {
+          "builds": 6,
+          "bytes": 14226,
+          "entries": 6,
+          "hits": 0
+        },
+        "retainedNodes": 0,
+        "sourceDemand": {
+          "contextMarginBytes": 2267416,
+          "excludedNodePayloadCopies": 0,
+          "globalMarginEvaluations": 2,
+          "globalPadding": 1900,
+          "mode": "demand",
+          "projectionRebuilds": 2,
+          "projectionReuses": 0,
+          "residentAuthoredNodes": 8130,
+          "residentAuthority": true,
+          "resolvedCompileNodes": 8274,
+          "scopeExpansions": 0,
+          "sourceNodes": 124447
+        },
+        "textPaths": {
+          "bytes": 1085,
+          "entries": 1,
+          "hits": 13,
+          "limit": 16777216
+        },
+        "worldSupportBytes": 1310068
+      },
+      "name": "950pct",
+      "packetBytes": 55888,
+      "packetEquivalent": true,
+      "referenceUnoptimizedMs": 409.15125,
+      "sourceDemand": {
+        "contextMarginBytes": 2267416,
+        "excludedNodePayloadCopies": 0,
+        "globalMarginEvaluations": 2,
+        "globalPadding": 1900,
+        "mode": "demand",
+        "projectionRebuilds": 2,
+        "projectionReuses": 0,
+        "residentAuthoredNodes": 8130,
+        "residentAuthority": true,
+        "resolvedCompileNodes": 8274,
+        "scopeExpansions": 0,
+        "sourceNodes": 124447
+      }
+    },
+    {
+      "camera": [
+        -1997.2813895642926,
+        -642.0000000000002,
+        1.0
+      ],
+      "candidateUnoptimizedMs": 983.3597080000001,
+      "compileCache": {
+        "builds": 663,
+        "bytes": 7248760,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 0,
+          "restores": 0
+        },
+        "entries": 663,
+        "fragmentBuilds": 0,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 19688929,
+          "compilations": 3,
+          "imageAllocationHits": 0,
+          "imageTransferHits": 0,
+          "limit": 1160060928,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 11246366,
+          "semanticHits": 0
+        },
+        "hits": 0,
+        "marginIndexBytes": 0,
+        "marginIndexNodes": 0,
+        "pathNodes": 1337,
+        "prepareReuses": 0,
+        "preparedNodes": 2278,
+        "residentStrokes": {
+          "builds": 31,
+          "bytes": 69853,
+          "entries": 31,
+          "hits": 0
+        },
+        "retainedNodes": 0,
+        "sourceDemand": {
+          "contextMarginBytes": 2267416,
+          "excludedNodePayloadCopies": 0,
+          "globalMarginEvaluations": 3,
+          "globalPadding": 200,
+          "mode": "demand",
+          "projectionRebuilds": 3,
+          "projectionReuses": 0,
+          "residentAuthoredNodes": 8615,
+          "residentAuthority": true,
+          "resolvedCompileNodes": 8770,
+          "scopeExpansions": 0,
+          "sourceNodes": 124447
+        },
+        "textPaths": {
+          "bytes": 1085,
+          "entries": 1,
+          "hits": 13,
+          "limit": 16777216
+        },
+        "worldSupportBytes": 1320676
+      },
+      "name": "backdrop",
+      "packetBytes": 6312735,
+      "packetEquivalent": true,
+      "referenceUnoptimizedMs": 766.782625,
+      "sourceDemand": {
+        "contextMarginBytes": 2267416,
+        "excludedNodePayloadCopies": 0,
+        "globalMarginEvaluations": 3,
+        "globalPadding": 200,
+        "mode": "demand",
+        "projectionRebuilds": 3,
+        "projectionReuses": 0,
+        "residentAuthoredNodes": 8615,
+        "residentAuthority": true,
+        "resolvedCompileNodes": 8770,
+        "scopeExpansions": 0,
+        "sourceNodes": 124447
+      }
+    },
+    {
+      "camera": [
+        -16000.0,
+        -30000.0,
+        1.0
+      ],
+      "candidateUnoptimizedMs": 5585.4953749999995,
+      "compileCache": {
+        "builds": 1,
+        "bytes": 696,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 0,
+          "restores": 0
+        },
+        "entries": 1,
+        "fragmentBuilds": 0,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 2091620,
+          "compilations": 4,
+          "imageAllocationHits": 0,
+          "imageTransferHits": 0,
+          "limit": 1160060928,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 53984,
+          "semanticHits": 0
+        },
+        "hits": 0,
+        "marginIndexBytes": 2267416,
+        "marginIndexNodes": 10742,
+        "pathNodes": 2942,
+        "prepareReuses": 0,
+        "preparedNodes": 11896,
+        "residentStrokes": {
+          "builds": 0,
+          "bytes": 0,
+          "entries": 0,
+          "hits": 0
+        },
+        "retainedNodes": 0,
+        "sourceDemand": {
+          "mode": "complete",
+          "projectionRebuilds": 3,
+          "projectionReuses": 0,
+          "reason": "page-background-domain"
+        },
+        "textPaths": {
+          "bytes": 1085,
+          "entries": 1,
+          "hits": 27,
+          "limit": 16777216
+        },
+        "worldSupportBytes": 21352624
+      },
+      "name": "empty",
+      "packetBytes": 33319,
+      "packetEquivalent": true,
+      "referenceUnoptimizedMs": 2838.19025,
+      "sourceDemand": {
+        "mode": "complete",
+        "projectionRebuilds": 3,
+        "projectionReuses": 0,
+        "reason": "page-background-domain"
+      }
+    },
+    {
+      "camera": [
+        -385.5313895642924,
+        -651.375,
+        1.0
+      ],
+      "candidateUnoptimizedMs": 1017.334833,
+      "compileCache": {
+        "builds": 711,
+        "bytes": 7431712,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 0,
+          "restores": 0
+        },
+        "entries": 711,
+        "fragmentBuilds": 0,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 21361375,
+          "compilations": 5,
+          "imageAllocationHits": 0,
+          "imageTransferHits": 0,
+          "limit": 1160060928,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 11651080,
+          "semanticHits": 0
+        },
+        "hits": 0,
+        "marginIndexBytes": 0,
+        "marginIndexNodes": 0,
+        "pathNodes": 1313,
+        "prepareReuses": 0,
+        "preparedNodes": 2263,
+        "residentStrokes": {
+          "builds": 29,
+          "bytes": 65367,
+          "entries": 29,
+          "hits": 0
+        },
+        "retainedNodes": 0,
+        "sourceDemand": {
+          "contextMarginBytes": 2267416,
+          "excludedNodePayloadCopies": 0,
+          "globalMarginEvaluations": 3,
+          "globalPadding": 200,
+          "mode": "demand",
+          "projectionRebuilds": 4,
+          "projectionReuses": 0,
+          "residentAuthoredNodes": 8615,
+          "residentAuthority": true,
+          "resolvedCompileNodes": 8770,
+          "scopeExpansions": 0,
+          "sourceNodes": 124447
+        },
+        "textPaths": {
+          "bytes": 1085,
+          "entries": 1,
+          "hits": 27,
+          "limit": 16777216
+        },
+        "worldSupportBytes": 1320676
+      },
+      "name": "pan",
+      "packetBytes": 6514787,
+      "packetEquivalent": true,
+      "referenceUnoptimizedMs": 1019.82025,
+      "sourceDemand": {
+        "contextMarginBytes": 2267416,
+        "excludedNodePayloadCopies": 0,
+        "globalMarginEvaluations": 3,
+        "globalPadding": 200,
+        "mode": "demand",
+        "projectionRebuilds": 4,
+        "projectionReuses": 0,
+        "residentAuthoredNodes": 8615,
+        "residentAuthority": true,
+        "resolvedCompileNodes": 8770,
+        "scopeExpansions": 0,
+        "sourceNodes": 124447
+      }
+    },
+    {
+      "camera": [
+        -369.2813895642924,
+        -642.0,
+        1.0
+      ],
+      "candidateUnoptimizedMs": 606.677375,
+      "compileCache": {
+        "builds": 663,
+        "bytes": 7248520,
+        "cameraResidency": {
+          "bytes": 10656288,
+          "entries": 1,
+          "evictions": 0,
+          "restores": 0
+        },
+        "entries": 663,
+        "fragmentBuilds": 0,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 21634052,
+          "compilations": 6,
+          "imageAllocationHits": 0,
+          "imageTransferHits": 0,
+          "limit": 1160060928,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 11258606,
+          "semanticHits": 0
+        },
+        "hits": 0,
+        "marginIndexBytes": 0,
+        "marginIndexNodes": 0,
+        "pathNodes": 1337,
+        "prepareReuses": 0,
+        "preparedNodes": 2278,
+        "residentStrokes": {
+          "builds": 31,
+          "bytes": 69853,
+          "entries": 31,
+          "hits": 29
+        },
+        "retainedNodes": 0,
+        "sourceDemand": {
+          "contextMarginBytes": 2267416,
+          "excludedNodePayloadCopies": 0,
+          "globalMarginEvaluations": 3,
+          "globalPadding": 200,
+          "mode": "demand",
+          "projectionRebuilds": 4,
+          "projectionReuses": 1,
+          "residentAuthoredNodes": 8615,
+          "residentAuthority": true,
+          "resolvedCompileNodes": 8770,
+          "scopeExpansions": 0,
+          "sourceNodes": 124447
+        },
+        "textPaths": {
+          "bytes": 1085,
+          "entries": 1,
+          "hits": 27,
+          "limit": 16777216
+        },
+        "worldSupportBytes": 1320676
+      },
+      "name": "return",
+      "packetBytes": 6313143,
+      "packetEquivalent": true,
+      "referenceUnoptimizedMs": 700.447917,
+      "sourceDemand": {
+        "contextMarginBytes": 2267416,
+        "excludedNodePayloadCopies": 0,
+        "globalMarginEvaluations": 3,
+        "globalPadding": 200,
+        "mode": "demand",
+        "projectionRebuilds": 4,
+        "projectionReuses": 1,
+        "residentAuthoredNodes": 8615,
+        "residentAuthority": true,
+        "resolvedCompileNodes": 8770,
+        "scopeExpansions": 0,
+        "sourceNodes": 124447
+      }
+    },
+    {
+      "camera": [
+        -45439.99987792969,
+        -26364.166015625,
+        4.0
+      ],
+      "candidateUnoptimizedMs": 430.306584,
+      "compileCache": {
+        "builds": 26,
+        "bytes": 1784496,
+        "cameraResidency": {
+          "bytes": 0,
+          "entries": 0,
+          "evictions": 0,
+          "restores": 0
+        },
+        "entries": 26,
+        "fragmentBuilds": 0,
+        "fragmentHits": 0,
+        "frameScene": {
+          "bytes": 8220260,
+          "compilations": 7,
+          "imageAllocationHits": 0,
+          "imageTransferHits": 0,
+          "limit": 1160060928,
+          "limitSource": "trusted-host-memory",
+          "sameRequestHits": 0,
+          "semanticBytes": 2740907,
+          "semanticHits": 0
+        },
+        "hits": 0,
+        "marginIndexBytes": 0,
+        "marginIndexNodes": 0,
+        "pathNodes": 173,
+        "prepareReuses": 0,
+        "preparedNodes": 750,
+        "residentStrokes": {
+          "builds": 11,
+          "bytes": 357633,
+          "entries": 11,
+          "hits": 0
+        },
+        "retainedNodes": 0,
+        "sourceDemand": {
+          "contextMarginBytes": 2267416,
+          "excludedNodePayloadCopies": 0,
+          "globalMarginEvaluations": 4,
+          "globalPadding": 800,
+          "mode": "demand",
+          "projectionRebuilds": 5,
+          "projectionReuses": 1,
+          "residentAuthoredNodes": 4245,
+          "residentAuthority": true,
+          "resolvedCompileNodes": 4337,
+          "scopeExpansions": 0,
+          "sourceNodes": 124447
+        },
+        "textPaths": {
+          "bytes": 1085,
+          "entries": 1,
+          "hits": 27,
+          "limit": 16777216
+        },
+        "worldSupportBytes": 646724
+      },
+      "name": "restored-material",
+      "packetBytes": 1289317,
+      "packetEquivalent": true,
+      "referenceUnoptimizedMs": 301.28625,
+      "sourceDemand": {
+        "contextMarginBytes": 2267416,
+        "excludedNodePayloadCopies": 0,
+        "globalMarginEvaluations": 4,
+        "globalPadding": 800,
+        "mode": "demand",
+        "projectionRebuilds": 5,
+        "projectionReuses": 1,
+        "residentAuthoredNodes": 4245,
+        "residentAuthority": true,
+        "resolvedCompileNodes": 4337,
+        "scopeExpansions": 0,
+        "sourceNodes": 124447
+      }
+    }
+  ],
+  "fixture": {
+    "descriptorHash": "d41ef73ea643d31c5a83a017755c1ac1024bbfcadca02d66a3bbd8680fc68c36",
+    "kind": "latest-complete-scene-store",
+    "restoredMaterialGaussians": 9
+  },
+  "fontHash": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+  "roots": 306,
+  "scope": "complete topology source, actual native compile entry; exact packet oracle, no GPU/GUI/performance acceptance",
+  "seconds": 189.099544083,
+  "sourceNodes": 124447,
+  "testScope": "Native CPU and wire IR only; no GPU device, no GUI; unoptimized timings are not a performance A/B.",
+  "environment": {
+    "os": "Darwin",
+    "machine": "arm64",
+    "profile": "test unoptimized"
+  }
+}

@@ -1,0 +1,157 @@
+{
+  "format": 1,
+  "checkedAt": "2026-10-26T08:59:45.781488+00:00",
+  "scope": "static source and disassembly audit; no fresh app, GPU or native Sketch visual acceptance",
+  "head": "2954a77fe22a12f806d91351ec95e5186f9b562a",
+  "runtimeEdits": false,
+  "sourceHashes": {
+    "design-studio/crates/design-kernel/src/interop.rs": "d0c9daa440f95960026ca8abed5aa93ff31402d7a7b864702a373c6f34871d7d",
+    "design-studio/crates/design-kernel/src/font.rs": "0a5425e8c843c538e683c1785963d49b3edfef75f803560ba8f36e68a029f7f8",
+    "design-studio/crates/design-kernel/src/font_glyph_cache.rs": "339e395d3e1b5d8c9060d78592fbd48d443f7a5e06896b3725b439daf587c549",
+    "design-studio/crates/design-kernel/src/effects.rs": "11b9cfed6264e96d5ae69f76dc331acff6db9abc43acf8d2e74aee4b4de0b3c3",
+    "design-studio/crates/design-kernel/src/color.rs": "0b47ef36d2553671375d7be5fe9bbc066bf2df144cf48706607eed44376c175c",
+    "design-studio/crates/design-kernel/src/dirty_region.rs": "c473a92aeef5e3f7ef97a6aba872d4a5e5568f8526f6d94678c5c533b5c9ec9e",
+    "design-studio/crates/design-kernel/src/renderer.rs": "ada49c53327eb2d1613f9be3d0c60a865090594128b8a131c609766f67839dbd",
+    "design-studio/crates/design-kernel/src/preparation.rs": "d97da8a985644df6d62279564657e0f7bfd85727b9ad4f1f0c46050a02b874a1",
+    "design-studio/crates/design-kernel/src/gpu/packet.rs": "e37825ddc0c344f9576dc6a6a4a81ca13564427993572ef4af27410d86145d63",
+    "frontend/design-client/src/Renderer.tsx": "63ca6a6ea0e954b0f39274670c905d50828957fdc02f113f1fd7baf45cb965bb",
+    "frontend/design-client/src/export.tsx": "316fe07504351a375b3e31bd55d339affd2adc141e8bf2ba500a48d37013279c",
+    "frontend/design-client/src/svg-editable-text.tsx": "7b72f77db2bfcdfd643798d16c497f973464cef2c375d405bcd918fe4b3eb2cb",
+    "frontend/design-client/src/prototype.ts": "eafb2cc6a500829175eaa869f2a545dd445453a53444fcdc2318bf100d31d4a6",
+    "frontend/design-client/src/prototype-logic.ts": "bb7c0cdf765263a139e1c781bea437c823fe532f9331cc2aec605f9120fcb78e",
+    "frontend/design-client/src/kernel/tile-scheduler.ts": "8536ae7967ef359941066bb02574de27501e5fba5811a18f5ec5941a56025296",
+    "frontend/design-client/src/kernel/render-kernel.ts": "cab3c408ac00352386e07c1ab41bd414f6b0a5a7a473aa4afe47f8d3eea489e2",
+    "frontend/design-client/src/kernel/gpu/renderer.ts": "32313cbbfa5466ddddf731a5cd3751732885e0116a7d32db8da33aef53ea2c7a",
+    "frontend/design-client/src/kernel/gpu/resident-presenter.ts": "4bd1e2ed9c5b7716fa866f3b070309f15f0b2c5b308940edfefb417fcb64bdda"
+  },
+  "referenceHashes": {
+    "core/sketch-kernel-analysis/32-rendering-mechanisms-atlas.md": "c6da00f3e66a9d477e81b038a93d5bf34557fe0a2b6add9bc92f9f0695f2aecd",
+    "core/sketch-kernel-analysis/drafts-32/01-text-glyph-pipeline.md": "f0e8c78849c5844f01987ae1b2ea7be16fa20f7186599309b0e5e9ca5ad4632a",
+    "core/sketch-kernel-analysis/drafts-32/02-overlay-flow-rendering.md": "5a32b2537e44e9e4e0eaf7c5bd25d9a672d6ebafc31877bcf6abc443870c6ca8",
+    "core/sketch-kernel-analysis/drafts-32/03-effects-mask-blend.md": "a8fe7232a51099e0b589a28c13befb9439e71d4bea496564ce9654cd219f9307",
+    "core/sketch-kernel-analysis/drafts-32/04-color-and-destinations.md": "0c16e9b50c5a483eb4f69c5459656ca5d1947404018b36c0238d0b7f9ddc40d7",
+    "core/sketch-kernel-analysis/drafts-32/05-frame-scheduling-zoom-snapshot.md": "21a894bef65e77d3ec708fe4539e6c565ded22db4ff1c60e3a4dfa19a0e605d8",
+    "core/sketch-kernel-analysis/drafts-32/06-svg-destination-path-optimization.md": "ee1f1cadfb2f58982dab8dab4019e4e03cfb5c3f9311d4e8d00bd9b1e13fbf00",
+    "core/sketch-kernel-analysis/dumps/full/SketchRendering/MSBitmapEffectsContext.txt": "91a277e9a782b13230cc4b76fc1be674e36eed1bf71436efcc01b3558fd99849",
+    "core/sketch-kernel-analysis/dumps/full/SketchRendering/MSGPUOverlayItemRenderer.txt": "a8a1e0dc93fe5d23b636c38283497bf1637edfe4b6176f5d91cfd168ef515967",
+    "core/sketch-kernel-analysis/dumps/full/SketchRendering/MSRenderingCache.txt": "1ff24637275a7250e6659e8a58dd1d622ad148c84668c3f6c65703a036c1f89d",
+    "core/sketch-kernel-analysis/dumps/full/SketchSVG/MSImmutableStyleBlur(SVGExporter).txt": "a092c114a8402722d159721e8e385cc25fca982f3059019d8131087ceab5eeb7"
+  },
+  "buildManifestCheck": {
+    "builtAt": "2026-10-26T08:01:51.437Z",
+    "recordedInputsChecked": 2232,
+    "mismatches": [
+      {
+        "path": "frontend/design-desktop/src/large-document.mjs",
+        "manifestSha256": "9b50cf782dae5cb245a00cba45868619d094a12a3cbb98802616f50c8ce5bb5d",
+        "currentSha256": "9ef8a98fcc48cd18009b727142630066b844c36fc615e769b0f0440075be9786"
+      },
+      {
+        "path": "frontend/design-client/src/desktop.ts",
+        "manifestSha256": "3f69cd34251dd354b88a1e823dce92444c989bc25e0bb94ac30312e4d76fcbc0",
+        "currentSha256": "867f8a9119a6e3649cafe84ae8ac5ab54ca8c394aab7b69089efd032c7f5f2f5"
+      },
+      {
+        "path": "frontend/design-client/src/LargeDocumentWorkspace.test.tsx",
+        "manifestSha256": "5fa2fafbec72468019fd7e2da0872b1e9ee5cad768b6eb8aa95ec5ac64f86ab1",
+        "currentSha256": "28201c5b74f215bd601a1313790d43ff676025f5c7f92c0af0db178e9cd35594"
+      },
+      {
+        "path": "frontend/design-client/src/LargeDocumentWorkspace.tsx",
+        "manifestSha256": "d72fc3fabdaba8244fe926c16d7a9d1beb1c44bc848f7cc22c8eae973dcc6bab",
+        "currentSha256": "1a6bfc7ac6ee91730b152425fe928bbe5824d256c52afd26d7e95da30c7d8996"
+      },
+      {
+        "path": "design-studio/crates/design-kernel/src/capacity.rs",
+        "manifestSha256": "841846c1d0dcd6d0dc1f0fe98742b2c11ccb5817bbe93e89a198f36ef3a6a475",
+        "currentSha256": "d81ad871b5bddf1ad8e3b37e5e45fb8cefcf55860d1a13a53ed5fffafc6e0275"
+      },
+      {
+        "path": "design-studio/crates/design-desktop-backend/src/large_document/projection.rs",
+        "manifestSha256": "2ee9ac97f4ae06689dadefabdb396202179352401d7a69548437a3b50bed6a51",
+        "currentSha256": "c8393547463e08826c9db6fa13741bb3474b6888eb32c317e37f277f0cdb7a8a"
+      },
+      {
+        "path": "design-studio/crates/design-desktop-backend/src/large_document/scene_roundtrip_tests.rs",
+        "manifestSha256": "e82b1b102aebe680abb1c92d9f6cd87719904017bbfc7dd99e6a7fc9d4e4855c",
+        "currentSha256": "faa6d0f01bb9143029377e2a2f9ede0492de22efa1309737a6cdd6aba8f5befe"
+      },
+      {
+        "path": "design-studio/crates/design-desktop-backend/src/large_document/scene.rs",
+        "manifestSha256": "6ca2186dbd9e724ab6ddaf647b11498c3527bc3769431a587f73c772475b40dd",
+        "currentSha256": "ed882f85c15fabed949588805a59e50c289354dc1ec1f15964700b87eeaf1b57"
+      },
+      {
+        "path": "design-studio/crates/design-desktop-backend/src/large_document.rs",
+        "manifestSha256": "b903b9a139b6d427a55fe22716d2c2045857d1a0d665f15e5825f326d348c1df",
+        "currentSha256": "701c82ccf5bc0287ca9ee9a8bfc5f29b6808104bedf179bb1d6fb51e8988e190"
+      }
+    ],
+    "doesNotIdentifyRunningProcess": true
+  },
+  "numericChecks": {
+    "floatNineSignificantDigits": {
+      "input": "1.2345678901234567",
+      "formatted": "1.23456789",
+      "equalAfterParse": false
+    },
+    "disassemblyConstantDecoded": {
+      "4048800000000000": 49.0,
+      "4059000000000000": 100.0,
+      "3fd999999999999a": 0.4,
+      "3fe3333333333333": 0.6,
+      "3fe6666666666666": 0.7,
+      "3fe999999999999a": 0.8,
+      "3feccccccccccccd": 0.9
+    }
+  },
+  "blurScaleBranchTranscription": {
+    "label": "manual reading of MSBitmapEffectsContext.txt @0x168024; not execution of Sketch binary",
+    "nonPositive": 1,
+    "positiveRanges": [
+      {
+        "upperInclusive": 5,
+        "scale": 1
+      },
+      {
+        "upperInclusive": 7,
+        "scale": 0.9
+      },
+      {
+        "upperInclusive": 9,
+        "scale": 0.8
+      },
+      {
+        "upperInclusive": 10,
+        "scale": 0.7
+      },
+      {
+        "upperInclusive": 24,
+        "scale": 0.6
+      },
+      {
+        "upperInclusive": 49,
+        "scale": 0.5
+      },
+      {
+        "upperInclusive": 100,
+        "scale": 0.4
+      }
+    ],
+    "above100": 0.25
+  },
+  "svgLayerBlurDataflow": {
+    "scope": "ordinary Sketch importer and inspected SVG exporter paths; no native pixel run",
+    "inputRadius": 10,
+    "designKernelOutputSigma": 5,
+    "sketchInspectedBranchOutputSigma": 10,
+    "shadowIsSeparate": true
+  },
+  "notRun": [
+    "native Sketch export comparison",
+    "current combined desktop rebuild",
+    "GUI input reproduction",
+    "hardware GPU parity",
+    "full G2/G5 matrix"
+  ]
+}

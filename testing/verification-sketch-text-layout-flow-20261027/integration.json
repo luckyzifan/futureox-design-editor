@@ -1,0 +1,140 @@
+{
+  "method": "all preconditions checked before writes; exact baseline snapshots retained",
+  "files": [
+    {
+      "path": ".agents/skills/futureox-design-development/SKILL.md",
+      "before": "e3b9313b64aa8ea596cdd4a625a2235c5868a3d3966aa961f4670a8ab60505f3",
+      "after": "36d763e17ba275293004b5e3b9b3775d043d3960aa2b2da63b504bdab9fc18a9"
+    },
+    {
+      "path": ".agents/skills/futureox-rendering-first/SKILL.md",
+      "before": "0f9499a9a0cdf4bef951cd2327e04515316bb3b83ea132b76d9b6ab1cdf56b50",
+      "after": "b0d03a55a143a93552b23ef5a9a15e007a1f5ed6a2e6713fde05c69bf2db9b9f"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/fig.rs",
+      "before": "ffe0039ff914cd722a83e815a65ac245f2662afc5ad475c60f4de83cb4ea6813",
+      "after": "7f54c0ca169e96a92454adc164f8d9e7bb8c06f2a2ee4a32be6baeafb0315ad3"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/font.rs",
+      "before": "0a5425e8c843c538e683c1785963d49b3edfef75f803560ba8f36e68a029f7f8",
+      "after": "ec8286fda562834c9b2cb5956608baca940337980ec93ac2289a526029e4d549"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/interop.rs",
+      "before": "3be795db37546679c4b9f9ab100520d175961fcf5a4375ec77afce81ebc7458b",
+      "after": "46d984ffedd0d41bceb545e53ff3146b8e9c5b1228925631fcc88f6d429d9920"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/prototype.rs",
+      "before": "e79a0ac861c7ca9e72efea0b6b100b9837bc23bb8d4257ed6c16761a16346431",
+      "after": "556b6789fc820dc18993dcd4140e96f6d3f30780e69ce1330b70b764db147392"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/scene.rs",
+      "before": "53967d2ba8e096576bcc487c9184cc45f449723d2b659adbdd14a29233e45547",
+      "after": "a6fb4ec6d6b638ab69594c73d9018c0b55939169ee30d70c6beab0f58edc4b99"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/sketch/preview/display.rs",
+      "before": "39477218714f280e8ac8ea176734dee3e43ab18803e0e1a5abc7f720b954562d",
+      "after": "76e35c41fa05f2a7889a43caa7bd3080b0aa375e0ca37f28e7bfe9485428e3ba"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/tests/sketch_text_attrs.rs",
+      "before": "9c90ac406977641f1cfd34ed8f01f4faebad01148d11ca6fec1be5b357686d8e",
+      "after": "7de0709714fd56676444db46a3c33f2c94622cd6068e65f3b77799082ae06a17"
+    },
+    {
+      "path": "docs/DEVELOPMENT_CONTRACT_V1.md",
+      "before": "d951b08334d005880518f0ad95519bbb5f4f1606898f0cf7c21413ab8c219fb9",
+      "after": "b450c312fa73a8dfad59696530f2f2ef998e6f97d532a5b2523a397947438375"
+    },
+    {
+      "path": "docs/MCP_OPERATION_GUIDE_V1.md",
+      "before": "ef70ae84d2527a201be4b10fd84aa7a47e9cc407482b73e1142ab145e7b77c76",
+      "after": "9eb69f66b721d1976d7006c33244a3122928f39d41f44c597c8ac933ce245036"
+    },
+    {
+      "path": "frontend/design-client/src/DesignTools.tsx",
+      "before": "2a748ba30fcfdccfbde23ef7781875bd657c1f2eecf0c9d43216c434c7ad1539",
+      "after": "5ba047f32f9b7b0fe8a077832639245e32037a2bc30fc3887b1656c7af15d190"
+    },
+    {
+      "path": "frontend/design-client/src/PrototypePlayer.tsx",
+      "before": "266a381f3d2b38fd5c172a17a214d3f34ba02c97c365c6112056b79395c8d949",
+      "after": "488805b0565eaa020c688dfdd59493899172c6e4eb3f8aa0524b50e4ee32c67d"
+    },
+    {
+      "path": "frontend/design-client/src/TextStylePanel.tsx",
+      "before": "88c333f134ec873000072896550313c1d6bf4f14ebc832ab71729cc4edeed4d8",
+      "after": "6a59b1375136d107977f4bcc932fd237e30f373ca22bc203cd18e038c0152952"
+    },
+    {
+      "path": "frontend/design-client/src/automation/interactions.ts",
+      "before": "be5d681b0117bfc66efa3e7aa61c2c72143bf45d55e703544a4fed37dc296490",
+      "after": "5211b99a1daf0bc22417fa6ff7ad0cfe2cf42192ad68fa58ceabcf12a9e2a738"
+    },
+    {
+      "path": "frontend/design-client/src/automation/node-input-descriptors.ts",
+      "before": "8439aa13025f66ceb33bdd3dd9e81e03336991767405212fd7e97a54370493cb",
+      "after": "136b33b2fced1e4716511d0e62f6ad4b2afe4e6d5096f8b87618c2eab53469a0"
+    },
+    {
+      "path": "frontend/design-client/src/design-system.ts",
+      "before": "a17d3cd8a3385aa02afce970929f3def037e1d8ddb77e94b0611021129900569",
+      "after": "9b4a535c2545b91edd3bb22c751c9a84447c761ba631f8dd853cce1bf0b8383f"
+    },
+    {
+      "path": "frontend/design-client/src/engine.ts",
+      "before": "6b068edbfc12cece194d4e7aa88fe3f9e02f7e8d67f978a30e9ddc8e259c895b",
+      "after": "0cb347b28493c92fa2956e57869506d1cc7e6f13b2ee4c154c760b9fa141048c"
+    },
+    {
+      "path": "frontend/design-client/src/import-file-worker.ts",
+      "before": "24d7dcca78909efd393884e843154720064038d96f00fcdb4b55024fb2798025",
+      "after": "65be35b1f896b35f64edde80b120b45b7e374af39fcd83c02ee538c2daf8e4cd"
+    },
+    {
+      "path": "frontend/design-client/src/import-worker.ts",
+      "before": "bf40f2510f0bd5c0ee495ca66abd71c6721d3cad90fb1abd65fda59976e0ed27",
+      "after": "640d48d9dfce93cf9114954f38670033cdc4e25665823fabf508ac85116dbe3a"
+    },
+    {
+      "path": "frontend/design-client/src/model.ts",
+      "before": "2b6d5535db9297f507feed18e717007ca92f7a0c712a934b42fb12816e13afbe",
+      "after": "40d72020a90a481755a7fc8c36341e1b20d94c38f34e0719a49db17d08846109"
+    },
+    {
+      "path": "frontend/design-client/src/prototype.ts",
+      "before": "eafb2cc6a500829175eaa869f2a545dd445453a53444fcdc2318bf100d31d4a6",
+      "after": "7c3b03525ae7bde01f864984dddd799c02cc223e136b6e0a1c5aa02e8d5e972d"
+    },
+    {
+      "path": "frontend/design-client/src/text.ts",
+      "before": "73e56c0ca8d3c5014f26a9af198cea72534040a6988b07f302b9d608bc7d5fbc",
+      "after": "282d49ef83e81958ec88037560e2a9783a50cd7baa49076d3b29109ac9c75002"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/tests/text_paragraph.rs",
+      "before": null,
+      "after": "5e6a246a54635d4eef359301f6a5a620e008f5094b7b2b03591fe0ab0de8308b"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/examples/sketch_text_flow_fixture.rs",
+      "before": null,
+      "after": "fa823644313c7005ca22e719c90d18f59868826f8065fd2bd3e979ba355b913a"
+    },
+    {
+      "path": "frontend/design-client/src/sketch-followup.test.ts",
+      "before": null,
+      "after": "602627f675b91bc36627fc5fd61c570f6b11769c20f63facff154c8ca25e22e6"
+    },
+    {
+      "path": "testing/fixtures/design/sketch-text-layout-flow.sketch",
+      "before": null,
+      "after": "a03711afa291cd65ecd1ab17202ceb1ecc238285eb4cc6cce742f58e278b571b"
+    }
+  ]
+}

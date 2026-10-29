@@ -1,0 +1,5 @@
+{
+  "scope": "Actual Electron/native source navigation, synthetic 192-root page, 1 MiB trusted memory / 64 KiB document allowance; not real-topology rendering performance",
+  "status": "failed",
+  "error": "Error: expect(locator).toHaveCount(expected) failed\n\nLocator:  locator('.source-workspace-rows>div')\nExpected: 3\nReceived: 0\nTimeout:  60000ms\n\nCall log:\n  - Expect \"toHaveCount\" locator('.source-workspace-rows>div') with timeout 60000ms\n  - waiting for locator('.source-workspace-rows>div')\n    5 × locator resolved to 0 elements\n      - unexpected value \"0\"\n    24 × locator resolved to 5 elements\n       - unexpected value \"5\"\n    21 × locator resolved to 0 elements\n       - unexpected value \"0\"\n    3 × locator resolved to 5 elements\n      - unexpected value \"5\"\n    70 × locator resolved to 0 elements\n       - unexpected value \"0\"\n"
+}

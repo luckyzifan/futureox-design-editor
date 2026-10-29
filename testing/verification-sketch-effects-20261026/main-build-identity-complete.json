@@ -1,0 +1,10 @@
+{
+  "builtAt": "2026-10-26T14:07:21.788Z",
+  "checkedAt": "2026-10-26T14:18:08.664305+00:00",
+  "recordedInputsChecked": 2248,
+  "mismatches": [
+    "frontend/design-client/src/kernel/gpu/renderer.ts"
+  ],
+  "wasmSha256": "669ce50ef56340da2a421fc5c300170ce6edfbe7274d7a0ca2b1a0d8ce6441bb",
+  "profile": "desktop-dev"
+}

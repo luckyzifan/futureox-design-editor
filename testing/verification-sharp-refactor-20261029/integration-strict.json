@@ -1,0 +1,64 @@
+{
+  "appliedAt": "2026-10-29T01:02:33.980Z",
+  "beforeDigest": "33bb0652a82a4022e01107e0bd6a5a354ae1f3adb0bcde15dfd3517743fe5908",
+  "afterDigest": "803d85f64b138acceea057af7b769f56b462df40e7362cb4492a64fb0a0c4a13",
+  "candidateDigest": "f87d1f0e2eb63da49e30a45f3011c035b1fd825d0e0770a2113913f635c6a9f5",
+  "scope": "Verified source controller and native preparation changes only. Grouped source tiles and their worker admission experiment excluded. Main runtime requires coherent rebuild.",
+  "files": [
+    {
+      "path": "frontend/design-client/src/kernel/NativeSourceSurface.pipeline.test.tsx",
+      "before": "4bc725ef7b4f820a682eddf4da44378f22c80775d23369bef3114fd9df708c4a",
+      "after": "8f0422a27519e64b4cd94613c3fe71e6a2be49e558e0fe306d395d9de210b079"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/NativeSourceSurface.tsx",
+      "before": "5505ad7871184d8273499764dc0067d13a1d5ce16a0fa35bfbce94a9da6f24a3",
+      "after": "112845b2b5f1875b2b51401e85efa221bdb7ac13d326149f6d03b7f08d43b7ee"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/source-viewport-plan.test.ts",
+      "before": "febde628d187c245c240ba83742fa04edec8a6af440d6c29d7397b5a5e3b817e",
+      "after": "2371e2c890741feace0e1d8e854601def6673696618c1a7f2e03581c3968aca0"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/source-viewport-plan.ts",
+      "before": "852d68178599872bfcac8d6f07ead7e75d16dd8dfb25553c3e886b3976536a59",
+      "after": "5b90e9a2e82439a89c81609c4f4b51ce062a490965f22e3046feda2fb932ae25"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/dirty_region.rs",
+      "before": "762db1acc28bb56fd5acb783162038c8bb23ac685548c54d58381d0ce88d99b6",
+      "after": "2e70eac674a20b1b67ca9764b949db5e3dc6b3e6bde87597ffcfb11e13e9996a"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/geometry_support.rs",
+      "before": "0fc619c15b05cf5f0f0a6f8163ee4ca188160cb6d54a1b08240f83bb6d395155",
+      "after": "ea60598b73e1f4bce435b3b5aa3d0e2afef276f45308b9be5e1397a315b46f3f"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/gpu.rs",
+      "before": "bb416b5583c9db2f1845a3cf1eec6d5d089a0a66a45ec7d10e2ce7924255db9c",
+      "after": "b352b8a302cd9c8b67aa10869297ee97838e5126df77e8777f04adc45464ead6"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/lib.rs",
+      "before": "84f6f93dd7314eb53347e49f56126e2dc50d66699ffd58412ec4358affb141db",
+      "after": "70cfb96a610c8ad1a354aea24692444113558585eeed3717941c97ed2a588130"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/margin_index.rs",
+      "before": null,
+      "after": "2d6924cfd8949e97cc9004d075b9bbc54ae7d778dca30ec43c41360cbf84bb23"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/world_support.rs",
+      "before": "6002a2ddb6d80d5a05f903f08aae088589df7cdcdba65f594d10a9d6cef2af53",
+      "after": "d067653f6ba55f828f78c2d5155047061ed6b30c1bc37394d06bd314f6f491bb"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/zoom_support.rs",
+      "before": "59a675501969559930f5bd3ba1880fe3a3cc85031e2d7c5798195c0fd3b9743b",
+      "after": "4dda9ea3b223df82b996e4404551c4d1bedb4fb0b0ea3c5cb7ec5e193f567e5b"
+    }
+  ]
+}

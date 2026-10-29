@@ -1,0 +1,4509 @@
+{
+  "profiling": true,
+  "status": "passed",
+  "cases": [
+    {
+      "name": "117-detail",
+      "options": {
+        "pageId": "04FFEF29-E913-4B13-834C-D8576EC06381",
+        "width": 256,
+        "height": 192,
+        "view": {
+          "x": -190.125,
+          "y": -457.625,
+          "zoom": 1
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": true
+      },
+      "packetNodes": 47,
+      "integratedBlur": true,
+      "runs": [
+        [
+          {
+            "wallMs": 60.10000002384186,
+            "graphMs": 7.5,
+            "finishMs": 40.299999952316284,
+            "draws": 329,
+            "pixels": 4799806,
+            "peakBytes": 59705076,
+            "canvasTentPasses": 0,
+            "gpuPassTimings": [
+              {
+                "mode": 22,
+                "radius": 9,
+                "width": 330,
+                "height": 266,
+                "count": 24,
+                "ms": 152.502272
+              },
+              {
+                "mode": 22,
+                "radius": 18.393983840942383,
+                "width": 261,
+                "height": 28,
+                "count": 8,
+                "ms": 19.726336
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 241,
+                "height": 39,
+                "count": 4,
+                "ms": 18.874367999999997
+              },
+              {
+                "mode": 29,
+                "radius": 0,
+                "width": 330,
+                "height": 266,
+                "count": 5,
+                "ms": 13.893632
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 301,
+                "height": 68,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 8,
+                "ms": 13.238272
+              },
+              {
+                "mode": 2,
+                "radius": 0,
+                "width": 301,
+                "height": 68,
+                "paint": 1,
+                "count": 4,
+                "ms": 8.192
+              },
+              {
+                "mode": 25,
+                "radius": 0,
+                "width": 330,
+                "height": 266,
+                "count": 4,
+                "ms": 5.636096
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 39,
+                "height": 26,
+                "count": 4,
+                "ms": 5.373952
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 262,
+                "height": 30,
+                "count": 4,
+                "ms": 4.9152000000000005
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 262,
+                "height": 29,
+                "count": 4,
+                "ms": 4.653056
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 330,
+                "height": 266,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 9,
+                "ms": 4.5875200000000005
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 44,
+                "height": 31,
+                "count": 4,
+                "ms": 4.521984
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 41,
+                "height": 28,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 4.456448
+              },
+              {
+                "mode": 50,
+                "radius": 1,
+                "width": 241,
+                "height": 39,
+                "count": 4,
+                "ms": 4.390912
+              },
+              {
+                "mode": 22,
+                "radius": 15,
+                "width": 241,
+                "height": 39,
+                "count": 2,
+                "ms": 4.194304
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 242,
+                "height": 40,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 4.063232
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 243,
+                "height": 42,
+                "count": 4,
+                "ms": 3.997696
+              },
+              {
+                "mode": 2,
+                "radius": 0,
+                "width": 330,
+                "height": 266,
+                "paint": 3,
+                "count": 4,
+                "ms": 3.93216
+              },
+              {
+                "mode": 49,
+                "radius": 0,
+                "width": 241,
+                "height": 39,
+                "count": 1,
+                "ms": 3.670016
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 330,
+                "height": 108,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 3.342336
+              },
+              {
+                "mode": 27,
+                "radius": 0,
+                "width": 301,
+                "height": 68,
+                "count": 1,
+                "ms": 3.342336
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 330,
+                "height": 109,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 3.211264
+              },
+              {
+                "mode": 2,
+                "radius": 0,
+                "width": 330,
+                "height": 106,
+                "paint": 3,
+                "count": 4,
+                "ms": 3.145728
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 330,
+                "height": 110,
+                "count": 4,
+                "ms": 3.145728
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 12,
+                "height": 19,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 8,
+                "ms": 2.29376
+              },
+              {
+                "mode": 1,
+                "radius": 0,
+                "width": 17,
+                "height": 17,
+                "count": 16,
+                "ms": 2.2282239999999995
+              },
+              {
+                "mode": 2,
+                "radius": 0,
+                "width": 17,
+                "height": 17,
+                "paint": 0,
+                "count": 16,
+                "ms": 2.1626879999999997
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 17,
+                "height": 17,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 16,
+                "ms": 1.9660800000000003
+              },
+              {
+                "mode": 23,
+                "radius": 0,
+                "width": 330,
+                "height": 266,
+                "count": 2,
+                "ms": 1.900544
+              },
+              {
+                "mode": 29,
+                "radius": 0,
+                "width": 243,
+                "height": 131,
+                "count": 4,
+                "ms": 1.7694720000000002
+              },
+              {
+                "mode": 2,
+                "radius": 0,
+                "width": 11,
+                "height": 17,
+                "paint": 0,
+                "count": 8,
+                "ms": 1.7694720000000002
+              },
+              {
+                "mode": 2,
+                "radius": 0,
+                "width": 239,
+                "height": 123,
+                "paint": 0,
+                "count": 4,
+                "ms": 1.6384000000000003
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 239,
+                "height": 123,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 1.6384000000000003
+              },
+              {
+                "mode": 26,
+                "radius": 0,
+                "width": 261,
+                "height": 28,
+                "count": 1,
+                "ms": 1.6384
+              },
+              {
+                "mode": 1,
+                "radius": 0,
+                "width": 11,
+                "height": 17,
+                "count": 8,
+                "ms": 1.5073280000000002
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 11,
+                "height": 17,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 8,
+                "ms": 1.5073280000000002
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 14,
+                "height": 22,
+                "count": 4,
+                "ms": 1.4417920000000002
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 19,
+                "height": 19,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 16,
+                "ms": 1.2451840000000003
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 14,
+                "height": 21,
+                "count": 4,
+                "ms": 1.048576
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 21,
+                "height": 22,
+                "count": 4,
+                "ms": 0.9830400000000001
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 21,
+                "height": 21,
+                "count": 4,
+                "ms": 0.786432
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 244,
+                "height": 133,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 0.39321599999999995
+              },
+              {
+                "mode": 2,
+                "radius": 0,
+                "width": 55,
+                "height": 123,
+                "paint": 0,
+                "count": 4,
+                "ms": 0.262144
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 256,
+                "height": 192,
+                "count": 1,
+                "ms": 0.262144
+              },
+              {
+                "mode": 12,
+                "radius": 0,
+                "width": 330,
+                "height": 266,
+                "count": 1,
+                "ms": 0.196608
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 55,
+                "height": 123,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 0.196608
+              },
+              {
+                "mode": 29,
+                "radius": 0,
+                "width": 59,
+                "height": 131,
+                "count": 4,
+                "ms": 0.196608
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 61,
+                "height": 136,
+                "count": 4,
+                "ms": 0.196608
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 60,
+                "height": 133,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 0.196608
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 132,
+                "height": 52,
+                "count": 4,
+                "ms": 0.131072
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 22,
+                "height": 21,
+                "count": 4,
+                "ms": 0.131072
+              },
+              {
+                "mode": 12,
+                "radius": 0,
+                "width": 1,
+                "height": 1,
+                "count": 1,
+                "ms": 0.065536
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 127,
+                "height": 47,
+                "count": 4,
+                "ms": 0.065536
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 129,
+                "height": 49,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 0.065536
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 80,
+                "height": 26,
+                "count": 4,
+                "ms": 0.065536
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 82,
+                "height": 28,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 0.065536
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 246,
+                "height": 136,
+                "count": 4,
+                "ms": 0.065536
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 22,
+                "height": 22,
+                "count": 4,
+                "ms": 0.065536
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 13,
+                "height": 52,
+                "count": 4,
+                "ms": 0.065536
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 12,
+                "height": 49,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 0.065536
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 85,
+                "height": 31,
+                "count": 4,
+                "ms": 0
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 11,
+                "height": 47,
+                "count": 4,
+                "ms": 0
+              }
+            ]
+          }
+        ],
+        [
+          {
+            "wallMs": 59.10000002384186,
+            "graphMs": 7.399999976158142,
+            "finishMs": 40,
+            "draws": 329,
+            "pixels": 4799806,
+            "peakBytes": 59705076,
+            "canvasTentPasses": 8,
+            "gpuPassTimings": [
+              {
+                "mode": 22,
+                "radius": 9,
+                "width": 330,
+                "height": 266,
+                "count": 24,
+                "ms": 236.45388799999998
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 241,
+                "height": 39,
+                "count": 4,
+                "ms": 51.183616
+              },
+              {
+                "mode": 50,
+                "radius": 1,
+                "width": 241,
+                "height": 39,
+                "count": 4,
+                "ms": 35.06176
+              },
+              {
+                "mode": 29,
+                "radius": 0,
+                "width": 330,
+                "height": 266,
+                "count": 5,
+                "ms": 30.47424
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 301,
+                "height": 68,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 8,
+                "ms": 23.592959999999998
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 39,
+                "height": 26,
+                "count": 4,
+                "ms": 23.527424
+              },
+              {
+                "mode": 2,
+                "radius": 0,
+                "width": 301,
+                "height": 68,
+                "paint": 1,
+                "count": 4,
+                "ms": 23.265279999999997
+              },
+              {
+                "mode": 22,
+                "radius": 15,
+                "width": 241,
+                "height": 39,
+                "count": 2,
+                "ms": 20.971519999999998
+              },
+              {
+                "mode": 22,
+                "radius": 18.393983840942383,
+                "width": 261,
+                "height": 28,
+                "count": 8,
+                "ms": 18.219008000000002
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 262,
+                "height": 30,
+                "count": 4,
+                "ms": 11.534336
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 262,
+                "height": 29,
+                "count": 4,
+                "ms": 11.403264
+              },
+              {
+                "mode": 25,
+                "radius": 0,
+                "width": 330,
+                "height": 266,
+                "count": 4,
+                "ms": 11.403264
+              },
+              {
+                "mode": 49,
+                "radius": 0,
+                "width": 241,
+                "height": 39,
+                "count": 1,
+                "ms": 10.878976
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 330,
+                "height": 266,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 9,
+                "ms": 3.8010879999999996
+              },
+              {
+                "mode": 2,
+                "radius": 0,
+                "width": 330,
+                "height": 266,
+                "paint": 3,
+                "count": 4,
+                "ms": 3.2768
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 330,
+                "height": 109,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 3.145728
+              },
+              {
+                "mode": 2,
+                "radius": 0,
+                "width": 330,
+                "height": 106,
+                "paint": 3,
+                "count": 4,
+                "ms": 3.014656
+              },
+              {
+                "mode": 27,
+                "radius": 0,
+                "width": 301,
+                "height": 68,
+                "count": 1,
+                "ms": 3.014656
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 330,
+                "height": 110,
+                "count": 4,
+                "ms": 2.9491199999999997
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 330,
+                "height": 108,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 2.818048
+              },
+              {
+                "mode": 26,
+                "radius": 0,
+                "width": 261,
+                "height": 28,
+                "count": 1,
+                "ms": 1.769472
+              },
+              {
+                "mode": 23,
+                "radius": 0,
+                "width": 330,
+                "height": 266,
+                "count": 2,
+                "ms": 1.6384
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 243,
+                "height": 42,
+                "count": 4,
+                "ms": 1.441792
+              },
+              {
+                "mode": 1,
+                "radius": 0,
+                "width": 17,
+                "height": 17,
+                "count": 16,
+                "ms": 1.1796480000000003
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 242,
+                "height": 40,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 1.179648
+              },
+              {
+                "mode": 2,
+                "radius": 0,
+                "width": 17,
+                "height": 17,
+                "paint": 0,
+                "count": 16,
+                "ms": 0.9175040000000002
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 12,
+                "height": 19,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 8,
+                "ms": 0.8519680000000002
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 17,
+                "height": 17,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 16,
+                "ms": 0.8519680000000002
+              },
+              {
+                "mode": 1,
+                "radius": 0,
+                "width": 11,
+                "height": 17,
+                "count": 8,
+                "ms": 0.8519680000000001
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 19,
+                "height": 19,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 16,
+                "ms": 0.7864320000000001
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 11,
+                "height": 17,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 8,
+                "ms": 0.7208960000000001
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 44,
+                "height": 31,
+                "count": 4,
+                "ms": 0.720896
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 41,
+                "height": 28,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 0.720896
+              },
+              {
+                "mode": 29,
+                "radius": 0,
+                "width": 243,
+                "height": 131,
+                "count": 4,
+                "ms": 0.65536
+              },
+              {
+                "mode": 2,
+                "radius": 0,
+                "width": 11,
+                "height": 17,
+                "paint": 0,
+                "count": 8,
+                "ms": 0.65536
+              },
+              {
+                "mode": 2,
+                "radius": 0,
+                "width": 239,
+                "height": 123,
+                "paint": 0,
+                "count": 4,
+                "ms": 0.5898239999999999
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 14,
+                "height": 22,
+                "count": 4,
+                "ms": 0.524288
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 239,
+                "height": 123,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 0.45875199999999994
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 14,
+                "height": 21,
+                "count": 4,
+                "ms": 0.393216
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 21,
+                "height": 21,
+                "count": 4,
+                "ms": 0.393216
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 256,
+                "height": 192,
+                "count": 1,
+                "ms": 0.393216
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 129,
+                "height": 49,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 0.32767999999999997
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 244,
+                "height": 133,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 0.32767999999999997
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 80,
+                "height": 26,
+                "count": 4,
+                "ms": 0.262144
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 55,
+                "height": 123,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 0.262144
+              },
+              {
+                "mode": 29,
+                "radius": 0,
+                "width": 59,
+                "height": 131,
+                "count": 4,
+                "ms": 0.262144
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 82,
+                "height": 28,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 0.196608
+              },
+              {
+                "mode": 2,
+                "radius": 0,
+                "width": 55,
+                "height": 123,
+                "paint": 0,
+                "count": 4,
+                "ms": 0.196608
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 61,
+                "height": 136,
+                "count": 4,
+                "ms": 0.196608
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 85,
+                "height": 31,
+                "count": 4,
+                "ms": 0.131072
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 246,
+                "height": 136,
+                "count": 4,
+                "ms": 0.131072
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 11,
+                "height": 47,
+                "count": 4,
+                "ms": 0.131072
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 13,
+                "height": 52,
+                "count": 4,
+                "ms": 0.131072
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 12,
+                "height": 49,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 0.131072
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 60,
+                "height": 133,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 0.131072
+              },
+              {
+                "mode": 12,
+                "radius": 0,
+                "width": 330,
+                "height": 266,
+                "count": 1,
+                "ms": 0.065536
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 21,
+                "height": 22,
+                "count": 4,
+                "ms": 0.065536
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 127,
+                "height": 47,
+                "count": 4,
+                "ms": 0.065536
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 22,
+                "height": 21,
+                "count": 4,
+                "ms": 0.065536
+              },
+              {
+                "mode": 12,
+                "radius": 0,
+                "width": 1,
+                "height": 1,
+                "count": 1,
+                "ms": 0
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 132,
+                "height": 52,
+                "count": 4,
+                "ms": 0
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 22,
+                "height": 22,
+                "count": 4,
+                "ms": 0
+              }
+            ]
+          }
+        ]
+      ],
+      "cold": [
+        {
+          "wallMs": 819.3000000715256,
+          "graphMs": 674.3000000715256,
+          "finishMs": 123.19999992847443,
+          "draws": 401,
+          "pixels": 4799806,
+          "peakBytes": 59705076,
+          "canvasTentPasses": 0,
+          "gpuPassTimings": [
+            {
+              "mode": 22,
+              "radius": 9,
+              "width": 330,
+              "height": 266,
+              "count": 24,
+              "ms": 332.726272
+            },
+            {
+              "mode": 29,
+              "radius": 0,
+              "width": 330,
+              "height": 266,
+              "count": 5,
+              "ms": 20.905984
+            },
+            {
+              "mode": 22,
+              "radius": 18.393983840942383,
+              "width": 261,
+              "height": 28,
+              "count": 8,
+              "ms": 17.039360000000002
+            },
+            {
+              "mode": 2,
+              "radius": 0,
+              "width": 330,
+              "height": 266,
+              "paint": 3,
+              "count": 4,
+              "ms": 8.192
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 330,
+              "height": 266,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 9,
+              "ms": 7.53664
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 301,
+              "height": 68,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 8,
+              "ms": 6.88128
+            },
+            {
+              "mode": 25,
+              "radius": 0,
+              "width": 330,
+              "height": 266,
+              "count": 4,
+              "ms": 3.6700160000000004
+            },
+            {
+              "mode": 23,
+              "radius": 0,
+              "width": 330,
+              "height": 266,
+              "count": 2,
+              "ms": 3.670016
+            },
+            {
+              "mode": 2,
+              "radius": 0,
+              "width": 301,
+              "height": 68,
+              "paint": 1,
+              "count": 4,
+              "ms": 3.4078720000000002
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 262,
+              "height": 30,
+              "count": 4,
+              "ms": 3.342336
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 262,
+              "height": 29,
+              "count": 4,
+              "ms": 3.0801920000000003
+            },
+            {
+              "mode": 31,
+              "radius": 11351,
+              "width": 330,
+              "height": 105,
+              "count": 4,
+              "ms": 2.883584
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 330,
+              "height": 108,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 2.883584
+            },
+            {
+              "mode": 27,
+              "radius": 0,
+              "width": 301,
+              "height": 68,
+              "count": 1,
+              "ms": 2.883584
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 330,
+              "height": 110,
+              "count": 4,
+              "ms": 2.818048
+            },
+            {
+              "mode": 2,
+              "radius": 0,
+              "width": 330,
+              "height": 106,
+              "paint": 3,
+              "count": 4,
+              "ms": 2.686976
+            },
+            {
+              "mode": 31,
+              "radius": 773,
+              "width": 263,
+              "height": 30,
+              "count": 4,
+              "ms": 2.6214399999999998
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 330,
+              "height": 109,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 2.555904
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 241,
+              "height": 39,
+              "count": 4,
+              "ms": 2.29376
+            },
+            {
+              "mode": 31,
+              "radius": 1469,
+              "width": 330,
+              "height": 266,
+              "count": 4,
+              "ms": 2.228224
+            },
+            {
+              "mode": 31,
+              "radius": 13772,
+              "width": 208,
+              "height": 6,
+              "count": 4,
+              "ms": 2.228224
+            },
+            {
+              "mode": 31,
+              "radius": 329,
+              "width": 262,
+              "height": 29,
+              "count": 4,
+              "ms": 2.2282239999999995
+            },
+            {
+              "mode": 22,
+              "radius": 15,
+              "width": 241,
+              "height": 39,
+              "count": 2,
+              "ms": 1.900544
+            },
+            {
+              "mode": 31,
+              "radius": 11710,
+              "width": 330,
+              "height": 266,
+              "count": 4,
+              "ms": 1.5073280000000002
+            },
+            {
+              "mode": 26,
+              "radius": 0,
+              "width": 261,
+              "height": 28,
+              "count": 1,
+              "ms": 1.376256
+            },
+            {
+              "mode": 49,
+              "radius": 0,
+              "width": 241,
+              "height": 39,
+              "count": 1,
+              "ms": 1.048576
+            },
+            {
+              "mode": 50,
+              "radius": 1,
+              "width": 241,
+              "height": 39,
+              "count": 4,
+              "ms": 1.048576
+            },
+            {
+              "mode": 2,
+              "radius": 0,
+              "width": 17,
+              "height": 17,
+              "paint": 0,
+              "count": 16,
+              "ms": 0.7208960000000001
+            },
+            {
+              "mode": 29,
+              "radius": 0,
+              "width": 243,
+              "height": 131,
+              "count": 4,
+              "ms": 0.589824
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 239,
+              "height": 123,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 0.524288
+            },
+            {
+              "mode": 1,
+              "radius": 0,
+              "width": 17,
+              "height": 17,
+              "count": 16,
+              "ms": 0.45875199999999994
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 55,
+              "height": 123,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 0.45875199999999994
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 242,
+              "height": 40,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 0.393216
+            },
+            {
+              "mode": 2,
+              "radius": 0,
+              "width": 55,
+              "height": 123,
+              "paint": 0,
+              "count": 4,
+              "ms": 0.393216
+            },
+            {
+              "mode": 29,
+              "radius": 0,
+              "width": 59,
+              "height": 131,
+              "count": 4,
+              "ms": 0.393216
+            },
+            {
+              "mode": 2,
+              "radius": 0,
+              "width": 11,
+              "height": 17,
+              "paint": 0,
+              "count": 8,
+              "ms": 0.39321599999999995
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 17,
+              "height": 17,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 16,
+              "ms": 0.39321599999999995
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 80,
+              "height": 26,
+              "count": 4,
+              "ms": 0.39321599999999995
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 243,
+              "height": 42,
+              "count": 4,
+              "ms": 0.32767999999999997
+            },
+            {
+              "mode": 2,
+              "radius": 0,
+              "width": 239,
+              "height": 123,
+              "paint": 0,
+              "count": 4,
+              "ms": 0.32767999999999997
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 127,
+              "height": 47,
+              "count": 4,
+              "ms": 0.32767999999999997
+            },
+            {
+              "mode": 31,
+              "radius": 8702,
+              "width": 74,
+              "height": 20,
+              "count": 4,
+              "ms": 0.32767999999999997
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 244,
+              "height": 133,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 0.32767999999999997
+            },
+            {
+              "mode": 12,
+              "radius": 0,
+              "width": 330,
+              "height": 266,
+              "count": 1,
+              "ms": 0.262144
+            },
+            {
+              "mode": 31,
+              "radius": 11358,
+              "width": 37,
+              "height": 24,
+              "count": 4,
+              "ms": 0.262144
+            },
+            {
+              "mode": 31,
+              "radius": 13225,
+              "width": 238,
+              "height": 121,
+              "count": 4,
+              "ms": 0.262144
+            },
+            {
+              "mode": 31,
+              "radius": 12374,
+              "width": 10,
+              "height": 15,
+              "count": 4,
+              "ms": 0.262144
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 11,
+              "height": 17,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 8,
+              "ms": 0.262144
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 12,
+              "height": 19,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 8,
+              "ms": 0.262144
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 19,
+              "height": 19,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 16,
+              "ms": 0.262144
+            },
+            {
+              "mode": 31,
+              "radius": 5726,
+              "width": 121,
+              "height": 41,
+              "count": 4,
+              "ms": 0.262144
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 82,
+              "height": 28,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 0.262144
+            },
+            {
+              "mode": 31,
+              "radius": 12784,
+              "width": 54,
+              "height": 121,
+              "count": 4,
+              "ms": 0.262144
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 256,
+              "height": 192,
+              "count": 1,
+              "ms": 0.262144
+            },
+            {
+              "mode": 1,
+              "radius": 0,
+              "width": 11,
+              "height": 17,
+              "count": 8,
+              "ms": 0.196608
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 14,
+              "height": 22,
+              "count": 4,
+              "ms": 0.196608
+            },
+            {
+              "mode": 31,
+              "radius": 1240,
+              "width": 15,
+              "height": 15,
+              "count": 4,
+              "ms": 0.196608
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 129,
+              "height": 49,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 0.196608
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 85,
+              "height": 31,
+              "count": 4,
+              "ms": 0.196608
+            },
+            {
+              "mode": 31,
+              "radius": 13020,
+              "width": 15,
+              "height": 15,
+              "count": 4,
+              "ms": 0.196608
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 12,
+              "height": 49,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 0.196608
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 44,
+              "height": 31,
+              "count": 4,
+              "ms": 0.131072
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 14,
+              "height": 21,
+              "count": 4,
+              "ms": 0.131072
+            },
+            {
+              "mode": 31,
+              "radius": 12791,
+              "width": 15,
+              "height": 15,
+              "count": 4,
+              "ms": 0.131072
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 132,
+              "height": 52,
+              "count": 4,
+              "ms": 0.131072
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 246,
+              "height": 136,
+              "count": 4,
+              "ms": 0.131072
+            },
+            {
+              "mode": 31,
+              "radius": 12579,
+              "width": 15,
+              "height": 15,
+              "count": 4,
+              "ms": 0.131072
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 13,
+              "height": 52,
+              "count": 4,
+              "ms": 0.131072
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 39,
+              "height": 26,
+              "count": 4,
+              "ms": 0.065536
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 41,
+              "height": 28,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 0.065536
+            },
+            {
+              "mode": 31,
+              "radius": 11726,
+              "width": 10,
+              "height": 15,
+              "count": 4,
+              "ms": 0.065536
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 21,
+              "height": 21,
+              "count": 4,
+              "ms": 0.065536
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 22,
+              "height": 21,
+              "count": 4,
+              "ms": 0.065536
+            },
+            {
+              "mode": 31,
+              "radius": 13232,
+              "width": 8,
+              "height": 41,
+              "count": 4,
+              "ms": 0.065536
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 11,
+              "height": 47,
+              "count": 4,
+              "ms": 0.065536
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 61,
+              "height": 136,
+              "count": 4,
+              "ms": 0.065536
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 60,
+              "height": 133,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 0.065536
+            },
+            {
+              "mode": 12,
+              "radius": 0,
+              "width": 1,
+              "height": 1,
+              "count": 1,
+              "ms": 0
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 21,
+              "height": 22,
+              "count": 4,
+              "ms": 0
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 22,
+              "height": 22,
+              "count": 4,
+              "ms": 0
+            }
+          ]
+        },
+        {
+          "wallMs": 198.79999995231628,
+          "graphMs": 125.90000009536743,
+          "finishMs": 53.299999952316284,
+          "draws": 401,
+          "pixels": 4799806,
+          "peakBytes": 59705076,
+          "canvasTentPasses": 8,
+          "gpuPassTimings": [
+            {
+              "mode": 22,
+              "radius": 9,
+              "width": 330,
+              "height": 266,
+              "count": 24,
+              "ms": 163.90553599999998
+            },
+            {
+              "mode": 31,
+              "radius": 329,
+              "width": 262,
+              "height": 29,
+              "count": 4,
+              "ms": 16.384
+            },
+            {
+              "mode": 29,
+              "radius": 0,
+              "width": 330,
+              "height": 266,
+              "count": 5,
+              "ms": 15.40096
+            },
+            {
+              "mode": 31,
+              "radius": 11351,
+              "width": 330,
+              "height": 105,
+              "count": 4,
+              "ms": 12.77952
+            },
+            {
+              "mode": 22,
+              "radius": 18.393983840942383,
+              "width": 261,
+              "height": 28,
+              "count": 8,
+              "ms": 12.45184
+            },
+            {
+              "mode": 2,
+              "radius": 0,
+              "width": 330,
+              "height": 106,
+              "paint": 3,
+              "count": 4,
+              "ms": 9.240575999999999
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 301,
+              "height": 68,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 8,
+              "ms": 9.043968
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 330,
+              "height": 108,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 7.340032
+            },
+            {
+              "mode": 31,
+              "radius": 13772,
+              "width": 208,
+              "height": 6,
+              "count": 4,
+              "ms": 6.619135999999999
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 241,
+              "height": 39,
+              "count": 4,
+              "ms": 6.029312
+            },
+            {
+              "mode": 2,
+              "radius": 0,
+              "width": 301,
+              "height": 68,
+              "paint": 1,
+              "count": 4,
+              "ms": 4.9152000000000005
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 262,
+              "height": 30,
+              "count": 4,
+              "ms": 4.784128
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 262,
+              "height": 29,
+              "count": 4,
+              "ms": 4.718592
+            },
+            {
+              "mode": 31,
+              "radius": 773,
+              "width": 263,
+              "height": 30,
+              "count": 4,
+              "ms": 4.58752
+            },
+            {
+              "mode": 25,
+              "radius": 0,
+              "width": 330,
+              "height": 266,
+              "count": 4,
+              "ms": 4.456448
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 330,
+              "height": 266,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 9,
+              "ms": 3.670016
+            },
+            {
+              "mode": 2,
+              "radius": 0,
+              "width": 330,
+              "height": 266,
+              "paint": 3,
+              "count": 4,
+              "ms": 3.4078720000000002
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 242,
+              "height": 40,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 3.211264
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 243,
+              "height": 42,
+              "count": 4,
+              "ms": 3.1457279999999996
+            },
+            {
+              "mode": 50,
+              "radius": 1,
+              "width": 241,
+              "height": 39,
+              "count": 4,
+              "ms": 2.555904
+            },
+            {
+              "mode": 27,
+              "radius": 0,
+              "width": 301,
+              "height": 68,
+              "count": 1,
+              "ms": 2.29376
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 330,
+              "height": 109,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 1.900544
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 330,
+              "height": 110,
+              "count": 4,
+              "ms": 1.703936
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 44,
+              "height": 31,
+              "count": 4,
+              "ms": 1.703936
+            },
+            {
+              "mode": 23,
+              "radius": 0,
+              "width": 330,
+              "height": 266,
+              "count": 2,
+              "ms": 1.6384
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 41,
+              "height": 28,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 1.507328
+            },
+            {
+              "mode": 26,
+              "radius": 0,
+              "width": 261,
+              "height": 28,
+              "count": 1,
+              "ms": 1.179648
+            },
+            {
+              "mode": 1,
+              "radius": 0,
+              "width": 11,
+              "height": 17,
+              "count": 8,
+              "ms": 1.179648
+            },
+            {
+              "mode": 22,
+              "radius": 15,
+              "width": 241,
+              "height": 39,
+              "count": 2,
+              "ms": 1.114112
+            },
+            {
+              "mode": 31,
+              "radius": 11358,
+              "width": 37,
+              "height": 24,
+              "count": 4,
+              "ms": 1.114112
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 39,
+              "height": 26,
+              "count": 4,
+              "ms": 1.048576
+            },
+            {
+              "mode": 2,
+              "radius": 0,
+              "width": 11,
+              "height": 17,
+              "paint": 0,
+              "count": 8,
+              "ms": 1.048576
+            },
+            {
+              "mode": 31,
+              "radius": 1469,
+              "width": 330,
+              "height": 266,
+              "count": 4,
+              "ms": 0.98304
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 17,
+              "height": 17,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 16,
+              "ms": 0.98304
+            },
+            {
+              "mode": 1,
+              "radius": 0,
+              "width": 17,
+              "height": 17,
+              "count": 16,
+              "ms": 0.9830399999999999
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 11,
+              "height": 17,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 8,
+              "ms": 0.9175040000000001
+            },
+            {
+              "mode": 29,
+              "radius": 0,
+              "width": 243,
+              "height": 131,
+              "count": 4,
+              "ms": 0.917504
+            },
+            {
+              "mode": 2,
+              "radius": 0,
+              "width": 17,
+              "height": 17,
+              "paint": 0,
+              "count": 16,
+              "ms": 0.8519680000000001
+            },
+            {
+              "mode": 2,
+              "radius": 0,
+              "width": 239,
+              "height": 123,
+              "paint": 0,
+              "count": 4,
+              "ms": 0.786432
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 239,
+              "height": 123,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 0.7864319999999999
+            },
+            {
+              "mode": 49,
+              "radius": 0,
+              "width": 241,
+              "height": 39,
+              "count": 1,
+              "ms": 0.720896
+            },
+            {
+              "mode": 31,
+              "radius": 13225,
+              "width": 238,
+              "height": 121,
+              "count": 4,
+              "ms": 0.65536
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 12,
+              "height": 19,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 8,
+              "ms": 0.65536
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 19,
+              "height": 19,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 16,
+              "ms": 0.589824
+            },
+            {
+              "mode": 31,
+              "radius": 11710,
+              "width": 330,
+              "height": 266,
+              "count": 4,
+              "ms": 0.458752
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 55,
+              "height": 123,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 0.45875199999999994
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 14,
+              "height": 22,
+              "count": 4,
+              "ms": 0.393216
+            },
+            {
+              "mode": 2,
+              "radius": 0,
+              "width": 55,
+              "height": 123,
+              "paint": 0,
+              "count": 4,
+              "ms": 0.393216
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 256,
+              "height": 192,
+              "count": 1,
+              "ms": 0.393216
+            },
+            {
+              "mode": 31,
+              "radius": 11726,
+              "width": 10,
+              "height": 15,
+              "count": 4,
+              "ms": 0.39321599999999995
+            },
+            {
+              "mode": 31,
+              "radius": 8702,
+              "width": 74,
+              "height": 20,
+              "count": 4,
+              "ms": 0.32767999999999997
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 80,
+              "height": 26,
+              "count": 4,
+              "ms": 0.32767999999999997
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 85,
+              "height": 31,
+              "count": 4,
+              "ms": 0.32767999999999997
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 244,
+              "height": 133,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 0.32767999999999997
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 22,
+              "height": 22,
+              "count": 4,
+              "ms": 0.32767999999999997
+            },
+            {
+              "mode": 31,
+              "radius": 5726,
+              "width": 121,
+              "height": 41,
+              "count": 4,
+              "ms": 0.262144
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 129,
+              "height": 49,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 0.262144
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 82,
+              "height": 28,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 0.262144
+            },
+            {
+              "mode": 31,
+              "radius": 12784,
+              "width": 54,
+              "height": 121,
+              "count": 4,
+              "ms": 0.262144
+            },
+            {
+              "mode": 29,
+              "radius": 0,
+              "width": 59,
+              "height": 131,
+              "count": 4,
+              "ms": 0.262144
+            },
+            {
+              "mode": 31,
+              "radius": 13020,
+              "width": 15,
+              "height": 15,
+              "count": 4,
+              "ms": 0.262144
+            },
+            {
+              "mode": 31,
+              "radius": 12374,
+              "width": 10,
+              "height": 15,
+              "count": 4,
+              "ms": 0.196608
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 127,
+              "height": 47,
+              "count": 4,
+              "ms": 0.196608
+            },
+            {
+              "mode": 31,
+              "radius": 12579,
+              "width": 15,
+              "height": 15,
+              "count": 4,
+              "ms": 0.196608
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 22,
+              "height": 21,
+              "count": 4,
+              "ms": 0.196608
+            },
+            {
+              "mode": 31,
+              "radius": 13232,
+              "width": 8,
+              "height": 41,
+              "count": 4,
+              "ms": 0.196608
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 11,
+              "height": 47,
+              "count": 4,
+              "ms": 0.196608
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 12,
+              "height": 49,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 0.196608
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 61,
+              "height": 136,
+              "count": 4,
+              "ms": 0.196608
+            },
+            {
+              "mode": 31,
+              "radius": 1240,
+              "width": 15,
+              "height": 15,
+              "count": 4,
+              "ms": 0.131072
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 21,
+              "height": 21,
+              "count": 4,
+              "ms": 0.131072
+            },
+            {
+              "mode": 31,
+              "radius": 12791,
+              "width": 15,
+              "height": 15,
+              "count": 4,
+              "ms": 0.131072
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 21,
+              "height": 22,
+              "count": 4,
+              "ms": 0.131072
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 13,
+              "height": 52,
+              "count": 4,
+              "ms": 0.131072
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 60,
+              "height": 133,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 0.131072
+            },
+            {
+              "mode": 12,
+              "radius": 0,
+              "width": 330,
+              "height": 266,
+              "count": 1,
+              "ms": 0.065536
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 132,
+              "height": 52,
+              "count": 4,
+              "ms": 0.065536
+            },
+            {
+              "mode": 12,
+              "radius": 0,
+              "width": 1,
+              "height": 1,
+              "count": 1,
+              "ms": 0
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 14,
+              "height": 21,
+              "count": 4,
+              "ms": 0
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 246,
+              "height": 136,
+              "count": 4,
+              "ms": 0
+            }
+          ]
+        }
+      ],
+      "difference": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      },
+      "exactOutput": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      }
+    },
+    {
+      "name": "117-zoom400",
+      "options": {
+        "pageId": "04FFEF29-E913-4B13-834C-D8576EC06381",
+        "width": 256,
+        "height": 192,
+        "view": {
+          "x": -760.125,
+          "y": -1831.625,
+          "zoom": 4
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": true
+      },
+      "packetNodes": 18,
+      "integratedBlur": true,
+      "runs": [
+        [
+          {
+            "wallMs": 108.60000002384186,
+            "graphMs": 8.199999928474426,
+            "finishMs": 96.5,
+            "draws": 193,
+            "pixels": 13506103,
+            "peakBytes": 64272416,
+            "canvasTentPasses": 0,
+            "gpuPassTimings": [
+              {
+                "mode": 22,
+                "radius": 38,
+                "width": 552,
+                "height": 488,
+                "count": 16,
+                "ms": 795.344896
+              },
+              {
+                "mode": 29,
+                "radius": 0,
+                "width": 552,
+                "height": 488,
+                "count": 5,
+                "ms": 158.33497599999998
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 552,
+                "height": 395,
+                "count": 4,
+                "ms": 150.86387200000001
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 84,
+                "height": 83,
+                "count": 4,
+                "ms": 144.63795199999998
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 83,
+                "height": 82,
+                "count": 4,
+                "ms": 140.967936
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 34,
+                "height": 84,
+                "count": 4,
+                "ms": 131.792896
+              },
+              {
+                "mode": 22,
+                "radius": 37,
+                "width": 552,
+                "height": 488,
+                "count": 8,
+                "ms": 128.253952
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 33,
+                "height": 83,
+                "count": 4,
+                "ms": 122.159104
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 84,
+                "height": 84,
+                "count": 4,
+                "ms": 111.869952
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 83,
+                "height": 83,
+                "count": 4,
+                "ms": 95.0272
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 429,
+                "height": 263,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 8,
+                "ms": 91.029504
+              },
+              {
+                "mode": 22,
+                "radius": 73.57593536376953,
+                "width": 273,
+                "height": 109,
+                "count": 8,
+                "ms": 59.63776
+              },
+              {
+                "mode": 25,
+                "radius": 0,
+                "width": 552,
+                "height": 488,
+                "count": 4,
+                "ms": 46.071808000000004
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 182,
+                "height": 142,
+                "count": 4,
+                "ms": 46.006272
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 274,
+                "height": 111,
+                "count": 4,
+                "ms": 45.613056
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 274,
+                "height": 110,
+                "count": 4,
+                "ms": 44.695552000000006
+              },
+              {
+                "mode": 50,
+                "radius": 1,
+                "width": 182,
+                "height": 142,
+                "count": 4,
+                "ms": 42.467327999999995
+              },
+              {
+                "mode": 2,
+                "radius": 0,
+                "width": 429,
+                "height": 263,
+                "paint": 1,
+                "count": 4,
+                "ms": 34.865151999999995
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 121,
+                "height": 89,
+                "count": 4,
+                "ms": 28.049408
+              },
+              {
+                "mode": 22,
+                "radius": 60,
+                "width": 182,
+                "height": 142,
+                "count": 2,
+                "ms": 24.641536000000002
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 184,
+                "height": 145,
+                "count": 4,
+                "ms": 12.910591999999998
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 183,
+                "height": 143,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 12.845056
+              },
+              {
+                "mode": 1,
+                "radius": 0,
+                "width": 38,
+                "height": 53,
+                "count": 4,
+                "ms": 12.517376
+              },
+              {
+                "mode": 2,
+                "radius": 0,
+                "width": 38,
+                "height": 53,
+                "paint": 0,
+                "count": 4,
+                "ms": 12.255232000000001
+              },
+              {
+                "mode": 27,
+                "radius": 0,
+                "width": 429,
+                "height": 263,
+                "count": 1,
+                "ms": 12.255232
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 38,
+                "height": 53,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 12.255232
+              },
+              {
+                "mode": 49,
+                "radius": 0,
+                "width": 182,
+                "height": 142,
+                "count": 1,
+                "ms": 11.862016
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 552,
+                "height": 488,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 9,
+                "ms": 11.534336
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 123,
+                "height": 94,
+                "count": 4,
+                "ms": 9.699328000000001
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 122,
+                "height": 91,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 9.699328000000001
+              },
+              {
+                "mode": 2,
+                "radius": 0,
+                "width": 552,
+                "height": 488,
+                "paint": 3,
+                "count": 4,
+                "ms": 8.257536
+              },
+              {
+                "mode": 23,
+                "radius": 0,
+                "width": 552,
+                "height": 488,
+                "count": 2,
+                "ms": 5.046272
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 41,
+                "height": 58,
+                "count": 4,
+                "ms": 4.063232
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 552,
+                "height": 134,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 3.9976960000000004
+              },
+              {
+                "mode": 29,
+                "radius": 0,
+                "width": 552,
+                "height": 144,
+                "count": 4,
+                "ms": 3.9976960000000004
+              },
+              {
+                "mode": 2,
+                "radius": 0,
+                "width": 552,
+                "height": 134,
+                "paint": 0,
+                "count": 4,
+                "ms": 3.8666240000000003
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 39,
+                "height": 55,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 3.735552
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 332,
+                "height": 31,
+                "count": 4,
+                "ms": 3.4078720000000002
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 334,
+                "height": 33,
+                "count": 4,
+                "ms": 2.883584
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 333,
+                "height": 32,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 2.2937600000000002
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 552,
+                "height": 145,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 2.162688
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 552,
+                "height": 146,
+                "count": 4,
+                "ms": 2.097152
+              },
+              {
+                "mode": 26,
+                "radius": 0,
+                "width": 273,
+                "height": 109,
+                "count": 1,
+                "ms": 1.6384
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 256,
+                "height": 192,
+                "count": 1,
+                "ms": 1.31072
+              },
+              {
+                "mode": 12,
+                "radius": 0,
+                "width": 1,
+                "height": 1,
+                "count": 1,
+                "ms": 0.065536
+              },
+              {
+                "mode": 12,
+                "radius": 0,
+                "width": 552,
+                "height": 488,
+                "count": 1,
+                "ms": 0.065536
+              }
+            ]
+          }
+        ],
+        [
+          {
+            "wallMs": 109.10000002384186,
+            "graphMs": 8.299999952316284,
+            "finishMs": 96.79999995231628,
+            "draws": 193,
+            "pixels": 13506103,
+            "peakBytes": 64272416,
+            "canvasTentPasses": 8,
+            "gpuPassTimings": [
+              {
+                "mode": 22,
+                "radius": 38,
+                "width": 552,
+                "height": 488,
+                "count": 16,
+                "ms": 440.664064
+              },
+              {
+                "mode": 22,
+                "radius": 37,
+                "width": 552,
+                "height": 488,
+                "count": 8,
+                "ms": 121.96249599999999
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 182,
+                "height": 142,
+                "count": 4,
+                "ms": 83.296256
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 429,
+                "height": 263,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 8,
+                "ms": 78.249984
+              },
+              {
+                "mode": 29,
+                "radius": 0,
+                "width": 552,
+                "height": 488,
+                "count": 5,
+                "ms": 62.128128
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 552,
+                "height": 395,
+                "count": 4,
+                "ms": 59.441152
+              },
+              {
+                "mode": 2,
+                "radius": 0,
+                "width": 429,
+                "height": 263,
+                "paint": 1,
+                "count": 4,
+                "ms": 55.705600000000004
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 84,
+                "height": 83,
+                "count": 4,
+                "ms": 55.7056
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 83,
+                "height": 82,
+                "count": 4,
+                "ms": 52.559872
+              },
+              {
+                "mode": 22,
+                "radius": 73.57593536376953,
+                "width": 273,
+                "height": 109,
+                "count": 8,
+                "ms": 50.200576
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 34,
+                "height": 84,
+                "count": 4,
+                "ms": 48.82432
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 33,
+                "height": 83,
+                "count": 4,
+                "ms": 45.28537600000001
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 274,
+                "height": 111,
+                "count": 4,
+                "ms": 39.387136
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 274,
+                "height": 110,
+                "count": 4,
+                "ms": 38.66624
+              },
+              {
+                "mode": 25,
+                "radius": 0,
+                "width": 552,
+                "height": 488,
+                "count": 4,
+                "ms": 37.289984
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 84,
+                "height": 84,
+                "count": 4,
+                "ms": 35.127296
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 83,
+                "height": 83,
+                "count": 4,
+                "ms": 33.09568
+              },
+              {
+                "mode": 22,
+                "radius": 60,
+                "width": 182,
+                "height": 142,
+                "count": 2,
+                "ms": 15.138816
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 184,
+                "height": 145,
+                "count": 4,
+                "ms": 13.76256
+              },
+              {
+                "mode": 49,
+                "radius": 0,
+                "width": 182,
+                "height": 142,
+                "count": 1,
+                "ms": 12.713984
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 183,
+                "height": 143,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 12.189696000000001
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 552,
+                "height": 488,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 9,
+                "ms": 10.747904
+              },
+              {
+                "mode": 27,
+                "radius": 0,
+                "width": 429,
+                "height": 263,
+                "count": 1,
+                "ms": 9.895936
+              },
+              {
+                "mode": 50,
+                "radius": 1,
+                "width": 182,
+                "height": 142,
+                "count": 4,
+                "ms": 9.895936
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 121,
+                "height": 89,
+                "count": 4,
+                "ms": 8.84736
+              },
+              {
+                "mode": 2,
+                "radius": 0,
+                "width": 552,
+                "height": 488,
+                "paint": 3,
+                "count": 4,
+                "ms": 8.781824
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 123,
+                "height": 94,
+                "count": 4,
+                "ms": 7.995392000000001
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 122,
+                "height": 91,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 7.471104
+              },
+              {
+                "mode": 23,
+                "radius": 0,
+                "width": 552,
+                "height": 488,
+                "count": 2,
+                "ms": 4.980736
+              },
+              {
+                "mode": 2,
+                "radius": 0,
+                "width": 38,
+                "height": 53,
+                "paint": 0,
+                "count": 4,
+                "ms": 4.128768000000001
+              },
+              {
+                "mode": 1,
+                "radius": 0,
+                "width": 38,
+                "height": 53,
+                "count": 4,
+                "ms": 4.063232
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 38,
+                "height": 53,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 3.2112640000000003
+              },
+              {
+                "mode": 2,
+                "radius": 0,
+                "width": 552,
+                "height": 134,
+                "paint": 0,
+                "count": 4,
+                "ms": 2.883584
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 552,
+                "height": 134,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 2.62144
+              },
+              {
+                "mode": 26,
+                "radius": 0,
+                "width": 273,
+                "height": 109,
+                "count": 1,
+                "ms": 2.424832
+              },
+              {
+                "mode": 29,
+                "radius": 0,
+                "width": 552,
+                "height": 144,
+                "count": 4,
+                "ms": 2.359296
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 39,
+                "height": 55,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 1.7039360000000001
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 41,
+                "height": 58,
+                "count": 4,
+                "ms": 1.6383999999999999
+              },
+              {
+                "mode": 47,
+                "radius": 0,
+                "width": 332,
+                "height": 31,
+                "count": 4,
+                "ms": 1.441792
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 552,
+                "height": 145,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 1.3762560000000001
+              },
+              {
+                "mode": 3,
+                "radius": 0,
+                "width": 333,
+                "height": 32,
+                "blend": 0,
+                "integerCentres": true,
+                "count": 4,
+                "ms": 1.31072
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 552,
+                "height": 146,
+                "count": 4,
+                "ms": 1.3107199999999999
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 334,
+                "height": 33,
+                "count": 4,
+                "ms": 1.179648
+              },
+              {
+                "mode": 0,
+                "radius": 0,
+                "width": 256,
+                "height": 192,
+                "count": 1,
+                "ms": 1.048576
+              },
+              {
+                "mode": 12,
+                "radius": 0,
+                "width": 552,
+                "height": 488,
+                "count": 1,
+                "ms": 0.131072
+              },
+              {
+                "mode": 12,
+                "radius": 0,
+                "width": 1,
+                "height": 1,
+                "count": 1,
+                "ms": 0
+              }
+            ]
+          }
+        ]
+      ],
+      "cold": [
+        {
+          "wallMs": 262.2000000476837,
+          "graphMs": 119.69999992847443,
+          "finishMs": 138.20000004768372,
+          "draws": 245,
+          "pixels": 13506103,
+          "peakBytes": 64272416,
+          "canvasTentPasses": 0,
+          "gpuPassTimings": [
+            {
+              "mode": 22,
+              "radius": 38,
+              "width": 552,
+              "height": 488,
+              "count": 16,
+              "ms": 674.824192
+            },
+            {
+              "mode": 22,
+              "radius": 37,
+              "width": 552,
+              "height": 488,
+              "count": 8,
+              "ms": 237.305856
+            },
+            {
+              "mode": 29,
+              "radius": 0,
+              "width": 552,
+              "height": 488,
+              "count": 5,
+              "ms": 145.16224
+            },
+            {
+              "mode": 31,
+              "radius": 15296,
+              "width": 83,
+              "height": 82,
+              "count": 4,
+              "ms": 135.069696
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 83,
+              "height": 82,
+              "count": 4,
+              "ms": 118.03033599999999
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 34,
+              "height": 84,
+              "count": 4,
+              "ms": 112.787456
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 33,
+              "height": 83,
+              "count": 4,
+              "ms": 103.088128
+            },
+            {
+              "mode": 31,
+              "radius": 17360,
+              "width": 83,
+              "height": 83,
+              "count": 4,
+              "ms": 97.71417599999998
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 84,
+              "height": 84,
+              "count": 4,
+              "ms": 92.53683199999999
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 83,
+              "height": 83,
+              "count": 4,
+              "ms": 89.98092799999999
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 552,
+              "height": 395,
+              "count": 4,
+              "ms": 81.657856
+            },
+            {
+              "mode": 22,
+              "radius": 73.57593536376953,
+              "width": 273,
+              "height": 109,
+              "count": 8,
+              "ms": 70.4512
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 84,
+              "height": 83,
+              "count": 4,
+              "ms": 69.73030399999999
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 429,
+              "height": 263,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 8,
+              "ms": 65.273856
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 274,
+              "height": 111,
+              "count": 4,
+              "ms": 38.207488000000005
+            },
+            {
+              "mode": 25,
+              "radius": 0,
+              "width": 552,
+              "height": 488,
+              "count": 4,
+              "ms": 27.328511999999996
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 274,
+              "height": 110,
+              "count": 4,
+              "ms": 26.148864000000003
+            },
+            {
+              "mode": 31,
+              "radius": 0,
+              "width": 274,
+              "height": 110,
+              "count": 4,
+              "ms": 25.88672
+            },
+            {
+              "mode": 31,
+              "radius": 13051,
+              "width": 33,
+              "height": 83,
+              "count": 4,
+              "ms": 19.988480000000003
+            },
+            {
+              "mode": 31,
+              "radius": 14871,
+              "width": 33,
+              "height": 82,
+              "count": 4,
+              "ms": 17.170431999999998
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 552,
+              "height": 488,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 9,
+              "ms": 16.973823999999997
+            },
+            {
+              "mode": 2,
+              "radius": 0,
+              "width": 552,
+              "height": 488,
+              "paint": 3,
+              "count": 4,
+              "ms": 15.269888
+            },
+            {
+              "mode": 2,
+              "radius": 0,
+              "width": 429,
+              "height": 263,
+              "paint": 1,
+              "count": 4,
+              "ms": 13.697023999999999
+            },
+            {
+              "mode": 27,
+              "radius": 0,
+              "width": 429,
+              "height": 263,
+              "count": 1,
+              "ms": 13.303808
+            },
+            {
+              "mode": 23,
+              "radius": 0,
+              "width": 552,
+              "height": 488,
+              "count": 2,
+              "ms": 7.4711039999999995
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 183,
+              "height": 143,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 6.291456
+            },
+            {
+              "mode": 50,
+              "radius": 1,
+              "width": 182,
+              "height": 142,
+              "count": 4,
+              "ms": 5.439488000000001
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 122,
+              "height": 91,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 5.373952
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 123,
+              "height": 94,
+              "count": 4,
+              "ms": 5.308416
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 184,
+              "height": 145,
+              "count": 4,
+              "ms": 4.653056
+            },
+            {
+              "mode": 2,
+              "radius": 0,
+              "width": 552,
+              "height": 134,
+              "paint": 0,
+              "count": 4,
+              "ms": 4.063232
+            },
+            {
+              "mode": 31,
+              "radius": 18647,
+              "width": 552,
+              "height": 133,
+              "count": 4,
+              "ms": 3.9976960000000004
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 552,
+              "height": 134,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 3.801088
+            },
+            {
+              "mode": 29,
+              "radius": 0,
+              "width": 552,
+              "height": 144,
+              "count": 4,
+              "ms": 3.801088
+            },
+            {
+              "mode": 1,
+              "radius": 0,
+              "width": 38,
+              "height": 53,
+              "count": 4,
+              "ms": 3.538944
+            },
+            {
+              "mode": 2,
+              "radius": 0,
+              "width": 38,
+              "height": 53,
+              "paint": 0,
+              "count": 4,
+              "ms": 3.538944
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 38,
+              "height": 53,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 3.3423359999999995
+            },
+            {
+              "mode": 26,
+              "radius": 0,
+              "width": 273,
+              "height": 109,
+              "count": 1,
+              "ms": 3.2768
+            },
+            {
+              "mode": 31,
+              "radius": 13480,
+              "width": 120,
+              "height": 87,
+              "count": 4,
+              "ms": 3.2112640000000003
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 41,
+              "height": 58,
+              "count": 4,
+              "ms": 3.145728
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 182,
+              "height": 142,
+              "count": 4,
+              "ms": 3.0801920000000003
+            },
+            {
+              "mode": 31,
+              "radius": 18654,
+              "width": 59,
+              "height": 19,
+              "count": 4,
+              "ms": 2.94912
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 121,
+              "height": 89,
+              "count": 4,
+              "ms": 2.9491199999999997
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 39,
+              "height": 55,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 2.818048
+            },
+            {
+              "mode": 31,
+              "radius": 3568,
+              "width": 552,
+              "height": 488,
+              "count": 4,
+              "ms": 2.490368
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 552,
+              "height": 145,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 2.359296
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 333,
+              "height": 32,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 2.1626879999999997
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 334,
+              "height": 33,
+              "count": 4,
+              "ms": 2.097152
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 552,
+              "height": 146,
+              "count": 4,
+              "ms": 2.097152
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 332,
+              "height": 31,
+              "count": 4,
+              "ms": 1.507328
+            },
+            {
+              "mode": 22,
+              "radius": 60,
+              "width": 182,
+              "height": 142,
+              "count": 2,
+              "ms": 1.441792
+            },
+            {
+              "mode": 31,
+              "radius": 14855,
+              "width": 552,
+              "height": 488,
+              "count": 4,
+              "ms": 1.31072
+            },
+            {
+              "mode": 49,
+              "radius": 0,
+              "width": 182,
+              "height": 142,
+              "count": 1,
+              "ms": 1.31072
+            },
+            {
+              "mode": 31,
+              "radius": 1740,
+              "width": 280,
+              "height": 114,
+              "count": 4,
+              "ms": 1.3107199999999999
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 256,
+              "height": 192,
+              "count": 1,
+              "ms": 0.98304
+            },
+            {
+              "mode": 31,
+              "radius": 11378,
+              "width": 329,
+              "height": 28,
+              "count": 4,
+              "ms": 0.458752
+            },
+            {
+              "mode": 31,
+              "radius": 16579,
+              "width": 37,
+              "height": 51,
+              "count": 4,
+              "ms": 0.262144
+            },
+            {
+              "mode": 12,
+              "radius": 0,
+              "width": 1,
+              "height": 1,
+              "count": 1,
+              "ms": 0.065536
+            },
+            {
+              "mode": 12,
+              "radius": 0,
+              "width": 552,
+              "height": 488,
+              "count": 1,
+              "ms": 0.065536
+            }
+          ]
+        },
+        {
+          "wallMs": 143.39999997615814,
+          "graphMs": 38.5,
+          "finishMs": 100.70000004768372,
+          "draws": 245,
+          "pixels": 13506103,
+          "peakBytes": 64272416,
+          "canvasTentPasses": 8,
+          "gpuPassTimings": [
+            {
+              "mode": 22,
+              "radius": 38,
+              "width": 552,
+              "height": 488,
+              "count": 16,
+              "ms": 412.54912
+            },
+            {
+              "mode": 22,
+              "radius": 37,
+              "width": 552,
+              "height": 488,
+              "count": 8,
+              "ms": 108.33100800000001
+            },
+            {
+              "mode": 22,
+              "radius": 73.57593536376953,
+              "width": 273,
+              "height": 109,
+              "count": 8,
+              "ms": 35.651584
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 429,
+              "height": 263,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 8,
+              "ms": 26.935296000000005
+            },
+            {
+              "mode": 29,
+              "radius": 0,
+              "width": 552,
+              "height": 488,
+              "count": 5,
+              "ms": 26.411008
+            },
+            {
+              "mode": 31,
+              "radius": 14871,
+              "width": 33,
+              "height": 82,
+              "count": 4,
+              "ms": 23.003136
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 552,
+              "height": 395,
+              "count": 4,
+              "ms": 18.0224
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 84,
+              "height": 83,
+              "count": 4,
+              "ms": 15.597568
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 274,
+              "height": 111,
+              "count": 4,
+              "ms": 14.614527999999998
+            },
+            {
+              "mode": 31,
+              "radius": 1740,
+              "width": 280,
+              "height": 114,
+              "count": 4,
+              "ms": 13.500416
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 274,
+              "height": 110,
+              "count": 4,
+              "ms": 13.369344
+            },
+            {
+              "mode": 2,
+              "radius": 0,
+              "width": 429,
+              "height": 263,
+              "paint": 1,
+              "count": 4,
+              "ms": 12.058623999999998
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 83,
+              "height": 82,
+              "count": 4,
+              "ms": 11.665408
+            },
+            {
+              "mode": 31,
+              "radius": 13051,
+              "width": 33,
+              "height": 83,
+              "count": 4,
+              "ms": 9.764864
+            },
+            {
+              "mode": 25,
+              "radius": 0,
+              "width": 552,
+              "height": 488,
+              "count": 4,
+              "ms": 9.764864
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 183,
+              "height": 143,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 8.978432
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 552,
+              "height": 488,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 9,
+              "ms": 8.454144
+            },
+            {
+              "mode": 50,
+              "radius": 1,
+              "width": 182,
+              "height": 142,
+              "count": 4,
+              "ms": 8.388608
+            },
+            {
+              "mode": 31,
+              "radius": 17360,
+              "width": 83,
+              "height": 83,
+              "count": 4,
+              "ms": 8.192
+            },
+            {
+              "mode": 27,
+              "radius": 0,
+              "width": 429,
+              "height": 263,
+              "count": 1,
+              "ms": 7.53664
+            },
+            {
+              "mode": 2,
+              "radius": 0,
+              "width": 552,
+              "height": 488,
+              "paint": 3,
+              "count": 4,
+              "ms": 6.88128
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 184,
+              "height": 145,
+              "count": 4,
+              "ms": 6.4880640000000005
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 34,
+              "height": 84,
+              "count": 4,
+              "ms": 6.291456
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 123,
+              "height": 94,
+              "count": 4,
+              "ms": 6.094848000000001
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 122,
+              "height": 91,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 4.718591999999999
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 121,
+              "height": 89,
+              "count": 4,
+              "ms": 4.521984
+            },
+            {
+              "mode": 31,
+              "radius": 13480,
+              "width": 120,
+              "height": 87,
+              "count": 4,
+              "ms": 4.456448
+            },
+            {
+              "mode": 31,
+              "radius": 15296,
+              "width": 83,
+              "height": 82,
+              "count": 4,
+              "ms": 4.325376
+            },
+            {
+              "mode": 23,
+              "radius": 0,
+              "width": 552,
+              "height": 488,
+              "count": 2,
+              "ms": 3.538944
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 182,
+              "height": 142,
+              "count": 4,
+              "ms": 3.2767999999999997
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 33,
+              "height": 83,
+              "count": 4,
+              "ms": 3.211264
+            },
+            {
+              "mode": 22,
+              "radius": 60,
+              "width": 182,
+              "height": 142,
+              "count": 2,
+              "ms": 3.0801920000000003
+            },
+            {
+              "mode": 31,
+              "radius": 18654,
+              "width": 59,
+              "height": 19,
+              "count": 4,
+              "ms": 2.9491199999999997
+            },
+            {
+              "mode": 31,
+              "radius": 16579,
+              "width": 37,
+              "height": 51,
+              "count": 4,
+              "ms": 1.7694720000000002
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 38,
+              "height": 53,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 1.769472
+            },
+            {
+              "mode": 2,
+              "radius": 0,
+              "width": 38,
+              "height": 53,
+              "paint": 0,
+              "count": 4,
+              "ms": 1.7039360000000001
+            },
+            {
+              "mode": 31,
+              "radius": 11378,
+              "width": 329,
+              "height": 28,
+              "count": 4,
+              "ms": 1.7039360000000001
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 332,
+              "height": 31,
+              "count": 4,
+              "ms": 1.703936
+            },
+            {
+              "mode": 1,
+              "radius": 0,
+              "width": 38,
+              "height": 53,
+              "count": 4,
+              "ms": 1.6384000000000003
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 334,
+              "height": 33,
+              "count": 4,
+              "ms": 1.6384
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 552,
+              "height": 145,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 1.6384
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 333,
+              "height": 32,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 1.5728640000000003
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 552,
+              "height": 146,
+              "count": 4,
+              "ms": 1.5728640000000003
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 39,
+              "height": 55,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 1.572864
+            },
+            {
+              "mode": 26,
+              "radius": 0,
+              "width": 273,
+              "height": 109,
+              "count": 1,
+              "ms": 1.507328
+            },
+            {
+              "mode": 31,
+              "radius": 0,
+              "width": 274,
+              "height": 110,
+              "count": 4,
+              "ms": 1.507328
+            },
+            {
+              "mode": 29,
+              "radius": 0,
+              "width": 552,
+              "height": 144,
+              "count": 4,
+              "ms": 1.3762560000000001
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 84,
+              "height": 84,
+              "count": 4,
+              "ms": 1.376256
+            },
+            {
+              "mode": 49,
+              "radius": 0,
+              "width": 182,
+              "height": 142,
+              "count": 1,
+              "ms": 1.376256
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 256,
+              "height": 192,
+              "count": 1,
+              "ms": 1.31072
+            },
+            {
+              "mode": 0,
+              "radius": 0,
+              "width": 41,
+              "height": 58,
+              "count": 4,
+              "ms": 1.245184
+            },
+            {
+              "mode": 2,
+              "radius": 0,
+              "width": 552,
+              "height": 134,
+              "paint": 0,
+              "count": 4,
+              "ms": 1.179648
+            },
+            {
+              "mode": 3,
+              "radius": 0,
+              "width": 552,
+              "height": 134,
+              "blend": 0,
+              "integerCentres": true,
+              "count": 4,
+              "ms": 1.048576
+            },
+            {
+              "mode": 31,
+              "radius": 3568,
+              "width": 552,
+              "height": 488,
+              "count": 4,
+              "ms": 0.98304
+            },
+            {
+              "mode": 47,
+              "radius": 0,
+              "width": 83,
+              "height": 83,
+              "count": 4,
+              "ms": 0.786432
+            },
+            {
+              "mode": 31,
+              "radius": 18647,
+              "width": 552,
+              "height": 133,
+              "count": 4,
+              "ms": 0.6553599999999999
+            },
+            {
+              "mode": 31,
+              "radius": 14855,
+              "width": 552,
+              "height": 488,
+              "count": 4,
+              "ms": 0.524288
+            },
+            {
+              "mode": 12,
+              "radius": 0,
+              "width": 552,
+              "height": 488,
+              "count": 1,
+              "ms": 0.065536
+            },
+            {
+              "mode": 12,
+              "radius": 0,
+              "width": 1,
+              "height": 1,
+              "count": 1,
+              "ms": 0
+            }
+          ]
+        }
+      ],
+      "difference": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      },
+      "exactOutput": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      }
+    }
+  ],
+  "timings": [
+    {
+      "name": "117-detail",
+      "controlMs": 60.10000002384186,
+      "candidateMs": 59.10000002384186,
+      "improvement": 0.016638935101552343,
+      "candidatePasses": 8
+    },
+    {
+      "name": "117-zoom400",
+      "controlMs": 108.60000002384186,
+      "candidateMs": 109.10000002384186,
+      "improvement": -0.004604051564366829,
+      "candidatePasses": 8
+    }
+  ],
+  "scope": "Actual 117/FIG packets, production display graph, same source toggle. Test-only final float readback; no input latency/FPS claim.",
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "fallback": false
+  },
+  "sources": [
+    {
+      "name": "fig",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "documentSha256": "ba96034cfb9bcb5dc8145e4637a91db8281a2c003219a8ddf0055d50dc6849f3",
+      "nodes": 19277,
+      "roots": [
+        {
+          "page": "322ab0bf-43bb-4f3d-91ab-a7e64eb5f2b9",
+          "id": "4e2679ed-9922-4460-890f-6855b284bcda",
+          "name": "21_404_Error",
+          "kind": "frame",
+          "width": 1440,
+          "height": 1030,
+          "transform": [
+            1,
+            0,
+            0,
+            1,
+            13937,
+            -271
+          ]
+        },
+        {
+          "page": "322ab0bf-43bb-4f3d-91ab-a7e64eb5f2b9",
+          "id": "9caf7d10-46a7-4002-9fc0-b86de2561a6f",
+          "name": "20_Sign_Up",
+          "kind": "frame",
+          "width": 1440,
+          "height": 1030,
+          "transform": [
+            1,
+            0,
+            0,
+            1,
+            12397,
+            860
+          ]
+        },
+        {
+          "page": "322ab0bf-43bb-4f3d-91ab-a7e64eb5f2b9",
+          "id": "c495f6a1-c6c7-4fd5-88c3-19611cf33a6d",
+          "name": "19_Sign_In",
+          "kind": "frame",
+          "width": 1440,
+          "height": 1030,
+          "transform": [
+            1,
+            0,
+            0,
+            1,
+            12397,
+            -271
+          ]
+        },
+        {
+          "page": "322ab0bf-43bb-4f3d-91ab-a7e64eb5f2b9",
+          "id": "dcd0c8c1-f146-4d44-94d4-60fe139e9adb",
+          "name": "18_File_Manager_Upload_File",
+          "kind": "frame",
+          "width": 1440,
+          "height": 1030,
+          "transform": [
+            1,
+            0,
+            0,
+            1,
+            10857,
+            2059
+          ]
+        },
+        {
+          "page": "322ab0bf-43bb-4f3d-91ab-a7e64eb5f2b9",
+          "id": "1e9d5817-7872-4503-8ff6-84a2cebda3bd",
+          "name": "16_File_Manager_Card",
+          "kind": "frame",
+          "width": 1440,
+          "height": 1030,
+          "transform": [
+            1,
+            0,
+            0,
+            1,
+            10857,
+            860
+          ]
+        }
+      ]
+    },
+    {
+      "name": "117",
+      "sourceSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "documentSha256": "4cdb2ba3c16c1e7a18a617f93ac2daaf2b8b22c3b6df0522a4ae187d29adf426",
+      "nodes": 752,
+      "roots": [
+        {
+          "page": "04FFEF29-E913-4B13-834C-D8576EC06381",
+          "id": "ED0CF14B-2E8E-4BE7-97C8-0C061012FEE3",
+          "name": "117",
+          "kind": "frame",
+          "width": 1922,
+          "height": 1080,
+          "transform": [
+            1,
+            0,
+            0,
+            1,
+            -410,
+            358
+          ]
+        }
+      ]
+    }
+  ],
+  "current": "117-zoom400"
+}

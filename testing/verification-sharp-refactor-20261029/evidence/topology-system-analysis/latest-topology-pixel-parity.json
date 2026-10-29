@@ -1,0 +1,41 @@
+{
+  "old": "b87303b11f5a922939d823ebfb5ce060090de0333ee227817c8a0c3170a3764a",
+  "next": "f87d1f0e2eb63da49e30a45f3011c035b1fd825d0e0770a2113913f635c6a9f5",
+  "cases": [
+    {
+      "id": "cold-local-400",
+      "equal": true,
+      "transparent": 0
+    },
+    {
+      "id": "steady-100",
+      "equal": true,
+      "transparent": 0
+    },
+    {
+      "id": "fractional-125",
+      "equal": true,
+      "transparent": 0
+    },
+    {
+      "id": "fresh-target-reference",
+      "equal": true,
+      "transparent": 0
+    },
+    {
+      "id": "motion-fresh-target",
+      "equal": true,
+      "transparent": 0
+    },
+    {
+      "id": "motion-return",
+      "equal": true,
+      "transparent": 0
+    },
+    {
+      "id": "pan-return",
+      "equal": true,
+      "transparent": 0
+    }
+  ]
+}

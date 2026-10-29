@@ -1,0 +1,581 @@
+{
+  "status": "failed",
+  "scope": "Full 306-root topology source snapshot, actual native viewport packets, hardware display graph. CPU source/load/compile recorded separately; not physical input-to-screen latency.",
+  "cases": [
+    {
+      "name": "主框架03",
+      "options": {
+        "pageId": "00000000-0000-4000-8000-000000000001",
+        "width": 256,
+        "height": 192,
+        "view": {
+          "x": -1552.633544921875,
+          "y": -25732.085594177246,
+          "zoom": 4
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": false,
+        "grid": false,
+        "gpuPageBackground": true
+      },
+      "nodes": 37,
+      "runs": [
+        [
+          {
+            "wallMs": 108.19999992847443,
+            "graphMs": 71,
+            "finishMs": 36.89999997615814,
+            "draws": 443,
+            "pixels": 17393504,
+            "peakBytes": 150380960,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 133.60000002384186,
+            "graphMs": 76.20000004768372,
+            "finishMs": 57.10000002384186,
+            "draws": 443,
+            "pixels": 17393504,
+            "peakBytes": 150380960,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 126.60000002384186,
+            "graphMs": 70.5,
+            "finishMs": 55.89999997615814,
+            "draws": 443,
+            "pixels": 17393504,
+            "peakBytes": 150380960,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          }
+        ],
+        [
+          {
+            "wallMs": 106.20000004768372,
+            "graphMs": 71.79999995231628,
+            "finishMs": 34.10000002384186,
+            "draws": 443,
+            "pixels": 17393504,
+            "peakBytes": 150380960,
+            "blur": 12,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 110,
+            "graphMs": 72.69999992847443,
+            "finishMs": 37,
+            "draws": 443,
+            "pixels": 17393504,
+            "peakBytes": 150380960,
+            "blur": 12,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 109.40000009536743,
+            "graphMs": 68.5,
+            "finishMs": 40.60000002384186,
+            "draws": 443,
+            "pixels": 17393504,
+            "peakBytes": 150380960,
+            "blur": 12,
+            "motion": 0,
+            "zoom": 0
+          }
+        ]
+      ],
+      "cold": [
+        {
+          "wallMs": 392.60000002384186,
+          "graphMs": 316.3000000715256,
+          "finishMs": 74.5,
+          "draws": 599,
+          "pixels": 17393504,
+          "peakBytes": 150380960,
+          "blur": 0,
+          "motion": 0,
+          "zoom": 0
+        },
+        {
+          "wallMs": 826,
+          "graphMs": 771.7000000476837,
+          "finishMs": 53.89999997615814,
+          "draws": 599,
+          "pixels": 17393504,
+          "peakBytes": 150380960,
+          "blur": 12,
+          "motion": 0,
+          "zoom": 0
+        }
+      ],
+      "difference": {
+        "changedBits": 3689,
+        "maxEncoded": 9.138952705711745e-8,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      },
+      "nonuniformChannels": 145626,
+      "exactOutput": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      },
+      "status": "passed"
+    },
+    {
+      "name": "拼搭样式二",
+      "options": {
+        "pageId": "00000000-0000-4000-8000-000000000001",
+        "width": 256,
+        "height": 192,
+        "view": {
+          "x": -21140.140625,
+          "y": -65220.36516682516,
+          "zoom": 4
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": false,
+        "grid": false,
+        "gpuPageBackground": true
+      },
+      "nodes": 28,
+      "runs": [
+        [
+          {
+            "wallMs": 591.8999999761581,
+            "graphMs": 581.5,
+            "finishMs": 10.200000047683716,
+            "draws": 546,
+            "pixels": 156691319,
+            "peakBytes": 829765680,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 633.3000000715256,
+            "graphMs": 622.8999999761581,
+            "finishMs": 10.300000071525574,
+            "draws": 546,
+            "pixels": 156691319,
+            "peakBytes": 829765680,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 578.3999999761581,
+            "graphMs": 568.0999999046326,
+            "finishMs": 10.100000023841858,
+            "draws": 546,
+            "pixels": 156691319,
+            "peakBytes": 829765680,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          }
+        ],
+        [
+          {
+            "wallMs": 517.8000000715256,
+            "graphMs": 508.10000002384186,
+            "finishMs": 9.5,
+            "draws": 546,
+            "pixels": 156691319,
+            "peakBytes": 829765680,
+            "blur": 32,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 516,
+            "graphMs": 505.2999999523163,
+            "finishMs": 10.5,
+            "draws": 546,
+            "pixels": 156691319,
+            "peakBytes": 829765680,
+            "blur": 32,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 494.10000002384186,
+            "graphMs": 484.7999999523163,
+            "finishMs": 9.100000023841858,
+            "draws": 546,
+            "pixels": 156691319,
+            "peakBytes": 829765680,
+            "blur": 32,
+            "motion": 0,
+            "zoom": 0
+          }
+        ]
+      ],
+      "cold": [
+        {
+          "wallMs": 5231,
+          "graphMs": 5219.700000047684,
+          "finishMs": 11.100000023841858,
+          "draws": 538,
+          "pixels": 156691319,
+          "peakBytes": 819540304,
+          "blur": 0,
+          "motion": 0,
+          "zoom": 0
+        },
+        {
+          "wallMs": 4817.200000047684,
+          "graphMs": 4806.100000023842,
+          "finishMs": 10.899999976158142,
+          "draws": 538,
+          "pixels": 156691319,
+          "peakBytes": 819540304,
+          "blur": 32,
+          "motion": 0,
+          "zoom": 0
+        }
+      ],
+      "difference": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      },
+      "nonuniformChannels": 0,
+      "status": "failed",
+      "error": "Error: Full source viewport does not exercise a visible edge"
+    },
+    {
+      "name": "模板二",
+      "options": {
+        "pageId": "00000000-0000-4000-8000-000000000001",
+        "width": 256,
+        "height": 192,
+        "view": {
+          "x": -45439.99987792969,
+          "y": -26364.166015625,
+          "zoom": 4
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": false,
+        "grid": false,
+        "gpuPageBackground": true
+      },
+      "nodes": 19,
+      "runs": [
+        [
+          {
+            "wallMs": 100.10000002384186,
+            "graphMs": 96.29999995231628,
+            "finishMs": 3.700000047683716,
+            "draws": 286,
+            "pixels": 32507061,
+            "peakBytes": 321236688,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 97.89999997615814,
+            "graphMs": 93.5,
+            "finishMs": 4.200000047683716,
+            "draws": 286,
+            "pixels": 32507061,
+            "peakBytes": 321236688,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 99,
+            "graphMs": 95.60000002384186,
+            "finishMs": 3.3000000715255737,
+            "draws": 286,
+            "pixels": 32507061,
+            "peakBytes": 321236688,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          }
+        ],
+        [
+          {
+            "wallMs": 74.39999997615814,
+            "graphMs": 71,
+            "finishMs": 3.200000047683716,
+            "draws": 286,
+            "pixels": 32507061,
+            "peakBytes": 321236688,
+            "blur": 6,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 71.80000007152557,
+            "graphMs": 67.60000002384186,
+            "finishMs": 4,
+            "draws": 286,
+            "pixels": 32507061,
+            "peakBytes": 321236688,
+            "blur": 6,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 70.09999990463257,
+            "graphMs": 66.39999997615814,
+            "finishMs": 3.4000000953674316,
+            "draws": 286,
+            "pixels": 32507061,
+            "peakBytes": 321236688,
+            "blur": 6,
+            "motion": 0,
+            "zoom": 0
+          }
+        ]
+      ],
+      "cold": [
+        {
+          "wallMs": 1564.3999999761581,
+          "graphMs": 1560.1000000238419,
+          "finishMs": 4.100000023841858,
+          "draws": 250,
+          "pixels": 32507061,
+          "peakBytes": 320572720,
+          "blur": 0,
+          "motion": 0,
+          "zoom": 0
+        },
+        {
+          "wallMs": 246.5,
+          "graphMs": 242,
+          "finishMs": 4.400000095367432,
+          "draws": 250,
+          "pixels": 32507061,
+          "peakBytes": 320572720,
+          "blur": 6,
+          "motion": 0,
+          "zoom": 0
+        }
+      ],
+      "difference": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      },
+      "nonuniformChannels": 93311,
+      "exactOutput": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      },
+      "status": "passed"
+    }
+  ],
+  "timings": [
+    {
+      "name": "主框架03",
+      "controlMs": 126.60000002384186,
+      "candidateMs": 109.40000009536743,
+      "improvement": 0.1358609788723163,
+      "counters": {
+        "wallMs": 106.20000004768372,
+        "graphMs": 71.79999995231628,
+        "finishMs": 34.10000002384186,
+        "draws": 443,
+        "pixels": 17393504,
+        "peakBytes": 150380960,
+        "blur": 12,
+        "motion": 0,
+        "zoom": 0
+      }
+    },
+    {
+      "name": "模板二",
+      "controlMs": 99,
+      "candidateMs": 71.80000007152557,
+      "improvement": 0.2747474740249942,
+      "counters": {
+        "wallMs": 74.39999997615814,
+        "graphMs": 71,
+        "finishMs": 3.200000047683716,
+        "draws": 286,
+        "pixels": 32507061,
+        "peakBytes": 321236688,
+        "blur": 6,
+        "motion": 0,
+        "zoom": 0
+      }
+    }
+  ],
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "fallback": false
+  },
+  "source": {
+    "source": "/Users/Apple/Downloads/拓扑素材.sketch",
+    "sourceHash": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+    "backendHash": "02308b5bec7db4c653ff04151b65fced81af587b12610ab13f39cf858962fc57",
+    "prepareHash": "3e6b38c51f07b613ffd4d82c9b6c328c7806e3601e2ea43b92257cfbd727b53f",
+    "stages": [
+      {
+        "stage": "source-open",
+        "ms": 18572.035667
+      },
+      {
+        "stage": "whole-source-snapshot",
+        "ms": 34823.593582999994,
+        "roots": 306,
+        "nodes": 124447,
+        "bytes": 593749757
+      },
+      {
+        "stage": "native-source-load",
+        "ms": 9313.877541999995
+      },
+      {
+        "stage": "focus-source-load",
+        "ms": 9719.174334000001
+      }
+    ],
+    "packets": [
+      {
+        "file": "packet-0.fgsc",
+        "hash": "191c7b68039f96b6d3798b439c6eb5a0f6206e684a053d92a2d169adaf12acb1",
+        "bytes": 1818461,
+        "compileMs": 6124.470540999999,
+        "root": {
+          "bytes": 2435245,
+          "id": "10c6999a-19ed-4836-be94-46a2609309d7",
+          "key": "1:46349",
+          "kind": "artboard",
+          "name": "主框架03",
+          "pageId": "b5e640b2-e777-404c-b121-8e866696d553",
+          "pageName": "浅色",
+          "placed": {
+            "height": 1084,
+            "width": 1920,
+            "x": 128,
+            "y": 6112
+          },
+          "source": {
+            "height": 1084,
+            "width": 1920,
+            "x": -338,
+            "y": -666
+          }
+        },
+        "options": {
+          "pageId": "00000000-0000-4000-8000-000000000001",
+          "width": 256,
+          "height": 192,
+          "view": {
+            "x": -1552.633544921875,
+            "y": -25732.085594177246,
+            "zoom": 4
+          },
+          "rasterProfile": "figmaSubpixel",
+          "transparent": false,
+          "grid": false,
+          "gpuPageBackground": true
+        }
+      },
+      {
+        "file": "packet-1.fgsc",
+        "hash": "7054f8d3da96cb37c3e9090012d7bed274511753ea5f963cc0a698d931dcf0e4",
+        "bytes": 16930741,
+        "compileMs": 133.80983399999968,
+        "root": {
+          "bytes": 1337665,
+          "id": "B4F79D9D-73A9-4CFA-A0C2-BA3610CC6105",
+          "key": "2:279",
+          "kind": "artboard",
+          "name": "拼搭样式二",
+          "pageId": "FD2E5BD9-6AE9-41F7-A2BB-F30E54459927",
+          "pageName": "深色",
+          "placed": {
+            "height": 2160,
+            "width": 3840,
+            "x": 4096,
+            "y": 15732
+          },
+          "source": {
+            "height": 2160,
+            "width": 3840,
+            "x": 6497,
+            "y": -1579
+          }
+        },
+        "options": {
+          "pageId": "00000000-0000-4000-8000-000000000001",
+          "width": 256,
+          "height": 192,
+          "view": {
+            "x": -21140.140625,
+            "y": -65220.36516682516,
+            "zoom": 4
+          },
+          "rasterProfile": "figmaSubpixel",
+          "transparent": false,
+          "grid": false,
+          "gpuPageBackground": true
+        }
+      },
+      {
+        "file": "packet-2.fgsc",
+        "hash": "efb3be74914f464a3d851d734db87d8eeca960dc994d31619777b29b60545200",
+        "bytes": 1289196,
+        "compileMs": 720.3912910000017,
+        "root": {
+          "bytes": 553855,
+          "id": "70806B41-C915-4EB2-954C-449E746E4426",
+          "key": "1:47101",
+          "kind": "group",
+          "name": "模板二",
+          "pageId": "b5e640b2-e777-404c-b121-8e866696d553",
+          "pageName": "浅色",
+          "placed": {
+            "height": 1080,
+            "width": 1920,
+            "x": 10432,
+            "y": 6112
+          },
+          "source": {
+            "height": 1080,
+            "width": 1920,
+            "x": 3492,
+            "y": 574
+          }
+        },
+        "options": {
+          "pageId": "00000000-0000-4000-8000-000000000001",
+          "width": 256,
+          "height": 192,
+          "view": {
+            "x": -45439.99987792969,
+            "y": -26364.166015625,
+            "zoom": 4
+          },
+          "rasterProfile": "figmaSubpixel",
+          "transparent": false,
+          "grid": false,
+          "gpuPageBackground": true
+        }
+      }
+    ],
+    "status": "passed",
+    "sourceUnchanged": true
+  },
+  "current": "模板二"
+}

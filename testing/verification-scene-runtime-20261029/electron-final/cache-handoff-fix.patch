@@ -1,0 +1,163 @@
+--- a/design-studio/crates/design-kernel/src/source_compile.rs
++++ b/design-studio/crates/design-kernel/src/source_compile.rs
+@@ -165,6 +165,7 @@
+ }
+ impl Runtime {
+     fn full(&mut self, owner: &mut Engine, request: &str, reason: &str) -> Result<Vec<u8>, String> {
++        owner.frame_scene.limit_retention(None);
+         if self.active {
+             owner.invalidate_frame_scene_request();
+             self.active = false;
+@@ -233,6 +234,9 @@
+             self.declined = None;
+             self.key = None;
+             owner.release_source_compile_caches();
++            // Reclaim the old optional transfer cache before reserving the
++            // shared geometry allowance. Do not reset scope/sequence/IDs.
++            owner.frame_scene.limit_retention(Some(0));
+             let catalog = match Catalog::from_engine(
+                 owner,
+                 descriptor,
+@@ -279,10 +283,22 @@
+         let Some(plan) = &mut self.plan else {
+             return self.full(owner, request, self.declined.unwrap_or("no-plan"));
+         };
++        let view = query.options.view;
++        let camera = Transform([view.zoom, 0., 0., view.zoom, view.x, view.y]);
++        let mut demand = plan.catalog.viewport_for_compile(
++            camera, query.prepare.expand(4), &AtomicBool::new(false),
++        )?;
++        let demand_stats=demand.stats();
++        // A complete demand stays on the old compiler without destroying its
++        // warm geometry on every tile. Only an actual subset needs the handoff.
++        if demand_stats.required_nodes==demand_stats.total_nodes {
++            return self.full(owner,request,"complete-demand");
++        }
+         if !self.active {
+             owner.release_source_compile_caches();
+         }
+         if plan.margin.is_none() {
++            owner.frame_scene.limit_retention(Some(0));
+             let doc = owner.doc.as_ref().unwrap();
+             plan.margin = MarginIndex::build(
+                 doc,
+@@ -294,7 +310,7 @@
+         let Some(margin) = plan.margin.clone() else {
+             return self.full(owner, request, "context-budget");
+         };
+-        if margin.bytes().saturating_add(owner.frame_scene.bytes()) > CACHE {
++        if margin.bytes() > CACHE {
+             // Do not retain two optional geometry caches beside the full path.
+             self.compiler = None;
+             self.plan = None;
+@@ -302,9 +318,8 @@
+             drop(margin);
+             return self.full(owner, request, "context-budget");
+         }
++        owner.frame_scene.limit_retention(Some(CACHE-margin.bytes()));
+         let doc = owner.doc.as_ref().unwrap();
+-        let view = query.options.view;
+-        let camera = Transform([view.zoom, 0., 0., view.zoom, view.x, view.y]);
+ 
+         // Only zoom affects affine linear coefficients and effect_halo.
+         // Pan translation never participates in max_scale; retain the exact
+@@ -328,11 +343,6 @@
+             drop(margin);
+             return self.full(owner, request, "effect-coordinate-domain");
+         }
+-        let mut demand = plan.catalog.viewport_for_compile(
+-            camera,
+-            query.prepare.expand(4),
+-            &AtomicBool::new(false),
+-        )?;
+         let base_units = demand.unit_key();
+         let catalog = plan.catalog.clone();
+         let properties = plan.properties;
+--- a/design-studio/crates/design-kernel/src/gpu/packet.rs
++++ b/design-studio/crates/design-kernel/src/gpu/packet.rs
+@@ -61,12 +61,30 @@
+     image_allocations:HashMap<usize,u32>,image_transfer_keys:HashMap<u32,Key>,image_transfer_sources:HashMap<u32,u32>,
+     image_allocation_hits:u64,image_transfer_hits:u64,
+     cached:Option<EncodedFrame>,pending_request:Option<StaticRequest>,compilations:u64,reuses:u64,
++    retention_limit:Option<usize>,
+     #[cfg(test)] limit_override:Option<usize>,
+ }
+ impl FrameSceneContext {
+     fn limit(&self)->usize {
+-        #[cfg(test)] if let Some(limit)=self.limit_override{return limit}
+-        crate::capacity::memory_budget_bytes().min(usize::MAX as u64) as usize
++        let host=crate::capacity::memory_budget_bytes().min(usize::MAX as u64) as usize;
++        #[cfg(test)] let host=self.limit_override.unwrap_or(host);
++        self.retention_limit.map_or(host,|limit|limit.min(host))
++    }
++    /// Optional cache handoff, never a wire-scope reset. Already emitted IDs
++    /// remain immutable in receivers; evicted resources get fresh IDs on reuse.
++    pub(crate) fn limit_retention(&mut self,limit:Option<usize>){
++        self.retention_limit=limit;
++        let limit=self.limit();
++        if self.bytes()<=limit{return}
++        self.cached=None;
++        while self.bytes()>limit {
++            let Some((_,key))=self.ages.pop_first()else{break};
++            self.evict_transfer(&key);
++        }
++        if self.semantic_bytes>limit {
++            self.semantics.clear();self.image_semantics.clear();self.image_allocations.clear();
++            self.image_transfer_keys.clear();self.image_transfer_sources.clear();self.semantic_bytes=0;
++        }
+     }
+     pub(crate) fn bytes(&self)->usize{self.bytes+self.semantic_bytes+self.cached.as_ref().map_or(0,|frame|frame.charge)}
+     pub(crate) fn stats(&self)->serde_json::Value{
+@@ -335,6 +353,38 @@
+         let options=json!({"pageId":"p","width":64,"height":64,"view":{"x":0.125,"y":0.375,"zoom":1.3},"rasterProfile":"figmaSubpixel"}).to_string();
+         (engine,options)
+     }
++    #[test]
++    fn source_demand_recovers_after_full_overview_fills_transfer_cache() {
++        let document:crate::scene::Document=serde_json::from_value(json!({"schemaVersion":20,"id":"source","name":"source",
++            "pages":[{"id":"page","name":"page","background":"#ffffff","children":["stage"]}],"nodes":{
++            "stage":{"id":"stage","kind":"frame","width":3000,"height":2000,"blend":"pass-through","children":["a","b"]},
++            "a":{"id":"a","kind":"rectangle","width":100,"height":100,"transform":[1,0,0,1,500,500],"fills":[{"kind":"solid","color":"#ff0000"}]},
++            "b":{"id":"b","kind":"rectangle","width":100,"height":100,"transform":[1,0,0,1,1500,500],"fills":[{"kind":"solid","color":"#0000ff"}]}
++        }})).unwrap();
++        let descriptor=crate::scene_store::Descriptor{generation:"source:1:0".into(),document_id:"source".into(),nodes:3,bytes:1,footer_hash:[0;32]};
++        crate::capacity::with_source_storage_scope(true,||{
++            let mut engine=crate::Engine::new();engine.load_source_document(document).unwrap();engine.bind_frame_scene_scope("overview-return").unwrap();
++            let mut runtime=crate::source_compile::Runtime::default();
++            let overview=json!({"pageId":"page","width":512,"height":512,"view":{"x":0,"y":0,"zoom":0.1},"rasterProfile":"figmaSubpixel","gpuViewport":{"x":0,"y":0,"w":512,"h":512}});
++            runtime.compile(&mut engine,&descriptor,"stage","page",&overview.to_string()).unwrap();
++            assert_eq!(runtime.stats["mode"],"complete");
++            // A genuine retained transfer models the >64 MiB overview observed
++            // in topology. It must not permanently disable local compilation.
++            engine.frame_scene.intern(1,vec![7;65*1024*1024]).unwrap();
++            assert!(engine.frame_scene.bytes()>64*1024*1024);
++            let next=engine.frame_scene.next;
++            let local=json!({"pageId":"page","width":64,"height":64,"view":{"x":-480,"y":-480,"zoom":1},"rasterProfile":"figmaSubpixel","gpuViewport":{"x":0,"y":0,"w":64,"h":64}});
++            runtime.compile(&mut engine,&descriptor,"stage","page",&local.to_string()).unwrap();
++            assert_eq!(runtime.stats["mode"],"demand","{}",runtime.stats);
++            assert_eq!(runtime.stats["resolvedCompileNodes"],2);
++            assert_eq!(engine.frame_scene.scope,"overview-return");
++            assert!(engine.frame_scene.next>next,"eviction must not reuse wire IDs");
++            assert!(engine.frame_scene.bytes()+runtime.stats["contextMarginBytes"].as_u64().unwrap() as usize<=64*1024*1024);
++            runtime.compile(&mut engine,&descriptor,"stage","page",&local.to_string()).unwrap();
++            assert_eq!(runtime.stats["projectionRebuilds"],1);
++            assert_eq!(runtime.stats["projectionReuses"],1);
++        });
++    }
+     #[test] fn identical_static_request_returns_before_scene_compilation(){
+         let (mut engine,options)=fixture();engine.bind_frame_scene_scope("static-owner").unwrap();
+         let first=engine.compile_gpu_packet_request(&options).unwrap();
+--- a/design-studio/crates/design-kernel/src/preparation.rs
++++ b/design-studio/crates/design-kernel/src/preparation.rs
+@@ -118,7 +118,10 @@
+         // Failed legacy mutation cannot leave a receipt claiming synchronization.
+         let previous = if mutation { self.lanes[index].receipt.take() } else { None };
+         #[cfg(not(target_arch = "wasm32"))]
+-        if mutation && self.lanes[index].source_access.take().is_some() {self.lanes[index].engine.invalidate_frame_scene_request();}
++        if mutation && self.lanes[index].source_access.take().is_some() {
++            self.lanes[index].engine.invalidate_frame_scene_request();
++            self.lanes[index].engine.frame_scene.limit_retention(None);
++        }
+         let string = |index: usize| -> Result<&str,String> {
+             let value = args.get(index).and_then(Value::as_str).ok_or("Expected string argument")?;
+             crate::capacity::check_document_bytes(value.len())?;

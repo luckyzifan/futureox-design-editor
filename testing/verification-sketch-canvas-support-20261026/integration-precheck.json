@@ -1,0 +1,227 @@
+[
+  {
+    "path": "design-studio/crates/design-gpu/src/compositor.rs",
+    "new": false,
+    "before": "2b16c675154f0b2ff86744bd7687fccaf36c6a36a1170b978ea5f5959327c9e3",
+    "current": "2b16c675154f0b2ff86744bd7687fccaf36c6a36a1170b978ea5f5959327c9e3",
+    "after": "8d5e14375bd1583473c6e39c2a76420e3c1cce2ec914450f23b5344b3038f54c",
+    "matches": true
+  },
+  {
+    "path": "design-studio/crates/design-gpu/tests/native.rs",
+    "new": false,
+    "before": "be8d97e93e335df9ab33b80af245a2172714c2ace09058eb30f1e5028f099ed1",
+    "current": "be8d97e93e335df9ab33b80af245a2172714c2ace09058eb30f1e5028f099ed1",
+    "after": "1d1d7d340e756a48345d0e8941a7c84b15257aa9767325e75daecfd8ea90f519",
+    "matches": true
+  },
+  {
+    "path": "design-studio/crates/design-kernel/shaders/vector.wgsl",
+    "new": false,
+    "before": "2c8be664753898c237e0cb4093e9f5334077b96d8e19447868107cd065905611",
+    "current": "2c8be664753898c237e0cb4093e9f5334077b96d8e19447868107cd065905611",
+    "after": "71c3978b10e40312d6a9c171c7a5902b257338d66e9d77919d47e7a75bce1ac5",
+    "matches": true
+  },
+  {
+    "path": "design-studio/crates/design-kernel/src/animation.rs",
+    "new": false,
+    "before": "3e2bf6f78afeb7062cfaea6a15ea480b833c9fc77388e4121842a7bdfb805ff0",
+    "current": "3e2bf6f78afeb7062cfaea6a15ea480b833c9fc77388e4121842a7bdfb805ff0",
+    "after": "f8c8bd7bbf82226523f7d0ac08a1f723547f614b9874d00889a82a8d73404298",
+    "matches": true
+  },
+  {
+    "path": "design-studio/crates/design-kernel/src/design_system.rs",
+    "new": false,
+    "before": "ed0ec4f05a092c544387334d84734ad23a73a264c2710dcacb45d3f557abb7ca",
+    "current": "ed0ec4f05a092c544387334d84734ad23a73a264c2710dcacb45d3f557abb7ca",
+    "after": "4a1ce6148a7cf938c63ec477aca3bcec615de4f63610c4b9da4ccec651e44b94",
+    "matches": true
+  },
+  {
+    "path": "design-studio/crates/design-kernel/src/fig.rs",
+    "new": false,
+    "before": "b790bd7cd9883ef8ed12ba30d801c7ed9f735383a246d2130bd28731ad1a679e",
+    "current": "b790bd7cd9883ef8ed12ba30d801c7ed9f735383a246d2130bd28731ad1a679e",
+    "after": "57f5c21287ff1f9473855a1de295a514a0212a1c2a5cdd9caf02744c0947466f",
+    "matches": true
+  },
+  {
+    "path": "design-studio/crates/design-kernel/src/interop.rs",
+    "new": false,
+    "before": "d0c9daa440f95960026ca8abed5aa93ff31402d7a7b864702a373c6f34871d7d",
+    "current": "d0c9daa440f95960026ca8abed5aa93ff31402d7a7b864702a373c6f34871d7d",
+    "after": "fb4f75104c6e28e09454daf78c9f2dc9a39ca4a24f2b579048ed425eda2ccf22",
+    "matches": true
+  },
+  {
+    "path": "design-studio/crates/design-kernel/src/lib.rs",
+    "new": false,
+    "before": "6b646bad388291efec7141c4e1d2de190cfd89018dc6795c1549c8062826ddb3",
+    "current": "6b646bad388291efec7141c4e1d2de190cfd89018dc6795c1549c8062826ddb3",
+    "after": "3f596144a13b4c2658458b6c49b1c872bb14fbe9674d7e3e8fedd81403430db6",
+    "matches": true
+  },
+  {
+    "path": "design-studio/crates/design-kernel/src/renderer.rs",
+    "new": false,
+    "before": "ada49c53327eb2d1613f9be3d0c60a865090594128b8a131c609766f67839dbd",
+    "current": "ada49c53327eb2d1613f9be3d0c60a865090594128b8a131c609766f67839dbd",
+    "after": "191c13b565465dd5c0f5057a8021ec9132e6bc22df0bddbb6fa9ae1ded9986e5",
+    "matches": true
+  },
+  {
+    "path": "design-studio/crates/design-kernel/src/scene.rs",
+    "new": false,
+    "before": "5bd216b955de4e9f90df83cf74af2f0b5a02969d84a71b6c032ac69da58d6d33",
+    "current": "5bd216b955de4e9f90df83cf74af2f0b5a02969d84a71b6c032ac69da58d6d33",
+    "after": "2d2182deb625f0fb462eab990702e5f09147b663af79ddf1b215d5cb0cd46518",
+    "matches": true
+  },
+  {
+    "path": "design-studio/crates/design-kernel/src/sketch/preview/display.rs",
+    "new": false,
+    "before": "7e888614c2b888a4b72b77ededa29cad61ec25899a3f463f057c65b37523222d",
+    "current": "7e888614c2b888a4b72b77ededa29cad61ec25899a3f463f057c65b37523222d",
+    "after": "8d61e3ea3e79dce1639b13292d1f618ecb7e8fedb639f98f0d44f6aa991e99f7",
+    "matches": true
+  },
+  {
+    "path": "frontend/design-client/src/Inspector.tsx",
+    "new": false,
+    "before": "32bce4342cf25a39a1c576b3160135e10d5924fe6b620d4a36957f4794fb4fbd",
+    "current": "32bce4342cf25a39a1c576b3160135e10d5924fe6b620d4a36957f4794fb4fbd",
+    "after": "6c64a5dd8bf7805160b7b00b89ccb9f52de97968531e42238ef2b6b22ba36577",
+    "matches": true
+  },
+  {
+    "path": "frontend/design-client/src/MultiStylePanel.tsx",
+    "new": false,
+    "before": "8b325bc65b100785f4613ef7c7862e1a266263ae1dfc73e36a5ea19969e2f95e",
+    "current": "8b325bc65b100785f4613ef7c7862e1a266263ae1dfc73e36a5ea19969e2f95e",
+    "after": "3ce63be03991518e098842c3993dcb3b40eb484da1f9177c4fe570bae6c94983",
+    "matches": true
+  },
+  {
+    "path": "frontend/design-client/src/Renderer.tsx",
+    "new": false,
+    "before": "63ca6a6ea0e954b0f39274670c905d50828957fdc02f113f1fd7baf45cb965bb",
+    "current": "63ca6a6ea0e954b0f39274670c905d50828957fdc02f113f1fd7baf45cb965bb",
+    "after": "65d3c49610dbca2b354aabe393c81f7c70e85b894a50ebd71b7e8fb19146a4bd",
+    "matches": true
+  },
+  {
+    "path": "frontend/design-client/src/automation/node-input-descriptors.ts",
+    "new": false,
+    "before": "3811d81e8746070b84866a22b6968ee74318902744ccd9e94bd77e71fe9e5db9",
+    "current": "3811d81e8746070b84866a22b6968ee74318902744ccd9e94bd77e71fe9e5db9",
+    "after": "448101e59ea265145b8667156730082a0d09d22ea27ed7c31f3133f5806ba950",
+    "matches": true
+  },
+  {
+    "path": "frontend/design-client/src/engine.ts",
+    "new": false,
+    "before": "73397bff3fee44f5e826e335cbda83d911e02567b48bc21df1e1d069689341ec",
+    "current": "73397bff3fee44f5e826e335cbda83d911e02567b48bc21df1e1d069689341ec",
+    "after": "48218c3fbe9c52b6c4eb56b72fb1cb4754b03e9d40b2c6e8952b878f2e874642",
+    "matches": true
+  },
+  {
+    "path": "frontend/design-client/src/export.tsx",
+    "new": false,
+    "before": "316fe07504351a375b3e31bd55d339affd2adc141e8bf2ba500a48d37013279c",
+    "current": "316fe07504351a375b3e31bd55d339affd2adc141e8bf2ba500a48d37013279c",
+    "after": "c420470def06213e401f1fdf4a5dd586b6d4bcc15f8a30efbe7d99c23e640fad",
+    "matches": true
+  },
+  {
+    "path": "frontend/design-client/src/kernel/gpu/compositor-modes.ts",
+    "new": false,
+    "before": "24d7c7d530efc56cce1b18c7ce4c733e518bcf7fe4563598a3a0b90fd1d36e28",
+    "current": "24d7c7d530efc56cce1b18c7ce4c733e518bcf7fe4563598a3a0b90fd1d36e28",
+    "after": "5a107193598b5d596c83d189365d40e3c06603b518e58525e82994b94be0a013",
+    "matches": true
+  },
+  {
+    "path": "frontend/design-client/src/kernel/gpu/renderer.ts",
+    "new": false,
+    "before": "32313cbbfa5466ddddf731a5cd3751732885e0116a7d32db8da33aef53ea2c7a",
+    "current": "32313cbbfa5466ddddf731a5cd3751732885e0116a7d32db8da33aef53ea2c7a",
+    "after": "10709cd468ef271db7f8ed08c4bb062e6d8903d786641acc646ebf590d316474",
+    "matches": true
+  },
+  {
+    "path": "frontend/design-client/src/kernel/gpu/vector.glsl",
+    "new": false,
+    "before": "37f7c4239a10296596337684c356f14ff5b7b8239ceaa9e29974580c63db8fe2",
+    "current": "37f7c4239a10296596337684c356f14ff5b7b8239ceaa9e29974580c63db8fe2",
+    "after": "f95ed875ea04b135e77db249ae914bd4245d071dd13f1244b6ad1ff0b5935151",
+    "matches": true
+  },
+  {
+    "path": "frontend/design-client/src/kernel/render-dependency.ts",
+    "new": false,
+    "before": "ac43f1c2536c1c965469a61025452982d01b4c0da83b1051dc2be95528ec664f",
+    "current": "ac43f1c2536c1c965469a61025452982d01b4c0da83b1051dc2be95528ec664f",
+    "after": "63ff30c10ab45c5bbdb61d37521f44cfc16538a13bd05dce993e3764f52d1ece",
+    "matches": true
+  },
+  {
+    "path": "frontend/design-client/src/model.ts",
+    "new": false,
+    "before": "09c1a5a2cdfb3f9c3217df7b940d43277447993975879725638eae012a4e0fbe",
+    "current": "09c1a5a2cdfb3f9c3217df7b940d43277447993975879725638eae012a4e0fbe",
+    "after": "11041249b3a11c0e356a9dd8094de427f5fea0cedcf93561116324ed47695c0d",
+    "matches": true,
+    "originalHeadSha256": "707d277cd00310224f30f1c12d285fe31be9ff913023df00b530061755000d30"
+  },
+  {
+    "path": "design-studio/crates/design-kernel/src/color_controls.rs",
+    "new": true,
+    "before": null,
+    "current": null,
+    "after": "a80f013fde4d46d01bf290e73e78f7956e9017eb30bb824f9076ed6948f7a5a2",
+    "matches": true
+  },
+  {
+    "path": "design-studio/crates/design-kernel/tests/color_controls.rs",
+    "new": true,
+    "before": null,
+    "current": null,
+    "after": "48c9b9ee84f4bdd43e0f7a0be5d4c92aef259cbf9068d7c75bfdbb26f342edcf",
+    "matches": true
+  },
+  {
+    "path": "design-studio/crates/design-kernel/examples/sketch_canvas_oracle.rs",
+    "new": true,
+    "before": null,
+    "current": null,
+    "after": "d78c8edd863f2b9a5776308c550493d8e759a8c02939317d140bb85ebf2ff472",
+    "matches": true
+  },
+  {
+    "path": "frontend/design-client/src/color-controls.test.tsx",
+    "new": true,
+    "before": null,
+    "current": null,
+    "after": "200b55dbe956b2d7eca7b86eb0139a421f5654bd825876704cd151d44afad5bb",
+    "matches": true
+  },
+  {
+    "path": "testing/fixtures/design/coreimage-color-controls-vectors.json",
+    "new": true,
+    "before": null,
+    "current": null,
+    "after": "10d9be01257a118f38fa1779599e5086e50c09e63aeca1de949b7829a9b3d73a",
+    "matches": true
+  },
+  {
+    "path": "testing/fixtures/design/sketch-color-controls.sketch",
+    "new": true,
+    "before": null,
+    "current": null,
+    "after": "e0ba32165c025f9b90a55bd3f7ec1f42e5b791ccb58d103dd2cc39de3bff2deb",
+    "matches": true
+  }
+]

@@ -1,0 +1,90 @@
+{
+  "scope": "Decoded complete render semantics and exact f32 geometry bytes; private transport scope excluded",
+  "results": [
+    {
+      "tile": 0,
+      "nodes": 50,
+      "signatures": [
+        {
+          "scene": "4c61c6741243a51e9c1b4ee09e1900e0bfec16916a225c0e392019848b9710be",
+          "vertices": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "curves": "9c5fe9e8dcce49e7b5f792ac638b5a4ee075914a42df3d1d1d14493dacc71912"
+        },
+        {
+          "scene": "4c61c6741243a51e9c1b4ee09e1900e0bfec16916a225c0e392019848b9710be",
+          "vertices": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "curves": "9c5fe9e8dcce49e7b5f792ac638b5a4ee075914a42df3d1d1d14493dacc71912"
+        }
+      ],
+      "equal": true
+    },
+    {
+      "tile": 1,
+      "nodes": 36,
+      "signatures": [
+        {
+          "scene": "1daee155c158252b993c7f38907403b74b7d0d1ba0fd519ed76b382e80f4a682",
+          "vertices": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "curves": "09b0267631d9cc9065b870c54d395247ee42cd0c6896c39b13a8bc1ae6b16afe"
+        },
+        {
+          "scene": "1daee155c158252b993c7f38907403b74b7d0d1ba0fd519ed76b382e80f4a682",
+          "vertices": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "curves": "09b0267631d9cc9065b870c54d395247ee42cd0c6896c39b13a8bc1ae6b16afe"
+        }
+      ],
+      "equal": true
+    },
+    {
+      "tile": 2,
+      "nodes": 30,
+      "signatures": [
+        {
+          "scene": "d6b04153e70d5a6157d2107ac61a8415f73733c599d2dacf48a8cdecefbd5757",
+          "vertices": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "curves": "495848f149968437071d0dfecb3239f985c571824bd23d5a91ae105a53fe099a"
+        },
+        {
+          "scene": "d6b04153e70d5a6157d2107ac61a8415f73733c599d2dacf48a8cdecefbd5757",
+          "vertices": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "curves": "495848f149968437071d0dfecb3239f985c571824bd23d5a91ae105a53fe099a"
+        }
+      ],
+      "equal": true
+    },
+    {
+      "tile": 3,
+      "nodes": 33,
+      "signatures": [
+        {
+          "scene": "bb1bc8dce4e2eebec1f172a87dca947b87e1a4860e30b94017b640b46b393d33",
+          "vertices": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "curves": "e2f5a528ba0cb814eef32951ff8ad9eb43dfa2f481cd860df8c5e5527c273cd7"
+        },
+        {
+          "scene": "bb1bc8dce4e2eebec1f172a87dca947b87e1a4860e30b94017b640b46b393d33",
+          "vertices": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "curves": "e2f5a528ba0cb814eef32951ff8ad9eb43dfa2f481cd860df8c5e5527c273cd7"
+        }
+      ],
+      "equal": true
+    },
+    {
+      "tile": 4,
+      "nodes": 50,
+      "signatures": [
+        {
+          "scene": "4c61c6741243a51e9c1b4ee09e1900e0bfec16916a225c0e392019848b9710be",
+          "vertices": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "curves": "9c5fe9e8dcce49e7b5f792ac638b5a4ee075914a42df3d1d1d14493dacc71912"
+        },
+        {
+          "scene": "4c61c6741243a51e9c1b4ee09e1900e0bfec16916a225c0e392019848b9710be",
+          "vertices": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "curves": "9c5fe9e8dcce49e7b5f792ac638b5a4ee075914a42df3d1d1d14493dacc71912"
+        }
+      ],
+      "equal": true
+    }
+  ]
+}

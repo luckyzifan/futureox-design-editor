@@ -1,0 +1,22 @@
+[
+  {
+    "case": "t0-r5-a0-box",
+    "max": 0,
+    "channelsDifferent": 0
+  },
+  {
+    "case": "t1-r10-a0-stripe",
+    "max": 0,
+    "channelsDifferent": 0
+  },
+  {
+    "case": "t1-r10-a30-stripe",
+    "max": 0,
+    "channelsDifferent": 0
+  },
+  {
+    "case": "t1-r10-a90-stripe",
+    "max": 0,
+    "channelsDifferent": 0
+  }
+]

@@ -1,0 +1,15 @@
+{
+  "metadataBytesDuringRandomReads": 0,
+  "nodes": 124447,
+  "openFooterBytes": 144,
+  "randomIndexProofBytes": 136320,
+  "randomNodeBytes": 20858,
+  "randomNodesRead": 13,
+  "roots": 306,
+  "scope": "full topology native storage module, no GUI/GPU or latency acceptance",
+  "seconds": 193.131024292,
+  "semanticRoundtripEqual": true,
+  "sourceBytes": 573894030,
+  "sourceHash": "e1678121c271d815b218cd21c233f9c584dcce3d2246d13870ae4801bee6548e",
+  "storeBytes": 593732034
+}

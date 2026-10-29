@@ -1,0 +1,62 @@
+[
+  {
+    "id": "A-cold",
+    "poses": [
+      [
+        -256,
+        416.5,
+        "dbdaf23c2420"
+      ],
+      [
+        0,
+        130.1,
+        "e36edfa932f6"
+      ],
+      [
+        256,
+        371.3,
+        "eaa4d16dc179"
+      ],
+      [
+        0,
+        124.6,
+        "e36edfa932f6"
+      ]
+    ],
+    "maxRasterOwners": 1,
+    "prefetchCancelled": 0,
+    "backend": "webgpu",
+    "adapter": "metal-3",
+    "admissionFences": 0
+  },
+  {
+    "id": "B-cold",
+    "poses": [
+      [
+        -256,
+        349.7,
+        "dbdaf23c2420"
+      ],
+      [
+        0,
+        126.5,
+        "e36edfa932f6"
+      ],
+      [
+        256,
+        213.4,
+        "eaa4d16dc179"
+      ],
+      [
+        0,
+        123.6,
+        "e36edfa932f6"
+      ]
+    ],
+    "maxRasterOwners": 1,
+    "prefetchCancelled": 3,
+    "backend": "webgpu",
+    "adapter": "metal-3",
+    "admissionFences": 0
+  }
+]

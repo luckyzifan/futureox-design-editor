@@ -1,0 +1,15 @@
+{
+  "purpose": "Full source horizontal pan tile supply",
+  "oracle": "same-camera exact tile byte equality; native path real source render and presentation acknowledgements",
+  "limits": {
+    "prefetchTiles": 8,
+    "prefetchBytes": 8454272,
+    "rasterOwners": 1,
+    "batchTiles": 2
+  },
+  "acceptance": {
+    "visiblePriority": "required viewport misses before optional rim; cancellation on reversal, source change, visibility, memory rejection",
+    "pixelParity": "byte-identical for same source/profile/camera",
+    "performance": "matched A/B >=5% improvement in cold-column settle or fewer required cold tiles; report all timings separately from 33ms/100ms global targets"
+  }
+}

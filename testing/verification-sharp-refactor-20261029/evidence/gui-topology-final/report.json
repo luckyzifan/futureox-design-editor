@@ -1,0 +1,86 @@
+{
+  "status": "passed",
+  "source": "/Users/Apple/Downloads/拓扑素材.sketch",
+  "sourceHash": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+  "target": {
+    "id": "B4F79D9D-73A9-4CFA-A0C2-BA3610CC6105",
+    "name": "拼搭样式二"
+  },
+  "cases": [
+    {
+      "id": "import-full-source-open-artboard",
+      "status": "PASS"
+    },
+    {
+      "id": "zoom-pan",
+      "status": "PASS"
+    },
+    {
+      "id": "drag-resize-rotate-undo",
+      "status": "PASS"
+    },
+    {
+      "id": "opacity-history-save",
+      "status": "PASS"
+    },
+    {
+      "id": "complete-sketch-export",
+      "status": "PASS"
+    },
+    {
+      "id": "fresh-sketch-reopen",
+      "status": "PASS"
+    }
+  ],
+  "scope": "Full source import; one real 274-node artboard GUI edit/undo/save/complete Sketch export/reopen. Full overview latency is a separate test.",
+  "stage": "fresh-sketch-reopen",
+  "instances": [
+    {
+      "pid": 54750,
+      "profile": "/private/tmp/futureox-render-sharp-20261029-work/gui-topology-final/profiles/forma-desktop-manual-ab584182-8364-42c3-bc3b-f818f5f8f15a-HSTaIh",
+      "preferences": {
+        "allowRunningInsecureContent": false,
+        "contextIsolation": true,
+        "disableDialogs": false,
+        "disablePopups": false,
+        "enableBlinkFeatures": "",
+        "experimentalFeatures": false,
+        "javascript": true,
+        "nodeIntegration": false,
+        "nodeIntegrationInSubFrames": false,
+        "nodeIntegrationInWorker": false,
+        "safeDialogs": false,
+        "safeDialogsMessage": "",
+        "sandbox": true,
+        "webSecurity": true,
+        "webviewTag": false
+      }
+    },
+    {
+      "pid": 57950,
+      "profile": "/private/tmp/futureox-render-sharp-20261029-work/gui-topology-final/profiles/forma-desktop-manual-2370ba4f-09ae-4a89-b730-bc065657aa96-hAJZLQ",
+      "preferences": {
+        "allowRunningInsecureContent": false,
+        "contextIsolation": true,
+        "disableDialogs": false,
+        "disablePopups": false,
+        "enableBlinkFeatures": "",
+        "experimentalFeatures": false,
+        "javascript": true,
+        "nodeIntegration": false,
+        "nodeIntegrationInSubFrames": false,
+        "nodeIntegrationInWorker": false,
+        "safeDialogs": false,
+        "safeDialogsMessage": "",
+        "sandbox": true,
+        "webSecurity": true,
+        "webviewTag": false
+      }
+    }
+  ],
+  "closeErrors": [
+    "Error: Owned app close timeout",
+    "Error: Owned app close timeout"
+  ],
+  "sourceUnchanged": true
+}

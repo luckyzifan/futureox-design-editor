@@ -1,0 +1,442 @@
+{
+  "status": "passed",
+  "adapter": "metal-3",
+  "nonFallbackAdapterVerified": true,
+  "components": 22848,
+  "different": 0,
+  "formatRecords": [
+    {
+      "index": 0,
+      "phase": 0,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 0,
+      "phase": 0,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 0,
+      "phase": 1,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 0,
+      "phase": 1,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 0,
+      "phase": 2,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 0,
+      "phase": 2,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 0,
+      "phase": 3,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 0,
+      "phase": 3,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 1,
+      "phase": 0,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 1,
+      "phase": 0,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 1,
+      "phase": 1,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 1,
+      "phase": 1,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 1,
+      "phase": 2,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 1,
+      "phase": 2,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 1,
+      "phase": 3,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 1,
+      "phase": 3,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 2,
+      "phase": 0,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 2,
+      "phase": 0,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 2,
+      "phase": 1,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 2,
+      "phase": 1,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 2,
+      "phase": 2,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 2,
+      "phase": 2,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 2,
+      "phase": 3,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 2,
+      "phase": 3,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 3,
+      "phase": 0,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 3,
+      "phase": 0,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 3,
+      "phase": 1,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 3,
+      "phase": 1,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 3,
+      "phase": 2,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 3,
+      "phase": 2,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 3,
+      "phase": 3,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 3,
+      "phase": 3,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 4,
+      "phase": 0,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 4,
+      "phase": 0,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 4,
+      "phase": 1,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 4,
+      "phase": 1,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 4,
+      "phase": 2,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 4,
+      "phase": 2,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 4,
+      "phase": 3,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 4,
+      "phase": 3,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 5,
+      "phase": 0,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 5,
+      "phase": 0,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 5,
+      "phase": 1,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 5,
+      "phase": 1,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 5,
+      "phase": 2,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 5,
+      "phase": 2,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 5,
+      "phase": 3,
+      "regionIndex": 0,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    },
+    {
+      "index": 5,
+      "phase": 3,
+      "regionIndex": 1,
+      "format": "rgba8unorm",
+      "comparedComponents": 476,
+      "different": 0,
+      "actualPipelineHits": 1
+    }
+  ],
+  "scope": "Actual normal unmanaged RGBA8 and four phases, including empty/occupied edge samples; no timings or full-editor claim."
+}

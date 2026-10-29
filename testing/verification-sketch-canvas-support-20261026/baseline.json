@@ -1,0 +1,46 @@
+{
+  "head": "2954a77fe22a12f806d91351ec95e5186f9b562a",
+  "inheritedWorkingTreeFiles": [
+    {
+      "path": ".agents/skills/futureox-design-development/SKILL.md",
+      "sha256": "f8985d95ea878609541a1dc25d8c6284c3123d7190070ae372fc0f3f69c53c64"
+    },
+    {
+      "path": "design-studio/Cargo.lock",
+      "sha256": "a2e5119ccf96c07243102cbd5d05dd78e409527ace18b4b5a83660762c6a3840"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/Cargo.toml",
+      "sha256": "978a9e4f6364eefaac3cf2fe837ee0d24acfd2339acf9a72b3febaa044b31f73"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/capacity.rs",
+      "sha256": "137f602fd0187966ac0cbe06f9f4d56ec3f01700d7c252d5d8a62e5e6d20b68e"
+    },
+    {
+      "path": "docs/capacity/DOCUMENT_CAPACITY_2026-10-22.md",
+      "sha256": "846596762694d8a07f0e7fd932cab668cf50d86a7fc8dbbf1db0d3c89e7b14de"
+    },
+    {
+      "path": "frontend/design-client/src/LargeDocumentWorkspace.test.tsx",
+      "sha256": "28201c5b74f215bd601a1313790d43ff676025f5c7f92c0af0db178e9cd35594"
+    },
+    {
+      "path": "frontend/design-client/src/LargeDocumentWorkspace.tsx",
+      "sha256": "1a6bfc7ac6ee91730b152425fe928bbe5824d256c52afd26d7e95da30c7d8996"
+    },
+    {
+      "path": "testing/fixtures/design/arithmetic-vectors.json",
+      "sha256": "fee1bac9f2e20907c2bda775e6eaea01827c1d347130cf30f353febf281ec5ec"
+    },
+    {
+      "path": "testing/fixtures/design/certified-filter-vectors.json",
+      "sha256": "d7b21846de0c3713ea20e89fa5db8e61fdee286ec3b4ec5a5c5ac58609d33f6c"
+    },
+    {
+      "path": "testing/fixtures/design/precision-corpus.json",
+      "sha256": "2c0a290cdb2877235a0c8e75db4eb635378e3a04847432b4b534fbe60bd04aa1"
+    }
+  ],
+  "userConfirmedPanZoomRecovered": true
+}

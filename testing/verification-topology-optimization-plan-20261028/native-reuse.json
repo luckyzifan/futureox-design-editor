@@ -1,0 +1,21 @@
+{
+  "oldBase": "/tmp/futureox-topology-plan-20261028-r1",
+  "newBase": "/tmp/futureox-topology-plan-20261028-r2",
+  "unchangedNativeBuildInputs": true,
+  "changedClientInputs": [
+    "frontend/design-client/src/canvas-native-source-wiring.test.tsx",
+    "frontend/design-client/src/Canvas.tsx",
+    "frontend/design-client/src/kernel/gpu/gradient-paint-over.ts",
+    "frontend/design-client/src/kernel/gpu/reduced-paint-work.test.ts",
+    "frontend/design-client/src/kernel/gpu/renderer.ts",
+    "frontend/design-client/src/kernel/gpu/scene-index.ts",
+    "frontend/design-client/src/kernel/gpu/webgpu.ts"
+  ],
+  "artifacts": {
+    "bin/design-prepare": "46454ac1d3d42705262e75797ace1773fcfa43c8e36edcc0e367ee34b67dd058",
+    "bin/design-render": "85367dced53e13f193afbfc861f72c22f8810061da5cd0dd9c956a2663a2a346",
+    "sidecar/futureox-design-desktop-backend": "7d63e31d084d193980c82bc6dfbcb29e74c343ddfae0217b533d9c86ddbe3ac2",
+    "wasm": "c88986385a572d0e5efed288fb835ff390d2021d0557b7c320ede6d0f96ff083"
+  },
+  "note": "Exact native/Rust/shader/toolchain inputs match the preceding rebuilt baseline; only frontend sources changed"
+}

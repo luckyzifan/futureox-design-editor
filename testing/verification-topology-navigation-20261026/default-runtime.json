@@ -1,0 +1,8 @@
+{
+  "pid": 64596,
+  "app": "/tmp/FutureoxShaderOracle.app",
+  "host": "/tmp/futureox-topology-default-host-20261026",
+  "build": "/tmp/futureox-topology-default-build-20261026",
+  "budget": "automatic",
+  "globalExperiments": "off"
+}

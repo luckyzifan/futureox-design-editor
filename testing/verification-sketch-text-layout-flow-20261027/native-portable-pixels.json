@@ -1,0 +1,121 @@
+{
+  "top": {
+    "nativeBounds": [
+      21,
+      28,
+      65,
+      44
+    ],
+    "kernelBounds": [
+      21,
+      27,
+      65,
+      42
+    ],
+    "maxRGBA": 255,
+    "mean": 0.6189583333333334,
+    "differentChannels": 1089
+  },
+  "center": {
+    "nativeBounds": [
+      21,
+      82,
+      65,
+      98
+    ],
+    "kernelBounds": [
+      21,
+      82,
+      65,
+      97
+    ],
+    "maxRGBA": 171,
+    "mean": 0.26197916666666665,
+    "differentChannels": 930
+  },
+  "bottom": {
+    "nativeBounds": [
+      21,
+      138,
+      65,
+      154
+    ],
+    "kernelBounds": [
+      21,
+      137,
+      65,
+      152
+    ],
+    "maxRGBA": 255,
+    "mean": 0.6189583333333334,
+    "differentChannels": 1089
+  },
+  "paragraphs": {
+    "nativeBounds": [
+      20,
+      28,
+      219,
+      120
+    ],
+    "kernelBounds": [
+      20,
+      27,
+      220,
+      119
+    ],
+    "maxRGBA": 255,
+    "mean": 1.9071701388888889,
+    "differentChannels": 3174
+  },
+  "stack": {
+    "nativeBounds": [
+      16,
+      16,
+      224,
+      56
+    ],
+    "kernelBounds": [
+      16,
+      16,
+      224,
+      56
+    ],
+    "maxRGBA": 0,
+    "mean": 0.0,
+    "differentChannels": 0
+  },
+  "home": {
+    "nativeBounds": [
+      20,
+      100,
+      200,
+      150
+    ],
+    "kernelBounds": [
+      20,
+      100,
+      200,
+      150
+    ],
+    "maxRGBA": 130,
+    "mean": 0.2223726851851852,
+    "differentChannels": 1643
+  },
+  "destination": {
+    "nativeBounds": [
+      0,
+      0,
+      240,
+      180
+    ],
+    "kernelBounds": [
+      0,
+      0,
+      240,
+      180
+    ],
+    "maxRGBA": 0,
+    "mean": 0.0,
+    "differentChannels": 0
+  }
+}

@@ -1,0 +1,1437 @@
+{
+  "status": "failed",
+  "scope": "Requested topology archive, complete native-converted source roots; original and explicitly derived effects separately identified. Metal display graph plus final QA readback.",
+  "cases": [
+    {
+      "name": "gaussian",
+      "kind": "gaussian-blur",
+      "sourceRoot": {
+        "part": "pages/9A250616-D3C6-4F06-A6C9-F2CE1DA3611D.json",
+        "offset": 17,
+        "id": "803292FE-AC77-4251-8660-1E93C7D7A0D6",
+        "name": "数据名称",
+        "nodes": 24,
+        "effects": {
+          "blur:type0": 2,
+          "shadows": 1
+        },
+        "fixture": "root-281.json"
+      },
+      "derived": false,
+      "targetId": "1C8C09BA-EC01-433A-B169-7FA8809F85A9",
+      "options": {
+        "pageId": "00000000-0000-4000-8000-000000000001",
+        "width": 256,
+        "height": 192,
+        "view": {
+          "x": -10450.762808349147,
+          "y": -1773.6420100298183,
+          "zoom": 4
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": true
+      },
+      "runs": [
+        [
+          {
+            "wallMs": 34.40000009536743,
+            "draws": 136,
+            "pixels": 8258613,
+            "peakBytes": 59426000,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 32.5,
+            "draws": 136,
+            "pixels": 8258613,
+            "peakBytes": 59426000,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 28.899999976158142,
+            "draws": 136,
+            "pixels": 8258613,
+            "peakBytes": 59426000,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          }
+        ],
+        [
+          {
+            "wallMs": 24.09999990463257,
+            "draws": 136,
+            "pixels": 8258613,
+            "peakBytes": 59426000,
+            "blur": 8,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 23.300000071525574,
+            "draws": 136,
+            "pixels": 8258613,
+            "peakBytes": 59426000,
+            "blur": 8,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 19.899999976158142,
+            "draws": 136,
+            "pixels": 8258613,
+            "peakBytes": 59426000,
+            "blur": 8,
+            "motion": 0,
+            "zoom": 0
+          }
+        ]
+      ],
+      "cold": [
+        {
+          "wallMs": 180.60000002384186,
+          "draws": 176,
+          "pixels": 8258613,
+          "peakBytes": 59426000,
+          "blur": 0,
+          "motion": 0,
+          "zoom": 0
+        },
+        {
+          "wallMs": 885.3000000715256,
+          "draws": 176,
+          "pixels": 8258613,
+          "peakBytes": 59426000,
+          "blur": 8,
+          "motion": 0,
+          "zoom": 0
+        }
+      ],
+      "difference": {
+        "changedBits": 16177,
+        "maxEncoded": 1.3291164596695992e-7,
+        "maxAlpha": 1.8189894035458565e-12,
+        "nonfinite": 0
+      },
+      "exactOutput": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      }
+    },
+    {
+      "name": "modern-gaussian",
+      "kind": "gaussian-blur",
+      "sourceRoot": {
+        "part": "pages/b5e640b2-e777-404c-b121-8e866696d553.json",
+        "offset": 83,
+        "id": "70806B41-C915-4EB2-954C-449E746E4426",
+        "name": "模板二",
+        "nodes": 137,
+        "effects": {
+          "blurs:type0": 9
+        },
+        "fixture": "root-83.json"
+      },
+      "derived": false,
+      "targetId": "5F83635C-3E46-49C5-AA26-3029026FEDDB",
+      "options": {
+        "pageId": "00000000-0000-4000-8000-000000000001",
+        "width": 256,
+        "height": 192,
+        "view": {
+          "x": -17679.999877929688,
+          "y": -4740.4649658203125,
+          "zoom": 4
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": true
+      },
+      "runs": [
+        [
+          {
+            "wallMs": 71.19999992847443,
+            "draws": 134,
+            "pixels": 22730241,
+            "peakBytes": 227526928,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 70.89999997615814,
+            "draws": 134,
+            "pixels": 22730241,
+            "peakBytes": 227526928,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 73,
+            "draws": 134,
+            "pixels": 22730241,
+            "peakBytes": 227526928,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          }
+        ],
+        [
+          {
+            "wallMs": 49.89999997615814,
+            "draws": 134,
+            "pixels": 22730241,
+            "peakBytes": 227526928,
+            "blur": 6,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 47.5,
+            "draws": 134,
+            "pixels": 22730241,
+            "peakBytes": 227526928,
+            "blur": 6,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 48.5,
+            "draws": 134,
+            "pixels": 22730241,
+            "peakBytes": 227526928,
+            "blur": 6,
+            "motion": 0,
+            "zoom": 0
+          }
+        ]
+      ],
+      "cold": [
+        {
+          "wallMs": 1739,
+          "draws": 162,
+          "pixels": 22730241,
+          "peakBytes": 227526928,
+          "blur": 0,
+          "motion": 0,
+          "zoom": 0
+        },
+        {
+          "wallMs": 280.1999999284744,
+          "draws": 162,
+          "pixels": 22730241,
+          "peakBytes": 227526928,
+          "blur": 6,
+          "motion": 0,
+          "zoom": 0
+        }
+      ],
+      "difference": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      },
+      "exactOutput": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      }
+    },
+    {
+      "name": "background",
+      "kind": "background-blur",
+      "sourceRoot": {
+        "part": "pages/b5e640b2-e777-404c-b121-8e866696d553.json",
+        "offset": 18,
+        "id": "10c6999a-19ed-4836-be94-46a2609309d7",
+        "name": "主框架03",
+        "nodes": 688,
+        "effects": {
+          "blur:type3": 10,
+          "innerShadows": 15,
+          "blur:type0": 40,
+          "shadows": 5
+        },
+        "fixture": "root-18.json"
+      },
+      "derived": false,
+      "targetId": "149506b7-c70d-44a0-bb42-c44b5b47de2e",
+      "options": {
+        "pageId": "00000000-0000-4000-8000-000000000001",
+        "width": 256,
+        "height": 192,
+        "view": {
+          "x": 368,
+          "y": 1418,
+          "zoom": 4
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": true
+      },
+      "runs": [
+        [
+          {
+            "wallMs": 140.5,
+            "draws": 399,
+            "pixels": 19254805,
+            "peakBytes": 155895952,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 138.59999990463257,
+            "draws": 399,
+            "pixels": 19254805,
+            "peakBytes": 155895952,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 142.10000002384186,
+            "draws": 399,
+            "pixels": 19254805,
+            "peakBytes": 155895952,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          }
+        ],
+        [
+          {
+            "wallMs": 130.90000009536743,
+            "draws": 399,
+            "pixels": 19254805,
+            "peakBytes": 155895952,
+            "blur": 12,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 132.29999995231628,
+            "draws": 399,
+            "pixels": 19254805,
+            "peakBytes": 155895952,
+            "blur": 12,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 133.30000007152557,
+            "draws": 399,
+            "pixels": 19254805,
+            "peakBytes": 155895952,
+            "blur": 12,
+            "motion": 0,
+            "zoom": 0
+          }
+        ]
+      ],
+      "cold": [
+        {
+          "wallMs": 195.69999992847443,
+          "draws": 543,
+          "pixels": 19254805,
+          "peakBytes": 155895952,
+          "blur": 0,
+          "motion": 0,
+          "zoom": 0
+        },
+        {
+          "wallMs": 193.5,
+          "draws": 543,
+          "pixels": 19254805,
+          "peakBytes": 155895952,
+          "blur": 12,
+          "motion": 0,
+          "zoom": 0
+        }
+      ],
+      "difference": {
+        "changedBits": 6385,
+        "maxEncoded": 9.834802849884028e-8,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      },
+      "exactOutput": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      }
+    },
+    {
+      "name": "shadow",
+      "kind": "shadow",
+      "sourceRoot": {
+        "part": "pages/9A250616-D3C6-4F06-A6C9-F2CE1DA3611D.json",
+        "offset": 17,
+        "id": "803292FE-AC77-4251-8660-1E93C7D7A0D6",
+        "name": "数据名称",
+        "nodes": 24,
+        "effects": {
+          "blur:type0": 2,
+          "shadows": 1
+        },
+        "fixture": "root-281.json"
+      },
+      "derived": false,
+      "targetId": "387EE2BB-80F9-43B9-82E9-97FFF364B0F2",
+      "options": {
+        "pageId": "00000000-0000-4000-8000-000000000001",
+        "width": 256,
+        "height": 192,
+        "view": {
+          "x": -10456,
+          "y": -1765.8685121107264,
+          "zoom": 4
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": true
+      },
+      "runs": [
+        [
+          {
+            "wallMs": 31.299999952316284,
+            "draws": 140,
+            "pixels": 8012634,
+            "peakBytes": 57996480,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 31.199999928474426,
+            "draws": 140,
+            "pixels": 8012634,
+            "peakBytes": 57996480,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 28.600000023841858,
+            "draws": 140,
+            "pixels": 8012634,
+            "peakBytes": 57996480,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          }
+        ],
+        [
+          {
+            "wallMs": 20.299999952316284,
+            "draws": 140,
+            "pixels": 8012634,
+            "peakBytes": 57996480,
+            "blur": 8,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 19.799999952316284,
+            "draws": 140,
+            "pixels": 8012634,
+            "peakBytes": 57996480,
+            "blur": 8,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 20.300000071525574,
+            "draws": 140,
+            "pixels": 8012634,
+            "peakBytes": 57996480,
+            "blur": 8,
+            "motion": 0,
+            "zoom": 0
+          }
+        ]
+      ],
+      "cold": [
+        {
+          "wallMs": 38.5,
+          "draws": 176,
+          "pixels": 8012634,
+          "peakBytes": 57996480,
+          "blur": 0,
+          "motion": 0,
+          "zoom": 0
+        },
+        {
+          "wallMs": 38.5,
+          "draws": 176,
+          "pixels": 8012634,
+          "peakBytes": 57996480,
+          "blur": 8,
+          "motion": 0,
+          "zoom": 0
+        }
+      ],
+      "difference": {
+        "changedBits": 17260,
+        "maxEncoded": 1.3195945069988113e-7,
+        "maxAlpha": 2.7284841053187847e-12,
+        "nonfinite": 0
+      },
+      "exactOutput": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      }
+    },
+    {
+      "name": "inner-shadow",
+      "kind": "inner-shadow",
+      "sourceRoot": {
+        "part": "pages/9A250616-D3C6-4F06-A6C9-F2CE1DA3611D.json",
+        "offset": 4,
+        "id": "706832B3-DCE1-40D4-A646-08C60504B2EA",
+        "name": "标题",
+        "nodes": 114,
+        "effects": {
+          "blur:type0:hidden": 3,
+          "innerShadows": 1
+        },
+        "fixture": "root-268.json"
+      },
+      "derived": false,
+      "targetId": "5CA7A69D-7000-44A8-B067-8BBCC21320FA",
+      "options": {
+        "pageId": "00000000-0000-4000-8000-000000000001",
+        "width": 256,
+        "height": 192,
+        "view": {
+          "x": -6852,
+          "y": -8,
+          "zoom": 4
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": true
+      },
+      "runs": [
+        [
+          {
+            "wallMs": 12.5,
+            "draws": 81,
+            "pixels": 4217137,
+            "peakBytes": 26082272,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 12.299999952316284,
+            "draws": 81,
+            "pixels": 4217137,
+            "peakBytes": 26082272,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 13.100000023841858,
+            "draws": 81,
+            "pixels": 4217137,
+            "peakBytes": 26082272,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          }
+        ],
+        [
+          {
+            "wallMs": 11.400000095367432,
+            "draws": 81,
+            "pixels": 4217137,
+            "peakBytes": 26082272,
+            "blur": 2,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 11.5,
+            "draws": 81,
+            "pixels": 4217137,
+            "peakBytes": 26082272,
+            "blur": 2,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 12.199999928474426,
+            "draws": 81,
+            "pixels": 4217137,
+            "peakBytes": 26082272,
+            "blur": 2,
+            "motion": 0,
+            "zoom": 0
+          }
+        ]
+      ],
+      "cold": [
+        {
+          "wallMs": 13.899999976158142,
+          "draws": 101,
+          "pixels": 4217137,
+          "peakBytes": 26082272,
+          "blur": 0,
+          "motion": 0,
+          "zoom": 0
+        },
+        {
+          "wallMs": 21.5,
+          "draws": 101,
+          "pixels": 4217137,
+          "peakBytes": 26082272,
+          "blur": 2,
+          "motion": 0,
+          "zoom": 0
+        }
+      ],
+      "difference": {
+        "changedBits": 7820,
+        "maxEncoded": 5.467403096925949e-8,
+        "maxAlpha": 2.9802322387695312e-8,
+        "nonfinite": 0
+      },
+      "exactOutput": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      }
+    },
+    {
+      "name": "motion",
+      "kind": "motion-blur",
+      "sourceRoot": {
+        "part": "pages/FD2E5BD9-6AE9-41F7-A2BB-F30E54459927.json",
+        "offset": 9,
+        "id": "3EEBD6F6-56CE-49DD-808E-9C1F16BA8B9B",
+        "name": "画板备份",
+        "nodes": 1207,
+        "effects": {
+          "shadows": 88,
+          "blur:type3": 3,
+          "innerShadows": 7,
+          "blur:type0": 8,
+          "blur:type1": 4
+        },
+        "fixture": "root-218.json"
+      },
+      "derived": false,
+      "targetId": "7A619642-72A1-4081-8259-559BA27F447C",
+      "options": {
+        "pageId": "00000000-0000-4000-8000-000000000001",
+        "width": 256,
+        "height": 192,
+        "view": {
+          "x": -11742,
+          "y": -21908,
+          "zoom": 2
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": true
+      },
+      "runs": [
+        [
+          {
+            "wallMs": 790.7999999523163,
+            "draws": 411,
+            "pixels": 111060481,
+            "peakBytes": 533904640,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 808.5,
+            "draws": 411,
+            "pixels": 111060481,
+            "peakBytes": 533904640,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 760,
+            "draws": 411,
+            "pixels": 111060481,
+            "peakBytes": 533904640,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          }
+        ],
+        [
+          {
+            "wallMs": 754.6999999284744,
+            "draws": 411,
+            "pixels": 111060481,
+            "peakBytes": 533904640,
+            "blur": 16,
+            "motion": 3,
+            "zoom": 0
+          },
+          {
+            "wallMs": 745.4000000953674,
+            "draws": 411,
+            "pixels": 111060481,
+            "peakBytes": 533904640,
+            "blur": 16,
+            "motion": 3,
+            "zoom": 0
+          },
+          {
+            "wallMs": 768.2999999523163,
+            "draws": 411,
+            "pixels": 111060481,
+            "peakBytes": 533904640,
+            "blur": 16,
+            "motion": 3,
+            "zoom": 0
+          }
+        ]
+      ],
+      "motionSources": [
+        {
+          "node": "19CAEECC-B878-41E5-9A48-9F310BEBF066",
+          "rect": {
+            "x": -324,
+            "y": -324,
+            "w": 138,
+            "h": 840
+          },
+          "channels": 463680,
+          "outsideUnit": 0,
+          "min": 0,
+          "max": 0
+        },
+        {
+          "node": "7A619642-72A1-4081-8259-559BA27F447C",
+          "rect": {
+            "x": -324,
+            "y": -324,
+            "w": 904,
+            "h": 840
+          },
+          "channels": 3037440,
+          "outsideUnit": 0,
+          "min": 0,
+          "max": 1
+        },
+        {
+          "node": "1CBBEBB8-F8E0-43F8-96FA-E0E099358131",
+          "rect": {
+            "x": -316,
+            "y": -86,
+            "w": 888,
+            "h": 341
+          },
+          "channels": 1211232,
+          "outsideUnit": 0,
+          "min": 0,
+          "max": 1
+        }
+      ],
+      "cold": [
+        {
+          "wallMs": 1097.3000000715256,
+          "draws": 411,
+          "pixels": 111060481,
+          "peakBytes": 418314496,
+          "blur": 0,
+          "motion": 0,
+          "zoom": 0
+        },
+        {
+          "wallMs": 871.7999999523163,
+          "draws": 411,
+          "pixels": 111060481,
+          "peakBytes": 418314496,
+          "blur": 16,
+          "motion": 3,
+          "zoom": 0
+        }
+      ],
+      "difference": {
+        "changedBits": 945,
+        "maxEncoded": 9.531853151223402e-8,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      },
+      "exactOutput": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      }
+    },
+    {
+      "name": "background-950",
+      "kind": "background-blur",
+      "sourceRoot": {
+        "part": "pages/b5e640b2-e777-404c-b121-8e866696d553.json",
+        "offset": 18,
+        "id": "10c6999a-19ed-4836-be94-46a2609309d7",
+        "name": "主框架03",
+        "nodes": 688,
+        "effects": {
+          "blur:type3": 10,
+          "innerShadows": 15,
+          "blur:type0": 40,
+          "shadows": 5
+        },
+        "fixture": "root-18.json"
+      },
+      "derived": false,
+      "targetId": "149506b7-c70d-44a0-bb42-c44b5b47de2e",
+      "options": {
+        "pageId": "00000000-0000-4000-8000-000000000001",
+        "width": 256,
+        "height": 192,
+        "view": {
+          "x": 698,
+          "y": 3235.75,
+          "zoom": 9.5
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": true
+      },
+      "runs": [
+        [
+          {
+            "wallMs": 438.2999999523163,
+            "draws": 403,
+            "pixels": 47796883,
+            "peakBytes": 278220832,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 428.2999999523163,
+            "draws": 387,
+            "pixels": 47796883,
+            "peakBytes": 278220832,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 414.89999997615814,
+            "draws": 387,
+            "pixels": 47796883,
+            "peakBytes": 280007872,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          }
+        ],
+        [
+          {
+            "wallMs": 414.8000000715256,
+            "draws": 403,
+            "pixels": 47796883,
+            "peakBytes": 278220832,
+            "blur": 12,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 402.6999999284744,
+            "draws": 387,
+            "pixels": 47796883,
+            "peakBytes": 278220832,
+            "blur": 12,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 392.39999997615814,
+            "draws": 387,
+            "pixels": 47796883,
+            "peakBytes": 280007872,
+            "blur": 12,
+            "motion": 0,
+            "zoom": 0
+          }
+        ]
+      ],
+      "cold": [
+        {
+          "wallMs": 476.89999997615814,
+          "draws": 487,
+          "pixels": 47796883,
+          "peakBytes": 270873712,
+          "blur": 0,
+          "motion": 0,
+          "zoom": 0
+        },
+        {
+          "wallMs": 423.2999999523163,
+          "draws": 487,
+          "pixels": 47796883,
+          "peakBytes": 270873712,
+          "blur": 12,
+          "motion": 0,
+          "zoom": 0
+        }
+      ],
+      "difference": {
+        "changedBits": 8241,
+        "maxEncoded": 9.073795181890887e-8,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      },
+      "exactOutput": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      }
+    },
+    {
+      "name": "shadow-950",
+      "kind": "shadow",
+      "sourceRoot": {
+        "part": "pages/9A250616-D3C6-4F06-A6C9-F2CE1DA3611D.json",
+        "offset": 17,
+        "id": "803292FE-AC77-4251-8660-1E93C7D7A0D6",
+        "name": "数据名称",
+        "nodes": 24,
+        "effects": {
+          "blur:type0": 2,
+          "shadows": 1
+        },
+        "fixture": "root-281.json"
+      },
+      "derived": false,
+      "targetId": "387EE2BB-80F9-43B9-82E9-97FFF364B0F2",
+      "options": {
+        "pageId": "00000000-0000-4000-8000-000000000001",
+        "width": 256,
+        "height": 192,
+        "view": {
+          "x": -25009,
+          "y": -4325.937716262975,
+          "zoom": 9.5
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": true
+      },
+      "runs": [
+        [
+          {
+            "wallMs": 96.10000002384186,
+            "draws": 112,
+            "pixels": 23639939,
+            "peakBytes": 149810240,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 96.19999992847443,
+            "draws": 112,
+            "pixels": 23639939,
+            "peakBytes": 149810240,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 107.89999997615814,
+            "draws": 112,
+            "pixels": 23639939,
+            "peakBytes": 149810240,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          }
+        ],
+        [
+          {
+            "wallMs": 55.200000047683716,
+            "draws": 112,
+            "pixels": 23639939,
+            "peakBytes": 149810240,
+            "blur": 8,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 54.39999997615814,
+            "draws": 112,
+            "pixels": 23639939,
+            "peakBytes": 149810240,
+            "blur": 8,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 60.200000047683716,
+            "draws": 112,
+            "pixels": 23639939,
+            "peakBytes": 149810240,
+            "blur": 8,
+            "motion": 0,
+            "zoom": 0
+          }
+        ]
+      ],
+      "cold": [
+        {
+          "wallMs": 134.29999995231628,
+          "draws": 140,
+          "pixels": 23639939,
+          "peakBytes": 149810240,
+          "blur": 0,
+          "motion": 0,
+          "zoom": 0
+        },
+        {
+          "wallMs": 64.20000004768372,
+          "draws": 140,
+          "pixels": 23639939,
+          "peakBytes": 149810240,
+          "blur": 8,
+          "motion": 0,
+          "zoom": 0
+        }
+      ],
+      "difference": {
+        "changedBits": 95420,
+        "maxEncoded": 1.8290907544127322e-7,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      },
+      "exactOutput": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      }
+    },
+    {
+      "name": "derived-tent",
+      "kind": "blur",
+      "sourceRoot": {
+        "part": "pages/9A250616-D3C6-4F06-A6C9-F2CE1DA3611D.json",
+        "offset": 17,
+        "id": "803292FE-AC77-4251-8660-1E93C7D7A0D6",
+        "name": "数据名称",
+        "nodes": 24,
+        "effects": {
+          "blur:type0": 2,
+          "shadows": 1
+        },
+        "fixture": "root-281.json"
+      },
+      "derived": true,
+      "targetId": "803292FE-AC77-4251-8660-1E93C7D7A0D6",
+      "options": {
+        "pageId": "00000000-0000-4000-8000-000000000001",
+        "width": 256,
+        "height": 192,
+        "view": {
+          "x": -5164,
+          "y": -938,
+          "zoom": 2
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": true
+      },
+      "runs": [
+        [
+          {
+            "wallMs": 40,
+            "draws": 209,
+            "pixels": 7310993,
+            "peakBytes": 40772000,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 38.89999997615814,
+            "draws": 209,
+            "pixels": 7310993,
+            "peakBytes": 40772000,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 39.200000047683716,
+            "draws": 209,
+            "pixels": 7310993,
+            "peakBytes": 40772000,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          }
+        ],
+        [
+          {
+            "wallMs": 26.700000047683716,
+            "draws": 209,
+            "pixels": 7310993,
+            "peakBytes": 40772000,
+            "blur": 16,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 28.399999976158142,
+            "draws": 209,
+            "pixels": 7310993,
+            "peakBytes": 40772000,
+            "blur": 16,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 26.399999976158142,
+            "draws": 209,
+            "pixels": 7310993,
+            "peakBytes": 40772000,
+            "blur": 16,
+            "motion": 0,
+            "zoom": 0
+          }
+        ]
+      ],
+      "cold": [
+        {
+          "wallMs": 40.39999997615814,
+          "draws": 265,
+          "pixels": 7310993,
+          "peakBytes": 40772000,
+          "blur": 0,
+          "motion": 0,
+          "zoom": 0
+        },
+        {
+          "wallMs": 35.5,
+          "draws": 265,
+          "pixels": 7310993,
+          "peakBytes": 40772000,
+          "blur": 16,
+          "motion": 0,
+          "zoom": 0
+        }
+      ],
+      "difference": {
+        "changedBits": 89756,
+        "maxEncoded": 2.0370673636804781e-7,
+        "maxAlpha": 2.980232238769531e-7,
+        "nonfinite": 0
+      },
+      "exactOutput": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      }
+    },
+    {
+      "name": "derived-gradient",
+      "kind": "blur",
+      "sourceRoot": {
+        "part": "pages/9A250616-D3C6-4F06-A6C9-F2CE1DA3611D.json",
+        "offset": 17,
+        "id": "803292FE-AC77-4251-8660-1E93C7D7A0D6",
+        "name": "数据名称",
+        "nodes": 24,
+        "effects": {
+          "blur:type0": 2,
+          "shadows": 1
+        },
+        "fixture": "root-281.json"
+      },
+      "derived": true,
+      "targetId": "803292FE-AC77-4251-8660-1E93C7D7A0D6",
+      "options": {
+        "pageId": "00000000-0000-4000-8000-000000000001",
+        "width": 256,
+        "height": 192,
+        "view": {
+          "x": -5164,
+          "y": -938,
+          "zoom": 2
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": true
+      },
+      "runs": [
+        [
+          {
+            "wallMs": 131.70000004768372,
+            "draws": 210,
+            "pixels": 12896617,
+            "peakBytes": 84207072,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 110.59999990463257,
+            "draws": 210,
+            "pixels": 12896617,
+            "peakBytes": 84207072,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 118.5,
+            "draws": 210,
+            "pixels": 12896617,
+            "peakBytes": 84207072,
+            "blur": 0,
+            "motion": 0,
+            "zoom": 0
+          }
+        ],
+        [
+          {
+            "wallMs": 70.60000002384186,
+            "draws": 210,
+            "pixels": 12896617,
+            "peakBytes": 84207072,
+            "blur": 16,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 65.89999997615814,
+            "draws": 210,
+            "pixels": 12896617,
+            "peakBytes": 84207072,
+            "blur": 16,
+            "motion": 0,
+            "zoom": 0
+          },
+          {
+            "wallMs": 65,
+            "draws": 210,
+            "pixels": 12896617,
+            "peakBytes": 84207072,
+            "blur": 16,
+            "motion": 0,
+            "zoom": 0
+          }
+        ]
+      ],
+      "cold": [
+        {
+          "wallMs": 695.3000000715256,
+          "draws": 266,
+          "pixels": 12896617,
+          "peakBytes": 84207072,
+          "blur": 0,
+          "motion": 0,
+          "zoom": 0
+        },
+        {
+          "wallMs": 74.69999992847443,
+          "draws": 266,
+          "pixels": 12896617,
+          "peakBytes": 84207072,
+          "blur": 16,
+          "motion": 0,
+          "zoom": 0
+        }
+      ],
+      "difference": {
+        "changedBits": 163418,
+        "maxEncoded": 0.0000010441281612649789,
+        "maxAlpha": 0.0000016093254089355469,
+        "nonfinite": 0
+      },
+      "exactOutput": {
+        "changedBits": 0,
+        "maxEncoded": 0,
+        "maxAlpha": 0,
+        "nonfinite": 0
+      }
+    }
+  ],
+  "timings": [
+    {
+      "name": "gaussian",
+      "controlMs": 32.5,
+      "candidateMs": 23.300000071525574,
+      "improvement": 0.28307692087613623,
+      "counters": {
+        "wallMs": 24.09999990463257,
+        "draws": 136,
+        "pixels": 8258613,
+        "peakBytes": 59426000,
+        "blur": 8,
+        "motion": 0,
+        "zoom": 0
+      }
+    },
+    {
+      "name": "modern-gaussian",
+      "controlMs": 71.19999992847443,
+      "candidateMs": 48.5,
+      "improvement": 0.3188202240348066,
+      "counters": {
+        "wallMs": 49.89999997615814,
+        "draws": 134,
+        "pixels": 22730241,
+        "peakBytes": 227526928,
+        "blur": 6,
+        "motion": 0,
+        "zoom": 0
+      }
+    },
+    {
+      "name": "background",
+      "controlMs": 140.5,
+      "candidateMs": 132.29999995231628,
+      "improvement": 0.05836298966322928,
+      "counters": {
+        "wallMs": 130.90000009536743,
+        "draws": 399,
+        "pixels": 19254805,
+        "peakBytes": 155895952,
+        "blur": 12,
+        "motion": 0,
+        "zoom": 0
+      }
+    },
+    {
+      "name": "shadow",
+      "controlMs": 31.199999928474426,
+      "candidateMs": 20.299999952316284,
+      "improvement": 0.34935897439571295,
+      "counters": {
+        "wallMs": 20.299999952316284,
+        "draws": 140,
+        "pixels": 8012634,
+        "peakBytes": 57996480,
+        "blur": 8,
+        "motion": 0,
+        "zoom": 0
+      }
+    },
+    {
+      "name": "inner-shadow",
+      "controlMs": 12.5,
+      "candidateMs": 11.5,
+      "improvement": 0.07999999999999996,
+      "counters": {
+        "wallMs": 11.400000095367432,
+        "draws": 81,
+        "pixels": 4217137,
+        "peakBytes": 26082272,
+        "blur": 2,
+        "motion": 0,
+        "zoom": 0
+      }
+    },
+    {
+      "name": "motion",
+      "controlMs": 790.7999999523163,
+      "candidateMs": 754.6999999284744,
+      "improvement": 0.0456499747420569,
+      "counters": {
+        "wallMs": 754.6999999284744,
+        "draws": 411,
+        "pixels": 111060481,
+        "peakBytes": 533904640,
+        "blur": 16,
+        "motion": 3,
+        "zoom": 0
+      }
+    },
+    {
+      "name": "background-950",
+      "controlMs": 428.2999999523163,
+      "candidateMs": 402.6999999284744,
+      "improvement": 0.05977118848165297,
+      "counters": {
+        "wallMs": 414.8000000715256,
+        "draws": 403,
+        "pixels": 47796883,
+        "peakBytes": 278220832,
+        "blur": 12,
+        "motion": 0,
+        "zoom": 0
+      }
+    },
+    {
+      "name": "shadow-950",
+      "controlMs": 96.19999992847443,
+      "candidateMs": 55.200000047683716,
+      "improvement": 0.4261954252731246,
+      "counters": {
+        "wallMs": 55.200000047683716,
+        "draws": 112,
+        "pixels": 23639939,
+        "peakBytes": 149810240,
+        "blur": 8,
+        "motion": 0,
+        "zoom": 0
+      }
+    },
+    {
+      "name": "derived-tent",
+      "controlMs": 39.200000047683716,
+      "candidateMs": 26.700000047683716,
+      "improvement": 0.31887755063251866,
+      "counters": {
+        "wallMs": 26.700000047683716,
+        "draws": 209,
+        "pixels": 7310993,
+        "peakBytes": 40772000,
+        "blur": 16,
+        "motion": 0,
+        "zoom": 0
+      }
+    },
+    {
+      "name": "derived-gradient",
+      "controlMs": 118.5,
+      "candidateMs": 65.89999997615814,
+      "improvement": 0.44388185674128156,
+      "counters": {
+        "wallMs": 70.60000002384186,
+        "draws": 210,
+        "pixels": 12896617,
+        "peakBytes": 84207072,
+        "blur": 16,
+        "motion": 0,
+        "zoom": 0
+      }
+    }
+  ],
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "fallback": false
+  },
+  "source": {
+    "path": "/Users/Apple/Downloads/拓扑素材.sketch",
+    "hash": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+    "nativeBinary": "02308b5bec7db4c653ff04151b65fced81af587b12610ab13f39cf858962fc57"
+  },
+  "current": "derived-zoom",
+  "error": "Zoom blur requires schema 19"
+}

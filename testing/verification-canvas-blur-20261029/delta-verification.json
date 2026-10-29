@@ -1,0 +1,28 @@
+{
+  "status": "passed",
+  "root": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-blur-delta-check-uuy6lgiz",
+  "results": [
+    {
+      "flags": [],
+      "code": 0,
+      "output": "{\"status\": \"applied\", \"files\": 14}\n",
+      "error": ""
+    },
+    {
+      "flags": [
+        "--reverse"
+      ],
+      "code": 0,
+      "output": "{\"status\": \"restored\", \"files\": 14}\n",
+      "error": ""
+    },
+    {
+      "flags": [
+        "--check",
+        "wrong-preimage"
+      ],
+      "code": 1,
+      "error": "Preimage mismatch: frontend/design-client/src/kernel/gpu/exact-filter.ts\n"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "frontend/design-client/src/kernel/NativeSourceSurface.tsx": "42914c342995ccb6cacd97ce187a13ab605a9dd1bc7232f8b6731ccbdad6d49f",
+  "frontend/design-client/src/kernel/source-viewport-plan.ts": "5b90e9a2e82439a89c81609c4f4b51ce062a490965f22e3046feda2fb932ae25",
+  "frontend/design-client/src/kernel/source-render-work.ts": "fa2ee9932b20bd8c4c148e7d911879c29b2393c31e2a6c1193d0d3c344d156ea",
+  "frontend/design-client/src/kernel/tile-computation-key.ts": "b9780e3c3eb1689404a1d26cd12d0e3b81cce62ea53af6b5e880d1c1e6c59e0f",
+  "frontend/design-client/src/kernel/render-worker.ts": "7f3a1f1a69ae4045e857c9c4d7c4826318466bca96e9d2ddd11d7f6ff5f9fc5a"
+}

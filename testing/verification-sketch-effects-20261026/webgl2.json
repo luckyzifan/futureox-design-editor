@@ -1,0 +1,126 @@
+{
+  "status": "passed",
+  "backend": "webgl2",
+  "cases": [
+    {
+      "kind": "gaussian-blur",
+      "angle": 0,
+      "managed": false,
+      "backend": "webgl2",
+      "changedVsUnfiltered": 2847,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "changed": 0,
+        "max": 0
+      }
+    },
+    {
+      "kind": "motion-blur",
+      "angle": 0,
+      "managed": false,
+      "backend": "webgl2",
+      "changedVsUnfiltered": 1715,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "changed": 0,
+        "max": 0
+      }
+    },
+    {
+      "kind": "motion-blur",
+      "angle": 37.5,
+      "managed": false,
+      "backend": "webgl2",
+      "changedVsUnfiltered": 1795,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "changed": 0,
+        "max": 0
+      }
+    },
+    {
+      "kind": "motion-blur",
+      "angle": 90,
+      "managed": false,
+      "backend": "webgl2",
+      "changedVsUnfiltered": 1258,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "changed": 0,
+        "max": 0
+      }
+    },
+    {
+      "kind": "gaussian-blur",
+      "angle": 0,
+      "managed": true,
+      "backend": "webgl2",
+      "changedVsUnfiltered": 3435,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "changed": 0,
+        "max": 0
+      }
+    },
+    {
+      "kind": "motion-blur",
+      "angle": 0,
+      "managed": true,
+      "backend": "webgl2",
+      "changedVsUnfiltered": 1528,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "changed": 0,
+        "max": 0
+      }
+    },
+    {
+      "kind": "motion-blur",
+      "angle": 37.5,
+      "managed": true,
+      "backend": "webgl2",
+      "changedVsUnfiltered": 1844,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "changed": 0,
+        "max": 0
+      }
+    },
+    {
+      "kind": "motion-blur",
+      "angle": 90,
+      "managed": true,
+      "backend": "webgl2",
+      "changedVsUnfiltered": 1203,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "changed": 0,
+        "max": 0
+      }
+    }
+  ]
+}

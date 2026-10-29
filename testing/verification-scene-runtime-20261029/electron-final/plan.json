@@ -1,0 +1,41 @@
+{
+  "purpose": "User requested final real Electron verification of current rendering refactor",
+  "inputs": [
+    "拓扑素材.sketch",
+    "117.sketch",
+    "01有料素材 (Copy).fig"
+  ],
+  "window": [
+    1440,
+    960
+  ],
+  "thresholds": {
+    "latestVisibleP95Ms": 33,
+    "stopToNativeSharpMs": 100
+  },
+  "path": "Normal production renderer with unchanged private native request results; isolated user profile",
+  "primary": "Full topology original, all 306 source materials; single-click material navigation retains complete source canvas",
+  "cases": [
+    "import original",
+    "reverse wheel zoom",
+    "space-drag pan",
+    "3200 percent reverse to 125 percent",
+    "switch full-source materials",
+    "enter editable material"
+  ],
+  "observations": [
+    "screenshots",
+    "UI ready proxy time",
+    "native source compile replies",
+    "console errors",
+    "real GPU feature status"
+  ],
+  "limits": [
+    "No physical scanout measurement",
+    "No independent whole-file fidelity oracle",
+    "No complete G5 matrix",
+    "desktop-dev native profile; release WASM",
+    "Diagnostic timings are not certified input-to-pixel latency"
+  ],
+  "platform": "macOS-26.3-arm64-arm-64bit-Mach-O"
+}

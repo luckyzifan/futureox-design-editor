@@ -1,0 +1,6 @@
+{
+  "frontend/design-client/src/model.ts": "707d277cd00310224f30f1c12d285fe31be9ff913023df00b530061755000d30",
+  "frontend/design-client/src/CanvasScrollbars.tsx": "232d7fe4a264fa97f5ae636b583336106f32be7b0e43e02695e69b6e01f1e9da",
+  "frontend/design-client/src/kernel/gpu/webgpu.ts": "51685393a1511679cdd753a053bab82bd426bacead8567acdbd8a13419da5c84",
+  "frontend/design-client/src/kernel/gpu/renderer.ts": "32313cbbfa5466ddddf731a5cd3751732885e0116a7d32db8da33aef53ea2c7a"
+}

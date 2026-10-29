@@ -1,0 +1,22 @@
+[
+  {
+    "name": "neutral",
+    "maxChannelError": 0,
+    "differentPixels": 0
+  },
+  {
+    "name": "saturation0",
+    "maxChannelError": 0,
+    "differentPixels": 0
+  },
+  {
+    "name": "contrast14",
+    "maxChannelError": 0,
+    "differentPixels": 0
+  },
+  {
+    "name": "hue07",
+    "maxChannelError": 0,
+    "differentPixels": 0
+  }
+]

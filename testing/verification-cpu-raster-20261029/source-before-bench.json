@@ -1,0 +1,16 @@
+{
+  "design-studio/crates/design-kernel/src/raster.rs": "b2148e23454c8ecdcd347a83a2d8895483d2122c9c23563cc0dd2e10919359ed",
+  "design-studio/crates/design-kernel/src/raster_scan.rs": "24db4c62c4d3c812a581dc04210bf08a52d19a1e367d5285ff4fc2abacec5169",
+  "design-studio/crates/design-kernel/src/area_program.rs": "cbff861e5dc9ea720fadb1c8beefe8fa9b0f51fb7ec9b0ff881981283764ea0b",
+  "design-studio/crates/design-kernel/src/math.rs": "7661d19a0b1c308793bef240b856e56dc0bd3e7322bce27f007b8d71ac6d7950",
+  "design-studio/crates/design-kernel/src/renderer.rs": "099f00fc2b5b9ec469b8cb83af6edcaf129d81111399773a8c4ab9c134fbaa35",
+  "design-studio/crates/design-kernel/src/renderer_tests/solid_quantization.rs": "027872d12de9e24fedaff5c87a2eadac22f20ee005121cde771f5281a1d67bed",
+  "design-studio/crates/design-kernel/src/raster_bucket_tests.rs": "b1664f00e7ad03149056f3128ac03b143656fce16bcc7d98b3ebbef44a922b65",
+  "design-studio/crates/design-kernel/tests/raster_safety.rs": "dffcd297e2da9a1ff2a1b6b1e41337d02cc1fd7ba93a77a2b3e36af167beb9ca",
+  "design-studio/crates/design-kernel/tests/raster_oracle.rs": "58651a5f4f61df8f4b16163e36e90215aa1891f476bfb2967e0d16212e83cb30",
+  "design-studio/crates/design-kernel/tests/sample_edges.rs": "235e9c609d3bf407c04380af2837f9212857ae6b1540b91f7cce8ffe266daf70",
+  "design-studio/crates/design-kernel/benches/sample_edges.rs": "292d392fa36160c8b582f6c4afe305c4acc42b4285663a53b1cf8cfbc59e4498",
+  "design-studio/crates/design-kernel/benches/raster.rs": "c802a6a6159a3fcb9f61c20d7d916407be0d91755cc63ae9ea4643a5db72a7fa",
+  "design-studio/crates/design-kernel/Cargo.toml": "be9323eea692e8095ba61635a4c9085be663e26f18c6f084c7098c4016719001",
+  "design-studio/Cargo.lock": "c0782bdf419aa648ea9750142b0d2cbfea4db13ee8a634172ca122901645acf2"
+}

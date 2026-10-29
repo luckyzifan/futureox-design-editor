@@ -1,0 +1,105 @@
+{
+  "status": "passed",
+  "source": "/Users/Apple/Downloads/01有料素材 (Copy).fig",
+  "sourceHash": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+  "startedAt": "2026-10-28T20:06:20.187Z",
+  "cases": [
+    {
+      "id": "import",
+      "status": "PASS",
+      "wallMs": 25401.903667
+    },
+    {
+      "id": "zoom-pan",
+      "status": "PASS",
+      "wallMs": 18081.744291000003
+    },
+    {
+      "id": "object-drag-undo",
+      "status": "PASS",
+      "wallMs": 20319.350000000006
+    },
+    {
+      "id": "resize-rotate-undo",
+      "status": "PASS",
+      "wallMs": 18026.577208999995
+    },
+    {
+      "id": "move-undo",
+      "status": "PASS",
+      "wallMs": 4144.915291999991
+    },
+    {
+      "id": "property-save",
+      "status": "PASS",
+      "wallMs": 22255.696916
+    },
+    {
+      "id": "png-1x-2x-3x-export",
+      "status": "PASS",
+      "wallMs": 5556.3530420000025
+    },
+    {
+      "id": "fd-save",
+      "status": "PASS",
+      "wallMs": 2371.171540999989
+    },
+    {
+      "id": "fd-reopen",
+      "status": "PASS",
+      "wallMs": 24344.62949999998
+    }
+  ],
+  "scope": "Owned production Electron, real GUI import and edits, SQLite and FD reopen. No physical scanout claim.",
+  "stage": "fd-reopen",
+  "instances": [
+    {
+      "pid": 49727,
+      "profile": "/private/tmp/futureox-render-sharp-20261029-work/gui-fig-final/profiles/forma-desktop-manual-e285b287-7347-4e42-9af3-52465f5d70f4-cZej5U",
+      "sandbox": true,
+      "contextIsolation": true,
+      "webSecurity": true,
+      "nodeIntegration": false
+    },
+    {
+      "pid": 52661,
+      "profile": "/private/tmp/futureox-render-sharp-20261029-work/gui-fig-final/profiles/forma-desktop-manual-88cc763f-31dc-4c75-a435-bf8edb11d63f-167ary",
+      "sandbox": true,
+      "contextIsolation": true,
+      "webSecurity": true,
+      "nodeIntegration": false
+    }
+  ],
+  "imported": {
+    "id": "01ec7e2c-b12a-4268-94c9-686ac7d18c37",
+    "nodes": 19949,
+    "pages": 14
+  },
+  "target": "08963141-ecfa-4141-baa8-30d266012f3b",
+  "pngs": [
+    {
+      "alt": "1x 切图预览",
+      "width": 5,
+      "height": 5,
+      "sha256": "aed4024bdaf746573cd95187f045e2fd8ef0597db15a6f9de82cfc7cc9dcfe18",
+      "byteLength": 201
+    },
+    {
+      "alt": "2x 切图预览",
+      "width": 10,
+      "height": 10,
+      "sha256": "38d9dc36f444af71cf9069e9a6e5ea0dbcd88191e494f967814a1d6418803211",
+      "byteLength": 304
+    },
+    {
+      "alt": "3x 切图预览",
+      "width": 15,
+      "height": 15,
+      "sha256": "45adc6e70c86991d985c24588ea72602fdfe43888579ed05650b19f207889550",
+      "byteLength": 422
+    }
+  ],
+  "pngTarget": "91009711-819b-41d7-9b2b-668301e702b4",
+  "sourceUnchanged": true,
+  "finishedAt": "2026-10-28T20:08:41.084Z"
+}

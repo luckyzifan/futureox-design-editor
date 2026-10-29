@@ -1,0 +1,98 @@
+{
+  "status": "passed",
+  "backend": "webgl2",
+  "cases": [
+    {
+      "unfilteredFloatMax": 0,
+      "kind": "gaussian-blur",
+      "angle": 0,
+      "managed": true,
+      "hdr": true,
+      "backend": "webgl2",
+      "changedVsUnfiltered": 2543,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "available": true,
+        "changed": 0,
+        "max": 0,
+        "index": -1,
+        "cpuPixel": [],
+        "gpuPixel": [],
+        "min": -0.023622138425707817,
+        "maxValue": 2.3001067638397217
+      }
+    },
+    {
+      "unfilteredFloatMax": 0,
+      "kind": "motion-blur",
+      "angle": 0,
+      "managed": true,
+      "hdr": true,
+      "backend": "webgl2",
+      "changedVsUnfiltered": 1190,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "available": true,
+        "changed": 0,
+        "max": 0,
+        "index": -1,
+        "cpuPixel": [],
+        "gpuPixel": [],
+        "min": -0.023771941661834717,
+        "maxValue": 2.3146932125091553
+      }
+    },
+    {
+      "unfilteredFloatMax": 0,
+      "kind": "motion-blur",
+      "angle": 37.5,
+      "managed": true,
+      "hdr": true,
+      "backend": "webgl2",
+      "changedVsUnfiltered": 1422,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "available": true,
+        "changed": 0,
+        "max": 0,
+        "index": -1,
+        "cpuPixel": [],
+        "gpuPixel": [],
+        "min": -0.024920374155044556,
+        "maxValue": 2.4265167713165283
+      }
+    },
+    {
+      "unfilteredFloatMax": 0,
+      "kind": "motion-blur",
+      "angle": 90,
+      "managed": true,
+      "hdr": true,
+      "backend": "webgl2",
+      "changedVsUnfiltered": 930,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "available": true,
+        "changed": 0,
+        "max": 0,
+        "index": -1,
+        "cpuPixel": [],
+        "gpuPixel": [],
+        "min": -0.025121422484517097,
+        "maxValue": 2.4460935592651367
+      }
+    }
+  ]
+}

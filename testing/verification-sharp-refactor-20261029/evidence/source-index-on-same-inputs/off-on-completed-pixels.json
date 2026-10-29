@@ -1,0 +1,37 @@
+{
+  "scope": "Same final native and source, only field index default gate differs; finished RGBA8 readback hashes, not HDR float or independent visual fidelity",
+  "rows": [
+    {
+      "id": "cold-local-400",
+      "sameRGBA8Readback": true
+    },
+    {
+      "id": "steady-100",
+      "sameRGBA8Readback": true
+    },
+    {
+      "id": "fractional-125",
+      "sameRGBA8Readback": true
+    },
+    {
+      "id": "cold-detail-3200",
+      "sameRGBA8Readback": true
+    },
+    {
+      "id": "fresh-target-reference",
+      "sameRGBA8Readback": true
+    },
+    {
+      "id": "motion-fresh-target",
+      "sameRGBA8Readback": true
+    },
+    {
+      "id": "motion-return",
+      "sameRGBA8Readback": true
+    },
+    {
+      "id": "pan-return",
+      "sameRGBA8Readback": true
+    }
+  ]
+}

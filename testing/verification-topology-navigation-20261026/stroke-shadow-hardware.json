@@ -1,0 +1,148 @@
+{
+  "status": "passed",
+  "scope": "real native geometry + hardware full render: original four-plane graph versus bounded stroked shadow source; float-bit comparison",
+  "cases": [
+    {
+      "kind": "rectangle",
+      "align": "center",
+      "words": 16384,
+      "differences": 0,
+      "runs": [
+        {
+          "candidate": false,
+          "streamed": 0,
+          "wallMs": 8015.700000047684,
+          "drawCalls": 51,
+          "peakTextureBytes": 16119680
+        },
+        {
+          "candidate": true,
+          "streamed": 1,
+          "wallMs": 95.89999997615814,
+          "drawCalls": 87,
+          "peakTextureBytes": 5330168
+        }
+      ]
+    },
+    {
+      "kind": "rectangle",
+      "align": "inside",
+      "words": 16384,
+      "differences": 0,
+      "runs": [
+        {
+          "candidate": false,
+          "streamed": 0,
+          "wallMs": 51.60000002384186,
+          "drawCalls": 55,
+          "peakTextureBytes": 16248064
+        },
+        {
+          "candidate": true,
+          "streamed": 1,
+          "wallMs": 24.899999976158142,
+          "drawCalls": 99,
+          "peakTextureBytes": 5606936
+        }
+      ]
+    },
+    {
+      "kind": "rectangle",
+      "align": "outside",
+      "words": 16384,
+      "differences": 0,
+      "runs": [
+        {
+          "candidate": false,
+          "streamed": 0,
+          "wallMs": 41.5,
+          "drawCalls": 55,
+          "peakTextureBytes": 16248064
+        },
+        {
+          "candidate": true,
+          "streamed": 1,
+          "wallMs": 21.199999928474426,
+          "drawCalls": 99,
+          "peakTextureBytes": 5606936
+        }
+      ]
+    },
+    {
+      "kind": "ellipse",
+      "align": "center",
+      "words": 16384,
+      "differences": 0,
+      "runs": [
+        {
+          "candidate": false,
+          "streamed": 0,
+          "wallMs": 24.600000023841858,
+          "drawCalls": 51,
+          "peakTextureBytes": 16119680
+        },
+        {
+          "candidate": true,
+          "streamed": 1,
+          "wallMs": 14.700000047683716,
+          "drawCalls": 87,
+          "peakTextureBytes": 5330168
+        }
+      ]
+    },
+    {
+      "kind": "ellipse",
+      "align": "inside",
+      "words": 16384,
+      "differences": 0,
+      "runs": [
+        {
+          "candidate": false,
+          "streamed": 0,
+          "wallMs": 27,
+          "drawCalls": 55,
+          "peakTextureBytes": 16248064
+        },
+        {
+          "candidate": true,
+          "streamed": 1,
+          "wallMs": 19.200000047683716,
+          "drawCalls": 99,
+          "peakTextureBytes": 5606936
+        }
+      ]
+    },
+    {
+      "kind": "ellipse",
+      "align": "outside",
+      "words": 16384,
+      "differences": 0,
+      "runs": [
+        {
+          "candidate": false,
+          "streamed": 0,
+          "wallMs": 31.300000071525574,
+          "drawCalls": 55,
+          "peakTextureBytes": 16248064
+        },
+        {
+          "candidate": true,
+          "streamed": 1,
+          "wallMs": 21.899999976158142,
+          "drawCalls": 99,
+          "peakTextureBytes": 5606936
+        }
+      ]
+    }
+  ],
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "fallback": false
+  },
+  "current": {
+    "kind": "ellipse",
+    "align": "outside",
+    "candidate": true
+  }
+}

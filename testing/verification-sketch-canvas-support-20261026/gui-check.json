@@ -1,0 +1,25 @@
+{
+  "scope": "actual in-app Chromium browser through CUA; source worktree Vite; WebGPU",
+  "fixture": "testing/fixtures/design/sketch-color-controls.sketch",
+  "steps": [
+    "open Sketch from file chooser",
+    "WebGPU clear status",
+    "select saturation0-shape",
+    "saturation 0 -> 1",
+    "visible grey -> blue",
+    "undo -> 0",
+    "redo -> 1",
+    "save FD download",
+    "open saved FD",
+    "WebGPU clear and edited blue retained",
+    "zoom 200% visible content",
+    "wheel pan moves content out of view",
+    "fit all restores four visible boards"
+  ],
+  "savedSha256": "b33a06c09a84702972e59efd8454da159abcc2d563f0169c2178a7504a9d9db0",
+  "initialFailure": "Exact compositor pipeline 60 not prepared; fixed compositorModes and reloaded",
+  "notRun": [
+    "Electron native source save",
+    "full rendering matrix"
+  ]
+}

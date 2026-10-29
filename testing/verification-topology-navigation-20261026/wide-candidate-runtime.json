@@ -1,0 +1,10 @@
+{
+  "pid": 47172,
+  "app": "/tmp/FutureoxTopologyCandidate.app",
+  "build": "/private/tmp/futureox-topology-wide-candidate-build-20261026",
+  "budget": "automatic",
+  "buildFlags": {
+    "VITE_DESIGN_WIDE_RATIONAL_PREFIX": "1",
+    "VITE_DESIGN_WIDE_RATIONAL_PREFIX_LARGE": "1"
+  }
+}

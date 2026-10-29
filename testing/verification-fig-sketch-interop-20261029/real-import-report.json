@@ -1,0 +1,27 @@
+[
+  {
+    "file": "117.sketch",
+    "hash": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+    "backend": "wasm-sketch",
+    "warnings": [
+      "Sketch compatibility import: unsupported source fields may not be editable or survive export; keep the original .sketch file.",
+      "Sketch: fonts without embedded resources use the default font; source font names remain in metadata.",
+      "Sketch: legacy-mixed-flex-constraints-require-native-resize",
+      "Sketch: native-blur-portable-kernel;native-pixels-not-identical",
+      "Sketch: operand boolean flags remain source metadata; executable boolean groups use the shared vector model.",
+      "Sketch: zero-sized layers use a minimum selection box; source dimensions remain in metadata."
+    ],
+    "nodes": 752,
+    "pages": 1,
+    "status": "FAIL",
+    "error": "DOCUMENT_RESOURCE_LIMIT: 5438035 serialized bytes exceed this session's 2371584-byte document allowance (37945344-byte working-memory budget; 16x heuristic reserve)",
+    "sourceUnchanged": true
+  },
+  {
+    "file": "01有料素材 (Copy).fig",
+    "hash": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+    "status": "FAIL",
+    "error": "Error: FIG 蒙版 OUTLINE 暂不支持；原文件未修改",
+    "sourceUnchanged": true
+  }
+]

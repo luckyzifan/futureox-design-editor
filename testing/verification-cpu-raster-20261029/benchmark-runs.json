@@ -1,0 +1,16 @@
+[
+  {
+    "name": "sample-bench",
+    "command": "design-studio/target/release/deps/sample_edges-5338bd41221134a3",
+    "exitCode": 0,
+    "seconds": 4.110511064529419,
+    "binarySha256": "19398fe22d48fa3815b3ab85bb8917278833cda8b57647e4550a7ddaa8cb94f1"
+  },
+  {
+    "name": "raster-bench",
+    "command": "design-studio/target/release/deps/raster-6d21c8f99cac3389",
+    "exitCode": 0,
+    "seconds": 7.7241270542144775,
+    "binarySha256": "431afed5b4a619f6a92229d7aa1f873839356d22d7eb8263cb2e299951c6b67b"
+  }
+]

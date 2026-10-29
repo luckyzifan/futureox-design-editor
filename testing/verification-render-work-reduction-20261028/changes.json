@@ -1,0 +1,118 @@
+{
+  "basis": "Existing dirty workspace, not Git HEAD. Do not revert other changes.",
+  "changes": [
+    {
+      "path": ".agents/skills/futureox-design-development/SKILL.md",
+      "beforeSha256": "50a945a4047aadf04769195dcf9879d1725ae0fc2bec7a3cef09c91e1cfde59f",
+      "afterSha256": "b8ad9bfde688aeee1cf69f85bb5bff9160c67fe3a5000051b467671bb83aa1fc",
+      "provenance": "saved-before-edit"
+    },
+    {
+      "path": ".agents/skills/futureox-rendering-first/SKILL.md",
+      "beforeSha256": "68b59d33cac32690deb01d09d811b47aa4312308c51e341a0aeee05342b0831a",
+      "afterSha256": "790a9b8e08b14059a100c79e691043fefa516c8809c4ce46f3691d2e4ca807d4",
+      "provenance": "saved-before-edit"
+    },
+    {
+      "path": "docs/DEVELOPMENT_CONTRACT_V1.md",
+      "beforeSha256": "92ad80b11ff1f728dc0878937dc98ae6bccd55813e21fd546250b14727d77659",
+      "afterSha256": "05b714504554f2f08e44956e6c11dba7c6e7cfa5fa7c68f9bacfa12b8e926ffe",
+      "provenance": "saved-before-edit"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/gpu/scene_plan.rs",
+      "beforeSha256": "c7944cb5d3c5961d75d1a7f9f48298652051ae5539a03dc86fd83734d576e338",
+      "afterSha256": "d37091688a2fa0c413dea096eadee3b3aae74c4916982a5e5a29e78e15374dad",
+      "provenance": "frozen-build-input"
+    },
+    {
+      "path": "frontend/design-client/src/Canvas.tsx",
+      "beforeSha256": "e97ae6425f56f25842fb516a35c5ae95d0ccbb2cc127afcd351950cc3c9788b7",
+      "afterSha256": "fb8c12a4947c6db887aced5ecbaf619dfb00f7afe99fe9e5a8adbaf9ff1adb50",
+      "provenance": "frozen-build-input"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer.ts",
+      "beforeSha256": "6a1ae43b45278377f884dee71edbc138a524373a4b28f07182e1cb2fc157359a",
+      "afterSha256": "89ac3c16a354ffe33f8cc64e36794591171fb30dfe084aeaa89e16c70ed7f8f6",
+      "provenance": "frozen-build-input"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/webgpu.ts",
+      "beforeSha256": "aa505fd7013ba3ebf41840f451186481c8fc15566f7d08f106faeecb042d4ea4",
+      "afterSha256": "dba90e656c13bf1b35cf9c2e70ebc01d56edc15ade7a51d2f78c3bf3db2756dc",
+      "provenance": "frozen-build-input"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/types.ts",
+      "beforeSha256": "e5379acf4a431a26e879db7478c16d0e31f3fde3e594de020bfc47b106496e09",
+      "afterSha256": "c6cd37368c43f6d5b4d74ebb8f34c54ce8659bcd863043e91c82851f12937145",
+      "provenance": "frozen-build-input"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/scene-index.ts",
+      "beforeSha256": "ce49a5f98e5beb6bafd98ce0b6384e614c917dbcb69be75a329b76737447531d",
+      "afterSha256": "3849d42711fe4e237fc21bf1bab947f5f93a30408bb20c11e79191c218b35983",
+      "provenance": "frozen-build-input"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/coverage-cache.ts",
+      "beforeSha256": "1864dd6264e4eb8a1c7f2afb47d8ba9a26dcb6d7e26a9e20c96006eb9f4804e9",
+      "afterSha256": "74d0a813afe27344ef1329668737d86cbf4125ee2f077f918c9f80680e83c188",
+      "provenance": "frozen-build-input"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/effect-region.ts",
+      "beforeSha256": "65882ae03b4a76dea23c780e4e91f993d703dad3034626c4d72436a7d51d4bfc",
+      "afterSha256": "f55f3e1b04cc98fe0d81f2902242571f7a72f24aaa1d1766f564201fa4cd7c93",
+      "provenance": "frozen-build-input"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/gradient-paint-over.ts",
+      "beforeSha256": null,
+      "afterSha256": "b3a97048ed7986fdb9f95619f6b1a81ff7c6b53d6d2d1606163dfeff723075b7",
+      "provenance": "new-in-task"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/reduced-paint-work.test.ts",
+      "beforeSha256": null,
+      "afterSha256": "0f19479fe92f2f947a21c6b3d00c7cc22a937e3b03fc30845aa2b1be96ca9812",
+      "provenance": "new-in-task"
+    },
+    {
+      "path": "frontend/design-client/src/canvas-native-source-wiring.test.tsx",
+      "beforeSha256": null,
+      "afterSha256": "fd837af6fea8dc5be1efd8b9c048ee9d81df4e27fc666c2c3ec1a6be18165af6",
+      "provenance": "new-in-task"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/tile-cost-diagnostics.ts",
+      "beforeSha256": "044cae5e50f84951f0d8e02c61d75f0c2bab1b3bfefc1060cd24f584bbf9d839",
+      "afterSha256": "b98cc323b39584c0ddb4982bdc9b128169c858bc456af98c49fc478952533e0e",
+      "provenance": "reconstructed-frozen-hash-verified"
+    },
+    {
+      "path": "frontend/design-desktop/src/render-pass-work.mjs",
+      "beforeSha256": "07c3a74ea55a2954ca8549e2679a0ea86652b8fdd27cebec0fce7f4d244e33c3",
+      "afterSha256": "f27041f51dbe194349540a0336407a9a5a4cdda8033fafdfd1fb8b9641dd1a0c",
+      "provenance": "frozen-build-input"
+    },
+    {
+      "path": "frontend/design-desktop/src/render-pass-work.d.mts",
+      "beforeSha256": "97cd6a01bdaa3c79ef25f58d56eb0467fca5f190b824324e1f51395f518f6dcb",
+      "afterSha256": "67ba27b8c6201aed586ffe00b0acd3e4f2e782f8fe188f817ab669d1d04b176f",
+      "provenance": "frozen-build-input"
+    },
+    {
+      "path": "frontend/design-desktop/test/render-work-diagnostics.test.mjs",
+      "beforeSha256": "89943b0ee15bde3333a97962593a7dc215b41be078980d18b4987673204df4ce",
+      "afterSha256": "51b5fced6178a4895924012941e294bde60484de6e3667f24878c0b4864fedcc",
+      "provenance": "reconstructed-known-delta"
+    }
+  ],
+  "externalBuildInputChangesPreserved": [
+    "frontend/design-client/src/canvas-fallback-submission.test.tsx",
+    "frontend/design-client/src/kernel/NativeSourceSurface.tsx"
+  ],
+  "rollback": "Verify every afterSha256, then git apply --reverse --check task.patch before applying. Rebuild WASM and desktop afterwards. The host test original was reconstructed, not pre-frozen."
+}

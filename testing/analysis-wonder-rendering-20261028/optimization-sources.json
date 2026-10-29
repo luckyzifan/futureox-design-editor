@@ -1,0 +1,15 @@
+{
+  "date": "2026-10-28",
+  "type": "static-analysis-only",
+  "source_hashes": {
+    "frontend/design-client/src/kernel/NativeSourceSurface.tsx": "208ddd63881cba3caecdfd112d1c13d367d5e18edd1465fff34eceec08652ff0",
+    "frontend/design-client/src/kernel/render-worker.ts": "f25c1515f7074dea69bbf90bfbd81dcc4ab7a29e0ec82bf5f66ce9e22e2db4c4",
+    "frontend/design-client/src/kernel/navigation-cost.ts": "3c94de8bf052c2515d8c3e81d1185d98fd2133cbc7b71fe3db9235fefa92cd45",
+    "frontend/design-client/src/kernel/tile-plan-aligned.ts": "58eae232314332dd8db0bebd5ccde425c978fd925b4078871fac5134826d7cfa",
+    "frontend/design-client/src/kernel/gpu/encode-yield.ts": "007b52e423c677ff2699c1b120539c78ccc876107fd366af635f0500a02e7724",
+    "frontend/design-client/src/kernel/gpu/renderer.ts": "6a1ae43b45278377f884dee71edbc138a524373a4b28f07182e1cb2fc157359a",
+    "design-studio/crates/design-kernel/src/geometry_snapshot.rs": "3e06f3846381d6e55bf487c11c517b0c46f4a1848ed203a3cfa67eb26e184a13",
+    "design-studio/crates/design-kernel/src/render_index.rs": "ef8d73ec4a80933e9928b548c52017588cf13935d3c30e414a46e1976d07ca90",
+    "design-studio/crates/design-desktop-backend/src/large_document/canvas_snapshot.rs": "ce2d5e2c23d842e1b2b92048e6e67d38ec96691b1002430ae399fb118aaf4405"
+  }
+}

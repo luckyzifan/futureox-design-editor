@@ -1,0 +1,13 @@
+{
+  "format": 1,
+  "viewport": {"width": 800, "height": 600},
+  "worldCenter": {"x": 878, "y": 278},
+  "sourceRoots": 306,
+  "sourceNodes": 124447,
+  "timeoutMs": 300000,
+  "runs": ["local-400-cold", "local-400-repeat-1", "local-400-repeat-2", "detail-3200", "overview", "fractional-125", "motion-return"],
+  "motion": {"steps": 32, "intervalMs": 16, "zoomFrom": 4, "zoomPeak": 32},
+  "guards": {"maxRasterRequests": 1, "maxTilesPerRequest": 2, "minChangedPixels": 1000, "uiStallMs": 250},
+  "latencyAcceptance": "NOT_SET: baseline measurement only, no complete G2 latency PASS",
+  "futureRetentionTarget": {"pairedMedianImprovement": 0.05, "nonRegressionRequired": true}
+}

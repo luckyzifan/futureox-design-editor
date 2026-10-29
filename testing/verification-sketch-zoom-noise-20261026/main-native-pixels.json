@@ -1,0 +1,22 @@
+[
+  {
+    "case": "noise-base",
+    "max": 0,
+    "changedChannels": 0
+  },
+  {
+    "case": "noise-double",
+    "max": 0,
+    "changedChannels": 0
+  },
+  {
+    "case": "zoom-center",
+    "max": 0,
+    "changedChannels": 0
+  },
+  {
+    "case": "zoom-offset",
+    "max": 0,
+    "changedChannels": 0
+  }
+]

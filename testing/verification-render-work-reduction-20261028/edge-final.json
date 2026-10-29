@@ -1,0 +1,11 @@
+{
+  "status": "failed",
+  "scope": "actual hardware four-sample/export/HDR-value and nonfinite destination bit comparisons; no physical HDR display claim",
+  "cases": [],
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "fallback": false
+  },
+  "error": "Managed documents require fine coverage"
+}

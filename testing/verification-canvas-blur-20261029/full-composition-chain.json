@@ -1,0 +1,114 @@
+[
+  {
+    "id": "4B7242E2-1217-4A41-A69A-B53B5FBDF98F",
+    "opacity": 1,
+    "mask": false,
+    "clip": false,
+    "passthrough": false,
+    "matrix": [
+      4,
+      0,
+      0,
+      4,
+      -242.34765625,
+      22.235907393587695
+    ],
+    "rect": {
+      "x": -320,
+      "y": -115,
+      "w": 585,
+      "h": 422
+    },
+    "fills": [
+      {
+        "kind": "solid",
+        "color": "#034673",
+        "opacity": 1
+      }
+    ],
+    "effects": [
+      {
+        "id": "",
+        "kind": "gaussian-blur",
+        "visible": true,
+        "radius": 11.03639030456543,
+        "x": 0,
+        "y": 0,
+        "spread": 0,
+        "color": "#000000",
+        "opacity": 1,
+        "amount": 0
+      }
+    ]
+  },
+  {
+    "id": "2DC4D02E-BB39-4F90-8067-1165C01976D5",
+    "opacity": 1,
+    "mask": false,
+    "clip": false,
+    "passthrough": false,
+    "matrix": [
+      4,
+      0,
+      0,
+      4,
+      -448.140625,
+      -680.3651668251623
+    ],
+    "rect": {
+      "x": -320,
+      "y": -320,
+      "w": 896,
+      "h": 669
+    },
+    "fills": [],
+    "effects": []
+  },
+  {
+    "id": "B4F79D9D-73A9-4CFA-A0C2-BA3610CC6105",
+    "opacity": 1,
+    "mask": false,
+    "maskId": "360EEE93-E4D1-422C-9897-BA0A8CBB4FF7",
+    "clip": false,
+    "passthrough": false,
+    "matrix": [
+      4,
+      0,
+      0,
+      4,
+      -4756.140625,
+      -2292.3651668251623
+    ],
+    "rect": {
+      "x": -320,
+      "y": -320,
+      "w": 896,
+      "h": 832
+    },
+    "fills": [],
+    "effects": []
+  },
+  {
+    "id": "67894011-3541-5967-aaeb-2a8a33b27ee6",
+    "opacity": 1,
+    "mask": false,
+    "clip": false,
+    "passthrough": true,
+    "matrix": [
+      4,
+      0,
+      0,
+      4,
+      -21140.140625,
+      -65220.36516682516
+    ],
+    "rect": {
+      "x": -320,
+      "y": -320,
+      "w": 896,
+      "h": 832
+    },
+    "fills": [],
+    "effects": []
+  }
+]

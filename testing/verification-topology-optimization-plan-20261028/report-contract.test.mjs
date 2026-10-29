@@ -1,0 +1,14 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {evaluateReport,countRenderStalls} from './report-contract.mjs'
+const runs=['local-400-cold','local-400-repeat-1','local-400-repeat-2','motion-return']
+const config={sourceRoots:306,viewport:{width:800,height:600},runs,guards:{maxRasterRequests:1,maxTilesPerRequest:2,minChangedPixels:1000}}
+function valid(){return {source:{roots:306,nodes:124447},runtime:{dpr:2},samples:runs.map(id=>({id,status:'complete',target:{x:-3112,y:-812,zoom:4},maxActive:1,errors:[],requests:[{tiles:2,backend:'webgpu'}],qualitySummary:{last:{nativeCoverageComplete:true,maxUpscale:1}},pixels:{width:1600,height:1200,changedPixels:5000,sha256:'exact-pixels',frame:{view:{x:-3112,y:-812,zoom:4},dpr:2}}}))}}
+test('complete repeatable target evidence passes its limited scope only',()=>{const r=evaluateReport(valid(),config);assert.equal(r.status,'PASS');assert.match(r.g2Latency,/BLOCKED/)})
+test('an old but sharp bitmap is rejected',()=>{const r=valid();r.samples[3].pixels.frame.view.zoom=32;assert.ok(evaluateReport(r,config).failures.includes('motion-return:stale-pixels'))})
+test('blank, low density, partial source and CPU fallback cannot pass',()=>{const r=valid();r.source.roots=1;r.samples[0].pixels.changedPixels=0;r.samples[0].pixels.width=800;r.samples[0].requests[0].backend='cpu';assert.deepEqual(evaluateReport(r,config).failures,['source-root-count','local-400-cold:blank','local-400-cold:pixel-size','local-400-cold:backend-unproved'])})
+test('missing or failed cases are retained as failure',()=>{const r=valid();r.samples.pop();assert.ok(evaluateReport(r,config).failures.includes('motion-return:incomplete'))})
+test('pixel changes and queue expansion are rejected',()=>{const r=valid();r.samples[1].pixels.sha256='wrong';r.samples[1].maxActive=2;r.samples[1].requests[0].tiles=3;const f=evaluateReport(r,config).failures;assert.ok(f.includes('same-view-pixels'));assert.ok(f.includes('local-400-repeat-1:concurrency'));assert.ok(f.includes('local-400-repeat-1:batch-size'))})
+test('completion labels cannot hide insufficient final density or UI stalls',()=>{const r=valid();r.samples[0].qualitySummary.last.maxUpscale=2;r.samples[0].visibleUiStalls=1;const f=evaluateReport(r,config).failures;assert.ok(f.includes('local-400-cold:final-density-unproved'));assert.ok(f.includes('local-400-cold:ui-stall'))})
+test('readback and invisible-window pauses are separate from render stalls',()=>{assert.equal(countRenderStalls([{visible:true,stage:'readback'},{visible:false,stage:'motion'},{visible:true,stage:'render'},{visible:true,stage:'drain'}]),2)})
+test('a later completion cannot overwrite the first-ready timing silently',()=>{const r=valid();Object.assign(r.samples[3],{readyAt:300,motionStoppedAt:100,stopToReadyMs:50});assert.ok(evaluateReport(r,config).failures.includes('motion-return:timing-inconsistent'))})

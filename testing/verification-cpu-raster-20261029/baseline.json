@@ -1,0 +1,12 @@
+{
+  "design-studio/crates/design-kernel/src/raster.rs": "6476fa3efe113337e4d46c407d44c685fa2c5aa4932c2a2dda52e9de54d796aa",
+  "design-studio/crates/design-kernel/src/math.rs": "974bc077bf224bd742d458e3125c50e463663f5023993f735a2463497ecc6c30",
+  "design-studio/crates/design-kernel/src/area_program.rs": "1f55faf86bce8f1c12bca0f6a05bfc2d9c3a3514ced3a3970a00bd626f8da82e",
+  "design-studio/crates/design-kernel/src/renderer.rs": "af3a79f1a1685ee16e72b8400ccf60d74ce3b4a4c7a5f9b8ffeb00c64123814b",
+  "design-studio/crates/design-kernel/src/raster_bucket_tests.rs": "9e05feccf5ca84dd18b35dd86583120dd82a6c2c2492b05e266dbc407b797fed",
+  "design-studio/crates/design-kernel/src/renderer_tests/solid_quantization.rs": "e5823e5d1e58f624edc065c4f1198b64ef8b87822a87533be9f24cbe26fb0c43",
+  "design-studio/crates/design-kernel/benches/raster.rs": "daf9e9f6ffcc0deae42ae38a3dadc38bf817d84fe3708b14583b5cc5790f0fe5",
+  "design-studio/crates/design-kernel/benches/sample_edges.rs": "300e34a9c9a1aad4daede17f2788b4346ea6896a9cd72389f4f6b4f287635d47",
+  "design-studio/crates/design-kernel/Cargo.toml": "978a9e4f6364eefaac3cf2fe837ee0d24acfd2339acf9a72b3febaa044b31f73",
+  "design-studio/crates/design-kernel/tests/sample_edges.rs": "301817c048810815824fdac1959b5d7042da61785a938caa03e0721505f1e89e"
+}

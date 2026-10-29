@@ -1,0 +1,121 @@
+[
+  {
+    "case": "blend-16-0.5",
+    "nativeRoundtripDifferentBytes": 0,
+    "portableDifferentBytes": 16384,
+    "nativeCenter": [
+      114,
+      88,
+      140,
+      255
+    ],
+    "portableCenter": [
+      151,
+      86,
+      137,
+      191
+    ]
+  },
+  {
+    "case": "blend-16-1",
+    "nativeRoundtripDifferentBytes": 0,
+    "portableDifferentBytes": 12288,
+    "nativeCenter": [
+      0,
+      0,
+      26,
+      255
+    ],
+    "portableCenter": [
+      179,
+      77,
+      128,
+      255
+    ]
+  },
+  {
+    "case": "blend-17-0.5",
+    "nativeRoundtripDifferentBytes": 0,
+    "portableDifferentBytes": 16384,
+    "nativeCenter": [
+      115,
+      89,
+      141,
+      255
+    ],
+    "portableCenter": [
+      151,
+      86,
+      137,
+      191
+    ]
+  },
+  {
+    "case": "blend-17-1",
+    "nativeRoundtripDifferentBytes": 0,
+    "portableDifferentBytes": 12288,
+    "nativeCenter": [
+      230,
+      179,
+      255,
+      255
+    ],
+    "portableCenter": [
+      179,
+      77,
+      128,
+      255
+    ]
+  },
+  {
+    "case": "disabled-fill",
+    "nativeRoundtripDifferentBytes": 0,
+    "portableDifferentBytes": 0,
+    "nativeCenter": [
+      255,
+      0,
+      0,
+      255
+    ],
+    "portableCenter": [
+      255,
+      0,
+      0,
+      255
+    ]
+  },
+  {
+    "case": "star-0.25",
+    "nativeRoundtripDifferentBytes": 0,
+    "portableDifferentBytes": 320,
+    "nativeCenter": [
+      255,
+      0,
+      0,
+      255
+    ],
+    "portableCenter": [
+      255,
+      0,
+      0,
+      255
+    ]
+  },
+  {
+    "case": "star-0.7",
+    "nativeRoundtripDifferentBytes": 0,
+    "portableDifferentBytes": 225,
+    "nativeCenter": [
+      255,
+      0,
+      0,
+      255
+    ],
+    "portableCenter": [
+      255,
+      0,
+      0,
+      255
+    ]
+  }
+]

@@ -1,0 +1,5 @@
+||this._object.setIsFlippedVertical(t)}}});var k={Fixed:0,Fit:1,Fill:2,Relative:3};function I(t){return Object.keys(k).find((function(e){return k[e]===t}))}x.define("horizontalSizing",{get:function(){return this._object.horizontalSizing()},set:function(t){if(!this.isImmutable()){var e="string"==type
+
+(e)&&this._object.setVerticalSizing(e)}}});var M={None:0,Min:1,Max:4,All:5};x.define("horizontalPins",{get:function(){return this._object.horizontalPins()},set:function(t){if(!this.isImmutable()){var e="string"==typeof t?M[t]:t;Object.values(M).includes(e)&&this._object.setHorizontalPins(e)}}}),x.de
+
+mBottom",slideFromTop:"slideFromTop"},P="back",D={none:-1,slideFromRight:0,slideFromLeft:1,slideFromBottom:2,slideFromTop:3},x=function(t){l()(r,t);var e=_(r);function r(){return a()(this,r),e.apply(this,arguments)}return s()(r,[{key:"isBackAction",value:function(){return!!this._object.isBackAction(

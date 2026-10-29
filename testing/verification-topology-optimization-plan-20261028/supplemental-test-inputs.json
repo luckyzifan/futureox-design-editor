@@ -1,0 +1,15 @@
+{
+  "reason": "First isolated typecheck lacked MCP modules referenced by existing client tests; production baseline unchanged",
+  "inputs": {
+    "frontend/design-mcp/src/artifacts.mjs": "a6ca9d9e7dfa921512ba8fad254923630fb5670e755cdd47f1e4d642427bbf94",
+    "frontend/design-mcp/src/cli.mjs": "d5fe76c5d5fe4105eee04f316b09e06a0a9522ce9bbcb7a4afcc17f1b6c7a75e",
+    "frontend/design-mcp/src/framing.mjs": "5bf424525ab645c80c7a7250012b56db757fa8ac7873ef678f927e3e900c4999",
+    "frontend/design-mcp/src/modern-protocol.mjs": "fbcc636944a2bd6ca2221adab22a4d397a32d5a638a9c8946e46df263232c1e8",
+    "frontend/design-mcp/src/operation-backend.d.mts": "80915ab7e3c266a8734142441e45d17add607cf3593826c061af12b0e1b4c8d1",
+    "frontend/design-mcp/src/operation-backend.mjs": "ce61dee256634f8f6981c22b363c6dbf4a93dc48e91be1621c4669e955d6e14d",
+    "frontend/design-mcp/src/prompts.mjs": "683cf89f7ac8ecb19d39d70d52248987e2ec8aeb99dd33b1ea215e259ad6e528",
+    "frontend/design-mcp/src/server.d.mts": "ba08bcb071f9b7313bb1ba2272b900bc15445cad856cb82dfa420b3c8fb06f36",
+    "frontend/design-mcp/src/server.mjs": "16b084022a7f9786c70d8956058ef2003ee8d0929ca81ed99e3f9741fae6dbbb",
+    "frontend/design-mcp/src/socket-backend.mjs": "6da2b4b6d0669a98e0bda0684acdfbd1dfda7192e823235c64a2bc5e4d790bc0"
+  }
+}

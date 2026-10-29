@@ -1,0 +1,158 @@
+{
+  "input": "/Users/Apple/Downloads/拓扑素材.sketch",
+  "sourceHash": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+  "sourceNodes": 124447,
+  "materials": 306,
+  "files": [
+    {
+      "path": "design-studio/crates/design-kernel/src/source_compile.rs",
+      "before": "a2d439dc7c22917715ebef6ba4e916b36f68e355c16c886b1f60ca4cb88f0c30",
+      "after": "150cdeb3f7d2ad18bc1d19d52a0595d48f591cc14f7dded3c77e4c9ae6660d43"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/gpu/packet.rs",
+      "before": "4c672968bde0229971feb8c320fff238ff62d1bfeaab8b4aa1c835959116c31e",
+      "after": "61cc405ee905e29f3f3628062d221f24469ba8774d3617ee9ad345b4bd60a6d3"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/preparation.rs",
+      "before": "fdf63d49a6b9b42a1dc855335bddb4a50df913ec04c3cdea4467fe9ea4f25899",
+      "after": "0e998442a9fa74e750d84c3023e3b3eb95c4633f1a4d372e7368acb8ed1287e2"
+    }
+  ],
+  "build": "/tmp/futureox-scene-runtime-cache-fix-20261029",
+  "tests": {
+    "negativeControl": "old source fails context-budget assertion",
+    "sourceCompile": "13 passed, 1 ignored",
+    "packet": "13 passed",
+    "preparation": "19 passed",
+    "desktopBuild": "passed coherent inputs"
+  },
+  "importStages": [
+    {
+      "method": "open",
+      "at": 1793258117278,
+      "wallMs": 22155.627458999996,
+      "indexedObjects": 124399
+    },
+    {
+      "method": "canvasSnapshot",
+      "at": 1793258139441,
+      "wallMs": 43935.60795800001,
+      "nodes": 124447,
+      "roots": 306,
+      "bytes": 622309485
+    },
+    {
+      "method": "canvasLayout",
+      "at": 1793258183385,
+      "wallMs": 14.5787920000148
+    },
+    {
+      "method": "canvasLayout",
+      "at": 1793258183402,
+      "wallMs": 1.3876670000026934
+    }
+  ],
+  "cases": [
+    {
+      "case": "focus-template-after-overview",
+      "start": 1793258251896,
+      "end": 1793258314607,
+      "nativeRequests": 20,
+      "modes": {
+        "demand": 20
+      },
+      "compileMedianMs": 40.62754099999438,
+      "matchedCameraSubmits": 21,
+      "requestToSubmitMaxMs": 72,
+      "readyOffsetsMs": [
+        21884,
+        21896
+      ]
+    },
+    {
+      "case": "resident-pan",
+      "start": 1793258314607,
+      "end": 1793258364737,
+      "nativeRequests": 0,
+      "modes": {},
+      "compileMedianMs": null,
+      "matchedCameraSubmits": 1,
+      "requestToSubmitMaxMs": 90,
+      "readyOffsetsMs": [
+        393
+      ]
+    },
+    {
+      "case": "resident-reverse-pan",
+      "start": 1793258364737,
+      "end": 1793258437017,
+      "nativeRequests": 0,
+      "modes": {},
+      "compileMedianMs": null,
+      "matchedCameraSubmits": 1,
+      "requestToSubmitMaxMs": 31,
+      "readyOffsetsMs": [
+        285
+      ]
+    },
+    {
+      "case": "zoom-100",
+      "start": 1793258437017,
+      "end": 1793258451300,
+      "nativeRequests": 16,
+      "modes": {
+        "demand": 16
+      },
+      "compileMedianMs": 16.814895499992417,
+      "matchedCameraSubmits": 17,
+      "requestToSubmitMaxMs": 66,
+      "readyOffsetsMs": [
+        5113,
+        5142
+      ]
+    },
+    {
+      "case": "pan-100",
+      "start": 1793258451300,
+      "end": 1793258502823,
+      "nativeRequests": 4,
+      "modes": {
+        "demand": 4
+      },
+      "compileMedianMs": 12.540875000006054,
+      "matchedCameraSubmits": 5,
+      "requestToSubmitMaxMs": 9,
+      "readyOffsetsMs": [
+        817
+      ]
+    },
+    {
+      "case": "zoom-400-immediate-reverse-pan",
+      "start": 1793258502823,
+      "end": 1793258540000,
+      "nativeRequests": 20,
+      "modes": {
+        "demand": 20
+      },
+      "compileMedianMs": 30.34872949999408,
+      "matchedCameraSubmits": 26,
+      "requestToSubmitMaxMs": 36,
+      "readyOffsetsMs": [
+        7005,
+        7011
+      ]
+    }
+  ],
+  "limits": [
+    "Diagnostic desktop-dev native build; release WASM",
+    "Timings are wall stages and submission receipts, not physical pixels",
+    "No formal repeated A/B; baseline GUI driver stopped on duplicate names and later inputs are separately attributed",
+    "First overview remained slow; cold import unchanged",
+    "Full fidelity, G5 and strict 33/100ms remain unaccepted",
+    "Later concurrent edits in three GPU TypeScript files are not in this tested artifact"
+  ],
+  "failureFound": "Full-source transport cache blocked 64 MiB optional compiler context; every full fallback also discarded warm geometry",
+  "fix": "Evict optional transfer retention on subset handoff without resetting scope or IDs; bound projection retention by remaining existing allowance; keep full-path geometry warm; release cap when source authority is revoked"
+}

@@ -1,0 +1,60 @@
+{
+  "status": "passed",
+  "backend": "webgpu",
+  "cases": [
+    {
+      "kind": "zoom-blur",
+      "center": [
+        0.5,
+        0.5
+      ],
+      "cropped": true,
+      "managed": true,
+      "hdr": false,
+      "preview": false,
+      "backend": "webgpu",
+      "changedVsUnfiltered": 1792,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "available": true,
+        "changed": 0,
+        "max": 0,
+        "index": -1,
+        "cpuPixel": [],
+        "gpuPixel": [],
+        "min": 0,
+        "maxValue": 1
+      }
+    },
+    {
+      "kind": "zoom-blur",
+      "center": [
+        0.25,
+        0.75
+      ],
+      "cropped": true,
+      "managed": true,
+      "hdr": false,
+      "preview": false,
+      "backend": "webgpu",
+      "changedVsUnfiltered": 2048,
+      "rgba": {
+        "changed": 0,
+        "max": 0
+      },
+      "floatDiagnostic": {
+        "available": true,
+        "changed": 0,
+        "max": 0,
+        "index": -1,
+        "cpuPixel": [],
+        "gpuPixel": [],
+        "min": 0,
+        "maxValue": 1
+      }
+    }
+  ]
+}

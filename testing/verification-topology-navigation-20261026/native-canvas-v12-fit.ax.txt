@@ -1,0 +1,30 @@
+Window: "全源单画板 · 原生渲染验证", App: FutureoxNativeCanvasV8.
+0 standard window 全源单画板 · 原生渲染验证, Secondary Actions: Raise
+	1 container 全源单画板 · 原生渲染验证
+		2 container
+			3 HTML content 全源单画板 · 原生渲染验证, URL: design-app://app/index.html
+				4 container
+					5 text 全源单画板 · 原生渲染验证
+					6 button 打开拓扑 Sketch
+					7 button 适合画板
+					8 button 缩小
+					9 button 放大
+					10 container
+						11 text 缩放 
+						12 stepper (settable, float) Description: 缩放百分比, Value: 2.467
+						13 text  %
+					14 text 306 个素材 · 124,447 个节点 · WebGPU · 清晰
+					15 image 全源画板
+	16 close button
+	17 full screen button Help: this button also has an action to zoom the window, Secondary Actions: zoom the window
+	18 minimise button
+19 menu bar
+	20 FutureoxNativeCanvasV8
+	21 文件
+	22 编辑
+	23 对象
+	24 视图
+	25 自动化
+	26 窗口
+
+The focused UI element is 7 button 适合画板

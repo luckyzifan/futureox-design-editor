@@ -1,0 +1,26 @@
+[
+  {
+    "case": "noise-base",
+    "maxRgba": 38,
+    "changedChannels": 26539,
+    "maxAlpha": 0
+  },
+  {
+    "case": "noise-double",
+    "maxRgba": 61,
+    "changedChannels": 26735,
+    "maxAlpha": 0
+  },
+  {
+    "case": "zoom-center",
+    "maxRgba": 51,
+    "changedChannels": 32844,
+    "maxAlpha": 9
+  },
+  {
+    "case": "zoom-offset",
+    "maxRgba": 51,
+    "changedChannels": 27113,
+    "maxAlpha": 10
+  }
+]
