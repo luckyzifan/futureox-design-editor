@@ -95,3 +95,12 @@ fn default_font_policy_keeps_text_and_utf16_ranges_while_reporting_the_source_fo
     assert!(!out.warnings.is_empty());
     assert_eq!(before, s.document().to_sketch().unwrap());
 }
+
+#[test]
+fn display_difference_and_intersection_follow_native_enum() {
+    for (code,expected) in [(2,"Some(Exclude)"),(3,"Some(Intersect)")] {
+        let mut b=path("b");b["booleanOperation"]=json!(code);
+        let out=display_snapshot(&session(json!([{"_class":"shapeGroup","do_objectID":"G","frame":{"x":0,"y":0,"width":40,"height":20},"layers":[path("a"),b]}])),"P").unwrap();
+        assert_eq!(format!("{:?}",out.document.nodes["G"].boolean_operation),expected);
+    }
+}

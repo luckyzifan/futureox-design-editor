@@ -209,8 +209,9 @@ fn override_tree_round_trips_all_value_families() {
     let image = override_value(instance, "A/B/IMG_image").unwrap();
     assert_eq!(image["_class"], "MSJSONFileReference");
     let reference = image["_ref"].as_str().unwrap();
+    assert!(reference.starts_with("images/"));
     assert_eq!(
-        files.get(&format!("images/{reference}")).map(Vec::as_slice),
+        files.get(reference).map(Vec::as_slice),
         Some(PNG.as_slice()),
         "referenced image blob is in the bundle"
     );
@@ -268,8 +269,9 @@ fn kernel_authored_overrides_export_and_unsupported_values_are_reported() {
     let image = override_value(instance, "A/B/NEWIMG_image").unwrap();
     assert_eq!(image["_class"], "MSJSONFileReference");
     let reference = image["_ref"].as_str().unwrap();
+    assert!(reference.starts_with("images/"));
     assert_eq!(
-        files.get(&format!("images/{reference}")).map(Vec::as_slice),
+        files.get(reference).map(Vec::as_slice),
         Some(PNG.as_slice())
     );
     assert!(

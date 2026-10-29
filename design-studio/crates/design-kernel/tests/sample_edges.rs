@@ -76,6 +76,7 @@ fn active_edges_match_legacy_sampling_at_clip_and_winding_boundaries() {
         seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
         (seed >> 32) as f64 / u32::MAX as f64
     };
+    let mut workspace = futureox_design_kernel::raster::RasterWorkspace::default();
     for case in 0..80 {
         let mut contours = vec![];
         for _ in 0..4 {
@@ -104,10 +105,17 @@ fn active_edges_match_legacy_sampling_at_clip_and_winding_boundaries() {
             h: 33,
         };
         for rule in [false, true] {
+            let packed = workspace.samples(&contours, clip, rule).unwrap();
             for sample in [None, Some(0), Some(1), Some(2), Some(3)] {
                 let old = legacy_sample(&contours, clip, rule, sample);
                 let new = rasterize_sample(&contours, clip, rule, sample);
                 assert_eq!(old.rect, new.rect);
+                if let Some(s) = sample {
+                    assert_eq!(packed.rect, old.rect);
+                    for y in clip.y..clip.bottom() { for x in clip.x..clip.right() {
+                        assert_eq!(packed.at(s, x, y), old.at(x, y), "packed case {case}, rule {rule}, phase {s}");
+                    }}
+                }
                 assert_eq!(
                     old.data, new.data,
                     "case {case}, rule {rule}, sample {sample:?}"

@@ -149,12 +149,7 @@ fn eight_key_runs_import_into_model_and_bindings() {
         node.bindings.get("sketchTextBehaviour").map(String::as_str),
         Some("2")
     );
-    assert_eq!(
-        node.bindings
-            .get("sketchTextVerticalAlignment")
-            .map(String::as_str),
-        Some("1")
-    );
+    assert_eq!(style.vertical_align, "center");
     assert_eq!(
         node.bindings
             .get("sketchTextTransform")
@@ -171,15 +166,16 @@ fn eight_key_runs_import_into_model_and_bindings() {
     // 3 matches what the custom line height re-derives, so no binding/note.
     assert!(!node.bindings.contains_key("sketchLineSpacingBehaviour"));
     let notes = import_lossy(node);
+    assert_eq!(node.text_runs[0].text_case, Some(futureox_design_kernel::font::TextCase::Upper));
+    let paragraph=node.text_runs[0].paragraph.as_ref().unwrap();
+    assert_eq!((paragraph.minimum_line_height,paragraph.maximum_line_height),(30.,34.));
+    assert!(!notes.iter().any(|n|n=="paragraph-line-height-range-collapsed"));
     let sizing = node.sizing.as_ref().expect("fixed source sizing");
     assert!(matches!(sizing.width, futureox_design_kernel::layout::SizeMode::Fixed));
     assert!(matches!(sizing.height, futureox_design_kernel::layout::SizeMode::Fixed));
     assert!(!notes.iter().any(|n| n == "textbehaviour-fixed-size-not-modeled"));
     for expected in [
-        "text-vertical-alignment-not-modeled",
-        "text-transform-not-modeled",
         "paragraph-tightening-not-modeled",
-        "paragraph-line-height-range-collapsed",
     ] {
         assert!(notes.iter().any(|n| n == expected), "missing {expected}: {notes:?}");
     }
@@ -204,7 +200,7 @@ fn full_key_set_round_trips_back_to_sketch_json() {
     for run in attrs {
         assert_eq!(run["attributes"]["textStyleVerticalAlignmentKey"], 1);
         assert_eq!(run["attributes"]["MSAttributedStringTextTransformAttribute"], 1);
-        let para = &run["attributes"]["textStyleBasicParagraphStyle"];
+        let para = &run["attributes"]["paragraphStyle"];
         assert_eq!(para["alignment"], 2);
         assert_eq!(para["allowsDefaultTighteningForTruncation"], true);
         assert_eq!(para["paragraphSpacing"], 6.);
@@ -216,11 +212,11 @@ fn full_key_set_round_trips_back_to_sketch_json() {
     assert_eq!(attrs[1]["attributes"]["strikethroughStyle"], 1);
     // Per-segment line height: line_height ratio × the segment font size.
     assert_eq!(
-        attrs[0]["attributes"]["textStyleBasicParagraphStyle"]["minimumLineHeight"],
+        attrs[0]["attributes"]["paragraphStyle"]["minimumLineHeight"],
         30.
     );
     assert_eq!(
-        attrs[1]["attributes"]["textStyleBasicParagraphStyle"]["minimumLineHeight"],
+        attrs[1]["attributes"]["paragraphStyle"]["minimumLineHeight"],
         18.
     );
     // A second import sees the same bindings: the round trip is stable.
@@ -293,4 +289,14 @@ fn behaviour_keys_derive_from_style_when_no_binding() {
     let layer = exported_page(&export_sketch(&doc).unwrap())["layers"][0].clone();
     assert_eq!(layer["textBehaviour"], 1);
     assert_eq!(layer["lineSpacingBehaviour"], 1, "binding wins over derivation");
+}
+
+#[test]
+fn translucent_run_alpha_survives_native_export_and_reopen() {
+    let mut runs=full_key_runs();runs[0]["attributes"]["MSAttributedStringColorAttribute"]["alpha"]=json!(0.25);
+    let doc=import_sketch(&bundle(json!({"_class":"page","do_objectID":"PAGE1","layers":[text_layer(2,0,runs)]}))).unwrap();
+    let color=doc.nodes["TEXT-1"].text_runs[0].color.as_ref().unwrap();assert!(color.ends_with("/ 0.25)"),"{color}");
+    let output=export_sketch(&doc).unwrap();let page=exported_page(&output);
+    assert_eq!(page["layers"][0]["attributedString"]["attributes"][0]["attributes"]["MSAttributedStringColorAttribute"]["alpha"],0.25);
+    let reopened=import_sketch(&output).unwrap();assert_eq!(&reopened.nodes["TEXT-1"].text_runs[0].color, &doc.nodes["TEXT-1"].text_runs[0].color);
 }

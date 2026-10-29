@@ -215,7 +215,11 @@ fn editable_report_only_emits_canonical_kinds_and_refuses_unmapped_source_layers
     assert_eq!(reopened.document.nodes["r"].kind, "rectangle");
     assert_eq!(reopened.document.nodes.len(), 2);
     assert_eq!(reopened.document.nodes["b"].fills[0].image, image.image);
-    for class in ["hotspot", "futureUnknownClass"] {
+    let hotspot=archive(json!({"pages":[{"_ref":"pages/p"}]}),&[("p",page("p",vec![json!({"_class":"hotspot","do_objectID":"hotspot","frame":{"x":0,"y":0,"width":20,"height":20}})]))]);
+    let admitted=interop::import_sketch_report(&hotspot).unwrap();
+    assert_eq!(admitted.document.nodes["hotspot"].kind,"rectangle");
+    assert!(admitted.document.nodes["hotspot"].fills.is_empty());
+    for class in ["futureUnknownClass"] {
         let layer = json!({"_class":class,"do_objectID":"unsupported-layer",
             "frame":{"x":0,"y":0,"width":20,"height":20}});
         let bytes = archive(

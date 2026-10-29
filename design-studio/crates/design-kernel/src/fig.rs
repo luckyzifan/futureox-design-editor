@@ -229,10 +229,10 @@ pub fn decode_canvas(data: &[u8]) -> Result<Value, Error> {
             ".fig version {version} older than minimum supported (15)"
         )));
     }
-    if version > 70 {
+    if version > 106 {
         // figformat/kiwi.py only warns above MAX_SUPPORTED_VERSION: newer
         // files usually decode with degraded coverage
-        eprintln!("[fig] version {version} newer than tested (70); decoding anyway");
+        eprintln!("[fig] version {version} newer than tested (106); decoding anyway");
     }
     let mut p = 12usize;
     let seg = |p: &mut usize| -> Result<Vec<u8>, Error> {

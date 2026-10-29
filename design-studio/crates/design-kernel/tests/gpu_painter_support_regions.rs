@@ -2,6 +2,7 @@
 use futureox_design_kernel::{Engine, RenderOptions, color::ColorSettings, math::Rect,
     rational_filter, blend::{Pixel, Surface}};
 use serde_json::{Value, json};
+#[path="support/frame_scene.rs"] mod frame_scene;
 
 fn document() -> Value {
     json!({"schemaVersion":9,"id":"painter-support","name":"painter support",
@@ -105,8 +106,7 @@ fn backdrop_output_certificate_covers_parent_foreground_support_and_packet_metad
     let json = serde_json::to_value(&scene).unwrap();
     assert_eq!(json["nodes"]["backdrop"]["backdropOutputBox"],serde_json::to_value(output).unwrap());
     let packet = scene.into_packet().unwrap();
-    let length = u32::from_le_bytes(packet[8..12].try_into().unwrap()) as usize;
-    let metadata: Value = serde_json::from_slice(&packet[24..24+length]).unwrap();
+    let metadata = frame_scene::scene(&packet);
     assert_eq!(metadata["nodes"]["backdrop"]["backdropOutputBox"],json["nodes"]["backdrop"]["backdropOutputBox"]);
     let old = compile(&d,&o,None).unwrap();
     assert!(old.nodes.values().all(|n| n.backdrop_output_box.is_none()));

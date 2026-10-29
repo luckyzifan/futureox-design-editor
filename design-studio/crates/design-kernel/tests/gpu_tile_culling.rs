@@ -97,7 +97,16 @@ fn exact_camera_variants_survive_zoom_revisits_and_expire_with_document_lineage(
         "view":{"x":0,"y":0,"zoom":1},"rasterProfile":"figmaSubpixel"})).unwrap();
     let cached=engine.compile_gpu(&options).unwrap();let mut fresh=Engine::new();fresh.load_document(&doc.to_string()).unwrap();
     assert_eq!(serde_json::to_value(cached).unwrap(),serde_json::to_value(fresh.compile_gpu(&options).unwrap()).unwrap());
-    assert_eq!(engine.gpu_compile_cache_stats()["cameraResidency"]["entries"],json!(0));
+    // A precisely invalidated active camera may be retained under the NEW
+    // lineage. Cache emptiness is not the contract; old pixels/programs must
+    // never return. Exercise those cameras against fresh engines after edit.
+    for zoom in [11. / 3.,0.6,1.2] {
+        let mut next=options.clone();next.view.zoom=zoom;
+        let actual=engine.compile_gpu(&next).unwrap();
+        let mut fresh=Engine::new();fresh.load_document(&doc.to_string()).unwrap();
+        assert_eq!(serde_json::to_value(actual).unwrap(),serde_json::to_value(fresh.compile_gpu(&next).unwrap()).unwrap());
+    }
+    assert!(engine.gpu_compile_cache_stats()["cameraResidency"]["entries"].as_u64().unwrap()<=4);
 }
 #[test]
 fn alpha_and_nonlocal_effects_do_not_take_the_opaque_shortcut() {
