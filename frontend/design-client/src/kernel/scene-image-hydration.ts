@@ -1,6 +1,7 @@
 import { DecodedImageCache, decodedImageScope, validDecodedImage, type DecodedImage, type DecodedImageOwner } from './decoded-image-cache'
 import { sceneIndex } from './gpu/scene-index'
 import type { GpuScene } from './gpu/types'
+import { largePngRowCandidate, nativeImageRows } from './image-row-source'
 
 export type ImageVariant = 'byte' | 'linear'
 export type ImagePersistence = {
@@ -46,7 +47,7 @@ export function imageLoaderResidencyOwner(loader: unknown): ImageResidencyOwner 
 /** The renderer is shared between document lanes. Resolve its decoder from the
  * explicitly bound render context, never from the lane that created the GPU. */
 export function managedSceneImageLoader(cache: DecodedImageCache, context: () => ImageContext,
-  persistence: ImagePersistence) {
+  persistence: ImagePersistence): import('./gpu/renderer').ManagedImageLoader {
   let retained: { owner: ImageResidencyOwner; kernel: ImageDecoder; scope: string; settings: string; resourceOwner?: DecodedImageOwner } | undefined
   const revokedRequests = new WeakSet<ImageContext>()
   const checkRequest = (next: ImageContext) => {
@@ -72,10 +73,30 @@ export function managedSceneImageLoader(cache: DecodedImageCache, context: () =>
         ? { width: hit.width, height: hit.height, pixels: new Float32Array(0), bytes: hit.data as Uint8Array }
         : { width: hit.width, height: hit.height, pixels: hit.data as Float32Array }
     }
-    const [width, height] = JSON.parse(level > 0 ? kernel.image_info_at_level(uri, level) : kernel.image_info(uri)) as [number, number]
-    const data = byte
-      ? level > 0 ? kernel.image_rgba8_at_level(uri, level) : kernel.image_rgba8(uri)
-      : level > 0 ? kernel.image_linear_at_level(uri, level) : kernel.image_linear(uri)
+    const rows = (reason:1|2=1) => {
+      // Keep native-resolution rows transient. They must not become an empty
+      // full-image cache entry or a persistent decoded-pixel receipt.
+      return {...nativeImageRows(uri, settings, () => {
+        checkRequest(next)
+        if(next.ownerCurrent&&!next.ownerCurrent())throw Error('PREVIEW_CANCELLED')
+      }),linearRowReason:reason}
+    }
+    if (!byte && level === 0 && largePngRowCandidate(uri)) return rows()
+    let width:number,height:number,data:Uint8Array|Float32Array
+    try {
+      [width,height] = JSON.parse(level > 0 ? kernel.image_info_at_level(uri, level) : kernel.image_info(uri)) as [number,number]
+      data = byte
+        ? level > 0 ? kernel.image_rgba8_at_level(uri, level) : kernel.image_rgba8(uri)
+        : level > 0 ? kernel.image_linear_at_level(uri, level) : kernel.image_linear(uri)
+    } catch(error) {
+      // A source can fit individually while other decoded assets already fill
+      // the native cache. Do not evict borrowed pixels or enlarge its quota:
+      // use the same bounded row decoder only for the exact capacity rejection.
+      const message=error instanceof Error?error.message:typeof error==='string'?error:''
+      if(!byte&&level===0&&uri.startsWith('data:image/png;base64,')&&
+        /^Decoded image budget exceeded(?:: [0-9]{1,10}x[0-9]{1,10} source pixels cannot fit without loss; automatic downsampling is disabled)?$/.test(message))return rows(2)
+      throw error
+    }
     if (level === 0) {
       const image = { width, height, data }
       cache.set(scope, key, image)

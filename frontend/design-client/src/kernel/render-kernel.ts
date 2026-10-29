@@ -10,6 +10,7 @@ import { bindContentOwner, pixelSourceContract } from './gpu/page-background'
 import { FrameResources } from './gpu/frame-resources'
 import { decodeScenePacket, copyScenePacket } from './gpu/scene-packet'
 import { PreparedPacket, waitForPacket } from './prepared-packet'
+export type NativeSourceIdentity={documentId:string;pageId:string;stageId:string;nodes:number}
 
 /** The GPU worker keeps only the image decoder on its synchronous boundary.
  * Document/layout/geometry work lives in the preparation worker. CPU-only hosts
@@ -70,6 +71,7 @@ export class RenderKernel {
       }
       return reply.value as T
     }
+    if(method==='load_source_snapshot')throw Error('NATIVE_SOURCE_UNSUPPORTED')
     if (method === 'derive_document_v1' || method === 'preparation_capabilities_v1') throw Error('DERIVATION_UNSUPPORTED')
     if (method === 'render_cpu_frame') return renderCpuFrame(this.assets, args[0] as string, args[1] as PaintDamage | undefined) as T
     if (method === 'initialize') return undefined as T
@@ -77,7 +79,7 @@ export class RenderKernel {
     this.settings = this.assets.color_settings()
     return result as T
     } catch (error) {
-      const stage = method === 'load_document' || method === 'initialize' ? 2 : method === 'derive_document_v1' ? 3 :
+      const stage = method === 'load_document' || method === 'load_source_snapshot' || method === 'initialize' ? 2 : method === 'derive_document_v1' ? 3 :
         method === 'apply_document_patch_with_damage' || method === 'apply_interaction_transforms' ? 4 :
         method === 'compile_gpu_packet' ? 5 :
         ['render_linear','render_png','render_color_png','render_region_png','render_cpu_frame'].includes(method) ? 7 : 0
@@ -88,6 +90,16 @@ export class RenderKernel {
     this.contentOwner={}; this.revision++; this.pendingMutations++; this.pendingPackets.clear(); this.resources.clear()
     try { await this.call<void>('load_document', [value]) }
     finally { this.pendingMutations-- }
+  }
+  async load_source_snapshot(token:string):Promise<NativeSourceIdentity> {
+    if(this.lane!=='canvas'||!this.preparation||!await this.preparation.supportsNativeSource())throw Error('NATIVE_SOURCE_UNSUPPORTED')
+    this.contentOwner={};this.revision++;this.pendingMutations++;this.pendingPackets.clear();this.resources.clear()
+    try {
+      const identity=await this.call<NativeSourceIdentity>('load_source_snapshot',[token])
+      if(!identity||['documentId','pageId','stageId'].some(key=>typeof identity[key as keyof NativeSourceIdentity]!=='string')||
+        !Number.isSafeInteger(identity.nodes)||identity.nodes<1||!this.preparationStateReceipt)throw Error('Invalid native source identity')
+      return identity
+    }finally{this.pendingMutations--}
   }
   async apply_document_patch_with_damage(value: string, expectedBaseReceipt?: PreparationStateReceiptV1) {
     if (expectedBaseReceipt && !await this.supportsAcknowledgedPatches()) throw Error('PATCH_GUARD_UNSUPPORTED')

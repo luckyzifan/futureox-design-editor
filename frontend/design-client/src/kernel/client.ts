@@ -1,5 +1,5 @@
 import { documentCapacity } from '../document-capacity'
-import { markRenderFailure } from './render-failure-telemetry'
+import { markRenderFailure, renderFailureFields } from './render-failure-telemetry'
 import { HandledTileDeliveryError } from './tile-admission'
 import { FrameMeasurements } from './frame-measurements'
 import { bindCanvasGrid, GridMeasurements } from './grid-measurements'
@@ -21,6 +21,7 @@ import { recordRenderProfile } from './render-profile'
 import { connectNativePreparation } from './native-preparation'
 import { currentPreparedDocumentJson } from '../prepared-document'
 import { interactionDocumentSource } from './interaction-document-source'
+import { sourceRenderSnapshot, type SourceRenderSnapshot } from './source-render-snapshot'
 
 // The immutable preload bridge is installed before this module evaluates.
 // Neither localStorage nor a render request can relax this launch policy.
@@ -355,6 +356,8 @@ function recordDamage(damage: TileDamage) {
     console.debug(`[damage] full=${damage.full} reason=${damage.reason ?? '-'} bounds=${JSON.stringify(damage.bounds ?? null)}`)
 }
 export class KernelClient {
+  private sourceCanvas = false
+  private sourceSnapshotToken?: string
   private diagnosticSession = Math.floor(Math.random() * 1e12)
   private terminalDiagnostics = createRenderDiagnostics({
     enabled: typeof window !== 'undefined' && (window as unknown as {coreDesktop?:{renderDiagnostics?:boolean}}).coreDesktop?.renderDiagnostics === true,
@@ -405,6 +408,11 @@ export class KernelClient {
   }
 
   recordViewportDiagnostic(fields: Record<string,number|boolean>) { if(this.terminalDiagnostics.detail)this.terminalDiagnostics.record('viewport-state',fields) }
+  traceMainThread<T>(stage:number,work:()=>T):T {
+    if(!this.terminalDiagnostics.detail)return work()
+    const started=performance.now()
+    try{return work()}finally{this.terminalDiagnostics.record('cpu-stage',{cpuStageCode:stage,cpuPhase:2,cpuDurationMs:Math.min(120000,performance.now()-started)})}
+  }
   onPresentation?: (stats: Record<string, unknown>) => void
   presentationInputOwner?:string
   private presentationAttached = false
@@ -467,11 +475,13 @@ export class KernelClient {
     {
       resolve: (v: KernelResult) => void
       reject: (e: Error) => void
-      timer: ReturnType<typeof setTimeout>
+      timer?: ReturnType<typeof setTimeout>
+      sourceWork?: boolean
       started: number
       progress?: (tile: TileResult) => void
       preview: boolean
       rasterProgress?: number
+      workProgress?: number
       channel: 'canvas' | 'interaction'
     }
   >()
@@ -500,7 +510,7 @@ export class KernelClient {
       const channel = new MessageChannel()
       preparation.postMessage({ port: channel.port1, memoryBytes: documentCapacity().memoryBytes }, [channel.port1])
       worker.postMessage({ command: 'prepare-port', port: channel.port2, documentMemoryBytes: documentCapacity().memoryBytes }, [channel.port2])
-      preparation.onerror = event => { if (this.preparationWorker === preparation) this.reset(new Error(event.message || 'CPU 准备线程失败')) }
+      preparation.onerror = event => { if (this.preparationWorker === preparation) this.reset(new Error(event.message || 'CPU 准备线程失败'), 3) }
     }
     worker.onmessage = (e) => {
       if(e.data.renderDiagnostics) {
@@ -537,6 +547,9 @@ export class KernelClient {
         return
       }
       if (e.data.documentSynchronized === true) {
+        // Actual completed native/WASM adoption is forward progress. Large
+        // source parsing must not spend the subsequent raster watchdog too.
+        this.renewPreviewWatchdogs()
         const captured = this.synchronizationInputs.get(e.data.id)
         captured?.acknowledge?.(e.data.stateReceipt)
         captured?.settled?.()
@@ -591,6 +604,14 @@ export class KernelClient {
           this.renewPreviewWatchdogs()
         }
         return // Internal completed regions are not publishable viewport tiles.
+      }
+      if(e.data.workProgress!==undefined){
+        const sequence=e.data.workProgress,stage=e.data.workStage,draws=e.data.drawCalls
+        if(p.preview&&Number.isSafeInteger(sequence)&&sequence>(p.workProgress??0)&&
+          (stage===1||stage===2&&Number.isSafeInteger(draws)&&draws>0)){
+          p.workProgress=sequence;this.renewPreviewWatchdogs()
+        }
+        return // Compiler completion / submitted work is liveness, not pixels.
       }
       if (this.navigationJournal.recording && (e.data.tile || e.data.gpuTile || (e.data.backend && typeof e.data.milliseconds === 'number')))
         this.navigationJournal.record(8, { requestId: e.data.id, compileMs: e.data.tile?.compileMs ?? e.data.compileMs,
@@ -654,12 +675,12 @@ export class KernelClient {
       }
     }
     worker.onerror = (e) => {
-      if (this.worker === worker) this.reset(new Error(e.message || '渲染线程失败'))
+      if (this.worker === worker) this.reset(new Error(e.message || '渲染线程失败'), 2)
     }
   }
-  private reset(error: Error) {
+  private reset(error: Error, resetCode = 0) {
     this.frameMeasurements.reset();this.gridMeasurements.close()
-    this.terminalDiagnostics.record('error',{reasonCode:this.disposed?3:2})
+    this.terminalDiagnostics.record('error',{reasonCode:this.disposed?3:2,renderResetCode:this.disposed?5:resetCode,...renderFailureFields(error)})
     this.navigationJournal.stop(/device lost|GPU device|设备已丢失/i.test(error.message) ? 5 : 4)
     if(this.presentationAttached&&!this.disposed){
       this.presentationAttached=false
@@ -681,6 +702,7 @@ export class KernelClient {
     this.synchronizationInputs.clear()
     this.documentSnapshot = undefined
     this.interactionSnapshot = undefined
+    this.sourceSnapshotToken = undefined
     this.fail(error)
   }
   private renewPreviewWatchdogs() {
@@ -689,9 +711,9 @@ export class KernelClient {
     // destroy its device merely because queue wait exceeded one idle timeout.
     // Silence still has the same 30-second bound. Duplicate/stale subregion
     // messages never renew it, and only complete tiles reach the UI callback.
-    for(const pending of this.pending.values())if(pending.preview){
+    for(const pending of this.pending.values())if(pending.preview&&!pending.sourceWork){
       clearTimeout(pending.timer)
-      pending.timer=setTimeout(()=>this.reset(new Error('画布瓦片预览超时，请重试')),30000)
+      pending.timer=setTimeout(()=>this.reset(new Error('画布瓦片预览超时，请重试'), 1),30000)
     }
   }
   /** Acquire the page GPU slot, or return a promise that resolves once a
@@ -802,6 +824,7 @@ export class KernelClient {
     signal?: AbortSignal,
   ): Promise<KernelResult> {
     if (this.disposed) return Promise.reject(new Error('渲染器已关闭'))
+    if(this.sourceCanvas)return Promise.reject(Error('Source canvas requires its native snapshot renderer'))
     // Owner cancellation is only a transient presentation contract. Never
     // change exact/export/readback lifetime because an optional signal fires.
     if (options.renderIntent !== 'preview' || (!options.livePreview && !options.tileViewport) || png || readback || options.exportFormat || options.exportRegion || options.pixelPreview) signal = undefined
@@ -893,7 +916,7 @@ export class KernelClient {
             resolve()
           }
           synchronizationTimer = setTimeout(() => {
-            if (this.worker === worker && !this.disposed) this.reset(new Error('Document synchronization timed out'))
+            if (this.worker === worker && !this.disposed) this.reset(new Error('Document synchronization timed out'), 4)
             else releaseSynchronization?.()
           }, 30000)
         }) : undefined
@@ -966,6 +989,29 @@ export class KernelClient {
     }
     return gpuSlot ? gpuSlot.then(submit) : submit()
   }
+  /** Full source pixels use the same worker, compiler and GPU. The complete
+   * source model stays native and never enters JSON.stringify/structuredClone. */
+  renderSource(snapshot:SourceRenderSnapshot,options:KernelOptions,progress?:(tile:TileResult)=>void,signal?:AbortSignal):Promise<KernelResult> {
+    if(this.disposed)return Promise.reject(Error('渲染器已关闭'))
+    if(this.documentSnapshot||this.interactionSnapshot)return Promise.reject(Error('Use a separate native source render owner'))
+    let source:SourceRenderSnapshot
+    try{source=sourceRenderSnapshot(snapshot)}catch(error){return Promise.reject(error)}
+    if(options.pageId!==source.pageId||options.interactionChannel)return Promise.reject(Error('Invalid source canvas render scope'))
+    this.sourceCanvas=true
+    const backend=effectiveBackend(renderExecutionPolicy,backendPreference(),false)
+    if(options.renderIntent!=='preview'||!options.tileViewport)signal=undefined
+    const submit=()=>{
+      if(this.disposed)return Promise.reject(Error('渲染器已关闭'))
+      if(signal?.aborted)return Promise.reject(Error('PREVIEW_CANCELLED'))
+      this.startWorker()
+      if(this.sourceSnapshotToken!==source.token){this.sourceSnapshotToken=source.token;this.documentRevision++}
+      // Repeat the small capability envelope so cancellation before a previous
+      // physical admission cannot leave a later camera request without a model.
+      return this.request({sourceSnapshot:source,documentRevision:this.documentRevision,channel:'canvas',options,backend,png:false,readback:false},progress,[],signal)
+    }
+    const permit=backend!=='cpu'?this.acquireGpuPermit():undefined
+    return permit?permit.then(submit):submit()
+  }
   /** Debug snapshot from the worker that owns the live engine and GPU device:
    * the kernel four-bucket ledger plus the driver's byte accounting. Control
    * traffic only — no GPU permit is taken and no render state changes. */
@@ -1014,14 +1060,18 @@ export class KernelClient {
       const options = (payload as { options?: KernelOptions }).options
       this.terminalDiagnostics.record('request',{...renderRequestCategories(payload),...diagnosticOperation,requestId:id,x:options?.view?.x,y:options?.view?.y,zoom:options?.view?.zoom,width:options?.width,height:options?.height})
       const preview = !!options?.tileViewport || options?.livePreview === true
-      const timer = setTimeout(() => {
+      // Native source scenes are intentionally independent of source size and
+      // compile duration. They remain cancellable, and native/worker/device
+      // errors still reject them; elapsed time alone is not a failure receipt.
+      const sourceWork = this.sourceCanvas && !!(payload as {sourceSnapshot?:unknown}).sourceSnapshot
+      const timer = sourceWork ? undefined : setTimeout(() => {
         // Reject this attempt. A subsequent user/render request starts a fresh
         // worker and resends the document; expensive work is not blindly retried.
         this.reset(new Error(preview
           ? '画布预览超时，请重试或切换渲染后端'
-          : '导出渲染超时，请重试或检查导出内容'))
+          : '导出渲染超时，请重试或检查导出内容'), 1)
       }, 30000)
-      this.pending.set(id, { resolve, reject, timer, started: performance.now(), progress, preview,
+      this.pending.set(id, { resolve, reject, timer, sourceWork, started: performance.now(), progress, preview,
         channel: (payload as {channel?:string}).channel === 'interaction' ? 'interaction' : 'canvas' })
       if (signal) {
         const abort = () => {

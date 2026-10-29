@@ -88,6 +88,8 @@ export type PatternTile = {
   /** `offsetPixels` in node-local px (`patternBoundsOffsetPixels` folds in:
    * same pre-repeat translation, opposite sign). */
   offset: [number, number]
+  /** Preserved native pattern alignment; it does not alter tile sampling yet. */
+  alignment?: ['start'|'center'|'end', 'start'|'center'|'end']
 }
 export const defaultPatternTile = (): PatternTile => ({ mode: 'grid', size: [0, 0], offset: [0, 0] })
 export type Paint = {
@@ -124,9 +126,56 @@ export type Stroke = {
   widthProfile?: WidthPoint[]
   visible: boolean
 }
+export type ColorControls = { space?: 'srgb' | 'display-p3'; brightness: number; contrast: number; saturation: number; hue: number }
+export const defaultColorControls = (): ColorControls => ({ space:'srgb', brightness: 0, contrast: 1, saturation: 1, hue: 0 })
+export function validColorControls(c: unknown): c is ColorControls {
+  if (!c || typeof c !== 'object' || Array.isArray(c)) return false
+  const v = c as ColorControls
+  return Object.keys(c).every(k => ['space','brightness','contrast','saturation','hue'].includes(k)) &&
+    (v.space === undefined || ['srgb','display-p3'].includes(v.space)) &&
+    [v.brightness,v.contrast,v.saturation,v.hue].every(Number.isFinite) &&
+    v.brightness >= -1 && v.brightness <= 1 && v.contrast >= 0 && v.contrast <= 4 &&
+    v.saturation >= 0 && v.saturation <= 4 && Math.abs(v.hue) <= 1e7
+}
+export function hasSchema17Features(d: DesignDocument): boolean {
+  const has = (list: unknown) => Array.isArray(list) && list.some(e => e && (e.kind === 'color-controls' || e.colorControls != null))
+  return Object.values(d.nodes).some(n => has(n.effects) || Object.values(n.instance?.overrides || {}).some(o => has(o.effects))) ||
+    !!d.animations?.some(c => c.tracks.some(t => t.keyframes.some(k => has(k.value.effects)))) ||
+    Object.values(d.designSystem?.styles || {}).some(s => has(s.effects) || (s.kind === 'effect' && has(s.value)))
+}
+export function hasSchema18Features(d: DesignDocument): boolean {
+  const has=(v:unknown)=>Array.isArray(v)&&v.some(e=>e&&['gaussian-blur','motion-blur'].includes(e.kind))
+  return Object.values(d.nodes).some(n=>has(n.effects)||Object.values(n.instance?.overrides||{}).some(o=>has(o.effects))) ||
+    !!d.animations?.some(c=>c.tracks.some(t=>t.keyframes.some(k=>has(k.value.effects)))) ||
+    Object.values(d.designSystem?.styles||{}).some(s=>has(s.effects)||(s.kind==='effect'&&has(s.value)))
+}
+export function hasSchema20Features(d: DesignDocument): boolean {
+  const action = (a: import('./prototype').PrototypeAction): boolean => a.transitionStyle !== undefined || !!a.thenActions?.some(action) || !!a.elseActions?.some(action)
+  if (Object.values(d.prototype?.interactions||{}).some(es=>es.some(e=>e.actions.some(action)))) return true
+  const style = (s: any) => s?.verticalAlign !== undefined && s.verticalAlign !== 'top'
+  const runs = (r: any) => Array.isArray(r) && r.some(r=>r?.paragraph != null)
+  return Object.values(d.nodes).some(n=>style(n.textStyle)||runs(n.textRuns)||Object.values(n.instance?.overrides||{}).some(o=>style(o.textStyle)||runs(o.textRuns)))
+    || Object.values(d.designSystem?.styles||{}).some(s=>s.kind==='text'&&style(s.value))
+}
+export function hasSchema19Features(d: DesignDocument): boolean {
+  const has=(v:unknown)=>Array.isArray(v)&&v.some(e=>e&&['zoom-blur'].includes(e.kind))
+  return Object.values(d.nodes).some(n=>has(n.effects)||Object.values(n.instance?.overrides||{}).some(o=>has(o.effects))) ||
+    !!d.animations?.some(c=>c.tracks.some(t=>t.keyframes.some(k=>has(k.value.effects)))) ||
+    Object.values(d.designSystem?.styles||{}).some(s=>has(s.effects)||(s.kind==='effect'&&has(s.value)))
+}
+export type ZoomBlur = {amount:number;center:[number,number]}
+export function validZoomBlur(value:unknown):value is ZoomBlur {
+  if(!value || typeof value!=='object' || Array.isArray(value))return false
+  const z=value as ZoomBlur
+  return Object.keys(value).every(k=>['amount','center'].includes(k)) && Number.isFinite(z.amount) && z.amount>=0 && z.amount<=1000 &&
+    Array.isArray(z.center) && z.center.length===2 && z.center.every(v=>Number.isFinite(v)&&Math.abs(v)<=1e6)
+}
 export type Effect = {
+  zoomBlur?: ZoomBlur
+  motionAngle?: number
+  colorControls?: ColorControls
   id: string
-  kind: 'shadow' | 'inner-shadow' | 'blur' | 'background-blur' | 'glass' | 'noise' | 'texture'
+  kind: 'shadow' | 'inner-shadow' | 'blur' | 'background-blur' | 'glass' | 'noise' | 'texture' | 'color-controls' | 'gaussian-blur' | 'motion-blur' | 'zoom-blur'
   visible: boolean
   radius: number
   x: number
@@ -299,6 +348,7 @@ export type DesignNode = {
   instanceOrigin?: { owner: string; key: string; source: string }
 }
 export type TextStyle = {
+  verticalAlign?: 'top' | 'center' | 'bottom'
   textCase?: 'original' | 'upper' | 'lower'
   paragraphSpacing?: number
   paragraphIndent?: number
@@ -317,7 +367,15 @@ export type TextStyle = {
   /** Vertical CJK writing (upright CJK, rotated Latin runs). */
   writingMode?: 'horizontal' | 'vertical'
 }
+export type TextParagraph = { align: 'start'|'center'|'end'|'justify'; minimumLineHeight: number; maximumLineHeight: number; spacing: number; indent: number }
+export function validTextParagraph(p: TextParagraph): boolean {
+  return !!p && ['start','center','end','justify'].includes(p.align)
+    && [p.minimumLineHeight,p.maximumLineHeight,p.spacing].every(v=>Number.isFinite(v)&&v>=0&&v<=10000)
+    && Number.isFinite(p.indent)&&Math.abs(p.indent)<=10000
+    && (p.maximumLineHeight===0||p.maximumLineHeight>=p.minimumLineHeight)
+}
 export type TextRun = {
+  paragraph?: TextParagraph
   textCase?: 'original' | 'upper' | 'lower'
   color?: string
   underline?: boolean
@@ -362,7 +420,7 @@ export type DesignDocument = {
   rasterProfile?: 'analytic' | 'figma' | 'figmaSoftware'
   fonts?: Record<string, { family: string; data: string; index?: number; postscript?: string }>
   animations?: AnimationClip[]
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20
   id: string
   name: string
   pages: Page[]
@@ -410,6 +468,9 @@ export const effect = (kind: Effect['kind']): Effect => ({
   color: '#172033',
   opacity: kind === 'noise' ? 0.2 : kind === 'glass' ? 0.5 : 0.25,
   amount: kind === 'glass' ? 14 : kind === 'texture' ? 3 : 0.65,
+  ...(kind === 'zoom-blur' ? {zoomBlur:{amount:10,center:[0.5,0.5] as [number,number]},radius:0,amount:0,opacity:1} : {}),
+  ...(kind === 'motion-blur' ? {motionAngle:0} : {}),
+  ...(kind === 'color-controls' ? { colorControls: defaultColorControls(), radius: 0, amount: 0, opacity: 1 } : {}),
   ...(kind === 'glass'
     ? { glass: { depth: 8, refraction: 0.5, dispersion: 0.3, lightAngle: 45, lightIntensity: 0.5 } }
     : {}),
@@ -655,7 +716,7 @@ function validateNodeVariableModes(d: DesignDocument, nodes: DesignNode[]) {
 export function validateDocument(value: unknown): DesignDocument {
   if (
     !isObject(value) ||
-    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].includes(value.schemaVersion as number) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].includes(value.schemaVersion as number) ||
     typeof value.id !== 'string' ||
     typeof value.name !== 'string' ||
     !Array.isArray(value.pages) ||
@@ -700,6 +761,10 @@ export function validateDocument(value: unknown): DesignDocument {
   if (d.schemaVersion < 9 && hasGradientBlur(d)) throw new Error('渐变模糊需要设计文件版本 9')
   if (d.schemaVersion < 13 && hasImageAdjusts(d)) throw new Error('图片调整需要设计文件版本 13')
   if (d.schemaVersion < 14 && hasPatternTiles(d)) throw new Error('图案平铺需要设计文件版本 14')
+  if (d.schemaVersion < 20 && hasSchema20Features(d)) throw new Error('段落和文本垂直对齐需要设计文件版本 20')
+  if (d.schemaVersion < 19 && hasSchema19Features(d)) throw new Error('缩放模糊需要设计文件版本 19')
+  if (d.schemaVersion < 18 && hasSchema18Features(d)) throw new Error('高斯与运动模糊需要设计文件版本 18')
+  if (d.schemaVersion < 17 && hasSchema17Features(d)) throw new Error('颜色调整需要设计文件版本 17')
   if (d.schemaVersion < 15 && hasSchema15Features(d)) throw new Error('此设计功能需要设计文件版本 15')
   if (d.schemaVersion < 8 && (hasStrokeMarkers(d) || hasLayerExports(d))) throw new Error('描边端点需要设计文件版本 8')
   // Mirror scene::Document::validate and animation::validate schema gates.
@@ -762,13 +827,15 @@ export function validateDocument(value: unknown): DesignDocument {
     (a.highlightShadowThreshold === undefined || finite(a.highlightShadowThreshold, 0, 1))
   const validTile = (t: unknown) =>
     isObject(t) &&
-    Object.keys(t).every((k) => ['mode', 'size', 'offset'].includes(k)) &&
+    Object.keys(t).every((k) => ['mode', 'size', 'offset', 'alignment'].includes(k)) &&
     ['mode', 'size', 'offset'].every((k) => Object.hasOwn(t, k)) &&
     ['none', 'grid', 'stagger_horizontal', 'stagger_vertical'].includes(t.mode as string) &&
     Array.isArray(t.size) && t.size.length === 2 &&
     Array.isArray(t.offset) && t.offset.length === 2 &&
     (t.size as unknown[]).every((v) => finite(v, 0)) &&
-    (t.offset as unknown[]).every((v) => finite(v))
+    (t.offset as unknown[]).every((v) => finite(v)) &&
+    (t.alignment === undefined || (Array.isArray(t.alignment) && t.alignment.length === 2 &&
+      t.alignment.every(value => ['start','center','end'].includes(value))))
   const paints = (ps: Paint[]) =>
     Array.isArray(ps) &&
     ps.length <= 16 &&
@@ -864,6 +931,7 @@ export function validateDocument(value: unknown): DesignDocument {
         !finite(style.letterSpacing, -1000, 1000) ||
         typeof style.wrap !== 'boolean' ||
         !['start', 'center', 'end', 'justify'].includes(style.align) ||
+        !['top','center','bottom'].includes(style.verticalAlign ?? 'top') ||
         !['auto', 'ltr', 'rtl'].includes(style.direction) ||
         !Array.isArray(style.fallbacks) ||
         style.fallbacks.length > 16 ||
@@ -892,6 +960,7 @@ export function validateDocument(value: unknown): DesignDocument {
           !boundaries.has(run.start) ||
           !boundaries.has(run.end) ||
           run.start < end ||
+          (run.paragraph !== undefined && !validTextParagraph(run.paragraph)) ||
           run.start >= run.end ||
           (run.fontSize !== undefined && !finite(run.fontSize, 1, 4096)) ||
           (run.weight !== undefined && !finite(run.weight, 1, 1000)) ||
@@ -935,7 +1004,14 @@ export function validateDocument(value: unknown): DesignDocument {
             'glass',
             'noise',
             'texture',
+            'color-controls',
+            'gaussian-blur',
+            'motion-blur', 'zoom-blur',
           ].includes(e.kind) &&
+          (e.zoomBlur == null ? e.kind!=='zoom-blur' : (e.kind==='zoom-blur' && validZoomBlur(e.zoomBlur) && e.radius===0 && !e.colorControls && !e.glass && !e.texture && !e.gradientBlur)) &&
+          (e.motionAngle === undefined || (finite(e.motionAngle,-1e7,1e7) && (e.kind==='motion-blur'||e.motionAngle===0))) &&
+          (e.kind !== 'color-controls' || e.colorControls != null) &&
+          (e.colorControls == null || (d.schemaVersion >= 17 && ['color-controls','background-blur'].includes(e.kind) && validColorControls(e.colorControls) && !e.glass && !e.texture && !e.gradientBlur)) &&
           finite(e.radius, 0, 1000) &&
           [e.x, e.y, e.spread, e.amount].every((v) => finite(v)) &&
           finite(e.opacity, 0, 1) &&

@@ -188,6 +188,44 @@ impl CameraResidency {
     }
 }
 
+/// Camera-independent page predicates, owned by the same immutable revision
+/// as world support. Keep the original page traversal semantics, including
+/// conservative flags below hidden nodes and raw-child backdrop dependencies.
+#[derive(Clone, Copy)]
+pub(crate) struct PageProperties {
+    backdrop_chain:bool,foreground_only:bool,noise_extra:Option<i32>,has_zoom:bool,
+}
+impl PageProperties {
+    pub(crate) fn build(doc:&Document,roots:&[String])->Self {
+        let mut page_nodes=Vec::new();let mut seen=std::collections::HashSet::new();
+        let mut stack=roots.iter().map(String::as_str).collect::<Vec<_>>();
+        while let Some(id)=stack.pop(){if !seen.insert(id){continue}if let Some(node)=doc.nodes.get(id){
+            page_nodes.push(node);stack.extend(node.render_children().iter().map(String::as_str));
+        }}
+        let noise_extra=page_nodes.iter().any(|n|n.effects.iter().any(|e|e.visible&&e.kind=="noise")).then(||{
+            let extra=page_nodes.len().saturating_mul(2).saturating_add(page_nodes.iter().map(|n|n.effects.len()).max().unwrap_or(0));
+            i32::try_from(extra).unwrap_or(i32::MAX)
+        });
+        Self {backdrop_chain:single_backdrop_support_chain(doc,roots),
+            foreground_only:doc.color_management.is_some()&&page_nodes.iter().all(|n|{
+                let phase_safe=noise_extra.is_none()||n.fills.iter().all(|p|!p.visible||p.kind=="solid")
+                    &&n.strokes.iter().all(|s|!s.visible||s.width<=0.||s.paint.kind=="solid")
+                    &&n.effects.iter().all(|e|!e.visible||e.gradient_blur.is_none()&&(!matches!(e.kind.as_str(),"shadow"|"inner-shadow")||e.x==0.&&e.y==0.));
+                phase_safe&&n.effects.iter().all(|e|!e.visible||matches!(e.kind.as_str(),"blur"|"shadow"|"inner-shadow"|"noise"))
+            }),noise_extra,has_zoom:crate::zoom_support::has_zoom(doc,roots)}
+    }
+}
+
+/// Trusted whole-page facts retained while geometry consumes a resolved
+/// demand projection. No request field can construct this context.
+#[derive(Clone)]
+pub(crate) struct SourceCompileContext {
+    pub(crate) page:String,pub(crate) camera:(f64,f64,f64),pub(crate) properties:PageProperties,
+    pub(crate) padding:i32,pub(crate) backdrop:bool,pub(crate) stage:String,
+    pub(crate) stage_children:Arc<Vec<String>>,pub(crate) reserved_bytes:usize,
+}
+impl PageProperties {pub(crate) fn has_zoom(&self)->bool{self.has_zoom}}
+
 #[derive(Clone, Copy)]
 struct CameraMetadata {
     padding: i32,
@@ -513,13 +551,7 @@ mod frame_wire;
 mod packet;
 pub(crate) use packet::FrameSceneContext;
 fn halo(n: &Node, m: Transform) -> i32 {
-    (n.effects
-        .iter()
-        .filter(|e| e.visible)
-        .map(|e| e.blur_radius() * 2. + e.spread.abs() + e.x.abs() + e.y.abs() + e.material_halo())
-        .sum::<f64>()
-        * m.max_scale())
-    .ceil() as i32
+    crate::geometry_snapshot::effect_halo(n,m)
 }
 
 /// Source support for a managed analytic glass leaf, in device pixels.
@@ -711,6 +743,33 @@ fn backdrop_output_bounds(n: &Node, p: &crate::geometry_snapshot::Prepared) -> R
         .filter(|e| e.visible).all(|e| matches!(e.kind.as_str(), "glass" | "background-blur")) {
         p.bounds.expand(-p.halo)
     } else { p.bounds }
+}
+
+// The legacy halo deliberately overestimates all effect families. For an
+// isolated managed leaf with one finite tent filter, pixels beyond this tighter
+// support are provably transparent. Cull only; do not shrink a retained input,
+// change filter coefficients or admit a radius the renderer cannot process.
+fn integrated_leaf_output_bounds(n: &Node, p: &crate::geometry_snapshot::Prepared) -> Option<Rect> {
+    if !n.render_children().is_empty() || !n.strokes.is_empty() || n.mask || n.clip || n.passes_backdrop()
+        || n.blend != "normal" || n.fills.iter().any(|paint| paint.visible && paint.kind != "solid") {
+        return None;
+    }
+    let mut effects = n.effects.iter().filter(|e| e.visible);
+    let effect = effects.next()?;
+    if effects.next().is_some() || effect.gradient_blur.is_some() || effect.spread != 0.
+        || !matches!(effect.kind.as_str(), "blur" | "shadow") { return None; }
+    let radius = effect.radius * p.matrix.max_scale();
+    let dx = p.matrix.0[0] * effect.x + p.matrix.0[2] * effect.y;
+    let dy = p.matrix.0[1] * effect.x + p.matrix.0[3] * effect.y;
+    // Include uploaded f32 radius/offsets, coverage phase, bilinear neighbours
+    // and outward conversion slack. Restricted coordinates retain exact pixel
+    // centres and avoid claiming support from rounded large-coordinate math.
+    let reach = radius.next_up().max(f64::from((radius as f32).next_up())).ceil()
+        + dx.abs().max(dy.abs()).max(f64::from((dx as f32).abs())).max(f64::from((dy as f32).abs())).ceil() + 4.;
+    if !reach.is_finite() || radius < 0. || reach > 1_048_576.
+        || [p.fill_program_bounds.x, p.fill_program_bounds.y, p.fill_program_bounds.right(), p.fill_program_bounds.bottom()]
+            .iter().any(|v| i64::from(*v).abs() as f64 + reach > 1_048_576.) { return None; }
+    Some(p.fill_program_bounds.expand(reach as i32))
 }
 
 // Certify only a constant-coverage interior: no flattened edge may enter the
@@ -1489,7 +1548,13 @@ impl Compiler<'_> {
         // Borrowing one entry avoids cloning both per-node stroke vectors.
         let prepared_owner = Arc::clone(&self.prepared);
         let prepared = prepared_owner.get(id);
+        if prepared.is_some_and(|p|p.support_culled) {return Ok(Rect::default());}
         if requested.is_some_and(|region| prepared.is_some_and(|p| backdrop_output_bounds(n, p).intersect(region).empty())) {
+            return Ok(Rect::default());
+        }
+        if self.doc.color_management.is_some() && self.profile == crate::fidelity::RasterProfile::FigmaSubpixel
+            && requested.is_some_and(|region| prepared.is_some_and(|p|
+                integrated_leaf_output_bounds(n, p).is_some_and(|bounds| bounds.intersect(region).empty()))) {
             return Ok(Rect::default());
         }
         let matrix = prepared
@@ -1802,11 +1867,17 @@ impl Engine {
             None => self.compile_gpu(&options),
         }? };
         if page_background && !scene.transparent && !scene.grid && !scene.checkerboard &&
-            !scene.software_raster && scene.resolve.is_none() && scene.presentation.is_none() && options.animation.is_none() {
+            !scene.software_raster && scene.resolve.is_none() && scene.presentation.is_none() && options.animation.is_none() &&
+            self.doc.as_ref().is_some_and(|doc|crate::dirty_region::page_background_can_sample(doc,&options.page_id,
+                Transform([options.view.zoom,0.,0.,options.view.zoom,0.,0.]),[options.view.x,options.view.y],
+                scene.output.unwrap_or_else(||Rect::new(0,0,scene.width,scene.height)))) {
             let key=(self.geo_revision,options.page_id.clone(),options.view.zoom.to_bits(),self.fonts.glyph_origin_quantization());
             if self.page_support.as_ref().is_none_or(|(old,_)|old!=&key) {
                 let bounds=self.doc.as_ref().and_then(|doc|crate::dirty_region::page_paint_rects(doc,&options.page_id,&self.fonts,
                     Transform([options.view.zoom,0.,0.,options.view.zoom,0.,0.])));
+                // A cancelled optional proof is neither an unknown-geometry
+                // certificate nor a completed cache entry for this camera.
+                crate::render_cancellation::checkpoint()?;
                 self.page_support=Some((key,bounds));
             }
             scene.page_paint_rects=self.page_support.as_ref().and_then(|(_,bounds)|bounds.as_ref()).map(|bounds|bounds.iter()
@@ -1904,7 +1975,24 @@ impl Engine {
             "builds":cache.programs.builds,"bytes":cache.programs.bytes+cache.fragments.bytes,"fragmentHits":cache.fragments.hits,"fragmentBuilds":cache.fragments.builds,"entries":cache.programs.len(),
             "preparedNodes":cache.prepared.len(),"pathNodes":self.paths.len(),"prepareReuses":cache.reuses,"retainedNodes":cache.retained_nodes,"textPaths":self.fonts.text_path_cache_stats(),"residentStrokes":self.local_strokes.stats(),"cameraResidency":self.camera_residency.stats()}))
             .unwrap_or_else(||serde_json::json!({"hits":0,"builds":0,"bytes":0,"entries":0}));
-        stats["frameScene"]=self.frame_scene.stats();stats
+        stats["frameScene"]=self.frame_scene.stats();
+        stats["worldSupportBytes"]=serde_json::json!(self.world_support.as_ref().map_or(0,|c|c.index.bytes()));
+        stats["marginIndexBytes"]=serde_json::json!(self.world_support.as_ref().and_then(|c|c.margin.as_ref()).map_or(0,|m|m.bytes()));
+        stats["marginIndexNodes"]=serde_json::json!(self.world_support.as_ref().and_then(|c|c.margin.as_ref()).map_or(0,|m|m.nodes()));
+        stats
+    }
+    pub(crate) fn reserve_render_cache_bytes(&mut self) {
+        let frame=self.frame_scene.bytes().saturating_add(self.source_compile_context.as_ref().map_or(0,|c|c.reserved_bytes));
+        let support=self.world_support.as_ref().map_or(0,|c|c.bytes());
+        if frame.saturating_add(support)>64*1024*1024 {
+            if let Some(cache)=self.world_support.as_mut(){
+                // Keep only the bounded identity/predicate header. Evicted or
+                // declined variable-size indices must not rebuild every tile.
+                cache.index=std::sync::Arc::new(crate::world_support::WorldSupport::disabled());
+                cache.margin=None;
+            }
+        }
+        self.camera_residency.reserve_frame_resources(frame.saturating_add(self.world_support.as_ref().map_or(0,|c|c.bytes())));
     }
     fn compile_gpu_scene(
         &mut self,
@@ -1916,12 +2004,14 @@ impl Engine {
     ) -> Result<GpuScene, String> {
         crate::render_cancellation::checkpoint()?;
         self.resolve_layout()?;
+        if self.source_compile_context.as_ref().is_some_and(|c|c.page!=options.page_id||c.camera!=(options.view.x,options.view.y,options.view.zoom)||options.animation.is_some()) {return Err("Stale source compile context".into());}
+        let world_revision=if options.animation.is_none(){self.static_scene_revision()}else{None};
         if options.width == 0
             || options.height == 0
             || options.width > 8192
             || options.height > 8192
             || options.width as u64 * options.height as u64 > 8_388_608
-            || !(0.001..=128.).contains(&options.view.zoom)
+            || !(0.001..=crate::renderer::MAX_CANVAS_SAMPLE_SCALE).contains(&options.view.zoom)
             || ![options.view.x, options.view.y]
                 .iter()
                 .all(|v| v.is_finite())
@@ -1942,6 +2032,25 @@ impl Engine {
             options.view.x,
             options.view.y,
         ]);
+        if let Some((revision,quantized,_))=world_revision {
+            if !self.world_support.as_ref().is_some_and(|c|c.revision==revision&&c.page==options.page_id&&c.quantized==quantized) {
+                // Reserve before allocating: inactive cameras, the prior world
+                // index and FrameScene share the original 64 MiB allowance.
+                // The active camera retains its existing separate budget.
+                self.world_support=None;
+                self.camera_residency.reserve_frame_resources(64*1024*1024);
+                let allowance=(64*1024*1024_usize).saturating_sub(self.frame_scene.bytes()).saturating_sub(self.source_compile_context.as_ref().map_or(0,|c|c.reserved_bytes));
+                let margin=if self.source_compile_context.is_some(){None}else{crate::margin_index::MarginIndex::build(doc,&page.children,allowance)?.map(std::sync::Arc::new)};
+                let index=crate::world_support::WorldSupport::build(doc,&page.children,&self.fonts,allowance.saturating_sub(margin.as_ref().map_or(0,|m|m.bytes())))?
+                    .unwrap_or_else(crate::world_support::WorldSupport::disabled);
+                let properties=self.source_compile_context.as_ref().map(|c|c.properties).unwrap_or_else(||PageProperties::build(doc,&page.children));
+                self.world_support=Some(crate::world_support::Cache{revision,page:options.page_id.clone(),quantized,index:std::sync::Arc::new(index),margin,properties});
+            }
+        }else{self.world_support=None;}
+        let world_support=self.world_support.as_ref().map(|c|c.index.clone());
+        self.camera_residency.reserve_frame_resources(self.frame_scene.bytes().saturating_add(self.world_support.as_ref().map_or(0,|c|c.bytes())).saturating_add(self.source_compile_context.as_ref().map_or(0,|c|c.reserved_bytes)));
+        let properties=self.source_compile_context.as_ref().map(|c|c.properties).or_else(||self.world_support.as_ref().map(|c|c.properties)).unwrap_or_else(||PageProperties::build(doc,&page.children));
+        let margin_index=self.world_support.as_ref().and_then(|c|c.margin.clone());
         self.camera_residency.activate(&mut self.camera_prepare,self.geo_revision,&options.page_id,
             (options.view.x,options.view.y,options.view.zoom),
             options.raster_profile != crate::fidelity::RasterProfile::Analytic,&options.animation,
@@ -1965,49 +2074,16 @@ impl Engine {
         // guard. Revision/font invalidation and animation sampling retain the
         // same ownership rules as the prepared geometry cache.
         let compatible = options.raster_profile != crate::fidelity::RasterProfile::Analytic;
-        let metadata = self.camera_prepare.as_ref().filter(|cache| {
-            cache.key.0 == self.geo_revision && cache.key.1 == options.page_id &&
-                cache.key.2 == (options.view.x, options.view.y, options.view.zoom) &&
-                cache.key.4 == compatible && cache.key.5 == options.animation
-        }).and_then(|cache| cache.metadata).unwrap_or_else(|| {
-            let padding = page.children.iter().map(|id| margin(doc, id, camera)).max().unwrap_or(0);
-            // Only this page can contribute to its painter dependency graph.
-            // An unrelated page's noise/backdrop must not disable regional
-            // allocation or enlarge the current page's noise address proof.
-            let mut page_nodes=Vec::new();let mut seen=std::collections::HashSet::new();
-            let mut stack=page.children.iter().map(String::as_str).collect::<Vec<_>>();
-            while let Some(id)=stack.pop(){if !seen.insert(id){continue}if let Some(node)=doc.nodes.get(id){
-                page_nodes.push(node);stack.extend(node.render_children().iter().map(String::as_str));
-            }}
-            let noise_guard = page_nodes.iter().any(|n| n.effects.iter().any(|e| e.visible && e.kind == "noise"))
-                .then(|| {
-                    // A dependency path has at most one visit per node, each
-                    // adding two texels. A blur-only leaf's per-effect ceil
-                    // can exceed the general halo by at most its effect count.
-                    let extra = page_nodes.len().saturating_mul(2).saturating_add(
-                        page_nodes.iter().map(|n| n.effects.len()).max().unwrap_or(0));
-                    padding.saturating_add(i32::try_from(extra).unwrap_or(i32::MAX))
-                });
-            CameraMetadata {
-                padding,
-                backdrop_chain: single_backdrop_support_chain(doc, &page.children),
-                foreground_only: doc.color_management.is_some() && page_nodes.iter().all(|n| {
-                    // Noise is pointwise, but changing a neighbouring filter's
-                    // crop must not change its sample phase. Newly admitted
-                    // noise scenes use only solid paints and integer-tap
-                    // filters. Fractional shadow offsets and origin-relative
-                    // gradient/image arithmetic retain the old route.
-                    let noise_phase_safe = noise_guard.is_none() ||
-                        n.fills.iter().all(|p| !p.visible || p.kind == "solid") &&
-                        n.strokes.iter().all(|s| !s.visible || s.width <= 0. || s.paint.kind == "solid") &&
-                        n.effects.iter().all(|e| !e.visible || e.gradient_blur.is_none() &&
-                            (!matches!(e.kind.as_str(), "shadow" | "inner-shadow") || e.x == 0. && e.y == 0.));
-                    noise_phase_safe && n.effects.iter().all(|e| !e.visible ||
-                        matches!(e.kind.as_str(), "blur" | "shadow" | "inner-shadow" | "noise"))
-                }),
-                noise_guard,
-            }
-        });
+        let cached_metadata=self.camera_prepare.as_ref().filter(|cache| {
+            cache.key.0==self.geo_revision&&cache.key.1==options.page_id&&cache.key.2==(options.view.x,options.view.y,options.view.zoom)
+                &&cache.key.4==compatible&&cache.key.5==options.animation
+        }).and_then(|cache|cache.metadata);
+        let metadata=if let Some(cached)=cached_metadata{cached}else{
+            let indexed=if let Some(context)=&self.source_compile_context{Some(context.padding)}else if let Some(index)=&margin_index{index.padding(doc,camera)?}else{None};
+            let padding=indexed.unwrap_or_else(||page.children.iter().map(|id|margin(doc,id,camera)).max().unwrap_or(0));
+            CameraMetadata{padding,backdrop_chain:properties.backdrop_chain,foreground_only:properties.foreground_only,
+                noise_guard:properties.noise_extra.map(|extra|padding.saturating_add(extra))}
+        };
         let padding = metadata.padding;
         // This is a geometry search guard, not an allocated surface. An
         // offscreen effect must not reject every tile at a high zoom. Actual
@@ -2029,14 +2105,21 @@ impl Engine {
         // Whole-frame exact desktop captures need the same bounded aggregate
         // allowance as regional captures. Admission depends on output extent,
         // never on whether the caller permits simplified interactive effects.
-        let large_packet = options.interactive_effects || viewport.w > 514 || viewport.h > 514;
+        // Source storage can aggregate many small valid paths in one visible
+        // tile. Use the existing 32 MiB packet lane rather than repeatedly
+        // splitting at the ordinary 8 MiB aggregate threshold. Individual
+        // programs and the actual GPU storage-buffer limits stay independent.
+        let large_packet = crate::capacity::native_source_storage() || options.interactive_effects || viewport.w > 514 || viewport.h > 514;
         // The prepare guard defaults to this call's own viewport; a request may
         // widen it to the union of all its crops so the flattened geometry is
         // computed once per camera and cloned per tile. The union is a superset
         // of every tile guard, so entries consumed by a tile are identical to
         // a standalone compile; only far leaves differ (prepared vs empty), and
         // both cull to zero for this tile's halo and extent decisions.
-        let prepare_guard = prepare_viewport.unwrap_or(viewport).expand(padding);
+        let zoom_extent=if properties.has_zoom{Some(crate::zoom_support::scene_guard_active(doc,&page.children,camera,viewport,&self.fonts)?)}else{None};
+        let base_prepare=prepare_viewport.unwrap_or(viewport);
+        let zoom_prepare=if !properties.has_zoom||base_prepare==viewport{zoom_extent}else{Some(crate::zoom_support::scene_guard_active(doc,&page.children,camera,base_prepare,&self.fonts)?)};
+        let prepare_guard=zoom_prepare.map_or(base_prepare.expand(padding),|z|z.union(base_prepare.expand(padding)));
         // Full native interaction captures share the same geometry/program
         // lifetime as regional tiles. Their exact viewport is the guard when
         // no wider tile preparation window was supplied. Camera, resources,
@@ -2085,7 +2168,7 @@ impl Engine {
             } else { prepare_guard };
             let mut segments = 0;
             for root in &page.children {
-                crate::geometry_snapshot::prepare_node_geometry(
+                crate::geometry_snapshot::prepare_node_geometry_indexed(
                     root,
                     camera,
                     (doc, &self.fonts, prepare_guard, compatible),
@@ -2093,6 +2176,7 @@ impl Engine {
                     &mut self.local_strokes,
                     Arc::make_mut(&mut prepared),
                     &mut segments,
+                    world_support.as_deref(),
                 )?;
             }
             if let Some(key) = &cache_key {
@@ -2215,6 +2299,9 @@ impl Engine {
                 viewport.expand(halo)
             }
         };
+        // Radial source planning already includes painter/backdrop dependencies.
+        // Drawing padding is not an allocation or sampling requirement.
+        let extent=zoom_extent.unwrap_or(extent);
         let painter_support = if painter_support && has_region && !regional_foreground {
             // A retained camera entry can own a wider, complete geometry
             // window than this request. Use that window only when it owns the
@@ -2295,6 +2382,8 @@ impl Engine {
             if let Some(cache) = self.camera_prepare.as_mut() { cache.programs = compiler.programs; cache.fragments=compiler.fragments; }
         }
         let mut nodes = compiler.nodes;
+        if let Some(context)=&self.source_compile_context {if let Some(stage)=nodes.get_mut(&context.stage){stage.children=(*context.stage_children).clone();}}
+
         if has_region && doc.color_management.is_some() && !options.interactive_effects
             && options.raster_profile == crate::fidelity::RasterProfile::FigmaSubpixel && root_input_box.is_none() {
             suffix::annotate(&mut nodes, &page.children, viewport, extent);
@@ -2345,7 +2434,7 @@ impl Engine {
             color_management: doc.color_management,
             colors,
             backdrop_samples: options.raster_profile != crate::fidelity::RasterProfile::Analytic
-                && crate::fidelity::has_backdrop(doc, options),
+                && self.source_compile_context.as_ref().map_or_else(||crate::fidelity::has_backdrop(doc, options),|c|c.backdrop),
             coherent_samples: crate::fidelity::coherent_samples(doc, options),
             integrated_blur: doc.color_management.is_some()
                 || options.raster_profile != crate::fidelity::RasterProfile::Analytic,
@@ -2854,7 +2943,7 @@ mod incremental_prepare_tests {
         doc["nodes"]["moving"]["transform"]=json!([1,0,0,1,-900,30]);
         let mut engine=Engine::new();engine.load_document(&doc.to_string()).unwrap();
         let mut options=json!({"pageId":"p","width":64,"height":64,"view":{"x":0,"y":0,"zoom":2},
-            "grid":false,"transparent":false,"rasterProfile":"figmaSubpixel","gpuPageBackground":true});
+            "grid":false,"transparent":false,"rasterProfile":"figmaSubpixel","gpuPageBackground":true,"gpuViewport":{"x":500000,"y":0,"w":64,"h":64}});
         let first=engine.compile_gpu_request(&options.to_string()).unwrap().page_paint_rects.unwrap();
         // Child outside the frame and another offscreen root both participate.
         assert_eq!(first.len(),2);assert!(first[0][0] < -1700.);assert!(first[1][2]>2000.);
@@ -3195,4 +3284,93 @@ mod resolved_camera_regressions {
   reference.load_document(&serde_json::to_string(&after).unwrap()).unwrap();
   assert_ne!(changed,second);assert_eq!(changed,reference.compile_gpu_region(&options,Rect::new(0,0,128,128),None).unwrap().into_packet().unwrap());
  }
+}
+
+#[cfg(test)]
+mod integrated_leaf_culling_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn fixture() -> (Node, crate::geometry_snapshot::Prepared) {
+        let node:Node=serde_json::from_value(json!({"id":"shadow","kind":"rectangle","width":120,"height":68,
+            "fills":[{"kind":"solid","color":"#fff"}],
+            "effects":[{"kind":"shadow","radius":35,"x":10,"y":15,"spread":0,"color":"#fff"}]})).unwrap();
+        let fill=Rect::new(-2985,-10325,7691,4330);
+        let prepared=crate::geometry_snapshot::Prepared{support_culled:false,fill_bounds:None,matrix:Transform([64.,0.,0.,64.,0.,0.]),
+            fill:Arc::new(Vec::new()),fill_program_bounds:fill,strokes:Vec::new(),stroke_program_bounds:Vec::new(),
+            bounds:fill.expand(6080),halo:6080,segments:0};
+        (node,prepared)
+    }
+    #[test]
+    fn topology_3200_offscreen_shadow_does_not_reach_the_tile() {
+        let (n,p)=fixture();let tile=Rect::new(0,-300,514,514);
+        assert!(!p.bounds.intersect(tile).empty());
+        let exact=integrated_leaf_output_bounds(&n,&p).unwrap();
+        assert!(exact.intersect(tile).empty());
+        // A crop which actually receives the shadow must remain demanded.
+        assert!(!exact.intersect(Rect::new(0,-4000,514,514)).empty());
+    }
+    #[test]
+    fn unsupported_effects_and_geometry_keep_the_conservative_path() {
+        let (n,p)=fixture();
+        for kind in ["inner-shadow","background-blur","glass","texture"] {
+            let mut other=n.clone();other.effects[0].kind=kind.into();
+            assert!(integrated_leaf_output_bounds(&other,&p).is_none());
+        }
+        let mut other=n.clone();other.effects.push(n.effects[0].clone());
+        assert!(integrated_leaf_output_bounds(&other,&p).is_none());
+        let mut other=n.clone();other.effects[0].spread=1.;
+        assert!(integrated_leaf_output_bounds(&other,&p).is_none());
+        let mut other=n.clone();other.children.push("child".into());
+        assert!(integrated_leaf_output_bounds(&other,&p).is_none());
+        let mut other=n.clone();other.fills[0].kind="linear".into();
+        assert!(integrated_leaf_output_bounds(&other,&p).is_none());
+        let mut far=p.clone();far.fill_program_bounds=Rect::new(1_048_576,0,10,10);
+        assert!(integrated_leaf_output_bounds(&n,&far).is_none());
+    }
+    #[test]
+    fn fractional_radius_and_rotated_offsets_keep_all_tent_and_bilinear_taps() {
+        let (mut n,mut p)=fixture();p.matrix=Transform([0.,2.,-3.,0.,0.,0.]);
+        p.fill_program_bounds=Rect::new(-100,-100,200,200);n.effects[0].radius=3.1;
+        let support=integrated_leaf_output_bounds(&n,&p).unwrap();
+        for x in [-100,99] {for y in [-100,99] {for dx in -11..=11 {for dy in -11..=11 {
+            assert!(support.index(x+dx-45,y+dy+20).is_some());
+        }}}}
+    }
+}
+
+#[cfg(test)]
+mod page_predicate_cache_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn cached_presence_tracks_page_effect_visibility_and_document_mutation() {
+        let mut d:Document=serde_json::from_value(json!({"schemaVersion":20,"id":"cache","name":"cache",
+            "colorManagement":crate::color::ColorSettings::default(),
+            "pages":[{"id":"p","name":"p","background":"#ffffff","children":["a"]},{"id":"q","name":"q","background":"#ffffff","children":["b"]}],
+            "nodes":{"a":{"id":"a","kind":"rectangle","width":128,"height":128,"fills":[{"kind":"solid","color":"#123456"}]},
+                "b":{"id":"b","kind":"rectangle","width":128,"height":128,"fills":[{"kind":"solid","color":"#fedcba"}]}}
+        })).unwrap();
+        let mut actual=Engine::new();actual.load_document(&serde_json::to_string(&d).unwrap()).unwrap();
+        for mode in 0..5 {
+            d.nodes.get_mut("a").unwrap().effects=match mode {
+                1|2=>serde_json::from_value(json!([{"kind":"zoom-blur","color":"#000000","visible":mode==1,"zoomBlur":{"amount":10,"center":[4,4]}}])).unwrap(),
+                3=>serde_json::from_value(json!([{"kind":"gaussian-blur","color":"#000000","radius":3.75}])).unwrap(),
+                _=>vec![],
+            };
+            d.nodes.get_mut("b").unwrap().effects=if mode==4{serde_json::from_value(json!([{"kind":"background-blur","color":"#000000","radius":2.25}])).unwrap()}else{vec![]};
+            actual.apply_document_patch(&serde_json::from_value(json!({"nodes":{"a":d.nodes["a"],"b":d.nodes["b"]},"fields":{}})).unwrap()).unwrap();
+            for page in ["p","q","p"] {for scale in [1.,1.25]{
+                let options=json!({"pageId":page,"width":64,"height":64,"view":{"x":0.25,"y":-0.375,"zoom":scale},"rasterProfile":"figmaSubpixel","gpuViewport":{"x":0,"y":0,"w":16,"h":16}}).to_string();
+                let a=actual.compile_gpu_request(&options).unwrap();
+                let properties=actual.world_support.as_ref().unwrap().properties;
+                assert_eq!(properties.has_zoom,page=="p"&&mode==1);
+                assert_eq!(properties.backdrop_chain,page=="q"&&mode==4);
+                let mut fresh=Engine::new();fresh.load_document(&serde_json::to_string(&d).unwrap()).unwrap();let b=fresh.compile_gpu_request(&options).unwrap();
+                // Canonical JSON retains numeric spelling/sign rather than
+                // Value's numeric equality; program arrays remain included.
+                assert_eq!(serde_json::to_string(&serde_json::to_value(a).unwrap()).unwrap(),serde_json::to_string(&serde_json::to_value(b).unwrap()).unwrap(),"mode {mode}, page {page}, scale {scale}");
+            }}
+        }
+    }
 }

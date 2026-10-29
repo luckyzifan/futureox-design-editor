@@ -13,7 +13,7 @@ function failure(code, message) {
 export const MAX_PENDING_BYTES = DOCUMENT_TRANSFER_BYTES + 8 * 1024 * 1024
 // Reserve large result envelopes too; this is a wire/admission bound, not a JS RSS limit.
 const responseReservations = new Map([
-  ['large.scene', 64 * 1024], ['large.sceneRead', 768 * 1024],
+  ['large.scene', 64 * 1024], ['large.sceneRead', 768 * 1024], ['large.canvasLayout', 512 * 1024], ['large.canvasSnapshot', 512 * 1024],
   // A 2 MiB JSON fragment is itself a string inside the RPC envelope: reserve
   // its worst-case quote/backslash escaping as well as bounded metadata.
   ['large.read', 4 * 1024 * 1024 + 64 * 1024], ['large.project', 4 * 1024 * 1024 + 64 * 1024], ['large.children', 512 * 1024],
@@ -37,7 +37,7 @@ const writeMethods = new Set(['automation.config.set', 'automation.audit.append'
 for(const method of ['large.open','large.apply','large.commitCanvas','large.sceneCommit','large.undo','large.redo','large.export'])writeMethods.add(method)
 // Keep execution deadlines and cooperative cancellation on the same long-job set.
 // Chunk reads are bounded control/data transfers, not another scene preparation.
-const largeDocumentJobs = new Set(['large.open','large.export','large.project','large.scene','large.apply','large.commitCanvas','large.sceneCommit','large.undo','large.redo'])
+const largeDocumentJobs = new Set(['large.open','large.export','large.project','large.scene','large.canvasLayout','large.canvasSnapshot','large.apply','large.commitCanvas','large.sceneCommit','large.undo','large.redo'])
 
 export class Sidecar extends EventEmitter {
   constructor(executable, recoveryDir, { timeoutMs = 30_000, queueTimeoutMs = 600_000, spawnProcess = spawn, catalogDb, workspaceDb, maxPendingBytes = MAX_PENDING_BYTES } = {}) {

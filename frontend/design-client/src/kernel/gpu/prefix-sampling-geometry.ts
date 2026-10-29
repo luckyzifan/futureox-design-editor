@@ -5,9 +5,9 @@
 function halfUlp(maximum: number) {
   return maximum === 0 ? 2 ** -150 : 2 ** (Math.floor(Math.log2(maximum)) - 24)
 }
-export function prefixSamplingGeometry(base: Float32Array, radius: number, allowClamped = false) {
-  if (!(base instanceof Float32Array) || !(base.buffer instanceof ArrayBuffer) || base.length !== 256 ||
-      !Number.isFinite(radius) || radius < 1 || radius > 2048 ||
+export function prefixSamplingGeometry(base: Float32Array, radius: number, allowClamped = false, maximumRadius: 2048 | 4096 = 2048) {
+  if ((maximumRadius!==2048&&maximumRadius!==4096) || !(base instanceof Float32Array) || !(base.buffer instanceof ArrayBuffer) || base.length !== 256 ||
+      !Number.isFinite(radius) || radius < 1 || radius > (import.meta.env.VITE_DESIGN_LARGE_SHADOW_TENT === '1' ? 4096 : maximumRadius) ||
       ![base[0], base[1], base[4], base[5]].every(v => Number.isFinite(v) && Math.abs(v) <= 1048576) ||
       ![base[2], base[3], base[6], base[7]].every(v => Number.isSafeInteger(v) && v > 0 && v <= 16384) ||
       (base[37] !== 0 && base[37] !== 1) || (base[38] !== 0 && base[38] !== 1) || base[38] === 1 && !allowClamped) return

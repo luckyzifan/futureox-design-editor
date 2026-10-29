@@ -243,6 +243,9 @@ fn validate_style_parts(doc: &Document, style: &SharedStyle) -> Result<(), Strin
                     | "glass"
                     | "noise"
                     | "texture"
+                    | "color-controls"
+                    | "gaussian-blur"
+                    | "motion-blur" | "zoom-blur"
             )
         {
             return Err("Invalid shared style effect parameters".into());

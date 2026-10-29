@@ -1,3 +1,4 @@
+import { color_controls_matrix } from './generated/design-kernel/design_kernel'
 import { expandRepeats } from './repeat-transforms'
 import { EditableSvgText } from './svg-editable-text'
 import { kernelTextLayout, kernelStrokePaths, kernelSvgPaths } from './kernel/picking'
@@ -64,6 +65,10 @@ function Color({ paint: p, id, n }: { paint: Paint; id: string; n: DesignNode })
   return null
 }
 const color = (p: Paint, id: string) => (p.kind === 'solid' ? p.color : `url(#${id})`)
+function colorControlValues(controls: NonNullable<Effect['colorControls']>) {
+  const m = color_controls_matrix(JSON.stringify(controls))
+  return [m[0],m[1],m[2],0,m[3],m[4],m[5],m[6],0,m[7],m[8],m[9],m[10],0,m[11],0,0,0,1,0].join(' ')
+}
 function Filter({ id, effects }: { id: string; effects: Effect[] }) {
   let input = 'SourceGraphic'
   const children: React.ReactNode[] = []
@@ -72,9 +77,11 @@ function Filter({ id, effects }: { id: string; effects: Effect[] }) {
     .entries()) {
     const out = `fx${i}`,
       alpha = `a${i}`
-    if (e.kind === 'blur')
+    if (e.kind === 'color-controls' && e.colorControls)
+      children.push(<feColorMatrix key={i} in={input} type="matrix" colorInterpolationFilters={e.colorControls.space ? "sRGB" : "linearRGB"} values={colorControlValues(e.colorControls)} result={out} />)
+    else if (e.kind === 'blur' || e.kind === 'gaussian-blur')
       children.push(
-        <feGaussianBlur key={i} in={input} stdDeviation={Math.max(0, e.radius) / 2} result={out} />,
+        <feGaussianBlur key={i} in={input} stdDeviation={Math.max(0, e.radius) / (e.kind==='gaussian-blur'?1:2)} result={out} />,
       )
     else if (e.kind === 'shadow' || e.kind === 'inner-shadow') {
       children.push(
@@ -434,6 +441,7 @@ export function Scene({ doc, pageId, viewport, exporting = false, retainedNodeId
                     colorInterpolationFilters="sRGB"
                   >
                     <feGaussianBlur stdDeviation={Math.max(0, background.radius) / 2} />
+                    {background.colorControls && <feColorMatrix type="matrix" colorInterpolationFilters={background.colorControls.space ? "sRGB" : "linearRGB"} values={colorControlValues(background.colorControls)} />}
                     {background.kind === 'glass' && (
                       <>
                         <feTurbulence

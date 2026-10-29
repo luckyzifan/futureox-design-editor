@@ -60,6 +60,8 @@ import { profileTopology } from './stroke-profile'
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { Editor, Tool } from './engine'
 import { KernelSurface, type PresentedFrame } from './kernel/Surface'
+import { NativeSourceSurface, type NativeSourceStatus } from './kernel/NativeSourceSurface'
+import type { SourceCanvasSnapshot } from './desktop'
 import type { GpuMoveControl, InteractionProps } from './kernel/interaction-layers'
 import {
   type Point,
@@ -221,9 +223,12 @@ class PresentedSignal {
     this.listeners.forEach((listener) => listener())
   }
 }
-export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome = false, startupPreview, loading = false, onCapturePreview }: {
+export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome = false, startupPreview, loading = false, onCapturePreview, nativeSource, onNativeSourceStatus, onOpenSourcePoint }: {
   editor: Editor; peers?:LocalPeer[]; zoomControlsTarget?: HTMLElement | null; compactChrome?: boolean
   startupPreview?: StartupPixels; loading?: boolean
+  nativeSource?:SourceCanvasSnapshot
+  onNativeSourceStatus?:(status:NativeSourceStatus)=>void
+  onOpenSourcePoint?:(point:Point)=>void
   onCapturePreview?: (document: import('./model').DesignDocument, version: number, pixels: PreviewPixels) => Promise<void>
 }) {
   const canvasChromeSelector = 'button,input,select,textarea,[contenteditable="true"],.canvas-controls,.canvas-scrollbars,.pencil-controls,.rich-text-editor'
@@ -1190,6 +1195,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   function fitView(onlySelection = false) {
     if (pencil.current || drag.current) return
     flushView()
+    if(nativeSource){editor.set({view:fitBounds(nativeSource.bounds,size)});return}
     const relevant = onlySelection ? selected : entries.filter((e) => e.depth === 0)
     if (!relevant.length) return
     const b = unionBounds(relevant.map((e) => e.bounds))
@@ -2216,6 +2222,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         setContextMenu({ x: e.clientX, y: e.clientY, worldPoint: point, candidates })
       }}
       onDoubleClick={(e) => {
+        if(nativeSource){
+          if(e.target instanceof Element&&e.target.closest(canvasChromeSelector))return
+          if(e.button===0)onOpenSourcePoint?.(screenToWorld(editor.flushPendingView(),{x:e.clientX-e.currentTarget.getBoundingClientRect().left,y:e.clientY-e.currentTarget.getBoundingClientRect().top}))
+          return
+        }
         if (!displayedSnapshot || !displayedIndex) return
         if (['pencil', 'brush', 'marker', 'washi-tape', 'hand'].includes(editor.state.tool) || space.current) return
         if (penRef.current) {
@@ -2293,7 +2304,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         }
         return false
       }}/>
-      <KernelSurface
+      {nativeSource?<NativeSourceSurface source={nativeSource} view={state.view} width={size.width} height={size.height} onStatus={onNativeSourceStatus}/>:<KernelSurface
         navigationInputOwner={editor}
         panGestureActive={panning}
         overlay={overlay}
@@ -2310,8 +2321,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         grid={state.grid}
         checkerboard={state.checkerboard}
         pixelPreview={state.pixelPreview}
-      />
-      {showStartup && <StartupPreview preview={startupPreview!} view={state.view} loading={loading} width={size.width} height={size.height}/>}
+      />}
+      {!nativeSource&&showStartup && <StartupPreview preview={startupPreview!} view={state.view} loading={loading} width={size.width} height={size.height}/>}
       {geometryReady && !gpuMove.current && <CanvasEditPreview document={renderedDocument} baseDocument={editBaseDocument.current} selection={state.selection} pageId={state.page}
         vectorSupported={vectorPreviewSupported} sourceHost={host} control={retainedMove} canCapture={!state.grid && !state.checkerboard && !!presentationScopeMatches && presented.document === state.doc && !presented.preview}
         view={displayView} size={size} visible={!!editPreviewVisible} inputAt={editInputAt.current}/>}
@@ -2849,7 +2860,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           </button>
         </div>
       )}
-      <CanvasScrollbars editor={editor} entries={entries} view={state.view} size={size} />
+      <CanvasScrollbars editor={editor} entries={entries} view={state.view} size={size} onPanGestureChange={setPanning} contentBounds={nativeSource?.bounds}/>
       {zoomControlsTarget ? createPortal(<ViewControls editor={editor} size={size} fit={fitView} compact />, zoomControlsTarget) : <ViewControls editor={editor} size={size} fit={fitView} compact={compactChrome} />}
     </div>
   )

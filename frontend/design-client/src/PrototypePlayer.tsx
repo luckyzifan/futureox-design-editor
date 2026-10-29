@@ -1,3 +1,4 @@
+import { prototypeFrameView } from './prototype'
 import { animation_plan_sample_json } from './generated/design-kernel/design_kernel'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { DesignDocument } from './model'
@@ -23,7 +24,7 @@ export function PrototypePlayer({
   const [progress, setProgress] = useState(1)
   const transition = state.transition
   useLayoutEffect(() => {
-    if (!transition || !state.transitionMs) { setProgress(1); return }
+    if ((!transition && !state.transitionStyle?.startsWith('slide-')) || !state.transitionMs) { setProgress(1); return }
     setProgress(0)
     const start = performance.now()
     let request = 0
@@ -34,7 +35,7 @@ export function PrototypePlayer({
     }
     request = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(request)
-  }, [transition, state.transitionMs])
+  }, [transition, state.transitionMs, state.transitionSerial, state.transitionStyle])
   const valuesKey = JSON.stringify([state.values, state.modeValues])
   const settled = useMemo(() => kernelLayout(prototypeDocument(snapshot.current, state)), [valuesKey])
   // One bake per (document, from, to) transition through the kernel's stateful
@@ -97,6 +98,14 @@ export function PrototypePlayer({
   const frame = entry?.bounds || { x: 0, y: 0, width: n.width, height: n.height }
   const zoom = Math.min(1, 900 / Math.max(1, frame.width)),
     height = Math.min(720, frame.height * zoom)
+  const slideProgress = prototypeEase(state.transitionEasing, progress)
+  const slideOffset = state.transitionStyle?.startsWith('slide-') && progress < 1
+    ? `${state.transitionStyle==='slide-left'?-(1-slideProgress)*100:state.transitionStyle==='slide-right'?(1-slideProgress)*100:0}%,${state.transitionStyle==='slide-top'?-(1-slideProgress)*100:state.transitionStyle==='slide-bottom'?(1-slideProgress)*100:0}%` : '0%,0%'
+  const previous = useMemo(()=> {
+    if (!state.transitionFrom || !settled.nodes[state.transitionFrom]) return undefined
+    const view=prototypeFrameView(settled,state.transitionFrom)
+    return {...view,entry:scene(view.document,view.pageId).find(e=>e.id===state.transitionFrom)}
+  }, [settled,state.transitionFrom])
   const previousScroll = useRef({ left: 0, top: 0 })
   const dispatch = (id: string, trigger: Interaction['trigger'], only?: Interaction) => {
     try {
@@ -137,17 +146,7 @@ export function PrototypePlayer({
     }
   }, [state.scrollTarget, state.current, state.scrollRequest])
   // Hide unrelated roots/siblings while retaining definitions for component resolution.
-  const visibleDoc = useMemo(() => {
-    const nodes = { ...doc.nodes }
-    let at = current
-    while (parents.has(at)) {
-      const parent = parents.get(at)!,
-        siblings = doc.nodes[parent]?.children || doc.pages.find((p) => p.id === parent)!.children
-      for (const id of siblings) if (id !== at) nodes[id] = { ...nodes[id], visible: false }
-      at = parent
-    }
-    return { ...doc, nodes }
-  }, [doc, current])
+  const visibleDoc = useMemo(() => prototypeFrameView(doc,current).document, [doc,current])
   return (
     <div className="feature-backdrop">
       <div className="prototype-player" data-transition-progress={progress} data-transition-ms={state.transitionMs} data-transition-easing={state.transitionEasing || 'linear'} data-animation-plan={transition ? (bakeSession ? "kernel-baked" : "kernel") : "none"} role="dialog" aria-label="交互原型预览">
@@ -181,13 +180,17 @@ export function PrototypePlayer({
               background: '#fff',
             }}
           >
+            {previous?.entry && state.transitionStyle?.startsWith('slide-') && progress<1 && <div key={state.transitionFrom} aria-hidden="true" style={{position:'absolute',inset:0,pointerEvents:'none'}}>
+              <KernelSurface document={previous.document} pageId={previous.pageId} width={Math.ceil(frame.width*zoom)} height={Math.ceil(frame.height*zoom)} view={{x:-previous.entry.bounds.x*zoom,y:-previous.entry.bounds.y*zoom,zoom}} grid={false}/>
+            </div>}
             <div
               key={current}
               style={{
                 position: 'relative',
                 width: frame.width * zoom,
                 height: frame.height * zoom,
-
+                transform: `translate(${slideOffset})`,
+                background: '#fff',
               }}
             >
               <KernelSurface

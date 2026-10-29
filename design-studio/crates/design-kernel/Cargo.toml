@@ -30,9 +30,6 @@ zip.workspace = true
 ruzstd.workspace = true
 miniz_oxide.workspace = true
 
-[target.'cfg(target_os = "macos")'.dependencies]
-sysinfo = { version = "=0.37.2", default-features = false, features = ["system"] }
-
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen.workspace = true
 js-sys.workspace = true
@@ -72,3 +69,6 @@ harness = false
 [[bench]]
 name = "dirty_region"
 harness = false
+
+[dev-dependencies]
+tiny-skia = { version = "=0.12.0", default-features = false, features = ["std"] }

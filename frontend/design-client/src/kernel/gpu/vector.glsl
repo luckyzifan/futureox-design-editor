@@ -889,8 +889,45 @@ vec4 tentInteger(vec2 p,vec2 axis,int radius){
 }
 vec4 fourBytes(sampler2D tex,vec2 p,vec4 r){return roundEven(at(tex,p,r)*255.)+roundEven(at(tex,p+vec2(1,0),r)*255.)+roundEven(at(tex,p+vec2(0,1),r)*255.)+roundEven(at(tex,p+vec2(1,1),r)*255.);}
 vec4 resolveFour(vec4 sum,sampler2D tex,vec2 p,vec4 r){for(int y=0;y<2;y++){for(int x=0;x<2;x++){sum=addRN4(sum,mulRN4(at(tex,p+vec2(x,y),r),vec4(.0625)));}}return sum;}
+float ccEncode(float v){float x=abs(v);if(x<=.0031308)return v*12.92;return sign(v)*(1.055*pow(x,1./2.4)-.055);}
+float ccDecode(float v){float x=abs(v);if(x<=.04045)return v/12.92;return sign(v)*pow((x+.055)/1.055,2.4);}
+vec3 ccRows(vec4 p,int base){vec3 result=vec3(0);for(int i=0;i<3;i++){vec4 row=u[base+i];result[i]=addRN(addRN(addRN(mulRN(p.r,row.x),mulRN(p.g,row.y)),mulRN(p.b,row.z)),mulRN(p.a,row.w));}return result;}
+vec4 colorControlsPixel(vec4 p){
+ if(p.a==0.)return p;if(u[12].x<.5)return vec4(ccRows(p,9),p.a);
+ vec3 straight=vec3(divideRN(p.r,p.a),divideRN(p.g,p.a),divideRN(p.b,p.a));
+ vec3 local=ccRows(vec4(straight,0),13);
+ vec3 encoded=vec3(ccEncode(local.r),ccEncode(local.g),ccEncode(local.b));
+ vec3 adjusted=ccRows(vec4(encoded,1),9);
+ vec3 decoded=vec3(ccDecode(adjusted.r),ccDecode(adjusted.g),ccDecode(adjusted.b));
+ vec3 result=ccRows(vec4(decoded,0),16);
+ return vec4(mulRN(result.r,p.a),mulRN(result.g,p.a),mulRN(result.b,p.a),p.a);
+}
+vec4 motionKernelTap(uint i){return texelFetch(sourceB,ivec2(int(i%256u),int(i/256u)),0);}
+vec4 motionBlurPixel(vec2 p){
+ vec4 header=motionKernelTap(0u),sum=vec4(0);
+ for(uint i=0u;i<uint(header.x);i++){vec4 tap=motionKernelTap(1u+2u*i);float weight=motionKernelTap(2u+2u*i).x;vec2 q=p+tap.xy;
+  vec4 value=bsBilinear4(at(sourceA,q,u[1]),at(sourceA,q+vec2(1,0),u[1]),at(sourceA,q+vec2(0,1),u[1]),at(sourceA,q+vec2(1,1),u[1]),tap.zw,19u,9u);
+  sum=addRN4(sum,mulRN4(value,vec4(weight)));
+ }
+ return vec4(divideRN(sum.x,header.y),divideRN(sum.y,header.y),divideRN(sum.z,header.y),divideRN(sum.w,header.y));
+}
+vec4 zoomSample(vec2 p,uint tap){
+ vec4 header=motionKernelTap(0u);uvec2 pixel=uvec2(floor(p-u[1].xy));
+ vec4 x=motionKernelTap(1u+pixel.x*64u+tap),y=motionKernelTap(uint(header.w)+pixel.y*64u+tap);
+ vec2 q=u[1].xy+vec2(x.x,y.x)+.5;
+ return bsBilinear4(at(sourceA,q,u[1]),at(sourceA,q+vec2(1,0),u[1]),at(sourceA,q+vec2(0,1),u[1]),at(sourceA,q+vec2(1,1),u[1]),vec2(x.y,y.y),19u,9u);
+}
+vec4 zoomBlurPixel(vec2 p){
+ uint count=min(64u,uint(motionKernelTap(0u).x));if(count==0u)return at(sourceA,p,u[1]);
+ vec4 samples[4],quads[4],groups[4];
+ for(uint i=0u;i<count;i++){samples[i%4u]=zoomSample(p,i);
+  if(i%4u==3u){quads[(i/4u)%4u]=meanFourRN(samples[0],samples[1],samples[2],samples[3]);
+   if(i%16u==15u)groups[i/16u]=meanFourRN(quads[0],quads[1],quads[2],quads[3]);
+  }
+ }return meanFourRN(groups[0],groups[1],groups[2],groups[3]);
+}
 vec4 shade(vec2 p){
- int mode=COMPOSITOR_MODE;if(BYTE_SURFACE&&mode==43)return textureReplayEffect(p);if(BYTE_SURFACE&&mode==44)return textureReplayCopyback(p);if(BYTE_SURFACE&&mode==45)return textureReplaySource(p);if(BYTE_SURFACE&&mode==42)return measuredGradientOver(p);if(BYTE_SURFACE&&mode==40)return captureDownscale(p);if(BYTE_SURFACE&&mode==41)return captureTriangle(p);if(BYTE_SURFACE&&mode==36)return figmaFourPass(at(sourceA,p,u[1]),at(sourceB,p,u[2]),at(sourceC,p,u[3]),at(sourceD,p,u[1]));if(BYTE_SURFACE&&mode==35)return solidPaintOver(p);if(mode==34)return analyticGlass(p);if(mode==33)return bytePreview(p);if(mode==46)return gradientBlurComposite(p);if(mode==8&&u[10].z>.5)return materialTexture(p);if(mode==11&&u[10].w>.5)return materialGlass(p);vec4 a=smp(sourceA,p,u[1]);
+ int mode=COMPOSITOR_MODE;if(BYTE_SURFACE&&mode==43)return textureReplayEffect(p);if(BYTE_SURFACE&&mode==44)return textureReplayCopyback(p);if(BYTE_SURFACE&&mode==45)return textureReplaySource(p);if(BYTE_SURFACE&&mode==42)return measuredGradientOver(p);if(BYTE_SURFACE&&mode==40)return captureDownscale(p);if(BYTE_SURFACE&&mode==41)return captureTriangle(p);if(BYTE_SURFACE&&mode==36)return figmaFourPass(at(sourceA,p,u[1]),at(sourceB,p,u[2]),at(sourceC,p,u[3]),at(sourceD,p,u[1]));if(BYTE_SURFACE&&mode==35)return solidPaintOver(p);if(mode==34)return analyticGlass(p);if(mode==33)return bytePreview(p);if(mode==61)return motionBlurPixel(p);if(mode==62)return zoomBlurPixel(p);if(mode==46)return gradientBlurComposite(p);if(mode==8&&u[10].z>.5)return materialTexture(p);if(mode==11&&u[10].w>.5)return materialGlass(p);vec4 a=smp(sourceA,p,u[1]);
  if(u[60].x>.5){
   if(mode==3||mode==15){float opacity=u[4].z;if(u[4].w>.5)opacity=mulRN(opacity,at(sourceC,p,u[3]).a);vec4 src=mulRN4(a,vec4(opacity));if(mode==15)return src;return over(smp(sourceB,p,u[2]),src,int(u[4].y));}
   if(mode==8){return linearTexture(p);}
@@ -908,6 +945,7 @@ vec4 shade(vec2 p){
  }
 
  if(mode==22){float radius=u[9].x;int reach=int(ceil(radius));vec2 axis=u[9].y<.5?vec2(1,0):vec2(0,1);vec4 total=vec4(0);
+  if(u[9].w>1.5){uvec4 sum=uvec4(0);for(int i=-reach;i<=reach;i++){sum+=uvec4(round(blurAt(p+axis*float(i))*255.));}uint denominator=uint(2*reach+1);return vec4((sum+uvec4(denominator/2u))/denominator)/255.;}
   if(u[9].w>.5){uvec4 sum=uvec4(0);for(int i=-reach;i<=reach;i++){uvec4 v=uvec4(roundEven(texelFetch(sourceB,ivec2(abs(i),0),0)*255.));uint weight=v.x|(v.y<<8u)|(v.z<<16u)|(v.w<<24u);sum+=uvec4(roundEven(blurAt(p+axis*float(i))*255.))*weight;}uvec4 q=sum>>24u,r=sum&0x00ffffffu;uvec4 up=uvec4(greaterThan(r,uvec4(0x00800000u)))+(uvec4(equal(r,uvec4(0x00800000u)))&(q&1u));return vec4(q+up)/255.;}
   if(radius==floor(radius))return tentInteger(p,axis,reach);
   for(int i=-reach;i<=reach;i++)total+=blurAt(p+axis*float(i))*tentWeight(radius,abs(float(i)));
@@ -943,6 +981,7 @@ vec4 shade(vec2 p){
  if(mode==3){vec4 src=a*u[4].z;if(u[4].w>.5)src*=at(sourceC,p,u[3]).a;return over(smp(sourceB,p,u[2]),src,int(u[4].y));}
  if(mode==4||mode==5){int r=int(u[9].x);vec2 axis=u[9].y<.5?vec2(1,0):vec2(0,1);vec4 total=vec4(0);float alpha=u[9].z>.5?0.:1.;for(int i=-r;i<=r;i++){vec4 v=(mode==5&&u[9].w>.5)?at(sourceA,p+axis*float(i),u[1]):smp(sourceA,p+axis*float(i),u[1]);if(mode==4)total+=v;else alpha=u[9].z>.5?max(alpha,v.a):min(alpha,v.a);}return mode==4?total/float(2*r+1):vec4(0,0,0,alpha);}
  if(mode==6){if(u[9].x>.5){float b=smpBytes(sourceB,p-u[9].yz,u[2]).a;float coverage=u[9].w>.5?roundEven(a.a*255.)*(1.-b/255.):b;uint alpha=uint(roundEven(clamp(u[8].x*coverage,0.,255.)*65536.));uvec4 numerator=uvec4(roundEven(vec4(u[7].yzw,1.)*255.))*alpha;uint denominator=16711680u;uvec4 q=numerator/denominator,r=numerator-q*denominator;uvec4 up=uvec4(greaterThan(r*2u,uvec4(denominator)))+(uvec4(equal(r*2u,uvec4(denominator)))&(q&1u));return vec4(q+up)/255.;}float b=smp(sourceB,p-u[9].yz,u[2]).a;float coverage=u[9].w>.5?a.a*(1.-b):b;float alpha=u[8].x*coverage;vec4 result=vec4(u[7].yzw*alpha,alpha);return u[9].x>.5?roundEven(result*255.)/255.:result;}
+ if(mode==60)return colorControlsPixel(a);
  if(mode==30)return vec4(maskLumRN(a.rgb));
  if(mode==7){float v=noise(ivec2(floor(local(p)*max(.01,u[10].x))),7u);float alpha=u[10].y*a.a;vec4 source=vec4(vec3(v*alpha),alpha);if(u[60].x<.5)source=roundEven(source*255.)/255.;return over(a,source,9);}
  if(mode==8){ivec2 q=ivec2(floor(local(p)));vec2 delta=(vec2(noise(q,13u),noise(q,29u))-.5)*u[10].x;vec2 device=vec2(u[45].x*delta.x+u[45].z*delta.y,u[45].y*delta.x+u[45].w*delta.y);return smp(sourceA,p+device,u[1]);}

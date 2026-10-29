@@ -23,7 +23,7 @@ export const canvasCommandEnglish: Readonly<Record<string, string>> = {
   'select-matching': 'Select matching layers', 'select-properties': 'Select same properties', 'select-fill': 'Select same fill', 'select-stroke': 'Select same stroke', 'select-effect': 'Select same effects', 'select-text': 'Select same text properties', 'select-font': 'Select same font', 'select-instance': 'Select instances of the same component', 'select-inverse': 'Invert selection',
   rename: 'Rename', duplicate: 'Duplicate', 'flip-horizontal': 'Flip horizontal', 'flip-vertical': 'Flip vertical',
   'bring-to-front': 'Bring to front', 'bring-forward': 'Bring forward', 'send-backward': 'Send backward', 'send-to-back': 'Send to back',
-  group: 'Group', 'frame-selection': 'Frame selection', 'create-component': 'Create component', 'mask-selection': 'Use as mask',
+  group: 'Group', 'frame-selection': 'Frame selection', 'create-component': 'Create component', 'detach-instance': 'Detach instance', 'mask-selection': 'Use as mask',
   'auto-layout': 'Add auto layout', 'remove-auto-layout': 'Remove auto layout', 'convert-section': 'Convert to section', ungroup: 'Ungroup', 'convert-vector': 'Convert to vector', 'outline-stroke': 'Outline stroke',
   'unlock-selection': 'Unlock layers', 'lock-selection': 'Lock layers', 'hide-selection': 'Hide layers', 'show-selection': 'Show layers', 'zoom-selection': 'Zoom to selection', 'center-selection': 'Center selection (keep zoom)', delete: 'Delete', 'select-all': 'Select all', 'zoom-fit': 'Zoom to all content',
 }

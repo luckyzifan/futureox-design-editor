@@ -15,8 +15,8 @@ export function exactFilterPacketLayout(logicalTexels: number, actualLimit: numb
 }
 
 /** Framing check, not a mathematical, finite-source or prefix certificate. */
-export function exactFilterPacketTexels(bytes: Uint8Array): number | undefined {
-  if (!(bytes instanceof Uint8Array) || !(bytes.buffer instanceof ArrayBuffer) ||
+export function exactFilterPacketTexels(bytes: Uint8Array, maximumReach: 2048 | 4096 = 2048): number | undefined {
+  if ((maximumReach !== 2048 && maximumReach !== 4096) || !(bytes instanceof Uint8Array) || !(bytes.buffer instanceof ArrayBuffer) ||
       bytes.byteLength < 16 || bytes.byteLength % 4 !== 0 || bytes.byteLength > 65536) return
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   const first = view.getUint32(0, true), second = view.getUint32(4, true)
@@ -25,7 +25,7 @@ export function exactFilterPacketTexels(bytes: Uint8Array): number | undefined {
   if (first === 0x38345143) {
     if (second < 1 || second > 2048 || third !== 48 || (fourth !== 0 && fourth !== 64) ||
         texels !== 4 + 2 * (second + 1)) return
-  } else if (first < 1 || first > 44 || second < first || second > 44 || third < 1 || third > 2048 ||
+  } else if (first < 1 || first > 44 || second < first || second > 44 || third < 1 || third > maximumReach ||
       fourth !== 0 || texels !== 4 + first * (third + 2)) return
   return texels
 }

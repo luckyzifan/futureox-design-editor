@@ -6,6 +6,7 @@ import { createRenderDiagnostics, PREFIX } from './render-terminal-diagnostics.m
 const methods=new Set(['serialize','serialize_delta','parse','warm_resources','initialize','load_document','apply_document_patch_with_damage','apply_interaction_transforms',
  'compile_gpu_packet','render_linear','render_png','render_color_png','render_region_png','render_cpu_frame','stats','gpu_memory_breakdown',
  'preparation_capabilities_v1','derive_document_v1'])
+const sourceSnapshotRequests=new WeakSet()
 // A single host-wide ledger includes every preparation/codec session. A close
 // rejects callers immediately but holds their leases until the worker exits:
 // rejecting a promise does not free a clone already queued in another thread.
@@ -19,8 +20,13 @@ export class PreparationAdmission {
 }
 const sharedAdmission=new PreparationAdmission()
 export class NativePreparation {
+ loadSourceSnapshot(descriptor){
+  const request={lane:'canvas',method:'load_source_snapshot',args:[descriptor]}
+  sourceSnapshotRequests.add(request)
+  return this.request(request)
+ }
  constructor(binary,font,codecOnly=false,admission=sharedAdmission){
-  this.pending=new Map();this.sequence=0;this.closed=false;this.admission=admission;this.reservations=new Set()
+  this.pending=new Map();this.sequence=0;this.closed=false;this.admission=admission;this.reservations=new Set();this.sourceLanes=new Set()
   // Host has its own clock/session/sequence. Correlation uses preparationId and
   // requestId only; never subtract host timestamps from renderer performance.now.
   this.diagnostics=createRenderDiagnostics({enabled:['1','detail'].includes(process.env.CORE_RENDER_DIAGNOSTICS),detail:process.env.CORE_RENDER_DIAGNOSTICS==='detail',source:'host',session:Math.floor(Math.random()*1e12),sink:record=>console.log(PREFIX+JSON.stringify(record))})
@@ -46,7 +52,9 @@ export class NativePreparation {
  }
  request(request){
   if(this.closed)return Promise.reject(Error('Native preparation closed'))
-  if(!request||!['canvas','interaction'].includes(request.lane)||!methods.has(request.method)||!Array.isArray(request.args)||request.args.length>3)
+  const sourceSnapshot=!!request&&sourceSnapshotRequests.has(request)
+  if(sourceSnapshot)sourceSnapshotRequests.delete(request)
+  if(!request||!['canvas','interaction'].includes(request.lane)||(!methods.has(request.method)&&!sourceSnapshot)||!Array.isArray(request.args)||request.args.length>3)
    return Promise.reject(Error('Invalid native preparation request'))
   if(this.pending.size>=32||this.sequence>=0xffffffff)return Promise.reject(Error('Native preparation queue or sequence limit exceeded'))
   if(request.cancellationId!==undefined&&(request.method!=='compile_gpu_packet'||!Number.isSafeInteger(request.cancellationId)||request.cancellationId<=0||
@@ -66,8 +74,20 @@ export class NativePreparation {
   this.reservations.add(release)
   this.sequence=id
   return new Promise((resolve,reject)=>{
-   const timer=setTimeout(()=>this.close(Error('Native preparation timed out')),120000)
-   this.pending.set(id,{resolve,reject,timer,diagnostic,release,method:request.method,cancellationId:request.cancellationId})
+   const sourceWork=sourceSnapshot||request.method!=='load_document'&&(this.sourceLanes?.has(request.lane)||request.method==='derive_document_v1'&&this.sourceLanes?.has('canvas'))
+   // Only a privately admitted source snapshot can enter this lane. Native
+   // completion, cancellation, worker exit and allocation errors end its jobs;
+   // the ordinary two-minute deadline must not become a source-size ceiling.
+   const timer=sourceWork?undefined:setTimeout(()=>this.close(Error('Native preparation timed out')),120000)
+   const complete=reply=>{
+    if(!reply.error){
+     this.sourceLanes??=new Set()
+     if(sourceSnapshot||request.method==='derive_document_v1'&&this.sourceLanes.has('canvas'))this.sourceLanes.add(request.lane)
+     else if(request.method==='load_document'||request.method==='derive_document_v1')this.sourceLanes.delete(request.lane)
+    }
+    resolve(reply)
+   }
+   this.pending.set(id,{resolve:complete,reject,timer,diagnostic,release,method:request.method,cancellationId:request.cancellationId})
    if(diagnostic)this.diagnostics.record('preparation',{...diagnostic,phase:5,backendCode:2,boundaryCode:8})
    try{this.worker.postMessage(message)}
    catch(error){this.pending.delete(id);clearTimeout(timer);this.release(release);reject(error)}
@@ -90,7 +110,7 @@ export class NativePreparation {
   return this.done
  }
 }
-export function registerNativePreparation(ipcMain,{resourcesRoot,assertSender}){
+export function registerNativePreparation(ipcMain,{resourcesRoot,assertSender,resolveSourceSnapshot}){
  const sessions=new Map(),owners=new Set(),retiring=new Set(),codecs=new Map()
  const close=worker=>{const done=worker.close();retiring.add(done);void done.finally(()=>retiring.delete(done));return done}
  const retire=owner=>{for(const [id,s] of sessions)if(s.owner===owner){close(s.worker);sessions.delete(id)}const codec=codecs.get(owner);if(codec){codecs.delete(owner);close(codec)}}
@@ -122,7 +142,18 @@ export function registerNativePreparation(ipcMain,{resourcesRoot,assertSender}){
  })
  const session=(event,id)=>{assertSender(event);const s=sessions.get(id);if(!s||s.owner!==event.sender.id)throw Error('Unknown native preparation session');return s}
  ipcMain.handle('native-preparation:cancel',(event,id,cancellationId)=>session(event,id).worker.cancel(cancellationId))
- ipcMain.handle('native-preparation:request',(event,id,request)=>session(event,id).worker.request(request))
+ ipcMain.handle('native-preparation:request',async(event,id,request)=>{
+  const owned=session(event,id)
+  if(request?.method==='load_source_snapshot'){
+   if(!resolveSourceSnapshot||request.lane!=='canvas'||!Array.isArray(request.args)||request.args.length!==1||typeof request.args[0]!=='string'||request.cancellationId!==undefined)
+    throw Error('Invalid source canvas capability request')
+   const grant=resolveSourceSnapshot(request.args[0],event.sender.id)
+   const reply=await owned.worker.loadSourceSnapshot(grant.descriptor)
+   grant.assertCurrent()
+   return reply
+  }
+  return owned.worker.request(request)
+ })
  ipcMain.handle('native-preparation:close',(event,id)=>{const s=session(event,id);sessions.delete(id);return close(s.worker)})
  return ()=>{for(const s of sessions.values())close(s.worker);for(const codec of codecs.values())close(codec);sessions.clear();codecs.clear();return Promise.all([...retiring])}
 }

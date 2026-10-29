@@ -14,12 +14,17 @@ export class CoverageCache {
   rejectedOversize = 0
   rejectedPinned = 0
   rejectedBytes = 0
+  private diagnostics = false
+  hits = 0
+  missKeys = 0
+  missWords = 0
   constructor(
     private limit: number,
     private countLimit: number,
     private destroy: (t: Texture) => void,
   ) {}
-  begin() {
+  begin(diagnostics = false) {
+    this.diagnostics=diagnostics;this.hits=this.missKeys=this.missWords=0
     this.rejectedOversize = this.rejectedPinned = this.rejectedBytes = 0
     this.frame++
     this.eviction = this.entries.values()
@@ -28,13 +33,16 @@ export class CoverageCache {
     return this.textures.has(texture)
   }
   get(key: string, bits: Uint32Array): Texture | undefined {
-    for (const e of this.buckets.get(key) || []) {
+    const bucket=this.buckets.get(key)
+    for (const e of bucket || []) {
       if (bits.length !== e.bits.length || !bits.every((v, i) => v === e.bits[i])) continue
       e.frame = this.frame
       this.entries.delete(e)
       this.entries.add(e)
+      if(this.diagnostics)this.hits++
       return e.texture
     }
+    if(this.diagnostics){if(bucket?.size)this.missWords++;else this.missKeys++}
     return undefined
   }
   put(key: string, bits: Uint32Array, texture: Texture): boolean {

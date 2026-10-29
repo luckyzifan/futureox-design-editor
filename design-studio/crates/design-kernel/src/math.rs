@@ -221,20 +221,37 @@ impl Rect {
         Self { x, y, w, h }
     }
     pub fn right(self) -> i32 {
-        self.x + self.w as i32
+        self.checked_right().expect("Invalid rectangle right edge")
     }
     pub fn bottom(self) -> i32 {
-        self.y + self.h as i32
+        self.checked_bottom()
+            .expect("Invalid rectangle bottom edge")
     }
-    pub fn intersect(self, b: Self) -> Self {
+    pub fn checked_right(self) -> Option<i32> {
+        self.x.checked_add(i32::try_from(self.w).ok()?)
+    }
+    pub fn checked_bottom(self) -> Option<i32> {
+        self.y.checked_add(i32::try_from(self.h).ok()?)
+    }
+    pub fn checked_intersect(self, b: Self) -> Option<Self> {
         let x = self.x.max(b.x);
         let y = self.y.max(b.y);
-        Self::new(
+        Some(Self::new(
             x,
             y,
-            (self.right().min(b.right()) - x).max(0) as u32,
-            (self.bottom().min(b.bottom()) - y).max(0) as u32,
-        )
+            u32::try_from(
+                (i64::from(self.checked_right()?.min(b.checked_right()?)) - i64::from(x)).max(0),
+            )
+            .ok()?,
+            u32::try_from(
+                (i64::from(self.checked_bottom()?.min(b.checked_bottom()?)) - i64::from(y)).max(0),
+            )
+            .ok()?,
+        ))
+    }
+    pub fn intersect(self, b: Self) -> Self {
+        self.checked_intersect(b)
+            .expect("Invalid rectangle intersection")
     }
     pub fn union(self, b: Self) -> Self {
         if self.empty() {

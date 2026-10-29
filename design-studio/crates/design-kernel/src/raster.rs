@@ -1,7 +1,13 @@
 use crate::{
     math::{Point, Rect},
     path::Contour,
+    render_cancellation::checkpoint,
 };
+use std::sync::Arc;
+#[path = "raster_scan.rs"]
+mod scan;
+pub use scan::RasterWorkspace;
+
 #[derive(Clone, Debug)]
 pub struct Mask {
     pub rect: Rect,
@@ -12,14 +18,142 @@ impl Mask {
         self.rect.index(x, y).map_or(0., |i| self.data[i])
     }
 }
-#[derive(Clone, Copy)]
-struct Edge {
-    a: Point,
-    b: Point,
-    sign: i32,
+
+/// Four independent binary sample planes packed into one byte per pixel.
+/// No averaging, UNORM conversion, paint quantization or HDR conversion occurs.
+#[derive(Clone, Debug)]
+pub struct SampleMasks {
+    pub rect: Rect,
+    data: Arc<Vec<u8>>,
 }
-/// Standard rotated-grid four-sample coverage, quantized to UNORM8 before paint.
-/// The two-times compositor resolves these subpixels only after layer blending.
+impl SampleMasks {
+    pub fn plane(&self, sample: usize) -> SamplePlane<'_> {
+        assert!(sample < 4);
+        SamplePlane {
+            masks: self,
+            sample,
+        }
+    }
+    pub fn at(&self, sample: usize, x: i32, y: i32) -> f32 {
+        assert!(sample < 4);
+        self.rect
+            .index(x, y)
+            .map_or(0., |i| f32::from((self.data[i] >> sample) & 1))
+    }
+    pub fn storage_bytes(&self) -> usize {
+        self.data.len()
+    }
+}
+
+pub trait Coverage {
+    fn rect(&self) -> Rect;
+    fn at(&self, x: i32, y: i32) -> f32;
+}
+impl Coverage for Mask {
+    fn rect(&self) -> Rect {
+        self.rect
+    }
+    fn at(&self, x: i32, y: i32) -> f32 {
+        self.at(x, y)
+    }
+}
+pub struct SamplePlane<'a> {
+    masks: &'a SampleMasks,
+    sample: usize,
+}
+impl Coverage for SamplePlane<'_> {
+    fn rect(&self) -> Rect {
+        self.masks.rect
+    }
+    fn at(&self, x: i32, y: i32) -> f32 {
+        self.masks.at(self.sample, x, y)
+    }
+}
+
+fn validate_sample(sample: Option<usize>) -> Result<(), String> {
+    if sample.is_some_and(|s| s >= 4) {
+        Err("Invalid coverage sample".into())
+    } else {
+        Ok(())
+    }
+}
+
+pub(crate) fn validate_points(cs: &[Contour]) -> Result<(), String> {
+    for (i, p) in cs.iter().flat_map(|c| &c.points).enumerate() {
+        if i % 256 == 0 {
+            checkpoint()?;
+        }
+        if !p.finite() {
+            return Err("Non-finite interval geometry".into());
+        }
+    }
+    checkpoint()
+}
+
+/// Validate all input points, but only fillable contours contribute bounds.
+/// Computing these together avoids a separate finite-point pass for CPU/GPU.
+pub(crate) fn clipped_rect(cs: &[Contour], limit: Rect) -> Result<Rect, String> {
+    checkpoint()?;
+    clip_bounds(Rect::default(), limit)?;
+    let mut min = Point::new(f64::INFINITY, f64::INFINITY);
+    let mut max = Point::new(f64::NEG_INFINITY, f64::NEG_INFINITY);
+    for c in cs {
+        checkpoint()?;
+        let fillable = c.closed && c.points.len() >= 3;
+        for (i, p) in c.points.iter().enumerate() {
+            if i % 256 == 0 {
+                checkpoint()?;
+            }
+            if !p.finite() {
+                return Err("Non-finite interval geometry".into());
+            }
+            if fillable {
+                min.x = min.x.min(p.x);
+                min.y = min.y.min(p.y);
+                max.x = max.x.max(p.x);
+                max.y = max.y.max(p.y);
+            }
+        }
+    }
+    let bounds = if min.finite() {
+        Rect::from_points([min, max].into_iter()).expand(1)
+    } else {
+        Rect::default()
+    };
+    clip_bounds(bounds, limit)
+}
+
+pub(crate) fn clip_bounds(bounds: Rect, limit: Rect) -> Result<Rect, String> {
+    bounds
+        .checked_intersect(limit)
+        .ok_or_else(|| "Invalid interval geometry limit".into())
+}
+
+fn buffer<T: Default + Clone>(rect: Rect) -> Result<Vec<T>, String> {
+    let len = (rect.w as usize)
+        .checked_mul(rect.h as usize)
+        .ok_or("Raster allocation overflow")?;
+    let bytes = len
+        .checked_mul(std::mem::size_of::<T>())
+        .ok_or("Raster allocation overflow")?;
+    // Same ceiling as the CPU compositor; production also accounts aggregate live buffers.
+    if bytes > crate::memory::COMPOSITING_BYTES {
+        return Err("Compositing memory budget exceeded".into());
+    }
+    checkpoint()?;
+    let mut data = Vec::new();
+    data.try_reserve_exact(len)
+        .map_err(|_| "Raster allocation failed")?;
+    // Bound cancellation latency even when initializing a large mask.
+    while data.len() < len {
+        checkpoint()?;
+        data.resize((data.len() + 16384).min(len), T::default());
+    }
+    Ok(data)
+}
+
+/// Standard four-sample coverage, quantized to UNORM8 before paint.
+/// For untrusted input use the fallible entry points below.
 pub fn rasterize_msaa4(cs: &[Contour], limit: Rect, even_odd: bool) -> Mask {
     rasterize_sample(cs, limit, even_odd, None)
 }
@@ -29,276 +163,184 @@ pub fn rasterize_sample(
     even_odd: bool,
     sample: Option<usize>,
 ) -> Mask {
-    rasterize_sample_impl(cs, limit, even_odd, sample, true)
+    try_rasterize_sample(cs, limit, even_odd, sample).expect("Invalid raster geometry")
 }
-/// Exact quarter-sample coverage for floating-point color surfaces.
 pub fn rasterize_sample_linear(
     cs: &[Contour],
     limit: Rect,
     even_odd: bool,
     sample: Option<usize>,
 ) -> Mask {
-    rasterize_sample_impl(cs, limit, even_odd, sample, false)
+    try_rasterize_sample_linear(cs, limit, even_odd, sample).expect("Invalid raster geometry")
 }
-fn rasterize_sample_impl(
+pub fn rasterize(cs: &[Contour], limit: Rect, even_odd: bool) -> Mask {
+    try_rasterize(cs, limit, even_odd).expect("Invalid raster geometry")
+}
+pub fn try_rasterize_sample(
     cs: &[Contour],
     limit: Rect,
     even_odd: bool,
     sample: Option<usize>,
-    quantize: bool,
-) -> Mask {
-    let rect = Rect::from_points(cs.iter().flat_map(|c| c.points.iter().copied()))
-        .expand(1)
-        .intersect(limit);
-    let mut mask = Mask {
-        rect,
-        data: vec![0.; rect.pixels()],
-    };
-    if rect.empty() {
-        return mask;
+) -> Result<Mask, String> {
+    RasterWorkspace::default().sample(cs, limit, even_odd, sample, true)
+}
+pub fn try_rasterize_sample_linear(
+    cs: &[Contour],
+    limit: Rect,
+    even_odd: bool,
+    sample: Option<usize>,
+) -> Result<Mask, String> {
+    RasterWorkspace::default().sample(cs, limit, even_odd, sample, false)
+}
+pub fn try_rasterize(cs: &[Contour], limit: Rect, even_odd: bool) -> Result<Mask, String> {
+    RasterWorkspace::default().area(cs, limit, even_odd)
+}
+
+fn pixel_span(rect: Rect, row: u32, left: f64, right: f64) -> std::ops::Range<usize> {
+    let sx = crate::fidelity::SAMPLE_OFFSETS[(row % 4) as usize].0;
+    let start = ((left - sx).ceil() as i32).clamp(rect.x, rect.right());
+    let end = ((right - sx).ceil() as i32).clamp(start, rect.right());
+    let base = (row / 4) as usize * rect.w as usize;
+    base + (start - rect.x) as usize..base + (end - rect.x) as usize
+}
+
+impl RasterWorkspace {
+    pub fn samples(
+        &mut self,
+        cs: &[Contour],
+        limit: Rect,
+        even_odd: bool,
+    ) -> Result<SampleMasks, String> {
+        let rect = clipped_rect(cs, limit)?;
+        let mut data = buffer::<u8>(rect)?;
+        if !rect.empty() {
+            self.sample_spans(cs, rect, even_odd, None, |row, l, r| {
+                let bit = 1 << (row % 4);
+                for chunk in data[pixel_span(rect, row, l, r)].chunks_mut(4096) {
+                    checkpoint()?;
+                    for value in chunk {
+                        *value |= bit;
+                    }
+                }
+                Ok(true)
+            })?;
+        }
+        Ok(SampleMasks {
+            rect,
+            data: Arc::new(data),
+        })
     }
-    visit_sample_spans(cs, rect, even_odd, sample, |row, left, right| {
-        let sx = crate::fidelity::SAMPLE_OFFSETS[(row % 4) as usize].0;
-        let y = rect.y + (row / 4) as i32;
-        let start = ((left - sx).ceil() as i32).max(rect.x);
-        let end = ((right - sx).ceil() as i32).min(rect.right());
-        for x in start..end {
-            if let Some(i) = rect.index(x, y) {
-                mask.data[i] += if sample.is_some() { 1. } else { 0.25 };
+
+    pub fn sample(
+        &mut self,
+        cs: &[Contour],
+        limit: Rect,
+        even_odd: bool,
+        sample: Option<usize>,
+        quantize: bool,
+    ) -> Result<Mask, String> {
+        validate_sample(sample)?;
+        let rect = clipped_rect(cs, limit)?;
+        let mut mask = Mask {
+            rect,
+            data: buffer(rect)?,
+        };
+        if rect.empty() {
+            return Ok(mask);
+        }
+        self.sample_spans(cs, rect, even_odd, sample, |row, l, r| {
+            for chunk in mask.data[pixel_span(rect, row, l, r)].chunks_mut(4096) {
+                checkpoint()?;
+                for value in chunk {
+                    *value += if sample.is_some() { 1. } else { 0.25 };
+                }
+            }
+            Ok(true)
+        })?;
+        // Individual planes are binary: quantization is an exact no-op.
+        if quantize && sample.is_none() {
+            for chunk in mask.data.chunks_mut(4096) {
+                checkpoint()?;
+                for value in chunk {
+                    *value = (*value * 255.).round_ties_even() / 255.;
+                }
             }
         }
-        true
-    });
-    if quantize {
-        for v in &mut mask.data {
-            *v = (*v * 255.).round_ties_even() / 255.;
-        }
+        Ok(mask)
     }
-    mask
+
+    /// Eight vertical samples plus exact horizontal interval coverage.
+    pub fn area(&mut self, cs: &[Contour], limit: Rect, even_odd: bool) -> Result<Mask, String> {
+        let rect = clipped_rect(cs, limit)?;
+        let mut mask = Mask {
+            rect,
+            data: buffer(rect)?,
+        };
+        if rect.empty() {
+            return Ok(mask);
+        }
+        if let Some(bounds) = crate::coverage::rectangle(cs) {
+            for y in
+                rect.y.max(bounds[1].floor() as i32)..rect.bottom().min(bounds[3].ceil() as i32)
+            {
+                checkpoint()?;
+                for x in
+                    rect.x.max(bounds[0].floor() as i32)..rect.right().min(bounds[2].ceil() as i32)
+                {
+                    if (x - rect.x) % 4096 == 0 {
+                        checkpoint()?;
+                    }
+                    let i = (y - rect.y) as usize * rect.w as usize + (x - rect.x) as usize;
+                    mask.data[i] =
+                        crate::coverage::rectangle_pixel(bounds, x as f64, y as f64) as f32;
+                }
+            }
+            return Ok(mask);
+        }
+        self.area_spans(cs, rect, even_odd, |row, left, right| {
+            for px in left.floor() as i32..right.ceil() as i32 {
+                if (px - rect.x) % 4096 == 0 {
+                    checkpoint()?;
+                }
+                if let Some(i) = rect.index(px, rect.y + (row / 8) as i32) {
+                    let coverage =
+                        (right.min(f64::from(px) + 1.) - left.max(f64::from(px))).max(0.) / 8.;
+                    mask.data[i] += coverage as f32;
+                }
+            }
+            Ok(true)
+        })?;
+        for chunk in mask.data.chunks_mut(4096) {
+            checkpoint()?;
+            for a in chunk {
+                *a = a.clamp(0., 1.);
+            }
+        }
+        Ok(mask)
+    }
 }
-/// Shared four-sample scanline geometry. The callback receives continuous
-/// binary64 interior intervals; it never receives pixels or a coverage bitmap.
+
+// Geometry-only consumers validate once before entering these scanners.
 pub(crate) fn visit_sample_spans(
     cs: &[Contour],
     rect: Rect,
     even_odd: bool,
     sample: Option<usize>,
     mut emit: impl FnMut(u32, f64, f64) -> bool,
-) -> bool {
-    // Keep the sample locations and intersection expression unchanged. Only
-    // edges crossing the current sample row participate (active-edge sweep).
-    // Sorting sample Y first also keeps this valid if the fixed grid is reordered.
-    let offsets = crate::fidelity::SAMPLE_OFFSETS;
-    let mut samples: Vec<_> = offsets
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| sample.is_none_or(|s| s == *i))
-        .collect();
-    samples.sort_by(|a, b| a.1.1.total_cmp(&b.1.1));
-    let mut edges = Vec::new();
-    for c in cs.iter().filter(|c| c.closed && c.points.len() >= 3) {
-        for (i, a) in c.points.iter().enumerate() {
-            let b = c.points[(i + 1) % c.points.len()];
-            if a.y == b.y {
-                continue;
-            }
-            let edge = if a.y < b.y {
-                Edge { a: *a, b, sign: 1 }
-            } else {
-                Edge {
-                    a: b,
-                    b: *a,
-                    sign: -1,
-                }
-            };
-            if edge.b.y > f64::from(rect.y) && edge.a.y < f64::from(rect.bottom()) {
-                edges.push(edge);
-            }
-        }
-    }
-    edges.sort_by(|a, b| a.a.y.total_cmp(&b.a.y));
-    let mut next_edge = 0;
-    let mut active: Vec<usize> = Vec::new();
-    let mut crossings = Vec::new();
-    for y in rect.y..rect.bottom() {
-        for &(index, &(_, sy)) in &samples {
-            crossings.clear();
-            let py = f64::from(y) + sy;
-            active.retain(|&i| edges[i].b.y > py);
-            while next_edge < edges.len() && edges[next_edge].a.y <= py {
-                if edges[next_edge].b.y > py {
-                    active.push(next_edge);
-                }
-                next_edge += 1;
-            }
-            for &i in &active {
-                let e = &edges[i];
-                crossings.push((
-                    e.a.x + (py - e.a.y) * (e.b.x - e.a.x) / (e.b.y - e.a.y),
-                    e.sign,
-                ));
-            }
-            crossings.sort_by(|a, b| a.0.total_cmp(&b.0));
-            let mut winding = 0;
-            let mut left = 0.;
-            for &(right, sign) in &crossings {
-                let before = if even_odd {
-                    winding % 2 != 0
-                } else {
-                    winding != 0
-                };
-                winding += sign;
-                let after = if even_odd {
-                    winding % 2 != 0
-                } else {
-                    winding != 0
-                };
-                if !before && after {
-                    left = right;
-                } else if before
-                    && !after
-                    && !emit((y - rect.y) as u32 * 4 + index as u32, left, right)
-                {
-                    return false;
-                }
-            }
-        }
-    }
-    true
+) -> Result<bool, String> {
+    RasterWorkspace::default()
+        .sample_spans(cs, rect, even_odd, sample, |row, l, r| Ok(emit(row, l, r)))
 }
-
-// Eight vertical samples with exact horizontal interval coverage. The half-open
-// [y_min,y_max) edge convention prevents double-counting shared vertices.
-pub fn rasterize(cs: &[Contour], limit: Rect, even_odd: bool) -> Mask {
-    let rect = Rect::from_points(cs.iter().flat_map(|c| c.points.iter().copied()))
-        .expand(1)
-        .intersect(limit);
-    let mut mask = Mask {
-        rect,
-        data: vec![0.; rect.pixels()],
-    };
-    if rect.empty() {
-        return mask;
-    }
-    if let Some(bounds) = crate::coverage::rectangle(cs) {
-        for y in rect.y.max(bounds[1].floor() as i32)..rect.bottom().min(bounds[3].ceil() as i32) {
-            for x in rect.x.max(bounds[0].floor() as i32)..rect.right().min(bounds[2].ceil() as i32)
-            {
-                let i = (y - rect.y) as usize * rect.w as usize + (x - rect.x) as usize;
-                mask.data[i] = crate::coverage::rectangle_pixel(bounds, x as f64, y as f64) as f32;
-            }
-        }
-        return mask;
-    }
-    visit_spans(cs, rect, even_odd, |row, left, right| {
-        for px in left.floor() as i32..right.ceil() as i32 {
-            if let Some(i) = rect.index(px, rect.y + (row / 8) as i32) {
-                let coverage =
-                    (right.min(f64::from(px) + 1.) - left.max(f64::from(px))).max(0.) / 8.;
-                mask.data[i] += coverage as f32;
-            }
-        }
-        true
-    });
-    for a in &mut mask.data {
-        *a = a.clamp(0., 1.);
-    }
-    mask
-}
-
-/// Shared scanline geometry compiler. Emits sorted interior intervals, not
-/// pixels or coverage masks. A consumer may stop on its explicit work budget.
 pub(crate) fn visit_spans(
     cs: &[Contour],
     rect: Rect,
     even_odd: bool,
     mut emit: impl FnMut(u32, f64, f64) -> bool,
-) -> bool {
-    let samples = 8;
-    let rows = rect.h as usize * samples;
-    // One contiguous edge arena; empty row buckets own no Vec/allocation.
-    // Head/tail links retain authored insertion order within each row.
-    let mut buckets = vec![(usize::MAX,usize::MAX); rows];
-    let mut bucket_edges:Vec<(Edge,usize)>=Vec::new();
-    for c in cs {
-        if c.points.len() < 3 || !c.closed {
-            continue;
-        }
-        for (i, a) in c.points.iter().enumerate() {
-            let b = c.points[(i + 1) % c.points.len()];
-            if (a.y - b.y).abs() < 1e-14 {
-                continue;
-            }
-            let edge = if a.y < b.y {
-                Edge { a: *a, b, sign: 1 }
-            } else {
-                Edge {
-                    a: b,
-                    b: *a,
-                    sign: -1,
-                }
-            };
-            let first = ((edge.a.y - rect.y as f64) * samples as f64 - 0.5)
-                .ceil()
-                .max(0.) as usize;
-            if first < rows && edge.b.y > rect.y as f64 {
-                let index=bucket_edges.len();
-                let (head,tail)=&mut buckets[first];
-                if *tail==usize::MAX {*head=index;}else{bucket_edges[*tail].1=index;}
-                *tail=index;bucket_edges.push((edge,usize::MAX));
-            }
-        }
-    }
-    let mut active: Vec<Edge> = Vec::new();
-    let mut crossings: Vec<(f64, i32)> = Vec::new();
-    for (row, (head,_)) in buckets.into_iter().enumerate() {
-        let y = rect.y as f64 + (row as f64 + 0.5) / samples as f64;
-        active.retain(|e| e.b.y > y);
-        let mut at=head;
-        while at!=usize::MAX {
-            let (edge,next)=bucket_edges[at];
-            if edge.b.y>y {active.push(edge);}
-            at=next;
-        }
-        crossings.clear();
-        crossings.extend(active.iter().map(|e| {
-            (
-                e.a.x + (y - e.a.y) * (e.b.x - e.a.x) / (e.b.y - e.a.y),
-                e.sign,
-            )
-        }));
-        crossings.sort_by(|a, b| a.0.total_cmp(&b.0));
-        let mut winding = 0;
-        let mut start = 0.;
-        for &(x, sign) in &crossings {
-            let before = if even_odd {
-                winding % 2 != 0
-            } else {
-                winding != 0
-            };
-            winding += sign;
-            let after = if even_odd {
-                winding % 2 != 0
-            } else {
-                winding != 0
-            };
-            if !before && after {
-                start = x;
-            } else if before && !after {
-                let left = start.max(rect.x as f64);
-                let right = x.min(rect.right() as f64);
-                if right <= left {
-                    continue;
-                }
-                if !emit(row as u32, left, right) {
-                    return false;
-                }
-            }
-        }
-    }
-    true
+) -> Result<bool, String> {
+    RasterWorkspace::default().area_spans(cs, rect, even_odd, |row, l, r| Ok(emit(row, l, r)))
 }
-
 #[cfg(test)]
-#[path="raster_bucket_tests.rs"]
+pub(crate) use scan::check_work;
+#[cfg(test)]
+#[path = "raster_bucket_tests.rs"]
 mod bucket_tests;

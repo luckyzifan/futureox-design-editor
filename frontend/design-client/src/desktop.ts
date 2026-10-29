@@ -59,16 +59,22 @@ export type LargeDocumentStatus = Readonly<{owner:LargeDocumentOwner;revision:nu
 export type LargeDocumentRequest = {owner:LargeDocumentOwner;expectedRevision:number}
 export type LargeDocumentRow = {key:string;id:string;name:string;kind:string;bytes:number;part:string;hasChildren:boolean}
 export type LargeDocumentPageRange = {offset:number;end:number;totalRoots:number;nextOffset:number|null}
+export type SourceCanvasBox={x:number;y:number;width:number;height:number}
+export type SourceCanvasItem={key:string;id:string;name:string;kind:string;pageId:string;pageName:string;source:SourceCanvasBox;placed:SourceCanvasBox;bytes:number}
+export type SourceCanvasCatalogue={items:SourceCanvasItem[];bounds:SourceCanvasBox;total:number;offset:number;hasMore:boolean;boundsAreLayoutHints:true}
+export type SourceCanvasSnapshot={owner:LargeDocumentOwner;revision:number;token:string;bytes:number;nodes:number;roots:number;pageId:string;stageId:string;bounds:SourceCanvasBox;warnings:string[];rasterProfile:'analytic'|'figma'|'figmaSubpixel'|'figmaSoftware';colorManaged:boolean}
 export interface LargeDocumentBridge {
   progress():Promise<DesktopResult<{phase:string;processedBytes:number;totalBytes:number}>>
   cancel():Promise<DesktopResult<{requested:number;running:boolean;cancelled:boolean}>>
   open():Promise<DesktopResult<LargeDocumentStatus>>
   openFile(file:File):Promise<DesktopResult<LargeDocumentStatus>>
-  children(request:LargeDocumentRequest&{key?:string;offset?:number;limit?:number;query?:string}):Promise<DesktopResult<{items:LargeDocumentRow[];total:number;hasMore:boolean}>>
+  children(request:LargeDocumentRequest&{key?:string;offset?:number;limit?:number;query?:string;canvasOnly?:boolean}):Promise<DesktopResult<{items:LargeDocumentRow[];total:number;hasMore:boolean}>>
+  canvasLayout(request:LargeDocumentRequest&{offset?:number;limit?:number}):Promise<DesktopResult<SourceCanvasCatalogue>>
+  canvasSnapshot(request:LargeDocumentRequest):Promise<DesktopResult<SourceCanvasSnapshot>>
   read(request:LargeDocumentRequest&{key:string}):Promise<DesktopResult<{key:string;json:string;hash:string;omittedFields:string[]}>>
   apply(request:LargeDocumentRequest&{key:string;json:string;expectedHash:string}):Promise<DesktopResult<LargeDocumentStatus>>
   project(request:LargeDocumentRequest&{key:string}):Promise<DesktopResult<{key:string;json:string;warnings:string[]}>>
-  scene(request:LargeDocumentRequest&{key:string;offset?:number}):Promise<DesktopResult<{key:string;json:string;warnings:string[];nodes:number;bytes:number;pageRange?:LargeDocumentPageRange|null}>>
+  scene(request:LargeDocumentRequest&{key:string;offset?:number;limit?:number}):Promise<DesktopResult<{key:string;json:string;warnings:string[];nodes:number;bytes:number;pageRange?:LargeDocumentPageRange|null}>>
   sceneCommit(request:LargeDocumentRequest&{key:string;json:string}):Promise<DesktopResult<LargeDocumentStatus&{key:string}>>
   commitCanvas(request:LargeDocumentRequest&{key:string;json:string}):Promise<DesktopResult<LargeDocumentStatus&{key:string}>>
   undo(request:LargeDocumentRequest):Promise<DesktopResult<LargeDocumentStatus>>
@@ -106,6 +112,8 @@ export interface NativeRenderBridgeApi {
   stats(): Promise<NativeRenderReply<{ stats: { gpu_memory?: NativeGpuMemoryBreakdown } }>>
 }
 export interface DesktopBridge {
+  readonly renderDiagnostics?:boolean
+  readonly renderDiagnosticsDetail?:boolean
   onPetStatus?(callback: (status: import('./desktop-pet').PetStatus) => void): () => void
   petConfigure?(mode: import('./desktop-pet').PetMode): Promise<unknown>
   petEvent?(event: import('./desktop-pet').PetEvent): Promise<unknown>

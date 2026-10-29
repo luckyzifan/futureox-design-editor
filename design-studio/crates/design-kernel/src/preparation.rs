@@ -2,9 +2,15 @@
 //! document/layout/geometry and image export use the same Engine as WASM.
 use crate::Engine;
 use serde_json::{Value, json};
+#[cfg(not(target_arch = "wasm32"))]
+mod source_snapshot;
 
 #[derive(Default)]
-struct Lane { engine: Engine, source: Option<String>, reusable: bool, receipt: Option<StateReceipt> }
+struct Lane {
+    engine: Engine, source: Option<String>, reusable: bool, receipt: Option<StateReceipt>, source_storage: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    source_access: Option<source_snapshot::Access>,
+}
 pub struct Preparation {
     lanes: [Lane; 2],
     owner: String,
@@ -32,6 +38,16 @@ fn session_owner() -> String {
 }
 pub struct Reply { pub metadata: Value, pub bytes: Vec<u8> }
 impl Preparation {
+    /// Native acquisition boundary for the next renderer stage. This returns
+    /// authored records with explicit cold identities, never a partial Engine
+    /// or an edit/export baseline. Uses only the host-admitted lane descriptor.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn source_viewport_demand(&mut self, lane: &str, camera: crate::math::Transform, viewport: crate::math::Rect, cancel: &std::sync::atomic::AtomicBool) -> Result<crate::scene_demand::LoadedDemand,String> {
+        let index=match lane {"canvas"=>0,"interaction"=>1,_=>return Err("Invalid preparation lane".into())};
+        let lane=&mut self.lanes[index];
+        if lane.receipt.is_none() {return Err("Unsynchronized source demand lane".into());}
+        lane.source_access.as_mut().ok_or("No immutable source demand owner")?.viewport(&lane.engine.fonts,camera,viewport,cancel)
+    }
     pub fn new(font: &[u8]) -> Result<Self, String> {
         let mut canvas = Lane::default(); canvas.engine.load_font(font)?;
         let mut interaction = Lane::default(); interaction.engine.fonts = canvas.engine.fonts.clone();
@@ -69,14 +85,22 @@ impl Preparation {
         let candidate = self.lanes[0].engine.snapshot_static_worker().ok_or("DERIVE_UNSUPPORTED_STATE")?;
         let settings = serde_json::to_string(&candidate.color_settings()).map_err(|e|e.to_string())?;
         // All fallible work precedes publication. Immutable resources remain Arc-owned.
-        self.lanes[1] = Lane { engine: candidate, reusable: true, ..Lane::default() };
+        self.lanes[1] = Lane { engine: candidate, reusable: true, source_storage:self.lanes[0].source_storage,
+            #[cfg(not(target_arch = "wasm32"))]
+            source_access:self.lanes[0].source_access.clone(),
+            ..Lane::default() };
         let receipt = self.mint(1, Some(request.base_receipt), false);
         Ok(Reply { metadata: json!({"stateReceipt":receipt,"settings":settings,"documentFork":true}), bytes: Vec::new() })
     }
     pub fn request(&mut self, lane: &str, method: &str, args: &[Value]) -> Result<Reply, String> {
+        let index=match lane{"canvas"=>0,"interaction"=>1,_=>return Err("Invalid preparation lane".into())};
+        let source=method=="load_source_snapshot"||method=="derive_document_v1"&&self.lanes[0].source_storage||method!="load_document"&&self.lanes[index].source_storage;
+        crate::capacity::with_source_storage_scope(source,||self.request_scoped(lane,method,args))
+    }
+    fn request_scoped(&mut self, lane: &str, method: &str, args: &[Value]) -> Result<Reply, String> {
         let index = match lane { "canvas" => 0, "interaction" => 1, _ => return Err("Invalid preparation lane".into()) };
         if method == "preparation_capabilities_v1" {
-            return Ok(Reply { metadata: json!({"value":{"protocol":1,"emptyDeltaDerivation":true,"guardedPatchReceiptV1":true}}), bytes: Vec::new() });
+            return Ok(Reply { metadata: json!({"value":{"protocol":1,"emptyDeltaDerivation":true,"guardedPatchReceiptV1":true,"nativeSourceSnapshot":cfg!(not(target_arch="wasm32"))}}), bytes: Vec::new() });
         }
         if method == "derive_document_v1" { return self.derive(index, args); }
         if method == "apply_document_patch_with_damage" && args.len() > 1 {
@@ -89,9 +113,15 @@ impl Preparation {
             if self.lanes[index].receipt.as_ref() != Some(&expected) { return Err("STALE_BASE".into()); }
             if self.sequence == u64::MAX { return Err("PREPARATION_SESSION_EXHAUSTED".into()); }
         }
-        let mutation = matches!(method, "initialize" | "load_document" | "apply_document_patch_with_damage" | "apply_interaction_transforms");
+        let source_load = method == "load_source_snapshot";
+        let mutation = source_load || matches!(method, "initialize" | "load_document" | "apply_document_patch_with_damage" | "apply_interaction_transforms");
         // Failed legacy mutation cannot leave a receipt claiming synchronization.
         let previous = if mutation { self.lanes[index].receipt.take() } else { None };
+        #[cfg(not(target_arch = "wasm32"))]
+        if mutation && self.lanes[index].source_access.take().is_some() {
+            self.lanes[index].engine.invalidate_frame_scene_request();
+            self.lanes[index].engine.frame_scene.limit_retention(None);
+        }
         let string = |index: usize| -> Result<&str,String> {
             let value = args.get(index).and_then(Value::as_str).ok_or("Expected string argument")?;
             crate::capacity::check_document_bytes(value.len())?;
@@ -124,7 +154,17 @@ impl Preparation {
             "load_document" => {
                 lane.source = None; lane.reusable = false;
                 if !fork { engine.load_document(string(0)?)?; }
-                lane.source = Some(string(0)?.to_owned()); lane.reusable = true;
+                lane.source = Some(string(0)?.to_owned()); lane.reusable = true; lane.source_storage=false;
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            "load_source_snapshot" => {
+                if args.len()!=1 { return Err("Invalid source snapshot request".into()); }
+                let (document,access)=source_snapshot::read(&args[0])?;
+                value=json!({"documentId":document.id,"pageId":document.pages[0].id,"stageId":document.pages[0].children[0],"nodes":document.nodes.len()});
+                lane.source=None; lane.reusable=false;
+                engine.load_source_document(document)?;
+                lane.reusable=true;lane.source_storage=true;
+                lane.source_access=Some(access);
             }
             "apply_document_patch_with_damage" => {
                 lane.source = None; lane.reusable = false;
@@ -139,7 +179,10 @@ impl Preparation {
                 value = json!(engine.apply_interaction_transforms(&transforms)?);
             }
             "compile_gpu_packet" => {
-                bytes = engine.compile_gpu_packet_request(string(0)?)?;
+                #[cfg(not(target_arch = "wasm32"))]
+                {bytes=if let Some(access)=lane.source_access.as_mut(){access.compile(engine,string(0)?)?}else{engine.compile_gpu_packet_request(string(0)?)?};}
+                #[cfg(target_arch = "wasm32")]
+                {bytes=engine.compile_gpu_packet_request(string(0)?)?;}
                 encoding = Some("u8");
             }
             "render_region_png" => {
@@ -169,15 +212,23 @@ impl Preparation {
             _ => return Err("Unsupported native preparation method".into()),
         }
         if bytes.len() > 128*1024*1024 { return Err("Preparation response exceeds 128 MiB".into()); }
-        let settings = matches!(method,"initialize"|"load_document"|"apply_document_patch_with_damage")
+        let settings = (source_load || matches!(method,"initialize"|"load_document"|"apply_document_patch_with_damage"))
             .then(|| serde_json::to_string(&engine.color_settings()).expect("validated color settings"));
         let mut metadata = json!({"value":value,"encoding":encoding,"documentFork":fork});
         if let Some(settings) = settings { metadata["settings"] = json!(settings); }
-        if method.starts_with("compile_gpu") { metadata["compileStats"] = engine.gpu_compile_cache_stats(); }
+        if method.starts_with("compile_gpu") {
+            metadata["compileStats"] = engine.gpu_compile_cache_stats();
+            #[cfg(not(target_arch = "wasm32"))]
+            if let Some(access)=&lane.source_access {
+                let mut stats=access.compile_stats();
+                if let Some(cache)=stats.as_object_mut().and_then(|s|s.remove("cache")){metadata["compileStats"]=cache;}
+                metadata["compileStats"]["sourceDemand"]=stats;
+            }
+        }
         if let Some(mode) = cpu_frame_mode { metadata["cpuFrameMode"] = json!(mode); }
         if mutation {
-            let receipt = if method == "load_document" || previous.is_some() {
-                Some(self.mint(index, previous, method == "load_document"))
+            let receipt = if method == "load_document" || source_load || previous.is_some() {
+                Some(self.mint(index, previous, method == "load_document" || source_load))
             } else { None };
             metadata["stateReceipt"] = json!(receipt);
         }
@@ -204,7 +255,7 @@ fn render_cpu_frame(
         && options.width > 0 && options.height > 0
         && options.width <= 8192 && options.height <= 8192
         && u64::from(options.width) * u64::from(options.height) <= 8_388_608
-        && (0.001..=128.).contains(&options.view.zoom)
+        && (0.001..=crate::renderer::MAX_CANVAS_SAMPLE_SCALE).contains(&options.view.zoom)
         && options.view.zoom == crate::tile_stack::exact_bucket_scale(options.view.zoom)
         && options.view.x.fract() == 0.
         && options.view.y.fract() == 0.
@@ -294,6 +345,92 @@ mod tests {
     fn derive_request(session: &Preparation, operation: u64) -> Value {
         json!({"operationId":operation,"baseReceipt":session.lanes[0].receipt,
             "target":"interaction","expectedTarget":session.lanes[1].receipt,"delta":[]})
+    }
+
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn native_source_snapshot_checks_identity_and_bytes_before_replacing_pixels() {
+        let mut source=document();source["nodes"]["r"]["kind"]=json!("frame");
+        let path=std::env::temp_dir().join(format!("native-source-snapshot-{}.scene",session_owner()));
+        let doc:crate::scene::Document=serde_json::from_value(source.clone()).unwrap();
+        let store=crate::scene_store::write(&path,"test:0",&doc,&[],&std::sync::atomic::AtomicBool::new(false)).unwrap();
+        let descriptor=json!({"path":path,"store":store,"documentId":"cpu-preparation","pageId":"p","stageId":"r","nodes":1});
+        let mut actual=session();let mut expected=session();
+        expected.request("canvas","load_document",&[json!(source.to_string())]).unwrap();
+        let reply=actual.request("canvas","load_source_snapshot",&[descriptor.clone()]).unwrap();
+        assert!(reply.metadata["stateReceipt"].is_object());
+        assert_eq!(reply.metadata["settings"],"null");
+        let pixels=exact(&mut expected,&options());assert_eq!(exact(&mut actual,&options()),pixels);
+        for (key,value) in [("store",json!({})),("documentId",json!("foreign")),("pageId",json!("foreign")),("stageId",json!("foreign")),("nodes",json!(2)),("unexpected",json!(true))] {
+            let mut invalid=descriptor.clone();invalid[key]=value;
+            assert!(actual.request("canvas","load_source_snapshot",&[invalid]).is_err(),"{key}");
+            assert_eq!(exact(&mut actual,&options()),pixels,"{key}");
+        }
+        let mut bytes=std::fs::read(&path).unwrap();
+        let offset=bytes.windows(7).position(|w|w==b"#ff0000").unwrap();bytes[offset+1]=b'0';
+        std::fs::write(&path,bytes).unwrap();
+        assert!(actual.request("canvas","load_source_snapshot",&[descriptor]).err().unwrap().contains("content changed"));
+        assert_eq!(exact(&mut actual,&options()),pixels);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn source_demand_uses_admitted_lane_and_is_revoked_by_document_replacement() {
+        use crate::{math::{Transform,Rect},scene_demand::Lookup};
+        let mut source=document();
+        let mut cold=source["nodes"]["r"].clone();cold["id"]=json!("cold");cold["transform"]=json!([1,0,0,1,10000,0]);
+        source["nodes"]["cold"]=cold;
+        source["nodes"]["stage"]=json!({"id":"stage","kind":"frame","width":20000,"height":20000,"blend":"pass-through","children":["r","cold"]});
+        source["pages"][0]["children"]=json!(["stage"]);
+        let document:crate::scene::Document=serde_json::from_value(source.clone()).unwrap();
+        let path=std::env::temp_dir().join(format!("native-source-demand-{}.scene",session_owner()));
+        let cancel=std::sync::atomic::AtomicBool::new(false);
+        let store=crate::scene_store::write(&path,"test:0",&document,&[],&cancel).unwrap();
+        let descriptor=json!({"path":path,"store":store,"documentId":"cpu-preparation","pageId":"p","stageId":"stage","nodes":3});
+        let mut actual=session();
+        actual.request("canvas","load_source_snapshot",&[descriptor]).unwrap();
+        let before=exact(&mut actual,&options());
+        let loaded=actual.source_viewport_demand("canvas",Transform::default(),Rect::new(0,0,64,64),&cancel).unwrap();
+        assert!(matches!(loaded.lookup("r"),Lookup::Loaded(_)));
+        assert!(matches!(loaded.lookup("cold"),Lookup::Cold));
+        assert_eq!(loaded.reads().metadata_reads,0);
+        assert_eq!(before,exact(&mut actual,&options()));
+        let request=derive_request(&actual,1);
+        actual.request("interaction","derive_document_v1",&[request]).unwrap();
+        assert!(actual.source_viewport_demand("interaction",Transform::default(),Rect::new(0,0,64,64),&cancel).is_ok());
+        actual.request("canvas","load_document",&[json!(source.to_string())]).unwrap();
+        assert!(actual.source_viewport_demand("canvas",Transform::default(),Rect::new(0,0,64,64),&cancel).is_err());
+        assert!(actual.source_viewport_demand("foreign",Transform::default(),Rect::new(0,0,64,64),&cancel).is_err());
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn native_compile_entry_projects_and_source_patch_revokes_projection_cache() {
+        let mut source=document();source["nodes"]["r"]["transform"]=json!([1,0,0,1,500,500]);
+        let mut cold=source["nodes"]["r"].clone();cold["id"]=json!("cold");cold["transform"]=json!([1,0,0,1,10000,500]);source["nodes"]["cold"]=cold;
+        source["nodes"]["stage"]=json!({"id":"stage","kind":"frame","width":20000,"height":20000,"blend":"pass-through","children":["r","cold"]});
+        source["pages"][0]["children"]=json!(["stage"]);
+        let doc:crate::scene::Document=serde_json::from_value(source.clone()).unwrap();
+        let path=std::env::temp_dir().join(format!("native-compile-demand-{}.scene",session_owner()));
+        let store=crate::scene_store::write(&path,"test:0",&doc,&[],&std::sync::atomic::AtomicBool::new(false)).unwrap();
+        let descriptor=json!({"path":path,"store":store,"documentId":"cpu-preparation","pageId":"p","stageId":"stage","nodes":3});
+        let mut actual=session();actual.request("canvas","load_source_snapshot",&[descriptor]).unwrap();
+        let mut query=json!({"pageId":"p","width":64,"height":64,"view":{"x":-480,"y":-480,"zoom":1},"rasterProfile":"figmaSubpixel","gpuViewport":{"x":0,"y":0,"w":64,"h":64}});
+        for x in [-480,-9980,-480]{query["view"]["x"]=json!(x);let reply=actual.request("canvas","compile_gpu_packet",&[json!(query.to_string())]).unwrap();
+            assert_eq!(reply.metadata["compileStats"]["sourceDemand"]["mode"],"demand");
+            assert_eq!(reply.metadata["compileStats"]["sourceDemand"]["resolvedCompileNodes"],2);
+        }
+        source["nodes"]["r"]["fills"][0]["color"]=json!("#0000ff");
+        actual.request("canvas","apply_document_patch_with_damage",&[json!(json!({"nodes":{"r":source["nodes"]["r"]}}).to_string())]).unwrap();
+        let reply=actual.request("canvas","compile_gpu_packet",&[json!(query.to_string())]).unwrap();
+        assert!(reply.metadata["compileStats"].get("sourceDemand").is_none());
+        let mut expected=session();expected.request("canvas","load_document",&[json!(source.to_string())]).unwrap();
+        let reference=expected.request("canvas","compile_gpu_packet",&[json!(query.to_string())]).unwrap();
+        frame_scene::assert_equivalent(&reply.bytes,&reference.bytes);
+        assert_eq!(actual.lanes[0].engine.authored_document().unwrap().nodes.len(),3);
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]

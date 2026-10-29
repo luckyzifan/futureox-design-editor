@@ -55,18 +55,41 @@ pub(crate) struct FrameSceneContext {
     scope:String, binding:String, entries:HashMap<Key,Entry>, ages:BTreeMap<u64,Key>, bytes:usize,
     next:u32, clock:u64, frame:u32, frame_key:Option<String>,
     resource_hasher:RandomState,
-    semantics:HashMap<String,SemanticEntry>,image_semantics:HashMap<String,u32>,semantic_bytes:usize,semantic_hits:u64,
+    semantics:HashMap<String,SemanticEntry>,image_semantics:HashMap<Arc<str>,u32>,semantic_bytes:usize,semantic_hits:u64,
+    // Numeric addresses are private lookup hints backed by the strong Arc key
+    // in image_semantics. They are never dereferenced or accepted from callers.
+    image_allocations:HashMap<usize,u32>,image_transfer_keys:HashMap<u32,Key>,image_transfer_sources:HashMap<u32,u32>,
+    image_allocation_hits:u64,image_transfer_hits:u64,
     cached:Option<EncodedFrame>,pending_request:Option<StaticRequest>,compilations:u64,reuses:u64,
+    retention_limit:Option<usize>,
     #[cfg(test)] limit_override:Option<usize>,
 }
 impl FrameSceneContext {
     fn limit(&self)->usize {
-        #[cfg(test)] if let Some(limit)=self.limit_override{return limit}
-        crate::capacity::memory_budget_bytes().min(usize::MAX as u64) as usize
+        let host=crate::capacity::memory_budget_bytes().min(usize::MAX as u64) as usize;
+        #[cfg(test)] let host=self.limit_override.unwrap_or(host);
+        self.retention_limit.map_or(host,|limit|limit.min(host))
+    }
+    /// Optional cache handoff, never a wire-scope reset. Already emitted IDs
+    /// remain immutable in receivers; evicted resources get fresh IDs on reuse.
+    pub(crate) fn limit_retention(&mut self,limit:Option<usize>){
+        self.retention_limit=limit;
+        let limit=self.limit();
+        if self.bytes()<=limit{return}
+        self.cached=None;
+        while self.bytes()>limit {
+            let Some((_,key))=self.ages.pop_first()else{break};
+            self.evict_transfer(&key);
+        }
+        if self.semantic_bytes>limit {
+            self.semantics.clear();self.image_semantics.clear();self.image_allocations.clear();
+            self.image_transfer_keys.clear();self.image_transfer_sources.clear();self.semantic_bytes=0;
+        }
     }
     pub(crate) fn bytes(&self)->usize{self.bytes+self.semantic_bytes+self.cached.as_ref().map_or(0,|frame|frame.charge)}
     pub(crate) fn stats(&self)->serde_json::Value{
-        serde_json::json!({"compilations":self.compilations,"sameRequestHits":self.reuses,"semanticHits":self.semantic_hits,"semanticBytes":self.semantic_bytes,"bytes":self.bytes(),"limit":self.limit(),"limitSource":"trusted-host-memory"})
+        serde_json::json!({"compilations":self.compilations,"sameRequestHits":self.reuses,"semanticHits":self.semantic_hits,"semanticBytes":self.semantic_bytes,"bytes":self.bytes(),"limit":self.limit(),"limitSource":"trusted-host-memory",
+            "imageAllocationHits":self.image_allocation_hits,"imageTransferHits":self.image_transfer_hits})
     }
     fn reuse(&mut self,key:&StaticRequest,request:&serde_json::Value)->Result<Option<Vec<u8>>,String>{
         let Some(frame)=self.cached.as_ref().filter(|frame|&frame.key==key)else{return Ok(None)};
@@ -101,24 +124,52 @@ impl FrameSceneContext {
         let bytes=data.len().checked_add(256).ok_or("Frame resource size overflow")?;
         let limit=self.limit().saturating_sub(self.semantic_bytes).saturating_sub(self.cached.as_ref().map_or(0,|frame|frame.charge));
         if !self.scope.is_empty()&&bytes<=limit{
-            while self.bytes+bytes>limit {let Some((_,old))=self.ages.pop_first()else{break};if let Some(entry)=self.entries.remove(&old){self.bytes-=entry.bytes;}}
+            while self.bytes+bytes>limit {let Some((_,old))=self.ages.pop_first()else{break};self.evict_transfer(&old);}
             self.entries.insert(key.clone(),Entry{id,age:self.clock,bytes});self.ages.insert(self.clock,key);self.bytes+=bytes;
         }
         Ok((id,data))
     }
-    fn image_identity(&mut self,uri:&str)->Result<u32,String>{
-        if let Some(id)=self.image_semantics.get(uri){return Ok(*id)}
+    fn evict_transfer(&mut self,key:&Key){
+        if let Some(entry)=self.entries.remove(key){
+            self.bytes-=entry.bytes;
+            if let Some(source)=self.image_transfer_sources.remove(&entry.id){self.image_transfer_keys.remove(&source);}
+        }
+    }
+    fn image_identity(&mut self,uri:&Arc<str>)->Result<(u32,bool),String>{
+        let address=Arc::as_ptr(uri) as *const u8 as usize;
+        if let Some(id)=self.image_allocations.get(&address){self.image_allocation_hits+=1;return Ok((*id,true))}
+        if let Some(id)=self.image_semantics.get(uri){return Ok((*id,true))}
         self.next=self.next.checked_add(1).ok_or("Frame resource ID exhausted")?;
         let id=self.next;let charge=uri.len().saturating_add(256);
         let limit=self.limit().saturating_sub(self.cached.as_ref().map_or(0,|f|f.charge));
         if !self.scope.is_empty()&&self.semantic_bytes.saturating_add(charge)<=limit{
             while self.bytes+self.semantic_bytes+charge>limit{
                 let Some((_,old))=self.ages.pop_first()else{break};
-                if let Some(entry)=self.entries.remove(&old){self.bytes-=entry.bytes;}
+                self.evict_transfer(&old);
             }
-            self.semantic_bytes+=charge;self.image_semantics.insert(uri.into(),id);
+            self.semantic_bytes+=charge;self.image_semantics.insert(uri.clone(),id);self.image_allocations.insert(address,id);
+            return Ok((id,true));
         }
-        Ok(id)
+        Ok((id,false))
+    }
+    fn intern_image(&mut self,source:u32,uri:&Arc<str>,retained:bool)->Result<(u32,Arc<[u8]>),String>{
+        if let Some(key)=self.image_transfer_keys.get(&source).cloned(){
+            if let Some(entry)=self.entries.get_mut(&key){
+                self.clock=self.clock.checked_add(1).ok_or("Frame resource clock exhausted")?;
+                let id=entry.id;let old=entry.age;entry.age=self.clock;
+                self.ages.remove(&old);self.ages.insert(self.clock,key.clone());self.image_transfer_hits+=1;
+                return Ok((id,key.data));
+            }
+            self.image_transfer_keys.remove(&source);
+            self.image_transfer_sources.retain(|_,owner|*owner!=source);
+        }
+        let result=self.intern(1,uri.as_bytes().to_vec())?;
+        if retained {if let Some(key)=self.ages.get(&self.clock).cloned(){
+            if self.entries.get(&key).is_some_and(|entry|entry.id==result.0){
+                self.image_transfer_keys.insert(source,key);self.image_transfer_sources.insert(result.0,source);
+            }
+        }}
+        Ok(result)
     }
     /// Current immutable node semantics own their identity independently of
     /// transfer-cache LRU and relocatable program addresses. Exact bytes are
@@ -136,7 +187,7 @@ impl FrameSceneContext {
         if !self.scope.is_empty()&&self.semantic_bytes.saturating_add(charge)<=limit {
             while self.bytes+self.semantic_bytes+charge>limit {
                 let Some((_,old))=self.ages.pop_first()else{break};
-                if let Some(entry)=self.entries.remove(&old){self.bytes-=entry.bytes;}
+                self.evict_transfer(&old);
             }
             self.semantic_bytes+=charge;
             self.semantics.insert(name.to_owned(),SemanticEntry{id,key,charge});
@@ -171,7 +222,8 @@ impl FrameSceneContext {
         });
         let plan=scene.scene_plan();
         let vertices=std::mem::take(&mut scene.vertices);let curves=std::mem::take(&mut scene.curves);
-        let mut nodes=std::mem::take(&mut scene.nodes);let mut images=HashMap::<String,(u32,u32)>::new();
+        let mut nodes=std::mem::take(&mut scene.nodes);let mut images=HashMap::<Arc<str>,(u32,u32)>::new();
+        let mut image_addresses=HashMap::<usize,(u32,u32)>::new();
         let mut image_transports=HashMap::<u32,u32>::new();
         let mut node_resources=Vec::new();
         // A container's identity includes every compiled child, including
@@ -186,11 +238,12 @@ impl FrameSceneContext {
             {
                 let mut image=|paint:&mut Paint|->Result<(),String>{
                     if let Some(uri)=paint.image.take(){
-                        let (source,id)=if let Some(ids)=images.get(&uri){*ids}else{
-                            let source=self.image_identity(&uri)?;
-                            let (id,data)=self.intern(1,uri.as_bytes().to_vec())?;record(id,1,&data)?;
-                            images.insert(uri,(source,id));image_transports.insert(source,id);(source,id)
-                        };let _=id;paint.image=Some(source.to_string());
+                        let address=Arc::as_ptr(&uri) as *const u8 as usize;
+                        let (source,id)=if let Some(ids)=image_addresses.get(&address){*ids}else if let Some(ids)=images.get(&uri){*ids}else{
+                            let (source,retained)=self.image_identity(&uri)?;
+                            let (id,data)=self.intern_image(source,&uri,retained)?;record(id,1,&data)?;
+                            images.insert(uri,(source,id));image_addresses.insert(address,(source,id));image_transports.insert(source,id);(source,id)
+                        };let _=id;paint.image=Some(source.to_string().into());
                     }Ok(())
                 };
                 for p in &mut node.fills{image(&mut p.paint)?}for s in &mut node.strokes{image(&mut s.paint.paint)?}
@@ -199,7 +252,7 @@ impl FrameSceneContext {
             let canonical=frame_wire::encode_source(node)?;
             let transport=|paint:&mut Paint|{if let Some(source)=paint.image.as_ref(){
                 let source=source.parse::<u32>().expect("private semantic image reference");
-                paint.image=Some(image_transports[&source].to_string());
+                paint.image=Some(image_transports[&source].to_string().into());
             }};
             for p in &mut node.fills{transport(&mut p.paint)}for s in &mut node.strokes{transport(&mut s.paint.paint)}
             if let Some(replay)=&mut node.texture_replay{transport(&mut replay.paint)}
@@ -223,7 +276,11 @@ impl FrameSceneContext {
             let (id,data)=self.intern(2,frame_wire::encode(&NodeResource{node:&node,source_identity:source_id})?)?;
             record(id,2,&data)?;node_resources.push((name.clone(),id));
         }
-        self.image_semantics.retain(|uri,_|{if images.contains_key(uri){true}else{self.semantic_bytes-=uri.len()+256;false}});
+        self.image_semantics.retain(|uri,source|{if image_transports.contains_key(source){true}else{
+            self.semantic_bytes-=uri.len()+256;self.image_allocations.remove(&(Arc::as_ptr(uri) as *const u8 as usize));
+            if let Some(key)=self.image_transfer_keys.remove(source){if let Some(entry)=self.entries.get(&key){self.image_transfer_sources.remove(&entry.id);}}
+            false
+        }});
         node_resources.sort_by(|a,b|a.0.cmp(&b.0));
         let (plan_id,data)=self.intern(3,frame_wire::encode(&plan)?)?;record(plan_id,3,&data)?;
         #[derive(Serialize)]#[serde(rename_all="camelCase")]
@@ -238,7 +295,7 @@ impl FrameSceneContext {
         if let Some(key)=cache_key {
             let charge=resource_charge.saturating_add(bytes.len()).saturating_add(key.1.capacity()).saturating_add(256);
             if charge.saturating_add(self.semantic_bytes)<=cache_limit {
-                while self.bytes+self.semantic_bytes+charge>cache_limit {let Some((_,old))=self.ages.pop_first()else{break};if let Some(entry)=self.entries.remove(&old){self.bytes-=entry.bytes;}}
+                while self.bytes+self.semantic_bytes+charge>cache_limit {let Some((_,old))=self.ages.pop_first()else{break};self.evict_transfer(&old);}
                 self.cached=Some(EncodedFrame{key,prefix:bytes.clone(),resources,charge});
             }
         }
@@ -249,11 +306,17 @@ impl GpuScene {
     pub fn into_packet(self)->Result<Vec<u8>,String>{FrameSceneContext::default().encode(self,None,0)}
 }
 impl crate::Engine {
+    pub(crate) fn invalidate_frame_scene_request(&mut self){
+        self.frame_scene.cached=None;self.frame_scene.pending_request=None;self.frame_scene.frame_key=None;
+    }
     pub fn bind_frame_scene_scope(&mut self,scope:&str)->Result<(),String>{
         if scope.len()>4096{return Err("Frame scope too large".into())}
-        self.frame_scene.bind(scope);self.camera_residency.reserve_frame_resources(self.frame_scene.bytes());Ok(())
+        self.frame_scene.bind(scope);self.reserve_render_cache_bytes();Ok(())
     }
     pub fn compile_gpu_packet_request(&mut self,options:&str)->Result<Vec<u8>,String>{
+        self.compile_gpu_packet_request_checked(options, |_|Ok(()))
+    }
+    pub(crate) fn compile_gpu_packet_request_checked(&mut self,options:&str,mut accept:impl FnMut(&GpuScene)->Result<(),String>)->Result<Vec<u8>,String>{
         crate::render_cancellation::checkpoint()?;
         let fields:serde_json::Value=serde_json::from_str(options).map_err(|e|e.to_string())?;
         let object=fields.as_object().ok_or("Render options must be an object")?;
@@ -272,10 +335,11 @@ impl crate::Engine {
         self.frame_scene.compilations+=1;
         let compiler_fields=serde_json::Value::Object(semantic.into_iter().map(|(key,value)|(key.clone(),value.clone())).collect());
         let scene=self.compile_gpu_request_value(compiler_fields)?;
+        accept(&scene)?;
         if self.frame_scene.scope.is_empty() { return scene.into_packet(); }
         self.frame_scene.pending_request=request_key.and_then(|key|self.static_scene_revision().map(|revision|(revision,key)));
         let result=self.frame_scene.encode(scene,Some(&fields),self.geo_revision);
-        self.camera_residency.reserve_frame_resources(self.frame_scene.bytes());result
+        self.reserve_render_cache_bytes();result
     }
 }
 
@@ -288,6 +352,38 @@ impl crate::Engine {
             "nodes":{"r":{"id":"r","kind":"ellipse","width":30,"height":20,"fills":[{"kind":"solid","color":"#123456"}]}}}).to_string()).unwrap();
         let options=json!({"pageId":"p","width":64,"height":64,"view":{"x":0.125,"y":0.375,"zoom":1.3},"rasterProfile":"figmaSubpixel"}).to_string();
         (engine,options)
+    }
+    #[test]
+    fn source_demand_recovers_after_full_overview_fills_transfer_cache() {
+        let document:crate::scene::Document=serde_json::from_value(json!({"schemaVersion":20,"id":"source","name":"source",
+            "pages":[{"id":"page","name":"page","background":"#ffffff","children":["stage"]}],"nodes":{
+            "stage":{"id":"stage","kind":"frame","width":3000,"height":2000,"blend":"pass-through","children":["a","b"]},
+            "a":{"id":"a","kind":"rectangle","width":100,"height":100,"transform":[1,0,0,1,500,500],"fills":[{"kind":"solid","color":"#ff0000"}]},
+            "b":{"id":"b","kind":"rectangle","width":100,"height":100,"transform":[1,0,0,1,1500,500],"fills":[{"kind":"solid","color":"#0000ff"}]}
+        }})).unwrap();
+        let descriptor=crate::scene_store::Descriptor{generation:"source:1:0".into(),document_id:"source".into(),nodes:3,bytes:1,footer_hash:[0;32]};
+        crate::capacity::with_source_storage_scope(true,||{
+            let mut engine=crate::Engine::new();engine.load_source_document(document).unwrap();engine.bind_frame_scene_scope("overview-return").unwrap();
+            let mut runtime=crate::source_compile::Runtime::default();
+            let overview=json!({"pageId":"page","width":512,"height":512,"view":{"x":0,"y":0,"zoom":0.1},"rasterProfile":"figmaSubpixel","gpuViewport":{"x":0,"y":0,"w":512,"h":512}});
+            runtime.compile(&mut engine,&descriptor,"stage","page",&overview.to_string()).unwrap();
+            assert_eq!(runtime.stats["mode"],"complete");
+            // A genuine retained transfer models the >64 MiB overview observed
+            // in topology. It must not permanently disable local compilation.
+            engine.frame_scene.intern(1,vec![7;65*1024*1024]).unwrap();
+            assert!(engine.frame_scene.bytes()>64*1024*1024);
+            let next=engine.frame_scene.next;
+            let local=json!({"pageId":"page","width":64,"height":64,"view":{"x":-480,"y":-480,"zoom":1},"rasterProfile":"figmaSubpixel","gpuViewport":{"x":0,"y":0,"w":64,"h":64}});
+            runtime.compile(&mut engine,&descriptor,"stage","page",&local.to_string()).unwrap();
+            assert_eq!(runtime.stats["mode"],"demand","{}",runtime.stats);
+            assert_eq!(runtime.stats["resolvedCompileNodes"],2);
+            assert_eq!(engine.frame_scene.scope,"overview-return");
+            assert!(engine.frame_scene.next>next,"eviction must not reuse wire IDs");
+            assert!(engine.frame_scene.bytes()+runtime.stats["contextMarginBytes"].as_u64().unwrap() as usize<=64*1024*1024);
+            runtime.compile(&mut engine,&descriptor,"stage","page",&local.to_string()).unwrap();
+            assert_eq!(runtime.stats["projectionRebuilds"],1);
+            assert_eq!(runtime.stats["projectionReuses"],1);
+        });
     }
     #[test] fn identical_static_request_returns_before_scene_compilation(){
         let (mut engine,options)=fixture();engine.bind_frame_scene_scope("static-owner").unwrap();
@@ -395,7 +491,7 @@ impl crate::Engine {
         let (mut engine,options)=fixture();let mut context=FrameSceneContext::default();context.bind("image-semantic");
         let uri="x".repeat(16384);
         let scene=|engine:&mut crate::Engine|{let mut scene=engine.compile_gpu_request(&options).unwrap();
-            scene.nodes.get_mut("r").unwrap().fills[0].paint.image=Some(uri.clone());scene};
+            scene.nodes.get_mut("r").unwrap().fills[0].paint.image=Some(uri.clone().into());scene};
         context.encode(scene(&mut engine),None,0).unwrap();
         let id=context.semantics["r"].id;
         assert!(context.semantics["r"].key.len()<uri.len());
@@ -404,6 +500,27 @@ impl crate::Engine {
         assert_eq!(context.semantics["r"].id,id);assert_eq!(context.image_semantics.len(),1);
         context.encode(engine.compile_gpu_request(&options).unwrap(),None,0).unwrap();
         assert!(context.image_semantics.is_empty());assert!(context.bytes()<=context.limit());
+    }
+    #[test] fn immutable_image_owners_skip_rescans_but_transfer_eviction_revokes_the_shortcut(){
+        let mut context=FrameSceneContext::default();context.bind("owned-image");context.limit_override=Some(64*1024);
+        let uri:Arc<str>="x".repeat(8192).into();
+        let (source,retained)=context.image_identity(&uri).unwrap();assert!(retained);
+        let (transport,data)=context.intern_image(source,&uri,retained).unwrap();
+        assert_eq!(context.image_identity(&uri).unwrap().0,source);
+        let (again,shared)=context.intern_image(source,&uri,true).unwrap();
+        assert_eq!(transport,again);assert!(Arc::ptr_eq(&data,&shared));
+        assert_eq!(context.image_allocation_hits,1);assert_eq!(context.image_transfer_hits,1);
+        // Equal content in an unowned allocation must not gain a pointer hint.
+        let mut other:Arc<str>="x".repeat(8192).into();
+        assert_eq!(context.image_identity(&other).unwrap().0,source);
+        assert_eq!(context.image_allocations.len(),1);
+        Arc::get_mut(&mut other).unwrap().make_ascii_uppercase();
+        assert_ne!(context.image_identity(&other).unwrap().0,source);
+        for i in 0..20{context.intern(2,vec![i;8192]).unwrap();assert!(context.bytes()<=context.limit());}
+        assert!(!context.image_transfer_keys.contains_key(&source));
+        let (next,restored)=context.intern_image(source,&uri,true).unwrap();
+        assert_ne!(next,transport);assert_eq!(&*restored,&*data);
+        context.bind("replacement-owner");assert!(context.image_allocations.is_empty());assert!(context.image_transfer_keys.is_empty());
     }
     #[test] fn resources_are_bounded_without_turning_a_large_resource_into_document_rejection(){
         let mut context=FrameSceneContext::default();context.bind("bounded");

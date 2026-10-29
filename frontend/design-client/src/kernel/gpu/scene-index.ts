@@ -7,6 +7,7 @@ export type NativeScenePlan = {
   unknownEffectSubtrees: string[]; imageUses: [string,number,number][]; features: number
   opaqueSolidGroups?: [string,string][]
   opaqueSolidRuns?: [string,number,number,string][]
+  boundedPaintGroups?: string[]
   sampleIndependentNodes?: string[]
 }
 export type SceneIndex = {
@@ -18,10 +19,19 @@ const indices = new WeakMap<GpuScene['nodes'], { roots: GpuScene['roots']; index
 const opaqueGroups=new WeakMap<GpuScene['nodes'],Map<readonly string[],string>>()
 type SolidRun={start:number;end:number;color:string}
 const opaqueRuns=new WeakMap<GpuScene['nodes'],Map<readonly string[],readonly SolidRun[]>>()
+const boundedPaintGroups=new WeakMap<GpuScene['nodes'],Set<readonly string[]>>()
 export function opaqueSolidRuns(scene:GpuScene,ids:readonly string[]){sceneIndex(scene);return opaqueRuns.get(scene.nodes)?.get(ids)}
+export function boundedPaintGroup(scene:GpuScene,ids:readonly string[]){sceneIndex(scene);return boundedPaintGroups.get(scene.nodes)?.has(ids)===true}
 const logicalPlans=new WeakMap<NativeScenePlan,Pick<SceneIndex,'parents'|'roots'|'rootFor'|'sampleIndependentNodes'|'unknownEffectSubtrees'>>()
 export function opaqueSolidGroup(scene:GpuScene,ids:readonly string[]){sceneIndex(scene);return opaqueGroups.get(scene.nodes)?.get(ids)}
-export function hasOpaqueSolidGroups(scene:GpuScene){sceneIndex(scene);return !!opaqueGroups.get(scene.nodes)?.size||!!opaqueRuns.get(scene.nodes)?.size}
+export function hasOpaqueSolidGroups(scene:GpuScene){
+ sceneIndex(scene)
+ if(opaqueGroups.get(scene.nodes)?.size)return true
+ for(const [ids,runs]of opaqueRuns.get(scene.nodes)||[]){
+  if(boundedPaintGroups.get(scene.nodes)?.has(ids)||runs[0]?.start===0&&runs.at(-1)?.end===ids.length&&runs.every((run,i)=>i===0||run.start===runs[i-1].end))return true
+ }
+ return false
+}
 export function sceneScale(m: number[]) {
   const [a,b,c,d]=m,s=a*a+b*b+c*c+d*d,det=a*d-b*c
   return Math.sqrt((s+Math.sqrt(Math.max(0,s*s-4*det*det)))/2)
@@ -59,10 +69,15 @@ export function bindScenePlan(scene: GpuScene, plan: NativeScenePlan): SceneInde
   for(const [parent,start,end,color]of plan.opaqueSolidRuns||[]){
     const ids=scene.nodes[parent]?.children
     const prior=ids&&runs.get(ids)
-    if(!ids||!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start!==(prior?.at(-1)?.end||0)||end-start<8||end>ids.length||!/^#[\da-f]{6}$/i.test(color))throw Error('Invalid compiled solid run')
+    if(!ids||!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<(prior?.at(-1)?.end||0)||end-start<8||end>ids.length||!/^#[\da-f]{6}$/i.test(color))throw Error('Invalid compiled solid run')
     const next=prior||[];next.push({start,end,color});runs.set(ids,next)
   }
-  for(const [ids,plan]of runs)if(plan.at(-1)!.end!==ids.length)throw Error('Incomplete compiled solid run')
+  const bounded=new Set<readonly string[]>()
+  for(const parent of plan.boundedPaintGroups||[]){
+    if(!scene.nodes[parent])throw Error('Invalid compiled bounded paint group')
+    bounded.add(scene.nodes[parent].children)
+  }
+  boundedPaintGroups.set(scene.nodes,bounded)
   opaqueRuns.set(scene.nodes,runs)
   opaqueGroups.set(scene.nodes,groups)
   indices.set(scene.nodes,{roots:scene.roots,index}); return index
@@ -79,6 +94,7 @@ export function inheritTranslatedIndex(source: GpuScene, nodes: GpuScene['nodes'
   indices.set(nodes,{roots:source.roots,index:sceneIndex(source)})
   const groups=opaqueGroups.get(source.nodes);if(groups)opaqueGroups.set(nodes,groups)
   const runs=opaqueRuns.get(source.nodes);if(runs)opaqueRuns.set(nodes,runs)
+  const bounded=boundedPaintGroups.get(source.nodes);if(bounded)boundedPaintGroups.set(nodes,bounded)
 }
 /** Preview annotations change only local source bindings, never core topology,
  * material dependencies or effect capabilities. */
@@ -88,4 +104,5 @@ export function rebindSceneIndex(source:GpuScene,target:GpuScene) {
   indices.set(target.nodes,{roots:target.roots,index})
   const groups=opaqueGroups.get(source.nodes);if(groups)opaqueGroups.set(target.nodes,groups)
   const runs=opaqueRuns.get(source.nodes);if(runs)opaqueRuns.set(target.nodes,runs)
+  const bounded=boundedPaintGroups.get(source.nodes);if(bounded)boundedPaintGroups.set(target.nodes,bounded)
 }

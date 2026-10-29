@@ -13,7 +13,11 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub type Overrides = BTreeMap<String, BTreeMap<String, Value>>;
+#[cfg(test)]
+thread_local! { static COMPONENT_BYTE_MEASUREMENTS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
 fn encoded_len(value: &impl Serialize, limit: usize) -> Result<usize, String> {
+    #[cfg(test)]
+    COMPONENT_BYTE_MEASUREMENTS.with(|count| count.set(count.get()+1));
     struct Counter {
         bytes: usize,
         limit: usize,
@@ -39,7 +43,7 @@ fn encoded_len(value: &impl Serialize, limit: usize) -> Result<usize, String> {
     Ok(counter.bytes)
 }
 pub fn check_budget(doc: &Document) -> Result<(), String> {
-    if has_components(doc) {
+    if !crate::capacity::native_source_storage() && has_components(doc) {
         encoded_len(doc, crate::capacity::document_byte_limit())?;
     }
     Ok(())
@@ -609,7 +613,10 @@ struct Builder<'a> {
     owner: String,
     stack: Vec<String>,
     budget: usize,
-    remaining_bytes: usize,
+    // Native source storage already has no encoded-document size quota.
+    // Measuring its entire retained metadata cannot affect admission. Ordinary
+    // document expansion keeps the exact finite byte counter unchanged.
+    remaining_bytes: Option<usize>,
     slots: BTreeMap<String, Vec<String>>,
 }
 impl Builder<'_> {
@@ -647,11 +654,11 @@ impl Builder<'_> {
         Ok(modes)
     }
     fn insert(&mut self, n: Node) -> Result<String, String> {
-        let bytes = encoded_len(&n, self.remaining_bytes)?.saturating_add(n.id.len() + 4);
-        self.remaining_bytes = self
-            .remaining_bytes
-            .checked_sub(bytes)
-            .ok_or("Expanded component document exceeds this session's resource allowance")?;
+        if let Some(remaining)=self.remaining_bytes {
+            let bytes=encoded_len(&n,remaining)?.saturating_add(n.id.len()+4);
+            self.remaining_bytes=Some(remaining.checked_sub(bytes)
+                .ok_or("Expanded component document exceeds this session's resource allowance")?);
+        }
         if self.output.len() >= self.budget || self.output.insert(n.id.clone(), n.clone()).is_some()
         {
             return Err("Instance expansion exceeds budget or has duplicate layer keys".into());
@@ -885,7 +892,8 @@ pub(crate) fn resolve_roots(doc:&mut Document, selected:Option<&BTreeSet<String>
         .map(|n| n.id.clone())
         .collect();
     let inherited_modes = crate::design_system::node_mode_contexts(&source)?;
-    let mut bytes = encoded_len(source.as_ref(), crate::capacity::document_byte_limit())?;
+    let byte_limit=(!crate::capacity::native_source_storage()).then(crate::capacity::document_byte_limit);
+    let mut bytes=if let Some(limit)=byte_limit {encoded_len(source.as_ref(),limit)?}else{0};
     // Builders always read the immutable source. The result owns only rebuilt
     // nodes, so unrelated images, paths, text and metadata are never deep-cloned.
     // Do not publish either removals or replacements until every check succeeds.
@@ -902,19 +910,18 @@ pub(crate) fn resolve_roots(doc:&mut Document, selected:Option<&BTreeSet<String>
         descendants(&result, &id, &mut removed);
         for child in removed {
             if let Some(n) = result.remove(&child) {
-                bytes = bytes.saturating_sub(encoded_len(&n, crate::capacity::document_byte_limit())? + child.len() + 4);
+                if let Some(limit)=byte_limit {bytes=bytes.saturating_sub(encoded_len(&n,limit)?+child.len()+4);}
             }
         }
         let placement = &source.nodes[&id];
-        bytes =
-            bytes.saturating_sub(encoded_len(&result[&id], crate::capacity::document_byte_limit())? + id.len() + 4);
+        if let Some(limit)=byte_limit {bytes=bytes.saturating_sub(encoded_len(&result[&id],limit)?+id.len()+4);}
         let mut builder = Builder {
             source: &source,
             output: BTreeMap::new(),
             owner: id.clone(),
             stack: Vec::new(),
             budget: crate::capacity::node_limit().saturating_add(1).saturating_sub(result.len()),
-            remaining_bytes: crate::capacity::document_byte_limit().saturating_sub(bytes),
+            remaining_bytes: byte_limit.map(|limit|limit.saturating_sub(bytes)),
             slots: BTreeMap::new(),
         };
         builder.instance(
@@ -928,7 +935,7 @@ pub(crate) fn resolve_roots(doc:&mut Document, selected:Option<&BTreeSet<String>
                 modes: &inherited_modes[&id].inherited,
             },
         )?;
-        bytes = crate::capacity::document_byte_limit() - builder.remaining_bytes;
+        if let (Some(limit),Some(remaining))=(byte_limit,builder.remaining_bytes) {bytes=limit-remaining;}
         for (key, n) in builder.output {
             if key != id && result.contains_key(&key) {
                 return Err("Generated instance layer collides with an authored layer".into());
@@ -936,7 +943,7 @@ pub(crate) fn resolve_roots(doc:&mut Document, selected:Option<&BTreeSet<String>
             result.insert(key, Cow::Owned(n));
         }
     }
-    encoded_len(&ResolvedDocument { document: &source, nodes: &result }, crate::capacity::document_byte_limit())?;
+    if let Some(limit)=byte_limit {encoded_len(&ResolvedDocument { document: &source, nodes: &result },limit)?;}
     let removed: Vec<_> = source.nodes.keys().filter(|id| !result.contains_key(*id)).cloned().collect();
     let replacements: Vec<_> = result.into_iter().filter_map(|(id, node)| match node {
         Cow::Owned(node) => Some((id, node)),
@@ -988,6 +995,45 @@ pub fn changes(json: &str, fonts: &Fonts) -> Result<String, String> {
 mod resolved_document_tests {
     use super::*;
     use serde_json::json;
+
+    fn component_document() -> Document {
+        serde_json::from_value(json!({"schemaVersion":15,"id":"d","name":"source",
+            "fdCompatibility":{"contractVersion":1,"requiredCapabilities":[],"extensions":{"org.futureox.test/inert":{"text":"retained metadata","value":-0.0}}},
+            "pages":[{"id":"p","name":"p","children":["master","instance"],"background":"#ffffff"}],
+            "nodes":{
+                "master":{"id":"master","kind":"frame","width":100,"height":40,"children":["label"],"component":{}},
+                "label":{"id":"label","kind":"text","text":"source text","width":100,"height":40},
+                "instance":{"id":"instance","kind":"frame","width":100,"height":40,"instance":{"componentId":"master","overrides":{"label":{"text":"override text"}}}}
+            }})).unwrap()
+    }
+
+    #[test]
+    fn native_source_component_policy_avoids_unbounded_byte_measurement_with_exact_output() {
+        let source=component_document();source.validate().unwrap();
+        let mut ordinary=source.clone();
+        COMPONENT_BYTE_MEASUREMENTS.with(|count|count.set(0));
+        resolve(&mut ordinary).unwrap();check_budget(&ordinary).unwrap();
+        assert!(COMPONENT_BYTE_MEASUREMENTS.with(|count|count.get())>0,"ordinary byte admission remains active");
+        let mut native=source.clone();
+        crate::capacity::with_source_storage_scope(true,||{
+            COMPONENT_BYTE_MEASUREMENTS.with(|count|count.set(0));
+            resolve(&mut native).unwrap();check_budget(&native).unwrap();
+            assert_eq!(COMPONENT_BYTE_MEASUREMENTS.with(|count|count.get()),0,"an already-unbounded private source policy must not serialize the document just to measure it");
+        });
+        assert_eq!(native,ordinary);
+        assert_eq!(serde_json::to_vec(&native).unwrap(),serde_json::to_vec(&ordinary).unwrap());
+        assert!(native.nodes.values().any(|n|n.instance_origin.is_some()&&n.text=="override text"));
+        assert_eq!(native.fd_compatibility,source.fd_compatibility);
+    }
+
+    #[test]
+    fn native_source_component_policy_keeps_validation_and_atomic_failure() {
+        let mut invalid=component_document();invalid.nodes.get_mut("instance").unwrap().instance.as_mut().unwrap().component_id="missing".into();
+        let before=invalid.clone();
+        crate::capacity::with_source_storage_scope(true,||assert!(resolve(&mut invalid).is_err()));
+        assert_eq!(invalid,before);
+        assert!(!crate::capacity::native_source_storage());
+    }
 
     #[test]
     fn borrowed_result_view_serializes_exact_document_bytes_and_budget_boundaries() {

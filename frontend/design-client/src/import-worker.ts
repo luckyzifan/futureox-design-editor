@@ -3,7 +3,7 @@ import { pinDocumentCapacity } from './document-capacity'
 import { importFig } from './import-fig'
 import { initializeKernelModule } from './kernel/module'
 import { uid, type DesignDocument } from './model'
-type FileJob = { name: string; format: 'fig' | 'sketch' | 'pdf' } & ({ bytes: ArrayBuffer } | { file: File })
+type FileJob = { name: string; format: 'fig' | 'sketch' | 'sketch-library' | 'pdf' } & ({ bytes: ArrayBuffer } | { file: File })
   | { document: DesignDocument; format: 'sketch-export' }
 self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>) => {
   let importStage = 238 // initialize
@@ -29,12 +29,12 @@ self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>)
     } else source = event.data.bytes
     assertImportInputBytes(source.byteLength)
     const bytes = new Uint8Array(source)
-    if (event.data.format === 'sketch') {
+    if (event.data.format === 'sketch' || event.data.format === 'sketch-library') {
       await initializeKernelModule()
       const { import_sketch_json } = await import('./generated/design-kernel/design_kernel')
       importStage = 233 // decode
       const result = JSON.parse(import_sketch_json(bytes))
-      result.document.id = uid()
+      if (event.data.format !== 'sketch-library') result.document.id = uid()
       result.document.name = event.data.name || result.document.name
       self.postMessage({ result })
     } else if (event.data.format === 'pdf') {

@@ -1,4 +1,6 @@
 import { sanitizeFailureAllocation } from './render-failure-allocation.mjs'
+import { sanitizeTextureFailure, textureFailureLimits } from './render-texture-failure.mjs'
+import { drawWorkLimits } from './render-pass-work.mjs'
 import { sanitizeRuntimeConfiguration } from './render-runtime-configuration.mjs'
 import { producerIdentityFields, sanitizeProducerIdentity } from './render-diagnostic-identity.mjs'
 // Strict scalar allowlist shared by worker, renderer and terminal. Never stringify a render payload.
@@ -6,6 +8,7 @@ const tileCostLimits = {imageAxisFields:1e9,imageFieldBytes:1e12,displayImageSou
 export const PREFIX = '[render-diag] '
 Object.assign(tileCostLimits, { scenePacketProtocol:2, scenePacketVersion:1, scenePacketBytes:1e12, frameResourceHits:1e12, frameResourceBytes:33554432,
  scenePacketMetadataBytes:1e12, scenePacketResourceBytes:1e12 })
+Object.assign(tileCostLimits,drawWorkLimits)
 Object.assign(tileCostLimits, { separatePresentationDevice:1,backgroundCoverage:1,backgroundDecline:5,backgroundDensitySources:4096,backgroundPhaseError:1,coverageDeferred:1, coverageDeferredDraws:4096 })
 Object.assign(tileCostLimits, { alphaFrame:1e12, alphaSequence:1e12, alphaWidth:1e7, alphaHeight:1e7,
  alphaMinimum:255, alphaNonOpaquePixels:1e9, alphaZeroPixels:1e9, alphaPixelCount:1e9, alphaProbeCode:4, alphaSubmitted:1 })
@@ -23,7 +26,7 @@ const failureLimits = {failureMaterialFieldBuilds:1e9,failureMaterialFieldUpload
 const qualityLimits = {qualitySequence: 0xffffffff, qualityRevision: 0xffffffff, documentRevision: 0xffffffff}
 const poseLifecycleLimits = {failedCauseKnown:1,failedCauseSequence:1e9,failedCauseGeneration:1e9,failedCauseEpoch:1e9,failedCauseActionKnown:1,failedCauseActionOwner:1e12,failedCauseActionId:1e9,failedCauseActionSession:1e9,failedCauseActionStartRevision:1e9,failedCauseActionCode:73,causeRequestKnown:1,failedCausePhase:4,failedCauseAttempt:5,failedCauseBranch:3,observedCurrentSequence:1e9,observedCurrentGeneration:1e9,observedCurrentEpoch:1e9,poseActionKnown:1,poseActionEvicted:1e9,renderRouteCode:4,renderFallbackCount:1e9,poseSuppressedCount:1e9,poseSuppressedCapped:1,poseEpoch:1e9,poseSampleKind:3,posePendingCapped:1,poseStage:8,poseReason:13,poseSequence:1000000000.0,poseGesture:1000000000.0,poseDocumentGeneration:1000000000.0,poseActive:1,poseReady:1,poseDeferred:1,poseSubmittedCount:1000000000.0,poseSampledCount:1000000000.0,poseAckCount:1000000000.0,poseAcceptedCount:1000000000.0,poseRejectedCount:1000000000.0,poseEvictedCount:1000000000.0,posePendingCount:180,poseOldestAgeMs:600000}
 const handoffLimits = {handoffOwner:1e9,handoffSequence:1e9,handoffDecision:8,handoffReason:8,handoffDropped:1e9,handoffRingDropped:1e9,handoffSourceOrder:1e9,handoffFloor:1e9,handoffSampleOrder:1e9,handoffSampleKnown:1,handoffOwnerKind:2,handoffPreviousOwnerKind:2,handoffGesture:4,handoffActive:1}
-const diagnosticLimits = {cpuSpanId:1e9,cpuParentSpanId:1e9,cpuStageCode:37,cpuPhase:2,cpuSkipped:1e9,cpuDurationCapped:1,cpuOutcome:1,...handoffLimits,...poseLifecycleLimits,originChannelId: 0xffffffffffff, backendCode: 2, boundaryCode: 16, boundaryDurationMs: 120000}
+const diagnosticLimits = {renderResetCode:5,cpuSpanId:1e9,cpuParentSpanId:1e9,cpuStageCode:41,cpuPhase:2,cpuSkipped:1e9,cpuDurationCapped:1,cpuOutcome:1,...handoffLimits,...poseLifecycleLimits,originChannelId: 0xffffffffffff, backendCode: 2, boundaryCode: 16, boundaryDurationMs: 120000}
 const resourceLimits = {importBytes:2**32,importFormat:11,importMode:2,poseSubmittedSequence:1e9,posePresentedSequence:1e9,poseFallbackReason:9,poseLatencyMs:600000,actionRingDropped:1e9,actionPendingEvicted:1e9,submitIntervalCount:1e9,constraintEnabled:1,inputPhase:9,fieldFamily:11,inputValid:1,expectedWidthComparison:3,expectedHeightComparison:3,aspectRatioComparison:3,layoutConstraintAccepted:1,proposalResolvedComparison:3,actionOwner:1000000000000.0,actionId:1000000000.0,actionCode:73,actionSource:7,actionSession:1000000000.0,actionStartRevision:1000000000.0,actionFinalRevision:1000000000.0,actionPhase:2,actionOutcome:7,actionReason:17,modifiers:15,toolCode:64,hitCount:1000000.0,hitDepth:1000000.0,selectionBefore:1000000.0,selectionAfter:1000000.0,lockedCount:1000000.0,commandCode:1024,inputSamples:1000000000.0,sampleUpdates:1000000000.0,coalescedSamples:1000000000.0,thresholdPassed:1,motionObserved:1,snapEnabled:1,snapChanged:1,constraintChanged:1,proposalChanged:1,resolvedChanged:1,committedChanged:1,intentResolvedComparison:3,resolvedCommittedComparison:3,selectionChanged:1,routeSupported:1,geometrySupported:1,operationOwner:1e12,operationPresentation:1,operationId:1e9,operationSession:1e9,operationPhase:4,operationCategory:6,operationOutcome:5,authoredRevision:1e9,startRevision:1e9,targetCount:1e9,previewAttempts:1e9,previewAccepted:1e9,fullPayloadBytes:32*1024*1024,derivationReasonCode:4,sourceCodeUnits:32*1024*1024,embeddedFontCount:32,embeddedFontCodeUnits:32*28*1024*1024}
 // Reclaim-kind bits: pool=1, uploads=2, coordinates=4, images=8, retired image tables=16.
 const surfaceCacheLimits = {surfaceProposedBytes:17179869184,surfaceBudgetBytes:536870912,surfaceSteadyBudgetBytes:536870912,
@@ -45,14 +48,16 @@ tileCostLimits.wideTentPasses=1e9
 for (const key of Object.keys(pageCommitLimits)) fields.add(key)
 for (const key of [...Object.keys(tileCostLimits), ...Object.keys(admissionLimits)]) fields.add(key)
 for (const key of Object.keys(failureLimits)) fields.add(key)
+for (const key of Object.keys(textureFailureLimits)) fields.add(key)
 for (const key of [...Object.keys(poseLifecycleLimits),...Object.keys(handoffLimits)]) fields.add(key)
 for (const key of Object.keys(deviceLimits)) fields.add(key)
-for (const key of ['cpuSpanId','cpuParentSpanId','cpuStageCode','cpuPhase','cpuSkipped','cpuDurationCapped','cpuOutcome','cpuDurationMs','cpuWaitMs','bridgeBoundaryAt','bridgeDeliveryMs']) fields.add(key)
+for (const key of ['renderResetCode','cpuSpanId','cpuParentSpanId','cpuStageCode','cpuPhase','cpuSkipped','cpuDurationCapped','cpuOutcome','cpuDurationMs','cpuWaitMs','bridgeBoundaryAt','bridgeDeliveryMs']) fields.add(key)
 for (const key of Object.keys(tileOrderLimits)) fields.add(key)
 const imageFieldRegionLimits = {imageFieldCallsite:7,imageFieldStage:5,imageFieldOutcome:3,imageFieldAxes:2,imageFieldSample:4,imageFieldLevel:32,
  imageFieldWidth:1e9,imageFieldHeight:1e9,imageFieldSourceWidth:1e9,imageFieldSourceHeight:1e9,imageFieldDenseBytes:1e16,
 imageFieldRegionPath:2,imageFieldRegionOutcome:2,imageFieldRegionCount:1e9,
- imageFieldRegionBytes:1e12,imageFieldRegionMaxBytes:67108864,imageFieldRegionMaxWidth:16384,imageFieldRegionMaxHeight:256,imageFieldRegionSample:4}
+ imageFieldRegionBytes:1e12,imageFieldRegionMaxBytes:67108864,imageFieldRegionMaxWidth:16384,imageFieldRegionMaxHeight:256,imageFieldRegionSample:4,
+ imageRowChunks:8192,imageRowPixels:16777216,imageRowMaxBytes:4194304,imageRowReason:2,imageRowOutcome:2}
 for (const key of Object.keys(imageFieldRegionLimits)) fields.add(key)
 export function sanitizeFields(value) {
   const out = {}
@@ -62,6 +67,9 @@ export function sanitizeFields(value) {
     // Most records contain only a handful of the shared scalar fields. An
     // absent value cannot pass any validator; avoid probing every limit map.
     if (v === undefined) continue
+    // Stage numbers are a fixed dictionary, including the intentional gaps.
+    // Adding frame/planning 40/41 does not admit undeclared stages 38/39.
+    if (key === 'cpuStageCode' && ![1,2,3,4,5,10,11,12,13,14,20,21,22,23,24,30,31,32,33,34,35,36,37,40,41].includes(v)) continue
     if(Object.hasOwn(pageCommitLimits,key)){
       if(Number.isSafeInteger(v)&&v>=0&&v<=pageCommitLimits[key])out[key]=v
       continue
@@ -120,7 +128,7 @@ export function sanitizeFields(value) {
     if (typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 1e15) out[key] = v
     else if (typeof v === 'boolean') out[key] = v ? 1 : 0
   }
-  return { ...out, ...sanitizeRuntimeConfiguration(value), ...sanitizeFailureAllocation(value) }
+  return { ...out, ...sanitizeRuntimeConfiguration(value), ...sanitizeFailureAllocation(value), ...sanitizeTextureFailure(value) }
 }
 export function sanitizeRecord(value) {
   if (!value || value.v !== 1 || !events.has(value.event) || !['main','worker','host'].includes(value.source)) return null
@@ -135,7 +143,7 @@ export function createRenderDiagnostics({enabled=false, detail=false, session=0,
   function localRecord(event, values, identity) {
     const at=now(), next=++seq
     if (![session,next,at].every(v=>Number.isFinite(v)&&v>=0&&v<=1e15) || !['main','worker','host'].includes(source)) return null
-    return {v:1,session,source,seq:next,at,event,...sanitizeFields(values),...sanitizeProducerIdentity(identity)}
+    return {v:1,session,source,seq:next,at,event,...sanitizeFields(values),...sanitizeFields(identity),...sanitizeProducerIdentity(identity)}
   }
   function output(event, values) { const identity=provenance(event); const record=localRecord(event,values,identity); if(record) {try{sink(record)}catch{}} }
   function flush() {

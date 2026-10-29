@@ -1,3 +1,4 @@
+import { MAX_CANVAS_RASTER_SCALE } from '../canvas-camera'
 import { pinDocumentCapacity } from '../document-capacity'
 import { initializeKernelModule } from './module'
 import { createTileCostDiagnostics } from './tile-cost-diagnostics'
@@ -70,6 +71,7 @@ import { pageTranslationCommit } from './gpu/page-translation-commit'
 import { pixelSourceContract } from './gpu/page-background'
 import { PreparationChannel } from './preparation-channel'
 import { RenderKernel } from './render-kernel'
+import { sourceRenderSnapshot } from './source-render-snapshot'
 import { RenderLaneStates, type RenderLaneName } from './render-lane-state'
 import { loadKernelResources } from './kernel-resources'
 import { preparedTileCanFill, preparedTileContinuation } from './prepared-tile-fallback'
@@ -175,6 +177,8 @@ function journalCompile<T>(work: () => Promise<T>): Promise<T> {
           if (header.getUint32(0, true) === 0x43534746 && header.getUint32(4, true)===1)
             packet = { scenePacketProtocol: 2, scenePacketVersion: header.getUint32(4, true), scenePacketBytes: result.byteLength,
               scenePacketMetadataBytes: header.getUint32(8, true), scenePacketResourceBytes: header.getUint32(20, true) }
+          const scene=decodeScenePacket(result)
+          packet={...packet,width:scene.extent.w,height:scene.extent.h,count:Object.keys(scene.nodes).length}
         }
         return result
       } finally { terminalDiagnostics.record('compile',{requestId,durationMs:performance.now()-started,...packet}) }
@@ -588,6 +592,8 @@ self.onmessage = (e) => {
   if (packetWait) packetWaits.add(packetWait)
   let completedRegions=0
   const reportRasterProgress=()=>self.postMessage({id:request.id,rasterProgress:++completedRegions})
+  let workProgress=0
+  const reportWorkProgress=(stage:1|2,drawCalls=0)=>self.postMessage({id:request.id,workProgress:++workProgress,workStage:stage,drawCalls})
   diagnosticQueueDepth++
   terminalDiagnostics.record('queue-enqueue',{requestId:request.id,queueDepth:diagnosticQueueDepth,activeRequestId:diagnosticRequestId,generation,fillGeneration})
   const diagnosticQueuedAt=terminalDiagnostics.enabled?performance.now():0
@@ -657,7 +663,7 @@ self.onmessage = (e) => {
       // A camera-only request carries no revision transition for its successor.
       // Reject it before lane initialization/deferred synchronization. Envelopes
       // must still be applied in order even when their requested pixels are old.
-      if (packetWait?.controller.signal.aborted && request.document === undefined && request.documentPatch === undefined && request.deriveFrom === undefined) {
+      if (packetWait?.controller.signal.aborted && request.document === undefined && request.documentPatch === undefined && request.deriveFrom === undefined && request.sourceSnapshot===undefined) {
         terminalDiagnostics.record('skip', { requestId: request.id, reasonCode: 1, skipped: 1, generation, fillGeneration })
         throw Error('PREVIEW_CANCELLED')
       }
@@ -767,6 +773,7 @@ self.onmessage = (e) => {
       let derivedSource: { document: DesignDocument; json?: string } | undefined
       let derivedImageOwner:ReturnType<typeof createDecodedImageOwner>|undefined
       let acknowledgedSource = false
+      if(request.sourceSnapshot!==undefined&&(request.document!==undefined||request.documentPatch!==undefined||request.deriveFrom!==undefined||channel!=='canvas'))throw Error('Invalid source canvas synchronization envelope')
       if (request.deriveFrom !== undefined) {
         const deriveAt = performance.now()
         try {
@@ -805,7 +812,24 @@ self.onmessage = (e) => {
           request.document = await failureAttempt(11, () => capturedDocumentFallback(request.id))
         }
       }
-      if (derivedSource || request.document !== undefined) {
+      if(request.sourceSnapshot!==undefined){
+        const source=sourceRenderSnapshot(request.sourceSnapshot)
+        if(source.pageId!==renderOptions.pageId)throw Error('Source canvas page changed')
+        if(laneState.sourceSnapshotToken!==source.token||!kernel.preparationStateReceipt){
+          synchronizedAuthored.delete(channel)
+          laneState.sourceSnapshotToken=undefined;laneState.authoredSnapshot=undefined
+          laneState.interactionDocument=undefined;laneState.synchronizedInteractionDocument=undefined;laneState.deferredInteractionDocument=undefined
+          const at=performance.now(),actual=await kernel.load_source_snapshot(source.token)
+          if(actual.documentId!==source.owner.documentId||actual.pageId!==source.pageId||actual.stageId!==source.stageId||actual.nodes!==source.nodes)throw Error('Native source canvas identity mismatch')
+          laneState.sourceSnapshotToken=source.token;laneState.loadedDocument=''
+          laneState.loadedDocumentId=actual.documentId;laneState.loadedNodeCount=actual.nodes
+          laneState.documentGeneration++;laneState.decodedImageOwner=createDecodedImageOwner()
+          invalidateOwnerTileCache();laneState.compiledScene=undefined;paintDamage=undefined
+          loadStage(3,at,{fullPayloadBytes:0,count:actual.nodes})
+        }
+        laneState.loadedRevision=request.documentRevision;acknowledgedSource=true
+      } else if (derivedSource || request.document !== undefined) {
+        laneState.sourceSnapshotToken=undefined
         synchronizedAuthored.delete(channel)
         // A full resynchronization is a new owner even if its authored id repeats.
         laneState.deferredInteractionDocument = undefined
@@ -848,6 +872,7 @@ self.onmessage = (e) => {
         laneState.authoredSnapshot = sourceJson === undefined ? undefined : { json: sourceJson, document: laneState.interactionDocument }
         acknowledgedSource = true
       } else if (request.documentPatch !== undefined) {
+        if(laneState.sourceSnapshotToken)throw Error('Native source edits require their source scope')
         const patchAt = performance.now()
         const predecessor = synchronizedAuthored.get(channel)
         synchronizedAuthored.delete(channel)
@@ -942,7 +967,7 @@ self.onmessage = (e) => {
       const synchronizedReceipt = acknowledgedSource && !laneState.deferredInteractionDocument ? kernel.preparationStateReceipt : undefined
       if (synchronizedReceipt && laneState.synchronizedInteractionDocument)
         synchronizedAuthored.set(channel, { document: laneState.synchronizedInteractionDocument, receipt: synchronizedReceipt })
-      if (request.document !== undefined || request.documentPatch !== undefined || request.deriveFrom !== undefined) {
+      if (request.document !== undefined || request.documentPatch !== undefined || request.deriveFrom !== undefined || request.sourceSnapshot!==undefined) {
         const receipt = channel === 'canvas' && acknowledgedSource && !laneState.deferredInteractionDocument &&
           await kernel.supportsDocumentDerivation() ? kernel.preparationStateReceipt : undefined
         self.postMessage({ id: request.id, documentSynchronized: true, stateReceipt: receipt ?? null })
@@ -1019,7 +1044,7 @@ self.onmessage = (e) => {
                   t.height > TILE_SIDE + 2 ||
                   !Number.isFinite(t.zoom) ||
                   t.zoom < 0.001 ||
-                  t.zoom > 128 ||
+                  t.zoom > MAX_CANVAS_RASTER_SCALE ||
                   ![t.phaseX ?? 0, t.phaseY ?? 0].every((p) => Number.isFinite(p) && p >= 0 && p < 1) ||
                   typeof t.key !== 'string' ||
                   t.key.length > 256,
@@ -1193,6 +1218,7 @@ self.onmessage = (e) => {
               else try {
                 const waiting = performance.now()
                 const prepared = await ahead.take(tileIndex) ?? await compileTile(tile)
+                reportWorkProgress(1)
                 if (prepared.tile !== tile) throw Error('Prepared tile owner mismatch')
                 const waited = performance.now() - waiting
                 preparationWaitMs += waited
@@ -1249,7 +1275,8 @@ self.onmessage = (e) => {
                   import.meta.env.DEV && request.debug?.forceFirstTileBudgetFailure === true,
                   prepareViewport, !request.readback, canvasDisplayFilters, canvasMath, reportRasterProgress,
                   () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
-                    tileCurrent(), hydrateImages, filterBatchLease, canvasImageSource, boundedDisplayLimit, canvasMaterialSource, canvasTentRadius)
+                    tileCurrent(), hydrateImages, filterBatchLease, canvasImageSource, boundedDisplayLimit, canvasMaterialSource, canvasTentRadius,
+                    draws=>reportWorkProgress(2,draws))
                 undelivered = result
                 if ((packetWait?.controller.signal.aborted || generation !== previewGenerations[channel])) throw new Error('PREVIEW_CANCELLED')
                 // Only the exact scene actually rendered once certifies these pixels.
@@ -1555,7 +1582,8 @@ self.onmessage = (e) => {
           prepareDisplay(!request.png && !request.readback)
           const previewReadback = !!(request.png || request.readback || (!!color && !gpu.driver.hdr && !((retainInteraction || displayCanvas) && backend === 'webgpu')))
           const t = performance.now(),
-            result = await failureAttempt(12, () => gpu!.render(scene!, previewReadback, true, (livePreview || tileViewport) ? previewCurrent : undefined))
+            result = await failureAttempt(12, () => gpu!.render(scene!, previewReadback, true, (livePreview || tileViewport) ? previewCurrent : undefined,
+              (livePreview||tileViewport)?draws=>reportWorkProgress(2,draws):undefined))
           const renderMs = performance.now() - t
           if ((livePreview || tileViewport) && !previewCurrent()) {
             result.bitmap?.close()
@@ -1860,6 +1888,7 @@ async function renderTiledPreview(
   boundedDisplayLimit?: number,
   canvasMaterialSource = false,
   canvasTentRadius = false,
+  onEncodingProgress?: (drawCalls:number)=>void,
 ) {
   const tileCost = createTileCostDiagnostics(terminalDiagnostics.enabled)
   const checkCurrent = () => {
@@ -1960,7 +1989,7 @@ async function renderTiledPreview(
         checkCurrent()
         await hydrateImages(scene, isCurrent)
         prepareDisplay()
-        const result = await failureAttempt(12, () => gpu!.render(scene, false, true, isCurrent))
+        const result = await failureAttempt(12, () => gpu!.render(scene, false, true, isCurrent,onEncodingProgress))
         tileCost?.observe(scene, result)
         presented = result.bitmap
         residentTile = result.gpuTile
@@ -2103,7 +2132,7 @@ async function renderTiledPreview(
         checkCurrent()
         await hydrateImages(scene, isCurrent)
         prepareDisplay(false)
-        const result = await failureAttempt(12, () => gpu!.render(scene, !bitmapAssembly, bitmapAssembly, isCurrent))
+        const result = await failureAttempt(12, () => gpu!.render(scene, !bitmapAssembly, bitmapAssembly, isCurrent,onEncodingProgress))
         tileCost?.observe(scene, result)
         bitmap = result.bitmap
         checkCurrent()

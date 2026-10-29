@@ -693,7 +693,7 @@ export function ProgressiveSurfaceImpl(
   const coarseCamera = { x: snapPatternAxis(Math.floor(view.x * dpr * (lodScale / detailLevel)), coarsePeriod),
     y: snapPatternAxis(Math.floor(view.y * dpr * (lodScale / detailLevel)), coarsePeriod), zoom: lodScale }
   const lodActive = !sharpNavigation && !gestureHeadroom && !nativeVisibleTiles && detailLevel / lodScale >= 1.02
-  const frameKey = JSON.stringify([
+  const buildFrameKey = () => JSON.stringify([
     contract.revision,
     width,
     height,
@@ -705,6 +705,7 @@ export function ProgressiveSurfaceImpl(
     renderPhase.x,
     renderPhase.y,
   ])
+  const frameKey = rasterClient?.traceMainThread?.(40,buildFrameKey) ?? buildFrameKey()
   // One running capture and one replaceable latest goal. Density changes do
   // not invalidate immutable same-content pixels already being generated.
   const sequentialGoal = useRef('')
@@ -1849,8 +1850,9 @@ export function ProgressiveSurfaceImpl(
         // .ts): the exact plan keeps its viewport-only semantics for frame
         // completion; rim tiles ride the same request as budget-gated
         // off-screen work. rings=0 reproduces the pre-rim plan byte-for-byte.
-        const planned = planTilesWithPrefetchRim(viewport, renderScale, budgetTileLimit(
+        const planCurrentTiles = ()=>planTilesWithPrefetchRim(viewport, renderScale, budgetTileLimit(
           budget, hdrCompositing && !!doc.colorManagement), renderPhase, tilePrefetchRingsFromHost())
+        const planned = c.traceMainThread?.(41,planCurrentTiles) ?? planCurrentTiles()
         // Stable world samples reuse pixels within a density level; native
         // pixel/chrome paths retain their explicit camera phase.
         const rekey = (tile: RasterTile) => ({ ...tile, key: tileComputationKey(tile, renderCamera, cameraDependent) })

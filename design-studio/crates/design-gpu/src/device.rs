@@ -49,6 +49,8 @@ pub struct NativeGpu {
     layout: wgpu::BindGroupLayout,
     solid_layout: wgpu::BindGroupLayout,
     float_paint: wgpu::RenderPipeline,
+    byte_motion: wgpu::RenderPipeline,
+    byte_zoom: wgpu::RenderPipeline,
     area: wgpu::RenderPipeline,
     byte_area: wgpu::RenderPipeline,
     paint: wgpu::RenderPipeline,
@@ -204,14 +206,15 @@ impl NativeGpu {
                 wgpu::ShaderStages::VERTEX_FRAGMENT,
             )],
         });
-        let pipeline = |solid: bool, over: bool, format: wgpu::TextureFormat, area: bool| {
+        let pipeline = |solid: bool, over: bool, format: wgpu::TextureFormat, area: bool, exact_mode: Option<f64>| {
             let module = if area {
                 &area_module
-            } else if format == wgpu::TextureFormat::Rgba32Float {
+            } else if format == wgpu::TextureFormat::Rgba32Float || exact_mode.is_some() {
                 &module
             } else {
                 &byte_module
             };
+            let constants=exact_mode.map(|mode|[("COMPOSITOR_MODE",mode)]);
             let layouts = if solid {
                 vec![Some(&layout), Some(&solid_layout)]
             } else {
@@ -250,7 +253,10 @@ impl NativeGpu {
                     } else {
                         "fragment"
                     }),
-                    compilation_options: Default::default(),
+                    compilation_options: wgpu::PipelineCompilationOptions {
+                        constants: constants.as_ref().map_or(&[],|c|c.as_slice()),
+                        ..Default::default()
+                    },
                     targets: &[Some(wgpu::ColorTargetState {
                         format,
                         blend: over.then_some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
@@ -264,13 +270,16 @@ impl NativeGpu {
                 cache: None,
             })
         };
-        let paint = pipeline(false, false, wgpu::TextureFormat::Rgba8Unorm, false);
-        let over = pipeline(false, true, wgpu::TextureFormat::Rgba8Unorm, false);
-        let solid = pipeline(true, false, wgpu::TextureFormat::Rgba8Unorm, false);
-        let solid_over = pipeline(true, true, wgpu::TextureFormat::Rgba8Unorm, false);
-        let float_paint = pipeline(false, false, wgpu::TextureFormat::Rgba32Float, false);
-        let area = pipeline(false, false, wgpu::TextureFormat::Rgba32Float, true);
-        let byte_area = pipeline(false, false, wgpu::TextureFormat::Rgba8Unorm, true);
+        let paint = pipeline(false, false, wgpu::TextureFormat::Rgba8Unorm, false, None);
+        let over = pipeline(false, true, wgpu::TextureFormat::Rgba8Unorm, false, None);
+        let solid = pipeline(true, false, wgpu::TextureFormat::Rgba8Unorm, false, None);
+        let solid_over = pipeline(true, true, wgpu::TextureFormat::Rgba8Unorm, false, None);
+        let float_paint = pipeline(false, false, wgpu::TextureFormat::Rgba32Float, false, None);
+        let area = pipeline(false, false, wgpu::TextureFormat::Rgba32Float, true, None);
+        // Motion alone needs the full single-round sampler on byte targets.
+        let byte_motion = pipeline(false, false, wgpu::TextureFormat::Rgba8Unorm, false, Some(61.));
+        let byte_zoom = pipeline(false, false, wgpu::TextureFormat::Rgba8Unorm, false, Some(62.));
+        let byte_area = pipeline(false, false, wgpu::TextureFormat::Rgba8Unorm, true, None);
         if let Some(error) = scope.pop().await {
             return Err(format!("Native vector pipeline: {error}"));
         }
@@ -282,6 +291,8 @@ impl NativeGpu {
             paint,
             over,
             float_paint,
+            byte_motion,
+            byte_zoom,
             area,
             byte_area,
             solid,
@@ -1155,6 +1166,10 @@ impl<'a> Frame<'a> {
             }
         } else if self.floating {
             &self.gpu.float_paint
+        } else if u[16] == 61. {
+            &self.gpu.byte_motion
+        } else if u[16] == 62. {
+            &self.gpu.byte_zoom
         } else if instances.is_some() && over {
             &self.gpu.solid_over
         } else if instances.is_some() {

@@ -307,6 +307,9 @@ impl Pose {
                     | "inner-shadow"
                     | "noise"
                     | "texture"
+                    | "color-controls"
+                    | "gaussian-blur"
+                    | "motion-blur" | "zoom-blur"
             ) || [e.radius, e.x, e.y, e.spread, e.amount, e.opacity]
                 .iter()
                 .any(|v| !v.is_finite() || v.abs() > 1e7)
@@ -702,6 +705,10 @@ pub(crate) fn interpolate(
         e.spread = mix(a.spread, b.spread, t);
         e.opacity = mix(a.opacity, b.opacity, t).clamp(0., 1.);
         e.amount = mix(a.amount, b.amount, t);
+        e.motion_angle = mix(a.motion_angle,b.motion_angle,t);
+        if let (Some(o),Some(a),Some(b))=(&mut e.zoom_blur,a.zoom_blur,b.zoom_blur) {
+            o.amount=mix(a.amount,b.amount,t);o.center=std::array::from_fn(|i|mix(a.center[i],b.center[i],t));
+        }
         if let (Some(o), Some(a), Some(b)) = (&mut e.glass, &a.glass, &b.glass) {
             o.depth = mix(a.depth, b.depth, t);
             o.refraction = mix(a.refraction, b.refraction, t);
