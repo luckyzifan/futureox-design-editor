@@ -120,6 +120,22 @@ impl RationalKernel {
         if !radius.is_finite() || radius <= 0. || radius > 2048. {
             return Err("Exact blur radius must be in (0,2048]".into());
         }
+        Self::tent_coefficients(radius)
+    }
+    /// Separate canvas candidate for large finite support. The old operator's
+    /// 2048 boundary remains intact; serialized GPU packets still cap at 64 KiB.
+    pub fn large_tent(radius: f64) -> Result<Self, String> {
+        if !radius.is_finite() || !(2048. ..=4096.).contains(&radius) || radius == 2048. {
+            return Err("Exact large blur radius must be in (2048,4096]".into());
+        }
+        let kernel = Self::tent_coefficients(radius)?;
+        let words = (kernel.denominator.high().expect("positive denominator") + 1).div_ceil(32);
+        if 4 + words * (kernel.reach() + 2) > 16384 {
+            return Err("Large exact filter packet exceeds 64 KiB".into());
+        }
+        Ok(kernel)
+    }
+    fn tent_coefficients(radius: f64) -> Result<Self, String> {
         let bits = radius.to_bits();
         let exponent = ((bits >> 52) & 2047) as i32;
         let mut m = (bits & 0xfffffffffffff) | if exponent == 0 { 0 } else { 1_u64 << 52 };
@@ -614,5 +630,24 @@ mod certified_prefix_interval_tests {
             }
         }
         assert!(accepted>400,"actual certified cases {accepted}");assert!(declined>200,"actual declined cases {declined}");
+    }
+}
+
+#[cfg(test)]
+mod large_canvas_tent_tests {
+    use super::*;
+    #[test]
+    fn separate_large_kernel_keeps_legacy_boundary_and_exact_normalization() {
+        for radius in [2048.000000000001, 2240., 2240.125, 3072., 4096.] {
+            assert!(RationalKernel::tent(radius).is_err());
+            let k=RationalKernel::large_tent(radius).unwrap();
+            assert_eq!(k.reach(), radius.ceil() as usize);
+            assert_eq!(k.convolve(&vec![1.;2*k.reach()+1]).unwrap().to_bits(),1_f32.to_bits());
+            let mut impulse=vec![0.;2*k.reach()+1];impulse[k.reach()]=1.;
+            let expected = ((3. * radius - 1.) / (3. * radius * radius)) as f32;
+            assert_eq!(k.convolve(&impulse).unwrap().to_bits(), expected.to_bits());
+        }
+        assert_eq!(RationalKernel::large_tent(4095.9999999999995).unwrap_err(), "Large exact filter packet exceeds 64 KiB");
+        for radius in [0.,512.,2048.,4096.0001,f64::NAN,f64::INFINITY] {assert!(RationalKernel::large_tent(radius).is_err());}
     }
 }

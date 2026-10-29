@@ -202,7 +202,7 @@ pub fn source(
         || options.width > 8192
         || options.height > 8192
         || u64::from(options.width) * u64::from(options.height) > 8_388_608
-        || !(0.001..=128.).contains(&options.view.zoom)
+        || !(0.001..=crate::renderer::MAX_CANVAS_SAMPLE_SCALE).contains(&options.view.zoom)
         || ![options.view.x, options.view.y]
             .iter()
             .all(|v| v.is_finite())
@@ -212,7 +212,7 @@ pub fn source(
     let width = width.checked_mul(2).ok_or("Sampling width overflow")?;
     let height = height.checked_mul(2).ok_or("Sampling height overflow")?;
     let zoom = options.view.zoom * 2.;
-    if !zoom.is_finite() || zoom > 128. {
+    if !zoom.is_finite() || zoom > crate::renderer::MAX_CANVAS_SAMPLE_SCALE {
         return Err("Figma sampling exceeds the device scale budget".into());
     }
     Ok(RenderOptions {

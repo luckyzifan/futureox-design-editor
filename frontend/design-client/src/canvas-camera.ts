@@ -1,14 +1,17 @@
 import type { Bounds, Point } from './model'
 
-// Keep the existing editor range until Figma's actual UI limits are verified.
-// These are Core limits, not a claim about Figma parity.
-export const CANVAS_ZOOM_MIN = 0.025
-export const CANVAS_ZOOM_MAX = 32
+export const MIN_CANVAS_ZOOM = .02
+export const MAX_CANVAS_ZOOM = 256
+// Screen density is independent of the UI percentage. 256× at DPR 16
+// remains admitted only when the existing pixel/coordinate budgets fit.
+export const MAX_CANVAS_RASTER_SCALE = 4096
+export const clampCanvasZoom = (zoom: number) => Math.max(MIN_CANVAS_ZOOM, Math.min(MAX_CANVAS_ZOOM, zoom))
 
 export function zoomStep(zoom: number, direction: 1 | -1): number {
   const power = Math.log2(zoom)
   const next = direction > 0 ? Math.floor(power + 1e-9) + 1 : Math.ceil(power - 1e-9) - 1
-  return Math.max(CANVAS_ZOOM_MIN, Math.min(CANVAS_ZOOM_MAX, 2 ** next))
+  const value = 2 ** next
+  return value > 0 && Number.isFinite(value) ? clampCanvasZoom(value) : clampCanvasZoom(zoom)
 }
 
 // x/y and screen points are viewport-local CSS pixels, never device pixels.
@@ -25,28 +28,26 @@ export function screenToWorld(view: CanvasCamera, point: Point): Point {
 }
 
 export function zoomAt(view: CanvasCamera, zoom: number, anchor: Point): CanvasCamera {
-  if (Number.isNaN(zoom)) return { ...view }
-  zoom = Math.max(CANVAS_ZOOM_MIN, Math.min(CANVAS_ZOOM_MAX, zoom))
-  // Repeated wheel events at a limit must not slowly move the camera.
+  if (!Number.isFinite(zoom) || zoom <= 0) return { ...view }
+  zoom = clampCanvasZoom(zoom)
   if (zoom === view.zoom) return { ...view }
   const world = screenToWorld(view, anchor)
-  return { zoom, x: anchor.x - world.x * zoom, y: anchor.y - world.y * zoom }
+  const next = { zoom, x: anchor.x - world.x * zoom, y: anchor.y - world.y * zoom }
+  // Keep the anchor stable at either UI limit; device allocation is separate.
+  return Object.values(next).every(Number.isFinite) ? next : { ...view }
 }
 
 export function fitBounds(
   bounds: Bounds,
   size: CanvasSize,
-  { padding = 40, maxZoom = CANVAS_ZOOM_MAX } = {},
+  { padding = 40, maxZoom = Infinity } = {},
 ): CanvasCamera {
-  const zoom = Math.max(
-    CANVAS_ZOOM_MIN,
-    Math.min(
-      CANVAS_ZOOM_MAX,
-      maxZoom,
-      (size.width - padding * 2) / Math.max(1, bounds.width),
-      (size.height - padding * 2) / Math.max(1, bounds.height),
-    ),
+  const requested = Math.min(
+    maxZoom,
+    (size.width - padding * 2) / Math.max(1, bounds.width),
+    (size.height - padding * 2) / Math.max(1, bounds.height),
   )
+  const zoom = requested > 0 && Number.isFinite(requested) ? clampCanvasZoom(requested) : 1
   return {
     zoom,
     x: size.width / 2 - (bounds.x + bounds.width / 2) * zoom,
@@ -143,7 +144,7 @@ export function wheelCamera(
     // components/input/touchpad_pinch_event_queue.cc, Chromium source.
     // Shared Web/Electron wheel response: 120 CSS pixels now scale by ~1.43x
     // (previously ~1.27x). Physical pinch remains faithful to its native scale.
-    return zoomAt(view, view.zoom * Math.exp(-delta.y * (pinch ? .01 : .003)), anchor)
+    return zoomAt(view, clampCanvasZoom(view.zoom * Math.exp(-delta.y * (pinch ? .01 : .003))), anchor)
   }
   const delta = wheelDeltaPixels(event, size)
   return { ...view, x: view.x - delta.x, y: view.y - delta.y }

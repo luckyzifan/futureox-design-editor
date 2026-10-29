@@ -113,9 +113,9 @@ pub(crate) fn export_fonts(doc: &Document, output: &mut Value) -> Result<(), Err
     Ok(())
 }
 
-pub(crate) fn import_fonts(source: &Value, doc: &mut Document) -> Result<(), Error> {
+pub(crate) fn import_fonts(source: &Value, doc: &mut Document) -> Result<BTreeMap<String,String>, Error> {
     let Some(refs) = source.get("fontReferences") else {
-        return Ok(());
+        return Ok(BTreeMap::new());
     };
     let refs = refs
         .as_array()
@@ -264,6 +264,10 @@ pub(crate) fn import_fonts(source: &Value, doc: &mut Document) -> Result<(), Err
         doc.design_system.get_or_insert_with(Default::default).sketch_containers
             .insert("nonEmbeddedFontReferences".into(), Value::Array(nonembedded));
     }
+    Ok(aliases)
+}
+
+pub(crate) fn remap_fonts(aliases:&BTreeMap<String,String>,doc:&mut Document)->Result<(),Error>{
     let remap = |id: &mut String| {
         if let Some(mapped) = aliases.get(id) {
             *id = mapped.clone();

@@ -7,11 +7,15 @@ use crate::{
     memory::{Allocation, Budget, COMPOSITING_BYTES},
     paint::{Images, Sampler},
     path::Contour,
-    raster::{Mask, rasterize},
+    raster::{Coverage, Mask, RasterWorkspace, SampleMasks},
     scene::{Document, Node, Paint},
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
+
+/// Device-pixel camera scale for 2%–25600% navigation, including DPR.
+/// Pixel, path, coordinate, effect and allocation guards remain independent.
+pub(crate) const MAX_CANVAS_SAMPLE_SCALE: f64 = 4096.;
 
 #[derive(Clone, Copy, Deserialize, Serialize)]
 pub struct View {
@@ -205,6 +209,10 @@ pub struct Engine {
     // skipped poses cannot borrow it: both revisions must match the consumer.
     pub(crate) interaction_transform_revision: Option<(u64, u64, Vec<String>)>,
     pub(crate) camera_prepare: Option<crate::gpu::CameraPrepare>,
+    pub(crate) world_support: Option<crate::world_support::Cache>,
+    // Private render-only projection context, never deserialized from a file
+    // or request and never installed into an authored/editable engine.
+    pub(crate) source_compile_context: Option<crate::gpu::SourceCompileContext>,
     // Move, never duplicate, the prior camera until the new derived document
     // is known. Only identical topology/configuration can retain its clean nodes.
     pending_camera: Option<(SharedDocument, crate::gpu::CameraPrepare, bool)>,
@@ -252,6 +260,8 @@ impl Engine {
             geo_revision: 0,
             interaction_transform_revision: None,
             camera_prepare: None,
+            world_support: None,
+            source_compile_context: None,
             pending_camera: None,
             camera_residency: crate::gpu::CameraResidency::default(),
             frame_scene: crate::gpu::FrameSceneContext::default(),
@@ -269,6 +279,8 @@ impl Engine {
         self.geo_revision += 1;
         self.camera_prepare = None;
         self.camera_residency.clear();
+        self.world_support = None;
+        self.source_compile_context = None;
         Ok(())
     }
     pub fn color_settings(&self) -> Option<crate::color::ColorSettings> {
@@ -304,6 +316,35 @@ impl Engine {
         crate::capacity::check_document_bytes(json.len())?;
         let doc: Document = serde_json::from_str(json).map_err(|e| e.to_string())?;
         self.install_document(doc)
+    }
+    /// Native source storage supplies an already parsed complete model. Its
+    /// logical byte size is independent of a JS/WASM transfer allowance; all
+    /// ordinary scene, font, layout and rendering validation still applies.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn load_source_document(&mut self, document: Document) -> Result<(), String> {
+        self.install_document(document)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn release_source_compile_caches(&mut self){
+        self.camera_prepare=None;self.world_support=None;self.camera_residency.clear();self.paths.clear();
+        self.local_strokes=Default::default();self.page_support=None;
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn authored_document(&self)->Option<&Document>{self.source_doc.as_deref()}
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn resolved_source_compiler(&self, nodes:std::collections::BTreeMap<String,crate::scene::Node>, page_id:&str, revision:u64)->Result<Engine,String>{
+        let source=self.doc.as_ref().ok_or("Missing resolved source")?;
+        let page=source.pages.iter().find(|p|p.id==page_id).ok_or("Missing source page")?.clone();
+        // All authored metadata stays in the complete owner. This private
+        // scene is already resolved, keeps derived paths/IDs verbatim, and
+        // can only be used by the native source compiler, never edit/export.
+        let document=Document{fd_compatibility:None,reviews:vec![],design_system:None,prototype:None,
+            schema_version:source.schema_version,color_management:source.color_management,raster_profile:source.raster_profile,
+            id:source.id.clone(),name:source.name.clone(),pages:vec![page],nodes,fonts:Default::default(),animations:vec![]};
+        let mut compiler=Engine::new();compiler.fonts=self.fonts.clone();compiler.images=self.images.clone();
+        let document=SharedDocument::from(document);compiler.source_doc=Some(document.clone());compiler.doc=Some(document);
+        compiler.layout_dirty=false;compiler.geo_revision=revision;Ok(compiler)
     }
     pub fn apply_document_patch(
         &mut self,
@@ -573,8 +614,18 @@ impl Engine {
     fn install_document(&mut self, doc: impl Into<Document>) -> Result<(), String> {
         self.install_document_with_index(doc.into(),false)
     }
-    fn install_document_with_index(&mut self,doc:Document,retain_index:bool)->Result<(),String>{
+    fn install_document_with_index(&mut self,mut doc:Document,retain_index:bool)->Result<(),String>{
         doc.validate()?;
+        // Preserve exact authored strings while sharing identical immutable
+        // payload allocations. Derived snapshots and packet preparation can
+        // then recognize a retained image without copying/hash-scanning it at
+        // every camera. This changes no serialized value or resource grant.
+        let mut image_owners=std::collections::HashMap::<std::sync::Arc<str>,std::sync::Arc<str>>::new();
+        for n in doc.nodes.values_mut(){for paint in n.fills.iter_mut().chain(n.strokes.iter_mut().map(|s|&mut s.paint)){
+            if let Some(uri)=&mut paint.image {
+                *uri=image_owners.entry(uri.clone()).or_insert_with(||uri.clone()).clone();
+            }
+        }}
         let fonts = self.fonts.with_resources(&doc.fonts)?;
         let previous = self.doc.as_ref().filter(|old| !self.layout_dirty && self.animation_sample.is_none()
             && old.id==doc.id && old.pages==doc.pages && old.fonts==doc.fonts
@@ -612,6 +663,8 @@ impl Engine {
         self.geo_revision += 1;
         self.camera_prepare = None;
         self.camera_residency.clear();
+        self.world_support = None;
+        self.source_compile_context = None;
         Ok(())
     }
     pub fn stats(&self) -> &Stats {
@@ -1032,7 +1085,7 @@ impl Engine {
             || ![options.view.x, options.view.y, options.view.zoom]
                 .into_iter()
                 .all(f64::is_finite)
-            || !(0.001..=128.).contains(&options.view.zoom)
+            || !(0.001..=MAX_CANVAS_SAMPLE_SCALE).contains(&options.view.zoom)
         {
             return Err("Invalid render size or view".into());
         }
@@ -1079,6 +1132,8 @@ impl Engine {
                     .unwrap_or(0)
                     .min(2048),
         );
+        let zoom_guard=crate::zoom_support::scene_guard(doc,&page.children,camera,viewport.expand(extra_halo),&self.fonts)?;
+        let guard=zoom_guard.map_or(guard,|z|guard.union(z));
         for root in &page.children {
             prepare_node_geometry(
                 root,
@@ -1097,10 +1152,13 @@ impl Engine {
             .map(|p| p.halo)
             .max()
             .unwrap_or(0);
-        if max_halo + extra_halo > 2048 {
+        if zoom_guard.is_none() && max_halo + extra_halo > 2048 {
             return Err("Combined filter dependency halo exceeds 2048 device pixels".into());
         }
-        let extent = viewport.expand(max_halo + extra_halo);
+        let extent=zoom_guard.unwrap_or_else(||viewport.expand(max_halo+extra_halo));
+        if zoom_guard.is_some() && [viewport.x-extent.x,viewport.y-extent.y,extent.right()-viewport.right(),extent.bottom()-viewport.bottom()].into_iter().max().unwrap_or(0)>2048 {
+            return Err("Combined zoom source dependency halo exceeds 2048 device pixels".into());
+        }
         let mut target = Surface::new_in(extent, &budget)?;
         let background = if options.transparent {
             Pixel::default()
@@ -1169,6 +1227,7 @@ impl Engine {
             profile: options.raster_profile,
             interactive_effects: options.interactive_effects,
             sample: None,
+            raster_workspace: RasterWorkspace::default(),
         };
         let rendered = if synchronized {
             let mut targets = vec![target];
@@ -1550,6 +1609,18 @@ struct AccountedMask {
     mask: Mask,
     _allocation: Allocation,
 }
+struct AccountedSamples {
+    masks: SampleMasks,
+    _allocation: Allocation,
+}
+impl std::ops::Deref for AccountedSamples {
+    type Target = SampleMasks;
+    fn deref(&self) -> &SampleMasks { &self.masks }
+}
+impl Coverage for AccountedMask {
+    fn rect(&self) -> Rect { self.mask.rect }
+    fn at(&self, x: i32, y: i32) -> f32 { self.mask.at(x, y) }
+}
 impl Engine {
     /// Content revision of the loaded scene: bumped on every document
     /// install (load, patch, animation sample) and font change. This is the
@@ -1783,6 +1854,8 @@ impl Engine {
             geo_revision: self.geo_revision,
             interaction_transform_revision: None,
             camera_prepare: None,
+            world_support: None,
+            source_compile_context: None,
             pending_camera: None,
             camera_residency: crate::gpu::CameraResidency::default(),
             frame_scene: crate::gpu::FrameSceneContext::default(),
@@ -1910,6 +1983,7 @@ struct Painter<'a> {
     profile: crate::fidelity::RasterProfile,
     interactive_effects: bool,
     sample: Option<usize>,
+    raster_workspace: RasterWorkspace,
 }
 
 enum TextureBundle {
@@ -1921,8 +1995,8 @@ enum TextureBundle {
 /// Replay is restricted to one axis-aligned rectangular root clip. Retain the
 /// renderer's actual per-AA coverage instead of clipping to the leaf or using
 /// the root's conservative integer AABB at fractional frame boundaries.
-fn texture_clip_rectangle(mask: &Mask, viewport: Rect) -> Result<Rect, String> {
-    let region = mask.rect.intersect(viewport);
+fn texture_clip_rectangle(mask: &impl Coverage, viewport: Rect) -> Result<Rect, String> {
+    let region = mask.rect().intersect(viewport);
     let mut bounds = None::<Rect>;
     let mut count = 0;
     for y in region.y..region.bottom() {
@@ -1959,7 +2033,7 @@ impl Painter<'_> {
         node: &Node,
         matrix: Transform,
         targets: &mut [Surface; 4],
-        clip: Option<&[AccountedMask; 4]>,
+        clip: Option<&AccountedSamples>,
     ) -> Result<TextureBundle, String> {
         if !self.compatible || !self.profile.is_export() {
             return Ok(TextureBundle::Unhandled);
@@ -1987,7 +2061,7 @@ impl Painter<'_> {
             if targets[sample].rect != targets[0].rect {
                 return Err("Texture replay sample targets disagree".into());
             }
-            sample_viewports[sample] = texture_clip_rectangle(&clip[sample], region)?;
+            sample_viewports[sample] = texture_clip_rectangle(&clip.plane(sample), region)?;
         }
 
         // Classify every tile/pass before painting. The low-radius contract is
@@ -2104,7 +2178,7 @@ impl Painter<'_> {
         &mut self,
         id: &str,
         targets: &mut [Surface; 4],
-        clip: Option<&[AccountedMask; 4]>,
+        clip: Option<&AccountedSamples>,
     ) -> Result<(), String> {
         let n = &self.doc.nodes[id];
         if !n.visible || n.opacity <= 0. {
@@ -2124,21 +2198,7 @@ impl Painter<'_> {
             TextureBundle::Passthrough => true,
             TextureBundle::Unhandled => false,
         };
-        let mut fill = Vec::with_capacity(4);
-        for sample in 0..4 {
-            let allocation = self.budget.reserve(r.pixels(), size_of::<f32>(), false)?;
-            let mask = crate::raster::rasterize_sample(
-                &prepared.fill,
-                r,
-                n.fill_even_odd() && n.kind != "text",
-                Some(sample),
-            );
-            fill.push(AccountedMask {
-                mask,
-                _allocation: allocation,
-            });
-        }
-        let fill: [AccountedMask; 4] = fill.try_into().map_err(|_| "Invalid coverage samples")?;
+        let fill = self.rasterize_bundle(&prepared.fill, r, n.fill_even_odd() && n.kind != "text")?;
         let mask_id = self.doc.mask_child(n).map(|m| &m.id);
         let first = n.fills.iter().find(|p| p.visible);
         // A clipped, opaque container completely replaces the destination under
@@ -2165,7 +2225,7 @@ impl Painter<'_> {
             for sample in 0..4 {
                 self.sample = Some(sample);
                 for paint in &n.fills {
-                    self.paint(n, paint, m, &fill[sample], &mut targets[sample], |_, _| 1.)?;
+                    self.paint(n, paint, m, &fill.plane(sample), &mut targets[sample], |_, _| 1.)?;
                 }
             }
             for child in n.render_children() {
@@ -2217,7 +2277,8 @@ impl Painter<'_> {
                 self.resolve_backdrop(capture, origin, targets)?
             };
             let mut masks = Vec::with_capacity(4);
-            for mask in &fill {
+            for sample in 0..4 {
+                let mask = fill.plane(sample);
                 let mut surface = self.allocate(r)?;
                 for y in r.y..r.bottom() {
                     for x in r.x..r.right() {
@@ -2241,6 +2302,7 @@ impl Painter<'_> {
                     self.blur_filter(fx.backdrop_radius() * scale)
                         .apply(&background)?
                 };
+                if let Some(controls) = &fx.color_controls { controls.apply(&mut background, self.doc.color_management.is_some()); }
                 if fx.kind == "glass" && optical.is_none() {
                     let geometry = self.resolve_effect_planes(&masks)?;
                     background = effects::glass_unmasked(
@@ -2294,7 +2356,7 @@ impl Painter<'_> {
                                         f64::from(capture.bottom()) - 0.5,
                                     ),
                                 )
-                                .opacity(fill[sample].at(x, y));
+                                .opacity(fill.at(sample, x, y));
                             continue;
                         }
                         layers[sample].pixels[r.index(x, y).expect("background")] = background
@@ -2308,7 +2370,7 @@ impl Painter<'_> {
                                     f64::from(capture.bottom()) - 0.5,
                                 ),
                             )
-                            .opacity(fill[sample].at(x, y))
+                            .opacity(fill.at(sample, x, y))
                             .rgba8_quantized();
                     }
                 }
@@ -2319,7 +2381,7 @@ impl Painter<'_> {
         for sample in 0..4 {
             self.sample = Some(sample);
             for paint in &n.fills {
-                self.paint(n, paint, m, &fill[sample], &mut layers[sample], |_, _| 1.)?;
+                self.paint(n, paint, m, &fill.plane(sample), &mut layers[sample], |_, _| 1.)?;
             }
         }
         if let Some(mask_id) = mask_id {
@@ -2365,24 +2427,14 @@ impl Painter<'_> {
                 self.node_bundle(child, &mut layers, if n.clip { Some(&fill) } else { None })?;
             }
         }
-        for sample in 0..4 {
-            self.sample = Some(sample);
-            for (i, stroke) in n
-                .strokes
-                .iter()
-                .enumerate()
-                .filter(|(_, s)| s.visible && s.width > 0.)
-            {
-                let mask = self.rasterize(&prepared.strokes[i], r, false)?;
-                self.paint(
-                    n,
-                    &stroke.paint,
-                    m,
-                    &mask,
-                    &mut layers[sample],
+        for (i, stroke) in n.strokes.iter().enumerate().filter(|(_, s)| s.visible && s.width > 0.) {
+            let masks = self.rasterize_bundle(&prepared.strokes[i], r, false)?;
+            for sample in 0..4 {
+                self.sample = Some(sample);
+                self.paint(n, &stroke.paint, m, &masks.plane(sample), &mut layers[sample],
                     |x, y| match stroke.align.as_str() {
-                        "inside" => fill[sample].at(x, y),
-                        "outside" => 1. - fill[sample].at(x, y),
+                        "inside" => fill.at(sample, x, y),
+                        "outside" => 1. - fill.at(sample, x, y),
                         _ => 1.,
                     },
                 )?;
@@ -2402,7 +2454,7 @@ impl Painter<'_> {
             let region = source.rect.intersect(target.rect);
             for y in region.y..region.bottom() {
                 for x in region.x..region.right() {
-                    let opacity = n.opacity as f32 * clip.map_or(1., |m| m[sample].at(x, y));
+                    let opacity = n.opacity as f32 * clip.map_or(1., |m| m.at(sample, x, y));
                     let src = source.at(x, y).opacity(opacity);
                     let dst = target.at(x, y);
                     if passthrough {
@@ -2445,8 +2497,13 @@ impl Painter<'_> {
             effects::BlurFilter::Gaussian(radius / 2.)
         }
     }
+    fn rasterize_bundle(&mut self, contours: &[Contour], limit: Rect, even_odd: bool) -> Result<AccountedSamples, String> {
+        let allocation = self.budget.reserve(limit.pixels(), 1, false)?;
+        let masks = self.raster_workspace.samples(contours, limit, even_odd)?;
+        Ok(AccountedSamples { masks, _allocation: allocation })
+    }
     fn rasterize(
-        &self,
+        &mut self,
         contours: &[Contour],
         limit: Rect,
         even_odd: bool,
@@ -2455,11 +2512,11 @@ impl Painter<'_> {
             .budget
             .reserve(limit.pixels(), size_of::<f32>(), false)?;
         let mask = if self.coverage_compatible && self.doc.color_management.is_some() {
-            crate::raster::rasterize_sample_linear(contours, limit, even_odd, self.sample)
+            self.raster_workspace.sample(contours, limit, even_odd, self.sample, false)?
         } else if self.coverage_compatible {
-            crate::raster::rasterize_sample(contours, limit, even_odd, self.sample)
+            self.raster_workspace.sample(contours, limit, even_odd, self.sample, true)?
         } else {
-            rasterize(contours, limit, even_odd)
+            self.raster_workspace.area(contours, limit, even_odd)?
         };
         Ok(AccountedMask {
             mask,
@@ -2475,22 +2532,22 @@ impl Painter<'_> {
         n: &Node,
         p: &Paint,
         m: Transform,
-        mask: &Mask,
+        mask: &impl Coverage,
         layer: &mut Surface,
         extra: impl Fn(i32, i32) -> f32,
     ) -> Result<(), String> {
-        let basis = layer.rect.intersect(mask.rect);
+        let basis = layer.rect.intersect(mask.rect());
         self.paint_region(n, p, m, mask, layer, basis, extra)
     }
     fn paint_region(
-        &mut self, n: &Node, p: &Paint, m: Transform, mask: &Mask,
+        &mut self, n: &Node, p: &Paint, m: Transform, mask: &impl Coverage,
         layer: &mut Surface, basis: Rect, extra: impl Fn(i32, i32) -> f32,
     ) -> Result<(), String> {
         if !p.visible {
             return Ok(());
         }
         let blend_mode=crate::blend::BlendMode::from_name(&p.blend);
-        let r = layer.rect.intersect(mask.rect);
+        let r = layer.rect.intersect(mask.rect());
         let mut sampler = Sampler::new(p, n, m, basis, self.images)?;
         sampler.prepare_sampled(p, r, !self.compatible)?;
         let solid = sampler.solid();
@@ -2662,8 +2719,35 @@ impl Painter<'_> {
             {
                 continue;
             }
+            if fx.kind == "color-controls" {
+                let controls = fx.color_controls.as_ref().ok_or("Missing color controls")?;
+                if controls.is_identity() { continue; }
+                let mut outputs: Vec<Arc<Surface>> = Vec::new();
+                for (i, source) in planes.iter().enumerate() {
+                    if let Some(previous) = planes[..i].iter().position(|p|Arc::ptr_eq(p,source)) {
+                        outputs.push(outputs[previous].clone()); continue;
+                    }
+                    let mut output = source.try_clone()?;
+                    controls.apply(&mut output, self.doc.color_management.is_some());
+                    if self.compatible { output.quantize_rgba8(); }
+                    outputs.push(Arc::new(output));
+                }
+                planes = outputs.try_into().map_err(|_| "Invalid color control planes")?;
+                continue;
+            }
             let resolved = self.resolve_effect_planes(&planes)?;
-            if fx.kind == "blur" {
+            if matches!(fx.kind.as_str(), "gaussian-blur" | "motion-blur" | "zoom-blur") {
+                let kernel=if fx.kind=="motion-blur" {Some(crate::spatial_blur::MotionKernel::new(fx.radius,fx.motion_angle,m)?)} else {None};
+                let compatible=self.compatible;
+                let filter=|source:&Surface| -> Result<Surface,String> {
+                    let mut value=if let Some(z)=fx.zoom_blur {crate::zoom_blur::apply(source,z,m,[n.width,n.height])?}
+                        else if let Some(kernel)=&kernel {kernel.apply(source)?}
+                        else {effects::gaussian_surface(source,fx.radius*scale,compatible)?};
+                    if compatible {value.quantize_rgba8();} Ok(value)
+                };
+                let out=Arc::new(filter(&resolved)?);planes=std::array::from_fn(|_|out.clone());
+                if let Some(mask)=coverage {let value=Arc::new(filter(&self.resolve_effect_planes(mask)?)?);*mask=std::array::from_fn(|_|value.clone());}
+            } else if fx.kind == "blur" {
                 let blur_filter = self.blur_filter(fx.blur_radius() * scale);
                 let compatible = self.compatible;
                 let filter = |source: &Surface| -> Result<Surface, String> {
@@ -2929,7 +3013,7 @@ impl Painter<'_> {
             e.visible
                 && matches!(
                     e.kind.as_str(),
-                    "blur" | "shadow" | "inner-shadow" | "glass" | "texture"
+                    "blur" | "gaussian-blur" | "motion-blur" | "zoom-blur" | "shadow" | "inner-shadow" | "glass" | "texture"
                 )
         });
         let basis = prepared
@@ -2968,7 +3052,7 @@ impl Painter<'_> {
             n.fill_even_odd() && n.kind != "text",
         )?;
         if let Some(fx) = n.backdrop_effect().filter(|_| apply_effects) {
-            let blurred = if bounded {
+            let mut blurred = if bounded {
                 let samples = if let Some((shape, glass)) = crate::optics::GlassShape::from_node(n).zip(fx.glass.as_ref()) {
                     crate::optics::input_region(basis, r, shape, m, glass, None)?
                 } else { r };
@@ -2977,6 +3061,7 @@ impl Painter<'_> {
                 let copy = effects::copy_region(target, r)?;
                 self.blur_filter(fx.backdrop_radius() * scale).apply(&copy)?
             };
+            if let Some(controls) = &fx.color_controls { controls.apply(&mut blurred, self.doc.color_management.is_some()); }
             let background = if let Some((shape, glass)) =
                 crate::optics::GlassShape::from_node(n).zip(fx.glass.as_ref())
             {
@@ -3082,6 +3167,12 @@ impl Painter<'_> {
         }
         for fx in n.effects.iter().filter(|e| apply_effects && e.visible) {
             match fx.kind.as_str() {
+                "zoom-blur" => { layer=crate::zoom_blur::apply(&layer,fx.zoom_blur.ok_or("Missing zoom parameters")?,m,[n.width,n.height])?; }
+                "gaussian-blur" => { layer=effects::gaussian_surface(&layer,fx.radius*scale,self.compatible)?; }
+                "motion-blur" => { layer=crate::spatial_blur::MotionKernel::new(fx.radius,fx.motion_angle,m)?.apply(&layer)?; }
+                "color-controls" => {
+                    fx.color_controls.as_ref().ok_or("Missing color controls")?.apply(&mut layer, self.doc.color_management.is_some());
+                }
                 "shadow" | "inner-shadow" => {
                     let offset = m.point(Point::new(fx.x, fx.y)) - m.point(Point::default());
                     let mut shadow = if self.compatible {
@@ -3220,3 +3311,23 @@ mod translation_retention_tests;
 #[cfg(test)]
 #[path = "renderer_tests/linear_tile_residency.rs"]
 mod linear_tile_residency_tests;
+
+#[cfg(test)]
+mod image_payload_owner_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn equal_image_payloads_share_storage_without_changing_document_bytes() {
+        let uri="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a14cAAAAASUVORK5CYII=";
+        let value=json!({"schemaVersion":16,"id":"images","name":"images","pages":[{"id":"p","name":"p","children":["a","b"],"background":"#ffffff"}],"nodes":{
+            "a":{"id":"a","kind":"rectangle","width":10,"height":10,"fills":[{"kind":"image","color":"#ffffff","image":uri}]},
+            "b":{"id":"b","kind":"rectangle","width":10,"height":10,"fills":[{"kind":"image","color":"#ffffff","image":uri}]}
+        }});
+        let document:Document=serde_json::from_value(value).unwrap();let before=serde_json::to_vec(&document).unwrap();
+        assert_ne!(document.nodes["a"].fills[0].image.as_ref().unwrap().as_ptr(),document.nodes["b"].fills[0].image.as_ref().unwrap().as_ptr());
+        let mut engine=Engine::new();engine.install_document(document).unwrap();
+        let stored=engine.doc.as_ref().unwrap();
+        assert_eq!(stored.nodes["a"].fills[0].image.as_ref().unwrap().as_ptr(),stored.nodes["b"].fills[0].image.as_ref().unwrap().as_ptr());
+        assert_eq!(serde_json::to_vec(&**stored).unwrap(),before);
+    }
+}

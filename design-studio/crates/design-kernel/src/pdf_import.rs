@@ -1854,7 +1854,7 @@ impl<'a, 'f> Runner<'a, 'f> {
             visible: true,
             angle: 0.,
             stops: Vec::new(),
-            image: Some(uri),
+            image: Some(uri.into()),
             fit: "stretch".into(),
             blend: "normal".into(),
             adjust: None,

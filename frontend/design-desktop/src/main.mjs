@@ -353,6 +353,7 @@ const closeNativeRender = registerNativeRender(ipcMain, {
 const closeNativePreparation = registerNativePreparation(ipcMain, {
   resourcesRoot: app.isPackaged ? process.resourcesPath : assets,
   assertSender: event => assertSender(event, window),
+  resolveSourceSnapshot: (token, senderId) => largeDocuments.resolveCanvasSnapshot(token, senderId),
 })
 
 async function nativeOpenMenu() {
@@ -562,6 +563,8 @@ register('large-document-open-file', value => {
 }, false)
 register('large-document-read', value => largeDocuments.read(value), false)
 register('large-document-children', value => largeDocuments.children(value), false)
+register('large-document-canvas-layout', value => largeDocuments.canvasLayout(value), false)
+register('large-document-canvas-snapshot', value => largeDocuments.canvasSnapshot(value), false)
 register('large-document-apply', value => largeDocuments.apply(value), false)
 register('large-document-project', value => largeDocuments.project(value), false)
 register('large-document-scene', value => largeDocuments.scene(value), false)

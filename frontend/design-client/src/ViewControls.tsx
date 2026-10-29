@@ -1,6 +1,6 @@
 import { useInterfaceText } from './interface-preference'
 import type { Editor } from './engine'
-import { CANVAS_ZOOM_MIN, CANVAS_ZOOM_MAX, zoomAt, zoomStep } from './canvas-camera'
+import { zoomAt, zoomStep, MIN_CANVAS_ZOOM, MAX_CANVAS_ZOOM } from './canvas-camera'
 import { NumberField } from './fields'
 import { PendingEditContext } from './pending-edit-context'
 import { useEffect, useRef } from 'react'
@@ -51,8 +51,8 @@ export function ViewControls({
             // Preserve the existing numeric semantics independently of the translated label.
             unit="number"
             value={s.view.zoom * 100}
-            min={CANVAS_ZOOM_MIN * 100}
-            max={CANVAS_ZOOM_MAX * 100}
+            min={MIN_CANVAS_ZOOM * 100}
+            max={MAX_CANVAS_ZOOM * 100}
             onChange={(v) => zoom(v / 100)}
           /></PendingEditContext.Provider>
           <div className="zoom-presets">

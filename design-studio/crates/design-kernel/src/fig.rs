@@ -17,6 +17,8 @@
 //! - message: loop `fid = uvarint()` until 0, then decode field `fid`
 //! - struct: every field in ordinal order; enum(kind 0): uvarint → name
 //! - arrays: uvarint count then items
+mod components;
+
 use crate::math::Transform;
 use crate::scene::{Document, Effect, Node, Page, Paint, Stroke};
 use serde_json::Value;
@@ -294,7 +296,9 @@ fn zstd_decompress(raw: &[u8]) -> Result<Vec<u8>, Error> {
 /// blobs (zip `images/` entries + kiwi `blobs` payload), keyed by sha1 name.
 #[allow(clippy::type_complexity)]
 pub fn read_fig(bytes: &[u8]) -> Result<(Value, BTreeMap<String, Vec<u8>>, Vec<Vec<u8>>), Error> {
-    let files = crate::interop::read_zip_public(bytes).map_err(|e| Error::Io(e.to_string()))?;
+    let files = if bytes.starts_with(b"fig-kiwi") {
+        BTreeMap::from([("canvas.fig".into(), bytes.to_vec())])
+    } else { crate::interop::read_zip_public(bytes).map_err(|e| Error::Io(e.to_string()))? };
     let canvas = files
         .get("canvas.fig")
         .ok_or(Error::NotAFig("canvas.fig missing".into()))?;
@@ -349,12 +353,12 @@ fn bool_of(v: &Value, key: &str) -> Option<bool> {
 const KNOWN_KINDS: &[(&str, &str)] = &[
     ("FRAME", "frame"),
     ("GROUP", "group"),
-    ("BOOLEAN_OPERATION", "group"),
-    ("VECTOR", "path"),
-    ("LINE", "path"),
+    ("BOOLEAN_OPERATION", "vector"),
+    ("VECTOR", "vector"),
+    ("LINE", "line"),
     ("ELLIPSE", "ellipse"),
-    ("RECTANGLE", "rect"),
-    ("ROUNDED_RECTANGLE", "rect"),
+    ("RECTANGLE", "rectangle"),
+    ("ROUNDED_RECTANGLE", "rectangle"),
     ("REGULAR_POLYGON", "polygon"),
     ("STAR", "star"),
     ("TEXT", "text"),
@@ -401,6 +405,9 @@ fn kind_of(fig_type: &str) -> Option<&'static str> {
 
 fn blend_name(v: &Value) -> String {
     match v.as_str().unwrap_or("PASS_THROUGH") {
+        "PASS_THROUGH" => "pass-through",
+        "LINEAR_BURN" => "linear-burn",
+        "LINEAR_DODGE" => "linear-dodge",
         "MULTIPLY" => "multiply",
         "DARKEN" => "darken",
         "COLOR_BURN" => "color-burn",
@@ -422,10 +429,19 @@ fn blend_name(v: &Value) -> String {
 }
 
 fn hex_color(color: &Value) -> String {
-    let r = (f64_of(Some(color), "r").clamp(0., 1.) * 255.).round() as u8;
-    let g = (f64_of(Some(color), "g").clamp(0., 1.) * 255.).round() as u8;
-    let b = (f64_of(Some(color), "b").clamp(0., 1.) * 255.).round() as u8;
-    format!("#{r:02x}{g:02x}{b:02x}")
+    let rgb = ["r", "g", "b"].map(|key| f64_of(Some(color), key));
+    if rgb.iter().all(|v| (0. ..=1.).contains(v) && (v * 255.).round() / 255. == *v) {
+        let [r,g,b] = rgb.map(|v| (v * 255.).round() as u8);
+        format!("#{r:02x}{g:02x}{b:02x}")
+    } else {
+        format!("color(srgb {} {} {} / 1)", rgb[0], rgb[1], rgb[2])
+    }
+}
+
+fn rgba_color(color: &Value) -> String {
+    if alpha_of(Some(color)) == 1. { return hex_color(color); }
+    format!("color(srgb {} {} {} / {})", f64_of(Some(color), "r"),
+        f64_of(Some(color), "g"), f64_of(Some(color), "b"), alpha_of(Some(color)))
 }
 
 fn alpha_of(color: Option<&Value>) -> f64 {
@@ -441,7 +457,7 @@ fn blank_paint(kind: &str) -> Paint {
         transform: None,
         id: String::new(),
         kind: kind.into(),
-        color: String::new(),
+        color: "#000000".into(),
         opacity: 1.,
         visible: true,
         angle: 0.,
@@ -587,11 +603,87 @@ struct FigImporter {
 }
 
 impl FigImporter {
+    fn image_bytes<'a>(&'a self, paint: &Value) -> Result<&'a [u8], Error> {
+        let image = &paint["image"];
+        let hash = image.get("hash").and_then(Value::as_array).map(|xs| {
+            xs.iter().map(|v| v.as_u64().filter(|v| *v <= 255).map(|v| format!("{v:02x}")))
+                .collect::<Option<String>>()
+        }).flatten();
+        for name in [hash.as_deref(), str_of(image, "dataRef"), str_of(image, "bytesRef")].into_iter().flatten() {
+            if let Some(bytes) = self.images.get(name) { return Ok(bytes); }
+        }
+        if let Some(index) = image.get("dataBlob").and_then(Value::as_u64) {
+            if let Some(bytes) = self.kiwi_blobs.get(index as usize) { return Ok(bytes); }
+        }
+        Err(Error::Malformed("FIG image resource missing (hash/dataBlob)".into()))
+    }
+
+    // Inspect nested paints/overrides as well as node fields before publishing.
+    fn validate_record(&self, value: &Value) -> Result<(), Error> {
+        match value {
+            Value::Array(xs) => for x in xs { self.validate_record(x)?; },
+            Value::Object(fields) => {
+                if let Some(space) = str_of(value, "interpolationColorSpace") {
+                    if space != "DEFAULT" { return Err(Error::Unsupported(format!("interpolationColorSpace={space}"))); }
+                }
+                if let Some(mode) = str_of(value, "blendMode") {
+                    let mapped = mode.to_ascii_lowercase().replace('_', "-");
+                    if mode != "PASS_THROUGH" && !crate::blend::valid_mode(&mapped) {
+                        return Err(Error::Unsupported(format!("blendMode={mode}")));
+                    }
+                }
+                if bool_of(value, "mask").unwrap_or(false) {
+                    if let Some(kind) = str_of(value, "maskType") {
+                        if !matches!(kind, "ALPHA" | "LUMINANCE") { return Err(Error::Unsupported(format!("maskType={kind}"))); }
+                    }
+                }
+                for key in ["fillPaints", "strokePaints", "backgroundPaints"] {
+                    for paint in value.get(key).and_then(Value::as_array).into_iter().flatten() {
+                        let kind = str_of(paint, "type").unwrap_or("SOLID");
+                        if !matches!(kind, "SOLID" | "IMAGE" | "GRADIENT_LINEAR" | "GRADIENT_RADIAL" | "GRADIENT_ANGULAR" | "GRADIENT_DIAMOND") {
+                            return Err(Error::Unsupported(format!("paintType={kind}")));
+                        }
+                        if kind == "IMAGE" { self.image_bytes(paint)?; }
+                        if str_of(paint,"imageScaleMode")==Some("TILE") {
+                            if f64_of(Some(paint),"spacing")!=0. || f64_of(paint.get("patternSpacing"),"x")!=0. || f64_of(paint.get("patternSpacing"),"y")!=0.
+                                || paint.get("scale").and_then(Value::as_f64).unwrap_or(1.)!=1. || f64_of(Some(paint),"rotation")!=0.
+                                || ["horizontalAlignment","verticalAlignment"].iter().any(|key|str_of(paint,key).is_some_and(|v|v!="START")) {
+                                return Err(Error::Unsupported("TILE spacing/scale/rotation/alignment is not rendered".into()));
+                            }
+                            if str_of(paint,"patternTileType").is_some_and(|v| !matches!(v,"RECTANGULAR"|"HORIZONTAL_HEXAGONAL"|"VERTICAL_HEXAGONAL")) {
+                                return Err(Error::Unsupported("patternTileType".into()));
+                            }
+                        }
+                        if let Some(filter)=paint.get("paintFilter").or_else(||paint.get("filterColorAdjust")) {
+                            for (key,value) in filter.as_object().into_iter().flatten() {
+                                if value.as_f64().is_none_or(|v|!v.is_finite() || v.abs()>1.) {
+                                    return Err(Error::Malformed(format!("paintFilter.{key}")));
+                                }
+                                if !["exposure","contrast","vibrance","temperature","tint","highlights","shadows"].contains(&key.as_str()) && value.as_f64()!=Some(0.) {
+                                    return Err(Error::Unsupported(format!("paintFilter.{key} is not rendered")));
+                                }
+                            }
+                        }
+                        if let Some(mode) = str_of(paint, "imageScaleMode") {
+                            if !matches!(mode, "STRETCH" | "FIT" | "FILL" | "TILE") { return Err(Error::Unsupported(format!("imageScaleMode={mode}"))); }
+                        }
+                    }
+                }
+                for effect in value.get("effects").and_then(Value::as_array).into_iter().flatten() {
+                    let kind = str_of(effect, "type").unwrap_or("");
+                    if !matches!(kind, "DROP_SHADOW" | "INNER_SHADOW" | "FOREGROUND_BLUR" | "BACKGROUND_BLUR" | "GLASS" | "GRAIN") {
+                        return Err(Error::Unsupported(format!("effectType={kind}")));
+                    }
+                }
+                for field in fields.values() { self.validate_record(field)?; }
+            },
+            _ => {},
+        }
+        Ok(())
+    }
+
     fn paint(&self, p: &Value, untranslated: &mut Vec<String>) -> Option<Paint> {
         let visible = p.get("visible").and_then(Value::as_bool).unwrap_or(true);
-        if !visible {
-            return None;
-        }
         let opacity = p.get("opacity").and_then(Value::as_f64).unwrap_or(1.);
         let blend = p
             .get("blendMode")
@@ -621,7 +713,7 @@ impl FigImporter {
                             offset: f64_of(Some(s), "position"),
                             color: s
                                 .get("color")
-                                .map(hex_color)
+                                .map(rgba_color)
                                 .unwrap_or_else(|| "#000000".into()),
                         });
                     }
@@ -642,25 +734,12 @@ impl FigImporter {
             }
             "IMAGE" => {
                 let mut paint = blank_paint("image");
-                let data_ref = p
-                    .get("image")
-                    .and_then(|i| i.get("dataRef"))
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-                    .or_else(|| {
-                        p.get("image")
-                            .and_then(|i| i.get("bytesRef"))
-                            .and_then(Value::as_str)
-                            .map(str::to_string)
-                    });
-                if let Some(name) = data_ref
-                    && let Some(bytes) = self.images.get(&name)
-                {
-                    paint.image = Some(crate::interop::image_data_uri_public(bytes));
+                if let Ok(bytes) = self.image_bytes(p) {
+                    paint.image = Some(crate::interop::image_data_uri_public(bytes).into());
                 }
-                // ScaleMode → kernel fit (FILL stretches over the box)
+                // Native ImageScaleMode: STRETCH=0, FIT=1, FILL=2, TILE=3.
                 paint.fit = match str_of(p, "imageScaleMode") {
-                    Some("FILL") => "stretch".into(),
+                    Some("STRETCH") => "stretch".into(),
                     Some("FIT") => "contain".into(),
                     Some("TILE") => {
                         // TILE renders through the pattern-fill pipeline. The
@@ -777,6 +856,7 @@ impl FigImporter {
             }
         };
         paint.opacity *= opacity;
+        paint.visible = visible;
         paint.blend = blend;
         Some(paint)
     }
@@ -816,6 +896,16 @@ impl FigImporter {
         if change.get("size").is_some() {
             node.width = f64_of(Some(&size), "x").max(0.);
             node.height = f64_of(Some(&size), "y").max(0.);
+        }
+        if fig_type == "LINE" && (node.width == 0. || node.height == 0.) {
+            let (w, h) = (node.width, node.height);
+            node.kind = "vector".into();
+            node.width = w.max(0.01);
+            node.height = h.max(0.01);
+            node.network = Some(serde_json::from_value(serde_json::json!({
+                "vertices":[{"id":"0","x":0.,"y":0.},{"id":"1","x":w,"y":h}],
+                "edges":[{"id":"0","from":"0","to":"1"}],"fillRule":"nonzero"
+            })).expect("static line network"));
         }
         // figma's relative transform maps the node's local (untransformed)
         // box into the parent; the kernel transform has identical semantics,
@@ -937,7 +1027,7 @@ impl FigImporter {
                         end_marker: cap.1,
                         id: String::new(),
                         paint,
-                        width: weight.max(0.01),
+                        width: weight,
                         align: match str_of(change, "strokeAlign") {
                             Some("INSIDE") => "inside",
                             Some("OUTSIDE") => "outside",
@@ -957,14 +1047,15 @@ impl FigImporter {
         if let Some(effects) = change.get("effects").and_then(Value::as_array) {
             for e in effects {
                 let etype = str_of(e, "type").unwrap_or("");
-                // EffectType has exactly four members; LAYER_BLUR does not
-                // exist in .fig (the REST API name) — FOREGROUND_BLUR is the
-                // layer blur of the native format.
+                // Native FOREGROUND_BLUR is the layer blur. Modern effect
+                // types must be modeled or rejected by validate_record.
                 let kind = match etype {
                     "DROP_SHADOW" => "shadow",
                     "INNER_SHADOW" => "inner-shadow",
                     "FOREGROUND_BLUR" => "blur",
                     "BACKGROUND_BLUR" => "background-blur",
+                    "GLASS" => "glass",
+                    "GRAIN" => "texture",
                     _ => continue,
                 };
                 let (ox, oy) = e
@@ -991,10 +1082,23 @@ impl FigImporter {
                         .unwrap_or_else(|| "#000000".into()),
                     opacity: alpha_of(e.get("color")),
                     amount: 0.,
-                    glass: None,
-                    texture: None,
+                    glass: if kind == "glass" { Some(crate::scene::GlassParameters {
+                        bevel_size: e.get("bevelSize").and_then(Value::as_f64),
+                        depth: f64_of(Some(e), "refractionRadius"),
+                        refraction: f64_of(Some(e), "refractionIntensity"),
+                        dispersion: f64_of(Some(e), "chromaticAberration"),
+                        light_angle: f64_of(Some(e), "specularAngle"),
+                        light_intensity: f64_of(Some(e), "specularIntensity"),
+                    }) } else { None },
+                    texture: if kind == "texture" { Some(crate::scene::TextureParameters {
+                        noise_size: [f64_of(e.get("noiseSize"), "x"), f64_of(e.get("noiseSize"), "y")],
+                        clip_to_shape: bool_of(e, "clipToShape").unwrap_or(false),
+                        noise: None,
+                    }) } else { None },
                     gradient_blur: None,
                     show_shadow_behind_node,
+                    color_controls: None,
+                    zoom_blur: None, motion_angle: 0.,
                 });
             }
         }
@@ -1039,6 +1143,14 @@ impl FigImporter {
 
         match fig_type {
             "TEXT" | "TABLE_CELL" => self.import_text(&mut node, change, untranslated),
+            "ELLIPSE" => {
+                if let Some(arc)=change.get("arcData") {
+                    let start=f64_of(Some(arc),"startingAngle");
+                    let mut sweep=f64_of(Some(arc),"endingAngle")-start;
+                    if sweep.abs()==(std::f64::consts::TAU as f32) as f64 {sweep=std::f64::consts::TAU.copysign(sweep);}
+                    node.arc=Some(crate::scene::EllipseArc {start_angle:start,sweep_angle:sweep,inner_radius:f64_of(Some(arc),"innerRadius")});
+                }
+            }
             "STAR" | "REGULAR_POLYGON" => {
                 node.points = change.get("count").and_then(Value::as_u64).unwrap_or(5) as usize;
                 // the native schema calls it starInnerScale
@@ -1052,141 +1164,22 @@ impl FigImporter {
                     Some("INTERSECT") => Some(crate::boolean::Operation::Intersect),
                     Some("SUBTRACT") => Some(crate::boolean::Operation::Subtract),
                     Some("XOR") => Some(crate::boolean::Operation::Exclude),
-                    _ => Some(crate::boolean::Operation::Union),
+                    None | Some("UNION") => Some(crate::boolean::Operation::Union),
+                    Some(other) => return Err(Error::Unsupported(format!("booleanOperation={other}"))),
                 };
             }
             "SYMBOL" => {
                 if let Some(g) = change.get("guid") {
                     node.bindings.insert("symbolID".into(), guid_string(g));
                 }
-                // 21 号 P2-14 componentProperties: the published component key
-                // and the property definitions (variants/variables) map onto
-                // the kernel component payload; COLOR props have no kernel
-                // PropertyKind and stay verbatim in bindings.
-                if let Some(key) = str_of(change, "componentKey").filter(|k| !k.is_empty()) {
-                    node.component_key = Some(key.to_string());
-                }
-                let mut component = crate::components::Component::default();
-                if let Some(defs) = change.get("componentPropDefs").and_then(Value::as_array) {
-                    for def in defs {
-                        if bool_of(def, "isDeleted").unwrap_or(false) {
-                            continue;
-                        }
-                        let Some(name) = str_of(def, "name") else {
-                            continue;
-                        };
-                        let kind = match str_of(def, "type") {
-                            Some("BOOL") => Some(crate::components::PropertyKind::Boolean),
-                            Some("TEXT") => Some(crate::components::PropertyKind::Text),
-                            Some("INSTANCE_SWAP") => {
-                                Some(crate::components::PropertyKind::InstanceSwap)
-                            }
-                            other => {
-                                if let Some(t) = other {
-                                    untranslated.push(format!("componentPropType={t}"));
-                                }
-                                None
-                            }
-                        };
-                        if let Some(kind) = kind {
-                            component.properties.insert(
-                                name.to_string(),
-                                crate::components::Property {
-                                    name: name.to_string(),
-                                    kind,
-                                    target_key: def.get("id").map(guid_string).unwrap_or_default(),
-                                    default_value: def
-                                        .get("initialValue")
-                                        .cloned()
-                                        .unwrap_or(Value::Null),
-                                },
-                            );
-                        }
-                    }
-                }
-                node.component = Some(component);
+                node.component = Some(crate::components::Component::default());
             }
             "INSTANCE" => {
-                if let Some(sd) = change.get("symbolData") {
-                    let component_id = sd
-                        .get("symbolID")
-                        .map(guid_string)
-                        .unwrap_or_else(|| "unknown".into());
-                    let mut overrides = crate::components::Overrides::new();
-                    if let Some(list) = sd.get("symbolOverrides").and_then(Value::as_array) {
-                        for ov in list {
-                            // entry key: overrideKey (GUID) in current schemas,
-                            // guidPath (GUIDPath) in older generations
-                            let path = ov
-                                .get("overrideKey")
-                                .map(guid_string)
-                                .or_else(|| {
-                                    ov.get("guidPath")
-                                        .and_then(|p| p.get("guids"))
-                                        .and_then(Value::as_array)
-                                        .map(|gs| {
-                                            gs.iter().map(guid_string).collect::<Vec<_>>().join("/")
-                                        })
-                                })
-                                .unwrap_or_else(|| "self".into());
-                            let mut fields = BTreeMap::new();
-                            if let Some(obj) = ov.as_object() {
-                                for (k, v) in obj {
-                                    if k == "guidPath" || k == "overrideKey" || k == "styleID" {
-                                        continue;
-                                    }
-                                    // translate fill/stroke paint arrays into kernel paints
-                                    if k == "fillPaints" || k == "strokePaints" {
-                                        if let Some(paints) = v.as_array() {
-                                            let converted: Vec<Value> = paints
-                                                .iter()
-                                                .filter_map(|p| {
-                                                    self.paint(p, untranslated).and_then(|kp| {
-                                                        serde_json::to_value(kp).ok()
-                                                    })
-                                                })
-                                                .collect();
-                                            fields.insert(k.clone(), Value::Array(converted));
-                                        }
-                                    } else {
-                                        fields.insert(k.clone(), v.clone());
-                                    }
-                                }
-                            }
-                            overrides.insert(path, fields);
-                        }
-                    }
-                    let mut instance = crate::components::Instance {
-                        slot_contents: Default::default(),
-                        component_id,
-                        overrides,
-                        property_values: BTreeMap::new(),
-                    };
-                    // 21 号 P2-14: assigned component property values
-                    // (variant/variable selections) keyed by their def GUID.
-                    if let Some(assignments) = change
-                        .get("componentPropAssignments")
-                        .and_then(Value::as_array)
-                    {
-                        for assignment in assignments {
-                            let Some(def_id) = assignment.get("defID") else {
-                                continue;
-                            };
-                            let key = guid_string(def_id);
-                            let value = assignment
-                                .get("value")
-                                .cloned()
-                                .filter(|v| !v.is_null())
-                                .unwrap_or_else(|| {
-                                    assignment.get("varValue").cloned().unwrap_or(Value::Null)
-                                });
-                            if !value.is_null() {
-                                instance.property_values.insert(key, value);
-                            }
-                        }
-                    }
-                    node.instance = Some(instance);
-                }
+                // Resolve references and literal values after tree assembly.
+                node.instance = Some(crate::components::Instance {
+                    component_id: String::new(), overrides: BTreeMap::new(),
+                    property_values: BTreeMap::new(), slot_contents: Default::default(),
+                });
             }
             "STICKY" => {
                 // Whiteboard sticky: frame + BoardContent{sticky}; the
@@ -1413,7 +1406,7 @@ impl FigImporter {
                 }
                 rule = Some(current);
                 fill.commands.extend(
-                    crate::fig_geometry::decode_commands(blob)
+                    crate::fig_geometry::decode_fill_commands(blob)
                         .map_err(Error::Malformed)?
                         .commands,
                 );
@@ -1570,6 +1563,7 @@ impl FigImporter {
                 let underline = str_of(change, "textDecoration") == Some("UNDERLINE");
                 if node.text_runs.is_empty() {
                     node.text_runs.push(crate::font::TextRun {
+                        paragraph: None,
                         text_case: None,
                         color: None,
                         underline,
@@ -1651,6 +1645,7 @@ fn styled_text_runs(
         utf16 = end;
         let entry = entry.expect("checked");
         let mut run = crate::font::TextRun {
+                        paragraph: None,
             text_case: text_case_of(str_of(entry, "textCase")),
             color: None,
             underline: false,
@@ -1678,7 +1673,9 @@ fn styled_text_runs(
             .and_then(|ps| ps.first())
             && let Some(color) = paint.get("color")
         {
-            run.color = Some(hex_color(color));
+            let mut color=color.clone();
+            color["a"]=Value::from(alpha_of(Some(&color))*paint.get("opacity").and_then(Value::as_f64).unwrap_or(1.));
+            run.color = Some(rgba_color(&color));
         }
         match str_of(entry, "textDecoration") {
             Some("UNDERLINE") => run.underline = true,
@@ -2028,6 +2025,17 @@ pub fn document_from_canvas(
         }
     }
 
+    for record in records.values().filter(|r| !bool_of(r, "internalOnly").unwrap_or(false)) {
+        for key in ["documentColorProfile", "colorProfile"] {
+            if let Some(profile) = str_of(record, key) {
+                if !matches!(profile, "LEGACY" | "SRGB") {
+                    return Err(Error::Unsupported(format!("{key}={profile}")));
+                }
+            }
+        }
+        importer.validate_record(record)?;
+    }
+
     // Classification pass: unknown node types are collected and rejected by
     // name — never silently coerced (ledger red line). Conditionally mapped
     // types (whiteboard shapes, tables) are validated against their payload
@@ -2199,6 +2207,7 @@ pub fn document_from_canvas(
         }
     }
     doc.nodes = nodes;
+    components::import(&mut doc, &records, &importer)?;
     // honest serialization version: bindings/booleans/text styles need 4,
     // stroke markers 8, slices 10 (scene.rs validate gates)
     let mut version = 1u32;
@@ -2212,6 +2221,7 @@ pub fn document_from_canvas(
     }) {
         version = version.max(4);
     }
+    if doc.nodes.values().any(|n|n.arc.is_some() || n.corner_radius!=0.) {version=version.max(7);}
     if crate::stroke::has_markers(&doc) {
         version = version.max(8);
     }
@@ -2261,7 +2271,22 @@ pub fn document_from_canvas(
     {
         version = version.max(10);
     }
+    if doc.nodes.values().any(|n| n.effects.iter().any(|e| e.glass.is_some() || e.texture.is_some())) {
+        version = version.max(13);
+    }
+    // Source receipts are inert metadata, never executable variable bindings.
+    let mut metadata = serde_json::Map::new();
+    for node in doc.nodes.values_mut() {
+        if !node.bindings.is_empty() {
+            metadata.insert(node.id.clone(), serde_json::json!({"format":"fig","bindings":std::mem::take(&mut node.bindings)}));
+        }
+    }
+    if !metadata.is_empty() {
+        doc.design_system.get_or_insert_with(Default::default).sketch_containers.insert("nodeMetadata".into(), Value::Object(metadata));
+        version=version.max(4);
+    }
     doc.schema_version = version;
+    doc.validate().map_err(|e| Error::Unsupported(format!("imported document: {e}")))?;
     Ok(doc)
 }
 
@@ -3167,6 +3192,10 @@ mod tests {
                 .unwrap_or_else(|| panic!("node fig-{session}-{local} present"))
         }
 
+        fn source_note<'a>(doc: &'a Document, node: &Node, key: &str) -> Option<&'a str> {
+            doc.design_system.as_ref()?.sketch_containers.get("nodeMetadata")?.get(&node.id)?.get("bindings")?.get(key)?.as_str()
+        }
+
         // ---------------- float wire format ----------------
 
         #[test]
@@ -3231,7 +3260,7 @@ mod tests {
             }
             let doc = doc_with(changes).unwrap();
             assert_eq!(node_of(&doc, 1, 10).kind, "frame");
-            assert_eq!(node_of(&doc, 1, 11).kind, "path");
+            assert_eq!(node_of(&doc, 1, 11).kind, "vector");
             assert_eq!(node_of(&doc, 1, 12).kind, "text");
             assert_eq!(node_of(&doc, 1, 13).kind, "slice");
             assert_eq!(node_of(&doc, 1, 14).kind, "section");
@@ -3404,7 +3433,7 @@ mod tests {
                 "reverse z-index flips the authored order"
             );
             assert_eq!(
-                f.bindings.get("figStackReverseZIndex").map(String::as_str),
+                source_note(&doc, f, "figStackReverseZIndex"),
                 Some("true")
             );
         }
@@ -3487,7 +3516,7 @@ mod tests {
             let doc = doc_with(changes).unwrap();
             let s = node_of(&doc, 1, 2).strokes.first().unwrap();
             assert!((s.width - 3.).abs() < 1e-9);
-            assert!(!node_of(&doc, 1, 2).bindings.contains_key("figUntranslated"));
+            assert!(!source_note(&doc, node_of(&doc, 1, 2), "figUntranslated").is_some());
         }
 
         #[test]
@@ -3502,7 +3531,7 @@ mod tests {
             changes.push(rect);
             let doc = doc_with(changes).unwrap();
             let n = node_of(&doc, 1, 2);
-            let note = n.bindings.get("figUntranslated").unwrap();
+            let note = source_note(&doc, n, "figUntranslated").unwrap();
             assert!(note.contains("borderStrokeWeightsIndependent"), "{note}");
         }
 
@@ -3524,7 +3553,7 @@ mod tests {
                 node_of(&doc, 1, 2).strokes[0].end_marker,
                 crate::stroke::Marker::Arrow
             );
-            let note = node_of(&doc, 1, 3).bindings.get("figUntranslated").unwrap();
+            let note = source_note(&doc, node_of(&doc, 1, 3), "figUntranslated").unwrap();
             assert!(note.contains("WASHI_TAPE_1"), "{note}");
         }
 
@@ -3584,10 +3613,10 @@ mod tests {
             assert_eq!(fx[0].kind, "shadow");
             assert!((fx[0].x - 4.).abs() < 1e-9 && (fx[0].y - 6.).abs() < 1e-9);
             assert!((fx[0].spread - 2.).abs() < 1e-9);
-            assert_eq!(fx[0].color, "#1a334d");
+            assert_eq!(fx[0].color, "color(srgb 0.10000000149011612 0.20000000298023224 0.30000001192092896 / 1)");
             assert!((fx[0].opacity - 0.5).abs() < 1e-9);
             assert_eq!(fx[1].kind, "inner-shadow");
-            assert_eq!(fx[1].color, "#801a1a");
+            assert_eq!(fx[1].color, "color(srgb 0.5 0.10000000149011612 0.10000000149011612 / 1)");
             assert!((fx[1].spread - 3.).abs() < 1e-9, "inner shadow spread");
             assert!((fx[1].x + 1.).abs() < 1e-9 && (fx[1].y + 2.).abs() < 1e-9);
             assert_eq!(fx[2].kind, "blur", "FOREGROUND_BLUR is the layer blur");
@@ -3624,7 +3653,7 @@ mod tests {
             assert!(style.wrap);
             assert_eq!(style.text_case, crate::font::TextCase::Upper);
             assert_eq!(doc.schema_version, 15);
-            let note = n.bindings.get("figUntranslated").unwrap();
+            let note = source_note(&doc, n, "figUntranslated").unwrap();
             assert!(!note.contains("textCase=UPPER"), "{note}");
             assert!(note.contains("fontName.family=Inter"), "{note}");
         }
@@ -3674,8 +3703,7 @@ mod tests {
             assert!(runs[1].strikethrough);
             assert_eq!(runs[0].text_case, Some(crate::font::TextCase::Lower));
             assert!(
-                !n.bindings
-                    .get("figUntranslated")
+                !source_note(&doc, n, "figUntranslated")
                     .is_some_and(|note| note.contains("textCase="))
             );
         }
@@ -3695,9 +3723,7 @@ mod tests {
             ]);
             changes.push(frame);
             let doc = doc_with(changes).unwrap();
-            let binding = node_of(&doc, 1, 2)
-                .bindings
-                .get("prototypeFlow")
+            let binding = source_note(&doc, node_of(&doc, 1, 2), "prototypeFlow")
                 .expect("prototypeFlow binding");
             let flows: Vec<Value> = serde_json::from_str(binding).unwrap();
             assert_eq!(flows.len(), 1, "deleted interactions are skipped");
@@ -3765,7 +3791,7 @@ mod tests {
             );
             assert!(n.component.is_some());
             assert_eq!(
-                n.bindings.get("symbolID").map(String::as_str),
+                source_note(&doc, n, "symbolID"),
                 Some("fig-1-2")
             );
             assert_eq!(n.children, vec!["fig-1-3".to_string()]);
@@ -3792,7 +3818,7 @@ mod tests {
             assert_eq!(instance.component_id, "fig-1-2");
             let fields = instance.overrides.get("fig-1-3").expect("override entry");
             // fillPaints translated to a kernel paint, fontSize kept raw
-            let paints = fields.get("fillPaints").and_then(Value::as_array).unwrap();
+            let paints = fields.get("fills").and_then(Value::as_array).unwrap();
             assert_eq!(paints[0]["color"], "#0000ff");
             assert_eq!(fields.get("fontSize"), Some(&json!(12.)));
         }
@@ -3809,7 +3835,7 @@ mod tests {
             let doc = doc_with(changes).unwrap();
             assert_eq!(doc.pages.len(), 1);
             assert_eq!(doc.pages[0].name, "Home");
-            assert_eq!(doc.pages[0].background, "#336699");
+            assert_eq!(doc.pages[0].background, "color(srgb 0.20000000298023224 0.4000000059604645 0.6000000238418579 / 1)");
         }
 
         #[test]
@@ -3850,6 +3876,11 @@ mod tests {
             op["booleanOperation"] = json!("XOR");
             changes.push(op);
             changes.push(base_change("BOOLEAN_OPERATION", 1, 3));
+            for (id,parent) in [(4,2),(5,3)] {
+                let mut child=base_change("RECTANGLE",1,id);
+                child["parentIndex"]=json!({"guid":guid(1,parent),"position":"!"});
+                changes.push(child);
+            }
             let doc = doc_with(changes).unwrap();
             assert_eq!(
                 node_of(&doc, 1, 2).boolean_operation,
@@ -3880,18 +3911,11 @@ mod tests {
 
         #[test]
         fn luminance_mask_maps_and_outline_reports() {
-            let mut changes = canvas_only();
-            let mut a = base_change("ELLIPSE", 1, 2);
-            a["mask"] = json!(true);
-            a["maskType"] = json!("LUMINANCE");
-            let mut b = base_change("ELLIPSE", 1, 3);
-            b["mask"] = json!(true);
-            b["maskType"] = json!("OUTLINE");
-            changes.extend([a, b]);
-            let doc = doc_with(changes).unwrap();
-            assert_eq!(node_of(&doc, 1, 2).mask_type.as_deref(), Some("luminance"));
-            let note = node_of(&doc, 1, 3).bindings.get("figUntranslated").unwrap();
-            assert!(note.contains("maskType=OUTLINE"), "{note}");
+            let mut changes=canvas_only();let mut mask=base_change("ELLIPSE",1,2);
+            mask["mask"]=json!(true);mask["maskType"]=json!("LUMINANCE");changes.push(mask.clone());
+            let doc=doc_with(changes).unwrap();assert_eq!(node_of(&doc,1,2).mask_type.as_deref(),Some("luminance"));
+            mask["maskType"]=json!("OUTLINE");let mut changes=canvas_only();changes.push(mask);
+            assert!(doc_with(changes).unwrap_err().to_string().contains("OUTLINE"));
         }
 
         #[test]
@@ -3991,9 +4015,7 @@ mod tests {
                 Some("python")
             );
             assert_eq!(n.text, "print(1)");
-            let note = node_of(&doc, 1, 3)
-                .bindings
-                .get("figUntranslated")
+            let note = source_note(&doc, node_of(&doc, 1, 3), "figUntranslated")
                 .expect("unsupported language reported");
             assert!(note.contains("codeBlockLanguage=CPP"), "{note}");
         }
@@ -4131,7 +4153,7 @@ mod tests {
             let c = n.connector.as_ref().unwrap();
             let anchor = c.from.anchor.unwrap();
             assert!((anchor.x - 0.5).abs() < 1e-9 && (anchor.y - 0.5).abs() < 1e-9);
-            let note = n.bindings.get("figUntranslated").unwrap();
+            let note = source_note(&doc, n, "figUntranslated").unwrap();
             assert!(note.contains("connectorMagnet=AUTO->center"), "{note}");
         }
 
@@ -4146,7 +4168,7 @@ mod tests {
             let doc = doc_with(changes).unwrap();
             let n = node_of(&doc, 1, 2);
             assert_eq!(n.connector.as_ref().unwrap().style, "straight");
-            let note = n.bindings.get("figUntranslated").unwrap();
+            let note = source_note(&doc, n, "figUntranslated").unwrap();
             assert!(note.contains("connectorLineStyle=CURVED"), "{note}");
         }
 
@@ -4178,93 +4200,18 @@ mod tests {
 
         #[test]
         fn image_scale_mode_maps_fill_and_fit() {
-            let mut changes = canvas_only();
-            let mut a = base_change("RECTANGLE", 1, 2);
-            a["fillPaints"] = json!([{
-                "type": "IMAGE",
-                "image": {"dataRef": "missing-ref"},
-                "imageScaleMode": "FILL",
-            }]);
-            let mut b = base_change("RECTANGLE", 1, 3);
-            b["fillPaints"] = json!([{
-                "type": "IMAGE",
-                "image": {"dataRef": "missing-ref"},
-                "imageScaleMode": "FIT",
-            }]);
-            let mut c = base_change("RECTANGLE", 1, 4);
-            c["fillPaints"] = json!([{
-                "type": "IMAGE",
-                "image": {"dataRef": "missing-ref"},
-                "imageScaleMode": "TILE",
-            }]);
-            let mut emoji = base_change("RECTANGLE", 1, 5);
-            emoji["fillPaints"] = json!([{
-                "type": "EMOJI",
-                "emojiCodePoints": [128512],
-            }]);
-            changes.extend([a, b, c, emoji]);
-            let doc = doc_with(changes).unwrap();
-            assert_eq!(node_of(&doc, 1, 2).fills[0].fit, "stretch");
-            assert_eq!(node_of(&doc, 1, 3).fills[0].fit, "contain");
-            assert_eq!(node_of(&doc, 1, 4).fills[0].fit, "cover");
-            // TILE maps to the pattern-fill grid; without authored tiling
-            // parameters (v106 Paint ordinals 27-30) the base mapping is a
-            // regular grid at the image's native size — and it is fully
-            // supported, so nothing lands in the untranslated report.
-            let tile = node_of(&doc, 1, 4).fills[0]
-                .tile
-                .as_ref()
-                .expect("grid tile");
-            assert_eq!(tile.mode, "grid");
-            assert_eq!(tile.size, [0., 0.], "0 = native patternTexSizePixels");
-            assert_eq!(tile.offset, [0., 0.]);
-            assert!(tile.alignment == ["start", "start"], "{:?}", tile.alignment);
-            assert!(
-                !node_of(&doc, 1, 4).bindings.contains_key("figUntranslated"),
-                "plain TILE must not be reported unsupported"
-            );
-            // EMOJI paint must not masquerade as a solid fill
-            assert!(node_of(&doc, 1, 5).fills.is_empty());
-            let note = node_of(&doc, 1, 5)
-                .bindings
-                .get("figUntranslated")
-                .expect("emoji paint reported");
-            assert!(note.contains("paintType=EMOJI"), "{note}");
+            let mut changes=canvas_only();
+            let mut image=base_change("RECTANGLE",1,2);
+            image["fillPaints"]=json!([{"type":"IMAGE","image":{"dataRef":"missing-ref"},"imageScaleMode":"FILL"}]);
+            changes.push(image);
+            assert!(doc_with(changes).unwrap_err().to_string().contains("image resource missing"));
         }
 
         #[test]
         fn tile_authored_tiling_parameters_map() {
-            let mut changes = canvas_only();
-            let mut a = base_change("RECTANGLE", 1, 2);
-            a["fillPaints"] = json!([{
-                "type": "IMAGE",
-                "image": {"dataRef": "missing-ref"},
-                "imageScaleMode": "TILE",
-                "patternTileType": "HORIZONTAL_HEXAGONAL",
-                "spacing": 96.,
-                "horizontalAlignment": "CENTER",
-                "verticalAlignment": "END",
-            }]);
-            let mut b = base_change("RECTANGLE", 1, 3);
-            b["fillPaints"] = json!([{
-                "type": "IMAGE",
-                "image": {"dataRef": "missing-ref"},
-                "imageScaleMode": "TILE",
-                "patternTileType": "VERTICAL_HEXAGONAL",
-            }]);
-            changes.extend([a, b]);
-            let doc = doc_with(changes).unwrap();
-            // kiwi Paint ordinals 27-30 (v106 schema): spacing → cell period,
-            // patternTileType → pattern-fill mode, alignments carried.
-            let tile = node_of(&doc, 1, 2).fills[0].tile.as_ref().unwrap();
-            assert_eq!(tile.mode, crate::pattern_fill::STAGGER_HORIZONTAL);
-            assert_eq!(tile.size, [96., 96.]);
-            assert_eq!(tile.alignment, ["center", "end"]);
-            assert!(tile.validate());
-            let tile = node_of(&doc, 1, 3).fills[0].tile.as_ref().unwrap();
-            assert_eq!(tile.mode, crate::pattern_fill::STAGGER_VERTICAL);
-            // no authored spacing keeps the 0 = native convention
-            assert_eq!(tile.size, [0., 0.]);
+            let importer=FigImporter {images:BTreeMap::from([("test".into(),vec![137])]),kiwi_blobs:vec![]};
+            let value=json!({"fillPaints":[{"type":"IMAGE","image":{"dataRef":"test"},"imageScaleMode":"TILE","spacing":96.,"horizontalAlignment":"CENTER"}]});
+            assert!(importer.validate_record(&value).unwrap_err().to_string().contains("not rendered"));
         }
 
         #[test]
@@ -4379,7 +4326,7 @@ mod tests {
             // kiwi Effect ordinal 8 is a real model slot now: carried, not
             // reported. The per-effect blend mode still has no slot.
             assert!(n.effects[0].show_shadow_behind_node);
-            let note = n.bindings.get("figUntranslated").unwrap();
+            let note = source_note(&doc, n, "figUntranslated").unwrap();
             assert!(note.contains("effectBlendMode=MULTIPLY"), "{note}");
             assert!(!note.contains("showShadowBehindNode"), "{note}");
             assert!(!node_of(&doc, 1, 3).effects[0].show_shadow_behind_node);
@@ -4422,58 +4369,28 @@ mod tests {
             assert_eq!(runs[0].start, 0);
             assert_eq!(runs[0].end, 4);
             assert!(runs[0].underline);
-            assert!(!node_of(&doc, 1, 2).bindings.contains_key("figUntranslated"));
+            assert!(!source_note(&doc, node_of(&doc, 1, 2), "figUntranslated").is_some());
         }
 
         // ---------------- component properties (21 号 P2-14) ----------------
 
         #[test]
         fn symbol_component_key_and_prop_defs_map() {
-            let mut changes = canvas_only();
-            let mut symbol = base_change("SYMBOL", 1, 2);
-            symbol["componentKey"] = json!("published-key-42");
-            symbol["componentPropDefs"] = json!([
-                {"id": {"sessionID": 1, "localID": 8}, "name": "state",
-                 "type": "BOOL", "initialValue": {"boolValue": false}},
-                {"id": {"sessionID": 1, "localID": 9}, "name": "label",
-                 "type": "TEXT", "initialValue": {"textValue": {"characters": "hi"}}},
-                {"id": {"sessionID": 1, "localID": 10}, "name": "tint",
-                 "type": "COLOR", "initialValue": null},
-            ]);
+            let mut changes=canvas_only();let mut symbol=base_change("SYMBOL",1,2);
+            symbol["componentPropDefs"]=json!([{"id":guid(1,8),"name":"Shown","type":"BOOL","initialValue":{"boolValue":true}}]);
             changes.push(symbol);
-            let doc = doc_with(changes).unwrap();
-            let n = node_of(&doc, 1, 2);
-            assert_eq!(n.component_key.as_deref(), Some("published-key-42"));
-            let component = n.component.as_ref().unwrap();
-            assert!(component.properties.contains_key("state"));
-            assert!(component.properties.contains_key("label"));
-            let prop = component.properties.get("state").unwrap();
-            assert_eq!(prop.kind, crate::components::PropertyKind::Boolean);
-            assert_eq!(prop.target_key, "fig-1-8");
-            // COLOR has no kernel PropertyKind: reported, not silent
-            let note = n.bindings.get("figUntranslated").unwrap();
-            assert!(note.contains("componentPropType=COLOR"), "{note}");
+            assert!(doc_with(changes).unwrap_err().to_string().contains("componentPropRef"));
         }
 
         #[test]
         fn instance_prop_assignments_map_to_property_values() {
-            let mut changes = canvas_only();
-            changes.push(base_change("SYMBOL", 1, 2));
-            let mut instance = base_change("INSTANCE", 1, 5);
-            instance["symbolData"] = json!({
-                "symbolID": {"sessionID": 1, "localID": 2},
-                "symbolOverrides": [],
-            });
-            instance["componentPropAssignments"] = json!([
-                {"defID": {"sessionID": 1, "localID": 8}, "value": {"boolValue": true}},
-            ]);
+            let mut changes=canvas_only();changes.push(base_change("SYMBOL",1,2));
+            let mut instance=base_change("INSTANCE",1,5);
+            instance["symbolData"]=json!({"symbolID":guid(1,2)});
+            instance["componentPropAssignments"]=json!([{"defID":guid(1,8),"value":{"boolValue":true}}]);
             changes.push(instance);
-            let doc = doc_with(changes).unwrap();
-            let inst = node_of(&doc, 1, 5).instance.as_ref().unwrap();
-            assert_eq!(
-                inst.property_values.get("fig-1-8"),
-                Some(&json!({"boolValue": true}))
-            );
+            assert!(doc_with(changes).unwrap_err().to_string().contains("unknown component property"));
         }
+
     }
 }

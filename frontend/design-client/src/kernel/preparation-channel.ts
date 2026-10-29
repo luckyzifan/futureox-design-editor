@@ -1,11 +1,11 @@
 import type { PreparationStateReceiptV1 } from './preparation-state'
-export type PreparationMethod = 'preparation_capabilities_v1' | 'derive_document_v1' | 'warm_resources' | 'initialize' | 'load_document' | 'apply_document_patch_with_damage' | 'apply_interaction_transforms' |
+export type PreparationMethod = 'preparation_capabilities_v1' | 'derive_document_v1' | 'warm_resources' | 'initialize' | 'load_document' | 'load_source_snapshot' | 'apply_document_patch_with_damage' | 'apply_interaction_transforms' |
   'compile_gpu_packet' | 'render_linear' | 'render_png' | 'render_color_png' | 'render_region_png' |
   'render_cpu_frame' | 'stats' | 'gpu_memory_breakdown'
 export type PreparationProgress = { backendCode: 1 | 2; boundaryCode: number; boundaryDurationMs?: number; bridgeBoundaryAt?: number }
 export type PreparationReply = { progress?: PreparationProgress; bridgeBoundaryAt?: number; id: number; value?: unknown; settings?: string; error?: string; fatal?: string; documentFork?: boolean; compileStats?:Record<string,unknown>; stateReceipt?: PreparationStateReceiptV1 | null }
 
-const methods: PreparationMethod[] = ['warm_resources','initialize','load_document','apply_document_patch_with_damage','apply_interaction_transforms','compile_gpu_packet','render_linear','render_png','render_color_png','render_region_png','render_cpu_frame','stats','gpu_memory_breakdown','preparation_capabilities_v1','derive_document_v1']
+const methods: PreparationMethod[] = ['warm_resources','initialize','load_document','apply_document_patch_with_damage','apply_interaction_transforms','compile_gpu_packet','render_linear','render_png','render_color_png','render_region_png','render_cpu_frame','stats','gpu_memory_breakdown','preparation_capabilities_v1','derive_document_v1','load_source_snapshot']
 type Diagnostics = { enabled: () => boolean; owner: () => number; record: (event: string, fields: Record<string, number | boolean>) => void }
 type Job = { cancellation?: Int32Array<SharedArrayBuffer>; cancellable?: boolean; owner?: number; queuedAt?: number; startedAt?: number; id: number; lane: string; method: PreparationMethod; args: unknown[];
   resolve: (reply: PreparationReply) => void; reject: (error: Error) => void; cleanup?: () => void; cancelled?: boolean; backendCode?: number; boundaryCode?: number; diagnosticTimer?: ReturnType<typeof setTimeout> }
@@ -17,9 +17,9 @@ export class PreparationChannel {
   private sequence = 0
   private operationSequence = 0
   private receipts = new Map<string, PreparationStateReceiptV1>()
-  private capability?: Promise<{ emptyDeltaDerivation: boolean; guardedPatchReceiptV1: boolean }>
+  private capability?: Promise<{ emptyDeltaDerivation: boolean; guardedPatchReceiptV1: boolean; nativeSourceSnapshot: boolean }>
   private static mutates(method: PreparationMethod) {
-    return ['initialize', 'load_document', 'apply_document_patch_with_damage', 'apply_interaction_transforms', 'derive_document_v1'].includes(method)
+    return ['initialize', 'load_document', 'load_source_snapshot', 'apply_document_patch_with_damage', 'apply_interaction_transforms', 'derive_document_v1'].includes(method)
   }
   currentReceipt(lane: string): PreparationStateReceiptV1 | undefined {
     if (this.closed || [this.active, ...this.queued].some(job => job && PreparationChannel.mutates(job.method) &&
@@ -28,13 +28,15 @@ export class PreparationChannel {
   }
   private capabilities() {
     return this.capability ??= this.request('canvas', 'preparation_capabilities_v1').then(reply => {
-      const value = reply.value as { protocol?: unknown; emptyDeltaDerivation?: unknown; guardedPatchReceiptV1?: unknown } | undefined
+      const value = reply.value as { protocol?: unknown; emptyDeltaDerivation?: unknown; guardedPatchReceiptV1?: unknown; nativeSourceSnapshot?:unknown } | undefined
       return { emptyDeltaDerivation: value?.protocol === 1 && value.emptyDeltaDerivation === true,
-        guardedPatchReceiptV1: value?.protocol === 1 && value.guardedPatchReceiptV1 === true }
-    }, () => ({ emptyDeltaDerivation: false, guardedPatchReceiptV1: false }))
+        guardedPatchReceiptV1: value?.protocol === 1 && value.guardedPatchReceiptV1 === true,
+        nativeSourceSnapshot:value?.protocol===1&&value.nativeSourceSnapshot===true }
+    }, () => ({ emptyDeltaDerivation: false, guardedPatchReceiptV1: false, nativeSourceSnapshot:false }))
   }
   supportsDerivation(): Promise<boolean> { return this.capabilities().then(value => value.emptyDeltaDerivation) }
   supportsGuardedPatch(): Promise<boolean> { return this.capabilities().then(value => value.guardedPatchReceiptV1) }
+  supportsNativeSource(): Promise<boolean> { return this.capabilities().then(value => value.nativeSourceSnapshot) }
   private static guardedPatch(job: Pick<Job, 'method' | 'args'>) {
     return job.method === 'apply_document_patch_with_damage' && job.args.length === 2
   }

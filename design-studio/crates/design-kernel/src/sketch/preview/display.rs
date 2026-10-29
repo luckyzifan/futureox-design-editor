@@ -237,7 +237,7 @@ impl Projection<'_> {
                     );
                 }
                 p.kind = "image".into();
-                p.image = Some(key);
+                p.image = Some(key.into());
                 p.fit = match num(v, "patternFillType", 1.) as i32 {
                     1 => "cover",
                     2 => "stretch",
@@ -444,6 +444,8 @@ impl Projection<'_> {
                     texture: None,
                     gradient_blur: None,
                     show_shadow_behind_node: false,
+                    color_controls: None,
+                    zoom_blur: None, motion_angle: 0.,
                 })
             }
         }
@@ -469,6 +471,8 @@ impl Projection<'_> {
                 texture: None,
                 gradient_blur: None,
                 show_shadow_behind_node: false,
+                color_controls: None,
+                zoom_blur: None, motion_angle: 0.,
             });
         }
         if yes(&style["colorControls"], "isEnabled", false) {
@@ -545,8 +549,8 @@ impl Projection<'_> {
                 let op = match code {
                     -1 | 0 => Operation::Union,
                     1 => Operation::Subtract,
-                    2 => Operation::Intersect,
-                    3 => Operation::Exclude,
+                    2 => Operation::Exclude,
+                    3 => Operation::Intersect,
                     _ => return Err(Error::Unsupported("Sketch boolean operation".into())),
                 };
                 if i == n.children.len() - 1 {
@@ -663,6 +667,7 @@ impl Projection<'_> {
             let font_name = font["name"].as_str().unwrap_or("default");
             self.fonts.insert(font_name.into());
             n.text_runs.push(TextRun {
+                        paragraph: None,
                 text_case: None,
                 start,
                 end,
@@ -806,9 +811,9 @@ pub fn display_snapshot(session: &Session, page_id: &str) -> Result<DisplaySnaps
             if let Some(key) = &paint.image {
                 paint.image = Some(
                     p.assets
-                        .get(key)
+                        .get(key.as_ref())
                         .ok_or_else(|| Error::Missing("Sketch projected image".into()))?
-                        .clone(),
+                        .clone().into(),
                 );
             }
         }

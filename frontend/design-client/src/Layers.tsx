@@ -48,7 +48,7 @@ import { DraftInput } from './DraftInput'
 import { layerSelection } from './layer-selection'
 import { layerDropPlan, layerDropPosition, orderedLayerRoots, type LayerDropPosition } from './layer-drop'
 import type { WorkspaceSection } from './EditorChrome'
-export function Layers({ editor, section, onSection }: { editor: Editor; section?: WorkspaceSection; onSection?: (section: WorkspaceSection) => void }) {
+export function Layers({ editor, section, onSection, showPages=true }: { editor: Editor; section?: WorkspaceSection; onSection?: (section: WorkspaceSection) => void; showPages?:boolean }) {
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
   const renderSession = editor.sessionGeneration
   const [localTab, setLocalTab] = useState<WorkspaceSection>('layers')
@@ -122,7 +122,14 @@ export function Layers({ editor, section, onSection }: { editor: Editor; section
     cancelPointerDrag()
   }
   useEffect(() => () => editor.hoverLayer(null, 'layers'), [editor, tab, editor.sessionGeneration, s.page])
-  useEffect(() => { cancelPointerDrag(); setRenaming(null); selectionAnchor.current = null; setFocused(null) }, [editor.sessionGeneration, s.page])
+  useEffect(() => {
+    cancelPointerDrag(); setRenaming(null); selectionAnchor.current = null; setFocused(null)
+    // Searches describe this page/workset. Carrying an old query into a newly
+    // loaded source page can hide every layer and make a successful switch
+    // look like data loss. Ordinary edits/camera changes keep the query.
+    setSearch(''); setScroll(0)
+    if (list.current) list.current.scrollTop = 0
+  }, [editor, renderSession, s.doc.id, s.page])
   useEffect(() => {
     if (!s.selection.length) { reveal.current = null; return }
     const parents = editor.parentMap(s.doc), ancestors = new Set<string>()
@@ -223,7 +230,7 @@ export function Layers({ editor, section, onSection }: { editor: Editor; section
           <small>{s.doc.name}</small>
         </div>
       </div>
-      <PageList editor={editor} onRename={renameIntendedPage} />
+      {showPages&&<><PageList editor={editor} onRename={renameIntendedPage} />
       <div className="pages-actions">
         <button
           title="删除当前页面"
@@ -237,7 +244,7 @@ export function Layers({ editor, section, onSection }: { editor: Editor; section
           <Trash2 size={12} />
           删除页面
         </button>
-      </div>
+      </div></>}
       <div className="layer-heading">
         <div role="tablist" aria-label="侧栏内容" style={{ display: 'contents' }}>
           {(['layers', 'assets'] as const).map((name, index) => <button key={name} type="button"

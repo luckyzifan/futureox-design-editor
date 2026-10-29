@@ -1,4 +1,5 @@
 import { textureByteLength } from './texture-byte-length'
+import { validateLinearImageDimensions, writeLinearImageRows } from './linear-image-rows'
 import vectorFragment from './vector.glsl?raw'
 import { minifiedPreviewRgba8 } from './rgba8'
 import sampling from './sampling.glsl?raw'
@@ -135,7 +136,11 @@ export class WebGlDriver implements Driver {
       this.modePrograms.set(12, this.program)
       this.modePrograms.set(0, this.compileMode(0))
       this.presentProgram = this.compileMode(14)
-    } else this.program = this.presentProgram = program(quad, fragment)
+    } else {
+      this.program = this.presentProgram = program(quad, fragment)
+      this.compileMode = mode => program(quad, fragment.replace(byteSampling, sampling)
+        .replace('#version 300 es', `#version 300 es\n#define COMPOSITOR_MODE ${mode}`))
+    }
     if (managed) this.createFilter = () => program(quad, exactFilterGlsl(this.certifiedFilter))
     this.areaProgram = program(quad, areaShaderGlsl)
     this.meshProgram = program(mesh, white)
@@ -163,8 +168,7 @@ export class WebGlDriver implements Driver {
   }
   async prepareScene(scene: GpuScene) {
     this.softwareRaster = !!scene.softwareRaster && !this.managed
-    if (!this.managed) return
-    const modes = compositorModes(scene)
+    const modes = this.managed ? compositorModes(scene) : new Set([...compositorModes(scene)].filter(mode => mode === 61 || mode === 62))
     if (Object.keys(scene.nodes).length) modes.add(3)
     this.allowedModes = modes
   }
@@ -253,6 +257,15 @@ export class WebGlDriver implements Driver {
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false)
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, bitmap)
     return t
+  }
+  uploadLinearRows(width:number,height:number,rows:import('../image-row-source').LinearImageRows){
+    if(!this.managed)throw Error('PNG float rows require managed textures')
+    validateLinearImageDimensions(width,height)
+    const texture=this.create(width,height)
+    try{
+      writeLinearImageRows(width,height,rows,(y,h,values)=>this.uploadAtlasLinear(texture,0,y,width,h,values))
+      return texture
+    }catch(error){this.destroy(texture);throw error}
   }
   uploadLinear(values: Float32Array, width: number, height: number) {
     if (!this.managed || values.length !== width * height * 4) throw new Error('无效的浮点纹理')
@@ -566,7 +579,7 @@ export class WebGlDriver implements Driver {
     if (inputs.includes(target)) throw new Error('GPU texture feedback loop')
     gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer!)
     gl.viewport(0, 0, target.width, target.height)
-    const program = u[16] === 31 ? this.areaProgram : this.managed && u[16] === 22 ? this.filterProgram : this.managed ? this.compositorProgram(u[16]) : this.program
+    const program = u[16] === 31 ? this.areaProgram : this.managed && u[16] === 22 ? this.filterProgram : (this.managed || u[16] === 61 || u[16] === 62) ? this.compositorProgram(u[16]) : this.program
     if (!program) throw new Error(`Exact compositor pipeline ${u[16]} not prepared`)
     gl.useProgram(program)
     gl.bindVertexArray(this.quadVao)

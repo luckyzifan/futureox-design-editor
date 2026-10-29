@@ -7,6 +7,21 @@ export function exactBlendLattice(rects: Rect[]): boolean {
   return rects.every(r => Object.values(r).every(v => Number.isInteger(v) && Math.abs(v) <= 1048576))
 }
 
+/** Original normal-over writable footprint and saved bilinear neighbours.
+ * Fused paints must touch this same ring: even a transparent source can
+ * canonicalize destination zero/NaN neighbours at the sampling boundary. */
+export function normalMergeRegion(source:Rect,target:Rect):{region:Rect;before?:Rect}|undefined {
+  const affected=intersect({x:source.x-1,y:source.y-1,w:source.w+2,h:source.h+2},target)
+  const x=Math.max(0,Math.floor(affected.x-target.x)),y=Math.max(0,Math.floor(affected.y-target.y))
+  const w=Math.max(0,Math.min(target.w,Math.ceil(affected.x+affected.w-target.x))-x)
+  const h=Math.max(0,Math.min(target.h,Math.ceil(affected.y+affected.h-target.y))-y)
+  const region={x,y,w,h}
+  if(!w||!h)return {region}
+  if(w*h*2>=target.w*target.h)return
+  const left=Math.max(0,x-1),top=Math.max(0,y-1)
+  return {region,before:{x:target.x+left,y:target.y+top,w:Math.min(target.w,x+w+2)-left,h:Math.min(target.h,y+h+2)-top}}
+}
+
 /** Only pixels whose complete filter footprint exists in both captures can
  * reuse the previous result. Keep all four nonoverlapping boundary strips. */
 export function backdropOverlap(previous: Rect, next: Rect, support: number) {

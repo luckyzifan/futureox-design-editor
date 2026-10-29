@@ -25,6 +25,7 @@ import type { ImportedDesign } from './import-svg'
 import { emptySystem } from './design-system'
 import { importFigTextRuns } from './import-fig-text'
 import { figImageAdjust } from './import-fig-image'
+import { importFigComponents } from './import-fig-components'
 
 const MAX = 64 * 1024 * 1024
 function collector(limit = MAX, compressedLength?: number) {
@@ -148,15 +149,13 @@ export function decodeFig(bytes: Uint8Array) {
   return { data: decodeKiwi(decodeBinarySchema(schema), data), files }
 }
 const guid = (g: any) => (typeof g === 'string' ? g : g ? `${g.sessionID}:${g.localID}` : '')
-const rgb = (c: any) =>
-  '#' +
-  ['r', 'g', 'b']
-    .map((k) =>
-      Math.round(Math.max(0, Math.min(1, Number(c?.[k] || 0))) * 255)
-        .toString(16)
-        .padStart(2, '0'),
-    )
-    .join('')
+const rgb = (c: any) => {
+  const values = ['r','g','b'].map(k=>c?.[k] ?? 0)
+  if(values.some(v=>typeof v!=='number'||!Number.isFinite(v)))throw new Error('FIG 颜色数值无效')
+  if(values.every(v=>v>=0&&v<=1&&Math.round(v*255)/255===v))
+    return '#'+values.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('')
+  return `color(srgb ${values.join(' ')} / 1)`
+}
 // Figma keeps alpha on each stop's Color, independently of paint opacity.
 // Use the same portable straight-RGBA representation as the Sketch codec.
 const gradientStopColor = (c: any) => {
@@ -333,7 +332,7 @@ function importLayout(n: DesignNode, r: FigLayoutRecord, parent?: FigLayoutRecor
     }
   }
 }
-export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesign {
+export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesign & { backend: 'typescript-fig' } {
   const { data, files } = decodeFig(bytes),
     doc = blank(name),
     warnings = boundedImportWarnings(),
@@ -407,6 +406,19 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       if (!mime) throw new Error('FIG 图片格式暂不支持')
       result.image = `data:image/${mime};base64,${bytesData(bytes)}`
       result.adjust = figImageAdjust(p)
+      if (p.imageScaleMode !== undefined && !['STRETCH','FIT','FILL','TILE'].includes(p.imageScaleMode))
+        throw new Error(`FIG 图片缩放 ${p.imageScaleMode} 暂不支持`)
+      if (p.imageScaleMode === 'TILE') {
+        if ((p.spacing ?? 0)!==0 || (p.patternSpacing?.x ?? 0)!==0 || (p.patternSpacing?.y ?? 0)!==0 ||
+          (p.scale ?? 1)!==1 || (p.rotation ?? 0)!==0 ||
+          !['START',undefined].includes(p.horizontalAlignment) || !['START',undefined].includes(p.verticalAlignment))
+          throw new Error('FIG 平铺的间距、缩放、旋转或对齐尚不能无损导入；原文件未修改')
+        const modes={RECTANGULAR:'grid',HORIZONTAL_HEXAGONAL:'stagger_horizontal',VERTICAL_HEXAGONAL:'stagger_vertical'} as const
+        const mode=p.patternTileType ?? 'RECTANGULAR'
+        if(!(mode in modes))throw new Error(`FIG 平铺模式 ${mode} 暂不支持`)
+        result.tile={mode:modes[mode as keyof typeof modes],size:[0,0],offset:[0,0],alignment:['start','start']}
+      }
+
       result.fit =
         p.imageScaleMode === 'FIT'
           ? 'contain'
@@ -473,9 +485,17 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       .toLowerCase()
       .replaceAll('_', '-') as typeof n.blend
     n.mask = !!r.mask
+    if (n.mask && r.maskType !== undefined && !['ALPHA', 'LUMINANCE'].includes(r.maskType))
+      throw new Error(`FIG 蒙版 ${r.maskType} 暂不支持；原文件未修改`)
     n.maskType = r.maskType === 'LUMINANCE' ? 'luminance' : 'alpha'
     n.clip = kind === 'frame' && !r.frameMaskDisabled
-    if (kind === 'polygon' || kind === 'star') n.points = r.count ?? n.points
+    if (kind === 'polygon' || kind === 'star') { n.points = r.count ?? n.points; n.cornerRadius = r.cornerRadius ?? 0 }
+    if (kind === 'ellipse' && r.arcData) {
+      const start=r.arcData.startingAngle ?? 0
+      let sweep=(r.arcData.endingAngle ?? 0)-start
+      if(Math.abs(sweep)===Math.fround(Math.PI*2))sweep=Math.sign(sweep)*Math.PI*2
+      n.arc={startAngle:start,sweepAngle:sweep,innerRadius:r.arcData.innerRadius ?? 0}
+    }
     if (kind === 'star') n.innerRadius = r.starInnerScale ?? n.innerRadius
     n.fills = (r.fillPaints || r.backgroundPaints || []).map(toPaint)
     let strokeWidth = r.strokeWeight ?? 1
@@ -618,25 +638,14 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       }
     }
     if (r.type === 'SYMBOL') n.component = { variants: {}, properties: {} }
-    if (r.type === 'INSTANCE') {
-      const definition = ids.get(guid(r.symbolData?.symbolID))
-      if (definition) {
-        n.instance = { componentId: definition, overrides: {}, propertyValues: {} }
-        if (r.symbolData?.symbolOverrides?.length)
-          warnings.add('实例覆盖需要检查，已按主组件重新解析')
-      } else warnings.add('外部实例缺少主组件，保留为普通画板')
-    }
+    if (r.type === 'INSTANCE') n.instance = { componentId: '', overrides: {}, propertyValues: {} }
     if (r.type === 'BOOLEAN_OPERATION') n.network = { vertices: [], edges: [], fillRule: 'evenodd' }
-    if (r.type === 'BOOLEAN_OPERATION')
-      n.booleanOperation =
-        (
-          {
-            UNION: 'union',
-            SUBTRACT: 'subtract',
-            INTERSECT: 'intersect',
-            EXCLUDE: 'exclude',
-          } as const
-        )[r.booleanOperation as 'UNION'] || 'union'
+    if (r.type === 'BOOLEAN_OPERATION') {
+      const operations = { UNION: 'union', SUBTRACT: 'subtract', INTERSECT: 'intersect', XOR: 'exclude' } as const
+      const operation = r.booleanOperation ?? 'UNION'
+      if (!(operation in operations)) throw new Error(`FIG 布尔运算 ${operation} 暂不支持；原文件未修改`)
+      n.booleanOperation = operations[operation as keyof typeof operations]
+    }
     importLayout(n, r, records.get(guid(r.parentIndex?.guid)))
     doc.nodes[n.id] = n
   }
@@ -659,6 +668,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     children.push(id)
   }
   if (!doc.pages.length) throw new Error('FIG 文件没有可导入页面')
+  importFigComponents(doc, records, ids, toPaint)
   if (
     [...records.values()].some(
       (r) => r.prototypeInteractions || r.componentPropDefs || r.boundVariables,
@@ -670,9 +680,11 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
   )
     ? 5
     : 4
+  if(Object.values(doc.nodes).some(n=>n.arc || n.cornerRadius))doc.schemaVersion=Math.max(7,doc.schemaVersion) as typeof doc.schemaVersion
   if (Object.values(doc.nodes).some(n=>[...n.fills,...n.strokes.map(s=>s.paint)].some(p=>p.adjust))) doc.schemaVersion = 13
+  if(Object.values(doc.nodes).some(n=>[...n.fills,...n.strokes.map(s=>s.paint)].some(p=>p.tile)))doc.schemaVersion=Math.max(14,doc.schemaVersion) as typeof doc.schemaVersion
   if(Object.values(doc.nodes).some(n=>n.vectorGeometry))doc.schemaVersion=16
   else if(Object.values(doc.nodes).some(n=>n.network?.filledFaces!==undefined))doc.schemaVersion=Math.max(10,doc.schemaVersion) as typeof doc.schemaVersion
   if (Object.values(doc.nodes).some(n=>(n.textStyle?.textCase && n.textStyle.textCase !== 'original') || n.textRuns?.some(r=>r.textCase !== undefined))) doc.schemaVersion = Math.max(15,doc.schemaVersion) as typeof doc.schemaVersion
-  return { document: doc, ...warnings.result() }
+  return { document: doc, backend: 'typescript-fig', ...warnings.result() }
 }

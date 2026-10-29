@@ -1,6 +1,7 @@
 import { CpuStage, measureCpuStage } from '../cpu-stage-diagnostics'
 import { documentPatch, equalValue } from '../document-patch'
 import {
+  noise_fill_preset_json,
   hit_test_json,
   hit_test_device_json,
   hit_test_fill_device_json,
@@ -22,6 +23,10 @@ import { loadKernelResourcePair } from './kernel-resources'
 import type { DesignNode, Point, DesignDocument, Bounds, Matrix } from '../model'
 import { defaultLayout, defaultSizing, validateVariableModes } from '../model'
 import { translationOnlyChanges } from './translation-preview'
+export function kernelNoiseFillPreset(): import('../model').Paint {
+  if(!ready)throw Error('编辑内核尚未就绪')
+  return JSON.parse(noise_fill_preset_json()) as import('../model').Paint
+}
 let ready = false
 let preparationResources: Readonly<{ wasmSha256: string; fontSha256: string; bundled: boolean }> | undefined
 /** The immutable base WASM/font resources, not the mutable document-font epoch. */

@@ -1,4 +1,5 @@
 import { failureAllocationFields, inheritFailureAllocation } from '../../../design-desktop/src/render-failure-allocation.mjs'
+import { textureFailureFields, inheritTextureFailure } from '../../../design-desktop/src/render-texture-failure.mjs'
 import { runtimeConfigurationFields, inheritRuntimeConfiguration } from '../../../design-desktop/src/render-runtime-configuration.mjs'
 /** Content-free classifications only. Inspect exact known messages/classes, never
  * serialize arbitrary names, messages, stacks, cause chains or document values. */
@@ -9,6 +10,22 @@ export type RenderFailureTag = { failureStage?: number; failureCategory?: number
 // 4 device lost,5 validation,6 protocol.
 const tags = new WeakMap<object, RenderFailureTag>()
 const known: readonly [string, number, number][] = [
+ ["Combined filter dependency halo exceeds 2048 device pixels", 3, 136],
+ ["画布瓦片预览超时，请重试", 3, 137],
+ ["Exact large blur radius must be in (2048,4096]", 2, 138],
+ ["Large exact filter packet exceeds 64 KiB", 3, 139],
+ ["Invalid bounded shadow coefficient packet", 5, 140],
+ ["Decoded image budget exceeded", 3, 141],
+ ["PNG row source dimensions exceed bounded admission", 3, 142],
+ ["PNG row decoding requires unrotated source pixels", 2, 143],
+ ["PNG row decoding requires a noninterlaced still image", 2, 143],
+ ["PNG row decoding requires lossless 8-bit expanded channels", 2, 143],
+ ["Incomplete PNG row source", 5, 144],
+ ["Incomplete PNG row upload", 5, 144],
+ ["Truncated PNG rows", 5, 144],
+ ["Invalid PNG row upload dimensions", 5, 145],
+ ["Invalid PNG row upload range", 5, 145],
+ ["Invalid PNG row upload pixel", 5, 145],
  // Fixed native compiler literals only. These codes do not infer a cause for older unknown failures.
  ["GPU transform exceeds precision budget", 5, 119],
  ["Render options must be an object", 5, 120],
@@ -86,6 +103,9 @@ const known: readonly [string, number, number][] = [
  ['文档补丁版本未同步，请重试当前画布',6,56], ['PREPARATION_SESSION_EXHAUSTED',6,57],
 ]
 const codes = new Map(known.map(([message, category, code]) => [message, { failureCategory: category, failureCode: code }]))
+const knownCode=(message:string)=>codes.get(message)??(
+ /^Decoded image budget exceeded: [0-9]{1,10}x[0-9]{1,10} source pixels cannot fit without loss; automatic downsampling is disabled$/.test(message)
+ ? {failureCategory:3,failureCode:141}:undefined)
 const object = (error: unknown): error is object => (typeof error === 'object' && error !== null) || typeof error === 'function'
 export function markRenderFailure<T>(error: T, input: RenderFailureTag): T {
  if (!object(error)) return error
@@ -125,9 +145,9 @@ export function renderFailureFields(error: unknown): Record<string, number> & { 
  try {
   if (error instanceof Error) {
    errorClassCode = error instanceof SyntaxError ? 2 : error instanceof RangeError ? 3 : error instanceof TypeError ? 4 : 1
-   if (typeof error.message === 'string' && error.message.length <= 256) exact = codes.get(error.message)
+   if (typeof error.message === 'string' && error.message.length <= 256) exact = knownCode(error.message)
    if (!exact && error instanceof SyntaxError) exact={failureCategory:5,failureCode:60}
-  } else if (typeof error === 'string' && error.length <= 256) exact = codes.get(error)
+  } else if (typeof error === 'string' && error.length <= 256) exact = knownCode(error)
   const globals = globalThis as unknown as Record<string, unknown>
   for (const [name, klass, category] of [['GPUValidationError',5,5],['GPUOutOfMemoryError',6,3],['GPUInternalError',7,0]] as const) {
    const ctor = globals[name]
@@ -135,13 +155,13 @@ export function renderFailureFields(error: unknown): Record<string, number> & { 
   }
  } catch { /* A hostile getter/class check yields explicit unknown, never text. */ }
  const category = tagged?.failureCategory ?? exact?.failureCategory ?? 0
- return { ...(category === 3 ? { ...failureBudgetFields(error), ...runtimeConfigurationFields(error), ...failureAllocationFields(error) } : {}), failureCategory: category,
+ return { ...textureFailureFields(error), ...(category === 3 ? { ...failureBudgetFields(error), ...runtimeConfigurationFields(error), ...failureAllocationFields(error) } : {}), failureCategory: category,
   ...(tagged?.failureOriginCode ? { failureOriginCode: tagged.failureOriginCode } : {}),
   ...(tagged?.failureBuildKind ? { failureBuildKind: tagged.failureBuildKind } : {}),
   failureCode: tagged?.failureCode ?? exact?.failureCode ?? 0, failureStage: tagged?.failureStage ?? 0, errorClassCode }
 }
 export function inheritRenderFailure<T>(source: unknown, target: T): T {
- return markRenderFailure(inheritFailureAllocation(source,inheritRuntimeConfiguration(source,target)),renderFailureFields(source))
+ return markRenderFailure(inheritTextureFailure(source,inheritFailureAllocation(source,inheritRuntimeConfiguration(source,target))),renderFailureFields(source))
 }
 export function withRenderFailureStage<T>(stage: number, work: () => T): T {
  try {

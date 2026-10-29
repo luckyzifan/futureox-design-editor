@@ -38,9 +38,9 @@ struct Edit {
 }
 #[derive(Default)]
 struct Navigation {
-    offsets: Vec<u32>,
-    children: Vec<u32>,
-    roots: Vec<u32>,
+    offsets: Vec<usize>,
+    children: Vec<usize>,
+    roots: Vec<usize>,
     names: Vec<Option<String>>,
 }
 #[derive(Clone, Serialize, Deserialize)]
@@ -108,29 +108,28 @@ impl DiskIndex {
     }
     pub fn refresh_navigation(&mut self) {
         let count = self.entries.len();
-        let mut offsets = vec![0u32; count + 1];
+        let mut offsets = vec![0usize; count + 1];
         let mut roots = Vec::new();
         for (n, row) in self.entries.iter().enumerate() {
             if let Some(parent) = row.parent {
                 offsets[parent + 1] += 1;
             } else {
-                roots.push(n as u32);
+                roots.push(n);
             }
         }
         for i in 1..offsets.len() {
             offsets[i] += offsets[i - 1];
         }
-        let mut children = vec![0u32; offsets[count] as usize];
+        let mut children = vec![0usize; offsets[count] as usize];
         let mut next = offsets.clone();
         for (n, row) in self.entries.iter().enumerate() {
             if let Some(parent) = row.parent {
-                children[next[parent] as usize] = n as u32;
+                children[next[parent] as usize] = n;
                 next[parent] += 1;
             }
         }
-        // With the global one-million-row admission, CSR + optional 24-byte
-        // lowercase names stay below 64 MiB across all parts. Long names use
-        // the original row on demand, so caching never truncates search matches.
+        // Native-width locators do not impose a product row-count quota.
+        // Cache only short lowercase names; long names are searched on demand.
         let names = self
             .entries
             .iter()
@@ -146,7 +145,7 @@ impl DiskIndex {
             names,
         });
     }
-    pub fn children(&self, parent: Option<usize>) -> &[u32] {
+    pub fn children(&self, parent: Option<usize>) -> &[usize] {
         match parent {
             None => &self.navigation.roots,
             Some(n) => {
@@ -273,9 +272,6 @@ impl DiskIndex {
         result.entries.splice(n..end, rows);
         result.locations.splice(n..end, locations);
         result.generations.splice(n..end, generations);
-        if result.entries.len() > large_json::MAX_INDEX_VALUES {
-            return Err(issue("Source object index count exceeded"));
-        }
         result.refresh_navigation();
         Ok(result)
     }

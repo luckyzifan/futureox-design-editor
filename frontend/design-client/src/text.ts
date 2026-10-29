@@ -12,6 +12,12 @@ export function applyWholeTextStyle(node: DesignNode, patch: Partial<TextStyle>)
   for (const run of node.textRuns || []) {
     if (patch.fontId !== undefined) delete run.fontId
     if (patch.weight !== undefined) delete run.weight
+    if (run.paragraph) {
+      if (patch.align !== undefined) run.paragraph.align = patch.align
+      if (patch.paragraphSpacing !== undefined) run.paragraph.spacing = patch.paragraphSpacing
+      if (patch.paragraphIndent !== undefined) run.paragraph.indent = patch.paragraphIndent
+      if (patch.lineHeight !== undefined) run.paragraph.minimumLineHeight = run.paragraph.maximumLineHeight = patch.lineHeight * (run.fontSize ?? node.fontSize)
+    }
   }
 }
 

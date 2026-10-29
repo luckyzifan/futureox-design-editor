@@ -1,7 +1,19 @@
 // Trusted startup policy, never authored metadata or a renderer/MCP parameter.
 import { totalmem, freemem } from 'node:os'
 import { readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 const MIB = 1024 * 1024
+export function macosAvailableMemoryBytes(text) {
+  const size=/page size of ([0-9]+) bytes/.exec(text.split('\n')[0])?.[1]
+  if(!size)return undefined
+  const page=Number(size)
+  if(!Number.isSafeInteger(page)||page<4096||page>65536||(page&(page-1))!==0)return undefined
+  const pages=label=>{const value=text.split('\n').find(line=>line.startsWith(label))?.slice(label.length).trim();return value&&/^[0-9]+\.$/.test(value)?BigInt(value.slice(0,-1)):undefined}
+  const free=pages('Pages free:'),inactive=pages('Pages inactive:')
+  if(free===undefined||inactive===undefined)return undefined
+  const bytes=(free+inactive)*BigInt(page)
+  return bytes>0n&&bytes<=BigInt(Number.MAX_SAFE_INTEGER)?Number(bytes):undefined
+}
 export function selectDocumentMemoryBytes({ total, available, constrained = 0, configured } = {}) {
   const usable = [total, available, constrained].filter(value => Number.isSafeInteger(value) && value > 0)
   // This application shares documents with wasm32. Its address space is a
@@ -17,6 +29,11 @@ export function selectDocumentMemoryBytes({ total, available, constrained = 0, c
   return value
 }
 function availableMemory() {
+  if(process.platform==='darwin'){
+    // Node's free-memory reading omits reclaimable inactive queues on macOS.
+    // Match native startup accounting, once, using a fixed OS executable.
+    try{const available=macosAvailableMemoryBytes(execFileSync('/usr/bin/vm_stat',[],{encoding:'utf8',env:{LC_ALL:'C'},timeout:1000,maxBuffer:16*1024}));if(available)return available}catch{}
+  }
   const reported = typeof process.availableMemory === 'function' ? process.availableMemory() : 0
   if (Number.isSafeInteger(reported) && reported > 0) return reported
   if (process.platform === 'linux') {

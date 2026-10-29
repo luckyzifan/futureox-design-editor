@@ -423,12 +423,7 @@ fn parent_map(doc: &Document) -> BTreeMap<&str, &str> {
 /// Effect support in page units, using the compiler's existing halo policy.
 /// Effects consume the completed subtree, not just the node's own geometry.
 fn effect_margin(n: &Node, m: Transform) -> f64 {
-    n.effects
-        .iter()
-        .filter(|e| e.visible)
-        .map(|e| e.blur_radius() * 2. + e.spread.abs() + e.x.abs() + e.y.abs() + e.material_halo())
-        .sum::<f64>()
-        * m.max_scale()
+    n.effect_outset(m.max_scale())
 }
 
 /// Stroke allowance belongs only to this node's paths. Keep it separate from
@@ -456,13 +451,35 @@ fn union_box(a: &mut [f64; 4], b: [f64; 4]) {
 /// node's effects expand the union of its own geometry and completed children.
 /// Invisible nodes still contribute bounds when they might become the
 /// difference between revisions; the caller unions both revisions.
-fn subtree_bounds_from(
+fn subtree_bounds_from(doc:&Document,id:&str,matrix:Transform,fonts:Option<&Fonts>,device:bool)->Option<[f64;4]> {
+    subtree_bounds_observed(doc,id,matrix,fonts,device,false,&mut|_,_|true)
+}
+/// Shared conservative geometry oracle, once per node. Only the new radial
+/// filter's source planner needs this map; ordinary damage queries stay unchanged.
+pub(crate) fn render_bounds_map(doc:&Document,roots:&[String],camera:Transform,fonts:&Fonts)
+    ->Result<std::collections::HashMap<String,([f64;4],Transform)>,String> {
+    let mut result=std::collections::HashMap::new();
+    result.try_reserve(doc.nodes.len()).map_err(|_|"Zoom bounds allocation failed")?;
+    for id in roots {
+        let value=subtree_bounds_observed(doc,id,camera,Some(fonts),true,false,&mut|id,value|{
+            if crate::render_cancellation::checkpoint().is_err(){return false}
+            if let Some(value)=value {result.insert(id.to_owned(),value);} true
+        });
+        if value.is_none(){crate::render_cancellation::checkpoint()?;return Err("Unable to bound zoom source geometry".into())}
+    }
+    Ok(result)
+}
+
+fn subtree_bounds_observed<F: FnMut(&str, Option<([f64;4], Transform)>) -> bool>(
         doc: &Document,
         id: &str,
         matrix: Transform,
         fonts: Option<&Fonts>,
         device: bool,
+        controls: bool,
+        observe: &mut F,
     ) -> Option<[f64; 4]> {
+        if !observe(id,None) {return None;}
         let Some(node) = doc.nodes.get(id) else {
             return None;
         };
@@ -502,7 +519,16 @@ fn subtree_bounds_from(
         }
         // Include actual authored curve/glyph geometry as well as the
         // selection box. Curves and unwrapped text may extend outside W/H.
-        let paths = if node.kind == "text" {
+        // Page-background certificates may use a wider authored control hull.
+        // Damage and zoom dependency oracles retain their original tight paths.
+        // Unknown/generated curves keep the exact path builder below.
+        let control = controls.then(||crate::geometry_support::leaf_control_bounds(node,m)).flatten();
+        let paths = if let Some(actual)=control {
+            let b=[f64::from(actual.x)-margin,f64::from(actual.y)-margin,
+                f64::from(actual.right())+margin,f64::from(actual.bottom())+margin];
+            if !b.iter().all(|v|v.is_finite()){return None}
+            union_box(&mut bounds,b);None
+        } else if node.kind == "text" {
             if node.text.is_empty() {
                 None
             } else {
@@ -545,7 +571,7 @@ fn subtree_bounds_from(
         // in world units, including their own effects; never transform twice.
         let mut children: Option<[f64; 4]> = None;
         for child in &node.children {
-            let child = subtree_bounds_from(doc, child, m, fonts, device)?;
+            let child = subtree_bounds_observed(doc, child, m, fonts, device, controls, observe)?;
             if let Some(children) = &mut children {
                 union_box(children, child);
             } else {
@@ -570,9 +596,8 @@ fn subtree_bounds_from(
             }
             union_box(&mut bounds, expanded);
         }
-        ((bounds[2] - bounds[0]).is_finite()
-            && (bounds[3] - bounds[1]).is_finite())
-            .then_some(bounds)
+        if !(bounds[2]-bounds[0]).is_finite() || !(bounds[3]-bounds[1]).is_finite() {return None;}
+        observe(id,Some((bounds,m))).then_some(bounds)
     }
 
 fn subtree_bounds(
@@ -600,6 +625,29 @@ fn subtree_bounds(
     subtree_bounds_from(doc, id, matrix, fonts, false)
 }
 
+/// A root's selection box is included unconditionally in page_paint_rects.
+/// If that lower bound already covers this whole output, the full proof
+/// cannot supply a background texel here. Decline only this optional request;
+/// never publish the small box as complete page support or cache it as None.
+/// Use the same zero-translation arithmetic then translation as the cached
+/// page proof, including its existing per-root margin operation order.
+pub(crate) fn page_background_can_sample(doc:&Document,page:&str,camera:Transform,translation:[f64;2],output:crate::math::Rect)->bool {
+    let Some(page)=doc.pages.iter().find(|p|p.id==page)else{return true};
+    for id in &page.children {
+        let Some(node)=doc.nodes.get(id)else{continue};let m=camera.concat(node.transform);
+        let halo=effect_margin(node,m);let margin=halo.ceil()+stroke_margin(node,m).ceil()+4.;
+        if !halo.is_finite()||halo<0.||!margin.is_finite(){continue}
+        let mut b=[f64::INFINITY,f64::INFINITY,f64::NEG_INFINITY,f64::NEG_INFINITY];
+        for p in [crate::math::Point::new(0.,0.),crate::math::Point::new(node.width,0.),crate::math::Point::new(0.,node.height),crate::math::Point::new(node.width,node.height)] {
+            let p=m.point(p);if !p.finite(){return true}
+            b[0]=b[0].min(p.x-margin);b[1]=b[1].min(p.y-margin);b[2]=b[2].max(p.x+margin);b[3]=b[3].max(p.y+margin);
+        }
+        if b[0]+translation[0]<=f64::from(output.x)&&b[1]+translation[1]<=f64::from(output.y)&&
+            b[2]+translation[0]>=f64::from(output.right())&&b[3]+translation[1]>=f64::from(output.bottom()){return false}
+    }
+    true
+}
+
 /// Complete conservative page paint support at this exact physical sampling
 /// scale. No viewport culling; unknown effects decline the certificate.
 /// Extra device pixels cover rounding/filter neighbours through every ancestor.
@@ -608,9 +656,10 @@ pub(crate) fn page_paint_rects(doc:&Document,page:&str,fonts:&Fonts,camera:Trans
     // cannot certify an arbitrarily extended marker as empty background.
     if crate::stroke::has_markers(doc) { return None; }
     if doc.nodes.values().any(|n|n.effects.iter().any(|e|e.visible&&!matches!(e.kind.as_str(),
-        "blur"|"shadow"|"inner-shadow"|"background-blur"|"glass"|"noise"|"texture"))) {return None;}
+        "blur"|"gaussian-blur"|"motion-blur"|"zoom-blur"|"color-controls"|"shadow"|"inner-shadow"|"background-blur"|"glass"|"noise"|"texture"))) {return None;}
     let page=doc.pages.iter().find(|p|p.id==page)?;
-    let rects:Vec<_>=page.children.iter().map(|id|subtree_bounds_from(doc,id,camera,Some(fonts),true)).collect::<Option<_>>()?;
+    let rects:Vec<_>=page.children.iter().map(|id|subtree_bounds_observed(doc,id,camera,Some(fonts),true,true,
+        &mut|_,_|crate::render_cancellation::checkpoint().is_ok())).collect::<Option<_>>()?;
     rects.iter().all(|b|b.iter().all(|v|v.is_finite()&&v.abs()<=16_000_000.)).then_some(rects)
 }
 
@@ -2172,5 +2221,42 @@ mod parent_map_reuse_tests {
         assert_eq!(index.get("frame"), None);
         assert_eq!(map.get("leaf"), Some(&"frame"));
         assert_eq!(index.get("leaf"), Some(&"frame"));
+    }
+}
+
+#[cfg(test)] mod page_control_tests {
+    use super::*;
+    use serde_json::json;
+    fn document()->Document {serde_json::from_value(json!({"schemaVersion":20,"id":"d","name":"page-proof","pages":[{"id":"p","name":"p","children":["group"],"background":"#fff"}],"nodes":{
+        "group":{"id":"group","kind":"group","width":1,"height":1,"transform":[1.25,0.125,-0.375,0.75,1000.125,-928.375],"children":["curve"],"effects":[{"kind":"shadow","radius":3.75,"x":-2.25,"color":"#000000"}]},
+        "curve":{"id":"curve","kind":"vector","width":10,"height":10,"transform":[0.5,-0.2,0.125,1.3,-1000.125,928.375],"vectorGeometry":{"fillRule":"nonzero","fill":[{"move":[-20,1]},{"cubic":[-100,30,280,-140,110,80]},{"line":[4,170]},"close"]},"strokes":[{"width":3.25,"paint":{"kind":"solid","color":"#000000"}}],"effects":[{"kind":"gaussian-blur","radius":1.125,"color":"#000000"}]}
+    }})).unwrap()}
+    #[test] fn page_controls_enclose_original_geometry_with_affine_effects_and_fallbacks(){
+        for offset in [0.,2.] {
+            let mut d=document();d.nodes.get_mut("curve").unwrap().path_offset=offset;
+            for scale in [0.001,0.125,1.,1.25,19.,64.,128.] {
+                let camera=Transform([scale,0.,0.,scale,0.25,-0.375]);let fonts=Fonts::new();
+                let old=subtree_bounds_from(&d,"group",camera,Some(&fonts),true).unwrap();
+                let new=page_paint_rects(&d,"p",&fonts,camera).unwrap()[0];
+                assert!(new[0]<=old[0]&&new[1]<=old[1]&&new[2]>=old[2]&&new[3]>=old[3],"offset={offset}, scale={scale}: {new:?} vs {old:?}");
+                if offset!=0. {assert_eq!(new,old)}
+            }
+        }
+    }
+    #[test] fn covered_output_declines_only_useless_background_sampling(){
+        let mut d=document();let root=d.nodes.get_mut("group").unwrap();root.width=1000.;root.height=1000.;root.transform=Transform::default();
+        for scale in [0.125,1.,19.,64.] {for shift in [[0.,0.],[17.25,-9.375]] {
+            let camera=Transform([scale,0.,0.,scale,0.,0.]);
+            let output=crate::math::Rect::new(32,32,32,32);
+            assert!(!page_background_can_sample(&d,"p",camera,shift,output));
+            let full=page_paint_rects(&d,"p",&Fonts::new(),camera).unwrap()[0];
+            assert!(full[0]+shift[0]<=32.&&full[1]+shift[1]<=32.&&full[2]+shift[0]>=64.&&full[3]+shift[1]>=64.);
+            assert!(page_background_can_sample(&d,"p",camera,shift,crate::math::Rect::new(1000000,0,64,64)));
+        }}
+    }
+    #[test] fn cancelled_page_proof_stops_before_curve_expansion(){
+        let d=document();let fonts=Fonts::new();
+        let stopped=crate::render_cancellation::with_probe(||true,||page_paint_rects(&d,"p",&fonts,Transform::default()));
+        assert!(stopped.is_none());assert!(page_paint_rects(&d,"p",&fonts,Transform::default()).is_some());
     }
 }

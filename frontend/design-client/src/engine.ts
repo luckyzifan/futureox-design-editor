@@ -22,7 +22,7 @@ import { expandRepeats, repeatSourceId } from './repeat-transforms'
 import * as ComponentSlots from './component-slots'
 import { previewLayoutSuggestion, applyLayoutSuggestion, type LayoutSuggestionPreview } from './layout-suggestions'
 import { interfacePreference } from './interface-preference'
-import { CameraState } from './camera-state'
+import { CameraState, savedCamera } from './camera-state'
 import { hasGradientBlur,hasLocalTools,hasRulerGuides,hasLayoutGrids,hasImageAdjusts,hasPatternTiles } from './model'
 import { inferred_layout_json } from './generated/design-kernel/design_kernel'
 import { prepareSelectionScale } from './selection-scale'
@@ -61,6 +61,10 @@ import {
   container,
   maskChild,
   validateDocument,
+  hasSchema17Features,
+  hasSchema18Features,
+  hasSchema19Features,
+  hasSchema20Features,
   hasLocalVariableModes,
   hasStrokeMarkers,
   hasLayerExports,
@@ -193,6 +197,10 @@ type History = { doc: DesignDocument; page: string; selection: string[]; label: 
 class GeometryCancelled extends Error {}
 export type EditorEditEvent = { documentId: string; session: number; revision: number; source: 'user' | 'automation'; kind: 'edit' | 'undo' | 'redo'; summary: string }
 export class Editor {
+  private mutationRestriction?:string
+  /** A navigation-only view may share camera/chrome without pretending that
+   * its small UI document owns every cold source node. */
+  setMutationRestriction(message?:string){this.mutationRestriction=message}
   private publishedScene?: CanvasSceneBorrow
   /** Borrow Canvas's two existing slots; no extra geometry/history cache. */
   bindPublishedScene(borrow: CanvasSceneBorrow | undefined) {
@@ -444,7 +452,10 @@ export class Editor {
         patch = { ...patch, view: saved?.view || { x: 40, y: 40, zoom: 1 } }
       }
     }
-    if (patch.view !== undefined) this.discardPendingView()
+    if (patch.view !== undefined) {
+      this.discardPendingView()
+      patch={...patch,view:savedCamera(patch.view)||this.state.view}
+    }
     const next = { ...this.state, ...patch }
     // Explicit raw messages supersede presentation tags even when text is equal.
     // Selection/camera updates do not shorten the existing notification lifetime.
@@ -497,7 +508,7 @@ export class Editor {
   /** Park a camera write to commit at most once per animation frame. */
   setViewCoalesced(next: EditorState['view']) {
     if (this.disposed) return
-    this.pendingView = next
+    this.pendingView = savedCamera(next)||this.effectiveView()
     if (this.pendingFrame !== null) return
     this.pendingFrame = requestAnimationFrame(() => {
       this.pendingFrame = null
@@ -578,6 +589,7 @@ export class Editor {
     // Trusted local admission after materialization, before history/publication.
     admitResolved?: (document: DesignDocument) => void,
   ) {
+    if(this.mutationRestriction){this.notify(this.mutationRestriction);return {status:'rejected' as const,revision:this.state.version,message:this.mutationRestriction}}
     if (!this.propertyPreviewWrite && !this.settleOwnedPropertyPreview('edit'))
       return { status: 'rejected' as const, revision: this.state.version, message: '请先完成颜色输入' }
     const before = this.history(label)
@@ -602,6 +614,10 @@ export class Editor {
         draft.schemaVersion = Math.max(2, draft.schemaVersion) as 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
         if (draft.schemaVersion < 15 && hasSchema15Features(authored)) draft.schemaVersion = 15
         if(draft.schemaVersion < 16 && Object.values(authored.nodes).some(n=>n.vectorGeometry))draft.schemaVersion=16
+        if(draft.schemaVersion < 17 && hasSchema17Features(authored))draft.schemaVersion=17
+        if(draft.schemaVersion < 18 && hasSchema18Features(authored))draft.schemaVersion=18
+        if(draft.schemaVersion < 20 && hasSchema20Features(authored))draft.schemaVersion=20
+        if(draft.schemaVersion < 19 && hasSchema19Features(authored))draft.schemaVersion=19
         draft.rasterProfile ??= before.doc.rasterProfile || 'analytic'
         // Before component/dependency cleanup, only root schema/profile fields
         // have changed. Inspect finalized authored nodes here to avoid creating
@@ -923,7 +939,7 @@ export class Editor {
         if (candidate.schemaVersion < 6 && hasLocalVariableModes(candidate)) candidate.schemaVersion = Math.max(candidate.schemaVersion, 6) as 6 | 7 | 8 | 9 | 10
         if (candidate.schemaVersion < 7 && Object.values(candidate.nodes).some(n => n.arc || n.cornerRadius || n.constrainProportions)) candidate.schemaVersion = Math.max(7, candidate.schemaVersion) as 7 | 8 | 9 | 10
         if (candidate.schemaVersion < 9 && hasGradientBlur(candidate)) candidate.schemaVersion = Math.max(9,candidate.schemaVersion) as 9 | 10
-        if(candidate.schemaVersion < 10 && hasLocalTools(candidate))candidate.schemaVersion=Math.max(10,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 11 && hasRulerGuides(candidate as DesignDocument))candidate.schemaVersion=Math.max(11,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 12 && hasLayoutGrids(candidate as DesignDocument))candidate.schemaVersion=Math.max(12,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 13 && hasImageAdjusts(candidate as DesignDocument))candidate.schemaVersion=Math.max(13,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 14 && hasPatternTiles(candidate as DesignDocument))candidate.schemaVersion=Math.max(14,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 15 && hasSchema15Features(candidate))candidate.schemaVersion=15;if(candidate.schemaVersion < 16 && Object.values(candidate.nodes).some(n=>n.vectorGeometry))candidate.schemaVersion=16
+        if(candidate.schemaVersion < 10 && hasLocalTools(candidate))candidate.schemaVersion=Math.max(10,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 11 && hasRulerGuides(candidate as DesignDocument))candidate.schemaVersion=Math.max(11,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 12 && hasLayoutGrids(candidate as DesignDocument))candidate.schemaVersion=Math.max(12,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 13 && hasImageAdjusts(candidate as DesignDocument))candidate.schemaVersion=Math.max(13,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 14 && hasPatternTiles(candidate as DesignDocument))candidate.schemaVersion=Math.max(14,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 15 && hasSchema15Features(candidate))candidate.schemaVersion=15;if(candidate.schemaVersion < 16 && Object.values(candidate.nodes).some(n=>n.vectorGeometry))candidate.schemaVersion=16;if(candidate.schemaVersion < 17 && hasSchema17Features(candidate))candidate.schemaVersion=17;if(candidate.schemaVersion < 18 && hasSchema18Features(candidate))candidate.schemaVersion=18;if(candidate.schemaVersion < 20 && hasSchema20Features(candidate))candidate.schemaVersion=20;if(candidate.schemaVersion < 19 && hasSchema19Features(candidate))candidate.schemaVersion=19
         if (candidate.schemaVersion < 8 && (hasStrokeMarkers(candidate) || hasLayerExports(candidate))) candidate.schemaVersion = Math.max(8,candidate.schemaVersion) as 8 | 9 | 10
         const visible=move?this.movePreviewDocument(candidate,move.ids,move.point,move.force,move.preserveParent):candidate
         if (visible !== candidate) validateStructure(visible)
@@ -999,6 +1015,7 @@ export class Editor {
     }
   }
   undo(source: EditorEditEvent['source'] = 'user') {
+    if(this.mutationRestriction){this.notify(this.mutationRestriction);return}
     this.repeatedDuplicate = null
     // First Undo only cancels the owned draft, not the preceding authored edit.
     if (this.propertyPreview) { this.cancelProperty(this.propertyPreview.lease); return }
@@ -1038,6 +1055,7 @@ export class Editor {
     finally { action.finish() }
   }
   redo(source: EditorEditEvent['source'] = 'user') {
+    if(this.mutationRestriction){this.notify(this.mutationRestriction);return}
     this.repeatedDuplicate = null
     if (!this.settleOwnedPropertyPreview('edit')) return
     const action = beginEditorAction(this, CanvasAction.redo, ActionSource.unknown, 229)
@@ -1519,7 +1537,7 @@ export class Editor {
       if (candidate.schemaVersion < 6 && hasLocalVariableModes(candidate)) candidate.schemaVersion = Math.max(candidate.schemaVersion, 6) as 6 | 7 | 8 | 9 | 10
       if (candidate.schemaVersion < 7 && Object.values(candidate.nodes).some(n => n.arc || n.cornerRadius || n.constrainProportions)) candidate.schemaVersion = Math.max(7, candidate.schemaVersion) as 7 | 8 | 9 | 10
       if (candidate.schemaVersion < 9 && hasGradientBlur(candidate)) candidate.schemaVersion = Math.max(9,candidate.schemaVersion) as 9 | 10
-      if(candidate.schemaVersion < 10 && hasLocalTools(candidate))candidate.schemaVersion=Math.max(10,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 11 && hasRulerGuides(candidate as DesignDocument))candidate.schemaVersion=Math.max(11,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 12 && hasLayoutGrids(candidate as DesignDocument))candidate.schemaVersion=Math.max(12,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 13 && hasImageAdjusts(candidate as DesignDocument))candidate.schemaVersion=Math.max(13,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 14 && hasPatternTiles(candidate as DesignDocument))candidate.schemaVersion=Math.max(14,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 15 && hasSchema15Features(candidate))candidate.schemaVersion=15;if(candidate.schemaVersion < 16 && Object.values(candidate.nodes).some(n=>n.vectorGeometry))candidate.schemaVersion=16
+      if(candidate.schemaVersion < 10 && hasLocalTools(candidate))candidate.schemaVersion=Math.max(10,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 11 && hasRulerGuides(candidate as DesignDocument))candidate.schemaVersion=Math.max(11,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 12 && hasLayoutGrids(candidate as DesignDocument))candidate.schemaVersion=Math.max(12,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 13 && hasImageAdjusts(candidate as DesignDocument))candidate.schemaVersion=Math.max(13,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 14 && hasPatternTiles(candidate as DesignDocument))candidate.schemaVersion=Math.max(14,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 15 && hasSchema15Features(candidate))candidate.schemaVersion=15;if(candidate.schemaVersion < 16 && Object.values(candidate.nodes).some(n=>n.vectorGeometry))candidate.schemaVersion=16;if(candidate.schemaVersion < 17 && hasSchema17Features(candidate))candidate.schemaVersion=17;if(candidate.schemaVersion < 18 && hasSchema18Features(candidate))candidate.schemaVersion=18;if(candidate.schemaVersion < 20 && hasSchema20Features(candidate))candidate.schemaVersion=20;if(candidate.schemaVersion < 19 && hasSchema19Features(candidate))candidate.schemaVersion=19
       if (candidate.schemaVersion < 8 && (hasStrokeMarkers(candidate) || hasLayerExports(candidate))) candidate.schemaVersion = Math.max(8,candidate.schemaVersion) as 8 | 9 | 10
       this.set({ doc: kernelLayout(candidate) })
     } catch (error) {

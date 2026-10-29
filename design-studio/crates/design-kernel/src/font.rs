@@ -47,6 +47,8 @@ pub fn faces_json(bytes: &[u8]) -> Result<String, String> {
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct TextStyle {
+    #[serde(skip_serializing_if = "is_top")]
+    pub vertical_align: String,
     #[serde(skip_serializing_if = "TextCase::is_original")]
     pub text_case: TextCase,
     pub paragraph_spacing: f64,
@@ -101,9 +103,11 @@ pub struct TextVariation {
     pub tag: String,
     pub value: f64,
 }
+fn is_top(s: &str) -> bool { s == "top" }
 impl Default for TextStyle {
     fn default() -> Self {
         Self {
+            vertical_align: "top".into(),
             text_case: TextCase::Original,
             paragraph_spacing: 0.,
             paragraph_indent: 0.,
@@ -121,9 +125,37 @@ impl Default for TextStyle {
         }
     }
 }
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
+pub struct TextParagraph {
+    pub align: String,
+    /// Absolute document units; zero means unconstrained font-based height.
+    pub minimum_line_height: f64,
+    pub maximum_line_height: f64,
+    pub spacing: f64,
+    pub indent: f64,
+}
+impl Default for TextParagraph {
+    fn default() -> Self { Self { align: "start".into(), minimum_line_height: 0., maximum_line_height: 0., spacing: 0., indent: 0. } }
+}
+impl TextParagraph {
+    pub fn validate(&self) -> Result<(), String> {
+        if !["start", "center", "end", "justify"].contains(&self.align.as_str())
+            || [self.minimum_line_height, self.maximum_line_height, self.spacing].iter().any(|v| !v.is_finite() || !(0. ..=10000.).contains(v))
+            || !self.indent.is_finite() || self.indent.abs() > 10000.
+            || (self.maximum_line_height > 0. && self.minimum_line_height > self.maximum_line_height) {
+            return Err("Invalid paragraph style".into());
+        }
+        Ok(())
+    }
+}
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TextRun {
+    /// Paragraph attributes at the first character of each paragraph. UTF-16
+    /// ranges stay with their text through editing, case mapping and overrides.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paragraph: Option<TextParagraph>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text_case: Option<TextCase>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -350,7 +382,8 @@ fn valid_font_id(id: &str) -> bool {
 }
 impl TextStyle {
     pub fn validate(&self) -> Result<(), String> {
-        if !valid_font_id(&self.font_id)
+        if !["top", "center", "bottom"].contains(&self.vertical_align.as_str())
+            || !valid_font_id(&self.font_id)
             || self.fallbacks.len() > 16
             || self.fallbacks.iter().any(|id| !valid_font_id(id))
             || !self.weight.is_finite()
@@ -407,6 +440,7 @@ pub fn validate_node(node: &Node) -> Result<(), String> {
     }
     let mut end = 0;
     for run in &node.text_runs {
+        if let Some(p) = &run.paragraph { p.validate()?; }
         if run.start < end
             || run
                 .color
@@ -905,7 +939,7 @@ impl Fonts {
                 &fallback
             }
         };
-        self.layout(
+        let mut result = self.layout(
             &node.text,
             node.font_size,
             style,
@@ -913,7 +947,22 @@ impl Fonts {
             width,
             output,
             node.text_path.as_ref(),
-        )
+        )?;
+        if style.writing_mode == "horizontal" && node.text_path.is_none() {
+            let offset = (node.height - result.height).max(0.) * match style.vertical_align.as_str() { "center" => 0.5, "bottom" => 1., _ => 0. };
+            if offset != 0. {
+                let matrix = crate::math::Transform([1.,0.,0.,1.,0.,offset]);
+                crate::text_path::transform_outline(&mut result.path, matrix);
+                for span in &mut result.spans {
+                    crate::text_path::transform_outline(&mut span.outline, matrix);
+                    if output == OutlineOutput::Svg { span.path = span.outline.svg_data(); }
+                }
+                for glyph in &mut result.glyphs { glyph.y += offset; }
+                for line in &mut result.lines { line.y += offset; }
+                if output == OutlineOutput::Svg { result.bounds = crate::bounds::path_bounds(&result.path, crate::math::Transform::default()); }
+            }
+        }
+        Ok(result)
     }
     pub fn node_measure(&self, node: &Node, width: Option<f64>) -> Result<TextLayout, String> {
         validate_node(node)?;
@@ -944,6 +993,7 @@ impl Fonts {
             &node.text,
             node.font_size.to_bits(),
             node.width.to_bits(),
+            node.height.to_bits(),
             &node.text_style,
             &node.text_runs,
             &node.text_path,
@@ -1346,6 +1396,16 @@ impl Fonts {
         }
         paragraphs.push(start..text.len());
         for paragraph in paragraphs {
+            let attributes = runs.iter().find(|r| r.start <= utf16[paragraph.start] && utf16[paragraph.start] < r.end).and_then(|r| r.paragraph.as_ref());
+            let mut paragraph_style;
+            let style = if let Some(p) = attributes {
+                p.validate()?;
+                paragraph_style = style.clone();
+                paragraph_style.align = p.align.clone();
+                paragraph_style.paragraph_spacing = p.spacing;
+                paragraph_style.paragraph_indent = p.indent;
+                &paragraph_style
+            } else { style };
             let value = &text[paragraph.clone()];
             let initial = self.shape(value, paragraph.start, size, style, runs, &utf16)?;
             let mut clusters = BTreeMap::<usize, f64>::new();
@@ -1512,7 +1572,7 @@ impl Fonts {
                     }
                     continue;
                 }
-                let mut ascent = if shaped.is_empty() {
+                let mut ascent = if shaped.is_empty() || attributes.is_some() {
                     0.
                 } else {
                     // Seed the line box with the style font's ascent floor; a
@@ -1525,12 +1585,27 @@ impl Fonts {
                     face.ascender() as f64 * size / face.units_per_em() as f64
                 };
                 let mut height = size * style.line_height;
+                let mut natural = 0f64;
                 for glyph in &shaped {
                     let face = self.face(&glyph.font_id, glyph.weight)?;
                     let face = face.borrow_face();
                     ascent = ascent
                         .max(face.ascender() as f64 * glyph.size / face.units_per_em() as f64);
                     height = height.max(glyph.size * style.line_height);
+                    natural = natural.max((face.ascender() as f64 - face.descender() as f64 + face.line_gap() as f64) * glyph.size / face.units_per_em() as f64);
+                }
+                if let Some(p) = attributes {
+                    if shaped.is_empty() {
+                        let face = self.face(&style.font_id, style.weight)?;
+                        let face = face.borrow_face();
+                        natural = (face.ascender() as f64 - face.descender() as f64 + face.line_gap() as f64) * size / face.units_per_em() as f64;
+                        ascent = face.ascender() as f64 * size / face.units_per_em() as f64;
+                    }
+                    height = natural.max(p.minimum_line_height);
+                    if p.maximum_line_height > 0. { height = height.min(p.maximum_line_height); }
+                    // Center the font metrics in the constrained line box.
+                    // Keep unrounded document-space values; raster sampling stays unchanged.
+                    ascent += (height - natural) / 2.;
                 }
                 let line_width = (shaped.iter().map(|g| g.advance).sum::<f64>()
                     - if shaped.is_empty() {

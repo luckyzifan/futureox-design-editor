@@ -16,6 +16,9 @@ export function compositorModes(scene: GpuScene) {
     else { modes.add(9); modes.add(10); modes.add(11) }
     }
       if (effect.kind === 'noise') modes.add(7)
+      if (effect.colorControls) modes.add(60)
+      if (effect.kind === 'motion-blur') modes.add(61)
+      if (effect.kind === 'zoom-blur') modes.add(62)
       if (effect.kind === 'texture') modes.add(8)
       // One-pass GPU gradient-blur composite (shared vector shader mode 46).
       if (effect.kind === 'blur' && effect.gradientBlur) modes.add(46)

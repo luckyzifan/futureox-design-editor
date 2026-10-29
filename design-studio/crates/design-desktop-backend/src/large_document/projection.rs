@@ -145,7 +145,7 @@ pub(super) fn sketch_window_in(
     limit: u64,
     context: &SketchContext,
 ) -> Result<(Document, Value, Vec<String>)> {
-    let mut source_bytes = s.parts[p].index.entries[n].span.len();
+    let source_bytes = s.parts[p].index.entries[n].span.len();
     let root: Value =
         serde_json::from_slice(&read_window(s, p, s.parts[p].index.entries[n].span, limit)?)
             .map_err(issue)?;
@@ -157,10 +157,32 @@ pub(super) fn sketch_window_in(
     {
         return Err(issue("Select a layer/subtree for canvas editing"));
     }
+    let (document,warnings)=sketch_roots_in(s,vec![root.clone()],source_bytes,limit,context)?;
+    Ok((document,root,warnings))
+}
+/// A bounded conversion batch shares archive metadata and dependency decoding.
+/// It is still the same importer and original source, never an editing baseline.
+pub(super) fn sketch_batch_in(s:&Session,locations:&[(usize,usize)],limit:u64,cancel:&AtomicBool,context:&SketchContext)->Result<(Document,Vec<String>)> {
+    let mut roots=Vec::new();let mut bytes=0u64;
+    for &(p,n) in locations {
+        check_cancel(cancel).map_err(issue)?;
+        let span=s.parts[p].index.entries[n].span;
+        bytes=bytes.checked_add(span.len()).ok_or_else(||issue("Source batch size overflow"))?;
+        if bytes>limit{return Err(issue("Source batch exceeds conversion window"));}
+        let root:Value=serde_json::from_slice(&read_window(s,p,span,limit)?).map_err(issue)?;
+        if root.get("do_objectID").and_then(Value::as_str).is_none() || matches!(root.get("_class").and_then(Value::as_str),None|Some("page"|"document")) {
+            return Err(issue("Select a layer/subtree for canvas editing"));
+        }
+        roots.push(root);
+    }
+    if roots.is_empty(){return Err(issue("Empty source conversion batch"));}
+    sketch_roots_in(s,roots,bytes,limit,context)
+}
+fn sketch_roots_in(s:&Session,roots:Vec<Value>,mut source_bytes:u64,limit:u64,context:&SketchContext)->Result<(Document,Vec<String>)> {
     let mut document = context.document.clone();
     let mut symbols = HashSet::new();
     let mut images = HashSet::new();
-    refs(&root, &mut symbols, &mut images);
+    for root in &roots { refs(root, &mut symbols, &mut images); }
     let mut masters = BTreeMap::new();
     let mut unresolved = symbols;
     while let Some(symbol) = unresolved.iter().next().cloned() {
@@ -195,7 +217,8 @@ pub(super) fn sketch_window_in(
     // UUIDs as required by the shared frontend scene contract.
     document["pages"] =
         json!([{"_ref":format!("pages/{page_id}")},{"_ref":format!("pages/{dependency_page_id}")}]);
-    let page = json!({"_class":"page","do_objectID":page_id,"name":"当前对象","layers":[root]});
+    let mut page = json!({"_class":"page","do_objectID":page_id,"name":"当前对象"});
+    page["layers"]=Value::Array(roots);
     let dependencies = json!({"_class":"page","do_objectID":"00000000-0000-4000-8000-000000000002","name":"组件依赖","layers":masters.into_values().collect::<Vec<_>>()});
     let mut entries = BTreeMap::from([
         (
@@ -238,7 +261,7 @@ pub(super) fn sketch_window_in(
         }
     }
     let report = interop::import_sketch_source_window(&entries).map_err(issue)?;
-    Ok((report.document, root, report.warnings))
+    Ok((report.document, report.warnings))
 }
 fn json_projection(s: &Session, p: usize, n: usize) -> Result<(Document, Value, Vec<String>)> {
     let entry = &s.parts[p].index.entries[n];

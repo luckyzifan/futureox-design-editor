@@ -2,6 +2,7 @@ import { readSvgEmbeddedFonts, EMBEDDED_FONT_WARNING } from './svg-font-embeddin
 import { readEditableSvgText, EDITABLE_TEXT_WARNING } from './svg-editable-text'
 import {
   blank,
+  hasSchema20Features,
   node,
   paint,
   stroke,
@@ -395,6 +396,6 @@ export function importSvg(source: string, name = '导入 SVG', fonts?: DesignDoc
     const m = svgViewportTransform(vb, frame.width, frame.height, root.getAttribute('preserveAspectRatio'))
     for (const id of frame.children) doc.nodes[id].transform = multiply(m, doc.nodes[id].transform)
   }
-  doc.schemaVersion = editableText ? 15 : 4
+  doc.schemaVersion = hasSchema20Features(doc) ? 20 : editableText ? 15 : 4
   return { document: doc, warnings: [...warnings] }
 }

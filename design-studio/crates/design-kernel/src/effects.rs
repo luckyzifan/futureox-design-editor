@@ -325,6 +325,10 @@ fn tent_blur_impl(
     Ok(current)
 }
 fn box_pass_in_place(input: &mut Surface, r: i32, horizontal: bool) -> Result<(), String> {
+    box_pass_in_place_domain(input, r, horizontal, true)
+}
+fn box_pass_in_place_domain(input: &mut Surface, r: i32, horizontal: bool, bounded: bool) -> Result<(), String> {
+    let domain = |value: f64| if bounded { value.clamp(0., 1.) } else { value };
     let rect = input.rect;
     if r <= 0 {
         return Ok(());
@@ -381,15 +385,15 @@ fn box_pass_in_place(input: &mut Surface, r: i32, horizontal: bool) -> Result<()
             };
             let mut channels = [0.; 4];
             for c in 0..4 {
-                let lo = ((sum[c] - error[c]) / denominator).clamp(0., 1.) as f32;
-                let hi = ((sum[c] + error[c]) / denominator).clamp(0., 1.) as f32;
+                let lo = domain((sum[c] - error[c]) / denominator) as f32;
+                let hi = domain((sum[c] + error[c]) / denominator) as f32;
                 channels[c] = if lo.to_bits() == hi.to_bits() {
                     lo
                 } else {
                     for (i, tap) in taps.iter_mut().enumerate() {
                         *tap = sample(at - r + i as i32).0[c];
                     }
-                    kernel.convolve(&taps)?.clamp(0., 1.)
+                    domain(f64::from(kernel.convolve(&taps)?)) as f32
                 };
             }
             input.pixels[index] = Pixel(channels);
@@ -505,6 +509,19 @@ pub fn gaussian_box_radii(sigma: f64) -> Result<[u32; 3], String> {
 // Premultiplied three-box Gaussian; certified sliding sums, exact tie fallback.
 pub fn blur(surface: &Surface, sigma: f64) -> Result<Surface, String> {
     blur_owned(surface.try_clone()?, sigma)
+}
+/// Explicit layer Gaussian preserves extended linear values. The historical
+/// Gaussian helper remains bounded for existing callers and alpha masks.
+pub fn gaussian_surface(surface: &Surface, sigma: f64, byte: bool) -> Result<Surface, String> {
+    let mut out = surface.try_clone()?;
+    for r in gaussian_box_radii(sigma)? {
+        if r == 0 { continue; }
+        for horizontal in [true, false] {
+            box_pass_in_place_domain(&mut out, r as i32, horizontal, byte)?;
+            if byte { out.quantize_rgba8(); }
+        }
+    }
+    Ok(out)
 }
 fn blur_owned(mut out: Surface, sigma: f64) -> Result<Surface, String> {
     for radius in gaussian_box_radii(sigma)? {

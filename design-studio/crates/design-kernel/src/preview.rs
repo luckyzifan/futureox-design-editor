@@ -23,7 +23,7 @@ pub fn plan(options: &RenderOptions) -> Result<Plan, String> {
         || ![options.view.x, options.view.y, options.view.zoom]
             .iter()
             .all(|v| v.is_finite())
-        || !(0.001..=128.).contains(&options.view.zoom)
+        || !(0.001..=crate::renderer::MAX_CANVAS_SAMPLE_SCALE).contains(&options.view.zoom)
         || options.width == 0
         || options.height == 0
         || options.width > 8192

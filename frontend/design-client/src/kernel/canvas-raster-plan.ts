@@ -1,4 +1,4 @@
-import type { CanvasCamera } from '../canvas-camera'
+import { MAX_CANVAS_RASTER_SCALE, type CanvasCamera } from '../canvas-camera'
 import { calculateDynamicDensity, displayTileBudget, tileLevel } from './tile-cache'
 import { allowsReducedSampling } from './render-quality'
 import { usesDesktopDisplay, type DisplayRenderRequest, type RenderPolicy } from './render-policy'
@@ -139,7 +139,7 @@ export function canvasRasterPlan(
   }
   if (options.pixelPreview || options.grid || options.checkerboard) return native()
   if (options.exactPhase && (!Number.isInteger(view.x * dpr) || !Number.isInteger(view.y * dpr))) return native()
-  const ceiling = options.rasterProfile === 'figma' || options.rasterProfile === 'figmaSoftware' ? 64 : 128
+  const ceiling = options.rasterProfile === 'figma' || options.rasterProfile === 'figmaSoftware' ? MAX_CANVAS_RASTER_SCALE / 2 : MAX_CANVAS_RASTER_SCALE
   if (needed > ceiling) return native() // Preserve the renderer's explicit limit error.
   const scale = needed
   // World-origin rasterization must not send distant device coordinates past

@@ -80,6 +80,8 @@ pub(crate) fn render(
         image_slots: HashMap::new(),
         mips,
         blur_kernels: HashMap::new(),
+        motion_kernels: HashMap::new(),
+        zoom_kernels: HashMap::new(),
         image_grids: HashMap::new(),
         gradient_grids: HashMap::new(),
         texture_math: None,
@@ -299,6 +301,8 @@ struct Compositor<'a, 'b, 'c> {
     image_slots: HashMap<String, [i32; 2]>,
     mips: bool,
     blur_kernels: HashMap<u64, Surface>,
+    motion_kernels: HashMap<[u64;6],Surface>,
+    zoom_kernels: HashMap<[u64;15],Surface>,
     image_grids: HashMap<ImageGridKey, (usize, Surface)>,
     gradient_grids: HashMap<GradientGridKey, Surface>,
     texture_math: Option<Surface>,
@@ -489,7 +493,9 @@ impl Compositor<'_, '_, '_> {
         let fill = self.mask(&n.fill, 4)?;
         if let Some(fx) = futureox_design_kernel::scene::selected_backdrop(&n.effects) {
             let copy = self.copy(backdrop, n.rect)?;
-            let blurred = self.blur(copy, fx.backdrop_radius() * n.matrix.max_scale(), false)?;
+            let raw = self.blur(copy, fx.backdrop_radius() * n.matrix.max_scale(), false)?;
+            let blurred = self.color_controls(raw, fx.color_controls.as_ref())?;
+            if raw.id != blurred.id { self.frame.release(&[raw]); }
             let next = if fx.kind == "glass" {
                 self.glass(blurred, fill, n, fx, false, None)?
             } else {
@@ -586,7 +592,14 @@ impl Compositor<'_, '_, '_> {
             if !fx.visible || (fx.kind == "texture" && fx.texture_amount() == 0.) {
                 continue;
             }
-            if fx.kind == "blur" {
+            if fx.kind == "color-controls" {
+                let next = self.color_controls(layer, fx.color_controls.as_ref())?;
+                if next.id != layer.id { self.frame.release(&[layer]); }
+                layer = next;
+            } else if matches!(fx.kind.as_str(),"gaussian-blur"|"motion-blur"|"zoom-blur") {
+                let next=self.spatial_blur(layer,n,fx)?;
+                if next.id!=layer.id {self.frame.release(&[layer]);} layer=next;
+            } else if fx.kind == "blur" {
                 let full = self.blur(layer, fx.blur_radius() * sc, false)?;
                 let next = self.gradient_blur(layer, full, n, fx)?;
                 if next.id != full.id && full.id != layer.id {
@@ -1724,6 +1737,9 @@ impl Compositor<'_, '_, '_> {
                 // all subsequent pass parameters using the dedicated phase path.
                 if n.capture_replay.is_none() {
                     background = self.backdrop_blur(background, n, fx, cropped, b)?;
+                    let adjusted = self.color_controls(background, fx.color_controls.as_ref())?;
+                    if adjusted.id != background.id { self.frame.release(&[background]); }
+                    background = adjusted;
                 }
                 for i in 0..4 {
                     let optical = if n.glass_shape.is_some() && fx.glass.is_some() {
@@ -1871,14 +1887,39 @@ impl Compositor<'_, '_, '_> {
         }
         Ok(targets)
     }
+    fn spatial_blur(&mut self,input:Surface,n:&GpuNode,fx:&Effect)->Result<Surface,String>{
+        if let Some(z)=fx.zoom_blur {
+            if z.is_identity() {return Ok(input)}
+            let r=input.rect;
+            let key=[n.matrix.0[0],n.matrix.0[1],n.matrix.0[2],n.matrix.0[3],n.matrix.0[4],n.matrix.0[5],n.size[0],n.size[1],f64::from(r.x),f64::from(r.y),f64::from(r.w),f64::from(r.h),z.amount,z.center[0],z.center[1]].map(f64::to_bits);
+            if !self.zoom_kernels.contains_key(&key) {
+                let data=futureox_design_kernel::zoom_blur::coordinates(z,n.matrix,n.size,r)?;
+                let surface=self.frame.upload_parameters(Rect::new(0,0,256,(data.len()/1024) as u32),&data)?;
+                self.zoom_kernels.insert(key,surface);
+            }
+            return self.frame.run(62.,input.rect,&[input,self.zoom_kernels[&key]], |_|{})
+        }
+        if fx.radius==0. {return Ok(input)}
+        if fx.kind=="gaussian-blur" {return self.blur_mode(input,2.*fx.radius*n.matrix.max_scale(),false,true)}
+        let key=[fx.radius.to_bits(),fx.motion_angle.to_bits(),n.matrix.0[0].to_bits(),n.matrix.0[1].to_bits(),n.matrix.0[2].to_bits(),n.matrix.0[3].to_bits()];
+        if !self.motion_kernels.contains_key(&key) {
+            let data=futureox_design_kernel::spatial_blur::MotionKernel::new(fx.radius,fx.motion_angle,n.matrix)?.encoded();
+            let surface=self.frame.upload_parameters(Rect::new(0,0,256,(data.len()/1024) as u32),&data)?;
+            self.motion_kernels.insert(key,surface);
+        }
+        self.frame.run(61.,input.rect,&[input,self.motion_kernels[&key]], |_|{})
+    }
     fn blur(&mut self, input: Surface, radius: f64, clamp_edges: bool) -> Result<Surface, String> {
+        self.blur_mode(input,radius,clamp_edges,false)
+    }
+    fn blur_mode(&mut self, input: Surface, radius: f64, clamp_edges: bool, gaussian: bool) -> Result<Surface, String> {
         if radius <= 0. {
             return Ok(input);
         }
-        if radius > 512. {
+        if radius > 512. && !gaussian {
             return Err("Native blur radius exceeds 512 pixels".into());
         }
-        if !self.scene.integrated_blur {
+        if gaussian || !self.scene.integrated_blur {
             let mut current = input;
             for r in futureox_design_kernel::effects::gaussian_box_radii(radius / 2.)? {
                 if r == 0 {
@@ -1897,7 +1938,7 @@ impl Compositor<'_, '_, '_> {
                 let kernel = self.blur_kernels[&key];
                 for axis in [0., 1.] {
                     let next = self.frame.run(22., input.rect, &[current, kernel], |u| {
-                        u[36..40].copy_from_slice(&[r as f32, axis, 0., 1.]);
+                        u[36..40].copy_from_slice(&[r as f32, axis, 0., if gaussian { 2. } else { 1. }]);
                     })?;
                     if current.id != input.id {
                         self.frame.release(&[current]);
@@ -2056,6 +2097,11 @@ impl Compositor<'_, '_, '_> {
         self.frame.release(&[h]);
         Ok(v)
     }
+    fn color_controls(&mut self, input: Surface, controls: Option<&futureox_design_kernel::color_controls::ColorControls>) -> Result<Surface, String> {
+        let Some(controls) = controls.filter(|c| !c.is_identity()) else { return Ok(input); };
+        let matrix = controls.uniforms(self.scene.color_management.is_some());
+        self.frame.run(60., input.rect, &[input], |u| u[36..76].copy_from_slice(&matrix))
+    }
     fn effects(
         &mut self,
         n: &GpuNode,
@@ -2072,8 +2118,31 @@ impl Compositor<'_, '_, '_> {
             {
                 continue;
             }
+            if fx.kind == "color-controls" {
+                let mut outputs = Vec::new();
+                let mut shared = HashMap::new();
+                for plane in &planes {
+                    let next = if let Some(next) = shared.get(&plane.id) { *next } else {
+                        let next = self.color_controls(*plane, fx.color_controls.as_ref())?;
+                        shared.insert(plane.id, next); next
+                    };
+                    outputs.push(next);
+                }
+                let consumed: Vec<_> = planes.iter().zip(&outputs).filter(|(a,b)|a.id!=b.id).map(|(a,_)|*a).collect();
+                self.frame.release(&consumed);
+                planes = outputs; continue;
+            }
             let resolved = self.frame.run(23., n.rect, &planes, |_| {})?;
-            if fx.kind == "blur" {
+            if matches!(fx.kind.as_str(),"gaussian-blur"|"motion-blur"|"zoom-blur") {
+                let filtered=self.spatial_blur(resolved,n,fx)?;
+                self.frame.release(&planes);if filtered.id!=resolved.id {self.frame.release(&[resolved]);}
+                planes=vec![filtered;4];
+                if let Some(old)=coverage {
+                    let mask=self.frame.run(23.,n.rect,old, |_|{})?;
+                    let filtered=self.spatial_blur(mask,n,fx)?;
+                    self.frame.release(old);if filtered.id!=mask.id {self.frame.release(&[mask]);}*old=vec![filtered;4];
+                }
+            } else if fx.kind == "blur" {
                 let full = self.blur(resolved, fx.blur_radius() * sc, false)?;
                 let blurred = self.gradient_blur(resolved, full, n, fx)?;
                 if blurred.id != full.id && full.id != resolved.id {

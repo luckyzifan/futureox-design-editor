@@ -10,42 +10,8 @@ pub struct AreaProgram {
     pub data: Vec<f32>,
 }
 
-// Output floats do not bound work for retraced/zero-width edges, which emit no
-// intervals. At 4096px and eight samples this permits about 244 full-height
-// edges (many more short edges); callers receive an explicit resource error.
-const MAX_SCANLINE_EDGE_VISITS: u64 = 8_000_000;
-
-fn validate_points(contours: &[Contour]) -> Result<(), String> {
-    if contours.iter().flat_map(|c| &c.points).any(|p| !p.finite()) {
-        return Err("Non-finite interval geometry".into());
-    }
-    Ok(())
-}
-
-pub(crate) fn clipped_rect(contours: &[Contour], limit: Rect) -> Result<Rect, String> {
-    clip_bounds(Rect::from_points(contours.iter().flat_map(|c|c.points.iter().copied())).expand(1),limit)
-}
-pub(crate) fn clip_bounds(bounds:Rect,limit:Rect)->Result<Rect,String>{
-    let invalid = || "Invalid interval geometry limit".to_string();
-    let right = limit
-        .x
-        .checked_add(i32::try_from(limit.w).map_err(|_| invalid())?)
-        .ok_or_else(invalid)?;
-    let bottom = limit
-        .y
-        .checked_add(i32::try_from(limit.h).map_err(|_| invalid())?)
-        .ok_or_else(invalid)?;
-    let x = bounds.x.max(limit.x);
-    let y = bounds.y.max(limit.y);
-    // Both endpoints can be valid i32 yet a disjoint subtraction can overflow.
-    // The resulting nonempty dimensions are bounded by the clamped geometry.
-    Ok(Rect::new(
-        x,
-        y,
-        (i64::from(bounds.right().min(right)) - i64::from(x)).max(0) as u32,
-        (i64::from(bounds.bottom().min(bottom)) - i64::from(y)).max(0) as u32,
-    ))
-}
+use crate::raster::validate_points;
+pub(crate) use crate::raster::{clip_bounds, clipped_rect};
 
 fn interval_header(height: u32, samples: u32) -> Result<usize, String> {
     let size = 4 + u64::from(height) * u64::from(samples) * 4;
@@ -53,65 +19,6 @@ fn interval_header(height: u32, samples: u32) -> Result<usize, String> {
         return Err("Interval header budget exceeded".into());
     }
     Ok(size as usize)
-}
-
-fn check_scanline_work(contours: &[Contour], rect: Rect, samples: u32) -> Result<(), String> {
-    check_scanline_work_limit(contours, rect, samples, MAX_SCANLINE_EDGE_VISITS)
-}
-
-fn check_scanline_work_limit(
-    contours: &[Contour],
-    rect: Rect,
-    samples: u32,
-    max_visits: u64,
-) -> Result<(), String> {
-    let mut visits = 0_u64;
-    let rows = u64::from(rect.h) * u64::from(samples);
-    for contour in contours.iter().filter(|c| c.closed && c.points.len() >= 3) {
-        for (index, a) in contour.points.iter().enumerate() {
-            if index % 256 == 0 { crate::render_cancellation::checkpoint()?; }
-            let b = contour.points[(index + 1) % contour.points.len()];
-            // Match the selected scanner: visit_sample_spans preserves even
-            // sub-epsilon non-horizontal edges; visit_spans skips them.
-            if a.y == b.y || (samples == 8 && (a.y - b.y).abs() < 1e-14) {
-                continue;
-            }
-            let low = a.y.min(b.y).max(f64::from(rect.y));
-            let high = a.y.max(b.y).min(f64::from(rect.bottom()));
-            if high <= low {
-                continue;
-            }
-            let (start, end) = if a.y < b.y { (*a, b) } else { (b, *a) };
-            let dx = end.x - start.x;
-            let dy = end.y - start.y;
-            if !dx.is_finite() || !dy.is_finite() {
-                return Err("Non-finite scanline interpolation".into());
-            }
-            // Match the scanner's exact operation order. Extrema over the
-            // clipped y interval bound every actual sample's intermediate
-            // product, quotient and sum; do not let NaN be hidden by clipping.
-            for y in [low, high] {
-                let offset = y - start.y;
-                let product = offset * dx;
-                let quotient = product / dy;
-                let crossing = start.x + quotient;
-                if [offset, product, quotient, crossing]
-                    .iter()
-                    .any(|v| !v.is_finite())
-                {
-                    return Err("Non-finite scanline interpolation".into());
-                }
-            }
-            // Conservative count of sample rows intersecting this edge. The
-            // one-row pad covers fractional endpoints without walking rows.
-            let edge_visits = (((high - low) * f64::from(samples)).ceil() as u64 + 1).min(rows);
-            visits = visits.saturating_add(edge_visits);
-            if visits > max_visits {
-                return Err("Scanline work budget exceeded".into());
-            }
-        }
-    }
-    Ok(())
 }
 
 fn endpoint(x: f64, origin: i32) -> (f32, f32, [f32; 4]) {
@@ -129,9 +36,19 @@ fn endpoint(x: f64, origin: i32) -> (f32, f32, [f32; 4]) {
     )
 }
 impl AreaProgram {
-    pub(crate) fn compile_crop(contours:&[Contour],rect:Rect,even_odd:bool,samples:bool)->Result<Self,String>{
+    pub(crate) fn compile_crop(
+        contours: &[Contour],
+        rect: Rect,
+        even_odd: bool,
+        samples: bool,
+    ) -> Result<Self, String> {
         validate_points(contours)?;
-        if samples {Self::samples_at_rect(contours,rect,even_odd)} else {Self::area_at_rect(contours,rect,even_odd)}
+        clip_bounds(rect, rect)?;
+        if samples {
+            Self::samples_at_rect(contours, rect, even_odd)
+        } else {
+            Self::area_at_rect(contours, rect, even_odd)
+        }
     }
     /// Four correlated coverage samples, sharing the CPU's continuous f64
     /// crossing positions. GPU consumers classify each requested sample.
@@ -140,11 +57,10 @@ impl AreaProgram {
         limit: Rect,
         even_odd: bool,
     ) -> Result<Self, String> {
-        validate_points(contours)?;
         let rect = clipped_rect(contours, limit)?;
-        Self::samples_at_rect(contours,rect,even_odd)
+        Self::samples_at_rect(contours, rect, even_odd)
     }
-    fn samples_at_rect(contours:&[Contour],rect:Rect,even_odd:bool)->Result<Self,String>{
+    fn samples_at_rect(contours: &[Contour], rect: Rect, even_odd: bool) -> Result<Self, String> {
         if rect.empty() {
             return Ok(Self {
                 rect,
@@ -156,14 +72,11 @@ impl AreaProgram {
             program.data[0] = 4.;
             return Ok(program);
         }
-        check_scanline_work(contours, rect, 4)?;
         let header = interval_header(rect.h, 4)?;
         let mut data = vec![0.; header];
         data[..4].copy_from_slice(&[3., 1., rect.w as f32, rect.h as f32]);
-        let mut checked_row=None;
         let complete =
             raster::visit_sample_spans(contours, rect, even_odd, None, |row, left, right| {
-                if checked_row!=Some(row)&&row%32==0{checked_row=Some(row);if crate::render_cancellation::checkpoint().is_err(){return false}}
                 let left = left.max(f64::from(rect.x));
                 let right = right.min(f64::from(rect.right()));
                 if right <= left {
@@ -183,7 +96,7 @@ impl AreaProgram {
                 data.extend(lb);
                 data.extend(rb);
                 true
-            });
+            })?;
         if !complete {
             crate::render_cancellation::checkpoint()?;
             return Err("Sample interval program budget exceeded".into());
@@ -191,11 +104,10 @@ impl AreaProgram {
         Ok(Self { rect, data })
     }
     pub fn compile(contours: &[Contour], limit: Rect, even_odd: bool) -> Result<Self, String> {
-        validate_points(contours)?;
         let rect = clipped_rect(contours, limit)?;
-        Self::area_at_rect(contours,rect,even_odd)
+        Self::area_at_rect(contours, rect, even_odd)
     }
-    fn area_at_rect(contours:&[Contour],rect:Rect,even_odd:bool)->Result<Self,String>{
+    fn area_at_rect(contours: &[Contour], rect: Rect, even_odd: bool) -> Result<Self, String> {
         if rect.empty() {
             return Ok(Self {
                 rect,
@@ -226,13 +138,10 @@ impl AreaProgram {
             }
             return Ok(Self { rect, data });
         }
-        check_scanline_work(contours, rect, 8)?;
         let header = interval_header(rect.h, 8)?;
         let mut data = vec![0.; header];
         data[..4].copy_from_slice(&[0., 1., rect.w as f32, rect.h as f32]);
-        let mut checked_row=None;
         let complete = raster::visit_spans(contours, rect, even_odd, |row, left, right| {
-            if checked_row!=Some(row)&&row%32==0{checked_row=Some(row);if crate::render_cancellation::checkpoint().is_err(){return false}}
             if data.len() + 12 > MAX_FLOATS {
                 return false;
             }
@@ -247,7 +156,7 @@ impl AreaProgram {
             data.extend(lb);
             data.extend(rb);
             true
-        });
+        })?;
         if !complete {
             crate::render_cancellation::checkpoint()?;
             return Err("Analytic scanline interval budget exceeded".into());
@@ -260,6 +169,10 @@ impl AreaProgram {
 mod work_budget_tests {
     use super::*;
     use crate::math::Point;
+    fn check_scanline_work(cs: &[Contour], rect: Rect, samples: u32) -> Result<(), String> {
+        raster::check_work(cs, rect, samples, 8_000_000)
+    }
+    use crate::raster::check_work as check_scanline_work_limit;
 
     #[test]
     fn degenerate_retraced_edges_cannot_bypass_scanline_work_budget() {
@@ -328,16 +241,13 @@ mod work_budget_tests {
         };
         let rect = Rect::new(0, 0, 4, 1);
         let mut spans = Vec::new();
-        assert!(raster::visit_sample_spans(
-            &[contour.clone()],
-            rect,
-            false,
-            None,
-            |row, l, r| {
+        assert!(
+            raster::visit_sample_spans(&[contour.clone()], rect, false, None, |row, l, r| {
                 spans.push((row, l, r));
                 true
-            }
-        ));
+            })
+            .unwrap()
+        );
         assert_eq!(spans, vec![(0, 1.5, 2.5)]);
         // Two sub-epsilon edges really cross the sample. A zero-visit budget
         // must reject them, although the eight-sample raster skips such edges.

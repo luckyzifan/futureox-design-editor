@@ -5,7 +5,7 @@ import { FIG_WARNING_LIMITS, FIG_WARNINGS_TRUNCATED } from './import-warnings'
 import type { ImportedDesign } from './import-svg'
 import { validateDocument, type DesignDocument } from './model'
 
-export type WorkerImportFormat = 'fig' | 'sketch' | 'pdf'
+export type WorkerImportFormat = 'fig' | 'sketch' | 'sketch-library' | 'pdf'
 
 /** One owned worker per import, reclaimed on completion, failure or cancellation. */
 export function importFileInWorker(

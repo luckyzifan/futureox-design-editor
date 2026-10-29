@@ -27,6 +27,9 @@ mod index;
 mod capacity;
 mod projection;
 mod scene;
+mod canvas_layout;
+mod canvas_snapshot;
+mod window_cache;
 #[cfg(test)]
 #[path = "large_document/fragment_validation_tests.rs"]
 mod fragment_validation_tests;
@@ -67,6 +70,18 @@ impl<R: Seek> Seek for CheckedReader<'_, R> {
         self.inner.seek(at)
     }
 }
+/// One-pass source tee. Only bytes actually accepted by the spool writer
+/// enter the receipt, and parser/CRC failures cannot publish a source part.
+struct IndexedSpool<'a,R,W>{inner:R,output:&'a mut W,hash:&'a mut Sha256,bytes:&'a mut u64}
+impl<R:Read,W:Write> Read for IndexedSpool<'_,R,W>{
+    fn read(&mut self,bytes:&mut [u8])->io::Result<usize>{
+        let n=self.inner.read(bytes)?;
+        self.output.write_all(&bytes[..n])?;
+        self.hash.update(&bytes[..n]);
+        *self.bytes=self.bytes.checked_add(n as u64).ok_or_else(||io::Error::other("Source byte count overflow"))?;
+        Ok(n)
+    }
+}
 fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
@@ -104,8 +119,7 @@ fn identity(value: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-')
 }
 fn safe_member(value: &str) -> bool {
-    value.len() <= 1024
-        && !value.is_empty()
+    !value.is_empty()
         && !value.starts_with('/')
         && !value.contains(['\\', ':', '\0'])
         && value
@@ -155,6 +169,12 @@ struct Session {
     projection: Option<projection::Projection>,
     #[serde(skip)]
     scene: Option<scene::Scene>,
+    #[serde(skip)]
+    canvas_layout: Option<canvas_layout::Layout>,
+    #[serde(skip)]
+    canvas_snapshot: Option<canvas_snapshot::Snapshot>,
+    #[serde(skip)]
+    converted_windows: Mutex<window_cache::Windows>,
 }
 #[derive(Default)]
 struct Progress {
@@ -270,6 +290,8 @@ pub(crate) struct Request {
     limit: Option<usize>,
     #[serde(default)]
     query: Option<String>,
+    #[serde(default)]
+    canvas_only: bool,
     #[serde(default)]
     json: Option<String>,
     #[serde(default)]
@@ -393,9 +415,6 @@ impl Sessions {
                 validate_directory(&original, archive.central_directory_start(), archive.len())
                     .map_err(issue)?;
                 let mut names = HashSet::new();
-                if archive.len() > 4096 {
-                    return Err(issue("Sketch archive entry count exceeded"));
-                }
                 for i in 0..archive.len() {
                     check_cancel(cancel).map_err(issue)?;
                     let mut entry = archive.by_index(i).map_err(issue)?;
@@ -409,50 +428,28 @@ impl Sessions {
                     if entry.is_dir() {
                         continue;
                     }
-                    if entry.size() > source_limit.saturating_sub(expanded_bytes)
-                        || entry.size()
-                            > entry.compressed_size().max(1).saturating_mul(200).max(4096)
-                    {
-                        return Err(issue("Sketch expanded bytes or compression ratio exceeded"));
+                    if entry.size() > source_limit.saturating_sub(expanded_bytes) {
+                        return Err(issue("Sketch expanded data exceeds backing storage capacity"));
                     }
                     let declared = entry.size();
                     self.progress.phase("expand", declared);
                     if name.ends_with(".json") {
                         capacity::require_space(&directory, declared)?;
                         let file = format!("part-{}", parts.len());
-                        let mut target = File::create(directory.join(&file)).map_err(issue)?;
-                        let mut reader = CheckedReader {
-                            inner: &mut entry,
-                            cancel,
-                            progress: Some(&self.progress),
-                        };
-                        let actual = io::copy(&mut reader.by_ref().take(declared + 1), &mut target)
-                            .map_err(issue)?;
-                        if actual != declared {
-                            return Err(issue("Sketch member length changed"));
-                        }
-                        target.sync_all().map_err(issue)?;
-                        let hash = hash_file(&directory.join(&file), cancel).map_err(issue)?;
-                        let reader = CheckedReader {
-                            inner: File::open(directory.join(&file)).map_err(issue)?,
-                            cancel,
-                            progress: Some(&self.progress),
-                        };
-                        self.progress.phase("index", declared);
-                        let index = DiskIndex::build(
-                            reader,
-                            source_limit - expanded_bytes,
-                            &directory,
-                        )?;
-                        if parts
-                            .iter()
-                            .map(|p: &Part| p.index.entries.len())
-                            .sum::<usize>()
-                            + index.entries.len()
-                            > large_json::MAX_INDEX_VALUES
-                        {
-                            return Err(issue("Large document index working-set budget exceeded"));
-                        }
+                        let mut target = BufWriter::new(File::create(directory.join(&file)).map_err(issue)?);
+                        let mut hash=Sha256::new();let mut copied=0u64;
+                        let reader=CheckedReader{inner:&mut entry,cancel,progress:Some(&self.progress)};
+                        self.progress.phase("index",declared);
+                        // The parser, immutable spool and receipt consume the
+                        // same decompressed stream. CRC/EOF and fsync remain
+                        // required; no full reread for hashing and indexing.
+                        let index=DiskIndex::build(IndexedSpool{
+                            inner:reader.take(declared+1),output:&mut target,hash:&mut hash,bytes:&mut copied,
+                        },source_limit-expanded_bytes,&directory)?;
+                        if copied!=declared||index.bytes!=declared{return Err(issue("Sketch member length changed"));}
+                        target.flush().map_err(issue)?;
+                        target.get_ref().sync_all().map_err(issue)?;
+                        let hash=format!("{:x}",hash.finalize());
                         parts.push(Part {
                             name,
                             file,
@@ -508,6 +505,9 @@ impl Sessions {
                 directory: directory.clone(),
                 projection: None,
                 scene: None,
+                canvas_layout: None,
+                canvas_snapshot: None,
+                converted_windows: Mutex::default(),
             })
         })();
         match result {
@@ -535,7 +535,7 @@ impl Sessions {
         if method == "large.export" {
             return self.export_snapshot(request, cancel);
         }
-        let mut slot = if matches!(method, "large.status" | "large.children" | "large.read") {
+        let mut slot = if matches!(method, "large.status" | "large.children" | "large.read" | "large.canvasLayout") {
             self.current.try_lock().map_err(|_| {
                 BackendError::new(
                     "BUSY",
@@ -557,6 +557,8 @@ impl Sessions {
         match method {
             "large.status" => Ok(status(s)),
             "large.children" => children(s, request),
+            "large.canvasLayout" => canvas_layout::list(s, request, cancel),
+            "large.canvasSnapshot" => canvas_snapshot::prepare(s, cancel),
             "large.read" => {
                 let (part, node) = location(s, request.key.as_deref())?;
                 let (text, omitted) = self.fragments.lock().map_err(issue)?.read(
@@ -655,11 +657,20 @@ fn children(s: &Session, request: Request) -> Result<Value> {
         .as_deref()
         .map(|key| location(s, Some(key)))
         .transpose()?;
+    // The canvas browser lists authored pages/layers, not JSON metadata. Apply
+    // its scope BEFORE counting/pagination so metadata cannot consume a page.
+    // Generic JSON inspection keeps the existing complete catalog.
+    let canvas_only = request.canvas_only && s.format == "sketch";
+    let layer_span = if canvas_only {
+        parent.map(|(p, n)| s.parts[p].index.entry(n, &s.directory)
+            .map(|entry| entry.fields.into_iter().find(|f| f.key == "layers").map(|f| f.value)))
+            .transpose()?.flatten()
+    } else { None };
     let limit = request.limit.unwrap_or(100).clamp(1, 200);
     let mut found = Vec::new();
     let mut total = 0;
     for (p, part) in s.parts.iter().enumerate() {
-        let candidates: Box<dyn Iterator<Item = usize> + '_> = if query.is_some() {
+        let candidates: Box<dyn Iterator<Item = usize> + '_> = if query.is_some() && !canvas_only {
             Box::new(0..part.index.entries.len())
         } else {
             if parent.is_some_and(|(part_id, _)| part_id != p) {
@@ -674,6 +685,13 @@ fn children(s: &Session, request: Request) -> Result<Value> {
         };
         for n in candidates {
             let entry = &part.index.entries[n];
+            if canvas_only {
+                if parent.is_none() {
+                    if entry.kind != "page" || !part.name.starts_with("pages/") { continue; }
+                } else if !layer_span.is_some_and(|span| entry.span.start >= span.start && entry.span.end <= span.end) {
+                    continue;
+                }
+            }
             if query
                 .as_ref()
                 .is_some_and(|query| !part.index.name_matches(n, query) && !entry.id.eq_ignore_ascii_case(query))
@@ -857,15 +875,6 @@ fn commit(
     index: Option<(usize, DiskIndex)>,
     cancel: &AtomicBool,
 ) -> Result<Value> {
-    if let Some((p, index)) = &index {
-        if s.parts.iter().map(|p| p.index.entries.len()).sum::<usize>()
-            - s.parts[*p].index.entries.len()
-            + index.entries.len()
-            > large_json::MAX_INDEX_VALUES
-        {
-            return Err(issue("Large document index working-set budget exceeded"));
-        }
-    }
     let source_json: u64 = s.parts.iter().map(|p| p.base_bytes).sum();
     let current_json = s
         .parts
@@ -1014,7 +1023,7 @@ fn recover(
         }
         let index_path = directory.join("index.json");
         let metadata = fs::symlink_metadata(&index_path).map_err(issue)?;
-        if !metadata.is_file() || metadata.len() > 512 * 1024 * 1024 {
+        if !metadata.is_file() || metadata.len() > source_limit {
             return Err(issue("Retained source index is invalid"));
         }
         let mut parts: Vec<Part> =
@@ -1022,7 +1031,6 @@ fn recover(
                 .map_err(issue)?;
         if parts.len() != checkpoint.state.changes.len()
             || parts.len() != checkpoint.additions.len()
-            || parts.len() > 4096
         {
             return Err(issue("Retained JSON part count mismatch"));
         }
@@ -1132,6 +1140,9 @@ fn recover(
             directory,
             projection: None,
                 scene: None,
+            canvas_layout: None,
+                canvas_snapshot: None,
+                converted_windows: Mutex::default(),
         }));
     }
     Ok(None)
@@ -1189,7 +1200,7 @@ fn persist(s: &Session) -> Result<Option<&'static str>> {
 fn validate_directory(path: &Path, start: u64, count: usize) -> io::Result<()> {
     let mut file = File::open(path)?;
     file.seek(SeekFrom::Start(start))?;
-    let mut records = 0;
+    let mut records = 0usize;
     loop {
         let mut signature = [0u8; 4];
         file.read_exact(&mut signature)?;
@@ -1206,11 +1217,11 @@ fn validate_directory(path: &Path, start: u64, count: usize) -> io::Result<()> {
         file.read_exact(&mut header)?;
         let size = |offset| u16::from_le_bytes([header[offset], header[offset + 1]]) as i64;
         file.seek(SeekFrom::Current(size(24) + size(26) + size(28)))?;
-        records += 1;
-        if records > 4096 {
+        records = records.checked_add(1).ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "ZIP record address overflow"))?;
+        if records > count {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                "ZIP directory entry count exceeded",
+                "Ambiguous ZIP directory identity",
             ));
         }
     }
@@ -1469,6 +1480,37 @@ mod tests {
                 .to_string()
                 .contains("cancelled")
         );
+    }
+    #[test]
+    fn source_archive_uses_storage_capacity_instead_of_entry_and_compression_quotas() {
+        let f = Fixture::new();
+        let path = f.root.join("many-members.sketch");
+        let original = format!("{{\"padding\":\"{}\",\"name\":\"retained\"}}", " ".repeat(2 * 1024 * 1024));
+        let long_name = format!("images/{}asset.bin", "segment/".repeat(200));
+        let mut writer = zip::ZipWriter::new(File::create(&path).unwrap());
+        let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        writer.start_file("document.json", options).unwrap();
+        writer.write_all(original.as_bytes()).unwrap();
+        writer.start_file("meta.json", options).unwrap(); writer.write_all(br#"{"version":136}"#).unwrap();
+        for i in 0..4097 { writer.start_file(format!("images/{i}.bin"), options).unwrap(); }
+        writer.start_file(&long_name, options).unwrap(); writer.write_all(b"exact").unwrap();
+        writer.finish().unwrap();
+        let mut archive = zip::ZipArchive::new(File::open(&path).unwrap()).unwrap();
+        let member = archive.by_name("document.json").unwrap();
+        assert!(member.size() > 200 * member.compressed_size());
+        drop(member);
+        let opened = f.open(path.clone());
+        let output = f.root.join("complete.sketch");
+        call(&f, &opened, "large.export", json!({"path":output}));
+        let mut result = zip::ZipArchive::new(File::open(output).unwrap()).unwrap();
+        assert_eq!(result.len(), archive.len());
+        let mut actual = String::new(); result.by_name("document.json").unwrap().read_to_string(&mut actual).unwrap();
+        assert_eq!(actual, original);
+        actual.clear(); result.by_name(&long_name).unwrap().read_to_string(&mut actual).unwrap(); assert_eq!(actual, "exact");
+        call(&f, &opened, "large.close", json!({}));
+        let reopened = f.open(path);
+        assert_eq!(reopened["indexedObjects"], opened["indexedObjects"]);
+        assert_eq!(reopened["expandedBytes"], opened["expandedBytes"]);
     }
     #[test]
     fn scalar_to_container_edits_publish_the_same_index_as_reopen() {
@@ -2046,6 +2088,91 @@ mod tests {
         call(&f,&reopened,"large.scene",json!({"key":key}));
         {let slot=f.sessions.current.lock().unwrap();let node=&slot.as_ref().unwrap().scene.as_ref().unwrap().document.nodes[instance_id];assert_eq!(node.width,120.);assert_eq!(node.instance.as_ref().unwrap().overrides["$root"]["width"].as_f64(),Some(120.));}
         println!("complete page: {} nodes, {} source roots, {} model bytes; edited property persisted in full {}-member export",loaded["nodes"],doc.pages[0].children.len(),loaded["bytes"],exported.len());
+    }
+    #[test]
+    #[ignore = "full native source-canvas materialization; never a GUI/GPU acceptance"]
+    fn actual_source_single_artboard_snapshot() {
+        let f=Fixture::new();
+        let opened=f.open(PathBuf::from(std::env::var("CORE_LARGE_SKETCH_INPUT").unwrap()));
+        let started=std::time::Instant::now();
+        let result=call(&f,&opened,"large.canvasSnapshot",json!({}));
+        assert_eq!(result["roots"],306);
+        println!("{}",json!({"phase":"native-canvas-snapshot","seconds":started.elapsed().as_secs_f64(),"bytes":result["bytes"],"nodes":result["nodes"],"roots":result["roots"],"hash":result["hash"],"bounds":result["bounds"]}));
+        if let Ok(path)=std::env::var("CORE_CANVAS_SNAPSHOT_OUTPUT") {
+            fs::copy(result["path"].as_str().unwrap(),path).unwrap();
+        }
+    }
+    #[test]
+    #[ignore = "real source conversion-cache timing, not GUI or GPU acceptance"]
+    fn actual_source_canvas_window_reuse() {
+        let f = Fixture::new();
+        let opened = f.open(PathBuf::from(std::env::var("CORE_LARGE_SKETCH_INPUT").unwrap()));
+        let key = {
+            let slot = f.sessions.current.lock().unwrap(); let s = slot.as_ref().unwrap();
+            s.parts.iter().enumerate().find_map(|(p, part)|part.index.entries.iter().enumerate()
+                .find(|(_,row)|row.id == "08856B36-020D-46FC-AC59-55F38CDB82BE").map(|(n,_)|format!("{p}:{n}"))).unwrap()
+        };
+        let mut hashes = Vec::new();
+        for round in 0..2 {
+            let start = std::time::Instant::now();
+            let result = call(&f, &opened, "large.scene", json!({"key":key}));
+            hashes.push(result["hash"].clone());
+            let slot = f.sessions.current.lock().unwrap(); let s = slot.as_ref().unwrap();
+            println!("{}",json!({"round":round,"seconds":start.elapsed().as_secs_f64(),"nodes":result["nodes"],"bytes":result["bytes"],"hash":result["hash"],"cacheHits":s.converted_windows.lock().unwrap().hits}));
+        }
+        assert_eq!(hashes[0],hashes[1]);
+    }
+    #[test]
+    #[ignore = "real whole-source canvas catalogue; no scene or GPU acceptance"]
+    fn actual_source_canvas_catalogue() {
+        let f = Fixture::new();
+        let input = PathBuf::from(std::env::var("CORE_LARGE_SKETCH_INPUT").unwrap());
+        let source_hash = hash_file(&input, &AtomicBool::new(false)).unwrap();
+        let opened = f.open(input.clone());
+        let mut items = Vec::new();
+        let mut bounds = Value::Null;
+        loop {
+            let listed = call(&f, &opened, "large.canvasLayout", json!({"offset":items.len(),"limit":200}));
+            assert_eq!(listed["total"], 306);
+            assert_eq!(listed["offset"], items.len());
+            assert_eq!(listed["boundsAreLayoutHints"], true);
+            if bounds.is_null() { bounds = listed["bounds"].clone(); }
+            assert_eq!(listed["bounds"], bounds);
+            items.extend(listed["items"].as_array().unwrap().clone());
+            if listed["hasMore"] == false { break; }
+        }
+        let mut pages = BTreeMap::<String, usize>::new();
+        let mut kinds = BTreeMap::<String, usize>::new();
+        let mut ids = HashSet::new();
+        for item in &items {
+            assert!(ids.insert(item["id"].as_str().unwrap()));
+            *pages.entry(item["pageName"].as_str().unwrap().into()).or_default() += 1;
+            *kinds.entry(item["kind"].as_str().unwrap().into()).or_default() += 1;
+            let placed = &item["placed"];
+            for axis in ["x", "y", "width", "height"] { assert!(placed[axis].as_f64().unwrap().is_finite()); }
+            assert!(placed["x"].as_f64().unwrap() + placed["width"].as_f64().unwrap() <= bounds["width"].as_f64().unwrap());
+            assert!(placed["y"].as_f64().unwrap() + placed["height"].as_f64().unwrap() <= bounds["height"].as_f64().unwrap());
+        }
+        assert_eq!(pages, BTreeMap::from([("浅色".into(),209),("深色".into(),55),("控件".into(),42)]));
+        assert_eq!(hash_file(&input, &AtomicBool::new(false)).unwrap(), source_hash);
+        let output = f.root.join("canvas-catalogue-export.sketch");
+        call(&f, &opened, "large.export", json!({"path":output}));
+        let mut original = zip::ZipArchive::new(File::open(&input).unwrap()).unwrap();
+        let mut exported = zip::ZipArchive::new(File::open(&output).unwrap()).unwrap();
+        assert_eq!(original.len(), exported.len());
+        fn content_hash(mut source: impl Read) -> String {
+            let mut digest = Sha256::new(); let mut bytes = [0u8; 64 * 1024];
+            loop { let count = source.read(&mut bytes).unwrap(); if count == 0 { break; } digest.update(&bytes[..count]); }
+            format!("{:x}", digest.finalize())
+        }
+        for i in 0..original.len() {
+            let member = original.by_index(i).unwrap(); let name = member.name().to_owned();
+            assert_eq!(content_hash(member), content_hash(exported.by_name(&name).unwrap()), "{name}");
+        }
+        println!("{}",json!({"sourceSha256":source_hash,"roots":items.len(),"pages":pages,"kinds":kinds,"bounds":bounds,"byteIdenticalExportMembers":exported.len()}));
+        if let Ok(path) = std::env::var("CORE_CANVAS_CATALOGUE_OUTPUT") {
+            fs::write(path, serde_json::to_vec(&json!({"sourceSha256":source_hash,"bounds":bounds,"items":items})).unwrap()).unwrap();
+        }
     }
     #[test]
     #[ignore = "real source page ranges under the unchanged session allowance"]
