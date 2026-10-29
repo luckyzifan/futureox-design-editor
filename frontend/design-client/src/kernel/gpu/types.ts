@@ -158,6 +158,8 @@ export type GpuScene = {
   displayFilters?: boolean
   /** Screen-only bounded filter tier. Larger radii retain exact reduction. */
   displayFilterRadiusLimit?: number
+  /** Renderer-owned SDR blur arithmetic, cleared for every exact output. */
+  canvasBlurApproximation?: boolean
   /** Worker-selected SDR display-only image sampler. Exact outputs overwrite it. */
   displayMaterialSource?: boolean
   /** Screen-only request for sequential sample accumulation, never exact output. */
@@ -275,6 +277,9 @@ export interface Driver {
   /** Submit encoded work in queue order without waiting or freeing resources.
    * Used at CPU task yields so display and raster submissions can interleave. */
   submitPending?(): void
+  /** Pace canvas encoding against the already submitted queue without
+   * retiring frame resources or treating presentation ACKs as completion. */
+  yieldRasterQueue?(): Promise<void>
   captureDisplay?: boolean
   attachPresenter?(canvas: OffscreenCanvas, report: (stats: Record<string, unknown>) => void): void
   presentFrame?(frame: import('./resident-presenter').ResidentFrame): void
@@ -291,6 +296,7 @@ export interface Driver {
   readonly supportsDisplayFilters?: boolean
   readonly zeroTextureSampling?: boolean
   readonly constantTextureSampling?: boolean
+  createConstantCoverage?():Texture
   /** Materialize each step of meanFourRN without changing its operation order. */
   readonly sequentialSampleResolve?: boolean
   /** Finite image paint + transparent normal blend + one exact resolve step. */
@@ -318,6 +324,7 @@ export interface Driver {
   /** Aggregate device-side ledger. finishTransientBytes covers the finish()
    * output copy, readback target and MAP_READ staging that live outside the
    * renderer's pool budget; gates read it to reason about the true footprint. */
+  drawWorkSnapshot?():Record<string,number>
   stats?(): {
     passTimings?: GpuPassTiming[]
     textureBytes: number
@@ -360,6 +367,7 @@ export interface Driver {
   abortFrameAndReleaseFilterScratch?(reason?: 'admission' | 'cancel'): Promise<void>
   readonly certifiedFilter?: boolean
   readonly exactSolidPaintOver?: boolean
+  readonly exactGradientPaintOver?: boolean
   readonly managed?: boolean
   readonly linearLight?: boolean
   readonly hdr?: boolean
@@ -400,7 +408,11 @@ export interface Driver {
   upload(bitmap: ImageBitmap): Texture
   uploadRgba8?(bytes: Uint8Array, width: number, height: number): Texture
   uploadExactTentKernel?(bytes:Uint8Array,width:number,height:number,operator:'rational-tent'|'certified-tent',radius:number):Texture
+  /** Private coefficient upload for bounded isolated shadows; never a scene flag. */
+  readonly boundedShadowPacketMaxDimension?: number
+  uploadBoundedShadowKernel?(bytes:Uint8Array,width:number,height:number,radius:number):Texture
   uploadLinear?(values: Float32Array, width: number, height: number): Texture
+  uploadLinearRows?(width:number,height:number,rows:import('../image-row-source').LinearImageRows):Texture
   /** Write a sub-rect of an existing texture (atlas slot). The rect stays
    * inside the texture; zero padding around slots reproduces standalone
    * out-of-bounds fetches exactly. */
@@ -430,6 +442,8 @@ export interface Driver {
   ): Texture
   clear(target: Texture): void
   mask(path: PathMesh, target: Texture, sampleIndex?: number): void
+  /** Rasterize all four phases into four distinct owned targets in one pass. */
+  maskAll?(path: PathMesh, targets: readonly Texture[], region?: Rect): boolean
   /** Rasterize an integer crop without rebasing the interval program. */
   maskRegion?(path: PathMesh, target: Texture, sampleIndex: number, region: Rect): void
   /** channels is only used by exact separable filters; all other passes write RGBA. */

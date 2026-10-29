@@ -1,14 +1,20 @@
 import { pageBackgroundProof, pageBackgroundSource } from './page-background'
+import { textureAllocationError, annotateTextureFailure } from '../../../../design-desktop/src/render-texture-failure.mjs'
+import { PassDrawWork } from '../../../../design-desktop/src/render-pass-work.mjs'
+import { GRADIENT_PAINT_OVER_MODE, gradientPaintOverWgsl, gradientFusionWorthwhile } from './gradient-paint-over'
 import { captureDeviceDiagnosticRequest, deviceDiagnosticFields, registerDeviceDiagnosticOwner, recordDeviceLifecycle, recordDeviceDiagnostic, recordDeviceCallback, deviceLifecyclePhase, deviceLostReason } from './device-lifecycle-diagnostics'
 import { markRenderFailure, renderFailureFields, withRenderFailureStage } from '../render-failure-telemetry'
 import { recordGpuDiagnostic, gpuDiagnosticsEnabled } from '../../../../design-desktop/src/render-terminal-diagnostics.mjs'
 import { QueueWaitStats, queueWaitReasons, type QueueWaitReason } from './queue-wait-stats'
+import { validateLinearImageDimensions, writeLinearImageRows } from './linear-image-rows'
 import { textureByteLength } from './texture-byte-length'
 /// <reference types="@webgpu/types" />
 import vectorShader from '../../../../../design-studio/crates/design-kernel/shaders/vector.wgsl?raw'
 import { minifiedPreviewRgba8 } from './rgba8'
 import samplingShader from '../../../../../design-studio/crates/design-kernel/shaders/sampling.wgsl?raw'
 import { exactFilterWgsl, rationalStubWgsl } from './exact-filter'
+import { canvasBlurPassEligible, canvasBlurSceneEligible, canvasBlurGeometry } from './canvas-blur-filter'
+import { canvasSpatialBlurWgsl } from './canvas-spatial-blur'
 import { exactFilterPacketLayout, exactFilterPacketTexels } from './exact-filter-packet-layout'
 import { managedBackgroundEntryPoint, managedBackgroundWgsl } from './managed-background'
 import { compositorModes } from './compositor-modes'
@@ -18,7 +24,7 @@ import { ByteTentPrefix, type ByteTentPrefixLease, planByteTentPrefix, type Byte
 import { prefixModule } from './prefix-module'
 import { PREFIX_MIN_RADIUS } from './prefix-band'
 import { certifyPrefixRationalBound, prefixRationalBoundBits, type PrefixRationalBoundCertificate } from './prefix-preflight'
-import {certifyWidePrefix,widePrefixBoundBits,type WidePrefixCertificate} from './prefix-wide-bound'
+import {certifyWidePrefix,certifyLargeWidePrefix,certifyShadowWidePrefix,widePrefixBoundBits,type WidePrefixCertificate} from './prefix-wide-bound'
 import { completeFilterAxisSupport } from './opaque-filter'
 import { filterSourceWindowUniforms, snapshotFilterSourceWindow, type FilterSourceWindow } from './filter-source-window'
 import { displayFilterWgsl, pairedDisplayFilterWgsl } from './display-filter'
@@ -77,7 +83,7 @@ function boundedDisplayRadius(radius: number, limit: number, channels = 15) {
 }
 function displayFilterPass(enabled: boolean, limit: number | undefined, prepared: boolean,
   u: Float32Array, channels: number, filter?: {kind: 'tent'; radius: number}) {
-  if (!enabled || u[16] !== 22) return false
+  if (!enabled || u[16] !== 22 || u[39] === 2) return false
   if (limit === undefined) return true // Existing unbounded web display contract.
   // The rational and display coefficient textures have different layouts.
   // Keep the original radius, not just its rounded uniform, in the decision.
@@ -91,6 +97,23 @@ type ParkedDriver = {
   reaper: ReturnType<typeof setTimeout>
 }
 export class WebGpuDriver implements Driver {
+  private canvasBlurRequested = false
+  private canvasBlurPipelines: GPURenderPipeline[] = []
+  private canvasBlurScalarPipeline?: GPURenderPipeline
+  private canvasSpatialPipelines = new Map<number, GPURenderPipeline>()
+  private canvasSpatialFailed = new Set<number>()
+  private canvasSpatialModule?: GPUShaderModule
+  private canvasBlurFailed = false
+  canvasBlurPasses = 0
+  canvasMotionBlurPasses = 0
+  canvasZoomBlurPasses = 0
+  private drawWork = new PassDrawWork()
+  drawWorkSnapshot(){return {...this.drawWork?.snapshot(),...(gpuDiagnosticsEnabled()?{
+    fastSampleOnlyPasses:this.sampleOnlyCoveragePasses||0,fastSampleOnlyPixels:this.sampleOnlyCoveragePixels||0,
+    fastPackedCoveragePasses:this.packedCoverageFramePasses||0,fastCanvasBlurPasses:this.canvasBlurPasses||0,
+    fastCanvasMotionPasses:this.canvasMotionBlurPasses||0,fastCanvasZoomPasses:this.canvasZoomBlurPasses||0,
+  }: {})}}
+  private noteDraw(mode:number,count=1,pixels?:number){this.drawCalls+=count;this.drawWork?.draw(mode,count,pixels)}
   private queueWaitStats = new QueueWaitStats(import.meta.env.VITE_DESIGN_QUEUE_WAIT_TIMING === '1')
   private submissionSequence = 0
   private completedSubmissionSequence = 0
@@ -110,6 +133,7 @@ export class WebGpuDriver implements Driver {
       ...captureDeviceDiagnosticRequest(), ...deviceDiagnosticFields(this),
       deviceSubmitSequence: this.submissionSequence, deviceSubmitTraceSkipped: this.submitTraceSkipped, resourceEpoch: this.resourceEpoch,
       drawCalls: this.drawCalls, opaqueTentPasses: this.opaqueTentPasses,
+      ...this.drawWorkSnapshot(),
       deviceSubmitTableCount: this.imageTables?.size || 0,
       deviceSubmitTableWidthMax: [...(this.imageTables?.keys() || [])].reduce((max, table) => Math.max(max, table.width), 0),
       deviceSubmitTableHeightMax: [...(this.imageTables?.keys() || [])].reduce((max, table) => Math.max(max, table.height), 0),
@@ -125,6 +149,7 @@ export class WebGpuDriver implements Driver {
       deviceFenceAsync: Number(asynchronous), deviceFenceGeometryReason: geometryReason, deviceGpuTimingEnabled: Number(!!this.timingQueries),
       ...this.imageRetirementFields(),
       drawCalls: this.drawCalls, opaqueTentPasses: this.opaqueTentPasses,
+      ...this.drawWorkSnapshot(),
       deviceSubmitTraceSkipped: this.submitTraceSkipped || 0,
       deviceSubmitTableCount: this.imageTables?.size || 0,
       deviceSubmitTableWidthMax: [...(this.imageTables?.keys() || [])].reduce((max, table) => Math.max(max, table.width), 0),
@@ -161,6 +186,14 @@ export class WebGpuDriver implements Driver {
   completedResourceEpoch = 0
   private rationalKernelBounds = new WeakMap<Texture, { packet: PrefixRationalBoundCertificate; resource: unknown; width: number; height: number }>()
   private wideKernelBounds = new WeakMap<Texture,{packet:WidePrefixCertificate;resource:unknown;width:number;height:number}>()
+  private shadowKernelBounds = new WeakMap<Texture,{packet:WidePrefixCertificate;resource:unknown;width:number;height:number;radius:number}>()
+  private shadowKernelProof(kernel:Texture|undefined,radius:number) {
+    if(import.meta.env.VITE_DESIGN_BOUNDED_SHADOW_TENT==='0'||!this.managed||!this.certifiedFilter||this.displayMath||this.hdr)return
+    const proof=kernel&&this.shadowKernelBounds?.get(kernel)
+    if(!proof||!Object.is(radius,proof.radius)||!this.textures.has(kernel!)||kernel!.resource!==proof.resource||
+      kernel!.width!==proof.width||kernel!.height!==proof.height||!widePrefixBoundBits(proof.packet,radius))return
+    return proof.packet
+  }
   private pipelines = new PipelineRegistry()
   private readonly emptySceneComposeEnabled = import.meta.env.VITE_DESIGN_EMPTY_SCENE_COMPOSE === '1'
   private curveMirror = new ResidentGeometry()
@@ -179,7 +212,7 @@ export class WebGpuDriver implements Driver {
   }
   private programHits = 0
   private programHitBytes = 0
-  private readonly sampleOnlyCoverageEnabled = import.meta.env.VITE_DESIGN_SAMPLE_ONLY_COVERAGE === '1'
+  private readonly sampleOnlyCoverageEnabled = import.meta.env.VITE_DESIGN_SAMPLE_ONLY_COVERAGE !== '0'
   private sampleOnlyRequested = false
   private sampleOnlyPrograms = new SampleOnlyAreaPrograms()
   private sampleOnlyPreparing?: Promise<void>
@@ -187,6 +220,10 @@ export class WebGpuDriver implements Driver {
   private sampleOnlyColorPipeline?: GPURenderPipeline
   private sampleOnlyBytePipeline?: GPURenderPipeline
   private sampleOnlyScalarPipeline?: GPURenderPipeline
+  private readonly packedCoverageEnabled = import.meta.env.VITE_DESIGN_PACKED_COVERAGE === '1'
+  private packedCoveragePipeline?: GPURenderPipeline
+  packedCoveragePasses = 0
+  private packedCoverageFramePasses = 0
   private sampleOnlyDispatch?: { target: Texture; uniform: Float32Array; buffer: GPUBuffer; epoch: number }
   private sampleOnlyCoveragePasses = 0
   private sampleOnlyCoveragePixels = 0
@@ -245,6 +282,7 @@ export class WebGpuDriver implements Driver {
   private softwareRaster = false
   readonly name = 'webgpu' as const
   readonly exactSolidPaintOver = true
+  get exactGradientPaintOver(){return this.managed&&!this.displayMath&&!this.hdr&&import.meta.env.VITE_DESIGN_FUSED_GRADIENT!=='0'}
   readonly canvas = new OffscreenCanvas(1, 1)
   description = 'WebGPU'
   lost = false
@@ -438,7 +476,7 @@ export class WebGpuDriver implements Driver {
     const binding=this.uniformWords(words)
     entry.pipeline.encodeResolve(this.encoder,target.resource as GPUTexture,entry.storage,binding,this.timingQueries ?
       this.timestampWrites({ stage:'image-x-table-resolve', mode:51, radius:0, width:target.width, height:target.height }) : undefined)
-    this.drawCalls++
+    this.noteDraw(51)
     if(entry.opaqueAlpha)target.opaqueAlpha=true
   }
   async retireImageTable(table: ExactImageTable) {
@@ -454,6 +492,9 @@ export class WebGpuDriver implements Driver {
   private maskLayout!: GPUBindGroupLayout
   private paintPipeline!: GPURenderPipeline
   private compositorModule!: GPUShaderModule
+  private exactMotionSource?: string
+  private exactMotionModule?: GPUShaderModule
+  private requiresExactBoxFilters = false
   private modePipelines = new Map<number, GPURenderPipeline>()
   private filterPipelines: GPURenderPipeline[] = []
   private normalPipeline?: GPURenderPipeline
@@ -746,13 +787,18 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
  if(src.a<=0.){return dst;}if(dst.a<=0.){return src;}
  return addRN4(src,mulRN4(dst,vec4<f32>(addRN(1.,-src.a))));
 }`
-    const addressedCode = this.managed ? scalarCoverageSource(imageCoordinateSource(compositorCode + imageResolveStepWgsl)) : compositorCode
+    const addressedCode = this.managed ? scalarCoverageSource(imageCoordinateSource(compositorCode + imageResolveStepWgsl + gradientPaintOverWgsl)) : compositorCode
     if (this.managed && !this.displayMath && !this.hdr) this.displayImageBaseSource = addressedCode
     const module = this.device.createShaderModule({
       code: this.displayMath ? displayArithmeticSource(addressedCode, import.meta.env.VITE_DESIGN_NATIVE_DIVISION !== '0') : addressedCode,
       label: 'Self-developed vector compositor',
     })
     this.compositorModule = module
+    // Motion keeps single-round sampling and arithmetic on both byte and
+    // display-math targets. Other presentation modes retain their own policy.
+    if (!this.managed) this.exactMotionSource = compositorCode.replace(byteSamplingShader, samplingShader)
+      .replace('fn bsCorner4(a:vec4<f32>,b:vec4<f32>,c:vec4<f32>,d:vec4<f32>)->vec4<f32>{return a;}', '')
+    else if (this.displayMath) this.exactMotionSource = addressedCode
     const mask = this.device.createShaderModule({ code: maskShader, label: 'Stencil and cover' })
     for (const m of [module, mask]) {
       const info = await m.getCompilationInfo()
@@ -1034,11 +1080,13 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     })
   }
   async prepareScene(scene: GpuScene, displayOnly = false) {
+    this.canvasBlurRequested = canvasBlurSceneEligible(scene.canvasBlurApproximation === true,
+      scene, this, !displayOnly, displayOnly)
     this.backgroundScene=pageBackgroundSource(scene)
     this.certifiedTentPasses=0
     this.sampleOnlyPrograms.resetFrame()
     this.opaqueSolidBatches=new WeakMap();this.opaqueSolidDraws=0
-    this.opaqueSolidRequested=import.meta.env.VITE_DESIGN_OPAQUE_SOLID_BATCH==='1' && this.managed===true &&
+    this.opaqueSolidRequested=(import.meta.env.VITE_DESIGN_OPAQUE_SOLID_BATCH==='1'||import.meta.env.VITE_DESIGN_MIXED_SOLID_RUNS!=='0') && this.managed===true &&
       scene.coherentSamples===true && !scene.softwareRaster && hasOpaqueSolidGroups(scene)
     // Bitmap-assembly display leaves intentionally set captureDisplay=false.
     // Transport is independent of the real render(readback,present) contract;
@@ -1058,7 +1106,11 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       !this.boundedDisplayFilterFailed && boundedDisplayRadius(radiusLimit, radiusLimit))
     this.softwareRaster = !!scene.softwareRaster && !this.managed
 
-    const paths = Object.values(scene.nodes).flatMap(n => [n.fill, ...n.strokes.map(s => s.path)])
+    this.requiresExactBoxFilters = false
+    const paths = Object.values(scene.nodes).flatMap(n => {
+      if (n.effects.some(effect => effect.visible && effect.kind === 'gaussian-blur')) this.requiresExactBoxFilters = true
+      return [n.fill, ...n.strokes.map(s => s.path)]
+    })
     this.scenePrograms = import.meta.env.VITE_DESIGN_PROGRAM_RESIDENCY !== '0' &&
       !paths.some(p=>p.analytic||p.area&&!p.area.fingerprint)
       ? paths.flatMap(p=>p.area?[p.area]:[]) : undefined
@@ -1075,29 +1127,57 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       await this.prepareSampleOnlyCoverage()
       if (this.sampleOnlyScalarPipeline) this.sampleOnlyCoverageEligibleScenes++
     }
-    if (!this.managed) return
-    const modes = compositorModes(scene)
+    const modes = this.managed ? compositorModes(scene) : new Set([...compositorModes(scene)].filter(mode => mode === 61 || mode === 62))
+    if(this.exactGradientPaintOver&&gradientFusionWorthwhile(scene))modes.add(GRADIENT_PAINT_OVER_MODE)
     const layout = this.device.createPipelineLayout({ bindGroupLayouts: [this.layout] })
     const pending: string[] = []
     for (const mode of modes) {
       if (this.modePipelines.has(mode)) continue
       const key = `mode:${mode}`; pending.push(key)
       this.pipelines.register(key, async () => {
+      const module = (mode === 61 || mode === 62) && this.exactMotionSource !== undefined
+        ? (this.exactMotionModule ??= this.device.createShaderModule({code:this.exactMotionSource!,label:'Exact motion sampling and arithmetic'})) : this.compositorModule
       const pipeline = await this.device.createRenderPipelineAsync({ layout,
-        vertex: { module: this.compositorModule, entryPoint: 'quad' },
-        fragment: { module: this.compositorModule, entryPoint: 'fragment', constants: { COMPOSITOR_MODE: mode }, targets: [{ format: this.layerFormat }] },
+        vertex: { module, entryPoint: 'quad' },
+        fragment: { module, entryPoint: mode===GRADIENT_PAINT_OVER_MODE?'exactGradientPaintOver':'fragment', constants: mode===GRADIENT_PAINT_OVER_MODE?{}:{ COMPOSITOR_MODE: mode }, targets: [{ format: this.layerFormat }] },
         primitive: { topology: 'triangle-list' } })
       this.modePipelines.set(mode, pipeline)
       })
     }
     await this.pipelines.prepare(pending)
+    if (this.canvasBlurRequested) await this.prepareCanvasSpatialBlur(modes)
     if (displayImageRequested) await this.prepareDisplayImagePipeline()
+  }
+  private async prepareCanvasSpatialBlur(modes: Set<number>) {
+    if (!this.displayImageBaseSource) return
+    for (const mode of [61, 62]) {
+      if (!modes.has(mode) || this.canvasSpatialPipelines.has(mode) || this.canvasSpatialFailed.has(mode)) continue
+      try {
+        const device = this.device
+        device.pushErrorScope('validation')
+        let pending: Promise<GPURenderPipeline>
+        try {
+          const module = this.canvasSpatialModule ??= device.createShaderModule({ code: this.displayImageBaseSource + canvasSpatialBlurWgsl, label: 'Canvas spatial blur' })
+          pending = device.createRenderPipelineAsync({ layout: device.createPipelineLayout({ bindGroupLayouts: [this.layout] }),
+            vertex: { module, entryPoint: 'quad' }, fragment: { module, entryPoint: mode === 61 ? 'canvasMotionBlur' : 'canvasZoomBlur', targets: [{ format: this.layerFormat }] },
+            primitive: { topology: 'triangle-list' } })
+        } catch (error) { await device.popErrorScope(); throw error }
+        const validation = device.popErrorScope(), [pipeline, error] = await Promise.all([pending, validation])
+        if (error) throw Error(error.message)
+        this.assertPipelinePublicationOwner(device)
+        this.canvasSpatialPipelines.set(mode, pipeline)
+      } catch (error) {
+        this.canvasSpatialFailed.add(mode)
+        console.warn('Canvas spatial blur unavailable; using exact filter', error)
+      }
+    }
   }
   /** Independent exact sample-only program; the original area pipeline remains
    * prepared. Tests may force the private enable bit off after preparing both,
    * without changing scene/program/buffer/uniforms or exposing a request flag. */
   private async prepareSampleOnlyCoverage() {
-    if (!this.sampleOnlyCoverageEnabled || this.sampleOnlyUnavailable || this.sampleOnlyScalarPipeline) return
+    if (!this.sampleOnlyCoverageEnabled || this.sampleOnlyUnavailable ||
+        this.sampleOnlyScalarPipeline && (!this.packedCoverageEnabled || this.packedCoveragePipeline)) return
     if (!this.sampleOnlyPreparing) this.sampleOnlyPreparing = (async () => {
       try {
         const validated = async <T>(create: () => T | Promise<T>): Promise<T> => {
@@ -1118,13 +1198,18 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
         const errors = (await module.getCompilationInfo()).messages.filter(message => message.type === 'error')
         if (errors.length) throw Error(errors.map(message => `${message.lineNum}:${message.message}`).join('\n'))
         const layout = await validated(() => this.device.createPipelineLayout({ bindGroupLayouts: [this.layout] }))
-        const results = await Promise.allSettled((['rgba32float', 'rgba8unorm', 'r32float'] as GPUTextureFormat[]).map(format =>
+        const jobs = (['rgba32float', 'rgba8unorm', 'r32float'] as GPUTextureFormat[]).map(format =>
           validated(() => this.device.createRenderPipelineAsync({ layout, vertex: { module, entryPoint: 'areaQuad' },
-            fragment: { module, entryPoint: 'areaSampleFragment', targets: [{ format }] }, primitive: { topology: 'triangle-list' } }))))
+            fragment: { module, entryPoint: 'areaSampleFragment', targets: [{ format }] }, primitive: { topology: 'triangle-list' } })))
+        if (this.packedCoverageEnabled) jobs.push(validated(() => this.device.createRenderPipelineAsync({ layout,
+          vertex: { module, entryPoint: 'areaQuad' }, fragment: { module, entryPoint: 'areaSamplesFragment',
+            targets: Array.from({ length: 4 }, () => ({ format: 'rgba8unorm' as GPUTextureFormat })) }, primitive: { topology: 'triangle-list' } })))
+        const results = await Promise.allSettled(jobs)
         const failure = results.find(result => result.status === 'rejected')
         if (failure?.status === 'rejected') throw failure.reason
         const pipelines = results.map(result => (result as PromiseFulfilledResult<GPURenderPipeline>).value)
         ;[this.sampleOnlyColorPipeline, this.sampleOnlyBytePipeline, this.sampleOnlyScalarPipeline] = pipelines
+        if (this.packedCoverageEnabled) this.packedCoveragePipeline = pipelines[3]
       } catch (error) {
         this.sampleOnlyUnavailable = true
         console.warn('Sample-only coverage unavailable; retaining the original area pipeline', error)
@@ -1224,7 +1309,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
           console.warn('Bounded display filter unavailable; using exact filters', error)
         }
       }
-      if (!bounded) return
+      if (!bounded && !this.requiresExactBoxFilters) return
     }
     if (this.managed && !this.filterPipelines.length) {
       const filterModule = this.device.createShaderModule({ code: exactFilterWgsl(this.certifiedFilter), label: 'Exact rational filter' })
@@ -1240,6 +1325,36 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
           constants: { FILTER_CHANNEL: 3 }, targets: [{ format: 'r32float' }] },
         primitive: { topology: 'triangle-list' } })
     }
+    if (this.canvasBlurRequested && !this.canvasBlurPipelines.length && !this.canvasBlurFailed) {
+      try {
+        const device = this.device
+        const validated = async <T>(create: () => T | Promise<T>): Promise<T> => {
+          device.pushErrorScope('validation')
+          let pending: T | Promise<T>
+          try { pending = create() } catch (error) { await device.popErrorScope(); throw error }
+          const validation = device.popErrorScope(), [value, error] = await Promise.all([pending, validation])
+          if (error) throw Error(error.message)
+          return value
+        }
+        const module = await validated(() => device.createShaderModule({ code: exactFilterWgsl(this.certifiedFilter, true), label: 'Canvas rational-coefficient blur' }))
+        const info = await module.getCompilationInfo()
+        if (info.messages.some(m => m.type === 'error')) throw Error('Canvas blur shader validation failed')
+        const layout = device.createPipelineLayout({ bindGroupLayouts: [this.layout] })
+        const [colors, scalar] = await Promise.all([Promise.all([0, 1, 2, 3].map(channel => validated(() => device.createRenderPipelineAsync({ layout,
+          vertex: { module, entryPoint: 'quad' }, fragment: { module, entryPoint: 'fragment',
+            constants: { FILTER_CHANNEL: channel }, targets: [{ format: this.layerFormat, writeMask: 1 << channel }] },
+          primitive: { topology: 'triangle-list' } })))), validated(() => device.createRenderPipelineAsync({ layout,
+            vertex: { module, entryPoint: 'quad' }, fragment: { module, entryPoint: 'fragment', constants: { FILTER_CHANNEL: 3 }, targets: [{ format: 'r32float' }] },
+            primitive: { topology: 'triangle-list' } }))])
+        this.assertPipelinePublicationOwner(device)
+        this.canvasBlurPipelines = colors; this.canvasBlurScalarPipeline = scalar
+      } catch (error) {
+        this.canvasBlurFailed = true
+        this.canvasBlurPipelines = []
+        console.warn('Canvas blur arithmetic unavailable; using exact filters', error)
+      }
+    }
+    if (this.displayFilters && !bounded) return
     if (this.prefixEnabled && prefixUseful && !this.prefix)
       this.prefix = await TexturePrefix.create(this.device, (u) => this.uniform(u), prefixModule(this.certifiedFilter), false,
         this.timingQueries ? (stage, width, height, radius, channel) =>
@@ -1295,7 +1410,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       delete target.uniformColor; delete target.transparentZero
       this.frameScratchBytes = Math.max(this.frameScratchBytes, this.scratchBytes)
       this.byteTentAlphaPasses++
-      this.drawCalls += lease.plan.bands
+      this.noteDraw(22,lease.plan.bands)
       return true
     } catch (error) {
       this.byteTentRecordingFailed = true
@@ -1356,11 +1471,12 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       a.resource===kernel.resource&&b.resource===certificate.resource&&a.width===kernel.width&&a.height===kernel.height&&
       b.width===certificate.width&&b.height===certificate.height&&b.boundBits>0&&b.boundBits<=120&&this.textures.has(kernel)&&this.textures.has(certificate))
   }
-  private prefixPolicy(u: Float32Array, channels: number, filter?: {kind: 'tent'; radius: number}, kernel?: Texture,certificate?:Texture) {
+  private prefixPolicy(u: Float32Array, channels: number, filter?: {kind: 'tent'; radius: number}, kernel?: Texture,certificate?:Texture,target?:Texture) {
     // Actual operator measurements: alpha-only remains faster on the old path;
     // eligible RGBA lines can use 4 MiB bands from the measured crossover.
     return !!(!displayFilterPass(this.displayFilters, this.displayFilterRadiusLimit, !!this.displayFilterPipeline, u, channels, filter) &&
-      this.prefix && filter?.kind === 'tent' && channels===15 && u[16]===22 &&
+      this.prefix && filter?.kind === 'tent' && (channels===15 || channels===8 && filter.radius>512 &&
+        (import.meta.env.VITE_DESIGN_WIDE_RATIONAL_PREFIX_LARGE==='1'||!!this.shadowKernelProof(kernel,filter.radius)) && !!target && !target.scalarCoverage && !target.binaryCoverage) && u[16]===22 &&
       (this.wideKernelBoundBits(kernel,filter.radius)>0||this.certifiedTentPair(kernel,certificate,filter.radius)||filter.radius>=PREFIX_MIN_RADIUS&&
       !((!Number.isInteger(filter.radius)||filter.radius>512)&&kernel?.prefixRationalUnsupported===true)))
   }
@@ -1371,7 +1487,9 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     return prefixRationalBoundBits(proof.packet, radius)
   }
   private wideKernelBoundBits(kernel:Texture|undefined,radius:number){
-    if(import.meta.env.VITE_DESIGN_WIDE_RATIONAL_PREFIX!=='1'||!this.managed||!this.certifiedFilter||Number.isInteger(radius))return 0
+    if(!this.managed||!this.certifiedFilter||Number.isInteger(radius))return 0
+    const shadow=this.shadowKernelProof(kernel,radius);if(shadow)return widePrefixBoundBits(shadow,radius)
+    if(import.meta.env.VITE_DESIGN_WIDE_RATIONAL_PREFIX!=='1')return 0
     const proof=kernel&&this.wideKernelBounds?.get(kernel)
     if(!proof||!this.textures.has(kernel!)||kernel!.resource!==proof.resource||kernel!.width!==proof.width||kernel!.height!==proof.height)return 0
     return widePrefixBoundBits(proof.packet,radius)
@@ -1381,10 +1499,10 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   }
   private prepareWindowFilterPass(target: Texture, u: Float32Array, inputs: Texture[], channels: number,
     filter: {kind: 'tent'; radius: number}, availableBytes: number, sourceWindow?: FilterSourceWindow) {
-    if (!this.prefixPolicy(u, channels, filter, inputs[1],inputs[2]) || this.prefix!.scratchBytes) return
+    if (!this.prefixPolicy(u, channels, filter, inputs[1],inputs[2],target) || this.prefix!.scratchBytes) return
     recordGpuDiagnostic('prefix',{reasonCode:availableBytes<PREFIX_SCRATCH_BYTES?1:0,availableBytes,scratchBytes:PREFIX_SCRATCH_BYTES,radius:filter.radius,width:u[2],height:u[3]})
     const sources = [0, 1, 2].map((i) => (inputs[i] || this.blank).resource as GPUTexture)
-    if (availableBytes < PREFIX_SCRATCH_BYTES || !this.prefix!.canEncode(target.resource as GPUTexture, sources, u, filter.radius, filter.kind, {x:u[0],y:u[1],w:u[2],h:u[3]}, channels,255,sourceWindow)) return
+    if (availableBytes < PREFIX_SCRATCH_BYTES || !this.prefix!.canEncode(target.resource as GPUTexture, sources, u, filter.radius, filter.kind, {x:u[0],y:u[1],w:u[2],h:u[3]}, channels,255,sourceWindow,this.shadowKernelProof(inputs[1],filter.radius))) return
     this.prefix!.reserveScratch()
     this.prefix!.resetCounters(this.encoder)
     this.frameScratchBytes = Math.max(this.frameScratchBytes, this.prefix!.scratchBytes)
@@ -1453,6 +1571,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.collectRetiredImageTables(tables)
   }
   begin(vertices: Float32Array, curves = new Float32Array(0)) {
+    this.drawWork?.reset(gpuDiagnosticsEnabled())
     const owner = this.preparedGeometryOwner
     this.preparedGeometryOwner = undefined
     if (this.disposed || this.lost) throw new Error('WebGPU 设备已丢失')
@@ -1473,12 +1592,14 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     }
     this.submittedBoundaryReady = false; this.submittedBoundaryGeneration++
     this.sampleOnlyPrograms.resetFrame(); this.sampleOnlyDispatch = undefined
-    this.sampleOnlyCoveragePasses = this.sampleOnlyCoveragePixels = 0
+    this.sampleOnlyCoveragePasses = this.sampleOnlyCoveragePixels = this.packedCoverageFramePasses = 0
     this.discardByteTentEncoder(this.encoder)
     this.geometryUploadBytes = 0
     this.bindingCache.begin()
     this.pairedFilterPasses = 0
     this.boundedDisplayFilterPasses = 0
+    this.canvasBlurPasses = 0
+    this.canvasMotionBlurPasses = this.canvasZoomBlurPasses = 0
     if (this.disposed || this.lost) throw new Error('WebGPU 设备已丢失')
     this.resourceEpoch++
     this.drawCalls = 0
@@ -1620,6 +1741,13 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     texture.binaryCoverage = true
     return texture
   }
+  createConstantCoverage():Texture {
+    if(!this.managed)throw Error('Constant coverage requires managed sampling')
+    const texture=this.createBinaryCoverage(1,1)
+    this.device.queue.writeTexture({texture:texture.resource as GPUTexture},new Uint8Array([255,255,255,255]),{bytesPerRow:4},[1,1])
+    texture.uniformColor=true
+    return texture
+  }
   createScalarCoverage(width:number,height:number):Texture {
     const texture=this.createFormat(width,height,'r32float');texture.scalarCoverage=true;return texture
   }
@@ -1643,7 +1771,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       width > this.device.limits.maxTextureDimension2D ||
       height > this.device.limits.maxTextureDimension2D
     )
-      throw new Error('WebGPU 纹理尺寸超限')
+      throw textureAllocationError(width,height,this.device.limits.maxTextureDimension2D,format==='rgba32float'?16:4)
     const bytes = textureByteLength(width, height, format === 'rgba32float' ? 16 : 4)
     const resource = this.device.createTexture({
       label: `Forma layer ${width}x${height} ${this.layerFormat}`,
@@ -1669,6 +1797,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.nativeTentKernels?.delete(texture)
     this.rationalKernelBounds?.delete(texture)
     this.wideKernelBounds?.delete(texture)
+    this.shadowKernelBounds?.delete(texture)
     this.imageRanges?.delete(texture)
     this.displayImageUploads?.delete(texture)
     this.imageAxisPrograms?.delete(texture)
@@ -1706,6 +1835,18 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.displayImageUploads.set(texture,{resource:texture.resource as GPUTexture,width,height,range})
     return texture
   }
+  uploadLinearRows(width:number,height:number,rows:import('../image-row-source').LinearImageRows){
+    if(!this.managed)throw Error('PNG float rows require managed textures')
+    validateLinearImageDimensions(width,height)
+    const texture=this.createFormat(width,height,'rgba32float')
+    try{
+      writeLinearImageRows(width,height,rows,(y,h,values)=>this.uploadAtlasLinear(texture,0,y,width,h,values))
+      // Every copied f32 word was checked synchronously. Partial uploads grant
+      // neither this finite proof nor the whole-image filter-range capability.
+      texture.finitePixels=true
+      return texture
+    }catch(error){this.destroy(texture);throw error}
+  }
   uploadParameters(values: Float32Array, width: number, height: number) {
     if (values.length !== width * height * 4)
       throw new Error('无效的材质参数纹理')
@@ -1713,7 +1854,9 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     // direct loop preserves admission without one callback per scalar.
     for (let i = 0; i < values.length; i++)
       if (!Number.isFinite(values[i])) throw new Error('无效的材质参数纹理')
-    const t = this.createFormat(width, height, 'rgba32float')
+    let t:Texture
+    try { t = this.createFormat(width, height, 'rgba32float') }
+    catch(error){throw annotateTextureFailure(error,{textureAllocationKind:2})}
     this.device.queue.writeTexture(
       { texture: t.resource as GPUTexture },
       values,
@@ -1753,7 +1896,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     // parser's small immutable coefficient proof, never an image-sized copy.
     const packet = import.meta.env.VITE_DESIGN_PREFIX_TIGHT_BOUND === '1' && bytes.buffer instanceof ArrayBuffer
       ? certifyPrefixRationalBound(bytes) : undefined
-    const wide=import.meta.env.VITE_DESIGN_WIDE_RATIONAL_PREFIX==='1'?certifyWidePrefix(bytes):undefined
+    const wide=import.meta.env.VITE_DESIGN_WIDE_RATIONAL_PREFIX==='1'?(import.meta.env.VITE_DESIGN_LARGE_SHADOW_TENT==='1'?certifyShadowWidePrefix(bytes):import.meta.env.VITE_DESIGN_WIDE_RATIONAL_PREFIX_LARGE==='1'?certifyLargeWidePrefix(bytes):certifyWidePrefix(bytes)):undefined
     if (this.managed) {
       const t = this.uploadLinear(
         Float32Array.from(bytes, (v) => v / 255),
@@ -1775,14 +1918,32 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     if (wide) this.wideKernelBounds.set(t,{packet:wide,resource:t.resource,width,height})
     return t
   }
+  get boundedShadowPacketMaxDimension():number|undefined {
+    if(import.meta.env.VITE_DESIGN_BOUNDED_SHADOW_TENT==='0'||!this.managed||!this.certifiedFilter||this.displayMath||this.hdr||
+      this.disposed||this.lost||!this.device)return
+    const limit=this.device.limits.maxTextureDimension2D
+    return Number.isSafeInteger(limit)&&limit>0?limit:undefined
+  }
+  uploadBoundedShadowKernel(bytes:Uint8Array,width:number,height:number,radius:number):Texture {
+    const limit=this.boundedShadowPacketMaxDimension,texels=exactFilterPacketTexels(bytes,4096)
+    const layout=limit!==undefined&&texels!==undefined?exactFilterPacketLayout(texels,limit):undefined
+    const packet=certifyShadowWidePrefix(bytes)
+    if(!(radius>512&&radius<=4096)||!packet||!widePrefixBoundBits(packet,radius)||!layout||
+      width!==layout.width||height!==layout.height)throw Error('Invalid bounded shadow coefficient packet')
+    let physical=bytes
+    if(layout.physicalTexels!==texels){physical=new Uint8Array(layout.physicalTexels*4);physical.set(bytes)}
+    const texture=this.uploadLinear(Float32Array.from(physical,value=>value/255),width,height)
+    this.shadowKernelBounds.set(texture,{packet,resource:texture.resource,width,height,radius})
+    return texture
+  }
   get exactFilterPacketMaxDimension(): number | undefined {
-    if (import.meta.env.VITE_DESIGN_EXACT_WHOLE_TENT_2048 !== '1' || !this.managed || this.displayMath ||
+    if (!(import.meta.env.VITE_DESIGN_EXACT_WHOLE_TENT_2048 === '1' || import.meta.env.VITE_DESIGN_WIDE_RATIONAL_PREFIX === '1' && import.meta.env.VITE_DESIGN_WIDE_RATIONAL_PREFIX_LARGE === '1') || !this.managed || this.displayMath ||
         this.disposed || this.lost || !this.device) return
     const limit = this.device.limits.maxTextureDimension2D
     return Number.isSafeInteger(limit) && limit > 0 ? limit : undefined
   }
   uploadExactFilterPacket(bytes: Uint8Array, width: number, height: number): Texture {
-    const limit = this.exactFilterPacketMaxDimension, logicalTexels = exactFilterPacketTexels(bytes)
+    const limit = this.exactFilterPacketMaxDimension, logicalTexels = exactFilterPacketTexels(bytes, import.meta.env.VITE_DESIGN_LARGE_SHADOW_TENT === '1' ? 4096 : 2048)
     const layout = limit !== undefined && logicalTexels !== undefined ? exactFilterPacketLayout(logicalTexels, limit) : undefined
     if (!layout || logicalTexels! <= limit! || layout.height < 2 || layout.width !== width || layout.height !== height)
       throw new Error('Invalid exact filter packet row layout')
@@ -1797,6 +1958,9 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     // Keep the existing managed byte/255 transport, not an RGBA8 shortcut.
     const texture = this.uploadLinear(Float32Array.from(physical, value => value / 255), width, height)
     if (packet) this.rationalKernelBounds.set(texture, { packet, resource: texture.resource, width, height })
+    const wide = import.meta.env.VITE_DESIGN_WIDE_RATIONAL_PREFIX === '1' && import.meta.env.VITE_DESIGN_WIDE_RATIONAL_PREFIX_LARGE === '1'
+      ? (import.meta.env.VITE_DESIGN_LARGE_SHADOW_TENT === '1' ? certifyShadowWidePrefix(bytes) : certifyLargeWidePrefix(bytes)) : undefined
+    if (wide) this.wideKernelBounds.set(texture, { packet: wide, resource: texture.resource, width, height })
     return texture
   }
   uploadAtlasLinear(
@@ -1877,6 +2041,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     return target
   }
   clear(t: Texture) {
+    this.drawWork?.clear()
     this.invalidateTextureCertificates(t)
     this.closeOver()
     const pass = this.encoder.beginRenderPass({
@@ -1892,7 +2057,8 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     pass.end()
   }
   private uniform(u: Float32Array) {
-    if (++this.uniformCommands > 262144) throw new Error('GPU frame command work budget exceeded')
+    if(!Number.isSafeInteger(this.uniformCommands+1))throw Error('GPU command sequence exhausted')
+    this.uniformCommands++
     if (this.offset + 1024 > this.uniformData.byteLength) this.submitCommands()
     const offset = this.offset
     this.offset += 1024
@@ -1900,7 +2066,8 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     return { buffer: this.uniforms, offset, size: 1024 }
   }
   private uniformWords(words: Uint32Array) {
-    if(++this.uniformCommands>262144)throw Error('GPU frame command work budget exceeded')
+    if(!Number.isSafeInteger(this.uniformCommands+1))throw Error('GPU command sequence exhausted')
+    this.uniformCommands++
     if(this.offset+1024>this.uniformData.byteLength)this.submitCommands()
     const offset=this.offset;this.offset+=1024
     new Uint32Array(this.uniformData.buffer,this.uniformData.byteOffset+offset,256).set(words)
@@ -2019,6 +2186,17 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     // transient/scratch lifetime ends here and no readback is introduced.
     if (this.offset > 0 || [...(this.byteTentLeases?.values() || [])].some(entry => entry.encoder === this.encoder && !entry.submitted)) this.submitCommands()
   }
+  async yieldRasterQueue() {
+    const device = this.device
+    if (this.disposed || this.lost) throw Error('GPU 设备已丢失')
+    this.submitPending()
+    if ((this.submissionSequence || 0) <= (this.completedSubmissionSequence || 0)) return
+    // The worker event loop stays available to camera/presenter messages while
+    // this bounded raster slice drains. Do not reclaim scratch, advance the
+    // frame resource epoch, or authorize a later frame with this completion.
+    await this.waitForQueue('raster-yield')
+    if (this.disposed || this.lost || this.device !== device) throw Error('GPU 设备已丢失')
+  }
   private flush() {
     this.submitCommands()
     for (const t of this.transientTargets) this.destroy(t)
@@ -2085,6 +2263,39 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     const buffer = { color, depth, high, low }
     this.msaa.set(key, buffer)
     return buffer
+  }
+  maskAll(path: PathMesh, targets: readonly Texture[], region = path.rect): boolean {
+    if (!this.packedCoverageEnabled || !this.sampleOnlyRequested || !this.sampleOnlyCoverageEnabled ||
+        !this.packedCoveragePipeline || !this.curves || this.disposed || this.lost || !path.area || !path.count ||
+        targets.length !== 4 || new Set(targets).size !== 4 || new Set(targets.map(target => target.resource)).size !== 4) return false
+    const first = this.programOffsets?.get(path.area.first)
+    if (this.programOffsets && first === undefined) return false
+    for (const target of targets) {
+      const resource = target.resource as GPUTexture, creation = this.byteTentTextures.get(target)
+      if (!this.textures.has(target) || !target.binaryCoverage || target.scalarCoverage || target.width !== region.w || target.height !== region.h ||
+          target.bytes !== region.w * region.h * 4 || resource.format !== 'rgba8unorm' || resource.width !== region.w || resource.height !== region.h ||
+          !creation || creation.resource !== resource || creation.width !== target.width || creation.height !== target.height || creation.format !== 'rgba8unorm') return false
+    }
+    for (let phase = 0; phase < 4; phase++)
+      if (!this.sampleOnlyPrograms.accepts(path, phase, region, first, this.curves, this.resourceEpoch)) return false
+    for (const target of targets) this.invalidateTextureCertificates(target)
+    this.closeOver()
+    const u = parameters(region)
+    u[16] = 31
+    u[36] = first ?? path.area.first
+    u.set([region.x - path.rect.x, region.y - path.rect.y, path.rect.w, path.rect.h], 40)
+    const bind = this.bind(u, [])
+    const pass = this.encoder.beginRenderPass({ colorAttachments: targets.map(target => ({
+      view: this.bindingCache.view(target.resource as GPUTexture), loadOp: 'clear' as const, storeOp: 'store' as const, clearValue: [0, 0, 0, 0],
+    })) })
+    pass.setPipeline(this.packedCoveragePipeline)
+    pass.setBindGroup(0, bind.group, bind.offsets)
+    pass.draw(3)
+    pass.end()
+    this.noteDraw(31, 1, region.w * region.h)
+    this.triangles++
+    this.packedCoveragePasses++; this.packedCoverageFramePasses++
+    return true
   }
   maskRegion(path: PathMesh, target: Texture, sampleIndex: number, region: Rect) {
     if (!path.area) throw Error('Regional coverage requires an interval program')
@@ -2188,12 +2399,12 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
         pass.setVertexBuffer(0, this.vertices!)
         pass.setStencilReference(path.rule === 'union' ? 1 : 0)
         pass.draw(path.count, 1, path.first)
-        this.drawCalls++
+        this.noteDraw(63)
         this.triangles += path.count / 3
         pass.setPipeline(this.coverPipelines.get(path.rule)!)
         pass.setStencilReference(0)
         pass.draw(3)
-        this.drawCalls++
+        this.noteDraw(63)
         pass.end()
         const down = parameters(
           { x: 0, y: 0, w, h },
@@ -2314,7 +2525,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     const count = data.length / SOLID_INSTANCE_FLOATS
     pass.draw(6, count)
     pass.end()
-    this.drawCalls++
+    this.noteDraw(64)
     this.triangles += count * 2
   }
   pass(target: Texture, u: Float32Array, inputs: Texture[], region?: Rect, channels = 15, filter?: {kind: 'tent'; radius: number}, clearOutside = false) {
@@ -2355,7 +2566,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     const wideBound=filter?this.wideKernelBoundBits(inputs[1],filter.radius):0,wideRational=wideBound>0
     const certifiedTent=!wideRational&&!!filter&&this.certifiedTentPair(inputs[1],inputs[2],filter.radius)
     const rationalBoundBits=wideBound|| (certifiedTent?this.nativeTentKernels.get(inputs[2])!.boundBits:filter?this.rationalKernelBoundBits(inputs[1],filter.radius):0)
-    if (this.prefixPolicy(u, channels, filter, inputs[1],inputs[2]) && filter && !region && channels===15 &&
+    if (this.prefixPolicy(u, channels, filter, inputs[1],inputs[2],target) && filter && !region && channels===15 &&
         !this.displayMath && inputs[0]?.opaqueAlpha && import.meta.env.VITE_DESIGN_OPAQUE_TENT !== '0') {
       const complete=completeFilterAxisSupport({x:u[4],y:u[5],w:u[6],h:u[7]},
         {x:u[0],y:u[1],w:u[2],h:u[3]},u[37],filter.radius)
@@ -2364,15 +2575,15 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
           {x:u[0],y:u[1],w:u[2],h:u[3]},7,255,true,rationalBoundBits,sourceWindow,certifiedTent,wideRational)) {
         if(wideRational)recordGpuDiagnostic('prefix',{wideTentPasses:1,radius:filter.radius,width:target.width,height:target.height})
         if(certifiedTent){this.certifiedTentPasses++;recordGpuDiagnostic('prefix',{certifiedTentPasses:1,radius:filter.radius,width:target.width,height:target.height})}
-        this.drawCalls+=this.prefix!.lastRenderPasses;this.opaqueTentPasses++;target.opaqueAlpha=true;return
+        this.noteDraw(22,this.prefix!.lastRenderPasses);this.opaqueTentPasses++;target.opaqueAlpha=true;return
       }
     }
-    if (this.prefixPolicy(u, channels, filter, inputs[1],inputs[2]) && filter && !region && this.prefix!.encode(() => this.encoder, target.resource as GPUTexture,
+    if (this.prefixPolicy(u, channels, filter, inputs[1],inputs[2],target) && filter && !region && this.prefix!.encode(() => this.encoder, target.resource as GPUTexture,
       [0, 1, 2].map((i) => (inputs[i] || this.blank).resource as GPUTexture), u, filter.radius, filter.kind,
-      {x:u[0],y:u[1],w:u[2],h:u[3]}, channels,255,false,rationalBoundBits,sourceWindow,certifiedTent,wideRational)) {
+      {x:u[0],y:u[1],w:u[2],h:u[3]}, channels,255,false,rationalBoundBits,sourceWindow,certifiedTent,wideRational,this.shadowKernelProof(inputs[1],filter.radius))) {
         if(wideRational)recordGpuDiagnostic('prefix',{wideTentPasses:1,radius:filter.radius,width:target.width,height:target.height})
         if(certifiedTent){this.certifiedTentPasses++;recordGpuDiagnostic('prefix',{certifiedTentPasses:1,radius:filter.radius,width:target.width,height:target.height})}
-        this.drawCalls += this.prefix!.lastRenderPasses; return }
+        this.noteDraw(22,this.prefix!.lastRenderPasses); return }
     const bind = this.bind(u, inputs)
     // With integer origins/sizes bounded by 2^20, pixel centres and every
     // subtraction/addition forming q/base are exactly representable binary32
@@ -2401,7 +2612,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
         view: this.bindingCache.view((target.resource as GPUTexture)), loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 0],
       }] })
       pass.setPipeline(this.pairedDisplay.pipeline); pass.setBindGroup(0, bind); pass.draw(3); pass.end()
-      this.drawCalls++; this.pairedFilterPasses++; return
+      this.noteDraw(u[16],1,target.width*target.height); this.pairedFilterPasses++; return
     }
     // Mode 6 composites a shadow from source + blurred alpha. The standalone
     // SDF/chrome shaders have different uniforms and cannot share this mode;
@@ -2422,22 +2633,27 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       sampleCreation.format === sampleFormat && sampleCreation.width === target.width && sampleCreation.height === target.height &&
       target.bytes === target.width * target.height * (sampleFormat === 'rgba32float' ? 16 : 4) &&
       resource.format === sampleFormat && resource.width === target.width && resource.height === target.height
-    const pipelines = target.scalarCoverage ? [u[16]===49?this.alphaResolvePipeline!:u[16]===22?this.scalarFilterPipeline!:u[16]===31?(sampleOnly?this.sampleOnlyScalarPipeline!:this.scalarAreaPipeline!):this.scalarPipelines.get(u[16])!] : displayFilter ? [this.displayFilterPipeline!] : target.binaryCoverage
+    const canvasBlur = !displayFilter && !sourceWindow && !target.binaryCoverage &&
+      (!target.scalarCoverage || channels === 8 && !!this.canvasBlurScalarPipeline) &&
+      ((filter?.radius ?? u[36]) <= 2048 || !!filter && !!this.shadowKernelProof(inputs[1], filter.radius)) &&
+      canvasBlurPassEligible(this.canvasBlurRequested && this.canvasBlurPipelines.length === 4, u, channels, filter)
+    const canvasSpatial = this.canvasBlurRequested && !sourceWindow && !target.scalarCoverage && !target.binaryCoverage &&
+      channels === 15 && canvasBlurGeometry(u) && this.canvasSpatialPipelines.has(u[16])
+    const pipelines = canvasSpatial ? [this.canvasSpatialPipelines.get(u[16])!] : canvasBlur ? (target.scalarCoverage ? [this.canvasBlurScalarPipeline!] : this.canvasBlurPipelines) : target.scalarCoverage ? [u[16]===49?this.alphaResolvePipeline!:u[16]===22?this.scalarFilterPipeline!:u[16]===31?(sampleOnly?this.sampleOnlyScalarPipeline!:this.scalarAreaPipeline!):this.scalarPipelines.get(u[16])!] : displayFilter ? [this.displayFilterPipeline!] : target.binaryCoverage
       ? [u[16] === 31 ? (sampleOnly?this.sampleOnlyBytePipeline!:this.binaryAreaPipeline!) : this.binaryPipelines.get(u[16])!]
       : this.managed && u[16] === 22 ? this.filterPipelines : [
       u[16] === IMAGE_RESOLVE_STEP_MODE ? (displayImage ? this.displayImagePipeline! : this.imageResolveStepPipeline!) : u[16] === 50 ? this.shadowOverPipeline! : u[16] === 48 ? this.resolveStepPipeline! : u[16] === 47 ? this.solidPaintOverPipeline! : u[16] === 31 ? (sampleOnly?(this.managed===true?this.sampleOnlyColorPipeline!:this.sampleOnlyBytePipeline!):this.areaPipeline!) : this.managed && u[16] === 3 && u[17] === 0
         ? (integerCentres ? this.normalCornerPipeline! : this.normalPipeline!) :
       this.managed && u[16] === 0 ? (integerCentres ? this.copyCornerPipeline! : this.copyPipeline!) :
-      this.managed ? this.modePipelines.get(u[16])! : this.paintPipeline]
+      (this.managed || u[16] === 61 || u[16] === 62) ? this.modePipelines.get(u[16])! : this.paintPipeline]
     if (!pipelines.length || pipelines.some((pipeline) => !pipeline)) throw new Error(`Exact compositor pipeline ${u[16]} not prepared`)
-    // The exact channel pipelines read only source textures, never this
-    // attachment, and write disjoint channels without blending. Keep their
-    // four reducers/draws in the original order, but clear/store the shared
-    // attachment once. No arithmetic, sampler, or filter support changes.
+    // Channel pipelines read only source textures, never this attachment,
+    // and write disjoint channels without blending. Keep the selected four
+    // reducers/draws in the original order, clearing/storing the attachment once.
     // Scissored/partial-channel work and per-channel timestamp probes retain
     // the established clear/load and query boundaries below.
     if (this.managed && u[16] === 22 && !displayFilter && !target.scalarCoverage &&
-        !target.binaryCoverage && pipelines === this.filterPipelines && pipelines.length === 4 &&
+        !target.binaryCoverage && (pipelines === this.filterPipelines || pipelines === this.canvasBlurPipelines) && pipelines.length === 4 &&
         channels === 15 && !region && !this.timingQueries) {
       const pass = this.encoder.beginRenderPass({ colorAttachments: [{
         view: this.bindingCache.view(target.resource as GPUTexture),
@@ -2447,10 +2663,11 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
         pass.setPipeline(pipeline)
         pass.setBindGroup(0, bind.group, bind.offsets)
         pass.draw(3)
-        this.drawCalls++
+        this.noteDraw(u[16],1,target.width*target.height)
       }
       pass.end()
-      this.mergedExactFilterPasses++
+      if (canvasBlur) this.canvasBlurPasses++
+      else this.mergedExactFilterPasses++
       return
     }
     let drawn = false
@@ -2475,11 +2692,14 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     pass.draw(3)
     pass.end()
     drawn = true
-    this.drawCalls++
+    this.noteDraw(u[16],1,(region?.w||target.width)*(region?.h||target.height))
     if (sampleOnly) {
       this.sampleOnlyCoveragePasses++; this.sampleOnlyCoveragePixels += target.width * target.height
       this.sampleOnlyCoverageLifetimePasses++; this.sampleOnlyCoverageLifetimePixels += target.width * target.height
     }
+    if (canvasSpatial && u[16] === 61) this.canvasMotionBlurPasses++
+    if (canvasSpatial && u[16] === 62) this.canvasZoomBlurPasses++
+    if (canvasBlur) this.canvasBlurPasses++
     if (displayFilter && this.displayFilterRadiusLimit !== undefined) this.boundedDisplayFilterPasses++
     if (displayImage) {
       this.displayImageSourcePasses++
@@ -2517,7 +2737,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     pass.setBindGroup(0, bind.group, bind.offsets)
     pass.setScissorRect(region.x, region.y, region.w, region.h)
     pass.draw(3)
-    this.drawCalls++
+    this.noteDraw(3,1,region.w*region.h)
   }
   private closeOver() {
     this.activeOver?.end()
@@ -2588,7 +2808,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     pass.setBindGroup(0, bind.group, bind.offsets)
     pass.draw(3)
     pass.end()
-    this.drawCalls++
+    this.noteDraw(14)
     }
     let buffer: GPUBuffer | undefined, output: Texture | undefined
     const bpp = this.managed ? 16 : 4
@@ -2752,6 +2972,8 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       frameScratchBytes: this.frameScratchBytes,
       prefixCounterSamples: this.prefixCounterSamples,
       certifiedTentPasses:this.certifiedTentPasses,
+      canvasBlurPasses:this.canvasBlurPasses,
+      canvasMotionBlurPasses:this.canvasMotionBlurPasses,canvasZoomBlurPasses:this.canvasZoomBlurPasses,
       prefixCounterDeferredFrames: this.prefixCounterDeferredFrames,
       scratchBytes: this.scratchBytes,
       vertexBufferBytes: this.vertexCapacity,
