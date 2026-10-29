@@ -98,3 +98,29 @@ test('submission errors propagate from the resumed task after freshness was chec
   await expect(pending).rejects.toBe(failure)
   expect(f.events).toEqual(['current', 'current', 'submit-error'])
 })
+
+test.each([false, true])('canvas queue pacing observes late cancellation=%s before more encoding', async cancelled => {
+  vi.stubEnv('VITE_DESIGN_RASTER_BACKPRESSURE', '1')
+  const f = fixture()
+  let finish!: () => void
+  f.driver.yieldRasterQueue = vi.fn(() => new Promise<void>(resolve => { finish = resolve }))
+  const pending = f.internal.yieldEncoding()
+  const outcome = cancelled ? expect(pending).rejects.toThrow('PREVIEW_CANCELLED') : expect(pending).resolves.toBeUndefined()
+  await vi.waitFor(() => expect(f.driver.yieldRasterQueue).toHaveBeenCalledOnce())
+  expect(f.driver.submitPending).not.toHaveBeenCalled()
+  expect(f.driver.destroy).not.toHaveBeenCalled()
+  if (cancelled) f.cancel()
+  finish(); await outcome
+  expect(f.events.at(-1)).toBe(cancelled ? 'obsolete' : 'current')
+  expect(f.driver.destroy).not.toHaveBeenCalled()
+})
+
+test.each(['disabled', 'non-display', 'submit-disabled'])('queue pacing retains the %s boundary', async boundary => {
+  vi.stubEnv('VITE_DESIGN_RASTER_BACKPRESSURE', boundary === 'disabled' ? '0' : '1')
+  if (boundary === 'submit-disabled') vi.stubEnv('VITE_DESIGN_ENCODE_SUBMIT', '0')
+  const f = fixture(boundary !== 'non-display')
+  f.driver.yieldRasterQueue = vi.fn(async () => {})
+  await f.internal.yieldEncoding()
+  expect(f.driver.yieldRasterQueue).not.toHaveBeenCalled()
+  expect(f.driver.submitPending).toHaveBeenCalledTimes(boundary === 'submit-disabled' ? 0 : 1)
+})

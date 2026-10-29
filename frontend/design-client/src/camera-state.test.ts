@@ -15,12 +15,13 @@ beforeEach(() => {
   vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id))
 })
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
-test('validates saved numbers and clamps zoom without truncating position precision', () => {
+test('normalizes old camera hints to the supported zoom range', () => {
   const view = { x: -123456.789012345, y: 0.000000019, zoom: 32 }
   expect(savedCamera(view)).toEqual(view)
   for (const value of [null, {}, { ...view, zoom: 0 }, { ...view, zoom: Infinity }, { ...view, x: NaN }, { ...view, y: '0' }]) expect(savedCamera(value)).toBeUndefined()
-  expect(savedCamera({ ...view, zoom: 100 })?.zoom).toBe(32)
-  expect(savedCamera({ ...view, zoom: 0.0001 })?.zoom).toBe(0.025)
+  expect(savedCamera({ ...view, zoom: 100 })?.zoom).toBe(100)
+  expect(savedCamera({ ...view, zoom: 0.0001 })?.zoom).toBe(.02)
+  expect(savedCamera({ ...view, zoom: 1000 })?.zoom).toBe(256)
 })
 test('isolates document/page hints, rejects deleted pages and bounds entries and writes', () => {
   const state = new CameraState()

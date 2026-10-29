@@ -50,3 +50,25 @@ export function tileComputationKey(
     ? `${coordinateSlot([camera.x, camera.y, camera.zoom])}/${tile.key}`
     : tile.key
 }
+
+/** Remove whole dither periods from cache identity only. Do NOT snap the
+ * render camera to a nearby period: that changes non-periodic translations'
+ * dither and exact fractional samples. Far-view rendering keeps its local
+ * camera, so geometry precision/admission are untouched. Screen chrome and
+ * pixel preview keep their full identities. */
+export function periodicComputationCamera(
+  camera: {x:number;y:number;zoom:number},
+  options: {rasterProfile?:string;pixelPreview?:number;grid?:boolean;checkerboard?:boolean},
+  colorManaged:boolean,
+) {
+  const dependent=tileComputationDependsOnCamera(options,colorManaged)
+  if(!dependent || options.pixelPreview || options.grid || options.checkerboard ||
+    import.meta.env.VITE_DESIGN_SOURCE_PATTERN_REUSE==='0')return camera
+  const period=patternCameraPeriod(camera.zoom,{cameraDependent:dependent})
+  if(!period || ![camera.x,camera.y].every(Number.isFinite))return camera
+  const axis=(value:number)=>{
+    const result=value-snapPatternAxis(value,period)
+    return Object.is(result,-0)?0:result
+  }
+  return {x:axis(camera.x),y:axis(camera.y),zoom:camera.zoom}
+}

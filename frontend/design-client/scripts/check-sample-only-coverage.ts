@@ -26,8 +26,9 @@ await runProof('futureox-sample-only-coverage', [resolve(documentPath), resolve(
   const paths = Object.values(scene.nodes).flatMap((node: any) => [node.fill, ...node.strokes.map((stroke: any) => stroke.path)])
     .filter((path: any) => path?.area && path.count > 0 && path.sampleCount === 4 && [3, 4].includes(curves[path.area.first * 4]) &&
       path.rect.w > 0 && path.rect.h > 0 && path.rect.w * path.rect.h <= 16777216)
-  const unique = [...new Map(paths.map((path: any) => [sha256(JSON.stringify(path)), path])).values()]
-    .sort((a: any, b: any) => b.rect.w * b.rect.h - a.rect.w * a.rect.h).slice(0, 3)
+  const unique = [3, 4].flatMap(header => [...new Map(paths.map((path: any) => [sha256(JSON.stringify(path)), path])).values()]
+    .filter((path: any) => curves[path.area.first * 4] === header)
+    .sort((a: any, b: any) => b.rect.w * b.rect.h - a.rect.w * a.rect.h).slice(0, 3))
   if (!unique.length) throw Error('Real compiled scene has no supported four-phase sample program')
   const manifest = { documentSha256: sha256(documentBytes), requestsSha256: sha256(requestBytes),
     executionRequestSha256: sha256(JSON.stringify(request)), wasmSha256: sha256(wasm), fontSha256: sha256(font),

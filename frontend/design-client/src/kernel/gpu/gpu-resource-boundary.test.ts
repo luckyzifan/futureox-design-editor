@@ -252,6 +252,20 @@ test('production dynamic descriptors reuse across offsets and arena wrap with id
   measurement({ scope: 'CPU production WebGpuDriver descriptors; no shader/GPU timing', scenario: '13 draws; 4-slot uniform arena', commandTraceSha256: digest(results[0].normalized), static: results[0].counts, dynamic: results[1].counts })
 })
 
+test('the bounded uniform arena streams beyond the former per-frame command quota',async()=>{
+ const {boundary,driver}=await createDriver(true)
+ await driver.prepareScene(empty)
+ const raw=driver as any;raw.uniformData=new Float32Array(1024)
+ driver.begin(new Float32Array(0));raw.uniformCommands=262143
+ const target=driver.create(8,8),source=driver.create(8,8)
+ for(let i=0;i<13;i++){const u=parameters(empty.extent,empty.extent);u[16]=0;u[36]=i+.125;driver.pass(target,u,[source])}
+ await driver.checkpoint()
+ expect(raw.uniformCommands).toBe(262156)
+ expect(boundary.records.map(record=>new Float32Array(new Uint32Array(record.words).buffer)[36])).toEqual(Array.from({length:13},(_,i)=>i+.125))
+ expect(raw.uniformData.byteLength).toBe(4096)
+ driver.dispose()
+})
+
 test('dynamic groups revoke on resource identity changes and disabling the cache is a negative control', async () => {
   const { boundary, driver } = await createDriver(true)
   await driver.prepareScene(empty); driver.begin(new Float32Array(0))

@@ -30,7 +30,7 @@ describe('production image import admission/construction with controlled browser
   }
   it('creates canonical image fill nodes through appendImageFiles', async () => {
     const f = editorRecorder(), uri = 'data:image/png;base64,EXACT=='
-    expect(await appendImageFiles(f.editor, [{} as File], { x: 500, y: 400 }, async () => ({ uri, width: 200, height: 150 }))).toEqual({ count: 1, status: 'committed' })
+    expect(await appendImageFiles(f.editor, [new File(['bytes'], 'sample.png', {type:'image/png'})], { x: 500, y: 400 }, async () => ({ uri, width: 200, height: 150 }))).toEqual({ count: 1, status: 'committed' })
     const [id] = f.doc.pages[0].children, node = f.doc.nodes[id]
     expect(node).toMatchObject({ kind: 'rectangle', width: 200, height: 150, transform: [1, 0, 0, 1, 400, 325] })
     expect(node.fills[0]).toMatchObject({ kind: 'image', image: uri, fit: 'cover', visible: true, opacity: 1 })
@@ -42,7 +42,7 @@ describe('production image import admission/construction with controlled browser
   it('constructs all imported nodes with production spacing and a centered batch', async () => {
     const f = editorRecorder(), dimensions = [{ width: 100, height: 80 }, { width: 150, height: 100 }, { width: 120, height: 90 }]
     let index = 0
-    await appendImageFiles(f.editor, dimensions.map(() => ({} as File)), { x: 500, y: 400 }, async () => ({ uri: 'data:image/png;base64,AA==', ...dimensions[index++] }))
+    await appendImageFiles(f.editor, dimensions.map(() => new File(['bytes'], 'sample.png', {type:'image/png'})), { x: 500, y: 400 }, async () => ({ uri: 'data:image/png;base64,AA==', ...dimensions[index++] }))
     const nodes = f.doc.pages[0].children.map(id => f.doc.nodes[id])
     expect(nodes.map(node => node.transform[5])).toEqual([245, 345, 465])
     expect(nodes.map(node => node.transform[4])).toEqual([450, 425, 440]); expect(f.changes).toHaveLength(1)

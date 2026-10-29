@@ -31,6 +31,28 @@ test('native transport admits negotiated derivation methods without weakening th
  assert.equal(owner.pending.size,0)
 })
 
+test('source file descriptors enter preparation only through a private host request',async()=>{
+ const messages=[]
+ const owner=Object.assign(Object.create(NativePreparation.prototype),{pending:new Map(),sequence:0,closed:false,
+  admission:new PreparationAdmission(),reservations:new Set(),diagnostics:{enabled:false},worker:{postMessage:message=>messages.push(message)}})
+ const descriptor={path:'/owned/cache/canvas-native-0.scene',store:{generation:'source:1:0',documentId:'source',bytes:600*1024**2,nodes:124447,footerHash:Array(32).fill(42)},documentId:'source',pageId:'page',stageId:'stage',nodes:124447}
+ await assert.rejects(owner.request({lane:'canvas',method:'load_source_snapshot',args:[descriptor]}),/Invalid native preparation request/)
+ assert.equal(messages.length,0)
+ const pending=owner.loadSourceSnapshot(descriptor)
+ assert.equal(messages[0].method,'load_source_snapshot');assert.deepEqual(messages[0].args,[descriptor])
+ assert.equal(owner.pending.get(1).timer,undefined)
+ const job=owner.pending.get(1);clearTimeout(job.timer);owner.pending.delete(1);owner.release(job.release);job.resolve({id:1,stateReceipt:{nonce:'owned'}})
+ assert.deepEqual(await pending,{id:1,stateReceipt:{nonce:'owned'}})
+ const compile=owner.request({lane:'canvas',method:'compile_gpu_packet',args:['{}']})
+ const compilation=owner.pending.get(2);assert.equal(compilation.timer,undefined)
+ owner.pending.delete(2);owner.release(compilation.release);compilation.resolve({id:2,value:'packet'});await compile
+ const ordinary=owner.request({lane:'canvas',method:'load_document',args:['{}']})
+ const loaded=owner.pending.get(3);assert.notEqual(loaded.timer,undefined);clearTimeout(loaded.timer)
+ owner.pending.delete(3);owner.release(loaded.release);loaded.resolve({id:3,value:null});await ordinary
+ assert.equal(owner.sourceLanes.has('canvas'),false)
+ await assert.rejects(owner.request({lane:'canvas',method:'load_source_snapshot',args:[descriptor]}),/Invalid/)
+})
+
 test('local document codec roundtrips UTF-8 and rejects oversized/invalid input without poisoning later jobs',async()=>{
  const codec=new NativePreparation(undefined,undefined,true)
  const call=(method,value)=>codec.request({lane:'canvas',method,args:[value]})

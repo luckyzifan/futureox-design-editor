@@ -6,8 +6,6 @@ import { Editor } from './engine'
 import { ViewControls } from './ViewControls'
 import { interfacePreference, interfaceText } from './interface-preference'
 import {
-  CANVAS_ZOOM_MIN,
-  CANVAS_ZOOM_MAX,
   fitBounds,
   revealInView,
   screenToWorld,
@@ -18,7 +16,8 @@ import {
   zoomAt,
 } from './canvas-camera'
 
-const zooms = [CANVAS_ZOOM_MIN, 0.125, 0.75, 1, 4, 13.7, CANVAS_ZOOM_MAX]
+// Preserve the original precision matrix; expanded zooms are tested separately.
+const zooms = [0.025, 0.125, 0.75, 1, 4, 13.7, 32]
 test('wheel zoom holds an off-centre pointer across a coalesced stream and leaves world geometry alone', () => {
   const size = { width: 1440, height: 900 }, anchor = { x: 197, y: 733 }
   let view = { x: -125.4, y: 30.2, zoom: .27 }
@@ -101,9 +100,9 @@ test('fine wheel samples retain the same total zoom as one coarse sample at the 
   closePoint(screenToWorld(fine, anchor), screenToWorld(original, anchor))
 })
 
-test('camera limits retain Core’s current range pending Figma UI verification', () => {
-  expect(CANVAS_ZOOM_MIN).toBe(0.025)
-  expect(CANVAS_ZOOM_MAX).toBe(32)
+test('camera clamps to 2%–25600% while preserving the anchor', () => {
+  const view={x:10,y:20,zoom:1},anchor={x:400,y:300}
+  for(const [zoom,expected] of [[0.0001,.02],[.02,.02],[64,64],[256,256],[1000,256]]){const next=zoomAt(view,zoom,anchor);expect(next.zoom).toBe(expected);closePoint(screenToWorld(next,anchor),screenToWorld(view,anchor))}
 })
 
 test('CSS screen/world coordinates round trip across the range at large signed positions', () => {
@@ -146,20 +145,12 @@ test('every zoom pair preserves cursor and viewport-center anchors at +/-1e7 wor
   }
 })
 
-test('clamping extreme requests preserves the anchor and repeated limit events are exact no-ops', () => {
-  const anchor = { x: 487.3, y: 319.7 }
-  const initial = { x: -1e7 + 0.1, y: 1e7 + 0.3, zoom: 0.7 }
-  const point = screenToWorld(initial, anchor)
-  for (const target of [-Infinity, -1, 0, 1e9, Infinity]) {
-    const next = zoomAt(initial, target, anchor)
-    expect(next.zoom).toBe(target <= 0 ? CANVAS_ZOOM_MIN : CANVAS_ZOOM_MAX)
-    closePoint(worldToScreen(next, point), anchor)
-    let repeated = next
-    for (let i = 0; i < 10_000; i++) repeated = zoomAt(repeated, target, anchor)
-    expect(repeated).toEqual(next)
-  }
-  expect(zoomAt(initial, initial.zoom, anchor)).toEqual(initial)
-  expect(zoomAt(initial, NaN, anchor)).toEqual(initial)
+test('invalid or numerically overflowing cameras preserve the previous view', () => {
+  const anchor={x:487.3,y:319.7},initial={x:-1e7+0.1,y:1e7+0.3,zoom:0.7}
+  for(const target of [-Infinity,-1,0,Infinity,NaN])expect(zoomAt(initial,target,anchor)).toEqual(initial)
+  expect(zoomAt(initial,1e9,anchor).zoom).toBe(256)
+  expect(zoomAt(initial,Number.MAX_VALUE,anchor).zoom).toBe(256)
+  expect(zoomAt(initial,initial.zoom,anchor)).toEqual(initial)
 })
 
 test('10000 repeated zoom cycles retain the anchor and do not accumulate visible camera drift', () => {
@@ -169,7 +160,7 @@ test('10000 repeated zoom cycles retain the anchor and do not accumulate visible
     const point = screenToWorld(initial, anchor)
     let view = initial
     for (let cycle = 0; cycle < 10_000; cycle++) {
-      for (const zoom of [CANVAS_ZOOM_MIN, CANVAS_ZOOM_MAX, 0.125, 8, initial.zoom])
+      for (const zoom of [0.0001, 64, 0.125, 8, initial.zoom])
         view = zoomAt(view, zoom, anchor)
     }
     closePoint(view, initial, 1e-6)
@@ -204,13 +195,13 @@ test('fit centers large signed bounds and keeps all corners within the requested
   }
 })
 
-test('fit retains the editor range for tiny, huge, degenerate and temporarily hidden viewports', () => {
+test('fit centers tiny and huge scenes within the explicit zoom range', () => {
   const size = { width: 1280, height: 960 }
-  expect(fitBounds({ x: 100, y: 200, width: 1, height: 1 }, size).zoom).toBe(CANVAS_ZOOM_MAX)
+  expect(fitBounds({ x: 100, y: 200, width: 1, height: 1 }, size).zoom).toBe(256)
   const huge = { x: -1e7, y: -1e7, width: 2e7, height: 2e7 }
   const view = fitBounds(huge, size)
-  expect(view.zoom).toBe(CANVAS_ZOOM_MIN)
-  // A minimum zoom can prevent full containment, but the content stays centered.
+  expect(view.zoom).toBe(.02)
+  // The center stays stable even when fitting would exceed the product range.
   closePoint(worldToScreen(view, { x: 0, y: 0 }), { x: 640, y: 480 })
   for (const bounds of [
     { x: 10, y: -20, width: 0, height: 0 },

@@ -147,7 +147,11 @@ test('production uses the lightweight entry and preserves all dialog code and de
   const start = "  useEffect(() => {\n    if (!ready || !desktop?.automation) return"
   const end = '  }, [ready, desktop, editor, desktopSession])'
   const bridge = (text: string) => text.slice(text.indexOf(start), text.indexOf(end, text.indexOf(start)) + end.length)
-  expect(bridge(app)).toBe(bridge(oldApp)); expect(bridge(app)).toContain('const detach = attachDesktopAutomation(editor, desktop.automation, { host })')
+  // Source workspaces intentionally do not register ordinary-document automation.
+  const normalized = app.replace('if (!ready || !desktop?.automation || source || largeDocument) return',
+    'if (!ready || !desktop?.automation) return').replace('  }, [ready, desktop, editor, desktopSession, largeDocument])', end)
+  expect(app).toContain('if (!ready || !desktop?.automation || source || largeDocument) return')
+  expect(bridge(normalized)).toBe(bridge(oldApp)); expect(bridge(normalized)).toContain('const detach = attachDesktopAutomation(editor, desktop.automation, { host })')
   expect(app).toContain("import { AutomationPanel } from './AutomationPanelLauncher'")
   expect(app).toContain("import { attachDesktopAutomation } from './automation/bridge'")
 })

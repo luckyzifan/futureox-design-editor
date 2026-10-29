@@ -276,7 +276,7 @@ test('the first low-zoom frame requests native detail before any coarse preview'
   expect(worker.calls).toHaveLength(2)
 })
 
-test('zoom with covering residents requests missing native tiles before another viewport preview', async () => {
+test('zoom cannot treat unowned WebGPU handles as covering resident pixels', async () => {
   worker.zooming = true
   vi.stubGlobal('WebGL2RenderingContext', class {})
   vi.stubGlobal('navigator', { gpu: {} })
@@ -285,11 +285,13 @@ test('zoom with covering residents requests missing native tiles before another 
   worker.clients[0].onDamage({ full: false, bounds: [0, 0, 10, 10] })
   worker.calls[0].resolve()
   await vi.waitFor(() => expect(worker.calls).toHaveLength(2))
-  expect(worker.calls[1].options.livePreview).not.toBe(true)
-  expect(worker.calls[1].options.tileViewport.map((tile: any) => tile.key)).toEqual([h.keys[0]])
+  expect(worker.calls[1].options.livePreview).toBe(true)
+  worker.calls[1].resolve()
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(3))
+  expect(worker.calls[2].options.tileViewport.map((tile: any) => tile.key)).toEqual([h.keys[0]])
 })
 
-test('partly exposed views repair native tiles without a serial full-scene preview', async () => {
+test('partly exposed views keep continuity when existing WebGPU ownership is unknown', async () => {
   worker.zooming = true
   vi.stubGlobal('WebGL2RenderingContext', class {})
   vi.stubGlobal('navigator', { gpu: {} })
@@ -298,8 +300,10 @@ test('partly exposed views repair native tiles without a serial full-scene previ
   worker.clients[0].onDamage({ full: false, bounds: [0, 0, 10, 10] })
   worker.calls[0].resolve()
   await vi.waitFor(() => expect(worker.calls).toHaveLength(2))
-  expect(worker.calls[1].options.livePreview).not.toBe(true)
-  expect(worker.calls[1].options.tileViewport.map((tile: any) => tile.key)).toEqual([h.keys[0]])
+  expect(worker.calls[1].options.livePreview).toBe(true)
+  worker.calls[1].resolve()
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(3))
+  expect(worker.calls[2].options.tileViewport.map((tile: any) => tile.key)).toEqual([h.keys[0]])
 })
 
 test('a low-zoom cold motion preview continues into exact tiles without another camera event', async () => {
@@ -318,7 +322,7 @@ test('a low-zoom cold motion preview continues into exact tiles without another 
   expect(worker.calls[2].options.renderIntent).toBe('canvas')
 })
 
-test('normal zoom fills native pixels during motion without a reduced-density preview', async () => {
+test('normal zoom continues to native pixels after an unowned-backing continuity capture', async () => {
   worker.zooming = true; worker.forceLod = true
   vi.stubGlobal('WebGL2RenderingContext', class {})
   vi.stubGlobal('navigator', { gpu: {} })
@@ -326,9 +330,11 @@ test('normal zoom fills native pixels during motion without a reduced-density pr
   await vi.waitFor(() => expect(worker.calls).toHaveLength(1))
   worker.clients[0].onDamage({ full: true }); worker.calls[0].resolve()
   await vi.waitFor(() => expect(worker.calls).toHaveLength(2))
-  expect(worker.calls[1].options.livePreview).not.toBe(true)
-  expect(worker.calls[1].options.renderIntent).toBe('canvas')
-  expect(worker.calls[1].options.tileViewport.map((tile:any) => tile.key)).toEqual(h.keys)
+  expect(worker.calls[1].options.livePreview).toBe(true)
+  worker.calls[1].resolve()
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(3))
+  expect(worker.calls[2].options.renderIntent).toBe('canvas')
+  expect(worker.calls[2].options.tileViewport.map((tile:any) => tile.key)).toEqual(h.keys)
 })
 
 test('metadata synchronization certifies retained pixels without requesting a raster', async () => {
@@ -592,6 +598,21 @@ test('fractional pan settles onto native phase once, while identical camera rend
   expect(output.props.children[1].props['data-raster-phase-exact']).toBe('true')
   // Native pixels have not arrived/presented in this transport harness.
   expect(output.props.children[1].props['data-detail-ready']).toBe('false')
+  // Complete the pending transport chain before measuring a no-work revisit.
+  // Resolving a preview alone does not deliver or acknowledge native tiles.
+  const settled = new Set<any>()
+  for(let step=0;step<24;step++){
+    for(const call of worker.calls){if(settled.has(call))continue;settled.add(call)
+      for(const tile of call.options.tileViewport||[]){
+        call.progress({...tile,bytes:new Uint8Array(),backend:'webgl2',cached:false})
+        const compositor=surfaceParts(h.render(options)).compositor
+        const ready=compositor.props.items.find((item:any)=>item.tile.key===tile.key)?.tile
+        if(ready)compositor.props.onReady(ready.key,ready.serial,false)
+      }
+      call.resolve()
+    }
+    await Promise.resolve();await Promise.resolve();h.render(options)
+  }
   const calls = worker.calls.length, plans = worker.plannedScales.length
   for (let i = 0; i < 240; i++) h.render(options)
   await flushRasterWork()
@@ -842,7 +863,10 @@ test('superseded gap repair stops old batches and reuses tiles delivered while t
   h.render(options)
   await vi.waitFor(() => expect(worker.calls).toHaveLength(1)); worker.calls[0].resolve()
   await vi.waitFor(() => expect(worker.calls).toHaveLength(2))
-  const running = worker.calls[1]
+  expect(worker.calls[1].options.livePreview).toBe(true)
+  worker.calls[1].resolve()
+  await vi.waitFor(() => expect(worker.calls).toHaveLength(3))
+  const running = worker.calls[2]
   for (let x = 1; x <= 100; x++) h.render({ ...options, width: bounds.width + x, view: { x, y: 0, zoom: 1 } })
   const latest = { ...options, width: bounds.width + 100, view: { x: 100, y: 0, zoom: 1 } }
   // Same-document pixels from the running batch can still serve the latest

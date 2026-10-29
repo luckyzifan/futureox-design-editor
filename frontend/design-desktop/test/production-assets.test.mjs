@@ -41,6 +41,13 @@ test('native font and package paths retain notices and reject stale reference ou
 test('distributed notices match installed runtime packages', async () => {
   const inventory = JSON.parse(await readFile(path.join(publicDir, 'licenses/inventory.json'), 'utf8'))
   for (const item of inventory.packages) {
+    if(item.package==='flo_curves'){
+      const vendored=path.join(root,'vendor/flo_curves')
+      const cargo=await readFile(path.join(vendored,'Cargo.toml'),'utf8')
+      assert.equal(item.version,cargo.match(/^version\s*=\s*"([^"]+)"/m)?.[1])
+      assert.deepEqual(await readFile(path.join(publicDir,'licenses',item.file)),await readFile(path.join(vendored,'LICENSE')))
+      continue
+    }
     const installed = path.join(root, 'frontend/design-client/node_modules', item.package)
     const metadata = JSON.parse(await readFile(path.join(installed, 'package.json'), 'utf8'))
     assert.equal(item.version, metadata.version, `Refresh notice inventory for ${item.package}`)

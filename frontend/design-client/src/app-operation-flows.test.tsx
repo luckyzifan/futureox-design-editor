@@ -224,6 +224,8 @@ test('source workset uses normal App panels and never enters FD recovery or brow
  await act(async()=>{root.render(<App sourceWorkspace={source}/>);for(let i=0;i<30;i++)await Promise.resolve()})
  expect(document.querySelector('.app-shell[data-source-document="true"]')).not.toBeNull()
  expect(document.querySelector('.editor-workspace .layers-panel')).not.toBeNull()
+ expect(document.querySelector('.layers-panel .pages')).toBeNull()
+ expect(document.querySelector('.layers-panel .pages-actions')).toBeNull()
  expect(canvas()).not.toBeNull();expect(document.querySelector('.source-workspace')).toBeNull()
  expect(document.querySelector<HTMLInputElement>('[aria-label="文档名称"]')!.value).toBe('Full source.sketch')
  await act(async()=>sourceEditor.updateProperties([layer.id],n=>{n.width=90}))

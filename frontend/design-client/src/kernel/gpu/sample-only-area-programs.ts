@@ -81,7 +81,8 @@ function sampleHeader(values: Float32Array, first: number, count: number): Heade
   for (let row = 0; row < height * 4; row++) {
     const at = begin + 4 + row * 4, start = values[at], spans = values[at + 1]
     if (!Number.isSafeInteger(start) || !Number.isSafeInteger(spans) || start < 0 || spans < 0 ||
-        values[at + 2] !== 0 || values[at + 3] !== 0 || spans && start < table ||
+        values[at + 2] !== 0 && values[at + 2] !== 1 || values[at + 2] === 1 && spans !== 1 ||
+        values[at + 3] !== 0 || spans && start < table ||
         begin + (start + spans * 3) * 4 > end || (work += spans) > MAX_SPAN_WORK) return
     let previousLow = -Infinity, previousHigh = -Infinity
     for (let span = 0; span < spans; span++) {

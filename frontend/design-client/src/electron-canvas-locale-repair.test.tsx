@@ -137,6 +137,6 @@ test('App source wires locale into tool-label memoization while keeping Editor i
   expect(source.match(/localizedToolLabel\(tool\.id, locale, tool\.label\)/g)?.length).toBe(2)
   expect(source.match(/\[shortcutContext, locale\]/g)?.length).toBe(2)
   expect(source).toContain('localizedToolCommands(locale)')
-  expect(source).toContain('const [editor] = useState(() => new Editor(blank()))')
+  expect(source).toContain('const [editor] = useState(() => source?.editor || new Editor(blank()))')
   expect(source).not.toMatch(/key=\{locale\}/)
 })

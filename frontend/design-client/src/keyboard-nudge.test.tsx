@@ -138,7 +138,10 @@ test('fractional movement under scaled/rotated parents, vector movement and dime
   expect(editor.state.doc.nodes[n.id].transform[4]).toBeCloseTo(10); expect(editor.state.doc.nodes[n.id].transform[5]).toBeCloseTo(19.875)
   await act(async () => editor.undo()); expect(editor.state.doc).toEqual(before)
   await act(async () => { editor.update([n.id], { width: .01 }); key('ArrowLeft', { metaKey: true }); key('ArrowLeft', {}, 'keyup') })
-  expect(editor.state.doc.nodes[n.id].width).toBe(.01)
+  // The dimension field is in the same world-scaled units as the Inspector:
+  // a 0.01 minimum under a 2x parent is 0.005 local units.
+  expect(editor.state.doc.nodes[n.id].width).toBe(.005)
+  await act(async () => editor.undo()); expect(editor.state.doc.nodes[n.id].width).toBe(.01)
   await act(async () => editor.undo()); expect(editor.state.doc).toEqual(before)
   const v = node('vector', 100, 100, 20, 20); v.network = { fillRule: 'nonzero', vertices: [{ id: 'a', x: 0, y: 0 }, { id: 'b', x: 20, y: 20 }], edges: [{ id: 'ab', from: 'a', to: 'b' }] }
   const vectorBefore = await render([v])

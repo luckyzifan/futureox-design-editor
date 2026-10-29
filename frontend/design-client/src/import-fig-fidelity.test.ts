@@ -165,3 +165,9 @@ test('FIG glass bevel width survives import and Rust reopening', () => {
   expect(subject({ effects: [glass] }).node.effects[0].glass?.bevelSize).toBe(2.5)
   expect(() => importFig(encoded({ effects: [{ ...glass, bevelSize: -1 }] }))).toThrow(/倒角/)
 })
+
+test('native v106 XOR is exclude, and OUTLINE is explicitly unsupported', () => {
+  const node=Object.values(importFig(encoded({type:'BOOLEAN_OPERATION',booleanOperation:'XOR'})).document.nodes)[0]
+  expect(node.booleanOperation).toBe('exclude')
+  expect(()=>importFig(encoded({mask:true,maskType:'OUTLINE'}))).toThrow(/OUTLINE|蒙版/)
+})

@@ -1,9 +1,18 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { selectDocumentMemoryBytes, DOCUMENT_BYTE_LIMIT } from '../src/document-capacity.mjs'
+import { selectDocumentMemoryBytes, DOCUMENT_BYTE_LIMIT, macosAvailableMemoryBytes } from '../src/document-capacity.mjs'
 import { documentFromString } from '../src/security.mjs'
 import { documentFrames, documentWrites, DocumentFrameAssembler, DOCUMENT_CHUNK_BYTES } from '../src/document-transport.mjs'
 const MIB=1024*1024
+test('macOS counts reclaimable inactive memory without double-counting other queues',()=>{
+ const sample='Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free: 100.\nPages inactive: 200.\nPages speculative: 75.\nPages occupied by compressor: 999999.\n'
+ assert.equal(macosAvailableMemoryBytes(sample),300*16384)
+ assert.equal(macosAvailableMemoryBytes(sample.replace('16384','4096')),300*4096)
+ assert.equal(macosAvailableMemoryBytes(sample.replace('200.','18446744073709551615.')),undefined)
+ assert.equal(macosAvailableMemoryBytes(sample.replace('Pages inactive:','absent:')),undefined)
+ assert.equal(macosAvailableMemoryBytes(sample.replace('16384','5000')),undefined)
+ assert.equal(macosAvailableMemoryBytes('unavailable'),undefined)
+})
 test('ordinary stream writes borrow the whole payload instead of copying it to add a newline',()=>{
  for(const length of [0,1,4096,MIB]){
   const bytes=Buffer.alloc(length,42)
