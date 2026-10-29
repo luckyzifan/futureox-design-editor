@@ -3,6 +3,9 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-10-29 FIG/Sketch 格式修复及全源横向预取见[格式验证](../../../testing/verification-fig-sketch-interop-20261029/README.md)与[平移验证](../../../testing/verification-source-pan-20261029/README.md)。保留两条 FIG 实现的真实 schema 契约、原生文件往返与 portable 像素边界；outline 蒙版只在派生渲染中使用几何材料，原始字段不被改写。预取最多八块、两块一批、一个 raster owner，屏内呈现优先；dither key 只消去完整周期，渲染相机/分数相位不取整。真实局部 A/B 收益不能替代冷启动、复杂 GPU pass、33/100ms 或完整 G2/G5；未知转换仍须明确报告或拒绝。
+
+
 2026-10-29 四相四附件候选见[实现与对照](../../../testing/verification-gpu-packed-coverage-20261029/README.md)。`VITE_DESIGN_PACKED_COVERAGE` 默认关闭，仅显式 `1` 启用；只对四张全新、私有且通过实际上传证明的 RGBA8 目标合并光栅化，缓存命中和非显示路径回退。sample-only 默认开启并保留显式 `0` 回退。算子及生产像素一致不等于生产提速或完整 G2/G5 通过；暖帧未获益，不推广默认开启。
 
 The 2026-10-29 CPU raster increment shares checked scan conversion with GPU interval compilation, packs the four binary phases into one byte per pixel, and reuses one painter scratch arena. See [its scoped verification](../../../testing/verification-cpu-raster-20261029/README.md). Keep the original f64 intersection operation order, sample positions, flattening tolerance and HDR/color/effect arithmetic. Local active-edge repair retains stable tie order and falls back on complex crossings. Cancellation must run on empty scanlines too. Native/WASM checks and isolated raster benchmarks do not establish hardware GPU, whole-editor latency or full G2/G5 acceptance.

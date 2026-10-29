@@ -27,7 +27,16 @@ impl FragmentCache {
 }
 impl Compiler<'_> {
     pub(super) fn node(&mut self,id:&str,parent:Transform,requested:Option<Rect>)->Result<Rect,String>{
+        self.node_with_outline(id,parent,requested,false)
+    }
+    pub(super) fn node_with_outline(&mut self,id:&str,parent:Transform,requested:Option<Rect>,inherited_outline:bool)->Result<Rect,String>{
         crate::render_cancellation::checkpoint()?;
+        let n=&self.doc.nodes[id];
+        // An ancestor can change the optical meaning without changing a child's
+        // authored paint. Do not reuse standalone subtree color fragments here.
+        if inherited_outline || n.mask && n.mask_type.as_deref()==Some("outline") {
+            return self.compile_node(id,parent,requested,true);
+        }
         if let Some(fragment)=self.fragments.entries.get(id).cloned() {
             for old in &fragment.nodes {
                 crate::render_cancellation::checkpoint()?;
@@ -43,7 +52,7 @@ impl Compiler<'_> {
             return Ok(fragment.bounds)
         }
         let begin=self.compiled_order.len();
-        let bounds=self.compile_node(id,parent,requested)?;
+        let bounds=self.compile_node(id,parent,requested,false)?;
         if self.fragment_targets.contains(id) {
             let nodes=self.compiled_order[begin..].iter().map(|id|&self.nodes[id]).collect::<Vec<_>>();
             let needed=nodes.iter().flat_map(|n|std::iter::once(&n.fill).chain(n.strokes.iter().map(|s|&s.path)))

@@ -59,7 +59,7 @@ const fields = {
   name: str(), transform: nodeTransformSchema,
   width: describe(num(1e-6), 'Local width. Minimum 0.01 for most kinds; line/vector allow 0.000001. Maximum 10000000.'),
   height: describe(num(1e-6), 'Local height. Minimum 0.01 for most kinds; line/vector allow 0.000001. Maximum 10000000.'),
-  visible: bool, locked: bool, opacity: unit, blend: en(...blendModes, 'pass-through'), fills: array(paint, 16), strokes: array(stroke, 16), effects: array(effect, 16), radii: tuple(num(0), 4), smoothing: unit, clip: bool, mask: bool, maskType: en('alpha', 'luminance'),
+  visible: bool, locked: bool, opacity: unit, blend: en(...blendModes, 'pass-through'), fills: array(paint, 16), strokes: array(stroke, 16), effects: array(effect, 16), radii: tuple(num(0), 4), smoothing: unit, clip: bool, mask: bool, maskType: en('alpha', 'luminance', 'outline'),
   points: describe(num(0, 128), 'Polygon/star require at least 3; other kinds allow 0.'), innerRadius: describe(unit, 'Star requires at least 0.01; other kinds allow 0.'), network,
   text: str(100000), fontSize: num(1, 4096), textStyle,
   textRuns: describe(array(obj({ start: integer(0, 100000), end: integer(0, 100000), fontId: id, fontSize: num(1, 4096), weight: num(1, 1000), paragraph: textParagraph, color, underline: bool, strikethrough: bool, link: describe(str(4096), 'http://, https:// or mailto: URL.'), textCase }, ['start', 'end']), 4096), 'Ordered nonoverlapping [start,end) UTF-16 intervals on complete grapheme boundaries of the node text; start must be less than end.'),

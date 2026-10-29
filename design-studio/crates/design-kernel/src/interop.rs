@@ -5827,6 +5827,9 @@ fn export_layer_impl(
         } else if class == "shapeGroup" {
             layer.insert("layers".into(), json!([]));
         }
+        if n.mask && n.mask_type.as_deref()==Some("outline") {
+            return Err(Error::Unsupported("Sketch cannot yet preserve authored vector-mask paint/stroke semantics; save FD".into()));
+        }
         if n.mask {
             layer.insert("hasClippingMask".into(), json!(true));
             layer.insert("shouldBreakMaskChain".into(), json!(false));
@@ -6567,9 +6570,10 @@ pub fn import_fig_report(bytes: &[u8]) -> Result<FigImportReport> {
                 Ok(FigImportReport {document, backend:"rust-native-fig", warnings, native_error:None})
             },
             Err(native) => {
-                let document=import_fig_via_converter(bytes).map_err(|converter|Error::Unsupported(format!("FIG native import failed: {native}; fig2sketch fallback failed: {converter}")))?;
-                document.validate().map_err(Error::InvalidDocument)?;
-                Ok(FigImportReport {document, backend:"fig2sketch", warnings:vec![format!("FIG used fig2sketch compatibility conversion; native import failed: {native}")], native_error:Some(native.to_string())})
+                let converted=import_fig_via_converter(bytes).map_err(|converter|Error::Unsupported(format!("FIG native import failed: {native}; fig2sketch fallback failed: {converter}")))?;
+                let mut warnings=converted.warnings;
+                warnings.insert(0,format!("FIG used fig2sketch compatibility conversion; native import failed: {native}"));
+                Ok(FigImportReport {document:converted.document, backend:"fig2sketch", warnings, native_error:Some(native.to_string())})
             }
         }
     }
@@ -6584,43 +6588,34 @@ fn fig2sketch_path() -> std::path::PathBuf {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn import_fig_via_converter(bytes: &[u8]) -> Result<Document> {
-    let helper = fig2sketch_path();
-    if !helper.exists() {
-        return Err(Error::Fig2Sketch(format!(
-            "converter not found at {} (set FIG2SKETCH_BIN)",
-            helper.display()
-        )));
-    }
-    let dir = std::env::temp_dir().join(format!("fxdk-fig-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).map_err(|e| Error::Io(e.to_string()))?;
-    let input = dir.join("input.fig");
-    let output = dir.join("output.sketch");
-    std::fs::write(&input, bytes).map_err(|e| Error::Io(e.to_string()))?;
-    let status = std::process::Command::new(&helper)
-        .arg(&input)
-        .arg(&output)
-        .output()
-        .map_err(|e| Error::Fig2Sketch(e.to_string()))?;
-    let sketch_bytes =
-        std::fs::read(&output).map_err(|e| Error::Fig2Sketch(format!("no output file: {e}")))?;
-    let _ = std::fs::remove_dir_all(&dir);
-    if !status.status.success() {
-        return Err(Error::Fig2Sketch(format!(
-            "exit {:?}: {}",
-            status.status.code(),
-            String::from_utf8_lossy(&status.stderr)
-                .chars()
-                .take(400)
-                .collect::<String>()
-        )));
-    }
-    import_sketch(&sketch_bytes)
+fn import_fig_via_converter(bytes: &[u8]) -> Result<SketchImportReport> {
+    import_fig_via_converter_at(bytes, &fig2sketch_path())
 }
 
-// ---------------------------------------------------------------------------
-// tests
-// ---------------------------------------------------------------------------
+#[cfg(not(target_arch = "wasm32"))]
+fn import_fig_via_converter_at(bytes: &[u8], helper: &std::path::Path) -> Result<SketchImportReport> {
+    if !helper.exists() {
+        return Err(Error::Fig2Sketch(format!("converter not found at {} (set FIG2SKETCH_BIN)",helper.display())));
+    }
+    static SEQUENCE: std::sync::atomic::AtomicU64=std::sync::atomic::AtomicU64::new(0);
+    let sequence=SEQUENCE.fetch_add(1,std::sync::atomic::Ordering::Relaxed);
+    let now=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e|Error::Io(e.to_string()))?.as_nanos();
+    let dir=std::env::temp_dir().join(format!("fxdk-fig-{}-{now}-{sequence}",std::process::id()));
+    std::fs::create_dir(&dir).map_err(|e|Error::Io(e.to_string()))?;
+    struct OwnedDirectory(std::path::PathBuf);
+    impl Drop for OwnedDirectory {fn drop(&mut self){let _=std::fs::remove_dir_all(&self.0);}}
+    let _cleanup=OwnedDirectory(dir.clone());
+    let input=dir.join("input.fig");let output=dir.join("output.sketch");
+    std::fs::write(&input,bytes).map_err(|e|Error::Io(e.to_string()))?;
+    let status=std::process::Command::new(helper).arg(&input).arg(&output).output().map_err(|e|Error::Fig2Sketch(e.to_string()))?;
+    if !status.status.success() {
+        return Err(Error::Fig2Sketch(format!("exit {:?}: {}",status.status.code(),String::from_utf8_lossy(&status.stderr).chars().take(400).collect::<String>())));
+    }
+    let size=std::fs::metadata(&output).map_err(|e|Error::Fig2Sketch(format!("no output file: {e}")))?.len();
+    if size>ARCHIVE_LIMITS.input as u64 {return Err(archive_limit("converted FIG input bytes"));}
+    let sketch_bytes=std::fs::read(&output).map_err(|e|Error::Fig2Sketch(format!("cannot read converter output: {e}")))?;
+    import_sketch_report(&sketch_bytes)
+}
 
 #[cfg(test)]
 mod tests {
@@ -9059,3 +9054,40 @@ mod tests {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 #[path = "interop/source_edit_tests.rs"]
 mod source_edit_tests;
+
+#[cfg(all(test,unix))]
+mod converter_isolation_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    struct Directory(std::path::PathBuf);
+    impl Drop for Directory {fn drop(&mut self){let _=std::fs::remove_dir_all(&self.0);}}
+    fn directory()->Directory {
+        let nonce=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let p=std::env::temp_dir().join(format!("fxdk-converter-test-{}-{nonce}",std::process::id()));std::fs::create_dir(&p).unwrap();Directory(p)
+    }
+    fn script(dir:&Directory,name:&str,source:&str)->std::path::PathBuf {
+        let p=dir.0.join(name);std::fs::write(&p,source).unwrap();std::fs::set_permissions(&p,std::fs::Permissions::from_mode(0o700)).unwrap();p
+    }
+    #[test]
+    fn concurrent_conversions_have_private_files_and_publish_admitted_documents(){
+        let dir=directory();let helper=script(&dir,"copy-converter","#!/bin/sh\ncp \"$1\" \"$2\"\n");
+        std::thread::scope(|scope|{
+            let jobs=(0..8).map(|i|{
+                let helper=&helper;
+                scope.spawn(move||{
+                    let name=format!("source-{i}");
+                    let doc:Document=serde_json::from_value(json!({"schemaVersion":4,"id":"d","name":"source","pages":[{"id":"p","name":name,"children":["n"],"background":"#ffffff"}],"nodes":{"n":{"id":"n","kind":"rectangle","name":name,"width":10,"height":10,"fills":[{"kind":"solid","color":"#ff0000"}]}}})).unwrap();
+                    let report=import_fig_via_converter_at(&export_sketch(&doc).unwrap(),helper).unwrap();
+                    report.document.validate().unwrap();assert_eq!(report.document.pages[0].name,name);assert_eq!(report.document.nodes["n"].name,name);
+                })
+            }).collect::<Vec<_>>();
+            for job in jobs {job.join().unwrap();}
+        });
+    }
+    #[test]
+    fn failed_converter_retains_exit_and_stderr_without_requiring_an_output_file(){
+        let dir=directory();let helper=script(&dir,"failed-converter","#!/bin/sh\nprintf 'intentional converter failure' >&2\nexit 7\n");
+        let error=import_fig_via_converter_at(b"fig-kiwi",&helper).err().unwrap().to_string();
+        assert!(error.contains("7")&&error.contains("intentional converter failure"),"{error}");
+    }
+}
