@@ -4,10 +4,14 @@ This is maintained project guidance, not a claim that every release gate has pas
 
 ## Architecture and product boundary
 
+The [2026-10-28 exact work-reduction increment](../testing/verification-render-work-reduction-20261028/README.md) supplies separate default-on mixed-solid and bounded gradient-fusion paths, each disabled by its own explicit `0` flag. Constant coverage remains opt-in (`VITE_DESIGN_CONSTANT_COVERAGE=1`) because warm latency did not meet the frozen 5% target, despite exact pixels and reduced cold work. These do not enable the existing experimental painter/filter stack. Rust-authored bounded group plans and private actual-upload proofs remain mandatory. Gradient fusion preserves stored-paint rounding, the original normal-over writable ring and zero-weight neighbour behavior; HDR, nonfinite fields, unsupported clips and insufficient opportunities retain the original path. Diagnostics distinguish draw counts, measured rectangle area, cache rejection reasons and unmeasured work. Scoped hardware/real-file improvements are not full G2/G5 acceptance.
+
+The [2026-10-29 four-attachment coverage candidate](../testing/verification-gpu-packed-coverage-20261029/README.md) remains strict opt-in (`VITE_DESIGN_PACKED_COVERAGE=1`). It writes four fresh, private RGBA8 coverage targets in one pass only for certified display programs; cache hits and all unsupported scenes retain the original single-phase path. Sample-only coverage itself defaults on with an explicit `0` fallback. The candidate's exact operator and production pixels passed, but warm production latency did not improve, so it must not be enabled by default or presented as G2/G5 acceptance.
+
 - Web and Electron reuse the same frontend, authored model, components, layout, typography, selection/edit semantics and history boundaries. Electron can provide native local acceleration, files, SQLite and scoped host dialogs; it must not become a second design product with divergent semantics.
 - UI commands handle drafts, gestures and modal decisions. MCP translates discovered operations. Both reach the existing editor/domain implementation; automation stages a candidate and commits through Editor.change. Rust owns authoritative admission, layout and render semantics; TypeScript validation improves early diagnostics, not native authority.
 - Keep local-first SQLite/Tokio and browser IndexedDB adapters. No new cloud accounts, collaboration service, arbitrary filesystem/network operations, or self-built AI workflow/model orchestrator. A client may inspect → edit → inspect using the published bounded operations; the server executes operations only.
-- There is no obligation to preserve obsolete, unreleased application implementations. This does not license dropping current authored data, bypassing validation, or conflating independent version axes: app semver, FD binary format (currently 2), document schema (currently 1–16), automation capabilities (currently 1), FD extension contract (1), storage schema and editor/session/storage revisions.
+- There is no obligation to preserve obsolete, unreleased application implementations. This does not license dropping current authored data, bypassing validation, or conflating independent version axes: app semver, FD binary format (currently 2), document schema (currently 1–20), automation capabilities (currently 1), FD extension contract (1), storage schema and editor/session/storage revisions.
 
 ## Forward extensibility without fictitious support
 
@@ -34,6 +38,8 @@ Validate schemas and all batch wrapper/leaf permissions before mutation callback
 - Restore appends a new durable revision under the viewed storage-head CAS. It does not delete history or turn editor undo into disk rollback. Protect dirty edits, active input and new editing during asynchronous restore; report a durable restore that could not safely be adopted in the canvas. Browser retention is currently 50 revisions, not unlimited; UI diff rows are bounded at 500.
 
 ## Performance, rendering and interaction acceptance
+
+2026-10-29 user authorization permits evaluating reduced blur arithmetic against local Sketch/Figma evidence, using the Downloads topology source as the primary fixture. The [canvas blur increment](../testing/verification-canvas-blur-20261029/README.md) is a narrow exception to canvas bit equality: SDR WebGPU rational tent/Gaussian box/scalar shadow reductions and motion/zoom sampling reductions use bounded native float arithmetic. Original coefficients, coordinates, sample counts, support, four coverage phases, intermediate surfaces and budgets remain. Extended-range/nonfinite input retains exact results; explicit readback/export, HDR, software profiles and unsupported physical windows remain exact. Large shadow admission still requires the original private upload proof. `VITE_DESIGN_CANVAS_BLUR_FLOAT=0` restores prior display arithmetic. Numeric integer 0/1 blur enable values are handled locally without changing other boolean fields. This does not authorize global desktopFullMath=false or downsampling; independent fidelity and complete interaction acceptance remain separate.
 
 The [2026-10-25 rendering pipeline increment](../testing/verification-render-pipeline-20261025/README.md) adds bounded subtree fragments, transport-independent exact source identities and cooperative preparation cancellation. These do not authorize approximate hashes, expanded memory budgets, cancellation of ordered mutations, or early release of in-flight resources. Preserve its per-backend cancellation and opt-in large-filter boundaries; scoped hardware pixel equality remains separate from whole-editor motion acceptance.
 
@@ -158,3 +164,27 @@ The 2026-10-22 resident image-table candidate separates same-device capture subm
 The schema-16 vector geometry refactor separates f64 render curves from the bounded point-editing network inside the existing Node model. See [source worksets](LARGE_DOCUMENT_SOURCE_WORKSETS.zh-CN.md). Source conversion, shared-model admission, actual rendering and compatibility export retain separate evidence gates; the source-capacity pass is not a whole-page GPU pass.
 
 The 2026-10-23 source-chain integration retains strict opt-in gates for `VITE_DESIGN_EXACT_WHOLE_TENT_2048`, `VITE_DESIGN_MANAGED_MODE12_ENTRY` and `VITE_DESIGN_EMPTY_SCENE_COMPOSE`. The new dependency registry drains its own requested descriptor group; it is not a global device-idle proof. Shared coefficient loaders change even when optional paths are disabled. See [the scoped integration evidence](../testing/verification-increment-0741-1338-20261023/README.md); no hardware GPU, GUI or end-to-end performance claim is made by merging this candidate.
+
+The 2026-10-26 topology repair adds an independently bounded SDR canvas-shadow operator. Native coefficients retain exact normalization and a 64 KiB serialized cap; the old `tent` API still rejects radii above 2048. A private coefficient proof bound to its uploaded GPU resource permits the scoped larger operator, with actual texture/byte admission unchanged and all writes revoking authority. Fractional offsets retain the original f32 sampling phase, and stroked sources retain fill/children/stroke order and alignment. Global experimental gates remain opt-in. See [the scoped hardware and GUI evidence](../testing/verification-topology-navigation-20261026/README.md); full rendering and interchange acceptance are separate.
+
+
+## 2026-10-27 Sketch text, layout and local library continuation
+
+Schema 20 adds paragraph-range metrics and vertical text alignment, plus explicit directional prototype navigation. Existing default text layout remains unchanged; native Sketch projections carry an exact-match text-model receipt, which is discarded when native text fields change. Local .sketch library refresh uses the existing owned worker, stable source identities, Editor transactions and Rust component resolution. Embedded foreign masters have graph roots, while native export emits them once in foreignSymbols. See [the scoped evidence](../testing/verification-sketch-text-layout-flow-20261027/README.md). CoreText glyph raster parity, colored glyphs, tightening, full Smart Layout/Relative sizing and overlay animation/placement remain separate unfinished work.
+
+
+2026-10-27 用户明确授权调整源文件容量策略并要求全源单画板，当前实现与未完成边界见[全源单画布容量契约](SOURCE_CANVAS_CAPACITY_20261027.zh-CN.md)。内部工作粒度与可回收缓存不能作为源文档总量配额；此授权不改变精度、所有权、实际设备能力或验收证据要求。
+
+## Bounded native-source preparation pipeline (2026-10-28)
+
+NativeSourceSurface submits at most two tiles per batch, retaining one source raster request and the existing single speculative PrepareAhead job. Each completed tile may present immediately; cancellation considers unfinished tiles, and late/duplicate replies cannot replace the current owner or retire live textures. Sampling, effects, HDR/export, resource budgets and physical completion fences are unchanged. See [scoped measurements and integration limits](../testing/verification-bounded-source-pipeline-20261028/README.md); source controller overlap is not a claim that all GPU work or all application windows are globally serialized.
+
+
+2026-10-29 的渲染重构与回归修复见[实施记录](../testing/verification-sharp-refactor-20261029/README.md)。图片采用不可变共享载荷，文档序列化与资源预算保持原语义；Sketch 文本私有身份必须与当前归档资源或原生字体描述匹配，外部 Symbol 保留原生 symbolID。三文件编辑/撤销/导出/重开与速度、物理呈现、跨渲染器保真分别验收，不据局部通过宣称全部目标完成。
+
+
+## Native source demand compilation increment
+
+[Scene runtime module 3](../testing/verification-scene-runtime-20261029/module-3/README.md) creates private resolved render projections at the existing native compile entry. Selected records retain derived paths and IDs without another layout pass. Stripped authoring metadata and font declarations must never be saved, exported, edited or treated as document replacement; actual font resources remain in the compiler resource owner. Full source data remains resident for compatibility and unsupported operations.
+
+A compiler candidate differs from general authored dependency acquisition. Only the reviewed legacy subpixel canvas contract closes producers against the actual scene extent before encoding transfer IDs. Stage-bound contributors do not automatically request an entire painter prefix. One extent replan is permitted; unresolved scopes fall back to full compilation. Preserve exact global margins/predicates and a monotonic wire-resource owner through projection changes, fallback, cancellation and mutation. New policies default to the complete path until reviewed.

@@ -3,9 +3,27 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-10-29 四相四附件候选见[实现与对照](../../../testing/verification-gpu-packed-coverage-20261029/README.md)。`VITE_DESIGN_PACKED_COVERAGE` 默认关闭，仅显式 `1` 启用；只对四张全新、私有且通过实际上传证明的 RGBA8 目标合并光栅化，缓存命中和非显示路径回退。sample-only 默认开启并保留显式 `0` 回退。算子及生产像素一致不等于生产提速或完整 G2/G5 通过；暖帧未获益，不推广默认开启。
+
+The 2026-10-29 CPU raster increment shares checked scan conversion with GPU interval compilation, packs the four binary phases into one byte per pixel, and reuses one painter scratch arena. See [its scoped verification](../../../testing/verification-cpu-raster-20261029/README.md). Keep the original f64 intersection operation order, sample positions, flattening tolerance and HDR/color/effect arithmetic. Local active-edge repair retains stable tie order and falls back on complex crossings. Cancellation must run on empty scanlines too. Native/WASM checks and isolated raster benchmarks do not establish hardware GPU, whole-editor latency or full G2/G5 acceptance.
+
+2026-10-29 用户授权评估模糊无需逐位精确，并要求以下载目录拓扑素材覆盖各种模糊，见[本轮记录](../../../testing/verification-canvas-blur-20261029/README.md)。SDR WebGPU 的 tent/Gaussian/阴影单通道及运动/缩放显示计算默认使用限定浮点路径，0 开关回退。保持原核、半径、采样坐标/数量、分条、四相和预算；HDR、显式精确输出及异常范围保留精确结果，大半径阴影仍需私有上传证明。原件数字 0/1 模糊启用标记局部兼容并保留。以预定显示误差门验收，不将低工作量视口、空白视口或算子提速当成全源同时渲染、全 G2/G5、33/100ms 或跨渲染器保真。
+
+2026-10-29 的世界支持索引、不可变图片共享、源视口/任务控制抽离及回归修复见[实施记录](../../../testing/verification-sharp-refactor-20261029/README.md)。在原 64 MiB 共享缓存内先预留再构建，额度不足按精确身份缓存拒绝；未知光学/蒙版/描边保留旧路径。三份真实文件编辑保存导出已回归；native 首块配对改善不等于运动始终清晰。字段退休索引经同源码开关/浮点/生命周期对照默认启用，0 回退；严格 33/100ms 目标仍未达到，秒级新视口精修、完整 G5、跨渲染器保真与完整执行计划重构尚未关闭。
+
+
+2026-10-27 用户明确要求全源单画板、取消产品容量上限。以[新容量契约](../../../docs/SOURCE_CANVAS_CAPACITY_20261027.zh-CN.md)区分源总量与内部任务粒度：显式堆帧源索引、完整布局目录、PNG 分行解码是已落地基础；全源单画板呈现已在真实 GUI 验证入口通过并接入工作区；直接全场景编辑和流畅交互验收尚未完成。旧页面分段交互不再是最终目标；保留精度、源所有权和物理设备检查，不能把未加载对象当作已渲染。
+
+
 
 2026-10-26 源页面载入修复见[本轮记录](../../../testing/verification-source-page-load-20261026/README.md)：macOS 原生内存探测、显式页面分段与有界转换并行分别验收。保留归档/文档/GPU 预算，逐段覆盖全部源对象不能代替整页同时渲染或 G2/G5。
+2026-10-27 文本/布局/原型/本地库续轮见[验证记录](../../../testing/verification-sketch-text-layout-flow-20261027/README.md)。原生字典往返、Rust 字形/光标语义、真实库覆盖更新和 GUI 各自验收；本机 Sketch 重渲染零差异不能替代跨渲染器字形像素一致，G2/G5 全矩阵仍未关闭。
+
 # Futureox Design：渲染优先
+
+2026-10-28 的精确绘制减量见[验证记录](../../../testing/verification-render-work-reduction-20261028/README.md)。连续纯色段与渐变填充/合成融合有默认入口和 `0` 回退；独立常量覆盖逐位一致且降低冷帧工作量，但热帧未达冻结的 5% 目标，继续仅 `1` 启用。旧实验开关保持原样。场景筛选跳过单个渐变机会和不可执行的批绘，保留四采样、合成邻域、浮点舍入和实际上传资源证明。诊断 v2 区分覆盖/填充/合成/效果/复制/解析，像素面积未测的 draw 明确标记。真实 117 全览收益不推广到局部视口、FIG 或完整 G2/G5；未达性能目标的场景仍单列。
+
+2026-10-26 拓扑高倍缩放续轮见[证据记录](../../../testing/verification-topology-navigation-20261026/README.md)：偏移/描边阴影按完整支持范围分条；私有上传证明绑定系数、半径和实际 GPU 资源，写入即撤销。默认受限入口仅用于非 HDR 画布，原有全局实验开关、普通滤镜上限和全部内存预算不变。硬件逐位比较、GPU 完成等待、当前密度覆盖和输入到呈现分别记录；已测 3200% 视口通过不代表所有视口或全 G2/G5 已通过。
 
 2026-10-26 局部材质失效优化见[真实文件记录](../../../testing/verification-local-edit-cache-20261026/README.md)：只在既有 Rust 材质证明成立时使用已解析布局计算脏区，嵌套蒙版限制到消费容器，背景依赖按页面/隔离边界传播。页面根蒙版、结构变化与相关未知光学读取继续保守失效。FIG 小蒙版重绘从 20 块降为 1 块；117 大蒙版的减少绘制不等于端到端改善。性能受后台编译干扰的样本与截图叠层失配必须保留并分开报告，不以本轮关闭完整 G2/G5。
 
@@ -45,3 +63,9 @@ description: Plan, implement, benchmark, review, or package Futureox Design Core
 - 2026-10-23 的 0246 / 0741 / 1338 组合增量见[合并验证记录](../../../testing/verification-increment-0741-1338-20261023/README.md)。精确滤波、managed 背景入口和空场景 compose 候选保持默认关闭；源码和 mock 测试不替代真实硬件、全编辑器或导出/HDR 门。
 
 - 2026-10-24 拓扑素材修复的真实 GUI、完整归档字节核对、硬件浮点对照及分段火焰图见[验证记录](../../../testing/verification-topology-repairs-20261023/README.md)。保留早期能显示但 winding 不一致的失败候选；最终 dense 工作容差收紧后真实几何 oracle 才通过。无采样重放 uiStalls=0 只证明该轮素材操作，不能替代完整 G2/G5、物理显示或退出协议验收。
+
+- 2026-10-28 全源画布有限流水线最多两瓦片一批，复用既有单个提前准备任务与单 GPU raster owner。组合拓扑指定视口中位改善 7.68%，同层像素一致；117 收益较小。见[本轮证据](../../../testing/verification-bounded-source-pipeline-20261028/README.md)。速度绑定冻结构建，不覆盖后续并行 GPU 改动，也不关闭全 G2/G5。
+
+2026-10-29 场景运行时第三模块见[模块记录](../../../testing/verification-scene-runtime-20261029/module-3/README.md)。原生源画布编译入口使用只读、已解析的需求视图，完整源仍作权威和回退。区分输出需求、舞台边界元数据、整页准备边距与实际编译读取范围；传输资源ID分配前闭合需求。保留原四采样、精度/预算、派生ID和取消边界。节点输入减少不等于首屏按需、冷数据驱逐或33/100ms达标；包字段/浮点位对照是CPU证据，Electron/GPU/G5仍在最终整合阶段。
+
+第三模块真实 Electron 续测发现全览资源缓存阻塞局部需求、且完整回退重复清空几何缓存，见[回归与修复](../../../testing/verification-scene-runtime-20261029/electron-final/README.md)。交接仅回收可重建保留量，保持 scope/ID 与原预算。局部原生编译改善不能覆盖约 66 秒导入准备、全览绘制调用膨胀或秒级精修；33/100ms 仍未通过。
