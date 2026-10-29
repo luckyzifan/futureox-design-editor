@@ -325,7 +325,7 @@ fn noise_admission_and_padding_follow_page_switches_and_effect_insertions() {
             options.page_id = page.into();
             let actual = retained.compile_gpu_region(&options, crop, None).unwrap();
             let fresh = engine(&doc).compile_gpu_region(&options, crop, None).unwrap();
-            if add_texture { assert!(actual.extent.w > crop.expand(2).w); }
+            if add_texture && page=="other" { assert!(actual.extent.w > crop.expand(2).w); }
             else { assert_eq!(actual.extent, crop.expand(2)); }
             assert_eq!(actual.into_packet().unwrap(), fresh.into_packet().unwrap(),
                 "page={page}, inserted texture={add_texture}");

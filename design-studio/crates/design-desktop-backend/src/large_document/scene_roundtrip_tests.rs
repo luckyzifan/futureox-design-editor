@@ -14,6 +14,17 @@ const SOURCE_PAGE: &str = r#"{
   ]
 }"#;
 
+#[test]
+fn indexed_spool_preserves_exact_bytes_and_hash_across_short_reads() {
+    struct Short(std::io::Cursor<Vec<u8>>);
+    impl Read for Short {fn read(&mut self,b:&mut[u8])->io::Result<usize>{let n=b.len().min(3);self.0.read(&mut b[..n])}}
+    let bytes=SOURCE_PAGE.as_bytes();let mut output=Vec::new();let mut hash=Sha256::new();let mut count=0;
+    let mut tee=IndexedSpool{inner:Short(std::io::Cursor::new(bytes.to_vec())),output:&mut output,hash:&mut hash,bytes:&mut count};
+    let index=large_json::scan(&mut tee,1024*1024,|_,_|Ok(())).unwrap();
+    assert_eq!(count,bytes.len() as u64);assert_eq!(index.bytes,count);assert_eq!(output,bytes);
+    assert_eq!(format!("{:x}",hash.finalize()),digest(bytes));
+}
+
 struct Fixture {
     root: PathBuf,
     source: PathBuf,
@@ -101,6 +112,184 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn native_canvas_snapshot_has_one_artboard_and_keeps_all_original_subtrees() {
+    let (f, status)=Fixture::new(SOURCE_PAGE);
+    let before=f.snapshot();
+    let layout=f.call(&status,"large.canvasLayout",json!({})).unwrap();
+    let result=f.call(&status,"large.canvasSnapshot",json!({})).unwrap();
+    assert_eq!(result["roots"],2);
+    let path=PathBuf::from(result["path"].as_str().unwrap());
+    let bytes=fs::read(&path).unwrap();assert_eq!(bytes.len() as u64,result["bytes"].as_u64().unwrap());
+    assert_eq!(&bytes[..8],b"FXSCENE1");
+    let store=serde_json::from_value(result["store"].clone()).unwrap();
+    let (doc,_)=futureox_design_kernel::scene_store::Reader::open(&path,&store,&AtomicBool::new(false)).unwrap().into_document(&AtomicBool::new(false)).unwrap();
+    let stage=result["stageId"].as_str().unwrap();
+    assert_eq!(doc.pages[0].children,vec![stage]);
+    assert_eq!(doc.nodes[stage].children,vec![RECT,OTHER]);
+    assert_eq!(doc.nodes[stage].kind,"frame");assert!(!doc.nodes[stage].clip);
+    assert_eq!(doc.nodes[RECT].name,"original rectangle");assert_eq!(doc.nodes[OTHER].name,"cold sibling");
+    for item in layout["items"].as_array().unwrap(){
+        let node=&doc.nodes[item["id"].as_str().unwrap()];
+        assert_eq!(node.transform.0[4],item["placed"]["x"].as_f64().unwrap());
+        assert_eq!(node.transform.0[5],item["placed"]["y"].as_f64().unwrap());
+    }
+    assert_eq!(f.call(&status,"large.canvasSnapshot",json!({})).unwrap(),result);
+    let cancelled=f.sessions.dispatch("large.canvasSnapshot",Fixture::request(&status,json!({})),&AtomicBool::new(true));
+    assert!(cancelled.unwrap_err().message.contains("cancelled"));
+    assert_eq!(fs::read(&path).unwrap(),bytes);
+    assert_eq!(f.export_members(&status,"native-canvas-original.sketch"),f.members);
+    // A render projection cannot become the source edit baseline or history.
+    let after=f.snapshot();assert_eq!(before.0,after.0);assert_eq!(before.2,after.2);assert_eq!(before.3,after.3);
+}
+
+#[test]
+fn batched_source_canvas_matches_individual_conversion_and_keeps_source_unchanged() {
+    let (f,status)=Fixture::new(SOURCE_PAGE);
+    let before=f.snapshot();
+    {
+        let slot=f.sessions.current.lock().unwrap();let s=slot.as_ref().unwrap();
+        let cancel=AtomicBool::new(false);let layout=canvas_layout::build(s,&cancel).unwrap();
+        let old=canvas_snapshot::build_individual(s,&layout,&cancel).unwrap();
+        let new=canvas_snapshot::build(s,&layout,&cancel).unwrap();
+        assert_eq!(new,old);
+        assert!(canvas_snapshot::build(s,&layout,&AtomicBool::new(true)).is_err());
+    }
+    let after=f.snapshot();assert_eq!(before.0,after.0);assert_eq!(before.2,after.2);assert_eq!(before.3,after.3);
+    assert_eq!(f.export_members(&status,"batched-original.sketch"),f.members);
+}
+
+#[test]
+fn batching_does_not_add_component_keys_to_unrelated_plain_roots() {
+    let page=json!({"_class":"page","do_objectID":PAGE,"layers":[
+        {"_class":"rectangle","do_objectID":RECT,"frame":{"x":0,"y":0,"width":20,"height":20}},
+        {"_class":"symbolMaster","do_objectID":OTHER,"symbolID":"20000000-0000-4000-8000-000000000001","frame":{"x":50,"y":0,"width":20,"height":20},"layers":[]}
+    ]}).to_string();
+    let (f,_)=Fixture::new(&page);let slot=f.sessions.current.lock().unwrap();let s=slot.as_ref().unwrap();let cancel=AtomicBool::new(false);
+    let layout=canvas_layout::build(s,&cancel).unwrap();
+    let old=canvas_snapshot::build_individual(s,&layout,&cancel).unwrap();let new=canvas_snapshot::build(s,&layout,&cancel).unwrap();
+    assert_eq!(old,new);assert!(new.0.nodes[RECT].component_key.is_none());
+}
+
+#[test]
+#[ignore = "Complete user topology source; run explicitly with TOPOLOGY_SKETCH"]
+fn complete_topology_batched_canvas_matches_individual_conversion() {
+    let source=std::env::var_os("TOPOLOGY_SKETCH").map(PathBuf::from).expect("TOPOLOGY_SKETCH");
+    let root=std::env::temp_dir().join(format!("topology-batched-oracle-{}",std::process::id()));
+    fs::create_dir(&root).unwrap();let sessions=Sessions::new(root.join("cache"));
+    let cancel=AtomicBool::new(false);
+    let at=std::time::Instant::now();sessions.open(Open{path:source,document_id:"topology-batch-oracle".into(),session_epoch:1},&cancel).unwrap();
+    eprintln!("topology open seconds {}",at.elapsed().as_secs_f64());
+    let slot=sessions.current.lock().unwrap();let s=slot.as_ref().unwrap();let layout=canvas_layout::build(s,&cancel).unwrap();
+    assert_eq!(layout.items.len(),306);
+    let at=std::time::Instant::now();let old=canvas_snapshot::build_individual(s,&layout,&cancel).unwrap();
+    eprintln!("topology individual seconds {}",at.elapsed().as_secs_f64());
+    let at=std::time::Instant::now();let new=canvas_snapshot::build(s,&layout,&cancel).unwrap();
+    eprintln!("topology batched seconds {}",at.elapsed().as_secs_f64());
+    assert_eq!(old.0.nodes.len(),124447);assert_eq!(new.0.nodes.len(),124447);
+    assert_eq!(new.1,old.1);assert_eq!(new.2,old.2);
+    if new.0!=old.0 {
+        eprintln!("model differences pages={} nodes={} designSystem={} prototype={} fonts={}",new.0.pages!=old.0.pages,new.0.nodes!=old.0.nodes,new.0.design_system!=old.0.design_system,new.0.prototype!=old.0.prototype,new.0.fonts!=old.0.fonts);
+        let changed:Vec<_>=old.0.nodes.iter().filter(|(id,node)|new.0.nodes.get(*id)!=Some(*node)).map(|(id,_)|id.clone()).collect();
+        eprintln!("changed nodes {}",changed.len());
+        for id in changed.iter().take(3){
+            let a=serde_json::to_value(&old.0.nodes[id]).unwrap();let b=serde_json::to_value(&new.0.nodes[id]).unwrap();
+            eprintln!("node {} fields {:?}",id,a.as_object().unwrap().keys().filter(|k|a.get(*k)!=b.get(*k)).collect::<Vec<_>>());
+        }
+        if let (Some(a),Some(b))=(&old.0.design_system,&new.0.design_system){
+            eprintln!("designSystem changed containers {:?}",a.sketch_containers.keys().filter(|k|a.sketch_containers.get(*k)!=b.sketch_containers.get(*k)).collect::<Vec<_>>());
+        }
+    }
+    // Snapshot consumers deserialize authored records and resolve runtime
+    // paths again. Compare EVERY persisted byte, not disposable skipped
+    // runtime caches or only the first few differing Node allocations.
+    struct JsonHash(Sha256);
+    impl Write for JsonHash {
+        fn write(&mut self,b:&[u8])->io::Result<usize>{self.0.update(b);Ok(b.len())}
+        fn flush(&mut self)->io::Result<()>{Ok(())}
+    }
+    let hash=|doc:&Document|{let mut h=JsonHash(Sha256::new());serde_json::to_writer(&mut h,doc).unwrap();format!("{:x}",h.0.finalize())};
+    let before=hash(&old.0);let after=hash(&new.0);
+    eprintln!("full authored model sha256 before={before} after={after}");
+    if before!=after {
+        let mut serialized_changes=0;
+        for (id,node) in &old.0.nodes {
+            let a=serde_json::to_vec(node).unwrap();let b=serde_json::to_vec(&new.0.nodes[id]).unwrap();
+            if a!=b {
+                serialized_changes+=1;
+                if serialized_changes<=3 {
+                    let at=a.iter().zip(&b).position(|(a,b)|a!=b).unwrap_or(a.len().min(b.len()));
+                    let begin=at.saturating_sub(60);
+                    eprintln!("serialized node {} kind={} first-byte={} before={:?} after={:?}",id,node.kind,at,String::from_utf8_lossy(&a[begin..(at+100).min(a.len())]),String::from_utf8_lossy(&b[begin..(at+100).min(b.len())]));
+                }
+            }
+        }
+        eprintln!("serialized changed nodes {serialized_changes}");
+    }
+    assert_eq!(after,before,"batched persisted model differs from individual conversion");
+    drop(slot);drop(sessions);let _=fs::remove_dir_all(root);
+}
+
+#[test]
+fn converted_source_windows_reuse_exact_values_recover_corruption_and_follow_revisions() {
+    let (f, status) = Fixture::new(SOURCE_PAGE);
+    let key = f.key(RECT);
+    let first = f.call(&status, "large.scene", json!({"key":key})).unwrap();
+    let (files, initial) = {
+        let slot = f.sessions.current.lock().unwrap(); let s = slot.as_ref().unwrap();
+        (s.converted_windows.lock().unwrap().files(), s.scene.as_ref().unwrap().document.clone())
+    };
+    assert_eq!(files.len(),1);
+    // Exercise the real conversion-cache adapter, not only the standalone store.
+    let mut magic=[0;8];File::open(&files[0]).unwrap().read_exact(&mut magic).unwrap();
+    assert_eq!(&magic,b"FXSCENE1");
+    let second = f.call(&status, "large.scene", json!({"key":key})).unwrap();
+    assert_eq!(second["hash"], first["hash"]);
+    { let slot=f.sessions.current.lock().unwrap();let s=slot.as_ref().unwrap();
+      assert_eq!(s.converted_windows.lock().unwrap().hits,1); assert_eq!(s.scene.as_ref().unwrap().document,initial); }
+    fs::write(&files[0], b"corrupt disposable cache").unwrap();
+    let repaired = f.call(&status, "large.scene", json!({"key":key})).unwrap();
+    assert_eq!(repaired["hash"],first["hash"]);
+    { let slot=f.sessions.current.lock().unwrap();let s=slot.as_ref().unwrap();
+      assert_eq!(s.converted_windows.lock().unwrap().hits,1); assert_eq!(s.scene.as_ref().unwrap().document,initial); }
+    let cancelled=f.sessions.dispatch("large.scene",Fixture::request(&status,json!({"key":key})),&AtomicBool::new(true));
+    assert!(cancelled.unwrap_err().message.contains("cancelled"));
+    let changed=f.call(&status,"large.sceneCommit",json!({"key":key,"json":json!({RECT:{"patch":{"name":"new name"}}}).to_string(),"requestId":"cache-edit"})).unwrap();
+    f.call(&changed,"large.scene",json!({"key":changed["key"]})).unwrap();
+    assert!(files.iter().all(|path|!path.exists()));
+    { let slot=f.sessions.current.lock().unwrap();let s=slot.as_ref().unwrap();
+      assert_eq!(s.scene.as_ref().unwrap().document.nodes[RECT].name,"new name");
+      assert_eq!(s.converted_windows.lock().unwrap().hits,1); }
+    // Conversion cache files neither alter nor omit cold source members.
+    let exported=f.export_members(&changed,"cache-edited.sketch");
+    for (name,bytes) in &f.members {if !name.starts_with("pages/"){assert_eq!(&exported[name],bytes);}}
+}
+
+#[test]
+fn canvas_catalog_filters_metadata_before_pagination_and_searches_current_scope() {
+    let (f, status) = Fixture::new(SOURCE_PAGE);
+    let all = f.call(&status,"large.children",json!({})).unwrap();
+    assert!(all["total"].as_u64().unwrap()>1);
+    let pages = f.call(&status,"large.children",json!({"canvasOnly":true,"limit":1})).unwrap();
+    assert_eq!(pages["total"],1);
+    assert_eq!(pages["items"][0]["kind"],"page");
+    assert_eq!(pages["hasMore"],false);
+    assert_eq!(f.call(&status,"large.children",json!({"canvasOnly":true,"offset":1})).unwrap()["items"],json!([]));
+    let key=f.key(PAGE);
+    let first=f.call(&status,"large.children",json!({"canvasOnly":true,"key":key,"limit":1})).unwrap();
+    assert_eq!(first["total"],2);
+    assert_eq!(first["items"][0]["id"],RECT);
+    assert_eq!(first["hasMore"],true);
+    let second=f.call(&status,"large.children",json!({"canvasOnly":true,"key":key,"limit":1,"offset":1})).unwrap();
+    assert_eq!(second["items"][0]["id"],OTHER);
+    let query=f.call(&status,"large.children",json!({"canvasOnly":true,"key":key,"query":"cold"})).unwrap();
+    assert_eq!(query["total"],1);
+    assert_eq!(query["items"][0]["id"],OTHER);
+    assert_eq!(f.call(&status,"large.children",json!({"canvasOnly":true,"query":"cold"})).unwrap()["total"],0);
+    assert_eq!(f.call(&status,"large.children",json!({"canvasOnly":true,"key":f.key(RECT)})).unwrap()["total"],0);
+    assert_eq!(f.export_members(&status,"catalog-unchanged.sketch"),f.members);
+}
+
+#[test]
 fn page_ranges_cover_every_source_root_in_order_and_reject_cancelled_or_invalid_requests() {
     let mut page: Value = serde_json::from_str(SOURCE_PAGE).unwrap();
     let rectangle = page["layers"][0].clone();
@@ -112,6 +301,17 @@ fn page_ranges_cover_every_source_root_in_order_and_reject_cancelled_or_invalid_
     }).collect());
     let (f, status) = Fixture::new(&page.to_string());
     let key = f.key(PAGE);
+    let mut narrowed_roots = Vec::new();
+    for offset in [0, 2, 4, 6] {
+        let result = f.call(&status, "large.scene", json!({"key":key,"offset":offset,"limit":2})).unwrap();
+        assert_eq!(result["pageRange"]["end"], (offset + 2).min(7));
+        assert_eq!(result["pageRange"]["totalRoots"], 7);
+        let slot = f.sessions.current.lock().unwrap();
+        narrowed_roots.extend(slot.as_ref().unwrap().scene.as_ref().unwrap().document.pages[0].children.clone());
+    }
+    assert_eq!(narrowed_roots.len(), 7);
+    assert_eq!(narrowed_roots.iter().collect::<std::collections::HashSet<_>>().len(), 7);
+    assert!(f.call(&status, "large.scene", json!({"key":key,"limit":0})).is_err());
     f.call(&status, "large.scene", json!({"key":key})).unwrap();
     let snapshot = f.snapshot();
     {
@@ -124,7 +324,7 @@ fn page_ranges_cover_every_source_root_in_order_and_reject_cancelled_or_invalid_
         let mut roots = Vec::new();
         let mut segments = 0;
         loop {
-            let (doc, _, range) = scene::build_range(s, p, n, &AtomicBool::new(false), offset, true, limit).unwrap();
+            let (doc, _, range) = scene::build_range(s, p, n, &AtomicBool::new(false), offset, true, limit, None).unwrap();
             let range = range.unwrap();
             assert_eq!(range.offset, offset);
             assert_eq!(range.total_roots, 7);
@@ -137,9 +337,9 @@ fn page_ranges_cover_every_source_root_in_order_and_reject_cancelled_or_invalid_
         }
         assert!(segments > 1);
         assert_eq!(roots, full.pages[0].children);
-        assert!(scene::build_range(s, p, n, &AtomicBool::new(false), 7, true, limit).is_err());
-        assert!(scene::build_range(s, p, n, &AtomicBool::new(true), 0, true, limit).is_err());
-        assert!(scene::build_range(s, p, n, &AtomicBool::new(false), 0, false, limit).is_err());
+        assert!(scene::build_range(s, p, n, &AtomicBool::new(false), 7, true, limit, None).is_err());
+        assert!(scene::build_range(s, p, n, &AtomicBool::new(true), 0, true, limit, None).is_err());
+        assert!(scene::build_range(s, p, n, &AtomicBool::new(false), 0, false, limit, None).is_err());
     }
     assert_eq!(snapshot, f.snapshot());
     assert_eq!(f.export_members(&status, "complete.sketch"), f.members);
@@ -692,4 +892,12 @@ fn new_source_refusal_preserves_populated_undo_and_redo_history() {
         &fs::read(f.root.join("new-history-redone.sketch")).unwrap()).unwrap().document;
     assert_eq!(reopened.nodes[OTHER].name, "second rename");
     assert!(!reopened.nodes.contains_key(NEW_NODE));
+}
+
+#[test]
+fn mixed_name_and_unsupported_smoothing_edit_never_partially_commits() {
+    let (f,status)=Fixture::new(NEW_NODE_SOURCE);
+    let (key,mut document)=project_new_node_fixture(&f,&status);
+    let n=document.nodes.get_mut(RECT).unwrap();n.name="must not partially save".into();n.smoothing=0.6;
+    assert_new_source_rejection(&f,&status,&key,&document,"smoothing","mixed-edit-refused.sketch");
 }

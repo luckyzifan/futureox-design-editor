@@ -27,7 +27,8 @@ fn canonical_shared_styles_are_live_after_import_export_edit_and_undo() {
     let mut doc = interop::import_sketch_report(&archive()).unwrap().document;
     assert_eq!(doc.design_system.as_ref().unwrap().styles.len(), 2);
     assert_eq!(doc.nodes["r"].style_refs["fills"], PAINT); assert_eq!(doc.nodes["t"].style_refs["textStyle"], TEXT);
-    design_system::resolve(&mut doc).unwrap(); assert_eq!(doc.nodes["r"].fills[0].opacity, 0.5);
+    design_system::resolve(&mut doc).unwrap(); assert_eq!(doc.nodes["r"].fills[0].opacity, 1.);
+    assert!(doc.nodes["r"].fills[0].color.ends_with("/ 0.5)"));
     let style = doc.nodes["t"].text_style.as_ref().unwrap();
     assert_eq!(style.align, "center"); assert_eq!(style.line_height, 1.5); assert_eq!(style.letter_spacing, 2.); assert_eq!(style.paragraph_spacing, 3.);
     let bytes = interop::export_sketch(&doc).unwrap(); let files = interop::read_zip_public(&bytes).unwrap();

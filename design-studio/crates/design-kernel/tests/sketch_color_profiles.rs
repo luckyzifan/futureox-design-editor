@@ -38,9 +38,9 @@ fn explicit_p3_solid_exports_red_and_roundtrips_profile_and_alpha() {
     let back = import_sketch(&bytes).unwrap();
     assert_eq!(back.color_management.unwrap().document_space, ColorSpace::DisplayP3);
     let paint = &back.nodes["n"].fills[0];
-    assert_eq!(paint.color, "#ff0000");
-    assert_eq!(paint.opacity, 0.125);
-    close(channels(&parts(&export_sketch(&back).unwrap()).1["layers"][0]["style"]["fills"][0]["color"]), [1.,0.,0.,1.], 0.);
+    assert_eq!(paint.color, "color(display-p3 1 0 0 / 0.25)");
+    assert_eq!(paint.opacity, 0.5);
+    close(channels(&parts(&export_sketch(&back).unwrap()).1["layers"][0]["style"]["fills"][0]["color"]), [1.,0.,0.,0.25], 0.);
 }
 #[test]
 fn explicit_srgb_to_p3_uses_f64_coordinates_without_premultiplying() {
@@ -104,7 +104,9 @@ fn border_shadow_and_text_colors_receive_profile_conversion_and_alpha_once() {
     n.effects=serde_json::from_value(json!([{"kind":"shadow","color":"color(srgb 1 0 0 / 0.5)","opacity":0.5}])).unwrap();
     let (_, page)=parts(&export_sketch(&doc).unwrap());let node=&page["layers"][0];
     let target=ColorSettings::default().from_working([1.,0.,0.],ColorSpace::DisplayP3);
-    for c in [&node["style"]["borders"][0]["color"],&node["style"]["shadows"][0]["color"]] {close(channels(c),[target[0],target[1],target[2],0.25],1e-12);}
+    close(channels(&node["style"]["borders"][0]["color"]),[target[0],target[1],target[2],0.5],1e-12);
+    assert_eq!(node["style"]["borders"][0]["contextSettings"]["opacity"],0.5);
+    close(channels(&node["style"]["shadows"][0]["color"]),[target[0],target[1],target[2],0.25],1e-12);
     close(channels(&node["attributedString"]["attributes"][0]["attributes"]["MSAttributedStringColorAttribute"]),[target[0],target[1],target[2],0.5],1e-12);
 }
 #[test]
@@ -170,12 +172,12 @@ fn solid_node_and_shared_strokes_preserve_exact_legacy_fields() {
                 let style = if shared { &archive["layerStyles"]["objects"][0]["value"] }
                     else { &page["layers"][0]["style"] };
                 let border = &style["borders"][0];
-                assert_eq!(channels(&border["color"]), [18./255.,52./255.,86./255.,0.25]);
+                assert_eq!(channels(&border["color"]), [18./255.,52./255.,86./255.,1.]);
                 assert_eq!(border["fillType"], 0);
                 assert_eq!(border["isEnabled"], visible);
                 assert_eq!(border["thickness"], 2.5);
                 assert_eq!(border["position"], 1);
-                assert_eq!(border["contextSettings"]["opacity"], 1.);
+                assert_eq!(border["contextSettings"]["opacity"], 0.25);
                 assert_eq!(style["borderOptions"]["dashPattern"], json!([4.,2.]));
                 assert_eq!(style["borderOptions"]["lineCapStyle"], 2);
                 assert_eq!(style["borderOptions"]["lineJoinStyle"], 2);

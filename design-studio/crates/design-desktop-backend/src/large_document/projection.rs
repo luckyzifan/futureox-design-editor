@@ -176,6 +176,24 @@ pub(super) fn sketch_batch_in(s:&Session,locations:&[(usize,usize)],limit:u64,ca
         roots.push(root);
     }
     if roots.is_empty(){return Err(issue("Empty source conversion batch"));}
+    if roots.len()>1 {
+        // Symbol admission assigns stable keys to the entire conversion
+        // window. Mixing independent plain roots with component roots would
+        // add keys that their original singleton conversion did not have.
+        // Unknown private compatibility semantics keep the singleton path.
+        fn policy(root:&Value)->Option<bool>{
+            let mut symbols=HashSet::new();let mut images=HashSet::new();refs(root,&mut symbols,&mut images);
+            let mut component=!symbols.is_empty();let mut pending=vec![root];
+            while let Some(layer)=pending.pop(){
+                if layer.pointer("/userInfo/com.futureox.design-kernel").is_some(){return None;}
+                component|=layer.get("_class").and_then(Value::as_str)==Some("symbolMaster");
+                if let Some(children)=layer.get("layers").and_then(Value::as_array){pending.extend(children);}
+            }
+            Some(component)
+        }
+        let first=policy(&roots[0]);
+        if first.is_none()||roots.iter().skip(1).any(|root|policy(root)!=first){return Err(issue("Source batch requires independent component admission"));}
+    }
     sketch_roots_in(s,roots,bytes,limit,context)
 }
 fn sketch_roots_in(s:&Session,roots:Vec<Value>,mut source_bytes:u64,limit:u64,context:&SketchContext)->Result<(Document,Vec<String>)> {

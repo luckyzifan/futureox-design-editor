@@ -2216,7 +2216,7 @@ impl<'a> Importer<'a> {
         if let Some(rc) = layer
             .get("resizingConstraint")
             .and_then(Value::as_u64)
-            .filter(|rc| *rc != 63)
+            .filter(|rc| *rc != 63 || bool_at(layer,"hasExplicitConstraints"))
         {
             let x = rc & 0x7;
             let y = (rc >> 3) & 0x7;
@@ -7347,7 +7347,7 @@ mod tests {
         assert!(!is_sketch_file(&bytes));
         assert!(matches!(
             import_fig(&bytes),
-            Err(Error::Fig2Sketch(_) | Error::UnsupportedFigPlatform)
+            Err(Error::Unsupported(_) | Error::UnsupportedFigPlatform)
         ));
     }
 

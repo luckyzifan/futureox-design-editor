@@ -84,6 +84,85 @@ fn png_round_trip_preserves_unaligned_rows_and_alpha() {
 }
 
 #[tokio::test]
+#[cfg_attr(not(feature = "hardware-tests"), ignore = "requires actual GPU host")]
+async fn sketch_color_controls_preserve_alpha_and_match_cpu_pixels() {
+    let mut gpu = NativeGpu::new(Backends::PRIMARY).await.unwrap();
+    for space in [None, Some("srgb"), Some("display-p3")] {
+        for background in [false, true] {
+            let mut controls=json!({"brightness":0.2,"contrast":1.4,"saturation":0.8,"hue":0.7});
+            if let Some(space)=space {controls["space"]=json!(space);}
+            let mut a=rect("a",8.,8.,"#3366b3");
+            let mut b=rect("b",14.25,15.5,"color(srgb 1 0 0 / 0.5)");
+            if background { b["fills"]=json!([]); }
+            b["effects"]=json!([{"kind":if background {"background-blur"} else {"color-controls"},
+                "radius":0.,"color":"#000000","colorControls":controls}]);
+            a["width"]=json!(70.);a["height"]=json!(60.);
+            let document=json!({"schemaVersion":17,"id":"controls","name":"controls",
+                "colorManagement":{"documentSpace":"srgb","referenceWhiteNits":203,"peakLuminanceNits":1000},
+                "pages":[{"id":"p","name":"P","background":"#ffffff","children":["a","b"]}],"nodes":{"a":a,"b":b}});
+            assert_parity(&mut gpu,&document.to_string(),&options());
+        }
+    }
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "hardware-tests"), ignore = "requires actual GPU host")]
+async fn spatial_sigma_filters_match_cpu_and_keep_direction() {
+    let mut gpu=NativeGpu::new(Backends::PRIMARY).await.unwrap();
+    for managed in [false,true] { for (kind,angle) in [("gaussian-blur",0.),("motion-blur",0.),("motion-blur",37.5), ("motion-blur",90.)] {
+        let mut n=rect("n",24.25,20.5,"#3366b3");n["width"]=json!(12.);n["height"]=json!(16.);
+        n["effects"]=json!([{"kind":kind,"radius":3.25,"motionAngle":angle,"color":"#000000"}]);
+        let mut d:Value=serde_json::from_str(&doc(json!({"n":n}),json!(["n"]))).unwrap();d["schemaVersion"]=json!(18);
+        if managed {d["colorManagement"]=json!({"documentSpace":"srgb","referenceWhiteNits":203,"peakLuminanceNits":1000});}
+        println!("spatial {kind} angle={angle} managed={managed}");
+        assert_parity(&mut gpu,&d.to_string(),&options());
+    }}
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "hardware-tests"), ignore = "requires actual GPU host")]
+async fn zoom_blur_matches_cpu_for_focal_points_affine_and_hdr() {
+    let started=std::time::Instant::now();
+    let mut gpu=NativeGpu::new(Backends::PRIMARY).await.unwrap();
+    println!("zoom device init ms={}",started.elapsed().as_millis());
+    for managed in [false,true] {for center in [[0.5,0.5],[0.25,0.75]] {
+        let mut n=rect("n",24.25,20.5,if managed {"color(srgb 2 -0.25 0.5 / 0.5)"} else {"#3366b3"});
+        n["width"]=json!(12.);n["height"]=json!(16.);n["transform"]=json!([0.8,0.6,-0.3,0.4,24.25,20.5]);
+        n["effects"]=json!([{"kind":"zoom-blur","radius":0,"color":"#000000","zoomBlur":{"amount":20,"center":center}}]);
+        let mut d:Value=serde_json::from_str(&doc(json!({"n":n}),json!(["n"]))).unwrap();d["schemaVersion"]=json!(19);
+        if managed {d["colorManagement"]=json!({"documentSpace":"srgb","referenceWhiteNits":203,"peakLuminanceNits":1000});}
+        let started=std::time::Instant::now();
+        assert_parity(&mut gpu,&d.to_string(),&options());
+        println!("zoom RGBA managed={managed} center={center:?} ms={}",started.elapsed().as_millis());
+        if managed {
+            let mut engine=Engine::new();engine.load_document(&d.to_string()).unwrap();let scene=engine.compile_gpu(&options()).unwrap();
+            let cpu=engine.render_linear(&options()).unwrap();let actual=gpu.render(&scene).unwrap().linear.unwrap();
+            let expected:Vec<f32>=cpu.iter().flat_map(|p|p.0).collect();
+            assert!(actual.iter().any(|v|*v<0.)&&actual.iter().any(|v|*v>1.));
+            assert_eq!(actual.iter().map(|v|v.to_bits()).collect::<Vec<_>>(),expected.iter().map(|v|v.to_bits()).collect::<Vec<_>>());
+        }
+    }}
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "hardware-tests"), ignore = "requires actual GPU host")]
+async fn spatial_filters_preserve_hdr_linear_under_affine_transform() {
+    let mut gpu=NativeGpu::new(Backends::PRIMARY).await.unwrap();
+    for (kind,angle) in [("gaussian-blur",0.),("motion-blur",0.),("motion-blur",37.5),("motion-blur",90.)] {
+        let mut n=rect("n",24.25,20.5,"color(srgb 2 -0.25 0.5 / 0.5)");
+        n["width"]=json!(12.);n["height"]=json!(16.);n["transform"]=json!([0.8,0.6,-0.3,0.4,24.25,20.5]);
+        n["effects"]=json!([{"kind":kind,"radius":3.25,"motionAngle":angle,"color":"#000000"}]);
+        let mut d:Value=serde_json::from_str(&doc(json!({"n":n}),json!(["n"]))).unwrap();d["schemaVersion"]=json!(18);
+        d["colorManagement"]=json!({"documentSpace":"srgb","referenceWhiteNits":203,"peakLuminanceNits":1000});
+        let mut engine=Engine::new();engine.load_document(&d.to_string()).unwrap();
+        let scene=engine.compile_gpu(&options()).unwrap();let cpu=engine.render_linear(&options()).unwrap();
+        let native=gpu.render(&scene).unwrap().linear.unwrap();let expected:Vec<f32>=cpu.iter().flat_map(|p|p.0).collect();
+        assert!(native.iter().any(|v|*v<0.) && native.iter().any(|v|*v>1.));
+        assert_eq!(native.iter().map(|v|v.to_bits()).collect::<Vec<_>>(),expected.iter().map(|v|v.to_bits()).collect::<Vec<_>>(),"{kind} {angle}");
+    }
+}
+
+#[tokio::test]
 #[cfg_attr(
     not(feature = "hardware-tests"),
     ignore = "run with --features hardware-tests on a GPU host"
@@ -1174,4 +1253,16 @@ async fn gradient_blur_gpu_composite_matches_the_f64_reference() {
             "gradient parameters must affect the image"
         );
     }
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "hardware-tests"), ignore = "requires actual GPU host")]
+async fn zoom_cropped_gpu_retains_remote_source_pixels() {
+    let mut gpu=NativeGpu::new(Backends::PRIMARY).await.unwrap();
+    let document=json!({"schemaVersion":19,"id":"z","name":"crop","pages":[{"id":"p","name":"p","children":["n"],"background":"#ffffff"}],
+        "nodes":{"n":{"id":"n","kind":"rectangle","width":1000,"height":100,"fills":[{"kind":"solid","color":"#3366b3"}],"effects":[{"kind":"zoom-blur","radius":0,"color":"#000000","zoomBlur":{"amount":20,"center":[0.5,0.5]}}]}}});
+    let mut engine=Engine::new();engine.load_document(&document.to_string()).unwrap();
+    let options:RenderOptions=serde_json::from_value(json!({"pageId":"p","width":32,"height":32,"transparent":true,"rasterProfile":"figma","view":{"x":-850,"y":-30,"zoom":1}})).unwrap();
+    let scene=engine.compile_gpu(&options).unwrap();let cpu=engine.render(&options).unwrap();let native=gpu.render(&scene).unwrap();
+    assert_eq!(cpu,native.rgba);assert!(native.rgba.chunks_exact(4).all(|p|p[3]==255));
 }

@@ -1,4 +1,4 @@
-//! Authored source regressions only. All tests in this file are NOT_RUN.
+//! Source validation and byte-preserving edit regressions.
 use super::*;
 use std::io::Cursor;
 
@@ -26,7 +26,7 @@ fn fragment_rejects_unindexed_duplicate_without_changing_source_index_admission(
 
 #[test]
 fn duplicates_reject_at_every_admitted_object_depth() {
-    for depth in 0..MAX_DEPTH {
+    for depth in 0..128 {
         let text = format!(
             "{}{{\"x\":1,\"\\u0078\":2}}{}",
             "{\"outer\":".repeat(depth),
@@ -158,28 +158,55 @@ fn utf8_and_escaped_keys_cross_internal_buffer_boundaries() {
 }
 
 #[test]
-fn exact_depth_limit_and_first_overflow_match_existing_scanner() {
-    for depth in [MAX_DEPTH, MAX_DEPTH + 1] {
+fn heap_frames_accept_deep_sources_without_a_recursion_quota() {
+    for depth in [128, 129, 20_000] {
         let text = format!("{}0{}", "[".repeat(depth), "]".repeat(depth));
-        assert_eq!(index(text.as_bytes(), MAX_FRAGMENT_BYTES).is_ok(), depth == MAX_DEPTH);
-        assert_eq!(validate_fragment(text.as_bytes()).is_ok(), depth == MAX_DEPTH);
+        assert_eq!(index(text.as_bytes(), MAX_FRAGMENT_BYTES).is_ok(), true);
+        assert_eq!(validate_fragment(text.as_bytes()).is_ok(), true);
     }
 }
 
 #[test]
-fn key_and_selected_metadata_limits_are_preserved() {
-    for length in [MAX_KEY_BYTES, MAX_KEY_BYTES + 1] {
+fn source_keys_and_metadata_have_no_16k_quota() {
+    for length in [16 * 1024, 16 * 1024 + 1, 128 * 1024] {
         let key = format!("{{\"{}\":0}}", "k".repeat(length));
         let metadata = format!("{{\"name\":\"{}\"}}", "m".repeat(length));
         for text in [key, metadata] {
-            assert_eq!(index(text.as_bytes(), MAX_FRAGMENT_BYTES).is_ok(), length == MAX_KEY_BYTES);
-            assert_eq!(validate_fragment(text.as_bytes()).is_ok(), length == MAX_KEY_BYTES);
+            assert_eq!(index(text.as_bytes(), MAX_FRAGMENT_BYTES).is_ok(), true);
+            assert_eq!(validate_fragment(text.as_bytes()).is_ok(), true);
         }
     }
     // Non-selected metadata and ordinary string values retain their old policy.
-    let text = format!("{{\"outer\":{{\"inner\":{{\"name\":\"{}\"}}}}}}", "v".repeat(MAX_KEY_BYTES + 1));
+    let text = format!("{{\"outer\":{{\"inner\":{{\"name\":\"{}\"}}}}}}", "v".repeat((16 * 1024) + 1));
     assert!(index(text.as_bytes(), MAX_FRAGMENT_BYTES).is_ok());
     validate_fragment(text.as_bytes()).unwrap();
+}
+
+#[test]
+fn streaming_index_accepts_more_than_one_million_objects() {
+    let source = format!("[{}{{}}]", "{},".repeat(1_000_000));
+    let mut count = 0;
+    let result = scan(source.as_bytes(), source.len() as u64, |ordinal, entry| {
+        assert_eq!(ordinal, count);
+        assert_eq!(entry.parent, None);
+        assert_eq!(entry.span.len(), 2);
+        count += 1;
+        Ok(())
+    }).unwrap();
+    assert_eq!(result.entries, 1_000_001);
+    assert_eq!(result.bytes, source.len() as u64);
+    assert_eq!(count, result.entries);
+}
+
+#[test]
+fn deeply_nested_malformed_values_and_duplicate_keys_still_reject() {
+    for value in ["[1,]", "{\"a\":1,}", "[true false]", "{\"a\":0 \"b\":1}", "[1", "{", "[1,,2]"] {
+        let source = format!("{}{}{}", "[".repeat(1024), value, "]".repeat(1024));
+        assert!(scan(source.as_bytes(), MAX_SOURCE_OFFSET, |_,_|Ok(())).is_err(), "{value}");
+        assert!(validate_fragment(source.as_bytes()).is_err(), "{value}");
+    }
+    let duplicate = format!("{}{{\"a\":1,\"\\u0061\":2}}{}", "[".repeat(1024), "]".repeat(1024));
+    assert_duplicate(duplicate.as_bytes());
 }
 
 #[test]
@@ -247,27 +274,27 @@ fn rejected_duplicate_replacement_preserves_existing_pieces_and_exact_output() {
 fn wide_objects_and_escaped_decoded_key_limit_do_not_require_field_tables() {
     let text = format!("{{{}}}", (0..20_000).map(|n| format!("\"k{n}\":0")).collect::<Vec<_>>().join(","));
     validate_fragment(text.as_bytes()).unwrap();
-    let text = format!("{{\"{}\":0}}", "\\u006b".repeat(MAX_KEY_BYTES));
-    assert!(text.len() > MAX_KEY_BYTES);
+    let text = format!("{{\"{}\":0}}", "\\u006b".repeat(16 * 1024));
+    assert!(text.len() > 16 * 1024);
     validate_fragment(text.as_bytes()).unwrap();
-    let over = format!("{{\"{}\":0}}", "\\u006b".repeat(MAX_KEY_BYTES + 1));
-    assert!(validate_fragment(over.as_bytes()).is_err());
+    let over = format!("{{\"{}\":0}}", "\\u006b".repeat((16 * 1024) + 1));
+    validate_fragment(over.as_bytes()).unwrap();
 }
 
 #[test]
-fn fragment_mode_keeps_the_existing_selected_entry_count_guard() {
+fn selected_entry_count_rejects_only_address_overflow() {
     let text = b"{}".as_slice();
     let mut scanner = Scanner {
         input: BufReader::with_capacity(64 * 1024, text),
         at: 0,
         limit: MAX_FRAGMENT_BYTES,
         sink: |_, _| panic!("fragment validation emitted a navigation row"),
-        entries: MAX_INDEX_VALUES,
+        entries: usize::MAX,
         fragment_keys: Some(FragmentKeyBudget { limit: text.len(), bytes: 0, keys: 0 }),
     };
     assert_eq!(
         scanner.value(0, None, true, "JSON", true, None).unwrap_err().to_string(),
-        "JSON index working-set limit exceeded"
+        "JSON index address overflow"
     );
 }
 

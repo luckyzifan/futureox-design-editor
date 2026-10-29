@@ -248,3 +248,27 @@ fn shared_style_adaptable_colors_ride_container_fidelity() {
         json!([{"_class": "color", "red": 1.0, "green": 0.0, "blue": 0.0, "alpha": 1.0}])
     );
 }
+
+#[test]
+fn edited_adaptable_fill_is_never_overwritten_by_imported_light_value() {
+    let mut doc=import_sketch(&sketch_zip(document_json(vec![]),page_json(vec![rect_layer_with_adaptable_fill()]))).unwrap();
+    doc.nodes.get_mut("LAYER-1").unwrap().fills[0].color="#00ff00".into();
+    let out=export_sketch(&doc).unwrap();let reopened=import_sketch(&out).unwrap();
+    assert_eq!(reopened.nodes["LAYER-1"].fills[0].color,"#00ff00");
+}
+
+#[test]
+fn disabled_style_parts_keep_order_visibility_and_blend_on_reopen() {
+    let mut layer=rect_layer_with_adaptable_fill();
+    layer["style"]["fills"]=json!([
+        {"isEnabled":false,"fillType":0,"color":{"red":1,"green":0,"blue":0,"alpha":1},"contextSettings":{"blendMode":16,"opacity":0.3}},
+        {"isEnabled":true,"fillType":0,"color":{"red":0,"green":1,"blue":0,"alpha":1},"contextSettings":{"blendMode":17,"opacity":1}}]);
+    layer["style"]["borders"]=json!([{ "isEnabled":false,"fillType":0,"thickness":2,"color":{"red":0,"green":0,"blue":1,"alpha":1}}]);
+    layer["style"]["shadows"]=json!([{ "isEnabled":false,"blurRadius":3,"color":{"red":0,"green":0,"blue":0,"alpha":0.4}}]);
+    let doc=import_sketch(&sketch_zip(document_json(vec![]),page_json(vec![layer]))).unwrap();
+    for doc in [&doc,&import_sketch(&export_sketch(&doc).unwrap()).unwrap()] {
+        let n=&doc.nodes["LAYER-1"];assert_eq!(n.fills.len(),2);assert!(!n.fills[0].visible);assert!(n.fills[1].visible);
+        assert_eq!(n.fills[0].blend,"linear-burn");assert_eq!(n.fills[1].blend,"linear-dodge");
+        assert_eq!(n.strokes.len(),1);assert!(!n.strokes[0].visible);assert_eq!(n.effects.len(),1);assert!(!n.effects[0].visible);
+    }
+}
