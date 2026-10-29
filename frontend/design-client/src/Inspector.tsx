@@ -46,6 +46,7 @@ import {
   defaultPatternTile,
 } from './model'
 import { imageData } from './persistence'
+import { kernelNoiseFillPreset } from './kernel/picking'
 const blends: Blend[] = [
   'normal',
   'multiply',
@@ -74,6 +75,8 @@ const effects: Record<Effect['kind'], string> = {
   glass: '玻璃折射',
   noise: '噪声',
   texture: '纹理',
+  'color-controls': '颜色调整',
+  'gaussian-blur': '高斯模糊', 'motion-blur': '运动模糊', 'zoom-blur':'缩放模糊',
 }
 
 function PaintEditor({
@@ -99,7 +102,7 @@ function PaintEditor({
         <select
           aria-label={tr("填充类型")}
           value={p.kind}
-          onChange={(e) => onChange({ ...p, kind: e.target.value as Paint['kind'] })}
+          onChange={(e) => onChange(e.target.value==='noise-image' ? {...kernelNoiseFillPreset(),id:p.id,visible:p.visible} : { ...p, kind: e.target.value as Paint['kind'] })}
         >
           <option value="solid">{tr("纯色")}</option>
           <option value="linear">{tr("线性渐变")}</option>
@@ -107,6 +110,7 @@ function PaintEditor({
           <option value="angular">{tr("角度渐变")}</option>
           <option value="diamond">{tr("菱形渐变")}</option>
           <option value="image">{tr("图片")}</option>
+          <option value="noise-image">{tr("噪声图片预设")}</option>
         </select>
         <span className="hex">
           {p.color.startsWith('#') ? p.color.slice(1).toUpperCase() : tr("扩展颜色")}
@@ -909,11 +913,11 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
               <div className="field-grid">
                 {(['radius', 'x', 'y', 'spread', 'opacity', 'amount'] as const)
                   .filter((k) =>
-                    fx.glass || fx.texture
+                    ['color-controls','zoom-blur'].includes(fx.kind) ? false : fx.glass || fx.texture
                       ? k === 'radius'
                       : ['shadow', 'inner-shadow'].includes(fx.kind)
                         ? k !== 'amount'
-                        : ['blur', 'background-blur'].includes(fx.kind)
+                        : ['blur', 'gaussian-blur', 'motion-blur', 'background-blur'].includes(fx.kind)
                           ? k === 'radius'
                           : ['noise', 'texture'].includes(fx.kind)
                             ? ['amount', 'opacity'].includes(k)
@@ -963,6 +967,23 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                     />
                   ))}
               </div>
+              {(fx.colorControls || fx.kind === 'background-blur') && <div className="field-grid">
+                {(['brightness','contrast','saturation','hue'] as const).filter(key => fx.kind !== 'background-blur' || key === 'saturation').map(key => {
+                  const controls = fx.colorControls || { space:'srgb' as const, brightness:0, contrast:1, saturation:1, hue:0 }
+                  const label = {brightness:'亮度',contrast:'对比度',saturation:'饱和度',hue:'色相（弧度）'}[key]
+                  return <NumberField key={key} label={tr(label)} historyLabel={label} unit="number" diagnosticFamily={2}
+                    min={key === 'brightness' ? -1 : key === 'hue' ? -Math.PI : 0} max={key === 'brightness' ? 1 : key === 'hue' ? Math.PI : 4}
+                    step={0.05} value={controls[key]} onChange={v => update(n => {
+                      const target = n.effects[i]
+                      target.colorControls = {...(target.colorControls || {space:'srgb' as const,brightness:0,contrast:1,saturation:1,hue:0}), [key]:v}
+                    },label)}/>
+                })}
+              </div>}
+              {fx.zoomBlur && <div className="field-grid">
+                <NumberField label={tr('缩放模糊强度')} historyLabel="缩放模糊强度" unit="number" diagnosticFamily={2} min={0} max={1000} value={fx.zoomBlur.amount} onChange={v=>update(n=>{n.effects[i].zoomBlur!.amount=v})}/>
+                {([0,1] as const).map(axis=><NumberField key={axis} label={tr(axis===0?'焦点 X %':'焦点 Y %')} historyLabel="缩放模糊焦点" unit="number" diagnosticFamily={2} min={-1e8} max={1e8} value={fx.zoomBlur!.center[axis]*100} onChange={v=>update(n=>{n.effects[i].zoomBlur!.center[axis]=v/100})}/>)}
+              </div>}
+              {fx.kind === 'motion-blur' && <NumberField label={tr('方向 °')} historyLabel="运动模糊方向" unit="number" diagnosticFamily={2} min={-1e7} max={1e7} value={fx.motionAngle??0} onChange={v=>update(n=>{n.effects[i].motionAngle=v})}/>}
               {fx.kind === 'blur' && <>
                 <label className="check-row"><input aria-label={tr("渐变模糊")} type="checkbox" checked={!!fx.gradientBlur} onChange={e=>update(n=>{
                   const effect=n.effects[i];if(e.target.checked)effect.gradientBlur={start:[0,0],end:[n.width,0],startCount:0,endCount:4,smooth:true};else delete effect.gradientBlur

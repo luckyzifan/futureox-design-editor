@@ -1,12 +1,12 @@
 import React from 'react'
-import { blank, node, defaultTextStyle, validateDocument, type DesignDocument, type DesignNode } from './model'
+import { blank, node, defaultTextStyle, validateDocument, hasSchema20Features, type DesignDocument, type DesignNode } from './model'
 import { kernelTextLayout } from './kernel/picking'
 
 export const EDITABLE_TEXT_WARNING = 'Editable SVG references font families without embedding fonts. Missing fonts, fallback, shaping and browser layout can change appearance; use outlines for visual fidelity.'
 function supported(n: DesignNode) {
   const s = n.textStyle
   if (n.textRuns?.some(r => r.color && !/^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(r.color))) throw new Error('Editable SVG run colors require hexadecimal colors')
-  if (n.textPath || s?.writingMode === 'vertical' || s?.features?.length || s?.variations?.length || s?.align === 'justify' || (s?.textCase && s.textCase !== 'original') || n.textRuns?.some(r => r.link || (r.textCase && r.textCase !== 'original')))
+  if (n.textPath || s?.writingMode === 'vertical' || s?.features?.length || s?.variations?.length || s?.align === 'justify' || (s?.textCase && s.textCase !== 'original') || n.textRuns?.some(r => r.paragraph?.align === 'justify' || r.link || (r.textCase && r.textCase !== 'original')))
     throw new Error('Editable SVG does not support text paths, vertical/justified text, OpenType overrides, case transforms or links; use outlines')
   if (n.fills.filter(p => p.visible).length !== 1 || n.strokes.some(s => s.visible)) throw new Error('Editable SVG requires one visible text fill and no text strokes; use outlines')
 }
@@ -68,6 +68,7 @@ export function readEditableSvgText(el: Element, target: DesignNode, fonts: Desi
   if (embeddedDefault && probe.textStyle && probe.textStyle.fontId !== '__svg_bundled_default' && !probe.textStyle.fallbacks.includes('__svg_bundled_default')) probe.textStyle.fallbacks = [...probe.textStyle.fallbacks, '__svg_bundled_default']
   if (Array.isArray(probe.textRuns)) probe.textRuns = probe.textRuns.map(r=>({...r,...(r.fontId ? {fontId:resolve(r.fontId)} : {})}))
   const doc = blank(); doc.schemaVersion = 15; doc.fonts = fonts; doc.nodes[probe.id] = probe; doc.pages[0].children = [probe.id]
+  if (hasSchema20Features(doc)) doc.schemaVersion=20
   validateDocument(doc); supported(probe)
   if (el.textContent !== probe.text.replace(/\n/g,'')) throw new Error('Editable SVG text content does not match its model')
   for (const key of allowed) if (Object.hasOwn(value,key)) (target as unknown as Record<string,unknown>)[key] = (probe as unknown as Record<string,unknown>)[key]

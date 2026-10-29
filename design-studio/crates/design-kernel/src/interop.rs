@@ -315,14 +315,15 @@ fn point_to_point(v: &Value) -> crate::math::Point {
     crate::math::Point::new(x, y)
 }
 
-/// Sketch constraint bits per axis: 0=none/free, 1=min, 2=max, 3=min|max(fixed), 4=scale
+/// Native Sketch detach oracle (100→200): bit 4 flexes leading margin,
+/// bit 2 flexes size, bit 1 flexes trailing margin. Mixed-flex cases require
+/// the native resize solver and are reported rather than called exact mappings.
 fn constraint_anchor(bits: u64) -> crate::layout::Anchor {
     match bits {
         1 => crate::layout::Anchor::Start,
-        2 => crate::layout::Anchor::End,
-        3 => crate::layout::Anchor::Stretch,
-        4..=7 => crate::layout::Anchor::Scale,
-        _ => crate::layout::Anchor::Start,
+        2 => crate::layout::Anchor::Stretch,
+        4 => crate::layout::Anchor::End,
+        _ => crate::layout::Anchor::Scale,
     }
 }
 
@@ -548,11 +549,42 @@ fn adaptable_slot_in_layer<'a>(
     }
 }
 
+fn adaptable_model(node: &Node, slot: &str) -> Option<Value> {
+    let mut parts = slot.split('.');
+    let kind = parts.next()?;
+    if kind == "background" { return Some(json!(node.fills.first()?)); }
+    let i: usize = parts.next()?.parse().ok()?;
+    Some(match kind {
+        "fill" => json!(node.fills.get(i)?),
+        "border" => json!(node.strokes.get(i)?),
+        "shadow" | "innerShadow" => json!(node.effects.iter().filter(|e| e.kind == if kind == "shadow" { "shadow" } else { "inner-shadow" }).nth(i)?),
+        // Font resolution happens after initial import. Color restoration depends
+        // on the authored range and color, not the resolved local font identity.
+        "run" => { let r = node.text_runs.get(i)?; json!([r.start,r.end,r.color]) },
+        _ => return None,
+    })
+}
+
+fn adaptable_capture(node: &mut Node) {
+    let entries: Vec<_> = node.bindings.keys().filter_map(|key| {
+        let slot = key.strip_prefix("sketchAdaptableColor.")?;
+        Some((format!("sketchColorModel.{slot}"), adaptable_model(node, slot)?.to_string()))
+    }).collect();
+    node.bindings.extend(entries);
+}
+
+fn adaptable_unchanged(node: &Node, slot: &str) -> bool {
+    node.bindings.get(&format!("sketchColorModel.{slot}"))
+        .and_then(|v| serde_json::from_str::<Value>(v).ok())
+        .zip(adaptable_model(node, slot)).is_some_and(|(a,b)| a == b)
+}
+
 /// Export side of P0-4: splice preserved color payloads back into the layer
 /// dict and restore `updatableColors` on the layer and its style. Stale
 /// slots (document edited after import) are skipped rather than blocking
 /// the export.
-fn adaptable_apply_layer(layer: &mut Map<String, Value>, bindings: &BTreeMap<String, String>) {
+fn adaptable_apply_layer(layer: &mut Map<String, Value>, node: &Node) {
+    let bindings = &node.bindings;
     for (key, raw) in bindings {
         if let Some(slot) = key.strip_prefix("sketchAdaptableColor.") {
             match slot {
@@ -566,10 +598,10 @@ fn adaptable_apply_layer(layer: &mut Map<String, Value>, bindings: &BTreeMap<Str
                     }
                 }
                 _ => {
-                    if let Ok(value) = serde_json::from_str::<Value>(raw)
-                        && let Some(target) = adaptable_slot_in_layer(layer, slot)
+                    if adaptable_unchanged(node, slot)
+                        && let Ok(value) = serde_json::from_str::<Value>(raw)
                     {
-                        *target = value;
+                        if let Some(target)=adaptable_slot_in_layer(layer, slot) { *target = value; }
                     }
                 }
             }
@@ -601,6 +633,8 @@ fn blend_code(blend: &str) -> u64 {
         "saturation" => 13,
         "color" => 14,
         "luminosity" => 15,
+        "linear-burn" => 16,
+        "linear-dodge" => 17,
         _ => 0,
     }
 }
@@ -622,6 +656,8 @@ fn blend_from_code(code: u64) -> String {
         13 => "saturation",
         14 => "color",
         15 => "luminosity",
+        16 => "linear-burn",
+        17 => "linear-dodge",
         _ => "normal",
     }
     .into()
@@ -658,18 +694,71 @@ fn blank_paint(kind: &str) -> Paint {
     }
 }
 
-fn solid_paint(color: &Value, base_opacity: f64, blend: &str) -> Paint {
+fn solid_paint(color: &Value, base_opacity: f64, blend: &str, space: ColorSpace) -> Paint {
     let mut paint = blank_paint("solid");
-    paint.color = color_hex(color);
-    paint.opacity = base_opacity * color_alpha(color);
+    paint.color = gradient_stop_color(color, space);
+    paint.opacity = base_opacity;
     paint.blend = blend.into();
     paint
+}
+
+fn sketch_blurs(style: &Value) -> Vec<&Value> {
+    if let Some(blurs) = style.get("blurs").and_then(Value::as_array) { blurs.iter().collect() }
+    else { style.get("blur").into_iter().collect() }
+}
+fn sketch_blur_enabled(blur: &Value) -> bool {
+    // Real Sketch archives can encode this NSNumber flag as JSON 0/1.
+    // Keep this compatibility local to blur dictionaries; arbitrary numbers
+    // and strings are not boolean admission for other document properties.
+    matches!(blur.get("isEnabled"), Some(Value::Bool(true)))
+        || blur.get("isEnabled").and_then(Value::as_u64) == Some(1)
+}
+fn sketch_zoom_parameters(blur:&Value)->Option<crate::zoom_blur::ZoomBlur> {
+    let amount=match blur.get("radius") {None=>0.,Some(value)=>value.as_f64()?};
+    let center=match blur.get("center") {
+        None=>[0.5,0.5],
+        Some(Value::String(value))=>{let inside=value.trim().strip_prefix('{')?.strip_suffix('}')?;
+            let (x,y)=inside.split_once(',')?;[x.trim().parse().ok()?,y.trim().parse().ok()?]},
+        Some(value)=>[value.get("x")?.as_f64()?,value.get("y")?.as_f64()?],
+    };
+    let params=crate::zoom_blur::ZoomBlur{amount,center};params.validate().then_some(params)
+}
+fn modern_blur(mut blur: Value) -> Value {
+    if let Some(object) = blur.as_object_mut() { object.entry("layeringType").or_insert(json!(0)); }
+    blur
+}
+// Old FD files may contain admitted paints in the former noise-retention
+// list. Do not resurrect or duplicate those paints on compatibility export.
+fn inactive_retained_noise(node:&Node,part:&Value,borders:bool)->bool {
+    if part.get("image").is_some(){return false}
+    match part.get("fillType").and_then(Value::as_u64).unwrap_or(0) {
+        0=>part.get("color").is_some(),
+        1..=3=>node.bindings.get(if borders{"sketchSourceStrokeGradients"}else{"sketchSourceGradients"})
+            .and_then(|s|serde_json::from_str::<Value>(s).ok()).and_then(|v|v.as_object().cloned())
+            .is_some_and(|m|part.get("gradient").is_some_and(|g|m.values().any(|v|v.get("gradient")==Some(g)))),
+        _=>false,
+    }
+}
+fn copy_inactive_noise(source:&Value,target:Option<&mut Value>){
+    if let Some(target)=target.and_then(Value::as_object_mut){
+        for key in ["noiseIndex","noiseIntensity","noiseFillType"]{if let Some(value)=source.get(key){target.insert(key.into(),value.clone());}}
+    }
+}
+fn native_effect_projection(style:&Value) -> Value {
+    json!({"blurs":sketch_blurs(style).into_iter().cloned().map(modern_blur).collect::<Vec<_>>(),"shadows":style.get("shadows"),"innerShadows":style.get("innerShadows"),"colorControls":style.get("colorControls")})
+}
+
+fn restored_effect_model(owner: &Value, style: &Value) -> Option<Vec<Effect>> {
+    let receipt = owner.pointer("/userInfo/com.futureox.design-kernel/legacyEffectModel")?;
+    if receipt.get("native") != Some(&native_effect_projection(style)) { return None; }
+    let effects: Vec<Effect> = serde_json::from_value(receipt.get("effects")?.clone()).ok()?;
+    (effects.len() <= 16 && effects.iter().all(|e| e.validate_material().is_ok())).then_some(effects)
 }
 
 fn blur_projection(effects: &[Effect]) -> Vec<Effect> {
     effects
         .iter()
-        .filter(|effect| matches!(effect.kind.as_str(), "blur" | "background-blur" | "glass"))
+        .filter(|effect| matches!(effect.kind.as_str(), "blur" | "gaussian-blur" | "motion-blur" | "zoom-blur" | "background-blur" | "glass"))
         .cloned()
         .map(|mut effect| {
             effect.id.clear();
@@ -776,6 +865,32 @@ fn image_data_uri(bytes: &[u8]) -> String {
     )
 }
 
+/// Read the encoded extent without decoding/allocating the bitmap. Sampling
+/// still uses the ordinary image admission and decoder in the renderer.
+fn bitmap_extent(bytes: &[u8]) -> Option<[f64; 2]> {
+    let (w, h) = image::ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format().ok()?.into_dimensions().ok()?;
+    (w > 0 && h > 0).then_some([f64::from(w), f64::from(h)])
+}
+
+/// Sketch has one uniform tile scale; independent axes, offsets and stagger
+/// remain separate kernel features and cannot be silently flattened into it.
+fn sketch_pattern_scale(paint: &Paint, extent: Option<[f64; 2]>) -> Option<f64> {
+    let tile = paint.tile.as_ref().filter(|tile| tile.is_active())?;
+    if tile.mode != crate::pattern_fill::GRID || tile.offset != [0., 0.]
+        || tile.alignment.iter().any(|a| a != crate::pattern_fill::ALIGN_START)
+        || paint.transform.is_some_and(|t| t != Transform::default()) {
+        return None;
+    }
+    if tile.size == [0., 0.] { return Some(1.); }
+    let extent = extent?;
+    let size = tile.resolve(extent);
+    let x = size[0] / extent[0];
+    let y = size[1] / extent[1];
+    (x.is_finite() && x > 0. && (x-y).abs() <= x.abs().max(y.abs()) * 8. * f64::EPSILON)
+        .then_some(x)
+}
+
 fn kind_for_class(class: &str) -> &'static str {
     match class {
         "artboard" | "frame" | "canvasFrame" => "frame",
@@ -789,12 +904,13 @@ fn kind_for_class(class: &str) -> &'static str {
         "text" => "text",
         "bitmap" => "image",
         "slice" => "slice",
-        "hotspot" => "hotspot", // Limited mapping: raw prototype payload kept in bindings.
+        "hotspot" => "rectangle", // Paintless hit region; prototype actions use the shared player.
         _ => "group",
     }
 }
 
 struct Importer<'a> {
+    available_fonts: std::collections::BTreeSet<String>,
     color_space: ColorSpace,
     files: &'a BTreeMap<String, Vec<u8>>,
     nodes: BTreeMap<String, Node>,
@@ -811,6 +927,15 @@ struct Importer<'a> {
 }
 
 impl<'a> Importer<'a> {
+    fn pattern_size(&self, part: &Value) -> Option<[f64; 2]> {
+        let scale = part.get("patternTileScale").and_then(Value::as_f64).unwrap_or(1.);
+        if !scale.is_finite() || scale <= 0. { return None; }
+        if scale == 1. { return Some([0., 0.]); }
+        let reference = part.pointer("/image/_ref")?.as_str()?;
+        let bytes = self.files.get(&format!("images/{reference}")).or_else(|| self.files.get(reference))?;
+        let size = bitmap_extent(bytes)?.map(|value| value * scale);
+        size.iter().all(|v| v.is_finite() && *v > 0. && *v <= 1e7).then_some(size)
+    }
     fn image_ref(&self, layer: &Value) -> Option<String> {
         let reference = layer.get("image").and_then(|i| i.get("_ref"))?.as_str()?;
         self.files
@@ -863,9 +988,6 @@ impl<'a> Importer<'a> {
         blend: &str,
         size: [f64; 2],
     ) -> Option<Paint> {
-        if !bool_at(part, "isEnabled") {
-            return None;
-        }
         let (part_opacity, part_blend) = blend_of(part);
         let base_opacity = base_opacity * part_opacity;
         let blend = if part
@@ -882,21 +1004,19 @@ impl<'a> Importer<'a> {
         // (Tile=0/Fill=1/Stretch=2/Fit=3, official file-format enum):
         // Fill keeps aspect while covering (cover), Stretch distorts
         // (stretch), Fit letterboxes (contain), Tile repeats at the image's
-        // native cell period — `Paint.tile` with `size: 0` per axis.
-        // `patternTileScale ≠ 1` has no kernel slot (the cell period would
-        // need the source bitmap extent); the caller records it as source
-        // fidelity instead of silently normalizing it away.
+        // native cell period multiplied by patternTileScale. The existing
+        // authored tile size drives CPU, GPU, SVG and Inspector edits alike.
         let image_paint = |part: &Value| {
             self.image_ref(part).map(|uri| {
                 let mut p = blank_paint("image");
-                p.image = Some(uri);
+                p.image = Some(uri.into());
                 match part.get("patternFillType").and_then(Value::as_i64) {
                     Some(2) => p.fit = "stretch".into(),
                     Some(3) => p.fit = "contain".into(),
                     Some(0) => {
                         p.tile = Some(crate::pattern_fill::PatternTile {
                             mode: crate::pattern_fill::GRID.into(),
-                            size: [0., 0.],
+                            size: self.pattern_size(part).unwrap_or([0., 0.]),
                             offset: [0., 0.],
                             alignment: [
                                 crate::pattern_fill::ALIGN_START.into(),
@@ -912,14 +1032,14 @@ impl<'a> Importer<'a> {
                 p
             })
         };
-        match fill_type {
+        let mut paint = match fill_type {
             0 => {
                 // image (pattern) fills carry fillType 0 + an image ref in real files
                 if part.get("image").is_some() {
                     image_paint(part)
                 } else {
                     part.get("color")
-                        .map(|c| solid_paint(c, base_opacity, blend))
+                        .map(|c| solid_paint(c, base_opacity, blend, self.color_space))
                 }
             }
             1..=3 => part.get("gradient").and_then(|g| {
@@ -930,7 +1050,9 @@ impl<'a> Importer<'a> {
             }),
             4 => image_paint(part),
             _ => None,
-        }
+        }?;
+        paint.visible = bool_at(part, "isEnabled");
+        Some(paint)
     }
 
     fn paints(&self, style: &Value, key: &str, size: [f64; 2]) -> Vec<Paint> {
@@ -991,9 +1113,6 @@ impl<'a> Importer<'a> {
             return out;
         };
         for part in parts {
-            if !bool_at(part, "isEnabled") {
-                continue;
-            }
             // A border has the same paint carrier as a fill. Its `color`
             // can be an unused black fallback while fillType selects a gradient.
             let Some(mut paint) = self.paint_part(part, 1., "normal", size) else {
@@ -1016,25 +1135,22 @@ impl<'a> Importer<'a> {
                 join: join.into(),
                 dash: dash.clone(),
                 dash_offset: 0.,
-                visible: true,
+                visible: bool_at(part, "isEnabled"),
                 width_profile: Vec::new(),
             });
         }
         out
     }
 
-    fn effects(&self, style: &Value) -> Vec<Effect> {
+    fn effects(&self, style: &Value, allow_color_controls: bool) -> Vec<Effect> {
         let mut out = Vec::new();
         let mut push_shadow = |parts: Option<&Vec<Value>>, inner: bool| {
             if let Some(parts) = parts {
                 for part in parts {
-                    if !bool_at(part, "isEnabled") {
-                        continue;
-                    }
                     out.push(Effect {
                         id: String::new(),
                         kind: if inner { "inner-shadow" } else { "shadow" }.into(),
-                        visible: true,
+                        visible: bool_at(part, "isEnabled"),
                         radius: f64_at(part, "blurRadius"),
                         x: f64_at(part, "offsetX"),
                         y: f64_at(part, "offsetY"),
@@ -1050,26 +1166,34 @@ impl<'a> Importer<'a> {
                         texture: None,
                         gradient_blur: None,
                         show_shadow_behind_node: false,
+                        color_controls: None,
+                        zoom_blur: None, motion_angle: 0.,
                     });
                 }
             }
         };
         push_shadow(style.get("shadows").and_then(Value::as_array), false);
         push_shadow(style.get("innerShadows").and_then(Value::as_array), true);
-        if let Some(blur) = style.get("blur")
-            && bool_at(blur, "isEnabled")
-            && f64_at(blur, "radius") > 0.
+        for blur in sketch_blurs(style).into_iter().filter(|blur| sketch_blur_enabled(blur)) {
+            if sketch_blur_enabled(blur)
+            && (f64_at(blur, "radius") > 0. || blur.get("type").and_then(Value::as_i64)==Some(2) || (blur.get("type").and_then(Value::as_i64) == Some(3)
+                && blur.get("saturation").and_then(Value::as_f64).unwrap_or(1.) != 1.))
         {
             let kind = match blur.get("type").and_then(Value::as_i64).unwrap_or(0) {
-                0 => "blur",
-                3 => "background-blur",
-                _ => return out,
+                0 => Some("gaussian-blur"),
+                1 => Some("motion-blur"),
+                2 => Some("zoom-blur"),
+                3 => Some("background-blur"),
+                _ => None,
             };
-            out.push(Effect {
+            if let Some(kind) = kind {
+                let zoom_blur=if kind=="zoom-blur" {sketch_zoom_parameters(blur)} else {None};
+                if kind=="zoom-blur" && zoom_blur.is_none() {continue;}
+                out.push(Effect {
                 id: String::new(),
                 kind: kind.into(),
                 visible: true,
-                radius: f64_at(blur, "radius"),
+                radius: if kind=="zoom-blur" {0.} else {f64_at(blur, "radius")},
                 x: 0.,
                 y: 0.,
                 spread: 0.,
@@ -1080,7 +1204,27 @@ impl<'a> Importer<'a> {
                 texture: None,
                 gradient_blur: None,
                 show_shadow_behind_node: false,
-            });
+                color_controls: (kind == "background-blur").then(|| crate::color_controls::ColorControls {
+                    space:Some(self.color_space), saturation: blur.get("saturation").and_then(Value::as_f64).unwrap_or(1.), ..Default::default()
+                }).filter(|c| c.validate() && !c.is_identity()),
+                zoom_blur,
+                motion_angle: if kind=="motion-blur" {f64_at(blur,"motionAngle")} else {0.},
+            }); }
+            }
+        }
+        if let Some(controls) = style.get("colorControls").filter(|c|allow_color_controls && bool_at(c,"isEnabled")) {
+            let controls = crate::color_controls::ColorControls {
+                space:Some(self.color_space),
+                brightness:f64_at(controls,"brightness"),
+                contrast:controls.get("contrast").and_then(Value::as_f64).unwrap_or(1.),
+                saturation:controls.get("saturation").and_then(Value::as_f64).unwrap_or(1.),
+                hue:f64_at(controls,"hue"),
+            };
+            if controls.validate() {
+                out.push(Effect { id:String::new(),kind:"color-controls".into(),visible:true,
+                    radius:0.,x:0.,y:0.,spread:0.,color:"#000000".into(),opacity:1.,amount:0.,
+                    glass:None,texture:None,gradient_blur:None,show_shadow_behind_node:false,color_controls:Some(controls),zoom_blur:None,motion_angle:0. });
+            }
         }
         out
     }
@@ -1174,6 +1318,9 @@ impl<'a> Importer<'a> {
 
         let style = layer.get("style").cloned().unwrap_or(Value::Null);
         if !style.is_null() {
+            if ["fills","borders"].iter().any(|key|style.get(key).and_then(Value::as_array).into_iter().flatten().any(|part|matches!(part.pointer("/contextSettings/blendMode").and_then(Value::as_u64),Some(16|17)))) {
+                import_lossy.push("plus-blend-native-roundtrip-preserved-portable-compositing-differs".into());
+            }
             let size = [node.width, node.height];
             node.fills = self.paints(&style, "fills", size);
             let source_gradients: BTreeMap<String, Value> = style
@@ -1231,40 +1378,35 @@ impl<'a> Importer<'a> {
                     json!(border_gradients).to_string(),
                 );
             }
-            node.effects = self.effects(&style);
-            if let Some(blur) = style
-                .get("blur")
-                .filter(|value| bool_at(value, "isEnabled") || f64_at(value, "radius") > 0.)
-            {
-                node.bindings.insert(
-                    "sketchSourceBlur".into(),
-                    json!({
-                        "blur":blur,"effects":blur_projection(&node.effects),
-                    })
-                    .to_string(),
-                );
-                if bool_at(blur, "isEnabled") && f64_at(blur, "radius") > 0. {
+            node.effects = self.effects(&style, class == "bitmap");
+            // Our historical blur radius remains a different authored model.
+            // Restore only while the native effect fields still match exactly;
+            // a subsequent native Sketch edit must supersede this receipt.
+            if let Some(effects) = restored_effect_model(layer, &style) {
+                node.effects = effects;
+            }
+
+            let source_blurs = sketch_blurs(&style);
+            if source_blurs.iter().any(|b| bool_at(b,"isEnabled") || f64_at(b,"radius") > 0.) {
+                node.bindings.insert("sketchSourceBlur".into(), json!({
+                    "blur":source_blurs.first(), "blurs":style.get("blurs"),
+                    "effects":blur_projection(&node.effects),
+                }).to_string());
+                for blur in source_blurs.iter().filter(|b| bool_at(b,"isEnabled")) {
                     match blur.get("type").and_then(Value::as_i64).unwrap_or(0) {
-                        0 => {}
-                        3 => {
-                            if blur
-                                .get("saturation")
-                                .and_then(Value::as_f64)
-                                .is_some_and(|value| value != 1.)
-                            {
-                                import_lossy.push(
-                                    "background-blur-saturation-not-modeled;source-blur-retained"
-                                        .into(),
-                                );
-                            }
-                        }
-                        1 => {
-                            import_lossy.push("motion-blur-not-modeled;source-blur-retained".into())
-                        }
-                        2 => import_lossy.push("zoom-blur-not-modeled;source-blur-retained".into()),
-                        _ => import_lossy
-                            .push("unknown-blur-type-not-modeled;source-blur-retained".into()),
+                        2 if sketch_zoom_parameters(blur).is_none()=>import_lossy.push("zoom-blur-invalid-parameters;source-retained".into()),
+                        0 | 1 | 2 | 3 => {},
+                        _ => import_lossy.push("unknown-blur-type-not-modeled;source-blur-retained".into()),
                     }
+                    if blur.get("layeringType").and_then(Value::as_i64).unwrap_or(0) != 0 {
+                        import_lossy.push("blur-layering-type-not-modeled;source-blur-retained".into());
+                    }
+                }
+                if source_blurs.iter().filter(|b|bool_at(b,"isEnabled")).count()>1 {
+                    import_lossy.push("multiple-native-blurs-portable-order;source-blurs-retained".into());
+                }
+                if node.effects.iter().any(|e|matches!(e.kind.as_str(),"gaussian-blur"|"motion-blur"|"zoom-blur")) {
+                    import_lossy.push("native-blur-portable-kernel;native-pixels-not-identical".into());
                 }
             }
             let (opacity, blend) = blend_of(&style);
@@ -1302,14 +1444,13 @@ impl<'a> Importer<'a> {
                 serde_json::to_string(updatable).unwrap_or_default(),
             );
         }
-        // 05-style.md remaining parts with no kernel home: noise fills
-        // (legacy fillType 4/5 without an image reference, or any noiseIndex
-        // payload) and colorControls (per-layer color matrix) are preserved
-        // verbatim for round-trip and reported — never silently dropped.
-        // Pattern fills whose `patternTileScale ≠ 1` render at the native
-        // cell period; the authored scale rides bindings the same way.
+        // Modern noise presets are image/pattern fills. An unused legacy
+        // noiseIndex on an otherwise admitted paint must not splice a second
+        // fill on export. Only genuinely unmodeled parts need raw retention.
+        // Only unresolved/invalid bitmap extents retain an unmodeled scale.
         if !style.is_null() {
             let mut noise = Map::new();
+            let mut inactive_noise = Map::new();
             let mut pattern_scale = Map::new();
             for parts_key in ["fills", "borders"] {
                 let mut admitted = 0usize;
@@ -1318,7 +1459,9 @@ impl<'a> Importer<'a> {
                     continue;
                 };
                 for part in parts {
+                    let admitted_part=self.part_admitted(part);
                     let is_noise = bool_at(part, "isEnabled")
+                        && !admitted_part
                         && part.get("image").is_none()
                         && (part.get("noiseIndex").and_then(Value::as_u64).unwrap_or(0) != 0
                             || !matches!(
@@ -1330,10 +1473,16 @@ impl<'a> Importer<'a> {
                         dropped += 1;
                         continue;
                     }
-                    if !self.part_admitted(part) {
+                    if !admitted_part {
                         continue;
                     }
+                    if ["noiseIndex","noiseIntensity","noiseFillType"].iter().any(|key|f64_at(part,key)!=0.) {
+                        let fields:Map<String,Value>=["noiseIndex","noiseIntensity","noiseFillType"].into_iter()
+                            .filter_map(|key|part.get(key).map(|v|(key.to_owned(),v.clone()))).collect();
+                        inactive_noise.insert(format!("{parts_key}-{}",admitted+dropped),Value::Object(fields));
+                    }
                     if part.get("patternFillType").and_then(Value::as_i64) == Some(0)
+                        && self.pattern_size(part).is_none()
                         && let Some(scale) = part
                             .get("patternTileScale")
                             .and_then(Value::as_f64)
@@ -1343,6 +1492,9 @@ impl<'a> Importer<'a> {
                     }
                     admitted += 1;
                 }
+            }
+            if !inactive_noise.is_empty() {
+                node.bindings.insert("sketchInactiveNoiseMetadata".into(),Value::Object(inactive_noise).to_string());
             }
             if !noise.is_empty() {
                 node.bindings.insert(
@@ -1366,7 +1518,9 @@ impl<'a> Importer<'a> {
                     "sketchSourceColorControls".into(),
                     serde_json::to_string(controls).unwrap_or_default(),
                 );
-                import_lossy.push("color-controls-not-modeled;source-retained".into());
+                if node.effects.iter().any(|e|e.kind == "color-controls") {
+                    node.bindings.insert("sketchColorControlsModeled".into(),"true".into());
+                } else { import_lossy.push("color-controls-not-modeled;source-retained".into()); }
             }
         }
         // P1-9: boolean groups (shapeGroup) carry the operation code;
@@ -1485,7 +1639,7 @@ impl<'a> Importer<'a> {
                     .get("numberOfPoints")
                     .and_then(Value::as_u64)
                     .unwrap_or(5) as usize;
-                node.inner_radius = f64_at(layer, "innerRadius");
+                node.inner_radius = layer.get("radius").or_else(||layer.get("innerRadius")).and_then(Value::as_f64).unwrap_or(0.5);
             }
             "shapePath" | "shape" => {
                 if layer.get("isClosed").and_then(Value::as_bool) == Some(false) {
@@ -1666,7 +1820,7 @@ impl<'a> Importer<'a> {
                             .and_then(|f| f.get("attributes"))
                             .and_then(|f| f.get("size"))
                             .and_then(Value::as_f64);
-                        let color = a.get("MSAttributedStringColorAttribute").map(color_hex);
+                        let color = a.get("MSAttributedStringColorAttribute").map(|c| gradient_stop_color(c, self.color_space));
                         let font_name = a
                             .get("MSAttributedStringFontAttribute")
                             .and_then(|f| f.get("attributes"))
@@ -1691,7 +1845,18 @@ impl<'a> Importer<'a> {
                             Some(2) => Some(crate::font::TextCase::Lower),
                             _ => None,
                         };
+                        let paragraph = a.get("paragraphStyle").or_else(||a.get("textStyleBasicParagraphStyle")).and_then(|p| {
+                            let value = crate::font::TextParagraph {
+                                align: alignment_from_code(p.get("alignment").and_then(Value::as_i64).unwrap_or(0)).into(),
+                                minimum_line_height: p.get("minimumLineHeight").and_then(Value::as_f64).unwrap_or(0.),
+                                maximum_line_height: p.get("maximumLineHeight").and_then(Value::as_f64).unwrap_or(0.),
+                                spacing: p.get("paragraphSpacing").and_then(Value::as_f64).unwrap_or(0.),
+                                indent: p.get("firstLineHeadIndent").and_then(Value::as_f64).unwrap_or(0.),
+                            };
+                            if value.validate().is_ok() { Some(value) } else { import_lossy.push("paragraph-values-outside-supported-range".into()); None }
+                        });
                         node.text_runs.push(crate::font::TextRun {
+                            paragraph,
                             text_case,
                             start,
                             end: start + len,
@@ -1713,7 +1878,11 @@ impl<'a> Importer<'a> {
                                 style.weight = weight;
                             }
                             node.font_size = font_size.unwrap_or(14.);
-                            if let Some(c) = &color {
+                            // Attributed color supplies a fallback when no
+                            // native style fill exists. Appending it to an
+                            // existing fill leaves a duplicate paint that becomes
+                            // active after range colors are cleared by editing.
+                            if let Some(c) = &color && node.fills.is_empty() {
                                 node.fills.push({
                                     let mut p = blank_paint("solid");
                                     p.color = c.to_string();
@@ -1723,8 +1892,8 @@ impl<'a> Importer<'a> {
                             // P0-2 (import side): paragraph + spacing keys
                             // from the same first run (22 号字典 §4)
                             if let Some(para) = a
-                                .get("textStyleBasicParagraphStyle")
-                                .or_else(|| a.get("paragraphStyle"))
+                                .get("paragraphStyle")
+                                .or_else(|| a.get("textStyleBasicParagraphStyle"))
                             {
                                 style.align = alignment_from_code(
                                     para.get("alignment").and_then(Value::as_i64).unwrap_or(0),
@@ -1735,7 +1904,7 @@ impl<'a> Importer<'a> {
                                     .or_else(|| para.get("maximumLineHeight"))
                                     .and_then(Value::as_f64);
                                 if let Some(px) = line_px
-                                    && node.font_size >= 1.
+                                    && px > 0. && node.font_size >= 1.
                                 {
                                     style.line_height = px / node.font_size;
                                 }
@@ -1748,8 +1917,8 @@ impl<'a> Importer<'a> {
                                     para.get("maximumLineHeight").and_then(Value::as_f64),
                                 ) && (hi - lo).abs() > 1e-9
                                 {
-                                    import_lossy
-                                        .push("paragraph-line-height-range-collapsed".into());
+                                    // Both limits live on the paragraph run and are applied by Fonts.
+                                    let _ = (lo, hi);
                                 }
                                 style.paragraph_spacing = para
                                     .get("paragraphSpacing")
@@ -1778,16 +1947,13 @@ impl<'a> Importer<'a> {
                             // other defaults resolve) and export writes them
                             // back onto every run; the unmodeled semantics
                             // are reported, not silently absorbed.
-                            if let Some(vertical) = a
-                                .get("textStyleVerticalAlignmentKey")
-                                .and_then(Value::as_i64)
-                            {
-                                node.bindings.insert(
-                                    "sketchTextVerticalAlignment".into(),
-                                    vertical.to_string(),
-                                );
-                                if vertical != 0 {
-                                    import_lossy.push("text-vertical-alignment-not-modeled".into());
+                            if let Some(vertical) = layer.pointer("/style/textStyle/verticalAlignment")
+                                .or_else(||a.get("textStyleVerticalAlignmentKey")).and_then(Value::as_i64) {
+                                match vertical {
+                                    0 => style.vertical_align = "top".into(),
+                                    1 => style.vertical_align = "center".into(),
+                                    2 => style.vertical_align = "bottom".into(),
+                                    _ => { node.bindings.insert("sketchTextVerticalAlignment".into(), vertical.to_string()); import_lossy.push("text-vertical-alignment-value-not-modeled".into()); }
                                 }
                             }
                             if let Some(transform) =
@@ -1807,6 +1973,10 @@ impl<'a> Importer<'a> {
                         }
                     }
                 }
+                // Equivalent unconstrained paragraphs need no new schema facet.
+                if node.text_runs.iter().all(|r|r.paragraph.as_ref().is_none_or(|p|p.minimum_line_height==0. && p.maximum_line_height==0. && p.align==style.align && p.spacing==style.paragraph_spacing && p.indent==style.paragraph_indent)) {
+                    for run in &mut node.text_runs {run.paragraph=None;}
+                }
                 if let Some(spacing) = raw_spacing_behaviour {
                     // Matches the exporter's derivation: a custom line height
                     // archives as 3 (自定义), everything else as the v2-era
@@ -1819,12 +1989,30 @@ impl<'a> Importer<'a> {
                     }
                 }
                 node.text_style = Some(style);
+                if let Some(receipt) = user_ns.get("textModel")
+                    && receipt.get("native") == Some(&native_text_projection(layer)) {
+                    if let (Ok(saved_style),Ok(saved_runs)) = (
+                        serde_json::from_value::<Option<crate::font::TextStyle>>(receipt["style"].clone()),
+                        serde_json::from_value::<Vec<crate::font::TextRun>>(receipt["runs"].clone())) {
+                        // A native editor can remove document-level identity metadata
+                        // while retaining per-layer receipts. In that case the native
+                        // PostScript descriptors own the font mapping, not dangling IDs.
+                        let owned=|id:&str|id=="default"||self.available_fonts.contains(id)
+                            ||node.text_style.as_ref().is_some_and(|s|s.font_id==id)
+                            ||node.text_runs.iter().any(|r|r.font_id.as_deref()==Some(id));
+                        if saved_style.as_ref().is_none_or(|s|owned(&s.font_id))
+                            && saved_runs.iter().all(|r|r.font_id.as_deref().is_none_or(owned)) {
+                            node.text_style=saved_style; node.text_runs=saved_runs;
+                        }
+                    }
+                }
             }
             "bitmap" => {
+                node.bindings.insert("sketchSourceBitmap".into(), "true".into());
                 if let Some(uri) = self.image_ref(layer) {
                     node.fills.push({
                         let mut p = blank_paint("image");
-                        p.image = Some(uri);
+                        p.image = Some(uri.into());
                         p
                     });
                 }
@@ -1899,11 +2087,13 @@ impl<'a> Importer<'a> {
                 if bool_at(layer, "hasBackgroundColor")
                     && let Some(bg) = layer.get("backgroundColor")
                 {
-                    node.fills.insert(0, solid_paint(bg, 1., "normal"));
+                    node.fills.insert(0, solid_paint(bg, 1., "normal", self.color_space));
                 }
                 import_layout_grid(&mut node, layer, &mut import_lossy);
             }
             "hotspot" => {
+                node.fills.clear(); node.strokes.clear(); node.effects.clear();
+                node.bindings.insert("sketchSourceHotspot".into(), "true".into());
                 // Hotspots are bare MSLayers whose prototype semantics live in
                 // the flow payload (03-layer-tree.md: MSImmutableHotspotLayer,
                 // no style) and the kernel model has no hotspot entity. Keep
@@ -1913,10 +2103,7 @@ impl<'a> Importer<'a> {
                 if let Ok(raw) = serde_json::to_string(layer) {
                     node.bindings.insert("sketchRawLayer".into(), raw);
                 }
-                node.bindings.insert(
-                    "interopLimited".into(),
-                    "sketch-hotspot:prototype-flow-preserved-as-raw;no-kernel-entity".into(),
-                );
+
             }
             _ => {}
         }
@@ -2011,8 +2198,7 @@ impl<'a> Importer<'a> {
         // Prototype flow: any non-hotspot layer with a flow payload becomes
         // a click interaction (03-layer-tree.md: MSImmutableFlowConnection;
         // hotspots keep their raw-layer limited mapping).
-        if class != "hotspot"
-            && let Some(flow) = layer.get("flow").filter(|f| !f.is_null())
+        if let Some(flow) = layer.get("flow").filter(|f| !f.is_null())
         {
             self.flows.push((id.clone(), flow.clone()));
         }
@@ -2040,6 +2226,10 @@ impl<'a> Importer<'a> {
                 reference_width: None,
                 reference_height: None,
             });
+            node.bindings.insert("sketchLegacyConstraints".into(), json!({"mask":rc,"model":node.constraints}).to_string());
+            if [x,y].iter().any(|bits|matches!(bits,3|5|6)) {
+                import_lossy.push("legacy-mixed-flex-constraints-require-native-resize".into());
+            }
         }
         // Sketch 2025 modern layout keys (horizontalPins/verticalPins uint
         // masks, horizontalSizing/verticalSizing enums, per-child flexItem),
@@ -2075,9 +2265,33 @@ impl<'a> Importer<'a> {
             if !modern.is_empty() {
                 node.bindings.insert(
                     "sketchModernLayout".into(),
-                    json!(modern).to_string(),
+                    json!(&modern).to_string(),
                 );
-                import_lossy.push("modern-layout-fields-not-translated;source-retained".into());
+                let mut modeled = Vec::<String>::new();
+                for (spelling,value) in &modern {
+                    let key = spelling.trim_start_matches('_');
+                    let Some(code) = value.as_u64() else { continue };
+                    let axis = key.starts_with("vertical");
+                    if key.ends_with("Sizing") {
+                        let mode = match code { 0=>Some(crate::layout::SizeMode::Fixed), 1=>Some(crate::layout::SizeMode::Hug), 2=>Some(crate::layout::SizeMode::Fill), _=>None };
+                        if let Some(mode)=mode {
+                            // Hug is meaningful only for text/container contents.
+                            if mode == crate::layout::SizeMode::Hug && !matches!(node.kind.as_str(),"text"|"frame"|"group"|"section") {continue}
+                            let sizing=node.sizing.get_or_insert_with(Default::default);
+                            if axis {sizing.height=mode} else {sizing.width=mode}
+                            modeled.push(spelling.clone());
+                        }
+                    } else if key.ends_with("Pins") {
+                        let anchor=match code {1=>Some(crate::layout::Anchor::Start),4=>Some(crate::layout::Anchor::End),5=>Some(crate::layout::Anchor::Stretch),_=>None};
+                        if let Some(anchor)=anchor {
+                            let c=node.constraints.get_or_insert_with(Default::default);
+                            if axis {c.vertical=anchor} else {c.horizontal=anchor}
+                            modeled.push(spelling.clone());
+                        }
+                    }
+                }
+                if modeled.len()!=modern.len() {import_lossy.push("modern-layout-untranslated-fields-retained".into());}
+                if !modeled.is_empty() {node.bindings.insert("sketchModernLayoutModeled".into(),json!(modeled).to_string());}
             }
         }
         if let Some(formats) = layer
@@ -2128,6 +2342,11 @@ impl<'a> Importer<'a> {
         if let Some(uuid) = layer.get("do_objectID").and_then(Value::as_str) {
             self.uuids.insert(uuid.to_ascii_uppercase(), id.clone());
         }
+        if let Some(info)=layer.get("userInfo").and_then(Value::as_object) {
+            let plugin:Map<String,Value>=info.iter().filter(|(key,_)|key.as_str()!="com.futureox.design-kernel").map(|(k,v)|(k.clone(),v.clone())).collect();
+            if !plugin.is_empty() {node.bindings.insert("sketchPluginUserInfo".into(),json!(plugin).to_string());}
+        }
+        adaptable_capture(&mut node);
         self.nodes.insert(id.clone(), node);
         id
     }
@@ -2275,7 +2494,13 @@ fn foreign_symbol_import(
         if let Some(node) = importer.nodes.get_mut(&id) {
             node.bindings
                 .insert("sketchForeignLibraryID".into(), library_id.into());
-            if let Ok(raw) = serde_json::to_string(entry) {
+            let mut source=entry.clone();
+            if let Some(map)=source.get_mut("remoteToLocalIDMap").and_then(Value::as_object_mut) {
+                for local in map.values_mut() {
+                    if let Some(id)=local.as_str().and_then(|id|importer.uuids.get(&id.to_ascii_uppercase())) { *local=json!(id); }
+                }
+            }
+            if let Ok(raw) = serde_json::to_string(&source) {
                 node.bindings.insert("sketchForeignSymbolRaw".into(), raw);
             }
             // The library link itself is static: updates published to the
@@ -2356,7 +2581,7 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
         schema_version: 1,
         color_management: None,
         raster_profile: None,
-        id: "imported-sketch".into(),
+        id: document.get("do_objectID").and_then(Value::as_str).filter(|v|!v.is_empty()).map(|v|sketch_id(v).to_lowercase()).unwrap_or_else(||"imported-sketch".into()),
         name: meta
             .get("appVersion")
             .and_then(Value::as_str)
@@ -2368,7 +2593,10 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
         animations: Vec::new(),
     };
 
+    // Restore private text identities only when this archive still owns their resources.
+    let font_aliases=crate::interop_resources::import_fonts(&document,&mut doc)?;
     let mut importer = Importer {
+        available_fonts: doc.fonts.keys().cloned().collect(),
         color_space: if document.get("colorSpace").and_then(Value::as_i64) == Some(2) {
             ColorSpace::DisplayP3
         } else {
@@ -2554,7 +2782,8 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
             let mut style_lossy: Vec<String> = Vec::new();
             if kind == "paint" && !style_object.is_null() {
                 strokes = importer.strokes(&style_object, [1., 1.], &mut style_lossy);
-                effects = importer.effects(&style_object);
+                effects = restored_effect_model(object, &style_object)
+                    .unwrap_or_else(|| importer.effects(&style_object, true));
             }
             let value = match kind {
                 // paint styles archive their fills; convert them to kernel paints
@@ -2640,6 +2869,7 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
                 if !swatches.is_empty() {
                     entry.insert("swatchID".into(), Value::Object(swatches));
                 }
+                entry.insert("model".into(), json!({"value":value,"strokes":strokes,"effects":effects}));
                 style_fidelity.insert(style_id.to_string(), Value::Object(entry));
             }
             styles.insert(
@@ -2708,6 +2938,18 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
     // P1-13: foreign symbols — the embedded symbolMaster copy becomes a
     // local master node (instances reference its symbolID as usual).
     foreign_symbol_import(&mut importer, &document, &mut sketch_containers);
+    // Embedded library definitions need an owned graph root before editable
+    // admission. They remain native foreign resources when exported.
+    let owned: std::collections::BTreeSet<&str> = doc.pages.iter().flat_map(|p|p.children.iter().map(String::as_str))
+        .chain(importer.nodes.values().flat_map(|n|n.children.iter().map(String::as_str))).collect();
+    let foreign_roots: Vec<String> = importer.nodes.values().filter(|n|n.bindings.contains_key("sketchForeignLibraryID") && !owned.contains(n.id.as_str())).map(|n|n.id.clone()).collect();
+    if !foreign_roots.is_empty() {
+        doc.pages.push(Page{id:sketch_id(&format!("{}-foreign-symbols",doc.id)),name:"Library Symbols".into(),children:foreign_roots,background:"#ffffff".into(),guides:vec![]});
+    }
+
+    if let Some(font_metadata)=doc.design_system.take() {
+        sketch_containers.extend(font_metadata.sketch_containers);
+    }
     if !styles.is_empty() || !sketch_containers.is_empty() {
         doc.design_system = Some(crate::design_system::DesignSystem {
             styles,
@@ -2719,7 +2961,7 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
     // archived do_objectID; the uuid map built during layer import restores
     // the kernel id. Unmappable fields are reported on the node, not dropped.
     doc.nodes = importer.nodes;
-    crate::interop_resources::import_fonts(&document, &mut doc)?;
+    crate::interop_resources::remap_fonts(&font_aliases, &mut doc)?;
     let mut text_layouts = Map::new();
     for node in doc.nodes.values_mut() {
         if let Some(frame) = node.bindings.remove("sketchSourceTextFrameRaw") {
@@ -2758,12 +3000,13 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
             continue;
         }
         let mut notes: Vec<String> = Vec::new();
+        let back = payload.get("destinationArtboardID").and_then(Value::as_str)==Some("back");
         let destination = payload
             .get("destinationArtboardID")
             .and_then(Value::as_str)
             .map(str::to_ascii_uppercase)
             .and_then(|uuid| importer.uuids.get(&uuid).cloned());
-        if destination.is_none()
+        if !back && destination.is_none()
             && payload
                 .get("destinationArtboardID")
                 .and_then(Value::as_str)
@@ -2777,7 +3020,6 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
             notes.push(format!("flow-actionType={action_type}"));
         }
         for field in [
-            "maintainScrollPosition",
             "shouldCloseExistingOverlays",
             "overlayRelativePosition",
         ] {
@@ -2797,20 +3039,26 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
             .and_then(Value::as_f64)
             .map(|seconds| (seconds * 1000.).round().clamp(0., 10000.) as u32)
             .unwrap_or(0);
-        if let Some(animation) = payload.get("animationType").and_then(Value::as_i64)
-            && animation != -1
-        {
-            notes.push(format!("flow-animationType={animation}"));
-        }
-        if let Some(target) = destination {
+        let transition_style = if back { None } else if !overlay {
+            match payload.get("animationType").and_then(Value::as_i64).unwrap_or(-1) {
+                -1=>Some("none".into()), 0=>Some("slide-right".into()), 1=>Some("slide-left".into()),
+                2=>Some("slide-bottom".into()), 3=>Some("slide-top".into()),
+                other=>{notes.push(format!("flow-animationType={other}")); None}
+            }
+        } else { if payload.get("animationType").and_then(Value::as_i64).is_some_and(|v|v!=-1) {notes.push("flow-overlay-animation-unmapped".into());} None };
+        let duration_ms=if transition_style.as_deref()==Some("none") {0} else if duration_ms==0 && transition_style.is_some() {300} else {duration_ms};
+        if destination.is_some() || back {
+            node.bindings.insert("sketchFlowModeled".into(), "true".into());
             interactions
                 .entry(node_id.clone())
                 .or_default()
                 .push(crate::prototype::Interaction {
                     trigger: "click".into(),
                     actions: vec![crate::prototype::Action {
-                        kind: if overlay { "overlay" } else { "navigate" }.into(),
-                        target: Some(target),
+                        kind: if back { "back" } else if overlay { "overlay" } else { "navigate" }.into(),
+                        target: destination,
+                        transition_style,
+                        transition_preserve_scroll: payload.get("maintainScrollPosition").and_then(Value::as_bool),
                         value: None,
                         duration_ms,
                         easing_curve: None,
@@ -2904,6 +3152,10 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
     }) {
         version = version.max(14);
     }
+    if doc.requires_schema17() { version=version.max(17); }
+    if doc.requires_schema18() { version=version.max(18); }
+    if doc.requires_schema20() { version=version.max(20); }
+    if doc.requires_schema19() { version=version.max(19); }
     doc.schema_version = version;
     Ok(doc)
 }
@@ -3127,8 +3379,7 @@ fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
     // as format metadata and make the substitution visible before admission.
     let mut large_booleans = Vec::new();
     for node in document.nodes.values_mut() {
-        if node.kind == "hotspot"
-            || node
+        if node
                 .bindings
                 .get("interopLimited")
                 .is_some_and(|value| value.starts_with("sketch-unknown-layer-class:"))
@@ -3535,12 +3786,8 @@ fn data_uri_bytes(uri: &str) -> Option<(String, Vec<u8>)> {
 }
 
 fn sha1_hex(bytes: &[u8]) -> String {
-    use sha2::Digest;
-    // Sketch names image blobs by SHA-1; sha2 offers SHA-256 here. We keep the
-    // same content-addressing idea with a distinct prefix so imports and
-    // exports cannot collide with native documents.
-    let digest = sha2::Sha256::digest(bytes);
-    format!("fxdk-{}", &hex(&digest[..12]))
+    use sha1::Digest;
+    hex(&sha1::Sha1::digest(bytes))
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -3567,6 +3814,9 @@ fn sketch_shared_style_id(id: &str) -> String {
 }
 
 fn sketch_id(id: &str) -> String {
+    if id.len() == 36 && id.bytes().enumerate().all(|(i,b)| {
+        if matches!(i,8|13|18|23) { b == b'-' } else { b.is_ascii_hexdigit() }
+    }) { return id.to_owned(); }
     use sha2::Digest;
     let d = sha2::Sha256::digest(id.as_bytes());
     let h = hex(&d[..16]);
@@ -3586,12 +3836,9 @@ fn export_paint(
     images: &mut ExportedImages,
     size: [f64; 2],
 ) -> Result<Option<Value>> {
-    if !paint.visible {
-        return Ok(None);
-    }
     Ok(match paint.kind.as_str() {
         "solid" if !paint.color.is_empty() => Some(json!({
-            "_class": "fill", "isEnabled": true, "fillType": 0,
+            "_class": "fill", "isEnabled": paint.visible, "fillType": 0,
             "color": hex_to_rgba(&paint.color, 1.0, images.color_settings)?,
             "noiseIndex": 0, "noiseIntensity": 0., "noiseFillType": 0,
             "patternFillType": 1, "patternTileScale": 1.,
@@ -3666,7 +3913,7 @@ fn export_paint(
                 _ => 0,
             };
             Some(json!({
-                "_class": "fill", "isEnabled": true, "fillType": 1,
+                "_class": "fill", "isEnabled": paint.visible, "fillType": 1,
                 "gradient": {"_class": "gradient", "from": from, "to": to, "elipseLength": ellipse_length,
                               "stops": stops, "gradientType": gradient_type},
                 "contextSettings": {"_class": "graphicsContextSettings",
@@ -3675,12 +3922,18 @@ fn export_paint(
             }))
         }
         "image" => {
+            if paint.transform.is_some_and(|t|t!=Transform::default()) || paint.adjust.is_some() {
+                return Err(Error::Unsupported("Sketch cannot preserve image transform/adjust; save FD or explicitly bake the image".into()));
+            }
             let Some(uri) = paint.image.as_deref() else {
                 return Ok(None);
             };
             let Some((mime, bytes)) = data_uri_bytes(uri) else {
                 return Ok(None);
             };
+            let pattern_scale = if paint.tile.as_ref().is_some_and(|t|t.is_active()) {
+                sketch_pattern_scale(paint, bitmap_extent(&bytes)).ok_or_else(||Error::Unsupported("Sketch cannot preserve pattern spacing/offset/stagger".into()))?
+            } else {1.};
             let name = sha1_hex(&bytes);
             if images.seen.insert(name.clone()) {
                 images.entries.push((format!("images/{name}"), bytes));
@@ -3688,10 +3941,10 @@ fn export_paint(
             let ext = mime.rsplit('/').next().unwrap_or("png");
             let _ = ext;
             // Inverse of the import mapping: tiling (Paint.tile) archives as
-            // Tile(0) at the native cell period; otherwise the kernel fit
-            // picks Fill(1)/Stretch(2)/Fit(3). A non-unit patternTileScale is
-            // spliced back by the layer exporter from sketchSourcePatternScale.
-            let pattern_fill_type = if paint.tile.is_some() {
+            // Tile(0) with a uniform authored cell scale; otherwise fit picks
+            // Fill(1)/Stretch(2)/Fit(3). Never replay a stale imported scale
+            // over an edited, modeled tile size.
+            let pattern_fill_type = if paint.tile.as_ref().is_some_and(|t| t.is_active()) {
                 0
             } else {
                 match paint.fit.as_str() {
@@ -3701,11 +3954,11 @@ fn export_paint(
                 }
             };
             Some(json!({
-                "_class": "fill", "isEnabled": true, "fillType": 4,
+                "_class": "fill", "isEnabled": paint.visible, "fillType": 4,
                 "color": hex_to_rgba("#000000", 1., images.color_settings)?,
-                "image": {"_class": "MSJSONFileReference", "_ref_class": "MSImageData", "_ref": name},
+                "image": {"_class": "MSJSONFileReference", "_ref_class": "MSImageData", "_ref": format!("images/{name}")},
                 "noiseIndex": 0, "noiseIntensity": 0., "noiseFillType": 0,
-                "patternFillType": pattern_fill_type, "patternTileScale": 1.,
+                "patternFillType": pattern_fill_type, "patternTileScale": pattern_scale,
                 "contextSettings": {"_class": "graphicsContextSettings", "blendMode": blend_code(&paint.blend), "opacity": paint.opacity.clamp(0., 1.), "isProgressive": false}
             }))
         }
@@ -3760,9 +4013,9 @@ fn export_style_parts(
                 "_class": "border", "isEnabled": s.visible && s.paint.visible, "thickness": s.width,
                 "position": match s.align.as_str() { "inside" => 1, "outside" => 2, _ => 0 },
                 "fillType": 0,
-                "color": hex_to_rgba(&s.paint.color, s.paint.opacity.clamp(0., 1.), settings)?,
+                "color": hex_to_rgba(&s.paint.color, 1., settings)?,
                 "contextSettings": {"_class": "graphicsContextSettings",
-                                      "blendMode": blend_code(&s.paint.blend), "opacity": 1., "isProgressive": false}
+                                      "blendMode": blend_code(&s.paint.blend), "opacity": s.paint.opacity.clamp(0.,1.), "isProgressive": false}
             }))
         })
         .collect::<Result<Vec<_>>>()?;
@@ -3835,11 +4088,11 @@ fn export_style_parts(
         .filter(|e| e.kind == "inner-shadow")
         .map(shadow_json)
         .collect::<Result<Vec<_>>>()?;
-    // Sketch style carries one blur object: Gaussian=0, Background=3.
+    // The legacy dictionary mirrors the first blur; modern arrays are written below.
     // Glass refraction parameters have no native Sketch representation.
     let blur_like: Vec<&Effect> = effects
         .iter()
-        .filter(|e| matches!(e.kind.as_str(), "blur" | "background-blur" | "glass"))
+        .filter(|e| matches!(e.kind.as_str(), "blur" | "gaussian-blur" | "motion-blur" | "zoom-blur" | "background-blur" | "glass"))
         .collect();
     let blur = match blur_like.first() {
         Some(e) => {
@@ -3850,9 +4103,9 @@ fn export_style_parts(
             if blur_like.len() > 1 {
                 note_lossy(lossy, "effect-multiple-blurs-collapsed");
             }
-            json!({"_class": "blur", "isEnabled": e.visible, "center": "{0.5, 0.5}",
-                    "motionAngle": 0., "radius": e.radius.max(0.), "saturation": 1.,
-                    "type": if e.kind == "background-blur" {3} else {0}})
+            json!({"_class": "blur", "isEnabled": e.visible, "center": e.zoom_blur.map_or_else(||"{0.5, 0.5}".to_string(),|z|format!("{{{}, {}}}",z.center[0],z.center[1])),
+                    "motionAngle": e.motion_angle, "radius": e.zoom_blur.map_or(e.radius.max(0.),|z|z.amount), "saturation": e.color_controls.map_or(1.,|c|c.saturation),
+                    "type": if e.kind == "background-blur" {3} else if e.kind=="motion-blur" {1} else if e.kind=="zoom-blur" {2} else {0}})
         }
         None => {
             json!({"_class": "blur", "isEnabled": false, "center": "{0.5, 0.5}", "motionAngle": 0.,
@@ -3878,21 +4131,13 @@ fn note_lossy(lossy: &mut Vec<String>, note: &str) {
     }
 }
 
-/// kernel `Anchor` → Sketch resizingConstraint 3-bit axis code
-/// (22 号字典 §2: low 3 bits = X, high 3 bits = Y; per axis
-/// 1 = min, 2 = max, 3 = min|max fixed, 4..=7 = scale).
-/// Sketch pins have no center anchor; that downgrade is lossy.
+/// Canonical native masks for the shared anchor subset. Center has no exact
+/// legacy mapping (mask 5 preserves proportional center, not a fixed offset).
 fn constraint_axis_bits(anchor: crate::layout::Anchor, lossy: &mut Vec<String>) -> u64 {
     use crate::layout::Anchor;
     match anchor {
-        Anchor::Start => 1,
-        Anchor::End => 2,
-        Anchor::Stretch => 3,
-        Anchor::Scale => 4,
-        Anchor::Center => {
-            note_lossy(lossy, "constraint-center->scale");
-            4
-        }
+        Anchor::Start => 1, Anchor::End => 4, Anchor::Stretch => 2, Anchor::Scale => 7,
+        Anchor::Center => { note_lossy(lossy, "constraint-center->scale"); 7 }
     }
 }
 
@@ -3972,7 +4217,7 @@ fn curve_mode_of(
     let out_len = ox.hypot(oy);
     let in_len = ix.hypot(iy);
     let cross = (ox * iy - oy * ix).abs();
-    if cross > 1e-9 * (1. + out_len * in_len) {
+    if ox * ix + oy * iy >= 0. || cross > 1e-9 * (1. + out_len * in_len) {
         return 3;
     }
     if (out_len - in_len).abs() <= 1e-9 * (1. + out_len.max(in_len)) {
@@ -4045,7 +4290,7 @@ fn sketch_override_value_to_native(
             images.entries.push((format!("images/{name}"), bytes));
         }
         return Ok(Some(
-            json!({"_class": "MSJSONFileReference", "_ref_class": "MSImageData", "_ref": name}),
+            json!({"_class": "MSJSONFileReference", "_ref_class": "MSImageData", "_ref": format!("images/{name}")}),
         ));
     }
     Ok(None)
@@ -4109,6 +4354,9 @@ fn sketch_text_behaviour(node: &Node) -> i64 {
     }
 }
 
+fn native_text_projection(layer: &Value) -> Value {
+    json!({"attributedString":layer.get("attributedString"),"verticalAlignment":layer.pointer("/style/textStyle/verticalAlignment"),"textBehaviour":layer.get("textBehaviour"),"lineSpacingBehaviour":layer.get("lineSpacingBehaviour")})
+}
 fn text_layout_signature(node: &Node) -> Value {
     json!({"text":node.text,"fontSize":node.font_size,"textStyle":node.text_style,
         "textRuns":node.text_runs,"sizing":node.sizing})
@@ -4249,8 +4497,7 @@ fn sketch_font_descriptor(
 }
 
 fn exported_symbol_id(doc: &Document, id: &str) -> String {
-    let Some(master) = doc.nodes.get(id).filter(|node| node.component.is_some()) else {
-        // Legacy archive inspection keeps the native symbol reference here.
+    let Some(master) = doc.nodes.get(id) else {
         return id.to_owned();
     };
     master
@@ -4267,7 +4514,7 @@ fn exported_symbol_id(doc: &Document, id: &str) -> String {
                 .and_then(Value::as_str)
                 .map(str::to_owned)
         })
-        .unwrap_or_else(|| sketch_id(id))
+        .unwrap_or_else(|| if master.component.is_some() { sketch_id(id) } else { id.to_owned() })
 }
 
 fn exported_override_path(doc: &Document, component: &str, path: &str) -> Option<String> {
@@ -4346,6 +4593,11 @@ fn export_layer_impl(
         .get(id)
         .map(|node| -> Result<crate::scene::Node> {
             let mut node = node.clone();
+            if node.kind == "line" && node.network.is_none() && node.vector_geometry.is_none() {
+                node.kind="vector".into();
+                node.bindings.insert("sketchOpenPath".into(),"true".into());
+                node.network=Some(serde_json::from_value(json!({"vertices":[{"id":"a","x":0.,"y":0.},{"id":"b","x":node.width,"y":node.height}],"edges":[{"id":"ab","from":"a","to":"b"}],"fillRule":"nonzero"})).unwrap());
+            }
             if let Some(geometry) = node.vector_geometry.take() {
                 node.network = Some(
                     geometry
@@ -4406,6 +4658,18 @@ fn export_layer_impl(
     // must ride userInfo (written near the end of the node branch).
     let mut pending_user_prototype: Option<Value> = None;
     if let Some(n) = node {
+        // Admission represents native bitmaps as ordinary image-filled
+        // rectangles. Restore that native class while the geometry/paint can
+        // still express it, otherwise Sketch ignores bitmap color controls.
+        if n.bindings.contains_key("sketchSourceBitmap") && matches!(n.kind.as_str(), "rectangle" | "image")
+            && n.children.is_empty() && n.radii.iter().all(|r| *r==0.) && n.fills.len()==1 {
+            let p=&n.fills[0];
+            let extent=p.image.as_deref().and_then(data_uri_bytes).and_then(|(_,b)|bitmap_extent(&b));
+            let same_aspect=extent.is_some_and(|size|(n.width*size[1]-n.height*size[0]).abs()<=1e-10*n.width.max(n.height)*size[0].max(size[1]));
+            if p.kind=="image" && p.visible && p.opacity==1. && p.blend=="normal" && p.transform.is_none()
+                && p.tile.is_none() && p.adjust.is_none() && (p.fit=="stretch" || same_aspect) {class="bitmap";}
+        }
+        if n.bindings.contains_key("sketchSourceHotspot") && n.kind == "rectangle" && n.fills.is_empty() && n.strokes.is_empty() && n.effects.is_empty() && n.children.is_empty() { class = "hotspot"; }
         if n.instance.is_some() {
             class = "symbolInstance";
         } else if n.kind == "frame"
@@ -4530,6 +4794,10 @@ fn export_layer_impl(
             layer.insert("resizingConstraint".into(), json!(x | (y << 3)));
             layer.insert("hasExplicitConstraints".into(), json!(true));
         }
+        if let Some(source)=n.bindings.get("sketchLegacyConstraints").and_then(|raw|serde_json::from_str::<Value>(raw).ok())
+            && source.get("model")==Some(&json!(n.constraints)) {
+            layer.insert("resizingConstraint".into(),source["mask"].clone());
+        }
         // Sketch 2025 modern layout fields return verbatim under their
         // original archived spelling (plain/`_`/`__`), overriding the
         // default zeros written above.
@@ -4539,8 +4807,20 @@ fn export_layer_impl(
             .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
             && let Some(fields) = modern.as_object()
         {
+            let modeled: Vec<String> = n.bindings.get("sketchModernLayoutModeled").and_then(|v|serde_json::from_str(v).ok()).unwrap_or_default();
             for (spelling, value) in fields {
-                layer.insert(spelling.clone(), value.clone());
+                let mut value=value.clone();
+                if modeled.contains(spelling) {
+                    let key=spelling.trim_start_matches('_'); let vertical=key.starts_with("vertical");
+                    if key.ends_with("Sizing") {
+                        let z=n.sizing_value(); let mode=if vertical {z.height}else{z.width};
+                        value=json!(match mode {crate::layout::SizeMode::Fixed=>0,crate::layout::SizeMode::Hug=>1,crate::layout::SizeMode::Fill=>2});
+                    } else if key.ends_with("Pins") {
+                        let c=n.constraints.clone().unwrap_or_default(); let a=if vertical {c.vertical}else{c.horizontal};
+                        value=json!(match a {crate::layout::Anchor::Start=>1,crate::layout::Anchor::End=>4,crate::layout::Anchor::Stretch=>5,_=>0});
+                    }
+                }
+                layer.insert(spelling.clone(), value);
             }
         }
         // P1-9: boolean groups carry their operation on shapeGroup.
@@ -4557,11 +4837,13 @@ fn export_layer_impl(
             .bindings
             .get("sketchSourceGradients")
             .and_then(|raw| serde_json::from_str::<Value>(raw).ok());
+        let bitmap_paint = (class == "bitmap").then(|| n.fills.iter().rposition(|p|p.kind=="image")).flatten();
         let fills: Vec<Value> = n
             .fills
             .iter()
             .enumerate()
             .map(|(index, p)| -> Result<Option<Value>> {
+                if Some(index) == bitmap_paint { return Ok(None); }
                 if p.kind == "diamond" {
                     // Sketch gradients: 1 linear, 2 radial, 3 angular — no
                     // diamond; radial is the nearest visual approximation.
@@ -4637,16 +4919,16 @@ fn export_layer_impl(
                 .collect();
             inserts.sort_by_key(|(position, _)| *position);
             for (position, part) in inserts {
+                if inactive_retained_noise(n,part,false){copy_inactive_noise(part,fills.get_mut(position));continue}
                 let at = position.min(fills.len());
                 fills.insert(at, part.clone());
             }
         }
         for paint in &n.fills {
             if let Some(tile) = &paint.tile
-                && (tile.mode != crate::pattern_fill::GRID
-                    || tile.size != [0., 0.]
-                    || tile.offset != [0., 0.]
-                    || tile.alignment.iter().any(|a| a != crate::pattern_fill::ALIGN_START))
+                && tile.is_active()
+                && sketch_pattern_scale(paint, paint.image.as_deref().and_then(data_uri_bytes)
+                    .and_then(|(_, bytes)| bitmap_extent(&bytes))).is_none()
             {
                 note_lossy(
                     &mut lossy,
@@ -4684,6 +4966,7 @@ fn export_layer_impl(
                 }
             }
         }
+        let mut source_blurs = None;
         if let Some(source) = n
             .bindings
             .get("sketchSourceBlur")
@@ -4695,6 +4978,7 @@ fn export_layer_impl(
                 == Some(&blur_projection(&n.effects))
         {
             blur = source["blur"].clone();
+            source_blurs = source.get("blurs").filter(|v|v.is_array()).cloned();
         }
         // Border-side twin of the fill splice: pattern tile scales and noise
         // parts return at their recorded admitted-borders positions.
@@ -4717,6 +5001,7 @@ fn export_layer_impl(
                 .collect();
             inserts.sort_by_key(|(position, _)| *position);
             for (position, part) in inserts {
+                if inactive_retained_noise(n,part,true){copy_inactive_noise(part,borders.get_mut(position));continue}
                 let at = position.min(borders.len());
                 borders.insert(at, part.clone());
             }
@@ -4747,12 +5032,14 @@ fn export_layer_impl(
         style.insert("borders".into(), Value::Array(borders));
         style.insert("shadows".into(), Value::Array(shadows));
         style.insert("innerShadows".into(), Value::Array(inner_shadows));
+        style.insert("blurs".into(), source_blurs.unwrap_or_else(|| json!([modern_blur(blur.clone())])));
+        // Keep the old dictionary for old readers; current Sketch reads blurs.
         style.insert("blur".into(), blur);
         style.insert("borderOptions".into(), border_options);
         // Per-layer color controls ride bindings verbatim when the source
         // archived an enabled part; the default-disabled object covers the
         // kernel-authored case.
-        let color_controls = n
+        let mut color_controls = n
             .bindings
             .get("sketchSourceColorControls")
             .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
@@ -4760,6 +5047,26 @@ fn export_layer_impl(
                 json!({"_class": "colorControls", "isEnabled": false, "brightness": 0.,
                                        "contrast": 1., "hue": 0., "saturation": 1.})
             });
+        if let Some(effect) = n.effects.iter().find(|e|e.kind=="color-controls") {
+            if class != "bitmap" { note_lossy(&mut lossy,"color-controls-native-bitmap-required"); }
+            if n.effects.iter().filter(|e|e.kind=="color-controls").count()>1 { note_lossy(&mut lossy,"multiple-color-controls-collapsed"); }
+            if let Some(controls)=effect.color_controls {
+                color_controls["isEnabled"]=json!(effect.visible);
+                color_controls["brightness"]=json!(controls.brightness);
+                color_controls["contrast"]=json!(controls.contrast);
+                color_controls["saturation"]=json!(controls.saturation);
+                color_controls["hue"]=json!(controls.hue);
+            }
+        } else if n.bindings.contains_key("sketchColorControlsModeled") {
+            color_controls["isEnabled"]=json!(false);
+        }
+        if let Some(fields)=n.bindings.get("sketchInactiveNoiseMetadata").and_then(|v|serde_json::from_str::<Value>(v).ok()).and_then(|v|v.as_object().cloned()) {
+            for (key,values) in fields {if let Some((parts,index))=key.split_once('-')
+                && matches!(parts,"fills"|"borders") && let Ok(index)=index.parse::<usize>()
+                && let Some(part)=style.get_mut(parts).and_then(Value::as_array_mut).and_then(|v|v.get_mut(index)).and_then(Value::as_object_mut) {
+                for field in ["noiseIndex","noiseIntensity","noiseFillType"] {if let Some(value)=values.get(field) {part.insert(field.into(),value.clone());}}
+            }}
+        }
         style.insert("colorControls".into(), color_controls);
         style.insert(
             "contextSettings".into(),
@@ -4931,7 +5238,7 @@ fn export_layer_impl(
                                         }
                                         Some(json!({"_class": "MSJSONFileReference",
                                                     "_ref_class": "MSImageData",
-                                                    "_ref": name}))
+                                                    "_ref": format!("images/{name}")}))
                                     } else {
                                         Some(json!(s))
                                     }
@@ -4986,6 +5293,27 @@ fn export_layer_impl(
             }
             "oval" | "star" | "polygon" => {
                 layer.insert("numberOfPoints".into(), json!(n.points));
+                if class == "star" { layer.insert("radius".into(),json!(n.inner_radius)); }
+                if n.arc.is_some() || n.corner_radius != 0. {
+                    return Err(Error::Unsupported("Sketch parametric arc/rounded polygon export requires an explicit vector conversion".into()));
+                }
+                let points:Vec<Value> = if class=="oval" {
+                    let k=0.5522847498307936/2.;
+                    [([1.,0.5],[1.,0.5-k],[1.,0.5+k]),([0.5,1.],[0.5+k,1.],[0.5-k,1.]),
+                        ([0.,0.5],[0.,0.5+k],[0.,0.5-k]),([0.5,0.],[0.5-k,0.],[0.5+k,0.])]
+                        .into_iter().map(|(at,incoming,outgoing)|json!({"_class":"curvePoint","point":format!("{{{}, {}}}",at[0],at[1]),
+                            "curveTo":format!("{{{}, {}}}",incoming[0],incoming[1]),"curveFrom":format!("{{{}, {}}}",outgoing[0],outgoing[1]),
+                            "curveMode":2,"hasCurveFrom":true,"hasCurveTo":true,"cornerRadius":0.})).collect()
+                } else {
+                    let count=n.points.clamp(3,128)*if class=="star" {2} else {1};
+                    (0..count).map(|i| {let angle=i as f64*std::f64::consts::TAU/count as f64-std::f64::consts::FRAC_PI_2;
+                        let radius=if class=="star" && i%2!=0 {n.inner_radius} else {1.};
+                        json!({"_class":"curvePoint","point":format!("{{{}, {}}}",0.5+0.5*radius*angle.cos(),0.5+0.5*radius*angle.sin()),
+                            "curveMode":1,"hasCurveFrom":false,"hasCurveTo":false,"cornerRadius":0.})}).collect()
+                };
+                layer.insert("points".into(),json!(points));
+                layer.insert("isClosed".into(),json!(true));
+                layer.insert("edited".into(),json!(false));
             }
             "shapePath" => {
                 let closed = !n
@@ -5077,10 +5405,7 @@ fn export_layer_impl(
                 let alignment = style.map(|s| s.align.as_str()).unwrap_or("start");
                 // 22 号字典 §4: run-level keys without a kernel slot ride
                 // bindings and are written back onto every segment.
-                let vertical_alignment = n
-                    .bindings
-                    .get("sketchTextVerticalAlignment")
-                    .and_then(|s| s.parse::<i64>().ok());
+                let vertical_alignment = Some(match style.map(|s|s.vertical_align.as_str()).unwrap_or("top") { "center"=>1, "bottom"=>2, _=>n.bindings.get("sketchTextVerticalAlignment").and_then(|v|v.parse::<i64>().ok()).unwrap_or(0) });
                 let text_transform = n
                     .bindings
                     .get("sketchTextTransform")
@@ -5097,7 +5422,8 @@ fn export_layer_impl(
                                      color: Option<&str>,
                                      underline: bool,
                                      strikethrough: bool,
-                                     case: Option<&crate::font::TextCase>|
+                                     case: Option<&crate::font::TextCase>,
+                                     paragraph: Option<&crate::font::TextParagraph>|
                  -> Result<Value> {
                     let mut attrs = Map::new();
                     attrs.insert(
@@ -5169,7 +5495,14 @@ fn export_layer_impl(
                         "allowsDefaultTighteningForTruncation".into(),
                         json!(allows_tightening),
                     );
-                    attrs.insert("textStyleBasicParagraphStyle".into(), Value::Object(para));
+                    if let Some(p) = paragraph {
+                        para.insert("alignment".into(), json!(paragraph_alignment(&p.align)));
+                        para.insert("minimumLineHeight".into(), json!(p.minimum_line_height));
+                        para.insert("maximumLineHeight".into(), json!(p.maximum_line_height));
+                        para.insert("paragraphSpacing".into(), json!(p.spacing));
+                        para.insert("firstLineHeadIndent".into(), json!(p.indent));
+                    }
+                    attrs.insert("paragraphStyle".into(), Value::Object(para));
                     Ok(
                         json!({"_class": "stringAttribute", "attributes": Value::Object(attrs),
                            "location": location, "length": length}),
@@ -5219,6 +5552,7 @@ fn export_layer_impl(
                             false,
                             false,
                             None,
+                            None,
                         )?);
                     }
                     attributes.push(attribute(
@@ -5231,6 +5565,7 @@ fn export_layer_impl(
                         run.underline,
                         run.strikethrough,
                         run.text_case.as_ref(),
+                        run.paragraph.as_ref(),
                     )?);
                     cursor = end;
                 }
@@ -5245,7 +5580,11 @@ fn export_layer_impl(
                         false,
                         false,
                         None,
+                        None,
                     )?);
+                }
+                if let Some(native_style) = layer.get_mut("style").and_then(Value::as_object_mut) {
+                    native_style.insert("textStyle".into(), json!({"_class":"textStyle","verticalAlignment":vertical_alignment.unwrap_or(0)}));
                 }
                 layer.insert(
                     "attributedString".into(),
@@ -5299,7 +5638,7 @@ fn export_layer_impl(
                 );
             }
             "bitmap" => {
-                if let Some(paint) = n.fills.iter().find(|p| p.kind == "image")
+                if let Some(paint) = bitmap_paint.and_then(|index|n.fills.get(index))
                     && let Some(uri) = paint.image.as_deref()
                     && let Some((_, bytes)) = data_uri_bytes(uri)
                 {
@@ -5310,7 +5649,7 @@ fn export_layer_impl(
                     layer.insert(
                         "image".into(),
                         json!({"_class": "MSJSONFileReference",
-                                        "_ref_class": "MSImageData", "_ref": name}),
+                                        "_ref_class": "MSImageData", "_ref": format!("images/{name}")}),
                     );
                 }
             }
@@ -5387,25 +5726,25 @@ fn export_layer_impl(
             if let Some(first) = events.first()
                 && first.trigger == "click"
                 && let Some(action) = first.actions.iter().find(|a| {
-                    matches!(a.kind.as_str(), "navigate" | "overlay")
+                    a.kind == "back" || (matches!(a.kind.as_str(), "navigate" | "overlay")
                         && a.target
                             .as_ref()
-                            .is_some_and(|t| doc.nodes.get(t).is_some_and(|n| n.kind == "frame"))
+                            .is_some_and(|t| doc.nodes.get(t).is_some_and(|n| n.kind == "frame")))
                 })
             {
                 let mut flow = Map::new();
                 flow.insert("_class".into(), json!("MSImmutableFlowConnection"));
                 flow.insert(
                     "destinationArtboardID".into(),
-                    json!(action.target.as_deref().map(sketch_id)),
+                    json!(if action.kind=="back" {Some("back".into())} else {action.target.as_deref().map(sketch_id)}),
                 );
                 flow.insert(
                     "transition".into(),
                     json!({"_class": "MSTransition",
                            "duration": action.duration_ms as f64 / 1000.}),
                 );
-                flow.insert("animationType".into(), json!(-1));
-                flow.insert("maintainScrollPosition".into(), json!(false));
+                flow.insert("animationType".into(), json!(match action.transition_style.as_deref() {Some("slide-right")=>0,Some("slide-left")=>1,Some("slide-bottom")=>2,Some("slide-top")=>3,_=>-1}));
+                flow.insert("maintainScrollPosition".into(), json!(action.transition_preserve_scroll.unwrap_or(false)));
                 if action.kind == "overlay" {
                     // The archived overlay position fields are not documented;
                     // the class marker plus the userInfo payload keep the
@@ -5433,6 +5772,7 @@ fn export_layer_impl(
                         || e.actions.iter().any(|a| {
                             !matches!(a.kind.as_str(), "navigate" | "overlay")
                                 || a.easing_curve.is_some()
+                                || (a.transition_style.is_none() && a.duration_ms > 0)
                                 || a.overlay_position.is_some()
                         })
                 })
@@ -5496,7 +5836,12 @@ fn export_layer_impl(
         // properties) survives symbol round-trips this way.
         let mut user_info = Map::new();
         user_info.insert("originalId".into(), json!(id));
+        if n.effects.iter().any(|e|e.kind=="blur") {
+            user_info.insert("legacyEffectModel".into(),json!({"native":native_effect_projection(&layer["style"]),"effects":n.effects}));
+        }
+
         if n.kind == "text" {
+            user_info.insert("textModel".into(),json!({"native":native_text_projection(&Value::Object(layer.clone())),"style":n.text_style,"runs":n.text_runs}));
             let behaviour = sketch_text_behaviour(n);
             let wrap = n.text_style.as_ref().is_some_and(|s| s.wrap);
             if wrap != (behaviour != 0) {
@@ -5546,11 +5891,10 @@ fn export_layer_impl(
         if !lossy.is_empty() {
             user_info.insert("lossy".into(), json!(lossy));
         }
-        layer.insert(
-            "userInfo".into(),
-            json!({"com.futureox.design-kernel": Value::Object(user_info)}),
-        );
-        if n.kind == "hotspot" {
+        let mut all_user_info=n.bindings.get("sketchPluginUserInfo").and_then(|raw|serde_json::from_str::<Map<String,Value>>(raw).ok()).unwrap_or_default();
+        all_user_info.insert("com.futureox.design-kernel".into(),Value::Object(user_info));
+        layer.insert("userInfo".into(),Value::Object(all_user_info));
+        if class == "hotspot" {
             // Additive restore of the stashed native layer (round 2 of the
             // limited hotspot mapping): only keys the generic exporter never
             // writes — the prototype flow payload and any other native fields
@@ -5562,7 +5906,7 @@ fn export_layer_impl(
                 .and_then(|v| v.as_object().cloned())
             {
                 for (key, value) in raw {
-                    if key != "layers" && !layer.contains_key(&key) {
+                    if key != "layers" && (key != "flow" || !n.bindings.contains_key("sketchFlowModeled")) && !layer.contains_key(&key) {
                         layer.insert(key, value);
                     }
                 }
@@ -5571,7 +5915,7 @@ fn export_layer_impl(
         // P0-4: splice preserved adaptable colors / swatch references back
         // into their style/text/background slots and restore the
         // updatableColors recolor markers.
-        adaptable_apply_layer(&mut layer, &n.bindings);
+        adaptable_apply_layer(&mut layer, n);
     }
     Ok(Value::Object(layer))
 }
@@ -5610,15 +5954,16 @@ fn adaptable_apply_shared_style(object: &mut Value, fidelity: &Value) {
 /// re-exported from the live node (it may have been edited); everything
 /// else — originalMaster, remoteToLocalIDMap, library flags — comes from
 /// the raw entry kept at import.
+fn sketch_binding<'a>(doc: &'a Document, node: &'a Node, key: &str) -> Option<&'a str> {
+    node.bindings.get(key).map(String::as_str).or_else(||doc.design_system.as_ref()?.sketch_containers.get("nodeMetadata")?.get(&node.id)?.get("bindings")?.get(key)?.as_str())
+}
 fn foreign_symbol_export(doc: &Document, images: &mut ExportedImages) -> Result<Vec<Value>> {
     let mut out = Vec::new();
     for (id, node) in &doc.nodes {
-        let Some(library_id) = node.bindings.get("sketchForeignLibraryID") else {
+        let Some(library_id) = sketch_binding(doc,node,"sketchForeignLibraryID") else {
             continue;
         };
-        let mut entry = node
-            .bindings
-            .get("sketchForeignSymbolRaw")
+        let mut entry = sketch_binding(doc,node,"sketchForeignSymbolRaw")
             .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
             .and_then(|v| v.as_object().cloned())
             .unwrap_or_default();
@@ -5633,11 +5978,7 @@ fn foreign_symbol_export(doc: &Document, images: &mut ExportedImages) -> Result<
         let mut master = export_layer(doc, id, images)?;
         if let Value::Object(map) = &mut master {
             map.insert("_class".into(), json!("symbolMaster"));
-            let symbol_id = node
-                .bindings
-                .get("symbolID")
-                .cloned()
-                .unwrap_or_else(|| sketch_id(id));
+            let symbol_id = exported_symbol_id(doc,id);
             map.insert("symbolID".into(), json!(symbol_id));
             map.entry("allowsOverrides").or_insert_with(|| json!(true));
             map.entry("overrideProperties").or_insert_with(|| json!([]));
@@ -5648,6 +5989,11 @@ fn foreign_symbol_export(doc: &Document, images: &mut ExportedImages) -> Result<
         entry.insert("symbolMaster".into(), master);
         if !entry.contains_key("remoteToLocalIDMap") {
             entry.insert("remoteToLocalIDMap".into(), json!({}));
+        }
+        if let Some(map)=entry.get_mut("remoteToLocalIDMap").and_then(Value::as_object_mut) {
+            for local in map.values_mut() {
+                if let Some(n)=local.as_str().and_then(|id|doc.nodes.get(id)) { *local=json!(sketch_id(&n.id)); }
+            }
         }
         if !entry.contains_key("symbolPrivate") {
             entry.insert("symbolPrivate".into(), json!(false));
@@ -5708,7 +6054,14 @@ pub fn export_sketch_layer_edit(
         .nodes
         .get(id)
         .ok_or_else(|| Error::MissingPart("Edited source node".into()))?;
-    let unsupported = if old.smoothing != next.smoothing
+    let image_state = |node:&Node| node.fills.iter().chain(node.strokes.iter().map(|s|&s.paint)).filter(|p|p.kind=="image")
+        .map(|p|json!({"transform":p.transform,"adjust":p.adjust,"tile":p.tile})).collect::<Vec<_>>();
+    let unsupported_image= image_state(old)!=image_state(next) && next.fills.iter().chain(next.strokes.iter().map(|s|&s.paint)).any(|p|p.kind=="image" &&
+        (p.transform.is_some_and(|t|t!=Transform::default()) || p.adjust.is_some() || p.tile.as_ref().is_some_and(|t|t.is_active()) && sketch_pattern_scale(p,p.image.as_deref().and_then(data_uri_bytes).and_then(|(_,b)|bitmap_extent(&b))).is_none()));
+    let unsupported = if unsupported_image { Some("imagePaint") }
+    else if old.text_path != next.text_path { Some("textPath") }
+    else if old.path_offset != next.path_offset { Some("pathOffset") }
+    else if old.smoothing != next.smoothing
         && matches!(
             next.kind.as_str(),
             "rectangle" | "rect" | "frame" | "section" | "slice"
@@ -5775,7 +6128,9 @@ pub fn validate_sketch_new_layer_for_source_save(node: &Node) -> Result<()> {
     {
         // Rectangle radii have a native mapping and remain admissible.
         Some("radii")
-    } else if !node.export_settings.is_empty() {
+    } else if node.text_path.is_some() {Some("textPath")}
+    else if node.path_offset != 0. {Some("pathOffset")}
+    else if !node.export_settings.is_empty() {
         Some("exportSettings")
     } else {
         None
@@ -5845,6 +6200,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                     Value::Array(
                         page.children
                             .iter()
+                            .filter(|id|doc.nodes.get(*id).is_none_or(|n|sketch_binding(doc,n,"sketchForeignLibraryID").is_none()))
                             .map(|id| export_layer(doc, id, &mut images))
                             .collect::<Result<Vec<_>>>()?,
                     ),
@@ -5963,11 +6319,15 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                             &mut images,
                             [1., 1.],
                         )?;
+                    let controls = shared.effects.iter().find(|e|e.kind=="color-controls").and_then(|e|e.color_controls.map(|c|
+                        json!({"_class":"colorControls","isEnabled":e.visible,"brightness":c.brightness,
+                            "contrast":c.contrast,"saturation":c.saturation,"hue":c.hue})));
                     json!({"_class":"sharedStyle", "do_objectID": sketch_shared_style_id(style_id), "name": shared.name,
                            "value": {"_class": "style", "do_objectID": sketch_id(style_id),
                                      "fills": paints, "borders": borders,
                                      "shadows": shadows, "innerShadows": inner_shadows,
-                                     "blur": blur, "borderOptions": border_options}})
+                                     "blurs": [modern_blur(blur.clone())], "blur": blur, "borderOptions": border_options,
+                                     "colorControls": controls.unwrap_or_else(||json!({"_class":"colorControls","isEnabled":false,"brightness":0.,"contrast":1.,"saturation":1.,"hue":0.}))}})
                 }
                 "text" => {
                     let style: Option<crate::font::TextStyle> =
@@ -5975,7 +6335,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                     let encoded = style.as_ref().map(|s| {
                         json!({
                             "_class": "textStyle",
-                            "verticalAlignment":0,
+                            "verticalAlignment":match s.vertical_align.as_str() { "center"=>1,"bottom"=>2,_=>0 },
                             "encodedAttributes": {
                                 "MSAttributedStringFontAttribute": sketch_font_descriptor(doc, &mut images.font_weight_axes, &s.font_id, 16., s.weight),
                                 "kerning": s.letter_spacing,
@@ -6049,14 +6409,23 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                 }
                 options.insert("isEnabled".into(), json!(true));
             }
-            value["colorControls"] = json!({"_class":"colorControls", "isEnabled":false,
-                "brightness":0, "contrast":1, "hue":0, "saturation":1});
+            if value.get("colorControls").is_none() {
+                value["colorControls"] = json!({"_class":"colorControls", "isEnabled":false,
+                    "brightness":0, "contrast":1, "hue":0, "saturation":1});
+            }
             if let Some(fidelity) = system
                 .sketch_containers
                 .get("sharedStyleFidelity")
                 .and_then(|f| f.get(style_id))
             {
-                adaptable_apply_shared_style(&mut object, fidelity);
+                if fidelity.get("model") == Some(&json!({"value":shared.value,"strokes":shared.strokes,"effects":shared.effects})) {
+                    adaptable_apply_shared_style(&mut object, fidelity);
+                }
+            }
+            if shared.kind == "paint" && shared.effects.iter().any(|e| e.kind == "blur") {
+                object["userInfo"] = json!({"com.futureox.design-kernel": {"legacyEffectModel": {
+                    "native": native_effect_projection(&object["value"]), "effects": shared.effects
+                }}});
             }
             if shared.kind == "text" {
                 layer_text_styles.push(object);
@@ -6157,27 +6526,50 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
 /// Default helper location inside a Sketch install (see 17-fig2sketch.md).
 pub const DEFAULT_FIG2SKETCH: &str = "/Applications/Sketch.app/Contents/MacOS/fig2sketch";
 
-/// Import a `.fig` bundle. Reuses Sketch's bundled Python converter (the same
-/// delegation Sketch itself performs — its native code only shells out to
-/// `fig2sketch`, which turns the Kiwi scene graph into a `.sketch` bundle we
-/// then import with [`import_sketch`]).
+/// A caller-visible import route and the full native failure if conversion was needed.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FigImportReport {
+    pub document: Document,
+    pub backend: &'static str,
+    pub warnings: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub native_error: Option<String>,
+}
+
+/// Native Kiwi first, then the optional local converter. Use the report entry
+/// point when presenting fidelity or fallback details to a user.
 pub fn import_fig(bytes: &[u8]) -> Result<Document> {
+    Ok(import_fig_report(bytes)?.document)
+}
+
+pub fn import_fig_report(bytes: &[u8]) -> Result<FigImportReport> {
     #[cfg(target_arch = "wasm32")]
-    {
-        let _ = bytes;
-        Err(Error::UnsupportedFigPlatform)
-    }
+    { let _=bytes; Err(Error::UnsupportedFigPlatform) }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        if !is_fig_file(bytes) {
+        if !is_fig_file(bytes) && !bytes.starts_with(b"fig-kiwi") {
             return Err(Error::NotAZip("canvas.fig marker missing".into()));
         }
-        // native Rust kiwi reader first (no external helper)
         match crate::fig::import_fig_native(bytes) {
-            Ok(doc) => Ok(doc),
+            Ok(document) => {
+                let mut warnings=Vec::new();
+                if let Some(metadata)=document.design_system.as_ref().and_then(|s|s.sketch_containers.get("nodeMetadata")).and_then(Value::as_object) {
+                    for (id,source) in metadata {
+                        if let Some(notes)=source.pointer("/bindings/figUntranslated").and_then(Value::as_str) {
+                            warnings.push(format!("FIG {id}: {notes}"));
+                        }
+                        if source.pointer("/bindings/prototypeFlow").is_some() {
+                            warnings.push(format!("FIG {id}: prototype interactions retained as source metadata, not executable"));
+                        }
+                    }
+                }
+                Ok(FigImportReport {document, backend:"rust-native-fig", warnings, native_error:None})
+            },
             Err(native) => {
-                eprintln!("[fig] native import failed ({native}); falling back to fig2sketch");
-                import_fig_via_converter(bytes)
+                let document=import_fig_via_converter(bytes).map_err(|converter|Error::Unsupported(format!("FIG native import failed: {native}; fig2sketch fallback failed: {converter}")))?;
+                document.validate().map_err(Error::InvalidDocument)?;
+                Ok(FigImportReport {document, backend:"fig2sketch", warnings:vec![format!("FIG used fig2sketch compatibility conversion; native import failed: {native}")], native_error:Some(native.to_string())})
             }
         }
     }
@@ -6681,7 +7073,7 @@ mod tests {
     }
 
     #[test]
-    fn hotspot_layers_keep_raw_payload_with_explicit_limited_mapping() {
+    fn hotspot_layers_are_paintless_regions_and_unresolved_flows_remain_raw() {
         // Minimal .sketch input: export the sample doc, then patch one layer
         // into a native hotspot carrying a prototype flow destination.
         let bytes = export_sketch(&sample_document()).unwrap();
@@ -6706,8 +7098,9 @@ mod tests {
         let back = import_sketch(&encoded).unwrap();
         let node = back.nodes.get("n2").unwrap();
         // Not masqueraded as a frame: limited kind plus explicit degradation.
-        assert_eq!(node.kind, "hotspot");
-        assert!(node.bindings.contains_key("interopLimited"));
+        assert_eq!(node.kind, "rectangle");
+        assert!(node.fills.is_empty() && node.strokes.is_empty());
+        assert!(node.bindings.contains_key("sketchSourceHotspot"));
         let raw = node
             .bindings
             .get("sketchRawLayer")
@@ -6901,6 +7294,8 @@ mod tests {
             texture: None,
             gradient_blur: None,
             show_shadow_behind_node: false,
+            color_controls: None,
+            zoom_blur: None, motion_angle: 0.,
         });
         let back = import_sketch(&export_sketch(&doc).unwrap()).unwrap();
         let node = back.nodes.get("n1").unwrap();
@@ -6929,7 +7324,7 @@ mod tests {
         let mut doc = sample_document();
         let node = doc.nodes.get_mut("n1").unwrap();
         let mut paint = blank_paint("image");
-        paint.image = Some(image_data_uri(&png));
+        paint.image = Some(image_data_uri(&png).into());
         node.fills.push(paint);
         let bytes = export_sketch(&doc).unwrap();
         let files = read_zip(&bytes).unwrap();
@@ -7222,6 +7617,7 @@ mod tests {
         });
         text.text_runs = vec![
             crate::font::TextRun {
+                paragraph: None,
                 text_case: None,
                 start: 5,
                 end: 8,
@@ -7234,6 +7630,7 @@ mod tests {
                 weight: Some(600.),
             },
             crate::font::TextRun {
+                paragraph: None,
                 text_case: None,
                 start: 8,
                 end: 13,
@@ -7282,15 +7679,15 @@ mod tests {
         assert_eq!(attrs[2]["attributes"]["strikethroughStyle"], 1);
         // paragraph properties ride on every segment
         assert_eq!(
-            attrs[0]["attributes"]["textStyleBasicParagraphStyle"]["alignment"],
+            attrs[0]["attributes"]["paragraphStyle"]["alignment"],
             2
         );
-        let px = attrs[0]["attributes"]["textStyleBasicParagraphStyle"]["minimumLineHeight"]
+        let px = attrs[0]["attributes"]["paragraphStyle"]["minimumLineHeight"]
             .as_f64()
             .unwrap();
         assert!((px - 1.5 * 14.).abs() < 1e-9);
         assert_eq!(
-            attrs[0]["attributes"]["textStyleBasicParagraphStyle"]["paragraphSpacing"],
+            attrs[0]["attributes"]["paragraphStyle"]["paragraphSpacing"],
             3.
         );
         assert_eq!(attrs[0]["attributes"]["kerning"], 0.8);
@@ -7299,15 +7696,15 @@ mod tests {
         let text = back.nodes.get("n2").unwrap();
         assert_eq!(text.text, "plainBIGsmall");
         let runs = &text.text_runs;
-        assert_eq!(runs.len(), 3);
-        assert_eq!((runs[0].start, runs[0].end), (0, 5));
-        assert_eq!((runs[1].start, runs[1].end), (5, 8));
-        assert_eq!(runs[1].color.as_deref(), Some("#ff0000"));
-        assert_eq!(runs[1].font_size, Some(24.));
-        assert_eq!(runs[1].font_id.as_deref(), Some("Inter-SemiBold"));
-        assert!(runs[1].underline);
-        assert_eq!(runs[2].color.as_deref(), Some("#00ff00"));
-        assert!(runs[2].strikethrough);
+        // The exact text-model receipt preserves the authored sparse ranges.
+        assert_eq!(runs.len(), 2);
+        assert_eq!((runs[0].start, runs[0].end), (5, 8));
+        assert_eq!(runs[0].color.as_deref(), Some("#ff0000"));
+        assert_eq!(runs[0].font_size, Some(24.));
+        assert_eq!(runs[0].font_id.as_deref(), Some("Inter-SemiBold"));
+        assert!(runs[0].underline);
+        assert_eq!(runs[1].color.as_deref(), Some("#00ff00"));
+        assert!(runs[1].strikethrough);
         let style = text.text_style.as_ref().expect("text style");
         assert_eq!(style.align, "center");
         assert!((style.line_height - 1.5).abs() < 1e-9);
@@ -7362,6 +7759,7 @@ mod tests {
                  }}
             ]
         });
+        page["layers"][1]["style"]["textStyle"]["verticalAlignment"] = json!(1);
         files.insert(name.clone(), serde_json::to_vec(&page).unwrap());
         let encoded = write_zip(&files.into_iter().collect::<Vec<_>>()).unwrap();
 
@@ -7380,12 +7778,7 @@ mod tests {
         // 3 (自定义) matches what the custom 30px line height re-derives, so
         // no binding is needed for a stable round trip.
         assert!(!node.bindings.contains_key("sketchLineSpacingBehaviour"));
-        assert_eq!(
-            node.bindings
-                .get("sketchTextVerticalAlignment")
-                .map(String::as_str),
-            Some("1")
-        );
+        assert_eq!(style.vertical_align, "center");
         assert_eq!(
             node.bindings.get("sketchTextTransform").map(String::as_str),
             Some("1")
@@ -7504,7 +7897,7 @@ mod tests {
             "texture degradation must be reported: {notes:?}"
         );
         // glass degrades to the nearest Sketch equivalent: a Gaussian blur
-        assert!(node.effects.iter().any(|e| e.kind == "blur"));
+        assert!(node.effects.iter().any(|e| e.kind == "gaussian-blur"));
     }
 
     fn shadow_like() -> Effect {
@@ -7523,6 +7916,8 @@ mod tests {
             texture: None,
             gradient_blur: None,
             show_shadow_behind_node: false,
+            color_controls: None,
+            zoom_blur: None, motion_angle: 0.,
         }
     }
 
@@ -8158,7 +8553,7 @@ mod tests {
             .get("sketchFlowUntranslated")
             .expect("unmapped flow fields reported");
         assert!(note.contains("overlaySettings"), "{note}");
-        assert!(note.contains("maintainScrollPosition"), "{note}");
+        assert_eq!(events[0].actions[0].transition_preserve_scroll, Some(true));
     }
 
     /// Shared fixture builder for the 2026-10-26 gap-closure tests: a
@@ -8254,8 +8649,8 @@ mod tests {
         assert_eq!(node.fills[2].fit, "contain");
         let tile = node.fills[3].tile.as_ref().expect("tile mode mapped");
         assert_eq!(tile.mode, crate::pattern_fill::GRID);
-        // Non-unit tile scale cannot be expressed in the authored slot; it
-        // rides bindings and is reported instead of normalized away.
+        // This intentionally malformed PNG has no usable extent. Its scale
+        // still survives with a diagnostic instead of guessing dimensions.
         let scale = node
             .bindings
             .get("sketchSourcePatternScale")
@@ -8280,6 +8675,81 @@ mod tests {
     }
 
     #[test]
+    fn sketch_pattern_scale_changes_pixels_and_edited_period_round_trips() {
+        let mut png = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut png, 4, 2);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            let row = [255,0,0,255, 255,0,0,255, 0,0,255,255, 0,0,255,255];
+            encoder.write_header().unwrap().write_image_data(&row.repeat(2)).unwrap();
+        }
+        let encoded = gap_test_files(json!([{
+            "_class":"rectangle", "do_objectID":"pattern", "frame":{"x":0,"y":0,"width":48,"height":24},
+            "style":{"fills":[{"isEnabled":true,"fillType":4,"image":{"_ref":"checker"},
+                "patternFillType":0,"patternTileScale":2.5}]}
+        }]), json!({"colorSpace":1}));
+        let mut files = read_zip(&encoded).unwrap();
+        files.insert("images/checker".into(), png);
+        let mut doc = import_sketch_report(&write_zip(&files.into_iter().collect::<Vec<_>>()).unwrap()).unwrap().document;
+        assert_eq!(doc.nodes["pattern"].fills[0].tile.as_ref().unwrap().size, [10.,5.]);
+        assert!(!doc.nodes["pattern"].bindings.contains_key("sketchSourcePatternScale"));
+        assert!(!import_lossy_of(&doc.nodes["pattern"]).iter().any(|n|n.contains("pattern-tile-scale")));
+        let render = |doc: &Document| {
+            let mut engine = crate::Engine::new();
+            engine.load_document(&serde_json::to_string(doc).unwrap()).unwrap();
+            let options = engine.parse_options(json!({"pageId":doc.pages[0].id,"width":48,"height":24,
+                "view":{"x":0,"y":0,"zoom":1}})).unwrap();
+            engine.render_linear(&options).unwrap().into_iter()
+                .map(|p|p.0.map(f32::to_bits)).collect::<Vec<_>>()
+        };
+        let before = render(&doc);
+        let mut native = doc.clone();
+        native.nodes.get_mut("pattern").unwrap().fills[0].tile.as_mut().unwrap().size = [0.,0.];
+        assert_ne!(before, render(&native), "source scale must affect rendered pixels");
+        let exported = export_sketch(&doc).unwrap();
+        let page = first_exported_page(&read_zip(&exported).unwrap());
+        assert_eq!(page["layers"][0]["style"]["fills"][0]["patternTileScale"],2.5);
+        assert_eq!(before, render(&import_sketch_report(&exported).unwrap().document));
+
+        // The Inspector edits this existing size slot. Export must use the
+        // edited value instead of replaying the original source scale.
+        doc.nodes.get_mut("pattern").unwrap().fills[0].tile.as_mut().unwrap().size = [16.,8.];
+        let edited = render(&doc);
+        assert_ne!(before, edited);
+        let exported = export_sketch(&doc).unwrap();
+        let page = first_exported_page(&read_zip(&exported).unwrap());
+        assert_eq!(page["layers"][0]["style"]["fills"][0]["patternTileScale"],4.);
+        assert_eq!(edited, render(&import_sketch_report(&exported).unwrap().document));
+    }
+
+    #[test]
+    fn old_fd_noise_receipts_do_not_duplicate_or_resurrect_supported_paints() {
+        let raw=json!({"_class":"fill","isEnabled":true,"fillType":0,"noiseIndex":3,"noiseIntensity":0.5,
+            "color":{"red":0.2,"green":0.4,"blue":0.7,"alpha":0.5}});
+        for deleted in [false,true] {
+            let mut doc=sample_document();let node=doc.nodes.get_mut("n1").unwrap();
+            node.bindings.insert("sketchSourceNoiseFills".into(),json!({"fills-0":raw}).to_string());
+            if deleted {node.fills.clear();}else{node.fills[0].color="#ef3344".into();}
+            let files=read_zip(&export_sketch(&doc).unwrap()).unwrap();let page=first_exported_page(&files);
+            let fills=page["layers"][0]["style"]["fills"].as_array().unwrap();assert_eq!(fills.len(),usize::from(!deleted));
+            if !deleted {assert_eq!(fills[0]["noiseIndex"],3);assert_eq!(fills[0]["noiseIntensity"],0.5);}
+        }
+    }
+
+    #[test]
+    fn inactive_noise_metadata_does_not_duplicate_an_admitted_fill() {
+        let source=gap_test_files(json!([{"_class":"shapePath","do_objectID":"n1","frame":{"x":0,"y":0,"width":10,"height":10},"isClosed":true,
+            "points":[{"point":"{0,0}"},{"point":"{1,0}"},{"point":"{1,1}"},{"point":"{0,1}"}],
+            "style":{"fills":[{"_class":"fill","isEnabled":true,"fillType":0,"noiseIndex":3,"noiseIntensity":0.5,
+                "color":{"red":0.2,"green":0.4,"blue":0.7,"alpha":0.5}}]}}]),json!({}));
+        let doc=import_sketch(&source).unwrap();let node=&doc.nodes["n1"];
+        assert_eq!(node.fills.len(),1);assert!(!node.bindings.contains_key("sketchSourceNoiseFills"));
+        let files=read_zip(&export_sketch(&doc).unwrap()).unwrap();let page=first_exported_page(&files);let fills=page["layers"][0]["style"]["fills"].as_array().unwrap();
+        assert_eq!(fills.len(),1);assert_eq!(fills[0]["fillType"],0);assert_eq!(fills[0]["noiseIndex"],3);assert_eq!(fills[0]["noiseIntensity"],0.5);
+    }
+
+    #[test]
     fn noise_fills_and_color_controls_round_trip_instead_of_dropping() {
         let encoded = gap_test_files(
             json!([{"_class": "shapePath", "do_objectID": "n1",
@@ -8298,8 +8768,8 @@ mod tests {
         );
         let back = import_sketch(&encoded).unwrap();
         let node = &back.nodes["n1"];
-        // Only the solid fill became a paint; the noise part and the color
-        // matrix survive verbatim with explicit degradation notes.
+        // The noise remains preserved; color controls now have executable
+        // effect parameters as well as the original archive payload.
         assert_eq!(node.fills.len(), 1);
         let noise = node
             .bindings
@@ -8459,7 +8929,7 @@ mod tests {
         assert_eq!(modern["_flexItem"]["flexGrow"], json!(1.5));
         assert!(import_lossy_of(child)
             .iter()
-            .any(|n| n.contains("modern-layout-fields")));
+            .any(|n| n.contains("modern-layout-untranslated")));
 
         let re = export_sketch(&back).unwrap();
         let re_files = read_zip(&re).unwrap();

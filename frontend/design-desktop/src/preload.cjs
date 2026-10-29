@@ -148,6 +148,8 @@ contextBridge.exposeInMainWorld(
       },
       read: value => invoke('large-document-read', value),
       children: value => invoke('large-document-children', value),
+      canvasLayout: value => invoke('large-document-canvas-layout', value),
+      canvasSnapshot: value => invoke('large-document-canvas-snapshot', value),
       apply: value => invoke('large-document-apply', value),
       project: value => invoke('large-document-project', value),
       scene: value => invoke('large-document-scene', value),

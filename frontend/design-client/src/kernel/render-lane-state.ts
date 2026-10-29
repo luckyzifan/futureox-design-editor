@@ -12,6 +12,7 @@ export class RenderLaneState {
   decodedImageOwner = createDecodedImageOwner()
   enginePromise?: Promise<RenderKernel>
   loadedDocument = ''
+  sourceSnapshotToken?: string
   authoredSnapshot?: AuthoredSnapshot
   loadedRevision = -1
   interactionDocument?: DesignDocument

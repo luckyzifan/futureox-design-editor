@@ -307,7 +307,10 @@ pub struct Paint {
     #[serde(default)]
     pub stops: Vec<Stop>,
     #[serde(default)]
-    pub image: Option<String>,
+    /// Immutable image payloads are shared by authored/resolved snapshots.
+    /// Replacing a paint replaces this owner; JSON/FD still contain the exact
+    /// original string. No lossy interning or resource identity substitution.
+    pub image: Option<std::sync::Arc<str>>,
     #[serde(default = "cover")]
     pub fit: String,
     #[serde(default = "normal")]
@@ -375,6 +378,12 @@ pub struct Stroke {
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Effect {
+    #[serde(default, rename="zoomBlur", skip_serializing_if="Option::is_none")]
+    pub zoom_blur: Option<crate::zoom_blur::ZoomBlur>,
+    #[serde(default, rename="motionAngle", skip_serializing_if="is_zero")]
+    pub motion_angle: f64,
+    #[serde(default, rename = "colorControls", skip_serializing_if = "Option::is_none")]
+    pub color_controls: Option<crate::color_controls::ColorControls>,
     #[serde(default)]
     pub id: String,
     pub kind: String,
@@ -470,6 +479,20 @@ impl Effect {
                 .unwrap_or(1.)
     }
     pub fn validate_material(&self) -> Result<(), String> {
+        if (self.kind=="zoom-blur") != self.zoom_blur.is_some() || self.zoom_blur.is_some_and(|p|!p.validate()
+            || self.radius!=0. || self.color_controls.is_some() || self.glass.is_some() || self.texture.is_some() || self.gradient_blur.is_some()) {
+            return Err("Invalid zoom blur parameters".into());
+        }
+        if !self.motion_angle.is_finite() || self.motion_angle.abs()>1e7 || (self.motion_angle!=0. && self.kind!="motion-blur") {
+            return Err("Invalid motion blur angle".into());
+        }
+
+        if self.kind == "color-controls" && self.color_controls.is_none() { return Err("Color controls parameters required".into()); }
+        if let Some(c) = &self.color_controls
+            && (!matches!(self.kind.as_str(), "color-controls" | "background-blur") || !c.validate()
+                || self.glass.is_some() || self.texture.is_some() || self.gradient_blur.is_some()) {
+            return Err("Invalid color controls".into());
+        }
         if let Some(g) = &self.gradient_blur
             && (self.kind != "blur"
                 || self.glass.is_some()
@@ -584,6 +607,16 @@ pub struct Network {
     pub fill_rule: String,
 }
 impl Node {
+    /// Preserve the old summation/multiplication order for existing documents.
+    /// Native-sigma filters additionally reserve their complete 3-sigma support
+    /// and bilinear neighbours in device pixels, even below unit zoom.
+    pub fn effect_outset(&self, scale:f64) -> f64 {
+        let old=self.effects.iter().filter(|e|e.visible && !matches!(e.kind.as_str(),"gaussian-blur"|"motion-blur"|"zoom-blur"))
+            .map(|e|e.blur_radius()*2.+e.spread.abs()+e.x.abs()+e.y.abs()+e.material_halo()).sum::<f64>()*scale;
+        old+self.effects.iter().filter(|e|e.visible && matches!(e.kind.as_str(),"gaussian-blur"|"motion-blur"))
+            .map(|e|if e.radius>0. {3.*e.radius*scale+2.} else {0.}).sum::<f64>()
+            +self.effects.iter().filter(|e|e.visible).filter_map(|e|e.zoom_blur).map(|z|if z.amount>0. {3.*z.amount*scale+2.} else {0.}).sum::<f64>()
+    }
     pub fn fill_even_odd(&self) -> bool {
         self.vector_geometry
             .as_ref()
@@ -662,7 +695,7 @@ pub fn selected_backdrop(effects: &[Effect]) -> Option<&Effect> {
     effects
         .iter()
         .find(|e| e.visible && matches!(e.kind.as_str(), "background-blur" | "glass"))
-        .filter(|e| e.backdrop_radius() > 0. || (e.kind == "glass" && e.glass_active()))
+        .filter(|e| e.backdrop_radius() > 0. || e.color_controls.is_some_and(|c| !c.is_identity()) || (e.kind == "glass" && e.glass_active()))
 }
 impl Network {
     pub fn paths(&self) -> Result<(Path, Path), String> {
@@ -1291,6 +1324,10 @@ impl Document {
                 ));
             }
             for e in &n.effects {
+                if matches!(e.kind.as_str(),"gaussian-blur"|"motion-blur") && self.schema_version<18 {return Err("Spatial sigma filters require schema 18".into());}
+                if (e.color_controls.is_some() || e.kind == "color-controls") && self.schema_version < 17 {
+                    return Err("Color controls require schema 17".into());
+                }
                 e.validate_material()?;
                 crate::color::pixel(self.color_management, &e.color, 1.)?;
                 if [e.radius, e.spread, e.x, e.y, e.amount, e.opacity]
@@ -1306,7 +1343,50 @@ impl Document {
         }
         Ok(())
     }
+    pub fn requires_schema20(&self) -> bool {
+        fn extended(a:&crate::prototype::Action)->bool {a.transition_style.is_some() || a.then_actions.iter().flatten().chain(a.else_actions.iter().flatten()).any(extended)}
+        if self.prototype.as_ref().is_some_and(|p|p.interactions.values().flatten().flat_map(|e|&e.actions).any(extended)) {return true}
+        let style = |v: &serde_json::Value| v.get("verticalAlign").and_then(|v|v.as_str()).is_some_and(|v|v!="top");
+        let runs = |v: &serde_json::Value| v.as_array().is_some_and(|r|r.iter().any(|v|v.get("paragraph").is_some_and(|p|!p.is_null())));
+        self.nodes.values().any(|n| n.text_style.as_ref().is_some_and(|s|s.vertical_align!="top") || n.text_runs.iter().any(|r|r.paragraph.is_some())
+            || n.instance.as_ref().is_some_and(|i|i.overrides.values().any(|o|o.get("textStyle").is_some_and(style)||o.get("textRuns").is_some_and(runs))))
+            || self.design_system.as_ref().is_some_and(|d|d.styles.values().any(|s|s.kind=="text" && style(&s.value)))
+    }
+    pub fn requires_schema19(&self) -> bool {
+        let spatial=|e:&Effect|matches!(e.kind.as_str(),"zoom-blur");
+        let raw=|v:&serde_json::Value|v.as_array().is_some_and(|es|es.iter().any(|e|matches!(e.get("kind").and_then(|k|k.as_str()),Some("zoom-blur"))));
+        self.nodes.values().any(|n|n.effects.iter().any(spatial) || n.instance.as_ref().is_some_and(|i|i.overrides.values().any(|o|o.get("effects").is_some_and(raw))))
+            || self.animations.iter().flat_map(|c|&c.tracks).flat_map(|t|&t.keyframes).any(|k|k.value.effects.iter().any(spatial))
+            || self.design_system.as_ref().is_some_and(|d|d.styles.values().any(|s|s.effects.iter().any(spatial)||(s.kind=="effect"&&raw(&s.value))))
+    }
+    pub fn requires_schema18(&self) -> bool {
+        let spatial=|e:&Effect|matches!(e.kind.as_str(),"gaussian-blur"|"motion-blur");
+        let raw=|v:&serde_json::Value|v.as_array().is_some_and(|es|es.iter().any(|e|matches!(e.get("kind").and_then(|k|k.as_str()),Some("gaussian-blur"|"motion-blur"))));
+        self.nodes.values().any(|n|n.effects.iter().any(spatial) || n.instance.as_ref().is_some_and(|i|i.overrides.values().any(|o|o.get("effects").is_some_and(raw))))
+            || self.animations.iter().flat_map(|c|&c.tracks).flat_map(|t|&t.keyframes).any(|k|k.value.effects.iter().any(spatial))
+            || self.design_system.as_ref().is_some_and(|d|d.styles.values().any(|s|s.effects.iter().any(spatial)||(s.kind=="effect"&&raw(&s.value))))
+    }
+    pub fn requires_schema17(&self) -> bool {
+        let raw = |value: &serde_json::Value| value.as_array().is_some_and(|es|es.iter().any(|e|
+            e.get("kind").and_then(|k|k.as_str())==Some("color-controls") || e.get("colorControls").is_some_and(|c|!c.is_null())));
+        self.nodes.values().any(|n|n.effects.iter().any(|e|e.color_controls.is_some() || e.kind=="color-controls")
+            || n.instance.as_ref().is_some_and(|i|i.overrides.values().any(|o|o.get("effects").is_some_and(raw))))
+            || self.animations.iter().flat_map(|c|&c.tracks).flat_map(|t|&t.keyframes)
+                .any(|k|k.value.effects.iter().any(|e|e.color_controls.is_some() || e.kind=="color-controls"))
+            || self.design_system.as_ref().is_some_and(|d|d.styles.values().any(|s|
+                s.effects.iter().any(|e|e.color_controls.is_some() || e.kind=="color-controls") || (s.kind=="effect" && raw(&s.value))))
+    }
+    /// Native source storage validates the same scene semantics without the
+    /// serialized JS/WASM carrier or logical node/page quotas.
+    #[cfg(not(target_arch="wasm32"))]
+    pub fn validate_native_source(&self) -> Result<(), String> {
+        crate::capacity::with_source_storage_scope(true,||self.validate())
+    }
     pub fn validate(&self) -> Result<(), String> {
+        if self.schema_version<20 && self.requires_schema20() {return Err("Paragraph and vertical text layout require schema 20".into());}
+        if self.schema_version<19 && self.requires_schema19() {return Err("Zoom blur requires schema 19".into());}
+        if self.schema_version<18 && self.requires_schema18() {return Err("Spatial sigma filters require schema 18".into());}
+        if self.schema_version < 17 && self.requires_schema17() { return Err("Color controls require schema 17".into()); }
         if let Some(compatibility) = &self.fd_compatibility {
             compatibility.validate()?;
         }
@@ -1392,7 +1472,7 @@ impl Document {
         {
             return Err("Ruler guide limit exceeded".into());
         }
-        if ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].contains(&self.schema_version)
+        if ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].contains(&self.schema_version)
             || self.name.trim().is_empty()
             || self.name.encode_utf16().count() > 200
             || self.fonts.len() > 32

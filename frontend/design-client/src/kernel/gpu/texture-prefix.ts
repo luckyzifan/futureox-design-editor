@@ -1,3 +1,4 @@
+import {widePrefixBoundBits,type WidePrefixCertificate} from './prefix-wide-bound'
 import { PREFIX_BYTES, RESULT_BYTES, METADATA_BYTES, READBACK_BYTES, prefixBandSize, prefixRgbBandSize } from './prefix-band'
 import { filterSourceWindowUniforms, snapshotFilterSourceWindow, type FilterSourceWindow } from './filter-source-window'
 import { prefixSamplingGeometry } from './prefix-sampling-geometry'
@@ -186,16 +187,18 @@ export class TexturePrefix {
     channels = 15,
     maxBandLines = 255,
     sourceWindow?: FilterSourceWindow,
+    shadowCertificate?: WidePrefixCertificate,
   ): boolean {
+    const shadow = import.meta.env.VITE_DESIGN_BOUNDED_SHADOW_TENT !== '0' && widePrefixBoundBits(shadowCertificate,originalRadius)>0
     const extended = import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1'
-    const geometry = prefixSamplingGeometry(base, originalRadius, extended)
+    const geometry = prefixSamplingGeometry(base, originalRadius, extended, shadow?4096:2048)
     const window = sourceWindow === undefined ? undefined : snapshotFilterSourceWindow(inputs[0], base, sourceWindow)
     if (sourceWindow !== undefined && (import.meta.env.VITE_DESIGN_FILTER_SOURCE_WINDOW !== '1' || !window)) return false
     if (
       kind !== 'tent' ||
       !Number.isFinite(originalRadius) ||
       originalRadius < 1 ||
-      originalRadius > 2048 ||
+      originalRadius > (import.meta.env.VITE_DESIGN_LARGE_SHADOW_TENT === '1' || shadow ? 4096 : 2048) ||
       base[36] !== Math.fround(originalRadius) ||
       (!Number.isInteger(originalRadius) && originalRadius < 3) ||
       !geometry ||
@@ -258,7 +261,9 @@ export class TexturePrefix {
     sourceWindow?: FilterSourceWindow,
     certifiedTent = false,
     wideRational = false,
+    shadowCertificate?: WidePrefixCertificate,
   ): boolean {
+    const shadow = import.meta.env.VITE_DESIGN_BOUNDED_SHADOW_TENT !== '0' && widePrefixBoundBits(shadowCertificate,originalRadius)>0
     this.lastRenderPasses = 0
     this.lastComputePasses = 0
     const getEncoder = typeof encoderSource === 'function' ? encoderSource : () => encoderSource
@@ -266,19 +271,19 @@ export class TexturePrefix {
     if (sourceWindow !== undefined && !window) return false
     if (
       !this.scratchGroup ||
-      !this.canEncode(target, inputs, base, originalRadius, kind, rect, channels, maxBandLines, window)
+      !this.canEncode(target, inputs, base, originalRadius, kind, rect, channels, maxBandLines, window, shadowCertificate)
     )
       return false
     base = filterSourceWindowUniforms(base, window)
     // The caller obtains this bound from the actual immutable coefficient
     // upload. Zero/unknown values retain the existing shader admission gate.
-    wideRational=wideRational&&import.meta.env.VITE_DESIGN_WIDE_RATIONAL_PREFIX==='1'&&!certifiedTent
+    wideRational=wideRational&&(import.meta.env.VITE_DESIGN_WIDE_RATIONAL_PREFIX==='1'||shadow)&&!certifiedTent
     const boundBits = Number.isInteger(rationalBoundBits) && rationalBoundBits >= 1 && rationalBoundBits <= (wideRational?184:120)
       ? rationalBoundBits : 0
-    if (import.meta.env.VITE_DESIGN_PREFIX_RGB_RESOLVE !== '0' && opaqueAlpha && channels === 7 &&
+    if (import.meta.env.VITE_DESIGN_PREFIX_RGB_RESOLVE !== '0' && opaqueAlpha && channels === 7 && !shadow &&
         this.solveRgb && this.resolveRgb)
       return this.encodeOpaqueRgb(getEncoder, target, inputs, base, originalRadius, rect, maxBandLines, boundBits,certifiedTent,wideRational)
-    const geometry = prefixSamplingGeometry(base, originalRadius, import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1')!
+    const geometry = prefixSamplingGeometry(base, originalRadius, import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1',shadow?4096:2048)!
     const axis = base[37],
       length = geometry.length,
       lineCount = axis === 0 ? rect.h : rect.w

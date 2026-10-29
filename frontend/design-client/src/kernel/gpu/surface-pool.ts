@@ -37,6 +37,15 @@ export class SurfacePool<T extends {bytes:number}> extends Map<string,T[]> {
     return super.delete(key)
   }
   override clear(){super.clear();this.ordered.clear();this.total=0;this.clock=0;this.untouched=0;this.trusted=true}
+  /** Aggregate only. No disposal cohort is allocated for a decision that will
+   * retain every resource. Unknown ownership preserves capture's fallback. */
+  summary(pinned:ReadonlyMap<T,number>){
+    if(!this.trusted)return
+    if(this.untouched){this.invalidate();return}
+    let bytes=this.total,count=this.ordered.size
+    for(const texture of pinned.keys()){const entry=this.ordered.get(texture);if(entry){bytes-=entry.bytes;count--;}}
+    return {bytes,count}
+  }
   capture(pinned:ReadonlyMap<T,number>,limit?:{bytes:number;resources:number}){
     if(!this.trusted)return undefined
     if(this.untouched){this.invalidate();return undefined}

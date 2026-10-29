@@ -68,7 +68,7 @@ fn prefixScan(@builtin(workgroup_id) group:vec3<u32>,@builtin(local_invocation_i
  minimum=select(scanMin[0],1u,scanMax[0]==0u);maximum=scanMax[0];
  if(lane==0u){
   var reason=0u;
-  if(length==0u||length>16384u||radius==0u||radius>2048u||(!rational&&radius>512u)){reason=1u;}
+  if(length==0u||length>16384u||radius==0u||radius>PREFIX_MAX_RATIONAL_RADIUS||(!rational&&radius>512u)){reason=1u;}
   if(maximum==255u){reason=2u;}
   let span=select(maximum-minimum,0u,maximum==0u);
   if(PREFIX_WIDE_RATIONAL&&u(49u).z==3.){

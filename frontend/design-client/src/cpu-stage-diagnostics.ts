@@ -7,6 +7,7 @@ export const CpuStage = {
   commit: 20, commitValidate: 21, commitShare: 22, commitHistory: 23, commitPublish: 24,
   serialize: 30, resolveComponents: 31, resolveLayout: 32, parse: 33,
   historyCompile: 34, historyEncode: 35, historyDecode: 36, historyApply: 37,
+  frameIdentity:40, tilePlanning:41,
 } as const
 export type CpuStageCode = typeof CpuStage[keyof typeof CpuStage]
 type Fields = Record<string, number>

@@ -16,6 +16,7 @@ import { keyboardNudgeActive, keyboardNudgeOwnsKey } from './keyboard-nudge-gest
 import { BatchRenameDialog } from './BatchRenameDialog'
 import { NativeSketchDialog } from './NativeSketchDialog'
 import { LargeDocumentWorkspace, type SourceWorkspace } from './LargeDocumentWorkspace'
+import { SourceDocumentStatus } from './SourceDocumentStatus'
 import { nativeSketchCapabilities } from './native-sketch-capabilities'
 import { alignmentAvailability, alignSelection } from './alignment-availability'
 import { SettingsDialog } from './SettingsDialog'
@@ -1237,14 +1238,15 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         }}
           onFiles={() => { if (desktopSession?.supportsWorkspace) setShowWorkspaceLibrary(true); else if (desktopSession) setShowCatalog(true); else void openLocalFiles() }}
           onTools={() => setShowCommands((value) => !value)} toolsOpen={showCommands} onVariables={() => setShowTools(true)} />
-        <div ref={leftPanel} className="adaptive-layers-shell">{source?.navigation}{(!source||source.showLayers)&&<Layers editor={editor} section={workspaceSection} onSection={setWorkspaceSection} />}<PanelResizeHandle side="left" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} /></div>
+        <div ref={leftPanel} className="adaptive-layers-shell">{source?.navigation}{(!source||source.showLayers)&&<Layers editor={editor} section={workspaceSection} onSection={setWorkspaceSection} showPages={!source}/>}<PanelResizeHandle side="left" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} /></div>
         <div className="canvas-workspace" ref={source?.canvas}>
-          {source&&<div className="source-canvas-status">{source.error?<p role="alert">{source.error}</p>:<p role="status">{source.notice}</p>}{source.warnings.length>0&&<ImportNotice warnings={source.warnings} onClose={source.dismissWarnings}/>}</div>}
+          {source&&<SourceDocumentStatus source={source}/>}
           {importReport?.documentId === s.doc.id && <ImportNotice warnings={importReport.warnings} onClose={() => setImportReport(null)} />}
           <HomeCanvasGate home={showHome}><Canvas editor={editor} peers={localWindows.peers} compactChrome loading={!ready||!!source&&!source.ready}
+            nativeSource={source?.nativeCanvas?.snapshot} onNativeSourceStatus={source?.nativeCanvas?.onStatus} onOpenSourcePoint={source?.nativeCanvas?.openPoint}
             startupPreview={startupPreview} onCapturePreview={desktopSession || source ? undefined : capturePreview}
             zoomControlsTarget={(uiMinimized ? !!s.selection.length : showInspector) ? zoomHost : null} /></HomeCanvasGate>
-          <DesignToolbar disabled={!ready || switching || desktopStatus.transitioning || (editor.interactionActive && !editor.propertyPreviewActive)}>
+          <DesignToolbar disabled={!ready || switching || desktopStatus.transitioning || !!source?.nativeCanvas || (editor.interactionActive && !editor.propertyPreviewActive)}>
             <div className="tool-group">
               <ToolPopover label={toolbarText.moveTools} icon={<MoveIcon size={18} />} open={showMove} onOpenChange={open => openToolbarMenu('move', open)}
                 primary={{ label: moveTool.label, title: `${moveTool.label}${moveTool.key ? ` (${moveTool.key})` : ''}`, active: s.tool === moveTool.id, onClick: () => chooseTool(moveTool.id) }}>
@@ -1332,7 +1334,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             </div><div ref={setZoomHost} className="properties-zoom" />
           </div>
           <div className="properties-content" id={`${propertiesTab}-properties`} role="tabpanel" aria-labelledby={`${propertiesTab}-properties-tab`}>
-            {['comments','annotate'].includes(s.tool) ? <ReviewsPanel editor={editor}/> : propertiesTab === 'design' ? <PendingEditContext.Provider value={editor} key={`${editor.sessionGeneration}:${s.selection.join(',')}`}><Inspector editor={editor} /></PendingEditContext.Provider>
+            {source?.nativeCanvas?<section className="source-overview-info"><h3>完整画板</h3><p>{source.nativeCanvas.snapshot.roots} 个素材 · {source.nativeCanvas.snapshot.nodes.toLocaleString()} 个节点</p><p>拖动或滚动浏览，双击素材进入细节编辑。</p></section>:['comments','annotate'].includes(s.tool) ? <ReviewsPanel editor={editor}/> : propertiesTab === 'design' ? <PendingEditContext.Provider value={editor} key={`${editor.sessionGeneration}:${s.selection.join(',')}`}><Inspector editor={editor} /></PendingEditContext.Provider>
               : <DesignTools editor={editor} initialTab="prototype" embedded onClose={() => setPropertiesTab('design')} />}
           </div>
         </div>

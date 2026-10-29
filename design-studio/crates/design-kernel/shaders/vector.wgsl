@@ -935,7 +935,47 @@ fn tentInteger(p:vec2<f32>,axis:vec2<f32>,radius:i32)->vec4<f32>{
 }
 fn fourBytes(tex:texture_2d<f32>,p:vec2<f32>,r:vec4<f32>)->vec4<f32>{return round(at(tex,p,r)*255.)+round(at(tex,p+vec2<f32>(1,0),r)*255.)+round(at(tex,p+vec2<f32>(0,1),r)*255.)+round(at(tex,p+vec2<f32>(1,1),r)*255.);}
 fn resolveFour(input:vec4<f32>,tex:texture_2d<f32>,p:vec2<f32>,r:vec4<f32>)->vec4<f32>{var sum=input;for(var y=0;y<2;y=y+1){for(var x=0;x<2;x=x+1){sum=addRN4(sum,mulRN4(at(tex,p+vec2<f32>(f32(x),f32(y)),r),vec4<f32>(0.0625)));}}return sum;}
-fn shade(p:vec2<f32>)->vec4<f32>{let mode=select(i32(u(4).x),COMPOSITOR_MODE,COMPOSITOR_MODE>=0);if(BYTE_SURFACE&&mode==43){return textureReplayEffect(p);}if(BYTE_SURFACE&&mode==44){return textureReplayCopyback(p);}if(BYTE_SURFACE&&mode==45){return textureReplaySource(p);}if(BYTE_SURFACE&&mode==42){return measuredGradientOver(p);}if(BYTE_SURFACE&&mode==40){return captureDownscale(p);}if(BYTE_SURFACE&&mode==41){return captureTriangle(p);}if(BYTE_SURFACE&&mode==36){return figmaFourPass(at(sourceA,p,u(1)),at(sourceB,p,u(2)),at(sourceC,p,u(3)),at(sourceD,p,u(1)));}if(BYTE_SURFACE&&mode==35){return solidPaintOver(p);}if(mode==34){return analyticGlass(p);}if(mode==33){return bytePreview(p);}if(mode==46){return gradientBlurComposite(p);}if(mode==8&&u(10).z>0.5){return materialTexture(p);}if(mode==11&&u(10).w>0.5){return materialGlass(p);}let a=smp(sourceA,p,u(1));
+fn ccEncode(v:f32)->f32 {let x=abs(v);if(x<=0.0031308){return v*12.92;}return sign(v)*(1.055*pow(x,1./2.4)-0.055);}
+fn ccDecode(v:f32)->f32 {let x=abs(v);if(x<=0.04045){return v/12.92;}return sign(v)*pow((x+0.055)/1.055,2.4);}
+fn ccRows(p:vec4<f32>,base:u32)->vec3<f32>{var result=vec3<f32>(0);for(var i=0u;i<3u;i=i+1u){let row=u(base+i);result[i]=addRN(addRN(addRN(mulRN(p.r,row.x),mulRN(p.g,row.y)),mulRN(p.b,row.z)),mulRN(p.a,row.w));}return result;}
+fn colorControlsPixel(p:vec4<f32>)->vec4<f32>{
+ if(p.a==0.){return p;}if(u(12).x<0.5){return vec4<f32>(ccRows(p,9u),p.a);}
+ let straight=vec3<f32>(divideRN(p.r,p.a),divideRN(p.g,p.a),divideRN(p.b,p.a));
+ let local=ccRows(vec4<f32>(straight,0),13u);
+ let encoded=vec3<f32>(ccEncode(local.r),ccEncode(local.g),ccEncode(local.b));
+ let adjusted=ccRows(vec4<f32>(encoded,1),9u);
+ let decoded=vec3<f32>(ccDecode(adjusted.r),ccDecode(adjusted.g),ccDecode(adjusted.b));
+ let result=ccRows(vec4<f32>(decoded,0),16u);
+ return vec4<f32>(mulRN(result.r,p.a),mulRN(result.g,p.a),mulRN(result.b,p.a),p.a);
+}
+fn motionKernelTap(i:u32)->vec4<f32>{return textureLoad(sourceB,vec2<i32>(i32(i%256u),i32(i/256u)),0);}
+fn motionBlurPixel(p:vec2<f32>)->vec4<f32>{
+ let header=motionKernelTap(0u);var sum=vec4<f32>(0);
+ for(var i=0u;i<u32(header.x);i=i+1u){let tap=motionKernelTap(1u+2u*i);let weight=motionKernelTap(2u+2u*i).x;let q=p+tap.xy;
+  let value=bsBilinear4(at(sourceA,q,u(1)),at(sourceA,q+vec2<f32>(1,0),u(1)),at(sourceA,q+vec2<f32>(0,1),u(1)),at(sourceA,q+vec2<f32>(1,1),u(1)),tap.zw,19u,9u);
+  sum=addRN4(sum,mulRN4(value,vec4<f32>(weight)));
+ }
+ return vec4<f32>(divideRN(sum.x,header.y),divideRN(sum.y,header.y),divideRN(sum.z,header.y),divideRN(sum.w,header.y));
+}
+fn zoomSample(p:vec2<f32>,tap:u32)->vec4<f32>{
+ let header=motionKernelTap(0u);let pixel=vec2<u32>(floor(p-u(1).xy));
+ let x=motionKernelTap(1u+pixel.x*64u+tap);let y=motionKernelTap(u32(header.w)+pixel.y*64u+tap);
+ let q=u(1).xy+vec2<f32>(x.x,y.x)+0.5;
+ return bsBilinear4(at(sourceA,q,u(1)),at(sourceA,q+vec2<f32>(1,0),u(1)),at(sourceA,q+vec2<f32>(0,1),u(1)),at(sourceA,q+vec2<f32>(1,1),u(1)),vec2<f32>(x.y,y.y),19u,9u);
+}
+fn zoomBlurPixel(p:vec2<f32>)->vec4<f32>{
+ let count=min(64u,u32(motionKernelTap(0u).x));if(count==0u){return at(sourceA,p,u(1));}
+ var samples:array<vec4<f32>,4>;var quads:array<vec4<f32>,4>;var groups:array<vec4<f32>,4>;
+ // One sampling call site avoids duplicating the wide exact sampler in every
+ // branch. The reduction order is still exactly the CPU's 4×4×4 tree.
+ for(var i=0u;i<count;i=i+1u){samples[i%4u]=zoomSample(p,i);
+  if(i%4u==3u){quads[(i/4u)%4u]=meanFourRN(samples[0],samples[1],samples[2],samples[3]);
+   if(i%16u==15u){groups[i/16u]=meanFourRN(quads[0],quads[1],quads[2],quads[3]);}
+  }
+ }
+ return meanFourRN(groups[0],groups[1],groups[2],groups[3]);
+}
+fn shade(p:vec2<f32>)->vec4<f32>{let mode=select(i32(u(4).x),COMPOSITOR_MODE,COMPOSITOR_MODE>=0);if(BYTE_SURFACE&&mode==43){return textureReplayEffect(p);}if(BYTE_SURFACE&&mode==44){return textureReplayCopyback(p);}if(BYTE_SURFACE&&mode==45){return textureReplaySource(p);}if(BYTE_SURFACE&&mode==42){return measuredGradientOver(p);}if(BYTE_SURFACE&&mode==40){return captureDownscale(p);}if(BYTE_SURFACE&&mode==41){return captureTriangle(p);}if(BYTE_SURFACE&&mode==36){return figmaFourPass(at(sourceA,p,u(1)),at(sourceB,p,u(2)),at(sourceC,p,u(3)),at(sourceD,p,u(1)));}if(BYTE_SURFACE&&mode==35){return solidPaintOver(p);}if(mode==34){return analyticGlass(p);}if(mode==33){return bytePreview(p);}if(mode==46){return gradientBlurComposite(p);}if(mode==61){return motionBlurPixel(p);}if(mode==62){return zoomBlurPixel(p);}if(mode==8&&u(10).z>0.5){return materialTexture(p);}if(mode==11&&u(10).w>0.5){return materialGlass(p);}let a=smp(sourceA,p,u(1));
  // Managed surfaces preserve extended-range linear light in RGBA32F.
  if(u(60).x>0.5){
   if(mode==3||mode==15){var opacity=u(4).z;if(u(4).w>0.5){opacity=mulRN(opacity,at(sourceC,p,u(3)).a);}let src=mulRN4(a,vec4<f32>(opacity));if(mode==15){return src;}return over(smp(sourceB,p,u(2)),src,i32(u(4).y));}
@@ -957,6 +997,8 @@ fn shade(p:vec2<f32>)->vec4<f32>{let mode=select(i32(u(4).x),COMPOSITOR_MODE,COM
  }
 
  if(mode==22){let radius=u(9).x;let reach=i32(ceil(radius));let axis=select(vec2<f32>(0,1),vec2<f32>(1,0),u(9).y<0.5);var total=vec4<f32>(0);
+  // Gaussian byte surfaces use uniform boxes, never the legacy Q24 tent table.
+  if(u(9).w>1.5){var sum=vec4<u32>(0);for(var i=-reach;i<=reach;i=i+1){sum=sum+vec4<u32>(round(blurAt(p+axis*f32(i))*255.));}let denominator=u32(2*reach+1);return vec4<f32>((sum+vec4<u32>(denominator/2u))/vec4<u32>(denominator))/255.;}
   if(u(9).w>0.5){var sum=vec4<u32>(0);for(var i=-reach;i<=reach;i=i+1){let v=vec4<u32>(round(textureLoad(sourceB,vec2<i32>(abs(i),0),0)*255.));let weight=v.x|(v.y<<8u)|(v.z<<16u)|(v.w<<24u);sum=sum+vec4<u32>(round(blurAt(p+axis*f32(i))*255.))*weight;}let q=sum>>vec4<u32>(24);let r=sum&vec4<u32>(0x00ffffffu);let up=(r>vec4<u32>(0x00800000u))|((r==vec4<u32>(0x00800000u))&((q&vec4<u32>(1))!=vec4<u32>(0)));return vec4<f32>(q+select(vec4<u32>(0),vec4<u32>(1),up))/255.;}
   if(radius==floor(radius)){return tentInteger(p,axis,reach);}
   for(var i=-reach;i<=reach;i=i+1){total=total+blurAt(p+axis*f32(i))*tentWeight(radius,abs(f32(i)));}
@@ -997,6 +1039,7 @@ fn shade(p:vec2<f32>)->vec4<f32>{let mode=select(i32(u(4).x),COMPOSITOR_MODE,COM
  if(mode==3){var src=a*u(4).z;if(u(4).w>0.5){src=src*at(sourceC,p,u(3)).a;}return over(smp(sourceB,p,u(2)),src,i32(u(4).y));}
  if(mode==4||mode==5){let radius=i32(u(9).x);let axis=select(vec2<f32>(0,1),vec2<f32>(1,0),u(9).y<0.5);var total=vec4<f32>(0);var alpha=select(1.,0.,u(9).z>0.5);for(var i=-radius;i<=radius;i=i+1){var v:vec4<f32>;if(mode==5&&u(9).w>0.5){v=at(sourceA,p+axis*f32(i),u(1));}else{v=smp(sourceA,p+axis*f32(i),u(1));}if(mode==4){total=total+v;}else{alpha=select(min(alpha,v.a),max(alpha,v.a),u(9).z>0.5);}}if(mode==4){return total/f32(2*radius+1);}return vec4<f32>(0,0,0,alpha);}
  if(mode==6){if(u(9).x>0.5){let b=smpBytes(sourceB,p-u(9).yz,u(2)).a;let coverage=select(b,round(a.a*255.)*(1.-b/255.),u(9).w>0.5);let alpha=u32(round(clamp(u(8).x*coverage,0.,255.)*65536.));let colors=vec4<u32>(round(vec4<f32>(u(7).yzw,1.)*255.));let numerator=colors*alpha;let denominator=16711680u;let q=numerator/vec4<u32>(denominator);let r=numerator-q*denominator;let up=(r*2u>vec4<u32>(denominator))|((r*2u==vec4<u32>(denominator))&((q&vec4<u32>(1))!=vec4<u32>(0)));return vec4<f32>(q+select(vec4<u32>(0),vec4<u32>(1),up))/255.;}let b=smp(sourceB,p-u(9).yz,u(2)).a;let coverage=select(b,a.a*(1.-b),u(9).w>0.5);let alpha=u(8).x*coverage;let result=vec4<f32>(u(7).yzw*alpha,alpha);if(u(9).x>0.5){return round(result*255.)/255.;}return result;}
+ if(mode==60){return colorControlsPixel(a);}
  if(mode==30){return vec4<f32>(maskLumRN(a.rgb));}
  if(mode==7){let v=noise(vec2<i32>(floor(local(p)*max(0.01,u(10).x))),7u);let alpha=u(10).y*a.a;var source=vec4<f32>(vec3<f32>(v*alpha),alpha);if(u(60).x<0.5){source=round(source*255.)/255.;}return over(a,source,9);}
  if(mode==8){let q=vec2<i32>(floor(local(p)));let delta=(vec2<f32>(noise(q,13u),noise(q,29u))-0.5)*u(10).x;let device=vec2<f32>(u(45).x*delta.x+u(45).z*delta.y,u(45).y*delta.x+u(45).w*delta.y);return smp(sourceA,p+device,u(1));}

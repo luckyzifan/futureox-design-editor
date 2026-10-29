@@ -95,6 +95,7 @@ self.onmessage = event => {
           const flag = new Int32Array(cancellation)
           value = kernel.compile_gpu_packet_cancellable(args[0] as string, () => Atomics.load(flag, 0) !== 0)
         }
+        else if(method==='load_source_snapshot')throw Error('NATIVE_SOURCE_UNSUPPORTED')
         else value = (kernel[method] as (...args: any[]) => unknown).apply(kernel, method === 'apply_document_patch_with_damage' ? args.slice(0, 1) : args)
         progress(3)
         commitSnapshot?.()

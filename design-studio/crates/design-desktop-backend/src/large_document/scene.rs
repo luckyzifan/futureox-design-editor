@@ -51,6 +51,20 @@ fn instance_resize_only(
 mod tests {
     use super::*;
     #[test]
+    fn typed_design_system_merge_matches_the_original_json_merge_and_conflict_rules() {
+        use futureox_design_kernel::design_system::DesignSystem;
+        let first:DesignSystem=serde_json::from_value(json!({"fontSources":{"n":{"runs":{"0":"source-a"}}},
+            "sketchContainers":{"assets":{"untouched":[1,-0.0,1e20]},"nodeMetadata":{"a":{"nested":{"x":1}}}}})).unwrap();
+        let second:DesignSystem=serde_json::from_value(json!({"fontSources":{"n":{"runs":{"1":"source-b"}}},
+            "sketchContainers":{"assets":{"untouched":[1,-0.0,1e20]},"nodeMetadata":{"a":{"nested":{"y":2}},"b":{"retained":"all bytes"}}}})).unwrap();
+        let mut oracle=serde_json::to_value(&first).unwrap();merge(&mut oracle,serde_json::to_value(&second).unwrap()).unwrap();
+        let mut actual=first.clone();merge_design_system(&mut actual,second).unwrap();
+        assert_eq!(serde_json::to_value(actual).unwrap(),oracle);
+        let conflict:DesignSystem=serde_json::from_value(json!({"sketchContainers":{"nodeMetadata":{"a":{"nested":{"x":2}}}}})).unwrap();
+        assert!(merge_design_system(&mut first.clone(),conflict.clone()).is_err());
+        assert!(merge(&mut serde_json::to_value(first).unwrap(),serde_json::to_value(conflict).unwrap()).is_err());
+    }
+    #[test]
     fn shared_window_retention_is_conservative_without_recharging_node_values() {
         let doc:Document=serde_json::from_value(json!({"schemaVersion":16,"id":"source","name":"source","pages":[{"id":"p","name":"page","background":"#ffffff","children":["n"]}],"nodes":{"n":futureox_design_kernel::facet::sample_node("n","frame")}})).unwrap();
         let bytes=serde_json::to_vec(&doc).unwrap().len();
@@ -102,6 +116,34 @@ fn merge(a: &mut Value, b: Value) -> Result<()> {
         Err(issue("Conflicting shared source metadata in page windows"))
     }
 }
+fn merge_entries<T: PartialEq + Serialize + serde::de::DeserializeOwned>(a: &mut BTreeMap<String,T>, b: BTreeMap<String,T>) -> Result<()> {
+    for (key,value) in b {
+        if let Some(old)=a.get_mut(&key) {
+            if *old!=value {
+                let mut merged=serde_json::to_value(&*old).map_err(issue)?;
+                merge(&mut merged,serde_json::to_value(value).map_err(issue)?)?;
+                *old=serde_json::from_value(merged).map_err(issue)?;
+            }
+        } else {a.insert(key,value);}
+    }
+    Ok(())
+}
+fn merge_design_system(a: &mut futureox_design_kernel::design_system::DesignSystem, b: futureox_design_kernel::design_system::DesignSystem) -> Result<()> {
+    merge_entries(&mut a.font_sources,b.font_sources)?;
+    merge_entries(&mut a.collections,b.collections)?;
+    merge_entries(&mut a.variables,b.variables)?;
+    merge_entries(&mut a.active_modes,b.active_modes)?;
+    merge_entries(&mut a.styles,b.styles)?;
+    merge_entries(&mut a.libraries,b.libraries)?;
+    // Large per-node Sketch provenance is already a JSON map. Merge owned
+    // incoming entries in place instead of cloning and re-decoding the entire
+    // accumulated document metadata for every converted source object.
+    for (key,value) in b.sketch_containers {
+        if let Some(old)=a.sketch_containers.get_mut(&key){merge(old,value)?;}
+        else{a.sketch_containers.insert(key,value);}
+    }
+    Ok(())
+}
 // Conservative serialized retention bound. Subtract only the value bytes of
 // exact shared entries; duplicate keys, delimiters and root metadata stay in
 // the bound. Never subtract conflicting references or change memory policy.
@@ -124,6 +166,53 @@ fn unique_window_bytes(full: &Document, window: &Document, bytes: usize) -> Resu
     Ok(added)
 }
 
+pub(super) fn merge_window(full: &mut Document, mut doc: Document) -> Result<()> {
+    full.schema_version = full.schema_version.max(doc.schema_version);
+    full.pages[0].children.append(&mut doc.pages[0].children);
+    for id in &doc.pages[1].children {
+        if !full.pages[1].children.contains(id) {
+            full.pages[1].children.push(id.clone());
+        }
+    }
+    for (id, node) in doc.nodes {
+        if let Some(previous) = full.nodes.get(&id) {
+            if previous != &node {
+                return Err(issue("Conflicting source node in page dependency closure"));
+            }
+        } else {
+            full.nodes.insert(id, node);
+        }
+    }
+    match (&mut full.design_system, doc.design_system) {
+        (Some(a), Some(b)) => {
+            merge_design_system(a,b)?;
+        }
+        (a @ None, Some(b)) => *a = Some(b),
+        _ => {}
+    }
+    if full.color_management != doc.color_management {
+        return Err(issue("Page window color contract changed"));
+    }
+    for (id, font) in doc.fonts {
+        if let Some(old)=full.fonts.get(&id) {
+            if old!=&font{return Err(issue("Conflicting source font in page dependency closure"));}
+        } else {
+            full.fonts.insert(id, font);
+        }
+    }
+    if let Some(b) = doc.prototype {
+        if let Some(a) = &mut full.prototype {
+            a.interactions.extend(b.interactions);
+            if a.start_node.is_none() {
+                a.start_node = b.start_node;
+            }
+        } else {
+            full.prototype = Some(b);
+        }
+    }
+    Ok(())
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct PageRange {
@@ -140,13 +229,13 @@ pub(super) fn build(
     n: usize,
     cancel: &AtomicBool,
 ) -> Result<(Document, Vec<String>)> {
-    let (doc, warnings, _) = build_range(s, p, n, cancel, 0, false, capacity::document_byte_limit())?;
+    let (doc, warnings, _) = build_range(s, p, n, cancel, 0, false, capacity::document_byte_limit(), None)?;
     Ok((doc, warnings))
 }
 
 pub(super) fn build_range(
     s: &Session, p: usize, n: usize, cancel: &AtomicBool,
-    offset: usize, segmented: bool, byte_limit: usize,
+    offset: usize, segmented: bool, byte_limit: usize, root_limit: Option<usize>,
 ) -> Result<(Document, Vec<String>, Option<PageRange>)> {
     if s.format != "sketch" {
         return Err(issue(
@@ -176,10 +265,15 @@ pub(super) fn build_range(
     } else {
         vec![n]
     };
-    if offset >= roots.len() || (entry.kind != "page" && offset != 0) {
+    if offset >= roots.len() || root_limit == Some(0) ||
+        (entry.kind != "page" && (offset != 0 || root_limit.is_some())) {
         return Err(issue("Invalid page working-set offset"));
     }
     let total_roots = roots.len();
+    // The UI may request a smaller contiguous range after the authoritative
+    // WASM derivation expands component instances beyond live-scene admission.
+    // This only narrows source work; it never changes either byte allowance.
+    let range_end = root_limit.map_or(total_roots, |limit| offset.saturating_add(limit).min(total_roots));
     let mut end = offset;
     let byte_limit = byte_limit.min(capacity::document_byte_limit());
     let context = projection::SketchContext::new(s)?;
@@ -192,11 +286,11 @@ pub(super) fn build_range(
     // Merge in source order and join every worker before returning on failure
     // or cancellation. No detached jobs or new Tokio blocking lanes.
     let concurrency = if capacity::memory_budget_bytes() >= 2 * 1024 * 1024 * 1024 { 2 } else { 1 };
-    'windows: for batch in roots[offset..].chunks(concurrency) {
+    'windows: for batch in roots[offset..range_end].chunks(concurrency) {
         check_cancel(cancel).map_err(issue)?;
         let convert = |root| {
             check_cancel(cancel).map_err(issue)?;
-            let (doc, _, notes) = projection::sketch_window_in(s, p, root, 64 * 1024 * 1024, &context)?;
+            let (doc, notes) = window_cache::convert(s, p, root, cancel, &context)?;
             check_cancel(cancel).map_err(issue)?;
             Ok::<_, BackendError>((doc, notes))
         };
@@ -211,7 +305,7 @@ pub(super) fn build_range(
         });
         for converted in converted {
             check_cancel(cancel).map_err(issue)?;
-            let (mut doc, notes) = converted?;
+            let (doc, notes) = converted?;
             let window_bytes = serde_json::to_vec(&doc).map_err(issue)?.len();
             capacity::check_document_bytes(window_bytes).map_err(issue)?;
             // Each window includes its shared fonts/component dependencies. Charge
@@ -228,53 +322,8 @@ pub(super) fn build_range(
             retained = next_retained;
             capacity::check_document_bytes(retained).map_err(issue)?;
             warnings.extend(notes);
-            if let Some(full) = &mut full {
-                full.schema_version = full.schema_version.max(doc.schema_version);
-                full.pages[0].children.append(&mut doc.pages[0].children);
-                for id in &doc.pages[1].children {
-                    if !full.pages[1].children.contains(id) {
-                        full.pages[1].children.push(id.clone());
-                    }
-                }
-                for (id, node) in doc.nodes {
-                    if let Some(previous) = full.nodes.get(&id) {
-                        if previous != &node {
-                            return Err(issue("Conflicting source node in page dependency closure"));
-                        }
-                    } else {
-                        full.nodes.insert(id, node);
-                    }
-                }
-                match (&mut full.design_system, doc.design_system) {
-                    (Some(a), Some(b)) => {
-                        let mut value = serde_json::to_value(&*a).map_err(issue)?;
-                        merge(&mut value, serde_json::to_value(b).map_err(issue)?)?;
-                        *a = serde_json::from_value(value).map_err(issue)?;
-                    }
-                    (a @ None, Some(b)) => *a = Some(b),
-                    _ => {}
-                }
-                if full.color_management != doc.color_management {
-                    return Err(issue("Page window color contract changed"));
-                }
-                for (id, font) in doc.fonts {
-                    if !full.fonts.contains_key(&id) {
-                        full.fonts.insert(id, font);
-                    }
-                }
-                if let Some(b) = doc.prototype {
-                    if let Some(a) = &mut full.prototype {
-                        a.interactions.extend(b.interactions);
-                        if a.start_node.is_none() {
-                            a.start_node = b.start_node;
-                        }
-                    } else {
-                        full.prototype = Some(b);
-                    }
-                }
-            } else {
-                full = Some(doc);
-            }
+            if let Some(full) = &mut full { merge_window(full, doc)?; }
+            else { full = Some(doc); }
             end += 1;
         }
     }
@@ -301,7 +350,7 @@ pub(super) fn build_range(
 }
 pub(super) fn load(s: &mut Session, request: Request, cancel: &AtomicBool) -> Result<Value> {
     let (p, n) = location(s, request.key.as_deref())?;
-    let (document, warnings, range) = build_range(s, p, n, cancel, request.offset, true, capacity::document_byte_limit())?;
+    let (document, warnings, range) = build_range(s, p, n, cancel, request.offset, true, capacity::document_byte_limit(), request.limit)?;
     let bytes = serde_json::to_vec(&document).map_err(issue)?;
     capacity::check_document_bytes(bytes.len()).map_err(issue)?;
     check_cancel(cancel).map_err(issue)?;

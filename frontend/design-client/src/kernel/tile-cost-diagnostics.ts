@@ -1,4 +1,5 @@
 import type { GpuScene } from './gpu/types'
+import { drawWorkLimits } from '../../../design-desktop/src/render-pass-work.mjs'
 // Numeric group flags: 1=rectangles, 2=pass accounting, 4=field elapsed,
 // 8=packet scene/effects, 16=geometry build elapsed, 32=pure encode CPU time.
 // Bits16/32 remain unavailable; neither is inferred from graph elapsed.
@@ -12,6 +13,7 @@ export const tileCostLimits: Record<string,number> = {
   tileDrawCalls:1e9,tileCommandSubmissions:1e9,
 }
 const scanLimit=4096
+Object.assign(tileCostLimits,drawWorkLimits)
 export function createTileCostDiagnostics(enabled:boolean) {
   if(!enabled)return undefined
   const totals:Record<string,number>={tileCostSamples:0,tileCostUnavailable:48,tileCostCapped:0,
@@ -24,9 +26,10 @@ export function createTileCostDiagnostics(enabled:boolean) {
     totals[key]=next
   }
   return {
-    observe(scene:GpuScene,result:{passPixels?:number;materialFieldBuildMs?:number;graphMs?:number;checkpointMs?:number;materialFieldBuilds?:number;materialFieldHits?:number;materialFieldUploadBytes?:number;materialFieldRejectedOversize?:number;materialFieldRejectedPinned?:number;materialFieldRejectedBytes?:number;drawCalls?:number;commandSubmissions?:number}) {
+    observe(scene:GpuScene,result:{drawWork?:Record<string,number>;passPixels?:number;materialFieldBuildMs?:number;graphMs?:number;checkpointMs?:number;materialFieldBuilds?:number;materialFieldHits?:number;materialFieldUploadBytes?:number;materialFieldRejectedOversize?:number;materialFieldRejectedPinned?:number;materialFieldRejectedBytes?:number;drawCalls?:number;commandSubmissions?:number}) {
       if(totals.tileCostSamples>=2048){totals.tileCostCapped=1;totals.tileCostUnavailable=63;totals.costSamplesOmitted=Math.min(1e9,totals.costSamplesOmitted+1);return}
       totals.tileCostSamples++
+      if(result.drawWork)for(const key of Object.keys(drawWorkLimits))if(result.drawWork[key]!==undefined)add(key,result.drawWork[key],2,key==='drawWorkCapped'||key==='drawWorkVersion')
       const output=scene.output,source=scene.extent
       if(output&&source&&[output.x,output.y,output.w,output.h,source.x,source.y,source.w,source.h].every(Number.isFinite)&&output.w>0&&output.h>0&&source.w>0&&source.h>0){
         add('outputPixelVisits',output.w*output.h,1);add('sourcePixelVisits',source.w*source.h,1)

@@ -284,7 +284,7 @@ export async function publishLibrary(
   const childIds = new Set(Object.values(nodes).flatMap((n) => n.children))
   const rootIds = Object.keys(nodes).filter((id) => !childIds.has(id))
   doc.nodes = nodes
-  doc.pages = [{ id: uid(), name: doc.name, children: rootIds, background: '#ffffff' }]
+  doc.pages = [{ id: doc.id, name: doc.name, children: rootIds, background: '#ffffff' }]
   delete doc.animations
   delete doc.prototype
   if (doc.designSystem) doc.designSystem.libraries = {}
@@ -313,12 +313,48 @@ export async function verifyLibrary(value: unknown): Promise<LibraryPackage> {
   if ((await digest(p.document)) !== p.digest) throw new Error('组件库摘要不匹配')
   return p
 }
+/** Explicit local file refresh. The native archive identity and template keys
+ * are stable; content hashes determine a new local release. No network watch. */
+export async function prepareSketchLibrary(source: DesignDocument, target: DesignDocument): Promise<LibraryPackage> {
+  if (!Object.values(source.nodes).some(n=>n.component && !n.instanceOrigin)) throw new Error('Sketch 文件中没有可发布的 Symbol')
+  const old = target.designSystem?.libraries[source.id]
+  const candidate = await publishLibrary(source, old?.version ?? 1)
+  if (old && candidate.digest !== old.digest) candidate.version = old.version + 1
+  return candidate
+}
+type SketchNodeMetadata = { bindings?: Record<string,string>; styleRefs?: Record<string,string> }
+function sketchMetadata(d: DesignDocument) { return (d.designSystem?.sketchContainers?.nodeMetadata || {}) as Record<string,SketchNodeMetadata> }
+/** Adopt only embedded foreign symbols whose native symbol ID matches the
+ * explicitly selected local source. Never match by visible name or position. */
+function embeddedSketchLibrary(doc: DesignDocument, p: LibraryPackage): DesignSystem['libraries'][string] | undefined {
+  const localMeta=sketchMetadata(doc), sourceMeta=sketchMetadata(p.document), nodeMap:Record<string,string>={}, roots:string[]=[]
+  for (const source of Object.values(p.document.nodes).filter(n=>n.component && !n.instanceOrigin)) {
+    const symbol=sourceMeta[source.id]?.bindings?.symbolID
+    if (!symbol) continue
+    const matches=Object.values(doc.nodes).filter(n=>n.component && localMeta[n.id]?.bindings?.sketchForeignLibraryID && localMeta[n.id]?.bindings?.symbolID?.toUpperCase()===symbol.toUpperCase())
+    if (matches.length>1) throw new Error('外部 Symbol 身份重复，无法安全更新')
+    if (!matches.length) continue
+    const local=matches[0];roots.push(local.id);nodeMap[source.id]=local.id
+    let remote:Record<string,string>={}
+    try {remote=JSON.parse(localMeta[local.id].bindings?.sketchForeignSymbolRaw || '{}').remoteToLocalIDMap || {}} catch {throw new Error('外部 Symbol 身份映射损坏')}
+    const descendants=(d:DesignDocument,n:DesignNode):DesignNode[]=>{const out:DesignNode[]=[];const visit=(id:string)=>{const x=d.nodes[id];if(!x||x.instanceOrigin)return;out.push(x);x.children.forEach(visit)};n.children.forEach(visit);return out}
+    const localChildren=descendants(doc,local)
+    for(const child of descendants(p.document,source)){
+      const key=child.componentKey||child.id, remoteKey=Object.keys(remote).find(k=>k.toUpperCase()===key.toUpperCase())
+      const identity=remoteKey?remote[remoteKey]:key
+      const matches=localChildren.filter(n=>(n.componentKey||n.id).toUpperCase()===identity.toUpperCase()||n.id.toUpperCase()===identity.toUpperCase())
+      if(matches.length>1)throw new Error('外部 Symbol 子图层身份重复')
+      if(matches.length===1)nodeMap[child.id]=matches[0].id
+    }
+  }
+  return roots.length ? {name:p.name,version:0,digest:'',componentIds:roots,nodeMap} : undefined
+}
 /** Import immutable releases with stable local IDs; normal component resolution
  * reapplies the consuming document's instance overrides after each update. */
 export function installLibrary(doc: DesignDocument, p: LibraryPackage) {
   if (p.id !== p.document.id || !/^[0-9a-f-]{36}$/i.test(p.id)) throw new Error('组件库标识无效')
   const s = (doc.designSystem ??= emptySystem()),
-    old = s.libraries[p.id]
+    old = s.libraries[p.id] || embeddedSketchLibrary(doc,p)
   if (old && (p.version < old.version || (p.version === old.version && p.digest !== old.digest)))
     throw new Error('组件库版本倒退或同版本内容冲突')
   if (old?.version === p.version && old.digest === p.digest) return
@@ -379,10 +415,33 @@ export function installLibrary(doc: DesignDocument, p: LibraryPackage) {
       .filter((id) => !p.document.nodes[id].instanceOrigin)
       .map((id) => map[id])
     // Stable template keys are source identities, independent of local UUIDs.
-    n.componentKey ??= id
+    n.componentKey = doc.nodes[n.id]?.componentKey ?? n.componentKey ?? id
     remapDesignDependencies(n, resources)
     doc.nodes[n.id] = n
   }
+  // Copy only provenance for installed authored nodes, remapped to their
+  // stable local identities. Document-level foreign containers are not merged.
+  for (const key of ['nodeMetadata','textSourceLayouts']) {
+    const source = incomingSystem?.sketchContainers?.[key] as Record<string,unknown> | undefined
+    const previous = s.sketchContainers?.[key] as Record<string,unknown> | undefined
+    if (!source && !previous) continue
+    const next = {...previous}
+    for (const id of Object.values(old?.nodeMap || {})) delete next[id]
+    for (const [id] of authored) if (source?.[id] !== undefined) {
+      const value = structuredClone(source[id])
+      if (key==='nodeMetadata') {
+        const prior=(previous?.[map[id]] as SketchNodeMetadata | undefined)?.bindings
+        if (prior?.sketchForeignLibraryID) {
+          const metadata=value as SketchNodeMetadata;metadata.bindings ??= {}
+          for (const k of ['sketchForeignLibraryID','sketchForeignSymbolRaw']) if(prior[k]) metadata.bindings[k]=prior[k]
+        }
+      }
+      next[map[id]] = value
+    }
+    ;(s.sketchContainers ??= {})[key] = next
+  }
+  for (const id of Object.values(old?.nodeMap || {})) if (s.fontSources) delete s.fontSources[id]
+  for (const [id] of authored) if (incomingSystem?.fontSources?.[id]) (s.fontSources ??= {})[map[id]] = structuredClone(incomingSystem.fontSources[id])
   for (const [id, font] of Object.entries(p.document.fonts || {})) {
     if (doc.fonts?.[id] && doc.fonts[id].data !== font.data) throw new Error('组件库字体标识冲突')
     doc.fonts = { ...doc.fonts, [id]: font }

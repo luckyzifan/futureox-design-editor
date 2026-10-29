@@ -5,7 +5,7 @@ import type { GpuNode } from './gpu/types'
  * infer effect support from its radius: an unknown visible effect blocks reuse. */
 export function effectsAreKnown(effects: readonly Effect[]): boolean {
   return effects.every(effect => !effect.visible ||
-    ['shadow', 'inner-shadow', 'blur', 'background-blur', 'glass', 'noise', 'texture'].includes(effect.kind))
+    ['shadow', 'inner-shadow', 'blur', 'background-blur', 'glass', 'noise', 'texture', 'color-controls', 'gaussian-blur', 'motion-blur', 'zoom-blur'].includes(effect.kind))
 }
 
 export function backdropEffect(effects: Effect[]) {
@@ -14,6 +14,7 @@ export function backdropEffect(effects: Effect[]) {
   )
   return first &&
     (backdropRadius(first) > 0 ||
+      (first.colorControls !== undefined && (first.colorControls.brightness !== 0 || first.colorControls.contrast !== 1 || first.colorControls.saturation !== 1 || first.colorControls.hue !== 0)) ||
       (first.kind === 'glass' &&
         (first.glass
           ? first.glass.refraction !== 0 ||

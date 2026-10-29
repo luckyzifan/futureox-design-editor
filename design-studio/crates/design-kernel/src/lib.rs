@@ -17,6 +17,7 @@ pub mod capture_plan;
 mod certified_filter;
 pub mod code_blocks;
 pub mod color;
+pub mod color_controls;
 pub mod components;
 pub mod component_updates;
 pub mod constraint_projection;
@@ -29,6 +30,10 @@ pub mod design_system;
 pub mod dirty_region;
 pub mod editing;
 pub mod effects;
+pub mod spatial_blur;
+pub mod zoom_blur;
+mod zoom_support;
+pub mod noise_fill;
 pub mod export;
 pub mod export_formats;
 pub mod facet;
@@ -36,6 +41,9 @@ pub mod fidelity;
 pub mod fig;
 pub mod figma_gradient;
 pub mod figma_sampling;
+pub mod figma_snap;
+pub mod ruler_units;
+pub mod svg_export;
 pub mod fixed_gradient;
 pub mod font;
 mod font_glyph_cache;
@@ -43,6 +51,9 @@ mod text_path_cache;
 mod read_cache;
 pub mod freehand;
 mod geometry_snapshot;
+mod geometry_support;
+mod world_support;
+mod margin_index;
 mod render_index;
 mod resident_strokes;
 mod derived_invalidation;
@@ -53,6 +64,7 @@ pub mod gradient_blur;
 pub mod graph_api;
 pub mod handles;
 mod image_color;
+pub mod image_rows;
 pub mod image_adjust;
 pub mod image_mipmap;
 pub mod inferred_layout;
@@ -96,6 +108,12 @@ pub mod reviews;
 mod rounded;
 pub mod sampling;
 pub mod scene;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod scene_store;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod scene_demand;
+#[cfg(not(target_arch = "wasm32"))]
+mod source_compile;
 pub mod fd_extensions;
 pub mod shortcuts;
 pub mod smart_guides;
@@ -595,6 +613,13 @@ mod wasm {
             .map_err(|e| JsValue::from_str(&e))
     }
     #[wasm_bindgen]
+    pub fn rational_large_tent_kernel_rgba(radius: f64) -> Result<Vec<u8>, JsValue> {
+        let bytes = crate::rational_filter::RationalKernel::large_tent(radius)
+            .map(|kernel| kernel.encoded()).map_err(|e| JsValue::from_str(&e))?;
+        if bytes.len() > 65536 { return Err(JsValue::from_str("Large exact filter packet exceeds 64 KiB")); }
+        Ok(bytes)
+    }
+    #[wasm_bindgen]
     pub fn certified_tent_kernel_rgba(radius: f64) -> Result<Vec<u8>, JsValue> {
         crate::rational_filter::RationalKernel::tent(radius)
             .map(|kernel| kernel.certified_encoded())
@@ -612,6 +637,36 @@ mod wasm {
         crate::rational_filter::RationalKernel::uniform_box(radius)
             .map(|kernel| kernel.certified_encoded())
             .map_err(|e| JsValue::from_str(&e))
+    }
+    #[wasm_bindgen]
+    pub fn color_controls_uniforms(value: &str, managed: bool) -> Result<Vec<f32>, JsValue> {
+        let controls: crate::color_controls::ColorControls = serde_json::from_str(value).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        if !controls.validate() { return Err(JsValue::from_str("Invalid color controls")); }
+        Ok(controls.uniforms(managed).to_vec())
+    }
+    #[wasm_bindgen]
+    pub fn color_controls_matrix(value: &str) -> Result<Vec<f32>, JsValue> {
+        let controls: crate::color_controls::ColorControls = serde_json::from_str(value).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        if !controls.validate() { return Err(JsValue::from_str("Invalid color controls")); }
+        Ok(controls.matrix().to_vec())
+    }
+    #[wasm_bindgen]
+    pub fn motion_blur_kernel(radius:f64, angle:f64, matrix:Vec<f64>) -> Result<Vec<f32>, JsValue> {
+        let matrix:[f64;6]=matrix.try_into().map_err(|_|JsValue::from_str("Motion blur requires an affine transform"))?;
+        crate::spatial_blur::MotionKernel::new(radius,angle,crate::math::Transform(matrix))
+            .map(|k|k.encoded()).map_err(|e|JsValue::from_str(&e))
+    }
+    #[wasm_bindgen]
+    pub fn noise_fill_preset_json()->Result<String,JsValue> {
+        crate::noise_fill::preset().and_then(|p|serde_json::to_string(&p).map_err(|e|e.to_string())).map_err(|e|JsValue::from_str(&e))
+    }
+    #[wasm_bindgen]
+    pub fn zoom_blur_coordinates(value:&str,matrix:Vec<f64>,size:Vec<f64>,rect:&str)->Result<Vec<f32>,JsValue> {
+        let p=serde_json::from_str(value).map_err(|e|JsValue::from_str(&format!("Invalid zoom parameters: {e}")))?;
+        let matrix:[f64;6]=matrix.try_into().map_err(|_|JsValue::from_str("Invalid zoom transform"))?;
+        let size:[f64;2]=size.try_into().map_err(|_|JsValue::from_str("Invalid zoom size"))?;
+        let rect=serde_json::from_str(rect).map_err(|e|JsValue::from_str(&format!("Invalid zoom extent: {e}")))?;
+        crate::zoom_blur::coordinates(p,crate::math::Transform(matrix),size,rect).map_err(|e|JsValue::from_str(&e))
     }
     #[wasm_bindgen]
     pub fn gaussian_box_radii(sigma: f64) -> Result<Vec<u32>, JsValue> {
@@ -1373,6 +1428,19 @@ mod wasm {
         /// transfers it once per frame.
         staged_tiled_bytes: Vec<u8>,
         component_updates: crate::component_updates::State,
+    }
+    #[wasm_bindgen]
+    pub struct ImageRowDecoder { inner: crate::image_rows::Decoder }
+    #[wasm_bindgen]
+    impl ImageRowDecoder {
+        #[wasm_bindgen(constructor)]
+        pub fn new(uri: &str, settings: &str) -> Result<ImageRowDecoder, JsValue> {
+            let settings = serde_json::from_str(settings).map_err(|e| JsValue::from_str(&format!("{e}")))?;
+            Ok(Self { inner: crate::image_rows::Decoder::new(uri, settings).map_err(|e| JsValue::from_str(&e))? })
+        }
+        pub fn width(&self) -> u32 { self.inner.width() }
+        pub fn height(&self) -> u32 { self.inner.height() }
+        pub fn next_rows(&mut self) -> Result<Vec<f32>, JsValue> { self.inner.next_rows().map_err(|e| JsValue::from_str(&e)) }
     }
     #[wasm_bindgen]
     pub struct DocumentHistory {

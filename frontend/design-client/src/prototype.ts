@@ -34,7 +34,9 @@ export type PrototypeMediaAction =
   | 'next'
   | 'forward'
   | 'rewind'
+export type PrototypeTransitionStyle = 'none'|'slide-left'|'slide-right'|'slide-top'|'slide-bottom'
 export type PrototypeAction = {
+  transitionStyle?: PrototypeTransitionStyle
   kind: 'navigate' | 'overlay' | 'back' | 'close-overlay' | 'scroll-to' | 'set-variable' | 'if'
   expression?: Expr
   thenActions?: PrototypeAction[]
@@ -140,6 +142,7 @@ export type PrototypeState = {
   eventCount?: number
   current: string
   history: string[]
+  historyTransitions?: {style?: PrototypeTransitionStyle; duration: number; easing?: PrototypeEasing}[]
   overlays: string[]
   values: Record<string, string | number | boolean>
   modeValues?: Record<string, Record<string, string | number | boolean>>
@@ -147,6 +150,9 @@ export type PrototypeState = {
   navigation?: { serial: number; preserveScroll: boolean }
   scrollTarget?: string
   scrollRequest?: number
+  transitionStyle?: PrototypeTransitionStyle
+  transitionFrom?: string
+  transitionSerial?: number
   transitionMs: number
   /** Easing of the in-flight transition (kernel curve-name set). */
   transitionEasing?: PrototypeEasing
@@ -219,6 +225,22 @@ export function prototypeEase(kind: PrototypeEasing | undefined, t: number): num
   }
   return bezier(y1, y2, (lo + hi) / 2)
 }
+/** Isolate a preview frame visually while retaining every graph/resource
+ * owner required by native document admission and component resolution. */
+export function prototypeFrameView(doc: DesignDocument, root: string): {document: DesignDocument; pageId: string} {
+  if (!doc.nodes[root]) throw new Error('原型目标已删除')
+  const parents=new Map<string,string>()
+  for (const p of doc.pages) for (const id of p.children) parents.set(id,p.id)
+  for (const n of Object.values(doc.nodes)) for (const id of n.children) parents.set(id,n.id)
+  const nodes={...doc.nodes};let at=root
+  while (parents.has(at)) {
+    const parent=parents.get(at)!, siblings=doc.nodes[parent]?.children || doc.pages.find(p=>p.id===parent)!.children
+    for (const id of siblings) if(id!==at) nodes[id]={...nodes[id],visible:false}
+    at=parent
+  }
+  if(!doc.pages.some(p=>p.id===at))throw new Error('原型目标不属于页面')
+  return {document:{...doc,nodes},pageId:at}
+}
 export function initialPrototype(doc: DesignDocument): PrototypeState {
   const current = doc.prototype?.startNode || doc.pages[0].children[0]
   if (!current || !doc.nodes[current]) throw new Error('请先创建画板并设置原型起点')
@@ -249,6 +271,8 @@ export function prototypeEvent(
       next.transition = undefined
       next.transitionMs = 0
       next.transitionEasing = undefined
+      next.transitionStyle = undefined
+      next.transitionFrom = undefined
       applied = true
     }
     const execute = (actions: PrototypeAction[]) => { for (const authored of actions) {
@@ -276,8 +300,12 @@ export function prototypeEvent(
         next.transitionMs = duration
         next.transitionEasing = easing
       }
-      const navigate = (target: string) => {
-        next.transition = a.transitionShouldSmartAnimate === false
+      const navigate = (target: string, style = a.transitionStyle) => {
+        next.transitionFrom = next.current
+        next.transitionStyle = style
+        next.transitionSerial = (next.transitionSerial ?? 0) + 1
+        if (style === 'none') next.transitionMs = 0
+        next.transition = style || a.transitionShouldSmartAnimate === false
           ? undefined : planTransition(doc, next.current, target)
         next.current = target
         next.overlays = []; next.overlayPositions = []
@@ -290,13 +318,19 @@ export function prototypeEvent(
       switch (a.kind) {
         case 'navigate':
           if (next.history.length >= 256) throw new Error('Prototype navigation history budget exceeded')
+          while ((next.historyTransitions ??= []).length < next.history.length) next.historyTransitions.push({duration:0})
+          next.historyTransitions.push({style:a.transitionStyle,duration:next.transitionMs,easing:next.transitionEasing})
           next.history.push(next.current)
           navigate(a.target!)
           break
         case 'back':
           if (next.history.length) {
             const target = next.history.pop()!
-            navigate(target)
+            const previous = next.historyTransitions?.pop()
+            const reverse: Partial<Record<PrototypeTransitionStyle,PrototypeTransitionStyle>> = {'slide-left':'slide-right','slide-right':'slide-left','slide-top':'slide-bottom','slide-bottom':'slide-top',none:'none'}
+            if (previous && a.durationMs === undefined) next.transitionMs=previous.duration
+            if (previous && a.easingCurve === undefined) next.transitionEasing=previous.easing
+            navigate(target,a.transitionStyle ?? (previous?.style ? reverse[previous.style] : undefined))
           }
           next.overlays = []
           next.overlayPositions = []

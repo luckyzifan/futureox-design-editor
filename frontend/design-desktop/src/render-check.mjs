@@ -10,6 +10,7 @@ const entries = {
   reference: 'figma-reference-check.html',
   optical: 'optical-field-check.html',
   order: 'display-order-check.html',
+  source: 'native-source-check.html',
 }
 export function renderCheckConfig(argv, packaged = false) {
   const option = name => argv.find(value => value.startsWith(`${name}=`))?.slice(name.length + 1)

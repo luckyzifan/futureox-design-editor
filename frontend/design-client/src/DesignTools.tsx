@@ -12,8 +12,10 @@ import {
   installLibrary,
   publishLibrary,
   verifyLibrary,
+  prepareSketchLibrary,
   variableValue,
 } from './design-system'
+import { importFileInWorker } from './import-file-worker'
 import { download } from './persistence'
 import type { Interaction, PrototypeAction } from './prototype'
 import { hasSchemaExtras } from './prototype'
@@ -241,7 +243,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                 ref={file}
                 hidden
                 type="file"
-                accept=".fdlib"
+                accept=".fdlib,.sketch"
                 onChange={async (e) => {
                   const f = e.target.files?.[0]
                   e.target.value = ''
@@ -249,11 +251,21 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                   if (!f) return
                   try {
                     if (f.size > 32 * 1024 * 1024) throw new Error('组件库超过 32 MB')
-                    const source = await importStep(request, () => f.text())
-                    const p = await importStep(request, () => verifyLibrary(JSON.parse(source)))
+                    const target = editor.state.doc
+                    let warnings: string[] = []
+                    const p = f.name.toLowerCase().endsWith('.sketch')
+                      ? await importStep(request, async () => {
+                          const imported = await importFileInWorker(f, '', 'sketch-library', request.signal)
+                          warnings = imported.warnings
+                          return prepareSketchLibrary(imported.document, target)
+                        })
+                      : await (async () => {
+                          const source = await importStep(request, () => f.text())
+                          return importStep(request, () => verifyLibrary(JSON.parse(source)))
+                        })()
                     request.assertCurrent()
                     editor.change('安装组件库', (d) => installLibrary(d, p))
-                    setError('')
+                    setError(editor.state.doc === target && editor.state.message !== '安装组件库' ? editor.state.message : warnings.join('；'))
                   } catch (e) {
                     if (request.isCurrent()) setError(String(e))
                   }
@@ -457,6 +469,9 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                               }
                             />
                           )}
+                          {['navigate','back'].includes(a.kind) && <select aria-label="过渡方式" value={a.transitionStyle ?? ''} onChange={ev=>action(i,j,x=>{x.transitionStyle=(ev.target.value || undefined) as PrototypeAction['transitionStyle']})}>
+                            <option value="">智能动画</option><option value="none">无动画</option><option value="slide-left">从左滑入</option><option value="slide-right">从右滑入</option><option value="slide-top">从上滑入</option><option value="slide-bottom">从下滑入</option>
+                          </select>}
                           <input
                             aria-label="过渡毫秒"
                             type="number"

@@ -1,4 +1,4 @@
-import { CANVAS_ZOOM_MIN, CANVAS_ZOOM_MAX, type CanvasCamera } from './canvas-camera'
+import { clampCanvasZoom, type CanvasCamera } from './canvas-camera'
 
 export const CAMERA_STATE_KEY = 'forma-camera-state-v1'
 const LIMIT = 64
@@ -12,7 +12,9 @@ export function savedCamera(value: unknown): CanvasCamera | undefined {
   if (!value || typeof value !== 'object') return
   const { x, y, zoom } = value as CanvasCamera
   if (![x, y, zoom].every(Number.isFinite) || zoom <= 0) return
-  return { x, y, zoom: Math.max(CANVAS_ZOOM_MIN, Math.min(CANVAS_ZOOM_MAX, zoom)) }
+  const clamped=clampCanvasZoom(zoom),ratio=clamped/zoom
+  const result={x:x*ratio,y:y*ratio,zoom:clamped}
+  return Object.values(result).every(Number.isFinite)?result:undefined
 }
 
 export class CameraState {

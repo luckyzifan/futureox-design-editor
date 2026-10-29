@@ -183,11 +183,30 @@ impl Images {
             .map_or(cached.base.clone(), |l| l.clone()))
     }
     fn base(&mut self, data: &str) -> Result<&mut CachedImage, String> {
-        if let std::collections::hash_map::Entry::Vacant(entry) = self.cache.entry(data.to_owned())
-        {
-            let (surface, count) = decode(data, self.settings, self.pixels)?;
+        if !self.cache.contains_key(data) {
+            let decoded = decode(data, self.settings, self.pixels);
+            let (surface, count) = match decoded {
+                Err(error) if self.pixels > 0 && error.starts_with("Decoded image budget exceeded") => {
+                    let before = self.pixels;
+                    // This is derived residency, not a total-document quota.
+                    // GPU uploads already own their copied bytes. Keep every
+                    // CPU/fork borrower pinned, including borrowed mip levels,
+                    // and reclaim only cache-owned surfaces before one retry.
+                    let mut released = 0;
+                    self.cache.retain(|_, image| {
+                        let borrowed = Arc::get_mut(&mut image.base).is_none() ||
+                            image.chain.iter_mut().any(|level| Arc::get_mut(level).is_none());
+                        if !borrowed { released += image.resident_pixels(); }
+                        borrowed
+                    });
+                    self.pixels = self.pixels.checked_sub(released).ok_or("Decoded image cache accounting underflow")?;
+                    if self.pixels == before { return Err(error); }
+                    decode(data, self.settings, self.pixels)?
+                }
+                other => other?,
+            };
             self.pixels += count;
-            entry.insert(CachedImage {
+            self.cache.insert(data.to_owned(), CachedImage {
                 base: Arc::new(surface),
                 chain: Vec::new(),
             });
@@ -1329,6 +1348,39 @@ mod tests {
             "data:image/png;base64,{}",
             base64::engine::general_purpose::STANDARD.encode(buffer)
         )
+    }
+
+    #[test]
+    fn decoded_cache_pressure_reclaims_only_unborrowed_images() {
+        let mut images = Images::default();
+        images.set_color_settings(Some(crate::color::ColorSettings::default()));
+        for width in 2048..2053 {
+            let image = images.image(&png_uri(width, 1024)).unwrap();
+            assert_eq!(image.rect.w, width);
+            assert!(images.resident_pixels() <= 8_388_608);
+        }
+        // The fourth image needs a real eviction; the previous implementation
+        // refused it even though all earlier borrowers had already returned.
+        assert!(images.cache.len() < 5);
+    }
+
+    #[test]
+    fn decoded_cache_pressure_preserves_borrowed_pixels_and_the_original_allowance() {
+        let mut images = Images::default();
+        images.set_color_settings(Some(crate::color::ColorSettings::default()));
+        let held = images.image(&png_uri(2048, 1024)).unwrap();
+        let before = held.pixels[0];
+        drop(images.image(&png_uri(1024, 1024)).unwrap());
+        let error = images.image(&png_uri(4096, 1792)).err().unwrap();
+        assert!(error.contains("Decoded image budget exceeded"));
+        assert_eq!(images.resident_pixels(), 2048 * 1024);
+        assert_eq!(held.pixels[0], before);
+        assert_eq!(images.cache.len(), 1);
+        let weak = Arc::downgrade(&held);
+        drop(held);
+        assert!(images.image(&png_uri(4096, 1792)).is_err());
+        assert!(weak.upgrade().is_some());
+        assert_eq!(images.resident_pixels(), 2048 * 1024);
     }
 
     #[test]

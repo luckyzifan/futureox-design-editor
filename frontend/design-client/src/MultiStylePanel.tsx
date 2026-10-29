@@ -9,7 +9,7 @@ import { validColor } from './color'
 import { clearWholeTextRunColor } from './text'
 import { styleSlots, editStyleSlot, styleValue, setStyleValue, type StyleField } from './style-stack'
 
-const effectNames: Record<Effect['kind'], string> = { shadow: '投影', 'inner-shadow': '内阴影', blur: '图层模糊', 'background-blur': '背景模糊', glass: '玻璃', noise: '噪声', texture: '纹理' }
+const effectNames: Record<Effect['kind'], string> = { shadow: '投影', 'inner-shadow': '内阴影', blur: '图层模糊', 'background-blur': '背景模糊', glass: '玻璃', noise: '噪声', texture: '纹理', 'color-controls': '颜色调整', 'gaussian-blur': '高斯模糊', 'motion-blur': '运动模糊', 'zoom-blur':'缩放模糊' }
 const paintNames: Record<string, string> = {solid:'纯色',linear:'线性渐变',radial:'径向渐变',angular:'角度渐变',diamond:'菱形渐变',image:'图片'}
 const names = { fills: '填充', strokes: '描边', effects: '效果' }
 export function MultiStylePanel({ editor, nodes, field, readUnits = propertyUnitReader(editor.state.doc) }: { editor: Editor; nodes: DesignNode[]; field: StyleField; readUnits?: PropertyUnitReader }) {
@@ -90,10 +90,13 @@ export function MultiStylePanel({ editor, nodes, field, readUnits = propertyUnit
         {choice('join', `${title}连接`, [['miter', '尖角'], ['round', '圆角'], ['bevel', '斜角']])}
       </>}
       {field === 'effects' && <>
-        {number('radius', `${title}模糊`, 0, 1000, true)}
+        {slot.kind !== 'zoom-blur' && number('radius', `${title}模糊`, 0, 1000, true)}
         {['shadow', 'inner-shadow'].includes(slot.kind) && <>{color('color', `${title}阴影颜色`)}{number('x', `${title}偏移 X`, -1000, 1000, true)}{number('y', `${title}偏移 Y`, -1000, 1000, true)}{number('spread', `${title}扩展`, -1000, 1000, true)}</>}
-        {number('opacity', `${title}强度 %`, 0, 100, false, true)}
+        {slot.kind !== 'zoom-blur' && number('opacity', `${title}强度 %`, 0, 100, false, true)}
         {['glass', 'texture', 'noise'].includes(slot.kind) && number('amount', `${title}幅度`, 0, 1000)}
+        {number('zoomBlur.amount', `${title}缩放模糊强度`, 0, 1000)}
+        {number('zoomBlur.center.0', `${title}焦点 X %`, -1e8, 1e8, false, true)}
+        {number('zoomBlur.center.1', `${title}焦点 Y %`, -1e8, 1e8, false, true)}
         {(['depth', 'bevelSize', 'refraction', 'dispersion', 'lightAngle', 'lightIntensity'] as const).map(key => {
           const percent = ['refraction', 'dispersion', 'lightIntensity'].includes(key)
           const label = {depth:'深度',bevelSize:'倒角宽度',refraction:'折射',dispersion:'色散',lightAngle:'光线角度',lightIntensity:'照明'}[key]

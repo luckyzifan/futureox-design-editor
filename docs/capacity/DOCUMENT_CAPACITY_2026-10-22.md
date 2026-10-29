@@ -194,7 +194,10 @@ compatibility and atomic commits, rather than merely substituting a higher cap.
 ## macOS native startup detection, 2026-10-26
 
 Native macOS processes without an inherited launch policy now query available
-memory through the safe `sysinfo` 0.37.2 platform adapter (RAM refresh only).
+memory from the fixed macOS `/usr/bin/vm_stat` utility, without a shell or PATH
+lookup. It counts free + inactive pages using the reported page size, without
+subtracting compressed memory a second time. Malformed/failed readings use the
+existing unknown-runtime fallback.
 They retain the existing half-memory headroom, wasm32 ceiling, 16× document
 reserve and once-per-process pin. The kernel still forbids unsafe code. Explicit
 trusted overrides retain their precedence and fail-closed validation. Electron

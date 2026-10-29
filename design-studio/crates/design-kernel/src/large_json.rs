@@ -11,9 +11,6 @@ use std::sync::Arc;
 /// callers supply a storage-derived policy; fragments stay independently bounded.
 pub const MAX_SOURCE_OFFSET: u64 = 9_007_199_254_740_991;
 pub const MAX_FRAGMENT_BYTES: u64 = 4 * 1024 * 1024;
-pub const MAX_INDEX_VALUES: usize = 1_000_000;
-const MAX_DEPTH: usize = 128;
-const MAX_KEY_BYTES: usize = 16 * 1024;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Span {
@@ -90,6 +87,21 @@ impl FragmentKeyBudget {
     }
 }
 
+struct ObjectFrame {
+    depth: usize, owner: Option<usize>, label: String, start: u64,
+    member_start: Option<u64>, ordinal: usize, entry: Option<Entry>, select: bool,
+    keys: HashSet<[u8; 32]>, fragment_keys: BTreeSet<Box<str>>,
+    fragment_key_bytes: usize, field_bytes: usize, first: bool,
+}
+struct ValueFrame {
+    depth: usize, parent: Option<usize>, select: bool, label: String,
+    array_children: bool, member_start: Option<u64>,
+}
+struct ArrayFrame { depth: usize, parent: Option<usize>, select: bool, count: u64 }
+enum ScanWork {
+    Value(ValueFrame), Object(ObjectFrame), Field(ObjectFrame, Field), Array(ArrayFrame),
+}
+
 struct Scanner<R, F> {
     input: BufReader<R>,
     at: u64,
@@ -161,6 +173,7 @@ impl<R: Read, F: FnMut(usize, Entry) -> io::Result<()>> Scanner<R, F> {
                     if out.len().saturating_add(n) > max {
                         return Err(invalid("JSON indexed string/key limit exceeded"));
                     }
+                    out.try_reserve(n).map_err(io::Error::other)?;
                     out.push_str(std::str::from_utf8(&bytes[..n]).expect("ASCII run"));
                 }
                 self.advance(n)?;
@@ -220,6 +233,7 @@ impl<R: Read, F: FnMut(usize, Entry) -> io::Result<()>> Scanner<R, F> {
                 if out.len() + character.len_utf8() > max {
                     return Err(invalid("JSON indexed string/key limit exceeded"));
                 }
+                out.try_reserve(character.len_utf8()).map_err(io::Error::other)?;
                 out.push(character);
             }
         }
@@ -260,218 +274,131 @@ impl<R: Read, F: FnMut(usize, Entry) -> io::Result<()>> Scanner<R, F> {
         }
         Ok(())
     }
-    fn value(
-        &mut self,
-        depth: usize,
-        parent: Option<usize>,
-        select: bool,
-        label: &str,
-        array_children: bool,
-        member_start: Option<u64>,
-    ) -> io::Result<Span> {
-        if depth > MAX_DEPTH {
-            return Err(invalid("JSON nesting limit exceeded"));
+    fn finish_field(&mut self, object: &mut ObjectFrame, mut field: Field, text: Option<String>) {
+        if let Some(item) = &mut object.entry {
+            if let Some(text) = text {
+                match field.key.as_str() {
+                    "do_objectID" | "id" => item.id = text,
+                    "name" => item.name = text,
+                    "_class" | "kind" => item.kind = text,
+                    _ => {}
+                }
+            }
+            // This is a metadata cache window, not a source-content quota.
+            // Cold fields remain in their original source byte ranges.
+            if item.fields.len() < 4096 && object.field_bytes.saturating_add(96 + field.key.len()) <= 512 * 1024 {
+                object.field_bytes += 96 + field.key.len();
+                field.member.end = self.at; field.value.end = self.at;
+                item.fields.push(field);
+            }
+        } else if self.fragment_keys.is_some() {
+            object.fragment_keys.insert(field.key.into_boxed_str());
         }
-        self.whitespace()?;
-        let start = self.at;
-        match self.peek()? {
-            Some(b'{') => self.object(depth, parent, select, label, member_start)?,
-            Some(b'[') => {
-                self.byte()?;
-                self.whitespace()?;
-                if self.peek()? != Some(b']') {
-                    let mut count = 0u64;
-                    loop {
-                        self.value(
-                            depth + 1,
-                            parent,
-                            array_children,
-                            &count.to_string(),
-                            false,
-                            None,
-                        )?;
-                        count += 1;
-                        self.whitespace()?;
-                        if self.peek()? != Some(b',') {
-                            break;
-                        }
-                        self.byte()?;
-                    }
-                }
-                self.expect(b']')?;
-            }
-            Some(b'"') => {
-                self.string(false, 0)?;
-            }
-            Some(b't') => {
-                for b in b"true" {
-                    self.expect(*b)?;
-                }
-            }
-            Some(b'f') => {
-                for b in b"false" {
-                    self.expect(*b)?;
-                }
-            }
-            Some(b'n') => {
-                for b in b"null" {
-                    self.expect(*b)?;
-                }
-            }
-            Some(b'-' | b'0'..=b'9') => self.number()?,
-            _ => return Err(invalid("Invalid JSON value")),
-        }
-        Ok(Span {
-            start,
-            end: self.at,
-        })
+        object.first = false;
     }
-    fn object(
-        &mut self,
-        depth: usize,
-        parent: Option<usize>,
-        select: bool,
-        label: &str,
-        member_start: Option<u64>,
-    ) -> io::Result<()> {
-        use sha2::{Digest, Sha256};
-        let start = self.at;
-        self.expect(b'{')?;
-        let ordinal = self.entries;
-        let mut entry = if select {
-            if self.entries >= MAX_INDEX_VALUES {
-                return Err(invalid("JSON index working-set limit exceeded"));
-            }
-            self.entries += 1;
-            // Keep selection/count/string-limit semantics, but do not allocate
-            // navigation rows or field tables merely to validate a fragment.
-            self.fragment_keys.is_none().then(|| Entry {
-                member: Span::default(),
-                id: format!("json:{start}"),
-                name: label.into(),
-                kind: "object".into(),
-                parent,
-                depth,
-                span: Span::default(),
-                fields: Vec::new(),
-            })
-        } else {
-            None
-        };
-        let owner = if select { Some(ordinal) } else { parent };
-        let mut keys = HashSet::new();
-        // Exact decoded identity, with no Unicode normalization and no
-        // hash-only equivalence. Same keys in separate objects remain valid.
-        let mut fragment_keys: BTreeSet<Box<str>> = BTreeSet::new();
-        let mut fragment_key_bytes = 0usize;
-        let mut field_bytes = 0usize;
-        self.whitespace()?;
-        if self.peek()? != Some(b'}') {
-            loop {
-                self.whitespace()?;
-                let field_start = self.at;
-                let key = self.string(true, MAX_KEY_BYTES)?.unwrap();
-                if let Some(budget) = &mut self.fragment_keys {
-                    if fragment_keys.contains(key.as_str()) {
-                        return Err(invalid("Duplicate JSON object key in edit fragment"));
-                    }
-                    if fragment_keys.len() >= MAX_INDEX_VALUES {
-                        return Err(invalid("Excessive JSON object keys in edit fragment"));
-                    }
-                    budget.retain(key.len())?;
-                    fragment_key_bytes = fragment_key_bytes
-                        .checked_add(key.len())
-                        .ok_or_else(|| invalid("JSON fragment key byte overflow"))?;
-                }
-                if entry.is_some()
-                    && (!keys.insert(<[u8; 32]>::from(Sha256::digest(key.as_bytes())))
-                        || keys.len() > MAX_INDEX_VALUES)
-                {
-                    return Err(invalid("Duplicate or excessive indexed JSON object keys"));
-                }
-                self.whitespace()?;
-                self.expect(b':')?;
-                self.whitespace()?;
-                let value_start = self.at;
-                let metadata = select
-                    && matches!(
-                        key.as_str(),
-                        "do_objectID" | "id" | "name" | "_class" | "kind"
-                    );
-                let text = if metadata && self.peek()? == Some(b'"') {
-                    self.string(true, MAX_KEY_BYTES)?
-                } else {
-                    None
-                };
-                if text.is_none() {
-                    let nested = (depth == 0 || label == "nodes") && self.peek()? == Some(b'{');
-                    self.value(
-                        depth + 1,
-                        owner,
-                        nested,
-                        &key,
-                        key == "layers" || depth == 0,
-                        Some(field_start),
-                    )?;
-                }
-                if let Some(item) = &mut entry {
-                    if let Some(text) = text {
-                        match key.as_str() {
-                            "do_objectID" | "id" => item.id = text,
-                            "name" => item.name = text,
-                            "_class" | "kind" => item.kind = text,
-                            _ => {}
-                        }
-                    }
-                    // A wide collection is navigated through child records, not
-                    // an enormous in-memory field table on its parent.
-                    if item.fields.len() < 4096
-                        && field_bytes.saturating_add(96 + key.len()) <= 512 * 1024
-                    {
-                        field_bytes += 96 + key.len();
-                        item.fields.push(Field {
-                            key,
-                            member: Span {
-                                start: field_start,
-                                end: self.at,
-                            },
-                            value: Span {
-                                start: value_start,
-                                end: self.at,
-                            },
-                        });
-                    }
-                } else if self.fragment_keys.is_some() {
-                    // Until now the local key was counted while its value was
-                    // scanned. Moving it avoids a second retained key copy.
-                    fragment_keys.insert(key.into_boxed_str());
-                }
-                self.whitespace()?;
-                if self.peek()? != Some(b',') {
-                    break;
-                }
-                self.byte()?;
-            }
-        }
+    fn close_object(&mut self, object: ObjectFrame) -> io::Result<()> {
         self.expect(b'}')?;
         if let Some(budget) = &mut self.fragment_keys {
-            budget.release(fragment_key_bytes, fragment_keys.len())?;
+            budget.release(object.fragment_key_bytes, object.fragment_keys.len())?;
         }
-        // On an error the local sets and whole validator are dropped; no
-        // partially validated fragment or accounting state can be reused.
-        if let Some(mut item) = entry {
-            item.span = Span {
-                start,
-                end: self.at,
-            };
-            item.member = Span {
-                start: member_start.unwrap_or(start),
-                end: self.at,
-            };
-            (self.sink)(ordinal, item)?;
+        if let Some(mut item) = object.entry {
+            item.span = Span { start: object.start, end: self.at };
+            item.member = Span { start: object.member_start.unwrap_or(object.start), end: self.at };
+            (self.sink)(object.ordinal, item)?;
         }
         Ok(())
     }
+    fn value(&mut self, depth: usize, parent: Option<usize>, select: bool, label: &str,
+        array_children: bool, member_start: Option<u64>) -> io::Result<Span> {
+        use sha2::{Digest, Sha256};
+        self.whitespace()?;
+        let start = self.at;
+        let string_limit = usize::try_from(self.limit).unwrap_or(usize::MAX);
+        let mut work = vec![ScanWork::Value(ValueFrame { depth, parent, select, label: label.into(), array_children, member_start })];
+        // Explicit heap frames make source nesting independent of the native
+        // thread stack. No document-size/depth/count quota is used here.
+        while let Some(task) = work.pop() {
+            work.try_reserve(2).map_err(io::Error::other)?;
+            match task {
+                ScanWork::Value(value) => {
+                    self.whitespace()?;
+                    let start = self.at;
+                    match self.peek()? {
+                        Some(b'{') => {
+                            self.byte()?;
+                            let ordinal = self.entries;
+                            let entry = if value.select {
+                                self.entries = self.entries.checked_add(1).ok_or_else(|| invalid("JSON index address overflow"))?;
+                                self.fragment_keys.is_none().then(|| Entry {
+                                    member: Span::default(), id: format!("json:{start}"), name: value.label.clone(), kind: "object".into(),
+                                    parent: value.parent, depth: value.depth, span: Span::default(), fields: Vec::new(),
+                                })
+                            } else { None };
+                            work.push(ScanWork::Object(ObjectFrame { depth: value.depth,
+                                owner: if value.select { Some(ordinal) } else { value.parent },
+                                label: value.label, start, member_start: value.member_start, ordinal, entry, select: value.select,
+                                keys: HashSet::new(), fragment_keys: BTreeSet::new(), fragment_key_bytes: 0, field_bytes: 0, first: true }));
+                        }
+                        Some(b'[') => {
+                            self.byte()?;
+                            work.push(ScanWork::Array(ArrayFrame { depth: value.depth, parent: value.parent, select: value.array_children, count: 0 }));
+                        }
+                        Some(b'"') => { self.string(false, 0)?; }
+                        Some(b't') => { for b in b"true" { self.expect(*b)?; } }
+                        Some(b'f') => { for b in b"false" { self.expect(*b)?; } }
+                        Some(b'n') => { for b in b"null" { self.expect(*b)?; } }
+                        Some(b'-' | b'0'..=b'9') => self.number()?,
+                        _ => return Err(invalid("Invalid JSON value")),
+                    }
+                }
+                ScanWork::Array(mut array) => {
+                    self.whitespace()?;
+                    if self.peek()? == Some(b']') { self.byte()?; continue; }
+                    if array.count > 0 { self.expect(b',')?; }
+                    let value = ValueFrame { depth: array.depth.checked_add(1).ok_or_else(|| invalid("JSON depth address overflow"))?,
+                        parent: array.parent, select: array.select, label: array.count.to_string(), array_children: false, member_start: None };
+                    array.count = array.count.checked_add(1).ok_or_else(|| invalid("JSON array address overflow"))?;
+                    work.push(ScanWork::Array(array)); work.push(ScanWork::Value(value));
+                }
+                ScanWork::Object(mut object) => {
+                    self.whitespace()?;
+                    if self.peek()? == Some(b'}') { self.close_object(object)?; continue; }
+                    if !object.first { self.expect(b',')?; self.whitespace()?; }
+                    let field_start = self.at;
+                    let key = self.string(true, string_limit)?.unwrap();
+                    if let Some(budget) = &mut self.fragment_keys {
+                        if object.fragment_keys.contains(key.as_str()) { return Err(invalid("Duplicate JSON object key in edit fragment")); }
+                        budget.retain(key.len())?;
+                        object.fragment_key_bytes = object.fragment_key_bytes.checked_add(key.len()).ok_or_else(|| invalid("JSON fragment key byte overflow"))?;
+                    }
+                    if object.entry.is_some() {
+                        object.keys.try_reserve(1).map_err(io::Error::other)?;
+                        if !object.keys.insert(<[u8; 32]>::from(Sha256::digest(key.as_bytes()))) { return Err(invalid("Duplicate indexed JSON object key")); }
+                    }
+                    self.whitespace()?; self.expect(b':')?; self.whitespace()?;
+                    let field = Field { key, member: Span { start: field_start, end: 0 }, value: Span { start: self.at, end: 0 } };
+                    let metadata = object.select && matches!(field.key.as_str(), "do_objectID" | "id" | "name" | "_class" | "kind");
+                    if metadata && self.peek()? == Some(b'"') {
+                        let text = self.string(true, string_limit)?;
+                        self.finish_field(&mut object, field, text);
+                        work.push(ScanWork::Object(object));
+                    } else {
+                        let nested = (object.depth == 0 || object.label == "nodes") && self.peek()? == Some(b'{');
+                        let value = ValueFrame { depth: object.depth.checked_add(1).ok_or_else(|| invalid("JSON depth address overflow"))?,
+                            parent: object.owner, select: nested, label: field.key.clone(),
+                            array_children: field.key == "layers" || object.depth == 0, member_start: Some(field_start) };
+                        work.push(ScanWork::Field(object, field)); work.push(ScanWork::Value(value));
+                    }
+                }
+                ScanWork::Field(mut object, field) => {
+                    self.finish_field(&mut object, field, None);
+                    work.push(ScanWork::Object(object));
+                }
+            }
+        }
+        Ok(Span { start, end: self.at })
+    }
+
 }
 
 #[derive(Debug)]
