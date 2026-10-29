@@ -9,6 +9,20 @@ import { translationOnlyChanges } from './translation-preview'
 
 afterEach(() => vi.restoreAllMocks())
 
+// Observe both current authoritative entry points. The old resolve_components
+// export is retained for other callers but is no longer the Editor bridge.
+function observeResolution() {
+  const calls = vi.fn()
+  for (const name of ['resolve_components_full', 'resolve_components_patch'] as const) {
+    const original = VectorEngine.prototype[name]
+    vi.spyOn(VectorEngine.prototype, name).mockImplementation(function(this: VectorEngine, ...args: any[]) {
+      calls(name)
+      return (original as (...values: any[]) => string).apply(this, args)
+    })
+  }
+  return calls
+}
+
 function fixture(autoLayout = false) {
   const doc = blank('Translation resolver parity')
   doc.schemaVersion = 4
@@ -47,7 +61,7 @@ test('production preview matches forced resolver and CPU pixels while keeping un
   const editor = new Editor(doc)
   try {
     const before = editor.state.doc
-    const resolve = vi.spyOn(VectorEngine.prototype, 'resolve_components')
+    const resolve = observeResolution()
     editor.begin('Move independent group')
     expect(editor.preview({ [moving.id]: { transform: [1, 0, 0, 1, 34, 20] } })).toBe(true)
     const after = editor.state.doc
@@ -92,7 +106,7 @@ test.each(['start', 'center', 'end', 'stretch', 'scale'] as const)('exact %s con
   const f = constrainedFixture(mode, mode), editor = new Editor(f.doc)
   try {
     const before = editor.state.doc, candidate = translate(before, f.moving.id, 100, 24)
-    const resolve = vi.spyOn(VectorEngine.prototype, 'resolve_components')
+    const resolve = observeResolution()
     expect(translationOnlyChanges(before, candidate)).toEqual([f.moving.id])
     const fast = kernelLayout(candidate, before)
     expect(resolve).not.toHaveBeenCalled()
@@ -106,7 +120,7 @@ test('profiled FIG scale/center target and inert page-root constraints retain ex
   const f = constrainedFixture(), editor = new Editor(f.doc)
   try {
     const before = editor.state.doc, candidate = translate(before, f.moving.id, 99.86, 0)
-    const resolve = vi.spyOn(VectorEngine.prototype, 'resolve_components')
+    const resolve = observeResolution()
     expect(translationOnlyChanges(before, candidate)).toEqual([f.moving.id])
     const fast = kernelLayout(candidate, before)
     expect(resolve).not.toHaveBeenCalled()
@@ -147,7 +161,7 @@ test.each(['parent-resize', 'reference-mismatch', 'end-rounding', 'negative-zero
       let candidate = translate(before, f.moving.id, variant === 'end-rounding' ? 0.1 : variant === 'negative-zero' ? -0 : 99.86, 0)
       if (variant === 'parent-resize') candidate = { ...candidate, nodes: { ...candidate.nodes,
         [f.frame.id]: { ...candidate.nodes[f.frame.id], width: 600 } } }
-      const resolve = vi.spyOn(VectorEngine.prototype, 'resolve_components')
+      const resolve = observeResolution()
       expect(translationOnlyChanges(before, candidate)).toBeNull()
       const guarded = kernelLayout(candidate, before)
       expect(resolve).toHaveBeenCalledOnce()
@@ -163,7 +177,7 @@ test('an auto-layout parent retains the original full resolver instead of accept
     const candidate = { ...before, nodes: { ...before.nodes,
       [moving.id]: { ...before.nodes[moving.id], transform: [1, 0, 0, 1, 50, 60] as [number, number, number, number, number, number] } } }
     const full = kernelLayout(candidate)
-    const resolve = vi.spyOn(VectorEngine.prototype, 'resolve_components')
+    const resolve = observeResolution()
     editor.begin('Move in auto layout')
     expect(editor.preview({ [moving.id]: { transform: [1, 0, 0, 1, 50, 60] } })).toBe(true)
     expect(resolve).toHaveBeenCalledOnce()

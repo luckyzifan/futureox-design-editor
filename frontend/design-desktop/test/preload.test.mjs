@@ -67,6 +67,7 @@ test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or s
       'openDocument',
       'inspectSketch',
       'sketchSession',
+      'largeDocument',
       'openPendingDocument',
       'acceptDocument',
       'saveDocument',

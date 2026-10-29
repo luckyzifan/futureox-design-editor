@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import type { DesignDocument } from './model'
 import { blank, node, paint, stroke, validateDocument, hasPatternTiles, defaultPatternTile } from './model'
+import { prepareDocumentForEditing } from './kernel/picking'
 
 const uri =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
@@ -27,6 +28,24 @@ test('pattern tiles validate on schema-14 image paints and are detected', () => 
   const fill = restored.nodes[Object.keys(restored.nodes)[0]].fills[0]
   expect(fill.tile.mode).toBe('grid')
   expect(fill.tile.size).toEqual([24, 24])
+})
+
+test('native pattern alignment survives frontend admission and actual WASM preparation',()=>{
+  const {d,rect}=docWithTile(14)
+  // Native Sketch windows serialize this field even for the default alignment.
+  Object.assign(rect.fills[0].tile!,{alignment:['start','start']})
+  expect(()=>validateDocument(d)).not.toThrow()
+  const prepared=prepareDocumentForEditing(d)
+  expect((prepared.nodes[rect.id].fills[0].tile as any).alignment).toEqual(['start','start'])
+  expect(()=>validateDocument(prepared)).not.toThrow()
+  for(const alignment of [['center','end'],['end','start']]){
+    Object.assign(rect.fills[0].tile!,{alignment})
+    expect(()=>validateDocument(d)).not.toThrow()
+  }
+  for(const alignment of [['start'],['unknown','start'],['start',0],null]){
+    Object.assign(rect.fills[0].tile!,{alignment})
+    expect(()=>validateDocument(d)).toThrow('图层数据无效')
+  }
 })
 
 test('pattern tiles reject older schemas, non-image paints and bad values', () => {

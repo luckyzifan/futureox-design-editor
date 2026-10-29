@@ -73,6 +73,24 @@ test.each(['unprepared', 'foreign', 'resource-changed', 'destroyed', 'alias', 'f
   expect(f.driver.encoder).toBe(old); expect(close).not.toHaveBeenCalled()
   expect(target.finitePixels).toBe(true); expect(f.pipeline.encode).not.toHaveBeenCalled(); expect(f.driver.scratchBytes).toBe(0)
 })
+test.each(['complete', 'reject', 'device-change', 'lost'])('raster queue pacing %s never retires live frame scratch', async outcome => {
+  const f = fixture(); await f.driver.prepareByteTent(); f.encode()
+  const bytes = f.driver.scratchBytes
+  const pending = f.driver.yieldRasterQueue()
+  const assertion = outcome === 'complete' ? expect(pending).resolves.toBeUndefined() : expect(pending).rejects.toThrow()
+  expect(f.device.queue.submit).toHaveBeenCalledOnce()
+  expect(f.driver.scratchBytes).toBe(bytes)
+  if (outcome === 'device-change') f.driver.device = { ...f.device }
+  if (outcome === 'lost') f.driver.lost = true
+  if (outcome === 'reject') f.waits[0].reject(Error('queue rejected'))
+  else f.waits[0].resolve()
+  await assertion
+  expect(f.driver.resourceEpoch).toBe(5)
+  expect(f.driver.completedResourceEpoch).toBe(4)
+  expect(f.driver.scratchBytes).toBe(bytes)
+  expect(f.allocated.every(x => !x.destroy.mock.calls.length)).toBe(true)
+})
+
 test('multiple axis jobs are charged and submitted together; a rejected completion preserves every lease', async () => {
   const f = fixture(); await f.driver.prepareByteTent()
   expect(f.encode()).toBe(true); expect(f.encode()).toBe(true)

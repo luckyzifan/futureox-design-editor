@@ -5,6 +5,27 @@ import { blank } from '../model'
 import { PreparationChannel } from './preparation-channel'
 import { RenderKernel } from './render-kernel'
 
+test('native source loads carry an opaque token and adopt the actual native identity',async()=>{
+ const ports=new MessageChannel(),assets=new VectorEngine(),channel=new PreparationChannel(ports.port1),kernel=new RenderKernel(assets,'canvas',channel)
+ const identity={documentId:'native-source',pageId:'source-page',stageId:'source-stage',nodes:124447},seen:unknown[]=[]
+ ports.port2.onmessage=event=>{
+  const {id,method,args}=event.data;seen.push({method,args})
+  ports.port2.postMessage(method==='preparation_capabilities_v1'?{id,value:{protocol:1,nativeSourceSnapshot:true}}:
+   {id,value:identity,settings:'null',stateReceipt:{protocol:1,nonce:'source-owned'}})
+ }
+ try{
+  expect(await kernel.load_source_snapshot('opaque-token')).toEqual(identity)
+  expect(seen).toEqual([{method:'preparation_capabilities_v1',args:[]},{method:'load_source_snapshot',args:['opaque-token']}])
+  expect(kernel.preparationStateReceipt).toMatchObject({nonce:'source-owned'})
+ }finally{channel.close();ports.port2.close();assets.free()}
+})
+
+test('a browser-only kernel cannot interpret a source capability as a file path',async()=>{
+ const assets=new VectorEngine(),kernel=new RenderKernel(assets,'canvas')
+ try{await expect(kernel.load_source_snapshot('/private/source.json')).rejects.toThrow('NATIVE_SOURCE_UNSUPPORTED')}
+ finally{assets.free()}
+})
+
 test('native no-paint metadata proof preserves pixel identity but never document or render-policy changes',async()=>{
  let damage={full:false,bounds:null as null|number[]}
  const engine={bind_frame_scene_scope(){},color_settings(){return 'null'},apply_document_patch_with_damage(){return JSON.stringify(damage)}}

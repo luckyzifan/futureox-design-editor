@@ -7,6 +7,7 @@ class WorkerStub {
     id: number
     command?: string
     document?: string
+    sourceSnapshot?: {token:string;nodes:number}
     documentPatch?: string
     baseDocumentRevision?: number
     documentRevision: number
@@ -71,6 +72,22 @@ afterEach(() => {
   vi.unstubAllGlobals()
   vi.useRealTimers()
 })
+test('native source rendering never serializes or transfers the full source document',async()=>{
+ const client=new KernelClient(),source={owner:{documentId:'source',sessionEpoch:1},revision:0,token:'source-token',nodes:124447,pageId:'page',stageId:'stage'}
+ const options={pageId:'page',width:64,height:64,view:{x:0,y:0,zoom:1},transparent:false,grid:false}
+ try{
+  const first=client.renderSource(source,options);const worker=WorkerStub.instances[0]
+  expect(worker.messages[0].document).toBeUndefined();expect(worker.messages[0].documentPatch).toBeUndefined()
+  expect(worker.messages[0].sourceSnapshot).toEqual(source);const revision=worker.messages[0].documentRevision
+  worker.reply(0);await first
+  const pan=client.renderSource(source,{...options,view:{x:10,y:0,zoom:1}})
+  expect(worker.messages[1].sourceSnapshot).toEqual(source);expect(worker.messages[1].documentRevision).toBe(revision)
+  worker.reply(1);await pan
+  const next=client.renderSource({...source,revision:1,token:'new-source-token'},options)
+  expect(worker.messages[2].documentRevision).toBe(revision+1);worker.reply(2);await next
+  await expect(client.render(blank(),options)).rejects.toThrow('native snapshot renderer')
+ }finally{client.dispose()}
+})
 test('a timed-out worker is replaced on the next request and the whole snapshot is resent', async () => {
   vi.useFakeTimers()
   const client = new KernelClient(),
@@ -95,6 +112,23 @@ test('a timed-out worker is replaced on the next request and the whole snapshot 
   await next
   client.dispose()
   await expect(client.render(doc, options)).rejects.toThrow('已关闭')
+})
+
+test('a full native source can outlive the preview deadline and still cancel without publishing a late tile',async()=>{
+ vi.useFakeTimers()
+ const client=new KernelClient(),worker=WorkerStub.instances[0],controller=new AbortController(),progress=vi.fn()
+ const source={owner:{documentId:'source',sessionEpoch:1},revision:0,token:'source-token',nodes:124447,pageId:'page',stageId:'stage'}
+ const options={pageId:'page',width:64,height:64,view:{x:0,y:0,zoom:1},transparent:false,grid:false,tileViewport:[],renderIntent:'preview' as const}
+ try{
+  const job=client.renderSource(source,options,progress,controller.signal)
+  await vi.advanceTimersByTimeAsync(60000)
+  worker.onmessage?.({data:{id:worker.messages[0].id,workProgress:1,workStage:1}})
+  await vi.advanceTimersByTimeAsync(180000)
+  expect(WorkerStub.instances).toHaveLength(1);expect(progress).not.toHaveBeenCalled()
+  const rejected=expect(job).rejects.toThrow('PREVIEW_CANCELLED');controller.abort();await rejected
+  worker.onmessage?.({data:{id:worker.messages[0].id,tile:{key:'late'}}});expect(progress).not.toHaveBeenCalled()
+  const next=client.renderSource(source,options);worker.reply(worker.messages.length-1);await next
+ }finally{client.dispose()}
 })
 
 test('completed subregions keep queued previews alive without publishing an incomplete tile', async () => {
@@ -123,6 +157,33 @@ test('duplicate progress does not hide a stalled preview and late progress canno
   await vi.advanceTimersByTimeAsync(10000);await rejected
   worker.onmessage?.({data:{id:worker.messages[0].id,rasterProgress:2}})
   client.dispose()
+})
+
+test('real compiler and encoding milestones keep active previews alive without publishing pixels',async()=>{
+ vi.useFakeTimers()
+ const client=new KernelClient(),worker=WorkerStub.instances[0],doc=blank(),progress=vi.fn()
+ const pending=client.render(doc,{pageId:doc.pages[0].id,width:20,height:20,view:{x:0,y:0,zoom:1},transparent:false,grid:false,tileViewport:[]},false,'cpu',false,false,undefined,progress)
+ try{
+  await vi.advanceTimersByTimeAsync(20000)
+  worker.onmessage?.({data:{id:worker.messages[0].id,workProgress:1,workStage:1}})
+  await vi.advanceTimersByTimeAsync(20000)
+  worker.onmessage?.({data:{id:worker.messages[0].id,workProgress:2,workStage:2,drawCalls:97000}})
+  await vi.advanceTimersByTimeAsync(20000)
+  expect(progress).not.toHaveBeenCalled();expect(WorkerStub.instances).toHaveLength(1)
+  worker.reply(0);await pending
+ }finally{client.dispose()}
+})
+
+test('duplicate or invalid work milestones do not conceal a stalled graph',async()=>{
+ vi.useFakeTimers()
+ const client=new KernelClient(),worker=WorkerStub.instances[0],doc=blank()
+ const pending=client.render(doc,{pageId:doc.pages[0].id,width:20,height:20,view:{x:0,y:0,zoom:1},transparent:false,grid:false,tileViewport:[]},false,'cpu')
+ const rejected=expect(pending).rejects.toThrow('预览超时')
+ worker.onmessage?.({data:{id:worker.messages[0].id,workProgress:1,workStage:1}})
+ await vi.advanceTimersByTimeAsync(20000)
+ for(const fields of [{workProgress:1,workStage:1},{workProgress:2,workStage:2,drawCalls:0},{workProgress:2,workStage:7},{workProgress:NaN,workStage:1}])
+  worker.onmessage?.({data:{id:worker.messages[0].id,...fields}})
+ await vi.advanceTimersByTimeAsync(10000);await rejected;client.dispose()
 })
 
 test('preparation failures reject work and retire both workers before resending the document', async () => {

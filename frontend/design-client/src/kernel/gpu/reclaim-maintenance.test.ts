@@ -1,6 +1,7 @@
 // Pressure fixtures explicitly retain a 256 MiB override; the default is tested separately.
 import { afterEach, expect, test, vi } from 'vitest'
 import { GpuRenderer } from './renderer'
+import { CoordinateRetirementSet } from './coordinate-retirement-set'
 import type { Driver, Texture } from './types'
 
 const MiB = 1024 * 1024
@@ -22,6 +23,23 @@ function fixture(poolBytes = 128 * 1024) {
   renderer.free.set(`${pooled.width}:${pooled.height}`, [pooled])
   return { renderer, driver, pooled, active, complete: () => complete(), fail: () => fail(Error('lost fence')) }
 }
+
+test('small immutable coordinate fields do not require a full scan at every node',async()=>{
+  vi.stubEnv('VITE_DESIGN_FIELD_RETIREMENT_INDEX','1')
+  const f=fixture();f.renderer.frameBudget=1024*MiB;f.renderer.bytes=300*MiB
+  f.renderer.free.clear()
+  const texture={width:1,height:1,bytes:16,resource:{}} as Texture
+  f.renderer.free.setOwned('1:1',[texture]);f.renderer.free.added(texture);f.renderer.free.touched(texture,1)
+  const coordinates=new CoordinateRetirementSet<Texture>()
+  for(let i=0;i<5000;i++)coordinates.addOwned({width:1,height:1,bytes:16,resource:{}} as Texture)
+  f.renderer.coordinateMaps=coordinates
+  const visits=vi.spyOn(coordinates,Symbol.iterator)
+  for(let i=0;i<80;i++)await f.renderer.reclaimScratch()
+  expect(visits).not.toHaveBeenCalled()
+  expect(coordinates.size).toBe(5000)
+  expect(f.driver.checkpoint).not.toHaveBeenCalled()
+  expect(f.driver.destroy).not.toHaveBeenCalled()
+})
 
 test('a high working set without evictable images accumulates tiny maintenance pools', async () => {
   const f = fixture()

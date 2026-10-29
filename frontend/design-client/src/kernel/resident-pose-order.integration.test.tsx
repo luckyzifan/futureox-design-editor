@@ -18,7 +18,7 @@ vi.mock('./content-plane',()=>({registerContentPlane:()=>()=>{}}))
 vi.mock('./kernel-resources',()=>({loadKernelResources:async()=>state.font}))
 vi.mock('./image-mip-cache',()=>({imageCacheKey:async()=>undefined,readCachedImage:async()=>undefined,writeCachedImage(){}}))
 vi.mock('./gpu/factory',()=>({straightAlpha:(bytes:Uint8Array)=>bytes,
-  createGpu:async()=>({driver:{name:'webgpu',managed:true,displayMath:true,lost:false,description:'descriptor-only WebGPU',
+  createGpu:async(...args:any[])=>({driver:{name:'webgpu',managed:args[6],displayMath:args[9],lost:false,description:'descriptor-only WebGPU',
     attachPresenter(_canvas:any,report:any){state.report=report;if(!state.gpu){state.gpu=descriptorPresenter(report);state.presenter=state.gpu.presenter}},
     presentFrame(frame:any){state.frames.push(frame);if(state.failPresent&&state.failPresent===frame.input?.sequence){state.failPresent=0;state.afterPresentFailure?.();throw Error('injected presenter submission failure')}state.presenter.draw(frame)},
     replacePresented(slot:number,next:number){return state.presenter.replace(slot,next)},
@@ -69,7 +69,13 @@ async function harness(real117=false,kind:'move'|'rotate'|'scale'='rotate'){
   const control={current:null as any},feedback=vi.fn(),onFailure=vi.fn()
   const interaction:any={document:doc,selection:[selected],active:true,gestureKind:kind,epoch:1,control,onReady:vi.fn(),onPosePresented:feedback}
   const view={x:0,y:0,zoom:real117?.125:1}
-  const props:any={client,items:[],view,width:240,height:160,dpr:1,pageId:doc.pages[0].id,rasterProfile:'figmaSubpixel',backend:'webgpu',
+  // A localized live capture composes over the real page backing. Omitting
+  // that producer from this transport harness correctly defers presentation
+  // at uncovered edges; it must not be "fixed" by weakening the presenter.
+  client.attachPresentation({})
+  const backing:any=await client.render(doc,{pageId:doc.pages[0].id,width:240,height:160,view,transparent:false,rasterProfile:'figmaSubpixel'})
+  const items=[{active:true,layer:1,gutter:0,blend:false,tile:{...backing,key:'native-page-backing',serial:1,x:0,y:0,width:240,height:160,zoom:view.zoom}}]
+  const props:any={client,items,view,width:240,height:160,dpr:1,pageId:doc.pages[0].id,rasterProfile:'figmaSubpixel',backend:'webgpu',
     sourceDocument:doc,translationItems:[],allowPageTranslation:false,onReady:vi.fn(),onGone:vi.fn(),onFailure,presentation:null,interaction}
   const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
   const { ResidentCompositeSurface }=await import('./ResidentCompositeSurface')
@@ -91,7 +97,7 @@ for(const real117 of [false,true])test.skipIf(real117&&!hasReal117Input).each(['
   await act(async()=>{await vi.waitFor(()=>expect(state.frames.some(f=>f.input?.sequence===1),JSON.stringify(h.messages.map(m=>({id:m.id,error:m.error,sample:m.presentation?.residentSample&&{sequence:m.presentation.residentSample.sequence,rebase:m.presentation.residentSample.needsRebase},ack:m.presentation?.input?.sequence})))).toBe(true),{timeout:10000})})
   const before=h.feedback.mock.calls.length, start=h.messages.length
   const second=await h.apply(.2)
-  await act(async()=>{await vi.waitFor(()=>expect(h.messages.some(m=>m.presentation?.presented&&m.presentation.input?.sequence===second)).toBe(true),{timeout:10000})})
+  await act(async()=>{await vi.waitFor(()=>expect(h.messages.some(m=>m.presentation?.presented&&m.presentation.input?.sequence===second),JSON.stringify({messages:h.messages.map(m=>({id:m.id,error:m.error,presentation:m.presentation})),frames:state.frames})).toBe(true),{timeout:10000})})
   await act(async()=>{await new Promise(r=>setTimeout(r,20))})
   const sequence=h.messages.slice(start).filter(m=>m.presentation?.input?.sequence===second||m.presentation?.residentSample?.sequence===second)
     .map(m=>m.presentation.presented?'presented':m.presentation.residentSample?'sample':'other')

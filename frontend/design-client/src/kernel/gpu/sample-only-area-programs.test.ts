@@ -85,7 +85,7 @@ test.each(['analytic', 'empty', 'unknown', 'bad-size', 'bad-row-origin', 'bad-ro
     if (variant === 'bad-row-origin') c[begin + 4] = 0
     if (variant === 'bad-row-count') c[begin + 5] = .5
     if (variant === 'overrun') c[begin + 4] = f.path.area!.count
-    if (variant === 'reserved') c[begin + 6] = 1
+    if (variant === 'reserved') c[begin + 6] = 2
     if (variant === 'bad-limb') c[payload + 4] = 65536
     if (variant === 'nonfinite-endpoint') c[payload + 7] = 32752
     if (variant === 'reverse-range') c[payload] = c[payload + 1] + 1
@@ -93,6 +93,13 @@ test.each(['analytic', 'empty', 'unknown', 'bad-size', 'bad-row-origin', 'bad-ro
     f.proof.bind(plan.words, plan.offsets, [f.path.area!], f.buffer, 2)
     expect(f.proof.accepts(f.path, 0, f.path.rect, plan.offsets.get(5), f.buffer, 2)).toBe(false)
   })
+
+test('a single-span full-row marker is accepted by the private program proof', () => {
+  const f = program(); f.curves[f.start + 6] = 1
+  const plan = new ResidentPrograms().plan(f.curves, [f.path.area!])!
+  f.proof.bind(plan.words, plan.offsets, [f.path.area!], f.buffer, 1)
+  expect(f.accepts()).toBe(true)
+})
 
 test('header4 requires the complete seven vectors and original finite endpoint format', () => {
   const f = program(4); f.curves[f.start + 1] = 1

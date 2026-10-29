@@ -4,7 +4,7 @@ import type {CanvasCamera} from '../canvas-camera'
 import {KernelClient,backendPreference,renderExecutionPolicy,type TileResult} from './client'
 import {canvasSamplingProfile} from './render-policy'
 import {SourceViewportPlanner} from './source-viewport-plan'
-import {tilePrepareViewport} from './tile-prepare-viewport'
+import {tileBatchPrepareViewport} from './tile-prepare-viewport'
 import {tileIntersectsView} from './tile-preview'
 import {SourceRenderWork} from './source-render-work'
 import {useDevicePixelRatio} from './presentation'
@@ -43,10 +43,13 @@ export function NativeSourceSurface(props:Props){
     const prefix=crypto.randomUUID(),cache=new Map<string,Tile>(),retired=new Map<number,number>()
     let alive=true,initialized=false,running=false,failed=false,frameHandle=0,idleTimer:ReturnType<typeof setTimeout>|undefined
     let rejectedCamera:CanvasCamera|undefined
+    let prefetchReady=''
+    const skippedPrefetch=new Set<string>()
+    const demandKey=()=>{const p=latest.current;return [p.view.x,p.view.y,p.view.zoom,p.width,p.height,density.current,moving].join('/')}
     let suspended=document.visibilityState==='hidden'
     let moving=false,serial=0,submission=0,acknowledged=0,tick=0,lastStatus='',lastStatusAt=-Infinity
     const workQueue=new SourceRenderWork<RasterTile>()
-    let wanted:{id:string;sequence:number;view:CanvasCamera;width:number;height:number;dpr:number;complete:boolean;ids:Set<number>}|undefined
+    let wanted:{id:string;sequence:number;view:CanvasCamera;width:number;height:number;dpr:number;complete:boolean;covered:boolean;demand:string;ids:Set<number>}|undefined
     const emit=(status:NativeSourceStatus)=>{
       if(!alive)return
       const signature=`${status.phase}/${status.done}/${status.total}/${status.error??''}`,now=performance.now()
@@ -94,7 +97,7 @@ export function NativeSourceSurface(props:Props){
         for(const tile of visible){tile.lastSubmission=sequence;tile.used=++tick}
         const items:ResidentFrame['items']=visible.map(tile=>({active:true,layer:keys.has(tile.key)?4:1,
           tile:{key:tile.key,serial:tile.serial,gpuTile:tile.gpuTile!,x:tile.x,y:tile.y,width:tile.width,height:tile.height,zoom:tile.zoom,phaseX:tile.phaseX,phaseY:tile.phaseY}}))
-        wanted={id,sequence,view:{...p.view},width:p.width,height:p.height,dpr:ratio,complete,ids:new Set(visible.map(tile=>tile.gpuTile!))}
+        wanted={id,sequence,view:{...p.view},width:p.width,height:p.height,dpr:ratio,complete,covered:done===tiles.length,demand:demandKey(),ids:new Set(visible.map(tile=>tile.gpuTile!))}
         client.present({presentationId:id,view:p.view,width:p.width,height:p.height,dpr:ratio,items,allowEmpty:!complete})
         emit({phase:'refining',done,total:tiles.length})
         // This is an evictable history allowance, never a source-size refusal.
@@ -115,21 +118,25 @@ export function NativeSourceSurface(props:Props){
       if(old&&old.gpuTile!==tile.gpuTile)retire(old)
       retired.delete(tile.gpuTile)
       cache.set(tile.key,{...tile,serial:old?.gpuTile===tile.gpuTile?old.serial:++serial,used:++tick,lastSubmission:old?.gpuTile===tile.gpuTile?old.lastSubmission:0})
-      schedulePaint()
+      if(!tile.prefetch||tileIntersectsView(tile,latest.current.view,latest.current))schedulePaint()
     }
     const run=async()=>{
       if(!alive||!initialized||running||failed||suspended)return
       running=true
       try{
         while(alive&&!failed&&!suspended){
-          const {p,ratio,raster,tiles}=plan(),missing=tiles.filter(tile=>!cache.has(tile.key))
-          if(!missing.length){schedulePaint();break}
-          const batch=missing.slice(0,SOURCE_PIPELINE_TILES)
+          const {p,ratio,raster,tiles,prefetch}=plan(),missing=tiles.filter(tile=>!cache.has(tile.key))
+          const optional=missing.length===0
+          if(optional&&prefetchReady!==demandKey()){schedulePaint();break}
+          const candidates=optional?prefetch.filter(tile=>!cache.has(tile.key)&&!skippedPrefetch.has(tile.key)):missing
+          if(!candidates.length)break
+          const batch=candidates.slice(0,SOURCE_PIPELINE_TILES)
+          diagnostics.record('cache',{count:batch.length,prefetch:optional?1:0,reasonCode:optional?7:5})
           const work=workQueue.begin(batch,SOURCE_PIPELINE_TILES)
           try{
             await client.renderSource(source,{pageId:source.pageId,width:Math.ceil(p.width*ratio),height:Math.ceil(p.height*ratio),
               view:raster.camera,transparent:false,grid:false,rasterProfile:profile,
-              tileViewport:batch,tilePrepareViewport:tilePrepareViewport(tiles,raster.camera),renderIntent:'preview',
+              tileViewport:batch,tilePrepareViewport:tileBatchPrepareViewport(optional?[]:tiles,[],batch,raster.camera),renderIntent:'preview',
               tileOwner:{documentId:source.owner.documentId,sessionEpoch:source.owner.sessionEpoch}},tile=>{
                 // Every useful tile can present while the next one is still
                 // preparing/rasterizing. Late or duplicate delivery cannot
@@ -141,9 +148,20 @@ export function NativeSourceSurface(props:Props){
                 }
                 receive(tile);workQueue.delivered(work,tile.key)
               },work.controller.signal)
-          }catch(error){if(work.controller.signal.aborted||String(error).includes('PREVIEW_CANCELLED'))continue;throw error}
-          finally{workQueue.release(work)}
-          if(work.pending.size)throw Error('源画板瓦片未返回，已保留当前画面')
+          }catch(error){
+            if(work.controller.signal.aborted||String(error).includes('PREVIEW_CANCELLED'))continue
+            if(optional&&/budget|memory|内存|表面.*超限/i.test(String(error))){
+              for(const tile of batch)skippedPrefetch.add(tile.key)
+              continue
+            }
+            throw error
+          }finally{workQueue.release(work)}
+          if(work.pending.size){
+            if(!optional)throw Error('源画板瓦片未返回，已保留当前画面')
+            for(const key of work.pending.keys())skippedPrefetch.add(key)
+          }
+          // Rejections stay bounded to this revision's current warm set.
+          if(skippedPrefetch.size>32)for(const key of skippedPrefetch)if(!plan().prefetchKeys.has(key))skippedPrefetch.delete(key)
           // Yield host bookkeeping; native preparation and GPU work already
           // use their existing independent threads and bounded task queues.
           await new Promise<void>(resolve=>setTimeout(resolve,0))
@@ -170,6 +188,9 @@ export function NativeSourceSurface(props:Props){
         [...expected.ids].some(id=>!actual.ids.includes(id)))return
       if(expected.complete){const count=plan().tiles.length;emit({phase:'ready',done:count,total:count})}
       latest.current.onPresented?.(actual,expected.complete)
+      if(expected.covered&&expected.demand===demandKey()&&prefetchReady!==expected.demand){
+        prefetchReady=expected.demand;void run()
+      }
     }
     wake.current=()=>{
       if(!alive)return
@@ -199,7 +220,10 @@ export function NativeSourceSurface(props:Props){
         const covered=next.exact&&next.tiles.every(tile=>cache.has(tile.key))
         // Completed tiles no longer hold the batch's camera lease. Cancel if
         // either remaining tile would delay the current viewport with old work.
-        workQueue.demand(covered,tile=>{
+        const optional=[...workQueue.current.pending.values()].every(tile=>tile.prefetch===true)
+        const missing=next.tiles.some(tile=>!cache.has(tile.key))
+        workQueue.demand(covered&&!optional,tile=>{
+          if(tile.prefetch)return next.keys.has(tile.key)||!missing&&next.prefetchKeys.has(tile.key)
           const relative=next.raster.scale/tile.zoom
           return relative<=2&&relative>=.5&&tileIntersectsView(tile,next.p.view,next.p)
         })
@@ -212,7 +236,8 @@ export function NativeSourceSurface(props:Props){
           // Preserve accepted history, but stop pending work that cannot
           // satisfy the current density/phase/owner keys. The request slot
           // still belongs to its real completion, including late GPU work.
-          workQueue.demand(false,tile=>native.keys.has(tile.key))
+          const missing=native.tiles.some(tile=>!cache.has(tile.key))
+          workQueue.demand(false,tile=>native.keys.has(tile.key)||!missing&&tile.prefetch===true&&native.prefetchKeys.has(tile.key))
           schedulePaint();void run()
         }catch(error){fail(error)}
       },SOURCE_QUIET_MS):undefined

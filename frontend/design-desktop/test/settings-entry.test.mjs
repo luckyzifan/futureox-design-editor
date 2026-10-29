@@ -54,7 +54,7 @@ function settingsCallback() {
 // These are behavior/source contracts, not a browser visibility or Electron GUI test.
 function settingsHarness({ platform = 'mac', target = { tagName: 'INPUT' }, ready = true,
   showHome = false, switching = false, transitioning = false, interactionActive = false, modal = false,
-  commit = true } = {}) {
+  commit = true, largeDocument = false, source = false } = {}) {
   const calls = []
   const { body } = settingsCallback()
   // Execute only the Settings prefix, not later save/open/editor shortcut branches.
@@ -64,10 +64,10 @@ function settingsHarness({ platform = 'mac', target = { tagName: 'INPUT' }, read
   const openSettings = () => open(ready, showHome, switching, { transitioning }, { interactionActive }, focused => {
     assert.equal(focused, target); calls.push('modal-check'); return modal
   }, { activeElement: target }, () => { calls.push('commit'); return commit }, value => { assert.equal(value, false); calls.push('close-menu') }, value => { assert.equal(value, true); calls.push('open-settings') })
-  const shortcut = Function('e', 'shortcutPlatform', 'openSettings', shortcutBody)
+  const shortcut = Function('e', 'shortcutPlatform', 'openSettings', 'largeDocument', 'source', shortcutBody)
   return { calls, openSettings, dispatch(extra = {}) {
     shortcut({ key: ',', metaKey: platform === 'mac', ctrlKey: platform !== 'mac', target,
-      preventDefault() { calls.push('prevent'); }, ...extra }, () => platform, openSettings)
+      preventDefault() { calls.push('prevent'); }, ...extra }, () => platform, openSettings, largeDocument, source)
   } }
 }
 for (const platform of ['mac', 'windows', 'linux']) {

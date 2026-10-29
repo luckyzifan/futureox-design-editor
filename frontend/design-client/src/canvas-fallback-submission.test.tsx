@@ -22,6 +22,7 @@ import { PencilInput } from './freehand'
 import * as handles from './selection-handles'
 
 const previewControl=vi.hoisted(()=>({supported:false}))
+vi.mock('./kernel/NativeSourceSurface',()=>({NativeSourceSurface:()=> <div data-testid="native-source-boundary"/>}))
 vi.mock('./edit-preview',()=>({supportsEditPreview:()=>previewControl.supported}))
 vi.mock('./CanvasEditPreview',()=>({CanvasEditPreview:()=>null}))
 const presentationControl = vi.hoisted(() => ({ hold: false, lastDocument: undefined as object | undefined, requests: [] as any[] }))
@@ -92,6 +93,21 @@ function key(value: string, options: KeyboardEventInit = {}, type = 'keydown', t
   const event = new KeyboardEvent(type, { key: value, code: value.length === 1 ? `Key${value.toUpperCase()}` : value, bubbles: true, cancelable: true, ...options })
   target.dispatchEvent(event); return event
 }
+
+test('the source canvas mounts in the real workspace and double-click opens its world point without editing',async()=>{
+ await render([])
+ const source:import('./desktop').SourceCanvasSnapshot={owner:{documentId:editor.state.doc.id,sessionEpoch:1},revision:0,token:'source-token',bytes:1000,nodes:20,roots:4,pageId:editor.state.page,stageId:'stage',bounds:{x:0,y:0,width:2000,height:2000},warnings:[],rasterProfile:'figma',colorManaged:true}
+ const opened=vi.fn(),before=editor.state.doc
+ await act(async()=>root.render(<Canvas editor={editor} nativeSource={source} onOpenSourcePoint={opened}/>))
+ expect(mount.querySelector('[data-testid="native-source-boundary"]')).not.toBeNull()
+ expect(mount.querySelector('[data-testid="surface-boundary"]')).toBeNull()
+ await act(async()=>{host().dispatchEvent(new MouseEvent('dblclick',{bubbles:true,clientX:100,clientY:80}))})
+ expect(opened).toHaveBeenCalledWith({x:100,y:80})
+ expect(editor.state.doc).toBe(before)
+ await act(async()=>root.render(<Canvas editor={editor}/>))
+ expect(mount.querySelector('[data-testid="native-source-boundary"]')).toBeNull()
+ expect(mount.querySelector('[data-testid="surface-boundary"]')).not.toBeNull()
+})
 
 async function flushFrames(at = 0) {
   await act(async () => { for (const [id, fn] of [...frames]) { frames.delete(id); fn(at) } })

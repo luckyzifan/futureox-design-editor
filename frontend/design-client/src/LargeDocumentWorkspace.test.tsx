@@ -8,7 +8,8 @@ import { LargeDocumentWorkspace, type SourceWorkspace } from './LargeDocumentWor
 import { Editor } from './engine'
 import { blank, node } from './model'
 import type { LargeDocumentBridge } from './desktop'
-const binding=vi.hoisted(()=>({editor:null as Editor|null}))
+import * as preparation from './prepared-document'
+const binding=vi.hoisted(()=>({editor:null as Editor|null,source:null as SourceWorkspace|null}))
 const bootstrap=await vi.hoisted(async()=>{
  // @ts-expect-error jsdom runtime dependency
  const {JSDOM}=await import('jsdom');const dom=new JSDOM('<html><body></body></html>')
@@ -20,6 +21,7 @@ bootstrap.window.close()
 // acceptance is separate. No FD/local-workspace saver participates here.
 function workbench(source:SourceWorkspace){
  binding.editor=source.editor
+ binding.source=source
  return <div>{source.navigation}<button onClick={()=>void source.save()}>保存修改</button><button onClick={()=>void source.exportFile()}>导出完整文件…</button><button onClick={()=>void source.leave()}>返回设计</button>
   <div className="source-workspace-canvas" inert={source.locked||undefined}>{source.ready&&<div aria-label="Shared canvas boundary"/>}</div>
   <div className="source-workspace-status">{source.error?<p role="alert">{source.error}</p>:source.notice}</div></div>
@@ -33,8 +35,26 @@ beforeEach(()=>{
  vi.stubGlobal('requestAnimationFrame',()=>1);vi.stubGlobal('cancelAnimationFrame',()=>{})
  parent=new Editor(blank('Original design'));root=createRoot(document.getElementById('root')!)
 })
-afterEach(async()=>{await act(async()=>root.unmount());parent.dispose();dom.window.close();vi.unstubAllGlobals();binding.editor=null})
-const button=(label:string)=>[...document.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent===label&&!b.disabled)!
+afterEach(async()=>{await act(async()=>root.unmount());parent.dispose();dom.window.close();vi.restoreAllMocks();vi.unstubAllGlobals();binding.editor=null;binding.source=null})
+const button=(label:string)=>[...document.querySelectorAll<HTMLButtonElement>('button')].find(b=>(b.textContent===label||b.getAttribute('aria-label')===label)&&!b.disabled)!
+test('native-capable Sketch entry lists every material in one canvas before any local edit scope is requested',async()=>{
+ const doc=blank('Material'),layer=node('rectangle',0,0,140,140);doc.nodes[layer.id]=layer;doc.pages[0].children=[layer.id]
+ const status={owner:{documentId:'source',sessionEpoch:1},revision:0,name:'source.sketch',format:'sketch',expandedBytes:831806447,maxExpandedBytes:2**42,indexedObjects:124447,dirty:false,undoCount:0,redoCount:0}
+ const scene=vi.fn(async()=>({status:'ok',json:JSON.stringify(doc),warnings:[],nodes:1,bytes:2048}))
+ const canvasLayout=vi.fn(async({offset=0}:{offset?:number})=>({status:'ok',items:Array.from({length:Math.min(200,306-offset)},(_,i)=>({key:`1:${offset+i+1}`,id:offset+i===0?layer.id:`material-${offset+i}`,name:`素材 ${offset+i}`,kind:'frame',pageId:'p',pageName:'浅色',source:{x:0,y:0,width:140,height:140},placed:{x:(offset+i)*268,y:0,width:140,height:140},bytes:2048})),offset,total:306,hasMore:offset+200<306,boundsAreLayoutHints:true,bounds:{x:0,y:0,width:82000,height:300}}))
+ const bridge={open:async()=>({status:'ok',...status}),canvasSnapshot:async()=>({status:'ok',owner:status.owner,revision:0,token:'native-source',bytes:573894001,nodes:124447,roots:306,pageId:doc.pages[0].id,stageId:'stage',bounds:{x:0,y:0,width:82000,height:300},warnings:[],rasterProfile:'figma',colorManaged:true}),canvasLayout,scene,children:async()=>({status:'ok',items:[],total:0,hasMore:false})}as unknown as LargeDocumentBridge
+ await act(async()=>root.render(<LargeDocumentWorkspace renderWorkbench={workbench} bridge={bridge} parentEditor={parent} onExit={()=>{}} onWindowClose={async()=>{}}/>))
+ expect(canvasLayout.mock.calls.map(([request])=>request.offset)).toEqual([0,200])
+ expect(scene).not.toHaveBeenCalled();expect(binding.source!.nativeCanvas!.snapshot.roots).toBe(306)
+ expect(document.querySelectorAll('[aria-label="全部素材"] [role="listitem"]')).toHaveLength(306)
+ const mutation=vi.fn();await act(async()=>{binding.editor!.change('unexpected',mutation)})
+ expect(mutation).not.toHaveBeenCalled();expect(Object.keys(binding.editor!.authoredDocument.nodes)).toHaveLength(0)
+ await act(async()=>binding.source!.nativeCanvas!.openPoint({x:70,y:70}))
+ expect(scene).toHaveBeenCalledOnce();expect(binding.source!.nativeCanvas).toBeUndefined()
+ await act(async()=>binding.editor!.updateProperties([layer.id],n=>{n.width=180}))
+ expect(binding.editor!.authoredDocument.nodes[layer.id].width).toBe(180)
+ expect(document.body.textContent).toContain('返回完整画板')
+})
 test('page uses shared main canvas, sends changed nodes and exports through the source owner',async()=>{
  const doc=blank('Page'),layer=node('rectangle',0,0,140,140);doc.nodes[layer.id]=layer;doc.pages[0].children=[layer.id]
  const original=JSON.stringify(parent.authoredDocument)
@@ -53,7 +73,7 @@ test('page uses shared main canvas, sends changed nodes and exports through the 
  await act(async()=>button('导出完整文件…').click())
  expect(exported).toHaveBeenCalledWith({owner:status.owner,expectedRevision:1})
  await act(async()=>button('页面 / 画板').click())
- await act(async()=>button('Unadmitted page载入页面').click())
+ await act(async()=>button('载入页面 Unadmitted page').click())
  expect(scene.mock.calls.map(([request])=>request.key)).toEqual(['1:0','2:0','1:0'])
  expect(binding.editor!.authoredDocument.nodes[layer.id].width).toBe(180)
  await act(async()=>binding.editor!.updateProperties([layer.id],n=>{n.width=190}))
@@ -87,7 +107,7 @@ test('loading keeps the old canvas interactive and a late source cannot overwrit
  const row=(key:string,name:string)=>({key,id:key,name,kind:'page',bytes:100,part:'p',hasChildren:false})
  const bridge={open:async()=>({status:'ok',...status}),children:async()=>({status:'ok',items:[row('1:0','Loaded'),row('1:1','Slow')],total:2,hasMore:false}),scene,cancel:async()=>({status:'ok'})}as unknown as LargeDocumentBridge
  await act(async()=>root.render(<LargeDocumentWorkspace renderWorkbench={workbench} bridge={bridge} parentEditor={parent} onExit={()=>{}} onWindowClose={async()=>{}}/>))
- await act(async()=>button('页面 / 画板').click());await act(async()=>button('Slow载入页面').click())
+ await act(async()=>button('页面 / 画板').click());await act(async()=>button('载入页面 Slow').click())
  expect(document.querySelector('.source-workspace-canvas')!.hasAttribute('inert')).toBe(false)
  await act(async()=>binding.editor!.updateProperties([layer.id],n=>{n.width=120}))
  await act(async()=>release({status:'ok',json:JSON.stringify(next),warnings:[],nodes:1,bytes:100}))
@@ -114,7 +134,7 @@ function sourceFixture(){
 async function loadFixture(f:ReturnType<typeof sourceFixture>,onExit=()=>{}){
  await act(async()=>root.render(<LargeDocumentWorkspace renderWorkbench={workbench} bridge={f.bridge} parentEditor={parent} onExit={onExit} onWindowClose={async()=>{}}/>))
  await act(async()=>document.querySelector<HTMLButtonElement>('[aria-label="展开 Source parent"]')!.click())
- await act(async()=>button('Full page载入页面').click())
+ await act(async()=>button('载入页面 Full page').click())
  return binding.editor!
 }
 
@@ -148,7 +168,7 @@ test('a save while navigating fences the clicked row and retains the remapped ro
  const f=sourceFixture(),onExit=vi.fn(),loaded=await loadFixture(f,onExit)
  await act(async()=>loaded.updateProperties([f.layer.id],node=>{node.width=180}))
  await act(async()=>button('页面 / 画板').click())
- await act(async()=>button('Other page载入页面').click())
+ await act(async()=>button('载入页面 Other page').click())
  expect(f.sceneCommit.mock.calls[0][0]).toMatchObject({key:'1:4',expectedRevision:1})
  expect(f.scene.mock.calls).toHaveLength(1)
  expect(document.querySelector('[role=alert]')!.textContent).toContain('从刷新后的列表重新选择')
@@ -218,6 +238,40 @@ test('page ranges navigate without dropping the current range on a failed load',
  expect(scene.mock.calls.slice(-2).map(([r])=>r.offset??0)).toEqual([0,1])
  expect(document.querySelector('[aria-label="页面分段"]')!.textContent).toContain('2–2 / 3')
  await act(async()=>binding.editor!.updateProperties([layer.id],n=>{n.width=30}))
- await act(async()=>button('保存修改').click())
+ await act(async()=>button('下一部分').click())
  expect(sceneCommit).toHaveBeenCalledTimes(1)
+ expect(scene.mock.calls.at(-1)![0]).toMatchObject({offset:2,expectedRevision:1})
+ expect(document.querySelector('[aria-label="页面分段"]')!.textContent).toContain('3–3 / 3')
+})
+
+test('derived capacity rejection narrows whole-root ranges and keeps complete forward/backward coverage',async()=>{
+ const doc=blank('Derived page'),ids:string[]=[]
+ for(let i=0;i<8;i++){const n=node('rectangle',i*20,0,10,10);doc.nodes[n.id]=n;ids.push(n.id)}
+ doc.pages[0].children=ids
+ const status={owner:{documentId:'source',sessionEpoch:1},revision:0,name:'source.sketch',format:'sketch',expandedBytes:100,maxExpandedBytes:1e12,indexedObjects:8,dirty:false,undoCount:0,redoCount:0}
+ const row={key:'1:0',id:'page',name:'Page',kind:'page',bytes:100,part:'p',hasChildren:false}
+ const scene=vi.fn(async({offset=0,limit=8}:{offset?:number;limit?:number})=>{
+  const end=Math.min(8,offset+limit),part=structuredClone(doc);part.pages[0].children=ids.slice(offset,end)
+  part.nodes=Object.fromEntries(part.pages[0].children.map(id=>[id,part.nodes[id]]))
+  return {status:'ok',json:JSON.stringify(part),warnings:[],nodes:end-offset,bytes:100,pageRange:{offset,end,totalRoots:8,nextOffset:end<8?end:null}}
+ })
+ const original=preparation.prepareDocumentJson
+ vi.spyOn(preparation,'prepareDocumentJson').mockImplementation(source=>{
+  if(JSON.parse(source).pages[0].children.length>2)throw Error('DOCUMENT_RESOURCE_LIMIT: derived instance bytes exceed allowance')
+  return original(source)
+ })
+ const bridge={open:async()=>({status:'ok',...status}),children:async()=>({status:'ok',items:[row],total:1,hasMore:false}),scene}as unknown as LargeDocumentBridge
+ await act(async()=>root.render(<LargeDocumentWorkspace renderWorkbench={workbench} bridge={bridge} parentEditor={parent} onExit={()=>{}} onWindowClose={async()=>{}}/>))
+ expect(scene.mock.calls.map(([r])=>r.limit)).toEqual([undefined,4,2])
+ expect(document.querySelector('[aria-label="页面分段"]')!.textContent).toContain('1–2 / 8')
+ const visited=[...binding.editor!.authoredDocument.pages[0].children]
+ for(let i=0;i<3;i++){
+  await act(async()=>button('下一部分').click())
+  visited.push(...binding.editor!.authoredDocument.pages[0].children)
+ }
+ expect(visited).toEqual(ids)
+ await act(async()=>button('上一部分').click())
+ expect(scene.mock.calls.at(-1)![0]).toMatchObject({offset:4,limit:2})
+ expect(binding.editor!.authoredDocument.pages[0].children).toEqual(ids.slice(4,6))
+ expect(document.querySelector('[role="alert"]')).toBeNull()
 })
