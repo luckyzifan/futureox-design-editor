@@ -21,6 +21,10 @@ fn interval_header(height: u32, samples: u32) -> Result<usize, String> {
     Ok(size as usize)
 }
 
+fn sample_row_full(rect: Rect, left: f64, right: f64) -> bool {
+    left <= f64::from(rect.x) + 0.125 && right >= f64::from(rect.right()) - 0.125
+}
+
 fn endpoint(x: f64, origin: i32) -> (f32, f32, [f32; 4]) {
     let floor = x.floor();
     let up = f64::from(x - floor >= 0.5);
@@ -90,6 +94,9 @@ impl AreaProgram {
                     data[header] = (data.len() / 4) as f32;
                 }
                 data[header + 1] += 1.;
+                if data[header + 1] == 1. && sample_row_full(rect, left, right) {
+                    data[header + 2] = 1.;
+                }
                 let (l, lu, lb) = endpoint(left, rect.x);
                 let (r, ru, rb) = endpoint(right, rect.x);
                 data.extend([l, r, lu, ru]);
@@ -359,6 +366,34 @@ mod work_budget_tests {
             let result = compile(&rectangle, Rect::new(0, 0, 16, 16), false).unwrap();
             assert!(result.data.iter().all(|x| x.is_finite()));
         }
+    }
+
+    #[test]
+    fn full_row_marker_is_conservative() {
+        let rect = Rect::new(10, 20, 4, 3);
+        assert!(sample_row_full(rect, 10.125, 13.875));
+        assert!(!sample_row_full(rect, 10.125 + f64::EPSILON, 13.875));
+        assert!(!sample_row_full(rect, 10.125, 13.875 - f64::EPSILON));
+
+        let covering = Contour {
+            points: vec![
+                Point::new(-10., -10.),
+                Point::new(20., -10.),
+                Point::new(20., 20.),
+                Point::new(5., 30.),
+                Point::new(-10., 20.),
+            ],
+            closed: true,
+        };
+        let program = AreaProgram::compile_samples(&[covering], Rect::new(0, 0, 10, 10), false).unwrap();
+        assert!(program.data.chunks_exact(4).skip(1).all(|record| record[2] == 1.));
+
+        let partial = Contour {
+            points: vec![Point::new(0., 0.), Point::new(10., 0.), Point::new(0., 10.)],
+            closed: true,
+        };
+        let program = AreaProgram::compile_samples(&[partial], Rect::new(0, 0, 10, 10), false).unwrap();
+        assert!(program.data.chunks_exact(4).skip(1).any(|record| record[2] == 0.));
     }
 
     #[test]

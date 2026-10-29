@@ -1,4 +1,6 @@
 use super::*;
+#[derive(Clone, Copy)]
+struct Edge { a: Point, b: Point, sign: i32 }
 fn reference_spans(
     cs: &[Contour],
     rect: Rect,
@@ -88,7 +90,7 @@ fn contiguous_buckets_keep_every_interval_bit_and_early_exit() {
         for stop in [1,7,usize::MAX] {
             let mut a=Vec::new();let complete_a=visit_spans(&cs,limit,rule,|row,left,right|{a.push((row,left.to_bits(),right.to_bits()));a.len()<stop});
             let mut b=Vec::new();let complete_b=reference_spans(&cs,limit,rule,|row,left,right|{b.push((row,left.to_bits(),right.to_bits()));b.len()<stop});
-            assert_eq!(complete_a,complete_b);assert_eq!(a,b);
+            assert_eq!(complete_a.unwrap(),complete_b);assert_eq!(a,b);
         }
     }}}
 }

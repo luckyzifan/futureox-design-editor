@@ -17,6 +17,9 @@ fn rectangle(id: &str, frame: [usize; 4], value: f64, alpha: f64) -> Value {
 }
 
 fn archive(blur: &Value) -> Vec<u8> {
+    archive_style(blur, false)
+}
+fn archive_style(blur: &Value, modern: bool) -> Vec<u8> {
     let mut layers = Vec::new();
     for y in 0..6 {
         for x in 0..8 {
@@ -25,7 +28,8 @@ fn archive(blur: &Value) -> Vec<u8> {
         }
     }
     let mut frosted = rectangle("frosted", [16, 8, 32, 32], 1., 0.1);
-    frosted["style"]["blur"] = blur.clone();
+    if modern { frosted["style"]["blurs"] = json!([blur]); }
+    else { frosted["style"]["blur"] = blur.clone(); }
     layers.push(frosted);
     let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
@@ -38,6 +42,24 @@ fn archive(blur: &Value) -> Vec<u8> {
         zip.write_all(&serde_json::to_vec(&value).unwrap()).unwrap();
     }
     zip.finish().unwrap().into_inner()
+}
+
+#[test]
+fn topology_numeric_blur_enable_flags_render_and_preserve_the_source_value() {
+    // The user's topology archive stores modern blur.isEnabled as JSON 1.
+    // Only the two native boolean encodings are accepted, not truthy values.
+    for modern in [false, true] {
+        for kind in 0..=3 {
+            for (flag, enabled) in [(json!(1), true), (json!(0), false), (json!(true), true),
+                (json!(false), false), (json!(2), false), (json!(-1), false), (json!("1"), false)] {
+                let mut blur = source_blur(kind); blur["isEnabled"] = flag;
+                let report = interop::import_sketch_report(&archive_style(&blur, modern)).unwrap();
+                assert_eq!(report.document.nodes["frosted"].effects.len(), usize::from(enabled),
+                    "modern={modern} kind={kind} flag={}", blur["isEnabled"]);
+                assert_eq!(exported_blur(&report.document), blur);
+            }
+        }
+    }
 }
 
 fn exported_blur(document: &futureox_design_kernel::scene::Document) -> Value {
@@ -62,7 +84,7 @@ fn render(document: &futureox_design_kernel::scene::Document) -> Vec<u8> {
 
 #[test]
 fn native_background_blur_imports_as_a_backdrop_effect_and_preserves_its_source_dictionary() {
-    for (kind, expected) in [(0, "blur"), (3, "background-blur")] {
+    for (kind, expected) in [(0, "gaussian-blur"), (3, "background-blur")] {
         let source = source_blur(kind);
         let report = interop::import_sketch_report(&archive(&source)).unwrap();
         let node = &report.document.nodes["frosted"];
@@ -108,12 +130,13 @@ fn edited_background_blur_exports_native_type_three_instead_of_gaussian() {
 }
 
 #[test]
-fn unsupported_motion_and_zoom_blurs_are_reported_and_never_executed_as_gaussian() {
-    for (kind, warning) in [(1, "motion-blur-not-modeled"), (2, "zoom-blur-not-modeled")] {
+fn motion_and_zoom_blurs_keep_distinct_executable_kinds_and_native_source() {
+    for (kind, expected) in [(1, "motion-blur"), (2, "zoom-blur")] {
         let source = source_blur(kind);
         let report = interop::import_sketch_report(&archive(&source)).unwrap();
-        assert!(report.document.nodes["frosted"].effects.is_empty());
-        assert!(report.warnings.iter().any(|value| value.contains(warning)));
+        assert_eq!(report.document.nodes["frosted"].effects.len(),1);
+        assert_eq!(report.document.nodes["frosted"].effects[0].kind,expected);
+        assert!(!report.warnings.iter().any(|value| value.contains(&format!("{expected}-not-modeled"))));
         assert_eq!(exported_blur(&report.document), source);
     }
 }

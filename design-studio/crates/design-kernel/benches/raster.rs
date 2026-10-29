@@ -23,13 +23,15 @@ fn main() {
                 zoom: 1.,
             },
             transparent: false,
+            checkerboard: false,
+            interactive_effects: false,
             grid: false,
             pixel_preview: None,
             animation: None,
             raster_profile: futureox_design_kernel::fidelity::RasterProfile::Analytic,
         };
         let mut samples = Vec::new();
-        for i in 0..15 {
+        for i in 0..103 {
             options.view.x = -(i as f64);
             let start = Instant::now();
             black_box(engine.render(&options).unwrap());
@@ -40,7 +42,7 @@ fn main() {
         samples.sort_by(f64::total_cmp);
         println!(
             "{}",
-            json!({"nodes":count,"p50Ms":samples[samples.len()/2],"p95Ms":samples[samples.len()-1],"stats":engine.stats(),"scope":"native software rasterization, 1280x720, pan frames, PNG encoding excluded"})
+            json!({"nodes":count,"p50Ms":(samples[(samples.len()-1)/2]+samples[samples.len()/2])/2.,"p95Ms":samples[(samples.len()*95).div_ceil(100)-1],"maxMs":samples[samples.len()-1],"samples":samples.len(),"percentile":"nearest-rank","stats":engine.stats(),"scope":"native software rasterization, 1280x720, pan frames, PNG encoding excluded"})
         );
     }
 }
