@@ -374,6 +374,8 @@ export function ProgressiveSurfaceImpl(
   },
 ) {
   const { document: doc, pageId, view, width, height, backend } = props
+  const retainedEditing=import.meta.env.VITE_DESIGN_RETAINED_INPUT_PRIORITY==='1'&&!!props.interaction?.active&&
+    props.interaction.document===doc&&!!props.interaction.control.current?.blocksCanvasRefinement?.(doc,props.interaction.selection,view)
   const capability = useDisplayCapability()
   // HDR presentation follows the pinned host policy (default off). Managed
   // computation remains linear; with HDR off its final tiles arrive as encoded
@@ -645,15 +647,15 @@ export function ProgressiveSurfaceImpl(
     ? motionRasterScale(view, dpr, width, height)
     : canvasSamplingScale(view, dpr, width, height, stableDensity, hdrCompositing && !!doc.colorManagement))
   const samplingDpr = nativeSampling ? dpr : samplingScale / view.zoom
-  const priorRasterPlan = activePlan.current
+  // Pending work may temporarily clear activePlan. A completed frame still
+  // owns the same exact sample lattice; don't switch that pan to phase zero.
+  const panCandidates=import.meta.env.VITE_DESIGN_PAN_TILE_CONTINUATION==='1'?[activePlan.current,displayed]:[activePlan.current]
   // contract.revision includes node/font/resource/color/profile changes; the
   // remaining fields prevent cross-page/session/backend/presentation reuse.
-  const retainNativePanPhase = !zooming && priorRasterPlan?.document === doc &&
-    priorRasterPlan.revision === contract.revision && priorRasterPlan.pageId === pageId &&
-    priorRasterPlan.epoch === (props.presentationEpoch || 0) &&
-    priorRasterPlan.computeBackend === backend && priorRasterPlan.displayCapability === displayCapability &&
-    priorRasterPlan.managed === (hdrCompositing && !!doc.colorManagement) &&
-    preservesNativePanPhase(view, dpr, samplingScale, cameraDependent, priorRasterPlan)
+  const retainNativePanPhase = panCandidates.some(prior=>!zooming&&prior?.document===doc&&
+    prior.revision===contract.revision&&prior.pageId===pageId&&prior.epoch===(props.presentationEpoch||0)&&
+    prior.computeBackend===backend&&prior.displayCapability===displayCapability&&
+    prior.managed===(hdrCompositing&&!!doc.colorManagement)&&preservesNativePanPhase(view,dpr,samplingScale,cameraDependent,prior))
   const rasterPlan = canvasRasterPlan(view, samplingDpr, width, height, {
     rasterProfile, pixelPreview: props.pixelPreview, checkerboard: props.checkerboard,
     grid: props.grid, hdr: hdrCompositing && !!doc.colorManagement,
@@ -952,8 +954,9 @@ export function ProgressiveSurfaceImpl(
     let cancelOverview: (() => void) | undefined
     // Panning within a density does not invalidate world pixels. Finish the
     // running batch; discard queued old plans and admit the latest view.
+    const stableWorldFill=import.meta.env.VITE_DESIGN_PAN_TILE_CONTINUATION==='1'&&!cameraDependent&&!nativeSampling
     const fillKey = navigationZoom.active ? `navigation-preview:${width}:${height}:${dpr}` :
-      JSON.stringify([renderScale, renderCamera.x, renderCamera.y, width, height, dpr, !!props.paused])
+      JSON.stringify([renderScale,stableWorldFill?renderPhase.x:renderCamera.x,stableWorldFill?renderPhase.y:renderCamera.y,width,height,dpr,!!props.paused])
     const repair = sequentialRepair.current
     const repairScope = repair?.contract === contract && repair.width === width && repair.height === height && repair.dpr === dpr &&
       !props.paused && props.visible !== false && !navigationZoom.suspended
@@ -984,6 +987,10 @@ export function ProgressiveSurfaceImpl(
     desired.current = []
     if (!navigationZoom.active) activePlan.current = null
     setStats((s) => ({ ...s, complete: false }))
+    // Complete independently retained pixels already own this gesture. Stop
+    // the previous commit's CPU preparation/upload, not merely its next tile.
+    // Releasing the gesture changes this dependency and resumes exact repair.
+    if(retainedEditing){c.cancelTileFill();c.cancelPreview();return}
     if (props.paused || navigationZoom.suspended || props.visible === false && sharpNavigation &&
         (import.meta.env.VITE_DESIGN_SEQUENTIAL_DISPLAY === '1' ||
           import.meta.env.VITE_DESIGN_ORIGINAL_VIEWPORT_CAPTURE === '1')) return
@@ -1397,7 +1404,9 @@ export function ProgressiveSurfaceImpl(
     translationCoverage.current = request => {
       if (!residentDisplay || cameraDependent || hdrCompositing || props.grid || props.checkerboard || props.pixelPreview ||
           request.source !== doc || !latestContext.current.interaction?.active || !current() ||
-          ![request.offset.x*dpr*view.zoom,request.offset.y*dpr*view.zoom].every(Number.isSafeInteger)) return false
+          ![request.offset.x*dpr*view.zoom,request.offset.y*dpr*view.zoom].every(value =>
+            Number.isFinite(value) && Math.abs(value) < 4_000_000 &&
+            (renderExecutionPolicy.desktopDisplay && rasterProfile === 'figmaSubpixel' || Number.isSafeInteger(value)))) return false
       translationRequest.current = request
       const scope = `${contract.revision}:${token}`
       translationRefinement.update({scope,sequence:request.sequence,current:()=>current()&&latestContext.current.interaction?.active===true,
@@ -1894,7 +1903,7 @@ export function ProgressiveSurfaceImpl(
             if (committed && activePlan.current?.key === frameKey) {
               desired.current = [committed.key]
               activePlan.current.ids = new Set(desired.current)
-              setStats(s => ({ ...s, ms: synchronized.milliseconds, compileMs: 0, completeKey: frameKey }))
+              setStats(s => ({ ...s, ms: synchronized.milliseconds, compileMs: synchronized.compileMs || 0, completeKey: frameKey }))
               commitRef.current()
               return
             }
@@ -2211,6 +2220,7 @@ export function ProgressiveSurfaceImpl(
     props.paused,
     props.visible,
     props.interaction?.active,
+    retainedEditing,
     props.interaction?.selection.join(','),
     motionPreview,
     nativeNavigation,
@@ -2497,6 +2507,9 @@ export function ProgressiveSurfaceImpl(
           }) : undefined}
           view={requestedView} width={width} height={height} dpr={dpr}
           presentation={presentation}
+          {...(residentDisplay?{allowPanPreview:import.meta.env.VITE_DESIGN_PAN_PRESENT_PREVIEW==='1'&&
+            cameraMoving&&!zooming&&reusableFrame&&!!displayed&&!displayed.preview&&
+            displayed.view.zoom===requestedView.zoom,panBacking:reusableFrame&&displayed&&!displayed.preview?displayed:undefined}: {})}
           onTranslatedCoverage={residentDisplay ? (source,offset,sequence,failed)=>translationCoverage.current?.({source,offset,sequence,failed})===true : undefined}
           onComposited={residentDisplay ? undefined : props.onPresentation}
           terminalQuality={complete ? { qualitySequence: terminalQualityState.current.sequence,
@@ -2661,7 +2674,7 @@ export function ProgressiveSurfaceImpl(
         }}
       >
         {failure ||
-          `${stats.actualBackend === 'webgl2' ? 'WebGL 2' : 'WebGPU'} · ${complete ? '清晰' : '计算中'}${stats.managed ? ' · 浮点' : ''}`}
+          `${stats.actualBackend === 'webgl2' ? 'WebGL 2' : 'WebGPU'} · ${props.interaction?.active ? '编辑预览' : complete ? '清晰' : '计算中'}${stats.managed ? ' · 浮点' : ''}`}
 
       </div>}
     </>

@@ -4,6 +4,22 @@ import { interactionOffsets, interactionTransformsOnly, interactionPatchedDocume
 import { produceDocumentDraft } from '../document-patch'
 import {scene} from '../geometry'
 
+test('an opted-in sole empty normal group splits into ordered independent subtree pixels',()=>{
+ const doc=blank(),group=node('group',100,80,400,300),a=node('rectangle',10,10,80,80),b=node('rectangle',40,30,80,80),c=node('rectangle',70,60,80,80)
+ group.blend='normal';group.children=[a.id,b.id,c.id];group.fills=[];group.strokes=[];group.effects=[];group.clip=false
+ doc.nodes=Object.fromEntries([group,a,b,c].map(n=>[n.id,n]));doc.pages[0].children=[group.id]
+ expect(planInteractionLayers(doc,doc.pages[0].id,[b.id])).toBeNull()
+ const plan=planInteractionLayers(doc,doc.pages[0].id,[b.id],undefined,{neutralPageGroup:true})!
+ expect(plan.layers.map(l=>l.roots)).toEqual([[a.id],[b.id],[c.id]])
+ expect(plan.layers.map(l=>l.moving)).toEqual([undefined,b.id,undefined])
+ expect(plan.layers.every(l=>l.document===doc)).toBe(true)
+ for(const mutate of [()=>{group.opacity=.5},()=>{group.clip=true},()=>{group.fills=a.fills},()=>{group.effects=[effect('blur')]},()=>{a.mask=true},()=>{a.effects=[effect('background-blur')]},()=>{doc.pages[0].children.push(c.id)}]){
+  const before=structuredClone(doc);mutate()
+  expect(planInteractionLayers(doc,doc.pages[0].id,[b.id],undefined,{neutralPageGroup:true})).toBeNull()
+  Object.assign(group,before.nodes[group.id]);Object.assign(a,before.nodes[a.id]);doc.pages=before.pages
+ }
+})
+
 test('producer-witnessed poses avoid re-enumerating the node table and still reject unrelated edits', () => {
   const doc = blank(), a = node('rectangle', 0, 0, 40, 40), b = node('rectangle', 80, 0, 40, 40)
   doc.nodes = { [a.id]: a, [b.id]: b }; doc.pages[0].children = [a.id, b.id]
@@ -124,4 +140,18 @@ test('camera preparation reads only selected ids for its exact source snapshot, 
   // selections. The snapshot shortcut retains that behavior for invalid plans.
   expect(interactionOffsets({ ...plan, ids: [selected.id, selected.id, 'missing', 'toString'] }, doc))
     .toEqual(new Map([[selected.id, { x: 0, y: 0 }]]))
+})
+
+test('nested selections split only empty independent wrappers and keep interleaved order',()=>{
+ const doc=blank(),group=node('group',20,30,100,100),a=node('rectangle',0,0,40,40),b=node('rectangle',10,10,40,40),c=node('rectangle',20,20,40,40)
+ group.blend='pass-through';group.fills=[];group.strokes=[];group.children=[a.id,b.id,c.id];group.transform=[0,2,-2,0,20,30]
+ for(const n of [group,a,b,c])doc.nodes[n.id]=n
+ doc.pages[0].children=[group.id]
+ const plan=planInteractionLayers(doc,doc.pages[0].id,[a.id,c.id])!
+ expect(plan.layers.map(layer=>layer.roots)).toEqual([[a.id],[b.id],[c.id]])
+ expect(plan.parentLinear?.get(a.id)).toEqual([0,2,-2,0])
+ group.opacity=.5;expect(planInteractionLayers(doc,doc.pages[0].id,[a.id])).toBeNull()
+ group.opacity=1;group.clip=true;expect(planInteractionLayers(doc,doc.pages[0].id,[a.id])).toBeNull()
+ group.clip=false;group.blend='normal';expect(planInteractionLayers(doc,doc.pages[0].id,[a.id])).toBeNull()
+ group.blend='pass-through';expect(planInteractionLayers(doc,doc.pages[0].id,[group.id,a.id])).toBeNull()
 })

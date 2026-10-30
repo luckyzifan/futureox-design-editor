@@ -1,0 +1,8 @@
+{
+  "status": "failed",
+  "adapter": "metal-3",
+  "wordsCompared": 0,
+  "records": [],
+  "error": "GPUPipelineError: Entry point \"\"areaQuad\"\" doesn't exist in the shader module [ShaderModule \"Self-developed vector compositor\"].\n - While validating vertex stage ([ShaderModule \"Self-developed vector compositor\"], entryPoint: \"areaQuad\").\n - While validating vertex state.\n",
+  "stack": "GPUPipelineError: Entry point \"\"areaQuad\"\" doesn't exist in the shader module [ShaderModule \"Self-developed vector compositor\"].\n - While validating vertex stage ([ShaderModule \"Self-developed vector compositor\"], entryPoint: \"areaQuad\").\n - While validating vertex state.\n"
+}

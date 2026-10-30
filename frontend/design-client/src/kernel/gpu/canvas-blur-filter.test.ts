@@ -75,12 +75,12 @@ test('production pass selects the candidate, revokes certificates, and returns t
   const f = fixture()
   await f.driver.prepareScene(f.scene, true); await f.driver.prepareFilters()
   const output = f.draw()
-  expect(f.chosen).toHaveLength(4)
-  expect(f.chosen.every(p => p.fragment.module.label === 'Canvas rational-coefficient blur')).toBe(true)
+  expect(f.chosen).toHaveLength(1)
+  expect(f.chosen.every(p => p.fragment.entryPoint === 'fragmentRgba')).toBe(true)
   expect(output.finitePixels).toBeUndefined(); expect(output.opaqueAlpha).toBeUndefined()
   expect(f.driver.canvasBlurPasses).toBe(1)
   f.draw(true)
-  expect(f.chosen.slice(-4).every(p => p.fragment.module.label === 'Canvas rational-coefficient blur')).toBe(true)
+  expect(f.chosen.at(-1).fragment.entryPoint).toBe('fragmentRgba')
   expect(f.driver.canvasBlurPasses).toBe(2)
   f.draw(false, true)
   expect(f.chosen.at(-1).fragment.targets[0].format).toBe('r32float')
@@ -113,4 +113,17 @@ test('a synchronous shader exception balances its error scope before exact fallb
   await f.driver.prepareScene(f.scene, true); await f.driver.prepareFilters(); f.draw()
   expect(f.raw.device.pushErrorScope.mock.calls.length).toBe(f.raw.device.popErrorScope.mock.calls.length)
   expect(f.chosen.every(p => p.fragment.module.label === 'Exact rational filter')).toBe(true)
+})
+
+
+test('RGBA preparation failure and explicit zero keep the channel reducers',async()=>{
+ for(const disabled of [true,false]){
+  vi.stubEnv('VITE_DESIGN_CANVAS_BLUR_RGBA',disabled?'0':undefined)
+  const f=fixture(),create=f.raw.device.createRenderPipelineAsync
+  vi.spyOn(console,'warn').mockImplementation(()=>{})
+  f.raw.device.createRenderPipelineAsync=(d:any)=>d.fragment.entryPoint==='fragmentRgba'?Promise.reject(Error('RGBA-only fixture')):create(d)
+  await f.driver.prepareScene(f.scene,true);await f.driver.prepareFilters();f.draw()
+  expect(f.chosen).toHaveLength(4)
+  expect(f.chosen.every(p=>p.fragment.module.label==='Canvas rational-coefficient blur')).toBe(true)
+ }
 })

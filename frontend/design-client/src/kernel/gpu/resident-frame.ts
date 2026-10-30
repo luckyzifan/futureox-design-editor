@@ -64,6 +64,11 @@ export function residentFrameMessage(frame: ResidentFrame): ResidentFrame {
 }
 
 export function residentFrameSignature(frame: ResidentFrame) {
+  // Only relative priority affects compositeDrawPlan. A whole cohort changing
+  // from "base" to "detail" must not enqueue identical pixels again.
+  const active=frame.items.filter(item=>item.active)
+  const ranks=import.meta.env.VITE_DESIGN_CANONICAL_COMPOSITE_ORDER==='1'&&active.every(item=>Number.isFinite(item.layer))
+    ?new Map([...new Set(active.map(item=>item.layer))].sort((a,b)=>a-b).map((layer,i)=>[layer,i])):undefined
   return JSON.stringify([
     frame.presentationId,
     terminalQualityMessage(frame.terminalQuality),
@@ -78,8 +83,7 @@ export function residentFrameSignature(frame: ResidentFrame) {
     frame.backgroundTranslation,
     frame.linearBlend,
     frame.backgroundLinear,
-    frame.items
-      .filter((item) => item.active)
+    active
       .map(({ tile, layer, placement, clip, gutter, blend }) => [
         tile.gpuTile,
         tile.x,
@@ -89,7 +93,7 @@ export function residentFrameSignature(frame: ResidentFrame) {
         tile.zoom,
         tile.phaseX,
         tile.phaseY,
-        layer,
+        ranks?.get(layer)??layer,
         placement,
         clip,
         gutter,

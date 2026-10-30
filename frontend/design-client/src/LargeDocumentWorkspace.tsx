@@ -36,6 +36,10 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   const [pageRange,setPageRange]=useState<LargeDocumentPageRange|null>(null)
   const [nativeSnapshot,setNativeSnapshot]=useState<SourceCanvasSnapshot|null>(null),[catalogue,setCatalogue]=useState<SourceCanvasItem[]>([]),[overview,setOverview]=useState(false)
   const [nativeRenderStatus,setNativeRenderStatus]=useState<NativeSourceStatus>()
+  // The import notification owns first display only. Navigation has its own
+  // canvas badge and must not repeatedly reopen the large import card.
+  const nativePresentedToken=useRef<string|undefined>(undefined)
+  const nativeRenderError=useRef(false)
   const nativeSnapshotRef=useRef(nativeSnapshot);nativeSnapshotRef.current=nativeSnapshot
   const [busy,setBusy]=useState(false),busyRef=useRef(false),[error,setError]=useState(''),[notice,setNotice]=useState('')
   const [viewTab,setViewTab]=useState<'source'|'layers'>('source')
@@ -305,7 +309,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   </section>
   return renderWorkbench({editor,ready:!!active||overview,busy,locked:editorLocked,dirty:!!active&&editor.authoredDocument!==baseline.current,
     name:status?.name||initialFile?.name||'正在打开文件',notice,error,canvas,navigation,showLayers:!!active&&!overview,warnings,
-    nativeCanvas:overview&&nativeSnapshot?{snapshot:nativeSnapshot,status:nativeRenderStatus,onStatus:status=>{setNativeRenderStatus(status);if(status.phase==='error')setError(status.error??'画板绘制未完成');else if(status.phase==='ready')setNotice(`完整画板已显示：${nativeSnapshot.roots} 个素材。双击素材进入编辑。`);else setNotice(status.phase==='loading'?'正在准备完整画板显示…':`正在绘制完整画板 ${status.done} / ${status.total}…`)},openPoint:point=>{if(busyRef.current)return;const item=catalogue.filter(item=>point.x>=item.placed.x&&point.x<=item.placed.x+item.placed.width&&point.y>=item.placed.y&&point.y<=item.placed.y+item.placed.height).sort((a,b)=>a.placed.width*a.placed.height-b.placed.width*b.placed.height)[0];if(item)openMaterial(item)}}:undefined,
+    nativeCanvas:overview&&nativeSnapshot?{snapshot:nativeSnapshot,status:nativeRenderStatus,onStatus:status=>{if(nativeRenderError.current&&status.phase==='ready'){nativeRenderError.current=false;setError('');setNativeRenderStatus(status);}if(status.phase==='error')nativeRenderError.current=true;if(nativePresentedToken.current===nativeSnapshot.token&&status.phase!=='error')return;if(status.phase==='ready')nativePresentedToken.current=nativeSnapshot.token;setNativeRenderStatus(status);if(status.phase==='error')setError(status.error??'画板绘制未完成');else if(status.phase==='ready')setNotice(`完整画板已显示：${nativeSnapshot.roots} 个素材。双击素材进入编辑。`);else setNotice(status.phase==='loading'?'正在准备完整画板显示…':`正在绘制完整画板 ${status.done} / ${status.total}…`)},openPoint:point=>{if(busyRef.current)return;const item=catalogue.filter(item=>point.x>=item.placed.x&&point.x<=item.placed.x+item.placed.width&&point.y>=item.placed.y&&point.y<=item.placed.y+item.placed.height).sort((a,b)=>a.placed.width*a.placed.height-b.placed.width*b.placed.height)[0];if(item)openMaterial(item)}}:undefined,
     dismissWarnings:()=>setWarnings([]),dismissError:()=>setError(''),cancel:()=>{abort.current?.abort();void bridge.cancel().catch(error=>setError(String(error)))},
     save:()=>run(save),exportFile,leave,openFile})
 }

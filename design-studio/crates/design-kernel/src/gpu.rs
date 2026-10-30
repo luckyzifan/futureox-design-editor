@@ -223,6 +223,7 @@ pub(crate) struct SourceCompileContext {
     pub(crate) page:String,pub(crate) camera:(f64,f64,f64),pub(crate) properties:PageProperties,
     pub(crate) padding:i32,pub(crate) backdrop:bool,pub(crate) stage:String,
     pub(crate) stage_children:Arc<Vec<String>>,pub(crate) reserved_bytes:usize,
+    pub(crate) page_paint_rects:Option<Vec<[f64;4]>>,
 }
 impl PageProperties {pub(crate) fn has_zoom(&self)->bool{self.has_zoom}}
 
@@ -453,8 +454,71 @@ pub struct GpuStroke {
     pub align: String,
 }
 #[derive(Clone, Serialize)]
+#[serde(rename_all="camelCase")]
+pub struct GaussianRegion { pub source:Rect, pub output:Rect, pub radii:[u32;3],
+    #[serde(skip_serializing_if="Option::is_none")] pub factor:Option<u32>,
+    #[serde(skip_serializing_if="Option::is_none")] pub full_output:Option<Rect>,
+}
+fn gaussian_region_plan(n:&Node,matrix:Transform,output:Rect)->Option<GaussianRegion>{
+    gaussian_region_plan_above(n,matrix,output,512.)
+}
+fn gaussian_region_plan_above(n:&Node,matrix:Transform,output:Rect,minimum:f64)->Option<GaussianRegion>{
+    if !n.render_children().is_empty()||n.clip||n.mask||n.blend!="normal"||n.passes_backdrop()||!n.strokes.is_empty()||
+        n.fills.len()!=1||!n.fills[0].visible||n.fills[0].kind!="solid"||n.fills[0].blend!="normal"||
+        n.effects.iter().filter(|e|e.visible).count()!=1||output.empty()||output.w>1024||output.h>1024{return None}
+    let effect=n.effects.iter().find(|e|e.visible)?;
+    if effect.kind!="gaussian-blur"||effect.gradient_blur.is_some(){return None}
+    let sigma=effect.radius*matrix.max_scale();if !(minimum..=1024.).contains(&sigma)||sigma==minimum{return None}
+    let radii=crate::effects::gaussian_box_radii_region(sigma).ok()?;
+    let support=radii.iter().sum::<u32>() as i32;
+    let source=output.expand(support);
+    let first_width=source.w.checked_sub(2*radii[0])?;
+    // The input is produced in bounded strips. The first stored H result and
+    // every smaller H/V result retain the original per-surface pixel budget.
+    if source.w>8192||source.h>8192||u64::from(first_width)*u64::from(source.h)>16_777_216||
+        [source.x,source.y,source.right(),source.bottom()].iter().any(|v|i64::from(*v).abs()>1_048_576){return None}
+    Some(GaussianRegion{source,output,radii,factor:None,full_output:None})
+}
+// A separate display recipe. Original authored sigma, full output density and
+// exact/export paths remain unchanged. Only a broad, single convex solid source
+// may use the reduced effect grid; thin/concave/multi-contour/HDR sources decline.
+fn reduced_gaussian_source(n:&Node,matrix:Transform,plan:&GaussianRegion,path:&crate::path::Path,factor:u32)
+    -> Option<(GaussianRegion,Arc<Vec<crate::path::Contour>>)> {
+    if !matches!(factor,2|4|8)||n.kind=="text" {return None}
+    let color=n.fills.first()?.color.as_bytes();
+    if !matches!(color.len(),4|5|7|9)||color[0]!=b'#'||!color[1..].iter().all(u8::is_ascii_hexdigit){return None}
+    let f=f64::from(factor);let mut reduced_matrix=matrix;
+    for value in &mut reduced_matrix.0 {*value/=f;}
+    let contours=path.flatten(reduced_matrix,0.015625).ok()?;
+    if contours.len()!=1||!contours[0].closed{return None}
+    let mut points=contours[0].points.clone();
+    if points.first()==points.last(){points.pop();}
+    if points.len()<3||points.len()>4096{return None}
+    let cross=|a:Point,b:Point,c:Point|(b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x);
+    let area=|p:&[Point]|{let a=p[0];p[1..].windows(2).map(|e|cross(a,e[0],e[1])).sum::<f64>().abs()/2.};
+    let original_area=area(&points);
+    let perimeter=(0..points.len()).map(|i|{let a=points[i];let b=points[(i+1)%points.len()];(a.x-b.x).hypot(a.y-b.y)}).sum::<f64>();
+    if !original_area.is_finite()||!perimeter.is_finite()||original_area/perimeter<8.{return None}
+    let mut sorted=points.clone();sorted.sort_by(|a,b|a.x.total_cmp(&b.x).then(a.y.total_cmp(&b.y)));sorted.dedup();
+    let mut hull:Vec<Point>=Vec::new();
+    for &p in &sorted {while hull.len()>=2&&cross(hull[hull.len()-2],hull[hull.len()-1],p)<=0.{hull.pop();}hull.push(p);}
+    let lower=hull.len();
+    for &p in sorted.iter().rev().skip(1){while hull.len()>lower&&cross(hull[hull.len()-2],hull[hull.len()-1],p)<=0.{hull.pop();}hull.push(p);}
+    hull.pop();if hull.len()<3||(area(&hull)-original_area).abs()>original_area.max(1.)*1e-9{return None}
+    let radii=crate::effects::gaussian_box_radii(matrix.max_scale()*n.effects.iter().find(|e|e.visible)?.radius/f).ok()?;
+    if radii.iter().any(|r|*r<32){return None}
+    // Two low-grid texels retain every bilinear neighbour during upsampling.
+    let o=plan.output;let x=o.x.div_euclid(factor as i32)-2;let y=o.y.div_euclid(factor as i32)-2;
+    let right=(f64::from(o.right())/f).ceil() as i32+2;let bottom=(f64::from(o.bottom())/f).ceil() as i32+2;
+    let output=Rect::new(x,y,(right-x) as u32,(bottom-y) as u32);let source=output.expand(radii.iter().sum::<u32>() as i32);
+    if source.w>8192||source.h>8192||source.pixels()>4_194_304{return None}
+    Some((GaussianRegion{source,output,radii,factor:Some(factor),full_output:Some(plan.output)},Arc::new(contours)))
+}
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GpuNode {
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub gaussian_region:Option<GaussianRegion>,
     /// The entire working rectangle lies inside an opaque, simple fill.
     pub opaque_coverage: bool,
     pub passthrough: bool,
@@ -796,6 +860,16 @@ fn constant_fill_coverage(n: &Node, p: &crate::geometry_snapshot::Prepared, regi
     } else { winding % 2 != 0 })
 }
 
+fn constant_gaussian(n:&Node,p:&crate::geometry_snapshot::Prepared,region:Rect)->Option<bool>{
+    // An opaque hex solid cannot introduce subnormal/undefined authored color
+    // arithmetic. The full six-pass source (plus the coverage oracle's own
+    // two-pixel guard) must contain no path boundary, including holes.
+    let plan=gaussian_region_plan(n,p.matrix,region)?;
+    let fill=&n.fills[0];
+    if fill.opacity!=1.||fill.color.len()!=7||!fill.color.starts_with('#'){return None}
+    constant_fill_coverage(n,p,plan.source)
+}
+
 fn irrelevant_backdrop(n: &Node, p: &crate::geometry_snapshot::Prepared, region: Rect, coherent: bool) -> bool {
     if !n.render_children().is_empty() || n.passes_backdrop() || n.opacity != 1. || n.blend != "normal" || n.mask ||
         n.effects.iter().any(|e| e.visible && e.kind != "background-blur") ||
@@ -827,17 +901,29 @@ fn foreground_region_supported(
     region: Rect,
     prepared: &HashMap<String, crate::geometry_snapshot::Prepared>,
     coherent: bool,
+    gaussian_region: bool,
+    large_gaussian: bool,
 ) -> bool {
     let n = &doc.nodes[id];
     let Some(p) = prepared.get(id) else { return true; };
     if !n.visible || n.opacity <= 0. || backdrop_output_bounds(n, p).intersect(region).empty() { return true; }
     if irrelevant_backdrop(n, p, region, coherent) { return true; }
+    let gaussian_supported = gaussian_region && n.effects.iter().filter(|e| e.visible && e.kind=="gaussian-blur").all(|e| {
+        // Gaussian is also a foreground convolution. Keep its full existing
+        // three-box support on this node, rather than every ancestor/sibling.
+        // This admission changes neither the kernel nor its supported radius.
+        let sigma=e.radius*p.matrix.max_scale();
+        sigma.is_finite() && ((0. ..=512.).contains(&sigma) || large_gaussian&&gaussian_region_plan(n,p.matrix,region).is_some()) &&
+            [region.x,region.y,region.right(),region.bottom()].iter().all(|v|
+                i64::from(*v).abs()+i64::from(halo(n,p.matrix))+2<=1_048_576)
+    });
     if n.effects.iter().any(|e| e.visible &&
-        (!matches!(e.kind.as_str(), "blur" | "shadow" | "inner-shadow") || n.passes_backdrop())) {
+        (!(matches!(e.kind.as_str(), "blur" | "shadow" | "inner-shadow") ||
+            e.kind=="gaussian-blur" && gaussian_supported) || n.passes_backdrop())) {
         return false;
     }
     let source = region.expand(halo(n, p.matrix).saturating_add(2));
-    n.render_children().iter().all(|child| foreground_region_supported(doc, child, source, prepared, coherent))
+    n.render_children().iter().all(|child| foreground_region_supported(doc, child, source, prepared, coherent,gaussian_region,large_gaussian))
 }
 
 /// A bounded dependency certificate for managed, ordinary tent filters and
@@ -1444,6 +1530,8 @@ struct Compiler<'a> {
     profile: crate::fidelity::RasterProfile,
     interactive_effects: bool,
     large_packet: bool,
+    gaussian_regions: bool,
+    gaussian_reduction: u32,
     prune_backdrop_output: bool,
     backdrop_outputs: HashMap<String, Rect>,
     shadow_outputs: HashMap<String, Rect>,
@@ -1578,7 +1666,10 @@ impl Compiler<'_> {
         // to foreground blur leaves with no other sampling stages.
         let omit_backdrop = requested.is_some_and(|region| prepared.is_some_and(|p|
             irrelevant_backdrop(n, p, region, self.compatible && !self.interactive_effects)));
-        let own_halo = if omit_backdrop { 0 } else if self.doc.color_management.is_some()
+        let gaussian_constant=if self.gaussian_regions {requested.and_then(|region|prepared.and_then(|p|constant_gaussian(n,p,region)))}else{None};
+        if gaussian_constant==Some(false){return Ok(Rect::default())}
+        let omit_gaussian=gaussian_constant==Some(true);
+        let own_halo = if omit_backdrop||omit_gaussian { 0 } else if self.doc.color_management.is_some()
             && (self.profile != crate::fidelity::RasterProfile::Analytic ||
                 // Managed analytic paints use the same integrated rational
                 // tent, not the unmanaged three-box Gaussian. Admit only one
@@ -1667,17 +1758,25 @@ impl Compiler<'_> {
         if rect.empty() {
             return Ok(rect);
         }
-        let fill_contours = match prepared.as_ref() {
-            Some(p) => Arc::clone(&p.fill),
-            None => Arc::new(fill_path.flatten(matrix, 0.015625)?),
+        let full_gaussian=if self.gaussian_regions&&!omit_gaussian {requested.and_then(|output|gaussian_region_plan(n,matrix,output.intersect(rect)))}else{None};
+        let reduced=if self.gaussian_reduction>1&&self.doc.color_management.as_ref().is_some_and(|c|c.document_space==crate::color::ColorSpace::Srgb) {
+            let candidate=if self.gaussian_regions&&!omit_gaussian {
+                requested.and_then(|output|gaussian_region_plan_above(n,matrix,output.intersect(rect),128.))
+            }else{None};
+            candidate.as_ref().and_then(|plan|reduced_gaussian_source(n,matrix,plan,fill_path,self.gaussian_reduction))
+        }else{None};
+        let fill_contours = match &reduced {
+            Some((_,contours))=>Arc::clone(contours),
+            None=>match prepared.as_ref(){Some(p)=>Arc::clone(&p.fill),None=>Arc::new(fill_path.flatten(matrix,0.015625)?)},
         };
+        let fill_rect=reduced.as_ref().map_or(rect,|(plan,_)|plan.source);
         let rule =
             if n.kind == "text" || !n.fill_even_odd() {
                 "nonzero"
             } else {
                 "evenodd"
             };
-        let fill = self.area_path(&fill_contours, (id,0), rect, rule == "evenodd",prepared.as_ref().map(|p|p.fill_program_bounds))?;
+        let fill = self.area_path(&fill_contours, (id,0), fill_rect, rule == "evenodd",if reduced.is_some(){None}else{prepared.as_ref().map(|p|p.fill_program_bounds)})?;
         let mut strokes = Vec::new();
         let inverse = matrix.inverse_composed(rect)?;
         let rgba8 = self.compatible;
@@ -1721,6 +1820,7 @@ impl Compiler<'_> {
         self.nodes.insert(
             id.to_owned(),
             GpuNode {
+                gaussian_region:reduced.map(|(plan,_)|plan).or(full_gaussian),
                 opaque_coverage,
                 passthrough: n.passes_backdrop(),
                 backdrop_box: crate::coverage::backdrop_box(
@@ -1792,7 +1892,7 @@ impl Compiler<'_> {
                     .effects
                     .iter()
                     .filter(|e| e.visible && !(opaque_coverage && e.kind == "shadow") &&
-                        !(omit_backdrop && e.kind == "background-blur"))
+                        !(omit_backdrop && e.kind == "background-blur") && !(omit_gaussian && e.kind=="gaussian-blur"))
                     .cloned()
                     .map(|mut e| {
                         // Normalize only the layer-blur activation here, before
@@ -1823,14 +1923,28 @@ impl Engine {
     }
     pub(crate) fn compile_gpu_request_value(&mut self, mut value:serde_json::Value)->Result<GpuScene,String>{
         let object = value.as_object_mut().ok_or("Render options must be an object")?;
+        let neutral_page_group=match object.remove("gpuNeutralPageGroup"){
+            None=>false,Some(serde_json::Value::Bool(v))=>v,_=>return Err("Invalid neutral page group policy".into()),
+        };
+        if neutral_page_group&&(!object.contains_key("gpuRoots")||object.get("rasterProfile").and_then(|v|v.as_str())!=Some("figmaSubpixel")||
+            object.get("pixelPreview").is_some_and(|v|!v.is_null())||object.get("animation").is_some_and(|v|!v.is_null())){
+            return Err("Neutral group scope requires a static display root request".into());
+        }
         if let Some(roots)=object.remove("gpuRoots") {
             let roots:Vec<String>=serde_json::from_value(roots).map_err(|_|"Invalid render roots")?;
             let page=object.get("pageId").and_then(|v|v.as_str()).ok_or("Missing render page")?;
-            let mut scoped=self.snapshot_render_roots(page,&roots)?;
+            let mut scoped=self.snapshot_render_roots(page,&roots,neutral_page_group)?;
             return scoped.compile_gpu_request_value(value);
         }
         // Allocation changes remain opt-in until the independent GPU/whole-app
         // gates pass. This is a trusted request policy, never document state.
+        let gaussian_regions=match object.remove("gpuGaussianRegions") {
+            None=>false,Some(serde_json::Value::Bool(v))=>v,_=>return Err("Invalid Gaussian region policy".into()),
+        };
+        let gaussian_reduction=match object.remove("gpuGaussianReduction") {
+            None=>0,Some(serde_json::Value::Number(v))=>match v.as_u64(){Some(0)=>0,Some(v @ (2|4|8)) if gaussian_regions=>v as u32,_=>return Err("Invalid Gaussian reduction policy".into())},
+            _=>return Err("Invalid Gaussian reduction policy".into()),
+        };
         let page_background=match object.remove("gpuPageBackground") {
             None=>false,Some(serde_json::Value::Bool(v))=>v,_=>return Err("Invalid page background policy".into()),
         };
@@ -1865,29 +1979,37 @@ impl Engine {
         let capture_reads = capture_reads && !options.raster_profile.is_export() && options.pixel_preview.is_none();
         let mut scene = if let Some(capture) = capture {
             if options.pixel_preview.is_some() || options.raster_profile.is_export() { return Err("Native capture is a canvas operation".into()); }
-            self.compile_gpu_region_impl(&options,capture,prepare.or(Some(capture)),true,painter_support,capture_reads)?
+            self.compile_gpu_region_impl(&options,capture,prepare.or(Some(capture)),true,painter_support,capture_reads,gaussian_regions,gaussian_reduction)?
         } else { match region {
-            Some(region) => self.compile_gpu_region_impl(&options, region, prepare.or(Some(region)), false, painter_support, capture_reads),
+            Some(region) => self.compile_gpu_region_impl(&options, region, prepare.or(Some(region)), false, painter_support, capture_reads,gaussian_regions,gaussian_reduction),
             None => self.compile_gpu(&options),
         }? };
         if page_background && !scene.transparent && !scene.grid && !scene.checkerboard &&
-            !scene.software_raster && scene.resolve.is_none() && scene.presentation.is_none() && options.animation.is_none() &&
-            self.doc.as_ref().is_some_and(|doc|crate::dirty_region::page_background_can_sample(doc,&options.page_id,
-                Transform([options.view.zoom,0.,0.,options.view.zoom,0.,0.]),[options.view.x,options.view.y],
-                scene.output.unwrap_or_else(||Rect::new(0,0,scene.width,scene.height)))) {
-            let key=(self.geo_revision,options.page_id.clone(),options.view.zoom.to_bits(),self.fonts.glyph_origin_quantization());
-            if self.page_support.as_ref().is_none_or(|(old,_)|old!=&key) {
-                let bounds=self.doc.as_ref().and_then(|doc|crate::dirty_region::page_paint_rects(doc,&options.page_id,&self.fonts,
-                    Transform([options.view.zoom,0.,0.,options.view.zoom,0.,0.])));
-                // A cancelled optional proof is neither an unknown-geometry
-                // certificate nor a completed cache entry for this camera.
-                crate::render_cancellation::checkpoint()?;
-                self.page_support=Some((key,bounds));
-            }
-            scene.page_paint_rects=self.page_support.as_ref().and_then(|(_,bounds)|bounds.as_ref()).map(|bounds|bounds.iter()
-                .map(|b|[b[0]+options.view.x,b[1]+options.view.y,b[2]+options.view.x,b[3]+options.view.y]).collect());
+            !scene.software_raster && scene.resolve.is_none() && scene.presentation.is_none() && options.animation.is_none() {
+            // A resolved viewport projection cannot certify what is absent
+            // from the full page. Its private context carries the complete
+            // owner's support at this exact camera and revision.
+            scene.page_paint_rects=if let Some(context)=&self.source_compile_context {
+                context.page_paint_rects.clone()
+            } else {
+                self.complete_page_paint_rects(&options,scene.output.unwrap_or_else(||Rect::new(0,0,scene.width,scene.height)))?
+            };
         }
         Ok(scene)
+    }
+
+    pub(crate) fn complete_page_paint_rects(&mut self,options:&RenderOptions,output:Rect)->Result<Option<Vec<[f64;4]>>,String> {
+        let camera=Transform([options.view.zoom,0.,0.,options.view.zoom,0.,0.]);
+        if !self.doc.as_ref().is_some_and(|doc|crate::dirty_region::page_background_can_sample(doc,&options.page_id,
+            camera,[options.view.x,options.view.y],output)) {return Ok(None)}
+        let key=(self.geo_revision,options.page_id.clone(),options.view.zoom.to_bits(),self.fonts.glyph_origin_quantization());
+        if self.page_support.as_ref().is_none_or(|(old,_)|old!=&key) {
+            let bounds=self.doc.as_ref().and_then(|doc|crate::dirty_region::page_paint_rects(doc,&options.page_id,&self.fonts,camera));
+            crate::render_cancellation::checkpoint()?;
+            self.page_support=Some((key,bounds));
+        }
+        Ok(self.page_support.as_ref().and_then(|(_,bounds)|bounds.as_ref()).map(|bounds|bounds.iter()
+            .map(|b|[b[0]+options.view.x,b[1]+options.view.y,b[2]+options.view.x,b[3]+options.view.y]).collect()))
     }
 
     pub fn compile_gpu(&mut self, options: &RenderOptions) -> Result<GpuScene, String> {
@@ -1900,7 +2022,7 @@ impl Engine {
         }
         if options.raster_profile.is_export() {
             let source = crate::fidelity::source(options, 0, 0, options.width, options.height)?;
-            let mut scene = self.compile_gpu_scene(&source, None, None, false, false)?;
+            let mut scene = self.compile_gpu_scene(&source, None, None, false, false, false,0)?;
             scene.resolve = Some(crate::preview::Presentation {
                 width: options.width,
                 height: options.height,
@@ -1918,7 +2040,7 @@ impl Engine {
             }
             return Ok(scene);
         }
-        self.compile_gpu_scene(options, None, None, false, false)
+        self.compile_gpu_scene(options, None, None, false, false, false,0)
     }
     /// Compile a bounded crop in the original camera's device coordinate system.
     /// Only integer allocation/coverage limits change; authored transforms,
@@ -1932,9 +2054,9 @@ impl Engine {
         region: Rect,
         prepare: Option<Rect>,
     ) -> Result<GpuScene, String> {
-        self.compile_gpu_region_impl(options, region, prepare, false, false, false)
+        self.compile_gpu_region_impl(options, region, prepare, false, false, false, false,0)
     }
-    fn compile_gpu_region_impl(&mut self, options: &RenderOptions, region: Rect, prepare: Option<Rect>, capture: bool, painter_support: bool, capture_reads: bool) -> Result<GpuScene, String> {
+    fn compile_gpu_region_impl(&mut self, options: &RenderOptions, region: Rect, prepare: Option<Rect>, capture: bool, painter_support: bool, capture_reads: bool, gaussian_regions:bool, gaussian_reduction:u32) -> Result<GpuScene, String> {
         // The production gutter tile is TILE_SIZE + 2 pixels wide.
         if region.empty()
             || region.w > if capture {8192} else {crate::tile_stack::TILE_SIZE as u32 + 2}
@@ -1956,7 +2078,7 @@ impl Engine {
             let source = crate::fidelity::source(&cropped, 0, 0, region.w, region.h)?;
             let source_region = Rect::new(region.x * 2, region.y * 2, region.w * 2, region.h * 2);
             let source_prepare = prepare.map(|r| Rect::new(r.x * 2, r.y * 2, r.w * 2, r.h * 2));
-            let mut scene = self.compile_gpu_scene(&source, Some(source_region), source_prepare, painter_support, capture_reads)?;
+            let mut scene = self.compile_gpu_scene(&source, Some(source_region), source_prepare, painter_support, capture_reads, false,0)?;
             scene.resolve = Some(crate::preview::Presentation {
                 width: region.w,
                 height: region.h,
@@ -1966,7 +2088,7 @@ impl Engine {
             });
             scene
         } else {
-            self.compile_gpu_scene(&cropped, Some(region), prepare, painter_support, capture_reads)?
+            self.compile_gpu_scene(&cropped, Some(region), prepare, painter_support, capture_reads, gaussian_regions,gaussian_reduction)?
         };
         scene.output = Some(region);
         // Version 8 adds a global output rectangle. Older consumers must reject
@@ -2005,7 +2127,10 @@ impl Engine {
         prepare_viewport: Option<Rect>,
         painter_support: bool,
         capture_reads: bool,
+        gaussian_regions: bool,
+        gaussian_reduction:u32,
     ) -> Result<GpuScene, String> {
+        let gaussian_regions=gaussian_regions&&options.raster_profile==crate::fidelity::RasterProfile::FigmaSubpixel&&options.pixel_preview.is_none()&&options.animation.is_none();
         crate::render_cancellation::checkpoint()?;
         self.resolve_layout()?;
         if self.source_compile_context.as_ref().is_some_and(|c|c.page!=options.page_id||c.camera!=(options.view.x,options.view.y,options.view.zoom)||options.animation.is_some()) {return Err("Stale source compile context".into());}
@@ -2197,7 +2322,8 @@ impl Engine {
         }
         if has_region && !regional_foreground && doc.color_management.is_some() && metadata.noise_guard.is_none() {
             regional_foreground = page.children.iter().all(|id|
-                foreground_region_supported(doc, id, viewport, &prepared, crate::fidelity::coherent_samples(doc, options)));
+                foreground_region_supported(doc, id, viewport, &prepared, crate::fidelity::coherent_samples(doc, options),
+                    options.raster_profile==crate::fidelity::RasterProfile::FigmaSubpixel,gaussian_regions));
         }
         let backdrop_chain = metadata.backdrop_chain;
         let extent = {
@@ -2352,7 +2478,7 @@ impl Engine {
         let retain_fragments=(self.camera_prepare.as_ref().is_some_and(|cache|cache.incremental)||self.interaction_transform_revision.as_ref().is_some_and(|(_,next,_)|*next==self.geo_revision))
             && options.animation.is_none() && stages.is_none() && backdrop_outputs.is_empty() && shadow_outputs.is_empty();
         let mut fragments=self.camera_prepare.as_mut().map(|c|std::mem::take(&mut c.fragments)).unwrap_or_default();
-        let policy=serde_json::to_string(&(options,viewport,extent,regional_foreground,backdrop_chain)).map_err(|e|e.to_string())?;
+        let policy=serde_json::to_string(&(options,viewport,extent,regional_foreground,backdrop_chain,gaussian_regions,gaussian_reduction)).map_err(|e|e.to_string())?;
         if !retain_fragments||fragments.policy!=policy {fragments.clear();}
         fragments.policy=policy;
         let fragment_targets=if retain_fragments {page.children.iter().flat_map(|id|{
@@ -2368,6 +2494,8 @@ impl Engine {
             profile: options.raster_profile,
             interactive_effects: options.interactive_effects,
             large_packet,
+            gaussian_regions,
+            gaussian_reduction,
             prune_backdrop_output: backdrop_chain,
             backdrop_outputs,
             shadow_outputs,
@@ -2981,6 +3109,36 @@ mod incremental_prepare_tests {
         }
     }
     #[test]
+    fn neutral_group_scope_is_opt_in_and_keeps_world_geometry_and_source_intact(){
+        let mut doc=document();doc["pages"][0]["children"]=json!(["frame"]);
+        doc["nodes"]["frame"]["kind"]=json!("group");doc["nodes"]["frame"]["blend"]=json!("normal");
+        doc["nodes"]["frame"]["clip"]=json!(false);doc["nodes"]["frame"]["fills"]=json!([]);doc["nodes"]["frame"]["effects"]=json!([]);
+        doc["nodes"]["frame"]["children"]=json!(["moving","sibling","fixed"]);
+        let mut engine=Engine::new();engine.load_document(&doc.to_string()).unwrap();
+        let options=json!({"pageId":"p","width":128,"height":128,"view":{"x":3.125,"y":-2.25,"zoom":0.5},"transparent":true,"grid":false,"rasterProfile":"figmaSubpixel"});
+        let before=engine.compile_gpu_request(&options.to_string()).unwrap();
+        let pose=before.nodes["moving"].matrix;let packet=before.into_packet().unwrap();
+        let mut selected=options.clone();selected["gpuRoots"]=json!(["moving"]);
+        assert!(engine.compile_gpu_request(&selected.to_string()).is_err());
+        selected["gpuNeutralPageGroup"]=json!(true);
+        let actual=engine.compile_gpu_request(&selected.to_string()).unwrap();assert_eq!(actual.nodes["moving"].matrix,pose);
+        let mut hidden=doc.clone();hidden["nodes"]["fixed"]["visible"]=json!(false);hidden["nodes"]["sibling"]["visible"]=json!(false);
+        let mut reference=Engine::new();reference.load_document(&hidden.to_string()).unwrap();
+        assert_eq!(actual.into_packet().unwrap(),reference.compile_gpu_request(&options.to_string()).unwrap().into_packet().unwrap());
+        assert_eq!(packet,engine.compile_gpu_request(&options.to_string()).unwrap().into_packet().unwrap());
+        for field in ["clip","opacity","fills","effects"]{
+            let mut changed=doc.clone();changed["nodes"]["frame"][field]=match field{
+                "clip"=>json!(true),"opacity"=>json!(0.5),"fills"=>json!([{"kind":"solid","color":"#ffffff"}]),
+                _=>json!([{"kind":"blur","radius":2,"color":"#000000"}]),
+            };
+            engine.load_document(&changed.to_string()).unwrap();assert!(engine.compile_gpu_request(&selected.to_string()).is_err());
+        }
+        let mut masked=doc.clone();masked["nodes"]["fixed"]["mask"]=json!(true);engine.load_document(&masked.to_string()).unwrap();
+        assert!(engine.compile_gpu_request(&selected.to_string()).is_err());
+        engine.load_document(&doc.to_string()).unwrap();selected["rasterProfile"]=json!("analytic");
+        assert!(engine.compile_gpu_request(&selected.to_string()).is_err());
+    }
+    #[test]
     fn partial_prepare_reuses_large_map_without_changing_packets() {
         for profile in ["analytic", "figmaSubpixel"] {
             let mut doc = large_document();
@@ -3376,5 +3534,85 @@ mod page_predicate_cache_tests {
                 assert_eq!(serde_json::to_string(&serde_json::to_value(a).unwrap()).unwrap(),serde_json::to_string(&serde_json::to_value(b).unwrap()).unwrap(),"mode {mode}, page {page}, scale {scale}");
             }}
         }
+    }
+}
+
+
+#[cfg(test)] mod streamed_gaussian_tests {
+    use super::*;
+    use serde_json::json;
+    fn document()->Document {
+        serde_json::from_value(json!({"schemaVersion":20,"id":"large-blur","name":"large-blur","colorManagement":{"documentSpace":"srgb","referenceWhiteNits":203,"peakLuminanceNits":1000},
+            "pages":[{"id":"p","name":"p","children":["ellipse"],"background":"#ffffff"}],"nodes":{"ellipse":{"id":"ellipse","kind":"ellipse","width":477.1432495117188,"height":264.1494750976562,
+            "fills":[{"kind":"solid","color":"#59aeff"}],"effects":[{"kind":"gaussian-blur","radius":10.77823925018311,"color":"#000000"}]}}})).unwrap()
+    }
+    #[test] fn wide_gaussian_streams_source_under_original_intermediate_budget(){
+        let d=document();let mut e=Engine::new();e.load_document(&serde_json::to_string(&d).unwrap()).unwrap();
+        let mut r=json!({"pageId":"p","width":514,"height":514,"view":{"x":-15000.,"y":-2000.,"zoom":64.},"rasterProfile":"figmaSubpixel","gpuViewport":{"x":0,"y":0,"w":514,"h":514}});
+        assert!(e.compile_gpu_request(&r.to_string()).is_err());r["gpuGaussianRegions"]=json!(true);
+        let scene=e.compile_gpu_request(&r.to_string()).unwrap();let plan=scene.nodes["ellipse"].gaussian_region.as_ref().unwrap();
+        assert!(scene.extent.pixels()<1_000_000);assert!(plan.source.pixels()>16_777_216);
+        assert!(u64::from(plan.source.w-2*plan.radii[0])*u64::from(plan.source.h)<=16_777_216);
+        assert_eq!(plan.radii,crate::effects::gaussian_box_radii_region(10.77823925018311*64.).unwrap());
+        assert!(crate::effects::gaussian_box_radii(10.77823925018311*64.).is_err());
+        assert!(crate::rational_filter::RationalKernel::uniform_box(plan.radii[0]).is_err());
+        assert!(crate::rational_filter::RationalKernel::regional_box(plan.radii[0]).is_ok());
+        r["view"]["y"]=json!(-8000.);
+        let interior=e.compile_gpu_request(&r.to_string()).unwrap();
+        assert!(interior.nodes["ellipse"].gaussian_region.is_none());
+        assert!(interior.nodes["ellipse"].effects.is_empty());
+        assert!(interior.nodes["ellipse"].rect.pixels()<1_000_000);
+        assert_eq!(e.doc.as_ref().unwrap().nodes["ellipse"].effects.len(),1,"authored effect stays intact");
+    }
+    #[test] fn reduced_gaussian_keeps_native_output_and_only_admits_broad_convex_sdr_sources(){
+        let d=document();let original=serde_json::to_string(&d).unwrap();let mut e=Engine::new();e.load_document(&original).unwrap();
+        let mut r=json!({"pageId":"p","width":514,"height":514,"view":{"x":-15000.,"y":-2000.,"zoom":64.},"rasterProfile":"figmaSubpixel",
+            "gpuViewport":{"x":0,"y":0,"w":514,"h":514},"gpuGaussianRegions":true});
+        // Factor 2 would exceed this recipe's unchanged 4M source-pixel cap.
+        r["gpuGaussianReduction"]=json!(2);
+        assert_eq!(e.compile_gpu_request(&r.to_string()).unwrap().nodes["ellipse"].gaussian_region.as_ref().unwrap().factor,None);
+        for factor in [4,8] {
+            r["gpuGaussianReduction"]=json!(factor);
+            let scene=e.compile_gpu_request(&r.to_string()).unwrap();let node=&scene.nodes["ellipse"];let plan=node.gaussian_region.as_ref().unwrap();
+            assert_eq!(plan.factor,Some(factor));assert_eq!(plan.full_output,Some(Rect::new(0,0,514,514)));
+            assert!(plan.source.pixels()<=4_194_304);assert!(!node.fill.rect.empty());
+            assert_eq!(node.fill.rect.intersect(plan.source),node.fill.rect);
+            assert_eq!(node.effects[0].radius,d.nodes["ellipse"].effects[0].radius);
+            assert_eq!(serde_json::to_string(e.doc.as_ref().unwrap()).unwrap(),original);
+        }
+        for invalid in [json!(1),json!(3),json!(-1),json!(true)]{r["gpuGaussianReduction"]=invalid;assert!(e.compile_gpu_request(&r.to_string()).is_err());}
+        let mut hdr=d.clone();hdr.nodes.get_mut("ellipse").unwrap().fills[0].color="color(srgb-linear 2 0 0)".into();
+        e.load_document(&serde_json::to_string(&hdr).unwrap()).unwrap();r["gpuGaussianReduction"]=json!(4);
+        assert_eq!(e.compile_gpu_request(&r.to_string()).unwrap().nodes["ellipse"].gaussian_region.as_ref().unwrap().factor,None);
+        let n=&d.nodes["ellipse"];let matrix=Transform([64.,0.,0.,64.,0.,0.]);let plan=gaussian_region_plan(n,matrix,Rect::new(0,0,32,32)).unwrap();
+        let mut thin=n.clone();thin.width=1.;let paths=thin.paths().unwrap();assert!(reduced_gaussian_source(&thin,matrix,&plan,&paths.0,4).is_none());
+    }
+    #[test] fn dependent_and_oversized_streams_do_not_inherit_new_admission(){
+        let d=document();let n=&d.nodes["ellipse"];let m=Transform([64.,0.,0.,64.,0.,0.]);let output=Rect::new(0,0,514,514);
+        assert!(gaussian_region_plan(n,m,output).is_some());
+        let mut masked=n.clone();masked.mask=true;assert!(gaussian_region_plan(&masked,m,output).is_none());
+        let mut clipped=n.clone();clipped.clip=true;assert!(gaussian_region_plan(&clipped,m,output).is_none());
+        assert!(gaussian_region_plan(n,Transform([128.,0.,0.,128.,0.,0.]),output).is_none());
+        assert!(gaussian_region_plan(n,m,Rect::new(0,0,1024,1024)).is_none());
+        assert!(gaussian_region_plan(n,m,Rect::new(1_048_000,0,514,514)).is_none());
+    }
+    #[test] fn imported_closed_ellipse_network_uses_reduced_gaussian(){
+        let n:Node=serde_json::from_str(include_str!("../../../../testing/verification-interaction-layout-20261030/topology-gaussian-leaf.json")).unwrap();
+        let matrix=Transform([64.,0.,0.,64.,729000.,425000.]);
+        let plan=gaussian_region_plan(&n,matrix,Rect::new(729087,425471,514,514)).unwrap();
+        let path=n.paths().unwrap().0;
+        assert!(reduced_gaussian_source(&n,matrix,&plan,&path,4).is_some());
+    }
+    #[test] fn medium_gaussian_reduction_declines_thin_sources_without_changing_the_original_plan(){
+        let mut d=document();d.nodes.get_mut("ellipse").unwrap().effects[0].radius=4.619245529174805;
+        let mut e=Engine::new();e.load_document(&serde_json::to_string(&d).unwrap()).unwrap();
+        let mut options=json!({"pageId":"p","width":514,"height":514,"view":{"x":-15000.,"y":-200.,"zoom":64.},"rasterProfile":"figmaSubpixel",
+            "gpuViewport":{"x":0,"y":0,"w":514,"h":514},"gpuGaussianRegions":true});
+        assert!(e.compile_gpu_request(&options.to_string()).unwrap().nodes["ellipse"].gaussian_region.is_none());
+        options["gpuGaussianReduction"]=json!(4);
+        assert_eq!(e.compile_gpu_request(&options.to_string()).unwrap().nodes["ellipse"].gaussian_region.as_ref().unwrap().factor,Some(4));
+        d.nodes.get_mut("ellipse").unwrap().width=0.5;
+        e.load_document(&serde_json::to_string(&d).unwrap()).unwrap();options["view"]["x"]=json!(0.);
+        assert!(e.compile_gpu_request(&options.to_string()).unwrap().nodes["ellipse"].gaussian_region.is_none());
     }
 }

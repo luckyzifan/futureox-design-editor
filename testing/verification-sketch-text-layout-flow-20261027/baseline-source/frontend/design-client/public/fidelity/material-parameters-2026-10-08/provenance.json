@@ -1,0 +1,57 @@
+{
+  "source": "Actual Google Chrome Figma UI Export 23 layers and Export 10 layers, 1x PNG",
+  "fileKey": "KawVhUXCap10WDTprxYEmu",
+  "materialBoard": "62:2",
+  "blurBoard": "62:191",
+  "archives": [
+    {
+      "archive": "Forma 内核对照验收 2026-10-06 (4).zip",
+      "sha256": "b1596a6264037ea7eb5ee70ad0f7158d7593628f830d3ee514f1a349572140a6",
+      "mtimeUTC": "2026-10-07T17:36:46.955505+00:00",
+      "pngCount": 23
+    },
+    {
+      "archive": "Forma 内核对照验收 2026-10-06 (5).zip",
+      "sha256": "878e01cb6b7c8d7273bfb03ccf052f831bc80c457d5d184b37bb0cf8a8ad6f30",
+      "mtimeUTC": "2026-10-07T17:37:35.399991+00:00",
+      "pngCount": 10
+    }
+  ],
+  "files": {
+    "BlurQA-0.png": "303bfba0f0ca350cca2a48e5aaac247a1bca6b573000fd3f58a2dcdb9d39a915",
+    "BlurQA-0p25.png": "303bfba0f0ca350cca2a48e5aaac247a1bca6b573000fd3f58a2dcdb9d39a915",
+    "BlurQA-0p5.png": "67b2dbb82c7763f6302c1b741eac49bb9ca55e26ae5d7155cb2b1cff2bf6e544",
+    "BlurQA-0p75.png": "f99d7a8cd2234613af2df63bb061af7d6b5ad88680cb0397289fe8bdbb658456",
+    "BlurQA-1.png": "1547c93a2c9d88cccfe892e360a940e54deea5811596adef35318f082ab875e1",
+    "BlurQA-16.png": "a3db40304d2a0b9aeebb1f6f5496fba3f276cebb467ee6a9507bb4309a5935ea",
+    "BlurQA-1p5.png": "25615ef061f743179769a880ef8b5dadf36efbcdacc10cd9bc268f2c7fe889ae",
+    "BlurQA-2p5.png": "70e03803de3ec3da83d7b236f8179e7a0d3d65851b5e77af505571788785f5d4",
+    "BlurQA-4.png": "d5df30b5faf5f606152c29ece5b7c1d4c29bad7ddb880cd332e99f57d02b8034",
+    "BlurQA-8.png": "f12538adcd68eccaefec163fbaa1361a55869478c7862dab7cdcec471082851c",
+    "MaterialQA-depth-1.png": "7dded872404f7ad2ddf2f9e29c960079fe0904d404aa5a6b95c08b501539a88d",
+    "MaterialQA-depth-24.png": "132ad53cb89cc50a2b406f5c3d4b653c5602a902defe09c78370daa309f5d239",
+    "MaterialQA-depth-8.png": "a93a4c0f1f8d5a1448dd0de414ae427a3a9d098f9618cf048ce2d0ca506e2720",
+    "MaterialQA-dispersion-half.png": "665ebed7d299c72210ed9cf8cdca2ef54e151c3381a367ac5a5aa82e5c513aea",
+    "MaterialQA-dispersion-without-refraction.png": "466fcbb177d35ed6fd0da63a0dca7dc5730f6c679357e833be4bbbbe42530df7",
+    "MaterialQA-frost-1.png": "ffbca7332a2ec22c15bf9570485697080088364c2a8e58fbace680cae3cb4a81",
+    "MaterialQA-frost-4.png": "eedf66dc5b26c5ba3a5e7b69c0cb39e8fdf52a73352316d240df7e915c20ec4d",
+    "MaterialQA-frost-quarter.png": "ffbca7332a2ec22c15bf9570485697080088364c2a8e58fbace680cae3cb4a81",
+    "MaterialQA-glass-neutral.png": "91b40c104aa29a53c49cf8ab0d992c072bead36b454da65c20e02222aad98727",
+    "MaterialQA-light-0.png": "8179e65d411b704005d272a5e6c697191e4f9ac4bc1993cd61c2cfef3685b526",
+    "MaterialQA-light-180.png": "0da721f027967925eaaffe8d1304fda840ce7f93d88c60807c5236f5bfe3983c",
+    "MaterialQA-light-270.png": "dc1017d0643e7435f0dcf85828f5a9989eb25a6bb580f63fea5d61172b4da152",
+    "MaterialQA-light-90.png": "08c505ff2af6b5fb1f5a8470a1925d0c7c113a074d24d1bfadb88810b96e0ae7",
+    "MaterialQA-light-strong.png": "e7e368819c6173c0f6aac09f0215a79d16ad7f17fbd869740eec55b0762be3dd",
+    "MaterialQA-refraction-1.png": "357029b24c57726c47ab8efd842bc6f2b878ef20f70867ad38a7d993f0176037",
+    "MaterialQA-texture-anisotropic.png": "7c5da373b2e53c7199b5c57526cc3a342f57425daeb1fa20266f338293165bb5",
+    "MaterialQA-texture-neutral.png": "b5b653225e69ee267cadb716dc89bb8b8ff68b08dc7fcde11e55f5592f4d296e",
+    "MaterialQA-texture-radius-4.png": "a3ecd7421dc1c38c39e509d0a40873ed7ec504437b058dfac21b558575460257",
+    "MaterialQA-texture-size-1.png": "4bd4df00a99081e874ade019d4acc5ad29998f3f7f92638fa34bf58cc2757571",
+    "MaterialQA-texture-size-32.png": "39b5d9f70c0fd548e47c30154c7453740410abed64298f716efdeb1126509c64",
+    "MaterialQA-texture-size-8-twin.png": "5da4bf45fef28bec03af4a723ebd987a34e152327c27c6232e7a878bce6d5a86",
+    "MaterialQA-texture-size-8.png": "5da4bf45fef28bec03af4a723ebd987a34e152327c27c6232e7a878bce6d5a86",
+    "MaterialQA-texture-unclipped.png": "145540f3edc3d3458eefae916066d572b54064204054c2572c4dd291380290d4"
+  },
+  "mapping": "Explicit glass and texture parameters, including independent refraction/dispersion/light/depth and noiseSizeVector/clipToShape. All23 enter strict external comparison; no approximate mapping is silently accepted.",
+  "nativeFigSha256": "5c9145494700f3784c967fd00c18442c57a3e7a65c722c4d2ea5b72ee13da4da"
+}

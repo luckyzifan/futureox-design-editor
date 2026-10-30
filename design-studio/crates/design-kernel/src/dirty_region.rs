@@ -625,6 +625,21 @@ fn subtree_bounds(
     subtree_bounds_from(doc, id, matrix, fonts, false)
 }
 
+/// An empty pass-through container contributes no pixels of its own. Its
+/// selection rectangle is UI metadata, not paint support. Keep all compositing,
+/// masking and generated-geometry boundaries on the ordinary subtree oracle.
+fn sparse_paint_container(n: &Node) -> bool {
+    matches!(n.kind.as_str(), "group" | "frame") && n.visible && n.opacity == 1.
+        && n.blend == "pass-through" && !n.clip && !n.mask
+        && n.fills.is_empty() && n.strokes.is_empty() && n.effects.is_empty()
+        && n.layout.is_none() && n.sizing.is_none() && n.constraints.is_none()
+        && n.instance.is_none() && n.component.is_none() && n.repeat.is_none()
+        && n.boolean_operation.is_none() && n.connector.is_none()
+        && n.vector_brush.is_none() && n.text_path.is_none() && n.path_offset == 0.
+        && n.derived_path.is_none() && n.network.is_none() && n.vector_geometry.is_none()
+        && n.board.is_none()
+}
+
 /// A root's selection box is included unconditionally in page_paint_rects.
 /// If that lower bound already covers this whole output, the full proof
 /// cannot supply a background texel here. Decline only this optional request;
@@ -634,7 +649,9 @@ fn subtree_bounds(
 pub(crate) fn page_background_can_sample(doc:&Document,page:&str,camera:Transform,translation:[f64;2],output:crate::math::Rect)->bool {
     let Some(page)=doc.pages.iter().find(|p|p.id==page)else{return true};
     for id in &page.children {
-        let Some(node)=doc.nodes.get(id)else{continue};let m=camera.concat(node.transform);
+        let Some(node)=doc.nodes.get(id)else{continue};
+        if sparse_paint_container(node) { continue; }
+        let m=camera.concat(node.transform);
         let halo=effect_margin(node,m);let margin=halo.ceil()+stroke_margin(node,m).ceil()+4.;
         if !halo.is_finite()||halo<0.||!margin.is_finite(){continue}
         let mut b=[f64::INFINITY,f64::INFINITY,f64::NEG_INFINITY,f64::NEG_INFINITY];
@@ -648,18 +665,42 @@ pub(crate) fn page_background_can_sample(doc:&Document,page:&str,camera:Transfor
     true
 }
 
+pub(crate) fn page_paint_support_known(doc:&Document)->bool {
+    // Marker geometry has its own support; the generic stroke-width margin
+    // cannot certify an arbitrarily extended marker as empty background.
+    if crate::stroke::has_markers(doc) { return false; }
+    if doc.nodes.values().any(|n|n.effects.iter().any(|e|e.visible&&!matches!(e.kind.as_str(),
+        "blur"|"gaussian-blur"|"motion-blur"|"zoom-blur"|"color-controls"|"shadow"|"inner-shadow"|"background-blur"|"glass"|"noise"|"texture"))) {return false;}
+    true
+}
+pub(crate) fn root_paint_rect(doc:&Document,id:&str,fonts:&Fonts,camera:Transform)->Option<[f64;4]> {
+    subtree_bounds_observed(doc,id,camera,Some(fonts),true,true,&mut|_,_|crate::render_cancellation::checkpoint().is_ok())
+        .filter(|b|b.iter().all(|v|v.is_finite()&&v.abs()<=16_000_000.))
+}
+
 /// Complete conservative page paint support at this exact physical sampling
 /// scale. No viewport culling; unknown effects decline the certificate.
 /// Extra device pixels cover rounding/filter neighbours through every ancestor.
 pub(crate) fn page_paint_rects(doc:&Document,page:&str,fonts:&Fonts,camera:Transform)->Option<Vec<[f64;4]>> {
-    // Marker geometry has its own support; the generic stroke-width margin
-    // cannot certify an arbitrarily extended marker as empty background.
-    if crate::stroke::has_markers(doc) { return None; }
-    if doc.nodes.values().any(|n|n.effects.iter().any(|e|e.visible&&!matches!(e.kind.as_str(),
-        "blur"|"gaussian-blur"|"motion-blur"|"zoom-blur"|"color-controls"|"shadow"|"inner-shadow"|"background-blur"|"glass"|"noise"|"texture"))) {return None;}
+    if !page_paint_support_known(doc){return None}
     let page=doc.pages.iter().find(|p|p.id==page)?;
-    let rects:Vec<_>=page.children.iter().map(|id|subtree_bounds_observed(doc,id,camera,Some(fonts),true,true,
-        &mut|_,_|crate::render_cancellation::checkpoint().is_ok())).collect::<Option<_>>()?;
+    let mut rects = Vec::new();
+    let mut pending: Vec<_> = page.children.iter().rev().map(|id|(id.as_str(),camera)).collect();
+    let mut visited = 0usize;
+    while let Some((id, matrix)) = pending.pop() {
+        crate::render_cancellation::checkpoint().ok()?;
+        visited += 1;
+        if visited > doc.nodes.len() { return None; }
+        let node = doc.nodes.get(id)?;
+        if sparse_paint_container(node) && rects.len()+pending.len()+node.children.len()<=4096 {
+            let next = matrix.concat(node.transform);
+            if !next.0.iter().all(|v|v.is_finite()) { return None; }
+            pending.extend(node.children.iter().rev().map(|id|(id.as_str(),next)));
+        } else {
+            rects.push(subtree_bounds_observed(doc,id,matrix,Some(fonts),true,true,
+                &mut|_,_|crate::render_cancellation::checkpoint().is_ok())?);
+        }
+    }
     rects.iter().all(|b|b.iter().all(|v|v.is_finite()&&v.abs()<=16_000_000.)).then_some(rects)
 }
 
@@ -2253,6 +2294,25 @@ mod parent_map_reuse_tests {
             assert!(full[0]+shift[0]<=32.&&full[1]+shift[1]<=32.&&full[2]+shift[0]>=64.&&full[3]+shift[1]>=64.);
             assert!(page_background_can_sample(&d,"p",camera,shift,crate::math::Rect::new(1000000,0,64,64)));
         }}
+    }
+    #[test] fn empty_stage_keeps_disjoint_paint_and_real_white_shapes_remain_paint(){
+        let mut d:Document=serde_json::from_value(json!({"schemaVersion":20,"id":"s","name":"s","pages":[{"id":"p","name":"p","children":["stage"],"background":"#ffffff"}],"nodes":{
+            "stage":{"id":"stage","kind":"frame","width":10000,"height":10000,"blend":"pass-through","children":["a","b"],"transform":[1.25,0.25,-0.125,0.75,10.125,-8.5]},
+            "a":{"id":"a","kind":"rectangle","width":100,"height":100,"fills":[{"kind":"solid","color":"#ffffff"}]},
+            "b":{"id":"b","kind":"rectangle","width":100,"height":100,"transform":[1,0,0,1,4000,4000],"fills":[{"kind":"solid","color":"#abcdef"}]}
+        }})).unwrap();
+        let fonts=Fonts::new();let camera=Transform([2.,0.,0.,2.,0.125,0.375]);
+        let sparse=page_paint_rects(&d,"p",&fonts,camera).unwrap();assert_eq!(sparse.len(),2);
+        let matrix=camera.concat(d.nodes["stage"].transform);
+        assert_eq!(sparse[0],subtree_bounds_from(&d,"a",matrix,Some(&fonts),true).unwrap());
+        assert_eq!(sparse[1],subtree_bounds_from(&d,"b",matrix,Some(&fonts),true).unwrap());
+        assert!(page_background_can_sample(&d,"p",camera,[0.,0.],crate::math::Rect::new(500,500,64,64)));
+        // A white rectangle is paint even on a white page: it may occlude a
+        // preceding object. Only an empty container's selection box disappears.
+        d.nodes.get_mut("stage").unwrap().fills=d.nodes["a"].fills.clone();
+        assert_eq!(page_paint_rects(&d,"p",&fonts,camera).unwrap().len(),1);
+        d.nodes.get_mut("stage").unwrap().fills.clear();d.nodes.get_mut("stage").unwrap().clip=true;
+        assert_eq!(page_paint_rects(&d,"p",&fonts,camera).unwrap().len(),1);
     }
     #[test] fn cancelled_page_proof_stops_before_curve_expansion(){
         let d=document();let fonts=Fonts::new();

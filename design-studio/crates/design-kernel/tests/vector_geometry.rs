@@ -25,7 +25,7 @@ fn large_render_contour_is_admitted_without_relaxing_edit_network_limits() {
     assert!(geometry.network(10000).is_err());
     assert_eq!(geometry.paths().unwrap().0.commands.len(), 27891);
     doc.nodes.get_mut("n").unwrap().network = None;
-    doc.nodes.get_mut("n").unwrap().vector_geometry = Some(geometry);
+    doc.nodes.get_mut("n").unwrap().vector_geometry = Some(geometry.into());
     doc.validate().unwrap();
     doc.schema_version = 15;
     assert!(doc.validate().is_err());
@@ -72,7 +72,7 @@ fn render_geometry_preserves_cpu_pixels_hit_and_native_format_export() {
     let mut compact = original.clone();
     let layer = compact.nodes.get_mut("n").unwrap();
     layer.network = None;
-    layer.vector_geometry = Some(VectorGeometry::ordered_network(&net, true).unwrap());
+    layer.vector_geometry = Some(VectorGeometry::ordered_network(&net, true).unwrap().into());
     let mut a = Engine::new();
     let mut b = Engine::new();
     a.load_document(&serde_json::to_string(&original).unwrap())
@@ -158,6 +158,6 @@ fn malformed_sequences_nonfinite_and_command_overflow_fail_before_render() {
     assert!(geometry.validate().is_err());
     let mut doc = document(&network(4));
     doc.nodes.get_mut("n").unwrap().vector_geometry =
-        Some(VectorGeometry::ordered_network(&network(4), true).unwrap());
+        Some(VectorGeometry::ordered_network(&network(4), true).unwrap().into());
     assert!(doc.validate().is_err());
 }

@@ -7,6 +7,42 @@ use futureox_design_kernel::{
 };
 use serde_json::{Value, json};
 
+#[test]
+fn gaussian_foreground_keeps_support_on_its_source_instead_of_unrelated_surfaces() {
+    for (zoom,x,y) in [(1.,0.,0.),(1.25,0.25,-0.375),(4.,-120.125,-80.375)] {
+        let doc=json!({"schemaVersion":20,"id":"gaussian-region","name":"gaussian region",
+            "colorManagement":ColorSettings::default(),
+            "pages":[{"id":"p","name":"p","background":"#ddeeff","children":["frame"]}],
+            "nodes":{
+                "frame":{"id":"frame","kind":"frame","width":200,"height":160,"children":["blurred","plain"]},
+                "blurred":{"id":"blurred","kind":"ellipse","width":90,"height":70,"transform":[1,0,0,1,8.125,3.375],
+                    "fills":[{"kind":"solid","color":"#8844cc","opacity":0.65}],
+                    "effects":[{"kind":"gaussian-blur","radius":3.75,"color":"#000000"}]},
+                "plain":{"id":"plain","kind":"rectangle","width":120,"height":120,
+                    "fills":[{"kind":"solid","color":"#112233","opacity":0.2}]}
+            }});
+        let mut old=doc.clone();
+        // An invisible noise sentinel retains the established conservative
+        // allocation path without contributing a single displayed pixel.
+        old["nodes"]["sentinel"]=json!({"id":"sentinel","kind":"rectangle","width":1,"height":1,"visible":false,
+            "effects":[{"kind":"noise","amount":0,"opacity":0,"color":"#000000"}]});
+        old["pages"][0]["children"].as_array_mut().unwrap().push(json!("sentinel"));
+        let o=options("figmaSubpixel",zoom,x,y);let crop=Rect::new(24,16,32,24);
+        let actual=engine(&doc).compile_gpu_region(&o,crop,None).unwrap();
+        let previous=engine(&old).compile_gpu_region(&o,crop,None).unwrap();
+        assert!(actual.extent.pixels()<previous.extent.pixels());
+        assert!(actual.nodes["blurred"].rect.pixels()>actual.extent.pixels());
+        assert_eq!(serde_json::to_value(&actual.nodes["blurred"].effects).unwrap(),serde_json::to_value(&previous.nodes["blurred"].effects).unwrap());
+        for id in ["blurred","plain"] {
+            let new=&actual.nodes[id];let old=&previous.nodes[id];
+            let overlap=new.fill.rect.intersect(old.fill.rect);
+            for y in overlap.y..overlap.bottom(){for x in overlap.x..overlap.right(){
+                assert_eq!(coverage_signature(&actual,&new.fill,x,y),coverage_signature(&previous,&old.fill,x,y));
+            }}
+        }
+    }
+}
+
 fn noise() -> Value {
     json!({"kind":"noise","amount":0.73,"opacity":0.37,"color":"#000000"})
 }

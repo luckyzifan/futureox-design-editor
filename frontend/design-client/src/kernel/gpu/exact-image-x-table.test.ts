@@ -107,7 +107,8 @@ function referenceRange(pixels: Float32Array) {
     minimum.push(exponents.length ? Math.min(...exponents) : 1)
     maximum.push(exponents.length ? Math.max(...exponents) : 1)
   }
-  return { pixels: pixels.length / 4, minimum, maximum, opaqueAlpha, nonnegativeRgb }
+  const unitAlpha=pixels.every((value,index)=>index%4!==3||value>=0&&value<=1)
+  return { pixels: pixels.length / 4, minimum, maximum, opaqueAlpha, ...(unitAlpha?{unitAlpha:true}:{}), nonnegativeRgb }
 }
 test('complete range scan matches every exponent/sign boundary in every channel without modifying words', () => {
   for (let exponent = 0; exponent <= 255; exponent++) for (const mantissa of [0, 1, 0x3fffff, 0x7fffff])
@@ -142,7 +143,7 @@ test('complete scan honors nonzero view offsets, all-zero channels, mixed signs 
   for (const word of [0, 0x80000000]) {
     const pixels = new Float32Array(new Uint32Array(68).fill(word).buffer)
     expect(certifyExactImageRange(pixels)).toEqual({ pixels: 17, minimum: [1, 1, 1, 1], maximum: [1, 1, 1, 1],
-      opaqueAlpha: false, nonnegativeRgb: true })
+      opaqueAlpha: false, unitAlpha:true, nonnegativeRgb: true })
   }
 })
 test('opaque alpha requires every raw alpha word to be exactly one, never just the exponent range', () => {

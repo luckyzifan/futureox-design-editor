@@ -164,14 +164,14 @@ export class SceneImageHydration {
     private requestCurrent: () => boolean = () => true,
     private limits = { entries: 1024, keyBytes: 4 * 1024 * 1024, readBytes: cache.limit }) {}
 
-  hydrate(scene: GpuScene, current = this.requestCurrent): Promise<void> {
+  hydrate(scene: GpuScene, current = this.requestCurrent, uploaded?: (uri: string) => boolean): Promise<void> {
     // A request can have multiple consumers, but never duplicates an in-flight
     // read or holds more than one persisted payload at a time.
-    const task = this.pending.then(() => this.run(scene, current))
+    const task = this.pending.then(() => this.run(scene, current, uploaded))
     this.pending = task.catch(() => {})
     return task
   }
-  private async run(scene: GpuScene, current: () => boolean) {
+  private async run(scene: GpuScene, current: () => boolean, uploaded?: (uri: string) => boolean) {
     const check = () => {
       if (!this.ownerCurrent() || !current()) throw Error('PREVIEW_CANCELLED')
     }
@@ -183,7 +183,7 @@ export class SceneImageHydration {
     for (const uri of sceneIndex(scene).images) {
       check()
       const key = `${variant === 'byte' ? 'b' : 'f'}:${uri}`
-      if (this.cache.get(scope, key) || this.attempted.has(key)) continue
+      if (this.cache.get(scope, key) || this.attempted.has(key) || uploaded?.(uri)) continue
       // Long/invalid sources are still validated by the renderer. Skipping
       // optional acceleration must not become a different source-error policy.
       if (uri.length >= 2_000_000 || !/^data:image\/(png|jpeg|webp);base64,/.test(uri)) continue

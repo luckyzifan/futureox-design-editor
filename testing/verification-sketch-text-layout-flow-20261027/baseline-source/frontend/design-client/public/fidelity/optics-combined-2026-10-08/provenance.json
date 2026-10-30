@@ -1,0 +1,144 @@
+{
+  "sources": [
+    {
+      "directory": "material-parameters-2026-10-08",
+      "casesSha256": "2cb52456dbf18810a8221546c5508303b8172b6d0a664650ba5cdf8575c4d47b",
+      "provenance": {
+        "source": "Actual Google Chrome Figma UI Export 23 layers and Export 10 layers, 1x PNG",
+        "fileKey": "KawVhUXCap10WDTprxYEmu",
+        "materialBoard": "62:2",
+        "blurBoard": "62:191",
+        "archives": [
+          {
+            "archive": "Forma \u5185\u6838\u5bf9\u7167\u9a8c\u6536 2026-10-06 (4).zip",
+            "sha256": "b1596a6264037ea7eb5ee70ad0f7158d7593628f830d3ee514f1a349572140a6",
+            "mtimeUTC": "2026-10-07T17:36:46.955505+00:00",
+            "pngCount": 23
+          },
+          {
+            "archive": "Forma \u5185\u6838\u5bf9\u7167\u9a8c\u6536 2026-10-06 (5).zip",
+            "sha256": "878e01cb6b7c8d7273bfb03ccf052f831bc80c457d5d184b37bb0cf8a8ad6f30",
+            "mtimeUTC": "2026-10-07T17:37:35.399991+00:00",
+            "pngCount": 10
+          }
+        ],
+        "files": {
+          "BlurQA-0.png": "303bfba0f0ca350cca2a48e5aaac247a1bca6b573000fd3f58a2dcdb9d39a915",
+          "BlurQA-0p25.png": "303bfba0f0ca350cca2a48e5aaac247a1bca6b573000fd3f58a2dcdb9d39a915",
+          "BlurQA-0p5.png": "67b2dbb82c7763f6302c1b741eac49bb9ca55e26ae5d7155cb2b1cff2bf6e544",
+          "BlurQA-0p75.png": "f99d7a8cd2234613af2df63bb061af7d6b5ad88680cb0397289fe8bdbb658456",
+          "BlurQA-1.png": "1547c93a2c9d88cccfe892e360a940e54deea5811596adef35318f082ab875e1",
+          "BlurQA-16.png": "a3db40304d2a0b9aeebb1f6f5496fba3f276cebb467ee6a9507bb4309a5935ea",
+          "BlurQA-1p5.png": "25615ef061f743179769a880ef8b5dadf36efbcdacc10cd9bc268f2c7fe889ae",
+          "BlurQA-2p5.png": "70e03803de3ec3da83d7b236f8179e7a0d3d65851b5e77af505571788785f5d4",
+          "BlurQA-4.png": "d5df30b5faf5f606152c29ece5b7c1d4c29bad7ddb880cd332e99f57d02b8034",
+          "BlurQA-8.png": "f12538adcd68eccaefec163fbaa1361a55869478c7862dab7cdcec471082851c",
+          "MaterialQA-depth-1.png": "7dded872404f7ad2ddf2f9e29c960079fe0904d404aa5a6b95c08b501539a88d",
+          "MaterialQA-depth-24.png": "132ad53cb89cc50a2b406f5c3d4b653c5602a902defe09c78370daa309f5d239",
+          "MaterialQA-depth-8.png": "a93a4c0f1f8d5a1448dd0de414ae427a3a9d098f9618cf048ce2d0ca506e2720",
+          "MaterialQA-dispersion-half.png": "665ebed7d299c72210ed9cf8cdca2ef54e151c3381a367ac5a5aa82e5c513aea",
+          "MaterialQA-dispersion-without-refraction.png": "466fcbb177d35ed6fd0da63a0dca7dc5730f6c679357e833be4bbbbe42530df7",
+          "MaterialQA-frost-1.png": "ffbca7332a2ec22c15bf9570485697080088364c2a8e58fbace680cae3cb4a81",
+          "MaterialQA-frost-4.png": "eedf66dc5b26c5ba3a5e7b69c0cb39e8fdf52a73352316d240df7e915c20ec4d",
+          "MaterialQA-frost-quarter.png": "ffbca7332a2ec22c15bf9570485697080088364c2a8e58fbace680cae3cb4a81",
+          "MaterialQA-glass-neutral.png": "91b40c104aa29a53c49cf8ab0d992c072bead36b454da65c20e02222aad98727",
+          "MaterialQA-light-0.png": "8179e65d411b704005d272a5e6c697191e4f9ac4bc1993cd61c2cfef3685b526",
+          "MaterialQA-light-180.png": "0da721f027967925eaaffe8d1304fda840ce7f93d88c60807c5236f5bfe3983c",
+          "MaterialQA-light-270.png": "dc1017d0643e7435f0dcf85828f5a9989eb25a6bb580f63fea5d61172b4da152",
+          "MaterialQA-light-90.png": "08c505ff2af6b5fb1f5a8470a1925d0c7c113a074d24d1bfadb88810b96e0ae7",
+          "MaterialQA-light-strong.png": "e7e368819c6173c0f6aac09f0215a79d16ad7f17fbd869740eec55b0762be3dd",
+          "MaterialQA-refraction-1.png": "357029b24c57726c47ab8efd842bc6f2b878ef20f70867ad38a7d993f0176037",
+          "MaterialQA-texture-anisotropic.png": "7c5da373b2e53c7199b5c57526cc3a342f57425daeb1fa20266f338293165bb5",
+          "MaterialQA-texture-neutral.png": "b5b653225e69ee267cadb716dc89bb8b8ff68b08dc7fcde11e55f5592f4d296e",
+          "MaterialQA-texture-radius-4.png": "a3ecd7421dc1c38c39e509d0a40873ed7ec504437b058dfac21b558575460257",
+          "MaterialQA-texture-size-1.png": "4bd4df00a99081e874ade019d4acc5ad29998f3f7f92638fa34bf58cc2757571",
+          "MaterialQA-texture-size-32.png": "39b5d9f70c0fd548e47c30154c7453740410abed64298f716efdeb1126509c64",
+          "MaterialQA-texture-size-8-twin.png": "5da4bf45fef28bec03af4a723ebd987a34e152327c27c6232e7a878bce6d5a86",
+          "MaterialQA-texture-size-8.png": "5da4bf45fef28bec03af4a723ebd987a34e152327c27c6232e7a878bce6d5a86",
+          "MaterialQA-texture-unclipped.png": "145540f3edc3d3458eefae916066d572b54064204054c2572c4dd291380290d4"
+        },
+        "mapping": "Explicit glass and texture parameters, including independent refraction/dispersion/light/depth and noiseSizeVector/clipToShape. All23 enter strict external comparison; no approximate mapping is silently accepted.",
+        "nativeFigSha256": "5c9145494700f3784c967fd00c18442c57a3e7a65c722c4d2ea5b72ee13da4da"
+      }
+    },
+    {
+      "directory": "optics-2026-10-08",
+      "casesSha256": "9f8d3f3bd666f8b5c1dc16f3ee1466ccdc90ddbfd86ae2448dc96c5b66620fdb",
+      "provenance": {
+        "source": "Actual Chrome Figma UI Export 41 layers; individual PNG 1x/2x/4x sRGB settings; original bytes preserved",
+        "fileKey": "KawVhUXCap10WDTprxYEmu",
+        "boardId": "99:2",
+        "archive": "Forma \u5185\u6838\u5bf9\u7167\u9a8c\u6536 2026-10-06 (9).zip",
+        "archiveSha256": "d0d53fb0611cc90a558e2803044b4590c8e56899e123c168668e6de0c71229ac",
+        "exportedAtUTC": "2026-10-08T03:40:30.555166+00:00",
+        "probeMetadata": "testing/fixtures/design/figma-optics-probes-2026-10-08.json",
+        "files": {
+          "OpticsQA-frost-0-1x.png": "55ea372ba5e854b2d1023968d42abce1986741939c9595120ff7463f175bb324",
+          "OpticsQA-frost-0.125-1x.png": "ffbca7332a2ec22c15bf9570485697080088364c2a8e58fbace680cae3cb4a81",
+          "OpticsQA-frost-0.5-1x.png": "ffbca7332a2ec22c15bf9570485697080088364c2a8e58fbace680cae3cb4a81",
+          "OpticsQA-frost-1-1x.png": "ffbca7332a2ec22c15bf9570485697080088364c2a8e58fbace680cae3cb4a81",
+          "OpticsQA-frost-1.5-1x.png": "52835aa8cca4238adb750053c14d1e767a9e4155685850083ba236a890154e56",
+          "OpticsQA-frost-1.99-1x.png": "9ce71af70b369658486ec56d03f57aedc4c43ed4b00356077979a7ed1d6fe021",
+          "OpticsQA-frost-2-1x.png": "fa68b15fe1916b4f48210bb49150a8fd3a8275a381f45ae9601be21e4797f91d",
+          "OpticsQA-frost-2.01-1x.png": "fa68b15fe1916b4f48210bb49150a8fd3a8275a381f45ae9601be21e4797f91d",
+          "OpticsQA-frost-3-1x.png": "31809fb4f74774bd8695215e60a698d8d87f1e622132e116cf5b151d5797b1e7",
+          "OpticsQA-frost-4-1x.png": "eedf66dc5b26c5ba3a5e7b69c0cb39e8fdf52a73352316d240df7e915c20ec4d",
+          "OpticsQA-frost-0-2x.png": "c1db12f5edbfb62b5f7caf3734400b116f2f8523c33dedcf6ba3da8cfec1b9a9",
+          "OpticsQA-frost-0.125-2x.png": "4a7ad60652158eff88a560a43837d0b2a2f851b8d0bd95610d58d3f2628364aa",
+          "OpticsQA-frost-0.5-2x.png": "4a7ad60652158eff88a560a43837d0b2a2f851b8d0bd95610d58d3f2628364aa",
+          "OpticsQA-frost-1-2x.png": "4a7ad60652158eff88a560a43837d0b2a2f851b8d0bd95610d58d3f2628364aa",
+          "OpticsQA-frost-1.5-2x.png": "0e36b4c19b962f0fc333c22affdc3cc8d24ea31e9268dea8cdc4d96634f02524",
+          "OpticsQA-frost-1.99-2x.png": "efb19c44945538aec3bba27ceace4119634e0e93fcbcc95d72a8d0a068869f34",
+          "OpticsQA-frost-2-2x.png": "e01cc7a74166d75422f947c1edea488beb7ae28c7b577e4e6e553802403bbfb1",
+          "OpticsQA-frost-2.01-2x.png": "ba709e554e1d667cefe5231904ed21e77b7b4c836c462e62ffad296a57606246",
+          "OpticsQA-frost-3-2x.png": "d9f9c76d45f83a5b910aab05368985f1d43ea844b9024e90cd788b273fb336c7",
+          "OpticsQA-frost-4-2x.png": "1c46bca5fd9ff3bcf3a8bbb7b89b04eb22554f32451e5db4cb3045c5e5ef2834",
+          "OpticsQA-frost-0-4x.png": "3dcf84f22502726fdbe9a4b40605594f45ea70b21c512916e169e9d27918cd06",
+          "OpticsQA-frost-0.125-4x.png": "f96589a75dfcd87a4295fb07933c627cf4afe9ba88e57572ee52315e53b57eed",
+          "OpticsQA-frost-0.5-4x.png": "f96589a75dfcd87a4295fb07933c627cf4afe9ba88e57572ee52315e53b57eed",
+          "OpticsQA-frost-1-4x.png": "f96589a75dfcd87a4295fb07933c627cf4afe9ba88e57572ee52315e53b57eed",
+          "OpticsQA-frost-1.5-4x.png": "5208729b4bb3775358418fc74b8968e487175fd7cc37148d092dc1b74c713f14",
+          "OpticsQA-frost-1.99-4x.png": "c566482a3695657030c5866cab05eb2079189ca19ee5f4751fa726ef431eae46",
+          "OpticsQA-frost-2-4x.png": "eb4f56983364b7f77e5065c948304b1878d1ffbd07142bc79f5bc31911e936ca",
+          "OpticsQA-frost-2.01-4x.png": "ac977db9b63599c0c9d206721a205849f1dce96fc5cbb99872fd90269bbbc398",
+          "OpticsQA-frost-3-4x.png": "5535d0ea985fea0adb2403cdf629ea634969cb5fad79e4d9b4286b363d7eece7",
+          "OpticsQA-frost-4-4x.png": "c213180e1c8c89b303973b2517d62f852e605fce0f260fe4d41eb4f91062d665",
+          "OpticsQA-light-45-0-depth-8-1x.png": "91b40c104aa29a53c49cf8ab0d992c072bead36b454da65c20e02222aad98727",
+          "OpticsQA-light-45-0.25-depth-8-1x.png": "7fab66adc888769f7f4d945e7c43c1083ee65ad78571eba0a00adad086b29deb",
+          "OpticsQA-light-45-0.5-depth-8-1x.png": "6e67b295395fd2433e1be1bfc424c75eb71ac721a171aea53115d387482f170b",
+          "OpticsQA-light-45-1-depth-8-1x.png": "e7e368819c6173c0f6aac09f0215a79d16ad7f17fbd869740eec55b0762be3dd",
+          "OpticsQA-light-45-0-depth-8-2x.png": "a2ce7f86b3abb26644f7512b7d400ca975252ac6483ad3f02f7a3cb9a2305fdd",
+          "OpticsQA-light-45-0.25-depth-8-2x.png": "65fe7e80a300ce9ae2c44afad438a4723fd421b32a75294c6addfe92ca8ab125",
+          "OpticsQA-light-45-0.5-depth-8-2x.png": "327b286f13b95b28059f8f660c810b646cc66020ffd7308c5109cf7bab603daa",
+          "OpticsQA-light-45-1-depth-8-2x.png": "6afa1a631fe245554b71e5dbdf39f226d2a046f874088d91bb93662099c6a299",
+          "OpticsQA-light-0-0.5-depth-1-1x.png": "aebb9e25145c7e915dce5c1f46ed35b17974f5fddea115f6c5d0baef4f228d33",
+          "OpticsQA-light-0-0.5-depth-4-1x.png": "5a7805845f4393ad6a5948bc410c1ac974de890537ea093039ad86e95247b1ce",
+          "OpticsQA-light-0-0.5-depth-16-1x.png": "016e92a44ca8ac062f26ddf4545cec3fec382d1f650948e6d1af2fd95a114c20"
+        }
+      }
+    },
+    {
+      "directory": "optics-holdout-2026-10-08",
+      "casesSha256": "030f76f214f6d90368df67760e3db3a35bc6913719361efb64e6575117920ae8",
+      "provenance": {
+        "source": "Actual Chrome Figma UI Export 8 layers; PNG 1x/2x sRGB, original bytes preserved",
+        "fileKey": "KawVhUXCap10WDTprxYEmu",
+        "boardId": "101:2",
+        "archive": "Forma \u5185\u6838\u5bf9\u7167\u9a8c\u6536 2026-10-06 (10).zip",
+        "archiveSha256": "54a8efefbaa3cc5c1d0ce62fc16170b0448a1c81bfa5e694f8ece6baab1f75f7",
+        "exportedAtUTC": "2026-10-08T03:59:29.277661+00:00",
+        "files": {
+          "OpticsHoldout-light-30-0.75-depth-12-1x.png": "7b3b6cde7ad1d9befe7d1ed5d0cc796411a96233006adb34b7eb4b2c1223214e",
+          "OpticsHoldout-light-135-0.75-depth-12-1x.png": "414f25ff375e769e189c0222488da372f5b522106fdab019cff4763b55f36b46",
+          "OpticsHoldout-light-225-0.75-depth-12-1x.png": "75fa8676a65a5341f31309371923842ab4f4641091d49bb0f3dbc327cc3e8ad0",
+          "OpticsHoldout-light-315-0.75-depth-12-1x.png": "724c57c2ae39f17017983915f3d344c99371f4e1615a7dc24716b18d1da3f94c",
+          "OpticsHoldout-light-30-0.75-depth-12-2x.png": "dbc252c348f7958a6cf8ac1fb811372e43137411d548d87dee64bd3581f0a5f8",
+          "OpticsHoldout-light-135-0.75-depth-12-2x.png": "f9c172d90113534e632bf85a6c3580060e61e16d9563034cb7e9f4d641534abb",
+          "OpticsHoldout-light-225-0.75-depth-12-2x.png": "969a416cfc5c20c2e3fd77d45f48b128ba857299774e2e4c81585d6db13ed73e",
+          "OpticsHoldout-light-315-0.75-depth-12-2x.png": "246ee920c0b2e97dc0cb6fa26f57feec36b08a1a503c46eb836bb2c701b47f9f"
+        }
+      }
+    }
+  ],
+  "source": "Unmodified real Chrome exports; exact read-back effect parameters, no reference resampling or alignment."
+}

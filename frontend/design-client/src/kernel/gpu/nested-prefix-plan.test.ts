@@ -155,3 +155,16 @@ test('a selected child mask is an ancestor dependency even when it is the final 
   nodes.moving.mask = true
   expect(planNestedPrefix(scene, 'root', changing)).toBeUndefined()
 })
+
+
+test('opt-in suffix replays following content while only the complete stationary prefix is cached', () => {
+  const {scene,nodes,changing}=fixture()
+  scene.nodes.tail=node('tail');scene.nodes.tail.effects=[{kind:'background-blur',visible:true,radius:3}] as GpuNode['effects']
+  nodes.root.children.push('tail')
+  expect(planNestedPrefix(scene,'root',changing)).toBeUndefined()
+  const plan=planNestedPrefix(scene,'root',changing,true)!
+  expect(plan.count).toBe(2)
+  expect(plan.sources.map(row=>row.id)).toEqual(['blur','static','glyph'])
+  scene.nodes.tail.mask=true
+  expect(planNestedPrefix(scene,'root',changing,true)).toBeUndefined()
+})

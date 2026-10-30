@@ -16,6 +16,8 @@ use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 mod boolean_worksets;
+#[cfg(not(target_arch="wasm32"))]
+mod source_size;
 
 #[derive(Debug)]
 pub enum Error {
@@ -664,7 +666,7 @@ fn blend_from_code(code: u64) -> String {
 }
 
 fn blend_of(style: &Value) -> (f64, String) {
-    let ctx = style.get("contextSettings").cloned().unwrap_or(Value::Null);
+    let ctx = style.get("contextSettings").unwrap_or(&Value::Null);
     let opacity = ctx.get("opacity").and_then(Value::as_f64).unwrap_or(1.);
     let blend = match ctx.get("blendMode") {
         Some(Value::Number(n)) => blend_from_code(n.as_u64().unwrap_or(0)),
@@ -865,6 +867,42 @@ fn image_data_uri(bytes: &[u8]) -> String {
     )
 }
 
+#[cfg(all(test,not(target_arch="wasm32")))]
+#[test]
+fn repeated_archive_image_references_share_exact_encoded_bytes(){
+    let mut image=std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(2,2,image::Rgba([16,128,240,255])))
+        .write_to(&mut image,image::ImageFormat::Png).unwrap();
+    let bytes=image.into_inner();let files=BTreeMap::from([("images/asset".into(),bytes.clone())]);
+    let page=json!({"_class":"page","do_objectID":"p","name":"p","layers":[
+        {"_class":"bitmap","do_objectID":"a","name":"a","frame":{"x":0,"y":0,"width":2,"height":2},"image":{"_ref":"asset"}},
+        {"_class":"bitmap","do_objectID":"b","name":"b","frame":{"x":4,"y":0,"width":2,"height":2},"image":{"_ref":"images/asset"}}
+    ]});
+    let result=import_sketch_source_parts(&files,&json!({"version":136}),&json!({"pages":[{"_ref":"pages/p"}]}),&BTreeMap::from([("p".into(),page)])).unwrap();
+    let a=result.document.nodes.values().find(|n|n.name=="a").unwrap().fills[0].image.as_ref().unwrap();
+    let b=result.document.nodes.values().find(|n|n.name=="b").unwrap().fills[0].image.as_ref().unwrap();
+    assert!(std::sync::Arc::ptr_eq(a,b));assert_eq!(a.as_ref(),image_data_uri(&bytes));
+}
+
+#[cfg(all(test,not(target_arch="wasm32")))]
+#[test]
+fn parsed_source_size_bound_falls_back_without_changing_escaped_entry_limit(){
+    let pages=BTreeMap::from([("p".into(),json!({"_class":"page","do_objectID":"p","name":"p","layers":[]}))]);
+    let mut document=json!({"pages":[{"_ref":"pages/p"}],"unknownSourceSizeProbe":"x".repeat(12*1024*1024)});
+    assert!(source_size::upper_bound(&document,64*1024*1024).is_some());
+    assert!(import_sketch_source_parts(&BTreeMap::new(),&json!({"version":136}),&document,&pages).is_ok());
+    // Eleven MiB of controls serialize beyond the unchanged64MiBentry cap.
+    document["unknownSourceSizeProbe"]=json!("\0".repeat(11*1024*1024));
+    assert!(import_sketch_source_parts(&BTreeMap::new(),&json!({"version":136}),&document,&pages).is_err());
+    // The numeric bound can still overestimate an otherwise valid entry.
+    // Keep the original exact-count fallback at the real admission boundary.
+    document["unknownSourceSizeProbe"]=json!("");document["numberProbe"]=json!(0.5);
+    let overhead=serde_json::to_vec(&document).unwrap().len();
+    document["unknownSourceSizeProbe"]=json!("x".repeat(64*1024*1024-overhead-1));
+    assert!(source_size::upper_bound(&document,64*1024*1024).is_none());
+    assert!(import_sketch_source_parts(&BTreeMap::new(),&json!({"version":136}),&document,&pages).is_ok());
+}
+
 /// Read the encoded extent without decoding/allocating the bitmap. Sampling
 /// still uses the ordinary image admission and decoder in the renderer.
 fn bitmap_extent(bytes: &[u8]) -> Option<[f64; 2]> {
@@ -910,6 +948,7 @@ fn kind_for_class(class: &str) -> &'static str {
 }
 
 struct Importer<'a> {
+    image_sources: std::cell::RefCell<std::collections::HashMap<&'a str,std::sync::Arc<str>>>,
     available_fonts: std::collections::BTreeSet<String>,
     color_space: ColorSpace,
     files: &'a BTreeMap<String, Vec<u8>>,
@@ -936,12 +975,14 @@ impl<'a> Importer<'a> {
         let size = bitmap_extent(bytes)?.map(|value| value * scale);
         size.iter().all(|v| v.is_finite() && *v > 0. && *v <= 1e7).then_some(size)
     }
-    fn image_ref(&self, layer: &Value) -> Option<String> {
+    fn image_ref(&self, layer: &Value) -> Option<std::sync::Arc<str>> {
         let reference = layer.get("image").and_then(|i| i.get("_ref"))?.as_str()?;
-        self.files
-            .get(&format!("images/{reference}"))
-            .or_else(|| self.files.get(reference))
-            .map(|b| image_data_uri(b))
+        let (key,bytes)=self.files.get_key_value(&format!("images/{reference}"))
+            .or_else(||self.files.get_key_value(reference))?;
+        // The same immutable archive asset is often painted by many layers.
+        // Encode it once; each node still owns the complete original data URI.
+        Some(self.image_sources.borrow_mut().entry(key.as_str())
+            .or_insert_with(||std::sync::Arc::from(image_data_uri(bytes))).clone())
     }
 
     /// Whether `paint_part` would admit this part, checked without building
@@ -1056,6 +1097,10 @@ impl<'a> Importer<'a> {
     }
 
     fn paints(&self, style: &Value, key: &str, size: [f64; 2]) -> Vec<Paint> {
+        self.paint_sources(style,key,size).into_iter().map(|(_,paint)|paint).collect()
+    }
+
+    fn paint_sources<'b>(&self, style:&'b Value, key:&str, size:[f64;2])->Vec<(&'b Value,Paint)> {
         let mut out = Vec::new();
         let Some(parts) = style.get(key).and_then(Value::as_array) else {
             return out;
@@ -1064,17 +1109,21 @@ impl<'a> Importer<'a> {
             // The node owns the layer context. Each paint owns only its part
             // context and color alpha; multiplying layer opacity here repeats it.
             if let Some(paint) = self.paint_part(part, 1., "normal", size) {
-                out.push(paint);
+                out.push((part,paint));
             }
         }
         out
     }
 
     fn strokes(&self, style: &Value, size: [f64; 2], lossy: &mut Vec<String>) -> Vec<Stroke> {
+        self.stroke_sources(style,size,lossy).into_iter().map(|(_,stroke)|stroke).collect()
+    }
+
+    fn stroke_sources<'b>(&self, style:&'b Value, size:[f64;2], lossy:&mut Vec<String>)->Vec<(&'b Value,Stroke)> {
         // Dash/cap/join live on the style's borderOptions (one set shared by
         // every border, per the archived schema); the endpoint markers ride
         // the same shared options, so every border inherits them.
-        let options = style.get("borderOptions").cloned().unwrap_or(Value::Null);
+        let options = style.get("borderOptions").unwrap_or(&Value::Null);
         let dash = options
             .get("dashPattern")
             .and_then(Value::as_array)
@@ -1119,7 +1168,7 @@ impl<'a> Importer<'a> {
                 continue;
             };
             paint.id = String::new();
-            out.push(Stroke {
+            out.push((part,Stroke {
                 start_marker,
                 end_marker,
                 id: String::new(),
@@ -1137,7 +1186,7 @@ impl<'a> Importer<'a> {
                 dash_offset: 0.,
                 visible: bool_at(part, "isEnabled"),
                 width_profile: Vec::new(),
-            });
+            }));
         }
         out
     }
@@ -1288,7 +1337,7 @@ impl<'a> Importer<'a> {
             .and_then(Value::as_bool)
             .unwrap_or(true);
         node.locked = bool_at(layer, "isLocked");
-        let frame = layer.get("frame").cloned().unwrap_or(Value::Null);
+        let frame = layer.get("frame").unwrap_or(&Value::Null);
         node.constrain_proportions = bool_at(&frame, "constrainProportions");
         node.width = f64_at(&frame, "width").max(0.);
         node.height = f64_at(&frame, "height").max(0.);
@@ -1316,22 +1365,14 @@ impl<'a> Importer<'a> {
             );
         }
 
-        let style = layer.get("style").cloned().unwrap_or(Value::Null);
+        let style = layer.get("style").unwrap_or(&Value::Null);
         if !style.is_null() {
             if ["fills","borders"].iter().any(|key|style.get(key).and_then(Value::as_array).into_iter().flatten().any(|part|matches!(part.pointer("/contextSettings/blendMode").and_then(Value::as_u64),Some(16|17)))) {
                 import_lossy.push("plus-blend-native-roundtrip-preserved-portable-compositing-differs".into());
             }
             let size = [node.width, node.height];
-            node.fills = self.paints(&style, "fills", size);
-            let source_gradients: BTreeMap<String, Value> = style
-                .get("fills")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .filter_map(|part| {
-                    self.paint_part(part, 1., "normal", size)
-                        .map(|paint| (part, paint))
-                })
+            let fills=self.paint_sources(style,"fills",size);
+            let source_gradients: BTreeMap<String, Value> = fills.iter()
                 .enumerate()
                 .filter_map(|(index, (part, paint))| {
                     part.get("gradient")
@@ -1350,16 +1391,9 @@ impl<'a> Importer<'a> {
                     json!(source_gradients).to_string(),
                 );
             }
-            node.strokes = self.strokes(&style, size, &mut import_lossy);
-            let border_gradients: BTreeMap<String, Value> = style
-                .get("borders")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .filter_map(|part| {
-                    self.paint_part(part, 1., "normal", size)
-                        .map(|paint| (part, paint))
-                })
+            node.fills=fills.into_iter().map(|(_,paint)|paint).collect();
+            let borders=self.stroke_sources(style,size,&mut import_lossy);
+            let border_gradients: BTreeMap<String, Value> = borders.iter().map(|(part,stroke)|(*part,&stroke.paint))
                 .enumerate()
                 .filter_map(|(index, (part, paint))| {
                     part.get("gradient")
@@ -1378,6 +1412,7 @@ impl<'a> Importer<'a> {
                     json!(border_gradients).to_string(),
                 );
             }
+            node.strokes=borders.into_iter().map(|(_,stroke)|stroke).collect();
             node.effects = self.effects(&style, class == "bitmap");
             // Our historical blur radius remains a different authored model.
             // Restore only while the native effect fields still match exactly;
@@ -1690,7 +1725,7 @@ impl<'a> Importer<'a> {
                     #[allow(clippy::needless_range_loop)]
                     for i in 0..points.len() {
                         let pt = &points[i];
-                        let anchor = pt.get("point").cloned().unwrap_or(Value::Null);
+                        let anchor = pt.get("point").unwrap_or(&Value::Null);
                         let (vx, vy) = point_xy(&anchor);
                         network.vertices.push(crate::scene::Vertex {
                             id: format!("v{i}"),
@@ -1811,7 +1846,7 @@ impl<'a> Importer<'a> {
                     layer.get("lineSpacingBehaviour").and_then(Value::as_i64);
                 if let Some(runs) = attr.get("attributes").and_then(Value::as_array) {
                     for run in runs {
-                        let a = run.get("attributes").cloned().unwrap_or(Value::Null);
+                        let a = run.get("attributes").unwrap_or(&Value::Null);
                         let start =
                             run.get("location").and_then(Value::as_u64).unwrap_or(0) as usize;
                         let len = run.get("length").and_then(Value::as_u64).unwrap_or(0) as usize;
@@ -2569,8 +2604,28 @@ pub fn import_sketch(bytes: &[u8]) -> Result<Document> {
 }
 
 fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
-    let meta = json_part(&files, "meta.json")?;
-    let document = json_part(&files, "document.json")?;
+    let meta = json_part(files, "meta.json")?;
+    let document = json_part(files, "document.json")?;
+    let mut page_index: BTreeMap<String, Value> = BTreeMap::new();
+    for (name, data) in files {
+        if let Some(page_id) = name
+            .strip_prefix("pages/")
+            .and_then(|n| n.strip_suffix(".json"))
+        {
+            let value = serde_json::from_slice::<Value>(data)
+                .map_err(|e| Error::MalformedJson(format!("{name}: {e}")))?;
+            page_index.insert(page_id.into(), value);
+        }
+    }
+
+    import_sketch_parts(files, &meta, &document, &page_index)
+}
+
+// Both archive and native-source imports execute the same semantic codec.
+// Parsed native windows borrow their values instead of serializing and then
+// parsing the complete layer tree again.
+fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
+    document: &Value, page_index: &BTreeMap<String, Value>) -> Result<Document> {
     validate_sketch_shared_style_ids(&document)?;
 
     let mut doc = Document {
@@ -2596,6 +2651,7 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
     // Restore private text identities only when this archive still owns their resources.
     let font_aliases=crate::interop_resources::import_fonts(&document,&mut doc)?;
     let mut importer = Importer {
+        image_sources: Default::default(),
         available_fonts: doc.fonts.keys().cloned().collect(),
         color_space: if document.get("colorSpace").and_then(Value::as_i64) == Some(2) {
             ColorSpace::DisplayP3
@@ -2609,18 +2665,6 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
         has_user_prototype: std::collections::HashSet::new(),
         flow_home: None,
     };
-    let mut page_index: BTreeMap<String, Value> = BTreeMap::new();
-    for (name, data) in files {
-        if let Some(page_id) = name
-            .strip_prefix("pages/")
-            .and_then(|n| n.strip_suffix(".json"))
-        {
-            let value = serde_json::from_slice::<Value>(data)
-                .map_err(|e| Error::MalformedJson(format!("{name}: {e}")))?;
-            page_index.insert(page_id.into(), value);
-        }
-    }
-
     // Native page order is authored data. Resolve archive identities directly;
     // originalId only renames the resulting kernel identity, never its file.
     let mut ordered = Vec::new();
@@ -3358,6 +3402,44 @@ pub fn import_sketch_source_window(
     finish_sketch_report(import_sketch_files(files)?)
 }
 
+/// Already parsed native windows, under the same serialized entry/total
+/// allowance as import_sketch_source_window. Counting serialization checks the
+/// real wire size without allocating another copy of these trees.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn import_sketch_source_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
+    document: &Value, pages: &BTreeMap<String, Value>) -> Result<SketchImportReport> {
+    use std::io::Write;
+    const ENTRY: usize = 64 * 1024 * 1024;
+    const TOTAL: usize = 96 * 1024 * 1024;
+    struct Count(usize);
+    impl Write for Count {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 = self.0.checked_add(bytes.len()).filter(|n| *n <= ENTRY)
+                .ok_or_else(|| std::io::Error::other("Source conversion entry exceeds its memory allowance"))?;
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+    }
+    let failure = || Error::Unsupported("Source conversion window exceeds its memory allowance".into());
+    if files.len().saturating_add(pages.len()).saturating_add(2) > 4096 || files.values().any(|v|v.len()>ENTRY) {
+        return Err(failure());
+    }
+    let base = files.values().try_fold(0usize, |n,v|n.checked_add(v.len())).ok_or_else(failure)?;
+    let upper=[meta,document].into_iter().chain(pages.values()).try_fold(base,|total,value|
+        total.checked_add(source_size::upper_bound(value,ENTRY)?).filter(|n|*n<=TOTAL));
+    if upper.is_none(){
+        // An upper bound may decline a perfectly valid near-limit document.
+        // Recount ALL entries exactly, retaining the original admission set.
+        let mut total=base;
+        for value in [meta, document].into_iter().chain(pages.values()) {
+            let mut count = Count(0);
+            serde_json::to_writer(&mut count,value).map_err(|_|failure())?;
+            total = total.checked_add(count.0).filter(|n|*n<=TOTAL).ok_or_else(failure)?;
+        }
+    }
+    finish_sketch_report(import_sketch_parts(files,meta,document,pages)?)
+}
+
 fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
     admit_sketch_symbols(&mut document)?;
     let mut warnings = std::collections::BTreeSet::new();
@@ -3443,7 +3525,7 @@ fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
                     node.network.as_ref().unwrap(),
                     closed,
                 )
-                .map_err(Error::InvalidDocument)?,
+                .map_err(Error::InvalidDocument)?.into(),
             );
             node.network = None;
             document.schema_version = document.schema_version.max(16);

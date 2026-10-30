@@ -1,0 +1,60 @@
+{
+  "status": "passed",
+  "adapter": "metal-3",
+  "nonFallbackAdapterVerified": true,
+  "comparedBytes": 1048576,
+  "differences": 0,
+  "nonuniform": 216659,
+  "cold": [
+    {
+      "wallMs": 145,
+      "packedPasses": 0
+    },
+    {
+      "wallMs": 325.7999999523163,
+      "packedPasses": 1
+    }
+  ],
+  "controlPackedPasses": 0,
+  "candidatePackedPasses": 1,
+  "runs": [
+    [
+      {
+        "wallMs": 3.399999976158142,
+        "packedPasses": 0,
+        "drawCalls": 18
+      },
+      {
+        "wallMs": 3.0999999046325684,
+        "packedPasses": 0,
+        "drawCalls": 18
+      },
+      {
+        "wallMs": 3.200000047683716,
+        "packedPasses": 0,
+        "drawCalls": 18
+      }
+    ],
+    [
+      {
+        "wallMs": 3.399999976158142,
+        "packedPasses": 1,
+        "drawCalls": 18
+      },
+      {
+        "wallMs": 3.1999999284744263,
+        "packedPasses": 1,
+        "drawCalls": 18
+      },
+      {
+        "wallMs": 3.1999999284744263,
+        "packedPasses": 1,
+        "drawCalls": 18
+      }
+    ]
+  ],
+  "controlMs": 3.200000047683716,
+  "candidateMs": 3.1999999284744263,
+  "improvement": 3.725290242950763e-8,
+  "scope": "Production GpuRenderer display presentation and returned ImageBitmap; same source private packed toggle; paired warm wall time including production graph and queue completion, not physical scanout or input latency."
+}

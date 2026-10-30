@@ -14,7 +14,6 @@ use std::sync::{Arc, atomic::AtomicBool};
 const CACHE: usize = 64 * 1024 * 1024;
 struct Query {
     options: RenderOptions,
-    region: Rect,
     prepare: Rect,
     page_background: bool,
 }
@@ -41,7 +40,10 @@ impl Query {
                     | "checkerboard"
                     | "animation"
                     | "gpuRoots"
+                    | "gpuNeutralPageGroup"
                     | "gpuPageBackground"
+                    | "gpuGaussianRegions"
+                    | "gpuGaussianReduction"
                     | "gpuPainterSupport"
                     | "gpuPainterCaptureReads"
                     | "gpuViewport"
@@ -59,6 +61,9 @@ impl Query {
         {
             return Ok(None);
         }
+        if !matches!(object.remove("gpuNeutralPageGroup"),None|Some(Value::Bool(false))){return Ok(None)}
+        if !matches!(object.remove("gpuGaussianRegions"),None|Some(Value::Bool(_))){return Ok(None)}
+        if object.remove("gpuGaussianReduction").is_some_and(|v|!matches!(v.as_u64(),Some(0|2|4|8))){return Ok(None)}
         let background = object.remove("gpuPageBackground");
         let region = object.remove("gpuViewport");
         let capture = object.remove("captureViewport");
@@ -113,7 +118,6 @@ impl Query {
         }
         Ok(Some(Self {
             options,
-            region,
             prepare,
             page_background: background == Some(Value::Bool(true)),
         }))
@@ -206,18 +210,6 @@ impl Runtime {
         }
         owner.prepare_frame(&query.options)?;
         owner.resolve_layout()?;
-        let view = query.options.view;
-        if query.page_background
-            && crate::dirty_region::page_background_can_sample(
-                owner.doc.as_ref().unwrap(),
-                page,
-                Transform([view.zoom, 0., 0., view.zoom, 0., 0.]),
-                [view.x, view.y],
-                query.region,
-            )
-        {
-            return self.full(owner, request, "page-background-domain");
-        }
         let key = owner.static_scene_revision();
         if key.is_none() {
             return self.full(owner, request, "non-static-source");
@@ -285,6 +277,12 @@ impl Runtime {
         };
         let view = query.options.view;
         let camera = Transform([view.zoom, 0., 0., view.zoom, view.x, view.y]);
+        let page_paint_rects=if query.page_background {
+            let bounds=plan.catalog.page_paint_rects(owner.doc.as_ref().unwrap(),&owner.fonts,
+                Transform([view.zoom,0.,0.,view.zoom,0.,0.]));
+            crate::render_cancellation::checkpoint()?;
+            bounds.map(|bounds|bounds.into_iter().map(|b|[b[0]+view.x,b[1]+view.y,b[2]+view.x,b[3]+view.y]).collect::<Vec<_>>())
+        } else {None};
         let mut demand = plan.catalog.viewport_for_compile(
             camera, query.prepare.expand(4), &AtomicBool::new(false),
         )?;
@@ -394,6 +392,7 @@ impl Runtime {
                 stage: stage_id.clone(),
                 stage_children: stage_children.clone(),
                 reserved_bytes: margin.bytes(),
+                page_paint_rects: page_paint_rects.clone(),
             });
             let active_units = &self.units;
             let mut expanded = None;

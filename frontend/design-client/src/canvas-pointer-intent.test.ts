@@ -1,3 +1,4 @@
+import {selectedChildDragIntent} from './canvas-pointer-intent'
 import { expect, test } from 'vitest'
 import { dragThresholdPassed, selectedGroupDragIntent, selectionPointerDown, frameTitleHit } from './canvas-pointer-intent'
 import { Editor } from './engine'
@@ -130,4 +131,14 @@ test('selection intent owns its arrays and cannot mutate editor selection by ali
     expect(current).toEqual(['a', 'b'])
     expect(result.selection).not.toContain('release')
   }
+})
+
+
+test('selected child drag only defers ancestor/empty hits within its own outline',()=>{
+ const child={id:'child',visible:true,locked:false},options={inside:true,deep:false,additive:false,readOnly:false}
+ expect(selectedChildDragIntent(child,'parent',['frame','parent'],options)).toEqual({selection:['child'],clickSelection:['parent']})
+ expect(selectedChildDragIntent(child,null,['frame','parent'],options)).toEqual({selection:['child'],clickSelection:[]})
+ expect(selectedChildDragIntent(child,'sibling',['frame','parent'],options)).toBeNull()
+ for(const change of [{inside:false},{deep:true},{additive:true},{readOnly:true}])expect(selectedChildDragIntent(child,'parent',['parent'],{...options,...change})).toBeNull()
+ expect(selectedChildDragIntent({...child,locked:true},'parent',['parent'],options)).toBeNull()
 })

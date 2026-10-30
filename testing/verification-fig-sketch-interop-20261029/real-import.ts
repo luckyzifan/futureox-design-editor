@@ -17,8 +17,8 @@ for(const path of ['/Users/Apple/Downloads/117.sketch','/Users/Apple/Downloads/0
    const target=Object.values(editor.state.doc.nodes).find((n:any)=>n.kind==='rectangle'&&!n.locked&&!n.instanceOrigin) as any
    if(!target)throw Error('No editable rectangle in real fixture')
    const before=target.name,after=before+' verification'
-   editor.change('Real import rename',d=>{d.nodes[target.id].name=after})
-   if(editor.state.doc.nodes[target.id].name!==after)throw Error('Rename failed')
+   const edit=editor.change('Real import rename',d=>{d.nodes[target.id].name=after})
+   if(editor.state.doc.nodes[target.id].name!==after)throw Error('Rename failed: '+JSON.stringify(edit))
    editor.undo();if(editor.state.doc.nodes[target.id].name!==before)throw Error('Undo failed')
    editor.redo();if(editor.state.doc.nodes[target.id].name!==after)throw Error('Redo failed')
    const reopened=new Editor(JSON.parse(JSON.stringify(editor.state.doc)))

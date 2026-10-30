@@ -1,0 +1,14 @@
+{
+  "source": "Actual Chrome Export6layers 1x PNG, controlled x/y ramps, unclipped texture radius64, noiseSize8/16",
+  "board": "93:2",
+  "archive": "Forma \u5185\u6838\u5bf9\u7167\u9a8c\u6536 2026-10-06 (8).zip",
+  "archiveSha256": "923b651311d8d011217ddbe6fcd8c582b5713c96b041bee244132daceab86d54",
+  "files": {
+    "TextureRamp-x-0.png": "1a1f2433e9b67de9fad1406deb08f49759ecd88b46d0dafc3d451b51823683fe",
+    "TextureRamp-x-16.png": "6c0a655372049c33042a146ec1f3702ce52c3d2317de9d650ab78c7902358cff",
+    "TextureRamp-x-8.png": "a4883d5d78a8d72960f10064b0d2d464d77a62a427f10a7501f2ff8f6fcd78af",
+    "TextureRamp-y-0.png": "b18c84b9f5ccac3418428f69d0753f9b09561d3c51a89402deadaec978857ae2",
+    "TextureRamp-y-16.png": "6b94e7ca6e68578d1fb11f85bb276e35e9166f6da62f34830af623a74a42c36f",
+    "TextureRamp-y-8.png": "024aa76574127ce96559270f6da44bddf3729f0b49d6c32f8670a56afb345e3f"
+  }
+}

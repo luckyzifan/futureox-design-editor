@@ -25,6 +25,39 @@ vi.mock('./client', () => ({ KernelClient: class {
 
 const owners: InteractionRenderer[] = []
 afterEach(() => { owners.splice(0).forEach(owner => owner.dispose()); worker.jobs.length = 0; worker.poses.length=worker.stops.length=worker.released.length=0;worker.disposed = 0; vi.unstubAllEnvs() })
+test('a new complete retained gesture cancels prior canvas repair, including immediate regrab during handoff',async()=>{
+ vi.stubEnv('VITE_DESIGN_RETAINED_INPUT_PRIORITY','1')
+ const doc=blank(),root=node('frame',0,0,100,100);root.blend='normal';doc.nodes[root.id]=root;doc.pages[0].children=[root.id]
+ const shared=new KernelClient(),cancel=vi.spyOn(shared,'cancelPreview'),ready=vi.fn(),owner=new InteractionRenderer(vi.fn(),shared);owners.push(owner)
+ const view={x:0,y:0,zoom:1},props:InteractionProps={document:doc,selection:[root.id],active:false,epoch:1,control:{current:null},onReady:ready}
+ owner.prepare(props,doc.pages[0].id,view,1,'analytic','webgpu',doc,{width:100,height:100})
+ expect(owner.control.blocksCanvasRefinement?.(doc,[root.id],view)).toBe(false)
+ worker.jobs[0].resolve({gpuTile:900,bytes:new Uint8Array()});await vi.waitFor(()=>expect(owner.ready).toBe(true))
+ const cancels=()=>cancel.mock.calls.filter(([channel])=>channel==='canvas').length
+ expect(owner.control.apply(doc,{[root.id]:{transform:[1,0,0,1,10,0]}})).not.toBeNull()
+ expect(cancels()).toBe(1);expect(owner.control.blocksCanvasRefinement?.(doc,[root.id],view)).toBe(true)
+ owner.control.apply(doc,{[root.id]:{transform:[1,0,0,1,11,0]}});expect(cancels()).toBe(1)
+ const committed={...doc,nodes:{...doc.nodes,[root.id]:{...root,transform:[1,0,0,1,11,0] as typeof root.transform}}}
+ owner.control.end(committed);expect(owner.control.blocksCanvasRefinement?.(committed,[root.id],view)).toBe(false)
+ owner.prepare({...props,document:committed,active:true},doc.pages[0].id,view,1,'analytic','webgpu',doc,{width:100,height:100})
+ expect(owner.control.apply(committed,{[root.id]:{transform:[1,0,0,1,12,0]}})).not.toBeNull()
+ expect(cancels()).toBe(2);expect(owner.tiles[0].gpuTile).toBe(900);expect(worker.jobs).toHaveLength(1)
+ expect(owner.control.blocksCanvasRefinement?.(committed,[root.id],{...view,zoom:2})).toBe(false)
+ const edited={...committed,nodes:{...committed.nodes,[root.id]:{...committed.nodes[root.id],opacity:.5}}}
+ expect(owner.control.blocksCanvasRefinement?.(edited,[root.id],view)).toBe(false)
+})
+test('a pending replacement capture owns its new viewport while the old resident remains visible',async()=>{
+ const doc=blank(),root=node('frame',0,0,1000,1000);root.blend='normal';doc.nodes[root.id]=root;doc.pages[0].children=[root.id]
+ const shared=new KernelClient(),ready=vi.fn(),owner=new InteractionRenderer(vi.fn(),shared);owners.push(owner)
+ const props:InteractionProps={document:doc,selection:[root.id],active:false,epoch:1,control:{current:null},onReady:ready}
+ const prepare=(x:number)=>owner.prepare(props,doc.pages[0].id,{x,y:0,zoom:1},1,'analytic','webgpu',doc,{width:100,height:100})
+ prepare(0);worker.jobs[0].resolve({gpuTile:800,bytes:new Uint8Array()});await vi.waitFor(()=>expect(owner.ready).toBe(true))
+ prepare(-512);expect(worker.jobs).toHaveLength(2);const notifications=ready.mock.calls.length
+ for(let i=0;i<20;i++)prepare(-512)
+ expect(worker.jobs).toHaveLength(2);expect(ready).toHaveBeenCalledTimes(notifications)
+ expect(worker.jobs[1].signal.aborted).toBe(false)
+ worker.jobs[1].resolve({gpuTile:801,bytes:new Uint8Array()});await vi.waitFor(()=>expect(owner.tiles[0].gpuTile).toBe(801))
+})
 function fixture(dependent = false, zoom = 1, extent = 100, active = dependent) {
   const doc = blank(), root = node('frame', 0, 0, extent, extent)
   root.blend = 'normal'
@@ -218,6 +251,26 @@ test('ordinary no-backdrop localization retains its original 256-pixel travel re
     expect(worker.jobs[0].options.height).toBe(1388)
     expect(worker.jobs[0].options.tileViewport).toHaveLength(12)
   } finally { shared.dispose() }
+})
+
+test('a localized desktop capture spends pixels on the selection instead of the unused large travel reserve',()=>{
+ const doc=blank(),root=node('frame',0,0,1000,800),selected=node('rectangle',300,220,24,20)
+ root.blend='normal';root.children=[selected.id];doc.nodes[root.id]=root;doc.nodes[selected.id]=selected;doc.pages[0].children=[root.id]
+ const before=JSON.stringify(doc),props:InteractionProps={document:doc,selection:[selected.id],active:true,epoch:1,control:{current:null},onReady(){}}
+ const views=[]
+ for(const desktop of [false,true]){
+  const owner=new InteractionRenderer(vi.fn(),new KernelClient(),desktop);owners.push(owner)
+  owner.prepare(props,doc.pages[0].id,{x:0,y:0,zoom:1},2,'figmaSubpixel','webgpu',undefined,{width:800,height:600})
+  const job=worker.jobs.at(-1);views.push(job.options)
+  expect(job.options.view.zoom).toBe(2)
+  const capture=job.options.captureViewport
+  expect(capture.x).toBeLessThanOrEqual(300*2-16)
+  expect(capture.y).toBeLessThanOrEqual(220*2-16)
+  expect(capture.x+capture.w).toBeGreaterThanOrEqual((300+24+72)*2)
+  expect(capture.y+capture.h).toBeGreaterThanOrEqual((220+20+48)*2)
+ }
+ expect(views[1].width*views[1].height).toBeLessThan(views[0].width*views[0].height*.4)
+ expect(JSON.stringify(doc)).toBe(before)
 })
 
 test('worker pose inputs do not enumerate the document after validation and rebase materializes the latest pose',async()=>{
@@ -523,6 +576,35 @@ test('native retained layers keep integer pixel motion fast and reraster fractio
   expect(owner.presentedInput.sequence).toBe(2)
 })
 
+test('desktop independent layers follow fractional input and publish chrome only with their GPU frame',async()=>{
+ const doc=blank(),root=node('frame',0,0,100,80);root.blend='normal';doc.nodes[root.id]=root;doc.pages[0].children=[root.id]
+ const onPosePresented=vi.fn(),props:InteractionProps={document:doc,selection:[root.id],active:false,epoch:1,control:{current:null},onReady:vi.fn(),onPosePresented}
+ const view={x:.25,y:.375,zoom:1.25},shared=new KernelClient(),owner=new InteractionRenderer(vi.fn(),shared,true);owners.push(owner)
+ owner.prepare(props,doc.pages[0].id,view,2,'figmaSubpixel','webgpu',doc,{width:800,height:600})
+ expect(worker.jobs).toHaveLength(1)
+ const patch={ [root.id]:{transform:[1,0,0,1,.3,.7] as [number,number,number,number,number,number]} }
+ owner.control.apply(doc,patch)
+ expect(worker.jobs).toHaveLength(1) // finish the useful warm capture
+ expect(onPosePresented).not.toHaveBeenCalled()
+ worker.jobs[0].resolve({gpuTile:71});await vi.waitFor(()=>expect(owner.ready).toBe(true))
+ const first=owner.items(view)![0],base=(first.tile.x-(first.tile.phaseX||0))*view.zoom/first.tile.zoom+view.x
+ expect(first.placement!.left-base).toBeCloseTo(.3*view.zoom)
+ expect(owner.control.feedbackPending?.()).toBe(true)
+ const sequence=owner.control.inputSequence!()
+ owner.acceptPresentedInput(sequence,performance.now(),true,true,[999])
+ expect(onPosePresented).not.toHaveBeenCalled()
+ owner.acceptPresentedInput(sequence,performance.now(),true,true,[71])
+ expect(onPosePresented).toHaveBeenCalledOnce()
+ expect(onPosePresented.mock.calls[0][0].offset).toMatchObject({x:.3,y:.7})
+ for(let i=1;i<=20;i++)owner.control.apply(doc,{[root.id]:{transform:[1,0,0,1,.3+i/7,.7+i/11]}})
+ expect(worker.jobs).toHaveLength(1);expect(owner.mode).toBe('retained-layers')
+ const moved={...doc,nodes:{...doc.nodes,[root.id]:{...root,transform:[1,0,0,1,.3+20/7,.7+20/11] as typeof root.transform}}}
+ owner.control.end(moved)
+ expect(worker.jobs).toHaveLength(1);expect(owner.items(view)).not.toBeNull()
+ owner.prepare({...props,document:moved},doc.pages[0].id,view,2,'figmaSubpixel','webgpu',moved,{width:800,height:600})
+ expect(owner.items(view)).toBeNull() // native page has taken over
+})
+
 test('fractional retained promotion coalesces newer poses and commits the last native sample', async () => {
   const { doc, root, owner, view } = fixture(false, 32, 10)
   worker.jobs[0].resolve(); await vi.waitFor(() => expect(owner.ready).toBe(true))
@@ -686,6 +768,18 @@ test('retained and native live samples preserve fractional device camera phase a
   const placement = owner.items(view)![0].placement!
   expect(Number.isInteger(placement.left * dpr)).toBe(true)
   expect(Number.isInteger(placement.top * dpr)).toBe(true)
+})
+
+test.each([.1,.3953125])('native-density retained pixels keep camera phase even at low zoom %s',async zoom=>{
+ const doc=blank(),root=node('frame',0,0,100,100);root.blend='normal';doc.nodes[root.id]=root;doc.pages[0].children=[root.id]
+ const owner=new InteractionRenderer(vi.fn());owners.push(owner)
+ const view={x:.125,y:-.125,zoom},dpr=2
+ owner.prepare({document:doc,selection:[root.id],active:false,epoch:1,control:{current:null},onReady(){}},doc.pages[0].id,view,dpr,'analytic','webgpu',undefined,{width:640,height:480})
+ worker.jobs[0].resolve();await vi.waitFor(()=>expect(owner.ready).toBe(true))
+ const tile=owner.tiles[0];expect(tile.zoom).toBe(zoom*dpr);expect(tile.phaseX).toBe(.25);expect(tile.phaseY).toBe(.75)
+ owner.control.apply(doc,{[root.id]:{transform:[1,0,0,1,8/zoom,0]}})
+ const placement=owner.items(view)![0].placement!
+ expect(Number.isInteger(placement.left*dpr)).toBe(true);expect(Number.isInteger(placement.top*dpr)).toBe(true)
 })
 
 
@@ -1461,4 +1555,35 @@ test('delayed recovery microtask keeps caught cause and does not borrow a reject
   expect(f.rows.find(r=>r.poseStage===5&&r.poseReason===5)).toMatchObject({failedCauseSequence:1,failedCauseActionId:1,observedCurrentSequence:1,failedCausePhase:2})
   expect(f.props.onPreviewFailed).toHaveBeenCalledOnce()
  }finally{queued.mockRestore()}
+})
+
+test('desktop captures keep the settled native camera and its exact fractional source lattice',()=>{
+ vi.stubEnv('VITE_DESIGN_CANONICAL_CAPTURE','1')
+ const doc=blank(),root=node('frame',0,0,1200,900),selected=node('rectangle',300,220,24,20)
+ root.blend='normal';root.children=[selected.id];doc.nodes[root.id]=root;doc.nodes[selected.id]=selected;doc.pages[0].children=[root.id]
+ const owner=new InteractionRenderer(vi.fn(),new KernelClient(),true);owners.push(owner)
+ const view={x:-111.125,y:16.375,zoom:1.25},dpr=2
+ owner.prepare({document:doc,selection:[selected.id],active:true,epoch:1,control:{current:null},onReady(){}},doc.pages[0].id,view,dpr,'figmaSubpixel','webgpu',undefined,{width:800,height:600})
+ const options=worker.jobs.at(-1).options
+ expect(options.view).toEqual({x:view.x*dpr,y:view.y*dpr,zoom:view.zoom*dpr})
+ expect(options.captureViewport).toMatchObject({w:options.width,h:options.height})
+ expect(Number.isInteger(options.captureViewport.x)).toBe(true);expect(Number.isInteger(options.captureViewport.y)).toBe(true)
+ const w=options.interactionWindow,c=options.captureViewport
+ expect(w.x).toBeGreaterThanOrEqual(c.x);expect(w.y).toBeGreaterThanOrEqual(c.y)
+ expect(w.x+w.w).toBeLessThanOrEqual(c.x+c.w);expect(w.y+w.h).toBeLessThanOrEqual(c.y+c.h)
+})
+
+
+test('only an owner-valid capture-boundary rebase retains the old crop for bounded growth',async()=>{
+ for(const expandCapture of [false,true]){
+  const f=pendingRetainedFixture(true)
+  worker.jobs.at(-1).resolve({gpuTile:995,residentInteraction:true});await f.flush()
+  const resident=(f.owner as any).resident,crop={x:-30,y:-20,width:200,height:150}
+  resident.captureBounds=crop
+  f.owner.control.apply(f.doc,{[f.child.id]:{transform:f.transform(8)}})
+  const render=vi.spyOn(f.owner as any,'renderLive').mockImplementation(()=>{})
+  f.owner.acceptResidentSample({slot:995,sequence:1,at:0,needsRebase:true,expandCapture})
+  expect(resident.captureBounds).toBe(expandCapture?crop:undefined)
+  expect(render).toHaveBeenCalledOnce();render.mockRestore()
+ }
 })

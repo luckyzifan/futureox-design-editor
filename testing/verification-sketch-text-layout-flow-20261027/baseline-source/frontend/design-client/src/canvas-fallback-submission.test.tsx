@@ -1,0 +1,193 @@
+import { canvasActions, CanvasAction, ActionOutcome, ActionReason } from './canvas-action-diagnostics'
+import { bindNavigationInput } from './kernel/navigation-input'
+// Actual mounted Canvas/event propagation + Editor/WASM. The render-device
+// boundary alone is replaced. Deterministic 60 Hz delivery does not claim
+// browser/GPU FPS, compositor latency, or pixel quality.
+// @ts-expect-error jsdom is a test-only runtime dependency.
+import { JSDOM } from 'jsdom'
+import React, { act } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { Canvas } from './Canvas'
+import { PageList } from './PageList'
+import { Layers } from './Layers'
+import { Editor } from './engine'
+import { blank, node, uid, type DesignNode } from './model'
+import { shortcutPreference } from './shortcut-preference'
+import { apply, inverse, worldMatrix } from './geometry'
+import { appendFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { paint, stroke } from './model'
+import { PencilInput } from './freehand'
+import * as handles from './selection-handles'
+
+const previewControl=vi.hoisted(()=>({supported:false}))
+vi.mock('./edit-preview',()=>({supportsEditPreview:()=>previewControl.supported}))
+vi.mock('./CanvasEditPreview',()=>({CanvasEditPreview:()=>null}))
+const presentationControl = vi.hoisted(() => ({ hold: false, lastDocument: undefined as object | undefined, requests: [] as any[] }))
+vi.mock('./kernel/Surface', async () => {
+  const { useLayoutEffect } = await import('react')
+  return { KernelSurface(props: import('./kernel/Surface').SurfaceProps) {
+    useLayoutEffect(() => {
+      presentationControl.requests.push({document:props.document,pageId:props.pageId,overview:props.overview})
+      if (presentationControl.hold) return
+      presentationControl.lastDocument = props.document
+      props.onPresentation?.({ ...props, epoch: props.presentationEpoch!, pixelRatio: 1, managed: false })
+    }, [props.document, props.pageId, props.view, props.width, props.height, props.presentationEpoch, props.onPresentation])
+    return <div data-testid="surface-boundary" />
+  } }
+})
+let dom: any, root: Root, mount: HTMLDivElement, editor: Editor, errors: unknown[][]
+let frames: Map<number, FrameRequestCallback>, frameId: number
+const baseline = process.env.CANVAS_EVENT_BASELINE === '1'
+beforeEach(() => {
+  previewControl.supported=false
+  presentationControl.hold = false; presentationControl.lastDocument = undefined;presentationControl.requests=[]
+  dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://design.invalid/' })
+  for (const name of ['window', 'document', 'navigator', 'HTMLElement', 'HTMLInputElement', 'HTMLTextAreaElement', 'HTMLCanvasElement', 'Element', 'Node', 'Event', 'MouseEvent', 'WheelEvent', 'KeyboardEvent', 'FocusEvent', 'localStorage'])
+    vi.stubGlobal(name, name === 'window' ? dom.window : dom.window[name])
+  Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.stubGlobal('devicePixelRatio', 1)
+  vi.stubGlobal('CSS', { escape: (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, character => `\\${character}`) })
+  dom.window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
+  frames = new Map(); frameId = 0
+  vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => { frames.set(++frameId, fn); return frameId })
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id))
+  Object.defineProperties(dom.window.HTMLElement.prototype, {
+    clientWidth: { configurable: true, get: () => 1000 }, clientHeight: { configurable: true, get: () => 800 },
+  })
+  vi.spyOn(dom.window.HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, right: 1000, bottom: 800, width: 1000, height: 800, x: 0, y: 0, toJSON() {} })
+  dom.window.HTMLElement.prototype.setPointerCapture = () => {}
+  dom.window.HTMLElement.prototype.hasPointerCapture = () => false
+  dom.window.HTMLElement.prototype.releasePointerCapture = () => {}
+  vi.spyOn(dom.window.HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
+  errors = []; const error = console.error.bind(console)
+  vi.spyOn(console, 'error').mockImplementation((...args) => { errors.push(args); error(...args) })
+  localStorage.clear(); shortcutPreference.set('sketch-like')
+  Object.assign(window, { coreDesktop: { renderDiagnostics: true, renderDiagnosticsDetail: true } })
+  editor = new Editor(blank()); editor.set({ view: { x: 0, y: 0, zoom: 1 }, snap: false, snapPixels: false })
+  mount = document.createElement('div'); document.body.append(mount); root = createRoot(mount)
+})
+afterEach(async () => {
+  await act(async () => root.unmount()); canvasActions(editor).close(); editor.dispose(); dom.window.close()
+  vi.unstubAllGlobals(); vi.restoreAllMocks(); expect(errors).toEqual([])
+})
+const host = () => mount.querySelector<HTMLElement>('[data-testid="canvas"]')!
+async function render(nodes: DesignNode[], roots = nodes.map(n => n.id), otherRoots: string[] = [], withPages = false) {
+  const doc = blank('Canvas event batching'); doc.nodes = Object.fromEntries(nodes.map(n => [n.id, n])); doc.pages[0].children = roots
+  doc.id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'; doc.pages[0].id = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+  doc.pages.push({ ...doc.pages[0], id: 'ffffffff-ffff-4fff-8fff-ffffffffffff', name: 'Empty page', children: [] })
+  if (otherRoots.length) doc.pages.push({ ...doc.pages[0], id: uid(), name: 'Other page', children: otherRoots })
+  editor.load(doc); editor.set({ view: { x: 0, y: 0, zoom: 1 }, snap: false, snapPixels: false })
+  await act(async () => { root.render(<><Canvas editor={editor} />{withPages && <PageList editor={editor} onRename={() => {}} />}</>); for (let i = 0; i < 6; i++) await Promise.resolve() })
+  host().focus(); return editor.state.doc
+}
+function pointer(type: string, x: number, y: number, options: MouseEventInit = {}, target: Element = host(), pointerId = 7) {
+  const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, ...options })
+  Object.defineProperties(event, { pointerId: { value: pointerId }, isPrimary: { value: true }, pointerType: { value: 'mouse' } })
+  target.dispatchEvent(event); return event
+}
+function key(value: string, options: KeyboardEventInit = {}, type = 'keydown', target: EventTarget = host()) {
+  const event = new KeyboardEvent(type, { key: value, code: value.length === 1 ? `Key${value.toUpperCase()}` : value, bubbles: true, cancelable: true, ...options })
+  target.dispatchEvent(event); return event
+}
+
+async function flushFrames(at = 0) {
+  await act(async () => { for (const [id, fn] of [...frames]) { frames.delete(id); fn(at) } })
+}
+function vector() {
+  const n = node('vector', 100, 100, 180, 120); n.id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  n.network = { fillRule: 'nonzero', vertices: [
+    { id: 'a', x: 0, y: 0 }, { id: 'b', x: 180, y: 0 }, { id: 'c', x: 180, y: 120 }, { id: 'd', x: 0, y: 120 },
+  ], edges: [
+    { id: 'ab', from: 'a', to: 'b', c1: { x: 60, y: 30 }, c2: { x: 120, y: 30 } },
+    { id: 'bc', from: 'b', to: 'c' }, { id: 'cd', from: 'c', to: 'd' }, { id: 'da', from: 'd', to: 'a' },
+  ] }
+  n.strokes = [{ ...stroke('#123456', 12), widthProfile: [
+    { position: 0, left: 1, right: 1 }, { position: .5, left: 1, right: 1 }, { position: 1, left: 1, right: 1 },
+  ] }]
+  n.strokes[0].id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  n.strokes[0].paint.id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+  return n
+}
+
+test('unsupported fallback publishes current document to Surface without running timers',async()=>{
+ const n=node('rectangle',100,100,100,100);await render([n]);vi.useFakeTimers()
+ try { await act(async()=>{editor.select([n.id]);editor.begin('move');editor.preview({[n.id]:{transform:[1,0,0,1,130,120]}})})
+ expect(presentationControl.requests.at(-1).document).toBe(editor.state.doc)
+ }finally{vi.useRealTimers()}
+})
+test('rapid fallback edits submit latest document with matching overview once, and timers do not resubmit',async()=>{
+ const n=node('rectangle',100,100,100,100);await render([n]);vi.useFakeTimers()
+ try{
+ await act(async()=>{editor.select([n.id]);editor.begin('move')});const count=presentationControl.requests.length
+ await act(async()=>{for(const x of [120,140,160])editor.preview({[n.id]:{transform:[1,0,0,1,x,100]}})})
+ const last=presentationControl.requests.at(-1)
+ expect(last.document).toBe(editor.state.doc);expect(last.overview).toMatchObject({x:160,y:100,width:100,height:100})
+ expect(presentationControl.requests.length-count).toBe(1)
+ const settled=presentationControl.requests.length
+ await act(async()=>{await vi.advanceTimersByTimeAsync(100)})
+ expect(presentationControl.requests.length).toBe(settled)
+ }finally{vi.useRealTimers()}
+})
+test('cancel and page switch never submit a parked fallback preview',async()=>{
+ const n=node('rectangle',100,100,100,100);const before=await render([n]);vi.useFakeTimers()
+ try{
+ await act(async()=>{editor.select([n.id]);editor.begin('move');editor.preview({[n.id]:{transform:[1,0,0,1,130,100]}})})
+ await act(async()=>editor.cancel());expect(presentationControl.requests.at(-1).document).toBe(before)
+ await act(async()=>{editor.begin('move');editor.preview({[n.id]:{transform:[1,0,0,1,150,100]}})})
+ await act(async()=>editor.switchPage(editor.state.doc.pages[1].id))
+ const last=presentationControl.requests.at(-1);expect(last.pageId).toBe(editor.state.page);expect(last.document).toBe(editor.state.doc)
+ expect(last.overview).toMatchObject({width:0,height:0})
+ await act(async()=>{await vi.advanceTimersByTimeAsync(100)})
+ expect(presentationControl.requests.at(-1).document).toBe(editor.state.doc)
+ }finally{vi.useRealTimers()}
+})
+test('fallback commit undo and redo preserve authored transaction geometry',async()=>{
+ const n=node('rectangle',100,100,100,100);await render([n]);vi.useFakeTimers()
+ try{
+ const before=[...editor.state.doc.nodes[n.id].transform]
+ await act(async()=>{editor.select([n.id]);editor.begin('move');editor.preview({[n.id]:{transform:[1,0,0,1,160,120]}});editor.commit()})
+ const committed=[...editor.state.doc.nodes[n.id].transform]
+ await act(async()=>editor.undo());expect(editor.state.doc.nodes[n.id].transform).toEqual(before);expect(presentationControl.requests.at(-1).document).toBe(editor.state.doc)
+ await act(async()=>editor.redo());expect(editor.state.doc.nodes[n.id].transform).toEqual(committed);expect(presentationControl.requests.at(-1).document).toBe(editor.state.doc)
+ }finally{vi.useRealTimers()}
+})
+test('supported preview retains interaction deferral and eighty millisecond refinement',async()=>{
+ previewControl.supported=true;const n=node('rectangle',100,100,100,100);await render([n]);vi.useFakeTimers()
+ try{
+ const shown=presentationControl.requests.at(-1).document
+ await act(async()=>{editor.select([n.id]);editor.begin('move');editor.preview({[n.id]:{transform:[1,0,0,1,160,120]}})})
+ expect(presentationControl.requests.at(-1).document).toBe(shown)
+ await act(async()=>editor.commit());await act(async()=>{await vi.advanceTimersByTimeAsync(79)})
+ expect(presentationControl.requests.at(-1).document).toBe(shown)
+ await act(async()=>{await vi.advanceTimersByTimeAsync(1)})
+ expect(presentationControl.requests.at(-1).document).toBe(editor.state.doc)
+ }finally{vi.useRealTimers()}
+})
+test('replacement session cannot receive parked old-document submission',async()=>{
+ const n=node('rectangle',100,100,100,100);await render([n]);vi.useFakeTimers()
+ try{
+ await act(async()=>{editor.select([n.id]);editor.begin('move');editor.preview({[n.id]:{transform:[1,0,0,1,160,120]}})})
+ const replacement=blank('Replacement');await act(async()=>editor.load(replacement))
+ expect(presentationControl.requests.at(-1).document).toBe(editor.state.doc)
+ expect(presentationControl.requests.at(-1).document.id).toBe(replacement.id)
+ await act(async()=>{await vi.advanceTimersByTimeAsync(100)})
+ expect(presentationControl.requests.at(-1).document.id).toBe(replacement.id)
+ }finally{vi.useRealTimers()}
+})
+test('losing preview support cancels an existing eighty millisecond refinement timer',async()=>{
+ previewControl.supported=true;const n=node('rectangle',100,100,100,100);await render([n]);vi.useFakeTimers()
+ try{
+ const shown=presentationControl.requests.at(-1).document
+ await act(async()=>editor.update([n.id],{width:130}))
+ expect(presentationControl.requests.at(-1).document).toBe(shown)
+ previewControl.supported=false
+ await act(async()=>editor.update([n.id],{width:160}))
+ const current=editor.state.doc,count=presentationControl.requests.length
+ expect(presentationControl.requests.at(-1).document).toBe(current)
+ await act(async()=>{await vi.advanceTimersByTimeAsync(100)})
+ expect(presentationControl.requests.length).toBe(count);expect(presentationControl.requests.at(-1).document).toBe(current)
+ }finally{vi.useRealTimers()}
+})

@@ -1,0 +1,195 @@
+{
+  "status": "passed",
+  "result": {
+    "documentSha256": "3d96a137340f60137aa243df63ee4062ea205d85bddac41b775ea72ddaa91f90",
+    "requestsSha256": "146b783d7b9c648d85a6c8010787201bddbd976d638e98b2ed5af1f2dcfbaff6",
+    "executionRequestSha256": "41f56bf3342af822204630ff9d28d3e467e5c3482a7c04df4c75b800b3720c14",
+    "wasmSha256": "c8c5b987c73161a588b411d276b2daf3c8d6ebfa6578f8cd81263882cf2a8ba0",
+    "fontSha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+    "nativeSceneSha256": "fd62591ae07dc96f13dd6f4bffd68d66e48a06b59118abee6ecf0a4c54c8e67f",
+    "benchmark": true,
+    "formatProbeOnly": false,
+    "unmanagedDriver": false,
+    "paths": [
+      {
+        "pathSha256": "0dca3ed8905a08b21f3f709bd4f9ae841ed18d4f76798ef3e8eb7af72b9e2ea4",
+        "width": 512,
+        "height": 512,
+        "header": 3,
+        "programWords": 32772
+      }
+    ],
+    "scope": "Actual original area vs sample-only R32 masks for identical freshly compiled real programs, four phases and regional crops. Test explicitly enables owned-driver display policy; no ResidentPresenter or Electron attachment is exercised. No exclusive GPU time or app latency claim.",
+    "status": "passed",
+    "adapter": "metal-3",
+    "nonFallbackAdapterVerified": true,
+    "wordsCompared": 1049000,
+    "different": 0,
+    "rawMaskFormat": "r32float",
+    "records": [
+      {
+        "index": 0,
+        "width": 512,
+        "height": 512,
+        "phases": [
+          {
+            "phase": 0,
+            "candidate": false,
+            "actualPipelineHits": 0,
+            "comparedWords": 0,
+            "different": 0
+          },
+          {
+            "phase": 0,
+            "candidate": true,
+            "actualPipelineHits": 3,
+            "comparedWords": 262250,
+            "different": 0
+          },
+          {
+            "phase": 1,
+            "candidate": false,
+            "actualPipelineHits": 0,
+            "comparedWords": 0,
+            "different": 0
+          },
+          {
+            "phase": 1,
+            "candidate": true,
+            "actualPipelineHits": 3,
+            "comparedWords": 262250,
+            "different": 0
+          },
+          {
+            "phase": 2,
+            "candidate": false,
+            "actualPipelineHits": 0,
+            "comparedWords": 0,
+            "different": 0
+          },
+          {
+            "phase": 2,
+            "candidate": true,
+            "actualPipelineHits": 3,
+            "comparedWords": 262250,
+            "different": 0
+          },
+          {
+            "phase": 3,
+            "candidate": false,
+            "actualPipelineHits": 0,
+            "comparedWords": 0,
+            "different": 0
+          },
+          {
+            "phase": 3,
+            "candidate": true,
+            "actualPipelineHits": 3,
+            "comparedWords": 262250,
+            "different": 0
+          }
+        ]
+      }
+    ],
+    "batches": [
+      {
+        "block": 0,
+        "candidate": false,
+        "draws": 8,
+        "encodeMs": 0,
+        "encodeAndQueueCompletionMs": 3.100000023841858,
+        "actualPipelineHits": 0
+      },
+      {
+        "block": 0,
+        "candidate": true,
+        "draws": 8,
+        "encodeMs": 0,
+        "encodeAndQueueCompletionMs": 1.3000000715255737,
+        "actualPipelineHits": 8
+      },
+      {
+        "block": 0,
+        "candidate": true,
+        "draws": 8,
+        "encodeMs": 0.09999990463256836,
+        "encodeAndQueueCompletionMs": 1.2999999523162842,
+        "actualPipelineHits": 8
+      },
+      {
+        "block": 0,
+        "candidate": false,
+        "draws": 8,
+        "encodeMs": 0,
+        "encodeAndQueueCompletionMs": 2.799999952316284,
+        "actualPipelineHits": 0
+      },
+      {
+        "block": 1,
+        "candidate": false,
+        "draws": 8,
+        "encodeMs": 0,
+        "encodeAndQueueCompletionMs": 2.8000000715255737,
+        "actualPipelineHits": 0
+      },
+      {
+        "block": 1,
+        "candidate": true,
+        "draws": 8,
+        "encodeMs": 0,
+        "encodeAndQueueCompletionMs": 1.1999999284744263,
+        "actualPipelineHits": 8
+      },
+      {
+        "block": 1,
+        "candidate": true,
+        "draws": 8,
+        "encodeMs": 0,
+        "encodeAndQueueCompletionMs": 0.8999999761581421,
+        "actualPipelineHits": 8
+      },
+      {
+        "block": 1,
+        "candidate": false,
+        "draws": 8,
+        "encodeMs": 0.20000004768371582,
+        "encodeAndQueueCompletionMs": 2.700000047683716,
+        "actualPipelineHits": 0
+      },
+      {
+        "block": 2,
+        "candidate": false,
+        "draws": 8,
+        "encodeMs": 0,
+        "encodeAndQueueCompletionMs": 2.799999952316284,
+        "actualPipelineHits": 0
+      },
+      {
+        "block": 2,
+        "candidate": true,
+        "draws": 8,
+        "encodeMs": 0,
+        "encodeAndQueueCompletionMs": 1.2000000476837158,
+        "actualPipelineHits": 8
+      },
+      {
+        "block": 2,
+        "candidate": true,
+        "draws": 8,
+        "encodeMs": 0,
+        "encodeAndQueueCompletionMs": 1.100000023841858,
+        "actualPipelineHits": 8
+      },
+      {
+        "block": 2,
+        "candidate": false,
+        "draws": 8,
+        "encodeMs": 0.10000002384185791,
+        "encodeAndQueueCompletionMs": 3,
+        "actualPipelineHits": 0
+      }
+    ],
+    "timingScope": "Optional warm mask batches include CPU encoding and real queue completion, balanced ABBA; not exclusive shader time, FPS or app input latency."
+  },
+  "errors": []
+}

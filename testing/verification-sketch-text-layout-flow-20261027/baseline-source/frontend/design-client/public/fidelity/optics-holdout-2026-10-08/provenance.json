@@ -1,0 +1,18 @@
+{
+  "source": "Actual Chrome Figma UI Export 8 layers; PNG 1x/2x sRGB, original bytes preserved",
+  "fileKey": "KawVhUXCap10WDTprxYEmu",
+  "boardId": "101:2",
+  "archive": "Forma \u5185\u6838\u5bf9\u7167\u9a8c\u6536 2026-10-06 (10).zip",
+  "archiveSha256": "54a8efefbaa3cc5c1d0ce62fc16170b0448a1c81bfa5e694f8ece6baab1f75f7",
+  "exportedAtUTC": "2026-10-08T03:59:29.277661+00:00",
+  "files": {
+    "OpticsHoldout-light-30-0.75-depth-12-1x.png": "7b3b6cde7ad1d9befe7d1ed5d0cc796411a96233006adb34b7eb4b2c1223214e",
+    "OpticsHoldout-light-135-0.75-depth-12-1x.png": "414f25ff375e769e189c0222488da372f5b522106fdab019cff4763b55f36b46",
+    "OpticsHoldout-light-225-0.75-depth-12-1x.png": "75fa8676a65a5341f31309371923842ab4f4641091d49bb0f3dbc327cc3e8ad0",
+    "OpticsHoldout-light-315-0.75-depth-12-1x.png": "724c57c2ae39f17017983915f3d344c99371f4e1615a7dc24716b18d1da3f94c",
+    "OpticsHoldout-light-30-0.75-depth-12-2x.png": "dbc252c348f7958a6cf8ac1fb811372e43137411d548d87dee64bd3581f0a5f8",
+    "OpticsHoldout-light-135-0.75-depth-12-2x.png": "f9c172d90113534e632bf85a6c3580060e61e16d9563034cb7e9f4d641534abb",
+    "OpticsHoldout-light-225-0.75-depth-12-2x.png": "969a416cfc5c20c2e3fd77d45f48b128ba857299774e2e4c81585d6db13ed73e",
+    "OpticsHoldout-light-315-0.75-depth-12-2x.png": "246ee920c0b2e97dc0cb6fa26f57feec36b08a1a503c46eb836bb2c701b47f9f"
+  }
+}

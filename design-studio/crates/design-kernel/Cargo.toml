@@ -30,6 +30,11 @@ zip.workspace = true
 ruzstd.workspace = true
 miniz_oxide.workspace = true
 
+# sha2 0.10 gates its runtime-detected ARM SHA-2 instructions behind `asm`.
+# Keep the same digest and portable fallback; WASM/x86 dependencies unchanged.
+[target.'cfg(target_arch = "aarch64")'.dependencies]
+sha2 = { workspace = true, features = ["asm"] }
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen.workspace = true
 js-sys.workspace = true

@@ -1,0 +1,186 @@
+{
+  "provenance": "Official Figma editor PNG export via Chrome UI; bytes copied unchanged from Downloads; original files retained",
+  "files": [
+    {
+      "file": "ResolveQA-rectangle-1x.png",
+      "size": [
+        128,
+        128
+      ],
+      "sha256": "49efb66d57948dc00e45eacc3902e3bcc6005b1783d3e6eb6229f38ccf4e7831",
+      "corner": [
+        255,
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "file": "ResolveQA-solid-alpha-0625.png",
+      "size": [
+        16,
+        16
+      ],
+      "sha256": "f3c79ec3e3e24e7249222a4800ce26b34d277dcffe401ac24433d9a7faa5a81b",
+      "corner": [
+        138,
+        43,
+        74,
+        255
+      ]
+    },
+    {
+      "file": "ResolveQA-solid-spatial-sums.png",
+      "size": [
+        32,
+        32
+      ],
+      "sha256": "3af73102d482ff14fbe9d789a614869280bd584bfb07add7da7d579430dbacf1",
+      "corner": [
+        0,
+        0,
+        0,
+        255
+      ]
+    }
+  ],
+  "solidSpatialModels": {
+    "halfUp": {
+      "different": 127,
+      "max": 1,
+      "first": [
+        [
+          514,
+          128,
+          129
+        ],
+        [
+          518,
+          129,
+          130
+        ],
+        [
+          522,
+          130,
+          131
+        ],
+        [
+          526,
+          131,
+          132
+        ],
+        [
+          530,
+          132,
+          133
+        ],
+        [
+          534,
+          133,
+          134
+        ],
+        [
+          538,
+          134,
+          135
+        ],
+        [
+          542,
+          135,
+          136
+        ],
+        [
+          546,
+          136,
+          137
+        ],
+        [
+          550,
+          137,
+          138
+        ],
+        [
+          554,
+          138,
+          139
+        ],
+        [
+          558,
+          139,
+          140
+        ]
+      ]
+    },
+    "integerRNE": {
+      "different": 128,
+      "max": 1,
+      "first": [
+        [
+          2,
+          1,
+          0
+        ],
+        [
+          10,
+          3,
+          2
+        ],
+        [
+          18,
+          5,
+          4
+        ],
+        [
+          26,
+          7,
+          6
+        ],
+        [
+          34,
+          9,
+          8
+        ],
+        [
+          42,
+          11,
+          10
+        ],
+        [
+          50,
+          13,
+          12
+        ],
+        [
+          58,
+          15,
+          14
+        ],
+        [
+          66,
+          17,
+          16
+        ],
+        [
+          74,
+          19,
+          18
+        ],
+        [
+          82,
+          21,
+          20
+        ],
+        [
+          90,
+          23,
+          22
+        ]
+      ]
+    },
+    "normalized": {
+      "different": 0,
+      "max": 0,
+      "first": []
+    }
+  }
+}

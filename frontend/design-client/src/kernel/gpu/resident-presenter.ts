@@ -10,7 +10,7 @@ import { DISPLAY_TEXTURE_BUDGET } from './display-budget'
 import { CanvasOverlayRenderer, translateOverlay, transformOverlay, type CanvasOverlay } from './canvas-overlay'
 import { ResidentUniforms } from './resident-uniforms'
 import { physicalCoverage, physicalPixelCoverage, physicalCoverageGaps } from './physical-coverage'
-import { backgroundPaintRects, pageBackgroundProof, type PageBackgroundProof } from './page-background'
+import { backgroundPaintRects, emptyBackgroundTile, pageBackgroundProof, type PageBackgroundProof, type PixelContentProof } from './page-background'
 import { presentedFragmentQuality } from './presented-fragment-quality'
 import { PresenterAlphaTrace } from './presenter-alpha-trace'
 
@@ -42,7 +42,7 @@ export type ResidentFrame = {
   input?: { sequence: number; at: number; owner?:string }
 }
 let nextTexture = 0
-const source = `override COLOR_MODE:i32=0;struct U { box:vec4<f32>,uv:vec4<f32>,viewport:vec2<f32> }
+const source = `override COLOR_MODE:i32=0;struct U { box:vec4<f32>,uv:vec4<f32>,viewport:vec2<f32>,sample:f32,pad:f32 }
 @group(0) @binding(0) var<uniform> u:U;
 @group(0) @binding(1) var pixels:texture_2d<f32>;
 @group(0) @binding(2) var filtering:sampler;
@@ -60,6 +60,13 @@ struct V { @builtin(position) p:vec4<f32>, @location(0) uv:vec2<f32> }
  let encoded=select(1.055*pow(c,vec3<f32>(1./2.4))-0.055,12.92*c,c<=vec3<f32>(0.0031308));
  return vec4(encoded*value.a,value.a);
 }`
+// Preserve coverage/background correlation between independent retained
+// layers. Each raster phase is composed before the single final resolve.
+const sampleSource = source.replace('pixels:texture_2d<f32>', 'pixels:texture_2d_array<f32>')
+  .replace('let value=textureSample(pixels,filtering,v.uv);', `
+ var value=textureSample(pixels,filtering,v.uv,i32(u.sample));
+ if(COLOR_MODE==2){value=(textureSample(pixels,filtering,v.uv,0)+textureSample(pixels,filtering,v.uv,1)+
+ textureSample(pixels,filtering,v.uv,2)+textureSample(pixels,filtering,v.uv,3))*0.25;}`)
 
 /** The raster device also owns display textures and the final canvas. Frames
  * contain handles and transforms only; no ImageBitmap or pixel readback. */
@@ -67,15 +74,21 @@ export class ResidentPresenter {
   private transformData = new ResidentUniforms()
   private context: GPUCanvasContext
   private layout: GPUBindGroupLayout
+  private sampleLayout: GPUBindGroupLayout
   private pipeline: GPURenderPipeline
   private blendPipeline: GPURenderPipeline
   private linearPipeline: GPURenderPipeline
   private linearBlendPipeline: GPURenderPipeline
+  private linearSourcePipeline: GPURenderPipeline
+  private linearSourceBlendPipeline: GPURenderPipeline
   private resolvePipeline: GPURenderPipeline
-  private linearTarget?: { texture: GPUTexture; bind: GPUBindGroup; width: number; height: number; payload: PayloadToken }
+  private samplePipeline: GPURenderPipeline
+  private sampleBlendPipeline: GPURenderPipeline
+  private sampleResolvePipeline: GPURenderPipeline
+  private linearTarget?: { texture: GPUTexture; bind: GPUBindGroup; width: number; height: number; samples:1|4; payload: PayloadToken }
   private sampler: GPUSampler
   private uniforms: GPUBuffer
-  private textures = new Map<number, { texture: GPUTexture; bytes: number; bind: GPUBindGroup; payload: PayloadToken; background?:PageBackgroundProof }>()
+  private textures = new Map<number, { texture: GPUTexture; bytes: number; bind: GPUBindGroup; payload: PayloadToken; background?:PageBackgroundProof; content?:PixelContentProof; constantBackground?:boolean;linear?:boolean;samples?:1|4 }>()
   private terminalQualityGate = new TerminalQualityGate()
   private latest?: ResidentFrame
   private drawn?: ResidentFrame
@@ -150,25 +163,28 @@ export class ResidentPresenter {
     if (!this.context) throw Error('WebGPU display canvas unavailable')
     this.context.configure({ device, format, alphaMode: 'premultiplied', colorSpace: 'srgb',
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST })
-    this.layout = device.createBindGroupLayout({
+    const makeLayout = (array=false) => device.createBindGroupLayout({
       entries: [
         {
           binding: 0,
-          visibility: GPUShaderStage.VERTEX,
+          visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
           buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: 48 },
         },
-        { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float', viewDimension:array?'2d-array':'2d' } },
         { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
       ],
     })
+    this.layout=makeLayout();this.sampleLayout=makeLayout(true)
     const module = device.createShaderModule({ code: source }),
-      layout = device.createPipelineLayout({ bindGroupLayouts: [this.layout] })
-    const pipeline = (format: GPUTextureFormat, mode = 0, blend?: GPUBlendState) =>
+      layout = device.createPipelineLayout({ bindGroupLayouts: [this.layout] }),
+      sampleModule = device.createShaderModule({code:sampleSource}),
+      sampleLayout = device.createPipelineLayout({bindGroupLayouts:[this.sampleLayout]})
+    const pipeline = (format: GPUTextureFormat, mode = 0, blend?: GPUBlendState,array=false) =>
       device.createRenderPipeline({
-        layout,
-        vertex: { module, entryPoint: 'vertex' },
+        layout:array?sampleLayout:layout,
+        vertex: { module:array?sampleModule:module, entryPoint: 'vertex' },
         fragment: {
-          module,
+          module:array?sampleModule:module,
           entryPoint: 'fragment',
           constants: { COLOR_MODE: mode },
           targets: [{ format, blend }],
@@ -183,7 +199,12 @@ export class ResidentPresenter {
     this.blendPipeline = pipeline(format, 0, blend)
     this.linearPipeline = pipeline('rgba16float', 1)
     this.linearBlendPipeline = pipeline('rgba16float', 1, blend)
+    this.linearSourcePipeline = pipeline('rgba16float', 0)
+    this.linearSourceBlendPipeline = pipeline('rgba16float', 0, blend)
     this.resolvePipeline = pipeline(format, 2)
+    this.samplePipeline=pipeline('rgba16float',0,undefined,true)
+    this.sampleBlendPipeline=pipeline('rgba16float',0,blend,true)
+    this.sampleResolvePipeline=pipeline(format,2,undefined,true)
     // The recovered Figma viewer atlas uses LINEAR_MIN_NEAREST_MAG_CLAMP.
     // Do not add bilinear blur to enlarged cached pixels while native detail
     // catches up. Antialiasing remains in the raster; this cannot invent detail.
@@ -194,15 +215,16 @@ export class ResidentPresenter {
     })
     recordDeviceLifecycle(this, deviceLifecyclePhase.attached, this.diagnosticFields())
   }
-  capture(width: number, height: number, background?:PageBackgroundProof) {
+  capture(width: number, height: number, background?:PageBackgroundProof, content:PixelContentProof|undefined=background,linear=false,samples:1|4=1) {
     if (this.disposed) throw Error('Display device retired')
-    const bytes = width * height * 4
+    if(samples!==1&&samples!==4||samples===4&&!linear)throw Error('Invalid retained sample encoding')
+    const bytes = width * height * (linear?8:4)*samples
     const payload = this.payload.reserve(bytes)
     let texture: GPUTexture | undefined
     try {
       texture = this.device.createTexture({
-      size: [width, height],
-      format: this.format,
+      size: [width, height,samples],
+      format: linear?'rgba16float':this.format,
       usage:
         GPUTextureUsage.RENDER_ATTACHMENT |
         GPUTextureUsage.TEXTURE_BINDING |
@@ -211,15 +233,15 @@ export class ResidentPresenter {
       })
       const id = ++nextTexture
       const bind = this.device.createBindGroup({
-        layout: this.layout,
+        layout: samples===4?this.sampleLayout:this.layout,
         entries: [
           { binding: 0, resource: { buffer: this.uniforms, size: 48 } },
-          { binding: 1, resource: texture.createView() },
+          { binding: 1, resource: texture.createView({dimension:samples===4?'2d-array':'2d'}) },
           { binding: 2, resource: this.sampler },
         ],
       })
       this.payload.commit(payload)
-      this.textures.set(id, { texture, bytes, bind, payload, background })
+      this.textures.set(id, { texture, bytes, bind, payload, background, content,linear,samples })
       this.bytes += bytes
       this.captures++
       return { id, texture }
@@ -253,10 +275,10 @@ export class ResidentPresenter {
   /** Reserve both the destination and the temporary bitmap before the producer
    * creates an output. The transfer remains charged through destination-queue
    * completion; closing ImageBitmap is not a GPU completion certificate. */
-  reserveBitmapImport(width:number,height:number,background?:PageBackgroundProof){
+  reserveBitmapImport(width:number,height:number,background?:PageBackgroundProof,content:PixelContentProof|undefined=background){
     const transfer=this.payload.reserve(width*height*4)
     let capture:ReturnType<ResidentPresenter['capture']>
-    try{capture=this.capture(width,height,background)}catch(error){this.payload.cancel(transfer);throw error}
+    try{capture=this.capture(width,height,background,content)}catch(error){this.payload.cancel(transfer);throw error}
     let consumed=false
     return {
       id:capture.id,texture:capture.texture,
@@ -316,6 +338,24 @@ export class ResidentPresenter {
       this.device.queue.submit([encoder.finish()])
       return { gpuTile: captured.id, frame: this.drawn }
     } catch (error) { this.release([captured.id]); throw error }
+  }
+  backgroundTile(owner:object,contract:string,view:CanvasCamera,output:{x:number;y:number;w:number;h:number}){
+    if(this.disposed)return
+    for(const entry of this.textures.values()){
+      const proof=entry.background
+      if(!proof||!emptyBackgroundTile(proof,owner,contract,view,output))continue
+      // A one-texel texture is constant under both compositor samplers. Copy
+      // the actual encoded pixel; never reproduce color conversion in JS.
+      const target=this.capture(1,1,{...proof,pixel:[.5,.5]})
+      this.textures.get(target.id)!.constantBackground=true
+      try{
+        const encoder=this.device.createCommandEncoder()
+        encoder.copyTextureToTexture({texture:entry.texture,origin:[Math.floor(proof.pixel![0]*entry.texture.width),Math.floor(proof.pixel![1]*entry.texture.height)]},
+          {texture:target.texture},[1,1])
+        this.device.queue.submit([encoder.finish()])
+        return target.id
+      }catch(error){this.release([target.id]);throw error}
+    }
   }
   snapshotPageTranslation(sourceOwner:object,targetOwner:object,offset:{x:number;y:number},width:number,height:number,scale:number,contract:string){
     const proof=this.translatedProof,frame=this.drawn
@@ -417,7 +457,7 @@ export class ResidentPresenter {
       throw Error('Display dimensions exceed device limits')
     const rows: {
       item: ResidentItem
-      entry: { texture: GPUTexture; bytes: number; bind: GPUBindGroup; background?:PageBackgroundProof }
+      entry: { texture: GPUTexture; bytes: number; bind: GPUBindGroup; background?:PageBackgroundProof; content?:PixelContentProof; constantBackground?:boolean;linear?:boolean;samples?:1|4 }
       raster: NonNullable<ReturnType<typeof compositeRasterQuad>>
       constant?:boolean
     }[] = []
@@ -467,7 +507,7 @@ export class ResidentPresenter {
         backgroundPaintRects(row.entry.background,backgroundView,dpr,w,h)!==undefined),proof=source?.entry.background
       backgroundDecline=rows.some(row=>row.entry.background)?3:2
       if(!source&&rows.some(row=>row.entry.background?.pixel))backgroundDecline=4
-      if(source&&proof&&rows.every(row=>row.entry.background?.owner===proof.owner)){
+      if(source&&proof&&rows.every(row=>row.entry.content?.owner===proof.owner&&row.entry.content.contract===proof.contract)){
         backgroundDecline=4
         const paint=backgroundPaintRects(proof,backgroundView,dpr,w,h)
         const gaps=paint&&physicalCoverageGaps(rows.map(row=>({...row.raster,blend:row.item.blend})),w,h)
@@ -495,29 +535,32 @@ export class ResidentPresenter {
       return
     }
     const linear = frame.linearBlend === true && rows.some((row) => row.item.blend)
-    if (rows.length + (linear ? 1 : 0) > 4096) throw Error('Too many visible display tiles')
+    if(!linear&&rows.some(row=>row.entry.linear))throw Error('Linear retained layers require linear composition')
+    const samples:1|4=linear&&rows.some(row=>row.entry.samples===4)?4:1
+    const drawCount=rows.length*samples
+    if (drawCount + (linear ? 1 : 0) > 4096) throw Error('Too many visible display tiles')
     // Reserve the entire replacement peak before creating either target. Keep
     // the old targets and visible canvas unchanged if admission/setup fails.
     const replaceBack = !this.backbuffer || this.backbuffer.width !== w || this.backbuffer.height !== h
-    const replaceLinear = linear && (!this.linearTarget || this.linearTarget.width !== w || this.linearTarget.height !== h)
+    const replaceLinear = linear && (!this.linearTarget || this.linearTarget.width !== w || this.linearTarget.height !== h || this.linearTarget.samples!==samples)
     let backPayload: PayloadToken | undefined, linearPayload: PayloadToken | undefined
     let nextBack: typeof this.backbuffer, nextLinear: typeof this.linearTarget
     try {
       if (replaceBack) backPayload = this.payload.reserve(w * h * 4)
-      if (replaceLinear) linearPayload = this.payload.reserve(w * h * 8)
+      if (replaceLinear) linearPayload = this.payload.reserve(w * h * 8*samples)
       if (backPayload) {
         const texture = this.device.createTexture({ size: [w, h], format: this.format,
           usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC | (this.traceAlpha ? GPUTextureUsage.TEXTURE_BINDING : 0) })
         nextBack = { texture, width: w, height: h, payload: backPayload }
       }
       if (linearPayload) {
-        const texture = this.device.createTexture({ size: [w, h], format: 'rgba16float',
+        const texture = this.device.createTexture({ size: [w, h,samples], format: 'rgba16float',
           usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING })
         // Register the cleanup owner before bind creation can throw.
-        nextLinear = { texture, width: w, height: h, payload: linearPayload, bind: undefined! }
-        nextLinear.bind = this.device.createBindGroup({ layout: this.layout, entries: [
+        nextLinear = { texture, width: w, height: h, samples, payload: linearPayload, bind: undefined! }
+        nextLinear.bind = this.device.createBindGroup({ layout: samples===4?this.sampleLayout:this.layout, entries: [
           { binding: 0, resource: { buffer: this.uniforms, size: 48 } },
-          { binding: 1, resource: texture.createView() }, { binding: 2, resource: this.sampler },
+          { binding: 1, resource: texture.createView({dimension:samples===4?'2d-array':'2d'}) }, { binding: 2, resource: this.sampler },
         ] })
       }
     } catch (error) {
@@ -538,21 +581,22 @@ export class ResidentPresenter {
     if (this.canvas.width !== w) this.canvas.width = w
     if (this.canvas.height !== h) this.canvas.height = h
     this.transformData.begin()
-    rows.forEach((row,i)=>this.transformData.set(i,[...row.raster.box,...row.raster.uv,width,height,0,0]))
-    if(linear)this.transformData.set(rows.length,[0,0,width,height,0,0,1,1,width,height,0,0])
+    for(let phase=0;phase<samples;phase++)rows.forEach((row,i)=>this.transformData.set(phase*rows.length+i,[...row.raster.box,...row.raster.uv,width,height,phase,0]))
+    if(linear)this.transformData.set(drawCount,[0,0,width,height,0,0,1,1,width,height,0,0])
     const update=this.transformData.changed()
     const upload=import.meta.env.VITE_DESIGN_RESIDENT_TRANSFORMS==='0'
-      ?{offset:0,data:this.transformData.data.subarray(0,(rows.length+(linear?1:0))*64)}:update
+      ?{offset:0,data:this.transformData.data.subarray(0,(drawCount+(linear?1:0))*64)}:update
     if(upload?.data.length)this.device.queue.writeBuffer(this.uniforms,upload.offset,upload.data)
     const background = frame.backgroundLinear || [1, 1, 1, 1]
-    const encoder = this.device.createCommandEncoder(),
-      pass = encoder.beginRenderPass({
+    const encoder = this.device.createCommandEncoder()
+    for(let phase=0;phase<samples;phase++){
+    const pass = encoder.beginRenderPass({
         colorAttachments: [
           {
             view: (linear
               ? this.linearTarget!.texture
               : this.backbuffer!.texture
-            ).createView(),
+            ).createView({dimension:'2d',baseArrayLayer:phase,arrayLayerCount:1}),
             loadOp: 'clear',
             storeOp: 'store',
             clearValue: linear
@@ -571,17 +615,22 @@ export class ResidentPresenter {
       pass.setScissorRect(r.x, r.y, r.width, r.height)
       pass.setPipeline(
         linear
-          ? row.item.blend
+          ? row.entry.samples===4
+            ? row.item.blend?this.sampleBlendPipeline:this.samplePipeline
+            : row.entry.linear
+            ? row.item.blend?this.linearSourceBlendPipeline:this.linearSourcePipeline
+            : row.item.blend
             ? this.linearBlendPipeline
             : this.linearPipeline
           : row.item.blend
             ? this.blendPipeline
             : this.pipeline,
       )
-      pass.setBindGroup(0, row.entry.bind, [i * 256])
+      pass.setBindGroup(0, row.entry.bind, [(phase*rows.length+i) * 256])
       pass.draw(6)
     })
     pass.end()
+    }
     if (linear) {
       const resolve = encoder.beginRenderPass({
         colorAttachments: [
@@ -593,8 +642,8 @@ export class ResidentPresenter {
           },
         ],
       })
-      resolve.setPipeline(this.resolvePipeline)
-      resolve.setBindGroup(0, this.linearTarget!.bind, [rows.length * 256])
+      resolve.setPipeline(samples===4?this.sampleResolvePipeline:this.resolvePipeline)
+      resolve.setBindGroup(0, this.linearTarget!.bind, [drawCount * 256])
       resolve.draw(6)
       resolve.end()
     }
@@ -610,16 +659,16 @@ export class ResidentPresenter {
     const submittedEpoch = performance.timeOrigin + performance.now()
     this.drawn = frame
     this.translatedProof=undefined
-    const translation=frame.backgroundTranslation,sourceProof=rows[0]?.entry.background
+    const translation=frame.backgroundTranslation,sourceProof=rows.find(row=>row.entry.background?.pixel)?.entry.background
     this.translatedProofChecks=Number(complete)|Number(!!frame.interaction)<<1|Number(!!translation)<<2|Number(!!sourceProof)<<3|
       Number(!!sourceProof?.contract)<<4|Number(sourceProof?.view.zoom===view.zoom*dpr)<<5|
-      Number(!!sourceProof&&rows.every(row=>row.entry.background?.owner===sourceProof.owner))<<6|
-      Number(!!sourceProof&&rows.every(row=>row.entry.background?.contract===sourceProof.contract))<<7
+      Number(!!sourceProof&&rows.every(row=>row.entry.content?.owner===sourceProof.owner))<<6|
+      Number(!!sourceProof&&rows.every(row=>row.entry.content?.contract===sourceProof.contract))<<7
     if(complete&&frame.interaction&&translation&&sourceProof&&sourceProof.view.zoom===view.zoom*dpr&&
       Number.isSafeInteger(width*dpr)&&Number.isSafeInteger(height*dpr)&&
       [translation.x*view.zoom*dpr,translation.y*view.zoom*dpr].every(Number.isSafeInteger)&&
-      rows.every(row=>!row.item.blend&&row.entry.background?.owner===sourceProof.owner&&row.entry.background.contract===sourceProof.contract&&
-        (row.constant||(()=>{
+      rows.every(row=>!row.item.blend&&row.entry.content?.owner===sourceProof.owner&&row.entry.content.contract===sourceProof.contract&&
+        (row.constant||row.entry.constantBackground||(()=>{
           const tile=row.item.tile,s=view.zoom/tile.zoom,p=row.item.placement
           return !!p&&tile.zoom===view.zoom*dpr&&tile.width===row.entry.texture.width&&tile.height===row.entry.texture.height&&
             [p.left*dpr,p.top*dpr].every(Number.isSafeInteger)&&p.width*dpr===row.entry.texture.width&&p.height*dpr===row.entry.texture.height&&
@@ -633,12 +682,13 @@ export class ResidentPresenter {
     }
     this.frames++
     const coverageAt=performance.now()
-    const terminalQuality = this.terminalQualityGate.claim(frame.terminalQuality, detailedDiagnostics)
+    const terminalQuality = this.terminalQualityGate.claim(complete?frame.terminalQuality:undefined, detailedDiagnostics)
     const measureCoverage=strictSharpDiagnostics || traceQuality || !!terminalQuality || import.meta.env.DEV || (detailedDiagnostics && coverageAt-this.diagnosticCoverageAt>=250)
     if(measureCoverage)this.diagnosticCoverageAt=coverageAt
     this.report({
       ...this.diagnosticFields(),
       coverageDeferred: 0,
+      ...(!complete&&!frame.interaction?{pixelCoverageComplete:false,nativeCoverageComplete:false,qualityTerminal:false}:{}),
       backgroundCoverage: Number(backgroundAdded),
       diagnosticSequence: frame.diagnosticSequence, submittedEpoch,
       gridVisible: !!frame.overlay?.pixelGrid && view.zoom>=4, dpr,
@@ -653,7 +703,7 @@ export class ResidentPresenter {
       compositorBytes: this.residentBytes,
       compositorOverlayBytes: this.overlay?.residentBytes || 0,
       compositorTiles: this.textures.size,
-      compositorDraws: rows.length + (linear ? 1 : 0),
+      compositorDraws: drawCount + (linear ? 1 : 0),
       linearBlend: linear,
       presented: {
         presentationId: frame.presentationId,
@@ -697,7 +747,7 @@ export class ResidentPresenter {
   }
   get residentBytes() {
     return (
-      this.bytes + (this.linearTarget ? this.linearTarget.width * this.linearTarget.height * 8 : 0) +
+      this.bytes + (this.linearTarget ? this.linearTarget.width * this.linearTarget.height * 8*this.linearTarget.samples : 0) +
       (this.backbuffer ? this.backbuffer.width * this.backbuffer.height * 4 : 0) + (this.overlay?.residentBytes || 0)
     )
   }

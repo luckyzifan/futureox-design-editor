@@ -482,8 +482,16 @@ fn box_pass_reference(input: &Surface, r: i32, horizontal: bool) -> Result<Surfa
 }
 // Authoritative binary64 three-box radius selection, shared with both browsers.
 pub fn gaussian_box_radii(sigma: f64) -> Result<[u32; 3], String> {
-    if !sigma.is_finite() || !(0. ..=512.).contains(&sigma) {
-        return Err("Gaussian sigma must be in [0,512]".into());
+    gaussian_box_radii_bounded(sigma,512.)
+}
+/// Native streamed display plans have a separate, bounded six-pass domain.
+/// This does not widen the ordinary whole-surface or export admission.
+pub(crate) fn gaussian_box_radii_region(sigma:f64)->Result<[u32;3],String> {
+    gaussian_box_radii_bounded(sigma,1024.)
+}
+fn gaussian_box_radii_bounded(sigma:f64,limit:f64)->Result<[u32;3],String> {
+    if !sigma.is_finite() || !(0. ..=limit).contains(&sigma) {
+        return Err(format!("Gaussian sigma must be in [0,{limit}]"));
     }
     if sigma < 0.1 {
         return Ok([0; 3]);
@@ -501,8 +509,8 @@ pub fn gaussian_box_radii(sigma: f64) -> Result<[u32; 3], String> {
         .clamp(0., 3.) as i32;
     let radii =
         std::array::from_fn(|i| ((if (i as i32) < m { lower } else { upper } - 1) / 2) as u32);
-    if radii.iter().any(|r| *r > 512) {
-        return Err("Gaussian box radius exceeds 512 pixels".into());
+    if radii.iter().any(|r| f64::from(*r) > limit) {
+        return Err("Gaussian box radius exceeds its surface policy".into());
     }
     Ok(radii)
 }

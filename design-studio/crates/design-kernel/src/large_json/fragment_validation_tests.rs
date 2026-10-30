@@ -143,6 +143,7 @@ fn utf8_and_escaped_keys_cross_internal_buffer_boundaries() {
     let text = r#"{"outer":{"😀":1,"\uD83D\uDE00":2}}"#.as_bytes();
     for capacity in 1..=16 {
         let mut scanner = Scanner {
+            compact_keys:false,
             input: BufReader::with_capacity(capacity, text),
             at: 0,
             limit: MAX_FRAGMENT_BYTES,
@@ -225,6 +226,7 @@ fn exact_four_mib_fragment_admits_and_next_byte_rejects() {
 fn active_key_sets_release_after_children_and_do_not_emit_index_rows() {
     let text = format!("[{}]", (0..2000).map(|_| r#"{"x":{"x":1},"y":2}"#).collect::<Vec<_>>().join(","));
     let mut scanner = Scanner {
+            compact_keys:false,
         input: BufReader::with_capacity(64 * 1024, text.as_bytes()),
         at: 0,
         limit: MAX_FRAGMENT_BYTES,
@@ -285,6 +287,7 @@ fn wide_objects_and_escaped_decoded_key_limit_do_not_require_field_tables() {
 fn selected_entry_count_rejects_only_address_overflow() {
     let text = b"{}".as_slice();
     let mut scanner = Scanner {
+            compact_keys:false,
         input: BufReader::with_capacity(64 * 1024, text),
         at: 0,
         limit: MAX_FRAGMENT_BYTES,

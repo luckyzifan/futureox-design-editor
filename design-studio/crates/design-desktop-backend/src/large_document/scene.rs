@@ -446,9 +446,9 @@ pub(super) fn commit_nodes(
                 {
                     return Err(issue("Invalid source geometry scale proof"));
                 }
-                node.vector_geometry
+                std::sync::Arc::make_mut(node.vector_geometry
                     .as_mut()
-                    .ok_or_else(|| issue("No owned render geometry to scale"))?
+                    .ok_or_else(|| issue("No owned render geometry to scale"))?)
                     .scale(sx, sy);
             }
             projection::preserve_point_order(old, &node)?;

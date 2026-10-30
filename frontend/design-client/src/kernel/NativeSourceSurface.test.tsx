@@ -57,7 +57,7 @@ test('a large camera jump cancels obsolete raster work and starts the latest vie
  expect(calls.jobs.every(job=>job.signal?.aborted)).toBe(true)
 })
 
- test('a rejected camera recovers after navigation without restarting on banner resize',async()=>{
+ test.each(['Invalid tile request','GPU surface budget exceeded','GPU 表面内存预算超限'])('a rejected camera (%s) recovers after navigation without restarting on banner resize',async(error)=>{
  const dom=new JSDOM('<div id="root"></div>')
  for(const name of ['window','document','navigator'])vi.stubGlobal(name,name==='window'?dom.window:dom.window[name])
  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);vi.stubGlobal('requestAnimationFrame',()=>1);vi.stubGlobal('cancelAnimationFrame',()=>{})
@@ -66,7 +66,7 @@ test('a large camera jump cancels obsolete raster work and starts the latest vie
  const statuses:NativeSourceStatus[]=[]
  const draw=(zoom:number,height=600)=><NativeSourceSurface source={source} view={{x:0,y:0,zoom}} width={800} height={height} onStatus={value=>statuses.push(value)}/>
  try{
-  calls.requests=0;calls.disposed=0;calls.defer=false;calls.error='Invalid tile request';calls.jobs=[]
+  calls.requests=0;calls.disposed=0;calls.defer=false;calls.error=error;calls.jobs=[]
   await act(async()=>root.render(draw(256)))
   expect(statuses.at(-1)?.phase).toBe('error');expect(calls.requests).toBe(2)
   await act(async()=>root.render(draw(256,560)));expect(calls.requests).toBe(2)

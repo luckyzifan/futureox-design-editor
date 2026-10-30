@@ -1,0 +1,583 @@
+{
+  "format": 2,
+  "model": "node_centered_three_octave_cubic_gradient_noise",
+  "numericalStatus": "Exact-or-error in the declared fixed-seed0 identity texture graph. No successful displacement uses sine interpolation. Independent native Metal, natural WGSL, Rust and WASM numerical agreement does not establish complete external Figma image parity.",
+  "sineLut": {
+    "file": "sine-q19.bin",
+    "bytes": 2097156,
+    "entries": 524289,
+    "byteOrder": "little",
+    "word": "binary32 bits",
+    "phase": "abs triangular range reduction on [0,1], index=phase*2^19",
+    "sha256": "7700b8984942195a45b7e9b4fa9b571666c44cad67013521d851cb5af5654622",
+    "generator": ".local/design-validation/fidelity-exact-1bae60b9-68c3-40d1-a2d2-8aa9aaeb93fc/sine-domain.swift",
+    "generatorSha256": "a1db1a3aaf0addcd0ed7765c70339fe58b65d6bdc538184d0dd51f2a18134c99",
+    "device": "Apple M2 Pro",
+    "generatorInputCount": 8388608,
+    "generatorCollisions": 0,
+    "generatorMissing": 0
+  },
+  "seedPlan": {
+    "baseSeed": 0,
+    "order": "channel 0..1, octave 0..2; each triple is [seed, frequencyX, frequencyY]",
+    "bits": [
+      [
+        [
+          1027342336,
+          1059454976,
+          1049067520
+        ],
+        [
+          1049919488,
+          1043595264,
+          1060601856
+        ],
+        [
+          1060896768,
+          1061158912,
+          1045757952
+        ]
+      ],
+      [
+        [
+          1063487488,
+          1058603008,
+          1063845888
+        ],
+        [
+          1058275328,
+          1062141952,
+          1062469632
+        ],
+        [
+          1051721728,
+          1058471936,
+          1051721728
+        ]
+      ]
+    ],
+    "packed18WordsSha256": "fc76acc1fe985f718afcdbc27f9ae4a4d778a48ca2bc187eb5bf2ad7546457d3",
+    "generatorSha256": "f2190100c58dfeeff23603e4648b5ce530a0f3bc35654e123ca9b072703db51b",
+    "directPlannedGradientComparison": {
+      "vectors": 6534,
+      "components": 13068,
+      "differentComponents": 0
+    }
+  },
+  "validation": {
+    "identityGraph": true,
+    "nativeMetalGradientComponents": 3158028,
+    "nativeMetalGradientDifferent": 0,
+    "nativeMetalGradientSHA256": "9544440731665ecb3881995f5aa2a0b6ac36ae5a11376a38a95cfd47f6f01b0d",
+    "nativeWasmComparedGradientComponents": 3158028,
+    "nativeWasmDifferent": 0,
+    "nativeMetalContinuousDisplacementComponents": 61440,
+    "nativeMetalContinuousDisplacementDifferent": 0,
+    "nativeWasmComparedDisplacementComponents": 61440,
+    "nativeWasmDisplacementDifferent": 0,
+    "nativeWasmDawnActualFieldComponents": 10485760,
+    "nativeWasmDawnActualFieldDifferent": 0,
+    "exhaustiveReciprocalSqrtInputs": 419430400,
+    "exhaustiveReciprocalSqrtDifferent": 0,
+    "actualProductionApiNative": {
+      "actualProductionSource": true,
+      "entry": "displacement_with_reciprocal",
+      "moduleSHA256": "e06cad853f698abcea2b610c9b73a8ff2a00872885e1e80f0ba93bfdd8c9520f",
+      "rows": [
+        {
+          "case": "size8",
+          "components": 2097152,
+          "differentBits": 0,
+          "sha256": "f5e850ce66d28b60ebdb550514838b4d761349f75536eaef5fd9fbf3f76b10da"
+        },
+        {
+          "case": "size1",
+          "components": 2097152,
+          "differentBits": 0,
+          "sha256": "186f67e41972776d2af6562cbf98117ebacfb8a0556f05e59257237fbef7357f"
+        },
+        {
+          "case": "size32",
+          "components": 2097152,
+          "differentBits": 0,
+          "sha256": "4c4cb09c4ca9a304a11c51c045c2ab03c4b373d4afca1d0a2a0550467692ce20"
+        },
+        {
+          "case": "radius4",
+          "components": 2097152,
+          "differentBits": 0,
+          "sha256": "18bac30531e00b3e7f601b47bc8c04016278afd9c8aa632682bda9b4d4297d0a"
+        },
+        {
+          "case": "anisotropic",
+          "components": 2097152,
+          "differentBits": 0,
+          "sha256": "c5ef31173c2e499e821ef9580f08d8ae4a3ef9042ffc1174668747e0b0c106b1"
+        },
+        {
+          "case": "continuous-authored-wrapper",
+          "components": 61440,
+          "differentBits": 0,
+          "sha256": "c9a4a0d407c1269a6b2abb512151f00815474ae9f816718270da7e4869f6d201"
+        }
+      ],
+      "externalFigmaExact": false
+    },
+    "actualProductionApiWasm": {
+      "actualProductionSource": true,
+      "moduleSHA256": "e06cad853f698abcea2b610c9b73a8ff2a00872885e1e80f0ba93bfdd8c9520f",
+      "variant": "actual field uses displacement_with_reciprocal; continuous keeps original authored-size API; identity arithmetic unchanged",
+      "rows": [
+        {
+          "name": "gradient-wide",
+          "components": 3158028,
+          "differentBits": 0,
+          "sha256": "9544440731665ecb3881995f5aa2a0b6ac36ae5a11376a38a95cfd47f6f01b0d",
+          "milliseconds": 239.15691700000002
+        },
+        {
+          "name": "actual-size8",
+          "components": 2097152,
+          "differentBits": 0,
+          "sha256": "f5e850ce66d28b60ebdb550514838b4d761349f75536eaef5fd9fbf3f76b10da",
+          "milliseconds": 1920.7753750000002
+        },
+        {
+          "name": "actual-size1",
+          "components": 2097152,
+          "differentBits": 0,
+          "sha256": "186f67e41972776d2af6562cbf98117ebacfb8a0556f05e59257237fbef7357f",
+          "milliseconds": 2902.9237920000005
+        },
+        {
+          "name": "actual-size32",
+          "components": 2097152,
+          "differentBits": 0,
+          "sha256": "4c4cb09c4ca9a304a11c51c045c2ab03c4b373d4afca1d0a2a0550467692ce20",
+          "milliseconds": 1649.880333
+        },
+        {
+          "name": "actual-radius4",
+          "components": 2097152,
+          "differentBits": 0,
+          "sha256": "18bac30531e00b3e7f601b47bc8c04016278afd9c8aa632682bda9b4d4297d0a",
+          "milliseconds": 1881.1407090000002
+        },
+        {
+          "name": "actual-anisotropic",
+          "components": 2097152,
+          "differentBits": 0,
+          "sha256": "c5ef31173c2e499e821ef9580f08d8ae4a3ef9042ffc1174668747e0b0c106b1",
+          "milliseconds": 1795.801375000001
+        },
+        {
+          "name": "continuous-heldout",
+          "components": 61440,
+          "differentBits": 0,
+          "sha256": "c9a4a0d407c1269a6b2abb512151f00815474ae9f816718270da7e4869f6d201"
+        }
+      ],
+      "q19ABI": {
+        "components": 64,
+        "differentBits": 0
+      },
+      "externalFigmaExact": false
+    },
+    "unitTestsPassed": 12,
+    "clippyWarningsDenied": true,
+    "externalFigmaExact": false,
+    "oracleBoundary": "Independent mathematical GPU programs and numeric inputs only. Native identity and natural WGSL agree; no complete Figma application or renderer is executed to build numerical assets. External original PNG comparison remains a separate zero-byte gate."
+  },
+  "constantsBinary32": {
+    "0.15915494309189535": "0x3e22f983",
+    "12.9898": "0x414fd639",
+    "78.233": "0x429c774c",
+    "3.14159": "0x40490fd0",
+    "2.71828": "0x402df84d",
+    "438.5453": "0x43db45cc",
+    "1.73205": "0x3fddb3d0",
+    "1.61803": "0x3fcf1b9b",
+    "18.345": "0x4192c28f",
+    "0.61803": "0x3f1e3737",
+    "21.543": "0x41ac5810",
+    "12.42": "0x4146b852",
+    "78.23": "0x429c75c3",
+    "-19.98": "0xc19fd70a",
+    "31.21": "0x41f9ae14",
+    "312": "0x439c0000"
+  },
+  "provenance": "Mathematical function data generated independently on the local GPU; no reference PNG pixels, node identifiers or scene-specific output patches are stored here.",
+  "storage": "Raw packed3bit sine residuals and2bit rsqrt residuals; no decoder dependency has been added.",
+  "residentBytes": 26686749,
+  "residualAssets": [
+    {
+      "file": "q22-complete-residual-3bit.bin",
+      "bytes": 1376257,
+      "sha256": "801db65d1316ff0fb06ae796d0053a852f594710e0d1db6f3c82ca6305dd039b"
+    },
+    {
+      "file": "gradient-low-q25-3bit.bin",
+      "bytes": 3145729,
+      "sha256": "3c7a1abccdc84e053dead4b1327df4ba0eaaffec6192d1eef0fc8252b890e840"
+    },
+    {
+      "file": "positive-exponent--2-3bit.bin",
+      "bytes": 3145729,
+      "sha256": "78d86087fa7bd5aec980660269a8ace44e6adfcf67cc7ed6be6c181a31ab8d11"
+    },
+    {
+      "file": "positive-exponent--1-3bit.bin",
+      "bytes": 3145729,
+      "sha256": "0464506536a460785110ce03d795fb9d2987f6f0e8ca7fdfb63503232dd6e1ee"
+    },
+    {
+      "file": "positive-exponent-0-3bit.bin",
+      "bytes": 3145729,
+      "sha256": "3085da58c32fa6c860ba3517ae1f1f515326a4cdd8d6437aec04a9af36fac8b1"
+    },
+    {
+      "file": "positive-exponent-1-3bit.bin",
+      "bytes": 3145729,
+      "sha256": "d9c69da32a1d04dbb45abfeea4f4cb9b23653628943a906c304615c529b2d808"
+    },
+    {
+      "file": "coordinate-low-q22-3bit.bin",
+      "bytes": 144658,
+      "sha256": "f18a10a8408155590c42756c1b8d0bee972661ce46851ed558c93f9c5f863b90"
+    },
+    {
+      "file": "coordinate-composed-q22-3bit.bin",
+      "bytes": 3145729,
+      "sha256": "fb22ec959558f0ef2d9a096716e890eb6bebba5c85243b461685e5d8df18310f"
+    },
+    {
+      "file": "rsqrt-residual.bin",
+      "bytes": 4194304,
+      "sha256": "5c81e7f88a7ec172e9a2100e32d80d472e21bb639991ac32197ea70e22fd38c2"
+    }
+  ],
+  "exactDomain": {
+    "seed": 0,
+    "coordinateSine": "Modulo remainder k*2^-22; off-Q22 positive remainder[0,2) has a separate complete composition table, other actual remainders fall on the captured Q22/Q19 phase nodes. Unsupported mathematical inputs are errors.",
+    "gradientSine": "Q19 orQ22 phase nodes; positive arguments[.25,4); positive k*2^-25 arguments below.25; independently enumerated tiny positive argument interval[2^-26,2^-13). Non-covered arbitrary f32 inputs remain explicitly unsupported.",
+    "rsqrt": "All positive binary32 values in[2^-48,4). Complete normalized[1,4) mantissa table and powers-of-four identity checked exhaustively at every exponent -48..1 (419430400 values). Raw zero vectors are rejected, matching the native invalid/NaN condition rather than replacing them with zero.",
+    "noGenericSeedSupport": true
+  },
+  "operationGraph": [
+    "Every listed arithmetic edge rounds to binary32 unless FMA is explicitly stated. Fixed seed0 plan remains the SHA-bound18 independent mathematical parameters.",
+    "Coordinate dot = fma(integer_y,78.233,RN32(integer_x*12.9898)).",
+    "Modulo quotient = floor(RN32(dot*RN32(1/3.14159))); IEEE division here is observably different at four holdout lattice points.",
+    "Remainder = fma(-quotient,3.14159,dot). Its exact binary lattice is k*2^-22.",
+    "Coordinate sine composition reduces cycles = RN32(remainder * f32_bits(0x3edd8161)). This is the compiler-folded 2.71828*INV_TAU constant. Do not pass RN32(remainder*2.71828) to a generic sine primitive.",
+    "Scramble = fract(fma(coordinate_wave,438.5453,1.73205)).",
+    "Common = RN32(seed*scramble). Combined weightj = fma(common,weight_scale_j,RN32(weight_bias_j+312)). The identity graph folds +312 into the FMA bias; a runtime quantize branch changes this graph and is excluded from the current oracle.",
+    "Gradient direction coefficients = RN32(direction*planned_frequency), then dot = fma(integer_y,coefficient_y,RN32(integer_x*coefficient_x)). Argument is dot/16 through two exact*.25 scalings.",
+    "Gradient sine uses ordinary captured unary reduction. All coefficients have denominators at most2^21, so all gradient sine arguments are k*2^-25.",
+    "Product = RN32(wave*combined_weight). Centered fraction is RN32(2*RN32(RN32(product-.5)-floor(product))); do not subtract .5 after forming fract(product).",
+    "Norm squared = fma(raw_y,raw_y,RN32(raw_x*raw_x)); norm reciprocal is captured fast::rsqrt, not1/f32_sqrt. Each output = RN32(raw_component*reciprocal).",
+    "Complete displacement starts q*the already-rounded binary32 reciprocal noise-size uniform. Public q/noise_size division is not equivalent for non-dyadic sizes.",
+    "Cubic easing, dot interpolation, three octave amplitudes1/.5/.25 and final radius multiplication are included in the continuous displacement verification."
+  ],
+  "historicalApproximationExperiment": {
+    "independentSineInputs": 1068178,
+    "onGridInputs": 121662,
+    "onGridDifferent": 0,
+    "offGridInputs": 946516,
+    "offGridDifferent": 260509,
+    "offGridMaximumObservedMagnitudeUlp": 3
+  },
+  "reproduction": {
+    "workingDirectory": "/Users/Apple/project/core",
+    "numericRuntime": "Independent local Apple M2 Pro native Metal and headless WebGPU Apple metal-3 numeric oracles; isolated rustc Native/WASM builds and Node WASM execution.",
+    "scriptsInDependencyOrder": [
+      "probe.swift -> probe binary",
+      "probe-inputs.swift -> probe-inputs binary",
+      "full-quarter-grid.py 22",
+      "fill-q22.py",
+      "build-reachable.py",
+      "probe-coordinate.swift -> probe-coordinate binary",
+      "build-coordinate-composed.py",
+      "rsqrt-domain.swift",
+      "rsqrt-min-domain.swift",
+      "pack-rsqrt.py",
+      "pack-residuals.py",
+      "gradient-wide-native-identity.swift -> independent identity wide gradient values",
+      "displacement-native-identity.swift -> independent identity continuous values",
+      "fields.wgsl -> independent WebGPU actual-field mathematical values",
+      "production-api Rust Native/WASM builds from symlinked actual source",
+      "verify-production-wasm.mjs -> current source-bound identity report"
+    ],
+    "noSharedTarget": "All rustc outputs live in this private directory; no Cargo workspace target is used.",
+    "identityGraphVerification": [
+      "gradient-wide-native-identity.swift generates the independent 513x513x6 identity-gradient oracle without a runtime quantize branch.",
+      "displacement-native-identity.swift generates the independent continuous heldout identity oracle.",
+      "fields.wgsl in a separate WebGPU/Apple Metal3 harness generates five actual geometric parameter fields (four AA phases, 512x512 points each).",
+      "production-api uses symlinks to actual production Rust files, avoiding a rewritten source copy and preserving normal Rust child-module lookup.",
+      "verify-production-wasm.mjs verifies wide gradients, five complete fields, continuous heldout displacements and the unchanged Q19 ABI; each oracle/output is SHA-bound in its report.",
+      "The private diagnostic-branch-history binds the previous source/tests/metadata. Earlier probe outputs remain intact and are classified as the superseded branch graph."
+    ]
+  },
+  "notes": [
+    "RequireGridNode retains the Q19-only gradient dither ABI. RequireSupportedDomain is exact-or-error. Legacy AllowInterpolation now also returns exact-or-error and never an approximate successful value.",
+    "Successful sine results have interpolated=false; sine_interpolated_samples remains zero.",
+    "The dense residuals encode mathematical primitive errors, not image outputs or node-specific behavior.",
+    "The general scalar sine function intentionally rejects finite inputs outside the enumerated mathematical domains. Every input produced by the supported seed0 texture graph is covered.",
+    "Zero normalization is an error; the corresponding native operation produces NaNs.",
+    "The identity-graph correction changes only gradient weight FMA bias placement; no mathematical LUT, seed-plan bytes, clip-weight module or gradient-dither Q19 ABI changed."
+  ],
+  "fieldTrace": [
+    {
+      "width": 128,
+      "size": 1,
+      "gradientCalls": 393216,
+      "distinctGradients": 295426,
+      "reuseFraction": 0.24869283040364587
+    },
+    {
+      "width": 128,
+      "size": 8,
+      "gradientCalls": 393216,
+      "distinctGradients": 11206,
+      "reuseFraction": 0.9715016682942709
+    },
+    {
+      "width": 128,
+      "size": 32,
+      "gradientCalls": 393216,
+      "distinctGradients": 790,
+      "reuseFraction": 0.9979909261067709
+    },
+    {
+      "width": 256,
+      "size": 1,
+      "gradientCalls": 1572864,
+      "distinctGradients": 689668,
+      "reuseFraction": 0.5615208943684895
+    },
+    {
+      "width": 256,
+      "size": 8,
+      "gradientCalls": 1572864,
+      "distinctGradients": 11206,
+      "reuseFraction": 0.9928754170735677
+    },
+    {
+      "width": 256,
+      "size": 32,
+      "gradientCalls": 1572864,
+      "distinctGradients": 790,
+      "reuseFraction": 0.9994977315266927
+    }
+  ],
+  "fieldTraceNote": "Actual uncached production gradient calls were instrumented in an isolated copy; no production cache was added before the exact-module freeze. Counts are structurally unchanged by the two-line identity bias-fusion correction; earlier wall-clock timings belong to the historical diagnostic arithmetic graph.",
+  "compressionDecision": "This iteration retains raw3bit/2bit assets. Private compression study reported alternatives; no custom codec or new dependency has been adopted.",
+  "operationGraphVersion": 2,
+  "historicalDiagnosticBranchGraph": {
+    "status": "Superseded whole-gradient oracle; primitive mathematical assets remain unchanged and valid.",
+    "reason": "The independent diagnostic program selected runtime quantization with q?float(half(v)):v. Even q=0 inhibited folding the later +312 into gradient weight FMA bias. Those reports measure that diagnostic branch graph, not the final identity graph.",
+    "sourceSnapshots": {
+      "texture_noise.rs": "055a827b98cef750361ba3dbea4bebbd047f27b1d3213d28650af27e0ad70d23",
+      "texture_noise_numeric.rs": "1ad1789602a82bf000eac3909728e358870285e5c6c1b328b39150a54cd70415",
+      "math-metadata.json": "de57a429caaf280b682cb5bc1dcad94418a282f8e3a40c44fd964b28ac2568d7"
+    },
+    "oldWideGradientSHA256": "527f4911aa48154197c5c2575651c37e79289afcfbdffd941c73e82fac31fd91",
+    "validation": {
+      "nativeWasmComparedGradientComponents": 3158028,
+      "nativeWasmDifferent": 0,
+      "externalFigmaExact": false,
+      "nativeWasmComparedDisplacementComponents": 61440,
+      "nativeWasmDisplacementDifferent": 0,
+      "nativeMetalGradientComponents": 3158028,
+      "nativeMetalGradientDifferent": 0,
+      "nativeMetalContinuousDisplacementComponents": 61440,
+      "nativeMetalContinuousDisplacementDifferent": 0,
+      "exhaustiveReciprocalSqrtInputs": 419430400,
+      "exhaustiveReciprocalSqrtDifferent": 0,
+      "actualProductionApiWasm": {
+        "actualProductionSource": true,
+        "rows": [
+          {
+            "name": "gradient",
+            "components": 3158028,
+            "different": 0,
+            "milliseconds": 306.448041
+          },
+          {
+            "name": "displacement",
+            "components": 61440,
+            "different": 0,
+            "milliseconds": 113.020333
+          }
+        ],
+        "q19AbiCompared": 64,
+        "q19AbiDifferent": 0,
+        "externalFigmaExact": false
+      },
+      "actualProductionApiNative": {
+        "actualProductionModule": true,
+        "components": 61440,
+        "different": 0,
+        "externalFigmaExact": false
+      },
+      "unitTestsPassed": 10,
+      "clippyWarningsDenied": true
+    },
+    "operationGraph": [
+      "Every listed arithmetic edge rounds to binary32 unless FMA is explicitly stated. Fixed seed0 plan remains the SHA-bound18 independent mathematical parameters.",
+      "Coordinate dot = fma(integer_y,78.233,RN32(integer_x*12.9898)).",
+      "Modulo quotient = floor(RN32(dot*RN32(1/3.14159))); IEEE division here is observably different at four holdout lattice points.",
+      "Remainder = fma(-quotient,3.14159,dot). Its exact binary lattice is k*2^-22.",
+      "Coordinate sine composition reduces cycles = RN32(remainder * f32_bits(0x3edd8161)). This is the compiler-folded 2.71828*INV_TAU constant. Do not pass RN32(remainder*2.71828) to a generic sine primitive.",
+      "Scramble = fract(fma(coordinate_wave,438.5453,1.73205)).",
+      "Common = RN32(seed*scramble). Weightj = fma(common,weight_scale_j,weight_bias_j). Preserve this rounding; folding the later+312 into the bias regresses.",
+      "Gradient direction coefficients = RN32(direction*planned_frequency), then dot = fma(integer_y,coefficient_y,RN32(integer_x*coefficient_x)). Argument is dot/16 through two exact*.25 scalings.",
+      "Gradient sine uses ordinary captured unary reduction. All coefficients have denominators at most2^21, so all gradient sine arguments are k*2^-25.",
+      "Amplitude = RN32(weight+312); product = RN32(wave*amplitude). Centered fraction is RN32(2*RN32(RN32(product-.5)-floor(product))); do not subtract.5 after forming fract(product).",
+      "Norm squared = fma(raw_y,raw_y,RN32(raw_x*raw_x)); norm reciprocal is captured fast::rsqrt, not1/f32_sqrt. Each output = RN32(raw_component*reciprocal).",
+      "Complete displacement starts q*the already-rounded binary32 reciprocal noise-size uniform. Public q/noise_size division is not equivalent for non-dyadic sizes.",
+      "Cubic easing, dot interpolation, three octave amplitudes1/.5/.25 and final radius multiplication are included in the continuous displacement verification."
+    ],
+    "reproduction": {
+      "workingDirectory": "/Users/Apple/project/core",
+      "numericRuntime": "Local Apple M2 Pro Metal oracle; Python/NumPy 2.5.3; Rust isolated rustc builds; Bun WASM execution.",
+      "scriptsInDependencyOrder": [
+        "probe.swift -> probe binary",
+        "probe-inputs.swift -> probe-inputs binary",
+        "full-quarter-grid.py 22",
+        "fill-q22.py",
+        "build-reachable.py",
+        "probe-coordinate.swift -> probe-coordinate binary",
+        "build-coordinate-composed.py",
+        "rsqrt-domain.swift",
+        "rsqrt-min-domain.swift",
+        "pack-rsqrt.py",
+        "pack-residuals.py",
+        "full_gradient_3bit.rs -> full-gradient-3bit binary; compare output with recovered-gradient-wide-fast.f32 first f32 plane",
+        "prepare-displacement.py",
+        "displacement-metal.swift",
+        "displacement_full.rs -> displacement-full binary",
+        "final_wasm.rs -> final.wasm",
+        "check-final-wasm.ts",
+        "check-final-displacement-wasm.ts"
+      ],
+      "noSharedTarget": "All rustc outputs live in this private directory; no Cargo workspace target is used."
+    },
+    "privateEvidenceRetained": "Previous reports and GPU output files were not replaced; diagnostic-branch-history additionally binds old source, tests and metadata."
+  },
+  "priorIdentityEntryApiReports": {
+    "native": {
+      "actualProductionSource": true,
+      "moduleSHA256": "1fadda6de0e2243c6f47157e10ab0015218c26d400b608c78b7a37ce0c9c4c24",
+      "rows": [
+        {
+          "case": "wide-gradient",
+          "components": 3158028,
+          "differentBits": 0,
+          "sha256": "9544440731665ecb3881995f5aa2a0b6ac36ae5a11376a38a95cfd47f6f01b0d"
+        },
+        {
+          "case": "size8",
+          "components": 2097152,
+          "differentBits": 0,
+          "sha256": "f5e850ce66d28b60ebdb550514838b4d761349f75536eaef5fd9fbf3f76b10da"
+        },
+        {
+          "case": "size1",
+          "components": 2097152,
+          "differentBits": 0,
+          "sha256": "186f67e41972776d2af6562cbf98117ebacfb8a0556f05e59257237fbef7357f"
+        },
+        {
+          "case": "size32",
+          "components": 2097152,
+          "differentBits": 0,
+          "sha256": "4c4cb09c4ca9a304a11c51c045c2ab03c4b373d4afca1d0a2a0550467692ce20"
+        },
+        {
+          "case": "radius4",
+          "components": 2097152,
+          "differentBits": 0,
+          "sha256": "18bac30531e00b3e7f601b47bc8c04016278afd9c8aa632682bda9b4d4297d0a"
+        },
+        {
+          "case": "anisotropic",
+          "components": 2097152,
+          "differentBits": 0,
+          "sha256": "c5ef31173c2e499e821ef9580f08d8ae4a3ef9042ffc1174668747e0b0c106b1"
+        },
+        {
+          "case": "continuous-heldout",
+          "components": 61440,
+          "differentBits": 0,
+          "sha256": "c9a4a0d407c1269a6b2abb512151f00815474ae9f816718270da7e4869f6d201"
+        }
+      ],
+      "externalFigmaExact": false
+    },
+    "wasm": {
+      "actualProductionSource": true,
+      "moduleSHA256": "1fadda6de0e2243c6f47157e10ab0015218c26d400b608c78b7a37ce0c9c4c24",
+      "variant": "production identity graph; previous runtime-quantize graph retained as historical diagnostic",
+      "rows": [
+        {
+          "name": "gradient-wide",
+          "components": 3158028,
+          "differentBits": 0,
+          "sha256": "9544440731665ecb3881995f5aa2a0b6ac36ae5a11376a38a95cfd47f6f01b0d",
+          "milliseconds": 222.847458
+        },
+        {
+          "name": "actual-size8",
+          "components": 2097152,
+          "differentBits": 0,
+          "sha256": "f5e850ce66d28b60ebdb550514838b4d761349f75536eaef5fd9fbf3f76b10da",
+          "milliseconds": 1829.546417
+        },
+        {
+          "name": "actual-size1",
+          "components": 2097152,
+          "differentBits": 0,
+          "sha256": "186f67e41972776d2af6562cbf98117ebacfb8a0556f05e59257237fbef7357f",
+          "milliseconds": 2936.6866659999996
+        },
+        {
+          "name": "actual-size32",
+          "components": 2097152,
+          "differentBits": 0,
+          "sha256": "4c4cb09c4ca9a304a11c51c045c2ab03c4b373d4afca1d0a2a0550467692ce20",
+          "milliseconds": 1654.1465420000004
+        },
+        {
+          "name": "actual-radius4",
+          "components": 2097152,
+          "differentBits": 0,
+          "sha256": "18bac30531e00b3e7f601b47bc8c04016278afd9c8aa632682bda9b4d4297d0a",
+          "milliseconds": 1816.7565419999992
+        },
+        {
+          "name": "actual-anisotropic",
+          "components": 2097152,
+          "differentBits": 0,
+          "sha256": "c5ef31173c2e499e821ef9580f08d8ae4a3ef9042ffc1174668747e0b0c106b1",
+          "milliseconds": 1785.544917000001
+        },
+        {
+          "name": "continuous-heldout",
+          "components": 61440,
+          "differentBits": 0,
+          "sha256": "c9a4a0d407c1269a6b2abb512151f00815474ae9f816718270da7e4869f6d201"
+        }
+      ],
+      "q19ABI": {
+        "components": 64,
+        "differentBits": 0
+      },
+      "externalFigmaExact": false
+    }
+  },
+  "publicAPIs": {
+    "displacement": "Validates authored positive finite noise sizes, retains neutral-radius behavior and stage-specific reciprocal overflow errors, then delegates to the reciprocal-size entry.",
+    "displacement_with_reciprocal": "Consumes q, already-rounded finite strictly positive binary32 frequency and finite nonnegative radius. Frequency is validated even at zero radius; no inverse reciprocal round-trip occurs.",
+    "verification": "40 independent continuous vectors verify both entries bitwise and Quality-identically; five full geometric fields verify the actual Native/WASM reciprocal entry against natural WGSL, 10,485,760 components with zero differing bits."
+  }
+}

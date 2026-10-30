@@ -8,7 +8,7 @@
 - v106 Image 的 `hash` 和 `dataBlob` 都连接到真实资源；STRETCH / FIT / FILL 的映射修正；基础 TILE 接入已有模型。缺资源明确失败。
 - TS XOR 改为 exclude；两端未知布尔语义拒绝。Rust fillGeometry 使用隐式闭合专用解码。
 - Rust 保留 disabled paints、PASS_THROUGH、LINEAR_BURN / LINEAR_DODGE、渐变 stop alpha 与原始浮点色值。TS 同步避免无条件 RGB 字节量化。Rust 文本 run 也保留 alpha 和 fill opacity。
-- 原生 GLASS / GRAIN 接入已有执行模型；未知现代效果拒绝。椭圆 arcData 接入共享圆弧/圆环模型。非默认色域/插值、OUTLINE 蒙版、尚未执行的图片调整和平铺参数不再静默冒充支持。
+- 原生 GLASS / GRAIN 接入已有执行模型；未知现代效果拒绝。椭圆 arcData 接入共享圆弧/圆环模型。非默认色域/插值、尚未执行的图片调整和平铺参数不再静默冒充支持。
 - 组件属性以 definition GUID 为同一键，解包 bool/TextData/GUID 值，通过真实 componentPropRefs 连接模板图层。TS/Rust 同时更新；实例物化测试验证指定文字与可见性。当前需要一个明确属性目标；多个目标、变量驱动属性或缺主组件明确拒绝。
 - FIG 诊断字段迁入已有 `designSystem.sketchContainers.nodeMetadata` 源元数据槽位，避免被当成可执行变量绑定。`import_fig_report` 返回实际 backend、warning 和 fallback native error；转换器失败同时保留两条错误链。
 - Sketch 文本 alpha、禁用填充/描边/阴影及其顺序保留；只读显示的 Difference=2 / Intersection=3 修正。
@@ -34,7 +34,7 @@
 
 仍无 FIG 导出。没有建立 Sketch 全历史版本迁移链，兼容输出仍是现有声明版本与选择性重建，不能声称任意未知字段、archive 元数据或字节级归档完全保真。源归档会话/源局部保存与兼容全量导出是三个不同保证。
 
-OUTLINE、复杂多目标/变量组件、GRID/BASELINE/混合旧弹性、完整原型与云库同步、高级文本排版、尚未执行的图片调整/复杂平铺以及未知现代效果，不由本轮字段修复自动成为可执行功能。明确拒绝与可执行支持必须分开计数。
+复杂多目标/变量组件、GRID/BASELINE/混合旧弹性、完整原型与云库同步、高级文本排版、尚未执行的图片调整/复杂平铺以及未知现代效果，不由本轮字段修复自动成为可执行功能。明确拒绝与可执行支持必须分开计数。
 
 该记录不关闭完整 G2/G5、跨渲染器滤镜/文字/混合像素一致或全编辑器延迟目标。测试汇总与最终源码 hash 在本轮验证结束时另行写入，历史中间日志不能代替当前组合结果。
 
@@ -43,3 +43,26 @@ OUTLINE、复杂多目标/变量组件、GRID/BASELINE/混合旧弹性、完整�
 - [Sketch 官方文件格式说明](https://developer.sketch.com/file-format/)
 - [Sketch 官方 schema 3.6.2](https://unpkg.com/@sketch-hq/sketch-file-format@3.6.2/dist/file-format.schema.json)：本轮保存为 `sketch-schema.json`，确认 blend 8/9、16/17、Star Layer.radius 等。8=Soft Light、9=Hard Light 的旧实现正确，没有按冲突草稿交换。
 - FIG 内嵌 schema 来源为仓库真实 v106 文件；参考 `/Users/Apple/project/core/figma-wasm-analysis/evidence/round-2026-10-26/fig106-schema-full.txt`，不把私有测试枚举当作真实格式规范。
+
+## 真实文件揭出的追加修复
+
+下载的 `01有料素材 (Copy).fig` 含 19,277 节点、14 页和 126 个 OUTLINE 蒙版，其中一个是带子树的 FRAME。最初仅拒绝 OUTLINE 会阻止这个真实文件，因此继续补入共享模型的 `maskType: outline`。CPU、GPU 编译与 SVG 适配均按可见填充/描边的几何计算遮罩，忽略正透明度、颜色与光学效果；容器把该语义传给子树。源 paint/effect 值仍留在 authored Document，编辑、撤销与保存保持原值。祖先改变语义时，不复用普通颜色子树的 fragment cache。MCP 两种节点输入描述同步公布此值。
+
+`outline-pixels-final.log` / `outline-container-tests.log` 验证实像素和编辑后缓存；`outline-hardware-final.log` / `outline-container-hardware.log` 是实际 GPU 与 CPU 的逐字节对照。初次新增夹具缺少 Effect.color 导致的失败保留，不能计作运行时像素失败。原生 Sketch clipping mode 与 Figma 几何蒙版并非同一合同，当前全量 Sketch 输出明确拒绝这一未证明的跨格式转换，FD 保留可编辑语义。
+
+117 的第一次脚本因 Bun 的可用内存提示给出了约 2.3 MiB 文档配额而失败；复测使用现有保守宿主配置 512 MiB，仅作用于验证进程，未提高产品或 GPU 预算。之后发现不带 rasterProfile 的色彩管理文档在首次编辑时被错误补成 analytic，现已改用与正常文件准入相同的 figma 默认值。
+
+语义来源：[Figma 官方 MaskType](https://developers.figma.com/docs/rest-api/file-property-types/#masktype)。文件复测结果见 `real-import-report.json`，中间失败日志不应冒充最终成功。
+
+## 最终执行记录
+
+- `final-all-format-tests.log`：24 个 Rust 格式集成测试文件，139 项通过；包含原生 FIG、Sketch 和三种蒙版语义/缓存检查。
+- `final-unified-frontend.log`：11 文件、81 项通过；`frontend-interop-final.log` 的 8 文件、157 项导入检查为另外一组，有重叠，不能相加。
+- `backend-source-save-final.log`：23 项通过、1 项既有 ignored，混合字段拒绝验证源归档、revision、历史和 DTO 全部不变。
+- `outline-container-hardware.log`：实际 GPU 上三种填充/描边组合，各自覆盖叶节点和容器，共六个 CPU/GPU 逐字节对照。
+- `real-import-report.json`：117 的 752 节点和 FIG 的 19,277 节点均通过编辑/撤销/重做及模型重开；117 再生成 3,071,678 字节 Sketch，重开仍 752 节点并保留编辑。两份输入 hash 未改变。
+- `real-fig-native.log`：Rust 原生读取同一 FIG 得到 14 页、19,277 节点、2,638 文本、7 个图片填充、3,530 矢量网络和 74 实例；成功返回经过正式 Document 校验。
+- `gui-ready/report.json`：统一构建的正常 Electron UI 分别导入 117 和 FIG，并等待实际画布就绪后截图，两者通过；不是只调用解析器。
+- `converter-tests.log`：八个并发转换保持输入/输出隔离且返回正式准入后的 Document；非零退出保留 stderr。所有成功/失败路径清理各自独占临时目录。回退同时返回 Sketch warnings 和 native failure，不再因裸导入留下不可执行 bindings。
+
+`test-summary.json` 分别列出套件，禁止累计重叠数字。最终构建与最终平移复测的 hash/记录见相邻 source-pan 目录；不把此前中间构建的 GUI/性能结果不加区分地套用到新产物。

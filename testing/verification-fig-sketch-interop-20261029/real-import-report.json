@@ -13,15 +13,27 @@
     ],
     "nodes": 752,
     "pages": 1,
-    "status": "FAIL",
-    "error": "DOCUMENT_RESOURCE_LIMIT: 5438035 serialized bytes exceed this session's 2371584-byte document allowance (37945344-byte working-memory budget; 16x heuristic reserve)",
+    "sketchExportBytes": 3071678,
+    "sketchReopenNodes": 752,
+    "editUndoRedoReopen": true,
+    "status": "PASS",
     "sourceUnchanged": true
   },
   {
     "file": "01有料素材 (Copy).fig",
     "hash": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
-    "status": "FAIL",
-    "error": "Error: FIG 蒙版 OUTLINE 暂不支持；原文件未修改",
+    "backend": "typescript-fig",
+    "warnings": [
+      "字体 Poppins 尚需匹配，已保留文字内容",
+      "FIG 矢量包含独立顶点或区域样式；几何与区域引用已保留，样式覆盖需要核对",
+      "文字片段 letterSpacing 尚需核对",
+      "字体 ABeeZee 尚需匹配，已保留文字内容",
+      "文字片段 lineHeight 尚需核对"
+    ],
+    "nodes": 19277,
+    "pages": 14,
+    "editUndoRedoReopen": true,
+    "status": "PASS",
     "sourceUnchanged": true
   }
 ]

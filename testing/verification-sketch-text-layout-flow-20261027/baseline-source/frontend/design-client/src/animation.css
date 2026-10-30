@@ -1,0 +1,204 @@
+.animation-panel {
+  flex: none;
+  padding: 12px 20px;
+  background: #fff;
+  border-top: 1px solid var(--workspace-border);
+  max-height: 285px;
+  overflow: auto;
+  font-size: 12px;
+}
+.animation-heading,
+.animation-properties,
+.animation-record,
+.animation-easing,
+.animation-transport {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.animation-heading {
+  margin-bottom: 10px;
+}
+.animation-heading strong {
+  font-size: 15px;
+}
+.animation-heading > button:last-child {
+  margin-left: auto;
+}
+.animation-panel label,
+.animation-easing label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.animation-panel input,
+.animation-panel select,
+.animation-transport select {
+  border: 1px solid var(--workspace-border);
+  border-radius: 5px;
+  padding: 6px;
+  background: #fff;
+  font: inherit;
+}
+.animation-panel input[type="number"] {
+  width: 85px;
+}
+.animation-panel button,
+.animation-player button,
+.animation-player a {
+  padding: 7px 11px;
+  border: 1px solid var(--workspace-border);
+  border-radius: 6px;
+  background: var(--workspace-field);
+  color: var(--workspace-text);
+  font: inherit;
+}
+.animation-panel button:disabled {
+  opacity: 0.4;
+}
+.animation-properties,
+.animation-record,
+.animation-easing {
+  margin: 8px 0;
+}
+/* Keyframe timeline: one compact row per track, ruler ticks per second. */
+.animation-timeline {
+  margin: 8px 0;
+  user-select: none;
+}
+.animation-track {
+  display: flex;
+  align-items: stretch;
+  height: 22px;
+}
+.animation-ruler {
+  height: 18px;
+}
+.animation-track-label {
+  flex: none;
+  width: 132px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 8px;
+  font-size: 11px;
+  color: var(--workspace-muted);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.animation-track-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.animation-track-lane {
+  flex: 1;
+  position: relative;
+  min-width: 120px;
+  border-bottom: 1px dotted var(--workspace-border);
+}
+.animation-ruler .animation-track-lane {
+  border-bottom: none;
+}
+.animation-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--workspace-border);
+}
+.animation-tick span {
+  position: absolute;
+  left: 3px;
+  top: 2px;
+  font-size: 10px;
+  color: var(--workspace-muted);
+  line-height: 1;
+  white-space: nowrap;
+}
+.animation-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #c9372c;
+  pointer-events: none;
+}
+.animation-panel .animation-keyframe {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  transform: translate(-50%, -50%) rotate(45deg);
+  background: var(--workspace-accent);
+  border: 1px solid var(--workspace-accent);
+  border-radius: 2px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.animation-panel .animation-keyframe[aria-pressed="true"] {
+  background: var(--workspace-selected);
+  border-color: var(--workspace-text);
+  box-shadow: 0 0 0 2px #1674e833;
+}
+.animation-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #18233066;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.animation-player {
+  width: min(1100px, 100%);
+  height: min(720px, 94vh);
+  background: #fff;
+  border: 1px solid var(--workspace-border);
+  border-radius: 14px;
+  box-shadow: 0 24px 90px #18233033;
+  display: flex;
+  flex-direction: column;
+  padding: 18px;
+}
+.animation-preview-host {
+  flex: 1;
+  min-height: 120px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--workspace-border);
+  border-radius: 9px;
+}
+.animation-transport {
+  padding-top: 14px;
+  flex: none;
+}
+.animation-transport input[type="range"] {
+  flex: 1;
+  min-width: 100px;
+}
+.animation-transport output {
+  min-width: 75px;
+  font-variant-numeric: tabular-nums;
+}
+.animation-player [role="alert"] {
+  color: #a32435;
+}
+@media (max-width: 700px) {
+  .animation-modal {
+    padding: 8px;
+  }
+  .animation-player {
+    padding: 10px;
+  }
+  .animation-panel {
+    padding: 10px;
+  }
+  .animation-easing label {
+    font-size: 10px;
+  }
+  .animation-easing input[type="number"] {
+    width: 65px;
+  }
+}

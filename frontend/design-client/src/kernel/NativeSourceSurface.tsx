@@ -67,7 +67,7 @@ export function NativeSourceSurface(props:Props){
     const fail=(error:unknown)=>{
       failed=true
       const message=error instanceof Error?error.message:String(error)
-      rejectedCamera=/Invalid tile request|Invalid GPU (tile )?viewport|Invalid canvas raster density|Invalid Figma raster options|Figma sampling exceeds/.test(message)
+      rejectedCamera=/Invalid tile request|Invalid GPU (tile )?viewport|Invalid canvas raster density|Invalid Figma raster options|Figma sampling exceeds|^GPU surface budget exceeded|GPU 表面内存预算超限/.test(message)
         ?{...latest.current.view}:undefined
       emit({phase:'error',done:0,total:0,error:message})
     }
@@ -98,7 +98,7 @@ export function NativeSourceSurface(props:Props){
         const items:ResidentFrame['items']=visible.map(tile=>({active:true,layer:keys.has(tile.key)?4:1,
           tile:{key:tile.key,serial:tile.serial,gpuTile:tile.gpuTile!,x:tile.x,y:tile.y,width:tile.width,height:tile.height,zoom:tile.zoom,phaseX:tile.phaseX,phaseY:tile.phaseY}}))
         wanted={id,sequence,view:{...p.view},width:p.width,height:p.height,dpr:ratio,complete,covered:done===tiles.length,demand:demandKey(),ids:new Set(visible.map(tile=>tile.gpuTile!))}
-        client.present({presentationId:id,view:p.view,width:p.width,height:p.height,dpr:ratio,items,allowEmpty:!complete})
+        client.present({presentationId:id,view:p.view,width:p.width,height:p.height,dpr:ratio,items,allowBackground:true,allowEmpty:!complete})
         emit({phase:'refining',done,total:tiles.length})
         // This is an evictable history allowance, never a source-size refusal.
         const keep=Math.max(32,tiles.length*3)
@@ -119,6 +119,25 @@ export function NativeSourceSurface(props:Props){
       retired.delete(tile.gpuTile)
       cache.set(tile.key,{...tile,serial:old?.gpuTile===tile.gpuTile?old.serial:++serial,used:++tick,lastSubmission:old?.gpuTile===tile.gpuTile?old.lastSubmission:0})
       if(!tile.prefetch||tileIntersectsView(tile,latest.current.view,latest.current))schedulePaint()
+    }
+    const updateWorkDemand=()=>{
+      if(workQueue.current?.pending.size){
+        const next=plan()
+        // Returning to an exact, fully resident viewport leaves no missing
+        // pixel for this batch to repair. Its old density may still be within
+        // the ordinary 2x reuse window, but finishing it only delays later
+        // input. Cancel preview work without retiring any accepted texture.
+        const covered=next.exact&&next.tiles.every(tile=>cache.has(tile.key))
+        // Completed tiles no longer hold the batch's camera lease. Cancel if
+        // either remaining tile would delay the current viewport with old work.
+        const optional=[...workQueue.current.pending.values()].every(tile=>tile.prefetch===true)
+        const missing=next.tiles.some(tile=>!cache.has(tile.key))
+        workQueue.demand(covered&&!optional,tile=>{
+          if(tile.prefetch)return next.keys.has(tile.key)||!missing&&next.prefetchKeys.has(tile.key)
+          const relative=next.raster.scale/tile.zoom
+          return relative<=2&&relative>=.5&&tileIntersectsView(tile,next.p.view,next.p)
+        })
+      }
     }
     const run=async()=>{
       if(!alive||!initialized||running||failed||suspended)return
@@ -146,7 +165,7 @@ export function NativeSourceSurface(props:Props){
                   if(tile.gpuTile&&![...cache.values()].some(value=>value.gpuTile===tile.gpuTile))client.releasePresented([tile.gpuTile])
                   return
                 }
-                receive(tile);workQueue.delivered(work,tile.key)
+                receive(tile);workQueue.delivered(work,tile.key);updateWorkDemand()
               },work.controller.signal)
           }catch(error){
             if(work.controller.signal.aborted||String(error).includes('PREVIEW_CANCELLED'))continue
@@ -186,7 +205,10 @@ export function NativeSourceSurface(props:Props){
         actual.width!==expected.width||actual.height!==expected.height||actual.dpr!==expected.dpr||
         actual.view.x!==p.view.x||actual.view.y!==p.view.y||actual.view.zoom!==p.view.zoom||actual.width!==p.width||actual.height!==p.height||actual.dpr!==density.current||
         [...expected.ids].some(id=>!actual.ids.includes(id)))return
-      if(expected.complete){const count=plan().tiles.length;emit({phase:'ready',done:count,total:count})}
+      if(expected.complete){
+        planner.presented(actual.view,actual.dpr,actual.width,actual.height)
+        const count=plan().tiles.length;emit({phase:'ready',done:count,total:count})
+      }
       latest.current.onPresented?.(actual,expected.complete)
       if(expected.covered&&expected.demand===demandKey()&&prefetchReady!==expected.demand){
         prefetchReady=expected.demand;void run()
@@ -211,23 +233,7 @@ export function NativeSourceSurface(props:Props){
         const native=plan(false)
         if(native.exact&&native.tiles.every(tile=>cache.has(tile.key)))moving=false
       }
-      if(workQueue.current){
-        const next=plan()
-        // Returning to an exact, fully resident viewport leaves no missing
-        // pixel for this batch to repair. Its old density may still be within
-        // the ordinary 2x reuse window, but finishing it only delays later
-        // input. Cancel preview work without retiring any accepted texture.
-        const covered=next.exact&&next.tiles.every(tile=>cache.has(tile.key))
-        // Completed tiles no longer hold the batch's camera lease. Cancel if
-        // either remaining tile would delay the current viewport with old work.
-        const optional=[...workQueue.current.pending.values()].every(tile=>tile.prefetch===true)
-        const missing=next.tiles.some(tile=>!cache.has(tile.key))
-        workQueue.demand(covered&&!optional,tile=>{
-          if(tile.prefetch)return next.keys.has(tile.key)||!missing&&next.prefetchKeys.has(tile.key)
-          const relative=next.raster.scale/tile.zoom
-          return relative<=2&&relative>=.5&&tileIntersectsView(tile,next.p.view,next.p)
-        })
-      }
+      updateWorkDemand()
       idleTimer=moving?setTimeout(()=>{
         if(!alive||failed||suspended)return
         moving=false

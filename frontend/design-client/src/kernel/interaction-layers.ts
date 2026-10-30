@@ -9,10 +9,13 @@ import type { CanvasSceneBorrow } from '../canvas-scene-snapshots'
 import { documentTransitionNodeIds } from '../document-patch'
 
 export type InteractionLayer = { document: DesignDocument; roots: string[]; bounds: Bounds; moving?: string }
-export type InteractionPlan = { document: DesignDocument; pageId: string; ids: string[]; layers: InteractionLayer[]; viewport?: Bounds }
+export type InteractionPlan = { document: DesignDocument; pageId: string; ids: string[]; layers: InteractionLayer[]; viewport?: Bounds; parentLinear?: Map<string, number[]> }
 export type InteractionPoseFeedback = { x: number; y: number; matrix?: Matrix }
 export type GpuMoveControl = {
   isActive(): boolean
+  /** Private complete-layer authority; structural eligibility alone is not
+   * enough to suspend an ordinary viewport repair. */
+  blocksCanvasRefinement?(document:DesignDocument,ids:string[],view:CanvasCamera):boolean
   apply(document: DesignDocument, patches: Record<string, Partial<DesignDocument['nodes'][string]>>, trace?: PoseActionToken): InteractionPoseFeedback | null
   covers(document: DesignDocument, ids: string[], view: CanvasCamera): boolean
   feedbackPending?(): boolean
@@ -21,6 +24,7 @@ export type GpuMoveControl = {
   end(document: DesignDocument): void
 }
 export type InteractionProps = {
+  readinessRevision?:number
   /** Canvas gesture semantics; affine edits must not be rebound to a translation-only owner. */
   gestureKind?: string
   document: DesignDocument; selection: string[]; active: boolean; epoch: number; control: RefObject<GpuMoveControl | null>; onReady: () => void
@@ -53,10 +57,37 @@ export function pageBackdropPadding(document:DesignDocument,entries:readonly Ret
  * when the entire root is placed elsewhere. Root backdrop reads/pass-through
  * and page masks need dependency rendering and cannot be flattened this way.
  * Stationary intervals preserve ordering for overlapping and multiple roots. */
-export function planInteractionLayers(document: DesignDocument, pageId: string, ids: readonly string[], viewport?: Bounds): InteractionPlan | null {
+export function planInteractionLayers(document: DesignDocument, pageId: string, ids: readonly string[], viewport?: Bounds,
+  options?:{neutralPageGroup?:boolean}): InteractionPlan | null {
   const page = document.pages.find(page => page.id === pageId)
-  if (!page || !ids.length || ids.length > 16 || ids.some(id => !page.children.includes(id))) return null
-  const roots = page.children.filter(id => document.nodes[id]?.visible)
+  if (!page || !ids.length || ids.length > 16 || new Set(ids).size !== ids.length) return null
+  const selectedIds = new Set(ids), ancestors = new Set<string>()
+  const parents = new Map(Object.values(document.nodes).flatMap(n => n.children.map(id => [id,n.id] as const)))
+  for (const id of ids) {
+    if (!document.nodes[id]?.visible) return null
+    let at=id
+    while (!page.children.includes(at)) {
+      const parent=parents.get(at), n=parent ? document.nodes[parent] : undefined
+      // A sole, empty normal page group has no outside painter inside its
+      // isolation. Split its children into the same independently captured
+      // intervals as page roots, only after every child passes independent()
+      // below. Painted/clipped/effect/layout groups retain the live compiler.
+      const neutralPageGroup=options?.neutralPageGroup&&n?.kind==='group'&&n.blend==='normal'&&
+        page.children.length===1&&page.children[0]===n.id
+      if (!n || selectedIds.has(n.id) || n.blend!=='pass-through'&&!neutralPageGroup || n.opacity!==1 || n.clip || n.mask ||
+          n.fills.some(p=>p.visible) || n.strokes.some(p=>p.visible) || n.effects.some(e=>e.visible) ||
+          n.layout || n.sizing || n.constraints || n.booleanOperation || n.instance || n.instanceOrigin || n.component || n.componentSet || n.repeat ||
+          Object.keys(n.bindings||{}).length || Object.keys(n.variableModes||{}).length) return null
+      ancestors.add(n.id);at=n.id
+    }
+  }
+  const roots: string[]=[]
+  const appendRoots=(ids:readonly string[])=>{ for(const id of ids) {
+    const n=document.nodes[id];if(!n?.visible)continue
+    if(ancestors.has(id))appendRoots(n.children);else roots.push(id)
+  }}
+  appendRoots(page.children)
+  if (ids.some(id=>!roots.includes(id))) return null
   const independent = (id: string): boolean => {
     const n = document.nodes[id]
     if (!n?.visible) return true
@@ -100,7 +131,9 @@ export function planInteractionLayers(document: DesignDocument, pageId: string, 
     else stationary.push(id)
   }
   append(stationary)
-  return { document, pageId, ids: [...ids], layers, viewport }
+  const byId=new Map(entries.map(entry=>[entry.id,entry]))
+  const parentLinear=new Map(ids.map(id=>[id,byId.get(parents.get(id)||'')?.matrix.slice(0,4)||[1,0,0,1]]))
+  return { document, pageId, ids: [...ids], layers, viewport, parentLinear }
 }
 
 /** A translation preserves the cached pixels; changing derived content or

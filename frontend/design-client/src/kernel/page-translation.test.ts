@@ -4,6 +4,23 @@ import { PageTranslation, isolatedOpaqueBoard } from './page-translation'
 import type { InteractionProps } from './interaction-layers'
 import { compositeDrawPlan } from './gpu/composite-draw-plan'
 
+test('desktop page textures follow fractional input immediately and chrome waits for the owned frame',()=>{
+ const doc=blank(),a=node('frame',0,0,100,80);doc.nodes[a.id]=a;doc.pages[0].children=[a.id]
+ const native=vi.fn(),feedback=vi.fn(),movement=new PageTranslation(vi.fn(),native)
+ const props:InteractionProps={document:doc,selection:[a.id],active:true,epoch:4,control:{current:null},onReady(){},onPosePresented:feedback}
+ const tile={key:'page',serial:1,gpuTile:7,bytes:new Uint8Array(),x:-1,y:-1,width:514,height:514,zoom:.790625}
+ expect(movement.prepare(props,doc.pages[0].id,doc,[{tile,active:true,layer:0}],doc,true,true)).toBe(true)
+ movement.control.apply(doc,{[a.id]:{transform:[1,0,0,1,7.589,.3]}})
+ expect(native).not.toHaveBeenCalled();expect(movement.control.feedbackPending?.()).toBe(true)
+ expect(movement.items({x:0,y:0,zoom:1})![0].placement!.left).toBeCloseTo(-1/tile.zoom+7.589)
+ movement.acceptPresentedInput(1,performance.now(),false,[7]);movement.acceptPresentedInput(1,performance.now(),true,[8])
+ expect(feedback).not.toHaveBeenCalled()
+ movement.acceptPresentedInput(1,performance.now(),true,[7]);expect(feedback).toHaveBeenCalledOnce()
+ expect(feedback.mock.calls[0][0]).toMatchObject({sequence:1,offset:{x:7.589,y:.3},document:doc,epoch:4})
+ movement.control.apply(doc,{[a.id]:{transform:[1,0,0,1,9.3,.7]}})
+ movement.clear();movement.acceptPresentedInput(2,performance.now(),true,[7]);expect(feedback).toHaveBeenCalledOnce()
+})
+
 test('a rejected viewport-only page move requests native coverage once for the exact live pose',()=>{
   const doc=blank(),a=node('frame',0,0,1000,1000);doc.nodes[a.id]=a;doc.pages[0].children=[a.id]
   const native=vi.fn<NonNullable<ConstructorParameters<typeof PageTranslation>[1]>>(()=>({x:40,y:0})),movement=new PageTranslation(vi.fn(),native)

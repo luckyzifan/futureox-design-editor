@@ -443,9 +443,12 @@ impl Sessions {
                         // The parser, immutable spool and receipt consume the
                         // same decompressed stream. CRC/EOF and fsync remain
                         // required; no full reread for hashing and indexing.
-                        let index=DiskIndex::build(IndexedSpool{
+                        let stream=IndexedSpool{
                             inner:reader.take(declared+1),output:&mut target,hash:&mut hash,bytes:&mut copied,
-                        },source_limit-expanded_bytes,&directory)?;
+                        };
+                        let index=if declared>=1024*1024 {
+                            DiskIndex::build_pipelined(stream,source_limit-expanded_bytes,&directory)?
+                        } else {DiskIndex::build(stream,source_limit-expanded_bytes,&directory)?};
                         if copied!=declared||index.bytes!=declared{return Err(issue("Sketch member length changed"));}
                         target.flush().map_err(issue)?;
                         target.get_ref().sync_all().map_err(issue)?;

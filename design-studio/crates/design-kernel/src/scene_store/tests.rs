@@ -98,7 +98,7 @@ fn one_node_out_of_ten_thousand_reads_only_its_payload_and_logarithmic_index_pat
     assert!(stats.index_bytes_verified < 10_000);
     assert_eq!(
         stats.node_bytes,
-        serde_json::to_vec(&node).unwrap().len() as u64
+        serde_json::to_vec(&NodeRecordRef{node:Cow::Borrowed(&node),images:vec![],geometry:None,vectors:None}).unwrap().len() as u64
     );
     assert!(reader.read_node("missing", &cancel).unwrap().is_none());
     assert_eq!(reader.stats().node_reads, 1);
@@ -322,4 +322,72 @@ fn dense_node_demand_streams_once_without_loading_metadata() {
     let row = reader.row(1000, &cancel).unwrap();
     modify(&fixture.path, row.value_offset, b"!");
     assert!(reader.read_all_nodes(&cancel).is_err());
+}
+
+
+#[test]
+fn shared_images_are_authenticated_lazy_and_restore_original_arcs_and_bytes() {
+    let fixture=Fixture::new();let mut doc=document(3);
+    let image:Arc<str>=format!("data:image/png;base64,{}","a".repeat(1024*1024)).into();
+    for node in doc.nodes.values_mut(){node.fills[0].image=Some(image.clone());}
+    let receipt=fixture.write(&doc);assert!(receipt.bytes<2*1024*1024);
+    let cancel=AtomicBool::new(false);
+    let mut reader=Reader::open(&fixture.path,&receipt,&cancel).unwrap();
+    let last=reader.read_node("node-00002",&cancel).unwrap().unwrap();
+    assert_eq!(last,doc.nodes["node-00002"]);
+    assert_eq!(reader.stats().metadata_reads,0);
+    assert_eq!(reader.stats().node_reads,2,"requested node and its one image owner, no middle node");
+    let first=reader.read_node("node-00000",&cancel).unwrap().unwrap();
+    assert_eq!(first,doc.nodes["node-00000"]);
+    let (restored,_)=Reader::open(&fixture.path,&receipt,&cancel).unwrap().into_document(&cancel).unwrap();
+    assert_eq!(serde_json::to_vec(&restored).unwrap(),serde_json::to_vec(&doc).unwrap());
+    assert!(Arc::ptr_eq(restored.nodes["node-00000"].fills[0].image.as_ref().unwrap(),restored.nodes["node-00002"].fills[0].image.as_ref().unwrap()));
+    // An unrelated cold node may be corrupt without being read for the last
+    // node's image. Corrupting that actual image owner must reject the read.
+    let row=reader.find_row("node-00001",&cancel).unwrap().unwrap();modify(&fixture.path,row.value_offset,b"!");
+    assert!(Reader::open(&fixture.path,&receipt,&cancel).unwrap().read_node("node-00002",&cancel).unwrap().is_some());
+    let row=reader.find_row("node-00000",&cancel).unwrap().unwrap();modify(&fixture.path,row.value_offset,b"!");
+    assert!(Reader::open(&fixture.path,&receipt,&cancel).unwrap().read_node("node-00002",&cancel).is_err());
+}
+#[test]
+fn legacy_scene_format_still_reads_without_shared_image_envelopes() {
+    let fixture=Fixture::new();let doc=document(5);let cancel=AtomicBool::new(false);
+    let receipt=write_format(&fixture.path,"source:revision:7",&doc,&[],&cancel,false).unwrap();
+    let (restored,_)=Reader::open(&fixture.path,&receipt,&cancel).unwrap().into_document(&cancel).unwrap();
+    assert_eq!(doc,restored);
+}
+#[test]
+fn shared_image_references_cannot_override_inline_paints_or_form_cycles() {
+    let doc=document(1);let node=doc.nodes["node-00000"].clone();let slot=ImageSlot{stroke:false,index:0};
+    for source in ["node-00000","node-99999"] {
+        assert!(restore_record(NodeRecord{node:node.clone(),geometry:None,vectors:None,images:vec![ImageReference{slot:slot.clone(),source:ImageAddress{node:source.into(),slot:slot.clone()}}]},&mut HashMap::new(),&mut HashMap::new()).is_err());
+    }
+    let mut node=node;node.id="z".into();node.fills[0].image=Some("inline".into());
+    let address=ImageAddress{node:"a".into(),slot:slot.clone()};let mut images=HashMap::from([(address.clone(),Arc::<str>::from("foreign"))]);
+    assert!(restore_record(NodeRecord{node,geometry:None,vectors:None,images:vec![ImageReference{slot,source:address}]},&mut images,&mut HashMap::new()).is_err());
+}
+
+#[test]
+fn shared_vector_records_restore_exact_values_and_mutations_do_not_change_siblings(){
+    let fixture=Fixture::new();let mut doc=document(3);
+    let geometry:Arc<VectorGeometry>=Arc::new(serde_json::from_value(json!({"fillRule":"nonzero","fill":[{"move":[-0.,0.]},{"line":[10.,0.]},{"line":[10.,10.]},"close"]})).unwrap());
+    for node in doc.nodes.values_mut(){node.kind="vector".into();node.vector_geometry=Some(geometry.clone());}
+    let receipt=fixture.write(&doc);let cancel=AtomicBool::new(false);
+    let mut reader=Reader::open(&fixture.path,&receipt,&cancel).unwrap();
+    let selected=reader.read_node("node-00002",&cancel).unwrap().unwrap();assert_eq!(selected,doc.nodes["node-00002"]);
+    assert_eq!(reader.stats().node_reads,2);assert_eq!(reader.stats().metadata_reads,0);
+    let (mut restored,_)=Reader::open(&fixture.path,&receipt,&cancel).unwrap().into_document(&cancel).unwrap();
+    assert_eq!(serde_json::to_vec(&restored).unwrap(),serde_json::to_vec(&doc).unwrap());
+    assert!(Arc::ptr_eq(restored.nodes["node-00000"].vector_geometry.as_ref().unwrap(),restored.nodes["node-00002"].vector_geometry.as_ref().unwrap()));
+    Arc::make_mut(restored.nodes.get_mut("node-00002").unwrap().vector_geometry.as_mut().unwrap()).scale(2.,3.);
+    assert_eq!(restored.nodes["node-00000"],doc.nodes["node-00000"]);assert_ne!(restored.nodes["node-00002"],doc.nodes["node-00002"]);
+    let row=reader.find_row("node-00000",&cancel).unwrap().unwrap();modify(&fixture.path,row.value_offset,b"!");
+    assert!(Reader::open(&fixture.path,&receipt,&cancel).unwrap().read_node("node-00002",&cancel).is_err());
+}
+#[test]
+fn version_two_image_envelopes_remain_readable(){
+    let fixture=Fixture::new();let doc=document(2);let mut receipt=fixture.write(&doc);let cancel=AtomicBool::new(false);
+    modify(&fixture.path,0,IMAGE_MAGIC);modify(&fixture.path,receipt.bytes-8,IMAGE_MAGIC);
+    let mut file=File::open(&fixture.path).unwrap();file.seek(SeekFrom::Start(receipt.bytes-FOOTER_BYTES)).unwrap();let mut footer=[0u8;FOOTER_BYTES as usize];file.read_exact(&mut footer).unwrap();receipt.footer_hash=sha(&footer);
+    let (restored,_)=Reader::open(&fixture.path,&receipt,&cancel).unwrap().into_document(&cancel).unwrap();assert_eq!(restored,doc);
 }

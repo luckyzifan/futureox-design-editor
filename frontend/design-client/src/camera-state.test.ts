@@ -23,6 +23,27 @@ test('normalizes old camera hints to the supported zoom range', () => {
   expect(savedCamera({ ...view, zoom: 0.0001 })?.zoom).toBe(.02)
   expect(savedCamera({ ...view, zoom: 1000 })?.zoom).toBe(256)
 })
+test('leading pan publishes immediately and coalesces a dense input burst into one latest frame',()=>{
+ const editor=new Editor(blank()),original=JSON.stringify(editor.state.doc)
+ const frame=()=>{const [id,callback]=frames.entries().next().value!;frames.delete(id);callback(0)}
+ editor.setViewCoalesced({x:1,y:2,zoom:1},true)
+ expect(editor.state.view.x).toBe(1);expect(frames.size).toBe(1)
+ for(let x=2;x<=100;x++)editor.setViewCoalesced({x,y:2,zoom:1},true)
+ expect(editor.state.view.x).toBe(1);expect(frames.size).toBe(1)
+ frame();expect(editor.state.view.x).toBe(100);expect(frames.size).toBe(1)
+ frame();expect(frames.size).toBe(0)
+ editor.setViewCoalesced({x:101,y:2,zoom:1},true);expect(editor.state.view.x).toBe(101)
+ expect(JSON.stringify(editor.state.doc)).toBe(original);expect(editor.canUndo).toBe(false)
+ editor.dispose();expect(frames.size).toBe(0)
+})
+test('leading camera cannot restore a stale cooldown after a subscriber changes the page',()=>{
+ const doc=blank(),page=blank().pages[0];doc.pages.push(page)
+ const editor=new Editor(doc);let changed=false
+ const unsubscribe=editor.subscribe(()=>{if(!changed){changed=true;editor.set({page:page.id,view:{x:77,y:88,zoom:2}})}})
+ editor.setViewCoalesced({x:1,y:2,zoom:1},true)
+ expect(editor.state.page).toBe(page.id);expect(editor.state.view).toEqual({x:77,y:88,zoom:2});expect(frames.size).toBe(0)
+ unsubscribe();editor.dispose()
+})
 test('isolates document/page hints, rejects deleted pages and bounds entries and writes', () => {
   const state = new CameraState()
   for (let i = 0; i < 100; i++) state.remember('doc', 'p' + i, { x: i, y: 0, zoom: 32 })

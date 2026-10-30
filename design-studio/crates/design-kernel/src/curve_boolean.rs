@@ -352,7 +352,7 @@ fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache
                     let value=crate::vector_geometry::VectorGeometry::from_paths(&path,&path,rule)?;
                     if memoize{cache.insert_geometry(key,&value);}value
                 };
-                let node=doc.nodes.get_mut(id).unwrap();node.network=None;node.vector_geometry=Some(geometry);
+                let node=doc.nodes.get_mut(id).unwrap();node.network=None;node.vector_geometry=Some(geometry.into());
                 return Ok(());
             }
             let segments = inputs.iter().try_fold(0usize, |count, (path, _, _)| {
@@ -365,7 +365,7 @@ fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache
                     let value=combine_dense(&inputs,op).map_err(|e|format!("Boolean node {id}: {e}"))?;
                     if memoize{cache.insert_geometry(key,&value);}value
                 };
-                let node=doc.nodes.get_mut(id).unwrap(); node.network=None;node.vector_geometry=Some(geometry);
+                let node=doc.nodes.get_mut(id).unwrap(); node.network=None;node.vector_geometry=Some(geometry.into());
                 return Ok(());
             }
             let g = if inputs.is_empty() {

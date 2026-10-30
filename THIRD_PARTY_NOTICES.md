@@ -9,6 +9,8 @@ versions and notice hashes. Keep these texts with distributed copies.
 
 ## UI runtime
 
+- Poppins Regular, Medium, SemiBold and Bold: Copyright 2020 The Poppins Project Authors; SIL Open Font License 1.1. Unmodified font bytes, license and download hashes are shipped in `fonts/poppins/`. Only explicitly matching imported FIG font identities use these faces.
+
 - fflate 0.8.3: MIT; `licenses/fflate-LICENSE.txt`.
 - fzstd 0.1.1: MIT; `licenses/fzstd-LICENSE.txt`.
 - immer 11.1.21: MIT; `licenses/immer-LICENSE.txt`.
@@ -73,3 +75,11 @@ segment/tangent/region and path-command layouts. This project uses its existing
 scene and renderer with f64 geometry, bounded decoding and source-preserving
 storage; it does not embed Desigma's app or renderer. Desigma has no Sketch
 importer in that revision; Sketch continues through this project's own codec.
+
+## RustCrypto ARM SHA-2 acceleration
+
+Native ARM builds enable the existing `sha2` 0.10.9 `asm` feature, including
+`sha2-asm` 0.6.4 (MIT). The digest format and runtime portable fallback remain
+unchanged. Its full license is retained in `public/licenses/sha2-asm-MIT.txt`.
+Copyright (c) 2020 RustCrypto Developers; copyright (c) 2017 Project Nayuki,
+Artyom Pavlov. Upstream: https://github.com/RustCrypto/asm-hashes .

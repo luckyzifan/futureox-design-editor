@@ -13,7 +13,15 @@ export class SourceViewportPlanner {
   private readonly demands:Array<{key:readonly number[];value:ReturnType<SourceViewportPlanner['compute']>}|undefined>=[undefined,undefined]
   private previous?:CanvasCamera
   private direction?:{previous:CanvasCamera;view:CanvasCamera}
+  private accepted?:{view:CanvasCamera;dpr:number;raster:ReturnType<typeof canvasRasterPlan>}
   constructor(private readonly rasterProfile:string,private readonly colorManaged:boolean){}
+  /** Only a completed native presentation establishes the lattice to retain
+   * through a pan. Speculative settled plans must not replace this receipt. */
+  presented(view:CanvasCamera,dpr:number,width:number,height:number){
+    if(this.accepted?.dpr===dpr&&this.accepted.view.x===view.x&&this.accepted.view.y===view.y&&this.accepted.view.zoom===view.zoom)return
+    this.accepted={view:{...view},dpr,raster:canvasRasterPlan(view,dpr,width,height,{rasterProfile:this.rasterProfile,exactPhase:true})}
+    this.demands[1]=undefined
+  }
   plan(view:CanvasCamera,dpr:number,width:number,height:number,moving:boolean){
     const key=[view.x,view.y,view.zoom,dpr,width,height,Number(moving)]
     const slot=moving?1:0,previous=this.demands[slot]
@@ -26,11 +34,18 @@ export class SourceViewportPlanner {
     this.demands[slot]={key,value};return value
   }
   private compute(view:CanvasCamera,ratio:number,width:number,height:number,moving:boolean){
-    const raster=canvasRasterPlan(view,ratio,width,height,{rasterProfile:this.rasterProfile,exactPhase:!moving,
+    let raster=canvasRasterPlan(view,ratio,width,height,{rasterProfile:this.rasterProfile,exactPhase:!moving,
       samplingScale:moving?nativeTileMotionScale(view,ratio,width,height):undefined})
     const bounds={x:-view.x/view.zoom,y:-view.y/view.zoom,width:width/view.zoom,height:height/view.zoom}
     const options={rasterProfile:this.rasterProfile}
     const dependent=tileComputationDependsOnCamera(options,this.colorManaged)
+    const accepted=this.accepted
+    // Translation does not change sampling density. Keep the last presented
+    // fractional lattice while panning instead of switching to phase zero and
+    // a zoom rung, then repainting the same viewport again on pointer release.
+    // Screen-anchored byte dithering still owns its original camera semantics.
+    if(moving&&!dependent&&accepted?.dpr===ratio&&accepted.view.zoom===view.zoom&&
+      [-view.x,width-view.x,-view.y,height-view.y].every(value=>Math.abs(value*ratio)<4_000_000))raster=accepted.raster
     const computationCamera=periodicComputationCamera(raster.camera,options,this.colorManaged)
     const addressed=planTilesWithPrefetchRim(bounds,raster.scale,256,raster.phase,
       import.meta.env.VITE_DESIGN_SOURCE_PREFETCH==='0'?0:1)

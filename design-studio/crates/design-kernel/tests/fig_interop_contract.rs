@@ -46,7 +46,7 @@ fn image_v106_hash_and_blob_use_the_real_scale_modes() {
 fn unsupported_active_semantics_never_return_silent_success() {
     for layer in [json!({"fillPaints":[{"type":"IMAGE","image":{"dataBlob":5}}]}),
         json!({"effects":[{"type":"REPEAT"}]}),json!({"blendMode":"FUTURE_BLEND"}),
-        json!({"mask":true,"maskType":"OUTLINE"}),json!({"type":"BOOLEAN_OPERATION","booleanOperation":"FUTURE_OP"}),
+        json!({"mask":true,"maskType":"FUTURE_MASK"}),json!({"type":"BOOLEAN_OPERATION","booleanOperation":"FUTURE_OP"}),
         json!({"colorProfile":"DISPLAY_P3"}),json!({"fillPaints":[{"type":"GRADIENT_LINEAR","interpolationColorSpace":"OKLAB"}]})] {
         assert!(fig::document_from_canvas(&tree(layer.clone()),BTreeMap::new(),vec![]).is_err(),"{layer}");
     }
@@ -99,4 +99,33 @@ fn shared_native_schema_corpus_passes_import_validation_resolution_and_render() 
     engine.load_document(&serde_json::to_string(&doc).unwrap()).unwrap();
     let options=serde_json::from_value(json!({"pageId":doc.pages[0].id,"width":64,"height":32,"view":{"x":0,"y":0,"zoom":1},"transparent":true})).unwrap();
     let pixels=engine.render(&options).unwrap();assert_eq!(pixels.len(),64*32*4);assert!(pixels.chunks_exact(4).any(|p|p[3]>0));
+}
+
+#[test]
+fn native_arc_data_preserves_sweep_and_donut_hole_in_actual_pixels() {
+    let doc=import(json!({"type":"ELLIPSE","arcData":{"startingAngle":0.25,"endingAngle":1.75,"innerRadius":0.4}}));
+    let arc=doc.nodes["fig-1-3"].arc.unwrap();assert_eq!(arc.start_angle,0.25);assert_eq!(arc.sweep_angle,1.5);assert_eq!(arc.inner_radius,0.4);
+    let mut engine=futureox_design_kernel::renderer::Engine::new();engine.load_document(&serde_json::to_string(&doc).unwrap()).unwrap();
+    let options=serde_json::from_value(json!({"pageId":doc.pages[0].id,"width":40,"height":24,"view":{"x":0,"y":0,"zoom":1},"transparent":true})).unwrap();
+    let pixels=engine.render(&options).unwrap();let alpha=|x:usize,y:usize|pixels[(y*40+x)*4+3];
+    assert_eq!(alpha(20,12),0);assert_eq!(alpha(30,18),255);assert_eq!(alpha(20,2),0);
+}
+
+
+#[test]
+fn resized_group_frames_preserve_overflow_pixels_and_do_not_become_auto_layout_frames() {
+    let mut input=tree(json!({"type":"FRAME","resizeToFit":true,"frameMaskDisabled":false,"fillPaints":[]}));
+    input["nodeChanges"].as_array_mut().unwrap().push(json!({"guid":{"sessionID":1,"localID":4},"type":"RECTANGLE",
+      "parentIndex":{"guid":{"sessionID":1,"localID":3},"position":"a"},"size":{"x":20,"y":20},
+      "transform":{"m00":1,"m01":0,"m02":30,"m10":0,"m11":1,"m12":0},
+      "fillPaints":[{"type":"SOLID","color":{"r":1,"g":0,"b":0,"a":1}}]}));
+    let doc=fig::document_from_canvas(&input,BTreeMap::new(),vec![]).unwrap();
+    assert_eq!(doc.nodes["fig-1-3"].kind,"group");assert!(!doc.nodes["fig-1-3"].clip);
+    let mut engine=futureox_design_kernel::renderer::Engine::new();engine.load_document(&serde_json::to_string(&doc).unwrap()).unwrap();
+    let options=serde_json::from_value(json!({"pageId":doc.pages[0].id,"width":64,"height":32,"view":{"x":0,"y":0,"zoom":1},"transparent":true})).unwrap();
+    let pixels=engine.render(&options).unwrap();assert_eq!(pixels[(10*64+45)*4+3],255);
+    for fields in [json!({"stackMode":"HORIZONTAL"}),json!({"isStateGroup":true}),json!({"resizeToFit":false})] {
+      let mut record=json!({"type":"FRAME","resizeToFit":true});record.as_object_mut().unwrap().extend(fields.as_object().unwrap().clone());
+      assert_eq!(import(record).nodes["fig-1-3"].kind,"frame");
+    }
 }

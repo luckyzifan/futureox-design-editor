@@ -1,0 +1,96 @@
+{
+  "scope": "UI runtime notices plus bundled font and vendored moxcms/flo_curves. Not a full Rust/Electron/transitive compliance clearance.",
+  "packages": [
+    {
+      "package": "fflate",
+      "version": "0.8.3",
+      "license": "MIT",
+      "file": "fflate-LICENSE.txt",
+      "sha256": "0a1df3a083d0c010560aa342e87959c8c1070e6fd54545741f083f22d0c8b551",
+      "source": "frontend/design-client/node_modules/fflate/LICENSE"
+    },
+    {
+      "package": "fzstd",
+      "version": "0.1.1",
+      "license": "MIT",
+      "file": "fzstd-LICENSE.txt",
+      "sha256": "62249119bb7df6e54300f37a37145c26a6d4420410aac8881a119c5b427cf751",
+      "source": "frontend/design-client/node_modules/fzstd/LICENSE"
+    },
+    {
+      "package": "immer",
+      "version": "11.1.21",
+      "license": "MIT",
+      "file": "immer-LICENSE.txt",
+      "sha256": "99cf22f6960a6fe228ec84ea9aefb0d75b27999ece83a3a9801e1c2081fa270b",
+      "source": "frontend/design-client/node_modules/immer/LICENSE"
+    },
+    {
+      "package": "kiwi-schema",
+      "version": "0.5.0",
+      "license": "MIT",
+      "file": "kiwi-schema-LICENSE.txt",
+      "sha256": "f512c4b7d53763dbf98bbbfd8b2b592f146ba51e66460f9bc47ecd2e10e5a5fb",
+      "source": "https://raw.githubusercontent.com/evanw/kiwi/master/LICENSE.md (retrieved 2026-10-20; package omits license text)"
+    },
+    {
+      "package": "lucide-react",
+      "version": "1.47.0",
+      "license": "ISC",
+      "file": "lucide-react-LICENSE.txt",
+      "sha256": "b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57",
+      "source": "frontend/design-client/node_modules/lucide-react/LICENSE"
+    },
+    {
+      "package": "react",
+      "version": "19.3.1",
+      "license": "MIT",
+      "file": "react-LICENSE.txt",
+      "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
+      "source": "frontend/design-client/node_modules/react/LICENSE"
+    },
+    {
+      "package": "react-dom",
+      "version": "19.3.1",
+      "license": "MIT",
+      "file": "react-dom-LICENSE.txt",
+      "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
+      "source": "frontend/design-client/node_modules/react-dom/LICENSE"
+    },
+    {
+      "package": "scheduler",
+      "version": "0.28.0",
+      "license": "MIT",
+      "file": "scheduler-LICENSE.txt",
+      "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
+      "source": "frontend/design-client/node_modules/scheduler/LICENSE"
+    },
+    {
+      "package": "svg-pathdata",
+      "version": "9.0.0",
+      "license": "MIT",
+      "file": "svg-pathdata-LICENSE.txt",
+      "sha256": "cd05e8e2516f46a2cd79494bbabdea76f874e8d049dbc19a76b367534a4e013e",
+      "source": "frontend/design-client/node_modules/svg-pathdata/LICENSE"
+    },
+    {
+      "package": "flo_curves",
+      "version": "0.8.1",
+      "license": "Apache-2.0",
+      "file": "flo_curves-Apache-2.0.txt",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "source": "vendor/flo_curves/LICENSE; local patch in vendor/flo_curves/PATCHES.md"
+    }
+  ],
+  "referenceImplementations": [
+    {
+      "project": "desigma",
+      "commit": "bb09ba87b1b7e7246b5dfbf916d75e3f12abe870",
+      "license": "MIT",
+      "file": "desigma-MIT.txt",
+      "sha256": "ed52f9df1bc3039c4f722dfed8352993caf3a1fd7c88f3a47619b25f5c6227cb",
+      "source": "https://github.com/deepfounder-ai/desigma",
+      "scope": "Architecture and FIG binary geometry format reference; independent f64 implementation, no desigma runtime dependency."
+    }
+  ]
+}

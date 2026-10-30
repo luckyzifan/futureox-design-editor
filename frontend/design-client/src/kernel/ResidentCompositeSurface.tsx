@@ -15,8 +15,10 @@ import { residentFrameSignature } from './gpu/resident-frame'
 import type { InteractionProps } from './interaction-layers'
 import { InteractionRenderer } from './interaction-renderer'
 import { PageTranslation } from './page-translation'
+import { liveInteractionStack } from './resident-layer-stack'
 import { settleResidentImport } from './resident-import-ownership'
 import { viewportPreviewDeviceKey, type ViewportPreviewDevice } from './viewport-preview-cache'
+import {allowIncompletePanPreview,type PanPreviewBacking} from './pan-preview'
 
 const activeAffineGesture = (interaction?: InteractionProps) =>
   !!interaction?.active && !!interaction.gestureKind && interaction.gestureKind !== 'move'
@@ -45,6 +47,8 @@ export function ResidentCompositeSurface(props: {
   onFailure: (message: string) => void
   terminalQuality?: ResidentFrame['terminalQuality']
   presentation: PresentedFrame | null
+  allowPanPreview?:boolean
+  panBacking?:PanPreviewBacking
   overlay?: SurfaceProps['overlay']
   onPresented?: (frame: ResidentAcknowledgement, source?: PresentedFrame, device?: ViewportPreviewDevice) => void
   /** Actual queued page/movement composition, retaining the source objects.
@@ -126,7 +130,7 @@ export function ResidentCompositeSurface(props: {
     const moved = moving?.items(p.view)
     const items =
       moved && moving?.mode === 'live-kernel'
-        ? [...p.items, ...moved.map((item) => ({ ...item, layer: 4 }))]
+        ? liveInteractionStack(p.items, moved)
         : moved || p.items
     // Retained layers authorize a transparent background, not an incomplete
     // cohort. Bitmap imports finish independently; publishing their filtered
@@ -147,16 +151,18 @@ export function ResidentCompositeSurface(props: {
     try { presentationId = presentation.current.stage(p.presentation ? { ...p.presentation, gpuOverlay: !!overlay, gpuOverlayIdentity: overlay ? scopedOverlay?.uiIdentity : undefined,
       gpuOverlayCapture: overlay ? capturedOverlay?.cohort : undefined } : null) }
     catch (error) { p.onFailure(String(error)); return }
+    const panPreview=!moved&&allowIncompletePanPreview({allowed:p.allowPanPreview,frame:p.presentation,
+      document:p.sourceDocument,revision:p.contentRevision,pageId:p.pageId,width:p.width,height:p.height,dpr:p.dpr,items:p.items,backing:p.panBacking})
     const frame: ResidentFrame = {
       presentationId,
-      terminalQuality: !moved && p.client.presentationDiagnosticsEnabled() ? p.terminalQuality : undefined,
+      terminalQuality: !moved && !panPreview && p.client.presentationDiagnosticsEnabled() ? p.terminalQuality : undefined,
       overlay,
       view: p.view,
       width: p.width,
       height: p.height,
       dpr: p.dpr,
       interaction: !!moved,
-      allowEmpty: !!moved && moving === interaction.current && moving?.mode !== 'live-kernel',
+      allowEmpty: panPreview || !!moved && moving === interaction.current && moving?.mode !== 'live-kernel',
       allowBackground: !!moved && moving === pageTranslation.current || !moved && p.allowPageTranslation && p.items.filter(i=>i.active).every(i=>
         (i.tile as unknown as {document?:DesignDocument;revision?:number}).document===p.sourceDocument &&
         (i.tile as unknown as {revision?:number}).revision===p.contentRevision),
@@ -216,7 +222,7 @@ export function ResidentCompositeSurface(props: {
         interactionGraphMs: moving.lastSampleGraphMs.toFixed(2),
         interactionGeometryReused: String(moving.lastSampleReused),
         interactionGroupHits: String(moving.lastSampleGroupHits),
-        ...(import.meta.env.DEV ? { interactionTrace: JSON.stringify(moving.sampleTrace), interactionInputPreparation: JSON.stringify(moving instanceof InteractionRenderer ? moving.inputPreparationTrace : []) } : {}),
+        ...((moving instanceof InteractionRenderer ? moving.tracing : import.meta.env.DEV) ? { interactionTrace: JSON.stringify(moving.sampleTrace), interactionInputPreparation: JSON.stringify(moving instanceof InteractionRenderer ? moving.inputPreparationTrace : []) } : {}),
       })
   }
   useLayoutEffect(() => {
@@ -294,6 +300,8 @@ export function ResidentCompositeSurface(props: {
           actualPresentation.current=actual
           if(input?.sequence&&!usePageTranslation.current)
             interaction.current?.acceptPresentedInput(input.sequence,input.at,input.owner===inputOwner.current,true,actual.ids)
+          if(input?.sequence&&usePageTranslation.current)
+            pageTranslation.current?.acceptPresentedInput(input.sequence,input.at,input.owner===inputOwner.current,actual.ids)
           // Use the exact displayed input and its owner, not the latest pointer
           // or resident-sampling completion. Worker and SVG meet at this pose.
 
@@ -368,6 +376,7 @@ export function ResidentCompositeSurface(props: {
         p.translationItems,
         p.settledDocument,
         p.allowPageTranslation,
+        renderExecutionPolicy.desktopDisplay&&p.rasterProfile==='figmaSubpixel'&&import.meta.env.VITE_DESIGN_RETAINED_TRANSLATION!=='0',
       ) === true
     if (usePageTranslation.current) {
       interaction.current?.prepare(undefined, p.pageId, p.view, p.dpr, p.rasterProfile, p.backend)
@@ -403,6 +412,8 @@ export function ResidentCompositeSurface(props: {
     props.allowPageTranslation,
     props.overlay,
     props.presentation,
+    props.allowPanPreview,
+    props.panBacking,
   ])
   return (
     <div

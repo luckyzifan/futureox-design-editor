@@ -183,6 +183,14 @@ impl WorldSupport {
         let y0=(m[0]*b[1]+m[5]-ey).next_down();let y1=(m[0]*b[3]+m[5]+ey).next_up();
         Bounds::Box([x0,y0,x1,y1])
     }
+    /// The same directed-error support used to reject optical output can
+    /// certify page background. Unknown is distinct from an empty subtree.
+    pub(crate) fn paint_bounds(&self,id:&str,camera:Transform)->Option<Option<[f64;4]>> {
+        match self.device_bounds(id,camera) {
+            Bounds::Unknown=>None,Bounds::Empty=>Some(None),Bounds::Box(b)=>
+                b.iter().all(|v|v.is_finite()&&v.abs()<=16_000_000.).then_some(Some(b)),
+        }
+    }
     pub(crate) fn culls(&self,id:&str,camera:Transform,guard:Rect)->bool {
         match self.device_bounds(id,camera){Bounds::Empty=>true,Bounds::Unknown=>false,Bounds::Box(b)=>
             b[2]<f64::from(guard.x)||b[3]<f64::from(guard.y)||b[0]>f64::from(guard.x)+f64::from(guard.w)||b[1]>f64::from(guard.y)+f64::from(guard.h)}

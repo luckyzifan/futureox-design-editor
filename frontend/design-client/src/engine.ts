@@ -505,17 +505,29 @@ export class Editor {
   effectiveView(): EditorState['view'] {
     return this.pendingView || this.state.view
   }
-  /** Park a camera write to commit at most once per animation frame. */
-  setViewCoalesced(next: EditorState['view']) {
+  /** Optionally publish the first pan input immediately, then retain only
+   * one latest camera per animation frame until the burst becomes idle. */
+  setViewCoalesced(next: EditorState['view'], leading = false) {
     if (this.disposed) return
     this.pendingView = savedCamera(next)||this.effectiveView()
     if (this.pendingFrame !== null) return
-    this.pendingFrame = requestAnimationFrame(() => {
+    const commit=(view:EditorState['view'])=>{
+      const session=this.sessionGeneration,doc=this.state.doc,page=this.state.page
+      this.set({view})
+      // set() deliberately clears parked cameras. A synchronous subscriber
+      // may also navigate/load/queue a newer view; never overwrite its owner.
+      if(leading&&!this.disposed&&this.sessionGeneration===session&&this.state.doc===doc&&this.state.page===page&&
+          this.pendingFrame===null&&this.pendingView===null&&this.state.view.x===view.x&&this.state.view.y===view.y&&this.state.view.zoom===view.zoom)
+        this.pendingFrame=requestAnimationFrame(flush)
+    }
+    const flush=()=>{
       this.pendingFrame = null
       const pending = this.pendingView
       this.pendingView = null
-      if (pending) this.set({ view: pending })
-    })
+      if(pending)commit(pending)
+    }
+    if(leading){const pending=this.pendingView;this.pendingView=null;commit(pending)}
+    else this.pendingFrame=requestAnimationFrame(flush)
   }
   /** Commit a parked camera write now; returns the committed view. */
   flushPendingView(): EditorState['view'] {
@@ -2226,6 +2238,16 @@ export class Editor {
   previewMoveParent(ids: string[], point: Point, force = false, preserveParent = false) {
     const next=this.movePreviewDocument(this.state.doc,ids,point,force,preserveParent)
     if(next!==this.state.doc)this.set({doc:kernelLayout(next)})
+  }
+  /** Retained pixels cannot represent a changed clipping/parent boundary.
+   * Query the transaction's original hierarchy, like previewCore does, without
+   * constructing or laying out a document on every compositor-only sample. */
+  canvasMovePreservesParents(ids: string[], point: Point, force = false, preserveParent = false): boolean {
+    const tx=this.transaction
+    if(!tx||preserveParent)return true
+    const base=tx.previewBase||tx.doc,index=tx.dropIndex??=createCanvasDropIndex(base,this.state.page)
+    const frame=canvasDropFrame(base,this.state.page,ids,point,force,index),target=frame||this.state.page
+    return !ids.some(id=>(frame?containingFrame(base,id,index.parents)!==frame:!!containingFrame(base,id,index.parents))&&index.parents.get(id)!==target)
   }
   /** Narrow observed contract: separate free-frame leaves that remain wholly in
    * their own original frames must not all adopt the frame under one pointer.
