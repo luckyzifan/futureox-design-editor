@@ -30,6 +30,29 @@ fn descriptor(doc: &Document) -> Descriptor {
         footer_hash: [0; 32],
     }
 }
+fn assert_projection_equivalent(a:&[u8],b:&[u8]) {
+        // Camera-independent output support may be more conservative than
+        // the old device traversal. It is acceleration metadata, not drawable
+        // geometry: compare every other field and geometry word unchanged.
+        let mut actual_scene=wire::scene(a);let mut expected_scene=wire::scene(b);
+        let support=actual_scene.as_object_mut().unwrap().remove("pagePaintRects");
+        expected_scene.as_object_mut().unwrap().remove("pagePaintRects");
+        wire::assert_fields(&actual_scene,&expected_scene);
+        assert_eq!(wire::geometry_words(a),wire::geometry_words(b));
+        if let Some(Value::Array(bounds))=support {
+            let viewport=&actual_scene["output"];
+            let x=viewport["x"].as_f64().unwrap();let y=viewport["y"].as_f64().unwrap();
+            let right=x+viewport["w"].as_f64().unwrap();let bottom=y+viewport["h"].as_f64().unwrap();
+            for node in actual_scene["nodes"].as_object().unwrap().values() {
+                if ["fills","strokes","effects"].iter().all(|field|node[*field].as_array().is_none_or(|a|a.is_empty())){continue}
+                let r=&node["rect"];let x0=r["x"].as_f64().unwrap().max(x);let y0=r["y"].as_f64().unwrap().max(y);
+                let x1=(r["x"].as_f64().unwrap()+r["w"].as_f64().unwrap()).min(right);
+                let y1=(r["y"].as_f64().unwrap()+r["h"].as_f64().unwrap()).min(bottom);
+                if x0>=x1||y0>=y1{continue}
+                assert!(bounds.iter().any(|b|b[0].as_f64().unwrap()<=x0&&b[1].as_f64().unwrap()<=y0&&b[2].as_f64().unwrap()>=x1&&b[3].as_f64().unwrap()>=y1),"complete support missed drawn output: {}",node["id"]);
+            }
+        }
+ }
 fn compare(
     runtime: &mut Runtime,
     actual: &mut Engine,
@@ -42,7 +65,7 @@ fn compare(
             .compile(actual, desc, "stage", "page", &r.to_string())
             .unwrap();
         let b = expected.compile_gpu_packet_request(&r.to_string()).unwrap();
-        wire::assert_equivalent(&a, &b);
+        assert_projection_equivalent(&a,&b);
         a
     })
 }
@@ -230,7 +253,8 @@ fn union_of_tile_crops_and_near_stage_edges_stays_complete() {
     compare(&mut runtime, &mut actual, &mut expected, &desc, &r);
     let outside = request(5000., 5000., 1.);
     compare(&mut runtime, &mut actual, &mut expected, &desc, &outside);
-    assert_eq!(runtime.stats["reason"], "page-background-domain");
+    assert_eq!(runtime.stats["mode"], "demand");
+    assert!(runtime.stats["resolvedCompileNodes"].as_u64().unwrap() < desc.nodes);
 }
 
 fn bundled_font() -> Vec<u8> {
@@ -464,7 +488,7 @@ fn complete_topology_native_entry_compiles_demand_against_full_source_oracle() {
             .request("canvas", "compile_gpu_packet", &[json!(options)])
             .unwrap();
         let actual_ms = t.elapsed().as_secs_f64() * 1000.;
-        wire::assert_equivalent(&actual.bytes, &expected);
+        assert_projection_equivalent(&actual.bytes, &expected);
         if name == "restored-material" && fixture["kind"] == "latest-complete-scene-store" {
             assert!(
                 wire::scene(&actual.bytes)["nodes"]

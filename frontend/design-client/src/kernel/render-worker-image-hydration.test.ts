@@ -40,6 +40,7 @@ vi.mock('./gpu/factory', async () => {
         dispose() { expect(state.disposed).not.toContain(identity); state.disposed.push(identity); resources.dispose() },
         abortFrameAndReleaseFilterScratch: async () => {},
         releaseFilterBatch() {},
+        hasUploadedImageSource: (scene: any, uri: string) => resources.hasUploadedImageSource(scene, uri),
         async render(scene: any, readback = false, present = true) {
           state.renders.push({ readback, present, scene })
           if (state.failBudgetOnce) { state.failBudgetOnce = false; throw Error('GPU surface budget exceeded') }

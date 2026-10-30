@@ -1015,9 +1015,23 @@ impl GradientCoordinates {
 pub fn gradient_sampling_axes(rect:Rect,matrix:Transform,size:[f64;2],paint:&Paint,sample:Option<usize>)->Result<Vec<f32>,String>{
     if paint.kind!="linear"||rect.w==0||rect.h==0{return Ok(Vec::new());}
     let coordinates=GradientCoordinates::new(paint,size,matrix,rect)?;
-    let Some(fixed)=coordinates.fixed_gradient.as_ref() else{return Ok(Vec::new())};
-    let no_x=fixed.words[0].iter().all(|word|*word==0);
-    let no_y=fixed.words[1].iter().all(|word|*word==0);
+    let (no_x,no_y)=if let Some(fixed)=coordinates.fixed_gradient.as_ref(){
+        (fixed.words[0].iter().all(|word|*word==0),fixed.words[1].iter().all(|word|*word==0))
+    }else{
+        // Distant source tiles deliberately keep the original binary64 map.
+        // Do not infer separation by algebraically combining its stages:
+        // prove an unused input term is the SAME signed zero everywhere.
+        let Some(t)=coordinates.paint_inverse else{return Ok(Vec::new())};
+        let m=coordinates.inverse.0;
+        let xs=[f64::from(rect.x),f64::from(rect.x)+f64::from(rect.w)];
+        let ys=[f64::from(rect.y),f64::from(rect.y)+f64::from(rect.h)];
+        let sign_fixed=|v:&[f64]|v.iter().all(|v|v.is_finite()&&*v>0.)||v.iter().all(|v|v.is_finite()&&*v<0.);
+        let corners=std::array::from_fn::<_,4,_>(|i|coordinates.inverse.point(Point::new(xs[i/2],ys[i%2])));
+        let us=corners.map(|p|p.x/size[0]);
+        let vs=corners.map(|p|p.y/size[1]);
+        (t.0[0]==0.&&m[1]==0.&&sign_fixed(&xs)&&sign_fixed(&us),
+         t.0[2]==0.&&m[2]==0.&&sign_fixed(&ys)&&sign_fixed(&vs))
+    };
     if !no_x&&!no_y{return Ok(Vec::new());}
     let region=Rect::new(rect.x,rect.y,if no_x{1}else{rect.w},if no_y{1}else{rect.h});
     let mut result=vec![region.w as f32,region.h as f32,0.,0.];

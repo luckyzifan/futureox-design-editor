@@ -158,3 +158,59 @@ test('repeated camera changes and document replacement retire queued stale point
  expect(editor.state.doc.nodes[rectangle.id].transform.slice(4)).toEqual([140,130])
  expect(editor.interactionActive).toBe(false);expect(editor.canUndo).toBe(true)
 })
+
+test('GPU-ineligible translation reuses retained SVG content and selection without changing the layer tree',async()=>{
+ const rectangle=node('rectangle',100,100,100,80)
+ const before=await render([rectangle]);await act(async()=>editor.select([rectangle.id]))
+ const preview=vi.spyOn(editor,'preview')
+ recordedOverlay.control={apply:vi.fn(()=>null),end:vi.fn(),isActive:()=>false,covers:()=>false}
+ await act(async()=>editor.set({snap:false}))
+ await act(async()=>pointer('pointerdown',150,150))
+ await act(async()=>{pointer('pointermove',180,170);const queued=[...frames.values()];frames.clear();queued.forEach(fn=>fn(performance.now()))})
+ expect(mount.querySelector('[data-testid="canvas-edit-preview"]')).not.toBeNull()
+ expect(editor.state.doc).toBe(before)
+ expect(preview).not.toHaveBeenCalled()
+ const definition=mount.querySelector(`[data-edit-node="${rectangle.id}"]`)!
+ expect(definition.getAttribute('transform')).toBe('matrix(1 0 0 1 130 120)')
+ expect(mount.querySelector<HTMLElement>('[data-testid="canvas-selection-outline"]')!.style.transform).toBe('translate(30px,20px)')
+ await act(async()=>pointer('pointerup',180,170))
+ expect(editor.state.doc.nodes[rectangle.id].transform.slice(4)).toEqual([130,120])
+ expect(editor.state.doc.pages[0].children).toEqual(before.pages[0].children)
+})
+
+
+test('dragging inside an already selected child outline never promotes an ancestor hit to the moved target',async()=>{
+ const frame=node('frame',0,0,400,300),child=node('ellipse',80,80,100,100),sibling=node('rectangle',240,80,40,40)
+ frame.children=[child.id,sibling.id]
+ const before=await render([frame,child,sibling],[frame.id]);await act(async()=>editor.select([child.id]))
+ // The point is inside the selected outline but outside the ellipse's paint.
+ expect(editor.selectionHit({x:85,y:95})).toBe(frame.id)
+ await act(async()=>pointer('pointerdown',85,95));await act(async()=>pointer('pointermove',120,125));await act(async()=>pointer('pointerup',125,135))
+ expect(editor.state.selection).toEqual([child.id])
+ expect(editor.state.doc.nodes[frame.id]).toEqual(before.nodes[frame.id])
+ expect(editor.state.doc.nodes[sibling.id]).toEqual(before.nodes[sibling.id])
+ expect(editor.state.doc.nodes[child.id].transform.slice(4)).toEqual([120,120])
+ await act(async()=>editor.undo());expect(editor.state.doc).toEqual(before)
+})
+
+test('retained child movement yields to a live tree change when crossing frames before release',async()=>{
+ const a=node('frame',0,0,240,240),b=node('frame',320,0,240,240),child=node('rectangle',40,40,60,60)
+ a.children=[child.id]
+ const before=await render([a,b,child],[a.id,b.id]);await act(async()=>editor.select([child.id]));const version=editor.state.version
+ const apply=vi.fn(()=>({x:20,y:10,matrix:[1,0,0,1,20,10] as import('./model').Matrix})),end=vi.fn()
+ recordedOverlay.control={apply,end,isActive:()=>true,covers:()=>true,feedbackPending:()=>false}
+ await act(async()=>editor.set({snap:false}))
+ await act(async()=>pointer('pointerdown',70,70))
+ await act(async()=>{pointer('pointermove',90,80);const queued=[...frames.values()];frames.clear();queued.forEach(fn=>fn(performance.now()))})
+ expect(apply).toHaveBeenCalled();expect(editor.state.doc).toBe(before)
+ apply.mockClear()
+ await act(async()=>{pointer('pointermove',390,90);const queued=[...frames.values()];frames.clear();queued.forEach(fn=>fn(performance.now()))})
+ expect(apply).not.toHaveBeenCalled()
+ expect(editor.state.doc.nodes[a.id].children).toEqual([])
+ expect(editor.state.doc.nodes[b.id].children).toEqual([child.id])
+ expect(worldMatrix(editor.state.doc,child.id).slice(4)).toEqual([360,60])
+ expect(editor.interactionActive).toBe(true);expect(editor.state.version).toBe(version)
+ await act(async()=>pointer('pointermove',410,110));await act(async()=>pointer('pointerup',410,110))
+ expect(worldMatrix(editor.state.doc,child.id).slice(4)).toEqual([380,80])
+ await act(async()=>editor.undo());expect(editor.state.doc).toEqual(before);expect(editor.canUndo).toBe(false)
+})

@@ -24,3 +24,15 @@ test('coverage gaps include single physical pixels, ignore blend overlays and cl
     .toEqual([{x:3,y:0,width:1,height:8}])
   expect(physicalCoverageGaps([{x:0,y:0,width:8,height:4},{x:0,y:3,width:8,height:5}],8,8)).toEqual([])
 })
+
+test('empty tile proof preserves fractional margins and rejects content, revisions, contracts and density changes',async()=>{
+  const {emptyBackgroundTile}=await import('./page-background')
+  const owner={},proof={owner,contract:'page-1',view:{x:0,y:0,zoom:2},bounds:[[10.25,20.25,40.25,60.25]],pixel:[.5,.5] as [number,number]}
+  const view={x:.125,y:-.125,zoom:2}
+  expect(emptyBackgroundTile(proof,owner,'page-1',view,{x:-20,y:20,w:30,h:20})).toBe(true)
+  expect(emptyBackgroundTile(proof,owner,'page-1',view,{x:-20,y:20,w:31,h:20})).toBe(false)
+  expect(emptyBackgroundTile(proof,owner,'page-1',view,{x:40,y:20,w:1,h:20})).toBe(false)
+  expect(emptyBackgroundTile(proof,owner,'page-1',view,{x:41,y:20,w:1,h:20})).toBe(true)
+  for(const bad of [{...proof,owner:{}},{...proof,contract:'page-2'},{...proof,pixel:undefined},{...proof,view:{...proof.view,zoom:1}}])
+    expect(emptyBackgroundTile(bad,owner,'page-1',view,{x:100,y:100,w:10,h:10})).toBe(false)
+})

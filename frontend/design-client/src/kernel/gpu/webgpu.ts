@@ -1,4 +1,6 @@
-import { pageBackgroundProof, pageBackgroundSource } from './page-background'
+import {exactArithmeticIdentities} from './exact-arithmetic-identities'
+import {BoxPrefix,BOX_PREFIX_BYTES,uniformBoxRadius} from './box-prefix'
+import { pageBackgroundProof, pageBackgroundSource, pixelContentProof } from './page-background'
 import { textureAllocationError, annotateTextureFailure } from '../../../../design-desktop/src/render-texture-failure.mjs'
 import { PassDrawWork } from '../../../../design-desktop/src/render-pass-work.mjs'
 import { GRADIENT_PAINT_OVER_MODE, gradientPaintOverWgsl, gradientFusionWorthwhile } from './gradient-paint-over'
@@ -18,6 +20,8 @@ import { canvasSpatialBlurWgsl } from './canvas-spatial-blur'
 import { exactFilterPacketLayout, exactFilterPacketTexels } from './exact-filter-packet-layout'
 import { managedBackgroundEntryPoint, managedBackgroundWgsl } from './managed-background'
 import { compositorModes } from './compositor-modes'
+import { gaussianReductionWgsl } from './gaussian-reduction'
+import { linearRetainedCaptureWgsl } from './linear-retained-capture'
 import { emptyManagedComposeScene } from './empty-scene-compose'
 import { TexturePrefix, PREFIX_SCRATCH_BYTES } from './texture-prefix'
 import { ByteTentPrefix, type ByteTentPrefixLease, planByteTentPrefix, type ByteTentOptions } from './byte-tent-prefix'
@@ -100,6 +104,7 @@ export class WebGpuDriver implements Driver {
   private canvasBlurRequested = false
   private canvasBlurPipelines: GPURenderPipeline[] = []
   private canvasBlurScalarPipeline?: GPURenderPipeline
+  private canvasBlurRgbaPipeline?: GPURenderPipeline
   private canvasSpatialPipelines = new Map<number, GPURenderPipeline>()
   private canvasSpatialFailed = new Set<number>()
   private canvasSpatialModule?: GPUShaderModule
@@ -231,7 +236,11 @@ export class WebGpuDriver implements Driver {
   private sampleOnlyCoverageLifetimePasses = 0
   private sampleOnlyCoverageLifetimePixels = 0
   private sampleOnlyCoverageEligibleScenes = 0
+  private boxPrefix?:BoxPrefix
+  private boxPrefixFailed=false
+  private boxKernels=new WeakMap<Texture,{radius:number;resource:unknown;width:number;height:number}>()
   private backgroundScene?: ReturnType<typeof pageBackgroundSource>
+  private contentScene?: ReturnType<typeof pixelContentProof>
   captureDisplay = false
   private presenter?: ResidentPresenter
   private presentationDevice?:GPUDevice
@@ -247,6 +256,10 @@ export class WebGpuDriver implements Driver {
   releasePresented(ids: number[]) { this.presenter?.release(ids) }
   replacePresented(slot:number,next:number){this.presenter?.replace(slot,next)}
   snapshotPresented(){return this.presenter?.snapshot()}
+  backgroundTile(owner:object,contract:string,view:{x:number;y:number;zoom:number},output:Rect){
+    if(this.hdr||this.lost)return
+    return this.presenter?.backgroundTile(owner,contract,view,output)
+  }
   snapshotPageTranslation(sourceOwner:object,targetOwner:object,offset:{x:number;y:number},width:number,height:number,scale:number,contract:string){
     return this.presenter?.snapshotPageTranslation(sourceOwner,targetOwner,offset,width,height,scale,contract)
   }
@@ -339,7 +352,7 @@ export class WebGpuDriver implements Driver {
       resource.height === upload.height && resource.format === 'rgba32float' && range.nonnegativeRgb &&
       range.opaqueAlpha && range.maximum.every(value => value <= 127)
   }
-  get scratchBytes(){ return (this.prefix?.scratchBytes || 0) + [...(this.imageTables?.keys() || [])].reduce((sum,table)=>sum+table.bytes,0) +
+  get scratchBytes(){ return (this.boxPrefix?.scratchBytes || 0) + (this.prefix?.scratchBytes || 0) + [...(this.imageTables?.keys() || [])].reduce((sum,table)=>sum+table.bytes,0) +
     [...(this.byteTentLeases?.keys() || [])].reduce((sum,lease)=>sum+lease.bytes,0) }
   get retiredImageTableBytes() {
     let bytes = 0
@@ -347,6 +360,12 @@ export class WebGpuDriver implements Driver {
     return bytes
   }
   imageTableRange(image: Texture) { return image.finitePixels === true && this.textures.has(image) ? this.imageRanges.get(image) : undefined }
+  immutableImageRange(image:Texture){
+    if(this.disposed||this.lost)return
+    const range=this.imageTableRange(image),upload=this.displayImageUploads.get(image),resource=image.resource as GPUTexture
+    if(range&&upload&&upload.range===range&&upload.resource===resource&&upload.width===image.width&&upload.height===image.height&&
+      resource.width===upload.width&&resource.height===upload.height&&resource.format==='rgba32float')return range
+  }
   imageTableAxes(field: Texture) { return field.finitePixels === true && this.textures.has(field) ? this.imageAxisPrograms.get(field)?.slice() : undefined }
   hasActiveImageTableSource(image: Texture) {
     return this.preparingImageTables.has(image) || [...this.imageTables.values()].some(entry => entry.image === image)
@@ -493,6 +512,7 @@ export class WebGpuDriver implements Driver {
   private maskLayout!: GPUBindGroupLayout
   private paintPipeline!: GPURenderPipeline
   private compositorModule!: GPUShaderModule
+  private gaussianReductionModule?: GPUShaderModule
   private exactMotionSource?: string
   private exactMotionModule?: GPUShaderModule
   private requiresExactBoxFilters = false
@@ -529,6 +549,9 @@ export class WebGpuDriver implements Driver {
   private solidUploaded = 0
   private solidRanges = new Map<Float32Array, number>()
   private presentPipeline!: GPURenderPipeline
+  private linearCapture=false
+  private linearCapturePipeline?: GPURenderPipeline
+  retainedSampleCapture(){return this.linearCapture&&this.captureDisplay&&!this.presentationDevice}
   private maskPipelines = new Map<string, GPURenderPipeline>()
   private coverPipelines = new Map<string, GPURenderPipeline>()
   private uniforms!: GPUBuffer
@@ -788,7 +811,8 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
  if(src.a<=0.){return dst;}if(dst.a<=0.){return src;}
  return addRN4(src,mulRN4(dst,vec4<f32>(addRN(1.,-src.a))));
 }`
-    const addressedCode = this.managed ? scalarCoverageSource(imageCoordinateSource(compositorCode + imageResolveStepWgsl + gradientPaintOverWgsl)) : compositorCode
+    const exactCode=import.meta.env.VITE_DESIGN_EXACT_IDENTITIES==='1'&&!this.displayMath?exactArithmeticIdentities(compositorCode):compositorCode
+    const addressedCode = this.managed ? scalarCoverageSource(imageCoordinateSource(exactCode + imageResolveStepWgsl + gradientPaintOverWgsl)) : exactCode
     if (this.managed && !this.displayMath && !this.hdr) this.displayImageBaseSource = addressedCode
     const module = this.device.createShaderModule({
       code: this.displayMath ? displayArithmeticSource(addressedCode, import.meta.env.VITE_DESIGN_NATIVE_DIVISION !== '0') : addressedCode,
@@ -1081,9 +1105,24 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     })
   }
   async prepareScene(scene: GpuScene, displayOnly = false) {
+    this.linearCapture=import.meta.env.VITE_DESIGN_LINEAR_RETAINED_CAPTURE==='1'&&scene.linearRetainedCapture===true&&displayOnly&&
+      this.captureDisplay&&this.managed&&this.linearLight&&!this.hdr&&!this.displayMath&&!scene.presentation&&!scene.resolve
+    if(this.linearCapture){
+      if(this.presentationDevice)throw Error('Linear retained capture requires the display device')
+      if(!this.linearCapturePipeline){
+        const device=this.device
+        this.assertPipelinePublicationOwner(device)
+        const module=device.createShaderModule({code:linearRetainedCaptureWgsl,label:'Linear retained layer copy'})
+        const pipeline=await device.createRenderPipelineAsync({layout:device.createPipelineLayout({bindGroupLayouts:[this.layout]}),
+          vertex:{module,entryPoint:'quad'},fragment:{module,entryPoint:'fragment',targets:[{format:'rgba16float'}]},primitive:{topology:'triangle-list'}})
+        this.assertPipelinePublicationOwner(device)
+        this.linearCapturePipeline=pipeline
+      }
+    }
     this.canvasBlurRequested = canvasBlurSceneEligible(scene.canvasBlurApproximation === true,
       scene, this, !displayOnly, displayOnly)
     this.backgroundScene=pageBackgroundSource(scene)
+    this.contentScene=pixelContentProof(scene)
     this.certifiedTentPasses=0
     this.sampleOnlyPrograms.resetFrame()
     this.opaqueSolidBatches=new WeakMap();this.opaqueSolidDraws=0
@@ -1129,6 +1168,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       if (this.sampleOnlyScalarPipeline) this.sampleOnlyCoverageEligibleScenes++
     }
     const modes = this.managed ? compositorModes(scene) : new Set([...compositorModes(scene)].filter(mode => mode === 61 || mode === 62))
+    if(this.supportsGaussianReduction()&&Object.values(scene.nodes).some(node=>node.gaussianRegion?.factor!==undefined))modes.add(74)
     if(this.exactGradientPaintOver&&gradientFusionWorthwhile(scene))modes.add(GRADIENT_PAINT_OVER_MODE)
     const layout = this.device.createPipelineLayout({ bindGroupLayouts: [this.layout] })
     const pending: string[] = []
@@ -1136,11 +1176,13 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       if (this.modePipelines.has(mode)) continue
       const key = `mode:${mode}`; pending.push(key)
       this.pipelines.register(key, async () => {
-      const module = (mode === 61 || mode === 62) && this.exactMotionSource !== undefined
+      const module = mode===74
+        ? (this.gaussianReductionModule ??= this.device.createShaderModule({code:gaussianReductionWgsl,label:'Reduced Gaussian display reconstruction'}))
+        : (mode === 61 || mode === 62) && this.exactMotionSource !== undefined
         ? (this.exactMotionModule ??= this.device.createShaderModule({code:this.exactMotionSource!,label:'Exact motion sampling and arithmetic'})) : this.compositorModule
       const pipeline = await this.device.createRenderPipelineAsync({ layout,
         vertex: { module, entryPoint: 'quad' },
-        fragment: { module, entryPoint: mode===GRADIENT_PAINT_OVER_MODE?'exactGradientPaintOver':'fragment', constants: mode===GRADIENT_PAINT_OVER_MODE?{}:{ COMPOSITOR_MODE: mode }, targets: [{ format: this.layerFormat }] },
+        fragment: { module, entryPoint: mode===GRADIENT_PAINT_OVER_MODE?'exactGradientPaintOver':'fragment', constants: mode===GRADIENT_PAINT_OVER_MODE||mode===74?{}:{ COMPOSITOR_MODE: mode }, targets: [{ format: this.layerFormat }] },
         primitive: { topology: 'triangle-list' } })
       this.modePipelines.set(mode, pipeline)
       })
@@ -1258,6 +1300,14 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     return this.displayImagePreparing
   }
   async prepareFilters(prefixUseful = false) {
+    if(import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1'&&this.canvasBlurRequested&&!this.boxPrefix&&!this.boxPrefixFailed){
+      this.device.pushErrorScope('validation')
+      let pending:Promise<BoxPrefix>
+      try{pending=BoxPrefix.create(this.device)}catch(error){pending=Promise.reject(error)}
+      const checked=this.device.popErrorScope()
+      try{const [pipeline,error]=await Promise.all([pending,checked]);if(error)throw Error(error.message);this.boxPrefix=pipeline}
+      catch(error){this.boxPrefixFailed=true;console.warn('Box prefix unavailable; using original Gaussian passes',error)}
+    }
     const bounded = this.displayFilterRadiusLimit !== undefined
     if (this.managed && this.displayFilters) {
       if (!bounded && this.pairDisplayTaps && !this.pairedDisplay && !this.pairedDisplayFailed && this.device.features.has('float32-filterable')) {
@@ -1349,6 +1399,14 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
             primitive: { topology: 'triangle-list' } }))])
         this.assertPipelinePublicationOwner(device)
         this.canvasBlurPipelines = colors; this.canvasBlurScalarPipeline = scalar
+        if(import.meta.env.VITE_DESIGN_CANVAS_BLUR_RGBA !== '0')try{
+          const rgba = await validated(() => device.createShaderModule({code:exactFilterWgsl(this.certifiedFilter,true,true),label:'Canvas RGBA rational-coefficient blur'}))
+          const rgbaInfo=await rgba.getCompilationInfo()
+          if(rgbaInfo.messages.some(m=>m.type==='error'))throw Error('Canvas RGBA blur shader validation failed')
+          const pipeline=await validated(()=>device.createRenderPipelineAsync({layout,vertex:{module:rgba,entryPoint:'quad'},
+            fragment:{module:rgba,entryPoint:'fragmentRgba',targets:[{format:this.layerFormat}]},primitive:{topology:'triangle-list'}}))
+          this.assertPipelinePublicationOwner(device);this.canvasBlurRgbaPipeline=pipeline
+        }catch(error){console.warn('Canvas RGBA blur unavailable; using channel filters',error)}
       } catch (error) {
         this.canvasBlurFailed = true
         this.canvasBlurPipelines = []
@@ -1495,6 +1553,23 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     if(!proof||!this.textures.has(kernel!)||kernel!.resource!==proof.resource||kernel!.width!==proof.width||kernel!.height!==proof.height)return 0
     return widePrefixBoundBits(proof.packet,radius)
   }
+  private boxPrefixEligible(target:Texture,u:Float32Array,inputs:Texture[],channels:number){
+    const [source,kernel]=inputs,proof=kernel&&this.boxKernels?.get(kernel)
+    return !!(this.boxPrefix&&this.canvasBlurRequested&&this.managed&&!this.hdr&&!this.displayMath&&channels===15&&
+      u[16]===22&&u[39]===2&&u[38]===0&&[0,1].includes(u[37])&&u[36]>=32&&
+      proof&&proof.radius===u[36]&&proof.resource===kernel.resource&&proof.width===kernel.width&&proof.height===kernel.height&&
+      this.textures.has(kernel)&&this.textures.has(source)&&this.textures.has(target)&&
+      !source.uniformColor&&!source.transparentZero&&!source.scalarCoverage&&!source.binaryCoverage&&
+      (source.resource as GPUTexture).format==='rgba32float'&&(target.resource as GPUTexture).format==='rgba32float'&&
+      u.subarray(0,8).every(v=>Number.isSafeInteger(v)&&Math.abs(v)<=1048576)&&
+      source.width===u[6]&&source.height===u[7]&&target.width===u[2]&&target.height===u[3]&&
+      source.width<=16384&&source.height<=16384&&target!==source)
+  }
+  supportsGaussianReduction(){return this.supportsGaussianRegions()&&[2,4,8].includes(Number(import.meta.env.VITE_DESIGN_GAUSSIAN_REDUCTION))}
+  supportsGaussianRegions(){return !!(this.boxPrefix&&this.canvasBlurRequested&&this.managed&&!this.hdr&&!this.displayMath)}
+  prepareCanvasBoxPass(target:Texture,u:Float32Array,inputs:Texture[],channels:number,availableBytes:number){
+    if(this.boxPrefixEligible(target,u,inputs,channels)&&!this.boxPrefix!.scratchBytes&&availableBytes>=BOX_PREFIX_BYTES)this.boxPrefix!.reserve()
+  }
   prepareFilterPass(target: Texture, u: Float32Array, inputs: Texture[], channels: number, filter: {kind: 'tent'; radius: number}, availableBytes: number) {
     this.prepareWindowFilterPass(target, u, inputs, channels, filter, availableBytes)
   }
@@ -1527,6 +1602,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       if (error || this.errors.length) throw markRenderFailure(new Error([error?.message, ...this.errors].filter(Boolean).join('\n')), { failureStage: 7, failureCategory: error ? renderFailureFields(error).failureCategory : this.lost ? 4 : 0, failureCode: 201 })
     }
     this.prefix?.releaseScratch()
+    this.boxPrefix?.release()
     this.releaseImageTables()
     for (const target of this.transientTargets) this.destroy(target)
     this.transientTargets = []
@@ -1795,6 +1871,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     return t
   }
   private invalidateTextureCertificates(texture: Texture) {
+    this.boxKernels?.delete(texture)
     this.nativeTentKernels?.delete(texture)
     this.rationalKernelBounds?.delete(texture)
     this.wideKernelBounds?.delete(texture)
@@ -1841,10 +1918,15 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     validateLinearImageDimensions(width,height)
     const texture=this.createFormat(width,height,'rgba32float')
     try{
-      writeLinearImageRows(width,height,rows,(y,h,values)=>this.uploadAtlasLinear(texture,0,y,width,h,values))
-      // Every copied f32 word was checked synchronously. Partial uploads grant
-      // neither this finite proof nor the whole-image filter-range capability.
+      const range=writeLinearImageRows(width,height,rows,(y,h,values)=>this.uploadAtlasLinear(texture,0,y,width,h,values),import.meta.env.VITE_DESIGN_EXACT_IMAGE_X_TABLE!=='0')
+      // Only the complete stream grants a whole-image receipt. Per-row writes
+      // revoke old receipts, and a late decoder/CRC failure destroys the target.
       texture.finitePixels=true
+      if(range){
+        if(range.opaqueAlpha)texture.opaqueAlpha=true
+        this.imageRanges.set(texture,range)
+        this.displayImageUploads.set(texture,{resource:texture.resource as GPUTexture,width,height,range})
+      }
       return texture
     }catch(error){this.destroy(texture);throw error}
   }
@@ -1895,6 +1977,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     if (bytes.length !== width * height * 4) throw new Error('无效的 RGBA8 数据纹理')
     // The synchronous upload captures these actual bytes. Keep only the
     // parser's small immutable coefficient proof, never an image-sized copy.
+    const box=import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1'?uniformBoxRadius(bytes):undefined
     const packet = import.meta.env.VITE_DESIGN_PREFIX_TIGHT_BOUND === '1' && bytes.buffer instanceof ArrayBuffer
       ? certifyPrefixRationalBound(bytes) : undefined
     const wide=import.meta.env.VITE_DESIGN_WIDE_RATIONAL_PREFIX==='1'?(import.meta.env.VITE_DESIGN_LARGE_SHADOW_TENT==='1'?certifyShadowWidePrefix(bytes):import.meta.env.VITE_DESIGN_WIDE_RATIONAL_PREFIX_LARGE==='1'?certifyLargeWidePrefix(bytes):certifyWidePrefix(bytes)):undefined
@@ -1904,6 +1987,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
         width,
         height,
       )
+      if(box!==undefined)this.boxKernels.set(t,{radius:box,resource:t.resource,width:t.width,height:t.height})
       if (packet) this.rationalKernelBounds.set(t, { packet, resource: t.resource, width, height })
       if (wide) this.wideKernelBounds.set(t,{packet:wide,resource:t.resource,width,height})
       return t
@@ -1949,6 +2033,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     if (!layout || logicalTexels! <= limit! || layout.height < 2 || layout.width !== width || layout.height !== height)
       throw new Error('Invalid exact filter packet row layout')
     // Parse the original packet only. Padding cannot grant or repair a proof.
+    const box=import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1'?uniformBoxRadius(bytes):undefined
     const packet = import.meta.env.VITE_DESIGN_PREFIX_TIGHT_BOUND === '1' ? certifyPrefixRationalBound(bytes) : undefined
     let physical = bytes
     if (layout.physicalTexels !== logicalTexels) {
@@ -2585,6 +2670,12 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
         if(wideRational)recordGpuDiagnostic('prefix',{wideTentPasses:1,radius:filter.radius,width:target.width,height:target.height})
         if(certifiedTent){this.certifiedTentPasses++;recordGpuDiagnostic('prefix',{certifiedTentPasses:1,radius:filter.radius,width:target.width,height:target.height})}
         this.noteDraw(22,this.prefix!.lastRenderPasses); return }
+    if(!region&&!sourceWindow&&this.boxPrefixEligible(target,u,inputs,channels)&&this.boxPrefix!.scratchBytes&&
+        this.boxPrefix!.encode(()=>this.encoder,params=>this.uniform(params),target.resource as GPUTexture,
+          inputs[0].resource as GPUTexture,inputs[1].resource as GPUTexture,this.blank.resource as GPUTexture,u)){
+      this.noteDraw(22,this.boxPrefix!.lastPasses,target.width*target.height);return
+    }
+    if(u[16]===22&&u[39]===2&&u[36]>512)throw Error('GPU surface budget exceeded (regional Gaussian prefix unavailable)')
     const bind = this.bind(u, inputs)
     // With integer origins/sizes bounded by 2^20, pixel centres and every
     // subtraction/addition forming q/base are exactly representable binary32
@@ -2640,7 +2731,8 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       canvasBlurPassEligible(this.canvasBlurRequested && this.canvasBlurPipelines.length === 4, u, channels, filter)
     const canvasSpatial = this.canvasBlurRequested && !sourceWindow && !target.scalarCoverage && !target.binaryCoverage &&
       channels === 15 && canvasBlurGeometry(u) && this.canvasSpatialPipelines.has(u[16])
-    const pipelines = canvasSpatial ? [this.canvasSpatialPipelines.get(u[16])!] : canvasBlur ? (target.scalarCoverage ? [this.canvasBlurScalarPipeline!] : this.canvasBlurPipelines) : target.scalarCoverage ? [u[16]===49?this.alphaResolvePipeline!:u[16]===22?this.scalarFilterPipeline!:u[16]===31?(sampleOnly?this.sampleOnlyScalarPipeline!:this.scalarAreaPipeline!):this.scalarPipelines.get(u[16])!] : displayFilter ? [this.displayFilterPipeline!] : target.binaryCoverage
+    const rgbaBlur=canvasBlur&&!target.scalarCoverage&&channels===15&&!!this.canvasBlurRgbaPipeline
+    const pipelines = canvasSpatial ? [this.canvasSpatialPipelines.get(u[16])!] : canvasBlur ? (target.scalarCoverage ? [this.canvasBlurScalarPipeline!] : rgbaBlur ? [this.canvasBlurRgbaPipeline!] : this.canvasBlurPipelines) : target.scalarCoverage ? [u[16]===49?this.alphaResolvePipeline!:u[16]===22?this.scalarFilterPipeline!:u[16]===31?(sampleOnly?this.sampleOnlyScalarPipeline!:this.scalarAreaPipeline!):this.scalarPipelines.get(u[16])!] : displayFilter ? [this.displayFilterPipeline!] : target.binaryCoverage
       ? [u[16] === 31 ? (sampleOnly?this.sampleOnlyBytePipeline!:this.binaryAreaPipeline!) : this.binaryPipelines.get(u[16])!]
       : this.managed && u[16] === 22 ? this.filterPipelines : [
       u[16] === IMAGE_RESOLVE_STEP_MODE ? (displayImage ? this.displayImagePipeline! : this.imageResolveStepPipeline!) : u[16] === 50 ? this.shadowOverPipeline! : u[16] === 48 ? this.resolveStepPipeline! : u[16] === 47 ? this.solidPaintOverPipeline! : u[16] === 31 ? (sampleOnly?(this.managed===true?this.sampleOnlyColorPipeline!:this.sampleOnlyBytePipeline!):this.areaPipeline!) : this.managed && u[16] === 3 && u[17] === 0
@@ -2754,7 +2846,9 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     preview?: PreviewPresentation,
     present = true,
     outputRect?: Rect,
+    samples?:readonly {texture:Texture;rect:Rect}[],
   ) {
+    if(samples&&(samples.length!==4||!this.retainedSampleCapture()||readback||!present||preview))throw Error('Invalid retained sample capture')
     let captured: { id: number; texture: GPUTexture } | undefined
     let transfer:ReturnType<ResidentPresenter['reserveBitmapImport']>|undefined
     try {
@@ -2766,11 +2860,11 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     let finishTransient = 0
     if (present) {
     if (this.captureDisplay && this.presenter && !readback && !this.hdr) {
-      const background=this.backgroundScene&&!preview?pageBackgroundProof(this.backgroundScene,outputRect||{x:0,y:0,w:width,h:height},width,height):undefined
+      const background=this.backgroundScene&&!preview&&!this.linearCapture?pageBackgroundProof(this.backgroundScene,outputRect||{x:0,y:0,w:width,h:height},width,height):undefined
       if(this.presentationDevice){
-        transfer=withRenderFailureStage(10,()=>this.presenter!.reserveBitmapImport(width,height,background))
+        transfer=withRenderFailureStage(10,()=>this.presenter!.reserveBitmapImport(width,height,background,this.contentScene))
         finishTransient+=width*height*4
-      }else captured=withRenderFailureStage(10,()=>this.presenter!.capture(width,height,background))
+      }else captured=withRenderFailureStage(10,()=>this.presenter!.capture(width,height,background,this.contentScene,this.linearCapture,samples?4:1))
     }
     if (this.canvas.width !== width) this.canvas.width = width
     if (this.canvas.height !== height) this.canvas.height = height
@@ -2794,22 +2888,27 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       u.set([0, 0, width, height], 4)
       u[16] = 14
     }
-    const bind = this.bind(u, [shown])
+    const sources=samples||[{texture:shown,rect:r}]
+    for(let sample=0;sample<sources.length;sample++){
+    const item=sources[sample],uniform=samples?parameters(outputRect||{x:0,y:0,w:width,h:height},item.rect):u
+    if(captured&&this.linearCapture)uniform[36]=item.texture.uniformColor?1:0
+    const bind = this.bind(uniform, [item.texture])
     const pass = this.encoder.beginRenderPass({
       colorAttachments: [
         {
-          view: this.bindingCache.view((captured?.texture || withRenderFailureStage(10, () => this.context.getCurrentTexture()))),
+          view: samples?captured!.texture.createView({dimension:'2d',baseArrayLayer:sample,arrayLayerCount:1}):this.bindingCache.view((captured?.texture || withRenderFailureStage(10, () => this.context.getCurrentTexture()))),
           loadOp: 'clear',
           storeOp: 'store',
           clearValue: [0, 0, 0, 0],
         },
       ],
     })
-    pass.setPipeline(this.presentPipeline)
+    pass.setPipeline(captured&&this.linearCapture?this.linearCapturePipeline!:this.presentPipeline)
     pass.setBindGroup(0, bind.group, bind.offsets)
     pass.draw(3)
     pass.end()
     this.noteDraw(14)
+    }
     }
     let buffer: GPUBuffer | undefined, output: Texture | undefined
     const bpp = this.managed ? 16 : 4
@@ -2854,7 +2953,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     // whose purpose was scratch destruction or diagnostic counters disappear.
     const waitReason: QueueWaitReason | undefined = readback ? 'readback' : timingRead ? 'timing' : transfer ? 'presentation-transfer' :
       this.byteTentLeases?.size ? 'prefix-scratch' :
-      !retainFilterScratch && this.prefix?.scratchBytes ? 'prefix-scratch' :
+      !retainFilterScratch && (this.prefix?.scratchBytes||this.boxPrefix?.scratchBytes) ? 'prefix-scratch' :
       !deferImageScratch && this.imageTables.size ? 'image-table-scratch' : this.interactionPresentation &&
         (!this.nativeInteractionPresentation || import.meta.env.VITE_DESIGN_NATIVE_PIPELINE !== '1') ? 'interaction' :
         ++this.presentationSubmissions >= 4 ? 'periodic' : undefined
@@ -2898,6 +2997,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     } else if (this.prefix?.scratchBytes) {
       this.prefixCounterDeferredFrames++
     }
+    if(waitReason&&!retainFilterScratch)this.boxPrefix?.release()
     if (timingRead) {
       await timingRead.mapAsync(GPUMapMode.READ)
       const values = new BigUint64Array(timingRead.getMappedRange())
@@ -3063,6 +3163,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   private destroyDeviceNow() {
     this.terminal = true
     recordDeviceLifecycle(this, deviceLifecyclePhase.disposed, this.lifecycleFields())
+    this.boxPrefix?.release();this.boxPrefix=undefined
     this.presenter?.dispose(); this.presenter = undefined
     this.presentationDevice?.destroy();this.presentationDevice=undefined
     this.parkedForReuse = false
@@ -3132,6 +3233,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.discardByteTentEncoder(this.encoder)
     this.displayImageRequested = false
     this.prefix?.releaseScratch()
+    this.boxPrefix?.release()
     this.releaseImageTables()
     for (const t of [...this.textures]) this.destroy(t)
     for (const t of this.transientTargets) this.destroy(t)

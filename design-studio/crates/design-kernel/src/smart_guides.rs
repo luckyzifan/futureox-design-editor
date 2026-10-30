@@ -160,6 +160,74 @@ pub fn snap(moving: Rect, parent: Option<Rect>, siblings: &[Rect], threshold: f6
     result
 }
 
+/// Immutable gesture targets. Positions with identical coordinates retain the
+/// earliest authored candidate. Queries inspect only neighbours of the three
+/// moving edges, while preserving parent/target/edge tie order exactly.
+pub struct Index { axes: [Vec<(f64, usize, f64, f64)>; 2] }
+impl Index {
+    pub fn new(parent: Option<Rect>, siblings: &[Rect]) -> Self {
+        let targets: Vec<_> = parent.into_iter().chain(siblings.iter().copied()).collect();
+        let axes = std::array::from_fn(|slot| {
+            let axis = if slot==0 {Axis::X} else {Axis::Y};
+            let mut entries=Vec::with_capacity(targets.len()*3);
+            for (id,target) in targets.iter().enumerate() {
+                let (lo,hi)=if slot==0 {(f64::from(target.y),f64::from(target.y)+f64::from(target.h))}
+                    else {(f64::from(target.x),f64::from(target.x)+f64::from(target.w))};
+                for (edge,position) in candidates(*target,axis).into_iter().enumerate() {
+                    entries.push((position,id*3+edge,lo,hi));
+                }
+            }
+            entries.sort_by(|a,b|a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+            entries.dedup_by(|a,b|a.0==b.0);
+            entries
+        });
+        Self {axes}
+    }
+    pub fn snap(&self, moving: Rect, threshold: f64) -> Snap {
+        if !threshold.is_finite() || threshold<=0. || threshold>1e4 {return Snap::default();}
+        let mut result=Snap::default();
+        for (slot,axis) in [Axis::X,Axis::Y].into_iter().enumerate() {
+            let positions=&self.axes[slot];
+            let mut best:Option<(f64,usize,usize,f64,f64,f64)>=None;
+            for (edge_id,edge) in moving_edges(moving,axis).into_iter().enumerate() {
+                let left=positions.partition_point(|v|v.0<edge-1e-9);
+                let right=positions.partition_point(|v|v.0<=edge+1e-9);
+                for index in [left.checked_sub(1), (right<positions.len()).then_some(right)].into_iter().flatten() {
+                    let (position,rank,lo,hi)=positions[index];let delta=position-edge;
+                    if delta.abs()>threshold || delta.abs()<1e-9 {continue;}
+                    let replace=best.is_none_or(|(d,r,e,..)|delta.abs().total_cmp(&d.abs()).then(rank.cmp(&r)).then(edge_id.cmp(&e)).is_lt());
+                    if replace {best=Some((delta,rank,edge_id,position,lo,hi));}
+                }
+            }
+            if let Some((delta,_,_,position,lo,hi))=best {
+                let (start,end)=if slot==0 {(f64::from(moving.y),f64::from(moving.y)+f64::from(moving.h))}
+                    else {(f64::from(moving.x),f64::from(moving.x)+f64::from(moving.w))};
+                result.guides[slot]=Some(Guide{axis,position,start:start.min(lo),end:end.max(hi)});
+                if slot==0 {result.dx=delta;} else {result.dy=delta;}
+            }
+        }
+        result
+    }
+}
+
+#[cfg(test)]
+mod indexed_tests {
+    use super::*;
+    #[test]
+    fn indexed_targets_preserve_distant_guides_zero_skips_and_all_ties() {
+        let targets: Vec<_>=(0..1000).map(|i|Rect::new(i%23*13-110,i%31*17-200,(i%17) as u32,(i%19) as u32)).collect();
+        for parent in [None,Some(Rect::new(0,0,200,100))] {
+            let index=Index::new(parent,&targets);
+            for i in 0..500 {
+                let moving=Rect::new(i%37*7-100,i%41*5-100,(i%31)as u32,(i%29)as u32);
+                for threshold in [0.,0.25,0.5,1.,6.,33.,1e4,f64::NAN] {
+                    assert_eq!(index.snap(moving,threshold),snap(moving,parent,&targets,threshold),"{i} {threshold}");
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

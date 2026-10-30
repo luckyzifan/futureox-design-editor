@@ -801,7 +801,7 @@ pub struct Patch {
     pub width: f64,
     pub height: f64,
     pub network: Option<crate::scene::Network>,
-    pub vector_geometry: Option<crate::vector_geometry::VectorGeometry>,
+    pub vector_geometry: Option<std::sync::Arc<crate::vector_geometry::VectorGeometry>>,
     pub sizing: Option<Sizing>,
     pub constraints: Option<Constraints>,
 }

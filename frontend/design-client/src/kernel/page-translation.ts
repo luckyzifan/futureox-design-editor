@@ -3,6 +3,7 @@ import type { Bounds, DesignDocument } from '../model'
 import { translateOverlay, type CanvasOverlay } from './gpu/canvas-overlay'
 import { tilesCoverBounds } from './tile-cache'
 import type { CompositeItem, CompositeTile } from './gpu/tile-compositor'
+import { PoseFeedback } from './pose-feedback'
 import {
   interactionOffsets,
   interactionPatchedOffsets,
@@ -20,6 +21,8 @@ export class PageTranslation {
   private residents: CompositeTile[] = []
   private active = false
   private phaseRevoked = false
+  private fractional = false
+  private feedback = new PoseFeedback()
   private offset = { x: 0, y: 0 }
   private epoch = -1
   private input = { sequence: 0, at: 0 }
@@ -65,8 +68,9 @@ export class PageTranslation {
     return true
   }
   private reusableOffset(offset: { x: number; y: number }) {
-    return this.residents.length > 0 && this.residents.every(tile =>
+    return this.residents.length > 0 && (this.fractional || this.residents.every(tile =>
       [offset.x * tile.zoom, offset.y * tile.zoom].every(Number.isSafeInteger))
+    )
   }
   private rebase(document: DesignDocument, patches: Parameters<GpuMoveControl['apply']>[1]) {
     this.phaseRevoked = true
@@ -111,6 +115,8 @@ export class PageTranslation {
   }
   readonly control: GpuMoveControl = {
     isActive: () => this.active,
+    feedbackPending:()=>this.fractional,
+    inputSequence:()=>this.input.sequence,
     covers: (document, ids) =>
       !!this.plan &&
       ids.length === this.plan.ids.length &&
@@ -133,9 +139,9 @@ export class PageTranslation {
         offset = next
       }
       if (!offset || this.phaseRevoked) return null
-      // Identical geometry at a fractional device offset has different edge
-      // coverage. Integer translations retain the page fast path; otherwise
-      // hand the pose to native rasterization before moving any old pixels.
+      // Fractional desktop motion is a transient, full-density reprojection.
+      // Other policies still require the original integer-phase proof. Final
+      // readiness always belongs to the committed native page, not this pose.
       if (!this.reusableOffset(offset)) return this.rebase(document, patches)
       const id = this.plan.ids[0],
         before = document.nodes[id].transform,
@@ -147,11 +153,14 @@ export class PageTranslation {
       this.input = { sequence: this.moves, at: performance.now() }
       this.pendingPose = { document, patches: Object.fromEntries(this.plan.ids.map(id =>
         [id, { transform: [...(patches[id]?.transform || document.nodes[id].transform)] }])) }
+      const feedback={ x: after[4] - before[4], y: after[5] - before[5] }
+      if(this.fractional)this.feedback.submit(this.input.sequence,feedback,document)
       this.changed()
       if (!wasActive) this.props?.onReady()
-      return { x: after[4] - before[4], y: after[5] - before[5] }
+      return feedback
     },
     end: (document) => {
+      this.feedback.clear()
       if (!this.active || this.phaseRevoked) return
       const offset = this.delta(document)
       if (offset && !this.reusableOffset(offset)) { this.rebase(document, {}); return }
@@ -168,7 +177,9 @@ export class PageTranslation {
     items: CompositeItem[],
     settled: DesignDocument | undefined,
     allowed: boolean,
+    fractional=false,
   ) {
+    if(this.fractional!==fractional){this.clear();this.fractional=fractional}
     if (this.phaseRevoked) {
       // React refreshes during imperative input still refer to the old
       // authored document. Do not rebind its invalid pixel fast path.
@@ -221,6 +232,13 @@ export class PageTranslation {
   }
   bind() {
     if (this.props) this.props.control.current = this.control
+  }
+  acceptPresentedInput(sequence:number,at:number,ownerMatches:boolean,slots:readonly number[]){
+    const document=this.pendingPose?.document
+    if(!this.fractional||!this.active||this.phaseRevoked||!ownerMatches||!document||!this.props||
+      this.residents.some(tile=>!tile.gpuTile||!slots.includes(tile.gpuTile)))return
+    const offset=this.feedback.present(sequence,document)
+    if(offset)this.props.onPosePresented?.({sequence,offset,document,epoch:this.props.epoch,latencyMs:Math.max(0,performance.now()-at)})
   }
   items(view: CanvasCamera): CompositeItem[] | null {
     if (!this.active) return null
@@ -280,6 +298,7 @@ export class PageTranslation {
     return this.input
   }
   clear() {
+    this.feedback.clear()
     if (this.props?.control.current === this.control) this.props.control.current = null
     this.plan = undefined
     this.checkedDocument = undefined

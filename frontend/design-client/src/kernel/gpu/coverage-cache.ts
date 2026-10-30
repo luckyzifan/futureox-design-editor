@@ -35,7 +35,12 @@ export class CoverageCache {
   get(key: string, bits: Uint32Array): Texture | undefined {
     const bucket=this.buckets.get(key)
     for (const e of bucket || []) {
-      if (bits.length !== e.bits.length || !bits.every((v, i) => v === e.bits[i])) continue
+      if (bits.length !== e.bits.length) continue
+      // Compare every word, including NaN payloads and signed zero. A plain
+      // indexed loop avoids a JS callback for every path word on each phase.
+      let same = true
+      for (let i = 0; i < bits.length; i++) if (bits[i] !== e.bits[i]) { same = false; break }
+      if (!same) continue
       e.frame = this.frame
       this.entries.delete(e)
       this.entries.add(e)

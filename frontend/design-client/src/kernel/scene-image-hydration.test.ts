@@ -404,3 +404,15 @@ test('a decoded float payload larger than the real 64 MiB default cap bypasses o
   expect(s.load(uri(1), false).pixels).toEqual(record(true).data)
   expect(s.kernel.image_linear).toHaveBeenCalledOnce()
 })
+
+test('an uploaded-source hint avoids disk work but cannot replace decoder or resource validation', async()=>{
+ const s=setup(),compiled=scene([uri(1),uri(2)])
+ await s.hydration.hydrate(compiled,()=>true,value=>value===uri(1))
+ expect(s.persistence.read).toHaveBeenCalledTimes(1)
+ expect(s.cache.get(s.context.scope,'b:'+uri(1))).toBeUndefined()
+ // Eviction after the hint still reaches the unchanged authoritative decoder.
+ expect(s.load(uri(1),true).bytes).toEqual(record().data)
+ expect(s.kernel.image_rgba8).toHaveBeenCalledOnce()
+ await s.hydration.hydrate(compiled,()=>true,()=>false)
+ expect(s.cache.get(s.context.scope,'b:'+uri(1))?.data).toEqual(record().data)
+})

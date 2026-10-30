@@ -322,7 +322,10 @@ impl Engine {
     /// ordinary scene, font, layout and rendering validation still applies.
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn load_source_document(&mut self, document: Document) -> Result<(), String> {
-        self.install_document(document)
+        // Native indexed source navigation has no whole-document edit receipt.
+        // Validation is mandatory; an optional normalized JSON size used only
+        // by the small-edit fast path need not serialize the whole source here.
+        self.install_document_policy(document,false,false)
     }
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn release_source_compile_caches(&mut self){
@@ -614,7 +617,10 @@ impl Engine {
     fn install_document(&mut self, doc: impl Into<Document>) -> Result<(), String> {
         self.install_document_with_index(doc.into(),false)
     }
-    fn install_document_with_index(&mut self,mut doc:Document,retain_index:bool)->Result<(),String>{
+    fn install_document_with_index(&mut self,doc:Document,retain_index:bool)->Result<(),String>{
+        self.install_document_policy(doc,retain_index,true)
+    }
+    fn install_document_policy(&mut self,mut doc:Document,retain_index:bool,measure_size:bool)->Result<(),String>{
         doc.validate()?;
         // Preserve exact authored strings while sharing identical immutable
         // payload allocations. Derived snapshots and packet preparation can
@@ -648,7 +654,7 @@ impl Engine {
         self.text_base = None;
         // Loading historically admits by input size; oversized normalized
         // documents keep that behaviour, but cannot take the local fast path.
-        self.source_doc_bytes = crate::editing::serialized_document_size(&doc).ok();
+        self.source_doc_bytes = if measure_size {crate::editing::serialized_document_size(&doc).ok()} else {None};
         self.retained_source_size = None;
         if !retain_index||self.render_index.is_none(){
             self.render_index = Some(Arc::new(crate::render_index::RenderIndex::new(&doc)));
@@ -1875,17 +1881,47 @@ impl Engine {
     /// Render-only root scope over the same authoritative document. The
     /// existing COW snapshot and patch admission keep component dependencies
     /// reachable without sending a second whole document through the UI.
-    pub(crate) fn snapshot_render_roots(&self, page_id: &str, roots: &[String]) -> Result<Engine,String> {
+    pub(crate) fn snapshot_render_roots(&self, page_id: &str, roots: &[String], neutral_page_group:bool) -> Result<Engine,String> {
         let source=self.source_doc.as_ref().ok_or("Load document before selecting render roots")?;
         let page=source.pages.iter().find(|page|page.id==page_id).ok_or("Unknown render page")?;
         let selected:std::collections::HashSet<_>=roots.iter().collect();
-        if selected.len()!=roots.len() || roots.iter().any(|id|!page.children.contains(id)) {
-            return Err("Render roots must be unique roots of the requested page".into());
+        if selected.len()!=roots.len() {return Err("Render roots must be unique roots of the requested page".into());}
+        let parents:std::collections::HashMap<_,_>=source.nodes.iter().flat_map(|(id,n)|n.children.iter().map(move|child|(child,id))).collect();
+        let mut ancestors=std::collections::HashSet::new();
+        for id in roots {
+            let mut at=id;
+            while !page.children.contains(at) {
+                let parent=parents.get(at).ok_or("Render roots must belong to the requested page")?;
+                if selected.contains(parent) {return Err("Overlapping render roots".into());}
+                let n=&source.nodes[*parent];
+                // The opt-in normal case is the sole empty group on a page.
+                // Keep that ancestor in the scoped document; only sibling
+                // visibility changes. Every interval still gets its own pixels.
+                let neutral=neutral_page_group&&n.kind=="group"&&n.blend=="normal"&&page.children.len()==1&&page.children[0]==n.id;
+                if (n.blend!="pass-through"&&!neutral) || n.opacity!=1. || n.clip || n.mask ||
+                    n.fills.iter().any(|p|p.visible) || n.strokes.iter().any(|p|p.visible) || n.effects.iter().any(|e|e.visible) ||
+                    n.layout.is_some() || n.sizing.is_some() || n.constraints.is_some() || n.boolean_operation.is_some() ||
+                    n.instance.is_some() || n.instance_origin.is_some() || n.component.is_some() || n.component_set || n.repeat.is_some() ||
+                    !n.bindings.is_empty() || !n.variable_modes.is_empty() {return Err("Nested render scope crosses a dependent ancestor".into());}
+                if neutral {
+                    fn independent(doc:&Document,id:&str)->bool {
+                        let Some(n)=doc.nodes.get(id)else{return false};if !n.visible{return true}
+                        if n.mask||n.effects.iter().any(|e|e.visible&&matches!(e.kind.as_str(),"background-blur"|"glass")){return false}
+                        if n.blend=="normal"{return true}
+                        n.blend=="pass-through"&&n.opacity==1.&&!n.clip&&!n.effects.iter().any(|e|e.visible)&&
+                            n.fills.iter().filter(|p|p.visible).all(|p|p.blend=="normal")&&
+                            n.strokes.iter().filter(|s|s.visible).all(|s|s.paint.blend=="normal")&&
+                            n.children.iter().all(|id|independent(doc,id))
+                    }
+                    if !n.children.iter().all(|id|independent(source,id)){return Err("Neutral group contains a dependent painter".into());}
+                }
+                ancestors.insert(*parent);at=parent;
+            }
         }
         let mut scoped=self.snapshot_static_worker().ok_or("Animated render root scope is unsupported")?;
         let mut patch=crate::editing::DocumentPatch{fields:Default::default(),nodes:Default::default()};
-        for id in &page.children {
-            if !selected.contains(id) && source.nodes[id].visible {
+        for id in page.children.iter().chain(ancestors.iter().flat_map(|id|source.nodes[*id].children.iter())) {
+            if !selected.contains(id) && !ancestors.contains(id) && source.nodes[id].visible {
                 let mut node=source.nodes[id].clone();node.visible=false;
                 patch.nodes.insert(id.clone(),Some(node));
             }
@@ -3343,5 +3379,21 @@ mod image_payload_owner_tests {
         let stored=engine.doc.as_ref().unwrap();
         assert_eq!(stored.nodes["a"].fills[0].image.as_ref().unwrap().as_ptr(),stored.nodes["b"].fills[0].image.as_ref().unwrap().as_ptr());
         assert_eq!(serde_json::to_vec(&**stored).unwrap(),before);
+    }
+}
+
+#[cfg(all(test,not(target_arch="wasm32")))]
+mod source_load_measurement_tests {
+    use super::*;
+    #[test]
+    fn indexed_source_load_keeps_validation_without_granting_an_unmeasured_edit_receipt(){
+        let document:Document=serde_json::from_value(serde_json::json!({"schemaVersion":20,"id":"source","name":"source","pages":[{"id":"p","name":"p","children":["n"],"background":"#ffffff"}],
+            "nodes":{"n":{"id":"n","kind":"rectangle","width":10,"height":20,"fills":[{"kind":"solid","color":"#abcdef"}]}}})).unwrap();
+        let mut native=Engine::new();crate::capacity::with_source_storage_scope(true,||native.load_source_document(document.clone())).unwrap();
+        assert!(native.source_doc_bytes.is_none());assert!(native.retained_source_size.is_none());
+        let mut ordinary=Engine::new();ordinary.load_document(&serde_json::to_string(&document).unwrap()).unwrap();assert!(ordinary.source_doc_bytes.is_some());
+        let mut invalid=document.clone();invalid.nodes.get_mut("n").unwrap().width=-1.;
+        assert!(crate::capacity::with_source_storage_scope(true,||native.load_source_document(invalid)).is_err());
+        assert_eq!(native.source_doc.as_deref(),Some(&document));
     }
 }

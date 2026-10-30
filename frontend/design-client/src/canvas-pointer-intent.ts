@@ -30,6 +30,20 @@ export function selectedGroupDragIntent(
   return { selection: [group.id], clickSelection: hit === group.id ? null : hit ? [hit] : [] }
 }
 
+/** An already selected child keeps its drag target in transparent parts of
+ * its outline. A painted ancestor is only a deferred click target there;
+ * foreground siblings and explicit deep/additive picking retain normal rules. */
+export function selectedChildDragIntent(
+  child: Pick<DesignNode, 'id' | 'visible' | 'locked'> | null,
+  hit: string | null,
+  ancestors: readonly string[],
+  options: { inside: boolean; deep: boolean; additive: boolean; readOnly: boolean },
+): SelectionPointerIntent | null {
+  if (!child || !child.visible || child.locked || !ancestors.length || !options.inside ||
+      options.deep || options.additive || options.readOnly || hit !== null && !ancestors.includes(hit)) return null
+  return { selection: [child.id], clickSelection: hit ? [hit] : [] }
+}
+
 /** Defer destructive selection changes until a click is distinguishable from a
  * drag. In particular, Shift can constrain an existing selection's movement. */
 export function selectionPointerDown(

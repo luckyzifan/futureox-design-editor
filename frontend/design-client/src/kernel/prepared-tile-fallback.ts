@@ -35,15 +35,17 @@ export function preparedTileCanFill(tile: RasterTile, frame: ResidentFrame | und
  * geometry. Request/content cancellation is still checked at every boundary;
  * ordinary callers without a version keep checking mutable frames in full. */
 export function preparedTileContinuation(tile: RasterTile, current: () => boolean,
-  allowFallback: boolean, frame: () => ResidentFrame | undefined, coverageVersion?: () => object): () => boolean {
+  allowFallback: boolean | (()=>boolean), frame: () => ResidentFrame | undefined, coverageVersion?: () => object,
+  onFallback?:()=>void): () => boolean {
   let previous: object | undefined, eligible = false
   return () => {
     if (current()) return true
-    if (!allowFallback) return false
+    if (!(typeof allowFallback==='function'?allowFallback():allowFallback)) return false
     const version = coverageVersion?.()
-    if (version && version === previous) return eligible
+    if (version && version === previous) {if(eligible)onFallback?.();return eligible}
     eligible = preparedTileCanFill(tile, frame())
     previous = version
+    if(eligible)onFallback?.()
     return eligible
   }
 }

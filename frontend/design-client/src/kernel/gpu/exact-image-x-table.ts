@@ -2,6 +2,7 @@
  * fields. Certificates describe the immutable full upload supplied by the
  * driver; the driver must revoke them on any write/reupload or owner change. */
 const ranges = new WeakSet<object>()
+const nonzeroChannels=new WeakMap<ExactImageRange,readonly boolean[]>()
 const planRanges = new WeakMap<ExactImageXTablePlan, { range: ExactImageRange; snapshot: ExactImageXTablePlan }>()
 export type ExactImageRange = Readonly<{
   pixels: number
@@ -9,6 +10,8 @@ export type ExactImageRange = Readonly<{
   maximum: readonly number[]
   /** Every actual uploaded alpha word is exactly 0x3f800000. */
   opaqueAlpha: boolean
+  /** Every actual alpha is in [0,1], including either signed zero. */
+  unitAlpha?: true
   /** RGB has no negative nonzero word; signed zero is canonicalized by resolve. */
   nonnegativeRgb: boolean
 }>
@@ -18,7 +21,7 @@ export function certifyExactImageRange(pixels: Float32Array): ExactImageRange | 
   if (!(pixels instanceof Float32Array) || !(pixels.buffer instanceof ArrayBuffer) || !pixels.length || pixels.length % 4) return
   const bits = new Uint32Array(pixels.buffer, pixels.byteOffset, pixels.length)
   let minR=255,minG=255,minB=255,minA=255,maxR=0,maxG=0,maxB=0,maxA=0
-  let opaqueAlpha=true,nonnegativeRgb=true
+  let opaqueAlpha=true,unitAlpha=true,nonnegativeRgb=true
   // Read every RGBA word. Scalar extrema avoid per-component Math calls and
   // dynamic array indexing; zeros and subnormals retain the same exponent rule.
   for(let i=0;i<bits.length;i+=4){
@@ -26,6 +29,7 @@ export function certifyExactImageRange(pixels: Float32Array): ExactImageRange | 
     const er=r>>>23&255,eg=g>>>23&255,eb=b>>>23&255,ea=a>>>23&255
     if(er===255||eg===255||eb===255||ea===255)return
     if(a!==0x3f800000)opaqueAlpha=false
+    if(a>0x80000000||(a&0x7fffffff)>0x3f800000)unitAlpha=false
     // Uint32 words above negative zero are precisely negative nonzero values.
     if(r>0x80000000||g>0x80000000||b>0x80000000)nonnegativeRgb=false
     if(r&0x7fffffff){const e=er||1;if(e<minR)minR=e;if(e>maxR)maxR=e}
@@ -35,10 +39,34 @@ export function certifyExactImageRange(pixels: Float32Array): ExactImageRange | 
   }
   const minimum=[maxR?minR:1,maxG?minG:1,maxB?minB:1,maxA?minA:1]
   const maximum=[maxR||1,maxG||1,maxB||1,maxA||1]
-  const range = Object.freeze({ pixels: pixels.length / 4, opaqueAlpha, nonnegativeRgb,
+  const range = Object.freeze({ pixels: pixels.length / 4, opaqueAlpha, ...(unitAlpha?{unitAlpha:true as const}:{}), nonnegativeRgb,
     minimum: Object.freeze(minimum), maximum: Object.freeze(maximum) })
   ranges.add(range)
+  nonzeroChannels.set(range,[!!maxR,!!maxG,!!maxB,!!maxA])
   return range
+}
+
+/** Constant-space accumulation of already certified immutable row chunks.
+ * No full-image float buffer, caller-authored extrema or partial receipt. */
+export function createExactImageRangeAccumulator(){
+ let pixels=0,closed=false,opaqueAlpha=true,unitAlpha=true,nonnegativeRgb=true
+ const minimum=[255,255,255,255],maximum=[0,0,0,0]
+ return {
+  add(range:ExactImageRange){
+   const nonzero=nonzeroChannels.get(range)
+   if(closed||!ranges.has(range)||!nonzero||!Number.isSafeInteger(pixels+range.pixels))throw Error('Invalid image range accumulation')
+   pixels+=range.pixels;opaqueAlpha&&=range.opaqueAlpha;unitAlpha&&=range.unitAlpha===true;nonnegativeRgb&&=range.nonnegativeRgb
+   for(let c=0;c<4;c++)if(nonzero[c]){minimum[c]=Math.min(minimum[c],range.minimum[c]);maximum[c]=Math.max(maximum[c],range.maximum[c])}
+  },
+  finish(expectedPixels:number):ExactImageRange|undefined{
+   if(closed)return;closed=true
+   if(!pixels||pixels!==expectedPixels)return
+   const nonzero=maximum.map(Boolean)
+   const range=Object.freeze({pixels,opaqueAlpha,...(unitAlpha?{unitAlpha:true as const}:{}),nonnegativeRgb,
+    minimum:Object.freeze(minimum.map((value,c)=>nonzero[c]?value:1)),maximum:Object.freeze(maximum.map(value=>value||1))})
+   ranges.add(range);nonzeroChannels.set(range,nonzero);return range
+  },
+ }
 }
 
 /** Exact f32 fraction U / 2^k, including both signed zeros and one.

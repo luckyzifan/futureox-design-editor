@@ -13,6 +13,11 @@ export function bindContentOwner(scene:GpuScene,owner:object,contract?:string){
   if(contract!==undefined)Object.defineProperty(scene,contentContract,{value:contract,enumerable:true})
 }
 export type PageBackgroundProof={owner:object;contract?:string;view:CanvasCamera;bounds:readonly (readonly number[])[];pixel?:[number,number]}
+export type PixelContentProof=Pick<PageBackgroundProof,'owner'|'contract'>
+export function pixelContentProof(scene:GpuScene):PixelContentProof|undefined{
+  const owner=(scene as unknown as Record<symbol,object>)[contentOwner],contract=(scene as unknown as Record<symbol,unknown>)[contentContract]
+  return owner&&typeof contract==='string'?{owner,contract}:undefined
+}
 /** A sampled output texel, not a JS color conversion, supplies the exact
  * uniform page background. Unknown/background-dependent display tiers decline. */
 export function pageBackgroundSource(scene:GpuScene):Omit<PageBackgroundProof,'pixel'>|undefined{
@@ -44,4 +49,15 @@ export function backgroundPaintRects(proof:PageBackgroundProof,view:CanvasCamera
     const right=Math.min(width,Math.ceil(b[2]+dx)),bottom=Math.min(height,Math.ceil(b[3]+dy))
     return {x,y,width:Math.max(0,right-x),height:Math.max(0,bottom-y)}
   }).filter(b=>b.width>0&&b.height>0)
+}
+
+/** The complete native support, not a catalogue/selection box, proves that a
+ * requested physical tile contains only the previously sampled background. */
+export function emptyBackgroundTile(proof:PageBackgroundProof,owner:object,contract:string,view:CanvasCamera,output:Rect){
+  if(proof.owner!==owner||proof.contract!==contract||!proof.pixel||view.zoom!==proof.view.zoom)return false
+  if(![output.x,output.y,output.w,output.h,view.x,view.y].every(Number.isFinite)||output.w<=0||output.h<=0)return false
+  const dx=view.x-proof.view.x,dy=view.y-proof.view.y
+  if(Math.abs(dx)>16_000_000||Math.abs(dy)>16_000_000)return false
+  return proof.bounds.every(b=>output.x+output.w<=Math.floor(b[0]+dx)||output.y+output.h<=Math.floor(b[1]+dy)||
+    output.x>=Math.ceil(b[2]+dx)||output.y>=Math.ceil(b[3]+dy))
 }

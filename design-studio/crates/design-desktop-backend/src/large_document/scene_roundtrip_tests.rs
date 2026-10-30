@@ -143,6 +143,38 @@ fn native_canvas_snapshot_has_one_artboard_and_keeps_all_original_subtrees() {
 }
 
 #[test]
+fn canvas_display_store_omits_only_opaque_export_receipts() {
+    use futureox_design_kernel::{Engine,RenderOptions};
+    let mut page:Value=serde_json::from_str(SOURCE_PAGE).unwrap();
+    page["layers"][0]["style"]=json!({"fills":[{"_class":"fill","isEnabled":true,"fillType":0,
+        "color":{"_class":"color","red":0.2,"green":0.6,"blue":0.8,"alpha":0.7}}],
+        "shadows":[{"_class":"shadow","isEnabled":true,"blurRadius":3,"offsetX":2,"offsetY":1,
+        "color":{"_class":"color","red":0.1,"green":0.1,"blue":0.1,"alpha":0.4}}]});
+    let (f,status)=Fixture::new(&page.to_string());
+    let cancel=AtomicBool::new(false);
+    let mut original={
+        let slot=f.sessions.current.lock().unwrap();let s=slot.as_ref().unwrap();
+        let layout=canvas_layout::build(s,&cancel).unwrap();
+        canvas_snapshot::build(s,&layout,&cancel).unwrap().0
+    };
+    assert!(!original.design_system.as_ref().unwrap().sketch_containers.is_empty());
+    let snapshot=f.call(&status,"large.canvasSnapshot",json!({})).unwrap();
+    let (display,_)=futureox_design_kernel::scene_store::Reader::open(
+        Path::new(snapshot["path"].as_str().unwrap()),&serde_json::from_value(snapshot["store"].clone()).unwrap(),&cancel)
+        .unwrap().into_document(&cancel).unwrap();
+    let options:RenderOptions=serde_json::from_value(json!({"pageId":display.pages[0].id,
+        "width":192,"height":128,"view":{"x":0,"y":0,"zoom":1},"rasterProfile":"figma"})).unwrap();
+    let render=|doc:&futureox_design_kernel::scene::Document|{
+        let mut engine=Engine::new();engine.load_document(&serde_json::to_string(doc).unwrap()).unwrap();engine.render(&options).unwrap()
+    };
+    assert_eq!(render(&original),render(&display));
+    original.design_system.as_mut().unwrap().sketch_containers.clear();
+    // Compare all persisted modeled fields, not runtime-only derived caches.
+    assert_eq!(serde_json::to_value(original).unwrap(),serde_json::to_value(display).unwrap());
+    assert_eq!(f.export_members(&status,"display-receipts-original.sketch"),f.members);
+}
+
+#[test]
 fn batched_source_canvas_matches_individual_conversion_and_keeps_source_unchanged() {
     let (f,status)=Fixture::new(SOURCE_PAGE);
     let before=f.snapshot();

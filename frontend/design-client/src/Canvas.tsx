@@ -26,7 +26,7 @@ import {CanvasSmartSelection} from './CanvasSmartSelection'
 import {pixelGridPathData} from './pixel-grid'
 import {CanvasGuides} from './CanvasGuides'
 import {worldGuides} from './ruler-guides'
-import {smartGuidesSnapWorld, type SmartGuideSegment} from './canvas-smart-guides'
+import {createSmartGuidesIndex, type SmartGuideSegment} from './canvas-smart-guides'
 import {useCanvasColorPicker} from './canvas-color-picker'
 import { captureContentPlane } from './kernel/content-plane'
 import { useUtilityTools, translateVertices } from './utility-tools'
@@ -43,7 +43,8 @@ import { modalOwnsKeyboard } from './modal-keyboard'
 import { ViewControls } from './ViewControls'
 import { CanvasTextEditor } from './TextEditor'
 import { createBox, forcedPixelSnap, resizeInBasis, snapMove, selectionLocalBounds } from './canvas-view'
-import { fitBounds, isNativePinch, revealInView, screenToWorld, worldToScreen, wheelCamera, zoomAt, zoomStep, type CanvasCamera } from './canvas-camera'
+import { fitBounds, isNativePinch, revealInView, screenToWorld, worldToScreen, zoomAt, zoomStep, type CanvasCamera } from './canvas-camera'
+import { WheelCameraGesture } from './wheel-camera-gesture'
 import { desktopBridge,type LocalPeer } from './desktop'
 import {
   kernelLayout,
@@ -103,8 +104,8 @@ import { NumberField } from './fields'
 import { createShapeSeed, resolveShapeCreation, creationPointCount, type ShapeCreationKind, type ShapeCreationSeed } from './shape-creation'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { editableNetwork } from './editable-network'
-import { dragThresholdPassed, selectedGroupDragIntent, selectionPointerDown, frameTitleHit } from './canvas-pointer-intent'
-import { moveCanvasFeedback } from './canvas-move-feedback'
+import { dragThresholdPassed, selectedGroupDragIntent, selectedChildDragIntent, selectionPointerDown, frameTitleHit } from './canvas-pointer-intent'
+import { moveCanvasFeedback, concealCanvasFeedback, restoreCanvasFeedbackVisibility } from './canvas-move-feedback'
 import { interactivePath } from './selection-hierarchy'
 import { presentedPenVertex, remapPointerAnchor } from './canvas-published-input'
 import { canvasLayerFeedback } from './canvas-layer-feedback'
@@ -235,31 +236,55 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const state = useSyncExternalStore(editor.subscribe, editor.snapshot)
   const retainedMove = useRef<RetainedMoveControl|null>(null)
   const gpuMove = useRef<GpuMoveControl | null>(null)
-  const [, gpuReadyChanged] = useState(0)
+  const [gpuReadyRevision, gpuReadyChanged] = useState(0)
   const interactionReady = useMemo(() => () => gpuReadyChanged(value => value + 1), [])
   const gpuMovedOverlays = useRef(new Map<SVGElement, string>())
   const restoreGpuOverlays = () => {
     for (const [element, transform] of gpuMovedOverlays.current) element.style.transform = transform
     gpuMovedOverlays.current.clear()
   }
+  const fallbackMove = useRef<{ document: typeof state.doc; epoch: number; pageId: string; ids: string[] } | null>(null)
+  const fallbackHiddenOverlays = useRef(new Map<SVGElement, string>())
+  const clearFallbackMove = () => {
+    fallbackMove.current = null
+    restoreCanvasFeedbackVisibility(fallbackHiddenOverlays.current)
+  }
   const presentedRef = useRef<PresentedSignal | null>(null)
   presentedRef.current ??= new PresentedSignal()
   const presentedSignal = presentedRef.current
+  const syncFallbackMove = (frame: PresentedFrame | null = presentedSignal.getSnapshot().frame) => {
+    const pending = fallbackMove.current
+    if (!pending) return
+    if (pending.epoch !== editor.sessionGeneration || pending.pageId !== editor.state.page ||
+        pending.ids.length !== editor.state.selection.length || pending.ids.some((id, index) => id !== editor.state.selection[index])) {
+      clearFallbackMove()
+      return
+    }
+    if (frame && !frame.preview && frame.epoch === pending.epoch && frame.pageId === pending.pageId && frame.document === pending.document) {
+      clearFallbackMove()
+      return
+    }
+    if (host.current) concealCanvasFeedback(host.current, pending.ids, fallbackHiddenOverlays.current)
+  }
+  const awaitFallbackMove = () => {
+    fallbackMove.current = { document: editor.state.doc, epoch: editor.sessionGeneration, pageId: editor.state.page, ids: [...editor.state.selection] }
+    syncFallbackMove()
+  }
   const recordPresentation = useCallback((frame: PresentedFrame | null) => {
     editor.observeCanvasPresentation(frame)
     presentedSignal.set(frame)
+    syncFallbackMove(frame)
   }, [editor, presentedSignal])
   const presented = useSyncExternalStore(presentedSignal.subscribe, presentedSignal.getSnapshot).frame
   const presentationScopeMatches = presented?.epoch === editor.sessionGeneration &&
     presented.pageId === state.page && presented.document.id === state.doc.id
   const vectorPreviewSupported = useMemo(() => supportsEditPreview(state.doc, state.page), [state.doc, state.page])
   const gpuPreviewAvailable = !!gpuMove.current?.covers(state.doc, state.selection, state.view)
-  const editPreviewSupported = gpuMove.current ? gpuPreviewAvailable :
-    vectorPreviewSupported || !!retainedMove.current?.covers(state.doc, state.selection, state.view)
+  const editPreviewSupported = gpuPreviewAvailable || vectorPreviewSupported || !!retainedMove.current?.covers(state.doc, state.selection, state.view)
   const editPreviewVisible = presentationScopeMatches &&
-    (gpuMove.current?.isActive() || editPreviewSupported && presented.document !== state.doc)
+    (gpuPreviewAvailable && !!gpuMove.current?.isActive() || editPreviewSupported && presented.document !== state.doc)
   const editInputAt = useRef(0)
-  const displayView = editPreviewVisible && !gpuMove.current ? state.view : presentationScopeMatches ? presented.view : state.view
+  const displayView = editPreviewVisible && !gpuPreviewAvailable ? state.view : presentationScopeMatches ? presented.view : state.view
   const displayViewRef = useRef(displayView)
   displayViewRef.current = displayView
   // Coalesced camera writes live on the editor (see Editor.setViewCoalesced)
@@ -280,8 +305,17 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   useLayoutEffect(() => discardPendingView(), [editor, editor.sessionGeneration, state.page])
   const host = useRef<HTMLDivElement>(null)
   const pendingBoardMove = useRef<Parameters<Editor['preview']>|null>(null)
+  useLayoutEffect(() => {
+    if (fallbackMove.current?.epoch === editor.sessionGeneration && fallbackMove.current.pageId === state.page)
+      fallbackMove.current.document = state.doc
+    syncFallbackMove()
+  }, [state.doc, state.selection, state.page, editor.sessionGeneration, presented])
   useEffect(() => editor.subscribe(() => {
     if (!editor.interactionActive) {
+      if (fallbackMove.current) {
+        fallbackMove.current.document = editor.state.doc
+        syncFallbackMove()
+      } else clearFallbackMove()
       retainedMove.current?.restore(); gpuMove.current?.end(editor.state.doc); restoreGpuOverlays(); pendingBoardMove.current = null
     }
   }), [editor])
@@ -417,6 +451,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }
   }, [editor])
   const drag = useRef<Drag | null>(null)
+  const guideIndex = useRef<{ drag: Drag; entries: readonly ReturnType<typeof scene>[number][]; rulers: boolean | undefined; ids: string;
+    index: ReturnType<typeof createSmartGuidesIndex> } | null>(null)
+  const releaseGuideIndex = () => { guideIndex.current?.index?.free(); guideIndex.current = null }
+  useEffect(() => releaseGuideIndex, [])
+  useEffect(() => { if (!editor.interactionActive) releaseGuideIndex() }, [editor.interactionActive, editor.sessionGeneration, state.page])
   const actionTrace = useMemo(() => canvasActions(editor), [editor])
   useEffect(() => {
     if (!textEdit || !actionTrace.enabled) return
@@ -653,6 +692,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     [snapshots, currentScene, state.doc, state.page, editor, editor.sessionGeneration, geometryReady])
   useLayoutEffect(() => editor.bindPublishedScene(interactionScene), [editor, interactionScene])
   const gpuInteraction = useMemo<InteractionProps>(() => ({ document: state.doc, selection: state.selection,
+    readinessRevision:gpuReadyRevision,
     active: editor.interactionActive, gestureKind: drag.current?.kind, epoch: editor.sessionGeneration, control: gpuMove, onReady: interactionReady,
     onPreviewFailed: failure => {
       recoverInteractionPreview(failure, { editor, pending: () => pendingBoardMove.current,
@@ -670,7 +710,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (gesture.actionToken) actionTrace.sample(gesture.actionToken, { posePresentedSequence: pose.sequence, poseLatencyMs: Math.round(pose.latencyMs) })
     },
     scene: interactionScene }),
-    [state.doc, state.selection, editor.interactionActive, editor.sessionGeneration, interactionReady, interactionScene, drag.current?.kind])
+    [state.doc, state.selection, editor.interactionActive, editor.sessionGeneration, interactionReady, interactionScene, drag.current?.kind,gpuReadyRevision])
   const sliceEntries = useMemo(() => entries.filter(entry => state.doc.nodes[entry.id].kind === 'slice'),
     [entries, state.doc])
   const lastOpenedSession = useRef(editor.sessionGeneration)
@@ -840,11 +880,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   useEffect(() => {
     if (!editPreviewSupported) { setRefineDocument(renderedDocument); return }
     if (editor.interactionActive) return
+    // A retained GPU surface already keeps the committed pose visible while
+    // exact rendering is prepared. It needs no SVG paint/coalescing delay.
+    if (gpuPreviewAvailable) { setRefineDocument(renderedDocument); return }
     // Give the current edit one paint opportunity before serializing a large
     // exact worker request. Rapid edits coalesce to the newest document.
     const timer = setTimeout(() => setRefineDocument(renderedDocument), 80)
     return () => clearTimeout(timer)
-  }, [renderedDocument, editPreviewSupported, editor.interactionActive])
+  }, [renderedDocument, editPreviewSupported, gpuPreviewAvailable, editor.interactionActive])
   function zoomCanvas(command: 'zoomIn' | 'zoomOut' | 'zoom100') {
     if (drag.current || pencil.current || utility.active()) return
     flushView()
@@ -1156,6 +1199,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   }, [editor])
   useEffect(() => {
     const el = host.current!
+    const wheelGesture=new WheelCameraGesture()
+    let wheelScope=''
     const wheel = (e: WheelEvent) => {
       if (pencil.current || (drag.current && drag.current.kind !== 'pan')) {
         e.preventDefault()
@@ -1173,14 +1218,18 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       // its mouse-wheel step instead of being magnified as a pinch.
       const pinch = isNativePinch(e, wheelModifiers.current)
       const wheelSize = { width: el.clientWidth, height: el.clientHeight }
-      const next = wheelCamera(v, e, wheelSize, screenPoint(e), editor.state.scrollWheelZoom, pinch)
+      const scope=`${editor.sessionGeneration}/${editor.state.page}`
+      if(scope!==wheelScope){wheelGesture.reset();wheelScope=scope}
+      const next = wheelGesture.update(v, e, wheelSize, screenPoint(e), editor.state.scrollWheelZoom, pinch)
       if (drag.current?.kind === 'pan') {
         const d = drag.current
         // Retain the pointer displacement already consumed by this gesture.
         d.view = { ...next, x: d.view.x + next.x - v.x, y: d.view.y + next.y - v.y }
       }
       recordNavigationInput(editor, e, wheelSize, next, pinch)
-      scheduleView(next)
+      if(import.meta.env.VITE_DESIGN_LEADING_PAN_INPUT==='1'&&next.zoom===v.zoom&&
+          (nativeSource||presentedSignal.getSnapshot().frame?.computeBackend==='webgpu'))editor.setViewCoalesced(next,true)
+      else scheduleView(next)
     }
     el.addEventListener('wheel', wheel, { passive: false })
     const modifiers = (e: KeyboardEvent) => { wheelModifiers.current = { ctrl: e.ctrlKey, meta: e.metaKey } }
@@ -1191,7 +1240,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       window.removeEventListener('keydown', modifiers, true)
       window.removeEventListener('keyup', modifiers, true)
     }
-  }, [editor])
+  }, [editor,nativeSource,presentedSignal])
   function fitView(onlySelection = false) {
     if (pencil.current || drag.current) return
     flushView()
@@ -1396,13 +1445,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if(titleId&&!title){host.current?.releasePointerCapture(e.pointerId);return}
       const hit = title || (displayedSnapshot && displayedIndex
         ? editor.selectionHit(p, e.metaKey || e.ctrlKey || s.tool === 'vector', displayedIndex, displayViewRef.current.zoom, displayedSnapshot) : null)
-      const groupIntent = selectedGroupDragIntent(
-        s.selection.length === 1 && ids.length === 1 ? s.doc.nodes[ids[0]] : null,
-        hit,
-        { inside: pointInContours(p, [selectionCorners]), deep: e.metaKey || e.ctrlKey || s.tool === 'vector',
-          additive: e.shiftKey || s.tool === 'multiselect',
-          readOnly: selectionFeedback.readOnly || !['select', 'scale'].includes(s.tool) },
-      )
+      const selectedNode = s.selection.length === 1 && ids.length === 1 ? s.doc.nodes[ids[0]] : null
+      const intentOptions = { inside: pointInContours(p, [selectionCorners]), deep: e.metaKey || e.ctrlKey || s.tool === 'vector',
+        additive: e.shiftKey || s.tool === 'multiselect',
+        readOnly: selectionFeedback.readOnly || !['select', 'scale'].includes(s.tool) }
+      const groupIntent = selectedGroupDragIntent(selectedNode, hit, intentOptions) ||
+        selectedChildDragIntent(selectedNode, hit, selected.find(entry => entry.id === selectedNode?.id)?.ancestors || [], intentOptions)
       const containerHit=hit&&selected.length>1&&selected.every(entry=>entry.ancestors.includes(hit))
       const gap = (!hit||containerHit) && ids.length>1 && !e.metaKey && !e.ctrlKey && ['select','scale'].includes(s.tool) && contains(selectionBox,p)
       const intent = groupIntent || selectionPointerDown(s.selection, gap?null:hit, e.shiftKey || s.tool==='multiselect',!!gap)
@@ -1725,6 +1773,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       let guidedX = false,
         guidedY = false
       if (editor.state.snap && !e.ctrlKey) {
+        const targetKey=d.ids.join(',')
+        if (!guideIndex.current || guideIndex.current.drag!==d || guideIndex.current.entries!==entries ||
+            guideIndex.current.rulers!==editor.state.rulers || guideIndex.current.ids!==targetKey) {
+          releaseGuideIndex()
         const movingIds = new Set(d.ids)
         // The kernel owns candidate collection and best-delta selection over
         // the dragged world rect; the canvas only supplies sibling rects
@@ -1745,12 +1797,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             if(Math.abs(guide.to.y-guide.from.y)<1e-9)siblings.push({x:Math.min(guide.from.x,guide.to.x),y:guide.from.y,width:Math.abs(guide.to.x-guide.from.x),height:0})
           }
         }
-        const snap = smartGuidesSnapWorld(
-          { x: d.box.x + dx, y: d.box.y + dy, width: d.box.width, height: d.box.height },
-          parent,
-          siblings,
-          6 / zoom,
-        )
+          guideIndex.current={drag:d,entries,rulers:editor.state.rulers,ids:targetKey,index:createSmartGuidesIndex(parent,siblings)}
+        }
+        const snap = guideIndex.current?.index?.snap(
+          { x: d.box.x + dx, y: d.box.y + dy, width: d.box.width, height: d.box.height }, 6 / zoom,
+        ) ?? {dx:0,dy:0,guides:[null,null]}
         // Shift constrains both the correction and the guide shown for it.
         const gx = moveAxes.x ? snap.guides[0] : null,
           gy = moveAxes.y ? snap.guides[1] : null
@@ -1833,13 +1884,15 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       actionTrace.sample(d.actionToken, { proposalChanged: compareActionGeometry(d.actionBefore, d.actionProposal) === 2 })
     }
     const placement = d.kind==='move'?{ids:d.ids,point:p,force:e.metaKey||e.ctrlKey,preserveParent:space.current}:undefined
+    const retainsParents = !placement || editor.canvasMovePreservesParents(placement.ids, placement.point, placement.force, placement.preserveParent)
     // Independent complete boards can follow the pointer on the compositor.
     // Keep one final authored mutation, using the same snapping/placement math.
     // Overlap, reparenting and Option-copy immediately use the regular path.
-    if ((d.kind === 'move' && !d.duplicating && !e.altKey && !e.metaKey && !e.ctrlKey ||
+    if ((d.kind === 'move' && retainsParents && !d.duplicating && !e.altKey && !e.metaKey && !e.ctrlKey ||
         d.kind === 'rotate' || d.kind === 'scale') && patches) {
       const offset = gpuMove.current?.apply(editor.state.doc, patches, d.actionToken ? actionTrace.token(d.actionToken) : undefined)
       if (offset) {
+        clearFallbackMove(); retainedMove.current?.restore()
         if (!gpuMove.current?.feedbackPending?.() && host.current) moveCanvasFeedback(host.current, d.ids, offset, gpuMovedOverlays.current)
         if (d.actionToken) actionTrace.sample(d.actionToken, { renderRouteCode: 1, poseSubmittedSequence: gpuMove.current?.inputSequence?.() || 0 })
         pendingBoardMove.current = [patches, placement]
@@ -1849,20 +1902,20 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (d.actionToken && gpuMove.current?.previewFailure?.())
         actionTrace.sample(d.actionToken, { poseFallbackReason: gpuMove.current.previewFailure() })
     }
-    if (d.kind === 'move' && !d.duplicating && !e.altKey && !e.metaKey && !e.ctrlKey && d.ids.length === 1 &&
+    // A translation owner must retire before another preview can take over.
+    // Affine owners remain alive until commit/cancel so their handoff survives.
+    if (d.kind === 'move') { gpuMove.current?.end(editor.state.doc); restoreGpuOverlays() }
+    if (d.kind === 'move' && retainsParents && !d.duplicating && !e.altKey && !e.metaKey && !e.ctrlKey && d.ids.length === 1 &&
       retainedMove.current?.apply(editor.state.doc, d.ids[0], patches[d.ids[0]].transform!)) {
+      clearFallbackMove()
       if(d.actionToken)actionTrace.sample(d.actionToken,{renderRouteCode:4})
       pendingBoardMove.current = [patches, placement]
       return
     }
     if (pendingBoardMove.current) { pendingBoardMove.current = null; retainedMove.current?.restore() }
     editor.preview(patches,placement)
-    // Only the translation fast path must retire its owner mid-gesture when
-    // falling back. Ending affine gestures (rotate/resize/scale) per sample
-    // tore the warm pose session down on every pointer event and consumed the
-    // ended-document fence, so the gesture-end handoff never engaged; those
-    // owners end once through the editor subscription after commit or cancel.
-    if (d.kind === 'move') gpuMove.current?.end(editor.state.doc)
+    if (d.kind === 'move' && !(geometryReady && !gpuPreviewAvailable && vectorPreviewSupported)) awaitFallbackMove()
+    else clearFallbackMove()
     restoreGpuOverlays()
     if (host.current) host.current.dataset.inputTiming = JSON.stringify(editor.lastPreviewTiming)
   }
@@ -2323,7 +2376,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         pixelPreview={state.pixelPreview}
       />}
       {!nativeSource&&showStartup && <StartupPreview preview={startupPreview!} view={state.view} loading={loading} width={size.width} height={size.height}/>}
-      {geometryReady && !gpuMove.current && <CanvasEditPreview document={renderedDocument} baseDocument={editBaseDocument.current} selection={state.selection} pageId={state.page}
+      {geometryReady && !gpuPreviewAvailable && <CanvasEditPreview document={renderedDocument} baseDocument={editBaseDocument.current} selection={state.selection} pageId={state.page}
         vectorSupported={vectorPreviewSupported} sourceHost={host} control={retainedMove} canCapture={!state.grid && !state.checkerboard && !!presentationScopeMatches && presented.document === state.doc && !presented.preview}
         view={displayView} size={size} visible={!!editPreviewVisible} inputAt={editInputAt.current}/>}
       {editPreviewVisible && <span className="canvas-edit-status" role="status">编辑预览 · 正在细化</span>}

@@ -66,3 +66,18 @@ test('pixel contracts retain page, sampling and native policy while ignoring cro
  for(const patch of [{pageId:'two'},{rasterProfile:'figma'},{transparent:true},{interactiveEffects:true},{gpuPainterSupport:true}])
   expect(pixelSourceContract({...a,...patch})).not.toBe(pixelSourceContract(a))
 })
+
+test('interior tiles carry pixel ownership even when they have no background texel',()=>{
+ const f=descriptorPresenter(()=>{}),owner={},next={},contract='page/native/full'
+ const proof={owner,contract,view:{x:0,y:0,zoom:1},bounds:[[4,4,28,12]],pixel:[.5/16,.5/16] as [number,number]}
+ const left=f.presenter.capture(16,16,proof),right=f.presenter.capture(16,16,undefined,{owner,contract})
+ const draw=()=>f.presenter.draw({view:{x:0,y:0,zoom:1},width:32,height:16,dpr:1,interaction:true,allowEmpty:true,allowBackground:true,backgroundTranslation:{x:4,y:0},
+  items:[left,right].map((tile,index)=>({active:true,layer:0,gutter:0,tile:{key:String(index),serial:1,gpuTile:tile.id,x:16*index,y:0,width:16,height:16,zoom:1},
+    placement:{left:4+16*index,top:0,width:16,height:16}}))})
+ draw();expect(f.presenter.snapshotPageTranslation(owner,next,{x:4,y:0},32,16,1,contract)).toBeDefined()
+ const entry=(f.presenter as any).textures.get(right.id)
+ for(const identity of [undefined,{owner:{},contract},{owner,contract:'different-math'}]){
+  entry.content=identity;draw()
+  expect(f.presenter.snapshotPageTranslation(owner,next,{x:4,y:0},32,16,1,contract)).toBeUndefined()
+ }
+})

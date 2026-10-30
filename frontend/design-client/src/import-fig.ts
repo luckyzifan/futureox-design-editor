@@ -1,4 +1,4 @@
-import { decode_fig_network_json, decode_fig_fill_commands_json, network_geometry_json } from './generated/design-kernel/design_kernel'
+import { decode_fig_network_json, decode_fig_rounded_network_json, decode_fig_fill_commands_json, network_geometry_json, fig_mask_suffixes } from './generated/design-kernel/design_kernel'
 import { assertImportInputBytes } from './import-input-policy'
 import { figArchive, inflateFigDeflate } from './import-fig-archive'
 export { figArchive } from './import-fig-archive'
@@ -26,6 +26,7 @@ import { emptySystem } from './design-system'
 import { importFigTextRuns } from './import-fig-text'
 import { figImageAdjust } from './import-fig-image'
 import { importFigComponents } from './import-fig-components'
+import { inverse } from './commands/affine'
 
 const MAX = 64 * 1024 * 1024
 function collector(limit = MAX, compressedLength?: number) {
@@ -176,8 +177,10 @@ const bytesData = (bytes: Uint8Array) => {
     binary += String.fromCharCode(...bytes.subarray(i, i + 32768))
   return btoa(binary)
 }
-function vectorBlob(bytes: Uint8Array, sx: number, sy: number, warnings: {add(message:string):unknown}): Pick<DesignNode,'network'|'vectorGeometry'> {
-  const decoded=JSON.parse(decode_fig_network_json(bytes,sx,sy)) as Pick<DesignNode,'network'|'vectorGeometry'>&{vertexStyles:number[];regionStyles:number[]}
+function vectorBlob(bytes: Uint8Array, sx: number, sy: number, warnings: {add(message:string):unknown},record:any): Pick<DesignNode,'network'|'vectorGeometry'> {
+  const rounded=record.cornerRadius>0||record.vectorData?.styleOverrideTable!==undefined
+  const decoded=JSON.parse(rounded?decode_fig_rounded_network_json(bytes,sx,sy,record.cornerRadius??0,record.cornerSmoothing??0,JSON.stringify(record.vectorData?.styleOverrideTable??null)):decode_fig_network_json(bytes,sx,sy)) as Pick<DesignNode,'network'|'vectorGeometry'>&{vertexStyles:number[];regionStyles:number[];cornersApplied?:boolean}
+  if(rounded&&!decoded.cornersApplied)warnings.add('FIG 矢量圆角包含尚不支持的轮廓、平滑或样式覆盖；源样式需要核对')
   if(decoded.vertexStyles.some(id=>id!==0)||decoded.regionStyles.some(id=>id!==0))warnings.add('FIG 矢量包含独立顶点或区域样式；几何与区域引用已保留，样式覆盖需要核对')
   return {...(decoded.network?{network:decoded.network}:{}),...(decoded.vectorGeometry?{vectorGeometry:decoded.vectorGeometry}:{})}
 }
@@ -386,7 +389,10 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
         offset: s.position ?? s.offset,
         color: gradientStopColor(s.color),
       }))
-    if (p.transform) result.transform = matrix(p.transform)
+    // FIG maps normalized node coordinates into gradient space; Paint stores
+    // the opposite direction. Image placement has its own convention below.
+    if(kind==='linear'){result.angle=0;result.transform=inverse(matrix(p.transform))}
+    else if (p.transform) result.transform = matrix(p.transform)
     if (kind === 'image') {
       const hash = Array.from(p.image?.hash || [], (v: any) =>
         Number(v).toString(16).padStart(2, '0'),
@@ -440,7 +446,11 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       })
       continue
     }
-    const kind = (
+    // Native FIG stores ordinary groups as resize-to-fit FRAME records.
+    // They have no clipping/auto-layout frame semantics (desigma fig.rs).
+    const nativeGroup = r.type === 'FRAME' && r.resizeToFit === true && r.isStateGroup !== true &&
+      (r.stackMode === undefined || r.stackMode === 'NONE')
+    const kind = nativeGroup ? 'group' : (
       {
         FRAME: 'frame',
         GROUP: 'group',
@@ -593,7 +603,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     if (r.vectorData?.vectorNetworkBlob !== undefined) {
       const normalized=r.vectorData.normalizedSize
       const sx=normalized?.x===undefined?1:n.width/normalized.x,sy=normalized?.y===undefined?1:n.height/normalized.y
-      Object.assign(n,vectorBlob(getBlob(r.vectorData.vectorNetworkBlob),sx,sy,warnings))
+      Object.assign(n,vectorBlob(getBlob(r.vectorData.vectorNetworkBlob),sx,sy,warnings,r))
     }
     if(r.type==='VECTOR'&&Array.isArray(r.fillGeometry)&&r.fillGeometry.length){
       const paths=r.fillGeometry.map((entry:any)=>({rule:entry.windingRule==='ODD'||entry.windingRule==='EVENODD'?'evenodd':'nonzero',commands:JSON.parse(decode_fig_fill_commands_json(getBlob(entry.commandsBlob))) as import('./model').CurveCommand[]}))
@@ -608,7 +618,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       n.fontSize = r.fontSize || 16
       n.textStyle = {
         ...defaultTextStyle(),
-        wrap: true,
+        wrap: r.textAutoResize !== 'WIDTH_AND_HEIGHT',
         paragraphSpacing: r.paragraphSpacing || 0,
         paragraphIndent: r.paragraphIndent || 0,
         align:
@@ -669,6 +679,25 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
   }
   if (!doc.pages.length) throw new Error('FIG 文件没有可导入页面')
   importFigComponents(doc, records, ids, toPaint)
+  // The shared model's direct mask owns its whole container. Native FIG masks
+  // only following siblings. Explicit identity groups keep all original node
+  // IDs, local coordinates, order and component override keys intact.
+  for(const parent of [...Object.values(doc.nodes),...doc.pages]){
+    const indices=fig_mask_suffixes(Uint8Array.from(parent.children,id=>Number(!!doc.nodes[id]?.mask&&doc.nodes[id].visible)))
+    const page=!('kind' in parent)
+    if(!indices.length||!page&&indices.length===1&&indices[0]===0)continue
+    if('kind' in parent&&(parent.booleanOperation||parent.layout&&parent.layout.mode!=='none')){
+      warnings.add('FIG 自动布局或布尔结构中的非首位或多重蒙版尚需核对，原始顺序已保留');continue
+    }
+    for(const at of indices){
+      if(!page&&at===0)continue
+      const group=node('group',0,0,'width' in parent?parent.width:1,'height' in parent?parent.height:1)
+      group.name='Mask group';group.blend='pass-through';group.fills=[];group.strokes=[];group.effects=[];group.clip=false
+      group.children=parent.children.slice(at)
+      doc.nodes[group.id]=group
+      parent.children=[...parent.children.slice(0,at),group.id]
+    }
+  }
   if (
     [...records.values()].some(
       (r) => r.prototypeInteractions || r.componentPropDefs || r.boundVariables,

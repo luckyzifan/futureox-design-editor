@@ -1,6 +1,7 @@
 import { assertImportInputBytes } from './import-input-policy'
 import { pinDocumentCapacity } from './document-capacity'
 import { importFig } from './import-fig'
+import { matchBundledImportFonts } from './bundled-import-fonts'
 import { initializeKernelModule } from './kernel/module'
 import { uid, type DesignDocument } from './model'
 type FileJob = { name: string; format: 'fig' | 'sketch' | 'sketch-library' | 'pdf' } & ({ bytes: ArrayBuffer } | { file: File })
@@ -59,7 +60,13 @@ self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>)
     } else if (event.data.format === 'fig') {
       await initializeKernelModule()
       importStage = 233 // decode
-      self.postMessage({ result: importFig(bytes, event.data.name) })
+      const result=importFig(bytes,event.data.name)
+      const fonts=await matchBundledImportFonts(result.document)
+      result.warnings=result.warnings.filter(warning=>{
+        const family=/^字体 (.+) 尚需匹配，已保留文字内容$/.exec(warning)?.[1]
+        return !family||!fonts.families.includes(family)||fonts.missing.some(name=>name===family||name.startsWith(family+'-')||name.startsWith(family+' '))
+      })
+      self.postMessage({ result })
     } else throw new Error('不支持的导入格式')
   } catch (error) {
     self.postMessage({ importStage, error: error instanceof Error ? error.message : String(error) })

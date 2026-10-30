@@ -109,6 +109,7 @@ struct Scanner<R, F> {
     sink: F,
     entries: usize,
     fragment_keys: Option<FragmentKeyBudget>,
+    compact_keys: bool,
 }
 impl<R: Read, F: FnMut(usize, Entry) -> io::Result<()>> Scanner<R, F> {
     fn peek(&mut self) -> io::Result<Option<u8>> {
@@ -274,6 +275,24 @@ impl<R: Read, F: FnMut(usize, Entry) -> io::Result<()>> Scanner<R, F> {
         }
         Ok(())
     }
+    /// Opaque nested objects have no field table. Keep only keys that can
+    /// introduce indexed descendants, while still validating every source byte.
+    /// Escapes, UTF-8 and buffer boundaries retain the original string parser.
+    fn object_key(&mut self,keep:bool,max:usize)->io::Result<String>{
+        if self.compact_keys&&!keep {
+            let bytes=self.input.fill_buf()?;
+            if bytes.first()==Some(&b'"') {
+                let tail=&bytes[1..];
+                if let Some(end)=tail.iter().position(|b|*b<32||*b>=128||matches!(b,b'"'|b'\\')) {
+                    if tail[end]==b'"' {
+                        let key=match &tail[..end] {b"layers"=>"layers",b"nodes"=>"nodes",_=>""};
+                        let key=key.to_owned();self.advance(end+2)?;return Ok(key)
+                    }
+                }
+            }
+        }
+        self.string(true,max).map(|key|key.unwrap())
+    }
     fn finish_field(&mut self, object: &mut ObjectFrame, mut field: Field, text: Option<String>) {
         if let Some(item) = &mut object.entry {
             if let Some(text) = text {
@@ -356,7 +375,7 @@ impl<R: Read, F: FnMut(usize, Entry) -> io::Result<()>> Scanner<R, F> {
                     if self.peek()? == Some(b']') { self.byte()?; continue; }
                     if array.count > 0 { self.expect(b',')?; }
                     let value = ValueFrame { depth: array.depth.checked_add(1).ok_or_else(|| invalid("JSON depth address overflow"))?,
-                        parent: array.parent, select: array.select, label: array.count.to_string(), array_children: false, member_start: None };
+                        parent: array.parent, select: array.select, label: if array.select||!self.compact_keys {array.count.to_string()}else{String::new()}, array_children: false, member_start: None };
                     array.count = array.count.checked_add(1).ok_or_else(|| invalid("JSON array address overflow"))?;
                     work.push(ScanWork::Array(array)); work.push(ScanWork::Value(value));
                 }
@@ -365,7 +384,7 @@ impl<R: Read, F: FnMut(usize, Entry) -> io::Result<()>> Scanner<R, F> {
                     if self.peek()? == Some(b'}') { self.close_object(object)?; continue; }
                     if !object.first { self.expect(b',')?; self.whitespace()?; }
                     let field_start = self.at;
-                    let key = self.string(true, string_limit)?.unwrap();
+                    let key = self.object_key(object.entry.is_some()||self.fragment_keys.is_some()||object.depth==0||object.label=="nodes",string_limit)?;
                     if let Some(budget) = &mut self.fragment_keys {
                         if object.fragment_keys.contains(key.as_str()) { return Err(invalid("Duplicate JSON object key in edit fragment")); }
                         budget.retain(key.len())?;
@@ -429,6 +448,7 @@ fn scan_at<R: Read, F: FnMut(usize, Entry) -> io::Result<()>>(
         sink,
         entries: 0,
         fragment_keys: None,
+        compact_keys:true,
     };
     scanner.value(depth, None, true, "JSON", true, None)?;
     scanner.whitespace()?;
@@ -454,6 +474,7 @@ pub fn validate_fragment(bytes: &[u8]) -> io::Result<()> {
         limit: MAX_FRAGMENT_BYTES,
         sink: |_, _| Ok(()),
         entries: 0,
+        compact_keys:false,
         fragment_keys: Some(FragmentKeyBudget {
             limit: bytes.len(),
             bytes: 0,
@@ -784,6 +805,23 @@ mod tests {
     const MAX_EXPANDED_BYTES: u64 = 4 * 1024 * 1024 * 1024;
     use super::*;
     use std::io::Cursor;
+    fn indexed_with_keys(source:&[u8],compact_keys:bool,capacity:usize)->serde_json::Value {
+        let mut entries=std::collections::BTreeMap::new();
+        {
+            let mut scanner=Scanner{input:BufReader::with_capacity(capacity,source),at:0,limit:MAX_EXPANDED_BYTES,
+                sink:|ordinal,entry|{entries.insert(ordinal,entry);Ok(())},entries:0,fragment_keys:None,compact_keys};
+            scanner.value(0,None,true,"JSON",true,None).unwrap();scanner.whitespace().unwrap();assert!(scanner.peek().unwrap().is_none());
+        }
+        serde_json::to_value(entries).unwrap()
+    }
+    #[test]
+    fn compact_opaque_keys_preserve_every_indexed_name_field_and_byte_range(){
+        let source=br#"{"layers":[{"id":"a","name":"a","style":{"ordinary":{"numbers":[0,1,2.25,-0.0],"no\u0064es":{"named":{"kind":"rect"},"other":{"style":{"layers":[{"id":"deep"}]}}}},"escaped\u006bey":{"layers":[{"name":"unicode-\u96ea"}]}},"points":[{"x":1,"y":2,"nested":{"nodes":{"unnamed":{"foo":true}}}},{"x":3,"y":4}]}]}"#;
+        let reference=indexed_with_keys(source,false,65536);
+        for capacity in [1,2,3,7,16,64,1024,65536] {assert_eq!(indexed_with_keys(source,true,capacity),reference,"buffer={capacity}");}
+        let names=reference.as_object().unwrap().values().filter_map(|v|v["name"].as_str()).collect::<Vec<_>>();
+        assert!(names.contains(&"named")&&names.contains(&"unnamed")&&names.contains(&"unicode-雪"));
+    }
     #[test]
     fn nested_subtree_index_keeps_source_context() {
         let source = br#"{"layers":[{"id":"a","frame":{"x":1},"points":[{"x":2}],"layers":[{"id":"b","frame":{"x":3}}]}]}"#;

@@ -206,6 +206,11 @@ impl RationalKernel {
         if radius > 512 {
             return Err("Box filter radius exceeds 512 pixels".into());
         }
+        Self::regional_box(radius)
+    }
+    /// Same rational operator, restricted to native streamed display plans.
+    pub(crate) fn regional_box(radius:u32)->Result<Self,String> {
+        if radius>1024{return Err("Regional box radius exceeds 1024 pixels".into());}
         let denominator = 2 * radius + 1;
         Ok(Self {
             denominator: Nat::from_u64(u64::from(denominator)),

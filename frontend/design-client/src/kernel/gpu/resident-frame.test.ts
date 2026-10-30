@@ -1,6 +1,22 @@
-import { expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
+import {compositeDrawPlan} from './composite-draw-plan'
 import { residentFrameMessage, residentFrameSignature } from './resident-frame'
 import type { ResidentFrame } from './resident-presenter'
+afterEach(()=>vi.unstubAllEnvs())
+test('absolute layer renaming preserves the actual painter and clipping plan, but changed order never reuses it',()=>{
+ vi.stubEnv('VITE_DESIGN_CANONICAL_COMPOSITE_ORDER','1')
+ const frame:ResidentFrame={view:{x:0,y:0,zoom:1},width:100,height:100,dpr:1,items:[0,1,2].map((i)=>({
+  active:true,layer:i===2?7:3,blend:i===2,gutter:0,tile:{key:String(i),serial:i,gpuTile:i+1,x:i*10,y:0,width:60,height:60,zoom:1},
+ }))}
+ const renamed={...frame,items:frame.items.map(item=>({...item,layer:item.layer===7?100:50}))}
+ const plan=(f:ResidentFrame)=>compositeDrawPlan(f.items as any,f.view,f.width,f.height).map(({item,placement,clip})=>({id:item.tile.serial,placement,clip}))
+ expect(plan(renamed)).toEqual(plan(frame))
+ expect(residentFrameSignature(renamed)).toBe(residentFrameSignature(frame))
+ const reordered={...renamed,items:renamed.items.map(item=>({...item,layer:item.layer===100?0:1}))}
+ expect(plan(reordered)).not.toEqual(plan(frame));expect(residentFrameSignature(reordered)).not.toBe(residentFrameSignature(frame))
+ expect(residentFrameSignature({...renamed,presentationId:'new-owner'})).not.toBe(residentFrameSignature(frame))
+ expect(residentFrameSignature({...renamed,terminalQuality:{qualitySequence:1,qualityRevision:1,pageToken:1}})).not.toBe(residentFrameSignature(frame))
+})
 test('camera messages cannot carry document trees, pixels, or raster diagnostics', () => {
   const tile = {
     key: 'tile',

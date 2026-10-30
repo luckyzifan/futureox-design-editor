@@ -21,39 +21,75 @@ fn stage_id(s: &Session, document: &Document) -> String {
 }
 
 fn append_batch(s:&Session,batch:&[(usize,usize)],cancel:&AtomicBool,context:&projection::SketchContext,
-    full:&mut Option<Document>,warnings:&mut std::collections::BTreeSet<String>)->Result<()> {
+    full:&mut Option<Document>,warnings:&mut std::collections::BTreeSet<String>,render_only:bool)->Result<()> {
     check_cancel(cancel).map_err(issue)?;
     match projection::sketch_batch_in(s,batch,64*1024*1024,cancel,context) {
-        Ok((doc,notes))=>{warnings.extend(notes);if let Some(full)=full {scene::merge_window(full,doc)?;}else{*full=Some(doc);}Ok(())}
+        Ok((mut doc,notes))=>{
+            // Export provenance stays in the immutable source and editable
+            // windows. The full-source display store never exports or edits
+            // this copy, and no renderer consumes sketch_containers. Avoid
+            // merging/serializing/decoding hundreds of MB of opaque receipts.
+            if render_only {if let Some(system)=&mut doc.design_system {system.sketch_containers.clear();}}
+            warnings.extend(notes);if let Some(full)=full {scene::merge_window(full,doc)?;}else{*full=Some(doc);}Ok(())}
         // A batch cannot relax existing image/dependency/window admission.
         // Split conservatively; a failing original singleton still fails.
         Err(_) if batch.len()>1=>{
             check_cancel(cancel).map_err(issue)?;
             let mid=batch.len()/2;
-            append_batch(s,&batch[..mid],cancel,context,full,warnings)?;
-            append_batch(s,&batch[mid..],cancel,context,full,warnings)
+            append_batch(s,&batch[..mid],cancel,context,full,warnings,render_only)?;
+            append_batch(s,&batch[mid..],cancel,context,full,warnings,render_only)
         }
         Err(error)=>Err(error),
     }
 }
 
+#[cfg(test)]
 pub(super) fn build(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool) -> Result<(Document, String, Vec<String>)> {
+    build_inner(s,layout,cancel,false)
+}
+fn build_inner(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool, render_only:bool) -> Result<(Document, String, Vec<String>)> {
     if layout.revision != s.revision { return Err(issue("Source canvas layout is stale")); }
     let context = projection::SketchContext::new(s)?;
     let mut full: Option<Document> = None;
     let mut warnings = std::collections::BTreeSet::new();
-    let mut batch=Vec::new();let mut batch_bytes=0u64;
+    let mut batches=Vec::new();let mut batch=Vec::new();let mut batch_bytes=0u64;
     for item in &layout.items {
         check_cancel(cancel).map_err(issue)?;
         let (p,n)=location(s,Some(&item.key))?;
         let bytes=s.parts[p].index.entries[n].span.len();
         if !batch.is_empty() && batch_bytes.saturating_add(bytes)>8*1024*1024 {
-            append_batch(s,&batch,cancel,&context,&mut full,&mut warnings)?;
-            batch.clear();batch_bytes=0;
+            batches.push(std::mem::take(&mut batch));batch_bytes=0;
         }
         batch.push((p,n));batch_bytes=batch_bytes.saturating_add(bytes);
     }
-    if !batch.is_empty(){append_batch(s,&batch,cancel,&context,&mut full,&mut warnings)?;}
+    if !batch.is_empty(){batches.push(batch);}
+    let mut geometry_pool=futureox_design_kernel::vector_geometry::GeometryPool::default();
+    // At most two independent CPU conversions. Refill a completed slot after
+    // merging its result in source order; a slow neighbouring batch no longer
+    // leaves the other conversion slot idle for the rest of a fixed pair.
+    let convert=|batch:&Vec<(usize,usize)>| {
+        let mut document=None;let mut notes=std::collections::BTreeSet::new();
+        append_batch(s,batch,cancel,&context,&mut document,&mut notes,render_only)?;
+        Ok::<_,BackendError>((document.ok_or_else(||issue("Empty source batch"))?,notes))
+    };
+    std::thread::scope(|scope| -> Result<()> {
+        let mut remaining=batches.iter();
+        let mut pending=std::collections::VecDeque::new();
+        for batch in remaining.by_ref().take(2) {
+            let convert=&convert;pending.push_back(scope.spawn(move||convert(batch)));
+        }
+        while let Some(next)=pending.pop_front() {
+            check_cancel(cancel).map_err(issue)?;
+            let (mut document,notes)=next.join().unwrap_or_else(|_|Err(issue("Source conversion worker failed")))?;
+            warnings.extend(notes);
+            for node in document.nodes.values_mut(){if let Some(geometry)=&mut node.vector_geometry{geometry_pool.intern(geometry);}}
+            if let Some(full)=&mut full {scene::merge_window(full,document)?;} else {full=Some(document);}
+            if let Some(batch)=remaining.next() {
+                let convert=&convert;pending.push_back(scope.spawn(move||convert(batch)));
+            }
+        }
+        Ok(())
+    })?;
     let mut document = full.ok_or_else(||issue("The source has no drawable canvas objects"))?;
     // Merge dependency masters at their original transforms first. Only then
     // translate displayed roots, so a visible master and its references retain
@@ -131,8 +167,11 @@ pub(super) fn build_individual(s: &Session, layout: &canvas_layout::Layout, canc
 
 pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool) -> Result<Value> {
     if s.canvas_snapshot.as_ref().is_none_or(|snapshot|snapshot.revision!=s.revision) {
-        let layout=canvas_layout::build(s,cancel)?;
-        let (document,stage_id,warnings)=build(s,&layout,cancel)?;
+        let layout=match &s.canvas_layout {
+            Some(layout) if layout.revision==s.revision => layout.clone(),
+            _ => canvas_layout::build(s,cancel)?,
+        };
+        let (document,stage_id,warnings)=build_inner(s,&layout,cancel,true)?;
         let path=s.directory.join(format!("canvas-native-{}.scene",s.revision));
         let next=s.directory.join("canvas-native.next");
         let result=(||{
