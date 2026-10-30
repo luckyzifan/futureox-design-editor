@@ -67,3 +67,13 @@ test('callers without a private version still observe mutations of the same fram
   expect(continuing()).toBe(true)
   mutable.items.push(item()); expect(continuing()).toBe(false)
 })
+
+test('a useful tile can survive a pan that arrives during rasterization, but not a changed density or covered gap',()=>{
+ let current=true,policy=true,version={},latest:ResidentFrame={...frame,items:[]}
+ const continued=vi.fn(),live=preparedTileContinuation(tile,()=>current,()=>policy,()=>latest,()=>version,continued)
+ expect(live()).toBe(true);expect(continued).not.toHaveBeenCalled()
+ current=false;expect(live()).toBe(true);expect(continued).toHaveBeenCalledOnce()
+ policy=false;expect(live()).toBe(false)
+ policy=true;latest={...latest,items:[item()]};version={};expect(live()).toBe(false)
+ latest={...latest,items:[],view:{...latest.view,x:5000}};version={};expect(live()).toBe(false)
+})

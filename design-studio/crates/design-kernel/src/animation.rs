@@ -182,7 +182,7 @@ pub struct Pose {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network: Option<Network>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub vector_geometry: Option<crate::vector_geometry::VectorGeometry>,
+    pub vector_geometry: Option<std::sync::Arc<crate::vector_geometry::VectorGeometry>>,
 }
 impl From<&Node> for Pose {
     fn from(n: &Node) -> Self {

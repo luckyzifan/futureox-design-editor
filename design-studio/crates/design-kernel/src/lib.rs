@@ -458,6 +458,20 @@ mod wasm {
         serde_json::to_string(&decoded).map_err(|e|JsValue::from_str(&e.to_string()))
     }
     #[wasm_bindgen]
+    pub fn fig_mask_suffixes(flags:&[u8])->Result<Vec<u32>,JsValue>{
+        fig_geometry::mask_suffixes(flags).map_err(|e|JsValue::from_str(&e))
+    }
+    #[wasm_bindgen]
+    pub fn decode_fig_rounded_network_json(bytes:&[u8],sx:f64,sy:f64,radius:f64,smoothing:f64,styles:&str)->Result<String,JsValue>{
+        let error=|e:String|JsValue::from_str(&e);
+        let mut decoded=fig_geometry::decode_network(bytes,sx,sy).map_err(error)?;
+        let styles:serde_json::Value=serde_json::from_str(styles).map_err(|e|error(e.to_string()))?;
+        let applied=fig_geometry::round_network(&mut decoded,radius,smoothing,&styles).map_err(error)?;
+        let mut result=serde_json::to_value(&decoded).map_err(|e|error(e.to_string()))?;
+        result["cornersApplied"]=serde_json::Value::Bool(applied);
+        serde_json::to_string(&result).map_err(|e|error(e.to_string()))
+    }
+    #[wasm_bindgen]
     pub fn decode_fig_commands_json(bytes:&[u8])->Result<String,JsValue>{
         let path=fig_geometry::decode_commands(bytes).map_err(|e|JsValue::from_str(&e))?;
         let commands=vector_geometry::encode(&path).map_err(|e|JsValue::from_str(&e))?;
@@ -673,6 +687,10 @@ mod wasm {
         effects::gaussian_box_radii(sigma)
             .map(|r| r.to_vec())
             .map_err(|e| JsValue::from_str(&e))
+    }
+    #[wasm_bindgen]
+    pub fn rational_region_box_kernel_rgba(radius:u32)->Result<Vec<u8>,JsValue>{
+        crate::rational_filter::RationalKernel::regional_box(radius).map(|kernel|kernel.encoded()).map_err(|e|JsValue::from_str(&e))
     }
     #[wasm_bindgen]
     pub fn rational_box_kernel_rgba(radius: u32) -> Result<Vec<u8>, JsValue> {
@@ -2297,7 +2315,17 @@ mod wasm {
         siblings: &[f64],
         threshold: f64,
     ) -> String {
-        let to_rect = |flat: &[f64]| -> Option<math::Rect> {
+        let fail_closed = serde_json::json!({"dx": 0., "dy": 0., "guides": [null, null]});
+        let Some(moving) = guide_rect(moving) else {
+            return fail_closed.to_string();
+        };
+        let parent = parent.as_deref().and_then(guide_rect);
+        let targets: Vec<math::Rect> = siblings.chunks(4).filter_map(guide_rect).collect();
+        let snap = smart_guides::snap(moving, parent, &targets, threshold);
+        guide_json(snap)
+    }
+
+    fn guide_rect(flat: &[f64]) -> Option<math::Rect> {
             let v: [f64; 4] = flat.try_into().ok()?;
             if !v.iter().all(|n| n.is_finite()) {
                 return None;
@@ -2310,14 +2338,9 @@ mod wasm {
                 w,
                 h,
             ))
-        };
-        let fail_closed = serde_json::json!({"dx": 0., "dy": 0., "guides": [null, null]});
-        let Some(moving) = to_rect(moving) else {
-            return fail_closed.to_string();
-        };
-        let parent = parent.as_deref().and_then(to_rect);
-        let targets: Vec<math::Rect> = siblings.chunks(4).filter_map(to_rect).collect();
-        let snap = smart_guides::snap(moving, parent, &targets, threshold);
+    }
+
+    fn guide_json(snap: smart_guides::Snap) -> String {
         let guide = |g: Option<smart_guides::Guide>| match g {
             Some(g) => serde_json::json!({
                 "axis": if matches!(g.axis, smart_guides::Axis::X) { "x" } else { "y" },
@@ -2333,6 +2356,21 @@ mod wasm {
             "guides": [guide(snap.guides[0]), guide(snap.guides[1])],
         })
         .to_string()
+    }
+
+    #[wasm_bindgen]
+    pub struct SmartGuidesIndex { inner: smart_guides::Index }
+    #[wasm_bindgen]
+    impl SmartGuidesIndex {
+        #[wasm_bindgen(constructor)]
+        pub fn new(parent: Option<Vec<f64>>, siblings: &[f64]) -> SmartGuidesIndex {
+            let parent=parent.as_deref().and_then(guide_rect);
+            let targets:Vec<_>=siblings.chunks(4).filter_map(guide_rect).collect();
+            Self {inner:smart_guides::Index::new(parent,&targets)}
+        }
+        pub fn snap(&self,moving:&[f64],threshold:f64)->String {
+            guide_json(guide_rect(moving).map(|r|self.inner.snap(r,threshold)).unwrap_or_default())
+        }
     }
 
     #[wasm_bindgen]

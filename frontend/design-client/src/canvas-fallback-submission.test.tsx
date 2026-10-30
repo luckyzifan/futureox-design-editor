@@ -21,19 +21,23 @@ import { paint, stroke } from './model'
 import { PencilInput } from './freehand'
 import * as handles from './selection-handles'
 
-const previewControl=vi.hoisted(()=>({supported:false}))
+const previewControl=vi.hoisted(()=>({supported:false,gpu:false}))
 vi.mock('./kernel/NativeSourceSurface',()=>({NativeSourceSurface:()=> <div data-testid="native-source-boundary"/>}))
 vi.mock('./edit-preview',()=>({supportsEditPreview:()=>previewControl.supported}))
 vi.mock('./CanvasEditPreview',()=>({CanvasEditPreview:()=>null}))
-const presentationControl = vi.hoisted(() => ({ hold: false, lastDocument: undefined as object | undefined, requests: [] as any[] }))
+const presentationControl = vi.hoisted(() => ({ hold: false, lastDocument: undefined as object | undefined, requests: [] as any[], present: () => {}, presenters: [] as Array<() => void> }))
 vi.mock('./kernel/Surface', async () => {
   const { useLayoutEffect } = await import('react')
   return { KernelSurface(props: import('./kernel/Surface').SurfaceProps) {
+    if(previewControl.gpu&&props.interaction)props.interaction.control.current={covers:()=>true,isActive:()=>false,apply:()=>null,end:()=>{}}
     useLayoutEffect(() => {
       presentationControl.requests.push({document:props.document,pageId:props.pageId,overview:props.overview})
-      if (presentationControl.hold) return
-      presentationControl.lastDocument = props.document
-      props.onPresentation?.({ ...props, epoch: props.presentationEpoch!, pixelRatio: 1, managed: false })
+      presentationControl.present = () => {
+        presentationControl.lastDocument = props.document
+        props.onPresentation?.({ ...props, epoch: props.presentationEpoch!, pixelRatio: 1, managed: false })
+      }
+      presentationControl.presenters.push(presentationControl.present)
+      if (!presentationControl.hold) presentationControl.present()
     }, [props.document, props.pageId, props.view, props.width, props.height, props.presentationEpoch, props.onPresentation])
     return <div data-testid="surface-boundary" />
   } }
@@ -42,8 +46,8 @@ let dom: any, root: Root, mount: HTMLDivElement, editor: Editor, errors: unknown
 let frames: Map<number, FrameRequestCallback>, frameId: number
 const baseline = process.env.CANVAS_EVENT_BASELINE === '1'
 beforeEach(() => {
-  previewControl.supported=false
-  presentationControl.hold = false; presentationControl.lastDocument = undefined;presentationControl.requests=[]
+  previewControl.supported=false;previewControl.gpu=false
+  presentationControl.hold = false; presentationControl.lastDocument = undefined;presentationControl.requests=[];presentationControl.presenters=[]
   dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://design.invalid/' })
   for (const name of ['window', 'document', 'navigator', 'HTMLElement', 'HTMLInputElement', 'HTMLTextAreaElement', 'HTMLCanvasElement', 'Element', 'Node', 'Event', 'MouseEvent', 'WheelEvent', 'KeyboardEvent', 'FocusEvent', 'localStorage'])
     vi.stubGlobal(name, name === 'window' ? dom.window : dom.window[name])
@@ -205,5 +209,43 @@ test('losing preview support cancels an existing eighty millisecond refinement t
  expect(presentationControl.requests.at(-1).document).toBe(current)
  await act(async()=>{await vi.advanceTimersByTimeAsync(100)})
  expect(presentationControl.requests.length).toBe(count);expect(presentationControl.requests.at(-1).document).toBe(current)
+ }finally{vi.useRealTimers()}
+})
+
+test('fallback selection stays with old content until the matching frame, including release and cancel',async()=>{
+ const n=node('rectangle',100,100,100,100),before=await render([n])
+ await act(async()=>editor.select([n.id]));presentationControl.hold=true
+ const outline=()=>mount.querySelector<HTMLElement>('[data-testid="canvas-selection-outline"]')!
+ await act(async()=>pointer('pointerdown',150,150))
+ await act(async()=>{pointer('pointermove',180,170);const queued=[...frames.values()];frames.clear();queued.forEach(fn=>fn(performance.now()))})
+ expect(editor.state.doc.nodes[n.id].transform.slice(4)).toEqual([130,120])
+ expect(outline().style.visibility).toBe('hidden')
+ await act(async()=>pointer('pointerup',180,170))
+ expect(outline().style.visibility).toBe('hidden')
+ expect(editor.state.doc.pages[0].children).toEqual(before.pages[0].children)
+ await act(async()=>presentationControl.presenters[0]())
+ expect(outline().style.visibility).toBe('hidden')
+ await act(async()=>presentationControl.present())
+ expect(outline().style.visibility).toBe('')
+ const committed=editor.state.doc
+ await act(async()=>pointer('pointerdown',180,170))
+ await act(async()=>{pointer('pointermove',200,190);const queued=[...frames.values()];frames.clear();queued.forEach(fn=>fn(performance.now()))})
+ expect(outline().style.visibility).toBe('hidden')
+ await act(async()=>pointer('pointercancel',200,190))
+ expect(editor.state.doc).toBe(committed)
+ expect(outline().style.visibility).toBe('')
+ await act(async()=>presentationControl.present())
+ expect(outline().style.visibility).toBe('')
+})
+
+
+test('a GPU-covered committed edit reaches the render surface without the fallback refinement delay',async()=>{
+ previewControl.gpu=true;const n=node('rectangle',100,100,100,100);await render([n]);vi.useFakeTimers()
+ try{
+  const shown=presentationControl.requests.at(-1).document
+  await act(async()=>{editor.select([n.id]);editor.begin('move');editor.preview({[n.id]:{transform:[1,0,0,1,160,120]}})})
+  expect(presentationControl.requests.at(-1).document).toBe(shown)
+  await act(async()=>editor.commit())
+  expect(presentationControl.requests.at(-1).document).toBe(editor.state.doc)
  }finally{vi.useRealTimers()}
 })

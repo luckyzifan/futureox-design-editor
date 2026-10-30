@@ -55,8 +55,23 @@ pub fn rounded_polygon(points: &[Point], radius: f64) -> Path {
     if radius <= 0. || points.len() < 3 {
         return Path::polygon(points, true);
     }
+    rounded_polygon_with(points, |_|radius)
+}
+
+/// Explicit imported per-vertex circular corners. Zero keeps a sharp vertex.
+pub fn rounded_polygon_radii(points:&[Point],radii:&[f64])->Result<Path,String>{
+    if points.len()!=radii.len() || radii.iter().any(|r|!r.is_finite()||*r<0.) {
+        return Err("Invalid polygon corner radii".into());
+    }
+    if points.len()<3{return Ok(Path::polygon(points,true));}
+    Ok(rounded_polygon_with(points,|i|radii[i]))
+}
+
+fn rounded_polygon_with(points:&[Point],radius:impl Fn(usize)->f64)->Path {
     let mut corners = Vec::with_capacity(points.len());
     for (i, &at) in points.iter().enumerate() {
+        let radius=radius(i);
+        if radius==0. {corners.push((at,at,None));continue;}
         let before = points[(i + points.len() - 1) % points.len()];
         let after = points[(i + 1) % points.len()];
         let l1 = (before.x - at.x).hypot(before.y - at.y);

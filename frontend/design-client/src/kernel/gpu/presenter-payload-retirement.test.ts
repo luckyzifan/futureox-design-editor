@@ -57,7 +57,7 @@ function fixture(){
   const device={queue,lost,limits:{maxTextureDimension2D:16384},createBindGroupLayout:()=>({}),createShaderModule:()=>({}),createPipelineLayout:()=>({}),
     createRenderPipeline:()=>({getBindGroupLayout:()=>({})}),createSampler:()=>({}),
     createBuffer:({size}:{size:number})=>new Resource(queue,size,'owned-buffer'),
-    createTexture:({size,format}:{size:number[];format:string})=>new Resource(queue,size[0]*size[1]*(format==='rgba16float'?8:4),'owned-texture',size[0],size[1]),
+    createTexture:({size,format}:{size:number[];format:string})=>new Resource(queue,size[0]*size[1]*(size[2]||1)*(format==='rgba16float'?8:4),'owned-texture',size[0],size[1]),
     createBindGroup:({entries}:{entries:{resource:{texture?:Resource;buffer?:Resource}}[]})=>({uses:entries.flatMap(entry=>entry.resource.texture||entry.resource.buffer||[])}),
     createCommandEncoder:()=>{
       const uses=new Set<Resource>()
@@ -79,6 +79,56 @@ function frame(id?:number,width=16,height=16):ResidentFrame{
 }
 
 const flush = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve() }
+test('an explicitly partial camera preview cannot certify full native coverage, and final frames still wait for it',()=>{
+ const f=fixture(),tile=f.presenter.capture(16,16),partial=frame(tile.id,32,32)
+ partial.items[0].tile.width=16;partial.items[0].tile.height=16
+ partial.terminalQuality={qualitySequence:1,qualityRevision:1,pageToken:1}
+ f.presenter.draw(partial)
+ expect(f.reports.at(-1)).toMatchObject({pixelCoverageComplete:false,nativeCoverageComplete:false,qualityTerminal:false})
+ const submissions=f.queue.epoch
+ f.presenter.draw({...partial,allowEmpty:false})
+ expect(f.queue.epoch).toBe(submissions)
+ expect(f.reports.at(-1)).toMatchObject({coverageDeferred:1})
+ f.presenter.dispose()
+})
+test('four retained phases share the unchanged ledger and cannot use byte encoding',()=>{
+ const f=fixture()
+ expect(()=>f.presenter.capture(1,1,undefined,undefined,false,4)).toThrow(/sample encoding/)
+ const captured=f.presenter.capture(4096,4096,undefined,undefined,true,4)
+ expect(f.presenter.payloadStats.liveBytes).toBe(512*MiB)
+ expect(captured.texture).toHaveProperty('bytes',512*MiB)
+ expect(()=>f.presenter.capture(1,1)).toThrow(/display resident budget exceeded/)
+ f.presenter.dispose();expect(captured.texture).toHaveProperty('destroyCalls',1)
+})
+test('four phase composition charges all accumulation layers and retires them on replacement',async()=>{
+ const f=fixture(),captured=f.presenter.capture(16,16,undefined,undefined,true,4)
+ const current=frame(captured.id);current.linearBlend=true;current.items[0].blend=true
+ f.presenter.draw(current)
+ const old=(f.presenter as any).linearTarget
+ expect(old.samples).toBe(4)
+ expect(f.presenter.residentBytes).toBe(16*16*(32+32+4))
+ expect(f.reports.at(-1)).toMatchObject({compositorDraws:5})
+ const replacement=frame(captured.id,32,32);replacement.linearBlend=true;replacement.items[0].blend=true
+ f.presenter.draw(replacement)
+ expect(old.texture.destroyCalls).toBe(1)
+ expect(f.presenter.payloadStats.retiringBytes).toBe(16*16*(32+4))
+ f.queue.completeThrough(f.queue.epoch);await flush()
+ expect(f.presenter.payloadStats.retiringBytes).toBe(0)
+ f.presenter.dispose()
+})
+test('linear retained captures charge all eight bytes per pixel against the unchanged display ledger',()=>{
+ const f=fixture(),captured=f.presenter.capture(8192,8192,undefined,undefined,true)
+ expect(f.presenter.payloadStats.liveBytes).toBe(512*MiB)
+ expect((f.presenter as any).textures.get(captured.id).linear).toBe(true)
+ expect(()=>f.presenter.capture(1,1)).toThrow(/display resident budget exceeded/)
+ f.presenter.release([captured.id]);f.presenter.dispose()
+})
+test('linear retained pixels cannot be silently interpreted as encoded display bytes',()=>{
+ const f=fixture(),captured=f.presenter.capture(16,16,undefined,undefined,true)
+ expect(()=>f.presenter.draw(frame(captured.id))).toThrow(/require linear composition/)
+ const normal=frame(captured.id);normal.linearBlend=true;normal.items[0].blend=true
+ expect(()=>f.presenter.draw(normal)).not.toThrow();f.presenter.dispose()
+})
 // All allocation sizes below are descriptors only. No real GPU or large arrays.
 test('queued released payload remains charged until its prefix, not immediately reusable', async () => {
   const f=fixture(),close=vi.fn(),id=f.presenter.import({width:8192,height:8192,close} as unknown as ImageBitmap)

@@ -43,6 +43,18 @@ function fixture(allowIdleWarm = true, shared = true) {
   return { owner, document, root, selected, props, view, prepare, move, flush }
 }
 
+test('a deferred neutral-group selection upgrades to independent pixels once its real canvas settles',async()=>{
+ const f=fixture();vi.stubEnv('VITE_DESIGN_NEUTRAL_PAGE_GROUP','1')
+ f.root.kind='group';f.root.fills=[]
+ f.prepare(undefined);await f.flush();expect(transport.jobs).toHaveLength(0)
+ f.prepare(f.document);await f.flush()
+ expect(transport.jobs).toHaveLength(1)
+ expect(transport.jobs[0].options.gpuRoots).toEqual([f.selected.id])
+ transport.jobs[0].resolve({gpuTile:901});await f.flush()
+ expect(f.owner.ready).toBe(true)
+ expect(f.move()).not.toBeNull();await f.flush();expect(transport.jobs).toHaveLength(1)
+})
+
 test('waits for full canvas readiness and 150 ms of stable idle time, then warms once without activating or editing', async () => {
   const f = fixture(), original = JSON.stringify(f.document)
   f.prepare(undefined); await vi.advanceTimersByTimeAsync(500)

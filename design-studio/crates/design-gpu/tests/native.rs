@@ -1266,3 +1266,25 @@ async fn zoom_cropped_gpu_retains_remote_source_pixels() {
     let scene=engine.compile_gpu(&options).unwrap();let cpu=engine.render(&options).unwrap();let native=gpu.render(&scene).unwrap();
     assert_eq!(cpu,native.rgba);assert!(native.rgba.chunks_exact(4).all(|p|p[3]==255));
 }
+
+#[tokio::test]
+#[cfg_attr(not(feature = "hardware-tests"), ignore = "requires actual GPU host")]
+async fn outline_mask_geometry_matches_cpu_on_real_gpu() {
+    let mut gpu=NativeGpu::new(Backends::PRIMARY).await.unwrap();
+    for (fill,stroke) in [(true,false),(false,true),(true,true)] {
+        let d=json!({"schemaVersion":4,"id":"d","name":"outline","pages":[{"id":"p","name":"p","children":["g"],"background":"#ffffff"}],"nodes":{
+            "g":{"id":"g","kind":"group","width":97,"height":73,"children":["m","c"]},
+            "m":{"id":"m","kind":"ellipse","mask":true,"maskType":"outline","width":35,"height":35,"transform":[1,0,0,1,12.25,12.375],"opacity":0.2,
+                "fills":[{"kind":"solid","color":"color(srgb 0 0 0 / 0.1)","opacity":0.1,"visible":fill}],
+                "strokes":[{"visible":stroke,"width":4,"align":"outside","paint":{"kind":"solid","color":"#000000","opacity":0.1}}],
+                "effects":[{"kind":"blur","radius":5,"color":"#000000","opacity":1}]},
+            "c":{"id":"c","kind":"rectangle","width":97,"height":73,"fills":[{"kind":"solid","color":"#ff0000"}]}
+        }}).to_string();
+        assert_parity(&mut gpu,&d,&options());
+        let mut container:Value=serde_json::from_str(&d).unwrap();
+        let mut leaf=container["nodes"]["m"].clone();leaf["id"]=json!("leaf");leaf["mask"]=json!(false);
+        container["nodes"]["leaf"]=leaf;
+        container["nodes"]["m"]=json!({"id":"m","kind":"frame","mask":true,"maskType":"outline","clip":true,"width":97,"height":73,"children":["leaf"]});
+        assert_parity(&mut gpu,&container.to_string(),&options());
+    }
+}

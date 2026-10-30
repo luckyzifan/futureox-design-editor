@@ -26,6 +26,40 @@ test('source planners share no mutable demand ownership',()=>{
  expect(b.plan({x:0,y:0,zoom:4},2,800,600,false)).toBe(second)
 })
 
+test('a presented fractional lattice survives large pure pans without a new density rung',()=>{
+ const planner=new SourceViewportPlanner('figmaSubpixel',true),view={x:.25,y:.375,zoom:.404}
+ const base=planner.plan(view,2,800,600,false)
+ planner.presented(view,2,800,600)
+ for(const [dx,dy] of [[64,0],[512,0],[0,512],[-512,0],[0,-512]]){
+  const next={...view,x:view.x+dx,y:view.y+dy}
+  // The surface also probes the settled demand on every input. That probe
+  // has no authority to replace the last actually presented lattice.
+  planner.plan(next,2,800,600,false)
+  const moving=planner.plan(next,2,800,600,true)
+  expect(moving.raster).toEqual(base.raster)
+  expect(moving.exact).toBe(true)
+  const shared=moving.tiles.filter(t=>base.tiles.some(u=>u.x===t.x&&u.y===t.y))
+  expect(shared.length).toBeGreaterThan(0)
+  expect(shared.every(t=>base.keys.has(t.key))).toBe(true)
+ }
+ const fractional={...view,x:view.x+64.125}
+ expect(planner.plan(fractional,2,800,600,true).exact).toBe(false)
+ const settled=planner.plan(fractional,2,800,600,false)
+ expect(settled.exact).toBe(true);expect(settled.raster.phase).not.toEqual(base.raster.phase)
+ planner.presented(fractional,2,800,600)
+ expect(planner.plan(fractional,2,800,600,true).raster).toEqual(settled.raster)
+ expect(planner.plan({...view,zoom:1.5},2,800,600,true).raster.scale).toBeGreaterThanOrEqual(3)
+ expect(planner.plan(view,3,800,600,true).raster.scale).toBeGreaterThanOrEqual(view.zoom*3)
+})
+
+test('a retained native lattice does not suppress screen-anchored byte dithering',()=>{
+ const planner=new SourceViewportPlanner('figma',false),view={x:.25,y:.375,zoom:1}
+ const base=planner.plan(view,1,800,600,false);planner.presented(view,1,800,600)
+ const moving=planner.plan({...view,x:1.25},1,800,600,true)
+ expect(moving.raster.camera).not.toEqual(base.raster.camera)
+ expect(moving.exact).toBe(false)
+})
+
 test('2% through 25600% retain native DPR without a 128x tile rejection',()=>{
  const planner=new SourceViewportPlanner('figmaSubpixel',true)
  for(const zoom of [.02,32,64,128,256])for(const dpr of [1,2,3,4]){

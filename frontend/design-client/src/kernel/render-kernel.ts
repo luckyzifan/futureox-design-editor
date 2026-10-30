@@ -18,7 +18,11 @@ export type NativeSourceIdentity={documentId:string;pageId:string;stageId:string
 export class RenderKernel {
   compileStats?:Record<string,unknown>
   documentForks = 0
+  private documentLoadForked = false
+  get lastDocumentLoadWasForked() { return this.documentLoadForked }
   private settings = 'null'
+  private assetLease = { users: 1 }
+  private imageMips = false
   private resources = new FrameResources()
   private contentOwner:object = {}
   /** Worker-private identity bound to compiled pixel sources; never on wire. */
@@ -52,7 +56,33 @@ export class RenderKernel {
   constructor(private assets: VectorEngine, private lane: string, private preparation?: PreparationChannel) {
     if(!preparation)assets.bind_frame_scene_scope(crypto.randomUUID())
   }
+  /** Native/worker preparation owns documents independently. Only its local
+   * image-only decoder may be shared after the render worker proves a common
+   * immutable resource owner. A settings change copies this decoder owner,
+   * never mutates the other lane's colour configuration. */
+  shareImageDecoder(source: RenderKernel): boolean {
+    if (!this.preparation || this.preparation !== source.preparation || this === source ||
+        this.settings !== source.settings || this.imageMips !== source.imageMips) return false
+    if (this.assets === source.assets) return true
+    if (--this.assetLease.users === 0) this.assets.free()
+    this.assets = source.assets
+    this.assetLease = source.assetLease
+    this.assetLease.users++
+    return true
+  }
+  private detachImageDecoder() {
+    if (this.assetLease.users === 1) return
+    this.assetLease.users--
+    this.assetLease = { users: 1 }
+    this.assets = new VectorEngine()
+    this.assets.set_image_mips(this.imageMips)
+    const colorManagement=JSON.parse(this.settings)||undefined
+    this.assets.load_document(JSON.stringify({...blank(),schemaVersion:colorManagement?3:2,
+      rasterProfile:colorManagement?'figma':'analytic',colorManagement}))
+  }
   async initialize(mips: boolean, font?: Uint8Array) {
+    this.detachImageDecoder()
+    this.imageMips = mips
     this.assets.set_image_mips(mips)
     if (this.preparation) await this.call('initialize', [mips])
     else if (font) this.assets.load_font(font)
@@ -63,8 +93,10 @@ export class RenderKernel {
       const reply = await this.preparation.request(this.lane, method, args, signal)
       if(reply.compileStats)this.compileStats=reply.compileStats
       if (reply.documentFork) this.documentForks++
+      if (method === 'load_document') this.documentLoadForked = reply.documentFork === true && !!reply.stateReceipt
       if (reply.settings !== undefined && reply.settings !== this.settings) {
         const colorManagement = JSON.parse(reply.settings) || undefined
+        this.detachImageDecoder()
         this.assets.load_document(JSON.stringify({ ...blank(), schemaVersion: colorManagement ? 3 : 2,
           rasterProfile: colorManagement ? 'figma' : 'analytic', colorManagement }))
         this.settings = reply.settings
@@ -87,6 +119,7 @@ export class RenderKernel {
     }
   }
   async load_document(value: string) {
+    this.documentLoadForked = false
     this.contentOwner={}; this.revision++; this.pendingMutations++; this.pendingPackets.clear(); this.resources.clear()
     try { await this.call<void>('load_document', [value]) }
     finally { this.pendingMutations-- }

@@ -492,6 +492,7 @@ fn visit(
     scene.nodes.insert(
         id.clone(),
         GpuNode {
+            gaussian_region:None,
             opaque_coverage: false,
             passthrough: false,
             backdrop_box: [0.; 4],

@@ -49,9 +49,88 @@ pub struct Decoded {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub network: Option<Network>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub vector_geometry: Option<VectorGeometry>,
+    pub vector_geometry: Option<std::sync::Arc<VectorGeometry>>,
     pub vertex_styles: Vec<u32>,
     pub region_styles: Vec<u32>,
+}
+
+/// Figma masks only the suffix after each visible mask. Multiple masks nest
+/// (desigma draw_children recurses into the suffix); process right to left so
+/// adding one explicit scope cannot change any earlier source index.
+pub fn mask_suffixes(flags:&[u8])->Result<Vec<u32>,String>{
+    if flags.len()>u32::MAX as usize||flags.iter().any(|v|*v>1){return Err("Invalid FIG mask flags".into());}
+    Ok(flags.iter().enumerate().rev().filter_map(|(i,v)|(*v==1).then_some(i as u32)).collect())
+}
+
+/// Bake known circular corners on a single closed straight contour. Preserve
+/// the ordinary decoder for branches, curves, paint overrides and smoothing.
+/// Those styles remain explicitly untranslated rather than guessed.
+pub fn round_network(decoded:&mut Decoded,radius:f64,smoothing:f64,styles:&serde_json::Value)->Result<bool,String>{
+    if !radius.is_finite()||radius<0.||!smoothing.is_finite(){return Err("Invalid FIG corner radius".into());}
+    if smoothing!=0.||decoded.region_styles.iter().any(|id|*id!=0){return Ok(false);}
+    let Some(network)=&decoded.network else{return Ok(false)};
+    if network.vertices.len()<3||network.vertices.len()!=network.edges.len()||
+        network.edges.iter().any(|e|e.c1.is_some()||e.c2.is_some()){return Ok(false);}
+    let mut overrides=std::collections::HashMap::new();
+    if let Some(styles)=styles.as_array(){
+        for style in styles{
+            let Some(map)=style.as_object() else{return Ok(false)};
+            if map.keys().any(|key|!matches!(key.as_str(),"styleID"|"cornerRadius")){return Ok(false);}
+            let Some(id)=style.get("styleID").and_then(serde_json::Value::as_u64).and_then(|n|u32::try_from(n).ok()) else{return Ok(false)};
+            let Some(r)=style.get("cornerRadius").and_then(serde_json::Value::as_f64) else{return Ok(false)};
+            if !r.is_finite()||r<0.{return Err("Invalid FIG vertex radius".into());}
+            if overrides.insert(id,r).is_some(){return Ok(false);}
+        }
+    }
+    let mut corners=std::collections::HashMap::new();
+    for (vertex,style) in network.vertices.iter().zip(&decoded.vertex_styles){
+        let r=if *style==0{radius}else{let Some(r)=overrides.get(style) else{return Ok(false)};*r};
+        if corners.insert((vertex.x.to_bits(),vertex.y.to_bits()),r).is_some(){return Ok(false);}
+    }
+    if let Some(faces)=&network.filled_faces{
+        if faces.len()!=1||faces[0].len()!=network.edges.len()||
+            faces[0].iter().collect::<std::collections::HashSet<_>>().len()!=network.edges.len(){return Ok(false);}
+    }
+    let (fill,_)=network.paths()?;
+    let mut points=Vec::new();let mut closed=false;
+    for command in &fill.commands{
+        match command{
+            Command::Move(p) if points.is_empty()=>points.push(*p),
+            Command::Line(p) if !closed=>points.push(*p),
+            Command::Close if !closed=>closed=true,
+            _=>return Ok(false),
+        }
+    }
+    if points.first()==points.last(){points.pop();}
+    if !closed||points.len()!=network.vertices.len(){return Ok(false);}
+    let radii:Option<Vec<_>>=points.iter().map(|p|corners.get(&(p.x.to_bits(),p.y.to_bits())).copied()).collect();
+    let Some(radii)=radii else{return Ok(false)};
+    let circular=crate::authoring_shapes::rounded_polygon_radii(&points,&radii)?;
+    // Native Figma circular vector corners export as cubic Beziers (the
+    // quarter-circle control length is radius * 4/3*tan(pi/8)). Convert only
+    // these imported corner commands explicitly; generic native Arc encoding
+    // retains its existing refusal to approximate parametric authored arcs.
+    let mut path=Path::default();
+    for command in circular.commands{
+        match command{
+            Command::Arc{center,radius,start,sweep}=>{
+                let steps=(sweep.abs()/std::f64::consts::FRAC_PI_2).ceil().max(1.) as usize;
+                for step in 0..steps{
+                    let a=start+sweep*step as f64/steps as f64;
+                    let b=start+sweep*(step+1) as f64/steps as f64;
+                    let k=4./3.*((b-a)/4.).tan();
+                    let p=|t:f64|Point::new(center.x+radius.x*t.cos(),center.y+radius.y*t.sin());
+                    let tangent=|t:f64|Point::new(-radius.x*t.sin(),radius.y*t.cos());
+                    path.commands.push(Command::Cubic(p(a)+tangent(a)*k,p(b)-tangent(b)*k,p(b)));
+                }
+            },
+            command=>path.commands.push(command),
+        }
+    }
+    decoded.vector_geometry=Some(VectorGeometry::from_paths(&path,&path,&network.fill_rule)?.into());
+    decoded.network=None;
+    decoded.vertex_styles.fill(0);
+    Ok(true)
 }
 fn emit(
     path: &mut Path,
@@ -263,7 +342,7 @@ pub fn decode_network(bytes: &[u8], sx: f64, sy: f64) -> Result<Decoded, String>
     drop(faces);
     Ok(Decoded {
         network: None,
-        vector_geometry: Some(geometry),
+        vector_geometry: Some(geometry.into()),
         vertex_styles,
         region_styles,
     })

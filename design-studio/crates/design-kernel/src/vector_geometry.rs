@@ -285,3 +285,129 @@ impl VectorGeometry {
         Ok(network)
     }
 }
+
+/// Exact immutable geometry identity. Hashing is only an index; comparison
+/// retains every binary64 bit (including signed zero), curve order and the
+/// distinction between absent and explicitly empty stroke geometry.
+#[derive(Clone)]
+pub(crate) struct GeometryKey(pub(crate) std::sync::Arc<VectorGeometry>);
+fn curve_words(curve:&Curve)->(u8,&[f64]) {
+    match curve {Curve::Move(p)=>(0,p),Curve::Line(p)=>(1,p),Curve::Quad(p)=>(2,p),Curve::Cubic(p)=>(3,p),Curve::Close=>(4,&[])}
+}
+impl std::hash::Hash for GeometryKey {
+    fn hash<H:std::hash::Hasher>(&self,state:&mut H){
+        self.0.fill_rule.hash(state);
+        for curves in [Some(&self.0.fill),self.0.stroke.as_ref()] {
+            curves.is_some().hash(state);
+            if let Some(curves)=curves {
+                curves.len().hash(state);
+                for curve in curves {let (kind,words)=curve_words(curve);kind.hash(state);for word in words {word.to_bits().hash(state)}}
+            }
+        }
+    }
+}
+impl PartialEq for GeometryKey {
+    fn eq(&self,other:&Self)->bool {
+        if std::sync::Arc::ptr_eq(&self.0,&other.0){return true}
+        let same=|a:&[Curve],b:&[Curve]|a.len()==b.len()&&a.iter().zip(b).all(|(a,b)|{
+            let (ka,a)=curve_words(a);let(kb,b)=curve_words(b);ka==kb&&a.iter().zip(b).all(|(a,b)|a.to_bits()==b.to_bits())
+        });
+        self.0.fill_rule==other.0.fill_rule&&same(&self.0.fill,&other.0.fill)&&match (&self.0.stroke,&other.0.stroke){
+            (None,None)=>true,(Some(a),Some(b))=>same(a,b),_=>false,
+        }
+    }
+}
+impl Eq for GeometryKey {}
+
+/// A build-local pool. Node retains the immutable source; ordinary edits use
+/// Arc::make_mut and detach only the geometry being edited.
+#[derive(Default)]
+pub struct GeometryPool { values:std::collections::HashSet<GeometryKey> }
+impl GeometryPool {
+    pub fn intern(&mut self,value:&mut std::sync::Arc<VectorGeometry>){
+        let key=GeometryKey(value.clone());
+        if let Some(known)=self.values.get(&key){*value=known.0.clone()}else{self.values.insert(key);}
+    }
+}
+
+#[cfg(test)] mod sharing_tests {
+    use super::*;
+    use std::sync::Arc;
+    fn geometry()->VectorGeometry {VectorGeometry{fill_rule:"nonzero".into(),fill:vec![Curve::Move([-0.,1.]),Curve::Line([10.,0.]),Curve::Line([10.,10.]),Curve::Close],stroke:None}}
+    #[test] fn immutable_curves_share_and_a_resize_detaches_only_the_edited_value(){
+        let mut a=Arc::new(geometry());let mut b=Arc::new(geometry());let mut pool=GeometryPool::default();
+        pool.intern(&mut a);pool.intern(&mut b);assert!(Arc::ptr_eq(&a,&b));
+        let before=serde_json::to_vec(&a).unwrap();Arc::make_mut(&mut b).scale(2.,3.);
+        assert!(!Arc::ptr_eq(&a,&b));assert_eq!(serde_json::to_vec(&a).unwrap(),before);assert_ne!(serde_json::to_vec(&b).unwrap(),before);
+    }
+    #[test] fn sharing_never_collapses_signed_zero_or_explicit_empty_strokes(){
+        let mut a=Arc::new(geometry());let mut positive=geometry();positive.fill[0]=Curve::Move([0.,1.]);
+        let mut positive=Arc::new(positive);let mut empty=geometry();empty.stroke=Some(vec![]);let mut empty=Arc::new(empty);
+        let mut pool=GeometryPool::default();for value in [&mut a,&mut positive,&mut empty]{pool.intern(value)}
+        assert!(!Arc::ptr_eq(&a,&positive));assert!(!Arc::ptr_eq(&a,&empty));
+        assert_ne!(GeometryKey(a.clone())==GeometryKey(positive.clone()),true);
+    }
+}
+
+#[cfg(not(target_arch="wasm32"))]
+pub(crate) mod packed {
+    use super::{Curve,VectorGeometry,MAX_COMMANDS,curve_words};
+    use base64::Engine as _;
+    use serde::{Serialize,Deserialize};
+    const MAX_BYTES:usize=4+MAX_COMMANDS*49;
+    #[derive(Serialize,Deserialize)]
+    #[serde(rename_all="camelCase",deny_unknown_fields)]
+    pub(crate) struct PackedGeometry {fill_rule:String,fill:String,stroke:Option<String>}
+    fn encode(curves:&[Curve])->Result<String,String>{
+        if curves.len()>MAX_COMMANDS{return Err("Packed geometry command budget exceeded".into())}
+        let mut bytes=Vec::new();bytes.try_reserve_exact(4+curves.len()*17).map_err(|e|e.to_string())?;
+        bytes.extend_from_slice(&(curves.len() as u32).to_le_bytes());
+        for curve in curves {let (kind,words)=curve_words(curve);bytes.push(kind);
+            for word in words {if !word.is_finite(){return Err("Nonfinite packed geometry".into())}bytes.extend_from_slice(&word.to_le_bytes());}
+        }
+        Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+    }
+    fn decode(text:&str)->Result<Vec<Curve>,String>{
+        if text.len()>(MAX_BYTES+2)/3*4{return Err("Packed geometry byte budget exceeded".into())}
+        let bytes=base64::engine::general_purpose::STANDARD.decode(text).map_err(|_|"Invalid packed geometry bytes")?;
+        let count=u32::from_le_bytes(bytes.get(..4).ok_or("Missing packed geometry length")?.try_into().unwrap()) as usize;
+        if count>MAX_COMMANDS||count>bytes.len().saturating_sub(4){return Err("Invalid packed geometry count".into())}
+        let mut curves=Vec::new();curves.try_reserve_exact(count).map_err(|e|e.to_string())?;let mut at=4;
+        for _ in 0..count {
+            let kind=*bytes.get(at).ok_or("Truncated packed geometry")?;at+=1;
+            let words=match kind{0|1=>2,2=>4,3=>6,4=>0,_=>return Err("Unknown packed curve kind".into())};
+            let mut coordinates=[0.;6];
+            for value in coordinates.iter_mut().take(words){
+                *value=f64::from_le_bytes(bytes.get(at..at+8).ok_or("Truncated packed curve coordinates")?.try_into().unwrap());at+=8;
+                if !value.is_finite(){return Err("Nonfinite packed geometry".into())}
+            }
+            curves.push(match kind{0=>Curve::Move(coordinates[..2].try_into().unwrap()),1=>Curve::Line(coordinates[..2].try_into().unwrap()),
+                2=>Curve::Quad(coordinates[..4].try_into().unwrap()),3=>Curve::Cubic(coordinates),_=>Curve::Close});
+        }
+        if at!=bytes.len(){return Err("Trailing packed geometry data".into())}Ok(curves)
+    }
+    impl PackedGeometry {
+        pub(crate) fn new(geometry:&VectorGeometry)->Result<Self,String>{
+            Ok(Self{fill_rule:geometry.fill_rule.clone(),fill:encode(&geometry.fill)?,stroke:geometry.stroke.as_ref().map(|s|encode(s)).transpose()?})
+        }
+        pub(crate) fn unpack(self)->Result<VectorGeometry,String>{
+            let geometry=VectorGeometry{fill_rule:self.fill_rule,fill:decode(&self.fill)?,stroke:self.stroke.as_deref().map(decode).transpose()?};
+            if geometry.fill.len().saturating_add(geometry.stroke.as_ref().map_or(0,Vec::len))>MAX_COMMANDS{return Err("Packed geometry command budget exceeded".into())}Ok(geometry)
+        }
+    }
+    #[cfg(test)] mod tests {
+        use super::*;
+        #[test]fn binary_curves_keep_every_f64_bit_and_stroke_presence(){
+            for stroke in [None,Some(vec![]),Some(vec![Curve::Move([-0.,-1e-200]),Curve::Cubic([1.25,2.5,-3.,4.,-0.,5.])])]{
+                let source=VectorGeometry{fill_rule:"evenodd".into(),fill:vec![Curve::Move([-0.,f64::MIN_POSITIVE]),Curve::Line([1e-200,9e99]),Curve::Quad([1.,2.,3.,4.]),Curve::Close],stroke};
+                let decoded=PackedGeometry::new(&source).unwrap().unpack().unwrap();assert_eq!(serde_json::to_vec(&source).unwrap(),serde_json::to_vec(&decoded).unwrap());
+            }
+        }
+        #[test]fn malformed_lengths_tags_and_nonfinite_values_never_publish_geometry(){
+            for bytes in [vec![],vec![255;4],vec![1,0,0,0,255],vec![0,0,0,0,0],vec![1,0,0,0,1]]{
+                assert!(decode(&base64::engine::general_purpose::STANDARD.encode(bytes)).is_err());
+            }
+            assert!(encode(&[Curve::Move([f64::NAN,0.])]).is_err());
+        }
+    }
+}

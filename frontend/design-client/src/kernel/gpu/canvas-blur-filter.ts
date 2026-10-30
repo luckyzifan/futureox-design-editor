@@ -54,6 +54,47 @@ fn canvasBlurChannel(point:vec2<f32>,axis:vec2<f32>,channel:u32)->f32 {
 }
 `
 
+/** The SDR reducer does not need the exact shader's four channel draws.
+ * Fetch each RGBA texel and coefficient once, with the same per-channel
+ * compensated operation order. Exceptional channels keep their exact reducer. */
+export const canvasBlurRgbaWgsl = `
+fn canvasBlurRgba(point:vec2<f32>,axis:vec2<f32>)->vec4<f32> {
+ let cw=rfLoad(0u);let reach=i32(rfLoad(2u));
+ let q=vec2<i32>(floor(point-u(1u).xy));let size=vec2<i32>(u(1u).zw);
+ let horizontal=axis.x!=0.;let coordinate=select(q.y,q.x,horizontal);
+ let length=select(size.y,size.x,horizontal);
+ let cross=select(q.x,q.y,horizontal);let crossLength=select(size.x,size.y,horizontal);
+ let edge=u(9u).z>0.5;
+ let aligned=all(u(0u)==floor(u(0u)))&&all(u(1u)==floor(u(1u)));
+ if(aligned&&!edge&&(cross<0||cross>=crossLength)){return vec4<f32>(0);}
+ let lo=select(max(-reach,-coordinate),-reach,edge||!aligned);
+ let hi=select(min(reach,length-1-coordinate),reach,edge||!aligned);
+ if(lo>hi){return vec4<f32>(0);}
+ let firstBits=bitcast<vec4<u32>>(rfSource(point+axis*f32(lo)));
+ let first=select(firstBits,vec4<u32>(0),(firstBits&vec4<u32>(0x7fffffffu))==vec4<u32>(0));
+ var same=(first&vec4<u32>(0x7fffffffu))<vec4<u32>(0x7f800000u);
+ if(lo!=-reach||hi!=reach){same=same&(first==vec4<u32>(0));}
+ var exceptional=vec4<bool>(false);
+ let denominator=canvasCoefficient(4u,cw);
+ var sum=vec4<f32>(0);var correction=vec4<f32>(0);
+ for(var tap=lo;tap<=hi;tap=tap+1){
+  let sample=rfSource(point+axis*f32(tap));
+  let bits=bitcast<vec4<u32>>(sample);let magnitude=bits&vec4<u32>(0x7fffffffu);
+  same=same&(select(bits,vec4<u32>(0),magnitude==vec4<u32>(0))==first);
+  exceptional=exceptional|(magnitude>vec4<u32>(0x3f800000u))|
+    (((bits&vec4<u32>(0x80000000u))!=vec4<u32>(0))&(magnitude!=vec4<u32>(0)));
+  let weight=canvasCoefficient(4u+cw*(1u+u32(abs(tap))),cw)/denominator;
+  let value=sample*weight-correction;
+  let next=sum+value;correction=(next-sum)-value;sum=next;
+ }
+ var result=select(clamp(sum,vec4<f32>(0),vec4<f32>(1)),bitcast<vec4<f32>>(first),same);
+ for(var channel=0u;channel<4u;channel=channel+1u){
+  if(exceptional[channel]&&!same[channel]){result[channel]=exactFilterChannel(point,axis,channel);}
+ }
+ return result;
+}
+`
+
 export function canvasBlurSceneEligible(enabled: boolean,
   scene: { integratedBlur?: boolean; softwareRaster?: boolean; displayFilters?: boolean },
   driver: { name?: string; managed?: boolean; hdr?: boolean; displayMath?: boolean },

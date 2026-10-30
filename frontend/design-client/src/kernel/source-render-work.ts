@@ -30,7 +30,11 @@ export class SourceRenderWork<T extends {key:string}> {
   }
   demand(complete:boolean,needed:(tile:T)=>boolean){
     const work=this.active
-    if(work&&(complete||[...work.pending.values()].some(tile=>!needed(tile))))work.controller.abort()
+    // The first pending tile owns rasterization; later tiles are bounded CPU
+    // speculation. Do not repeatedly kill useful visible work merely because
+    // its one-ahead neighbour fell offscreen. Recheck after each delivery.
+    const first=work?.pending.values().next().value
+    if(work&&(complete||first&&!needed(first)))work.controller.abort()
   }
   release(work:SourceWork<T>){if(this.active===work)this.active=undefined}
   close(){this.closed=true;this.active?.controller.abort()}

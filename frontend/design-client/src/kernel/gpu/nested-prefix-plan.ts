@@ -30,7 +30,7 @@ const samePlacement = (node: GpuNode, source: GpuNode) =>
  * preserve their IDs/sentinels so newly visible support invalidates the prefix.
  */
 export function planNestedPrefix(scene: GpuScene, scopeId: string,
-  nativeChanging: ReadonlySet<string>): NestedPrefixPlan | undefined {
+  nativeChanging: ReadonlySet<string>, allowSuffix = false): NestedPrefixPlan | undefined {
   if (!scene.coherentSamples || !scene.interactionRetained || !scene.nativeInteraction ||
       !scene.interactionLease || scene.softwareRaster || scene.resolve || scene.presentation ||
       scene.interactionSelection?.length !== 1) return
@@ -46,7 +46,11 @@ export function planNestedPrefix(scene: GpuScene, scopeId: string,
   if (scene.roots.filter(id => contributes(scene.nodes[id])).at(-1) !== scopeId) return
   const selectedAt = scope.children.indexOf(selectedId)
   if (selectedAt <= 0 || scope.children.lastIndexOf(selectedId) !== selectedAt ||
-      scope.children.slice(selectedAt + 1).some(id => contributes(scene.nodes[id]))) return
+      (!allowSuffix && scope.children.slice(selectedAt + 1).some(id => contributes(scene.nodes[id])))) return
+  // With a suffix, these are still the original four targets immediately
+  // before the selected branch. Every following sibling is replayed in its
+  // original order against those writable targets, including backdrop reads.
+  // The scope remains isolated and mask-free; no suffix pixels are cached.
   // A second incoming edge would make this more than a single nested branch.
   if (Object.values(scene.nodes).some(node => node.id !== scopeId && node.children.includes(selectedId))) return
 

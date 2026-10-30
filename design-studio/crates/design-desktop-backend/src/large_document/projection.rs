@@ -238,24 +238,8 @@ fn sketch_roots_in(s:&Session,roots:Vec<Value>,mut source_bytes:u64,limit:u64,co
     let mut page = json!({"_class":"page","do_objectID":page_id,"name":"当前对象"});
     page["layers"]=Value::Array(roots);
     let dependencies = json!({"_class":"page","do_objectID":"00000000-0000-4000-8000-000000000002","name":"组件依赖","layers":masters.into_values().collect::<Vec<_>>()});
-    let mut entries = BTreeMap::from([
-        (
-            "meta.json".into(),
-            serde_json::to_vec(&json!({"version":136})).map_err(issue)?,
-        ),
-        (
-            "document.json".into(),
-            serde_json::to_vec(&document).map_err(issue)?,
-        ),
-        (
-            format!("pages/{page_id}.json"),
-            serde_json::to_vec(&page).map_err(issue)?,
-        ),
-        (
-            format!("pages/{dependency_page_id}.json"),
-            serde_json::to_vec(&dependencies).map_err(issue)?,
-        ),
-    ]);
+    let pages = BTreeMap::from([(page_id.to_owned(),page),(dependency_page_id.to_owned(),dependencies)]);
+    let mut entries = BTreeMap::new();
     if !images.is_empty() {
         let mut archive =
             zip::ZipArchive::new(File::open(s.directory.join("source")).map_err(issue)?)
@@ -278,7 +262,7 @@ fn sketch_roots_in(s:&Session,roots:Vec<Value>,mut source_bytes:u64,limit:u64,co
             entries.insert(image, bytes);
         }
     }
-    let report = interop::import_sketch_source_window(&entries).map_err(issue)?;
+    let report = interop::import_sketch_source_parts(&entries,&json!({"version":136}),&document,&pages).map_err(issue)?;
     Ok((report.document, report.warnings))
 }
 fn json_projection(s: &Session, p: usize, n: usize) -> Result<(Document, Value, Vec<String>)> {

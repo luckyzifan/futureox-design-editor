@@ -175,7 +175,9 @@ export type KernelOptions = {
   gpuPageBackground?: boolean;
   /** Native render-only root visibility; authored document/receipts stay intact. */
   gpuRoots?: string[];
+  gpuNeutralPageGroup?: boolean;
   /** Overwritten by the worker's strict host experiment policy. */
+  gpuGaussianRegions?: boolean
   gpuPainterSupport?: boolean
   /** Separately gated captured-source optimization; never document state. */
   gpuPainterCaptureReads?: boolean

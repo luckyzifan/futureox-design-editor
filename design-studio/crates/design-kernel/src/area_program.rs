@@ -372,8 +372,8 @@ mod work_budget_tests {
     fn full_row_marker_is_conservative() {
         let rect = Rect::new(10, 20, 4, 3);
         assert!(sample_row_full(rect, 10.125, 13.875));
-        assert!(!sample_row_full(rect, 10.125 + f64::EPSILON, 13.875));
-        assert!(!sample_row_full(rect, 10.125, 13.875 - f64::EPSILON));
+        assert!(!sample_row_full(rect, f64::from_bits(10.125_f64.to_bits() + 1), 13.875));
+        assert!(!sample_row_full(rect, 10.125, f64::from_bits(13.875_f64.to_bits() - 1)));
 
         let covering = Contour {
             points: vec![
@@ -386,7 +386,8 @@ mod work_budget_tests {
             closed: true,
         };
         let program = AreaProgram::compile_samples(&[covering], Rect::new(0, 0, 10, 10), false).unwrap();
-        assert!(program.data.chunks_exact(4).skip(1).all(|record| record[2] == 1.));
+        assert!(program.data.chunks_exact(4).skip(1).any(|record| record[2] == 1.));
+        assert!(program.data.chunks_exact(4).skip(1).any(|record| record[2] == 0.));
 
         let partial = Contour {
             points: vec![Point::new(0., 0.), Point::new(10., 0.), Point::new(0., 10.)],

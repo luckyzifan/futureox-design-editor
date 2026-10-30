@@ -63,9 +63,9 @@ test('sparse flag specializes the sample pipelines without changing their dispat
   vi.stubEnv('VITE_DESIGN_SPARSE_COVERAGE', '1')
   const f = fixture('1'); await f.begin()
   expect(f.descriptors).toHaveLength(3)
-  expect(f.descriptors.every(descriptor => descriptor.fragment.constants.SPARSE_COVERAGE === true)).toBe(true)
+  expect(f.descriptors.every(descriptor => descriptor.fragment.entryPoint === 'areaSampleFragmentSparse')).toBe(true)
   f.driver.mask(f.path, f.target(), 0)
-  expect(f.chosen.at(-1).fragment.entryPoint).toBe('areaSampleFragment')
+  expect(f.chosen.at(-1).fragment.entryPoint).toBe('areaSampleFragmentSparse')
 })
 
 test('reference changes only the private enable bit; buffer and exact sample uniforms remain unchanged', async () => {

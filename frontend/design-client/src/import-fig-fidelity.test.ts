@@ -21,14 +21,14 @@ const schema = decodeBinarySchema(inflateSync(schemaPart))
 const encoder = compileSchema(schema)
 const fields = new Set(schema.definitions.find((d) => d.name === 'NodeChange')!.fields.map((f) => f.name))
 const guid = (localID: number) => ({ sessionID: 1, localID })
-function encoded(layer: Record<string, unknown>, document: Record<string, unknown> = {}) {
+function encoded(layer: Record<string, unknown>, document: Record<string, unknown> = {}, blobs:Uint8Array[] = [],extra:Record<string,unknown>[] = []) {
   for (const key of [...Object.keys(layer), ...Object.keys(document)])
     expect(fields.has(key), `native schema field ${key}`).toBe(true)
-  const message = encoder.encodeMessage({ nodeChanges: [
+  const message = encoder.encodeMessage({ blobs:blobs.map(bytes=>({bytes})), nodeChanges: [
     { guid: guid(1), type: 'DOCUMENT', name: 'Document', documentColorProfile: 'SRGB', ...document },
     { guid: guid(2), type: 'CANVAS', name: 'Page', parentIndex: { guid: guid(1), position: 'a' } },
     { guid: guid(3), type: 'RECTANGLE', name: 'Subject', parentIndex: { guid: guid(2), position: 'a' },
-      size: { x: 40, y: 24 }, fillPaints: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 } }], ...layer },
+      size: { x: 40, y: 24 }, fillPaints: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 } }], ...layer },...extra,
   ] })
   const parts = [schemaPart, deflateSync(message)]
   const bytes = new Uint8Array(12 + parts.reduce((n, part) => n + 4 + part.length, 0))
@@ -44,6 +44,49 @@ function subject(layer: Record<string, unknown>) {
   const reopened = prepareDocumentForEditing(JSON.parse(JSON.stringify(result.document)))
   return { ...result, node: Object.values(reopened.nodes).find((n) => n.name === 'Subject')! }
 }
+
+test('a native trailing mask cannot erase content painted before it',()=>{
+ const {document}=importFig(encoded({type:'FRAME',resizeToFit:true,fillPaints:[]},{},[],[
+  {guid:guid(4),type:'RECTANGLE',name:'Before mask',parentIndex:{guid:guid(3),position:'!'},size:{x:40,y:24},fillPaints:[{type:'SOLID',color:{r:1,g:0,b:0,a:1}}]},
+  {guid:guid(5),type:'RECTANGLE',name:'Trailing mask',parentIndex:{guid:guid(3),position:'"'},size:{x:20,y:24},mask:true,fillPaints:[{type:'SOLID',color:{r:1,g:1,b:1,a:1}}]},
+ ]))
+ validateDocument(document)
+ const engine=new VectorEngine()
+ try{engine.load_document(JSON.stringify(document));const bytes=engine.render_rgba(JSON.stringify({pageId:document.pages[0].id,width:40,height:24,view:{x:0,y:0,zoom:1},transparent:true}))
+  for(const x of [5,35])expect(Array.from(bytes.slice((12*40+x)*4,(12*40+x)*4+4))).toEqual([255,0,0,255])
+ }finally{engine.free()}
+})
+
+test('FIG automatic-width text stays on its authored line; fixed-width text retains wrapping',()=>{
+ for(const textAutoResize of ['WIDTH_AND_HEIGHT','HEIGHT','NONE']){
+  const {node}=subject({type:'TEXT',textAutoResize,textData:{characters:'Completed Tasks'},fontSize:14,size:{x:123,y:20}})
+  expect(node.textStyle?.wrap).toBe(textAutoResize!=='WIDTH_AND_HEIGHT')
+  expect(node.width).toBe(123);expect(node.height).toBe(20)
+ }
+})
+
+test('FIG vertical fading gradient uses node-to-gradient coordinates, including alpha',()=>{
+ const {document}=subject({fillPaints:[{type:'GRADIENT_LINEAR',transform:{m00:0,m01:1,m02:0,m10:-1,m11:0,m12:1},stops:[
+  {position:0,color:{r:1,g:0,b:0,a:1}},{position:1,color:{r:1,g:0,b:0,a:0}},
+ ]}]})
+ const engine=new VectorEngine()
+ try{engine.load_document(JSON.stringify(document));const bytes=engine.render_rgba(JSON.stringify({pageId:document.pages[0].id,width:40,height:24,view:{x:0,y:0,zoom:1},transparent:true,grid:false,rasterProfile:'analytic'}))
+  expect(bytes[(2*40+20)*4+3]).toBeGreaterThan(220)
+  expect(bytes[(21*40+20)*4+3]).toBeLessThan(35)
+ }finally{engine.free()}
+})
+
+test('actual FIG vector card radius is rendered rather than silently kept as unused rectangle radii',()=>{
+ const bytes=new Uint8Array(readFileSync(new URL('../../../testing/verification-interaction-layout-20261030/fig-card-corners.bin',import.meta.url)))
+ const {document,warnings}=importFig(encoded({type:'VECTOR',size:{x:548,y:409},cornerRadius:6,vectorData:{normalizedSize:{x:548,y:409},vectorNetworkBlob:0}}, {},[bytes]))
+ const n=Object.values(document.nodes).find(n=>n.name==='Subject')!
+ expect(n.kind).toBe('vector');expect(n.vectorGeometry).toBeDefined();expect(n.network).toBeUndefined()
+ expect(warnings.some(w=>w.includes('圆角'))).toBe(false)
+ const engine=new VectorEngine()
+ try{engine.load_document(JSON.stringify(document));const pixels=engine.render_rgba(JSON.stringify({pageId:document.pages[0].id,width:12,height:12,view:{x:0,y:0,zoom:1},transparent:true,grid:false,rasterProfile:'analytic'}))
+  expect(pixels[3]).toBe(0);expect(pixels[(6*12+6)*4+3]).toBe(255)
+ }finally{engine.free()}
+})
 
 test('same-name repeated FIG adoption creates independent new documents, never overwriting the earlier edit',()=>{
   const bytes=encoded({name:'Repeated layer'}),source=importFig(bytes,'Same filename').document
@@ -166,8 +209,17 @@ test('FIG glass bevel width survives import and Rust reopening', () => {
   expect(() => importFig(encoded({ effects: [{ ...glass, bevelSize: -1 }] }))).toThrow(/倒角/)
 })
 
-test('native v106 XOR is exclude, and OUTLINE is explicitly unsupported', () => {
+test('native v106 XOR and OUTLINE retain their executable semantics', () => {
   const node=Object.values(importFig(encoded({type:'BOOLEAN_OPERATION',booleanOperation:'XOR'})).document.nodes)[0]
   expect(node.booleanOperation).toBe('exclude')
-  expect(()=>importFig(encoded({mask:true,maskType:'OUTLINE'}))).toThrow(/OUTLINE|蒙版/)
+  expect(subject({mask:true,maskType:'OUTLINE'}).node.maskType).toBe('outline')
+})
+
+
+test('native resizeToFit frames without a stack are un-clipped groups, while auto-layout and component sets stay frames',()=>{
+ const {node:group}=subject({type:'FRAME',resizeToFit:true,frameMaskDisabled:false,fillPaints:[]})
+ expect(group.kind).toBe('group');expect(group.clip).toBe(false)
+ expect(subject({type:'FRAME',resizeToFit:false,frameMaskDisabled:false}).node).toMatchObject({kind:'frame',clip:true})
+ expect(subject({type:'FRAME',resizeToFit:true,stackMode:'HORIZONTAL'}).node.kind).toBe('frame')
+ expect(subject({type:'FRAME',resizeToFit:true,isStateGroup:true}).node.kind).toBe('frame')
 })

@@ -44,5 +44,7 @@ fn solid_color_alpha_and_context_opacity_are_distinct_native_channels(){
 fn mixed_name_and_unrepresented_image_edit_is_rejected_by_source_codec(){
  let before=interop::import_sketch_report(&archive(base())).unwrap().document;let mut after=before.clone();
  let n=after.nodes.get_mut(ID).unwrap();n.name="Unsaved".into();n.fills[0].kind="image".into();n.fills[0].transform=Some(futureox_design_kernel::math::Transform([1.,0.,0.,1.,0.2,0.]));
+ n.fills[0].image=Some("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==".into());
+ after.validate().unwrap();
  let error=interop::export_sketch_layer_edit(&before,&after,ID).unwrap_err();assert!(error.to_string().contains("imagePaint"));assert_eq!(before.nodes[ID].name,"Original");
 }

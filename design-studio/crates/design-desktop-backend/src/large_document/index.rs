@@ -54,7 +54,55 @@ pub(super) struct DiskIndex {
     edits: Vec<Edit>,
     data: String,
 }
+const STREAM_CHUNK: usize = 64 * 1024;
+struct ChunkReader {
+    receiver: std::sync::mpsc::Receiver<Vec<u8>>,
+    current: std::io::Cursor<Vec<u8>>,
+}
+impl Read for ChunkReader {
+    fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
+        if out.is_empty() { return Ok(0); }
+        loop {
+            let n = self.current.read(out)?;
+            if n > 0 { return Ok(n); }
+            match self.receiver.recv() {
+                Ok(bytes) => self.current = std::io::Cursor::new(bytes),
+                Err(_) => return Ok(0),
+            }
+        }
+    }
+}
+
 impl DiskIndex {
+    /// Decode/spool/hash on the caller while one worker parses the same byte
+    /// stream. Two queued chunks plus producer/consumer bound staging to256KiB.
+    /// Full EOF/CRC and parser success are both required before publication.
+    pub fn build_pipelined(mut reader: impl Read, limit: u64, directory: &Path) -> Result<Self> {
+        std::thread::scope(|scope| {
+            let (sender, receiver) = std::sync::mpsc::sync_channel(2);
+            let parser = scope.spawn(move || Self::build(ChunkReader {
+                receiver, current: std::io::Cursor::new(Vec::new()),
+            }, limit, directory));
+            let producer = (|| -> io::Result<()> {
+                loop {
+                    let mut bytes = vec![0; STREAM_CHUNK];
+                    let count = reader.read(&mut bytes)?;
+                    if count == 0 { return Ok(()); }
+                    bytes.truncate(count);
+                    // A parser rejection drops its receiver; stop decoding
+                    // promptly instead of consuming the rest of a huge member.
+                    if sender.send(bytes).is_err() { return Ok(()); }
+                }
+            })();
+            drop(sender);
+            let parsed = parser.join().map_err(|_| issue("Source index worker failed"))?;
+            // A valid JSON prefix does not excuse a later archive CRC/read
+            // failure. Preserve cancellation and I/O errors from the producer.
+            producer.map_err(issue)?;
+            parsed
+        })
+    }
+
     pub fn build(reader: impl Read, limit: u64, directory: &Path) -> Result<Self> {
         static NEXT: AtomicUsize = AtomicUsize::new(0);
         let data = format!(
@@ -293,4 +341,36 @@ fn adjust(value: &mut Span, span: Span, length: u64) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+
+#[cfg(test)]
+mod stream_pipeline_tests {
+    use super::*;
+    struct Directory(PathBuf);
+    impl Directory { fn new() -> Self {
+        static NEXT:AtomicUsize=AtomicUsize::new(0);
+        let p=std::env::temp_dir().join(format!("futureox-index-pipeline-{}-{}-{}",std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos(),NEXT.fetch_add(1,Ordering::Relaxed)));
+        fs::create_dir(&p).unwrap();Self(p)
+    }}
+    impl Drop for Directory {fn drop(&mut self){let _=fs::remove_dir_all(&self.0);}}
+    #[test] fn pipelined_index_matches_records_across_unicode_chunk_boundaries() {
+        let d=Directory::new();let bytes=serde_json::to_vec(&json!({"nodes":{"n":{"id":"n","name":"Node","opaque":format!("{}🙂tail","a".repeat(65500)),"children":[]}}})).unwrap();
+        let a=DiskIndex::build(bytes.as_slice(),1024*1024,&d.0).unwrap();let b=DiskIndex::build_pipelined(bytes.as_slice(),1024*1024,&d.0).unwrap();
+        assert_eq!(a.bytes,b.bytes);assert_eq!(serde_json::to_value(&a.entries).unwrap(),serde_json::to_value(&b.entries).unwrap());
+        for i in 0..a.entries.len(){assert_eq!(serde_json::to_value(a.entry(i,&d.0).unwrap()).unwrap(),serde_json::to_value(b.entry(i,&d.0).unwrap()).unwrap());}
+    }
+    #[test] fn archive_failure_after_valid_json_cannot_publish_an_index() {
+        struct TailFailure {remaining:std::io::Cursor<Vec<u8>>}
+        impl Read for TailFailure {fn read(&mut self,out:&mut [u8])->io::Result<usize>{let n=self.remaining.read(out)?;if n==0{Err(io::Error::other("injected CRC failure"))}else{Ok(n)}}}
+        let d=Directory::new();let error=DiskIndex::build_pipelined(TailFailure{remaining:std::io::Cursor::new(b"{\"nodes\":{}}".to_vec())},1024,&d.0).err().unwrap();
+        assert!(error.message.contains("injected CRC failure"));
+    }
+    #[test] fn malformed_prefix_stops_read_ahead_at_the_bounded_queue() {
+        struct Counting {bytes:usize}
+        impl Read for Counting {fn read(&mut self,out:&mut [u8])->io::Result<usize>{out.fill(b'x');if self.bytes==0{out[0]=b'!';}self.bytes+=out.len();Ok(out.len())}}
+        let d=Directory::new();let mut reader=Counting{bytes:0};assert!(DiskIndex::build_pipelined(&mut reader,16*1024*1024,&d.0).is_err());
+        assert!(reader.bytes<=4*STREAM_CHUNK,"read ahead {}",reader.bytes);
+    }
 }

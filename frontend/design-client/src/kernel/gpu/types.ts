@@ -90,6 +90,7 @@ export type PathMesh = {
   rule: 'evenodd' | 'nonzero' | 'union'
 }
 export type GpuNode = {
+  gaussianRegion?:import('./gaussian-region').GaussianRegion
   /** Worker-local transient placement identity; never serialized by the kernel. */
   previewSource?: GpuNode
   /** A nested edit changes this container's contents on every pose. Compose
@@ -139,6 +140,8 @@ export type GpuPaint = Paint & {
   fixedGradient?: { bits: number; words: number[][] }
 }
 export type GpuScene = {
+  /** Worker-only SDR layer capture; original linear premultiplication survives. */
+  linearRetainedCapture?: boolean
   pagePaintRects?: number[][];
   /** Transient viewport inside a larger geometry capture. Never exported. */
   interactionWindow?: Rect
@@ -265,6 +268,8 @@ export interface Driver {
   /** True only for this driver's actual immutable finite image upload. */
   usesDisplayImageSource?(image: Texture): boolean
   imageTableRange?(image: Texture): import('./exact-image-x-table').ExactImageRange | undefined
+  /** Immutable, driver-owned colour upload bound to its current GPU resource. */
+  immutableImageRange?(image: Texture): import('./exact-image-x-table').ExactImageRange | undefined
   imageTableAxes?(field: Texture): Float32Array | undefined
   hasActiveImageTableSource?(image: Texture): boolean
   prepareImageTable?(image: Texture, plan: import('./exact-image-x-table').ExactImageXTablePlan, availableBytes: number): Promise<ExactImageTable | undefined>
@@ -281,11 +286,13 @@ export interface Driver {
    * retiring frame resources or treating presentation ACKs as completion. */
   yieldRasterQueue?(): Promise<void>
   captureDisplay?: boolean
+  retainedSampleCapture?(): boolean
   attachPresenter?(canvas: OffscreenCanvas, report: (stats: Record<string, unknown>) => void): void
   presentFrame?(frame: import('./resident-presenter').ResidentFrame): void
   releasePresented?(ids: number[]): void
   replacePresented?(slot:number,next:number):void
   snapshotPresented?(): { gpuTile: number; frame: import('./resident-presenter').ResidentFrame } | undefined
+  backgroundTile?(owner:object,contract:string,view:{x:number;y:number;zoom:number},output:Rect):number|undefined
   snapshotPageTranslation?(sourceOwner:object,targetOwner:object,offset:{x:number;y:number},width:number,height:number,scale:number,contract:string):
     {gpuTile:number;frame:import('./resident-presenter').ResidentFrame}|undefined
   readContentPixel?(u:number,v:number,expected?:import('../resident-presentation').ResidentAcknowledgement):Promise<{contentPixel:number[];contentFrame:import('../resident-presentation').ResidentAcknowledgement}>
@@ -351,6 +358,9 @@ export interface Driver {
     queueWaits?: import('./queue-wait-stats').QueueWaitSnapshot
     deviceLost: boolean
   }
+  supportsGaussianReduction?():boolean
+  supportsGaussianRegions?():boolean
+  prepareCanvasBoxPass?(target:Texture,u:Float32Array,inputs:Texture[],channels:number,availableBytes:number):void
   prepareFilterPass?(target: Texture, uniforms: Float32Array, inputs: Texture[], channels: number, filter: {kind: 'tent'; radius: number}, availableBytes: number): void
   /** Strict opt-in unmanaged RGBA8 shadow-alpha pipeline; preparation owns no scratch. */
   prepareByteTent?(): Promise<boolean>
@@ -441,7 +451,7 @@ export interface Driver {
     target?: Texture,
   ): Texture
   clear(target: Texture): void
-  mask(path: PathMesh, target: Texture, sampleIndex?: number): void
+  mask(path: PathMesh, target: Texture, sampleIndex?: number, region?:Rect): void
   /** Rasterize all four phases into four distinct owned targets in one pass. */
   maskAll?(path: PathMesh, targets: readonly Texture[], region?: Rect): boolean
   /** Rasterize an integer crop without rebasing the interval program. */
@@ -467,6 +477,7 @@ export interface Driver {
     preview?: PreviewPresentation,
     present?: boolean,
     output?: Rect,
+    samples?: readonly {texture:Texture;rect:Rect}[],
   ): Promise<{
     gpuTile?: number
     bitmap?: ImageBitmap

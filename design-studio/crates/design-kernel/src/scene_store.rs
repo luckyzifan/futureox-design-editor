@@ -4,17 +4,22 @@
 //! scans all node records or loads the full index; reads authenticate their
 //! own lookup path and payload, including file changes after opening.
 use crate::scene::{Document, Node};
+use crate::vector_geometry::{GeometryKey,VectorGeometry,packed::PackedGeometry};
 use serde::{Deserialize, Serialize, ser::SerializeStruct};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap, HashSet},
+    borrow::Cow,
     fs::{self, File, OpenOptions},
     io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
-    sync::atomic::{AtomicBool, AtomicU64, Ordering},
+    sync::{Arc, atomic::{AtomicBool, AtomicU64, Ordering}},
 };
 
-const MAGIC: &[u8; 8] = b"FXSCENE1";
+const MAGIC: &[u8; 8] = b"FXSCENE4";
+const GEOMETRY_MAGIC: &[u8;8]=b"FXSCENE3";
+const IMAGE_MAGIC: &[u8; 8] = b"FXSCENE2";
+const LEGACY_MAGIC: &[u8; 8] = b"FXSCENE1";
 const ROW_BYTES: u64 = 96;
 const FOOTER_BYTES: u64 = 136;
 fn invalid(message: &str) -> io::Error {
@@ -105,6 +110,93 @@ struct Metadata {
     warnings: Vec<String>,
 }
 
+// Image payloads remain authored Arc<str> values at every public boundary.
+// On disk, a repeated paint references its first earlier node/paint slot.
+// Both records use the existing Merkle-authenticated index. A cold node reads
+// at most its own record plus the records containing its referenced images;
+// it never loads a global image table or unrelated metadata.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ImageSlot { stroke: bool, index: usize }
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ImageAddress { node: String, slot: ImageSlot }
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ImageReference { slot: ImageSlot, source: ImageAddress }
+#[derive(Serialize)]
+struct NodeRecordRef<'a> { node: Cow<'a, Node>, images: Vec<ImageReference>, #[serde(skip_serializing_if="Option::is_none")] geometry:Option<String>, #[serde(skip_serializing_if="Option::is_none")] vectors:Option<PackedGeometry> }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NodeRecord { node: Node, images: Vec<ImageReference>, #[serde(default)] geometry:Option<String>, #[serde(default)] vectors:Option<PackedGeometry> }
+type SharedImages = HashMap<ImageAddress, Arc<str>>;
+type SharedGeometry=HashMap<String,Arc<VectorGeometry>>;
+fn image_at<'a>(node:&'a Node,slot:&ImageSlot)->Option<&'a Arc<str>> {
+    if slot.stroke {node.strokes.get(slot.index)?.paint.image.as_ref()}
+    else {node.fills.get(slot.index)?.image.as_ref()}
+}
+fn image_at_mut<'a>(node:&'a mut Node,slot:&ImageSlot)->Option<&'a mut Option<Arc<str>>> {
+    if slot.stroke {Some(&mut node.strokes.get_mut(slot.index)?.paint.image)}
+    else {Some(&mut node.fills.get_mut(slot.index)?.image)}
+}
+fn inline_images(node:&Node)->impl Iterator<Item=(ImageSlot,&Arc<str>)> {
+    node.fills.iter().enumerate().filter_map(|(index,p)|p.image.as_ref().map(|image|(ImageSlot{stroke:false,index},image)))
+        .chain(node.strokes.iter().enumerate().filter_map(|(index,s)|s.paint.image.as_ref().map(|image|(ImageSlot{stroke:true,index},image))))
+}
+fn share_record<'a>(node:&'a Node,seen:&mut HashMap<Arc<str>,ImageAddress>,geometries:&mut HashMap<GeometryKey,String>)->io::Result<NodeRecordRef<'a>> {
+    let mut record=NodeRecordRef{node:Cow::Borrowed(node),images:Vec::new(),geometry:None,vectors:None};
+    if let Some(geometry)=&node.vector_geometry {
+        let key=GeometryKey(geometry.clone());
+        if let Some(source)=geometries.get(&key){record.node.to_mut().vector_geometry=None;record.geometry=Some(source.clone());}
+        else{record.vectors=Some(PackedGeometry::new(geometry).map_err(invalid_owned)?);geometries.insert(key,node.id.clone());}
+        record.node.to_mut().vector_geometry=None;
+    }
+    for (slot,image) in inline_images(node) {
+        if let Some(source)=seen.get(image) {
+            *image_at_mut(record.node.to_mut(),&slot).unwrap()=None;
+            record.images.push(ImageReference{slot,source:source.clone()});
+        }
+    }
+    for (slot,image) in inline_images(node) {
+        seen.entry(image.clone()).or_insert_with(||ImageAddress{node:node.id.clone(),slot});
+    }
+    Ok(record)
+}
+fn unpack_record(mut record:NodeRecord)->io::Result<NodeRecord>{
+    if let Some(vectors)=record.vectors.take(){
+        if record.geometry.is_some()||record.node.vector_geometry.is_some(){return Err(invalid("Ambiguous packed scene geometry"));}
+        record.node.vector_geometry=Some(Arc::new(vectors.unpack().map_err(invalid_owned)?));
+    }
+    Ok(record)
+}
+fn invalid_owned(message:String)->io::Error{invalid(&message)}
+fn restore_record(mut record:NodeRecord,images:&mut SharedImages,geometries:&mut SharedGeometry)->io::Result<Node> {
+    if let Some(source)=record.geometry {
+        if source>=record.node.id||record.node.vector_geometry.is_some(){return Err(invalid("Invalid scene geometry reference"));}
+        record.node.vector_geometry=Some(geometries.get(&source).ok_or_else(||invalid("Missing authenticated scene geometry"))?.clone());
+    }else if let Some(geometry)=&record.node.vector_geometry {geometries.entry(record.node.id.clone()).or_insert_with(||geometry.clone());}
+
+    let mut slots=HashSet::new();
+    for reference in record.images {
+        if reference.source.node>=record.node.id || !slots.insert(reference.slot.clone()) {
+            return Err(invalid("Invalid scene image reference order"));
+        }
+        let target=image_at_mut(&mut record.node,&reference.slot).ok_or_else(||invalid("Missing scene image paint"))?;
+        if target.is_some(){return Err(invalid("Ambiguous scene image paint"))}
+        *target=Some(images.get(&reference.source).ok_or_else(||invalid("Missing authenticated scene image"))?.clone());
+    }
+    // References are not valid canonical sources. Only originally inline
+    // payloads may be addressed, so chains/cycles cannot accumulate IO/work.
+    for (slot,image) in inline_images(&record.node) {
+        if !slots.contains(&slot) {images.entry(ImageAddress{node:record.node.id.clone(),slot}).or_insert_with(||image.clone());}
+    }
+    Ok(record.node)
+}
+fn read_node_record(source:impl Read,length:u64,hash:[u8;32],shared:bool,cancel:&AtomicBool)->io::Result<NodeRecord> {
+    if shared {read_json_from(source,length,hash,cancel).and_then(unpack_record)}
+    else {read_json_from(source,length,hash,cancel).map(|node|NodeRecord{node,images:vec![],geometry:None,vectors:None})}
+}
+
 struct HashWriter<'a, W> {
     inner: W,
     bytes: u64,
@@ -134,7 +226,15 @@ fn write_json(
         hash: Sha256::new(),
         cancel,
     };
-    serde_json::to_writer(&mut writer, value).map_err(io::Error::other)?;
+    // Serde emits punctuation and numbers in very small writes. Hashing every
+    // token separately made the authenticated store CPU bound even on an SSD.
+    // Buffer inside the hashing layer: bytes, digest and cancellation contract
+    // stay identical, with at most 64 KiB between cancellation checkpoints.
+    {
+        let mut buffered = BufWriter::with_capacity(64 * 1024, &mut writer);
+        serde_json::to_writer(&mut buffered, value).map_err(io::Error::other)?;
+        buffered.flush()?;
+    }
     Ok((writer.bytes, writer.hash.finalize().into()))
 }
 struct HashReader<'a, R> {
@@ -153,11 +253,29 @@ impl<R: Read> Read for HashReader<'_, R> {
     }
 }
 fn read_json_from<T: serde::de::DeserializeOwned>(
-    source: impl Read,
+    mut source: impl Read,
     length: u64,
     hash: [u8; 32],
     cancel: &AtomicBool,
 ) -> io::Result<T> {
+    // Most scene records are small independent nodes. Slice parsing avoids
+    // serde_json's byte-by-byte Read adapter without materializing the whole
+    // source. Oversized metadata/images retain the bounded streaming reader.
+    const SLICE_LIMIT: u64 = 8 * 1024 * 1024;
+    if length <= SLICE_LIMIT {
+        check(cancel)?;
+        let mut bytes = Vec::new();
+        bytes.try_reserve_exact(length as usize).map_err(io::Error::other)?;
+        bytes.resize(length as usize, 0);
+        for chunk in bytes.chunks_mut(64 * 1024) {
+            check(cancel)?;
+            source.read_exact(chunk)?;
+        }
+        if sha(&bytes) != hash { return Err(invalid("Scene record content changed")); }
+        let value = serde_json::from_slice(&bytes).map_err(io::Error::other)?;
+        check(cancel)?;
+        return Ok(value);
+    }
     let mut reader = HashReader {
         inner: source.take(length),
         bytes: 0,
@@ -389,6 +507,10 @@ pub fn write(
     warnings: &[String],
     cancel: &AtomicBool,
 ) -> io::Result<Descriptor> {
+    write_format(path,generation,document,warnings,cancel,true)
+}
+fn write_format(path:&Path,generation:&str,document:&Document,warnings:&[String],cancel:&AtomicBool,shared:bool)->io::Result<Descriptor> {
+    let magic=if shared {MAGIC}else{LEGACY_MAGIC};
     check(cancel)?;
     let file = OpenOptions::new().write(true).create_new(true).open(path)?;
     let mut owner = OwnedFile {
@@ -399,7 +521,7 @@ pub fn write(
     let (index_file, _index_owner) =
         index_staging(path.parent().unwrap_or_else(|| Path::new(".")))?;
     let mut index = BufWriter::new(index_file);
-    output.write_all(MAGIC)?;
+    output.write_all(magic)?;
     let (metadata_bytes, metadata_hash) = write_json(
         &mut output,
         &MetadataRef {
@@ -410,6 +532,7 @@ pub fn write(
         cancel,
     )?;
     let mut position = sum(8, metadata_bytes)?;
+    let mut images=HashMap::new();let mut geometries=HashMap::new();
     for (key, node) in &document.nodes {
         check(cancel)?;
         if key != &node.id {
@@ -420,7 +543,8 @@ pub fn write(
         output.write_all(key.as_bytes())?;
         position = sum(position, key_bytes)?;
         let value_offset = position;
-        let (value_bytes, value_hash) = write_json(&mut output, node, cancel)?;
+        let (value_bytes, value_hash) = if shared {write_json(&mut output,&share_record(node,&mut images,&mut geometries)?,cancel)?}
+            else {write_json(&mut output,node,cancel)?};
         position = sum(position, value_bytes)?;
         let bytes = Row {
             key_offset,
@@ -471,7 +595,7 @@ pub fn write(
     footer[56..88].copy_from_slice(&index_root);
     footer[88..96].copy_from_slice(&sum(index_offset, index_bytes)?.to_le_bytes());
     footer[96..128].copy_from_slice(&identity_hash(generation, &document.id));
-    footer[128..136].copy_from_slice(MAGIC);
+    footer[128..136].copy_from_slice(magic);
     check(cancel)?;
     output.write_all(&footer)?;
     output.flush()?;
@@ -512,6 +636,9 @@ pub struct Reader {
     nodes: u64,
     metadata: Option<Metadata>,
     stats: ReadStats,
+    shared: bool,
+    images: SharedImages,
+    geometries:SharedGeometry,
 }
 impl Reader {
     pub fn open(path: &Path, expected: &Descriptor, cancel: &AtomicBool) -> io::Result<Self> {
@@ -525,14 +652,14 @@ impl Reader {
         }
         let mut magic = [0; 8];
         file.read_exact(&mut magic)?;
-        if &magic != MAGIC {
+        if &magic != MAGIC && &magic != GEOMETRY_MAGIC && &magic != IMAGE_MAGIC && &magic != LEGACY_MAGIC {
             return Err(invalid("Invalid scene store format"));
         }
         file.seek(SeekFrom::Start(expected.bytes - FOOTER_BYTES))?;
         let mut footer = [0; FOOTER_BYTES as usize];
         file.read_exact(&mut footer)?;
         if sha(&footer) != expected.footer_hash
-            || &footer[128..] != MAGIC
+            || footer[128..] != magic
             || footer[96..128] != identity_hash(&expected.generation, &expected.document_id)
         {
             return Err(invalid("Scene store footer changed"));
@@ -564,6 +691,9 @@ impl Reader {
             nodes,
             metadata: None,
             stats: ReadStats::default(),
+            shared: &magic!=LEGACY_MAGIC,
+            images:HashMap::new(),
+            geometries:HashMap::new(),
         })
     }
     pub fn stats(&self) -> ReadStats {
@@ -653,23 +783,42 @@ impl Reader {
         self.stats.key_reads += 1;
         String::from_utf8(bytes).map_err(io::Error::other)
     }
-    fn node(&mut self, key: &str, row: Row, cancel: &AtomicBool) -> io::Result<Node> {
-        let node: Node = read_json(
-            &mut self.file,
-            row.value_offset,
-            row.value_bytes,
-            row.value_hash,
-            cancel,
-        )?;
-        if node.id != key {
-            return Err(invalid("Scene node identity changed"));
+    fn raw_node(&mut self, key:&str,row:Row,cancel:&AtomicBool)->io::Result<NodeRecord> {
+        self.file.seek(SeekFrom::Start(row.value_offset))?;
+        let record=read_node_record(&mut self.file,row.value_bytes,row.value_hash,self.shared,cancel)?;
+        if record.node.id!=key {return Err(invalid("Scene node identity changed"));}
+        self.stats.node_reads+=1;self.stats.node_bytes=sum(self.stats.node_bytes,row.value_bytes)?;
+        Ok(record)
+    }
+    fn node(&mut self,key:&str,row:Row,cancel:&AtomicBool)->io::Result<Node> {
+        let record=self.raw_node(key,row,cancel)?;
+        for reference in &record.images {
+            check(cancel)?;
+            if reference.source.node.as_str()>=key {return Err(invalid("Invalid scene image reference order"));}
+            if self.images.contains_key(&reference.source){continue}
+            let row=self.find_row(&reference.source.node,cancel)?.ok_or_else(||invalid("Missing scene image source node"))?;
+            let source=self.raw_node(&reference.source.node,row,cancel)?;
+            if source.images.iter().any(|r|r.slot==reference.source.slot){return Err(invalid("Indirect scene image reference"));}
+            let image=image_at(&source.node,&reference.source.slot).ok_or_else(||invalid("Missing scene image source paint"))?;
+            self.images.insert(reference.source.clone(),image.clone());
         }
-        self.stats.node_reads += 1;
-        self.stats.node_bytes = sum(self.stats.node_bytes, row.value_bytes)?;
-        Ok(node)
+        if let Some(source_id)=&record.geometry {
+            if source_id.as_str()>=key{return Err(invalid("Invalid scene geometry reference order"));}
+            if !self.geometries.contains_key(source_id) {
+                let row=self.find_row(source_id,cancel)?.ok_or_else(||invalid("Missing scene geometry source"))?;
+                let source=self.raw_node(source_id,row,cancel)?;
+                if source.geometry.is_some(){return Err(invalid("Indirect scene geometry reference"));}
+                let geometry=source.node.vector_geometry.ok_or_else(||invalid("Missing inline scene geometry"))?;
+                self.geometries.insert(source_id.clone(),geometry);
+            }
+        }
+        restore_record(record,&mut self.images,&mut self.geometries)
     }
     /// Binary-search disk index; no other node payload is decoded or loaded.
     pub fn read_node(&mut self, id: &str, cancel: &AtomicBool) -> io::Result<Option<Node>> {
+        match self.find_row(id,cancel)? {Some(row)=>self.node(id,row,cancel).map(Some),None=>Ok(None)}
+    }
+    fn find_row(&mut self,id:&str,cancel:&AtomicBool)->io::Result<Option<Row>> {
         let (mut lo, mut hi) = (0, self.nodes);
         while lo < hi {
             let mid = lo + (hi - lo) / 2;
@@ -678,7 +827,7 @@ impl Reader {
             match key.as_str().cmp(id) {
                 std::cmp::Ordering::Less => lo = mid + 1,
                 std::cmp::Ordering::Greater => hi = mid,
-                std::cmp::Ordering::Equal => return self.node(id, row, cancel).map(Some),
+                std::cmp::Ordering::Equal => return Ok(Some(row)),
             }
         }
         check(cancel)?;
@@ -731,7 +880,8 @@ impl Reader {
             if previous.as_ref().is_some_and(|old: &String| old >= &key) {
                 return Err(invalid("Scene index order changed"));
             }
-            let node: Node = read_json_from(&mut data, row.value_bytes, row.value_hash, cancel)?;
+            let record=read_node_record(&mut data,row.value_bytes,row.value_hash,self.shared,cancel)?;
+            let node=restore_record(record,&mut self.images,&mut self.geometries)?;
             if node.id != key {
                 return Err(invalid("Scene node identity changed"));
             }

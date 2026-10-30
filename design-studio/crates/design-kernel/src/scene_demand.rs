@@ -69,6 +69,7 @@ pub struct Catalog {
     support: WorldSupport,
     complete_only: bool,
     stage_size: [f64; 2],
+    page_support_known:bool,
 }
 pub struct Demand {
     catalog: Arc<Catalog>,
@@ -358,7 +359,24 @@ impl Catalog {
             support,
             complete_only,
             stage_size: [resolved_stage.width, resolved_stage.height],
+            page_support_known:crate::dirty_region::page_paint_support_known(resolved),
         }))
+    }
+
+    /// Complete revision-owned output support, reprojected without rebuilding
+    /// paths/fonts on every camera. Rare unknown islands use the original
+    /// device-space oracle; cold/missing nodes are never treated as empty.
+    pub(crate) fn page_paint_rects(&self,document:&Document,fonts:&Fonts,camera:Transform)->Option<Vec<[f64;4]>> {
+        if !self.page_support_known||self.roots.len()>4096{return None}
+        let mut rects=Vec::with_capacity(self.roots.len());
+        for (id,_) in &self.roots {
+            crate::render_cancellation::checkpoint().ok()?;
+            match self.support.paint_bounds(id,camera) {
+                Some(Some(bounds))=>rects.push(bounds),Some(None)=>(),
+                None=>rects.push(crate::dirty_region::root_paint_rect(document,id,fonts,camera)?),
+            }
+        }
+        Some(rects)
     }
 
     pub fn viewport(

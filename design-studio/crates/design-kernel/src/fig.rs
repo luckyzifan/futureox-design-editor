@@ -718,17 +718,23 @@ impl FigImporter {
                         });
                     }
                 }
-                // gradient space → unit paint coordinates, same matrix
-                // semantics as the node transform (Paint.transform doc)
+                // FIG's linear transform maps node UV into gradient space.
+                // Paint stores gradient space → node UV, so invert once.
                 if let Some(matrix) = p.get("transform") {
-                    paint.transform = Some(Transform([
+                    let transform = Transform([
                         f64_of(Some(matrix), "m00"),
                         f64_of(Some(matrix), "m10"),
                         f64_of(Some(matrix), "m01"),
                         f64_of(Some(matrix), "m11"),
                         f64_of(Some(matrix), "m02"),
                         f64_of(Some(matrix), "m12"),
-                    ]));
+                    ]);
+                    paint.transform = if kind == "GRADIENT_LINEAR" {
+                        match transform.inverse() {
+                            Ok(value)=>Some(value),
+                            Err(_)=>{untranslated.push("singular linear gradient transform".into());return None;}
+                        }
+                    } else {Some(transform)};
                 }
                 paint
             }
@@ -881,7 +887,12 @@ impl FigImporter {
 
     fn node(&self, change: &Value, untranslated: &mut Vec<String>) -> Result<Node, Error> {
         let fig_type = str_of(change, "type").unwrap_or("GROUP");
-        let kind = kind_of(fig_type).unwrap_or("group");
+        // Native resize-to-fit FRAME records without a stack are groups,
+        // not clipping frames. Keep component sets and auto-layout frames distinct.
+        let native_group = fig_type == "FRAME" && bool_of(change, "resizeToFit") == Some(true)
+            && bool_of(change, "isStateGroup") != Some(true)
+            && matches!(str_of(change, "stackMode"), None | Some("NONE"));
+        let kind = if native_group { "group" } else { kind_of(fig_type).unwrap_or("group") };
         let id = guid_string(change.get("guid").unwrap_or(&Value::Null));
         let mut node = crate::facet::sample_node(&id, kind);
         node.name = str_of(change, "name").unwrap_or_default().into();
@@ -1364,8 +1375,14 @@ impl FigImporter {
                 .kiwi_blobs
                 .get(blob_id as usize)
                 .ok_or_else(|| Error::Malformed("FIG vector blob is missing".into()))?;
-            let decoded = crate::fig_geometry::decode_network(blob, scale.0, scale.1)
+            let mut decoded = crate::fig_geometry::decode_network(blob, scale.0, scale.1)
                 .map_err(Error::Malformed)?;
+            if scalar_radius>0.||vd.get("styleOverrideTable").is_some(){
+                if !crate::fig_geometry::round_network(&mut decoded,scalar_radius,node.smoothing,
+                    vd.get("styleOverrideTable").unwrap_or(&Value::Null)).map_err(Error::Malformed)? {
+                    untranslated.push("vector corner styles require unsupported contour/smoothing semantics".into());
+                }
+            }
             if decoded
                 .vertex_styles
                 .iter()
@@ -1426,7 +1443,7 @@ impl FigImporter {
             };
             node.vector_geometry = Some(
                 crate::vector_geometry::VectorGeometry::from_paths(&fill, &stroke, rule.unwrap())
-                    .map_err(Error::Malformed)?,
+                    .map_err(Error::Malformed)?.into(),
             );
             node.network = None;
         }
@@ -1445,7 +1462,7 @@ impl FigImporter {
             .unwrap_or(16.);
         node.font_size = font_size.max(1.);
         let mut style = crate::font::TextStyle {
-            wrap: true,
+            wrap: str_of(change,"textAutoResize") != Some("WIDTH_AND_HEIGHT"),
             ..Default::default()
         };
         style.paragraph_spacing = change
@@ -1979,6 +1996,39 @@ fn guid_string(guid: &Value) -> String {
 }
 
 /// Assemble a kernel [`Document`] from a decoded kiwi canvas tree.
+fn normalize_mask_suffixes(doc:&mut Document)->Result<(),Error>{
+    let parents:Vec<_>=doc.nodes.keys().map(|id|(id.clone(),false))
+        .chain(doc.pages.iter().map(|p|(p.id.clone(),true))).collect();
+    for (id,page) in parents{
+        let children=if page{doc.pages.iter().find(|p|p.id==id).unwrap().children.clone()}
+            else{doc.nodes[&id].children.clone()};
+        let flags:Vec<u8>=children.iter().map(|id|u8::from(doc.nodes.get(id).is_some_and(|n|n.mask&&n.visible))).collect();
+        let indices=crate::fig_geometry::mask_suffixes(&flags).map_err(Error::Malformed)?;
+        if indices.is_empty()||!page&&indices.len()==1&&indices[0]==0{continue;}
+        if !page&&(doc.nodes[&id].boolean_operation.is_some()||doc.nodes[&id].layout.as_ref().is_some_and(|l|l.mode!=Flow::None)){
+            let parent=doc.nodes.get_mut(&id).unwrap();
+            let mut notes:Vec<String>=parent.bindings.get("figUntranslated").and_then(|s|serde_json::from_str(s).ok()).unwrap_or_default();
+            notes.push("mask suffix in automatic layout/boolean requires source semantics".into());
+            parent.bindings.insert("figUntranslated".into(),serde_json::to_string(&notes).unwrap());continue;
+        }
+        let (width,height)=if page{(1.,1.)}else{(doc.nodes[&id].width,doc.nodes[&id].height)};
+        let mut children=children;
+        for at in indices{
+            let at=at as usize;if !page&&at==0{continue;}
+            let base=format!("fig-mask-scope-{}",children[at]);let mut key=base.clone();let mut nonce=0;
+            while doc.nodes.contains_key(&key)||doc.pages.iter().any(|p|p.id==key){nonce+=1;key=format!("{base}-{nonce}");}
+            let mut group=crate::facet::sample_node(&key,"group");
+            group.name="Mask group".into();group.width=width;group.height=height;
+            group.transform=Transform::default();group.fills.clear();group.strokes.clear();group.effects.clear();
+            group.clip=false;group.blend="pass-through".into();group.children=children.split_off(at);
+            children.push(key.clone());doc.nodes.insert(key,group);
+        }
+        if page{doc.pages.iter_mut().find(|p|p.id==id).unwrap().children=children;}
+        else{doc.nodes.get_mut(&id).unwrap().children=children;}
+    }
+    Ok(())
+}
+
 pub fn document_from_canvas(
     tree: &Value,
     images: BTreeMap<String, Vec<u8>>,
@@ -2210,6 +2260,7 @@ pub fn document_from_canvas(
     }
     doc.nodes = nodes;
     components::import(&mut doc, &records, &importer)?;
+    normalize_mask_suffixes(&mut doc)?;
     // honest serialization version: bindings/booleans/text styles need 4,
     // stroke markers 8, slices 10 (scene.rs validate gates)
     let mut version = 1u32;

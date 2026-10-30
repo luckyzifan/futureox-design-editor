@@ -1,4 +1,4 @@
-import { smart_guides_snap } from './generated/design-kernel/design_kernel'
+import { smart_guides_snap, SmartGuidesIndex } from './generated/design-kernel/design_kernel'
 import { kernelModuleReady } from './kernel/module'
 import type { Bounds } from './model'
 
@@ -79,4 +79,19 @@ export function smartGuidesSnapWorld(
     result.dy = 0
   }
   return result
+}
+
+/** One owned native index per immutable gesture target set. */
+export function createSmartGuidesIndex(parent: Bounds | undefined, siblings: Bounds[]) {
+  if (!kernelModuleReady()) return
+  const index = new SmartGuidesIndex(parent ? flatRects([parent]) : null, flatRects(siblings))
+  return {
+    free: () => index.free(),
+    snap: (moving: Bounds, threshold: number): SmartSnapResult => {
+      const result = parseSmartSnap(index.snap(flatRects([moving]), threshold))
+      if (result.guides[0] && Math.abs(result.dx) >= threshold) { result.guides[0] = null; result.dx = 0 }
+      if (result.guides[1] && Math.abs(result.dy) >= threshold) { result.guides[1] = null; result.dy = 0 }
+      return result
+    },
+  }
 }

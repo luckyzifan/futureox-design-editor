@@ -73,6 +73,37 @@ async function fixture(zoom = 32, document = blank()) {
   return { render, complete, root, container, get props() { return props } }
 }
 
+test('complete retained edit pixels suspend obsolete canvas work and release resumes exact repair',async()=>{
+ vi.stubEnv('VITE_DESIGN_RETAINED_INPUT_PRIORITY','1');state.active=false
+ const f=await fixture(1)
+ try{
+  const client=state.clients[0],before=client.cancelPreview.mock.calls.length
+  const control={current:{blocksCanvasRefinement:()=>true,isActive:()=>true,covers:()=>true}}
+  const interaction={document:f.props.document,selection:['retained'],active:true,epoch:0,readinessRevision:1,control,onReady(){}}
+  await f.render({interaction})
+  expect(client.cancelPreview.mock.calls.length).toBeGreaterThan(before)
+  expect(state.pending).toHaveLength(1)
+  await act(async()=>state.pending[0].reject(Error('PREVIEW_CANCELLED')))
+  await f.render({interaction:{...interaction,readinessRevision:2}})
+  expect(state.pending).toHaveLength(1)
+  await f.render({interaction:{...interaction,active:false,readinessRevision:3}})
+  await vi.waitFor(()=>expect(state.pending.length).toBeGreaterThan(1))
+  expect(f.props.onFallback).not.toHaveBeenCalled()
+ }finally{await act(async()=>f.root.unmount())}
+})
+
+test('idle interaction readiness updates do not restart the unchanged viewport plan',async()=>{
+ const {RenderMailbox}=await import('./render-mailbox'),enqueue=vi.spyOn(RenderMailbox.prototype,'run')
+ state.active=false;const f=await fixture(1)
+ try{
+  const control={current:{blocksCanvasRefinement:()=>false,isActive:()=>false,covers:()=>false}}
+  const interaction={document:f.props.document,selection:[],active:false,epoch:0,readinessRevision:1,control,onReady(){}}
+  await f.render({interaction});const before=enqueue.mock.calls.length
+  for(let readinessRevision=2;readinessRevision<22;readinessRevision++)await f.render({interaction:{...interaction,readinessRevision}})
+  expect(enqueue).toHaveBeenCalledTimes(before)
+ }finally{await act(async()=>f.root.unmount());enqueue.mockRestore()}
+})
+
 test('continuous DPR2 navigation gives one real native tile a turn without increasing preview density', async () => {
   const f = await fixture()
   try {

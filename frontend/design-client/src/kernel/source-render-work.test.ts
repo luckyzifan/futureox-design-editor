@@ -28,3 +28,14 @@ test('duplicates and expanded batch limits are rejected before dispatch',()=>{
  expect(()=>queue.begin(tiles,3)).toThrow('Invalid')
  expect(queue.begin(tiles).pending.size).toBe(2)
 })
+
+test('a useful active tile finishes before cancelling obsolete one-ahead work',()=>{
+ const queue=new SourceRenderWork<typeof tiles[number]>(),work=queue.begin(tiles)
+ queue.demand(false,tile=>tile.key==='a')
+ expect(work.controller.signal.aborted).toBe(false)
+ queue.delivered(work,'a');queue.demand(false,tile=>tile.key==='a')
+ expect(work.controller.signal.aborted).toBe(true)
+ expect(queue.accepts(work,'b')).toBe(false)
+ expect(()=>queue.begin(tiles)).toThrow('owner')
+ queue.release(work);expect(queue.begin([tiles[2]]).sequence).toBe(2)
+})
