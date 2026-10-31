@@ -1,8 +1,0 @@
-{
-  "path": "testing/verification-latest-final/",
-  "files": 28,
-  "allBytesAndModesUnchangedDuringRun": true,
-  "priorArchiveSha256": "a9fb36a1ae40b3b30aa68a0aa5a7f2d3440c600697ab1ddae43ef0380c12c051",
-  "priorArchivePostimagesVerified": 28,
-  "allBytesAndModesMatchPriorDeliveredArchive": true
-}

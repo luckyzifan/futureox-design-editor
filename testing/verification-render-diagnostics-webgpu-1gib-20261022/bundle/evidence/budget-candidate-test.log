@@ -1,9 +1,0 @@
-
- RUN  v5.0.1 /workspace/shared/canvas-realtime-ee97b40-20261022/verification/default-gpu-budget/after/frontend/design-client
-
-
- Test Files  1 passed (1)
-      Tests  23 passed (23)
-   Start at  14:51:08
-   Duration  983ms (transform 79%, import 11%, tests 10%)
-

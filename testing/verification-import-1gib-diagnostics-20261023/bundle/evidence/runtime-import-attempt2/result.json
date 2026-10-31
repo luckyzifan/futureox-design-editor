@@ -1,9 +1,0 @@
-[
-  {
-    "stage": "new",
-    "exitCode": 1,
-    "guard": null,
-    "wallSeconds": 0.5569301539799199,
-    "sampledGroupPeakRssBytes": 246771712
-  }
-]

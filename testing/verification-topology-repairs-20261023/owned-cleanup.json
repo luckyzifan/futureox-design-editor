@@ -1,9 +1,0 @@
-{
-  "at": "2026-10-23T15:38:56.976482+00:00",
-  "root": "/private/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/topology-render-repairs-8aude7r6",
-  "removed": [
-    "baseline-electron",
-    "source-fixtures/profile"
-  ],
-  "preserved": "frozen successful runtime, all profiles/flames/logs and extracted fixtures"
-}

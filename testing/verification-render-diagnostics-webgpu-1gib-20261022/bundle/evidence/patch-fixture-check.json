@@ -1,6 +1,0 @@
-{
-  "gitApplyCheck": "passed",
-  "gitApplyExactCandidateBytes": "passed",
-  "gitReverseCheck": "passed",
-  "scope": "temporary exact ee97 file fixture, not user checkout"
-}

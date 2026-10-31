@@ -1,9 +1,0 @@
-{
-  "scope": "Actual Electron/native source navigation, synthetic 192-root page, 1 MiB trusted memory / 64 KiB document allowance; not real-topology rendering performance",
-  "status": "failed",
-  "pages": "JSON\nobject\nJSON\nobject\n›\nPage A\n载入页面\n›\nPage B\n载入页面\n›\nPage C\n载入页面\n›",
-  "firstRange": "Page A · 1–52 / 192\n上一部分\n下一部分",
-  "secondRange": "Page A · 53–104 / 192\n上一部分\n下一部分",
-  "error": "Error: expect(locator).toHaveText(expected) failed\n\nLocator: locator('[aria-label=\"页面分段\"]')\nTimeout: 5000ms\n- Expected  - 3\n+ Received  + 1\n\n- Page A · 1–52 / 192\n- 上一部分\n- 下一部分\n+ Page A · 1–52 / 192上一部分下一部分\n\nCall log:\n  - Expect \"toHaveText\" locator('[aria-label=\"页面分段\"]') with timeout 5000ms\n  - waiting for locator('[aria-label=\"页面分段\"]')\n    4 × locator resolved to <nav aria-label=\"页面分段\">…</nav>\n      - unexpected value \"Page A · 53–104 / 192上一部分下一部分\"\n    10 × locator resolved to <nav aria-label=\"页面分段\">…</nav>\n       - unexpected value \"Page A · 1–52 / 192上一部分下一部分\"\n",
-  "closeError": "Error: close timeout"
-}

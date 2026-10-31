@@ -1,8 +1,0 @@
-{
-  "startedAt": "2026-10-19T16:57:59.423061+00:00",
-  "VITEST_MAX_WORKERS": 2,
-  "reason": "Final source-only font-fixture generator/helper added after attempt2 passed. Full rerun validates source ZIP reproducibility without shipping generated TTFs. Prior attempt1 SIGKILL remains preserved, not accepted.",
-  "runtimeProfile": "desktop-dev portable wasm; no SIMD/wasm-opt",
-  "runtimeSha256": "2c50f87de40b6e2ecc456eb053706d4e2c3c058da82aafffd1b191eddd8b039a",
-  "priorAttempt": "attempt-2"
-}

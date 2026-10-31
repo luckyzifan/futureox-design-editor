@@ -1,7 +1,0 @@
-{
-  "method": "wasm-bindgen same release input; remove optional name section and compare executable bytes",
-  "equalExecutableBytes": true,
-  "productionSha256": "9cddc0c6b91a48474037a4f64f6ac844f8bbea696596a241b3d31b49cf9678c5",
-  "namedSha256": "c1587654047ba214bcfa6a9e3182931cd62cbaea805a9c70e919762ac616c226",
-  "namedFunctions": 6390
-}

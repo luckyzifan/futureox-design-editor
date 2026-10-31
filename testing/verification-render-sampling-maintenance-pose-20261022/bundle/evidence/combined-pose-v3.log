@@ -1,9 +1,0 @@
-
- RUN  v5.0.1 /workspace/shared/combined-1cde-cpu-20261022/source/frontend/design-client
-
-
- Test Files  3 passed (3)
-      Tests  61 passed (61)
-   Start at  16:41:30
-   Duration  6.07s (tests 77%, transform 19%, import 4%)
-

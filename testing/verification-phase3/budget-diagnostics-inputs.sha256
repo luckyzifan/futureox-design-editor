@@ -1,8 +1,0 @@
-f742663d974ee237390c7689e06e725bcc5e8ea721c80402652e621e13463b2c  frontend/design-client/src/kernel/render-diagnostics.ts
-a1fe0130ad3c8a22f46fc7801d93fd7525d4b170a042df98c4f133af32783ec4  frontend/design-client/src/kernel/render-diagnostics.test.mjs
-00deae50f6cb0c5c2b87ab8efa464ad681119f7e74e7abe3101a0c734ecdad13  frontend/design-client/src/kernel/render-budget-client.test.ts
-12b471595f23e8dce0077c4b8d9793b502b24d790ce62adacb898cc6680760f1  frontend/design-client/src/kernel/client.ts
-536bba8636d30cf866cf1503534e0fe71982b8b1790a669fde12aba2740b6f17  frontend/design-client/src/kernel/render-worker.ts
-2caddbdb9c4b10946f6a8a71ff7b3dd578ac9d3bf14b666f8aafa1ca524140ab  frontend/design-client/src/kernel/gpu/renderer.ts
-11472e632fbaad4b820e12969272322208510956127a129e365349343ecc0b3d  frontend/design-client/src/kernel/gpu/renderer-regressions.test.mjs
-83dc157ea546ed67340b3a229170713312e595b95b0310f9a7883e90ee445271  frontend/design-client/RENDER_DIAGNOSTICS.md

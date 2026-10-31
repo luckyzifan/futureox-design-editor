@@ -1,9 +1,0 @@
-{
-  "status": "passed",
-  "runtime": "actual Node codec worker and host admission",
-  "installBytes": 1000234,
-  "deltaBytes": 174,
-  "outputBytes": 1000093,
-  "byteEqual": true,
-  "staleRejected": true
-}

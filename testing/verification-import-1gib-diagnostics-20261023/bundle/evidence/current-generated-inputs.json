@@ -1,7 +1,0 @@
-{
-  "source": "clean e411 + native policy two files",
-  "generated": "/workspace/shared/native-import-policy-20261023T0129Z/full-wasm/generated",
-  "WASM_SHA256": "09ff44d26dbd365a7551a9de56d135c21fb44b387d8f11a51b155887f84d9b28",
-  "evidence": "/workspace/shared/native-import-policy-20261023T0129Z/full-wasm/run-result.json",
-  "baselineGeneratedInputsRetiredForFinalCombination": true
-}

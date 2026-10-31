@@ -1,1 +1,0 @@
-{"schemaVersion": 6, "id": "d", "name": "probe", "pages": [{"id": "p", "name": "p", "background": "#ffffff", "children": ["n"]}], "nodes": {"n": {"id": "n", "kind": "rectangle", "width": 10, "height": 10, "effects": [{"kind": "shadow", "x": 3000000000.0, "color": "#000000"}]}}}

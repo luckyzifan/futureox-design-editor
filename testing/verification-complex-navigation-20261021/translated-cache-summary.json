@@ -1,5 +1,0 @@
-{
-  "targeted": { "suitesPassed": 10, "suitesFailed": 0, "testsPassed": 163, "testsFailed": 0 },
-  "newWitnessAndLayout": { "testsPassed": 3, "testsFailed": 0 },
-  "typecheck": { "exitCode": 0, "diagnostics": 0 }
-}

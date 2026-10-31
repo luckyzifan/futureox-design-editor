@@ -1,4 +1,0 @@
- 6716  6706   0.7    01:39:09 /Users/Apple/project/design-kernel/frontend/design-desktop/node_modules/electron/dist/Electron.app/Contents/Frameworks/Electron Helper.app/Contents/MacOS/Electron Helper
- 6718  6706   0.0    01:39:09 /Users/Apple/project/design-kernel/frontend/design-desktop/node_modules/electron/dist/Electron.app/Contents/Frameworks/Electron Helper.app/Contents/MacOS/Electron Helper
- 6838  6706   2.1    01:39:08 /Users/Apple/project/design-kernel/frontend/design-desktop/node_modules/electron/dist/Electron.app/Contents/Frameworks/Electron Helper (Renderer).app/Contents/MacOS/Electron Helper (Renderer)
-10067  6706   0.0    01:36:37 /private/tmp/futureox-render-work-reduction-host-20261028/dist/bin/design-prepare

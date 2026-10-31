@@ -1,5 +1,0 @@
-{
-  "__DESIGN_REPO__/design-studio/crates/design-kernel/src/interop.rs": "cf961d82c1f11ecdacc8c79b7d9f124a25c778564afc010b5c667ad97adf9e7d",
-  "__DESIGN_REPO__/design-studio/crates/design-kernel/tests/sketch_color_profiles.rs": "621c10b581aec1949eebb00f9aa94baaf2195d6c5369fd6d8169217e2ace9f51",
-  "__BUILD_ROOT__/cargo-target/debug/deps/libfutureox_design_kernel.rlib": "fe4d86469315083578fce4c268b2a5ecadf9924e8e90b289294b487058f9515f"
-}

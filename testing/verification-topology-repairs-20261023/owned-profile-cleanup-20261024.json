@@ -1,9 +1,0 @@
-{
-  "at": "2026-10-24T01:23:49.468599",
-  "removed": [
-    "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/topology-render-repairs-8aude7r6/source-gui-1/tmp",
-    "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/topology-render-repairs-8aude7r6/source-gui-2/tmp",
-    "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/topology-render-repairs-8aude7r6/source-gui-3/tmp"
-  ],
-  "scope": "Only failed-run private TMPDIR profiles; logs, screenshots and failure records retained"
-}

@@ -1,7 +1,0 @@
-{
-  "host": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/topology-render-repairs-8aude7r6/candidate-close-runtime/host",
-  "sourceScope": "combined local source, independent copied binaries",
-  "experimentalFlags": "default off",
-  "nativeSha256": "ef12c59fa4870d8e342148cd831aea3bd2ba6351431d722e2394fd0c2e017f50",
-  "wasmSha256": "ec6361adc61845d8559546c8e6f31f9d8a6f76561cf691ada9f464a499120bff"
-}

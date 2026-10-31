@@ -1,6 +1,0 @@
-{
-  "file": "design-studio/crates/design-kernel/src/interop.rs",
-  "before": "787c91f51007b029be37f6b6f661c8b3d45e509ddb682205aeb7e7387adda924",
-  "after": "3be795db37546679c4b9f9ab100520d175961fcf5a4375ec77afce81ebc7458b",
-  "time": "2026-10-26T18:08:46.170699+00:00"
-}

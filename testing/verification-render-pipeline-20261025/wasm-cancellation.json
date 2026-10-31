@@ -1,6 +1,0 @@
-{
-  "status": "passed",
-  "scope": "real WASM in an independent Node worker; deterministic mid-compilation gate, not latency measurement",
-  "checkpoints": 100,
-  "recoveredSceneAndPng": true
-}

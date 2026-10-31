@@ -1,1 +1,0 @@
-src/kernel/native-compile-failure-codes.test.ts(2,40): error TS7016: Could not find a declaration file for module '../../../design-desktop/src/preparation-frame.mjs'. '/workspace/shared/import-increment-e411-20261023T0140Z/stage-source/frontend/design-desktop/src/preparation-frame.mjs' implicitly has an 'any' type.

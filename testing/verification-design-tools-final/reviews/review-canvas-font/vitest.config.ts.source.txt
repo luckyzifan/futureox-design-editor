@@ -1,2 +1,0 @@
-import { defineConfig } from 'vitest/config'
-export default defineConfig({ test: { setupFiles: ['__DESIGN_REPO__/frontend/design-client/src/test-setup.ts'], include: ['independent-canvas.test.tsx', 'independent-font.test.tsx'], maxWorkers: 1 } })

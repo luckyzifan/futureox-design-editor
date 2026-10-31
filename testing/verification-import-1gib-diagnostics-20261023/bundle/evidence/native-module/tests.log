@@ -1,9 +1,0 @@
-
-running 4 tests
-test sketch::archive::input_policy_tests::compressed_input_admission_boundaries_without_allocation ... ok
-test sketch::archive::input_policy_tests::expansion_and_export_limits_remain_independent ... ok
-test actual_archive_preserves_path_guard ... ok
-test actual_archive_roundtrip ... ok
-
-test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-

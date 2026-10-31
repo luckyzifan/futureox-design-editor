@@ -1,8 +1,0 @@
-{
-  "origin": "unchanged git base71d32153e6f55b3723c99708b4c4c49ac7342e67",
-  "source_sha256": "536bba8636d30cf866cf1503534e0fe71982b8b1790a669fde12aba2740b6f17",
-  "resume_sha256": "15dc6c91695a59a6d6c92a595f8b63ba1302428cc27fa24f42a1bba6d87affa1",
-  "archive": "${PRIOR_RELEASE}/futureox-desgin-design-tools-performance-cumulative-20261019.zip",
-  "archive_sha256": "02241e7467435d4e47a79041d0fccfea234c52d1b3a3b0e46eaa8f781ff1bafb",
-  "archive_sha256_independently_verified": true
-}

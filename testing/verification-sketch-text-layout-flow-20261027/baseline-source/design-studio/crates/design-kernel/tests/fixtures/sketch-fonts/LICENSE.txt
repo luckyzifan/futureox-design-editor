@@ -1,5 +1,0 @@
-Synthetic test fonts generated for the Core multi-font regression suite.
-Dedicated to the public domain under CC0-1.0.
-Source: multi-font evidence generator; families, advance widths and codepoints
-are listed in manifest.json. These tiny geometric test fonts contain no
-third-party font outlines. License: https://creativecommons.org/publicdomain/zero/1.0/

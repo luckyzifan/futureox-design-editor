@@ -1,6 +1,0 @@
-{
-  "status": "failed",
-  "backend": "webgpu",
-  "cases": [],
-  "error": "Error: webgpu: 没有可用的 WebGPU 适配器"
-}

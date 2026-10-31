@@ -1,9 +1,0 @@
-{
-  "design-studio/crates/design-kernel/src/interop.rs": "4c6a65f31c7ad8ef21e6517c2ab520beb38328166d05682b13ae02c56468f817",
-  "design-studio/crates/design-kernel/tests/sketch_color_profiles.rs": "179311dce3fe4039aae1d2819948bdb9f134c86321ff62b2383d09dc008cb863",
-  "frontend/design-client/public/kernel/design_kernel_bg.wasm": "e002c8fe2efc46b09fed04bbc21404c5b7bdfb773e12081c41cfc004c824ea1b",
-  "design-studio/crates/design-kernel/src/color.rs": "0b47ef36d2553671375d7be5fe9bbc066bf2df144cf48706607eed44376c175c",
-  "design-studio/crates/design-kernel/src/image_color.rs": "3f0ee4fed34c11f09f478a70bfeddcc8eecdec15c10891cefceae4f8936f1afd",
-  "design-studio/crates/design-kernel/src/image_adjust.rs": "5804b15878845afac6fc0ec12e82559b7fa7fb03b1dfb359f37636fadeb26a77",
-  "design-studio/crates/design-kernel/src/pdf_export.rs": "5992dd6286541ef88d9ebb4a085a3ee7f2856611476b55d46a69c285a8669d0f"
-}

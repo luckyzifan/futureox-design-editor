@@ -1,1 +1,0 @@
-import {defineConfig} from 'vitest/config';export default defineConfig({test:{include:['src/kernel/interaction-renderer.test.ts','src/canvas-action-diagnostics.test.ts','src/kernel/interaction-editor-recovery.test.ts'],maxWorkers:1,fileParallelism:false,testTimeout:30000}})

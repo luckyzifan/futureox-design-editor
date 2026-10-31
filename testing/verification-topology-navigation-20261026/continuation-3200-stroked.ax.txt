@@ -1,2 +1,0 @@
-There has been no change in the accessibility tree for Window: "Futureox Design · 拓扑修复 10.27".
-The focused UI element is 282 disclosure triangle Description: 缩放与视图设置, Help: 3200%⌄

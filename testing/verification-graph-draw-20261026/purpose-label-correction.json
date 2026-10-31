@@ -1,5 +1,0 @@
-{
-  "recordedAt": 1792993384.216514,
-  "run": "paired-a1",
-  "reason": "Inherited prior-round label keyed SCREEN_HIDE_CHROME. In this round the predeclared A/B uses chrome hiding only for canonical screenshots AFTER finalSettled. No profiler, build or heavy test runs concurrently. Raw report label retained; future runs use explicit purpose. This correction is recorded before inspecting any paired-a1 timing result."
-}

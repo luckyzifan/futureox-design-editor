@@ -1,6 +1,0 @@
-{
-  "baselineSourceSha256": "536bba8636d30cf866cf1503534e0fe71982b8b1790a669fde12aba2740b6f17",
-  "beforeColorFixSourceSha256": "7a294621d6a8c02940537cc88104fe877368e7a23f546dd3248d4e8917d106f0",
-  "identicalResumeBranchSha256": "79b46fca0a51a0bd3ea91080c651aeec5dfde8af170fca70f0e179dea14da2f9",
-  "negativeControl": "Actual render-worker tests execute beforeColorFix source, real WASM PQ decoded pixels and production GpuRenderer resource cache; the faulty resume branch is byte-identical to the delivered baseline. Device execution/transport is doubled."
-}

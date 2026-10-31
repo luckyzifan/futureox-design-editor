@@ -1,9 +1,0 @@
-{
-  "baseline": "146825dad9e292b1b06046d17a269397d75ab323",
-  "files": 7,
-  "forwardCheck": "passed",
-  "forwardExactBytes": "passed",
-  "reverseCheck": "passed",
-  "reverseExactRestoration": "passed",
-  "newFilesRemoved": 3
-}

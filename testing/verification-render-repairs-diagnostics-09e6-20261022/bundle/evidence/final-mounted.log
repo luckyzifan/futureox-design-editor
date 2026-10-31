@@ -1,9 +1,0 @@
-
- RUN  v5.0.1 <Core>/frontend/design-client
-
-
- Test Files  2 passed (2)
-      Tests  14 passed (14)
-   Start at  17:47:05
-   Duration  5.76s (tests 53%, transform 23%, import 22%, setup 1%)
-

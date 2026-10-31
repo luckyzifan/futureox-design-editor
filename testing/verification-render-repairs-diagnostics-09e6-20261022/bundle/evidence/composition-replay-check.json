@@ -1,8 +1,0 @@
-{
-  "baseline": "09e6bce9917eef8104957eb67f23583e3a2f52e4",
-  "patches": 5,
-  "matchedFiles": 18,
-  "contextOnlyAdjustments": 2,
-  "changedSourceLinesInAdjustments": 0,
-  "result": "passed"
-}

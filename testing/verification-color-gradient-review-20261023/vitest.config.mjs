@@ -1,1 +1,0 @@
-export default {root:new URL('../../frontend/design-client/',import.meta.url).pathname,test:{include:['src/gradient.test.ts','src/svg-color.test.ts','src/kernel/gpu/gradient-stop-table.test.ts'],maxWorkers:1,fileParallelism:false}}

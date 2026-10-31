@@ -1,7 +1,0 @@
-{
-  "initial": { "suitesPassed": 7, "suitesFailedAtLoad": 1, "testsPassed": 142, "testsFailed": 0 },
-  "second": { "suitesPassed": 7, "suitesFailedAtLoad": 1, "testsPassed": 142, "testsFailed": 0 },
-  "isolatedCorrected": { "suitesPassed": 1, "suitesFailed": 0, "testsPassed": 12, "testsFailed": 0 },
-  "finalTargeted": { "suitesPassed": 8, "suitesFailed": 0, "testsPassed": 154, "testsFailed": 0 },
-  "typecheck": { "exitCode": 0, "diagnostics": 0 }
-}

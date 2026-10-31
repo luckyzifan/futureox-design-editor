@@ -1,1 +1,0 @@
-import{defineConfig}from'vitest/config';export default defineConfig({test:{setupFiles:['./src/test-setup.ts'],include:['src/canvas-async-preview-recovery.test.tsx','src/canvas-fallback-submission.test.tsx','src/canvas-action-mounted.test.tsx'],testTimeout:30000,hookTimeout:30000,maxWorkers:1,fileParallelism:false}})

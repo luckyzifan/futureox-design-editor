@@ -1,5 +1,0 @@
-{
-  "reason": "Stop the owned failed interaction run to profile repeated multi-second renderer stalls; no acceptance claimed",
-  "ownedPid": 6529,
-  "verifiedCommand": "/Users/Apple/project/design-kernel/frontend/design-desktop/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron --inspect=0 --remote-debugging-port=0 /var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/fig-import-20261024-53ubdlbl/host-final --desktop-isolated-profile"
-}

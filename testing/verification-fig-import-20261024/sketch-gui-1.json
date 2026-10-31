@@ -1,9 +1,0 @@
-{
-  "status": "failed",
-  "scope": "owned isolated Electron; real source import/Canvas/edit/save/export; preset save-dialog destination; visibility recorded explicitly; not physical scanout/FPS",
-  "cases": [],
-  "exportFile": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/fig-import-20261024-53ubdlbl/sketch-gui-1/topology-verified.sketch",
-  "visibility": "visible",
-  "nativeVisible": true,
-  "error": "Error: expect(locator).toHaveText(expected) failed\n\nLocator:  locator('.save-status')\nExpected: \"已保存到本机\"\nReceived: \"●待保存到本机\"\nTimeout:  60000ms\n\nCall log:\n  - Expect \"toHaveText\" locator('.save-status') with timeout 60000ms\n  - waiting for locator('.save-status')\n    123 × locator resolved to <span role=\"status\" class=\"save-status \" title=\"编辑后自动保存到本机文档库\">…</span>\n        - unexpected value \"●待保存到本机\"\n"
-}

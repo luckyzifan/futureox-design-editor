@@ -1,5 +1,0 @@
-{
-  "file": "frontend/design-client/src/kernel/gpu/webgpu.ts",
-  "before": "b49fc3fcdac66853fcbc7ebbc28d00e400cc622a63425be921e08b96f54f5615",
-  "after": "acf8d430fa4166153a98f4fe776e4da4d8d97b9914d53c95f9308004d47b2412"
-}

@@ -1,9 +1,0 @@
-
- RUN  v5.0.1 /workspace/shared/import-increment-e411-20261023T0140Z/stage-source/frontend/design-client
-
-
- Test Files  1 passed (1)
-      Tests  4 passed (4)
-   Start at  10:58:35
-   Duration  3.03s (tests 47%, transform 34%, import 17%, setup 1%)
-
