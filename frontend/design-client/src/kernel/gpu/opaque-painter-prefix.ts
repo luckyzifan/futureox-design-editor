@@ -2,7 +2,7 @@ import type {GpuNode,GpuPaint,GpuScene,Rect} from './types'
 import {fullSampleCoverage} from './horizontal-filter-cache'
 import {exactBlendLattice} from './effect-region'
 
-type Proofs={color:(value:string)=>readonly number[];image:(node:GpuNode,paint:GpuPaint)=>boolean}
+type Proofs={color:(value:string)=>readonly number[];image:(node:GpuNode,paint:GpuPaint)=>boolean;imageFilters?:boolean}
 /** Only normal, bounded sources may disappear behind a complete overwrite.
  * This preserves the old zero/NaN behaviour: unknown images, HDR/overflow,
  * masks, backdrop reads and unsupported operators never grant this proof. */
@@ -27,7 +27,8 @@ function boundedPrefix(scene:GpuScene,ids:readonly string[],proofs:Proofs):boole
     !n.fills.every(p=>boundedPaint(p,proofs,n))||!n.strokes.every(s=>boundedPaint(s.paint,proofs,n)))return false
   const visible=n.effects.filter(e=>e.visible)
   if(visible.length){
-   if(visible.length!==1||n.children.length||n.fills.length!==1||n.fills[0].kind!=='solid')return false
+   if(visible.length!==1||n.children.length||n.fills.length!==1||
+     !(n.fills[0].kind==='solid'||proofs.imageFilters&&n.fills[0].kind==='image'))return false
    const e=visible[0],sigma=e.radius*Math.max(Math.hypot(n.matrix[0],n.matrix[1]),Math.hypot(n.matrix[2],n.matrix[3]))
    // Positive normalized box convolution of bounded finite pixels remains
    // finite, including the admitted display arithmetic and streamed recipe.

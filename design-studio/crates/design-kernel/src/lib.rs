@@ -689,6 +689,12 @@ mod wasm {
             .map_err(|e| JsValue::from_str(&e))
     }
     #[wasm_bindgen]
+    pub fn gaussian_region_box_radii(sigma: f64) -> Result<Vec<u32>, JsValue> {
+        effects::gaussian_box_radii_region(sigma)
+            .map(|r| r.to_vec())
+            .map_err(|e| JsValue::from_str(&e))
+    }
+    #[wasm_bindgen]
     pub fn rational_region_box_kernel_rgba(radius:u32)->Result<Vec<u8>,JsValue>{
         crate::rational_filter::RationalKernel::regional_box(radius).map(|kernel|kernel.encoded()).map_err(|e|JsValue::from_str(&e))
     }

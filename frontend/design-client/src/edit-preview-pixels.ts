@@ -1,5 +1,15 @@
 import type { CanvasCamera, CanvasSize } from './canvas-camera'
-import type { Point } from './model'
+import type { DesignDocument, Point } from './model'
+import type { ExactPresentation } from './kernel/presentation'
+
+/** A deferred copy must still describe the pixels currently presented, rather
+ * than labeling an old camera's canvas with the requested camera. */
+export function retainedFrameMatches(frame: ExactPresentation | null, document: DesignDocument, pageId: string,
+  epoch: number, view: CanvasCamera, size: CanvasSize, pixelRatio: number) {
+  return !!frame && !frame.preview && !frame.animation && frame.document === document && frame.pageId === pageId &&
+    frame.epoch === epoch && frame.width === size.width && frame.height === size.height && frame.pixelRatio === pixelRatio &&
+    frame.view.x === view.x && frame.view.y === view.y && frame.view.zoom === view.zoom
+}
 
 /** A retained bitmap belongs to one physical-pixel grid. Resizing the viewport,
  * changing displays, or moving the camera invalidates that capture. */

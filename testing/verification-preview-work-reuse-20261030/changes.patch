@@ -1,0 +1,692 @@
+--- a/frontend/design-client/src/Canvas.tsx
++++ b/frontend/design-client/src/Canvas.tsx
+@@ -278,8 +278,10 @@
+   const presented = useSyncExternalStore(presentedSignal.subscribe, presentedSignal.getSnapshot).frame
+   const presentationScopeMatches = presented?.epoch === editor.sessionGeneration &&
+     presented.pageId === state.page && presented.document.id === state.doc.id
+-  const vectorPreviewSupported = useMemo(() => supportsEditPreview(state.doc, state.page), [state.doc, state.page])
+   const gpuPreviewAvailable = !!gpuMove.current?.covers(state.doc, state.selection, state.view)
++  const vectorPreviewSupport = useMemo(() => ({ document: state.doc, pageId: state.page,
++    supported: !gpuPreviewAvailable && supportsEditPreview(state.doc, state.page) }), [state.doc, state.page, gpuPreviewAvailable])
++  const vectorPreviewSupported = vectorPreviewSupport.supported
+   const editPreviewSupported = gpuPreviewAvailable || vectorPreviewSupported || !!retainedMove.current?.covers(state.doc, state.selection, state.view)
+   const editPreviewVisible = presentationScopeMatches &&
+     (gpuPreviewAvailable && !!gpuMove.current?.isActive() || editPreviewSupported && presented.document !== state.doc)
+@@ -2377,6 +2379,7 @@
+       />}
+       {!nativeSource&&showStartup && <StartupPreview preview={startupPreview!} view={state.view} loading={loading} width={size.width} height={size.height}/>}
+       {geometryReady && !gpuPreviewAvailable && <CanvasEditPreview document={renderedDocument} baseDocument={editBaseDocument.current} selection={state.selection} pageId={state.page}
++        vectorSupport={vectorPreviewSupport} captureFrame={presented} epoch={editor.sessionGeneration} scene={interactionScene}
+         vectorSupported={vectorPreviewSupported} sourceHost={host} control={retainedMove} canCapture={!state.grid && !state.checkerboard && !!presentationScopeMatches && presented.document === state.doc && !presented.preview}
+         view={displayView} size={size} visible={!!editPreviewVisible} inputAt={editInputAt.current}/>}
+       {editPreviewVisible && <span className="canvas-edit-status" role="status">编辑预览 · 正在细化</span>}
+--- a/frontend/design-client/src/CanvasEditPreview.tsx
++++ b/frontend/design-client/src/CanvasEditPreview.tsx
+@@ -3,42 +3,55 @@
+ import type { DesignDocument, Matrix } from './model'
+ import type { CanvasCamera, CanvasSize } from './canvas-camera'
+ import { Scene } from './Renderer'
+-import { movePreviewPlan, movePreviewOffset, retainedSvgMove } from './edit-preview'
++import { movePreviewPlan, movePreviewOffset, retainedSvgMove, type EditPreviewSupport } from './edit-preview'
+ import { matrixString } from './geometry'
+-import { useDevicePixelRatio } from './kernel/presentation'
+-import { retainedCaptureMatches, retainedPixelOffset } from './edit-preview-pixels'
++import { useDevicePixelRatio, type ExactPresentation } from './kernel/presentation'
++import { retainedCaptureMatches, retainedFrameMatches, retainedPixelOffset } from './edit-preview-pixels'
++import type { CanvasSceneBorrow } from './canvas-scene-snapshots'
+ const EditScene = memo(Scene)
+ export type RetainedMoveControl = { apply(document: DesignDocument, id: string, transform: Matrix): boolean; covers(document: DesignDocument, selection: string[], view: CanvasCamera): boolean; restore(): void }
+ 
+ /** Warm immutable paths before the first gesture, then update the browser's
+  * composited vector scene at input cadence while the exact worker catches up.
+  * This is explicitly transient and never used for export or exact readiness. */
+-export const CanvasEditPreview = memo(function CanvasEditPreview({ document, baseDocument, selection, pageId, view, size, visible, inputAt, sourceHost, canCapture, control, vectorSupported }:
+-  { document: DesignDocument; baseDocument: DesignDocument; selection: string[]; pageId: string; view: CanvasCamera; size: CanvasSize; visible: boolean; inputAt: number; sourceHost: RefObject<HTMLDivElement|null>; canCapture: boolean; control: RefObject<RetainedMoveControl|null>; vectorSupported: boolean }) {
++export const CanvasEditPreview = memo(function CanvasEditPreview({ document, baseDocument, selection, pageId, view, size, visible, inputAt, sourceHost, canCapture, control, vectorSupported, vectorSupport, captureFrame, epoch, scene }:
++  { document: DesignDocument; baseDocument: DesignDocument; selection: string[]; pageId: string; view: CanvasCamera; size: CanvasSize; visible: boolean; inputAt: number; sourceHost: RefObject<HTMLDivElement|null>; canCapture: boolean; control: RefObject<RetainedMoveControl|null>; vectorSupported: boolean;
++    vectorSupport?: EditPreviewSupport; captureFrame: ExactPresentation | null; epoch: number; scene?: CanvasSceneBorrow }) {
+   const host = useRef<HTMLDivElement>(null)
+   const samples = useRef<number[]>([])
+   const directSamples = useRef<number[]>([])
+   const pixelRatio = useDevicePixelRatio()
+-  const [retained, setRetained] = useState<{ plan: NonNullable<ReturnType<typeof retainedBoardPlan>>; pixels: NonNullable<ReturnType<typeof captureBoardFrame>>; view: CanvasCamera; size: CanvasSize } | null>(null)
++  const [retained, setRetained] = useState<{ plan: NonNullable<ReturnType<typeof retainedBoardPlan>>; pixels: NonNullable<ReturnType<typeof captureBoardFrame>>; view: CanvasCamera; size: CanvasSize; frame: ExactPresentation } | null>(null)
+   const retainedHost = useRef<HTMLDivElement>(null)
+   const movedOverlays = useRef(new Map<SVGElement, string>())
+   const movedDefinitions = useRef(new Map<SVGElement, string>())
+   const vectorHost = useRef<SVGSVGElement>(null)
+-  const svgPlan = useMemo(() => vectorSupported ? retainedSvgMove(baseDocument, pageId, selection) : null,
+-    [baseDocument, pageId, selection.join(','), vectorSupported])
+-  const boardPlanCache = useRef<{ document: DesignDocument; pageId: string; selection: string; plan: ReturnType<typeof retainedBoardPlan> } | null>(null)
++  const selectionKey = JSON.stringify(selection)
++  // The support receipt is only a cache-miss hint. New current-document
++  // receipts during a drag do not invalidate this immutable base plan.
++  const svgPlan = useMemo(() => vectorSupported ? retainedSvgMove(baseDocument, pageId, selection, vectorSupport) : null,
++    [baseDocument, pageId, selectionKey, vectorSupported])
++  const boardPlanCache = useRef<{ document: DesignDocument; pageId: string; selection: string; epoch: number; scene?: CanvasSceneBorrow; plan: ReturnType<typeof retainedBoardPlan> } | null>(null)
+   useLayoutEffect(() => {
+-    if (visible || !canCapture || !sourceHost.current) return
++    if (visible || svgPlan || !canCapture || !sourceHost.current || document.colorManagement ||
++        !retainedFrameMatches(captureFrame, document, pageId, epoch, view, size, pixelRatio)) return
+     // The 2D snapshot is sRGB8; it cannot retain managed/HDR presentation.
+-    const cached = boardPlanCache.current, selected = selection.join(',')
+-    const plan = cached?.document === document && cached.pageId === pageId && cached.selection === selected
+-      ? cached.plan : !document.colorManagement ? retainedBoardPlan(document, pageId, selection) : null
+-    boardPlanCache.current = { document, pageId, selection: selected, plan }
+-    if (host.current) host.current.dataset.retainPlan = plan ? JSON.stringify(plan.box) : 'ineligible'
+-    const pixels = plan && captureBoardFrame(sourceHost.current, plan.box, view)
+-    setRetained(plan && pixels ? { plan, pixels, view, size } : null)
+-  }, [document, pageId, selection.join(','), view.x, view.y, view.zoom, size.width, size.height, pixelRatio, visible, canCapture])
+-  const retainedCurrent = retained && !document.colorManagement && retainedCaptureMatches(retained, view, size, pixelRatio) ? retained : null
++    // Copy only after this exact presentation/camera has stayed quiet. Each new
++    // publication cancels the timer; SVG and GPU paths do not warm a bitmap.
++    const timer = setTimeout(() => {
++      if (!sourceHost.current) return
++      const cached = boardPlanCache.current
++      const plan = cached?.document === document && cached.pageId === pageId && cached.selection === selectionKey &&
++        cached.epoch === epoch && cached.scene === scene ? cached.plan : retainedBoardPlan(document, pageId, selection, { scene, epoch })
++      boardPlanCache.current = { document, pageId, selection: selectionKey, epoch, scene, plan }
++      if (host.current) host.current.dataset.retainPlan = plan ? JSON.stringify(plan.box) : 'ineligible'
++      const pixels = plan && captureBoardFrame(sourceHost.current, plan.box, view)
++      setRetained(plan && pixels ? { plan, pixels, view, size, frame: captureFrame! } : null)
++    }, 150)
++    return () => clearTimeout(timer)
++  }, [document, pageId, selectionKey, view.x, view.y, view.zoom, size.width, size.height, pixelRatio, visible, canCapture, svgPlan, captureFrame, epoch, scene, sourceHost])
++  const retainedCurrent = retained && retained.frame === captureFrame && retained.frame.epoch === epoch && retained.frame.pageId === pageId &&
++    !document.colorManagement && retainedCaptureMatches(retained, view, size, pixelRatio) ? retained : null
+   const retainedDocumentOffset = useMemo(() => retainedCurrent ? retainedBoardOffset(retainedCurrent.plan, document) : null, [retainedCurrent, document])
+   const retainedOffset = retainedCurrent && selection.length === 1 && retainedCurrent.plan.id === selection[0]
+     ? retainedPixelOffset(retainedDocumentOffset, view.zoom, pixelRatio) : null
+@@ -66,8 +79,8 @@
+     control.current = {
+       restore,
+       covers(current, selected, camera) {
+-        return !!retained && !current.colorManagement && selected.length === 1 && selected[0] === retained.plan.id &&
+-          retainedCaptureMatches(retained, camera, size, pixelRatio) &&
++        return !!retainedCurrent && !current.colorManagement && selected.length === 1 && selected[0] === retainedCurrent.plan.id &&
++          retainedCaptureMatches(retainedCurrent, camera, size, pixelRatio) &&
+           retainedPixelOffset(offsetFor(current), camera.zoom, pixelRatio) !== null
+       },
+       apply(current, id, transform) {
+@@ -111,8 +124,11 @@
+     foreground.style.cssText = `position:absolute;left:${crop.x}px;top:${crop.y}px;width:${crop.width}px;height:${crop.height}px;will-change:transform;transform:translate(${retainedOffset.x * view.zoom}px,${retainedOffset.y * view.zoom}px)`
+     if (background.parentElement !== retainedHost.current) retainedHost.current.replaceChildren(background, foreground)
+   }, [retained, retainedOffset?.x, retainedOffset?.y, view.zoom])
+-  const plan = useMemo(() => vectorSupported ? movePreviewPlan(baseDocument, pageId, selection) : null,
+-    [baseDocument, pageId, selection.join(','), vectorSupported])
++  // Split SVG documents are a fallback for an actual visible edit. The direct
++  // retained definition or bitmap already handles the preferred path.
++  const needsSplitPlan = vectorSupported && visible && !retainedOffset && !(svgPlan && document === baseDocument)
++  const plan = useMemo(() => needsSplitPlan ? movePreviewPlan(baseDocument, pageId, selection) : null,
++    [baseDocument, pageId, selectionKey, needsSplitPlan])
+   const offset = useMemo(() => plan && movePreviewOffset(plan, document), [plan, document])
+   const viewport = useMemo(() => ({ x: -view.x / view.zoom, y: -view.y / view.zoom,
+     width: size.width / view.zoom, height: size.height / view.zoom }), [view.x, view.y, view.zoom, size.width, size.height])
+--- a/frontend/design-client/src/edit-preview.ts
++++ b/frontend/design-client/src/edit-preview.ts
+@@ -1,6 +1,9 @@
+ import type { DesignDocument } from './model'
+ import { allParents, worldMatrix } from './geometry'
+ import { imageAdjustActive } from './kernel/gpu/image-adjust'
++
++/** Canvas's support result belongs to one immutable published document/page. */
++export type EditPreviewSupport = { document: DesignDocument; pageId: string; supported: boolean }
+ 
+ /** Only the existing vector presentation's supported subset can supply live
+  * editing pixels. Exact GPU/CPU output remains authoritative after settling. */
+@@ -35,8 +38,11 @@
+ /** A retained SVG definition can translate without reconstructing the React
+  * document. Backdrop effects embed world-space captures, and derived layout
+  * or boolean geometry must keep the regular transactional preview. */
+-export function retainedSvgMove(document: DesignDocument, pageId: string, ids: readonly string[]) {
+-  if (ids.length !== 1 || !supportsEditPreview(document, pageId)) return null
++export function retainedSvgMove(document: DesignDocument, pageId: string, ids: readonly string[], support?: EditPreviewSupport) {
++  if (ids.length !== 1) return null
++  const supported = support?.document === document && support.pageId === pageId
++    ? support.supported : supportsEditPreview(document, pageId)
++  if (!supported) return null
+   const id = ids[0], root = document.nodes[id]
+   if (!root?.visible || root.mask || root.kind === 'slice') return null
+   const parents = allParents(document)
+--- a/frontend/design-client/src/edit-preview-pixels.ts
++++ b/frontend/design-client/src/edit-preview-pixels.ts
+@@ -1,5 +1,15 @@
+ import type { CanvasCamera, CanvasSize } from './canvas-camera'
+-import type { Point } from './model'
++import type { DesignDocument, Point } from './model'
++import type { ExactPresentation } from './kernel/presentation'
++
++/** A deferred copy must still describe the pixels currently presented, rather
++ * than labeling an old camera's canvas with the requested camera. */
++export function retainedFrameMatches(frame: ExactPresentation | null, document: DesignDocument, pageId: string,
++  epoch: number, view: CanvasCamera, size: CanvasSize, pixelRatio: number) {
++  return !!frame && !frame.preview && !frame.animation && frame.document === document && frame.pageId === pageId &&
++    frame.epoch === epoch && frame.width === size.width && frame.height === size.height && frame.pixelRatio === pixelRatio &&
++    frame.view.x === view.x && frame.view.y === view.y && frame.view.zoom === view.zoom
++}
+ 
+ /** A retained bitmap belongs to one physical-pixel grid. Resizing the viewport,
+  * changing displays, or moving the camera invalidates that capture. */
+--- a/frontend/design-client/src/retained-board-preview.ts
++++ b/frontend/design-client/src/retained-board-preview.ts
+@@ -1,14 +1,16 @@
+ import type { Bounds, DesignDocument, Matrix } from './model'
+ import { intersects, scene, unionBounds } from './geometry'
++import type { CanvasSceneBorrow } from './canvas-scene-snapshots'
+ 
+ /** Only isolated page roots may be lifted out of a completed frame. A crop
+  * cannot reconstruct content hidden underneath an overlapping board. */
+-export function retainedBoardPlan(document: DesignDocument, pageId: string, selection: string[]) {
++export function retainedBoardPlan(document: DesignDocument, pageId: string, selection: string[],
++  publication?: { scene?: CanvasSceneBorrow; epoch: number }) {
+   const page = document.pages.find(p => p.id === pageId)
+   if (!page || selection.length !== 1 || !page.children.includes(selection[0])) return null
+   const id = selection[0], root = document.nodes[id]
+   if (!root?.visible || root.mask || root.opacity !== 1 || !['normal', 'pass-through'].includes(root.blend)) return null
+-  const entries = scene(document, pageId)
++  const entries = publication?.scene?.entriesFor(document, pageId, publication.epoch) ?? scene(document, pageId)
+   // Each entry belongs to exactly one page root. Re-filtering the complete
+   // scene for every root makes warm-up quadratic on large flat documents.
+   const rootBounds = new Map<string, Bounds>()
+--- a/frontend/design-client/src/canvas-edit-preview.test.mjs
++++ b/frontend/design-client/src/canvas-edit-preview.test.mjs
+@@ -27,7 +27,10 @@
+         pixelRatio: env.ratio, devicePixelRatio: env.ratio };
+     };`,
+   './Renderer': 'export const Scene = () => null;',
+-  './edit-preview': 'export const movePreviewPlan = () => null; export const movePreviewOffset = () => null; export const retainedSvgMove = () => null;',
++  './edit-preview': `export const movePreviewPlan = () => { globalThis.__editPreviewTest.splitPlans++; return null; };
++    export const movePreviewOffset = () => null;
++    export const retainedSvgMove = (document, page, ids) => { const env=globalThis.__editPreviewTest; env.svgPlans++;
++      return env.svgAvailable && ids.length===1 ? {id:ids[0],source:document,parentMatrix:[1,0,0,1,0,0]} : null; };`,
+   './geometry': `export const matrixString = m => 'matrix(' + m.join(' ') + ')';
+     export const allParents = () => { throw Error('Unexpected geometry boundary'); };
+     export const worldMatrix = () => { throw Error('Unexpected geometry boundary'); };`,
+@@ -64,13 +67,17 @@
+ hooks.deregister()
+ 
+ function fixture(t, { selection = [], vectorSupported = true, canCapture = false, ratio = 1 } = {}) {
++  t.mock.timers.enable({ apis: ['setTimeout'] })
+   const previous = { requestAnimationFrame: globalThis.requestAnimationFrame, cancelAnimationFrame: globalThis.cancelAnimationFrame }
+   globalThis.requestAnimationFrame = () => 1; globalThis.cancelAnimationFrame = () => {}
+-  const env = globalThis.__editPreviewTest = { ratio, captures: 0, validations: 0, plans: 0 }
++  const env = globalThis.__editPreviewTest = { ratio, captures: 0, validations: 0, plans: 0, svgPlans: 0, splitPlans: 0, svgAvailable: false }
+   const document = { id: 'doc', nodes: { board: { transform: [1, 0, 0, 1, 0, 0] } }, pages: [{ id: 'page', background: '#ffffff' }] }
+   const props = { document, baseDocument: document, selection, pageId: 'page', view: { x: 0, y: 0, zoom: 1 },
+     size: { width: 800, height: 600 }, visible: false, inputAt: 0, sourceHost: { current: { querySelectorAll: () => [] } },
+-    canCapture, control: { current: null }, vectorSupported }
++    canCapture, control: { current: null }, vectorSupported, epoch: 1 }
++  const frame = (patch = {}) => ({ document: props.document, pageId: props.pageId, epoch: props.epoch,
++    view: props.view, width: props.size.width, height: props.size.height, pixelRatio: env.ratio, ...patch })
++  props.captureFrame = frame()
+   const slots = [], layouts = [], refs = new Map()
+   let cursor = 0
+   const changed = (old, deps) => !old || !deps || deps.some((value, i) => !Object.is(value, old.deps[i]))
+@@ -113,7 +120,9 @@
+     slots.forEach(slot => slot?.cleanup?.()); delete globalThis.__editPreviewTest
+     for (const [key, value] of Object.entries(previous)) value === undefined ? delete globalThis[key] : globalThis[key] = value
+   })
+-  return { props, env, render, host: () => slots[0].current }
++  return { props, env, render, frame, warm: () => { t.mock.timers.tick(150); return render() },
++    renderFrame: (patch = {}) => { Object.assign(props, patch); return render({ captureFrame: frame() }) },
++    unmount: () => slots.forEach(slot => slot?.cleanup?.()), host: () => slots[0].current }
+ }
+ 
+ test('layout cleanup cannot hide a newly visible vector edit preview', t => {
+@@ -144,7 +153,7 @@
+ 
+ test('direct bitmap moves accept integer physical displacement and reject fractional displacement', t => {
+   const f = fixture(t, { selection: ['board'], canCapture: true, vectorSupported: false, ratio: 1.25 })
+-  f.render({ view: { x: 0, y: 0, zoom: 2 } }); f.render()
++  f.renderFrame({ view: { x: 0, y: 0, zoom: 2 } }); f.warm()
+   const control = f.props.control.current, transform = [1, 0, 0, 1, .4, 0]
+   assert.equal(control.covers(f.props.document, ['board'], f.props.view), true)
+   assert.equal(control.apply(f.props.document, 'board', transform), true)
+@@ -158,7 +167,7 @@
+ 
+ test('fractional committed movement revokes captured preview while retaining vector fallback', t => {
+   const f = fixture(t, { selection: ['board'], canCapture: true })
+-  f.render(); f.render()
++  f.render(); f.warm()
+   const moved = { ...f.props.document, nodes: { board: { transform: [1, 0, 0, 1, .5, 0] } } }
+   const tree = f.render({ document: moved, visible: true })
+   assert.equal(tree.props['data-retained-board'], 'false')
+@@ -168,16 +177,18 @@
+ 
+ test('DPR changes trigger recapture even when CSS viewport and camera are unchanged', t => {
+   const f = fixture(t, { selection: ['board'], canCapture: true, vectorSupported: false })
+-  f.render(); f.render(); assert.equal(f.env.captures, 1)
+-  f.env.ratio = 2; f.render()
++  f.render(); f.warm(); assert.equal(f.env.captures, 1)
++  f.env.ratio = 2; f.renderFrame()
+   assert.equal(f.props.control.current.covers(f.props.document, ['board'], f.props.view), false)
++  assert.equal(f.env.captures, 1)
++  f.warm()
+   assert.equal(f.env.captures, 2)
+   f.render(); assert.equal(f.props.control.current.covers(f.props.document, ['board'], f.props.view), true)
+ })
+ 
+ test('camera or viewport changes revoke the old bitmap before replacement capture is available', t => {
+   const f = fixture(t, { selection: ['board'], canCapture: true, vectorSupported: false })
+-  f.render(); f.render()
++  f.render(); f.warm()
+   f.render({ canCapture: false, view: { x: .25, y: 0, zoom: 1 }, size: { width: 801, height: 600 } })
+   assert.equal(f.props.control.current.covers(f.props.document, ['board'], f.props.view), false)
+   assert.equal(f.props.control.current.apply(f.props.document, 'board', [1, 0, 0, 1, 1, 0]), false)
+@@ -188,7 +199,7 @@
+   const f = fixture(t, { selection: ['board'], canCapture: true, vectorSupported: false })
+   const managed = { ...f.props.document, colorManagement: { workingSpace: 'display-p3' } }
+   assert.equal(supportsEditPreview(managed, 'page'), false)
+-  f.render({ document: managed, baseDocument: managed }); f.render()
++  f.renderFrame({ document: managed, baseDocument: managed }); f.warm()
+   assert.equal(f.env.captures, 0)
+   assert.equal(f.props.control.current.covers(managed, ['board'], f.props.view), false)
+   assert.equal(f.host().style.visibility, 'hidden')
+@@ -200,7 +211,7 @@
+   nodes.board = f.props.document.nodes.board
+   let enumerations = 0
+   f.props.document.nodes = new Proxy(nodes, { ownKeys(value) { enumerations++; return Reflect.ownKeys(value) } })
+-  f.render(); f.render()
++  f.render(); f.warm()
+   const validations = f.env.validations
+   for (let x = 1; x <= 60; x++) {
+     f.render() // Pointer feedback can re-render the surrounding Canvas tree.
+@@ -217,9 +228,56 @@
+ 
+ test('camera-only recaptures reuse the document plan and active edits do not warm unused plans', t => {
+   const f = fixture(t, { selection: ['board'], canCapture: true, vectorSupported: false })
+-  f.render(); f.render()
+-  for (let x = 1; x <= 10; x++) f.render({ view: { x, y: 0, zoom: 1 } })
++  f.render(); f.warm()
++  for (let x = 1; x <= 10; x++) { f.renderFrame({ view: { x, y: 0, zoom: 1 } }); f.warm() }
+   assert.equal(f.env.plans, 1)
+   for (let x = 1; x <= 10; x++) f.render({ visible: true, document: { ...f.props.document } })
+   assert.equal(f.env.plans, 1)
+ })
++
++test('preferred SVG prepares no bitmap or split-document plan until a fallback is displayed', t => {
++  const f = fixture(t, { selection: ['board'], canCapture: true })
++  f.env.svgAvailable = true
++  f.render(); f.warm()
++  assert.equal(f.env.svgPlans, 1)
++  assert.equal(f.env.plans, 0)
++  assert.equal(f.env.captures, 0)
++  assert.equal(f.env.splitPlans, 0)
++  f.render({ visible: true })
++  assert.equal(f.env.splitPlans, 0)
++  const moved = { ...f.props.document, nodes: { board: { transform: [1, 0, 0, 1, .5, 0] } } }
++  f.render({ visible: true, document: moved, vectorSupport: { document: moved, pageId: 'page', supported: true } })
++  assert.equal(f.env.splitPlans, 1)
++  assert.equal(f.env.svgPlans, 1, 'current-pose support receipts do not rebuild the immutable base plan')
++  assert.equal(f.env.captures, 0)
++})
++
++test('continuous camera input performs no copy and captures only the final quiet presentation', t => {
++  const f = fixture(t, { selection: ['board'], canCapture: true, vectorSupported: false })
++  f.render()
++  for (let x = 1; x <= 60; x++) {
++    t.mock.timers.tick(16)
++    f.renderFrame({ view: { x, y: 0, zoom: 1 } })
++  }
++  assert.equal(f.env.plans, 0)
++  assert.equal(f.env.captures, 0)
++  t.mock.timers.tick(149); assert.equal(f.env.captures, 0)
++  t.mock.timers.tick(1); f.render()
++  assert.equal(f.env.captures, 1)
++  assert.equal(f.props.control.current.covers(f.props.document, ['board'], f.props.view), true)
++})
++
++test('deferred capture rejects stale cameras, sessions, sizes, DPR, preview frames and replaced presentations', t => {
++  const f = fixture(t, { selection: ['board'], canCapture: true, vectorSupported: false })
++  for (const patch of [{ view: { x: 1, y: 0, zoom: 1 } }, { epoch: 2 }, { width: 801 },
++    { pixelRatio: 2 }, { preview: true }, { document: { ...f.props.document } }, { pageId: 'other' }]) {
++    f.render({ captureFrame: f.frame(patch) }); f.warm()
++    assert.equal(f.env.captures, 0)
++  }
++  f.renderFrame(); f.warm()
++  assert.equal(f.env.captures, 1)
++  f.renderFrame()
++  assert.equal(f.props.control.current.covers(f.props.document, ['board'], f.props.view), false)
++  f.unmount(); t.mock.timers.tick(150)
++  assert.equal(f.env.captures, 1, 'unmount retires the pending copy')
++})
+--- a/frontend/design-client/src/edit-preview.test.ts
++++ b/frontend/design-client/src/edit-preview.test.ts
+@@ -1,6 +1,7 @@
+ import { expect, test } from 'vitest'
+ import { blank, node, paint, effect, defaultImageAdjust, defaultPatternTile } from './model'
+ import { supportsEditPreview, retainedSvgMove } from './edit-preview'
++import { defaultColorSettings } from './color'
+ 
+ test('SVG preview rejects image semantics it cannot render, including stroke paints', () => {
+   const d = blank(), n = node('rectangle', 0, 0, 100, 100)
+@@ -37,3 +38,20 @@
+   child.effects=[]; moving.mask=true
+   expect(retainedSvgMove(d,d.pages[0].id,[moving.id])).toBeNull()
+ })
++
++test('SVG support is reused only for its exact immutable document and page', () => {
++  const d = blank(), moving = node('rectangle', 0, 0, 50, 50), other = node('rectangle', 100, 0, 50, 50)
++  d.nodes = { [moving.id]: moving, [other.id]: other }; d.pages[0].children = [moving.id, other.id]
++  const support = { document: d, pageId: d.pages[0].id, supported: supportsEditPreview(d, d.pages[0].id) }
++  // The stationary subtree's paint is inspected by supportsEditPreview, but
++  // not by the selected subtree/ancestor translation proof.
++  let reads = 0
++  const fills = other.fills
++  Object.defineProperty(other, 'fills', { get() { reads++; return fills } })
++  expect(retainedSvgMove(d, d.pages[0].id, [moving.id], support)?.id).toBe(moving.id)
++  expect(reads).toBe(0)
++  const changed = { ...d, colorManagement: defaultColorSettings() }
++  expect(retainedSvgMove(changed, d.pages[0].id, [moving.id], support)).toBeNull()
++  expect(retainedSvgMove(d, d.pages[0].id, [moving.id], { ...support, pageId: 'other' })?.id).toBe(moving.id)
++  expect(reads).toBeGreaterThan(0)
++})
+--- a/frontend/design-client/src/kernel/interaction-layers.ts
++++ b/frontend/design-client/src/kernel/interaction-layers.ts
+@@ -2,7 +2,7 @@
+ import type { InteractionPreviewFailure } from './interaction-preview-recovery'
+ import { effectsAreKnown } from './render-dependency'
+ import type { Bounds, DesignDocument, Matrix } from '../model'
+-import { scene, unionBounds, multiply, inverse } from '../geometry'
++import { scene, multiply, inverse, type SceneEntry } from '../geometry'
+ import type { CanvasCamera } from '../canvas-camera'
+ import type { RefObject } from 'react'
+ import type { CanvasSceneBorrow } from '../canvas-scene-snapshots'
+@@ -54,21 +54,85 @@
+   },0)
+ }
+ 
++type InteractionPlanOptions = { neutralPageGroup?: boolean; scene?: CanvasSceneBorrow; epoch?: number }
++
++/** One derived structure per renderer, valid only while Canvas still lends the
++ * exact immutable publication. Do not retain scene entries or cache mutable
++ * standalone callers. Camera changes only clip the stationary intervals. */
++export class InteractionLayerPlanner {
++  private cached?: { document: DesignDocument; pageId: string; ids: string[];
++    borrow: CanvasSceneBorrow; epoch: number; neutral: boolean; plan: InteractionPlan | null }
++
++  clear() { this.cached = undefined }
++
++  plan(document: DesignDocument, pageId: string, ids: readonly string[], viewport?: Bounds, options?: InteractionPlanOptions) {
++    const entries = options?.epoch === undefined ? undefined : options.scene?.entriesFor(document, pageId, options.epoch)
++    if (!entries) {
++      this.clear()
++      return planInteractionLayers(document, pageId, ids, viewport, options)
++    }
++    const cached = this.cached, neutral = !!options?.neutralPageGroup
++    if (!cached || cached.document !== document || cached.pageId !== pageId || cached.borrow !== options!.scene ||
++        cached.epoch !== options!.epoch || cached.neutral !== neutral || cached.ids.length !== ids.length ||
++        cached.ids.some((id, index) => id !== ids[index])) {
++      this.cached = { document, pageId, ids: [...ids], borrow: options!.scene!, epoch: options!.epoch!, neutral,
++        plan: buildInteractionLayers(document, pageId, ids, options, entries) }
++    }
++    return clipInteractionLayers(this.cached!.plan, viewport)
++  }
++}
++
++function clipInteractionLayers(plan: InteractionPlan | null, viewport?: Bounds): InteractionPlan | null {
++  if (!plan) return null
++  const layers: InteractionLayer[] = []
++  for (const layer of plan.layers) {
++    let bounds = layer.bounds
++    // Moving content stays whole; only stationary backdrop is viewport bound.
++    if (viewport && !layer.moving) {
++      const x = Math.max(bounds.x, viewport.x), y = Math.max(bounds.y, viewport.y)
++      const right = Math.min(bounds.x + bounds.width, viewport.x + viewport.width)
++      const bottom = Math.min(bounds.y + bounds.height, viewport.y + viewport.height)
++      if (right <= x || bottom <= y) continue
++      bounds = { x, y, width: right - x, height: bottom - y }
++    }
++    layers.push({ ...layer, bounds })
++  }
++  return { ...plan, layers, viewport }
++}
++
+ /** Normal page roots are isolated by the existing kernel compositor. Their
+  * children (including internal blur/masks/CSG/layout) therefore remain intact
+  * when the entire root is placed elsewhere. Root backdrop reads/pass-through
+  * and page masks need dependency rendering and cannot be flattened this way.
+  * Stationary intervals preserve ordering for overlapping and multiple roots. */
+ export function planInteractionLayers(document: DesignDocument, pageId: string, ids: readonly string[], viewport?: Bounds,
+-  options?:{neutralPageGroup?:boolean;scene?:CanvasSceneBorrow;epoch?:number}): InteractionPlan | null {
++  options?: InteractionPlanOptions): InteractionPlan | null {
++  const entries = options?.epoch === undefined ? undefined : options.scene?.entriesFor(document, pageId, options.epoch)
++  return clipInteractionLayers(buildInteractionLayers(document, pageId, ids, options, entries), viewport)
++}
++
++function buildInteractionLayers(document: DesignDocument, pageId: string, ids: readonly string[],
++  options?: InteractionPlanOptions, publishedEntries?: readonly SceneEntry[]): InteractionPlan | null {
+   const page = document.pages.find(page => page.id === pageId)
+   if (!page || !ids.length || ids.length > 16 || new Set(ids).size !== ids.length) return null
+-  const selectedIds = new Set(ids), ancestors = new Set<string>()
+-  const parents = new Map(Object.values(document.nodes).flatMap(n => n.children.map(id => [id,n.id] as const)))
++  const selectedIds = new Set(ids), ancestors = new Set<string>(), pageRoots = new Set(page.children)
++  const parents = new Map<string, string>()
++  // Root selections need no parent table. Nested published selections borrow
++  // their existing ancestor chains instead of enumerating every page's nodes.
++  if (ids.some(id => !pageRoots.has(id))) {
++    if (publishedEntries) {
++      for (const entry of publishedEntries) if (selectedIds.has(entry.id)) {
++        let child = entry.id
++        for (let i = entry.ancestors.length - 1; i >= 0; i--) {
++          parents.set(child, entry.ancestors[i]); child = entry.ancestors[i]
++        }
++      }
++    } else for (const n of Object.values(document.nodes)) for (const id of n.children) parents.set(id, n.id)
++  }
+   for (const id of ids) {
+     if (!document.nodes[id]?.visible) return null
+     let at=id
+-    while (!page.children.includes(at)) {
++    while (!pageRoots.has(at)) {
+       const parent=parents.get(at), n=parent ? document.nodes[parent] : undefined
+       // A sole, empty normal page group has no outside painter inside its
+       // isolation. Split its children into the same independently captured
+@@ -102,43 +166,51 @@
+   if (roots.some(id => !independent(id))) return null
+   // Camera changes need new capture bounds, not a second layout of Canvas's
+   // immutable publication. A revoked/missing borrow retains the uncached path.
+-  const entries = (options?.epoch===undefined?undefined:options.scene?.entriesFor(document,pageId,options.epoch))
+-    ?? scene(document, pageId)
+-  if (entries.some(entry => !effectsAreKnown(document.nodes[entry.id].effects))) return null
+-  const selected = new Set(ids), layers: InteractionLayer[] = []
++  const entries = publishedEntries ?? scene(document, pageId)
++  const layers: InteractionLayer[] = [], layerForRoot = new Map<string, number>()
+   const append = (children: string[], moving?: string) => {
+     if (!children.length) return
+-    const included = new Set(children)
+-    let bounds = unionBounds(entries.filter(e => included.has(e.id) || e.ancestors.some(id => included.has(id))).map(e => {
+-      const n = document.nodes[e.id], scale = Math.max(Math.hypot(e.matrix[0], e.matrix[1]), Math.hypot(e.matrix[2], e.matrix[3]))
+-      const pad = Math.max(0, ...n.strokes.filter(s => s.visible).map(s => s.width * 4),
+-        ...n.effects.filter(f => f.visible).map(f => f.radius * 3 + Math.abs(f.spread || 0) + Math.abs(f.x || 0) + Math.abs(f.y || 0))) * scale + 2
+-      return { x: e.bounds.x - pad, y: e.bounds.y - pad, width: e.bounds.width + pad * 2, height: e.bounds.height + pad * 2 }
+-    }))
+-    // Stationary content only supplies the visible backdrop. Capturing distant
+-    // boards wastes warm-up time and dilutes the moving board's pixel budget.
+-    // The moving layer stays whole so it can follow the pointer into view.
+-    if (viewport && !moving) {
+-      const x = Math.max(bounds.x, viewport.x), y = Math.max(bounds.y, viewport.y)
+-      const right = Math.min(bounds.x + bounds.width, viewport.x + viewport.width)
+-      const bottom = Math.min(bounds.y + bounds.height, viewport.y + viewport.height)
+-      if (right <= x || bottom <= y) return
+-      bounds = { x, y, width: right - x, height: bottom - y }
+-    }
++    for (const id of children) layerForRoot.set(id, layers.length)
+     // Rust applies this render-only scope through its existing COW snapshot.
+     // Keep the original object identity so the interaction lane can borrow its
+     // acknowledged source, without cloning/serializing the complete node table.
+-    layers.push({ moving, bounds, document, roots: [...children] })
++    layers.push({ moving, bounds: { x: 0, y: 0, width: 0, height: 0 }, document, roots: [...children] })
+   }
+   let stationary: string[] = []
+   for (const id of roots) {
+-    if (selected.has(id)) { append(stationary); stationary = []; append([id], id) }
++    if (selectedIds.has(id)) { append(stationary); stationary = []; append([id], id) }
+     else stationary.push(id)
+   }
+   append(stationary)
+-  const byId=new Map(entries.map(entry=>[entry.id,entry]))
+-  const parentLinear=new Map(ids.map(id=>[id,byId.get(parents.get(id)||'')?.matrix.slice(0,4)||[1,0,0,1]]))
+-  return { document, pageId, ids: [...ids], layers, viewport, parentLinear }
++  const extents = layers.map(() => ({ x: Infinity, y: Infinity, right: -Infinity, bottom: -Infinity, count: 0 }))
++  const parentIds = new Set(parents.values()), parentMatrices = new Map<string, number[]>()
++  // Check all visible effects, including descendants of isolated roots, while
++  // accumulating each entry exactly once in its painter interval. Preserve
++  // unionBounds' original padded-edge arithmetic (no repeated pairwise union).
++  for (const e of entries) {
++    const n = document.nodes[e.id]
++    if (!effectsAreKnown(n.effects)) return null
++    if (parentIds.has(e.id)) parentMatrices.set(e.id, e.matrix.slice(0, 4))
++    let index = layerForRoot.get(e.id)
++    if (index === undefined) for (const id of e.ancestors) {
++      index = layerForRoot.get(id)
++      if (index !== undefined) break
++    }
++    if (index === undefined) continue
++    const scale = Math.max(Math.hypot(e.matrix[0], e.matrix[1]), Math.hypot(e.matrix[2], e.matrix[3]))
++    const pad = Math.max(0, ...n.strokes.filter(s => s.visible).map(s => s.width * 4),
++      ...n.effects.filter(f => f.visible).map(f => f.radius * 3 + Math.abs(f.spread || 0) + Math.abs(f.x || 0) + Math.abs(f.y || 0))) * scale + 2
++    const x = e.bounds.x - pad, y = e.bounds.y - pad, width = e.bounds.width + pad * 2, height = e.bounds.height + pad * 2
++    const b = extents[index]
++    b.x = Math.min(b.x, x, x + width); b.y = Math.min(b.y, y, y + height)
++    b.right = Math.max(b.right, x, x + width); b.bottom = Math.max(b.bottom, y, y + height); b.count++
++  }
++  layers.forEach((layer, index) => {
++    const b = extents[index]
++    if (b.count) layer.bounds = { x: b.x, y: b.y, width: b.right - b.x, height: b.bottom - b.y }
++  })
++  const parentLinear = new Map(ids.map(id => [id, parentMatrices.get(parents.get(id) || '') || [1, 0, 0, 1]]))
++  return { document, pageId, ids: [...ids], layers, parentLinear }
+ }
+ 
+ /** A translation preserves the cached pixels; changing derived content or
+--- a/frontend/design-client/src/kernel/interaction-layers.test.ts
++++ b/frontend/design-client/src/kernel/interaction-layers.test.ts
+@@ -1,6 +1,7 @@
+ import { expect, test, vi } from 'vitest'
+ import { blank, node, effect } from '../model'
+-import { interactionOffsets, interactionTransformsOnly, interactionPatchedDocument, interactionPatchedOffsets, planInteractionLayers, pageBackdropPadding } from './interaction-layers'
++import { InteractionLayerPlanner, interactionOffsets, interactionTransformsOnly, interactionPatchedDocument, interactionPatchedOffsets, planInteractionLayers, pageBackdropPadding } from './interaction-layers'
++import { CanvasSceneSnapshots } from '../canvas-scene-snapshots'
+ import { produceDocumentDraft } from '../document-patch'
+ import {scene} from '../geometry'
+ 
+@@ -155,3 +156,57 @@
+  group.clip=false;group.blend='normal';expect(planInteractionLayers(doc,doc.pages[0].id,[a.id])).toBeNull()
+  group.blend='pass-through';expect(planInteractionLayers(doc,doc.pages[0].id,[group.id,a.id])).toBeNull()
+ })
++
++test('root plans avoid the document parent table and camera changes only clip a borrowed structure', () => {
++  const doc = blank(), roots = Array.from({ length: 3000 }, (_, i) => node('rectangle', i * 40, 0, 20, 20))
++  for (const root of roots) doc.nodes[root.id] = root
++  doc.pages[0].children = roots.map(root => root.id)
++  let enumerations = 0
++  doc.nodes = new Proxy(doc.nodes, { ownKeys(target) { enumerations++; return Reflect.ownKeys(target) } })
++  const pageId = doc.pages[0].id, ids = [roots[100].id, roots[200].id], store = new CanvasSceneSnapshots(), owner = {}
++  store.begin(owner, 1, pageId, true)
++  const snapshot = store.currentScene(doc, pageId), borrowed = store.borrowCurrentScene(doc, pageId, 1)!
++  let boundsReads = 0
++  for (const entry of snapshot.entries) {
++    const bounds = entry.bounds
++    Object.defineProperty(entry, 'bounds', { get() { boundsReads++; return bounds } })
++  }
++  enumerations = 0
++  const planner = new InteractionLayerPlanner(), options = { scene: borrowed, epoch: 1 }
++  const before = planner.plan(doc, pageId, ids, { x: 0, y: 0, width: 100, height: 100 }, options)!
++  const reads = boundsReads
++  expect(reads).toBeGreaterThan(0)
++  for (let x = 0; x < 60; x++) {
++    const plan = planner.plan(doc, pageId, ids, { x: x * 100, y: 0, width: 200, height: 100 }, options)!
++    expect(plan.layers.filter(layer => layer.moving).map(layer => layer.bounds))
++      .toEqual(before.layers.filter(layer => layer.moving).map(layer => layer.bounds))
++    expect(plan.parentLinear).toEqual(new Map(ids.map(id => [id, [1, 0, 0, 1]])))
++  }
++  expect(enumerations).toBe(0)
++  expect(boundsReads).toBe(reads)
++  // Eviction/session revocation must invalidate even a same-object cached plan.
++  store.begin(owner, 2, pageId, true)
++  roots[100].effects = [effect('glass')]
++  expect(planner.plan(doc, pageId, ids, undefined, options)).toBeNull()
++})
++
++test('structural cache separates selections, neutral policy, publications and mutable callers', () => {
++  const doc = blank(), group = node('group', 0, 0, 200, 100), a = node('rectangle', 0, 0, 40, 40), b = node('rectangle', 80, 0, 40, 40)
++  group.blend = 'normal'; group.children = [a.id, b.id]; group.fills = []; group.strokes = []
++  doc.nodes = { [group.id]: group, [a.id]: a, [b.id]: b }; doc.pages[0].children = [group.id]
++  const pageId = doc.pages[0].id, store = new CanvasSceneSnapshots(), owner = {}, planner = new InteractionLayerPlanner()
++  store.begin(owner, 1, pageId, true); store.currentScene(doc, pageId)
++  const options = { scene: store.borrowCurrentScene(doc, pageId, 1)!, epoch: 1 }
++  expect(planner.plan(doc, pageId, [a.id], undefined, options)).toBeNull()
++  expect(planner.plan(doc, pageId, [a.id], undefined, { ...options, neutralPageGroup: true })?.layers[0].moving).toBe(a.id)
++  expect(planner.plan(doc, pageId, [b.id], undefined, { ...options, neutralPageGroup: true })?.layers[1].moving).toBe(b.id)
++  expect(planner.plan(doc, pageId, [a.id], undefined, options)).toBeNull()
++  expect(planner.plan(doc, pageId, [group.id], undefined, options)).not.toBeNull()
++  const changed = { ...doc, nodes: { ...doc.nodes, [group.id]: { ...group, mask: true } } }
++  expect(planner.plan(changed, pageId, [group.id], undefined, options)).toBeNull()
++  // Without a publication capability, identical objects remain mutable drafts.
++  expect(planner.plan(doc, pageId, [group.id])).not.toBeNull()
++  group.mask = true
++  expect(planner.plan(doc, pageId, [group.id])).toBeNull()
++  planner.clear()
++})
+--- a/frontend/design-client/src/kernel/interaction-renderer.ts
++++ b/frontend/design-client/src/kernel/interaction-renderer.ts
+@@ -19,7 +19,7 @@
+ import { KernelClient, type KernelOptions, type KernelResult } from './client'
+ import type { BackendPreference } from './gpu/types'
+ import type { CompositeItem, CompositeTile } from './gpu/tile-compositor'
+-import { interactionOffsets, interactionPatchedDocument, interactionPatchedOffsets, interactionPatchedTransforms, interactionAffineEligible, interactionPoseMatrices, interactionTransformsOnly, planInteractionLayers,
++import { interactionOffsets, interactionPatchedDocument, interactionPatchedOffsets, interactionPatchedTransforms, interactionAffineEligible, interactionPoseMatrices, interactionTransformsOnly, InteractionLayerPlanner,
+   type GpuMoveControl, type InteractionPlan, type InteractionProps } from './interaction-layers'
+ 
+ let serial = -1
+@@ -84,6 +84,7 @@
+   private pending?: { document: DesignDocument; pageId: string; ids: string; scale: number; viewportRevision:number }
+   private pendingDensity?: Parameters<InteractionRenderer['prepare']>
+   private resident?: ResidentInteraction
++  private readonly layerPlanner = new InteractionLayerPlanner()
+   private neutralPageCandidates = new WeakMap<ResidentInteraction,{viewportRevision:number;plan:InteractionPlan|null}>()
+   private props?: InteractionProps
+   private disposed = false
+@@ -609,7 +610,7 @@
+       if(cached?.viewportRevision!==this.viewportRevision){
+         const pad=128/view.zoom,capture={x:-view.x/view.zoom-pad,y:-view.y/view.zoom-pad,
+           width:size.width/view.zoom+2*pad,height:size.height/view.zoom+2*pad}
+-        let plan=planInteractionLayers(props.document,pageId,props.selection,capture,
++        let plan=this.layerPlanner.plan(props.document,pageId,props.selection,capture,
+           {neutralPageGroup:true,scene:props.scene,epoch:props.epoch})
+         if(plan&&!allowsReducedSampling(view.zoom)&&plan.layers.some(layer=>
+           layer.bounds.width*layer.bounds.height*(view.zoom*dpr)**2>8_388_608/Math.max(1,plan!.layers.length)))plan=null
+@@ -757,7 +758,7 @@
+     const captureViewport = viewport ? { x: viewport.x - pad, y: viewport.y - pad,
+       width: viewport.width + 2 * pad, height: viewport.height + 2 * pad } : undefined
+     let plan = contentGesture || props.document.colorManagement && !this.sharedClient
+-      ? null : planInteractionLayers(props.document, pageId, props.selection, captureViewport,
++      ? null : this.layerPlanner.plan(props.document, pageId, props.selection, captureViewport,
+         {scene:props.scene,epoch:props.epoch,
+           neutralPageGroup:import.meta.env.VITE_DESIGN_NEUTRAL_PAGE_GROUP==='1'&&this.allowIdleWarm&&!!this.sharedClient&&
+           profile==='figmaSubpixel'&&(backend==='webgpu'||backend==='auto')})
+@@ -1392,6 +1393,7 @@
+   }
+   dispose() {
+     this.disposed = true; this.nextGeneration(); this.releaseClient(); this.pendingDensity = undefined
++    this.layerPlanner.clear()
+     if (this.props?.control.current === this.control) this.props.control.current = null
+     this.closeResidents()
+   }
+--- a/frontend/design-client/src/kernel/interaction-density-admission.test.ts
++++ b/frontend/design-client/src/kernel/interaction-density-admission.test.ts
+@@ -21,8 +21,11 @@
+ }))
+ vi.mock('./interaction-layers', async original => ({
+   ...await original<any>(),
+-  planInteractionLayers: (document: unknown, pageId: string, ids: string[]) => ({ document, pageId, ids,
+-    layers: [{ document, bounds: { x: 0, y: 0, width: 2, height: 2 }, moving: 'selected' }] }),
++  InteractionLayerPlanner: class {
++    clear() {}
++    plan(document: unknown, pageId: string, ids: string[]) { return { document, pageId, ids,
++      layers: [{ document, bounds: { x: 0, y: 0, width: 2, height: 2 }, moving: 'selected' }] } }
++  },
+   interactionOffsets: (plan: any, document: any) => new Map(plan.ids.map((id: string) => [id, {
+     x: document.nodes[id].transform[4] - plan.document.nodes[id].transform[4],
+     y: document.nodes[id].transform[5] - plan.document.nodes[id].transform[5],

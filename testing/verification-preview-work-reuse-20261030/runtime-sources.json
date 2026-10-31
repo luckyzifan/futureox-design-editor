@@ -1,0 +1,19 @@
+{
+  "sources": {
+    "frontend/design-client/src/Canvas.tsx": "92ec17028cee8c3a5398375a7b328968d8b559eb0ebb83de838d5d2b90da99ff",
+    "frontend/design-client/src/CanvasEditPreview.tsx": "aeac362c242d28016bfcd37c66a7dc77a865fcb98f7b1fe46d7dcaff29829d51",
+    "frontend/design-client/src/edit-preview.ts": "a7bec58aa2d847c50a3434742471a49c027c9330a0da3452a254e618696e9d0d",
+    "frontend/design-client/src/edit-preview-pixels.ts": "c8025f4576a77225b66edf1eb81449f9a09e2bd092e6dece91477468fc626cce",
+    "frontend/design-client/src/retained-board-preview.ts": "d6dd0053aa5ca82ac4519153a4dc434ea76189017304f05bbe375578f10b6a14",
+    "frontend/design-client/src/canvas-edit-preview.test.mjs": "7f3d4e5f921ce75c3a978f9b2b26ac153b61c2c43d52ddc7ccaaeddacd9fb670",
+    "frontend/design-client/src/edit-preview.test.ts": "8e46fc065f9b1511f0ecb96fd54a095903b5b9d37cc2669e2ca3e1238ccbe4e2",
+    "frontend/design-client/src/kernel/interaction-layers.ts": "f566eaa0169ef6bda882f3c4e33d934bd98fd4ecd407bd859a8aea96f44201ad",
+    "frontend/design-client/src/kernel/interaction-layers.test.ts": "707d46474f758bc0f11282d6bfbc1704f5c2e8db9cda79e355940eed4654f8c7",
+    "frontend/design-client/src/kernel/interaction-renderer.ts": "48a48cb7e26fe9f7f43f135ed6828317fcc030c94942d26fe1ee541b9ec3b457",
+    "frontend/design-client/src/kernel/interaction-renderer.test.ts": "80696b65a2929d4892936bae270c45862e28831c6236f3a82f54521478d46e60",
+    "frontend/design-client/src/kernel/ProgressiveSurface.tsx": "77af9c681284d171c7b21c3f22768f2cab8b9bbeee8a2e65e7a4eb0f2fbdb86c",
+    "frontend/design-client/src/kernel/interaction-density-admission.test.ts": "fc222f6e117d26bab7e3bf8e3d9c5b60dfca3b627b7722209793d030d9fdb14f"
+  },
+  "wasm": "714967bd69a284d5b47cf597f6c7561ebbba152984b928a069629654db634068",
+  "node": "v24.12.0"
+}

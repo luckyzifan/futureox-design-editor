@@ -1,0 +1,19 @@
+{
+  "referenceFiles": {
+    "repository": "https://github.com/sketch-hq/sketch-reference-files",
+    "commit": "d78b6f36e755770aaae57145c4ca3c0d9339f925",
+    "archive": "https://github.com/sketch-hq/sketch-reference-files/archive/d78b6f36e755770aaae57145c4ca3c0d9339f925.tar.gz",
+    "license": "MIT",
+    "path": "reference-files",
+    "jsonFiles": 299,
+    "note": "Official archived JSON examples organized by document version and feature; not complete .sketch archives or native-render references."
+  },
+  "fileFormatSeries": {
+    "repository": "https://github.com/sketch-hq/file-format-series-json-to-sketch",
+    "commit": "5e6361e39771a1095b0268999dacb48ed0da8efd",
+    "path": "file-format-series/color-library.sketch",
+    "sha256": "78fb63a1e435ec4f1c042ef5e01ec6256a9023f1b3503a9fe82b72fc8b54b93a",
+    "license": "No license was specified in the repository metadata when downloaded.",
+    "note": "Official complete sample archive from the JSON-to-Sketch file-format series."
+  }
+}

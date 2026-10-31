@@ -2,7 +2,7 @@ import type { PoseActionToken } from './pose-action-correlation'
 import type { InteractionPreviewFailure } from './interaction-preview-recovery'
 import { effectsAreKnown } from './render-dependency'
 import type { Bounds, DesignDocument, Matrix } from '../model'
-import { scene, unionBounds, multiply, inverse } from '../geometry'
+import { scene, multiply, inverse, type SceneEntry } from '../geometry'
 import type { CanvasCamera } from '../canvas-camera'
 import type { RefObject } from 'react'
 import type { CanvasSceneBorrow } from '../canvas-scene-snapshots'
@@ -25,6 +25,8 @@ export type GpuMoveControl = {
 }
 export type InteractionProps = {
   readinessRevision?:number
+  /** Optional selection warming yields to the current camera's visible work. */
+  navigating?:boolean
   /** Canvas gesture semantics; affine edits must not be rebound to a translation-only owner. */
   gestureKind?: string
   document: DesignDocument; selection: string[]; active: boolean; epoch: number; control: RefObject<GpuMoveControl | null>; onReady: () => void
@@ -52,21 +54,85 @@ export function pageBackdropPadding(document:DesignDocument,entries:readonly Ret
   },0)
 }
 
+type InteractionPlanOptions = { neutralPageGroup?: boolean; scene?: CanvasSceneBorrow; epoch?: number }
+
+/** One derived structure per renderer, valid only while Canvas still lends the
+ * exact immutable publication. Do not retain scene entries or cache mutable
+ * standalone callers. Camera changes only clip the stationary intervals. */
+export class InteractionLayerPlanner {
+  private cached?: { document: DesignDocument; pageId: string; ids: string[];
+    borrow: CanvasSceneBorrow; epoch: number; neutral: boolean; plan: InteractionPlan | null }
+
+  clear() { this.cached = undefined }
+
+  plan(document: DesignDocument, pageId: string, ids: readonly string[], viewport?: Bounds, options?: InteractionPlanOptions) {
+    const entries = options?.epoch === undefined ? undefined : options.scene?.entriesFor(document, pageId, options.epoch)
+    if (!entries) {
+      this.clear()
+      return planInteractionLayers(document, pageId, ids, viewport, options)
+    }
+    const cached = this.cached, neutral = !!options?.neutralPageGroup
+    if (!cached || cached.document !== document || cached.pageId !== pageId || cached.borrow !== options!.scene ||
+        cached.epoch !== options!.epoch || cached.neutral !== neutral || cached.ids.length !== ids.length ||
+        cached.ids.some((id, index) => id !== ids[index])) {
+      this.cached = { document, pageId, ids: [...ids], borrow: options!.scene!, epoch: options!.epoch!, neutral,
+        plan: buildInteractionLayers(document, pageId, ids, options, entries) }
+    }
+    return clipInteractionLayers(this.cached!.plan, viewport)
+  }
+}
+
+function clipInteractionLayers(plan: InteractionPlan | null, viewport?: Bounds): InteractionPlan | null {
+  if (!plan) return null
+  const layers: InteractionLayer[] = []
+  for (const layer of plan.layers) {
+    let bounds = layer.bounds
+    // Moving content stays whole; only stationary backdrop is viewport bound.
+    if (viewport && !layer.moving) {
+      const x = Math.max(bounds.x, viewport.x), y = Math.max(bounds.y, viewport.y)
+      const right = Math.min(bounds.x + bounds.width, viewport.x + viewport.width)
+      const bottom = Math.min(bounds.y + bounds.height, viewport.y + viewport.height)
+      if (right <= x || bottom <= y) continue
+      bounds = { x, y, width: right - x, height: bottom - y }
+    }
+    layers.push({ ...layer, bounds })
+  }
+  return { ...plan, layers, viewport }
+}
+
 /** Normal page roots are isolated by the existing kernel compositor. Their
  * children (including internal blur/masks/CSG/layout) therefore remain intact
  * when the entire root is placed elsewhere. Root backdrop reads/pass-through
  * and page masks need dependency rendering and cannot be flattened this way.
  * Stationary intervals preserve ordering for overlapping and multiple roots. */
 export function planInteractionLayers(document: DesignDocument, pageId: string, ids: readonly string[], viewport?: Bounds,
-  options?:{neutralPageGroup?:boolean}): InteractionPlan | null {
+  options?: InteractionPlanOptions): InteractionPlan | null {
+  const entries = options?.epoch === undefined ? undefined : options.scene?.entriesFor(document, pageId, options.epoch)
+  return clipInteractionLayers(buildInteractionLayers(document, pageId, ids, options, entries), viewport)
+}
+
+function buildInteractionLayers(document: DesignDocument, pageId: string, ids: readonly string[],
+  options?: InteractionPlanOptions, publishedEntries?: readonly SceneEntry[]): InteractionPlan | null {
   const page = document.pages.find(page => page.id === pageId)
   if (!page || !ids.length || ids.length > 16 || new Set(ids).size !== ids.length) return null
-  const selectedIds = new Set(ids), ancestors = new Set<string>()
-  const parents = new Map(Object.values(document.nodes).flatMap(n => n.children.map(id => [id,n.id] as const)))
+  const selectedIds = new Set(ids), ancestors = new Set<string>(), pageRoots = new Set(page.children)
+  const parents = new Map<string, string>()
+  // Root selections need no parent table. Nested published selections borrow
+  // their existing ancestor chains instead of enumerating every page's nodes.
+  if (ids.some(id => !pageRoots.has(id))) {
+    if (publishedEntries) {
+      for (const entry of publishedEntries) if (selectedIds.has(entry.id)) {
+        let child = entry.id
+        for (let i = entry.ancestors.length - 1; i >= 0; i--) {
+          parents.set(child, entry.ancestors[i]); child = entry.ancestors[i]
+        }
+      }
+    } else for (const n of Object.values(document.nodes)) for (const id of n.children) parents.set(id, n.id)
+  }
   for (const id of ids) {
     if (!document.nodes[id]?.visible) return null
     let at=id
-    while (!page.children.includes(at)) {
+    while (!pageRoots.has(at)) {
       const parent=parents.get(at), n=parent ? document.nodes[parent] : undefined
       // A sole, empty normal page group has no outside painter inside its
       // isolation. Split its children into the same independently captured
@@ -98,42 +164,53 @@ export function planInteractionLayers(document: DesignDocument, pageId: string, 
       n.children.every(independent)
   }
   if (roots.some(id => !independent(id))) return null
-  const entries = scene(document, pageId)
-  if (entries.some(entry => !effectsAreKnown(document.nodes[entry.id].effects))) return null
-  const selected = new Set(ids), layers: InteractionLayer[] = []
+  // Camera changes need new capture bounds, not a second layout of Canvas's
+  // immutable publication. A revoked/missing borrow retains the uncached path.
+  const entries = publishedEntries ?? scene(document, pageId)
+  const layers: InteractionLayer[] = [], layerForRoot = new Map<string, number>()
   const append = (children: string[], moving?: string) => {
     if (!children.length) return
-    const included = new Set(children)
-    let bounds = unionBounds(entries.filter(e => included.has(e.id) || e.ancestors.some(id => included.has(id))).map(e => {
-      const n = document.nodes[e.id], scale = Math.max(Math.hypot(e.matrix[0], e.matrix[1]), Math.hypot(e.matrix[2], e.matrix[3]))
-      const pad = Math.max(0, ...n.strokes.filter(s => s.visible).map(s => s.width * 4),
-        ...n.effects.filter(f => f.visible).map(f => f.radius * 3 + Math.abs(f.spread || 0) + Math.abs(f.x || 0) + Math.abs(f.y || 0))) * scale + 2
-      return { x: e.bounds.x - pad, y: e.bounds.y - pad, width: e.bounds.width + pad * 2, height: e.bounds.height + pad * 2 }
-    }))
-    // Stationary content only supplies the visible backdrop. Capturing distant
-    // boards wastes warm-up time and dilutes the moving board's pixel budget.
-    // The moving layer stays whole so it can follow the pointer into view.
-    if (viewport && !moving) {
-      const x = Math.max(bounds.x, viewport.x), y = Math.max(bounds.y, viewport.y)
-      const right = Math.min(bounds.x + bounds.width, viewport.x + viewport.width)
-      const bottom = Math.min(bounds.y + bounds.height, viewport.y + viewport.height)
-      if (right <= x || bottom <= y) return
-      bounds = { x, y, width: right - x, height: bottom - y }
-    }
+    for (const id of children) layerForRoot.set(id, layers.length)
     // Rust applies this render-only scope through its existing COW snapshot.
     // Keep the original object identity so the interaction lane can borrow its
     // acknowledged source, without cloning/serializing the complete node table.
-    layers.push({ moving, bounds, document, roots: [...children] })
+    layers.push({ moving, bounds: { x: 0, y: 0, width: 0, height: 0 }, document, roots: [...children] })
   }
   let stationary: string[] = []
   for (const id of roots) {
-    if (selected.has(id)) { append(stationary); stationary = []; append([id], id) }
+    if (selectedIds.has(id)) { append(stationary); stationary = []; append([id], id) }
     else stationary.push(id)
   }
   append(stationary)
-  const byId=new Map(entries.map(entry=>[entry.id,entry]))
-  const parentLinear=new Map(ids.map(id=>[id,byId.get(parents.get(id)||'')?.matrix.slice(0,4)||[1,0,0,1]]))
-  return { document, pageId, ids: [...ids], layers, viewport, parentLinear }
+  const extents = layers.map(() => ({ x: Infinity, y: Infinity, right: -Infinity, bottom: -Infinity, count: 0 }))
+  const parentIds = new Set(parents.values()), parentMatrices = new Map<string, number[]>()
+  // Check all visible effects, including descendants of isolated roots, while
+  // accumulating each entry exactly once in its painter interval. Preserve
+  // unionBounds' original padded-edge arithmetic (no repeated pairwise union).
+  for (const e of entries) {
+    const n = document.nodes[e.id]
+    if (!effectsAreKnown(n.effects)) return null
+    if (parentIds.has(e.id)) parentMatrices.set(e.id, e.matrix.slice(0, 4))
+    let index = layerForRoot.get(e.id)
+    if (index === undefined) for (const id of e.ancestors) {
+      index = layerForRoot.get(id)
+      if (index !== undefined) break
+    }
+    if (index === undefined) continue
+    const scale = Math.max(Math.hypot(e.matrix[0], e.matrix[1]), Math.hypot(e.matrix[2], e.matrix[3]))
+    const pad = Math.max(0, ...n.strokes.filter(s => s.visible).map(s => s.width * 4),
+      ...n.effects.filter(f => f.visible).map(f => f.radius * 3 + Math.abs(f.spread || 0) + Math.abs(f.x || 0) + Math.abs(f.y || 0))) * scale + 2
+    const x = e.bounds.x - pad, y = e.bounds.y - pad, width = e.bounds.width + pad * 2, height = e.bounds.height + pad * 2
+    const b = extents[index]
+    b.x = Math.min(b.x, x, x + width); b.y = Math.min(b.y, y, y + height)
+    b.right = Math.max(b.right, x, x + width); b.bottom = Math.max(b.bottom, y, y + height); b.count++
+  }
+  layers.forEach((layer, index) => {
+    const b = extents[index]
+    if (b.count) layer.bounds = { x: b.x, y: b.y, width: b.right - b.x, height: b.bottom - b.y }
+  })
+  const parentLinear = new Map(ids.map(id => [id, parentMatrices.get(parents.get(id) || '') || [1, 0, 0, 1]]))
+  return { document, pageId, ids: [...ids], layers, parentLinear }
 }
 
 /** A translation preserves the cached pixels; changing derived content or

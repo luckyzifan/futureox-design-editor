@@ -32,13 +32,15 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
       // A document working space is not an export encoding. Implicitly using
       // it for uint16 PNG could clip HDR/negative channels even with toneMap:none.
       if(request.document.colorManagement) throw new Error('广色域 / HDR 图层请在“色彩与 HDR”中明确选择输出编码；图层预设暂不自动转换颜色')
+      if(settings.some(s=>['tiff','eps'].includes(s.format)||s.scale===0))throw new Error('包含仅用于 Sketch 往返的格式或零倍率设置；请改用可执行格式和正倍率')
       const {exportImage,targetBounds,filename}=await import('./export')
       const bounds=targetBounds(request.document,request.page,target)
       const pixels=settings.filter(s=>s.format!=='svg'&&s.format!=='pdf-vector').reduce((n,s)=>n+Math.ceil(bounds.width*s.scale)*Math.ceil(bounds.height*s.scale),0)
       if(pixels>64_000_000)throw new Error('批量导出总尺寸超过 6400 万像素，请拆分设置')
       const next:Preview[]=[]
       for(const setting of settings) {
-        const asset=await exportImage(request.document,request.page,setting.format,setting.scale,undefined,request.signal,target)
+        const format=(setting.format==='jpg'?'jpeg':setting.format) as 'png'|'svg'|'jpeg'|'webp'|'pdf'|'pdf-vector'
+        const asset=await exportImage(request.document,request.page,format,setting.scale,undefined,request.signal,target)
         if(!request.isCurrent())throw new Error('导出已取消：图层或文档已变化')
         const url=URL.createObjectURL(asset.blob);urls.current.push(url)
         const name=filename(request.document.nodes[node.id].name+(setting.suffix || (setting.scale===1?'':`@${setting.scale}x`)))+'.'+(setting.format==='jpeg'?'jpg':setting.format==='pdf-vector'?'pdf':setting.format)
@@ -53,7 +55,7 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
     <div className="section-title"><h3>导出</h3><button type="button" aria-label="添加图层导出设置" disabled={busy || (node.exportSettings?.length||0)>=16} onClick={()=>{if(commitPendingEdits(editor))update(s=>s.push({id:uid(),format:'png',scale:1,suffix:''}))}}>＋</button></div>
     {(node.exportSettings||[]).map((setting,i)=><div className="node-export-setting" key={setting.id}>
       <NumberField label={`导出倍率 ${i+1}`} value={setting.scale} min={.001} max={128} onChange={value=>update(s=>{const item=s.find(s=>s.id===setting.id);if(item)item.scale=value})} />
-      <select aria-label={`导出格式 ${i+1}`} value={setting.format} onChange={event=>update(s=>{const item=s.find(s=>s.id===setting.id);if(item)item.format=event.target.value as ExportSetting['format']})}><option value="png">PNG</option><option value="svg">SVG</option><option value="jpeg">JPEG</option><option value="webp">WebP</option><option value="pdf">PDF</option><option value="pdf-vector" disabled={vectorIssues.length>0}>PDF（矢量）</option></select>
+      <select aria-label={`导出格式 ${i+1}`} value={setting.format} onChange={event=>update(s=>{const item=s.find(s=>s.id===setting.id);if(item)item.format=event.target.value as ExportSetting['format']})}><option value="png">PNG</option><option value="svg">SVG</option><option value="jpeg">JPEG</option><option value="jpg">JPG（Sketch）</option><option value="webp">WebP</option><option value="pdf">PDF</option><option value="pdf-vector" disabled={vectorIssues.length>0}>PDF（矢量）</option><option value="tiff">TIFF（仅 Sketch 往返）</option><option value="eps">EPS（仅 Sketch 往返）</option></select>
       <DraftInput aria-label={`导出后缀 ${i+1}`} placeholder="后缀" value={setting.suffix} validate={v=>v.length<=80&&!exportSuffixHasForbiddenCharacters(v)} onCommit={value=>update(s=>{const item=s.find(s=>s.id===setting.id);if(item)item.suffix=value})}/>
       <button type="button" aria-label={`删除导出设置 ${i+1}`} onClick={()=>{if(commitPendingEdits(editor))update(s=>s.splice(s.findIndex(s=>s.id===setting.id),1))}}>−</button>
     </div>)}

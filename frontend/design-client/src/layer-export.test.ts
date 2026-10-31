@@ -58,3 +58,17 @@ test('SVG selection isolates descendants and parent transforms while honoring fr
  expect(await exported.blob.text()).toBe(svg.source)
  expect(svgSource(d,d.pages[0].id,{kind:'slice',bounds:{x:.125,y:.375,width:50,height:40}}).source).toContain('viewBox="0.125 0.375 50 40"')
 })
+test('Sketch export settings accept source-only formats and zero scale without admitting invalid ranges',()=>{
+ const d=blank(),n=node('rectangle');d.schemaVersion=10;d.nodes[n.id]=n;d.pages[0].children=[n.id]
+ n.exportSettings=[
+  {id:'source-jpg',format:'jpg',scale:2,suffix:''},
+  {id:'source-tiff',format:'tiff',scale:0,suffix:''},
+  {id:'source-eps',format:'eps',scale:100,suffix:'-large'},
+ ]
+ expect(validateDocument(d)).toBe(d)
+ expect(structuredClone(d).nodes[n.id].exportSettings).toEqual(n.exportSettings)
+ for(const scale of [-1,129]){
+  n.exportSettings=[{id:'invalid',format:'png',scale,suffix:''}]
+  expect(()=>validateDocument(d)).toThrow('图层导出设置无效')
+ }
+})

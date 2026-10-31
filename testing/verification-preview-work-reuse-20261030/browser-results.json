@@ -1,0 +1,20 @@
+{
+  "results": [
+    {
+      "label": "baseline",
+      "initialCopies": 2,
+      "burstCopies": 60,
+      "finalCopies": 62
+    },
+    {
+      "label": "candidate",
+      "initialCopies": 2,
+      "burstCopies": 0,
+      "finalCopies": 4
+    }
+  ],
+  "svgCopies": 0,
+  "sameMovedBitmap": true,
+  "browser": "153.0.8010.12",
+  "evidence": "Chromium headless real React/SVG/Canvas2D and screenshots; not whole-app/hardware-GPU acceptance"
+}
