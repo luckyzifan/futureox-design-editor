@@ -2,6 +2,9 @@ import type { DesignDocument } from './model'
 import { allParents, worldMatrix } from './geometry'
 import { imageAdjustActive } from './kernel/gpu/image-adjust'
 
+/** Canvas's support result belongs to one immutable published document/page. */
+export type EditPreviewSupport = { document: DesignDocument; pageId: string; supported: boolean }
+
 /** Only the existing vector presentation's supported subset can supply live
  * editing pixels. Exact GPU/CPU output remains authoritative after settling. */
 export function supportsEditPreview(doc: DesignDocument, pageId?: string): boolean {
@@ -35,8 +38,11 @@ export function supportsEditPreview(doc: DesignDocument, pageId?: string): boole
 /** A retained SVG definition can translate without reconstructing the React
  * document. Backdrop effects embed world-space captures, and derived layout
  * or boolean geometry must keep the regular transactional preview. */
-export function retainedSvgMove(document: DesignDocument, pageId: string, ids: readonly string[]) {
-  if (ids.length !== 1 || !supportsEditPreview(document, pageId)) return null
+export function retainedSvgMove(document: DesignDocument, pageId: string, ids: readonly string[], support?: EditPreviewSupport) {
+  if (ids.length !== 1) return null
+  const supported = support?.document === document && support.pageId === pageId
+    ? support.supported : supportsEditPreview(document, pageId)
+  if (!supported) return null
   const id = ids[0], root = document.nodes[id]
   if (!root?.visible || root.mask || root.kind === 'slice') return null
   const parents = allParents(document)

@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import { WebGpuDriver } from './webgpu'
 import { parameters, type GpuScene, type Texture } from './types'
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks() })
 function fixture() {
   vi.stubGlobal('OffscreenCanvas', class {})
   const chosen: any[] = [], descriptors: any[] = []
@@ -56,4 +56,19 @@ test('late spatial compilation cannot publish into a terminated device owner', a
   const pending = f.raw.prepareCanvasSpatialBlur(new Set([62]))
   f.raw.terminal = true; release({}); await pending
   expect(f.raw.canvasSpatialPipelines.size).toBe(0)
+})
+test('Gaussian reconstruction is prepared even when the parallel prefix compiler finishes later',async()=>{
+ vi.stubEnv('VITE_DESIGN_GAUSSIAN_PREFIX','1');vi.stubEnv('VITE_DESIGN_GAUSSIAN_REDUCTION','4')
+ const f=fixture(),builds=new Map<string,()=>Promise<void>>()
+ f.raw.pipelines={register:(key:string,build:()=>Promise<void>)=>builds.set(key,build),
+   prepare:async(keys:Iterable<string>)=>{for(const key of keys)await builds.get(key)?.()}}
+ const scene={...f.scene,nodes:{g:{id:'g',fill:{count:0},fills:[],strokes:[],effects:[],children:[],gaussianRegion:{factor:4}}}} as unknown as GpuScene
+ expect(f.driver.supportsGaussianReduction()).toBe(false)
+ await f.driver.prepareScene(scene,true)
+ // prepareFilters can publish this after prepareScene has drained. It may
+ // enable the operator, but must not leave its reconstruction shader absent.
+ f.raw.boxPrefix={}
+ expect(f.driver.supportsGaussianReduction()).toBe(true)
+ expect(f.raw.modePipelines.has(74)).toBe(true)
+ expect(f.descriptors.filter(p=>p.fragment.module?.label==='Reduced Gaussian display reconstruction')).toHaveLength(1)
 })

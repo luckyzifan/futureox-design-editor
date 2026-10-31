@@ -45,6 +45,18 @@ test('a bounded image needs an independent upload witness before it may be hidde
  expect(opaquePainterStart(scene,f.ids,f.region,proof)).toBe(0)
  expect(opaquePainterStart(scene,f.ids,f.region,{...proof,image:()=>true})).toBe(1)
 })
+test('an image Gaussian needs its own opt-in and an actual bounded upload before an opaque overwrite hides it',()=>{
+ const f=fixture(),a={...f.scene.nodes[f.ids[0]]};a.fills=[{...a.fills[0],kind:'image',image:'image'}]
+ const scene={...f.scene,nodes:{...f.scene.nodes,[a.id]:a}}
+ expect(opaquePainterStart(scene,f.ids,f.region,{...proof,image:()=>true})).toBe(0)
+ expect(opaquePainterStart(scene,f.ids,f.region,{...proof,imageFilters:true})).toBe(0)
+ expect(opaquePainterStart(scene,f.ids,f.region,{...proof,imageFilters:true,image:()=>true})).toBe(1)
+ for(const kind of ['background-blur','glass','motion-blur'] as const){
+  const changed={...a,effects:[{...a.effects[0],kind}]}
+  expect(opaquePainterStart({...scene,nodes:{...scene.nodes,[a.id]:changed}},f.ids,f.region,
+    {...proof,imageFilters:true,image:()=>true})).toBe(0)
+ }
+})
 test('normal bounded strokes retain the same finite prefix proof without granting opaque coverage themselves',()=>{
  const f=fixture(),a={...f.scene.nodes[f.ids[0]]}
  a.strokes=[{path:a.fill,paint:a.fills[0],align:'center'}]

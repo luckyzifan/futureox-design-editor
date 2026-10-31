@@ -1,14 +1,16 @@
 import type { Bounds, DesignDocument, Matrix } from './model'
 import { intersects, scene, unionBounds } from './geometry'
+import type { CanvasSceneBorrow } from './canvas-scene-snapshots'
 
 /** Only isolated page roots may be lifted out of a completed frame. A crop
  * cannot reconstruct content hidden underneath an overlapping board. */
-export function retainedBoardPlan(document: DesignDocument, pageId: string, selection: string[]) {
+export function retainedBoardPlan(document: DesignDocument, pageId: string, selection: string[],
+  publication?: { scene?: CanvasSceneBorrow; epoch: number }) {
   const page = document.pages.find(p => p.id === pageId)
   if (!page || selection.length !== 1 || !page.children.includes(selection[0])) return null
   const id = selection[0], root = document.nodes[id]
   if (!root?.visible || root.mask || root.opacity !== 1 || !['normal', 'pass-through'].includes(root.blend)) return null
-  const entries = scene(document, pageId)
+  const entries = publication?.scene?.entriesFor(document, pageId, publication.epoch) ?? scene(document, pageId)
   // Each entry belongs to exactly one page root. Re-filtering the complete
   // scene for every root makes warm-up quadratic on large flat documents.
   const rootBounds = new Map<string, Bounds>()

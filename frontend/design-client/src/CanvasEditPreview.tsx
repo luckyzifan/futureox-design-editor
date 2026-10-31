@@ -3,42 +3,55 @@ import { captureBoardFrame, retainedBoardPlan, retainedBoardOffset, retainedBoar
 import type { DesignDocument, Matrix } from './model'
 import type { CanvasCamera, CanvasSize } from './canvas-camera'
 import { Scene } from './Renderer'
-import { movePreviewPlan, movePreviewOffset, retainedSvgMove } from './edit-preview'
+import { movePreviewPlan, movePreviewOffset, retainedSvgMove, type EditPreviewSupport } from './edit-preview'
 import { matrixString } from './geometry'
-import { useDevicePixelRatio } from './kernel/presentation'
-import { retainedCaptureMatches, retainedPixelOffset } from './edit-preview-pixels'
+import { useDevicePixelRatio, type ExactPresentation } from './kernel/presentation'
+import { retainedCaptureMatches, retainedFrameMatches, retainedPixelOffset } from './edit-preview-pixels'
+import type { CanvasSceneBorrow } from './canvas-scene-snapshots'
 const EditScene = memo(Scene)
 export type RetainedMoveControl = { apply(document: DesignDocument, id: string, transform: Matrix): boolean; covers(document: DesignDocument, selection: string[], view: CanvasCamera): boolean; restore(): void }
 
 /** Warm immutable paths before the first gesture, then update the browser's
  * composited vector scene at input cadence while the exact worker catches up.
  * This is explicitly transient and never used for export or exact readiness. */
-export const CanvasEditPreview = memo(function CanvasEditPreview({ document, baseDocument, selection, pageId, view, size, visible, inputAt, sourceHost, canCapture, control, vectorSupported }:
-  { document: DesignDocument; baseDocument: DesignDocument; selection: string[]; pageId: string; view: CanvasCamera; size: CanvasSize; visible: boolean; inputAt: number; sourceHost: RefObject<HTMLDivElement|null>; canCapture: boolean; control: RefObject<RetainedMoveControl|null>; vectorSupported: boolean }) {
+export const CanvasEditPreview = memo(function CanvasEditPreview({ document, baseDocument, selection, pageId, view, size, visible, inputAt, sourceHost, canCapture, control, vectorSupported, vectorSupport, captureFrame, epoch, scene }:
+  { document: DesignDocument; baseDocument: DesignDocument; selection: string[]; pageId: string; view: CanvasCamera; size: CanvasSize; visible: boolean; inputAt: number; sourceHost: RefObject<HTMLDivElement|null>; canCapture: boolean; control: RefObject<RetainedMoveControl|null>; vectorSupported: boolean;
+    vectorSupport?: EditPreviewSupport; captureFrame: ExactPresentation | null; epoch: number; scene?: CanvasSceneBorrow }) {
   const host = useRef<HTMLDivElement>(null)
   const samples = useRef<number[]>([])
   const directSamples = useRef<number[]>([])
   const pixelRatio = useDevicePixelRatio()
-  const [retained, setRetained] = useState<{ plan: NonNullable<ReturnType<typeof retainedBoardPlan>>; pixels: NonNullable<ReturnType<typeof captureBoardFrame>>; view: CanvasCamera; size: CanvasSize } | null>(null)
+  const [retained, setRetained] = useState<{ plan: NonNullable<ReturnType<typeof retainedBoardPlan>>; pixels: NonNullable<ReturnType<typeof captureBoardFrame>>; view: CanvasCamera; size: CanvasSize; frame: ExactPresentation } | null>(null)
   const retainedHost = useRef<HTMLDivElement>(null)
   const movedOverlays = useRef(new Map<SVGElement, string>())
   const movedDefinitions = useRef(new Map<SVGElement, string>())
   const vectorHost = useRef<SVGSVGElement>(null)
-  const svgPlan = useMemo(() => vectorSupported ? retainedSvgMove(baseDocument, pageId, selection) : null,
-    [baseDocument, pageId, selection.join(','), vectorSupported])
-  const boardPlanCache = useRef<{ document: DesignDocument; pageId: string; selection: string; plan: ReturnType<typeof retainedBoardPlan> } | null>(null)
+  const selectionKey = JSON.stringify(selection)
+  // The support receipt is only a cache-miss hint. New current-document
+  // receipts during a drag do not invalidate this immutable base plan.
+  const svgPlan = useMemo(() => vectorSupported ? retainedSvgMove(baseDocument, pageId, selection, vectorSupport) : null,
+    [baseDocument, pageId, selectionKey, vectorSupported])
+  const boardPlanCache = useRef<{ document: DesignDocument; pageId: string; selection: string; epoch: number; scene?: CanvasSceneBorrow; plan: ReturnType<typeof retainedBoardPlan> } | null>(null)
   useLayoutEffect(() => {
-    if (visible || !canCapture || !sourceHost.current) return
+    if (visible || svgPlan || !canCapture || !sourceHost.current || document.colorManagement ||
+        !retainedFrameMatches(captureFrame, document, pageId, epoch, view, size, pixelRatio)) return
     // The 2D snapshot is sRGB8; it cannot retain managed/HDR presentation.
-    const cached = boardPlanCache.current, selected = selection.join(',')
-    const plan = cached?.document === document && cached.pageId === pageId && cached.selection === selected
-      ? cached.plan : !document.colorManagement ? retainedBoardPlan(document, pageId, selection) : null
-    boardPlanCache.current = { document, pageId, selection: selected, plan }
-    if (host.current) host.current.dataset.retainPlan = plan ? JSON.stringify(plan.box) : 'ineligible'
-    const pixels = plan && captureBoardFrame(sourceHost.current, plan.box, view)
-    setRetained(plan && pixels ? { plan, pixels, view, size } : null)
-  }, [document, pageId, selection.join(','), view.x, view.y, view.zoom, size.width, size.height, pixelRatio, visible, canCapture])
-  const retainedCurrent = retained && !document.colorManagement && retainedCaptureMatches(retained, view, size, pixelRatio) ? retained : null
+    // Copy only after this exact presentation/camera has stayed quiet. Each new
+    // publication cancels the timer; SVG and GPU paths do not warm a bitmap.
+    const timer = setTimeout(() => {
+      if (!sourceHost.current) return
+      const cached = boardPlanCache.current
+      const plan = cached?.document === document && cached.pageId === pageId && cached.selection === selectionKey &&
+        cached.epoch === epoch && cached.scene === scene ? cached.plan : retainedBoardPlan(document, pageId, selection, { scene, epoch })
+      boardPlanCache.current = { document, pageId, selection: selectionKey, epoch, scene, plan }
+      if (host.current) host.current.dataset.retainPlan = plan ? JSON.stringify(plan.box) : 'ineligible'
+      const pixels = plan && captureBoardFrame(sourceHost.current, plan.box, view)
+      setRetained(plan && pixels ? { plan, pixels, view, size, frame: captureFrame! } : null)
+    }, 150)
+    return () => clearTimeout(timer)
+  }, [document, pageId, selectionKey, view.x, view.y, view.zoom, size.width, size.height, pixelRatio, visible, canCapture, svgPlan, captureFrame, epoch, scene, sourceHost])
+  const retainedCurrent = retained && retained.frame === captureFrame && retained.frame.epoch === epoch && retained.frame.pageId === pageId &&
+    !document.colorManagement && retainedCaptureMatches(retained, view, size, pixelRatio) ? retained : null
   const retainedDocumentOffset = useMemo(() => retainedCurrent ? retainedBoardOffset(retainedCurrent.plan, document) : null, [retainedCurrent, document])
   const retainedOffset = retainedCurrent && selection.length === 1 && retainedCurrent.plan.id === selection[0]
     ? retainedPixelOffset(retainedDocumentOffset, view.zoom, pixelRatio) : null
@@ -66,8 +79,8 @@ export const CanvasEditPreview = memo(function CanvasEditPreview({ document, bas
     control.current = {
       restore,
       covers(current, selected, camera) {
-        return !!retained && !current.colorManagement && selected.length === 1 && selected[0] === retained.plan.id &&
-          retainedCaptureMatches(retained, camera, size, pixelRatio) &&
+        return !!retainedCurrent && !current.colorManagement && selected.length === 1 && selected[0] === retainedCurrent.plan.id &&
+          retainedCaptureMatches(retainedCurrent, camera, size, pixelRatio) &&
           retainedPixelOffset(offsetFor(current), camera.zoom, pixelRatio) !== null
       },
       apply(current, id, transform) {
@@ -111,8 +124,11 @@ export const CanvasEditPreview = memo(function CanvasEditPreview({ document, bas
     foreground.style.cssText = `position:absolute;left:${crop.x}px;top:${crop.y}px;width:${crop.width}px;height:${crop.height}px;will-change:transform;transform:translate(${retainedOffset.x * view.zoom}px,${retainedOffset.y * view.zoom}px)`
     if (background.parentElement !== retainedHost.current) retainedHost.current.replaceChildren(background, foreground)
   }, [retained, retainedOffset?.x, retainedOffset?.y, view.zoom])
-  const plan = useMemo(() => vectorSupported ? movePreviewPlan(baseDocument, pageId, selection) : null,
-    [baseDocument, pageId, selection.join(','), vectorSupported])
+  // Split SVG documents are a fallback for an actual visible edit. The direct
+  // retained definition or bitmap already handles the preferred path.
+  const needsSplitPlan = vectorSupported && visible && !retainedOffset && !(svgPlan && document === baseDocument)
+  const plan = useMemo(() => needsSplitPlan ? movePreviewPlan(baseDocument, pageId, selection) : null,
+    [baseDocument, pageId, selectionKey, needsSplitPlan])
   const offset = useMemo(() => plan && movePreviewOffset(plan, document), [plan, document])
   const viewport = useMemo(() => ({ x: -view.x / view.zoom, y: -view.y / view.zoom,
     width: size.width / view.zoom, height: size.height / view.zoom }), [view.x, view.y, view.zoom, size.width, size.height])

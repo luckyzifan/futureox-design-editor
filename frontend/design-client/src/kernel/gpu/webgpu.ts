@@ -1168,7 +1168,12 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       if (this.sampleOnlyScalarPipeline) this.sampleOnlyCoverageEligibleScenes++
     }
     const modes = this.managed ? compositorModes(scene) : new Set([...compositorModes(scene)].filter(mode => mode === 61 || mode === 62))
-    if(this.supportsGaussianReduction()&&Object.values(scene.nodes).some(node=>node.gaussianRegion?.factor!==undefined))modes.add(74)
+    // Filter preparation runs concurrently. Its prefix may become ready only
+    // after this method finishes, so pipeline demand must use requested policy
+    // rather than the other task's transient readiness.
+    if(this.canvasBlurRequested&&this.managed&&!this.hdr&&!this.displayMath&&
+      import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1'&&[2,4,8].includes(Number(import.meta.env.VITE_DESIGN_GAUSSIAN_REDUCTION))&&
+      Object.values(scene.nodes).some(node=>node.gaussianRegion?.factor!==undefined))modes.add(74)
     if(this.exactGradientPaintOver&&gradientFusionWorthwhile(scene))modes.add(GRADIENT_PAINT_OVER_MODE)
     const layout = this.device.createPipelineLayout({ bindGroupLayouts: [this.layout] })
     const pending: string[] = []

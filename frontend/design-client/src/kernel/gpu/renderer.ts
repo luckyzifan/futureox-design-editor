@@ -10,6 +10,7 @@ import { SurfacePool } from './surface-pool'
 import { CoordinateRetirementSet } from './coordinate-retirement-set'
 import { prefixAlignedStrip, prefixAlignedRgbStrip } from './prefix-band'
 import { PREFIX_SCRATCH_BYTES } from './texture-prefix'
+import { BOX_PREFIX_BYTES } from './box-prefix'
 import { backdropFilterRegion } from './backdrop-filter-region'
 import { painterStageBox } from './painter-stage'
 import { identicalSampleCoverage } from './sample-equivalent-coverage'
@@ -94,6 +95,7 @@ import {
   gradient_sampling_grid_region,
   rational_box_kernel_rgba,
   gaussian_box_radii,
+  gaussian_region_box_radii,
   rational_region_box_kernel_rgba,
   motion_blur_kernel,
   zoom_blur_coordinates,
@@ -743,14 +745,26 @@ export class GpuRenderer {
   private constantCoverageActive=true
   private opaquePrefixActive=false
   private opaquePrefixEnabled=import.meta.env.VITE_DESIGN_OPAQUE_PAINTER_PREFIX==='1'
+  private uniformColorSurfaces=import.meta.env.VITE_DESIGN_UNIFORM_COLOR_SURFACES==='1'
+  private sequentialGaussian=import.meta.env.VITE_DESIGN_SEQUENTIAL_GAUSSIAN==='1'
   private skippedPainterVisits=0
   get occludedPainterVisits(){return this.skippedPainterVisits}
-  private opaqueBegin(ids:string[],targets:Surface[]):number{
+  private identityClip(clip:Surface,bounds:Rect):boolean{
+    return this.uniformColorSurfaces&&!!this.driver.managed&&this.busy.has(clip.texture)&&!this.releasedAliases.has(clip)&&
+      containsRect(clip.rect,bounds)&&containsRect(clip.opaqueInterior,bounds)&&
+      exactBlendLattice([clip.rect,clip.opaqueInterior!,bounds])
+  }
+  private equivalentClips(a:Surface|undefined,b:Surface|undefined,bounds:Rect):boolean{
+    return sameSurface(a,b)||!!a&&!!b&&this.identityClip(a,bounds)&&this.identityClip(b,bounds)
+  }
+  private opaqueBegin(ids:string[],targets:Surface[],clip?:Surface[]):number{
     if(!this.opaquePrefixActive||!targets.length||targets.some(p=>!p.texture.transparentZero)||
       targets.some(p=>p.rect.x!==targets[0].rect.x||p.rect.y!==targets[0].rect.y||p.rect.w!==targets[0].rect.w||p.rect.h!==targets[0].rect.h))return 0
-    const begin=opaquePainterStart(this.scene,ids,targets[0].rect,{
-      color:value=>[...this.color(value),this.alpha(value)],
-      image:(node,paint)=>{
+    if(clip&&(clip.length!==targets.length||clip.some((mask,i)=>!this.identityClip(mask,targets[i].rect))))return 0
+    const proofs={
+      imageFilters:import.meta.env.VITE_DESIGN_OPAQUE_IMAGE_FILTER_PREFIX==='1',
+      color:(value:string)=>[...this.color(value),this.alpha(value)],
+      image:(node:GpuNode,paint:GpuPaint)=>{
         if(!paint.image||this.imageMips&&!this.imageDims.has(paint.image))return false
         try{
           const image=this.images.get(this.imageKey(paint.image,this.imageLevel(node,paint),false,paint.adjust))
@@ -762,7 +776,33 @@ export class GpuRenderer {
             range.maximum.every(v=>Number.isInteger(v)&&v>=1&&v<=127)
         }catch{return false}
       },
-    })
+    }
+    let begin=opaquePainterStart(this.scene,ids,targets[0].rect,proofs)
+    if(!begin&&proofs.imageFilters){
+      // Find an otherwise proven full overwrite before doing optional work.
+      // Only two actual source uploads may be prepared, under the same image
+      // ledger. A decoder hint alone never authorizes omitting a painter.
+      const potential=opaquePainterStart(this.scene,ids,targets[0].rect,{...proofs,image:()=>true})
+      if(potential){
+        const pending=ids.slice(0,potential+1),images:{node:GpuNode;paint:GpuPaint}[]=[],seen=new Set<string>()
+        while(pending.length){
+          const node=this.scene.nodes[pending.pop()!];if(!node||seen.has(node.id))continue;seen.add(node.id)
+          for(const paint of [...node.fills,...node.strokes.map(stroke=>stroke.paint)])
+            if(paint.visible&&paint.kind==='image'&&!proofs.image(node,paint))images.push({node,paint})
+          pending.push(...node.children)
+        }
+        if(images.length<=2){
+          try{
+            for(const {node,paint} of images){this.checkFrameCurrent();this.imageFor(paint.image!,this.imageLevel(node,paint),false,paint.adjust)}
+            begin=opaquePainterStart(this.scene,ids,targets[0].rect,proofs)
+          }catch(error){
+            // An optional preflight cannot buy more residency. Ordinary
+            // rendering still owns budget failure and invalid-source errors.
+            if(!(error instanceof Error)||!/^GPU (?:表面内存预算超限|浮点图片内存预算超限)/.test(error.message))throw error
+          }
+        }
+      }
+    }
     for(let i=0;i<begin;i++)if(this.scene.nodes[ids[i]])this.skippedPainterVisits++
     return begin
   }
@@ -1107,7 +1147,8 @@ export class GpuRenderer {
     const diagnostic = this.lastBudgetFailure
     this.lastBudgetFailure = undefined
     if(import.meta.env.VITE_DESIGN_ALLOCATION_STACK==='1'&&gpuDiagnosticsEnabled())
-      console.debug('DESIGN_ALLOCATION_SITE '+JSON.stringify({allocationKind,allocationSite,passMode,
+      console.debug('DESIGN_ALLOCATION_SITE '+JSON.stringify({allocationKind,allocationSite,passMode,node:this.activeNode,
+        nodeOpacity:this.scene.nodes[this.activeNode]?.opacity,
         stack:new Error().stack?.split('\n').slice(0,12).join('\n')}))
     const error = markRenderFailure(markRuntimeConfiguration(renderErrorWithBudget(message, undefined, diagnostic), this.activeRuntimeConfiguration),
       { failureStage: 13, failureCategory: 3, failureCode: 200 })
@@ -1603,7 +1644,7 @@ export class GpuRenderer {
     const bounds = dst.logicalBounds || dst.rect
     return (
       this.optimized &&
-      !clip &&
+      (!clip||this.identityClip(clip,bounds)) &&
       (n.opaqueCoverage && containsRect(n.rect, bounds) || (containsRect(mask.opaqueInterior, bounds) && containsRect(n.rect, bounds) &&
         exactBlendLattice([mask.rect, bounds, n.rect]))) &&
       constantColor &&
@@ -1625,8 +1666,9 @@ export class GpuRenderer {
       const key = this.constantTargetKey(bounds, color)
       let constant = this.constantTargets.get(key)
       if (!constant) {
-        const compact = this.painterStagesEnabled() && this.driver.constantTextureSampling
-        constant = this.run(12, compact ? rect(0, 0, 1, 1) : bounds, [], u => u.set([...this.color(color), 1], 48))
+        const compact = (this.painterStagesEnabled()||this.uniformColorSurfaces) && this.driver.constantTextureSampling
+        constant = this.run(12, compact ? rect(0, 0, 1, 1) : bounds, [], u => u.set([...this.color(color), 1], 48),
+          15, undefined, false, undefined, !!compact)
         if (compact) { constant.texture.uniformColor = true; constant.rect = bounds }
         this.constantTargets.set(key, constant)
       }
@@ -1708,7 +1750,7 @@ export class GpuRenderer {
       const cached = this.driver.managed && !this.allowSolidBatch &&
         this.constantTargets.has(this.constantTargetKey(bounds, constant))
       if (!cached) allocations.push(this.driver.managed && !this.allowSolidBatch &&
-        this.painterStagesEnabled() && this.driver.constantTextureSampling ? rect(0, 0, 1, 1) : bounds)
+        (this.painterStagesEnabled()||this.uniformColorSurfaces) && this.driver.constantTextureSampling ? rect(0, 0, 1, 1) : bounds)
     } else {
       const region = this.exactSolidPaintRegion(n, paint, mask, dst, clip)
       const regional = region && this.regionalOverPlan(region, dst, clip ? [mask, clip] : [mask])
@@ -2881,7 +2923,7 @@ export class GpuRenderer {
     }
     let pendingSurfaceAdmission: Surface | Promise<Surface>
     const children = skip ? ids.filter((id) => id !== skip) : ids
-    for (let i = !clip&&!skip&&this.sampleIndex!==undefined?this.opaqueBegin(children,[target]):0; i < children.length; ) {
+    for (let i = !skip&&this.sampleIndex!==undefined?this.opaqueBegin(children,[target],clip?[clip]:undefined):0; i < children.length; ) {
       let end = i
       // Coverage is independent of paint and backdrop. Prepare a consecutive
       // leaf run first so one target render pass can preserve every paint order.
@@ -3562,7 +3604,7 @@ export class GpuRenderer {
     const previousNode = this.activeNode
     const previousCapturing = this.interactionCapturing
     try {
-    let begin = !clip&&!prefix&&!compactSource?this.opaqueBegin(ids,targets):0
+    let begin = !prefix&&!compactSource?this.opaqueBegin(ids,targets,clip):0
     if (prefix) {
       if (this.nestedPrefixMatches(prefix.plan, prefix.policy)) {
         const cached = this.nestedPrefix!
@@ -3772,7 +3814,8 @@ export class GpuRenderer {
       const firstEffect = n.effects.find(fx => fx.visible)
       const streamBlur = this.optimized && this.driver.managed && !this.driver.displayMath &&
         this.driver.sequentialSampleResolve && !n.passthrough && !n.children.length &&
-        !maskId && !leafBackdrop && !n.strokes.length && firstEffect?.kind === 'blur' && firstEffect.radius > 0
+        !maskId && !leafBackdrop && !n.strokes.length &&
+        (firstEffect?.kind === 'blur' || this.sequentialGaussian && firstEffect?.kind === 'gaussian-blur') && firstEffect.radius > 0
       // An isolation-only container consumes its children's colors, never
       // its own path coverage. Do not pin four full-halo masks on every
       // such ancestor while drawing the descendants.
@@ -4049,7 +4092,7 @@ export class GpuRenderer {
         this.checkFrameCurrent()
         const src = layers[i], dst = targets[i], mask = clip?.[i]
         const shared = shareMerge && mergedSamples.find(s =>
-          sameSurface(s.src, src) && sameSurface(s.dst, dst) && sameSurface(s.mask, mask))
+          sameSurface(s.src, src) && sameSurface(s.dst, dst) && this.equivalentClips(s.mask,mask,dst.rect))
         if (shared) {
           targets[i] = this.retain(shared.out)
           this.release(dst, src)
@@ -4710,7 +4753,7 @@ export class GpuRenderer {
       this.checkFrameCurrent()
       const destination = targets[i], mask = clip?.[i]
       const shared = shareResolvedMerge && sharedMerges.find(entry =>
-        sameSurface(entry.destination, destination) && sameSurface(entry.mask, mask))
+        sameSurface(entry.destination, destination) && this.equivalentClips(entry.mask,mask,destination.rect))
       if (shared) {
         targets[i] = this.retain(shared.result)
         this.release(destination)
@@ -5046,6 +5089,53 @@ export class GpuRenderer {
       const result=current;current=undefined;return result
     }finally{this.sampleIndex=savedSample;this.interactionCapturing=savedCapture;this.release(current)}
   }
+  private async wideImageGaussian(input:Surface,n:GpuNode,sigma:number):Promise<Surface|undefined>{
+    const paint=n.fills[0],source=input.rect,texture=input.texture
+    if(import.meta.env.VITE_DESIGN_WIDE_IMAGE_GAUSSIAN!=='1'||!this.sequentialGaussian||
+      !this.optimized||this.driver.name!=='webgpu'||!this.driver.managed||this.driver.hdr||this.driver.displayMath||
+      !this.driver.supportsGaussianRegions?.()||!this.driver.copyRegion||!this.driver.immutableImageRange||
+      this.scene.softwareRaster||this.scene.interactionRetained||this.interactionCapturing||
+      !this.scene.coherentSamples||!(sigma>512&&sigma<=1024)||
+      n.children.length||n.strokes.length||n.clip||n.mask||n.maskId||n.passthrough||n.blend!=='normal'||
+      n.fills.length!==1||paint?.kind!=='image'||!paint.visible||!paint.image||paint.blend!=='normal'||
+      !Number.isFinite(paint.opacity)||paint.opacity<0||paint.opacity>1||
+      n.effects.filter(e=>e.visible).length!==1||!n.effects.some(e=>e.visible&&e.kind==='gaussian-blur'&&!e.gradientBlur)||
+      !this.busy.has(texture)||this.releasedAliases.has(input)||input.logicalBounds||
+      texture.uniformColor||texture.transparentZero||texture.scalarCoverage||texture.binaryCoverage||
+      texture.width!==source.w||texture.height!==source.h||texture.bytes!==source.w*source.h*16||
+      !exactBlendLattice([source])||source.w>16384||source.h>16384||source.w*source.h>16_777_216)return
+    // The sampled image owns a complete upload certificate. Four positive
+    // coverage/opacity samples remain bounded; HDR and unknown uploads keep
+    // the original operator rather than borrow this SDR prefix arithmetic.
+    const image=this.imageFor(paint.image,this.imageLevel(n,paint),false,paint.adjust)
+    const range=this.driver.immutableImageRange(image.texture)
+    if(!range?.unitAlpha||range.maximum.length!==4||
+      !range.maximum.every(v=>Number.isInteger(v)&&v>=0&&v<=127))return
+    const radii=Array.from(gaussian_region_box_radii(sigma))
+    let current=input,next:Surface|undefined
+    const previousCapture=this.interactionCapturing;this.interactionCapturing=true
+    try{
+      for(const radius of radii){
+        const kernel=this.filterKernel('rational-region-box',radius,()=>rational_region_box_kernel_rgba(radius))
+        for(const axis of [0,1]){
+          await this.reclaimForSurface(source);this.checkFrameCurrent();next=this.acquire(source)
+          const length=axis===0?source.h:source.w
+          for(let offset=0;offset<length;offset+=64){
+            const pause=this.yieldEncoding();if(pause)await pause
+            const strip=axis===0?{x:source.x,y:source.y+offset,w:source.w,h:Math.min(64,length-offset)}:
+              {x:source.x+offset,y:source.y,w:Math.min(64,length-offset),h:source.h}
+            await this.reclaimScratch(strip.w*strip.h*16+BOX_PREFIX_BYTES);this.checkFrameCurrent()
+            const filtered=this.run(22,strip,[current,kernel],u=>u.set([radius,axis,0,2],36))
+            try{this.driver.copyRegion(next.texture,filtered.texture,{x:0,y:0,w:strip.w,h:strip.h},
+              [strip.x-source.x,strip.y-source.y])}finally{this.release(filtered)}
+          }
+          if(current!==input)this.release(current)
+          current=next;next=undefined
+        }
+      }
+      const result=current;current=input;return result
+    }finally{this.release(next,current!==input?current:undefined);this.interactionCapturing=previousCapture}
+  }
   private async spatialBlur(input: Surface, n: GpuNode, fx: Effect): Promise<Surface> {
     if(fx.zoomBlur){
       if(fx.zoomBlur.amount===0)return input
@@ -5055,7 +5145,10 @@ export class GpuRenderer {
       return pending?await pending:this.run(62,input.rect,[input,kernel])
     }
     if (fx.radius === 0) return input
-    if (fx.kind === 'gaussian-blur') return await this.blur(input,fx.radius*scale(n.matrix),false,false,false,true,true,true)
+    if (fx.kind === 'gaussian-blur') {
+      const sigma=fx.radius*scale(n.matrix),wide=await this.wideImageGaussian(input,n,sigma)
+      return wide||await this.blur(input,sigma,false,false,false,true,true,true)
+    }
     const direction = [n.matrix[0],n.matrix[1],n.matrix[2],n.matrix[3],0,0]
     const kernel = this.filterKernel(`motion:${JSON.stringify([direction,fx.motionAngle??0])}`,fx.radius,
       () => motion_blur_kernel(fx.radius,fx.motionAngle??0,new Float64Array(direction)), values => [256,values.length/1024])

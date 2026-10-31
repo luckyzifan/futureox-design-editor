@@ -489,6 +489,21 @@ pub fn gaussian_box_radii(sigma: f64) -> Result<[u32; 3], String> {
 pub(crate) fn gaussian_box_radii_region(sigma:f64)->Result<[u32;3],String> {
     gaussian_box_radii_bounded(sigma,1024.)
 }
+#[test]
+fn regional_gaussian_keeps_original_radius_math_and_separate_admission() {
+    for sigma in [0.,0.05,0.1,0.3,4.,32.,128.125,511.999,512.] {
+        assert_eq!(gaussian_box_radii_region(sigma),gaussian_box_radii(sigma));
+    }
+    for sigma in [512.0000000000001,9.564871788024902*64.,1024.] {
+        assert!(gaussian_box_radii(sigma).is_err());
+        let radii=gaussian_box_radii_region(sigma).unwrap();
+        assert!(radii.iter().all(|r|*r<=1024));
+        assert!(radii.iter().map(|r|f64::from(*r)).sum::<f64>()>1533.);
+    }
+    for sigma in [-1.,f64::NAN,f64::INFINITY,1024.0000000000002] {
+        assert!(gaussian_box_radii_region(sigma).is_err());
+    }
+}
 fn gaussian_box_radii_bounded(sigma:f64,limit:f64)->Result<[u32;3],String> {
     if !sigma.is_finite() || !(0. ..=limit).contains(&sigma) {
         return Err(format!("Gaussian sigma must be in [0,{limit}]"));

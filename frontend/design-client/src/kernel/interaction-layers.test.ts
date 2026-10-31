@@ -1,6 +1,7 @@
 import { expect, test, vi } from 'vitest'
 import { blank, node, effect } from '../model'
-import { interactionOffsets, interactionTransformsOnly, interactionPatchedDocument, interactionPatchedOffsets, planInteractionLayers, pageBackdropPadding } from './interaction-layers'
+import { InteractionLayerPlanner, interactionOffsets, interactionTransformsOnly, interactionPatchedDocument, interactionPatchedOffsets, planInteractionLayers, pageBackdropPadding } from './interaction-layers'
+import { CanvasSceneSnapshots } from '../canvas-scene-snapshots'
 import { produceDocumentDraft } from '../document-patch'
 import {scene} from '../geometry'
 
@@ -154,4 +155,58 @@ test('nested selections split only empty independent wrappers and keep interleav
  group.opacity=1;group.clip=true;expect(planInteractionLayers(doc,doc.pages[0].id,[a.id])).toBeNull()
  group.clip=false;group.blend='normal';expect(planInteractionLayers(doc,doc.pages[0].id,[a.id])).toBeNull()
  group.blend='pass-through';expect(planInteractionLayers(doc,doc.pages[0].id,[group.id,a.id])).toBeNull()
+})
+
+test('root plans avoid the document parent table and camera changes only clip a borrowed structure', () => {
+  const doc = blank(), roots = Array.from({ length: 3000 }, (_, i) => node('rectangle', i * 40, 0, 20, 20))
+  for (const root of roots) doc.nodes[root.id] = root
+  doc.pages[0].children = roots.map(root => root.id)
+  let enumerations = 0
+  doc.nodes = new Proxy(doc.nodes, { ownKeys(target) { enumerations++; return Reflect.ownKeys(target) } })
+  const pageId = doc.pages[0].id, ids = [roots[100].id, roots[200].id], store = new CanvasSceneSnapshots(), owner = {}
+  store.begin(owner, 1, pageId, true)
+  const snapshot = store.currentScene(doc, pageId), borrowed = store.borrowCurrentScene(doc, pageId, 1)!
+  let boundsReads = 0
+  for (const entry of snapshot.entries) {
+    const bounds = entry.bounds
+    Object.defineProperty(entry, 'bounds', { get() { boundsReads++; return bounds } })
+  }
+  enumerations = 0
+  const planner = new InteractionLayerPlanner(), options = { scene: borrowed, epoch: 1 }
+  const before = planner.plan(doc, pageId, ids, { x: 0, y: 0, width: 100, height: 100 }, options)!
+  const reads = boundsReads
+  expect(reads).toBeGreaterThan(0)
+  for (let x = 0; x < 60; x++) {
+    const plan = planner.plan(doc, pageId, ids, { x: x * 100, y: 0, width: 200, height: 100 }, options)!
+    expect(plan.layers.filter(layer => layer.moving).map(layer => layer.bounds))
+      .toEqual(before.layers.filter(layer => layer.moving).map(layer => layer.bounds))
+    expect(plan.parentLinear).toEqual(new Map(ids.map(id => [id, [1, 0, 0, 1]])))
+  }
+  expect(enumerations).toBe(0)
+  expect(boundsReads).toBe(reads)
+  // Eviction/session revocation must invalidate even a same-object cached plan.
+  store.begin(owner, 2, pageId, true)
+  roots[100].effects = [effect('glass')]
+  expect(planner.plan(doc, pageId, ids, undefined, options)).toBeNull()
+})
+
+test('structural cache separates selections, neutral policy, publications and mutable callers', () => {
+  const doc = blank(), group = node('group', 0, 0, 200, 100), a = node('rectangle', 0, 0, 40, 40), b = node('rectangle', 80, 0, 40, 40)
+  group.blend = 'normal'; group.children = [a.id, b.id]; group.fills = []; group.strokes = []
+  doc.nodes = { [group.id]: group, [a.id]: a, [b.id]: b }; doc.pages[0].children = [group.id]
+  const pageId = doc.pages[0].id, store = new CanvasSceneSnapshots(), owner = {}, planner = new InteractionLayerPlanner()
+  store.begin(owner, 1, pageId, true); store.currentScene(doc, pageId)
+  const options = { scene: store.borrowCurrentScene(doc, pageId, 1)!, epoch: 1 }
+  expect(planner.plan(doc, pageId, [a.id], undefined, options)).toBeNull()
+  expect(planner.plan(doc, pageId, [a.id], undefined, { ...options, neutralPageGroup: true })?.layers[0].moving).toBe(a.id)
+  expect(planner.plan(doc, pageId, [b.id], undefined, { ...options, neutralPageGroup: true })?.layers[1].moving).toBe(b.id)
+  expect(planner.plan(doc, pageId, [a.id], undefined, options)).toBeNull()
+  expect(planner.plan(doc, pageId, [group.id], undefined, options)).not.toBeNull()
+  const changed = { ...doc, nodes: { ...doc.nodes, [group.id]: { ...group, mask: true } } }
+  expect(planner.plan(changed, pageId, [group.id], undefined, options)).toBeNull()
+  // Without a publication capability, identical objects remain mutable drafts.
+  expect(planner.plan(doc, pageId, [group.id])).not.toBeNull()
+  group.mask = true
+  expect(planner.plan(doc, pageId, [group.id])).toBeNull()
+  planner.clear()
 })

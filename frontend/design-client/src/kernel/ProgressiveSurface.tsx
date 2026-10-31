@@ -2519,7 +2519,7 @@ export function ProgressiveSurfaceImpl(
             tile.zoom===detailLevel&&tileHasNativePhase(tile,requestedView,dpr)&&
             (!fullPlanReady||props.interaction?.active||!plan||plan.ids.has(tile.key)))
             .map(tile=>({tile,active:true,layer:0}))} allowPageTranslation={!props.grid&&!props.checkerboard&&!props.pixelPreview}
-          interaction={navigationZoom.active ? undefined : props.interaction} pageId={pageId} rasterProfile={rasterProfile} backend={backend}
+          interaction={navigationZoom.active ? undefined : props.interaction?{...props.interaction,navigating:cameraMoving}:undefined} pageId={pageId} rasterProfile={rasterProfile} backend={backend}
           settledDocument={fullPlanReady ? doc : undefined}
           onPresented={(frame,source,device?: ViewportPreviewDevice)=>{
             const deviceKey = viewportPreviewDeviceKey(device), c = client.current

@@ -2,6 +2,8 @@
 name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
+2026-10-31 官方 Sketch 样本适配见[验证记录](../../../testing/verification-sketch-official-20261031/README.md)。74 个官方特性组及完整色板样例通过 Rust/WASM 生产往返，导出设置按索引保留来源字段。TIFF/EPS 和零倍率仅承诺 Sketch 往返保真，不承诺本编辑器可执行生成；JPG 可复用 JPEG 写出。官方归档 JSON、完整样例和原生 Sketch metadata 分别验证，不据此宣称全版本、全语义或原生像素完整兼容。
+
 2026-10-30 的稀疏画布、源准备与实时像素修复见[本轮验证](../../../testing/verification-sparse-canvas-20261030/README.md)。实时捕获必须高于实际页面质量层级，不能用固定 layer 4：原精确 layer 5 曾遮挡已生成的新像素，渲染回执变快并未消除蓝框先动。必须保留真实截图负/正对照。FXSCENE4 共享完整图片/几何并保留原始 f64 位；两 CPU 转换槽按源序合并，单 GPU owner 不变。空白复用需完整源、同 owner/颜色/密度的实际 GPU texel 证明，白色 authored paint 仍保留。四采样子树/静态前缀与高斯分条均使用原预算；新实验准入与开关不整体放开。有界捕获扩展只保留 owner-valid 输出边界，最多一原生百万像素，不授予像素复用或完整性。截图会阻塞 IPC 回执，像素回放与无截图计时分开；冷启动、100 ms 精修、可见 P95、任意嵌套/HDR 覆盖及完整 G5 尚未关闭。
 
 
