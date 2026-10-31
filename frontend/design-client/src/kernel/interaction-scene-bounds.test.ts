@@ -3,7 +3,26 @@ import { createHash } from 'node:crypto'
 import { blank, effect, node, paint, stroke, type Bounds, type DesignDocument } from '../model'
 import { scene, unionBounds, type SceneEntry } from '../geometry'
 import { VectorEngine } from '../generated/design-kernel/design_kernel'
-import { interactionRootBounds } from './interaction-scene-bounds'
+import { buildInteractionDependencyScope, interactionRootBounds } from './interaction-scene-bounds'
+
+test('short travel reserve applies only to localized simple leaves without changing their footprint', () => {
+  const document = blank(), root = node('frame', 10, 20, 200, 200), leaf = node('text', 30, 40, 67, 20)
+  root.children = [leaf.id]; leaf.fills = [paint('#123456')]
+  document.nodes = { [root.id]: root, [leaf.id]: leaf }; document.pages[0].children = [root.id]
+  const scope = () => buildInteractionDependencyScope(document, document.pages[0].id,
+    scene(document, document.pages[0].id), [leaf.id], { zoom: 1, dpr: 2, allowFixedBackdrop: true })
+  const before = scope(); expect(before.shortTravelBounds.has(leaf.id)).toBe(true)
+  leaf.effects = [effect('blur')]
+  expect(scope().shortTravelBounds.has(leaf.id)).toBe(false)
+  leaf.effects = []; leaf.strokes = [stroke('#abcdef', 1)]
+  expect(scope().shortTravelBounds.has(leaf.id)).toBe(false)
+  leaf.strokes = []; leaf.fills[0].kind = 'image'
+  expect(scope().shortTravelBounds.has(leaf.id)).toBe(false)
+  leaf.fills[0].kind = 'solid'; root.mask = true
+  expect(scope().shortTravelBounds.has(leaf.id)).toBe(false)
+  root.mask = false
+  expect(scope().rootBounds.get(leaf.id)).toEqual(before.rootBounds.get(leaf.id))
+})
 
 // Frozen pre-optimization implementation. Keep this independent of the
 // production helper: membership, padding and all floating-point operations

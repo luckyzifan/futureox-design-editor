@@ -130,7 +130,7 @@ pub fn resolve(doc: &mut Document) -> Result<(), String> {
         n.transform = Transform([1., 0., 0., 1., x, y]);
         n.width = width;
         n.height = height;
-        n.network = Some(Network {
+        n.network = Some((Network {
             vertices: points
                 .iter()
                 .enumerate()
@@ -151,7 +151,7 @@ pub fn resolve(doc: &mut Document) -> Result<(), String> {
                 .collect(),
             fill_rule: "nonzero".into(),
             filled_faces: None,
-        });
+        }).into());
         let binding = n.connector.as_mut().unwrap();
         binding.from.point = a;
         binding.to.point = b;

@@ -167,6 +167,7 @@ export type ManagedImageLoader = (uri: string, byte?: boolean, level?: number) =
   bytes?: Uint8Array
   linearRows?: () => import('../image-row-source').LinearImageRows
   linearRowReason?:1|2
+  dispose?: () => void
 }
 /** Mirror of the kernel's `image_mipmap::mip_levels`: the base plus one level
  * per ceil-halving until both extents reach one texel. Kept inline so the
@@ -199,6 +200,7 @@ export class GpuRenderer {
   private canvasBlurEnabled = import.meta.env.VITE_DESIGN_CANVAS_BLUR_FLOAT !== '0'
   private encodeYield = new EncodeYield()
   private frameCurrent?: () => boolean
+  private displayBackpressure = false
   private encodingProgress?: (drawCalls:number)=>void
   private progressDraws=0
   private progressAt=0
@@ -214,7 +216,7 @@ export class GpuRenderer {
       // abort/fence path; already submitted resources keep that same lifetime.
       this.checkFrameCurrent()
       if (import.meta.env.VITE_DESIGN_ENCODE_SUBMIT !== '0') {
-        if (import.meta.env.VITE_DESIGN_RASTER_BACKPRESSURE === '1' &&
+        if (this.displayBackpressure &&
             this.driver.captureDisplay === true && this.driver.yieldRasterQueue) {
           const started = performance.now()
           try { await this.driver.yieldRasterQueue() }
@@ -2039,6 +2041,7 @@ export class GpuRenderer {
       if (!this.managedImageLoader || !this.driver.uploadLinear)
         throw new Error('后端缺少受管理的浮点图片解码器')
       const image = this.managedImageLoader(uri, false, level)
+      try {
       // Images share the one surface ledger; pressure evicts older images
       // first instead of failing the frame.
       if (this.overBudget(image.width * image.height * 16, image.width, image.height)) throw this.budgetError('GPU 浮点图片内存预算超限', 4)
@@ -2066,12 +2069,14 @@ export class GpuRenderer {
       this.used.add(texture)
       this.touch(texture)
       return { texture, rect: rect(0, 0, image.width, image.height) }
+      } finally { image.dispose?.() }
     }
     if (!this.managedImageLoader || !this.driver.uploadRgba8)
       throw new Error('后端缺少统一的图片解码器')
     // Source assets share Rust's ICC/orientation/premultiplication boundary.
     // The GPU still samples and composites every scene pixel itself.
     const image = this.managedImageLoader(uri, true, level)
+    try {
     if (!image.bytes || image.bytes.length !== image.width * image.height * 4)
       throw new Error('无效的预乘 RGBA8 图片资源')
 
@@ -2089,6 +2094,7 @@ export class GpuRenderer {
     this.used.add(texture)
     this.touch(texture)
     return { texture, rect: rect(0, 0, image.width, image.height) }
+    } finally { image.dispose?.() }
   }
   private imageKey(uri: string, level: number, intoAtlas: boolean, adjust?: ImageAdjust): string {
     // The tag sits after `#level` so the loader's `startsWith(`${uri}#`)`
@@ -2167,17 +2173,15 @@ export class GpuRenderer {
     this.bytes -= page.texture.bytes
     this.atlasPages = this.atlasPages.filter((p) => p !== page)
   }
-  /** Base asset dimensions, cached from the shared deterministic decoder.
-   * Level selection and grid compilation need the base extent, and the wasm
-   * side caches the decode, so this never decodes twice. */
+  /** Cache base dimensions without retaining a transient row decoder. */
   private baseDims(uri: string): [number, number] {
     this.requireImageResidencyCurrent()
     let dims = this.imageDims.get(uri)
     if (!dims) {
       if (!this.managedImageLoader) throw new Error('后端缺少统一的图片解码器')
       const info = this.managedImageLoader(uri, !(this.scene.floatCompositing || this.scene.colorManagement), 0)
-      dims = [info.width, info.height]
-      this.imageDims.set(uri, dims)
+      try { dims = [info.width, info.height]; this.imageDims.set(uri, dims) }
+      finally { info.dispose?.() }
     }
     return dims
   }
@@ -6407,10 +6411,11 @@ export class GpuRenderer {
     }
     finally { this.bytes += (this.driver.scratchBytes || 0) - reserved }
   }
-  async render(scene: GpuScene, readback = false, present = true, isCurrent?: () => boolean, onEncodingProgress?: (drawCalls:number)=>void) {
+  async render(scene: GpuScene, readback = false, present = true, isCurrent?: () => boolean, onEncodingProgress?: (drawCalls:number)=>void, displayBackpressure=false) {
     // Cancellation requires an explicit encoder-abandon/completion boundary.
     // WebGL and older drivers retain their existing completed-frame checks.
     this.frameCurrent = this.driver.abortFrameAndReleaseFilterScratch ? isCurrent : undefined
+    this.displayBackpressure=displayBackpressure&&!readback&&present&&this.driver.name==='webgpu'&&!this.driver.hdr&&!scene.softwareRaster
     this.encodingProgress=onEncodingProgress;this.progressDraws=0;this.progressAt=performance.now()
     this.nestedPrefixPressure = false
     try { this.checkFrameCurrent(); return await this.renderAttempt(scene, readback, present) }
@@ -6428,7 +6433,7 @@ export class GpuRenderer {
       console.debug('DESIGN_GPU_PREFIX_BUDGET_FALLBACK ' + JSON.stringify({ reserved, extent: scene.extent }))
       try { return await this.renderAttempt(scene, readback, present) }
       finally { this.prefixAllowed = true; this.nestedPrefixAllowed = true }
-    } finally { this.frameCurrent = undefined; this.encodingProgress=undefined; this.activeRuntimeConfiguration = undefined }
+    } finally { this.frameCurrent = undefined; this.displayBackpressure=false; this.encodingProgress=undefined; this.activeRuntimeConfiguration = undefined }
   }
   private async renderAttempt(scene: GpuScene, readback = false, present = true) {
     this.activeRuntimeConfiguration = undefined

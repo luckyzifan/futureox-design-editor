@@ -10,6 +10,7 @@ pub struct Decoder {
     reader: png::Reader<Cursor<Vec<u8>>>, settings: ColorSettings,
     space: Option<ColorSpace>, profile: Option<Vec<u8>>,
     width: u32, height: u32, row: u32, color: png::ColorType, depth: png::BitDepth, failed: bool,
+    transform: Option<image_color::WorkingTransform>,
 }
 impl Decoder {
     pub fn new(uri: &str, settings: ColorSettings) -> Result<Self, String> {
@@ -42,7 +43,7 @@ impl Decoder {
         if !matches!(depth, png::BitDepth::Eight | png::BitDepth::Sixteen) || color == png::ColorType::Indexed {
             return Err("PNG rows require expanded 8-bit or 16-bit channels".into());
         }
-        Ok(Self { reader, settings, space, profile, width, height, row: 0, color, depth, failed: false })
+        Ok(Self { reader, settings, space, profile, width, height, row: 0, color, depth, failed: false, transform: None })
     }
     pub fn width(&self) -> u32 { self.width }
     pub fn height(&self) -> u32 { self.height }
@@ -85,7 +86,13 @@ impl Decoder {
             _ => return Err("Unsupported PNG row channels".into()),
         }};
         let mut image = decoded.into_rgba32f();
-        image_color::to_working(&mut image, self.settings, self.space, self.profile.as_deref())?;
+        if self.transform.is_none() {
+            self.transform=Some(image_color::WorkingTransform::new(self.settings,self.space,self.profile.as_deref())?);
+            // The compiled transform owns its tables; keep no second raw ICC
+            // buffer for the remainder of this row decoder's lifetime.
+            self.profile=None;
+        }
+        self.transform.as_mut().unwrap().apply(&mut image)?;
         for p in image.pixels_mut() { p.0 = Pixel::rgba(p[0], p[1], p[2], p[3]).0; }
         self.row += height;
         // A bad trailing chunk rejects the last strip; the uploader must destroy
@@ -154,6 +161,26 @@ mod tests {
             count += strip.len()/4;
         }
         assert_eq!(count, 3072 * 1024);
+    }
+    #[test]
+    fn multiple_icc_strips_prepare_once_and_match_the_complete_decoder() {
+        let profile=moxcms::ColorProfile::new_display_p3().encode().unwrap();
+        let mut info=png::Info::with_size(1024,513);info.color_type=png::ColorType::Rgba;info.bit_depth=png::BitDepth::Eight;
+        info.icc_profile=Some(std::borrow::Cow::Owned(profile));
+        let mut encoded=Vec::new();
+        png::Encoder::with_info(&mut encoded,info).unwrap().write_header().unwrap()
+            .write_image_data(&[127,63,31,191].repeat(1024*513)).unwrap();
+        let uri=format!("data:image/png;base64,{}",base64::engine::general_purpose::STANDARD.encode(encoded));
+        let settings=ColorSettings::default();let mut images=crate::paint::Images::default();images.set_color_settings(Some(settings));
+        let reference=images.image(&uri).unwrap();let before=image_color::icc_preparations();
+        let mut decoder=Decoder::new(&uri,settings).unwrap();let mut offset=0;let mut strips=0;
+        loop {let strip=decoder.next_rows().unwrap();if strip.is_empty(){break}strips+=1;
+            for (actual,expected) in strip.chunks_exact(4).zip(&reference.pixels[offset..]) {
+                assert_eq!(actual.iter().map(|v|v.to_bits()).collect::<Vec<_>>(),expected.0.map(f32::to_bits));
+            }
+            offset+=strip.len()/4;
+        }
+        assert_eq!(offset,1024*513);assert!(strips>1);assert_eq!(image_color::icc_preparations()-before,1);
     }
     #[test]
     fn sixteen_bit_rows_keep_original_channel_and_alpha_precision() {

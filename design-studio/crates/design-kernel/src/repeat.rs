@@ -94,7 +94,7 @@ pub fn resolve(d:&mut Document)->Result<(),String>{
     fn walk(d:&Document,id:&str,path:&str,out:&mut BTreeMap<String,Node>)->Result<Vec<String>,String>{
         let source=d.nodes.get(id).ok_or("Missing repeat source")?;
         let count=source.repeat.as_ref().map_or(1,|r|r.count);
-        let step=source.repeat.as_ref().map_or(Transform::default(),Repeat::step);
+        let step=source.repeat.as_deref().map_or(Transform::default(),Repeat::step);
         let mut power=Transform::default(); let mut roots=Vec::new();
         for i in 0..count {
             let path=if i==0 {path.to_owned()} else {format!("{path}/{id}:{i}")};
@@ -118,7 +118,7 @@ mod tests {
  fn params(count:u32)->Repeat {Repeat{count,translation:Point::new(20.,0.),pivot:Point::new(0.,0.),rotation:0.,scale:Point::new(1.,1.)}}
  fn document()->Document {
   let mut d:Document=serde_json::from_value(serde_json::json!({"schemaVersion":15,"id":"repeat-doc","name":"Repeat","pages":[{"id":"page","name":"Page","children":["source"],"background":"#ffffff"}],"nodes":{}})).unwrap();
-  let mut n=crate::facet::sample_node("source","rectangle");n.width=10.;n.height=10.;n.repeat=Some(params(3));n.fills=vec![serde_json::from_value(serde_json::json!({"kind":"solid","color":"#ff0000"})).unwrap()];d.nodes.insert(n.id.clone(),n);d
+  let mut n=crate::facet::sample_node("source","rectangle");n.width=10.;n.height=10.;n.repeat=Some((params(3)).into());n.fills=vec![serde_json::from_value(serde_json::json!({"kind":"solid","color":"#ff0000"})).unwrap()];d.nodes.insert(n.id.clone(),n);d
  }
  #[test] fn rejects_unknown_nested_point_keys_in_native_json(){
   for key in ["translation","pivot","scale"] {
@@ -140,11 +140,11 @@ mod tests {
   for count in [0,257,u32::MAX]{assert!(params(count).validate().is_err())}
   let mut r=params(3);r.rotation=f64::NAN;assert!(r.validate().is_err());r=params(256);r.scale.x=100.;assert!(r.validate().is_err());
   assert!(serde_json::from_value::<Repeat>(serde_json::json!({"count":-1,"translation":{"x":0,"y":0},"pivot":{"x":0,"y":0},"rotation":0,"scale":{"x":1,"y":1}})).is_err());
-  let mut d=document();let mut child=d.nodes["source"].clone();child.id="child".into();child.repeat=Some(params(256));d.nodes.get_mut("source").unwrap().repeat=Some(params(256));d.nodes.get_mut("source").unwrap().children=vec![child.id.clone()];d.nodes.insert(child.id.clone(),child);let before=d.clone();assert!(resolve(&mut d).is_err());assert_eq!(d,before);
+  let mut d=document();let mut child=d.nodes["source"].clone();child.id="child".into();child.repeat=Some((params(256)).into());d.nodes.get_mut("source").unwrap().repeat=Some((params(256)).into());d.nodes.get_mut("source").unwrap().children=vec![child.id.clone()];d.nodes.insert(child.id.clone(),child);let before=d.clone();assert!(resolve(&mut d).is_err());assert_eq!(d,before);
  }
  #[test] fn parent_pivot_nested_and_stable_ids(){
-  let mut d=document();let n=d.nodes.get_mut("source").unwrap();n.transform=Transform([1.,0.,0.,1.,10.,10.]);n.repeat=Some(Repeat{count:2,translation:Point::new(5.,0.),pivot:Point::new(10.,10.),rotation:std::f64::consts::FRAC_PI_2,scale:Point::new(2.,2.)});
-  let mut child=crate::facet::sample_node("child","rectangle");child.repeat=Some(params(2));n.children=vec!["child".into()];d.nodes.insert("child".into(),child);resolve(&mut d).unwrap();assert_eq!(d.nodes.len(),6);
+  let mut d=document();let n=d.nodes.get_mut("source").unwrap();n.transform=Transform([1.,0.,0.,1.,10.,10.]);n.repeat=Some((Repeat{count:2,translation:Point::new(5.,0.),pivot:Point::new(10.,10.),rotation:std::f64::consts::FRAC_PI_2,scale:Point::new(2.,2.)}).into());
+  let mut child=crate::facet::sample_node("child","rectangle");child.repeat=Some((params(2)).into());n.children=vec!["child".into()];d.nodes.insert("child".into(),child);resolve(&mut d).unwrap();assert_eq!(d.nodes.len(),6);
   let t=d.nodes[&d.pages[0].children[1]].transform;assert!((t.0[4]-15.).abs()<1e-12);assert!((t.0[5]-10.).abs()<1e-12);
   assert_eq!(derived_id("repeat.v1/source:1/source"),"edebb2de-f85c-804d-762e-a7bbec2c7091");
  }

@@ -20,12 +20,14 @@ export function residentFrameMessage(frame: ResidentFrame): ResidentFrame {
     height: frame.height,
     dpr: frame.dpr,
     interaction: frame.interaction,
+    gestureGuides: frame.gestureGuides,
     allowEmpty: frame.allowEmpty,
     allowBackground: frame.allowBackground,
     backgroundTranslation: frame.backgroundTranslation ? { x: frame.backgroundTranslation.x, y: frame.backgroundTranslation.y } : undefined,
     linearBlend: frame.linearBlend,
     backgroundLinear: frame.backgroundLinear ? [...frame.backgroundLinear] : undefined,
-    input: frame.input ? { sequence: frame.input.sequence, at: frame.input.at,owner:frame.input.owner } : undefined,
+    input: frame.input ? { sequence: frame.input.sequence, at: frame.input.at,owner:frame.input.owner,
+      guides:frame.input.guides?.slice(0,2).map(g=>({axis:g.axis,position:g.position,start:g.start,end:g.end})) } : undefined,
     items: frame.items.map((item) => ({
       active: item.active,
       layer: item.layer,
@@ -78,6 +80,13 @@ export function residentFrameSignature(frame: ResidentFrame) {
     frame.height,
     frame.dpr,
     frame.interaction,
+    frame.gestureGuides,
+    // Same snapped pixels can acknowledge a new modifier/guide decision.
+    // Live captures expose only their sampled input here, so unfinished
+    // pointer requests still cannot flood the queue with old pictures.
+    frame.input?.owner,
+    frame.input?.sequence,
+    frame.input?.guides,
     frame.allowEmpty,
     frame.allowBackground,
     frame.backgroundTranslation,

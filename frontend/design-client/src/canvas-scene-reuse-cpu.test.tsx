@@ -9,14 +9,21 @@ import { appendFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { Canvas } from './Canvas'
 import { Editor } from './engine'
-import { blank, node, type DesignDocument } from './model'
+import { blank, node, defaultLayout, type DesignDocument } from './model'
 import type { SurfaceProps } from './kernel/Surface'
 import { worldToScreen } from './canvas-camera'
 
 const observed = vi.hoisted(() => ({
   scenes: [] as {document: import('./model').DesignDocument; page: string; entries: import('./geometry').SceneEntry[]}[],
   indexes: [] as import('./geometry').SpatialIndex[], surface: null as import('./kernel/Surface').SurfaceProps|null,
+  gridQueries: 0,
 }))
+vi.mock('./grid-overlay',async original=>{
+  const actual=await original<typeof import('./grid-overlay')>()
+  return {...actual,gridOverlayRectangles:(...args:Parameters<typeof actual.gridOverlayRectangles>)=>{
+    observed.gridQueries++;return actual.gridOverlayRectangles(...args)
+  }}
+})
 vi.mock('./geometry', async original => {
   const actual = await original<typeof import('./geometry')>()
   return {...actual,scene:(document:DesignDocument,page:string)=>{
@@ -168,4 +175,21 @@ test('local shape previews use the refine-only path without publishing draft geo
   await act(async()=>editor.undo());expect(editor.state.doc).toEqual(before)
   await act(async()=>editor.redo());expect(editor.state.doc).toEqual(final)
   report({kind:'local-shape-preview-release',width:created.width,height:created.height,transform:created.transform})
+})
+
+test('selected Grid overlays reuse solved tracks through camera/hover updates and refresh on edits',async()=>{
+ const d=fixture(4,'sparse',true),frame=node('frame',0,0,300,200);frame.id=id(50)
+ frame.layout={...defaultLayout(),mode:'grid',columns:2,padding:[0,0,0,0]};frame.children=[...d.pages[0].children]
+ d.nodes[frame.id]=frame;d.pages[0].children=[frame.id]
+ await render(d);observed.gridQueries=0
+ await act(async()=>editor.select([frame.id]))
+ const first=observed.gridQueries;expect(first).toBeGreaterThan(0)
+ const points=Array.from(mount.querySelectorAll('[data-testid="layout-grid-cell"]')).map(e=>e.getAttribute('points'))
+ expect(points).toHaveLength(4)
+ for(let i=0;i<10;i++)await act(async()=>{editor.set({view:{x:i*11,y:-i,zoom:1+i/20}});editor.hoverLayer(frame.id,'layers')})
+ expect(observed.gridQueries).toBe(first)
+ expect(Array.from(mount.querySelectorAll('[data-testid="layout-grid-cell"]')).map(e=>e.getAttribute('points'))).toEqual(points)
+ await act(async()=>editor.update([frame.id],{width:400}))
+ expect(observed.gridQueries).toBe(first+1)
+ expect(Array.from(mount.querySelectorAll('[data-testid="layout-grid-cell"]')).map(e=>e.getAttribute('points'))).not.toEqual(points)
 })

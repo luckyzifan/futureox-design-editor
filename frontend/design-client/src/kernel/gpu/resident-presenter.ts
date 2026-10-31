@@ -32,6 +32,7 @@ export type ResidentFrame = {
   height: number
   dpr: number
   interaction?: boolean
+  gestureGuides?: boolean
   allowEmpty?: boolean
   allowBackground?: boolean
   /** Uniform translation of all authored page roots, in world units. Only
@@ -39,7 +40,7 @@ export type ResidentFrame = {
   backgroundTranslation?: { x: number; y: number }
   linearBlend?: boolean
   backgroundLinear?: [number, number, number, number]
-  input?: { sequence: number; at: number; owner?:string }
+  input?: import('../interaction-layers').InteractionInput & { owner?:string }
 }
 let nextTexture = 0
 const source = `override COLOR_MODE:i32=0;struct U { box:vec4<f32>,uv:vec4<f32>,viewport:vec2<f32>,sample:f32,pad:f32 }
@@ -739,11 +740,15 @@ export class ResidentPresenter {
     if (this.latest) this.draw(this.latest)
   }
   private drawOverlay(encoder: GPUCommandEncoder, output: GPUTexture, frame: ResidentFrame) {
-    if (!frame.overlay) return
+    const guides = frame.gestureGuides ? frame.input?.guides : undefined
+    if (!frame.overlay && !guides?.length) return
     this.overlay ??= new CanvasOverlayRenderer(this.device, this.format)
-    const overlay = frame.overlayAffines ? transformOverlay(frame.overlay, new Map(Object.entries(frame.overlayAffines))) :
-      frame.overlayPose ? translateOverlay(frame.overlay, new Map(Object.entries(frame.overlayPose))) : frame.overlay
-    this.overlay.draw(encoder, output, overlay, frame.view, frame.width, frame.height, frame.dpr)
+    const base = frame.overlay || { pixelGrid:false }
+    const overlay = frame.overlayAffines ? transformOverlay(base, new Map(Object.entries(frame.overlayAffines))) :
+      frame.overlayPose ? translateOverlay(base, new Map(Object.entries(frame.overlayPose))) : base
+    // Guide coordinates already describe this sampled pose and its stationary
+    // targets. Never affine-transform them with the selected object again.
+    this.overlay.draw(encoder, output, { ...overlay, guides }, frame.view, frame.width, frame.height, frame.dpr)
   }
   get residentBytes() {
     return (

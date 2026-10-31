@@ -1767,7 +1767,7 @@ impl<'a> Importer<'a> {
                             c2: incoming[next],
                         });
                     }
-                    node.network = Some(network);
+                    node.network = Some((network).into());
                     if any_corner_radius {
                         // Per-point corner radii have no kernel home; they
                         // ride bindings verbatim and the degradation is
@@ -2022,7 +2022,7 @@ impl<'a> Importer<'a> {
                             .insert("sketchLineSpacingBehaviour".into(), spacing.to_string());
                     }
                 }
-                node.text_style = Some(style);
+                node.text_style = Some((style).into());
                 if let Some(receipt) = user_ns.get("textModel")
                     && receipt.get("native") == Some(&native_text_projection(layer)) {
                     if let (Ok(saved_style),Ok(saved_runs)) = (
@@ -2036,7 +2036,7 @@ impl<'a> Importer<'a> {
                             ||node.text_runs.iter().any(|r|r.font_id.as_deref()==Some(id));
                         if saved_style.as_ref().is_none_or(|s|owned(&s.font_id))
                             && saved_runs.iter().all(|r|r.font_id.as_deref().is_none_or(owned)) {
-                            node.text_style=saved_style; node.text_runs=saved_runs;
+                            node.text_style=saved_style.map(Box::new); node.text_runs=saved_runs;
                         }
                     }
                 }
@@ -2109,12 +2109,12 @@ impl<'a> Importer<'a> {
                                 .insert(field.to_string(), value);
                         }
                     }
-                    node.instance = Some(crate::components::Instance {
+                    node.instance = Some((crate::components::Instance {
                         slot_contents: Default::default(),
                         component_id: symbol_id.into(),
                         overrides,
                         property_values: BTreeMap::new(),
-                    });
+                    }).into());
                 }
             }
             "artboard" | "frame" | "canvasFrame" => {
@@ -2188,7 +2188,7 @@ impl<'a> Importer<'a> {
         if let Some(component) = user_ns.get("component")
             && let Ok(c) = serde_json::from_value::<crate::components::Component>(component.clone())
         {
-            node.component = Some(c);
+            node.component = Some((c).into());
         }
         if let Some(props) = user_ns.get("instanceProperties")
             && let Ok(map) = serde_json::from_value::<BTreeMap<String, Value>>(props.clone())
@@ -2203,7 +2203,7 @@ impl<'a> Importer<'a> {
             if let Ok(instance) =
                 serde_json::from_value::<crate::components::Instance>(instance.clone())
             {
-                node.instance = Some(instance);
+                node.instance = Some((instance).into());
             }
         }
         if let Some(key) = user_ns.get("componentKey").and_then(Value::as_str) {
@@ -2217,7 +2217,7 @@ impl<'a> Importer<'a> {
         if let Some(grid) = user_ns.get("layoutGrid")
             && let Ok(g) = serde_json::from_value::<crate::scene::LayoutGrid>(grid.clone())
         {
-            node.layout_grid = Some(g);
+            node.layout_grid = Some((g).into());
         }
         // Kernel-authored interactions beyond Sketch's one-flow-per-layer
         // classic model travel verbatim (resolved later, once all ids exist).
@@ -2486,7 +2486,7 @@ fn import_layout_grid(node: &mut Node, layer: &Value, lossy: &mut Vec<String>) {
             notes(lossy, "layout-grid-baselines-omitted");
         }
         notes(lossy, "layout-grid-color-not-in-sketch-document");
-        node.layout_grid = Some(crate::scene::LayoutGrid {
+        node.layout_grid = Some((crate::scene::LayoutGrid {
             axis: if row { "row".into() } else { "column".into() },
             count,
             gutter,
@@ -2494,7 +2494,7 @@ fn import_layout_grid(node: &mut Node, layer: &Value, lossy: &mut Vec<String>) {
             color: "#ff0000".into(),
             visible: true,
             opacity: 0.1,
-        });
+        }).into());
     } else if let Some(sg) = layer.get("grid").filter(|g| bool_at(g, "isEnabled")) {
         let cell = f64_at(sg, "gridSize").max(1.);
         let count = ((node.width.max(1.) / cell).floor() as u32).clamp(1, 64);
@@ -2504,7 +2504,7 @@ fn import_layout_grid(node: &mut Node, layer: &Value, lossy: &mut Vec<String>) {
         }
         notes(lossy, "simple-grid-thickGridTimes-omitted");
         notes(lossy, "layout-grid-color-not-in-sketch-document");
-        node.layout_grid = Some(crate::scene::LayoutGrid {
+        node.layout_grid = Some((crate::scene::LayoutGrid {
             axis: "uniform".into(),
             count,
             gutter: 0.,
@@ -2512,7 +2512,7 @@ fn import_layout_grid(node: &mut Node, layer: &Value, lossy: &mut Vec<String>) {
             color: "#ff0000".into(),
             visible: true,
             opacity: 0.1,
-        });
+        }).into());
     }
 }
 
@@ -3504,6 +3504,7 @@ fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
             .is_some_and(|v| v == "true")
             && let Some(network) = &mut node.network
         {
+            let network = std::sync::Arc::make_mut(network);
             network.edges.pop();
         }
         if node
@@ -3512,6 +3513,7 @@ fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
             .is_some_and(|v| v == "true")
             && let Some(network) = &mut node.network
         {
+            let network = std::sync::Arc::make_mut(network);
             for vertex in &mut network.vertices {
                 vertex.x *= node.width;
                 vertex.y *= node.height;
@@ -4482,7 +4484,7 @@ fn restore_unedited_text_frame(node: &mut Node, source: Option<&Value>) -> bool 
     let current = TextLayoutSignature {
         text: node.text.clone(),
         font_size: node.font_size,
-        text_style: node.text_style.clone(),
+        text_style: node.text_style.as_deref().cloned(),
         text_runs: node.text_runs.clone(),
         sizing: node.sizing.clone(),
     };
@@ -4696,11 +4698,11 @@ fn export_layer_impl(
                 node.network=Some(serde_json::from_value(json!({"vertices":[{"id":"a","x":0.,"y":0.},{"id":"b","x":node.width,"y":node.height}],"edges":[{"id":"ab","from":"a","to":"b"}],"fillRule":"nonzero"})).unwrap());
             }
             if let Some(geometry) = node.vector_geometry.take() {
-                node.network = Some(
+                node.network = Some((
                     geometry
                         .network(crate::vector_geometry::MAX_COMMANDS)
-                        .map_err(Error::InvalidDocument)?,
-                );
+                        .map_err(Error::InvalidDocument)?
+                ).into());
             }
             let metadata = doc
                 .design_system
@@ -7472,7 +7474,7 @@ mod tests {
         let mut doc = sample_document();
         let mut path = crate::facet::sample_node("n3", "path");
         path.name = "Blob".into();
-        path.network = Some(crate::scene::Network {
+        path.network = Some((crate::scene::Network {
             filled_faces: None,
             vertices: vec![
                 crate::scene::Vertex {
@@ -7515,7 +7517,7 @@ mod tests {
                 },
             ],
             fill_rule: "nonzero".into(),
-        });
+        }).into());
         doc.pages[0].children.push("n3".into());
         doc.nodes.insert("n3".into(), path);
 
@@ -7538,7 +7540,7 @@ mod tests {
     fn non_ring_networks_report_topology_loss() {
         let mut doc = sample_document();
         let mut path = crate::facet::sample_node("n3", "path");
-        path.network = Some(crate::scene::Network {
+        path.network = Some((crate::scene::Network {
             filled_faces: None,
             vertices: vec![
                 crate::scene::Vertex {
@@ -7560,7 +7562,7 @@ mod tests {
                 c2: None,
             }],
             fill_rule: "nonzero".into(),
-        });
+        }).into());
         doc.pages[0].children.push("n3".into());
         doc.nodes.insert("n3".into(), path);
         let back = import_sketch(&export_sketch(&doc).unwrap()).unwrap();
@@ -7579,7 +7581,7 @@ mod tests {
         let mut doc = sample_document();
         let mut path = crate::facet::sample_node("n3", "path");
         path.name = "Modes".into();
-        path.network = Some(crate::scene::Network {
+        path.network = Some((crate::scene::Network {
             filled_faces: None,
             vertices: (0..4)
                 .map(|i| crate::scene::Vertex {
@@ -7598,7 +7600,7 @@ mod tests {
                 })
                 .collect(),
             fill_rule: "nonzero".into(),
-        });
+        }).into());
         doc.pages[0].children.push("n3".into());
         doc.nodes.insert("n3".into(), path);
 
@@ -7706,14 +7708,14 @@ mod tests {
             p.color = "#102030".into();
             p
         });
-        text.text_style = Some(crate::font::TextStyle {
+        text.text_style = Some((crate::font::TextStyle {
             align: "center".into(),
             line_height: 1.5,
             letter_spacing: 0.8,
             paragraph_spacing: 3.,
             wrap: true,
             ..Default::default()
-        });
+        }).into());
         text.text_runs = vec![
             crate::font::TextRun {
                 paragraph: None,
@@ -8046,14 +8048,14 @@ mod tests {
         master
             .bindings
             .insert("symbolID".into(), "SYMBOL-UUID-1".into());
-        master.component = Some(crate::components::Component {
+        master.component = Some((crate::components::Component {
             slots: Default::default(),
             variants: [("Size".into(), "M".into())].into_iter().collect(),
             properties: BTreeMap::new(),
-        });
+        }).into());
         let mut instance = crate::facet::sample_node("n4", "frame");
         instance.name = "Button instance".into();
-        instance.instance = Some(crate::components::Instance {
+        instance.instance = Some((crate::components::Instance {
             slot_contents: Default::default(),
             component_id: "SYMBOL-UUID-1".into(),
             overrides: {
@@ -8067,7 +8069,7 @@ mod tests {
                 overrides
             },
             property_values: [("visible".into(), json!(true))].into_iter().collect(),
-        });
+        }).into());
         let page = &mut doc.pages[0];
         page.children.push("n3".into());
         page.children.push("n4".into());
@@ -8388,7 +8390,7 @@ mod tests {
         doc.schema_version = 12;
         let frame = doc.nodes.get_mut("n1").unwrap();
         frame.width = 320.;
-        frame.layout_grid = Some(crate::scene::LayoutGrid {
+        frame.layout_grid = Some((crate::scene::LayoutGrid {
             axis: "column".into(),
             count: 8,
             gutter: 16.,
@@ -8396,7 +8398,7 @@ mod tests {
             color: "#00a0ff".into(),
             visible: true,
             opacity: 0.3,
-        });
+        }).into());
         let bytes = export_sketch(&doc).unwrap();
         let files = read_zip(&bytes).unwrap();
         let name = files
@@ -8437,7 +8439,7 @@ mod tests {
         doc.schema_version = 12;
         let frame = doc.nodes.get_mut("n1").unwrap();
         frame.width = 320.;
-        frame.layout_grid = Some(crate::scene::LayoutGrid {
+        frame.layout_grid = Some((crate::scene::LayoutGrid {
             axis: "uniform".into(),
             count: 8,
             gutter: 0.,
@@ -8445,7 +8447,7 @@ mod tests {
             color: "#ff0000".into(),
             visible: false,
             opacity: 0.1,
-        });
+        }).into());
         let bytes = export_sketch(&doc).unwrap();
         let files = read_zip(&bytes).unwrap();
         let name = files

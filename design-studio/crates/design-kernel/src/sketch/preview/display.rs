@@ -310,7 +310,7 @@ impl Projection<'_> {
             ));
         }
         n.kind = "vector".into();
-        n.network = Some(network);
+        n.network = Some((network).into());
         Ok(())
     }
     fn layer(&mut self, layer: &Layer) -> Result<String> {
@@ -631,7 +631,7 @@ impl Projection<'_> {
         .max(1.);
         let p = &first["paragraphStyle"];
         let line = num(p, "minimumLineHeight", 0.).max(num(p, "maximumLineHeight", 0.));
-        n.text_style = Some(TextStyle {
+        n.text_style = Some((TextStyle {
             font_id: "default".into(),
             line_height: if line > 0. {
                 (line / n.font_size).clamp(0.1, 10.)
@@ -649,7 +649,7 @@ impl Projection<'_> {
             .into(),
             paragraph_spacing: num(p, "paragraphSpacing", 0.),
             ..TextStyle::default()
-        });
+        }).into());
         if n.fills.is_empty() {
             n.fills.push(solid(
                 format!("{}:text", n.id),

@@ -71,7 +71,7 @@ pub(crate) fn serialized_document_size(document: &Document) -> Result<usize, Edi
 pub(crate) fn serialized_size(value: &impl Serialize) -> Result<usize, serde_json::Error> {
     count_json_bytes(value, usize::MAX)
 }
-fn count_json_bytes(value: &impl Serialize, limit: usize) -> Result<usize, serde_json::Error> {
+pub(crate) fn count_json_bytes(value: &impl Serialize, limit: usize) -> Result<usize, serde_json::Error> {
     struct Counter<'a>(&'a mut usize, usize);
     impl std::io::Write for Counter<'_> {
         fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {

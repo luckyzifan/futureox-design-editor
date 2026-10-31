@@ -216,6 +216,9 @@ pub struct Engine {
     // Move, never duplicate, the prior camera until the new derived document
     // is known. Only identical topology/configuration can retain its clean nodes.
     pending_camera: Option<(SharedDocument, crate::gpu::CameraPrepare, bool)>,
+    // Layout dependency proof does not require a warm camera. The old source
+    // must already equal its resolved document; otherwise retain full resolve.
+    pending_layout: Option<SharedDocument>,
     pub(crate) camera_residency: crate::gpu::CameraResidency,
     pub(crate) frame_scene: crate::gpu::FrameSceneContext,
     pub(crate) page_support: Option<((u64,String,u64,bool),Option<Vec<[f64;4]>>)>,
@@ -263,6 +266,7 @@ impl Engine {
             world_support: None,
             source_compile_context: None,
             pending_camera: None,
+            pending_layout: None,
             camera_residency: crate::gpu::CameraResidency::default(),
             frame_scene: crate::gpu::FrameSceneContext::default(),
             page_support: None,
@@ -275,6 +279,7 @@ impl Engine {
         self.fonts.load(data)?;
         self.layout_dirty = true;
         self.pending_camera = None;
+        self.pending_layout = None;
         self.paths.clear();
         self.geo_revision += 1;
         self.camera_prepare = None;
@@ -427,7 +432,10 @@ impl Engine {
             }
         } else {
             let retain_index=crate::render_index::RenderIndex::preserved_by(source,patch);
-            self.install_document_with_index(next,retain_index)?;
+            // apply_with_size already validated and measured these exact values.
+            // Storage compaction/sharing during installation changes no JSON.
+            self.install_document_policy(next,retain_index,false)?;
+            self.source_doc_bytes = Some(next_bytes);
         }
         Ok(damage)
     }
@@ -627,7 +635,7 @@ impl Engine {
         // then recognize a retained image without copying/hash-scanning it at
         // every camera. This changes no serialized value or resource grant.
         let mut image_owners=std::collections::HashMap::<std::sync::Arc<str>,std::sync::Arc<str>>::new();
-        for n in doc.nodes.values_mut(){for paint in n.fills.iter_mut().chain(n.strokes.iter_mut().map(|s|&mut s.paint)){
+        for n in doc.nodes.values_mut(){n.compact_storage();for paint in n.fills.iter_mut().chain(n.strokes.iter_mut().map(|s|&mut s.paint)){
             if let Some(uri)=&mut paint.image {
                 *uri=image_owners.entry(uri.clone()).or_insert_with(||uri.clone()).clone();
             }
@@ -638,6 +646,7 @@ impl Engine {
             && old.color_management==doc.color_management && old.raster_profile==doc.raster_profile
             && old.animations.is_empty() && doc.animations.is_empty()).cloned();
         let resolved_source=self.source_doc.as_ref().zip(self.doc.as_ref()).is_some_and(|(source,resolved)|source==resolved);
+        self.pending_layout = resolved_source.then(|| previous.clone()).flatten();
         self.pending_camera = previous.zip(self.camera_prepare.take()).map(|(doc,cache)|(doc,cache,resolved_source));
         self.images.set_color_settings(doc.color_management);
         self.images.retain_document(&doc);
@@ -855,8 +864,8 @@ impl Engine {
         if !self.layout_dirty {
             return Ok(());
         }
-        let scope=match (&self.pending_camera,&self.doc){
-            (Some((before,_,true)),Some(after))=>crate::component_updates::plan(before,after)?, _=>None,
+        let scope=match (&self.pending_layout,&self.doc){
+            (Some(before),Some(after))=>crate::component_updates::plan(before,after)?, _=>None,
         };
         if let Some(doc) = &mut self.doc {
             if !doc
@@ -872,6 +881,7 @@ impl Engine {
                     .any(|n| n.boolean_operation.is_some() || !n.text_runs.is_empty())
             {
                 self.layout_dirty = false;
+                self.pending_layout = None;
                 self.restore_resolved_camera();
                 return Ok(());
             }
@@ -912,6 +922,7 @@ impl Engine {
             });
         }
         self.layout_dirty = false;
+        self.pending_layout = None;
         self.restore_resolved_camera();
         Ok(())
     }
@@ -1863,6 +1874,7 @@ impl Engine {
             world_support: None,
             source_compile_context: None,
             pending_camera: None,
+            pending_layout: self.pending_layout.clone(),
             camera_residency: crate::gpu::CameraResidency::default(),
             frame_scene: crate::gpu::FrameSceneContext::default(),
             page_support: None,

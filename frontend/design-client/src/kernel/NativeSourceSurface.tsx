@@ -98,7 +98,10 @@ export function NativeSourceSurface(props:Props){
         const items:ResidentFrame['items']=visible.map(tile=>({active:true,layer:keys.has(tile.key)?4:1,
           tile:{key:tile.key,serial:tile.serial,gpuTile:tile.gpuTile!,x:tile.x,y:tile.y,width:tile.width,height:tile.height,zoom:tile.zoom,phaseX:tile.phaseX,phaseY:tile.phaseY}}))
         wanted={id,sequence,view:{...p.view},width:p.width,height:p.height,dpr:ratio,complete,covered:done===tiles.length,demand:demandKey(),ids:new Set(visible.map(tile=>tile.gpuTile!))}
-        client.present({presentationId:id,view:p.view,width:p.width,height:p.height,dpr:ratio,items,allowBackground:true,allowEmpty:!complete})
+        // A partially delivered camera is not intentional transparency. The
+        // presenter may use certified empty background to cover new edges;
+        // otherwise retain its complete backing until the missing tiles land.
+        client.present({presentationId:id,view:p.view,width:p.width,height:p.height,dpr:ratio,items,allowBackground:true})
         emit({phase:'refining',done,total:tiles.length})
         // This is an evictable history allowance, never a source-size refusal.
         const keep=Math.max(32,tiles.length*3)

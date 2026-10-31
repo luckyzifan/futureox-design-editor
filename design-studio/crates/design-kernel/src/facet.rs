@@ -534,12 +534,12 @@ pub fn apply_facet(node: &mut Node, kind: FacetKind, facet: &Facet) -> Result<()
         (FacetKind::Shape, Facet::Shape { points }) => node.points = *points,
         (FacetKind::Instance, Facet::Instance { component_id }) => {
             node.instance
-                .get_or_insert_with(|| crate::components::Instance {
+                .get_or_insert_with(|| Box::new(crate::components::Instance {
                         slot_contents: Default::default(),
                     component_id: String::new(),
                     overrides: Default::default(),
                     property_values: Default::default(),
-                })
+                }))
                 .component_id = component_id.clone();
         }
         (FacetKind::Componentish, Facet::Componentish { component_key }) => {

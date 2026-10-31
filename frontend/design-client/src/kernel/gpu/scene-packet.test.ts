@@ -1,14 +1,14 @@
 import { expect, test, vi } from 'vitest'
 import { VectorEngine } from '../../generated/design-kernel/design_kernel'
 import { blank, node, paint } from '../../model'
-import { decodeScenePacket, copyScenePacket, scenePacketWitness } from './scene-packet'
+import { decodeScenePacket, copyScenePacket, scenePacketWitness, CompiledScenePacket } from './scene-packet'
 import { FrameResources, frameResource } from './frame-resources'
 import { decodeFrameValue } from './frame-wire'
 import { emptyFrame, frameValue } from './frame-wire.test-helper'
 import {copyWitness} from '../compilation-witness'
 const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jhxsAAAAASUVORK5CYII='
 function fixture(){
-  const doc=blank(),shape=node('rectangle',.3,-.7,43.8,27.9),image={...paint('#ffffff'),kind:'image' as const,image:png}
+  const doc=blank(),shape=node('ellipse',.3,-.7,43.8,27.9),image={...paint('#ffffff'),kind:'image' as const,image:png}
   shape.fills=[image,{...image,opacity:.5}];doc.nodes[shape.id]=shape;doc.pages[0].children=[shape.id]
   const engine=new VectorEngine();engine.load_document(JSON.stringify(doc))
   return {engine,shape,options:{pageId:doc.pages[0].id,width:64,height:64,view:{x:.125,y:-.375,zoom:1.137},rasterProfile:'figmaSubpixel'}}
@@ -20,6 +20,27 @@ function sameScene(actual:any,expected:any){
     expect([...new Uint32Array(values.buffer,values.byteOffset,values.length)]).toEqual([...new Uint32Array(reference.buffer)])
   }
 }
+test('materialized handoffs retain exact geometry and witnesses without replicating transport resource bodies',()=>{
+  const f=fixture();f.engine.bind_frame_scene_scope('decoded-handoff')
+  try{
+    const bytes=f.engine.compile_gpu_packet(JSON.stringify(f.options)),source=decodeScenePacket(bytes)
+    const h=new DataView(bytes.buffer,bytes.byteOffset),nv=h.getUint32(12,true),nc=h.getUint32(16,true)
+    expect(nv+nc).toBeGreaterThan(0)
+    expect(h.getUint32(20,true)).toBeGreaterThan(0)
+    const a=CompiledScenePacket.from(bytes,true),b=CompiledScenePacket.from(bytes,true)
+    sameScene(decodeScenePacket(a),source);sameScene(decodeScenePacket(b),source)
+    if(!(a.scene.vertices instanceof Float32Array)||!(b.scene.vertices instanceof Float32Array))throw Error('Expected typed geometry')
+    expect(a.scene.vertices.buffer.byteLength).toBe((nv+nc)*4)
+    expect(a.scene.vertices.buffer).not.toBe(b.scene.vertices.buffer)
+    expect(a.transport.scenePacketBytes).toBe(bytes.length)
+    expect(copyWitness(scenePacketWitness(a))).toEqual(copyWitness(scenePacketWitness(bytes)))
+    const before=new Uint8Array(b.scene.vertices.buffer).slice()
+    new Uint8Array(a.scene.vertices.buffer)[0]^=1
+    expect(new Uint8Array(b.scene.vertices.buffer)).toEqual(before)
+    const store=new FrameResources(),lease=store.capture()
+    try{expect(()=>decodeScenePacket(a,store,lease)).toThrow('resource lease')}finally{lease.release()}
+  }finally{f.engine.free()}
+})
 test('Rust binary frame preserves the JSON oracle, numeric values, resources and exact f32 words',()=>{
   const f=fixture()
   try{const reference=JSON.parse(f.engine.compile_gpu(JSON.stringify(f.options))),packet=f.engine.compile_gpu_packet(JSON.stringify(f.options))

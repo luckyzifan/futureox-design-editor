@@ -248,13 +248,13 @@ fn degenerate_paths_keep_world_geometry_and_source_dimensions() {
     let after = &report.document.nodes["line"];
     assert_eq!(after.kind, "vector");
     assert_eq!(after.transform, before.transform);
-    let mut expected = before.network.clone().unwrap();
+    let mut expected = before.network.as_deref().unwrap().clone();
     for vertex in &mut expected.vertices {
         vertex.x *= before.width;
         vertex.y *= before.height;
     }
     expected.edges.pop();
-    assert_eq!(after.network.as_ref(), Some(&expected));
+    assert_eq!(after.network.as_deref(), Some(&expected));
     assert_eq!(after.width, before.width);
     assert!(after.height > 0. && after.height <= 1e-6);
     let metadata = &report

@@ -162,6 +162,7 @@ export function ResidentCompositeSurface(props: {
       height: p.height,
       dpr: p.dpr,
       interaction: !!moved,
+      gestureGuides:!!p.interaction?.active && p.interaction.gestureKind === 'move',
       allowEmpty: panPreview || !!moved && moving === interaction.current && moving?.mode !== 'live-kernel',
       allowBackground: !!moved && moving === pageTranslation.current || !moved && p.allowPageTranslation && p.items.filter(i=>i.active).every(i=>
         (i.tile as unknown as {document?:DesignDocument;revision?:number}).document===p.sourceDocument &&
@@ -269,9 +270,13 @@ export function ResidentCompositeSurface(props: {
           const sample = stats.residentSample as Parameters<
             InteractionRenderer['acceptResidentSample']
           >[0]
-          if (sample.signature) lastFrameSignature.current = latest.current.reuseSequence
-            ? `${sample.signature}/reuse:${latest.current.reuseSequence}` : sample.signature
-          interaction.current?.acceptResidentSample(sample)
+          // Sampling can satisfy a previously acknowledged frame. Publish its
+          // chrome in the same browser task; a rejected old sample cannot
+          // replace the dedup fence or resurrect an obsolete guide sequence.
+          flushSync(() => interaction.current?.acceptResidentSample(sample, () => {
+            if (sample.signature) lastFrameSignature.current = latest.current.reuseSequence
+              ? `${sample.signature}/reuse:${latest.current.reuseSequence}` : sample.signature
+          }))
         }
         for (const [key, value] of Object.entries(stats))
           if (key !== 'presented' && key !== 'input' && key !== 'residentSample' && key !== 'missingGpuTiles')
@@ -298,10 +303,6 @@ export function ResidentCompositeSurface(props: {
           // downstream exact ACK. Other message payloads were handled above.
           if(rejected)return
           actualPresentation.current=actual
-          if(input?.sequence&&!usePageTranslation.current)
-            interaction.current?.acceptPresentedInput(input.sequence,input.at,input.owner===inputOwner.current,true,actual.ids)
-          if(input?.sequence&&usePageTranslation.current)
-            pageTranslation.current?.acceptPresentedInput(input.sequence,input.at,input.owner===inputOwner.current,actual.ids)
           // Use the exact displayed input and its owner, not the latest pointer
           // or resident-sampling completion. Worker and SVG meet at this pose.
 
@@ -311,12 +312,17 @@ export function ResidentCompositeSurface(props: {
           // camera to SVG chrome and picking before the next browser paint.
           const device = { client: p.client, deviceWorkerScope: stats.deviceWorkerScope as number,
             deviceIncarnation: stats.deviceIncarnation as number, deviceOwner: stats.deviceOwner as number }
-          flushSync(() => latest.current.onPresented?.(actual, source,
-            viewportPreviewDeviceKey(device) ? device : undefined))
+          flushSync(() => {
+            if(input?.sequence&&!usePageTranslation.current)
+              interaction.current?.acceptPresentedInput(input.sequence,input.at,input.owner===inputOwner.current,true,actual.ids)
+            if(input?.sequence&&usePageTranslation.current)
+              pageTranslation.current?.acceptPresentedInput(input.sequence,input.at,input.owner===inputOwner.current,actual.ids)
+            latest.current.onPresented?.(actual, source, viewportPreviewDeviceKey(device) ? device : undefined)
+          })
         }
       }
       interaction.current = new InteractionRenderer(() => repaint.current(), p.client, renderExecutionPolicy.desktopDisplay, undefined, trace.current!)
-      pageTranslation.current = new PageTranslation(() => repaint.current(), (document, patches, displayed) => {
+      pageTranslation.current = new PageTranslation(() => repaint.current(), (document, patches, displayed, guides) => {
         const p = latest.current, renderer = interaction.current
         if (!p.interaction || !renderer) return null
         usePageTranslation.current = false; interactionStarted.current = true
@@ -324,7 +330,7 @@ export function ResidentCompositeSurface(props: {
         // back to the unshifted page while its native GPU sample is pending.
         renderer.prepare({ ...p.interaction, document: displayed }, p.pageId, p.view, p.dpr,
           p.rasterProfile, p.backend, p.settledDocument, { width: p.width, height: p.height })
-        return renderer.control.apply(document, patches)
+        return renderer.control.apply(document, patches, undefined, guides)
       }, p.client.presentationDiagnosticsEnabled?.() ? fields=>latest.current.client.recordViewportDiagnostic(fields) : undefined,
         (source,offset,sequence,failed)=>latest.current.onTranslatedCoverage?.(source,offset,sequence,failed)===true)
     } catch (error) {

@@ -1,6 +1,7 @@
 import { CpuStage, measureCpuStage } from './cpu-stage-diagnostics'
 import type { CanvasSceneBorrow } from './canvas-scene-snapshots'
 import { PreviewLayout } from './kernel/preview-layout'
+import { TranslationPreviewPlan } from './kernel/translation-preview'
 import type { OperationStatus, MessagePresentation } from './operation-status-messages'
 import { prepareBooleanCreate, applyBooleanCreate } from './commands/boolean-command'
 import { applyDuplication, prepareDuplication, canContinueDuplication, type DuplicationRepeat } from './commands/duplication-command'
@@ -107,6 +108,7 @@ import {
   prepareDocumentForEditing,
   activateDocumentFonts,
   renewComponentResolution,
+  pickingGeometryEpoch,
 } from './kernel/picking'
 import { proveLocalEdit } from './local-edit-proof'
 import { shareDocument, documentPatch, produceDocumentDraft, type EditResult } from './document-patch'
@@ -242,7 +244,7 @@ export class Editor {
   private undoStack: Omit<History, 'doc'>[] = []
   private redoStack: Omit<History, 'doc'>[] = []
   private historyCore: ReturnType<typeof createEditingHistory> | null = null
-  private transaction: (History & { dropIndex?: CanvasDropIndex; placementSizing?: Map<string, DesignNode['sizing']>; flow?: { base: DesignDocument; sizing: Map<string, DesignNode['sizing']> }; previewBase?: DesignDocument; copy?: { document: DesignDocument; roots: string[]; originals: string[]; flowSizing: Map<string, DesignNode['sizing']> } }) | null = null
+  private transaction: (History & { movePreview?: {source:DesignDocument;document:DesignDocument;published:DesignDocument;key:string;parents:ParentMap;epoch:object;translation:TranslationPreviewPlan}; dropIndex?: CanvasDropIndex; placementSizing?: Map<string, DesignNode['sizing']>; flow?: { base: DesignDocument; sizing: Map<string, DesignNode['sizing']> }; previewBase?: DesignDocument; copy?: { document: DesignDocument; roots: string[]; originals: string[]; flowSizing: Map<string, DesignNode['sizing']> } }) | null = null
   private propertyPreview: {
     lease: PropertyPreviewLease; history: History; session: number; revision: number
     targets: readonly SolidFillTarget[]; document: DesignDocument; draft: SolidFillDraft
@@ -916,7 +918,19 @@ export class Editor {
   private previewCore(patches: Record<string, Partial<DesignNode>>, move?: { ids:string[]; point:Point; force:boolean; preserveParent:boolean }) {
     if (this.propertyPreview && !this.propertyPreviewWrite) return false
     const previewStarted = performance.now()
+    const previewOwner=this.transaction
     const base = this.transaction?.previewBase || this.transaction?.doc || this.state.doc
+    if(move){
+      const cached=this.cachedMovePreview(patches,move)
+      if(cached){
+        const document=produceDocumentDraft(this.state.doc,draft=>{for(const id of move.ids)draft.nodes[id].transform=cached.patches[id].transform!})
+        const published=performance.now();this.set({doc:document})
+        if(this.transaction===previewOwner&&previewOwner?.movePreview)previewOwner.movePreview.published=document
+        if(this.diagnosticOperation!==null)this.operationDiagnostics.preview(this.diagnosticOperation,true)
+        this.lastPreviewTiming={prepareMs:published-previewStarted,layoutMs:0,publishMs:performance.now()-published}
+        return true
+      }
+    }
     if (!move && this.transaction) {
       if (this.previewLayout?.base !== base) this.previewLayout = new PreviewLayout(base)
       try {
@@ -958,7 +972,8 @@ export class Editor {
         return visible
       })
       const layoutStarted = performance.now()
-      const resolved=measureCpuStage(CpuStage.previewLayout, () => kernelLayout(visible,this.state.doc))
+      const resolved=measureCpuStage(CpuStage.previewLayout, () => kernelLayout(visible,this.state.doc,true))
+      const resolvedEpoch=pickingGeometryEpoch()
       // A failed derived offset must never become the React scene. Scene/hit
       // queries are synchronous: publishing it first can unmount the editor.
       measureCpuStage(CpuStage.previewBounds, () => {
@@ -967,6 +982,11 @@ export class Editor {
       })
       const published = performance.now()
       measureCpuStage(CpuStage.previewPublish, () => this.set({ doc: resolved }))
+      if(move&&this.transaction===previewOwner&&previewOwner&&this.state.doc===resolved&&resolvedEpoch===pickingGeometryEpoch()&&move.ids.length===1&&!previewOwner.copy&&!previewOwner.flow&&
+          Object.keys(patches).length===1&&Object.keys(patches[move.ids[0]]||{}).every(key=>key==='transform')){
+        const plan=this.movePlacement({ ...base,nodes },move.ids,move.point,move.force,move.preserveParent)
+        previewOwner.movePreview={source:base,document:resolved,published:resolved,key:plan.key,parents:allParents(resolved),epoch:resolvedEpoch,translation:new TranslationPreviewPlan(resolved,move.ids)}
+      }
       if (this.diagnosticOperation !== null) this.operationDiagnostics.preview(this.diagnosticOperation, true)
       this.lastPreviewTiming = { prepareMs: layoutStarted - previewStarted, layoutMs: published - layoutStarted, publishMs: performance.now() - published }
       return true
@@ -1218,27 +1238,22 @@ export class Editor {
         .map((e) => e.bounds),
     )
   }
-  /** Within an entered container, prefer the small editable target shown by
-   * hover over overlapping backing shapes. Keep unopened hierarchy boundaries,
-   * explicit deep picking, and foreground objects outside that scope intact. */
+  /** Ordinary canvas press and hover share one target. Container movement is
+   * explicit (existing selection or title); unopened ancestors must not replace
+   * the child that the pointer just identified. Native clipping/lock/foreground
+   * board checks remain in hit(). Legacy hierarchy navigation still uses hit(). */
   selectionHit(p: Point, deep = false, index?: SpatialIndex, zoom = this.state.view.zoom, snapshot?: PickSnapshot): string | null {
     if (deep) return this.hit(p, true, index, zoom, snapshot)
-    const document = snapshot?.document || this.state.doc, page = snapshot?.pageId || this.state.page
-    const parents = this.pickContext(document).parents
-    const scope = marqueeScope(document, page, this.state.selection, parents)
-    const front = this.hit(p, true, index, zoom, snapshot)
-    if (!front) return null
-    const path = interactivePath(document, page, front, false, parents)
-    const within = scope !== page && path.includes(scope)
-    const target = within ? this.hit(p, true, index, zoom, snapshot,
-      n => interactivePath(document, page, n.id, false, parents).includes(scope), 'smallest') || front : front
-    return shallowSelectionHit(document, this.state.selection, target,
-      interactivePath(document, page, target, false, parents), parents)
+    return this.hoverHit(p,index,zoom,snapshot)
   }
   /** Hover identifies the smallest eligible object within the front board,
    * independently of the hierarchy used by click/drag selection. */
   hoverHit(p: Point, index?: SpatialIndex, viewZoom = this.state.view.zoom, snapshot?: PickSnapshot): string | null {
-    return this.hit(p, true, index, viewZoom, snapshot, undefined, 'smallest')
+    const hit=this.hit(p,true,index,viewZoom,snapshot,undefined,'smallest')
+    if(!hit)return null
+    const document=snapshot?.document||this.state.doc,page=snapshot?.pageId||this.state.page,parents=this.pickContext(document).parents
+    const path=interactivePath(document,page,hit,false,parents),selected=new Set(this.state.selection)
+    return path.find(id=>selected.has(id)&&(container(document.nodes[id])||document.nodes[id].component||document.nodes[id].instance||document.nodes[id].componentSet))||hit
   }
   hit(p: Point, deep = false, index?: SpatialIndex, viewZoom = this.state.view.zoom, snapshot?: PickSnapshot, eligible?: (node:DesignNode)=>boolean, priority: 'paint-order' | 'smallest' = 'paint-order'): string | null {
     const authored = snapshot?.document || this.state.doc,
@@ -2244,10 +2259,56 @@ export class Editor {
    * constructing or laying out a document on every compositor-only sample. */
   canvasMovePreservesParents(ids: string[], point: Point, force = false, preserveParent = false): boolean {
     const tx=this.transaction
-    if(!tx||preserveParent)return true
+    if(!tx)return true
     const base=tx.previewBase||tx.doc,index=tx.dropIndex??=createCanvasDropIndex(base,this.state.page)
-    const frame=canvasDropFrame(base,this.state.page,ids,point,force,index),target=frame||this.state.page
-    return !ids.some(id=>(frame?containingFrame(base,id,index.parents)!==frame:!!containingFrame(base,id,index.parents))&&index.parents.get(id)!==target)
+    return this.movePlacement(base,ids,point,force,preserveParent,index).moving.length===0
+  }
+  /** Read-only projection for a move query, never published, serialized or
+   * admitted as a document. The fixed gesture index supplies complete topology. */
+  private moveQuery(base:DesignDocument,patches:Record<string,Partial<DesignNode>>,ids:readonly string[]){
+    if(ids.length>1)return {...base,nodes:{...base.nodes,...Object.fromEntries(Object.entries(patches).map(([id,p])=>[id,{...base.nodes[id],...p}]))}}
+    const nodes=Object.create(base.nodes) as DesignDocument['nodes']
+    for(const [id,patch] of Object.entries(patches))Object.defineProperty(nodes,id,{value:{...base.nodes[id],...patch},enumerable:true})
+    return {...base,nodes}
+  }
+  private cachedMovePreview(patches:Record<string,Partial<DesignNode>>,move:{ids:string[];point:Point;force:boolean;preserveParent:boolean}){
+    const tx=this.transaction,cache=tx?.movePreview,source=tx?.previewBase||tx?.doc
+    if(!tx||!cache||source!==cache.source||cache.published!==this.state.doc||tx.page!==this.state.page||
+        cache.epoch!==pickingGeometryEpoch()||tx.copy||tx.flow||move.ids.length!==1||
+        Object.keys(patches).length!==move.ids.length||move.ids.some(id=>!source.nodes[id]||!patches[id]?.transform||Object.keys(patches[id]).some(key=>key!=='transform')))return
+    const index=tx.dropIndex??=createCanvasDropIndex(source,this.state.page),query=this.moveQuery(source,patches,move.ids)
+    const plan=this.movePlacement(query,move.ids,move.point,move.force,move.preserveParent,index)
+    if(plan.key!==cache.key)return
+    const poses:Record<string,Partial<DesignNode>>={}
+    for(const id of move.ids){
+      // Preserve the original inverse/parent/world multiplication order from
+      // movePreviewDocument. Do not algebraically cancel matrices or use the
+      // last pointer sample as the next base.
+      const transform=plan.moving.includes(id)?multiply(inverse(worldMatrix(cache.document,cache.parents.get(id)!,cache.parents)),worldMatrix(query,id,index.parents)):patches[id].transform!
+      poses[id]={transform}
+    }
+    if(!cache.translation.accepts(poses))return
+    return {patches:poses}
+  }
+  canvasMovePreview(patches:Record<string,Partial<DesignNode>>,move:{ids:string[];point:Point;force:boolean;preserveParent:boolean}){
+    const cached=this.cachedMovePreview(patches,move)
+    if(cached)return {patches:cached.patches,retainsParents:true}
+    const tx=this.transaction;if(!tx)return {patches,retainsParents:true}
+    const base=tx.previewBase||tx.doc,index=tx.dropIndex??=createCanvasDropIndex(base,this.state.page)
+    const plan=this.movePlacement(this.moveQuery(base,patches,move.ids),move.ids,move.point,move.force,move.preserveParent,index)
+    const current=this.parentMap()
+    return {patches,retainsParents:plan.moving.length===0&&move.ids.every(id=>current.get(id)===index.parents.get(id))}
+  }
+  private movePlacement(source:DesignDocument,ids:string[],point:Point,force:boolean,preserveParent:boolean,index?:CanvasDropIndex){
+    const tx=this.transaction
+    index??=tx?(tx.dropIndex??=createCanvasDropIndex(tx.previewBase||tx.doc,this.state.page)):createCanvasDropIndex(source,this.state.page)
+    const parents=index.parents
+    const retained=tx&&!preserveParent?this.retainContainedMoveParents(source,ids,point,force):null
+    const frame=tx&&!preserveParent&&!retained?canvasDropFrame(source,this.state.page,ids,point,force,index):undefined,target=frame||this.state.page
+    let moving=tx&&!preserveParent&&!retained?ids.filter(id=>(frame?containingFrame(source,id,parents)!==frame:!!containingFrame(source,id,parents))&&parents.get(id)!==target):[]
+    const animated=new Set(source.animations?.flatMap(c=>c.tracks.map(t=>t.nodeId))||[])
+    if(moving.some(id=>{for(let at:string|undefined=id;at&&source.nodes[at];at=parents.get(at))if(animated.has(at)||source.nodes[at].instanceOrigin||(at!==id&&source.nodes[at].instance))return true;return false}))moving=[]
+    return {parents,target,moving,retained,key:JSON.stringify(ids.map(id=>[id,moving.includes(id)?target:parents.get(id)]))}
   }
   /** Narrow observed contract: separate free-frame leaves that remain wholly in
    * their own original frames must not all adopt the frame under one pointer.
@@ -2320,13 +2381,11 @@ export class Editor {
   private movePreviewDocument(source: DesignDocument, ids: string[], point: Point, force: boolean, preserveParent: boolean): DesignDocument {
     const tx=this.transaction
     if(!tx || preserveParent)return source
-    const retained = this.retainContainedMoveParents(source, ids, point, force)
+    const plan=this.movePlacement(source,ids,point,force,preserveParent)
+    const retained = plan.retained
     if (retained) return retained
-    const index=tx.dropIndex??=createCanvasDropIndex(source,this.state.page),parents=index.parents,frame=canvasDropFrame(source,this.state.page,ids,point,force,index)
-    const target=frame || this.state.page
-    const moving=ids.filter(id=>(frame?containingFrame(source,id,parents)!==frame:!!containingFrame(source,id,parents)) && parents.get(id)!==target)
-    const animated=new Set(source.animations?.flatMap(c=>c.tracks.map(t=>t.nodeId)) || [])
-    if(!moving.length || moving.some(id=>{for(let at:string|undefined=id;at && source.nodes[at];at=parents.get(at))if(animated.has(at) || source.nodes[at].instanceOrigin || (at!==id && source.nodes[at].instance))return true;return false}))return source
+    const {parents,target,moving}=plan
+    if(!moving.length)return source
     const worlds=new Map(moving.map(id=>[id,worldMatrix(source,id,parents)])),basis=inverse(worldMatrix(source,target,parents))
     const next=produceDraft(source,d=> {
       for(const id of moving) {

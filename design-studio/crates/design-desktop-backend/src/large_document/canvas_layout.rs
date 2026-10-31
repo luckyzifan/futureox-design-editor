@@ -20,20 +20,18 @@ pub(super) struct Item {
 pub(super) struct Layout {
     pub revision: u64, pub items: Vec<Item>, pub bounds: Box2,
 }
-fn field<T: serde::de::DeserializeOwned>(s: &Session, p: usize, n: usize, key: &str, cancel: &AtomicBool) -> Result<Option<T>> {
+fn field<T: serde::de::DeserializeOwned>(s: &Session, p: usize, entry: &large_json::Entry, source: &mut File, key: &str, cancel: &AtomicBool) -> Result<Option<T>> {
     let part = &s.parts[p];
-    let entry = part.index.entry(n, &s.directory)?;
     let Some(field) = entry.fields.iter().find(|f| f.key == key) else { return Ok(None); };
-    let mut source = File::open(s.directory.join(&part.file)).map_err(issue)?;
-    let mut reader = s.state.changes[p].reader(&mut source, part.base_bytes).map_err(issue)?;
+    let mut reader = s.state.changes[p].reader(source, part.base_bytes).map_err(issue)?;
     reader.seek(SeekFrom::Start(field.value.start)).map_err(issue)?;
     // Stream unknown frame members instead of applying a fragment-size quota.
     let source = CheckedReader { inner: reader.take(field.value.len()), cancel, progress: None };
     serde_json::from_reader(BufReader::new(source)).map(Some).map_err(issue)
 }
-fn frame(s: &Session, p: usize, n: usize, cancel: &AtomicBool) -> Result<Box2> {
-    let value = field::<Box2>(s, p, n, "frame", cancel)?.unwrap_or_default();
-    let angle = field::<f64>(s, p, n, "rotation", cancel)?.unwrap_or(0.);
+fn frame(s: &Session, p: usize, entry: &large_json::Entry, source: &mut File, cancel: &AtomicBool) -> Result<Box2> {
+    let value = field::<Box2>(s, p, entry, source, "frame", cancel)?.unwrap_or_default();
+    let angle = field::<f64>(s, p, entry, source, "rotation", cancel)?.unwrap_or(0.);
     if ![value.x, value.y, value.width, value.height, angle].iter().all(|n| n.is_finite()) || value.width < 0. || value.height < 0. {
         return Err(issue("Invalid source canvas geometry"));
     }
@@ -69,15 +67,18 @@ pub(super) fn build(s: &Session, cancel: &AtomicBool) -> Result<Layout> {
     let mut items = Vec::new();
     for (p, part) in s.parts.iter().enumerate() {
         let Some(page) = part.index.entries.first().filter(|row| row.kind == "page" && part.name.starts_with("pages/")) else { continue; };
-        let entry = part.index.entry(0, &s.directory)?;
+        let mut records = part.index.records(&s.directory)?;
+        let entry = records.entry(0)?;
         let Some(layers) = entry.fields.iter().find(|f| f.key == "layers").map(|f| f.value) else { continue; };
+        let mut source = File::open(s.directory.join(&part.file)).map_err(issue)?;
         for n in part.index.children(Some(0)).iter().map(|n| *n as usize) {
             check_cancel(cancel).map_err(issue)?;
             let row = &part.index.entries[n];
             if row.span.start < layers.start || row.span.end > layers.end { continue; }
+            let entry = records.entry(n)?;
             items.try_reserve(1).map_err(issue)?;
             items.push(Item { key: format!("{p}:{n}"), id: row.id.clone(), name: row.name.clone(), kind: row.kind.clone(),
-                page_id: page.id.clone(), page_name: page.name.clone(), source: frame(s, p, n, cancel)?, placed: Box2::default(), bytes: row.span.len() });
+                page_id: page.id.clone(), page_name: page.name.clone(), source: frame(s, p, &entry, &mut source, cancel)?, placed: Box2::default(), bytes: row.span.len() });
         }
     }
     let bounds = arrange(&mut items)?;

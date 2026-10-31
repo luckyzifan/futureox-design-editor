@@ -37,6 +37,50 @@ fn options() -> RenderOptions {
         "view":{"x":0.25,"y":0.5,"zoom":1.2},"transparent":false,"grid":false})).unwrap()
 }
 #[test]
+fn ordinary_reparent_resolves_without_a_warm_camera_and_reuses_checked_bytes() {
+    let mut original = source();
+    let mut other = original.nodes["frame"].clone();
+    other.id = "other".into(); other.children.clear(); other.transform.0[4] = 40.;
+    original.nodes.insert(other.id.clone(), other); original.pages[0].children.push("other".into());
+    original.nodes.get_mut("child").unwrap().constraints = Some(serde_json::from_value(json!({
+        "horizontal":"start", "vertical":"start", "referenceWidth":80, "referenceHeight":60
+    })).unwrap());
+    let mut engine = Engine::new(); engine.install_document(original).unwrap(); engine.resolve_layout().unwrap();
+    let normalized = engine.doc.as_ref().unwrap().clone();
+    engine.install_document(normalized).unwrap(); engine.resolve_layout().unwrap();
+    assert_eq!(engine.source_doc, engine.doc); assert!(engine.camera_prepare.is_none());
+    let mut next = engine.source_doc.as_ref().unwrap().clone();
+    next.nodes.get_mut("frame").unwrap().children.clear();
+    next.nodes.get_mut("other").unwrap().children.push("child".into());
+    next.nodes.get_mut("child").unwrap().transform.0[4] = -12.25;
+    let patch = crate::editing::DocumentPatch::between(engine.source_doc.as_ref().unwrap(), &next).unwrap();
+    engine.apply_document_patch(&patch).unwrap();
+    assert!(engine.pending_camera.is_none()); assert!(engine.pending_layout.is_some());
+    assert_eq!(engine.source_doc_bytes, Some(serde_json::to_vec(&next).unwrap().len()));
+    let mut worker = engine.snapshot_worker(); assert!(worker.pending_layout.is_some());
+    let mut fresh = Engine::new(); fresh.install_document(next).unwrap();
+    let expected = fresh.compile_gpu(&options()).unwrap().into_packet().unwrap();
+    assert_eq!(engine.compile_gpu(&options()).unwrap().into_packet().unwrap(), expected);
+    assert_eq!(worker.compile_gpu(&options()).unwrap().into_packet().unwrap(), expected);
+    assert!(engine.pending_layout.is_none());
+    assert_eq!(engine.render(&options()).unwrap(), fresh.render(&options()).unwrap());
+}
+
+#[test]
+fn unresolved_layout_never_borrows_the_scoped_layout_proof() {
+    let mut original = source();
+    original.nodes.get_mut("child").unwrap().constraints = Some(serde_json::from_value(json!({
+        "horizontal":"scale", "vertical":"scale", "referenceWidth":40, "referenceHeight":30
+    })).unwrap());
+    let mut engine = Engine::new(); engine.install_document(original.clone()).unwrap(); engine.resolve_layout().unwrap();
+    assert_ne!(engine.source_doc, engine.doc);
+    let mut next = original; next.nodes.get_mut("frame").unwrap().width = 90.;
+    let patch = crate::editing::DocumentPatch::between(engine.source_doc.as_ref().unwrap(), &next).unwrap();
+    engine.apply_document_patch(&patch).unwrap(); assert!(engine.pending_layout.is_none());
+    let mut fresh = Engine::new(); fresh.install_document(next).unwrap();
+    assert_eq!(engine.compile_gpu(&options()).unwrap().into_packet().unwrap(), fresh.compile_gpu(&options()).unwrap().into_packet().unwrap());
+}
+#[test]
 fn native_interaction_reuses_full_capture_prepare_and_rebuilds_exact_fractional_coverage() {
     let original = source();
     let mut engine = Engine::new(); engine.install_document(original.clone()).unwrap();
@@ -486,7 +530,7 @@ fn rejected_edits_preserve_private_receipt_and_render_state() {
 }
 
 #[test]
-fn generic_install_and_load_replace_receipt_without_changing_old_accounting() {
+fn generic_install_and_load_replace_receipt_with_one_exact_measurement() {
     for (field, value) in [
         ("name", json!("changed name")),
         ("schemaVersion", json!(16)),
@@ -497,8 +541,8 @@ fn generic_install_and_load_replace_receipt_without_changing_old_accounting() {
         let patch = crate::editing::DocumentPatch { nodes: Default::default(), fields: [(field.into(), value)].into() };
         let before_count = crate::editing::document_size_count_calls();
         engine.apply_document_patch_with_damage(&patch).unwrap();
-        assert_eq!(crate::editing::document_size_count_calls() - before_count, 2,
-            "generic apply plus install still recount; this candidate does not change that path");
+        assert_eq!(crate::editing::document_size_count_calls() - before_count, 1,
+            "installation reuses the exact validated patch byte count");
         assert!(engine.retained_source_size.is_none());
         assert_eq!(engine.source_doc_bytes, Some(serde_json::to_vec(engine.source_doc.as_ref().unwrap()).unwrap().len()));
         assert_retained_receipt_matches_fresh(&mut engine);

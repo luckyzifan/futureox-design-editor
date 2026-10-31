@@ -15,6 +15,8 @@ use std::collections::{BTreeMap, BTreeSet};
 pub type Overrides = BTreeMap<String, BTreeMap<String, Value>>;
 #[cfg(test)]
 thread_local! { static COMPONENT_BYTE_MEASUREMENTS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
+#[cfg(test)]
+pub(crate) fn byte_measurements() -> usize { COMPONENT_BYTE_MEASUREMENTS.with(std::cell::Cell::get) }
 fn encoded_len(value: &impl Serialize, limit: usize) -> Result<usize, String> {
     #[cfg(test)]
     COMPONENT_BYTE_MEASUREMENTS.with(|count| count.set(count.get()+1));
@@ -764,8 +766,8 @@ impl Builder<'_> {
         } else {
             None
         };
-        n.instance = Some(actual);
-        n.instance_origin = origin;
+        n.instance = Some((actual).into());
+        n.instance_origin = origin.map(Box::new);
         n.children.clear();
         self.stack.push(spec.component_id.clone());
         for id in &template.children {
@@ -823,7 +825,7 @@ impl Builder<'_> {
         n.component = None;
         n.component_set = false;
         n.component_key = None;
-        n.instance_origin = Some(origin);
+        n.instance_origin = Some((origin).into());
         n.children.clear();
         if let Some(roots) = self.slots.get(&path).cloned() {
             for child in roots { n.children.push(self.authored(&child, depth + 1, &modes)?); }
@@ -847,6 +849,12 @@ pub fn resolve(doc: &mut Document) -> Result<(), String> {
     resolve_roots(doc,None)
 }
 pub(crate) fn resolve_roots(doc:&mut Document, selected:Option<&BTreeSet<String>>)->Result<(),String>{
+    resolve_roots_budgeted(doc,selected,None)
+}
+/// `source_bytes` is supplied only by the resident component receipt's exact
+/// ledger, immediately after patch admission. It is never an imported hint.
+/// Definition defaults may change the source; that case revokes the shortcut.
+pub(crate) fn resolve_roots_budgeted(doc:&mut Document, selected:Option<&BTreeSet<String>>,source_bytes:Option<usize>)->Result<(),String>{
     if !has_components(doc) {
         return Ok(());
     }
@@ -893,7 +901,8 @@ pub(crate) fn resolve_roots(doc:&mut Document, selected:Option<&BTreeSet<String>
         .collect();
     let inherited_modes = crate::design_system::node_mode_contexts(&source)?;
     let byte_limit=(!crate::capacity::native_source_storage()).then(crate::capacity::document_byte_limit);
-    let mut bytes=if let Some(limit)=byte_limit {encoded_len(source.as_ref(),limit)?}else{0};
+    let known_bytes=source_bytes.filter(|_|selected.is_some()&&matches!(source,Cow::Borrowed(_)));
+    let mut bytes=if let Some(limit)=byte_limit {if let Some(bytes)=known_bytes {crate::capacity::check_document_bytes(bytes)?;bytes}else{encoded_len(source.as_ref(),limit)?}}else{0};
     // Builders always read the immutable source. The result owns only rebuilt
     // nodes, so unrelated images, paths, text and metadata are never deep-cloned.
     // Do not publish either removals or replacements until every check succeeds.
@@ -943,7 +952,21 @@ pub(crate) fn resolve_roots(doc:&mut Document, selected:Option<&BTreeSet<String>
             result.insert(key, Cow::Owned(n));
         }
     }
-    if let Some(limit)=byte_limit {encoded_len(&ResolvedDocument { document: &source, nodes: &result },limit)?;}
+    if let Some(limit)=byte_limit {
+        if let Some(before)=known_bytes {
+            // Only replacement/removal entries differ. Keep JSON's escaped key
+            // lengths and map commas exact; no unchanged node is serialized.
+            let entry=|id:&String,node:&Node|->Result<usize,String>{
+                let key=encoded_len(id,limit)?;let value=encoded_len(node,limit)?;
+                key.checked_add(1).and_then(|n|n.checked_add(value)).ok_or_else(||"component byte budget".into())
+            };
+            let mut exact=before.checked_sub(source.nodes.len().saturating_sub(1)).ok_or("component byte budget")?;
+            for (id,node) in &source.nodes {if !result.contains_key(id)||matches!(result.get(id),Some(Cow::Owned(_))){exact=exact.checked_sub(entry(id,node)?).ok_or("component byte budget")?;}}
+            for (id,node) in &result {if let Cow::Owned(node)=node{exact=exact.checked_add(entry(id,node)?).ok_or("component byte budget")?;}}
+            exact=exact.checked_add(result.len().saturating_sub(1)).ok_or("component byte budget")?;
+            crate::capacity::check_document_bytes(exact)?;
+        }else{encoded_len(&ResolvedDocument { document: &source, nodes: &result },limit)?;}
+    }
     let removed: Vec<_> = source.nodes.keys().filter(|id| !result.contains_key(*id)).cloned().collect();
     let replacements: Vec<_> = result.into_iter().filter_map(|(id, node)| match node {
         Cow::Owned(node) => Some((id, node)),
@@ -1005,6 +1028,20 @@ mod resolved_document_tests {
                 "label":{"id":"label","kind":"text","text":"source text","width":100,"height":40},
                 "instance":{"id":"instance","kind":"frame","width":100,"height":40,"instance":{"componentId":"master","overrides":{"label":{"text":"override text"}}}}
             }})).unwrap()
+    }
+
+    #[test]
+    fn resident_budget_matches_full_serialization_for_instance_replacements(){
+        let mut source=component_document();
+        for text in ["override text","中文 \" \\ 😀","a much longer replacement value"] {
+            source.nodes.get_mut("instance").unwrap().instance.as_mut().unwrap().overrides
+                .get_mut("label").unwrap().insert("text".into(),serde_json::json!(text));
+            let mut reference=source.clone();resolve(&mut reference).unwrap();
+            let mut actual=source.clone();let bytes=crate::editing::serialized_size(&actual).unwrap();
+            resolve_roots_budgeted(&mut actual,Some(&BTreeSet::from(["instance".into()])),Some(bytes)).unwrap();
+            assert_eq!(serde_json::to_vec(&actual).unwrap(),serde_json::to_vec(&reference).unwrap());
+            source=actual;
+        }
     }
 
     #[test]

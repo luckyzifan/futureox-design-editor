@@ -10,6 +10,7 @@ import {
   type GpuMoveControl,
   type InteractionPlan,
   type InteractionProps,
+  type InteractionInput,
 } from './interaction-layers'
 
 /** Moving every visible page root by the same vector leaves all inter-root
@@ -25,7 +26,7 @@ export class PageTranslation {
   private feedback = new PoseFeedback()
   private offset = { x: 0, y: 0 }
   private epoch = -1
-  private input = { sequence: 0, at: 0 }
+  private input: InteractionInput = { sequence: 0, at: 0 }
   private pendingPose?: { document: DesignDocument; patches: Parameters<GpuMoveControl['apply']>[1] }
   private board?: Bounds
   private checkedDocument?: DesignDocument
@@ -44,7 +45,7 @@ export class PageTranslation {
   readonly sampleTrace: unknown[] = []
   readonly backgroundLinear = undefined
   constructor(private changed: () => void, private fractionalPose?: (
-    document: DesignDocument, patches: Parameters<GpuMoveControl['apply']>[1], displayed: DesignDocument,
+    document: DesignDocument, patches: Parameters<GpuMoveControl['apply']>[1], displayed: DesignDocument, guides?:InteractionInput['guides'],
   ) => ReturnType<GpuMoveControl['apply']>, private reportPhase?: (fields:Record<string,number>)=>void,
     private fillCoverage?: (source:DesignDocument,offset:{x:number;y:number},sequence:number,failed:()=>void)=>boolean) {}
   get handingOff() { return this.phaseRevoked }
@@ -72,7 +73,7 @@ export class PageTranslation {
       [offset.x * tile.zoom, offset.y * tile.zoom].every(Number.isSafeInteger))
     )
   }
-  private rebase(document: DesignDocument, patches: Parameters<GpuMoveControl['apply']>[1]) {
+  private rebase(document: DesignDocument, patches: Parameters<GpuMoveControl['apply']>[1], guides=this.input.guides) {
     this.phaseRevoked = true
     if(this.reportPhase){
       // Uniform translation was checked by the caller. Inspect one transform
@@ -83,7 +84,7 @@ export class PageTranslation {
         error=Math.max(error,Math.abs(shift-Math.round(shift)))
       this.reportPhase({retainedPhaseRejects:1,retainedPhaseSamples:this.residents.length*2,retainedPhaseError:error})
     }
-    return this.fractionalPose?.(document, patches, this.displayedDocument()) ?? null
+    return this.fractionalPose?.(document, patches, this.displayedDocument(), guides) ?? null
   }
   private displayedDocument() {
     const document = this.plan!.document
@@ -115,14 +116,15 @@ export class PageTranslation {
   }
   readonly control: GpuMoveControl = {
     isActive: () => this.active,
-    feedbackPending:()=>this.fractional,
+    guidesInSurface:()=>true,
+    feedbackPending:()=>true,
     inputSequence:()=>this.input.sequence,
     covers: (document, ids) =>
       !!this.plan &&
       ids.length === this.plan.ids.length &&
       ids.every((id) => this.plan!.ids.includes(id)) &&
       !!this.delta(document),
-    apply: (document, patches) => {
+    apply: (document, patches, _trace, guides) => {
       if (!this.plan || Object.keys(patches).some((id) => !this.plan!.ids.includes(id))) return null
       if (!this.delta(document)) return null
       // The editor document is immutable during a retained move. Validate it
@@ -142,7 +144,7 @@ export class PageTranslation {
       // Fractional desktop motion is a transient, full-density reprojection.
       // Other policies still require the original integer-phase proof. Final
       // readiness always belongs to the committed native page, not this pose.
-      if (!this.reusableOffset(offset)) return this.rebase(document, patches)
+      if (!this.reusableOffset(offset)) return this.rebase(document, patches, guides)
       const id = this.plan.ids[0],
         before = document.nodes[id].transform,
         after = patches[id]?.transform || before
@@ -150,16 +152,17 @@ export class PageTranslation {
       this.offset = offset
       this.active = true
       this.moves++
-      this.input = { sequence: this.moves, at: performance.now() }
+      this.input = { sequence: this.moves, at: performance.now(), guides:guides?.slice(0,2).map(g=>({...g})) }
       this.pendingPose = { document, patches: Object.fromEntries(this.plan.ids.map(id =>
         [id, { transform: [...(patches[id]?.transform || document.nodes[id].transform)] }])) }
       const feedback={ x: after[4] - before[4], y: after[5] - before[5] }
-      if(this.fractional)this.feedback.submit(this.input.sequence,feedback,document)
+      this.feedback.submit(this.input.sequence,feedback,document)
       this.changed()
       if (!wasActive) this.props?.onReady()
       return feedback
     },
     end: (document) => {
+      this.input = { ...this.input, guides:undefined }
       this.feedback.clear()
       if (!this.active || this.phaseRevoked) return
       const offset = this.delta(document)
@@ -235,10 +238,10 @@ export class PageTranslation {
   }
   acceptPresentedInput(sequence:number,at:number,ownerMatches:boolean,slots:readonly number[]){
     const document=this.pendingPose?.document
-    if(!this.fractional||!this.active||this.phaseRevoked||!ownerMatches||!document||!this.props||
+    if(!this.active||this.phaseRevoked||!ownerMatches||!document||!this.props||
       this.residents.some(tile=>!tile.gpuTile||!slots.includes(tile.gpuTile)))return
     const offset=this.feedback.present(sequence,document)
-    if(offset)this.props.onPosePresented?.({sequence,offset,document,epoch:this.props.epoch,latencyMs:Math.max(0,performance.now()-at)})
+    if(offset)this.props.onPosePresented?.({sequence,offset,document,epoch:this.props.epoch,control:this.control,latencyMs:Math.max(0,performance.now()-at)})
   }
   items(view: CanvasCamera): CompositeItem[] | null {
     if (!this.active) return null

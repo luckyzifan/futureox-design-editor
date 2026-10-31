@@ -1,7 +1,10 @@
 import { emptyFrame } from './gpu/frame-wire.test-helper'
 import { expect, test } from 'vitest'
 import { VectorEngine } from '../generated/design-kernel/design_kernel'
-import { blank } from '../model'
+import { blank, node, paint } from '../model'
+import { decodeScenePacket, scenePacketWitness } from './gpu/scene-packet'
+import { copyWitness } from './compilation-witness'
+import { pixelContentProof, pixelSourceContract } from './gpu/page-background'
 import { PreparationChannel } from './preparation-channel'
 import { RenderKernel } from './render-kernel'
 
@@ -240,7 +243,7 @@ test('a cancellable first consumer never owns an exact output sharing its option
   } finally { channel.close(); ports.port2.close(); assets.free() }
 })
 
-test('production receipt rejects an old packet after a delayed compile crosses a document mutation', async () => {
+test.each(['prepare_gpu_packet','prepare_gpu_scene'] as const)('production receipt rejects an old packet after a delayed compile crosses a document mutation (%s)', async prepare => {
   const assets = new VectorEngine(), ports = new MessageChannel()
   const channel = unorderedPreparation(ports.port1), kernel = new RenderKernel(assets, 'canvas', channel)
   let release!: () => void, notice!: () => void
@@ -251,31 +254,31 @@ test('production receipt rejects an old packet after a delayed compile crosses a
     else ports.port2.postMessage({ id })
   }
   try {
-    const packet = kernel.prepare_gpu_packet('{}')
+    const packet = kernel[prepare]('{}')
     const rejected = expect(packet).rejects.toThrow('STALE_PREPARED_PACKET')
     await started; await kernel.load_document('{}'); release(); await rejected
   } finally { channel.close(); ports.port2.close(); assets.free() }
 })
 
-test('production receipt is bound to one lane, mutation epoch and pre-encoder cancellation', async () => {
+test.each(['prepare_gpu_packet','prepare_gpu_scene'] as const)('production receipt is bound to one lane, mutation epoch and pre-encoder cancellation (%s)', async prepare => {
   const assets = new VectorEngine(), ports = new MessageChannel()
   const channel = new PreparationChannel(ports.port1), kernel = new RenderKernel(assets, 'interaction', channel)
   ports.port2.onmessage = event => ports.port2.postMessage({ id: event.data.id, value: event.data.method === 'compile_gpu_packet' ? emptyFrame(8) : undefined })
   try {
     await kernel.load_document('{}')
-    const first = await kernel.prepare_gpu_packet('{}')
+    const first = await kernel[prepare]('{}')
     expect(first.certificate).toEqual({ lane: 'interaction', revision: 1, options: '{}', settings: 'null' })
     await kernel.load_document('{}')
     expect(() => first.consume()).toThrow('STALE_PREPARED_PACKET')
-    const signal = new AbortController(), cancelled = await kernel.prepare_gpu_packet('{}', signal.signal)
+    const signal = new AbortController(), cancelled = await kernel[prepare]('{}', signal.signal)
     signal.abort(); expect(() => cancelled.consume()).toThrow('PREVIEW_CANCELLED')
-    const exact = await kernel.prepare_gpu_packet('{}')
-    expect(exact.consume()).toEqual(emptyFrame(8))
+    const exact = await kernel[prepare]('{}')
+    expect(decodeScenePacket(exact.consume()).width).toBe(8)
     expect(() => exact.consume()).toThrow('PREPARED_PACKET_CONSUMED')
   } finally { channel.close(); ports.port2.close(); assets.free() }
 })
 
-test('pending mutation cannot produce a receipt; aborted requests never return bytes', async () => {
+test.each(['prepare_gpu_packet','prepare_gpu_scene'] as const)('pending mutation cannot produce a receipt; aborted requests never return bytes (%s)', async prepare => {
   const assets = new VectorEngine(), ports = new MessageChannel()
   const channel = new PreparationChannel(ports.port1), kernel = new RenderKernel(assets, 'canvas', channel)
   let release!: () => void, notice!: () => void, held = false
@@ -287,12 +290,43 @@ test('pending mutation cannot produce a receipt; aborted requests never return b
   try {
     await kernel.compile_gpu_packet('{}')
     const signal = new AbortController(); signal.abort()
-    await expect(kernel.prepare_gpu_packet('{}', signal.signal)).rejects.toThrow('PREVIEW_CANCELLED')
+    await expect(kernel[prepare]('{}', signal.signal)).rejects.toThrow('PREVIEW_CANCELLED')
     held = true
     const started = new Promise<void>(resolve => { notice = resolve })
     const mutation = kernel.load_document('{}'); await started
-    await expect(kernel.prepare_gpu_packet('{}')).rejects.toThrow('DOCUMENT_PREPARATION_PENDING')
+    await expect(kernel[prepare]('{}')).rejects.toThrow('DOCUMENT_PREPARATION_PENDING')
     release(); await mutation
-    expect((await kernel.prepare_gpu_packet('{}')).consume()).toEqual(emptyFrame(6))
+    expect(decodeScenePacket((await kernel[prepare]('{}')).consume()).width).toBe(6)
   } finally { channel.close(); ports.port2.close(); assets.free() }
+})
+
+
+test('mixed scene/transport consumers share compilation but retain private program ownership',async()=>{
+ const remote=new VectorEngine(),assets=new VectorEngine(),ports=new MessageChannel()
+ const channel=new PreparationChannel(ports.port1),kernel=new RenderKernel(assets,'canvas',channel)
+ const doc=blank(),shape=node('ellipse',0,0,32,24);shape.fills=[paint('#ff0000')]
+ doc.nodes[shape.id]=shape;doc.pages[0].children=[shape.id];remote.load_document(JSON.stringify(doc));remote.bind_frame_scene_scope('handoff-mixed')
+ const options=JSON.stringify({pageId:doc.pages[0].id,width:64,height:64,view:{x:0,y:0,zoom:1}})
+ let compiles=0
+ ports.port2.onmessage=event=>{const {id,args}=event.data;compiles++;const value=remote.compile_gpu_packet(args[0]);ports.port2.postMessage({id,value},[value.buffer])}
+ try{
+  const transferred=kernel.compile_gpu_packet(options).then(bytes=>structuredClone(bytes,{transfer:[bytes.buffer]}))
+  const [packet,a,b]=await Promise.all([transferred,kernel.prepare_gpu_scene(options),kernel.prepare_gpu_scene(options)])
+  expect(compiles).toBe(1);expect(kernel.packetCoalesced).toBe(2)
+  const aa=a.consume(),bb=b.consume(),expected=decodeScenePacket(packet)
+  // Transfer deliberately drops worker-private symbols; compare public scene
+  // values, then verify each CPU handoff retained its private content proof.
+  for(const scene of [aa.scene,bb.scene]){
+   expect(Object.fromEntries(Object.entries(scene))).toEqual(Object.fromEntries(Object.entries(expected)))
+   const proof=pixelContentProof(scene)
+   expect(proof?.owner).toBe(kernel.contentIdentity);expect(proof?.contract).toBe(pixelSourceContract(JSON.parse(options)))
+  }
+  expect(copyWitness(scenePacketWitness(aa))).toEqual(copyWitness(scenePacketWitness(bb)))
+  if(!(aa.scene.vertices instanceof Float32Array)||!(bb.scene.vertices instanceof Float32Array))throw Error('Expected typed geometry')
+  expect(aa.scene.vertices.length+(aa.scene.curves?.length??0)).toBeGreaterThan(0)
+  expect(aa.scene.vertices.buffer).not.toBe(bb.scene.vertices.buffer)
+  const ownedA=new Uint8Array(aa.scene.vertices.buffer),ownedB=new Uint8Array(bb.scene.vertices.buffer),before=ownedB.slice()
+  ownedA[0]^=1
+  expect(ownedB).toEqual(before);expect(()=>a.consume()).toThrow('PREPARED_PACKET_CONSUMED')
+ }finally{channel.close();ports.port2.close();assets.free();remote.free()}
 })

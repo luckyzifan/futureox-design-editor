@@ -59,6 +59,13 @@ struct ChunkReader {
     receiver: std::sync::mpsc::Receiver<Vec<u8>>,
     current: std::io::Cursor<Vec<u8>>,
 }
+
+/// One immutable index owner and its open record file. A layout pass borrows
+/// this rather than opening the same index once for every scalar field.
+pub(super) struct Records<'a> { index: &'a DiskIndex, file: File }
+impl Records<'_> {
+    pub fn entry(&mut self, n: usize) -> Result<Entry> { self.index.entry_from(n, &mut self.file) }
+}
 impl Read for ChunkReader {
     fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
         if out.is_empty() { return Ok(0); }
@@ -212,12 +219,18 @@ impl DiskIndex {
         )
     }
     pub fn entry(&self, n: usize, directory: &Path) -> Result<Entry> {
+        if n >= self.entries.len() { return Err(issue("Unknown source object")); }
+        self.records(directory)?.entry(n)
+    }
+    pub fn records(&self, directory: &Path) -> Result<Records<'_>> {
+        Ok(Records { index: self, file: File::open(directory.join(&self.data)).map_err(issue)? })
+    }
+    fn entry_from(&self, n: usize, file: &mut File) -> Result<Entry> {
         let row = self
             .entries
             .get(n)
             .ok_or_else(|| issue("Unknown source object"))?;
-        let mut file = File::open(directory.join(&self.data)).map_err(issue)?;
-        let bytes = large_json::read_fragment(&mut file, self.locations[n]).map_err(issue)?;
+        let bytes = large_json::read_fragment(file, self.locations[n]).map_err(issue)?;
         let mut entry: Entry = serde_json::from_slice(&bytes).map_err(issue)?;
         for edit in self.edits.iter().skip(self.generations[n]) {
             for field in &mut entry.fields {

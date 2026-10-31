@@ -180,7 +180,7 @@ pub struct Pose {
     pub strokes: Vec<Stroke>,
     pub effects: Vec<Effect>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub network: Option<Network>,
+    pub network: Option<std::sync::Arc<Network>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vector_geometry: Option<std::sync::Arc<crate::vector_geometry::VectorGeometry>>,
 }
@@ -733,6 +733,7 @@ pub(crate) fn interpolate(
         }
     }
     if let (Some(out), Some(a), Some(b)) = (&mut out.network, &a.network, &b.network) {
+        let out = std::sync::Arc::make_mut(out);
         for ((v, a), b) in out.vertices.iter_mut().zip(&a.vertices).zip(&b.vertices) {
             v.x = mix(a.x, b.x, t);
             v.y = mix(a.y, b.y, t);

@@ -1,26 +1,41 @@
 import {afterEach,expect,test,vi} from 'vitest'
-const native=vi.hoisted(()=>({freed:0,reads:0}))
+const native=vi.hoisted(()=>({freed:0,reads:0,created:0}))
 vi.mock('./generated-row-decoder',()=>({ImageRowDecoder:class{
- width(){return 2}height(){return 3}free(){native.freed++}
- next_rows(){native.reads++;return new Float32Array(8)}
+ row=0
+ constructor(){native.created++} width(){return 2}height(){return 3}free(){native.freed++}
+ next_rows(){native.reads++;return new Float32Array(this.row++<3?8:0)}
 }}))
 import {nativeImageRows,largePngRowCandidate}from './image-row-source'
 import {managedSceneImageLoader}from './scene-image-hydration'
 import {DecodedImageCache,createDecodedImageOwner,decodedImageScope}from './decoded-image-cache'
-afterEach(()=>{native.freed=0;native.reads=0})
-test('dimension-only reads do not hold an unconsumed native decoder',()=>{
+afterEach(async()=>{await Promise.resolve();native.freed=0;native.reads=0;native.created=0})
+test('dimension-only sources expire at the end of the synchronous upload turn',async()=>{
  const source=nativeImageRows('uri','settings',()=>{})
- expect([source.width,source.height]).toEqual([2,3]);expect(native.freed).toBe(1);expect(native.reads).toBe(0)
+ expect([source.width,source.height]).toEqual([2,3]);expect(native.freed).toBe(0);expect(native.created).toBe(1);expect(native.reads).toBe(0)
+ await Promise.resolve();expect(native.freed).toBe(1)
+ expect(()=>source.linearRows().next()).toThrow("disposed")
 })
 test('abandoned upload frees the live row decoder',()=>{
  const source=nativeImageRows('uri','settings',()=>{}),iterator=source.linearRows()
  expect(iterator.next().value?.y).toBe(0);iterator.return()
- expect(native.freed).toBe(2)
+ expect(native.freed).toBe(1);expect(native.created).toBe(1)
+})
+test('complete upload consumes one decoder and frees exactly once',()=>{
+ const source=nativeImageRows('uri','settings',()=>{}),rows=[...source.linearRows()]
+ expect(rows.map(row=>[row.y,row.height])).toEqual([[0,1],[1,1],[2,1]])
+ expect(native.created).toBe(1);expect(native.freed).toBe(1);expect(native.reads).toBe(4)
+ source.dispose();expect(native.freed).toBe(1)
+ expect(()=>[...source.linearRows()]).toThrow('consumed')
+})
+test('disposing a paused iterator prevents another native read',()=>{
+ const source=nativeImageRows('uri','settings',()=>{}),iterator=source.linearRows()
+ iterator.next();source.dispose()
+ expect(()=>iterator.next()).toThrow('disposed');expect(native.reads).toBe(1);expect(native.freed).toBe(1)
 })
 test('scope cancellation interrupts rows and frees its native decoder',()=>{
  let current=true;const source=nativeImageRows('uri','settings',()=>{if(!current)throw Error('PREVIEW_CANCELLED')})
  const iterator=source.linearRows();iterator.next();current=false
- expect(()=>iterator.next()).toThrow('PREVIEW_CANCELLED');expect(native.freed).toBe(2)
+ expect(()=>iterator.next()).toThrow('PREVIEW_CANCELLED');expect(native.freed).toBe(1);expect(native.created).toBe(1)
 })
 test('non-PNG and malformed hints retain the normal decoder',()=>{
  expect(largePngRowCandidate('data:image/jpeg;base64,aaaa')).toBe(false)
@@ -38,6 +53,12 @@ test.each(['budget','other','byte','mip'])('native cache %s uses only its eligib
  const info=vi.fn(()=>{throw failure}),kernel:any={image_info:info,image_info_at_level:info}
  const load=managedSceneImageLoader(new DecodedImageCache(),()=>({kernel,scope:decodedImageScope(owner,settings),settings,current:()=>true}),{key:async()=>undefined,read:async()=>undefined,write(){throw Error('Unexpected cache write')}})
  const run=()=>load('data:image/png;base64,fixture',kind==='byte',kind==='mip'?1:0)
- if(kind==='budget'){const source=run();expect(source.width).toBe(2);expect(source.pixels.length).toBe(0);expect(native.freed).toBe(1)}
+ if(kind==='budget'){const source=run();expect(source.width).toBe(2);expect(source.pixels.length).toBe(0);source.dispose?.();expect(native.freed).toBe(1);expect(native.created).toBe(1)}
  else{expect(run).toThrow(failure);expect(native.freed).toBe(0)}
+})
+
+test('admission failure can dispose before iteration without creating a second decoder',()=>{
+ const source=nativeImageRows('uri','settings',()=>{});source.dispose();source.dispose()
+ expect(native.created).toBe(1);expect(native.freed).toBe(1);expect(native.reads).toBe(0)
+ expect(()=>source.linearRows().next()).toThrow('disposed')
 })

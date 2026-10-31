@@ -17,19 +17,28 @@ export function largePngRowCandidate(uri: string): boolean {
 export type LinearImageRows = Iterable<{y:number;height:number;pixels:Float32Array}>
 export function nativeImageRows(uri:string,settings:string,current:()=>void){
   current()
-  const info=new ImageRowDecoder(uri,settings)
+  let decoder: ImageRowDecoder | undefined = new ImageRowDecoder(uri,settings)
+  let started=false
+  const dispose=()=>{const owned=decoder;decoder=undefined;owned?.free()}
   let width:number,height:number
-  try{width=info.width();height=info.height()}finally{info.free()}
-  return {width,height,pixels:new Float32Array(0),bytes:undefined as Uint8Array|undefined,linearRows:function*(){
-    current();const decoder=new ImageRowDecoder(uri,settings)
+  try{width=decoder.width();height=decoder.height()}catch(error){dispose();throw error}
+  // Upload consumes a transient source synchronously. A dimension-only caller
+  // cannot leave compressed bytes/native state pinned indefinitely, even when
+  // it never creates/starts the iterator. The renderer also disposes explicitly
+  // on admission failure and before returning an uploaded texture.
+  queueMicrotask(()=>{if(!started)dispose()})
+  return {width,height,pixels:new Float32Array(0),bytes:undefined as Uint8Array|undefined,dispose,linearRows:function*(){
+    if(started||!decoder)throw Error('PNG row source already consumed or disposed')
+    started=true
+    const owned=decoder
     try{
-      if(decoder.width()!==width||decoder.height()!==height)throw Error('PNG row dimensions changed')
+      current()
       let y=0
-      for(;;){current();const pixels=decoder.next_rows();if(!pixels.length)break
+      for(;;){current();if(decoder!==owned)throw Error('PNG row source disposed');const pixels=owned.next_rows();if(!pixels.length)break
         const rows=pixels.length/(width*4)
         yield {y,height:rows,pixels};y+=rows
       }
       if(y!==height)throw Error('Incomplete PNG row source')
-    }finally{decoder.free()}
+    }finally{dispose()}
   }}
 }

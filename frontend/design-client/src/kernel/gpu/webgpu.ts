@@ -104,6 +104,7 @@ export class WebGpuDriver implements Driver {
   private canvasBlurRequested = false
   private canvasBlurPipelines: GPURenderPipeline[] = []
   private canvasBlurScalarPipeline?: GPURenderPipeline
+  private canvasBlurAlphaPipeline?: GPURenderPipeline
   private canvasBlurRgbaPipeline?: GPURenderPipeline
   private canvasSpatialPipelines = new Map<number, GPURenderPipeline>()
   private canvasSpatialFailed = new Set<number>()
@@ -1381,7 +1382,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
           constants: { FILTER_CHANNEL: 3 }, targets: [{ format: 'r32float' }] },
         primitive: { topology: 'triangle-list' } })
     }
-    if (this.canvasBlurRequested && !this.canvasBlurPipelines.length && !this.canvasBlurFailed) {
+    if (this.canvasBlurRequested && !this.canvasBlurRgbaPipeline && !this.canvasBlurPipelines.length && !this.canvasBlurFailed) {
       try {
         const device = this.device
         const validated = async <T>(create: () => T | Promise<T>): Promise<T> => {
@@ -1396,14 +1397,15 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
         const info = await module.getCompilationInfo()
         if (info.messages.some(m => m.type === 'error')) throw Error('Canvas blur shader validation failed')
         const layout = device.createPipelineLayout({ bindGroupLayouts: [this.layout] })
-        const [colors, scalar] = await Promise.all([Promise.all([0, 1, 2, 3].map(channel => validated(() => device.createRenderPipelineAsync({ layout,
+        const color = (channel:number) => validated(() => device.createRenderPipelineAsync({ layout,
           vertex: { module, entryPoint: 'quad' }, fragment: { module, entryPoint: 'fragment',
             constants: { FILTER_CHANNEL: channel }, targets: [{ format: this.layerFormat, writeMask: 1 << channel }] },
-          primitive: { topology: 'triangle-list' } })))), validated(() => device.createRenderPipelineAsync({ layout,
+          primitive: { topology: 'triangle-list' } }))
+        const [alpha, scalar] = await Promise.all([color(3), validated(() => device.createRenderPipelineAsync({ layout,
             vertex: { module, entryPoint: 'quad' }, fragment: { module, entryPoint: 'fragment', constants: { FILTER_CHANNEL: 3 }, targets: [{ format: 'r32float' }] },
             primitive: { topology: 'triangle-list' } }))])
         this.assertPipelinePublicationOwner(device)
-        this.canvasBlurPipelines = colors; this.canvasBlurScalarPipeline = scalar
+        this.canvasBlurAlphaPipeline = alpha; this.canvasBlurScalarPipeline = scalar
         if(import.meta.env.VITE_DESIGN_CANVAS_BLUR_RGBA !== '0')try{
           const rgba = await validated(() => device.createShaderModule({code:exactFilterWgsl(this.certifiedFilter,true,true),label:'Canvas RGBA rational-coefficient blur'}))
           const rgbaInfo=await rgba.getCompilationInfo()
@@ -1412,9 +1414,17 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
             fragment:{module:rgba,entryPoint:'fragmentRgba',targets:[{format:this.layerFormat}]},primitive:{topology:'triangle-list'}}))
           this.assertPipelinePublicationOwner(device);this.canvasBlurRgbaPipeline=pipeline
         }catch(error){console.warn('Canvas RGBA blur unavailable; using channel filters',error)}
+        // RGBA is the preferred colour path. Its three RGB channel pipelines
+        // are only needed after explicit opt-out or failed RGBA compilation.
+        // Alpha-only RGBA and scalar targets retain their original reducers.
+        if(!this.canvasBlurRgbaPipeline){
+          const colors=await Promise.all([color(0),color(1),color(2)])
+          this.assertPipelinePublicationOwner(device);this.canvasBlurPipelines=[...colors,alpha]
+        }
       } catch (error) {
         this.canvasBlurFailed = true
         this.canvasBlurPipelines = []
+        this.canvasBlurAlphaPipeline = undefined; this.canvasBlurScalarPipeline = undefined
         console.warn('Canvas blur arithmetic unavailable; using exact filters', error)
       }
     }
@@ -2733,11 +2743,12 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     const canvasBlur = !displayFilter && !sourceWindow && !target.binaryCoverage &&
       (!target.scalarCoverage || channels === 8 && !!this.canvasBlurScalarPipeline) &&
       ((filter?.radius ?? u[36]) <= 2048 || !!filter && !!this.shadowKernelProof(inputs[1], filter.radius)) &&
-      canvasBlurPassEligible(this.canvasBlurRequested && this.canvasBlurPipelines.length === 4, u, channels, filter)
+      canvasBlurPassEligible(this.canvasBlurRequested && (channels===8 ? !!this.canvasBlurAlphaPipeline :
+        !!this.canvasBlurRgbaPipeline || this.canvasBlurPipelines.length===4), u, channels, filter)
     const canvasSpatial = this.canvasBlurRequested && !sourceWindow && !target.scalarCoverage && !target.binaryCoverage &&
       channels === 15 && canvasBlurGeometry(u) && this.canvasSpatialPipelines.has(u[16])
     const rgbaBlur=canvasBlur&&!target.scalarCoverage&&channels===15&&!!this.canvasBlurRgbaPipeline
-    const pipelines = canvasSpatial ? [this.canvasSpatialPipelines.get(u[16])!] : canvasBlur ? (target.scalarCoverage ? [this.canvasBlurScalarPipeline!] : rgbaBlur ? [this.canvasBlurRgbaPipeline!] : this.canvasBlurPipelines) : target.scalarCoverage ? [u[16]===49?this.alphaResolvePipeline!:u[16]===22?this.scalarFilterPipeline!:u[16]===31?(sampleOnly?this.sampleOnlyScalarPipeline!:this.scalarAreaPipeline!):this.scalarPipelines.get(u[16])!] : displayFilter ? [this.displayFilterPipeline!] : target.binaryCoverage
+    const pipelines = canvasSpatial ? [this.canvasSpatialPipelines.get(u[16])!] : canvasBlur ? (target.scalarCoverage ? [this.canvasBlurScalarPipeline!] : rgbaBlur ? [this.canvasBlurRgbaPipeline!] : channels===8 ? [this.canvasBlurAlphaPipeline!] : this.canvasBlurPipelines) : target.scalarCoverage ? [u[16]===49?this.alphaResolvePipeline!:u[16]===22?this.scalarFilterPipeline!:u[16]===31?(sampleOnly?this.sampleOnlyScalarPipeline!:this.scalarAreaPipeline!):this.scalarPipelines.get(u[16])!] : displayFilter ? [this.displayFilterPipeline!] : target.binaryCoverage
       ? [u[16] === 31 ? (sampleOnly?this.sampleOnlyBytePipeline!:this.binaryAreaPipeline!) : this.binaryPipelines.get(u[16])!]
       : this.managed && u[16] === 22 ? this.filterPipelines : [
       u[16] === IMAGE_RESOLVE_STEP_MODE ? (displayImage ? this.displayImagePipeline! : this.imageResolveStepPipeline!) : u[16] === 50 ? this.shadowOverPipeline! : u[16] === 48 ? this.resolveStepPipeline! : u[16] === 47 ? this.solidPaintOverPipeline! : u[16] === 31 ? (sampleOnly?(this.managed===true?this.sampleOnlyColorPipeline!:this.sampleOnlyBytePipeline!):this.areaPipeline!) : this.managed && u[16] === 3 && u[17] === 0
@@ -2770,7 +2781,8 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     }
     let drawn = false
     for (let channel = 0; channel < pipelines.length; channel++) {
-    if (this.managed && u[16] === 22 && !displayFilter && !target.scalarCoverage && !(channels & (1 << channel))) continue
+    const channelBit=canvasBlur&&channels===8&&!target.scalarCoverage?8:1<<channel
+    if (this.managed && u[16] === 22 && !displayFilter && !target.scalarCoverage && !(channels & channelBit)) continue
     const timestampWrites = this.timingQueries ? this.timestampWrites({ mode: u[16], radius: u[36], width: region?.w || target.width, height: region?.h || target.height,
       ...(u[16] === 3 ? { blend: u[17], integerCentres } : {}), ...(u[16] === 2 ? { paint: u[28] } : {}) }) : undefined
     const pass = this.encoder.beginRenderPass({

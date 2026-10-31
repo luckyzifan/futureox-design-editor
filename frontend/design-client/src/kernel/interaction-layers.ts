@@ -11,12 +11,15 @@ import { documentTransitionNodeIds } from '../document-patch'
 export type InteractionLayer = { document: DesignDocument; roots: string[]; bounds: Bounds; moving?: string }
 export type InteractionPlan = { document: DesignDocument; pageId: string; ids: string[]; layers: InteractionLayer[]; viewport?: Bounds; parentLinear?: Map<string, number[]> }
 export type InteractionPoseFeedback = { x: number; y: number; matrix?: Matrix }
+export type InteractionInput = { sequence:number; at:number; guides?:readonly import('./gpu/canvas-overlay').CanvasGuide[] }
 export type GpuMoveControl = {
   isActive(): boolean
   /** Private complete-layer authority; structural eligibility alone is not
    * enough to suspend an ordinary viewport repair. */
   blocksCanvasRefinement?(document:DesignDocument,ids:string[],view:CanvasCamera):boolean
-  apply(document: DesignDocument, patches: Record<string, Partial<DesignDocument['nodes'][string]>>, trace?: PoseActionToken): InteractionPoseFeedback | null
+  apply(document: DesignDocument, patches: Record<string, Partial<DesignDocument['nodes'][string]>>, trace?: PoseActionToken, guides?:InteractionInput['guides']): InteractionPoseFeedback | null
+  /** Guides are drawn with the sampled pixels, outside the content backbuffer. */
+  guidesInSurface?(): boolean
   covers(document: DesignDocument, ids: string[], view: CanvasCamera): boolean
   feedbackPending?(): boolean
   inputSequence?(): number
@@ -32,7 +35,7 @@ export type InteractionProps = {
   document: DesignDocument; selection: string[]; active: boolean; epoch: number; control: RefObject<GpuMoveControl | null>; onReady: () => void
   /** Optional Canvas-only published geometry. Other callers remain uncached. */
   onPreviewFailed?: (failure: InteractionPreviewFailure) => void
-  onPosePresented?: (pose: { sequence: number; offset: InteractionPoseFeedback; latencyMs: number; document: DesignDocument; epoch: number }) => void
+  onPosePresented?: (pose: { sequence: number; offset: InteractionPoseFeedback; latencyMs: number; document: DesignDocument; epoch: number; control?:GpuMoveControl }) => void
   scene?: CanvasSceneBorrow
 }
 
