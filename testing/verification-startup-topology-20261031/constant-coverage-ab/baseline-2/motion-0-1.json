@@ -1,0 +1,26 @@
+{
+  "status": [
+    {
+      "text": "正在绘制 0 / 25",
+      "title": "当前视口完成全部瓦片与采样密度校验后显示清晰"
+    }
+  ],
+  "source": "文件已就绪完整画板已显示：306 个素材。双击素材进入编辑。9 项导入兼容提示部分 Sketch 专有属性暂不支持完整编辑，建议保留原始 .sketch 文件。Sketch: color-controls-not-modeled;source-retained文件未嵌入所用字体，已使用内置字体；可在文字面板导入并匹配字体。Sketch: inferred-group-layout-not-modeled;static-frames-preservedSketch: legacy-mixed-flex-constraints-require-native-resizeSketch: native-blur-portable-kernel;native-pixels-not-identical布尔组合已转换为本地矢量结构，原始设置已保留。Sketch: shapepath-point-corner-radius-not-modeled零宽或零高路径已保留，编辑时显示最小选择框。",
+  "errors": [],
+  "dpr": 2,
+  "outlines": [],
+  "canvasData": {
+    "testid": "canvas"
+  },
+  "tileData": {},
+  "canvases": [
+    {
+      "class": "kernel-compositor native-source-content",
+      "width": 1710,
+      "height": 1776,
+      "cssWidth": 855,
+      "cssHeight": 888,
+      "data": {}
+    }
+  ]
+}

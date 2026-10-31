@@ -1,0 +1,82 @@
+[
+  {
+    "label": "baseline",
+    "root": "10c6999a-19ed-4836-be94-46a2609309d7",
+    "name": "主框架03",
+    "options": {
+      "pageId": "00000000-0000-4000-8000-000000000001",
+      "width": 96,
+      "height": 64,
+      "view": {
+        "x": -1040,
+        "y": -6622,
+        "zoom": 1
+      },
+      "rasterProfile": "figmaSubpixel",
+      "transparent": false
+    },
+    "status": "pixels",
+    "bytes": 861,
+    "sha256": "2d7fa65137cbf7f882bcd0f24bb581ba12f065428cb9dc1639816f06256a3314",
+    "ms": 4143.783083
+  },
+  {
+    "label": "baseline",
+    "root": "B4F79D9D-73A9-4CFA-A0C2-BA3610CC6105",
+    "name": "拼搭样式二",
+    "options": {
+      "pageId": "00000000-0000-4000-8000-000000000001",
+      "width": 96,
+      "height": 64,
+      "view": {
+        "x": -5968,
+        "y": -16780,
+        "zoom": 1
+      },
+      "rasterProfile": "figmaSubpixel",
+      "transparent": false
+    },
+    "status": "rejected",
+    "error": "Decoded image budget exceeded: 5162x2784 source pixels cannot fit without loss; automatic downsampling is disabled"
+  },
+  {
+    "label": "candidate",
+    "root": "10c6999a-19ed-4836-be94-46a2609309d7",
+    "name": "主框架03",
+    "options": {
+      "pageId": "00000000-0000-4000-8000-000000000001",
+      "width": 96,
+      "height": 64,
+      "view": {
+        "x": -1040,
+        "y": -6622,
+        "zoom": 1
+      },
+      "rasterProfile": "figmaSubpixel",
+      "transparent": false
+    },
+    "status": "pixels",
+    "bytes": 861,
+    "sha256": "2d7fa65137cbf7f882bcd0f24bb581ba12f065428cb9dc1639816f06256a3314",
+    "ms": 3979.007125
+  },
+  {
+    "label": "candidate",
+    "root": "B4F79D9D-73A9-4CFA-A0C2-BA3610CC6105",
+    "name": "拼搭样式二",
+    "options": {
+      "pageId": "00000000-0000-4000-8000-000000000001",
+      "width": 96,
+      "height": 64,
+      "view": {
+        "x": -5968,
+        "y": -16780,
+        "zoom": 1
+      },
+      "rasterProfile": "figmaSubpixel",
+      "transparent": false
+    },
+    "status": "rejected",
+    "error": "Decoded image budget exceeded: 5162x2784 source pixels cannot fit without loss; automatic downsampling is disabled"
+  }
+]

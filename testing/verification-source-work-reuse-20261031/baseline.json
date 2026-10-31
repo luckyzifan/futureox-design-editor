@@ -1,0 +1,24 @@
+{
+  "captured_at": "2026-10-31T00:43:30.165828+00:00",
+  "commit": "a1f39b97223d8e55ed4e7d890aee88cca4289a44",
+  "files": {
+    "design-studio/crates/design-desktop-backend/src/large_document/projection.rs": "5e7eab3d51008b6c89f1aacf5d450d004826faa91b20e80d8c6d0066d40714d8",
+    "design-studio/crates/design-desktop-backend/src/large_document/scene.rs": "648434a4d90ba341fb02d6cff2914fa460a29aab4f423e15e91c06b9eebc93ad",
+    "design-studio/crates/design-desktop-backend/src/large_document/index.rs": "b0ef1d588d99f3afd0cda31a2edae7c2efe2f1984349b1eeae653abe7cf0a99e",
+    "design-studio/crates/design-desktop-backend/src/large_document/canvas_layout.rs": "7370363d5722034b0b9acb89688759ffd94a041b09acb24ac8801af40a3ee896",
+    "design-studio/crates/design-desktop-backend/src/large_document/canvas_snapshot.rs": "bff7f1808a4a20109aa1044f0e9e18873c0e3179ebcae6b92a75a660326a33d7",
+    "design-studio/crates/design-desktop-backend/src/large_document/window_cache.rs": "6bebdd489620241ab72ebed36f9cb5cf90f3263ed46dd9733bbad35b8137558d",
+    "design-studio/crates/design-kernel/src/scene_store.rs": "72c8f0a84124a173ae6e73fc600e9043988a052f2b59bf050132f033b037bce6",
+    "design-studio/crates/design-kernel/src/scene_store/tests.rs": "ffb8ca9375b6aad1f80e2940263a718b9c77c5d82ae1558634ddbf0d151046fc",
+    "design-studio/crates/design-kernel/src/preparation.rs": "36bc7a9c183f794dace00995df9d38000d807f64104c0ff1cf1fce34c60bdf6f",
+    "design-studio/crates/design-kernel/src/preparation/source_snapshot.rs": "19a7c110cbf1cc9f1e920134f78837f11d88ff12e1c2268c70949a7befdde4c7",
+    "design-studio/crates/design-kernel/src/source_compile.rs": "896723b4be21a890f89270ba5a21ea7fffd888419a26489397678cb173dac8b2",
+    "design-studio/crates/design-kernel/src/editing.rs": "ed0616da2c25e1a715aa0f50f4a46a22cd440eee8b0f78a28f81c03adb3c0f04",
+    "design-studio/crates/design-desktop-backend/src/large_document.rs": "5f360817fea64006e19ac0ee77766a2d8e6f66bad72a60d23e6cda8090edd7c3",
+    "design-studio/crates/design-desktop-backend/src/large_document/scene_roundtrip_tests.rs": "ba205d1de6d0f622dd5a230107fbe91d0a32a32a030691669eab7ce106b90a6d"
+  },
+  "binaries": {
+    "design-prepare": "a12a3d02c178aca4ed6d93c4cbdb9e2b2bfdf083bbfd92a3f1dfe50f10c6df80",
+    "futureox-design-desktop-backend": "679de471eea2aad0634ad8bcab24280b72d5142ed3ae43328613d6bc2c64a091"
+  }
+}

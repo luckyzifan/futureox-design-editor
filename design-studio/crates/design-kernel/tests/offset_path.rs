@@ -22,7 +22,7 @@ fn separated_cubic_segments_with_coincident_endpoints_have_closed_offset_boundar
 #[test]
 fn dragging_a_cut_cubic_vertex_keeps_a_tiny_positive_offset_closed() {
     let mut n: Node = serde_json::from_str(include_str!("fixtures/offset-cut-curve.json")).unwrap();
-    let p = &mut n.network.as_mut().unwrap().vertices[0];
+    let p = &mut std::sync::Arc::make_mut(n.network.as_mut().unwrap()).vertices[0];
     p.x -= 30.;
     p.y -= 0.1;
     n.path_offset = 0.001;

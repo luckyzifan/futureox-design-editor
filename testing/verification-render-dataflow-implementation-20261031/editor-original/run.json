@@ -1,0 +1,5 @@
+{
+  "status": "failed",
+  "output": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/forma-property-layout-1QZ1ih",
+  "error": "Error: expect(received).toMatchObject(expected)\n\n- Expected  - 4\n+ Received  + 4\n\n  Object {\n-   \"height\": 940,\n-   \"width\": 863,\n-   \"x\": 297,\n-   \"y\": 0,\n+   \"height\": 898,\n+   \"width\": 855,\n+   \"x\": 305,\n+   \"y\": 42,\n  }"
+}

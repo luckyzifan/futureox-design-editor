@@ -1,0 +1,189 @@
+{
+  "status": "failed",
+  "cases": [],
+  "scope": "Hardware exact before/after output for setup and CPU scene handoff; not whole-editor latency.",
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "fallback": false
+  },
+  "setup": [
+    {
+      "created": [
+        {
+          "entry": "exactNormal",
+          "format": "rgba32float"
+        },
+        {
+          "entry": "exactPresent",
+          "format": "rgba32float"
+        },
+        {
+          "entry": "exactNormalCorner",
+          "format": "rgba32float"
+        },
+        {
+          "entry": "exactCopyCorner",
+          "format": "rgba32float"
+        },
+        {
+          "entry": "exactSolidPaintOver",
+          "format": "rgba32float"
+        },
+        {
+          "entry": "exactResolveStep",
+          "format": "rgba32float"
+        },
+        {
+          "entry": "exactShadowOver",
+          "format": "rgba32float"
+        },
+        {
+          "entry": "exactImageResolveStep",
+          "format": "rgba32float"
+        },
+        {
+          "entry": "exactAlphaResolve",
+          "format": "r32float"
+        },
+        {
+          "entry": "fragment",
+          "channel": 0,
+          "format": "rgba32float"
+        },
+        {
+          "entry": "fragment",
+          "channel": 1,
+          "format": "rgba32float"
+        },
+        {
+          "entry": "fragment",
+          "channel": 2,
+          "format": "rgba32float"
+        },
+        {
+          "entry": "fragment",
+          "channel": 3,
+          "format": "rgba32float"
+        },
+        {
+          "entry": "fragment",
+          "channel": 3,
+          "format": "r32float"
+        },
+        {
+          "entry": "fragment",
+          "channel": 0,
+          "format": "rgba32float"
+        },
+        {
+          "entry": "fragment",
+          "channel": 1,
+          "format": "rgba32float"
+        },
+        {
+          "entry": "fragment",
+          "channel": 2,
+          "format": "rgba32float"
+        },
+        {
+          "entry": "fragment",
+          "channel": 3,
+          "format": "rgba32float"
+        },
+        {
+          "entry": "fragment",
+          "channel": 3,
+          "format": "r32float"
+        },
+        {
+          "entry": "fragmentRgba",
+          "format": "rgba32float"
+        }
+      ],
+      "coldMs": 81.40000009536743
+    },
+    {
+      "created": [
+        {
+          "entry": "exactNormal",
+          "format": "rgba32float"
+        },
+        {
+          "entry": "exactPresent",
+          "format": "rgba32float"
+        },
+        {
+          "entry": "exactNormalCorner",
+          "format": "rgba32float"
+        },
+        {
+          "entry": "exactCopyCorner",
+          "format": "rgba32float"
+        },
+        {
+          "entry": "exactSolidPaintOver",
+          "format": "rgba32float"
+        },
+        {
+          "entry": "exactResolveStep",
+          "format": "rgba32float"
+        },
+        {
+          "entry": "exactShadowOver",
+          "format": "rgba32float"
+        },
+        {
+          "entry": "exactImageResolveStep",
+          "format": "rgba32float"
+        },
+        {
+          "entry": "exactAlphaResolve",
+          "format": "r32float"
+        },
+        {
+          "entry": "fragment",
+          "channel": 0,
+          "format": "rgba32float"
+        },
+        {
+          "entry": "fragment",
+          "channel": 1,
+          "format": "rgba32float"
+        },
+        {
+          "entry": "fragment",
+          "channel": 2,
+          "format": "rgba32float"
+        },
+        {
+          "entry": "fragment",
+          "channel": 3,
+          "format": "rgba32float"
+        },
+        {
+          "entry": "fragment",
+          "channel": 3,
+          "format": "r32float"
+        },
+        {
+          "entry": "fragment",
+          "channel": 3,
+          "format": "rgba32float"
+        },
+        {
+          "entry": "fragment",
+          "channel": 3,
+          "format": "r32float"
+        },
+        {
+          "entry": "fragmentRgba",
+          "format": "rgba32float"
+        }
+      ],
+      "coldMs": 8
+    }
+  ],
+  "error": "Error: Expected removal of exactly three unused pipelines",
+  "stack": "Error: Expected removal of exactly three unused pipelines\n    at http://127.0.0.1:65333/testing/verification-render-dataflow-implementation-20261031/hardware.ts:89:92"
+}

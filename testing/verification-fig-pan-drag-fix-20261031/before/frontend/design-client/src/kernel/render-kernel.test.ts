@@ -1,0 +1,332 @@
+import { emptyFrame } from './gpu/frame-wire.test-helper'
+import { expect, test } from 'vitest'
+import { VectorEngine } from '../generated/design-kernel/design_kernel'
+import { blank, node, paint } from '../model'
+import { decodeScenePacket, scenePacketWitness } from './gpu/scene-packet'
+import { copyWitness } from './compilation-witness'
+import { pixelContentProof, pixelSourceContract } from './gpu/page-background'
+import { PreparationChannel } from './preparation-channel'
+import { RenderKernel } from './render-kernel'
+
+test('native source loads carry an opaque token and adopt the actual native identity',async()=>{
+ const ports=new MessageChannel(),assets=new VectorEngine(),channel=new PreparationChannel(ports.port1),kernel=new RenderKernel(assets,'canvas',channel)
+ const identity={documentId:'native-source',pageId:'source-page',stageId:'source-stage',nodes:124447},seen:unknown[]=[]
+ ports.port2.onmessage=event=>{
+  const {id,method,args}=event.data;seen.push({method,args})
+  ports.port2.postMessage(method==='preparation_capabilities_v1'?{id,value:{protocol:1,nativeSourceSnapshot:true}}:
+   {id,value:identity,settings:'null',stateReceipt:{protocol:1,nonce:'source-owned'}})
+ }
+ try{
+  expect(await kernel.load_source_snapshot('opaque-token')).toEqual(identity)
+  expect(seen).toEqual([{method:'preparation_capabilities_v1',args:[]},{method:'load_source_snapshot',args:['opaque-token']}])
+  expect(kernel.preparationStateReceipt).toMatchObject({nonce:'source-owned'})
+ }finally{channel.close();ports.port2.close();assets.free()}
+})
+
+test('a browser-only kernel cannot interpret a source capability as a file path',async()=>{
+ const assets=new VectorEngine(),kernel=new RenderKernel(assets,'canvas')
+ try{await expect(kernel.load_source_snapshot('/private/source.json')).rejects.toThrow('NATIVE_SOURCE_UNSUPPORTED')}
+ finally{assets.free()}
+})
+
+test('native no-paint metadata proof preserves pixel identity but never document or render-policy changes',async()=>{
+ let damage={full:false,bounds:null as null|number[]}
+ const engine={bind_frame_scene_scope(){},color_settings(){return 'null'},apply_document_patch_with_damage(){return JSON.stringify(damage)}}
+ const kernel=new RenderKernel(engine as unknown as VectorEngine,'canvas'),original=kernel.contentIdentity
+ await kernel.apply_document_patch_with_damage(JSON.stringify({fields:{name:'renamed'},nodes:{}}))
+ expect(kernel.contentIdentity).toBe(original)
+ await kernel.apply_document_patch_with_damage(JSON.stringify({fields:{id:'new-document'},nodes:{}}))
+ expect(kernel.contentIdentity).not.toBe(original)
+ const before=kernel.contentIdentity
+ damage={full:false,bounds:[0,0,1,1]}
+ await kernel.apply_document_patch_with_damage(JSON.stringify({fields:{},nodes:{}}))
+ expect(kernel.contentIdentity).not.toBe(before)
+})
+
+test('late no-paint completion cannot restore an earlier pixel owner over a newer mutation',async()=>{
+ let complete!:(value:string)=>void,calls=0
+ const engine={bind_frame_scene_scope(){},color_settings(){return 'null'},apply_document_patch_with_damage(){
+   return ++calls===1?new Promise<string>(resolve=>complete=resolve):JSON.stringify({full:true,bounds:null})}}
+ const kernel=new RenderKernel(engine as unknown as VectorEngine,'canvas'),original=kernel.contentIdentity
+ const first=kernel.apply_document_patch_with_damage(JSON.stringify({fields:{name:'old'},nodes:{}}))
+ await kernel.apply_document_patch_with_damage(JSON.stringify({fields:{},nodes:{}}));const current=kernel.contentIdentity
+ complete(JSON.stringify({full:false,bounds:null}));await first
+ expect(kernel.contentIdentity).toBe(current);expect(current).not.toBe(original)
+})
+
+// Deliberately adversarial transport for cache revision race tests. Production
+// PreparationChannel now fences physical jobs, just like the serial worker;
+// these tests must still cover late/out-of-order replies independently of it.
+function unorderedPreparation(port: MessagePort): PreparationChannel {
+  let id = 0
+  const pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>()
+  port.onmessage = event => {
+    const reply = event.data, waiter = pending.get(reply.id)
+    if (!waiter) return
+    pending.delete(reply.id)
+    if (reply.error) waiter.reject(new Error(reply.error)); else waiter.resolve(reply)
+  }
+  port.start()
+  return { request(lane: string, method: string, args: unknown[]) {
+    const key = ++id
+    return new Promise((resolve, reject) => { pending.set(key, { resolve, reject }); port.postMessage({ id: key, lane, method, args }) })
+  }, close() { port.close(); for (const p of pending.values()) p.reject(new Error('closed')); pending.clear() } } as unknown as PreparationChannel
+}
+
+
+test('remote managed documents synchronize a valid image-decoder color space and restore unmanaged state', async () => {
+  const remote = new VectorEngine(), assets = new VectorEngine(), ports = new MessageChannel()
+  const channel = new PreparationChannel(ports.port1), kernel = new RenderKernel(assets, 'canvas', channel)
+  ports.port2.onmessage = event => {
+    const { id, method, args } = event.data
+    try {
+      if (method === 'load_document') remote.load_document(args[0])
+      ports.port2.postMessage({ id, settings: remote.color_settings() })
+    } catch (error) { ports.port2.postMessage({ id, error: String(error) }) }
+  }
+  try {
+    const managed = { ...blank(), schemaVersion: 3, rasterProfile: 'figma',
+      colorManagement: { documentSpace: 'display-p3', referenceWhiteNits: 203, peakLuminanceNits: 1000 } }
+    await kernel.load_document(JSON.stringify(managed))
+    expect(JSON.parse(assets.color_settings())).toEqual(managed.colorManagement)
+    expect(kernel.color_settings()).toBe(remote.color_settings())
+    await kernel.load_document(JSON.stringify(blank()))
+    expect(assets.color_settings()).toBe('null'); expect(kernel.color_settings()).toBe('null')
+  } finally { channel.close(); ports.port2.close(); remote.free(); assets.free() }
+})
+
+test('stateless frame replies are byte-exact, privately owned and observe document changes',async()=>{
+  const remote=new VectorEngine(),assets=new VectorEngine(),ports=new MessageChannel()
+  const channel=new PreparationChannel(ports.port1),kernel=new RenderKernel(assets,'canvas',channel)
+  let compilations=0
+  ports.port2.onmessage=event=>{
+    const {id,method,args}=event.data
+    try{
+      let value:Uint8Array|undefined
+      if(method==='load_document')remote.load_document(args[0])
+      if(method==='compile_gpu_packet'){compilations++;value=remote.compile_gpu_packet(args[0])}
+      ports.port2.postMessage({id,value,settings:remote.color_settings()},value?[value.buffer]:[])
+    }catch(error){ports.port2.postMessage({id,error:String(error)})}
+  }
+  try{
+    const document=blank();await kernel.load_document(JSON.stringify(document))
+    const options=JSON.stringify({pageId:document.pages[0].id,width:32,height:32,view:{x:.25,y:.5,zoom:1},transparent:false,grid:false})
+    const first=await kernel.compile_gpu_packet(options),reference=first.slice();first[0]=0
+    expect(await kernel.compile_gpu_packet(options)).toEqual(reference);expect(compilations).toBe(2)
+    document.pages[0].background='#123456';await kernel.load_document(JSON.stringify(document))
+    expect(await kernel.compile_gpu_packet(options)).not.toEqual(reference);expect(compilations).toBe(3)
+  }finally{channel.close();ports.port2.close();remote.free();assets.free()}
+})
+
+test('pending patches revoke resource acknowledgements and late compiles cannot repopulate a newer revision',async()=>{
+  const remote=new VectorEngine(),assets=new VectorEngine(),ports=new MessageChannel()
+  const channel=unorderedPreparation(ports.port1),kernel=new RenderKernel(assets,'canvas',channel)
+  let hold=false,release:(()=>void)|undefined,notice:(()=>void)|undefined,compiles=0
+  ports.port2.onmessage=event=>{
+    const {id,method,args}=event.data
+    try{
+      let value:unknown
+      if(method==='load_document')remote.load_document(args[0])
+      if(method==='compile_gpu_packet'){compiles++;value=remote.compile_gpu_packet(args[0])}
+      if(method==='apply_document_patch_with_damage')value=remote.apply_document_patch_with_damage(args[0])
+      const send=()=>ports.port2.postMessage({id,value,settings:remote.color_settings()},value instanceof Uint8Array?[value.buffer]:[])
+      if(hold&&method==='compile_gpu_packet'){hold=false;release=send;notice?.()}else send()
+    }catch(error){ports.port2.postMessage({id,error:String(error)})}
+  }
+  try{
+    const doc=blank();await kernel.load_document(JSON.stringify(doc))
+    const options=JSON.stringify({pageId:doc.pages[0].id,width:32,height:32,view:{x:0,y:0,zoom:1}})
+    hold=true;const reached=new Promise<void>(resolve=>notice=resolve)
+    const old=kernel.compile_gpu_packet(options);await reached
+    const patch=kernel.apply_document_patch_with_damage(JSON.stringify({fields:{name:'renamed'},nodes:{}}))
+    await patch;release!();await old
+    await kernel.compile_gpu_packet(options);expect(compiles).toBe(2)
+    await kernel.compile_gpu_packet(options);expect(compiles).toBe(3)
+    // Failure revokes any proof too, even when the worker rejects atomically.
+    await expect(kernel.apply_document_patch_with_damage('{broken')).rejects.toThrow()
+    await kernel.compile_gpu_packet(options);expect(compiles).toBe(4)
+  }finally{channel.close();ports.port2.close();remote.free();assets.free()}
+})
+
+test('concurrent identical compiles share work, never transferable ownership, and failures can retry', async () => {
+  const assets = new VectorEngine(), ports = new MessageChannel()
+  const channel = new PreparationChannel(ports.port1), kernel = new RenderKernel(assets, 'canvas', channel)
+  let compilations = 0, fail = false
+  ports.port2.onmessage = event => {
+    const { id, method } = event.data
+    if (method !== 'compile_gpu_packet') { ports.port2.postMessage({ id }); return }
+    compilations++
+    const value = emptyFrame(17)
+    ports.port2.postMessage(fail ? { id, error: 'compile rejected' } : { id, value }, fail ? [] : [value.buffer])
+  }
+  try {
+    const a = kernel.compile_gpu_packet('{}').then(bytes => {
+      // A caller can transfer immediately, before other waiters resume.
+      return structuredClone(bytes, { transfer: [bytes.buffer] })
+    })
+    const [first, second, third] = await Promise.all([a, kernel.compile_gpu_packet('{}'), kernel.compile_gpu_packet('{}')])
+    expect(compilations).toBe(1); expect(kernel.packetCoalesced).toBe(2)
+    expect(first).toEqual(second); expect(second).toEqual(third)
+    expect(first.buffer).not.toBe(second.buffer); expect(second.buffer).not.toBe(third.buffer)
+    second[0] = 0; expect(third[0]).toBe(70)
+    await kernel.load_document('{}'); fail = true
+    const rejected = await Promise.allSettled([kernel.compile_gpu_packet('{}'), kernel.compile_gpu_packet('{}')])
+    expect(rejected.every(result => result.status === 'rejected')).toBe(true); expect(compilations).toBe(2)
+    fail = false; expect(await kernel.compile_gpu_packet('{}')).toEqual(first); expect(compilations).toBe(3)
+  } finally { channel.close(); ports.port2.close(); assets.free() }
+})
+
+test('completion from an old revision cannot remove or share the newer in-flight packet', async () => {
+  const assets = new VectorEngine(), ports = new MessageChannel()
+  const channel = unorderedPreparation(ports.port1), kernel = new RenderKernel(assets, 'canvas', channel)
+  const requests: (() => void)[] = []
+  let notice: (() => void) | undefined, compilations = 0
+  ports.port2.onmessage = event => {
+    const { id, method } = event.data
+    if (method !== 'compile_gpu_packet') { ports.port2.postMessage({ id }); return }
+    const value = emptyFrame(++compilations)
+    requests.push(() => ports.port2.postMessage({ id, value }, [value.buffer])); notice?.()
+  }
+  const arrived = () => new Promise<void>(resolve => notice = resolve)
+  try {
+    let event = arrived(); const old = kernel.compile_gpu_packet('{}'); await event
+    await kernel.load_document('{}')
+    event = arrived(); const current = kernel.compile_gpu_packet('{}'); await event
+    requests[0](); expect(await old).toEqual(emptyFrame(1))
+    const join = kernel.compile_gpu_packet('{}')
+    requests[1](); expect(await current).toEqual(emptyFrame(2)); expect(await join).toEqual(emptyFrame(2))
+    expect(compilations).toBe(2)
+    event=arrived();const next=kernel.compile_gpu_packet('{}');await event
+    requests[2]();expect(await next).toEqual(emptyFrame(3))
+  } finally { channel.close(); ports.port2.close(); assets.free() }
+})
+
+test('cancelling one packet waiter neither cancels exact output nor waits for a shared compile', async () => {
+  const assets = new VectorEngine(), ports = new MessageChannel()
+  const channel = new PreparationChannel(ports.port1), kernel = new RenderKernel(assets, 'canvas', channel)
+  const requests: any[] = []
+  ports.port2.onmessage = event => requests.push(event.data)
+  const waitFor = async (count: number) => { while (requests.length < count) await new Promise(resolve => setTimeout(resolve, 1)) }
+  try {
+    const exact = kernel.compile_gpu_packet('{}')
+    await waitFor(1)
+    const controller = new AbortController()
+    const preview = kernel.compile_gpu_packet('{}', controller.signal)
+    const cancelled = expect(preview).rejects.toThrow('PREVIEW_CANCELLED')
+    controller.abort()
+    ports.port2.postMessage({ id: requests[0].id, value: emptyFrame(7) })
+    await cancelled
+    expect(await exact).toEqual(emptyFrame(7))
+  } finally { channel.close(); ports.port2.close(); assets.free() }
+})
+
+test('a cancellable first consumer never owns an exact output sharing its options', async () => {
+  const assets = new VectorEngine(), ports = new MessageChannel()
+  const channel = new PreparationChannel(ports.port1), kernel = new RenderKernel(assets, 'canvas', channel)
+  const requests: any[] = []
+  ports.port2.onmessage = event => requests.push(event.data)
+  const waitFor = async (count: number) => { while (requests.length < count) await new Promise(resolve => setTimeout(resolve, 1)) }
+  try {
+    const controller = new AbortController()
+    const preview = kernel.compile_gpu_packet('{}', controller.signal)
+    const cancelled = expect(preview).rejects.toThrow('PREVIEW_CANCELLED')
+    const exact = kernel.compile_gpu_packet('{}')
+    // Attach immediately so this regression cannot hide as unhandled rejection.
+    const outcome = exact.then(value => ({ value }), error => ({ error }))
+    await waitFor(1); controller.abort(); await cancelled
+    ports.port2.postMessage({ id: requests[0].id, value: emptyFrame(1) })
+    // An exact consumer must get its own physical dispatch, not cancelled bytes.
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(requests).toHaveLength(2)
+    ports.port2.postMessage({ id: requests[1].id, value: emptyFrame(9) })
+    expect(await outcome).toEqual({ value: emptyFrame(9) })
+  } finally { channel.close(); ports.port2.close(); assets.free() }
+})
+
+test.each(['prepare_gpu_packet','prepare_gpu_scene'] as const)('production receipt rejects an old packet after a delayed compile crosses a document mutation (%s)', async prepare => {
+  const assets = new VectorEngine(), ports = new MessageChannel()
+  const channel = unorderedPreparation(ports.port1), kernel = new RenderKernel(assets, 'canvas', channel)
+  let release!: () => void, notice!: () => void
+  const started = new Promise<void>(resolve => { notice = resolve })
+  ports.port2.onmessage = event => {
+    const { id, method } = event.data
+    if (method === 'compile_gpu_packet') { release = () => ports.port2.postMessage({ id, value: emptyFrame(3) }); notice() }
+    else ports.port2.postMessage({ id })
+  }
+  try {
+    const packet = kernel[prepare]('{}')
+    const rejected = expect(packet).rejects.toThrow('STALE_PREPARED_PACKET')
+    await started; await kernel.load_document('{}'); release(); await rejected
+  } finally { channel.close(); ports.port2.close(); assets.free() }
+})
+
+test.each(['prepare_gpu_packet','prepare_gpu_scene'] as const)('production receipt is bound to one lane, mutation epoch and pre-encoder cancellation (%s)', async prepare => {
+  const assets = new VectorEngine(), ports = new MessageChannel()
+  const channel = new PreparationChannel(ports.port1), kernel = new RenderKernel(assets, 'interaction', channel)
+  ports.port2.onmessage = event => ports.port2.postMessage({ id: event.data.id, value: event.data.method === 'compile_gpu_packet' ? emptyFrame(8) : undefined })
+  try {
+    await kernel.load_document('{}')
+    const first = await kernel[prepare]('{}')
+    expect(first.certificate).toEqual({ lane: 'interaction', revision: 1, options: '{}', settings: 'null' })
+    await kernel.load_document('{}')
+    expect(() => first.consume()).toThrow('STALE_PREPARED_PACKET')
+    const signal = new AbortController(), cancelled = await kernel[prepare]('{}', signal.signal)
+    signal.abort(); expect(() => cancelled.consume()).toThrow('PREVIEW_CANCELLED')
+    const exact = await kernel[prepare]('{}')
+    expect(decodeScenePacket(exact.consume()).width).toBe(8)
+    expect(() => exact.consume()).toThrow('PREPARED_PACKET_CONSUMED')
+  } finally { channel.close(); ports.port2.close(); assets.free() }
+})
+
+test.each(['prepare_gpu_packet','prepare_gpu_scene'] as const)('pending mutation cannot produce a receipt; aborted requests never return bytes (%s)', async prepare => {
+  const assets = new VectorEngine(), ports = new MessageChannel()
+  const channel = new PreparationChannel(ports.port1), kernel = new RenderKernel(assets, 'canvas', channel)
+  let release!: () => void, notice!: () => void, held = false
+  ports.port2.onmessage = event => {
+    const { id, method } = event.data
+    const send = () => ports.port2.postMessage({ id, value: method === 'compile_gpu_packet' ? emptyFrame(6) : undefined })
+    if (held && method === 'load_document') { release = send; notice() } else send()
+  }
+  try {
+    await kernel.compile_gpu_packet('{}')
+    const signal = new AbortController(); signal.abort()
+    await expect(kernel[prepare]('{}', signal.signal)).rejects.toThrow('PREVIEW_CANCELLED')
+    held = true
+    const started = new Promise<void>(resolve => { notice = resolve })
+    const mutation = kernel.load_document('{}'); await started
+    await expect(kernel[prepare]('{}')).rejects.toThrow('DOCUMENT_PREPARATION_PENDING')
+    release(); await mutation
+    expect(decodeScenePacket((await kernel[prepare]('{}')).consume()).width).toBe(6)
+  } finally { channel.close(); ports.port2.close(); assets.free() }
+})
+
+
+test('mixed scene/transport consumers share compilation but retain private program ownership',async()=>{
+ const remote=new VectorEngine(),assets=new VectorEngine(),ports=new MessageChannel()
+ const channel=new PreparationChannel(ports.port1),kernel=new RenderKernel(assets,'canvas',channel)
+ const doc=blank(),shape=node('ellipse',0,0,32,24);shape.fills=[paint('#ff0000')]
+ doc.nodes[shape.id]=shape;doc.pages[0].children=[shape.id];remote.load_document(JSON.stringify(doc));remote.bind_frame_scene_scope('handoff-mixed')
+ const options=JSON.stringify({pageId:doc.pages[0].id,width:64,height:64,view:{x:0,y:0,zoom:1}})
+ let compiles=0
+ ports.port2.onmessage=event=>{const {id,args}=event.data;compiles++;const value=remote.compile_gpu_packet(args[0]);ports.port2.postMessage({id,value},[value.buffer])}
+ try{
+  const transferred=kernel.compile_gpu_packet(options).then(bytes=>structuredClone(bytes,{transfer:[bytes.buffer]}))
+  const [packet,a,b]=await Promise.all([transferred,kernel.prepare_gpu_scene(options),kernel.prepare_gpu_scene(options)])
+  expect(compiles).toBe(1);expect(kernel.packetCoalesced).toBe(2)
+  const aa=a.consume(),bb=b.consume(),expected=decodeScenePacket(packet)
+  // Transfer deliberately drops worker-private symbols; compare public scene
+  // values, then verify each CPU handoff retained its private content proof.
+  for(const scene of [aa.scene,bb.scene]){
+   expect(Object.fromEntries(Object.entries(scene))).toEqual(Object.fromEntries(Object.entries(expected)))
+   const proof=pixelContentProof(scene)
+   expect(proof?.owner).toBe(kernel.contentIdentity);expect(proof?.contract).toBe(pixelSourceContract(JSON.parse(options)))
+  }
+  expect(copyWitness(scenePacketWitness(aa))).toEqual(copyWitness(scenePacketWitness(bb)))
+  if(!(aa.scene.vertices instanceof Float32Array)||!(bb.scene.vertices instanceof Float32Array))throw Error('Expected typed geometry')
+  expect(aa.scene.vertices.length+(aa.scene.curves?.length??0)).toBeGreaterThan(0)
+  expect(aa.scene.vertices.buffer).not.toBe(bb.scene.vertices.buffer)
+  const ownedA=new Uint8Array(aa.scene.vertices.buffer),ownedB=new Uint8Array(bb.scene.vertices.buffer),before=ownedB.slice()
+  ownedA[0]^=1
+  expect(ownedB).toEqual(before);expect(()=>a.consume()).toThrow('PREPARED_PACKET_CONSUMED')
+ }finally{channel.close();ports.port2.close();assets.free();remote.free()}
+})

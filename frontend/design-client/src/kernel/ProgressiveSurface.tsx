@@ -9,7 +9,7 @@ import { renderFailureFields } from './render-failure-telemetry'
 import { isRecoverablePreviewBudget } from './preview-budget-recovery'
 import { allowsResidentSdr, usesDesktopDisplay } from './render-policy'
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { SurfaceProps } from './Surface'
+import type { SurfaceProps, PresentedFrame } from './Surface'
 import { KernelClient, renderExecutionPolicy, type TileDamage, type TileResult } from './client'
 import { paintDamageIntersects } from './paint-damage'
 import { recordRenderDiagnostic, renderDiagnosticError, renderDiagnostics } from './render-diagnostics'
@@ -19,7 +19,7 @@ import { TILE_SIDE, budgetTileLimit, displayTileBudget, tilesCoverBounds, type R
 import { planTilesAligned, planTilesWithPrefetchRim, tilePrefetchRingsFromHost } from './tile-plan-aligned'
 import { preservesNativePanPhase, canvasLodScale, canvasRasterPlan, canvasRasterPhaseMatches, canvasSamplingScale, motionRasterScale, nativeTileMotionScale, gestureRasterScale, gestureViewportCapture } from './canvas-raster-plan'
 import { pageHasFilteredContent } from './canvas-effect-sampling'
-import { frameTransform, useDevicePixelRatio, useDisplayCapability } from './presentation'
+import { frameTransform, presentationMatches, useDevicePixelRatio, useDisplayCapability } from './presentation'
 import { LodSnapshotCache } from './lod-snapshot-cache'
 import { tileHasNativePhase, tileIntersectsView, tilePlacementAtView, tilePreviewContractMatches } from './tile-preview'
 import { useRasterDensity } from './use-raster-density'
@@ -469,6 +469,7 @@ export function ProgressiveSurfaceImpl(
   const sequentialRepair = useRef<{ contract: object; width: number; height: number; dpr: number; owner?: object } | null>(null)
   const displayRetries = useRef<{ key: string; attempts: number; timer?: ReturnType<typeof setTimeout> }>({ key: '', attempts: 0 })
   const [displayed, setDisplayed] = useState<DisplayFrame | null>(null)
+  const [acceptedBacking, setAcceptedBacking] = useState<{ identity:string; client:KernelClient | null } | null>(null)
   useLayoutEffect(() => {
     const previous = heldDisplay.current
     heldDisplay.current = displayed
@@ -2368,6 +2369,15 @@ export function ProgressiveSurfaceImpl(
     grid: visual.grid, checkerboard: visual.checkerboard, pixelPreview: visual.pixelPreview, rasterProfile: visual.rasterProfile,
     displayCapability: visual.displayCapability, computeBackend: visual.computeBackend, preview: !!cameraPreview,
   } : null
+  const observeBacking = (frame: PresentedFrame | null | undefined) => {
+    if (!frame || frame.document.id !== doc.id || frame.computeBackend && frame.computeBackend !== backend ||
+        !presentationMatches(frame, { document:frame.document, pageId, epoch:props.presentationEpoch || 0,
+          view:frame.view, width, height, pixelRatio:dpr, grid:props.grid, checkerboard:props.checkerboard,
+          pixelPreview:props.pixelPreview, rasterProfile, animation:props.animation, displayCapability })) return
+    const owner = client.current
+    setAcceptedBacking(old => old?.identity === identity && old.client === owner ? old : { identity, client:owner })
+  }
+  const hasAcceptedBacking = singleCanvas && acceptedBacking?.identity === identity && acceptedBacking.client === rasterClient
   useLayoutEffect(() => {
     // Offscreen GPU submission is asynchronous. Only its reply can publish
     // the camera; synchronous CSS/WebGL placement keeps this immediate path.
@@ -2485,7 +2495,9 @@ export function ProgressiveSurfaceImpl(
           // Upload/acknowledge tiles while hidden. The first visible canvas
           // must have a complete acknowledged viewport, including on a page
           // change. Later camera previews keep the previous complete frame.
-          visibility: props.visible === false || !displayed && cachedPreviewCount === 0 && !previewReplacement ? 'hidden' : 'visible',
+          // A real accepted preview stays visible while tile categories/plan
+          // generations change. Readiness counters cannot hide its backbuffer.
+          visibility: props.visible === false || !hasAcceptedBacking && !displayed && cachedPreviewCount === 0 && !previewReplacement ? 'hidden' : 'visible',
           pointerEvents: 'none',
         }}
       >
@@ -2511,7 +2523,7 @@ export function ProgressiveSurfaceImpl(
             cameraMoving&&!zooming&&reusableFrame&&!!displayed&&!displayed.preview&&
             displayed.view.zoom===requestedView.zoom,panBacking:reusableFrame&&displayed&&!displayed.preview?displayed:undefined}: {})}
           onTranslatedCoverage={residentDisplay ? (source,offset,sequence,failed)=>translationCoverage.current?.({source,offset,sequence,failed})===true : undefined}
-          onComposited={residentDisplay ? undefined : props.onPresentation}
+          onComposited={residentDisplay ? undefined : frame => { observeBacking(frame); props.onPresentation?.(frame) }}
           terminalQuality={complete ? { qualitySequence: terminalQualityState.current.sequence,
             qualityRevision: contract.revision, pageToken: diagnosticPage.current.token } : undefined}
           overlay={props.overlay}
@@ -2522,6 +2534,7 @@ export function ProgressiveSurfaceImpl(
           interaction={navigationZoom.active ? undefined : props.interaction?{...props.interaction,navigating:cameraMoving}:undefined} pageId={pageId} rasterProfile={rasterProfile} backend={backend}
           settledDocument={fullPlanReady ? doc : undefined}
           onPresented={(frame,source,device?: ViewportPreviewDevice)=>{
+            observeBacking(source)
             const deviceKey = viewportPreviewDeviceKey(device), c = client.current
             if (deviceKey && device?.client === c) {
               const previousDevice = previewDevice.current

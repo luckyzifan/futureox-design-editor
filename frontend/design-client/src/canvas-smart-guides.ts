@@ -14,9 +14,10 @@ export type SmartSnapResult = {
   dx: number
   dy: number
   guides: [SmartGuideSegment | null, SmartGuideSegment | null]
+  targetSpans?: [readonly [number, number] | null, readonly [number, number] | null]
 }
 
-/** Bounds list -> flat [x,y,w,h] rows; the kernel rounds onto its integer grid. */
+/** Preserve fractional world coordinates through the kernel snap query. */
 export function flatRects(rects: Bounds[]): Float64Array {
   const values = new Float64Array(rects.length * 4)
   rects.forEach((r, i) => values.set([r.x, r.y, r.width, r.height], i * 4))
@@ -26,7 +27,7 @@ export function flatRects(rects: Bounds[]): Float64Array {
 /** Parse the kernel JSON back into finite numbers, failing closed so a
  * malformed payload can never displace a drag. */
 export function parseSmartSnap(json: string): SmartSnapResult {
-  const parsed = JSON.parse(json) as { dx?: unknown; dy?: unknown; guides?: unknown }
+  const parsed = JSON.parse(json) as { dx?: unknown; dy?: unknown; guides?: unknown; targetSpans?: unknown }
   const guide = (value: unknown): SmartGuideSegment | null => {
     if (!value || typeof value !== 'object') return null
     const g = value as Record<string, unknown>
@@ -41,11 +42,27 @@ export function parseSmartSnap(json: string): SmartSnapResult {
   const dx = Number(parsed.dx),
     dy = Number(parsed.dy),
     list = Array.isArray(parsed.guides) ? parsed.guides : []
+  const span = (value: unknown): readonly [number, number] | null => Array.isArray(value) && value.length === 2 &&
+    value.every(v => typeof v === 'number' && Number.isFinite(v)) && value[0] <= value[1] ? [value[0],value[1]] : null
   return {
     dx: Number.isFinite(dx) ? dx : 0,
     dy: Number.isFinite(dy) ? dy : 0,
     guides: [guide(list[0]), guide(list[1])],
+    ...(Array.isArray(parsed.targetSpans) ? { targetSpans:[span(parsed.targetSpans[0]),span(parsed.targetSpans[1])] as SmartSnapResult['targetSpans'] } : {}),
   }
+}
+
+/** Draw the solver's chosen targets against the final constrained rectangle.
+ * This changes chrome extents only; Rust remains the alignment authority. */
+export function placedSmartGuides(result: SmartSnapResult | undefined, moving: Bounds, axes: {x:boolean;y:boolean}) {
+  const project = (slot: 0 | 1): SmartGuideSegment | undefined => {
+    const guide = result?.guides[slot]
+    if (!guide || !(slot === 0 ? axes.x : axes.y)) return
+    const span = result?.targetSpans?.[slot]
+    const start = slot === 0 ? moving.y : moving.x, end = start + (slot === 0 ? moving.height : moving.width)
+    return { ...guide, start:Math.min(span?.[0] ?? guide.start,start), end:Math.max(span?.[1] ?? guide.end,end) }
+  }
+  return { x:project(0), y:project(1) }
 }
 
 const NO_SNAP: SmartSnapResult = { dx: 0, dy: 0, guides: [null, null] }

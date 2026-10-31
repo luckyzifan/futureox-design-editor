@@ -1,0 +1,5 @@
+{
+  "source": "testing/verification-render-dataflow-implementation-20261031/before/frontend/design-client/src/kernel/gpu/webgpu.ts",
+  "sha256": "0484615a964e1510e8f7140e3c92795dd9f3575a17e5085dc3bd152b94a98de2",
+  "adaptation": "Only relative imports rebased to the unchanged current dependency modules; shader arithmetic is the same."
+}

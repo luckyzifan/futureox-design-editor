@@ -1,0 +1,5 @@
+{
+  "status": "failed",
+  "output": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-dataflow-editor-8QpEoD",
+  "error": "Error: expect(locator).toHaveAttribute(expected) failed\n\nLocator: locator('.kernel-presentation')\nExpected: \"true\"\nTimeout: 30000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toHaveAttribute\" locator('.kernel-presentation') with timeout 30000ms\n  - waiting for locator('.kernel-presentation')\n"
+}

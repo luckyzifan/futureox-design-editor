@@ -1,0 +1,38 @@
+{
+  "copied_at": "2026-10-31T01:07:44.499996+00:00",
+  "build_log": "candidate-build.log",
+  "files": {
+    "design-studio/crates/design-desktop-backend/src/large_document/projection.rs": "f1a0443c93e28f3de9b988945c82e8b3b5c8566586753dab93efa7316dc05957",
+    "design-studio/crates/design-desktop-backend/src/large_document/scene.rs": "6394876adf8b21d00e159df70766e76e9ea74989ebee3028666a77fb441a2231",
+    "design-studio/crates/design-desktop-backend/src/large_document/index.rs": "3741abc0955d19c084782b7451cee0d94556fa47b03c3ea26ce666ebbcc1620d",
+    "design-studio/crates/design-desktop-backend/src/large_document/canvas_layout.rs": "e11412e021b70f44c0c5f0d3234d47de8b0a02f23434668f81f9278c34b13bc2",
+    "design-studio/crates/design-desktop-backend/src/large_document/canvas_snapshot.rs": "bff7f1808a4a20109aa1044f0e9e18873c0e3179ebcae6b92a75a660326a33d7",
+    "design-studio/crates/design-desktop-backend/src/large_document/window_cache.rs": "131a1953a645aa64781ce98e2561a6193f3ab6e10563170c8cbb0400d74eb166",
+    "design-studio/crates/design-kernel/src/scene_store.rs": "486de739492844338465d652cb6a1377a38da31d0e5e722453bfef85c956cdf0",
+    "design-studio/crates/design-kernel/src/scene_store/tests.rs": "48fbe8c3a67e462e5d1d4aeac7458ee2f24b42883dfdbf53b18744f1d4b7d03b",
+    "design-studio/crates/design-kernel/src/preparation.rs": "36bc7a9c183f794dace00995df9d38000d807f64104c0ff1cf1fce34c60bdf6f",
+    "design-studio/crates/design-kernel/src/preparation/source_snapshot.rs": "19a7c110cbf1cc9f1e920134f78837f11d88ff12e1c2268c70949a7befdde4c7",
+    "design-studio/crates/design-kernel/src/source_compile.rs": "896723b4be21a890f89270ba5a21ea7fffd888419a26489397678cb173dac8b2",
+    "design-studio/crates/design-kernel/src/editing.rs": "ed0616da2c25e1a715aa0f50f4a46a22cd440eee8b0f78a28f81c03adb3c0f04",
+    "design-studio/crates/design-desktop-backend/src/large_document.rs": "1293b6bcf04b26f41faf7bfddb77804ae0f1464ddcdc7be3f648e7d23acc0b21",
+    "design-studio/crates/design-desktop-backend/src/large_document/scene_roundtrip_tests.rs": "f42c4ac449e194991b52c578649c7d22dcad129b6108ca75753f616d9ae51327",
+    "design-studio/crates/design-kernel/src/scene_store/record_node.rs": "e0e640db55377b86424c08b98d6c0609f43c414ab8e84cb1df193c1fd4b512b5"
+  },
+  "binaries": {
+    "design-prepare": "e0b78fafdd2ada467deead4e57f08f0083a74399420f0fc4d0584c4dca3bd8b7",
+    "futureox-design-desktop-backend": "6291c5e089588ccc136691aae8b727a7bb50255d4be4624d1eff0dc95851a803"
+  },
+  "note": "Initial release build succeeded; redundant verification build was cancelled while queued behind unrelated cargo build.",
+  "concurrent_source_changes": [
+    "design-studio/crates/design-kernel/src/preparation.rs",
+    "design-studio/crates/design-kernel/src/preparation/source_snapshot.rs"
+  ],
+  "binary_probe": {
+    "baseline": {
+      "metadata_experiment_literal_present": false
+    },
+    "candidate": {
+      "metadata_experiment_literal_present": false
+    }
+  }
+}

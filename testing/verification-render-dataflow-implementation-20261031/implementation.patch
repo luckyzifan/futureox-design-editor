@@ -1,0 +1,2182 @@
+--- a/design-studio/crates/design-kernel/src/scene.rs
++++ b/design-studio/crates/design-kernel/src/scene.rs
+@@ -184,24 +184,24 @@
+ #[serde(rename_all = "camelCase")]
+ pub struct Node {
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+-    pub repeat: Option<crate::repeat::Repeat>,
++    pub repeat: Option<Box<crate::repeat::Repeat>>,
+     /// Disposable render-scene selection ownership; never authored or serialized.
+     #[serde(skip)]
+     pub(crate) repeat_origin: Option<String>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+-    pub vector_brush: Option<crate::vector_brush::VectorBrush>,
++    pub vector_brush: Option<Box<crate::vector_brush::VectorBrush>>,
+     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+     pub guides: Vec<RulerGuide>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+-    pub text_path: Option<crate::text_path::TextPath>,
++    pub text_path: Option<Box<crate::text_path::TextPath>>,
+     #[serde(default, skip_serializing_if = "is_zero")]
+     pub path_offset: f64,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+-    pub connector: Option<crate::connectors::Connector>,
+-    #[serde(default, skip_serializing_if = "Option::is_none")]
+-    pub board: Option<BoardContent>,
+-    #[serde(default, skip_serializing_if = "Option::is_none")]
+-    pub layout_grid: Option<LayoutGrid>,
++    pub connector: Option<Box<crate::connectors::Connector>>,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub board: Option<Box<BoardContent>>,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub layout_grid: Option<Box<LayoutGrid>>,
+     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+     pub export_settings: Vec<ExportSetting>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+@@ -261,7 +261,7 @@
+     #[serde(default = "half")]
+     pub inner_radius: f64,
+     #[serde(default)]
+-    pub network: Option<Network>,
++    pub network: Option<std::sync::Arc<Network>>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub vector_geometry: Option<std::sync::Arc<crate::vector_geometry::VectorGeometry>>,
+     #[serde(default)]
+@@ -269,7 +269,7 @@
+     #[serde(default = "font_size")]
+     pub font_size: f64,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+-    pub text_style: Option<crate::font::TextStyle>,
++    pub text_style: Option<Box<crate::font::TextStyle>>,
+     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+     pub text_runs: Vec<crate::font::TextRun>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+@@ -279,15 +279,25 @@
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub constraints: Option<crate::layout::Constraints>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+-    pub component: Option<crate::components::Component>,
++    pub component: Option<Box<crate::components::Component>>,
+     #[serde(default, skip_serializing_if = "crate::components::is_false")]
+     pub component_set: bool,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub component_key: Option<String>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+-    pub instance: Option<crate::components::Instance>,
+-    #[serde(default, skip_serializing_if = "Option::is_none")]
+-    pub instance_origin: Option<crate::components::Origin>,
++    pub instance: Option<Box<crate::components::Instance>>,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub instance_origin: Option<Box<crate::components::Origin>>,
++}
++impl Node {
++    /// Freeze owned large-element vectors before publishing an immutable
++    /// snapshot. Do this per node while loading/adopting, never by rebuilding
++    /// the whole map or shrinking/growing every pointer-frame draft.
++    pub(crate) fn compact_storage(&mut self) {
++        if self.fills.capacity() > self.fills.len() { self.fills.shrink_to_fit(); }
++        if self.strokes.capacity() > self.strokes.len() { self.strokes.shrink_to_fit(); }
++        if self.effects.capacity() > self.effects.len() { self.effects.shrink_to_fit(); }
++    }
+ }
+ #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+ pub struct Paint {
+@@ -1625,3 +1635,32 @@
+         }
+     }
+ }
++
++#[cfg(test)]
++mod storage_layout_tests {
++    use super::*;
++    use std::sync::Arc;
++    #[test]
++    fn shared_network_detaches_only_for_a_real_geometry_write() {
++        let mut source=crate::facet::sample_node("n","vector");source.width=10.;source.height=10.;
++        source.network=Some(serde_json::from_value(serde_json::json!({"vertices":[{"id":"a","x":-0.0,"y":1.25},{"id":"b","x":10,"y":10}],"edges":[{"id":"e","from":"a","to":"b","c1":{"x":1,"y":2}}],"fillRule":"nonzero"})).unwrap());
++        let encoded=serde_json::to_vec(&source).unwrap();let mut copy=source.clone();
++        assert!(Arc::ptr_eq(source.network.as_ref().unwrap(),copy.network.as_ref().unwrap()));
++        crate::mutation::resize(&mut copy,10.,10.);
++        assert!(Arc::ptr_eq(source.network.as_ref().unwrap(),copy.network.as_ref().unwrap()));
++        crate::mutation::resize(&mut copy,20.,30.);
++        assert!(!Arc::ptr_eq(source.network.as_ref().unwrap(),copy.network.as_ref().unwrap()));
++        assert_eq!(serde_json::to_vec(&source).unwrap(),encoded);
++        assert_eq!(copy.network.as_ref().unwrap().vertices[1].x,20.);
++        assert_eq!(copy.network.as_ref().unwrap().vertices[1].y,30.);
++        assert_eq!(copy.network.as_ref().unwrap().vertices[0].x.to_bits(),(-0_f64).to_bits());
++    }
++    #[test]
++    fn frozen_vector_capacity_keeps_wire_values_and_cold_payloads_are_indirect() {
++        let mut n=crate::facet::sample_node("n","rectangle");n.fills.reserve(30);n.effects.reserve(10);n.strokes.reserve(10);
++        let encoded=serde_json::to_vec(&n).unwrap();n.compact_storage();
++        assert_eq!(serde_json::to_vec(&n).unwrap(),encoded);
++        assert_eq!(n.fills.capacity(),n.fills.len());assert_eq!(n.effects.capacity(),0);assert_eq!(n.strokes.capacity(),0);
++        assert!(std::mem::size_of::<Node>()<=1024,"hot Node slots must not regain inline cold payloads: {}",std::mem::size_of::<Node>());
++    }
++}
+--- a/design-studio/crates/design-kernel/src/paint.rs
++++ b/design-studio/crates/design-kernel/src/paint.rs
+@@ -11,7 +11,7 @@
+ };
+ #[derive(Clone, Default)]
+ pub struct Images {
+-    cache: HashMap<String, CachedImage>,
++    cache: HashMap<Arc<str>, CachedImage>,
+     pixels: usize,
+     settings: Option<crate::color::ColorSettings>,
+     mips: bool,
+@@ -101,7 +101,7 @@
+         }
+         let mut pixels = 0;
+         self.cache.retain(|uri, image| {
+-            let keep = referenced.contains(uri.as_str());
++            let keep = referenced.contains(uri.as_ref());
+             if keep {
+                 pixels += image.resident_pixels();
+             }
+@@ -206,7 +206,7 @@
+                 other => other?,
+             };
+             self.pixels += count;
+-            self.cache.insert(data.to_owned(), CachedImage {
++            self.cache.insert(Arc::from(data), CachedImage {
+                 base: Arc::new(surface),
+                 chain: Vec::new(),
+             });
+--- a/design-studio/crates/design-kernel/src/font.rs
++++ b/design-studio/crates/design-kernel/src/font.rs
+@@ -515,12 +515,12 @@
+             n.text.clear();
+             n.text_runs.clear();
+             n.derived_path = Some(Arc::new(span.outline));
+-            n.network = Some(crate::scene::Network {
++            n.network = Some((crate::scene::Network {
+                 vertices: vec![],
+                 edges: vec![],
+                 filled_faces: None,
+                 fill_rule: "nonzero".into(),
+-            });
++            }).into());
+             if let Some(color) = span.color {
+                 n.fills = vec![crate::scene::Paint {
+                     id: String::new(),
+@@ -946,7 +946,7 @@
+             &node.text_runs,
+             width,
+             output,
+-            node.text_path.as_ref(),
++            node.text_path.as_deref(),
+         )?;
+         if style.writing_mode == "horizontal" && node.text_path.is_none() {
+             let offset = (node.height - result.height).max(0.) * match style.vertical_align.as_str() { "center" => 0.5, "bottom" => 1., _ => 0. };
+@@ -981,7 +981,7 @@
+             &node.text_runs,
+             width,
+             OutlineOutput::None,
+-            node.text_path.as_ref(),
++            node.text_path.as_deref(),
+         )
+     }
+     pub fn node_path(&self, node: &Node) -> Result<Path, String> {
+--- a/design-studio/crates/design-kernel/src/layout.rs
++++ b/design-studio/crates/design-kernel/src/layout.rs
+@@ -368,8 +368,11 @@
+     frame: &str,
+     children_before: &[String],
+ ) -> Result<(), String> {
++    enforce_node_layout_invariants(&doc.nodes, frame, children_before)
++}
++fn enforce_node_layout_invariants(nodes: &BTreeMap<String, Node>, frame: &str, children_before: &[String]) -> Result<(), String> {
+     let violation = |what: &str| Err(format!("Stack layout invariant violated: {what}"));
+-    let f = &doc.nodes[frame];
++    let f = &nodes[frame];
+     if f.children != children_before {
+         return violation("child order must stay stable across a solve");
+     }
+@@ -377,7 +380,7 @@
+         return violation("container size must stay finite and non-negative");
+     }
+     for id in children_before {
+-        let n = &doc.nodes[id];
++        let n = &nodes[id];
+         if ![n.width, n.height].iter().all(|v| v.is_finite() && *v >= 0.)
+             || n.transform.0.iter().any(|v| !v.is_finite())
+         {
+@@ -569,20 +572,24 @@
+         .filter(|l| l.mode == Flow::Grid)
+         .ok_or("Not a grid frame")?
+         .clone();
+-    grid_with_tracks(&mut doc.clone(), id, &layout)
+-}
+-
+-fn grid_with_tracks(
+-    doc: &mut Document,
+-    id: &str,
+-    l: &Layout,
+-) -> Result<(Vec<f64>, Vec<f64>), String> {
+-    let children_before = doc.nodes[id].children.clone();
+-    let ids: Vec<_> = doc.nodes[id]
++    // Grid tracks consume only this frame and its direct children. Keep the
++    // original full admission above, but never clone unrelated islands merely
++    // to answer a read-only overlay query.
++    let mut nodes = n.children.iter().chain(std::iter::once(&n.id))
++        .map(|id| (id.clone(), doc.nodes[id].clone())).collect();
++    grid_node_tracks(&mut nodes, id, &layout)
++}
++
++fn grid_with_tracks(doc: &mut Document, id: &str, l: &Layout) -> Result<(Vec<f64>, Vec<f64>), String> {
++    grid_node_tracks(&mut doc.nodes, id, l)
++}
++fn grid_node_tracks(nodes: &mut BTreeMap<String, Node>, id: &str, l: &Layout) -> Result<(Vec<f64>, Vec<f64>), String> {
++    let children_before = nodes[id].children.clone();
++    let ids: Vec<_> = nodes[id]
+         .children
+         .iter()
+         .filter(|id| {
+-            let n = &doc.nodes[*id];
++            let n = &nodes[*id];
+             n.visible && !n.sizing_value().absolute
+         })
+         .cloned()
+@@ -592,7 +599,7 @@
+     let mut cursor = 0;
+     let mut work = 0;
+     for child in ids {
+-        let s = doc.nodes[&child].sizing_value();
++        let s = nodes[&child].sizing_value();
+         let span = s.column_span.min(l.columns);
+         let rows = s.row_span;
+         loop {
+@@ -623,32 +630,32 @@
+             cursor += 1;
+         }
+     }
+-    let mut sizing = doc.nodes[id].sizing_value();
++    let mut sizing = nodes[id].sizing_value();
+     if sizing.width == SizeMode::Hug
+         && slots
+             .iter()
+-            .any(|(id, _, _, _, _)| doc.nodes[id].sizing_value().width == SizeMode::Fill)
++            .any(|(id, _, _, _, _)| nodes[id].sizing_value().width == SizeMode::Fill)
+     {
+         sizing.width = SizeMode::Fixed;
+-        doc.nodes.get_mut(id).unwrap().sizing = Some(sizing.clone());
++        nodes.get_mut(id).unwrap().sizing = Some(sizing.clone());
+     }
+     if sizing.height == SizeMode::Hug
+         && (l.fill_rows
+             || slots
+                 .iter()
+-                .any(|(id, _, _, _, _)| doc.nodes[id].sizing_value().height == SizeMode::Fill))
++                .any(|(id, _, _, _, _)| nodes[id].sizing_value().height == SizeMode::Fill))
+     {
+         sizing.height = SizeMode::Fixed;
+-        doc.nodes.get_mut(id).unwrap().sizing = Some(sizing.clone());
++        nodes.get_mut(id).unwrap().sizing = Some(sizing.clone());
+     }
+     let intrinsic_col = slots
+         .iter()
+         .map(|(c, _, _, _, span)| {
+-            ((metrics(&doc.nodes[c])[2] - l.gap * (*span - 1) as f64) / *span as f64).max(0.)
++            ((metrics(&nodes[c])[2] - l.gap * (*span - 1) as f64) / *span as f64).max(0.)
+         })
+         .fold(0., f64::max);
+     if sizing.width == SizeMode::Hug {
+-        let p = doc.nodes.get_mut(id).unwrap();
++        let p = nodes.get_mut(id).unwrap();
+         resize(
+             p,
+             intrinsic_col * l.columns as f64
+@@ -659,13 +666,13 @@
+         )
+     }
+     let cell =
+-        ((doc.nodes[id].width - l.padding[1] - l.padding[3] - l.gap * (l.columns - 1) as f64)
++        ((nodes[id].width - l.padding[1] - l.padding[3] - l.gap * (l.columns - 1) as f64)
+             / l.columns as f64)
+             .max(0.);
+     let rows = slots.iter().map(|(_, r, _, h, _)| r + h).max().unwrap_or(0);
+     let mut heights = vec![0f64; rows];
+     for (child, row, _, span, cols) in &slots {
+-        let n = doc.nodes.get_mut(child).unwrap();
++        let n = nodes.get_mut(child).unwrap();
+         if n.sizing_value().width == SizeMode::Fill
+             || n.sizing_value().align_self.unwrap_or(l.align) == Align::Stretch
+         {
+@@ -685,12 +692,12 @@
+         + l.padding[0]
+         + l.padding[2];
+     if sizing.height == SizeMode::Hug {
+-        let p = doc.nodes.get_mut(id).unwrap();
++        let p = nodes.get_mut(id).unwrap();
+         resize(p, p.width, natural)
+     }
+     if l.fill_rows && rows > 0 {
+         let h =
+-            ((doc.nodes[id].height - l.padding[0] - l.padding[2] - l.line_gap * (rows - 1) as f64)
++            ((nodes[id].height - l.padding[0] - l.padding[2] - l.line_gap * (rows - 1) as f64)
+                 / rows as f64)
+                 .max(0.);
+         heights.fill(h);
+@@ -698,7 +705,7 @@
+     for (child, row, col, span, cols) in slots {
+         let w = cell * cols as f64 + l.gap * (cols - 1) as f64;
+         let h = heights[row..row + span].iter().sum::<f64>() + l.line_gap * (span - 1) as f64;
+-        let n = doc.nodes.get_mut(&child).unwrap();
++        let n = nodes.get_mut(&child).unwrap();
+         let s = n.sizing_value();
+         if s.height == SizeMode::Fill || s.align_self.unwrap_or(l.align) == Align::Stretch {
+             fit_axis(n, 1, h)
+@@ -721,7 +728,7 @@
+             l.padding[0] + heights[..row].iter().sum::<f64>() + row as f64 * l.line_gap + dy,
+         );
+     }
+-    enforce_stack_layout_invariants(doc, id, &children_before)?;
++    enforce_node_layout_invariants(nodes, id, &children_before)?;
+     Ok((vec![cell; l.columns], heights))
+ }
+ fn anchor(position: f64, size: f64, old: f64, new: f64, mode: Anchor) -> (f64, f64) {
+@@ -800,7 +807,7 @@
+     pub transform: Transform,
+     pub width: f64,
+     pub height: f64,
+-    pub network: Option<crate::scene::Network>,
++    pub network: Option<std::sync::Arc<crate::scene::Network>>,
+     pub vector_geometry: Option<std::sync::Arc<crate::vector_geometry::VectorGeometry>>,
+     pub sizing: Option<Sizing>,
+     pub constraints: Option<Constraints>,
+@@ -1608,3 +1615,24 @@
+         );
+     }
+ }
++
++#[cfg(test)]
++mod grid_read_scope_tests {
++    use super::*;
++    #[test]
++    fn grid_query_matches_full_solve_without_mutating_authored_islands() {
++        let mut frame=crate::facet::sample_node("grid","frame");frame.width=180.;frame.height=160.;
++        frame.layout=Some(Layout{mode:Flow::Grid,columns:2,gap:10.,line_gap:20.,padding:[0.;4],..Layout::default()});
++        let mut nodes=BTreeMap::new();
++        for i in 0..4 {let id=format!("child{i}");let mut n=crate::facet::sample_node(&id,"rectangle");n.width=80.;n.height=50.+i as f64*10.;frame.children.push(id.clone());nodes.insert(id,n);}
++        nodes.insert(frame.id.clone(),frame);
++        let mut cold=crate::facet::sample_node("cold","frame");cold.width=300.;cold.height=200.;nodes.insert(cold.id.clone(),cold);
++        let mut doc:Document=serde_json::from_value(serde_json::json!({"schemaVersion":20,"id":"d","name":"grid","pages":[{"id":"p","name":"p","background":"#ffffff","children":["grid","cold"]}],"nodes":nodes})).unwrap();
++        let original=serde_json::to_vec(&doc).unwrap();let l=doc.nodes["grid"].layout.as_ref().unwrap().clone();
++        let expected=grid_with_tracks(&mut doc.clone(),"grid",&l).unwrap();
++        assert_eq!(grid_tracks(&doc,"grid").unwrap(),expected);
++        assert_eq!(serde_json::to_vec(&doc).unwrap(),original);
++        doc.nodes.get_mut("cold").unwrap().opacity=f64::NAN;
++        assert!(grid_tracks(&doc,"grid").is_err(),"unrelated invalid data still fails original admission");
++    }
++}
+--- a/design-studio/crates/design-kernel/src/curve_boolean.rs
++++ b/design-studio/crates/design-kernel/src/curve_boolean.rs
+@@ -377,7 +377,7 @@
+                     if memoize { cache.insert(key, &result); } result
+                 }
+             };
+-            let node=doc.nodes.get_mut(id).unwrap();node.vector_geometry=None;node.network=Some(g);
++            let node=doc.nodes.get_mut(id).unwrap();node.vector_geometry=None;node.network=Some((g).into());
+         }
+         Ok(())
+     }
+--- a/design-studio/crates/design-kernel/src/renderer.rs
++++ b/design-studio/crates/design-kernel/src/renderer.rs
+@@ -627,7 +627,7 @@
+         // then recognize a retained image without copying/hash-scanning it at
+         // every camera. This changes no serialized value or resource grant.
+         let mut image_owners=std::collections::HashMap::<std::sync::Arc<str>,std::sync::Arc<str>>::new();
+-        for n in doc.nodes.values_mut(){for paint in n.fills.iter_mut().chain(n.strokes.iter_mut().map(|s|&mut s.paint)){
++        for n in doc.nodes.values_mut(){n.compact_storage();for paint in n.fills.iter_mut().chain(n.strokes.iter_mut().map(|s|&mut s.paint)){
+             if let Some(uri)=&mut paint.image {
+                 *uri=image_owners.entry(uri.clone()).or_insert_with(||uri.clone()).clone();
+             }
+--- a/design-studio/crates/design-kernel/src/mutation.rs
++++ b/design-studio/crates/design-kernel/src/mutation.rs
+@@ -6,8 +6,15 @@
+ /// Resize geometry using the old dimensions before publishing the new box.
+ /// Callers enforce their own sizing constraints (layout clamps; bindings validate).
+ pub(crate) fn resize(n: &mut Node, width: f64, height: f64) {
++    // Layout replays the current box before solving constraints. Do not detach
++    // shared geometry or touch every control point for that identity operation.
++    // Degenerate/nonfinite dimensions retain the original arithmetic/rejection
++    // path, and a signed-zero change still publishes the requested bits.
++    if width.is_finite() && height.is_finite() && width > 0. && height > 0. &&
++        width.to_bits() == n.width.to_bits() && height.to_bits() == n.height.to_bits() { return; }
+     if let Some(geometry)=&mut n.vector_geometry {std::sync::Arc::make_mut(geometry).scale(width/n.width,height/n.height);}
+     if let Some(g) = &mut n.network {
++        let g = std::sync::Arc::make_mut(g);
+         let sx = width / n.width;
+         let sy = height / n.height;
+         for p in &mut g.vertices {
+@@ -23,6 +30,33 @@
+     }
+     n.width = width;
+     n.height = height;
++}
++
++#[cfg(test)]
++mod resize_reuse_tests {
++    use super::*;
++    use std::sync::Arc;
++    #[test]
++    fn unchanged_positive_box_keeps_shared_geometry_and_real_resize_detaches() {
++        let mut node=crate::facet::sample_node("n","vector");node.width=10.;node.height=20.;
++        let geometry:Arc<crate::vector_geometry::VectorGeometry>=Arc::new(serde_json::from_str(r#"{"fillRule":"nonzero","fill":[{"move":[-0.0,1.25]},{"line":[10,20]}]}"#).unwrap());
++        node.vector_geometry=Some(geometry.clone());let before=serde_json::to_vec(&node).unwrap();
++        for _ in 0..68 {resize(&mut node,10.,20.);}
++        assert!(Arc::ptr_eq(node.vector_geometry.as_ref().unwrap(),&geometry));
++        assert_eq!(serde_json::to_vec(&node).unwrap(),before);
++        resize(&mut node,20.,60.);
++        assert!(!Arc::ptr_eq(node.vector_geometry.as_ref().unwrap(),&geometry));
++        assert_eq!(geometry.fill[1],crate::vector_geometry::Curve::Line([10.,20.]));
++        assert_eq!(node.vector_geometry.as_ref().unwrap().fill[1],crate::vector_geometry::Curve::Line([20.,60.]));
++    }
++    #[test]
++    fn degenerate_and_signed_zero_boxes_keep_original_arithmetic() {
++        let mut node=crate::facet::sample_node("n","rectangle");node.width=-0.;node.height=1.;
++        resize(&mut node,0.,1.);assert_eq!(node.width.to_bits(),0_f64.to_bits());
++        let geometry=Arc::new(serde_json::from_str(r#"{"fillRule":"nonzero","fill":[{"move":[1,2]}]}"#).unwrap());
++        node.vector_geometry=Some(geometry);resize(&mut node,0.,1.);
++        if let crate::vector_geometry::Curve::Move(p)=node.vector_geometry.as_ref().unwrap().fill[0] {assert!(p[0].is_nan());}else{panic!("original move")}
++    }
+ }
+ fn boundaries(text: &str) -> BTreeSet<usize> {
+     let mut result = BTreeSet::from([0]);
+--- a/design-studio/crates/design-kernel/src/fig.rs
++++ b/design-studio/crates/design-kernel/src/fig.rs
+@@ -1185,24 +1185,24 @@
+                 if let Some(g) = change.get("guid") {
+                     node.bindings.insert("symbolID".into(), guid_string(g));
+                 }
+-                node.component = Some(crate::components::Component::default());
++                node.component = Some((crate::components::Component::default()).into());
+             }
+             "INSTANCE" => {
+                 // Resolve references and literal values after tree assembly.
+-                node.instance = Some(crate::components::Instance {
++                node.instance = Some((crate::components::Instance {
+                     component_id: String::new(), overrides: BTreeMap::new(),
+                     property_values: BTreeMap::new(), slot_contents: Default::default(),
+-                });
++                }).into());
+             }
+             "STICKY" => {
+                 // Whiteboard sticky: frame + BoardContent{sticky}; the
+                 // characters survive as node text.
+-                node.board = Some(crate::scene::BoardContent {
++                node.board = Some((crate::scene::BoardContent {
+                     language: None,
+                     kind: "sticky".into(),
+                     rows: None,
+                     columns: None,
+-                });
++                }).into());
+                 let td = change.get("textData").cloned().unwrap_or(Value::Null);
+                 if let Some(text) = str_of(&td, "characters") {
+                     node.text = text.into();
+@@ -1234,12 +1234,12 @@
+                     }
+                     None => None,
+                 };
+-                node.board = Some(crate::scene::BoardContent {
++                node.board = Some((crate::scene::BoardContent {
+                     language,
+                     kind: "code-block".into(),
+                     rows: None,
+                     columns: None,
+-                });
++                }).into());
+                 let td = change.get("textData").cloned().unwrap_or(Value::Null);
+                 if let Some(text) = str_of(&td, "characters") {
+                     node.text = text.into();
+@@ -1257,12 +1257,12 @@
+                     Some("ROUNDED_RECTANGLE") => "shape-whiteboard-rounded-rectangle",
+                     _ => unreachable!("classification pass filters unsupported shapes"),
+                 };
+-                node.board = Some(crate::scene::BoardContent {
++                node.board = Some((crate::scene::BoardContent {
+                     language: None,
+                     kind: kind.into(),
+                     rows: None,
+                     columns: None,
+-                });
++                }).into());
+                 let td = change.get("textData").cloned().unwrap_or(Value::Null);
+                 if let Some(text) = str_of(&td, "characters") {
+                     node.text = text.into();
+@@ -1280,12 +1280,12 @@
+                         .map(Vec::len)
+                         .unwrap_or(0)
+                 };
+-                node.board = Some(crate::scene::BoardContent {
++                node.board = Some((crate::scene::BoardContent {
+                     language: None,
+                     kind: "table".into(),
+                     rows: Some(count("tableRowHeights") as u32),
+                     columns: Some(count("tableColumnWidths") as u32),
+-                });
++                }).into());
+             }
+             "CONNECTOR" => {
+                 // Connector endpoints: fig ConnectorEndpoint{endpointNodeID,
+@@ -1349,11 +1349,11 @@
+                             anchor: None,
+                         }),
+                 );
+-                node.connector = Some(crate::connectors::Connector {
++                node.connector = Some((crate::connectors::Connector {
+                     from,
+                     to,
+                     style: style.into(),
+-                });
++                }).into());
+             }
+             _ => {}
+         }
+@@ -1393,7 +1393,7 @@
+                     "vector vertex/region style overrides require source style mapping".into(),
+                 );
+             }
+-            node.network = decoded.network;
++            node.network = decoded.network.map(Into::into);
+             node.vector_geometry = decoded.vector_geometry;
+         }
+         if fig_type == "VECTOR"
+@@ -1567,7 +1567,7 @@
+                 }
+             }
+         }
+-        node.text_style = Some(style);
++        node.text_style = Some((style).into());
+ 
+         // per-segment styles
+         let characters = node.text.clone();
+--- a/design-studio/crates/design-kernel/src/connectors.rs
++++ b/design-studio/crates/design-kernel/src/connectors.rs
+@@ -130,7 +130,7 @@
+         n.transform = Transform([1., 0., 0., 1., x, y]);
+         n.width = width;
+         n.height = height;
+-        n.network = Some(Network {
++        n.network = Some((Network {
+             vertices: points
+                 .iter()
+                 .enumerate()
+@@ -151,7 +151,7 @@
+                 .collect(),
+             fill_rule: "nonzero".into(),
+             filled_faces: None,
+-        });
++        }).into());
+         let binding = n.connector.as_mut().unwrap();
+         binding.from.point = a;
+         binding.to.point = b;
+--- a/design-studio/crates/design-kernel/src/image_rows.rs
++++ b/design-studio/crates/design-kernel/src/image_rows.rs
+@@ -10,6 +10,7 @@
+     reader: png::Reader<Cursor<Vec<u8>>>, settings: ColorSettings,
+     space: Option<ColorSpace>, profile: Option<Vec<u8>>,
+     width: u32, height: u32, row: u32, color: png::ColorType, depth: png::BitDepth, failed: bool,
++    transform: Option<image_color::WorkingTransform>,
+ }
+ impl Decoder {
+     pub fn new(uri: &str, settings: ColorSettings) -> Result<Self, String> {
+@@ -42,7 +43,7 @@
+         if !matches!(depth, png::BitDepth::Eight | png::BitDepth::Sixteen) || color == png::ColorType::Indexed {
+             return Err("PNG rows require expanded 8-bit or 16-bit channels".into());
+         }
+-        Ok(Self { reader, settings, space, profile, width, height, row: 0, color, depth, failed: false })
++        Ok(Self { reader, settings, space, profile, width, height, row: 0, color, depth, failed: false, transform: None })
+     }
+     pub fn width(&self) -> u32 { self.width }
+     pub fn height(&self) -> u32 { self.height }
+@@ -85,7 +86,13 @@
+             _ => return Err("Unsupported PNG row channels".into()),
+         }};
+         let mut image = decoded.into_rgba32f();
+-        image_color::to_working(&mut image, self.settings, self.space, self.profile.as_deref())?;
++        if self.transform.is_none() {
++            self.transform=Some(image_color::WorkingTransform::new(self.settings,self.space,self.profile.as_deref())?);
++            // The compiled transform owns its tables; keep no second raw ICC
++            // buffer for the remainder of this row decoder's lifetime.
++            self.profile=None;
++        }
++        self.transform.as_mut().unwrap().apply(&mut image)?;
+         for p in image.pixels_mut() { p.0 = Pixel::rgba(p[0], p[1], p[2], p[3]).0; }
+         self.row += height;
+         // A bad trailing chunk rejects the last strip; the uploader must destroy
+@@ -154,6 +161,26 @@
+             count += strip.len()/4;
+         }
+         assert_eq!(count, 3072 * 1024);
++    }
++    #[test]
++    fn multiple_icc_strips_prepare_once_and_match_the_complete_decoder() {
++        let profile=moxcms::ColorProfile::new_display_p3().encode().unwrap();
++        let mut info=png::Info::with_size(1024,513);info.color_type=png::ColorType::Rgba;info.bit_depth=png::BitDepth::Eight;
++        info.icc_profile=Some(std::borrow::Cow::Owned(profile));
++        let mut encoded=Vec::new();
++        png::Encoder::with_info(&mut encoded,info).unwrap().write_header().unwrap()
++            .write_image_data(&[127,63,31,191].repeat(1024*513)).unwrap();
++        let uri=format!("data:image/png;base64,{}",base64::engine::general_purpose::STANDARD.encode(encoded));
++        let settings=ColorSettings::default();let mut images=crate::paint::Images::default();images.set_color_settings(Some(settings));
++        let reference=images.image(&uri).unwrap();let before=image_color::icc_preparations();
++        let mut decoder=Decoder::new(&uri,settings).unwrap();let mut offset=0;let mut strips=0;
++        loop {let strip=decoder.next_rows().unwrap();if strip.is_empty(){break}strips+=1;
++            for (actual,expected) in strip.chunks_exact(4).zip(&reference.pixels[offset..]) {
++                assert_eq!(actual.iter().map(|v|v.to_bits()).collect::<Vec<_>>(),expected.0.map(f32::to_bits));
++            }
++            offset+=strip.len()/4;
++        }
++        assert_eq!(offset,1024*513);assert!(strips>1);assert_eq!(image_color::icc_preparations()-before,1);
+     }
+     #[test]
+     fn sixteen_bit_rows_keep_original_channel_and_alpha_precision() {
+--- a/design-studio/crates/design-kernel/src/components.rs
++++ b/design-studio/crates/design-kernel/src/components.rs
+@@ -764,8 +764,8 @@
+         } else {
+             None
+         };
+-        n.instance = Some(actual);
+-        n.instance_origin = origin;
++        n.instance = Some((actual).into());
++        n.instance_origin = origin.map(Box::new);
+         n.children.clear();
+         self.stack.push(spec.component_id.clone());
+         for id in &template.children {
+@@ -823,7 +823,7 @@
+         n.component = None;
+         n.component_set = false;
+         n.component_key = None;
+-        n.instance_origin = Some(origin);
++        n.instance_origin = Some((origin).into());
+         n.children.clear();
+         if let Some(roots) = self.slots.get(&path).cloned() {
+             for child in roots { n.children.push(self.authored(&child, depth + 1, &modes)?); }
+--- a/design-studio/crates/design-kernel/src/facet.rs
++++ b/design-studio/crates/design-kernel/src/facet.rs
+@@ -534,12 +534,12 @@
+         (FacetKind::Shape, Facet::Shape { points }) => node.points = *points,
+         (FacetKind::Instance, Facet::Instance { component_id }) => {
+             node.instance
+-                .get_or_insert_with(|| crate::components::Instance {
++                .get_or_insert_with(|| Box::new(crate::components::Instance {
+                         slot_contents: Default::default(),
+                     component_id: String::new(),
+                     overrides: Default::default(),
+                     property_values: Default::default(),
+-                })
++                }))
+                 .component_id = component_id.clone();
+         }
+         (FacetKind::Componentish, Facet::Componentish { component_key }) => {
+--- a/design-studio/crates/design-kernel/src/image_color.rs
++++ b/design-studio/crates/design-kernel/src/image_color.rs
+@@ -134,15 +134,21 @@
+     Ok(orientation.unwrap_or(Orientation::NoTransforms))
+ }
+ 
+-pub fn to_working(
+-    image: &mut Rgba32FImage,
++/// Immutable source colour policy plus reusable per-row transform scratch.
++/// One instance belongs to one decoder; no profile or global cache authority
++/// is inferred from an image name or a document-controlled identifier.
++pub(crate) struct WorkingTransform {
+     settings: ColorSettings,
+-    space: Option<ColorSpace>,
+-    icc: Option<&[u8]>,
+-) -> Result<(), String> {
+-    if space.is_none()
+-        && let Some(icc) = icc
+-    {
++    space: ColorSpace,
++    icc: Option<std::sync::Arc<moxcms::TransformF32Executor>>,
++    row: Vec<f32>,
++}
++#[cfg(test)]
++std::thread_local! { static ICC_PREPARATIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
++#[cfg(test)]
++pub(crate) fn icc_preparations() -> usize { ICC_PREPARATIONS.with(std::cell::Cell::get) }
++fn prepare_icc(icc: &[u8]) -> Result<std::sync::Arc<moxcms::TransformF32Executor>, String> {
++    #[cfg(test)] ICC_PREPARATIONS.with(|n|n.set(n.get()+1));
+         use moxcms::{
+             ColorProfile, DataColorSpace, Layout, ParsingOptions, ToneReprCurve, TransformOptions,
+         };
+@@ -187,34 +193,40 @@
+                 },
+             )
+             .map_err(|e| format!("Unsupported ICC transform: {e}"))?;
+-        let stride = image.width() as usize * 4;
+-        let mut row = vec![0_f32; stride];
+-        for pixels in image.as_mut().chunks_exact_mut(stride) {
+-            transform
+-                .transform(pixels, &mut row)
+-                .map_err(|e| e.to_string())?;
+-            pixels.copy_from_slice(&row);
+-        }
+-    } else {
+-        for p in image.pixels_mut() {
+-            let rgb = settings.to_working(
+-                [f64::from(p[0]), f64::from(p[1]), f64::from(p[2])],
+-                space.unwrap_or(ColorSpace::Srgb),
+-            );
+-            for i in 0..3 {
+-                p[i] = rgb[i] as f32;
++        Ok(transform)
++}
++impl WorkingTransform {
++    pub(crate) fn new(settings: ColorSettings, space: Option<ColorSpace>, icc: Option<&[u8]>) -> Result<Self, String> {
++        let transform = if space.is_none() { icc.map(prepare_icc).transpose()? } else { None };
++        Ok(Self { settings, space: space.unwrap_or(ColorSpace::Srgb), icc: transform, row: Vec::new() })
++    }
++    pub(crate) fn apply(&mut self, image: &mut Rgba32FImage) -> Result<(), String> {
++        if let Some(transform) = &self.icc {
++            let stride = image.width() as usize * 4;
++            self.row.resize(stride, 0.);
++            for pixels in image.as_mut().chunks_exact_mut(stride) {
++                transform.transform(pixels, &mut self.row).map_err(|e|e.to_string())?;
++                pixels.copy_from_slice(&self.row);
+             }
+-        }
+-    }
+-    if image
+-        .as_raw()
+-        .iter()
+-        .any(|v| !v.is_finite() || v.abs() > 65504.)
+-    {
+-        return Err("Decoded image exceeds finite float16 color range".into());
+-    }
+-    Ok(())
+-}
++        } else {
++            for p in image.pixels_mut() {
++                let rgb = self.settings.to_working([f64::from(p[0]), f64::from(p[1]), f64::from(p[2])], self.space);
++                for i in 0..3 { p[i] = rgb[i] as f32; }
++            }
++        }
++        if image.as_raw().iter().any(|v| !v.is_finite() || v.abs() > 65504.) {
++            return Err("Decoded image exceeds finite float16 color range".into());
++        }
++        Ok(())
++    }
++}
++pub fn to_working(image: &mut Rgba32FImage, settings: ColorSettings, space: Option<ColorSpace>, icc: Option<&[u8]>) -> Result<(), String> {
++    WorkingTransform::new(settings, space, icc)?.apply(image)
++}
++
++#[cfg(test)]
++#[path="image_color_prepared_tests.rs"]
++mod prepared_tests;
+ 
+ /// Tagged bitmaps in an SDR document still require a source-profile transform.
+ /// Reuse the managed decoder, then encode the sRGB destination before the
+--- a/design-studio/crates/design-kernel/src/graph_api.rs
++++ b/design-studio/crates/design-kernel/src/graph_api.rs
+@@ -1295,10 +1295,10 @@
+     #[test]
+     fn replacement_preserves_nested_json_signed_zero() {
+         let mut source: Document = serde_json::from_str(&document_json()).unwrap();
+-        source.nodes.get_mut("f1").unwrap().instance = Some(crate::components::Instance {
++        source.nodes.get_mut("f1").unwrap().instance = Some(Box::new(crate::components::Instance {
+             slot_contents: Default::default(), component_id: "source".into(), overrides: Default::default(),
+             property_values: [("nested".into(), serde_json::from_str(r#"{"items":[0.0]}"#).unwrap())].into(),
+-        });
++        }));
+         let before = serde_json::to_string(&source).unwrap();
+         let mut api = GraphApi::new(&before).unwrap();
+         source.nodes.get_mut("f1").unwrap().instance.as_mut().unwrap().property_values
+--- a/design-studio/crates/design-kernel/src/scene_store.rs
++++ b/design-studio/crates/design-kernel/src/scene_store.rs
+@@ -167,6 +167,7 @@
+         if record.geometry.is_some()||record.node.vector_geometry.is_some(){return Err(invalid("Ambiguous packed scene geometry"));}
+         record.node.vector_geometry=Some(Arc::new(vectors.unpack().map_err(invalid_owned)?));
+     }
++    record.node.compact_storage();
+     Ok(record)
+ }
+ fn invalid_owned(message:String)->io::Error{invalid(&message)}
+--- a/design-studio/crates/design-kernel/src/interop.rs
++++ b/design-studio/crates/design-kernel/src/interop.rs
+@@ -1767,7 +1767,7 @@
+                             c2: incoming[next],
+                         });
+                     }
+-                    node.network = Some(network);
++                    node.network = Some((network).into());
+                     if any_corner_radius {
+                         // Per-point corner radii have no kernel home; they
+                         // ride bindings verbatim and the degradation is
+@@ -2022,7 +2022,7 @@
+                             .insert("sketchLineSpacingBehaviour".into(), spacing.to_string());
+                     }
+                 }
+-                node.text_style = Some(style);
++                node.text_style = Some((style).into());
+                 if let Some(receipt) = user_ns.get("textModel")
+                     && receipt.get("native") == Some(&native_text_projection(layer)) {
+                     if let (Ok(saved_style),Ok(saved_runs)) = (
+@@ -2036,7 +2036,7 @@
+                             ||node.text_runs.iter().any(|r|r.font_id.as_deref()==Some(id));
+                         if saved_style.as_ref().is_none_or(|s|owned(&s.font_id))
+                             && saved_runs.iter().all(|r|r.font_id.as_deref().is_none_or(owned)) {
+-                            node.text_style=saved_style; node.text_runs=saved_runs;
++                            node.text_style=saved_style.map(Box::new); node.text_runs=saved_runs;
+                         }
+                     }
+                 }
+@@ -2109,12 +2109,12 @@
+                                 .insert(field.to_string(), value);
+                         }
+                     }
+-                    node.instance = Some(crate::components::Instance {
++                    node.instance = Some((crate::components::Instance {
+                         slot_contents: Default::default(),
+                         component_id: symbol_id.into(),
+                         overrides,
+                         property_values: BTreeMap::new(),
+-                    });
++                    }).into());
+                 }
+             }
+             "artboard" | "frame" | "canvasFrame" => {
+@@ -2188,7 +2188,7 @@
+         if let Some(component) = user_ns.get("component")
+             && let Ok(c) = serde_json::from_value::<crate::components::Component>(component.clone())
+         {
+-            node.component = Some(c);
++            node.component = Some((c).into());
+         }
+         if let Some(props) = user_ns.get("instanceProperties")
+             && let Ok(map) = serde_json::from_value::<BTreeMap<String, Value>>(props.clone())
+@@ -2203,7 +2203,7 @@
+             if let Ok(instance) =
+                 serde_json::from_value::<crate::components::Instance>(instance.clone())
+             {
+-                node.instance = Some(instance);
++                node.instance = Some((instance).into());
+             }
+         }
+         if let Some(key) = user_ns.get("componentKey").and_then(Value::as_str) {
+@@ -2217,7 +2217,7 @@
+         if let Some(grid) = user_ns.get("layoutGrid")
+             && let Ok(g) = serde_json::from_value::<crate::scene::LayoutGrid>(grid.clone())
+         {
+-            node.layout_grid = Some(g);
++            node.layout_grid = Some((g).into());
+         }
+         // Kernel-authored interactions beyond Sketch's one-flow-per-layer
+         // classic model travel verbatim (resolved later, once all ids exist).
+@@ -2486,7 +2486,7 @@
+             notes(lossy, "layout-grid-baselines-omitted");
+         }
+         notes(lossy, "layout-grid-color-not-in-sketch-document");
+-        node.layout_grid = Some(crate::scene::LayoutGrid {
++        node.layout_grid = Some((crate::scene::LayoutGrid {
+             axis: if row { "row".into() } else { "column".into() },
+             count,
+             gutter,
+@@ -2494,7 +2494,7 @@
+             color: "#ff0000".into(),
+             visible: true,
+             opacity: 0.1,
+-        });
++        }).into());
+     } else if let Some(sg) = layer.get("grid").filter(|g| bool_at(g, "isEnabled")) {
+         let cell = f64_at(sg, "gridSize").max(1.);
+         let count = ((node.width.max(1.) / cell).floor() as u32).clamp(1, 64);
+@@ -2504,7 +2504,7 @@
+         }
+         notes(lossy, "simple-grid-thickGridTimes-omitted");
+         notes(lossy, "layout-grid-color-not-in-sketch-document");
+-        node.layout_grid = Some(crate::scene::LayoutGrid {
++        node.layout_grid = Some((crate::scene::LayoutGrid {
+             axis: "uniform".into(),
+             count,
+             gutter: 0.,
+@@ -2512,7 +2512,7 @@
+             color: "#ff0000".into(),
+             visible: true,
+             opacity: 0.1,
+-        });
++        }).into());
+     }
+ }
+ 
+@@ -3504,6 +3504,7 @@
+             .is_some_and(|v| v == "true")
+             && let Some(network) = &mut node.network
+         {
++            let network = std::sync::Arc::make_mut(network);
+             network.edges.pop();
+         }
+         if node
+@@ -3512,6 +3513,7 @@
+             .is_some_and(|v| v == "true")
+             && let Some(network) = &mut node.network
+         {
++            let network = std::sync::Arc::make_mut(network);
+             for vertex in &mut network.vertices {
+                 vertex.x *= node.width;
+                 vertex.y *= node.height;
+@@ -4482,7 +4484,7 @@
+     let current = TextLayoutSignature {
+         text: node.text.clone(),
+         font_size: node.font_size,
+-        text_style: node.text_style.clone(),
++        text_style: node.text_style.as_deref().cloned(),
+         text_runs: node.text_runs.clone(),
+         sizing: node.sizing.clone(),
+     };
+@@ -4696,11 +4698,11 @@
+                 node.network=Some(serde_json::from_value(json!({"vertices":[{"id":"a","x":0.,"y":0.},{"id":"b","x":node.width,"y":node.height}],"edges":[{"id":"ab","from":"a","to":"b"}],"fillRule":"nonzero"})).unwrap());
+             }
+             if let Some(geometry) = node.vector_geometry.take() {
+-                node.network = Some(
++                node.network = Some((
+                     geometry
+                         .network(crate::vector_geometry::MAX_COMMANDS)
+-                        .map_err(Error::InvalidDocument)?,
+-                );
++                        .map_err(Error::InvalidDocument)?
++                ).into());
+             }
+             let metadata = doc
+                 .design_system
+@@ -7472,7 +7474,7 @@
+         let mut doc = sample_document();
+         let mut path = crate::facet::sample_node("n3", "path");
+         path.name = "Blob".into();
+-        path.network = Some(crate::scene::Network {
++        path.network = Some((crate::scene::Network {
+             filled_faces: None,
+             vertices: vec![
+                 crate::scene::Vertex {
+@@ -7515,7 +7517,7 @@
+                 },
+             ],
+             fill_rule: "nonzero".into(),
+-        });
++        }).into());
+         doc.pages[0].children.push("n3".into());
+         doc.nodes.insert("n3".into(), path);
+ 
+@@ -7538,7 +7540,7 @@
+     fn non_ring_networks_report_topology_loss() {
+         let mut doc = sample_document();
+         let mut path = crate::facet::sample_node("n3", "path");
+-        path.network = Some(crate::scene::Network {
++        path.network = Some((crate::scene::Network {
+             filled_faces: None,
+             vertices: vec![
+                 crate::scene::Vertex {
+@@ -7560,7 +7562,7 @@
+                 c2: None,
+             }],
+             fill_rule: "nonzero".into(),
+-        });
++        }).into());
+         doc.pages[0].children.push("n3".into());
+         doc.nodes.insert("n3".into(), path);
+         let back = import_sketch(&export_sketch(&doc).unwrap()).unwrap();
+@@ -7579,7 +7581,7 @@
+         let mut doc = sample_document();
+         let mut path = crate::facet::sample_node("n3", "path");
+         path.name = "Modes".into();
+-        path.network = Some(crate::scene::Network {
++        path.network = Some((crate::scene::Network {
+             filled_faces: None,
+             vertices: (0..4)
+                 .map(|i| crate::scene::Vertex {
+@@ -7598,7 +7600,7 @@
+                 })
+                 .collect(),
+             fill_rule: "nonzero".into(),
+-        });
++        }).into());
+         doc.pages[0].children.push("n3".into());
+         doc.nodes.insert("n3".into(), path);
+ 
+@@ -7706,14 +7708,14 @@
+             p.color = "#102030".into();
+             p
+         });
+-        text.text_style = Some(crate::font::TextStyle {
++        text.text_style = Some((crate::font::TextStyle {
+             align: "center".into(),
+             line_height: 1.5,
+             letter_spacing: 0.8,
+             paragraph_spacing: 3.,
+             wrap: true,
+             ..Default::default()
+-        });
++        }).into());
+         text.text_runs = vec![
+             crate::font::TextRun {
+                 paragraph: None,
+@@ -8046,14 +8048,14 @@
+         master
+             .bindings
+             .insert("symbolID".into(), "SYMBOL-UUID-1".into());
+-        master.component = Some(crate::components::Component {
++        master.component = Some((crate::components::Component {
+             slots: Default::default(),
+             variants: [("Size".into(), "M".into())].into_iter().collect(),
+             properties: BTreeMap::new(),
+-        });
++        }).into());
+         let mut instance = crate::facet::sample_node("n4", "frame");
+         instance.name = "Button instance".into();
+-        instance.instance = Some(crate::components::Instance {
++        instance.instance = Some((crate::components::Instance {
+             slot_contents: Default::default(),
+             component_id: "SYMBOL-UUID-1".into(),
+             overrides: {
+@@ -8067,7 +8069,7 @@
+                 overrides
+             },
+             property_values: [("visible".into(), json!(true))].into_iter().collect(),
+-        });
++        }).into());
+         let page = &mut doc.pages[0];
+         page.children.push("n3".into());
+         page.children.push("n4".into());
+@@ -8388,7 +8390,7 @@
+         doc.schema_version = 12;
+         let frame = doc.nodes.get_mut("n1").unwrap();
+         frame.width = 320.;
+-        frame.layout_grid = Some(crate::scene::LayoutGrid {
++        frame.layout_grid = Some((crate::scene::LayoutGrid {
+             axis: "column".into(),
+             count: 8,
+             gutter: 16.,
+@@ -8396,7 +8398,7 @@
+             color: "#00a0ff".into(),
+             visible: true,
+             opacity: 0.3,
+-        });
++        }).into());
+         let bytes = export_sketch(&doc).unwrap();
+         let files = read_zip(&bytes).unwrap();
+         let name = files
+@@ -8437,7 +8439,7 @@
+         doc.schema_version = 12;
+         let frame = doc.nodes.get_mut("n1").unwrap();
+         frame.width = 320.;
+-        frame.layout_grid = Some(crate::scene::LayoutGrid {
++        frame.layout_grid = Some((crate::scene::LayoutGrid {
+             axis: "uniform".into(),
+             count: 8,
+             gutter: 0.,
+@@ -8445,7 +8447,7 @@
+             color: "#ff0000".into(),
+             visible: false,
+             opacity: 0.1,
+-        });
++        }).into());
+         let bytes = export_sketch(&doc).unwrap();
+         let files = read_zip(&bytes).unwrap();
+         let name = files
+--- a/design-studio/crates/design-kernel/src/animation.rs
++++ b/design-studio/crates/design-kernel/src/animation.rs
+@@ -180,7 +180,7 @@
+     pub strokes: Vec<Stroke>,
+     pub effects: Vec<Effect>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+-    pub network: Option<Network>,
++    pub network: Option<std::sync::Arc<Network>>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub vector_geometry: Option<std::sync::Arc<crate::vector_geometry::VectorGeometry>>,
+ }
+@@ -733,6 +733,7 @@
+         }
+     }
+     if let (Some(out), Some(a), Some(b)) = (&mut out.network, &a.network, &b.network) {
++        let out = std::sync::Arc::make_mut(out);
+         for ((v, a), b) in out.vertices.iter_mut().zip(&a.vertices).zip(&b.vertices) {
+             v.x = mix(a.x, b.x, t);
+             v.y = mix(a.y, b.y, t);
+--- a/design-studio/crates/design-kernel/src/pdf_import.rs
++++ b/design-studio/crates/design-kernel/src/pdf_import.rs
+@@ -1766,12 +1766,12 @@
+                 width_profile: Vec::new(),
+             });
+         }
+-        node.network = Some(Network {
++        node.network = Some((Network {
+             filled_faces: None,
+             vertices,
+             edges,
+             fill_rule: if op.evenodd { "evenodd" } else { "nonzero" }.into(),
+-        });
++        }).into());
+         self.builder.nodes.insert(id.clone(), node);
+         self.children.push(id);
+         Ok(())
+--- a/design-studio/crates/design-kernel/src/repeat.rs
++++ b/design-studio/crates/design-kernel/src/repeat.rs
+@@ -94,7 +94,7 @@
+     fn walk(d:&Document,id:&str,path:&str,out:&mut BTreeMap<String,Node>)->Result<Vec<String>,String>{
+         let source=d.nodes.get(id).ok_or("Missing repeat source")?;
+         let count=source.repeat.as_ref().map_or(1,|r|r.count);
+-        let step=source.repeat.as_ref().map_or(Transform::default(),Repeat::step);
++        let step=source.repeat.as_deref().map_or(Transform::default(),Repeat::step);
+         let mut power=Transform::default(); let mut roots=Vec::new();
+         for i in 0..count {
+             let path=if i==0 {path.to_owned()} else {format!("{path}/{id}:{i}")};
+@@ -118,7 +118,7 @@
+  fn params(count:u32)->Repeat {Repeat{count,translation:Point::new(20.,0.),pivot:Point::new(0.,0.),rotation:0.,scale:Point::new(1.,1.)}}
+  fn document()->Document {
+   let mut d:Document=serde_json::from_value(serde_json::json!({"schemaVersion":15,"id":"repeat-doc","name":"Repeat","pages":[{"id":"page","name":"Page","children":["source"],"background":"#ffffff"}],"nodes":{}})).unwrap();
+-  let mut n=crate::facet::sample_node("source","rectangle");n.width=10.;n.height=10.;n.repeat=Some(params(3));n.fills=vec![serde_json::from_value(serde_json::json!({"kind":"solid","color":"#ff0000"})).unwrap()];d.nodes.insert(n.id.clone(),n);d
++  let mut n=crate::facet::sample_node("source","rectangle");n.width=10.;n.height=10.;n.repeat=Some((params(3)).into());n.fills=vec![serde_json::from_value(serde_json::json!({"kind":"solid","color":"#ff0000"})).unwrap()];d.nodes.insert(n.id.clone(),n);d
+  }
+  #[test] fn rejects_unknown_nested_point_keys_in_native_json(){
+   for key in ["translation","pivot","scale"] {
+@@ -140,11 +140,11 @@
+   for count in [0,257,u32::MAX]{assert!(params(count).validate().is_err())}
+   let mut r=params(3);r.rotation=f64::NAN;assert!(r.validate().is_err());r=params(256);r.scale.x=100.;assert!(r.validate().is_err());
+   assert!(serde_json::from_value::<Repeat>(serde_json::json!({"count":-1,"translation":{"x":0,"y":0},"pivot":{"x":0,"y":0},"rotation":0,"scale":{"x":1,"y":1}})).is_err());
+-  let mut d=document();let mut child=d.nodes["source"].clone();child.id="child".into();child.repeat=Some(params(256));d.nodes.get_mut("source").unwrap().repeat=Some(params(256));d.nodes.get_mut("source").unwrap().children=vec![child.id.clone()];d.nodes.insert(child.id.clone(),child);let before=d.clone();assert!(resolve(&mut d).is_err());assert_eq!(d,before);
++  let mut d=document();let mut child=d.nodes["source"].clone();child.id="child".into();child.repeat=Some((params(256)).into());d.nodes.get_mut("source").unwrap().repeat=Some((params(256)).into());d.nodes.get_mut("source").unwrap().children=vec![child.id.clone()];d.nodes.insert(child.id.clone(),child);let before=d.clone();assert!(resolve(&mut d).is_err());assert_eq!(d,before);
+  }
+  #[test] fn parent_pivot_nested_and_stable_ids(){
+-  let mut d=document();let n=d.nodes.get_mut("source").unwrap();n.transform=Transform([1.,0.,0.,1.,10.,10.]);n.repeat=Some(Repeat{count:2,translation:Point::new(5.,0.),pivot:Point::new(10.,10.),rotation:std::f64::consts::FRAC_PI_2,scale:Point::new(2.,2.)});
+-  let mut child=crate::facet::sample_node("child","rectangle");child.repeat=Some(params(2));n.children=vec!["child".into()];d.nodes.insert("child".into(),child);resolve(&mut d).unwrap();assert_eq!(d.nodes.len(),6);
++  let mut d=document();let n=d.nodes.get_mut("source").unwrap();n.transform=Transform([1.,0.,0.,1.,10.,10.]);n.repeat=Some((Repeat{count:2,translation:Point::new(5.,0.),pivot:Point::new(10.,10.),rotation:std::f64::consts::FRAC_PI_2,scale:Point::new(2.,2.)}).into());
++  let mut child=crate::facet::sample_node("child","rectangle");child.repeat=Some((params(2)).into());n.children=vec!["child".into()];d.nodes.insert("child".into(),child);resolve(&mut d).unwrap();assert_eq!(d.nodes.len(),6);
+   let t=d.nodes[&d.pages[0].children[1]].transform;assert!((t.0[4]-15.).abs()<1e-12);assert!((t.0[5]-10.).abs()<1e-12);
+   assert_eq!(derived_id("repeat.v1/source:1/source"),"edebb2de-f85c-804d-762e-a7bbec2c7091");
+  }
+--- a/design-studio/crates/design-kernel/src/fig/components.rs
++++ b/design-studio/crates/design-kernel/src/fig/components.rs
+@@ -49,7 +49,7 @@
+             properties.insert(key.clone(),Property {name:str_of(def,"name").unwrap_or(&key).into(),kind,
+                 target_key:target.component_key.as_ref().unwrap_or(&target.id).clone(),default_value});
+         }
+-        doc.nodes.get_mut(id).unwrap().component=Some(Component {properties,..Default::default()});
++        doc.nodes.get_mut(id).unwrap().component=Some((Component {properties,..Default::default()}).into());
+     }
+     for (id,record) in records.iter().filter(|(_,r)|str_of(r,"type")==Some("INSTANCE")) {
+         if !doc.nodes.contains_key(id) {continue;}
+@@ -86,7 +86,7 @@
+             }
+             overrides.insert(path,fields);
+         }
+-        doc.nodes.get_mut(id).unwrap().instance=Some(Instance {component_id,overrides,property_values,slot_contents:Default::default()});
++        doc.nodes.get_mut(id).unwrap().instance=Some((Instance {component_id,overrides,property_values,slot_contents:Default::default()}).into());
+     }
+     Ok(())
+ }
+--- a/design-studio/crates/design-kernel/src/sketch/preview/display.rs
++++ b/design-studio/crates/design-kernel/src/sketch/preview/display.rs
+@@ -310,7 +310,7 @@
+             ));
+         }
+         n.kind = "vector".into();
+-        n.network = Some(network);
++        n.network = Some((network).into());
+         Ok(())
+     }
+     fn layer(&mut self, layer: &Layer) -> Result<String> {
+@@ -631,7 +631,7 @@
+         .max(1.);
+         let p = &first["paragraphStyle"];
+         let line = num(p, "minimumLineHeight", 0.).max(num(p, "maximumLineHeight", 0.));
+-        n.text_style = Some(TextStyle {
++        n.text_style = Some((TextStyle {
+             font_id: "default".into(),
+             line_height: if line > 0. {
+                 (line / n.font_size).clamp(0.1, 10.)
+@@ -649,7 +649,7 @@
+             .into(),
+             paragraph_spacing: num(p, "paragraphSpacing", 0.),
+             ..TextStyle::default()
+-        });
++        }).into());
+         if n.fills.is_empty() {
+             n.fills.push(solid(
+                 format!("{}:text", n.id),
+--- a/frontend/design-client/src/Canvas.tsx
++++ b/frontend/design-client/src/Canvas.tsx
+@@ -690,6 +690,11 @@
+   snapshots.begin(editor, editor.sessionGeneration, state.page, geometryReady)
+   const currentScene = snapshots.currentScene(state.doc, state.page)
+   const entries = currentScene.entries
++  const gridFrameId = state.selection.length === 1 && state.doc.nodes[state.selection[0]]?.kind === 'frame' &&
++    state.doc.nodes[state.selection[0]].layout?.mode === 'grid' ? state.selection[0] : undefined
++  // This publication also changes when the picking/font geometry epoch changes.
++  const solvedGridRectangles = useMemo(() => gridFrameId ? gridOverlayRectangles(state.doc, gridFrameId) : [],
++    [state.doc, gridFrameId, currentScene])
+   const interactionScene = useMemo(() => snapshots.borrowCurrentScene(state.doc, state.page, editor.sessionGeneration),
+     [snapshots, currentScene, state.doc, state.page, editor, editor.sessionGeneration, geometryReady])
+   useLayoutEffect(() => editor.bindPublishedScene(interactionScene), [editor, interactionScene])
+@@ -2544,8 +2549,7 @@
+             if (selection.size !== 1) return null
+             const frame = state.doc.nodes[[...selection][0]]
+             if (!frame || frame.kind !== 'frame' || frame.layout?.mode !== 'grid') return null
+-            const rects = gridOverlayRectangles(state.doc, frame.id)
+-            return rects.map((r, i) => (
++            return solvedGridRectangles.map((r, i) => (
+               <polygon key={`grid-cell-${i}`} points={r.points.map(p => `${p.x},${p.y}`).join(" ")}
+                 fill="#0d99ff14" stroke="#0d99ff55" strokeWidth={1} vectorEffect="non-scaling-stroke"
+                 pointerEvents="none" data-testid="layout-grid-cell" />
+--- a/frontend/design-client/src/kernel/image-row-source.ts
++++ b/frontend/design-client/src/kernel/image-row-source.ts
+@@ -17,19 +17,28 @@
+ export type LinearImageRows = Iterable<{y:number;height:number;pixels:Float32Array}>
+ export function nativeImageRows(uri:string,settings:string,current:()=>void){
+   current()
+-  const info=new ImageRowDecoder(uri,settings)
++  let decoder: ImageRowDecoder | undefined = new ImageRowDecoder(uri,settings)
++  let started=false
++  const dispose=()=>{const owned=decoder;decoder=undefined;owned?.free()}
+   let width:number,height:number
+-  try{width=info.width();height=info.height()}finally{info.free()}
+-  return {width,height,pixels:new Float32Array(0),bytes:undefined as Uint8Array|undefined,linearRows:function*(){
+-    current();const decoder=new ImageRowDecoder(uri,settings)
++  try{width=decoder.width();height=decoder.height()}catch(error){dispose();throw error}
++  // Upload consumes a transient source synchronously. A dimension-only caller
++  // cannot leave compressed bytes/native state pinned indefinitely, even when
++  // it never creates/starts the iterator. The renderer also disposes explicitly
++  // on admission failure and before returning an uploaded texture.
++  queueMicrotask(()=>{if(!started)dispose()})
++  return {width,height,pixels:new Float32Array(0),bytes:undefined as Uint8Array|undefined,dispose,linearRows:function*(){
++    if(started||!decoder)throw Error('PNG row source already consumed or disposed')
++    started=true
++    const owned=decoder
+     try{
+-      if(decoder.width()!==width||decoder.height()!==height)throw Error('PNG row dimensions changed')
++      current()
+       let y=0
+-      for(;;){current();const pixels=decoder.next_rows();if(!pixels.length)break
++      for(;;){current();if(decoder!==owned)throw Error('PNG row source disposed');const pixels=owned.next_rows();if(!pixels.length)break
+         const rows=pixels.length/(width*4)
+         yield {y,height:rows,pixels};y+=rows
+       }
+       if(y!==height)throw Error('Incomplete PNG row source')
+-    }finally{decoder.free()}
++    }finally{dispose()}
+   }}
+ }
+--- a/frontend/design-client/src/kernel/image-row-source.test.ts
++++ b/frontend/design-client/src/kernel/image-row-source.test.ts
+@@ -1,26 +1,41 @@
+ import {afterEach,expect,test,vi} from 'vitest'
+-const native=vi.hoisted(()=>({freed:0,reads:0}))
++const native=vi.hoisted(()=>({freed:0,reads:0,created:0}))
+ vi.mock('./generated-row-decoder',()=>({ImageRowDecoder:class{
+- width(){return 2}height(){return 3}free(){native.freed++}
+- next_rows(){native.reads++;return new Float32Array(8)}
++ row=0
++ constructor(){native.created++} width(){return 2}height(){return 3}free(){native.freed++}
++ next_rows(){native.reads++;return new Float32Array(this.row++<3?8:0)}
+ }}))
+ import {nativeImageRows,largePngRowCandidate}from './image-row-source'
+ import {managedSceneImageLoader}from './scene-image-hydration'
+ import {DecodedImageCache,createDecodedImageOwner,decodedImageScope}from './decoded-image-cache'
+-afterEach(()=>{native.freed=0;native.reads=0})
+-test('dimension-only reads do not hold an unconsumed native decoder',()=>{
++afterEach(async()=>{await Promise.resolve();native.freed=0;native.reads=0;native.created=0})
++test('dimension-only sources expire at the end of the synchronous upload turn',async()=>{
+  const source=nativeImageRows('uri','settings',()=>{})
+- expect([source.width,source.height]).toEqual([2,3]);expect(native.freed).toBe(1);expect(native.reads).toBe(0)
++ expect([source.width,source.height]).toEqual([2,3]);expect(native.freed).toBe(0);expect(native.created).toBe(1);expect(native.reads).toBe(0)
++ await Promise.resolve();expect(native.freed).toBe(1)
++ expect(()=>source.linearRows().next()).toThrow("disposed")
+ })
+ test('abandoned upload frees the live row decoder',()=>{
+  const source=nativeImageRows('uri','settings',()=>{}),iterator=source.linearRows()
+  expect(iterator.next().value?.y).toBe(0);iterator.return()
+- expect(native.freed).toBe(2)
++ expect(native.freed).toBe(1);expect(native.created).toBe(1)
++})
++test('complete upload consumes one decoder and frees exactly once',()=>{
++ const source=nativeImageRows('uri','settings',()=>{}),rows=[...source.linearRows()]
++ expect(rows.map(row=>[row.y,row.height])).toEqual([[0,1],[1,1],[2,1]])
++ expect(native.created).toBe(1);expect(native.freed).toBe(1);expect(native.reads).toBe(4)
++ source.dispose();expect(native.freed).toBe(1)
++ expect(()=>[...source.linearRows()]).toThrow('consumed')
++})
++test('disposing a paused iterator prevents another native read',()=>{
++ const source=nativeImageRows('uri','settings',()=>{}),iterator=source.linearRows()
++ iterator.next();source.dispose()
++ expect(()=>iterator.next()).toThrow('disposed');expect(native.reads).toBe(1);expect(native.freed).toBe(1)
+ })
+ test('scope cancellation interrupts rows and frees its native decoder',()=>{
+  let current=true;const source=nativeImageRows('uri','settings',()=>{if(!current)throw Error('PREVIEW_CANCELLED')})
+  const iterator=source.linearRows();iterator.next();current=false
+- expect(()=>iterator.next()).toThrow('PREVIEW_CANCELLED');expect(native.freed).toBe(2)
++ expect(()=>iterator.next()).toThrow('PREVIEW_CANCELLED');expect(native.freed).toBe(1);expect(native.created).toBe(1)
+ })
+ test('non-PNG and malformed hints retain the normal decoder',()=>{
+  expect(largePngRowCandidate('data:image/jpeg;base64,aaaa')).toBe(false)
+@@ -38,6 +53,12 @@
+  const info=vi.fn(()=>{throw failure}),kernel:any={image_info:info,image_info_at_level:info}
+  const load=managedSceneImageLoader(new DecodedImageCache(),()=>({kernel,scope:decodedImageScope(owner,settings),settings,current:()=>true}),{key:async()=>undefined,read:async()=>undefined,write(){throw Error('Unexpected cache write')}})
+  const run=()=>load('data:image/png;base64,fixture',kind==='byte',kind==='mip'?1:0)
+- if(kind==='budget'){const source=run();expect(source.width).toBe(2);expect(source.pixels.length).toBe(0);expect(native.freed).toBe(1)}
++ if(kind==='budget'){const source=run();expect(source.width).toBe(2);expect(source.pixels.length).toBe(0);source.dispose?.();expect(native.freed).toBe(1);expect(native.created).toBe(1)}
+  else{expect(run).toThrow(failure);expect(native.freed).toBe(0)}
+ })
++
++test('admission failure can dispose before iteration without creating a second decoder',()=>{
++ const source=nativeImageRows('uri','settings',()=>{});source.dispose();source.dispose()
++ expect(native.created).toBe(1);expect(native.freed).toBe(1);expect(native.reads).toBe(0)
++ expect(()=>source.linearRows().next()).toThrow('disposed')
++})
+--- a/frontend/design-client/src/kernel/gpu/renderer.ts
++++ b/frontend/design-client/src/kernel/gpu/renderer.ts
+@@ -167,6 +167,7 @@
+   bytes?: Uint8Array
+   linearRows?: () => import('../image-row-source').LinearImageRows
+   linearRowReason?:1|2
++  dispose?: () => void
+ }
+ /** Mirror of the kernel's `image_mipmap::mip_levels`: the base plus one level
+  * per ceil-halving until both extents reach one texel. Kept inline so the
+@@ -2039,6 +2040,7 @@
+       if (!this.managedImageLoader || !this.driver.uploadLinear)
+         throw new Error('后端缺少受管理的浮点图片解码器')
+       const image = this.managedImageLoader(uri, false, level)
++      try {
+       // Images share the one surface ledger; pressure evicts older images
+       // first instead of failing the frame.
+       if (this.overBudget(image.width * image.height * 16, image.width, image.height)) throw this.budgetError('GPU 浮点图片内存预算超限', 4)
+@@ -2066,12 +2068,14 @@
+       this.used.add(texture)
+       this.touch(texture)
+       return { texture, rect: rect(0, 0, image.width, image.height) }
++      } finally { image.dispose?.() }
+     }
+     if (!this.managedImageLoader || !this.driver.uploadRgba8)
+       throw new Error('后端缺少统一的图片解码器')
+     // Source assets share Rust's ICC/orientation/premultiplication boundary.
+     // The GPU still samples and composites every scene pixel itself.
+     const image = this.managedImageLoader(uri, true, level)
++    try {
+     if (!image.bytes || image.bytes.length !== image.width * image.height * 4)
+       throw new Error('无效的预乘 RGBA8 图片资源')
+ 
+@@ -2089,6 +2093,7 @@
+     this.used.add(texture)
+     this.touch(texture)
+     return { texture, rect: rect(0, 0, image.width, image.height) }
++    } finally { image.dispose?.() }
+   }
+   private imageKey(uri: string, level: number, intoAtlas: boolean, adjust?: ImageAdjust): string {
+     // The tag sits after `#level` so the loader's `startsWith(`${uri}#`)`
+@@ -2167,17 +2172,15 @@
+     this.bytes -= page.texture.bytes
+     this.atlasPages = this.atlasPages.filter((p) => p !== page)
+   }
+-  /** Base asset dimensions, cached from the shared deterministic decoder.
+-   * Level selection and grid compilation need the base extent, and the wasm
+-   * side caches the decode, so this never decodes twice. */
++  /** Cache base dimensions without retaining a transient row decoder. */
+   private baseDims(uri: string): [number, number] {
+     this.requireImageResidencyCurrent()
+     let dims = this.imageDims.get(uri)
+     if (!dims) {
+       if (!this.managedImageLoader) throw new Error('后端缺少统一的图片解码器')
+       const info = this.managedImageLoader(uri, !(this.scene.floatCompositing || this.scene.colorManagement), 0)
+-      dims = [info.width, info.height]
+-      this.imageDims.set(uri, dims)
++      try { dims = [info.width, info.height]; this.imageDims.set(uri, dims) }
++      finally { info.dispose?.() }
+     }
+     return dims
+   }
+--- a/frontend/design-client/src/kernel/gpu/webgpu.ts
++++ b/frontend/design-client/src/kernel/gpu/webgpu.ts
+@@ -104,6 +104,7 @@
+   private canvasBlurRequested = false
+   private canvasBlurPipelines: GPURenderPipeline[] = []
+   private canvasBlurScalarPipeline?: GPURenderPipeline
++  private canvasBlurAlphaPipeline?: GPURenderPipeline
+   private canvasBlurRgbaPipeline?: GPURenderPipeline
+   private canvasSpatialPipelines = new Map<number, GPURenderPipeline>()
+   private canvasSpatialFailed = new Set<number>()
+@@ -1381,7 +1382,7 @@
+           constants: { FILTER_CHANNEL: 3 }, targets: [{ format: 'r32float' }] },
+         primitive: { topology: 'triangle-list' } })
+     }
+-    if (this.canvasBlurRequested && !this.canvasBlurPipelines.length && !this.canvasBlurFailed) {
++    if (this.canvasBlurRequested && !this.canvasBlurRgbaPipeline && !this.canvasBlurPipelines.length && !this.canvasBlurFailed) {
+       try {
+         const device = this.device
+         const validated = async <T>(create: () => T | Promise<T>): Promise<T> => {
+@@ -1396,14 +1397,15 @@
+         const info = await module.getCompilationInfo()
+         if (info.messages.some(m => m.type === 'error')) throw Error('Canvas blur shader validation failed')
+         const layout = device.createPipelineLayout({ bindGroupLayouts: [this.layout] })
+-        const [colors, scalar] = await Promise.all([Promise.all([0, 1, 2, 3].map(channel => validated(() => device.createRenderPipelineAsync({ layout,
++        const color = (channel:number) => validated(() => device.createRenderPipelineAsync({ layout,
+           vertex: { module, entryPoint: 'quad' }, fragment: { module, entryPoint: 'fragment',
+             constants: { FILTER_CHANNEL: channel }, targets: [{ format: this.layerFormat, writeMask: 1 << channel }] },
+-          primitive: { topology: 'triangle-list' } })))), validated(() => device.createRenderPipelineAsync({ layout,
++          primitive: { topology: 'triangle-list' } }))
++        const [alpha, scalar] = await Promise.all([color(3), validated(() => device.createRenderPipelineAsync({ layout,
+             vertex: { module, entryPoint: 'quad' }, fragment: { module, entryPoint: 'fragment', constants: { FILTER_CHANNEL: 3 }, targets: [{ format: 'r32float' }] },
+             primitive: { topology: 'triangle-list' } }))])
+         this.assertPipelinePublicationOwner(device)
+-        this.canvasBlurPipelines = colors; this.canvasBlurScalarPipeline = scalar
++        this.canvasBlurAlphaPipeline = alpha; this.canvasBlurScalarPipeline = scalar
+         if(import.meta.env.VITE_DESIGN_CANVAS_BLUR_RGBA !== '0')try{
+           const rgba = await validated(() => device.createShaderModule({code:exactFilterWgsl(this.certifiedFilter,true,true),label:'Canvas RGBA rational-coefficient blur'}))
+           const rgbaInfo=await rgba.getCompilationInfo()
+@@ -1412,9 +1414,17 @@
+             fragment:{module:rgba,entryPoint:'fragmentRgba',targets:[{format:this.layerFormat}]},primitive:{topology:'triangle-list'}}))
+           this.assertPipelinePublicationOwner(device);this.canvasBlurRgbaPipeline=pipeline
+         }catch(error){console.warn('Canvas RGBA blur unavailable; using channel filters',error)}
++        // RGBA is the preferred colour path. Its three RGB channel pipelines
++        // are only needed after explicit opt-out or failed RGBA compilation.
++        // Alpha-only RGBA and scalar targets retain their original reducers.
++        if(!this.canvasBlurRgbaPipeline){
++          const colors=await Promise.all([color(0),color(1),color(2)])
++          this.assertPipelinePublicationOwner(device);this.canvasBlurPipelines=[...colors,alpha]
++        }
+       } catch (error) {
+         this.canvasBlurFailed = true
+         this.canvasBlurPipelines = []
++        this.canvasBlurAlphaPipeline = undefined; this.canvasBlurScalarPipeline = undefined
+         console.warn('Canvas blur arithmetic unavailable; using exact filters', error)
+       }
+     }
+@@ -2733,11 +2743,12 @@
+     const canvasBlur = !displayFilter && !sourceWindow && !target.binaryCoverage &&
+       (!target.scalarCoverage || channels === 8 && !!this.canvasBlurScalarPipeline) &&
+       ((filter?.radius ?? u[36]) <= 2048 || !!filter && !!this.shadowKernelProof(inputs[1], filter.radius)) &&
+-      canvasBlurPassEligible(this.canvasBlurRequested && this.canvasBlurPipelines.length === 4, u, channels, filter)
++      canvasBlurPassEligible(this.canvasBlurRequested && (channels===8 ? !!this.canvasBlurAlphaPipeline :
++        !!this.canvasBlurRgbaPipeline || this.canvasBlurPipelines.length===4), u, channels, filter)
+     const canvasSpatial = this.canvasBlurRequested && !sourceWindow && !target.scalarCoverage && !target.binaryCoverage &&
+       channels === 15 && canvasBlurGeometry(u) && this.canvasSpatialPipelines.has(u[16])
+     const rgbaBlur=canvasBlur&&!target.scalarCoverage&&channels===15&&!!this.canvasBlurRgbaPipeline
+-    const pipelines = canvasSpatial ? [this.canvasSpatialPipelines.get(u[16])!] : canvasBlur ? (target.scalarCoverage ? [this.canvasBlurScalarPipeline!] : rgbaBlur ? [this.canvasBlurRgbaPipeline!] : this.canvasBlurPipelines) : target.scalarCoverage ? [u[16]===49?this.alphaResolvePipeline!:u[16]===22?this.scalarFilterPipeline!:u[16]===31?(sampleOnly?this.sampleOnlyScalarPipeline!:this.scalarAreaPipeline!):this.scalarPipelines.get(u[16])!] : displayFilter ? [this.displayFilterPipeline!] : target.binaryCoverage
++    const pipelines = canvasSpatial ? [this.canvasSpatialPipelines.get(u[16])!] : canvasBlur ? (target.scalarCoverage ? [this.canvasBlurScalarPipeline!] : rgbaBlur ? [this.canvasBlurRgbaPipeline!] : channels===8 ? [this.canvasBlurAlphaPipeline!] : this.canvasBlurPipelines) : target.scalarCoverage ? [u[16]===49?this.alphaResolvePipeline!:u[16]===22?this.scalarFilterPipeline!:u[16]===31?(sampleOnly?this.sampleOnlyScalarPipeline!:this.scalarAreaPipeline!):this.scalarPipelines.get(u[16])!] : displayFilter ? [this.displayFilterPipeline!] : target.binaryCoverage
+       ? [u[16] === 31 ? (sampleOnly?this.sampleOnlyBytePipeline!:this.binaryAreaPipeline!) : this.binaryPipelines.get(u[16])!]
+       : this.managed && u[16] === 22 ? this.filterPipelines : [
+       u[16] === IMAGE_RESOLVE_STEP_MODE ? (displayImage ? this.displayImagePipeline! : this.imageResolveStepPipeline!) : u[16] === 50 ? this.shadowOverPipeline! : u[16] === 48 ? this.resolveStepPipeline! : u[16] === 47 ? this.solidPaintOverPipeline! : u[16] === 31 ? (sampleOnly?(this.managed===true?this.sampleOnlyColorPipeline!:this.sampleOnlyBytePipeline!):this.areaPipeline!) : this.managed && u[16] === 3 && u[17] === 0
+@@ -2770,7 +2781,8 @@
+     }
+     let drawn = false
+     for (let channel = 0; channel < pipelines.length; channel++) {
+-    if (this.managed && u[16] === 22 && !displayFilter && !target.scalarCoverage && !(channels & (1 << channel))) continue
++    const channelBit=canvasBlur&&channels===8&&!target.scalarCoverage?8:1<<channel
++    if (this.managed && u[16] === 22 && !displayFilter && !target.scalarCoverage && !(channels & channelBit)) continue
+     const timestampWrites = this.timingQueries ? this.timestampWrites({ mode: u[16], radius: u[36], width: region?.w || target.width, height: region?.h || target.height,
+       ...(u[16] === 3 ? { blend: u[17], integerCentres } : {}), ...(u[16] === 2 ? { paint: u[28] } : {}) }) : undefined
+     const pass = this.encoder.beginRenderPass({
+--- a/frontend/design-client/src/kernel/gpu/scene-packet.ts
++++ b/frontend/design-client/src/kernel/gpu/scene-packet.ts
+@@ -6,6 +6,30 @@
+ import {segmentedWitness,type CompilationWitness} from '../compilation-witness'
+ const decoded=new WeakMap<Uint8Array,GpuScene>()
+ const witnesses=new WeakMap<Uint8Array,CompilationWitness>()
++type PacketTransportStats = Readonly<{scenePacketProtocol:number;scenePacketVersion:number;
++  scenePacketBytes:number;scenePacketMetadataBytes:number;scenePacketResourceBytes:number}>
++
++/** CPU-only handoff after resource validation. Unlike a transport packet this
++ * cannot be posted to another process: it holds the materialized scene and its
++ * exact witness, without retaining/copying already-owned resource bodies. */
++export class CompiledScenePacket {
++  private constructor(readonly scene: GpuScene, readonly witness: CompilationWitness,
++    readonly transport: PacketTransportStats) { Object.freeze(this) }
++  static from(bytes: Uint8Array, independent: boolean) {
++    let scene=decodeScenePacket(bytes),witness=scenePacketWitness(bytes)
++    const h=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength)
++    if(independent){
++      const start=Math.ceil((24+h.getUint32(8,true))/4)*4,nv=h.getUint32(12,true),nc=h.getUint32(16,true)
++      const geometry=bytes.slice(start,start+(nv+nc)*4)
++      scene={...scene,vertices:new Float32Array(geometry.buffer,0,nv),curves:new Float32Array(geometry.buffer,nv*4,nc)}
++      bindSourcePrograms(scene)
++      witness=witness instanceof Uint8Array?witness.slice():segmentedWitness([witness.parts[0],geometry])
++    }
++    return new CompiledScenePacket(scene,witness,Object.freeze({scenePacketProtocol:2,scenePacketVersion:h.getUint32(4,true),
++      scenePacketBytes:bytes.length,scenePacketMetadataBytes:h.getUint32(8,true),scenePacketResourceBytes:h.getUint32(20,true)}))
++  }
++}
++export type ScenePacket = Uint8Array | CompiledScenePacket
+ function immutable<T>(value:T):T {
+   if(value&&typeof value==='object'&&!Object.isFrozen(value)) {
+     for(const child of Object.values(value))immutable(child)
+@@ -15,7 +39,11 @@
+ }
+ /** FGSC is the only production packet. Resource references are materialized
+  * before acknowledgement, while the precise request lease is still alive. */
+-export function decodeScenePacket(input:Uint8Array,store?:FrameResources,lease?:ResourceLease):GpuScene {
++export function decodeScenePacket(input:ScenePacket,store?:FrameResources,lease?:ResourceLease):GpuScene {
++  if(input instanceof CompiledScenePacket){
++    if(store||lease)throw Error('Prepared scene has already consumed its resource lease')
++    return input.scene
++  }
+   const known=decoded.get(input);if(known)return known
+   const bytes=input.byteOffset%4||!(input.buffer instanceof ArrayBuffer)?input.slice():input as Uint8Array<ArrayBuffer>
+   if(bytes.length<24)throw Error('Truncated GPU scene packet')
+@@ -91,7 +119,7 @@
+   witnesses.set(input,witness)
+   return scene
+ }
+-export function scenePacketWitness(bytes:Uint8Array){return witnesses.get(bytes)||bytes}
++export function scenePacketWitness(bytes:ScenePacket){return bytes instanceof CompiledScenePacket?bytes.witness:witnesses.get(bytes)||bytes}
+ 
+ /** Coalesced consumers get independent program storage; immutable native node
+  * resources may be shared, exactly as their frame leases already permit. */
+--- a/frontend/design-client/src/canvas-scene-reuse-cpu.test.tsx
++++ b/frontend/design-client/src/canvas-scene-reuse-cpu.test.tsx
+@@ -9,14 +9,21 @@
+ import { createHash } from 'node:crypto'
+ import { Canvas } from './Canvas'
+ import { Editor } from './engine'
+-import { blank, node, type DesignDocument } from './model'
++import { blank, node, defaultLayout, type DesignDocument } from './model'
+ import type { SurfaceProps } from './kernel/Surface'
+ import { worldToScreen } from './canvas-camera'
+ 
+ const observed = vi.hoisted(() => ({
+   scenes: [] as {document: import('./model').DesignDocument; page: string; entries: import('./geometry').SceneEntry[]}[],
+   indexes: [] as import('./geometry').SpatialIndex[], surface: null as import('./kernel/Surface').SurfaceProps|null,
++  gridQueries: 0,
+ }))
++vi.mock('./grid-overlay',async original=>{
++  const actual=await original<typeof import('./grid-overlay')>()
++  return {...actual,gridOverlayRectangles:(...args:Parameters<typeof actual.gridOverlayRectangles>)=>{
++    observed.gridQueries++;return actual.gridOverlayRectangles(...args)
++  }}
++})
+ vi.mock('./geometry', async original => {
+   const actual = await original<typeof import('./geometry')>()
+   return {...actual,scene:(document:DesignDocument,page:string)=>{
+@@ -169,3 +176,20 @@
+   await act(async()=>editor.redo());expect(editor.state.doc).toEqual(final)
+   report({kind:'local-shape-preview-release',width:created.width,height:created.height,transform:created.transform})
+ })
++
++test('selected Grid overlays reuse solved tracks through camera/hover updates and refresh on edits',async()=>{
++ const d=fixture(4,'sparse',true),frame=node('frame',0,0,300,200);frame.id=id(50)
++ frame.layout={...defaultLayout(),mode:'grid',columns:2,padding:[0,0,0,0]};frame.children=[...d.pages[0].children]
++ d.nodes[frame.id]=frame;d.pages[0].children=[frame.id]
++ await render(d);observed.gridQueries=0
++ await act(async()=>editor.select([frame.id]))
++ const first=observed.gridQueries;expect(first).toBeGreaterThan(0)
++ const points=Array.from(mount.querySelectorAll('[data-testid="layout-grid-cell"]')).map(e=>e.getAttribute('points'))
++ expect(points).toHaveLength(4)
++ for(let i=0;i<10;i++)await act(async()=>{editor.set({view:{x:i*11,y:-i,zoom:1+i/20}});editor.hoverLayer(frame.id,'layers')})
++ expect(observed.gridQueries).toBe(first)
++ expect(Array.from(mount.querySelectorAll('[data-testid="layout-grid-cell"]')).map(e=>e.getAttribute('points'))).toEqual(points)
++ await act(async()=>editor.update([frame.id],{width:400}))
++ expect(observed.gridQueries).toBe(first+1)
++ expect(Array.from(mount.querySelectorAll('[data-testid="layout-grid-cell"]')).map(e=>e.getAttribute('points'))).not.toEqual(points)
++})
+--- a/frontend/design-client/src/kernel/render-kernel.ts
++++ b/frontend/design-client/src/kernel/render-kernel.ts
+@@ -8,7 +8,7 @@
+ import { PreparationChannel, type PreparationMethod } from './preparation-channel'
+ import { bindContentOwner, pixelSourceContract } from './gpu/page-background'
+ import { FrameResources } from './gpu/frame-resources'
+-import { decodeScenePacket, copyScenePacket } from './gpu/scene-packet'
++import { decodeScenePacket, copyScenePacket, CompiledScenePacket } from './gpu/scene-packet'
+ import { PreparedPacket, waitForPacket } from './prepared-packet'
+ export type NativeSourceIdentity={documentId:string;pageId:string;stageId:string;nodes:number}
+ 
+@@ -158,6 +158,9 @@
+     finally { this.pendingMutations-- }
+   }
+   async compile_gpu_packet(options: string, signal?: AbortSignal) {
++    return this.compileOwned(options,signal,(bytes,shared)=>shared?copyScenePacket(bytes):bytes)
++  }
++  private async compileOwned<T>(options:string,signal:AbortSignal|undefined,own:(bytes:Uint8Array,shared:boolean)=>T):Promise<T> {
+     if (signal?.aborted) throw Error('PREVIEW_CANCELLED')
+     const enabled = !!this.preparation
+     const revision = this.revision
+@@ -167,7 +170,7 @@
+       pending.shared = true
+       // The first consumer may transfer or mutate its packet immediately.
+       // Each waiter needs independent ownership, including before cache admission.
+-      return copyScenePacket(await waitForPacket(pending.bytes, signal))
++      return own(await waitForPacket(pending.bytes, signal),true)
+     }
+     const entry = { revision, bytes: this.compileFrame(options, revision, signal), shared: false }
+     // A cancellable physical compile cannot be the shared owner of an exact
+@@ -175,10 +178,10 @@
+     if (enabled && !this.pendingMutations && !signal) this.pendingPackets.set(options, entry)
+     // Only shared requests need an extra private copy. Never let an old
+     // completion remove a newer revision's request under the same key.
+-    let bytes: Uint8Array
+-    try { const result = await entry.bytes; bytes = entry.shared ? copyScenePacket(result) : result }
++    let value: T
++    try { const result = await entry.bytes; value = own(result,entry.shared) }
+     finally { if (this.pendingPackets.get(options) === entry) this.pendingPackets.delete(options) }
+-    return bytes
++    return value
+   }
+   /** A packet may wait outside GPU ownership only with this version receipt.
+    * Its bytes have one consumer and admission rechecks the kernel epoch. */
+@@ -189,6 +192,14 @@
+     const current = () => revision === this.revision && !this.pendingMutations && settings === this.settings
+     if (!current()) throw Error('STALE_PREPARED_PACKET')
+     return new PreparedPacket({ lane: this.lane, revision, options, settings }, bytes, current, signal)
++  }
++  async prepare_gpu_scene(options: string, signal?: AbortSignal): Promise<PreparedPacket<CompiledScenePacket>> {
++    if(this.pendingMutations)throw Error('DOCUMENT_PREPARATION_PENDING')
++    const revision=this.revision,settings=this.settings
++    const scene=await this.compileOwned(options,signal,(bytes,shared)=>CompiledScenePacket.from(bytes,shared))
++    const current=()=>revision===this.revision&&!this.pendingMutations&&settings===this.settings
++    if(!current())throw Error('STALE_PREPARED_PACKET')
++    return new PreparedPacket({lane:this.lane,revision,options,settings},scene,current,signal)
+   }
+   async apply_interaction_transforms(value: string) {
+     if (this.lane !== 'interaction') throw Error('Transform-only updates require the interaction lane')
+--- a/frontend/design-client/src/kernel/render-worker.ts
++++ b/frontend/design-client/src/kernel/render-worker.ts
+@@ -39,7 +39,7 @@
+   type RenderPolicy,
+ } from './render-policy'
+ import type { GpuRenderer } from './gpu/renderer'
+-import { decodeScenePacket, scenePacketWitness } from './gpu/scene-packet'
++import { decodeScenePacket, scenePacketWitness, CompiledScenePacket, type ScenePacket } from './gpu/scene-packet'
+ import type {CompilationWitness} from './compilation-witness'
+ import type { ColorSettings } from '../color'
+ import type { BackendPreference, GpuScene } from './gpu/types'
+@@ -172,7 +172,10 @@
+       let packet: Record<string, number> | undefined
+       try {
+         const result = await original()
+-        if (result instanceof Uint8Array && result.byteLength >= 24) {
++        if (result instanceof CompiledScenePacket) {
++          const scene=result.scene
++          packet={...result.transport,width:scene.extent.w,height:scene.extent.h,count:Object.keys(scene.nodes).length}
++        } else if (result instanceof Uint8Array && result.byteLength >= 24) {
+           const header = new DataView(result.buffer, result.byteOffset, result.byteLength)
+           if (header.getUint32(0, true) === 0x43534746 && header.getUint32(4, true)===1)
+             packet = { scenePacketProtocol: 2, scenePacketVersion: header.getUint32(4, true), scenePacketBytes: result.byteLength,
+@@ -190,7 +193,7 @@
+   return work().finally(() => { if (generation === navigationCaptureGeneration) navigationJournal.record(5, { sequence }) })
+ }
+ function compilePacket(kernel: RenderKernel, options: string, signal?: AbortSignal) {
+-  return journalCompile(async () => (await kernel.prepare_gpu_packet(options, signal)).consume())
++  return journalCompile(async () => (await kernel.prepare_gpu_scene(options, signal)).consume())
+ }
+ let reportedResidentAttachment = ''
+ function prepareDisplay(capture = true) {
+@@ -415,7 +418,7 @@
+           const compileStarted=performance.now()
+           const packet=await compilePacket(kernel,session.options,session.controller.signal)
+           if(!current())continue
+-          sceneUpdateBytes=packet.byteLength
++          sceneUpdateBytes=packet.transport.scenePacketBytes
+           const compiled=decodeScenePacket(packet)
+           poseCompileMs=performance.now()-compileStarted
+           compileStats=kernel.compileStats
+@@ -1239,7 +1242,7 @@
+               import.meta.env.VITE_DESIGN_HORIZONTAL_FILTER_REUSE !== '0' &&
+               import.meta.env.VITE_DESIGN_IMAGE_RESOLVE_FUSION !== '0'
+             let filterColumnPlans = 0, filterColumnReorders = 0
+-            const ahead = new PrepareAhead<{ bytes: Uint8Array; ms: number; tile: RasterTile }>()
++            const ahead = new PrepareAhead<{ bytes: ScenePacket; ms: number; tile: RasterTile }>()
+             let preparationWaitMs = 0, overlappedPreparations = 0
+             const current = () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
+               (channel !== 'canvas' || fillGeneration === tileFillGeneration)
+@@ -1254,7 +1257,7 @@
+                 gpuViewport: { x: tile.x + Math.floor(renderOptions.view.x), y: tile.y + Math.floor(renderOptions.view.y), w: tile.width, h: tile.height },
+                 ...(prepareViewport ? { prepareViewport } : {}),
+               }), packetWait?.controller.signal)
+-              let bytes: Uint8Array
++              let bytes: ScenePacket
+               try { bytes = await compile() }
+               catch (error) {
+                 if (!prepareViewport || !isScenePathBudget(error)) throw error
+@@ -2170,7 +2173,7 @@
+           ...(prepareViewport ? { prepareViewport } : {}) }))
+         let scene = prepared
+         if (!scene) {
+-          let packet: Uint8Array
++          let packet: ScenePacket
+           try { packet = await compileRegion() }
+           catch (error) {
+             if (!prepareViewport || !isScenePathBudget(error)) throw error
+--- a/frontend/design-client/src/kernel/prepared-packet.ts
++++ b/frontend/design-client/src/kernel/prepared-packet.ts
+@@ -14,14 +14,14 @@
+ /** No device, encoder, texture, or asset decoder is owned by this receipt.
+  * Typed-array contents cannot be frozen in JS, so bytes remain private until
+  * one validated ownership transfer. Disposal of an obsolete packet is CPU-only. */
+-export class PreparedPacket {
++export class PreparedPacket<T = Uint8Array> {
+   readonly certificate: PacketCertificate
+-  private bytes?: Uint8Array
+-  constructor(certificate: PacketCertificate, bytes: Uint8Array, private current: () => boolean, private signal?: AbortSignal) {
++  private bytes?: T
++  constructor(certificate: PacketCertificate, bytes: T, private current: () => boolean, private signal?: AbortSignal) {
+     this.certificate = Object.freeze({ ...certificate })
+     this.bytes = bytes
+   }
+-  consume(): Uint8Array {
++  consume(): T {
+     if (!this.bytes) throw Error('PREPARED_PACKET_CONSUMED')
+     if (this.signal?.aborted) { this.discard(); throw Error('PREVIEW_CANCELLED') }
+     if (!this.current()) { this.discard(); throw Error('STALE_PREPARED_PACKET') }
+--- a/frontend/design-client/src/kernel/gpu/scene-packet.test.ts
++++ b/frontend/design-client/src/kernel/gpu/scene-packet.test.ts
+@@ -1,14 +1,14 @@
+ import { expect, test, vi } from 'vitest'
+ import { VectorEngine } from '../../generated/design-kernel/design_kernel'
+ import { blank, node, paint } from '../../model'
+-import { decodeScenePacket, copyScenePacket, scenePacketWitness } from './scene-packet'
++import { decodeScenePacket, copyScenePacket, scenePacketWitness, CompiledScenePacket } from './scene-packet'
+ import { FrameResources, frameResource } from './frame-resources'
+ import { decodeFrameValue } from './frame-wire'
+ import { emptyFrame, frameValue } from './frame-wire.test-helper'
+ import {copyWitness} from '../compilation-witness'
+ const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jhxsAAAAASUVORK5CYII='
+ function fixture(){
+-  const doc=blank(),shape=node('rectangle',.3,-.7,43.8,27.9),image={...paint('#ffffff'),kind:'image' as const,image:png}
++  const doc=blank(),shape=node('ellipse',.3,-.7,43.8,27.9),image={...paint('#ffffff'),kind:'image' as const,image:png}
+   shape.fills=[image,{...image,opacity:.5}];doc.nodes[shape.id]=shape;doc.pages[0].children=[shape.id]
+   const engine=new VectorEngine();engine.load_document(JSON.stringify(doc))
+   return {engine,shape,options:{pageId:doc.pages[0].id,width:64,height:64,view:{x:.125,y:-.375,zoom:1.137},rasterProfile:'figmaSubpixel'}}
+@@ -20,6 +20,27 @@
+     expect([...new Uint32Array(values.buffer,values.byteOffset,values.length)]).toEqual([...new Uint32Array(reference.buffer)])
+   }
+ }
++test('materialized handoffs retain exact geometry and witnesses without replicating transport resource bodies',()=>{
++  const f=fixture();f.engine.bind_frame_scene_scope('decoded-handoff')
++  try{
++    const bytes=f.engine.compile_gpu_packet(JSON.stringify(f.options)),source=decodeScenePacket(bytes)
++    const h=new DataView(bytes.buffer,bytes.byteOffset),nv=h.getUint32(12,true),nc=h.getUint32(16,true)
++    expect(nv+nc).toBeGreaterThan(0)
++    expect(h.getUint32(20,true)).toBeGreaterThan(0)
++    const a=CompiledScenePacket.from(bytes,true),b=CompiledScenePacket.from(bytes,true)
++    sameScene(decodeScenePacket(a),source);sameScene(decodeScenePacket(b),source)
++    if(!(a.scene.vertices instanceof Float32Array)||!(b.scene.vertices instanceof Float32Array))throw Error('Expected typed geometry')
++    expect(a.scene.vertices.buffer.byteLength).toBe((nv+nc)*4)
++    expect(a.scene.vertices.buffer).not.toBe(b.scene.vertices.buffer)
++    expect(a.transport.scenePacketBytes).toBe(bytes.length)
++    expect(copyWitness(scenePacketWitness(a))).toEqual(copyWitness(scenePacketWitness(bytes)))
++    const before=new Uint8Array(b.scene.vertices.buffer).slice()
++    new Uint8Array(a.scene.vertices.buffer)[0]^=1
++    expect(new Uint8Array(b.scene.vertices.buffer)).toEqual(before)
++    const store=new FrameResources(),lease=store.capture()
++    try{expect(()=>decodeScenePacket(a,store,lease)).toThrow('resource lease')}finally{lease.release()}
++  }finally{f.engine.free()}
++})
+ test('Rust binary frame preserves the JSON oracle, numeric values, resources and exact f32 words',()=>{
+   const f=fixture()
+   try{const reference=JSON.parse(f.engine.compile_gpu(JSON.stringify(f.options))),packet=f.engine.compile_gpu_packet(JSON.stringify(f.options))
+--- a/design-studio/crates/design-kernel/tests/sketch_curve_modes.rs
++++ b/design-studio/crates/design-kernel/tests/sketch_curve_modes.rs
+@@ -77,7 +77,7 @@
+     path.width = 100.;
+     path.height = 100.;
+     path.transform = Transform([1., 0., 0., 1., 0., 0.]);
+-    path.network = Some(net);
++    path.network = Some(net.into());
+     doc.nodes.insert("p1".into(), page);
+     doc.nodes.insert("n1".into(), path);
+     doc
+@@ -499,7 +499,7 @@
+          "curveMode":4,"cornerRadius":0.0}
+     ]));
+     let doc = {
+-        let mut d = kernel_doc(node.network.clone().expect("network"));
++        let mut d = kernel_doc(node.network.as_deref().expect("network").clone());
+         let target = d.nodes.get_mut("n1").unwrap();
+         target.bindings = node.bindings.clone();
+         d
+--- a/design-studio/crates/design-kernel/tests/mask_picking.rs
++++ b/design-studio/crates/design-kernel/tests/mask_picking.rs
+@@ -59,9 +59,9 @@
+     for x in [-32., 0.025, 32.] {
+         let m = Transform([x, 0., x * 0.25, 32., 0.125, -0.375]);
+         let p = m.point(Point::new(50., 50.));
+-        n.network.as_mut().unwrap().fill_rule = "nonzero".into();
++        std::sync::Arc::make_mut(n.network.as_mut().unwrap()).fill_rule = "nonzero".into();
+         assert!(hit_test_fill_device(&n, p, m).unwrap());
+-        n.network.as_mut().unwrap().fill_rule = "evenodd".into();
++        std::sync::Arc::make_mut(n.network.as_mut().unwrap()).fill_rule = "evenodd".into();
+         assert!(!hit_test_fill_device(&n, p, m).unwrap());
+     }
+ }
+--- a/design-studio/crates/design-kernel/tests/mutation_semantics.rs
++++ b/design-studio/crates/design-kernel/tests/mutation_semantics.rs
+@@ -29,21 +29,9 @@
+ #[test]
+ fn bound_vector_dimensions_resize_geometry_and_curves_across_modes_reload() {
+     let mut d = fixture("vector");
+-    d.nodes
+-        .get_mut("n")
+-        .unwrap()
+-        .network
+-        .as_mut()
+-        .unwrap()
+-        .edges[0]
++    std::sync::Arc::make_mut(d.nodes.get_mut("n").unwrap().network.as_mut().unwrap()).edges[0]
+         .c1 = Some(serde_json::from_value(json!({"x":3,"y":0})).unwrap());
+-    d.nodes
+-        .get_mut("n")
+-        .unwrap()
+-        .network
+-        .as_mut()
+-        .unwrap()
+-        .edges[0]
++    std::sync::Arc::make_mut(d.nodes.get_mut("n").unwrap().network.as_mut().unwrap()).edges[0]
+         .c2 = Some(serde_json::from_value(json!({"x":7,"y":0})).unwrap());
+     let s = d.design_system.as_mut().unwrap();
+     s.collections
+--- a/design-studio/crates/design-kernel/tests/offset_path.rs
++++ b/design-studio/crates/design-kernel/tests/offset_path.rs
+@@ -22,7 +22,7 @@
+ #[test]
+ fn dragging_a_cut_cubic_vertex_keeps_a_tiny_positive_offset_closed() {
+     let mut n: Node = serde_json::from_str(include_str!("fixtures/offset-cut-curve.json")).unwrap();
+-    let p = &mut n.network.as_mut().unwrap().vertices[0];
++    let p = &mut std::sync::Arc::make_mut(n.network.as_mut().unwrap()).vertices[0];
+     p.x -= 30.;
+     p.y -= 0.1;
+     n.path_offset = 0.001;
+--- a/design-studio/crates/design-kernel/tests/sketch_import_admission.rs
++++ b/design-studio/crates/design-kernel/tests/sketch_import_admission.rs
+@@ -248,13 +248,13 @@
+     let after = &report.document.nodes["line"];
+     assert_eq!(after.kind, "vector");
+     assert_eq!(after.transform, before.transform);
+-    let mut expected = before.network.clone().unwrap();
++    let mut expected = before.network.as_deref().unwrap().clone();
+     for vertex in &mut expected.vertices {
+         vertex.x *= before.width;
+         vertex.y *= before.height;
+     }
+     expected.edges.pop();
+-    assert_eq!(after.network.as_ref(), Some(&expected));
++    assert_eq!(after.network.as_deref(), Some(&expected));
+     assert_eq!(after.width, before.width);
+     assert!(after.height > 0. && after.height <= 1e-6);
+     let metadata = &report
+--- a/design-studio/crates/design-kernel/tests/text.rs
++++ b/design-studio/crates/design-kernel/tests/text.rs
+@@ -108,10 +108,10 @@
+     }];
+     assert!(f.node_layout(&n, Some(100.)).is_err());
+     n.text_runs.clear();
+-    n.text_style = Some(TextStyle {
++    n.text_style = Some(Box::new(TextStyle {
+         font_id: "missing".into(),
+         ..TextStyle::default()
+-    });
++    }));
+     // A vanished resource no longer fails the render: the cluster degrades to
+     // the embedded default face (historically this hard error blanked whole
+     // canvases when one font id went stale).
+--- a/frontend/design-client/src/kernel/gpu/exact-filter-pass.test.ts
++++ b/frontend/design-client/src/kernel/gpu/exact-filter-pass.test.ts
+@@ -2,12 +2,12 @@
+ import { WebGpuDriver } from './webgpu'
+ import { parameters, type Texture } from './types'
+ 
+-afterEach(() => vi.unstubAllGlobals())
++afterEach(() => {vi.unstubAllGlobals();vi.unstubAllEnvs();vi.restoreAllMocks()})
+ 
+ /** Real prepareFilters/pass dispatch, with an attachment-write emulator.
+  * Shader arithmetic is deliberately not emulated or claimed GPU-validated:
+  * arbitrary reducer result bits exercise only clear/load/channel semantics. */
+-async function fixture(timed = false) {
++async function fixture(timed = false, canvas = false, rejectRgba = false) {
+   vi.stubGlobal('OffscreenCanvas', class { constructor(readonly width: number, readonly height: number) {} })
+   const descriptors: any[] = [], bindings: any[] = [], passes: any[] = [], commands: string[] = []
+   const reducerBits = new Uint32Array([0x80000000, 0x00000001, 0xbf123456, 0x3f800000])
+@@ -17,10 +17,15 @@
+     resource: { createView: () => ({}) } as unknown as GPUTexture })
+   const target = texture(), source = texture()
+   const driver = Object.assign(new WebGpuDriver(true), {
+-    managed: true, displayFilters: false, device: {
++    managed: true, displayFilters: false, canvasBlurRequested: canvas, device: {
++      pushErrorScope() {}, popErrorScope: async () => null,
+       createShaderModule: (descriptor: any) => ({ ...descriptor, getCompilationInfo: async () => ({ messages: [] }) }),
+       createPipelineLayout: (descriptor: any) => descriptor,
+-      createRenderPipelineAsync: async (descriptor: any) => { descriptors.push(descriptor); return descriptor },
++      createRenderPipelineAsync: async (descriptor: any) => {
++        descriptors.push(descriptor)
++        if(rejectRgba&&descriptor.fragment.entryPoint==='fragmentRgba')throw Error('Unsupported RGBA candidate')
++        return descriptor
++      },
+       createBindGroup: (descriptor: any) => { bindings.push(descriptor); return descriptor },
+     }, layout: {}, curves, uniform: () => ({ buffer: uniformBuffer, offset: 0, size: 1024 }), blank: texture(),
+     filterPipelines: [], timingQueries: timed ? {} : undefined, timingRows: [],
+@@ -35,12 +40,12 @@
+         setScissorRect() {},
+         draw(vertices: number) {
+           expect(vertices).toBe(3)
+-          const channel = pipeline.fragment.constants.FILTER_CHANNEL
++          const channel = pipeline.fragment.constants?.FILTER_CHANNEL
+           const attachment = pipeline.fragment.targets[0]
+           expect(attachment.blend).toBeUndefined()
+           const mask = attachment.writeMask ?? 15
+           record.channels.push(channel); commands.push(`draw:${channel}`)
+-          for (let c = 0; c < 4; c++) if (mask & (1 << c)) pixels[c] = reducerBits[channel]
++          for (let c = 0; c < 4; c++) if (mask & (1 << c)) pixels[c] = reducerBits[channel??c]
+         },
+         end() { record.ended = true; commands.push('end') },
+       }
+@@ -50,6 +55,33 @@
+   const u = parameters({ x: 0, y: 0, w: 16, h: 12 }); u[16] = 22; u[36] = 18.393984
+   return { driver, target, source, u, descriptors, bindings, passes, pixels, reducerBits, commands }
+ }
++
++test('canvas setup prepares only the preferred RGBA, alpha and scalar variants and reuses them',async()=>{
++  const f=await fixture(false,true)
++  expect(f.descriptors).toHaveLength(8)
++  await f.driver.prepareFilters();expect(f.descriptors).toHaveLength(8)
++  f.u[36]=2;f.u[39]=2
++  f.driver.pass(f.target,f.u,[f.source])
++  expect(f.passes).toHaveLength(1);expect(f.pixels).toEqual(f.reducerBits)
++  f.driver.pass(f.target,f.u,[f.source],undefined,8)
++  expect(f.passes).toHaveLength(2);expect(f.passes[1].channels).toEqual([3])
++  expect([...f.pixels]).toEqual([0,0,0,f.reducerBits[3]])
++  expect(f.driver.canvasBlurPasses).toBe(2)
++  f.target.scalarCoverage=true;f.driver.pass(f.target,f.u,[f.source],undefined,8)
++  expect(f.passes[2].channels).toEqual([3]);expect(f.driver.canvasBlurPasses).toBe(3)
++})
++
++test.each(['disabled','failed'])('canvas %s RGBA path keeps four-channel fallback and alpha writes',async mode=>{
++  if(mode==='disabled')vi.stubEnv('VITE_DESIGN_CANVAS_BLUR_RGBA','0')
++  vi.spyOn(console,'warn').mockImplementation(()=>{})
++  const f=await fixture(false,true,mode==='failed')
++  expect(f.descriptors).toHaveLength(mode==='failed'?11:10)
++  f.u[36]=2;f.u[39]=2
++  f.driver.pass(f.target,f.u,[f.source])
++  expect(f.passes[0].channels).toEqual([0,1,2,3]);expect(f.pixels).toEqual(f.reducerBits)
++  f.driver.pass(f.target,f.u,[f.source],undefined,8)
++  expect(f.passes[1].channels).toEqual([3]);expect([...f.pixels]).toEqual([0,0,0,f.reducerBits[3]])
++})
+ 
+ test('exact RGBA axis keeps four bit-identical channel writes in one clear/store pass', async () => {
+   const fused = await fixture(), reference = await fixture(true)
+--- a/frontend/design-client/src/kernel/render-kernel.test.ts
++++ b/frontend/design-client/src/kernel/render-kernel.test.ts
+@@ -1,7 +1,10 @@
+ import { emptyFrame } from './gpu/frame-wire.test-helper'
+ import { expect, test } from 'vitest'
+ import { VectorEngine } from '../generated/design-kernel/design_kernel'
+-import { blank } from '../model'
++import { blank, node, paint } from '../model'
++import { decodeScenePacket, scenePacketWitness } from './gpu/scene-packet'
++import { copyWitness } from './compilation-witness'
++import { pixelContentProof, pixelSourceContract } from './gpu/page-background'
+ import { PreparationChannel } from './preparation-channel'
+ import { RenderKernel } from './render-kernel'
+ 
+@@ -240,7 +243,7 @@
+   } finally { channel.close(); ports.port2.close(); assets.free() }
+ })
+ 
+-test('production receipt rejects an old packet after a delayed compile crosses a document mutation', async () => {
++test.each(['prepare_gpu_packet','prepare_gpu_scene'] as const)('production receipt rejects an old packet after a delayed compile crosses a document mutation (%s)', async prepare => {
+   const assets = new VectorEngine(), ports = new MessageChannel()
+   const channel = unorderedPreparation(ports.port1), kernel = new RenderKernel(assets, 'canvas', channel)
+   let release!: () => void, notice!: () => void
+@@ -251,31 +254,31 @@
+     else ports.port2.postMessage({ id })
+   }
+   try {
+-    const packet = kernel.prepare_gpu_packet('{}')
++    const packet = kernel[prepare]('{}')
+     const rejected = expect(packet).rejects.toThrow('STALE_PREPARED_PACKET')
+     await started; await kernel.load_document('{}'); release(); await rejected
+   } finally { channel.close(); ports.port2.close(); assets.free() }
+ })
+ 
+-test('production receipt is bound to one lane, mutation epoch and pre-encoder cancellation', async () => {
++test.each(['prepare_gpu_packet','prepare_gpu_scene'] as const)('production receipt is bound to one lane, mutation epoch and pre-encoder cancellation (%s)', async prepare => {
+   const assets = new VectorEngine(), ports = new MessageChannel()
+   const channel = new PreparationChannel(ports.port1), kernel = new RenderKernel(assets, 'interaction', channel)
+   ports.port2.onmessage = event => ports.port2.postMessage({ id: event.data.id, value: event.data.method === 'compile_gpu_packet' ? emptyFrame(8) : undefined })
+   try {
+     await kernel.load_document('{}')
+-    const first = await kernel.prepare_gpu_packet('{}')
++    const first = await kernel[prepare]('{}')
+     expect(first.certificate).toEqual({ lane: 'interaction', revision: 1, options: '{}', settings: 'null' })
+     await kernel.load_document('{}')
+     expect(() => first.consume()).toThrow('STALE_PREPARED_PACKET')
+-    const signal = new AbortController(), cancelled = await kernel.prepare_gpu_packet('{}', signal.signal)
++    const signal = new AbortController(), cancelled = await kernel[prepare]('{}', signal.signal)
+     signal.abort(); expect(() => cancelled.consume()).toThrow('PREVIEW_CANCELLED')
+-    const exact = await kernel.prepare_gpu_packet('{}')
+-    expect(exact.consume()).toEqual(emptyFrame(8))
++    const exact = await kernel[prepare]('{}')
++    expect(decodeScenePacket(exact.consume()).width).toBe(8)
+     expect(() => exact.consume()).toThrow('PREPARED_PACKET_CONSUMED')
+   } finally { channel.close(); ports.port2.close(); assets.free() }
+ })
+ 
+-test('pending mutation cannot produce a receipt; aborted requests never return bytes', async () => {
++test.each(['prepare_gpu_packet','prepare_gpu_scene'] as const)('pending mutation cannot produce a receipt; aborted requests never return bytes (%s)', async prepare => {
+   const assets = new VectorEngine(), ports = new MessageChannel()
+   const channel = new PreparationChannel(ports.port1), kernel = new RenderKernel(assets, 'canvas', channel)
+   let release!: () => void, notice!: () => void, held = false
+@@ -287,12 +290,43 @@
+   try {
+     await kernel.compile_gpu_packet('{}')
+     const signal = new AbortController(); signal.abort()
+-    await expect(kernel.prepare_gpu_packet('{}', signal.signal)).rejects.toThrow('PREVIEW_CANCELLED')
++    await expect(kernel[prepare]('{}', signal.signal)).rejects.toThrow('PREVIEW_CANCELLED')
+     held = true
+     const started = new Promise<void>(resolve => { notice = resolve })
+     const mutation = kernel.load_document('{}'); await started
+-    await expect(kernel.prepare_gpu_packet('{}')).rejects.toThrow('DOCUMENT_PREPARATION_PENDING')
++    await expect(kernel[prepare]('{}')).rejects.toThrow('DOCUMENT_PREPARATION_PENDING')
+     release(); await mutation
+-    expect((await kernel.prepare_gpu_packet('{}')).consume()).toEqual(emptyFrame(6))
+-  } finally { channel.close(); ports.port2.close(); assets.free() }
+-})
++    expect(decodeScenePacket((await kernel[prepare]('{}')).consume()).width).toBe(6)
++  } finally { channel.close(); ports.port2.close(); assets.free() }
++})
++
++
++test('mixed scene/transport consumers share compilation but retain private program ownership',async()=>{
++ const remote=new VectorEngine(),assets=new VectorEngine(),ports=new MessageChannel()
++ const channel=new PreparationChannel(ports.port1),kernel=new RenderKernel(assets,'canvas',channel)
++ const doc=blank(),shape=node('ellipse',0,0,32,24);shape.fills=[paint('#ff0000')]
++ doc.nodes[shape.id]=shape;doc.pages[0].children=[shape.id];remote.load_document(JSON.stringify(doc));remote.bind_frame_scene_scope('handoff-mixed')
++ const options=JSON.stringify({pageId:doc.pages[0].id,width:64,height:64,view:{x:0,y:0,zoom:1}})
++ let compiles=0
++ ports.port2.onmessage=event=>{const {id,args}=event.data;compiles++;const value=remote.compile_gpu_packet(args[0]);ports.port2.postMessage({id,value},[value.buffer])}
++ try{
++  const transferred=kernel.compile_gpu_packet(options).then(bytes=>structuredClone(bytes,{transfer:[bytes.buffer]}))
++  const [packet,a,b]=await Promise.all([transferred,kernel.prepare_gpu_scene(options),kernel.prepare_gpu_scene(options)])
++  expect(compiles).toBe(1);expect(kernel.packetCoalesced).toBe(2)
++  const aa=a.consume(),bb=b.consume(),expected=decodeScenePacket(packet)
++  // Transfer deliberately drops worker-private symbols; compare public scene
++  // values, then verify each CPU handoff retained its private content proof.
++  for(const scene of [aa.scene,bb.scene]){
++   expect(Object.fromEntries(Object.entries(scene))).toEqual(Object.fromEntries(Object.entries(expected)))
++   const proof=pixelContentProof(scene)
++   expect(proof?.owner).toBe(kernel.contentIdentity);expect(proof?.contract).toBe(pixelSourceContract(JSON.parse(options)))
++  }
++  expect(copyWitness(scenePacketWitness(aa))).toEqual(copyWitness(scenePacketWitness(bb)))
++  if(!(aa.scene.vertices instanceof Float32Array)||!(bb.scene.vertices instanceof Float32Array))throw Error('Expected typed geometry')
++  expect(aa.scene.vertices.length+(aa.scene.curves?.length??0)).toBeGreaterThan(0)
++  expect(aa.scene.vertices.buffer).not.toBe(bb.scene.vertices.buffer)
++  const ownedA=new Uint8Array(aa.scene.vertices.buffer),ownedB=new Uint8Array(bb.scene.vertices.buffer),before=ownedB.slice()
++  ownedA[0]^=1
++  expect(ownedB).toEqual(before);expect(()=>a.consume()).toThrow('PREPARED_PACKET_CONSUMED')
++ }finally{channel.close();ports.port2.close();assets.free();remote.free()}
++})
+--- /dev/null
++++ b/design-studio/crates/design-kernel/src/image_color_prepared_tests.rs
+@@ -0,0 +1,112 @@
++use super::*;
++
++fn legacy_to_working(
++    image: &mut Rgba32FImage,
++    settings: ColorSettings,
++    space: Option<ColorSpace>,
++    icc: Option<&[u8]>,
++) -> Result<(), String> {
++    if space.is_none()
++        && let Some(icc) = icc
++    {
++        use moxcms::{
++            ColorProfile, DataColorSpace, Layout, ParsingOptions, ToneReprCurve, TransformOptions,
++        };
++        let source = ColorProfile::new_from_slice_with_options(
++            icc,
++            ParsingOptions {
++                max_profile_size: 4 * 1024 * 1024,
++                max_allowed_clut_size: 4 * 1024 * 1024,
++                max_allowed_trc_size: 40000,
++            },
++        )
++        .map_err(|e| format!("Invalid ICC profile: {e}"))?;
++        if source.color_space != DataColorSpace::Rgb {
++            return Err("ICC source must be RGB; CMYK/Gray need a matching decoder layout".into());
++        }
++        if source.cicp.is_some_and(|c| {
++            matches!(
++                c.transfer_characteristics,
++                moxcms::TransferCharacteristics::Smpte2084 | moxcms::TransferCharacteristics::Hlg
++            )
++        }) {
++            return Err(
++                "HDR ICC luminance normalization is not defined; import a cICP-tagged PQ/HLG PNG"
++                    .into(),
++            );
++        }
++        let mut target = ColorProfile::new_srgb();
++        let linear = Some(ToneReprCurve::Parametric(vec![1.]));
++        target.red_trc = linear.clone();
++        target.green_trc = linear.clone();
++        target.blue_trc = linear;
++        target.cicp = None;
++        let transform = source
++            .create_transform_f32(
++                Layout::Rgba,
++                &target,
++                Layout::Rgba,
++                TransformOptions {
++                    prefer_fixed_point: false,
++                    allow_extended_range_rgb_xyz: true,
++                    ..Default::default()
++                },
++            )
++            .map_err(|e| format!("Unsupported ICC transform: {e}"))?;
++        let stride = image.width() as usize * 4;
++        let mut row = vec![0_f32; stride];
++        for pixels in image.as_mut().chunks_exact_mut(stride) {
++            transform
++                .transform(pixels, &mut row)
++                .map_err(|e| e.to_string())?;
++            pixels.copy_from_slice(&row);
++        }
++    } else {
++        for p in image.pixels_mut() {
++            let rgb = settings.to_working(
++                [f64::from(p[0]), f64::from(p[1]), f64::from(p[2])],
++                space.unwrap_or(ColorSpace::Srgb),
++            );
++            for i in 0..3 {
++                p[i] = rgb[i] as f32;
++            }
++        }
++    }
++    if image
++        .as_raw()
++        .iter()
++        .any(|v| !v.is_finite() || v.abs() > 65504.)
++    {
++        return Err("Decoded image exceeds finite float16 color range".into());
++    }
++    Ok(())
++}
++
++#[test]
++fn prepared_colour_matches_original_float_bits_and_reuses_icc() {
++    let settings=ColorSettings::default();
++    let icc=moxcms::ColorProfile::new_display_p3().encode().unwrap();
++    let samples=vec![0.,0.01,0.5,0.25, 1.,0.75,0.125,1., -0.,0.2,0.9,0.];
++    for space in [None,Some(ColorSpace::Srgb),Some(ColorSpace::DisplayP3),Some(ColorSpace::LinearSrgb),Some(ColorSpace::Pq),Some(ColorSpace::Hlg)] {
++        for profile in [None,Some(icc.as_slice())] {
++            let start=icc_preparations();
++            let mut prepared=WorkingTransform::new(settings,space,profile).unwrap();
++            for _ in 0..3 {
++                let mut expected=Rgba32FImage::from_raw(3,1,samples.clone()).unwrap();let mut actual=expected.clone();
++                legacy_to_working(&mut expected,settings,space,profile).unwrap();prepared.apply(&mut actual).unwrap();
++                assert_eq!(actual.as_raw().iter().map(|v|v.to_bits()).collect::<Vec<_>>(),expected.as_raw().iter().map(|v|v.to_bits()).collect::<Vec<_>>());
++            }
++            assert_eq!(icc_preparations()-start,usize::from(space.is_none()&&profile.is_some()));
++        }
++    }
++}
++#[test]
++fn prepared_colour_keeps_profile_precedence_and_invalid_sample_failures() {
++    let settings=ColorSettings::default();
++    assert!(WorkingTransform::new(settings,None,Some(b"invalid")).is_err());
++    assert!(WorkingTransform::new(settings,Some(ColorSpace::Srgb),Some(b"invalid")).is_ok());
++    for value in [f32::NAN,f32::INFINITY,100000.] {
++        let mut a=Rgba32FImage::from_raw(1,1,vec![value,0.,0.,1.]).unwrap();let mut b=a.clone();
++        assert_eq!(legacy_to_working(&mut a,settings,Some(ColorSpace::LinearSrgb),None).unwrap_err(),WorkingTransform::new(settings,Some(ColorSpace::LinearSrgb),None).unwrap().apply(&mut b).unwrap_err());
++    }
++}

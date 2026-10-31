@@ -1,0 +1,9 @@
+{
+  "removed_generated_recovery": [
+    "candidate-1/recovery",
+    "baseline-2/recovery",
+    "candidate-2/recovery"
+  ],
+  "retained": "baseline-1/recovery for same-snapshot pixel validation",
+  "all_receipts_and_logs_retained": true
+}

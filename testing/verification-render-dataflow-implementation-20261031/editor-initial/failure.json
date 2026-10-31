@@ -1,0 +1,21 @@
+{
+  "error": "Error: expect(locator).toHaveAttribute(expected) failed\n\nLocator: locator('.kernel-presentation')\nExpected: \"true\"\nTimeout: 30000ms\nError: element(s) not found\n\nCall log:\n  - Expect \"toHaveAttribute\" locator('.kernel-presentation') with timeout 30000ms\n  - waiting for locator('.kernel-presentation')\n",
+  "checks": [
+    {
+      "name": "Actual editor imported and presented through the worker",
+      "bounds": {
+        "x": 305,
+        "y": 42,
+        "width": 855,
+        "height": 898
+      }
+    },
+    {
+      "name": "Figma-observed child position/size/radius/depth/frost displayed after Scale; inspection does not mutate native parameters"
+    },
+    {
+      "name": "Multi-selection compares effective values across differently scaled parents; one edit converts per node, one Undo restores all"
+    }
+  ],
+  "errors": []
+}

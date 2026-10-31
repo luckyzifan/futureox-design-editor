@@ -35,6 +35,42 @@ function fixedConstraints(node: DesignNode, parent: DesignNode | undefined, page
   return Object.is(nx, x) && Object.is(ny, y) && Object.is(width, node.width) && Object.is(height, node.height)
 }
 
+/** Internal immutable pointer-transaction plan. Topology/dependency admission
+ * is done once; each pose still evaluates the exact constraint fixed point.
+ * The Editor owns its base and revokes it on content/font/transaction changes. */
+export class TranslationPreviewPlan {
+  private readonly parents=new Map<string,string>()
+  private readonly roots=new Set<string>()
+  private readonly ids:readonly string[]
+  private valid=true
+  constructor(readonly base:DesignDocument,ids:readonly string[]){
+    this.ids=[...ids]
+    if(base.animations?.length||!ids.length||new Set(ids).size!==ids.length)this.valid=false
+    base.pages.forEach(page=>page.children.forEach(id=>this.roots.add(id)))
+    for(const node of Object.values(base.nodes)){
+      if(node.connector||node.board?.kind==='code-block'&&node.board.language)this.valid=false
+      for(const child of node.children){if(!base.nodes[child]||this.parents.has(child))this.valid=false;this.parents.set(child,node.id)}
+    }
+    for(const id of ids){const seen=new Set<string>();let at:string|undefined=id
+      while(at){const n=base.nodes[at];if(seen.has(at)||!n||hasReferences(n)||n.layout&&n.layout.mode!=='none'||n.sizing&&(n.sizing.width!=='fixed'||n.sizing.height!=='fixed')){this.valid=false;break}seen.add(at);at=this.parents.get(at)}
+    }
+  }
+  accepts(patches:Readonly<Record<string,Partial<DesignNode>>>){
+    if(!this.valid||Object.keys(patches).length!==this.ids.length)return false
+    for(const id of this.ids){const before=this.base.nodes[id],patch=patches[id],m=patch?.transform
+      if(!before||!m||Object.keys(patch).some(key=>key!=='transform')||m.length!==6||m.some(v=>!Number.isFinite(v)||Math.abs(v)>1e7)||m.slice(0,4).some((v,i)=>!Object.is(v,before.transform[i])))return false
+      let at:string|undefined=id
+      while(at){const source=this.base.nodes[at],parentId=this.parents.get(at),parent=parentId?this.base.nodes[parentId]:undefined
+        const node=patches[at]?.transform?{...source,transform:patches[at].transform!}:source
+        const parentNode=parent&&patches[parent.id]?.transform?{...parent,transform:patches[parent.id].transform!}:parent
+        if(!fixedConstraints(node,parentNode,this.roots.has(at)))return false
+        at=parentId
+      }
+    }
+    return true
+  }
+}
+
 /** A placement-only preview over an already resolved immutable document.
  * Returns null whenever layout or another node's derived geometry may depend
  * on the change. Opaque format metadata can remain in the same design system.

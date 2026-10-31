@@ -1,0 +1,63 @@
+{
+  "scope": "native production startup wall time; process fresh, OS file cache not cold; two paired runs, no profiler",
+  "full_snapshot_byte_equal": true,
+  "snapshot_sha256": "30d4106011c5fe4ccbe4b895005dd3ebc3158814e3315f53fe7b5e3576f06f4e",
+  "metrics": [
+    {
+      "stage": "source-open",
+      "baseline_ms": [
+        8774.573292000001,
+        7771.709833
+      ],
+      "candidate_ms": [
+        9295.138208,
+        8387.262666999999
+      ],
+      "baseline_mean_ms": 8273.1415625,
+      "candidate_mean_ms": 8841.2004375,
+      "change_percent": 6.866301884339343
+    },
+    {
+      "stage": "source-layout",
+      "baseline_ms": [
+        42.08124999999927,
+        28.433415999999852
+      ],
+      "candidate_ms": [
+        14.648209000000861,
+        6.879791999999725
+      ],
+      "baseline_mean_ms": 35.25733299999956,
+      "candidate_mean_ms": 10.764000500000293,
+      "change_percent": -69.47017943756431
+    },
+    {
+      "stage": "whole-source-snapshot",
+      "baseline_ms": [
+        9957.313375,
+        9695.162999999999
+      ],
+      "candidate_ms": [
+        9967.037375,
+        10759.176042000001
+      ],
+      "baseline_mean_ms": 9826.2381875,
+      "candidate_mean_ms": 10363.1067085,
+      "change_percent": 5.463622097853826
+    },
+    {
+      "stage": "native-source-load",
+      "baseline_ms": [
+        3188.9240409999984,
+        2297.797290999999
+      ],
+      "candidate_ms": [
+        2110.7377499999966,
+        2022.6185000000005
+      ],
+      "baseline_mean_ms": 2743.3606659999987,
+      "candidate_mean_ms": 2066.6781249999985,
+      "change_percent": -24.666189516621163
+    }
+  ]
+}

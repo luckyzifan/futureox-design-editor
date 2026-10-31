@@ -1,0 +1,184 @@
+{
+  "runs": [
+    {
+      "name": "baseline-1",
+      "products": "testing/verification-startup-topology-20261031/root-facts-products",
+      "metadataOnly": false,
+      "code": 0,
+      "manifest": {
+        "source": "/Users/Apple/Downloads/117.sketch",
+        "sourceHash": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+        "backendHash": "c1df1f443dfa319c6622acb54a40ce3c85363c029f9fe64dd06db7b3cdb78f57",
+        "prepareHash": "fdcd36b2ea761d52b63b138b25ad7c806e9ab3035992ccdd2dccf4d3a451f36f",
+        "stages": [
+          {
+            "stage": "source-open",
+            "ms": 107.253708
+          },
+          {
+            "stage": "whole-source-snapshot",
+            "ms": 57.485040999999995,
+            "roots": 1,
+            "nodes": 753,
+            "bytes": 5253367
+          },
+          {
+            "stage": "native-source-load",
+            "ms": 59.033209
+          }
+        ],
+        "packets": [],
+        "status": "passed",
+        "sourceUnchanged": true
+      },
+      "stdout": "{\"status\":\"passed\",\"stages\":[{\"stage\":\"source-open\",\"ms\":107.253708},{\"stage\":\"whole-source-snapshot\",\"ms\":57.485040999999995,\"roots\":1,\"nodes\":753,\"bytes\":5253367},{\"stage\":\"native-source-load\",\"ms\":59.033209}],\"packets\":[]}\n",
+      "stderr": ""
+    },
+    {
+      "name": "candidate-1",
+      "products": "testing/verification-startup-topology-20261031/root-facts-products",
+      "metadataOnly": true,
+      "code": 0,
+      "manifest": {
+        "source": "/Users/Apple/Downloads/117.sketch",
+        "sourceHash": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+        "backendHash": "c1df1f443dfa319c6622acb54a40ce3c85363c029f9fe64dd06db7b3cdb78f57",
+        "prepareHash": "fdcd36b2ea761d52b63b138b25ad7c806e9ab3035992ccdd2dccf4d3a451f36f",
+        "stages": [
+          {
+            "stage": "source-open",
+            "ms": 106.80237499999998
+          },
+          {
+            "stage": "whole-source-snapshot",
+            "ms": 56.83141599999999,
+            "roots": 1,
+            "nodes": 753,
+            "bytes": 5253367
+          },
+          {
+            "stage": "native-source-load",
+            "ms": 55.895083
+          }
+        ],
+        "packets": [],
+        "status": "passed",
+        "sourceUnchanged": true
+      },
+      "stdout": "{\"status\":\"passed\",\"stages\":[{\"stage\":\"source-open\",\"ms\":106.80237499999998},{\"stage\":\"whole-source-snapshot\",\"ms\":56.83141599999999,\"roots\":1,\"nodes\":753,\"bytes\":5253367},{\"stage\":\"native-source-load\",\"ms\":55.895083}],\"packets\":[]}\n",
+      "stderr": ""
+    },
+    {
+      "name": "candidate-2",
+      "products": "testing/verification-startup-topology-20261031/root-facts-products",
+      "metadataOnly": true,
+      "code": 0,
+      "manifest": {
+        "source": "/Users/Apple/Downloads/117.sketch",
+        "sourceHash": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+        "backendHash": "c1df1f443dfa319c6622acb54a40ce3c85363c029f9fe64dd06db7b3cdb78f57",
+        "prepareHash": "fdcd36b2ea761d52b63b138b25ad7c806e9ab3035992ccdd2dccf4d3a451f36f",
+        "stages": [
+          {
+            "stage": "source-open",
+            "ms": 108.774791
+          },
+          {
+            "stage": "whole-source-snapshot",
+            "ms": 59.16429200000002,
+            "roots": 1,
+            "nodes": 753,
+            "bytes": 5253367
+          },
+          {
+            "stage": "native-source-load",
+            "ms": 56.93300000000002
+          }
+        ],
+        "packets": [],
+        "status": "passed",
+        "sourceUnchanged": true
+      },
+      "stdout": "{\"status\":\"passed\",\"stages\":[{\"stage\":\"source-open\",\"ms\":108.774791},{\"stage\":\"whole-source-snapshot\",\"ms\":59.16429200000002,\"roots\":1,\"nodes\":753,\"bytes\":5253367},{\"stage\":\"native-source-load\",\"ms\":56.93300000000002}],\"packets\":[]}\n",
+      "stderr": ""
+    },
+    {
+      "name": "baseline-2",
+      "products": "testing/verification-startup-topology-20261031/root-facts-products",
+      "metadataOnly": false,
+      "code": 0,
+      "manifest": {
+        "source": "/Users/Apple/Downloads/117.sketch",
+        "sourceHash": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+        "backendHash": "c1df1f443dfa319c6622acb54a40ce3c85363c029f9fe64dd06db7b3cdb78f57",
+        "prepareHash": "fdcd36b2ea761d52b63b138b25ad7c806e9ab3035992ccdd2dccf4d3a451f36f",
+        "stages": [
+          {
+            "stage": "source-open",
+            "ms": 113.47625
+          },
+          {
+            "stage": "whole-source-snapshot",
+            "ms": 60.328332999999986,
+            "roots": 1,
+            "nodes": 753,
+            "bytes": 5253367
+          },
+          {
+            "stage": "native-source-load",
+            "ms": 56.051999999999964
+          }
+        ],
+        "packets": [],
+        "status": "passed",
+        "sourceUnchanged": true
+      },
+      "stdout": "{\"status\":\"passed\",\"stages\":[{\"stage\":\"source-open\",\"ms\":113.47625},{\"stage\":\"whole-source-snapshot\",\"ms\":60.328332999999986,\"roots\":1,\"nodes\":753,\"bytes\":5253367},{\"stage\":\"native-source-load\",\"ms\":56.051999999999964}],\"packets\":[]}\n",
+      "stderr": ""
+    }
+  ],
+  "groups": {
+    "source-open": {
+      "baselineMs": [
+        107.253708,
+        113.47625
+      ],
+      "candidateMs": [
+        106.80237499999998,
+        108.774791
+      ],
+      "baselineMedian": 113.47625,
+      "candidateMedian": 108.774791,
+      "deltaMs": -4.701459,
+      "deltaPercent": -4.14312157830383
+    },
+    "whole-source-snapshot": {
+      "baselineMs": [
+        57.485040999999995,
+        60.328332999999986
+      ],
+      "candidateMs": [
+        56.83141599999999,
+        59.16429200000002
+      ],
+      "baselineMedian": 60.328332999999986,
+      "candidateMedian": 59.16429200000002,
+      "deltaMs": -1.164040999999969,
+      "deltaPercent": -1.92950963853082
+    },
+    "native-source-load": {
+      "baselineMs": [
+        59.033209,
+        56.051999999999964
+      ],
+      "candidateMs": [
+        55.895083,
+        56.93300000000002
+      ],
+      "baselineMedian": 59.033209,
+      "candidateMedian": 56.93300000000002,
+      "deltaMs": -2.1002089999999782,
+      "deltaPercent": -3.5576737832428833
+    }
+  }
+}

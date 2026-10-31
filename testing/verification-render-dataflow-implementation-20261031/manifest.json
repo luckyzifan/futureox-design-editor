@@ -1,0 +1,300 @@
+{
+  "scope": "This increment relative to its frozen dirty workspace; earlier source-work-reuse edits remain outside this patch",
+  "createdAt": "2026-10-31T07:59:19.918872+00:00",
+  "changes": [
+    {
+      "path": "design-studio/crates/design-kernel/src/scene.rs",
+      "before": "ade4117504728e9fee9d849c29cb6c04c6d3a64cbf42d41c3da9c3eaa90c5613",
+      "after": "3a067a71dae8ad17e86ef7b4b429f94df30597ee1d01540c0d6c5d7355070583"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/paint.rs",
+      "before": "bea472fca3ac8b90a83e4624101d07f805e74df2c3f308d8c65776e15d51d9c5",
+      "after": "1e4b111ce05b823ccffc4c6a506285cbd7f983bfb3bbcdcd4402dde9f6640a18"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/font.rs",
+      "before": "ec8286fda562834c9b2cb5956608baca940337980ec93ac2289a526029e4d549",
+      "after": "007dccc6c1b1c889c2bf846b77c8d04747b28582a7f03c70e7f7f4f1545c4f4f"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/layout.rs",
+      "before": "97982a303c182cab079ed52c57527844581b325bb0ad48cef76e573efef90775",
+      "after": "14a59791a4d5cfd8645953f262ac721c2a1c7da9369edc6933aee53eb8b8398c"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/curve_boolean.rs",
+      "before": "eeb8cf6f831a27141e09333a3ddde1a86fb115df25efff3691e90d23e2e592b8",
+      "after": "4da0e101a7ff22a5e6ff140b601d9b4be98e85cba9e6813734346b7cca7c3e9f"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/renderer.rs",
+      "before": "e6f57877a2a7932218a17e0c60c07a008750d531cdac422a18998e3d60c2b067",
+      "after": "9f1ec138773ff3b90931347487533cec0ad83675440a6d9bd44007dedc57eeb6"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/mutation.rs",
+      "before": "3d4585227ea68c8d897f562408c2d48d2ce7e1e1c731ea7cdcf0e2f09520973c",
+      "after": "b548274a825b1ec2fdc2f51bde2b24e929abfcd4a647b5345254ea6fce7b629d"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/fig.rs",
+      "before": "4cf706c3e0a7d5df63d7f84976269318fc9e0ce8c310839a336046639362d08b",
+      "after": "280bab60b065155cf0c79f9e6346888b9247c3e8d2f04c513964461d8e51e533"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/connectors.rs",
+      "before": "4a0773293cf744f8b9c85d77b8acca28d9090680aec8bfe88b52092fa2f3c518",
+      "after": "fcb625c8dd5e546c9f4db6525f66675c8d39317cbdb336c7e056e755d6709097"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/image_rows.rs",
+      "before": "43d422eac984094531c81a92ce88c1848aa15f65bd2e559821f309e4cc8e1fa1",
+      "after": "f55f29291ff3b2c528e8b91f6db4d7c70982ea98b93cb03cbdceabe287cf6ef2"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/components.rs",
+      "before": "1bc257807d46c1f2c2b6b8a6514e8ffaf54167a3584b847ec48c18d01c661cfd",
+      "after": "45df11b92ab626bfaabf55ac477cdcc2e60a480869d9da1b7768acc36ed411fd"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/facet.rs",
+      "before": "1efffc6cc4b5847f5e4b17528c01e29d7310602af78b37c2d109978867795ec4",
+      "after": "4a6b060533e44979f912e30be3289f5e76e2e01b0e4ea2c8ceb0a84d63902242"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/image_color.rs",
+      "before": "3f0ee4fed34c11f09f478a70bfeddcc8eecdec15c10891cefceae4f8936f1afd",
+      "after": "7c75a0fb81032d2557964a91b27855a94836489a9c762eae29eafa26ab45ebeb"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/graph_api.rs",
+      "before": "074afb5df6e2421ad8753b50642dcfee7802b5b94c2868940b8d558481e959fc",
+      "after": "05c66b913274c6df460a2625839c87b2a501e669871b616dfbb46e84e11ebe13"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/scene_store.rs",
+      "before": "486de739492844338465d652cb6a1377a38da31d0e5e722453bfef85c956cdf0",
+      "after": "ba5e544dba2c90d571504ef257dc5a8c6a6c658059961061df9a945a06864b52"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/interop.rs",
+      "before": "3d19f056a09a6985e11129bfdcf539d5e9c9e6f48c173df7170432b8ab0f3a64",
+      "after": "069f91fd4440fcd2b4cb71f0777c791f918068a09aef6d0fb38ac4d341b0e0a7"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/animation.rs",
+      "before": "1faae9e169463d027e0820292cc9d5bdc2955e1c7095bf837c16ccf6fc82b62d",
+      "after": "7d6dcdd4cfae477a6598a8448d31386ecddebe89168fb6cd4e1494fd7ffbab7a"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/pdf_import.rs",
+      "before": "bb8067e4fee01cd21e25a6bc65c9bfa80749dc3d5972b67a2d848974edbcff0e",
+      "after": "b1a7cc91634a8847698de190febf2a99555e2d502813ed740c92ac9287f70303"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/repeat.rs",
+      "before": "c516d5d5a8a105a3f4b345f68814c6f891b8d8d86755f6f541aa967bda7bcf9b",
+      "after": "1b1f9f72511c9499ba6f693ef5fd32359820aeab6d6884b1556c4ab3227d427e"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/fig/components.rs",
+      "before": "babf25c2fde34ab410cedfd28c572d26b63d134e536d05f8c53f94ccc6aaa58a",
+      "after": "6426859bc276d489ca9810fbcaa82a12ec32a7b4d91b22d3b3327bb9c16bd62d"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/sketch/preview/display.rs",
+      "before": "93cd561f0a93b485c771f02675f7d74b40dc3bd59861cee1b3b2d125966d3144",
+      "after": "578db86d196879275c6723aa394dcf46eed267cd725cb6efe24aa56896cb0441"
+    },
+    {
+      "path": "frontend/design-client/src/Canvas.tsx",
+      "before": "92ec17028cee8c3a5398375a7b328968d8b559eb0ebb83de838d5d2b90da99ff",
+      "after": "25ebb084d2acdd5860dd13e22ef58dbec82632bbc3a31e47a9cfeb36717a68c5"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/image-row-source.ts",
+      "before": "79cdb98747f6c33b938ef483f0444cdef9f26b87dfe4ab2552c0c309ed18ca94",
+      "after": "76f7a5ed050987ea98cafc866620c1144a7831c68fc6293d46858ab02d2638ea"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/image-row-source.test.ts",
+      "before": "5bbdb71887cf9d3db5318f7ec040caaeee3182ccf98fa59e96dc19d79a2889fe",
+      "after": "d1fab4b6a77cb355bde091d0be4b6fb879de1a1882d7eebe1593fb1fca12c19f"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/renderer.ts",
+      "before": "6ff0caab67c5c853a9005a1090cdf0c4c8b2ba443ea5e35d7288235fe0ddc939",
+      "after": "e8bbcb3b7651bd3b7b736eed52cbe9b5e827c4902532216298bc6d3a478dcd01"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/webgpu.ts",
+      "before": "0484615a964e1510e8f7140e3c92795dd9f3575a17e5085dc3bd152b94a98de2",
+      "after": "bf34e16df6802a55bcb12171a61082954001ed289279ac580816721c87aa69d4"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/scene-packet.ts",
+      "before": "f13e5c1c527e15ed3a2a78ea7a7eef678606c02186300a9ae4e5be69c2e29da5",
+      "after": "9f3258f3210855c14640339e3e01fbf06e941d38d65edfe46fbaa0adf013eef9"
+    },
+    {
+      "path": "frontend/design-client/src/canvas-scene-reuse-cpu.test.tsx",
+      "before": "22b33966e32027c864ac0d3faaa56754d8f2ab2cdd438165cf22ca0380242829",
+      "after": "66fbaeeb9aa82827655e8559998bdee80d82f44c193acdab26f6d780f39127a6"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-kernel.ts",
+      "before": "ca7a13a30ab2e921114dae5f662c866f7738f3d72e8f64d352d560f74c077f28",
+      "after": "1f92c627dfb763bbda06ffe177575951effebdd441072a7b7afce3d647069fac"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-worker.ts",
+      "before": "456f19e7e18b7575ac449f51a4e7b10d54a92a9177ea4c790889b831e487720a",
+      "after": "0e9b5d372e220eec62d20c588b89d155b5ddf290327c622e64be6df48699c146"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/prepared-packet.ts",
+      "before": "62ffc8d8fdbce19f0e19cc83c880a90c08b482e4957ab58909a338c73aad2fc0",
+      "after": "436ed64b00f8957c5a9e4cb4a79700a5bd4a2a5b1b5605ff73976189aa9ff317"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/scene-packet.test.ts",
+      "before": "50eca939f21d8e2cad747f04182348102441ae386b997b4bfd075794f509abd9",
+      "after": "0417b72ac181474748d4b824d61b104e3227a2e997eebcdabde983fcfda64a66"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/tests/sketch_curve_modes.rs",
+      "before": "4c4172f95865eea1855b816c7e301e9fec2cafb7411998ce35a6d3fc44eb92b1",
+      "after": "df402c5275c538bc4731260f3a9115c2a34801906cba7a1c3a5186a6981bb68a"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/tests/mask_picking.rs",
+      "before": "36d0f5e71e2369438b5ef365c950256e4ef3790ef6d52ea58d92be14391915a9",
+      "after": "478d10e04c3221eac730415bc356f558243e9e277a9a136415cd2a220eee2a85"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/tests/mutation_semantics.rs",
+      "before": "8091ad1bbe270399df6199c6597075b8e2a4160005a7156ff0ef55b0c43ac479",
+      "after": "cf457d79e14a38c974efb6d44e6d15825f30de44bb67019ce18f941105ffa905"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/tests/offset_path.rs",
+      "before": "9e6ec53a3a60535fdfbce9d882491f148d7034d7e12f7930b0d27898f8c2b3ed",
+      "after": "3bc05a137534b693bd1e387a31ad6b33274bbd2e0057a0a267abc84ee8691db4"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/tests/sketch_import_admission.rs",
+      "before": "868d3468dd6602351f6a28be79d6c0cfe06ba0adbd3df714150076a5c4c9811c",
+      "after": "e60e87dfa34c1b373e87f7bc938c10c0480fa2e9132eac26c4a087932823c25b"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/tests/text.rs",
+      "before": "691359a66a1a8489b6d613f0e5bf7aa485de2d6fdad88eaf85d445b0a6e6c128",
+      "after": "0301d2f8684393fbaac8e75a4d8ecf969cc4da3d2885747fe0c9d2def45a0f52"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/gpu/exact-filter-pass.test.ts",
+      "before": "1cd8e12c269637ce2e33791d03a8f673d40861b7d032a3a16323be1d1e672a52",
+      "after": "2af318f78f6e91111ad45abb6155c33a8d1f97b7421bf420c669d93c1f661f16"
+    },
+    {
+      "path": "frontend/design-client/src/kernel/render-kernel.test.ts",
+      "before": "4af72c289f7e74bd14736d8403047cf145e3d0c25958d9f42ffa07ac377de542",
+      "after": "5600e14263e0264294a94bcc2200b767201066bb08b41471fa23da7545a270c8"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/image_color_prepared_tests.rs",
+      "before": null,
+      "after": "ffac64300109d795e1bad202b9b5b91f7d3ef447f2c7d0fbe7adb54018cc8a6a"
+    }
+  ],
+  "products": {
+    "design-studio/target/release/design-prepare": "c9541c3d729af978e6448276515d0a0411ed98413bc0c92f2d542cc9d1a6dfe3",
+    "design-studio/target/release/futureox-design-desktop-backend": "1cbb310a61ac10cf5a6bb85b0d7df093531240238b745badadcb5ddc1125cab3",
+    "frontend/design-client/public/kernel/design_kernel_bg.wasm": "dd3fe521dce4066a3e9cd9f657168ebf8b9bb008f55ffb5dcb68ec3d9dc82683"
+  },
+  "evidence": {
+    "build-baseline-counted.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "baseline-export-test.log": "288d5e29e784b80044fcecccab358d100d2abfffc2d4d339df30ade4672040ca",
+    "rust-build-sources.json": "7fb60a410c7a47741219f603cedd801ee97fa6a80932188f58ee992918c494c3",
+    "verification-results.json": "4ccc0c8199525660aa831f6837f9db37c69292d7c9b47f2562adbb18d23fc80c",
+    "lifecycle-dispatch-tests.log": "304aad2b4538157ac1301c1d4d0f0f0e3733f630d9abda12ef36745178d6fe71",
+    "typecheck-delivery-final.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "editor-smoke.log": "e4e9cd39ad30427ad858f38ad6e4afb5daeb1ba76134bad35b69e0bea597cfd3",
+    "clone-2-candidate.log": "20b81f090a9c26e58488206337dfe183c14c9063efb44ee7ffbdce719bb05a85",
+    "frontend-regressions.log": "af2b3fd070c38ac8b0d9df4d6e57ba8aa4e78f5be99e18f10bce433766e2314f",
+    "frontend-regressions-initial.log": "b59c1cf3b0d99b3a0b7e0982285525643e8d283cbb0edfbe94d0fdcc0c7940aa",
+    "native-pixels.json": "0ba8bb73c632f31185f8b6b2c68aed652f9dcea9965e334a3f264010b552dd1b",
+    "clone-1-candidate.log": "053113ea0ece71c0f3b6b8ead6149dfed7ed42dd73ed833144722d3f2136f680",
+    "editor-smoke.ts": "2d8843e9e38b1b03897ed5544ee15d567ce0781eddfc0967a5d9989ac1402c4c",
+    "typecheck-final.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native-tests-final.log": "7e729dd955fccc80b3ee9690fe271ac31ae3c2c12fa4151ac464c84fbc7caf96",
+    "typecheck-initial.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "build-candidate-counted.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "baseline-driver.json": "06b8a300923c182451b9d4a3201f294e575c45ac4220bd15419999eb06b3a45c",
+    "memory-baseline.log": "0dc9ac4363731faff941314d8896db1776a743ac893e12e3a47d1a9f02256314",
+    "scope.md": "160770c40649aa42dece27232a190972fd26bbe40a21934ee1e9e3ef4a0d2196",
+    "clone-0-baseline.log": "e8356ea76aef5d7559d27f8bb9acaa7b0c243aae4cb65cd6961440df9377f9fe",
+    "hardware.ts": "e6b7248f741edfe938de35ed22351dae3f357eaa0abd6ae2b0854e1359465a6c",
+    "typecheck-delivery.log": "258c196c22853a6e3af81dd773baa1fc9f4cd8f01595ce0932c415742b8be49c",
+    "measurements.json": "d1c319eaeee61199cd7c93250cced5449a6f5e7e0c501068cf62505ae57fe81d",
+    "memory-parity.rs": "a6eab8f7a82e98b4e896037cff8a5363feffcac43fc1283e10438db7d855aa75",
+    "typecheck-model-tests.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "typecheck-gpu.log": "057f7e9f0863de7f67a753d96be446d380b0fd777d32cb5a342196cecba6b5eb",
+    "hardware-run-2.log": "44880c7badd27f0766c3a936f2daa0b486959d5d1bf269dbe846d0bbf30ed409",
+    "portable-wasm.log": "332d74c81034b53cd1f29b379fc5c851a2ea0f4ff6d0f195cc8b7ee6e9562510",
+    "native-load-confirm.json": "9f5960ccd1426103483f6ee599b522ddf61c040f5324467f5624d4efac8aef92",
+    "hardware-run.log": "08d930fab4c732047d195822c30f6a0b24834c56ec95f33c8cec4f9e7071a996",
+    "row-lifetime-tests.log": "eaf442a751d4091ea4eb774b183d6e3256b2c030d726f630f60e46529ac15f6e",
+    "implementation.patch": "84476d30cc4626f0de6f1bac873eee754855fc105da9dbd57c1d46f78a5c36e2",
+    "typecheck-scene-handoff.log": "c907da536e5531b46ec8577559e8966108132ac26443eb017c9639726bee61c4",
+    "baseline-export-test-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "mounted-canvas.log": "1385f9e491808b8003c3de5b4feb0e9d7a98b4c64ce35de3afc77c4d119b7630",
+    "build-results.json": "1acf617b1251a3a77ec74ed87a89f45acca84c884dff09e7ead032961886be2b",
+    "adapt-owned-fields.py": "51f8c5660fdddab4c0b533f5ecdbadbd3f1ce4789d9805e721ef5c463aed1ba4",
+    "editor-smoke-3.log": "f0bee18fb3aa18e5cf592dabea4c8205cce166ae940cb9b83bc1edbd0e90e165",
+    "run-verification.py": "3d84ea2cae5d7f5b9d04e16bfe1ccb83a77d7acfd251e55614e1c3fd16004ebd",
+    "README.md": "d5c20a83fc0b72da250f5d647a4235fc82c58db51534f91b94ff1a407b364287",
+    "clone-3-baseline.log": "15e2d20a81cb0d4f0a963a58cdd0d8bd821c086e92b9b6d08f6cbadb569b9d1a",
+    "WORKLOG.md": "7b610198821ba4bb25f5d5fe91d47aa46b5d23c0366b3df868315050195bc359",
+    "check-tests-4.log": "4494c86da1ee77d27d2bb1a420d4e3601d4fae4a29337b0da999cda9f3cf3137",
+    "editor-smoke-2.log": "e2c32e0ae69fa9d4d7c9aac745eb762b9034a962e85c8e390701ab01882908bc",
+    "baseline.json": "24ae27fa91a29578014489e7e64fcf91fab2bf91e30f2f783c23e6c6d56fef67",
+    "run-hardware.ts": "38c002892473766704ce3bdd394d233868ea4f09ff565e6891ec19b31c1b6768",
+    "native-release.log": "2f052c484c63ef54a0c2b088c3252489edd061770d50e6623fef26a5f555f857",
+    "native-test-summary.json": "19a5d5115dd92ec044567883ce2295faeba7a0c09d1016f8ce268b40b69494ac",
+    "build-candidate-timed.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "baseline-webgpu.ts": "43f1b95fc1e6804d4a2c8f10fac8a9892bf7a6ad9d9030af46d3a697b76871d2",
+    "kernel-tests.log": "6c78073467002f06a21b04f4fc4987337c966097bd4eaea78a781f05d44053a9",
+    "check-shared-model-2.log": "2a06dc7f352084d3f5c87c528f1ec259cc17ca2434e77b0de38582e8a1a9414a",
+    "check-initial.log": "db0be95cdc4569b712ad11939a96abe597d9e30c68c698a7d76fd23a3b9286ec",
+    "hardware-initial.ts": "efc60fb74ff6e517149ffdd4c025f8cf5f2486a0a58c8bf8f7e1a3b2f9d95a63",
+    "check-tests-3.log": "da0af0717abe3f200af57732ab2dac967f2ee07e8ac8de31b2a8666c2011405f",
+    "check-tests-2.log": "c898d2b059998ecd2141aa3dba0b41c3fbce3c93cb84a6515a2da3096229fa80",
+    "typecheck-latest.log": "8a95dd4026fde2e365c785e4c6a9d09555d30ff5ff9293093e3c474070052de1",
+    "check-shared-model-3.log": "2b288f99ecca03dcc51aabd6de90ed49dadfcda02edb6012ea85b49228166479",
+    "handoff-delivery-final.log": "559b8e53c5affc0fa25f1387ec7477c818af26be873fde141b3c42dc9f52eabf",
+    "check-shared-model.log": "3d117a32ce100d2d3cd40e5c709e5fe93766f810054af8f5783f74f2819fae2c",
+    "editor-smoke-initial.ts": "87969842cebcd29d9228c95ba3a55fa3bf845ae318de2fbfe4974d0804737b25",
+    "run-builds.py": "728bb431924f190da9f0925b559ac6a471127972b24de0e0c538d6235dcf6904",
+    "build-baseline-timed.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native-tests.log": "288303130ef42857e330c425ecd9638f7ddc236f5275e0fc35fcf09a156f832d",
+    "frontend-typecheck.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "editor-smoke-backend-control.ts": "3e61dfd4e24c2f837033a02844f8a3fd9b03e75fb3d0d616d3ea187f59945311",
+    "frontend-production-build.log": "57a16eccfc2b3b4faf2750b3bea4508b8415aad223ac8a3a60de65b2bf71b015",
+    "typecheck-handoff.log": "057f7e9f0863de7f67a753d96be446d380b0fd777d32cb5a342196cecba6b5eb",
+    "memory-candidate.log": "6eca23c45e5ad100263aef631b7c732f01604cf217a7d7b7e4e5ee3482b66c88",
+    "vitest-grid-control.config.mts": "47d74e4f424d928efaebe730553e7dff77e3b51017f9bffee36b8e7e3c4998a0",
+    "hardware.html": "41f081257298d93254b73d86fb4b40e49ccff67edd7e32ead54ec83ceb9d0aec",
+    "typecheck-before-wasm.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "wasm-layout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "environment.json": "8fba12767928d287d5344701e2f1fbd2ef724f2346383f150670f3b2d44e4d77",
+    "baseline-rlib.json": "fa6b3a80bfec262d89b8d94c1f42f9ff4343b9d6af31b57d5e81424875925179",
+    "native-load-confirm.log": "bb22515786502d2c42024b3ad554a8f527f269b5115f68cb5f00ae8848598021",
+    "editor-gui.log": "f0fb0730b6d8b3c5ed5230b0dea35f3df42a91d9452b6246b985ea83a749d445",
+    "check-all-tests.log": "11f47072485f0e86c3b127cc4f0c8d2dd950a2bbc84af138807a53de1cef8af6",
+    "check-tests.log": "422da20ae5f88fe96e2f1ce20e4ddcb618f9e4755251403b651c93601941ff9c",
+    "native-pixels.log": "97c892773d6bc5cfcc8d8726e45998eb4c89e8a712efe3635e4f7a1f2a60cfb1",
+    "grid-preimage-control.log": "c31be290722c19bf975b9abaaac520fc8b48504c08bf59149f2833b7c78d1f51"
+  }
+}

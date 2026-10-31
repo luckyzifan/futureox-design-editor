@@ -205,7 +205,7 @@ export function activateDocumentFonts(input: DesignDocument) {
 }
 const layoutDefaultKeys = Object.keys(defaultLayout())
 const sizingDefaultKeys = Object.keys(defaultSizing())
-export function kernelLayout(input: DesignDocument, previous?: DesignDocument): DesignDocument {
+export function kernelLayout(input: DesignDocument, previous?: DesignDocument, residentDiff=false): DesignDocument {
   validateVariableModes(input)
   activateDocumentFonts(input)
   if (input.animations?.length) {
@@ -406,9 +406,14 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument): 
       return measureCpuStage(CpuStage.resolveComponents,()=>layoutEngine!.resolve_components_full(json))
     }
     let encoded:string
-    if(previous&&componentBase?.document===previous&&componentBase.engine===layoutEngine){
+    if(previous&&componentBase&&componentBase.engine===layoutEngine&&
+        (componentBase.document===previous||residentDiff&&componentBase.document.id===document.id)){
       const base=componentBase
-      const patch=measureCpuStage(CpuStage.serialize,()=>JSON.stringify(documentPatch(previous,document)))
+      // Editor-owned immutable histories can return to an older branch after
+      // a pose-only preview. Diff the complete known resident model, not merely
+      // the latest UI snapshot; the native receipt still fences that exact base.
+      // No document ID or caller node list is accepted as an equality proof.
+      const patch=measureCpuStage(CpuStage.serialize,()=>JSON.stringify(documentPatch(base.document,document)))
       try{encoded=measureCpuStage(CpuStage.resolveComponents,()=>layoutEngine!.resolve_components_patch(patch,base.receipt))}
       catch(error){if(String(error)!=='DERIVED_STATE_STALE')throw error;componentBase=undefined;encoded=full()}
     }else encoded=full()

@@ -1,0 +1,35 @@
+{
+  "source": "/Users/Apple/Downloads/拓扑素材.sketch",
+  "sourceHash": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+  "backendHash": "679de471eea2aad0634ad8bcab24280b72d5142ed3ae43328613d6bc2c64a091",
+  "prepareHash": "a12a3d02c178aca4ed6d93c4cbdb9e2b2bfdf083bbfd92a3f1dfe50f10c6df80",
+  "node": "v24.12.0",
+  "metadataOnly": false,
+  "startedAt": "2026-10-31T02:43:42.333Z",
+  "stages": [
+    {
+      "stage": "source-open",
+      "ms": 6758.402834
+    },
+    {
+      "stage": "source-layout",
+      "ms": 29.9129580000008
+    },
+    {
+      "stage": "whole-source-snapshot",
+      "ms": 9690.200916000002,
+      "roots": 306,
+      "nodes": 124447,
+      "bytes": 300408797
+    },
+    {
+      "stage": "native-source-load",
+      "ms": 2130.5257920000004
+    }
+  ],
+  "pixels": [],
+  "status": "passed",
+  "snapshotHash": "30d4106011c5fe4ccbe4b895005dd3ebc3158814e3315f53fe7b5e3576f06f4e",
+  "sourceUnchanged": true,
+  "endedAt": "2026-10-31T02:44:01.285Z"
+}

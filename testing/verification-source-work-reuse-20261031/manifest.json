@@ -1,0 +1,140 @@
+{
+  "date": "2026-10-31",
+  "timezone": "Asia/Shanghai",
+  "baseline_commit": "a1f39b97223d8e55ed4e7d890aee88cca4289a44",
+  "finished_at": "2026-10-31T10:56:42.091585+08:00",
+  "changes": [
+    {
+      "path": "design-studio/crates/design-desktop-backend/src/large_document/projection.rs",
+      "before_sha256": "5e7eab3d51008b6c89f1aacf5d450d004826faa91b20e80d8c6d0066d40714d8",
+      "after_sha256": "cc0b8ac0cb2d19d15f218a020930684bb21e91bcd4030ffa873c36b788303712",
+      "note": "Includes preserved concurrent CORE_SOURCE_LEGACY_REFS toggle; hunk-level rollback required"
+    },
+    {
+      "path": "design-studio/crates/design-desktop-backend/src/large_document/scene.rs",
+      "before_sha256": "648434a4d90ba341fb02d6cff2914fa460a29aab4f423e15e91c06b9eebc93ad",
+      "after_sha256": "6394876adf8b21d00e159df70766e76e9ea74989ebee3028666a77fb441a2231",
+      "note": "This task"
+    },
+    {
+      "path": "design-studio/crates/design-desktop-backend/src/large_document/index.rs",
+      "before_sha256": "b0ef1d588d99f3afd0cda31a2edae7c2efe2f1984349b1eeae653abe7cf0a99e",
+      "after_sha256": "cbb581d5f01406a213ebf13aa05994589afadaea67248c204b05300ab2f66b1c",
+      "note": "This task"
+    },
+    {
+      "path": "design-studio/crates/design-desktop-backend/src/large_document/canvas_layout.rs",
+      "before_sha256": "7370363d5722034b0b9acb89688759ffd94a041b09acb24ac8801af40a3ee896",
+      "after_sha256": "e11412e021b70f44c0c5f0d3234d47de8b0a02f23434668f81f9278c34b13bc2",
+      "note": "This task"
+    },
+    {
+      "path": "design-studio/crates/design-desktop-backend/src/large_document/window_cache.rs",
+      "before_sha256": "6bebdd489620241ab72ebed36f9cb5cf90f3263ed46dd9733bbad35b8137558d",
+      "after_sha256": "131a1953a645aa64781ce98e2561a6193f3ab6e10563170c8cbb0400d74eb166",
+      "note": "This task"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/scene_store.rs",
+      "before_sha256": "72c8f0a84124a173ae6e73fc600e9043988a052f2b59bf050132f033b037bce6",
+      "after_sha256": "486de739492844338465d652cb6a1377a38da31d0e5e722453bfef85c956cdf0",
+      "note": "This task"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/scene_store/tests.rs",
+      "before_sha256": "ffb8ca9375b6aad1f80e2940263a718b9c77c5d82ae1558634ddbf0d151046fc",
+      "after_sha256": "48fbe8c3a67e462e5d1d4aeac7458ee2f24b42883dfdbf53b18744f1d4b7d03b",
+      "note": "This task"
+    },
+    {
+      "path": "design-studio/crates/design-desktop-backend/src/large_document.rs",
+      "before_sha256": "5f360817fea64006e19ac0ee77766a2d8e6f66bad72a60d23e6cda8090edd7c3",
+      "after_sha256": "1293b6bcf04b26f41faf7bfddb77804ae0f1464ddcdc7be3f648e7d23acc0b21",
+      "note": "This task"
+    },
+    {
+      "path": "design-studio/crates/design-desktop-backend/src/large_document/scene_roundtrip_tests.rs",
+      "before_sha256": "ba205d1de6d0f622dd5a230107fbe91d0a32a32a030691669eab7ce106b90a6d",
+      "after_sha256": "f42c4ac449e194991b52c578649c7d22dcad129b6108ca75753f616d9ae51327",
+      "note": "This task"
+    },
+    {
+      "path": "design-studio/crates/design-kernel/src/scene_store/record_node.rs",
+      "before_sha256": null,
+      "after_sha256": "e0e640db55377b86424c08b98d6c0609f43c414ab8e84cb1df193c1fd4b512b5",
+      "note": "This task"
+    }
+  ],
+  "evidence_sha256": {
+    "intermediate-cleanup.json": "e8c8030a59119ba08c04d051c87b695002ce466ed34a394ff1c4492d5b1f5075",
+    "baseline-cpu-0.png": "2d7fa65137cbf7f882bcd0f24bb581ba12f065428cb9dc1639816f06256a3314",
+    "baseline-6.log": "aa053fd0299d0a03ddb4a031338d6cc7ba49e57808ac2020414acae83516aaa1",
+    "selected-build.log": "8a81ca12abae265c657335bf306cdd62f54d9c65a969b1137cec500f5f4c3ace",
+    "baseline-5.log": "22fa16541ff64eea82c9b3e54eb22b6e753fdc4aaad185e065fea946a8154178",
+    "baseline-4.log": "c0a7cc84eff0cdaa9027ff1431dda7e111300b08bcabe4e3a77fdb8495bc0126",
+    "baseline-1.log": "6018a4dfa80f05342f046357c8da7c0f9fb314f3eb2865ffe287ff7355483232",
+    "startup-results.json": "173f044623cfebe994a0e71ab93e9119feaaf9818339a878c99262666e9615c4",
+    "preparation-tests.log": "25f9a5ad61cfe46b87db895681c432995cc01a47dd946b47e3e4bb811354db51",
+    "baseline-3.log": "09f7263c2287c97af5da7db369ea15e7fcfafe69eee6ba88500fb4db6c2082b1",
+    "baseline-2.log": "c1b326f3d137f9637262cdd2edc515d753e70477d0e30340485877ec8227d16c",
+    "same-snapshot-overview.log": "ea291aa961cb6f058dedccfd53b36e25017883b1ba5d50e71159147608f94dc9",
+    "store-tests.log": "c366ab539be57ad088fd07b301fffdb9ee1ff74edc10b4a253d2a0692791a5b1",
+    "store-tests-final.log": "505f5774b032f0f78cac4e496e46db11239bdb39a36e93af1cdab86251594eae",
+    "scope.md": "1c08b198f20b6061c06452ae2bf8b411f134a5b5f6511fd27288e3652c2e481d",
+    "candidate.json": "4c8c57e2193dc3bca5ebfe44a92529410a7585847bacb5fcc29c024c60c46e71",
+    "run-regressions.py": "b67be14f303532a31213314899b7210531ad7f70688a5a427a69049b369fc66c",
+    "index-streaming-candidate.rs": "3741abc0955d19c084782b7451cee0d94556fa47b03c3ea26ce666ebbcc1620d",
+    "candidate-4.log": "14a041a48869e94fdd527ce9231e438343393b84dd403baf713d78ddab9aa8f3",
+    "candidate-build.log": "8f2f4efa316d4feb14c3a4b6b718aff86d1925187815e8f01ab7d68d0d867ff9",
+    "candidate-1.log": "3a4e57d738ab31a5f0f91955b387a5f283116524ce43a94906e12c94cfa5deab",
+    "selected.json": "d03f60876902588f0532c252ed34d682df85e6afce3397a756f468c85a96078b",
+    "candidate-2.log": "8bc23e0743c4fb9d174d3120cde3f3995dc551b689b41aa42f23ddaf3a8ee489",
+    "backend-tests.log": "4d938fab423e28f6026e782229cecdb96dcdb3f9b888084fae89a1bdee24dc4d",
+    "source-compile-tests.log": "b7073424e7036a28e0407eda902b5b0cc7a4cda1a1bc1cf263abacab1931688a",
+    "backend-tests-final.log": "740e383c438e16f554b743cce430fe0e40301a3c4ad3e44bbfd6dd8c1ceebf3e",
+    "commands.json": "f7fb17dd6f75076815d5e3aefcdcdd460d88e8624e6b3c0e6684291fe61f3a95",
+    "candidate-3.log": "c288d2c08e0ea3f017f8e1b94707053c190dc516e52a2ef2254bc9475cd01c5a",
+    "concurrent-build-scope.json": "af963a21334457cd08513b541d22dd8b0033688e8dbe0e64a3c0fda2b98a500e",
+    "confirmation-summary.json": "eb66492b546d60ba81fe275bcc865c4331aa2c234b447d8d5125cf8d67101916",
+    "same-snapshot-pixels-overview.json": "74ddbfd0388f0514c75c6e8e2e166e69a2a1e020bcb036df886176cf08e2e51a",
+    "same-snapshot-pixels.log": "7289a74994dbc23e41c597b3e1cc76ea01384eda2dd8294f282b472c10313e3f",
+    "baseline-build.log": "790154143819682fbd237e5aec43b895b90c6575fac2ffa0379c04d8cdda6cc3",
+    "README.md": "ba9da25d1d09bc6838ddc9e2d88073f9a6ca33cb9daf049ca49471befe3922cd",
+    "AUDIT.md": "68d546f93e92c6f5fd5dc2123237fb9e20a23f913da98d97a7b2a416146d14b6",
+    "run-benchmarks.py": "91d56bf0697ddfa89cdb00892952978938c3c6e085011957c138657e135cc66a",
+    "backend-tests-verified.log": "8ac92218485f11cf54bb3e8f4721892f6e4cd37f25278cdf119608014c243a8f",
+    "selected-backend-tests.log": "115d3ff089b4f8631784dc7b5f9c8207f01ca6a759150714f5b2a9b550816b20",
+    "compare-snapshot.mjs": "b26365115da8565bb0fdaf3e4945946ec15175d743b08c05d483d26b0b270bbe",
+    "baseline.json": "722810caeab43d55e678df52e8a99c8683b171471b79bd7b8e74f568cd8a5b98",
+    "startup-ab.mjs": "2b145177f3734f3bb4ff05e3e61e414d196ba65f543092363de9122a1078911d",
+    "confirmation.log": "4a4f94bd63d0515324bfddd534d32a74c88d140d728644d9096202b6bb7157c8",
+    "regressions.json": "ed0761e92dbecf43804ff05f589666f587488fd9099418ce97d519e894fc83d2",
+    "same-snapshot-pixels.json": "9ea3fd2a4550e761b40507ea07196f1f9cdf31183ce21c1dd96a64a44534302c",
+    "confirm-startup.py": "0ce96bab43b11f942034ee7edc3344f8482f82c615beafe597d79c58e44dc487",
+    "candidate-cpu-overview-0.png": "b7b33ac9a511844bb7f0207e6ee36ab348731dc903943b64924061f3319a941a",
+    "selected-confirmation.log": "fc003e7f80688e796f5cb690a8a90479ce3d3c1c79b30ce7f92625c249ff7682",
+    "selected-2.log": "8246895a3869c83d76aa2a73b27c46009cb26d3c8f800224bfe4cc2fa9c85696",
+    "confirmation-runs.json": "1b816d1c1a310245aa672a228e032b3c2571fd4a43992f996839d8a0fd7b2d64",
+    "selected-1.log": "65814696005a994ee1c3036861077c6cf65177a261b5b3530fda7b486725d71f",
+    "candidate-cpu-0.png": "2d7fa65137cbf7f882bcd0f24bb581ba12f065428cb9dc1639816f06256a3314",
+    "candidate-final-build.log": "256920d31a6e3c8c7b7c6e25b6976dd361363b398cfdd33869c4affe88178eb2",
+    "selected-confirmation-runs.json": "7a285f171a797fc67dd1ad123df892e30e3f31b3b16bf0033a9e584d0bd248c8",
+    "preexisting-format-fixture.json": "175850604a480b284b2e2bc8c982276bc598da48003b33ac87887d652f26dcc9",
+    "baseline-cpu-overview-0.png": "b7b33ac9a511844bb7f0207e6ee36ab348731dc903943b64924061f3319a941a",
+    "paired-startup.log": "e423f45bd713e66383afc59a62d2e2f1a73213513d2191f3a7421e17148e2f7b",
+    "selected-confirmation-summary.json": "fcf6e7b18094c7cfca09761e405404b1624ddb9d7f024112a3d175850a794d05",
+    "same-snapshot-pixels-final.log": "2abf6573b30e1345d601e88206b5294fbf6a091a2661bb5c95d4381082f7c7f7",
+    "baseline-bin/design-prepare": "a12a3d02c178aca4ed6d93c4cbdb9e2b2bfdf083bbfd92a3f1dfe50f10c6df80",
+    "baseline-bin/futureox-design-desktop-backend": "679de471eea2aad0634ad8bcab24280b72d5142ed3ae43328613d6bc2c64a091",
+    "candidate-bin/design-prepare": "e0b78fafdd2ada467deead4e57f08f0083a74399420f0fc4d0584c4dca3bd8b7",
+    "candidate-bin/futureox-design-desktop-backend": "6291c5e089588ccc136691aae8b727a7bb50255d4be4624d1eff0dc95851a803",
+    "selected-bin/design-prepare": "e0b78fafdd2ada467deead4e57f08f0083a74399420f0fc4d0584c4dca3bd8b7",
+    "selected-bin/futureox-design-desktop-backend": "a39b55125b39cad3248d4f222bb86534ee964f223ae6dc641ecd2f016a8f5f64"
+  },
+  "scope": "native source work reduction; no whole-app speedup claim; index streaming retired",
+  "G2": "NOT_RUN whole editor",
+  "G3": "scoped model/store/pixels pass; full matrix NOT_RUN",
+  "G4": "no whole-startup improvement established",
+  "G5": "NOT_RUN",
+  "rollback": "Verify current hash; preserve concurrent projection.rs toggle by reversing only owned hunks"
+}

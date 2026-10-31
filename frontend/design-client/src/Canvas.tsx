@@ -26,7 +26,7 @@ import {CanvasSmartSelection} from './CanvasSmartSelection'
 import {pixelGridPathData} from './pixel-grid'
 import {CanvasGuides} from './CanvasGuides'
 import {worldGuides} from './ruler-guides'
-import {createSmartGuidesIndex, type SmartGuideSegment} from './canvas-smart-guides'
+import {createSmartGuidesIndex, placedSmartGuides, type SmartGuideSegment, type SmartSnapResult} from './canvas-smart-guides'
 import {useCanvasColorPicker} from './canvas-color-picker'
 import { captureContentPlane } from './kernel/content-plane'
 import { useUtilityTools, translateVertices } from './utility-tools'
@@ -162,6 +162,7 @@ type Drag = {
   originalIds?: string[]
   sourceParents?: ParentMap
   sourceDocument?: import('./model').DesignDocument
+  sourceEntries?: Readonly<ReturnType<typeof scene>>
   parentMatrices?: Record<string, Matrix>
   pickIndex?: SpatialIndex
   layoutPointerOrigin?: Point
@@ -453,7 +454,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }
   }, [editor])
   const drag = useRef<Drag | null>(null)
-  const guideIndex = useRef<{ drag: Drag; entries: readonly ReturnType<typeof scene>[number][]; rulers: boolean | undefined; ids: string;
+  const guideIndex = useRef<{ drag: Drag; rulers: boolean | undefined; ids: string;
     index: ReturnType<typeof createSmartGuidesIndex> } | null>(null)
   const releaseGuideIndex = () => { guideIndex.current?.index?.free(); guideIndex.current = null }
   useEffect(() => releaseGuideIndex, [])
@@ -515,7 +516,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       // The replacement document owns its own transaction. Retire only the
       // obsolete pointer/preview owner, never cancel the new editor state.
       cancelQueuedMove(); drag.current = null; pendingBoardMove.current = null
-      restoreGpuOverlays(); retainedMove.current?.restore(); setPanning(false); setRubber(null); setGuides({})
+      restoreGpuOverlays(); retainedMove.current?.restore(); setPanning(false); setRubber(null); clearMoveGuides()
       if (host.current?.hasPointerCapture(previous.pointerId)) host.current.releasePointerCapture(previous.pointerId)
     }
     return cancelQueuedMove
@@ -608,7 +609,28 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const [cropRect, setCropRect] = useState<typeof emptyBox | null>(null)
   useEffect(() => setCropRect(null), [state.page, state.doc.id, state.tool])
   const [rubber, setRubber] = useState<typeof emptyBox | null>(null)
-  const [guides, setGuides] = useState<{ x?: SmartGuideSegment; y?: SmartGuideSegment }>({})
+  type MoveGuides = { x?: SmartGuideSegment; y?: SmartGuideSegment; surface?:boolean }
+  const [guides, setGuides] = useState<MoveGuides>({})
+  const guidePoses = useRef(new Map<number, { drag: Drag; document: import('./model').DesignDocument; control:GpuMoveControl; guides: MoveGuides }>())
+  const guideDocuments = useRef(new WeakMap<import('./model').DesignDocument, { drag: Drag; guides: MoveGuides }>())
+  function showMoveGuides(next: MoveGuides) {
+    const same = (a?: SmartGuideSegment, b?: SmartGuideSegment) => a === b || !!a && !!b &&
+      a.axis === b.axis && a.position === b.position && a.start === b.start && a.end === b.end
+    setGuides(old => old.surface === next.surface && same(old.x, next.x) && same(old.y, next.y) ? old : next)
+  }
+  function clearMoveGuides() {
+    guidePoses.current.clear(); guideDocuments.current = new WeakMap(); showMoveGuides({})
+  }
+  useLayoutEffect(() => {
+    const gesture = drag.current
+    if (!editor.interactionActive || !gesture || gesture.kind !== 'move' ||
+        gesture.session !== editor.sessionGeneration || gesture.page !== state.page) clearMoveGuides()
+  }, [editor, editor.interactionActive, editor.sessionGeneration, state.page, state.tool])
+  useLayoutEffect(() => {
+    if (!presented || pendingBoardMove.current) return
+    const sample = guideDocuments.current.get(presented.document)
+    if (sample && sample.drag === drag.current) showMoveGuides(sample.guides)
+  }, [presented])
   function restoreCancelledMarqueeSelection(draft: Drag | null) {
     // Marquee has no document transaction: pointerdown may already have cleared
     // the selection, so Editor.cancel() alone cannot restore it. Never publish
@@ -633,7 +655,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     drag.current = null
     if (host.current?.hasPointerCapture(previous.pointerId)) host.current.releasePointerCapture(previous.pointerId)
     setRubber(null)
-    setGuides({})
+    clearMoveGuides()
     setShapePreview(null)
   }, [editor, editor.sessionGeneration, state.page])
   const hover = state.hover
@@ -690,6 +712,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   snapshots.begin(editor, editor.sessionGeneration, state.page, geometryReady)
   const currentScene = snapshots.currentScene(state.doc, state.page)
   const entries = currentScene.entries
+  const gridFrameId = state.selection.length === 1 && state.doc.nodes[state.selection[0]]?.kind === 'frame' &&
+    state.doc.nodes[state.selection[0]].layout?.mode === 'grid' ? state.selection[0] : undefined
+  // This publication also changes when the picking/font geometry epoch changes.
+  const solvedGridRectangles = useMemo(() => gridFrameId ? gridOverlayRectangles(state.doc, gridFrameId) : [],
+    [state.doc, gridFrameId, currentScene])
   const interactionScene = useMemo(() => snapshots.borrowCurrentScene(state.doc, state.page, editor.sessionGeneration),
     [snapshots, currentScene, state.doc, state.page, editor, editor.sessionGeneration, geometryReady])
   useLayoutEffect(() => editor.bindPublishedScene(interactionScene), [editor, interactionScene])
@@ -707,8 +734,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     onPosePresented: pose => {
       const gesture = drag.current
       if (!pendingBoardMove.current || !gesture || !['move', 'rotate', 'scale'].includes(gesture.kind) ||
-          pose.epoch !== editor.sessionGeneration || pose.document !== editor.state.doc) return
+          pose.epoch !== editor.sessionGeneration || pose.document !== editor.state.doc ||
+          pose.control && pose.control !== gpuMove.current) return
       if (host.current) moveCanvasFeedback(host.current, gesture.ids, pose.offset, gpuMovedOverlays.current)
+      const guides = guidePoses.current.get(pose.sequence)
+      showMoveGuides(guides?.drag === gesture && guides.document === pose.document && guides.control === gpuMove.current ? guides.guides : {})
+      for (const sequence of guidePoses.current.keys()) if (sequence <= pose.sequence) guidePoses.current.delete(sequence)
       if (gesture.actionToken) actionTrace.sample(gesture.actionToken, { posePresentedSequence: pose.sequence, poseLatencyMs: Math.round(pose.latencyMs) })
     },
     scene: interactionScene }),
@@ -1038,6 +1069,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         drag.current = null
         setPanning(false)
         setRubber(null)
+        clearMoveGuides()
         setPen(null)
         penRef.current = null
         pendingEditsChanged(editor)
@@ -1475,10 +1507,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       }
     }
     const sourceDocument=editor.state.doc,sourceParents=editor.parentMap(sourceDocument)
+    const sourceEntries=sourceDocument===state.doc?entries:scene(sourceDocument,s.page)
     const matrices = Object.fromEntries(ids.map((id) => [id, worldMatrix(sourceDocument, id,sourceParents)]))
     const selectedIds = new Set(ids)
     const currentBox = unionBounds(
-      scene(editor.state.doc, s.page)
+      sourceEntries
         .filter((v) => selectedIds.has(v.id))
         .map((v) => v.bounds),
     )
@@ -1491,7 +1524,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       screen,
       view: dragKind === 'pan' ? editor.flushPendingView() : capturedView,
       ids,
-      originalIds: [...ids], sourceDocument, sourceParents,
+      originalIds: [...ids], sourceDocument, sourceParents, sourceEntries,
       parentMatrices: Object.fromEntries(ids.map(id=>[id,worldMatrix(sourceDocument,sourceParents.get(id)!,sourceParents)])),
       matrices,
       sizes: Object.fromEntries(
@@ -1738,7 +1771,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       return
     }
     let transform: Matrix = translate(p.x - d.start.x, p.y - d.start.y)
-    setGuides({})
+    let moveGuides: MoveGuides = {}
+    if (d.kind !== 'move') clearMoveGuides()
     if (d.kind === 'move') {
       d.moved = dragThresholdPassed(d.screen, screenPoint(e), !!d.moved)
       if (d.actionToken) actionTrace.sample(d.actionToken, { thresholdPassed: !!d.moved })
@@ -1763,7 +1797,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const free = d.ids.some(id => !insideParentFrame(d.sourceDocument || editor.state.doc, id, p, d.sourceParents))
       if (!d.duplicating) editor.previewFreeMove(d.ids, free)
       if (!free && !d.duplicating && d.ids.length === 1 && editor.previewLayoutOrder(d.ids[0], layoutPointer)) {
-        setGuides({})
+        clearMoveGuides()
         return
       }
       let dx = p.x - d.start.x,
@@ -1774,36 +1808,41 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (!moveAxes.y) dy = 0
       let guidedX = false,
         guidedY = false
+      let snapResult: SmartSnapResult | undefined
       if (editor.state.snap && !e.ctrlKey) {
         const targetKey=d.ids.join(',')
-        if (!guideIndex.current || guideIndex.current.drag!==d || guideIndex.current.entries!==entries ||
+        if (!guideIndex.current || guideIndex.current.drag!==d ||
             guideIndex.current.rulers!==editor.state.rulers || guideIndex.current.ids!==targetKey) {
           releaseGuideIndex()
+        // Moving previews cannot move the gesture's own snap targets. Retain
+        // the original world envelopes until the gesture/duplicate set changes.
+        const targetEntries=d.sourceEntries||entries,targetDocument=d.sourceDocument||editor.state.doc
         const movingIds = new Set(d.ids)
         // The kernel owns candidate collection and best-delta selection over
         // the dragged world rect; the canvas only supplies sibling rects
         // (every other on-page entry, ruler guides included as zero-width/
         // zero-height rectangles) and applies the returned correction.
-        const others = entries.filter(
+        const others = targetEntries.filter(
           (v) => !movingIds.has(v.id) && !v.ancestors.some((id) => movingIds.has(id)),
         )
-        const movingEntry = entries.find((v) => v.id === d.ids[0]),
+        const movingEntry = targetEntries.find((v) => v.id === (d.originalIds?.[0]||d.ids[0])),
           parentId = d.ids.length === 1 ? movingEntry?.ancestors.at(-1) : undefined,
-          parent = parentId ? entries.find((v) => v.id === parentId)?.bounds : undefined
+          parent = parentId ? targetEntries.find((v) => v.id === parentId)?.bounds : undefined
         const siblings = others.map((v) => v.bounds)
         if(editor.state.rulers){
-          const moving=new Set(entries.filter(v=>movingIds.has(v.id)||v.ancestors.some(id=>movingIds.has(id))).map(v=>v.id))
-          for(const guide of worldGuides(editor.state.doc,editor.state.page,entries)){
+          const moving=new Set(targetEntries.filter(v=>movingIds.has(v.id)||v.ancestors.some(id=>movingIds.has(id))).map(v=>v.id))
+          for(const guide of worldGuides(targetDocument,editor.state.page,targetEntries)){
             if(moving.has(guide.owner))continue
             if(Math.abs(guide.to.x-guide.from.x)<1e-9)siblings.push({x:guide.from.x,y:Math.min(guide.from.y,guide.to.y),width:0,height:Math.abs(guide.to.y-guide.from.y)})
             if(Math.abs(guide.to.y-guide.from.y)<1e-9)siblings.push({x:Math.min(guide.from.x,guide.to.x),y:guide.from.y,width:Math.abs(guide.to.x-guide.from.x),height:0})
           }
         }
-          guideIndex.current={drag:d,entries,rulers:editor.state.rulers,ids:targetKey,index:createSmartGuidesIndex(parent,siblings)}
+          guideIndex.current={drag:d,rulers:editor.state.rulers,ids:targetKey,index:createSmartGuidesIndex(parent,siblings)}
         }
-        const snap = guideIndex.current?.index?.snap(
-          { x: d.box.x + dx, y: d.box.y + dy, width: d.box.width, height: d.box.height }, 6 / zoom,
+        const snap: SmartSnapResult = guideIndex.current?.index?.snap(
+          { x: d.box.x + dx, y: d.box.y + dy, width: d.box.width, height: d.box.height }, 6 / d.view.zoom,
         ) ?? {dx:0,dy:0,guides:[null,null]}
+        snapResult = snap
         // Shift constrains both the correction and the guide shown for it.
         const gx = moveAxes.x ? snap.guides[0] : null,
           gy = moveAxes.y ? snap.guides[1] : null
@@ -1811,7 +1850,6 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if (gy) dy += snap.dy
         guidedX = !!gx
         guidedY = !!gy
-        setGuides({ x: gx ?? undefined, y: gy ?? undefined })
       }
       const force = d.ids.some((id) => forcedPixelSnap(editor.state.doc.nodes[id]))
       const snapped = snapMove(
@@ -1820,6 +1858,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         force || (editor.state.snapPixels && !e.ctrlKey),
         { x: moveAxes.x && (force || !guidedX), y: moveAxes.y && (force || !guidedY) },
       )
+      // Pixel-forced objects can override a fractional alignment. The line
+      // must describe the final transform, not the discarded snap proposal.
+      moveGuides = placedSmartGuides(snapResult, { x:d.box.x+snapped.x, y:d.box.y+snapped.y, width:d.box.width, height:d.box.height },
+        { x:moveAxes.x && snapped.x === dx, y:moveAxes.y && snapped.y === dy })
       if (d.actionToken) actionTrace.sample(d.actionToken, {
         snapChanged: snapped.x !== dx || snapped.y !== dy || guidedX || guidedY,
         constraintEnabled: e.shiftKey, constraintChanged: !moveAxes.x && p.x !== d.start.x || !moveAxes.y && p.y !== d.start.y,
@@ -1886,15 +1928,23 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       actionTrace.sample(d.actionToken, { proposalChanged: compareActionGeometry(d.actionBefore, d.actionProposal) === 2 })
     }
     const placement = d.kind==='move'?{ids:d.ids,point:p,force:e.metaKey||e.ctrlKey,preserveParent:space.current}:undefined
-    const retainsParents = !placement || editor.canvasMovePreservesParents(placement.ids, placement.point, placement.force, placement.preserveParent)
+    const movePreview=placement?editor.canvasMovePreview(patches,placement):undefined
+    const retainsParents = !placement || movePreview!.retainsParents
     // Independent complete boards can follow the pointer on the compositor.
     // Keep one final authored mutation, using the same snapping/placement math.
     // Overlap, reparenting and Option-copy immediately use the regular path.
     if ((d.kind === 'move' && retainsParents && !d.duplicating && !e.altKey && !e.metaKey && !e.ctrlKey ||
         d.kind === 'rotate' || d.kind === 'scale') && patches) {
-      const offset = gpuMove.current?.apply(editor.state.doc, patches, d.actionToken ? actionTrace.token(d.actionToken) : undefined)
+      const offset = gpuMove.current?.apply(editor.state.doc, movePreview?.patches||patches, d.actionToken ? actionTrace.token(d.actionToken) : undefined,
+        [moveGuides.x,moveGuides.y].filter((guide):guide is SmartGuideSegment=>!!guide))
       if (offset) {
         clearFallbackMove(); retainedMove.current?.restore()
+        moveGuides = { ...moveGuides, surface:gpuMove.current?.guidesInSurface?.() === true }
+        if (gpuMove.current?.feedbackPending?.()) {
+          const sequence = gpuMove.current.inputSequence?.() || 0
+          guidePoses.current.set(sequence, { drag:d, document:editor.state.doc, control:gpuMove.current, guides:moveGuides })
+          while (guidePoses.current.size > 128) guidePoses.current.delete(guidePoses.current.keys().next().value!)
+        } else { guidePoses.current.clear(); showMoveGuides(moveGuides) }
         if (!gpuMove.current?.feedbackPending?.() && host.current) moveCanvasFeedback(host.current, d.ids, offset, gpuMovedOverlays.current)
         if (d.actionToken) actionTrace.sample(d.actionToken, { renderRouteCode: 1, poseSubmittedSequence: gpuMove.current?.inputSequence?.() || 0 })
         pendingBoardMove.current = [patches, placement]
@@ -1908,14 +1958,18 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     // Affine owners remain alive until commit/cancel so their handoff survives.
     if (d.kind === 'move') { gpuMove.current?.end(editor.state.doc); restoreGpuOverlays() }
     if (d.kind === 'move' && retainsParents && !d.duplicating && !e.altKey && !e.metaKey && !e.ctrlKey && d.ids.length === 1 &&
-      retainedMove.current?.apply(editor.state.doc, d.ids[0], patches[d.ids[0]].transform!)) {
+      retainedMove.current?.apply(editor.state.doc, d.ids[0], (movePreview?.patches||patches)[d.ids[0]].transform!)) {
       clearFallbackMove()
+      guidePoses.current.clear(); showMoveGuides(moveGuides)
       if(d.actionToken)actionTrace.sample(d.actionToken,{renderRouteCode:4})
       pendingBoardMove.current = [patches, placement]
       return
     }
     if (pendingBoardMove.current) { pendingBoardMove.current = null; retainedMove.current?.restore() }
     editor.preview(patches,placement)
+    guidePoses.current.clear()
+    guideDocuments.current.set(editor.state.doc, { drag:d, guides:moveGuides })
+    if (geometryReady && !gpuPreviewAvailable && vectorPreviewSupported) showMoveGuides(moveGuides)
     if (d.kind === 'move' && !(geometryReady && !gpuPreviewAvailable && vectorPreviewSupported)) awaitFallbackMove()
     else clearFallbackMove()
     restoreGpuOverlays()
@@ -1950,7 +2004,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if (e.pointerId !== d.pointerId) return
     if (d.session !== editor.sessionGeneration || d.page !== editor.state.page) {
       cancelQueuedMove(); drag.current = null; pendingBoardMove.current = null
-      restoreGpuOverlays(); retainedMove.current?.restore(); setPanning(false); setRubber(null); setGuides({})
+      restoreGpuOverlays(); retainedMove.current?.restore(); setPanning(false); setRubber(null); clearMoveGuides()
       if (host.current?.hasPointerCapture(e.pointerId)) host.current.releasePointerCapture(e.pointerId)
       return
     }
@@ -2055,7 +2109,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     restoreGpuOverlays()
     finishDragTrace(d, ['pan','zoom','pivot','marquee'].includes(d.kind) ? ActionOutcome.observed : d.kind === 'crop' ? ActionOutcome.unsupported : undefined, d.kind === 'crop' ? ActionReason.unobserved : ActionReason.none)
     setRubber(null)
-    setGuides({})
+    clearMoveGuides()
   }
   async function applyCrop(id: string, rect: Bounds) {
     const generation = editor.sessionGeneration
@@ -2248,7 +2302,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           if(drag.current.kind==='pivot'&&drag.current.originalPivot)setOrigin(drag.current.originalPivot)
           flushView()
           const cancelledDraft = drag.current
-          editor.cancel(); finishDragTrace(cancelledDraft, ActionOutcome.cancelled, ActionReason.lostCapture); drag.current = null; setPanning(false); setShapePreview(null); setRubber(null); setGuides({})
+          editor.cancel(); finishDragTrace(cancelledDraft, ActionOutcome.cancelled, ActionReason.lostCapture); drag.current = null; setPanning(false); setShapePreview(null); setRubber(null); clearMoveGuides()
           restoreCancelledMarqueeSelection(cancelledDraft)
         }
       }}
@@ -2544,8 +2598,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             if (selection.size !== 1) return null
             const frame = state.doc.nodes[[...selection][0]]
             if (!frame || frame.kind !== 'frame' || frame.layout?.mode !== 'grid') return null
-            const rects = gridOverlayRectangles(state.doc, frame.id)
-            return rects.map((r, i) => (
+            return solvedGridRectangles.map((r, i) => (
               <polygon key={`grid-cell-${i}`} points={r.points.map(p => `${p.x},${p.y}`).join(" ")}
                 fill="#0d99ff14" stroke="#0d99ff55" strokeWidth={1} vectorEffect="non-scaling-stroke"
                 pointerEvents="none" data-testid="layout-grid-cell" />
@@ -2839,7 +2892,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             <line x1={m.from.x} y1={m.from.y} x2={m.to.x} y2={m.to.y} stroke="#f24822" strokeWidth={1/zoom}/>
             <text x={(m.from.x+m.to.x)/2+4/zoom} y={(m.from.y+m.to.y)/2-5/zoom} fontSize={11/zoom} fill="#f24822" paintOrder="stroke" stroke="#fff" strokeWidth={2/zoom}>{Number(m.distance.toFixed(2))}</text>
           </g>)}
-          {guides.x && (
+          {!guides.surface && guides.x && (
             <line
               x1={guides.x.position}
               x2={guides.x.position}
@@ -2849,7 +2902,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               strokeWidth={1 / zoom}
             />
           )}{' '}
-          {guides.y && (
+          {!guides.surface && guides.y && (
             <line
               y1={guides.y.position}
               y2={guides.y.position}

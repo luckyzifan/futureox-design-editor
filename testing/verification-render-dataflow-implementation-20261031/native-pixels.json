@@ -1,0 +1,106 @@
+{
+  "scope": "Same immutable 124447-node source snapshot; fresh native workers, warm OS cache; CPU PNG, not GUI/GPU latency",
+  "runs": [
+    {
+      "label": "baseline",
+      "loadMs": 1699.295,
+      "pixelsEqual": true,
+      "pngSha256": "b7b33ac9a511844bb7f0207e6ee36ab348731dc903943b64924061f3319a941a",
+      "productSha256": "e0b78fafdd2ada467deead4e57f08f0083a74399420f0fc4d0584c4dca3bd8b7",
+      "identity": {
+        "documentId": "01234567-89ab-4cde-8fab-0123456789ab",
+        "nodes": 124447,
+        "pageId": "00000000-0000-4000-8000-000000000001",
+        "stageId": "5363af5c-2f45-5551-a4fd-c88180d2f7bf"
+      },
+      "options": {
+        "pageId": "00000000-0000-4000-8000-000000000001",
+        "width": 384,
+        "height": 217,
+        "view": {
+          "x": -25.600000000000023,
+          "y": -1222.3000000000002,
+          "zoom": 0.2
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": false
+      }
+    },
+    {
+      "label": "candidate",
+      "loadMs": 3059.988875,
+      "pixelsEqual": true,
+      "pngSha256": "b7b33ac9a511844bb7f0207e6ee36ab348731dc903943b64924061f3319a941a",
+      "productSha256": "c9541c3d729af978e6448276515d0a0411ed98413bc0c92f2d542cc9d1a6dfe3",
+      "identity": {
+        "documentId": "01234567-89ab-4cde-8fab-0123456789ab",
+        "nodes": 124447,
+        "pageId": "00000000-0000-4000-8000-000000000001",
+        "stageId": "5363af5c-2f45-5551-a4fd-c88180d2f7bf"
+      },
+      "options": {
+        "pageId": "00000000-0000-4000-8000-000000000001",
+        "width": 384,
+        "height": 217,
+        "view": {
+          "x": -25.600000000000023,
+          "y": -1222.3000000000002,
+          "zoom": 0.2
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": false
+      }
+    },
+    {
+      "label": "candidate",
+      "loadMs": 1549.5902910000004,
+      "pixelsEqual": true,
+      "pngSha256": "b7b33ac9a511844bb7f0207e6ee36ab348731dc903943b64924061f3319a941a",
+      "productSha256": "c9541c3d729af978e6448276515d0a0411ed98413bc0c92f2d542cc9d1a6dfe3",
+      "identity": {
+        "documentId": "01234567-89ab-4cde-8fab-0123456789ab",
+        "nodes": 124447,
+        "pageId": "00000000-0000-4000-8000-000000000001",
+        "stageId": "5363af5c-2f45-5551-a4fd-c88180d2f7bf"
+      },
+      "options": {
+        "pageId": "00000000-0000-4000-8000-000000000001",
+        "width": 384,
+        "height": 217,
+        "view": {
+          "x": -25.600000000000023,
+          "y": -1222.3000000000002,
+          "zoom": 0.2
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": false
+      }
+    },
+    {
+      "label": "baseline",
+      "loadMs": 1809.6071249999986,
+      "pixelsEqual": true,
+      "pngSha256": "b7b33ac9a511844bb7f0207e6ee36ab348731dc903943b64924061f3319a941a",
+      "productSha256": "e0b78fafdd2ada467deead4e57f08f0083a74399420f0fc4d0584c4dca3bd8b7",
+      "identity": {
+        "documentId": "01234567-89ab-4cde-8fab-0123456789ab",
+        "nodes": 124447,
+        "pageId": "00000000-0000-4000-8000-000000000001",
+        "stageId": "5363af5c-2f45-5551-a4fd-c88180d2f7bf"
+      },
+      "options": {
+        "pageId": "00000000-0000-4000-8000-000000000001",
+        "width": 384,
+        "height": 217,
+        "view": {
+          "x": -25.600000000000023,
+          "y": -1222.3000000000002,
+          "zoom": 0.2
+        },
+        "rasterProfile": "figmaSubpixel",
+        "transparent": false
+      }
+    }
+  ],
+  "snapshotSha256": "30d4106011c5fe4ccbe4b895005dd3ebc3158814e3315f53fe7b5e3576f06f4e"
+}

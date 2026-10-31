@@ -1,0 +1,657 @@
+use super::*;
+use crate::scene::Document;
+#[path = "../../tests/support/frame_scene.rs"]
+mod wire;
+fn document() -> Document {
+    let mut doc:Document=serde_json::from_value(json!({"schemaVersion":20,"id":"source","name":"source","pages":[{"id":"page","name":"page","children":["stage"],"background":"#ffffff"}],"nodes":{
+        "stage":{"id":"stage","kind":"frame","width":3000,"height":2000,"children":["a","b","c"],"blend":"pass-through"},
+        "a":{"id":"a","kind":"rectangle","width":100,"height":100,"transform":[1,0,0,1,500,500],"fills":[{"kind":"solid","color":"#ff0011","opacity":0.7}]},
+        "b":{"id":"b","kind":"rectangle","width":100,"height":100,"transform":[1,0,0,1,1500,500],"fills":[{"kind":"solid","color":"#0011ff"}]},
+        "c":{"id":"c","kind":"rectangle","width":100,"height":100,"transform":[1,0,0,1,2500,500],"fills":[{"kind":"solid","color":"#11ff00"}]}
+    }})).unwrap();
+    doc.color_management = Some(Default::default());
+    doc
+}
+fn request(x: f64, y: f64, zoom: f64) -> Value {
+    json!({"pageId":"page","width":64,"height":64,"view":{"x":x,"y":y,"zoom":zoom},"rasterProfile":"figmaSubpixel","gpuViewport":{"x":0,"y":0,"w":64,"h":64},"prepareViewport":{"x":-64,"y":-64,"w":192,"h":192},"gpuPageBackground":true})
+}
+fn owner(doc: Document, scope: &str) -> Engine {
+    let mut e = Engine::new();
+    crate::capacity::with_source_storage_scope(true, || e.load_source_document(doc)).unwrap();
+    e.bind_frame_scene_scope(scope).unwrap();
+    e
+}
+fn descriptor(doc: &Document) -> Descriptor {
+    Descriptor {
+        generation: "source:1:0".into(),
+        document_id: doc.id.clone(),
+        nodes: doc.nodes.len() as u64,
+        bytes: 1,
+        footer_hash: [0; 32],
+    }
+}
+fn assert_projection_equivalent(a:&[u8],b:&[u8]) {
+        // Camera-independent output support may be more conservative than
+        // the old device traversal. It is acceleration metadata, not drawable
+        // geometry: compare every other field and geometry word unchanged.
+        let mut actual_scene=wire::scene(a);let mut expected_scene=wire::scene(b);
+        let support=actual_scene.as_object_mut().unwrap().remove("pagePaintRects");
+        expected_scene.as_object_mut().unwrap().remove("pagePaintRects");
+        wire::assert_fields(&actual_scene,&expected_scene);
+        assert_eq!(wire::geometry_words(a),wire::geometry_words(b));
+        if let Some(Value::Array(bounds))=support {
+            let viewport=&actual_scene["output"];
+            let x=viewport["x"].as_f64().unwrap();let y=viewport["y"].as_f64().unwrap();
+            let right=x+viewport["w"].as_f64().unwrap();let bottom=y+viewport["h"].as_f64().unwrap();
+            for node in actual_scene["nodes"].as_object().unwrap().values() {
+                if ["fills","strokes","effects"].iter().all(|field|node[*field].as_array().is_none_or(|a|a.is_empty())){continue}
+                let r=&node["rect"];let x0=r["x"].as_f64().unwrap().max(x);let y0=r["y"].as_f64().unwrap().max(y);
+                let x1=(r["x"].as_f64().unwrap()+r["w"].as_f64().unwrap()).min(right);
+                let y1=(r["y"].as_f64().unwrap()+r["h"].as_f64().unwrap()).min(bottom);
+                if x0>=x1||y0>=y1{continue}
+                assert!(bounds.iter().any(|b|b[0].as_f64().unwrap()<=x0&&b[1].as_f64().unwrap()<=y0&&b[2].as_f64().unwrap()>=x1&&b[3].as_f64().unwrap()>=y1),"complete support missed drawn output: {}",node["id"]);
+            }
+        }
+ }
+fn compare(
+    runtime: &mut Runtime,
+    actual: &mut Engine,
+    expected: &mut Engine,
+    desc: &Descriptor,
+    r: &Value,
+) -> Vec<u8> {
+    crate::capacity::with_source_storage_scope(true, || {
+        let a = runtime
+            .compile(actual, desc, "stage", "page", &r.to_string())
+            .unwrap();
+        let b = expected.compile_gpu_packet_request(&r.to_string()).unwrap();
+        assert_projection_equivalent(&a,&b);
+        a
+    })
+}
+#[test]
+fn default_source_compiler_uses_subset_and_reuses_it_across_cameras() {
+    let d = document();
+    let desc = descriptor(&d);
+    let mut expected = owner(d.clone(), "oracle");
+    let mut actual = owner(d.clone(), "live");
+    let mut runtime = Runtime::default();
+    let first = compare(
+        &mut runtime,
+        &mut actual,
+        &mut expected,
+        &desc,
+        &request(-480.25, -480.375, 1.),
+    );
+    assert_eq!(runtime.stats["mode"], "demand");
+    assert_eq!(runtime.stats["resolvedCompileNodes"], 2);
+    assert_eq!(runtime.stats["projectionRebuilds"], 1);
+    let repeat = compare(
+        &mut runtime,
+        &mut actual,
+        &mut expected,
+        &desc,
+        &request(-480.25, -480.375, 1.),
+    );
+    assert_eq!(first, repeat);
+    compare(
+        &mut runtime,
+        &mut actual,
+        &mut expected,
+        &desc,
+        &request(-510.125, -510.375, 1.),
+    );
+    assert_eq!(runtime.stats["projectionRebuilds"], 1);
+    assert_eq!(runtime.stats["projectionReuses"], 2);
+    assert_eq!(runtime.stats["globalMarginEvaluations"], 1);
+    compare(
+        &mut runtime,
+        &mut actual,
+        &mut expected,
+        &desc,
+        &request(-1480.25, -480.375, 1.),
+    );
+    assert_eq!(runtime.stats["projectionRebuilds"], 2);
+    assert_eq!(actual.authored_document().unwrap(), &d);
+    assert_eq!(actual.doc.as_ref().unwrap().nodes.len(), 4);
+}
+#[test]
+fn maximum_ui_zoom_compiles_at_native_dpr_without_relaxing_pixel_budgets() {
+    let d=document();let desc=descriptor(&d);
+    let mut actual=owner(d.clone(),"high-zoom");let mut expected=owner(d,"high-zoom-reference");
+    let mut runtime=Runtime::default();
+    for zoom in [128.,256.,512.,768.,1024.] {
+        let r=request(-500.*zoom+8.25,-500.*zoom+16.375,zoom);
+        compare(&mut runtime,&mut actual,&mut expected,&desc,&r);
+        assert_eq!(runtime.stats["mode"],"demand");
+    }
+    let mut oversized=request(-500.*512.,-500.*512.,512.);
+    oversized["gpuViewport"]["w"]=json!(515);
+    assert!(runtime.compile(&mut actual,&desc,"stage","page",&oversized.to_string()).is_err());
+}
+#[test]
+fn global_backdrop_flags_margin_and_pointwise_controls_match_complete_packets() {
+    for kind in [
+        "background-blur",
+        "gaussian-blur",
+        "shadow",
+        "color-controls",
+    ] {
+        let mut d = document();
+        let value = if kind == "color-controls" {
+            json!({"kind":kind,"radius":0,"color":"#000000","colorControls":{"brightness":0.2,"contrast":1.5,"saturation":0.7,"hue":0}})
+        } else {
+            json!({"kind":kind,"radius":8,"x":3.25,"color":"#000000"})
+        };
+        d.nodes.get_mut("c").unwrap().effects = serde_json::from_value(json!([value])).unwrap();
+        let desc = descriptor(&d);
+        let mut expected = owner(d.clone(), "oracle");
+        let mut actual = owner(d, "live");
+        let mut runtime = Runtime::default();
+        compare(
+            &mut runtime,
+            &mut actual,
+            &mut expected,
+            &desc,
+            &request(-480.25, -480.375, 1.),
+        );
+        assert_eq!(runtime.stats["mode"], "demand", "{kind}");
+    }
+}
+#[test]
+fn backdrop_prefix_keeps_earlier_content_and_can_drop_later_content() {
+    let mut d = document();
+    d.nodes.get_mut("a").unwrap().transform = Transform([1., 0., 0., 1., 1480., 500.]);
+    d.nodes.get_mut("b").unwrap().fills[0].opacity = 0.5;
+    d.nodes.get_mut("b").unwrap().effects =
+        serde_json::from_value(json!([{"kind":"background-blur","radius":8,"color":"#000000"}]))
+            .unwrap();
+    let desc = descriptor(&d);
+    let mut expected = owner(d.clone(), "oracle");
+    let mut actual = owner(d, "live");
+    let mut runtime = Runtime::default();
+    compare(
+        &mut runtime,
+        &mut actual,
+        &mut expected,
+        &desc,
+        &request(-1480.25, -480.375, 1.),
+    );
+    assert_eq!(runtime.stats["resolvedCompileNodes"], 3);
+}
+#[test]
+fn complete_fallback_and_projection_share_one_resource_owner() {
+    let d = document();
+    let desc = descriptor(&d);
+    let mut expected = owner(d.clone(), "oracle");
+    let mut actual = owner(d, "live");
+    let mut runtime = Runtime::default();
+    let r = request(-480.25, -480.375, 1.);
+    let first = compare(&mut runtime, &mut actual, &mut expected, &desc, &r);
+    let mut export = r.clone();
+    export["rasterProfile"] = json!("figma");
+    compare(&mut runtime, &mut actual, &mut expected, &desc, &export);
+    assert_eq!(runtime.stats["mode"], "complete");
+    let returned = compare(&mut runtime, &mut actual, &mut expected, &desc, &r);
+    assert_eq!(wire::scope(&first), wire::scope(&returned));
+    assert_ne!(first, returned);
+    let mut acknowledged = r;
+    acknowledged["frameResources"] = json!({"scope":"live","ranges":[[1,u32::MAX]]});
+    let packet = crate::capacity::with_source_storage_scope(true, || {
+        runtime.compile(
+            &mut actual,
+            &desc,
+            "stage",
+            "page",
+            &acknowledged.to_string(),
+        )
+    })
+    .unwrap();
+    assert_eq!(u32::from_le_bytes(packet[20..24].try_into().unwrap()), 0);
+}
+#[test]
+fn a_failed_or_cancelled_compile_preserves_scope_and_authority() {
+    let d = document();
+    let desc = descriptor(&d);
+    let mut expected = owner(d.clone(), "oracle");
+    let mut actual = owner(d.clone(), "live");
+    let mut runtime = Runtime::default();
+    let r = request(-480.25, -480.375, 1.);
+    compare(&mut runtime, &mut actual, &mut expected, &desc, &r);
+    let mut bad = r.clone();
+    bad["frameResources"] = json!({"scope":"live","ranges":[[2,1]]});
+    assert!(
+        crate::capacity::with_source_storage_scope(true, || runtime.compile(
+            &mut actual,
+            &desc,
+            "stage",
+            "page",
+            &bad.to_string()
+        ))
+        .is_err()
+    );
+    let cancelled = crate::render_cancellation::with_probe(
+        || true,
+        || runtime.compile(&mut actual, &desc, "stage", "page", &r.to_string()),
+    );
+    assert!(cancelled.is_err());
+    compare(&mut runtime, &mut actual, &mut expected, &desc, &r);
+    assert_eq!(actual.authored_document().unwrap(), &d);
+}
+#[test]
+fn union_of_tile_crops_and_near_stage_edges_stays_complete() {
+    let mut d = document();
+    d.nodes.get_mut("c").unwrap().transform = Transform([1., 0., 0., 1., -500., 500.]);
+    let desc = descriptor(&d);
+    let mut expected = owner(d.clone(), "oracle");
+    let mut actual = owner(d, "live");
+    let mut runtime = Runtime::default();
+    let mut r = request(-480.25, -480.375, 1.);
+    r["prepareViewport"] = json!({"x":-64,"y":-64,"w":1200,"h":192});
+    compare(&mut runtime, &mut actual, &mut expected, &desc, &r);
+    r["gpuViewport"] = json!({"x":1000,"y":0,"w":64,"h":64});
+    compare(&mut runtime, &mut actual, &mut expected, &desc, &r);
+    let outside = request(5000., 5000., 1.);
+    compare(&mut runtime, &mut actual, &mut expected, &desc, &outside);
+    assert_eq!(runtime.stats["mode"], "demand");
+    assert!(runtime.stats["resolvedCompileNodes"].as_u64().unwrap() < desc.nodes);
+}
+
+fn bundled_font() -> Vec<u8> {
+    std::fs::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../frontend/design-client/public/fonts/NotoSansSC.ttf"),
+    )
+    .unwrap()
+}
+#[test]
+fn resolved_component_and_glyph_identity_survive_projection_without_relayout() {
+    let mut d = document();
+    d.nodes.get_mut("b").unwrap().kind = "frame".into();
+    d.nodes.get_mut("b").unwrap().component = Some(serde_json::from_value(json!({})).unwrap());
+    d.nodes.get_mut("b").unwrap().children = vec!["label".into()];
+    d.nodes.insert("label".into(),serde_json::from_value(json!({"id":"label","kind":"text","text":"Topology 字形","width":100,"height":100,"fontSize":18,"fills":[{"kind":"solid","color":"#123456"}]})).unwrap());
+    d.nodes.get_mut("a").unwrap().kind = "frame".into();
+    d.nodes.get_mut("a").unwrap().instance =
+        Some(serde_json::from_value(json!({"componentId":"b","overrides":{}})).unwrap());
+    let desc = descriptor(&d);
+    let mut expected = owner(d.clone(), "oracle");
+    let mut actual = owner(d, "live");
+    let font = bundled_font();
+    expected.load_font(&font).unwrap();
+    actual.load_font(&font).unwrap();
+    let mut runtime = Runtime::default();
+    compare(
+        &mut runtime,
+        &mut actual,
+        &mut expected,
+        &desc,
+        &request(-480.25, -480.375, 1.),
+    );
+    assert_eq!(runtime.stats["mode"], "demand");
+    for (id, node) in &runtime
+        .compiler
+        .as_ref()
+        .unwrap()
+        .doc
+        .as_ref()
+        .unwrap()
+        .nodes
+    {
+        if id != "stage" {
+            assert_eq!(node, &actual.doc.as_ref().unwrap().nodes[id]);
+        }
+    }
+}
+#[test]
+fn cancellation_inside_packet_compilation_restores_the_shared_resource_owner() {
+    let mut inside = 0;
+    for cutoff in [1, 4, 8, 12, 20, 32, 48, 64] {
+        let d = document();
+        let desc = descriptor(&d);
+        let mut expected = owner(d.clone(), "oracle");
+        let mut actual = owner(d, "live");
+        let mut runtime = Runtime::default();
+        compare(
+            &mut runtime,
+            &mut actual,
+            &mut expected,
+            &desc,
+            &request(-480.25, -480.375, 1.),
+        );
+        runtime.stats = Value::Null;
+        let calls = std::rc::Rc::new(std::cell::Cell::new(0));
+        let observed = calls.clone();
+        let r = request(-490.25, -490.375, 1.);
+        let result = crate::capacity::with_source_storage_scope(true, || {
+            crate::render_cancellation::with_probe(
+                move || {
+                    observed.set(observed.get() + 1);
+                    observed.get() > cutoff
+                },
+                || runtime.compile(&mut actual, &desc, "stage", "page", &r.to_string()),
+            )
+        });
+        if result.is_err() && runtime.stats["mode"] == "demand" {
+            inside += 1;
+        }
+        compare(&mut runtime, &mut actual, &mut expected, &desc, &r);
+    }
+    assert!(
+        inside > 0,
+        "must interrupt after the wire-resource owner was transferred"
+    );
+}
+
+#[test]
+#[ignore = "complete topology native compiler oracle; no GPU device or Electron"]
+fn complete_topology_native_entry_compiles_demand_against_full_source_oracle() {
+    use sha2::{Digest, Sha256};
+    use std::{
+        fs,
+        io::{BufReader, Read},
+    };
+    struct Input {
+        file: fs::File,
+        hash: Sha256,
+    }
+    impl Read for Input {
+        fn read(&mut self, b: &mut [u8]) -> std::io::Result<usize> {
+            let n = self.file.read(b)?;
+            self.hash.update(&b[..n]);
+            Ok(n)
+        }
+    }
+    let started = std::time::Instant::now();
+    struct Owned(Option<std::path::PathBuf>);
+    impl Drop for Owned {
+        fn drop(&mut self) {
+            if let Some(path) = &self.0 {
+                let _ = fs::remove_file(path);
+            }
+        }
+    }
+    let mut owned = Owned(None);
+    let (document, descriptor, fixture) = if let Ok(path) =
+        std::env::var("FUTUREOX_TOPOLOGY_SNAPSHOT")
+    {
+        let bytes = fs::read(path).unwrap();
+        assert_eq!(
+            format!("{:x}", Sha256::digest(&bytes)),
+            "d41ef73ea643d31c5a83a017755c1ac1024bbfcadca02d66a3bbd8680fc68c36"
+        );
+        let descriptor: Value = serde_json::from_slice(&bytes).unwrap();
+        let store: Descriptor = serde_json::from_value(descriptor["store"].clone()).unwrap();
+        let source = std::path::Path::new(descriptor["path"].as_str().unwrap());
+        let (document, _) =
+            crate::scene_store::Reader::open(source, &store, &AtomicBool::new(false))
+                .unwrap()
+                .into_document(&AtomicBool::new(false))
+                .unwrap();
+        let mut stack = vec!["70806B41-C915-4EB2-954C-449E746E4426"];
+        let mut gaussian = 0;
+        while let Some(id) = stack.pop() {
+            let n = &document.nodes[id];
+            gaussian += n
+                .effects
+                .iter()
+                .filter(|e| e.kind == "gaussian-blur" && e.visible)
+                .count();
+            stack.extend(n.children.iter().map(String::as_str));
+        }
+        assert_eq!(
+            gaussian, 9,
+            "latest import must retain this material's restored numeric-enabled blurs"
+        );
+        (
+            document,
+            descriptor,
+            json!({"kind":"latest-complete-scene-store","descriptorHash":"d41ef73ea643d31c5a83a017755c1ac1024bbfcadca02d66a3bbd8680fc68c36","restoredMaterialGaussians":gaussian}),
+        )
+    } else {
+        let source_path =
+            std::env::var("FUTUREOX_TOPOLOGY_MODEL").expect("frozen complete topology source");
+        let mut input = Input {
+            file: fs::File::open(source_path).unwrap(),
+            hash: Sha256::new(),
+        };
+        let document: Document = serde_json::from_reader(BufReader::new(&mut input)).unwrap();
+        assert_eq!(
+            format!("{:x}", input.hash.finalize()),
+            "e1678121c271d815b218cd21c233f9c584dcce3d2246d13870ae4801bee6548e"
+        );
+        let path = std::env::temp_dir().join(format!(
+            "futureox-module3-topology-{}.scene",
+            std::process::id()
+        ));
+        owned.0 = Some(path.clone());
+        let desc =
+            crate::scene_store::write(&path, "module3:0", &document, &[], &AtomicBool::new(false))
+                .unwrap();
+        let descriptor = json!({"path":path,"store":desc,"documentId":document.id,"pageId":document.pages[0].id,"stageId":document.pages[0].children[0],"nodes":document.nodes.len()});
+        (
+            document,
+            descriptor,
+            json!({"kind":"historical-complete-model","modelHash":"e1678121c271d815b218cd21c233f9c584dcce3d2246d13870ae4801bee6548e"}),
+        )
+    };
+    assert_eq!(document.nodes.len(), 124447);
+    let page = document.pages[0].id.clone();
+    let stage = document.pages[0].children[0].clone();
+    assert_eq!(document.nodes[&stage].children.len(), 306);
+    let font = bundled_font();
+    let font_hash = format!("{:x}", Sha256::digest(&font));
+    let mut native = crate::preparation::Preparation::new(&font).unwrap();
+    eprintln!("topology: source verified and indexed; loading both compiler owners");
+    native
+        .request("canvas", "load_source_snapshot", &[descriptor])
+        .unwrap();
+    let mut oracle = owner(document, "topology-oracle");
+    oracle.load_font(&font).unwrap();
+    let cameras = [
+        ("local", -369.2813895642924, -642., 1.),
+        ("950pct", -7860.173200860778, -9363.000000000002, 9.5),
+        ("backdrop", -1997.2813895642926, -642.0000000000002, 1.),
+        ("empty", -16000., -30000., 1.),
+        ("pan", -385.5313895642924, -651.375, 1.),
+        ("return", -369.2813895642924, -642., 1.),
+        (
+            "restored-material",
+            -45439.99987792969,
+            -26364.166015625,
+            4.,
+        ),
+    ];
+    let mut reports = vec![];
+    let mut demands = 0;
+    for (name, x, y, zoom) in cameras {
+        let region = if name == "restored-material" {
+            json!({"x":0,"y":0,"w":256,"h":192})
+        } else {
+            json!({"x":256,"y":128,"w":514,"h":514})
+        };
+        let prepare = if name == "restored-material" {
+            json!({"x":-1,"y":-1,"w":258,"h":194})
+        } else {
+            json!({"x":255,"y":127,"w":516,"h":516})
+        };
+        let options=json!({"pageId":page,"width":1024,"height":768,"view":{"x":x,"y":y,"zoom":zoom},"rasterProfile":"figmaSubpixel","gpuPageBackground":true,
+            "gpuViewport":region,"prepareViewport":prepare}).to_string();
+        let t = std::time::Instant::now();
+        let expected = crate::capacity::with_source_storage_scope(true, || {
+            oracle.compile_gpu_packet_request(&options)
+        })
+        .unwrap();
+        let reference_ms = t.elapsed().as_secs_f64() * 1000.;
+        let t = std::time::Instant::now();
+        let actual = native
+            .request("canvas", "compile_gpu_packet", &[json!(options)])
+            .unwrap();
+        let actual_ms = t.elapsed().as_secs_f64() * 1000.;
+        assert_projection_equivalent(&actual.bytes, &expected);
+        if name == "restored-material" && fixture["kind"] == "latest-complete-scene-store" {
+            assert!(
+                wire::scene(&actual.bytes)["nodes"]
+                    .as_object()
+                    .unwrap()
+                    .values()
+                    .any(|n| n["effects"].as_array().is_some_and(|effects| effects
+                        .iter()
+                        .any(|e| e["kind"] == "gaussian-blur"))),
+                "must compile restored Gaussian operators in this actual material view"
+            );
+        }
+        let stats = &actual.metadata["compileStats"]["sourceDemand"];
+        if stats["mode"] == "demand" {
+            demands += 1;
+            assert!(stats["residentAuthoredNodes"].as_u64().unwrap() < 124447);
+        }
+        if name != "empty" {
+            assert_eq!(stats["mode"], "demand", "{name}: {stats}");
+            assert!(
+                wire::scene(&actual.bytes)["nodes"]
+                    .as_object()
+                    .unwrap()
+                    .len()
+                    > 1
+            );
+        }
+        let record = json!({"name":name,"camera":[x,y,zoom],"sourceDemand":stats,"compileCache":actual.metadata["compileStats"],"packetEquivalent":true,"packetBytes":actual.bytes.len(),"referenceUnoptimizedMs":reference_ms,"candidateUnoptimizedMs":actual_ms});
+        eprintln!("topology case: {}", record);
+        reports.push(record);
+    }
+    assert!(demands >= 4);
+    println!(
+        "{}",
+        json!({"scope":"complete topology source, actual native compile entry; exact packet oracle, no GPU/GUI/performance acceptance","sourceNodes":124447,"roots":306,"fixture":fixture,"fontHash":font_hash,"cases":reports,"seconds":started.elapsed().as_secs_f64()})
+    );
+}
+
+#[test]
+fn global_prepare_padding_does_not_expand_acquisition_and_boolean_raw_children_stay_available() {
+    let mut d = document();
+    let c = d.nodes.get_mut("c").unwrap();
+    c.kind = "vector".into();
+    c.boolean_operation = Some(serde_json::from_value(json!("union")).unwrap());
+    c.children = vec!["c1".into(), "c2".into()];
+    for (id, x) in [("c1", 0.), ("c2", 50.)] {
+        d.nodes.insert(id.into(),serde_json::from_value(json!({"id":id,"kind":"rectangle","width":50,"height":50,"transform":[1,0,0,1,x,0],"fills":[{"kind":"solid","color":"#123456"}],"effects":[{"kind":"gaussian-blur","radius":1000,"color":"#000000"}]})).unwrap());
+    }
+    let desc = descriptor(&d);
+    let mut expected = owner(d.clone(), "oracle");
+    let mut actual = owner(d, "live");
+    let mut runtime = Runtime::default();
+    compare(
+        &mut runtime,
+        &mut actual,
+        &mut expected,
+        &desc,
+        &request(-480.25, -480.375, 1.),
+    );
+    assert_eq!(runtime.stats["mode"], "demand");
+    assert_eq!(runtime.stats["resolvedCompileNodes"], 2);
+    assert!(runtime.stats["globalPadding"].as_i64().unwrap() > 3000);
+    compare(
+        &mut runtime,
+        &mut actual,
+        &mut expected,
+        &desc,
+        &request(-2480.25, -480.375, 1.),
+    );
+    assert!(
+        runtime
+            .compiler
+            .as_ref()
+            .unwrap()
+            .doc
+            .as_ref()
+            .unwrap()
+            .nodes
+            .contains_key("c1")
+    );
+}
+
+#[test]
+fn offscreen_stage_bounds_do_not_request_an_unobserved_backdrop_prefix() {
+    let mut d = document();
+    d.nodes.get_mut("c").unwrap().transform = Transform([1., 0., 0., 1., 2995., 500.]);
+    d.nodes.get_mut("c").unwrap().effects =
+        serde_json::from_value(json!([{"kind":"background-blur","radius":8,"color":"#000000"}]))
+            .unwrap();
+    let desc = descriptor(&d);
+    let mut expected = owner(d.clone(), "oracle");
+    let mut actual = owner(d, "live");
+    let mut runtime = Runtime::default();
+    compare(
+        &mut runtime,
+        &mut actual,
+        &mut expected,
+        &desc,
+        &request(-480.25, -480.375, 1.),
+    );
+    assert_eq!(runtime.stats["mode"], "demand");
+    assert_eq!(runtime.stats["residentAuthoredNodes"], 3);
+}
+#[test]
+fn actual_compile_extent_adds_offscreen_records_before_wire_publication() {
+    let mut d = document();
+    d.color_management = None;
+    d.nodes.get_mut("a").unwrap().effects =
+        serde_json::from_value(json!([{"kind":"gaussian-blur","radius":10,"color":"#000000"}]))
+            .unwrap();
+    let b = d.nodes.get_mut("b").unwrap();
+    b.width = 10.;
+    b.height = 10.;
+    b.transform = Transform([1., 0., 0., 1., 450., 500.]);
+    let desc = descriptor(&d);
+    let mut expected = owner(d.clone(), "oracle");
+    let mut actual = owner(d, "live");
+    let mut runtime = Runtime::default();
+    let mut r = request(-480., -480., 1.);
+    r["prepareViewport"] = r["gpuViewport"].clone();
+    let first = compare(&mut runtime, &mut actual, &mut expected, &desc, &r);
+    assert_eq!(runtime.stats["scopeExpansions"], 1);
+    assert_eq!(runtime.stats["residentAuthoredNodes"], 3);
+    let repeated = compare(&mut runtime, &mut actual, &mut expected, &desc, &r);
+    assert_eq!(first, repeated);
+    assert_eq!(runtime.stats["projectionRebuilds"], 2);
+    assert_eq!(runtime.stats["residentAuthoredNodes"], 3);
+}
+
+#[test]
+fn backdrop_capture_extent_acquires_offscreen_producers_before_publish() {
+    let mut d = document();
+    d.color_management = None;
+    let a = d.nodes.get_mut("a").unwrap();
+    a.width = 10.;
+    a.height = 10.;
+    a.transform = Transform([1., 0., 0., 1., 455., 500.]);
+    let b = d.nodes.get_mut("b").unwrap();
+    b.transform = Transform([1., 0., 0., 1., 500., 500.]);
+    b.fills[0].opacity = 0.5;
+    b.effects =
+        serde_json::from_value(json!([{"kind":"background-blur","radius":64,"color":"#000000"}]))
+            .unwrap();
+    let desc = descriptor(&d);
+    let mut expected = owner(d.clone(), "oracle");
+    let mut actual = owner(d, "live");
+    let mut runtime = Runtime::default();
+    let mut r = request(-480., -480., 1.);
+    r["prepareViewport"] = r["gpuViewport"].clone();
+    compare(&mut runtime, &mut actual, &mut expected, &desc, &r);
+    assert_eq!(runtime.stats["scopeExpansions"], 1);
+    assert_eq!(runtime.stats["residentAuthoredNodes"], 3);
+}
+
+#[test]
+fn unknown_capture_policy_keeps_the_complete_compiler() {
+    let d = document();
+    let desc = descriptor(&d);
+    let mut expected = owner(d.clone(), "oracle");
+    let mut actual = owner(d, "live");
+    let mut runtime = Runtime::default();
+    let mut r = request(-480.25, -480.375, 1.);
+    r["futureCapturePolicy"] = json!(true);
+    compare(&mut runtime, &mut actual, &mut expected, &desc, &r);
+    assert_eq!(runtime.stats["mode"], "complete");
+}

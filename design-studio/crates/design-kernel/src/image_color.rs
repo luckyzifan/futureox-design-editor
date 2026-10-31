@@ -134,15 +134,21 @@ fn exif_orientation(bytes: &[u8]) -> Result<image::metadata::Orientation, String
     Ok(orientation.unwrap_or(Orientation::NoTransforms))
 }
 
-pub fn to_working(
-    image: &mut Rgba32FImage,
+/// Immutable source colour policy plus reusable per-row transform scratch.
+/// One instance belongs to one decoder; no profile or global cache authority
+/// is inferred from an image name or a document-controlled identifier.
+pub(crate) struct WorkingTransform {
     settings: ColorSettings,
-    space: Option<ColorSpace>,
-    icc: Option<&[u8]>,
-) -> Result<(), String> {
-    if space.is_none()
-        && let Some(icc) = icc
-    {
+    space: ColorSpace,
+    icc: Option<std::sync::Arc<moxcms::TransformF32Executor>>,
+    row: Vec<f32>,
+}
+#[cfg(test)]
+std::thread_local! { static ICC_PREPARATIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
+#[cfg(test)]
+pub(crate) fn icc_preparations() -> usize { ICC_PREPARATIONS.with(std::cell::Cell::get) }
+fn prepare_icc(icc: &[u8]) -> Result<std::sync::Arc<moxcms::TransformF32Executor>, String> {
+    #[cfg(test)] ICC_PREPARATIONS.with(|n|n.set(n.get()+1));
         use moxcms::{
             ColorProfile, DataColorSpace, Layout, ParsingOptions, ToneReprCurve, TransformOptions,
         };
@@ -187,34 +193,40 @@ pub fn to_working(
                 },
             )
             .map_err(|e| format!("Unsupported ICC transform: {e}"))?;
-        let stride = image.width() as usize * 4;
-        let mut row = vec![0_f32; stride];
-        for pixels in image.as_mut().chunks_exact_mut(stride) {
-            transform
-                .transform(pixels, &mut row)
-                .map_err(|e| e.to_string())?;
-            pixels.copy_from_slice(&row);
-        }
-    } else {
-        for p in image.pixels_mut() {
-            let rgb = settings.to_working(
-                [f64::from(p[0]), f64::from(p[1]), f64::from(p[2])],
-                space.unwrap_or(ColorSpace::Srgb),
-            );
-            for i in 0..3 {
-                p[i] = rgb[i] as f32;
+        Ok(transform)
+}
+impl WorkingTransform {
+    pub(crate) fn new(settings: ColorSettings, space: Option<ColorSpace>, icc: Option<&[u8]>) -> Result<Self, String> {
+        let transform = if space.is_none() { icc.map(prepare_icc).transpose()? } else { None };
+        Ok(Self { settings, space: space.unwrap_or(ColorSpace::Srgb), icc: transform, row: Vec::new() })
+    }
+    pub(crate) fn apply(&mut self, image: &mut Rgba32FImage) -> Result<(), String> {
+        if let Some(transform) = &self.icc {
+            let stride = image.width() as usize * 4;
+            self.row.resize(stride, 0.);
+            for pixels in image.as_mut().chunks_exact_mut(stride) {
+                transform.transform(pixels, &mut self.row).map_err(|e|e.to_string())?;
+                pixels.copy_from_slice(&self.row);
+            }
+        } else {
+            for p in image.pixels_mut() {
+                let rgb = self.settings.to_working([f64::from(p[0]), f64::from(p[1]), f64::from(p[2])], self.space);
+                for i in 0..3 { p[i] = rgb[i] as f32; }
             }
         }
+        if image.as_raw().iter().any(|v| !v.is_finite() || v.abs() > 65504.) {
+            return Err("Decoded image exceeds finite float16 color range".into());
+        }
+        Ok(())
     }
-    if image
-        .as_raw()
-        .iter()
-        .any(|v| !v.is_finite() || v.abs() > 65504.)
-    {
-        return Err("Decoded image exceeds finite float16 color range".into());
-    }
-    Ok(())
 }
+pub fn to_working(image: &mut Rgba32FImage, settings: ColorSettings, space: Option<ColorSpace>, icc: Option<&[u8]>) -> Result<(), String> {
+    WorkingTransform::new(settings, space, icc)?.apply(image)
+}
+
+#[cfg(test)]
+#[path="image_color_prepared_tests.rs"]
+mod prepared_tests;
 
 /// Tagged bitmaps in an SDR document still require a source-profile transform.
 /// Reuse the managed decoder, then encode the sRGB destination before the

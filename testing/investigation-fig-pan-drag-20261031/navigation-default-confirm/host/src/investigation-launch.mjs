@@ -1,0 +1,5 @@
+import {NativePreparation} from './preparation.mjs';
+const original=NativePreparation.prototype.request;
+NativePreparation.prototype.request=function(input){const at=Date.now(),start=performance.now();let options;
+if(input.method==='compile_gpu_packet')try{const o=JSON.parse(input.args[0]);options={width:o.width,height:o.height,view:o.view,gpuViewport:o.gpuViewport,captureViewport:o.captureViewport,paintRoots:o.paintRoots}}catch{}
+return original.call(this,input).then(reply=>{if(['compile_gpu_packet','load_document','load_source_snapshot','apply_interaction_transforms','apply_document_patch_with_damage','derive_document_v1'].includes(input.method))console.log('QA_PREPARATION '+JSON.stringify({at,method:input.method,lane:input.lane,options,argumentBytes:typeof input.args?.[0]==='string'?input.args[0].length:undefined,wallMs:performance.now()-start,error:reply.error,stats:reply.compileStats}));return reply})};await import('./main.mjs');

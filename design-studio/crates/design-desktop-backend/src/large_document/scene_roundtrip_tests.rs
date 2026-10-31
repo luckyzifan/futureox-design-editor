@@ -120,7 +120,7 @@ fn native_canvas_snapshot_has_one_artboard_and_keeps_all_original_subtrees() {
     assert_eq!(result["roots"],2);
     let path=PathBuf::from(result["path"].as_str().unwrap());
     let bytes=fs::read(&path).unwrap();assert_eq!(bytes.len() as u64,result["bytes"].as_u64().unwrap());
-    assert_eq!(&bytes[..8],b"FXSCENE1");
+    assert_eq!(&bytes[..8],b"FXSCENE4");
     let store=serde_json::from_value(result["store"].clone()).unwrap();
     let (doc,_)=futureox_design_kernel::scene_store::Reader::open(&path,&store,&AtomicBool::new(false)).unwrap().into_document(&AtomicBool::new(false)).unwrap();
     let stage=result["stageId"].as_str().unwrap();
@@ -273,7 +273,7 @@ fn converted_source_windows_reuse_exact_values_recover_corruption_and_follow_rev
     assert_eq!(files.len(),1);
     // Exercise the real conversion-cache adapter, not only the standalone store.
     let mut magic=[0;8];File::open(&files[0]).unwrap().read_exact(&mut magic).unwrap();
-    assert_eq!(&magic,b"FXSCENE1");
+    assert_eq!(&magic,b"FXSCENE4");
     let second = f.call(&status, "large.scene", json!({"key":key})).unwrap();
     assert_eq!(second["hash"], first["hash"]);
     { let slot=f.sessions.current.lock().unwrap();let s=slot.as_ref().unwrap();

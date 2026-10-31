@@ -59,9 +59,9 @@ fn mask_fill_preserves_nonzero_and_evenodd_under_reflection() {
     for x in [-32., 0.025, 32.] {
         let m = Transform([x, 0., x * 0.25, 32., 0.125, -0.375]);
         let p = m.point(Point::new(50., 50.));
-        n.network.as_mut().unwrap().fill_rule = "nonzero".into();
+        std::sync::Arc::make_mut(n.network.as_mut().unwrap()).fill_rule = "nonzero".into();
         assert!(hit_test_fill_device(&n, p, m).unwrap());
-        n.network.as_mut().unwrap().fill_rule = "evenodd".into();
+        std::sync::Arc::make_mut(n.network.as_mut().unwrap()).fill_rule = "evenodd".into();
         assert!(!hit_test_fill_device(&n, p, m).unwrap());
     }
 }

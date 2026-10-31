@@ -3,7 +3,9 @@ import type { Point, Matrix } from '../../model'
 import { apply, multiply } from '../../geometry'
 import { CanvasLabels, type CanvasLabel } from './canvas-labels'
 
+export type CanvasGuide = { axis:'x'|'y'; position:number; start:number; end:number }
 export type CanvasOverlay = { selection?: { corners: Point[]; handles: boolean; owners?: string[] }; pixelGrid: boolean
+  guides?: readonly CanvasGuide[]
   labels?: CanvasLabel[]; measurements?: {from:Point;to:Point}[]; transforms?:Record<string,Matrix> }
 const blue = [13 / 255, 153 / 255, 1, 1], white = [1, 1, 1, 1]
 
@@ -66,6 +68,12 @@ export function overlayVertices(overlay: CanvasOverlay, view: CanvasCamera, widt
   for(const measurement of overlay.measurements||[]) line(
     {x:measurement.from.x*view.zoom+view.x,y:measurement.from.y*view.zoom+view.y},
     {x:measurement.to.x*view.zoom+view.x,y:measurement.to.y*view.zoom+view.y},1,[242/255,72/255,34/255,1])
+  for (const guide of overlay.guides || []) {
+    const a = guide.axis === 'x' ? { x:guide.position, y:guide.start } : { x:guide.start, y:guide.position }
+    const b = guide.axis === 'x' ? { x:guide.position, y:guide.end } : { x:guide.end, y:guide.position }
+    line({x:a.x*view.zoom+view.x,y:a.y*view.zoom+view.y},
+      {x:b.x*view.zoom+view.x,y:b.y*view.zoom+view.y},1,[237/255,105/255,150/255,1])
+  }
   return new Float32Array(values)
 }
 

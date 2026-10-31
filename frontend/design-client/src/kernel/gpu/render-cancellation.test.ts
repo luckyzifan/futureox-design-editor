@@ -99,3 +99,26 @@ test('continued supersession admits control tasks and the quiet latest frame set
   expect(s.driver.finish).toHaveBeenCalledOnce()
   expect(renderer.scene.view).toEqual({ x: 7, y: 9, zoom: 2 })
 })
+
+test('navigation queue progress allows cancellation before another raster submission',async()=>{
+ const s=setup(),renderer=s.renderer as any
+ s.driver.captureDisplay=true
+ s.driver.yieldRasterQueue=vi.fn(async()=>{s.events.push('queue-progress');s.cancel()})
+ vi.spyOn(renderer.encodeYield,'checkpoint').mockImplementationOnce(()=>Promise.resolve())
+ await expect(s.renderer.render(s.scene,false,true,s.isCurrent,undefined,true)).rejects.toThrow('PREVIEW_CANCELLED')
+ expect(s.driver.yieldRasterQueue).toHaveBeenCalledOnce();expect(s.driver.finish).not.toHaveBeenCalled()
+ expect(s.events).toContain('fence');expect(renderer.displayBackpressure).toBe(false)
+ s.resume();await s.renderer.render(s.scene,false,true,s.isCurrent)
+ expect(s.driver.finish).toHaveBeenCalledOnce();expect(s.driver.yieldRasterQueue).toHaveBeenCalledOnce()
+})
+
+test.each(['readback','hdr','software','unpresented'])('display scheduling cannot enter an independent %s render',async mode=>{
+ const s=setup(),renderer=s.renderer as any;s.driver.captureDisplay=true
+ Object.assign(s.driver,{hdr:mode==='hdr',yieldRasterQueue:vi.fn(async()=>{})})
+ vi.spyOn(renderer.encodeYield,'checkpoint').mockImplementationOnce(()=>Promise.resolve())
+ // Inspect the real render-owned policy without constructing an unrelated HDR
+ // device. The complete render/abort path is exercised by the test above.
+ vi.spyOn(renderer,'renderAttempt').mockImplementation(async()=>{expect(renderer.displayBackpressure).toBe(false);return {}})
+ await s.renderer.render({...s.scene,softwareRaster:mode==='software'},mode==='readback',mode!=='unpresented',s.isCurrent,undefined,true)
+ expect(s.driver.yieldRasterQueue).not.toHaveBeenCalled()
+})

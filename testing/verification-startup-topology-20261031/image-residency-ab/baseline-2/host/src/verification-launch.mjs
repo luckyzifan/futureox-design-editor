@@ -1,0 +1,5 @@
+import {NativePreparation} from './preparation.mjs';import {LargeDocumentHost} from './large-document.mjs';
+for(const method of ['open','canvasSnapshot','canvasLayout']){const call=LargeDocumentHost.prototype[method];LargeDocumentHost.prototype[method]=async function(...args){const at=Date.now(),start=performance.now();try{const result=await call.apply(this,args);console.log('SCENE_IMPORT_STAGE '+JSON.stringify({method,at,wallMs:performance.now()-start,nodes:result.nodes,roots:result.roots,bytes:result.bytes,indexedObjects:result.indexedObjects}));return result}catch(error){console.log('SCENE_IMPORT_STAGE '+JSON.stringify({method,at,wallMs:performance.now()-start,error:String(error)}));throw error}}}
+const request=NativePreparation.prototype.request;
+NativePreparation.prototype.request=function(input){const at=Date.now(),start=performance.now();return request.call(this,input).then(reply=>{if(input.method==='compile_gpu_packet'||input.method==='load_source_snapshot')console.log('SCENE_RUNTIME_REPLY '+JSON.stringify({method:input.method,at,wallMs:performance.now()-start,error:reply.error,stats:reply.compileStats}));return reply})};
+await import('./main.mjs');

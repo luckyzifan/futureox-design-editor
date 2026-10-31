@@ -1,0 +1,68 @@
+{
+  "finished_at": "2026-10-31T12:24:45.213601+08:00",
+  "production_source_drift": [],
+  "rustc": "rustc 1.96.1 (31fca3adb 2026-06-26)\nbinary: rustc\ncommit-hash: 31fca3adb283cc9dfd56b49cdee9a96eb9c96ffd\ncommit-date: 2026-06-26\nhost: aarch64-apple-darwin\nrelease: 1.96.1\nLLVM version: 22.1.2\n",
+  "references": {
+    "../core/figma-wasm-analysis/BIG-FILE-PIPELINE.md": "283e6fb01c4748d1e511ebc79eb3e50e0778eead17035a54ff4224b916706413",
+    "../core/figma-wasm-analysis/SCENEGRAPH-INTERNALS.md": "e18f1feecc9d2681acd43b6137a4335760614c9f98d97e305d96ab3203cc98fb",
+    "../core/figma-wasm-analysis/SHADER-TRIGGERS.md": "68142f7dab60f0284fd46633e8ff979257f5fbbfd51410b5b27fb28036a8ceb6",
+    "../core/figma-wasm-analysis/RENDER-DETAILS-2026-10-26.md": "6a1b689df8eec899c5e449a0353f26ba8e7ebaf09c91180162bcbd203d102d01",
+    "../core/figma-wasm-analysis/shaders/shader_76.glsl": "55a3d932efe39df14d221b218a44199912be52e076071a753bb5cffed1356c84",
+    "../core/sketch-kernel-analysis/27-render-cache-eviction-io-largefiles.md": "60ab0fc9d6d4557626ae66fb81f5fdce4bc3f45b99fff182acb02b7ac0a309fd",
+    "../core/sketch-kernel-analysis/drafts-32/03-effects-mask-blend.md": "a8fe7232a51099e0b589a28c13befb9439e71d4bea496564ce9654cd219f9307",
+    "../core/sketch-kernel-analysis/drafts-32/04-color-and-destinations.md": "0c16e9b50c5a483eb4f69c5459656ca5d1947404018b36c0238d0b7f9ddc40d7",
+    "../core/sketch-kernel-analysis/dumps/full/SketchRendering/MSBitmapEffectsContext.txt": "91a277e9a782b13230cc4b76fc1be674e36eed1bf71436efcc01b3558fd99849"
+  },
+  "libraries": {
+    "design-studio/target/debug/deps/libfutureox_design_kernel.rlib": "1d10194c1b5fe1fee682dc809c2fc7f55eb75388a1e241e16e063354315fe3cf",
+    "design-studio/target/release/deps/libfutureox_design_kernel.rlib": "4292261742972b1e2d86dd0d167e170c2f0768c04bd3236493de8b5c494eab2d",
+    "design-studio/target/wasm32-unknown-unknown/release/deps/libfutureox_design_kernel.rlib": "3b11449ec69a71401dd53628b1fc9005a1ddecd485d9eaa5c02af706b21f4689",
+    "frontend/design-client/public/kernel/design_kernel_bg.wasm": "3c05d3bb64a855108ab7388ad551c725a7697e8c7c5d56f85ec13b2b17a1620a"
+  },
+  "evidence": {
+    "native-inventory.jsonl": "1c73bc108231179e6f0467757bcdb7af6366787fe387c59ac5d571ef891c5b9e",
+    "release-inventory.jsonl": "bfb74ba8b945fe0e88ab10e704b9a21ea9bbd8ec75ba31a4ce2c9abaf615bd14",
+    "wasm-probe-diagnostic.log": "c6a65e1a711a6c61ee970916903a52cb52b40a7b3f9563d35cb0f37b7144d71b",
+    "release-inventory-rusage.log": "c34c644bd6e07a492ca75b23c5e0aa346e368085e50adb93a992baec5645cbb6",
+    "wasm-layout-probe.rs": "0768107a47fb8af11aa5ef06a75c12991b27c980233c3a7e63534121b5aa511d",
+    "allocation_metrics.rs": "009cba8ab85c3f28e3b9fdd1e5be883438e366a640dd35e98849bbfd68a27bf8",
+    "source-before.json": "b3f556e7672d2563be0ff6595c1cd0cf97e3942ac28a588c9cd543630c5ec496",
+    "final-inventory.jsonl": "9ab28298de0509aebf47ba19109e6f8803c169c9a7ae350cdd2658938a9422f4",
+    "native-final-layout.jsonl": "98ff15ecc7f640e982844979894ee41d4ab6bc58a8776ec8fe8948a75a593a68",
+    "snapshot-descriptor.txt": "ed43f810990b9b8ce0f1a059fe91a24d5c17cb961dae6f3a54e039e9c116aa66",
+    "heap-capacity-verified.jsonl": "156925e2ceeb6b2b41ca4cd49a29e2cc61f9c38ca2629ff010b7bddb247da5d7",
+    "native-layout.jsonl": "0e98d4691a8ce2bb11407789a27887842c8e34a8d2ebec670dcbbf9c69e11772",
+    "heap-inventory-verified.jsonl": "4b158ff25ef88ca6ddf9e801f2b92e833a4ae87bf9610740486c5fd51b5cdc68",
+    "layout-comparison.json": "f75d508f65386e2be2f36619c54ad4a8678d7ade5ec23d4fd3b79487b4d1c725",
+    "reverse-blur-table.py": "2f224e91076a8e59301ebbf204a4f8a2916677c45c1aa8e7f806905ba5f801b8",
+    "reverse-blur-table.json": "56a93c43358bfd11a20fd09a8bae66fe7c7c3e5ca14210cf371d85f3fc0ae44d",
+    "README.md": "9625ab2ea7f45aab2021af8144f26442943141974927538aa07935df2d8212ca",
+    "heap-inventory.jsonl": "3b13439bdfa3b75efcb9e42de65e8756e4fc0a3628b0a8f66ce585cffae155e5",
+    "inventory-summary.json": "d039dce6c0be73743e2534d81653066113481bdb8beeabddd4b86cb5684f997f",
+    "wasm-layout.ll": "61d543b4979569b8683c7d2f3f53418962ddaf20264b5f4491471201247659f0",
+    "native-inventory-full.jsonl": "02fbc0152735f3f89f7227431bc9c705d97cee4aae427b44be01f75094e7bd17",
+    "layout-probe.rs": "da42ca64ab98402c827c9e286ef6ffc37803d158d9609040864a34014bfc3eee"
+  },
+  "report": {
+    "path": "docs/RENDER_DATAFLOW_DEEP_AUDIT_20261031.zh-CN.md",
+    "sha256": "5360e15179a5d78702c32f1f7618d4538ce2a159d9f75d27ab8087544904b793"
+  },
+  "limits": [
+    "No production code changes in this audit",
+    "Isolated clone timings are not GUI latency",
+    "Allocation counts are requested live Rust bytes, not RSS",
+    "No new hardware GPU acceptance or current Figma/Sketch runtime comparison",
+    "Initial WASM probe needed host proc-macro search path; corrected compile succeeded",
+    "time wrapper RSS query denied; internal Rust clone samples completed and retained"
+  ],
+  "heap_probe": {
+    "rust_requested_live_after_load_delta": 959569912,
+    "rust_requested_live_after_sorted_recollect_delta": 745331448,
+    "container_requested_bytes_reduction": 214238464,
+    "rust_requested_live_recollect_peak_delta": 1216428520,
+    "paint_stroke_effect_spare_capacity_bytes": 176694832,
+    "requested_live_after_vector_trim_delta": 568636616,
+    "vector_trim_requested_bytes_reduction": 176694832,
+    "metric": "Rust requested live allocation bytes, not RSS"
+  }
+}

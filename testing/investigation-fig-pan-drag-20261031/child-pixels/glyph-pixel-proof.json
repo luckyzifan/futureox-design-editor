@@ -1,0 +1,21 @@
+{
+  "scope": "Interior glyph patch avoiding the visible pink snapping guides; separate from timing replay",
+  "beforeBox": [
+    1408,
+    908,
+    1453,
+    916
+  ],
+  "heldBox": [
+    1423,
+    907,
+    1468,
+    915
+  ],
+  "committedDeviceDelta": [
+    15,
+    -1
+  ],
+  "exactPatchEqual": true,
+  "uniqueColors": 58
+}

@@ -384,6 +384,32 @@ fn shared_vector_records_restore_exact_values_and_mutations_do_not_change_siblin
     let row=reader.find_row("node-00000",&cancel).unwrap().unwrap();modify(&fixture.path,row.value_offset,b"!");
     assert!(Reader::open(&fixture.path,&receipt,&cancel).unwrap().read_node("node-00002",&cancel).is_err());
 }
+
+#[test]
+fn geometry_record_projection_borrows_nodes_and_matches_legacy_bytes() {
+    #[derive(Serialize)]
+    struct Legacy<'a> {
+        node: &'a Node, images: &'a [ImageReference],
+        #[serde(skip_serializing_if="Option::is_none")] geometry: &'a Option<String>,
+        #[serde(skip_serializing_if="Option::is_none")] vectors: &'a Option<PackedGeometry>,
+    }
+    let mut doc = document(3);
+    let geometry: Arc<VectorGeometry> = Arc::new(serde_json::from_value(json!({"fillRule":"nonzero","fill":[{"move":[-0.,0.]},{"line":[10.125,0.]},{"line":[10.,10.]} ,"close"]})).unwrap());
+    for node in doc.nodes.values_mut() { node.vector_geometry = Some(geometry.clone()); }
+    for with_image in [false, true] {
+        if with_image { for node in doc.nodes.values_mut() { node.fills[0].image = Some(Arc::from("data:image/png;base64,kept")); } }
+        let original = serde_json::to_vec(&doc).unwrap();
+        let mut images = HashMap::new(); let mut geometries = HashMap::new();
+        for (i, node) in doc.nodes.values().enumerate() {
+            let record = share_record(node, &mut images, &mut geometries).unwrap();
+            if !with_image || i == 0 { assert!(matches!(record.node, Cow::Borrowed(_)), "geometry alone must not clone the node"); }
+            let mut legacy_node = record.node.clone().into_owned(); legacy_node.vector_geometry = None;
+            let legacy = Legacy { node: &legacy_node, images: &record.images, geometry: &record.geometry, vectors: &record.vectors };
+            assert_eq!(serde_json::to_vec(&record).unwrap(), serde_json::to_vec(&legacy).unwrap());
+        }
+        assert_eq!(serde_json::to_vec(&doc).unwrap(), original, "borrowed serialization cannot change authored values");
+    }
+}
 #[test]
 fn version_two_image_envelopes_remain_readable(){
     let fixture=Fixture::new();let doc=document(2);let mut receipt=fixture.write(&doc);let cancel=AtomicBool::new(false);

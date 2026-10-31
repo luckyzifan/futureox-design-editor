@@ -1185,24 +1185,24 @@ impl FigImporter {
                 if let Some(g) = change.get("guid") {
                     node.bindings.insert("symbolID".into(), guid_string(g));
                 }
-                node.component = Some(crate::components::Component::default());
+                node.component = Some((crate::components::Component::default()).into());
             }
             "INSTANCE" => {
                 // Resolve references and literal values after tree assembly.
-                node.instance = Some(crate::components::Instance {
+                node.instance = Some((crate::components::Instance {
                     component_id: String::new(), overrides: BTreeMap::new(),
                     property_values: BTreeMap::new(), slot_contents: Default::default(),
-                });
+                }).into());
             }
             "STICKY" => {
                 // Whiteboard sticky: frame + BoardContent{sticky}; the
                 // characters survive as node text.
-                node.board = Some(crate::scene::BoardContent {
+                node.board = Some((crate::scene::BoardContent {
                     language: None,
                     kind: "sticky".into(),
                     rows: None,
                     columns: None,
-                });
+                }).into());
                 let td = change.get("textData").cloned().unwrap_or(Value::Null);
                 if let Some(text) = str_of(&td, "characters") {
                     node.text = text.into();
@@ -1234,12 +1234,12 @@ impl FigImporter {
                     }
                     None => None,
                 };
-                node.board = Some(crate::scene::BoardContent {
+                node.board = Some((crate::scene::BoardContent {
                     language,
                     kind: "code-block".into(),
                     rows: None,
                     columns: None,
-                });
+                }).into());
                 let td = change.get("textData").cloned().unwrap_or(Value::Null);
                 if let Some(text) = str_of(&td, "characters") {
                     node.text = text.into();
@@ -1257,12 +1257,12 @@ impl FigImporter {
                     Some("ROUNDED_RECTANGLE") => "shape-whiteboard-rounded-rectangle",
                     _ => unreachable!("classification pass filters unsupported shapes"),
                 };
-                node.board = Some(crate::scene::BoardContent {
+                node.board = Some((crate::scene::BoardContent {
                     language: None,
                     kind: kind.into(),
                     rows: None,
                     columns: None,
-                });
+                }).into());
                 let td = change.get("textData").cloned().unwrap_or(Value::Null);
                 if let Some(text) = str_of(&td, "characters") {
                     node.text = text.into();
@@ -1280,12 +1280,12 @@ impl FigImporter {
                         .map(Vec::len)
                         .unwrap_or(0)
                 };
-                node.board = Some(crate::scene::BoardContent {
+                node.board = Some((crate::scene::BoardContent {
                     language: None,
                     kind: "table".into(),
                     rows: Some(count("tableRowHeights") as u32),
                     columns: Some(count("tableColumnWidths") as u32),
-                });
+                }).into());
             }
             "CONNECTOR" => {
                 // Connector endpoints: fig ConnectorEndpoint{endpointNodeID,
@@ -1349,11 +1349,11 @@ impl FigImporter {
                             anchor: None,
                         }),
                 );
-                node.connector = Some(crate::connectors::Connector {
+                node.connector = Some((crate::connectors::Connector {
                     from,
                     to,
                     style: style.into(),
-                });
+                }).into());
             }
             _ => {}
         }
@@ -1393,7 +1393,7 @@ impl FigImporter {
                     "vector vertex/region style overrides require source style mapping".into(),
                 );
             }
-            node.network = decoded.network;
+            node.network = decoded.network.map(Into::into);
             node.vector_geometry = decoded.vector_geometry;
         }
         if fig_type == "VECTOR"
@@ -1567,7 +1567,7 @@ impl FigImporter {
                 }
             }
         }
-        node.text_style = Some(style);
+        node.text_style = Some((style).into());
 
         // per-segment styles
         let characters = node.text.clone();

@@ -1,0 +1,312 @@
+[
+  {
+    "run": "baseline-5",
+    "command": [
+      "/Users/Apple/.nvm/versions/node/v24.12.0/bin/node",
+      "/Users/Apple/project/design-kernel/testing/verification-source-work-reuse-20261031/startup-ab.mjs",
+      "/Users/Apple/project/design-kernel/testing/verification-source-work-reuse-20261031/baseline-bin",
+      "/Users/Apple/project/design-kernel/testing/verification-source-work-reuse-20261031/baseline-5"
+    ],
+    "exit_code": 0,
+    "stages": [
+      {
+        "stage": "source-open",
+        "ms": 8038.911125
+      },
+      {
+        "stage": "source-layout",
+        "ms": 41.919834000000264
+      },
+      {
+        "stage": "whole-source-snapshot",
+        "ms": 10207.682292000001,
+        "roots": 306,
+        "nodes": 124447,
+        "bytes": 300408797
+      },
+      {
+        "stage": "native-source-load",
+        "ms": 2408.6792079999977
+      }
+    ],
+    "full_snapshot_byte_equal": true,
+    "load_samples": [
+      {
+        "time": 1793415060.124644,
+        "external_active": []
+      },
+      {
+        "time": 1793415062.174326,
+        "external_active": [
+          {
+            "pid": 25917,
+            "cpu_percent": 55.6,
+            "executable": "/Users/Apple/project/design-kernel/frontend/design-desktop/node_modules/electron/dist/Electron.app/Contents/Frameworks/Electron Helper (Renderer).app/Contents/MacOS/Electron Helper (Renderer)"
+          }
+        ]
+      },
+      {
+        "time": 1793415064.2244742,
+        "external_active": []
+      },
+      {
+        "time": 1793415066.275181,
+        "external_active": []
+      },
+      {
+        "time": 1793415068.327819,
+        "external_active": []
+      },
+      {
+        "time": 1793415070.378686,
+        "external_active": []
+      },
+      {
+        "time": 1793415072.43104,
+        "external_active": []
+      },
+      {
+        "time": 1793415074.485972,
+        "external_active": []
+      },
+      {
+        "time": 1793415076.538242,
+        "external_active": []
+      },
+      {
+        "time": 1793415078.592649,
+        "external_active": []
+      },
+      {
+        "time": 1793415080.734671,
+        "external_active": []
+      }
+    ]
+  },
+  {
+    "run": "selected-1",
+    "command": [
+      "/Users/Apple/.nvm/versions/node/v24.12.0/bin/node",
+      "/Users/Apple/project/design-kernel/testing/verification-source-work-reuse-20261031/startup-ab.mjs",
+      "/Users/Apple/project/design-kernel/testing/verification-source-work-reuse-20261031/selected-bin",
+      "/Users/Apple/project/design-kernel/testing/verification-source-work-reuse-20261031/selected-1"
+    ],
+    "exit_code": 0,
+    "stages": [
+      {
+        "stage": "source-open",
+        "ms": 7687.759584
+      },
+      {
+        "stage": "source-layout",
+        "ms": 6.955374999999549
+      },
+      {
+        "stage": "whole-source-snapshot",
+        "ms": 9695.876083000001,
+        "roots": 306,
+        "nodes": 124447,
+        "bytes": 300408797
+      },
+      {
+        "stage": "native-source-load",
+        "ms": 3094.4555
+      }
+    ],
+    "full_snapshot_byte_equal": true,
+    "load_samples": [
+      {
+        "time": 1793415081.6203039,
+        "external_active": []
+      },
+      {
+        "time": 1793415083.670779,
+        "external_active": []
+      },
+      {
+        "time": 1793415085.71424,
+        "external_active": []
+      },
+      {
+        "time": 1793415087.7611399,
+        "external_active": []
+      },
+      {
+        "time": 1793415089.815088,
+        "external_active": []
+      },
+      {
+        "time": 1793415091.8681972,
+        "external_active": []
+      },
+      {
+        "time": 1793415093.9204302,
+        "external_active": []
+      },
+      {
+        "time": 1793415095.978678,
+        "external_active": []
+      },
+      {
+        "time": 1793415098.0323992,
+        "external_active": []
+      },
+      {
+        "time": 1793415100.085688,
+        "external_active": []
+      },
+      {
+        "time": 1793415102.148648,
+        "external_active": []
+      }
+    ]
+  },
+  {
+    "run": "selected-2",
+    "command": [
+      "/Users/Apple/.nvm/versions/node/v24.12.0/bin/node",
+      "/Users/Apple/project/design-kernel/testing/verification-source-work-reuse-20261031/startup-ab.mjs",
+      "/Users/Apple/project/design-kernel/testing/verification-source-work-reuse-20261031/selected-bin",
+      "/Users/Apple/project/design-kernel/testing/verification-source-work-reuse-20261031/selected-2"
+    ],
+    "exit_code": 0,
+    "stages": [
+      {
+        "stage": "source-open",
+        "ms": 6758.465209
+      },
+      {
+        "stage": "source-layout",
+        "ms": 6.543457999999191
+      },
+      {
+        "stage": "whole-source-snapshot",
+        "ms": 10108.501666,
+        "roots": 306,
+        "nodes": 124447,
+        "bytes": 300408797
+      },
+      {
+        "stage": "native-source-load",
+        "ms": 2127.7787080000016
+      }
+    ],
+    "full_snapshot_byte_equal": true,
+    "load_samples": [
+      {
+        "time": 1793415102.836767,
+        "external_active": []
+      },
+      {
+        "time": 1793415104.886455,
+        "external_active": []
+      },
+      {
+        "time": 1793415106.9343941,
+        "external_active": []
+      },
+      {
+        "time": 1793415108.980582,
+        "external_active": []
+      },
+      {
+        "time": 1793415111.03381,
+        "external_active": []
+      },
+      {
+        "time": 1793415113.083624,
+        "external_active": []
+      },
+      {
+        "time": 1793415115.133986,
+        "external_active": []
+      },
+      {
+        "time": 1793415117.1983738,
+        "external_active": []
+      },
+      {
+        "time": 1793415119.2598999,
+        "external_active": []
+      },
+      {
+        "time": 1793415121.324787,
+        "external_active": []
+      }
+    ]
+  },
+  {
+    "run": "baseline-6",
+    "command": [
+      "/Users/Apple/.nvm/versions/node/v24.12.0/bin/node",
+      "/Users/Apple/project/design-kernel/testing/verification-source-work-reuse-20261031/startup-ab.mjs",
+      "/Users/Apple/project/design-kernel/testing/verification-source-work-reuse-20261031/baseline-bin",
+      "/Users/Apple/project/design-kernel/testing/verification-source-work-reuse-20261031/baseline-6"
+    ],
+    "exit_code": 0,
+    "stages": [
+      {
+        "stage": "source-open",
+        "ms": 6817.210042
+      },
+      {
+        "stage": "source-layout",
+        "ms": 32.13487499999974
+      },
+      {
+        "stage": "whole-source-snapshot",
+        "ms": 9731.530041999999,
+        "roots": 306,
+        "nodes": 124447,
+        "bytes": 300408797
+      },
+      {
+        "stage": "native-source-load",
+        "ms": 2298.9235420000005
+      }
+    ],
+    "full_snapshot_byte_equal": true,
+    "load_samples": [
+      {
+        "time": 1793415122.5386739,
+        "external_active": []
+      },
+      {
+        "time": 1793415124.589705,
+        "external_active": []
+      },
+      {
+        "time": 1793415126.63819,
+        "external_active": []
+      },
+      {
+        "time": 1793415128.685768,
+        "external_active": []
+      },
+      {
+        "time": 1793415130.73184,
+        "external_active": []
+      },
+      {
+        "time": 1793415132.783457,
+        "external_active": []
+      },
+      {
+        "time": 1793415134.832754,
+        "external_active": []
+      },
+      {
+        "time": 1793415136.884715,
+        "external_active": []
+      },
+      {
+        "time": 1793415138.939403,
+        "external_active": []
+      },
+      {
+        "time": 1793415141.1131918,
+        "external_active": []
+      }
+    ]
+  }
+]

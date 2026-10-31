@@ -67,7 +67,7 @@ pub(super) fn convert(s: &Session, p: usize, n: usize, cancel: &AtomicBool, cont
             }
         }
     }
-    let (document, _, warnings) = projection::sketch_window_in(s, p, n, 64 * 1024 * 1024, context)?;
+    let (document, warnings) = projection::sketch_window_in(s, p, n, 64 * 1024 * 1024, context,cancel)?;
     check_cancel(cancel).map_err(issue)?;
     let path = {
         let mut cache = s.converted_windows.lock().map_err(issue)?;

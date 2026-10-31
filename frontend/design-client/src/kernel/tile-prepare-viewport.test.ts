@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { tilePrepareViewport, tileBatchPrepareViewport } from './tile-prepare-viewport'
+import { tilePrepareViewport, tileBatchPrepareViewport, localDisplayPrepareScope, tileLocalPrepareViewport } from './tile-prepare-viewport'
 import type { RasterTile } from './tile-cache'
 test('bounded chunks keep the whole plan guard with the exact camera phase', () => {
   const tiles = [0, 512, 1024].map(x => ({ key: String(x), x, y: -1, width: 514, height: 514, zoom: 2 }) as RasterTile)
@@ -8,6 +8,20 @@ test('bounded chunks keep the whole plan guard with the exact camera phase', () 
   for (const tile of tiles) expect(tilePrepareViewport([tile], view, guard)).toBe(guard)
   expect(() => tilePrepareViewport(tiles, view, tilePrepareViewport([tiles[0]], view))).toThrow('cover every')
   expect(() => tilePrepareViewport(tiles, view, { ...guard, w: Infinity })).toThrow()
+})
+
+test('large minified display work prepares the actual crop without changing its sampling address',()=>{
+ const tile={key:'phase',x:511,y:-513,width:514,height:514,zoom:.125,phaseX:.375,phaseY:.125} as RasterTile
+ const view={x:-3.25,y:5.75},shared={x:-1028,y:-1020,w:4096,h:4096}
+ expect(localDisplayPrepareScope(9403,.125,true)).toBe(true)
+ expect(localDisplayPrepareScope(9403,2,true)).toBe(false)
+ expect(localDisplayPrepareScope(2999,.125,true)).toBe(false)
+ expect(localDisplayPrepareScope(9403,.125,false)).toBe(false)
+ expect(tileLocalPrepareViewport(tile,view,shared,true)).toEqual({x:507,y:-508,w:514,h:514})
+ expect(tileLocalPrepareViewport(tile,view,shared,false)).toBe(shared)
+ expect(tileLocalPrepareViewport(tile,view,undefined,true)).toBeUndefined()
+ expect(()=>tileLocalPrepareViewport(tile,view,{x:0,y:0,w:1,h:1},true)).toThrow('cover every')
+ expect([tile.zoom,tile.phaseX,tile.phaseY]).toEqual([.125,.375,.125])
 })
 
 test('visible preparation excludes idle rim, while every dispatched crop remains covered', () => {

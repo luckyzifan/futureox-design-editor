@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { blank, node, defaultLayout, defaultSizing, type DesignDocument, type DesignNode } from '../model'
 import { emptySystem } from '../design-system'
-import { translationOnlyChanges } from './translation-preview'
+import { translationOnlyChanges, TranslationPreviewPlan } from './translation-preview'
 
 function fixture() {
   const document = blank()
@@ -29,6 +29,17 @@ test('placement reuse accepts opaque metadata and retains unrelated resolved boo
 test('a no-op immutable node map needs no resolver', () => {
   const { document } = fixture()
   expect(translationOnlyChanges(document, { ...document, nodes: { ...document.nodes } })).toEqual([])
+})
+
+test('transaction translation plans retain the same exact constraint and dependency decisions',()=>{
+ for(const horizontal of ['start','center','end','stretch','scale'] as const)for(const x of [-0,0,.125,-100,1e7]){
+  const {document,moving,translated}=fixture();moving.constraints={horizontal,vertical:'center',referenceWidth:300,referenceHeight:200}
+  const after=translated();after.nodes[moving.id].transform=[1,0,0,1,x,37]
+  const ids=[moving.id],plan=new TranslationPreviewPlan(document,ids);ids.length=0
+  expect(plan.accepts({[moving.id]:{transform:after.nodes[moving.id].transform}})).toBe(translationOnlyChanges(document,after)!==null)
+ }
+ const {document,moving}=fixture();moving.instance={componentId:'source',overrides:{},propertyValues:{}}
+ expect(new TranslationPreviewPlan(document,[moving.id]).accepts({[moving.id]:{transform:[1,0,0,1,2,3]}})).toBe(false)
 })
 
 test.each(['width', 'height', 'children', 'text', 'fontSize', 'textStyle', 'network', 'opacity', 'extension'])(

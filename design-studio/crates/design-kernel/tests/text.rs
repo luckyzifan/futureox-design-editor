@@ -108,10 +108,10 @@ fn missing_fonts_and_split_grapheme_ranges_are_errors() {
     }];
     assert!(f.node_layout(&n, Some(100.)).is_err());
     n.text_runs.clear();
-    n.text_style = Some(TextStyle {
+    n.text_style = Some(Box::new(TextStyle {
         font_id: "missing".into(),
         ..TextStyle::default()
-    });
+    }));
     // A vanished resource no longer fails the render: the cluster degrades to
     // the embedded default face (historically this hard error blanked whole
     // canvases when one font id went stale).

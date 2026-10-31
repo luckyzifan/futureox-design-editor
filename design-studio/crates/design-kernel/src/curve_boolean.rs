@@ -377,7 +377,7 @@ fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache
                     if memoize { cache.insert(key, &result); } result
                 }
             };
-            let node=doc.nodes.get_mut(id).unwrap();node.vector_geometry=None;node.network=Some(g);
+            let node=doc.nodes.get_mut(id).unwrap();node.vector_geometry=None;node.network=Some((g).into());
         }
         Ok(())
     }

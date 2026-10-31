@@ -26,6 +26,7 @@ mod checkpoint_tests;
 mod index;
 mod capacity;
 mod projection;
+mod symbol_index;
 mod scene;
 mod canvas_layout;
 mod canvas_snapshot;
@@ -2253,7 +2254,7 @@ mod tests {
             let layers = part.index.entry(0, &s.directory).unwrap().fields.into_iter().find(|f| f.key == "layers").unwrap().value;
             for (n, entry) in part.index.entries.iter().enumerate().filter(|(_, e)| e.parent == Some(0) && e.span.start >= layers.start && e.span.end <= layers.end) {
                 let start = std::time::Instant::now();
-                let (doc, _, _) = match projection::sketch_window(s, p, n, 64 * 1024 * 1024) {
+                let (doc, _) = match projection::sketch_window(s, p, n, 64 * 1024 * 1024) {
                     Ok(doc) => doc,
                     Err(e) => { println!("page-window {p}:{n} FAILED: {e}"); results.push(json!({"key":format!("{p}:{n}"),"sourceBytes":entry.span.len(),"error":e.to_string()})); continue; }
                 };

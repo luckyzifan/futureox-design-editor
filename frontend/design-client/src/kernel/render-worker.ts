@@ -7,6 +7,7 @@ import { GridMeasurements } from './grid-measurements'
 import { RenderFailureAttempts, renderFailureFields, withRenderFailureStage } from './render-failure-telemetry'
 import { boundedPatchWire, supportsAcknowledgedPropertyPatch } from './authored-patch-transition'
 import type { PreparationStateReceiptV1 } from './preparation-state'
+import { displayRasterBackpressure } from './display-raster-scheduling'
 import { samePreparationReceipt } from './authored-preparation-binding'
 import { renderQualityContract } from './render-quality'
 import { usesPainterCaptureReads, usesPainterSupport } from './painter-support-policy'
@@ -39,7 +40,7 @@ import {
   type RenderPolicy,
 } from './render-policy'
 import type { GpuRenderer } from './gpu/renderer'
-import { decodeScenePacket, scenePacketWitness } from './gpu/scene-packet'
+import { decodeScenePacket, scenePacketWitness, CompiledScenePacket, type ScenePacket } from './gpu/scene-packet'
 import type {CompilationWitness} from './compilation-witness'
 import type { ColorSettings } from '../color'
 import type { BackendPreference, GpuScene } from './gpu/types'
@@ -61,7 +62,7 @@ import { preparePreviewSelection, previewTranslationDelta, translatePreviewScene
 import { residentOverlayAffines } from './gpu/resident-affine-pose'
 import { interactionPatchTransforms } from './interaction-patch-transforms'
 import { capturePoseOrigins, residentPoseShift } from './gpu/resident-pose-origin'
-import { tilePrepareViewport } from './tile-prepare-viewport'
+import { tilePrepareViewport, localDisplayPrepareScope, tileLocalPrepareViewport } from './tile-prepare-viewport'
 import { compiledFilterColumnSupport, FilterTileOrder, validTileFillPriorities } from './filter-tile-order'
 import { GPU_PRIORITY_BURST, RenderWorkQueue } from './render-work-queue'
 import { paintDamageIntersects, type PaintDamage } from './paint-damage'
@@ -172,7 +173,10 @@ function journalCompile<T>(work: () => Promise<T>): Promise<T> {
       let packet: Record<string, number> | undefined
       try {
         const result = await original()
-        if (result instanceof Uint8Array && result.byteLength >= 24) {
+        if (result instanceof CompiledScenePacket) {
+          const scene=result.scene
+          packet={...result.transport,width:scene.extent.w,height:scene.extent.h,count:Object.keys(scene.nodes).length}
+        } else if (result instanceof Uint8Array && result.byteLength >= 24) {
           const header = new DataView(result.buffer, result.byteOffset, result.byteLength)
           if (header.getUint32(0, true) === 0x43534746 && header.getUint32(4, true)===1)
             packet = { scenePacketProtocol: 2, scenePacketVersion: header.getUint32(4, true), scenePacketBytes: result.byteLength,
@@ -190,7 +194,7 @@ function journalCompile<T>(work: () => Promise<T>): Promise<T> {
   return work().finally(() => { if (generation === navigationCaptureGeneration) navigationJournal.record(5, { sequence }) })
 }
 function compilePacket(kernel: RenderKernel, options: string, signal?: AbortSignal) {
-  return journalCompile(async () => (await kernel.prepare_gpu_packet(options, signal)).consume())
+  return journalCompile(async () => (await kernel.prepare_gpu_scene(options, signal)).consume())
 }
 let reportedResidentAttachment = ''
 function prepareDisplay(capture = true) {
@@ -341,7 +345,7 @@ function yieldPreviewTask() {
   })
 }
 const queue = new RenderWorkQueue()
-type ResidentPose={slot:number;transforms:Record<string,Matrix>;input:{sequence:number;at:number}}
+type ResidentPose={slot:number;transforms:Record<string,Matrix>;input:import('./interaction-layers').InteractionInput & {owner?:string}}
 type PoseSession={controller:AbortController;slot:number;document:DesignDocument;baseDocument:DesignDocument;scene:GpuScene;
   origins:ReadonlyMap<string,readonly[number,number]>;
   patch?:TranslationPatchSession;native?:boolean;affine?:boolean;fixedWindow?:boolean;window:import('./gpu/types').Rect;options:string;stopped:boolean;input?:ResidentPose['input'] & {owner?:string};bounds?:{x:number;y:number;width:number;height:number}}
@@ -415,7 +419,7 @@ function schedulePose(){
           const compileStarted=performance.now()
           const packet=await compilePacket(kernel,session.options,session.controller.signal)
           if(!current())continue
-          sceneUpdateBytes=packet.byteLength
+          sceneUpdateBytes=packet.transport.scenePacketBytes
           const compiled=decodeScenePacket(packet)
           poseCompileMs=performance.now()-compileStarted
           compileStats=kernel.compileStats
@@ -700,6 +704,7 @@ self.onmessage = (e) => {
         !request.options?.exportFormat && !request.options?.exportRegion && !request.options?.pixelPreview
       const { interactionOwner: _interactionOwner, interactionGeneration: _interactionGeneration, interactionBranch: _interactionBranch, interactionChannel: _interactionChannel, livePreview, sequentialViewport, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionAffine, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
         tilePrepareViewport: requestedPrepareViewport, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, ...renderOptions } = request.options
+      const displayBackpressure=displayRasterBackpressure(request.options,{channel,png:request.png,readback:request.readback,hdr:executionPolicy.hdrCompositing})
       // Never accept display arithmetic authority from caller or document fields.
       delete (renderOptions as { displayTentRadius?: unknown }).displayTentRadius
       renderOptions.gpuGaussianRegions = import.meta.env.VITE_DESIGN_GAUSSIAN_REGIONS==='1'&&import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1'&&
@@ -1170,7 +1175,7 @@ self.onmessage = (e) => {
                   if(!previewCurrent())throw Error('PREVIEW_CANCELLED')
                   captured=await renderTiledPreview(kernel,renderOptions,backend,color,settingsJson,
                     Math.max(crop.width,crop.height),crop,decodeScenePacket(packet),false,undefined,true,false,false,
-                    reportRasterProgress,previewCurrent,hydrateImages)
+                    reportRasterProgress,previewCurrent,hydrateImages,undefined,false,undefined,false,false,undefined,displayBackpressure)
                   if(!previewCurrent())throw Error('PREVIEW_CANCELLED')
                   if(!captured.gpuTile)throw Error('Exact commit capture unavailable')
                   self.postMessage({id:request.id,tile:{key:`commit-capture:${laneState.loadedRevision}:${captured.gpuTile}`,
@@ -1213,6 +1218,8 @@ self.onmessage = (e) => {
             // kernel caches the flattened-geometry phase per camera, so the
             // whole-document walk happens once instead of once per tile.
             let prepareViewport = tilePrepareViewport(tileViewport, renderOptions.view, requestedPrepareViewport)
+            const localPrepare=localDisplayPrepareScope(laneState.loadedNodeCount,renderOptions.view.zoom,displayBackpressure)
+            const prepareForTile=(tile:RasterTile)=>tileLocalPrepareViewport(tile,renderOptions.view,prepareViewport,localPrepare)
             let hits = 0, certifiedHits = 0,
               rendered = 0,
               milliseconds = 0, tileCompileMs = 0, tileGraphMs = 0, tileFinishMs = 0, tileCheckpointMs = 0,
@@ -1239,7 +1246,7 @@ self.onmessage = (e) => {
               import.meta.env.VITE_DESIGN_HORIZONTAL_FILTER_REUSE !== '0' &&
               import.meta.env.VITE_DESIGN_IMAGE_RESOLVE_FUSION !== '0'
             let filterColumnPlans = 0, filterColumnReorders = 0
-            const ahead = new PrepareAhead<{ bytes: Uint8Array; ms: number; tile: RasterTile }>()
+            const ahead = new PrepareAhead<{ bytes: ScenePacket; ms: number; tile: RasterTile }>()
             let preparationWaitMs = 0, overlappedPreparations = 0
             const current = () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
               (channel !== 'canvas' || fillGeneration === tileFillGeneration)
@@ -1252,9 +1259,9 @@ self.onmessage = (e) => {
               const compile = () => compilePacket(kernel, JSON.stringify({ ...renderOptions,
                 view: { ...renderOptions.view, zoom: tile.zoom }, width: tile.width, height: tile.height,
                 gpuViewport: { x: tile.x + Math.floor(renderOptions.view.x), y: tile.y + Math.floor(renderOptions.view.y), w: tile.width, h: tile.height },
-                ...(prepareViewport ? { prepareViewport } : {}),
+                ...(prepareViewport ? { prepareViewport:prepareForTile(tile) } : {}),
               }), packetWait?.controller.signal)
-              let bytes: Uint8Array
+              let bytes: ScenePacket
               try { bytes = await compile() }
               catch (error) {
                 if (!prepareViewport || !isScenePathBudget(error)) throw error
@@ -1369,10 +1376,10 @@ self.onmessage = (e) => {
                 result = await renderTiledPreview(kernel, tileOptions, backend, color,
                   settingsJson, TILE_SIDE + 2, crop, preparedScene,
                   import.meta.env.DEV && request.debug?.forceFirstTileBudgetFailure === true,
-                  prepareViewport, !request.readback, canvasDisplayFilters, canvasMath, reportRasterProgress,
+                  prepareForTile(tile), !request.readback, canvasDisplayFilters, canvasMath, reportRasterProgress,
                   () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
                     tileCurrent(), hydrateImages, filterBatchLease, canvasImageSource, boundedDisplayLimit, canvasMaterialSource, canvasTentRadius,
-                    draws=>reportWorkProgress(2,draws))
+                    draws=>reportWorkProgress(2,draws),displayBackpressure)
                 undelivered = result
                 if ((packetWait?.controller.signal.aborted || generation !== previewGenerations[channel])) throw new Error('PREVIEW_CANCELLED')
                 // Only the exact scene actually rendered once certifies these pixels.
@@ -1573,7 +1580,7 @@ self.onmessage = (e) => {
               backend,
               color,
               settingsJson,
-              256, undefined, undefined, false, undefined, previewPresentOnly, previewDisplayFilters, canvasMath, undefined, previewCurrent, hydrateImages, undefined, canvasImageSource, boundedDisplayLimit, canvasMaterialSource, canvasTentRadius,
+              256, undefined, undefined, false, undefined, previewPresentOnly, previewDisplayFilters, canvasMath, undefined, previewCurrent, hydrateImages, undefined, canvasImageSource, boundedDisplayLimit, canvasMaterialSource, canvasTentRadius, undefined, displayBackpressure,
             )
             self.postMessage(
               { id: request.id, ...result, loadMs, previewLane: 'regional-fallback', previewReadback: !result.bitmap && !result.gpuTile, residentAttached: !!displayCanvas },
@@ -1681,7 +1688,7 @@ self.onmessage = (e) => {
           const previewReadback = !!(request.png || request.readback || (!!color && !gpu.driver.hdr && !((retainInteraction || displayCanvas) && backend === 'webgpu')))
           const t = performance.now(),
             result = await failureAttempt(12, () => gpu!.render(scene!, previewReadback, true, (livePreview || tileViewport) ? previewCurrent : undefined,
-              (livePreview||tileViewport)?draws=>reportWorkProgress(2,draws):undefined))
+              (livePreview||tileViewport)?draws=>reportWorkProgress(2,draws):undefined,displayBackpressure))
           const renderMs = performance.now() - t
           if ((livePreview || tileViewport) && !previewCurrent()) {
             result.bitmap?.close()
@@ -1869,7 +1876,7 @@ self.onmessage = (e) => {
                 backend,
                 color,
                 settingsJson,
-                256, undefined, undefined, false, undefined, previewPresentOnly, previewDisplayFilters, canvasMath, undefined, previewCurrent, hydrateImages, undefined, canvasImageSource, boundedDisplayLimit, canvasMaterialSource, canvasTentRadius,
+                256, undefined, undefined, false, undefined, previewPresentOnly, previewDisplayFilters, canvasMath, undefined, previewCurrent, hydrateImages, undefined, canvasImageSource, boundedDisplayLimit, canvasMaterialSource, canvasTentRadius, undefined, displayBackpressure,
               )
               self.postMessage(
                 { id: request.id, ...result, loadMs, previewLane: 'regional-fallback', previewReadback: !result.bitmap && !result.gpuTile, residentAttached: !!displayCanvas },
@@ -1988,6 +1995,7 @@ async function renderTiledPreview(
   canvasMaterialSource = false,
   canvasTentRadius = false,
   onEncodingProgress?: (drawCalls:number)=>void,
+  displayBackpressure=false,
 ) {
   const tileCost = createTileCostDiagnostics(terminalDiagnostics.enabled)
   const checkCurrent = () => {
@@ -2088,7 +2096,7 @@ async function renderTiledPreview(
         checkCurrent()
         await hydrateImages(scene, isCurrent)
         prepareDisplay()
-        const result = await failureAttempt(12, () => gpu!.render(scene, false, true, isCurrent,onEncodingProgress))
+        const result = await failureAttempt(12, () => gpu!.render(scene, false, true, isCurrent,onEncodingProgress,displayBackpressure))
         tileCost?.observe(scene, result)
         presented = result.bitmap
         residentTile = result.gpuTile
@@ -2170,7 +2178,7 @@ async function renderTiledPreview(
           ...(prepareViewport ? { prepareViewport } : {}) }))
         let scene = prepared
         if (!scene) {
-          let packet: Uint8Array
+          let packet: ScenePacket
           try { packet = await compileRegion() }
           catch (error) {
             if (!prepareViewport || !isScenePathBudget(error)) throw error

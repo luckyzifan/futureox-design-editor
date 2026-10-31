@@ -68,7 +68,10 @@ export function compositeDrawPlan(
     draws: { item: CompositeItem; placement: TilePlacement; clip: Box }[] = []
   const ordered = items
     .filter((i) => i.active)
-    .sort((a, b) => a.layer - b.layer || a.tile.zoom - b.tile.zoom)
+    // Cache/LRU order can change on a pan without any new pixels. Equal-level
+    // overlapping phases must keep the same winner until a real replacement
+    // arrives, rather than alternately exposing their antialiasing samples.
+    .sort((a, b) => a.layer - b.layer || a.tile.zoom - b.tile.zoom || a.tile.serial - b.tile.serial)
   for (let i = ordered.length - 1; i >= 0; i--) {
     const item = ordered[i],
       p = compositePlacement(item, view),

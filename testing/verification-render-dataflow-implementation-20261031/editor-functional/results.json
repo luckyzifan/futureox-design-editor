@@ -1,0 +1,33 @@
+{
+  "status": "passed",
+  "checks": [
+    {
+      "name": "Actual editor imported and presented through the worker",
+      "bounds": {
+        "x": 305,
+        "y": 42,
+        "width": 855,
+        "height": 898
+      }
+    },
+    {
+      "name": "Figma-observed child position/size/radius/depth/frost displayed after Scale; inspection does not mutate native parameters"
+    },
+    {
+      "name": "Multi-selection compares effective values across differently scaled parents; one edit converts per node, one Undo restores all"
+    },
+    {
+      "name": "Effective physical X/stroke/dash/glass/text edits persist as precise native units and survive reload"
+    },
+    {
+      "name": "Layout direction buttons execute real commands; scaled gap/padding edits and Undo preserve native dimensions"
+    },
+    {
+      "name": "Inspector layer actions share the actual rename command and Undo restores the document"
+    },
+    {
+      "name": "Right sidebar zoom menu controls the canvas, dismisses on Escape and outside pointer"
+    }
+  ],
+  "errors": []
+}

@@ -515,12 +515,12 @@ pub fn expand_rich_text(doc: &mut crate::scene::Document, fonts: &Fonts) -> Resu
             n.text.clear();
             n.text_runs.clear();
             n.derived_path = Some(Arc::new(span.outline));
-            n.network = Some(crate::scene::Network {
+            n.network = Some((crate::scene::Network {
                 vertices: vec![],
                 edges: vec![],
                 filled_faces: None,
                 fill_rule: "nonzero".into(),
-            });
+            }).into());
             if let Some(color) = span.color {
                 n.fills = vec![crate::scene::Paint {
                     id: String::new(),
@@ -946,7 +946,7 @@ impl Fonts {
             &node.text_runs,
             width,
             output,
-            node.text_path.as_ref(),
+            node.text_path.as_deref(),
         )?;
         if style.writing_mode == "horizontal" && node.text_path.is_none() {
             let offset = (node.height - result.height).max(0.) * match style.vertical_align.as_str() { "center" => 0.5, "bottom" => 1., _ => 0. };
@@ -981,7 +981,7 @@ impl Fonts {
             &node.text_runs,
             width,
             OutlineOutput::None,
-            node.text_path.as_ref(),
+            node.text_path.as_deref(),
         )
     }
     pub fn node_path(&self, node: &Node) -> Result<Path, String> {

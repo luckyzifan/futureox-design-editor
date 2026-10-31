@@ -1,0 +1,1133 @@
+{
+  "status": "completed-analysis-replay",
+  "source": "/Users/Apple/Downloads/01有料素材.fig",
+  "sourceHash": "90eb4dc4d09b67cbcc7afa790bb373c28560f97e2111e8adfcfa269bc2afb82c",
+  "builtAt": "2026-10-31T05:55:04.010Z",
+  "profile": "desktop-dev",
+  "variant": "default",
+  "scriptSha256": "5211b0ad74d334c42bf5f3baf365a479b9b48ce90d2f2988987305f55a8c882d",
+  "nonRuntimeDrift": [
+    "frontend/design-client/src/kernel/gpu/scene-packet.test.ts",
+    "frontend/design-client/src/kernel/render-kernel.test.ts"
+  ],
+  "cases": [
+    {
+      "name": "launch",
+      "status": "complete",
+      "wallMs": 1762.2398750000002,
+      "gpu": {
+        "2d_canvas": "enabled",
+        "direct_rendering_display_compositor": "disabled_off_ok",
+        "gpu_compositing": "enabled",
+        "multiple_raster_threads": "enabled_on",
+        "opengl": "enabled_on",
+        "rasterization": "enabled",
+        "raw_draw": "disabled_off_ok",
+        "skia_graphite": "enabled_on",
+        "trees_in_viz": "disabled_off",
+        "video_decode": "enabled",
+        "video_encode": "enabled",
+        "webgl": "enabled",
+        "webgpu": "enabled",
+        "webnn": "disabled_off"
+      }
+    },
+    {
+      "name": "import-and-targets",
+      "status": "complete",
+      "wallMs": 4908.386,
+      "nodes": 9403,
+      "metadataBytes": 100673,
+      "componentNodes": 399,
+      "filteredNodes": 100,
+      "page": "62227739-e538-44a1-94a7-febea38f3b48",
+      "roots": 21,
+      "board": {
+        "id": "ce4d1eb9-6f15-4ac5-9c3c-256fba4f3502",
+        "name": "01_Dashboard"
+      },
+      "importView": {
+        "x": 40,
+        "y": 40,
+        "zoom": 1
+      },
+      "profile": "analytic",
+      "targets": [
+        {
+          "id": "912a6a1e-35af-47e3-a561-7d5606fdda61",
+          "name": "Legend 02",
+          "kind": "text",
+          "bounds": {
+            "x": 1243,
+            "y": 1297,
+            "width": 67,
+            "height": 20
+          },
+          "constraints": {
+            "horizontal": "scale",
+            "vertical": "center",
+            "referenceWidth": 90,
+            "referenceHeight": 20
+          },
+          "component": false,
+          "instanceOrigin": false,
+          "point": {
+            "x": 1276.5,
+            "y": 1307
+          },
+          "hover": "912a6a1e-35af-47e3-a561-7d5606fdda61",
+          "ordinary": "ce4d1eb9-6f15-4ac5-9c3c-256fba4f3502",
+          "deep": "912a6a1e-35af-47e3-a561-7d5606fdda61",
+          "selected": "912a6a1e-35af-47e3-a561-7d5606fdda61",
+          "ancestors": [
+            {
+              "id": "ce4d1eb9-6f15-4ac5-9c3c-256fba4f3502",
+              "name": "01_Dashboard",
+              "kind": "frame",
+              "clip": true,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "3f65efef-9f5d-4280-82bc-72b71707244a",
+              "name": "Simple Chart",
+              "kind": "group",
+              "clip": false,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "b94e2d77-e91f-4668-844b-a9508a34f148",
+              "name": "Chart",
+              "kind": "group",
+              "clip": false,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "c0b009c1-9fa6-4e3e-b9dd-33d71e464080",
+              "name": "Legends",
+              "kind": "group",
+              "clip": false,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "6c80f451-f5c8-4d3f-88fb-6f3da6940f54",
+              "name": "Legend 02",
+              "kind": "frame",
+              "clip": true,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            }
+          ]
+        },
+        {
+          "id": "a78036f4-4687-462e-8eb6-8c7910d6aa35",
+          "name": "Background",
+          "kind": "rectangle",
+          "bounds": {
+            "x": 1220,
+            "y": 1302,
+            "width": 14,
+            "height": 14
+          },
+          "constraints": {
+            "horizontal": "scale",
+            "vertical": "scale",
+            "referenceWidth": 90,
+            "referenceHeight": 20
+          },
+          "component": false,
+          "instanceOrigin": false,
+          "point": {
+            "x": 1227,
+            "y": 1309
+          },
+          "hover": "a78036f4-4687-462e-8eb6-8c7910d6aa35",
+          "ordinary": "ce4d1eb9-6f15-4ac5-9c3c-256fba4f3502",
+          "deep": "a78036f4-4687-462e-8eb6-8c7910d6aa35",
+          "selected": "a78036f4-4687-462e-8eb6-8c7910d6aa35",
+          "ancestors": [
+            {
+              "id": "ce4d1eb9-6f15-4ac5-9c3c-256fba4f3502",
+              "name": "01_Dashboard",
+              "kind": "frame",
+              "clip": true,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "3f65efef-9f5d-4280-82bc-72b71707244a",
+              "name": "Simple Chart",
+              "kind": "group",
+              "clip": false,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "b94e2d77-e91f-4668-844b-a9508a34f148",
+              "name": "Chart",
+              "kind": "group",
+              "clip": false,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "c0b009c1-9fa6-4e3e-b9dd-33d71e464080",
+              "name": "Legends",
+              "kind": "group",
+              "clip": false,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "6c80f451-f5c8-4d3f-88fb-6f3da6940f54",
+              "name": "Legend 02",
+              "kind": "frame",
+              "clip": true,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            }
+          ]
+        },
+        {
+          "id": "124c601d-e95a-4373-b289-b2cf4e48c6a5",
+          "name": "Legend 01",
+          "kind": "text",
+          "bounds": {
+            "x": 1123,
+            "y": 1297,
+            "width": 64,
+            "height": 20
+          },
+          "constraints": {
+            "horizontal": "scale",
+            "vertical": "center",
+            "referenceWidth": 86,
+            "referenceHeight": 20
+          },
+          "component": false,
+          "instanceOrigin": false,
+          "point": {
+            "x": 1155,
+            "y": 1307
+          },
+          "hover": "124c601d-e95a-4373-b289-b2cf4e48c6a5",
+          "ordinary": "ce4d1eb9-6f15-4ac5-9c3c-256fba4f3502",
+          "deep": "124c601d-e95a-4373-b289-b2cf4e48c6a5",
+          "selected": "124c601d-e95a-4373-b289-b2cf4e48c6a5",
+          "ancestors": [
+            {
+              "id": "ce4d1eb9-6f15-4ac5-9c3c-256fba4f3502",
+              "name": "01_Dashboard",
+              "kind": "frame",
+              "clip": true,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "3f65efef-9f5d-4280-82bc-72b71707244a",
+              "name": "Simple Chart",
+              "kind": "group",
+              "clip": false,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "b94e2d77-e91f-4668-844b-a9508a34f148",
+              "name": "Chart",
+              "kind": "group",
+              "clip": false,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "c0b009c1-9fa6-4e3e-b9dd-33d71e464080",
+              "name": "Legends",
+              "kind": "group",
+              "clip": false,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "63ecd794-3d7a-43be-afa1-7e82841458ad",
+              "name": "Legend 01",
+              "kind": "frame",
+              "clip": true,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            }
+          ]
+        },
+        {
+          "id": "d4a67358-edf2-4fef-83c3-f6d06f4d1a6f",
+          "name": "Background",
+          "kind": "rectangle",
+          "bounds": {
+            "x": 1100,
+            "y": 1302,
+            "width": 14,
+            "height": 14
+          },
+          "constraints": {
+            "horizontal": "scale",
+            "vertical": "scale",
+            "referenceWidth": 86,
+            "referenceHeight": 20
+          },
+          "component": false,
+          "instanceOrigin": false,
+          "point": {
+            "x": 1107,
+            "y": 1309
+          },
+          "hover": "d4a67358-edf2-4fef-83c3-f6d06f4d1a6f",
+          "ordinary": "ce4d1eb9-6f15-4ac5-9c3c-256fba4f3502",
+          "deep": "d4a67358-edf2-4fef-83c3-f6d06f4d1a6f",
+          "selected": "d4a67358-edf2-4fef-83c3-f6d06f4d1a6f",
+          "ancestors": [
+            {
+              "id": "ce4d1eb9-6f15-4ac5-9c3c-256fba4f3502",
+              "name": "01_Dashboard",
+              "kind": "frame",
+              "clip": true,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "3f65efef-9f5d-4280-82bc-72b71707244a",
+              "name": "Simple Chart",
+              "kind": "group",
+              "clip": false,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "b94e2d77-e91f-4668-844b-a9508a34f148",
+              "name": "Chart",
+              "kind": "group",
+              "clip": false,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "c0b009c1-9fa6-4e3e-b9dd-33d71e464080",
+              "name": "Legends",
+              "kind": "group",
+              "clip": false,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "63ecd794-3d7a-43be-afa1-7e82841458ad",
+              "name": "Legend 01",
+              "kind": "frame",
+              "clip": true,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            }
+          ]
+        },
+        {
+          "id": "7c78deac-0ac3-4fef-8b4b-323356872ed1",
+          "name": "JAN FEB MAR APR MAY",
+          "kind": "text",
+          "bounds": {
+            "x": 1001,
+            "y": 1264,
+            "width": 552,
+            "height": 20
+          },
+          "constraints": {
+            "horizontal": "scale",
+            "vertical": "center",
+            "referenceWidth": 475,
+            "referenceHeight": 275
+          },
+          "component": false,
+          "instanceOrigin": false,
+          "point": {
+            "x": 1277,
+            "y": 1274
+          },
+          "hover": "7c78deac-0ac3-4fef-8b4b-323356872ed1",
+          "ordinary": "ce4d1eb9-6f15-4ac5-9c3c-256fba4f3502",
+          "deep": "7c78deac-0ac3-4fef-8b4b-323356872ed1",
+          "selected": "7c78deac-0ac3-4fef-8b4b-323356872ed1",
+          "ancestors": [
+            {
+              "id": "ce4d1eb9-6f15-4ac5-9c3c-256fba4f3502",
+              "name": "01_Dashboard",
+              "kind": "frame",
+              "clip": true,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "3f65efef-9f5d-4280-82bc-72b71707244a",
+              "name": "Simple Chart",
+              "kind": "group",
+              "clip": false,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "b94e2d77-e91f-4668-844b-a9508a34f148",
+              "name": "Chart",
+              "kind": "group",
+              "clip": false,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "e2b30def-ddbd-4018-9a9d-7677ebdf4db7",
+              "name": "Weeks & count text",
+              "kind": "frame",
+              "clip": true,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            }
+          ]
+        },
+        {
+          "id": "6589b1ac-877d-4b0c-aa9b-89ecbe88e9ed",
+          "name": "50 40 30 20 10 0",
+          "kind": "text",
+          "bounds": {
+            "x": 951,
+            "y": 1009,
+            "width": 17,
+            "height": 264
+          },
+          "constraints": {
+            "horizontal": "scale",
+            "vertical": "center",
+            "referenceWidth": 475,
+            "referenceHeight": 275
+          },
+          "component": false,
+          "instanceOrigin": false,
+          "point": {
+            "x": 959.5,
+            "y": 1141
+          },
+          "hover": "6589b1ac-877d-4b0c-aa9b-89ecbe88e9ed",
+          "ordinary": "ce4d1eb9-6f15-4ac5-9c3c-256fba4f3502",
+          "deep": "6589b1ac-877d-4b0c-aa9b-89ecbe88e9ed",
+          "selected": "6589b1ac-877d-4b0c-aa9b-89ecbe88e9ed",
+          "ancestors": [
+            {
+              "id": "ce4d1eb9-6f15-4ac5-9c3c-256fba4f3502",
+              "name": "01_Dashboard",
+              "kind": "frame",
+              "clip": true,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "3f65efef-9f5d-4280-82bc-72b71707244a",
+              "name": "Simple Chart",
+              "kind": "group",
+              "clip": false,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "b94e2d77-e91f-4668-844b-a9508a34f148",
+              "name": "Chart",
+              "kind": "group",
+              "clip": false,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "e2b30def-ddbd-4018-9a9d-7677ebdf4db7",
+              "name": "Weeks & count text",
+              "kind": "frame",
+              "clip": true,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            }
+          ]
+        },
+        {
+          "id": "45336d17-ce3c-4af3-9b07-0e6ae75333f8",
+          "name": "28k Assigned",
+          "kind": "text",
+          "bounds": {
+            "x": 1108,
+            "y": 1075,
+            "width": 86,
+            "height": 20
+          },
+          "constraints": {
+            "horizontal": "scale",
+            "vertical": "center",
+            "referenceWidth": 108,
+            "referenceHeight": 37
+          },
+          "component": false,
+          "instanceOrigin": false,
+          "point": {
+            "x": 1151,
+            "y": 1085
+          },
+          "hover": "45336d17-ce3c-4af3-9b07-0e6ae75333f8",
+          "ordinary": "ce4d1eb9-6f15-4ac5-9c3c-256fba4f3502",
+          "deep": "45336d17-ce3c-4af3-9b07-0e6ae75333f8",
+          "selected": "45336d17-ce3c-4af3-9b07-0e6ae75333f8",
+          "ancestors": [
+            {
+              "id": "ce4d1eb9-6f15-4ac5-9c3c-256fba4f3502",
+              "name": "01_Dashboard",
+              "kind": "frame",
+              "clip": true,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "3f65efef-9f5d-4280-82bc-72b71707244a",
+              "name": "Simple Chart",
+              "kind": "group",
+              "clip": false,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "b94e2d77-e91f-4668-844b-a9508a34f148",
+              "name": "Chart",
+              "kind": "group",
+              "clip": false,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "94809b8d-bf52-4a2d-be6e-558e15ccae4c",
+              "name": "Hover point",
+              "kind": "group",
+              "clip": false,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "b65ff6ed-d2e6-45cb-a60e-4cb8ad38e9e4",
+              "name": "28k Assigned ",
+              "kind": "frame",
+              "clip": true,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            }
+          ]
+        },
+        {
+          "id": "1932ba7c-348b-4d64-a128-9d2dfd672d48",
+          "name": "Year",
+          "kind": "text",
+          "bounds": {
+            "x": 1354,
+            "y": 947,
+            "width": 29,
+            "height": 20
+          },
+          "constraints": {
+            "horizontal": "scale",
+            "vertical": "center",
+            "referenceWidth": 71,
+            "referenceHeight": 30
+          },
+          "component": false,
+          "instanceOrigin": false,
+          "point": {
+            "x": 1368.5,
+            "y": 957
+          },
+          "hover": "1932ba7c-348b-4d64-a128-9d2dfd672d48",
+          "ordinary": "ce4d1eb9-6f15-4ac5-9c3c-256fba4f3502",
+          "deep": "1932ba7c-348b-4d64-a128-9d2dfd672d48",
+          "selected": "1932ba7c-348b-4d64-a128-9d2dfd672d48",
+          "ancestors": [
+            {
+              "id": "ce4d1eb9-6f15-4ac5-9c3c-256fba4f3502",
+              "name": "01_Dashboard",
+              "kind": "frame",
+              "clip": true,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "3f65efef-9f5d-4280-82bc-72b71707244a",
+              "name": "Simple Chart",
+              "kind": "group",
+              "clip": false,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "948c7462-cde9-4bca-9e09-2ae8c53d2fcc",
+              "name": "Title text",
+              "kind": "frame",
+              "clip": true,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            },
+            {
+              "id": "b4deac14-fd14-482e-93ab-777e7233a5d5",
+              "name": "Year dropdown",
+              "kind": "frame",
+              "clip": true,
+              "blend": "normal",
+              "instance": false,
+              "component": false,
+              "instanceOrigin": false,
+              "effects": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "drag-inside",
+      "status": "complete",
+      "wallMs": 2985.802458,
+      "before": {
+        "selection": [
+          "912a6a1e-35af-47e3-a561-7d5606fdda61"
+        ],
+        "target": "912a6a1e-35af-47e3-a561-7d5606fdda61"
+      },
+      "picked": [
+        "912a6a1e-35af-47e3-a561-7d5606fdda61"
+      ],
+      "changes": [
+        {
+          "id": "912a6a1e-35af-47e3-a561-7d5606fdda61",
+          "name": "Legend 02",
+          "before": [
+            1,
+            0,
+            0,
+            1,
+            23,
+            0
+          ],
+          "after": [
+            1,
+            0,
+            0,
+            1,
+            30.5,
+            -0.5
+          ]
+        }
+      ],
+      "readyMs": 196.72133399999984,
+      "trace": {
+        "frames": 176,
+        "gapP95": 9.300000000000182,
+        "gapMax": 183.59999999999945,
+        "longTasks": 1,
+        "events": 18,
+        "workerMessages": 112
+      },
+      "parentChecks": [
+        {
+          "at": 6919.5,
+          "timing": {
+            "prepareMs": 0,
+            "layoutMs": 0,
+            "publishMs": 0
+          },
+          "canvas": {
+            "testid": "canvas",
+            "transformGesture": "move"
+          }
+        },
+        {
+          "at": 6942.799999952316,
+          "timing": {
+            "prepareMs": 0,
+            "layoutMs": 0,
+            "publishMs": 0
+          },
+          "canvas": {
+            "testid": "canvas",
+            "transformGesture": "move"
+          }
+        },
+        {
+          "at": 6974.399999976158,
+          "timing": {
+            "prepareMs": 0,
+            "layoutMs": 0,
+            "publishMs": 0
+          },
+          "canvas": {
+            "testid": "canvas",
+            "transformGesture": "move"
+          }
+        },
+        {
+          "at": 7003.899999976158,
+          "timing": {
+            "prepareMs": 0,
+            "layoutMs": 0,
+            "publishMs": 0
+          },
+          "canvas": {
+            "testid": "canvas",
+            "transformGesture": "move"
+          }
+        },
+        {
+          "at": 7027.600000023842,
+          "timing": {
+            "prepareMs": 0,
+            "layoutMs": 0,
+            "publishMs": 0
+          },
+          "canvas": {
+            "testid": "canvas",
+            "transformGesture": "move"
+          }
+        },
+        {
+          "at": 7067.5,
+          "timing": {
+            "prepareMs": 0,
+            "layoutMs": 0,
+            "publishMs": 0
+          },
+          "canvas": {
+            "testid": "canvas",
+            "transformGesture": "move"
+          }
+        },
+        {
+          "at": 7096.100000023842,
+          "timing": {
+            "prepareMs": 0,
+            "layoutMs": 0,
+            "publishMs": 0
+          },
+          "canvas": {
+            "testid": "canvas",
+            "transformGesture": "move"
+          }
+        },
+        {
+          "at": 7122,
+          "timing": {
+            "prepareMs": 0,
+            "layoutMs": 0,
+            "publishMs": 0
+          },
+          "canvas": {
+            "testid": "canvas",
+            "transformGesture": "move"
+          }
+        },
+        {
+          "at": 7146.699999928474,
+          "timing": {
+            "prepareMs": 0,
+            "layoutMs": 0,
+            "publishMs": 0
+          },
+          "canvas": {
+            "testid": "canvas",
+            "transformGesture": "move"
+          }
+        },
+        {
+          "at": 7169.799999952316,
+          "timing": {
+            "prepareMs": 0,
+            "layoutMs": 0,
+            "publishMs": 0
+          },
+          "canvas": {
+            "testid": "canvas",
+            "transformGesture": "move"
+          }
+        },
+        {
+          "at": 7194.899999976158,
+          "timing": {
+            "prepareMs": 0,
+            "layoutMs": 0,
+            "publishMs": 0
+          },
+          "canvas": {
+            "testid": "canvas",
+            "transformGesture": "move"
+          }
+        },
+        {
+          "at": 7221.5,
+          "timing": {
+            "prepareMs": 0,
+            "layoutMs": 0,
+            "publishMs": 0
+          },
+          "canvas": {
+            "testid": "canvas",
+            "transformGesture": "move"
+          }
+        },
+        {
+          "at": 7246.399999976158,
+          "timing": {
+            "prepareMs": 0,
+            "layoutMs": 0,
+            "publishMs": 0
+          },
+          "canvas": {
+            "testid": "canvas",
+            "transformGesture": "move"
+          }
+        },
+        {
+          "at": 7272.399999976158,
+          "timing": {
+            "prepareMs": 0,
+            "layoutMs": 0,
+            "publishMs": 0
+          },
+          "canvas": {
+            "testid": "canvas",
+            "transformGesture": "move"
+          }
+        },
+        {
+          "at": 7304.399999976158,
+          "timing": {
+            "prepareMs": 0,
+            "layoutMs": 0,
+            "publishMs": 0
+          },
+          "canvas": {
+            "testid": "canvas",
+            "transformGesture": "move"
+          }
+        },
+        {
+          "at": 7330.199999928474,
+          "timing": {
+            "prepareMs": 0,
+            "layoutMs": 0,
+            "publishMs": 0
+          },
+          "canvas": {
+            "testid": "canvas",
+            "transformGesture": "move"
+          }
+        }
+      ],
+      "state": {
+        "at": 8896.600000023842,
+        "timeOrigin": 1793432189091.3,
+        "view": {
+          "x": -849,
+          "y": -879,
+          "zoom": 1
+        },
+        "selection": [
+          "912a6a1e-35af-47e3-a561-7d5606fdda61"
+        ],
+        "hover": "912a6a1e-35af-47e3-a561-7d5606fdda61",
+        "presentation": {
+          "fallbackPhase": "none",
+          "presentationBackend": "gpu",
+          "presentationReady": "true",
+          "presentationState": "ready",
+          "previewActive": "false",
+          "requestedDocument": "1dfb87fb-6a8a-4630-b75f-c4ee51183d10",
+          "requestedEpoch": "1",
+          "requestedCameraX": "-849",
+          "requestedCameraY": "-879",
+          "requestedCameraZoom": "1",
+          "requestedPixelRatio": "2",
+          "visualCameraX": "-849",
+          "visualCameraY": "-879",
+          "displayedDocument": "1dfb87fb-6a8a-4630-b75f-c4ee51183d10",
+          "displayedEpoch": "1",
+          "cameraX": "-849",
+          "cameraY": "-879",
+          "cameraZoom": "1",
+          "pixelRatio": "2"
+        },
+        "stats": {
+          "rasterPlanner": "rust",
+          "checkerboard": "false",
+          "samplingMode": "density-cache",
+          "rasterProfile": "analytic",
+          "samplingScale": "2",
+          "samplingDensity": "2",
+          "nativePixelReady": "false",
+          "rasterPhaseExact": "true",
+          "startupPreview": "false",
+          "renderer": "webgpu",
+          "tileCount": "41",
+          "pageCacheBytes": "0",
+          "pageCachePages": "0",
+          "pageCacheHits": "0",
+          "pageCacheMisses": "0",
+          "pageCacheEvictions": "0",
+          "pageCacheTier": "balanced",
+          "pageResidencyEstimatedBudget": "234881024",
+          "cacheHits": "40",
+          "tilesRendered": "37",
+          "viewportTilesRendered": "34",
+          "cacheBytes": "1024",
+          "tileScheduleFrames": "1",
+          "tileScheduleOnscreen": "2",
+          "tileScheduleOffscreen": "0",
+          "tileScheduleDeferred": "0",
+          "tileBudgetCutoffs": "0",
+          "tileBudgetCompletions": "1",
+          "tileBudgetCacheCutoffs": "0",
+          "tileCacheSkippedTiles": "0",
+          "residentBytes": "45198880",
+          "residentBudget": "234881024",
+          "activeResidentBudget": "134217728",
+          "cacheSteadyBudget": "134217728",
+          "cacheStagingLimit": "26419600",
+          "cacheAdmissionBudget": "160637328",
+          "cacheActiveBytes": "45198880",
+          "cacheActiveHighwater": "56908960",
+          "cacheTotalHighwater": "56908960",
+          "refineMs": "121.20",
+          "compileMs": "117.80",
+          "pipelineWallMs": "119.50",
+          "preparationWaitMs": "114.60",
+          "overlappedPreparations": "32",
+          "frameResourceHits": "9",
+          "frameResourceBytes": "18682992",
+          "graphMs": "1.50",
+          "finishMs": "1.40",
+          "checkpointMs": "0.00",
+          "detailReady": "true",
+          "framePublication": "complete",
+          "retainedCommit": "false",
+          "retainedPageCommit": "false",
+          "lodScale": "0",
+          "lodTiles": "0",
+          "lodCacheBytes": "0",
+          "lodCacheBudget": "16777216",
+          "lodCacheHits": "0",
+          "previewActive": "false",
+          "progressiveTiles": "16",
+          "failedTiles": "0",
+          "cachedPreviewTiles": "0",
+          "overviewTiles": "0",
+          "overviewReuses": "0",
+          "residentEligible": "true",
+          "residentReason": "eligible",
+          "motionPreview": "false",
+          "motionRasterScale": "2",
+          "cameraMoving": "false",
+          "navigationPendingAgeMs": "0",
+          "navigationZoomActive": "false",
+          "nativeNavigation": "false",
+          "nativeVisibleTiles": "false",
+          "navigationZoomSequence": "0",
+          "viewportPreviewTiles": "0",
+          "nativeCaptureTiles": "0",
+          "displayMode": "single-gpu-canvas",
+          "revision": "3",
+          "cameraX": "-849",
+          "cameraY": "-879",
+          "cameraZoom": "1",
+          "requestedCameraX": "-849",
+          "requestedCameraY": "-879",
+          "requestedCameraZoom": "1",
+          "requestedRevision": "3",
+          "pixelRatio": "2",
+          "firstDetailMs": "202.80",
+          "navigationMs": "207.40"
+        },
+        "previewTiming": {
+          "prepareMs": 24.299999952316284,
+          "layoutMs": 11.399999976158142,
+          "publishMs": 0.20000004768371582
+        },
+        "canvasData": {
+          "testid": "canvas"
+        },
+        "interactions": [
+          {
+            "compositor": "webgpu-resident",
+            "frameVisible": "true",
+            "inputTrace": "[]",
+            "contentSequence": "13",
+            "interactionReady": "true",
+            "interactionActive": "false",
+            "interactionWarming": "false",
+            "interactionError": "",
+            "interactionMoves": "13",
+            "interactionEnd": "7.5,-0.5",
+            "interactionMode": "live-kernel",
+            "interactionSamples": "9",
+            "interactionSampleMs": "51.50",
+            "interactionCompileMs": "43.70",
+            "interactionGraphMs": "1.50",
+            "interactionGeometryReused": "false",
+            "interactionGroupHits": "7",
+            "interactionTrace": "[{\"total\":129.20000004768372,\"prepare\":1,\"load\":3.100000023841858,\"documentForks\":1,\"compile\":57.299999952316284,\"graph\":4.5,\"finish\":50,\"fieldMs\":0.09999990463256836,\"fieldUploadBytes\":12224,\"reused\":false,\"active\":true,\"backend\":\"webgpu\",\"reason\":\"\",\"scale\":2,\"pixels\":1532912},{\"total\":89.80000007152557,\"prepare\":0,\"load\":0,\"compile\":52.10000002384186,\"graph\":1.6999999284744263,\"finish\":5.100000023841858,\"reused\":false,\"active\":true,\"backend\":\"webgpu\",\"scale\":2,\"sceneUpdateBytes\":2708879,\"geometryUploadBytes\":0,\"residentProgramHits\":25,\"residentProgramHitBytes\":2698400,\"posePrepareMs\":82,\"documentMs\":0,\"translationMs\":81.89999997615814,\"patchSession\":true,\"affectedNodes\":6,\"compileStats\":{\"builds\":55,\"bytes\":5921556,\"cameraResidency\":{\"bytes\":0,\"entries\":0,\"evictions\":0,\"restores\":0},\"entries\":49,\"fragmentBuilds\":9,\"fragmentHits\":0,\"frameScene\":{\"bytes\":7160649,\"compilations\":2,\"imageAllocationHits\":0,\"imageTransferHits\":0,\"limit\":2147483648,\"limitSource\":\"trusted-host-memory\",\"sameRequestHits\":0,\"semanticBytes\":4337536,\"semanticHits\":31},\"hits\":43,\"marginIndexBytes\":60376,\"marginIndexNodes\":277,\"pathNodes\":6891,\"prepareReuses\":1,\"preparedNodes\":240,\"residentStrokes\":{\"builds\":1838,\"bytes\":5896110,\"entries\":1838,\"hits\":51},\"retainedNodes\":234,\"textPaths\":{\"bytes\":11684805,\"entries\":410,\"hits\":10912,\"limit\":16777216},\"worldSupportBytes\":1398988},\"fieldUploadBytes\":0,\"groupBytes\":39258976,\"prefixHits\":0,\"fieldHits\":0,\"checkpointMs\":0,\"fieldMs\":0,\"drawCalls\":20,\"passPixels\":304165,\"textureBytes\":270704936},{\"total\":54,\"prepare\":0,\"load\":0,\"compile\":44.5,\"graph\":1.5,\"finish\":3.600000023841858,\"reused\":false,\"active\":true,\"backend\":\"webgpu\",\"scale\":2,\"sceneUpdateBytes\":2702548,\"geometryUploadBytes\":0,\"residentProgramHits\":25,\"residentProgramHitBytes\":2698400,\"posePrepareMs\":48.300000071525574,\"documentMs\":0,\"translationMs\":48.300000071525574,\"patchSession\":true,\"affectedNodes\":6,\"compileStats\":{\"builds\":61,\"bytes\":5921556,\"cameraResidency\":{\"bytes\":0,\"entries\":0,\"evictions\":0,\"restores\":0},\"entries\":49,\"fragmentBuilds\":10,\"fragmentHits\":8,\"frameScene\":{\"bytes\":7160649,\"compilations\":3,\"imageAllocationHits\":0,\"imageTransferHits\":0,\"limit\":2147483648,\"limitSource\":\"trusted-host-memory\",\"sameRequestHits\":0,\"semanticBytes\":4337536,\"semanticHits\":68},\"hits\":86,\"marginIndexBytes\":60376,\"marginIndexNodes\":277,\"pathNodes\":6891,\"prepareReuses\":2,\"preparedNodes\":240,\"residentStrokes\":{\"builds\":1838,\"bytes\":5896110,\"entries\":1838,\"hits\":51},\"retainedNodes\":234,\"textPaths\":{\"bytes\":11684805,\"entries\":410,\"hits\":12170,\"limit\":16777216},\"worldSupportBytes\":1398988},\"fieldUploadBytes\":0,\"groupBytes\":39258976,\"prefixHits\":0,\"fieldHits\":0,\"checkpointMs\":0,\"fieldMs\":0,\"drawCalls\":20,\"passPixels\":304165,\"textureBytes\":187325224},{\"total\":52.299999952316284,\"prepare\":0,\"load\":0,\"compile\":45.60000002384186,\"graph\":1.5,\"finish\":2.5999999046325684,\"reused\":false,\"active\":true,\"backend\":\"webgpu\",\"scale\":2,\"sceneUpdateBytes\":2708879,\"geometryUploadBytes\":0,\"residentProgramHits\":25,\"residentProgramHitBytes\":2698400,\"posePrepareMs\":47.60000002384186,\"documentMs\":0,\"translationMs\":47.60000002384186,\"patchSession\":true,\"affectedNodes\":6,\"compileStats\":{\"builds\":67,\"bytes\":5921556,\"cameraResidency\":{\"bytes\":0,\"entries\":0,\"evictions\":0,\"restores\":0},\"entries\":49,\"fragmentBuilds\":11,\"fragmentHits\":16,\"frameScene\":{\"bytes\":7168462,\"compilations\":4,\"imageAllocationHits\":0,\"imageTransferHits\":0,\"limit\":2147483648,\"limitSource\":\"trusted-host-memory\",\"sameRequestHits\":0,\"semanticBytes\":4337536,\"semanticHits\":99},\"hits\":129,\"marginIndexBytes\":60376,\"marginIndexNodes\":277,\"pathNodes\":6891,\"prepareReuses\":3,\"preparedNodes\":240,\"residentStrokes\":{\"builds\":1838,\"bytes\":5896110,\"entries\":1838,\"hits\":51},\"retainedNodes\":234,\"textPaths\":{\"bytes\":11684805,\"entries\":410,\"hits\":13428,\"limit\":16777216},\"worldSupportBytes\":1398988},\"fieldUploadBytes\":0,\"groupBytes\":39258976,\"prefixHits\":0,\"fieldHits\":0,\"checkpointMs\":0,\"fieldMs\":0,\"drawCalls\":20,\"passPixels\":311257,\"textureBytes\":187325224},{\"total\":56.89999997615814,\"prepare\":0,\"load\":0,\"compile\":47.5,\"graph\":1.5,\"finish\":5.299999952316284,\"reused\":false,\"active\":true,\"backend\":\"webgpu\",\"scale\":2,\"sceneUpdateBytes\":2708879,\"geometryUploadBytes\":0,\"residentProgramHits\":25,\"residentProgramHitBytes\":2698400,\"posePrepareMs\":49.60000002384186,\"documentMs\":0,\"translationMs\":49.60000002384186,\"patchSession\":true,\"affectedNodes\":6,\"compileStats\":{\"builds\":73,\"bytes\":5921556,\"cameraResidency\":{\"bytes\":0,\"entries\":0,\"evictions\":0,\"restores\":0},\"entries\":49,\"fragmentBuilds\":12,\"fragmentHits\":24,\"frameScene\":{\"bytes\":7176275,\"compilations\":5,\"imageAllocationHits\":0,\"imageTransferHits\":0,\"limit\":2147483648,\"limitSource\":\"trusted-host-memory\",\"sameRequestHits\":0,\"semanticBytes\":4337536,\"semanticHits\":130},\"hits\":172,\"marginIndexBytes\":60376,\"marginIndexNodes\":277,\"pathNodes\":6891,\"prepareReuses\":4,\"preparedNodes\":240,\"residentStrokes\":{\"builds\":1838,\"bytes\":5896110,\"entries\":1838,\"hits\":51},\"retainedNodes\":234,\"textPaths\":{\"bytes\":11684805,\"entries\":410,\"hits\":14686,\"limit\":16777216},\"worldSupportBytes\":1398988},\"fieldUploadBytes\":0,\"groupBytes\":39258976,\"prefixHits\":0,\"fieldHits\":0,\"checkpointMs\":0,\"fieldMs\":0,\"drawCalls\":20,\"passPixels\":312439,\"textureBytes\":187325224},{\"total\":57.200000047683716,\"prepare\":0,\"load\":0,\"compile\":47,\"graph\":1.2999999523162842,\"finish\":6.5,\"reused\":false,\"active\":true,\"backend\":\"webgpu\",\"scale\":2,\"sceneUpdateBytes\":2702548,\"geometryUploadBytes\":0,\"residentProgramHits\":25,\"residentProgramHitBytes\":2698400,\"posePrepareMs\":48.799999952316284,\"documentMs\":0,\"translationMs\":48.799999952316284,\"patchSession\":true,\"affectedNodes\":6,\"compileStats\":{\"builds\":79,\"bytes\":5921556,\"cameraResidency\":{\"bytes\":0,\"entries\":0,\"evictions\":0,\"restores\":0},\"entries\":49,\"fragmentBuilds\":13,\"fragmentHits\":32,\"frameScene\":{\"bytes\":7176275,\"compilations\":6,\"imageAllocationHits\":0,\"imageTransferHits\":0,\"limit\":2147483648,\"limitSource\":\"trusted-host-memory\",\"sameRequestHits\":0,\"semanticBytes\":4337536,\"semanticHits\":167},\"hits\":215,\"marginIndexBytes\":60376,\"marginIndexNodes\":277,\"pathNodes\":6891,\"prepareReuses\":5,\"preparedNodes\":240,\"residentStrokes\":{\"builds\":1838,\"bytes\":5896110,\"entries\":1838,\"hits\":51},\"retainedNodes\":234,\"textPaths\":{\"bytes\":11684805,\"entries\":410,\"hits\":15944,\"limit\":16777216},\"worldSupportBytes\":1398988},\"fieldUploadBytes\":0,\"groupBytes\":39258976,\"prefixHits\":0,\"fieldHits\":0,\"checkpointMs\":0,\"fieldMs\":0,\"drawCalls\":20,\"passPixels\":312439,\"textureBytes\":187325224},{\"total\":53.10000002384186,\"prepare\":0,\"load\":0,\"compile\":46,\"graph\":1.5,\"finish\":2.799999952316284,\"reused\":false,\"active\":true,\"backend\":\"webgpu\",\"scale\":2,\"sceneUpdateBytes\":2708879,\"geometryUploadBytes\":0,\"residentProgramHits\":25,\"residentProgramHitBytes\":2698400,\"posePrepareMs\":47.89999997615814,\"documentMs\":0,\"translationMs\":47.89999997615814,\"patchSession\":true,\"affectedNodes\":6,\"compileStats\":{\"builds\":85,\"bytes\":5921556,\"cameraResidency\":{\"bytes\":0,\"entries\":0,\"evictions\":0,\"restores\":0},\"entries\":49,\"fragmentBuilds\":14,\"fragmentHits\":40,\"frameScene\":{\"bytes\":7184088,\"compilations\":7,\"imageAllocationHits\":0,\"imageTransferHits\":0,\"limit\":2147483648,\"limitSource\":\"trusted-host-memory\",\"sameRequestHits\":0,\"semanticBytes\":4337536,\"semanticHits\":198},\"hits\":258,\"marginIndexBytes\":60376,\"marginIndexNodes\":277,\"pathNodes\":6891,\"prepareReuses\":6,\"preparedNodes\":240,\"residentStrokes\":{\"builds\":1838,\"bytes\":5896110,\"entries\":1838,\"hits\":51},\"retainedNodes\":234,\"textPaths\":{\"bytes\":11684805,\"entries\":410,\"hits\":17202,\"limit\":16777216},\"worldSupportBytes\":1398988},\"fieldUploadBytes\":0,\"groupBytes\":39258976,\"prefixHits\":0,\"fieldHits\":0,\"checkpointMs\":0,\"fieldMs\":0,\"drawCalls\":20,\"passPixels\":313621,\"textureBytes\":187325224},{\"total\":239.29999995231628,\"prepare\":0,\"load\":0,\"compile\":44.799999952316284,\"graph\":1.4000000953674316,\"finish\":3,\"reused\":false,\"active\":false,\"backend\":\"webgpu\",\"scale\":2,\"sceneUpdateBytes\":2702548,\"geometryUploadBytes\":0,\"residentProgramHits\":25,\"residentProgramHitBytes\":2698400,\"posePrepareMs\":234.5,\"documentMs\":0,\"translationMs\":234.39999997615814,\"patchSession\":true,\"affectedNodes\":6,\"compileStats\":{\"builds\":91,\"bytes\":5921556,\"cameraResidency\":{\"bytes\":0,\"entries\":0,\"evictions\":0,\"restores\":0},\"entries\":49,\"fragmentBuilds\":15,\"fragmentHits\":48,\"frameScene\":{\"bytes\":7184088,\"compilations\":8,\"imageAllocationHits\":0,\"imageTransferHits\":0,\"limit\":2147483648,\"limitSource\":\"trusted-host-memory\",\"sameRequestHits\":0,\"semanticBytes\":4337536,\"semanticHits\":235},\"hits\":301,\"marginIndexBytes\":60376,\"marginIndexNodes\":277,\"pathNodes\":6891,\"prepareReuses\":7,\"preparedNodes\":240,\"residentStrokes\":{\"builds\":1838,\"bytes\":5896110,\"entries\":1838,\"hits\":51},\"retainedNodes\":234,\"textPaths\":{\"bytes\":11684805,\"entries\":410,\"hits\":18460,\"limit\":16777216},\"worldSupportBytes\":1398988},\"fieldUploadBytes\":0,\"groupBytes\":39258976,\"prefixHits\":0,\"fieldHits\":0,\"checkpointMs\":0,\"fieldMs\":0,\"drawCalls\":20,\"passPixels\":313621,\"textureBytes\":187325224},{\"total\":51.5,\"prepare\":0,\"load\":0,\"compile\":43.700000047683716,\"graph\":1.5,\"finish\":4.400000095367432,\"reused\":false,\"active\":false,\"backend\":\"webgpu\",\"scale\":2,\"sceneUpdateBytes\":2702548,\"geometryUploadBytes\":0,\"residentProgramHits\":25,\"residentProgramHitBytes\":2698400,\"posePrepareMs\":44.89999997615814,\"documentMs\":0,\"translationMs\":44.89999997615814,\"patchSession\":true,\"affectedNodes\":6,\"compileStats\":{\"builds\":97,\"bytes\":5921556,\"cameraResidency\":{\"bytes\":0,\"entries\":0,\"evictions\":0,\"restores\":0},\"entries\":49,\"fragmentBuilds\":16,\"fragmentHits\":56,\"frameScene\":{\"bytes\":7184088,\"compilations\":9,\"imageAllocationHits\":0,\"imageTransferHits\":0,\"limit\":2147483648,\"limitSource\":\"trusted-host-memory\",\"sameRequestHits\":0,\"semanticBytes\":4337536,\"semanticHits\":272},\"hits\":344,\"marginIndexBytes\":60376,\"marginIndexNodes\":277,\"pathNodes\":6891,\"prepareReuses\":8,\"preparedNodes\":240,\"residentStrokes\":{\"builds\":1838,\"bytes\":5896110,\"entries\":1838,\"hits\":51},\"retainedNodes\":234,\"textPaths\":{\"bytes\":11684805,\"entries\":410,\"hits\":19718,\"limit\":16777216},\"worldSupportBytes\":1398988},\"fieldUploadBytes\":0,\"groupBytes\":39258976,\"prefixHits\":0,\"fieldHits\":0,\"checkpointMs\":0,\"fieldMs\":0,\"drawCalls\":20,\"passPixels\":313621,\"textureBytes\":187325224}]",
+            "interactionInputPreparation": "[]",
+            "residentAttached": "true",
+            "residentAttachmentReason": "attached",
+            "deviceWorkerScope": "100306708051529",
+            "deviceIncarnation": "1",
+            "deviceOwner": "2",
+            "deviceScope": "2",
+            "deviceCounterMask": "15",
+            "devicePendingCaptures": "0",
+            "devicePendingCapturePayloadBytes": "0",
+            "devicePendingReadbacks": "0",
+            "deviceLogicalPayloadBytes": "56913460",
+            "deviceRetiringPayloadBytes": "11710080",
+            "coverageDeferred": "0",
+            "backgroundCoverage": "0",
+            "diagnosticSequence": "62",
+            "submittedEpoch": "1793432197982.1",
+            "gridVisible": "false",
+            "dpr": "2",
+            "coverageMeasured": "false",
+            "compositorFrames": "63",
+            "compositorTransformUploadBytes": "0",
+            "compositorUploads": "0",
+            "compositorCaptures": "54",
+            "compositorBytes": "56913460",
+            "compositorOverlayBytes": "2327092",
+            "compositorTiles": "42",
+            "compositorDraws": "16",
+            "linearBlend": "false",
+            "missingTextureCount": "0",
+            "coverageDeferredDraws": "1",
+            "backgroundDecline": "2",
+            "backgroundDensitySources": "0",
+            "backgroundPhaseError": "0"
+          }
+        ],
+        "status": [
+          "WebGPU · 清晰"
+        ]
+      }
+    }
+  ],
+  "errors": [],
+  "mode": "pixels",
+  "navigationSelection": "root",
+  "stage": "drag-inside",
+  "sourceUnchanged": true
+}

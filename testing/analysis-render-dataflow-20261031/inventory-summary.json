@@ -1,0 +1,28 @@
+{
+  "native_and_wasm_compiler": "rustc 1.96.1",
+  "source_nodes": 124447,
+  "node_inline_mib": 242.11109161376953,
+  "network_capacity_mib": 135.57830810546875,
+  "listed_payload_lower_bound_mib": 505.4911937713623,
+  "text_style_presence": 0.02438789203436001,
+  "box_textstyle_estimated_slot_and_payload_delta_bytes": 27172008,
+  "clone_isolated": [
+    {
+      "clone_round": 0,
+      "clone_ms": 581.128459,
+      "drop_ms": 200.753917
+    },
+    {
+      "clone_round": 1,
+      "clone_ms": 169.219125,
+      "drop_ms": 80.218042
+    },
+    {
+      "clone_round": 2,
+      "clone_ms": 171.91691600000001,
+      "drop_ms": 62.71320800000001
+    }
+  ],
+  "native_public_field_sizes_sum": 2007,
+  "native_node_size": 2040
+}

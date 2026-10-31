@@ -1,0 +1,93 @@
+{
+  "box": [
+    1408,
+    908,
+    1488,
+    932
+  ],
+  "shiftedBox": [
+    1424,
+    908,
+    1504,
+    932
+  ],
+  "shiftDevicePixels": 16,
+  "samePositionChanged": true,
+  "translatedPixelsEqual": false,
+  "uniqueSourceColors": 197,
+  "shiftComparison": {
+    "best": [
+      [
+        11.760069444444444,
+        15,
+        -1,
+        221.0
+      ],
+      [
+        40.283680555555556,
+        16,
+        -1,
+        242.0
+      ],
+      [
+        40.47430555555555,
+        14,
+        -1,
+        242.0
+      ],
+      [
+        41.000347222222224,
+        15,
+        -2,
+        255.0
+      ],
+      [
+        42.536458333333336,
+        15,
+        0,
+        255.0
+      ],
+      [
+        53.353125,
+        14,
+        -2,
+        255.0
+      ],
+      [
+        53.69756944444445,
+        -2,
+        -1,
+        255.0
+      ],
+      [
+        54.46527777777778,
+        16,
+        -2,
+        255.0
+      ]
+    ],
+    "zero": [
+      74.63940972222223,
+      0,
+      0,
+      255.0
+    ],
+    "sixteen": [
+      54.60989583333333,
+      16,
+      0,
+      255.0
+    ]
+  },
+  "actualCommittedTranslationDevicePixels": [
+    15,
+    -1
+  ],
+  "guideExcludedDifference": {
+    "changedPixels": 204,
+    "totalPixels": 1920,
+    "guidePixels": 0,
+    "nonGuideMax": 221,
+    "nonGuideMean": 11.760069444444444
+  }
+}

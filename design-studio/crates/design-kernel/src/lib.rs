@@ -2308,9 +2308,8 @@ mod wasm {
     }
 
     /// Smart-guide snapping for the canvas move gesture. Rectangles arrive as
-    /// flat [x,y,w,h] world f64 arrays (rounded onto the kernel's integer
-    /// grid); `parent` is the immediate container and `siblings` every other
-    /// snap target on the page, concatenated 4-by-4. Ruler guides participate
+    /// flat [x,y,w,h] world f64 arrays; `parent` is the immediate container and
+    /// `siblings` every other snap target, concatenated 4-by-4. Ruler guides participate
     /// as zero-width/zero-height rectangles. Returns
     /// {"dx":f64,"dy":f64,"guides":[null|{"axis":"x"|"y","position":f64,
     /// "start":f64,"end":f64},…]} and fails closed on malformed input.
@@ -2326,24 +2325,17 @@ mod wasm {
             return fail_closed.to_string();
         };
         let parent = parent.as_deref().and_then(guide_rect);
-        let targets: Vec<math::Rect> = siblings.chunks(4).filter_map(guide_rect).collect();
-        let snap = smart_guides::snap(moving, parent, &targets, threshold);
+        let targets: Vec<_> = siblings.chunks(4).filter_map(guide_rect).collect();
+        let snap = smart_guides::snap_world(moving, parent, &targets, threshold);
         guide_json(snap)
     }
 
-    fn guide_rect(flat: &[f64]) -> Option<math::Rect> {
+    fn guide_rect(flat: &[f64]) -> Option<smart_guides::WorldRect> {
             let v: [f64; 4] = flat.try_into().ok()?;
-            if !v.iter().all(|n| n.is_finite()) {
+            if !v.iter().all(|n| n.is_finite()) || v[2]<0. || v[3]<0. {
                 return None;
             }
-            let w = v[2].round().max(0.) as u32;
-            let h = v[3].round().max(0.) as u32;
-            Some(math::Rect::new(
-                v[0].round() as i32,
-                v[1].round() as i32,
-                w,
-                h,
-            ))
+            Some(smart_guides::WorldRect{x:v[0],y:v[1],w:v[2],h:v[3]})
     }
 
     fn guide_json(snap: smart_guides::Snap) -> String {
@@ -2360,6 +2352,7 @@ mod wasm {
             "dx": snap.dx,
             "dy": snap.dy,
             "guides": [guide(snap.guides[0]), guide(snap.guides[1])],
+            "targetSpans": snap.target_spans,
         })
         .to_string()
     }
@@ -2372,7 +2365,7 @@ mod wasm {
         pub fn new(parent: Option<Vec<f64>>, siblings: &[f64]) -> SmartGuidesIndex {
             let parent=parent.as_deref().and_then(guide_rect);
             let targets:Vec<_>=siblings.chunks(4).filter_map(guide_rect).collect();
-            Self {inner:smart_guides::Index::new(parent,&targets)}
+            Self {inner:smart_guides::Index::new_world(parent,&targets)}
         }
         pub fn snap(&self,moving:&[f64],threshold:f64)->String {
             guide_json(guide_rect(moving).map(|r|self.inner.snap(r,threshold)).unwrap_or_default())
