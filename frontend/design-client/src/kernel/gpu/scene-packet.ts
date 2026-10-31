@@ -6,6 +6,30 @@ import { FrameResources, frameResource, type FrameResource, type ResourceLease }
 import {segmentedWitness,type CompilationWitness} from '../compilation-witness'
 const decoded=new WeakMap<Uint8Array,GpuScene>()
 const witnesses=new WeakMap<Uint8Array,CompilationWitness>()
+type PacketTransportStats = Readonly<{scenePacketProtocol:number;scenePacketVersion:number;
+  scenePacketBytes:number;scenePacketMetadataBytes:number;scenePacketResourceBytes:number}>
+
+/** CPU-only handoff after resource validation. Unlike a transport packet this
+ * cannot be posted to another process: it holds the materialized scene and its
+ * exact witness, without retaining/copying already-owned resource bodies. */
+export class CompiledScenePacket {
+  private constructor(readonly scene: GpuScene, readonly witness: CompilationWitness,
+    readonly transport: PacketTransportStats) { Object.freeze(this) }
+  static from(bytes: Uint8Array, independent: boolean) {
+    let scene=decodeScenePacket(bytes),witness=scenePacketWitness(bytes)
+    const h=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength)
+    if(independent){
+      const start=Math.ceil((24+h.getUint32(8,true))/4)*4,nv=h.getUint32(12,true),nc=h.getUint32(16,true)
+      const geometry=bytes.slice(start,start+(nv+nc)*4)
+      scene={...scene,vertices:new Float32Array(geometry.buffer,0,nv),curves:new Float32Array(geometry.buffer,nv*4,nc)}
+      bindSourcePrograms(scene)
+      witness=witness instanceof Uint8Array?witness.slice():segmentedWitness([witness.parts[0],geometry])
+    }
+    return new CompiledScenePacket(scene,witness,Object.freeze({scenePacketProtocol:2,scenePacketVersion:h.getUint32(4,true),
+      scenePacketBytes:bytes.length,scenePacketMetadataBytes:h.getUint32(8,true),scenePacketResourceBytes:h.getUint32(20,true)}))
+  }
+}
+export type ScenePacket = Uint8Array | CompiledScenePacket
 function immutable<T>(value:T):T {
   if(value&&typeof value==='object'&&!Object.isFrozen(value)) {
     for(const child of Object.values(value))immutable(child)
@@ -15,7 +39,11 @@ function immutable<T>(value:T):T {
 }
 /** FGSC is the only production packet. Resource references are materialized
  * before acknowledgement, while the precise request lease is still alive. */
-export function decodeScenePacket(input:Uint8Array,store?:FrameResources,lease?:ResourceLease):GpuScene {
+export function decodeScenePacket(input:ScenePacket,store?:FrameResources,lease?:ResourceLease):GpuScene {
+  if(input instanceof CompiledScenePacket){
+    if(store||lease)throw Error('Prepared scene has already consumed its resource lease')
+    return input.scene
+  }
   const known=decoded.get(input);if(known)return known
   const bytes=input.byteOffset%4||!(input.buffer instanceof ArrayBuffer)?input.slice():input as Uint8Array<ArrayBuffer>
   if(bytes.length<24)throw Error('Truncated GPU scene packet')
@@ -91,7 +119,7 @@ export function decodeScenePacket(input:Uint8Array,store?:FrameResources,lease?:
   witnesses.set(input,witness)
   return scene
 }
-export function scenePacketWitness(bytes:Uint8Array){return witnesses.get(bytes)||bytes}
+export function scenePacketWitness(bytes:ScenePacket){return bytes instanceof CompiledScenePacket?bytes.witness:witnesses.get(bytes)||bytes}
 
 /** Coalesced consumers get independent program storage; immutable native node
  * resources may be shared, exactly as their frame leases already permit. */

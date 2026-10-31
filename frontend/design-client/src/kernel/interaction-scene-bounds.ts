@@ -40,6 +40,9 @@ export type InteractionDependencyScope = {
   parentLinear: Map<string, number[]>
   parentMatrices?: Map<string, Matrix>
   localizedBounds: Set<string>
+  /** Simple leaves need no large speculative travel reserve. Semantic bounds
+   * and capture-expansion checks are still identical to other localized edits. */
+  shortTravelBounds: Set<string>
   fixedBounds: Set<string>
   dependencyPadding: number
   /** The strict final-foreground proof, not generic authored localization. */
@@ -92,7 +95,7 @@ export function buildInteractionDependencyScope(document: DesignDocument, pageId
   entries: readonly SceneEntry[], selection: readonly string[],
   { zoom, dpr, allowFixedBackdrop }: { zoom: number; dpr: number; allowFixedBackdrop: boolean }): InteractionDependencyScope {
   const scope: InteractionDependencyScope = { rootBounds: new Map(), parentLinear: new Map(), parentMatrices: new Map(),
-    localizedBounds: new Set(), fixedBounds: new Set(), dependencyPadding: 0, finalForeground: false }
+    localizedBounds: new Set(), shortTravelBounds: new Set(), fixedBounds: new Set(), dependencyPadding: 0, finalForeground: false }
   // Bound propagation through all backdrop filters conservatively. This
   // is computed once per scene, not once per pointer sample.
   scope.dependencyPadding = pageBackdropPadding(document,entries)
@@ -126,6 +129,10 @@ export function buildInteractionDependencyScope(document: DesignDocument, pageId
       .map(entry => paddedBounds(document, entry))
     scope.rootBounds.set(id, unionBounds(affected))
     scope.localizedBounds.add(id)
+    if (!selected.children.length && ['text', 'rectangle', 'ellipse'].includes(selected.kind) &&
+        !selected.repeat && !selected.textPath && !selected.network && !selected.vectorGeometry &&
+        !selected.effects.some(effect => effect.visible) && !selected.strokes.some(stroke => stroke.visible) &&
+        selected.fills.every(paint => !paint.visible || paint.kind === 'solid')) scope.shortTravelBounds.add(id)
   }
   // A nested edit cannot escape a fixed, clipped page root. Capture
   // that complete dependency scope even when it has background blur;

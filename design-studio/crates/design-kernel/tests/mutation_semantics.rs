@@ -29,21 +29,9 @@ fn resolve(d: &Document) -> Document {
 #[test]
 fn bound_vector_dimensions_resize_geometry_and_curves_across_modes_reload() {
     let mut d = fixture("vector");
-    d.nodes
-        .get_mut("n")
-        .unwrap()
-        .network
-        .as_mut()
-        .unwrap()
-        .edges[0]
+    std::sync::Arc::make_mut(d.nodes.get_mut("n").unwrap().network.as_mut().unwrap()).edges[0]
         .c1 = Some(serde_json::from_value(json!({"x":3,"y":0})).unwrap());
-    d.nodes
-        .get_mut("n")
-        .unwrap()
-        .network
-        .as_mut()
-        .unwrap()
-        .edges[0]
+    std::sync::Arc::make_mut(d.nodes.get_mut("n").unwrap().network.as_mut().unwrap()).edges[0]
         .c2 = Some(serde_json::from_value(json!({"x":7,"y":0})).unwrap());
     let s = d.design_system.as_mut().unwrap();
     s.collections

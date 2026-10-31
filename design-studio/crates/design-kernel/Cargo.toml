@@ -7,6 +7,10 @@ publish.workspace = true
 [lib]
 crate-type = ["rlib", "cdylib"]
 
+[features]
+default = []
+native-sonic-json = ["dep:sonic-rs"]
+
 [dependencies]
 serde.workspace = true
 serde_json = { workspace = true, features = ["raw_value"] }
@@ -34,6 +38,9 @@ miniz_oxide.workspace = true
 # Keep the same digest and portable fallback; WASM/x86 dependencies unchanged.
 [target.'cfg(target_arch = "aarch64")'.dependencies]
 sha2 = { workspace = true, features = ["asm"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+sonic-rs = { version = "=0.5.10", optional = true, default-features = false }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen.workspace = true

@@ -25,3 +25,17 @@ export function tilePrepareViewport(tiles: readonly RasterTile[], view: { x: num
     throw Error('Invalid tile prepare viewport: it must cover every requested tile')
   return requested
 }
+
+/** A small density tile can contain thousands of world-space objects. Keep
+ * the optional preparation window local for large minified display scenes.
+ * This changes no output crop, sample phase, halo or admission limit. */
+export function localDisplayPrepareScope(nodes:number,scale:number,display:boolean) {
+  return import.meta.env.VITE_DESIGN_LOCAL_PREPARE_SCOPE!=='0'&&display&&nodes>=3000&&Number.isFinite(scale)&&scale>0&&scale<=.5
+}
+export function tileLocalPrepareViewport(tile:RasterTile,view:{x:number;y:number},shared:Rect|undefined,local:boolean) {
+  if(!shared||!local)return shared
+  // Validate the original request before selecting the current crop. A local
+  // optimization must not turn a malformed or incomplete guard into success.
+  tilePrepareViewport([tile],view,shared)
+  return tilePrepareViewport([tile],view)
+}

@@ -9,7 +9,7 @@ import { VectorEngine } from '../generated/design-kernel/design_kernel'
 // Frozen inline localization logic from the tested pre-refactor renderer.
 function reference(document: DesignDocument, selection: string[], zoom: number, dpr: number, allowFixedBackdrop: boolean) {
   const pageId = document.pages[0].id, entries = scene(document, pageId)
-  const scope: InteractionDependencyScope = { rootBounds: new Map(), parentLinear: new Map(), localizedBounds: new Set(), fixedBounds: new Set(), dependencyPadding: 0, finalForeground: false }
+  const scope: InteractionDependencyScope = { rootBounds: new Map(), parentLinear: new Map(), localizedBounds: new Set(), shortTravelBounds: new Set(), fixedBounds: new Set(), dependencyPadding: 0, finalForeground: false }
   // Bound propagation through all backdrop filters conservatively. This
   // is computed once per scene, not once per pointer sample.
   scope.dependencyPadding = pageBackdropPadding(document,entries)

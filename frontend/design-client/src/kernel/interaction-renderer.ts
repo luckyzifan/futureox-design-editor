@@ -20,10 +20,11 @@ import { KernelClient, type KernelOptions, type KernelResult } from './client'
 import type { BackendPreference } from './gpu/types'
 import type { CompositeItem, CompositeTile } from './gpu/tile-compositor'
 import { interactionOffsets, interactionPatchedDocument, interactionPatchedOffsets, interactionPatchedTransforms, interactionAffineEligible, interactionPoseMatrices, interactionTransformsOnly, InteractionLayerPlanner,
-  type GpuMoveControl, type InteractionPlan, type InteractionProps } from './interaction-layers'
+  type GpuMoveControl, type InteractionPlan, type InteractionProps, type InteractionInput } from './interaction-layers'
 
 let serial = -1
 type ResidentInteraction = {
+  held?: {plan:InteractionPlan;offsets?:Map<string,{x:number;y:number}>;parentLinear?:Map<string,number[]>;visibleBounds?:Bounds;blend:boolean}
   sampleOrder?: number
   displayedOffsets?: Map<string, {x:number;y:number}>
   plan: InteractionPlan; tiles: CompositeTile[]; scale: number;
@@ -42,6 +43,7 @@ type ResidentInteraction = {
     ids: ReadonlySet<string>; geometryValid?: boolean; overlay?: { uiIdentity:string; sourceCommands:CanvasOverlay; commands:CanvasOverlay };
     checkedDocument?: DesignDocument; checkedValid?: boolean }
   localizedBounds?: Set<string>
+  shortTravelBounds?: Set<string>
   fixedBounds?: Set<string>
   finalForeground?: boolean
   captureBounds?: Bounds
@@ -85,6 +87,21 @@ export class InteractionRenderer {
   private pendingDensity?: Parameters<InteractionRenderer['prepare']>
   private resident?: ResidentInteraction
   private readonly layerPlanner = new InteractionLayerPlanner()
+  private readonly poseTopology=new WeakMap<InteractionPlan,readonly string[]>()
+  private samePoseTopology(plan:InteractionPlan,document:DesignDocument){
+    if(plan.document===document)return true
+    const before=plan.document
+    if(before.id!==document.id)return false
+    let ids=this.poseTopology.get(plan)
+    if(!ids){
+      const parents=new Map<string,string>();for(const n of Object.values(before.nodes))for(const child of n.children)parents.set(child,n.id)
+      const chain=new Set<string>();for(const id of plan.ids){let at:string|undefined=id;while(at&&!chain.has(at)){chain.add(at);at=parents.get(at)}}
+      ids=[...chain];this.poseTopology.set(plan,ids)
+    }
+    for(const id of ids){const a=before.nodes[id],b=document.nodes[id];if(!a||!b||a.children.length!==b.children.length||a.children.some((child,i)=>child!==b.children[i]))return false}
+    const a=before.pages.find(p=>p.id===plan.pageId),b=document.pages.find(p=>p.id===plan.pageId)
+    return !!a&&!!b&&a.children.length===b.children.length&&a.children.every((id,i)=>id===b.children[i])
+  }
   private neutralPageCandidates = new WeakMap<ResidentInteraction,{viewportRevision:number;plan:InteractionPlan|null}>()
   private props?: InteractionProps
   private disposed = false
@@ -113,7 +130,7 @@ export class InteractionRenderer {
   private idleWarmCapture?: IdleWarmContext
   private idleWarmAttempt?: IdleWarmContext
   private idleWarmFailed?: IdleWarmContext
-  private inputs = new WeakMap<DesignDocument,{sequence:number;at:number}>()
+  private inputs = new WeakMap<DesignDocument,InteractionInput>()
   private failedGesture = false
   private feedbackDeferred = false
   private readonly feedbackOwners = new WeakMap<DesignDocument, object>()
@@ -130,8 +147,8 @@ export class InteractionRenderer {
   }
   private clearPoseFeedback(reason:number) { this.poseEndSequence=undefined;this.pendingPresentedInput=undefined;this.poseEvent(6,reason);this.poseRetiredThrough=this.lastInput.sequence;this.poseRetiredReason=reason;this.poseFeedback.clear();this.poseDocumentGeneration++ }
   private readonly poseFeedback = new PoseFeedback()
-  private lastInput = {sequence:0,at:0}
-  private lastPresentedInput = {sequence:0,at:0}
+  private lastInput: InteractionInput = {sequence:0,at:0}
+  private lastPresentedInput: InteractionInput = {sequence:0,at:0}
   // The worker's synchronous presenter ACK precedes its sample notification.
   // Retain only the newest proven frame ACK, not another document or input queue.
   private pendingPresentedInput?: { sequence:number;at:number;generation:number;resident:ResidentInteraction;owner:object;slot?:number }
@@ -198,6 +215,7 @@ export class InteractionRenderer {
     this.poseLog=poseDiagnostics??createPoseDiagnostics(this.interactionOwner)
     this.control = {
       isActive: () => !!this.resident?.active,
+      guidesInSurface: () => !!this.sharedClient,
       blocksCanvasRefinement:(document,ids,view)=>{
         const r=this.resident,v=this.viewport
         return !!this.sharedClient&&!!r&&r.active&&!r.live&&!r.affine&&!this.error&&!this.endedDocument&&!this.handoff&&
@@ -205,7 +223,7 @@ export class InteractionRenderer {
           r.tiles.length===r.plan.layers.length&&r.tiles.length>0&&r.tiles.every(tile=>!!tile.gpuTile&&tile.zoom>=view.zoom*v.dpr)&&
           this.sameIds(ids)&&!!this.baseOffsets(r.plan,document)
       },
-      apply: (document, patches, trace) => {
+      apply: (document, patches, trace, guides) => {
         const inputStarted=performance.now()
         const committedHandoff=!!this.endedDocument||!!this.handoff
         this.endedDocument = undefined
@@ -251,7 +269,7 @@ export class InteractionRenderer {
         r.active = true; this.moves++
         if(import.meta.env.VITE_DESIGN_RETAINED_INPUT_PRIORITY==='1'&&newGesture&&this.viewport&&
             this.control.blocksCanvasRefinement?.(document,r.plan.ids,this.viewport.view))this.sharedClient?.cancelPreview('canvas')
-        this.lastInput={sequence:this.moves,at:performance.now()}
+        this.lastInput={sequence:this.moves,at:performance.now(),guides:guides?.slice(0,2).map(g=>({...g}))}
         if(this.poseLog.enabled){this.poseActions.bind(this.moves,trace);this.poseEndSequence=this.moves}
         if(this.latestCandidate)this.inputs.set(this.latestCandidate,this.lastInput)
         if (!r.live && !retainedRebase) this.lastPresentedInput = this.lastInput
@@ -290,9 +308,10 @@ export class InteractionRenderer {
         const matrix = affine ? interactionPoseMatrices(Object.fromEntries(r.plan.ids.map(id => [id, document.nodes[id].transform])),
           transforms, r.parentMatrices)?.get(id) : undefined
         const offset = { x: m[0] * dx + m[2] * dy, y: m[1] * dx + m[3] * dy, ...(matrix ? { matrix } : {}) }
-        const deferred = !!r.live || retainedRebase || this.desktopRetainedTranslation(r)
-        if (deferred) this.poseFeedback.submit(this.lastInput.sequence, offset, this.feedbackOwner(document))
-        this.feedbackDeferred = deferred
+        // Even an integer retained move crosses the compositor queue. Chrome
+        // must follow the accepted draw, not the requested pointer position.
+        this.poseFeedback.submit(this.lastInput.sequence, offset, this.feedbackOwner(document))
+        this.feedbackDeferred = true
         this.poseEvent(1)
         return offset
       },
@@ -303,6 +322,8 @@ export class InteractionRenderer {
       inputSequence: () => this.lastInput.sequence,
       previewFailure: () => this.error ? 1 : 0,
       end: document => {
+        this.lastInput={...this.lastInput,guides:undefined}
+        this.lastPresentedInput={...this.lastPresentedInput,guides:undefined}
         // Diagnostic-only provenance: consume the last accepted apply once.
         // Reset/retirement clears eligibility; never read a newer Canvas action.
         const endPatch=this.poseLog.enabled?this.latestPatch:undefined
@@ -561,10 +582,10 @@ export class InteractionRenderer {
       this.cancelIdleWarmTimer(); this.idleWarmCapture = undefined
     }
     if (cameraChanged && this.resident?.live) {
-      if (!props?.active && !this.resident.active && (this.liveRunning || this.livePending)) {
-        // Idle selection warm-up must not finish an obsolete camera ahead of
-        // current canvas tiles. Keep any completed resident, but retire only
-        // this owner's in-flight capture and defer retry until a real gesture.
+      if (this.liveRunning || this.livePending) {
+        // Active captures have the same camera ownership as idle ones. A
+        // completed old crop cannot replace the current pose after zoom/pan.
+        // Keep completed pixels while this owner's obsolete work unwinds.
         this.nextGeneration()
         this.livePending = this.liveRequested = undefined
         this.pending = undefined; this.pendingDensity = undefined
@@ -652,6 +673,13 @@ export class InteractionRenderer {
       this.handoff = undefined
       this.endedDocument = undefined
     }
+    if (!props.active && (props.navigating || cameraChanged) && samePolicy && r?.live &&
+        r.plan.pageId === pageId && r.plan.document.id === props.document.id && this.sameIds(props.selection)) {
+      // A release handoff may keep r.active solely to retain visible pixels.
+      // It is not an object gesture and must not recapture every new camera.
+      this.cancelIdleWarmTimer(); this.liveDeferred = true
+      return
+    }
     if(navigationPriority&&!props.active&&(!r?.active||this.endedDocument===props.document)&&
         (props.navigating||performance.now()-this.lastNavigationAt<100)){
       // A cached exact viewport may be ready between wheel samples. That does
@@ -670,7 +698,7 @@ export class InteractionRenderer {
       }
       return
     }
-    if (r?.live && (this.liveCancelled || this.liveDeferred) && (props.active || r.active) && samePolicy && r.plan.pageId === pageId &&
+    if (r?.live && (this.liveCancelled || this.liveDeferred) && props.active && samePolicy && r.plan.pageId === pageId &&
         props.document.id === r.plan.document.id && this.sameIds(props.selection)) {
       // A deferred or cancelled capture has no reusable pixels even when its authored
       // object and density are unchanged. Retry for an active gesture before
@@ -696,11 +724,27 @@ export class InteractionRenderer {
     const needsViewport = !!capture && !!viewport && (viewport.x < capture.x || viewport.y < capture.y ||
       viewport.x + viewport.width > capture.x + capture.width || viewport.y + viewport.height > capture.y + capture.height)
     if (r && samePolicy && r.plan.pageId === pageId && this.sameIds(props.selection)) {
+      if(r.live&&props.active&&props.document.id===r.plan.document.id&&!this.samePoseTopology(r.plan,props.document)){
+        // A structural pointer preview needs a fresh pose owner immediately.
+        // Freeze the last complete capture at its old placement while the new
+        // capture is pending; never apply new parent matrices to those pixels.
+        const held=r.held||{plan:r.plan,offsets:r.live?r.displayedOffsets:r.offsets,parentLinear:r.parentLinear,visibleBounds:r.visibleBounds,blend:!r.live||!!r.retainedFallback}
+        this.nextGeneration();if(r.tiles[0]?.gpuTile)this.sharedClient?.stopResidentInteraction(r.tiles[0].gpuTile)
+        this.latestPatch=undefined;this.latestCandidate=undefined;this.patchBase=undefined;this.affineBase=undefined
+        this.livePending=undefined;this.liveRequested=undefined;this.pending=undefined;this.pendingDensity=undefined
+        r.held=r.tiles.length?held:undefined;r.plan={document:props.document,pageId,ids:[...props.selection],layers:[]}
+        r.offsets=new Map(props.selection.map(id=>[id,{x:0,y:0}]))
+        r.workerPoses=false;r.retainedFallback=false;r.displayedOffsets=undefined;r.displayedTransforms=undefined;r.overlayCapture=undefined;r.affineEligible=undefined;r.captureBounds=undefined
+        this.inlineDisabled=true
+        const entries=props.scene?.entriesFor(props.document,pageId,props.epoch)??scene(props.document,pageId)
+        Object.assign(r,buildInteractionDependencyScope(props.document,pageId,entries,props.selection,{zoom:view.zoom,dpr,allowFixedBackdrop:!r.affine}))
+        this.liveAuthored=props.document;this.renderLive(props.document);props.onReady();this.changed();return
+      }
       if (r.live && props.document.id === r.plan.document.id && (props.active || r.active && settledDocument !== props.document)) {
         r.active = true
         // Imperative pointer updates precede the authored commit. A React
         // repaint must not enqueue the old authored position over newer input.
-        if (this.liveAuthored !== props.document || cameraChanged) { this.liveAuthored = props.document; this.renderLive(cameraChanged?(this.candidateDocument()||props.document):props.document) }
+        if (props.active && (this.liveAuthored !== props.document || cameraChanged)) { this.liveAuthored = props.document; this.renderLive(cameraChanged?(this.candidateDocument()||props.document):props.document) }
         return
       }
       const candidate = r.active && this.latestPatch?.document === props.document ? this.candidateDocument() : undefined
@@ -899,16 +943,16 @@ export class InteractionRenderer {
   items(view: CanvasCamera): CompositeItem[] | null {
     const r = this.resident
     if (!r?.active || !r.tiles.length) return null
-    if (r.live && !r.retainedFallback && (r.sampleOrder ?? -1) < this.completePageOrder) { this.traceHandoff(6,4,r.sampleOrder);return null }
+    if (r.live && !r.retainedFallback && !r.held?.blend && (r.sampleOrder ?? -1) < this.completePageOrder) { this.traceHandoff(6,4,r.sampleOrder);return null }
     return r.tiles.map((tile, i) => {
-      const offsets = r.retainedFallback ? r.displayedOffsets : r.offsets
-      const moving=(!r.live || r.retainedFallback) && r.plan.layers[i]?.moving
-      const local=moving ? offsets?.get(moving) : undefined, parent=moving && r.parentLinear?.get(moving)
+      const offsets = r.held?r.held.offsets:r.retainedFallback ? r.displayedOffsets : r.offsets
+      const moving=r.held?r.held.blend&&r.held.plan.layers[i]?.moving:(!r.live || r.retainedFallback) && r.plan.layers[i]?.moving
+      const local=moving ? offsets?.get(moving) : undefined, parent=moving && (r.held?r.held.parentLinear:r.parentLinear)?.get(moving)
       const offset=local&&parent ? {x:parent[0]*local.x+parent[2]*local.y,y:parent[1]*local.x+parent[3]*local.y} : local
       const scale = view.zoom / tile.zoom
-      return { tile, active: true, layer: i, gutter: tile.gutter ?? 0, blend: !r.live || !!r.retainedFallback,
-        ...(r.live && !r.retainedFallback && r.visibleBounds ? {clip:{left:r.visibleBounds.x*view.zoom+view.x,top:r.visibleBounds.y*view.zoom+view.y,
-          width:r.visibleBounds.width*view.zoom,height:r.visibleBounds.height*view.zoom}} : {}),
+      const clip=r.held?r.held.blend?undefined:r.held.visibleBounds:r.live&&!r.retainedFallback?r.visibleBounds:undefined
+      return { tile, active: true, layer: i, gutter: tile.gutter ?? 0, blend: r.held?r.held.blend:!r.live || !!r.retainedFallback,
+        ...(clip ? {clip:{left:clip.x*view.zoom+view.x,top:clip.y*view.zoom+view.y,width:clip.width*view.zoom,height:clip.height*view.zoom}} : {}),
         placement: { ...tilePlacementAtView(tile,view),
           left: (tile.x-(tile.phaseX||0)) * scale + view.x + (offset?.x || 0) * view.zoom,
           top: (tile.y-(tile.phaseY||0)) * scale + view.y + (offset?.y || 0) * view.zoom } }
@@ -954,6 +998,7 @@ export class InteractionRenderer {
 
   overlay(overlay:CanvasOverlay):CanvasOverlay|undefined {
     const r=this.resident
+    if(r?.held)return undefined
     if(!r?.active||!overlay.transforms)return overlay
     // The GPU worker applies the last completed pose, not the latest pointer
     // input, for an inline live scene.
@@ -984,6 +1029,7 @@ export class InteractionRenderer {
   }
 
   acceptPresentedInput(sequence: number, at = performance.now(), ownerMatches=true, framePresented=true, presentedSlots?: readonly number[]) {
+    if(this.resident?.held || this.resident?.live && this.inlineDisabled){this.poseEvent(4,9,sequence);return}
     if(!framePresented){this.poseEvent(4,4,sequence);return}
     this.poseEvent(3,0,sequence)
     if(!ownerMatches){this.poseEvent(4,1,sequence);return}
@@ -1013,12 +1059,12 @@ export class InteractionRenderer {
     if(reason||!offset){this.poseEvent(4,reason||3,sequence);return}
     if(this.pendingPresentedInput && this.pendingPresentedInput.sequence<=sequence)this.pendingPresentedInput=undefined
     this.poseEvent(8,0,sequence)
-    this.props!.onPosePresented?.({ sequence, offset, document: this.liveAuthored!, epoch: this.props!.epoch, latencyMs: Math.max(0, performance.now() - at) })
+    this.props!.onPosePresented?.({ sequence, offset, document: this.liveAuthored!, epoch: this.props!.epoch, control:this.control, latencyMs: Math.max(0, performance.now() - at) })
   }
 
-  acceptResidentSample(sample:{slot:number;sequence:number;at:number;total?:number;compileMs?:number;nativePose?:boolean;graphMs?:number;finishMs?:number;groupHits?:number;sceneUpdateBytes?:number;geometryUploadBytes?:number;residentProgramHits?:number;residentProgramHitBytes?:number;posePrepareMs?:number;documentMs?:number;translationMs?:number;patchSession?:boolean;affectedNodes?:number;passTimings?:unknown[];compileStats?:Record<string,unknown>;fieldUploadBytes?:number;groupBytes?:number;prefixHits?:number;fieldHits?:number;checkpointMs?:number;fieldMs?:number;drawCalls?:number;passPixels?:number;textureBytes?:number;bounds?:Bounds;needsRebase?:boolean;expandCapture?:boolean;signature?:string}) {
+  acceptResidentSample(sample:{slot:number;sequence:number;at:number;guides?:InteractionInput['guides'];total?:number;compileMs?:number;nativePose?:boolean;graphMs?:number;finishMs?:number;groupHits?:number;sceneUpdateBytes?:number;geometryUploadBytes?:number;residentProgramHits?:number;residentProgramHitBytes?:number;posePrepareMs?:number;documentMs?:number;translationMs?:number;patchSession?:boolean;affectedNodes?:number;passTimings?:unknown[];compileStats?:Record<string,unknown>;fieldUploadBytes?:number;groupBytes?:number;prefixHits?:number;fieldHits?:number;checkpointMs?:number;fieldMs?:number;drawCalls?:number;passPixels?:number;textureBytes?:number;bounds?:Bounds;needsRebase?:boolean;expandCapture?:boolean;signature?:string}, accepted?:()=>void) {
     const resident=this.resident
-    if(this.disposed||!resident?.live||resident.tiles[0]?.gpuTile!==sample.slot){this.poseEvent(4,this.disposed?6:9,sample.sequence);return}
+    if(this.disposed||!resident?.live||resident.held||this.inlineDisabled||!resident.workerPoses||resident.tiles[0]?.gpuTile!==sample.slot){this.poseEvent(4,this.disposed?6:9,sample.sequence);return}
     this.poseEvent(2,0,sample.sequence,1)
     if(sample.needsRebase){
       this.poseEvent(4,10,sample.sequence)
@@ -1027,7 +1073,10 @@ export class InteractionRenderer {
       this.renderLive(this.candidateDocument()||this.props!.document);return
     }
     if(sample.sequence>this.lastInput.sequence||sample.sequence<=this.lastPresentedInput.sequence){this.poseEvent(4,7,sample.sequence);return}
-    this.lastPresentedInput={sequence:sample.sequence,at:sample.at}
+    this.lastPresentedInput={sequence:sample.sequence,at:sample.at,guides:sample.guides}
+    // Update presentation dedup only after this owner accepts the sample and
+    // before notifying chrome/repainting. Rejected late samples have no say.
+    accepted?.()
     const pending=this.pendingPresentedInput
     if(pending && sample.sequence>=pending.sequence){
       this.pendingPresentedInput=undefined
@@ -1061,9 +1110,9 @@ export class InteractionRenderer {
     this.liveDeferred = false
     if (this.liveRunning) return
     this.liveRunning = true
-    const token = this.generation, resident = this.resident!
+    const token = this.generation, resident = this.resident!, captureViewport = this.viewportRevision
     const signal = this.sharedClient ? this.captureAbort.signal : undefined
-    const current = () => !this.disposed && token === this.generation && this.resident === resident
+    const current = () => !this.disposed && token === this.generation && this.resident === resident && captureViewport === this.viewportRevision
     let captureSerial = this.recoverySerial, captureHadScope = !!this.recoveryScope
     let captureCause:FailedCaptureCause|undefined, causePhase=0, causeAttempt=0, causeBranch=0
     void (async () => {
@@ -1120,7 +1169,8 @@ export class InteractionRenderer {
             let guard = finalForeground ? pad + Math.max(32 / this.viewport!.view.zoom, bounds.width * .05) :
               localizedDesktop ? pad + Math.max(48 / this.viewport!.view.zoom, bounds.width * .05, bounds.height * .05) :
               pad + Math.max(64, this.viewport ? 96 / this.viewport.view.zoom : 0, bounds.width * .05, bounds.height * .05)
-            if (!finalForeground && !localizedDesktop && this.viewport && resident.plan.ids.every(id => resident.localizedBounds?.has(id))) {
+            const shortTravel = this.profile === 'analytic' && resident.plan.ids.every(id => resident.shortTravelBounds?.has(id))
+            if (!finalForeground && !localizedDesktop && !shortTravel && this.viewport && resident.plan.ids.every(id => resident.localizedBounds?.has(id))) {
               const travelGuard = Math.max(guard, pad + 256 / this.viewport.view.zoom)
               if ((bounds.width + 2 * travelGuard) * (bounds.height + 2 * travelGuard) * resident.scale ** 2 <= 4_194_304)
                 guard = travelGuard
@@ -1221,6 +1271,7 @@ export class InteractionRenderer {
               causePhase=3
               break
             } catch (error) {
+              if (!current()) throw Error('PREVIEW_CANCELLED')
               if(!reduced && !resident.tiledExact && recoverableInteractionBudget(error)){
                 // Keep the previous complete pose until every replacement
                 // tile is ready. The kernel owns backdrop halo and HQ resolve.
@@ -1247,6 +1298,23 @@ export class InteractionRenderer {
             continue
           }
           if (!result || !capturedTiles && !result.gpuTile && !result.bitmap && result.bytes.length !== width * height * 4) throw Error('交互场景像素不完整')
+          let completedOffsets=offsets
+          if(!interactionTransformsOnly(resident.plan,document)){
+            // A reparent/content preview has now produced a complete kernel
+            // capture. Only this completion may become the new pose baseline;
+            // changing it before the await would reinterpret old pixels using
+            // new parent matrices. Keep pending newer captures and their order.
+            resident.plan={document,pageId:resident.plan.pageId,ids:[...resident.plan.ids],layers:[]}
+            resident.affineEligible=undefined
+            completedOffsets=new Map(resident.plan.ids.map(id=>[id,{x:0,y:0}]))
+            resident.offsets=completedOffsets
+            const entries=this.props?.scene?.entriesFor(document,resident.plan.pageId,this.props.epoch)??scene(document,resident.plan.pageId)
+            Object.assign(resident,buildInteractionDependencyScope(document,resident.plan.pageId,entries,resident.plan.ids,
+              {zoom:this.qualityZoom,dpr:this.viewport?.dpr||1,allowFixedBackdrop:!resident.affine}))
+            this.patchBase=undefined;this.affineBase=undefined
+            if(this.latestPatch&&!interactionTransformsOnly(resident.plan,this.latestPatch.document)){this.latestPatch=undefined;this.latestCandidate=undefined}
+            else if(this.latestCandidate&&!interactionTransformsOnly(resident.plan,this.latestCandidate))this.latestCandidate=undefined
+          }
           // Remember a successful budget negotiation. Retrying an oversized
           // capture on every pointer sample discarded the warmed GPU caches.
           // An adaptively reduced gesture sample must not overwrite the full
@@ -1257,10 +1325,11 @@ export class InteractionRenderer {
           this.poseEvent(2,0,input.sequence,2)
           this.lastPresentedInput = input
           this.error = ''
+          resident.held=undefined
           resident.retainedFallback = false
           resident.sampleOrder = sampleOrder
           this.traceHandoff(4,0,sampleOrder,token)
-          resident.displayedOffsets=offsets||undefined
+          resident.displayedOffsets=completedOffsets||undefined
           resident.displayedTransforms = Object.fromEntries(resident.plan.ids.map(id => [id, [...document.nodes[id].transform] as Matrix]))
           resident.workerPoses=!capturedTiles && result.residentInteraction===true
           this.inlineDisabled=false

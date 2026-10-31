@@ -184,24 +184,24 @@ impl LayoutGrid {
 #[serde(rename_all = "camelCase")]
 pub struct Node {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub repeat: Option<crate::repeat::Repeat>,
+    pub repeat: Option<Box<crate::repeat::Repeat>>,
     /// Disposable render-scene selection ownership; never authored or serialized.
     #[serde(skip)]
     pub(crate) repeat_origin: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub vector_brush: Option<crate::vector_brush::VectorBrush>,
+    pub vector_brush: Option<Box<crate::vector_brush::VectorBrush>>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub guides: Vec<RulerGuide>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub text_path: Option<crate::text_path::TextPath>,
+    pub text_path: Option<Box<crate::text_path::TextPath>>,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub path_offset: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub connector: Option<crate::connectors::Connector>,
+    pub connector: Option<Box<crate::connectors::Connector>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub board: Option<BoardContent>,
+    pub board: Option<Box<BoardContent>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub layout_grid: Option<LayoutGrid>,
+    pub layout_grid: Option<Box<LayoutGrid>>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub export_settings: Vec<ExportSetting>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -261,7 +261,7 @@ pub struct Node {
     #[serde(default = "half")]
     pub inner_radius: f64,
     #[serde(default)]
-    pub network: Option<Network>,
+    pub network: Option<std::sync::Arc<Network>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vector_geometry: Option<std::sync::Arc<crate::vector_geometry::VectorGeometry>>,
     #[serde(default)]
@@ -269,7 +269,7 @@ pub struct Node {
     #[serde(default = "font_size")]
     pub font_size: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub text_style: Option<crate::font::TextStyle>,
+    pub text_style: Option<Box<crate::font::TextStyle>>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub text_runs: Vec<crate::font::TextRun>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -279,15 +279,25 @@ pub struct Node {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub constraints: Option<crate::layout::Constraints>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub component: Option<crate::components::Component>,
+    pub component: Option<Box<crate::components::Component>>,
     #[serde(default, skip_serializing_if = "crate::components::is_false")]
     pub component_set: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub component_key: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub instance: Option<crate::components::Instance>,
+    pub instance: Option<Box<crate::components::Instance>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub instance_origin: Option<crate::components::Origin>,
+    pub instance_origin: Option<Box<crate::components::Origin>>,
+}
+impl Node {
+    /// Freeze owned large-element vectors before publishing an immutable
+    /// snapshot. Do this per node while loading/adopting, never by rebuilding
+    /// the whole map or shrinking/growing every pointer-frame draft.
+    pub(crate) fn compact_storage(&mut self) {
+        if self.fills.capacity() > self.fills.len() { self.fills.shrink_to_fit(); }
+        if self.strokes.capacity() > self.strokes.len() { self.strokes.shrink_to_fit(); }
+        if self.effects.capacity() > self.effects.len() { self.effects.shrink_to_fit(); }
+    }
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Paint {
@@ -1623,5 +1633,34 @@ mod layout_grid_tests {
         ] {
             assert!(bad.validate(None).is_err(), "{:?}", bad.axis);
         }
+    }
+}
+
+#[cfg(test)]
+mod storage_layout_tests {
+    use super::*;
+    use std::sync::Arc;
+    #[test]
+    fn shared_network_detaches_only_for_a_real_geometry_write() {
+        let mut source=crate::facet::sample_node("n","vector");source.width=10.;source.height=10.;
+        source.network=Some(serde_json::from_value(serde_json::json!({"vertices":[{"id":"a","x":-0.0,"y":1.25},{"id":"b","x":10,"y":10}],"edges":[{"id":"e","from":"a","to":"b","c1":{"x":1,"y":2}}],"fillRule":"nonzero"})).unwrap());
+        let encoded=serde_json::to_vec(&source).unwrap();let mut copy=source.clone();
+        assert!(Arc::ptr_eq(source.network.as_ref().unwrap(),copy.network.as_ref().unwrap()));
+        crate::mutation::resize(&mut copy,10.,10.);
+        assert!(Arc::ptr_eq(source.network.as_ref().unwrap(),copy.network.as_ref().unwrap()));
+        crate::mutation::resize(&mut copy,20.,30.);
+        assert!(!Arc::ptr_eq(source.network.as_ref().unwrap(),copy.network.as_ref().unwrap()));
+        assert_eq!(serde_json::to_vec(&source).unwrap(),encoded);
+        assert_eq!(copy.network.as_ref().unwrap().vertices[1].x,20.);
+        assert_eq!(copy.network.as_ref().unwrap().vertices[1].y,30.);
+        assert_eq!(copy.network.as_ref().unwrap().vertices[0].x.to_bits(),(-0_f64).to_bits());
+    }
+    #[test]
+    fn frozen_vector_capacity_keeps_wire_values_and_cold_payloads_are_indirect() {
+        let mut n=crate::facet::sample_node("n","rectangle");n.fills.reserve(30);n.effects.reserve(10);n.strokes.reserve(10);
+        let encoded=serde_json::to_vec(&n).unwrap();n.compact_storage();
+        assert_eq!(serde_json::to_vec(&n).unwrap(),encoded);
+        assert_eq!(n.fills.capacity(),n.fills.len());assert_eq!(n.effects.capacity(),0);assert_eq!(n.strokes.capacity(),0);
+        assert!(std::mem::size_of::<Node>()<=1024,"hot Node slots must not regain inline cold payloads: {}",std::mem::size_of::<Node>());
     }
 }

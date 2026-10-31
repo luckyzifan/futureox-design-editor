@@ -1766,12 +1766,12 @@ impl<'a, 'f> Runner<'a, 'f> {
                 width_profile: Vec::new(),
             });
         }
-        node.network = Some(Network {
+        node.network = Some((Network {
             filled_faces: None,
             vertices,
             edges,
             fill_rule: if op.evenodd { "evenodd" } else { "nonzero" }.into(),
-        });
+        }).into());
         self.builder.nodes.insert(id.clone(), node);
         self.children.push(id);
         Ok(())

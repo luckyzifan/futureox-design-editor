@@ -10,33 +10,45 @@ use std::sync::OnceLock;
 /// symbol locator cache never survive a save, undo or source replacement.
 pub(super) struct SketchContext {
     document: Value,
-    symbols: OnceLock<Option<HashMap<String, (usize, usize)>>>,
+    symbols: OnceLock<std::result::Result<super::symbol_index::Symbols,String>>,
+    revision: u64,
+    directory: PathBuf,
 }
 impl SketchContext {
     pub fn new(s: &Session) -> Result<Self> {
-        Ok(Self { document: json_part(s, "document.json")?, symbols: OnceLock::new() })
+        Ok(Self { document: json_part(s, "document.json")?, symbols: OnceLock::new(), revision:s.revision, directory:s.directory.clone() })
     }
-    fn symbol(&self, s: &Session, symbol: &str) -> Option<(usize, usize)> {
+    fn symbol(&self, s: &Session, symbol: &str, cancel:&AtomicBool) -> Result<Option<(usize, usize)>> {
+        check_cancel(cancel).map_err(issue)?;
+        if s.revision!=self.revision || s.directory!=self.directory {return Err(issue("Symbol source revision changed"));}
         let lookup = self.symbols.get_or_init(|| {
-            let mut result = HashMap::new();
-            let mut bytes = 0usize;
+            let count=s.parts.iter().try_fold(0usize,|count,part|count.checked_add(part.index.entries.iter().filter(|e|e.kind=="symbolMaster").count()))
+                .ok_or("Symbol count overflow")?;
+            let mut result=super::symbol_index::Symbols::new(&s.directory,count).map_err(|e|e.to_string())?;
             for (p, part) in s.parts.iter().enumerate() {
+                check_cancel(cancel).map_err(|e|e.to_string())?;
+                let Ok(mut records)=part.index.records(&s.directory) else {continue;};
+                let Ok(mut source)=File::open(s.directory.join(&part.file)) else {continue;};
                 for (n, _) in part.index.entries.iter().enumerate().filter(|(_, e)| e.kind == "symbolMaster") {
-                    let Some(id) = field(s, p, n, "symbolID").ok().and_then(|v| serde_json::from_slice::<String>(&v).ok()) else { continue; };
-                    bytes = bytes.saturating_add(id.len() + 128);
-                    // A huge catalog keeps the original bounded on-demand scan.
-                    if bytes > 4 * 1024 * 1024 { return None; }
-                    result.entry(id).or_insert((p, n));
+                    check_cancel(cancel).map_err(|e|e.to_string())?;
+                    let Ok(record)=records.entry(n) else {continue;};
+                    let Some(span)=record.fields.iter().find(|f|f.key=="symbolID").map(|f|f.value) else {continue;};
+                    let Some(id)=s.state.changes[p].fragment(&mut source,span,part.base_bytes).ok()
+                        .and_then(|bytes|serde_json::from_slice::<String>(&bytes).ok()) else {continue;};
+                    result.insert(id,(p,n),cancel).map_err(|e|e.to_string())?;
                 }
             }
-            Some(result)
+            Ok(result)
         });
-        if let Some(lookup) = lookup { return lookup.get(symbol).copied(); }
-        s.parts.iter().enumerate().find_map(|(p, part)| {
-            part.index.entries.iter().enumerate().filter(|(_, e)| e.kind == "symbolMaster")
-                .find(|(n, _)| field(s, p, *n, "symbolID").ok().and_then(|v| serde_json::from_slice::<String>(&v).ok()).as_deref() == Some(symbol))
-                .map(|(n, _)| (p, n))
-        })
+        let lookup=lookup.as_ref().map_err(issue)?;
+        let found=lookup.get(symbol,cancel).map_err(issue)?;
+        if lookup.on_disk() {if let Some((p,n))=found {
+            if s.parts.get(p).and_then(|p|p.index.entries.get(n)).is_none_or(|row|row.kind!="symbolMaster") ||
+                field(s,p,n,"symbolID").ok().and_then(|v|serde_json::from_slice::<String>(&v).ok()).as_deref()!=Some(symbol) {
+                return Err(issue("Symbol locator no longer matches its source"));
+            }
+        }}
+        Ok(found)
     }
 }
 
@@ -100,34 +112,92 @@ fn json_part(s: &Session, name: &str) -> Result<Value> {
     )?)
     .map_err(issue)
 }
-fn refs(value: &Value, symbols: &mut HashSet<String>, images: &mut HashSet<String>) {
+#[derive(Default, Debug, PartialEq)]
+struct RootFacts {
+    symbols: HashSet<String>,
+    images: HashSet<String>,
+    has_component: bool,
+    has_private_compatibility: bool,
+}
+impl RootFacts {
+    fn scan(root: &Value) -> Self {
+        // References occur in arbitrary metadata. Admission flags belong only
+        // to layer objects reached through actual `layers` arrays. Keep that
+        // distinction even for malformed nested arrays and unknown fields.
+        #[derive(Clone, Copy)]
+        enum Context { Layer, Layers, Other }
+        // Retain the original parser-bounded recursion depth instead of
+        // allocating a breadth-sized stack for wide source trees.
+        fn visit(value: &Value, context: Context, result: &mut RootFacts) {
+            match value {
+                Value::Object(map) => {
+                    let class = map.get("_class").and_then(Value::as_str);
+                    if class == Some("symbolInstance") {
+                        if let Some(id) = map.get("symbolID").and_then(Value::as_str) { result.symbols.insert(id.into()); }
+                    }
+                    if let Some(reference) = map.get("_ref").and_then(Value::as_str).filter(|r| r.starts_with("images/")) {
+                        result.images.insert(reference.into());
+                    }
+                    let layer = matches!(context, Context::Layer);
+                    if layer {
+                        result.has_component |= class == Some("symbolMaster");
+                        result.has_private_compatibility |= value.pointer("/userInfo/com.futureox.design-kernel").is_some();
+                    }
+                    for (key, value) in map {
+                        visit(value, if layer && key == "layers" && value.is_array() { Context::Layers } else { Context::Other }, result);
+                    }
+                }
+                Value::Array(items) => for value in items {
+                    visit(value, if matches!(context, Context::Layers) { Context::Layer } else { Context::Other }, result);
+                },
+                _ => {}
+            }
+        }
+        let mut result = Self::default();
+        visit(root, Context::Layer, &mut result);
+        result
+    }
+    fn policy(&self) -> Option<bool> {
+        (!self.has_private_compatibility).then_some(self.has_component || !self.symbols.is_empty())
+    }
+    fn append(&mut self, facts: Self) {
+        self.symbols.extend(facts.symbols); self.images.extend(facts.images);
+        self.has_component |= facts.has_component;
+        self.has_private_compatibility |= facts.has_private_compatibility;
+    }
+}
+fn legacy_refs(value: &Value, symbols: &mut HashSet<String>, images: &mut HashSet<String>) {
     match value {
         Value::Object(map) => {
             if map.get("_class").and_then(Value::as_str) == Some("symbolInstance") {
-                if let Some(id) = map.get("symbolID").and_then(Value::as_str) {
-                    symbols.insert(id.into());
-                }
+                if let Some(id) = map.get("symbolID").and_then(Value::as_str) { symbols.insert(id.into()); }
             }
-            if let Some(reference) = map
-                .get("_ref")
-                .and_then(Value::as_str)
-                .filter(|r| r.starts_with("images/"))
-            {
+            if let Some(reference) = map.get("_ref").and_then(Value::as_str).filter(|r| r.starts_with("images/")) {
                 images.insert(reference.into());
             }
-            for value in map.values() {
-                refs(value, symbols, images)
-            }
+            for value in map.values() { legacy_refs(value, symbols, images); }
         }
-        Value::Array(items) => {
-            for item in items {
-                refs(item, symbols, images)
-            }
-        }
+        Value::Array(items) => for item in items { legacy_refs(item, symbols, images); },
         _ => {}
     }
 }
-fn sketch_projection(s: &Session, p: usize, n: usize) -> Result<(Document, Value, Vec<String>)> {
+fn legacy_policy(root: &Value) -> Option<bool> {
+    let mut symbols = HashSet::new();
+    let mut images = HashSet::new();
+    legacy_refs(root, &mut symbols, &mut images);
+    let mut component = !symbols.is_empty();
+    let mut pending = vec![root];
+    while let Some(layer) = pending.pop() {
+        if layer.pointer("/userInfo/com.futureox.design-kernel").is_some() { return None; }
+        component |= layer.get("_class").and_then(Value::as_str) == Some("symbolMaster");
+        if let Some(children) = layer.get("layers").and_then(Value::as_array) { pending.extend(children); }
+    }
+    Some(component)
+}
+fn legacy_refs_enabled() -> bool {
+    std::env::var("CORE_SOURCE_LEGACY_REFS").is_ok_and(|value| value == "1")
+}
+fn sketch_projection(s: &Session, p: usize, n: usize) -> Result<(Document, Vec<String>)> {
     sketch_window(s, p, n, MAX_FRAGMENT_BYTES)
 }
 pub(super) fn sketch_window(
@@ -135,8 +205,8 @@ pub(super) fn sketch_window(
     p: usize,
     n: usize,
     limit: u64,
-) -> Result<(Document, Value, Vec<String>)> {
-    sketch_window_in(s, p, n, limit, &SketchContext::new(s)?)
+) -> Result<(Document, Vec<String>)> {
+    sketch_window_in(s, p, n, limit, &SketchContext::new(s)?, &AtomicBool::new(false))
 }
 pub(super) fn sketch_window_in(
     s: &Session,
@@ -144,7 +214,9 @@ pub(super) fn sketch_window_in(
     n: usize,
     limit: u64,
     context: &SketchContext,
-) -> Result<(Document, Value, Vec<String>)> {
+    cancel: &AtomicBool,
+) -> Result<(Document, Vec<String>)> {
+    check_cancel(cancel).map_err(issue)?;
     let source_bytes = s.parts[p].index.entries[n].span.len();
     let root: Value =
         serde_json::from_slice(&read_window(s, p, s.parts[p].index.entries[n].span, limit)?)
@@ -157,13 +229,22 @@ pub(super) fn sketch_window_in(
     {
         return Err(issue("Select a layer/subtree for canvas editing"));
     }
-    let (document,warnings)=sketch_roots_in(s,vec![root.clone()],source_bytes,limit,context)?;
-    Ok((document,root,warnings))
+    if legacy_refs_enabled() {
+        let mut facts = RootFacts::default();
+        legacy_refs(&root, &mut facts.symbols, &mut facts.images);
+        return sketch_roots_in(s, vec![root.clone()], facts, source_bytes, limit, context,cancel);
+    }
+    let facts = RootFacts::scan(&root);
+    sketch_roots_in(s, vec![root], facts, source_bytes, limit, context,cancel)
 }
 /// A bounded conversion batch shares archive metadata and dependency decoding.
 /// It is still the same importer and original source, never an editing baseline.
 pub(super) fn sketch_batch_in(s:&Session,locations:&[(usize,usize)],limit:u64,cancel:&AtomicBool,context:&SketchContext)->Result<(Document,Vec<String>)> {
     let mut roots=Vec::new();let mut bytes=0u64;
+    let mut facts = RootFacts::default();
+    let mut first_policy = None;
+    let mut compatible = true;
+    let legacy = legacy_refs_enabled();
     for &(p,n) in locations {
         check_cancel(cancel).map_err(issue)?;
         let span=s.parts[p].index.entries[n].span;
@@ -173,6 +254,21 @@ pub(super) fn sketch_batch_in(s:&Session,locations:&[(usize,usize)],limit:u64,ca
         if root.get("do_objectID").and_then(Value::as_str).is_none() || matches!(root.get("_class").and_then(Value::as_str),None|Some("page"|"document")) {
             return Err(issue("Select a layer/subtree for canvas editing"));
         }
+        let root_facts = if legacy {
+            let policy = legacy_policy(&root);
+            if roots.is_empty() { first_policy = policy; }
+            compatible &= policy.is_some() && policy == first_policy;
+            let mut facts = RootFacts::default();
+            legacy_refs(&root, &mut facts.symbols, &mut facts.images);
+            facts
+        } else {
+            let facts = RootFacts::scan(&root);
+            let policy = facts.policy();
+            if roots.is_empty() { first_policy = policy; }
+            compatible &= policy.is_some() && policy == first_policy;
+            facts
+        };
+        facts.append(root_facts);
         roots.push(root);
     }
     if roots.is_empty(){return Err(issue("Empty source conversion batch"));}
@@ -181,34 +277,22 @@ pub(super) fn sketch_batch_in(s:&Session,locations:&[(usize,usize)],limit:u64,ca
         // window. Mixing independent plain roots with component roots would
         // add keys that their original singleton conversion did not have.
         // Unknown private compatibility semantics keep the singleton path.
-        fn policy(root:&Value)->Option<bool>{
-            let mut symbols=HashSet::new();let mut images=HashSet::new();refs(root,&mut symbols,&mut images);
-            let mut component=!symbols.is_empty();let mut pending=vec![root];
-            while let Some(layer)=pending.pop(){
-                if layer.pointer("/userInfo/com.futureox.design-kernel").is_some(){return None;}
-                component|=layer.get("_class").and_then(Value::as_str)==Some("symbolMaster");
-                if let Some(children)=layer.get("layers").and_then(Value::as_array){pending.extend(children);}
-            }
-            Some(component)
-        }
-        let first=policy(&roots[0]);
-        if first.is_none()||roots.iter().skip(1).any(|root|policy(root)!=first){return Err(issue("Source batch requires independent component admission"));}
+        if !compatible { return Err(issue("Source batch requires independent component admission")); }
     }
-    sketch_roots_in(s,roots,bytes,limit,context)
+    sketch_roots_in(s,roots,facts,bytes,limit,context,cancel)
 }
-fn sketch_roots_in(s:&Session,roots:Vec<Value>,mut source_bytes:u64,limit:u64,context:&SketchContext)->Result<(Document,Vec<String>)> {
+fn sketch_roots_in(s:&Session,roots:Vec<Value>,facts:RootFacts,mut source_bytes:u64,limit:u64,context:&SketchContext,cancel:&AtomicBool)->Result<(Document,Vec<String>)> {
     let mut document = context.document.clone();
-    let mut symbols = HashSet::new();
-    let mut images = HashSet::new();
-    for root in &roots { refs(root, &mut symbols, &mut images); }
+    let RootFacts { symbols, mut images, .. } = facts;
     let mut masters = BTreeMap::new();
     let mut unresolved = symbols;
     while let Some(symbol) = unresolved.iter().next().cloned() {
+        check_cancel(cancel).map_err(issue)?;
         unresolved.remove(&symbol);
         if masters.contains_key(&symbol) {
             continue;
         }
-        let found = if let Some((p, n)) = context.symbol(s, &symbol) {
+        let found = if let Some((p, n)) = context.symbol(s, &symbol,cancel)? {
                     let entry = &s.parts[p].index.entries[n];
                     source_bytes = source_bytes.saturating_add(entry.span.len());
                     if source_bytes > limit {
@@ -220,7 +304,8 @@ fn sketch_roots_in(s:&Session,roots:Vec<Value>,mut source_bytes:u64,limit:u64,co
                     )
         } else { None };
         if let Some(master) = found {
-            refs(&master, &mut unresolved, &mut images);
+            let facts = RootFacts::scan(&master);
+            unresolved.extend(facts.symbols); images.extend(facts.images);
             masters.insert(symbol, master);
         }
         // Embedded foreign masters are already retained in document.json and
@@ -265,7 +350,7 @@ fn sketch_roots_in(s:&Session,roots:Vec<Value>,mut source_bytes:u64,limit:u64,co
     let report = interop::import_sketch_source_parts(&entries,&json!({"version":136}),&document,&pages).map_err(issue)?;
     Ok((report.document, report.warnings))
 }
-fn json_projection(s: &Session, p: usize, n: usize) -> Result<(Document, Value, Vec<String>)> {
+fn json_projection(s: &Session, p: usize, n: usize) -> Result<(Document, Vec<String>)> {
     let entry = &s.parts[p].index.entries[n];
     let nodes_span = s.parts[p]
         .index
@@ -334,7 +419,7 @@ fn json_projection(s: &Session, p: usize, n: usize) -> Result<(Document, Value, 
     }
     let document: Document = serde_json::from_value(value).map_err(issue)?;
     document.validate().map_err(issue)?;
-    Ok((document, json!({}), Vec::new()))
+    Ok((document, Vec::new()))
 }
 pub(super) fn project(s: &mut Session, request: Request) -> Result<Value> {
     let (p, n) = location(s, request.key.as_deref())?;
@@ -343,7 +428,7 @@ pub(super) fn project(s: &mut Session, request: Request) -> Result<Value> {
         .as_deref()
         .filter(|id| identity(id))
         .ok_or_else(|| issue("Missing working-set identity"))?;
-    let (mut document, _root, warnings) = if s.format == "sketch" {
+    let (mut document, warnings) = if s.format == "sketch" {
         sketch_projection(s, p, n)?
     } else {
         json_projection(s, p, n)?
@@ -1074,6 +1159,40 @@ pub(super) fn commit_canvas(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn single_root_scan_preserves_reference_and_layer_only_policy_scopes() {
+        fn refs(value: &Value, symbols: &mut HashSet<String>, images: &mut HashSet<String>) {
+            match value {
+                Value::Object(map) => {
+                    if map.get("_class").and_then(Value::as_str) == Some("symbolInstance") {
+                        if let Some(id) = map.get("symbolID").and_then(Value::as_str) { symbols.insert(id.into()); }
+                    }
+                    if let Some(id) = map.get("_ref").and_then(Value::as_str).filter(|id| id.starts_with("images/")) { images.insert(id.into()); }
+                    for value in map.values() { refs(value, symbols, images); }
+                }
+                Value::Array(values) => for value in values { refs(value, symbols, images); },
+                _ => {}
+            }
+        }
+        for source in [
+            json!({"_class":"group","layers":[{"_class":"symbolInstance","symbolID":"a","image":{"_ref":"images/a"}}],"metadata":{"_class":"symbolInstance","symbolID":"b","_ref":"images/b"}}),
+            json!({"_class":"group","metadata":{"_class":"symbolMaster","userInfo":{"com.futureox.design-kernel":{}}}}),
+            json!({"_class":"group","layers":[{"_class":"symbolMaster"}]}),
+            json!({"_class":"group","layers":[{"userInfo":{"com.futureox.design-kernel":null}}]}),
+            json!({"_class":"group","layers":[[{"_class":"symbolMaster","userInfo":{"com.futureox.design-kernel":{}}}]]}),
+        ] {
+            let (mut symbols, mut images) = (HashSet::new(), HashSet::new()); refs(&source, &mut symbols, &mut images);
+            let mut component = !symbols.is_empty(); let mut private = false; let mut pending = vec![&source];
+            while let Some(layer) = pending.pop() {
+                private |= layer.pointer("/userInfo/com.futureox.design-kernel").is_some();
+                component |= layer.get("_class").and_then(Value::as_str) == Some("symbolMaster");
+                if let Some(children) = layer.get("layers").and_then(Value::as_array) { pending.extend(children); }
+            }
+            let actual = RootFacts::scan(&source);
+            assert_eq!(actual.symbols, symbols); assert_eq!(actual.images, images);
+            assert_eq!(actual.policy(), (!private).then_some(component));
+        }
+    }
     #[test]
     fn source_point_edits_keep_normalized_units_unknown_fields_and_inactive_handles() {
         let original=br#"{"_class":"shapePath","do_objectID":"n","frame":{"width":20,"height":10},"points":[{"_class":"curvePoint","point":"{0, 0}","hasCurveFrom":false,"hasCurveTo":false,"curveFrom":"{99, 88}","private":-0.0},{"_class":"curvePoint","point":"{1, 0}","hasCurveFrom":false,"hasCurveTo":false,"curveFrom":"{77, 66}","private":123}]}"#;

@@ -1295,10 +1295,10 @@ mod tests {
     #[test]
     fn replacement_preserves_nested_json_signed_zero() {
         let mut source: Document = serde_json::from_str(&document_json()).unwrap();
-        source.nodes.get_mut("f1").unwrap().instance = Some(crate::components::Instance {
+        source.nodes.get_mut("f1").unwrap().instance = Some(Box::new(crate::components::Instance {
             slot_contents: Default::default(), component_id: "source".into(), overrides: Default::default(),
             property_values: [("nested".into(), serde_json::from_str(r#"{"items":[0.0]}"#).unwrap())].into(),
-        });
+        }));
         let before = serde_json::to_string(&source).unwrap();
         let mut api = GraphApi::new(&before).unwrap();
         source.nodes.get_mut("f1").unwrap().instance.as_mut().unwrap().property_values

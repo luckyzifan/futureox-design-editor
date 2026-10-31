@@ -15,6 +15,9 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, atomic::{AtomicBool, AtomicU64, Ordering}},
 };
+mod record_node;
+mod node_json;
+use node_json::Decoder;
 
 const MAGIC: &[u8; 8] = b"FXSCENE4";
 const GEOMETRY_MAGIC: &[u8;8]=b"FXSCENE3";
@@ -125,7 +128,7 @@ struct ImageAddress { node: String, slot: ImageSlot }
 #[serde(deny_unknown_fields)]
 struct ImageReference { slot: ImageSlot, source: ImageAddress }
 #[derive(Serialize)]
-struct NodeRecordRef<'a> { node: Cow<'a, Node>, images: Vec<ImageReference>, #[serde(skip_serializing_if="Option::is_none")] geometry:Option<String>, #[serde(skip_serializing_if="Option::is_none")] vectors:Option<PackedGeometry> }
+struct NodeRecordRef<'a> { #[serde(serialize_with="record_node::without_geometry")] node: Cow<'a, Node>, images: Vec<ImageReference>, #[serde(skip_serializing_if="Option::is_none")] geometry:Option<String>, #[serde(skip_serializing_if="Option::is_none")] vectors:Option<PackedGeometry> }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct NodeRecord { node: Node, images: Vec<ImageReference>, #[serde(default)] geometry:Option<String>, #[serde(default)] vectors:Option<PackedGeometry> }
@@ -147,9 +150,8 @@ fn share_record<'a>(node:&'a Node,seen:&mut HashMap<Arc<str>,ImageAddress>,geome
     let mut record=NodeRecordRef{node:Cow::Borrowed(node),images:Vec::new(),geometry:None,vectors:None};
     if let Some(geometry)=&node.vector_geometry {
         let key=GeometryKey(geometry.clone());
-        if let Some(source)=geometries.get(&key){record.node.to_mut().vector_geometry=None;record.geometry=Some(source.clone());}
+        if let Some(source)=geometries.get(&key){record.geometry=Some(source.clone());}
         else{record.vectors=Some(PackedGeometry::new(geometry).map_err(invalid_owned)?);geometries.insert(key,node.id.clone());}
-        record.node.to_mut().vector_geometry=None;
     }
     for (slot,image) in inline_images(node) {
         if let Some(source)=seen.get(image) {
@@ -167,6 +169,7 @@ fn unpack_record(mut record:NodeRecord)->io::Result<NodeRecord>{
         if record.geometry.is_some()||record.node.vector_geometry.is_some(){return Err(invalid("Ambiguous packed scene geometry"));}
         record.node.vector_geometry=Some(Arc::new(vectors.unpack().map_err(invalid_owned)?));
     }
+    record.node.compact_storage();
     Ok(record)
 }
 fn invalid_owned(message:String)->io::Error{invalid(&message)}
@@ -192,9 +195,9 @@ fn restore_record(mut record:NodeRecord,images:&mut SharedImages,geometries:&mut
     }
     Ok(record.node)
 }
-fn read_node_record(source:impl Read,length:u64,hash:[u8;32],shared:bool,cancel:&AtomicBool)->io::Result<NodeRecord> {
-    if shared {read_json_from(source,length,hash,cancel).and_then(unpack_record)}
-    else {read_json_from(source,length,hash,cancel).map(|node|NodeRecord{node,images:vec![],geometry:None,vectors:None})}
+fn read_node_record(source:impl Read,length:u64,hash:[u8;32],shared:bool,cancel:&AtomicBool,scratch:&mut Vec<u8>,decoder:Decoder)->io::Result<NodeRecord> {
+    if shared {read_json_from(source,length,hash,cancel,scratch,decoder).and_then(unpack_record)}
+    else {read_json_from(source,length,hash,cancel,scratch,decoder).map(|node|NodeRecord{node,images:vec![],geometry:None,vectors:None})}
 }
 
 struct HashWriter<'a, W> {
@@ -257,14 +260,22 @@ fn read_json_from<T: serde::de::DeserializeOwned>(
     length: u64,
     hash: [u8; 32],
     cancel: &AtomicBool,
+    scratch: &mut Vec<u8>,
+    decoder: Decoder,
 ) -> io::Result<T> {
     // Most scene records are small independent nodes. Slice parsing avoids
     // serde_json's byte-by-byte Read adapter without materializing the whole
     // source. Oversized metadata/images retain the bounded streaming reader.
     const SLICE_LIMIT: u64 = 8 * 1024 * 1024;
+    const RETAIN_LIMIT: u64 = 256 * 1024;
     if length <= SLICE_LIMIT {
         check(cancel)?;
-        let mut bytes = Vec::new();
+        // Keep only a small reusable input buffer per Reader. An unusually
+        // large node/image record must not pin megabytes for later tiny reads.
+        // DeserializeOwned ensures no returned node borrows this storage.
+        let mut temporary = Vec::new();
+        let bytes = if length <= RETAIN_LIMIT { scratch } else { &mut temporary };
+        bytes.clear();
         bytes.try_reserve_exact(length as usize).map_err(io::Error::other)?;
         bytes.resize(length as usize, 0);
         for chunk in bytes.chunks_mut(64 * 1024) {
@@ -272,7 +283,7 @@ fn read_json_from<T: serde::de::DeserializeOwned>(
             source.read_exact(chunk)?;
         }
         if sha(&bytes) != hash { return Err(invalid("Scene record content changed")); }
-        let value = serde_json::from_slice(&bytes).map_err(io::Error::other)?;
+        let value = decoder.parse(bytes)?;
         check(cancel)?;
         return Ok(value);
     }
@@ -297,7 +308,7 @@ fn read_json<T: serde::de::DeserializeOwned>(
     cancel: &AtomicBool,
 ) -> io::Result<T> {
     file.seek(SeekFrom::Start(offset))?;
-    read_json_from(file, length, hash, cancel)
+    read_json_from(file, length, hash, cancel, &mut Vec::new(), Decoder::Serde)
 }
 /// Independent cursors over one opened immutable file, without cloning a
 /// platform file cursor or reopening a path that could now refer elsewhere.
@@ -639,6 +650,8 @@ pub struct Reader {
     shared: bool,
     images: SharedImages,
     geometries:SharedGeometry,
+    record_scratch: Vec<u8>,
+    node_decoder: Decoder,
 }
 impl Reader {
     pub fn open(path: &Path, expected: &Descriptor, cancel: &AtomicBool) -> io::Result<Self> {
@@ -694,6 +707,8 @@ impl Reader {
             shared: &magic!=LEGACY_MAGIC,
             images:HashMap::new(),
             geometries:HashMap::new(),
+            record_scratch: Vec::new(),
+            node_decoder: Decoder::configured()?,
         })
     }
     pub fn stats(&self) -> ReadStats {
@@ -785,7 +800,7 @@ impl Reader {
     }
     fn raw_node(&mut self, key:&str,row:Row,cancel:&AtomicBool)->io::Result<NodeRecord> {
         self.file.seek(SeekFrom::Start(row.value_offset))?;
-        let record=read_node_record(&mut self.file,row.value_bytes,row.value_hash,self.shared,cancel)?;
+        let record=read_node_record(&mut self.file,row.value_bytes,row.value_hash,self.shared,cancel,&mut self.record_scratch,self.node_decoder)?;
         if record.node.id!=key {return Err(invalid("Scene node identity changed"));}
         self.stats.node_reads+=1;self.stats.node_bytes=sum(self.stats.node_bytes,row.value_bytes)?;
         Ok(record)
@@ -880,7 +895,7 @@ impl Reader {
             if previous.as_ref().is_some_and(|old: &String| old >= &key) {
                 return Err(invalid("Scene index order changed"));
             }
-            let record=read_node_record(&mut data,row.value_bytes,row.value_hash,self.shared,cancel)?;
+            let record=read_node_record(&mut data,row.value_bytes,row.value_hash,self.shared,cancel,&mut self.record_scratch,self.node_decoder)?;
             let node=restore_record(record,&mut self.images,&mut self.geometries)?;
             if node.id != key {
                 return Err(invalid("Scene node identity changed"));

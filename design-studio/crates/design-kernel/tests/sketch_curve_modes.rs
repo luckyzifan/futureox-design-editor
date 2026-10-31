@@ -77,7 +77,7 @@ fn kernel_doc(net: Network) -> Document {
     path.width = 100.;
     path.height = 100.;
     path.transform = Transform([1., 0., 0., 1., 0., 0.]);
-    path.network = Some(net);
+    path.network = Some(net.into());
     doc.nodes.insert("p1".into(), page);
     doc.nodes.insert("n1".into(), path);
     doc
@@ -499,7 +499,7 @@ fn native_document_round_trips_modes_handles_and_radii() {
          "curveMode":4,"cornerRadius":0.0}
     ]));
     let doc = {
-        let mut d = kernel_doc(node.network.clone().expect("network"));
+        let mut d = kernel_doc(node.network.as_deref().expect("network").clone());
         let target = d.nodes.get_mut("n1").unwrap();
         target.bindings = node.bindings.clone();
         d

@@ -8,7 +8,7 @@ import { renderCpuFrame } from './cpu-frame'
 import { PreparationChannel, type PreparationMethod } from './preparation-channel'
 import { bindContentOwner, pixelSourceContract } from './gpu/page-background'
 import { FrameResources } from './gpu/frame-resources'
-import { decodeScenePacket, copyScenePacket } from './gpu/scene-packet'
+import { decodeScenePacket, copyScenePacket, CompiledScenePacket } from './gpu/scene-packet'
 import { PreparedPacket, waitForPacket } from './prepared-packet'
 export type NativeSourceIdentity={documentId:string;pageId:string;stageId:string;nodes:number}
 
@@ -158,6 +158,9 @@ export class RenderKernel {
     finally { this.pendingMutations-- }
   }
   async compile_gpu_packet(options: string, signal?: AbortSignal) {
+    return this.compileOwned(options,signal,(bytes,shared)=>shared?copyScenePacket(bytes):bytes)
+  }
+  private async compileOwned<T>(options:string,signal:AbortSignal|undefined,own:(bytes:Uint8Array,shared:boolean)=>T):Promise<T> {
     if (signal?.aborted) throw Error('PREVIEW_CANCELLED')
     const enabled = !!this.preparation
     const revision = this.revision
@@ -167,7 +170,7 @@ export class RenderKernel {
       pending.shared = true
       // The first consumer may transfer or mutate its packet immediately.
       // Each waiter needs independent ownership, including before cache admission.
-      return copyScenePacket(await waitForPacket(pending.bytes, signal))
+      return own(await waitForPacket(pending.bytes, signal),true)
     }
     const entry = { revision, bytes: this.compileFrame(options, revision, signal), shared: false }
     // A cancellable physical compile cannot be the shared owner of an exact
@@ -175,10 +178,10 @@ export class RenderKernel {
     if (enabled && !this.pendingMutations && !signal) this.pendingPackets.set(options, entry)
     // Only shared requests need an extra private copy. Never let an old
     // completion remove a newer revision's request under the same key.
-    let bytes: Uint8Array
-    try { const result = await entry.bytes; bytes = entry.shared ? copyScenePacket(result) : result }
+    let value: T
+    try { const result = await entry.bytes; value = own(result,entry.shared) }
     finally { if (this.pendingPackets.get(options) === entry) this.pendingPackets.delete(options) }
-    return bytes
+    return value
   }
   /** A packet may wait outside GPU ownership only with this version receipt.
    * Its bytes have one consumer and admission rechecks the kernel epoch. */
@@ -189,6 +192,14 @@ export class RenderKernel {
     const current = () => revision === this.revision && !this.pendingMutations && settings === this.settings
     if (!current()) throw Error('STALE_PREPARED_PACKET')
     return new PreparedPacket({ lane: this.lane, revision, options, settings }, bytes, current, signal)
+  }
+  async prepare_gpu_scene(options: string, signal?: AbortSignal): Promise<PreparedPacket<CompiledScenePacket>> {
+    if(this.pendingMutations)throw Error('DOCUMENT_PREPARATION_PENDING')
+    const revision=this.revision,settings=this.settings
+    const scene=await this.compileOwned(options,signal,(bytes,shared)=>CompiledScenePacket.from(bytes,shared))
+    const current=()=>revision===this.revision&&!this.pendingMutations&&settings===this.settings
+    if(!current())throw Error('STALE_PREPARED_PACKET')
+    return new PreparedPacket({lane:this.lane,revision,options,settings},scene,current,signal)
   }
   async apply_interaction_transforms(value: string) {
     if (this.lane !== 'interaction') throw Error('Transform-only updates require the interaction lane')

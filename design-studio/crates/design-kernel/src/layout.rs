@@ -368,8 +368,11 @@ fn enforce_stack_layout_invariants(
     frame: &str,
     children_before: &[String],
 ) -> Result<(), String> {
+    enforce_node_layout_invariants(&doc.nodes, frame, children_before)
+}
+fn enforce_node_layout_invariants(nodes: &BTreeMap<String, Node>, frame: &str, children_before: &[String]) -> Result<(), String> {
     let violation = |what: &str| Err(format!("Stack layout invariant violated: {what}"));
-    let f = &doc.nodes[frame];
+    let f = &nodes[frame];
     if f.children != children_before {
         return violation("child order must stay stable across a solve");
     }
@@ -377,7 +380,7 @@ fn enforce_stack_layout_invariants(
         return violation("container size must stay finite and non-negative");
     }
     for id in children_before {
-        let n = &doc.nodes[id];
+        let n = &nodes[id];
         if ![n.width, n.height].iter().all(|v| v.is_finite() && *v >= 0.)
             || n.transform.0.iter().any(|v| !v.is_finite())
         {
@@ -569,20 +572,24 @@ pub fn grid_tracks(doc: &Document, id: &str) -> Result<(Vec<f64>, Vec<f64>), Str
         .filter(|l| l.mode == Flow::Grid)
         .ok_or("Not a grid frame")?
         .clone();
-    grid_with_tracks(&mut doc.clone(), id, &layout)
+    // Grid tracks consume only this frame and its direct children. Keep the
+    // original full admission above, but never clone unrelated islands merely
+    // to answer a read-only overlay query.
+    let mut nodes = n.children.iter().chain(std::iter::once(&n.id))
+        .map(|id| (id.clone(), doc.nodes[id].clone())).collect();
+    grid_node_tracks(&mut nodes, id, &layout)
 }
 
-fn grid_with_tracks(
-    doc: &mut Document,
-    id: &str,
-    l: &Layout,
-) -> Result<(Vec<f64>, Vec<f64>), String> {
-    let children_before = doc.nodes[id].children.clone();
-    let ids: Vec<_> = doc.nodes[id]
+fn grid_with_tracks(doc: &mut Document, id: &str, l: &Layout) -> Result<(Vec<f64>, Vec<f64>), String> {
+    grid_node_tracks(&mut doc.nodes, id, l)
+}
+fn grid_node_tracks(nodes: &mut BTreeMap<String, Node>, id: &str, l: &Layout) -> Result<(Vec<f64>, Vec<f64>), String> {
+    let children_before = nodes[id].children.clone();
+    let ids: Vec<_> = nodes[id]
         .children
         .iter()
         .filter(|id| {
-            let n = &doc.nodes[*id];
+            let n = &nodes[*id];
             n.visible && !n.sizing_value().absolute
         })
         .cloned()
@@ -592,7 +599,7 @@ fn grid_with_tracks(
     let mut cursor = 0;
     let mut work = 0;
     for child in ids {
-        let s = doc.nodes[&child].sizing_value();
+        let s = nodes[&child].sizing_value();
         let span = s.column_span.min(l.columns);
         let rows = s.row_span;
         loop {
@@ -623,32 +630,32 @@ fn grid_with_tracks(
             cursor += 1;
         }
     }
-    let mut sizing = doc.nodes[id].sizing_value();
+    let mut sizing = nodes[id].sizing_value();
     if sizing.width == SizeMode::Hug
         && slots
             .iter()
-            .any(|(id, _, _, _, _)| doc.nodes[id].sizing_value().width == SizeMode::Fill)
+            .any(|(id, _, _, _, _)| nodes[id].sizing_value().width == SizeMode::Fill)
     {
         sizing.width = SizeMode::Fixed;
-        doc.nodes.get_mut(id).unwrap().sizing = Some(sizing.clone());
+        nodes.get_mut(id).unwrap().sizing = Some(sizing.clone());
     }
     if sizing.height == SizeMode::Hug
         && (l.fill_rows
             || slots
                 .iter()
-                .any(|(id, _, _, _, _)| doc.nodes[id].sizing_value().height == SizeMode::Fill))
+                .any(|(id, _, _, _, _)| nodes[id].sizing_value().height == SizeMode::Fill))
     {
         sizing.height = SizeMode::Fixed;
-        doc.nodes.get_mut(id).unwrap().sizing = Some(sizing.clone());
+        nodes.get_mut(id).unwrap().sizing = Some(sizing.clone());
     }
     let intrinsic_col = slots
         .iter()
         .map(|(c, _, _, _, span)| {
-            ((metrics(&doc.nodes[c])[2] - l.gap * (*span - 1) as f64) / *span as f64).max(0.)
+            ((metrics(&nodes[c])[2] - l.gap * (*span - 1) as f64) / *span as f64).max(0.)
         })
         .fold(0., f64::max);
     if sizing.width == SizeMode::Hug {
-        let p = doc.nodes.get_mut(id).unwrap();
+        let p = nodes.get_mut(id).unwrap();
         resize(
             p,
             intrinsic_col * l.columns as f64
@@ -659,13 +666,13 @@ fn grid_with_tracks(
         )
     }
     let cell =
-        ((doc.nodes[id].width - l.padding[1] - l.padding[3] - l.gap * (l.columns - 1) as f64)
+        ((nodes[id].width - l.padding[1] - l.padding[3] - l.gap * (l.columns - 1) as f64)
             / l.columns as f64)
             .max(0.);
     let rows = slots.iter().map(|(_, r, _, h, _)| r + h).max().unwrap_or(0);
     let mut heights = vec![0f64; rows];
     for (child, row, _, span, cols) in &slots {
-        let n = doc.nodes.get_mut(child).unwrap();
+        let n = nodes.get_mut(child).unwrap();
         if n.sizing_value().width == SizeMode::Fill
             || n.sizing_value().align_self.unwrap_or(l.align) == Align::Stretch
         {
@@ -685,12 +692,12 @@ fn grid_with_tracks(
         + l.padding[0]
         + l.padding[2];
     if sizing.height == SizeMode::Hug {
-        let p = doc.nodes.get_mut(id).unwrap();
+        let p = nodes.get_mut(id).unwrap();
         resize(p, p.width, natural)
     }
     if l.fill_rows && rows > 0 {
         let h =
-            ((doc.nodes[id].height - l.padding[0] - l.padding[2] - l.line_gap * (rows - 1) as f64)
+            ((nodes[id].height - l.padding[0] - l.padding[2] - l.line_gap * (rows - 1) as f64)
                 / rows as f64)
                 .max(0.);
         heights.fill(h);
@@ -698,7 +705,7 @@ fn grid_with_tracks(
     for (child, row, col, span, cols) in slots {
         let w = cell * cols as f64 + l.gap * (cols - 1) as f64;
         let h = heights[row..row + span].iter().sum::<f64>() + l.line_gap * (span - 1) as f64;
-        let n = doc.nodes.get_mut(&child).unwrap();
+        let n = nodes.get_mut(&child).unwrap();
         let s = n.sizing_value();
         if s.height == SizeMode::Fill || s.align_self.unwrap_or(l.align) == Align::Stretch {
             fit_axis(n, 1, h)
@@ -721,7 +728,7 @@ fn grid_with_tracks(
             l.padding[0] + heights[..row].iter().sum::<f64>() + row as f64 * l.line_gap + dy,
         );
     }
-    enforce_stack_layout_invariants(doc, id, &children_before)?;
+    enforce_node_layout_invariants(nodes, id, &children_before)?;
     Ok((vec![cell; l.columns], heights))
 }
 fn anchor(position: f64, size: f64, old: f64, new: f64, mode: Anchor) -> (f64, f64) {
@@ -800,7 +807,7 @@ pub struct Patch {
     pub transform: Transform,
     pub width: f64,
     pub height: f64,
-    pub network: Option<crate::scene::Network>,
+    pub network: Option<std::sync::Arc<crate::scene::Network>>,
     pub vector_geometry: Option<std::sync::Arc<crate::vector_geometry::VectorGeometry>>,
     pub sizing: Option<Sizing>,
     pub constraints: Option<Constraints>,
@@ -1606,5 +1613,26 @@ mod measured_truth_tests {
             (doc.nodes["f"].height - 141.).abs() < 1e-9,
             "fixed height must not be re-hugged"
         );
+    }
+}
+
+#[cfg(test)]
+mod grid_read_scope_tests {
+    use super::*;
+    #[test]
+    fn grid_query_matches_full_solve_without_mutating_authored_islands() {
+        let mut frame=crate::facet::sample_node("grid","frame");frame.width=180.;frame.height=160.;
+        frame.layout=Some(Layout{mode:Flow::Grid,columns:2,gap:10.,line_gap:20.,padding:[0.;4],..Layout::default()});
+        let mut nodes=BTreeMap::new();
+        for i in 0..4 {let id=format!("child{i}");let mut n=crate::facet::sample_node(&id,"rectangle");n.width=80.;n.height=50.+i as f64*10.;frame.children.push(id.clone());nodes.insert(id,n);}
+        nodes.insert(frame.id.clone(),frame);
+        let mut cold=crate::facet::sample_node("cold","frame");cold.width=300.;cold.height=200.;nodes.insert(cold.id.clone(),cold);
+        let mut doc:Document=serde_json::from_value(serde_json::json!({"schemaVersion":20,"id":"d","name":"grid","pages":[{"id":"p","name":"p","background":"#ffffff","children":["grid","cold"]}],"nodes":nodes})).unwrap();
+        let original=serde_json::to_vec(&doc).unwrap();let l=doc.nodes["grid"].layout.as_ref().unwrap().clone();
+        let expected=grid_with_tracks(&mut doc.clone(),"grid",&l).unwrap();
+        assert_eq!(grid_tracks(&doc,"grid").unwrap(),expected);
+        assert_eq!(serde_json::to_vec(&doc).unwrap(),original);
+        doc.nodes.get_mut("cold").unwrap().opacity=f64::NAN;
+        assert!(grid_tracks(&doc,"grid").is_err(),"unrelated invalid data still fails original admission");
     }
 }

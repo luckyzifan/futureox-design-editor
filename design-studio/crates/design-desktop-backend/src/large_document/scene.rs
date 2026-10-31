@@ -51,6 +51,20 @@ fn instance_resize_only(
 mod tests {
     use super::*;
     #[test]
+    fn counting_output_preserves_exact_utf8_float_and_escape_sizes() {
+        let value = json!({"text":"中文\n\t\"\\🙂", "floats":[-0.0,1e-200,1e20,0.125],"opaque":{"keep":null}});
+        assert_eq!(serialized_size(&value).unwrap(), serde_json::to_vec(&value).unwrap().len());
+    }
+    #[test]
+    fn dependency_roots_keep_original_order_and_only_skip_incoming_duplicates() {
+        let mut full: Document = serde_json::from_value(json!({"schemaVersion":1,"id":"s","name":"source","pages":[
+            {"id":"p","name":"page","background":"#ffffff","children":[]},
+            {"id":"deps","name":"deps","background":"#ffffff","children":["a","b","a"]}],"nodes":{}})).unwrap();
+        let mut window = full.clone(); window.pages[1].children = vec!["b".into(),"c".into(),"c".into(),"d".into()];
+        merge_window(&mut full, window).unwrap();
+        assert_eq!(full.pages[1].children, ["a","b","a","c","d"]);
+    }
+    #[test]
     fn typed_design_system_merge_matches_the_original_json_merge_and_conflict_rules() {
         use futureox_design_kernel::design_system::DesignSystem;
         let first:DesignSystem=serde_json::from_value(json!({"fontSources":{"n":{"runs":{"0":"source-a"}}},
@@ -147,19 +161,32 @@ fn merge_design_system(a: &mut futureox_design_kernel::design_system::DesignSyst
 // Conservative serialized retention bound. Subtract only the value bytes of
 // exact shared entries; duplicate keys, delimiters and root metadata stay in
 // the bound. Never subtract conflicting references or change memory policy.
+fn serialized_size(value: &impl Serialize) -> Result<usize> {
+    struct Count(usize);
+    impl Write for Count {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.0 = self.0.checked_add(bytes.len()).ok_or_else(|| io::Error::other("Scene byte overflow"))?;
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> io::Result<()> { Ok(()) }
+    }
+    let mut count = Count(0);
+    serde_json::to_writer(&mut count, value).map_err(issue)?;
+    Ok(count.0)
+}
 fn unique_window_bytes(full: &Document, window: &Document, bytes: usize) -> Result<usize> {
     let mut added = bytes;
     for (id, node) in &window.nodes {
         if let Some(old) = full.nodes.get(id) {
             if old != node { return Err(issue("Conflicting source node in page dependency closure")); }
-            added = added.checked_sub(serde_json::to_vec(node).map_err(issue)?.len())
+            added = added.checked_sub(serialized_size(node)?)
                 .ok_or_else(|| issue("Scene byte accounting underflow"))?;
         }
     }
     for (id, font) in &window.fonts {
         if let Some(old) = full.fonts.get(id) {
             if old != font { return Err(issue("Conflicting source font in page dependency closure")); }
-            added = added.checked_sub(serde_json::to_vec(font).map_err(issue)?.len())
+            added = added.checked_sub(serialized_size(font)?)
                 .ok_or_else(|| issue("Scene byte accounting underflow"))?;
         }
     }
@@ -169,9 +196,12 @@ fn unique_window_bytes(full: &Document, window: &Document, bytes: usize) -> Resu
 pub(super) fn merge_window(full: &mut Document, mut doc: Document) -> Result<()> {
     full.schema_version = full.schema_version.max(doc.schema_version);
     full.pages[0].children.append(&mut doc.pages[0].children);
-    for id in &doc.pages[1].children {
-        if !full.pages[1].children.contains(id) {
-            full.pages[1].children.push(id.clone());
+    if !doc.pages[1].children.is_empty() {
+        let mut dependencies: HashSet<_> = full.pages[1].children.iter().cloned().collect();
+        for id in doc.pages[1].children.drain(..) {
+            if dependencies.insert(id.clone()) {
+                full.pages[1].children.push(id);
+            }
         }
     }
     for (id, node) in doc.nodes {
@@ -306,7 +336,7 @@ pub(super) fn build_range(
         for converted in converted {
             check_cancel(cancel).map_err(issue)?;
             let (doc, notes) = converted?;
-            let window_bytes = serde_json::to_vec(&doc).map_err(issue)?.len();
+            let window_bytes = serialized_size(&doc)?;
             capacity::check_document_bytes(window_bytes).map_err(issue)?;
             // Each window includes its shared fonts/component dependencies. Charge
             // their retained values once, while keeping map keys/metadata overhead

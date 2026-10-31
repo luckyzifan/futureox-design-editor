@@ -2,11 +2,13 @@ import { useLayoutEffect, useRef } from 'react'
 import type { CanvasCamera } from '../canvas-camera'
 import { TileCompositor, type CompositeItem } from './gpu/tile-compositor'
 import { InteractionRenderer } from './interaction-renderer'
+import { liveInteractionStack } from './resident-layer-stack'
 import type { InteractionProps } from './interaction-layers'
 import type { DesignDocument } from '../model'
 import type { KernelOptions } from './client'
 import type { BackendPreference } from './gpu/types'
 import type { PresentedFrame } from './Surface'
+import { presentationMatches } from './presentation'
 
 export function TileCompositeSurface({ items, view, width, height, dpr, onReady, onGone, onError, onFailure,
   interaction, pageId, rasterProfile, backend, settledDocument, presentation, onComposited }:
@@ -72,9 +74,26 @@ export function TileCompositeSurface({ items, view, width, height, dpr, onReady,
         renderer.upload(tile); tile.bytes = new Uint8Array(); tile.bitmap?.close(); tile.bitmap = undefined
       }
       const moved = moving?.items(view)
-      const submitted = renderer.draw(moved && moving?.mode === 'live-kernel' ? [...items, ...moved.map(item => ({...item,layer:4}))] : moved || items,
+      const composition = moved && moving?.mode === 'live-kernel' ? liveInteractionStack(items, moved) : moved || items
+      // Imports are a cohort: an incomplete retained layer set is not a new
+      // transparent frame. Keep the last complete backing until it can draw.
+      if (moved && composition.some(item => item.active && !renderer.has(item.tile))) return
+      const submitted = renderer.draw(composition,
         view, width, height, dpr, !!moved && moving?.mode !== 'live-kernel')
-      if (submitted) onComposited?.(presentation || null)
+      if (submitted) {
+        // Publish the camera actually drawn, even between plan generations.
+        // A live pose is a preview; it must not certify the source as exact.
+        const frame = presentation ? { ...presentation, view, width, height, pixelRatio:dpr } : null
+        onComposited?.(frame && { ...frame, preview:!!moved || !!presentation?.preview || !presentationMatches(presentation!, frame) })
+        if (moved && moving) {
+          const input = moving.presentedInput
+          // draw() may run synchronously inside apply(). Let that input finish
+          // registering its feedback before acknowledging this exact draw.
+          queueMicrotask(() => {
+            if (interactionRenderer.current === moving) moving.acceptPresentedInput(input.sequence, input.at)
+          })
+        }
+      }
       if (canvas.current) {
         canvas.current.dataset.interactionReady = String(!!moving?.ready)
         canvas.current.dataset.interactionActive = String(!!moving?.items(view))

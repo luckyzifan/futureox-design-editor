@@ -14,14 +14,14 @@ export type PacketCertificate = Readonly<{ lane: string; revision: number; optio
 /** No device, encoder, texture, or asset decoder is owned by this receipt.
  * Typed-array contents cannot be frozen in JS, so bytes remain private until
  * one validated ownership transfer. Disposal of an obsolete packet is CPU-only. */
-export class PreparedPacket {
+export class PreparedPacket<T = Uint8Array> {
   readonly certificate: PacketCertificate
-  private bytes?: Uint8Array
-  constructor(certificate: PacketCertificate, bytes: Uint8Array, private current: () => boolean, private signal?: AbortSignal) {
+  private bytes?: T
+  constructor(certificate: PacketCertificate, bytes: T, private current: () => boolean, private signal?: AbortSignal) {
     this.certificate = Object.freeze({ ...certificate })
     this.bytes = bytes
   }
-  consume(): Uint8Array {
+  consume(): T {
     if (!this.bytes) throw Error('PREPARED_PACKET_CONSUMED')
     if (this.signal?.aborted) { this.discard(); throw Error('PREVIEW_CANCELLED') }
     if (!this.current()) { this.discard(); throw Error('STALE_PREPARED_PACKET') }

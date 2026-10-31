@@ -25,6 +25,30 @@ vi.mock('./client', () => ({ KernelClient: class {
 
 const owners: InteractionRenderer[] = []
 afterEach(() => { owners.splice(0).forEach(owner => owner.dispose()); worker.jobs.length = 0; worker.poses.length=worker.stops.length=worker.released.length=0;worker.disposed = 0; vi.unstubAllEnvs() })
+test('reparent capture queues new-basis poses while holding old pixels at their original placement',async()=>{
+ const doc=blank(),root=node('frame',0,0,1000,700),a=node('frame',20,30,100,100),b=node('frame',300,150,100,100),child=node('rectangle',10,10,20,20)
+ b.transform=[2,0,0,3,300,150];root.children=[a.id,b.id];a.children=[child.id]
+ doc.nodes=Object.fromEntries([root,a,b,child].map(n=>[n.id,n]));doc.pages[0].children=[root.id]
+ const shared=new KernelClient(),owner=new InteractionRenderer(vi.fn(),shared);owners.push(owner)
+ const props:InteractionProps={document:doc,selection:[child.id],active:true,epoch:1,control:{current:null},onReady:vi.fn()}
+ const view={x:0,y:0,zoom:1},size={width:600,height:500}
+ owner.prepare(props,doc.pages[0].id,view,1,'analytic','webgpu',undefined,size)
+ worker.jobs[0].resolve({gpuTile:501,residentInteraction:true,bytes:new Uint8Array()});await vi.waitFor(()=>expect(owner.ready).toBe(true))
+ const after={...doc,nodes:{...doc.nodes,[a.id]:{...a,children:[]},[b.id]:{...b,children:[child.id]},[child.id]:{...child,transform:[1,0,0,1,10,10] as typeof child.transform}}}
+ const patches={[child.id]:{transform:[1,0,0,1,14,16] as typeof child.transform}}
+ expect(owner.control.apply(after,patches)).toBeNull()
+ const oldItems=owner.items(view)!.map(item=>item.placement)
+ owner.prepare({...props,document:after},doc.pages[0].id,view,1,'analytic','webgpu',undefined,size)
+ expect(worker.jobs).toHaveLength(2);expect(owner.tiles[0].gpuTile).toBe(501)
+ expect(owner.control.apply(after,patches)).toMatchObject({x:8,y:18})
+ expect(owner.items(view)!.map(item=>item.placement)).toEqual(oldItems)
+ const samples=owner.samples;owner.acceptResidentSample({slot:501,sequence:1,at:performance.now()});expect(owner.samples).toBe(samples)
+ expect(worker.poses).toHaveLength(0)
+ worker.jobs[1].resolve({gpuTile:502,residentInteraction:true,bytes:new Uint8Array()});await vi.waitFor(()=>expect(owner.tiles[0].gpuTile).toBe(502))
+ expect(owner.control.apply(after,patches)).toMatchObject({x:8,y:18})
+ expect(worker.poses.at(-1)?.[0]).toBe(502);expect(worker.jobs).toHaveLength(2)
+ expect(owner.control.apply(doc,patches)).toBeNull()
+})
 test('a new complete retained gesture cancels prior canvas repair, including immediate regrab during handoff',async()=>{
  vi.stubEnv('VITE_DESIGN_RETAINED_INPUT_PRIORITY','1')
  const doc=blank(),root=node('frame',0,0,100,100);root.blend='normal';doc.nodes[root.id]=root;doc.pages[0].children=[root.id]

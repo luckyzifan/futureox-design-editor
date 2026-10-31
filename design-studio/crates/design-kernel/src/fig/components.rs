@@ -49,7 +49,7 @@ pub(super) fn import(doc: &mut Document, records: &BTreeMap<String,Value>, impor
             properties.insert(key.clone(),Property {name:str_of(def,"name").unwrap_or(&key).into(),kind,
                 target_key:target.component_key.as_ref().unwrap_or(&target.id).clone(),default_value});
         }
-        doc.nodes.get_mut(id).unwrap().component=Some(Component {properties,..Default::default()});
+        doc.nodes.get_mut(id).unwrap().component=Some((Component {properties,..Default::default()}).into());
     }
     for (id,record) in records.iter().filter(|(_,r)|str_of(r,"type")==Some("INSTANCE")) {
         if !doc.nodes.contains_key(id) {continue;}
@@ -86,7 +86,7 @@ pub(super) fn import(doc: &mut Document, records: &BTreeMap<String,Value>, impor
             }
             overrides.insert(path,fields);
         }
-        doc.nodes.get_mut(id).unwrap().instance=Some(Instance {component_id,overrides,property_values,slot_contents:Default::default()});
+        doc.nodes.get_mut(id).unwrap().instance=Some((Instance {component_id,overrides,property_values,slot_contents:Default::default()}).into());
     }
     Ok(())
 }

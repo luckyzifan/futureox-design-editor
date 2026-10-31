@@ -11,7 +11,7 @@ use std::{
 };
 #[derive(Clone, Default)]
 pub struct Images {
-    cache: HashMap<String, CachedImage>,
+    cache: HashMap<Arc<str>, CachedImage>,
     pixels: usize,
     settings: Option<crate::color::ColorSettings>,
     mips: bool,
@@ -101,7 +101,7 @@ impl Images {
         }
         let mut pixels = 0;
         self.cache.retain(|uri, image| {
-            let keep = referenced.contains(uri.as_str());
+            let keep = referenced.contains(uri.as_ref());
             if keep {
                 pixels += image.resident_pixels();
             }
@@ -206,7 +206,7 @@ impl Images {
                 other => other?,
             };
             self.pixels += count;
-            self.cache.insert(data.to_owned(), CachedImage {
+            self.cache.insert(Arc::from(data), CachedImage {
                 base: Arc::new(surface),
                 chain: Vec::new(),
             });

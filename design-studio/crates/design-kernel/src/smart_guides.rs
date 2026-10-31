@@ -7,6 +7,15 @@
 
 use crate::math::Rect;
 
+/// Snapping uses authored world coordinates, independently of the integer
+/// pixel rectangles used by rasterization. Rounding before the query made
+/// fractional edges and guides jump by whole world units at high zoom.
+#[derive(Clone, Copy, Debug)]
+pub struct WorldRect { pub x:f64, pub y:f64, pub w:f64, pub h:f64 }
+impl From<Rect> for WorldRect {
+    fn from(r:Rect)->Self { Self{x:r.x as f64,y:r.y as f64,w:r.w as f64,h:r.h as f64} }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Axis {
     X,
@@ -29,9 +38,12 @@ pub struct Snap {
     pub dx: f64,
     pub dy: f64,
     pub guides: [Option<Guide>; 2],
+    /// Matched target extent on the perpendicular axis. The UI can project
+    /// the guide after Shift/pixel constraints without querying targets twice.
+    pub target_spans: [Option<(f64, f64)>; 2],
 }
 
-fn finite_rect(r: Rect) -> bool {
+fn finite_rect(r: WorldRect) -> bool {
     [
         f64::from(r.x),
         f64::from(r.y),
@@ -39,10 +51,10 @@ fn finite_rect(r: Rect) -> bool {
         f64::from(r.h),
     ]
     .iter()
-    .all(|v| v.is_finite())
+    .all(|v| v.is_finite()) && r.w>=0. && r.h>=0. && (r.x+r.w).is_finite() && (r.y+r.h).is_finite()
 }
 
-fn candidates(rect: Rect, axis: Axis) -> [f64; 3] {
+fn candidates(rect: WorldRect, axis: Axis) -> [f64; 3] {
     match axis {
         Axis::X => [
             f64::from(rect.x),
@@ -57,7 +69,7 @@ fn candidates(rect: Rect, axis: Axis) -> [f64; 3] {
     }
 }
 
-fn moving_edges(rect: Rect, axis: Axis) -> [f64; 3] {
+fn moving_edges(rect: WorldRect, axis: Axis) -> [f64; 3] {
     match axis {
         Axis::X => [
             f64::from(rect.x),
@@ -73,13 +85,13 @@ fn moving_edges(rect: Rect, axis: Axis) -> [f64; 3] {
 }
 
 fn snap_axis(
-    moving: Rect,
-    targets: &[Rect],
+    moving: WorldRect,
+    targets: &[WorldRect],
     axis: Axis,
     threshold: f64,
 ) -> Option<(f64, f64, f64, f64)> {
     // (delta, guide position, extent start, extent end) of the best snap;
-    // the smallest |delta| wins and exact-zero deltas are ignored.
+    // the smallest |delta| wins, including an already aligned edge.
     let edges = moving_edges(moving, axis);
     let mut best: Option<(f64, f64, f64, f64)> = None;
     for target in targets {
@@ -96,7 +108,7 @@ fn snap_axis(
         for position in candidates(*target, axis) {
             for edge in edges {
                 let delta = position - edge;
-                if delta.abs() > threshold || delta.abs() < 1e-9 {
+                if delta.abs() > threshold {
                     continue;
                 }
                 if best.is_none_or(|(b, ..)| delta.abs() < b.abs()) {
@@ -113,6 +125,10 @@ fn snap_axis(
 /// units; guides span the union of the moving rect and the matched target
 /// along the other axis.
 pub fn snap(moving: Rect, parent: Option<Rect>, siblings: &[Rect], threshold: f64) -> Snap {
+    snap_world(moving.into(),parent.map(Into::into),&siblings.iter().copied().map(Into::into).collect::<Vec<_>>(),threshold)
+}
+
+pub fn snap_world(moving: WorldRect, parent: Option<WorldRect>, siblings: &[WorldRect], threshold: f64) -> Snap {
     let invalid = !finite_rect(moving)
         || !threshold.is_finite()
         || threshold <= 0.
@@ -122,7 +138,7 @@ pub fn snap(moving: Rect, parent: Option<Rect>, siblings: &[Rect], threshold: f6
     if invalid {
         return Snap::default();
     }
-    let mut targets: Vec<Rect> = Vec::with_capacity(siblings.len() + 1);
+    let mut targets: Vec<WorldRect> = Vec::with_capacity(siblings.len() + 1);
     if let Some(parent) = parent {
         targets.push(parent);
     }
@@ -151,6 +167,7 @@ pub fn snap(moving: Rect, parent: Option<Rect>, siblings: &[Rect], threshold: f6
                 start: lo,
                 end: hi,
             });
+            result.target_spans[slot] = Some((target_lo, target_hi));
             match axis {
                 Axis::X => result.dx = delta,
                 Axis::Y => result.dy = delta,
@@ -166,6 +183,10 @@ pub fn snap(moving: Rect, parent: Option<Rect>, siblings: &[Rect], threshold: f6
 pub struct Index { axes: [Vec<(f64, usize, f64, f64)>; 2] }
 impl Index {
     pub fn new(parent: Option<Rect>, siblings: &[Rect]) -> Self {
+        Self::new_world(parent.map(Into::into),&siblings.iter().copied().map(Into::into).collect::<Vec<_>>())
+    }
+    pub fn new_world(parent: Option<WorldRect>, siblings: &[WorldRect]) -> Self {
+        if parent.is_some_and(|r|!finite_rect(r)) || siblings.iter().any(|r|!finite_rect(*r)) {return Self{axes:Default::default()};}
         let targets: Vec<_> = parent.into_iter().chain(siblings.iter().copied()).collect();
         let axes = std::array::from_fn(|slot| {
             let axis = if slot==0 {Axis::X} else {Axis::Y};
@@ -177,24 +198,26 @@ impl Index {
                     entries.push((position,id*3+edge,lo,hi));
                 }
             }
-            entries.sort_by(|a,b|a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+            // Signed zero is the same world position. Preserve authored rank
+            // when deduplicating it, just like the reference scan's ties.
+            entries.sort_by(|a,b|if a.0==b.0 {a.1.cmp(&b.1)} else {a.0.total_cmp(&b.0)});
             entries.dedup_by(|a,b|a.0==b.0);
             entries
         });
         Self {axes}
     }
-    pub fn snap(&self, moving: Rect, threshold: f64) -> Snap {
-        if !threshold.is_finite() || threshold<=0. || threshold>1e4 {return Snap::default();}
+    pub fn snap(&self, moving: impl Into<WorldRect>, threshold: f64) -> Snap {
+        let moving=moving.into();
+        if !finite_rect(moving) || !threshold.is_finite() || threshold<=0. || threshold>1e4 {return Snap::default();}
         let mut result=Snap::default();
         for (slot,axis) in [Axis::X,Axis::Y].into_iter().enumerate() {
             let positions=&self.axes[slot];
             let mut best:Option<(f64,usize,usize,f64,f64,f64)>=None;
             for (edge_id,edge) in moving_edges(moving,axis).into_iter().enumerate() {
-                let left=positions.partition_point(|v|v.0<edge-1e-9);
-                let right=positions.partition_point(|v|v.0<=edge+1e-9);
-                for index in [left.checked_sub(1), (right<positions.len()).then_some(right)].into_iter().flatten() {
+                let right=positions.partition_point(|v|v.0<edge);
+                for index in [right.checked_sub(1), (right<positions.len()).then_some(right)].into_iter().flatten() {
                     let (position,rank,lo,hi)=positions[index];let delta=position-edge;
-                    if delta.abs()>threshold || delta.abs()<1e-9 {continue;}
+                    if delta.abs()>threshold {continue;}
                     let replace=best.is_none_or(|(d,r,e,..)|delta.abs().total_cmp(&d.abs()).then(rank.cmp(&r)).then(edge_id.cmp(&e)).is_lt());
                     if replace {best=Some((delta,rank,edge_id,position,lo,hi));}
                 }
@@ -203,6 +226,7 @@ impl Index {
                 let (start,end)=if slot==0 {(f64::from(moving.y),f64::from(moving.y)+f64::from(moving.h))}
                     else {(f64::from(moving.x),f64::from(moving.x)+f64::from(moving.w))};
                 result.guides[slot]=Some(Guide{axis,position,start:start.min(lo),end:end.max(hi)});
+                result.target_spans[slot]=Some((lo,hi));
                 if slot==0 {result.dx=delta;} else {result.dy=delta;}
             }
         }
