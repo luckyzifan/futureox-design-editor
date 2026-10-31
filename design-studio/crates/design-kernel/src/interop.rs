@@ -5,9 +5,8 @@
 //! a zip holding `meta.json`, `document.json`, `user.json`, one
 //! `pages/<uuid>.json` per page and `images/<sha1>` blobs; layer trees
 //! keyed by `_class`; styles as fill / border / shadow part arrays.
-//! Unknown fields are ignored on import and
-//! omitted on export — Sketch itself defaults-absent fields, so a subset
-//! document opens cleanly.
+//! Unsupported fields are retained selectively and reported; executable
+//! semantics and source preservation remain separate contracts.
 use crate::color::{ColorSettings, ColorSpace};
 use crate::math::Transform;
 use crate::scene::{Document, Effect, ExportSetting, Node, Page, Paint, Stroke};
@@ -2335,20 +2334,36 @@ impl<'a> Importer<'a> {
             .and_then(Value::as_array)
         {
             for (index, f) in formats.iter().enumerate() {
+                let format = f
+                    .get("fileFormat")
+                    .and_then(Value::as_str)
+                    .unwrap_or("png")
+                    .to_lowercase();
+                let scale = f.get("scale").and_then(Value::as_f64).unwrap_or(1.);
+                if matches!(format.as_str(), "tiff" | "eps") || scale == 0. {
+                    import_lossy.push("export-setting-preserved-without-local-render-support".into());
+                }
                 node.export_settings.push(ExportSetting {
                     id: format!("sketch-export-{index}"),
-                    format: f
-                        .get("fileFormat")
-                        .and_then(Value::as_str)
-                        .unwrap_or("png")
-                        .to_lowercase(),
-                    scale: f.get("scale").and_then(Value::as_f64).unwrap_or(1.),
+                    format,
+                    scale,
                     suffix: f
                         .get("name")
                         .and_then(Value::as_str)
                         .unwrap_or_default()
                         .into(),
                 });
+                let mut fields = f.as_object().cloned().unwrap_or_default();
+                for key in ["_class", "fileFormat", "scale", "name"] {
+                    fields.remove(key);
+                }
+                if !fields.is_empty() {
+                    let mut retained = node.bindings.get("sketchExportFormatFields")
+                        .and_then(|raw| serde_json::from_str::<Vec<Value>>(raw).ok())
+                        .unwrap_or_default();
+                    retained.push(json!({"index":index,"fields":fields}));
+                    node.bindings.insert("sketchExportFormatFields".into(),serde_json::to_string(&retained).unwrap());
+                }
             }
         }
 
@@ -4775,17 +4790,24 @@ fn export_layer_impl(
     // unarchiver constructs these via initWithUnarchiver: even when default).
     layer.insert("booleanOperation".into(), json!(-1));
     layer.insert("clippingMaskMode".into(), json!(0));
-    // Authored export formats return in their archived shape (the importer
-    // reads fileFormat/scale/name back into ExportSetting); layers without
-    // settings keep the canonical empty container.
+    // Authored export formats return with their source-only fields by index;
+    // layers without settings keep the canonical empty container.
     let export_formats: Vec<Value> = node
         .into_iter()
-        .flat_map(|n| n.export_settings.iter())
-        .map(|setting| {
-            json!({"_class": "exportFormat", "absoluteSize": 0,
-                   "fileFormat": setting.format, "name": setting.suffix,
-                   "relativeAvailabilityMethod": 0, "scale": setting.scale,
-                   "visible": true})
+        .flat_map(|n| n.export_settings.iter().enumerate().map(move |(index,setting)| (n,index,setting)))
+        .map(|(node,index,setting)| {
+            let mut value=json!({"_class":"exportFormat","absoluteSize":0,
+                "relativeAvailabilityMethod":0,"visible":true});
+            if let Some(entries)=sketch_binding(doc,node,"sketchExportFormatFields")
+                .and_then(|raw|serde_json::from_str::<Vec<Value>>(raw).ok()) {
+                for fields in entries.iter().filter(|entry|entry["index"]==index).filter_map(|entry|entry["fields"].as_object()) {
+                    for (key,source) in fields { value[key]=source.clone(); }
+                }
+            }
+            value["fileFormat"]=json!(setting.format);
+            value["scale"]=json!(setting.scale);
+            value["name"]=json!(setting.suffix);
+            value
         })
         .collect();
     layer.insert(
@@ -6169,7 +6191,7 @@ pub fn export_sketch_layer_edit(
         // Only the rectangle class emits fixedRadius and four curve-point radii.
         Some("radii")
     } else if old.export_settings != next.export_settings {
-        // Import reads exportFormats; export currently always writes [].
+        // Full archive round trips retain settings; source-edit admission is stricter.
         Some("exportSettings")
     } else {
         None

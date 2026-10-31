@@ -1189,10 +1189,10 @@ impl Document {
                         || !export_ids.insert(&s.id)
                         || !matches!(
                             s.format.as_str(),
-                            "png" | "svg" | "jpeg" | "webp" | "pdf" | "pdf-vector"
+                            "png" | "svg" | "jpeg" | "jpg" | "webp" | "pdf" | "pdf-vector" | "tiff" | "eps"
                         )
                         || !s.scale.is_finite()
-                        || !(0.001..=128.).contains(&s.scale)
+                        || !(0.0..=128.).contains(&s.scale)
                         || s.suffix.encode_utf16().count() > 80
                         || s.suffix
                             .chars()

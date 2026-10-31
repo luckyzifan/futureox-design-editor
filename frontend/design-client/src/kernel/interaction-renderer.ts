@@ -19,7 +19,7 @@ import { buildInteractionDependencyScope } from './interaction-scene-bounds'
 import { KernelClient, type KernelOptions, type KernelResult } from './client'
 import type { BackendPreference } from './gpu/types'
 import type { CompositeItem, CompositeTile } from './gpu/tile-compositor'
-import { interactionOffsets, interactionPatchedDocument, interactionPatchedOffsets, interactionPatchedTransforms, interactionAffineEligible, interactionPoseMatrices, interactionTransformsOnly, planInteractionLayers,
+import { interactionOffsets, interactionPatchedDocument, interactionPatchedOffsets, interactionPatchedTransforms, interactionAffineEligible, interactionPoseMatrices, interactionTransformsOnly, InteractionLayerPlanner,
   type GpuMoveControl, type InteractionPlan, type InteractionProps } from './interaction-layers'
 
 let serial = -1
@@ -74,6 +74,9 @@ export class InteractionRenderer {
     // A shared worker may serve other interaction owners. Retire only requests
     // issued by this obsolete capture, not the entire interaction channel.
     this.cancelIdleWarmTimer(); this.idleWarmCapture = undefined
+    if(this.navigationWarmTimer!==undefined)clearTimeout(this.navigationWarmTimer)
+    this.navigationWarmTimer=undefined
+    this.navigationWarmRequest=undefined
     this.handoff = undefined
     this.captureAbort.abort(); this.captureAbort = new AbortController()
     return ++this.generation
@@ -81,6 +84,7 @@ export class InteractionRenderer {
   private pending?: { document: DesignDocument; pageId: string; ids: string; scale: number; viewportRevision:number }
   private pendingDensity?: Parameters<InteractionRenderer['prepare']>
   private resident?: ResidentInteraction
+  private readonly layerPlanner = new InteractionLayerPlanner()
   private neutralPageCandidates = new WeakMap<ResidentInteraction,{viewportRevision:number;plan:InteractionPlan|null}>()
   private props?: InteractionProps
   private disposed = false
@@ -100,6 +104,9 @@ export class InteractionRenderer {
   private liveDeferred = false
   private viewport?: { view: CanvasCamera; width: number; height: number; dpr: number }
   private viewportRevision = 0
+  private lastNavigationAt = -Infinity
+  private navigationWarmTimer?: ReturnType<typeof setTimeout>
+  private navigationWarmRequest?: Parameters<InteractionRenderer['prepare']>
   private lastSettledDocument?: DesignDocument
   private idleWarmTimer?: ReturnType<typeof setTimeout>
   private idleWarmWaiting?: IdleWarmContext
@@ -520,6 +527,8 @@ export class InteractionRenderer {
       previousViewport.view.x !== view.x || previousViewport.view.y !== view.y || previousViewport.dpr !== dpr ||
       previousViewport.width !== size.width || previousViewport.height !== size.height)
     if (cameraChanged) this.viewportRevision++
+    const navigationPriority=import.meta.env.VITE_DESIGN_NAVIGATION_CAPTURE_PRIORITY==='1'&&!!this.sharedClient&&!!size
+    if(navigationPriority&&(props?.navigating||cameraChanged&&previousViewport))this.lastNavigationAt=performance.now()
     this.lastSettledDocument = settledDocument
     if (this.sharedClient && size && this.warming && this.pending && this.resident && !this.resident.live &&
         !props?.active && (!this.resident.active || !!props && this.endedDocument === props.document) &&
@@ -601,7 +610,8 @@ export class InteractionRenderer {
       if(cached?.viewportRevision!==this.viewportRevision){
         const pad=128/view.zoom,capture={x:-view.x/view.zoom-pad,y:-view.y/view.zoom-pad,
           width:size.width/view.zoom+2*pad,height:size.height/view.zoom+2*pad}
-        let plan=planInteractionLayers(props.document,pageId,props.selection,capture,{neutralPageGroup:true})
+        let plan=this.layerPlanner.plan(props.document,pageId,props.selection,capture,
+          {neutralPageGroup:true,scene:props.scene,epoch:props.epoch})
         if(plan&&!allowsReducedSampling(view.zoom)&&plan.layers.some(layer=>
           layer.bounds.width*layer.bounds.height*(view.zoom*dpr)**2>8_388_608/Math.max(1,plan!.layers.length)))plan=null
         cached={viewportRevision:this.viewportRevision,plan};this.neutralPageCandidates.set(idle,cached)
@@ -641,6 +651,24 @@ export class InteractionRenderer {
       }
       this.handoff = undefined
       this.endedDocument = undefined
+    }
+    if(navigationPriority&&!props.active&&(!r?.active||this.endedDocument===props.document)&&
+        (props.navigating||performance.now()-this.lastNavigationAt<100)){
+      // A cached exact viewport may be ready between wheel samples. That does
+      // not make speculative selection capture current visible work. Wait for
+      // a quiet camera, retaining completed layers and their source identity.
+      this.cancelIdleWarmTimer()
+      this.navigationWarmRequest=[props,pageId,view,dpr,profile,backend,settledDocument,size]
+      if(this.navigationWarmTimer===undefined){
+        const generation=this.generation
+        this.navigationWarmTimer=setTimeout(()=>{
+          this.navigationWarmTimer=undefined
+          const request=this.navigationWarmRequest;this.navigationWarmRequest=undefined
+          if(this.disposed||generation!==this.generation||!this.props||this.props.active||!request)return
+          this.prepare(...request)
+        },Math.max(16,100-(performance.now()-this.lastNavigationAt)))
+      }
+      return
     }
     if (r?.live && (this.liveCancelled || this.liveDeferred) && (props.active || r.active) && samePolicy && r.plan.pageId === pageId &&
         props.document.id === r.plan.document.id && this.sameIds(props.selection)) {
@@ -730,8 +758,9 @@ export class InteractionRenderer {
     const captureViewport = viewport ? { x: viewport.x - pad, y: viewport.y - pad,
       width: viewport.width + 2 * pad, height: viewport.height + 2 * pad } : undefined
     let plan = contentGesture || props.document.colorManagement && !this.sharedClient
-      ? null : planInteractionLayers(props.document, pageId, props.selection, captureViewport,
-        {neutralPageGroup:import.meta.env.VITE_DESIGN_NEUTRAL_PAGE_GROUP==='1'&&this.allowIdleWarm&&!!this.sharedClient&&
+      ? null : this.layerPlanner.plan(props.document, pageId, props.selection, captureViewport,
+        {scene:props.scene,epoch:props.epoch,
+          neutralPageGroup:import.meta.env.VITE_DESIGN_NEUTRAL_PAGE_GROUP==='1'&&this.allowIdleWarm&&!!this.sharedClient&&
           profile==='figmaSubpixel'&&(backend==='webgpu'||backend==='auto')})
     if(plan&&!allowsReducedSampling(view.zoom)&&plan.layers.some(layer=>
       layer.bounds.width*layer.bounds.height*(view.zoom*dpr)**2>8_388_608/Math.max(1,plan!.layers.length)))plan=null
@@ -1364,6 +1393,7 @@ export class InteractionRenderer {
   }
   dispose() {
     this.disposed = true; this.nextGeneration(); this.releaseClient(); this.pendingDensity = undefined
+    this.layerPlanner.clear()
     if (this.props?.control.current === this.control) this.props.control.current = null
     this.closeResidents()
   }

@@ -284,7 +284,7 @@ export const defaultSizing = (): Sizing => ({
 export type EllipseArc = { startAngle: number; sweepAngle: number; innerRadius: number }
 export type CurveCommand = {move:[number,number]}|{line:[number,number]}|{quad:[number,number,number,number]}|{cubic:[number,number,number,number,number,number]}|'close'
 export type VectorGeometry = {fillRule:'evenodd'|'nonzero';fill:CurveCommand[];stroke?:CurveCommand[]}
-export type ExportSetting = { id: string; format: 'png' | 'svg' | 'jpeg' | 'webp' | 'pdf' | 'pdf-vector'; scale: number; suffix: string }
+export type ExportSetting = { id: string; format: 'png' | 'svg' | 'jpeg' | 'jpg' | 'webp' | 'pdf' | 'pdf-vector' | 'tiff' | 'eps'; scale: number; suffix: string }
 export function exportSuffixHasForbiddenCharacters(value: string): boolean {
   return Array.from(value).some(character => {
     const code = character.charCodeAt(0)
@@ -888,8 +888,8 @@ export function validateDocument(value: unknown): DesignDocument {
     if (n?.exportSettings !== undefined) {
       const settings = n.exportSettings
       if (!Array.isArray(settings) || settings.length > 16 || new Set(settings.map(s => s?.id)).size !== settings.length || settings.some(s =>
-        !s || typeof s.id !== 'string' || !s.id || !wellFormed(s.id) || new TextEncoder().encode(s.id).length > 128 || !['png','svg','jpeg','webp','pdf','pdf-vector'].includes(s.format) ||
-        !finite(s.scale,0.001,128) || typeof s.suffix !== 'string' || !wellFormed(s.suffix) || s.suffix.length>80 || exportSuffixHasForbiddenCharacters(s.suffix))) throw new Error('图层导出设置无效')
+        !s || typeof s.id !== 'string' || !s.id || !wellFormed(s.id) || new TextEncoder().encode(s.id).length > 128 || !['png','svg','jpeg','jpg','webp','pdf','pdf-vector','tiff','eps'].includes(s.format) ||
+        !finite(s.scale,0,128) || typeof s.suffix !== 'string' || !wellFormed(s.suffix) || s.suffix.length>80 || exportSuffixHasForbiddenCharacters(s.suffix))) throw new Error('图层导出设置无效')
       if(settings.length && d.schemaVersion<8) throw new Error('图层导出设置需要设计文件版本 8')
     }
     if (d.schemaVersion < 7 && (n?.arc != null || (n?.cornerRadius ?? 0) !== 0 || n?.constrainProportions))

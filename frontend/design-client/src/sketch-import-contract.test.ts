@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { strToU8, zipSync } from 'fflate'
 import { import_sketch_json, export_sketch_json } from './generated/design-kernel/design_kernel'
 import { uid, validateDocument } from './model'
@@ -43,4 +44,41 @@ test('a shared Sketch compatibility archive reopens as the same editable layer c
   const document = validateDocument(reopened.document)
   expect(Object.keys(document.nodes)).toHaveLength(2)
   expect(Object.values(document.nodes).find(node => node.kind === 'text')?.text).toBe('Local text')
+})
+
+function official(path: string) {
+  return readFileSync(new URL(`../../../testing/fixtures/sketch-official/${path}`, import.meta.url))
+}
+
+test('the official complete archive crosses the actual frontend codec and model contract', () => {
+  const report = JSON.parse(import_sketch_json(official('file-format-series/color-library.sketch')))
+  report.document.id = uid()
+  const document = validateDocument(report.document)
+  const exported = export_sketch_json(JSON.stringify(document))
+  const reopened = JSON.parse(import_sketch_json(exported))
+  reopened.document.id = uid()
+  expect(validateDocument(reopened.document).pages).toHaveLength(1)
+})
+
+test('official export settings and their source metadata cross the actual frontend contract', () => {
+  const root = 'reference-files/files/118/export-formats'
+  const page = '5722AFCC-60DF-4DCD-81F9-8BE4BE4D4B58'
+  const input = zipSync({
+    'meta.json': official(`${root}/meta.json`),
+    'document.json': official(`${root}/document.json`),
+    'user.json': official(`${root}/user.json`),
+    [`pages/${page}.json`]: official(`${root}/pages/${page}.json`),
+  })
+  const report = JSON.parse(import_sketch_json(input))
+  report.document.id = uid()
+  const document = validateDocument(report.document)
+  const settings = Object.values(document.nodes).flatMap(node => node.exportSettings || [])
+  expect(settings).toHaveLength(12)
+  expect(settings.map(setting => setting.format)).toEqual(expect.arrayContaining(['jpg', 'tiff', 'eps']))
+  expect(settings.some(setting => setting.scale === 0)).toBe(true)
+  expect(JSON.stringify(document)).toContain('namingScheme')
+  const exported = export_sketch_json(JSON.stringify(document))
+  const reopened = JSON.parse(import_sketch_json(exported))
+  reopened.document.id = uid()
+  expect(validateDocument(reopened.document).nodes).toBeTruthy()
 })

@@ -70,6 +70,45 @@ function fixture(dependent = false, zoom = 1, extent = 100, active = dependent) 
   return { doc, root, props, owner, view }
 }
 
+test('continuous pan leaves optional selection capture idle and a real gesture immediately regains priority',async()=>{
+ vi.stubEnv('VITE_DESIGN_NAVIGATION_CAPTURE_PRIORITY','1')
+ let now=1000;const clock=vi.spyOn(performance,'now').mockImplementation(()=>now)
+ try{
+ const doc=blank(),root=node('frame',0,0,1000,1000);root.blend='normal';doc.nodes[root.id]=root;doc.pages[0].children=[root.id]
+ const owner=new InteractionRenderer(vi.fn(),new KernelClient());owners.push(owner)
+ const props:InteractionProps={document:doc,selection:[root.id],active:false,epoch:1,navigating:true,control:{current:null},onReady:vi.fn()}
+ const prepare=(x:number,p=props)=>owner.prepare(p,doc.pages[0].id,{x,y:0,zoom:1},1,'analytic','webgpu',doc,{width:100,height:100})
+ for(let i=0;i<30;i++)prepare(-64*i)
+ expect(worker.jobs).toHaveLength(0)
+ prepare(-64*29,{...props,navigating:false});expect(worker.jobs).toHaveLength(0)
+ now+=101;prepare(-64*29,{...props,navigating:false});expect(worker.jobs).toHaveLength(1)
+ worker.jobs[0].resolve({gpuTile:810,bytes:new Uint8Array()});await vi.waitFor(()=>expect(owner.ready).toBe(true))
+ for(let i=30;i<60;i++)prepare(-64*i)
+ expect(worker.jobs).toHaveLength(1);expect(owner.tiles[0].gpuTile).toBe(810)
+ prepare(-64*59,{...props,active:true});expect(worker.jobs).toHaveLength(2)
+ expect(worker.jobs[1].signal.aborted).toBe(false)
+ }finally{clock.mockRestore()}
+})
+
+test('navigation quiet wake uses the latest camera and policy, and disposal retires the wake',()=>{
+ vi.stubEnv('VITE_DESIGN_NAVIGATION_CAPTURE_PRIORITY','1')
+ vi.useFakeTimers({toFake:['setTimeout','clearTimeout','performance']})
+ try{
+  const doc=blank(),root=node('frame',0,0,100,100);root.blend='normal';doc.nodes[root.id]=root;doc.pages[0].children=[root.id]
+  const owner=new InteractionRenderer(vi.fn(),new KernelClient());owners.push(owner)
+  const props:InteractionProps={document:doc,selection:[root.id],active:false,epoch:1,navigating:true,control:{current:null},onReady(){}}
+  owner.prepare(props,doc.pages[0].id,{x:0,y:0,zoom:1},1,'analytic','webgpu',doc,{width:200,height:100})
+  vi.advanceTimersByTime(60)
+  owner.prepare({...props,navigating:false},doc.pages[0].id,{x:2.25,y:1.5,zoom:2},1,'figmaSubpixel','webgpu',doc,{width:200,height:100})
+  vi.advanceTimersByTime(99);expect(worker.jobs).toHaveLength(0)
+  vi.advanceTimersByTime(1);expect(worker.jobs).toHaveLength(1)
+  expect(worker.jobs[0].options).toMatchObject({view:{zoom:2},rasterProfile:'figmaSubpixel'})
+  owner.prepare(props,doc.pages[0].id,{x:200,y:0,zoom:2},1,'figmaSubpixel','webgpu',doc,{width:200,height:100})
+  owner.dispose();vi.advanceTimersByTime(1000)
+  expect(worker.jobs).toHaveLength(1)
+ }finally{vi.useRealTimers()}
+})
+
 test('live capture prepares 3,000 page roots without rescanning the scene for every root', () => {
   const doc = blank(), count = 3000
   for (let i = 0; i < count; i++) {
@@ -952,6 +991,38 @@ test('a transferred pending pose outside the worker capture guard still rebuilds
   expect(f.doc.nodes[f.child.id].transform).toEqual(f.transform(0))
 })
 
+
+test('independent capture replanning borrows Canvas geometry across navigation and revokes stale publications', () => {
+  const doc=blank(),a=node('frame',0,0,240,180),b=node('frame',400,0,240,180)
+  for(const root of [a,b]){root.blend='normal';doc.nodes[root.id]=root}
+  doc.pages[0].children=[a.id,b.id]
+  const pageId=doc.pages[0].id,epoch=1,store=new CanvasSceneSnapshots()
+  store.begin({},epoch,pageId,true);const snapshot=store.currentScene(doc,pageId)
+  const props:InteractionProps={document:doc,selection:[b.id],active:false,epoch,
+    control:{current:null},onReady(){},scene:store.borrowCurrentScene(doc,pageId,epoch)}
+  const owner=new InteractionRenderer(vi.fn());owners.push(owner)
+  const cameras=[{x:0,y:0,zoom:.25},{x:-400,y:-200,zoom:2},{x:300,y:100,zoom:1}]
+  const expected=cameras.map(view=>{
+    const pad=128/view.zoom,viewport={x:-view.x/view.zoom-pad,y:-view.y/view.zoom-pad,
+      width:640/view.zoom+pad*2,height:480/view.zoom+pad*2}
+    return planInteractionLayers(doc,pageId,props.selection,viewport)
+  })
+  const before=JSON.stringify(snapshot.entries),lookup=vi.spyOn(geometry,'scene')
+  try{
+    for(const [i,view] of cameras.entries()){
+      owner.prepare(undefined,pageId,view,1,'analytic','cpu')
+      owner.prepare(props,pageId,view,1,'analytic','cpu',doc,{width:640,height:480})
+      expect((owner as any).resident.plan).toEqual(expected[i])
+    }
+    expect(lookup).not.toHaveBeenCalled()
+    expect(JSON.stringify(snapshot.entries)).toBe(before)
+    store.begin({},epoch+1,pageId,true)
+    owner.prepare(undefined,pageId,cameras[0],1,'analytic','cpu')
+    owner.prepare({...props,epoch:epoch+1},pageId,cameras[0],1,'analytic','cpu',doc,{width:640,height:480})
+    expect(lookup).toHaveBeenCalledOnce()
+    expect((owner as any).resident.plan).toEqual(expected[0])
+  }finally{lookup.mockRestore()}
+})
 
 test('navigation restoration borrows the published Canvas scene while recomputing camera-dependent scope', () => {
   vi.stubEnv('VITE_DESIGN_LOCAL_BACKDROP', '1')

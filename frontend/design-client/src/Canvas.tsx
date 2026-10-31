@@ -278,8 +278,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const presented = useSyncExternalStore(presentedSignal.subscribe, presentedSignal.getSnapshot).frame
   const presentationScopeMatches = presented?.epoch === editor.sessionGeneration &&
     presented.pageId === state.page && presented.document.id === state.doc.id
-  const vectorPreviewSupported = useMemo(() => supportsEditPreview(state.doc, state.page), [state.doc, state.page])
   const gpuPreviewAvailable = !!gpuMove.current?.covers(state.doc, state.selection, state.view)
+  const vectorPreviewSupport = useMemo(() => ({ document: state.doc, pageId: state.page,
+    supported: !gpuPreviewAvailable && supportsEditPreview(state.doc, state.page) }), [state.doc, state.page, gpuPreviewAvailable])
+  const vectorPreviewSupported = vectorPreviewSupport.supported
   const editPreviewSupported = gpuPreviewAvailable || vectorPreviewSupported || !!retainedMove.current?.covers(state.doc, state.selection, state.view)
   const editPreviewVisible = presentationScopeMatches &&
     (gpuPreviewAvailable && !!gpuMove.current?.isActive() || editPreviewSupported && presented.document !== state.doc)
@@ -2377,6 +2379,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       />}
       {!nativeSource&&showStartup && <StartupPreview preview={startupPreview!} view={state.view} loading={loading} width={size.width} height={size.height}/>}
       {geometryReady && !gpuPreviewAvailable && <CanvasEditPreview document={renderedDocument} baseDocument={editBaseDocument.current} selection={state.selection} pageId={state.page}
+        vectorSupport={vectorPreviewSupport} captureFrame={presented} epoch={editor.sessionGeneration} scene={interactionScene}
         vectorSupported={vectorPreviewSupported} sourceHost={host} control={retainedMove} canCapture={!state.grid && !state.checkerboard && !!presentationScopeMatches && presented.document === state.doc && !presented.preview}
         view={displayView} size={size} visible={!!editPreviewVisible} inputAt={editInputAt.current}/>}
       {editPreviewVisible && <span className="canvas-edit-status" role="status">编辑预览 · 正在细化</span>}

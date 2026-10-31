@@ -21,8 +21,11 @@ vi.mock('../geometry', async original => ({
 }))
 vi.mock('./interaction-layers', async original => ({
   ...await original<any>(),
-  planInteractionLayers: (document: unknown, pageId: string, ids: string[]) => ({ document, pageId, ids,
-    layers: [{ document, bounds: { x: 0, y: 0, width: 2, height: 2 }, moving: 'selected' }] }),
+  InteractionLayerPlanner: class {
+    clear() {}
+    plan(document: unknown, pageId: string, ids: string[]) { return { document, pageId, ids,
+      layers: [{ document, bounds: { x: 0, y: 0, width: 2, height: 2 }, moving: 'selected' }] } }
+  },
   interactionOffsets: (plan: any, document: any) => new Map(plan.ids.map((id: string) => [id, {
     x: document.nodes[id].transform[4] - plan.document.nodes[id].transform[4],
     y: document.nodes[id].transform[5] - plan.document.nodes[id].transform[5],

@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import { blank, node, paint, effect, defaultImageAdjust, defaultPatternTile } from './model'
 import { supportsEditPreview, retainedSvgMove } from './edit-preview'
+import { defaultColorSettings } from './color'
 
 test('SVG preview rejects image semantics it cannot render, including stroke paints', () => {
   const d = blank(), n = node('rectangle', 0, 0, 100, 100)
@@ -36,4 +37,21 @@ test('retained SVG translation rejects moving captures but permits stationary ba
   expect(retainedSvgMove(d,d.pages[0].id,[moving.id])).toBeNull()
   child.effects=[]; moving.mask=true
   expect(retainedSvgMove(d,d.pages[0].id,[moving.id])).toBeNull()
+})
+
+test('SVG support is reused only for its exact immutable document and page', () => {
+  const d = blank(), moving = node('rectangle', 0, 0, 50, 50), other = node('rectangle', 100, 0, 50, 50)
+  d.nodes = { [moving.id]: moving, [other.id]: other }; d.pages[0].children = [moving.id, other.id]
+  const support = { document: d, pageId: d.pages[0].id, supported: supportsEditPreview(d, d.pages[0].id) }
+  // The stationary subtree's paint is inspected by supportsEditPreview, but
+  // not by the selected subtree/ancestor translation proof.
+  let reads = 0
+  const fills = other.fills
+  Object.defineProperty(other, 'fills', { get() { reads++; return fills } })
+  expect(retainedSvgMove(d, d.pages[0].id, [moving.id], support)?.id).toBe(moving.id)
+  expect(reads).toBe(0)
+  const changed = { ...d, colorManagement: defaultColorSettings() }
+  expect(retainedSvgMove(changed, d.pages[0].id, [moving.id], support)).toBeNull()
+  expect(retainedSvgMove(d, d.pages[0].id, [moving.id], { ...support, pageId: 'other' })?.id).toBe(moving.id)
+  expect(reads).toBeGreaterThan(0)
 })

@@ -192,3 +192,7 @@ A compiler candidate differs from general authored dependency acquisition. Only 
 ## 2026-10-29 external-format and source-pan contract
 
 See [format verification](../testing/verification-fig-sketch-interop-20261029/README.md) and [source-pan verification](../testing/verification-source-pan-20261029/README.md). Native schema fixtures, actual Sketch re-rendering, shared-model execution and portable raster parity are distinct evidence. Keep outline-mask styles authored and derive geometry-only materials during rendering, including descendants; source-owned and compatible archive saves retain separate guarantees. Optional rim work cannot delay required coverage or certify an incomplete view. Periodic cache identities subtract whole dither periods without changing raster cameras, fractional phases, GPU budgets or physical ownership.
+
+## 2026-10-31 official Sketch fixture adaptation
+
+The [official fixture verification](../testing/verification-sketch-official-20261031/README.md) pins the two upstream repositories and commits. All 74 archived feature groups and the complete color-library sample pass the production Rust/WASM round trip and shared-model admission. Export settings retain source-only metadata by index. TIFF/EPS and zero scale are preservation contracts, not executable export claims; JPG may use the existing JPEG writer. These scoped checks do not establish complete Sketch semantics or native pixel parity.
