@@ -13,6 +13,7 @@ import { physicalCoverage, physicalPixelCoverage, physicalCoverageGaps } from '.
 import { backgroundPaintRects, emptyBackgroundTile, pageBackgroundProof, type PageBackgroundProof, type PixelContentProof } from './page-background'
 import { presentedFragmentQuality } from './presented-fragment-quality'
 import { PresenterAlphaTrace } from './presenter-alpha-trace'
+import { cameraPreviewCoverage, cameraPreviewShader, type CameraPreview } from './camera-preview'
 
 export type ResidentItem = Omit<CompositeItem, 'tile'> & {
   tile: Omit<CompositeItem['tile'], 'bytes' | 'bitmap'> & { gpuTile: number }
@@ -37,6 +38,9 @@ export type ResidentFrame = {
   gestureGuides?: boolean
   allowEmpty?: boolean
   allowBackground?: boolean
+  /** Same-content camera navigation. Unavailable pixels are marked pending,
+   * independently of exact coverage and isolated-layer transparency. */
+  cameraPreview?: CameraPreview
   /** Uniform translation of all authored page roots, in world units. Only
    * changes the compiler-owned paint support used for background gap proof. */
   backgroundTranslation?: { x: number; y: number }
@@ -45,6 +49,7 @@ export type ResidentFrame = {
   input?: import('../interaction-layers').InteractionInput & { owner?:string }
 }
 let nextTexture = 0
+let nextPresentationToken = 0
 const source = `override COLOR_MODE:i32=0;struct U { box:vec4<f32>,uv:vec4<f32>,viewport:vec2<f32>,sample:f32,pad:f32 }
 @group(0) @binding(0) var<uniform> u:U;
 @group(0) @binding(1) var pixels:texture_2d<f32>;
@@ -88,6 +93,7 @@ export class ResidentPresenter {
   private samplePipeline: GPURenderPipeline
   private sampleBlendPipeline: GPURenderPipeline
   private sampleResolvePipeline: GPURenderPipeline
+  private previewPipeline?: GPURenderPipeline
   private linearTarget?: { texture: GPUTexture; bind: GPUBindGroup; width: number; height: number; samples:1|4; payload: PayloadToken }
   private sampler: GPUSampler
   private uniforms: GPUBuffer
@@ -95,6 +101,26 @@ export class ResidentPresenter {
   private terminalQualityGate = new TerminalQualityGate()
   private latest?: ResidentFrame
   private drawn?: ResidentFrame
+  private drawnPreview = false
+  private drawnIds: number[] = []
+  private bitmapVisible?: PayloadToken
+  private bitmapReserved?: PayloadToken
+  private bitmapPending?: { token:number; payload:PayloadToken; frame:ResidentFrame; sent:boolean }
+  private clearBitmapPresentation() {
+    if(this.bitmapPending)this.payload.retire(this.bitmapPending.payload)
+    if(this.bitmapVisible)this.payload.retire(this.bitmapVisible)
+    this.bitmapPending=undefined;this.bitmapVisible=undefined
+  }
+  acceptPresentation(token:number,accepted=true) {
+    const pending=this.bitmapPending
+    if(!pending?.sent||pending.token!==token||this.disposed)return
+    if(accepted){
+      if(this.bitmapVisible)this.payload.retire(this.bitmapVisible)
+      this.bitmapVisible=pending.payload
+    }else this.payload.retire(pending.payload)
+    this.bitmapPending=undefined
+    if(this.latest!==pending.frame)this.repaint()
+  }
   private translatedProof?:{frame:ResidentFrame;source:PageBackgroundProof;offset:{x:number;y:number}}
   private translatedProofChecks=0
   private backbuffer?: { texture: GPUTexture; width: number; height: number; payload: PayloadToken }
@@ -115,8 +141,9 @@ export class ResidentPresenter {
       devicePendingCapturePayloadBytes: payload.captureReservedBytes, devicePendingReadbacks: payload.pendingReadbacks,
       deviceLogicalPayloadBytes: this.residentBytes, deviceRetiringPayloadBytes: payload.retiringBytes }
   }
-  attachCanvas(canvas: OffscreenCanvas) {
-    if (this.canvas === canvas) return
+  attachCanvas(canvas: OffscreenCanvas, atomic = false) {
+    if (this.canvas === canvas && this.atomic === atomic) return
+    this.clearBitmapPresentation();this.atomic=atomic
     this.context.unconfigure()
     this.canvas = canvas
     this.context = canvas.getContext('webgpu')!
@@ -149,6 +176,7 @@ export class ResidentPresenter {
     private canvas: OffscreenCanvas,
     readonly format: GPUTextureFormat,
     private report: (stats: Record<string, unknown>) => void,
+    private atomic = false,
   ) {
     this.payload = new PresenterPayloadLedger(() => device.queue.onSubmittedWorkDone(), DISPLAY_TEXTURE_BUDGET, () => this.overlay?.residentBytes || 0)
     const diagnosticIdentity = registerDeviceDiagnosticOwner(this, device, 2)
@@ -303,6 +331,9 @@ export class ResidentPresenter {
     }
   }
 
+  contentToken(slot:number):object|undefined {
+    return this.disposed ? undefined : this.textures.get(slot)?.texture
+  }
   release(ids: number[]) {
     for (const id of ids) {
       const entry = this.textures.get(id)
@@ -383,7 +414,7 @@ export class ResidentPresenter {
     const frame=this.drawn
     if(!frame)throw Error('No displayed document content')
     return {presentationId:frame.presentationId,view:frame.view,width:frame.width,height:frame.height,dpr:frame.dpr,
-      interaction:!!frame.interaction,ids:frame.items.filter(i=>i.active).map(i=>i.tile.gpuTile)}
+      interaction:!!frame.interaction,preview:this.drawnPreview,ids:this.drawnIds.slice()}
   }
   async readContentPixel(u:number,v:number,expected?:import('../resident-presentation').ResidentAcknowledgement) {
     if(!this.backbuffer||![u,v].every(Number.isFinite)||u<0||v<0||u>=1||v>=1)throw Error('Invalid content sample')
@@ -445,6 +476,13 @@ export class ResidentPresenter {
     this.latest = frame
     if (this.disposed) return
     this.payload.assertOpen()
+    // One immutable display transfer in flight, plus the accepted image. The
+    // latest request replaces queued cameras while the browser owns the handoff.
+    if(this.atomic&&this.bitmapPending)return
+    try { this.drawAvailable(frame) }
+    finally { if(this.bitmapReserved){this.payload.cancel(this.bitmapReserved);this.bitmapReserved=undefined} }
+  }
+  private drawAvailable(frame:ResidentFrame) {
     const { view, width, height, dpr } = frame,
       w = Math.max(1, Math.ceil(width * dpr)),
       h = Math.max(1, Math.ceil(height * dpr))
@@ -523,10 +561,13 @@ export class ResidentPresenter {
         }
       }
     }
+    const preview = !complete && frame.cameraPreview && !frame.interaction && !frame.linearBlend
+      ? cameraPreviewCoverage(this.textures.get(frame.cameraPreview.anchor)?.content,
+        rows.map(row => ({ ...row.raster, blend: row.item.blend, content: row.entry.content })), w, h) : undefined
     // Empty background is intentional for isolated interaction layers, but a
     // missing source is never intentional transparency. Do not clear the
     // accepted backing when an imported/released interaction handle is absent.
-    if (!frame.allowEmpty && !complete || frame.allowEmpty && missing.length > 0) {
+    if (!frame.allowEmpty && !complete && !preview || frame.allowEmpty && missing.length > 0) {
       const densityProofs=rows.flatMap(row=>row.entry.background?.pixel&&row.entry.background.view.zoom===view.zoom*dpr?[row.entry.background]:[])
       const backgroundPhaseError=densityProofs.length?Math.min(...densityProofs.map(p=>{
         const dx=view.x*dpr-p.view.x,dy=view.y*dpr-p.view.y;return Math.max(Math.abs(dx-Math.round(dx)),Math.abs(dy-Math.round(dy)))
@@ -537,6 +578,13 @@ export class ResidentPresenter {
         diagnosticSequence: frame.diagnosticSequence, missingTextureCount: missing.length })
       return
     }
+    if (preview && !this.previewPipeline) {
+      const module = this.device.createShaderModule({ code: cameraPreviewShader })
+      this.previewPipeline = this.device.createRenderPipeline({ layout: 'auto',
+        vertex: { module, entryPoint: 'vertex' },
+        fragment: { module, entryPoint: 'fragment', targets: [{ format: this.format }] },
+        primitive: { topology: 'triangle-list' } })
+    }
     const linear = frame.linearBlend === true && rows.some((row) => row.item.blend)
     if(!linear&&rows.some(row=>row.entry.linear))throw Error('Linear retained layers require linear composition')
     const samples:1|4=linear&&rows.some(row=>row.entry.samples===4)?4:1
@@ -546,11 +594,12 @@ export class ResidentPresenter {
     // the old targets and visible canvas unchanged if admission/setup fails.
     const replaceBack = !this.backbuffer || this.backbuffer.width !== w || this.backbuffer.height !== h
     const replaceLinear = linear && (!this.linearTarget || this.linearTarget.width !== w || this.linearTarget.height !== h || this.linearTarget.samples!==samples)
-    let backPayload: PayloadToken | undefined, linearPayload: PayloadToken | undefined
+    let backPayload: PayloadToken | undefined, linearPayload: PayloadToken | undefined, bitmapPayload: PayloadToken | undefined
     let nextBack: typeof this.backbuffer, nextLinear: typeof this.linearTarget
     try {
       if (replaceBack) backPayload = this.payload.reserve(w * h * 4)
       if (replaceLinear) linearPayload = this.payload.reserve(w * h * 8*samples)
+      if (this.atomic) bitmapPayload = this.bitmapReserved = this.payload.reserve(w * h * 4)
       if (backPayload) {
         const texture = this.device.createTexture({ size: [w, h], format: this.format,
           usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC | (this.traceAlpha ? GPUTextureUsage.TEXTURE_BINDING : 0) })
@@ -568,7 +617,7 @@ export class ResidentPresenter {
       }
     } catch (error) {
       try { nextBack?.texture.destroy(); nextLinear?.texture.destroy() }
-      finally { if (backPayload) this.payload.cancel(backPayload); if (linearPayload) this.payload.cancel(linearPayload) }
+      finally { if (backPayload) this.payload.cancel(backPayload); if (linearPayload) this.payload.cancel(linearPayload); if(bitmapPayload)this.payload.cancel(bitmapPayload) }
       throw error
     }
     // Publish every new owner before retiring either old target: retirement
@@ -613,6 +662,13 @@ export class ResidentPresenter {
           },
         ],
       })
+    if (preview) {
+      pass.setPipeline(this.previewPipeline!)
+      for (const gap of preview.gaps) {
+        pass.setScissorRect(gap.x, gap.y, gap.width, gap.height)
+        pass.draw(3)
+      }
+    }
     rows.forEach((row, i) => {
       const r = row.raster
       pass.setScissorRect(r.x, r.y, r.width, r.height)
@@ -657,10 +713,14 @@ export class ResidentPresenter {
     const alpha = this.alphaTrace?.encode(encoder, this.backbuffer!.texture, {
       ...deviceDiagnosticFields(this), alphaFrame: this.frames + 1, alphaSequence: frame.diagnosticSequence, alphaWidth: w, alphaHeight: h,
     })
-    try { this.device.queue.submit([encoder.finish()]) } catch (error) { alpha?.cancel(); throw error }
+    try { this.device.queue.submit([encoder.finish()]) } catch (error) { alpha?.cancel(); if(bitmapPayload)this.payload.cancel(bitmapPayload); throw error }
+    const pending=bitmapPayload?{token:++nextPresentationToken,payload:bitmapPayload,frame,sent:false}:undefined
+    if(pending){this.payload.commit(pending.payload);this.bitmapPending=pending;this.bitmapReserved=undefined}
     alpha?.submitted()
     const submittedEpoch = performance.timeOrigin + performance.now()
     this.drawn = frame
+    this.drawnPreview = !!preview
+    this.drawnIds = available.filter(item => item.active).map(item => item.tile.gpuTile)
     this.translatedProof=undefined
     const translation=frame.backgroundTranslation,sourceProof=rows.find(row=>row.entry.background?.pixel)?.entry.background
     this.translatedProofChecks=Number(complete)|Number(!!frame.interaction)<<1|Number(!!translation)<<2|Number(!!sourceProof)<<3|
@@ -688,13 +748,13 @@ export class ResidentPresenter {
     const terminalQuality = this.terminalQualityGate.claim(complete?frame.terminalQuality:undefined, detailedDiagnostics)
     const measureCoverage=strictSharpDiagnostics || traceQuality || !!terminalQuality || import.meta.env.DEV || (detailedDiagnostics && coverageAt-this.diagnosticCoverageAt>=250)
     if(measureCoverage)this.diagnosticCoverageAt=coverageAt
-    this.report({
+    const report = {
       ...this.diagnosticFields(),
       coverageDeferred: 0,
       ...(!complete&&!frame.interaction?{pixelCoverageComplete:false,nativeCoverageComplete:false,qualityTerminal:false}:{}),
       backgroundCoverage: Number(backgroundAdded),
       diagnosticSequence: frame.diagnosticSequence, submittedEpoch,
-      gridVisible: !!frame.overlay?.pixelGrid && view.zoom>=4, dpr,
+      gridVisible: !this.atomic && !!frame.overlay?.pixelGrid && view.zoom>=4, dpr,
       ...(terminalQuality ? { ...terminalQuality, qualityTerminal: true } : {}),
       coverageMeasured:measureCoverage,
       ...(measureCoverage?{coverageAt}:{}),
@@ -706,19 +766,20 @@ export class ResidentPresenter {
       compositorBytes: this.residentBytes,
       compositorOverlayBytes: this.overlay?.residentBytes || 0,
       compositorTiles: this.textures.size,
-      compositorDraws: drawCount + (linear ? 1 : 0),
+      compositorDraws: drawCount + (linear ? 1 : 0) + (preview?.gaps.length || 0),
       linearBlend: linear,
       presented: {
         presentationId: frame.presentationId,
+        presentationToken: pending?.token,
+        preview: !!preview,
         gpuOverlay: !!frame.overlay,
+        gpuPixelGrid: !this.atomic && !!frame.overlay?.pixelGrid && view.zoom>=4,
         view,
         width,
         height,
         dpr,
         interaction: !!frame.interaction,
-        ids: frame.items
-          .filter((item) => item.active && this.textures.has(item.tile.gpuTile))
-          .map((item) => item.tile.gpuTile),
+        ids: this.drawnIds.slice(),
       },
       input: frame.input,
       missingTextureCount: missing.length,
@@ -727,6 +788,11 @@ export class ResidentPresenter {
         measureCoverage ? { ...presentationQuality(available as CompositeItem[], view, width, height, dpr),
           ...physicalCoverage(rows.map(row=>({...row.raster,
             blend:row.item.blend,native:!!row.constant||Math.min(row.item.tile.width*row.raster.uv[2]/row.raster.box[2],row.item.tile.height*row.raster.uv[3]/row.raster.box[3])>=dpr*(1-1e-10)})),w,h) } : {}),
+      // These fields must follow sampled diagnostics: placeholder coverage is
+      // never exact content coverage, even when diagnostic probes miss a gap.
+      cameraPreview: !!preview, previewPendingPixels: preview?.pendingPixels || 0,
+      previewCachedPixels: preview ? w * h - preview.pendingPixels : w * h,
+      ...(preview ? { pixelCoverageComplete: false, nativeCoverageComplete: false, qualityTerminal: false } : {}),
       // Diagnostic geometry of pixels actually submitted, excluding missing
       // textures. Tests can distinguish absent document content from the known
       // empty page background outside the document's paint bounds.
@@ -736,6 +802,25 @@ export class ResidentPresenter {
         width: row.raster.box[2] / view.zoom, height: row.raster.box[3] / view.zoom,
         density: row.item.tile.zoom,
       }))) } : {}),
+    }
+    if(!pending){this.report(report);return}
+    // Transfer an immutable, completed image. The DOM canvas and its camera
+    // transform are replaced together on the window event loop; a live worker
+    // canvas must never change beneath a previously applied CSS transform.
+    let completion:Promise<void>
+    try{completion=this.device.queue.onSubmittedWorkDone()}catch(error){completion=Promise.reject(error)}
+    void completion.then(()=>{
+      if(this.disposed||this.bitmapPending!==pending)return
+      this.payload.assertOpen()
+      const bitmap=this.canvas.transferToImageBitmap()
+      try{
+        pending.sent=true
+        this.report({...report,atomicPresentation:true,bitmap,completedEpoch:performance.timeOrigin+performance.now()})
+      }catch(error){bitmap.close();throw error}
+    }).catch(error=>{
+      if(this.bitmapPending!==pending||this.disposed)return
+      this.bitmapPending=undefined;this.payload.retire(pending.payload)
+      this.report({error:String(error)})
     })
   }
   repaint() {
@@ -745,7 +830,9 @@ export class ResidentPresenter {
     const guides = frame.gestureGuides ? frame.input?.guides : undefined
     if (!frame.overlay && !guides?.length) return
     this.overlay ??= new CanvasOverlayRenderer(this.device, this.format)
-    const base = frame.overlay || { pixelGrid:false }
+    // Atomic images are reprojected between native frames. A baked grid would
+    // survive below 400% and alias on fast zoom; the window owns this chrome.
+    const base = frame.overlay ? {...frame.overlay,pixelGrid:!this.atomic&&frame.overlay.pixelGrid} : { pixelGrid:false }
     const overlay = frame.overlayAffines ? transformOverlay(base, new Map(Object.entries(frame.overlayAffines))) :
       frame.overlayPose ? translateOverlay(base, new Map(Object.entries(frame.overlayPose))) : base
     // Guide coordinates already describe this sampled pose and its stationary
@@ -755,6 +842,7 @@ export class ResidentPresenter {
   get residentBytes() {
     return (
       this.bytes + (this.linearTarget ? this.linearTarget.width * this.linearTarget.height * 8*this.linearTarget.samples : 0) +
+      (this.bitmapVisible?.bytes || 0) + (this.bitmapPending?.payload.bytes || 0) +
       (this.backbuffer ? this.backbuffer.width * this.backbuffer.height * 4 : 0) + (this.overlay?.residentBytes || 0)
     )
   }
@@ -765,6 +853,7 @@ export class ResidentPresenter {
   dispose() {
     if (this.disposed) return
     this.disposed = true
+    this.clearBitmapPresentation()
     this.alphaTrace?.close()
     this.payload.close('disposed')
     recordDeviceLifecycle(this, deviceLifecyclePhase.disposed, this.diagnosticFields())

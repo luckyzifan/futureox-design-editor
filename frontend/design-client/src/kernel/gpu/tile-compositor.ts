@@ -2,7 +2,7 @@ import type { CanvasCamera } from '../../canvas-camera'
 import { presentationQuality } from './presentation-quality'
 import { compositeDrawPlan, compositeRasterQuad } from './composite-draw-plan'
 import type { RasterTile } from '../tile-cache'
-import { physicalPixelCoverage } from './physical-coverage'
+import { physicalPixelCoverage, physicalCoverageGaps } from './physical-coverage'
 
 export type CompositeTile = RasterTile & { serial: number; bytes: Uint8Array; bitmap?: ImageBitmap; gpuTile?: number }
 export type TilePlacement = { left: number; top: number; width: number; height: number }
@@ -19,8 +19,8 @@ void main(){
   gl_Position=vec4(screen.x*2.-1.,1.-screen.y*2.,0.,1.);
 }`
 const fragment = `#version 300 es
-precision highp float; uniform sampler2D pixels; in vec2 uv; out vec4 color;
-void main(){color=texture(pixels,uv);}`
+precision highp float; uniform sampler2D pixels; uniform bool preview; in vec2 uv; out vec4 color;
+void main(){color=preview?vec4(1.):texture(pixels,uv);}`
 
 /** Persistent display textures, independent from raster work and React tiles.
  * ImageBitmap transport crosses the raster/display device boundary once per
@@ -33,11 +33,13 @@ export class TileCompositor {
   private readonly box: WebGLUniformLocation
   private readonly uvBox: WebGLUniformLocation
   private readonly viewport: WebGLUniformLocation
+  private readonly previewUniform: WebGLUniformLocation
   private textures = new Map<number, { texture: WebGLTexture; bytes: number }>()
   private disposed = false
   bytes = 0
   uploads = 0
   frames = 0
+  preview = false
 
   constructor(readonly canvas: HTMLCanvasElement) {
     const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true,
@@ -65,6 +67,7 @@ export class TileCompositor {
     this.box = gl.getUniformLocation(program, 'box')!
     this.uvBox = gl.getUniformLocation(program, 'uvBox')!
     this.viewport = gl.getUniformLocation(program, 'viewport')!
+    this.previewUniform = gl.getUniformLocation(program, 'preview')!
     gl.useProgram(program); gl.uniform1i(gl.getUniformLocation(program, 'pixels'), 0)
     gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND)
   }
@@ -99,7 +102,7 @@ export class TileCompositor {
     }
   }
 
-  draw(items: readonly CompositeItem[], view: CanvasCamera, width: number, height: number, dpr: number, allowEmpty = false) {
+  draw(items: readonly CompositeItem[], view: CanvasCamera, width: number, height: number, dpr: number, allowEmpty = false, cameraPreview = false) {
     const gl = this.gl
     if (this.disposed || gl.isContextLost()) throw new Error('画布合成设备已丢失')
     const w = Math.max(1, Math.ceil(width * dpr)), h = Math.max(1, Math.ceil(height * dpr))
@@ -112,17 +115,33 @@ export class TileCompositor {
       const raster = compositeRasterQuad(planned.placement, planned.clip, width, height, dpr)
       return raster ? [{ item: planned.item, entry, raster }] : []
     })
-    if (!allowEmpty && !physicalPixelCoverage(rows.map(row => ({ ...row.raster, blend: row.item.blend })), w, h)) {
+    const coverage = rows.map(row => ({ ...row.raster, blend: row.item.blend }))
+    const complete = physicalPixelCoverage(coverage, w, h)
+    const preview = !allowEmpty && !complete && cameraPreview && rows.every(row => !row.item.blend)
+    if (!allowEmpty && !complete && !preview) {
       this.canvas.dataset.coverageDeferred = 'true'
       return false
     }
     this.canvas.dataset.coverageDeferred = 'false'
+    this.preview = preview
+    this.canvas.dataset.cameraPreview = String(preview)
+    this.canvas.dataset.previewPendingPixels = String(preview ? physicalCoverageGaps(coverage, w, h).reduce((sum, gap) => sum + gap.width * gap.height, 0) : 0)
     // Admission precedes any backing-store change, including resize clears.
     if (this.canvas.width !== w) this.canvas.width = w
     if (this.canvas.height !== h) this.canvas.height = h
     gl.viewport(0, 0, w, h); gl.useProgram(this.program); gl.bindVertexArray(this.vao)
     gl.uniform2f(this.viewport, width, height)
-    gl.disable(gl.SCISSOR_TEST);gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT)
+    gl.disable(gl.SCISSOR_TEST)
+    if (preview) gl.clearColor(1, 1, 1, 1)
+    else gl.clearColor(0, 0, 0, 0)
+    gl.clear(gl.COLOR_BUFFER_BIT)
+    if (preview && this.textures.size) {
+      gl.bindTexture(gl.TEXTURE_2D, this.textures.values().next().value!.texture)
+      gl.disable(gl.BLEND); gl.uniform1i(this.previewUniform, 1)
+      gl.uniform4f(this.box, 0, 0, width, height); gl.uniform4f(this.uvBox, 0, 0, 1, 1)
+      gl.drawArrays(gl.TRIANGLES, 0, 6)
+    }
+    gl.uniform1i(this.previewUniform, 0)
     for (const { item, entry, raster } of rows) {
       const { blend = false } = item
       gl.bindTexture(gl.TEXTURE_2D, entry.texture)

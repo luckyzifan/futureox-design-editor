@@ -12,6 +12,7 @@ import type {ResidentAcknowledgement} from './resident-presentation'
 import type {ResidentFrame} from './gpu/resident-presenter'
 import type {RasterTile} from './tile-cache'
 import {createRenderDiagnostics,PREFIX} from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
+import {CameraReprojection,atomicPresentationContext,consumePresentationBitmap} from './camera-reprojection'
 
 export type NativeSourceStatus={phase:'loading'|'refining'|'ready'|'error';done:number;total:number;error?:string}
 type Props={source:SourceCanvasSnapshot;view:CanvasCamera;width:number;height:number;
@@ -37,6 +38,11 @@ export function NativeSourceSurface(props:Props){
     element.setAttribute('aria-label','全源画板')
     Object.assign(element.style,{position:'absolute',inset:'0',pointerEvents:'none'})
     host.current!.append(element)
+    const bitmapContext=atomicPresentationContext(element)
+    const projection=new CameraReprojection(element,host.current!)
+    let backing:ResidentAcknowledgement|undefined
+    const project=()=>{const p=latest.current;return projection.update(backing,p.view,p.width,p.height,
+      !!bitmapContext)}
     badge.className='kernel-status';badge.setAttribute('role','status');badge.setAttribute('aria-label','完整画板显示状态')
     Object.assign(badge.style,{position:'absolute',right:'14px',top:'var(--kernel-status-top, 12px)',fontSize:'11px',color:'#7b8190',zIndex:'5'})
     host.current!.append(badge)
@@ -90,18 +96,23 @@ export function NativeSourceSurface(props:Props){
       if(!alive||!initialized||failed||suspended)return
       try{
         const {p,ratio,tiles,keys,exact}=plan(),done=tiles.filter(tile=>cache.has(tile.key)).length
-        element.style.width=`${p.width}px`;element.style.height=`${p.height}px`
+        project()
         const visible=[...cache.values()].filter(tile=>tileIntersectsView(tile,p.view,p)).sort((a,b)=>a.zoom-b.zoom||a.used-b.used)
-        if(!visible.length){emit({phase:'refining',done,total:tiles.length});return}
+        if(!cache.size){emit({phase:'refining',done,total:tiles.length});return}
         const sequence=++submission,id=`${prefix}:${sequence}`,complete=done===tiles.length&&exact
         for(const tile of visible){tile.lastSubmission=sequence;tile.used=++tick}
+        const anchor=visible[0]||cache.values().next().value!
+        // Even an offscreen anchor must survive until this display task is
+        // acknowledged. Release messages can otherwise overtake deferred draw.
+        anchor.lastSubmission=sequence;anchor.used=++tick
         const items:ResidentFrame['items']=visible.map(tile=>({active:true,layer:keys.has(tile.key)?4:1,
           tile:{key:tile.key,serial:tile.serial,gpuTile:tile.gpuTile!,x:tile.x,y:tile.y,width:tile.width,height:tile.height,zoom:tile.zoom,phaseX:tile.phaseX,phaseY:tile.phaseY}}))
         wanted={id,sequence,view:{...p.view},width:p.width,height:p.height,dpr:ratio,complete,covered:done===tiles.length,demand:demandKey(),ids:new Set(visible.map(tile=>tile.gpuTile!))}
-        // A partially delivered camera is not intentional transparency. The
-        // presenter may use certified empty background to cover new edges;
-        // otherwise retain its complete backing until the missing tiles land.
-        client.present({presentationId:id,view:p.view,width:p.width,height:p.height,dpr:ratio,items,allowBackground:true})
+        // The live anchor certifies this source even when all cached content
+        // moves offscreen. The presenter marks unknown pixels as preview;
+        // its independent ACK is required before claiming exact readiness.
+        client.present({presentationId:id,view:p.view,width:p.width,height:p.height,dpr:ratio,items,allowBackground:true,
+          cameraPreview:import.meta.env.VITE_DESIGN_PAN_PRESENT_PREVIEW!=='0'?{anchor:anchor.gpuTile!}:undefined})
         emit({phase:'refining',done,total:tiles.length})
         // This is an evictable history allowance, never a source-size refusal.
         const keep=Math.max(32,tiles.length*3)
@@ -191,6 +202,9 @@ export function NativeSourceSurface(props:Props){
       }catch(error){if(alive)fail(error)}finally{running=false}
     }
     client.onPresentation=stats=>{
+      const bitmap=stats.bitmap as ImageBitmap|undefined
+      let bitmapApplied=false
+      try {
       if(!alive||failed)return
       if(stats.error){fail(stats.error);return}
       if(Array.isArray(stats.missingGpuTiles)){
@@ -202,19 +216,27 @@ export function NativeSourceSurface(props:Props){
       if(!actual?.presentationId?.startsWith(prefix+':'))return
       const sequence=Number(actual.presentationId.slice(prefix.length+1))
       if(!Number.isSafeInteger(sequence)||sequence<=0||sequence>submission||sequence<acknowledged)return
+      if(bitmap&&bitmapContext){consumePresentationBitmap(bitmapContext,element,bitmap);bitmapApplied=true}
       acknowledged=sequence;release()
+      backing=actual;project()
       const expected=wanted,p=latest.current
       if(!expected||actual.presentationId!==expected.id||actual.view.x!==expected.view.x||actual.view.y!==expected.view.y||actual.view.zoom!==expected.view.zoom||
         actual.width!==expected.width||actual.height!==expected.height||actual.dpr!==expected.dpr||
         actual.view.x!==p.view.x||actual.view.y!==p.view.y||actual.view.zoom!==p.view.zoom||actual.width!==p.width||actual.height!==p.height||actual.dpr!==density.current||
         [...expected.ids].some(id=>!actual.ids.includes(id)))return
-      if(expected.complete){
+      const complete=expected.complete&&!actual.preview
+      if(complete){
         planner.presented(actual.view,actual.dpr,actual.width,actual.height)
         const count=plan().tiles.length;emit({phase:'ready',done:count,total:count})
       }
-      latest.current.onPresented?.(actual,expected.complete)
-      if(expected.covered&&expected.demand===demandKey()&&prefetchReady!==expected.demand){
+      if(actual.preview)badge.textContent='缓存预览 · 正在补画'
+      latest.current.onPresented?.(actual,complete)
+      if(expected.covered&&!actual.preview&&expected.demand===demandKey()&&prefetchReady!==expected.demand){
         prefetchReady=expected.demand;void run()
+      }
+      }catch(error){fail(error)} finally {
+        bitmap?.close()
+        if(bitmap)client.acceptPresentation?.((stats.presented as ResidentAcknowledgement|undefined)?.presentationToken,bitmapApplied)
       }
     }
     wake.current=()=>{
@@ -228,6 +250,7 @@ export function NativeSourceSurface(props:Props){
       }
       if(suspended){workQueue.demand(true,()=>false);return}
       moving=true;clearTimeout(idleTimer)
+      project()
       try{
       // Motion headroom is optional work. An already complete exact native
       // demand may present immediately, without waiting for a quiet timer or
@@ -267,11 +290,11 @@ export function NativeSourceSurface(props:Props){
         await client.renderSource(source,{pageId:source.pageId,width:Math.ceil(p.width*density.current),height:Math.ceil(p.height*density.current),
           view:{x:0,y:0,zoom:p.view.zoom*density.current},transparent:false,grid:false,rasterProfile:profile,tileViewport:[],renderIntent:'canvas'})
         if(!alive)return
-        client.attachPresentation(element.transferControlToOffscreen());initialized=true;void run()
+        client.attachPresentation(bitmapContext?new OffscreenCanvas(1,1):element.transferControlToOffscreen(),!!bitmapContext);initialized=true;void run()
       }catch(error){if(alive)fail(error)}
     })()
-    return()=>{alive=false;wake.current=()=>{};workQueue.close();document.removeEventListener('visibilitychange',visibility);clearTimeout(idleTimer);cancelAnimationFrame(frameHandle);client.onPresentation=undefined;client.dispose();diagnostics.flush();diagnostics.close();element.remove();badge.remove()}
+    return()=>{alive=false;wake.current=()=>{};workQueue.close();document.removeEventListener('visibilitychange',visibility);clearTimeout(idleTimer);cancelAnimationFrame(frameHandle);client.onPresentation=undefined;client.dispose();diagnostics.flush();diagnostics.close();projection.dispose();bitmapContext?.transferFromImageBitmap(null);element.remove();badge.remove()}
   },[props.source.token,props.width>0&&props.height>0])
   useLayoutEffect(()=>wake.current(),[props.view.x,props.view.y,props.view.zoom,props.width,props.height,dpr])
-  return <div ref={host} className="native-source-surface" style={{position:'absolute',inset:0,pointerEvents:'none'}}/>
+  return <div ref={host} className="native-source-surface" style={{position:'absolute',inset:0,pointerEvents:'none',overflow:'hidden'}}/>
 }

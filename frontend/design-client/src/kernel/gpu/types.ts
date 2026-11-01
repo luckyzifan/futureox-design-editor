@@ -285,12 +285,17 @@ export interface Driver {
   /** Pace canvas encoding against the already submitted queue without
    * retiring frame resources or treating presentation ACKs as completion. */
   yieldRasterQueue?(): Promise<void>
+  /** Display-only bounded command slices; never a resource completion proof. */
+  rasterPacing?: boolean
   captureDisplay?: boolean
   retainedSampleCapture?(): boolean
-  attachPresenter?(canvas: OffscreenCanvas, report: (stats: Record<string, unknown>) => void): void
+  attachPresenter?(canvas: OffscreenCanvas, report: (stats: Record<string, unknown>) => void, atomic?:boolean): void
+  acceptPresentation?(token:number,accepted?:boolean):void
   presentFrame?(frame: import('./resident-presenter').ResidentFrame): void
   releasePresented?(ids: number[]): void
   replacePresented?(slot:number,next:number):void
+  /** Private immutable captured-texture identity; absent after loss/release. */
+  presentedContentToken?(slot:number):object|undefined
   snapshotPresented?(): { gpuTile: number; frame: import('./resident-presenter').ResidentFrame } | undefined
   backgroundTile?(owner:object,contract:string,view:{x:number;y:number;zoom:number},output:Rect):number|undefined
   snapshotPageTranslation?(sourceOwner:object,targetOwner:object,offset:{x:number;y:number},width:number,height:number,scale:number,contract:string):

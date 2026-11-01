@@ -16,6 +16,7 @@ import { expandedInteractionCapture } from './interaction-capture-window'
 import { tilePlacementAtView } from './tile-preview'
 import { scene, unionBounds } from '../geometry'
 import { buildInteractionDependencyScope } from './interaction-scene-bounds'
+import { rigidInteractionCapture } from './rigid-interaction-capture'
 import { KernelClient, type KernelOptions, type KernelResult } from './client'
 import type { BackendPreference } from './gpu/types'
 import type { CompositeItem, CompositeTile } from './gpu/tile-compositor'
@@ -36,6 +37,7 @@ type ResidentInteraction = {
   parentMatrices?: Map<string, Matrix>
   affine?: boolean
   affineEligible?: boolean
+  inputPriority?: boolean
   displayedTransforms?: Record<string, Matrix>
   // Only a complete capture may retain chrome from that exact document. World
   // AABBs, size text and measurements cannot be recovered by inverse affine.
@@ -126,6 +128,15 @@ export class InteractionRenderer {
   private liveCancelled = false
   private liveDeferred = false
   private viewport?: { view: CanvasCamera; width: number; height: number; dpr: number }
+  private settledViewport?: { document:DesignDocument; pageId:string; epoch:number;
+    view:CanvasCamera; width:number; height:number; dpr:number; profile:KernelOptions['rasterProfile']; backend:BackendPreference }
+  private settledViewportMatches(document:DesignDocument,view:CanvasCamera) {
+    const ready=this.settledViewport,v=this.viewport
+    return !!ready&&!!v&&ready.document===document&&ready.pageId===this.resident?.plan.pageId&&ready.epoch===this.props?.epoch&&
+      ready.profile===this.profile&&ready.backend===this.backend&&ready.width===v.width&&ready.height===v.height&&ready.dpr===v.dpr&&
+      ready.view.x===view.x&&ready.view.y===view.y&&ready.view.zoom===view.zoom&&
+      v.view.x===view.x&&v.view.y===view.y&&v.view.zoom===view.zoom
+  }
   private viewportRevision = 0
   private lastNavigationAt = -Infinity
   private navigationWarmTimer?: ReturnType<typeof setTimeout>
@@ -221,10 +232,19 @@ export class InteractionRenderer {
     private readonly allowIdleWarm = false, poseDiagnostics?:PoseDiagnostics, private readonly handoffTrace:HandoffTrace=createHandoffTrace()) {
     this.poseLog=poseDiagnostics??createPoseDiagnostics(this.interactionOwner)
     this.control = {
+      releaseInput:()=>{
+        const r=this.resident
+        if(r?.active&&r.live&&r.workerPoses&&!this.error&&!this.inlineDisabled&&r.tiles[0]?.gpuTile)
+          this.sharedClient?.settleResidentInteraction(r.tiles[0].gpuTile,this.lastInput.sequence)
+      },
       isActive: () => !!this.resident?.active,
       guidesInSurface: () => !!this.sharedClient,
       blocksCanvasRefinement:(document,ids,view)=>{
         const r=this.resident,v=this.viewport
+        if(import.meta.env.VITE_DESIGN_ACTIVE_GESTURE_PRIORITY!=='0'&&import.meta.env.VITE_DESIGN_RETAINED_INPUT_PRIORITY!=='0'&&
+            this.sharedClient&&r?.active&&!this.error&&!this.endedDocument&&!this.handoff&&this.sameIds(ids)&&
+            this.settledViewportMatches(document,view))return true
+        if(import.meta.env.VITE_DESIGN_RETAINED_INPUT_PRIORITY!=='1')return false
         return !!this.sharedClient&&!!r&&r.active&&!r.live&&!r.affine&&!this.error&&!this.endedDocument&&!this.handoff&&
           !!v&&v.view.x===view.x&&v.view.y===view.y&&v.view.zoom===view.zoom&&r.scale>=view.zoom*v.dpr&&
           r.tiles.length===r.plan.layers.length&&r.tiles.length>0&&r.tiles.every(tile=>!!tile.gpuTile&&tile.zoom>=view.zoom*v.dpr)&&
@@ -248,7 +268,7 @@ export class InteractionRenderer {
           this.poseEvent(7,13,0,0,trace); return null
         }
         // Never affine-transform retained bitmap pixels. The first affine pose
-        // promotes to a full-viewport native capture with compiler-owned halos.
+        // promotes to a fresh native capture with compiler-owned halos.
         if (affine && !r.affine) {
           r.affine = true; r.captureBounds = undefined; this.inlineDisabled = true
           if (r.tiles[0]?.gpuTile) this.sharedClient?.stopResidentInteraction(r.tiles[0].gpuTile)
@@ -274,8 +294,9 @@ export class InteractionRenderer {
         const retainedRebase = !r.live && (affine || !!offsets && !this.retainedOffsetsReusable(r, offsets))
         if (!retainedRebase && offsets) r.offsets = offsets
         r.active = true; this.moves++
-        if(import.meta.env.VITE_DESIGN_RETAINED_INPUT_PRIORITY==='1'&&newGesture&&this.viewport&&
-            this.control.blocksCanvasRefinement?.(document,r.plan.ids,this.viewport.view))this.sharedClient?.cancelPreview('canvas')
+        const inputPriority=!!this.viewport&&!!this.control.blocksCanvasRefinement?.(document,r.plan.ids,this.viewport.view)
+        if(inputPriority&&(newGesture||!r.inputPriority))this.sharedClient?.cancelPreview('canvas')
+        r.inputPriority=inputPriority
         this.lastInput={sequence:this.moves,at:performance.now(),guides:guides?.slice(0,2).map(g=>({...g}))}
         this.poseOrders.set(this.moves,this.sourceOrder)
         while(this.poseOrders.size>180)this.poseOrders.delete(this.poseOrders.keys().next().value!)
@@ -391,7 +412,7 @@ export class InteractionRenderer {
           this.lastInput={sequence:++this.moves,at:performance.now()}
           if(this.poseLog.enabled&&endSequence!==undefined)this.poseActions.inherit(endSequence,this.moves)
           this.sharedClient.moveResidentInteraction(r.tiles[0].gpuTile,
-            Object.fromEntries(r.plan.ids.map(id=>[id,document.nodes[id].transform])),this.lastInput)
+            Object.fromEntries(r.plan.ids.map(id=>[id,document.nodes[id].transform])),this.lastInput,true)
           this.endedDocument = document
           this.handoff = this.props && this.viewport && this.sessionEpoch !== undefined ? {
             resident: r, document, previousDocument: this.props.document, epoch: this.sessionEpoch, viewportRevision: this.viewportRevision,
@@ -571,6 +592,15 @@ export class InteractionRenderer {
   }
 
   prepare(props: InteractionProps | undefined, pageId: string, view: CanvasCamera, dpr: number,
+    profile: KernelOptions['rasterProfile'], backend: BackendPreference, settledDocument?: DesignDocument,
+    size?: { width: number; height: number }, overlay?: SurfaceProps['overlay']) {
+    this.prepareCurrent(props,pageId,view,dpr,profile,backend,settledDocument,size,overlay)
+    // Selection/capture replacement can close residents without replacing the
+    // complete page. Publish this proof only after the new context is installed.
+    if(props&&size&&this.props===props&&settledDocument===props.document)this.settledViewport={document:settledDocument,pageId,epoch:props.epoch,
+      view:{...view},dpr,...size,profile,backend}
+  }
+  private prepareCurrent(props: InteractionProps | undefined, pageId: string, view: CanvasCamera, dpr: number,
     profile: KernelOptions['rasterProfile'], backend: BackendPreference, settledDocument?: DesignDocument,
     size?: { width: number; height: number }, overlay?: SurfaceProps['overlay']) {
     this.overlaySource=overlay&&props&&overlay.document===props.document&&overlay.pageId===pageId&&overlay.epoch===props.epoch?overlay:undefined
@@ -1216,6 +1246,14 @@ export class InteractionRenderer {
             : unionBounds(scene(document, resident.plan.pageId).map(e => e.bounds))
           const pad = this.viewport ? 16 : Math.max(16, ...Object.values(document.nodes).flatMap(n => n.effects.filter(e => e.visible)
             .map(e => e.radius * 3 + Math.abs(e.x || 0) + Math.abs(e.y || 0) + Math.abs(e.spread || 0))))
+          const rotationBounds=this.viewport&&resident.affine?rigidInteractionCapture(resident.plan,document,roots,
+            resident.localizedBounds,resident.fixedBounds,resident.parentMatrices,resident.scale):undefined
+          if(rotationBounds){
+            const x=Math.max(bounds.x,rotationBounds.x-pad),y=Math.max(bounds.y,rotationBounds.y-pad)
+            const right=Math.min(bounds.x+bounds.width,rotationBounds.x+rotationBounds.width+pad)
+            const bottom=Math.min(bounds.y+bounds.height,rotationBounds.y+rotationBounds.height+pad)
+            if(right>x&&bottom>y)bounds={x,y,width:right-x,height:bottom-y}
+          }
           if (this.viewport && !resident.affine && offsets && roots && resident.plan.ids.every(id => roots.has(id))) {
             // Re-render the swept selection plus its backdrop dependency halo.
             // Unaffected pixels continue using the settled resident tile stack.
@@ -1330,8 +1368,12 @@ export class InteractionRenderer {
                 this.profile==='figmaSubpixel'&&!!canonical
               phaseX = canonical?.phase.x || 0; phaseY = canonical?.phase.y || 0
               const captureCamera=canonicalCapture?canonical!.camera:{x:worldCapture?0:-originX+phaseX,y:worldCapture?0:-originY+phaseY,zoom:scale}
+              // Keep the already-established camera arithmetic, but tell the
+              // compiler the actual consumed output. A localized capture that
+              // omits this region still prepares/allocates a whole page graph.
+              const boundedCapture=import.meta.env.VITE_DESIGN_BOUNDED_POSE_CAPTURE==='1'&&this.allowIdleWarm&&!!this.sharedClient&&!reduced&&this.profile==='figmaSubpixel'
               const captureViewport=canonicalCapture?{x:originX+Math.floor(captureCamera.x),y:originY+Math.floor(captureCamera.y),w:width,h:height}:
-                worldCapture?{x:originX,y:originY,w:width,h:height}:undefined
+                worldCapture?{x:originX,y:originY,w:width,h:height}:boundedCapture?{x:0,y:0,w:width,h:height}:undefined
               causePhase=2;causeBranch=3
               result = await client.render(document, { pageId: resident.plan.pageId, width, height,
                 view:captureCamera,transparent:false,grid:false,
@@ -1530,6 +1572,7 @@ export class InteractionRenderer {
     this.failedGesture = false
     if(!keepFeedback)this.poseOrders.clear()
     this.completePageOrder = 0
+    this.settledViewport=undefined
     if(!keepFeedback){this.clearPoseFeedback(9);this.liveAuthored=undefined;this.feedbackDeferred=false}
     this.resident = undefined; this.livePending = undefined; this.liveRequested = undefined
     this.liveCancelled = false

@@ -565,6 +565,16 @@ impl Engine {
                 + crate::editing::serialized_size(&next.as_ref().unwrap().transform).map_err(|e| e.to_string())?;
         }
         crate::capacity::check_document_bytes(bytes)?;
+        // Pointer-up can repeat the exact last accepted pose. Keep all
+        // validation/admission above, but do not detach snapshots, advance
+        // geometry lineage or invalidate exact programs for an unchanged
+        // authored AND resolved transform. Signed zero remains significant.
+        let same = |a: &Transform, b: &Transform| a.0.iter().zip(b.0).all(|(a,b)| a.to_bits()==b.to_bits());
+        if transforms.iter().all(|(id,transform)| {
+            same(&source.nodes[id].transform,transform) &&
+            self.doc.as_ref().and_then(|doc|doc.nodes.get(id)).is_some_and(|n|same(&n.transform,transform)) &&
+            self.text_base.as_ref().and_then(|doc|doc.nodes.get(id)).is_none_or(|n|same(&n.transform,transform))
+        }) { return Ok(true); }
         // All fallible checks have completed. Release the Weak receipt before
         // mutating so a sole owner need not detach only because of this cache.
         self.retained_source_size = None;

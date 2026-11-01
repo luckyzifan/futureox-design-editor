@@ -9,12 +9,14 @@ import type { KernelOptions } from './client'
 import type { BackendPreference } from './gpu/types'
 import type { PresentedFrame } from './Surface'
 import { presentationMatches } from './presentation'
+import { allowIncompletePanPreview, type PanPreviewBacking } from './pan-preview'
 
 export function TileCompositeSurface({ items, view, width, height, dpr, onReady, onGone, onError, onFailure,
-  interaction, pageId, rasterProfile, backend, settledDocument, presentation, onComposited }:
+  interaction, pageId, rasterProfile, backend, settledDocument, presentation, onComposited, sourceDocument, contentRevision, allowPanPreview, panBacking }:
   { items: CompositeItem[]; view: CanvasCamera; width: number; height: number; dpr: number;
     interaction?: InteractionProps; pageId: string; rasterProfile: KernelOptions['rasterProfile']; backend: BackendPreference;
     settledDocument?: DesignDocument;
+    sourceDocument?: DesignDocument; contentRevision?: number; allowPanPreview?: boolean; panBacking?: PanPreviewBacking;
     presentation?: PresentedFrame | null; onComposited?: (frame: PresentedFrame | null) => void;
     onReady: (key: string, serial: number, managed: boolean) => void;
     onGone: (key: string, serial: number) => void;
@@ -25,8 +27,8 @@ export function TileCompositeSurface({ items, view, width, height, dpr, onReady,
   const published = useRef(new Map<number, string>())
   const interactionRenderer = useRef<InteractionRenderer | null>(null)
   const repaint = useRef<() => void>(() => {})
-  const latest = useRef({ items, view, width, height, dpr, presentation, onComposited })
-  latest.current = { items, view, width, height, dpr, presentation, onComposited }
+  const latest = useRef({ items, view, width, height, dpr, presentation, onComposited, sourceDocument, contentRevision, allowPanPreview, panBacking })
+  latest.current = { items, view, width, height, dpr, presentation, onComposited, sourceDocument, contentRevision, allowPanPreview, panBacking }
   const callbacks = useRef({ onReady, onGone, onError, onFailure })
   callbacks.current = { onReady, onGone, onError, onFailure }
   useLayoutEffect(() => {
@@ -52,7 +54,7 @@ export function TileCompositeSurface({ items, view, width, height, dpr, onReady,
   repaint.current = () => {
     const renderer = compositor.current
     if (!renderer) return
-    const { items, view, width, height, dpr, presentation, onComposited } = latest.current
+    const { items, view, width, height, dpr, presentation, onComposited, sourceDocument, contentRevision, allowPanPreview, panBacking } = latest.current
     const moving = interactionRenderer.current
     const keep = new Set([...items.map(item => item.tile.serial), ...(moving?.tiles.map(tile => tile.serial) || [])])
     renderer.retain(keep)
@@ -78,13 +80,17 @@ export function TileCompositeSurface({ items, view, width, height, dpr, onReady,
       // Imports are a cohort: an incomplete retained layer set is not a new
       // transparent frame. Keep the last complete backing until it can draw.
       if (moved && composition.some(item => item.active && !renderer.has(item.tile))) return
+      const preview = !moved && !!sourceDocument && contentRevision !== undefined && allowIncompletePanPreview({
+        allowed: allowPanPreview, frame: presentation || null, document: sourceDocument, revision: contentRevision,
+        pageId, width, height, dpr, items, backing: panBacking,
+      })
       const submitted = renderer.draw(composition,
-        view, width, height, dpr, !!moved && moving?.mode !== 'live-kernel')
+        view, width, height, dpr, !!moved && moving?.mode !== 'live-kernel', preview)
       if (submitted) {
         // Publish the camera actually drawn, even between plan generations.
         // A live pose is a preview; it must not certify the source as exact.
         const frame = presentation ? { ...presentation, view, width, height, pixelRatio:dpr } : null
-        onComposited?.(frame && { ...frame, preview:!!moved || !!presentation?.preview || !presentationMatches(presentation!, frame) })
+        onComposited?.(frame && { ...frame, preview:!!moved || renderer.preview || !!presentation?.preview || !presentationMatches(presentation!, frame) })
         if (moved && moving) {
           const input = moving.presentedInput
           // draw() may run synchronously inside apply(). Let that input finish
