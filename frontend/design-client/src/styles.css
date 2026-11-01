@@ -1633,6 +1633,12 @@ footer button {
 .editor-shell.chrome-minimized .brand { display: none; }
 .editor-shell.chrome-minimized > footer { left: 12px; }
 .editor-shell.chrome-hide-inspector .canvas-workspace .canvas-controls { top: 62px; }
+.canvas-panel-toggles { position: absolute; inset: 0; pointer-events: none; z-index: 35; }
+.canvas-panel-toggle { position: absolute; top: 50%; transform: translateY(-50%); width: 24px; height: 44px; display: flex; align-items: center; justify-content: center; padding: 0; pointer-events: auto; color: var(--workspace-muted); background: var(--workspace-panel); border: 1px solid var(--workspace-border); box-shadow: 0 2px 6px #0000000a; }
+.canvas-panel-toggle.left { left: 0; border-left: 0; border-radius: 0 7px 7px 0; }
+.canvas-panel-toggle.right { right: 0; border-right: 0; border-radius: 7px 0 0 7px; }
+.canvas-panel-toggle:hover { color: var(--workspace-accent); background: var(--workspace-selected); }
+.canvas-panel-toggle:focus-visible { outline: 2px solid var(--workspace-accent); outline-offset: 2px; }
 .editor-shell .properties-content .panel-tabs { height: 50px; flex: none; display: flex; align-items: center; justify-content: space-between; color: var(--workspace-text); font-size: 12px; font-weight: 600; padding: 0 16px; }
 .editor-shell .properties-content .panel-tabs button { font-size: 20px; padding: 2px 6px; }
 .editor-shell .layout-panel > h4 { display: flex; align-items: center; justify-content: space-between; }

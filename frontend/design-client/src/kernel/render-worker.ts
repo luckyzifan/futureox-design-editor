@@ -1,3 +1,4 @@
+import { ResidentPoseReuse, terminalPoseDisposition } from './resident-pose-reuse'
 import { MAX_CANVAS_RASTER_SCALE } from '../canvas-camera'
 import { pinDocumentCapacity } from '../document-capacity'
 import { initializeKernelModule } from './module'
@@ -125,6 +126,7 @@ function noteRetiredDevice(renderer: GpuRenderer | undefined) {
   if (identity.deviceIncarnation) previousDeviceDiagnostic = { devicePreviousIncarnation: identity.deviceIncarnation }
 }
 let displayCanvas: OffscreenCanvas | undefined
+let atomicDisplay = false
 let displayFrame: import('./gpu/resident-presenter').ResidentFrame | undefined
 // Private version for coverage-relevant frame replacement. Overlay-only
 // updates do not change the gap proof used by an already prepared tile.
@@ -162,7 +164,7 @@ const reportDisplay = (presentation: Record<string, unknown>) => {
     }
     if (presentation.error && gpu?.driver.lost) navigationJournal.stop(5)
   }
-  self.postMessage({ presentation })
+  self.postMessage({ presentation }, {transfer:presentation.bitmap ? [presentation.bitmap as ImageBitmap] : []})
 }
 function journalCompile<T>(work: () => Promise<T>): Promise<T> {
   const compile = work; work = () => failureAttempt(5, compile)
@@ -200,7 +202,7 @@ let reportedResidentAttachment = ''
 function prepareDisplay(capture = true) {
   if (!gpu) return
   if (displayCanvas) {
-    gpu.driver.attachPresenter?.(displayCanvas, reportDisplay)
+    gpu.driver.attachPresenter?.(displayCanvas, reportDisplay, atomicDisplay)
     const reason = gpu.driver.attachPresenter ? 'attached' : 'driver-unavailable'
     if (reportedResidentAttachment !== reason) {
       reportedResidentAttachment = reason
@@ -345,11 +347,13 @@ function yieldPreviewTask() {
   })
 }
 const queue = new RenderWorkQueue()
-type ResidentPose={slot:number;transforms:Record<string,Matrix>;input:import('./interaction-layers').InteractionInput & {owner?:string}}
-type PoseSession={controller:AbortController;slot:number;document:DesignDocument;baseDocument:DesignDocument;scene:GpuScene;
+type ResidentPose={terminal?:boolean;slot:number;transforms:Record<string,Matrix>;input:import('./interaction-layers').InteractionInput & {owner?:string}}
+type PoseSession={reuse?:ResidentPoseReuse;controller:AbortController;slot:number;document:DesignDocument;baseDocument:DesignDocument;scene:GpuScene;
   origins:ReadonlyMap<string,readonly[number,number]>;
   patch?:TranslationPatchSession;native?:boolean;affine?:boolean;fixedWindow?:boolean;window:import('./gpu/types').Rect;options:string;stopped:boolean;input?:ResidentPose['input'] & {owner?:string};bounds?:{x:number;y:number;width:number;height:number}}
 let poseSession:PoseSession|undefined,pendingPose:ResidentPose|undefined,poseQueued=false
+/** Message handlers can replace this queue while native preparation awaits. */
+function latestPendingPose():ResidentPose|undefined{return pendingPose}
 const frozenOverlayPoses=new FrozenResidentOverlayPoses()
 function displayedOverlayAffines(frame:import('./gpu/resident-presenter').ResidentFrame) {
   if(gpu)return resolveResidentOverlayFrame(frame,gpu.driver,poseSession,frozenOverlayPoses)
@@ -362,6 +366,16 @@ function rebasePose(pose:ResidentPose,expandCapture=false){
   }
   if(pendingPose?.slot===pose.slot)pendingPose=undefined
   reportDisplay({residentSample:{slot:pose.slot,...pose.input,needsRebase:true,expandCapture}})
+}
+function presentSampledPose(session:PoseSession,pose:ResidentPose,bounds:{x:number;y:number;width:number;height:number}) {
+  session.input=pose.input;session.bounds=bounds
+  if(displayFrame&&displayFrame.items.some(item=>item.active&&item.tile.gpuTile===session.slot)){
+    const view=displayFrame.view
+    displayFrame={...displayFrame,interaction:true,input:pose.input,items:displayFrame.items.map(item=>item.tile.gpuTile===session.slot
+      ?{...item,clip:{left:bounds.x*view.zoom+view.x,top:bounds.y*view.zoom+view.y,width:bounds.width*view.zoom,height:bounds.height*view.zoom}}:item)}
+    displayCoverageVersion={};displayFrame.overlayAffines=displayedOverlayAffines(displayFrame)
+    gpu!.driver.presentFrame?.(displayFrame)
+  }
 }
 function schedulePose(){
   if(poseQueued||!pendingPose)return
@@ -408,6 +422,21 @@ function schedulePose(){
         }
         if(right<=x||bottom<=y){rebasePose(pose);break}
         const window={x,y,w:right-x,h:bottom-y}
+        const displayGeometry=displayFrame?[displayFrame.view.x,displayFrame.view.y,displayFrame.view.zoom,
+          displayFrame.width,displayFrame.height,displayFrame.dpr]:undefined
+        const texture=gpu.driver.presentedContentToken?.(session.slot)
+        if(session.native&&session.bounds&&session.reuse?.matches({scene:session.scene,driver:gpu.driver,texture,window,transforms:pose.transforms})){
+          // This newer input requests the exact already-rendered pixels. Only
+          // advance its presentation cohort; no new native mutation, packet,
+          // upload or raster is necessary. Resource completion fences remain.
+          const bounds=session.bounds
+          presentSampledPose(session,pose,bounds)
+          reportDisplay({residentSample:{slot:session.slot,...pose.input,bounds,total:performance.now()-started,
+            nativePose:true,samePoseReuse:true,compileMs:0,graphMs:0,finishMs:0,posePrepareMs:0,translationMs:0,
+            sceneUpdateBytes:0,geometryUploadBytes:0,fieldUploadBytes:0,
+            signature:displayFrame?residentFrameSignature(displayFrame):undefined}})
+          continue
+        }
         const translationStarted=performance.now()
         let poseCompileMs=0, sceneUpdateBytes=0
         let compileStats:Record<string,unknown>|undefined
@@ -435,6 +464,15 @@ function schedulePose(){
           next=reuseExactSceneSources(session.scene,next,session.patch?.changedNodes)
         }else next=session.patch?session.patch.prepare(session.scene,pose.transforms,window):
           translatePreviewScene({...session.scene,interactionWindow:window},session.document,document!)
+        const sameDisplay=displayGeometry?!!displayFrame&&[displayFrame.view.x,displayFrame.view.y,displayFrame.view.zoom,
+          displayFrame.width,displayFrame.height,displayFrame.dpr].every((value,i)=>Object.is(value,displayGeometry[i])):!displayFrame
+        if(session.native&&!session.affine&&current()&&sameDisplay){
+          const ending=latestPendingPose(),disposition=terminalPoseDisposition(pose,ending)
+          // Only a release hint can discard an obsolete preparation; moving
+          // pointers keep normal sampling progress and cannot starve rendering.
+          if(disposition==='changed')continue
+          if(disposition==='same'&&ending){pose.input=ending.input;pose.terminal=true;pendingPose=undefined}
+        }
         const translationMs=performance.now()-translationStarted,posePrepareMs=performance.now()-started
         if(!next){rebasePose(pose);break}
         try{
@@ -449,28 +487,22 @@ function schedulePose(){
           session.scene=next
           if(session.patch)session.patch.accept(next,pose.transforms)
           else {session.document=document!;laneState.interactionDocument=document;laneState.deferredInteractionDocument=document}
-          session.input=pose.input
           laneState.compiledScene={revision:laneState.loadedRevision,options:session.options,scene:next}
           const bounds={x:(window.x-next.view.x)/scale,y:(window.y-next.view.y)/scale,width:window.w/scale,height:window.h/scale}
-          session.bounds=bounds
-          if(displayFrame&&displayFrame.items.some(item=>item.active&&item.tile.gpuTile===session.slot)){
-            const view=displayFrame.view
-            displayFrame={...displayFrame,interaction:true,input:pose.input,items:displayFrame.items.map(item=>item.tile.gpuTile===session.slot
-              ?{...item,clip:{left:bounds.x*view.zoom+view.x,top:bounds.y*view.zoom+view.y,width:bounds.width*view.zoom,height:bounds.height*view.zoom}}:item)}
-            displayCoverageVersion = {}
-            displayFrame.overlayAffines=displayedOverlayAffines(displayFrame)
-            gpu.driver.presentFrame?.(displayFrame)
-          }
+          if(session.native){session.reuse??=new ResidentPoseReuse();session.reuse.record({scene:next,driver:gpu.driver,
+            texture:gpu.driver.presentedContentToken?.(session.slot),window,transforms:pose.transforms})}
+          presentSampledPose(session,pose,bounds)
+          const poseStats=gpu.driver.stats?.()
           reportDisplay({residentSample:{slot:session.slot,...pose.input,bounds,total:performance.now()-started,
             nativePose:session.native===true,compileMs:poseCompileMs,
             compileStats,fieldUploadBytes:result.materialFieldUploadBytes,
             sceneUpdateBytes:session.native?sceneUpdateBytes:undefined,
-            geometryUploadBytes:gpu.driver.stats?.().geometryUploadBytes,
-            residentProgramHits:gpu.driver.stats?.().residentProgramHits,residentProgramHitBytes:gpu.driver.stats?.().residentProgramHitBytes,
+            geometryUploadBytes:poseStats?.geometryUploadBytes,
+            residentProgramHits:poseStats?.residentProgramHits,residentProgramHitBytes:poseStats?.residentProgramHitBytes,
             graphMs:result.graphMs,finishMs:result.finishMs,groupHits:result.retainedGroupHits,
             displayTentRadiusPasses:result.displayTentRadiusPasses,displayTentRadiusPixels:result.displayTentRadiusPixels,
             posePrepareMs,documentMs,translationMs,patchSession:!!session.patch,affectedNodes:session.patch?.affectedNodes,
-            passTimings:gpu.driver.stats?.().passTimings,
+            passTimings:poseStats?.passTimings,
             groupBytes:result.retainedGroupBytes,prefixHits:result.retainedPrefixHits,fieldHits:result.materialFieldHits,checkpointMs:result.checkpointMs,fieldMs:result.materialFieldBuildMs,
             drawCalls:result.drawCalls,passPixels:result.passPixels,textureBytes:result.textureBytes,
             signature:displayFrame?residentFrameSignature(displayFrame):undefined}})
@@ -530,9 +562,13 @@ self.onmessage = (e) => {
     try {
       executionPolicy=pinRenderPolicy(executionPolicy,request.executionPolicy)
       if(!allowsResidentSdr(executionPolicy))throw Error('Resident SDR display is not allowed by this host policy')
-      displayCanvas=request.canvas;reportedResidentAttachment='';prepareDisplay()
+      displayCanvas=request.canvas;atomicDisplay=request.atomic===true;reportedResidentAttachment='';prepareDisplay()
       if(!gpu)reportDisplay({residentAttached:false,residentAttachmentReason:'pending-gpu'})
     }catch(error){reportDisplay({residentAttached:false,residentAttachmentReason:String(error),error:String(error)})}
+    return
+  }
+  if(request.command==='display-accept'){
+    try{if(Number.isSafeInteger(request.token)&&request.token>0)gpu?.driver.acceptPresentation?.(request.token,request.accepted===true)}catch(error){reportDisplay({error:String(error)})}
     return
   }
   if (request.command === 'display-frame') {
@@ -564,6 +600,12 @@ self.onmessage = (e) => {
         catch (error) { if ('bitmap' in result) result.bitmap.close(); throw error }
       }catch(error){self.postMessage({id:request.id,error:String(error)})}
     })()
+    return
+  }
+  if(request.command==='interaction-settle'){
+    if(Number.isSafeInteger(request.sequence)&&poseSession&&!poseSession.stopped&&poseSession.slot===request.slot&&
+      pendingPose&&pendingPose.slot===request.slot&&pendingPose.input.sequence===request.sequence&&pendingPose.input.owner===request.owner)
+      pendingPose.terminal=true
     return
   }
   if(request.command==='interaction-pose'){

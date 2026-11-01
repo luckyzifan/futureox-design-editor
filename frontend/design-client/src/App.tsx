@@ -104,6 +104,8 @@ import {
   SlidersHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
 } from 'lucide-react'
 import { Editor, type Tool } from './engine'
 import { desktopBridge, type DesktopCommand } from './desktop'
@@ -987,17 +989,6 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           >
             历史版本
           </button>
-          <button ref={leftPanelToggle} title={panelText.left} aria-label={panelText.left} aria-expanded={showLayers} onClick={() => togglePanel('left')}>
-            <LayersIcon size={16} />
-          </button>
-          <button
-            ref={rightPanelToggle}
-            title={panelText.right}
-            aria-label={panelText.right}
-            aria-expanded={showInspector} onClick={() => togglePanel('right')}
-          >
-            <VectorSquare size={16} />
-          </button>
             </div>
           </details>
           <span
@@ -1240,6 +1231,18 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           onTools={() => setShowCommands((value) => !value)} toolsOpen={showCommands} onVariables={() => setShowTools(true)} />
         <div ref={leftPanel} className="adaptive-layers-shell">{source?.navigation}{(!source||source.showLayers)&&<Layers editor={editor} section={workspaceSection} onSection={setWorkspaceSection} showPages={!source}/>}<PanelResizeHandle side="left" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} /></div>
         <div className="canvas-workspace" ref={source?.canvas}>
+          {!showHome&&!uiMinimized&&<div className="canvas-panel-toggles">
+            <button type="button" ref={leftPanelToggle} className="canvas-panel-toggle left"
+              title={`${showLayers?panelText.collapse:panelText.expand} · ${panelText.left}`} aria-label={panelText.left}
+              aria-expanded={showLayers} onClick={() => togglePanel('left')}>
+              {showLayers?<PanelLeftClose size={15}/>:<PanelLeftOpen size={15}/>}
+            </button>
+            <button type="button" ref={rightPanelToggle} className="canvas-panel-toggle right"
+              title={`${showInspector?panelText.collapse:panelText.expand} · ${panelText.right}`} aria-label={panelText.right}
+              aria-expanded={showInspector} onClick={() => togglePanel('right')}>
+              {showInspector?<PanelRightClose size={15}/>:<PanelRightOpen size={15}/>}
+            </button>
+          </div>}
           {source&&<SourceDocumentStatus source={source}/>}
           {importReport?.documentId === s.doc.id && <ImportNotice warnings={importReport.warnings} onClose={() => setImportReport(null)} />}
           <HomeCanvasGate home={showHome}><Canvas editor={editor} peers={localWindows.peers} compactChrome loading={!ready||!!source&&!source.ready}

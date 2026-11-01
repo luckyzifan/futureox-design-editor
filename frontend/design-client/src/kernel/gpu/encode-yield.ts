@@ -5,8 +5,8 @@ export class EncodeYield {
   private channel?: MessageChannel
   private resolve?: () => void
   begin() { this.deadline = performance.now() + 4 }
-  checkpoint(enabled: boolean): Promise<void> | undefined {
-    if (!enabled || performance.now() < this.deadline) return
+  checkpoint(enabled: boolean, force = false): Promise<void> | undefined {
+    if (!enabled || !force && performance.now() < this.deadline) return
     this.channel ??= new MessageChannel()
     const channel = this.channel
     return new Promise(resolve => {

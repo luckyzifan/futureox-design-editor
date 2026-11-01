@@ -374,7 +374,8 @@ export function ProgressiveSurfaceImpl(
   },
 ) {
   const { document: doc, pageId, view, width, height, backend } = props
-  const retainedEditing=import.meta.env.VITE_DESIGN_RETAINED_INPUT_PRIORITY==='1'&&!!props.interaction?.active&&
+  const retainedEditing=(import.meta.env.VITE_DESIGN_RETAINED_INPUT_PRIORITY==='1'||
+    import.meta.env.VITE_DESIGN_ACTIVE_GESTURE_PRIORITY!=='0'&&import.meta.env.VITE_DESIGN_RETAINED_INPUT_PRIORITY!=='0')&&!!props.interaction?.active&&
     props.interaction.document===doc&&!!props.interaction.control.current?.blocksCanvasRefinement?.(doc,props.interaction.selection,view)
   const capability = useDisplayCapability()
   // HDR presentation follows the pinned host policy (default off). Managed
@@ -477,7 +478,7 @@ export function ProgressiveSurfaceImpl(
       bitmapRetirement.retire(previous.residents.values(), [...tileRef.current.values(), ...pageResidency.values(),
         ...(displayed?.residents.values() || [])])
   }, [displayed, bitmapRetirement, pageResidency])
-  const acknowledged = useRef<{view:SurfaceProps['view'];width:number;height:number;dpr:number;interaction:boolean;ids:Set<number>} | undefined>(undefined)
+  const acknowledged = useRef<{view:SurfaceProps['view'];width:number;height:number;dpr:number;interaction:boolean;preview?:boolean;ids:Set<number>} | undefined>(undefined)
   const activePlan = useRef<DisplayFrame | null>(null)
   const [compositeCacheFrame] = useState(() => new CompositeFrameWitness<CompositeCacheFrame<PaintedTile> & {
     displayBudget: number; residencyBudget: number; displayed: DisplayFrame | null
@@ -501,7 +502,7 @@ export function ProgressiveSurfaceImpl(
   const commitReady = () => {
     const plan = activePlan.current
     const actual=acknowledged.current
-    const presented = !residentDisplay || !!plan && !!actual && !actual.interaction && actual.width===plan.width &&
+    const presented = !residentDisplay || !!plan && !!actual && !actual.preview && !actual.interaction && actual.width===plan.width &&
       actual.height===plan.height && actual.dpr===plan.dpr && actual.view.x===plan.view.x && actual.view.y===plan.view.y &&
       actual.view.zoom===plan.view.zoom && [...plan.ids].every(key=>actual.ids.has(tileRef.current.get(key)?.gpuTile || -1))
     if (!navigationZoom.active && !latestContext.current.paused && syncedDoc.current === doc && plan && plan.key === frameKey && plan.document === doc &&
@@ -2519,9 +2520,8 @@ export function ProgressiveSurfaceImpl(
           }) : undefined}
           view={requestedView} width={width} height={height} dpr={dpr}
           presentation={presentation}
-          {...(residentDisplay?{allowPanPreview:import.meta.env.VITE_DESIGN_PAN_PRESENT_PREVIEW==='1'&&
-            cameraMoving&&!zooming&&reusableFrame&&!!displayed&&!displayed.preview&&
-            displayed.view.zoom===requestedView.zoom,panBacking:reusableFrame&&displayed&&!displayed.preview?displayed:undefined}: {})}
+          allowPanPreview={import.meta.env.VITE_DESIGN_PAN_PRESENT_PREVIEW!=='0'}
+          panBacking={reusableFrame&&displayed&&!displayed.preview?displayed:undefined}
           onTranslatedCoverage={residentDisplay ? (source,offset,sequence,failed)=>translationCoverage.current?.({source,offset,sequence,failed})===true : undefined}
           onComposited={residentDisplay ? undefined : frame => { observeBacking(frame); props.onPresentation?.(frame) }}
           terminalQuality={complete ? { qualitySequence: terminalQualityState.current.sequence,

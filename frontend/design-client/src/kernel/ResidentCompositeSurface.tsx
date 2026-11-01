@@ -19,6 +19,7 @@ import { liveInteractionStack } from './resident-layer-stack'
 import { settleResidentImport } from './resident-import-ownership'
 import { viewportPreviewDeviceKey, type ViewportPreviewDevice } from './viewport-preview-cache'
 import {allowIncompletePanPreview,type PanPreviewBacking} from './pan-preview'
+import {CameraReprojection,atomicPresentationContext,consumePresentationBitmap} from './camera-reprojection'
 
 const activeAffineGesture = (interaction?: InteractionProps) =>
   !!interaction?.active && !!interaction.gestureKind && interaction.gestureKind !== 'move'
@@ -78,6 +79,22 @@ export function ResidentCompositeSurface(props: {
   const presentation = useRef(new ResidentPresentation())
   const actualPresentation=useRef<ResidentAcknowledgement|undefined>(undefined)
   const acceptedChrome=useRef<{source:PresentedFrame;actual:ResidentAcknowledgement;client:KernelClient}|undefined>(undefined)
+  const cameraProjection=useRef<CameraReprojection|undefined>(undefined)
+  const atomicCanvas=useRef(false)
+  const acceptedCamera=useRef<{source:PresentedFrame;actual:ResidentAcknowledgement;client:KernelClient;device?:ViewportPreviewDevice}|undefined>(undefined)
+  const projectCamera=(newBacking=false)=>{
+    const p=latest.current,backing=acceptedCamera.current
+    const allowed=atomicCanvas.current&&p.allowPanPreview===true&&!!backing&&
+      backing.client===p.client&&backing.source.document===p.sourceDocument&&backing.source.pageId===p.pageId&&
+      backing.source.epoch===p.presentation?.epoch&&backing.source.rasterProfile===p.rasterProfile&&
+      !backing.actual.interaction&&!p.interaction?.active&&!backing.source.managed&&!backing.source.grid&&!backing.source.checkerboard&&!backing.source.pixelPreview&&
+      (!backing.source.gpuOverlay||backing.source.gpuOverlayIdentity===p.overlay?.uiIdentity)
+    // Starting an edit must not suddenly undo a projection of the still-visible
+    // backing. Freeze that projection until a worker receipt replaces its basis;
+    // never publish new camera/content authority across this boundary.
+    if(!allowed&&!newBacking)return
+    return cameraProjection.current?.update(backing?.actual,p.view,p.width,p.height,allowed)
+  }
   repaint.current = () => {
     if (!attached.current) return
     const p = latest.current,
@@ -129,6 +146,13 @@ export function ResidentCompositeSurface(props: {
       if (pageTiles.has(tile)) p.onReady(tile.key, tile.serial, false)
     }
     const moved = moving?.items(p.view)
+    const projected=projectCamera(),camera=acceptedCamera.current
+    if(projected?.active&&projected.changed&&camera&&!moved){
+      // This receipt describes a DOM projection of previously accepted pixels,
+      // not a new worker submission. Exact readiness explicitly excludes it.
+      const actual={...camera.actual,view:p.view,width:p.width,height:p.height,dpr:p.dpr,preview:true}
+      p.onPresented?.(actual,{...camera.source,view:p.view,width:p.width,height:p.height,pixelRatio:p.dpr,preview:true},camera.device)
+    }
     const items =
       moved && moving?.mode === 'live-kernel'
         ? liveInteractionStack(p.items, moved)
@@ -181,7 +205,8 @@ export function ResidentCompositeSurface(props: {
       dpr: p.dpr,
       interaction: !!moved,
       gestureGuides:!!p.interaction?.active && p.interaction.gestureKind === 'move',
-      allowEmpty: panPreview || !!moved && moving === interaction.current && moving?.mode !== 'live-kernel',
+      allowEmpty: !!moved && moving === interaction.current && moving?.mode !== 'live-kernel',
+      cameraPreview: panPreview ? { anchor: p.items.find(item => item.tile.gpuTile)?.tile.gpuTile || 0 } : undefined,
       allowBackground: !!moved && moving === pageTranslation.current || !moved && p.allowPageTranslation && p.items.filter(i=>i.active).every(i=>
         (i.tile as unknown as {document?:DesignDocument;revision?:number}).document===p.sourceDocument &&
         (i.tile as unknown as {revision?:number}).revision===p.contentRevision),
@@ -261,6 +286,9 @@ export function ResidentCompositeSurface(props: {
     })
     host.current!.append(el)
     canvas.current = el
+    const bitmapContext=atomicPresentationContext(el)
+    atomicCanvas.current=!!bitmapContext
+    cameraProjection.current=new CameraReprojection(el,host.current!)
     const unregisterContent=registerContentPlane(el,{
       pixel:(u,v)=>actualPresentation.current?p.client.readContentPixel(u,v,actualPresentation.current):Promise.reject(Error('当前画面尚未同步')),
       capture:async()=>{const resolveSnapshot=presentation.current.snapshotResolver()
@@ -269,9 +297,12 @@ export function ResidentCompositeSurface(props: {
         return{bitmap:result.bitmap,frame}},
     })
     try {
-      p.client.attachPresentation(el.transferControlToOffscreen())
+      p.client.attachPresentation(bitmapContext?new OffscreenCanvas(1,1):el.transferControlToOffscreen(),!!bitmapContext)
       attached.current = true
       p.client.onPresentation = (stats) => {
+        const bitmap=stats.bitmap as ImageBitmap|undefined
+        let bitmapApplied=false
+        try {
         const deferredInput = stats.input as ResidentFrame['input']
         if (stats.interactionCoverageMissing && deferredInput?.owner === inputOwner.current && usePageTranslation.current)
           pageTranslation.current?.repairMissingCoverage(deferredInput.sequence)
@@ -299,7 +330,7 @@ export function ResidentCompositeSurface(props: {
           }))
         }
         for (const [key, value] of Object.entries(stats))
-          if (key !== 'presented' && key !== 'input' && key !== 'residentSample' && key !== 'missingGpuTiles')
+          if (key !== 'bitmap' && key !== 'presented' && key !== 'input' && key !== 'residentSample' && key !== 'missingGpuTiles')
             el.dataset[key] = String(value)
         // A coverage rejection carries pose identity only for recovery. It
         // has not displayed that input and must not advance feedback or ACKs.
@@ -321,7 +352,8 @@ export function ResidentCompositeSurface(props: {
           const source=presentation.current.resolve(actual)
           // Rejected display ACKs must not replace the readback expectation or
           // downstream exact ACK. Other message payloads were handled above.
-          if(rejected)return
+          if(rejected||bitmap&&!source)return
+          if(bitmap&&bitmapContext){consumePresentationBitmap(bitmapContext,el,bitmap);bitmapApplied=true}
           actualPresentation.current=actual
           acceptedChrome.current=source?.gpuOverlay&&actual.gpuOverlay?{source,actual,client:p.client}:undefined
           // Use the exact displayed input and its owner, not the latest pointer
@@ -333,13 +365,21 @@ export function ResidentCompositeSurface(props: {
           // camera to SVG chrome and picking before the next browser paint.
           const device = { client: p.client, deviceWorkerScope: stats.deviceWorkerScope as number,
             deviceIncarnation: stats.deviceIncarnation as number, deviceOwner: stats.deviceOwner as number }
+          const deviceOwner=viewportPreviewDeviceKey(device)?device:undefined
+          acceptedCamera.current=source?{source,actual,client:p.client,device:deviceOwner}:undefined
+          const projected=projectCamera(true),current=latest.current
           flushSync(() => {
             if(input?.sequence&&!usePageTranslation.current)
               interaction.current?.acceptPresentedInput(input.sequence,input.at,input.owner===inputOwner.current,true,actual.ids)
             if(input?.sequence&&usePageTranslation.current)
               pageTranslation.current?.acceptPresentedInput(input.sequence,input.at,input.owner===inputOwner.current,actual.ids)
-            latest.current.onPresented?.(actual, source, viewportPreviewDeviceKey(device) ? device : undefined)
+            latest.current.onPresented?.(projected?.active?{...actual,view:current.view,width:current.width,height:current.height,dpr:current.dpr,preview:true}:actual,
+              projected?.active&&source?{...source,view:current.view,width:current.width,height:current.height,pixelRatio:current.dpr,preview:true}:source,deviceOwner)
           })
+        }
+        } catch(error){latest.current.onFailure(String(error))} finally {
+          bitmap?.close()
+          if(bitmap)p.client.acceptPresentation?.((stats.presented as ResidentAcknowledgement|undefined)?.presentationToken,bitmapApplied)
         }
       }
       interaction.current = new InteractionRenderer(() => repaint.current(), p.client, renderExecutionPolicy.desktopDisplay, undefined, trace.current!)
@@ -363,6 +403,10 @@ export function ResidentCompositeSurface(props: {
       presentation.current = new ResidentPresentation()
       actualPresentation.current=undefined
       acceptedChrome.current=undefined
+      acceptedCamera.current=undefined
+      atomicCanvas.current=false
+      bitmapContext?.transferFromImageBitmap(null)
+      cameraProjection.current?.dispose();cameraProjection.current=undefined
       lastFrameSignature.current = ''
       attached.current = false
       importSession.current = {}
@@ -454,6 +498,7 @@ export function ResidentCompositeSurface(props: {
         width: props.width,
         height: props.height,
         pointerEvents: 'none',
+        overflow: 'hidden',
       }}
     />
   )

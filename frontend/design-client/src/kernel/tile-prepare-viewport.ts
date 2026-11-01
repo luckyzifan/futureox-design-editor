@@ -30,7 +30,8 @@ export function tilePrepareViewport(tiles: readonly RasterTile[], view: { x: num
  * the optional preparation window local for large minified display scenes.
  * This changes no output crop, sample phase, halo or admission limit. */
 export function localDisplayPrepareScope(nodes:number,scale:number,display:boolean) {
-  return import.meta.env.VITE_DESIGN_LOCAL_PREPARE_SCOPE!=='0'&&display&&nodes>=3000&&Number.isFinite(scale)&&scale>0&&scale<=.5
+  return import.meta.env.VITE_DESIGN_LOCAL_PREPARE_SCOPE!=='0'&&display&&nodes>=3000&&Number.isFinite(scale)&&scale>0&&
+    (scale<=.5||import.meta.env.VITE_DESIGN_LOCAL_PREPARE_SCOPE==='1')
 }
 export function tileLocalPrepareViewport(tile:RasterTile,view:{x:number;y:number},shared:Rect|undefined,local:boolean) {
   if(!shared||!local)return shared

@@ -4,12 +4,15 @@ import { presentationContentMatches, presentationMatches } from './presentation'
 
 export type ResidentAcknowledgement = {
   presentationId?: string
+  presentationToken?: number
   gpuOverlay?: boolean
+  gpuPixelGrid?: boolean
   view: CanvasCamera
   width: number
   height: number
   dpr: number
   interaction: boolean
+  preview?: boolean
   ids: number[]
 }
 
@@ -21,8 +24,8 @@ function captureMatches(source: PresentedFrame, actual: ResidentAcknowledgement)
 }
 
 function capturedFrame(source: PresentedFrame, actual: ResidentAcknowledgement): PresentedFrame {
-  const frame = { ...source, gpuOverlay: actual.gpuOverlay, view: actual.view, width: actual.width, height: actual.height, pixelRatio: actual.dpr }
-  return { ...frame, preview: !!source.preview || actual.interaction || !presentationMatches(source, frame) }
+  const frame = { ...source, gpuOverlay: actual.gpuOverlay, gpuPixelGrid:actual.gpuPixelGrid, view: actual.view, width: actual.width, height: actual.height, pixelRatio: actual.dpr }
+  return { ...frame, preview: !!source.preview || !!actual.preview || actual.interaction || !presentationMatches(source, frame) }
 }
 
 /** Associate GPU replies with the immutable document that supplied their
