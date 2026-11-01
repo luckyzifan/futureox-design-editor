@@ -1540,12 +1540,14 @@ export class Editor {
   }
   previewLayoutOrder(id: string, point: Point): boolean {
     const base = this.transaction?.previewBase || this.transaction?.doc || this.state.doc,
-      parents = allParents(base),
+      // This is the published immutable gesture baseline, not the mutable
+      // candidate constructed below. Reuse its existing topology index.
+      parents = this.parentMap(base),
       parent = parents.get(id),
       p = base.nodes[parent || ''],
       n = base.nodes[id]
     if (!p?.layout || p.layout.mode === 'none' || n.sizing?.absolute) return false
-    const cursor = apply(inverse(worldMatrix(base, p.id)), point),
+    const cursor = apply(inverse(worldMatrix(base, p.id, parents)), point),
       axis = p.layout.mode === 'vertical' ? 1 : 0
     const flow = p.children.filter(
       (child) => child !== id && base.nodes[child].visible && !base.nodes[child].sizing?.absolute,
@@ -2422,7 +2424,7 @@ export class Editor {
       if (this.transaction !== transaction || this.sessionGeneration !== session ||
           this.state.page !== page || this.state.doc !== retained) return
     }
-    const doc = this.state.doc, parents = allParents(doc)
+    const doc = this.state.doc, parents = this.parentMap(doc)
     // Canvas flushes the release pose through preview before finishing. Commit
     // that exact placement, rather than hit-testing its already reparented tree
     // again (layout can resize targets and change which overlapping frame wins).

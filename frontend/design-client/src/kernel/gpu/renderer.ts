@@ -47,6 +47,7 @@ import { backdropOverlap, exactBlendLattice, normalMergeRegion, interactionEffec
 import { gradient_blur_composite_uniforms } from '../../generated/design-kernel/design_kernel'
 import { inverse } from '../../geometry'
 import { EncodeYield } from './encode-yield'
+import { RASTER_SLICE_COMMANDS } from './raster-queue-pacer'
 import { sceneIndex, opaqueSolidGroup, opaqueSolidRuns, boundedPaintGroup, hasOpaqueSolidGroups, sceneScale as scale, type SceneIndex } from './scene-index'
 import type {
   Driver,
@@ -201,6 +202,7 @@ export class GpuRenderer {
   private encodeYield = new EncodeYield()
   private frameCurrent?: () => boolean
   private displayBackpressure = false
+  private sliceDraws = 0
   private encodingProgress?: (drawCalls:number)=>void
   private progressDraws=0
   private progressAt=0
@@ -209,12 +211,14 @@ export class GpuRenderer {
   }
   private yieldEncoding() {
     this.checkFrameCurrent()
-    const pause = this.encodeYield.checkpoint(this.driver.captureDisplay === true || !!this.frameCurrent)
+    const force = this.driver.rasterPacing === true && this.driver.drawCalls - this.sliceDraws >= RASTER_SLICE_COMMANDS
+    const pause = this.encodeYield.checkpoint(this.driver.captureDisplay === true || !!this.frameCurrent, force)
     return pause?.then(async () => {
       // Let control messages invalidate this frame before its next GPU submit.
       // Cancellation abandons this unsubmitted encoder through the existing
       // abort/fence path; already submitted resources keep that same lifetime.
       this.checkFrameCurrent()
+      this.sliceDraws = this.driver.drawCalls
       if (import.meta.env.VITE_DESIGN_ENCODE_SUBMIT !== '0') {
         if (this.displayBackpressure &&
             this.driver.captureDisplay === true && this.driver.yieldRasterQueue) {
@@ -291,6 +295,7 @@ export class GpuRenderer {
   private retiredImageAssets = new Map<Texture, { epoch: number; covered: boolean }>()
   // Private cumulative proof counters; no source URI, words or public protocol.
   private imageAssetCounters = { hits: 0, uploads: 0, scopeRetiredTextures: 0, legacyPrunes: 0, pressureEvictions: 0 }
+  private residentImageRequest = false
   private horizontalFilters = new HorizontalFilterCache(plane => this.release(plane))
   private staticImageBlurs = new StaticImageBlurCache(plane => this.release(plane), texture => this.driver.imageTableRange?.(texture))
   private staticImageTableProofs = new WeakMap<ExactImageTable, { source: StaticImageBlurSource; input: Rect }>()
@@ -2234,7 +2239,7 @@ export class GpuRenderer {
     // packet can omit an immutable document image and need it again on the next
     // tile. Keep its existing upload only under the same private owner, policy,
     // completion and working-budget rules used by the clamped-filter candidate.
-    if ((import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX !== '1' &&
+    if ((!this.residentImageRequest && import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX !== '1' &&
         import.meta.env.VITE_DESIGN_IMAGE_ASSET_RESIDENCY !== '1') ||
         this.driver.name !== 'webgpu' || !this.driver.waitForSubmittedWork) return
     let owner: ImageResidencyOwner | undefined
@@ -3198,7 +3203,7 @@ export class GpuRenderer {
     finally { this.bytes += (this.driver.scratchBytes || 0) - completedScratch }
     this.staticImageBlurs.collect(this.driver.completedResourceEpoch)
     this.collectRetiredImageAssets()
-    const preserveImmutableImages = import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1' ||
+    const preserveImmutableImages = this.residentImageRequest || import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1' ||
       import.meta.env.VITE_DESIGN_IMAGE_ASSET_RESIDENCY === '1'
     const pressure = (required > 0 || preserveImmutableImages) && this.workingBytes + required > this.frameBudget
     if (pressure) {
@@ -6416,6 +6421,8 @@ export class GpuRenderer {
     // WebGL and older drivers retain their existing completed-frame checks.
     this.frameCurrent = this.driver.abortFrameAndReleaseFilterScratch ? isCurrent : undefined
     this.displayBackpressure=displayBackpressure&&!readback&&present&&this.driver.name==='webgpu'&&!this.driver.hdr&&!scene.softwareRaster
+    this.driver.rasterPacing=this.displayBackpressure&&import.meta.env.VITE_DESIGN_RASTER_QUEUE_PACING!=='0'
+    this.sliceDraws=0
     this.encodingProgress=onEncodingProgress;this.progressDraws=0;this.progressAt=performance.now()
     this.nestedPrefixPressure = false
     try { this.checkFrameCurrent(); return await this.renderAttempt(scene, readback, present) }
@@ -6433,9 +6440,15 @@ export class GpuRenderer {
       console.debug('DESIGN_GPU_PREFIX_BUDGET_FALLBACK ' + JSON.stringify({ reserved, extent: scene.extent }))
       try { return await this.renderAttempt(scene, readback, present) }
       finally { this.prefixAllowed = true; this.nestedPrefixAllowed = true }
-    } finally { this.frameCurrent = undefined; this.displayBackpressure=false; this.encodingProgress=undefined; this.activeRuntimeConfiguration = undefined }
+    } finally { this.frameCurrent = undefined; this.displayBackpressure=false; this.driver.rasterPacing=false; this.residentImageRequest=false; this.encodingProgress=undefined; this.activeRuntimeConfiguration = undefined }
   }
   private async renderAttempt(scene: GpuScene, readback = false, present = true) {
+    // Display-only automatic residency. The existing private source owner,
+    // color/mip policy, completion and pressure gates still decide every hit.
+    // Explicit outputs and unowned loaders keep their established paths.
+    this.residentImageRequest = present && !readback && !!this.driver.captureDisplay &&
+      this.driver.name==='webgpu' && !!this.driver.managed && !this.driver.hdr &&
+      import.meta.env.VITE_DESIGN_RESIDENT_IMAGE_REUSE!=='0'
     this.activeRuntimeConfiguration = undefined
     this.skippedPainterVisits=0
     this.opaquePrefixActive=this.opaquePrefixEnabled&&present&&!readback&&

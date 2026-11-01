@@ -42,6 +42,7 @@ import { ImageXTablePipeline, ImageXTableStorage } from './image-x-table-gpu'
 import type { ExactImageTable } from './types'
 import { scalarCoverageSource, SCALAR_COVERAGE_UNIFORM } from './scalar-coverage'
 import { ResidentPresenter, type ResidentFrame } from './resident-presenter'
+import { RasterQueuePacer, RASTER_SLICE_COMMANDS } from './raster-queue-pacer'
 import { isDisplayBudgetError } from './display-budget'
 import byteSamplingShader from '../../../../../design-studio/crates/design-kernel/shaders/byte-sampling.wgsl?raw'
 import { areaShaderWgsl } from './area-shader'
@@ -127,6 +128,8 @@ export class WebGpuDriver implements Driver {
   private queueWaitStats = new QueueWaitStats(import.meta.env.VITE_DESIGN_QUEUE_WAIT_TIMING === '1')
   private submissionSequence = 0
   private completedSubmissionSequence = 0
+  rasterPacing = false
+  private rasterPacer?: { device: GPUDevice; pacer: RasterQueuePacer }
   private fenceSequence = 0
   private submitTraceSkipped = 0
   private fenceTraceSkipped = 0
@@ -253,13 +256,15 @@ export class WebGpuDriver implements Driver {
     const counters = this.presenter?.diagnosticFields()
     return { ...counters, ...deviceDiagnosticFields(this), deviceCounterMask: counters?.deviceCounterMask ?? 0 }
   }
-  attachPresenter(canvas: OffscreenCanvas, report: (stats: Record<string, unknown>) => void) {
-    if(this.presenter)this.presenter.attachCanvas(canvas)
-    else this.presenter=new ResidentPresenter(this.presentationDevice||this.device, canvas, this.format, report)
+  attachPresenter(canvas: OffscreenCanvas, report: (stats: Record<string, unknown>) => void, atomic=false) {
+    if(this.presenter)this.presenter.attachCanvas(canvas,atomic)
+    else this.presenter=new ResidentPresenter(this.presentationDevice||this.device, canvas, this.format, report,atomic)
   }
+  acceptPresentation(token:number,accepted=true){this.presenter?.acceptPresentation(token,accepted)}
   presentFrame(frame: ResidentFrame) { this.presenter?.draw(frame) }
   releasePresented(ids: number[]) { this.presenter?.release(ids) }
   replacePresented(slot:number,next:number){this.presenter?.replace(slot,next)}
+  presentedContentToken(slot:number){return this.lost||this.disposed?undefined:this.presenter?.contentToken(slot)}
   snapshotPresented(){return this.presenter?.snapshot()}
   backgroundTile(owner:object,contract:string,view:{x:number;y:number;zoom:number},output:Rect){
     if(this.hdr||this.lost)return
@@ -2168,7 +2173,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   private uniform(u: Float32Array) {
     if(!Number.isSafeInteger(this.uniformCommands+1))throw Error('GPU command sequence exhausted')
     this.uniformCommands++
-    if (this.offset + 1024 > this.uniformData.byteLength) this.submitCommands()
+    if (this.offset + 1024 > Math.min(this.uniformData.byteLength, this.rasterPacing ? RASTER_SLICE_COMMANDS * 1024 : Infinity)) this.submitCommands()
     const offset = this.offset
     this.offset += 1024
     this.uniformData.set(u, offset / 4)
@@ -2177,7 +2182,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   private uniformWords(words: Uint32Array) {
     if(!Number.isSafeInteger(this.uniformCommands+1))throw Error('GPU command sequence exhausted')
     this.uniformCommands++
-    if(this.offset+1024>this.uniformData.byteLength)this.submitCommands()
+    if(this.offset+1024>Math.min(this.uniformData.byteLength,this.rasterPacing?RASTER_SLICE_COMMANDS*1024:Infinity))this.submitCommands()
     const offset=this.offset;this.offset+=1024
     new Uint32Array(this.uniformData.buffer,this.uniformData.byteOffset+offset,256).set(words)
     return {buffer:this.uniforms,offset,size:1024}
@@ -2300,10 +2305,17 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     if (this.disposed || this.lost) throw Error('GPU 设备已丢失')
     this.submitPending()
     if ((this.submissionSequence || 0) <= (this.completedSubmissionSequence || 0)) return
-    // The worker event loop stays available to camera/presenter messages while
-    // this bounded raster slice drains. Do not reclaim scratch, advance the
-    // frame resource epoch, or authorize a later frame with this completion.
-    await this.waitForQueue('raster-yield')
+    if (import.meta.env.VITE_DESIGN_RASTER_QUEUE_PACING === '0') await this.waitForQueue('raster-yield')
+    else {
+      if (this.rasterPacer?.device !== device) this.rasterPacer = { device, pacer: new RasterQueuePacer() }
+      await this.rasterPacer.pacer.yield(this.submissionSequence, this.completedSubmissionSequence,
+        () => this.waitForQueue('raster-yield', undefined, true).catch(error => {
+          // A low-water observer can reject after yield returned. Preserve it
+          // for finish's existing error boundary as well as the next slice.
+          if (!this.disposed && this.device === device) this.errors.push(String(error))
+          throw error
+        }))
+    }
     if (this.disposed || this.lost || this.device !== device) throw Error('GPU 设备已丢失')
   }
   private flush() {

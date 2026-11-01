@@ -13,6 +13,8 @@ export type InteractionPlan = { document: DesignDocument; pageId: string; ids: s
 export type InteractionPoseFeedback = { x: number; y: number; matrix?: Matrix }
 export type InteractionInput = { sequence:number; at:number; guides?:readonly import('./gpu/canvas-overlay').CanvasGuide[] }
 export type GpuMoveControl = {
+  /** Release coordinates are flushed; this is only a preview priority hint. */
+  releaseInput?():void
   isActive(): boolean
   /** Private complete-layer authority; structural eligibility alone is not
    * enough to suspend an ordinary viewport repair. */

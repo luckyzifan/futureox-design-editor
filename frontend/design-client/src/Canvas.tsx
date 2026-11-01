@@ -300,7 +300,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     editor.discardPendingView()
   }
   const scheduleView = (next: typeof state.view) => {
-    editor.setViewCoalesced(next)
+    editor.setViewCoalesced(next, next.zoom===editor.effectiveView().zoom&&import.meta.env.VITE_DESIGN_LEADING_PAN_INPUT!=='0')
   }
   /** Base camera for incremental wheel math: the pending write when one is
    * coalesced, otherwise the committed editor view. */
@@ -871,7 +871,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   useLayoutEffect(() => {
     if (!actionTrace.enabled) return
     // Count already-rendered overlays; never re-run layout or log their geometry.
-    recordCanvasGrid(editor, {gridKind: 2, gridVisible: Number(!!pixelGridPath && !gpuOverlay), gridSpacingClass: displayView.zoom >= 4 ? 2 : 1,
+    recordCanvasGrid(editor, {gridKind: 2, gridVisible: Number(!!pixelGridPath && (!gpuOverlay||presented?.gpuPixelGrid===false)), gridSpacingClass: displayView.zoom >= 4 ? 2 : 1,
       gridStale: Number(displayView.x !== state.view.x || displayView.y !== state.view.y || displayView.zoom !== state.view.zoom), gridRedrawReason: 0})
     if (editor.interactionActive) return
     const cells = host.current?.querySelectorAll('[data-testid="layout-grid-cell"]').length || 0
@@ -1261,9 +1261,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         d.view = { ...next, x: d.view.x + next.x - v.x, y: d.view.y + next.y - v.y }
       }
       recordNavigationInput(editor, e, wheelSize, next, pinch)
-      if(import.meta.env.VITE_DESIGN_LEADING_PAN_INPUT==='1'&&next.zoom===v.zoom&&
-          (nativeSource||presentedSignal.getSnapshot().frame?.computeBackend==='webgpu'))editor.setViewCoalesced(next,true)
-      else scheduleView(next)
+      scheduleView(next)
     }
     el.addEventListener('wheel', wheel, { passive: false })
     const modifiers = (e: KeyboardEvent) => { wheelModifiers.current = { ctrl: e.ctrlKey, meta: e.metaKey } }
@@ -2101,6 +2099,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         else editor.notify('裁切区域过小，未应用')
       }
     } else {
+      if(d.kind==='move')gpuMove.current?.releaseInput?.()
       const notice = d.kind === 'move' ? editor.finishCanvasMove(screenToWorld(d.view, release), /Mac|iPhone|iPad/.test(navigator.platform) ? e.metaKey : e.ctrlKey, /Mac|iPhone|iPad/.test(navigator.platform) && e.ctrlKey, space.current) : undefined
       const commitResult = editor.commit()
       if(d.kind==='rotate'&&d.rotationCenter)setOrigin(originFromWorld(d.rotationCenter))
@@ -2489,7 +2488,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         style={{ position: 'relative', zIndex: 3, background: 'transparent' }}
       >
         <title>设计画布</title>
-        {pixelGridPath && !gpuOverlay && (
+        {pixelGridPath && (!gpuOverlay||presented?.gpuPixelGrid===false) && (
           <g transform={`translate(${displayView.x} ${displayView.y}) scale(${zoom})`}>
             {/* Camera chrome, not presented-pixel content: the pixel grid
                 stays visible while the rendered frame catches up with a

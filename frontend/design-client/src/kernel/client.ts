@@ -418,10 +418,11 @@ export class KernelClient {
   onPresentation?: (stats: Record<string, unknown>) => void
   presentationInputOwner?:string
   private presentationAttached = false
-  attachPresentation(canvas: OffscreenCanvas) {
+  attachPresentation(canvas: OffscreenCanvas, atomic=false) {
     this.presentationAttached = true
-    this.worker!.postMessage({ command: 'display-attach', canvas, executionPolicy: renderExecutionPolicy, documentMemoryBytes: documentCapacity().memoryBytes }, [canvas])
+    this.worker!.postMessage({ command: 'display-attach', canvas, atomic, executionPolicy: renderExecutionPolicy, documentMemoryBytes: documentCapacity().memoryBytes }, [canvas])
   }
+  acceptPresentation(token:number|undefined,accepted=true){if(Number.isSafeInteger(token)&&token!>0)this.worker?.postMessage({command:'display-accept',token,accepted})}
   presentationDiagnosticsEnabled() { return this.terminalDiagnostics.detail }
   present(frame: import('./gpu/resident-presenter').ResidentFrame) {
     if (frame.terminalQuality && this.terminalDiagnostics.detail) frame = { ...frame, terminalQuality: { ...frame.terminalQuality,
@@ -436,9 +437,10 @@ export class KernelClient {
   async readContentPixel(u:number,v:number,expected?:import('./resident-presentation').ResidentAcknowledgement){const result=await this.request({command:'display-read-pixel',u,v,expected});if(!result.contentPixel)throw Error('Missing document sample');return result.contentPixel}
   async captureContentBitmap(){const result=await this.request({command:'display-capture-content'});if(!result.bitmap||!result.contentFrame)throw Error('Missing document snapshot');return{bitmap:result.bitmap,frame:result.contentFrame}}
   releasePresented(ids: number[]) { if (ids.length) this.worker?.postMessage({ command: 'display-release', ids }) }
-  moveResidentInteraction(slot:number,transforms:Record<string,import('../model').Matrix>,input:import('./interaction-layers').InteractionInput) {
-    this.worker?.postMessage({command:'interaction-pose',slot,transforms,input:{...input,owner:this.presentationInputOwner}})
+  moveResidentInteraction(slot:number,transforms:Record<string,import('../model').Matrix>,input:import('./interaction-layers').InteractionInput,terminal=false) {
+    this.worker?.postMessage({command:'interaction-pose',slot,transforms,input:{...input,owner:this.presentationInputOwner},...(terminal?{terminal:true}:{})})
   }
+  settleResidentInteraction(slot:number,sequence:number){this.worker?.postMessage({command:'interaction-settle',slot,sequence,owner:this.presentationInputOwner})}
   stopResidentInteraction(slot:number) {this.worker?.postMessage({command:'interaction-pose-stop',slot})}
   async importPresentation(tile: {bitmap?:ImageBitmap;bytes:Uint8Array;width:number;height:number}):Promise<number> {
     const bitmap=tile.bitmap || await createImageBitmap(new ImageData(new Uint8ClampedArray(tile.bytes),tile.width,tile.height))
@@ -531,6 +533,7 @@ export class KernelClient {
       }
       if (this.worker !== worker) {
         e.data.bitmap?.close()
+        e.data.presentation?.bitmap?.close()
         return
       }
       if (e.data.documentFallback === true) {
@@ -576,7 +579,9 @@ export class KernelClient {
         if (this.navigationJournal.recording && typeof e.data.presentation.compositorFrames === 'number')
           this.navigationJournal.record(9, { frames: e.data.presentation.compositorFrames })
         if (e.data.presentation.residentSample) recordRenderProfile('拖动中间帧', e.data.presentation.residentSample)
-        this.onPresentation?.(e.data.presentation); return
+        if(this.onPresentation)this.onPresentation(e.data.presentation)
+        else {stats.bitmap?.close();if(stats.bitmap)this.acceptPresentation(presented?.presentationToken,false)}
+        return
       }
       if (e.data.damage !== undefined) {
         // Document-patch damage is posted before the request's tiles so the

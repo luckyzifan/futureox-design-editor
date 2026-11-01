@@ -44,6 +44,7 @@ type DisplayedFrame = {
 export type OverlayCaptureCohort = { readonly slots: readonly number[] }
 export type PresentedFrame = ExactPresentation & {
   gpuOverlay?: boolean
+  gpuPixelGrid?: boolean
   gpuOverlayIdentity?: string
   gpuOverlayCapture?: OverlayCaptureCohort
   document: DesignDocument

@@ -6,10 +6,10 @@ import { unionBounds, type SceneEntry } from '../geometry'
 
 /** Keep the existing world-space effect/stroke envelope exactly. Grouping
  * changes only membership lookup, never the arithmetic or union order. */
-function paddedBounds(document: DesignDocument, entry: SceneEntry): Bounds {
+function paddedBounds(document: DesignDocument, entry: SceneEntry, omitOwnEffects=false): Bounds {
   const node = document.nodes[entry.id]
   const scale = Math.max(Math.hypot(entry.matrix[0], entry.matrix[1]), Math.hypot(entry.matrix[2], entry.matrix[3]))
-  const pad = Math.max(0, ...node.effects.filter(effect => effect.visible).map(effect =>
+  const pad = Math.max(0, ...node.effects.filter(effect => !omitOwnEffects && effect.visible).map(effect =>
     effect.radius * 3 + Math.abs(effect.x || 0) + Math.abs(effect.y || 0) + Math.abs(effect.spread || 0)),
   ...node.strokes.filter(stroke => stroke.visible).map(stroke => stroke.width * 4)) * scale
   return { x: entry.bounds.x - pad, y: entry.bounds.y - pad,
@@ -64,14 +64,14 @@ function finalForegroundBranch(document: DesignDocument, pageId: string,
     Object.keys(node.bindings || {}).length > 0 || Object.keys(node.variableModes || {}).length > 0 ||
     Object.keys(node.styleRefs || {}).length > 0 || !!node.layout && node.layout.mode !== 'none'
   const hugs = (node: DesignNode) => node.sizing?.width === 'hug' || node.sizing?.height === 'hug'
-  // A single self-filter on the selected root changes only that source's
-  // footprint. Keep nested filters and spatially varying/radial kernels on
-  // the full dependency path: paddedBounds is not a sum of ancestor halos.
+  // Inner-shadow/color-control chains cannot grow source output alpha. Their
+  // internal reads still belong to the compiler; nested/spatially varying
+  // filters and chains that grow output retain the full dependency path.
   const localRootEffects = (node: DesignNode) => {
     const effects = node.effects.filter(effect => effect.visible)
-    return effects.length === 1 && effects.every(effect =>
+    return (effects.length === 1 || import.meta.env.VITE_DESIGN_CONTAINED_EFFECT_CAPTURE!=='0'&&effects.length<=4&&effects.every(effect=>['inner-shadow','color-controls'].includes(effect.kind))) && effects.every(effect =>
       ['blur', 'gaussian-blur', 'shadow', 'inner-shadow', 'color-controls'].includes(effect.kind) &&
-      !effect.gradientBlur && Number.isFinite(effect.radius) && effect.radius >= 0)
+      !effect.gradientBlur && Number.isFinite(effect.radius) && effect.radius >= 0&&[effect.x??0,effect.y??0,effect.spread??0].every(Number.isFinite))
   }
   const ordinary = (node: DesignNode | undefined, selectedRoot = false): node is DesignNode => !!node &&
     node.blend === 'normal' && !node.mask &&
@@ -156,7 +156,10 @@ export function buildInteractionDependencyScope(document: DesignDocument, pageId
   const knownEffects = entries.every(entry => effectsAreKnown(document.nodes[entry.id].effects))
   const noBackdrop = knownEffects && entries.every(entry => !document.nodes[entry.id].effects.some(e =>
     e.visible && ['background-blur', 'glass'].includes(e.kind)))
-  const finalForeground = !noBackdrop && knownEffects && selection.length === 1 &&
+  const selectedEffects=selection.length===1?document.nodes[selection[0]]?.effects.filter(effect=>effect.visible)||[]:[]
+  const containedRoot=import.meta.env.VITE_DESIGN_CONTAINED_EFFECT_CAPTURE!=='0'&&selectedEffects.length>0&&selectedEffects.length<=4&&
+    selectedEffects.every(effect=>['inner-shadow','color-controls'].includes(effect.kind))
+  const finalForeground = (!noBackdrop||containedRoot) && knownEffects && selection.length === 1 &&
     finalForegroundBranch(document, pageId, entries, byId.get(selection[0]))
   scope.finalForeground = finalForeground
   // Earlier filters have already sampled their backdrop before this branch.
@@ -168,14 +171,24 @@ export function buildInteractionDependencyScope(document: DesignDocument, pageId
       const n = document.nodes[id]
       return n.mask || n.effects.some(e => e.visible) || n.children.some(id => document.nodes[id]?.mask)
     })) continue
-    const affected = entries.filter(e => e.id === id || e.ancestors.includes(id))
-      .map(entry => paddedBounds(document, entry))
+    const affectedEntries = entries.filter(e => e.id === id || e.ancestors.includes(id))
+    // Without descendant filters, source support is geometry plus the original
+    // stroke envelope. Apply the root filter below exactly once; the old
+    // union included its padding before adding the same halo a second time.
+    // Centered strokes use the kernel's <=4*half-width miter limit; the
+    // existing 4*width column-scale envelope also covers affine stretch.
+    // Other alignments retain the previous conservative envelope.
+    const singleHalo = finalForeground && selected.effects.some(effect=>effect.visible) &&
+      affectedEntries.every(e=>document.nodes[e.id].strokes.every(stroke=>!stroke.visible||stroke.align==='center'))
+    const affected = affectedEntries.map(e => paddedBounds(document,e,singleHalo&&e.id===id))
     let bounds = unionBounds(affected)
     if (finalForeground && selected.effects.some(effect => effect.visible)) {
       // The selected root's filter also expands descendant stroke support.
       // Unioning individual padded nodes alone cannot account for that sum.
       const scale = Math.max(Math.hypot(entry.matrix[0], entry.matrix[1]), Math.hypot(entry.matrix[2], entry.matrix[3]))
-      const pad = Math.max(0, ...selected.effects.filter(effect => effect.visible).map(effect =>
+      const effects=selected.effects.filter(effect=>effect.visible)
+      const contained=import.meta.env.VITE_DESIGN_CONTAINED_EFFECT_CAPTURE!=='0'&&effects.every(effect=>['inner-shadow','color-controls'].includes(effect.kind))
+      const pad = contained ? 2*effects.length/(zoom*dpr) : Math.max(0, ...effects.map(effect =>
         effect.radius * 3 + Math.abs(effect.x || 0) + Math.abs(effect.y || 0) + Math.abs(effect.spread || 0))) * scale
       bounds = { x: bounds.x-pad, y: bounds.y-pad, width: bounds.width+2*pad, height: bounds.height+2*pad }
     }

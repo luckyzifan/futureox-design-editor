@@ -271,6 +271,10 @@ function compile(before: DesignDocument, after: DesignDocument): CompiledEdit {
     const a = from.entries.get(id)!
     const b = to.entries.get(id)!
     const parentMoved = from.parentOf.get(id) !== to.parentOf.get(id)
+    // Published unchanged records already compare equal in the original
+    // algorithm. Avoid cloning all their properties just to prove it again;
+    // unchanged records moved to another parent still require structural ops.
+    if (!parentMoved && a === b) continue
     if (!parentMoved) {
       const childrenEqual = equalValue(a.children, b.children)
       const restEqual = equalValue(stripChildren(a), stripChildren(b))
