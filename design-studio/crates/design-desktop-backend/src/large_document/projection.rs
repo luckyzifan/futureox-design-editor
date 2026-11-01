@@ -22,9 +22,7 @@ impl SketchContext {
         check_cancel(cancel).map_err(issue)?;
         if s.revision!=self.revision || s.directory!=self.directory {return Err(issue("Symbol source revision changed"));}
         let lookup = self.symbols.get_or_init(|| {
-            let count=s.parts.iter().try_fold(0usize,|count,part|count.checked_add(part.index.entries.iter().filter(|e|e.kind=="symbolMaster").count()))
-                .ok_or("Symbol count overflow")?;
-            let mut result=super::symbol_index::Symbols::new(&s.directory,count).map_err(|e|e.to_string())?;
+            let mut result=super::symbol_index::Symbols::new(&s.directory);
             for (p, part) in s.parts.iter().enumerate() {
                 check_cancel(cancel).map_err(|e|e.to_string())?;
                 let Ok(mut records)=part.index.records(&s.directory) else {continue;};
@@ -35,7 +33,16 @@ impl SketchContext {
                     let Some(span)=record.fields.iter().find(|f|f.key=="symbolID").map(|f|f.value) else {continue;};
                     let Some(id)=s.state.changes[p].fragment(&mut source,span,part.base_bytes).ok()
                         .and_then(|bytes|serde_json::from_slice::<String>(&bytes).ok()) else {continue;};
-                    result.insert(id,(p,n),cancel).map_err(|e|e.to_string())?;
+                    result.insert(id,(p,n),||{
+                        // Count lightweight rows only if the RAM catalog spills.
+                        // Small imports do not pay for a second metadata scan.
+                        let mut count=0u64;
+                        for part in &s.parts {for row in &part.index.entries {
+                            check_cancel(cancel)?;
+                            if row.kind=="symbolMaster" {count=count.checked_add(1).ok_or_else(||io::Error::other("Symbol count overflow"))?;}
+                        }}
+                        Ok(count)
+                    },cancel).map_err(|e|e.to_string())?;
                 }
             }
             Ok(result)
@@ -282,7 +289,7 @@ pub(super) fn sketch_batch_in(s:&Session,locations:&[(usize,usize)],limit:u64,ca
     sketch_roots_in(s,roots,facts,bytes,limit,context,cancel)
 }
 fn sketch_roots_in(s:&Session,roots:Vec<Value>,facts:RootFacts,mut source_bytes:u64,limit:u64,context:&SketchContext,cancel:&AtomicBool)->Result<(Document,Vec<String>)> {
-    let mut document = context.document.clone();
+    let document = &context.document;
     let RootFacts { symbols, mut images, .. } = facts;
     let mut masters = BTreeMap::new();
     let mut unresolved = symbols;
@@ -318,8 +325,7 @@ fn sketch_roots_in(s:&Session,roots:Vec<Value>,facts:RootFacts,mut source_bytes:
     let dependency_page_id = "00000000-0000-4000-8000-000000000002";
     // Sketch interop derives page IDs from member references. Keep those IDs
     // UUIDs as required by the shared frontend scene contract.
-    document["pages"] =
-        json!([{"_ref":format!("pages/{page_id}")},{"_ref":format!("pages/{dependency_page_id}")}]);
+    let page_references=json!([{"_ref":format!("pages/{page_id}")},{"_ref":format!("pages/{dependency_page_id}")}]);
     let mut page = json!({"_class":"page","do_objectID":page_id,"name":"当前对象"});
     page["layers"]=Value::Array(roots);
     let dependencies = json!({"_class":"page","do_objectID":"00000000-0000-4000-8000-000000000002","name":"组件依赖","layers":masters.into_values().collect::<Vec<_>>()});
@@ -347,7 +353,7 @@ fn sketch_roots_in(s:&Session,roots:Vec<Value>,facts:RootFacts,mut source_bytes:
             entries.insert(image, bytes);
         }
     }
-    let report = interop::import_sketch_source_parts(&entries,&json!({"version":136}),&document,&pages).map_err(issue)?;
+    let report = interop::import_sketch_source_parts_with_pages(&entries,&json!({"version":136}),document,&pages,&page_references).map_err(issue)?;
     Ok((report.document, report.warnings))
 }
 fn json_projection(s: &Session, p: usize, n: usize) -> Result<(Document, Vec<String>)> {

@@ -41,6 +41,13 @@ export function canvasDropFrame(doc: DesignDocument, page: string, roots: readon
 export function containingFrame(doc: DesignDocument,id:string,parents:ParentMap=allParents(doc)):string|undefined {
   for(let at=parents.get(id);at&&doc.nodes[at];at=parents.get(at))if(['frame','section'].includes(doc.nodes[at].kind))return at
 }
+/** A canvas move edits a member of a group/boolean in that container. Crossing
+ * an enclosing frame must not silently extract it and append it above siblings.
+ * Explicit forced placement and dragging a whole container still use frame drops. */
+export function canvasMoveKeepsContainer(doc:DesignDocument,id:string,force:boolean,parents:ParentMap):boolean {
+  const parent=doc.nodes[parents.get(id)!]
+  return !force && !!parent && parent.kind!=='frame' && parent.kind!=='section'
+}
 export function insideParentFrame(doc: DesignDocument,id:string,point:Point,parents:ParentMap=allParents(doc)):boolean {
   const frame=containingFrame(doc,id,parents)
   return !!frame&&kernelFillWorld(doc.nodes[frame],point,worldMatrix(doc,frame,parents),1)

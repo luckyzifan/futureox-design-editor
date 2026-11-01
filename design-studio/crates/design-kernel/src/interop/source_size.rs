@@ -1,6 +1,6 @@
 //! Conservative JSON size admission without formatting every floating value.
 //! If this bound is too large, the caller retains the original exact counter.
-use serde::{Serialize,Serializer,ser::{Impossible,SerializeStruct}};
+use serde::{Serialize,Serializer,ser::{Impossible,SerializeStruct,SerializeMap}};
 use serde_json::Value;
 type E=serde_json::Error;
 fn unsupported()->E{<E as serde::ser::Error>::custom("Unknown numeric serialization")}
@@ -68,6 +68,34 @@ pub(super) fn upper_bound(value:&Value,limit:usize)->Option<usize>{
   },
  };
  (size<=limit).then_some(size)
+}
+
+/// Borrow a document.json envelope while substituting just its page list.
+/// Used only for the native conversion admission count, never canonical output.
+/// The semantic codec receives the same page-list override separately.
+pub(super) struct DocumentFields<'a> {pub source:&'a Value,pub pages:Option<&'a Value>}
+impl DocumentFields<'_> {
+ pub(super) fn upper_bound(&self,limit:usize)->Option<usize>{
+  let Some(pages)=self.pages else{return upper_bound(self.source,limit)};
+  let fields=self.source.as_object()?;let mut size=2usize;
+  for (key,value) in fields {
+   let value=if key=="pages" {pages} else {value};
+   size=size.checked_add(string_size(key)?.checked_add(2)?)?.checked_add(upper_bound(value,limit)?)?;
+   if size>limit{return None}
+  }
+  if !fields.contains_key("pages") {size=size.checked_add(string_size("pages")?.checked_add(2)?)?.checked_add(upper_bound(pages,limit)?)?;}
+  (size<=limit).then_some(size)
+ }
+}
+impl Serialize for DocumentFields<'_> {
+ fn serialize<S:Serializer>(&self,serializer:S)->Result<S::Ok,S::Error>{
+  let Some(pages)=self.pages else{return self.source.serialize(serializer)};
+  let fields=self.source.as_object().ok_or_else(||<S::Error as serde::ser::Error>::custom("Source document must be an object"))?;
+  let mut map=serializer.serialize_map(Some(fields.len()+usize::from(!fields.contains_key("pages"))))?;
+  for (key,value) in fields {map.serialize_entry(key,if key=="pages" {pages}else{value})?;}
+  if !fields.contains_key("pages") {map.serialize_entry("pages",pages)?;}
+  map.end()
+ }
 }
 
 #[cfg(test)]mod tests {

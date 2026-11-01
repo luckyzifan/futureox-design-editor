@@ -16,6 +16,22 @@ impl Bounds {
 }
 #[derive(Clone,Copy,Debug)]
 struct Entry {bounds:Bounds,magnitude:[f64;2],linear:f64,translation:f64,depth:u32,max_depth:u32,own_halo:f64,path_halo:f64,own_fixed:u32,fixed_path:u32}
+fn projected_entry(entry:&Entry,camera:Transform)->Bounds {
+    let m=camera.0;
+    if m[1]!=0.||m[2]!=0.||m[0]!=m[3]||!(0.001..=crate::renderer::MAX_CANVAS_SAMPLE_SCALE).contains(&m[0])||!m[4].is_finite()||!m[5].is_finite(){return Bounds::Unknown}
+    let roundoff=gamma(entry.max_depth);
+    let transform=mul(add(mul(m[0],entry.translation),m[4].abs().max(m[5].abs())),1.+roundoff)
+        .max(mul(mul(m[0],entry.linear),1.+roundoff));
+    if !transform.is_finite()||transform>1e12{return Bounds::Unknown}
+    if mul(m[0],entry.path_halo)>16_000_000.||entry.fixed_path>16_000_000 {return Bounds::Unknown}
+    let Bounds::Box(b)=entry.bounds else{return entry.bounds};
+    let padding=4.*f64::from(entry.max_depth.saturating_sub(entry.depth)+1)+1.+f64::from(entry.fixed_path);
+    let ex=add(mul(roundoff,add(mul(m[0],entry.magnitude[0]),m[4].abs())),padding);
+    let ey=add(mul(roundoff,add(mul(m[0],entry.magnitude[1]),m[5].abs())),padding);
+    let x0=(m[0]*b[0]+m[4]-ex).next_down();let x1=(m[0]*b[2]+m[4]+ex).next_up();
+    let y0=(m[0]*b[1]+m[5]-ey).next_down();let y1=(m[0]*b[3]+m[5]+ey).next_up();
+    Bounds::Box([x0,y0,x1,y1])
+}
 fn add(a:f64,b:f64)->f64 {if a==0. {b}else if b==0. {a}else{(a+b).next_up()}}
 fn mul(a:f64,b:f64)->f64 {if a==0.||b==0. {0.}else{(a*b).next_up()}}
 fn absolute_concat(a:Transform,b:Transform)->Transform {
@@ -112,6 +128,20 @@ impl WorldSupport {
     pub(crate) fn build_output(doc:&Document,roots:&[String],fonts:&Fonts,budget:usize)->Result<Option<Self>,String>{
         Self::build_mode(doc,roots,fonts,budget,true)
     }
+    #[cfg(all(not(target_arch="wasm32"),feature="mapped-source-snapshot"))]
+    pub(crate) fn build_source_roots(doc:&Document,stage:&str,roots:&[String],budget:usize,cancel:&std::sync::atomic::AtomicBool)->Result<Option<Self>,String> {
+        let stage=doc.nodes.get(stage).ok_or("Missing source stage")?;
+        Self::build_context(doc,roots,&Fonts::new(),budget,true,Transform::default().concat(stage.transform),
+            absolute_concat(Transform::default(),stage.transform),1,Some(cancel))
+    }
+    #[cfg(all(not(target_arch="wasm32"),feature="mapped-source-snapshot"))]
+    pub(crate) fn root_words(&self,id:&str)->Option<[u64;15]> {
+        let e=self.entries.get(id)?;let mut words=[0;15];
+        match e.bounds {Bounds::Unknown=>return None,Bounds::Empty=>words[0]=1,Bounds::Box(b)=>{words[0]=2;for i in 0..4 {words[i+1]=b[i].to_bits();}}}
+        words[5]=e.magnitude[0].to_bits();words[6]=e.magnitude[1].to_bits();words[7]=e.linear.to_bits();words[8]=e.translation.to_bits();
+        words[9]=e.depth as u64;words[10]=e.max_depth as u64;words[11]=e.own_halo.to_bits();words[12]=e.path_halo.to_bits();
+        words[13]=e.own_fixed as u64;words[14]=e.fixed_path as u64;Some(words)
+    }
     pub(crate) fn retain_roots(&mut self,roots:&[String]) {
         let mut kept=HashMap::with_capacity(roots.len());
         for id in roots {if let Some(entry)=self.entries.remove(id){kept.insert(id.clone(),entry);}}
@@ -119,13 +149,17 @@ impl WorldSupport {
         self.bytes=self.entries.capacity()*(std::mem::size_of::<(String,Entry)>()+32)+self.entries.keys().map(String::len).sum::<usize>();
     }
     fn build_mode(doc:&Document,roots:&[String],fonts:&Fonts,budget:usize,output_only:bool)->Result<Option<Self>,String>{
+        Self::build_context(doc,roots,fonts,budget,output_only,Transform::default(),Transform::default(),0,None)
+    }
+    fn build_context(doc:&Document,roots:&[String],fonts:&Fonts,budget:usize,output_only:bool,parent:Transform,absolute:Transform,depth:u32,cancel:Option<&std::sync::atomic::AtomicBool>)->Result<Option<Self>,String>{
         let limit=LIMIT.min(budget);
         let mut entries=HashMap::<String,Entry>::new();let mut key_bytes=0usize;
         let frame_bytes=std::mem::size_of::<(&str,Transform,Transform,u32,bool)>();
         if roots.len().saturating_mul(frame_bytes)>limit/2{return Ok(None)}
-        let mut stack=roots.iter().rev().map(|id|(id.as_str(),Transform::default(),Transform::default(),0_u32,false)).collect::<Vec<_>>();
+        let mut stack=roots.iter().rev().map(|id|(id.as_str(),parent,absolute,depth,false)).collect::<Vec<_>>();
         while let Some((id,parent,absolute,depth,finish))=stack.pop(){
             crate::render_cancellation::checkpoint()?;
+            if cancel.is_some_and(|c|c.load(std::sync::atomic::Ordering::Acquire)) {return Err("Scene support publication cancelled".into());}
             let n=&doc.nodes[id];
             if finish {
                 let mut entry=entries[id];
@@ -168,20 +202,7 @@ impl WorldSupport {
     }
     pub(crate) fn bytes(&self)->usize{self.bytes}
     fn device_bounds(&self,id:&str,camera:Transform)->Bounds{
-        let Some(entry)=self.entries.get(id)else{return Bounds::Unknown};let m=camera.0;
-        if m[1]!=0.||m[2]!=0.||m[0]!=m[3]||!(0.001..=crate::renderer::MAX_CANVAS_SAMPLE_SCALE).contains(&m[0])||!m[4].is_finite()||!m[5].is_finite(){return Bounds::Unknown}
-        let roundoff=gamma(entry.max_depth);
-        let transform=mul(add(mul(m[0],entry.translation),m[4].abs().max(m[5].abs())),1.+roundoff)
-            .max(mul(mul(m[0],entry.linear),1.+roundoff));
-        if !transform.is_finite()||transform>1e12{return Bounds::Unknown}
-        if mul(m[0],entry.path_halo)>16_000_000.||entry.fixed_path>16_000_000 {return Bounds::Unknown}
-        let Bounds::Box(b)=entry.bounds else{return entry.bounds};
-        let padding=4.*f64::from(entry.max_depth.saturating_sub(entry.depth)+1)+1.+f64::from(entry.fixed_path);
-        let ex=add(mul(roundoff,add(mul(m[0],entry.magnitude[0]),m[4].abs())),padding);
-        let ey=add(mul(roundoff,add(mul(m[0],entry.magnitude[1]),m[5].abs())),padding);
-        let x0=(m[0]*b[0]+m[4]-ex).next_down();let x1=(m[0]*b[2]+m[4]+ex).next_up();
-        let y0=(m[0]*b[1]+m[5]-ey).next_down();let y1=(m[0]*b[3]+m[5]+ey).next_up();
-        Bounds::Box([x0,y0,x1,y1])
+        self.entries.get(id).map_or(Bounds::Unknown,|entry|projected_entry(entry,camera))
     }
     /// The same directed-error support used to reject optical output can
     /// certify page background. Unknown is distinct from an empty subtree.
@@ -200,6 +221,17 @@ impl WorldSupport {
             b[0]>=f64::from(guard.x)&&b[1]>=f64::from(guard.y)&&b[2]<=f64::from(guard.x)+f64::from(guard.w)&&b[3]<=f64::from(guard.y)+f64::from(guard.h)}
     }
 
+}
+#[cfg(all(not(target_arch="wasm32"),feature="mapped-source-snapshot"))]
+pub(crate) fn source_root_bounds(words:[u64;15],camera:Transform)->Option<Option<[f64;4]>> {
+    if [9,10,13,14].iter().any(|&i|words[i]>u32::MAX as u64) || words[10]<words[9] {return None;}
+    let bounds=match words[0] {1=>Bounds::Empty,2=>{let b=std::array::from_fn(|i|f64::from_bits(words[i+1]));
+        if b.iter().any(|v|!v.is_finite()) || b[0]>b[2] || b[1]>b[3] {return None;}Bounds::Box(b)},_=>return None};
+    let values=[5,6,7,8,11,12].map(|i|f64::from_bits(words[i]));
+    if values.iter().any(|v|!v.is_finite()||*v<0.) {return None;}
+    let entry=Entry{bounds,magnitude:[values[0],values[1]],linear:values[2],translation:values[3],depth:words[9] as u32,max_depth:words[10] as u32,
+        own_halo:values[4],path_halo:values[5],own_fixed:words[13] as u32,fixed_path:words[14] as u32};
+    match projected_entry(&entry,camera) {Bounds::Unknown=>None,Bounds::Empty=>Some(None),Bounds::Box(b)=>Some(Some(b))}
 }
 pub(crate) struct Cache {pub(crate) revision:u64,pub(crate) page:String,pub(crate) quantized:bool,pub(crate) index:std::sync::Arc<WorldSupport>,pub(crate) margin:Option<std::sync::Arc<crate::margin_index::MarginIndex>>,pub(crate) properties:crate::gpu::PageProperties}
 impl Cache {pub(crate) fn bytes(&self)->usize{self.index.bytes().saturating_add(self.margin.as_ref().map_or(0,|m|m.bytes()))}}

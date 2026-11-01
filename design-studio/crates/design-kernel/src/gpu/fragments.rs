@@ -15,9 +15,9 @@ pub(super) struct FragmentCache {
 }
 impl FragmentCache {
     pub(super) fn clear(&mut self) { self.entries.clear(); self.bytes=0; }
-    pub(super) fn invalidate_tree(&mut self,doc:&Document,ids:impl Iterator<Item=String>,parents:&HashMap<String,String>){
+    pub(super) fn invalidate_tree(&mut self,doc:&Document,ids:impl Iterator<Item=String>,parents:&impl crate::render_index::ParentLookup){
         let mut dirty=HashSet::new();let mut stack=ids.collect::<Vec<_>>();
-        for id in &stack{let mut parent=parents.get(id);while let Some(id)=parent{dirty.insert(id.clone());parent=parents.get(id);}}
+        for id in &stack{parents.for_each_ancestor(id,|id|{dirty.insert(id.to_owned());});}
         while let Some(id)=stack.pop(){if let Some(node)=doc.nodes.get(&id){stack.extend(node.render_children().iter().cloned());}dirty.insert(id);}
         self.invalidate(&dirty);
     }

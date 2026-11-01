@@ -339,6 +339,30 @@ impl Engine {
     }
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn authored_document(&self)->Option<&Document>{self.source_doc.as_deref()}
+    #[cfg(not(target_arch="wasm32"))]
+    pub(crate) fn cold_source_shell(&self,settings:Option<crate::color::ColorSettings>)->Result<Engine,String> {
+        let mut next=Engine::with_fonts(self.fonts.with_resources(&Default::default())?);
+        next.set_image_mips(self.image_mips());next.images.set_color_settings(settings);next.gpu_memory=self.gpu_memory.clone();Ok(next)
+    }
+    #[cfg(all(not(target_arch="wasm32"),feature="mapped-source-snapshot"))]
+    pub(crate) fn park_source_authority(&mut self) {
+        // An immutable source still owns every record on disk. Retire only
+        // materialized CPU authority; keep the one live transfer/resource scope.
+        self.source_doc=None;self.doc=None;self.source_doc_bytes=None;self.retained_source_size=None;
+        self.text_base=None;self.animation_base=None;self.animation_sample=None;self.layout_dirty=true;
+        self.pending_camera=None;self.pending_layout=None;self.render_index=None;self.tiled=None;
+        self.linear_tiles.clear();self.linear_tiles_order.clear();self.linear_tiles_options=None;
+        self.release_source_compile_caches();
+    }
+    /// A private render working set, only after an authenticated archive has
+    /// proved independent root closure. Never installed as a preparation lane's
+    /// authored state; edits/exports materialize that lane's complete source.
+    #[cfg(all(not(target_arch="wasm32"),feature="mapped-source-snapshot"))]
+    pub(crate) fn resolve_source_projection(&mut self,document:Document,revision:u64)->Result<Engine,String> {
+        let mut compiler=Engine::with_fonts(self.fonts.clone());compiler.images=self.images.clone();
+        compiler.load_source_document(document)?;compiler.resolve_layout()?;compiler.geo_revision=revision;
+        self.fonts=compiler.fonts.clone();self.images=compiler.images.clone();Ok(compiler)
+    }
 
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn resolved_source_compiler(&self, nodes:std::collections::BTreeMap<String,crate::scene::Node>, page_id:&str, revision:u64)->Result<Engine,String>{
@@ -457,14 +481,12 @@ impl Engine {
             if derived.fills != old.fills || derived.opacity != old.opacity || derived.effects != old.effects
                 || derived.strokes != old.strokes { return None; }
             let change = crate::derived_invalidation::paint_change(old, next)?;
-            let mut current = Some(id.as_str());
-            while let Some(id) = current {
+            for id in std::iter::once(id.as_str()).chain(index.parents.ancestors(id)) {
                 let node = source.nodes.get(id)?;
                 if !node.bindings.is_empty() || !node.style_refs.is_empty() || !node.variable_modes.is_empty()
                     || node.component.is_some() || node.component_set || node.instance.is_some()
                     || node.instance_origin.is_some() || node.component_key.is_some()
                     || node.boolean_operation.is_some() { return None; }
-                current = index.parents.get(id).map(String::as_str);
             }
             if change == crate::derived_invalidation::PaintChange::Bounds { bounds.push(id.clone()); }
         }
@@ -490,8 +512,7 @@ impl Engine {
             if !affine && old.transform.0[..4] != next.transform.0[..4] || derived.transform != old.transform { return false; }
             let mut translated = old.clone(); translated.transform = next.transform;
             if translated != *next { return false; }
-            let mut current = Some(id.as_str());
-            while let Some(id) = current {
+            for id in std::iter::once(id.as_str()).chain(parents.ancestors(id)) {
                 let node = &source.nodes[id];
                 if !node.bindings.is_empty() || !node.variable_modes.is_empty() || node.component.is_some()
                     || node.component_set || node.instance.is_some() || node.instance_origin.is_some()
@@ -500,7 +521,6 @@ impl Engine {
                 // flow/hug layout can reposition siblings and must resolve normally.
                 if id != old.id && (node.layout.as_ref().is_some_and(|l| l.mode != crate::layout::Flow::None)
                     || node.sizing.as_ref().is_some_and(|s| s.width == crate::layout::SizeMode::Hug || s.height == crate::layout::SizeMode::Hug)) { return false; }
-                current = parents.get(id).map(String::as_str);
             }
             true
         })
@@ -856,7 +876,7 @@ impl Engine {
         if before.nodes.len()!=after.nodes.len() || before.nodes.iter().any(|(id,n)|
             after.nodes.get(id).is_none_or(|next|n.children!=next.children)) {return;}
         let changed=after.nodes.iter().filter(|(id,n)|before.nodes.get(*id)!=Some(*n)).map(|(id,_)|id.clone()).collect::<Vec<_>>();
-        let parents=after.nodes.iter().flat_map(|(id,n)|n.children.iter().map(move|child|(child.clone(),id.clone()))).collect();
+        let parents=crate::render_index::Parents::new(after);
         cache.transformed(after,changed.into_iter(),self.geo_revision,&parents);
         self.camera_prepare=Some(cache);
     }

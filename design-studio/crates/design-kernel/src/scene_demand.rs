@@ -94,15 +94,24 @@ pub enum Lookup<'a> {
     Absent,
 }
 pub struct LoadedDemand {
-    demand: Demand,
+    demand: LoadedAuthority,
     nodes: BTreeMap<String, Node>,
     reads: ReadStats,
+}
+enum LoadedAuthority {
+    Planned(Demand),
+    #[cfg(feature="mapped-source-snapshot")]
+    Mapped{directory:Arc<crate::scene_store::archive::Directory>,stats:DemandStats,visible:Vec<String>},
 }
 impl LoadedDemand {
     pub fn lookup(&self, id: &str) -> Lookup<'_> {
         match self.nodes.get(id) {
             Some(n) => Lookup::Loaded(n),
-            None if self.demand.catalog.owners.contains_key(id) => Lookup::Cold,
+            None if match &self.demand {
+                LoadedAuthority::Planned(demand)=>demand.catalog.owners.contains_key(id),
+                #[cfg(feature="mapped-source-snapshot")]
+                LoadedAuthority::Mapped{directory,..}=>directory.contains(id),
+            } => Lookup::Cold,
             None => Lookup::Absent,
         }
     }
@@ -110,13 +119,25 @@ impl LoadedDemand {
         &self.nodes
     }
     pub fn stats(&self) -> DemandStats {
-        self.demand.stats()
+        match &self.demand {LoadedAuthority::Planned(demand)=>demand.stats(),
+            #[cfg(feature="mapped-source-snapshot")]
+            LoadedAuthority::Mapped{stats,..}=>stats.clone()}
     }
     pub fn reads(&self) -> ReadStats {
         self.reads
     }
     pub fn visible_roots(&self) -> &[String] {
-        &self.demand.visible
+        match &self.demand {LoadedAuthority::Planned(demand)=>&demand.visible,
+            #[cfg(feature="mapped-source-snapshot")]
+            LoadedAuthority::Mapped{visible,..}=>visible}
+    }
+    #[cfg(feature="mapped-source-snapshot")]
+    pub(crate) fn mapped(directory:Arc<crate::scene_store::archive::Directory>,selection:&crate::scene_store::archive::Selection,
+        nodes:BTreeMap<String,Node>,reads:ReadStats)->Self {
+        let visible=directory.visible_roots(selection);
+        let stats=DemandStats{total_nodes:directory.total_nodes(),required_nodes:nodes.len(),visible_roots:visible.len(),
+            painter_prefix_roots:selection.prefix_roots,dependency_units:selection.units.len()+1};
+        Self{demand:LoadedAuthority::Mapped{directory,stats,visible},nodes,reads}
     }
 }
 
@@ -581,7 +602,7 @@ impl Demand {
         }
         check(cancel)?;
         Ok(LoadedDemand {
-            demand: self,
+            demand: LoadedAuthority::Planned(self),
             nodes,
             reads: reader.stats(),
         })

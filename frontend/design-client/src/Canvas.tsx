@@ -1927,13 +1927,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       d.actionProposal = actionGeometry(editor.state.doc, d.ids, patches)
       actionTrace.sample(d.actionToken, { proposalChanged: compareActionGeometry(d.actionBefore, d.actionProposal) === 2 })
     }
-    const placement = d.kind==='move'?{ids:d.ids,point:p,force:e.metaKey||e.ctrlKey,preserveParent:space.current}:undefined
+    const placement = d.kind==='move'?{ids:d.ids,point:p,
+      force:/Mac|iPhone|iPad/.test(navigator.platform)?e.metaKey:e.ctrlKey,preserveParent:space.current}:undefined
     const movePreview=placement?editor.canvasMovePreview(patches,placement):undefined
     const retainsParents = !placement || movePreview!.retainsParents
     // Independent complete boards can follow the pointer on the compositor.
     // Keep one final authored mutation, using the same snapping/placement math.
     // Overlap, reparenting and Option-copy immediately use the regular path.
-    if ((d.kind === 'move' && retainsParents && !d.duplicating && !e.altKey && !e.metaKey && !e.ctrlKey ||
+    if ((d.kind === 'move' && retainsParents && !d.duplicating && !e.altKey ||
         d.kind === 'rotate' || d.kind === 'scale') && patches) {
       const offset = gpuMove.current?.apply(editor.state.doc, movePreview?.patches||patches, d.actionToken ? actionTrace.token(d.actionToken) : undefined,
         [moveGuides.x,moveGuides.y].filter((guide):guide is SmartGuideSegment=>!!guide))
@@ -1954,17 +1955,19 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (d.actionToken && gpuMove.current?.previewFailure?.())
         actionTrace.sample(d.actionToken, { poseFallbackReason: gpuMove.current.previewFailure() })
     }
-    // A translation owner must retire before another preview can take over.
-    // Affine owners remain alive until commit/cancel so their handoff survives.
-    if (d.kind === 'move') { gpuMove.current?.end(editor.state.doc); restoreGpuOverlays() }
-    if (d.kind === 'move' && retainsParents && !d.duplicating && !e.altKey && !e.metaKey && !e.ctrlKey && d.ids.length === 1 &&
+    if (d.kind === 'move' && retainsParents && !d.duplicating && !e.altKey && d.ids.length === 1 &&
       retainedMove.current?.apply(editor.state.doc, d.ids[0], (movePreview?.patches||patches)[d.ids[0]].transform!)) {
+      gpuMove.current?.end(editor.state.doc); restoreGpuOverlays()
       clearFallbackMove()
       guidePoses.current.clear(); showMoveGuides(moveGuides)
       if(d.actionToken)actionTrace.sample(d.actionToken,{renderRouteCode:4})
       pendingBoardMove.current = [patches, placement]
       return
     }
+    // A document preview is still the same gesture. Its renderer adopts the
+    // new topology while holding the last complete picture. Ending here would
+    // briefly expose the old page, then start a second capture on the next move.
+    if (d.kind === 'move' && gpuMove.current?.previewFailure?.()) gpuMove.current.end(editor.state.doc)
     if (pendingBoardMove.current) { pendingBoardMove.current = null; retainedMove.current?.restore() }
     editor.preview(patches,placement)
     guidePoses.current.clear()

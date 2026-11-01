@@ -180,6 +180,14 @@ impl LayoutGrid {
         tracks
     }
 }
+// Only cold, usually empty collections use this candidate. Hot paints,
+// children, paths and transfer buffers retain their existing representation.
+#[cfg(feature="compact-node-vectors")]
+pub type ColdNodeVec<T> = thin_vec::ThinVec<T>;
+#[cfg(not(feature="compact-node-vectors"))]
+pub type ColdNodeVec<T> = Vec<T>;
+fn cold_node_vec_is_empty<T>(values:&ColdNodeVec<T>)->bool {values.is_empty()}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Node {
@@ -190,8 +198,8 @@ pub struct Node {
     pub(crate) repeat_origin: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vector_brush: Option<Box<crate::vector_brush::VectorBrush>>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub guides: Vec<RulerGuide>,
+    #[serde(default, skip_serializing_if = "cold_node_vec_is_empty")]
+    pub guides: ColdNodeVec<RulerGuide>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text_path: Option<Box<crate::text_path::TextPath>>,
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -202,8 +210,8 @@ pub struct Node {
     pub board: Option<Box<BoardContent>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layout_grid: Option<Box<LayoutGrid>>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub export_settings: Vec<ExportSetting>,
+    #[serde(default, skip_serializing_if = "cold_node_vec_is_empty")]
+    pub export_settings: ColdNodeVec<ExportSetting>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub arc: Option<EllipseArc>,
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -270,8 +278,8 @@ pub struct Node {
     pub font_size: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text_style: Option<Box<crate::font::TextStyle>>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub text_runs: Vec<crate::font::TextRun>,
+    #[serde(default, skip_serializing_if = "cold_node_vec_is_empty")]
+    pub text_runs: ColdNodeVec<crate::font::TextRun>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layout: Option<crate::layout::Layout>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

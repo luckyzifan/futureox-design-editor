@@ -45,11 +45,11 @@ export type InteractionDependencyScope = {
   shortTravelBounds: Set<string>
   fixedBounds: Set<string>
   dependencyPadding: number
-  /** The strict final-foreground proof, not generic authored localization. */
+  /** The branch follows every backdrop reader in its painter scopes. */
   finalForeground: boolean
 }
 
-/** An ordinary final foreground branch cannot feed any earlier backdrop.
+/** An ordinary foreground branch cannot feed any earlier backdrop.
  * Check every sibling scope up to the page, not just a flattened DFS index:
  * an ancestor's later sibling can read the complete earlier branch.
  * This proves only dependency locality; the authored bounds below retain
@@ -58,34 +58,77 @@ function finalForegroundBranch(document: DesignDocument, pageId: string,
   entries: readonly SceneEntry[], entry: SceneEntry | undefined): boolean {
   const page = document.pages.find(page => page.id === pageId)
   if (!page || !entry?.ancestors.length || document.animations?.length ||
-      Object.values(document.nodes).some(node => node.connector)) return false
+      Object.values(document.nodes).some(node => node.connector || node.textPath)) return false
   const derived = (node: DesignNode) => !!node.repeat || !!node.booleanOperation ||
     !!node.instance || !!node.instanceOrigin || !!node.component || !!node.componentSet || !!node.componentKey ||
     Object.keys(node.bindings || {}).length > 0 || Object.keys(node.variableModes || {}).length > 0 ||
     Object.keys(node.styleRefs || {}).length > 0 || !!node.layout && node.layout.mode !== 'none'
   const hugs = (node: DesignNode) => node.sizing?.width === 'hug' || node.sizing?.height === 'hug'
-  const ordinary = (node: DesignNode | undefined): node is DesignNode => !!node &&
-    node.blend === 'normal' && !node.mask && !node.effects.some(effect => effect.visible) && !derived(node) &&
+  // A single self-filter on the selected root changes only that source's
+  // footprint. Keep nested filters and spatially varying/radial kernels on
+  // the full dependency path: paddedBounds is not a sum of ancestor halos.
+  const localRootEffects = (node: DesignNode) => {
+    const effects = node.effects.filter(effect => effect.visible)
+    return effects.length === 1 && effects.every(effect =>
+      ['blur', 'gaussian-blur', 'shadow', 'inner-shadow', 'color-controls'].includes(effect.kind) &&
+      !effect.gradientBlur && Number.isFinite(effect.radius) && effect.radius >= 0)
+  }
+  const ordinary = (node: DesignNode | undefined, selectedRoot = false): node is DesignNode => !!node &&
+    node.blend === 'normal' && !node.mask &&
+    (!node.effects.some(effect => effect.visible) || selectedRoot && localRootEffects(node)) && !derived(node) &&
     node.fills.every(paint => !paint.visible || paint.blend === 'normal') &&
     node.strokes.every(stroke => !stroke.visible || !stroke.paint.visible || stroke.paint.blend === 'normal')
-  const finalChild = (children: readonly string[], id: string) => {
+  const independentLater = new Map<string,boolean>()
+  const laterBranch = (id:string):boolean => {
+    const known=independentLater.get(id);if(known!==undefined)return known
+    const pending=[id],visited=new Set<string>()
+    while(pending.length){
+      const next=pending.pop()!,n=document.nodes[next]
+      if(!n)return false
+      if(!n.visible)continue
+      const cached=independentLater.get(next);if(cached===false)return false;if(cached===true)continue
+      if(visited.has(next))return false
+      // Later isolated sources may blur their own pixels, but cannot read
+      // this earlier branch. Boolean children are local to that later source.
+      // Keep external/unknown dependencies and pass-through effects excluded.
+      if(n.blend!=='normal'||n.mask||!effectsAreKnown(n.effects)||
+          n.effects.some(e=>e.visible&&['background-blur','glass'].includes(e.kind))||
+          !!n.repeat||!!n.instance||!!n.instanceOrigin||!!n.component||!!n.componentSet||!!n.componentKey||
+          Object.keys(n.bindings||{}).length||Object.keys(n.variableModes||{}).length||Object.keys(n.styleRefs||{}).length||
+          n.fills.some(p=>p.visible&&p.blend!=='normal')||
+          n.strokes.some(s=>s.visible&&s.paint.visible&&s.paint.blend!=='normal')){
+        independentLater.set(id,false);return false
+      }
+      visited.add(next);for(const child of n.children)pending.push(child)
+    }
+    for(const next of visited)independentLater.set(next,true)
+    return true
+  }
+  const foregroundChild = (children: readonly string[], id: string) => {
     if (children.some(child => !document.nodes[child] || document.nodes[child].mask)) return false
-    return children.filter(child => document.nodes[child].visible).at(-1) === id
+    const at=children.indexOf(id)
+    return at>=0&&children.slice(at+1).every(laterBranch)
   }
   for (const candidate of entries) {
     if (candidate.id !== entry.id && !candidate.ancestors.includes(entry.id)) continue
     const node = document.nodes[candidate.id]
     // Leaf text's own hug sizing stays within this same ordinary subtree.
     // Container sizing/layout could change authored descendant placement.
-    if (!ordinary(node) || node.kind !== 'text' && hugs(node)) return false
+    if (!ordinary(node, candidate.id === entry.id) || node.kind !== 'text' && hugs(node)) return false
+    if (candidate.id === entry.id && node.effects.some(effect => effect.visible)) {
+      const [a,b,c,d] = candidate.matrix
+      // Existing radius bounds use max column length. New admission therefore
+      // excludes shear, whose spectral scale can exceed that quantity.
+      if (![a,b,c,d].every(Number.isFinite) || a*c+b*d !== 0) return false
+    }
   }
   let branch = entry.id
   for (const id of [...entry.ancestors].reverse()) {
     const parent = document.nodes[id]
-    if (!ordinary(parent) || parent.opacity !== 1 || hugs(parent) || !finalChild(parent.children, branch)) return false
+    if (!ordinary(parent) || parent.opacity !== 1 || hugs(parent) || !foregroundChild(parent.children, branch)) return false
     branch = id
   }
-  return finalChild(page.children, branch)
+  return foregroundChild(page.children, branch)
 }
 
 /** Conservative authored-scene capture estimates, NOT compiled reuse proofs.
@@ -127,7 +170,16 @@ export function buildInteractionDependencyScope(document: DesignDocument, pageId
     })) continue
     const affected = entries.filter(e => e.id === id || e.ancestors.includes(id))
       .map(entry => paddedBounds(document, entry))
-    scope.rootBounds.set(id, unionBounds(affected))
+    let bounds = unionBounds(affected)
+    if (finalForeground && selected.effects.some(effect => effect.visible)) {
+      // The selected root's filter also expands descendant stroke support.
+      // Unioning individual padded nodes alone cannot account for that sum.
+      const scale = Math.max(Math.hypot(entry.matrix[0], entry.matrix[1]), Math.hypot(entry.matrix[2], entry.matrix[3]))
+      const pad = Math.max(0, ...selected.effects.filter(effect => effect.visible).map(effect =>
+        effect.radius * 3 + Math.abs(effect.x || 0) + Math.abs(effect.y || 0) + Math.abs(effect.spread || 0))) * scale
+      bounds = { x: bounds.x-pad, y: bounds.y-pad, width: bounds.width+2*pad, height: bounds.height+2*pad }
+    }
+    scope.rootBounds.set(id, bounds)
     scope.localizedBounds.add(id)
     if (!selected.children.length && ['text', 'rectangle', 'ellipse'].includes(selected.kind) &&
         !selected.repeat && !selected.textPath && !selected.network && !selected.vectorGeometry &&
