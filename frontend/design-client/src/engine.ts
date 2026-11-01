@@ -27,7 +27,7 @@ import { CameraState, savedCamera } from './camera-state'
 import { hasGradientBlur,hasLocalTools,hasRulerGuides,hasLayoutGrids,hasImageAdjusts,hasPatternTiles } from './model'
 import { inferred_layout_json } from './generated/design-kernel/design_kernel'
 import { prepareSelectionScale } from './selection-scale'
-import { canvasDropFrame, containingFrame, createCanvasDropIndex, type CanvasDropIndex } from './canvas-drop'
+import { canvasDropFrame, canvasMoveKeepsContainer, containingFrame, createCanvasDropIndex, type CanvasDropIndex } from './canvas-drop'
 import { duplicateGraph, type GraphCopy } from './duplicate-graph'
 import { appendDocument } from './append-document'
 import { commitPendingEdits } from './pending-edits'
@@ -244,7 +244,7 @@ export class Editor {
   private undoStack: Omit<History, 'doc'>[] = []
   private redoStack: Omit<History, 'doc'>[] = []
   private historyCore: ReturnType<typeof createEditingHistory> | null = null
-  private transaction: (History & { movePreview?: {source:DesignDocument;document:DesignDocument;published:DesignDocument;key:string;parents:ParentMap;epoch:object;translation:TranslationPreviewPlan}; dropIndex?: CanvasDropIndex; placementSizing?: Map<string, DesignNode['sizing']>; flow?: { base: DesignDocument; sizing: Map<string, DesignNode['sizing']> }; previewBase?: DesignDocument; copy?: { document: DesignDocument; roots: string[]; originals: string[]; flowSizing: Map<string, DesignNode['sizing']> } }) | null = null
+  private transaction: (History & { placement?: { document:DesignDocument; ids:string[]; point:Point; force:boolean; preserveParent:boolean }; movePreview?: {source:DesignDocument;document:DesignDocument;published:DesignDocument;key:string;parents:ParentMap;epoch:object;translation:TranslationPreviewPlan}; dropIndex?: CanvasDropIndex; placementSizing?: Map<string, DesignNode['sizing']>; flow?: { base: DesignDocument; sizing: Map<string, DesignNode['sizing']> }; previewBase?: DesignDocument; copy?: { document: DesignDocument; roots: string[]; originals: string[]; flowSizing: Map<string, DesignNode['sizing']> } }) | null = null
   private propertyPreview: {
     lease: PropertyPreviewLease; history: History; session: number; revision: number
     targets: readonly SolidFillTarget[]; document: DesignDocument; draft: SolidFillDraft
@@ -925,7 +925,10 @@ export class Editor {
       if(cached){
         const document=produceDocumentDraft(this.state.doc,draft=>{for(const id of move.ids)draft.nodes[id].transform=cached.patches[id].transform!})
         const published=performance.now();this.set({doc:document})
-        if(this.transaction===previewOwner&&previewOwner?.movePreview)previewOwner.movePreview.published=document
+        if(this.transaction===previewOwner&&previewOwner?.movePreview&&this.state.doc===document){
+          previewOwner.movePreview.published=document
+          previewOwner.placement={...move,ids:[...move.ids],point:{...move.point},document}
+        }
         if(this.diagnosticOperation!==null)this.operationDiagnostics.preview(this.diagnosticOperation,true)
         this.lastPreviewTiming={prepareMs:published-previewStarted,layoutMs:0,publishMs:performance.now()-published}
         return true
@@ -982,6 +985,8 @@ export class Editor {
       })
       const published = performance.now()
       measureCpuStage(CpuStage.previewPublish, () => this.set({ doc: resolved }))
+      if(this.transaction===previewOwner&&previewOwner&&this.state.doc===resolved)
+        previewOwner.placement=move?{...move,ids:[...move.ids],point:{...move.point},document:resolved}:undefined
       if(move&&this.transaction===previewOwner&&previewOwner&&this.state.doc===resolved&&resolvedEpoch===pickingGeometryEpoch()&&move.ids.length===1&&!previewOwner.copy&&!previewOwner.flow&&
           Object.keys(patches).length===1&&Object.keys(patches[move.ids[0]]||{}).every(key=>key==='transform')){
         const plan=this.movePlacement({ ...base,nodes },move.ids,move.point,move.force,move.preserveParent)
@@ -2305,7 +2310,7 @@ export class Editor {
     const parents=index.parents
     const retained=tx&&!preserveParent?this.retainContainedMoveParents(source,ids,point,force):null
     const frame=tx&&!preserveParent&&!retained?canvasDropFrame(source,this.state.page,ids,point,force,index):undefined,target=frame||this.state.page
-    let moving=tx&&!preserveParent&&!retained?ids.filter(id=>(frame?containingFrame(source,id,parents)!==frame:!!containingFrame(source,id,parents))&&parents.get(id)!==target):[]
+    let moving=tx&&!preserveParent&&!retained?ids.filter(id=>!canvasMoveKeepsContainer(source,id,force,parents)&&(frame?containingFrame(source,id,parents)!==frame:!!containingFrame(source,id,parents))&&parents.get(id)!==target):[]
     const animated=new Set(source.animations?.flatMap(c=>c.tracks.map(t=>t.nodeId))||[])
     if(moving.some(id=>{for(let at:string|undefined=id;at&&source.nodes[at];at=parents.get(at))if(animated.has(at)||source.nodes[at].instanceOrigin||(at!==id&&source.nodes[at].instance))return true;return false}))moving=[]
     return {parents,target,moving,retained,key:JSON.stringify(ids.map(id=>[id,moving.includes(id)?target:parents.get(id)]))}
@@ -2418,12 +2423,22 @@ export class Editor {
           this.state.page !== page || this.state.doc !== retained) return
     }
     const doc = this.state.doc, parents = allParents(doc)
-    const frame = canvasDropFrame(doc, this.state.page, roots, point, force)
+    // Canvas flushes the release pose through preview before finishing. Commit
+    // that exact placement, rather than hit-testing its already reparented tree
+    // again (layout can resize targets and change which overlapping frame wins).
+    const receipt=transaction.placement
+    const previewed=receipt?.document===doc&&receipt.force===force&&receipt.preserveParent===preserveParent&&
+      receipt.point.x===point.x&&receipt.point.y===point.y&&receipt.ids.length===roots.length&&
+      receipt.ids.every((id,i)=>id===roots[i])
+    const frame = previewed ? undefined : canvasDropFrame(doc, this.state.page, roots, point, force)
     const target = frame || this.state.page
-    const relocating = preserveParent || retained ? [] : roots.filter(id => {
+    const relocating = previewed || preserveParent || retained ? [] : roots.filter(id => {
       const currentFrame = containingFrame(doc,id,parents)
-      return (frame ? currentFrame !== frame : !!currentFrame) && parents.get(id) !== target
+      return !canvasMoveKeepsContainer(doc,id,force,parents)&&
+        (frame ? currentFrame !== frame : !!currentFrame) && parents.get(id) !== target
     })
+    const originalParents=transaction.dropIndex?.parents||allParents(transaction.previewBase||transaction.doc)
+    const placed=previewed?roots.filter(id=>originalParents.get(id)!==parents.get(id)):relocating
     const animated = new Set(doc.animations?.flatMap(c=>c.tracks.map(t=>t.nodeId)) || [])
     const blocked = relocating.some(id => {
       for (let at: string|undefined=id;at && doc.nodes[at];at=parents.get(at))
@@ -2432,11 +2447,11 @@ export class Editor {
     })
     if (!blocked && relocating.length) this.reparentMany(relocating,target)
     const restore = new Map([...(transaction.placementSizing || []), ...(transaction.flow?.sizing || []), ...(transaction.copy?.flowSizing || [])])
-    if (restore.size || (absolute && relocating.length)) this.change('完成图层放置', draft=> {
+    if (restore.size || (absolute && placed.length)) this.change('完成图层放置', draft=> {
       for (const [id,sizing] of restore) if (draft.nodes[id]) {
         if (sizing) draft.nodes[id].sizing=cloneValue(sizing);else delete draft.nodes[id].sizing
       }
-      if (absolute) for (const id of relocating) draft.nodes[id].sizing={...defaultSizing(),...draft.nodes[id].sizing,absolute:true}
+      if (absolute) for (const id of placed) draft.nodes[id].sizing={...defaultSizing(),...draft.nodes[id].sizing,absolute:true}
     })
     transaction.previewBase = this.state.doc
     transaction.flow = undefined

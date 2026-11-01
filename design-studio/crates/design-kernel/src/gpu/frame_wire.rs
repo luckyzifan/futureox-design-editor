@@ -7,16 +7,28 @@ impl std::fmt::Display for Error {fn fmt(&self,f:&mut std::fmt::Formatter<'_>)->
 impl std::error::Error for Error {}
 impl ser::Error for Error {fn custom<T:std::fmt::Display>(message:T)->Self{Self(message.to_string())}}
 pub fn encode<T:Serialize+?Sized>(value:&T)->Result<Vec<u8>,String>{
-    let mut writer=Writer{bytes:Vec::new(),strings:HashMap::new(),zero_offsets:false};
+    let mut writer=Writer{bytes:Vec::new(),strings:HashMap::new(),zero_offsets:false,sequence_offset:None};
     value.serialize(&mut writer).map_err(|e|e.to_string())?;Ok(writer.bytes)
 }
 /// Compiled GpuPath/AreaPath addresses are relocatable. Keep all other
 /// authored/compiler fields exact without building an intermediate JSON tree.
 pub fn encode_source<T:Serialize+?Sized>(value:&T)->Result<Vec<u8>,String>{
-    let mut writer=Writer{bytes:Vec::new(),strings:HashMap::new(),zero_offsets:true};
+    let mut writer=Writer{bytes:Vec::new(),strings:HashMap::new(),zero_offsets:true,sequence_offset:None};
     value.serialize(&mut writer).map_err(|e|e.to_string())?;Ok(writer.bytes)
 }
-struct Writer {bytes:Vec<u8>,strings:HashMap<String,u32>,zero_offsets:bool}
+/// Producer-only marker. Its wire representation is still an ordinary u32
+/// encoded as f64; a source replay may update that field, never scene words.
+pub(super) struct FrameSequence(pub u32);
+impl Serialize for FrameSequence {
+    fn serialize<S:ser::Serializer>(&self,s:S)->Result<S::Ok,S::Error>{s.serialize_newtype_struct("GpuFrameSequence",&self.0)}
+}
+pub(super) fn encode_frame<T:Serialize+?Sized>(value:&T)->Result<(Vec<u8>,usize),String>{
+    let mut writer=Writer{bytes:Vec::new(),strings:HashMap::new(),zero_offsets:false,sequence_offset:None};
+    value.serialize(&mut writer).map_err(|e|e.to_string())?;
+    let offset=writer.sequence_offset.ok_or("Missing frame sequence marker")?;
+    Ok((writer.bytes,offset))
+}
+struct Writer {bytes:Vec<u8>,strings:HashMap<String,u32>,zero_offsets:bool,sequence_offset:Option<usize>}
 impl Writer {
     fn number(&mut self,n:f64){if !n.is_finite(){self.bytes.push(1)}else{self.bytes.push(4);self.bytes.extend(n.to_le_bytes())}}
     fn text(&mut self,value:&str)->Result<(),Error>{
@@ -49,7 +61,12 @@ impl<'a> ser::Serializer for &'a mut Writer {
     fn serialize_unit(self)->Result<(),Error>{self.serialize_none()}
     fn serialize_unit_struct(self,_:&'static str)->Result<(),Error>{self.serialize_none()}
     fn serialize_unit_variant(self,_:&'static str,_:u32,v:&'static str)->Result<(),Error>{self.text(v)}
-    fn serialize_newtype_struct<T:Serialize+?Sized>(self,_:&'static str,v:&T)->Result<(),Error>{v.serialize(self)}
+    fn serialize_newtype_struct<T:Serialize+?Sized>(self,name:&'static str,v:&T)->Result<(),Error>{
+        if name=="GpuFrameSequence" {
+            if self.sequence_offset.replace(self.bytes.len()+1).is_some(){return Err(ser::Error::custom("Duplicate frame sequence marker"))}
+        }
+        v.serialize(self)
+    }
     fn serialize_newtype_variant<T:Serialize+?Sized>(self,_:&'static str,_:u32,k:&'static str,v:&T)->Result<(),Error>{self.bytes.push(8);self.text(k)?;v.serialize(&mut *self)?;self.bytes.push(0);Ok(())}
     fn serialize_seq(self,_:Option<usize>)->Result<Compound<'a>,Error>{self.bytes.push(7);Ok(Compound{writer:self,extra:false})}
     fn serialize_tuple(self,_:usize)->Result<Compound<'a>,Error>{self.serialize_seq(None)}

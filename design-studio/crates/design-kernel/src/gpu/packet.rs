@@ -14,11 +14,20 @@ impl Hash for Key {
 struct Entry { id:u32, age:u64, bytes:usize }
 struct SemanticEntry { id:u32, key:Vec<u8>, charge:usize }
 type StaticRequest=((u64,bool,bool),String);
+fn source_request_key(revision:(u64,bool,bool),fields:&serde_json::Value)->Result<StaticRequest,String>{
+    let object=fields.as_object().ok_or("Render options must be an object")?;
+    let semantic=object.iter().filter(|(key,_)|key.as_str()!="frameResources").collect::<BTreeMap<_,_>>();
+    Ok((revision,serde_json::to_string(&semantic).map_err(|e|e.to_string())?))
+}
 struct EncodedFrame {
     key:StaticRequest,
     prefix:Vec<u8>,
     resources:Vec<(u32,u8,Arc<[u8]>)>,
     charge:usize,
+    sequence_offset:usize,
+    sequence:u32,
+    nodes:usize,
+    authored_nodes:usize,
 }
 fn acknowledged_ranges(scope:&str,request:Option<&serde_json::Value>)->Result<Vec<(u32,u32)>,String>{
     let acknowledged=request.and_then(|r|r.get("frameResources"));
@@ -62,6 +71,11 @@ pub(crate) struct FrameSceneContext {
     image_allocation_hits:u64,image_transfer_hits:u64,
     cached:Option<EncodedFrame>,pending_request:Option<StaticRequest>,compilations:u64,reuses:u64,
     retention_limit:Option<usize>,
+    // Native source revisits share the existing retention allowance. Entries
+    // contain no document or GPU owner, only validated immutable wire data.
+    source_history:std::collections::VecDeque<EncodedFrame>,
+    source_history_bytes:usize,
+    source_history_hits:u64,
     #[cfg(test)] limit_override:Option<usize>,
 }
 impl FrameSceneContext {
@@ -75,6 +89,7 @@ impl FrameSceneContext {
     pub(crate) fn limit_retention(&mut self,limit:Option<usize>){
         self.retention_limit=limit;
         let limit=self.limit();
+        while self.bytes()>limit && !self.source_history.is_empty(){self.evict_source_frame();}
         if self.bytes()<=limit{return}
         self.cached=None;
         while self.bytes()>limit {
@@ -86,10 +101,46 @@ impl FrameSceneContext {
             self.image_transfer_keys.clear();self.image_transfer_sources.clear();self.semantic_bytes=0;
         }
     }
-    pub(crate) fn bytes(&self)->usize{self.bytes+self.semantic_bytes+self.cached.as_ref().map_or(0,|frame|frame.charge)}
+    pub(crate) fn bytes(&self)->usize{self.bytes+self.semantic_bytes+self.cached.as_ref().map_or(0,|frame|frame.charge)+self.source_history_bytes}
+    fn evict_source_frame(&mut self){if let Some(frame)=self.source_history.pop_front(){self.source_history_bytes-=frame.charge;}}
+    pub(crate) fn clear_source_history(&mut self){self.source_history.clear();self.source_history_bytes=0;}
+    pub(crate) fn reuse_source(&mut self,revision:(u64,bool,bool),request:&str)->Result<Option<(Vec<u8>,usize,usize)>,String>{
+        crate::render_cancellation::checkpoint()?;
+        let fields:serde_json::Value=serde_json::from_str(request).map_err(|e|e.to_string())?;
+        let key=source_request_key(revision,&fields)?;
+        let Some(index)=self.source_history.iter().position(|frame|frame.key==key)else{return Ok(None)};
+        let ranges=acknowledged_ranges(&self.scope,Some(&fields))?;
+        let frame=&mut self.source_history[index];
+        // An older camera must publish a fresh monotonic sequence. Consecutive
+        // identical requests keep the established byte-identical shortcut.
+        if frame.sequence!=self.frame {
+            self.frame=self.frame.checked_add(1).ok_or("Frame sequence exhausted")?;
+            frame.prefix[frame.sequence_offset..frame.sequence_offset+8].copy_from_slice(&f64::from(self.frame).to_le_bytes());
+            frame.sequence=self.frame;self.frame_key=None;
+        }
+        let bytes=frame.emit(&ranges)?;let nodes=frame.nodes;let authored=frame.authored_nodes;
+        let frame=self.source_history.remove(index).unwrap();self.source_history.push_back(frame);
+        self.source_history_hits+=1;Ok(Some((bytes,nodes,authored)))
+    }
+    pub(crate) fn retain_source(&mut self,revision:(u64,bool,bool),request:&str,authored_nodes:usize)->Result<(),String>{
+        let fields:serde_json::Value=serde_json::from_str(request).map_err(|e|e.to_string())?;
+        let key=source_request_key(revision,&fields)?;
+        if key.1.len()>65536{return Ok(())}
+        let Some(mut frame)=self.cached.take()else{return Ok(())};
+        frame.authored_nodes=authored_nodes;
+        // replace the projection-local epoch with the complete source lineage;
+        // this method is called only after demand closure and successful encode.
+        frame.charge=frame.charge.saturating_sub(frame.key.1.capacity()).saturating_add(key.1.capacity());frame.key=key;
+        if frame.charge>self.limit(){return Ok(())}
+        while self.source_history.len()>=32 || self.bytes().saturating_add(frame.charge)>self.limit(){
+            if self.source_history.is_empty(){return Ok(())}self.evict_source_frame();
+        }
+        self.source_history_bytes+=frame.charge;self.source_history.push_back(frame);Ok(())
+    }
     pub(crate) fn stats(&self)->serde_json::Value{
         serde_json::json!({"compilations":self.compilations,"sameRequestHits":self.reuses,"semanticHits":self.semantic_hits,"semanticBytes":self.semantic_bytes,"bytes":self.bytes(),"limit":self.limit(),"limitSource":"trusted-host-memory",
-            "imageAllocationHits":self.image_allocation_hits,"imageTransferHits":self.image_transfer_hits})
+            "imageAllocationHits":self.image_allocation_hits,"imageTransferHits":self.image_transfer_hits,
+            "sourceReplayHits":self.source_history_hits,"sourceReplayEntries":self.source_history.len(),"sourceReplayBytes":self.source_history_bytes})
     }
     fn reuse(&mut self,key:&StaticRequest,request:&serde_json::Value)->Result<Option<Vec<u8>>,String>{
         let Some(frame)=self.cached.as_ref().filter(|frame|&frame.key==key)else{return Ok(None)};
@@ -122,7 +173,7 @@ impl FrameSceneContext {
         }
         self.next=self.next.checked_add(1).ok_or("Frame resource ID exhausted")?;let id=self.next;
         let bytes=data.len().checked_add(256).ok_or("Frame resource size overflow")?;
-        let limit=self.limit().saturating_sub(self.semantic_bytes).saturating_sub(self.cached.as_ref().map_or(0,|frame|frame.charge));
+        let limit=self.limit().saturating_sub(self.source_history_bytes).saturating_sub(self.semantic_bytes).saturating_sub(self.cached.as_ref().map_or(0,|frame|frame.charge));
         if !self.scope.is_empty()&&bytes<=limit{
             while self.bytes+bytes>limit {let Some((_,old))=self.ages.pop_first()else{break};self.evict_transfer(&old);}
             self.entries.insert(key.clone(),Entry{id,age:self.clock,bytes});self.ages.insert(self.clock,key);self.bytes+=bytes;
@@ -141,7 +192,7 @@ impl FrameSceneContext {
         if let Some(id)=self.image_semantics.get(uri){return Ok((*id,true))}
         self.next=self.next.checked_add(1).ok_or("Frame resource ID exhausted")?;
         let id=self.next;let charge=uri.len().saturating_add(256);
-        let limit=self.limit().saturating_sub(self.cached.as_ref().map_or(0,|f|f.charge));
+        let limit=self.limit().saturating_sub(self.source_history_bytes).saturating_sub(self.cached.as_ref().map_or(0,|f|f.charge));
         if !self.scope.is_empty()&&self.semantic_bytes.saturating_add(charge)<=limit{
             while self.bytes+self.semantic_bytes+charge>limit{
                 let Some((_,old))=self.ages.pop_first()else{break};
@@ -183,7 +234,7 @@ impl FrameSceneContext {
         self.next=self.next.checked_add(1).ok_or("Frame resource ID exhausted")?;
         let id=self.next;
         let charge=key.capacity().saturating_add(name.len()).saturating_add(256);
-        let limit=self.limit().saturating_sub(self.cached.as_ref().map_or(0,|f|f.charge));
+        let limit=self.limit().saturating_sub(self.source_history_bytes).saturating_sub(self.cached.as_ref().map_or(0,|f|f.charge));
         if !self.scope.is_empty()&&self.semantic_bytes.saturating_add(charge)<=limit {
             while self.bytes+self.semantic_bytes+charge>limit {
                 let Some((_,old))=self.ages.pop_first()else{break};
@@ -282,10 +333,11 @@ impl FrameSceneContext {
             false
         }});
         node_resources.sort_by(|a,b|a.0.cmp(&b.0));
+        let compiled_nodes=node_resources.len();
         let (plan_id,data)=self.intern(3,frame_wire::encode(&plan)?)?;record(plan_id,3,&data)?;
         #[derive(Serialize)]#[serde(rename_all="camelCase")]
-        struct Metadata<'a>{#[serde(flatten)]scene:&'a GpuScene,resource_scope:&'a str,frame_sequence:u32,node_resources:Vec<(String,u32)>,scene_plan:u32}
-        let metadata=frame_wire::encode(&Metadata{scene:&scene,resource_scope:&self.scope,frame_sequence:self.frame,node_resources,scene_plan:plan_id})?;
+        struct Metadata<'a>{#[serde(flatten)]scene:&'a GpuScene,resource_scope:&'a str,frame_sequence:frame_wire::FrameSequence,node_resources:Vec<(String,u32)>,scene_plan:u32}
+        let (metadata,sequence_offset)=frame_wire::encode_frame(&Metadata{scene:&scene,resource_scope:&self.scope,frame_sequence:frame_wire::FrameSequence(self.frame),node_resources,scene_plan:plan_id})?;
         let start=24usize.checked_add(metadata.len()).and_then(|n|n.checked_add(3)).map(|n|n&!3).ok_or("GPU frame too large")?;
         let total=vertices.len().checked_add(curves.len()).and_then(|n|n.checked_mul(4)).and_then(|n|n.checked_add(start))
             .and_then(|n|n.checked_add(payload.len())).ok_or("GPU frame too large")?;
@@ -295,8 +347,9 @@ impl FrameSceneContext {
         if let Some(key)=cache_key {
             let charge=resource_charge.saturating_add(bytes.len()).saturating_add(key.1.capacity()).saturating_add(256);
             if charge.saturating_add(self.semantic_bytes)<=cache_limit {
-                while self.bytes+self.semantic_bytes+charge>cache_limit {let Some((_,old))=self.ages.pop_first()else{break};self.evict_transfer(&old);}
-                self.cached=Some(EncodedFrame{key,prefix:bytes.clone(),resources,charge});
+                while self.source_history_bytes.saturating_add(self.semantic_bytes).saturating_add(charge)>cache_limit && !self.source_history.is_empty(){self.evict_source_frame();}
+                while self.bytes+self.semantic_bytes+self.source_history_bytes+charge>cache_limit {let Some((_,old))=self.ages.pop_first()else{break};self.evict_transfer(&old);}
+                self.cached=Some(EncodedFrame{key,prefix:bytes.clone(),resources,charge,sequence_offset:24+sequence_offset,sequence:self.frame,nodes:compiled_nodes,authored_nodes:compiled_nodes});
             }
         }
         bytes.extend(payload);Ok(bytes)

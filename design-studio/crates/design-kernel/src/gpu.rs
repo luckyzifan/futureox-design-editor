@@ -84,7 +84,7 @@ impl CameraPrepare {
         self.programs.bytes + self.fragments.bytes + self.prepared.capacity()*192 + self.prepared.iter().map(|(id,p)|
             id.capacity()+contours(&p.fill)+p.strokes.iter().map(|s|contours(s)).sum::<usize>()).sum::<usize>()
     }
-    pub(crate) fn paint_changed(&mut self, revision: u64, doc:&Document, ids:impl Iterator<Item=String>, parents:&HashMap<String,String>) {
+    pub(crate) fn paint_changed(&mut self, revision: u64, doc:&Document, ids:impl Iterator<Item=String>, parents:&impl crate::render_index::ParentLookup) {
         self.key.0 = revision;
         // Opacity can change whether a backdrop chain is active. Refresh this
         // summary even when all exact coverage programs remain reusable.
@@ -96,7 +96,7 @@ impl CameraPrepare {
     /// set — moved subtree plus ancestors — but a changed linear part can move
     /// device-space effect margins (radius × scale) and the guard padding, so
     /// the camera metadata summary must be rebuilt instead of retained.
-    pub(crate) fn transformed(&mut self, doc: &Document, ids: impl Iterator<Item = String>, revision: u64, parents: &HashMap<String, String>) {
+    pub(crate) fn transformed(&mut self, doc: &Document, ids: impl Iterator<Item = String>, revision: u64, parents: &impl crate::render_index::ParentLookup) {
         self.translated(doc, ids, revision, parents);
         self.metadata = None;
     }
@@ -104,12 +104,11 @@ impl CameraPrepare {
     /// guard, styles and resource lineage are unchanged. Descendants need new
     /// device geometry; ancestors need new aggregate bounds. Other entries and
     /// their exact-crop programs remain immutable.
-    pub(crate) fn translated(&mut self, doc: &Document, ids: impl Iterator<Item = String>, revision: u64, parents: &HashMap<String, String>) {
+    pub(crate) fn translated(&mut self, doc: &Document, ids: impl Iterator<Item = String>, revision: u64, parents: &impl crate::render_index::ParentLookup) {
         let mut dirty = std::collections::HashSet::new();
         let mut stack: Vec<String> = ids.collect();
         for id in &stack {
-            let mut parent = parents.get(id.as_str());
-            while let Some(id) = parent { dirty.insert(id.clone()); parent = parents.get(id); }
+            parents.for_each_ancestor(id,|id|{dirty.insert(id.to_owned());});
         }
         while let Some(id) = stack.pop() {
             if let Some(n) = doc.nodes.get(&id) { stack.extend(n.render_children().iter().cloned()); }
@@ -196,6 +195,16 @@ pub(crate) struct PageProperties {
     backdrop_chain:bool,foreground_only:bool,noise_extra:Option<i32>,has_zoom:bool,
 }
 impl PageProperties {
+    #[cfg(all(not(target_arch="wasm32"),feature="mapped-source-snapshot"))]
+    pub(crate) fn with_cold_ordinary(mut self,count:usize,solid:bool)->Self {
+        // Cold units have no effects, derived children or backdrop reads.
+        // Only noise's global raw-node count/paint predicate needs adjustment.
+        if let Some(extra)=self.noise_extra {
+            self.noise_extra=Some(extra.saturating_add(i32::try_from(count.saturating_mul(2)).unwrap_or(i32::MAX)));
+            self.foreground_only &= solid;
+        }
+        self
+    }
     pub(crate) fn build(doc:&Document,roots:&[String])->Self {
         let mut page_nodes=Vec::new();let mut seen=std::collections::HashSet::new();
         let mut stack=roots.iter().map(String::as_str).collect::<Vec<_>>();

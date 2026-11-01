@@ -7,6 +7,7 @@ export function residentFrameMessage(frame: ResidentFrame): ResidentFrame {
   return {
     diagnosticSequence: Number.isSafeInteger(frame.diagnosticSequence) && frame.diagnosticSequence! > 0 ? frame.diagnosticSequence : undefined,
     presentationId: frame.presentationId,
+    overlayPoseSlot:frame.overlayPoseSlot,
     terminalQuality: terminalQualityMessage(frame.terminalQuality),
     overlay: frame.overlay ? { pixelGrid: frame.overlay.pixelGrid, selection: frame.overlay.selection ? {
       handles: frame.overlay.selection.handles, owners:frame.overlay.selection.owners?.slice(), corners: frame.overlay.selection.corners.map(p => ({ x: p.x, y: p.y })) } : undefined,
@@ -75,6 +76,7 @@ export function residentFrameSignature(frame: ResidentFrame) {
     frame.presentationId,
     terminalQualityMessage(frame.terminalQuality),
     frame.overlay,
+    frame.overlayPoseSlot,
     frame.view,
     frame.width,
     frame.height,

@@ -46,7 +46,7 @@ impl Preparation {
         let index=match lane {"canvas"=>0,"interaction"=>1,_=>return Err("Invalid preparation lane".into())};
         let lane=&mut self.lanes[index];
         if lane.receipt.is_none() {return Err("Unsynchronized source demand lane".into());}
-        lane.source_access.as_mut().ok_or("No immutable source demand owner")?.viewport(&lane.engine.fonts,camera,viewport,cancel)
+        lane.source_access.as_mut().ok_or("No immutable source demand owner")?.viewport(&mut lane.engine,camera,viewport,cancel)
     }
     pub fn new(font: &[u8]) -> Result<Self, String> {
         let mut canvas = Lane::default(); canvas.engine.load_font(font)?;
@@ -82,8 +82,17 @@ impl Preparation {
         if self.lanes[0].receipt.as_ref() != Some(&request.base_receipt) { return Err("STALE_BASE".into()); }
         if self.lanes[1].receipt != request.expected_target { return Err("STALE_TARGET".into()); }
         if self.lanes[0].engine.image_mips() != self.lanes[1].engine.image_mips() { return Err("RESOURCE_POLICY_MISMATCH".into()); }
-        let candidate = self.lanes[0].engine.snapshot_static_worker().ok_or("DERIVE_UNSUPPORTED_STATE")?;
-        let settings = serde_json::to_string(&candidate.color_settings()).map_err(|e|e.to_string())?;
+        #[cfg(not(target_arch="wasm32"))]
+        let lazy_fork=self.lanes[0].source_access.as_ref().is_some_and(source_snapshot::Access::can_fork_lazy);
+        #[cfg(target_arch="wasm32")]
+        let lazy_fork=false;
+        #[cfg(not(target_arch="wasm32"))]
+        if !lazy_fork {let lane=&mut self.lanes[0];if let Some(source)=&mut lane.source_access {source.ensure_complete(&mut lane.engine,&std::sync::atomic::AtomicBool::new(false))?;}}
+        let candidate = if lazy_fork {self.lanes[0].engine.snapshot_worker()} else {self.lanes[0].engine.snapshot_static_worker().ok_or("DERIVE_UNSUPPORTED_STATE")?};
+        let mut settings=candidate.color_settings();
+        #[cfg(not(target_arch="wasm32"))]
+        if lazy_fork {settings=self.lanes[0].source_access.as_ref().unwrap().settings();}
+        let settings = serde_json::to_string(&settings).map_err(|e|e.to_string())?;
         // All fallible work precedes publication. Immutable resources remain Arc-owned.
         self.lanes[1] = Lane { engine: candidate, reusable: true, source_storage:self.lanes[0].source_storage,
             #[cfg(not(target_arch = "wasm32"))]
@@ -115,10 +124,16 @@ impl Preparation {
         }
         let source_load = method == "load_source_snapshot";
         let mutation = source_load || matches!(method, "initialize" | "load_document" | "apply_document_patch_with_damage" | "apply_interaction_transforms");
+        #[cfg(not(target_arch="wasm32"))]
+        if matches!(method,"initialize"|"apply_document_patch_with_damage"|"apply_interaction_transforms"|
+            "render_region_png"|"render_cpu_frame"|"render_linear"|"render_png"|"render_color_png") {
+            let lane=&mut self.lanes[index];
+            if let Some(source)=&mut lane.source_access {source.ensure_complete(&mut lane.engine,&std::sync::atomic::AtomicBool::new(false))?;}
+        }
         // Failed legacy mutation cannot leave a receipt claiming synchronization.
         let previous = if mutation { self.lanes[index].receipt.take() } else { None };
         #[cfg(not(target_arch = "wasm32"))]
-        if mutation && self.lanes[index].source_access.take().is_some() {
+        if mutation && !source_load && method!="load_document" && self.lanes[index].source_access.take().is_some() {
             self.lanes[index].engine.invalidate_frame_scene_request();
             self.lanes[index].engine.frame_scene.limit_retention(None);
         }
@@ -154,15 +169,18 @@ impl Preparation {
             "load_document" => {
                 lane.source = None; lane.reusable = false;
                 if !fork { engine.load_document(string(0)?)?; }
+                #[cfg(not(target_arch="wasm32"))]
+                if lane.source_access.take().is_some() {engine.invalidate_frame_scene_request();engine.frame_scene.limit_retention(None);}
                 lane.source = Some(string(0)?.to_owned()); lane.reusable = true; lane.source_storage=false;
             }
             #[cfg(not(target_arch = "wasm32"))]
             "load_source_snapshot" => {
                 if args.len()!=1 { return Err("Invalid source snapshot request".into()); }
                 let (document,access)=source_snapshot::read(&args[0])?;
-                value=json!({"documentId":document.id,"pageId":document.pages[0].id,"stageId":document.pages[0].children[0],"nodes":document.nodes.len()});
+                value=access.summary();
                 lane.source=None; lane.reusable=false;
-                engine.load_source_document(document)?;
+                if let Some(document)=document {engine.load_source_document(document)?;} else {*engine=engine.cold_source_shell(access.settings())?;}
+                engine.invalidate_frame_scene_request();engine.frame_scene.limit_retention(None);
                 lane.reusable=true;lane.source_storage=true;
                 lane.source_access=Some(access);
             }
@@ -207,13 +225,23 @@ impl Preparation {
                     _ => engine.render(&options)?,
                 };
             }
-            "stats" => value = json!(serde_json::to_string(engine.stats()).map_err(|e|e.to_string())?),
+            "stats" => {
+                let mut stats=None;
+                #[cfg(not(target_arch="wasm32"))]
+                if let Some(source)=&lane.source_access {stats=source.stats_json();}
+                value=json!(match stats {Some(stats)=>stats,None=>serde_json::to_string(engine.stats()).map_err(|e|e.to_string())?});
+            },
             "gpu_memory_breakdown" => value = json!(serde_json::to_string(&engine.gpu_memory_breakdown()).map_err(|e|e.to_string())?),
             _ => return Err("Unsupported native preparation method".into()),
         }
         if bytes.len() > 128*1024*1024 { return Err("Preparation response exceeds 128 MiB".into()); }
         let settings = (source_load || matches!(method,"initialize"|"load_document"|"apply_document_patch_with_damage"))
-            .then(|| serde_json::to_string(&engine.color_settings()).expect("validated color settings"));
+            .then(|| {
+                let mut settings=engine.color_settings();
+                #[cfg(not(target_arch="wasm32"))]
+                if let Some(source)=lane.source_access.as_ref().filter(|s|s.is_lazy()) {settings=source.settings();}
+                serde_json::to_string(&settings).expect("validated color settings")
+            });
         let mut metadata = json!({"value":value,"encoding":encoding,"documentFork":fork});
         if let Some(settings) = settings { metadata["settings"] = json!(settings); }
         if method.starts_with("compile_gpu") {
