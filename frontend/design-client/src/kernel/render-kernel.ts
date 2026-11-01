@@ -10,6 +10,7 @@ import { bindContentOwner, pixelSourceContract } from './gpu/page-background'
 import { FrameResources } from './gpu/frame-resources'
 import { decodeScenePacket, copyScenePacket, CompiledScenePacket } from './gpu/scene-packet'
 import { PreparedPacket, waitForPacket } from './prepared-packet'
+import { canRebuildImageDecoder } from './image-decode-recovery'
 export type NativeSourceIdentity={documentId:string;pageId:string;stageId:string;nodes:number}
 
 /** The GPU worker keeps only the image decoder on its synchronous boundary.
@@ -23,6 +24,7 @@ export class RenderKernel {
   private settings = 'null'
   private assetLease = { users: 1 }
   private imageMips = false
+  imageDecodeRecoveries = 0
   private resources = new FrameResources()
   private contentOwner:object = {}
   /** Worker-private identity bound to compiled pixel sources; never on wire. */
@@ -79,6 +81,26 @@ export class RenderKernel {
     const colorManagement=JSON.parse(this.settings)||undefined
     this.assets.load_document(JSON.stringify({...blank(),schemaVersion:colorManagement?3:2,
       rasterProfile:colorManagement?'figma':'analytic',colorManagement}))
+  }
+  private decodeImage<T>(uri:string,decode:(assets:VectorEngine)=>T):T {
+    try{return decode(this.assets)}catch(error){
+      // Only the image-only engine is replaceable. A CPU engine also owns the
+      // authored document and must never be reset by an asset decode failure.
+      if(!this.preparation||!canRebuildImageDecoder(error,uri))throw error
+      const next=new VectorEngine()
+      try{
+        next.set_image_mips(this.imageMips)
+        const colorManagement=JSON.parse(this.settings)||undefined
+        next.load_document(JSON.stringify({...blank(),schemaVersion:colorManagement?3:2,
+          rasterProfile:colorManagement?'figma':'analytic',colorManagement}))
+      }catch(failure){next.free();throw failure}
+      const previous=this.assets,lease=this.assetLease
+      this.assets=next;this.assetLease={users:1}
+      if(--lease.users===0)previous.free()
+      // One exact retry, with the same bytes, mip and colour policy. A genuine
+      // malformed image still fails, and another lane keeps its old decoder.
+      const value=decode(next);this.imageDecodeRecoveries++;return value
+    }
   }
   async initialize(mips: boolean, font?: Uint8Array) {
     this.detachImageDecoder()
@@ -225,10 +247,10 @@ export class RenderKernel {
   stats() { return this.call<string>('stats') }
   gpu_memory_breakdown() { return this.call<string>('gpu_memory_breakdown') }
   color_settings() { return this.settings }
-  image_info(uri: string) { return this.assets.image_info(uri) }
-  image_info_at_level(uri: string, level: number) { return this.assets.image_info_at_level(uri, level) }
-  image_rgba8(uri: string) { return this.assets.image_rgba8(uri) }
-  image_rgba8_at_level(uri: string, level: number) { return this.assets.image_rgba8_at_level(uri, level) }
-  image_linear(uri: string) { return this.assets.image_linear(uri) }
-  image_linear_at_level(uri: string, level: number) { return this.assets.image_linear_at_level(uri, level) }
+  image_info(uri: string) { return this.decodeImage(uri,assets=>assets.image_info(uri)) }
+  image_info_at_level(uri: string, level: number) { return this.decodeImage(uri,assets=>assets.image_info_at_level(uri, level)) }
+  image_rgba8(uri: string) { return this.decodeImage(uri,assets=>assets.image_rgba8(uri)) }
+  image_rgba8_at_level(uri: string, level: number) { return this.decodeImage(uri,assets=>assets.image_rgba8_at_level(uri, level)) }
+  image_linear(uri: string) { return this.decodeImage(uri,assets=>assets.image_linear(uri)) }
+  image_linear_at_level(uri: string, level: number) { return this.decodeImage(uri,assets=>assets.image_linear_at_level(uri, level)) }
 }

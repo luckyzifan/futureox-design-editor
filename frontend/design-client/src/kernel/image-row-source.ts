@@ -1,4 +1,5 @@
 import { ImageRowDecoder } from './generated-row-decoder'
+import { canRebuildImageDecoder } from './image-decode-recovery'
 
 /** A routing hint only. Native PNG/ICC/EXIF and dimension checks remain the
  * authority; malformed and unsupported sources still reject in the decoder. */
@@ -17,7 +18,11 @@ export function largePngRowCandidate(uri: string): boolean {
 export type LinearImageRows = Iterable<{y:number;height:number;pixels:Float32Array}>
 export function nativeImageRows(uri:string,settings:string,current:()=>void){
   current()
-  let decoder: ImageRowDecoder | undefined = new ImageRowDecoder(uri,settings)
+  let decoder: ImageRowDecoder | undefined
+  try{decoder=new ImageRowDecoder(uri,settings)}catch(error){
+    if(!canRebuildImageDecoder(error,uri))throw error
+    current();decoder=new ImageRowDecoder(uri,settings)
+  }
   let started=false
   const dispose=()=>{const owned=decoder;decoder=undefined;owned?.free()}
   let width:number,height:number

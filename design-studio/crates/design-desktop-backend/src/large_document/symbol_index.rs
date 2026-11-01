@@ -10,13 +10,12 @@ const MEMORY_BYTES:usize=4*1024*1024;
 const ROW_BYTES:u64=72;
 type Location=(usize,usize);
 enum Storage { Memory(HashMap<String,Location>), Disk(Disk) }
-pub(super) struct Symbols { storage:Storage, bytes:usize, directory:PathBuf, count:u64 }
+pub(super) struct Symbols { storage:Storage, bytes:usize, directory:PathBuf }
 impl Symbols {
-    pub(super) fn new(directory:&Path,count:usize)->io::Result<Self> {
-        Ok(Self{storage:Storage::Memory(HashMap::new()),bytes:0,directory:directory.into(),
-            count:u64::try_from(count).map_err(|_|invalid("Symbol count overflow"))?})
+    pub(super) fn new(directory:&Path)->Self {
+        Self{storage:Storage::Memory(HashMap::new()),bytes:0,directory:directory.into()}
     }
-    pub(super) fn insert(&mut self,key:String,location:Location,cancel:&AtomicBool)->io::Result<()> {
+    pub(super) fn insert(&mut self,key:String,location:Location,count:impl FnOnce()->io::Result<u64>,cancel:&AtomicBool)->io::Result<()> {
         super::check_cancel(cancel)?;
         let Storage::Memory(map)=&mut self.storage else {
             if let Storage::Disk(disk)=&mut self.storage {disk.insert(&key,location,cancel)?;}
@@ -26,7 +25,7 @@ impl Symbols {
         let bytes=self.bytes.checked_add(key.len()).and_then(|n|n.checked_add(128))
             .ok_or_else(||invalid("Symbol memory accounting overflow"))?;
         if bytes<=MEMORY_BYTES {map.insert(key,location);self.bytes=bytes;return Ok(());}
-        let mut disk=Disk::new(&self.directory,self.count)?;
+        let mut disk=Disk::new(&self.directory,count()?)?;
         for (key,location) in map.iter() {disk.insert(key,*location,cancel)?;}
         disk.insert(&key,location,cancel)?;
         self.storage=Storage::Disk(disk);self.bytes=0;
@@ -39,6 +38,11 @@ impl Symbols {
     pub(super) fn on_disk(&self)->bool {matches!(&self.storage,Storage::Disk(_))}
 }
 fn invalid(message:&str)->io::Error {io::Error::new(io::ErrorKind::InvalidData,message)}
+fn key_hash(key:&str,cancel:&AtomicBool)->io::Result<[u8;32]> {
+    let mut hash=Sha256::new();
+    for bytes in key.as_bytes().chunks(64*1024) {super::check_cancel(cancel)?;hash.update(bytes);}
+    Ok(hash.finalize().into())
+}
 fn open_private(path:&Path)->io::Result<File> {
     let mut options=OpenOptions::new();options.create_new(true).read(true).write(true);
     #[cfg(unix)] {use std::os::unix::fs::OpenOptionsExt;options.mode(0o600);}
@@ -65,13 +69,14 @@ impl Disk {
     }
     fn insert(&mut self,key:&str,(part,node):Location,cancel:&AtomicBool)->io::Result<()> {
         let files=self.files.get_mut().map_err(|_|invalid("Symbol table lock poisoned"))?.as_mut().unwrap();
-        let hash:[u8;32]=Sha256::digest(key.as_bytes()).into();
+        let hash=key_hash(key,cancel)?;
         let (slot,old)=probe(files,self.slots,key,&hash,cancel)?;
         if old.is_some() {return Ok(());}
         let start=files.key_end;
         let len=u64::try_from(key.len()).map_err(|_|invalid("Symbol key size overflow"))?;
         let end=start.checked_add(len).ok_or_else(||invalid("Symbol key range overflow"))?;
-        files.keys.seek(SeekFrom::Start(start))?;files.keys.write_all(key.as_bytes())?;
+        files.keys.seek(SeekFrom::Start(start))?;
+        for bytes in key.as_bytes().chunks(64*1024) {super::check_cancel(cancel)?;files.keys.write_all(bytes)?;}
         let mut row=[0u8;ROW_BYTES as usize];row[..8].copy_from_slice(&1u64.to_le_bytes());row[8..40].copy_from_slice(&hash);
         for (at,value) in [(40,start),(48,len),(56,u64::try_from(part).map_err(|_|invalid("Symbol part overflow"))?),
             (64,u64::try_from(node).map_err(|_|invalid("Symbol node overflow"))?)] {row[at..at+8].copy_from_slice(&value.to_le_bytes());}
@@ -82,7 +87,7 @@ impl Disk {
     fn get(&self,key:&str,cancel:&AtomicBool)->io::Result<Option<Location>> {
         let mut guard=self.files.lock().map_err(|_|invalid("Symbol table lock poisoned"))?;
         let files=guard.as_mut().ok_or_else(||invalid("Retired symbol table"))?;
-        let hash:[u8;32]=Sha256::digest(key.as_bytes()).into();
+        let hash=key_hash(key,cancel)?;
         Ok(probe(files,self.slots,key,&hash,cancel)?.1)
     }
 }
@@ -114,7 +119,7 @@ fn probe(files:&mut Files,slots:u64,key:&str,hash:&[u8;32],cancel:&AtomicBool)->
 impl Drop for Disk {
     fn drop(&mut self) {
         // Close handles before unlinking on every platform, including Windows.
-        self.files.get_mut().unwrap_or_else(|error|error.into_inner()).take();
+        drop(self.files.get_mut().unwrap_or_else(|error|error.into_inner()).take());
         for path in &self.paths {let _=fs::remove_file(path);}
     }
 }

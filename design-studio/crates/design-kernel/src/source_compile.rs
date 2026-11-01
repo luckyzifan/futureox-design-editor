@@ -1,6 +1,7 @@
 //! Native source compilation over an immutable resolved demand projection.
-//! Complete authored data remains in the lane owner for edits, exports and
-//! unsupported requests. The compile engine never receives cold node payloads.
+//! This complete-owner path remains the fallback. The optional lazy module
+//! acquires cold records from storage and materializes complete authority before
+//! edits/exports/unsupported operations. Compile engines consume closed demands.
 use crate::{
     Engine, RenderOptions,
     gpu::{PageProperties, SourceCompileContext},
@@ -12,6 +13,10 @@ use crate::{
 use serde_json::{Value, json};
 use std::sync::{Arc, atomic::AtomicBool};
 const CACHE: usize = 64 * 1024 * 1024;
+#[cfg(feature="mapped-source-snapshot")]
+mod lazy;
+#[cfg(feature="mapped-source-snapshot")]
+pub(crate) use lazy::LazyRuntime;
 struct Query {
     options: RenderOptions,
     prepare: Rect,
@@ -19,10 +24,16 @@ struct Query {
 }
 impl Query {
     fn parse(owner: &Engine, request: &str) -> Result<Option<Self>, String> {
+        Self::parse_with_header(owner,request,None)
+    }
+    fn parse_with_header(owner:&Engine,request:&str,header:Option<&crate::scene::Document>)->Result<Option<Self>,String> {
         let mut value: Value = serde_json::from_str(request).map_err(|e| e.to_string())?;
         let object = value
             .as_object_mut()
             .ok_or("Render options must be an object")?;
+        if !object.contains_key("rasterProfile") {if let Some(header)=header {
+            object.insert("rasterProfile".into(),json!(header.raster_profile.unwrap_or(if header.color_management.is_some(){crate::fidelity::RasterProfile::Figma}else{crate::fidelity::RasterProfile::Analytic})));
+        }}
         // New sampling/capture policies must be reviewed before using a
         // projection. Unknown options retain the complete compiler contract.
         if object.keys().any(|key| {
@@ -134,6 +145,8 @@ struct Plan {
     padding: Option<(u64, i32)>,
 }
 pub(crate) struct Runtime {
+    identity: Option<(String, [u8;32], String, String, String)>,
+    replay: bool,
     key: Option<(u64, bool, bool)>,
     plan: Option<Plan>,
     declined: Option<&'static str>,
@@ -151,6 +164,8 @@ pub(crate) struct Runtime {
 impl Default for Runtime {
     fn default() -> Self {
         Self {
+            identity: None,
+            replay: std::env::var("CORE_SOURCE_REPLAY").as_deref()!=Ok("0"),
             key: None,
             plan: None,
             declined: None,
@@ -202,6 +217,11 @@ impl Runtime {
         request: &str,
     ) -> Result<Vec<u8>, String> {
         crate::render_cancellation::checkpoint()?;
+        let identity=(descriptor.generation.clone(),descriptor.footer_hash,descriptor.document_id.clone(),stage.to_owned(),page.to_owned());
+        if self.identity.as_ref()!=Some(&identity) {
+            owner.frame_scene.clear_source_history();
+            self.key=None;self.identity=Some(identity);
+        }
         let Some(query) = Query::parse(owner, request)? else {
             return self.full(owner, request, "request-contract");
         };
@@ -215,6 +235,7 @@ impl Runtime {
             return self.full(owner, request, "non-static-source");
         }
         if self.key != key {
+            owner.frame_scene.clear_source_history();
             if self.active {
                 owner.invalidate_frame_scene_request();
                 self.active = false;
@@ -271,6 +292,16 @@ impl Runtime {
                 self.declined = Some("global-source-contract");
             }
             self.key = key;
+        }
+        if self.replay {
+            if let Some((bytes,nodes,authored))=owner.frame_scene.reuse_source(key.unwrap(),request)? {
+                self.reuses+=1;
+                self.stats=json!({"mode":"demand-replay","sourceNodes":descriptor.nodes,
+                    "projectionRebuilds":self.rebuilds,"projectionReuses":self.reuses,
+                    "globalMarginEvaluations":self.margin_evaluations,"scopeExpansions":0,"resolvedCompileNodes":nodes,"residentAuthoredNodes":authored,
+                    "cache":{"frameScene":owner.frame_scene.stats()}});
+                return Ok(bytes);
+            }
         }
         let Some(plan) = &mut self.plan else {
             return self.full(owner, request, self.declined.unwrap_or("no-plan"));
@@ -426,10 +457,12 @@ impl Runtime {
                 demand = next;
                 continue;
             }
+            if result.is_ok() && self.replay {owner.frame_scene.retain_source(key.unwrap(),request,self.authored_nodes)?;}
             self.stats = json!({"mode":"demand","sourceNodes":descriptor.nodes,"residentAuthoredNodes":self.authored_nodes,
                 "resolvedCompileNodes":compiler.doc.as_ref().unwrap().nodes.len(),"projectionRebuilds":self.rebuilds,"projectionReuses":self.reuses,
                 "scopeExpansions":expansions,"excludedNodePayloadCopies":0,"residentAuthority":true,"globalPadding":padding,
-                "globalMarginEvaluations":self.margin_evaluations,"contextMarginBytes":margin.bytes(),"cache":cache});
+                "globalMarginEvaluations":self.margin_evaluations,"contextMarginBytes":margin.bytes(),"cache":cache,
+                "frameScene":owner.frame_scene.stats()});
             if owner.frame_scene.bytes().saturating_add(margin.bytes()) > CACHE {
                 self.compiler = None;
                 if let Some(plan) = &mut self.plan {

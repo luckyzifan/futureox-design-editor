@@ -59,7 +59,7 @@ import { isDisplayBudgetError } from './gpu/display-budget'
 import { applyDocumentPatch, documentPatch, type DocumentPatch } from '../document-patch'
 import type { DesignDocument, Matrix } from '../model'
 import { preparePreviewSelection, previewTranslationDelta, translatePreviewScene } from './gpu/translated-scene'
-import { residentOverlayAffines } from './gpu/resident-affine-pose'
+import { FrozenResidentOverlayPoses, resolveResidentOverlayFrame } from './gpu/resident-affine-pose'
 import { interactionPatchTransforms } from './interaction-patch-transforms'
 import { capturePoseOrigins, residentPoseShift } from './gpu/resident-pose-origin'
 import { tilePrepareViewport, localDisplayPrepareScope, tileLocalPrepareViewport } from './tile-prepare-viewport'
@@ -350,14 +350,16 @@ type PoseSession={controller:AbortController;slot:number;document:DesignDocument
   origins:ReadonlyMap<string,readonly[number,number]>;
   patch?:TranslationPatchSession;native?:boolean;affine?:boolean;fixedWindow?:boolean;window:import('./gpu/types').Rect;options:string;stopped:boolean;input?:ResidentPose['input'] & {owner?:string};bounds?:{x:number;y:number;width:number;height:number}}
 let poseSession:PoseSession|undefined,pendingPose:ResidentPose|undefined,poseQueued=false
+const frozenOverlayPoses=new FrozenResidentOverlayPoses()
 function displayedOverlayAffines(frame:import('./gpu/resident-presenter').ResidentFrame) {
-  const session = poseSession
-  if (!frame.overlay?.transforms || !session || !frame.interaction ||
-      !frame.items.some(item => item.active && item.tile.gpuTile === session.slot)) return undefined
-  return residentOverlayAffines(session.scene, frame.overlay.transforms)
+  if(gpu)return resolveResidentOverlayFrame(frame,gpu.driver,poseSession,frozenOverlayPoses)
+  if(frame.overlayPoseSlot!==undefined)frame.overlay=undefined
 }
 function rebasePose(pose:ResidentPose,expandCapture=false){
-  if(poseSession?.slot===pose.slot){poseSession.stopped=true;poseSession.controller.abort()}
+  if(poseSession?.slot===pose.slot){
+    poseSession.stopped=true;poseSession.controller.abort()
+    if(gpu)frozenOverlayPoses.freeze(gpu.driver,poseSession.slot,poseSession.scene)
+  }
   if(pendingPose?.slot===pose.slot)pendingPose=undefined
   reportDisplay({residentSample:{slot:pose.slot,...pose.input,needsRebase:true,expandCapture}})
 }
@@ -572,11 +574,15 @@ self.onmessage = (e) => {
     return
   }
   if(request.command==='interaction-pose-stop'){
-    if(poseSession&&poseSession.slot===request.slot){poseSession.stopped=true;poseSession.controller.abort()}
+    if(poseSession&&poseSession.slot===request.slot){
+      poseSession.stopped=true;poseSession.controller.abort()
+      if(gpu)frozenOverlayPoses.freeze(gpu.driver,poseSession.slot,poseSession.scene)
+    }
     if(pendingPose?.slot===request.slot)pendingPose=undefined
     return
   }
   if (request.command === 'display-release') {
+    frozenOverlayPoses.release(request.ids)
     if(poseSession&&request.ids.includes(poseSession.slot)){poseSession?.controller.abort();poseSession=undefined;pendingPose=undefined}
     gpu?.driver.releasePresented?.(request.ids); return
   }
@@ -1732,7 +1738,9 @@ self.onmessage = (e) => {
             // Fractional poses request a fresh capture through the normal rebase
             // path; warming their former bilinear approximation is unnecessary.
             const origins=capturePoseOrigins(scene!,interactionSelection||[])
-            if(origins){poseSession?.controller.abort();poseSession={controller:new AbortController(),slot:result.gpuTile,document:laneState.interactionDocument,baseDocument:laneState.interactionDocument,origins,
+            if(origins){
+              if(poseSession){poseSession.controller.abort();frozenOverlayPoses.freeze(gpu.driver,poseSession.slot,poseSession.scene)}
+              poseSession={controller:new AbortController(),slot:result.gpuTile,document:laneState.interactionDocument,baseDocument:laneState.interactionDocument,origins,
               scene:scene!,native:interactionNative===true,affine:interactionAffine===true,window:interactionWindow,fixedWindow:interactionWindowFixed===true,options,stopped:false,
               patch:interactionNative||import.meta.env.VITE_DESIGN_POSE_PATCHES!=='0'?TranslationPatchSession.create(scene!,laneState.interactionDocument,interactionSelection||[],interactionNative===true)||undefined:undefined}
             }

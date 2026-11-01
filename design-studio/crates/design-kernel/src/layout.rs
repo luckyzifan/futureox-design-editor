@@ -907,7 +907,7 @@ pub fn changes(json: &str, fonts: &Fonts) -> Result<String, String> {
                 id,
                 Patch {
                     text_runs: (before.nodes[id].text_runs != n.text_runs)
-                        .then(|| n.text_runs.clone()),
+                        .then(|| n.text_runs.to_vec()),
                     transform: n.transform,
                     width: n.width,
                     height: n.height,

@@ -24,6 +24,8 @@ export type ResidentFrame = {
   /** Worker-local placement from the completed resident pose, not input. */
   overlayPose?: Record<string, {x:number;y:number}>
   overlayAffines?: Record<string, import('../../model').Matrix>
+  /** Resolve only through this worker's compiled live/stopped slot basis. */
+  overlayPoseSlot?: number
   terminalQuality?: TerminalQuality
   presentationId?: string
   items: ResidentItem[]

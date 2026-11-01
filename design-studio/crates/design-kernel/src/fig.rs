@@ -1217,7 +1217,7 @@ impl FigImporter {
                 // (整段回退). Rendering v1 still draws the whole string —
                 // storage stays faithful for the per-run renderer.
                 if !node.text.is_empty() {
-                    node.text_runs = styled_text_runs(&td, &node.text, untranslated);
+                    node.text_runs = styled_text_runs(&td, &node.text, untranslated).into();
                 }
             }
             "CODE_BLOCK" => {
@@ -1574,7 +1574,7 @@ impl FigImporter {
         if characters.is_empty() {
             return;
         }
-        node.text_runs = styled_text_runs(&td, &characters, untranslated);
+        node.text_runs = styled_text_runs(&td, &characters, untranslated).into();
         // node-level decoration applies to the whole string when no
         // per-character styles carve it up
         match str_of(change, "textDecoration") {

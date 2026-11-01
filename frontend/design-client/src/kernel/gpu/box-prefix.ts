@@ -45,14 +45,14 @@ var<workgroup> varied:atomic<u32>;
  }
  if(lane==0u){prefix[start]=vec4<f32>(f32(atomicLoad(&bad)),f32(atomicLoad(&varied)),0.,0.);}
 }`
-const resolve=exactFilterWgsl(false)+`
+const resolve=(canvasFallback=false)=>exactFilterWgsl(false,canvasFallback,canvasFallback)+`
 @group(0) @binding(4) var<storage,read> prefix:array<vec4<f32>>;
 @fragment fn boxResolve(@builtin(position) position:vec4<f32>)->@location(0) vec4<f32>{
  let horizontal=u(9u).y==0.;let length=i32(select(u(1u).w,u(1u).z,horizontal));
  let line=u32(select(position.x,position.y,horizontal)-u(50u).x);
  let start=line*u32(length+3);let point=position.xy+u(0u).xy;
  let axis=select(vec2<f32>(0,1),vec2<f32>(1,0),horizontal);
- if(prefix[start].x!=0.){return vec4<f32>(exactFilterChannel(point,axis,0u),exactFilterChannel(point,axis,1u),exactFilterChannel(point,axis,2u),exactFilterChannel(point,axis,3u));}
+ if(prefix[start].x!=0.){return ${canvasFallback?'canvasBlurRgba(point,axis)':'vec4<f32>(exactFilterChannel(point,axis,0u),exactFilterChannel(point,axis,1u),exactFilterChannel(point,axis,2u),exactFilterChannel(point,axis,3u))'};}
  let q=i32(floor(select(point.y-u(1u).y,point.x-u(1u).x,horizontal)));let r=i32(u(9u).x);
  let lo=clamp(q-r,0,length);let hi=clamp(q+r+1,0,length);
  if(prefix[start].y==0.&&(all(prefix[start+1u]==vec4<f32>(0.))||(lo==q-r&&hi==q+r+1))){return prefix[start+1u];}
@@ -68,7 +68,7 @@ export class BoxPrefix {
   get scratchBytes(){return this.scratch?BOX_PREFIX_BYTES:0}
   lastPasses=0
   private constructor(private device:GPUDevice,private compute:GPUComputePipeline,private render:GPURenderPipeline){}
-  static async create(device:GPUDevice){
+  static async create(device:GPUDevice,canvasFallback=false){
     const computeLayout=device.createBindGroupLayout({entries:[
       {binding:0,visibility:GPUShaderStage.COMPUTE,buffer:{type:'uniform',minBindingSize:1024}},
       {binding:1,visibility:GPUShaderStage.COMPUTE,texture:{sampleType:'unfilterable-float'}},
@@ -77,7 +77,7 @@ export class BoxPrefix {
       {binding:0,visibility:GPUShaderStage.FRAGMENT,buffer:{type:'uniform',minBindingSize:1024}},
       ...[1,2,3].map(binding=>({binding,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:'unfilterable-float' as const}})),
       {binding:4,visibility:GPUShaderStage.FRAGMENT,buffer:{type:'read-only-storage'}}]})
-    const resolveModule=device.createShaderModule({code:resolve,label:'Bounded box resolve'}),scanModule=device.createShaderModule({code:scan,label:'Bounded box scan'})
+    const resolveModule=device.createShaderModule({code:resolve(canvasFallback),label:'Bounded box resolve'}),scanModule=device.createShaderModule({code:scan,label:'Bounded box scan'})
     for(const module of [resolveModule,scanModule]){const info=await module.getCompilationInfo();const errors=info.messages.filter(m=>m.type==='error');if(errors.length)throw Error(errors.map(m=>`${m.lineNum}:${m.linePos} ${m.message}`).join('\n'))}
     const [compute,render]=await Promise.all([
       device.createComputePipelineAsync({layout:device.createPipelineLayout({bindGroupLayouts:[computeLayout]}),compute:{module:scanModule,entryPoint:'scan'}}),

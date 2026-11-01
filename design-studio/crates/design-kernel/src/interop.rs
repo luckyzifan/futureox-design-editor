@@ -2036,7 +2036,7 @@ impl<'a> Importer<'a> {
                             ||node.text_runs.iter().any(|r|r.font_id.as_deref()==Some(id));
                         if saved_style.as_ref().is_none_or(|s|owned(&s.font_id))
                             && saved_runs.iter().all(|r|r.font_id.as_deref().is_none_or(owned)) {
-                            node.text_style=saved_style.map(Box::new); node.text_runs=saved_runs;
+                            node.text_style=saved_style.map(Box::new); node.text_runs=saved_runs.into();
                         }
                     }
                 }
@@ -2633,14 +2633,14 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
         }
     }
 
-    import_sketch_parts(files, &meta, &document, &page_index)
+    import_sketch_parts(files, &meta, &document, &page_index,None)
 }
 
 // Both archive and native-source imports execute the same semantic codec.
 // Parsed native windows borrow their values instead of serializing and then
 // parsing the complete layer tree again.
 fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
-    document: &Value, page_index: &BTreeMap<String, Value>) -> Result<Document> {
+    document: &Value, page_index: &BTreeMap<String, Value>,page_references:Option<&Value>) -> Result<Document> {
     validate_sketch_shared_style_ids(&document)?;
 
     let mut doc = Document {
@@ -2683,7 +2683,7 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
     // Native page order is authored data. Resolve archive identities directly;
     // originalId only renames the resulting kernel identity, never its file.
     let mut ordered = Vec::new();
-    if let Some(refs) = document.get("pages").and_then(Value::as_array) {
+    if let Some(refs) = page_references.or_else(||document.get("pages")).and_then(Value::as_array) {
         for reference in refs {
             let reference = reference
                 .get("_ref")
@@ -3423,6 +3423,19 @@ pub fn import_sketch_source_window(
 #[cfg(not(target_arch = "wasm32"))]
 pub fn import_sketch_source_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
     document: &Value, pages: &BTreeMap<String, Value>) -> Result<SketchImportReport> {
+    import_sketch_source_parts_inner(files,meta,document,pages,None)
+}
+/// Native windows share immutable document metadata and project their two
+/// page references without cloning the entire styles/fonts/foreign-symbol tree.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn import_sketch_source_parts_with_pages(files:&BTreeMap<String,Vec<u8>>,meta:&Value,
+    document:&Value,pages:&BTreeMap<String,Value>,page_references:&Value)->Result<SketchImportReport> {
+    if !document.is_object() || !page_references.is_array() {return Err(Error::MalformedJson("Invalid source page projection".into()));}
+    import_sketch_source_parts_inner(files,meta,document,pages,Some(page_references))
+}
+#[cfg(not(target_arch = "wasm32"))]
+fn import_sketch_source_parts_inner(files:&BTreeMap<String,Vec<u8>>,meta:&Value,
+    document:&Value,pages:&BTreeMap<String,Value>,page_references:Option<&Value>)->Result<SketchImportReport> {
     use std::io::Write;
     const ENTRY: usize = 64 * 1024 * 1024;
     const TOTAL: usize = 96 * 1024 * 1024;
@@ -3440,19 +3453,24 @@ pub fn import_sketch_source_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Valu
         return Err(failure());
     }
     let base = files.values().try_fold(0usize, |n,v|n.checked_add(v.len())).ok_or_else(failure)?;
-    let upper=[meta,document].into_iter().chain(pages.values()).try_fold(base,|total,value|
-        total.checked_add(source_size::upper_bound(value,ENTRY)?).filter(|n|*n<=TOTAL));
+    let projected=source_size::DocumentFields{source:document,pages:page_references};
+    let upper=projected.upper_bound(ENTRY).and_then(|bytes|base.checked_add(bytes)).filter(|n|*n<=TOTAL)
+        .and_then(|base|std::iter::once(meta).chain(pages.values()).try_fold(base,|total,value|
+        total.checked_add(source_size::upper_bound(value,ENTRY)?).filter(|n|*n<=TOTAL)));
     if upper.is_none(){
         // An upper bound may decline a perfectly valid near-limit document.
         // Recount ALL entries exactly, retaining the original admission set.
         let mut total=base;
-        for value in [meta, document].into_iter().chain(pages.values()) {
+        let mut document_count=Count(0);
+        serde_json::to_writer(&mut document_count,&projected).map_err(|_|failure())?;
+        total=total.checked_add(document_count.0).filter(|n|*n<=TOTAL).ok_or_else(failure)?;
+        for value in std::iter::once(meta).chain(pages.values()) {
             let mut count = Count(0);
             serde_json::to_writer(&mut count,value).map_err(|_|failure())?;
             total = total.checked_add(count.0).filter(|n|*n<=TOTAL).ok_or_else(failure)?;
         }
     }
-    finish_sketch_report(import_sketch_parts(files,meta,document,pages)?)
+    finish_sketch_report(import_sketch_parts(files,meta,document,pages,page_references)?)
 }
 
 fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
@@ -4485,7 +4503,7 @@ fn restore_unedited_text_frame(node: &mut Node, source: Option<&Value>) -> bool 
         text: node.text.clone(),
         font_size: node.font_size,
         text_style: node.text_style.as_deref().cloned(),
-        text_runs: node.text_runs.clone(),
+        text_runs: node.text_runs.to_vec(),
         sizing: node.sizing.clone(),
     };
     if signature != current {
@@ -7743,7 +7761,7 @@ mod tests {
                 font_size: Some(10.),
                 weight: None,
             },
-        ];
+        ].into();
         let bytes = export_sketch(&doc).unwrap();
         let files = read_zip(&bytes).unwrap();
         let name = files

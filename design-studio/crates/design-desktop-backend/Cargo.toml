@@ -4,6 +4,12 @@ version.workspace = true
 edition.workspace = true
 publish.workspace = true
 
+[features]
+default = []
+native-sonic-json = ["futureox-design-kernel/native-sonic-json"]
+compact-node-vectors = ["futureox-design-kernel/compact-node-vectors"]
+mapped-source-snapshot = ["futureox-design-kernel/mapped-source-snapshot"]
+
 [dependencies]
 futureox-design-kernel = { path = "../design-kernel" }
 serde.workspace = true

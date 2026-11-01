@@ -77,6 +77,7 @@ export function ResidentCompositeSurface(props: {
   const lastFrameSignature = useRef('')
   const presentation = useRef(new ResidentPresentation())
   const actualPresentation=useRef<ResidentAcknowledgement|undefined>(undefined)
+  const acceptedChrome=useRef<{source:PresentedFrame;actual:ResidentAcknowledgement;client:KernelClient}|undefined>(undefined)
   repaint.current = () => {
     if (!attached.current) return
     const p = latest.current,
@@ -148,6 +149,22 @@ export function ResidentCompositeSurface(props: {
     // A capture owns the entire chrome decision, including a failed proof.
     // Do not fall back to inverse-projecting newer commands after rejection.
     const overlay=capturedOverlay ? capturedOverlay.commands : (sourceOverlay?(moved?moving?.overlay(sourceOverlay):sourceOverlay):undefined)
+    const heldChrome=acceptedChrome.current
+    const holdMove=moving===interaction.current&&(interaction.current?.holdingMoveCapture||
+      !!moved&&interaction.current?.holdingReleasedMove&&!p.interaction?.active)
+    if(holdMove&&!overlay&&
+        scopedOverlay?.uiIdentity&&heldChrome&&heldChrome.client===p.client&&
+        heldChrome.source.gpuOverlayIdentity===scopedOverlay.uiIdentity&&
+        heldChrome.source.document.id===scopedOverlay.document.id&&heldChrome.source.pageId===scopedOverlay.pageId&&
+        heldChrome.source.epoch===scopedOverlay.epoch&&heldChrome.source.rasterProfile===p.rasterProfile&&
+        heldChrome.actual.width===p.width&&heldChrome.actual.height===p.height&&heldChrome.actual.dpr===p.dpr&&
+        heldChrome.actual.view.x===p.view.x&&heldChrome.actual.view.y===p.view.y&&heldChrome.actual.view.zoom===p.view.zoom) {
+      // Keep the already acknowledged backbuffer (pixels AND chrome) during
+      // capture/commit handoff, rather than a chrome-less intermediate frame.
+      // This publishes no new pose/document proof. A complete page, changed UI,
+      // camera or owner ends the hold through the ordinary guarded submission.
+      return
+    }
     try { presentationId = presentation.current.stage(p.presentation ? { ...p.presentation, gpuOverlay: !!overlay, gpuOverlayIdentity: overlay ? scopedOverlay?.uiIdentity : undefined,
       gpuOverlayCapture: overlay ? capturedOverlay?.cohort : undefined } : null) }
     catch (error) { p.onFailure(String(error)); return }
@@ -155,6 +172,7 @@ export function ResidentCompositeSurface(props: {
       document:p.sourceDocument,revision:p.contentRevision,pageId:p.pageId,width:p.width,height:p.height,dpr:p.dpr,items:p.items,backing:p.panBacking})
     const frame: ResidentFrame = {
       presentationId,
+      overlayPoseSlot:overlay?capturedOverlay?.overlayPoseSlot:undefined,
       terminalQuality: !moved && !panPreview && p.client.presentationDiagnosticsEnabled() ? p.terminalQuality : undefined,
       overlay,
       view: p.view,
@@ -259,10 +277,12 @@ export function ResidentCompositeSurface(props: {
           pageTranslation.current?.repairMissingCoverage(deferredInput.sequence)
         if (Array.isArray(stats.missingGpuTiles)) {
           const missing = new Set(stats.missingGpuTiles)
+          if(missing.size)acceptedChrome.current=undefined
           for (const item of latest.current.items) if (missing.has(item.tile.gpuTile))
             latest.current.onError?.(item.tile.key, item.tile.serial, '显示纹理已失效，正在补画')
         }
         if (stats.error) {
+          acceptedChrome.current=undefined
           latest.current.onFailure(String(stats.error))
           return
         }
@@ -303,6 +323,7 @@ export function ResidentCompositeSurface(props: {
           // downstream exact ACK. Other message payloads were handled above.
           if(rejected)return
           actualPresentation.current=actual
+          acceptedChrome.current=source?.gpuOverlay&&actual.gpuOverlay?{source,actual,client:p.client}:undefined
           // Use the exact displayed input and its owner, not the latest pointer
           // or resident-sampling completion. Worker and SVG meet at this pose.
 
@@ -341,6 +362,7 @@ export function ResidentCompositeSurface(props: {
       interactionStarted.current = false
       presentation.current = new ResidentPresentation()
       actualPresentation.current=undefined
+      acceptedChrome.current=undefined
       lastFrameSignature.current = ''
       attached.current = false
       importSession.current = {}
@@ -398,6 +420,7 @@ export function ResidentCompositeSurface(props: {
         p.backend,
         p.settledDocument,
         { width: p.width, height: p.height },
+        p.overlay,
       )
     }
     repaint.current()

@@ -118,7 +118,7 @@ pub(crate) fn replace_text(n: &mut Node, text: String) {
     runs.sort_by_key(|r| r.start);
     runs.retain(|r| r.start < r.end);
     n.text = text;
-    n.text_runs = runs;
+    n.text_runs = runs.into();
 }
 /// Apply dependent-field semantics after generic field deserialization, unless
 /// the caller explicitly supplied the dependent geometry/ranges themselves.

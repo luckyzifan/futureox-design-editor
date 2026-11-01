@@ -11,6 +11,10 @@ const core = path.resolve(desktop, '../..')
 const design = path.join(core, 'design-studio')
 const output = await buildOutput(desktop, process.argv.slice(2))
 const profile = buildProfile(process.argv.slice(2))
+// Explicit native-only candidate. WASM/editor semantics keep their normal
+// build; the source wire format remains behind its runtime publication switch.
+const nativeFeatures = process.argv.includes('--mapped-source-snapshot')
+  ? ['futureox-design-kernel/mapped-source-snapshot', 'futureox-design-desktop-backend/mapped-source-snapshot'] : []
 const bun = process.env.BUN_EXECUTABLE || 'bun'
 const inputs = await buildInputs(core)
 function run(command, args, cwd) {
@@ -57,6 +61,7 @@ run(
     '-p',
     'futureox-design-kernel',
     ...cargoProfileFlags,
+    ...(nativeFeatures.length ? ['--features', nativeFeatures.join(',')] : []),
   ],
   design,
 )
@@ -100,6 +105,7 @@ await writeFile(
       platform: process.platform,
       arch: process.arch,
       profile,
+      nativeFeatures,
       sources: inputs,
     },
     null,

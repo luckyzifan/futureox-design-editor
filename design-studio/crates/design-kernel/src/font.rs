@@ -2346,7 +2346,7 @@ mod persistent_font_cache_tests {
             font_size: Some(31.5),
             weight: Some(850.),
             ..Default::default()
-        }];
+        }].into();
         assert_layout_equal(&fonts, &reference, &rich);
     }
 

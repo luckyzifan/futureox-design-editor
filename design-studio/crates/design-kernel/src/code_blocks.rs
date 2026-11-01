@@ -161,7 +161,7 @@ pub fn resolve(doc: &mut Document) -> Result<(), String> {
         for id in children {
             let child = doc.nodes.get_mut(&id).ok_or("Missing code content")?;
             if child.kind == "text" {
-                child.text_runs = highlight(&child.text, &language)?
+                child.text_runs = highlight(&child.text, &language)?.into()
             }
         }
     }

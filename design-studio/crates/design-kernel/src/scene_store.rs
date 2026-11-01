@@ -1,8 +1,8 @@
 //! Immutable, indexed native scene storage. Authored semantics remain Document
 //! and Node; this is a storage representation, never a second mutation model.
-//! The fixed-width disk index has a Merkle proof for every row. Opening never
-//! scans all node records or loads the full index; reads authenticate their
-//! own lookup path and payload, including file changes after opening.
+//! The legacy disk index has a Merkle proof for every row. Mapped mode loads a
+//! bounded authenticated rkyv directory; neither open path scans node payloads.
+//! Individual payload reads remain authenticated, including later file changes.
 use crate::scene::{Document, Node};
 use crate::vector_geometry::{GeometryKey,VectorGeometry,packed::PackedGeometry};
 use serde::{Deserialize, Serialize, ser::SerializeStruct};
@@ -17,6 +17,11 @@ use std::{
 };
 mod record_node;
 mod node_json;
+mod archive_envelope;
+#[cfg(feature="mapped-source-snapshot")]
+pub(crate) mod archive;
+#[cfg(feature="mapped-source-snapshot")]
+mod render_metadata;
 use node_json::Decoder;
 
 const MAGIC: &[u8; 8] = b"FXSCENE4";
@@ -32,7 +37,7 @@ fn check(cancel: &AtomicBool) -> io::Result<()> {
     if cancel.load(Ordering::Acquire) {
         Err(io::Error::other("Scene store operation cancelled"))
     } else {
-        Ok(())
+        crate::render_cancellation::checkpoint().map_err(io::Error::other)
     }
 }
 fn sum(a: u64, b: u64) -> io::Result<u64> {
@@ -512,6 +517,41 @@ fn build_tree(
 /// is the returned descriptor after all records/index/footer have been flushed;
 /// failed or cancelled writes remove only their own newly-created files.
 pub fn write(
+    path:&Path,generation:&str,document:&Document,warnings:&[String],cancel:&AtomicBool,
+) -> io::Result<Descriptor> {
+    let mapped=match std::env::var("CORE_SOURCE_SNAPSHOT_FORMAT").as_deref() {
+        Err(std::env::VarError::NotPresent)|Ok("legacy")=>false,
+        Ok("mapped")=>true,_=>return Err(invalid("Invalid CORE_SOURCE_SNAPSHOT_FORMAT")),
+    };
+    #[cfg(not(feature="mapped-source-snapshot"))]
+    if mapped {return Err(invalid("Mapped source snapshot support was not compiled"));}
+    let base=write_legacy(path,generation,document,warnings,cancel)?;
+    #[cfg(feature="mapped-source-snapshot")]
+    if mapped {
+        return match archive::append(path,base,document,cancel) {
+            Ok(descriptor)=>Ok(descriptor),Err(error)=>{let _=fs::remove_file(path);Err(error)},
+        };
+    }
+    Ok(base)
+}
+
+/// Explicit migration writes a fresh destination. The source is never
+/// modified, and the authenticated complete representation is retained.
+#[cfg(feature="mapped-source-snapshot")]
+pub fn migrate(source:&Path,expected:&Descriptor,destination:&Path,cancel:&AtomicBool)->io::Result<Descriptor> {
+    let source=Reader::open(source,expected,cancel)?;let base=source.prefix.clone();
+    let mut output=OpenOptions::new().write(true).create_new(true).open(destination)?;
+    let mut owned=OwnedFile{path:destination.into(),published:false};
+    let mut input=RangeReader{file:&source.file,position:0,end:base.bytes};let mut buffer=[0u8;64*1024];
+    loop {check(cancel)?;let n=input.read(&mut buffer)?;if n==0 {break;}output.write_all(&buffer[..n])?;}
+    output.sync_all()?;drop(output);
+    // Validate the copied prefix, not a prior view of a mutable source path.
+    // All original bytes (including unknown/provenance fields) stay unchanged.
+    let (document,_)=Reader::open(destination,&base,cancel)?.into_document(cancel)?;
+    let descriptor=archive::append(destination,base,&document,cancel)?;owned.published=true;Ok(descriptor)
+}
+
+fn write_legacy(
     path: &Path,
     generation: &str,
     document: &Document,
@@ -634,8 +674,14 @@ pub struct ReadStats {
     pub node_bytes: u64,
     pub key_reads: u64,
 }
+impl ReadStats {
+    pub(crate) fn since(self,before:Self)->Self {Self{metadata_reads:self.metadata_reads.saturating_sub(before.metadata_reads),
+        metadata_bytes:self.metadata_bytes.saturating_sub(before.metadata_bytes),index_bytes_verified:self.index_bytes_verified.saturating_sub(before.index_bytes_verified),
+        node_reads:self.node_reads.saturating_sub(before.node_reads),node_bytes:self.node_bytes.saturating_sub(before.node_bytes),key_reads:self.key_reads.saturating_sub(before.key_reads)}}
+}
 pub struct Reader {
     file: File,
+    prefix: Descriptor,
     index_offset: u64,
     tree_offset: u64,
     leaf_base: u64,
@@ -646,12 +692,19 @@ pub struct Reader {
     document_id: String,
     nodes: u64,
     metadata: Option<Metadata>,
+    #[cfg(feature="mapped-source-snapshot")]
+    render_metadata: Option<Document>,
     stats: ReadStats,
     shared: bool,
     images: SharedImages,
     geometries:SharedGeometry,
     record_scratch: Vec<u8>,
     node_decoder: Decoder,
+    archive_format: bool,
+    envelope: Option<archive_envelope::Envelope>,
+    #[cfg(feature="mapped-source-snapshot")]
+    directory: Option<Arc<archive::Directory>>,
+    archive_decline: Option<String>,
 }
 impl Reader {
     pub fn open(path: &Path, expected: &Descriptor, cancel: &AtomicBool) -> io::Result<Self> {
@@ -663,6 +716,21 @@ impl Reader {
         if file.metadata()?.len() != expected.bytes || expected.bytes < 8 + FOOTER_BYTES {
             return Err(invalid("Scene store size changed"));
         }
+        let envelope=archive_envelope::open(&file,expected,cancel)?;
+        let mut archive_decline=None;
+        #[cfg(feature="mapped-source-snapshot")]
+        let directory=if std::env::var("CORE_SOURCE_LAZY_LOAD").as_deref()==Ok("0") {
+            if envelope.is_some(){archive_decline=Some("lazy-loading-disabled".into());}None
+        } else if let Some(envelope)=&envelope {
+            match archive::Directory::open(&file,envelope,cancel) {
+                Ok(directory)=>{if directory.is_none(){archive_decline=Some("archive-index-unavailable".into());}directory},
+                Err(error)=>{check(cancel)?;archive_decline=Some(format!("archive-index-declined: {error}"));None},
+            }
+        } else {None};
+        #[cfg(not(feature="mapped-source-snapshot"))]
+        if envelope.is_some() {archive_decline=Some("archive-feature-disabled".into());}
+        let archive_format=envelope.is_some();
+        let expected=envelope.as_ref().map_or(expected,|envelope|&envelope.base);
         let mut magic = [0; 8];
         file.read_exact(&mut magic)?;
         if &magic != MAGIC && &magic != GEOMETRY_MAGIC && &magic != IMAGE_MAGIC && &magic != LEGACY_MAGIC {
@@ -693,6 +761,7 @@ impl Reader {
         let index_root = footer[56..88].try_into().unwrap();
         Ok(Self {
             file,
+            prefix: expected.clone(),
             index_offset,
             tree_offset,
             leaf_base,
@@ -703,12 +772,19 @@ impl Reader {
             document_id: expected.document_id.clone(),
             nodes,
             metadata: None,
+            #[cfg(feature="mapped-source-snapshot")]
+            render_metadata: None,
             stats: ReadStats::default(),
             shared: &magic!=LEGACY_MAGIC,
             images:HashMap::new(),
             geometries:HashMap::new(),
             record_scratch: Vec::new(),
             node_decoder: Decoder::configured()?,
+            archive_format,
+            envelope: envelope.clone(),
+            #[cfg(feature="mapped-source-snapshot")]
+            directory,
+            archive_decline,
         })
     }
     pub fn stats(&self) -> ReadStats {
@@ -716,6 +792,48 @@ impl Reader {
     }
     pub fn node_count(&self) -> u64 {
         self.nodes
+    }
+    pub fn is_mapped_format(&self)->bool {self.archive_format}
+    pub fn archive_fallback_reason(&self)->Option<&str> {self.archive_decline.as_deref()}
+    #[cfg(feature="mapped-source-snapshot")]
+    pub(crate) fn directory(&self)->Option<Arc<archive::Directory>> {self.directory.clone()}
+    #[cfg(feature="mapped-source-snapshot")]
+    pub(crate) fn reload_directory(&mut self,cancel:&AtomicBool)->io::Result<()> {
+        if self.directory.is_none() && std::env::var("CORE_SOURCE_LAZY_LOAD").as_deref()!=Ok("0") {
+            if let Some(envelope)=&self.envelope {
+                self.directory=match archive::Directory::open(&self.file,envelope,cancel) {
+                    Ok(directory)=>directory,Err(error)=>{check(cancel)?;self.archive_decline=Some(format!("archive-index-declined: {error}"));None},
+                };
+            }
+        }
+        Ok(())
+    }
+    pub(crate) fn release_directory(&mut self) {
+        #[cfg(feature="mapped-source-snapshot")]
+        {self.directory=None;self.render_metadata=None;}
+        self.clear_payload_cache();
+    }
+    #[cfg(feature="mapped-source-snapshot")]
+    pub(crate) fn render_metadata(&mut self,cancel:&AtomicBool)->io::Result<&Document> {
+        if self.render_metadata.is_none() {
+            let metadata:render_metadata::RenderMetadata=read_json(&mut self.file,8,self.metadata_end-8,self.metadata_hash,cancel)?;
+            if metadata.generation!=self.generation {return Err(invalid("Render metadata generation changed"));}
+            let document=metadata.document();
+            if document.id!=self.document_id {return Err(invalid("Render metadata identity changed"));}
+            self.stats.metadata_reads+=1;self.stats.metadata_bytes=sum(self.stats.metadata_bytes,self.metadata_end-8)?;
+            self.render_metadata=Some(document);
+        }
+        Ok(self.render_metadata.as_ref().unwrap())
+    }
+    /// A demand owns the decoded Arc payloads after return. The reader must
+    /// not pin every image/geometry encountered across all past viewports.
+    pub(crate) fn clear_payload_cache(&mut self) {self.images.clear();self.geometries.clear();}
+    pub(crate) fn read_demand(&mut self,ids:Vec<String>,cancel:&AtomicBool)->io::Result<BTreeMap<String,Node>> {
+        self.clear_payload_cache();
+        let result=(||{let mut nodes=BTreeMap::new();for id in ids {
+            check(cancel)?;let node=self.read_node(&id,cancel)?.ok_or_else(||invalid("Missing demanded source record"))?;nodes.insert(id,node);
+        }Ok(nodes)})();
+        self.clear_payload_cache();result
     }
     /// Metadata is independently lazy: an ID lookup never reads all page,
     /// font or foreign-format metadata. This header is not a renderable model.
@@ -834,6 +952,8 @@ impl Reader {
         match self.find_row(id,cancel)? {Some(row)=>self.node(id,row,cancel).map(Some),None=>Ok(None)}
     }
     fn find_row(&mut self,id:&str,cancel:&AtomicBool)->io::Result<Option<Row>> {
+        #[cfg(feature="mapped-source-snapshot")]
+        if let Some(directory)=&self.directory {check(cancel)?;return Ok(directory.row(id));}
         let (mut lo, mut hi) = (0, self.nodes);
         while lo < hi {
             let mid = lo + (hi - lo) / 2;
@@ -928,6 +1048,14 @@ impl Reader {
         } = self.metadata.take().unwrap();
         document.nodes = self.read_all_nodes(cancel)?;
         Ok((document, warnings))
+    }
+    /// Explicit complete fallback for a shared lazy reader. Metadata owns no
+    /// node payloads; cloning it cannot accidentally publish a partial model.
+    pub(crate) fn complete_document(&mut self,cancel:&AtomicBool)->io::Result<Document> {
+        #[cfg(feature="mapped-source-snapshot")]
+        {self.render_metadata=None;}
+        self.ensure_metadata(cancel)?;let mut document=self.metadata.take().unwrap().document;
+        self.clear_payload_cache();let nodes=self.read_all_nodes(cancel);self.clear_payload_cache();document.nodes=nodes?;Ok(document)
     }
 }
 

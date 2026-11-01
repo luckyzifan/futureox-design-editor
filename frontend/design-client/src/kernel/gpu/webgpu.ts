@@ -1,3 +1,4 @@
+import {gaussianPrefixWorthwhile,gaussianPrefixDemand} from './gaussian-selection'
 import {exactArithmeticIdentities} from './exact-arithmetic-identities'
 import {BoxPrefix,BOX_PREFIX_BYTES,uniformBoxRadius} from './box-prefix'
 import { pageBackgroundProof, pageBackgroundSource, pixelContentProof } from './page-background'
@@ -101,6 +102,9 @@ type ParkedDriver = {
   reaper: ReturnType<typeof setTimeout>
 }
 export class WebGpuDriver implements Driver {
+  private gaussianAutoEnabled=import.meta.env.VITE_DESIGN_GAUSSIAN_AUTO!=='0'
+  private gaussianPrefixRequested=false
+  canvasGaussianPrefixPasses=0
   private canvasBlurRequested = false
   private canvasBlurPipelines: GPURenderPipeline[] = []
   private canvasBlurScalarPipeline?: GPURenderPipeline
@@ -1147,8 +1151,10 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       !this.boundedDisplayFilterFailed && boundedDisplayRadius(radiusLimit, radiusLimit))
     this.softwareRaster = !!scene.softwareRaster && !this.managed
 
+    this.gaussianPrefixRequested=false
     this.requiresExactBoxFilters = false
     const paths = Object.values(scene.nodes).flatMap(n => {
+      if(this.gaussianAutoEnabled&&this.canvasBlurRequested&&gaussianPrefixDemand(n))this.gaussianPrefixRequested=true
       if (n.effects.some(effect => effect.visible && effect.kind === 'gaussian-blur')) this.requiresExactBoxFilters = true
       return [n.fill, ...n.strokes.map(s => s.path)]
     })
@@ -1306,12 +1312,13 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     return this.displayImagePreparing
   }
   async prepareFilters(prefixUseful = false) {
-    if(import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1'&&this.canvasBlurRequested&&!this.boxPrefix&&!this.boxPrefixFailed){
-      this.device.pushErrorScope('validation')
+    if((this.gaussianPrefixRequested||import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1')&&this.canvasBlurRequested&&!this.boxPrefix&&!this.boxPrefixFailed){
+      const device=this.device
+      device.pushErrorScope('validation')
       let pending:Promise<BoxPrefix>
-      try{pending=BoxPrefix.create(this.device)}catch(error){pending=Promise.reject(error)}
-      const checked=this.device.popErrorScope()
-      try{const [pipeline,error]=await Promise.all([pending,checked]);if(error)throw Error(error.message);this.boxPrefix=pipeline}
+      try{pending=BoxPrefix.create(device,this.gaussianAutoEnabled&&import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX!=='1')}catch(error){pending=Promise.reject(error)}
+      const checked=device.popErrorScope()
+      try{const [pipeline,error]=await Promise.all([pending,checked]);if(error)throw Error(error.message);this.assertPipelinePublicationOwner(device);this.boxPrefix=pipeline}
       catch(error){this.boxPrefixFailed=true;console.warn('Box prefix unavailable; using original Gaussian passes',error)}
     }
     const bounded = this.displayFilterRadiusLimit !== undefined
@@ -1570,7 +1577,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   }
   private boxPrefixEligible(target:Texture,u:Float32Array,inputs:Texture[],channels:number){
     const [source,kernel]=inputs,proof=kernel&&this.boxKernels?.get(kernel)
-    return !!(this.boxPrefix&&this.canvasBlurRequested&&this.managed&&!this.hdr&&!this.displayMath&&channels===15&&
+    return !!(this.boxPrefix&&(import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1'||this.gaussianAutoEnabled&&gaussianPrefixWorthwhile(u[36],u[37]===0?source?.width:source?.height,u[37]===0?target.width:target.height,target.width*target.height))&&this.canvasBlurRequested&&this.managed&&!this.hdr&&!this.displayMath&&channels===15&&
       u[16]===22&&u[39]===2&&u[38]===0&&[0,1].includes(u[37])&&u[36]>=32&&
       proof&&proof.radius===u[36]&&proof.resource===kernel.resource&&proof.width===kernel.width&&proof.height===kernel.height&&
       this.textures.has(kernel)&&this.textures.has(source)&&this.textures.has(target)&&
@@ -1581,7 +1588,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       source.width<=16384&&source.height<=16384&&target!==source)
   }
   supportsGaussianReduction(){return this.supportsGaussianRegions()&&[2,4,8].includes(Number(import.meta.env.VITE_DESIGN_GAUSSIAN_REDUCTION))}
-  supportsGaussianRegions(){return !!(this.boxPrefix&&this.canvasBlurRequested&&this.managed&&!this.hdr&&!this.displayMath)}
+  supportsGaussianRegions(){return !!(import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1'&&this.boxPrefix&&this.canvasBlurRequested&&this.managed&&!this.hdr&&!this.displayMath)}
   prepareCanvasBoxPass(target:Texture,u:Float32Array,inputs:Texture[],channels:number,availableBytes:number){
     if(this.boxPrefixEligible(target,u,inputs,channels)&&!this.boxPrefix!.scratchBytes&&availableBytes>=BOX_PREFIX_BYTES)this.boxPrefix!.reserve()
   }
@@ -1691,6 +1698,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.pairedFilterPasses = 0
     this.boundedDisplayFilterPasses = 0
     this.canvasBlurPasses = 0
+    this.canvasGaussianPrefixPasses=0
     this.canvasMotionBlurPasses = this.canvasZoomBlurPasses = 0
     if (this.disposed || this.lost) throw new Error('WebGPU 设备已丢失')
     this.resourceEpoch++
@@ -1992,7 +2000,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     if (bytes.length !== width * height * 4) throw new Error('无效的 RGBA8 数据纹理')
     // The synchronous upload captures these actual bytes. Keep only the
     // parser's small immutable coefficient proof, never an image-sized copy.
-    const box=import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1'?uniformBoxRadius(bytes):undefined
+    const box=(this.gaussianAutoEnabled||import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1')?uniformBoxRadius(bytes):undefined
     const packet = import.meta.env.VITE_DESIGN_PREFIX_TIGHT_BOUND === '1' && bytes.buffer instanceof ArrayBuffer
       ? certifyPrefixRationalBound(bytes) : undefined
     const wide=import.meta.env.VITE_DESIGN_WIDE_RATIONAL_PREFIX==='1'?(import.meta.env.VITE_DESIGN_LARGE_SHADOW_TENT==='1'?certifyShadowWidePrefix(bytes):import.meta.env.VITE_DESIGN_WIDE_RATIONAL_PREFIX_LARGE==='1'?certifyLargeWidePrefix(bytes):certifyWidePrefix(bytes)):undefined
@@ -2048,7 +2056,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     if (!layout || logicalTexels! <= limit! || layout.height < 2 || layout.width !== width || layout.height !== height)
       throw new Error('Invalid exact filter packet row layout')
     // Parse the original packet only. Padding cannot grant or repair a proof.
-    const box=import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1'?uniformBoxRadius(bytes):undefined
+    const box=(this.gaussianAutoEnabled||import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1')?uniformBoxRadius(bytes):undefined
     const packet = import.meta.env.VITE_DESIGN_PREFIX_TIGHT_BOUND === '1' ? certifyPrefixRationalBound(bytes) : undefined
     let physical = bytes
     if (layout.physicalTexels !== logicalTexels) {
@@ -2688,7 +2696,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     if(!region&&!sourceWindow&&this.boxPrefixEligible(target,u,inputs,channels)&&this.boxPrefix!.scratchBytes&&
         this.boxPrefix!.encode(()=>this.encoder,params=>this.uniform(params),target.resource as GPUTexture,
           inputs[0].resource as GPUTexture,inputs[1].resource as GPUTexture,this.blank.resource as GPUTexture,u)){
-      this.noteDraw(22,this.boxPrefix!.lastPasses,target.width*target.height);return
+      this.noteDraw(22,this.boxPrefix!.lastPasses,target.width*target.height);this.canvasGaussianPrefixPasses++;return
     }
     if(u[16]===22&&u[39]===2&&u[36]>512)throw Error('GPU surface budget exceeded (regional Gaussian prefix unavailable)')
     const bind = this.bind(u, inputs)
