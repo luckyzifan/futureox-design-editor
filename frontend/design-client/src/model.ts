@@ -194,6 +194,8 @@ export type Effect = {
   }
   texture?: { noiseSize: [number, number]; clipToShape: boolean; noise?: 'figma' | 'gabor' | 'perlin' }
   gradientBlur?: {start:[number,number];end:[number,number];startCount:number;endCount:number;smooth:boolean}
+  /** kiwi Effect.showShadowBehindNode. Preserved on import; shadow clipping does not branch on it yet. */
+  showShadowBehindNode?: boolean
 }
 export type Vertex = Point & { id: string }
 export type Edge = { id: string; from: string; to: string; c1?: Point; c2?: Point }
@@ -1008,6 +1010,7 @@ export function validateDocument(value: unknown): DesignDocument {
             'gaussian-blur',
             'motion-blur', 'zoom-blur',
           ].includes(e.kind) &&
+          (e.showShadowBehindNode === undefined || typeof e.showShadowBehindNode === 'boolean') &&
           (e.zoomBlur == null ? e.kind!=='zoom-blur' : (e.kind==='zoom-blur' && validZoomBlur(e.zoomBlur) && e.radius===0 && !e.colorControls && !e.glass && !e.texture && !e.gradientBlur)) &&
           (e.motionAngle === undefined || (finite(e.motionAngle,-1e7,1e7) && (e.kind==='motion-blur'||e.motionAngle===0))) &&
           (e.kind !== 'color-controls' || e.colorControls != null) &&

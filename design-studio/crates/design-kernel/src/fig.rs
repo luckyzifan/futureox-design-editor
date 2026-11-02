@@ -671,7 +671,7 @@ impl FigImporter {
                 }
                 for effect in value.get("effects").and_then(Value::as_array).into_iter().flatten() {
                     let kind = str_of(effect, "type").unwrap_or("");
-                    if !matches!(kind, "DROP_SHADOW" | "INNER_SHADOW" | "FOREGROUND_BLUR" | "BACKGROUND_BLUR" | "GLASS" | "GRAIN") {
+                    if !matches!(kind, "DROP_SHADOW" | "INNER_SHADOW" | "FOREGROUND_BLUR" | "LAYER_BLUR" | "BACKGROUND_BLUR" | "GLASS" | "GRAIN") {
                         return Err(Error::Unsupported(format!("effectType={kind}")));
                     }
                 }
@@ -1060,12 +1060,13 @@ impl FigImporter {
         if let Some(effects) = change.get("effects").and_then(Value::as_array) {
             for e in effects {
                 let etype = str_of(e, "type").unwrap_or("");
-                // Native FOREGROUND_BLUR is the layer blur. Modern effect
-                // types must be modeled or rejected by validate_record.
+                // Native FOREGROUND_BLUR is the layer blur. Older kiwi schemas
+                // and the REST/plugin name LAYER_BLUR are the same kernel blur.
+                // Other effect types must be modeled or rejected by validate_record.
                 let kind = match etype {
                     "DROP_SHADOW" => "shadow",
                     "INNER_SHADOW" => "inner-shadow",
-                    "FOREGROUND_BLUR" => "blur",
+                    "FOREGROUND_BLUR" | "LAYER_BLUR" => "blur",
                     "BACKGROUND_BLUR" => "background-blur",
                     "GLASS" => "glass",
                     "GRAIN" => "texture",
@@ -2692,6 +2693,7 @@ mod tests {
                         ("INNER_SHADOW", 0, false, 1),
                         ("FOREGROUND_BLUR", 0, false, 2),
                         ("BACKGROUND_BLUR", 0, false, 3),
+                        ("LAYER_BLUR", 0, false, 4),
                     ],
                 ), // 10
                 (
@@ -3676,6 +3678,21 @@ mod tests {
             assert!((fx[2].radius - 8.).abs() < 1e-9);
             assert_eq!(fx[3].kind, "background-blur");
             assert!(!fx[3].visible);
+        }
+
+        #[test]
+        fn layer_blur_alias_maps_like_foreground_blur() {
+            let mut changes = canvas_only();
+            let mut frame = base_change("FRAME", 1, 2);
+            frame["effects"] = json!([
+                {"type": "LAYER_BLUR", "radius": 6, "visible": true},
+            ]);
+            changes.push(frame);
+            let doc = doc_with(changes).unwrap();
+            let fx = &node_of(&doc, 1, 2).effects;
+            assert_eq!(fx.len(), 1);
+            assert_eq!(fx[0].kind, "blur");
+            assert!((fx[0].radius - 6.).abs() < 1e-9);
         }
 
         // ---------------- text ----------------
