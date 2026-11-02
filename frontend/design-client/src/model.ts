@@ -723,7 +723,9 @@ function validateNodeVariableModes(d: DesignDocument, nodes: DesignNode[]) {
     }
   }
 }
-export function validateDocument(value: unknown): DesignDocument {
+/** Page-scoped admission of an already valid document. Cold pages are not rechecked. */
+export type DocumentValidationScope = { pageId: string; ids: readonly string[] }
+export function validateDocument(value: unknown, scope?: DocumentValidationScope): DesignDocument {
   if (
     !isObject(value) ||
     ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].includes(value.schemaVersion as number) ||
@@ -737,7 +739,13 @@ export function validateDocument(value: unknown): DesignDocument {
   const d = value as unknown as DesignDocument
   // Reuse one local enumeration while retaining every validation below.
   // This is not a cached validity certificate for mutable document objects.
-  const entries = Object.entries(d.nodes), nodes = entries.map(([, node]) => node)
+  // A page scope validates the edited nodes only. The caller has already proved
+  // the previous snapshot and that this edit did not retarget cold pages.
+  const entries = scope
+    ? scope.ids.filter(id => d.nodes[id]).map(id => [id, d.nodes[id]] as [string, DesignNode])
+    : Object.entries(d.nodes)
+  const nodes = entries.map(([, node]) => node)
+  const featureDoc = scope ? { ...d, nodes: Object.fromEntries(entries) } as DesignDocument : d
   let guideCount=0
   const validateGuides=(guides:unknown,frame=true)=>{
     if(guides===undefined)return
@@ -765,19 +773,19 @@ export function validateDocument(value: unknown): DesignDocument {
   }
   for(const n of nodes)if(n.network?.filledFaces!==undefined && (d.schemaVersion<10||!Array.isArray(n.network.filledFaces)||n.network.filledFaces.length>10000||n.network.filledFaces.some(f=>!Array.isArray(f)||f.length>10000||f.some(id=>!n.network!.edges.some(e=>e.id===id)))))throw new Error('矢量区域填充数据无效')
   for(const n of nodes)if(n.pathOffset!==undefined&&(!Number.isFinite(n.pathOffset)||Math.abs(n.pathOffset)>10000||(n.pathOffset!==0&&(d.schemaVersion<10||['text','frame','section','group','slice'].includes(n.kind)))))throw new Error('路径偏移数据无效')
-  if(d.schemaVersion<10&&hasLocalTools(d))throw new Error('本地扩展工具需要设计文件版本10')
+  if(d.schemaVersion<10&&hasLocalTools(featureDoc))throw new Error('本地扩展工具需要设计文件版本10')
   for (const n of nodes) if (n.vectorBrush !== undefined) validateVectorBrush(n)
-  validateNodeVariableModes(d, nodes)
-  if (d.schemaVersion < 9 && hasGradientBlur(d)) throw new Error('渐变模糊需要设计文件版本 9')
-  if (d.schemaVersion < 13 && hasImageAdjusts(d)) throw new Error('图片调整需要设计文件版本 13')
-  if (d.schemaVersion < 14 && hasPatternTiles(d)) throw new Error('图案平铺需要设计文件版本 14')
-  if (d.schemaVersion < 21 && hasSchema21Features(d)) throw new Error('片段字距或行高需要设计文件版本 21')
-  if (d.schemaVersion < 20 && hasSchema20Features(d)) throw new Error('段落和文本垂直对齐需要设计文件版本 20')
-  if (d.schemaVersion < 19 && hasSchema19Features(d)) throw new Error('缩放模糊需要设计文件版本 19')
-  if (d.schemaVersion < 18 && hasSchema18Features(d)) throw new Error('高斯与运动模糊需要设计文件版本 18')
-  if (d.schemaVersion < 17 && hasSchema17Features(d)) throw new Error('颜色调整需要设计文件版本 17')
-  if (d.schemaVersion < 15 && hasSchema15Features(d)) throw new Error('此设计功能需要设计文件版本 15')
-  if (d.schemaVersion < 8 && (hasStrokeMarkers(d) || hasLayerExports(d))) throw new Error('描边端点需要设计文件版本 8')
+  validateNodeVariableModes(featureDoc, nodes)
+  if (d.schemaVersion < 9 && hasGradientBlur(featureDoc)) throw new Error('渐变模糊需要设计文件版本 9')
+  if (d.schemaVersion < 13 && hasImageAdjusts(featureDoc)) throw new Error('图片调整需要设计文件版本 13')
+  if (d.schemaVersion < 14 && hasPatternTiles(featureDoc)) throw new Error('图案平铺需要设计文件版本 14')
+  if (d.schemaVersion < 21 && hasSchema21Features(featureDoc)) throw new Error('片段字距或行高需要设计文件版本 21')
+  if (d.schemaVersion < 20 && hasSchema20Features(featureDoc)) throw new Error('段落和文本垂直对齐需要设计文件版本 20')
+  if (d.schemaVersion < 19 && hasSchema19Features(featureDoc)) throw new Error('缩放模糊需要设计文件版本 19')
+  if (d.schemaVersion < 18 && hasSchema18Features(featureDoc)) throw new Error('高斯与运动模糊需要设计文件版本 18')
+  if (d.schemaVersion < 17 && hasSchema17Features(featureDoc)) throw new Error('颜色调整需要设计文件版本 17')
+  if (d.schemaVersion < 15 && hasSchema15Features(featureDoc)) throw new Error('此设计功能需要设计文件版本 15')
+  if (d.schemaVersion < 8 && (hasStrokeMarkers(featureDoc) || hasLayerExports(featureDoc))) throw new Error('描边端点需要设计文件版本 8')
   // Mirror scene::Document::validate and animation::validate schema gates.
   // This pre-initialization boundary is not a replacement for full Rust validation.
   for (const events of Object.values(d.prototype?.interactions || {})) for (const event of events) {
@@ -815,7 +823,7 @@ export function validateDocument(value: unknown): DesignDocument {
       ))
   )
     throw new Error('字体资源无效或超过限制')
-  assertDocumentStructure(entries.length, d.pages.length)
+  assertDocumentStructure(scope ? Math.max(entries.length, 1) : entries.length, d.pages.length)
   const seen = new Set<string>()
   if (
     d.colorManagement !== undefined &&
@@ -872,7 +880,7 @@ export function validateDocument(value: unknown): DesignDocument {
         p.stops.every((s) => finite(s.offset, 0, 1) && color.test(s.color)) &&
         (!p.image || /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(p.image)),
     )
-  validateRepeatDocument(d)
+  validateRepeatDocument(featureDoc)
   for (const [id, n] of entries) {
     if (n.repeat !== undefined) {
       if (d.schemaVersion < 15) throw Error('重复变换需要版本 15')
@@ -1238,7 +1246,12 @@ export function validateDocument(value: unknown): DesignDocument {
     )
       throw new Error('页面数据无效')
     pages.add(p.id)
-    p.children.forEach((id) => visit(id, 0))
+    if (!scope) p.children.forEach((id) => visit(id, 0))
+  }
+  if (scope) {
+    if (!pages.has(scope.pageId)) throw new Error('页面数据无效')
+    for (const id of scope.ids) if (!d.nodes[id]) throw new Error('文件包含未归属页面的图层')
+    return d
   }
   if (seen.size !== entries.length) throw new Error('文件包含未归属页面的图层')
   return d
