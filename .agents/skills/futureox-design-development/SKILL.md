@@ -3,6 +3,7 @@ name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
 
+2026-11-02 [界面暖色外壳](../../../testing/verification-ui-chrome-grok-20261102/README.md)只改共享 `design-client` 的面板、工具轨、对话框、空状态和选择名称/尺寸描边框。主强调色仍是 `#3459d4`。选择描边仍是 `#0d99ff`。未改光栅、瓦片或预算。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [界面抛光](../../../testing/verification-ui-chrome-grok-20261102/README.md)只改共享外壳：软表面、桌面宽度下顶栏与工具条重排、打开/内核/导入/空白就绪的有限动效、面板与画布滚动条、新交互默认 300ms 缓出智能动画，以及蓝色字母 F 标记与工具/文件图标。网页和 Electron 仍用同一 `design-client`。强调色仍是 `#3459d4`。不改光栅、瓦片或预算。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [钢笔与橡皮](../../../testing/verification-pen-eraser-figma-20261102/README.md)在共享 `design-client` 里对齐 Mac 桌面 Figma：钢笔的 45°、Option 单侧手柄、闭合填充、Esc 保留开放路径，以及橡皮按笔刷裁切笔画和减去填充。画布线仍是选择蓝 `#0d99ff`，工具栏强调色仍是 `#3459d4`。不改光栅、瓦片或预算。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [钢笔、橡皮与跳转](../../../testing/verification-figma-pen-eraser-nav-20261102/README.md)对照 Mac 桌面 Figma：钢笔 Shift 约束 45°、Option 断开手柄、点击起点闭合，Esc/Enter 完成开放路径。橡皮在同一图层上擦掉经过的笔画或填充区域，不拆成多个图层。原型页连线可点箭头缩放到目标（含跨页）；N/Shift+N 缩放相邻画板；PageUp/PageDown 切换页面。不改光栅、瓦片或预算。33/100ms 与完整 G2/G5 未通过。

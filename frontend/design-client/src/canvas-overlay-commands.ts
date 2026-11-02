@@ -28,6 +28,16 @@ export type CanvasOverlayInputs = {
  * A measurement target is picked in the displayed scene, not the authored
  * scene. Its identity AND displayed bounds therefore belong to this contract.
  * Never infer that two targets are equivalent from their endpoints alone. */
+/** Screen-pixel width of a selection chip. CJK counts as one em; Latin is narrower. */
+export function selectionChromeChipWidth(text: string, size: number) {
+  let em = 0
+  for (const char of text) {
+    const code = char.codePointAt(0) ?? 0
+    em += code > 0xff ? 1 : code <= 0x20 ? 0.34 : 0.58
+  }
+  return Math.max(size * 0.5, em * size)
+}
+
 export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlayContext {
   const { document, selected, owners, frameTitles, localSelection, selectionCorners, selectionBox, measurementTarget } = input
   const showSelection = !!selected.length && !['vector','width','pencil','brush','marker','washi-tape'].includes(input.tool)
@@ -42,10 +52,10 @@ export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlay
     measurementTarget.bounds.width, measurementTarget.bounds.height] : null
   const sizeText = showSelection ? selectionSizeLabel(localSelection, selectionBox, selected[0]?.matrix) : ''
   // Tenths of a degree. A frozen overlay identity kept the W×H chip on the
-  // pre-rotation box while the glyphs turned.
+  // pre-rotation box while the glyphs turned. Prefix 4 also retires labels
+  // from before the warm pill frame.
   const spin = selected[0]?.matrix ? Math.round(Math.atan2(selected[0].matrix[1], selected[0].matrix[0]) * 1800) / 10 : 0
-  // Prefix 3 retires overlays that omitted the live size text and angle.
-  const uiIdentity = JSON.stringify([3, input.pixelGrid, selectionIdentity, selectionName, sizeText, spin, titleIdentity, targetIdentity])
+  const uiIdentity = JSON.stringify([4, input.pixelGrid, selectionIdentity, selectionName, sizeText, spin, titleIdentity, targetIdentity])
   const measurements = measurementTarget ? measureBounds(selectionBox, measurementTarget.bounds) : []
   const labels: CanvasLabel[] = frameTitles.map(entry => {
     const node = document.nodes[entry.id]
@@ -58,9 +68,9 @@ export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlay
   // Sit above the top edge, clear of the corner rotate marks.
   if (showSelection && selected.length === 1 && selectionName && !titled.has(selected[0].id))
     labels.push({ anchor: { x: selectionBox.x, y: selectionBox.y }, offset: { x: 0, y: -24 },
-      text: selectionName, size: 11, color: '#0d99ff', kind: 'selection-name', owners })
+      text: selectionName, size: 11, color: '#0d99ff', kind: 'selection-name', frame: 'pill', owners })
   if(showSelection) labels.push({anchor:{x:selectionBox.x+selectionBox.width/2,y:selectionBox.y+selectionBox.height},offset:{x:0,y:21},
-    text:sizeText,size:10,color:'#0d99ff',centered:true,kind:'selection-size',owners})
+    text:sizeText,size:10,color:'#0d99ff',centered:true,kind:'selection-size',frame:'pill',owners})
   for (const measurement of measurements) {
     const placed = measurementLabel(measurement)
     labels.push({ anchor: placed.anchor, offset: placed.offset, text: String(Number(measurement.distance.toFixed(2))),
