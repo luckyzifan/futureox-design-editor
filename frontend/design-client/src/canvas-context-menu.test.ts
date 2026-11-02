@@ -152,7 +152,7 @@ test('the object menu follows Mac Figma order: clipboard, stacking, structure, t
     ['copy', 'cut'], ['cut', 'paste-here'], ['paste-here', 'duplicate'], ['duplicate', 'delete'],
     ['delete', 'copy-properties'], ['copy-as-svg', 'bring-to-front'], ['bring-to-front', 'bring-forward'],
     ['bring-forward', 'send-backward'], ['send-backward', 'send-to-back'], ['send-to-back', 'group'],
-    ['group', 'frame-selection'], ['frame-selection', 'auto-layout'], ['auto-layout', 'create-component'],
+    ['group', 'frame-selection'], ['frame-selection', 'flatten'], ['flatten', 'auto-layout'], ['auto-layout', 'create-component'],
     ['create-component', 'lock-selection'], ['lock-selection', 'hide-selection'], ['hide-selection', 'flip-horizontal'],
     ['flip-horizontal', 'flip-vertical'], ['rename', 'select-matching'], ['zoom-selection', 'undo'], ['undo', 'redo'],
   ] as const) expect(at(earlier), `${earlier} before ${later}`).toBeLessThan(at(later))
@@ -174,6 +174,7 @@ test('the menu lists applicable operations for empty, multiple, text, vector and
   expect(canvasMenuItems(editor).some((item) => item.command === 'convert-vector')).toBe(true)
   editor.update([a.id], { kind: 'text' }, 'text'); editor.select([a.id])
   expect(canvasMenuItems(editor).some((item) => item.command === 'convert-vector' || item.command === 'outline-stroke')).toBe(false)
+  expect(canvasMenuItems(editor).find((item) => item.command === 'flatten')?.disabled).toBe(true)
   editor.update([b.id], { strokes: [stroke()] }, 'stroke'); editor.select([b.id])
   expect(canvasMenuItems(editor).some((item) => item.command === 'outline-stroke')).toBe(true)
   editor.update([b.id], { locked: true }, 'lock')

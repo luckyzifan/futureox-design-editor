@@ -20,15 +20,19 @@ function fixture() {
   return { editor, outer, group, inner, a, b, hidden, locked, outside, point }
 }
 
-test('single click respects unentered frame/group ancestry; repeated clicks do not drill into the selected container', () => {
+test('child paint selects the child, empty frame area selects the frame, and deep-select ignores the group', () => {
   const { editor, outer, group, inner, a, b, point } = fixture()
   const p = point(a.id)
-  expect(editor.hit(p)).toBe(outer.id)
-  expect(editor.selectionHit(p)).toBe(outer.id)
-  expect(editor.selectionHit(p, true)).toBe(a.id)
-  editor.select([outer.id]); expect(editor.hit(p)).toBe(outer.id)
-  editor.select([group.id]); expect(editor.hit(p)).toBe(group.id)
-  editor.select([inner.id]); expect(editor.hit(p)).toBe(inner.id)
+  const empty = { x: 85, y: 95 }
+  expect(editor.hit(p)).toBe(a.id)
+  expect(editor.selectionHit(p)).toBe(a.id)
+  expect(editor.hit(empty)).toBe(outer.id)
+  expect(editor.selectionHit(empty)).toBe(outer.id)
+  for (const selected of [[], [outer.id], [group.id], [inner.id], [a.id]]) {
+    editor.select(selected)
+    expect(editor.selectionHit(p, true)).toBe(a.id)
+    expect(editor.selectionHit(empty, true)).toBe(outer.id)
+  }
   editor.select([a.id]); expect(editor.hit(point(b.id))).toBe(b.id)
   editor.select([]); expect(editor.hit(p, true)).toBe(a.id)
 })
@@ -94,7 +98,7 @@ test('hover ownership cannot erase a new panel hover and never mutates or persis
 test('a selected ancestor owns descendant hits even if a Shift selection also contains its child', () => {
   const { editor, outer, group, a, point } = fixture()
   editor.select([outer.id, a.id])
-  expect(editor.hit(point(a.id))).toBe(outer.id)
+  expect(editor.hit(point(a.id))).toBe(a.id)
   expect(editor.selectDeeper(point(a.id))).toEqual({ id: group.id, changed: true })
 })
 
@@ -151,18 +155,23 @@ function overlappingFixture() {
   return { editor, frame, small, backing, p: { x: 50, y: 50 } }
 }
 
-test('ordinary click selects the unentered frame; an entered child uses paint order', () => {
+test('front paint wins over the frame; empty frame area stays on the frame', () => {
   const { editor, frame, small, backing, p } = overlappingFixture()
-  expect(editor.selectionHit(p)).toBe(frame.id)
+  const empty = { x: 5, y: 5 }
+  expect(editor.selectionHit(p)).toBe(backing.id)
+  expect(editor.selectionHit(empty)).toBe(frame.id)
   expect(editor.hoverHit(p)).toBe(small.id)
-  editor.select([frame.id]); expect(editor.selectionHit(p)).toBe(frame.id)
+  editor.select([frame.id])
+  expect(editor.selectionHit(p)).toBe(backing.id)
+  expect(editor.selectionHit(empty)).toBe(frame.id)
   editor.select([small.id])
   expect(editor.hit(p)).toBe(backing.id)
   expect(editor.hoverHit(p)).toBe(small.id)
-  // The frame is entered, so the click hits the front sibling, not the frame.
   expect(editor.selectionHit(p)).toBe(backing.id)
   expect(editor.selectionHit(p, true)).toBe(backing.id)
-  editor.selectParent(); expect(editor.selectionHit(p)).toBe(frame.id)
+  editor.selectParent()
+  expect(editor.selectionHit(p)).toBe(backing.id)
+  expect(editor.selectionHit(empty, true)).toBe(frame.id)
   expect(editor.canUndo).toBe(false)
 })
 

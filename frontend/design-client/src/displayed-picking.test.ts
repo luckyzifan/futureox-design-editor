@@ -51,7 +51,7 @@ test('displayed picking preserves the mask/clip and entered hierarchy contract',
   const snapshot = { document: editor.state.doc, pageId: editor.state.page }, index = new SpatialIndex(scene(snapshot.document, snapshot.pageId))
   editor.update([frame.id], { transform: [1, 0, 0, 1, 300, 60] }, 'Move frame')
   expect(editor.hit({ x: 160, y: 90 }, true, index, 1, snapshot)).toBeNull()
-  expect(editor.hit({ x: 120, y: 90 }, false, index, 1, snapshot)).toBe(frame.id)
+  expect(editor.hit({ x: 120, y: 90 }, false, index, 1, snapshot)).toBe(shape.id)
   editor.select([frame.id])
   expect(editor.selectDeeper({ x: 120, y: 90 }, index, 1, snapshot)).toEqual({ id: shape.id, changed: true })
 })

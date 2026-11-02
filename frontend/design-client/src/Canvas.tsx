@@ -16,7 +16,7 @@ import { nudgePreference } from './nudge-preference'
 import { createKeyboardNudgeGesture } from './keyboard-nudge-gesture'
 import { isDimensionNudgeCommand, nudgeSelectionDimensions } from './canvas-workflow-shortcuts'
 import { canvasMarqueeSelection, marqueeReleasePlan } from './canvas-selection-workflows'
-import { doubleClickFollowUp, enterKeyEditsText } from './figma-basic-ops'
+import { deepSelectChord, doubleClickFollowUp, enterKeyEditsText } from './figma-basic-ops'
 import { CanvasSceneSnapshots } from './canvas-scene-snapshots'
 import { StartupPreview } from './StartupPreview'
 import type { StartupPreview as StartupPixels, PreviewPixels } from './startup-preview'
@@ -884,8 +884,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const displayedIndex = snapshots.displayedScene(displayedSnapshot?.document, displayedSnapshot?.pageId)?.index ?? null
   const displayedHit = (point: Point, deep = false, eligible?: (node:DesignNode)=>boolean) => displayedSnapshot && displayedIndex
     ? editor.hit(point, deep, displayedIndex, displayViewRef.current.zoom, displayedSnapshot,eligible) : null
-  const displayedHoverHit = (point: Point) => displayedSnapshot && displayedIndex
-    ? editor.selectionHit(point, false, displayedIndex, displayViewRef.current.zoom, displayedSnapshot) : null
+  const displayedHoverHit = (point: Point, deep = measureKeys.deep) => displayedSnapshot && displayedIndex
+    ? editor.selectionHit(point, deep, displayedIndex, displayViewRef.current.zoom, displayedSnapshot) : null
   refreshHover.current = () => {
     const client = hoverPoint.current, rect = host.current?.getBoundingClientRect()
     const point = client && rect ? { x: client.x - rect.left, y: client.y - rect.top } : null
@@ -902,7 +902,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const previous = hoverView.current; hoverView.current = state.view
     if (previous.x !== state.view.x || previous.y !== state.view.y || previous.zoom !== state.view.zoom) suspendNavigationHover()
     else refreshHover.current()
-  }, [editor, state.view, presented, displayedIndex, textEdit, state.tool])
+  }, [editor, state.view, presented, displayedIndex, textEdit, state.tool, measureKeys.deep])
   const selection = useMemo(() => new Set(state.selection), [state.selection])
   const selectionFeedback = useMemo(() => canvasLayerFeedback(state.doc, state.page, state.selection, editor.parentMap(state.doc)),
     [editor, state.doc, state.version, state.page, state.selection])
@@ -1090,7 +1090,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const shortcut = resolveShortcut(e, shortcutContext)
       if (e.repeat && !shortcut?.repeat && !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.key)) { if (shortcut) e.preventDefault(); return }
       if(['Alt','Meta','Control'].includes(e.key)) {
-        setMeasureKeys({alt:e.altKey,deep:e.metaKey||e.ctrlKey})
+        setMeasureKeys({alt:e.altKey,deep:deepSelectChord(e,shortcutPlatform())})
         if (e.altKey) setCursor(cursorPoint.current)
       }
       if (penRef.current || editor.state.tool === 'pen') rememberPenKeys(e.shiftKey, e.altKey)
@@ -1313,7 +1313,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (e.key === 'Shift') setPenShift(false)
       nudge.release(e.key)
       if (e.code === 'KeyX' || e.key.toLowerCase() === 'x') { marqueeHeld.current = false; setMarqueeKeyHeld(false) }
-      if(['Alt','Meta','Control'].includes(e.key))setMeasureKeys({alt:e.altKey,deep:e.metaKey||e.ctrlKey})
+      if(['Alt','Meta','Control'].includes(e.key))setMeasureKeys({alt:e.altKey,deep:deepSelectChord(e,shortcutPlatform())})
       if (penRef.current || editor.state.tool === 'pen') rememberPenKeys(e.shiftKey, e.altKey)
       if (['Shift', 'Alt', 'Control', 'Meta'].includes(e.key) && replayDragModifiers(e)) return
       if (e.code === 'Space') { space.current = false; setSpaceHeld(false) }
@@ -1632,9 +1632,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const title = frameTitleHit(s.doc,s.page,titleId)
       if(titleId&&!title){host.current?.releasePointerCapture(e.pointerId);return}
       const hit = title || (displayedSnapshot && displayedIndex
-        ? editor.selectionHit(p, e.metaKey || e.ctrlKey || s.tool === 'vector', displayedIndex, displayViewRef.current.zoom, displayedSnapshot) : null)
+        ? editor.selectionHit(p, deepSelectChord(e, shortcutPlatform()) || s.tool === 'vector', displayedIndex, displayViewRef.current.zoom, displayedSnapshot) : null)
       const selectedNode = s.selection.length === 1 && ids.length === 1 ? s.doc.nodes[ids[0]] : null
-      const intentOptions = { inside: pointInContours(p, [selectionCorners]), deep: e.metaKey || e.ctrlKey || s.tool === 'vector',
+      const intentOptions = { inside: pointInContours(p, [selectionCorners]), deep: deepSelectChord(e, shortcutPlatform()) || s.tool === 'vector',
         additive: e.shiftKey || s.tool === 'multiselect',
         readOnly: selectionFeedback.readOnly || !['select', 'scale'].includes(s.tool) }
       const hitNode = hit ? s.doc.nodes[hit] : null
@@ -1938,11 +1938,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if (editor.state.tool === 'pen' || penRef.current) rememberPenKeys(e.shiftKey, e.altKey)
     const d = drag.current
     if (!d) {
-      setMeasureKeys(previous=>previous.alt===e.altKey&&previous.deep===(e.metaKey||e.ctrlKey)?previous:{alt:e.altKey,deep:e.metaKey||e.ctrlKey})
+      const deep = deepSelectChord(e, shortcutPlatform())
+      setMeasureKeys(previous=>previous.alt===e.altKey&&previous.deep===deep?previous:{alt:e.altKey,deep})
       editor.hoverLayer(performance.now() >= navigationUntil.current && !textEdit && !space.current && ['select', 'multiselect', 'scale', 'vector', 'width'].includes(editor.state.tool)
-        // The outline is the layer a click would select: the unentered frame
-        // or group, then the child after Enter or a double-click.
-        ? displayedHoverHit(p) : null, 'canvas')
+        // The outline matches the click: child paint, or the frame on empty area.
+        // Command/Ctrl uses the same target and does not retarget a group.
+        ? displayedHoverHit(p, deep || editor.state.tool === 'vector') : null, 'canvas')
       return
     }
     d.lastInput = e
@@ -2323,8 +2324,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     } else if (d.kind === 'marquee') {
       // A click on empty canvas already applied its selection on pointerdown.
       // Figma only commits a marquee after the same drag threshold as a move.
-      const deep = d.forcedMarquee || (d.sketchMarquee
-        ? shortcutPlatform() === 'mac' ? e.metaKey : e.ctrlKey : e.metaKey || e.ctrlKey)
+      const deep = d.forcedMarquee || deepSelectChord(e, shortcutPlatform())
       const plan = marqueeReleasePlan({
         sketch: !!d.sketchMarquee, shift: e.shiftKey, alt: e.altKey, deep: !!deep,
         multiselect: d.creationTool === 'multiselect', startedAdditive: !!d.additive,
@@ -2370,7 +2370,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       // pixels of this document replace it; cancel paths are not holding.
       gestureFollow.current?.holdForCommit()
       if(d.kind==='move')gpuMove.current?.releaseInput?.()
-      const notice = d.kind === 'move' ? editor.finishCanvasMove(screenToWorld(d.view, release), /Mac|iPhone|iPad/.test(navigator.platform) ? e.metaKey : e.ctrlKey, /Mac|iPhone|iPad/.test(navigator.platform) && e.ctrlKey, space.current) : undefined
+      const releaseWorld = screenToWorld(d.view, release)
+      if (d.kind === 'move' && d.duplicating) editor.finishMoveDuplication(releaseWorld)
+      const notice = d.kind === 'move' ? editor.finishCanvasMove(releaseWorld, /Mac|iPhone|iPad/.test(navigator.platform) ? e.metaKey : e.ctrlKey, /Mac|iPhone|iPad/.test(navigator.platform) && e.ctrlKey, space.current) : undefined
       const commitResult = editor.commit()
       gestureFollow.current?.waitFor(editor.state.doc)
       if(d.kind==='rotate'&&d.rotationCenter)setOrigin(originFromWorld(d.rotationCenter))
@@ -2522,7 +2524,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       tabIndex={-1}
       role="application"
       aria-label={chromeCopy.canvasEditor}
-      className={`canvas canvas-${state.tool}${state.tool==='zoom'&&measureKeys.alt?' canvas-zoom-out':''}${spaceHeld ? ' canvas-space-held' : ''}${panning ? ' canvas-panning' : ''}${ownedDrag?.kind==='move'&&ownedDrag.moved?' canvas-object-dragging':''}`}
+      className={`canvas canvas-${state.tool}${state.tool==='zoom'&&measureKeys.alt?' canvas-zoom-out':''}${(ownedDrag?.duplicating||(measureKeys.alt&&state.tool==='select'&&!spaceHeld))?' canvas-alt-duplicate':''}${spaceHeld ? ' canvas-space-held' : ''}${panning ? ' canvas-panning' : ''}${ownedDrag?.kind==='move'&&ownedDrag.moved&&!ownedDrag.duplicating?' canvas-object-dragging':''}`}
       data-testid="canvas" data-pen-affordance={affordance || undefined} aria-busy={state.busy}
       data-creation-kind={shapePreview?.kind}
       data-transform-gesture={drag.current?.kind}

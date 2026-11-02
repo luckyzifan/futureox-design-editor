@@ -3,6 +3,7 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-02 [画布操作对照](../../../testing/verification-figma-canvas-ops-parity-20261102/README.md)只改命中、Option 拖动复制和键盘微移。子级实形选子级，画板空白选画板。不改像素、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 Electron 主线程缩放、拖动、打开 `.fig` 和多页里的单页编辑见[记录](../../../testing/verification-electron-perf-flame-20261102/README.md)。当前页改动不再整份重布局或重序列化；需要重排时只解当前根岛屿。损伤索引只覆盖这一页，视口瓦片仍按脏区相交丢掉。不改像素、瓦片预算或实验开关。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 选区、悬停和已选画板标题共用 `#3459d4`。单选是 2px 包围盒加 8px 手柄；多选另给每个对象 1px 轮廓，手柄只留在并集上。不改光栅、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 右键菜单在所有窗口宽度都是 `#2c2c2c`。不改光栅、瓦片或预算。
