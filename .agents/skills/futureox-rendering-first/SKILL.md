@@ -3,6 +3,28 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-02 选区、悬停和已选画板标题共用 `#3459d4`。单选是 2px 包围盒加 8px 手柄；多选另给每个对象 1px 轮廓，手柄只留在并集上。不改光栅、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 右键菜单在所有窗口宽度都是 `#2c2c2c`。不改光栅、瓦片或预算。
+2026-11-02 拿掉「设计 API」浮块，并把右键菜单改成深色。不改光栅、瓦片或预算。
+2026-11-02 [批量回归整合](../../../testing/verification-integrate-batch-20261102/README.md)只把功能分支合在一起，不改光栅默认、瓦片预算或实验开关。预览事务不再为每次缩放和拖动刷新整份图层面板。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 Electron 主线程缩放/拖动/打开 `.fig` 见[记录](../../../testing/verification-electron-perf-flame-20261102/README.md)。只少做整份文档 `JSON.stringify` 和预览期间的图层面板刷新，不改像素、瓦片、预算或实验开关。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [Electron SQLite 工作线程](../../../testing/verification-electron-sqlite-worker-20261102/README.md)只改桌面存储调度和主进程文档 JSON。不改光栅、瓦片、预算或实验开关。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 Local plugin auto-load does not change raster, tile, sticky pose, or compositing paths. It is not a 33/100ms or G2/G5 result. See [the note](../../../testing/verification-local-plugin-autoload-20261102/README.md).
+2026-11-02 [界面暖色外壳](../../../testing/verification-ui-chrome-grok-20261102/README.md)不改光栅、瓦片、预算或实验开关。选择描边颜色未改。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [界面抛光](../../../testing/verification-ui-chrome-grok-20261102/README.md)不改光栅、瓦片、预算或实验开关。加载动效和智能动画热区淡入只作用在界面状态；帧间形变仍走既有内核动画计划，不覆盖画布像素，也不把预览当成精确完成。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [钢笔与橡皮](../../../testing/verification-pen-eraser-figma-20261102/README.md)只改矢量交互和橡皮预览。开放笔画保留未碰到的三次曲线；填充形状的减去结果来自展平轮廓。不改光栅、瓦片、预算或实验开关。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [钢笔、橡皮与跳转](../../../testing/verification-figma-pen-eraser-nav-20261102/README.md)只改输入、矢量草稿和视图命令。不改光栅、瓦片、预算或实验开关。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [Mac 桌面 Figma 呈现](../../../testing/verification-figma-mac-presentation-20261102/README.md)不改光栅、瓦片、预算或实验开关。玻璃、圆角和页面/画板标题是界面与交互。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [Figma 版面与测距](../../../testing/verification-figma-layout-chrome-20261102/README.md)不改光栅、玻璃着色器、圆角曲线、瓦片、预算或实验开关。测距和布尔插入是交互与布局。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [玻璃与圆角](../../../testing/verification-figma-glass-corners-20261102/README.md)只把零平滑、无网络的矩形/画板/分区玻璃扩到拟合后的四角半径。均匀半径的字段和 JSON 不变。平滑与其它形状仍走距离场。画布手柄不改光栅预算。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [色域与透明度](../../../testing/verification-color-gamut-opacity-20261102/README.md)不改光栅预算、瓦片导航或实验开关。8 位画布仍是 sRGB。Display P3 只在导出时换算并标记。图层透明度乘进填充、描边和阴影，不是渲染故障修复。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [.fd 往返](../../../testing/verification-fd-roundtrip-20261102/README.md)只改原生容器的数值变体和被忽略字段的保留。不改光栅、瓦片、预算或实验开关，也不是 33/100ms 或完整 G2/G5。
+2026-11-02 [图层、属性与右键菜单](../../../testing/verification-figma-layers-properties-menu-20261102/README.md)只改检查器、图层面板和画布装饰。选中的画板标题和单个形状名称用 `#0d99ff`。旋转读数跟手，正值为顺时针，不改选择框与纹理的时序。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [画布操作对照](../../../testing/verification-figma-canvas-ops-20261102/README.md)画布旋转读数与检查器共用局部顺时针角。⌘V 与 Ctrl/⌘D 把普通图层加上 10。单角圆角画进填充。不改缩放覆盖、粘性仿射或 GPU 预算。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [画布基础操作对照](../../../testing/verification-figma-basic-ops-20261102/README.md)只改选择命中、双击/Enter 和框选提交。不改相机、瓦片、粘性仿射、缩放铺满或合成预算。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [字体目录与缺失替换](../../../testing/verification-font-parity-20261102/README.md)只增加字体枚举、字重匹配和确认后的替换。不改绘制预算、瓦片或实验开关，也不把字体覆盖说成 33/100ms 或完整 G2/G5。
+2026-11-02 [Figma 文档模型](../../../testing/verification-figma-document-model-20261102/README.md)只补文档/页面/样式/组件集语义和保存往返，不解决渲染故障。瓦片、预算和实验开关未改。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [FIG 导入对照](../../../testing/verification-fig-import-parity-20261102/README.md)不解决渲染故障。反向堆叠、对齐、文字样式、切片、连接线和白板只改变导入结果。瓦片、缩放、预算和实验开关未改。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 [Web 与桌面对齐](../../../testing/verification-web-desktop-parity-20261102/README.md)不改光栅、瓦片、预算或实验开关。网页画布操作仍走共享 Editor 与 WASM 命中/吸附，不另建网页文档模型。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 Figma 风格 MCP 门面见 [FIGMA_MCP_FACADE.md](../../../docs/FIGMA_MCP_FACADE.md)。它只调用现有 Design API，不改光栅、瓦片或导航。`get_screenshot` 仍是 CPU 设计内容导出，不是 GPU 截图。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [画布操作对照](../../../testing/verification-figma-canvas-ops-20261102/README.md)不改缩放覆盖、粘性仿射或标签缓存。选择拖动、旋转手柄、取整尺寸标签和创建填充是交互层。33/100ms 与完整 G2/G5 仍未通过。

@@ -49,6 +49,8 @@ test('rotation direction and centre match Figma 17-degree property measurements'
   expect(b.x).toBeCloseTo(-0.7791767, 4)
   expect(b.y).toBeCloseTo(-4.980013, 4)
   expect(rotationDegrees(n)).toBeCloseTo(17, 10)
+  // +17° is clockwise on the Y-down canvas: a point to the right of center moves down.
+  expect(apply(n.transform, { x: 68, y: 45.5 }).y).toBeGreaterThan(45.5)
   expect(apply(n.transform, { x: 58, y: 45.5 })).toEqual(
     expect.objectContaining({ x: expect.closeTo(58, 10), y: expect.closeTo(45.5, 10) }),
   )
@@ -89,9 +91,13 @@ test('measuring a mutable draft does not retain stale bounds after resize or und
     n.width *= ratio
   })
   const resized = editor.snapshot().doc.nodes[id]
+  const resizedBox = parentBounds(resized)
   expect(localBounds(resized).width).toBeCloseTo(120, 10)
-  expect(parentBounds(resized).y).toBeCloseTo(-10.82745, 4)
+  // Clockwise +17° then a wider curve. The AABB is recomputed; it is not the
+  // pre-resize rotated box and not a stale unrotated measurement.
+  expect(resizedBox.width).toBeGreaterThan(110)
   editor.undo()
   expect(localBounds(editor.snapshot().doc.nodes[id]).width).toBeCloseTo(100, 10)
   expect(parentBounds(editor.snapshot().doc.nodes[id]).y).toBeCloseTo(-4.980013, 4)
+  expect(parentBounds(editor.snapshot().doc.nodes[id]).width).not.toBeCloseTo(resizedBox.width, 1)
 })

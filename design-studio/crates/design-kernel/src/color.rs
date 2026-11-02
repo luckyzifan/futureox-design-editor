@@ -163,6 +163,13 @@ pub fn srgb_encode(v: f64) -> f64 {
             1.055 * x.powf(1. / 2.4) - 0.055
         }
 }
+
+/// Encoded sRGB straight RGB to encoded Display P3. Alpha is coverage and is
+/// not converted. Values inside sRGB stay inside P3; this is not a second
+/// compositing space.
+pub fn encoded_srgb_to_display_p3(rgb: [f64; 3]) -> [f64; 3] {
+    ColorSettings::default().from_working(rgb.map(srgb_decode), ColorSpace::DisplayP3)
+}
 fn decode(v: f64, space: ColorSpace) -> f64 {
     let x = v.abs();
     let sign = v.signum();

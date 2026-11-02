@@ -36,10 +36,43 @@ pub fn faces_json(bytes: &[u8]) -> Result<String, String> {
                 .find_map(|n| n.to_string())
                 .unwrap_or_default()
         };
-        faces.push(serde_json::json!({"index":index,
-            "family":name(ttf_parser::name_id::FAMILY),
-            "style":name(ttf_parser::name_id::SUBFAMILY),
-            "postscript":name(ttf_parser::name_id::POST_SCRIPT_NAME)}));
+        // Legacy name IDs stay in family/style so existing importers keep their
+        // current identity. Typographic names, OS/2 weight and fvar axes are
+        // additive: a variable file can be matched by wght instead of a static
+        // style sibling. At most 16 axes are reported.
+        let mut axes = Vec::new();
+        for axis in face.variation_axes() {
+            if axes.len() >= 16 {
+                break;
+            }
+            let tag = axis.tag.to_string();
+            if tag.len() != 4
+                || !tag.chars().all(|c| c.is_ascii_alphanumeric())
+                || ![axis.min_value, axis.def_value, axis.max_value]
+                    .iter()
+                    .all(|value| value.is_finite())
+            {
+                continue;
+            }
+            axes.push(serde_json::json!({
+                "tag": tag,
+                "min": axis.min_value,
+                "default": axis.def_value,
+                "max": axis.max_value,
+            }));
+        }
+        faces.push(serde_json::json!({
+            "index": index,
+            "family": name(ttf_parser::name_id::FAMILY),
+            "style": name(ttf_parser::name_id::SUBFAMILY),
+            "postscript": name(ttf_parser::name_id::POST_SCRIPT_NAME),
+            "typographicFamily": name(ttf_parser::name_id::TYPOGRAPHIC_FAMILY),
+            "typographicStyle": name(ttf_parser::name_id::TYPOGRAPHIC_SUBFAMILY),
+            "weight": face.weight().to_number(),
+            "italic": face.is_italic() || face.is_oblique(),
+            "variable": face.is_variable(),
+            "axes": axes,
+        }));
     }
     serde_json::to_string(&faces).map_err(|e| e.to_string())
 }
@@ -2027,6 +2060,27 @@ mod tests {
             .iter()
             .filter(|g| line.start <= g.cluster && g.cluster < line.end)
             .collect()
+    }
+    #[test]
+    fn bundled_noto_sans_sc_reports_variable_weight_axis() {
+        let faces: Vec<serde_json::Value> =
+            serde_json::from_str(&faces_json(&font_bytes()).unwrap()).unwrap();
+        assert_eq!(faces.len(), 1);
+        let face = &faces[0];
+        // Legacy name ID 1 stays available for existing importers.
+        assert!(face["family"].as_str().unwrap_or("").contains("Noto Sans"));
+        assert_eq!(face["variable"], true);
+        assert!(face["typographicFamily"]
+            .as_str()
+            .unwrap_or("")
+            .contains("Noto Sans"));
+        let wght = face["axes"]
+            .as_array()
+            .and_then(|axes| axes.iter().find(|axis| axis["tag"] == "wght"))
+            .expect("wght axis");
+        assert!(wght["min"].as_f64().unwrap() <= 200.);
+        assert!(wght["max"].as_f64().unwrap() >= 700.);
+        assert!((1..=1000).contains(&face["weight"].as_u64().unwrap()));
     }
     fn round_trip(fonts: &Fonts, node: &Node, offset: usize) {
         let caret = fonts.caret_at(node, offset).unwrap();

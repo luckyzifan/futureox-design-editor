@@ -187,8 +187,10 @@ export function TextStylePanel({
             if (selected.size > 20 * 1024 * 1024) throw new Error(tr('字体文件超过 20 MB'))
             const bytes = new Uint8Array(await importStep(request, () => selected.arrayBuffer()))
             await importStep(request, () => initializeKernelModule())
-            const face = (JSON.parse(font_faces_json(bytes)) as Array<{ family: string; style: string; postscript: string; index: number }>)[0]
+            const face = (JSON.parse(font_faces_json(bytes)) as Array<{ family: string; style: string; postscript: string; index: number; typographicFamily?: string; typographicStyle?: string }>)[0]
             if (!face) throw new Error(tr('字体文件中没有可用字形'))
+            const familyName = (face.typographicFamily || '').trim() || (face.family || '').trim()
+            const styleName = (face.typographicStyle || '').trim() || (face.style || '').trim()
             const id = Array.from(
               new Uint8Array(await importStep(request, () => crypto.subtle.digest('SHA-256', bytes))),
               (v) => v.toString(16).padStart(2, '0'),
@@ -198,7 +200,7 @@ export function TextStylePanel({
               binary += String.fromCharCode(...bytes.subarray(i, i + 32768))
             request.assertCurrent()
             const resource = {
-              family: `${face.family} ${face.style}`.trim().slice(0, 200),
+              family: `${familyName} ${styleName}`.trim().slice(0, 200),
               postscript: face.postscript, index: face.index, data: btoa(binary),
             }
             const result = applySelectionFont(editor, ids, id, { matchSourceFonts: true, detachSharedStyle: detachFontStyle }, resource)

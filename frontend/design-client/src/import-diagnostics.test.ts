@@ -24,6 +24,13 @@ test('terminal sanitizer retains bounded import identity but not private payload
  expect(JSON.stringify(fields)).not.toContain('private')
  expect(sanitizeFields({importBytes:2**32+1,importFormat:99,importMode:99})).toEqual({})
 })
+test('fig import diagnostics stay off unless the desktop flag is set', () => {
+  vi.stubGlobal('window', {})
+  rows.length = 0
+  const diag = beginImportDiagnostic({ name: 'board.fig', size: 12 }, 'open', { actionId: 1, actionOwner: 2 })
+  expect(diag.run(ImportStage.decode, () => 'opened')).toBe('opened')
+  expect(rows).toEqual([])
+})
 test('disabled diagnostic preserves return and exact thrown object',async()=>{
  const diag=beginImportDiagnostic({name:'private.sketch',size:5},'open',{actionId:1,actionOwner:2})
  const error=Error('private')

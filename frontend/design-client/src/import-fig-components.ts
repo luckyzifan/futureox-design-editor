@@ -21,6 +21,7 @@ export function importFigComponents(doc: DesignDocument, records: Map<string,any
     n.component={variants:{},properties:{}}
     for(const def of r.componentPropDefs||[]) {
       if(def.isDeleted)continue
+      if(def.type==='VARIANT')continue
       const kinds={BOOL:'boolean',TEXT:'text',INSTANCE_SWAP:'instance-swap'} as const
       const kind=kinds[def.type as keyof typeof kinds]
       if(!kind)throw new Error(`FIG 组件属性 ${def.type} 暂不支持；原文件未修改`)

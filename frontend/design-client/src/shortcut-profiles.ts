@@ -51,7 +51,12 @@ export function shortcutBindings({ profile, platform, desktop = false }: Shortcu
     bindings.push({ command: 'auto-layout', combo: 'Shift+S' }, { command: 'remove-auto-layout', combo: 'Alt+Shift+S' })
     if (desktop) bindings.unshift({ command: 'new-page', combo: 'Mod+Shift+N' }, { command: 'zoom-100', combo: 'Mod+0' }, { command: 'zoom-fit', combo: 'Mod+1' }, { command: 'zoom-selection', combo: 'Mod+2' }, { command: 'center-selection', combo: 'Mod+3' }, { command: 'frame-selection', combo: 'Mod+F' })
   } else {
-    bindings.push({ command: 'auto-layout', combo: 'Shift+A' }, { command: 'remove-auto-layout', combo: 'Alt+Shift+A' })
+    bindings.push(
+      { command: 'auto-layout', combo: 'Shift+A' }, { command: 'remove-auto-layout', combo: 'Alt+Shift+A' },
+      { command: 'zoom-next-frame', combo: 'N' }, { command: 'zoom-previous-frame', combo: 'Shift+N' },
+      { command: 'next-page', combo: 'PageDown' }, { command: 'previous-page', combo: 'PageUp' },
+      { command: 'eraser-or-prototype', combo: 'Shift+E' },
+    )
     // Figma documents Shift, rather than Alt, for the Windows front/back chord.
     if (platform !== 'mac') for (const binding of bindings) {
       if (binding.command === 'bring-to-front') binding.combo = 'Mod+Shift+]'
@@ -74,7 +79,11 @@ export function shortcutBindings({ profile, platform, desktop = false }: Shortcu
   if (platform !== 'mac') bindings.push({ command: 'redo', combo: 'Mod+Y' })
   bindings.push({ command: 'mask-selection', combo: platform === 'mac' ? 'Mod+Ctrl+M' : 'Mod+Alt+M' })
   for (const [command, combo] of tools) if (combo) bindings.push({ command: command as EditorCommand, combo })
-  if (profile === 'figma-like') bindings.push({ command: 'set-tool-pencil', combo: 'Alt+P' })
+  if (profile === 'figma-like') {
+    bindings.push({ command: 'set-tool-pencil', combo: 'Alt+P' })
+    // Mac Figma uses Shift+E for the vector eraser inside edit/draw. Plain E stays the toolbar eraser.
+    bindings.push({ command: 'set-tool-eraser', combo: 'Shift+E' })
+  }
   const result = Object.freeze(bindings.map(binding => Object.freeze(binding)))
   bindingCache.set(cacheKey, result)
   return result

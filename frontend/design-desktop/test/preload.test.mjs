@@ -376,6 +376,25 @@ test('pet health subscription validates payload, strips IPC event and unsubscrib
   unsubscribe(); assert.equal(events.listenerCount('design-desktop:pet-status'),0)
 })
 
+test('local plugin preload lists startup plugins and accepts only a grant launch', async () => {
+  const { api, calls, events } = load()
+  assert.equal(Object.isFrozen(api.plugins), true)
+  assert.deepEqual(await api.plugins.list({ path: '/tmp/plugins' }), { status: 'ok' })
+  assert.deepEqual(calls.at(-1), ['design-desktop:plugins-list', undefined])
+  const seen = []
+  const stop = api.plugins.onLaunch(value => seen.push(value))
+  const grant = '00000000-0000-4000-8000-000000000001'
+  events.emit('design-desktop:plugin-launch', { sender: { secret: true } }, { grant })
+  events.emit('design-desktop:plugin-launch', {}, { grant, root: '/tmp/plugins' })
+  events.emit('design-desktop:plugin-launch', {}, { grant: '../plugins' })
+  events.emit('design-desktop:plugin-launch', {}, null)
+  assert.deepEqual(seen, [{ grant }])
+  stop()
+  events.emit('design-desktop:plugin-launch', {}, { grant })
+  assert.equal(seen.length, 1)
+  assert.equal(events.listenerCount('design-desktop:plugin-launch'), 0)
+})
+
 test('terminal diagnostics is disabled unless explicit native launch flag is present',()=>{assert.equal(load().api.renderDiagnostics,false);assert.equal(load(['--core-render-diagnostics']).api.renderDiagnostics,true)})
 
 test('detail mode is separately explicit',()=>{assert.equal(load().api.renderDiagnosticsDetail,false);assert.equal(load(['--core-render-diagnostics','--core-render-diagnostics-detail']).api.renderDiagnosticsDetail,true)})

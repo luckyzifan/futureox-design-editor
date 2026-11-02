@@ -1,4 +1,5 @@
 import { CpuStage, measureCpuStage } from '../cpu-stage-diagnostics'
+import { currentPreparedDocumentJson } from '../prepared-document'
 import { augmentedDocumentJson, compileEditOps } from './op-sync'
 import { documentPatch, shareDocument, type DocumentPatch, type EditResult } from '../document-patch'
 import type { EditScope, Op } from './graph'
@@ -54,14 +55,14 @@ export function createGraphHistoryState(document: DesignDocument, graph: Editing
   const commitOps = (after: DesignDocument, scope: EditScope): void => {
     const batch = measureCpuStage(CpuStage.historyCompile, () => compileEditOps(current, after))
     if (batch.mode === 'replace') {
-      const json = measureCpuStage(CpuStage.serialize, () => augmentedDocumentJson(after))
+      const json = measureCpuStage(CpuStage.serialize, () => augmentedDocumentJson(after, currentPreparedDocumentJson(after)))
       measureCpuStage(CpuStage.historyApply, () => graph.replaceDocument(json, scope))
       mode = 'document'; frameBytes = 0
       return
     }
     // A changed after-state without represented ops must never advance only TS.
     if (!batch.ops.length) {
-      const json = measureCpuStage(CpuStage.serialize, () => augmentedDocumentJson(after))
+      const json = measureCpuStage(CpuStage.serialize, () => augmentedDocumentJson(after, currentPreparedDocumentJson(after)))
       measureCpuStage(CpuStage.historyApply, () => graph.replaceDocument(json, scope))
       mode = 'document'; frameBytes = 0
       return

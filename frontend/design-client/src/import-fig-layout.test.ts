@@ -274,12 +274,49 @@ test('all parser containers use the layout mapper and merged node changes retain
 })
 
 test.each([
+  ['SPACE_EVENLY', 'space-evenly'],
+  ['SPACE_AROUND', 'space-around'],
+])('%s is primary alignment on the shared layout model', (source, justify) => {
+  const { frame, warnings } = imported({
+    stackMode: 'HORIZONTAL',
+    stackPrimaryAlignItems: source,
+  })
+  expect(frame.layout?.justify).toBe(justify)
+  expect(warnings).toEqual([])
+})
+
+test('stackReverseZIndex flips authored child order and keeps an inert receipt', () => {
+  const { document } = importFig(
+    fixture({ stackMode: 'VERTICAL', stackReverseZIndex: true }, {}, [
+      {
+        guid: guid(4),
+        type: 'RECTANGLE',
+        name: 'Earlier',
+        parentIndex: { guid: guid(2), position: '!' },
+        size: { x: 20, y: 10 },
+      },
+    ]),
+  )
+  const frame = required(Object.values(document.nodes).find((n) => n.name === 'Layout'), 'Layout')
+  expect(frame.children.map((id) => document.nodes[id].name)).toEqual(['Child', 'Earlier'])
+  const metadata = document.designSystem?.sketchContainers?.nodeMetadata as Record<string, { bindings?: Record<string, string> }>
+  expect(metadata[frame.id].bindings?.figStackReverseZIndex).toBe('true')
+  expect(frame.bindings).toBeUndefined()
+  expect(() => validateDocument(JSON.parse(JSON.stringify(document)))).not.toThrow()
+})
+
+test('stackReverseZIndex false leaves authored order and writes no receipt', () => {
+  const { document, frame } = imported({ stackMode: 'VERTICAL', stackReverseZIndex: false })
+  expect(frame.children.map((id) => document.nodes[id].name)).toEqual(['Child'])
+  expect(document.designSystem?.sketchContainers).toBeUndefined()
+})
+
+test.each([
   ['stackMode', 'GRID'],
   ['stackCounterAlignItems', 'BASELINE'],
   ['stackPrimaryAlignItems', 'SPACE_EVENLY_CSS'],
   ['stackCounterAlignContent', 'SPACE_BETWEEN'],
   ['stackCounterAlign', 'BASELINE'],
-  ['stackReverseZIndex', true],
   ['stackSpacing', -1],
   ['stackPaddingRight', -1],
   ['stackPadding', 8],

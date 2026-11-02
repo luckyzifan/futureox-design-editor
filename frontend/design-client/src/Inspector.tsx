@@ -18,9 +18,14 @@ import { StrokeProfilePanel } from './StrokeProfilePanel'
 import { TextInput } from './TextEditor'
 import { TextStylePanel } from './TextStylePanel'
 import { clearWholeTextRunColor, setWholeTextFontSize } from './text'
-import { selectionParentBounds, rotationDegrees, rotateNode, selectionLocalBounds } from './canvas-view'
+import { selectionParentBounds, rotateNode, selectionLocalBounds } from './canvas-view'
+import { formatAngleDegrees } from './selection-handles'
+import { figmaRotationDegrees, nodeDegreesForFigmaAngle, type LiveRotation } from './rotation-field'
+import { nextConstraint } from './layout-constraints'
 import { ComponentPanel } from './ComponentPanel'
+import { CornerRadiusFields } from './corner-radius-fields'
 import { NumberField } from './fields'
+import { formatPercent } from './numeric-expression'
 import { LayoutPanel } from './LayoutPanel'
 import { MultiSelectionInspector } from './MultiSelectionInspector'
 import { resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
@@ -72,7 +77,7 @@ const effects: Record<Effect['kind'], string> = {
   'inner-shadow': '内阴影',
   blur: '图层模糊',
   'background-blur': '背景模糊',
-  glass: '玻璃折射',
+  glass: '玻璃',
   noise: '噪声',
   texture: '纹理',
   'color-controls': '颜色调整',
@@ -139,7 +144,7 @@ function PaintEditor({
         </details>
       )}
       <div className="field-grid">
-        {target ? <label className="paint-opacity-field">{tr("填充不透明度 %")}<SolidFillColorInput target={target} label={tr("填充不透明度")} value={String(p.opacity * 100)} opacity />
+        {target ? <label className="paint-opacity-field">{tr("填充不透明度 %")}<SolidFillColorInput target={target} label={tr("填充不透明度")} value={formatPercent(p.opacity * 100)} opacity />
         </label> : <NumberField historyLabel="不透明度 %" diagnosticFamily={11} unit="percent"
           label={tr("不透明度 %")}
           value={p.opacity * 100}
@@ -375,6 +380,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot),
     ids = s.selection,
     n = s.doc.nodes[ids[0]]
+  const live = useSyncExternalStore(editor.subscribeLiveRotation, () => editor.liveRotation) as LiveRotation | null
   const update = (fn: (n: DesignNode) => void, label = '修改属性') => editor.updateProperties(ids, fn, label)
   if (s.tool === 'scale') return <ScaleInspector key={`${editor.sessionGeneration}:${s.page}:${s.selection.join(',')}`} editor={editor} />
   if (ids.length > 1) return <MultiSelectionInspector editor={editor} nodes={ids.map((id) => s.doc.nodes[id]).filter(Boolean)} />
@@ -436,8 +442,13 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
     )
   const units = propertyUnits(s.doc, n.id, editor.parentMap(s.doc))
   const styleDescription = styleUnitDescription(s.doc, [n.id], editor.parentMap(s.doc))
-  const angle = rotationDegrees(n),
+  const liveText = live && editor.interactionActive && live.session === editor.sessionGeneration && live.page === s.page && live.documentId === s.doc.id
+    ? live.textById[n.id] : undefined
+  const angle = liveText !== undefined ? Number(liveText) : figmaRotationDegrees(n.transform),
     position = selectionParentBounds(s.doc, n.id)
+  const constraintParent = editor.state.doc.nodes[editor.parentMap(s.doc).get(n.id) || '']
+  const constraintFlow = !!constraintParent?.layout && constraintParent.layout.mode !== 'none'
+  const showConstraints = !!constraintParent && (constraintParent.kind === 'frame' || constraintParent.kind === 'section') && (!constraintFlow || !!n.sizing?.absolute)
   const listControls = (field: 'fills' | 'strokes' | 'effects', i: number) => (
     <div className="mini-actions">
       <button
@@ -510,7 +521,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
 
           <h3>{tr("位置")}</h3>
           <AlignmentControls editor={editor}/>
-          <div className="field-grid">
+          <div className="field-grid position-grid">
             <NumberField historyLabel="X" diagnosticFamily={2} unit="length"
               label="X"
               value={position.x * units.parentX}
@@ -531,15 +542,40 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
             />
             <NumberField historyLabel="旋转 °" diagnosticFamily={2} unit="angle"
               label={tr("旋转 °")}
+              caption="∠"
+              formatValue={formatAngleDegrees}
               value={angle}
               onChange={(v) =>
                 update((n) => {
-                  rotateNode(n, v, selectionLocalBounds(editor.state.doc, n.id))
+                  rotateNode(n, nodeDegreesForFigmaAngle(v), selectionLocalBounds(editor.state.doc, n.id))
                 })
               }
             />
 
           </div>
+          {showConstraints && <div className="constraint-box" role="group" aria-label={tr("父画板尺寸约束")}>
+            {([
+              ['top', 'vertical', 'start', tr('顶部')],
+              ['left', 'horizontal', 'start', tr('左侧')],
+              ['right', 'horizontal', 'end', tr('右侧')],
+              ['bottom', 'vertical', 'end', tr('底部')],
+            ] as const).map(([edge, axis, anchor, label]) => {
+              const current = n.constraints?.[axis] || 'start'
+              return <button key={edge} type="button" className={`constraint-edge edge-${edge}`} aria-label={label}
+                aria-pressed={current === anchor || current === 'stretch'}
+                title={tr('按住 Shift 同时约束对边')}
+                onClick={event => update(node => {
+                  node.constraints = { horizontal: 'start', vertical: 'start', ...node.constraints, [axis]: nextConstraint(node.constraints?.[axis] || 'start', anchor, event.shiftKey) }
+                }, '修改约束')} />
+            })}
+            <button type="button" className="constraint-edge edge-center" aria-label={tr('居中')}
+              aria-pressed={(n.constraints?.horizontal || 'start') === 'center' && (n.constraints?.vertical || 'start') === 'center'}
+              onClick={() => update(node => {
+                node.constraints = { horizontal: 'center', vertical: 'center', ...node.constraints }
+                node.constraints.horizontal = 'center'
+                node.constraints.vertical = 'center'
+              }, '修改约束')} />
+          </div>}
         </section>
         <section>
           <h3>{tr("布局")}</h3>
@@ -622,22 +658,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
           </label>
           {['rectangle', 'frame', 'section'].includes(n.kind) && (
             <>
-              <h4>{tr("圆角")}</h4>
-              <div className="field-grid">
-                {n.radii.map((r, i) => (
-                  <UnitNumberField unitDescription={styleDescription} historyLabel={['左上', '右上', '右下', '左下'][i]} unit="length" diagnosticFamily={2} unitScale={units.style}
-                    key={i}
-                    label={tr(['左上', '右上', '右下', '左下'][i])}
-                    value={r}
-                    min={0}
-                    onChange={(v) =>
-                      update((n) => {
-                        n.radii[i] = v
-                      })
-                    }
-                  />
-                ))}
-              </div>
+              <CornerRadiusFields nodeId={n.id} radii={n.radii} tr={tr} update={update} unitDescription={styleDescription} unitScale={units.style} />
               <NumberField historyLabel="圆角平滑 %" diagnosticFamily={2} unit="percent"
                 label={tr("圆角平滑 %")}
                 value={n.smoothing * 100}
@@ -931,7 +952,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                           x: '偏移 X',
                           y: '偏移 Y',
                           spread: '扩展',
-                          opacity: '强度 %',
+                          opacity: ['shadow', 'inner-shadow'].includes(fx.kind) ? '不透明度 %' : '强度 %',
                           amount:
                             fx.kind === 'glass'
                               ? '折射'
@@ -947,7 +968,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                           x: '偏移 X',
                           y: '偏移 Y',
                           spread: '扩展',
-                          opacity: '强度 %',
+                          opacity: ['shadow', 'inner-shadow'].includes(fx.kind) ? '不透明度 %' : '强度 %',
                           amount:
                             fx.kind === 'glass'
                               ? '折射'
@@ -996,9 +1017,9 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                 </div>}
               </>}
               {fx.glass && (
-                <div className="field-grid">
+                <div className="field-grid glass-fields">
                   {(
-                    ['depth', 'bevelSize', 'refraction', 'dispersion', 'lightAngle', 'lightIntensity'] as const
+                    ['lightAngle', 'lightIntensity', 'refraction', 'depth', 'dispersion', 'bevelSize'] as const
                   ).map((key) => {
                     const percentage =
                       key === 'refraction' || key === 'dispersion' || key === 'lightIntensity'
