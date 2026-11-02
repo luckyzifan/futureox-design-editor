@@ -23,6 +23,7 @@ import { supportsEditPreview } from './edit-preview'
 import { resizedNode, resizeGestureAxes } from './selection-properties'
 import {cancelToolActivation} from './tool-activation'
 import {formatAngleDegrees, selectionHandles, selectionRotation, smallSelectionInterior} from './selection-handles'
+import { figmaRotationDegrees, formatFigmaAngle } from './rotation-field'
 import {selectionScaleFrame} from './selection-scale'
 import {CanvasLayoutHandles} from './CanvasLayoutHandles'
 import {CanvasSmartSelection} from './CanvasSmartSelection'
@@ -532,6 +533,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if (moveFrame.current !== null) cancelAnimationFrame(moveFrame.current)
     moveFrame.current = null; queuedMove.current = null; queuedInputAt.current = 0
   }
+  useEffect(() => editor.subscribe(() => {
+    if (!editor.interactionActive) editor.setLiveRotation(null)
+  }), [editor])
   useLayoutEffect(() => {
     const previous = drag.current
     if (previous && (previous.session !== editor.sessionGeneration || previous.page !== state.page)) {
@@ -1662,6 +1666,23 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       d.kind === 'scale' || (e.shiftKey && !e.ctrlKey), e.altKey,
       d.kind !== 'scale' && editor.state.snapPixels && !e.ctrlKey]
   }
+  function publishRotation(d: Drag, transform: Matrix) {
+    const parents = editor.parentMap()
+    const textById: Record<string, string> = {}
+    for (const id of d.ids) {
+      const parent = d.parentMatrices?.[id] || worldMatrix(editor.state.doc, parents.get(id)!, parents)
+      try {
+        textById[id] = formatFigmaAngle(figmaRotationDegrees(multiply(inverse(parent), multiply(transform, d.matrices[id]))))
+      } catch { /* A singular parent keeps the previous readout. */ }
+    }
+    const values = Object.values(textById)
+    const shared = values.length > 0 && values.every(value => value === values[0]) ? Number(values[0]) : undefined
+    // selectionRotation's fallback degrees are the opposite sign of the Mac field.
+    // #18 already reports the local clockwise angle. Do not negate it: after
+    // that change, figmaRotationDegrees and rotationDegrees share a sign.
+    d.rotationDegrees = shared ?? d.rotationDegrees
+    editor.setLiveRotation({ session: d.session, page: d.page, documentId: editor.state.doc.id, textById })
+  }
   function gestureVisualMatrix(d: Drag, e: { shiftKey: boolean; altKey: boolean; ctrlKey: boolean }, p: Point, screen: Point): {
     matrix: Matrix; guides: MoveGuides; degrees?: number
     snapChanged?: boolean; constraintEnabled?: boolean; constraintChanged?: boolean; intentResolvedComparison?: 1 | 2
@@ -1998,6 +2019,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       transform = traced ? resizeWithTrace(d, ...traced) : visual.matrix
       if (d.kind === 'rotate') d.rotationDegrees = visual.degrees
     }
+    if (d.kind === 'rotate') publishRotation(d, transform)
     if (['move', 'rotate', 'scale', 'resize'].includes(d.kind))
       placeGestureFollow(d, transform, pointerScreen, d.rotationDegrees)
     const parents = d.kind === 'move' && d.sourceParents || editor.parentMap(),
@@ -2829,6 +2851,16 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                     }}><title>{title}</title></circle>
                 })
               })()}
+              {selected.length === 1 && localSelection && !['frame', 'section'].includes(state.doc.nodes[selected[0].id].kind) && <text
+                data-testid="selection-name"
+                opacity={gpuOverlay ? 0 : 1}
+                transform={matrixString(selected[0].matrix)}
+                x={localSelection.x}
+                y={localSelection.y - 12 / zoom}
+                fontSize={11 / zoom}
+                fill="#0d99ff"
+                pointerEvents="none"
+              >{state.doc.nodes[selected[0].id].name}</text>}
               <text
                 opacity={gpuOverlay ? 0 : 1}
                 x={selectionBox.x + selectionBox.width / 2}

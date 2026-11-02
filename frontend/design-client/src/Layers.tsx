@@ -417,9 +417,6 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
                   if (!editor.state.selection.includes(id)) editor.select([id])
                   setContext({ x: event.clientX, y: event.clientY, id })
                 }}
-                onDoubleClick={() => {
-                  if (commitPendingEdits(editor)) setRenaming(id)
-                }}
               >
                 <button
                   className="disclosure"
@@ -453,12 +450,13 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
                   <DraftInput key={`${editor.sessionGeneration}:${id}`} editor={editor} aria-label={text.renameLayer} autoFocus value={n.name}
                     normalize={(value) => value.trim()} validate={(value) => !!value}
                     onCommit={(value) => { editor.update([id], { name: value }, '重命名图层'); setRenaming(null) }} />
-                </span> : <span className="layer-name">
+                </span> : <span className="layer-name" onDoubleClick={(event) => { event.stopPropagation(); if (commitPendingEdits(editor)) setRenaming(id) }}>
                   {n.mask ? '◐ ' : ''}
                   {n.name}
                 </span>}
                 <button
                   title={n.locked ? text.unlockLayer : text.lockLayer}
+                  onDoubleClick={(event) => event.stopPropagation()}
                   className={n.locked ? 'always' : ''}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -469,6 +467,7 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
                 </button>
                 <button
                   title={n.visible ? text.hideLayer : text.showLayer}
+                  onDoubleClick={(event) => event.stopPropagation()}
                   className={!n.visible ? 'always' : ''}
                   onClick={(e) => {
                     e.stopPropagation()
