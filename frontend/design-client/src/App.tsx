@@ -25,6 +25,7 @@ import { interfaceText, interfacePreference, useInterfacePreferences } from './i
 import { bindEditorSettings } from './settings-preference'
 import { WorkspaceRootControls, chooseWorkspaceRoot } from './WorkspaceRootControls'
 import { useShortcutProfile } from './shortcut-preference'
+import { getPrototypeTab, setPrototypeTab, subscribePrototypeTab } from './prototype-chrome'
 import { shortcutPlatform, toolShortcutLabel, shortcutLabel, formatShortcutCombo } from './shortcut-profiles'
 import { shortcutTargetOwnsKeyboard } from './editor-shortcuts'
 import { AutomationPanel } from './AutomationPanelLauncher'
@@ -203,7 +204,9 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     document.addEventListener('pointerdown', dismiss, true); window.addEventListener('blur', blur)
     return () => { document.removeEventListener('pointerdown', dismiss, true); window.removeEventListener('blur', blur) }
   }, [])
-  const [propertiesTab, setPropertiesTab] = useState<'design' | 'prototype'>('design')
+  const [propertiesTab, setPropertiesTabState] = useState<'design' | 'prototype'>('design')
+  const setPropertiesTab = (next: 'design' | 'prototype') => { setPropertiesTabState(next); setPrototypeTab(next) }
+  useEffect(() => subscribePrototypeTab(() => setPropertiesTabState(getPrototypeTab())), [])
   const [showPrototype, setShowPrototype] = useState(false)
   const [showCommands, setShowCommands] = useState(false)
   const [showShapeBuilder, setShowShapeBuilder] = useState(false)

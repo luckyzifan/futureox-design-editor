@@ -3,6 +3,7 @@ name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
 
+2026-11-02 [钢笔、橡皮与跳转](../../../testing/verification-figma-pen-eraser-nav-20261102/README.md)对照 Mac 桌面 Figma：钢笔 Shift 约束 45°、Option 断开手柄、点击起点闭合，Esc/Enter 完成开放路径。橡皮在同一图层上擦掉经过的笔画或填充区域，不拆成多个图层。原型页连线可点箭头缩放到目标（含跨页）；N/Shift+N 缩放相邻画板；PageUp/PageDown 切换页面。不改光栅、瓦片或预算。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [Web 与桌面对齐](../../../testing/verification-web-desktop-parity-20261102/README.md)让网页版沿用与 Electron 相同的 `design-client` 与 Rust/WASM 画布路径：选择名称与蓝色画板标题、100×100 创建填充、已选图层拖动、实况缩放读数、中/英文件菜单和设计 API 入口。不另写一套网页几何。原生 Sketch 会话、大文档、本机 MCP 套接字和系统字体仍只在桌面。未改光栅化、瓦片导航或预算。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 Figma 风格 MCP 门面见 [FIGMA_MCP_FACADE.md](../../../docs/FIGMA_MCP_FACADE.md)。`get_metadata`、`get_selection`、`get_design_context`、`get_screenshot`、`get_variable_defs`、`download_assets`、`use_figma`、`open_document` 翻译到现有 Design API，不写入共享 operation registry，也不 eval 插件源码。无宿主 plugin bridge 时 `use_figma` 的 `code` 返回 `plugin_host_unavailable`。桌面启用本地自动化后在 127.0.0.1 提供 HTTP；浏览器页面不监听。stdio 客户端用 `frontend/design-mcp/src/figma-cli.mjs`。这不是 Figma 账号或远程 MCP，也不关闭 33/100ms 与完整 G2/G5。
 2026-11-02 [画布操作对照](../../../testing/verification-figma-canvas-ops-20261102/README.md)只改选择拖动、旋转手柄、尺寸标签、创建填充和自动化文案。已选图层的拖动不被重叠文字抢走；旋转手柄画在选区角外；尺寸标签最多两位小数。形状单击为 100×100，拖拽用指针跨度，填充在呈现前保持。不改缩放覆盖、粘性仿射或标签缓存。33/100ms 与完整 G2/G5 仍未关闭。
