@@ -946,8 +946,6 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   // Submit the current document immediately, not after an effect/timer turn.
   const surfaceDocument = !editPreviewSupported ? renderedDocument :
     refineDocument.id === renderedDocument.id && refineDocument.pages.some(page => page.id === state.page) ? refineDocument : renderedDocument
-  const creationGhost = creationGhostNode(shapePreview, heldCreation && state.doc.nodes[heldCreation.id] ? heldCreation : null,
-    id => !!state.doc.nodes[id] && presented?.document === state.doc)
   const refineOverview = snapshots.refineOverview(surfaceDocument, state.page)
   const editBaseDocument = useRef(renderedDocument)
   if (ownedDrag?.sourceDocument) editBaseDocument.current = ownedDrag.sourceDocument
@@ -2829,14 +2827,6 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             </g>
           )}
         </g>
-        {creationGhost && <g transform={`translate(${displayView.x} ${displayView.y}) scale(${zoom})`} pointerEvents="none">
-          <g data-testid="creation-fill" data-fill={creationVisiblePaint(creationGhost)} transform={matrixString(creationGhost.transform)}>
-            {creationGhost.kind === 'ellipse' ? <ellipse cx={creationGhost.width / 2} cy={creationGhost.height / 2} rx={Math.max(creationGhost.width, 0.01) / 2} ry={Math.max(creationGhost.height, 0.01) / 2} fill={creationVisiblePaint(creationGhost)} stroke="#0d99ff" strokeWidth={1 / zoom} />
-              : creationGhost.kind === 'line' && creationGhost.network?.vertices.length === 2 ? <line x1={creationGhost.network.vertices[0].x} y1={creationGhost.network.vertices[0].y} x2={creationGhost.network.vertices[1].x} y2={creationGhost.network.vertices[1].y} stroke={creationVisiblePaint(creationGhost)} strokeWidth={Math.max(creationGhost.strokes[0]?.width || 1, 1)} strokeLinecap="round" />
-              : creationPreviewPoints(creationGhost) ? <polygon points={creationPreviewPoints(creationGhost)!} fill={creationVisiblePaint(creationGhost)} stroke="#0d99ff" strokeWidth={1 / zoom} />
-              : <rect width={creationGhost.width} height={creationGhost.height} fill={creationVisiblePaint(creationGhost)} stroke="#0d99ff" strokeWidth={1 / zoom} />}
-          </g>
-        </g>}
         <g transform={`translate(${displayView.x} ${displayView.y}) scale(${zoom})`}
           visibility={exactOverlayMatches || !!ownedDrag ? 'visible' : 'hidden'}>
           {vectorNode?.network && (
