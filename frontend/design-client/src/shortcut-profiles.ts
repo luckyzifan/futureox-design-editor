@@ -74,7 +74,11 @@ export function shortcutBindings({ profile, platform, desktop = false }: Shortcu
   if (platform !== 'mac') bindings.push({ command: 'redo', combo: 'Mod+Y' })
   bindings.push({ command: 'mask-selection', combo: platform === 'mac' ? 'Mod+Ctrl+M' : 'Mod+Alt+M' })
   for (const [command, combo] of tools) if (combo) bindings.push({ command: command as EditorCommand, combo })
-  if (profile === 'figma-like') bindings.push({ command: 'set-tool-pencil', combo: 'Alt+P' })
+  if (profile === 'figma-like') {
+    bindings.push({ command: 'set-tool-pencil', combo: 'Alt+P' })
+    // Mac Figma uses Shift+E for the vector eraser inside edit/draw. Plain E stays the toolbar eraser.
+    bindings.push({ command: 'set-tool-eraser', combo: 'Shift+E' })
+  }
   const result = Object.freeze(bindings.map(binding => Object.freeze(binding)))
   bindingCache.set(cacheKey, result)
   return result

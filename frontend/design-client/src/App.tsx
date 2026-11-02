@@ -1265,10 +1265,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             startupPreview={startupPreview} onCapturePreview={desktopSession || source ? undefined : capturePreview}
             zoomControlsTarget={(uiMinimized ? !!s.selection.length : showInspector) ? zoomHost : null} /></HomeCanvasGate>
           <DesignToolbar disabled={!ready || switching || desktopStatus.transitioning || !!source?.nativeCanvas || (editor.interactionActive && !editor.propertyPreviewActive)}>
-            {ready && !showHome && !source?.nativeCanvas && !editor.interactionActive && ['rectangle', 'ellipse', 'polygon', 'star', 'frame', 'section', 'slice', 'line', 'arrow'].includes(s.tool) && (
+            {ready && !showHome && !source?.nativeCanvas && !editor.interactionActive && ['rectangle', 'ellipse', 'polygon', 'star', 'frame', 'section', 'slice', 'line', 'arrow', 'pen', 'eraser'].includes(s.tool) && (
               <div className="creation-tool-hint" role="status">
                 <b>{localizedToolLabel(s.tool, locale)}</b>
-                <span>{s.tool === 'line' || s.tool === 'arrow' ? toolbarText.creationHintLine : toolbarText.creationHint}</span>
+                <span>{s.tool === 'pen' ? toolbarText.penToolHint : s.tool === 'eraser' ? toolbarText.eraserToolHint : s.tool === 'line' || s.tool === 'arrow' ? toolbarText.creationHintLine : toolbarText.creationHint}</span>
               </div>
             )}
             <div className="tool-group">
