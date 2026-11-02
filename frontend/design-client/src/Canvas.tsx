@@ -2776,8 +2776,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         />
       )}
       <CanvasLayoutHandles editor={editor} view={displayView} size={size} visible={exactOverlayMatches}/>
-      <CanvasSmartSelection editor={editor} view={displayView} size={size} visible={exactOverlayMatches}/>
-      <CanvasGuides editor={editor} view={displayView} size={size} intercept={e=>{
+      <CanvasSmartSelection editor={editor} view={displayView} size={size} entries={entries} visible={exactOverlayMatches}/>
+      <CanvasGuides editor={editor} view={displayView} size={size} entries={entries} intercept={e=>{
         if(!canTransform||e.button!==0)return false
         const p=world(e)
         for(const h of transformHandles){

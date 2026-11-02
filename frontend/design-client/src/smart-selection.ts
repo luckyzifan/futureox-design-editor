@@ -1,5 +1,5 @@
 import type {Bounds,DesignDocument,Matrix,Point} from './model'
-import {allParents,scene,unionBounds,multiply,inverse,worldMatrix,translate} from './geometry'
+import {allParents,scene,unionBounds,multiply,inverse,worldMatrix,translate,type SceneEntry} from './geometry'
 export type SmartTrack={ids:string[];bounds:Bounds}
 export type SmartSelection={ids:string[];boxes:Record<string,Bounds>;x:SmartTrack[];y:SmartTrack[];gapX:number;gapY:number}
 function tracks(ids:string[],boxes:Record<string,Bounds>,axis:'x'|'y'):SmartTrack[]{
@@ -18,10 +18,15 @@ function gap(tracks:SmartTrack[],axis:'x'|'y'):number|null{
 }
 /** Geometric inference only. Never changes parentage or treats auto-layout
  * children as freely positioned objects. No retained inference in the file. */
-export function smartSelection(doc:DesignDocument,page:string,ids:string[]):SmartSelection|null{
+export function smartSelection(doc:DesignDocument,page:string,ids:string[],publishedEntries?:readonly SceneEntry[]):SmartSelection|null{
   if(ids.length<2||ids.length>256)return null
-  const parents=allParents(doc),selected=new Set(ids),entries=scene(doc,page).filter(e=>selected.has(e.id))
-  if(entries.length!==ids.length||entries.some(e=>e.locked||e.ancestors.some(id=>selected.has(id))||(()=>{const n=doc.nodes[e.id],p=doc.nodes[parents.get(e.id)!];return n.instanceOrigin||p?.layout&&p.layout.mode!=='none'&&!n.sizing?.absolute})()))return null
+  const selected = new Set(ids)
+  const entries = (publishedEntries ?? scene(doc,page)).filter(entry => selected.has(entry.id))
+  if (entries.length !== ids.length || entries.some(entry => {
+    const node = doc.nodes[entry.id], parent = doc.nodes[entry.parent]
+    return entry.locked || entry.ancestors.some(id => selected.has(id)) || node.instanceOrigin ||
+      (parent?.layout && parent.layout.mode !== 'none' && !node.sizing?.absolute)
+  })) return null
   const boxes=Object.fromEntries(entries.map(e=>[e.id,e.bounds])),x=tracks(ids,boxes,'x'),y=tracks(ids,boxes,'y'),gapX=gap(x,'x'),gapY=gap(y,'y')
   if(gapX===null||gapY===null||x.length*y.length!==ids.length||x.some(c=>y.some(r=>c.ids.filter(id=>r.ids.includes(id)).length!==1)))return null
   return {ids:[...ids],boxes,x,y,gapX,gapY}

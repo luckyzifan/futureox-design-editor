@@ -12,6 +12,7 @@ use crate::scene::{Document, Node};
 use crate::snapshot::NodeStore;
 use crate::tile_stack::{Rect, TileKey, TileStack};
 use serde::Deserialize;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub enum Error {
@@ -45,7 +46,7 @@ pub const NO_EDIT_SCOPE_ACTIVE: &str = "no edit scope is active";
 
 #[derive(Clone)]
 struct GraphSnapshot {
-    base: Document,
+    base: Arc<Document>,
     store: NodeStore,
     /// Provenance of the edit this history entry reverts (undo stack) or
     /// re-applies (redo stack); the entry travels between both stacks.
@@ -68,7 +69,7 @@ struct OpsSubmission {
 }
 
 pub struct GraphApi {
-    base: Document,
+    base: Arc<Document>,
     log: OpLog,
     nodes: Arena<String>,
     tiles: TileStack,
@@ -96,7 +97,7 @@ impl GraphApi {
         let store = NodeStore::from_owned_json_nodes(std::mem::take(&mut document.nodes), document_json);
         let mut api = GraphApi {
             log: OpLog::new(store),
-            base: document,
+            base: Arc::new(document),
             nodes: Arena::default(),
             tiles: TileStack::default(),
             undo: Vec::new(),
@@ -127,8 +128,16 @@ impl GraphApi {
     }
 
     fn install(&mut self, snapshot: GraphSnapshot) {
+        // Handles name either a store node or a page in the immutable base.
+        // A transform and its undo/redo preserve both sets of identities.
+        let same_handles = Arc::ptr_eq(&self.base, &snapshot.base)
+            && self.log.store().shares_node_ids(&snapshot.store);
         self.base = snapshot.base;
         self.log = OpLog::new(snapshot.store);
+        self.revision += 1;
+        if same_handles {
+            return;
+        }
         // Keep existing identities, retire removed ones; never reset generations.
         let stale: Vec<_> = self
             .nodes
@@ -143,7 +152,6 @@ impl GraphApi {
         for h in stale {
             self.nodes.free(h);
         }
-        self.revision += 1;
     }
 
     fn commit_scoped(&mut self, next: GraphSnapshot, source: EditSource) {
@@ -253,7 +261,7 @@ impl GraphApi {
         };
         self.last_scope = Some(scope);
         let snapshot = GraphSnapshot {
-            base: next,
+            base: Arc::new(next),
             store,
             edit_source: scope.source,
         };
@@ -644,7 +652,7 @@ impl GraphApi {
         let store = NodeStore::from_document(&document);
         document.nodes.clear();
         self.install(GraphSnapshot {
-            base: document,
+            base: Arc::new(document),
             store,
             edit_source: scope.source,
         });
@@ -894,6 +902,37 @@ mod tests {
             api.node_name(4242),
             Err(Error::UnknownHandle(4242))
         ));
+    }
+
+    #[test]
+    fn transforms_keep_handles_and_same_size_structural_edits_retire_them() {
+        let mut api = GraphApi::new(&document_json()).unwrap();
+        let initial = api.document_json();
+        let page = api.node_handle("p1");
+        let frame = api.node_handle("f1");
+        api.set_transform(frame, [0.0, 1.0, -1.0, 0.0, 21.0, 9.0]).unwrap();
+        let rotated = api.document_json();
+        assert!(api.undo().unwrap());
+        assert_eq!(api.document_json(), initial);
+        assert!(api.redo().unwrap());
+        assert_eq!(api.document_json(), rotated);
+        assert_eq!(api.node_handle("f1"), frame);
+
+        api.apply_ops_json(&serde_json::json!([
+            {"type":"removeNode","id":"f1"},
+            {"type":"insertNode","parent":"p1","index":0,"node":sample_node("f2","frame")}
+        ]).to_string()).unwrap();
+        let replacement = api.node_handle("f2");
+        assert!(!api.node_exists(frame));
+        assert!(api.node_exists(replacement));
+        assert!(api.undo().unwrap());
+        let restored = api.node_handle("f1");
+        assert_ne!(restored, frame);
+        assert!(!api.node_exists(replacement));
+        assert_eq!(api.document_json(), rotated);
+        assert!(api.redo().unwrap());
+        assert!(!api.node_exists(restored));
+        assert_eq!(api.node_handle("p1"), page);
     }
 
     #[test]
