@@ -9,6 +9,7 @@ import { RenderFailureAttempts, renderFailureFields, withRenderFailureStage } fr
 import { boundedPatchWire, supportsAcknowledgedPropertyPatch } from './authored-patch-transition'
 import type { PreparationStateReceiptV1 } from './preparation-state'
 import { displayRasterBackpressure } from './display-raster-scheduling'
+import { cpuDisplayPressure, cpuTileFrameOptions, solidDisplayTile } from './cpu-tile-frame'
 import { samePreparationReceipt } from './authored-preparation-binding'
 import { renderQualityContract } from './render-quality'
 import { usesPainterCaptureReads, usesPainterSupport } from './painter-support-policy'
@@ -1945,6 +1946,99 @@ self.onmessage = (e) => {
           }
           if (displayCanvas || preference !== 'auto') throw renderErrorWithBudget(error, message)
           failures.set(backend, message)
+        }
+      }
+      // CPU has no GPU candidate. A source overview must paint screen tiles,
+      // not one viewport-sized composite, and an empty tile list is only the
+      // snapshot admission that precedes those tiles.
+      if (executionPolicy.cpuOnly && Array.isArray(tileViewport) && !request.png && !request.readback) {
+        if (tileViewport.length > 256) throw new Error('Invalid tile request')
+        if (tileViewport.length === 0 && request.sourceSnapshot !== undefined) {
+          self.postMessage({
+            id: request.id,
+            backend: 'cpu',
+            buffer: new ArrayBuffer(0),
+            milliseconds: performance.now() - start,
+            drawCalls: 0,
+            triangles: 0,
+            compileMs: 0,
+            renderMs: 0,
+            reason: 'cpu-source-admission',
+          })
+          return
+        }
+        if (tileViewport.length > 0) {
+          await synchronizeDeferred()
+          const tileStarted = performance.now()
+          for (let index = 0; index < tileViewport.length; index++) {
+            if (packetWait?.controller.signal.aborted || generation !== previewGenerations[channel]) throw new Error('PREVIEW_CANCELLED')
+            const tile = tileViewport[index]
+            if (!tile || typeof tile.key !== 'string' || tile.key.length > 256 ||
+                ![tile.x, tile.y, tile.width, tile.height].every(Number.isSafeInteger) ||
+                tile.width < 1 || tile.height < 1 || tile.width > 8192 || tile.height > 8192 ||
+                !Number.isFinite(tile.zoom) || tile.zoom <= 0 || tile.zoom > MAX_CANVAS_RASTER_SCALE)
+              throw new Error('Invalid tile request')
+            let bytes: Uint8Array
+            let reason = ''
+            try {
+              bytes = await kernel.render_cpu_frame(JSON.stringify(cpuTileFrameOptions(renderOptions, tile)))
+            } catch (error) {
+              if (String(error).includes('PREVIEW_CANCELLED')) throw error
+              if (!cpuDisplayPressure(error)) throw error
+              bytes = solidDisplayTile(tile.width, tile.height, [255, 255, 255, 255])
+              reason = String(error)
+            }
+            if (bytes.byteLength !== tile.width * tile.height * 4) throw new Error('CPU tile byte count mismatch')
+            let bitmap: ImageBitmap | undefined
+            if (typeof createImageBitmap === 'function') {
+              try {
+                bitmap = await createImageBitmap(new ImageData(new Uint8ClampedArray(bytes), tile.width, tile.height))
+              } catch { bitmap = undefined }
+            }
+            if (packetWait?.controller.signal.aborted || generation !== previewGenerations[channel]) {
+              bitmap?.close()
+              throw new Error('PREVIEW_CANCELLED')
+            }
+            const transfer: Transferable[] = []
+            let buffer: ArrayBuffer | undefined
+            if (bitmap) transfer.push(bitmap)
+            else {
+              const copy = bytes.slice()
+              buffer = copy.buffer
+              transfer.push(buffer)
+            }
+            self.postMessage({
+              id: request.id,
+              tile: {
+                ...tile,
+                backend: 'cpu',
+                description: reason ? 'cpu tile background' : 'cpu tile',
+                reason,
+                cached: false,
+                milliseconds: 0,
+                compileMs: 0,
+                graphMs: 0,
+                finishMs: 0,
+                checkpointMs: 0,
+              },
+              ...(buffer ? { buffer } : {}),
+              tileBitmap: bitmap,
+            }, { transfer })
+            await yieldPreviewTask()
+          }
+          self.postMessage({
+            id: request.id,
+            backend: 'cpu',
+            buffer: new ArrayBuffer(0),
+            milliseconds: performance.now() - start,
+            renderMs: performance.now() - tileStarted,
+            drawCalls: 0,
+            triangles: 0,
+            compileMs: 0,
+            previewTiles: tileViewport.length,
+            reason: 'cpu-tiles',
+          })
+          return
         }
       }
       rendererCode=1
