@@ -3,7 +3,7 @@ name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
 
-2026-11-02 [图层、属性与右键菜单](../../../testing/verification-figma-layers-properties-menu-20261102/README.md)把图层面板、自动布局/约束、画布标题与选区名、旋转角和右键菜单顺序对齐 Mac 桌面 Figma。旋转角在画布拖动时直接推给检查器，正值为逆时针，显示最多两位小数。不改光栅、瓦片、预算或实验开关。33/100ms 与完整 G2/G5 仍未关闭。画布堆叠「最前/最后」仍没有独立字段。
+2026-11-02 [图层、属性与右键菜单](../../../testing/verification-figma-layers-properties-menu-20261102/README.md)把图层面板、自动布局/约束、画布标题与选区名、旋转角和右键菜单顺序对齐 Mac 桌面 Figma。旋转角在画布拖动时直接推给检查器，正值为顺时针，显示最多两位小数。不改光栅、瓦片、预算或实验开关。33/100ms 与完整 G2/G5 仍未关闭。画布堆叠「最前/最后」仍没有独立字段。
 
 2026-11-02 [导入与传输对照](../../../testing/verification-interop-transfer-20261102/README.md)只修浏览器 FIG 描边端点、`showShadowBehindNode` 保留，以及原生 `LAYER_BLUR` 与 `FOREGROUND_BLUR` 同义。不改缩放/瓦片导航、GPU 预算或实验开关。精确瓦片 `slice` 在缓存持有缓冲区时仍是所有权边界。Sketch 玻璃/纹理、FIG 反向堆叠与变量、Display P3 默认 PNG 编码、33/100ms 和完整 G2/G5 仍未关闭。
 

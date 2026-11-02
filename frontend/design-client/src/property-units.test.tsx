@@ -44,7 +44,7 @@ test('nested rotated/reflected similarities expose the same units, angles and pr
   editor.updateProperties([frame.id], n => { n.transform = [0, -2, -2, 0, 0, 0] })
   const units = propertyUnits(editor.state.doc, lens.id)
   expect(units).toEqual({ parentX:2,parentY:2,width:2,height:2,x:2,y:2,style:2 })
-  expect(selectionMetric(editor.state.doc.nodes[lens.id], 'rotation', editor.state.doc)).toBe(-0)
+  expect(selectionMetric(editor.state.doc.nodes[lens.id], 'rotation', editor.state.doc)).toBe(0)
   expect(editor.state.doc.nodes[lens.id].effects[0].glass!.refraction).toBe(.5)
   expect(dashInUnits('4, 2', 2)).toBe('8 4'); expect(dashInUnits('8 4', .5)).toBe('4 2')
   expect(dashInUnits(' , ', 2)).toBe(''); expect(dashInUnits('-0 4', 2)).toBe('0 8')

@@ -12,8 +12,8 @@ import { type DesignNode, type NodeBlend, type TextStyle, defaultTextStyle, defa
 import { applyWholeTextStyle, setWholeTextFontSize } from './text'
 import { commonValue, resizeNodeDimension, selectionMetric, setNodePosition, type SelectionMetric } from './selection-properties'
 import { useSyncExternalStore } from 'react'
-import { selectionLocalBounds, rotateNode, rotationDegrees } from './canvas-view'
-import { formatFigmaAngle } from './rotation-field'
+import { selectionLocalBounds, rotateNode } from './canvas-view'
+import { figmaRotationDegrees, formatFigmaAngle, nodeDegreesForFigmaAngle } from './rotation-field'
 import { MixedNumberField } from './MixedNumberField'
 
 export function MultiSelectionInspector({ editor, nodes }: { editor: Editor; nodes: DesignNode[] }) {
@@ -32,7 +32,7 @@ export function MultiSelectionInspector({ editor, nodes }: { editor: Editor; nod
     const resolved = field === 'rotation' || field === 'opacity' ? undefined : units(node.id)
     const value = typeof input === 'string' ? numericExpression(input, selectionMetric(node, field, editor.state.doc, resolved), field === 'opacity' ? 'percent' : field === 'rotation' ? 'angle' : 'length') : input
     if (field === 'x' || field === 'y') setNodePosition(node, field, value, editor.state.doc, resolved)
-    else if (field === 'rotation') rotateNode(node, value, selectionLocalBounds(editor.state.doc, node.id))
+    else if (field === 'rotation') rotateNode(node, nodeDegreesForFigmaAngle(value), selectionLocalBounds(editor.state.doc, node.id))
     else if (field === 'opacity') node.opacity = value / 100
     else resizeNodeDimension(node, field, value, editor.state.doc, resolved)
   })
@@ -51,7 +51,7 @@ export function MultiSelectionInspector({ editor, nodes }: { editor: Editor; nod
             const values = nodes.map(node => {
               if (field === 'rotation') {
                 const text = liveOn ? live!.textById[node.id] : undefined
-                return text !== undefined ? Number(text) : rotationDegrees(node)
+                return text !== undefined ? Number(text) : figmaRotationDegrees(node.transform)
               }
               return selectionMetric(node, field, editor.state.doc, field === 'opacity' ? undefined : readUnits(node.id))
             })
