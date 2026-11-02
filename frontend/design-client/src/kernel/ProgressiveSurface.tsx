@@ -27,7 +27,7 @@ import { useZoomActivity, useCameraActivity } from './use-zoom-activity'
 import { useSharpZoomActivity } from './use-sharp-zoom-activity'
 import { useNavigationZoom } from './use-navigation-zoom'
 import { navigationPreviewDensity } from './navigation-zoom'
-import { navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, type NavigationCoverageFlight } from './navigation-coverage'
+import { navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, type NavigationCoverageFlight } from './navigation-coverage'
 import { RenderMailbox } from './render-mailbox'
 import { scheduleRasterMaintenance } from './idle-raster-maintenance'
 import { panPrefetch } from './pan-prefetch'
@@ -1018,7 +1018,8 @@ export function ProgressiveSurfaceImpl(
       document: doc, revision: contract.revision, resident: residentDisplay, client: c,
       device: previewDevice.current.client === c ? previewDevice.current.key : undefined,
     })
-    const hasReadyCoverage = () => navigationHasCoverage(validCoverage(), requestedView, width, height)
+    const hasReadyCoverage = () => navigationHasCoverage(validCoverage(), requestedView, width, height,
+      navigationReadyDensity(requestedView.zoom, dpr, width, height, nativeNavigation))
     // A large reversal can leave a costly zoom-in capture occupying the sole
     // raster lane after its crop stopped covering the current view. Already
     // acknowledged current-content coverage supplies continuity, so revoke
@@ -1396,6 +1397,9 @@ export function ProgressiveSurfaceImpl(
       recordRenderDiagnostic({ kind: 'error', zoom: view.zoom, dpr,
         requestedDensity: view.zoom * dpr, errorCode: renderDiagnosticError(error) })
       if (String(error).includes('PREVIEW_CANCELLED')) return
+      // A budget or halo miss keeps the residents already on screen. The
+      // kernel retries a degraded frame; this banner must not replace them.
+      if (retainedPressureError(error) && [...tileRef.current.values()].some(tile => ready.current.has(tile.key) && tile.document === doc)) return
       // Recovery changes the renderer, not the fact that this GPU request failed.
       // Keep failure observers informed before handing off to the CPU surface.
       latestContext.current.onRenderFailure?.()
@@ -2319,7 +2323,8 @@ export function ProgressiveSurfaceImpl(
   // Residents at previously visited exact scales also cover a zoom gesture.
   // Keep their real sampling keys: reprojection supplies temporary coverage,
   // while only a fully covered plan at or above screen density can publish a sharp frame.
-  const cachedPreviewTile = (tile: PaintedTile) => !complete && canRefine &&
+  const cachedPreviewTile = (tile: PaintedTile) => !complete &&
+    (canRefine || tile.document === doc && tile.revision === contract.revision) &&
     (!startupPreview || !plan?.ids.has(tile.key)) &&
     tileRef.current.get(tile.key) === tile && tile.document === doc &&
     tile.revision === contract.revision && ready.current.has(tile.key) &&
@@ -2327,9 +2332,12 @@ export function ProgressiveSurfaceImpl(
   // One frame description owns both actual composition and cache-use proof.
   // Intersecting history that contributes no physical fragment stays evictable.
   const compositeItems = visible.map(tile => {
-    // Full replacement starts from the compositor's cleared target; do not
-    // source-over a translucent new page onto old-revision pixels.
-    if (previewReplacement) return { tile, gutter: tile.gutter ?? 1, active: tile === previewReplacement, layer: 2 }
+    // A viewport preview fills holes. Same-revision residents stay above it
+    // so a low-density capture cannot blank artboards that already painted.
+    // A different revision still stays hidden: do not source-over a new page
+    // onto old-document pixels.
+    if (previewReplacement && (tile === previewReplacement || previewUnderlayHides(tile, previewReplacement)))
+      return { tile, gutter: tile.gutter ?? 1, active: tile === previewReplacement, layer: tile === previewReplacement ? 1 : 0 }
     const fine = !inactiveSet.has(tile) && fineTile(tile), base = !inactiveSet.has(tile) && displayed?.residents.get(tile.key) === tile,
       coarse = !inactiveSet.has(tile) && coarseTile(tile), cached = !inactiveSet.has(tile) && cachedPreviewTile(tile)
     return { tile, gutter: tile.gutter ?? 1, active: fine || base || coarse || cached,

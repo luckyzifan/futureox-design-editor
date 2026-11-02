@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import { Editor } from './engine'
 import { blank, node } from './model'
 import { desktopBridge, type DesktopBridge, type DesktopFile, type DesktopResult } from './desktop'
-import { DesktopSession, type LeaveDecision } from './desktop-session'
+import { DesktopSession, workspaceTabSwitchPlan, type LeaveDecision } from './desktop-session'
 import { Backend } from './persistence'
 import { registerPendingEdit } from './pending-edits'
 
@@ -655,4 +655,12 @@ describe('catalog document lifecycle', () => {
     expect(f.editor.state.doc.name).toBe('Original')
     expect(f.bridge.acceptDocument).not.toHaveBeenCalled()
   })
+})
+
+test('a busy file operation queues a tab switch and a cached tab can open without the host lock', () => {
+  expect(workspaceTabSwitchPlan({ sessionBusy: true, hostBusy: false, cached: true, sameDocument: false })).toBe('queue')
+  expect(workspaceTabSwitchPlan({ sessionBusy: false, hostBusy: true, cached: true, sameDocument: false })).toBe('adopt-cache')
+  expect(workspaceTabSwitchPlan({ sessionBusy: false, hostBusy: true, cached: false, sameDocument: false })).toBe('queue')
+  expect(workspaceTabSwitchPlan({ sessionBusy: false, hostBusy: false, cached: true, sameDocument: false })).toBe('read')
+  expect(workspaceTabSwitchPlan({ sessionBusy: true, hostBusy: true, cached: false, sameDocument: true })).toBe('ignore')
 })

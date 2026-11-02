@@ -40,6 +40,16 @@ const rejectedWorkspaceWrite = (result: DesktopResult<unknown>) => result.status
 /** Disk acknowledgements are scoped to immutable snapshots, never to the latest edit. */
 export type WorkspaceTab = { id: string; name: string; persisted: boolean }
 type WorkspaceCacheEntry = { revision: number; name: string; hash: string; updatedAt: number; documentJson: string }
+
+/** Tab switches during an open/import must not surface the host file lock as
+ * a hard failure. A cached snapshot can replace the canvas immediately; a
+ * busy editor only queues the switch until that operation releases the document. */
+export function workspaceTabSwitchPlan(input: { sessionBusy: boolean; hostBusy: boolean; cached: boolean; sameDocument: boolean }) {
+  if (input.sameDocument) return 'ignore' as const
+  if (input.sessionBusy) return 'queue' as const
+  if (input.hostBusy) return input.cached ? 'adopt-cache' as const : 'queue' as const
+  return 'read' as const
+}
 export class DesktopSession {
   private readonly tabListeners = new Set<() => void>()
   private tabsValue: WorkspaceTab[] = []
