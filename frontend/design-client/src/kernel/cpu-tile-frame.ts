@@ -30,8 +30,7 @@ export function cpuTileFrameOptions(frame: CpuTileFrame, tile: Pick<RasterTile, 
   }
 }
 
-/** Same pressure classes the kernel retries as a degraded display.
- * One tile can keep the page color; it must not fail the whole board. */
+/** Recoverable pressure on a CPU display tile. Exact callers still receive the error. */
 export function cpuDisplayPressure(error: unknown) {
   return /Compositing memory budget exceeded|Combined filter dependency halo exceeds 2048 device pixels|Combined zoom source dependency halo exceeds 2048 device pixels|Zoom source filter halo exceeds 2048 device pixels|Frame compositing work budget exceeded|Layer surface exceeds 16 million pixels|Gaussian sigma must be in/.test(String(error))
 }
@@ -57,4 +56,9 @@ export async function sampleCpuTile(frame: CpuTileFrame, render: (options: CpuTi
     }
   }
   return {bytes:new Uint8Array(0),width:0,height:0,divisor:0,reason}
+}
+
+/** Device origin for a native-size byte blit, including negative coordinates. */
+export function cpuTileBlitOrigin(dx: number, dy: number) {
+  return { x: Math.floor(dx), y: Math.floor(dy) }
 }

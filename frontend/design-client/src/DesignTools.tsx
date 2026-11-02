@@ -480,7 +480,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                             />
                           )}
                           {['navigate','back'].includes(a.kind) && <select aria-label="过渡方式" value={a.transitionStyle ?? ''} onChange={ev=>action(i,j,x=>{x.transitionStyle=(ev.target.value || undefined) as PrototypeAction['transitionStyle']})}>
-                            <option value="">智能动画</option><option value="none">无动画</option><option value="slide-left">从左滑入</option><option value="slide-right">从右滑入</option><option value="slide-top">从上滑入</option><option value="slide-bottom">从下滑入</option>
+                            <option value="">智能动画</option><option value="dissolve">溶解（透明度）</option><option value="none">无动画</option><option value="slide-left">从左滑入</option><option value="slide-right">从右滑入</option><option value="slide-top">从上滑入</option><option value="slide-bottom">从下滑入</option>
                           </select>}
                           <input
                             aria-label="过渡毫秒"

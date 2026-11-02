@@ -143,6 +143,10 @@ contextBridge.exposeInMainWorld(
     }),
     // Latest E6 four-bucket GPU memory breakdown as a JSON string, or null
     // when no native frame has rendered yet (GpuMemoryPanel consumes this).
+    videoEncode: Object.freeze({
+      status: () => invoke('video-encode-status'),
+      encode: value => invoke('video-encode', value),
+    }),
     nativeRenderStats: async () => {
       try {
         const result = await ipcRenderer.invoke('native-render:stats')

@@ -3,6 +3,7 @@ import { apply, inverse, multiply, boxPoints, bounds } from './commands/affine'
 import { captureBoardFrame } from './retained-board-capture'
 import { concealCanvasFeedback, restoreCanvasFeedbackVisibility } from './canvas-move-feedback'
 import { formatAngleDegrees } from './selection-handles'
+import { SELECTION_BLUE, SELECTION_UNION_STROKE_PX } from './selection-blue'
 
 export type FollowCamera = { x: number; y: number; zoom: number }
 
@@ -136,8 +137,8 @@ export function mountGestureFollow(host: HTMLElement, options: {
     Object.assign(svg.style, { position: 'absolute', inset: '0', overflow: 'visible' })
     polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon')
     polygon.setAttribute('fill', 'none')
-    polygon.setAttribute('stroke', '#3459d4')
-    polygon.setAttribute('stroke-width', '2')
+    polygon.setAttribute('stroke', SELECTION_BLUE)
+    polygon.setAttribute('stroke-width', String(SELECTION_UNION_STROKE_PX))
     svg.append(polygon)
     root.append(svg)
   }

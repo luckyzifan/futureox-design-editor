@@ -4,7 +4,7 @@
  */
 
 import React from 'react'
-import { measurementTicks } from '../canvas-measurements'
+import { measurementTicks, SPACING_RED } from '../canvas-measurements'
 
 export interface Measurement {
   nodeId: string
@@ -25,14 +25,14 @@ export function MeasurementOverlay({ measurements, zoom }: MeasurementOverlayPro
   if (measurements.length === 0) return null
 
   const lineStyle: React.CSSProperties = {
-    stroke: '#f24822',
+    stroke: SPACING_RED,
     strokeWidth: 1 / zoom,
     fill: 'none',
     vectorEffect: 'non-scaling-stroke',
   }
 
   const textStyle: React.CSSProperties = {
-    fill: '#f24822',
+    fill: SPACING_RED,
     stroke: '#fff',
     strokeWidth: 2 / zoom,
     paintOrder: 'stroke',
