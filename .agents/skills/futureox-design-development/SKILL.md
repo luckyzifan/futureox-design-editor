@@ -3,6 +3,7 @@ name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
 
+2026-11-02 [界面抛光](../../../testing/verification-ui-chrome-grok-20261102/README.md)只改共享外壳：软表面、桌面宽度下顶栏与工具条重排、打开/内核/导入/空白就绪的有限动效、面板与画布滚动条、新交互默认 300ms 缓出智能动画，以及蓝色字母 F 标记与工具/文件图标。网页和 Electron 仍用同一 `design-client`。强调色仍是 `#3459d4`。不改光栅、瓦片或预算。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [钢笔与橡皮](../../../testing/verification-pen-eraser-figma-20261102/README.md)在共享 `design-client` 里对齐 Mac 桌面 Figma：钢笔的 45°、Option 单侧手柄、闭合填充、Esc 保留开放路径，以及橡皮按笔刷裁切笔画和减去填充。画布线仍是选择蓝 `#0d99ff`，工具栏强调色仍是 `#3459d4`。不改光栅、瓦片或预算。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [钢笔、橡皮与跳转](../../../testing/verification-figma-pen-eraser-nav-20261102/README.md)对照 Mac 桌面 Figma：钢笔 Shift 约束 45°、Option 断开手柄、点击起点闭合，Esc/Enter 完成开放路径。橡皮在同一图层上擦掉经过的笔画或填充区域，不拆成多个图层。原型页连线可点箭头缩放到目标（含跨页）；N/Shift+N 缩放相邻画板；PageUp/PageDown 切换页面。不改光栅、瓦片或预算。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [Mac 桌面 Figma 呈现](../../../testing/verification-figma-mac-presentation-20261102/README.md)让网页和 Electron 共用的编辑器对齐玻璃效果、四角圆角和页面/画板呈现。玻璃参数按磨砂、折射、深度、色散、光线排列，倒角仍可编辑；圆角默认一个数值，独立圆角展开左上/右上/左下/右下，画布手柄在按住 ⌥ 时只改一角。页面列表以当前页为标题，无填充画板保留细边，分区名称带底色条，选中画板时显示直接子画板名称。强调色仍是 `--workspace-accent`（#3459d4），画布选择蓝仍是 #0d99ff。未改光栅、瓦片、预算或实验开关。33/100ms 与完整 G2/G5 未通过。
