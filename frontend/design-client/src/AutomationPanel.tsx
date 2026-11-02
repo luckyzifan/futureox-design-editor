@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useInterfacePreferences } from './interface-preference'
-import { automationText } from './automation-interface-messages'
 import { zipSync, strToU8 } from 'fflate'
 import type { Editor } from './engine'
 import type { DesktopBridge } from './desktop'
