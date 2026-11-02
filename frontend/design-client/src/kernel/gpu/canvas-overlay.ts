@@ -54,7 +54,8 @@ export function overlayVertices(overlay: CanvasOverlay, view: CanvasCamera, widt
   }
   if (overlay.selection) {
     const points = overlay.selection.corners.map(p => ({ x: p.x * view.zoom + view.x, y: p.y * view.zoom + view.y }))
-    for (let i = 0; i < points.length; i++) line(points[i], points[(i + 1) % points.length], 1.3, blue)
+    // Mac Figma: 2px blue outline, 8px white corner squares with a 1px blue rim.
+    for (let i = 0; i < points.length; i++) line(points[i], points[(i + 1) % points.length], 2, blue)
     if (overlay.selection.handles) for (let i = 0; i < points.length; i++) {
       const point = points[i], next = points[(i + 1) % points.length], previous = points[(i + points.length - 1) % points.length]
       const unit = (p: Point) => { const length = Math.hypot(p.x-point.x,p.y-point.y); return length > 1e-10 ? {x:(p.x-point.x)/length,y:(p.y-point.y)/length} : undefined }
@@ -62,7 +63,7 @@ export function overlayVertices(overlay: CanvasOverlay, view: CanvasCamera, widt
       const square = (r: number) => [[-r,-r],[r,-r],[r,r],[-r,r]].map(([x,y]) => ({
         x: point.x + u.x * x + v.x * y,
         y: point.y + u.y * x + v.y * y }))
-      quad(square(4.5), blue); quad(square(3.5), white)
+      quad(square(4), blue); quad(square(3), white)
     }
   }
   for(const measurement of overlay.measurements||[]) line(

@@ -13,6 +13,14 @@
 - 矩形、椭圆、多边形、星形和画板单击都是 100×100。拖拽使用指针跨度。填充从按下就开始画，并保持到该文档成为已呈现帧。设备画板仍由预设命令创建。
 - 工具条在创建工具下显示一行说明，不接收指针。自动化入口文案为「设计 API / Design API」，对话框关闭按钮按文字宽度排，不按 30px 裁切。这不是 Figma 插件宿主。
 
+## 2026-11-02 续：旋转符号、选框和粘贴
+
+对照 Mac 桌面 Figma（顺时针为正，逆时针为负）。拖动手柄时对象跟手，画布角度和右侧「旋转 °」都是两位小数，并且在松手之前就更新。选框描边为 2 CSS 像素 `#0d99ff`，角上的缩放方块为 8px。旋转抓取区在角的外侧，和缩放方块分开。Shift 仍把绝对角度吸到 15°。
+
+⌘C / ⌘V 复制图层。普通粘贴每次向右下 10px，重复粘贴再走 10px。选中一个画板时，副本进入该画板，世界位置等于原来的位置加上这一步。⌘D 仍是原位副本；若刚移动过，下一次副本重复那次位移，不占用剪贴板。拖动已选中的图层不会中途改选区。
+
+未在本机打开 Figma GUI。33/100ms 与完整 G2/G5 未测。
+
 ## 测试
 
 `frontend/design-client` 下与本轮直接相关的 vitest：
@@ -23,5 +31,11 @@
 - `src/selection-chrome-label.test.ts`
 - `src/AutomationPanel.test.tsx`
 - `src/AutomationPanelLauncher.test.tsx`
+- `src/selection-handles.test.ts`
+- `src/electron-resize-rotate-boundaries.test.tsx`
+- `src/native-duplication.test.ts`
+- `src/clipboard-semantics.test.ts`
+
+`tsc --noEmit` 通过。内核 `figma_rotation` 单测通过。粘性仿射仍在；旋转样本会把同一矩阵写进预览，供右侧角度和选框读取。
 
 未在本机打开「01有料素材」的 GUI，也未测量 Ctrl-滚轮缩放。

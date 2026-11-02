@@ -14,6 +14,26 @@ function fixture() {
   doc.nodes = Object.fromEntries([frame, a, b].map(n => [n.id, n])); frame.children = [a.id, b.id]; doc.pages[0].children = [frame.id]
   const editor = new Editor(doc); editors.push(editor); return { doc: editor.state.doc, editor, frame, a, b }
 }
+test('Mac Figma paste steps 10px and a selected frame receives the copy in its own space', () => {
+  const doc = blank(), source = node('frame', 0, 0, 200, 160), target = node('frame', 400, 50, 200, 160), child = node('rectangle', 20, 30, 40, 40)
+  source.children = [child.id]
+  doc.nodes = Object.fromEntries([source, target, child].map(n => [n.id, n]))
+  doc.pages[0].children = [source.id, target.id]
+  const editor = new Editor(doc); editors.push(editor)
+  editor.select([child.id]); editor.copy(); editor.select([target.id]); editor.pasteToSelection(false)
+  const copy = editor.state.selection[0]
+  expect(copy).not.toBe(child.id)
+  expect(allParents(editor.state.doc).get(copy)).toBe(target.id)
+  const before = worldMatrix(doc, child.id), after = worldMatrix(editor.state.doc, copy)
+  expect(after[4] - before[4]).toBeCloseTo(10, 8)
+  expect(after[5] - before[5]).toBeCloseTo(10, 8)
+  expect(editor.state.doc.nodes[child.id]).toEqual(doc.nodes[child.id])
+  editor.select([copy]); editor.pasteToSelection(false)
+  const again = editor.state.selection[0]
+  const stepped = worldMatrix(editor.state.doc, again)
+  expect(stepped[4] - after[4]).toBeCloseTo(10, 8)
+  expect(stepped[5] - after[5]).toBeCloseTo(10, 8)
+})
 test('ordinary duplicate keeps the affine parent, appearance and one native history action', () => {
   const { editor, doc, frame, a } = fixture(); editor.select([a.id]); editor.duplicate()
   const copy = editor.state.selection[0]

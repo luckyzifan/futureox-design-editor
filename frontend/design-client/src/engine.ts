@@ -282,7 +282,8 @@ export class Editor {
   private sessionEpoch = 0
   get sessionGeneration() { return this.sessionEpoch }
   get interactionActive() { return this.transaction !== null }
-  private duplicateOffset = 24
+  /** Mac Figma paste steps 10px right and down. Duplicate (⌘D) stays on the repeat path. */
+  private duplicateOffset = 10
   private disposed = false
   private geometryJob: { cancel: () => void } | null = null
   constructor(doc = demo()) {
@@ -381,9 +382,13 @@ export class Editor {
     const { view: _view, ...next } = this.state
     // Full layer/Inspector trees must not compete with every pointer sample.
     // Keep coordinates fresh at a bounded cadence; release/undo publishes now.
-    if (this.transaction && this.panelState && next.page === this.panelState.page &&
+    // A new document during a drag is the live geometry (angle, X/Y). Refresh it
+    // immediately. The 80ms gate only skips repeats of the same document, so a
+    // rotate sample cannot leave the right-hand angle on an older value.
+    const sameDoc = this.panelState && next.doc === this.panelState.doc
+    if (this.transaction && this.panelState && sameDoc && next.page === this.panelState.page &&
       next.selection === this.panelState.selection && next.tool === this.panelState.tool &&
-      next.doc.id === this.panelState.doc.id && performance.now() - this.panelPublishedAt < 80) return this.panelState
+      performance.now() - this.panelPublishedAt < 80) return this.panelState
     if (!this.panelState || (Object.keys(next) as (keyof typeof next)[])
       .some(key => next[key] !== this.panelState![key])) { this.panelState = next; this.panelPublishedAt = performance.now() }
     return this.panelState
@@ -1983,7 +1988,7 @@ export class Editor {
       return [id,{transform:cloneValue(n.transform),outsideX:!!parent&&(b.x<0||b.x+b.width>parent.width),outsideY:!!parent&&(b.y<0||b.y+b.height>parent.height)}]
     }))
     this.clipboard = { ...graph, placements, sourceSession: this.sessionEpoch }
-    this.duplicateOffset = 24
+    this.duplicateOffset = 10
     this.notify('已复制图层')
   }
   exportClipboard(cut = false): string | null {
@@ -2039,7 +2044,7 @@ export class Editor {
         placements=cloneValue(value.placements)
       }
       this.clipboard = { nodes, roots, document, placements, selection: value.selection ? [...new Set(value.selection as string[])] : undefined }
-      this.duplicateOffset = 24
+      this.duplicateOffset = 10
     } finally { activateDocumentFonts(this.state.doc) }
   }
   pasteToSelection(replace = false) {
@@ -2050,7 +2055,7 @@ export class Editor {
     if(this.topSelection(true).length!==selected.length) {this.notify('粘贴目标包含锁定图层，请先解锁');return}
     const targets=replace?selected:selected.length && selected.every(id=>container(before.nodes[id]) && !content.roots.includes(id)) ? selected
       : selected.length===1 && before.nodes[parents.get(selected[0])!]? [parents.get(selected[0])!] : []
-    if(!targets.length){if(replace)this.notify('请选择要替换的图层');else this.paste(true);return}
+    if(!targets.length){if(replace)this.notify('请选择要替换的图层');else this.paste(false);return}
     for(const target of targets) {
       for(let id:string|undefined=target;id && before.nodes[id];id=parents.get(id)) {
         const n=before.nodes[id]
@@ -2068,7 +2073,7 @@ export class Editor {
     try {
       for(const target of targets) {
         const page=this.state.doc.pages.find(p=>p.id===this.state.page)!,existing=new Set(page.children)
-        this.paste(true)
+        this.paste(replace)
         const roots=this.state.doc.pages.find(p=>p.id===this.state.page)!.children.filter(id=>!existing.has(id))
         if(!roots.length)throw new Error(this.state.message || '未能粘贴图层')
         const destination=replace?parents.get(target)!:target,box=before.nodes[target]
@@ -2076,11 +2081,14 @@ export class Editor {
           const currentPage=d.pages.find(p=>p.id===this.state.page)!
           currentPage.children=currentPage.children.filter(id=>!roots.includes(id))
           const list=d.nodes[destination]?.children || d.pages.find(p=>p.id===destination)!.children
-          const at=replace?list.indexOf(target):-1
+          const anchor=!replace && selected.length===1 && parents.get(selected[0])===destination ? selected[0] : null
+          const at=replace?list.indexOf(target):anchor?list.indexOf(anchor)+1:list.length
           list.splice(at<0?list.length:at,0,...roots)
+          const parentWorld=d.nodes[destination]?worldMatrix(d,destination):[1,0,0,1,0,0] as Matrix
           for(const [i,id] of roots.entries()) {
             const source=content.roots[i],placement=content.placements?.[source]
-            if(placement)d.nodes[id].transform=cloneValue(placement.transform)
+            if(replace && placement)d.nodes[id].transform=cloneValue(placement.transform)
+            else if(d.nodes[destination])d.nodes[id].transform=multiply(inverse(parentWorld),d.nodes[id].transform)
           }
           const measure=(id:string,parent:Matrix): import('./model').Bounds => {
             const n=d.nodes[id],matrix=multiply(parent,n.transform)
@@ -2090,8 +2098,8 @@ export class Editor {
           const localBounds=unionBounds(roots.map(id=>measure(id,identity())))
           const targetBounds=replace?bounds(boxPoints({x:0,y:0,width:box.width,height:box.height}).map(p=>apply(box.transform,p))):null
           const outsideX=content.roots.some(id=>content.placements?.[id]?.outsideX),outsideY=content.roots.some(id=>content.placements?.[id]?.outsideY)
-          const dx=targetBounds?targetBounds.x-localBounds.x:!outsideX&&(localBounds.x<0||localBounds.x+localBounds.width>box.width)?(box.width-localBounds.width)/2-localBounds.x:0
-          const dy=targetBounds?targetBounds.y-localBounds.y:!outsideY&&(localBounds.y<0||localBounds.y+localBounds.height>box.height)?(box.height-localBounds.height)/2-localBounds.y:0
+          const dx=replace?(targetBounds?targetBounds.x-localBounds.x:!outsideX&&(localBounds.x<0||localBounds.x+localBounds.width>box.width)?(box.width-localBounds.width)/2-localBounds.x:0):0
+          const dy=replace?(targetBounds?targetBounds.y-localBounds.y:!outsideY&&(localBounds.y<0||localBounds.y+localBounds.height>box.height)?(box.height-localBounds.height)/2-localBounds.y:0):0
           for(const id of roots) {
             const n=d.nodes[id];n.transform[4]+=dx;n.transform[5]+=dy
             if(replace){n.constraints=cloneValue(box.constraints);n.sizing=cloneValue(box.sizing)}
@@ -2155,7 +2163,7 @@ export class Editor {
         if (position) d.nodes[created].transform = multiply(translate(delta.x, delta.y), source.transform)
       })
       if (this.state.doc.nodes[created]?.instance) this.select([created])
-      if (!inPlace && !position) this.duplicateOffset += 24
+      if (!inPlace && !position) this.duplicateOffset += 10
       return
     }
     const ids = new Map(Object.keys(content.nodes).map((id) => [id, uid()]))
@@ -2189,7 +2197,7 @@ export class Editor {
       },
       content.selection?.map(id => ids.get(id)!) || roots,
     )
-    if (!inPlace && !position) this.duplicateOffset += 24
+    if (!inPlace && !position) this.duplicateOffset += 10
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
   }
