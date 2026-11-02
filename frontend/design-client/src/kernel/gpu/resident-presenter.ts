@@ -1,3 +1,4 @@
+import { MAX_NAVIGATION_GAPS, NAVIGATION_BACKING_BYTES } from '../navigation-backing'
 import { PresenterPayloadLedger, type PayloadToken } from './presenter-payload-ledger'
 import { deviceDiagnosticFields, registerDeviceDiagnosticOwner, recordDeviceLifecycle, recordDeviceCallback, deviceLostReason, deviceLifecyclePhase } from './device-lifecycle-diagnostics'
 import { TerminalQualityGate, type TerminalQuality } from './terminal-quality'
@@ -103,6 +104,7 @@ export class ResidentPresenter {
   private drawn?: ResidentFrame
   private drawnPreview = false
   private drawnIds: number[] = []
+  private navigationBacking?: PayloadToken
   private bitmapVisible?: PayloadToken
   private bitmapReserved?: PayloadToken
   private bitmapPending?: { token:number; payload:PayloadToken; frame:ResidentFrame; sent:boolean }
@@ -443,16 +445,48 @@ export class ResidentPresenter {
       }
     }
   }
+  private navigationTransfer?: { token: number; payload: PayloadToken }
+
+  releaseNavigationTransfer(token: number) {
+    if (this.navigationTransfer?.token !== token) return
+    this.payload.retire(this.navigationTransfer.payload)
+    this.navigationTransfer = undefined
+  }
+
   async captureContentBitmap() {
-    if(!this.backbuffer)throw Error('No displayed document content')
     const owner = this.backbuffer
+    if (!owner) throw Error('No displayed document content')
     const payload = await this.payload.reserveAsync(owner.width * owner.height * 4, 'capture')
+    return this.copyOwnedBitmap(owner, payload, () => {
+      if (this.backbuffer !== owner) throw Error('Content snapshot owner changed')
+      return {contentFrame: this.contentFrame()}
+    })
+  }
+
+  async captureNavigationTile(id: number, token: number) {
+    const entry = this.textures.get(id)
+    if (!this.navigationBacking || this.navigationTransfer || !entry?.content || entry.linear ||
+        entry.texture.width > 514 || entry.texture.height > 514) throw Error('Navigation tile unavailable')
+    const {width, height} = entry.texture
+    // A copy is optional. Never queue it ahead of the required display frame.
+    const payload = this.payload.reserve(width * height * 4, 'capture')
+    this.navigationTransfer = {token, payload}
+    try {
+      return await this.copyOwnedBitmap({texture: entry.texture, width, height}, payload, () => {
+        if (this.textures.get(id) !== entry) throw Error('Navigation tile owner changed')
+        return {navigationToken: token}
+      }, true)
+    } catch (error) { this.navigationTransfer = undefined; throw error }
+  }
+
+  private async copyOwnedBitmap<T extends object>(owner: {texture: GPUTexture; width: number; height: number},
+    payload: PayloadToken, identity: () => T, transfer = false) {
     let context: GPUCanvasContext | undefined, bitmap: ImageBitmap | undefined
     let submitted = false, completed = false, cleanupFailed = false
     try {
       this.payload.assertOpen()
-      if (this.backbuffer !== owner) throw Error('Content snapshot owner changed')
-      const {texture,width,height}=owner,frame=this.contentFrame()
+      const receipt = identity()
+      const {texture,width,height}=owner
       const canvas=new OffscreenCanvas(width,height)
       context=canvas.getContext('webgpu')!
       if (!context) throw Error('WebGPU content snapshot unavailable')
@@ -462,13 +496,14 @@ export class ResidentPresenter {
       this.device.queue.submit([encoder.finish()]);submitted=true;await this.device.queue.onSubmittedWorkDone()
       this.payload.assertOpen()
       bitmap=canvas.transferToImageBitmap();completed=true
-      return {bitmap,contentFrame:frame}
+      return {bitmap,...receipt}
     } finally {
       try { context?.unconfigure() }
       catch (error) { cleanupFailed=true;bitmap?.close();throw error }
       finally {
         if (cleanupFailed || (submitted && (!completed || this.payloadStats.closed))) this.payload.retire(payload)
-        else this.payload.cancel(payload)
+        // Transferred captures stay reserved until the consuming browser task releases them.
+        else if (!transfer || !completed) this.payload.cancel(payload)
       }
     }
   }
@@ -629,6 +664,11 @@ export class ResidentPresenter {
     if (nextLinear) this.linearTarget = nextLinear
     if (nextBack && oldBack) { this.payload.retire(oldBack.payload); oldBack.texture.destroy() }
     if (nextLinear && oldLinear) { this.payload.retire(oldLinear.payload); oldLinear.texture.destroy() }
+    if (this.atomic && !this.navigationBacking && !linear && !frame.interaction && !frame.allowEmpty &&
+        w * h >= 65536 && import.meta.env.VITE_DESIGN_NAVIGATION_BACKING !== '0') {
+      this.navigationBacking = this.payload.reserveNavigationBacking(NAVIGATION_BACKING_BYTES, w * h * 4)
+      if (this.navigationBacking) this.payload.commit(this.navigationBacking)
+    }
     this.payload.assertOpen()
     if (this.canvas.width !== w) this.canvas.width = w
     if (this.canvas.height !== h) this.canvas.height = h
@@ -771,6 +811,8 @@ export class ResidentPresenter {
       presented: {
         presentationId: frame.presentationId,
         presentationToken: pending?.token,
+        ...(this.navigationBacking ? { navigationBackingBytes: this.navigationBacking.bytes } : {}),
+        ...(this.atomic && preview && preview.gaps.length <= MAX_NAVIGATION_GAPS ? {previewGaps: preview.gaps} : {}),
         preview: !!preview,
         gpuOverlay: !!frame.overlay,
         gpuPixelGrid: !this.atomic && !!frame.overlay?.pixelGrid && view.zoom>=4,
@@ -842,6 +884,7 @@ export class ResidentPresenter {
   get residentBytes() {
     return (
       this.bytes + (this.linearTarget ? this.linearTarget.width * this.linearTarget.height * 8*this.linearTarget.samples : 0) +
+      (this.navigationBacking?.bytes || 0) + (this.navigationTransfer?.payload.bytes || 0) +
       (this.bitmapVisible?.bytes || 0) + (this.bitmapPending?.payload.bytes || 0) +
       (this.backbuffer ? this.backbuffer.width * this.backbuffer.height * 4 : 0) + (this.overlay?.residentBytes || 0)
     )
@@ -854,6 +897,9 @@ export class ResidentPresenter {
     if (this.disposed) return
     this.disposed = true
     this.clearBitmapPresentation()
+    if (this.navigationBacking) this.payload.retire(this.navigationBacking)
+    this.navigationBacking = undefined
+    if (this.navigationTransfer) this.releaseNavigationTransfer(this.navigationTransfer.token)
     this.alphaTrace?.close()
     this.payload.close('disposed')
     recordDeviceLifecycle(this, deviceLifecyclePhase.disposed, this.diagnosticFields())

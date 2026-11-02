@@ -2,15 +2,8 @@ import type { CanvasCamera } from '../canvas-camera'
 import { frameTransform } from './presentation'
 import type { ResidentAcknowledgement } from './resident-presentation'
 
-function covers(backing: ResidentAcknowledgement, target: {view:CanvasCamera;width:number;height:number}) {
-  const scale=target.view.zoom/backing.view.zoom,x=target.view.x-backing.view.x*scale,y=target.view.y-backing.view.y*scale
-  return x<=1e-7&&y<=1e-7&&x+backing.width*scale>=target.width-1e-7&&y+backing.height*scale>=target.height-1e-7
-}
-export function keepCompleteCameraBacking(backing: ResidentAcknowledgement | undefined, next: ResidentAcknowledgement, allowed: boolean,
-  zooming=false,target?:{view:CanvasCamera;width:number;height:number}) {
-  return allowed && !!backing && !backing.preview && !backing.interaction && !next.interaction &&
-    (!!next.preview || zooming&&next.view.zoom>backing.view.zoom || !!target&&covers(backing,target)&&!covers(next,target))
-}
+import { NavigationBacking } from './navigation-backing'
+export { keepCompleteCameraBacking } from './navigation-backing'
 
 /** Main-thread ownership makes image replacement and CSS camera publication
  * atomic. A worker-owned live canvas must never use this reprojection path. */
@@ -34,7 +27,8 @@ export class CameraReprojection {
   private size=''
   private zoomTimer?:ReturnType<typeof setTimeout>
   zooming=false
-  constructor(private canvas: HTMLCanvasElement, private host: HTMLElement,private zoomSettled?:()=>void) {}
+  readonly history: NavigationBacking
+  constructor(private canvas: HTMLCanvasElement, private host: HTMLElement,private zoomSettled?:()=>void) { this.history = new NavigationBacking(host) }
 
   update(backing: ResidentAcknowledgement | undefined, view: CanvasCamera, width: number, height: number, allowed: boolean) {
     const size=`${width}/${height}`
@@ -59,7 +53,7 @@ export class CameraReprojection {
     this.canvas.style.height = `${active ? backing.height : height}px`
     this.canvas.style.transformOrigin = '0 0'
     this.canvas.style.transform = transform ? `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})` : ''
-    this.canvas.style.imageRendering = transform && transform.scale > 1 ? 'pixelated' : ''
+    this.canvas.style.imageRendering = ''
     this.canvas.dataset.cameraReprojected = String(active)
     this.canvas.dataset.projectedCamera = JSON.stringify(active ? view : backing?.view || view)
     this.gaps.forEach(gap => { gap.style.display = 'none' })
@@ -79,7 +73,9 @@ export class CameraReprojection {
           background: '#fff' })
       })
     }
+    if (allowed && backing) this.history.show(backing, {view, width, height})
+    else this.history.hide()
     return { active, changed }
   }
-  dispose() { clearTimeout(this.zoomTimer);this.zoomTimer=undefined;this.zooming=false;this.gaps.forEach(gap => gap.remove()); this.gaps = []; this.canvas.style.transform = ''; this.canvas.style.imageRendering = '' }
+  dispose() { this.history.dispose(); clearTimeout(this.zoomTimer);this.zoomTimer=undefined;this.zooming=false;this.gaps.forEach(gap => gap.remove()); this.gaps = []; this.canvas.style.transform = ''; this.canvas.style.imageRendering = '' }
 }

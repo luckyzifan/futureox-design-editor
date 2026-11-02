@@ -790,7 +790,7 @@ pub(crate) fn render_png(engine: &mut Engine, options: &RenderOptions) -> Result
         );
     }
     if options.pixel_preview.is_some() || (options.width <= 512 && options.height <= 512) {
-        let bytes = engine.render(options)?;
+        let bytes = engine.render_exact(options)?;
         return encode_rgba(options.width, options.height, &bytes);
     }
     render_tiled(engine, options, 512, 128)

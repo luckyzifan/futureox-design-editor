@@ -935,6 +935,7 @@ struct GradientCoordinates {
     fixed_gradient: Option<crate::fixed_gradient::FixedGradient>,
     offsets: Vec<f64>,
 }
+pub mod phase_field;
 impl GradientCoordinates {
     fn new(paint: &Paint, size: [f64; 2], matrix: Transform, bounds: Rect) -> Result<Self, String> {
         let inverse = matrix.inverse_composed(bounds)?;

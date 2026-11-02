@@ -301,6 +301,8 @@ export interface Driver {
   snapshotPageTranslation?(sourceOwner:object,targetOwner:object,offset:{x:number;y:number},width:number,height:number,scale:number,contract:string):
     {gpuTile:number;frame:import('./resident-presenter').ResidentFrame}|undefined
   readContentPixel?(u:number,v:number,expected?:import('../resident-presentation').ResidentAcknowledgement):Promise<{contentPixel:number[];contentFrame:import('../resident-presentation').ResidentAcknowledgement}>
+  captureNavigationTile?(id:number,token:number):Promise<{bitmap:ImageBitmap;navigationToken:number}>
+  releaseNavigationTransfer?(token:number):void
   captureContentBitmap?():Promise<{bitmap:ImageBitmap;contentFrame:import('../resident-presentation').ResidentAcknowledgement}>
   importPresented?(bitmap: ImageBitmap): number
   readonly displayMath?: boolean
@@ -384,6 +386,8 @@ export interface Driver {
   readonly exactSolidPaintOver?: boolean
   readonly exactGradientPaintOver?: boolean
   readonly windowedGradientFields?: boolean
+  readonly gradientPhaseFields?: boolean
+  uploadGradientPhaseField?(values:Uint32Array):Texture
   readonly managed?: boolean
   readonly linearLight?: boolean
   readonly hdr?: boolean

@@ -483,6 +483,7 @@ fn extreme_zoom_halo_keeps_layer_content_instead_of_failing_the_frame() {
     let options: RenderOptions = serde_json::from_value(json!({"pageId":"p","width":64,"height":48,"transparent":false,"rasterProfile":"analytic","view":{"zoom":32,"x":0,"y":0}})).unwrap();
     let exact = engine.render_surfaces_regions(&options, false, Rect::new(0, 0, 64, 48), 0, Budget::new(COMPOSITING_BYTES), true);
     assert_eq!(exact.err().as_deref(), Some("Combined filter dependency halo exceeds 2048 device pixels"));
+    assert!(engine.render_png(&options).is_err(), "an exact PNG must never contain the pressure preview");
     let bytes = engine.render(&options).expect("degraded display keeps the frame");
     assert_eq!(bytes.len(), 64 * 48 * 4);
     // World (0.25, 0.25) at 32x is device pixel 8. The fill must survive
@@ -506,9 +507,11 @@ fn device_rect_halo_keeps_the_fill_instead_of_failing_the_tile() {
             "fills":[{"kind":"solid","color":"#cc2244"}],
             "effects":[{"kind":"blur","radius":80,"color":"#000000"}]}}
     }).to_string()).unwrap();
-    let options: RenderOptions = serde_json::from_value(json!({"pageId":"p","width":64,"height":48,"transparent":false,"rasterProfile":"analytic","view":{"zoom":32,"x":0,"y":0}})).unwrap();
+    let mut options: RenderOptions = serde_json::from_value(json!({"pageId":"p","width":64,"height":48,"transparent":false,"rasterProfile":"analytic","view":{"zoom":32,"x":0,"y":0}})).unwrap();
     let exact = engine.render_surfaces_regions(&options, false, Rect::new(0, 0, 64, 48), 0, Budget::new(COMPOSITING_BYTES), true);
     assert_eq!(exact.err().as_deref(), Some("Combined filter dependency halo exceeds 2048 device pixels"));
+    assert!(engine.render_device_rect(&options, 0, 0, 64, 48).is_err());
+    options.interactive_effects = true;
     let bytes = engine.render_device_rect(&options, 0, 0, 64, 48).expect("tile degrade keeps the fill");
     assert_eq!(bytes.len(), 64 * 48 * 4);
     let pixel = |x: usize, y: usize| {
