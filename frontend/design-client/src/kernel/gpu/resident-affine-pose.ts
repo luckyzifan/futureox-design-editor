@@ -48,6 +48,14 @@ export class FrozenResidentOverlayPoses {
   }
 }
 
+/** While an affine rebase is in flight the compiled texture is still the
+ * previous pose. Forward chrome deltas would rotate the blue box before
+ * those pixels move. Hold chrome on the texture until the replacement
+ * capture publishes both together. */
+export function stickyPresentedAffines<T>(affines: T | undefined, rebaseInFlight: boolean): T | undefined {
+  return rebaseInFlight ? undefined : affines
+}
+
 /** The worker chooses the compiled basis belonging to the sampled slot.
  * A requested slot with no private proof must not draw untransformed chrome. */
 export function resolveResidentOverlayFrame(frame:ResidentFrame,owner:object,
