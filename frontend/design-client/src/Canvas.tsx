@@ -5,6 +5,7 @@ import { HOVER_BLUE, HOVER_STROKE_PX, MARQUEE_FILL, SELECTION_BLUE, SELECTION_ME
 import { rotationChromeHeldToTexture, rotationStartMemberCorners, rotationStartOutline } from './selection-chrome-pose'
 import { referenceOverlayCamera } from './kernel/reference-zoom-frame'
 import { canvasOverlayCommands, canvasGpuOverlayOwnsUi, selectionChromeChipWidth } from './canvas-overlay-commands'
+import { crispOutlinePath } from './kernel/gpu/canvas-overlay'
 import { altMeasurementTarget, measurementTicks, SPACING_RED } from './canvas-measurements'
 import { canvasText } from './canvas-interface-messages'
 import { frameHairline, frameTitleShown } from './page-frame-chrome'
@@ -2984,10 +2985,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               const e = entries.find((v) => v.id === hover)
               const n = e && state.doc.nodes[hover]
               if (!e || !n) return null
-              const points = boxPoints({ x: 0, y: 0, width: n.width, height: n.height })
-                .map(p => { const v = apply(e.matrix, p); return `${v.x},${v.y}` }).join(' ')
-              return <polygon data-testid="canvas-hover-outline" data-chrome="hover" data-node-id={hover} points={points}
-                fill="none" stroke={HOVER_BLUE} strokeWidth={HOVER_STROKE_PX} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+              const points = boxPoints({ x: 0, y: 0, width: n.width, height: n.height }).map(p => apply(e.matrix, p))
+              const d = crispOutlinePath(points, displayView, HOVER_STROKE_PX)
+              if (!d) return null
+              return <path data-testid="canvas-hover-outline" data-chrome="hover" data-node-id={hover} d={d}
+                fill={HOVER_BLUE} stroke="none" shapeRendering="crispEdges" pointerEvents="none" />
             })()}
         </g>
         {/* Selection is document feedback, not part of the raster result.
@@ -3333,17 +3335,22 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               text={marqueeChrome.size} size={10} zoom={zoom} fill={SIZE_PILL_TEXT} />
           </g>}
           {rubber && (
-            <g>{creationGhost ? null : <rect
-              {...rubber}
-              data-testid={drag.current?.kind === 'marquee' ? 'canvas-marquee' : undefined}
-              fill={drag.current?.kind === 'marquee' ? MARQUEE_FILL : 'none'}
-              stroke={SELECTION_BLUE}
-              strokeWidth={1 / zoom}
-              strokeDasharray={
-                drag.current?.kind === 'marquee' || drag.current?.kind === 'create' ? undefined : `${4 / zoom} ${3 / zoom}`
-              }
-              pointerEvents="none"
-            />}{drag.current?.kind === 'create' && <text x={rubber.x + rubber.width / 2} y={rubber.y + rubber.height + 18 / zoom}
+            <g>{creationGhost ? null : <>
+              <rect
+                {...rubber}
+                data-testid={drag.current?.kind === 'marquee' ? 'canvas-marquee' : undefined}
+                fill={drag.current?.kind === 'marquee' ? MARQUEE_FILL : 'none'}
+                stroke={drag.current?.kind === 'marquee' ? 'none' : SELECTION_BLUE}
+                strokeWidth={drag.current?.kind === 'marquee' ? undefined : 1 / zoom}
+                strokeDasharray={
+                  drag.current?.kind === 'marquee' || drag.current?.kind === 'create' ? undefined : `${4 / zoom} ${3 / zoom}`
+                }
+                pointerEvents="none"
+              />
+              {drag.current?.kind === 'marquee' && <path data-testid="canvas-marquee-border"
+                d={crispOutlinePath(boxPoints(rubber), displayView, SELECTION_UNION_STROKE_PX)}
+                fill={SELECTION_BLUE} stroke="none" shapeRendering="crispEdges" pointerEvents="none" />}
+            </>}{drag.current?.kind === 'create' && <text x={rubber.x + rubber.width / 2} y={rubber.y + rubber.height + 18 / zoom}
               textAnchor="middle" fontSize={11 / zoom} fill="#0d99ff" pointerEvents="none" data-testid="creation-dimensions" data-width={rubber.width} data-height={rubber.height}>
               {Number(rubber.width.toFixed(2))} × {Number(rubber.height.toFixed(2))}
             </text>}</g>

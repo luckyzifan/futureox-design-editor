@@ -32,6 +32,54 @@ export function transformOverlay(overlay: CanvasOverlay, matrices: ReadonlyMap<s
     }) }
 }
 
+/** Filled quad for a solid stroke. Axis-aligned edges cover one row or
+ * column of CSS pixels. A centered 1px stroke on a pixel boundary covers
+ * two half-alpha pixels and never lands on solid #4597F7. */
+export function crispStrokeQuad(a: Point, b: Point, stroke: number): [Point, Point, Point, Point] | null {
+  const dx = b.x - a.x, dy = b.y - a.y
+  const length = Math.hypot(dx, dy)
+  if (!(length > 1e-6)) return null
+  const horizontal = Math.abs(dy) <= 1e-4 * Math.max(1, length)
+  const vertical = Math.abs(dx) <= 1e-4 * Math.max(1, length)
+  if (horizontal) {
+    const y0 = Math.floor(a.y)
+    const x0 = Math.floor(Math.min(a.x, b.x))
+    const x1 = Math.floor(Math.max(a.x, b.x)) + stroke
+    return [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y0 + stroke }, { x: x0, y: y0 + stroke }]
+  }
+  if (vertical) {
+    const x0 = Math.floor(a.x)
+    const y0 = Math.floor(Math.min(a.y, b.y))
+    const y1 = Math.floor(Math.max(a.y, b.y)) + stroke
+    return [{ x: x0, y: y0 }, { x: x0 + stroke, y: y0 }, { x: x0 + stroke, y: y1 }, { x: x0, y: y1 }]
+  }
+  const nx = -dy / length * (stroke / 2), ny = dx / length * (stroke / 2)
+  return [
+    { x: a.x + nx, y: a.y + ny }, { x: b.x + nx, y: b.y + ny },
+    { x: b.x - nx, y: b.y - ny }, { x: a.x - nx, y: a.y - ny },
+  ]
+}
+
+export function crispClosedStroke(points: readonly Point[], stroke: number): Point[][] {
+  const quads: Point[][] = []
+  for (let i = 0; i < points.length; i++) {
+    const quad = crispStrokeQuad(points[i], points[(i + 1) % points.length], stroke)
+    if (quad) quads.push(quad)
+  }
+  return quads
+}
+
+/** SVG path in the camera group's user space (`translate(view) scale(zoom)`).
+ * The quads are the same CSS-pixel fills as the selection stroke. */
+export function crispOutlinePath(points: readonly Point[], view: { x: number; y: number; zoom: number }, stroke: number): string {
+  if (!(view.zoom > 0) || !Number.isFinite(view.x) || !Number.isFinite(view.y)) return ''
+  const screen = points.map(point => ({ x: point.x * view.zoom + view.x, y: point.y * view.zoom + view.y }))
+  return crispClosedStroke(screen, stroke).map(quad => {
+    const local = quad.map(point => ({ x: (point.x - view.x) / view.zoom, y: (point.y - view.y) / view.zoom }))
+    return `M${local[0].x} ${local[0].y} L${local[1].x} ${local[1].y} L${local[2].x} ${local[2].y} L${local[3].x} ${local[3].y} Z`
+  }).join('')
+}
+
 /** Chrome is projected with the exact camera used to composite document
  * pixels. It never enters the retained document backbuffer or export data. */
 export function overlayVertices(overlay: CanvasOverlay, view: CanvasCamera, width: number, height: number) {
@@ -47,30 +95,9 @@ export function overlayVertices(overlay: CanvasOverlay, view: CanvasCamera, widt
     const x = (a.y - b.y) / length * distance, y = (b.x - a.x) / length * distance
     quad([{ x: a.x + x, y: a.y + y }, { x: b.x + x, y: b.y + y }, { x: b.x - x, y: b.y - y }, { x: a.x - x, y: a.y - y }], color, { distance, halfWidth: stroke / 2 })
   }
-  /** One CSS pixel of solid color. The coverage ramp left a 1px stroke
-   * straddling a pixel boundary as two ~50% pixels and no solid #4597F7. */
   const solidLine = (a: Point, b: Point, stroke: number, color: number[]) => {
-    const dx = b.x - a.x, dy = b.y - a.y
-    const length = Math.hypot(dx, dy)
-    if (!(length > 1e-6)) return
-    const horizontal = Math.abs(dy) <= 1e-4 * Math.max(1, length)
-    const vertical = Math.abs(dx) <= 1e-4 * Math.max(1, length)
-    if (horizontal) {
-      const y0 = Math.floor(a.y)
-      const x0 = Math.floor(Math.min(a.x, b.x))
-      const x1 = Math.floor(Math.max(a.x, b.x)) + stroke
-      quad([{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y0 + stroke }, { x: x0, y: y0 + stroke }], color)
-      return
-    }
-    if (vertical) {
-      const x0 = Math.floor(a.x)
-      const y0 = Math.floor(Math.min(a.y, b.y))
-      const y1 = Math.floor(Math.max(a.y, b.y)) + stroke
-      quad([{ x: x0, y: y0 }, { x: x0 + stroke, y: y0 }, { x: x0 + stroke, y: y1 }, { x: x0, y: y1 }], color)
-      return
-    }
-    const nx = -dy / length * (stroke / 2), ny = dx / length * (stroke / 2)
-    quad([{ x: a.x + nx, y: a.y + ny }, { x: b.x + nx, y: b.y + ny }, { x: b.x - nx, y: b.y - ny }, { x: a.x - nx, y: a.y - ny }], color)
+    const points = crispStrokeQuad(a, b, stroke)
+    if (points) quad(points, color)
   }
   if (overlay.pixelGrid && view.zoom >= 4) {
     const color = [91 / 255 * .16, 88 / 255 * .16, 114 / 255 * .16, .16]
