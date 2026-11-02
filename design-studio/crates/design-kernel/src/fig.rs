@@ -18,6 +18,7 @@
 //! - struct: every field in ordinal order; enum(kind 0): uvarint → name
 //! - arrays: uvarint count then items
 mod components;
+mod document;
 
 use crate::math::Transform;
 use crate::scene::{Document, Effect, Node, Page, Paint, Stroke};
@@ -2124,7 +2125,7 @@ pub fn document_from_canvas(
     // here so unsupported variants fail loudly with the offending value.
     let mut unknown: Vec<String> = Vec::new();
     for record in records.values() {
-        if bool_of(record, "internalOnly").unwrap_or(false) {
+        if !document::include_in_scene(record, &records) {
             continue;
         }
         let Some(fig_type) = str_of(record, "type") else {
@@ -2186,15 +2187,13 @@ pub fn document_from_canvas(
     let mut children_of: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
     let mut canvases: Vec<(String, String)> = Vec::new();
     let mut untranslated_by_id: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut internal_pages = Vec::new();
 
     for (id, record) in &records {
-        if bool_of(record, "internalOnly").unwrap_or(false) {
+        if !document::include_in_scene(record, &records) {
             continue;
         }
         let fig_type = str_of(record, "type").unwrap_or("");
-        if fig_type == "DOCUMENT" {
-            continue;
-        }
         let parent = record
             .get("parentIndex")
             .and_then(|pi| pi.get("guid"))
@@ -2262,8 +2261,11 @@ pub fn document_from_canvas(
             // single child so it stays reachable
             kids = vec![canvas_id.clone()];
         }
+        if record.and_then(|r| bool_of(r, "internalOnly")).unwrap_or(false) {
+            internal_pages.push(canvas_id.clone());
+        }
         doc.pages.push(Page {
-            guides: vec![],
+            guides: document::page_guides(record.unwrap_or(&Value::Null), canvas_id)?,
             id: canvas_id.clone(),
             name: canvas_name,
             children: kids,
@@ -2289,8 +2291,11 @@ pub fn document_from_canvas(
         }
     }
     doc.nodes = nodes;
+    let mut document_notes = Vec::new();
+    document::import_styles(&mut doc, &records, &importer, &mut document_notes)?;
     components::import(&mut doc, &records, &importer)?;
     normalize_mask_suffixes(&mut doc)?;
+    document::apply_component_sets(&mut doc, &records, &mut document_notes)?;
     // honest serialization version: bindings/booleans/text styles need 4,
     // stroke markers 8, slices 10 (scene.rs validate gates)
     let mut version = 1u32;
@@ -2375,9 +2380,8 @@ pub fn document_from_canvas(
         doc.design_system.get_or_insert_with(Default::default).sketch_containers.insert("nodeMetadata".into(), Value::Object(metadata));
         version=version.max(4);
     }
-    if doc.requires_schema20() {
-        version = version.max(20);
-    }
+    document::write_receipt(&mut doc, &records, tree, &internal_pages, &document_notes);
+    document::raise_schema(&doc, &mut version);
     doc.schema_version = version;
     doc.validate().map_err(|e| Error::Unsupported(format!("imported document: {e}")))?;
     Ok(doc)
