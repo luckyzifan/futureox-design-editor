@@ -3,6 +3,7 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-02 [玻璃与圆角](../../../testing/verification-figma-glass-corners-20261102/README.md)只把零平滑、无网络的矩形/画板/分区玻璃扩到拟合后的四角半径。均匀半径的字段和 JSON 不变。平滑与其它形状仍走距离场。画布手柄不改光栅预算。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 [色域与透明度](../../../testing/verification-color-gamut-opacity-20261102/README.md)不改光栅预算、瓦片导航或实验开关。8 位画布仍是 sRGB。Display P3 只在导出时换算并标记。图层透明度乘进填充、描边和阴影，不是渲染故障修复。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 [.fd 往返](../../../testing/verification-fd-roundtrip-20261102/README.md)只改原生容器的数值变体和被忽略字段的保留。不改光栅、瓦片、预算或实验开关，也不是 33/100ms 或完整 G2/G5。
 2026-11-02 [图层、属性与右键菜单](../../../testing/verification-figma-layers-properties-menu-20261102/README.md)只改检查器、图层面板和画布装饰。选中的画板标题和单个形状名称用 `#0d99ff`。旋转读数跟手，正值为顺时针，不改选择框与纹理的时序。33/100ms 与完整 G2/G5 仍未通过。
