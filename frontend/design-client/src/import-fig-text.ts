@@ -14,6 +14,19 @@ const weight = (style: string | undefined) => {
   return 400
 }
 const fontName = (font: any): string | undefined => font?.postscript || [font?.family,font?.style].filter(Boolean).join(' ') || undefined
+const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
+/** Figma PIXELS / PERCENT / RAW. 100% and RAW 1 are one em, not font-metric auto. */
+function lineHeightMultiplier(value: any, size: number): number | undefined {
+  if (!value || typeof value !== 'object' || !finite(value.value) || !(size >= 1)) return
+  if (value.units === 'PIXELS') return value.value / size
+  if (value.units === 'PERCENT') return value.value / 100
+  if (value.units === 'RAW') return value.value
+}
+function letterSpacingPixels(value: any, size: number): number | undefined {
+  if (!value || typeof value !== 'object' || !finite(value.value)) return
+  if (value.units === 'PIXELS') return value.value
+  if (value.units === 'PERCENT' && size >= 1) return size * value.value / 100
+}
 const casing = (value: unknown): TextRun['textCase'] => value === 'UPPER' ? 'upper' : value === 'LOWER' ? 'lower' : value === 'ORIGINAL' ? 'original' : undefined
 
 /** Embedded-schema UTF-16 style IDs, indexed once rather than searching the
@@ -41,10 +54,16 @@ export function importFigTextRuns(node: DesignNode, record: any, warnings: Impor
     } else if (fill) warnings.add('文字片段非纯色填充尚需核对')
     if (style.textDecoration === 'UNDERLINE') run.underline=true
     if (style.textDecoration === 'STRIKETHROUGH') run.strikethrough=true
+    const metricSize = Number.isFinite(style.fontSize) ? style.fontSize : node.fontSize
+    const lineHeight = lineHeightMultiplier(style.lineHeight, metricSize)
+    if (style.lineHeight !== undefined && (lineHeight === undefined || lineHeight < 0.1 || lineHeight > 10)) warnings.add('文字片段 lineHeight 尚需核对')
+    else if (lineHeight !== undefined) run.lineHeight = lineHeight
+    const tracking = letterSpacingPixels(style.letterSpacing, metricSize)
+    if (style.letterSpacing !== undefined && (tracking === undefined || Math.abs(tracking) > 1000)) warnings.add('文字片段 letterSpacing 尚需核对')
+    else if (tracking !== undefined) run.letterSpacing = tracking
     const font=fontName(style.fontName)
     if (font) fonts[String(runs.length)]=font
-    for (const key of ['lineHeight','letterSpacing','textAlignHorizontal'])
-      if (style[key] !== undefined) warnings.add(`文字片段 ${key} 尚需核对`)
+    if (style.textAlignHorizontal !== undefined) warnings.add('文字片段 textAlignHorizontal 尚需核对')
     runs.push(run); previous=id
   }
   if (runs.length) node.textRuns=runs
