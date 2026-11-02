@@ -154,5 +154,6 @@ describe('figma plugin host', () => {
     for (const entry of pluginApiCoverage) expect(doc).toContain(`\`${entry.api}\` | ${entry.status} |`)
     expect(doc).toContain('labeled-rectangles')
     expect(doc).toContain('Plugins')
+    expect(doc).toContain('does not execute plugin code')
   })
 })
