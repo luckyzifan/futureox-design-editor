@@ -2,7 +2,7 @@ import type { CanvasCamera } from '../../canvas-camera'
 import type { Point, Matrix } from '../../model'
 import { apply, multiply } from '../../geometry'
 import { measurementTicks, SPACING_RED, type MeasurementAxis } from '../../canvas-measurements'
-import { SELECTION_BLUE, srgbUnit } from '../../selection-blue'
+import { SELECTION_BLUE, SELECTION_UNION_STROKE_PX, srgbUnit } from '../../selection-blue'
 import { CanvasLabels, type CanvasLabel } from './canvas-labels'
 
 export type CanvasGuide = { axis:'x'|'y'; position:number; start:number; end:number }
@@ -56,8 +56,8 @@ export function overlayVertices(overlay: CanvasOverlay, view: CanvasCamera, widt
   }
   if (overlay.selection) {
     const points = overlay.selection.corners.map(p => ({ x: p.x * view.zoom + view.x, y: p.y * view.zoom + view.y }))
-    // Mac Figma: 2px selection-blue outline, 8px white corner squares with a 1px blue rim.
-    for (let i = 0; i < points.length; i++) line(points[i], points[(i + 1) % points.length], 2, blue)
+    // Mac Figma gaps5: ~1pt selection-blue outline, 8px white corner squares with a 1px blue rim.
+    for (let i = 0; i < points.length; i++) line(points[i], points[(i + 1) % points.length], SELECTION_UNION_STROKE_PX, blue)
     if (overlay.selection.handles) for (let i = 0; i < points.length; i++) {
       const point = points[i], next = points[(i + 1) % points.length], previous = points[(i + points.length - 1) % points.length]
       const unit = (p: Point) => { const length = Math.hypot(p.x-point.x,p.y-point.y); return length > 1e-10 ? {x:(p.x-point.x)/length,y:(p.y-point.y)/length} : undefined }

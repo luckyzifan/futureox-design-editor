@@ -1,12 +1,13 @@
 import type { CanvasCamera } from '../../canvas-camera'
 import type { Point } from '../../model'
 import { SELECTION_BLUE } from '../../selection-blue'
+import { SPACING_RED } from '../../canvas-measurements'
 
 export type CanvasLabel = {
   anchor: Point; offset: Point; text: string; size: number; color: string
   basis?: [number, number, number, number]; centered?: boolean; halo?: boolean; owners?: string[]
-  /** Paper chip behind a selection name. The size chip is the selection-blue accent. Measurement labels stay bare. */
-  frame?: 'pill' | 'accent'
+  /** Paper chip behind a selection name. The size chip is selection blue. Distance chips are the spacing red. */
+  frame?: 'pill' | 'accent' | 'measure'
   /** DOM/GPU identity only. The resident wire copy does not require this field. */
   kind?: 'frame-title' | 'section-title' | 'selection-name' | 'selection-size' | 'measurement'
   /** Section title chip. Absent for ordinary frame names. */
@@ -19,7 +20,8 @@ function measureLabel(label:CanvasLabel,density:number,measure:OffscreenCanvasRe
   const font=`${label.size}px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif`
   measure.font=font
   const metrics=measure.measureText(label.text)
-  const padX=label.chip?6:label.frame==='pill'||label.frame==='accent'?8:label.halo?3:2
+  const framed=label.frame==='pill'||label.frame==='accent'||label.frame==='measure'
+  const padX=label.chip?6:framed?8:label.halo?3:2
   const padY=label.chip?3:padX
   const left=padX+metrics.actualBoundingBoxLeft,top=padY+metrics.actualBoundingBoxAscent
   const width=Math.max(1,Math.ceil((metrics.actualBoundingBoxLeft+metrics.actualBoundingBoxRight+padX*2)*density))
@@ -43,7 +45,7 @@ function rasterLabel(label:CanvasLabel,density:number,metrics:ReturnType<typeof 
   const canvas=new OffscreenCanvas(width,height),context=canvas.getContext('2d')!
   context.setTransform(density,0,0,density,0,0);context.font=font
   if(label.chip)fillChip(context,width/density,height/density,label.chip)
-  else if(label.frame==='pill'||label.frame==='accent'){
+  else if(label.frame==='pill'||label.frame==='accent'||label.frame==='measure'){
     const cssW=width/density,cssH=height/density,radius=Math.min(7,cssW/2,cssH/2),inset=.5
     context.beginPath()
     context.moveTo(inset+radius,inset)
@@ -52,7 +54,7 @@ function rasterLabel(label:CanvasLabel,density:number,metrics:ReturnType<typeof 
     context.arcTo(inset,cssH-inset,inset,inset,radius)
     context.arcTo(inset,inset,cssW-inset,inset,radius)
     context.closePath()
-    context.fillStyle=label.frame==='accent'?SELECTION_BLUE:'#fffcf9';context.fill()
+    context.fillStyle=label.frame==='accent'?SELECTION_BLUE:label.frame==='measure'?SPACING_RED:'#fffcf9';context.fill()
     if(label.frame==='pill'){context.strokeStyle='#e4ddd3';context.lineWidth=1;context.stroke()}
   }
   context.fillStyle=label.color
