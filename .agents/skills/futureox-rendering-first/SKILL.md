@@ -3,6 +3,7 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-02 Electron 主线程缩放/拖动/打开 `.fig` 见[记录](../../../testing/verification-electron-perf-flame-20261102/README.md)。只少做整份文档 `JSON.stringify` 和预览期间的图层面板刷新，不改像素、瓦片、预算或实验开关。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 [Electron SQLite 工作线程](../../../testing/verification-electron-sqlite-worker-20261102/README.md)只改桌面存储调度和主进程文档 JSON。不改光栅、瓦片、预算或实验开关。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 Local plugin auto-load does not change raster, tile, sticky pose, or compositing paths. It is not a 33/100ms or G2/G5 result. See [the note](../../../testing/verification-local-plugin-autoload-20261102/README.md).
 2026-11-02 [界面暖色外壳](../../../testing/verification-ui-chrome-grok-20261102/README.md)不改光栅、瓦片、预算或实验开关。选择描边颜色未改。33/100ms 与完整 G2/G5 仍未通过。

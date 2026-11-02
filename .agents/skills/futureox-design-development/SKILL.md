@@ -3,6 +3,7 @@ name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
 
+2026-11-02 Electron 缩放、拖动和打开 `.fig` 的主线程序列化见[记录](../../../testing/verification-electron-perf-flame-20261102/README.md)。相机提交不再打开编辑图；稳定后再用已校验 JSON 拼接页面投影。父级不变的平移留在 translation-only，预览事务期间图层和检查器保持打开前的快照。导入准入复用已交给布局内核的 JSON，组件仍走既有补丁；`bun run dev` 不再默认打开渲染诊断。未改光栅、瓦片或预算。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [Electron SQLite 工作线程](../../../testing/verification-electron-sqlite-worker-20261102/README.md)把 `workspace.*`、`automation.*` 和 `catalog.list` 放到单独的 FIFO 线程上驱动 SQLx，等待锁时不再占用 Tokio blocking 名额。至少 32 KiB 的工作区文档 JSON 在 Electron worker 中解析和装帧。不改 WAL、`synchronous=FULL`、单连接或文档语义。不是 33/100ms 或完整 G2/G5。
 2026-11-02 Electron scans the user-data `plugins` folder at startup and enables each child directory that declares a valid Figma manifest. The Plugins menu and plugin host can run those plugins. The scan does not execute plugin code or change the canvas. See [the note](../../../testing/verification-local-plugin-autoload-20261102/README.md). Raster, tiles, and budgets are unchanged. 33/100ms and full G2/G5 remain open.
 2026-11-02 [界面暖色外壳](../../../testing/verification-ui-chrome-grok-20261102/README.md)只改共享 `design-client` 的面板、工具轨、对话框、空状态和选择名称/尺寸描边框。主强调色仍是 `#3459d4`。选择描边仍是 `#0d99ff`。未改光栅、瓦片或预算。33/100ms 与完整 G2/G5 未通过。
