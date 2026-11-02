@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
-import { blank, node, type DesignDocument } from './model'
+import { blank, defaultLayout, node, type DesignDocument } from './model'
+import { layerTreeRows } from './layer-tree'
 import { Editor } from './engine'
 import { layerDropPlan, layerDropPosition, orderedLayerRoots } from './layer-drop'
 import { worldMatrix } from './geometry'
@@ -32,6 +33,20 @@ test('above/below/inside use visible row geometry and reversed painter order', (
   expect(worldMatrix(editor.state.doc, f.a.id)).toEqual(matrix)
   editor.undo(); expect(display(editor.state.doc)).toEqual(display(f.doc))
   editor.dispose()
+})
+
+test('auto-layout rows follow flow order and above inserts earlier in that order', () => {
+  const f = fixture()
+  f.frame.layout = { ...defaultLayout(), mode: 'horizontal' }
+  f.frame.children = [f.a.id, f.b.id, f.c.id]
+  f.doc.pages[0].children = [f.frame.id]
+  expect(layerTreeRows(f.doc, f.page, new Set(), '').map(row => row.id)).toEqual([f.frame.id, f.a.id, f.b.id, f.c.id])
+  expect(layerDropPlan(f.doc, f.page, [f.c.id], f.a.id, 'below')).toEqual({ parent: f.frame.id, before: f.b.id })
+  expect(layerDropPlan(f.doc, f.page, [f.c.id], f.a.id, 'above')).toEqual({ parent: f.frame.id, before: f.a.id })
+  const free = fixture()
+  free.frame.children = [free.a.id, free.b.id, free.c.id]
+  free.doc.pages[0].children = [free.frame.id]
+  expect(layerTreeRows(free.doc, free.page, new Set(), '').slice(1).map(row => row.id)).toEqual([free.c.id, free.b.id, free.a.id])
 })
 
 test('multi-drag order is independent of click sequence and root drop can exit a frame', () => {

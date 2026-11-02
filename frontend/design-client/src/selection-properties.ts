@@ -1,5 +1,6 @@
 import { defaultSizing, defaultTextStyle, type DesignDocument, type DesignNode, type Matrix } from './model'
-import { localBounds, parentBounds, rotationDegrees, selectionLocalBounds, selectionParentBounds } from './canvas-view'
+import { localBounds, parentBounds, selectionLocalBounds, selectionParentBounds } from './canvas-view'
+import { figmaRotationDegrees } from './rotation-field'
 import { propertyUnits, type PropertyUnits } from './property-units'
 import { multiply } from './geometry'
 import { kernelScaleGeometry } from './kernel/picking'
@@ -27,7 +28,7 @@ export function resizeGestureAxes(handle: number, proportional: boolean, world?:
 }
 export type SelectionMetric = 'x' | 'y' | 'width' | 'height' | 'rotation' | 'opacity'
 export function selectionMetric(node: DesignNode, field: SelectionMetric, doc?: DesignDocument, resolvedUnits?: PropertyUnits): number {
-  if (field === 'rotation') return rotationDegrees(node)
+  if (field === 'rotation') return figmaRotationDegrees(node.transform)
   if (field === 'opacity') return node.opacity * 100
   const units = resolvedUnits ?? (doc ? propertyUnits(doc, node.id) : { parentX: 1, parentY: 1, width: 1, height: 1 })
   if (field === 'x' || field === 'y') return (doc ? selectionParentBounds(doc, node.id, node.transform) : parentBounds(node))[field] * (field === 'x' ? units.parentX : units.parentY)

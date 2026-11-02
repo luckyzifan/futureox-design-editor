@@ -1,4 +1,5 @@
 import { allParents, type ParentMap } from './geometry'
+import { layerFlowOrder } from './layer-order'
 import { container, type DesignDocument } from './model'
 
 export type LayerDropPosition = 'above' | 'inside' | 'below'
@@ -18,7 +19,8 @@ export function layerDropPosition(isContainer: boolean, fraction: number): Layer
   return isContainer && fraction >= .25 && fraction <= .75 ? 'inside' : fraction < .5 ? 'above' : 'below'
 }
 
-/** Rows run front-to-back while children are stored back-to-front. */
+/** Freeform rows run front-to-back. Auto-layout rows run in flow order.
+ * `before` is the storage sibling the drop is inserted ahead of. */
 export function layerDropPlan(doc: DesignDocument, page: string, dragged: readonly string[], target: string | null,
   position: LayerDropPosition, parents?: ParentMap): { parent: string; before?: string } | undefined {
   if (!dragged.length) return
@@ -30,9 +32,11 @@ export function layerDropPlan(doc: DesignDocument, page: string, dragged: readon
   for (let id: string | undefined = parent; id; id = parents.get(id))
     if (selected.has(id) || doc.nodes[id]?.locked) return
   const siblings = (doc.nodes[parent]?.children || doc.pages.find(p => p.id === parent)?.children || []).filter(id => !selected.has(id))
-  if (!target) return { parent, before: siblings[0] }
+  const flow = layerFlowOrder(doc.nodes[parent])
+  if (!target) return { parent, before: flow ? undefined : siblings[0] }
   if (position === 'inside') return { parent }
   const at = siblings.indexOf(target)
   if (at < 0) return
-  return { parent, before: position === 'below' ? target : siblings[at + 1] }
+  const next = siblings[at + 1]
+  return { parent, before: position === 'above' ? (flow ? target : next) : (flow ? next : target) }
 }

@@ -1,7 +1,7 @@
 :root {
   --import-notice-width: 420px;
   --workspace-panel: #fff;
-  --workspace-canvas: #f1f2f4;
+  --workspace-canvas: #e5e5e5;
   --workspace-text: #262a31;
   --workspace-muted: #666e79;
   --workspace-border: #e2e5e9;
@@ -502,8 +502,8 @@ main {
   opacity: 1;
   padding: 0;
 }
-.hidden-layer {
-  opacity: 0.5;
+.hidden-layer .layer-name {
+  opacity: 0.45;
 }
 .layer-footer {
   display: flex;
@@ -645,6 +645,7 @@ main {
   gap: 7px;
   margin: 8px 0;
 }
+.position-grid { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.1fr) minmax(0, 0.8fr); }
 .number-field {
   display: flex;
   align-items: center;
@@ -1665,6 +1666,19 @@ footer button {
 .layout-flow { display: flex; gap: 2px; padding: 2px; background: var(--workspace-hover); border-radius: 6px; margin: 8px 0; }
 .layout-flow button { flex: 1; height: 28px; padding: 4px; color: var(--workspace-muted); }
 .layout-flow button[aria-checked=true] { background: var(--workspace-panel); color: var(--workspace-accent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--workspace-accent) 40%, var(--workspace-border)); }
+.align-pad { display: grid; grid-template-columns: repeat(3, 16px); gap: 7px; width: fit-content; margin: 8px 0; padding: 8px; border: 1px solid var(--workspace-border); border-radius: 6px; background: var(--workspace-field); }
+.align-pad button { width: 16px; height: 16px; padding: 0; border-radius: 50%; background: #d5d8de; }
+.align-pad button[aria-pressed=true] { background: var(--workspace-accent); }
+.constraint-box { position: relative; width: 74px; height: 74px; margin: 8px 0 2px; border: 1px solid var(--workspace-border); border-radius: 4px; background: var(--workspace-field); }
+.constraint-box .constraint-edge { position: absolute; padding: 0; background: #c8cdd4; border-radius: 1px; }
+.constraint-box .constraint-edge[aria-pressed=true] { background: var(--workspace-accent); }
+.constraint-box .edge-top, .constraint-box .edge-bottom { left: 18px; right: 18px; height: 3px; }
+.constraint-box .edge-top { top: 8px; }
+.constraint-box .edge-bottom { bottom: 8px; }
+.constraint-box .edge-left, .constraint-box .edge-right { top: 18px; bottom: 18px; width: 3px; }
+.constraint-box .edge-left { left: 8px; }
+.constraint-box .edge-right { right: 8px; }
+.constraint-box .edge-center { left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; }
 
 /* Shared controls stay readable at the density of a desktop design tool. */
 .workspace-rail { gap: 6px; }
@@ -1768,10 +1782,10 @@ footer button {
 .canvas-color-pick-point{position:absolute;z-index:59;pointer-events:none;width:7px;height:7px;transform:translate(-50%,-50%);border:1px solid #181818;box-shadow:0 0 0 1px white;border-radius:1px}
 .canvas-zoom{cursor:zoom-in}.canvas-zoom.canvas-zoom-out{cursor:zoom-out}
 .canvas-guide-layer{position:absolute;inset:0;z-index:13;pointer-events:none;outline:none}.ruler-guide-lines{position:absolute;inset:0;pointer-events:none}
-.canvas-ruler{position:absolute;background:#f7f7f7;border-color:#dedede;color:#65676b;pointer-events:auto;touch-action:none;overflow:hidden;font-size:9px;font-variant-numeric:tabular-nums;user-select:none}
-.canvas-ruler.horizontal{left:0;right:0;top:0;height:20px;border-bottom:1px solid #dedede;cursor:ns-resize}.canvas-ruler.vertical{left:0;top:0;bottom:0;width:20px;border-right:1px solid #dedede;cursor:ew-resize}
-.canvas-ruler span{position:absolute;pointer-events:none}.canvas-ruler.horizontal span{border-left:1px solid #bbb;padding-left:2px;top:5px;height:15px}.canvas-ruler.vertical span{border-top:1px solid #bbb;padding-top:2px;left:3px;width:17px;writing-mode:vertical-rl}
-.ruler-origin{position:absolute;left:0;top:0;width:20px;height:20px;background:#e9e9e9;border-right:1px solid #ddd;border-bottom:1px solid #ddd}
+.canvas-ruler{position:absolute;background:#fff;border-color:#e6e6e6;color:#959595;pointer-events:auto;touch-action:none;overflow:hidden;font-size:9px;font-variant-numeric:tabular-nums;user-select:none}
+.canvas-ruler.horizontal{left:0;right:0;top:0;height:20px;border-bottom:1px solid #e6e6e6;cursor:ns-resize}.canvas-ruler.vertical{left:0;top:0;bottom:0;width:20px;border-right:1px solid #e6e6e6;cursor:ew-resize}
+.canvas-ruler span{position:absolute;pointer-events:none}.canvas-ruler.horizontal span{border-left:1px solid #d0d0d0;padding-left:2px;top:5px;height:15px}.canvas-ruler.vertical span{border-top:1px solid #d0d0d0;padding-top:2px;left:3px;width:17px;writing-mode:vertical-rl}
+.ruler-origin{position:absolute;left:0;top:0;width:20px;height:20px;background:#fff;border-right:1px solid #e6e6e6;border-bottom:1px solid #e6e6e6}
 .guide-properties{position:absolute;top:28px;left:28px;display:flex;align-items:center;gap:8px;padding:8px;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 2px 8px #0002;pointer-events:auto;font-size:11px}.guide-properties .number-field{width:130px}
 .canvas-rotation-hint{position:absolute;z-index:60;pointer-events:none;background:#0d99ff;color:white;border-radius:3px;padding:3px 6px;font-size:11px;font-variant-numeric:tabular-nums}
 .canvas[data-transform-gesture="rotate"] .selection *{cursor:inherit!important}
