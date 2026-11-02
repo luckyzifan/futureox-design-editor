@@ -2136,7 +2136,11 @@ export class Editor {
     const shared = selected.length && selected.every(id => parents.get(id) === parents.get(selected[0])) ? parents.get(selected[0]) : undefined
     const targets=replace?selected:selected.length && selected.every(id=>container(before.nodes[id]) && !content.roots.includes(id)) ? selected
       : shared && before.nodes[shared] && !content.roots.includes(shared) ? [shared] : []
-    if(!targets.length){if(replace)this.notify('请选择要替换的图层');else this.paste(false);return}
+    if(!targets.length){
+      if(replace){this.notify('请选择要替换的图层');return}
+      if(this.pasteUnderSourceParents(content, before))return
+      this.paste(false);return
+    }
     for(const target of targets) {
       for(let id:string|undefined=target;id && before.nodes[id];id=parents.get(id)) {
         const n=before.nodes[id]
@@ -2215,6 +2219,66 @@ export class Editor {
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
   }
+  /** Multi-selection paste whose live sources sit under different parents.
+   * Each copy stays in that source's parent. `step` is parent-space X/Y;
+   * paste-in-place passes 0. A single shared parent, a chosen container, or a
+   * foreign clipboard keeps the existing destination. */
+  private pasteUnderSourceParents(content: { roots: string[]; placements?: Record<string, { transform: Matrix }> }, before: DesignDocument, step = this.duplicateOffset, advanceStep = true): boolean {
+    if (content.roots.length < 2) return false
+    const parents = allParents(before)
+    const located = content.roots.map(id => {
+      if (!before.nodes[id]) return null
+      const parent = parents.get(id)
+      return parent ? { id, parent } : null
+    })
+    if (located.some(item => !item)) return false
+    const plan = located as { id: string; parent: string }[]
+    if (plan.every(item => item.parent === plan[0].parent)) return false
+    for (const item of plan) {
+      for (let id: string | undefined = item.parent; id && before.nodes[id]; id = parents.get(id)) {
+        const n = before.nodes[id]
+        if (n.locked || n.instance || n.instanceOrigin) {
+          this.notify('不能向锁定图层或组件实例内部粘贴新结构')
+          return true
+        }
+      }
+    }
+    this.begin(step === 0 ? '粘贴到原位' : '粘贴到各自父级')
+    try {
+      const page = this.state.doc.pages.find(p => p.id === this.state.page)!
+      const existing = new Set(page.children)
+      this.paste(true, undefined, false)
+      const created = this.state.doc.pages.find(p => p.id === this.state.page)!.children.filter(id => !existing.has(id))
+      if (created.length !== content.roots.length) throw new Error(this.state.message || '未能粘贴图层')
+      this.change('放置粘贴图层', d => {
+        const currentPage = d.pages.find(p => p.id === this.state.page)!
+        currentPage.children = currentPage.children.filter(id => !created.includes(id))
+        for (const [i, id] of created.entries()) {
+          const source = content.roots[i], parent = plan[i].parent
+          const list = d.nodes[parent]?.children || d.pages.find(p => p.id === parent)!.children
+          const at = list.indexOf(source)
+          list.splice(at < 0 ? list.length : at + 1, 0, id)
+          const placement = content.placements?.[source]
+          const parentWorld = d.nodes[parent] ? worldMatrix(d, parent) : identity()
+          const local = placement ? cloneValue(placement.transform) : multiply(inverse(parentWorld), d.nodes[id].transform)
+          d.nodes[id].transform = multiply(translate(step, step), local)
+        }
+      }, created)
+      const committed = this.commit()
+      if (!committed) throw new Error(this.state.message || '未能粘贴图层')
+      if (created.some((id, i) => allParents(this.state.doc).get(id) !== plan[i].parent)) {
+        this.undo()
+        throw new Error('粘贴父级无效')
+      }
+      if (advanceStep) this.duplicateOffset += 10
+      this.select(created)
+      return true
+    } catch (error) {
+      this.cancel()
+      this.notify(error instanceof Error ? error.message : String(error))
+      return true
+    }
+  }
   /** A single unlocked frame, section, or group. Paste in place parents into it
    * and keeps world position. A selected shape stays a page-level paste. */
   private openContainerSelection(): string | undefined {
@@ -2233,6 +2297,9 @@ export class Editor {
     }
     const content = this.clipboard
     const placeIn = inPlace && !position && nestInSelection ? this.openContainerSelection() : undefined
+    // Mac Paste Over Selection / paste-in-place keeps a multi-parent copy
+    // under each source frame. A single selected container still receives it.
+    if (inPlace && !position && nestInSelection && !placeIn && this.pasteUnderSourceParents(content, this.state.doc, 0, false)) return
     const offset = inPlace ? 0 : this.duplicateOffset
     let delta = { x: offset, y: offset }
     if (position) {
@@ -2258,7 +2325,12 @@ export class Editor {
           x: source.transform[4] + delta.x,
           y: source.transform[5] + delta.y,
         }, placeIn)
-        if (position) d.nodes[created].transform = multiply(translate(delta.x, delta.y), source.transform)
+        // insertInstance writes translation only. Mac paste of a rotated
+        // instance keeps the full affine, then steps ordinary paste by delta.
+        const world = multiply(translate(delta.x, delta.y), source.transform)
+        d.nodes[created].transform = placeIn && d.nodes[placeIn]
+          ? multiply(inverse(worldMatrix(d, placeIn)), world)
+          : world
       })
       if (this.state.doc.nodes[created]?.instance) this.select([created])
       if (!inPlace && !position) this.duplicateOffset += 10
@@ -2708,9 +2780,46 @@ export class Editor {
       '转换为矢量',
     )
   }
+  /** World-space contour as a geometry operand. The kernel reads the network. */
+  private contourVector(rings: Point[][]): DesignNode {
+    const box = bounds(rings.flat())
+    const vector = node('vector', box.x, box.y, Math.max(0.01, box.width), Math.max(0.01, box.height))
+    vector.strokes = []
+    vector.fills = [paint()]
+    vector.network = contoursToNetwork(rings.map(ring => ring.map(point => ({ x: point.x - box.x, y: point.y - box.y }))))
+    return vector
+  }
+  /** Resolve each boolean with its own operation, including nested booleans,
+   * then return world-space operands for a final union. */
+  private async flattenMixedOperands(doc: DesignDocument, ordered: string[], parents: ParentMap): Promise<DesignNode[]> {
+    const leaf = (id: string): DesignNode => ({ ...doc.nodes[id], children: [], transform: worldMatrix(doc, id, parents) })
+    const operands = async (id: string): Promise<DesignNode[]> => {
+      const n = doc.nodes[id]
+      if (!n || !n.visible || n.kind === 'text' || n.kind === 'slice' || n.instance || n.component) return []
+      if (n.booleanOperation && n.children.length) {
+        const parts: DesignNode[] = []
+        for (const child of n.children) parts.push(...await operands(child))
+        if (parts.length > 64) throw new Error('一次最多展平 64 个形状')
+        if (parts.length <= 1) return parts
+        const results = await this.runGeometry({ operation: n.booleanOperation, nodes: parts })
+        const rings = results[0] || []
+        return rings.length ? [this.contourVector(rings)] : []
+      }
+      if ((n.kind === 'group' || n.kind === 'frame' || n.kind === 'section') && n.children.length) {
+        const parts: DesignNode[] = []
+        if ((n.kind === 'frame' || n.kind === 'section') && n.fills.some(fill => fill.visible && fill.opacity > 0)) parts.push(leaf(id))
+        for (const child of n.children) parts.push(...await operands(child))
+        return parts
+      }
+      return [leaf(id)]
+    }
+    const inputs: DesignNode[] = []
+    for (const id of ordered) inputs.push(...await operands(id))
+    return inputs
+  }
   /** Bake the selection into one vector. A single boolean uses its own
-   * operation. Other selections union their shape leaves. Nested booleans
-   * mixed with other layers are refused. */
+   * operation. Other selections union their shape leaves. A boolean mixed
+   * with other layers is baked with its own operation first, then unioned. */
   async flattenSelection() {
     if (this.disposed || this.state.busy || this.interactionActive) return
     const ids = this.topSelection()
@@ -2732,10 +2841,7 @@ export class Editor {
     const siblings = doc.nodes[parent]?.children || doc.pages.find(page => page.id === parent)?.children
     if (!siblings) return
     const ordered = [...ids].sort((a, b) => siblings.indexOf(a) - siblings.indexOf(b))
-    if (ordered.length > 1 && ordered.some(id => doc.nodes[id].booleanOperation)) {
-      this.notify('请单独展平布尔运算')
-      return
-    }
+    const mixed = ordered.length > 1 && ordered.some(id => !!doc.nodes[id].booleanOperation)
     const shapeLeaves = (id: string, into: string[], seen: Set<string>) => {
       if (seen.has(id)) return
       const n = doc.nodes[id]
@@ -2771,10 +2877,21 @@ export class Editor {
     this.set({ busy: true, message: '正在展平…' })
     try {
       if (!current()) return
-      const results = await this.runGeometry({
-        operation,
-        nodes: sources.map(id => ({ ...doc.nodes[id], children: [], transform: worldMatrix(doc, id, parents) })),
-      })
+      let results: Point[][][]
+      if (mixed) {
+        const inputs = await this.flattenMixedOperands(doc, ordered, parents)
+        if (!current()) return
+        if (!inputs.length || inputs.length > 64) {
+          this.notify(inputs.length > 64 ? '一次最多展平 64 个形状' : '没有可展平的形状')
+          return
+        }
+        results = await this.runGeometry({ operation: 'union', nodes: inputs })
+      } else {
+        results = await this.runGeometry({
+          operation,
+          nodes: sources.map(id => ({ ...doc.nodes[id], children: [], transform: worldMatrix(doc, id, parents) })),
+        })
+      }
       if (!current()) return
       if (this.state.doc !== before) throw new Error('文档已发生变化，请重新展平')
       const contours = results[0] || []
