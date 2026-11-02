@@ -4494,6 +4494,10 @@
                       "minimum": -10000000,
                       "maximum": 10000000
                     },
+                    "showShadowBehindNode": {
+                      "type": "boolean",
+                      "description": "Optional FIG drop-shadow flag. Preserved on import; the renderer does not yet branch shadow clipping on this value."
+                    },
                     "glass": {
                       "anyOf": [
                         {
@@ -9040,6 +9044,10 @@
                       "type": "number",
                       "minimum": -10000000,
                       "maximum": 10000000
+                    },
+                    "showShadowBehindNode": {
+                      "type": "boolean",
+                      "description": "Optional FIG drop-shadow flag. Preserved on import; the renderer does not yet branch shadow clipping on this value."
                     },
                     "glass": {
                       "anyOf": [
