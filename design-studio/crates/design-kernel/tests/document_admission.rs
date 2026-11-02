@@ -49,6 +49,6 @@ fn legacy_32mib_threshold_is_not_a_document_business_limit() {
     let source = serde_json::to_string(&document).unwrap();
     assert!(source.len() > 32 * 1024 * 1024);
     validate_document_json(&source).unwrap();
-    let encoded = futureox_design_kernel::binfmt::encode_value(&document);
+    let encoded = futureox_design_kernel::binfmt::encode_value(&document).unwrap();
     assert_eq!(futureox_design_kernel::binfmt::decode_value(&encoded).unwrap(), document);
 }
