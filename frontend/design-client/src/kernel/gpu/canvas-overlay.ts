@@ -8,7 +8,7 @@ import { CanvasLabels, type CanvasLabel } from './canvas-labels'
 export type CanvasGuide = { axis:'x'|'y'; position:number; start:number; end:number }
 export type CanvasOverlay = { selection?: { corners: Point[]; handles: boolean; owners?: string[] }; pixelGrid: boolean
   guides?: readonly CanvasGuide[]
-  labels?: CanvasLabel[]; measurements?: {from:Point;to:Point;axis?:MeasurementAxis}[]; transforms?:Record<string,Matrix> }
+  labels?: CanvasLabel[]; measurements?: {from:Point;to:Point;axis?:MeasurementAxis;tick?:boolean}[]; transforms?:Record<string,Matrix> }
 const blue = srgbUnit(SELECTION_BLUE), white = [1, 1, 1, 1], spacingRed = srgbUnit(SPACING_RED)
 
 export function translateOverlay(overlay: CanvasOverlay, offsets: Map<string, Point>): CanvasOverlay {
@@ -71,7 +71,7 @@ export function overlayVertices(overlay: CanvasOverlay, view: CanvasCamera, widt
   const project = (point: Point) => ({ x: point.x * view.zoom + view.x, y: point.y * view.zoom + view.y })
   for (const measurement of overlay.measurements || []) {
     line(project(measurement.from), project(measurement.to), 1, spacingRed)
-    if (measurement.axis) for (const [start, end] of measurementTicks({ from: measurement.from, to: measurement.to, axis: measurement.axis }, view.zoom))
+    if (measurement.axis && measurement.tick !== false) for (const [start, end] of measurementTicks({ from: measurement.from, to: measurement.to, axis: measurement.axis }, view.zoom))
       line(project(start), project(end), 1, spacingRed)
   }
   for (const guide of overlay.guides || []) {

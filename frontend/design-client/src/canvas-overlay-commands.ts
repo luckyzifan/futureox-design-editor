@@ -1,6 +1,6 @@
 import type { Bounds, DesignDocument, Point } from './model'
 import { apply, type SceneEntry } from './geometry'
-import { DISTANCE_PILL_TEXT, measureBounds, measurementLabel, type Measurement } from './canvas-measurements'
+import { DISTANCE_PILL_TEXT, spacingDiagram, type Measurement } from './canvas-measurements'
 import { selectionSizeLabel } from './selection-size-label'
 import { SELECTION_BLUE, SIZE_PILL_TEXT } from './selection-blue'
 import type { CanvasLabel } from './kernel/gpu/canvas-labels'
@@ -21,6 +21,7 @@ export type CanvasOverlayInputs = {
   selected: readonly SceneEntry[]; owners: string[]; frameTitles: readonly SceneEntry[]
   localSelection: Bounds | null; selectionCorners: Point[]; selectionBox: Bounds
   measurementTarget: { id: string; bounds: Bounds } | null
+  zoom?: number
 }
 
 /** One command producer for Canvas and capture-ownership tests. Geometry is
@@ -56,8 +57,10 @@ export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlay
   // pre-rotation box while the glyphs turned. Prefix 4 also retires labels
   // from before the warm pill frame.
   const spin = selected[0]?.matrix ? Math.round(Math.atan2(selected[0].matrix[1], selected[0].matrix[0]) * 1800) / 10 : 0
-  const uiIdentity = JSON.stringify([4, input.pixelGrid, selectionIdentity, selectionName, sizeText, spin, titleIdentity, targetIdentity])
-  const measurements = measurementTarget ? measureBounds(selectionBox, measurementTarget.bounds) : []
+  const zoom = Number.isFinite(input.zoom) && (input.zoom ?? 0) > 0 ? input.zoom! : 1
+  const uiIdentity = JSON.stringify([4, input.pixelGrid, selectionIdentity, selectionName, sizeText, spin, titleIdentity, targetIdentity, Math.round(zoom * 100) / 100])
+  const diagram = measurementTarget ? spacingDiagram(selectionBox, measurementTarget.bounds, zoom) : { lines: [] as Measurement[], pills: [] }
+  const measurements = diagram.lines
   const labels: CanvasLabel[] = frameTitles.map(entry => {
     const node = document.nodes[entry.id]
     const chrome = frameChromeLabel(node, selectedIds.has(entry.id))
@@ -72,9 +75,8 @@ export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlay
       text: selectionName, size: 11, color: SELECTION_BLUE, kind: 'selection-name', frame: 'pill', owners })
   if(showSelection) labels.push({anchor:{x:selectionBox.x+selectionBox.width/2,y:selectionBox.y+selectionBox.height},offset:{x:0,y:21},
     text:sizeText,size:10,color:SIZE_PILL_TEXT,centered:true,kind:'selection-size',frame:'accent',owners})
-  for (const measurement of measurements) {
-    const placed = measurementLabel(measurement)
-    labels.push({ anchor: placed.anchor, offset: placed.offset, text: String(Number(measurement.distance.toFixed(2))),
+  for (const pill of diagram.pills) {
+    labels.push({ anchor: pill.anchor, offset: pill.offset, text: pill.text,
       size: 11, color: DISTANCE_PILL_TEXT, centered: true, kind: 'measurement', frame: 'measure' })
   }
   return {document,pageId:input.pageId,epoch:input.epoch,uiIdentity,commands:{pixelGrid:input.pixelGrid,labels,measurements,
