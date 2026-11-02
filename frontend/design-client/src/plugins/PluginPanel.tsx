@@ -3,13 +3,9 @@ import type { Editor } from '../engine'
 import { desktopBridge, type DesktopBridge } from '../desktop'
 import { useInterfacePreferences } from '../interface-preference'
 import { modalKeyDown } from '../modal-keyboard'
-import { acceptedDeclaredPlugins, declaredPluginFiles, type DeclaredPlugin } from './catalog'
-import { pluginApiCoverage, pluginCoverageCounts } from './coverage'
-import { commitPluginResult, pluginEditLabel, snapshotFromEditor } from './commit'
-import { PluginClient } from './launch'
-import { parsePluginManifest, type PluginManifest } from './manifest'
+import { acceptedDeclaredPlugins, type DeclaredPlugin } from './catalog'
+import { openPlugin, parsePluginManifest as parseRichManifest, PLUGIN_API_COVERAGE, type PluginController } from './rich-host'
 import { samplePlugin } from './sample-plugin'
-import type { PluginWorkerReply } from './protocol'
 import './plugin-panel.css'
 
 const copy = {
@@ -55,24 +51,27 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
 }) {
   const { locale } = useInterfacePreferences()
   const text = copy[locale]
-  const counts = pluginCoverageCounts()
+  const counts = {
+    supported: PLUGIN_API_COVERAGE.filter(entry => entry.status === 'supported').length,
+    partial: PLUGIN_API_COVERAGE.filter(entry => entry.status === 'partial').length,
+    unsupported: PLUGIN_API_COVERAGE.filter(entry => entry.status === 'unsupported').length,
+  }
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
   const [warnings, setWarnings] = useState<string[]>([])
   const [running, setRunning] = useState(false)
   const [enabled, setEnabled] = useState<DeclaredPlugin[] | null>(null)
-  const client = useRef<PluginClient | null>(null)
+  const controller = useRef<PluginController | null>(null)
   const launchSeen = useRef<number | null>(null)
   const runListedRef = useRef<(plugin: DeclaredPlugin) => Promise<void>>(async () => {})
   const generation = useRef(0)
-  const expected = useRef({ documentId: '', revision: 0 })
   const uiOpen = useRef(false)
   const unlisten = useRef<(() => void) | null>(null)
 
   function stop() {
     generation.current += 1
-    client.current?.stop()
-    client.current = null
+    controller.current?.close()
+    controller.current = null
     uiOpen.current = false
     unlisten.current?.()
     unlisten.current = null
@@ -97,65 +96,57 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
     return () => { live = false }
   }, [desktop])
 
-  async function apply(reply: PluginWorkerReply, token: number, manifest: PluginManifest) {
-    if (token !== generation.current) return
-    if (!reply.ok) { setError(reply.message); stop(); return }
-    const result = commitPluginResult(editor, pluginEditLabel(manifest.name), expected.current, reply.turn)
-    if (token !== generation.current) return
-    if (result.status === 'rejected') { setError(result.message ?? ''); stop(); return }
-    expected.current = { documentId: editor.state.doc.id, revision: editor.state.version }
-    setStatus(result.message || manifest.name)
-    if (reply.turn.closed) { setStatus(reply.turn.closeMessage || text.close); stop(); return }
-    if (reply.turn.ui?.visible && desktop?.plugins) {
-      if (!uiOpen.current) {
-        uiOpen.current = true
-        const opened = await desktop.plugins.openUi(reply.turn.ui)
-        if (opened.status === 'error') setError(opened.message)
-        else setStatus(text.desktopUi)
-      }
-      for (const pluginMessage of reply.turn.outbound) await desktop.plugins.postUi({ pluginMessage })
-    } else if (reply.turn.ui?.visible) setStatus(text.webUi)
-  }
-
-  async function run(manifest: PluginManifest, mainSource: string, uiHtml: string, notes: string[]) {
+  async function run(manifestText: string, mainSource: string, uiHtml: string, notes: string[]) {
     stop()
     const token = generation.current
     setError('')
     setWarnings(notes)
     setRunning(true)
     try {
-      const snapshot = snapshotFromEditor(editor)
-      expected.current = { documentId: snapshot.documentId, revision: snapshot.revision }
-      const next = new PluginClient()
-      client.current = next
+      const manifest = parseRichManifest(JSON.parse(manifestText))
+      const next = await openPlugin(editor, { manifest, main: mainSource, ui: uiHtml || null }, {
+        command: manifest.commands[0]?.command,
+        onNotify: message => { if (token === generation.current) setStatus(message) },
+        onUi: ui => {
+          if (token !== generation.current || !ui.visible) return
+          if (desktop?.plugins) {
+            if (uiOpen.current) return
+            uiOpen.current = true
+            void desktop.plugins.openUi(ui).then(opened => {
+              if (token !== generation.current) return
+              if (opened.status === 'error') setError(opened.message)
+              else setStatus(text.desktopUi)
+            })
+          } else setStatus(text.webUi)
+        },
+        onPostMessage: message => { void desktop?.plugins?.postUi({ pluginMessage: message }) },
+      })
+      if (token !== generation.current) { next.close(); return }
+      controller.current = next
+      setStatus(manifest.name)
       if (desktop?.plugins) {
-        const offMessage = desktop.plugins.onUiMessage(message => { void next.ui(message.pluginMessage).then(reply => apply(reply, token, manifest)) })
+        const offMessage = desktop.plugins.onUiMessage(message => { void next.deliver(message.pluginMessage) })
         const offClosed = desktop.plugins.onUiClosed(() => { if (token === generation.current) stop() })
         unlisten.current = () => { offMessage(); offClosed() }
       }
-      await apply(await next.start({
-        type: 'start', snapshot, mainSource, uiHtml,
-        pluginId: manifest.id, pluginName: manifest.name, command: 'run',
-      }), token, manifest)
     } catch (cause) {
       if (token === generation.current) { setError(cause instanceof Error ? cause.message : String(cause)); stop() }
     }
   }
 
   async function runSample() {
-    const parsed = parsePluginManifest(samplePlugin.manifestText)
-    await run(parsed.manifest, samplePlugin.mainSource, samplePlugin.uiHtml, parsed.warnings)
+    await run(samplePlugin.manifestText, samplePlugin.mainSource, samplePlugin.uiHtml, [])
   }
 
   async function runManifest(grant: string, manifestText: string) {
     const plugins = desktop?.plugins
     if (!plugins) return
-    const parsed = parsePluginManifest(manifestText)
-    const paths = declaredPluginFiles(parsed.manifest)
+    const manifest = parseRichManifest(JSON.parse(manifestText))
+    const paths = manifest.ui ? [manifest.main, manifest.ui] : [manifest.main]
     const read = await plugins.read({ grant, paths })
     if (read.status === 'cancelled') return
     if (read.status !== 'ok') { setError(read.message); return }
-    await run(parsed.manifest, read.files[parsed.manifest.main] ?? '', parsed.manifest.ui ? read.files[parsed.manifest.ui] ?? '' : '', parsed.warnings)
+    await run(manifestText, read.files[manifest.main] ?? '', manifest.ui ? read.files[manifest.ui] ?? '' : '', [])
   }
 
   async function runListed(plugin: DeclaredPlugin) {
@@ -212,7 +203,7 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
             <summary>{text.matrix}: {counts.supported} supported, {counts.partial} partial, {counts.unsupported} unsupported</summary>
             <table>
               <tbody>
-                {pluginApiCoverage.map(entry => <tr key={entry.api}><td><code>{entry.api}</code></td><td>{entry.status}</td><td>{entry.note}</td></tr>)}
+                {PLUGIN_API_COVERAGE.map(entry => <tr key={entry.api}><td><code>{entry.api}</code></td><td>{entry.status}</td><td>{entry.notes}</td></tr>)}
               </tbody>
             </table>
           </details>
