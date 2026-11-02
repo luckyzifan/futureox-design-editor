@@ -11,6 +11,8 @@ const phrases = {
   decodedUnavailable: ['已解码但尚未提供', 'Decoded but not available'], unavailable: ['未提供', 'Unavailable'], whiteboardAndResponsive: ['白板与响应式', 'Whiteboard and responsive'], alignAndDistribute: ['对齐与分布', 'Align and distribute'], combineShapes: ['组合形状', 'Combine shapes'],
   undo: ['撤销', 'Undo'], redo: ['重做', 'Redo'], alignLeft: ['左对齐', 'Align left'], alignCenter: ['水平居中', 'Align horizontal centers'], alignRight: ['右对齐', 'Align right'], alignTop: ['顶部对齐', 'Align top'], alignMiddle: ['垂直居中', 'Align vertical centers'], alignBottom: ['底部对齐', 'Align bottom'], distributeHorizontal: ['水平等距', 'Distribute horizontally'], distributeVertical: ['垂直等距', 'Distribute vertically'],
   union: ['联合', 'Union'], subtract: ['减去顶层', 'Subtract top layer'], intersect: ['交集', 'Intersect'], exclude: ['排除交集', 'Exclude overlap'], divideLegacy: ['分割为多边形区域（旧版）', 'Divide into polygon regions (legacy)'], shapeBuilder: ['形状构建器…', 'Shape builder…'], maskGroup: ['蒙版组', 'Mask group'], group: ['编组', 'Group'], ungroup: ['解除编组', 'Ungroup'], designSystems: ['变量 · 组件库 · 原型', 'Variables · Libraries · Prototypes'], outlineStroke: ['轮廓化描边', 'Outline stroke'],
+  creationHint: ['拖拽绘制 · 单击 100×100 · Shift 约束 · Alt 从中心', 'Drag to draw · Click for 100×100 · Shift constrains · Alt from center'],
+  creationHintLine: ['拖拽绘制 · 单击为 100 长 · Shift 锁定角度 · Alt 从中心', 'Drag to draw · Click for length 100 · Shift locks the angle · Alt from center'],
 } as const
 const catalog = (column: 0 | 1) => Object.fromEntries(Object.entries(phrases).map(([key, pair]) => [key, pair[column]])) as { readonly [K in keyof typeof phrases]: string }
 export const canvasText = { 'zh-CN': catalog(0), en: catalog(1) } as const

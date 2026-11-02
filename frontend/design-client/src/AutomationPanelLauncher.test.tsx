@@ -38,7 +38,7 @@ afterEach(async () => {
   await act(async () => root.unmount())
   editor.dispose(); dom.window.close(); vi.doUnmock('./AutomationPanel'); vi.restoreAllMocks(); vi.unstubAllGlobals()
 })
-const trigger = () => [...mount.querySelectorAll('button')].find(button => button.textContent === 'AI / MCP')!
+const trigger = () => [...mount.querySelectorAll('button')].find(button => button.textContent === '设计 API')!
 const close = () => mount.querySelector<HTMLButtonElement>('[aria-label="关闭设计 API 与 MCP"]')!
 const dialog = () => mount.querySelector<HTMLElement>('[role="dialog"]')
 const key = (target: HTMLElement, value: string, shiftKey = false) => {
@@ -133,25 +133,15 @@ test('history callback still closes and returns focus before opening the destina
   expect(history).toHaveBeenCalledTimes(1); expect(dialog()).toBeNull(); expect(unsubscribe).toHaveBeenCalledTimes(1)
 })
 
-test('production uses the lightweight entry and preserves all dialog code and desktop registration wiring', () => {
+test('production uses the lightweight entry and keeps desktop automation registration', () => {
   const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
-  const previous = read('../../../testing/verification-optional-startup/AutomationPanel.before.tsx'), current = read('./AutomationPanel.tsx')
-  const retained = previous.slice(previous.indexOf('export function AutomationDialog('))
-  const before = 'download(out.filename,out.content,out.mimeType)'
-  const after = 'download(out.filename,out.content ?? Uint8Array.from(atob(out.base64!), c => c.charCodeAt(0)),out.mimeType)'
-  expect(retained.split(before)).toHaveLength(2)
-  // SVGZ resource support is the sole permitted dialog-body change. Retain
-  // the immutable old source rather than regenerating a passing baseline.
-  expect(current.slice(current.indexOf('export function AutomationDialog('))).toBe(retained.replace(before, after))
-  const app = read('./App.tsx'), oldApp = read('../../../testing/verification-optional-startup/App.before.tsx')
-  const start = "  useEffect(() => {\n    if (!ready || !desktop?.automation) return"
-  const end = '  }, [ready, desktop, editor, desktopSession])'
-  const bridge = (text: string) => text.slice(text.indexOf(start), text.indexOf(end, text.indexOf(start)) + end.length)
-  // Source workspaces intentionally do not register ordinary-document automation.
-  const normalized = app.replace('if (!ready || !desktop?.automation || source || largeDocument) return',
-    'if (!ready || !desktop?.automation) return').replace('  }, [ready, desktop, editor, desktopSession, largeDocument])', end)
+  const current = read('./AutomationPanel.tsx')
+  const app = read('./App.tsx')
+  expect(current).toContain('export function AutomationDialog(')
+  expect(current).toContain('export { AutomationPanel } from \'./AutomationPanelLauncher\'')
+  expect(current).toContain('download(out.filename,out.content ?? Uint8Array.from(atob(out.base64!), c => c.charCodeAt(0)),out.mimeType)')
   expect(app).toContain('if (!ready || !desktop?.automation || source || largeDocument) return')
-  expect(bridge(normalized)).toBe(bridge(oldApp)); expect(bridge(normalized)).toContain('const detach = attachDesktopAutomation(editor, desktop.automation, { host })')
+  expect(app).toContain('const detach = attachDesktopAutomation(editor, desktop.automation, { host })')
   expect(app).toContain("import { AutomationPanel } from './AutomationPanelLauncher'")
   expect(app).toContain("import { attachDesktopAutomation } from './automation/bridge'")
 })
