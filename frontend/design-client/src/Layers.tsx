@@ -2,6 +2,7 @@ import { dispatchEditorCommand } from './editor-commands'
 import { LayerRowsCache } from './layer-tree'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { PageList } from './PageList'
+import { userPages } from './fig-document'
 import { AssetsPanel } from './AssetsPanel'
 import { memo, useMemo, useState, useSyncExternalStore, useRef, useEffect, useId } from 'react'
 import {
@@ -236,7 +237,7 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
       <div className="pages-actions">
         <button
           title={text.deletePageTitle}
-          disabled={s.doc.pages.length === 1}
+          disabled={userPages(s.doc).length === 1}
           onClick={() => {
             if (editor.interactionActive || editor.state.busy) return
             if (confirm(text.deletePageConfirm) &&
