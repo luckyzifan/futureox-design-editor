@@ -1,3 +1,4 @@
+import { navigationOverview, nearOverviewTiles } from './navigation-overview'
 import {useLayoutEffect,useRef} from 'react'
 import type {SourceCanvasSnapshot} from '../desktop'
 import type {CanvasCamera} from '../canvas-camera'
@@ -34,12 +35,14 @@ export function NativeSourceSurface(props:Props){
     const diagnostics=createRenderDiagnostics({enabled:window.coreDesktop?.renderDiagnostics===true,session:Math.floor(Math.random()*1e12),sink:record=>console.log(PREFIX+JSON.stringify(record))})
     const profile=canvasSamplingProfile(renderExecutionPolicy,source.rasterProfile,backendPreference(),source.colorManaged)
     const planner=new SourceViewportPlanner(profile,source.colorManaged)
+    let overview: ReturnType<typeof navigationOverview>
     element.className='kernel-compositor native-source-content'
     element.setAttribute('aria-label','全源画板')
     Object.assign(element.style,{position:'absolute',inset:'0',pointerEvents:'none'})
     host.current!.append(element)
-    const bitmapContext=atomicPresentationContext(element)
+    const bitmapContext=renderExecutionPolicy.cpuOnly ? null : atomicPresentationContext(element)
     const projection=new CameraReprojection(element,host.current!,()=>schedulePaint())
+    projection.history.bind(source)
     let backing:ResidentAcknowledgement|undefined
     const project=()=>{const p=latest.current;return projection.update(backing,p.view,p.width,p.height,
       !!bitmapContext)}
@@ -64,7 +67,7 @@ export function NativeSourceSurface(props:Props){
       lastStatus=signature;lastStatusAt=now
       const cpu=renderExecutionPolicy.cpuOnly
       badge.textContent=status.phase==='ready'?(cpu?'CPU · 已显示':'WebGPU · 清晰'):status.phase==='error'?'画板绘制未完成':status.phase==='loading'?'正在准备完整画板…':`正在绘制 ${status.done} / ${status.total}`
-      badge.title=status.error??(cpu?'CPU 按屏幕瓦片合成。放不进 256 MiB 合成账本的效果会略去，填充和页面底色留下。':'当前视口完成全部瓦片与采样密度校验后显示清晰')
+      badge.title=status.error??(cpu?'CPU 先显示已有内容，当前视口的全部瓦片精修完成后再报告就绪。':'当前视口完成全部瓦片与采样密度校验后显示清晰')
       diagnostics.record('viewport-state',{state:status.phase==='loading'?0:status.phase==='refining'?1:status.phase==='ready'?2:3,
         previewTiles:status.done,count:status.total,zoom:latest.current.view.zoom,dpr:density.current,
         width:latest.current.width,height:latest.current.height,sceneReady:initialized?1:0,finalComplete:status.phase==='ready'?1:0})
@@ -92,27 +95,38 @@ export function NativeSourceSurface(props:Props){
       if([...cache.values()].some(other=>other!==tile&&other.gpuTile===tile.gpuTile))return
       if(tile.gpuTile)retired.set(tile.gpuTile,Math.max(retired.get(tile.gpuTile)??0,tile.lastSubmission))
     }
+    const cpuRepairs = new Set<string>()
+    let repairDemand = '', repairTimer: ReturnType<typeof setTimeout> | undefined
+    let cpuScratch: HTMLCanvasElement | undefined
     let cpuContext:CanvasRenderingContext2D|null=null
     if(renderExecutionPolicy.cpuOnly){
       try{cpuContext=element.getContext('2d',{alpha:false})||element.getContext('2d')}catch{cpuContext=null}
     }
     const paintCpu=()=>{
-      const {p,tiles}=plan()
+      const {p,tiles,exact}=plan()
+      if (!cpuContext) throw Error('CPU 显示画布不可用')
       const dpr=density.current
       const pixelWidth=Math.max(1,Math.ceil(p.width*dpr)),pixelHeight=Math.max(1,Math.ceil(p.height*dpr))
       if(cpuContext&&(element.width!==pixelWidth||element.height!==pixelHeight)){element.width=pixelWidth;element.height=pixelHeight}
       if(cpuContext){
         cpuContext.setTransform(1,0,0,1,0,0)
-        cpuContext.fillStyle='#eeeff3'
+        cpuContext.fillStyle='#ffffff'
         cpuContext.fillRect(0,0,element.width,element.height)
-        const visible=[...cache.values()].filter(tile=>tileIntersectsView(tile,p.view,p)).sort((a,b)=>a.zoom-b.zoom||a.used-b.used)
+        const visible=[...cache.values()].filter(tile=>tile.cpuDivisor!==0 && tileIntersectsView(tile,p.view,p))
+          .sort((a,b)=>a.zoom/(a.cpuDivisor||1)-b.zoom/(b.cpuDivisor||1)||a.used-b.used)
         for(const tile of visible){
           tile.used=++tick
-          const place=tilePlacementAtView(tile,p.view)
+          const place=tilePlacementAtView(tile,p.view), divisor=tile.cpuDivisor || 1
           const dx=place.left*dpr,dy=place.top*dpr,dw=place.width*dpr,dh=place.height*dpr
-          if(tile.bitmap)cpuContext.drawImage(tile.bitmap,dx,dy,dw,dh)
-          else if(tile.bytes?.length===tile.width*tile.height*4&&Math.abs(dw-tile.width)<0.5&&Math.abs(dh-tile.height)<0.5){
-            cpuContext.putImageData(new ImageData(new Uint8ClampedArray(tile.bytes),tile.width,tile.height),Math.round(dx),Math.round(dy))
+          const sw=tile.width/divisor,sh=tile.height/divisor
+          if(tile.bitmap)cpuContext.drawImage(tile.bitmap,0,0,sw,sh,dx,dy,dw,dh)
+          else if(tile.bytes?.length===Math.ceil(sw)*Math.ceil(sh)*4){
+            cpuScratch ??= document.createElement('canvas')
+            cpuScratch.width=Math.ceil(sw);cpuScratch.height=Math.ceil(sh)
+            const ctx=cpuScratch.getContext('2d')
+            if (!ctx) throw Error('CPU 瓦片不可用')
+            ctx.putImageData(new ImageData(new Uint8ClampedArray(tile.bytes),cpuScratch.width,cpuScratch.height),0,0)
+            cpuContext.drawImage(cpuScratch,0,0,sw,sh,dx,dy,dw,dh)
           }
         }
       }
@@ -120,11 +134,21 @@ export function NativeSourceSurface(props:Props){
       const keep=Math.max(32,tiles.length*3)
       for(const tile of [...cache.values()].sort((a,b)=>a.used-b.used)){
         if(cache.size<=keep)break
-        if(keys.has(tile.key))continue
+        if(keys.has(tile.key) || overview?.tiles.some(base=>base.key===tile.key))continue
         cache.delete(tile.key);retire(tile)
       }
-      const done=tiles.filter(tile=>cache.has(tile.key)).length
-      emit(done===tiles.length&&tiles.length>0?{phase:'ready',done,total:tiles.length}:{phase:'refining',done,total:tiles.length})
+      const done=tiles.filter(tile=>cache.has(tile.key) && (cache.get(tile.key)?.cpuDivisor ?? 1)===1).length
+      const complete=exact && done===tiles.length && tiles.length>0
+      emit(complete?{phase:'ready',done,total:tiles.length}:{phase:'refining',done,total:tiles.length})
+      if (!moving && !complete && done<tiles.length && tiles.every(tile=>cache.has(tile.key)) && repairDemand!==demandKey()) {
+        clearTimeout(repairTimer)
+        repairDemand=demandKey()
+        repairTimer=setTimeout(()=>{
+          if (!alive || suspended || moving || repairDemand!==demandKey()) return
+          for(const tile of tiles) if ((cache.get(tile.key)?.cpuDivisor ?? 1)!==1) cpuRepairs.add(tile.key)
+          void run()
+        },180)
+      }
     }
     const paint=()=>{
       frameHandle=0
@@ -154,7 +178,7 @@ export function NativeSourceSurface(props:Props){
         const keep=Math.max(32,tiles.length*3)
         for(const tile of [...cache.values()].sort((a,b)=>a.used-b.used)){
           if(cache.size<=keep)break
-          if(keys.has(tile.key))continue
+          if(keys.has(tile.key) || overview?.tiles.some(base=>base.key===tile.key))continue
           cache.delete(tile.key);retire(tile)
         }
         release()
@@ -163,7 +187,7 @@ export function NativeSourceSurface(props:Props){
     const schedulePaint=()=>{if(alive&&!frameHandle)frameHandle=requestAnimationFrame(paint)}
     const receive=(tile:TileResult)=>{
       if(!alive){tile.bitmap?.close();if(tile.gpuTile)client.releasePresented([tile.gpuTile]);return}
-      if(tile.gpuTile==null&&!(renderExecutionPolicy.cpuOnly&&(tile.bitmap||tile.bytes?.length))){tile.bitmap?.close();throw Error('完整源画布尚未取得 GPU 显示纹理')}
+      if(tile.gpuTile==null&&!(renderExecutionPolicy.cpuOnly&&(tile.bitmap||tile.bytes?.length||tile.cpuDivisor===0))){tile.bitmap?.close();throw Error('完整源画布尚未取得 GPU 显示纹理')}
       const old=cache.get(tile.key)
       const sameGpu=old!=null&&old.gpuTile!=null&&old.gpuTile===tile.gpuTile
       if(old&&!sameGpu)retire(old)
@@ -178,12 +202,13 @@ export function NativeSourceSurface(props:Props){
         // pixel for this batch to repair. Its old density may still be within
         // the ordinary 2x reuse window, but finishing it only delays later
         // input. Cancel preview work without retiring any accepted texture.
-        const covered=next.exact&&next.tiles.every(tile=>cache.has(tile.key))
+        const covered=next.exact&&next.tiles.every(tile=>cache.has(tile.key) && (cache.get(tile.key)?.cpuDivisor ?? 1)===1)
         // Completed tiles no longer hold the batch's camera lease. Cancel if
         // either remaining tile would delay the current viewport with old work.
         const optional=[...workQueue.current.pending.values()].every(tile=>tile.prefetch===true)
         const missing=next.tiles.some(tile=>!cache.has(tile.key))
         workQueue.demand(covered&&!optional,tile=>{
+          if(overview?.tiles.some(base=>base.key===tile.key))return !moving && !missing
           if(tile.prefetch)return next.keys.has(tile.key)||!missing&&next.prefetchKeys.has(tile.key)
           const relative=next.raster.scale/tile.zoom
           return relative<=2&&relative>=.5&&tileIntersectsView(tile,next.p.view,next.p)
@@ -195,18 +220,23 @@ export function NativeSourceSurface(props:Props){
       running=true
       try{
         while(alive&&!failed&&!suspended){
-          const {p,ratio,raster,tiles,prefetch}=plan(),missing=tiles.filter(tile=>!cache.has(tile.key))
+          const {p,ratio,raster,tiles,prefetch}=plan(),missing=tiles.filter(tile=>!cache.has(tile.key)||cpuRepairs.has(tile.key))
           const optional=missing.length===0
           if(optional&&prefetchReady!==demandKey()){schedulePaint();break}
-          const candidates=optional?prefetch.filter(tile=>!cache.has(tile.key)&&!skippedPrefetch.has(tile.key)):missing
+          if (optional && !moving && !overview) overview = navigationOverview(source.bounds,1,source.nodes)
+          const warmBase = optional && !moving && overview ? nearOverviewTiles(overview.tiles,p.view,p.width,p.height)
+            .find(tile=>!cache.has(tile.key) && !skippedPrefetch.has(tile.key)) : undefined
+          const candidates=warmBase ? [{...warmBase,prefetch:true as const}] :
+            optional?prefetch.filter(tile=>!cache.has(tile.key)&&!skippedPrefetch.has(tile.key)):missing
           if(!candidates.length)break
           const batch=candidates.slice(0,SOURCE_PIPELINE_TILES)
           diagnostics.record('cache',{count:batch.length,prefetch:optional?1:0,reasonCode:optional?7:5})
           const work=workQueue.begin(batch,SOURCE_PIPELINE_TILES)
+          const camera = warmBase && overview ? overview.view : raster.camera
           try{
             await client.renderSource(source,{pageId:source.pageId,width:Math.ceil(p.width*ratio),height:Math.ceil(p.height*ratio),
-              view:raster.camera,transparent:false,grid:false,rasterProfile:profile,
-              tileViewport:batch,tilePrepareViewport:tileBatchPrepareViewport(optional?[]:tiles,[],batch,raster.camera),renderIntent:'preview',
+              view:camera,transparent:false,grid:false,rasterProfile:profile,
+              tileViewport:batch,tilePrepareViewport:tileBatchPrepareViewport(optional || warmBase ? [] : tiles,[],batch,camera),renderIntent:'preview',
               tileOwner:{documentId:source.owner.documentId,sessionEpoch:source.owner.sessionEpoch}},tile=>{
                 // Every useful tile can present while the next one is still
                 // preparing/rasterizing. Late or duplicate delivery cannot
@@ -216,22 +246,22 @@ export function NativeSourceSurface(props:Props){
                   if(tile.gpuTile&&![...cache.values()].some(value=>value.gpuTile===tile.gpuTile))client.releasePresented([tile.gpuTile])
                   return
                 }
-                receive(tile);workQueue.delivered(work,tile.key);updateWorkDemand()
+                receive(tile);cpuRepairs.delete(tile.key);workQueue.delivered(work,tile.key);updateWorkDemand()
               },work.controller.signal)
           }catch(error){
             if(work.controller.signal.aborted||String(error).includes('PREVIEW_CANCELLED'))continue
-            if(optional&&/budget|memory|内存|表面.*超限/i.test(String(error))){
+            if((optional || warmBase) && /budget|memory|内存|表面.*超限/i.test(String(error))){
               for(const tile of batch)skippedPrefetch.add(tile.key)
               continue
             }
             throw error
           }finally{workQueue.release(work)}
           if(work.pending.size){
-            if(!optional)throw Error('源画板瓦片未返回，已保留当前画面')
+            if(!optional && !warmBase)throw Error('源画板瓦片未返回，已保留当前画面')
             for(const key of work.pending.keys())skippedPrefetch.add(key)
           }
           // Rejections stay bounded to this revision's current warm set.
-          if(skippedPrefetch.size>32)for(const key of skippedPrefetch)if(!plan().prefetchKeys.has(key))skippedPrefetch.delete(key)
+          if(skippedPrefetch.size>32)for(const key of skippedPrefetch)if(!plan().prefetchKeys.has(key) && !overview?.tiles.some(tile=>tile.key===key))skippedPrefetch.delete(key)
           // Yield host bookkeeping; native preparation and GPU work already
           // use their existing independent threads and bounded task queues.
           await new Promise<void>(resolve=>setTimeout(resolve,0))
@@ -243,7 +273,7 @@ export function NativeSourceSurface(props:Props){
       let bitmapApplied=false
       try {
       if(!alive||failed)return
-      if(stats.error){fail(stats.error);return}
+      if(stats.error){projection.history.bind(undefined);fail(stats.error);return}
       if(Array.isArray(stats.missingGpuTiles)){
         const missing=new Set(stats.missingGpuTiles)
         for(const[key,tile]of cache)if(missing.has(tile.gpuTile)){cache.delete(key);retire(tile)}
@@ -254,10 +284,15 @@ export function NativeSourceSurface(props:Props){
       const sequence=Number(actual.presentationId.slice(prefix.length+1))
       if(!Number.isSafeInteger(sequence)||sequence<=0||sequence>submission||sequence<acknowledged)return
       project()
-      if(bitmap&&keepCompleteCameraBacking(backing,actual,!!bitmapContext,projection.zooming,latest.current))return
-      if(bitmap&&bitmapContext){consumePresentationBitmap(bitmapContext,element,bitmap);bitmapApplied=true}
+      if(bitmap&&keepCompleteCameraBacking(backing,actual,!!bitmapContext,projection.zooming,latest.current,projection.history.completeFrame))return
+      if(bitmap&&bitmapContext){consumePresentationBitmap(bitmapContext,element,bitmap);bitmapApplied=true;projection.history.capture(element,actual,source.bounds)}
       acknowledged=sequence;release()
       backing=actual;project()
+      if(bitmapApplied && client.copyNavigationTile) {
+        const cohort = nearOverviewTiles(overview?.tiles ?? [],latest.current.view,latest.current.width,latest.current.height)
+          .flatMap(tile => cache.get(tile.key) ?? [])
+        projection.history.warm(source.bounds,[...cohort,...cache.values()],(id,consume)=>client.copyNavigationTile(id,consume),schedulePaint)
+      }
       const expected=wanted,p=latest.current
       if(!expected||actual.presentationId!==expected.id||actual.view.x!==expected.view.x||actual.view.y!==expected.view.y||actual.view.zoom!==expected.view.zoom||
         actual.width!==expected.width||actual.height!==expected.height||actual.dpr!==expected.dpr||
@@ -288,6 +323,7 @@ export function NativeSourceSurface(props:Props){
         failed=false;rejectedCamera=undefined
       }
       if(suspended){workQueue.demand(true,()=>false);return}
+      cpuRepairs.clear();clearTimeout(repairTimer)
       moving=true;clearTimeout(idleTimer)
       project()
       try{
@@ -333,7 +369,7 @@ export function NativeSourceSurface(props:Props){
         initialized=true;void run()
       }catch(error){if(alive)fail(error)}
     })()
-    return()=>{alive=false;wake.current=()=>{};workQueue.close();document.removeEventListener('visibilitychange',visibility);clearTimeout(idleTimer);cancelAnimationFrame(frameHandle);client.onPresentation=undefined;client.dispose();diagnostics.flush();diagnostics.close();projection.dispose();bitmapContext?.transferFromImageBitmap(null);element.remove();badge.remove()}
+    return()=>{alive=false;wake.current=()=>{};workQueue.close();document.removeEventListener('visibilitychange',visibility);clearTimeout(idleTimer);clearTimeout(repairTimer);cancelAnimationFrame(frameHandle);client.onPresentation=undefined;client.dispose();diagnostics.flush();diagnostics.close();projection.dispose();bitmapContext?.transferFromImageBitmap(null);element.remove();badge.remove()}
   },[props.source.token,props.width>0&&props.height>0])
   useLayoutEffect(()=>wake.current(),[props.view.x,props.view.y,props.view.zoom,props.width,props.height,dpr])
   return <div ref={host} className="native-source-surface" style={{position:'absolute',inset:0,pointerEvents:'none',overflow:'hidden'}}/>

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { cpuDisplayPressure, cpuTileFrameOptions, solidDisplayTile } from './cpu-tile-frame'
+import { cpuDisplayPressure, cpuTileFrameOptions, sampleCpuTile } from './cpu-tile-frame'
 
 test('cpu tile camera shifts the gpu viewport origin to device zero', () => {
   const frame = cpuTileFrameOptions(
@@ -19,6 +19,20 @@ test('pressure errors are the only cpu tile failures that stay on screen', () =>
   expect(cpuDisplayPressure(Error('Layer surface exceeds 16 million pixels'))).toBe(true)
   expect(cpuDisplayPressure('Gaussian sigma must be in 0..1')).toBe(true)
   expect(cpuDisplayPressure(Error('Page not found'))).toBe(false)
-  const solid = solidDisplayTile(2, 1, [255, 255, 255, 255])
-  expect(solid).toEqual(new Uint8Array([255, 255, 255, 255, 255, 255, 255, 255]))
+
+})
+
+test('CPU previews sample the same world origin and keep a separate exact-density receipt',async()=>{
+  const frame={pageId:'p',view:{x:13.25,y:-9.5,zoom:3},width:17,height:13}
+  const calls: (typeof frame)[]=[]
+  const result=await sampleCpuTile(frame,async options=>{
+    calls.push(options)
+    if (calls.length===1) throw Error('Compositing memory budget exceeded')
+    return new Uint8Array(options.width*options.height*4)
+  },()=>true,true)
+  expect(calls[1]).toMatchObject({width:9,height:7,view:{x:6.625,y:-4.75,zoom:1.5}})
+  expect(result.divisor).toBe(2)
+  const reject=async()=>{throw Error('Compositing memory budget exceeded')}
+  await expect(sampleCpuTile(frame,reject,()=>true,false)).rejects.toThrow(/budget/)
+  expect(await sampleCpuTile(frame,reject,()=>true,true)).toMatchObject({divisor:0,bytes:new Uint8Array(0)})
 })
