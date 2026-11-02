@@ -25,11 +25,16 @@ test('live Figma child X/Y/W/H/radii/glass numbers are displayed without changin
   const { editor, lens } = fixture(), before = JSON.stringify(editor.state.doc), raw = editor.state.doc.nodes[lens.id]
   expect(['x','y','width','height'].map(f => selectionMetric(raw, f as 'x', editor.state.doc))).toEqual([32,32,192,192])
   const html = renderToStaticMarkup(<Inspector editor={editor} />)
-  for (const [label,value] of [['左上',32],['深度',16],['磨砂',3],['粗细',4]])
+  for (const [label,value] of [['圆角',32],['深度',16],['磨砂',3],['粗细',4]])
     expect(html).toMatch(new RegExp(`aria-label="${label}"[^>]+aria-valuenow="${value}"`))
+  expect(html).not.toContain('aria-label="左上"')
   expect(html).toContain('value="8 4"')
   expect(JSON.stringify(editor.state.doc)).toBe(before)
   expect(raw.width).toBe(96); expect(raw.effects[0].glass!.depth).toBe(8)
+  editor.updateProperties([lens.id], n => { n.radii = [16, 8, 16, 16] })
+  const mixed = renderToStaticMarkup(<Inspector editor={editor} />)
+  expect(mixed).toMatch(/aria-label="左上"[^>]+aria-valuenow="32"/)
+  expect(mixed).toMatch(/aria-label="右上"[^>]+aria-valuenow="16"/)
 })
 test('an effective width edit is converted once; unrelated material bits and Undo are preserved', () => {
   const { editor, lens } = fixture(), before = editor.state.doc
