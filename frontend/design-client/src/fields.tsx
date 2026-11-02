@@ -1,3 +1,4 @@
+import { formatAngleDegrees } from './selection-handles'
 import { usePropertyText } from './property-interface-messages'
 import { createInputDiagnostics, dimensionExpectation, numericInputFamily, InputPhase } from './input-diagnostics'
 import { numericExpression, propertyUnit, type NumericUnit } from './numeric-expression'
@@ -109,10 +110,11 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, ste
     dirty: () => dirty.current || composing.current,
     commit: () => commit.current(),
   }) : undefined, [editor])
+  const shown = (next: number) => unit === 'angle' ? formatAngleDegrees(next) : String(Number(next.toFixed(2)))
   useEffect(() => {
     if (!dirty.current && !composing.current) {
       original.current = value; draft.current = String(value)
-      if (input.current) input.current.value = String(Number(value.toFixed(2)))
+      if (input.current) input.current.value = shown(value)
     }
   }, [value])
   return <label className="number-field">
@@ -133,7 +135,7 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, ste
       }} onPointerCancel={() => stopScrub(true)} onLostPointerCapture={() => stopScrub(true)}
       onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); stopScrub(true) } }}
     >{label}{unitDescription && <small title={unitDescription}>＊</small>}</span>
-    <input ref={input} aria-label={label} aria-description={unitDescription} type="text" inputMode="decimal" role="spinbutton" aria-valuenow={value} aria-valuemin={min} aria-valuemax={max} title={unitDescription ? `${value}；${unitDescription}` : String(value)} defaultValue={Number(value.toFixed(2))}
+    <input ref={input} aria-label={label} aria-description={unitDescription} type="text" inputMode="decimal" role="spinbutton" aria-valuenow={value} aria-valuemin={min} aria-valuemax={max} title={unitDescription ? `${value}；${unitDescription}` : shown(value)} defaultValue={shown(value)}
       onFocus={(e) => { diagnostic.event(InputPhase.focus); if (!dirty.current) e.currentTarget.select() }}
       onChange={(e) => { startDraft(); draftRevision.current++; diagnostic.start(); draft.current = e.currentTarget.value; dirty.current = true; e.currentTarget.setCustomValidity(''); changed() }}
       onCompositionStart={() => { startDraft(); draftRevision.current++; diagnostic.start(); diagnostic.event(InputPhase.compositionStart); composing.current = true; changed() }}

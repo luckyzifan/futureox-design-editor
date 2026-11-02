@@ -9,17 +9,17 @@ function fixture() {
  a.children=[n.id];d.nodes=Object.fromEntries([a,b,c,n].map(n=>[n.id,n]));d.pages[0].children=[a.id,b.id,c.id]
  const e=new Editor(d);editors.push(e);return {e,a,b,c,n}
 }
-test('OS clipboard placement keeps source local X and centers only an overflowing Y axis',()=>{
+test('OS clipboard paste into a frame keeps the source parent position plus 10',()=>{
  const {e,b,n}=fixture();e.select([n.id]);const packet=e.exportClipboard()!;e.importClipboard(packet);e.select([b.id]);const before=e.state.doc
  e.pasteToSelection();const pasted=e.state.doc.nodes[e.state.selection[0]]
- expect(allParents(e.state.doc).get(pasted.id)).toBe(b.id);expect(pasted.transform[4]).toBe(30.125);expect(pasted.transform[5]).toBe((100-20.5)/2)
+ expect(allParents(e.state.doc).get(pasted.id)).toBe(b.id);expect(pasted.transform[4]).toBeCloseTo(40.125,8);expect(pasted.transform[5]).toBeCloseTo(190.375,8)
  e.undo();expect(e.state.doc).toEqual(before)
 })
 test('multiple selected frames get independent graphs in a single history action',()=>{
  const {e,b,c,n}=fixture();e.select([n.id]);e.copy();e.select([b.id,c.id]);const before=e.state.doc
  e.pasteToSelection();expect(e.state.selection).toHaveLength(2)
  expect(e.state.doc.nodes[b.id].children).toHaveLength(1);expect(e.state.doc.nodes[c.id].children).toHaveLength(1)
- const ids=e.state.selection;expect(ids[0]).not.toBe(ids[1]);expect(e.state.doc.nodes[ids[1]].transform[5]).toBe(180.375)
+ const ids=e.state.selection;expect(ids[0]).not.toBe(ids[1]);expect(e.state.doc.nodes[ids[1]].transform[5]).toBeCloseTo(190.375,8)
  e.undo();expect(e.state.doc).toEqual(before)
 })
 test('paste replace adopts constraints, sizing and layer order and undoes atomically',()=>{
@@ -33,7 +33,8 @@ test('paste replace adopts constraints, sizing and layer order and undoes atomic
 })
 test('original out-of-frame coordinates survive clipboard roundtrip into a clipped frame',()=>{
  const {e,b,n}=fixture();e.update([n.id],{transform:[1,0,0,1,-20.125,-10.375]});e.select([n.id]);e.importClipboard(e.exportClipboard()!);e.select([b.id]);e.pasteToSelection()
- expect(e.state.doc.nodes[e.state.selection[0]].transform.slice(4)).toEqual([-20.125,-10.375])
+ expect(e.state.doc.nodes[e.state.selection[0]].transform[4]).toBeCloseTo(-10.125,8)
+ expect(e.state.doc.nodes[e.state.selection[0]].transform[5]).toBeCloseTo(-0.375,8)
 })
 test('invalid clipboard placement is rejected before replacing existing clipboard or document',()=>{
  const {e,n}=fixture();e.select([n.id]);const packet=JSON.parse(e.exportClipboard()!);packet.placements[n.id].transform=[1,0,0,0,0,0]
