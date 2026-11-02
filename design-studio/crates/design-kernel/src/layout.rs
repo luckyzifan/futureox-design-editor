@@ -747,6 +747,18 @@ fn anchor(position: f64, size: f64, old: f64, new: f64, mode: Anchor) -> (f64, f
         ),
     }
 }
+/// A pose changes no dimensions. Reuse is allowed only when the real anchor
+/// operations (including cancellation and minimum-size rules) keep every bit.
+pub(crate) fn pose_constraint_fixed(node:&crate::scene::Node,parent:Option<&crate::scene::Node>,page_root:bool)->bool{
+    let Some(c)=&node.constraints else{return true};
+    let Some(parent)=parent else{return page_root};
+    let same=|a:f64,b:f64|a.to_bits()==b.to_bits();
+    let (Some(w),Some(h))=(c.reference_width,c.reference_height)else{return false};
+    if !same(w,parent.width)||!same(h,parent.height){return false}
+    let (x,width)=anchor(node.transform.0[4],node.width,w,parent.width,c.horizontal);
+    let (y,height)=anchor(node.transform.0[5],node.height,h,parent.height,c.vertical);
+    same(x,node.transform.0[4])&&same(y,node.transform.0[5])&&same(width,node.width)&&same(height,node.height)
+}
 fn constrain(doc: &mut Document, parent: &str) {
     let p = &doc.nodes[parent];
     let (w, h) = (p.width, p.height);

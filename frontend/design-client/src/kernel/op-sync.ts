@@ -21,6 +21,7 @@ import type { Op } from './graph'
 import { documentPatch, equalValue } from '../document-patch'
 import { localEditProof } from '../local-edit-proof'
 import { snapshotParent } from '../page-edit-scope'
+import { poseDocumentSource } from '../pose-document'
 import type { DesignDocument, DesignNode, Page } from '../model'
 
 /** Synthetic parent of the per-page pseudo nodes; never a real node id. */
@@ -299,6 +300,13 @@ export type CompiledEdit =
 /** Compile one committed edit. Callers must install the whole after-state for
  * `replace`; it is never safe to substitute an idempotent undo anchor. */
 export function compileEditOps(before: DesignDocument, after: DesignDocument): CompiledEdit {
+  const pose=poseDocumentSource(before,after)
+  if(pose){
+    // Preserve the existing node-map wire order for a multi-target batch.
+    const ids=Object.keys(pose),order=ids.length>1?Object.keys(before.nodes).filter(id=>Object.hasOwn(pose,id)):ids
+    return {mode:'ops',ops:order.filter(id=>!equalValue(before.nodes[id].transform,pose[id]))
+      .map(id=>({type:'setTransform' as const,id,matrix:[...pose[id]]}))}
+  }
   // Page pseudo nodes do not update GraphApi.base.pages. Include every base
   // field, including unknown forward-compatible metadata, in this comparison.
   const { nodes: _beforeNodes, ...beforeBase } = before

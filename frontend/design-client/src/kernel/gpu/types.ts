@@ -386,6 +386,8 @@ export interface Driver {
   readonly exactSolidPaintOver?: boolean
   readonly exactGradientPaintOver?: boolean
   readonly windowedGradientFields?: boolean
+  readonly gradientPhaseFields?: boolean
+  uploadGradientPhaseField?(values:Uint32Array):Texture
   readonly managed?: boolean
   readonly linearLight?: boolean
   readonly hdr?: boolean

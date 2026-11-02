@@ -55,11 +55,13 @@ export function shareDocument(before: DesignDocument, candidate: DesignDocument)
       changed ||= !same
     }
   } else {
-    nodes = {}
     changed = Object.keys(before.nodes).length !== Object.keys(candidate.nodes).length
     for (const [id, n] of Object.entries(candidate.nodes)) {
       const same = equalValue(before.nodes[id], n)
-      nodes[id] = same ? before.nodes[id] : n
+      if(same&&n!==before.nodes[id]){
+        if(nodes===candidate.nodes)nodes={...nodes}
+        nodes[id]=before.nodes[id]
+      }
       changed ||= !same
     }
   }

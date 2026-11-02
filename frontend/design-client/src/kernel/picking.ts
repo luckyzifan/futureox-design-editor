@@ -21,7 +21,7 @@ import { admitDocumentSync, admitDocumentJsonSync } from '../document-admission'
 import { InitializationGate, readKernelAsset } from './initialization'
 import { loadKernelResourcePair } from './kernel-resources'
 import type { DesignNode, Point, DesignDocument, Bounds, Matrix } from '../model'
-import { defaultLayout, defaultSizing, validateVariableModes } from '../model'
+import { defaultLayout, defaultSizing, validateVariableModes, validateDocument } from '../model'
 import { pageEditScope, snapshotParent, type PageEditScope } from '../page-edit-scope'
 import { translationOnlyChanges } from './translation-preview'
 export function kernelNoiseFillPreset(): import('../model').Paint {
@@ -188,6 +188,7 @@ function prepareAdmittedDocument(original: DesignDocument, captureValidatedJson?
   // Otherwise the first synchronous bounds/selection query can tear down React.
   documentStage(DocumentStage.derivedValidation, () => {
     for(const n of Object.values(prepared.nodes))if(n.pathOffset||n.vectorBrush)kernelBounds(n)
+    validateDocument(prepared)
     const json = layoutWire.get(prepared) ?? JSON.stringify(prepared)
     validateKernelDocument(json)
     captureValidatedJson?.(json)
@@ -338,6 +339,34 @@ function layoutPageIsland(previous: DesignDocument, document: DesignDocument, sc
     return limitPage(result, Object.keys(nodes))
   } finally { componentBase = saved }
 }
+/** Verify the actual derived outline on a small, independent Boolean island.
+ * The stateless resolver never replaces the live component receipt. Any changed
+ * record, external dependency, or unsupported operand takes the full path. */
+export function booleanPoseUnchanged(doc:DesignDocument,roots:ReadonlySet<string>,patches:Record<string,Partial<DesignNode>>) {
+  if (!roots.size) return true
+  if (!layoutEngine || roots.size!==1) return false
+  const nodes:DesignDocument['nodes']={}
+  const pending=[...roots]
+  while(pending.length) {
+    const id=pending.pop()!, n=doc.nodes[id]
+    if (!n || nodes[id] || Object.keys(nodes).length>=32 || n.kind==='text' || n.textPath || n.repeat ||
+        n.component || n.componentSet || n.instance || n.instanceOrigin || n.connector || n.board ||
+        n.componentKey!=null || Object.keys(n.bindings||{}).length || Object.keys(n.styleRefs||{}).length ||
+        Object.keys(n.variableModes||{}).length || n.fills.some(p=>p.image) || n.strokes.some(s=>s.paint.image) ||
+        (n.network?.edges.length||0)>512 || (n.vectorGeometry?.fill.length||0)>512) return false
+    nodes[id] = patches[id] ? {...n,...patches[id]} : n
+    pending.push(...n.children)
+  }
+  const subset={id:doc.id,name:doc.name,schemaVersion:doc.schemaVersion,nodes,
+    pages:[{id:doc.pages[0].id,name:'pose',background:'#ffffff',children:[...roots]}]}
+  try {
+    const input=JSON.stringify(subset)
+    if(input.length>128*1024)return false
+    const result=JSON.parse(layoutEngine.resolve_components(input)) as {nodes:Record<string,unknown>;removed:string[]}
+    return !result.removed.length && !Object.keys(result.nodes).length
+  } catch { return false }
+}
+
 export function kernelLayout(input: DesignDocument, previous?: DesignDocument, residentDiff=false): DesignDocument {
   if (previous) {
     const scope = pageEditScope(previous, input)
