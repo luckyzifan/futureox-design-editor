@@ -36,6 +36,12 @@ export function cpuDisplayPressure(error: unknown) {
   return /Compositing memory budget exceeded|Combined filter dependency halo exceeds 2048 device pixels|Combined zoom source dependency halo exceeds 2048 device pixels|Zoom source filter halo exceeds 2048 device pixels|Frame compositing work budget exceeded|Layer surface exceeds 16 million pixels|Gaussian sigma must be in/.test(String(error))
 }
 
+/** Device origin for a CPU tile blit. Floor keeps a shared edge closed.
+ * Rounding each tile on its own opens a one-pixel pasteboard seam. */
+export function cpuTileBlitOrigin(dx: number, dy: number) {
+  return { x: Math.floor(dx), y: Math.floor(dy) }
+}
+
 export function solidDisplayTile(width: number, height: number, pixel: readonly [number, number, number, number]) {
   const bytes = new Uint8Array(width * height * 4)
   for (let i = 0; i < bytes.length; i += 4) {
