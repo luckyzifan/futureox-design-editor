@@ -108,7 +108,7 @@ for (const tool of ['sticky', 'table', 'code-block', 'sites-responsive-set'] as 
   await act(async () => pointer('pointerup', 340, 280))
   const rootId = editor.state.selection[0], rootNode = editor.state.doc.nodes[rootId]
   expect(rootNode.board?.kind).toBe(tool); expect(editor.state.doc.pages[0].children).toEqual([rootId])
-  expect(rootNode.transform.slice(4)).toEqual([100, 100]); expect(editor.state.tool).toBe('select')
+  expect(rootNode.transform.slice(4)).toEqual([100, 100]); expect(editor.state.tool).toBe(tool)
   const children = rootNode.children.map(id => editor.state.doc.nodes[id])
   if (tool === 'table') {
     if (!rootNode.layout) throw new Error('Table must author a grid layout')
