@@ -37,7 +37,7 @@ import { cloneValue, produceDraft } from './draft'
 import { validStroke, validProfiles } from './stroke-profile'
 import { remapDesignDependencies } from './design-system'
 import { pruneAnimations } from './animation'
-import { prunePrototypeReferences } from './prototype'
+import { prunePrototypeReferences, prototypeNeedsSchema12 } from './prototype'
 import { applyClipboardSemantics, captureClipboardSemantics, clipboardDependencyNodes, hasClipboardSemantics } from './clipboard-semantics'
 import { editableNetwork } from './editable-network'
 import { defaultPencil, defaultBrush, defaultMarker, defaultTape, type PencilSettings } from './freehand'
@@ -733,6 +733,8 @@ export class Editor {
           )
         ))
           draft.schemaVersion = Math.max(draft.schemaVersion, 4) as 4 | 5 | 6 | 7 | 8 | 9 | 10
+        if (draft.schemaVersion < 12 && prototypeNeedsSchema12(draft as DesignDocument))
+          draft.schemaVersion = Math.max(draft.schemaVersion, 12) as DesignDocument['schemaVersion']
         if (draft.schemaVersion < 5 && (
           featureNodesOf(authored).some((n) => n.effects.some((e) => e.glass || e.texture)) ||
           draft.animations?.some((c) =>

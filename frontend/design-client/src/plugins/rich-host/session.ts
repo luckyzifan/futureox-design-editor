@@ -152,15 +152,20 @@ function mapFill(value: unknown, images?: Map<string, PluginImage>): Paint {
     made.stops = [{ offset: 0, color: color.hex }, { offset: 1, color: color.hex }]
     return made
   }
-  if (type === 'GRADIENT_LINEAR') {
+  const gradientKind = type === 'GRADIENT_LINEAR' ? 'linear'
+    : type === 'GRADIENT_RADIAL' ? 'radial'
+      : type === 'GRADIENT_ANGULAR' ? 'angular'
+        : type === 'GRADIENT_DIAMOND' ? 'diamond'
+          : null
+  if (gradientKind) {
     const stops = fill.gradientStops
-    if (!Array.isArray(stops) || stops.length < 2) throw new PluginApiError('invalid_value', 'GRADIENT_LINEAR needs at least two gradientStops')
+    if (!Array.isArray(stops) || stops.length < 2) throw new PluginApiError('invalid_value', `${String(type)} needs at least two gradientStops`)
     const mapped = stops.map(stop => {
       const item = record(stop, 'gradientStop')
       const color = figmaColorToHex(item.color)
       return { offset: finite(item.position, 'gradientStop.position', 0, 1), color: color.hex }
     })
-    const made = paint(mapped[0].color, 'linear')
+    const made = paint(mapped[0].color, gradientKind)
     made.opacity = opacity
     made.visible = visible
     made.stops = mapped
@@ -179,7 +184,7 @@ function mapFill(value: unknown, images?: Map<string, PluginImage>): Paint {
     made.visible = visible
     return made
   }
-  throw new PluginApiError('unsupported_api', `Fill ${String(type)} is not available. SOLID, GRADIENT_LINEAR, and IMAGE are supported.`)
+  throw new PluginApiError('unsupported_api', `Fill ${String(type)} is not available. SOLID, GRADIENT_LINEAR, GRADIENT_RADIAL, GRADIENT_ANGULAR, GRADIENT_DIAMOND, and IMAGE are supported. The previous paints were left unchanged.`)
 }
 function angleOf(transform: unknown): number {
   if (!Array.isArray(transform) || !Array.isArray(transform[0]) || !Array.isArray(transform[1])) return 180
@@ -194,9 +199,8 @@ function mapFills(value: unknown, images?: Map<string, PluginImage>): Paint[] {
   return value.map(item => mapFill(item, images))
 }
 function mapStrokePaint(value: unknown): Paint {
-  const fill = mapFill({ ...record(value, 'stroke'), type: record(value, 'stroke').type ?? 'SOLID' })
-  if (fill.kind !== 'solid') throw new PluginApiError('unsupported_api', 'Only SOLID strokes are supported')
-  return fill
+  const body = record(value, 'stroke')
+  return mapFill({ ...body, type: body.type ?? 'SOLID' })
 }
 function blankStroke(width: number): Stroke {
   const made = stroke('#000000', width)
@@ -264,8 +268,13 @@ function toFigmaFills(fills: Paint[], images?: Map<string, PluginImage>, urls?: 
       return { type: 'IMAGE', imageHash: hash, scaleMode: scale, opacity: item.opacity, visible: item.visible }
     }
     if (item.kind === 'solid') return { type: 'SOLID', color: hexToFigmaColor(item.color), opacity: item.opacity, visible: item.visible }
-    if (item.kind === 'linear') return {
-      type: 'GRADIENT_LINEAR', opacity: item.opacity, visible: item.visible,
+    const gradient = item.kind === 'linear' ? 'GRADIENT_LINEAR'
+      : item.kind === 'radial' ? 'GRADIENT_RADIAL'
+        : item.kind === 'angular' ? 'GRADIENT_ANGULAR'
+          : item.kind === 'diamond' ? 'GRADIENT_DIAMOND'
+            : null
+    if (gradient) return {
+      type: gradient, opacity: item.opacity, visible: item.visible,
       gradientStops: item.stops.map(stop => ({ position: stop.offset, color: { ...hexToFigmaColor(stop.color), a: 1 } })),
     }
     return { type: 'UNSUPPORTED', kind: item.kind }
@@ -365,6 +374,12 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     return update
   }
   function write(id: string, key: string, value: unknown) {
+    if (key === 'fills') mapFills(value, images)
+    if (key === 'strokes') {
+      if (!Array.isArray(value)) throw new PluginApiError('invalid_value', 'strokes must be an array of at most 16 strokes')
+      for (const item of value) mapStrokePaint(item)
+    }
+    if (key === 'effects') mapEffects(value)
     if (TRANSFORM_KEYS.has(key) && hasMove(id)) flush()
     ensureRoom()
     bucket(id).assignments.push({ key, value })
@@ -814,7 +829,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       absoluteBoundingBox: absoluteBox(id, node),
       visible: node.visible, locked: node.locked, opacity: node.opacity, blendMode: BLEND_TO_FIGMA[node.blend] || 'NORMAL',
       fills: toFigmaFills(node.fills, images, imageUrls),
-      strokes: node.strokes.map(item => ({ type: 'SOLID', color: hexToFigmaColor(item.paint.color), opacity: item.paint.opacity, visible: item.visible })),
+      strokes: node.strokes.map(item => ({ ...toFigmaFills([item.paint], images, imageUrls)[0], strokeWeight: item.width })),
       strokeWeight: node.strokes[0]?.width ?? 0,
       strokeAlign: (node.strokes[0]?.align || 'center').toUpperCase(),
       strokeCap: { butt: 'NONE', round: 'ROUND', square: 'SQUARE' }[node.strokes[0]?.cap || 'butt'],
@@ -1310,6 +1325,8 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index)
         const hash = imageContentId(bytes)
         const mime = imageMime(bytes)
+        if (mime !== 'image/png' && mime !== 'image/jpeg' && mime !== 'image/webp')
+          throw new PluginApiError('unsupported_api', 'createImage accepts PNG, JPEG, or WebP. The document does not admit a GIF data URL.')
         images.set(hash, { mime, bytes, base64 })
         imageUrls.set(dataUrlForImage(mime, base64), hash)
         return { hash }

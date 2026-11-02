@@ -4,7 +4,7 @@ import { desktopBridge, type DesktopBridge } from '../desktop'
 import { useInterfacePreferences } from '../interface-preference'
 import { modalKeyDown } from '../modal-keyboard'
 import { acceptedDeclaredPlugins, type DeclaredPlugin } from './catalog'
-import { openPlugin, parsePluginManifest as parseRichManifest, pluginBundleFromZip, PLUGIN_API_COVERAGE, type PluginController } from './rich-host'
+import { openPlugin, parsePluginManifest as parseRichManifest, pluginBundleFromZip, PLUGIN_API_COVERAGE, type PluginBundle, type PluginController } from './rich-host'
 import { samplePlugin } from './sample-plugin'
 import './plugin-panel.css'
 
@@ -100,14 +100,24 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
   }, [desktop])
 
   async function run(manifestText: string, mainSource: string, uiHtml: string, notes: string[]) {
+    try {
+      const manifest = parseRichManifest(JSON.parse(manifestText))
+      await runBundle({ manifest, main: mainSource, ui: uiHtml || null }, notes)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+      stop()
+    }
+  }
+
+  async function runBundle(bundle: PluginBundle, notes: string[]) {
     stop()
     const token = generation.current
     setError('')
     setWarnings(notes)
     setRunning(true)
     try {
-      const manifest = parseRichManifest(JSON.parse(manifestText))
-      const next = await openPlugin(editor, { manifest, main: mainSource, ui: uiHtml || null }, {
+      const manifest = bundle.manifest
+      const next = await openPlugin(editor, bundle, {
         command: manifest.commands[0]?.command,
         onNotify: message => { if (token === generation.current) setStatus(message) },
         onUi: ui => {
@@ -169,15 +179,7 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
   async function loadArchive(file: File) {
     try {
       const bundle = pluginBundleFromZip(new Uint8Array(await file.arrayBuffer()))
-      const manifestText = JSON.stringify({
-        name: bundle.manifest.name,
-        id: bundle.manifest.id,
-        api: bundle.manifest.api,
-        main: bundle.manifest.main,
-        ...(bundle.manifest.ui ? { ui: bundle.manifest.ui } : {}),
-        editorType: bundle.manifest.editorType,
-      })
-      await run(manifestText, bundle.main, bundle.ui ?? '', [])
+      await runBundle(bundle, [])
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
       stop()
