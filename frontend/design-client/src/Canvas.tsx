@@ -2,6 +2,8 @@ import { CpuStage, measureCpuStage } from './cpu-stage-diagnostics'
 import { recoverInteractionPreview } from './kernel/interaction-preview-recovery'
 import { selectionSizeLabel } from './selection-size-label'
 import { canvasOverlayCommands, canvasGpuOverlayOwnsUi } from './canvas-overlay-commands'
+import { canvasText } from './canvas-interface-messages'
+import { useInterfacePreferences } from './interface-preference'
 import { recordCanvasGrid } from './kernel/grid-measurements'
 import { canvasActions, CanvasAction, ActionSource, ActionOutcome, ActionReason, modifierBits, type ActionReasonCode, type ActionOutcomeCode } from './canvas-action-diagnostics'
 import { actionGeometry, compareActionGeometry } from './canvas-action-geometry'
@@ -235,6 +237,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
 }) {
   const canvasChromeSelector = 'button,input,select,textarea,[contenteditable="true"],.canvas-controls,.canvas-scrollbars,.pencil-controls,.rich-text-editor'
   const state = useSyncExternalStore(editor.subscribe, editor.snapshot)
+  const { locale } = useInterfacePreferences()
+  const chromeCopy = canvasText[locale]
   const retainedMove = useRef<RetainedMoveControl|null>(null)
   const gpuMove = useRef<GpuMoveControl | null>(null)
   const [gpuReadyRevision, gpuReadyChanged] = useState(0)
@@ -2589,7 +2593,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 transform={matrixString(e.matrix)}
                 y={-12 / zoom}
                 fontSize={11 / zoom}
-                fill="#73778b"
+                fill={!['vector', 'width', 'pencil', 'brush', 'marker', 'washi-tape'].includes(state.tool) && selection.has(e.id) ? '#0d99ff' : '#73778b'}
                 pointerEvents="all"
                 style={{cursor:e.locked?'default':state.tool==='hand'||spaceHeld?'grab':'move'}}
               >
@@ -2699,32 +2703,32 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 data-testid="rotation-origin" transform={`translate(${p.x} ${p.y}) scale(${1/zoom})`} style={{cursor:'move'}}
                 onPointerDown={e=>{e.stopPropagation();start(e,'pivot')}} onDoubleClick={e=>{e.stopPropagation();setOrigin({x:.5,y:.5},true)}}>
                 <circle r={10} fill="transparent" pointerEvents="all"/><circle r={5} fill="white" stroke="#0d99ff" strokeWidth={1}/>
-                <path d="M-9 0H9 M0 -9V9" fill="none" stroke="#0d99ff" strokeWidth={1}/><title>拖动旋转中心 · 双击复位 · ⌥R 显示/隐藏</title>
+                <path d="M-9 0H9 M0 -9V9" fill="none" stroke="#0d99ff" strokeWidth={1}/><title>{chromeCopy.rotateOrigin}</title>
               </g>})()}
               {canTransform && state.tool !== 'scale' && selected.length === 1 && ['ellipse', 'polygon', 'star'].includes(state.doc.nodes[selected[0].id].kind) && !state.doc.nodes[selected[0].id].network && (() => {
                 const n = state.doc.nodes[selected[0].id]
                 const angle = Math.PI / n.points - Math.PI / 2
                 const arc = n.arc ?? { startAngle: 0, sweepAngle: Math.PI * 2, innerRadius: 0 }
                 const onEllipse = (angle: number, radius: number) => ({ x: n.width / 2 + Math.cos(angle) * n.width / 2 * radius, y: n.height / 2 + Math.sin(angle) * n.height / 2 * radius })
-                const handles: { field: NonNullable<Drag['parameter']>; point: Point; label: string }[] = n.kind === 'ellipse' ? [
-                  { field: 'arcStart', point: onEllipse(arc.startAngle, 0.85), label: '拖动调整圆弧起始角' },
-                  { field: 'arcSweep', point: onEllipse(arc.startAngle + arc.sweepAngle, 1), label: '拖动调整圆弧扫过角' },
-                  { field: 'arcInner', point: onEllipse(arc.startAngle + arc.sweepAngle / 2, Math.max(0.15, arc.innerRadius)), label: '拖动调整圆环内径' },
+                const handles: { field: NonNullable<Drag['parameter']>; point: Point; history: string; title: string }[] = n.kind === 'ellipse' ? [
+                  { field: 'arcStart', point: onEllipse(arc.startAngle, 0.85), history: '拖动调整圆弧起始角', title: chromeCopy.arcStart },
+                  { field: 'arcSweep', point: onEllipse(arc.startAngle + arc.sweepAngle, 1), history: '拖动调整圆弧扫过角', title: chromeCopy.arcSweep },
+                  { field: 'arcInner', point: onEllipse(arc.startAngle + arc.sweepAngle / 2, Math.max(0.15, arc.innerRadius)), history: '拖动调整圆环内径', title: chromeCopy.arcInner },
                 ] : [
-                  { field: 'cornerRadius', point: { x: n.width / 2, y: Math.min(n.height / 3, 12 + (n.cornerRadius ?? 0)) }, label: '拖动调整顶点圆角' },
-                  { field: 'points', point: { x: n.width, y: n.height / 2 }, label: '拖动调整顶点数量' },
+                  { field: 'cornerRadius', point: { x: n.width / 2, y: Math.min(n.height / 3, 12 + (n.cornerRadius ?? 0)) }, history: '拖动调整顶点圆角', title: chromeCopy.cornerRadiusHandle },
+                  { field: 'points', point: { x: n.width, y: n.height / 2 }, history: '拖动调整顶点数量', title: chromeCopy.vertexCount },
                   ...(n.kind === 'star' ? [{ field: 'innerRadius' as const,
                     point: { x: n.width / 2 + Math.cos(angle) * n.width / 2 * n.innerRadius, y: n.height / 2 + Math.sin(angle) * n.height / 2 * n.innerRadius },
-                    label: '拖动调整星形内半径' }] : []),
+                    history: '拖动调整星形内半径', title: chromeCopy.starInner }] : []),
                 ]
-                return handles.map(({ field, point, label }) => {
+                return handles.map(({ field, point, history, title }) => {
                   const p = apply(selected[0].matrix, point)
                   return <circle key={field} data-testid={`shape-${field}-handle`} data-node-id={n.id} cx={p.x} cy={p.y} r={5 / zoom}
                     fill="white" stroke="#0d99ff" strokeWidth={1 / zoom} style={{ cursor: field === 'points' ? 'ns-resize' : 'crosshair' }}
                     onPointerDown={e => {
                       e.stopPropagation(); start(e, 'parameter', undefined, n.id)
-                      if (drag.current?.kind === 'parameter') { drag.current.parameter = field; editor.begin(label) }
-                    }}><title>{label}</title></circle>
+                      if (drag.current?.kind === 'parameter') { drag.current.parameter = field; editor.begin(history) }
+                    }}><title>{title}</title></circle>
                 })
               })()}
               <text
@@ -2737,6 +2741,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               >
                 {selectionSizeLabel(localSelection, selectionBox, selected[0]?.matrix)}
               </text>
+              {overlay.commands.labels.filter(label => label.kind === 'selection-name').map(label => (
+                <text key={label.text} data-testid="canvas-selection-name" opacity={gpuOverlay ? 0 : 1}
+                  x={label.anchor.x} y={label.anchor.y + label.offset.y / zoom}
+                  fontSize={label.size / zoom} fill={label.color} pointerEvents="none">{label.text}</text>
+              ))}
             </g>
           )}
         </g>
@@ -2885,7 +2894,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               stroke="#0d99ff"
               strokeWidth={1 / zoom}
               strokeDasharray={
-                drag.current?.kind === 'marquee' ? undefined : `${4 / zoom} ${3 / zoom}`
+                drag.current?.kind === 'marquee' || drag.current?.kind === 'create' ? undefined : `${4 / zoom} ${3 / zoom}`
               }
               pointerEvents="none"
             />{drag.current?.kind === 'create' && <text x={rubber.x + rubber.width / 2} y={rubber.y + rubber.height + 18 / zoom}
@@ -2962,7 +2971,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       </div>
       {pen && (
         <div className="pen-hint">
-          点击添加节点，拖动创建曲线；点击已有节点可连接分支。
+          {chromeCopy.penHint}
           <button
             onClick={(e) => {
               e.stopPropagation()
@@ -2970,7 +2979,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             }}
             onPointerDown={(e) => e.stopPropagation()}
           >
-            完成 ↵
+            {chromeCopy.penDone}
           </button>
         </div>
       )}
