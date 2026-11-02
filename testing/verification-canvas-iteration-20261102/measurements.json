@@ -1,0 +1,2602 @@
+{
+  "base": "1227220a45242d786ce4cd297f36b71e81e095e6",
+  "buildManifestSha256": "37eced6008a2b05369d2a1d60ca269b20d7fde770a29563fb03d9f1b41c4c16b",
+  "platform": "darwin/arm64 · Electron 44.7.0 · Apple Metal 3 · isolated offscreen window",
+  "scope": "GUI-loop and content pixels; no physical scanout timestamps",
+  "rawRuns": "/private/tmp/futureox-github-review-1227220a-lWaoiS",
+  "originals": {
+    "fig": {
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "sourceUnchanged": true,
+      "nodes": 20082,
+      "file": "01有料素材 (Copy).fig"
+    },
+    "117": {
+      "sourceSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "sourceUnchanged": true,
+      "nodes": 752,
+      "file": "117.sketch"
+    },
+    "topology-4": {
+      "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "sourceUnchanged": true,
+      "nodes": 394,
+      "file": "拓扑素材.sketch"
+    }
+  },
+  "navigation": {
+    "fig": {
+      "baseline": {
+        "pan": {
+          "missingInk": 0,
+          "exactInk": 545585,
+          "size": [
+            831,
+            806
+          ],
+          "camera": {
+            "x": -26952.09281291141,
+            "y": -8385.440621767062,
+            "zoom": 3
+          }
+        },
+        "zoom": {
+          "missingInk": 64530,
+          "exactInk": 116151,
+          "size": [
+            831,
+            806
+          ],
+          "camera": {
+            "x": -2669.9515040163733,
+            "y": -557.4474857033955,
+            "zoom": 0.34597536311418753
+          }
+        },
+        "reverse": {
+          "missingInk": 57,
+          "exactInk": 104630,
+          "size": [
+            831,
+            806
+          ],
+          "camera": {
+            "x": -4286.441128728228,
+            "y": -1090.0818427682636,
+            "zoom": 0.5265612018509906
+          }
+        }
+      },
+      "candidate": {
+        "pan": {
+          "missingInk": 0,
+          "exactInk": 545585,
+          "size": [
+            831,
+            806
+          ],
+          "camera": {
+            "x": -26952.09281291141,
+            "y": -8385.440621767062,
+            "zoom": 3
+          }
+        },
+        "zoom": {
+          "missingInk": 194,
+          "exactInk": 116151,
+          "size": [
+            831,
+            806
+          ],
+          "camera": {
+            "x": -2669.9515040163733,
+            "y": -557.4474857033955,
+            "zoom": 0.34597536311418753
+          }
+        },
+        "reverse": {
+          "missingInk": 0,
+          "exactInk": 104630,
+          "size": [
+            831,
+            806
+          ],
+          "camera": {
+            "x": -4286.441128728228,
+            "y": -1090.0818427682636,
+            "zoom": 0.5265612018509906
+          }
+        }
+      }
+    },
+    "117": {
+      "baseline": {
+        "pan": {
+          "missingInk": 0,
+          "exactInk": 431217,
+          "size": [
+            831,
+            806
+          ],
+          "camera": {
+            "x": -3579.7535705566406,
+            "y": -734,
+            "zoom": 3
+          }
+        },
+        "zoom": {
+          "missingInk": 179158,
+          "exactInk": 199584,
+          "size": [
+            831,
+            806
+          ],
+          "camera": {
+            "x": 25.46634805084915,
+            "y": 324.9558301174392,
+            "zoom": 0.34597536311418753
+          }
+        },
+        "reverse": {
+          "missingInk": 133,
+          "exactInk": 251454,
+          "size": [
+            831,
+            806
+          ],
+          "camera": {
+            "x": -184.11878155376087,
+            "y": 252.90208046145474,
+            "zoom": 0.5265612018509906
+          }
+        }
+      },
+      "candidate": {
+        "pan": {
+          "missingInk": 0,
+          "exactInk": 431217,
+          "size": [
+            831,
+            806
+          ],
+          "camera": {
+            "x": -3579.7535705566406,
+            "y": -734,
+            "zoom": 3
+          }
+        },
+        "zoom": {
+          "missingInk": 210,
+          "exactInk": 199584,
+          "size": [
+            831,
+            806
+          ],
+          "camera": {
+            "x": 25.46634805084915,
+            "y": 324.9558301174392,
+            "zoom": 0.34597536311418753
+          }
+        },
+        "reverse": {
+          "missingInk": 0,
+          "exactInk": 251454,
+          "size": [
+            831,
+            806
+          ],
+          "camera": {
+            "x": -184.11878155376087,
+            "y": 252.90208046145474,
+            "zoom": 0.5265612018509906
+          }
+        }
+      }
+    },
+    "topology-4": {
+      "baseline": {
+        "pan": {
+          "missingInk": 0,
+          "exactInk": 105708,
+          "size": [
+            831,
+            840
+          ],
+          "camera": {
+            "x": -15643.349181912057,
+            "y": 4668.74326216144,
+            "zoom": 1.9731369150779896
+          }
+        },
+        "zoom": {
+          "missingInk": 275,
+          "exactInk": 9474,
+          "size": [
+            831,
+            840
+          ],
+          "camera": {
+            "x": -1365.769275982954,
+            "y": 963.0673237061369,
+            "zoom": 0.22755225355603842
+          }
+        },
+        "reverse": {
+          "missingInk": 808,
+          "exactInk": 20408,
+          "size": [
+            831,
+            840
+          ],
+          "camera": {
+            "x": -2301.5259161403087,
+            "y": 1215.209895456322,
+            "zoom": 0.34632578180667406
+          }
+        }
+      },
+      "candidate": {
+        "pan": {
+          "missingInk": 0,
+          "exactInk": 105708,
+          "size": [
+            831,
+            840
+          ],
+          "camera": {
+            "x": -15643.349181912057,
+            "y": 4668.74326216144,
+            "zoom": 1.9731369150779896
+          }
+        },
+        "zoom": {
+          "missingInk": 280,
+          "exactInk": 9474,
+          "size": [
+            831,
+            840
+          ],
+          "camera": {
+            "x": -1365.769275982954,
+            "y": 963.0673237061369,
+            "zoom": 0.22755225355603842
+          }
+        },
+        "reverse": {
+          "missingInk": 807,
+          "exactInk": 20408,
+          "size": [
+            831,
+            840
+          ],
+          "camera": {
+            "x": -2301.5259161403087,
+            "y": 1215.209895456322,
+            "zoom": 0.34632578180667406
+          }
+        }
+      }
+    },
+    "full-source-template2": {
+      "baseline": {
+        "pan": {
+          "missingInk": 0,
+          "exactInk": 2045,
+          "size": [
+            831,
+            840
+          ],
+          "camera": {
+            "x": -11792.5,
+            "y": -7575.15625,
+            "zoom": 1.2109375
+          }
+        },
+        "zoom": {
+          "missingInk": 30672,
+          "exactInk": 39375,
+          "size": [
+            831,
+            840
+          ],
+          "camera": {
+            "x": -1163.8523821595536,
+            "y": -448.9618695117558,
+            "zoom": 0.13965151375702883
+          }
+        },
+        "reverse": {
+          "missingInk": 19,
+          "exactInk": 52013,
+          "size": [
+            831,
+            840
+          ],
+          "camera": {
+            "x": -1994.2161663111633,
+            "y": -933.8442520325061,
+            "zoom": 0.21254423512214463
+          }
+        }
+      },
+      "candidate": {
+        "pan": {
+          "missingInk": 0,
+          "exactInk": 2045,
+          "size": [
+            831,
+            840
+          ],
+          "camera": {
+            "x": -11792.5,
+            "y": -7575.15625,
+            "zoom": 1.2109375
+          }
+        },
+        "zoom": {
+          "missingInk": 24542,
+          "exactInk": 39375,
+          "size": [
+            831,
+            840
+          ],
+          "camera": {
+            "x": -1163.8523821595536,
+            "y": -448.9618695117558,
+            "zoom": 0.13965151375702883
+          }
+        },
+        "reverse": {
+          "missingInk": 0,
+          "exactInk": 52013,
+          "size": [
+            831,
+            840
+          ],
+          "camera": {
+            "x": -1994.2161663111633,
+            "y": -933.8442520325061,
+            "zoom": 0.21254423512214463
+          }
+        }
+      }
+    }
+  },
+  "matrix": {
+    "fig": [
+      {
+        "action": "pan",
+        "status": "complete",
+        "stopToGuiReadyMs": 55.2,
+        "undo": null,
+        "documentUnchanged": true,
+        "wheelInputs": 96,
+        "observedProjectionMs": {
+          "n": 96,
+          "median": 5.9,
+          "p95": 7.2,
+          "max": 13.9
+        },
+        "poseInputs": 0,
+        "poseAckMs": null,
+        "longTasksMs": []
+      },
+      {
+        "action": "drag",
+        "status": "complete",
+        "stopToGuiReadyMs": 197.3,
+        "undo": true,
+        "documentUnchanged": null,
+        "wheelInputs": 0,
+        "observedProjectionMs": null,
+        "poseInputs": 0,
+        "poseAckMs": null,
+        "longTasksMs": [
+          74,
+          153
+        ]
+      },
+      {
+        "action": "rotate",
+        "status": "complete",
+        "stopToGuiReadyMs": 152.2,
+        "undo": true,
+        "documentUnchanged": null,
+        "wheelInputs": 0,
+        "observedProjectionMs": null,
+        "poseInputs": 0,
+        "poseAckMs": null,
+        "longTasksMs": [
+          121,
+          79,
+          82,
+          113,
+          94,
+          81,
+          81,
+          80,
+          93,
+          85,
+          81,
+          80,
+          76,
+          79,
+          81,
+          83,
+          77,
+          78,
+          78,
+          79,
+          77,
+          77,
+          80,
+          79,
+          77,
+          77,
+          77,
+          84,
+          78,
+          79,
+          78,
+          77,
+          97
+        ]
+      },
+      {
+        "action": "zoom",
+        "status": "complete",
+        "stopToGuiReadyMs": 55.4,
+        "undo": null,
+        "documentUnchanged": true,
+        "wheelInputs": 96,
+        "observedProjectionMs": {
+          "n": 96,
+          "median": 16.7,
+          "p95": 25.0,
+          "max": 33.6
+        },
+        "poseInputs": 0,
+        "poseAckMs": null,
+        "longTasksMs": []
+      }
+    ],
+    "117": [
+      {
+        "action": "pan",
+        "status": "complete",
+        "stopToGuiReadyMs": 55.8,
+        "undo": null,
+        "documentUnchanged": true,
+        "wheelInputs": 96,
+        "observedProjectionMs": {
+          "n": 96,
+          "median": 4.8,
+          "p95": 5.8,
+          "max": 6.1
+        },
+        "poseInputs": 0,
+        "poseAckMs": null,
+        "longTasksMs": []
+      },
+      {
+        "action": "drag",
+        "status": "complete",
+        "stopToGuiReadyMs": 68.2,
+        "undo": true,
+        "documentUnchanged": null,
+        "wheelInputs": 0,
+        "observedProjectionMs": null,
+        "poseInputs": 19,
+        "poseAckMs": {
+          "n": 19,
+          "median": 2.4,
+          "p95": 58.1,
+          "max": 58.1
+        },
+        "longTasksMs": []
+      },
+      {
+        "action": "rotate",
+        "status": "complete",
+        "stopToGuiReadyMs": 193.9,
+        "undo": true,
+        "documentUnchanged": null,
+        "wheelInputs": 0,
+        "observedProjectionMs": null,
+        "poseInputs": 14,
+        "poseAckMs": {
+          "n": 6,
+          "median": 67.6,
+          "p95": 95.9,
+          "max": 95.9
+        },
+        "longTasksMs": []
+      },
+      {
+        "action": "zoom",
+        "status": "complete",
+        "stopToGuiReadyMs": 55.5,
+        "undo": null,
+        "documentUnchanged": true,
+        "wheelInputs": 96,
+        "observedProjectionMs": {
+          "n": 96,
+          "median": 16.8,
+          "p95": 17.7,
+          "max": 19.3
+        },
+        "poseInputs": 0,
+        "poseAckMs": null,
+        "longTasksMs": []
+      }
+    ],
+    "topology-4": [
+      {
+        "action": "pan",
+        "status": "complete",
+        "stopToGuiReadyMs": 55.9,
+        "undo": null,
+        "documentUnchanged": true,
+        "wheelInputs": 96,
+        "observedProjectionMs": {
+          "n": 96,
+          "median": 5.0,
+          "p95": 5.6,
+          "max": 6.6
+        },
+        "poseInputs": 0,
+        "poseAckMs": null,
+        "longTasksMs": []
+      },
+      {
+        "action": "drag",
+        "status": "complete",
+        "stopToGuiReadyMs": 467.9,
+        "undo": true,
+        "documentUnchanged": null,
+        "wheelInputs": 0,
+        "observedProjectionMs": null,
+        "poseInputs": 19,
+        "poseAckMs": {
+          "n": 4,
+          "median": 264.7,
+          "p95": 418.0,
+          "max": 418.0
+        },
+        "longTasksMs": []
+      },
+      {
+        "action": "rotate",
+        "status": "complete",
+        "stopToGuiReadyMs": 778.1,
+        "undo": true,
+        "documentUnchanged": null,
+        "wheelInputs": 0,
+        "observedProjectionMs": null,
+        "poseInputs": 2,
+        "poseAckMs": null,
+        "longTasksMs": []
+      },
+      {
+        "action": "zoom",
+        "status": "complete",
+        "stopToGuiReadyMs": 56.4,
+        "undo": null,
+        "documentUnchanged": true,
+        "wheelInputs": 96,
+        "observedProjectionMs": {
+          "n": 96,
+          "median": 16.7,
+          "p95": 17.6,
+          "max": 18.1
+        },
+        "poseInputs": 0,
+        "poseAckMs": null,
+        "longTasksMs": []
+      }
+    ]
+  },
+  "fieldSamples": {
+    "control": {
+      "inside": [
+        {
+          "fieldUploadBytes": 71551296,
+          "fieldMs": 143.6,
+          "graph": 459.7,
+          "finish": 14.6,
+          "total": 610.7,
+          "reused": 0
+        },
+        {
+          "fieldUploadBytes": 44529792,
+          "fieldMs": 61.8,
+          "graph": 217.8,
+          "finish": 26,
+          "total": 325.1,
+          "reused": 0
+        },
+        {
+          "fieldUploadBytes": 44529792,
+          "fieldMs": 60.1,
+          "graph": 205.8,
+          "finish": 37,
+          "total": 279.3,
+          "reused": 0
+        },
+        {
+          "fieldUploadBytes": 44529792,
+          "fieldMs": 60.6,
+          "graph": 218.9,
+          "finish": 21.2,
+          "total": 279.6,
+          "reused": 0
+        }
+      ],
+      "rotate": [
+        {
+          "fieldUploadBytes": 90088640,
+          "fieldMs": 124.0,
+          "graph": 311.2,
+          "finish": 35.4,
+          "total": 456.8,
+          "reused": 0
+        },
+        {
+          "fieldUploadBytes": 97490880,
+          "fieldMs": 138.9,
+          "graph": 470.4,
+          "finish": 14.1,
+          "total": 583.8,
+          "reused": 0
+        }
+      ]
+    },
+    "candidate": {
+      "inside": [
+        {
+          "fieldUploadBytes": 10847552,
+          "fieldMs": 128.8,
+          "graph": 200.2,
+          "finish": 104.8,
+          "total": 382.6,
+          "reused": 0
+        },
+        {
+          "fieldUploadBytes": 65536,
+          "fieldMs": 0.7,
+          "graph": 53.5,
+          "finish": 159.2,
+          "total": 259,
+          "reused": 0
+        },
+        {
+          "fieldUploadBytes": 65536,
+          "fieldMs": 0.5,
+          "graph": 46.4,
+          "finish": 152.2,
+          "total": 233.7,
+          "reused": 0
+        },
+        {
+          "fieldUploadBytes": 65536,
+          "fieldMs": 0.4,
+          "graph": 45.5,
+          "finish": 158.4,
+          "total": 240.1,
+          "reused": 0
+        },
+        {
+          "fieldUploadBytes": 65536,
+          "fieldMs": 0.2,
+          "graph": 48.6,
+          "finish": 157.6,
+          "total": 242,
+          "reused": 0
+        }
+      ],
+      "rotate": [
+        {
+          "fieldUploadBytes": 0,
+          "fieldMs": null,
+          "graph": 0,
+          "finish": 0,
+          "total": 0.6,
+          "reused": 0
+        },
+        {
+          "fieldUploadBytes": 0,
+          "fieldMs": null,
+          "graph": 0,
+          "finish": 0,
+          "total": 0.1,
+          "reused": 0
+        },
+        {
+          "fieldUploadBytes": 12171840,
+          "fieldMs": 152.5,
+          "graph": 219.5,
+          "finish": 85.2,
+          "total": 381.6,
+          "reused": 0
+        },
+        {
+          "fieldUploadBytes": 1286144,
+          "fieldMs": 26.1,
+          "graph": 78.3,
+          "finish": 137.9,
+          "total": 262.5,
+          "reused": 0
+        },
+        {
+          "fieldUploadBytes": 1359872,
+          "fieldMs": 26.2,
+          "graph": 68.9,
+          "finish": 154.6,
+          "total": 254.8,
+          "reused": 0
+        },
+        {
+          "fieldUploadBytes": 1409024,
+          "fieldMs": 26.2,
+          "graph": 73,
+          "finish": 135.3,
+          "total": 241.3,
+          "reused": 0
+        },
+        {
+          "fieldUploadBytes": 1425408,
+          "fieldMs": 26.1,
+          "graph": 71.9,
+          "finish": 133.7,
+          "total": 241.9,
+          "reused": 0
+        }
+      ]
+    }
+  },
+  "pixels": {
+    "fig/inside": {
+      "beforeVsFresh": {
+        "differentPixels": 144,
+        "max8Bit": 26
+      },
+      "heldVsFresh": {
+        "differentPixels": 0,
+        "max8Bit": 0
+      },
+      "settledVsFresh": {
+        "differentPixels": 0,
+        "max8Bit": 0
+      },
+      "authoredUndo": true,
+      "matchedPoseAck": true
+    },
+    "fig/rotate": {
+      "beforeVsFresh": {
+        "differentPixels": 116,
+        "max8Bit": 25
+      },
+      "heldVsFresh": {
+        "differentPixels": 0,
+        "max8Bit": 0
+      },
+      "settledVsFresh": {
+        "differentPixels": 0,
+        "max8Bit": 0
+      },
+      "authoredUndo": true,
+      "matchedPoseAck": true
+    },
+    "117/inside": {
+      "beforeVsFresh": {
+        "differentPixels": 6040,
+        "max8Bit": 18
+      },
+      "heldVsFresh": {
+        "differentPixels": 0,
+        "max8Bit": 0
+      },
+      "settledVsFresh": {
+        "differentPixels": 0,
+        "max8Bit": 0
+      },
+      "authoredUndo": true,
+      "matchedPoseAck": true
+    },
+    "117/rotate": {
+      "beforeVsFresh": {
+        "differentPixels": 2000,
+        "max8Bit": 1
+      },
+      "heldVsFresh": {
+        "differentPixels": 0,
+        "max8Bit": 0
+      },
+      "settledVsFresh": {
+        "differentPixels": 0,
+        "max8Bit": 0
+      },
+      "authoredUndo": true,
+      "matchedPoseAck": true
+    },
+    "topology-4/inside": {
+      "beforeVsFresh": {
+        "differentPixels": 21846,
+        "max8Bit": 74
+      },
+      "heldVsFresh": {
+        "differentPixels": 0,
+        "max8Bit": 0
+      },
+      "settledVsFresh": {
+        "differentPixels": 0,
+        "max8Bit": 0
+      },
+      "authoredUndo": true,
+      "matchedPoseAck": true
+    },
+    "topology-4/rotate": {
+      "beforeVsFresh": {
+        "differentPixels": 54927,
+        "max8Bit": 57
+      },
+      "heldVsFresh": {
+        "differentPixels": 1,
+        "max8Bit": 1
+      },
+      "settledVsFresh": {
+        "differentPixels": 1,
+        "max8Bit": 1
+      },
+      "authoredUndo": true,
+      "matchedPoseAck": false
+    }
+  },
+  "template3200": {
+    "baselinePackets": [
+      {
+        "crop": {
+          "x": 729087,
+          "y": 425471,
+          "w": 514,
+          "h": 514
+        },
+        "error": "GPU surface budget exceeded",
+        "packetBytes": 0,
+        "ms": 3476
+      },
+      {
+        "crop": {
+          "x": 728575,
+          "y": 425471,
+          "w": 514,
+          "h": 514
+        },
+        "error": "GPU surface budget exceeded",
+        "packetBytes": 0,
+        "ms": 1
+      },
+      {
+        "crop": {
+          "x": 729087,
+          "y": 425983,
+          "w": 514,
+          "h": 514
+        },
+        "error": "GPU surface budget exceeded",
+        "packetBytes": 0,
+        "ms": 0
+      },
+      {
+        "crop": {
+          "x": 728575,
+          "y": 425983,
+          "w": 514,
+          "h": 514
+        },
+        "error": "GPU surface budget exceeded",
+        "packetBytes": 0,
+        "ms": 0
+      },
+      {
+        "crop": {
+          "x": 729087,
+          "y": 424959,
+          "w": 514,
+          "h": 514
+        },
+        "error": "GPU surface budget exceeded",
+        "packetBytes": 0,
+        "ms": 0
+      },
+      {
+        "crop": {
+          "x": 728575,
+          "y": 424959,
+          "w": 514,
+          "h": 514
+        },
+        "error": "GPU surface budget exceeded",
+        "packetBytes": 0,
+        "ms": 0
+      },
+      {
+        "crop": {
+          "x": 729599,
+          "y": 425471,
+          "w": 514,
+          "h": 514
+        },
+        "error": "GPU surface budget exceeded",
+        "packetBytes": 0,
+        "ms": 0
+      },
+      {
+        "crop": {
+          "x": 728063,
+          "y": 425471,
+          "w": 514,
+          "h": 514
+        },
+        "error": "GPU surface budget exceeded",
+        "packetBytes": 0,
+        "ms": 0
+      },
+      {
+        "crop": {
+          "x": 729599,
+          "y": 425983,
+          "w": 514,
+          "h": 514
+        },
+        "error": "GPU surface budget exceeded",
+        "packetBytes": 0,
+        "ms": 0
+      },
+      {
+        "crop": {
+          "x": 729599,
+          "y": 424959,
+          "w": 514,
+          "h": 514
+        },
+        "error": "GPU surface budget exceeded",
+        "packetBytes": 0,
+        "ms": 0
+      },
+      {
+        "crop": {
+          "x": 728063,
+          "y": 425983,
+          "w": 514,
+          "h": 514
+        },
+        "error": "GPU surface budget exceeded",
+        "packetBytes": 0,
+        "ms": 0
+      },
+      {
+        "crop": {
+          "x": 728063,
+          "y": 424959,
+          "w": 514,
+          "h": 514
+        },
+        "error": "GPU surface budget exceeded",
+        "packetBytes": 0,
+        "ms": 3
+      },
+      {
+        "crop": {
+          "x": 729087,
+          "y": 426495,
+          "w": 514,
+          "h": 514
+        },
+        "error": "GPU surface budget exceeded",
+        "packetBytes": 0,
+        "ms": 0
+      },
+      {
+        "crop": {
+          "x": 728575,
+          "y": 426495,
+          "w": 514,
+          "h": 514
+        },
+        "error": "GPU surface budget exceeded",
+        "packetBytes": 0,
+        "ms": 0
+      },
+      {
+        "crop": {
+          "x": 729087,
+          "y": 424447,
+          "w": 514,
+          "h": 514
+        },
+        "error": "GPU surface budget exceeded",
+        "packetBytes": 0,
+        "ms": 0
+      },
+      {
+        "crop": {
+          "x": 728575,
+          "y": 424447,
+          "w": 514,
+          "h": 514
+        },
+        "error": "GPU surface budget exceeded",
+        "packetBytes": 0,
+        "ms": 1
+      },
+      {
+        "crop": {
+          "x": 729599,
+          "y": 426495,
+          "w": 514,
+          "h": 514
+        },
+        "error": "GPU surface budget exceeded",
+        "packetBytes": 0,
+        "ms": 0
+      },
+      {
+        "crop": {
+          "x": 728063,
+          "y": 426495,
+          "w": 514,
+          "h": 514
+        },
+        "error": "GPU surface budget exceeded",
+        "packetBytes": 0,
+        "ms": 0
+      },
+      {
+        "crop": {
+          "x": 729599,
+          "y": 424447,
+          "w": 514,
+          "h": 514
+        },
+        "error": "GPU surface budget exceeded",
+        "packetBytes": 0,
+        "ms": 0
+      },
+      {
+        "crop": {
+          "x": 728063,
+          "y": 424447,
+          "w": 514,
+          "h": 514
+        },
+        "error": "GPU surface budget exceeded",
+        "packetBytes": 0,
+        "ms": 0
+      }
+    ],
+    "regionalPackets": [
+      {
+        "crop": {
+          "x": 729087,
+          "y": 425471,
+          "w": 514,
+          "h": 514
+        },
+        "error": null,
+        "packetBytes": 1863082,
+        "ms": 4620
+      },
+      {
+        "crop": {
+          "x": 728575,
+          "y": 425471,
+          "w": 514,
+          "h": 514
+        },
+        "error": null,
+        "packetBytes": 1758730,
+        "ms": 18
+      },
+      {
+        "crop": {
+          "x": 729087,
+          "y": 425983,
+          "w": 514,
+          "h": 514
+        },
+        "error": null,
+        "packetBytes": 451336,
+        "ms": 11
+      },
+      {
+        "crop": {
+          "x": 728575,
+          "y": 425983,
+          "w": 514,
+          "h": 514
+        },
+        "error": null,
+        "packetBytes": 451336,
+        "ms": 11
+      },
+      {
+        "crop": {
+          "x": 729087,
+          "y": 424959,
+          "w": 514,
+          "h": 514
+        },
+        "error": null,
+        "packetBytes": 1775690,
+        "ms": 17
+      },
+      {
+        "crop": {
+          "x": 728575,
+          "y": 424959,
+          "w": 514,
+          "h": 514
+        },
+        "error": null,
+        "packetBytes": 1796698,
+        "ms": 17
+      },
+      {
+        "crop": {
+          "x": 729599,
+          "y": 425471,
+          "w": 514,
+          "h": 514
+        },
+        "error": null,
+        "packetBytes": 1695439,
+        "ms": 17
+      },
+      {
+        "crop": {
+          "x": 728063,
+          "y": 425471,
+          "w": 514,
+          "h": 514
+        },
+        "error": null,
+        "packetBytes": 1684778,
+        "ms": 17
+      },
+      {
+        "crop": {
+          "x": 729599,
+          "y": 425983,
+          "w": 514,
+          "h": 514
+        },
+        "error": null,
+        "packetBytes": 451336,
+        "ms": 11
+      },
+      {
+        "crop": {
+          "x": 729599,
+          "y": 424959,
+          "w": 514,
+          "h": 514
+        },
+        "error": null,
+        "packetBytes": 1758783,
+        "ms": 16
+      },
+      {
+        "crop": {
+          "x": 728063,
+          "y": 425983,
+          "w": 514,
+          "h": 514
+        },
+        "error": null,
+        "packetBytes": 451336,
+        "ms": 10
+      },
+      {
+        "crop": {
+          "x": 728063,
+          "y": 424959,
+          "w": 514,
+          "h": 514
+        },
+        "error": null,
+        "packetBytes": 1527354,
+        "ms": 16
+      },
+      {
+        "crop": {
+          "x": 729087,
+          "y": 426495,
+          "w": 514,
+          "h": 514
+        },
+        "error": null,
+        "packetBytes": 451336,
+        "ms": 14
+      },
+      {
+        "crop": {
+          "x": 728575,
+          "y": 426495,
+          "w": 514,
+          "h": 514
+        },
+        "error": null,
+        "packetBytes": 451336,
+        "ms": 11
+      },
+      {
+        "crop": {
+          "x": 729087,
+          "y": 424447,
+          "w": 514,
+          "h": 514
+        },
+        "error": null,
+        "packetBytes": 1463642,
+        "ms": 15
+      },
+      {
+        "crop": {
+          "x": 728575,
+          "y": 424447,
+          "w": 514,
+          "h": 514
+        },
+        "error": null,
+        "packetBytes": 1641242,
+        "ms": 16
+      },
+      {
+        "crop": {
+          "x": 729599,
+          "y": 426495,
+          "w": 514,
+          "h": 514
+        },
+        "error": null,
+        "packetBytes": 451336,
+        "ms": 11
+      },
+      {
+        "crop": {
+          "x": 728063,
+          "y": 426495,
+          "w": 514,
+          "h": 514
+        },
+        "error": null,
+        "packetBytes": 451336,
+        "ms": 11
+      },
+      {
+        "crop": {
+          "x": 729599,
+          "y": 424447,
+          "w": 514,
+          "h": 514
+        },
+        "error": null,
+        "packetBytes": 1394607,
+        "ms": 15
+      },
+      {
+        "crop": {
+          "x": 728063,
+          "y": 424447,
+          "w": 514,
+          "h": 514
+        },
+        "error": null,
+        "packetBytes": 1555994,
+        "ms": 15
+      }
+    ],
+    "fullDensityReference": {
+      "differentPixels": 0,
+      "max8Bit": 0
+    },
+    "refineMs": 2871.6
+  },
+  "hardwareGradient": {
+    "status": "passed",
+    "scope": "Hardware decoder words versus original WASM fields, not a latency benchmark",
+    "cases": [
+      {
+        "index": 0,
+        "kind": "radial",
+        "phase": 0,
+        "rect": {
+          "x": -230,
+          "y": 126,
+          "w": 1687,
+          "h": 1331
+        },
+        "originalBytes": 35926352,
+        "encodedBytes": 15532032,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 0,
+        "kind": "radial",
+        "phase": 1,
+        "rect": {
+          "x": -230,
+          "y": 126,
+          "w": 1687,
+          "h": 1331
+        },
+        "originalBytes": 35926352,
+        "encodedBytes": 15532032,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 0,
+        "kind": "radial",
+        "phase": 2,
+        "rect": {
+          "x": -230,
+          "y": 126,
+          "w": 1687,
+          "h": 1331
+        },
+        "originalBytes": 35926352,
+        "encodedBytes": 15532032,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 0,
+        "kind": "radial",
+        "phase": 3,
+        "rect": {
+          "x": -230,
+          "y": 126,
+          "w": 1687,
+          "h": 1331
+        },
+        "originalBytes": 35926352,
+        "encodedBytes": 15532032,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 1,
+        "kind": "radial",
+        "phase": 0,
+        "rect": {
+          "x": 159,
+          "y": 786,
+          "w": 893,
+          "h": 199
+        },
+        "originalBytes": 2843312,
+        "encodedBytes": 1499136,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 1,
+        "kind": "radial",
+        "phase": 1,
+        "rect": {
+          "x": 159,
+          "y": 786,
+          "w": 893,
+          "h": 199
+        },
+        "originalBytes": 2843312,
+        "encodedBytes": 1499136,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 1,
+        "kind": "radial",
+        "phase": 2,
+        "rect": {
+          "x": 159,
+          "y": 786,
+          "w": 893,
+          "h": 199
+        },
+        "originalBytes": 2843312,
+        "encodedBytes": 1499136,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 1,
+        "kind": "radial",
+        "phase": 3,
+        "rect": {
+          "x": 159,
+          "y": 786,
+          "w": 893,
+          "h": 199
+        },
+        "originalBytes": 2843312,
+        "encodedBytes": 1499136,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 2,
+        "kind": "radial",
+        "phase": 0,
+        "rect": {
+          "x": 57,
+          "y": 650,
+          "w": 1097,
+          "h": 243
+        },
+        "originalBytes": 4265136,
+        "encodedBytes": 2162688,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 2,
+        "kind": "radial",
+        "phase": 1,
+        "rect": {
+          "x": 57,
+          "y": 650,
+          "w": 1097,
+          "h": 243
+        },
+        "originalBytes": 4265136,
+        "encodedBytes": 2162688,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 2,
+        "kind": "radial",
+        "phase": 2,
+        "rect": {
+          "x": 57,
+          "y": 650,
+          "w": 1097,
+          "h": 243
+        },
+        "originalBytes": 4265136,
+        "encodedBytes": 2162688,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 2,
+        "kind": "radial",
+        "phase": 3,
+        "rect": {
+          "x": 57,
+          "y": 650,
+          "w": 1097,
+          "h": 243
+        },
+        "originalBytes": 4265136,
+        "encodedBytes": 2162688,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 3,
+        "kind": "linear",
+        "phase": 0,
+        "rect": {
+          "x": 681,
+          "y": 544,
+          "w": 315,
+          "h": 314
+        },
+        "originalBytes": 1582560,
+        "encodedBytes": 442368,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 3,
+        "kind": "linear",
+        "phase": 1,
+        "rect": {
+          "x": 681,
+          "y": 544,
+          "w": 315,
+          "h": 314
+        },
+        "originalBytes": 1582560,
+        "encodedBytes": 442368,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 3,
+        "kind": "linear",
+        "phase": 2,
+        "rect": {
+          "x": 681,
+          "y": 544,
+          "w": 315,
+          "h": 314
+        },
+        "originalBytes": 1582560,
+        "encodedBytes": 442368,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 3,
+        "kind": "linear",
+        "phase": 3,
+        "rect": {
+          "x": 681,
+          "y": 544,
+          "w": 315,
+          "h": 314
+        },
+        "originalBytes": 1582560,
+        "encodedBytes": 442368,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 4,
+        "kind": "linear",
+        "phase": 0,
+        "rect": {
+          "x": 218,
+          "y": 452,
+          "w": 587,
+          "h": 558
+        },
+        "originalBytes": 5240736,
+        "encodedBytes": 1826816,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 4,
+        "kind": "linear",
+        "phase": 1,
+        "rect": {
+          "x": 218,
+          "y": 452,
+          "w": 587,
+          "h": 558
+        },
+        "originalBytes": 5240736,
+        "encodedBytes": 1826816,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 4,
+        "kind": "linear",
+        "phase": 2,
+        "rect": {
+          "x": 218,
+          "y": 452,
+          "w": 587,
+          "h": 558
+        },
+        "originalBytes": 5240736,
+        "encodedBytes": 1826816,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 4,
+        "kind": "linear",
+        "phase": 3,
+        "rect": {
+          "x": 218,
+          "y": 452,
+          "w": 587,
+          "h": 558
+        },
+        "originalBytes": 5240736,
+        "encodedBytes": 1826816,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 5,
+        "kind": "linear",
+        "phase": 0,
+        "rect": {
+          "x": 290,
+          "y": 232,
+          "w": 540,
+          "h": 377
+        },
+        "originalBytes": 3257280,
+        "encodedBytes": 860160,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 5,
+        "kind": "linear",
+        "phase": 1,
+        "rect": {
+          "x": 290,
+          "y": 232,
+          "w": 540,
+          "h": 377
+        },
+        "originalBytes": 3257280,
+        "encodedBytes": 860160,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 5,
+        "kind": "linear",
+        "phase": 2,
+        "rect": {
+          "x": 290,
+          "y": 232,
+          "w": 540,
+          "h": 377
+        },
+        "originalBytes": 3257280,
+        "encodedBytes": 860160,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 5,
+        "kind": "linear",
+        "phase": 3,
+        "rect": {
+          "x": 290,
+          "y": 232,
+          "w": 540,
+          "h": 377
+        },
+        "originalBytes": 3257280,
+        "encodedBytes": 860160,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 6,
+        "kind": "linear",
+        "phase": 0,
+        "rect": {
+          "x": 252,
+          "y": 395,
+          "w": 739,
+          "h": 485
+        },
+        "originalBytes": 5734640,
+        "encodedBytes": 1425408,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 6,
+        "kind": "linear",
+        "phase": 1,
+        "rect": {
+          "x": 252,
+          "y": 395,
+          "w": 739,
+          "h": 485
+        },
+        "originalBytes": 5734640,
+        "encodedBytes": 1425408,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 6,
+        "kind": "linear",
+        "phase": 2,
+        "rect": {
+          "x": 252,
+          "y": 395,
+          "w": 739,
+          "h": 485
+        },
+        "originalBytes": 5734640,
+        "encodedBytes": 1425408,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 6,
+        "kind": "linear",
+        "phase": 3,
+        "rect": {
+          "x": 252,
+          "y": 395,
+          "w": 739,
+          "h": 485
+        },
+        "originalBytes": 5734640,
+        "encodedBytes": 1425408,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 7,
+        "kind": "linear",
+        "phase": 0,
+        "rect": {
+          "x": 281,
+          "y": 361,
+          "w": 691,
+          "h": 479
+        },
+        "originalBytes": 5295824,
+        "encodedBytes": 1376256,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 7,
+        "kind": "linear",
+        "phase": 1,
+        "rect": {
+          "x": 281,
+          "y": 361,
+          "w": 691,
+          "h": 479
+        },
+        "originalBytes": 5295824,
+        "encodedBytes": 1376256,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 7,
+        "kind": "linear",
+        "phase": 2,
+        "rect": {
+          "x": 281,
+          "y": 361,
+          "w": 691,
+          "h": 479
+        },
+        "originalBytes": 5295824,
+        "encodedBytes": 1376256,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 7,
+        "kind": "linear",
+        "phase": 3,
+        "rect": {
+          "x": 281,
+          "y": 361,
+          "w": 691,
+          "h": 479
+        },
+        "originalBytes": 5295824,
+        "encodedBytes": 1376256,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 8,
+        "kind": "linear",
+        "phase": 0,
+        "rect": {
+          "x": -19,
+          "y": 23,
+          "w": 37,
+          "h": 29
+        },
+        "originalBytes": 17168,
+        "encodedBytes": 16384,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 8,
+        "kind": "linear",
+        "phase": 1,
+        "rect": {
+          "x": -19,
+          "y": 23,
+          "w": 37,
+          "h": 29
+        },
+        "originalBytes": 17168,
+        "encodedBytes": 16384,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 8,
+        "kind": "linear",
+        "phase": 2,
+        "rect": {
+          "x": -19,
+          "y": 23,
+          "w": 37,
+          "h": 29
+        },
+        "originalBytes": 17168,
+        "encodedBytes": 16384,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 8,
+        "kind": "linear",
+        "phase": 3,
+        "rect": {
+          "x": -19,
+          "y": 23,
+          "w": 37,
+          "h": 29
+        },
+        "originalBytes": 17168,
+        "encodedBytes": 16384,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 9,
+        "kind": "radial",
+        "phase": 0,
+        "rect": {
+          "x": -19,
+          "y": 23,
+          "w": 37,
+          "h": 29
+        },
+        "originalBytes": 17168,
+        "encodedBytes": 16384,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 9,
+        "kind": "radial",
+        "phase": 1,
+        "rect": {
+          "x": -19,
+          "y": 23,
+          "w": 37,
+          "h": 29
+        },
+        "originalBytes": 17168,
+        "encodedBytes": 16384,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 9,
+        "kind": "radial",
+        "phase": 2,
+        "rect": {
+          "x": -19,
+          "y": 23,
+          "w": 37,
+          "h": 29
+        },
+        "originalBytes": 17168,
+        "encodedBytes": 16384,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 9,
+        "kind": "radial",
+        "phase": 3,
+        "rect": {
+          "x": -19,
+          "y": 23,
+          "w": 37,
+          "h": 29
+        },
+        "originalBytes": 17168,
+        "encodedBytes": 16384,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 10,
+        "kind": "angular",
+        "phase": 0,
+        "rect": {
+          "x": -19,
+          "y": 23,
+          "w": 37,
+          "h": 29
+        },
+        "originalBytes": 17168,
+        "encodedBytes": 24576,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 10,
+        "kind": "angular",
+        "phase": 1,
+        "rect": {
+          "x": -19,
+          "y": 23,
+          "w": 37,
+          "h": 29
+        },
+        "originalBytes": 17168,
+        "encodedBytes": 24576,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 10,
+        "kind": "angular",
+        "phase": 2,
+        "rect": {
+          "x": -19,
+          "y": 23,
+          "w": 37,
+          "h": 29
+        },
+        "originalBytes": 17168,
+        "encodedBytes": 24576,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 10,
+        "kind": "angular",
+        "phase": 3,
+        "rect": {
+          "x": -19,
+          "y": 23,
+          "w": 37,
+          "h": 29
+        },
+        "originalBytes": 17168,
+        "encodedBytes": 24576,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 11,
+        "kind": "diamond",
+        "phase": 0,
+        "rect": {
+          "x": -19,
+          "y": 23,
+          "w": 37,
+          "h": 29
+        },
+        "originalBytes": 17168,
+        "encodedBytes": 16384,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 11,
+        "kind": "diamond",
+        "phase": 1,
+        "rect": {
+          "x": -19,
+          "y": 23,
+          "w": 37,
+          "h": 29
+        },
+        "originalBytes": 17168,
+        "encodedBytes": 16384,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 11,
+        "kind": "diamond",
+        "phase": 2,
+        "rect": {
+          "x": -19,
+          "y": 23,
+          "w": 37,
+          "h": 29
+        },
+        "originalBytes": 17168,
+        "encodedBytes": 16384,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "index": 11,
+        "kind": "diamond",
+        "phase": 3,
+        "rect": {
+          "x": -19,
+          "y": 23,
+          "w": 37,
+          "h": 29
+        },
+        "originalBytes": 17168,
+        "encodedBytes": 16384,
+        "differences": 0,
+        "first": -1
+      },
+      {
+        "kind": "grouped-axis",
+        "angle": 0,
+        "phase": 0,
+        "differences": 0
+      },
+      {
+        "kind": "grouped-axis",
+        "angle": 0,
+        "phase": 1,
+        "differences": 0
+      },
+      {
+        "kind": "grouped-axis",
+        "angle": 0,
+        "phase": 2,
+        "differences": 0
+      },
+      {
+        "kind": "grouped-axis",
+        "angle": 0,
+        "phase": 3,
+        "differences": 0
+      },
+      {
+        "kind": "grouped-axis",
+        "angle": 90,
+        "phase": 0,
+        "differences": 0
+      },
+      {
+        "kind": "grouped-axis",
+        "angle": 90,
+        "phase": 1,
+        "differences": 0
+      },
+      {
+        "kind": "grouped-axis",
+        "angle": 90,
+        "phase": 2,
+        "differences": 0
+      },
+      {
+        "kind": "grouped-axis",
+        "angle": 90,
+        "phase": 3,
+        "differences": 0
+      }
+    ],
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3"
+    }
+  },
+  "implementationCommit": "c41fadc2ac522ff18bbf5db6c440f170c7ecdd4d",
+  "navigationCommit": "fecb31952c116e42cc7e9b65b5a6b3fd384793db",
+  "buildRepairCommit": "d9b1bd28",
+  "pairedFig": {
+    "A1": {
+      "file": "01有料素材 (Copy).fig",
+      "target": "Icon/Path",
+      "product": "control",
+      "samples": [
+        {
+          "action": "00-inside",
+          "stopToGuiReadyMs": 437.6,
+          "undo": true,
+          "nativeDuringRelease": [
+            {
+              "method": "apply_document_patch_with_damage",
+              "ms": 220.3
+            }
+          ]
+        },
+        {
+          "action": "00-rotate",
+          "stopToGuiReadyMs": 1250.3,
+          "undo": true,
+          "nativeDuringRelease": [
+            {
+              "method": "apply_document_patch_with_damage",
+              "ms": 328.29
+            },
+            {
+              "method": "compile_gpu_packet",
+              "ms": 679.15
+            }
+          ]
+        },
+        {
+          "action": "01-inside",
+          "stopToGuiReadyMs": 417.8,
+          "undo": true,
+          "nativeDuringRelease": [
+            {
+              "method": "apply_document_patch_with_damage",
+              "ms": 227.12
+            }
+          ]
+        },
+        {
+          "action": "01-rotate",
+          "stopToGuiReadyMs": 1165.9,
+          "undo": true,
+          "nativeDuringRelease": [
+            {
+              "method": "apply_document_patch_with_damage",
+              "ms": 315.63
+            },
+            {
+              "method": "compile_gpu_packet",
+              "ms": 615.86
+            }
+          ]
+        }
+      ]
+    },
+    "B1": {
+      "file": "01有料素材 (Copy).fig",
+      "target": "Icon/Path",
+      "product": "candidate",
+      "samples": [
+        {
+          "action": "00-inside",
+          "stopToGuiReadyMs": 183.4,
+          "undo": true,
+          "nativeDuringRelease": [
+            {
+              "method": "apply_document_patch_with_damage",
+              "ms": 2.54
+            }
+          ]
+        },
+        {
+          "action": "00-rotate",
+          "stopToGuiReadyMs": 217.6,
+          "undo": true,
+          "nativeDuringRelease": [
+            {
+              "method": "apply_interaction_transforms",
+              "ms": 1.86
+            },
+            {
+              "method": "compile_gpu_packet",
+              "ms": 9.85
+            },
+            {
+              "method": "apply_document_patch_with_damage",
+              "ms": 2.99
+            }
+          ]
+        },
+        {
+          "action": "01-inside",
+          "stopToGuiReadyMs": 235.7,
+          "undo": true,
+          "nativeDuringRelease": [
+            {
+              "method": "apply_document_patch_with_damage",
+              "ms": 4.83
+            }
+          ]
+        },
+        {
+          "action": "01-rotate",
+          "stopToGuiReadyMs": 241.8,
+          "undo": true,
+          "nativeDuringRelease": [
+            {
+              "method": "apply_document_patch_with_damage",
+              "ms": 19.21
+            },
+            {
+              "method": "compile_gpu_packet",
+              "ms": 21.54
+            }
+          ]
+        }
+      ]
+    },
+    "B2": {
+      "file": "01有料素材 (Copy).fig",
+      "target": "Cart icon/Path",
+      "product": "candidate",
+      "samples": [
+        {
+          "action": "00-inside",
+          "stopToGuiReadyMs": 191.0,
+          "undo": true,
+          "nativeDuringRelease": [
+            {
+              "method": "apply_document_patch_with_damage",
+              "ms": 1.7
+            }
+          ]
+        },
+        {
+          "action": "00-rotate",
+          "stopToGuiReadyMs": 158.3,
+          "undo": true,
+          "nativeDuringRelease": [
+            {
+              "method": "apply_document_patch_with_damage",
+              "ms": 8.8
+            }
+          ]
+        },
+        {
+          "action": "01-inside",
+          "stopToGuiReadyMs": 442.5,
+          "undo": true,
+          "nativeDuringRelease": [
+            {
+              "method": "apply_interaction_transforms",
+              "ms": 114.24
+            },
+            {
+              "method": "apply_document_patch_with_damage",
+              "ms": 2.06
+            }
+          ]
+        },
+        {
+          "action": "01-rotate",
+          "stopToGuiReadyMs": 170.7,
+          "undo": true,
+          "nativeDuringRelease": [
+            {
+              "method": "apply_document_patch_with_damage",
+              "ms": 12.6
+            }
+          ]
+        }
+      ]
+    },
+    "A2": {
+      "file": "01有料素材 (Copy).fig",
+      "target": "Cart icon/Path",
+      "product": "control",
+      "samples": [
+        {
+          "action": "00-inside",
+          "stopToGuiReadyMs": 2227.1,
+          "undo": true,
+          "nativeDuringRelease": [
+            {
+              "method": "apply_document_patch_with_damage",
+              "ms": 350.7
+            },
+            {
+              "method": "compile_gpu_packet",
+              "ms": 687.1
+            },
+            {
+              "method": "compile_gpu_packet",
+              "ms": 7.38
+            }
+          ]
+        },
+        {
+          "action": "00-rotate",
+          "stopToGuiReadyMs": 1401.3,
+          "undo": true,
+          "nativeDuringRelease": [
+            {
+              "method": "apply_document_patch_with_damage",
+              "ms": 295.74
+            },
+            {
+              "method": "compile_gpu_packet",
+              "ms": 710.35
+            },
+            {
+              "method": "compile_gpu_packet",
+              "ms": 9.7
+            }
+          ]
+        },
+        {
+          "action": "01-inside",
+          "stopToGuiReadyMs": 2289.0,
+          "undo": true,
+          "nativeDuringRelease": [
+            {
+              "method": "apply_document_patch_with_damage",
+              "ms": 297.28
+            },
+            {
+              "method": "compile_gpu_packet",
+              "ms": 684.01
+            },
+            {
+              "method": "compile_gpu_packet",
+              "ms": 7.29
+            }
+          ]
+        },
+        {
+          "action": "01-rotate",
+          "stopToGuiReadyMs": 1338.3,
+          "undo": true,
+          "nativeDuringRelease": [
+            {
+              "method": "apply_document_patch_with_damage",
+              "ms": 319.33
+            },
+            {
+              "method": "compile_gpu_packet",
+              "ms": 677.98
+            },
+            {
+              "method": "compile_gpu_packet",
+              "ms": 7.45
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "topologyControlDifference": {
+    "held": {
+      "differentPixels": 0,
+      "max8Bit": 0
+    },
+    "after": {
+      "differentPixels": 0,
+      "max8Bit": 0
+    },
+    "fresh": {
+      "differentPixels": 0,
+      "max8Bit": 0
+    }
+  },
+  "knownLimitations": {
+    "unmodifiedGithubZeroSizeHandles": "canvas-overlay.test.ts expects 9, got 8 on both GitHub and this worktree",
+    "fullSourceFirstViewMs": 35460.76,
+    "displayP95": "Not measured at physical scanout",
+    "fullG5": "Not run",
+    "unadoptedOverscan": "full-source-v7 timed out at initial ready. Wide speculative capture before visible work was removed."
+  },
+  "runProvenance": {
+    "fig-pixels-b1": {
+      "reportSha256": "ff6467967e0f840dc079190c7ecbdf5ab7ea39113d833607d01379d6526ff2f0",
+      "harnessSha256": "f912c8cfd53696c6fd606f1ae1b3557db3ebf9fec3fcaa57cdcf599104fd0731",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "builtAt": "2026-11-02T10:49:43.991Z",
+      "status": "completed-replay",
+      "fileUnchanged": true,
+      "offscreen": true,
+      "rawReport": "/private/tmp/futureox-github-review-1227220a-lWaoiS/fig-pixels-b1/report.json"
+    },
+    "shipping-nav-fig": {
+      "reportSha256": "6fda2ca5892459de8b657f1f433fbe8be8aa094dcfd23f832b807abd6aedf036",
+      "harnessSha256": "3d027c82f946d10eb5cf721807ed0a7a10a6c85638a5b87923b5412bcb531019",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "builtAt": "2026-11-02T14:03:36.392Z",
+      "status": "completed-replay",
+      "fileUnchanged": true,
+      "offscreen": true,
+      "rawReport": "/private/tmp/futureox-github-review-1227220a-lWaoiS/shipping-nav-fig/report.json"
+    },
+    "117-nav-b": {
+      "reportSha256": "aadb7a5175eb704563afe97f494a07b2447618757cc5878214deec6629c4c24d",
+      "harnessSha256": "44d74e677ebe88a9a3a17193d080103a4332047489ec970cfea2d0eba0e987da",
+      "sourceSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "builtAt": "2026-11-02T10:49:43.991Z",
+      "status": "completed-replay",
+      "fileUnchanged": true,
+      "offscreen": true,
+      "rawReport": "/private/tmp/futureox-github-review-1227220a-lWaoiS/117-nav-b/report.json"
+    },
+    "shipping-nav-117": {
+      "reportSha256": "c83497957648ba2a1e0db96de020472744fcc6dada2b4893a5aacdbfe2017ccf",
+      "harnessSha256": "3d027c82f946d10eb5cf721807ed0a7a10a6c85638a5b87923b5412bcb531019",
+      "sourceSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "builtAt": "2026-11-02T14:03:36.392Z",
+      "status": "completed-replay",
+      "fileUnchanged": true,
+      "offscreen": true,
+      "rawReport": "/private/tmp/futureox-github-review-1227220a-lWaoiS/shipping-nav-117/report.json"
+    },
+    "topology-nav-b": {
+      "reportSha256": "7ac64952cbaf0013331fe751fb9713d06e03272b5fc10ad67dcbc76203852c2f",
+      "harnessSha256": "44d74e677ebe88a9a3a17193d080103a4332047489ec970cfea2d0eba0e987da",
+      "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "builtAt": "2026-11-02T10:49:43.991Z",
+      "status": "completed-replay",
+      "fileUnchanged": true,
+      "offscreen": true,
+      "rawReport": "/private/tmp/futureox-github-review-1227220a-lWaoiS/topology-nav-b/report.json"
+    },
+    "topology-nav-v6": {
+      "reportSha256": "07a33f1092fb68eb8fc92e7ca3d1bfbbd1845650c588d0b062ff4c6f5beac008",
+      "harnessSha256": "3d027c82f946d10eb5cf721807ed0a7a10a6c85638a5b87923b5412bcb531019",
+      "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "builtAt": "2026-11-02T11:30:08.408Z",
+      "status": "completed-replay",
+      "fileUnchanged": true,
+      "offscreen": true,
+      "rawReport": "/private/tmp/futureox-github-review-1227220a-lWaoiS/topology-nav-v6/report.json"
+    },
+    "full-source-b": {
+      "reportSha256": "c7e9c003e44551b8f5716f09f307e591e4f35df346c15107143ffea78ea8b9df",
+      "harnessSha256": "3d027c82f946d10eb5cf721807ed0a7a10a6c85638a5b87923b5412bcb531019",
+      "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "builtAt": "2026-11-02T10:49:43.991Z",
+      "status": "completed-replay",
+      "fileUnchanged": true,
+      "offscreen": true,
+      "rawReport": "/private/tmp/futureox-github-review-1227220a-lWaoiS/full-source-b/report.json"
+    },
+    "full-source-nav-final": {
+      "reportSha256": "ce17e2dbfc0032d09c14620db967751c8c500a670a9f92148de3b05bb13acbe6",
+      "harnessSha256": "3d027c82f946d10eb5cf721807ed0a7a10a6c85638a5b87923b5412bcb531019",
+      "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "builtAt": "2026-11-02T11:51:24.036Z",
+      "status": "completed-replay",
+      "fileUnchanged": true,
+      "offscreen": true,
+      "rawReport": "/private/tmp/futureox-github-review-1227220a-lWaoiS/full-source-nav-final/report.json"
+    },
+    "shipping-fig": {
+      "reportSha256": "aea0130bf0e00f87627fb93df7d31ff8635a3aaf159b21572d1b32a28b02c27e",
+      "harnessSha256": "98fd08b02bd436198b852162f2824c3eebf85879e0d1f362b09d64ee4e0ba6bd",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "builtAt": "2026-11-02T14:03:36.392Z",
+      "status": "completed-replay",
+      "fileUnchanged": true,
+      "offscreen": true,
+      "rawReport": "/private/tmp/futureox-github-review-1227220a-lWaoiS/shipping-fig/report.json"
+    },
+    "shipping-117": {
+      "reportSha256": "5079ae806176b93d272d02e7551fe517a4ad285cedf1b803310d1c3d5e7b1628",
+      "harnessSha256": "98fd08b02bd436198b852162f2824c3eebf85879e0d1f362b09d64ee4e0ba6bd",
+      "sourceSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "builtAt": "2026-11-02T14:03:36.392Z",
+      "status": "completed-replay",
+      "fileUnchanged": true,
+      "offscreen": true,
+      "rawReport": "/private/tmp/futureox-github-review-1227220a-lWaoiS/shipping-117/report.json"
+    },
+    "shipping-topology": {
+      "reportSha256": "c5a9fbdf053a622030edac69077c8cc3d5fb5bf3526b92855ba76d1018aed920",
+      "harnessSha256": "98fd08b02bd436198b852162f2824c3eebf85879e0d1f362b09d64ee4e0ba6bd",
+      "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "builtAt": "2026-11-02T14:03:36.392Z",
+      "status": "completed-replay",
+      "fileUnchanged": true,
+      "offscreen": true,
+      "rawReport": "/private/tmp/futureox-github-review-1227220a-lWaoiS/shipping-topology/report.json"
+    },
+    "fig-visible-plain-pixels": {
+      "reportSha256": "b169e4eec2187a50407526ddb0811a82611514c0f48e7e4445eb9f505f842a1a",
+      "harnessSha256": "2f2fc34791dd75ad256f3507e1a2d4da1ac95015b4a78047077f28caa920b76c",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "builtAt": "2026-11-02T14:03:36.392Z",
+      "status": "completed-replay",
+      "fileUnchanged": true,
+      "offscreen": true,
+      "rawReport": "/private/tmp/futureox-github-review-1227220a-lWaoiS/fig-visible-plain-pixels/report.json"
+    },
+    "shipping-fidelity-s117": {
+      "reportSha256": "1b9110305cfefe00902e238475978faf470f618b8f0fb731b2ffcbc2bba62696",
+      "harnessSha256": "98fd08b02bd436198b852162f2824c3eebf85879e0d1f362b09d64ee4e0ba6bd",
+      "sourceSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "builtAt": "2026-11-02T14:03:36.392Z",
+      "status": "completed-replay",
+      "fileUnchanged": true,
+      "offscreen": true,
+      "rawReport": "/private/tmp/futureox-github-review-1227220a-lWaoiS/shipping-fidelity-s117/report.json"
+    },
+    "accepted-topology-pixels": {
+      "reportSha256": "2405a7cf21cb7a96235adf13163aa88301cc969a76fe11cb5a5f63e2b54d033e",
+      "harnessSha256": "2f2fc34791dd75ad256f3507e1a2d4da1ac95015b4a78047077f28caa920b76c",
+      "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "builtAt": "2026-11-02T14:21:40.893Z",
+      "status": "completed-replay",
+      "fileUnchanged": true,
+      "offscreen": true,
+      "rawReport": "/private/tmp/futureox-github-review-1227220a-lWaoiS/accepted-topology-pixels/report.json"
+    },
+    "topology-rotate-base-single": {
+      "reportSha256": "0bcc4172ba7d8bdec94207fc860bf07127afc2080b26777c0a738042f06aaf2b",
+      "harnessSha256": "2f2fc34791dd75ad256f3507e1a2d4da1ac95015b4a78047077f28caa920b76c",
+      "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "builtAt": "2026-11-02T11:51:24.036Z",
+      "status": "completed-replay",
+      "fileUnchanged": true,
+      "offscreen": true,
+      "rawReport": "/private/tmp/futureox-github-review-1227220a-lWaoiS/topology-rotate-base-single/report.json"
+    },
+    "template2-reference-pixels": {
+      "reportSha256": "e1a6725e69555ad0d1dad5051ceb20b878b28aac525f18742aed955464309116",
+      "harnessSha256": "642ae88c8dbaaf34cd11e8c5bb8bc615c8d7feef5a8287832946686632b609c6",
+      "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "builtAt": "2026-11-02T11:57:20.771Z",
+      "status": "completed-replay",
+      "fileUnchanged": true,
+      "offscreen": true,
+      "rawReport": "/private/tmp/futureox-github-review-1227220a-lWaoiS/template2-reference-pixels/report.json"
+    },
+    "shipping-3200": {
+      "reportSha256": "516cc586e8f3cfa06b1543edc273aa7ade74a19902850a86b1f2a181ef689c9b",
+      "harnessSha256": "642ae88c8dbaaf34cd11e8c5bb8bc615c8d7feef5a8287832946686632b609c6",
+      "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "builtAt": "2026-11-02T14:03:36.392Z",
+      "status": "completed-replay",
+      "fileUnchanged": true,
+      "offscreen": true,
+      "rawReport": "/private/tmp/futureox-github-review-1227220a-lWaoiS/shipping-3200/report.json"
+    },
+    "topology-field-fidelity": {
+      "reportSha256": "b141983e243531a4ace9dda904f8f62f4b09bb1bab692fb654c33ec6a0c76713",
+      "harnessSha256": "77c0e8b2f0083e934d173087efae23fafcf611c1a64e5e3fd38c50d8a1a3ee2e",
+      "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "builtAt": "2026-11-02T12:00:11.944Z",
+      "status": "completed-replay",
+      "fileUnchanged": true,
+      "offscreen": true,
+      "rawReport": "/private/tmp/futureox-github-review-1227220a-lWaoiS/topology-field-fidelity/report.json"
+    },
+    "topology-field-nav": {
+      "reportSha256": "b95b87edc87ba2274cd7d87619d71ca762d5795fd43782cc7e8d73f4c17636b9",
+      "harnessSha256": "7a9a5745edd74ae28d9ee5c299b6b5c4bd45a0c935d9675ecb7c7ef896600bdd",
+      "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "builtAt": "2026-11-02T11:51:24.036Z",
+      "status": "completed-replay",
+      "fileUnchanged": true,
+      "offscreen": true,
+      "rawReport": "/private/tmp/futureox-github-review-1227220a-lWaoiS/topology-field-nav/report.json"
+    },
+    "paired-fig-A1": {
+      "reportSha256": "0c76ebe9fbe85bd525cd9fb4f056464cee4bc456f98b21c76e187eaf95111707",
+      "harnessSha256": "98fd08b02bd436198b852162f2824c3eebf85879e0d1f362b09d64ee4e0ba6bd",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "builtAt": "2026-11-02T11:51:24.036Z",
+      "status": "completed-replay",
+      "fileUnchanged": true,
+      "offscreen": true,
+      "rawReport": "/private/tmp/futureox-github-review-1227220a-lWaoiS/paired-fig-A1/report.json"
+    },
+    "paired-fig-B1": {
+      "reportSha256": "b412f8c5fa73ba6a56a050237e2ad4932b3e9da3bdca89b118195aad60465f4e",
+      "harnessSha256": "98fd08b02bd436198b852162f2824c3eebf85879e0d1f362b09d64ee4e0ba6bd",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "builtAt": "2026-11-02T14:21:40.893Z",
+      "status": "completed-replay",
+      "fileUnchanged": true,
+      "offscreen": true,
+      "rawReport": "/private/tmp/futureox-github-review-1227220a-lWaoiS/paired-fig-B1/report.json"
+    },
+    "paired-fig-B2": {
+      "reportSha256": "47dea2605376d6cced675db3aa2846a76cb7171b159e1f7bd8b4a1fb53c32f9b",
+      "harnessSha256": "98fd08b02bd436198b852162f2824c3eebf85879e0d1f362b09d64ee4e0ba6bd",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "builtAt": "2026-11-02T14:21:40.893Z",
+      "status": "completed-replay",
+      "fileUnchanged": true,
+      "offscreen": true,
+      "rawReport": "/private/tmp/futureox-github-review-1227220a-lWaoiS/paired-fig-B2/report.json"
+    },
+    "paired-fig-A2": {
+      "reportSha256": "92c1fe9cf7c28c88c499b458af68f554d06b1ec77e619f26186b73c69cc264f2",
+      "harnessSha256": "98fd08b02bd436198b852162f2824c3eebf85879e0d1f362b09d64ee4e0ba6bd",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "builtAt": "2026-11-02T11:51:24.036Z",
+      "status": "completed-replay",
+      "fileUnchanged": true,
+      "offscreen": true,
+      "rawReport": "/private/tmp/futureox-github-review-1227220a-lWaoiS/paired-fig-A2/report.json"
+    }
+  }
+}
