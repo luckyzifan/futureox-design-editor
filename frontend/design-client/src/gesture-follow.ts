@@ -1,3 +1,4 @@
+import { formatFigmaAngle } from './rotation-field'
 import type { Bounds, DesignDocument, DesignNode, Matrix, Point } from './model'
 import { apply, inverse, multiply } from './commands/affine'
 import { captureBoardFrame } from './retained-board-capture'
@@ -157,7 +158,7 @@ export function mountGestureFollow(host: HTMLElement, options: {
         hint.style.display = 'block'
         hint.style.left = `${screen.x + 18}px`
         hint.style.top = `${screen.y + 18}px`
-        hint.textContent = `${Number(degrees.toFixed(2))}°`
+        hint.textContent = `${formatFigmaAngle(degrees)}°`
       }
     },
     holdForCommit() {

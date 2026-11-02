@@ -20,6 +20,7 @@ import { supportsEditPreview } from './edit-preview'
 import { resizedNode, resizeGestureAxes } from './selection-properties'
 import {cancelToolActivation} from './tool-activation'
 import {selectionHandles, selectionRotation, smallSelectionInterior} from './selection-handles'
+import { figmaRotationDegrees, formatFigmaAngle, snapRotationDelta } from './rotation-field'
 import {selectionScaleFrame} from './selection-scale'
 import {CanvasLayoutHandles} from './CanvasLayoutHandles'
 import {CanvasSmartSelection} from './CanvasSmartSelection'
@@ -527,6 +528,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if (moveFrame.current !== null) cancelAnimationFrame(moveFrame.current)
     moveFrame.current = null; queuedMove.current = null; queuedInputAt.current = 0
   }
+  useEffect(() => editor.subscribe(() => {
+    if (!editor.interactionActive) editor.setLiveRotation(null)
+  }), [editor])
   useLayoutEffect(() => {
     const previous = drag.current
     if (previous && (previous.session !== editor.sessionGeneration || previous.page !== state.page)) {
@@ -1639,6 +1643,20 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       d.kind === 'scale' || (e.shiftKey && !e.ctrlKey), e.altKey,
       d.kind !== 'scale' && editor.state.snapPixels && !e.ctrlKey]
   }
+  function publishRotation(d: Drag, transform: Matrix) {
+    const parents = editor.parentMap()
+    const textById: Record<string, string> = {}
+    for (const id of d.ids) {
+      const parent = d.parentMatrices?.[id] || worldMatrix(editor.state.doc, parents.get(id)!, parents)
+      try {
+        textById[id] = formatFigmaAngle(figmaRotationDegrees(multiply(inverse(parent), multiply(transform, d.matrices[id]))))
+      } catch { /* A singular parent keeps the previous readout. */ }
+    }
+    const values = Object.values(textById)
+    const shared = values.length > 0 && values.every(value => value === values[0]) ? Number(values[0]) : undefined
+    d.rotationDegrees = shared ?? (d.rotationDegrees === undefined ? undefined : Number(formatFigmaAngle(d.rotationDegrees)))
+    editor.setLiveRotation({ session: d.session, page: d.page, documentId: editor.state.doc.id, textById })
+  }
   function gestureVisualMatrix(d: Drag, e: { shiftKey: boolean; altKey: boolean; ctrlKey: boolean }, p: Point, screen: Point): {
     matrix: Matrix; guides: MoveGuides; degrees?: number
     snapChanged?: boolean; constraintEnabled?: boolean; constraintChanged?: boolean; intentResolvedComparison?: 1 | 2
@@ -1647,9 +1665,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const center = d.rotationCenter || (d.basis && d.localBox
         ? apply(d.basis, { x: d.localBox.x + d.localBox.width / 2, y: d.localBox.y + d.localBox.height / 2 })
         : { x: d.box.x + d.box.width / 2, y: d.box.y + d.box.height / 2 })
+      const id = d.ids[0]
+      const canSnapLocal = d.ids.length === 1 && !!id && !!d.parentMatrices?.[id] && !!d.matrices[id]
       const initial = d.ids.length === 1 ? Math.atan2(d.matrices[d.ids[0]][1], d.matrices[d.ids[0]][0]) * 180 / Math.PI : 0
-      const rotation = selectionRotation(center, d.start, p, initial, e.shiftKey)
-      return { matrix: rotation.matrix, guides: {}, degrees: rotation.degrees }
+      const rotation = selectionRotation(center, d.start, p, initial, e.shiftKey && !canSnapLocal)
+      let matrix = rotation.matrix
+      if (e.shiftKey && canSnapLocal) matrix = snapRotationDelta(d.parentMatrices![id], d.matrices[id], matrix, center)
+      return { matrix, guides: {}, degrees: rotation.degrees }
     }
     if (d.kind === 'resize' || d.kind === 'scale') {
       const args = resizeArgs(d, e, p)
@@ -1959,6 +1981,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       transform = traced ? resizeWithTrace(d, ...traced) : visual.matrix
       if (d.kind === 'rotate') d.rotationDegrees = visual.degrees
     }
+    if (d.kind === 'rotate') publishRotation(d, transform)
     if (['move', 'rotate', 'scale', 'resize'].includes(d.kind))
       placeGestureFollow(d, transform, pointerScreen, d.rotationDegrees)
     const parents = d.kind === 'move' && d.sourceParents || editor.parentMap(),
@@ -2433,7 +2456,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       {drag.current?.kind==='rotate' && drag.current.rotationDegrees!==undefined && cursor && <div
         className="canvas-rotation-hint" role="status" data-testid="rotation-feedback"
         style={{left:cursor.x*zoom+displayView.x+18,top:cursor.y*zoom+displayView.y+18}}>
-        {Number(drag.current.rotationDegrees.toFixed(2))}°
+        {formatFigmaAngle(drag.current.rotationDegrees)}°
       </div>}
       {contextMenu && <CanvasContextMenu editor={editor} {...contextMenu} onEditText={() => {
         if (editor.state.selection.length === 1) setTextEdit(editor.state.selection[0])
@@ -2644,7 +2667,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 transform={matrixString(e.matrix)}
                 y={-12 / zoom}
                 fontSize={11 / zoom}
-                fill="#73778b"
+                fill={selection.has(e.id) ? '#0d99ff' : '#73778b'}
                 pointerEvents="all"
                 style={{cursor:e.locked?'default':state.tool==='hand'||spaceHeld?'grab':'move'}}
               >
@@ -2782,6 +2805,16 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                     }}><title>{label}</title></circle>
                 })
               })()}
+              {selected.length === 1 && localSelection && !['frame', 'section'].includes(state.doc.nodes[selected[0].id].kind) && <text
+                data-testid="selection-name"
+                opacity={gpuOverlay ? 0 : 1}
+                transform={matrixString(selected[0].matrix)}
+                x={localSelection.x}
+                y={localSelection.y - 12 / zoom}
+                fontSize={11 / zoom}
+                fill="#0d99ff"
+                pointerEvents="none"
+              >{state.doc.nodes[selected[0].id].name}</text>}
               <text
                 opacity={gpuOverlay ? 0 : 1}
                 x={selectionBox.x + selectionBox.width / 2}

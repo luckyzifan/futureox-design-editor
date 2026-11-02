@@ -19,6 +19,8 @@ import { TextInput } from './TextEditor'
 import { TextStylePanel } from './TextStylePanel'
 import { clearWholeTextRunColor, setWholeTextFontSize } from './text'
 import { selectionParentBounds, rotationDegrees, rotateNode, selectionLocalBounds } from './canvas-view'
+import { formatFigmaAngle, type LiveRotation } from './rotation-field'
+import { nextConstraint } from './layout-constraints'
 import { ComponentPanel } from './ComponentPanel'
 import { NumberField } from './fields'
 import { LayoutPanel } from './LayoutPanel'
@@ -375,6 +377,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot),
     ids = s.selection,
     n = s.doc.nodes[ids[0]]
+  const live = useSyncExternalStore(editor.subscribeLiveRotation, () => editor.liveRotation) as LiveRotation | null
   const update = (fn: (n: DesignNode) => void, label = '修改属性') => editor.updateProperties(ids, fn, label)
   if (s.tool === 'scale') return <ScaleInspector key={`${editor.sessionGeneration}:${s.page}:${s.selection.join(',')}`} editor={editor} />
   if (ids.length > 1) return <MultiSelectionInspector editor={editor} nodes={ids.map((id) => s.doc.nodes[id]).filter(Boolean)} />
@@ -436,8 +439,13 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
     )
   const units = propertyUnits(s.doc, n.id, editor.parentMap(s.doc))
   const styleDescription = styleUnitDescription(s.doc, [n.id], editor.parentMap(s.doc))
-  const angle = rotationDegrees(n),
+  const liveText = live && editor.interactionActive && live.session === editor.sessionGeneration && live.page === s.page && live.documentId === s.doc.id
+    ? live.textById[n.id] : undefined
+  const angle = liveText !== undefined ? Number(liveText) : rotationDegrees(n),
     position = selectionParentBounds(s.doc, n.id)
+  const constraintParent = editor.state.doc.nodes[editor.parentMap(s.doc).get(n.id) || '']
+  const constraintFlow = !!constraintParent?.layout && constraintParent.layout.mode !== 'none'
+  const showConstraints = !!constraintParent && (constraintParent.kind === 'frame' || constraintParent.kind === 'section') && (!constraintFlow || !!n.sizing?.absolute)
   const listControls = (field: 'fills' | 'strokes' | 'effects', i: number) => (
     <div className="mini-actions">
       <button
@@ -510,7 +518,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
 
           <h3>{tr("位置")}</h3>
           <AlignmentControls editor={editor}/>
-          <div className="field-grid">
+          <div className="field-grid position-grid">
             <NumberField historyLabel="X" diagnosticFamily={2} unit="length"
               label="X"
               value={position.x * units.parentX}
@@ -531,6 +539,8 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
             />
             <NumberField historyLabel="旋转 °" diagnosticFamily={2} unit="angle"
               label={tr("旋转 °")}
+              caption="∠"
+              formatValue={formatFigmaAngle}
               value={angle}
               onChange={(v) =>
                 update((n) => {
@@ -540,6 +550,29 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
             />
 
           </div>
+          {showConstraints && <div className="constraint-box" role="group" aria-label={tr("父画板尺寸约束")}>
+            {([
+              ['top', 'vertical', 'start', tr('顶部')],
+              ['left', 'horizontal', 'start', tr('左侧')],
+              ['right', 'horizontal', 'end', tr('右侧')],
+              ['bottom', 'vertical', 'end', tr('底部')],
+            ] as const).map(([edge, axis, anchor, label]) => {
+              const current = n.constraints?.[axis] || 'start'
+              return <button key={edge} type="button" className={`constraint-edge edge-${edge}`} aria-label={label}
+                aria-pressed={current === anchor || current === 'stretch'}
+                title={tr('按住 Shift 同时约束对边')}
+                onClick={event => update(node => {
+                  node.constraints = { horizontal: 'start', vertical: 'start', ...node.constraints, [axis]: nextConstraint(node.constraints?.[axis] || 'start', anchor, event.shiftKey) }
+                }, '修改约束')} />
+            })}
+            <button type="button" className="constraint-edge edge-center" aria-label={tr('居中')}
+              aria-pressed={(n.constraints?.horizontal || 'start') === 'center' && (n.constraints?.vertical || 'start') === 'center'}
+              onClick={() => update(node => {
+                node.constraints = { horizontal: 'center', vertical: 'center', ...node.constraints }
+                node.constraints.horizontal = 'center'
+                node.constraints.vertical = 'center'
+              }, '修改约束')} />
+          </div>}
         </section>
         <section>
           <h3>{tr("布局")}</h3>
