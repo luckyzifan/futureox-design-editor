@@ -1313,11 +1313,26 @@ self.onmessage = (e) => {
             const compileTile = async (tile: RasterTile) => {
               if (!current()) throw Error('PREVIEW_CANCELLED')
               const at = performance.now()
-              const compile = () => compilePacket(kernel, JSON.stringify({ ...renderOptions,
-                view: { ...renderOptions.view, zoom: tile.zoom }, width: tile.width, height: tile.height,
-                gpuViewport: { x: tile.x + Math.floor(renderOptions.view.x), y: tile.y + Math.floor(renderOptions.view.y), w: tile.width, h: tile.height },
-                ...(prepareViewport ? { prepareViewport:prepareForTile(tile) } : {}),
-              }), packetWait?.controller.signal)
+              const compile = async () => {
+                const options = {...renderOptions,view:{...renderOptions.view,zoom:tile.zoom},width:tile.width,height:tile.height,
+                  gpuViewport:{x:tile.x+Math.floor(renderOptions.view.x),y:tile.y+Math.floor(renderOptions.view.y),w:tile.width,h:tile.height},
+                  ...(prepareViewport ? {prepareViewport:prepareForTile(tile)} : {})}
+                const signal=packetWait?.controller.signal
+                try { return await compilePacket(kernel,JSON.stringify(options),signal) }
+                catch (error) {
+                  // A failed monolithic surface is the only automatic entry.
+                  // Rust still proves full support, per-pass limits and eligible
+                  // source geometry. Never ask for a reduced effect grid here.
+                  if (!current() || options.gpuGaussianRegions || String(error).replace(/^Error: /,'') !== 'GPU surface budget exceeded' ||
+                      backend !== 'webgpu' || channel !== 'canvas' || !canvasDisplayFilters || color?.documentSpace !== 'srgb' ||
+                      request.readback || request.png || request.referenceGpu || exportFormat || renderOptions.exportRegion ||
+                      renderOptions.rasterProfile !== 'figmaSubpixel' || renderOptions.pixelPreview || renderOptions.animation ||
+                      executionPolicy?.hdrCompositing !== false || (renderIntent !== 'preview' && renderIntent !== 'canvas') ||
+                      import.meta.env.VITE_DESIGN_GAUSSIAN_AUTO === '0' || import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX === '0' ||
+                      import.meta.env.VITE_DESIGN_GAUSSIAN_REGIONS === '0') throw error
+                  return compilePacket(kernel,JSON.stringify({...options,gpuGaussianRegions:true,gpuGaussianReduction:0}),signal)
+                }
+              }
               let bytes: ScenePacket
               try { bytes = await compile() }
               catch (error) {
