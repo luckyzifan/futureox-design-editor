@@ -1,7 +1,7 @@
 import { CpuStage, measureCpuStage } from './cpu-stage-diagnostics'
 import { recoverInteractionPreview } from './kernel/interaction-preview-recovery'
 import { selectionSizeLabel } from './selection-size-label'
-import { canvasOverlayCommands, canvasGpuOverlayOwnsUi } from './canvas-overlay-commands'
+import { canvasOverlayCommands, canvasGpuOverlayOwnsUi, selectionChromeChipWidth } from './canvas-overlay-commands'
 import { measurementLabel, measurementTicks } from './canvas-measurements'
 import { canvasText } from './canvas-interface-messages'
 import { frameHairline, frameTitleShown } from './page-frame-chrome'
@@ -240,6 +240,19 @@ class PresentedSignal {
     this.listeners.forEach((listener) => listener())
   }
 }
+function SelectionChromeChip({ testId, x, y, text, size, zoom, fill, opacity, centered = false }: {
+  testId: string; x: number; y: number; text: string; size: number; zoom: number; fill: string; opacity: number; centered?: boolean
+}) {
+  const width = selectionChromeChipWidth(text, size), pad = 7
+  const boxW = (width + pad * 2) / zoom, boxH = (size + 8) / zoom
+  return <g data-testid={testId} opacity={opacity} pointerEvents="none">
+    <rect className="selection-chrome-frame" vectorEffect="non-scaling-stroke"
+      x={centered ? x - boxW / 2 : x - pad / zoom} y={y - (size + 3) / zoom}
+      width={boxW} height={boxH} rx={7 / zoom} />
+    <text x={x} y={y} textAnchor={centered ? 'middle' : 'start'} fontSize={size / zoom} fill={fill}>{text}</text>
+  </g>
+}
+
 export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome = false, startupPreview, loading = false, onCapturePreview, nativeSource, onNativeSourceStatus, onOpenSourcePoint }: {
   editor: Editor; peers?:LocalPeer[]; zoomControlsTarget?: HTMLElement | null; compactChrome?: boolean
   startupPreview?: StartupPixels; loading?: boolean
@@ -3050,20 +3063,15 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 }
                 return marks.length ? <g data-testid="material-handles">{marks}</g> : null
               })()}
-              <text
-                opacity={gpuOverlay ? 0 : 1}
+              <SelectionChromeChip testId="canvas-selection-size" opacity={gpuOverlay ? 0 : 1} centered
                 x={selectionBox.x + selectionBox.width / 2}
                 y={selectionBox.y + selectionBox.height + 21 / zoom}
-                textAnchor="middle"
-                fontSize={10 / zoom}
-                fill="#0d99ff"
-              >
-                {selectionSizeLabel(localSelection, selectionBox, selected[0]?.matrix)}
-              </text>
+                text={selectionSizeLabel(localSelection, selectionBox, selected[0]?.matrix)}
+                size={10} zoom={zoom} fill="#0d99ff" />
               {(overlay.commands.labels ?? []).filter(label => label.kind === 'selection-name').map(label => (
-                <text key="selection-name" data-testid="canvas-selection-name" opacity={gpuOverlay ? 0 : 1}
+                <SelectionChromeChip key="selection-name" testId="canvas-selection-name" opacity={gpuOverlay ? 0 : 1}
                   x={label.anchor.x} y={label.anchor.y + label.offset.y / zoom}
-                  fontSize={label.size / zoom} fill={label.color} pointerEvents="none">{label.text}</text>
+                  text={label.text} size={label.size} zoom={zoom} fill={label.color} />
               ))}
             </g>
           )}

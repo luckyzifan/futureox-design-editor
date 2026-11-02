@@ -1,10 +1,10 @@
-.batch-rename-backdrop { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 24px; background: #15202b66; overscroll-behavior: contain; }
-.batch-rename-dialog { width: min(720px, 100%); max-height: calc(100dvh - 48px); overflow: hidden; border: 1px solid var(--workspace-border); border-radius: 12px; background: var(--workspace-panel); color: var(--workspace-text); box-shadow: 0 20px 70px #12213333; font-size: 13px; }
+.batch-rename-backdrop { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 24px; background: #1c191752; backdrop-filter: blur(10px); overscroll-behavior: contain; }
+.batch-rename-dialog { width: min(720px, 100%); max-height: calc(100dvh - 48px); overflow: hidden; border: 1px solid var(--workspace-border); border-radius: 18px; background: var(--workspace-panel); color: var(--workspace-text); box-shadow: 0 24px 64px #1c191724, 0 1px 2px #1c19170a; font-size: 13px; }
 .batch-rename-dialog form { display: flex; flex-direction: column; max-height: inherit; }
 .batch-rename-dialog header, .batch-rename-dialog footer { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 18px 24px; flex: none; }
 .batch-rename-dialog header { border-bottom: 1px solid var(--workspace-border); }
 .batch-rename-dialog header > button { flex: none; font-size: 22px; width: 32px; height: 32px; }
-.batch-rename-dialog h2 { margin: 0; font-size: 18px; }
+.batch-rename-dialog h2 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
 .batch-rename-dialog h3 { font-size: 14px; }
 .batch-rename-dialog p { margin: 8px 0 0; color: var(--workspace-muted); line-height: 1.6; }
 .batch-rename-content { overflow: auto; min-height: 0; padding: 18px 24px; overscroll-behavior: contain; }
