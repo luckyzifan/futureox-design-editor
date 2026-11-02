@@ -99,16 +99,17 @@ export function canvasMenuItems(editor: Editor, context: ShortcutContext = { pro
   return items.map(item => ({ ...item, label: canvasCommandLabel(item.command, item.label, locale, nodes.length > 1, locks.some(id => !selection.includes(id))), shortcut: shortcutLabel(item.command, context), disabled: !!item.disabled || busy || editor.interactionActive }))
 }
 
-/** Mac canvas menu order. Edit-menu and view commands stay on shortcuts;
- * the right-click list is the object menu Figma shows on the canvas. */
+/** Mac desktop right-click on a selected shape, top to bottom. Cloud-only
+ * rows (Figma Make, Find similar, Widgets) are omitted. Move to page is
+ * inserted by the menu between Copy/Paste as and Bring to front. */
 const contextOrder: EditorCommand[] = [
-  'copy', 'cut', 'paste-here', 'paste-in-place', 'paste-to-replace', 'paste-over-selection', 'duplicate', 'delete',
+  'copy', 'paste-here', 'paste-to-replace', 'paste-over-selection',
   'copy-properties', 'paste-properties', 'copy-fills', 'copy-strokes', 'copy-effects', 'copy-as-png', 'copy-as-svg',
-  'bring-to-front', 'bring-forward', 'send-backward', 'send-to-back',
-  'group', 'frame-selection', 'ungroup', 'flatten', 'convert-vector', 'outline-stroke', 'mask-selection',
+  'bring-to-front', 'send-to-back',
+  'group', 'frame-selection', 'ungroup', 'flatten', 'outline-stroke', 'mask-selection',
   'auto-layout', 'remove-auto-layout',
   'create-component', 'detach-instance',
-  'lock-selection', 'unlock-selection', 'hide-selection', 'show-selection',
+  'hide-selection', 'show-selection', 'lock-selection', 'unlock-selection',
   'flip-horizontal', 'flip-vertical',
   'select-all',
 ]
@@ -117,8 +118,14 @@ export function canvasContextItems(editor: Editor, context: ShortcutContext = { 
   return contextOrder.flatMap(command => {
     if (command === 'paste-over-selection' && context.profile !== 'sketch-like') return []
     const item = available.get(command)
-    return item ? [item] : []
+    if (!item || (command === 'detach-instance' && item.disabled)) return []
+    return [item]
   })
+}
+/** Where the page submenu sits in the Mac list: after Copy/Paste as, before stacking. */
+export function moveToPageIndex(commands: readonly string[]): number {
+  const stacking = commands.findIndex(command => command === 'bring-to-front' || command === 'send-to-back')
+  return stacking < 0 ? commands.length : stacking
 }
 
 export function clampContextMenu(point: Point, size: { width: number; height: number }, viewport: { width: number; height: number }): Point {

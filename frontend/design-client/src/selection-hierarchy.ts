@@ -52,14 +52,24 @@ export function shallowSelectionHit(document: DesignDocument, selection: readonl
   return path.find(id => clickBarrier(document.nodes[id]) && !entered.has(id)) || hit
 }
 
+function groupClickTarget(node: DesignNode): boolean {
+  if (node.component || node.instance || node.componentSet) return false
+  if (node.kind === 'frame' || node.kind === 'section') return false
+  return node.kind === 'group' || !!node.booleanOperation
+}
 export function deeperSelectionHit(document: DesignDocument, selection: readonly string[],
   hit: string, path: readonly string[], parents?: ParentMap): string {
   const chain = path.filter(id => id === hit || boundary(document.nodes[id]))
   const selected = chain.findIndex(id => selection.includes(id))
-  if (selected >= 0) return chain[Math.min(selected + 1, chain.length - 1)]
-  // Nothing in this chain is selected, so a double-click goes one level past
-  // the group or instance a single click would have selected.
+  // Mac Figma: double-click on a group's child selects that child. A selected
+  // frame still moves one container level.
+  if (selected >= 0) {
+    const chosen = document.nodes[chain[selected]]
+    if (chosen && groupClickTarget(chosen)) return hit
+    return chain[Math.min(selected + 1, chain.length - 1)]
+  }
   const shallow = shallowSelectionHit(document, selection, hit, path, parents)
+  if (document.nodes[shallow] && groupClickTarget(document.nodes[shallow])) return hit
   if (shallow === hit) return hit
   const at = path.indexOf(shallow)
   return at >= 0 && at + 1 < path.length ? path[at + 1] : shallow
