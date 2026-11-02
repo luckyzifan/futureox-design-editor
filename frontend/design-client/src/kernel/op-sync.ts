@@ -87,8 +87,83 @@ function augment(document: DesignDocument): Augmented {
   return { entries, parentOf }
 }
 
-/** Open payload for the editing graph: the document plus the sync projection. */
-export function augmentedDocumentJson(document: DesignDocument): string {
+/** Page pseudo-nodes appended to an already-stringified document. The certified
+ * wire is copied once; node records are not walked again. */
+function pageProjectionEntries(document: DesignDocument): string {
+  const parts = document.pages.map(page =>
+    `${JSON.stringify(page.id)}:${JSON.stringify(pseudoNode(page.id, page.name, [...page.children]))}`)
+  parts.push(`${JSON.stringify(PAGES_ROOT_ID)}:${JSON.stringify(pseudoNode(PAGES_ROOT_ID, PAGES_ROOT_ID, document.pages.map(page => page.id)))}`)
+  return parts.join(',')
+}
+function skipJsonValue(json: string, index: number): number {
+  const start = json[index]
+  if (start === '"') {
+    for (let i = index + 1; i < json.length; i++) {
+      if (json[i] === '\\') { i++; continue }
+      if (json[i] === '"') return i + 1
+    }
+    return -1
+  }
+  if (start === '{' || start === '[') {
+    const close = start === '{' ? '}' : ']'
+    let depth = 0
+    for (let i = index; i < json.length; i++) {
+      const char = json[i]
+      if (char === '"') {
+        i++
+        while (i < json.length) {
+          if (json[i] === '\\') { i++; continue }
+          if (json[i] === '"') break
+          i++
+        }
+        continue
+      }
+      if (char === start) depth++
+      else if (char === close && --depth === 0) return i + 1
+    }
+    return -1
+  }
+  let i = index
+  while (i < json.length && json[i] !== ',' && json[i] !== '}' && json[i] !== ']') i++
+  return i
+}
+/** Insert the sync projection at the end of the top-level nodes object so a
+ * duplicate page id keeps the same last-key precedence as a fresh stringify. */
+function spliceAugmentedNodes(json: string, document: DesignDocument): string | undefined {
+  if (!json.startsWith('{')) return
+  let index = 1
+  while (index < json.length) {
+    while (json[index] === ' ' || json[index] === '\n') index++
+    if (json[index] === '}') return
+    if (json[index] !== '"') return
+    const keyEnd = skipJsonValue(json, index)
+    if (keyEnd < 0) return
+    const key = json.slice(index, keyEnd)
+    index = keyEnd
+    if (json[index] !== ':') return
+    index++
+    if (key === '"nodes"') {
+      if (json[index] !== '{') return
+      const close = skipJsonValue(json, index)
+      if (close < 0 || json[close - 1] !== '}') return
+      const entries = pageProjectionEntries(document)
+      const empty = json.slice(index + 1, close - 1).trim() === ''
+      return json.slice(0, close - 1) + (empty ? '' : ',') + entries + json.slice(close - 1)
+    }
+    const next = skipJsonValue(json, index)
+    if (next < 0) return
+    index = next
+    if (json[index] === ',') index++
+  }
+}
+/** Open payload for the editing graph: the document plus the sync projection.
+ * `certifiedJson` is the exact post-layout document string. Camera updates do
+ * not call this; a settled open reuses that string instead of walking nodes. */
+export function augmentedDocumentJson(document: DesignDocument, certifiedJson?: string): string {
+  if (certifiedJson) {
+    const spliced = spliceAugmentedNodes(certifiedJson, document)
+    if (spliced) return spliced
+  }
   const nodes: Record<string, unknown> = { ...document.nodes }
   for (const page of document.pages)
     nodes[page.id] = pseudoNode(page.id, page.name, [...page.children])
