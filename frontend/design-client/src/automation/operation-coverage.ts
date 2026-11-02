@@ -56,7 +56,7 @@ export const UI_OPERATION_COVERAGE = {
   export: partial('artifact export', ['document.export', 'sketch.export', 'vector.export', 'vector.exportArtifact', 'raster.export', 'code.export', 'app.export'], 'No PDF MCP export. CPU design-content export is not a GUI/GPU screenshot; external-format warnings remain authoritative.'),
   settings: partial('canvas preferences', ['settings.get', 'settings.update'], 'Independent native settings grant; allowlisted preferences only, never account/security or collaboration authority.'),
   layer: partial('layer management', ['node.find', 'node.move', 'node.patch', 'node.delete'], 'Graph/field operations only; broad sidebar workflows are not all separate commands.'),
-  eraser: partial('vector regions', ['vector.shapeBuilder.preview', 'vector.shapeBuilder.apply'], 'Shape Builder supported closed-fill regions only, not arbitrary freehand eraser parity.'),
+  eraser: partial('vector regions', ['vector.shapeBuilder.preview', 'vector.shapeBuilder.apply'], 'The canvas eraser cuts one vector layer along the stroke and does not split layers. Shape Builder remains the MCP path. There is no eraser weight or shape command.'),
   boardCreate: partial('local board nodes', ['node.create', 'node.update'], 'Typed board facets, not a collaborative whiteboard service.'),
   measure: ui('measurement overlay', 'Read-only geometry can be inspected through context; no measuring-overlay command.'),
   lasso: ui('selection gesture', 'No lasso hit-testing command.'),

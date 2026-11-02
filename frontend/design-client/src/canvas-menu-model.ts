@@ -83,6 +83,15 @@ export function canvasMenuItems(editor: Editor, context: ShortcutContext = { pro
     { command: 'select-all', label: '全选', group: 'selection', disabled: !doc.pages.find((p) => p.id === editor.state.page)?.children.length },
     { command: 'zoom-fit', label: '缩放至全部内容', group: 'view', disabled: !doc.pages.find((p) => p.id === editor.state.page)?.children.length },
   )
+  const pageIndex = doc.pages.findIndex(page => page.id === editor.state.page)
+  const page = doc.pages[pageIndex]
+  const hasFrame = !!page?.children.some(id => doc.nodes[id]?.visible && (doc.nodes[id].kind === 'frame' || doc.nodes[id].kind === 'section'))
+  items.push(
+    { command: 'zoom-next-frame', label: '缩放到下一画板', group: 'view', disabled: !hasFrame },
+    { command: 'zoom-previous-frame', label: '缩放到上一画板', group: 'view', disabled: !hasFrame },
+    { command: 'next-page', label: '下一页', group: 'view', disabled: pageIndex < 0 || pageIndex >= doc.pages.length - 1 },
+    { command: 'previous-page', label: '上一页', group: 'view', disabled: pageIndex <= 0 },
+  )
   const locale = interfacePreference.getSnapshot().locale
   return items.map(item => ({ ...item, label: canvasCommandLabel(item.command, item.label, locale, nodes.length > 1, locks.some(id => !selection.includes(id))), shortcut: shortcutLabel(item.command, context), disabled: !!item.disabled || busy || editor.interactionActive }))
 }
