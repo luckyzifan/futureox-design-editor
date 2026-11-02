@@ -35,11 +35,12 @@ function validTool(tool) {
  * All design validation, transactions and actual mutations belong to that backend.
  */
 export class DesignMcpServer {
-  constructor({ backend, input = process.stdin, output = process.stdout, diagnostics = process.stderr, limits = {} }) {
+  constructor({ backend, input = process.stdin, output = process.stdout, diagnostics = process.stderr, limits = {}, instructions }) {
     if (!backend || typeof backend.listTools !== 'function' || typeof backend.callTool !== 'function') {
       throw new TypeError('A real design operation backend is required')
     }
     this.backend = backend
+    this.instructions = typeof instructions === 'string' ? instructions : undefined
     this.input = input
     this.output = output
     this.diagnostics = diagnostics
@@ -253,7 +254,7 @@ export class DesignMcpServer {
         protocolVersion: PROTOCOL_VERSION,
         capabilities: { tools: {}, resources: {}, prompts: {} },
         serverInfo: SERVER_INFO,
-        instructions: 'Live Futureox Design operation API. Read capabilities and document revision before edits. Use documentId, session and expectedRevision to protect writes. Export tool responses contain metadata and expiring resource links, not inline files. Use resources/read for client-side file saving and context.get for AI inspection. If preview.capture is in the live catalog, it returns product CPU design-content export, not an app/GPU screenshot. Preview bytes are delivered as image content when bounded and as exact snapshot resources. No arbitrary JavaScript, shell execution, renderer reconfiguration or network access is exposed. Cancellation does not roll back a mutation already committed.',
+        instructions: this.instructions ?? 'Live Futureox Design operation API. Read capabilities and document revision before edits. Use documentId, session and expectedRevision to protect writes. Export tool responses contain metadata and expiring resource links, not inline files. Use resources/read for client-side file saving and context.get for AI inspection. If preview.capture is in the live catalog, it returns product CPU design-content export, not an app/GPU screenshot. Preview bytes are delivered as image content when bounded and as exact snapshot resources. No arbitrary JavaScript, shell execution, renderer reconfiguration or network access is exposed. Cancellation does not roll back a mutation already committed.',
       }
     }
     if (!context.modern && this.phase !== 'ready') throw new ProtocolError(-32000, 'Complete initialize and notifications/initialized first')
@@ -323,8 +324,10 @@ export class DesignMcpServer {
       const projected = this.artifacts.project(value)
       value = projected.value
       const artifacts = projected.links
+      const modelText = value.ok && isRecord(value.result) && typeof value.result.modelText === 'string' ? value.result.modelText : undefined
+      if (modelText !== undefined) delete value.result.modelText
       const serialized = JSON.stringify(value)
-      const text = Buffer.byteLength(serialized) <= 65536 ? serialized : JSON.stringify({ ok: value.ok, method: value.method, documentId: value.documentId, session: value.session, revision: value.revision, summary: 'Inspect structuredContent metadata and resource references. File bytes are available only through explicit resources/read for saving. Prefer context.get for AI inspection.' })
+      const text = modelText !== undefined && Buffer.byteLength(modelText) <= 65536 ? modelText : Buffer.byteLength(serialized) <= 65536 ? serialized : JSON.stringify({ ok: value.ok, method: value.method, documentId: value.documentId, session: value.session, revision: value.revision, summary: 'Inspect structuredContent metadata and resource references. File bytes are available only through explicit resources/read for saving. Prefer context.get for AI inspection.' })
       const response = { content: [{ type: 'text', text }, ...artifacts], structuredContent: value, isError }
       // Only one base64 copy enters model-facing output, as native image content.
       // Larger captures still succeed with exact immutable resource references.

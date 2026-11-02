@@ -3,6 +3,8 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-02 Figma 风格 MCP 门面见 [FIGMA_MCP_FACADE.md](../../../docs/FIGMA_MCP_FACADE.md)。它只调用现有 Design API，不改光栅、瓦片或导航。`get_screenshot` 仍是 CPU 设计内容导出，不是 GPU 截图。33/100ms 与完整 G2/G5 未通过。
+
 2026-11-02 [导入与传输对照](../../../testing/verification-interop-transfer-20261102/README.md)不解决渲染故障。浏览器 FIG 描边端点与阴影背后标记、原生 `LAYER_BLUR` 别名是导入保真；瓦片交付缓冲、缩放导航、预算和实验开关未改。33/100ms 与完整 G2/G5 仍未通过。
 
 2026-11-02 低倍缩放连续覆盖与合成降级见[本轮记录](../../../testing/verification-zoom-coverage-budget-20261102/README.md)。低密度驻留不再取消连续性预览；同修订像素留在预览之上。合成预算或滤镜光晕超限时显示路径分块并丢掉放不下的效果，填充仍在。旋转进行中的选择框跟当前纹理，不先转。这不是 33/100ms 或完整 G2/G5。
