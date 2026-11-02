@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { blank, uid, validateDocument } from './model'
-import { createShapeSeed, creationGhostNode, creationPointCount, creationPreviewPoints, creationToolStaysArmed, creationVisiblePaint, resolveShapeCreation, type ShapeCreationKind } from './shape-creation'
+import { createShapeSeed, creationGhostNode, creationPointCount, creationPreviewPoints, creationToolStaysArmed, creationVisiblePaint, resolveShapeCreation, translateCreationAnchor, type ShapeCreationKind } from './shape-creation'
 
 const anchor = { x: 10.25, y: -9.75 }
 const options = { anchor, pointer: { x: 31.875, y: 5.125 }, screenDistance: 30, snap: false }
@@ -33,6 +33,20 @@ for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const snap of [false, t
     if (snap) for (const value of [...Object.values(result.start), ...Object.values(result.end)]) expect(Number.isInteger(value)).toBe(true)
   })
 }
+
+test('Space translates the creation anchor without changing the span', () => {
+  const anchor = { x: 40.25, y: 18.5 }
+  const origin = { x: 90.75, y: 48.25 }
+  const pointer = { x: 130.125, y: 70.75 }
+  const moved = translateCreationAnchor(anchor, origin, pointer)
+  expect(moved).toEqual({ x: 79.625, y: 41 })
+  const before = resolveShapeCreation(createShapeSeed('rectangle', 'space'), { anchor, pointer: origin, screenDistance: 40 })
+  const after = resolveShapeCreation(createShapeSeed('rectangle', 'space'), { anchor: moved, pointer, screenDistance: 40 })
+  expect(after.bounds.width).toBeCloseTo(before.bounds.width, 8)
+  expect(after.bounds.height).toBeCloseTo(before.bounds.height, 8)
+  expect(after.bounds.x - before.bounds.x).toBeCloseTo(pointer.x - origin.x, 8)
+  expect(after.bounds.y - before.bounds.y).toBeCloseTo(pointer.y - origin.y, 8)
+})
 
 test('click threshold uses CSS screen distance; narrow and returning drags never become defaults', () => {
   const seed = createShapeSeed('rectangle', 'narrow')

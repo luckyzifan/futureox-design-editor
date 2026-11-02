@@ -3,6 +3,7 @@ name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
 
+2026-11-02 [画布操作对照续](../../../testing/verification-figma-canvas-ops-next-20261102/README.md)按 Mac 桌面实测：空选区方向键不平移。编组普通点击选编组，⌘ 和双击选子级。Enter 选直接子级，Shift+Enter 回到编组。画板仍是子级实形选子级、空白选画板。右键按实测顺序，不含 Make / 查找相似 / 小组件。不改光栅、瓦片或预算。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [画布操作对照](../../../testing/verification-figma-canvas-ops-parity-20261102/README.md)按 Mac 桌面实测：Option 拖动的副本跟指针，原对象不动，不是固定 +10。方向键 1px，Shift+方向键 10px。点在子级实形上选子级，点在画板空白处选画板；⌘ 深选编组里的子级不随选区来回跳。右键补展平。不改光栅、瓦片或预算。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 Electron 缩放、拖动、打开 `.fig` 和多页单页编辑见[记录](../../../testing/verification-electron-perf-flame-20261102/README.md)。相机提交不再打开编辑图。当前页的普通改动不再整份重布局或重校验；需要重排时只解该页的根岛屿。损伤父级表也只建这一页。其它页节点引用保持不动。跨页组件、连接线端点、页面结构和首次打开仍走全量。未改光栅、瓦片或预算。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 选区描边、悬停轮廓和已选画板标题都用 `#3459d4`。多选时每个对象一条细轮廓，手柄和 2px 边只画在并集上。这是画布交互，不改文档模型。

@@ -99,6 +99,35 @@ export function canvasMenuItems(editor: Editor, context: ShortcutContext = { pro
   return items.map(item => ({ ...item, label: canvasCommandLabel(item.command, item.label, locale, nodes.length > 1, locks.some(id => !selection.includes(id))), shortcut: shortcutLabel(item.command, context), disabled: !!item.disabled || busy || editor.interactionActive }))
 }
 
+/** Mac desktop right-click on a selected shape, top to bottom. Cloud-only
+ * rows (Figma Make, Find similar, Widgets) are omitted. Move to page is
+ * inserted by the menu between Copy/Paste as and Bring to front. */
+const contextOrder: EditorCommand[] = [
+  'copy', 'paste-here', 'paste-to-replace', 'paste-over-selection',
+  'copy-properties', 'paste-properties', 'copy-fills', 'copy-strokes', 'copy-effects', 'copy-as-png', 'copy-as-svg',
+  'bring-to-front', 'send-to-back',
+  'group', 'frame-selection', 'ungroup', 'flatten', 'outline-stroke', 'mask-selection',
+  'auto-layout', 'remove-auto-layout',
+  'create-component', 'detach-instance',
+  'hide-selection', 'show-selection', 'lock-selection', 'unlock-selection',
+  'flip-horizontal', 'flip-vertical',
+  'select-all',
+]
+export function canvasContextItems(editor: Editor, context: ShortcutContext = { profile: shortcutPreference.getSnapshot(), platform: shortcutPlatform(), desktop: !!desktopBridge() }): CanvasMenuItem[] {
+  const available = new Map(canvasMenuItems(editor, context).map(item => [item.command, item]))
+  return contextOrder.flatMap(command => {
+    if (command === 'paste-over-selection' && context.profile !== 'sketch-like') return []
+    const item = available.get(command)
+    if (!item || (command === 'detach-instance' && item.disabled)) return []
+    return [item]
+  })
+}
+/** Where the page submenu sits in the Mac list: after Copy/Paste as, before stacking. */
+export function moveToPageIndex(commands: readonly string[]): number {
+  const stacking = commands.findIndex(command => command === 'bring-to-front' || command === 'send-to-back')
+  return stacking < 0 ? commands.length : stacking
+}
+
 export function clampContextMenu(point: Point, size: { width: number; height: number }, viewport: { width: number; height: number }): Point {
   const margin = 8
   return {

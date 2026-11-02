@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, Lock } from 'lucide-react'
 import type { Editor } from './engine'
 import type { Point } from './model'
 import { dispatchEditorCommand, type EditorCommand } from './editor-commands'
-import { canvasMenuItems, clampContextMenu, lockedSelectionIds } from './canvas-menu-model'
+import { canvasContextItems, clampContextMenu, lockedSelectionIds, moveToPageIndex } from './canvas-menu-model'
 import { useShortcutProfile } from './shortcut-preference'
 import { shortcutPlatform } from './shortcut-profiles'
 import { desktopBridge } from './desktop'
@@ -34,7 +34,7 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
   const groupName=(id:string)=>id==='copy-as'?text.copyAs:text.selectSame
   const context = useRef({ session: editor.sessionGeneration, page: state.page, version: state.version, selection: state.selection.join('\n') })
   const profile = useShortcutProfile()
-  const items = canvasMenuItems(editor, { profile, platform: shortcutPlatform(), desktop: !!desktopBridge() }), parents = editor.parentMap(state.doc)
+  const items = canvasContextItems(editor, { profile, platform: shortcutPlatform(), desktop: !!desktopBridge() }), parents = editor.parentMap(state.doc)
   const visible = candidates.filter((candidate) => {
     let id: string | undefined = candidate.id
     if (!state.doc.nodes[id]) return false
@@ -118,9 +118,8 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
       <button type="button" role="menuitem" className="context-back" onClick={()=>setGroup(null)}><ChevronLeft size={14}/><span>{groupName(group)}</span></button><div role="separator"/>
       {items.filter(item=>item.group===group).map(item=><button type="button" role="menuitem" key={item.command} disabled={item.disabled} onClick={()=>action(item.command)}><span className="context-label">{item.label}</span>{item.shortcut&&<kbd>{item.shortcut}</kbd>}</button>)}
     </> : <>
-      {visible.length > 0 && <><button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={false} data-layer-picker="true" onClick={() => setLayers(true)}><span>{text.selectLayer}</span><ChevronRight size={14} /></button><div role="separator" /></>}
       {onEditText && selected?.kind === 'text' && !lockedSelectionIds(editor).length && <><button type="button" role="menuitem" onClick={() => { close.current(); queueMicrotask(() => onEditText(selected.id)) }}>{text.editText}</button><div role="separator" /></>}
-      {items.filter((item,index)=>!['copy-as','selection'].includes(item.group)||!state.selection.length||items.findIndex(other=>other.group===item.group)===index).map((item) => {
+      {items.filter((item,index)=>!['copy-as','selection'].includes(item.group)||!state.selection.length||items.findIndex(other=>other.group===item.group)===index).map((item, index, visibleItems) => {
         if(state.selection.length&&['copy-as','selection'].includes(item.group)){
           const submenuBreak = previousGroup && previousGroup !== item.group
           previousGroup = item.group
@@ -128,14 +127,16 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
         }
         const separator = previousGroup && previousGroup !== item.group
         previousGroup = item.group
+        const pageSlot = !!state.selection.length && index === moveToPageIndex(visibleItems.map(entry => entry.command))
         return <div key={item.command} role="none">
+          {pageSlot && <><div role="separator" /><button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={false} data-page-picker="true" disabled={state.busy || editor.interactionActive || !!lockedSelectionIds(editor).length || state.doc.pages.length < 2} onClick={() => setPages(true)}><span>{text.moveToPage}</span><ChevronRight size={14} /></button><div role="separator" /></>}
           {separator && <div role="separator" />}
           <button type="button" role="menuitem" aria-label={item.label} disabled={item.disabled} className={item.danger ? 'context-danger' : undefined}
             onPointerMove={(event) => { if (!item.disabled) event.currentTarget.focus({ preventScroll: true }) }}
             onClick={() => action(item.command)}><span className="context-label">{item.label}</span>{item.shortcut && <kbd>{item.shortcut}</kbd>}</button>
         </div>
       })}
-      {!!state.selection.length && <><div role="separator" /><button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={false} data-page-picker="true" disabled={state.busy || editor.interactionActive || !!lockedSelectionIds(editor).length || state.doc.pages.length < 2} onClick={() => setPages(true)}><span>{text.moveToPage}</span><ChevronRight size={14} /></button></>}
+      {visible.length > 0 && <><div role="separator" /><button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={false} data-layer-picker="true" onClick={() => setLayers(true)}><span>{text.selectLayer}</span><ChevronRight size={14} /></button></>}
     </>}
   </div>, document.body)
 }
