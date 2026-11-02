@@ -1099,7 +1099,7 @@ impl Engine {
         if self.should_budget_display(options) {
             return self.finish_degraded_display(options);
         }
-        match self.render_once(options) {
+        match self.render_exact(options) {
             Ok(bytes) => Ok(bytes),
             Err(error) if display_pressure(&error) && !self.display_degrade => {
                 self.finish_degraded_display(options).map_err(|_| error)
@@ -1284,7 +1284,7 @@ impl Engine {
             Err(last_error)
         }
     }
-    fn render_once(&mut self, options: &RenderOptions) -> Result<Vec<u8>, String> {
+    pub(crate) fn render_exact(&mut self, options: &RenderOptions) -> Result<Vec<u8>, String> {
         if self
             .doc
             .as_ref()
@@ -1313,7 +1313,7 @@ impl Engine {
         self.resolve_layout()?;
         if options.pixel_preview.is_some() {
             let plan = crate::preview::plan(options)?;
-            let source = self.render(&plan.source)?;
+            let source = self.render_exact(&plan.source)?;
             return Ok(crate::preview::resample(&source, &plan));
         }
         if matches!(

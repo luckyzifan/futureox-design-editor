@@ -1,5 +1,5 @@
 import type { Bounds, DesignDocument, DesignNode, Matrix, Point } from './model'
-import { apply, inverse, multiply } from './commands/affine'
+import { apply, inverse, multiply, boxPoints, bounds } from './commands/affine'
 import { captureBoardFrame } from './retained-board-capture'
 import { concealCanvasFeedback, restoreCanvasFeedbackVisibility } from './canvas-move-feedback'
 import { formatAngleDegrees } from './selection-handles'
@@ -56,6 +56,19 @@ export function visibleFollowBox(box: Bounds, view: FollowCamera, width: number,
   const farY = Math.min(box.y + box.height, bottom)
   if (!(farX - x >= 1) || !(farY - y >= 1)) return null
   return { x, y, width: farX - x, height: farY - y }
+}
+
+/** Both the lifted crop (including its two CSS pixel capture border) and its
+ * destination must be independent of stationary paint in the completed frame. */
+export function isolatedGestureCrop(box: Bounds, others: readonly Bounds[], view: FollowCamera, delta: Matrix,
+  width: number, height: number): Bounds | undefined {
+  const margin = 2/view.zoom
+  const crop = {x:box.x-margin,y:box.y-margin,width:box.width+2*margin,height:box.height+2*margin}
+  if (crop.x*view.zoom+view.x < 0 || crop.y*view.zoom+view.y < 0 ||
+      (crop.x+crop.width)*view.zoom+view.x > width || (crop.y+crop.height)*view.zoom+view.y > height) return
+  const moved = bounds(boxPoints(crop).map(point=>apply(delta,point)))
+  const overlaps = (a: Bounds,b: Bounds) => a.x<b.x+b.width && b.x<a.x+a.width && a.y<b.y+b.height && b.y<a.y+a.height
+  if (!others.some(other=>overlaps(crop,other) || overlaps(moved,other))) return box
 }
 
 /** Fill the punched-out snapshot hole. A solid parent frame is closer to what
