@@ -48,6 +48,9 @@ const cache = new WeakMap<DesignNode, string>()
 const boundsCache = new WeakMap<DesignNode, { key: string; value: Bounds | null }>()
 const geometryCache = new WeakMap<DesignNode, string>()
 const svgCache = new WeakMap<DesignNode, { fill: string; stroke: string }>()
+/** JSON already handed to the layout kernel for this exact object. Admission
+ * reuses it instead of stringifying the imported graph a second time. */
+const layoutWire = new WeakMap<DesignDocument, string>()
 export function invalidateGeometry(n: DesignNode) {
   cache.delete(n)
   boundsCache.delete(n)
@@ -184,7 +187,7 @@ function prepareAdmittedDocument(original: DesignDocument, captureValidatedJson?
   // Otherwise the first synchronous bounds/selection query can tear down React.
   documentStage(DocumentStage.derivedValidation, () => {
     for(const n of Object.values(prepared.nodes))if(n.pathOffset||n.vectorBrush)kernelBounds(n)
-    const json = JSON.stringify(prepared)
+    const json = layoutWire.get(prepared) ?? JSON.stringify(prepared)
     validateKernelDocument(json)
     captureValidatedJson?.(json)
   })
@@ -208,10 +211,6 @@ const sizingDefaultKeys = Object.keys(defaultSizing())
 export function kernelLayout(input: DesignDocument, previous?: DesignDocument, residentDiff=false): DesignDocument {
   validateVariableModes(input)
   activateDocumentFonts(input)
-  if (input.animations?.length) {
-    if (!ready || !layoutEngine) throw new Error('动画内核尚未就绪')
-    layoutEngine.validate_animations(JSON.stringify(input))
-  }
   const inputNodes = Object.values(input.nodes)
   const connectors=inputNodes.some(n=>!!n.connector || (n.board?.kind==='code-block'&&!!n.board.language))
   let document = input
@@ -252,6 +251,12 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument, r
       }
       return document
     }
+  }
+  // Placement-only previews return above. Animation bytes are unchanged on
+  // that path, so the full-document check stays on the fallback.
+  if (document.animations?.length) {
+    if (!ready || !layoutEngine) throw new Error('动画内核尚未就绪')
+    layoutEngine.validate_animations(JSON.stringify(document))
   }
   if (
     previous && !connectors &&
@@ -401,8 +406,10 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument, r
   }
   if (!ready || !layoutEngine) throw new Error('布局内核尚未就绪')
   if (components) {
+    let admittedJson: string | undefined
     const full=()=>{
       const json=measureCpuStage(CpuStage.serialize,()=>JSON.stringify(document))
+      admittedJson = json
       return measureCpuStage(CpuStage.resolveComponents,()=>layoutEngine!.resolve_components_full(json))
     }
     let encoded:string
@@ -422,7 +429,10 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument, r
     }
     if(!Number.isSafeInteger(changes.receipt)||changes.receipt<1)throw Error('无效的组件派生回执')
     const bind=(result:DesignDocument)=>{componentBase={document:result,engine:layoutEngine!,receipt:changes.receipt};return result}
-    if (!Object.keys(changes.nodes).length && !changes.removed.length) return bind(document)
+    if (!Object.keys(changes.nodes).length && !changes.removed.length) {
+      if (admittedJson) layoutWire.set(document, admittedJson)
+      return bind(document)
+    }
     const nodes = { ...document.nodes, ...changes.nodes }
     for (const id of changes.removed) delete nodes[id]
     for (const n of Object.values(changes.nodes)) {
@@ -447,7 +457,7 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument, r
     string,
     Partial<DesignNode> | null
   >
-  if (!Object.keys(patches).length) return document
+  if (!Object.keys(patches).length) { layoutWire.set(document, json); return document }
   const nodes = { ...document.nodes }
   for (const [id, patch] of Object.entries(patches)) {
     const next = { ...nodes[id], ...patch }

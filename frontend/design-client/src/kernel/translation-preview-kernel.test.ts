@@ -169,6 +169,28 @@ test.each(['parent-resize', 'reference-mismatch', 'end-rounding', 'negative-zero
     } finally { editor.dispose() }
   })
 
+test('a parent-preserving drag stays on the translation path and does not stringify the document', () => {
+  const { doc, moving } = fixture(false), editor = new Editor(doc)
+  try {
+    const before = editor.state.doc
+    const stringify = vi.spyOn(JSON, 'stringify')
+    const resolve = observeResolution()
+    editor.begin('Move')
+    expect(editor.preview({ [moving.id]: { transform: [1, 0, 0, 1, 48, 52] } },
+      { ids: [moving.id], point: { x: 48, y: 52 }, force: false, preserveParent: true })).toBe(true)
+    expect(resolve).not.toHaveBeenCalled()
+    expect(stringify.mock.calls.some(([value]) => value === before || value === editor.state.doc)).toBe(false)
+    expect(editor.state.doc.nodes[moving.id].transform).toEqual([1, 0, 0, 1, 48, 52])
+    stringify.mockClear()
+    expect(editor.preview({ [moving.id]: { transform: [1, 0, 0, 1, 60, 70] } },
+      { ids: [moving.id], point: { x: 60, y: 70 }, force: false, preserveParent: true })).toBe(true)
+    expect(resolve).not.toHaveBeenCalled()
+    expect(stringify.mock.calls.some(([value]) => value === editor.state.doc)).toBe(false)
+    editor.cancel()
+    expect(editor.state.doc).toBe(before)
+  } finally { editor.dispose() }
+})
+
 test('an auto-layout parent retains the original full resolver instead of accepting manual placement', () => {
   const { doc, moving } = fixture(true)
   const editor = new Editor(doc)
