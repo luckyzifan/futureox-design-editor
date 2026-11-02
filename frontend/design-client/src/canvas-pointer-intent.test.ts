@@ -1,6 +1,5 @@
-import {selectedChildDragIntent, selectedOwnedDragIntent} from './canvas-pointer-intent'
 import { expect, test } from 'vitest'
-import { dragThresholdPassed, selectedGroupDragIntent, selectionPointerDown, frameTitleHit } from './canvas-pointer-intent'
+import { dragThresholdPassed, selectedChildDragIntent, selectedGroupDragIntent, selectedOwnedDragIntent, selectionPointerDown, frameTitleHit } from './canvas-pointer-intent'
 import { boxPoints, contains } from './geometry'
 import { Editor } from './engine'
 import { blank, node } from './model'

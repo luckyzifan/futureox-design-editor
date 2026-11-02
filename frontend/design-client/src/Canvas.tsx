@@ -901,6 +901,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   }), [state.doc,state.page,state.tool,state.pixelGrid,editor.sessionGeneration,frameTitles,canTransform,selected,
     measurementTarget,measurementBounds,selectionCorners,selectionBox,localSelection,selectionFeedback])
   const measurements = overlay.commands.measurements || []
+  const creationGhost = creationGhostNode(shapePreview, heldCreation && state.doc.nodes[heldCreation.id] ? heldCreation : null,
+    id => !!state.doc.nodes[id] && presented?.document === state.doc)
   const gpuOverlay = canvasGpuOverlayOwnsUi(presented,overlay,presentationScopeMatches)
   const pixelGridPath = useMemo(
     () => pixelGridPathData(displayView, size.width, size.height, state.pixelGrid),
@@ -2323,7 +2325,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       id="design-canvas-view"
       tabIndex={-1}
       role="application"
-      aria-label="设计画布编辑器"
+      aria-label={chromeCopy.canvasEditor}
       className={`canvas canvas-${state.tool}${state.tool==='zoom'&&measureKeys.alt?' canvas-zoom-out':''}${spaceHeld ? ' canvas-space-held' : ''}${panning ? ' canvas-panning' : ''}${ownedDrag?.kind==='move'&&ownedDrag.moved?' canvas-object-dragging':''}`}
       data-testid="canvas" aria-busy={state.busy}
       data-creation-kind={shapePreview?.kind}
@@ -2365,6 +2367,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         flushView()
         cancelPencil()
         setShapePreview(null)
+        setHeldCreation(null)
         const cancelledDraft = drag.current
         editor.cancel()
         finishDragTrace(cancelledDraft, ActionOutcome.cancelled, ActionReason.pointerCancel)
@@ -2382,7 +2385,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           if(drag.current.kind==='pivot'&&drag.current.originalPivot)setOrigin(drag.current.originalPivot)
           flushView()
           const cancelledDraft = drag.current
-          editor.cancel(); finishDragTrace(cancelledDraft, ActionOutcome.cancelled, ActionReason.lostCapture); drag.current = null; setPanning(false); setShapePreview(null); setRubber(null); clearMoveGuides()
+          editor.cancel(); finishDragTrace(cancelledDraft, ActionOutcome.cancelled, ActionReason.lostCapture); drag.current = null; setPanning(false); setShapePreview(null); setHeldCreation(null); setRubber(null); clearMoveGuides()
           restoreCancelledMarqueeSelection(cancelledDraft)
         }
       }}
@@ -3045,6 +3048,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             </g>
           )}
         </g>
+        {creationGhost && <g transform={`translate(${displayView.x} ${displayView.y}) scale(${zoom})`} pointerEvents="none">
+          <g data-testid="creation-fill" data-fill={creationVisiblePaint(creationGhost)} transform={matrixString(creationGhost.transform)}>
+            {creationGhost.kind === 'ellipse' ? <ellipse cx={creationGhost.width / 2} cy={creationGhost.height / 2} rx={Math.max(creationGhost.width, 0.01) / 2} ry={Math.max(creationGhost.height, 0.01) / 2} fill={creationVisiblePaint(creationGhost)} stroke="#0d99ff" strokeWidth={1 / zoom} />
+              : creationGhost.kind === 'line' && creationGhost.network?.vertices.length === 2 ? <line x1={creationGhost.network.vertices[0].x} y1={creationGhost.network.vertices[0].y} x2={creationGhost.network.vertices[1].x} y2={creationGhost.network.vertices[1].y} stroke={creationVisiblePaint(creationGhost)} strokeWidth={Math.max(creationGhost.strokes[0]?.width || 1, 1)} strokeLinecap="round" />
+              : creationPreviewPoints(creationGhost) ? <polygon points={creationPreviewPoints(creationGhost)!} fill={creationVisiblePaint(creationGhost)} stroke="#0d99ff" strokeWidth={1 / zoom} />
+              : <rect width={creationGhost.width} height={creationGhost.height} rx={creationGhost.radii?.[0] || 0} fill={creationVisiblePaint(creationGhost)} stroke="#0d99ff" strokeWidth={1 / zoom} />}
+          </g>
+        </g>}
       </svg>
       {selectionFeedback.message && <div role="status" data-testid="canvas-selection-reason"
         style={{position:'absolute',left:12,top:12,zIndex:4,pointerEvents:'none',padding:'5px 8px',borderRadius:4,background:'#ffffffeb',color:'#616675',fontSize:11}}>

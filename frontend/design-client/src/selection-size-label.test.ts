@@ -18,7 +18,7 @@ function fixture(kind: 'rectangle'|'frame'|'group' = 'rectangle') {
 test.each(['rectangle','frame'] as const)('single %s preserves fractional W/H and authoritative property units under nonuniform ancestor scale',kind=>{
  const {editor,target,label}=fixture(kind)
  try{const before=editor.state.doc;expect(label()).toBe('2933.18 × 3147.06');expect(selectionMetric(editor.state.doc.nodes[target.id],'width',editor.state.doc)).toBe(2933.18);expect(editor.state.doc).toBe(before);expect(editor.canUndo).toBe(false)
-  editor.update([target.id],{width:512.125,height:342.0625},'Resize fixture');expect(label()).toBe('1024.25 × 1026.19');editor.undo();expect(label()).toBe('2933.18 × 3147.06')
+  editor.update([target.id],{width:512.125,height:342.0625},'Resize fixture');expect(label()).toBe('1024.25 × 1026.19');expect(selectionMetric(editor.state.doc.nodes[target.id],'height',editor.state.doc)).toBeCloseTo(1026.1875, 8);editor.undo();expect(label()).toBe('2933.18 × 3147.06')
  }finally{editor.dispose()}
 })
 test('rotated and reflected single node remains 100 × 75, not world AABB',()=>{
