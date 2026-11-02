@@ -3,6 +3,7 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-02 [画布操作对照：粘贴与展平](../../../testing/verification-figma-canvas-ops-paste-20261102/README.md)只改粘贴父级、实例旋转和混选展平。Shift+E 在设计模式仍开原型。不改像素、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 [画布操作对照续](../../../testing/verification-figma-canvas-ops-next-20261102/README.md)只改编组命中、Enter、空选区方向键和右键菜单。空选区方向键不平移。不改像素、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 [画布操作对照](../../../testing/verification-figma-canvas-ops-parity-20261102/README.md)只改命中、Option 拖动复制和键盘微移。子级实形选子级，画板空白选画板。不改像素、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 Electron 主线程缩放、拖动、打开 `.fig` 和多页里的单页编辑见[记录](../../../testing/verification-electron-perf-flame-20261102/README.md)。当前页改动不再整份重布局或重序列化；需要重排时只解当前根岛屿。损伤索引只覆盖这一页，视口瓦片仍按脏区相交丢掉。不改像素、瓦片预算或实验开关。33/100ms 与完整 G2/G5 仍未通过。
