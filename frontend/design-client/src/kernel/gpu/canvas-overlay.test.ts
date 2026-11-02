@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { overlayVertices, translateOverlay } from './canvas-overlay'
+import { crispOutlinePath, overlayVertices, translateOverlay } from './canvas-overlay'
 import { SELECTION_BLUE, srgbUnit } from '../../selection-blue'
 import { SPACING_RED } from '../../canvas-measurements'
 
@@ -39,6 +39,34 @@ test('an axis-aligned selection edge is one solid pixel of selection blue', () =
   expect(Math.max(...ys)).toBe(21)
   expect(data[7]).toBe(-1)
   expect([data[2], data[3], data[4], data[5]]).toEqual(stored(SELECTION_BLUE))
+})
+
+function pathQuads(d: string) {
+  return [...d.matchAll(/M([-\d.eE]+) ([-\d.eE]+) L([-\d.eE]+) ([-\d.eE]+) L([-\d.eE]+) ([-\d.eE]+) L([-\d.eE]+) ([-\d.eE]+) Z/g)]
+    .map(match => match.slice(1).map(Number))
+}
+
+test('hover and marquee outlines reuse the selection crisp fill', () => {
+  const corners = [{ x: 10.2, y: 20.8 }, { x: 40.2, y: 20.8 }, { x: 40.2, y: 50.8 }, { x: 10.2, y: 50.8 }]
+  const view = { x: 0.4, y: -3.2, zoom: 2 }
+  const data = overlayVertices({ pixelGrid: false, selection: { corners, handles: false } }, view, 400, 400)
+  const quads = pathQuads(crispOutlinePath(corners, view, 1))
+  expect(quads).toHaveLength(4)
+  const corner = [0, 1, 2, 5]
+  for (let quad = 0; quad < 4; quad++) {
+    const xs: number[] = [], ys: number[] = []
+    for (let vertex = 0; vertex < 4; vertex++) {
+      const screenX = quads[quad][vertex * 2] * view.zoom + view.x
+      const screenY = quads[quad][vertex * 2 + 1] * view.zoom + view.y
+      const sample = (quad * 6 + corner[vertex]) * 8
+      expect(screenX).toBeCloseTo(data[sample], 6)
+      expect(screenY).toBeCloseTo(data[sample + 1], 6)
+      xs.push(screenX); ys.push(screenY)
+    }
+    const span = Math.min(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys))
+    expect(span).toBe(1)
+    expect(data[quad * 6 * 8 + 7]).toBe(-1)
+  }
 })
 
 test('the selection box uses the same blue as the DOM chrome', () => {
