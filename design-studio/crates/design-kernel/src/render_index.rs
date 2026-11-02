@@ -53,6 +53,7 @@ impl ParentLookup for HashMap<String,String> {
 pub(crate) struct RenderIndex {
     pub(crate) parents: Parents,
     pub(crate) has_connectors: bool,
+    pub(crate) has_instance_slots: bool,
 }
 impl RenderIndex {
     pub(crate) fn preserved_by(document:&Document,patch:&crate::editing::DocumentPatch)->bool {
@@ -65,6 +66,7 @@ impl RenderIndex {
         Self {
             parents: Parents::new(document),
             has_connectors: document.nodes.values().any(|node| node.connector.is_some()),
+            has_instance_slots: document.nodes.values().any(|node| node.instance.as_ref().is_some_and(|i|!i.slot_contents.is_empty())),
         }
     }
 }

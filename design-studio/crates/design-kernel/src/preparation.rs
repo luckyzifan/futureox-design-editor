@@ -297,7 +297,7 @@ fn render_cpu_frame(
         if engine.tiled_renderer().is_some() {
             *engine.tiled_renderer_mut() = Default::default();
         }
-        return Ok((engine.render(options)?, "exact"));
+        return Ok((engine.render_exact(options)?, "exact"));
     }
     engine.prepare_frame(options)?;
     let instruction = engine.render_instruction_for(options)?;

@@ -9,7 +9,7 @@ import { RenderFailureAttempts, renderFailureFields, withRenderFailureStage } fr
 import { boundedPatchWire, supportsAcknowledgedPropertyPatch } from './authored-patch-transition'
 import type { PreparationStateReceiptV1 } from './preparation-state'
 import { displayRasterBackpressure } from './display-raster-scheduling'
-import { cpuDisplayPressure, cpuTileFrameOptions, solidDisplayTile } from './cpu-tile-frame'
+import { cpuTileFrameOptions, sampleCpuTile } from './cpu-tile-frame'
 import { samePreparationReceipt } from './authored-preparation-binding'
 import { renderQualityContract } from './render-quality'
 import { usesPainterCaptureReads, usesPainterSupport } from './painter-support-policy'
@@ -595,13 +595,18 @@ self.onmessage = (e) => {
     }
     return
   }
-  if(request.command==='display-read-pixel'||request.command==='display-capture-content'){
+  if (request.command === 'display-navigation-release') {
+    gpu?.driver.releaseNavigationTransfer?.(request.token)
+    return
+  }
+  if(request.command==='display-read-pixel'||request.command==='display-capture-content'||request.command==='display-navigation-tile'){
     void (async()=>{
       try{
-        const result=request.command==='display-read-pixel'?await gpu?.driver.readContentPixel?.(request.u,request.v,request.expected):await gpu?.driver.captureContentBitmap?.()
+        const result=request.command==='display-navigation-tile'?await gpu?.driver.captureNavigationTile?.(request.tile,request.id):
+          request.command==='display-read-pixel'?await gpu?.driver.readContentPixel?.(request.u,request.v,request.expected):await gpu?.driver.captureContentBitmap?.()
         if(!result)throw Error('No displayed document content')
         try { self.postMessage({id:request.id,...result},{transfer:'bitmap' in result?[result.bitmap]:[]}) }
-        catch (error) { if ('bitmap' in result) result.bitmap.close(); throw error }
+        catch (error) { if ('bitmap' in result) result.bitmap.close(); if ('navigationToken' in result) gpu?.driver.releaseNavigationTransfer?.(result.navigationToken); throw error }
       }catch(error){self.postMessage({id:request.id,error:String(error)})}
     })()
     return
@@ -1308,11 +1313,26 @@ self.onmessage = (e) => {
             const compileTile = async (tile: RasterTile) => {
               if (!current()) throw Error('PREVIEW_CANCELLED')
               const at = performance.now()
-              const compile = () => compilePacket(kernel, JSON.stringify({ ...renderOptions,
-                view: { ...renderOptions.view, zoom: tile.zoom }, width: tile.width, height: tile.height,
-                gpuViewport: { x: tile.x + Math.floor(renderOptions.view.x), y: tile.y + Math.floor(renderOptions.view.y), w: tile.width, h: tile.height },
-                ...(prepareViewport ? { prepareViewport:prepareForTile(tile) } : {}),
-              }), packetWait?.controller.signal)
+              const compile = async () => {
+                const options = {...renderOptions,view:{...renderOptions.view,zoom:tile.zoom},width:tile.width,height:tile.height,
+                  gpuViewport:{x:tile.x+Math.floor(renderOptions.view.x),y:tile.y+Math.floor(renderOptions.view.y),w:tile.width,h:tile.height},
+                  ...(prepareViewport ? {prepareViewport:prepareForTile(tile)} : {})}
+                const signal=packetWait?.controller.signal
+                try { return await compilePacket(kernel,JSON.stringify(options),signal) }
+                catch (error) {
+                  // A failed monolithic surface is the only automatic entry.
+                  // Rust still proves full support, per-pass limits and eligible
+                  // source geometry. Never ask for a reduced effect grid here.
+                  if (!current() || options.gpuGaussianRegions || String(error).replace(/^Error: /,'') !== 'GPU surface budget exceeded' ||
+                      backend !== 'webgpu' || channel !== 'canvas' || !canvasDisplayFilters || color?.documentSpace !== 'srgb' ||
+                      request.readback || request.png || request.referenceGpu || exportFormat || renderOptions.exportRegion ||
+                      renderOptions.rasterProfile !== 'figmaSubpixel' || renderOptions.pixelPreview || renderOptions.animation ||
+                      executionPolicy?.hdrCompositing !== false || (renderIntent !== 'preview' && renderIntent !== 'canvas') ||
+                      import.meta.env.VITE_DESIGN_GAUSSIAN_AUTO === '0' || import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX === '0' ||
+                      import.meta.env.VITE_DESIGN_GAUSSIAN_REGIONS === '0') throw error
+                  return compilePacket(kernel,JSON.stringify({...options,gpuGaussianRegions:true,gpuGaussianReduction:0}),signal)
+                }
+              }
               let bytes: ScenePacket
               try { bytes = await compile() }
               catch (error) {
@@ -1978,21 +1998,15 @@ self.onmessage = (e) => {
                 tile.width < 1 || tile.height < 1 || tile.width > 8192 || tile.height > 8192 ||
                 !Number.isFinite(tile.zoom) || tile.zoom <= 0 || tile.zoom > MAX_CANVAS_RASTER_SCALE)
               throw new Error('Invalid tile request')
-            let bytes: Uint8Array
-            let reason = ''
-            try {
-              bytes = await kernel.render_cpu_frame(JSON.stringify(cpuTileFrameOptions(renderOptions, tile)))
-            } catch (error) {
-              if (String(error).includes('PREVIEW_CANCELLED')) throw error
-              if (!cpuDisplayPressure(error)) throw error
-              bytes = solidDisplayTile(tile.width, tile.height, [255, 255, 255, 255])
-              reason = String(error)
-            }
-            if (bytes.byteLength !== tile.width * tile.height * 4) throw new Error('CPU tile byte count mismatch')
+            const {bytes,width,height,divisor,reason} = await sampleCpuTile(cpuTileFrameOptions(renderOptions,tile),
+              options=>kernel.render_cpu_frame(JSON.stringify(options)),
+              ()=>!packetWait?.controller.signal.aborted && generation===previewGenerations[channel],
+              !!request.sourceSnapshot && renderIntent==='preview' && !exportFormat && !renderOptions.exportRegion &&
+                !renderOptions.pixelPreview && !executionPolicy.hdrCompositing)
             let bitmap: ImageBitmap | undefined
-            if (typeof createImageBitmap === 'function') {
+            if (divisor && typeof createImageBitmap === 'function') {
               try {
-                bitmap = await createImageBitmap(new ImageData(new Uint8ClampedArray(bytes), tile.width, tile.height))
+                bitmap = await createImageBitmap(new ImageData(new Uint8ClampedArray(bytes), width, height))
               } catch { bitmap = undefined }
             }
             if (packetWait?.controller.signal.aborted || generation !== previewGenerations[channel]) {
@@ -2012,7 +2026,8 @@ self.onmessage = (e) => {
               tile: {
                 ...tile,
                 backend: 'cpu',
-                description: reason ? 'cpu tile background' : 'cpu tile',
+                description: divisor===1 ? 'cpu tile' : 'cpu navigation preview',
+                cpuDivisor:divisor,
                 reason,
                 cached: false,
                 milliseconds: 0,

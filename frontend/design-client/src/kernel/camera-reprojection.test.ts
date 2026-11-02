@@ -70,3 +70,13 @@ test('a context or editing boundary removes the preview and keeps ordinary autho
  expect([...f.host.querySelectorAll('div')].every(e=>e.style.display==='none')).toBe(true)
  f.projection.dispose();expect(f.host.children).toHaveLength(1)
 })
+
+test('new pan strips can publish without painting a white block over a known part of the old image', () => {
+  const {backing} = fixture()
+  const view = {x:backing.view.x-30,y:backing.view.y,zoom:1}
+  const next = {...backing,view,preview:true}
+  // The 100 CSS pixel source moves left by 30. Pixels 0..69 still exist.
+  expect(keepCompleteCameraBacking(backing,{...next,previewGaps:[{x:180,y:0,width:20,height:160}]},true,false,next)).toBe(false)
+  expect(keepCompleteCameraBacking(backing,{...next,previewGaps:[{x:80,y:0,width:20,height:160}]},true,false,next)).toBe(true)
+  expect(keepCompleteCameraBacking(backing,{...next,previewGaps:[{x:80,y:0,width:20,height:160}]},true,false,next,backing)).toBe(false)
+})

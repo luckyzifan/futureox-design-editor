@@ -1,9 +1,9 @@
 import type { ConstraintAnchor, DesignDocument, DesignNode } from '../model'
 import { snapshotParents, snapshotTargets } from '../page-edit-scope'
 
-const hasReferences = (node: DesignNode) =>
+const hasReferences = (node: DesignNode, booleanGeometry = true) =>
   !!(node.component || node.componentSet || node.componentKey != null || node.instance ||
-    node.instanceOrigin || node.booleanOperation || Object.keys(node.bindings || {}).length ||
+    node.instanceOrigin || (booleanGeometry && node.booleanOperation) || Object.keys(node.bindings || {}).length ||
     Object.keys(node.styleRefs || {}).length || Object.keys(node.variableModes || {}).length)
 
 const anchors: readonly ConstraintAnchor[] = ['start', 'center', 'end', 'stretch', 'scale']
@@ -44,7 +44,8 @@ export class TranslationPreviewPlan {
   private readonly roots=new Set<string>()
   private readonly ids:readonly string[]
   private valid=true
-  constructor(readonly base:DesignDocument,ids:readonly string[]){
+  readonly booleanRoots = new Set<string>()
+  constructor(readonly base:DesignDocument,ids:readonly string[],purpose: 'pixels'|'document-pose' = 'pixels'){
     this.ids=[...ids]
     if(base.animations?.length||!ids.length||new Set(ids).size!==ids.length)this.valid=false
     base.pages.forEach(page=>page.children.forEach(id=>this.roots.add(id)))
@@ -53,7 +54,14 @@ export class TranslationPreviewPlan {
     }
     if(snapshotTargets(base, ids))this.valid=false
     for(const id of ids){const seen=new Set<string>();let at:string|undefined=id
-      while(at){const n=base.nodes[at];if(seen.has(at)||!n||hasReferences(n)||n.connector||(n.board?.kind==='code-block'&&n.board.language)||n.layout&&n.layout.mode!=='none'||n.sizing&&(n.sizing.width!=='fixed'||n.sizing.height!=='fixed')){this.valid=false;break}seen.add(at);at=this.parents.get(at)}
+      // A static Boolean changes its derived outline when an operand moves.
+      // Local Rust resolution must also prove its output is unchanged.
+      // Only document publication may use this; raster and damage proofs still
+      // reject the ancestor and rebuild its geometry through the normal kernel.
+      let booleanRoot: string | undefined
+      const documentLeaf = purpose === 'document-pose' && base.nodes[id]?.children.length===0
+      while(at){const n=base.nodes[at];if(seen.has(at)||!n||hasReferences(n,!documentLeaf || at===id)||n.connector||(n.board?.kind==='code-block'&&n.board.language)||n.layout&&n.layout.mode!=='none'||n.sizing&&(n.sizing.width!=='fixed'||n.sizing.height!=='fixed')){this.valid=false;break}if (n.booleanOperation) booleanRoot=at;seen.add(at);at=this.parents.get(at)}
+      if (booleanRoot) this.booleanRoots.add(booleanRoot)
     }
   }
   accepts(patches:Readonly<Record<string,Partial<DesignNode>>>){

@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { blank, node } from './model'
 import { apply, around, rotate, translate } from './geometry'
-import { elementMatrix, followCamera, gestureHoleColor, screenWarp, visibleFollowBox } from './gesture-follow'
+import { elementMatrix, followCamera, isolatedGestureCrop, gestureHoleColor, screenWarp, visibleFollowBox } from './gesture-follow'
 
 test('a world translation becomes the same screen translation at the crop origin', () => {
   const view = { x: 10, y: 20, zoom: 2 }
@@ -50,4 +50,12 @@ test('follow crops stay inside the viewport instead of failing at the edge', () 
 test('a singular camera does not invent a follow warp', () => {
   expect(screenWarp({ x: 0, y: 0, zoom: 0 }, translate(1, 1))).toBeNull()
   expect(screenWarp({ x: 0, y: 0, zoom: 1 }, [1, 0, 0, 0, 0, 0])).toBeNull()
+})
+
+test('an isolated screen crop excludes a stationary neighbor at both ends of a drag', () => {
+  const box={x:110,y:100,width:20,height:20}, neighbor={x:160,y:100,width:16,height:16}
+  const view={x:0,y:0,zoom:1}
+  expect(isolatedGestureCrop(box,[neighbor],view,[1,0,0,1,180,0],460,275)).toEqual(box)
+  expect(isolatedGestureCrop(box,[neighbor],view,[1,0,0,1,50,0],460,275)).toBeUndefined()
+  expect(isolatedGestureCrop(box,[{...neighbor,x:131}],view,[1,0,0,1,180,0],460,275)).toBeUndefined()
 })

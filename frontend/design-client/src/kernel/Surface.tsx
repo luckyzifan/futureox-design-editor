@@ -70,6 +70,7 @@ export type SurfaceProps = {
   onPresentation?: (frame: PresentedFrame | null) => void
   fallbackReason?: string
   overview?: import('../model').Bounds
+  overviewNodes?: number
   presentationEpoch?: number
   maxPixelRatio?: number
   animation?: KernelOptions['animation']
@@ -375,13 +376,15 @@ export function ReferenceSurface(
       } catch (e) {
         if (current()) {
           const message = e instanceof Error ? e.message : String(e)
-          // A budget or halo miss used to paint the whole board red. The
-          // kernel retries a degraded frame; this surface keeps the last
-          // pixels instead of replacing them with that sentence.
           if (retainedPressureError(message)) {
-            if (!pending.current && !displayedRef.current && (request.budgetAttempts || 0) < 1)
+            if (!pending.current && (request.budgetAttempts || 0) < 1)
               pending.current = { ...request, budgetAttempts: (request.budgetAttempts || 0) + 1 }
-            continue
+            if (pending.current) continue
+            const previous = displayedRef.current
+            if (previous?.request.document === request.document && previous.request.options.pageId === request.options.pageId) {
+              setStatus('当前视口精修受限，已保留缓存画面')
+              continue
+            }
           }
           setError(true)
           setStatus(message)
@@ -724,7 +727,7 @@ export function KernelSurface(props: SurfaceProps) {
           document/export pixels. Transparent pages and a cold/failed renderer
           must still have a stable, opaque surface beneath their content. */}
       <div className="kernel-workspace-backdrop" aria-hidden="true"
-        style={{ position: 'absolute', inset: 0, pointerEvents: 'none', backgroundColor: '#eeeff3' }} />
+        style={{ position: 'absolute', inset: 0, pointerEvents: 'none', backgroundColor: '#ffffff' }} />
       {[...gpuSources].map((source) => {
         const held = holdGpu && presented?.computeBackend === source
         return <ProgressiveSurface key={`gpu:${source}`}

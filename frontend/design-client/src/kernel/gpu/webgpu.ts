@@ -44,6 +44,7 @@ import { scalarCoverageSource, SCALAR_COVERAGE_UNIFORM } from './scalar-coverage
 import { ResidentPresenter, type ResidentFrame } from './resident-presenter'
 import { RasterQueuePacer, RASTER_SLICE_COMMANDS } from './raster-queue-pacer'
 import { gradientWindowSource } from './gradient-window-source'
+import { gradientPhaseFieldLayout, gradientPhaseSource } from './gradient-phase-field'
 import { isDisplayBudgetError } from './display-budget'
 import byteSamplingShader from '../../../../../design-studio/crates/design-kernel/shaders/byte-sampling.wgsl?raw'
 import { areaShaderWgsl } from './area-shader'
@@ -106,6 +107,7 @@ type ParkedDriver = {
 export class WebGpuDriver implements Driver {
   private gaussianAutoEnabled=import.meta.env.VITE_DESIGN_GAUSSIAN_AUTO!=='0'
   private gaussianPrefixRequested=false
+  private fullDensityRegionalGaussian=false
   canvasGaussianPrefixPasses=0
   private canvasBlurRequested = false
   private canvasBlurPipelines: GPURenderPipeline[] = []
@@ -252,6 +254,7 @@ export class WebGpuDriver implements Driver {
   private contentScene?: ReturnType<typeof pixelContentProof>
   captureDisplay = false
   get windowedGradientFields(){return this.managed&&!this.hdr&&import.meta.env.VITE_DESIGN_GRADIENT_WINDOW_FIELDS==='1'}
+  get gradientPhaseFields(){return this.managed&&!this.hdr&&import.meta.env.VITE_DESIGN_GRADIENT_PHASE_FIELDS!=='0'}
   private presenter?: ResidentPresenter
   private presentationDevice?:GPUDevice
   private lifecycleFields() {
@@ -276,6 +279,8 @@ export class WebGpuDriver implements Driver {
     return this.presenter?.snapshotPageTranslation(sourceOwner,targetOwner,offset,width,height,scale,contract)
   }
   async readContentPixel(u:number,v:number,expected?:import('../resident-presentation').ResidentAcknowledgement){if(!this.presenter)throw Error('No resident display');return this.presenter.readContentPixel(u,v,expected)}
+  async captureNavigationTile(id:number,token:number){if(!this.presenter)throw Error('No resident display');return this.presenter.captureNavigationTile(id,token)}
+  releaseNavigationTransfer(token:number){this.presenter?.releaseNavigationTransfer(token)}
   async captureContentBitmap(){if(!this.presenter)throw Error('No resident display');return this.presenter.captureContentBitmap()}
   importPresented(bitmap: ImageBitmap) {
     if (!this.presenter) { bitmap.close(); throw Error('No resident display') }
@@ -825,7 +830,8 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
 }`
     const exactCode=import.meta.env.VITE_DESIGN_EXACT_IDENTITIES==='1'&&!this.displayMath?exactArithmeticIdentities(compositorCode):compositorCode
     const imageAddressedCode = this.managed ? imageCoordinateSource(exactCode + imageResolveStepWgsl + gradientPaintOverWgsl) : exactCode
-    const addressedCode = this.managed ? scalarCoverageSource(import.meta.env.VITE_DESIGN_GRADIENT_WINDOW_FIELDS==='1'?gradientWindowSource(imageAddressedCode):imageAddressedCode) : exactCode
+    const parameterCode = this.gradientPhaseFields ? gradientPhaseSource(imageAddressedCode) : imageAddressedCode
+    const addressedCode = this.managed ? scalarCoverageSource(import.meta.env.VITE_DESIGN_GRADIENT_WINDOW_FIELDS==='1'?gradientWindowSource(parameterCode):parameterCode) : exactCode
     if (this.managed && !this.displayMath && !this.hdr) this.displayImageBaseSource = addressedCode
     const module = this.device.createShaderModule({
       code: this.displayMath ? displayArithmeticSource(addressedCode, import.meta.env.VITE_DESIGN_NATIVE_DIVISION !== '0') : addressedCode,
@@ -1160,8 +1166,14 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.softwareRaster = !!scene.softwareRaster && !this.managed
 
     this.gaussianPrefixRequested=false
+    this.fullDensityRegionalGaussian=false
     this.requiresExactBoxFilters = false
     const paths = Object.values(scene.nodes).flatMap(n => {
+      if (n.gaussianRegion && !n.gaussianRegion.factor && scene.colorManagement?.documentSpace === 'srgb' &&
+          this.gaussianAutoEnabled && this.canvasBlurRequested && !this.hdr && !this.displayMath) {
+        this.fullDensityRegionalGaussian = true
+        this.gaussianPrefixRequested = true
+      }
       if(this.gaussianAutoEnabled&&this.canvasBlurRequested&&gaussianPrefixDemand(n))this.gaussianPrefixRequested=true
       if (n.effects.some(effect => effect.visible && effect.kind === 'gaussian-blur')) this.requiresExactBoxFilters = true
       return [n.fill, ...n.strokes.map(s => s.path)]
@@ -1585,7 +1597,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
   }
   private boxPrefixEligible(target:Texture,u:Float32Array,inputs:Texture[],channels:number){
     const [source,kernel]=inputs,proof=kernel&&this.boxKernels?.get(kernel)
-    return !!(this.boxPrefix&&(import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1'||this.gaussianAutoEnabled&&gaussianPrefixWorthwhile(u[36],u[37]===0?source?.width:source?.height,u[37]===0?target.width:target.height,target.width*target.height))&&this.canvasBlurRequested&&this.managed&&!this.hdr&&!this.displayMath&&channels===15&&
+    return !!(this.boxPrefix&&(import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1'||this.fullDensityRegionalGaussian&&u[36]>512&&u[36]<=1024||this.gaussianAutoEnabled&&gaussianPrefixWorthwhile(u[36],u[37]===0?source?.width:source?.height,u[37]===0?target.width:target.height,target.width*target.height))&&this.canvasBlurRequested&&this.managed&&!this.hdr&&!this.displayMath&&channels===15&&
       u[16]===22&&u[39]===2&&u[38]===0&&[0,1].includes(u[37])&&u[36]>=32&&
       proof&&proof.radius===u[36]&&proof.resource===kernel.resource&&proof.width===kernel.width&&proof.height===kernel.height&&
       this.textures.has(kernel)&&this.textures.has(source)&&this.textures.has(target)&&
@@ -1596,7 +1608,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       source.width<=16384&&source.height<=16384&&target!==source)
   }
   supportsGaussianReduction(){return this.supportsGaussianRegions()&&[2,4,8].includes(Number(import.meta.env.VITE_DESIGN_GAUSSIAN_REDUCTION))}
-  supportsGaussianRegions(){return !!(import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1'&&this.boxPrefix&&this.canvasBlurRequested&&this.managed&&!this.hdr&&!this.displayMath)}
+  supportsGaussianRegions(){return !!((import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1'||this.fullDensityRegionalGaussian)&&this.boxPrefix&&this.canvasBlurRequested&&this.managed&&!this.hdr&&!this.displayMath)}
   prepareCanvasBoxPass(target:Texture,u:Float32Array,inputs:Texture[],channels:number,availableBytes:number){
     if(this.boxPrefixEligible(target,u,inputs,channels)&&!this.boxPrefix!.scratchBytes&&availableBytes>=BOX_PREFIX_BYTES)this.boxPrefix!.reserve()
   }
@@ -2002,6 +2014,14 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     }
     const texture=this.uploadRgba8(bytes,width,height)
     this.nativeTentKernels.set(texture,{operator,radius,resource:texture.resource,width,height,boundBits})
+    return texture
+  }
+  uploadGradientPhaseField(values:Uint32Array){
+    if(!this.gradientPhaseFields)throw Error('Gradient phase fields unavailable')
+    const {width,height}=gradientPhaseFieldLayout(values)
+    const texture=this.createFormat(width,height,'rgba8unorm')
+    this.device.queue.writeTexture({texture:texture.resource as GPUTexture},
+      new Uint8Array(values.buffer,values.byteOffset,values.byteLength),{bytesPerRow:width*4},[width,height])
     return texture
   }
   uploadRgba8(bytes: Uint8Array, width: number, height: number) {

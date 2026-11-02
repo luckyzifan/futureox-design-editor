@@ -1,5 +1,5 @@
 /** Authored interaction data only. Uses the editor's atomic commit/validation boundary. */
-import { current, isDraft } from 'immer'
+import { current, isDraft, type Draft } from 'immer'
 import { createClip, recordKeyframe, type AnimationClip, type Easing } from '../animation'
 import { uid, type DesignDocument, type LocalReview } from '../model'
 import { type Prototype, isPrototypeEasing, hasSchemaExtras } from '../prototype'
@@ -20,7 +20,7 @@ const obj = (v: unknown): Record<string, unknown> => {
 }
 /** Immer drafts cannot be structuredClone'd. The prototype panel validates inside
  * editor.change, so unwrap before cloning or the transition select rolls back. */
-const copy = <T>(v: T): T => structuredClone(isDraft(v) ? current(v) : v)
+const copy = <T>(v: T): T => structuredClone(isDraft(v) ? current<T>(v as Draft<T>) : v)
 const page = (d: DesignDocument, id: unknown) => {
   const p = d.pages.find(p => p.id === id)
   if (!p) throw new Error('Page not found')

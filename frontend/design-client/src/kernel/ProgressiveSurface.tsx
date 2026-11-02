@@ -1,3 +1,4 @@
+import { navigationOverview, nearOverviewTiles } from './navigation-overview'
 import { NavigationIntentOwner } from './navigation-intent-owner'
 import { NativeNavigationHandoff, reusableNativeNavigationPreview, type NativeNavigationCapture } from './native-navigation-handoff'
 import { NavigationBudgetLatch } from './navigation-budget-latch'
@@ -1397,10 +1398,9 @@ export function ProgressiveSurfaceImpl(
       recordRenderDiagnostic({ kind: 'error', zoom: view.zoom, dpr,
         requestedDensity: view.zoom * dpr, errorCode: renderDiagnosticError(error) })
       if (String(error).includes('PREVIEW_CANCELLED')) return
-      // A budget or halo miss keeps whatever pixels are already on screen.
-      // The kernel retries a degraded frame. This must not become a red
-      // whole-frame failure, including the first frame before any tile lands.
-      if (retainedPressureError(error)) return
+      // A retained camera image may cover the request. An empty or unrelated
+      // tile cannot hide a failed first frame or suppress backend recovery.
+      if (retainedPressureError(error) && hasReadyCoverage()) return
       // Recovery changes the renderer, not the fact that this GPU request failed.
       // Keep failure observers informed before handing off to the CPU surface.
       latestContext.current.onRenderFailure?.()
@@ -1525,6 +1525,41 @@ export function ProgressiveSurfaceImpl(
       let navigationCapture: NativeNavigationCapture | undefined
       let runningCoverage: NavigationCoverageFlight<PaintedTile> | undefined
       try {
+        const extent = props.overview
+        const baseOverview = extent && navigationOverview(extent, Math.min(1,renderScale), props.overviewNodes)
+        const fillOverview = async (seed = false) => {
+          if (!baseOverview || !current() || !extent) return
+          const {tiles:baseTiles,view:camera} = baseOverview
+          let missing = baseTiles.filter(tile => !ready.current.has(tile.key) || tileRef.current.get(tile.key)?.document !== doc)
+          if (seed) {
+            const local = nearOverviewTiles(missing,view,width,height).find(tile=>tileIntersectsView(tile,view,{width,height}))
+            if (!local) return
+            missing = [local]
+          }
+          if (!missing.length) return
+          if (hasRetainedOverview(tileRef.current.values(),ready.current,doc,contract.revision,extent,camera.zoom)) {
+            overviewReuses.current++
+            return
+          }
+          for (const tile of baseTiles) overviewKeys.current.add(tile.key)
+          await render(doc,{pageId,width:Math.ceil(extent.width*camera.zoom)+2,height:Math.ceil(extent.height*camera.zoom)+2,
+            view:camera,transparent:false,grid:props.grid,checkerboard:props.checkerboard,rasterProfile,renderIntent:'preview',
+            coverageTiles:true,tileViewport:missing,tilePrepareViewport:tilePrepareViewport(missing,camera),
+            ...(props.presentationEpoch === undefined ? {} : {tileOwner:{documentId:doc.id,sessionEpoch:props.presentationEpoch}})},
+            false,backend,false,false,undefined,receive)
+        }
+        // The first ready frame can immediately be followed by a wheel burst.
+        // Seed one real region before native capture/viewport-cache early returns.
+        // Camera-only changes can seed a newly visited region. Edits retain the
+        // settle lane and do not pay for a page overview on pointer release.
+        if (residentDisplay && !sharpNavigation && !nativeVisibleTiles && !props.grid && !props.checkerboard &&
+            !props.pixelPreview && !props.interaction?.active && !retainedEditViewport && !navigationZoom.active &&
+            (!displayed || (displayed.document === doc && displayed.revision === contract.revision && previousView &&
+              (previousView.x !== view.x || previousView.y !== view.y || previousView.zoom !== view.zoom)))) {
+          try { await fillOverview(true) }
+          catch (error) { if (String(error).includes('PREVIEW_CANCELLED')) return }
+          if (!current()) return
+        }
         const nativeDevice=previewDevice.current.client===c?previewDevice.current.key:undefined
         // A previously ACKed exact frame can repair a pure device-pixel pan
         // with its existing native tile plan. A whole capture would evict
@@ -2002,38 +2037,14 @@ export function ProgressiveSurfaceImpl(
           displayed.document.id===doc.id && displayed.pageId===pageId && displayed.epoch===(props.presentationEpoch||0) &&
           tilesCoverBounds([...displayed.residents.values()],viewport)
         const hasCoverage = currentCoverage() || gestureCoverage
-        const extent = props.overview
         const pageFitsView = !!extent && viewport.x <= extent.x && viewport.y <= extent.y &&
           viewport.x + viewport.width >= extent.x + extent.width &&
           viewport.y + viewport.height >= extent.y + extent.height
         const warmOverview = () => {
-          const overview = props.overview
-          if (overview && overview.width > 0 && overview.height > 0) {
-            const scale = Math.min(1, 512 / Math.max(overview.width, overview.height))
-            // Startup already retained a sharper, tiled page backing. Do not
-            // compile the entire page again just to create a lower-density key.
-            // Only pinned, ready, current-content overview residents qualify;
-            // incidental viewport coverage may be evicted during the next pan.
-            if (hasRetainedOverview(tileRef.current.values(), ready.current, doc, contract.revision, overview, scale)) {
-              overviewReuses.current++
-              return
-            }
-            const overviewCamera = { x: 0, y: 0, zoom: scale }
-            const overviewPlan = planTilesAligned(overview, scale, 9).map(tile => ({ ...tile,
-              key: `overview:${tileComputationKey(tile, overviewCamera, cameraDependent)}` }))
-            overviewKeys.current = new Set(overviewPlan.map(tile => tile.key))
-            const missing = overviewPlan.filter(tile => !tileRef.current.has(tile.key) || !ready.current.has(tile.key))
-            cancelOverview = scheduleRasterMaintenance(missing, tile =>
-              render(doc, { pageId, width: Math.ceil(width * dpr), height: Math.ceil(height * dpr),
-                view: overviewCamera, transparent: false, grid: props.grid, checkerboard: props.checkerboard,
-                rasterProfile, renderIntent: 'preview', tileViewport: [tile],
-                tilePrepareViewport: tilePrepareViewport(overviewPlan, overviewCamera),
-                ...(props.presentationEpoch === undefined ? {} : {
-                  tileOwner: { documentId: doc.id, sessionEpoch: props.presentationEpoch },
-                }),
-              }, false, backend, false, false, undefined, receive),
+          if (baseOverview && baseOverview.tiles.some(tile=>!ready.current.has(tile.key))) {
+            cancelOverview = scheduleRasterMaintenance([baseOverview],()=>fillOverview(),
               () => current() && plan.every(tile => ready.current.has(tile.key)),
-              error => console.debug('[overview] optional maintenance dropped', error))
+              error => console.debug('[overview] optional maintenance dropped',error))
           }
         }
         // Visible pixels always start before whole-page maintenance. Retained
@@ -2098,34 +2109,15 @@ export function ProgressiveSurfaceImpl(
           }
         }
         if (!current()) return
-        const bootstrap = !sharpNavigation && !nativeVisibleTiles && !displayed && residentDisplay && !cameraDependent && extent && !pageFitsView &&
-          !props.interaction?.active && coverageBootstrap.current !== contract.revision ? async () => {
-          coverageBootstrap.current = contract.revision
-          const scale = Math.min(renderScale, 2046 / Math.max(extent.width, extent.height))
-          if (!Number.isFinite(scale) || scale < .001 || extent.width <= 0 || extent.height <= 0) return
-          const w = Math.ceil(extent.width * scale) + 2, h = Math.ceil(extent.height * scale) + 2
-          const camera = { x: 1 - extent.x * scale, y: 1 - extent.y * scale, zoom: scale }
-          const phase = { x: camera.x - Math.floor(camera.x), y: camera.y - Math.floor(camera.y) }
-          const backing = planTilesAligned(extent, scale, 32, phase).map(tile => ({ ...tile,
-            key: `overview:startup:${contract.revision}:${tileComputationKey(tile, camera, cameraDependent)}` }))
-          for (const tile of backing) overviewKeys.current.add(tile.key)
-          try {
-            // Keep the same scale and sample phase as the former monolithic
-            // backing. Regional compilation bounds GPU passes and lets newer
-            // input run between tiles; preparation is shared across the batch.
-            await mailbox.run(current, () => c.render(doc, { pageId, width: w, height: h,
-              view: camera, transparent: false, grid: false, rasterProfile, renderIntent: 'preview',
-              coverageTiles: true, tileViewport: backing, tilePrepareViewport: tilePrepareViewport(backing,camera),
-              ...(props.presentationEpoch === undefined ? {} : {
-                tileOwner: { documentId: doc.id, sessionEpoch: props.presentationEpoch },
-              }),
-            }, false, backend, false, false, undefined, receive))
-          } catch (error) {
-            // Preserve visible native work when the optional backing exceeds
-            // scene/GPU limits; ordinary exact tile repair remains authoritative.
-            console.debug('[coverage] startup backing unavailable', String(error))
-          }
-        } : undefined
+        const bootstrap = !sharpNavigation && !nativeVisibleTiles && !displayed && residentDisplay && !cameraDependent &&
+          baseOverview && !pageFitsView && !props.interaction?.active && coverageBootstrap.current !== contract.revision ? async () => {
+            try {
+              await fillOverview()
+              if (baseOverview.tiles.every(tile=>ready.current.has(tile.key))) coverageBootstrap.current = contract.revision
+            } catch (error) {
+              console.debug('[coverage] startup overview unavailable', String(error))
+            }
+          } : undefined
         await request(plan, prefetch, bootstrap)
         // A selected object is about to move (or is warming its live scene).
         // A monolithic overview tile cannot be preempted inside WASM, so do
@@ -2529,6 +2521,12 @@ export function ProgressiveSurfaceImpl(
           }) : undefined}
           view={requestedView} width={width} height={height} dpr={dpr}
           presentation={presentation}
+          overview={props.overview}
+          overviewTiles={[...new Set([...overviewKeys.current,...(nativePageBacking.current?.keys || [])])].flatMap(key=>{
+            const tile=tileRef.current.get(key)
+            return tile && tile.document===doc && tile.revision===contract.revision && ready.current.has(key) &&
+              tile.residentDevice?.client===rasterClient && tile.residentDevice.key===previewDevice.current.key ? [tile] : []
+          })}
           allowPanPreview={import.meta.env.VITE_DESIGN_PAN_PRESENT_PREVIEW!=='0'}
           panBacking={reusableFrame&&displayed&&!displayed.preview?displayed:undefined}
           onTranslatedCoverage={residentDisplay ? (source,offset,sequence,failed)=>translationCoverage.current?.({source,offset,sequence,failed})===true : undefined}
@@ -2733,6 +2731,7 @@ export const ProgressiveSurface = memo(ProgressiveSurfaceImpl, (prev, next) =>
   (prev.requestedView || prev.view).x === (next.requestedView || next.view).x &&
   (prev.requestedView || prev.view).y === (next.requestedView || next.view).y &&
   (prev.requestedView || prev.view).zoom === (next.requestedView || next.view).zoom &&
+  prev.overviewNodes === next.overviewNodes &&
   (prev.overview?.x ?? 0) === (next.overview?.x ?? 0) &&
   (prev.overview?.y ?? 0) === (next.overview?.y ?? 0) &&
   (prev.overview?.width ?? 0) === (next.overview?.width ?? 0) &&

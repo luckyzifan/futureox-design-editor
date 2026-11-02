@@ -13,6 +13,8 @@ export type ResidentAcknowledgement = {
   dpr: number
   interaction: boolean
   preview?: boolean
+  previewGaps?: import("./navigation-backing").ScreenRect[]
+  navigationBackingBytes?: number
   ids: number[]
 }
 

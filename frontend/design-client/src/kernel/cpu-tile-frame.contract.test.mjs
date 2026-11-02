@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { cpuDisplayPressure, cpuTileFrameOptions, solidDisplayTile } from './cpu-tile-frame.ts'
+import { cpuDisplayPressure, cpuTileFrameOptions, sampleCpuTile } from './cpu-tile-frame.ts'
 
 test('cpu tile camera shifts the gpu viewport origin to device zero', () => {
   const frame = cpuTileFrameOptions(
@@ -20,5 +20,5 @@ test('pressure errors are the only cpu tile failures that stay on screen', () =>
   assert.equal(cpuDisplayPressure(Error('Layer surface exceeds 16 million pixels')), true)
   assert.equal(cpuDisplayPressure('Gaussian sigma must be in 0..1'), true)
   assert.equal(cpuDisplayPressure(Error('Page not found')), false)
-  assert.deepEqual(solidDisplayTile(2, 1, [255, 255, 255, 255]), new Uint8Array([255, 255, 255, 255, 255, 255, 255, 255]))
+
 })

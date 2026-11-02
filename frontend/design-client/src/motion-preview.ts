@@ -40,5 +40,8 @@ export async function encodeDesktopFrames(
   }
   const result = await bridge.encode(request)
   if (result.status !== 'ok') throw new Error(result.message || 'FFmpeg encode failed')
-  return result
+  const {bytes} = result
+  const blobBytes = bytes.buffer instanceof ArrayBuffer
+    ? new Uint8Array(bytes.buffer,bytes.byteOffset,bytes.byteLength) : new Uint8Array(bytes)
+  return {...result,bytes:blobBytes}
 }
