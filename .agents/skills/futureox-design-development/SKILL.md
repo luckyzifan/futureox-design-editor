@@ -3,6 +3,7 @@ name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
 
+2026-11-02 [画布基础操作对照](../../../testing/verification-figma-basic-ops-20261102/README.md)把未进入的画板/编组点击和悬停改成父级优先，双击只下一层，Enter 编辑已选文字，框选过拖动阈值后才提交，Shift 可在松手时加选。不改粘性仿射、缩放铺满、蓝色强调、栅格预算或实验开关。33/100ms 和完整 G2/G5 仍未关闭。
 2026-11-02 [字体目录与缺失替换](../../../testing/verification-font-parity-20261102/README.md)补 Linux/Windows 字体目录、字重/别名匹配、CJK 与常见西文家族建议，以及确认后才写入的缺失字体替换。内置 Noto Sans SC 仍是可变 `wght`。不下载字体，不改合成预算或实验开关。sRGB 导出与逐 run 字距行高在另一条未合并的改动里。33/100ms 和完整 G2/G5 仍未关闭。
 2026-11-02 [Figma 文档模型](../../../testing/verification-figma-document-model-20261102/README.md)把文件名、隐藏页面、共享样式、组件集和惰性变量收据接进现有文档/页面/设计系统字段，并用 JSON 与 FD 往返核对。不改渲染预算、瓦片或实验开关。Display P3、网格样式和可执行变量绑定仍拒绝或只保留收据。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [FIG 导入对照](../../../testing/verification-fig-import-parity-20261102/README.md)让浏览器导入跟上原生阅读器的常见节点：反向堆叠、`SPACE_EVENLY`/`SPACE_AROUND`、垂直对齐、OpenType 与变体轴、节点级文字装饰、非均匀边线的显式记录、切片/连接线/白板。组件集在这份 schema 里是 `isStateGroup` 画板。不改缩放、瓦片、预算或实验开关。GRID、基线、加权伸展、变量、原型运行、Display P3、四边独立描边几何和效果混合的绘制仍未关闭。33/100ms 与完整 G2/G5 未通过。
