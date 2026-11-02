@@ -37,6 +37,25 @@ test('a BUSY workspace read switches to the cached tab and does not report the f
   expect(f.editor.state.message).not.toContain('Another file operation is in progress')
 })
 
+test('repeated BUSY reads keep the requested tab queued and open it when the lock clears', async () => {
+  const f = fixture()
+  expect(await f.session.openWorkspace(f.alpha.id)).toBe(true)
+  let busyReads = 0
+  f.open.mockImplementation(async ({ id }: { id: string }) => {
+    if (id === f.beta.id && busyReads < 6) {
+      busyReads += 1
+      return busy
+    }
+    return f.rows.has(id) ? { ...ok, ...f.rows.get(id)! } : { status: 'error' as const, code: 'WORKSPACE_NOT_FOUND', message: 'missing' }
+  })
+  expect(await f.session.openWorkspace(f.beta.id)).toBe(false)
+  expect(f.editor.state.doc.id).toBe(f.alpha.id)
+  expect(f.editor.state.message).not.toContain('Another file operation is in progress')
+  await vi.waitFor(() => expect(f.editor.state.doc.id).toBe(f.beta.id), { timeout: 8000 })
+  expect(f.session.status.error).toBeUndefined()
+  expect(f.editor.state.message).not.toContain('Another file operation is in progress')
+})
+
 test('a tab requested during an in-flight open is switched after that operation releases the editor', async () => {
   const f = fixture()
   let release!: (value: WorkspaceOpened & { status: 'ok' }) => void

@@ -189,7 +189,10 @@ export class DesktopSession {
   private clearTabWait() { this.tabWaitAttempts = 0; this.tabWaitNotified = false }
   private armTabWait(id: string): false {
     this.tabWaitAttempts += 1
-    if (this.tabWaitAttempts > 4) {
+    // A long import can hold the file lock well past a second. Keep the one
+    // requested tab queued. Do not surface the host BUSY sentence, and do not
+    // give up after a handful of immediate retries.
+    if (this.tabWaitAttempts > 120) {
       this.pendingTabId = undefined
       this.clearTabWait()
       this.editor.notify(this.tabMessage('stopped'))
@@ -755,8 +758,10 @@ export class DesktopSession {
       this.publish()
       const queued = this.pendingTabId
       this.pendingTabId = undefined
-      if (queued && this.operation === 'idle' && !this.disposed && this.closeSnapshot === undefined)
-        setTimeout(() => { if (!this.disposed && !this.active && this.closeSnapshot === undefined) void this.openWorkspace(queued) }, 200)
+      if (queued && this.operation === 'idle' && !this.disposed && this.closeSnapshot === undefined) {
+        const delay = Math.min(2000, 200 * Math.max(1, this.tabWaitAttempts))
+        setTimeout(() => { if (!this.disposed && !this.active && this.closeSnapshot === undefined) void this.openWorkspace(queued) }, delay)
+      }
       // Cancelled dialogs and failed saves still need the latest recovery snapshot.
       if (this.started && this.dirty && !(operation === 'close' && completed)) this.scheduleRecovery()
     })

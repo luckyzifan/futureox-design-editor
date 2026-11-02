@@ -3,6 +3,7 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-02 [画布呈现续](../../../testing/verification-canvas-render-continuity-20261102/README.md)旋转之后的快速缩小不再用更紧的完成帧换掉宽画面，CPU 选区跟实时相机。缩小后的 CPU 帧若盖住更多画面就留下。合成预算和光晕不再换成整帧红字。旋转进行中的蓝框留在当前纹理上。文件锁期间的标签继续排队。不放宽预算。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 [画布操作对照：粘贴与展平](../../../testing/verification-figma-canvas-ops-paste-20261102/README.md)只改粘贴父级、实例旋转和混选展平。Shift+E 在设计模式仍开原型。不改像素、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 [画布操作对照续](../../../testing/verification-figma-canvas-ops-next-20261102/README.md)只改编组命中、Enter、空选区方向键和右键菜单。空选区方向键不平移。不改像素、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 [画布操作对照](../../../testing/verification-figma-canvas-ops-parity-20261102/README.md)只改命中、Option 拖动复制和键盘微移。子级实形选子级，画板空白选画板。不改像素、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
