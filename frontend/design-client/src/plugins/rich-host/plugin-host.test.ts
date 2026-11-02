@@ -31,6 +31,26 @@ function nodes(editor: Editor) { return Object.values(editor.state.doc.nodes) }
 function named(editor: Editor, name: string) { return nodes(editor).find(node => node.name === name) }
 
 describe('Figma plugin host', () => {
+  it('runs the layout-kit fixture through storage, layout, a local instance, ungroup, and an image', async () => {
+    const current = editor()
+    const root = new URL('../../../plugins/layout-kit/', import.meta.url)
+    const manifest = parsePluginManifest(JSON.parse(readFileSync(new URL('manifest.json', root), 'utf8')))
+    const run = await openPlugin(current, {
+      manifest,
+      main: readFileSync(new URL('code.js', root), 'utf8'),
+      ui: readFileSync(new URL('ui.html', root), 'utf8'),
+    }, { storage: memoryPluginStorage() })
+    const board = named(current, 'Board')
+    expect(board?.layout?.mode).toBe('vertical')
+    expect(board?.layout?.gap).toBe(8)
+    expect(named(current, 'Chip')?.component).toBeTruthy()
+    expect(named(current, 'Chip instance')?.instance?.componentId).toBe(named(current, 'Chip')?.id)
+    expect(named(current, 'Pair')).toBeUndefined()
+    expect(named(current, 'Swatch')?.fills[0]?.kind).toBe('image')
+    expect(run.closeMessage).toBe('layout-kit')
+    run.close()
+  })
+
   it('runs the bundled sample against the live document and undo removes it', async () => {
     const current = editor()
     const run = await openPlugin(current, samplePluginBundle())
