@@ -33,6 +33,8 @@ pub(super) fn import(doc: &mut Document, records: &BTreeMap<String,Value>, impor
             let kind=match str_of(def,"type") {
                 Some("BOOL")=>PropertyKind::Boolean,Some("TEXT")=>PropertyKind::Text,
                 Some("INSTANCE_SWAP")=>PropertyKind::InstanceSwap,
+                // Variant axes belong to the component set, not a layer binding.
+                Some("VARIANT")=>continue,
                 other=>return Err(Error::Unsupported(format!("component property type {other:?}"))),
             };
             let key=def.get("id").map(guid_string).ok_or_else(||Error::Malformed("component property id missing".into()))?;
