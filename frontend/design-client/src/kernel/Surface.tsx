@@ -1,6 +1,6 @@
 import { ProgressiveSurface } from './ProgressiveSurface'
 import { retainedPressureError } from './navigation-coverage'
-import { retainMovedReferenceFrame } from './reference-zoom-frame'
+import { acceptFinishedReferenceFrame } from './reference-zoom-frame'
 import type { ColorPresenter } from './color-presenter'
 import { allowsColorPresentation, effectiveBackend, canvasSamplingProfile } from './render-policy'
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
@@ -253,22 +253,23 @@ export function ReferenceSurface(
         bitmap = result.bitmap
         const requestedCamera = latest.current.requestedView || latest.current.view
         const shown = displayedRef.current
-        const samePicture = alive.current && !latest.current.paused &&
-          request.document === latest.current.document &&
+        const sameFile = alive.current && !latest.current.paused &&
+          request.document.id === latest.current.document.id &&
           request.options.pageId === latest.current.pageId &&
           request.epoch === (latest.current.presentationEpoch || 0) &&
           request.options.grid === latest.current.grid &&
           !!request.options.checkerboard === !!latest.current.checkerboard &&
           (request.options.pixelPreview || 0) === (latest.current.pixelPreview || 0) &&
           request.options.rasterProfile === latest.current.rasterProfile
-        const acceptFrame = () => current() || samePicture && retainMovedReferenceFrame({
+        const acceptFrame = () => sameFile && acceptFinishedReferenceFrame({
+          live: requestedCamera,
           finished: request.camera,
-          requested: requestedCamera,
           displayed: shown ? { view: shown.view, width: shown.width, height: shown.height } : null,
           frameWidth: request.width,
           frameHeight: request.height,
           viewportWidth: latest.current.width,
           viewportHeight: latest.current.height,
+          renderViewCurrent: current(),
         })
         if (!acceptFrame()) continue
         const el = canvases.current[slot]

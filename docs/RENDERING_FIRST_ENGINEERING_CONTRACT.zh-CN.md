@@ -1,6 +1,6 @@
 # Futureox Design Core：渲染优先工程与验收规范
 
-2026-11-02 的[画布呈现续](../testing/verification-canvas-render-continuity-20261102/README.md)让 CPU 参考帧在快速缩小后继续盖住视口，合成压力不再整帧红字，旋转蓝框跟当前纹理，文件锁期间的标签继续排队。预算和实验开关未放宽。33/100ms 与完整 G2/G5 未通过。
+2026-11-02 的[画布呈现续](../testing/verification-canvas-render-continuity-20261102/README.md)让 CPU 参考帧在快速缩小后继续盖住视口。旋转之后的缩小不再用更紧的完成帧换掉宽画面，选区跟实时相机。合成压力不再整帧红字。预算和实验开关未放宽。33/100ms 与完整 G2/G5 未通过。
 
 2026-11-02 的[Electron 主线程序列化](../testing/verification-electron-perf-flame-20261102/README.md)减少相机、平移预览和多页文档里单页编辑的整份序列化与重布局。损伤父级表只覆盖被改的页，视口瓦片按脏区相交丢掉。其它页节点引用保持不动；跨页依赖和首次打开仍全量。不改像素、瓦片、预算或实验开关，不关闭 33/100ms 或完整 G2/G5。
 

@@ -3,6 +3,7 @@ import { recoverInteractionPreview } from './kernel/interaction-preview-recovery
 import { selectionSizeLabel } from './selection-size-label'
 import { SELECTION_BLUE, SELECTION_MEMBER_STROKE_PX, SELECTION_UNION_STROKE_PX } from './selection-blue'
 import { rotationChromeHeldToTexture, rotationStartMemberCorners, rotationStartOutline } from './selection-chrome-pose'
+import { referenceOverlayCamera } from './kernel/reference-zoom-frame'
 import { canvasOverlayCommands, canvasGpuOverlayOwnsUi, selectionChromeChipWidth } from './canvas-overlay-commands'
 import { measurementLabel, measurementTicks } from './canvas-measurements'
 import { canvasText } from './canvas-interface-messages'
@@ -330,7 +331,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const editPreviewVisible = presentationScopeMatches &&
     (gpuPreviewAvailable && !!gpuMove.current?.isActive() || editPreviewSupported && presented.document !== state.doc)
   const editInputAt = useRef(0)
-  const displayView = editPreviewVisible && !gpuPreviewAvailable ? state.view : presentationScopeMatches ? presented.view : state.view
+  const displayView = referenceOverlayCamera({
+    cpu: presented?.computeBackend === 'cpu',
+    live: state.view,
+    presented: presented?.view ?? null,
+    scopeMatches: presentationScopeMatches,
+    editPreview: editPreviewVisible && !gpuPreviewAvailable,
+  })
   const displayViewRef = useRef(displayView)
   displayViewRef.current = displayView
   // Coalesced camera writes live on the editor (see Editor.setViewCoalesced)
