@@ -1,6 +1,7 @@
 import React from 'react'
 import { blank, node, defaultTextStyle, validateDocument, hasSchema20Features, type DesignDocument, type DesignNode } from './model'
 import { kernelTextLayout } from './kernel/picking'
+import { cssFontStyle } from './svg-font-face'
 
 export const EDITABLE_TEXT_WARNING = 'Editable SVG references font families without embedding fonts. Missing fonts, fallback, shaping and browser layout can change appearance; use outlines for visual fidelity.'
 function supported(n: DesignNode) {
@@ -16,7 +17,7 @@ export function EditableSvgText({ n, fonts, paintProps }: { n: DesignNode; fonts
   const cssFamily = (id?: string) => [id || n.textStyle?.fontId || 'default', ...(n.textStyle?.fallbacks || []), 'default'].filter((id,index,ids)=>ids.indexOf(id)===index).map(id => JSON.stringify(family(id))).join(', ') + ', sans-serif'
   const layout = kernelTextLayout(n)
   const metadata = JSON.stringify({ text: n.text, fontSize: n.fontSize, textStyle: n.textStyle, textRuns: n.textRuns, width: n.width, height: n.height, fontFamilies: Object.fromEntries(['default', n.textStyle?.fontId || 'default', ...(n.textStyle?.fallbacks || []), ...(n.textRuns || []).map(r=>r.fontId || 'default')].map(id=>[id,family(id)])) })
-  return <text {...paintProps as unknown as React.SVGProps<SVGTextElement>} data-editable-text="1" data-text-model={metadata} fontFamily={cssFamily()} fontSize={n.fontSize} fontWeight={n.textStyle?.weight || 400} letterSpacing={n.textStyle?.letterSpacing || 0} xmlSpace="preserve" style={{...paintProps.style, whiteSpace:'pre'}} direction={n.textStyle?.direction === 'rtl' ? 'rtl' : 'ltr'}>
+  return <text {...paintProps as unknown as React.SVGProps<SVGTextElement>} data-editable-text="1" data-text-model={metadata} fontFamily={cssFamily()} fontSize={n.fontSize} fontStyle={cssFontStyle(family())} fontWeight={n.textStyle?.weight || 400} letterSpacing={n.textStyle?.letterSpacing || 0} xmlSpace="preserve" style={{...paintProps.style, whiteSpace:'pre'}} direction={n.textStyle?.direction === 'rtl' ? 'rtl' : 'ltr'}>
     {layout.lines.map((line, i) => {
       const glyphs = layout.glyphs.filter(g => g.cluster >= line.start && g.cluster < line.end)
       const glyph = glyphs[0]
@@ -27,7 +28,8 @@ export function EditableSvgText({ n, fonts, paintProps }: { n: DesignNode; fonts
       const cuts = [...new Set([line.start, line.end, ...(n.textRuns || []).flatMap(r => [r.start,r.end]).filter(p => p > line.start && p < line.end)])].sort((a,b)=>a-b)
       return <tspan key={i} x={x} y={glyph?.y ?? line.y + n.fontSize}>{cuts.slice(0,-1).map((start,j) => {
         const run = n.textRuns?.find(r => r.start <= start && r.end > start)
-        return <tspan key={j} fontFamily={cssFamily(run?.fontId)} fontSize={run?.fontSize || n.fontSize} fontWeight={run?.weight || n.textStyle?.weight || 400} fill={run?.color || paintProps.fill} textDecoration={[run?.underline?'underline':'',run?.strikethrough?'line-through':''].filter(Boolean).join(' ') || undefined}>{n.text.slice(start,cuts[j+1]).replace(/\n/g,'')}</tspan>
+        const runFont = run?.fontId || n.textStyle?.fontId || 'default'
+        return <tspan key={j} fontFamily={cssFamily(run?.fontId)} fontSize={run?.fontSize || n.fontSize} fontStyle={cssFontStyle(family(runFont))} fontWeight={run?.weight || n.textStyle?.weight || 400} fill={run?.color || paintProps.fill} textDecoration={[run?.underline?'underline':'',run?.strikethrough?'line-through':''].filter(Boolean).join(' ') || undefined}>{n.text.slice(start,cuts[j+1]).replace(/\n/g,'')}</tspan>
       })}</tspan>
     })}
   </text>
@@ -36,7 +38,7 @@ export function EditableSvgText({ n, fonts, paintProps }: { n: DesignNode; fonts
  * validated as a document before any fields are copied into the imported node. */
 export function readEditableSvgText(el: Element, target: DesignNode, fonts: DesignDocument['fonts'], admitDescendant: (relativeDepth: number) => void): boolean {
   if (el.getAttribute('data-editable-text') !== '1') return false
-  const allowedAttributes = ['data-editable-text','data-text-model','font-family','font-size','font-weight','letter-spacing','xml:space','style','direction','fill','fill-opacity','fill-rule']
+  const allowedAttributes = ['data-editable-text','data-text-model','font-family','font-size','font-style','font-weight','letter-spacing','xml:space','style','direction','fill','fill-opacity','fill-rule']
   if (Array.from(el.attributes).some(a => !allowedAttributes.includes(a.name))) throw new Error('Unsupported editable SVG text attribute')
   const declarations = (el.getAttribute('style') || '').split(';').filter(Boolean)
   if (declarations.some(d => !/^white-space:pre$|^mix-blend-mode:normal$/.test(d.trim()))) throw new Error('Unsupported editable SVG text style')
@@ -46,7 +48,7 @@ export function readEditableSvgText(el: Element, target: DesignNode, fonts: Desi
   let child: Element | null = el.firstElementChild, relativeDepth = 1
   while (child) {
     admitDescendant(relativeDepth)
-    if (child.localName !== 'tspan' || Array.from(child.attributes).some(a => !['x','y','font-family','font-size','font-weight','fill','text-decoration'].includes(a.name))) throw new Error('Unsupported editable SVG text child or attribute')
+    if (child.localName !== 'tspan' || Array.from(child.attributes).some(a => !['x','y','font-family','font-size','font-style','font-weight','fill','text-decoration'].includes(a.name))) throw new Error('Unsupported editable SVG text child or attribute')
     if (child.firstElementChild) { child = child.firstElementChild; relativeDepth++; continue }
     while (child && child !== el && !child.nextElementSibling) { child = child.parentElement; relativeDepth-- }
     if (!child || child === el) break
