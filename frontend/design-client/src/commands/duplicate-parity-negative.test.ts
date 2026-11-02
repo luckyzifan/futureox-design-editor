@@ -35,7 +35,9 @@ test('same-ID reopen invalidates duplicate repeat rather than reusing old displa
   e.select([n.id]); e.duplicate(); e.transformSelection(translate(30, 5))
   const id = e.state.selection[0], reopened = structuredClone(e.state.doc), position = worldMatrix(reopened, id)
   expect(e.load(reopened)).toBe(true); e.select([id]); e.duplicate()
-  expect(worldMatrix(e.state.doc, e.state.selection[0])).toEqual(position)
+  const stepped = worldMatrix(e.state.doc, e.state.selection[0])
+  expect(stepped[4] - position[4]).toBeCloseTo(10, 8)
+  expect(stepped[5] - position[5]).toBeCloseTo(10, 8)
 })
 test('a same-ID load subscriber cannot receive the old duplicate selection or repeat seed', () => {
   const { doc, n } = fixture(), e = editor(doc); e.select([n.id])

@@ -106,10 +106,12 @@ test('Paste here preserves nested animation world frames with independent x/y of
   editor.dispose()
 })
 
-test('ordinary Duplicate overlaps its source; top-level frames move right at unchanged y', () => {
+test('ordinary Duplicate steps 10px down-right; top-level frames move right at unchanged y', () => {
   const { editor, a, parent } = rotatedFixture()
   editor.select([a.id]); const before = worldMatrix(editor.state.doc, a.id)
-  editor.duplicate(); expect(worldMatrix(editor.state.doc, editor.state.selection[0])).toEqual(before)
+  editor.duplicate(); const copied = worldMatrix(editor.state.doc, editor.state.selection[0])
+  expect(copied[4] - before[4]).toBeCloseTo(10, 8)
+  expect(copied[5] - before[5]).toBeCloseTo(10, 8)
   editor.undo(); editor.select([parent.id]); const box = editor.selectionBounds()!
   editor.duplicate(); const duplicated = editor.selectionBounds()!
   expect(duplicated.x).toBeCloseTo(box.x + box.width + 24, 10)

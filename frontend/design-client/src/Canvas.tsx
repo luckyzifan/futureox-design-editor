@@ -22,7 +22,7 @@ import { CanvasScrollbars } from './CanvasScrollbars'
 import { supportsEditPreview } from './edit-preview'
 import { resizedNode, resizeGestureAxes } from './selection-properties'
 import {cancelToolActivation} from './tool-activation'
-import {selectionHandles, selectionRotation, smallSelectionInterior} from './selection-handles'
+import {formatAngleDegrees, selectionHandles, selectionRotation, smallSelectionInterior} from './selection-handles'
 import {selectionScaleFrame} from './selection-scale'
 import {CanvasLayoutHandles} from './CanvasLayoutHandles'
 import {CanvasSmartSelection} from './CanvasSmartSelection'
@@ -45,7 +45,7 @@ import { lockedSelectionIds } from './canvas-menu-model'
 import { modalOwnsKeyboard } from './modal-keyboard'
 import { ViewControls } from './ViewControls'
 import { CanvasTextEditor } from './TextEditor'
-import { createBox, forcedPixelSnap, resizeInBasis, snapMove, selectionLocalBounds } from './canvas-view'
+import { createBox, forcedPixelSnap, localClockwiseAfter, resizeInBasis, snapLocalClockwise, snapMove, selectionLocalBounds } from './canvas-view'
 import { fitBounds, isNativePinch, revealInView, screenToWorld, worldToScreen, zoomAt, zoomStep, type CanvasCamera } from './canvas-camera'
 import { WheelCameraGesture } from './wheel-camera-gesture'
 import { desktopBridge,type LocalPeer } from './desktop'
@@ -550,7 +550,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     // These previews are functions of the captured gesture baseline and latest
     // pointer. Pen construction (vertex without a node), freehand and utility
     // tools accumulate samples and must continue receiving every input event.
-    const latestOnly = active && (['move','resize','scale','rotate','parameter','handle','width','crop','marquee','zoom'].includes(active.kind) ||
+    // Rotate is applied in this event. A frame queue left the right-hand angle
+    // on an older sample, then pointer-up snapped it to the pointer.
+    const latestOnly = active && (['move','resize','scale','parameter','handle','width','crop','marquee','zoom'].includes(active.kind) ||
       active.kind === 'vertex' && !!active.node)
     if (!hover && !latestOnly) { moveCallback.current(event); return }
     if (active && event.pointerId !== active.pointerId) return
@@ -888,8 +890,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   // Pixels lagging an edit (refinement in flight) no longer block gestures:
   // hit-testing runs against the displayed snapshot, mutations against the
   // live document, so the user can keep working while tiles re-render.
+  // Handles mount with the selection under Move/Scale. A missing display
+  // snapshot must not hide them; starting a gesture still waits for that snapshot.
   const canTransform = capturedTransform || (['select','multiselect','scale'].includes(state.tool) && !spaceHeld && !textEdit &&
-    !selectionFeedback.readOnly && !!displayedSnapshot)
+    !selectionFeedback.readOnly && state.selection.length > 0)
   const frameTitles = useMemo(() => entries.filter(e => {
     const n=state.doc.nodes[e.id]
     return ['frame','section'].includes(n.kind) && (e.depth===0||selection.has(e.id)) &&
@@ -1666,9 +1670,26 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const center = d.rotationCenter || (d.basis && d.localBox
         ? apply(d.basis, { x: d.localBox.x + d.localBox.width / 2, y: d.localBox.y + d.localBox.height / 2 })
         : { x: d.box.x + d.box.width / 2, y: d.box.y + d.box.height / 2 })
-      const initial = d.ids.length === 1 ? Math.atan2(d.matrices[d.ids[0]][1], d.matrices[d.ids[0]][0]) * 180 / Math.PI : 0
-      const rotation = selectionRotation(center, d.start, p, initial, e.shiftKey)
-      return { matrix: rotation.matrix, guides: {}, degrees: rotation.degrees }
+      // The matrix follows the hand: y-down atan2 increase is clockwise.
+      // The number is the local angle the inspector will store, not a second
+      // world readout and not the negated historical selectionRotation text.
+      const single = d.ids.length === 1 ? d.ids[0] : undefined
+      const parent = single ? d.parentMatrices?.[single] : undefined
+      const worldStart = single ? d.matrices[single] : undefined
+      const snapLocal = e.shiftKey && !!parent && !!worldStart
+      const rotation = selectionRotation(center, d.start, p, 0, e.shiftKey && !snapLocal)
+      let matrix = rotation.matrix
+      if (snapLocal) matrix = snapLocalClockwise(parent, worldStart, matrix, center)
+      const samples = d.ids.flatMap(id => {
+        const owner = d.parentMatrices?.[id], base = d.matrices[id]
+        if (!owner || !base) return []
+        const local = localClockwiseAfter(owner, base, matrix)
+        return local === null ? [] : [local]
+      })
+      const degrees = samples.length === d.ids.length && samples.every(value => Math.abs(value - samples[0]) < 1e-4)
+        ? samples[0]
+        : rotation.degrees
+      return { matrix, guides: {}, degrees }
     }
     if (d.kind === 'resize' || d.kind === 'scale') {
       const args = resizeArgs(d, e, p)
@@ -2019,6 +2040,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if (!gestureFollow.current && !gpuMove.current?.feedbackPending?.() && host.current) moveCanvasFeedback(host.current, d.ids, offset, gpuMovedOverlays.current)
         if (d.actionToken) actionTrace.sample(d.actionToken, { renderRouteCode: 1, poseSubmittedSequence: gpuMove.current?.inputSequence?.() || 0 })
         pendingBoardMove.current = [patches, placement]
+        // The compositor may follow later. The angle field and blue border read
+        // the document, so a rotate sample has to publish before the next paint.
+        if (d.kind === 'rotate') editor.preview(patches)
         return
       }
       if(d.actionToken) actionTrace.sample(d.actionToken,{renderRouteCode:gpuMove.current?2:3,renderFallbackCount:d.renderFallbackCount=Math.min(1e9,(d.renderFallbackCount||0)+1)})
@@ -2450,7 +2474,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       {drag.current?.kind==='rotate' && drag.current.rotationDegrees!==undefined && cursor && <div
         className="canvas-rotation-hint" role="status" data-testid="rotation-feedback"
         style={{left:cursor.x*zoom+displayView.x+18,top:cursor.y*zoom+displayView.y+18}}>
-        {Number(drag.current.rotationDegrees.toFixed(2))}°
+        {formatAngleDegrees(drag.current.rotationDegrees)}
       </div>}
       {contextMenu && <CanvasContextMenu editor={editor} {...contextMenu} onEditText={() => {
         if (editor.state.selection.length === 1) setTextEdit(editor.state.selection[0])
@@ -2735,11 +2759,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             <g className="selection" data-selection-readonly={selectionFeedback.readOnly}>
               <polygon
                 data-testid="canvas-selection-outline"
-                opacity={gpuOverlay ? 0 : 1}
+                opacity={gpuOverlay && !(ownedDrag && ['move','rotate','resize','scale'].includes(ownedDrag.kind)) ? 0 : 1}
                 points={selectionCorners.map((p) => `${p.x},${p.y}`).join(' ')}
                 fill="none"
                 stroke="#0d99ff"
-                strokeWidth={1.3 / zoom}
+                strokeWidth={2 / zoom}
                 pointerEvents="none"
               />
               {canTransform && transformHandles.map(h => <line key={`edge-${h.index}`} data-testid={`resize-edge-${h.index}`}
@@ -2760,7 +2784,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 <polygon
                   key={i}
                   data-testid={`resize-${i}`}
-                  opacity={gpuOverlay ? 0 : 1}
+                  opacity={gpuOverlay && !(ownedDrag && ['move','rotate','resize','scale'].includes(ownedDrag.kind)) ? 0 : 1}
                   points={h.resizePoints.map(p=>`${p.x},${p.y}`).join(' ')}
                   fill="white"
                   stroke="#0d99ff"

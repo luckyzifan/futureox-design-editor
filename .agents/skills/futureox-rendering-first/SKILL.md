@@ -3,6 +3,7 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-02 [画布操作对照](../../../testing/verification-figma-canvas-ops-20261102/README.md)画布旋转读数与检查器共用局部顺时针角。⌘V 与 Ctrl/⌘D 把普通图层加上 10。单角圆角画进填充。不改缩放覆盖、粘性仿射或 GPU 预算。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 [画布基础操作对照](../../../testing/verification-figma-basic-ops-20261102/README.md)只改选择命中、双击/Enter 和框选提交。不改相机、瓦片、粘性仿射、缩放铺满或合成预算。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 [字体目录与缺失替换](../../../testing/verification-font-parity-20261102/README.md)只增加字体枚举、字重匹配和确认后的替换。不改绘制预算、瓦片或实验开关，也不把字体覆盖说成 33/100ms 或完整 G2/G5。
 2026-11-02 [Figma 文档模型](../../../testing/verification-figma-document-model-20261102/README.md)只补文档/页面/样式/组件集语义和保存往返，不解决渲染故障。瓦片、预算和实验开关未改。33/100ms 与完整 G2/G5 仍未通过。
