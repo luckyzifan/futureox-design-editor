@@ -6,10 +6,11 @@ import { ChevronLeft, ChevronRight, Lock } from 'lucide-react'
 import type { Editor } from './engine'
 import type { Point } from './model'
 import { dispatchEditorCommand, type EditorCommand } from './editor-commands'
-import { canvasContextItems, clampContextMenu, lockedSelectionIds, moveToPageIndex } from './canvas-menu-model'
+import { canvasContextItems, clampContextMenu, lockedSelectionIds, moveToPageIndex, pluginsMenuIndex } from './canvas-menu-model'
 import { useShortcutProfile } from './shortcut-preference'
 import { shortcutPlatform } from './shortcut-profiles'
 import { desktopBridge } from './desktop'
+import { pluginLaunchGrant, requestOpenPlugins } from './plugins/open-plugins'
 
 export type CanvasLayerCandidate = { id: string; name: string; locked: boolean }
 export type CanvasContextMenuProps = {
@@ -31,6 +32,8 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
   close.current = onClose
   const [layers, setLayers] = useState(false), [position, setPosition] = useState({ x, y })
   const [pages, setPages] = useState(false),[group,setGroup]=useState<string|null>(null)
+  const [plugins, setPlugins] = useState(false)
+  const [pluginRows, setPluginRows] = useState<{ grant: string; name: string }[]>([])
   const groupName=(id:string)=>id==='copy-as'?text.copyAs:text.selectSame
   const context = useRef({ session: editor.sessionGeneration, page: state.page, version: state.version, selection: state.selection.join('\n') })
   const profile = useShortcutProfile()
@@ -48,12 +51,12 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
     const box = menu.getBoundingClientRect()
     const next = clampContextMenu({ x, y }, box, { width: window.innerWidth, height: window.innerHeight })
     setPosition((old) => old.x === next.x && old.y === next.y ? old : next)
-  }, [x, y, layers, pages, group, locale])
+  }, [x, y, layers, pages, group, plugins, pluginRows.length, locale])
   useLayoutEffect(() => {
     const menu = root.current
     if (!menu) return
     ;(menu.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') || menu).focus({ preventScroll: true })
-  }, [x, y, layers, pages, group])
+  }, [x, y, layers, pages, group, plugins, pluginRows.length])
   useEffect(() => {
     const outside = (event: Event) => { if (event.target instanceof Node && !root.current?.contains(event.target)) close.current() }
     const dismiss = () => close.current()
@@ -68,9 +71,30 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
     }
   }, [])
   useEffect(() => {
+    if (!plugins) return
+    let cancel = false
+    const list = desktopBridge()?.plugins?.list
+    if (!list) { setPluginRows([]); return }
+    void list().then(result => {
+      if (cancel || result.status !== 'ok') return
+      setPluginRows(result.plugins.flatMap(plugin => {
+        const grant = pluginLaunchGrant(plugin.grant)
+        const name = plugin.displayName.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 80)
+        return grant && name ? [{ grant, name }] : []
+      }).slice(0, 32))
+    }).catch(() => { if (!cancel) setPluginRows([]) })
+    return () => { cancel = true }
+  }, [plugins])
+  useEffect(() => {
     const opening = context.current
     if (opening.session !== editor.sessionGeneration || opening.page !== state.page || opening.version !== state.version || opening.selection !== state.selection.join('\n')) close.current()
   }, [editor, state.page, state.version, state.selection])
+  function openPlugins(grant?: string) {
+    restoreFocus.current = true
+    close.current()
+    const accepted = pluginLaunchGrant(grant)
+    queueMicrotask(() => requestOpenPlugins(accepted))
+  }
   function action(command: EditorCommand, pageId?: string) {
     const token = { session: editor.sessionGeneration, version: editor.state.version, page: editor.state.page, selection: editor.state.selection.join('\n') }
     close.current()
@@ -81,7 +105,7 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
     })
   }
   let previousGroup = ''
-  return createPortal(<div ref={root} role="menu" aria-label={layers ? text.selectLayer : pages ? text.moveToPage : group?groupName(group):text.menu} className="canvas-context-menu"
+  return createPortal(<div ref={root} role="menu" aria-label={layers ? text.selectLayer : pages ? text.moveToPage : plugins ? text.plugins : group?groupName(group):text.menu} className="canvas-context-menu"
     style={{ left: position.x, top: position.y }} tabIndex={-1}
     onPointerDown={(event) => event.stopPropagation()} onPointerMove={(event) => event.stopPropagation()} onPointerUp={(event) => event.stopPropagation()}
     onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}
@@ -91,7 +115,7 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
       if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return
       if (event.repeat && ['Enter', ' ', 'Escape', 'Tab'].includes(event.key)) { event.preventDefault(); return }
       if (event.key === 'Escape' || event.key === 'Tab') { event.preventDefault(); restoreFocus.current = true; close.current(); return }
-      if (event.key === 'ArrowLeft' && (layers || pages || group)) { event.preventDefault(); setLayers(false); setPages(false);setGroup(null); return }
+      if (event.key === 'ArrowLeft' && (layers || pages || group || plugins)) { event.preventDefault(); setLayers(false); setPages(false); setPlugins(false); setGroup(null); return }
       const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')]
       if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
         event.preventDefault()
@@ -104,6 +128,7 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
       if(event.key==='ArrowRight'&&(document.activeElement as HTMLElement)?.dataset.menuGroup){event.preventDefault();setGroup((document.activeElement as HTMLElement).dataset.menuGroup!)}
       if (event.key === 'ArrowRight' && (document.activeElement as HTMLElement)?.dataset.layerPicker === 'true') { event.preventDefault(); setLayers(true) }
       if (event.key === 'ArrowRight' && (document.activeElement as HTMLElement)?.dataset.pagePicker === 'true') { event.preventDefault(); setPages(true) }
+      if (event.key === 'ArrowRight' && (document.activeElement as HTMLElement)?.dataset.pluginPicker === 'true') { event.preventDefault(); setPlugins(true) }
     }}>
     {layers ? <>
       <button type="button" role="menuitem" className="context-back" onClick={() => setLayers(false)}><ChevronLeft size={14} /><span>{text.selectLayer}</span></button>
@@ -114,6 +139,12 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
       <button type="button" role="menuitem" className="context-back" onClick={() => setPages(false)}><ChevronLeft size={14} /><span>{text.moveToPage}</span></button>
       <div role="separator" />
       {state.doc.pages.map(page => <button type="button" role="menuitem" key={page.id} disabled={page.id === state.page} onClick={() => action('move-to-page', page.id)}>{page.name}</button>)}
+    </> : plugins ? <>
+      <button type="button" role="menuitem" className="context-back" onClick={() => setPlugins(false)}><ChevronLeft size={14} /><span>{text.plugins}</span></button>
+      <div role="separator" />
+      <button type="button" role="menuitem" onClick={() => openPlugins()}>{text.openPlugins}</button>
+      {pluginRows.length > 0 && <div role="separator" />}
+      {pluginRows.map(plugin => <button type="button" role="menuitem" key={plugin.grant} onClick={() => openPlugins(plugin.grant)}><span className="context-label">{plugin.name}</span></button>)}
     </> : group ? <>
       <button type="button" role="menuitem" className="context-back" onClick={()=>setGroup(null)}><ChevronLeft size={14}/><span>{groupName(group)}</span></button><div role="separator"/>
       {items.filter(item=>item.group===group).map(item=><button type="button" role="menuitem" key={item.command} disabled={item.disabled} onClick={()=>action(item.command)}><span className="context-label">{item.label}</span>{item.shortcut&&<kbd>{item.shortcut}</kbd>}</button>)}
@@ -127,9 +158,12 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
         }
         const separator = previousGroup && previousGroup !== item.group
         previousGroup = item.group
-        const pageSlot = !!state.selection.length && index === moveToPageIndex(visibleItems.map(entry => entry.command))
+        const commands = visibleItems.map(entry => entry.command)
+        const pageSlot = !!state.selection.length && index === moveToPageIndex(commands)
+        const pluginSlot = !!state.selection.length && index === pluginsMenuIndex(commands)
         return <div key={item.command} role="none">
           {pageSlot && <><div role="separator" /><button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={false} data-page-picker="true" disabled={state.busy || editor.interactionActive || !!lockedSelectionIds(editor).length || state.doc.pages.length < 2} onClick={() => setPages(true)}><span>{text.moveToPage}</span><ChevronRight size={14} /></button><div role="separator" /></>}
+          {pluginSlot && <><div role="separator" /><button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={false} data-plugin-picker="true" disabled={state.busy || editor.interactionActive} onClick={() => setPlugins(true)}><span>{text.plugins}</span><ChevronRight size={14} /></button></>}
           {separator && <div role="separator" />}
           <button type="button" role="menuitem" aria-label={item.label} disabled={item.disabled} className={item.danger ? 'context-danger' : undefined}
             onPointerMove={(event) => { if (!item.disabled) event.currentTarget.focus({ preventScroll: true }) }}

@@ -2,7 +2,8 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { Editor } from './engine'
 import { blank, node, stroke, uid, type DesignDocument } from './model'
 import { allParents, multiply, translate, worldMatrix } from './geometry'
-import { canvasContextItems, canvasMenuItems, clampContextMenu, moveToPageIndex } from './canvas-menu-model'
+import { canvasContextItems, canvasMenuItems, clampContextMenu, moveToPageIndex, pluginsMenuIndex } from './canvas-menu-model'
+import { interfacePreference } from './interface-preference'
 import { dispatchEditorCommand, type EditorCommand } from './editor-commands'
 import { createClip } from './animation'
 import { VectorEngine } from './generated/design-kernel/design_kernel'
@@ -177,19 +178,31 @@ test('context commands flip, order and unlock inherited locks through reversible
 })
 
 test('the canvas right-click list follows the Mac desktop order for a selected shape', () => {
+  interfacePreference.set({ locale: 'zh-CN' })
   const { editor, a } = rotatedFixture()
   editor.select([a.id])
-  const commands = canvasContextItems(editor, { profile: 'figma-like', platform: 'mac', desktop: true }).map(item => item.command)
+  const items = canvasContextItems(editor, { profile: 'figma-like', platform: 'mac', desktop: true })
+  const commands = items.map(item => item.command)
   expect(commands).toEqual([
     'copy', 'paste-here', 'paste-to-replace',
     'copy-properties', 'paste-properties', 'copy-fills', 'copy-strokes', 'copy-effects', 'copy-as-png', 'copy-as-svg',
     'bring-to-front', 'send-to-back',
-    'group', 'frame-selection', 'flatten', 'mask-selection',
+    'group', 'frame-selection', 'flatten', 'outline-stroke', 'mask-selection',
     'auto-layout', 'create-component',
     'hide-selection', 'lock-selection',
     'flip-horizontal', 'flip-vertical',
   ])
+  expect(items.find(item => item.command === 'outline-stroke')?.disabled).toBe(true)
+  expect(items.find(item => item.command === 'hide-selection')?.label).toBe('显示/隐藏')
+  expect(items.find(item => item.command === 'lock-selection')?.label).toBe('锁定/解锁')
+  interfacePreference.set({ locale: 'en' })
+  const english = canvasContextItems(editor, { profile: 'figma-like', platform: 'mac', desktop: true })
+  expect(english.find(item => item.command === 'hide-selection')?.label).toBe('Show/Hide')
+  expect(english.find(item => item.command === 'lock-selection')?.label).toBe('Lock/Unlock')
+  expect(english.find(item => item.command === 'outline-stroke')?.label).toBe('Outline stroke')
+  interfacePreference.set({ locale: 'zh-CN' })
   expect(moveToPageIndex(commands)).toBe(commands.indexOf('bring-to-front'))
+  expect(pluginsMenuIndex(commands)).toBe(commands.indexOf('hide-selection'))
   for (const absent of ['cut', 'duplicate', 'delete', 'paste-in-place', 'bring-forward', 'send-backward', 'undo', 'select-inverse', 'paste-over-selection'] as const)
     expect(commands, absent).not.toContain(absent)
   editor.select([])
