@@ -1,7 +1,7 @@
 import { CpuStage, measureCpuStage } from './cpu-stage-diagnostics'
 import type { CanvasSceneBorrow } from './canvas-scene-snapshots'
 import { PreviewLayout } from './kernel/preview-layout'
-import { TranslationPreviewPlan } from './kernel/translation-preview'
+import { TranslationPreviewPlan, translationOnlyChanges } from './kernel/translation-preview'
 import type { OperationStatus, MessagePresentation } from './operation-status-messages'
 import { prepareBooleanCreate, applyBooleanCreate } from './commands/boolean-command'
 import { applyDuplication, prepareDuplication, canContinueDuplication, type DuplicationRepeat } from './commands/duplication-command'
@@ -22,9 +22,11 @@ import { hasSchema15Features } from './schema-features'
 import { expandRepeats, repeatSourceId } from './repeat-transforms'
 import * as ComponentSlots from './component-slots'
 import { previewLayoutSuggestion, applyLayoutSuggestion, type LayoutSuggestionPreview } from './layout-suggestions'
+import { sameLiveRotation, type LiveRotation } from './rotation-field'
 import { interfacePreference } from './interface-preference'
 import { CameraState, savedCamera } from './camera-state'
 import { hasGradientBlur,hasLocalTools,hasRulerGuides,hasLayoutGrids,hasImageAdjusts,hasPatternTiles } from './model'
+import { canDeletePage, userPages } from './fig-document'
 import { inferred_layout_json } from './generated/design-kernel/design_kernel'
 import { prepareSelectionScale } from './selection-scale'
 import { canvasDropFrame, canvasMoveKeepsContainer, containingFrame, createCanvasDropIndex, type CanvasDropIndex } from './canvas-drop'
@@ -283,14 +285,15 @@ export class Editor {
   private sessionEpoch = 0
   get sessionGeneration() { return this.sessionEpoch }
   get interactionActive() { return this.transaction !== null }
-  private duplicateOffset = 24
+  /** Mac Figma paste steps 10px right and down. Duplicate (⌘D) stays on the repeat path. */
+  private duplicateOffset = 10
   private disposed = false
   private geometryJob: { cancel: () => void } | null = null
   constructor(doc = demo()) {
     doc = kernelLayout(doc)
     this.state = {
       doc,
-      page: doc.pages[0].id,
+      page: userPages(doc)[0].id,
       selection: [],
       hover: null,
       hoverSource: null,
@@ -366,6 +369,22 @@ export class Editor {
     }
   }
   revealSnapshot = () => this.revealRequest
+  /** Canvas rotation while the GPU path has not published a document preview.
+   * Panels read this directly so the angle field is not held back by the
+   * 80ms panel snapshot. */
+  liveRotation: LiveRotation | null = null
+  private liveRotationListeners = new Set<() => void>()
+  subscribeLiveRotation = (fn: () => void) => {
+    this.liveRotationListeners.add(fn)
+    return () => { this.liveRotationListeners.delete(fn) }
+  }
+  setLiveRotation(next: LiveRotation | null) {
+    if (this.disposed || sameLiveRotation(this.liveRotation, next)) return
+    this.liveRotation = next
+    for (const fn of this.liveRotationListeners) {
+      try { fn() } catch { /* Angle feedback must not reject the gesture. */ }
+    }
+  }
   /** Panel-originated camera request: bring these ids into view. The canvas
    * owns the viewport size and applies the minimal pan; canvas clicks never
    * emit this, so selecting on-canvas keeps the camera perfectly still. */
@@ -386,18 +405,20 @@ export class Editor {
     return true
   }
   private panelState: Omit<EditorState, 'view'> | undefined
-  private panelPublishedAt = 0
   /** Panels do not consume the camera. Preserve their immutable snapshot during
    * navigation so a pointer sample does not rebuild the layer tree/inspector. */
   panelSnapshot = () => {
     const { view: _view, ...next } = this.state
-    // Full layer/Inspector trees must not compete with every pointer sample.
-    // Keep coordinates fresh at a bounded cadence; release/undo publishes now.
-    if (this.transaction && this.panelState && next.page === this.panelState.page &&
+    // A canvas preview transaction keeps the last authored Layers/Inspector
+    // tree until release, undo, or a selection/page/tool change. Property
+    // preview still publishes because the inspector owns that draft.
+    // The clockwise angle readout uses setLiveRotation, not this snapshot.
+    if (this.transaction && !this.propertyPreview && this.panelState && next.page === this.panelState.page &&
       next.selection === this.panelState.selection && next.tool === this.panelState.tool &&
-      next.doc.id === this.panelState.doc.id && performance.now() - this.panelPublishedAt < 80) return this.panelState
+      next.renamingLayer === this.panelState.renamingLayer &&
+      next.doc.id === this.panelState.doc.id) return this.panelState
     if (!this.panelState || (Object.keys(next) as (keyof typeof next)[])
-      .some(key => next[key] !== this.panelState![key])) { this.panelState = next; this.panelPublishedAt = performance.now() }
+      .some(key => next[key] !== this.panelState![key])) this.panelState = next
     return this.panelState
   }
   set(patch: Partial<EditorState>) { this.setState(patch) }
@@ -545,6 +566,8 @@ export class Editor {
     if(leading){const pending=this.pendingView;this.pendingView=null;commit(pending)}
     else this.pendingFrame=requestAnimationFrame(flush)
   }
+  /** A parked wheel/zoom write has not landed. History must not stringify yet. */
+  cameraCommitPending() { return this.pendingView !== null || this.pendingFrame !== null }
   /** Commit a parked camera write now; returns the committed view. */
   flushPendingView(): EditorState['view'] {
     if (this.pendingFrame !== null) {
@@ -918,6 +941,31 @@ export class Editor {
     }
     canvasActions(this).finish(owner.trace, ActionOutcome.cancelled, reason, { fieldFamily: 9, inputPhase: 7 })
   }
+  /** Parent-preserving placement stays on the translation proof. Schema scans
+   * and the full component/layout stringify run only when that proof declines. */
+  private publishTranslationPreview(base: DesignDocument, patches: Record<string, Partial<DesignNode>>, move: { ids: string[]; point: Point; force: boolean; preserveParent: boolean }, previewOwner: Editor['transaction'], previewStarted: number) {
+    if (!this.canvasMovePreservesParents(move.ids, move.point, move.force, move.preserveParent)) return false
+    if (Object.entries(patches).some(([id, patch]) => !base.nodes[id] || Object.keys(patch).some(key => key !== 'transform'))) return false
+    const nodes = { ...base.nodes }
+    for (const [id, patch] of Object.entries(patches)) nodes[id] = { ...base.nodes[id], ...patch }
+    const candidate = { ...base, nodes }
+    if (!translationOnlyChanges(base, candidate)) return false
+    const resolved = kernelLayout(candidate, base, true)
+    const published = performance.now()
+    this.set({ doc: resolved })
+    if (this.transaction === previewOwner && previewOwner && this.state.doc === resolved) {
+      previewOwner.placement = { ...move, ids: [...move.ids], point: { ...move.point }, document: resolved }
+      if (move.ids.length === 1 && Object.keys(patches).length === 1 && !previewOwner.copy && !previewOwner.flow) {
+        const plan = this.movePlacement(candidate, move.ids, move.point, move.force, move.preserveParent)
+        previewOwner.movePreview = { source: base, document: resolved, published: resolved, key: plan.key,
+          parents: this.parentMap(resolved), epoch: pickingGeometryEpoch(),
+          translation: new TranslationPreviewPlan(resolved, move.ids) }
+      }
+    }
+    if (this.diagnosticOperation !== null) this.operationDiagnostics.preview(this.diagnosticOperation, true)
+    this.lastPreviewTiming = { prepareMs: published - previewStarted, layoutMs: 0, publishMs: performance.now() - published }
+    return true
+  }
   begin(label: string) {
     if (!this.settleOwnedPropertyPreview('edit')) return
     if (!this.transaction) {
@@ -948,6 +996,7 @@ export class Editor {
         this.lastPreviewTiming={prepareMs:published-previewStarted,layoutMs:0,publishMs:performance.now()-published}
         return true
       }
+      if (this.publishTranslationPreview(base, patches, move, previewOwner, previewStarted)) return true
     }
     if (!move && this.transaction) {
       if (this.previewLayout?.base !== base) this.previewLayout = new PreviewLayout(base)
@@ -1258,16 +1307,17 @@ export class Editor {
         .map((e) => e.bounds),
     )
   }
-  /** Ordinary canvas press and hover share one target. Container movement is
-   * explicit (existing selection or title); unopened ancestors must not replace
-   * the child that the pointer just identified. Native clipping/lock/foreground
-   * board checks remain in hit(). Legacy hierarchy navigation still uses hit(). */
+  /** Canvas press and the hover outline use Figma's parent-first target.
+   * An unentered frame, group, component, or instance wins over its children.
+   * Cmd/Ctrl (deep) returns the leaf. Selecting a child enters its ancestors,
+   * so the next click stays at that level. Clipping, locks, and foreground
+   * boards stay in hit(). */
   selectionHit(p: Point, deep = false, index?: SpatialIndex, zoom = this.state.view.zoom, snapshot?: PickSnapshot): string | null {
-    if (deep) return this.hit(p, true, index, zoom, snapshot)
-    return this.hoverHit(p,index,zoom,snapshot)
+    return this.hit(p, deep, index, zoom, snapshot)
   }
-  /** Hover identifies the smallest eligible object within the front board,
-   * independently of the hierarchy used by click/drag selection. */
+  /** Smallest eligible object inside the front board. Canvas hover uses
+   * selectionHit so the outline matches the click; this remains for callers
+   * that need the leaf independently of the entered hierarchy. */
   hoverHit(p: Point, index?: SpatialIndex, viewZoom = this.state.view.zoom, snapshot?: PickSnapshot): string | null {
     const hit=this.hit(p,true,index,viewZoom,snapshot,undefined,'smallest')
     if(!hit)return null
@@ -1762,7 +1812,7 @@ export class Editor {
     const session = this.sessionGeneration, documentId = this.state.doc.id
     const ownsDocument = () => this.sessionGeneration === session && this.state.doc.id === documentId
     if (!this.admitPageMutation() || !ownsDocument()) { action.result(ActionOutcome.blocked, this.interactionActive || this.state.busy ? ActionReason.busy : ActionReason.validation); return false }
-    if (this.state.doc.pages.length === 1) {
+    if (!canDeletePage(this.state.doc, this.state.page)) {
       this.notify('至少保留一个页面')
       return false
     }
@@ -1782,7 +1832,7 @@ export class Editor {
     )
     if (result.status !== 'committed') return false
     if (!ownsDocument()) { action.result(ActionOutcome.cancelled, ActionReason.superseded); return false }
-    this.set({ page: this.state.doc.pages[0].id })
+    this.set({ page: userPages(this.state.doc)[0].id })
     return ownsDocument()
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
@@ -1998,7 +2048,7 @@ export class Editor {
       return [id,{transform:cloneValue(n.transform),outsideX:!!parent&&(b.x<0||b.x+b.width>parent.width),outsideY:!!parent&&(b.y<0||b.y+b.height>parent.height)}]
     }))
     this.clipboard = { ...graph, placements, sourceSession: this.sessionEpoch }
-    this.duplicateOffset = 24
+    this.duplicateOffset = 10
     this.notify('已复制图层')
   }
   exportClipboard(cut = false): string | null {
@@ -2054,7 +2104,7 @@ export class Editor {
         placements=cloneValue(value.placements)
       }
       this.clipboard = { nodes, roots, document, placements, selection: value.selection ? [...new Set(value.selection as string[])] : undefined }
-      this.duplicateOffset = 24
+      this.duplicateOffset = 10
     } finally { activateDocumentFonts(this.state.doc) }
   }
   pasteToSelection(replace = false) {
@@ -2065,7 +2115,7 @@ export class Editor {
     if(this.topSelection(true).length!==selected.length) {this.notify('粘贴目标包含锁定图层，请先解锁');return}
     const targets=replace?selected:selected.length && selected.every(id=>container(before.nodes[id]) && !content.roots.includes(id)) ? selected
       : selected.length===1 && before.nodes[parents.get(selected[0])!]? [parents.get(selected[0])!] : []
-    if(!targets.length){if(replace)this.notify('请选择要替换的图层');else this.paste(true);return}
+    if(!targets.length){if(replace)this.notify('请选择要替换的图层');else this.paste(false);return}
     for(const target of targets) {
       for(let id:string|undefined=target;id && before.nodes[id];id=parents.get(id)) {
         const n=before.nodes[id]
@@ -2080,6 +2130,10 @@ export class Editor {
     }
     this.begin(replace?'粘贴替换':'粘贴到选中容器')
     const selection:string[]=[]
+    // Mac Figma steps the inspector X/Y by 10, then 20, then 30 from the
+    // copied local position. Restoring the placement alone leaves that delta
+    // at (0, 0). Paste in place first, then add the step in parent space.
+    const step = replace ? 0 : this.duplicateOffset
     try {
       for(const target of targets) {
         const page=this.state.doc.pages.find(p=>p.id===this.state.page)!,existing=new Set(page.children)
@@ -2091,11 +2145,16 @@ export class Editor {
           const currentPage=d.pages.find(p=>p.id===this.state.page)!
           currentPage.children=currentPage.children.filter(id=>!roots.includes(id))
           const list=d.nodes[destination]?.children || d.pages.find(p=>p.id===destination)!.children
-          const at=replace?list.indexOf(target):-1
+          const anchor=!replace && selected.length===1 && parents.get(selected[0])===destination ? selected[0] : null
+          const at=replace?list.indexOf(target):anchor?list.indexOf(anchor)+1:list.length
           list.splice(at<0?list.length:at,0,...roots)
+          const parentWorld=d.nodes[destination]?worldMatrix(d,destination):[1,0,0,1,0,0] as Matrix
           for(const [i,id] of roots.entries()) {
             const source=content.roots[i],placement=content.placements?.[source]
-            if(placement)d.nodes[id].transform=cloneValue(placement.transform)
+            const placed = placement ? cloneValue(placement.transform)
+              : d.nodes[destination] ? multiply(inverse(parentWorld), d.nodes[id].transform) : d.nodes[id].transform
+            d.nodes[id].transform = replace && placement ? cloneValue(placement.transform)
+              : multiply(translate(step, step), placed)
           }
           const measure=(id:string,parent:Matrix): import('./model').Bounds => {
             const n=d.nodes[id],matrix=multiply(parent,n.transform)
@@ -2105,8 +2164,8 @@ export class Editor {
           const localBounds=unionBounds(roots.map(id=>measure(id,identity())))
           const targetBounds=replace?bounds(boxPoints({x:0,y:0,width:box.width,height:box.height}).map(p=>apply(box.transform,p))):null
           const outsideX=content.roots.some(id=>content.placements?.[id]?.outsideX),outsideY=content.roots.some(id=>content.placements?.[id]?.outsideY)
-          const dx=targetBounds?targetBounds.x-localBounds.x:!outsideX&&(localBounds.x<0||localBounds.x+localBounds.width>box.width)?(box.width-localBounds.width)/2-localBounds.x:0
-          const dy=targetBounds?targetBounds.y-localBounds.y:!outsideY&&(localBounds.y<0||localBounds.y+localBounds.height>box.height)?(box.height-localBounds.height)/2-localBounds.y:0
+          const dx=replace?(targetBounds?targetBounds.x-localBounds.x:!outsideX&&(localBounds.x<0||localBounds.x+localBounds.width>box.width)?(box.width-localBounds.width)/2-localBounds.x:0):0
+          const dy=replace?(targetBounds?targetBounds.y-localBounds.y:!outsideY&&(localBounds.y<0||localBounds.y+localBounds.height>box.height)?(box.height-localBounds.height)/2-localBounds.y:0):0
           for(const id of roots) {
             const n=d.nodes[id];n.transform[4]+=dx;n.transform[5]+=dy
             if(replace){n.constraints=cloneValue(box.constraints);n.sizing=cloneValue(box.sizing)}
@@ -2115,6 +2174,7 @@ export class Editor {
         if(!roots.every(id=>allParents(this.state.doc).get(id)===destination))throw new Error(this.state.message)
         selection.push(...roots)
       }
+      if(!replace) this.duplicateOffset += 10
       if(replace){this.select(targets);this.remove();if(targets.some(id=>this.state.doc.nodes[id]))throw new Error('替换目标无法删除')}
       this.select(selection);this.commit()
     } catch(error){this.cancel();this.notify(error instanceof Error?error.message:String(error))}
@@ -2170,7 +2230,7 @@ export class Editor {
         if (position) d.nodes[created].transform = multiply(translate(delta.x, delta.y), source.transform)
       })
       if (this.state.doc.nodes[created]?.instance) this.select([created])
-      if (!inPlace && !position) this.duplicateOffset += 24
+      if (!inPlace && !position) this.duplicateOffset += 10
       return
     }
     const ids = new Map(Object.keys(content.nodes).map((id) => [id, uid()]))
@@ -2204,7 +2264,7 @@ export class Editor {
       },
       content.selection?.map(id => ids.get(id)!) || roots,
     )
-    if (!inPlace && !position) this.duplicateOffset += 24
+    if (!inPlace && !position) this.duplicateOffset += 10
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
   }
@@ -2872,6 +2932,8 @@ export class Editor {
     this.listeners.clear()
     this.cameraListeners.clear()
     this.editListeners.clear()
+    this.liveRotation = null
+    this.liveRotationListeners.clear()
     this.revealRequest = null
     this.revealListeners.clear()
   }

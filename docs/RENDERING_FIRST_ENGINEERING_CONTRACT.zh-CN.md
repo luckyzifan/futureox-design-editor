@@ -1,5 +1,7 @@
 # Futureox Design Core：渲染优先工程与验收规范
 
+2026-11-02 的[Electron 主线程序列化](../testing/verification-electron-perf-flame-20261102/README.md)只减少相机与平移预览上的整份文档序列化，以及预览期间的图层面板刷新。不改像素、瓦片、预算或实验开关，不关闭 33/100ms 或完整 G2/G5。
+
 2026-11-01 的[连续操作续轮](../testing/verification-fluid-canvas-20261101/README.md)将白色缺口限定为用户要求的临时预览，网格在400%起由独立层显示；不改页面/导出语义。图片驻留须区分静态、交互和压力场景，不能由默认请求推出普遍收益。局部旋转、材质上传减量与提交/可见时间分别留证；存在像素差异或仍有秒级延迟的候选不得默认推广或关闭联合验收门。
 
 2026-11-01 的[相机连续呈现记录](../testing/verification-camera-continuity-20261101/README.md)将同源缓存、显式缺口占位、浏览器 backing 投影与精确完成分开。预览可以连续跟随，但不能提升 native/terminal 质量回执；DOM 相机时间不等于 GUI 像素或物理 scanout。GPU 分段/高水位观察保留资源 fence、全部预算及导出精度。首轮 Worker 延迟、录屏干扰与夹具错误单列，完整 G2/G5 和所有精修场景仍需原有联合门。

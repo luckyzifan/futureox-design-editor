@@ -110,7 +110,7 @@ test('camera-only writes do not rerender text properties or rescan document pare
   expect(f.statuses).toHaveLength(0)
 })
 
-test('drag samples publish dirty once, retain the panel cadence, and commit final geometry immediately', async () => {
+test('drag samples publish dirty once, keep Layers and Inspector frozen, and commit final geometry immediately', async () => {
   const f = fixture(), properties = vi.spyOn(units, 'propertyUnits'), parents = vi.spyOn(geometry, 'allParents')
   await f.session.start(); expect(await f.session.save()).toBe(true)
   const wallNow = performance.now.bind(performance), inputStart = wallNow(); let clock = inputStart
@@ -119,7 +119,7 @@ test('drag samples publish dirty once, retain the panel cadence, and commit fina
   const base = f.editor.state.doc, before = f.editor.state.doc.nodes[f.text.id].transform
   const version = f.editor.state.version, renders = f.renders()
   properties.mockClear(); parents.mockClear(); f.statuses.length = 0
-  // Deterministic 36 ms input burst verifies the existing 80 ms panel cadence.
+  // The preview transaction freezes Layers/Inspector. Status still publishes once.
   // Wall-clock duration uses the real function, including actual WASM/React work.
   const start = wallNow()
   f.editor.begin('Runtime move')
@@ -160,7 +160,7 @@ test('cancel and selection changes publish the correct current text and coordina
   act(() => f.editor.undo()); expect(mount.querySelector('textarea')?.value).toBe('Live text')
 })
 
-test('elapsed preview cadence publishes while dragging and release immediately publishes its newer final sample', async () => {
+test('preview samples keep Layers and Inspector frozen until release publishes the final sample', async () => {
   const f = fixture(4), originalX = f.editor.state.doc.nodes[f.text.id].transform[4]
   let clock = 1000
   vi.spyOn(performance, 'now').mockImplementation(() => clock)
@@ -172,8 +172,8 @@ test('elapsed preview cadence publishes while dragging and release immediately p
   }
   f.editor.begin('Elapsed move')
   preview(1020, 200); expect(x()).toBe(String(originalX))
-  preview(1081, 300); expect(f.editor.interactionActive).toBe(true); expect(x()).toBe('300')
-  preview(1100, 400); expect(x()).toBe('300')
+  preview(1081, 300); expect(f.editor.interactionActive).toBe(true); expect(x()).toBe(String(originalX))
+  preview(1100, 400); expect(x()).toBe(String(originalX))
   act(() => f.editor.commit()); expect(f.editor.interactionActive).toBe(false); expect(x()).toBe('400')
 })
 

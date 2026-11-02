@@ -31,7 +31,9 @@
 .variables-panel .variables-cell { display: grid; }
 .variables-panel .variables-pager { display: flex; gap: 5px; align-items: center; justify-content: flex-end; margin: 8px 0; color: var(--variables-muted); }
 .variables-panel .variables-pager span { margin-right: auto; }
-.variables-panel .variables-empty { padding: 22px 12px; text-align: center; }
+.variables-panel .variables-empty { margin: 12px 0; padding: 28px 16px; text-align: center; border: 1px solid var(--workspace-border); border-radius: 16px; background: var(--workspace-field, #f6f1ea); }
+.variables-panel .variables-empty strong { display: block; color: var(--workspace-text, #1c1917); font-size: 15px; font-weight: 600; letter-spacing: -0.02em; }
+.variables-panel .variables-empty p { margin: 6px auto 0; max-width: 320px; line-height: 1.5; }
 .variables-panel .variables-removal { margin-top: 14px; padding: 12px; border: 1px solid #c58a5f; border-radius: 8px; }
 .variables-panel .variables-removal ul { max-height: 150px; overflow: auto; line-height: 1.6; padding-left: 20px; }
 .variables-panel .variables-removal button { margin-right: 6px; }

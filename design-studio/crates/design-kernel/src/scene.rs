@@ -988,6 +988,15 @@ impl Node {
         if let Some(path) = &self.derived_path {
             return Ok((path.as_ref().clone(), path.as_ref().clone()));
         }
+        // A rectangle, frame, section, or slice with a stored corner radius
+        // draws that radius on the fill. An imported sharp outline must not
+        // keep the corner square after the inspector saves TL/TR/BR/BL.
+        if matches!(self.kind.as_str(), "slice" | "frame" | "section" | "rectangle")
+            && (self.radii.iter().any(|radius| *radius != 0.) || self.smoothing != 0.)
+        {
+            let path = Path::rectangle(self.width, self.height, self.radii, self.smoothing);
+            return Ok((path.clone(), path));
+        }
         if let Some(g) = &self.network {
             return g.paths();
         }
@@ -1689,5 +1698,33 @@ mod storage_layout_tests {
         assert_eq!(serde_json::to_vec(&n).unwrap(),encoded);
         assert_eq!(n.fills.capacity(),n.fills.len());assert_eq!(n.effects.capacity(),0);assert_eq!(n.strokes.capacity(),0);
         assert!(std::mem::size_of::<Node>()<=1024,"hot Node slots must not regain inline cold payloads: {}",std::mem::size_of::<Node>());
+    }
+    #[test]
+    fn stored_top_left_radius_rounds_the_fill_ahead_of_a_sharp_outline() {
+        use crate::math::Point;
+        use crate::path::Command;
+        let mut node = crate::facet::sample_node("n", "rectangle");
+        node.width = 100.;
+        node.height = 80.;
+        node.radii = [24., 0., 0., 0.];
+        let sharp = crate::path::Path::polygon(
+            &[
+                Point::new(0., 0.),
+                Point::new(100., 0.),
+                Point::new(100., 80.),
+                Point::new(0., 80.),
+            ],
+            true,
+        );
+        node.vector_geometry = Some(Arc::new(
+            crate::vector_geometry::VectorGeometry::from_paths(&sharp, &sharp, "nonzero").unwrap(),
+        ));
+        let (fill, stroke) = node.paths().unwrap();
+        assert!(fill.commands.iter().any(|command| matches!(command, Command::Arc { .. })));
+        assert!(stroke.commands.iter().any(|command| matches!(command, Command::Arc { .. })));
+        let flat = fill.flatten(crate::math::Transform::default(), 0.5).unwrap();
+        let points = &flat[0].points;
+        assert!(points.iter().any(|point| point.x < 8. && point.y < 8.));
+        assert!(points.iter().all(|point| point.x > 1. || point.y > 1.));
     }
 }

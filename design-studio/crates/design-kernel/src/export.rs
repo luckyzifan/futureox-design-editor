@@ -182,16 +182,23 @@ impl Engine {
                 .collect();
             restore = Some((children, transforms));
         }
-        let result = if managed || request.color_output.is_some() {
+        let result = if managed {
             self.render_color_png(&options, request.color_output.unwrap_or_default())
         } else {
-            // One page-wide resolve policy and halo-aware tile path for every
-            // region, including small crops. Viewport-dependent coverage or a
-            // small-image fast path can otherwise change bytes at slice seams.
-            let doc = self.doc.as_ref().expect("document checked");
-            let coherent = options.raster_profile != RasterProfile::Analytic
-                && region_correlated_samples(doc, page_index);
-            render_tiles(self, &options, 512, 128, coherent)
+            match unmanaged_byte_space(request.color_output) {
+                // One page-wide resolve policy and halo-aware tile path for every
+                // region, including small crops. Viewport-dependent coverage or a
+                // small-image fast path can otherwise change bytes at slice seams.
+                // Display P3 converts those sRGB samples and tags the file. It does
+                // not switch the document to linear-light compositing.
+                Ok(space) => {
+                    let doc = self.doc.as_ref().expect("document checked");
+                    let coherent = options.raster_profile != RasterProfile::Analytic
+                        && region_correlated_samples(doc, page_index);
+                    render_tiles(self, &options, 512, 128, coherent, space)
+                }
+                Err(error) => Err(error),
+            }
         };
         if let Some((children, transforms)) = restore {
             let doc = self.doc.as_mut().expect("render preserves document");
@@ -528,24 +535,68 @@ mod backdrop_budget_tests {
         );
     }
 }
-fn encoder(output: &mut Vec<u8>, width: u32, height: u32) -> png::Encoder<'_, &mut Vec<u8>> {
-    let mut encoder = png::Encoder::new(output, width, height);
-    encoder.set_color(png::ColorType::Rgba);
-    encoder.set_depth(png::BitDepth::Eight);
-    encoder.set_source_srgb(png::SrgbRenderingIntent::Perceptual);
+fn begin_tagged_png<'a>(
+    output: &'a mut Vec<u8>,
+    width: u32,
+    height: u32,
+    space: crate::color::ColorSpace,
+) -> Result<png::Writer<&'a mut Vec<u8>>, String> {
+    use crate::color::ColorSpace;
+    let mut info = png::Info::with_size(width, height);
+    info.color_type = png::ColorType::Rgba;
+    info.bit_depth = png::BitDepth::Eight;
+    // The png encoder drops an ICC profile when `info.srgb` is set. Write the
+    // sRGB chunk after the header so the profile is kept as well. Display P3
+    // omits that chunk; cICP plus the P3 profile are the tag.
+    let (cicp, srgb_chunk) = match space {
+        ColorSpace::Srgb => {
+            info.icc_profile = Some(std::borrow::Cow::Owned(srgb_icc_profile()?));
+            (None, true)
+        }
+        ColorSpace::DisplayP3 => {
+            info.icc_profile = Some(std::borrow::Cow::Owned(display_p3_icc_profile()?));
+            (Some([12_u8, 13, 0, 1]), false)
+        }
+        _ => return Err("8-bit export tags sRGB or Display P3".into()),
+    };
+    let mut encoder = png::Encoder::with_info(output, info).map_err(|e| e.to_string())?;
     encoder.set_compression(png::Compression::Fast);
-    encoder
+    let mut writer = encoder.write_header().map_err(|e| e.to_string())?;
+    if srgb_chunk {
+        writer
+            .write_chunk(png::chunk::ChunkType(*b"sRGB"), &[0])
+            .map_err(|e| e.to_string())?;
+    }
+    if let Some(codes) = cicp {
+        writer
+            .write_chunk(png::chunk::ChunkType(*b"cICP"), &codes)
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(writer)
 }
 pub fn encode_rgba(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>, String> {
+    encode_tagged_rgba(width, height, rgba, crate::color::ColorSpace::Srgb)
+}
+pub fn encode_tagged_rgba(
+    width: u32,
+    height: u32,
+    rgba: &[u8],
+    space: crate::color::ColorSpace,
+) -> Result<Vec<u8>, String> {
+    use crate::color::ColorSpace;
     validate_size(width, height)?;
     if rgba.len() as u64 != u64::from(width) * u64::from(height) * 4 {
         return Err("PNG RGBA buffer length differs from dimensions".into());
     }
+    let mut samples = rgba.to_vec();
+    if space == ColorSpace::DisplayP3 {
+        convert_srgb_straight_to_display_p3(&mut samples);
+    }
     let mut output = Vec::new();
-    let mut writer = encoder(&mut output, width, height)
-        .write_header()
+    let mut writer = begin_tagged_png(&mut output, width, height, space)?;
+    writer
+        .write_image_data(&samples)
         .map_err(|e| e.to_string())?;
-    writer.write_image_data(rgba).map_err(|e| e.to_string())?;
     writer.finish().map_err(|e| e.to_string())?;
     Ok(output)
 }
@@ -571,6 +622,46 @@ pub fn canonical_icc(profile: &moxcms::ColorProfile) -> Result<Vec<u8>, String> 
 /// fixed so exports do not depend on the machine clock.
 pub fn srgb_icc_profile() -> Result<Vec<u8>, String> {
     canonical_icc(&moxcms::ColorProfile::new_srgb())
+}
+
+/// Canonical Display P3 profile. Same fixed timestamp as the sRGB profile.
+pub fn display_p3_icc_profile() -> Result<Vec<u8>, String> {
+    canonical_icc(&moxcms::ColorProfile::new_display_p3())
+}
+
+/// 8-bit unmanaged export. Anything else still needs a managed document.
+pub(crate) fn unmanaged_byte_space(
+    output: Option<crate::color::ColorOutput>,
+) -> Result<crate::color::ColorSpace, String> {
+    use crate::color::{ColorSpace, ToneMap};
+    match output {
+        None => Ok(ColorSpace::Srgb),
+        Some(output)
+            if output.space == ColorSpace::Srgb && output.tone_map == ToneMap::Clip =>
+        {
+            Ok(ColorSpace::Srgb)
+        }
+        Some(output)
+            if output.space == ColorSpace::DisplayP3 && output.tone_map == ToneMap::Clip =>
+        {
+            Ok(ColorSpace::DisplayP3)
+        }
+        Some(_) => Err(
+            "Unmanaged export tags sRGB or Display P3. Other color outputs need document color management."
+                .into(),
+        ),
+    }
+}
+
+fn convert_srgb_straight_to_display_p3(rgba: &mut [u8]) {
+    for pixel in rgba.chunks_exact_mut(4) {
+        let encoded = crate::color::encoded_srgb_to_display_p3(
+            [pixel[0], pixel[1], pixel[2]].map(|c| f64::from(c) / 255.),
+        );
+        for (channel, value) in encoded.into_iter().enumerate() {
+            pixel[channel] = (value.clamp(0., 1.) * 255.).round_ties_even() as u8;
+        }
+    }
 }
 
 /// PDF object body for an RGB ICCBased color space. Callers choose the
@@ -719,7 +810,14 @@ fn render_tiled(
             .doc
             .as_ref()
             .is_some_and(|doc| crate::fidelity::coherent_samples(doc, options));
-    render_tiles(engine, options, tile_width, rows, coherent)
+    render_tiles(
+        engine,
+        options,
+        tile_width,
+        rows,
+        coherent,
+        crate::color::ColorSpace::Srgb,
+    )
 }
 fn render_tiles(
     engine: &mut Engine,
@@ -727,12 +825,11 @@ fn render_tiles(
     tile_width: u32,
     rows: u32,
     coherent: bool,
+    space: crate::color::ColorSpace,
 ) -> Result<Vec<u8>, String> {
     validate_size(options.width, options.height)?;
     let mut output = Vec::new();
-    let mut writer = encoder(&mut output, options.width, options.height)
-        .write_header()
-        .map_err(|e| e.to_string())?;
+    let mut writer = begin_tagged_png(&mut output, options.width, options.height, space)?;
     let mut stats = Stats::default();
     {
         let mut stream = writer
@@ -755,6 +852,9 @@ fn render_tiles(
                     band[start..start + w as usize * 4]
                         .copy_from_slice(&tile[row * w as usize * 4..(row + 1) * w as usize * 4]);
                 }
+            }
+            if space == crate::color::ColorSpace::DisplayP3 {
+                convert_srgb_straight_to_display_p3(&mut band);
             }
             stream.write_all(&band).map_err(|e| e.to_string())?;
         }
@@ -798,6 +898,7 @@ mod tests {
         let rgba: Vec<u8> = (0..=255_u8).flat_map(|v| [v, 255 - v, v, 255]).collect();
         let bytes = encode_rgba(256, 1, &rgba).unwrap();
         assert!(bytes.windows(4).any(|s| s == b"sRGB"));
+        assert!(bytes.windows(4).any(|s| s == b"iCCP"));
         assert!(bytes
             .windows(8)
             .any(|s| s == [0, 0, 0, 1, b's', b'R', b'G', b'B']));
@@ -839,6 +940,119 @@ mod tests {
         assert!(validate_size(16385, 1).is_err());
         assert!(validate_size(8192, 8192).is_err());
     }
+    fn rgba_at(bytes: &[u8], width: usize, x: usize, y: usize) -> [u8; 4] {
+        let i = (y * width + x) * 4;
+        [bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]
+    }
+
+    #[test]
+    fn layer_fill_color_and_shadow_opacity_multiply() {
+        let doc = json!({"schemaVersion":1,"id":"d","name":"opacity","pages":[{"id":"p","name":"p","children":["n"],"background":"#ffffff"}],"nodes":{
+            "n":{"id":"n","kind":"rectangle","width":8,"height":8,"opacity":0.5,
+                "fills":[{"kind":"solid","color":"color(srgb 1 0 0 / 0.5)","opacity":0.5}],
+                "effects":[{"kind":"shadow","visible":true,"radius":0,"x":12,"y":0,"spread":0,"color":"color(srgb 0 0 0 / 0.5)","opacity":0.5,"amount":0}]}
+        }});
+        for profile in ["analytic", "figma"] {
+            let mut engine = Engine::new();
+            engine.load_document(&doc.to_string()).unwrap();
+            let options = engine
+                .parse_options(json!({
+                    "pageId":"p","width":24,"height":8,
+                    "view":{"x":0.0,"y":0.0,"zoom":1.0},
+                    "transparent":true,"grid":false,"checkerboard":false,
+                    "rasterProfile": profile
+                }))
+                .unwrap();
+            let bytes = engine.render(&options).unwrap();
+            let fill = rgba_at(&bytes, 24, 4, 4);
+            let shadow = rgba_at(&bytes, 24, 16, 4);
+            assert!(
+                (30..=34).contains(&fill[3]) && fill[0] == 255 && fill[1] == 0 && fill[2] == 0,
+                "{profile} fill {fill:?}"
+            );
+            assert!(
+                (6..=12).contains(&shadow[3]) && shadow[0] <= 2 && shadow[1] <= 2 && shadow[2] <= 2,
+                "{profile} shadow {shadow:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn unmanaged_display_p3_export_converts_and_tags() {
+        let doc = json!({"schemaVersion":1,"id":"d","name":"p3","pages":[{"id":"p","name":"p","children":["n"],"background":"#ffffff"}],"nodes":{
+            "n":{"id":"n","kind":"rectangle","width":2,"height":2,"fills":[{"kind":"solid","color":"#ff0000"}]}
+        }});
+        let mut engine = Engine::new();
+        engine.load_document(&doc.to_string()).unwrap();
+        let bounds = ExportBounds { x: 0., y: 0., width: 2., height: 2. };
+        let srgb = engine
+            .render_region_png(&RegionRequest {
+                page_id: "p".into(),
+                bounds,
+                scale: 1.,
+                node_ids: None,
+                raster_profile: Some(RasterProfile::Analytic),
+                color_output: None,
+            })
+            .unwrap();
+        let p3 = engine
+            .render_region_png(&RegionRequest {
+                page_id: "p".into(),
+                bounds,
+                scale: 1.,
+                node_ids: None,
+                raster_profile: Some(RasterProfile::Analytic),
+                color_output: Some(crate::color::ColorOutput {
+                    space: crate::color::ColorSpace::DisplayP3,
+                    tone_map: crate::color::ToneMap::Clip,
+                }),
+            })
+            .unwrap();
+        assert!(srgb.windows(4).any(|window| window == b"sRGB"));
+        assert!(srgb.windows(4).any(|window| window == b"iCCP"));
+        assert!(p3.windows(4).any(|window| window == b"cICP"));
+        assert!(p3.windows(4).any(|window| window == b"iCCP"));
+        assert!(!p3.windows(8).any(|window| window == [0, 0, 0, 1, b's', b'R', b'G', b'B']));
+        let decode = |png: &[u8]| {
+            let decoder = png::Decoder::new(std::io::Cursor::new(png));
+            let mut reader = decoder.read_info().unwrap();
+            let mut buffer = vec![0; reader.output_buffer_size().expect("png size")];
+            let frame = reader.next_frame(&mut buffer).unwrap();
+            buffer.truncate(frame.buffer_size());
+            buffer
+        };
+        let srgb_px = decode(&srgb);
+        let p3_px = decode(&p3);
+        assert_eq!(&srgb_px[0..4], &[255, 0, 0, 255]);
+        assert_ne!(&p3_px[0..3], &[255, 0, 0]);
+        assert_eq!(p3_px[3], 255);
+        assert!(p3_px[0] < 255 && p3_px[1] > 0 && p3_px[2] > 0, "{p3_px:?}");
+        let jpeg = crate::export_formats::transcode(&p3, "jpeg", 1.).unwrap();
+        let profile = display_p3_icc_profile().unwrap();
+        assert!(jpeg.windows(profile.len()).any(|window| window == profile.as_slice()));
+        let srgb_jpeg = crate::export_formats::transcode(&srgb, "jpeg", 1.).unwrap();
+        let srgb_profile = srgb_icc_profile().unwrap();
+        assert!(srgb_jpeg.windows(srgb_profile.len()).any(|window| window == srgb_profile.as_slice()));
+        assert!(engine
+            .render_region_png(&RegionRequest {
+                page_id: "p".into(),
+                bounds,
+                scale: 1.,
+                node_ids: None,
+                raster_profile: Some(RasterProfile::Analytic),
+                color_output: Some(crate::color::ColorOutput {
+                    space: crate::color::ColorSpace::Rec2020,
+                    tone_map: crate::color::ToneMap::Clip,
+                }),
+            })
+            .unwrap_err()
+            .contains("Display P3"));
+        let neutral = crate::color::encoded_srgb_to_display_p3([0., 0., 0.]);
+        assert!(neutral.iter().all(|v| v.abs() < 1e-9));
+        let white = crate::color::encoded_srgb_to_display_p3([1., 1., 1.]);
+        assert!(white.iter().all(|v| (v - 1.).abs() < 1e-9));
+    }
+
     #[test]
     fn tiled_filters_and_nested_clips_match_a_single_render() {
         let doc = json!({"schemaVersion":1,"id":"d","name":"tile seam","pages":[{"id":"p","name":"p","children":["bg","g"],"background":"#ffffff"}],"nodes":{

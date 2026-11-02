@@ -1,7 +1,7 @@
 import { DOCUMENT_MEMORY_BYTES, DOCUMENT_BYTE_LIMIT } from '../src/document-capacity.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFile, mkdtemp, rm, mkdir, writeFile, rename, realpath } from 'node:fs/promises'
+import { readFile, mkdtemp, rm, mkdir, writeFile, rename, realpath, symlink } from 'node:fs/promises'
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url'
 
 // Exercise the real main module's registered handlers. Only OS/Electron/stdio boundaries
 // are replaced; no production test hooks or renderer privilege exceptions are shipped.
-async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWorkingBudget } = {}) {
+async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWorkingBudget, prepare } = {}) {
   // macOS tmpdir is a /var -> /private/var symlink; resolved grant paths use it.
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'forma-host-')))
   const key = `__formaHost_${randomUUID()}`
@@ -273,6 +273,7 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
   source = source.replace("from './preparation.mjs'", `from ${JSON.stringify(new URL('../src/preparation.mjs', import.meta.url).href)}`)
   source = source.replace("from './large-document.mjs'", `from ${JSON.stringify(new URL('../src/large-document.mjs', import.meta.url).href)}`)
   source = source.replace("from './render-check.mjs'", `from ${JSON.stringify(new URL('../src/render-check.mjs', import.meta.url).href)}`)
+  source = source.replace("from './workspace-sqlite-worker-host.mjs'", `from ${JSON.stringify(new URL('../src/workspace-sqlite-worker-host.mjs', import.meta.url).href)}`)
   source = source.replace(
     "from './security.mjs'",
     `from ${JSON.stringify(new URL('../src/security.mjs', import.meta.url).href)}`,
@@ -286,6 +287,7 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
     JSON.stringify(key) +
     '].timers.push(callback); return 0 }; const clearTimeout = () => {};\n' +
     source
+  if (prepare) await prepare(root)
   try {
     await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`)
   } catch (error) {
@@ -1408,5 +1410,60 @@ test('native filter display names follow locale while extensions, defaults and c
       assert.deepEqual(options.properties, ['showOverwriteConfirmation'])
     }
     assert.equal(state.requests.length, before, 'Cancelled native dialogs and export configuration perform no sidecar IO')
+  } finally { await state.dispose() }
+})
+
+test('startup enables declared plugins in the menu without exposing filesystem paths', async () => {
+  const state = await host({
+    prepare: async root => {
+      const plugins = path.join(root, 'plugins')
+      const declared = path.join(plugins, 'save-plugin')
+      const figjam = path.join(plugins, 'figjam-only')
+      const outside = path.join(root, 'outside-plugin')
+      await mkdir(declared, { recursive: true })
+      await mkdir(figjam, { recursive: true })
+      await mkdir(outside, { recursive: true })
+      const manifest = (name, id, editorType = ['figma']) => JSON.stringify({ name, id, api: '1.0.0', main: 'code.js', editorType })
+      await writeFile(path.join(declared, 'manifest.json'), manifest('Save', 'local.save'))
+      await writeFile(path.join(declared, 'code.js'), 'figma.notify("ok")')
+      await writeFile(path.join(figjam, 'manifest.json'), manifest('FigJam only', 'local.figjam', ['figjam']))
+      await writeFile(path.join(figjam, 'code.js'), 'figma.closePlugin()')
+      await writeFile(path.join(outside, 'manifest.json'), manifest('Outside', 'local.outside'))
+      await writeFile(path.join(outside, 'code.js'), 'secret')
+      await symlink(outside, path.join(plugins, 'linked'), 'dir')
+    },
+  })
+  try {
+    const listed = await state.invoke('plugins-list')
+    assert.equal(listed.status, 'ok')
+    assert.equal(listed.plugins.length, 1)
+    assert.equal(listed.plugins[0].name, 'Save')
+    assert.equal(listed.plugins[0].id, 'local.save')
+    assert.equal(listed.plugins[0].displayName, 'Save')
+    assert.equal(Object.hasOwn(listed.plugins[0], 'root'), false)
+    const encoded = JSON.stringify(listed)
+    assert.equal(encoded.includes(state.root), false)
+    assert.equal(encoded.includes('save-plugin'), false)
+    assert.equal(encoded.includes('secret'), false)
+    assert.equal(encoded.includes('FigJam'), false)
+    const menu = state.menu.find(item => item.label === '插件')
+    assert.deepEqual(menu.submenu.map(item => item.label ?? item.type), ['打开插件宿主…', 'separator', 'Save'])
+    assert.equal(menu.submenu[2].preserveLabel, undefined)
+    state.sent = []
+    menu.submenu[2].click()
+    assert.deepEqual(state.sent, [
+      ['design-desktop:command', 'plugins'],
+      ['design-desktop:plugin-launch', { grant: listed.plugins[0].grant }],
+    ])
+    const read = await state.invoke('plugins-read', { grant: listed.plugins[0].grant, paths: ['code.js'] })
+    assert.equal(read.files['code.js'], 'figma.notify("ok")')
+    assert.equal((await state.invoke('plugins-read', { grant: listed.plugins[0].grant, paths: ['../secret.js'] })).status, 'error')
+    assert.equal((await state.invoke('plugins-list', { plugins: [] })).status, 'error')
+    assert.equal((await state.invoke('set-interface-locale', 'en')).status, 'ok')
+    const english = state.menu.find(item => item.label === 'Plugins')
+    assert.equal(english.submenu[0].label, 'Open plugin host…')
+    assert.equal(english.submenu[2].label, 'Save')
+    const fileSave = state.menu.find(item => item.label === 'File').submenu.find(item => item.label === 'Save')
+    assert.equal(fileSave.accelerator, 'CmdOrCtrl+S')
   } finally { await state.dispose() }
 })

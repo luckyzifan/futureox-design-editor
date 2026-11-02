@@ -143,7 +143,20 @@ const zhCN = {
   "expandLayer": "展开",
   "collapseLayer": "折叠",
   "groupLayers": "编组",
-  "duplicateLayers": "复制"
+  "duplicateLayers": "复制",
+  "pages": "页面",
+  "addPage": "添加页面",
+  "searchPages": "搜索页面",
+  "searchPagesPlaceholder": "搜索页面…",
+  "pageList": "页面列表",
+  "pageActions": "页面操作",
+  "renamePage": "重命名页面",
+  "duplicatePage": "复制页面",
+  "movePageUp": "页面上移",
+  "movePageDown": "页面下移",
+  "noMatchingPages": "没有匹配页面",
+  "collapsePages": "收起页面",
+  "expandPages": "展开页面"
 } as const
 export type InterfaceMessageKey = keyof typeof zhCN
 const en: Record<InterfaceMessageKey, string> = {
@@ -290,6 +303,19 @@ const en: Record<InterfaceMessageKey, string> = {
   "expandLayer": "Expand",
   "collapseLayer": "Collapse",
   "groupLayers": "Group",
-  "duplicateLayers": "Duplicate"
+  "duplicateLayers": "Duplicate",
+  "pages": "Pages",
+  "addPage": "Add page",
+  "searchPages": "Search pages",
+  "searchPagesPlaceholder": "Search pages…",
+  "pageList": "Pages",
+  "pageActions": "Page actions",
+  "renamePage": "Rename page",
+  "duplicatePage": "Duplicate page",
+  "movePageUp": "Move page up",
+  "movePageDown": "Move page down",
+  "noMatchingPages": "No matching pages",
+  "collapsePages": "Collapse pages",
+  "expandPages": "Expand pages"
 }
 export const interfaceText = { 'zh-CN': zhCN, en } as const

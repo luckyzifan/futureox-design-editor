@@ -6,12 +6,13 @@ import type { DesignDocument } from './model'
 import { ImportOwner, importStep } from './import-ownership'
 import { applySelectionFont, FONT_PAGE_SIZE, searchFontChoices, matchSourceFontsInDocument, unmatchedEditableSourceFonts } from './font-management'
 import { commitPendingEdits } from './pending-edits'
-import { matchFont, type FontResource } from './font-matching'
+import { resolveListedFace } from './font-catalog'
+import { type FontResource } from './font-matching'
 import { initializeKernelModule } from './kernel/module'
 import { font_faces_json } from './generated/design-kernel/design_kernel'
 
 type BrowserFont = { family: string; style: string; postscriptName: string; blob(): Promise<Blob> }
-type SystemFont = { id: string; family: string; style: string; postscript: string; index: number; browserFont?: BrowserFont }
+type SystemFont = { id: string; family: string; style: string; postscript: string; index: number; weight?: number; italic?: boolean; variable?: boolean; axes?: ReadonlyArray<{ tag: string; min: number; max: number; default?: number }>; browserFont?: BrowserFont }
 const queryFonts = () => (window as unknown as { queryLocalFonts?: () => Promise<BrowserFont[]> }).queryLocalFonts
 
 function fontAccessStatus(error: unknown): PropertyStatus {
@@ -117,7 +118,7 @@ export function SystemFontPicker({ editor, ids, detachSharedStyle = false }: { e
       const matched = new Map<string, { id: string; resource: FontResource }>(), missing: string[] = []
       const loaded = new Map<string, { id: string; resource: FontResource }>(), faces = new Map<string, { id: string; resource: FontResource }>()
       for (const name of names) {
-        const font = matchFont(name, fonts)
+        const font = resolveListedFace(name, fonts)
         if (!font) { missing.push(name); continue }
         let entry = faces.get(font.id)
         if (!entry) {
@@ -151,7 +152,7 @@ export function SystemFontPicker({ editor, ids, detachSharedStyle = false }: { e
       <div className="remote-actions"><input aria-label={tr("搜索本机字体")} placeholder={tr("字体名称或样式")} value={query} onChange={e => { setQuery(e.target.value); setPageIndex(0) }} /><button onClick={() => { owner.invalidate(); setBusy(false); setOpen(false) }}>{tr("关闭")}</button></div>
       <p role="status">{propertyStatusText(message, locale)}</p>
       <div style={{maxHeight:240,overflowY:'auto'}}>{visible.map(f =>
-        <button style={{display:'flex',width:'100%',justifyContent:'space-between'}} disabled={busy || !ids.length} key={f.id} onClick={() => void choose(f)}><span>{f.family}</span><small>{f.style}</small></button>)}</div>
+        <button style={{display:'flex',width:'100%',justifyContent:'space-between'}} disabled={busy || !ids.length} key={f.id} onClick={() => void choose(f)}><span>{f.family}</span><small>{f.style}{f.variable ? ` · ${tr('可变')}` : ''}</small></button>)}</div>
       <div className="selection-actions"><button type="button" disabled={page === 0} onClick={() => setPageIndex(page - 1)}>{tr("上一页字体")}</button><span>{matches.length ? page * FONT_PAGE_SIZE + 1 : 0}–{Math.min((page + 1) * FONT_PAGE_SIZE, matches.length)} / {matches.length}</span><button type="button" disabled={(page + 1) * FONT_PAGE_SIZE >= matches.length} onClick={() => setPageIndex(page + 1)}>{tr("下一页字体")}</button></div>
     </section>}
   </>

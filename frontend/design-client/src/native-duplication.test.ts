@@ -14,20 +14,67 @@ function fixture() {
   doc.nodes = Object.fromEntries([frame, a, b].map(n => [n.id, n])); frame.children = [a.id, b.id]; doc.pages[0].children = [frame.id]
   const editor = new Editor(doc); editors.push(editor); return { doc: editor.state.doc, editor, frame, a, b }
 }
+test('Mac Figma paste steps inspector X/Y by 10, including a selected frame and a repeat', () => {
+  const doc = blank(), source = node('frame', 0, 0, 200, 160), target = node('frame', 400, 50, 200, 160), child = node('rectangle', 20, 30, 40, 40)
+  source.children = [child.id]
+  doc.nodes = Object.fromEntries([source, target, child].map(n => [n.id, n]))
+  doc.pages[0].children = [source.id, target.id]
+  const editor = new Editor(doc); editors.push(editor)
+  editor.select([child.id]); editor.copy(); editor.select([target.id]); editor.pasteToSelection(false)
+  const copy = editor.state.selection[0]
+  expect(copy).not.toBe(child.id)
+  expect(allParents(editor.state.doc).get(copy)).toBe(target.id)
+  expect(editor.state.doc.nodes[copy].transform[4]).toBeCloseTo(30, 8)
+  expect(editor.state.doc.nodes[copy].transform[5]).toBeCloseTo(40, 8)
+  expect(editor.state.doc.nodes[child.id]).toEqual(doc.nodes[child.id])
+  editor.select([copy]); editor.pasteToSelection(false)
+  const again = editor.state.selection[0]
+  expect(allParents(editor.state.doc).get(again)).toBe(target.id)
+  expect(editor.state.doc.nodes[again].transform[4]).toBeCloseTo(40, 8)
+  expect(editor.state.doc.nodes[again].transform[5]).toBeCloseTo(50, 8)
+})
+test('copy and paste offsets a page layer and a sibling by 10, including the clipboard roundtrip', () => {
+  const doc = blank(), frame = node('frame', 100, 80, 200, 160), child = node('rectangle', 20, 30, 40, 40), page = node('rectangle', 15, 25, 10, 10)
+  frame.children = [child.id]
+  doc.nodes = Object.fromEntries([frame, child, page].map(n => [n.id, n]))
+  doc.pages[0].children = [frame.id, page.id]
+  const editor = new Editor(doc); editors.push(editor)
+  editor.select([page.id]); editor.copy(); editor.pasteToSelection(false)
+  const pasted = editor.state.doc.nodes[editor.state.selection[0]]
+  expect(pasted.transform[4]).toBeCloseTo(25, 8)
+  expect(pasted.transform[5]).toBeCloseTo(35, 8)
+  editor.select([child.id]); editor.copy(); editor.pasteToSelection(false)
+  const sibling = editor.state.doc.nodes[editor.state.selection[0]]
+  expect(allParents(editor.state.doc).get(sibling.id)).toBe(frame.id)
+  expect(sibling.transform[4]).toBeCloseTo(30, 8)
+  expect(sibling.transform[5]).toBeCloseTo(40, 8)
+  editor.importClipboard(editor.exportClipboard()!)
+  editor.pasteToSelection(false)
+  const round = editor.state.doc.nodes[editor.state.selection[0]]
+  expect(allParents(editor.state.doc).get(round.id)).toBe(frame.id)
+  expect(round.transform[4]).toBeCloseTo(40, 8)
+  expect(round.transform[5]).toBeCloseTo(50, 8)
+})
 test('ordinary duplicate keeps the affine parent, appearance and one native history action', () => {
   const { editor, doc, frame, a } = fixture(); editor.select([a.id]); editor.duplicate()
   const copy = editor.state.selection[0]
   expect(copy).not.toBe(a.id)
   expect(allParents(editor.state.doc).get(copy)).toBe(frame.id)
-  expect(worldMatrix(editor.state.doc, copy)).toEqual(worldMatrix(doc, a.id))
+  const source = worldMatrix(doc, a.id), copied = worldMatrix(editor.state.doc, copy)
+  expect(copied[4] - source[4]).toBeCloseTo(10, 8)
+  expect(copied[5] - source[5]).toBeCloseTo(10, 8)
   expect(editor.state.doc.nodes[a.id]).toEqual(doc.nodes[a.id])
   editor.undo(); expect(editor.state.doc).toEqual(doc); expect(editor.canUndo).toBe(false)
 })
-test('repeating an unmoved duplicate does not accumulate affine roundoff', () => {
+test('repeating an unmoved duplicate steps exactly 10px without affine roundoff', () => {
   const { editor, doc, a } = fixture(); editor.select([a.id])
+  let previous = worldMatrix(doc, a.id)
   for (let i = 0; i < 12; i++) {
     editor.duplicate()
-    expect(worldMatrix(editor.state.doc, editor.state.selection[0])).toEqual(worldMatrix(doc, a.id))
+    const next = worldMatrix(editor.state.doc, editor.state.selection[0])
+    expect(next[4] - previous[4]).toBeCloseTo(10, 8)
+    expect(next[5] - previous[5]).toBeCloseTo(10, 8)
+    previous = next
   }
 })
 test('repeated duplicate carries the last world displacement without using the OS clipboard', () => {
@@ -35,9 +82,10 @@ test('repeated duplicate carries the last world displacement without using the O
   editor.transformSelection(translate(25.125, -10.25))
   const at = worldMatrix(editor.state.doc, editor.state.selection[0]); editor.duplicate()
   const next = worldMatrix(editor.state.doc, editor.state.selection[0])
-  expect(next[4] - at[4]).toBeCloseTo(25.125, 10); expect(next[5] - at[5]).toBeCloseTo(-10.25, 10)
+  expect(next[4] - at[4]).toBeCloseTo(35.125, 10); expect(next[5] - at[5]).toBeCloseTo(-0.25, 10)
   editor.duplicate(); const last = worldMatrix(editor.state.doc, editor.state.selection[0])
-  expect(last[4] - next[4]).toBeCloseTo(25.125, 10)
+  expect(last[4] - next[4]).toBeCloseTo(35.125, 10)
+  expect(last[5] - next[5]).toBeCloseTo(-0.25, 10)
 })
 test('Option preview toggles without extra versions, cancel preserves original graph, commit is one undo', () => {
   const { editor, doc, a } = fixture(); editor.select([a.id]); const version = editor.state.version

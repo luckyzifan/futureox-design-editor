@@ -1,6 +1,6 @@
 # Futureox brand resources
 
-The original F/D monogram combines an open F with editable Bézier-curved arms, a D-shaped blue silhouette, and clipped left corners that subtly suggest an artboard. The 48-unit open gap keeps the F readable at small sizes. It uses no third-party logo, external asset, font glyph, or Figma-style multicolor pill stack. The parent brand is Futureox; the product display name is Futureox Design. The repository spelling remains `futureox-desgin`. The current user-selected palette is indigo blue (#3459D4) and white (#FFFFFF), with the same indigo rim (#3459D4).
+The current mark is a refined letter F for Futureox: a white stroke with round terminals on an indigo squircle (`#3459D4`). It is not a font glyph, a third-party logo, or a multicolor pill. The parent brand is Futureox; the product display name is Futureox Design. The repository spelling remains `futureox-desgin`. The earlier F/D silhouette remains in `docs/branding/` as prior authoring, not the runtime icon.
 
 ## Source and regeneration
 
@@ -11,7 +11,7 @@ The original F/D monogram combines an open F with editable Bézier-curved arms, 
 - Run `FUTUREOX_BRAND_DIR=/tmp/futureox-brand node frontend/design-client/node_modules/vitest/vitest.mjs run --root frontend/design-client --config ../design-mcp/examples/branding.vitest.config.mjs` from the repository root. This needs the existing generated WASM and test dependencies.
 - Generate the selected Mac variant with `FUTUREOX_BRAND_DIR=/tmp/futureox-mac node frontend/design-client/node_modules/vitest/vitest.mjs run --root frontend/design-client --config ../design-mcp/examples/branding-macos-clean.vitest.config.mjs`. Its exported SVG must be copied to `frontend/design-desktop/assets/branding/futureox-desgin-macos.svg`, and FD to `docs/branding/futureox-desgin-macos.fd`.
 - Inspect the exported SVG/native PNGs, then copy the verified exported SVG into the public master path and FD into the native master path. Package resources with `python frontend/design-desktop/scripts/generate-branding.py --native-export-dir /tmp/futureox-brand --mac-native-export-dir /tmp/futureox-mac` using Pillow. The script rejects a source SVG that differs from the MCP export.
-- PNG 1x/2x/3x (512/1024/1536px) and 16/32/64/256px are produced by the repository's actual `VectorEngine.render_region_png` CPU renderer from the MCP-authored native document. ICO/ICNS and additional convenience sizes use Pillow encoding/resampling of that output. No external image generator, SVG rasterizer, downloaded image or font is used in the application asset generation path. These committed icon resources are required application assets, not generated application binaries.
+- The 2026-11-02 runtime rasters are produced from the SVG masters by `frontend/design-desktop/scripts/render-brand-mark.mjs` (`@resvg/resvg-js` on `NODE_PATH` or `/tmp/brand-render`). Windows ICO and macOS ICNS embed those PNGs. The older MCP/`VectorEngine.render_region_png` path and `generate-branding.py` remain for the previous F/D authoring flow; they are not what produced this F mark. These committed icon resources are required application assets, not generated application binaries.
 - Optional visual QA: append `--contact-sheet /tmp/futureox-branding.png` to render native-size 16/32/64/256px icons on light and dark surfaces.
 
 ## Integration

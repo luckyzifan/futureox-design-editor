@@ -1,9 +1,11 @@
 import type { Bounds, DesignDocument, Point } from './model'
 import { apply, type SceneEntry } from './geometry'
-import { measureBounds, type Measurement } from './canvas-measurements'
+import { measureBounds, measurementLabel, type Measurement } from './canvas-measurements'
 import { selectionSizeLabel } from './selection-size-label'
+import { SELECTION_BLUE } from './selection-blue'
 import type { CanvasLabel } from './kernel/gpu/canvas-labels'
 import type { CanvasOverlay } from './kernel/gpu/canvas-overlay'
+import { frameChromeLabel } from './page-frame-chrome'
 
 export type CanvasOverlayContext = {
   document: DesignDocument
@@ -27,31 +29,54 @@ export type CanvasOverlayInputs = {
  * A measurement target is picked in the displayed scene, not the authored
  * scene. Its identity AND displayed bounds therefore belong to this contract.
  * Never infer that two targets are equivalent from their endpoints alone. */
+/** Screen-pixel width of a selection chip. CJK counts as one em; Latin is narrower. */
+export function selectionChromeChipWidth(text: string, size: number) {
+  let em = 0
+  for (const char of text) {
+    const code = char.codePointAt(0) ?? 0
+    em += code > 0xff ? 1 : code <= 0x20 ? 0.34 : 0.58
+  }
+  return Math.max(size * 0.5, em * size)
+}
+
 export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlayContext {
   const { document, selected, owners, frameTitles, localSelection, selectionCorners, selectionBox, measurementTarget } = input
   const showSelection = !!selected.length && !['vector','width','pencil','brush','marker','washi-tape'].includes(input.tool)
   const selectedIds = new Set(showSelection ? selected.map(entry => entry.id) : [])
-  const titleIdentity = frameTitles.map(entry => [entry.id, document.nodes[entry.id].name, selectedIds.has(entry.id) ? 1 : 0, [...entry.ancestors, entry.id]])
+  const titleIdentity = frameTitles.map(entry => {
+    const chrome = frameChromeLabel(document.nodes[entry.id], selectedIds.has(entry.id))
+    return [entry.id, document.nodes[entry.id].name, selectedIds.has(entry.id) ? 1 : 0, chrome.kind, chrome.chip ?? '', [...entry.ancestors, entry.id]]
+  })
   const selectionIdentity = showSelection ? [owners, input.canTransform] : null
   const selectionName = showSelection && selected.length === 1 ? document.nodes[selected[0].id]?.name ?? '' : ''
   const targetIdentity = measurementTarget ? [measurementTarget.id, measurementTarget.bounds.x, measurementTarget.bounds.y,
     measurementTarget.bounds.width, measurementTarget.bounds.height] : null
-  // Prefix 2 retires overlay ACKs that omitted the selection name, so a stale
-  // GPU label cannot hide the name the DOM is already showing.
-  const uiIdentity = JSON.stringify([2, input.pixelGrid, selectionIdentity, selectionName, titleIdentity, targetIdentity])
+  const sizeText = showSelection ? selectionSizeLabel(localSelection, selectionBox, selected[0]?.matrix) : ''
+  // Tenths of a degree. A frozen overlay identity kept the W×H chip on the
+  // pre-rotation box while the glyphs turned. Prefix 4 also retires labels
+  // from before the warm pill frame.
+  const spin = selected[0]?.matrix ? Math.round(Math.atan2(selected[0].matrix[1], selected[0].matrix[0]) * 1800) / 10 : 0
+  const uiIdentity = JSON.stringify([4, input.pixelGrid, selectionIdentity, selectionName, sizeText, spin, titleIdentity, targetIdentity])
   const measurements = measurementTarget ? measureBounds(selectionBox, measurementTarget.bounds) : []
-  const labels: CanvasLabel[] = frameTitles.map(entry => ({anchor: apply(entry.matrix,{x:0,y:0}), offset:{x:0,y:-12},
-    basis:entry.matrix.slice(0,4) as [number,number,number,number], text:document.nodes[entry.id].name, size:11,
-    color: selectedIds.has(entry.id) ? '#0d99ff' : '#73778b', kind: 'frame-title' as const, owners:[...entry.ancestors,entry.id]}))
+  const labels: CanvasLabel[] = frameTitles.map(entry => {
+    const node = document.nodes[entry.id]
+    const chrome = frameChromeLabel(node, selectedIds.has(entry.id))
+    return {anchor: apply(entry.matrix,{x:0,y:0}), offset:chrome.offset,
+      basis:entry.matrix.slice(0,4) as [number,number,number,number], text:node.name, size:11,
+      color:chrome.color, kind:chrome.kind, ...(chrome.chip ? {chip:chrome.chip} : {}), owners:[...entry.ancestors,entry.id]}
+  })
   const titled = new Set(frameTitles.map(entry => entry.id))
   // Sit above the top edge, clear of the corner rotate marks.
   if (showSelection && selected.length === 1 && selectionName && !titled.has(selected[0].id))
     labels.push({ anchor: { x: selectionBox.x, y: selectionBox.y }, offset: { x: 0, y: -24 },
-      text: selectionName, size: 11, color: '#0d99ff', kind: 'selection-name', owners })
+      text: selectionName, size: 11, color: SELECTION_BLUE, kind: 'selection-name', frame: 'pill', owners })
   if(showSelection) labels.push({anchor:{x:selectionBox.x+selectionBox.width/2,y:selectionBox.y+selectionBox.height},offset:{x:0,y:21},
-    text:selectionSizeLabel(localSelection,selectionBox,selected[0]?.matrix),size:10,color:'#0d99ff',centered:true,kind:'selection-size',owners})
-  for(const m of measurements) labels.push({anchor:{x:(m.from.x+m.to.x)/2,y:(m.from.y+m.to.y)/2},offset:{x:4,y:-5},
-    text:String(Number(m.distance.toFixed(2))),size:11,color:'#f24822',halo:true})
+    text:sizeText,size:10,color:SELECTION_BLUE,centered:true,kind:'selection-size',frame:'pill',owners})
+  for (const measurement of measurements) {
+    const placed = measurementLabel(measurement)
+    labels.push({ anchor: placed.anchor, offset: placed.offset, text: String(Number(measurement.distance.toFixed(2))),
+      size: 11, color: '#f24822', halo: true, centered: true, kind: 'measurement' })
+  }
   return {document,pageId:input.pageId,epoch:input.epoch,uiIdentity,commands:{pixelGrid:input.pixelGrid,labels,measurements,
     transforms:Object.fromEntries(owners.map(id=>[id,document.nodes[id].transform])),
     selection:showSelection?{corners:selectionCorners,handles:input.canTransform,owners}:undefined}}

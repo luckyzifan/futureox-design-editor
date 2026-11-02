@@ -216,10 +216,17 @@ test('unsupported FIG gradient interpolation is rejected before returning a docu
     .toThrow(/插值/)
 })
 
-test('unsupported FIG independent border weights do not silently become a uniform stroke', () => {
-  expect(() => importFig(encoded({ strokePaints: [blackStroke], strokeWeight: 2,
+test('non-uniform FIG border weights keep strokeWeight and record the independent edges', () => {
+  const result = importFig(encoded({ strokePaints: [blackStroke], strokeWeight: 2,
     borderStrokeWeightsIndependent: true, borderTopWeight: 1, borderRightWeight: 2,
-    borderBottomWeight: 3, borderLeftWeight: 4 }))).toThrow(/独立|非均匀/)
+    borderBottomWeight: 3, borderLeftWeight: 4 }))
+  validateDocument(result.document)
+  const layer = Object.values(result.document.nodes).find((n) => n.name === 'Subject')!
+  expect(layer.strokes[0].width).toBe(2)
+  const note = (result.document.designSystem?.sketchContainers?.nodeMetadata as Record<string, { bindings?: { figUntranslated?: string } }>)[layer.id].bindings?.figUntranslated
+  expect(note).toContain('borderStrokeWeightsIndependent(non-uniform)')
+  expect(result.warnings.some((w) => w.includes('非均匀'))).toBe(true)
+  expect(layer.bindings).toBeUndefined()
 })
 
 test('FIG glass bevel width survives import and Rust reopening', () => {
@@ -242,4 +249,69 @@ test('native resizeToFit frames without a stack are un-clipped groups, while aut
  expect(subject({type:'FRAME',resizeToFit:false,frameMaskDisabled:false}).node).toMatchObject({kind:'frame',clip:true})
  expect(subject({type:'FRAME',resizeToFit:true,stackMode:'HORIZONTAL'}).node.kind).toBe('frame')
  expect(subject({type:'FRAME',resizeToFit:true,isStateGroup:true}).node.kind).toBe('frame')
+})
+
+test('empty slices import and painted slices or unknown nodes stay rejected', () => {
+  const slice = importFig(encoded({ type: 'SLICE', fillPaints: [] }))
+  validateDocument(slice.document)
+  const layer = Object.values(slice.document.nodes).find((n) => n.name === 'Subject')!
+  expect(layer.kind).toBe('slice')
+  expect(slice.document.schemaVersion).toBeGreaterThanOrEqual(10)
+  expect(() => importFig(encoded({ type: 'SLICE' }))).toThrow(/切片/)
+  expect(() => importFig(encoded({ type: 'WIDGET', fillPaints: [] }))).toThrow(/WIDGET/)
+})
+
+test('connectors, stickies and text style extras use the native schema', () => {
+  const connected = importFig(encoded({
+    type: 'CONNECTOR', fillPaints: [], connectorLineStyle: 'ELBOWED',
+    connectorStart: { endpointNodeID: guid(4), position: { x: 10, y: 20 }, magnet: 'TOP' },
+    connectorEnd: { endpointNodeID: guid(5), position: { x: 30, y: 40 }, magnet: 'RIGHT' },
+  }, {}, [], [
+    { guid: guid(4), type: 'RECTANGLE', name: 'Left', parentIndex: { guid: guid(2), position: '!' }, size: { x: 10, y: 10 }, fillPaints: [] },
+    { guid: guid(5), type: 'RECTANGLE', name: 'Right', parentIndex: { guid: guid(2), position: '"' }, size: { x: 10, y: 10 }, fillPaints: [] },
+  ]))
+  validateDocument(connected.document)
+  const connector = Object.values(connected.document.nodes).find((n) => n.name === 'Subject')!
+  expect(connector.kind).toBe('vector')
+  expect(connector.connector).toMatchObject({
+    style: 'elbow',
+    from: { anchor: { x: 0.5, y: 0 } },
+    to: { anchor: { x: 1, y: 0.5 } },
+  })
+  expect(connector.connector?.from.nodeId).toBe(Object.values(connected.document.nodes).find((n) => n.name === 'Left')!.id)
+  const sticky = importFig(encoded({ type: 'STICKY', fontSize: 18, textData: { characters: 'remember' }, fillPaints: [{ type: 'SOLID', color: { r: 1, g: 0.9, b: 0.2, a: 1 } }] }))
+  validateDocument(sticky.document)
+  const note = Object.values(sticky.document.nodes).find((n) => n.name === 'Subject')!
+  expect(note.board).toEqual({ kind: 'sticky' })
+  expect(note.text).toBe('remember')
+  expect(note.fontSize).toBe(18)
+  const text = importFig(encoded({
+    type: 'TEXT', fontSize: 14, textData: { characters: 'fi' }, textAlignVertical: 'BOTTOM', textDecoration: 'UNDERLINE',
+    toggledOnOTFeatures: ['LIGA'], toggledOffOTFeatures: ['DLIG'],
+    fontVariations: [{ axisTag: 0x77676874, value: 700 }, { axisTag: 0x736c6e74, value: -8 }],
+  }))
+  validateDocument(text.document)
+  const styled = Object.values(text.document.nodes).find((n) => n.name === 'Subject')!
+  expect(styled.textStyle).toMatchObject({ verticalAlign: 'bottom', features: ['liga', '-dlig'], variations: [{ tag: 'slnt', value: -8 }] })
+  expect(styled.textRuns?.[0]).toMatchObject({ start: 0, end: 2, underline: true })
+  expect(text.document.schemaVersion).toBeGreaterThanOrEqual(20)
+})
+
+test('effect blends and prototype clicks are recorded without becoming executable', () => {
+  const shadow = importFig(encoded({ effects: [{ type: 'DROP_SHADOW', radius: 4, visible: true, blendMode: 'MULTIPLY', color: { r: 0, g: 0, b: 0, a: 0.5 }, offset: { x: 1, y: 2 } }] }))
+  validateDocument(shadow.document)
+  const layer = Object.values(shadow.document.nodes).find((n) => n.name === 'Subject')!
+  expect(layer.effects[0].kind).toBe('shadow')
+  const note = (shadow.document.designSystem?.sketchContainers?.nodeMetadata as Record<string, { bindings?: { figUntranslated?: string } }>)[layer.id].bindings?.figUntranslated
+  expect(note).toContain('effectBlendMode=MULTIPLY')
+  const flow = importFig(encoded({
+    fillPaints: [],
+    prototypeInteractions: [{ event: { interactionType: 'ON_CLICK' }, actions: [{ navigationType: 'NAVIGATE', transitionType: 'DISSOLVE', transitionDuration: 1, transitionNodeID: guid(3) }] }],
+  }))
+  validateDocument(flow.document)
+  const source = Object.values(flow.document.nodes).find((n) => n.name === 'Subject')!
+  const stored = (flow.document.designSystem?.sketchContainers?.nodeMetadata as Record<string, { bindings?: { prototypeFlow?: string } }>)[source.id].bindings?.prototypeFlow
+  expect(JSON.parse(stored || '[]')).toEqual([{ trigger: 'ON_CLICK', destinationId: source.id, navigation: 'NAVIGATE', transition: 'DISSOLVE', duration: 1 }])
+  expect(flow.warnings.some((w) => w.includes('原型'))).toBe(true)
+  expect(flow.document.prototype).toBeUndefined()
 })

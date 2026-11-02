@@ -19,6 +19,18 @@ test('native menu localization preserves commands, accelerators, roles and unkno
   assert.deepEqual(zh[0].submenu[2], { type: 'separator' }); assert.equal(zh[0].submenu[3].label, authored)
   assert.equal(en[1].label, 'Settings…'); assert.equal(template[0].submenu[0].label, 'Save')
   assert.throws(() => localizeNativeMenu(template, 'de'), /Unsupported interface locale/)
+  const plugins = [{ label: 'Plugins', submenu: [
+    { label: 'Open plugin host…' },
+    { label: 'Save', preserveLabel: true, click },
+  ] }]
+  const pluginMenu = localizeNativeMenu(plugins, 'zh-CN')
+  assert.equal(pluginMenu[0].label, '插件')
+  assert.equal(pluginMenu[0].submenu[0].label, '打开插件宿主…')
+  assert.equal(pluginMenu[0].submenu[1].label, 'Save')
+  assert.equal(pluginMenu[0].submenu[1].click, click)
+  assert.equal(pluginMenu[0].submenu[1].preserveLabel, undefined)
+  assert.equal(plugins[0].submenu[1].preserveLabel, true)
+  assert.equal(localizeNativeMenu(plugins, 'en')[0].submenu[1].label, 'Save')
 })
 
 test('native catalogs have exact parity and preserve authored interpolation verbatim', async () => {

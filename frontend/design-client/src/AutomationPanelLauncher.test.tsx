@@ -142,6 +142,7 @@ test('production uses the lightweight entry and keeps desktop automation registr
   expect(current).toContain('download(out.filename,out.content ?? Uint8Array.from(atob(out.base64!), c => c.charCodeAt(0)),out.mimeType)')
   expect(app).toContain('if (!ready || !desktop?.automation || source || largeDocument) return')
   expect(app).toContain('const detach = attachDesktopAutomation(editor, desktop.automation, { host })')
-  expect(app).toContain("import { AutomationPanel } from './AutomationPanelLauncher'")
+  expect(app).not.toContain('<AutomationPanel')
+  expect(app).not.toContain('设计 API')
   expect(app).toContain("import { attachDesktopAutomation } from './automation/bridge'")
 })
