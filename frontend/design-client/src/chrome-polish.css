@@ -162,3 +162,27 @@ html[data-reduced-motion="true"] .canvas-empty,
 html[data-reduced-motion="true"] .local-home[aria-busy="true"]::before { animation: none; }
 html[data-reduced-motion="true"] .canvas-scrollbar-thumb,
 html[data-reduced-motion="true"] .prototype-hotspot { transition: none; }
+
+/* Loaded after styles.css so the canvas right-click menu stays Figma-dark at every width. */
+.canvas-context-menu {
+  background: #2c2c2c !important;
+  color: #fff !important;
+  border-color: #00000055;
+}
+.canvas-context-menu button {
+  background: transparent;
+  color: #fff;
+}
+.canvas-context-menu button:hover:not(:disabled),
+.canvas-context-menu button:focus-visible {
+  background: #0d99ff !important;
+  color: #fff !important;
+}
+.canvas-context-menu button:disabled { color: #ffffff59; opacity: 1; }
+.canvas-context-menu kbd { color: #ffffff8c; }
+.canvas-context-menu button:hover:not(:disabled) kbd,
+.canvas-context-menu button:focus-visible kbd { color: #fff; }
+.canvas-context-menu [role=separator] { background: #ffffff1f; }
+.canvas-context-menu .context-danger { color: #ff8a80; }
+.canvas-context-menu .context-danger:hover:not(:disabled),
+.canvas-context-menu .context-danger:focus-visible { background: #0d99ff !important; color: #fff !important; }
