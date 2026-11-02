@@ -1,7 +1,7 @@
 import { CpuStage, measureCpuStage } from './cpu-stage-diagnostics'
 import type { CanvasSceneBorrow } from './canvas-scene-snapshots'
 import { PreviewLayout } from './kernel/preview-layout'
-import { TranslationPreviewPlan } from './kernel/translation-preview'
+import { TranslationPreviewPlan, translationOnlyChanges } from './kernel/translation-preview'
 import type { OperationStatus, MessagePresentation } from './operation-status-messages'
 import { prepareBooleanCreate, applyBooleanCreate } from './commands/boolean-command'
 import { applyDuplication, prepareDuplication, canContinueDuplication, type DuplicationRepeat } from './commands/duplication-command'
@@ -386,18 +386,19 @@ export class Editor {
     return true
   }
   private panelState: Omit<EditorState, 'view'> | undefined
-  private panelPublishedAt = 0
   /** Panels do not consume the camera. Preserve their immutable snapshot during
    * navigation so a pointer sample does not rebuild the layer tree/inspector. */
   panelSnapshot = () => {
     const { view: _view, ...next } = this.state
-    // Full layer/Inspector trees must not compete with every pointer sample.
-    // Keep coordinates fresh at a bounded cadence; release/undo publishes now.
-    if (this.transaction && this.panelState && next.page === this.panelState.page &&
+    // A canvas preview transaction keeps the last authored Layers/Inspector
+    // tree until release, undo, or a selection/page/tool change. Property
+    // preview still publishes because the inspector owns that draft.
+    if (this.transaction && !this.propertyPreview && this.panelState && next.page === this.panelState.page &&
       next.selection === this.panelState.selection && next.tool === this.panelState.tool &&
-      next.doc.id === this.panelState.doc.id && performance.now() - this.panelPublishedAt < 80) return this.panelState
+      next.renamingLayer === this.panelState.renamingLayer &&
+      next.doc.id === this.panelState.doc.id) return this.panelState
     if (!this.panelState || (Object.keys(next) as (keyof typeof next)[])
-      .some(key => next[key] !== this.panelState![key])) { this.panelState = next; this.panelPublishedAt = performance.now() }
+      .some(key => next[key] !== this.panelState![key])) this.panelState = next
     return this.panelState
   }
   set(patch: Partial<EditorState>) { this.setState(patch) }
@@ -545,6 +546,8 @@ export class Editor {
     if(leading){const pending=this.pendingView;this.pendingView=null;commit(pending)}
     else this.pendingFrame=requestAnimationFrame(flush)
   }
+  /** A parked wheel/zoom write has not landed. History must not stringify yet. */
+  cameraCommitPending() { return this.pendingView !== null || this.pendingFrame !== null }
   /** Commit a parked camera write now; returns the committed view. */
   flushPendingView(): EditorState['view'] {
     if (this.pendingFrame !== null) {
@@ -918,6 +921,31 @@ export class Editor {
     }
     canvasActions(this).finish(owner.trace, ActionOutcome.cancelled, reason, { fieldFamily: 9, inputPhase: 7 })
   }
+  /** Parent-preserving placement stays on the translation proof. Schema scans
+   * and the full component/layout stringify run only when that proof declines. */
+  private publishTranslationPreview(base: DesignDocument, patches: Record<string, Partial<DesignNode>>, move: { ids: string[]; point: Point; force: boolean; preserveParent: boolean }, previewOwner: Editor['transaction'], previewStarted: number) {
+    if (!this.canvasMovePreservesParents(move.ids, move.point, move.force, move.preserveParent)) return false
+    if (Object.entries(patches).some(([id, patch]) => !base.nodes[id] || Object.keys(patch).some(key => key !== 'transform'))) return false
+    const nodes = { ...base.nodes }
+    for (const [id, patch] of Object.entries(patches)) nodes[id] = { ...base.nodes[id], ...patch }
+    const candidate = { ...base, nodes }
+    if (!translationOnlyChanges(base, candidate)) return false
+    const resolved = kernelLayout(candidate, base, true)
+    const published = performance.now()
+    this.set({ doc: resolved })
+    if (this.transaction === previewOwner && previewOwner && this.state.doc === resolved) {
+      previewOwner.placement = { ...move, ids: [...move.ids], point: { ...move.point }, document: resolved }
+      if (move.ids.length === 1 && Object.keys(patches).length === 1 && !previewOwner.copy && !previewOwner.flow) {
+        const plan = this.movePlacement(candidate, move.ids, move.point, move.force, move.preserveParent)
+        previewOwner.movePreview = { source: base, document: resolved, published: resolved, key: plan.key,
+          parents: this.parentMap(resolved), epoch: pickingGeometryEpoch(),
+          translation: new TranslationPreviewPlan(resolved, move.ids) }
+      }
+    }
+    if (this.diagnosticOperation !== null) this.operationDiagnostics.preview(this.diagnosticOperation, true)
+    this.lastPreviewTiming = { prepareMs: published - previewStarted, layoutMs: 0, publishMs: performance.now() - published }
+    return true
+  }
   begin(label: string) {
     if (!this.settleOwnedPropertyPreview('edit')) return
     if (!this.transaction) {
@@ -948,6 +976,7 @@ export class Editor {
         this.lastPreviewTiming={prepareMs:published-previewStarted,layoutMs:0,publishMs:performance.now()-published}
         return true
       }
+      if (this.publishTranslationPreview(base, patches, move, previewOwner, previewStarted)) return true
     }
     if (!move && this.transaction) {
       if (this.previewLayout?.base !== base) this.previewLayout = new PreviewLayout(base)
