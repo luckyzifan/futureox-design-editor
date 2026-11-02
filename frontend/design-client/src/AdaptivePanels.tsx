@@ -1,11 +1,43 @@
 import { useLayoutEffect, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { interfacePreference, interfaceText, panelWidth, useInterfacePreferences } from './interface-preference'
 
+export type ShellDensity = 'wide' | 'desk' | 'narrow'
+/** Shared by the browser and Electron. 900 and 1180 match the CSS media queries. */
+export const SHELL_NARROW_QUERY = '(max-width: 900px)'
+export const SHELL_DESK_QUERY = '(max-width: 1180px)'
+export const SHELL_WIDE_QUERY = '(min-width: 1181px)'
+export function shellDensity(width: number): ShellDensity {
+  if (width <= 900) return 'narrow'
+  if (width <= 1180) return 'desk'
+  return 'wide'
+}
+/** Prefer the viewport media queries so web and Electron follow the same CSS. */
+export function shellDensityFromWindow(win: Pick<Window, 'innerWidth' | 'matchMedia'> | undefined): ShellDensity {
+  const match = win && typeof win.matchMedia === 'function' ? win.matchMedia.bind(win) : undefined
+  if (match) {
+    const narrow = match(SHELL_NARROW_QUERY).matches
+    const desk = match(SHELL_DESK_QUERY).matches
+    const wide = match(SHELL_WIDE_QUERY).matches
+    if (narrow || desk || wide) return narrow ? 'narrow' : desk ? 'desk' : 'wide'
+  }
+  return shellDensity(win?.innerWidth || 0)
+}
 /** Document-independent shell preferences: never change editor history or input drafts. */
 export function useAdaptivePanels() {
   const preferences = useInterfacePreferences()
-  const [narrow, setNarrow] = useState(() => window.innerWidth <= 900)
-  useEffect(() => { const resize = () => setNarrow(window.innerWidth <= 900); window.addEventListener('resize', resize); return () => window.removeEventListener('resize', resize) }, [])
+  const [density, setDensity] = useState<ShellDensity>(() => shellDensityFromWindow(window))
+  const narrow = density === 'narrow'
+  useEffect(() => {
+    const apply = () => setDensity(shellDensityFromWindow(window))
+    apply()
+    window.addEventListener('resize', apply)
+    const queries = typeof window.matchMedia === 'function' ? [SHELL_NARROW_QUERY, SHELL_DESK_QUERY, SHELL_WIDE_QUERY].map(query => window.matchMedia(query)) : []
+    for (const query of queries) query.addEventListener?.('change', apply)
+    return () => {
+      window.removeEventListener('resize', apply)
+      for (const query of queries) query.removeEventListener?.('change', apply)
+    }
+  }, [])
   useEffect(() => {
     const root = document.documentElement, previous = root.getAttribute('data-reduced-motion')
     root.setAttribute('data-reduced-motion', String(preferences.reducedMotion))
@@ -24,7 +56,7 @@ export function useAdaptivePanels() {
     if (narrow) (side === 'left' ? setCompactLeft : setCompactRight)(next)
     else interfacePreference.set(side === 'left' ? { leftOpen: next } : { rightOpen: next })
   }
-  return { preferences, leftOpen, rightOpen, setLeftOpen: (value: boolean | ((current: boolean) => boolean)) => setter('left', value), setRightOpen: (value: boolean | ((current: boolean) => boolean)) => setter('right', value),
+  return { preferences, density, leftOpen, rightOpen, setLeftOpen: (value: boolean | ((current: boolean) => boolean)) => setter('left', value), setRightOpen: (value: boolean | ((current: boolean) => boolean)) => setter('right', value),
     style: { '--workspace-layers-width': `min(${preferences.leftWidth}px, var(--workspace-panel-cap, max(260px, 26vw)))`, '--workspace-inspector-width': `min(${preferences.rightWidth}px, var(--workspace-panel-cap, max(260px, 26vw)))` } as CSSProperties }
 }
 export function PanelResizeHandle({ side, blocked = false, canResize = () => true }: { side: 'left' | 'right'; blocked?: boolean; canResize?: () => boolean }) {

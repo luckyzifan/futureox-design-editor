@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { AlertCircle, CheckCircle2, LoaderCircle, X } from 'lucide-react'
 import { importWarningText } from './ImportNotice'
 import type { SourceWorkspace } from './LargeDocumentWorkspace'
@@ -18,6 +18,8 @@ export function SourceDocumentStatus({source}:{source:SourceWorkspace}) {
   const [dismissed,setDismissed]=useState('')
   const rendering=source.nativeCanvas?.status?.phase==='loading'||source.nativeCanvas?.status?.phase==='refining'
   const pending=source.busy||rendering
+  const progress=source.nativeCanvas?.status
+  const ratio=progress&&progress.total>0?Math.max(0,Math.min(1,progress.done/progress.total)):undefined
   const identity=`${source.error}\n${source.notice}\n${pending}`
   useEffect(()=>{
     if(source.error||pending||!source.notice)return
@@ -27,10 +29,11 @@ export function SourceDocumentStatus({source}:{source:SourceWorkspace}) {
   const showStatus=identity!==dismissed&&(source.error||source.notice||pending)
   if(!showStatus&&!source.warnings.length)return null
   return <aside className="source-canvas-status" aria-label="源文件状态">
-    {showStatus&&<section className="source-status-card" data-error={!!source.error}>
+    {showStatus&&<section className={`source-status-card${pending?' is-pending':''}`} data-error={!!source.error}>
       <div className="source-status-title">{source.error?<AlertCircle size={15}/>:pending?<LoaderCircle size={15}/>:<CheckCircle2 size={15}/>}<strong>{source.error?'操作未完成':source.busy?'正在载入':rendering?'正在绘制':'文件已就绪'}</strong><button aria-label="关闭状态提示" onClick={()=>{setDismissed(identity);if(source.error)source.dismissError?.()}}><X size={14}/></button></div>
       <p role={source.error?'alert':'status'}>{source.error?sourceErrorSummary(source.error):source.notice||'正在准备页面…'}</p>
       {source.error&&<details><summary>技术详情</summary><pre>{source.error}</pre></details>}
+      {pending&&<span className="activity-track" aria-hidden="true" data-determinate={ratio!==undefined?'':undefined} style={ratio!==undefined?{ '--activity-progress': `${Math.round(ratio*100)}%` } as CSSProperties:undefined}><i/></span>}
     </section>}
     {!source.error&&source.warnings.length>0&&<section className="source-compatibility-card" aria-label="导入兼容提示"><details><summary>{source.warnings.length} 项导入兼容提示</summary><ul>{source.warnings.map(warning=><li key={warning}>{importWarningText(warning)}</li>)}</ul></details><button aria-label="关闭导入提示" onClick={source.dismissWarnings}><X size={14}/></button></section>}
   </aside>
