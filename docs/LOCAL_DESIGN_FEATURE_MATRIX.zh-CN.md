@@ -66,7 +66,7 @@
 | 色彩管理、P3/HDR、导出配置 [S4] | 部分实现：`color.ts`、`ColorPanel.tsx`、Rust 色彩内核 | color/export-native；显示器/系统 compositor/HDR 输出需真实设备，不由颜色元数据自动证明 |
 | 文本编辑、富文本、字素边界/IME、自动/固定尺寸 [S5] | 已有实现：`TextEditor.tsx`、`text.ts`、Rust font | text/text-hug-limits/text-indent/formatting-kernel；复杂脚本/系统字体与 IME 必须实际验收 |
 | 段落、对齐/两端对齐、字距行距、大小写/装饰 | 已有实现/部分排版：`TextStylePanel.tsx`、Rust font | 本轮 `__tests__/text-justify.test.ts` 测真实拉丁空格扩展/末行；不据此宣称 CJK 排版、阿拉伯/希伯来字形全部正确 |
-| OpenType features、可变字体轴、fallback [S5] | 已有实现：`TextStylePanel.tsx`、model TextStyle、Rust rustybuzz | TextStylePanel、text-face-reuse、font-matching；font feature 标签可输入不等同系统字体发现/每字体效果均验收 |
+| OpenType features、可变字体轴、fallback [S5] | 部分实现：`TextStylePanel.tsx`、`font-catalog.ts`、Rust `faces_json` / 桌面字体目录。内置 Noto Sans SC 是可变 `wght`；macOS、Windows、Linux 扫描标准字体目录并带出字重、斜体和最多 16 条变体轴。缺失字体需确认后才替换，简体中文内置字体可作 CJK 建议。不会下载字体 | `font-catalog.test.ts`、内核 `bundled_noto_sans_sc_reports_variable_weight_axis`、桌面 `linux_roots_cover_usr_share_and_dejavu_styles`。浏览器本机字体没有轴元数据；字重数字不会自动换成另一份静态字体文件，除非字重差为 0 或用户确认近似项。TC/JP/KR 没有独立内置字体。这不是 Figma 字体服务或全字形像素对照 |
 | 文本沿路径 [F4][S2] | 部分实现：`utility-tools.tsx`、model textPath、Rust font | local-tools/authoring；复杂路径、富文本与恢复边界仍需独立用例 |
 
 ## 4. 布局、组件和设计系统
