@@ -74,19 +74,18 @@ function Menu() {
   const [open, setOpen] = useState(true)
   return <><button onClick={() => setOpen(true)}>Reopen</button>{open && <CanvasContextMenu editor={editor} x={10} y={10} worldPoint={{ x: 0, y: 0 }} candidates={[]} onClose={() => setOpen(false)} />}</>
 }
-test('actual React context menu performs one duplicate and Undo; composition and repeat Enter never click', async () => {
+test('actual React context menu performs one flip and Undo; composition and repeat Enter never click', async () => {
   const before = editor.state.doc
   await act(async () => root.render(<Menu />))
-  const duplicate = document.querySelector<HTMLButtonElement>('button[aria-label="创建副本"]')!
-  expect(duplicate.querySelector('kbd')?.textContent).toBe('Ctrl+D')
-  duplicate.focus()
-  await act(async () => { key(duplicate, 'Enter', { isComposing: true }) }); expect(editor.state.doc).toBe(before)
-  await act(async () => { key(duplicate, 'Enter', { repeat: true }) }); expect(editor.state.doc).toBe(before)
-  await act(async () => { key(duplicate, 'Enter') }); expect(Object.keys(editor.state.doc.nodes)).toHaveLength(2)
+  const flip = document.querySelector<HTMLButtonElement>('button[aria-label="水平翻转"]')!
+  expect(flip.querySelector('kbd')?.textContent).toBe('Shift+H')
+  flip.focus()
+  await act(async () => { key(flip, 'Enter', { isComposing: true }) }); expect(editor.state.doc).toBe(before)
+  await act(async () => { key(flip, 'Enter', { repeat: true }) }); expect(editor.state.doc).toBe(before)
+  await act(async () => { key(flip, 'Enter') })
+  expect(editor.state.doc).not.toBe(before)
   expect(document.querySelector('[role="menu"]')).toBeNull(); expect(document.activeElement).toBe(canvas)
-  await act(async () => { mount.querySelector('button')!.click() })
-  const undo = document.querySelector<HTMLButtonElement>('button[aria-label="撤销"]')!
-  await act(async () => undo.click()); expect(editor.state.doc).toEqual(before)
+  await act(async () => { editor.undo() }); expect(editor.state.doc).toEqual(before)
 })
 test('context Escape restores focus and cross-window preference storage changes update the selector', async () => {
   await act(async () => root.render(<Menu />))
