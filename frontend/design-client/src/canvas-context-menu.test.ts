@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { Editor } from './engine'
 import { blank, node, stroke, uid, type DesignDocument } from './model'
 import { allParents, multiply, translate, worldMatrix } from './geometry'
-import { canvasMenuItems, clampContextMenu } from './canvas-menu-model'
+import { canvasContextItems, canvasMenuItems, clampContextMenu } from './canvas-menu-model'
 import { dispatchEditorCommand, type EditorCommand } from './editor-commands'
 import { createClip } from './animation'
 import { VectorEngine } from './generated/design-kernel/design_kernel'
@@ -139,6 +139,27 @@ test('context commands flip, order and unlock inherited locks through reversible
   await dispatchEditorCommand(editor, 'hide-selection')
   expect(editor.state.doc.nodes[parent.id].visible).toBe(false)
   editor.undo(); expect(editor.state.doc.nodes[parent.id].visible).toBe(true)
+  editor.dispose()
+})
+
+test('the canvas right-click list matches Mac Figma object order and omits view history', () => {
+  const { editor, a } = rotatedFixture()
+  editor.select([a.id])
+  const commands = canvasContextItems(editor, { profile: 'figma-like', platform: 'mac', desktop: true }).map(item => item.command)
+  const at = (command: EditorCommand) => commands.indexOf(command)
+  for (const [earlier, later] of [
+    ['copy', 'cut'], ['cut', 'paste-here'], ['paste-here', 'paste-in-place'], ['paste-in-place', 'duplicate'],
+    ['duplicate', 'delete'], ['delete', 'copy-as-png'], ['copy-as-svg', 'bring-to-front'],
+    ['bring-to-front', 'bring-forward'], ['send-to-back', 'group'], ['group', 'frame-selection'],
+    ['frame-selection', 'flatten'], ['flatten', 'auto-layout'], ['auto-layout', 'create-component'],
+    ['create-component', 'lock-selection'], ['lock-selection', 'hide-selection'], ['hide-selection', 'flip-horizontal'],
+    ['flip-horizontal', 'flip-vertical'],
+  ] as const) expect(at(earlier), `${earlier} before ${later}`).toBeLessThan(at(later))
+  for (const absent of ['undo', 'redo', 'rename', 'select-matching', 'zoom-selection', 'zoom-fit', 'paste-over-selection'] as const)
+    expect(commands, absent).not.toContain(absent)
+  editor.select([])
+  expect(canvasContextItems(editor, { profile: 'figma-like', platform: 'mac' }).map(item => item.command))
+    .toEqual(['paste-here', 'paste-in-place', 'select-all'])
   editor.dispose()
 })
 

@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, Lock } from 'lucide-react'
 import type { Editor } from './engine'
 import type { Point } from './model'
 import { dispatchEditorCommand, type EditorCommand } from './editor-commands'
-import { canvasMenuItems, clampContextMenu, lockedSelectionIds } from './canvas-menu-model'
+import { canvasContextItems, clampContextMenu, lockedSelectionIds } from './canvas-menu-model'
 import { useShortcutProfile } from './shortcut-preference'
 import { shortcutPlatform } from './shortcut-profiles'
 import { desktopBridge } from './desktop'
@@ -34,7 +34,7 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
   const groupName=(id:string)=>id==='copy-as'?text.copyAs:text.selectSame
   const context = useRef({ session: editor.sessionGeneration, page: state.page, version: state.version, selection: state.selection.join('\n') })
   const profile = useShortcutProfile()
-  const items = canvasMenuItems(editor, { profile, platform: shortcutPlatform(), desktop: !!desktopBridge() }), parents = editor.parentMap(state.doc)
+  const items = canvasContextItems(editor, { profile, platform: shortcutPlatform(), desktop: !!desktopBridge() }), parents = editor.parentMap(state.doc)
   const visible = candidates.filter((candidate) => {
     let id: string | undefined = candidate.id
     if (!state.doc.nodes[id]) return false
