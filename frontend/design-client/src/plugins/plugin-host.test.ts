@@ -8,7 +8,7 @@ import { PluginApiError } from './errors'
 import { parsePluginManifest } from './manifest'
 import { executePluginSource } from './run'
 import { samplePlugin } from './sample-plugin'
-import { createPluginSession } from './session'
+import { createPluginSession, pluginMixed } from './session'
 
 const editors: Editor[] = []
 afterEach(() => { while (editors.length) editors.pop()?.dispose() })
@@ -114,6 +114,30 @@ describe('figma plugin host', () => {
     expect(editor.state.doc.schemaVersion).toBeGreaterThanOrEqual(4)
     expect(() => (session.figma as unknown as { variables: { getVariableById(): void } }).variables.getVariableById()).toThrow(PluginApiError)
     expect(() => (session.figma as unknown as { createComponent(): void }).createComponent()).toThrow(/does not implement figma.createComponent/)
+  })
+
+  test('per-corner radii and corner smoothing commit on rectangles and frames', () => {
+    const editor = open()
+    const snapshot = snapshotFromEditor(editor)
+    const session = createPluginSession(snapshot, { id: 'plugin.test', name: 'Test', command: 'run' })
+    const rect = session.figma.createRectangle()
+    rect.topLeftRadius = 1
+    rect.topRightRadius = 2
+    rect.bottomRightRadius = 3
+    rect.bottomLeftRadius = 4
+    expect(rect.cornerRadius).toBe(pluginMixed)
+    rect.cornerSmoothing = 0.25
+    const frame = session.figma.createFrame()
+    frame.cornerRadius = 9
+    expect(frame.bottomLeftRadius).toBe(9)
+    const ellipse = session.figma.createEllipse()
+    expect(() => { ellipse.topLeftRadius = 3 }).toThrow(PluginApiError)
+    expect(() => { ellipse.cornerSmoothing = 0.2 }).toThrow(PluginApiError)
+    const turn = session.exportTurn()
+    expect(commitPluginResult(editor, '插件 Test', { documentId: snapshot.documentId, revision: snapshot.revision }, turn).status).toBe('committed')
+    expect(editor.state.doc.nodes[rect.id].radii).toEqual([1, 2, 3, 4])
+    expect(editor.state.doc.nodes[rect.id].smoothing).toBe(0.25)
+    expect(editor.state.doc.nodes[frame.id].radii).toEqual([9, 9, 9, 9])
   })
 
   test('groups siblings in parent-local coordinates', async () => {

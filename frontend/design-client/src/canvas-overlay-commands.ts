@@ -4,6 +4,7 @@ import { measureBounds, measurementLabel, type Measurement } from './canvas-meas
 import { selectionSizeLabel } from './selection-size-label'
 import type { CanvasLabel } from './kernel/gpu/canvas-labels'
 import type { CanvasOverlay } from './kernel/gpu/canvas-overlay'
+import { frameChromeLabel } from './page-frame-chrome'
 
 export type CanvasOverlayContext = {
   document: DesignDocument
@@ -31,7 +32,10 @@ export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlay
   const { document, selected, owners, frameTitles, localSelection, selectionCorners, selectionBox, measurementTarget } = input
   const showSelection = !!selected.length && !['vector','width','pencil','brush','marker','washi-tape'].includes(input.tool)
   const selectedIds = new Set(showSelection ? selected.map(entry => entry.id) : [])
-  const titleIdentity = frameTitles.map(entry => [entry.id, document.nodes[entry.id].name, selectedIds.has(entry.id) ? 1 : 0, [...entry.ancestors, entry.id]])
+  const titleIdentity = frameTitles.map(entry => {
+    const chrome = frameChromeLabel(document.nodes[entry.id], selectedIds.has(entry.id))
+    return [entry.id, document.nodes[entry.id].name, selectedIds.has(entry.id) ? 1 : 0, chrome.kind, chrome.chip ?? '', [...entry.ancestors, entry.id]]
+  })
   const selectionIdentity = showSelection ? [owners, input.canTransform] : null
   const selectionName = showSelection && selected.length === 1 ? document.nodes[selected[0].id]?.name ?? '' : ''
   const targetIdentity = measurementTarget ? [measurementTarget.id, measurementTarget.bounds.x, measurementTarget.bounds.y,
@@ -43,9 +47,13 @@ export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlay
   // Prefix 3 retires overlays that omitted the live size text and angle.
   const uiIdentity = JSON.stringify([3, input.pixelGrid, selectionIdentity, selectionName, sizeText, spin, titleIdentity, targetIdentity])
   const measurements = measurementTarget ? measureBounds(selectionBox, measurementTarget.bounds) : []
-  const labels: CanvasLabel[] = frameTitles.map(entry => ({anchor: apply(entry.matrix,{x:0,y:0}), offset:{x:0,y:-12},
-    basis:entry.matrix.slice(0,4) as [number,number,number,number], text:document.nodes[entry.id].name, size:11,
-    color: selectedIds.has(entry.id) ? '#0d99ff' : '#73778b', kind: 'frame-title' as const, owners:[...entry.ancestors,entry.id]}))
+  const labels: CanvasLabel[] = frameTitles.map(entry => {
+    const node = document.nodes[entry.id]
+    const chrome = frameChromeLabel(node, selectedIds.has(entry.id))
+    return {anchor: apply(entry.matrix,{x:0,y:0}), offset:chrome.offset,
+      basis:entry.matrix.slice(0,4) as [number,number,number,number], text:node.name, size:11,
+      color:chrome.color, kind:chrome.kind, ...(chrome.chip ? {chip:chrome.chip} : {}), owners:[...entry.ancestors,entry.id]}
+  })
   const titled = new Set(frameTitles.map(entry => entry.id))
   // Sit above the top edge, clear of the corner rotate marks.
   if (showSelection && selected.length === 1 && selectionName && !titled.has(selected[0].id))

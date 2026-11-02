@@ -14,6 +14,11 @@ export type PluginHandle = {
   rotation: number
   relativeTransform: number[][]
   cornerRadius: number | { readonly type: 'MIXED' }
+  topLeftRadius: number
+  topRightRadius: number
+  bottomRightRadius: number
+  bottomLeftRadius: number
+  cornerSmoothing: number
   strokeWeight: number | { readonly type: 'MIXED' }
   characters: string
   parent: PluginHandle | null
@@ -279,6 +284,19 @@ export function createPluginSession(snapshot: PluginSnapshot, plugin: { id: stri
     return sceneNode.layout
   }
 
+  function authoredCorners(id: string, api: string) {
+    const sceneNode = live(id)
+    if (!['rectangle', 'frame', 'section'].includes(sceneNode.kind) || sceneNode.network) fail(api, 'invalid')
+    return sceneNode
+  }
+  function writeCorner(id: string, index: 0 | 1 | 2 | 3, api: string, value: number) {
+    const sceneNode = authoredCorners(id, api)
+    const radii: [number, number, number, number] = [sceneNode.radii[0], sceneNode.radii[1], sceneNode.radii[2], sceneNode.radii[3]]
+    radii[index] = finite(value, 0, 1e7, api)
+    sceneNode.radii = radii
+    touchNode(id)
+  }
+
   function nodeApi(id: string): PluginHandle {
     const cached = nodeProxies.get(id)
     if (cached) return cached
@@ -373,6 +391,16 @@ export function createPluginSession(snapshot: PluginSnapshot, plugin: { id: stri
         else sceneNode.radii = [radius, radius, radius, radius]
         touchNode(id)
       },
+      get topLeftRadius() { return authoredCorners(id, 'topLeftRadius').radii[0] },
+      set topLeftRadius(value: number) { writeCorner(id, 0, 'topLeftRadius', value) },
+      get topRightRadius() { return authoredCorners(id, 'topRightRadius').radii[1] },
+      set topRightRadius(value: number) { writeCorner(id, 1, 'topRightRadius', value) },
+      get bottomRightRadius() { return authoredCorners(id, 'bottomRightRadius').radii[2] },
+      set bottomRightRadius(value: number) { writeCorner(id, 2, 'bottomRightRadius', value) },
+      get bottomLeftRadius() { return authoredCorners(id, 'bottomLeftRadius').radii[3] },
+      set bottomLeftRadius(value: number) { writeCorner(id, 3, 'bottomLeftRadius', value) },
+      get cornerSmoothing() { return authoredCorners(id, 'cornerSmoothing').smoothing },
+      set cornerSmoothing(value: number) { const sceneNode = authoredCorners(id, 'cornerSmoothing'); sceneNode.smoothing = finite(value, 0, 1, 'cornerSmoothing'); touchNode(id) },
       get characters() { const sceneNode = live(id); if (sceneNode.kind !== 'text') fail('characters', 'invalid'); return sceneNode.text },
       set characters(value: string) {
         const sceneNode = live(id)

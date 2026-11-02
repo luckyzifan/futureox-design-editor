@@ -23,10 +23,10 @@ import { formatAngleDegrees } from './selection-handles'
 import { figmaRotationDegrees, nodeDegreesForFigmaAngle, type LiveRotation } from './rotation-field'
 import { nextConstraint } from './layout-constraints'
 import { ComponentPanel } from './ComponentPanel'
+import { CornerRadiusFields } from './corner-radius-fields'
 import { NumberField } from './fields'
 import { formatPercent } from './numeric-expression'
 import { LayoutPanel } from './LayoutPanel'
-import { CornerRadiusFields } from './corner-radius-fields'
 import { MultiSelectionInspector } from './MultiSelectionInspector'
 import { resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
 import React, { memo, useContext, useEffect, useSyncExternalStore, useRef, useState } from 'react'
@@ -1017,7 +1017,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                 </div>}
               </>}
               {fx.glass && (
-                <div className="field-grid">
+                <div className="field-grid glass-fields">
                   {(
                     ['lightAngle', 'lightIntensity', 'refraction', 'depth', 'dispersion', 'bevelSize'] as const
                   ).map((key) => {
