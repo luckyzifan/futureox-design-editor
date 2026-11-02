@@ -24,6 +24,8 @@ test('single click respects unentered frame/group ancestry; repeated clicks do n
   const { editor, outer, group, inner, a, b, point } = fixture()
   const p = point(a.id)
   expect(editor.hit(p)).toBe(outer.id)
+  expect(editor.selectionHit(p)).toBe(outer.id)
+  expect(editor.selectionHit(p, true)).toBe(a.id)
   editor.select([outer.id]); expect(editor.hit(p)).toBe(outer.id)
   editor.select([group.id]); expect(editor.hit(p)).toBe(group.id)
   editor.select([inner.id]); expect(editor.hit(p)).toBe(inner.id)
@@ -114,7 +116,8 @@ test('generated component descendants keep the instance boundary and parent navi
   const label = originNode(editor.state.doc, ids.a, editor.state.doc.nodes[ids.label].componentKey!)
   const p = apply(worldMatrix(editor.state.doc, label.id), { x: 2, y: 2 })
   expect(editor.hit(p)).toBe(ids.a)
-  expect(editor.selectionHit(p)).toBe(label.id)
+  expect(editor.selectionHit(p)).toBe(ids.a)
+  expect(editor.selectionHit(p, true)).toBe(label.id)
   expect(editor.hit(p, true)).toBe(label.id)
   editor.select([ids.a])
   expect(editor.selectDeeper(p)).toEqual({ id: label.id, changed: true })
@@ -148,14 +151,16 @@ function overlappingFixture() {
   return { editor, frame, small, backing, p: { x: 50, y: 50 } }
 }
 
-test('ordinary click and hover select the same child; explicitly selected containers retain ownership', () => {
+test('ordinary click selects the unentered frame; an entered child uses paint order', () => {
   const { editor, frame, small, backing, p } = overlappingFixture()
-  expect(editor.selectionHit(p)).toBe(small.id);expect(editor.hoverHit(p)).toBe(small.id)
+  expect(editor.selectionHit(p)).toBe(frame.id)
+  expect(editor.hoverHit(p)).toBe(small.id)
   editor.select([frame.id]); expect(editor.selectionHit(p)).toBe(frame.id)
   editor.select([small.id])
   expect(editor.hit(p)).toBe(backing.id)
   expect(editor.hoverHit(p)).toBe(small.id)
-  expect(editor.selectionHit(p)).toBe(small.id)
+  // The frame is entered, so the click hits the front sibling, not the frame.
+  expect(editor.selectionHit(p)).toBe(backing.id)
   expect(editor.selectionHit(p, true)).toBe(backing.id)
   editor.selectParent(); expect(editor.selectionHit(p)).toBe(frame.id)
   expect(editor.canUndo).toBe(false)
@@ -167,7 +172,7 @@ test('scoped picking preserves unopened groups and foreground boards', () => {
   editor.change('Nest small target', d => {
     group.children = [small.id]; d.nodes[group.id] = group; d.nodes[frame.id].children = [group.id, backing.id]
   })
-  editor.select([backing.id]); expect(editor.selectionHit(p)).toBe(small.id);expect(editor.hoverHit(p)).toBe(small.id)
+  editor.select([backing.id]); expect(editor.selectionHit(p)).toBe(backing.id);expect(editor.hoverHit(p)).toBe(small.id)
   const front = node('frame', 0, 0, 400, 300)
   editor.change('Foreground board', d => { d.nodes[front.id] = front; d.pages[0].children.push(front.id) })
   editor.select([small.id]); expect(editor.selectionHit(p)).toBe(front.id)
