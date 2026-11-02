@@ -186,6 +186,26 @@ test('FIG dash pattern and a zero-width stroke are not replaced with a solid one
   expect(subject({ strokePaints: [blackStroke], strokeWeight: 0 }).node.strokes[0].width).toBe(0)
 })
 
+test('FIG kiwi stroke caps map to kernel caps and end markers', () => {
+  expect(subject({ strokePaints: [blackStroke], strokeWeight: 2, strokeCap: 'NONE' }).node.strokes[0].cap).toBe('butt')
+  expect(subject({ strokePaints: [blackStroke], strokeWeight: 2, strokeCap: 'SQUARE' }).node.strokes[0].cap).toBe('square')
+  const arrow = subject({ type: 'VECTOR', strokePaints: [blackStroke], strokeWeight: 2, strokeCap: 'ARROW_LINES' })
+  expect(arrow.node.strokes[0]).toMatchObject({ cap: 'butt', endMarker: 'arrow' })
+  expect(arrow.document.schemaVersion).toBeGreaterThanOrEqual(8)
+  const washi = importFig(encoded({ strokePaints: [blackStroke], strokeWeight: 2, strokeCap: 'WASHI_TAPE_1' }))
+  validateDocument(washi.document)
+  expect(Object.values(washi.document.nodes).find((n) => n.name === 'Subject')!.strokes[0].cap).toBe('butt')
+  expect(washi.warnings.some((w) => w.includes('WASHI_TAPE_1'))).toBe(true)
+})
+
+test('FIG showShadowBehindNode survives import and WASM reopening', () => {
+  const shadow = { type: 'DROP_SHADOW', color: { r: 0, g: 0, b: 0, a: 0.5 }, offset: { x: 2, y: 3 }, radius: 4, spread: 1, visible: true, showShadowBehindNode: true }
+  const result = subject({ effects: [shadow] })
+  expect(result.node.effects[0]).toMatchObject({ kind: 'shadow', showShadowBehindNode: true, x: 2, y: 3 })
+  const plain = subject({ effects: [{ ...shadow, showShadowBehindNode: false }] })
+  expect(plain.node.effects[0].showShadowBehindNode).toBeUndefined()
+})
+
 test('unsupported FIG document gamut is rejected instead of silently interpreted as sRGB', () => {
   expect(() => importFig(encoded({}, { documentColorProfile: 'DISPLAY_P3' }))).toThrow(/色域|色彩/)
 })
