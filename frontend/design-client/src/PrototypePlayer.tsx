@@ -21,6 +21,7 @@ export function PrototypePlayer({
     [error, setError] = useState('')
   const scroll = useRef<HTMLDivElement>(null),
     snapshot = useRef(source)
+  snapshot.current = source
   // Preview deliberately owns an immutable design version and temporary values.
   const [progress, setProgress] = useState(1)
   const transition = state.transition
@@ -39,7 +40,7 @@ export function PrototypePlayer({
     return () => cancelAnimationFrame(request)
   }, [transition, state.transitionMs, state.transitionSerial, state.transitionStyle])
   const valuesKey = JSON.stringify([state.values, state.modeValues])
-  const settled = useMemo(() => kernelLayout(prototypeDocument(snapshot.current, state)), [valuesKey])
+  const settled = useMemo(() => kernelLayout(prototypeDocument(source, state)), [source, valuesKey])
   // One bake per (document, from, to) transition through the kernel's stateful
   // bake session (plan cache + in-flight mutex); per-frame ticks only sample.
   // The stateless per-frame sampler below stays as the fallback when the
@@ -210,7 +211,6 @@ export function PrototypePlayer({
               {entries
                 .filter((e) => descendants.has(e.id) && doc.prototype?.interactions[e.id]?.length)
                 .map((e) => {
-                  const m = e.matrix
                   return (
                     <button
                       type="button"
@@ -219,12 +219,11 @@ export function PrototypePlayer({
                       className="prototype-hotspot"
                       style={{
                         position: 'absolute',
-                        left: 0,
-                        top: 0,
-                        width: doc.nodes[e.id].width,
-                        height: doc.nodes[e.id].height,
-                        transformOrigin: '0 0',
-                        transform: `matrix(${m[0] * zoom},${m[1] * zoom},${m[2] * zoom},${m[3] * zoom},${(m[4] - frame.x) * zoom},${(m[5] - frame.y) * zoom})`,
+                        left: (e.bounds.x - frame.x) * zoom,
+                        top: (e.bounds.y - frame.y) * zoom,
+                        width: Math.max(1, e.bounds.width * zoom),
+                        height: Math.max(1, e.bounds.height * zoom),
+                        zIndex: 2,
                       }}
                       disabled={state.overlays.length > 0 || progress < 1}
                       onClick={() => dispatch(e.id, 'click')}
