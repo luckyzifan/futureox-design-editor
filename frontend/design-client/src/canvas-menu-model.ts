@@ -50,6 +50,7 @@ export function canvasMenuItems(editor: Editor, context: ShortcutContext = { pro
   )
   if (nodes.length && nodes.every((n) => (['group', 'frame', 'section'].includes(n.kind) || n.booleanOperation) && !n.component && !n.instance && !n.componentSet))
     items.push({ command: 'ungroup', label: '解除编组', group: 'structure', disabled: !mutable })
+  if (nodes.length) items.push({ command: 'flatten', label: '展平', group: 'structure', disabled: !mutable || nodes.some(n => n.kind === 'text' || n.kind === 'slice' || !!n.instance || !!n.component || !!n.componentSet) })
   if (nodes.length) items.push({ command: 'auto-layout', label: '添加自动布局', group: 'layout', disabled: !mutable || !siblings })
   if (nodes.length === 1 && nodes[0].layout?.mode && nodes[0].layout.mode !== 'none') items.push({ command: 'remove-auto-layout', label: '移除自动布局', group: 'layout', disabled: !mutable })
   if (nodes.length) items.push(

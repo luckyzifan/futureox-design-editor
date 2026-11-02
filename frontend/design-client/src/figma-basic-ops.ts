@@ -20,3 +20,12 @@ export function doubleClickFollowUp(
 export function enterKeyEditsText(node: { kind: string } | null, blockedByParent: boolean): boolean {
   return !!node && !blockedByParent && node.kind === 'text'
 }
+
+/** Mac desktop Figma deep-selects with Command. Control-click is the context
+ * menu. Other platforms deep-select with Control. */
+export function deepSelectChord(
+  event: { metaKey: boolean; ctrlKey: boolean },
+  platform: 'mac' | 'windows' | 'linux',
+): boolean {
+  return platform === 'mac' ? event.metaKey : event.ctrlKey
+}

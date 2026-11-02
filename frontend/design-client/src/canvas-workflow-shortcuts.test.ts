@@ -104,19 +104,22 @@ describe('keyboard dimensions with real Editor/WASM', () => {
 })
 
 describe('profile-aware select all', () => {
-  test('Sketch selects eligible direct siblings; Figma retains page scope; selection is not a document edit', async () => {
+  test('entered selection selects siblings on both profiles; a top-level selection selects the page', async () => {
     const { editor, frame, a, b, outside } = fixture(), before = editor.state.doc, version = editor.state.version
     await dispatchEditorShortcut(editor, key('a', { ctrlKey: true }), { profile: 'sketch-like', platform: 'windows' }); expect(editor.state.selection).toEqual([a.id, b.id])
+    await dispatchEditorShortcut(editor, key('a', { ctrlKey: true }), { profile: 'figma-like', platform: 'windows' }); expect(editor.state.selection).toEqual([a.id, b.id])
+    editor.select([frame.id])
     await dispatchEditorShortcut(editor, key('a', { ctrlKey: true }), { profile: 'figma-like', platform: 'windows' }); expect(editor.state.selection).toEqual([frame.id, outside.id])
     expect(editor.state.doc).toBe(before); expect(editor.state.version).toBe(version); expect(editor.canUndo).toBe(false)
   })
-  test('shared menu/native command follows stored profile, repeated selection and profile switching', async () => {
+  test('shared menu command selects entered siblings, then the page when the container itself is selected', async () => {
     const { editor, frame, a, b, outside } = fixture(); shortcutPreference.set('sketch-like'); await dispatchEditorCommand(editor, 'select-all'); expect(editor.state.selection).toEqual([a.id, b.id])
-    await dispatchEditorCommand(editor, 'select-all'); expect(editor.state.selection).toEqual([a.id, b.id]); shortcutPreference.set('figma-like'); await dispatchEditorCommand(editor, 'select-all'); expect(editor.state.selection).toEqual([frame.id, outside.id])
+    shortcutPreference.set('figma-like'); await dispatchEditorCommand(editor, 'select-all'); expect(editor.state.selection).toEqual([a.id, b.id])
+    editor.select([frame.id]); await dispatchEditorCommand(editor, 'select-all'); expect(editor.state.selection).toEqual([frame.id, outside.id])
   })
   test('empty/cross-container/stale selection falls back to active page, never another page', () => {
     const { editor, frame, a, outside } = fixture(), doc = editor.state.doc, page = editor.state.page
-    for (const ids of [[], [a.id, outside.id], ['missing']]) expect(selectAllCanvasIds(doc, page, ids, 'sketch-like')).toEqual([frame.id, outside.id])
+    for (const profile of ['figma-like', 'sketch-like'] as const) for (const ids of [[], [a.id, outside.id], ['missing']]) expect(selectAllCanvasIds(doc, page, ids, profile)).toEqual([frame.id, outside.id])
     expect(selectAllCanvasIds(doc, 'missing-page', [a.id], 'sketch-like')).toEqual([])
   })
   test('hidden/locked roots and inherited invalid paths are excluded under either profile', async () => {

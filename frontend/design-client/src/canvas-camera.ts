@@ -7,11 +7,21 @@ export const MAX_CANVAS_ZOOM = 256
 export const MAX_CANVAS_RASTER_SCALE = 4096
 export const clampCanvasZoom = (zoom: number) => Math.max(MIN_CANVAS_ZOOM, Math.min(MAX_CANVAS_ZOOM, zoom))
 
+/** Keyboard and click-zoom stops. Mac Figma steps through 100% → 125% → 150% →
+ * 200% instead of doubling. Wheel and pinch stay continuous. */
+export const ZOOM_STOPS: readonly number[] = Object.freeze([
+  0.02, 0.03, 0.05, 0.08, 0.1, 0.15, 0.25, 0.33, 0.5, 0.67, 0.75,
+  1, 1.25, 1.5, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256,
+])
 export function zoomStep(zoom: number, direction: 1 | -1): number {
-  const power = Math.log2(zoom)
-  const next = direction > 0 ? Math.floor(power + 1e-9) + 1 : Math.ceil(power - 1e-9) - 1
-  const value = 2 ** next
-  return value > 0 && Number.isFinite(value) ? clampCanvasZoom(value) : clampCanvasZoom(zoom)
+  if (!Number.isFinite(zoom) || zoom <= 0) return clampCanvasZoom(1)
+  const clamped = clampCanvasZoom(zoom)
+  if (direction > 0) {
+    const next = ZOOM_STOPS.find(stop => stop > clamped + 1e-9)
+    return next ?? ZOOM_STOPS[ZOOM_STOPS.length - 1]
+  }
+  for (let index = ZOOM_STOPS.length - 1; index >= 0; index--) if (ZOOM_STOPS[index] < clamped - 1e-9) return ZOOM_STOPS[index]
+  return ZOOM_STOPS[0]
 }
 
 // x/y and screen points are viewport-local CSS pixels, never device pixels.
