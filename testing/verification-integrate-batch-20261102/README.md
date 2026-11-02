@@ -2,7 +2,7 @@
 
 One branch on top of `main` (`63ad10c`) for GUI regression. This branch is not merged into `main`. Every commit message on the branch includes `[skip ci]`.
 
-Accent stays `#3459d4`. Canvas selection strokes stay the existing selection blue. There is no collaboration server. The Design API is not given a new end-user control; the automation panel that already shipped on `main` is unchanged.
+Accent stays `#3459d4`. Canvas selection strokes stay the existing selection blue. There is no collaboration server. The floating Design API chip is not mounted on the Electron home, the editor footer, or the web shell. Desktop automation registration stays in the app without that chip. The canvas right-click menu is the dark Figma desktop menu (charcoal surface, blue hover).
 
 ## Merge order
 
