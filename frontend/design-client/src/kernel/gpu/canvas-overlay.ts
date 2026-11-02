@@ -1,13 +1,14 @@
 import type { CanvasCamera } from '../../canvas-camera'
 import type { Point, Matrix } from '../../model'
 import { apply, multiply } from '../../geometry'
+import { measurementTicks, type MeasurementAxis } from '../../canvas-measurements'
 import { CanvasLabels, type CanvasLabel } from './canvas-labels'
 
 export type CanvasGuide = { axis:'x'|'y'; position:number; start:number; end:number }
 export type CanvasOverlay = { selection?: { corners: Point[]; handles: boolean; owners?: string[] }; pixelGrid: boolean
   guides?: readonly CanvasGuide[]
-  labels?: CanvasLabel[]; measurements?: {from:Point;to:Point}[]; transforms?:Record<string,Matrix> }
-const blue = [13 / 255, 153 / 255, 1, 1], white = [1, 1, 1, 1]
+  labels?: CanvasLabel[]; measurements?: {from:Point;to:Point;axis?:MeasurementAxis}[]; transforms?:Record<string,Matrix> }
+const blue = [13 / 255, 153 / 255, 1, 1], white = [1, 1, 1, 1], spacingRed = [242 / 255, 72 / 255, 34 / 255, 1]
 
 export function translateOverlay(overlay: CanvasOverlay, offsets: Map<string, Point>): CanvasOverlay {
   const offset = (owners?: string[]) => owners?.map(id=>offsets.get(id)).find(Boolean) || {x:0,y:0}
@@ -66,9 +67,12 @@ export function overlayVertices(overlay: CanvasOverlay, view: CanvasCamera, widt
       quad(square(4), blue); quad(square(3), white)
     }
   }
-  for(const measurement of overlay.measurements||[]) line(
-    {x:measurement.from.x*view.zoom+view.x,y:measurement.from.y*view.zoom+view.y},
-    {x:measurement.to.x*view.zoom+view.x,y:measurement.to.y*view.zoom+view.y},1,[242/255,72/255,34/255,1])
+  const project = (point: Point) => ({ x: point.x * view.zoom + view.x, y: point.y * view.zoom + view.y })
+  for (const measurement of overlay.measurements || []) {
+    line(project(measurement.from), project(measurement.to), 1, spacingRed)
+    if (measurement.axis) for (const [start, end] of measurementTicks({ from: measurement.from, to: measurement.to, axis: measurement.axis }, view.zoom))
+      line(project(start), project(end), 1, spacingRed)
+  }
   for (const guide of overlay.guides || []) {
     const a = guide.axis === 'x' ? { x:guide.position, y:guide.start } : { x:guide.start, y:guide.position }
     const b = guide.axis === 'x' ? { x:guide.position, y:guide.end } : { x:guide.end, y:guide.position }

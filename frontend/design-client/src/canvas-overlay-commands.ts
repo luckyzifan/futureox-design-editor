@@ -1,6 +1,6 @@
 import type { Bounds, DesignDocument, Point } from './model'
 import { apply, type SceneEntry } from './geometry'
-import { measureBounds, type Measurement } from './canvas-measurements'
+import { measureBounds, measurementLabel, type Measurement } from './canvas-measurements'
 import { selectionSizeLabel } from './selection-size-label'
 import type { CanvasLabel } from './kernel/gpu/canvas-labels'
 import type { CanvasOverlay } from './kernel/gpu/canvas-overlay'
@@ -53,8 +53,11 @@ export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlay
       text: selectionName, size: 11, color: '#0d99ff', kind: 'selection-name', owners })
   if(showSelection) labels.push({anchor:{x:selectionBox.x+selectionBox.width/2,y:selectionBox.y+selectionBox.height},offset:{x:0,y:21},
     text:sizeText,size:10,color:'#0d99ff',centered:true,kind:'selection-size',owners})
-  for(const m of measurements) labels.push({anchor:{x:(m.from.x+m.to.x)/2,y:(m.from.y+m.to.y)/2},offset:{x:4,y:-5},
-    text:String(Number(m.distance.toFixed(2))),size:11,color:'#f24822',halo:true})
+  for (const measurement of measurements) {
+    const placed = measurementLabel(measurement)
+    labels.push({ anchor: placed.anchor, offset: placed.offset, text: String(Number(measurement.distance.toFixed(2))),
+      size: 11, color: '#f24822', halo: true, centered: true, kind: 'measurement' })
+  }
   return {document,pageId:input.pageId,epoch:input.epoch,uiIdentity,commands:{pixelGrid:input.pixelGrid,labels,measurements,
     transforms:Object.fromEntries(owners.map(id=>[id,document.nodes[id].transform])),
     selection:showSelection?{corners:selectionCorners,handles:input.canTransform,owners}:undefined}}
