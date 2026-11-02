@@ -2160,6 +2160,10 @@ html[data-reduced-motion=true] .editor-shell *, html[data-reduced-motion=true] .
 .secondary { border-radius: 10px; }
 .creation-tool-hint { border-radius: 999px; box-shadow: 0 8px 20px #1c191710; }
 .selection-chrome-frame { fill: #fffcf9; stroke: #e4ddd3; stroke-width: 1px; }
+.selection-size-pill { fill: #4597f7; stroke: none; }
+.measurement-distance-pill { fill: #e05634; stroke: none; }
+.selection-rotate-glyph { opacity: 0; }
+.selection-rotate:hover .selection-rotate-glyph { opacity: 1; }
 .workspace-rail button, .properties-tabs button, .editor-shell .floating-toolbar button,
 .remote-modal button, .file-menu button, .tool-popover-content button, .canvas-context-menu button, .primary, .secondary {
   transition: background-color 160ms var(--workspace-ease), color 160ms var(--workspace-ease), border-color 160ms var(--workspace-ease), box-shadow 160ms var(--workspace-ease);

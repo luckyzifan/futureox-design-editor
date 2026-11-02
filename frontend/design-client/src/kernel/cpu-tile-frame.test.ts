@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { cpuDisplayPressure, cpuTileFrameOptions, sampleCpuTile } from './cpu-tile-frame'
+import { cpuDisplayPressure, cpuTileBlitOrigin, cpuTileFrameOptions, sampleCpuTile } from './cpu-tile-frame'
 
 test('cpu tile camera shifts the gpu viewport origin to device zero', () => {
   const frame = cpuTileFrameOptions(
@@ -35,4 +35,12 @@ test('CPU previews sample the same world origin and keep a separate exact-densit
   const reject=async()=>{throw Error('Compositing memory budget exceeded')}
   await expect(sampleCpuTile(frame,reject,()=>true,false)).rejects.toThrow(/budget/)
   expect(await sampleCpuTile(frame,reject,()=>true,true)).toMatchObject({divisor:0,bytes:new Uint8Array(0)})
+})
+
+test('adjacent cpu tile blits do not round open a pasteboard seam', () => {
+  const width = 514
+  const left = cpuTileBlitOrigin(10.4, -3.2)
+  const right = cpuTileBlitOrigin(524.6, -3.2)
+  expect(left.x + width).toBeGreaterThanOrEqual(right.x)
+  expect(cpuTileBlitOrigin(10.6, 4.8)).toEqual({ x: 10, y: 4 })
 })

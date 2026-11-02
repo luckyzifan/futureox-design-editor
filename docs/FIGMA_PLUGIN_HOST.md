@@ -2,7 +2,7 @@
 
 Futureox Design can run a documented subset of the Figma Plugin API against the open document. This is a local desktop host. It does not add Figma aliases to the MCP operation registry, install handlers from file contents, or grant network, filesystem, or account permissions.
 
-The canonical matrix lives in `frontend/design-client/src/plugins/coverage.ts`. Counts in this build: 48 supported, 27 partial, 22 unsupported. Calling an unsupported API throws `PluginApiError` with `code: "unsupported"`. Partial APIs do the documented subset and throw when a plugin asks for the rest.
+The Plugins panel runs the rich host. Its matrix is `frontend/design-client/src/plugins/rich-host/coverage.ts` (`PLUGIN_API_COVERAGE`). The panel summary counts that list. `frontend/design-client/src/plugins/coverage.ts` is the earlier worker session (48 supported, 27 partial, 22 unsupported) and is not what the panel executes. Calling an unsupported API throws `PluginApiError` with `code: "unsupported_api"` on the rich host. Partial APIs do the documented subset and throw when a plugin asks for the rest.
 
 ## What a plugin can change
 
@@ -16,9 +16,13 @@ Sticky notes, the blue accent, and the render and navigation paths are not part 
 
 ## Load the sample
 
-Sample folder:
+Sample folders:
 
 `frontend/design-client/plugins/labeled-rectangles`
+
+`frontend/design-client/plugins/layout-kit`
+
+`layout-kit` is a local fixture, not a downloaded marketplace plugin. It stores a run count in `figma.clientStorage`, builds a vertical auto-layout frame, creates a local component and instance, ungroups a pair of shapes, and paints a 1×1 PNG through `figma.createImage`. Zip that folder (the archive must contain one `manifest.json`) to try the archive button. No marketplace plugin has been downloaded or run here.
 
 It contains `manifest.json`, `code.js`, and `ui.html`. On launch (`figma.command === "run"`) it creates three rectangles named Label, each with a text node, on the current page.
 
@@ -29,6 +33,7 @@ Desktop:
 3. Click **Run sample plugin** / **运行示例插件**. The three labels appear on the canvas. Undo removes that turn.
 4. On the desktop app, the sample UI opens in its own window. Enter a label and count, then Create. Close stops the session.
 5. To load this folder, or another plugin, click **Load plugin folder…** and choose the folder that contains `manifest.json`. The host reads only `manifest.json` plus the manifest `main` and optional `ui` files, each up to 1 MiB, and only from inside that folder.
+6. Click **Load plugin archive…** and choose a `.zip` or `.figma` archive with exactly one `manifest.json`. The same size limits apply. The archive is unpacked in the renderer. It is not scanned at startup and it is not executed until you pick it.
 
 ## Local plugins at startup
 
@@ -58,6 +63,8 @@ A plugin folder uses the Figma manifest shape:
 UI code talks to the plugin with `parent.postMessage({ pluginMessage }, '*')` and reads `event.data.pluginMessage`. Messages must be JSON, up to 64 KiB.
 
 ## API coverage
+
+The table below is the earlier worker subset. The Plugins panel list is the rich host and already includes local `clientStorage`, `createComponent` / `createInstance`, `createImage`, `ungroup`, and the auto-layout fields the layout-kit fixture uses. PNG `exportAsync`, remote components, and reactions stay unsupported there.
 
 | API | Status | Behavior |
 | --- | --- | --- |
