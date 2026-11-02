@@ -1,5 +1,7 @@
 # Futureox Design Core：渲染优先工程与验收规范
 
+2026-11-02 的[原型播放](../testing/verification-playback-plugins-import-20261102/README.md)只在原型预览里封顶中间帧的玻璃和模糊，溶解用两张已结算画面交叉。落定帧和编辑器画布仍用原稿。不改瓦片、预算或实验开关，不关闭 33/100ms 或完整 G2/G5。
+
 2026-11-02 的[画布呈现续](../testing/verification-canvas-render-continuity-20261102/README.md)让 CPU 参考帧在快速缩小后继续盖住视口。旋转之后的缩小不再用更紧的完成帧换掉宽画面，选区跟实时相机。合成压力不再整帧红字。预算和实验开关未放宽。33/100ms 与完整 G2/G5 未通过。
 
 2026-11-02 的[Electron 主线程序列化](../testing/verification-electron-perf-flame-20261102/README.md)减少相机、平移预览和多页文档里单页编辑的整份序列化与重布局。损伤父级表只覆盖被改的页，视口瓦片按脏区相交丢掉。其它页节点引用保持不动；跨页依赖和首次打开仍全量。不改像素、瓦片、预算或实验开关，不关闭 33/100ms 或完整 G2/G5。

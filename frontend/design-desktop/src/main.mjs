@@ -1028,7 +1028,7 @@ async function buildWindow() {
       )
       .join('')
       .slice(0, 200)
-      const allowed = ['.png', '.svg', '.jpg', '.jpeg', '.webp', '.pdf', '.json', '.fdlib', '.sketch'].includes(
+      const allowed = ['.png', '.svg', '.svgz', '.jpg', '.jpeg', '.webp', '.pdf', '.json', '.fdlib', '.sketch'].includes(
       path.extname(name).toLowerCase(),
     )
     if (

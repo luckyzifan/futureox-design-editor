@@ -34,7 +34,7 @@ export type PrototypeMediaAction =
   | 'next'
   | 'forward'
   | 'rewind'
-export type PrototypeTransitionStyle = 'none'|'slide-left'|'slide-right'|'slide-top'|'slide-bottom'
+export type PrototypeTransitionStyle = 'none'|'dissolve'|'slide-left'|'slide-right'|'slide-top'|'slide-bottom'
 export type PrototypeAction = {
   transitionStyle?: PrototypeTransitionStyle
   kind: 'navigate' | 'overlay' | 'back' | 'close-overlay' | 'scroll-to' | 'set-variable' | 'if'
@@ -327,7 +327,7 @@ export function prototypeEvent(
           if (next.history.length) {
             const target = next.history.pop()!
             const previous = next.historyTransitions?.pop()
-            const reverse: Partial<Record<PrototypeTransitionStyle,PrototypeTransitionStyle>> = {'slide-left':'slide-right','slide-right':'slide-left','slide-top':'slide-bottom','slide-bottom':'slide-top',none:'none'}
+            const reverse: Partial<Record<PrototypeTransitionStyle,PrototypeTransitionStyle>> = {'slide-left':'slide-right','slide-right':'slide-left','slide-top':'slide-bottom','slide-bottom':'slide-top',none:'none',dissolve:'dissolve'}
             if (previous && a.durationMs === undefined) next.transitionMs=previous.duration
             if (previous && a.easingCurve === undefined) next.transitionEasing=previous.easing
             navigate(target,a.transitionStyle ?? (previous?.style ? reverse[previous.style] : undefined))
@@ -376,13 +376,18 @@ export function prototypeEvent(
  * player falls back to its CSS enter animation). */
 function planTransition(doc: DesignDocument, from: string, to: string) {
   if (from === to || !doc.nodes[from] || !doc.nodes[to]) return undefined
-  const plan = JSON.parse(animation_plan_json(JSON.stringify(doc), JSON.stringify(doc), from, to))
-  return {
-    from, to,
-    magicMove: (plan.magicMove as [string,number[],number[]][]).map(([id,from,to])=>({id,from,to})),
-    dissolveStart: plan.dissolveStart as string[],
-    dissolveEnd: plan.dissolveEnd as string[],
-    frameDelta: plan.framePairDragTranslationDelta as [number,number],
+  try {
+    const plan = JSON.parse(animation_plan_json(JSON.stringify(doc), JSON.stringify(doc), from, to))
+    return {
+      from, to,
+      magicMove: (plan.magicMove as [string,number[],number[]][]).map(([id,from,to])=>({id,from,to})),
+      dissolveStart: plan.dissolveStart as string[],
+      dissolveEnd: plan.dissolveEnd as string[],
+      frameDelta: plan.framePairDragTranslationDelta as [number,number],
+    }
+  } catch {
+    // A failed smart-animate plan must not cancel the navigation itself.
+    return undefined
   }
 }
 

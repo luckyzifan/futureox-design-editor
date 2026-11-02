@@ -136,6 +136,29 @@ test('flatten resolves a nested boolean before unioning the rest of the selectio
   editor.undo(); expect(editor.state.doc).toEqual(before)
 })
 
+test('flatten bakes a nested boolean with its own operation before the outer one', async () => {
+  const corner = node('rectangle', 0, 0, 20, 20)
+  const big = node('rectangle', 0, 0, 80, 80)
+  const hole = node('rectangle', 30, 30, 20, 20)
+  const editor = editorWithGeometry([corner, big, hole])
+  editor.select([big.id, hole.id])
+  editor.group(false, 'subtract')
+  const inner = editor.state.selection[0]
+  editor.select([corner.id, inner])
+  editor.group(false, 'union')
+  const outer = editor.state.selection[0]
+  expect(editor.state.doc.nodes[outer].booleanOperation).toBe('union')
+  expect(editor.state.doc.nodes[inner].booleanOperation).toBe('subtract')
+  await editor.flattenSelection()
+  const vector = editor.state.doc.nodes[editor.state.selection[0]]
+  const m = inverse(vector.transform)
+  const local = (x: number, y: number) => ({ x: m[0] * x + m[2] * y + m[4], y: m[1] * x + m[3] * y + m[5] })
+  const rings = contours(vector)
+  expect(pointInContours(local(10, 10), rings)).toBe(true)
+  expect(pointInContours(local(60, 60), rings)).toBe(true)
+  expect(pointInContours(local(40, 40), rings)).toBe(false)
+})
+
 test('flatten refuses text and reports an empty shape selection', async () => {
   const text = node('text', 0, 0, 40, 20)
   text.text = 'Hi'
