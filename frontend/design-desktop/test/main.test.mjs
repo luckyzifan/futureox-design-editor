@@ -243,12 +243,14 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
   source = source.replace("from './workspace-roots.mjs'", `from ${JSON.stringify(new URL('../src/workspace-roots.mjs', import.meta.url).href)}`)
   source = source.replace("from './document-capacity.mjs'", `from ${JSON.stringify(new URL('../src/document-capacity.mjs', import.meta.url).href)}`)
   source = source.replace("from './gpu-working-budget.mjs'", `from ${JSON.stringify(new URL('../src/gpu-working-budget.mjs', import.meta.url).href)}`)
+  source = source.replace("from './plugin-ui.mjs'", `from ${JSON.stringify(new URL('../src/plugin-ui.mjs', import.meta.url).href)}`)
   source = source.replace('process.env.CORE_GPU_WORKING_BUDGET_MIB', `globalThis[${JSON.stringify(key)}].gpuWorkingBudget`)
   source = source.replace("from './keyboard-shortcuts.mjs'", `from ${JSON.stringify(new URL('../src/keyboard-shortcuts.mjs', import.meta.url).href)}`)
   source = source.replace("import { registerAutomationBridge } from './automation-bridge.mjs'",
     `import { registerAutomationBridge as registerRealAutomationBridge } from ${JSON.stringify(new URL('../src/automation-bridge.mjs', import.meta.url).href)}; const registerAutomationBridge = options => { globalThis[${JSON.stringify(key)}].automationOptions = options; return registerRealAutomationBridge(options) }`)
 
   source = source.replace("from './native-locale.mjs'", `from ${JSON.stringify(new URL('../src/native-locale.mjs', import.meta.url).href)}`)
+  source = source.replace("from './design-ai.mjs'", `from ${JSON.stringify(new URL('../src/design-ai.mjs', import.meta.url).href)}`)
   source = source.replace("from './clipboard.mjs'", `from ${JSON.stringify(new URL('../src/clipboard.mjs', import.meta.url).href)}`)
   source = source.replace("import { spawn } from 'node:child_process'", `const { spawn } = globalThis[${JSON.stringify(key)}]`)
   source = source.replaceAll('process.platform' , `globalThis[${JSON.stringify(key)}].platform`)

@@ -147,6 +147,10 @@ export interface DesktopBridge {
   readonly documentCapacity?: Readonly<{ memoryBytes: number }>
   readonly renderPolicy: Readonly<{ cpuOnly: boolean; gpuWorkingBudgetMiB?: number }>
   readonly nativeRender?: NativeRenderBridgeApi
+  readonly pluginUi?: {
+    publish(request: { html: string }): Promise<DesktopResult<{ id: string; url: string }>>
+    revoke(request: { id: string }): Promise<DesktopResult>
+  }
   nativeRenderStats?(): Promise<string | null>
   listCatalog(): Promise<DesktopResult<{ projects: CatalogProject[]; directories: CatalogDirectory[]; files: CatalogFile[] }>>
   selectCatalogDirectory(): Promise<DesktopResult<{ project: CatalogProject; directory: CatalogDirectory }>>

@@ -80,12 +80,14 @@ test('payload contracts reject arbitrary paths and bound UTF-8 document size', (
   assert.equal(validHandle('/etc/passwd'), false)
   assert.equal(validHandle('ba2640cb-5b49-45e5-a957-77327f7e1e46'), true)
 })
-test('CSP denies remote code, frames, objects, forms and only permits WASM compile', () => {
+test('CSP denies remote code, objects and forms, allows only the plugin frame, and only permits WASM compile', () => {
   assert.match(CSP, /default-src 'none'/)
   assert.match(CSP, /script-src 'self' 'wasm-unsafe-eval'/)
   assert.doesNotMatch(CSP, /script-src[^;]*'unsafe-eval'/)
   assert.doesNotMatch(CSP, /script-src[^;]*'unsafe-inline'/)
-  for (const kind of ['frame-src', 'object-src', 'base-uri', 'form-action', 'frame-ancestors'])
+  assert.match(CSP, /frame-src design-app:\/\/plugin/)
+  assert.doesNotMatch(CSP, /frame-src[^;]*(?:\*|https:|blob:|data:)/)
+  for (const kind of ['object-src', 'base-uri', 'form-action', 'frame-ancestors'])
     assert.ok(CSP.includes(`${kind} 'none'`))
   assert.match(CSP, /connect-src 'self'/)
 })

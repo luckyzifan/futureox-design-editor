@@ -28,6 +28,7 @@ import { useShortcutProfile } from './shortcut-preference'
 import { shortcutPlatform, toolShortcutLabel, shortcutLabel, formatShortcutCombo } from './shortcut-profiles'
 import { shortcutTargetOwnsKeyboard } from './editor-shortcuts'
 import { AutomationPanel } from './AutomationPanelLauncher'
+import { PluginHostLauncher } from './PluginHostLauncher'
 import { DesignAgentLauncher } from './design-ai/DesignAgentLauncher'
 import { attachDesktopAutomation } from './automation/bridge'
 import { createWorkspaceAutomationRenderer } from './automation/workspace-bridge'
@@ -1027,6 +1028,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             {locale === 'en' ? 'Export' : '导出'}
             <ChevronDown size={12} />
           </button>
+          <PluginHostLauncher editor={editor} desktop={desktop} disabled={!ready || showHome || switching || desktopStatus.transitioning} />
           <button type="button" className="app-settings-button" aria-label={panelText.openSettings}
             disabled={!ready || switching || desktopStatus.transitioning}
             title={!ready || switching || desktopStatus.transitioning ? '正在处理设计文件，完成后可打开设置' : `设置 (${formatShortcutCombo('Mod+,', shortcutContext.platform)})`}

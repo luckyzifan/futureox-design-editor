@@ -42,6 +42,8 @@ test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or s
     Object.keys(api).sort(),
     [
       'version',
+      'designAi',
+      'pluginUi',
       'petConfigure',
       'petEvent',
       'onPetStatus',
@@ -384,4 +386,13 @@ test('document capacity is frozen trusted launch policy and cannot be supplied b
  assert.equal(Object.isFrozen(api.documentCapacity),true)
  for(const value of ['0','Infinity','1073741824.5','-1','9007199254740992']) assert.throws(()=>load([`--core-document-memory-bytes=${value}`]))
  assert.throws(()=>load(['--core-document-memory-bytes=1073741824','--core-document-memory-bytes=1073741824']))
+})
+
+test('plugin UI uses only the desktop IPC allowlist', async () => {
+  const { api, calls } = load()
+  assert.equal(Object.isFrozen(api.pluginUi), true)
+  await api.pluginUi.publish({ html: '<p></p>' })
+  assert.deepEqual(calls.at(-1), ['design-desktop:plugin-ui-publish', { html: '<p></p>' }])
+  await api.pluginUi.revoke({ id: '00000000-0000-4000-8000-000000000001' })
+  assert.deepEqual(calls.at(-1), ['design-desktop:plugin-ui-revoke', { id: '00000000-0000-4000-8000-000000000001' }])
 })

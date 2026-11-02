@@ -1612,6 +1612,7 @@ footer button {
 .editor-shell .header-right > .primary { font-size: 12px; padding: 6px 9px; }
 /* Settings is a named entry, not another icon-only workspace action. */
 .editor-shell .header-right > .app-settings-button { font-size: 12px; flex-shrink: 0; white-space: nowrap; }
+.editor-shell .header-right > .plugin-host-button { font-size: 12px; flex-shrink: 0; white-space: nowrap; padding: 6px 9px; }
 .editor-shell .app-settings-button > svg { flex-shrink: 0; }
 .editor-shell .header-right .prototype-preview-button span { display: none; }
 .editor-shell .header-right .save-status { font-size: 10px; min-width: 16px; flex: 1; overflow: hidden; white-space: nowrap; }
