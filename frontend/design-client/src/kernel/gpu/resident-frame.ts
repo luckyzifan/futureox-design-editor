@@ -12,7 +12,7 @@ export function residentFrameMessage(frame: ResidentFrame): ResidentFrame {
     overlay: frame.overlay ? { pixelGrid: frame.overlay.pixelGrid, selection: frame.overlay.selection ? {
       handles: frame.overlay.selection.handles, owners:frame.overlay.selection.owners?.slice(), corners: frame.overlay.selection.corners.map(p => ({ x: p.x, y: p.y })) } : undefined,
       labels:frame.overlay.labels?.map(label=>({anchor:{x:label.anchor.x,y:label.anchor.y},offset:{x:label.offset.x,y:label.offset.y},
-        text:label.text,size:label.size,color:label.color,basis:label.basis?.slice() as typeof label.basis,centered:label.centered,halo:label.halo,owners:label.owners?.slice()})),
+        text:label.text,size:label.size,color:label.color,basis:label.basis?.slice() as typeof label.basis,centered:label.centered,halo:label.halo,...(label.frame==='pill'?{frame:'pill' as const}:{}),owners:label.owners?.slice()})),
       measurements:frame.overlay.measurements?.map(m=>({from:{x:m.from.x,y:m.from.y},to:{x:m.to.x,y:m.to.y}})),
       transforms:frame.overlay.transforms?Object.fromEntries(Object.entries(frame.overlay.transforms).map(([id,m])=>[id,[...m]])):undefined,
     } : undefined,
