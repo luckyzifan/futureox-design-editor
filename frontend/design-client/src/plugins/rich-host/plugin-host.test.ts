@@ -1,6 +1,7 @@
 // @ts-expect-error jsdom is a test-only dependency
 import { JSDOM } from 'jsdom'
 import { readFileSync } from 'node:fs'
+import { crc32, inflateSync } from 'node:zlib'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Editor } from '../../engine'
 import { blank, node, paint } from '../../model'
@@ -31,6 +32,46 @@ function nodes(editor: Editor) { return Object.values(editor.state.doc.nodes) }
 function named(editor: Editor, name: string) { return nodes(editor).find(node => node.name === name) }
 
 describe('Figma plugin host', () => {
+  it('ships a layout-kit PNG whose IDAT crc matches the bytes', () => {
+    const source = readFileSync(new URL('../../../plugins/layout-kit/code.js', import.meta.url), 'utf8')
+    const encoded = source.match(/base64Decode\('([^']+)'\)/)?.[1]
+    expect(encoded).toBeTruthy()
+    const bytes = Buffer.from(encoded!, 'base64')
+    expect(bytes.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+    let offset = 8
+    let inflated = false
+    while (offset < bytes.length) {
+      const length = bytes.readUInt32BE(offset)
+      const type = bytes.subarray(offset + 4, offset + 8)
+      const data = bytes.subarray(offset + 8, offset + 8 + length)
+      const stored = bytes.readUInt32BE(offset + 8 + length)
+      expect(stored).toBe(crc32(Buffer.concat([type, data])) >>> 0)
+      if (type.toString() === 'IDAT') { inflateSync(data); inflated = true }
+      offset += 12 + length
+    }
+    expect(inflated).toBe(true)
+  })
+
+  it('runs the layout-kit fixture through storage, layout, a local instance, ungroup, and an image', async () => {
+    const current = editor()
+    const root = new URL('../../../plugins/layout-kit/', import.meta.url)
+    const manifest = parsePluginManifest(JSON.parse(readFileSync(new URL('manifest.json', root), 'utf8')))
+    const run = await openPlugin(current, {
+      manifest,
+      main: readFileSync(new URL('code.js', root), 'utf8'),
+      ui: readFileSync(new URL('ui.html', root), 'utf8'),
+    }, { storage: memoryPluginStorage() })
+    const board = named(current, 'Board')
+    expect(board?.layout?.mode).toBe('vertical')
+    expect(board?.layout?.gap).toBe(8)
+    expect(named(current, 'Chip')?.component).toBeTruthy()
+    expect(named(current, 'Chip instance')?.instance?.componentId).toBe(named(current, 'Chip')?.id)
+    expect(named(current, 'Pair')).toBeUndefined()
+    expect(named(current, 'Swatch')?.fills[0]?.kind).toBe('image')
+    expect(run.closeMessage).toBe('layout-kit')
+    run.close()
+  })
+
   it('runs the bundled sample against the live document and undo removes it', async () => {
     const current = editor()
     const run = await openPlugin(current, samplePluginBundle())
