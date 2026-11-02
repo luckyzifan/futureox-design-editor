@@ -1,11 +1,11 @@
 import { CpuStage, measureCpuStage } from './cpu-stage-diagnostics'
 import { recoverInteractionPreview } from './kernel/interaction-preview-recovery'
 import { selectionSizeLabel } from './selection-size-label'
-import { SELECTION_BLUE, SELECTION_MEMBER_STROKE_PX, SELECTION_UNION_STROKE_PX } from './selection-blue'
+import { HOVER_BLUE, HOVER_STROKE_PX, MARQUEE_FILL, SELECTION_BLUE, SELECTION_MEMBER_STROKE_PX, SELECTION_UNION_STROKE_PX, SIZE_PILL_TEXT } from './selection-blue'
 import { rotationChromeHeldToTexture, rotationStartMemberCorners, rotationStartOutline } from './selection-chrome-pose'
 import { referenceOverlayCamera } from './kernel/reference-zoom-frame'
 import { canvasOverlayCommands, canvasGpuOverlayOwnsUi, selectionChromeChipWidth } from './canvas-overlay-commands'
-import { measurementLabel, measurementTicks } from './canvas-measurements'
+import { altMeasurementTarget, measurementLabel, measurementTicks, SPACING_RED } from './canvas-measurements'
 import { canvasText } from './canvas-interface-messages'
 import { frameHairline, frameTitleShown } from './page-frame-chrome'
 import { useInterfacePreferences } from './interface-preference'
@@ -245,16 +245,18 @@ class PresentedSignal {
     this.listeners.forEach((listener) => listener())
   }
 }
-function SelectionChromeChip({ testId, x, y, text, size, zoom, fill, opacity, centered = false }: {
+function SelectionChromeChip({ testId, x, y, text, size, zoom, fill, opacity, centered = false, tone = 'paper' }: {
   testId: string; x: number; y: number; text: string; size: number; zoom: number; fill: string; opacity: number; centered?: boolean
+  tone?: 'paper' | 'accent'
 }) {
   const width = selectionChromeChipWidth(text, size), pad = 7
   const boxW = (width + pad * 2) / zoom, boxH = (size + 8) / zoom
-  return <g data-testid={testId} opacity={opacity} pointerEvents="none">
-    <rect className="selection-chrome-frame" vectorEffect="non-scaling-stroke"
+  const textFill = tone === 'accent' ? SIZE_PILL_TEXT : fill
+  return <g data-testid={testId} data-pill={tone} opacity={opacity} pointerEvents="none">
+    <rect className={tone === 'accent' ? 'selection-chrome-frame selection-size-pill' : 'selection-chrome-frame'} vectorEffect="non-scaling-stroke"
       x={centered ? x - boxW / 2 : x - pad / zoom} y={y - (size + 3) / zoom}
       width={boxW} height={boxH} rx={7 / zoom} />
-    <text x={x} y={y} textAnchor={centered ? 'middle' : 'start'} fontSize={size / zoom} fill={fill}>{text}</text>
+    <text x={x} y={y} textAnchor={centered ? 'middle' : 'start'} fontSize={size / zoom} fill={textFill}>{text}</text>
   </g>
 }
 
@@ -934,8 +936,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   // Editing positions follow the oriented selection rectangle. The curve's
   // tighter world-space outline remains available to picking and culling.
   const selectionBox = useMemo(() => bounds(selectionCorners), [selectionCorners])
-  const measurementTarget = measureKeys.alt && !drag.current && cursor && selected.length && state.tool==='select'
-    ? displayedHit(cursor,measureKeys.deep,n=>!selection.has(n.id)) : null
+  const measurementHover = measureKeys.alt && !spaceHeld && !drag.current && cursor && selected.length && state.tool === 'select'
+    ? displayedHoverHit(cursor, measureKeys.deep) : null
+  const measurementTarget = altMeasurementTarget({
+    alt: measureKeys.alt, dragging: !!drag.current, space: spaceHeld, tool: state.tool,
+    selection: state.selection, hover: measurementHover,
+  })
   const measurementBounds = measurementTarget && displayedSnapshot
     ? displayedIndex?.entries.find(e=>e.id===measurementTarget)?.bounds : null
   const transformHandles = useMemo(() => selectionHandles(selectionCorners, zoom), [selectionCorners, zoom])
@@ -2942,8 +2948,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               if (!e || !n) return null
               const points = boxPoints({ x: 0, y: 0, width: n.width, height: n.height })
                 .map(p => { const v = apply(e.matrix, p); return `${v.x},${v.y}` }).join(' ')
-              return <polygon data-testid="canvas-hover-outline" data-node-id={hover} points={points}
-                fill="none" stroke={SELECTION_BLUE} strokeWidth={SELECTION_MEMBER_STROKE_PX} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+              return <polygon data-testid="canvas-hover-outline" data-chrome="hover" data-node-id={hover} points={points}
+                fill="none" stroke={HOVER_BLUE} strokeWidth={HOVER_STROKE_PX} vectorEffect="non-scaling-stroke" pointerEvents="none" />
             })()}
         </g>
         {/* Selection is document feedback, not part of the raster result.
@@ -2986,11 +2992,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 x1={h.point.x} y1={h.point.y} x2={h.next.x} y2={h.next.y}
                 stroke="transparent" strokeWidth={8/zoom} pointerEvents="stroke" style={{cursor:h.edgeCursor}}
                 onPointerDown={e=>{e.stopPropagation();start(e,'resize',h.index+4)}} />)}
-              {canTransform && state.tool!=='scale' && drawnHandles.map(h => <g key={`rotate-${h.index}`}>
+              {canTransform && state.tool!=='scale' && drawnHandles.map(h => <g key={`rotate-${h.index}`} className="selection-rotate">
                 <polygon data-testid={`rotate-corner-${h.index}`} data-anchor-x={h.rotateAnchor.x} data-anchor-y={h.rotateAnchor.y}
                   points={h.rotatePoints.map(p=>`${p.x},${p.y}`).join(' ')} fill="transparent" pointerEvents="all"
                   style={{cursor:h.rotateCursor}} onPointerDown={e=>{e.stopPropagation();start(e,'rotate',h.index)}} />
-                <g data-testid={`rotate-handle-${h.index}`} pointerEvents="none" transform={`translate(${h.rotateAnchor.x} ${h.rotateAnchor.y}) scale(${1/zoom})`}>
+                <g className="selection-rotate-glyph" data-testid={`rotate-handle-${h.index}`} pointerEvents="none" transform={`translate(${h.rotateAnchor.x} ${h.rotateAnchor.y}) scale(${1/zoom})`}>
                   <circle r={8} fill="white" stroke={SELECTION_BLUE} strokeWidth={1} />
                   <path d="M-3.2 2.4A4.4 4.4 0 1 1 3.4 2.2" fill="none" stroke={SELECTION_BLUE} strokeWidth={1.6} strokeLinecap="round" />
                   <path d="M2.1 0.4 L3.6 2.5 L5.4 0.9" fill="none" stroke={SELECTION_BLUE} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
@@ -3106,11 +3112,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 }
                 return marks.length ? <g data-testid="material-handles">{marks}</g> : null
               })()}
-              <SelectionChromeChip testId="canvas-selection-size" opacity={gpuOverlay ? 0 : 1} centered
+              <SelectionChromeChip testId="canvas-selection-size" opacity={gpuOverlay ? 0 : 1} centered tone="accent"
                 x={selectionBox.x + selectionBox.width / 2}
                 y={selectionBox.y + selectionBox.height + 21 / zoom}
                 text={selectionSizeLabel(localSelection, selectionBox, selected[0]?.matrix)}
-                size={10} zoom={zoom} fill={SELECTION_BLUE} />
+                size={10} zoom={zoom} fill={SIZE_PILL_TEXT} />
               {(overlay.commands.labels ?? []).filter(label => label.kind === 'selection-name').map(label => (
                 <SelectionChromeChip key="selection-name" testId="canvas-selection-name" opacity={gpuOverlay ? 0 : 1}
                   x={label.anchor.x} y={label.anchor.y + label.offset.y / zoom}
@@ -3261,7 +3267,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           {rubber && (
             <g>{creationGhost ? null : <rect
               {...rubber}
-              fill={drag.current?.kind === 'marquee' ? '#3459d419' : 'none'}
+              data-testid={drag.current?.kind === 'marquee' ? 'canvas-marquee' : undefined}
+              fill={drag.current?.kind === 'marquee' ? MARQUEE_FILL : 'none'}
               stroke={SELECTION_BLUE}
               strokeWidth={1 / zoom}
               strokeDasharray={
@@ -3276,9 +3283,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           {measurements.map((m,i)=>{
             const placed = measurementLabel(m, zoom)
             return <g key={`measurement-${i}`} data-testid="canvas-measurement" pointerEvents="none" opacity={gpuOverlay?0:1}>
-            <line x1={m.from.x} y1={m.from.y} x2={m.to.x} y2={m.to.y} stroke="#f24822" strokeWidth={1/zoom}/>
-            {measurementTicks(m, zoom).map(([from, to], tick) => <line key={tick} x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke="#f24822" strokeWidth={1/zoom}/>)}
-            <text x={placed.anchor.x + placed.offset.x / zoom} y={placed.anchor.y + placed.offset.y / zoom} textAnchor="middle" dominantBaseline="central" fontSize={11/zoom} fill="#f24822" paintOrder="stroke" stroke="#fff" strokeWidth={2/zoom}>{Number(m.distance.toFixed(2))}</text>
+            <line x1={m.from.x} y1={m.from.y} x2={m.to.x} y2={m.to.y} stroke={SPACING_RED} strokeWidth={1/zoom}/>
+            {measurementTicks(m, zoom).map(([from, to], tick) => <line key={tick} x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={SPACING_RED} strokeWidth={1/zoom}/>)}
+            <text x={placed.anchor.x + placed.offset.x / zoom} y={placed.anchor.y + placed.offset.y / zoom} textAnchor="middle" dominantBaseline="central" fontSize={11/zoom} fill={SPACING_RED} paintOrder="stroke" stroke="#fff" strokeWidth={2/zoom}>{Number(m.distance.toFixed(2))}</text>
           </g>}) }
           {!guides.surface && guides.x && (
             <line

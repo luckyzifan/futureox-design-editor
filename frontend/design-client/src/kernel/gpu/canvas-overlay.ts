@@ -1,14 +1,15 @@
 import type { CanvasCamera } from '../../canvas-camera'
 import type { Point, Matrix } from '../../model'
 import { apply, multiply } from '../../geometry'
-import { measurementTicks, type MeasurementAxis } from '../../canvas-measurements'
+import { measurementTicks, SPACING_RED, type MeasurementAxis } from '../../canvas-measurements'
+import { SELECTION_BLUE, srgbUnit } from '../../selection-blue'
 import { CanvasLabels, type CanvasLabel } from './canvas-labels'
 
 export type CanvasGuide = { axis:'x'|'y'; position:number; start:number; end:number }
 export type CanvasOverlay = { selection?: { corners: Point[]; handles: boolean; owners?: string[] }; pixelGrid: boolean
   guides?: readonly CanvasGuide[]
   labels?: CanvasLabel[]; measurements?: {from:Point;to:Point;axis?:MeasurementAxis}[]; transforms?:Record<string,Matrix> }
-const blue = [13 / 255, 153 / 255, 1, 1], white = [1, 1, 1, 1], spacingRed = [242 / 255, 72 / 255, 34 / 255, 1]
+const blue = srgbUnit(SELECTION_BLUE), white = [1, 1, 1, 1], spacingRed = srgbUnit(SPACING_RED)
 
 export function translateOverlay(overlay: CanvasOverlay, offsets: Map<string, Point>): CanvasOverlay {
   const offset = (owners?: string[]) => owners?.map(id=>offsets.get(id)).find(Boolean) || {x:0,y:0}
@@ -55,7 +56,7 @@ export function overlayVertices(overlay: CanvasOverlay, view: CanvasCamera, widt
   }
   if (overlay.selection) {
     const points = overlay.selection.corners.map(p => ({ x: p.x * view.zoom + view.x, y: p.y * view.zoom + view.y }))
-    // Mac Figma: 2px blue outline, 8px white corner squares with a 1px blue rim.
+    // Mac Figma: 2px selection-blue outline, 8px white corner squares with a 1px blue rim.
     for (let i = 0; i < points.length; i++) line(points[i], points[(i + 1) % points.length], 2, blue)
     if (overlay.selection.handles) for (let i = 0; i < points.length; i++) {
       const point = points[i], next = points[(i + 1) % points.length], previous = points[(i + points.length - 1) % points.length]
