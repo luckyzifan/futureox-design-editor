@@ -1,4 +1,4 @@
-import type { DesignDocument, Effect, Paint, Stroke } from './model'
+import type { DesignDocument, Effect, Paint, RulerGuide, Stroke } from './model'
 import { defaultTextStyle } from './model'
 
 type FigRecord = Record<string, any>
@@ -24,7 +24,7 @@ export function figGuides(record: FigRecord, pageId: string) {
   if (record.guides === undefined) return undefined
   if (!Array.isArray(record.guides)) throw new Error('FIG 页面参考线必须是数组；原文件未修改')
   if (record.guides.length > 1000) throw new Error('FIG 页面参考线超过 1000 条；原文件未修改')
-  return record.guides.map((guide: FigRecord, index: number) => {
+  return record.guides.map((guide: FigRecord, index: number): RulerGuide => {
     const axis = guide?.axis === 'X' || guide?.axis === 'x' ? 'x' : guide?.axis === 'Y' || guide?.axis === 'y' ? 'y' : ''
     const position = guide?.offset ?? guide?.position
     if (!axis || typeof position !== 'number' || !Number.isFinite(position) || Math.abs(position) > 1e7)
