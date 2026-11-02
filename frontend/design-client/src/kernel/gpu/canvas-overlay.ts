@@ -1,14 +1,15 @@
 import type { CanvasCamera } from '../../canvas-camera'
 import type { Point, Matrix } from '../../model'
 import { apply, multiply } from '../../geometry'
-import { measurementTicks, type MeasurementAxis } from '../../canvas-measurements'
+import { measurementTicks, SPACING_RED, type MeasurementAxis } from '../../canvas-measurements'
+import { SELECTION_BLUE, SELECTION_UNION_STROKE_PX, srgbUnit } from '../../selection-blue'
 import { CanvasLabels, type CanvasLabel } from './canvas-labels'
 
 export type CanvasGuide = { axis:'x'|'y'; position:number; start:number; end:number }
 export type CanvasOverlay = { selection?: { corners: Point[]; handles: boolean; owners?: string[] }; pixelGrid: boolean
   guides?: readonly CanvasGuide[]
-  labels?: CanvasLabel[]; measurements?: {from:Point;to:Point;axis?:MeasurementAxis}[]; transforms?:Record<string,Matrix> }
-const blue = [13 / 255, 153 / 255, 1, 1], white = [1, 1, 1, 1], spacingRed = [242 / 255, 72 / 255, 34 / 255, 1]
+  labels?: CanvasLabel[]; measurements?: {from:Point;to:Point;axis?:MeasurementAxis;tick?:boolean}[]; transforms?:Record<string,Matrix> }
+const blue = srgbUnit(SELECTION_BLUE), white = [1, 1, 1, 1], spacingRed = srgbUnit(SPACING_RED)
 
 export function translateOverlay(overlay: CanvasOverlay, offsets: Map<string, Point>): CanvasOverlay {
   const offset = (owners?: string[]) => owners?.map(id=>offsets.get(id)).find(Boolean) || {x:0,y:0}
@@ -46,6 +47,31 @@ export function overlayVertices(overlay: CanvasOverlay, view: CanvasCamera, widt
     const x = (a.y - b.y) / length * distance, y = (b.x - a.x) / length * distance
     quad([{ x: a.x + x, y: a.y + y }, { x: b.x + x, y: b.y + y }, { x: b.x - x, y: b.y - y }, { x: a.x - x, y: a.y - y }], color, { distance, halfWidth: stroke / 2 })
   }
+  /** One CSS pixel of solid color. The coverage ramp left a 1px stroke
+   * straddling a pixel boundary as two ~50% pixels and no solid #4597F7. */
+  const solidLine = (a: Point, b: Point, stroke: number, color: number[]) => {
+    const dx = b.x - a.x, dy = b.y - a.y
+    const length = Math.hypot(dx, dy)
+    if (!(length > 1e-6)) return
+    const horizontal = Math.abs(dy) <= 1e-4 * Math.max(1, length)
+    const vertical = Math.abs(dx) <= 1e-4 * Math.max(1, length)
+    if (horizontal) {
+      const y0 = Math.floor(a.y)
+      const x0 = Math.floor(Math.min(a.x, b.x))
+      const x1 = Math.floor(Math.max(a.x, b.x)) + stroke
+      quad([{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y0 + stroke }, { x: x0, y: y0 + stroke }], color)
+      return
+    }
+    if (vertical) {
+      const x0 = Math.floor(a.x)
+      const y0 = Math.floor(Math.min(a.y, b.y))
+      const y1 = Math.floor(Math.max(a.y, b.y)) + stroke
+      quad([{ x: x0, y: y0 }, { x: x0 + stroke, y: y0 }, { x: x0 + stroke, y: y1 }, { x: x0, y: y1 }], color)
+      return
+    }
+    const nx = -dy / length * (stroke / 2), ny = dx / length * (stroke / 2)
+    quad([{ x: a.x + nx, y: a.y + ny }, { x: b.x + nx, y: b.y + ny }, { x: b.x - nx, y: b.y - ny }, { x: a.x - nx, y: a.y - ny }], color)
+  }
   if (overlay.pixelGrid && view.zoom >= 4) {
     const color = [91 / 255 * .16, 88 / 255 * .16, 114 / 255 * .16, .16]
     for (let x = view.x - Math.floor(view.x / view.zoom) * view.zoom; x <= width; x += view.zoom)
@@ -55,8 +81,8 @@ export function overlayVertices(overlay: CanvasOverlay, view: CanvasCamera, widt
   }
   if (overlay.selection) {
     const points = overlay.selection.corners.map(p => ({ x: p.x * view.zoom + view.x, y: p.y * view.zoom + view.y }))
-    // Mac Figma: 2px blue outline, 8px white corner squares with a 1px blue rim.
-    for (let i = 0; i < points.length; i++) line(points[i], points[(i + 1) % points.length], 2, blue)
+    // Mac Figma gaps5: 1 CSS px of solid selection blue, snapped onto the pixel grid.
+    for (let i = 0; i < points.length; i++) solidLine(points[i], points[(i + 1) % points.length], SELECTION_UNION_STROKE_PX, blue)
     if (overlay.selection.handles) for (let i = 0; i < points.length; i++) {
       const point = points[i], next = points[(i + 1) % points.length], previous = points[(i + points.length - 1) % points.length]
       const unit = (p: Point) => { const length = Math.hypot(p.x-point.x,p.y-point.y); return length > 1e-10 ? {x:(p.x-point.x)/length,y:(p.y-point.y)/length} : undefined }
@@ -70,7 +96,7 @@ export function overlayVertices(overlay: CanvasOverlay, view: CanvasCamera, widt
   const project = (point: Point) => ({ x: point.x * view.zoom + view.x, y: point.y * view.zoom + view.y })
   for (const measurement of overlay.measurements || []) {
     line(project(measurement.from), project(measurement.to), 1, spacingRed)
-    if (measurement.axis) for (const [start, end] of measurementTicks({ from: measurement.from, to: measurement.to, axis: measurement.axis }, view.zoom))
+    if (measurement.axis && measurement.tick !== false) for (const [start, end] of measurementTicks({ from: measurement.from, to: measurement.to, axis: measurement.axis }, view.zoom))
       line(project(start), project(end), 1, spacingRed)
   }
   for (const guide of overlay.guides || []) {
