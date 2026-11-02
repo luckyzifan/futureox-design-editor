@@ -587,6 +587,30 @@ impl Engine {
         let previous_revision = self.geo_revision;
         self.geo_revision += 1;
         self.interaction_transform_revision = Some((previous_revision, self.geo_revision, transforms.keys().cloned().collect()));
+        let local_support_only = transforms.keys().all(|id| {
+            let node = &self.doc.as_ref().unwrap().nodes[id];
+            node.children.is_empty() && (!affine || node.effects.iter().all(|effect| !effect.visible))
+        });
+        if local_support_only && self.source_compile_context.is_none() {
+            if let (Some(cache),Some(index))=(&mut self.world_support,&self.render_index) {
+                if cache.revision==previous_revision {
+                    // A shared snapshot must keep its own exact certificates.
+                    // A private cache can conservatively forget moved leaves
+                    // without flattening every unrelated path on each input.
+                    if let Some(support)=Arc::get_mut(&mut cache.index) {
+                        support.invalidate_leaf_transforms(transforms.keys(),&index.parents);
+                        cache.revision=self.geo_revision;
+                        // Translations preserve halo coefficients. An affine
+                        // leaf with no visible effects is absent from
+                        // every effect path in MarginIndex, so it cannot change
+                        // that index either. Stroke support belongs to the
+                        // removed leaf/ancestor certificates and is rebuilt.
+                        // PageProperties has no placement
+                        // facts; transformed() still refreshes camera metadata.
+                    }
+                }
+            }
+        }
         if let Some(cache) = &mut self.camera_prepare {
             if affine {
                 cache.transformed(self.doc.as_ref().unwrap(), transforms.keys().cloned(), self.geo_revision, &self.render_index.as_ref().unwrap().parents);

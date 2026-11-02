@@ -7,6 +7,7 @@ import type { CanvasCamera } from '../canvas-camera'
 import type { RefObject } from 'react'
 import type { CanvasSceneBorrow } from '../canvas-scene-snapshots'
 import { documentTransitionNodeIds } from '../document-patch'
+import { TranslationPreviewPlan } from './translation-preview'
 
 export type InteractionLayer = { document: DesignDocument; roots: string[]; bounds: Bounds; moving?: string }
 export type InteractionPlan = { document: DesignDocument; pageId: string; ids: string[]; layers: InteractionLayer[]; viewport?: Bounds; parentLinear?: Map<string, number[]> }
@@ -321,22 +322,38 @@ export function interactionPoseMatrices(before: Record<string, Matrix>, after: R
 /** Conservative UI admission. Derived/layout-dependent affine edits continue
  * through Editor.preview; native repeats its own authoritative proof. */
 export function interactionAffineEligible(plan: InteractionPlan): boolean {
+  return new InteractionAffinePlan(plan).accepts(Object.fromEntries(plan.ids.map(id=>[id,{transform:plan.document.nodes[id]?.transform}])))
+}
+
+/** One immutable resident source owns this admission. Every affine pose still
+ * rechecks the constraint arithmetic at its proposed position; an admitted
+ * previous pose cannot certify the next one. Native repeats its own checks. */
+export class InteractionAffinePlan {
+  private valid=false
+  private constraints?:TranslationPreviewPlan
+  constructor(readonly plan:InteractionPlan){
   const document = plan.document, nodes = Object.values(document.nodes)
-  if (document.animations?.length || nodes.some(node => node.repeat || node.connector)) return false
+  if (document.animations?.length || nodes.some(node => node.repeat || node.connector)) return
   const parents = new Map<string, string>()
   for (const node of nodes) for (const child of node.children) parents.set(child, node.id)
-  const selected = new Set(plan.ids)
+  const selected = new Set(plan.ids);let constrained=false
   for (const id of selected) {
     let current: string | undefined = id
     while (current) {
       const node = document.nodes[current]
       if (!node || node.instance || node.instanceOrigin || node.component || node.componentSet || node.componentKey ||
           node.booleanOperation || Object.keys(node.bindings || {}).length || Object.keys(node.variableModes || {}).length ||
-          Object.keys(node.styleRefs || {}).length || node.constraints ||
+          Object.keys(node.styleRefs || {}).length ||
           current !== id && (selected.has(current) || node.layout && node.layout.mode !== 'none' ||
-            node.sizing?.width === 'hug' || node.sizing?.height === 'hug')) return false
+            node.sizing?.width === 'hug' || node.sizing?.height === 'hug')) return
+      constrained ||= !!node.constraints
       current = parents.get(current)
     }
   }
-  return true
+  if(constrained)this.constraints=new TranslationPreviewPlan(document,plan.ids)
+  this.valid=true
+  }
+  accepts(patches:Readonly<Record<string,Partial<DesignDocument['nodes'][string]>>>){
+    return this.valid&&(!this.constraints||this.constraints.acceptsAffine(patches))
+  }
 }

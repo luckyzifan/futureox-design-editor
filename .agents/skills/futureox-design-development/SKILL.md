@@ -2,6 +2,19 @@
 name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
+
+2026-11-02 [失败复核与定向修复](../../../testing/verification-rendering-audit-20261102/README.md)确认重效果、松手精修、全源首屏和模板二 3200% 仍未关闭；旧队列两例现已通过。当前原生交互只保留仍需使用且 owner 有效的图片，保留压力 fence 和未使用图片原策略。已解析 authored preview 不走 transport null 归一化；布局差量保留私有回执及全局字段身份。约束仿射逐次验证准确固定点，Rust 无效果叶节点只撤销自身及祖先支撑，描边重算、共享/效果/源上下文回退。最终三文件拖动/旋转 12 组 held/settled/fresh 零差异、完整 authored Undo 恢复；动作矩阵仍有 FIG 松手 511/825ms 和拓扑 1.55/2.07s。计量排除 ready 后 QA 快照，不把暖采样或回执代理当物理显示；33/100ms 和全 G5 未通过。字段存储候选仅留验证补丁，未增加生产开关。
+
+2026-11-01 白底与连续操作续轮见[记录](../../../testing/verification-fluid-canvas-20261101/README.md)。按用户要求将缺口改为白色，网格独立于原子图像并在400%起显示，面板独立收起。局部刚性旋转仍做原生重绘。117图片驻留ABBA未显示稳定交互收益且增加约33–37MB记账，默认自动驻留限普通SDR画布，交互仅显式1、0仍回退。区域/含内阴影裁剪的失败候选和渐变字段窗口候选保持显式启用，不以局部快样本或DOM投影关闭33/100ms及完整G2/G5。
+
+2026-11-01 相机连续呈现修复见[本轮记录](../../../testing/verification-camera-continuity-20261101/README.md)。同源 GPU 缓存、显式缺口占位、浏览器已确认图像投影与精确回执分离；预览不能推进精确完成。只可投影 GPU 完成后原子交接的不可变 ImageBitmap，禁止投影仍由 Worker 改写的 live canvas；一个可见加一个待交接图像仍计入原 display 预算。低水位观察、64 命令分段与高水位等待不授予资源回收。保留来源/chrome 身份和物理 fence；GUI、DOM、ACK、精修和全 G2/G5 分开验收。
+
+2026-11-01 局部自身滤镜拖动与源视口回访见[本轮验证](../../../testing/verification-local-drag-revisit-20261101/README.md)。已证明的单个自身滤镜前景可缩小捕获，保留完整描边/滤镜支撑，剪切、叠加滤镜及后续背景读取继续保守。原生完整源的精确请求回访缓存共享原 64 MiB 额度，最多 32 项；重新发布有效帧序号并按当前 ACK 重发资源，不缓存第二份文档。`CORE_SOURCE_REPLAY=0` 回退。117 新鲜静态呈现对照、拓扑实际回放与 Metal 浮点对照分别记录；33 ms 可见 P95、100 ms 全场景精修与完整 G2/G5 仍未关闭。
+
+2026-11-01 后续[三项复用 A/B](../../../testing/verification-raster-reuse-ab-20261101/README.md)仅在隔离源码实现描边蒙版、材质模板、已认证程序身份复用。画质逐位通过，但单项及组合均未达到5%暖态速度门，未合入运行时默认路径。测试夹具必须在池化 driver 归还前恢复 QA 包装，并断言计时帧没有 QA 像素返回。旧Gaussian速度口径已补测修正为四个命中视口约14.4%，继续保留既有自动选择；不得把未采纳的复用实验或旧16.8%作为新默认/完整G2/G5证据。
+
+2026-11-01 的拓扑模糊 A/B 与先测后合入见[本轮证据](../../../testing/verification-blur-ab-20261101/README.md)。普通 SDR Gaussian 自动在直接归约与 32–512 像素、足够面积的前缀和间选择，`VITE_DESIGN_GAUSSIAN_AUTO=0` 关闭；保留原系数、六遍、RGBA32F、四相及 4 MiB scratch 额度。异常行自动入口使用现有画布逐通道回退，HDR/精确输出禁入。RGBA16F 未达性能门，regions/reduction 仍属显式实验，不能随自动入口放开。初轮16.8%速度记录由上述修正夹具的补测替代；GPU suite 的两项基线队列测试失败、跨平台和完整 G2/G5 保留。
+
 2026-10-31 官方 Sketch 样本适配见[验证记录](../../../testing/verification-sketch-official-20261031/README.md)。74 个官方特性组及完整色板样例通过 Rust/WASM 生产往返，导出设置按索引保留来源字段。TIFF/EPS 和零倍率仅承诺 Sketch 往返保真，不承诺本编辑器可执行生成；JPG 可复用 JPEG 写出。官方归档 JSON、完整样例和原生 Sketch metadata 分别验证，不据此宣称全版本、全语义或原生像素完整兼容。
 
 2026-10-30 的稀疏画布、源准备与实时像素修复见[本轮验证](../../../testing/verification-sparse-canvas-20261030/README.md)。实时捕获必须高于实际页面质量层级，不能用固定 layer 4：原精确 layer 5 曾遮挡已生成的新像素，渲染回执变快并未消除蓝框先动。必须保留真实截图负/正对照。FXSCENE4 共享完整图片/几何并保留原始 f64 位；两 CPU 转换槽按源序合并，单 GPU owner 不变。空白复用需完整源、同 owner/颜色/密度的实际 GPU texel 证明，白色 authored paint 仍保留。四采样子树/静态前缀与高斯分条均使用原预算；新实验准入与开关不整体放开。有界捕获扩展只保留 owner-valid 输出边界，最多一原生百万像素，不授予像素复用或完整性。截图会阻塞 IPC 回执，像素回放与无截图计时分开；冷启动、100 ms 精修、可见 P95、任意嵌套/HDR 覆盖及完整 G5 尚未关闭。

@@ -25,6 +25,47 @@ vi.mock('./client', () => ({ KernelClient: class {
 
 const owners: InteractionRenderer[] = []
 afterEach(() => { owners.splice(0).forEach(owner => owner.dispose()); worker.jobs.length = 0; worker.poses.length=worker.stops.length=worker.released.length=0;worker.disposed = 0; vi.unstubAllEnvs() })
+test('reparent before the first capture preserves the original erase footprint until the exact page takes over',async()=>{
+ const doc=blank(),root=node('frame',0,0,1000,700),a=node('frame',20,30,100,100),b=node('frame',300,150,100,100),child=node('rectangle',10,10,20,20)
+ root.children=[a.id,b.id];a.children=[child.id];for(const n of [root,a,b,child])n.blend='normal'
+ doc.nodes=Object.fromEntries([root,a,b,child].map(n=>[n.id,n]));doc.pages[0].children=[root.id]
+ const owner=new InteractionRenderer(vi.fn(),new KernelClient());owners.push(owner)
+ const props:InteractionProps={document:doc,selection:[child.id],active:true,gestureKind:'move',epoch:1,control:{current:null},onReady:vi.fn()}
+ const view={x:0,y:0,zoom:1},size={width:600,height:500}
+ owner.prepare(props,doc.pages[0].id,view,1,'analytic','webgpu',undefined,size)
+ const after={...doc,nodes:{...doc.nodes,[a.id]:{...a,children:[]},[b.id]:{...b,children:[child.id]},[child.id]:{...child,transform:[1,0,0,1,12,16] as typeof child.transform}}}
+ owner.prepare({...props,document:after},doc.pages[0].id,view,1,'analytic','webgpu',undefined,size)
+ worker.jobs[0].resolve({gpuTile:701,residentInteraction:true,bytes:new Uint8Array()})
+ await vi.waitFor(()=>expect(worker.jobs).toHaveLength(2))
+ worker.jobs[1].resolve({gpuTile:702,residentInteraction:true,bytes:new Uint8Array()})
+ await vi.waitFor(()=>expect(owner.tiles[0]?.gpuTile).toBe(702))
+ const clip=owner.items(view)![0].clip!
+ expect(clip.left).toBeLessThanOrEqual(30);expect(clip.top).toBeLessThanOrEqual(40)
+ expect(clip.left+clip.width).toBeGreaterThanOrEqual(332);expect(clip.top+clip.height).toBeGreaterThanOrEqual(186)
+ expect(worker.released).toContain(701)
+ owner.prepare({...props,document:after,active:false},doc.pages[0].id,view,1,'analytic','webgpu',after,size)
+ expect((owner as any).resident?.repairBounds).toBeUndefined()
+})
+test('an active retained board keeps its complete pixels while a structural move adopts a live owner',async()=>{
+ const doc=blank(),a=node('frame',0,0,80,80),b=node('frame',200,0,300,300)
+ a.blend=b.blend='normal';doc.nodes={[a.id]:a,[b.id]:b};doc.pages[0].children=[a.id,b.id]
+ const shared=new KernelClient(),owner=new InteractionRenderer(vi.fn(),shared);owners.push(owner)
+ const view={x:0,y:0,zoom:1},size={width:600,height:400},props:InteractionProps={document:doc,selection:[a.id],active:true,epoch:1,control:{current:null},onReady:vi.fn()}
+ owner.prepare(props,doc.pages[0].id,view,1,'analytic','webgpu',doc,size)
+ for(let i=0;i<2;i++){await vi.waitFor(()=>expect(worker.jobs.length).toBeGreaterThan(i));worker.jobs[i].resolve({gpuTile:600+i,bytes:new Uint8Array()})}
+ await vi.waitFor(()=>expect(owner.ready).toBe(true))
+ owner.control.apply(doc,{[a.id]:{transform:[1,0,0,1,10,0]}})
+ const held=owner.items(view)!.map(i=>({slot:i.tile.gpuTile,placement:i.placement,blend:i.blend}))
+ const after={...doc,pages:[{...doc.pages[0],children:[b.id]}],nodes:{...doc.nodes,[b.id]:{...b,children:[a.id]},[a.id]:{...a,transform:[1,0,0,1,10,0] as typeof a.transform}}}
+ owner.prepare({...props,document:after},doc.pages[0].id,view,1,'analytic','webgpu',undefined,size)
+ expect(owner.mode).toBe('retained-layers');expect(owner.control.isActive()).toBe(true)
+ expect(owner.items(view)!.map(i=>({slot:i.tile.gpuTile,placement:i.placement,blend:i.blend}))).toEqual(held)
+ await vi.waitFor(()=>expect(worker.jobs).toHaveLength(3));worker.jobs[2].resolve({gpuTile:602,residentInteraction:true,bytes:new Uint8Array()})
+ await vi.waitFor(()=>expect(owner.tiles[0].gpuTile).toBe(602))
+ expect(owner.mode).toBe('live-kernel')
+ expect(owner.control.apply(after,{[a.id]:{transform:[1,0,0,1,12,0]}})).not.toBeNull()
+ expect(worker.poses.at(-1)?.[0]).toBe(602)
+})
 test('reparent capture queues new-basis poses while holding old pixels at their original placement',async()=>{
  const doc=blank(),root=node('frame',0,0,1000,700),a=node('frame',20,30,100,100),b=node('frame',300,150,100,100),child=node('rectangle',10,10,20,20)
  b.transform=[2,0,0,3,300,150];root.children=[a.id,b.id];a.children=[child.id]
@@ -48,6 +89,110 @@ test('reparent capture queues new-basis poses while holding old pixels at their 
  expect(owner.control.apply(after,patches)).toMatchObject({x:8,y:18})
  expect(worker.poses.at(-1)?.[0]).toBe(502);expect(worker.jobs).toHaveLength(2)
  expect(owner.control.apply(doc,patches)).toBeNull()
+})
+test('structural move retains capture-owned chrome and asks the worker for its frozen old parent basis',async()=>{
+ const doc=blank(),root=node('frame',0,0,1000,700),a=node('frame',20,30,100,100),b=node('frame',300,150,100,100),child=node('rectangle',10,10,20,20)
+ b.transform=[2,0,0,3,300,150];root.children=[a.id,b.id];a.children=[child.id]
+ doc.nodes=Object.fromEntries([root,a,b,child].map(n=>[n.id,n]));doc.pages[0].children=[root.id]
+ const owner=new InteractionRenderer(vi.fn(),new KernelClient());owners.push(owner)
+ const props:InteractionProps={document:doc,selection:[child.id],active:true,gestureKind:'move',epoch:1,control:{current:null},onReady:vi.fn()}
+ const view={x:0,y:0,zoom:1},size={width:600,height:500},commands={pixelGrid:false,transforms:{[child.id]:child.transform},
+  selection:{owners:[child.id],handles:true,corners:[{x:30,y:40},{x:50,y:40},{x:50,y:60},{x:30,y:60}]},measurements:[]}
+ owner.prepare(props,doc.pages[0].id,view,1,'analytic','webgpu',undefined,size,{document:doc,pageId:doc.pages[0].id,epoch:1,uiIdentity:'same-ui',commands})
+ worker.jobs[0].resolve({gpuTile:503,residentInteraction:true,bytes:new Uint8Array()});await vi.waitFor(()=>expect(owner.ready).toBe(true))
+ const after={...doc,nodes:{...doc.nodes,[a.id]:{...a,children:[]},[b.id]:{...b,children:[child.id]},[child.id]:{...child,transform:[1,0,0,1,12,16] as typeof child.transform}}}
+ const newer={...commands,transforms:{[child.id]:after.nodes[child.id].transform},selection:{...commands.selection,corners:commands.selection.corners.map(p=>({x:p.x+300,y:p.y+150}))}}
+ owner.prepare({...props,document:after},doc.pages[0].id,view,1,'analytic','webgpu',undefined,size)
+ const held=owner.capturedOverlay(after,doc.pages[0].id,1,newer,'same-ui')!
+ expect(held.commands).toEqual(commands);expect(held.overlayPoseSlot).toBe(503);expect(held.cohort?.slots).toEqual([503])
+ expect(worker.stops).toContain(503)
+ expect(owner.capturedOverlay(after,doc.pages[0].id,1,newer,'changed-ui')?.commands).toBeUndefined()
+ expect(owner.capturedOverlay(after,doc.pages[0].id,2,newer,'same-ui')?.commands).toBeUndefined()
+ worker.jobs[1].resolve({gpuTile:504,residentInteraction:true,bytes:new Uint8Array()});await vi.waitFor(()=>expect(owner.tiles[0].gpuTile).toBe(504))
+ expect(owner.capturedOverlay(after,doc.pages[0].id,1,newer,'same-ui')?.cohort?.slots).not.toEqual([503])
+})
+test('retiring a committed live preview notifies Canvas once so its interactionPreview flag cannot stay latched',async()=>{
+ const doc=blank(),root=node('frame',0,0,200,200),child=node('rectangle',10,10,20,20)
+ root.children=[child.id];doc.nodes={[root.id]:root,[child.id]:child};doc.pages[0].children=[root.id]
+ const ready=vi.fn(),owner=new InteractionRenderer(vi.fn(),new KernelClient());owners.push(owner)
+ const props:InteractionProps={document:doc,selection:[child.id],active:true,epoch:1,control:{current:null},onReady:ready},view={x:0,y:0,zoom:1},size={width:400,height:300}
+ owner.prepare(props,doc.pages[0].id,view,1,'analytic','webgpu',undefined,size)
+ worker.jobs[0].resolve({gpuTile:620,residentInteraction:true,bytes:new Uint8Array()});await vi.waitFor(()=>expect(owner.ready).toBe(true))
+ const after={...doc,nodes:{...doc.nodes,[child.id]:{...child,transform:[1,0,0,1,16,10] as typeof child.transform}}}
+ owner.control.apply(doc,{[child.id]:{transform:after.nodes[child.id].transform}});owner.control.end(after)
+ const final={...props,document:after,active:false};owner.prepare(final,doc.pages[0].id,view,1,'analytic','webgpu',undefined,size)
+ expect(owner.control.isActive()).toBe(true);ready.mockClear()
+ owner.prepare(final,doc.pages[0].id,view,1,'analytic','webgpu',after,size)
+ expect(owner.control.isActive()).toBe(false);expect(ready).toHaveBeenCalledOnce()
+ owner.prepare(final,doc.pages[0].id,view,1,'analytic','webgpu',after,size);expect(ready).toHaveBeenCalledOnce()
+})
+test('a warm native pose after commit and undo carries its submitted document order above the settled page',async()=>{
+ const doc=blank(),root=node('frame',0,0,200,200),child=node('rectangle',10,10,20,20)
+ root.children=[child.id];doc.nodes={[root.id]:root,[child.id]:child};doc.pages[0].children=[root.id]
+ const owner=new InteractionRenderer(vi.fn(),new KernelClient());owners.push(owner)
+ const props:InteractionProps={document:doc,selection:[child.id],active:true,epoch:1,control:{current:null},onReady:vi.fn()},view={x:0,y:0,zoom:1},size={width:400,height:300}
+ const prepare=(document=doc,active=true,settled?:typeof doc)=>owner.prepare({...props,document,active},doc.pages[0].id,view,1,'analytic','webgpu',settled,size)
+ prepare();worker.jobs[0].resolve({gpuTile:630,residentInteraction:true,bytes:new Uint8Array()});await vi.waitFor(()=>expect(owner.ready).toBe(true))
+ const transform=[1,0,0,1,16,10] as typeof child.transform,after={...doc,nodes:{...doc.nodes,[child.id]:{...child,transform}}}
+ owner.control.apply(doc,{[child.id]:{transform}});owner.acceptResidentSample({slot:630,sequence:owner.moves,at:0})
+ owner.control.end(after);prepare(after,false,after);expect(owner.items(view)).toBeNull()
+ prepare(doc,false,doc);prepare(doc,true,doc)
+ owner.control.apply(doc,{[child.id]:{transform:[1,0,0,1,20,10]}})
+ expect(owner.items(view)).toBeNull() // Prior capture is still behind the undo.
+ owner.acceptResidentSample({slot:630,sequence:owner.moves,at:0})
+ expect(owner.items(view)?.[0].tile.gpuTile).toBe(630)
+ // A new authored edit owns a later page floor; an older pending sample must
+ // keep its old order even if it arrives after that edit is complete.
+ owner.control.apply(doc,{[child.id]:{transform:[1,0,0,1,22,10]}});const late=owner.moves
+ prepare(after,false,after)
+ owner.acceptResidentSample({slot:630,sequence:late,at:0})
+ expect(owner.items(view)).toBeNull()
+})
+test('a dependency capture completing after release retires even when it has adopted the final document',async()=>{
+ const doc=blank(),root=node('frame',0,0,200,200),child=node('rectangle',10,10,20,20)
+ root.children=[child.id];doc.nodes={[root.id]:root,[child.id]:child};doc.pages[0].children=[root.id]
+ const ready=vi.fn(),owner=new InteractionRenderer(vi.fn(),new KernelClient());owners.push(owner)
+ const props:InteractionProps={document:doc,selection:[child.id],active:true,epoch:1,control:{current:null},onReady:ready},view={x:0,y:0,zoom:1},size={width:400,height:300}
+ const prepare=(document=doc,active=true,settled?:typeof doc)=>owner.prepare({...props,document,active},doc.pages[0].id,view,1,'analytic','webgpu',settled,size)
+ prepare();worker.jobs[0].resolve({gpuTile:640,bytes:new Uint8Array()});await vi.waitFor(()=>expect(owner.ready).toBe(true))
+ const after={...doc,nodes:{...doc.nodes,[child.id]:{...child,width:21}}}
+ prepare(after);owner.control.end(after);prepare(after,false)
+ worker.jobs[1].resolve({gpuTile:641,bytes:new Uint8Array()});await vi.waitFor(()=>expect(owner.tiles[0].gpuTile).toBe(641))
+ expect(owner.control.isActive()).toBe(true);ready.mockClear()
+ prepare(after,false,after);expect(owner.control.isActive()).toBe(false);expect(ready).toHaveBeenCalledOnce()
+})
+test('a single-node translation capture freezes its own projected chrome before a newer input arrives',async()=>{
+ const doc=blank(),root=node('frame',0,0,200,200),child=node('rectangle',10,10,20,20)
+ root.children=[child.id];doc.nodes={[root.id]:root,[child.id]:child};doc.pages[0].children=[root.id]
+ const owner=new InteractionRenderer(vi.fn(),new KernelClient());owners.push(owner)
+ const props:InteractionProps={document:doc,selection:[child.id],active:true,gestureKind:'move',epoch:1,control:{current:null},onReady:vi.fn()},view={x:0,y:0,zoom:1},size={width:400,height:300}
+ const commands={pixelGrid:false,transforms:{[child.id]:child.transform},selection:{owners:[child.id],handles:true,corners:[{x:10,y:10},{x:30,y:10},{x:30,y:30},{x:10,y:30}]},measurements:[]}
+ const overlay={document:doc,pageId:doc.pages[0].id,epoch:1,uiIdentity:'selection',commands}
+ owner.prepare(props,doc.pages[0].id,view,1,'analytic','webgpu',undefined,size,overlay)
+ worker.jobs[0].resolve({gpuTile:650,bytes:new Uint8Array()});await vi.waitFor(()=>expect(owner.ready).toBe(true))
+ owner.control.apply(doc,{[child.id]:{transform:[1,0,0,1,20,10]}})
+ await vi.waitFor(()=>expect(worker.jobs).toHaveLength(2))
+ owner.control.apply(doc,{[child.id]:{transform:[1,0,0,1,40,10]}})
+ worker.jobs[1].resolve({gpuTile:651,bytes:new Uint8Array()});await vi.waitFor(()=>expect(owner.tiles[0].gpuTile).toBe(651))
+ const captured=owner.capturedOverlay(doc,doc.pages[0].id,1,commands,'selection')!
+ expect(captured.commands?.selection?.corners[0]).toEqual({x:20,y:10})
+ expect(captured.commands?.transforms?.[child.id]).toEqual([1,0,0,1,20,10])
+ expect(captured.cohort?.slots).toEqual([651])
+ expect(owner.capturedOverlay(doc,doc.pages[0].id,1,commands,'changed-ui')?.commands).toBeUndefined()
+})
+test('undo after a dependency edit replaces the live lease instead of reusing an obsolete pending layer marker',async()=>{
+ const doc=blank(),root=node('frame',0,0,200,200),child=node('rectangle',10,10,20,20)
+ root.children=[child.id];doc.nodes={[root.id]:root,[child.id]:child};doc.pages[0].children=[root.id]
+ const owner=new InteractionRenderer(vi.fn(),new KernelClient());owners.push(owner)
+ const props:InteractionProps={document:doc,selection:[child.id],active:true,gestureKind:'move',epoch:1,control:{current:null},onReady:vi.fn()},view={x:0,y:0,zoom:1},size={width:400,height:300}
+ const prepare=(document=doc,active=true,settled?:typeof doc)=>owner.prepare({...props,document,active},doc.pages[0].id,view,1,'analytic','webgpu',settled,size)
+ prepare();worker.jobs[0].resolve({gpuTile:660,bytes:new Uint8Array()});await vi.waitFor(()=>expect(owner.ready).toBe(true))
+ const after={...doc,nodes:{...doc.nodes,[child.id]:{...child,width:21}}}
+ prepare(after);owner.control.end(after);prepare(after,false)
+ worker.jobs[1].resolve({gpuTile:661,bytes:new Uint8Array()});await vi.waitFor(()=>expect(owner.tiles[0].gpuTile).toBe(661))
+ prepare(after,false,after);prepare(doc,false,doc)
+ expect(owner.control.apply(doc,{[child.id]:{transform:[1,0,0,1,18,10]}})).not.toBeNull()
+ expect(owner.control.isActive()).toBe(true)
 })
 test('a new complete retained gesture cancels prior canvas repair, including immediate regrab during handoff',async()=>{
  vi.stubEnv('VITE_DESIGN_RETAINED_INPUT_PRIORITY','1')
@@ -845,6 +990,25 @@ test.each([.1,.3953125])('native-density retained pixels keep camera phase even 
  expect(Number.isInteger(placement.left*dpr)).toBe(true);expect(Number.isInteger(placement.top*dpr)).toBe(true)
 })
 
+test('low-zoom nested text keeps the actual camera phase and bounds native preparation to the local capture',()=>{
+ const doc=blank(),root=node('frame',10600,1600,1200,900),selected=node('text',584,558,83,20)
+ root.blend='normal';root.clip=true;root.children=[selected.id];selected.effects=[];selected.strokes=[]
+ doc.nodes[root.id]=root;doc.nodes[selected.id]=selected;doc.pages[0].children=[root.id]
+ const owner=new InteractionRenderer(vi.fn(),new KernelClient(),true);owners.push(owner)
+ const view={x:-942.011,y:163.504,zoom:.122},dpr=2
+ owner.prepare({document:doc,selection:[selected.id],active:true,epoch:1,control:{current:null},onReady(){}},doc.pages[0].id,
+   view,dpr,'figmaSubpixel','webgpu',undefined,{width:855,height:856})
+ const options=worker.jobs.at(-1).options
+ expect(options.interactionNative).toBe(true)
+ expect(options.captureViewport).toEqual({x:0,y:0,w:options.width,h:options.height})
+ expect(options.view.zoom).toBe(view.zoom*dpr)
+ expect(options.view.x-Math.floor(options.view.x)).toBeCloseTo(view.x*dpr-Math.floor(view.x*dpr),10)
+ const r=(owner as any).resident,b=r.rootBounds.get(selected.id)
+ // Capture window includes the existing 16 world-unit dependency margin and
+ // uses the very same translated camera as the compiled source geometry.
+ expect(options.interactionWindow.x).toBeCloseTo((b.x-16)*options.view.zoom+options.view.x,10)
+})
+
 
 test('page translation hands fractional native motion to the GPU renderer without losing its last complete pose', async () => {
   const doc = blank(), root = node('frame', 0, 0, 10, 10)
@@ -923,6 +1087,18 @@ function pendingRetainedFixture(active = true, diagnostic?:PoseDiagnostics) {
   const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve() }
   return { doc, root, child, owner, shared, props, view, prepare, transform, flush }
 }
+
+test('a live rotation prioritizes input only while the exact current page still owns its viewport',()=>{
+ const f=pendingRetainedFixture(),cancel=vi.spyOn(f.shared,'cancelPreview')
+ f.owner.prepare(f.props,f.doc.pages[0].id,f.view,2,'figmaSubpixel','webgpu',f.doc,{width:240,height:180})
+ expect(f.owner.control.apply(f.doc,{[f.child.id]:{transform:[0,1,-1,0,60,40]}})).not.toBeNull()
+ expect(cancel).toHaveBeenCalledWith('canvas')
+ expect(f.owner.control.blocksCanvasRefinement?.(f.doc,[f.child.id],f.view)).toBe(true)
+ expect(f.owner.control.blocksCanvasRefinement?.({...f.doc},[f.child.id],f.view)).toBe(false)
+ expect(f.owner.control.blocksCanvasRefinement?.(f.doc,[f.child.id],{...f.view,zoom:2})).toBe(false)
+ f.owner.prepare({...f.props,epoch:2},f.doc.pages[0].id,f.view,2,'figmaSubpixel','webgpu',undefined,{width:240,height:180})
+ expect(f.owner.control.blocksCanvasRefinement?.(f.doc,[f.child.id],f.view)).toBe(false)
+})
 
 test('first retained capture transfers its latest queued pure translation to the same worker slot without a second capture', async () => {
   const f = pendingRetainedFixture(), original = JSON.stringify(f.doc), first = worker.jobs[0]
@@ -1275,7 +1451,7 @@ test.each(['dispose','epoch','selection'] as const)('renderer %s retires pending
  expect(rows.filter(r=>r.poseStage===5)).toHaveLength(1)
 })
 
-test('rotation coalesces full native captures, presents only rendered affine feedback, and hands off before React props catch up', async () => {
+test('rotation coalesces local native captures, presents only rendered affine feedback, and hands off before React props catch up', async () => {
   const f = pendingRetainedFixture(), feedback = vi.fn(); f.props.onPosePresented = feedback
   worker.jobs[0].resolve({ gpuTile: 980, residentInteraction: true }); await f.flush()
   const first = [0, 1, -1, 0, 60, 40] as typeof f.child.transform
@@ -1284,8 +1460,8 @@ test('rotation coalesces full native captures, presents only rendered affine fee
   expect(worker.stops).toContain(980)
   expect(worker.jobs).toHaveLength(2)
   expect(worker.jobs[1].options).toMatchObject({ interactionNative: true, interactionAffine: true, interactionWindowFixed: true })
-  expect(worker.jobs[1].options.interactionWindow.w).toBe(480)
-  expect(worker.jobs[1].options.interactionWindow.h).toBe(360)
+  expect(worker.jobs[1].options.interactionWindow.w).toBeLessThan(480)
+  expect(worker.jobs[1].options.interactionWindow.h).toBeLessThan(360)
   f.owner.control.apply(f.doc, { [f.child.id]: { transform: latest } })
   f.owner.acceptPresentedInput(2)
   expect(feedback).not.toHaveBeenCalled()
@@ -1470,7 +1646,9 @@ test('an in-flight translation-localized warm capture cannot ACK or clip the fir
  // The worker explicitly declines the old translation-localized lease.
  f.owner.acceptResidentSample({slot:984,sequence:1,at:0,needsRebase:true})
  expect(worker.jobs).toHaveLength(2)
- expect(worker.jobs[1].options).toMatchObject({interactionAffine:true,interactionNative:true,interactionWindow:{w:480,h:360}})
+ expect(worker.jobs[1].options).toMatchObject({interactionAffine:true,interactionNative:true})
+ expect(worker.jobs[1].options.interactionWindow.w).toBeLessThan(480)
+ expect(worker.jobs[1].options.interactionWindow.h).toBeLessThan(360)
  worker.jobs[1].resolve({gpuTile:985,residentInteraction:true});await f.flush()
  expect(f.owner.presentedInput.sequence).toBe(1)
  f.owner.acceptPresentedInput(1);expect(feedback).toHaveBeenCalledOnce()

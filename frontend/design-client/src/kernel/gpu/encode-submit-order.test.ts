@@ -16,7 +16,7 @@ function fixture(captureDisplay = true) {
   const events: string[] = []
   let current = true
   const driver = {
-    scratchBytes: 0, captureDisplay,
+    scratchBytes: 0, captureDisplay, drawCalls: 0,
     submitPending: vi.fn(() => { events.push('submit') }),
     dispose: vi.fn(), destroy: vi.fn(),
   } as unknown as Driver
@@ -73,6 +73,19 @@ test('the unexpired encoding window keeps the synchronous no-yield path', () => 
   expect(f.driver.submitPending).not.toHaveBeenCalled()
 })
 
+test('a full display command slice yields even when the CPU time window has not expired', async () => {
+  const f = fixture()
+  vi.spyOn(performance, 'now').mockReturnValue(100)
+  f.internal.encodeYield.begin()
+  f.driver.rasterPacing = true
+  f.driver.drawCalls = 64
+  const pending = f.internal.yieldEncoding()
+  expect(pending).toBeInstanceOf(Promise)
+  await pending
+  expect(f.driver.submitPending).toHaveBeenCalledOnce()
+  expect(f.internal.yieldEncoding()).toBeUndefined()
+})
+
 test('disabled submit still yields and checks cancellation without sending work', async () => {
   vi.stubEnv('VITE_DESIGN_ENCODE_SUBMIT', '0')
   const f = fixture()
@@ -102,6 +115,7 @@ test('submission errors propagate from the resumed task after freshness was chec
 test.each([false, true])('canvas queue pacing observes late cancellation=%s before more encoding', async cancelled => {
   vi.stubEnv('VITE_DESIGN_RASTER_BACKPRESSURE', '1')
   const f = fixture()
+  ;(f.internal as unknown as { displayBackpressure: boolean }).displayBackpressure = true
   let finish!: () => void
   f.driver.yieldRasterQueue = vi.fn(() => new Promise<void>(resolve => { finish = resolve }))
   const pending = f.internal.yieldEncoding()

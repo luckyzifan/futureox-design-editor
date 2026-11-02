@@ -2,6 +2,19 @@
 name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
+
+2026-11-02 [失败复核与定向修复](../../../testing/verification-rendering-audit-20261102/README.md)确认重效果、松手精修、全源首屏和模板二 3200% 仍未关闭；旧队列两例现已通过。当前原生交互只保留仍需使用且 owner 有效的图片，保留压力 fence 和未使用图片原策略。已解析 authored preview 不走 transport null 归一化；布局差量保留私有回执及全局字段身份。约束仿射逐次验证准确固定点，Rust 无效果叶节点只撤销自身及祖先支撑，描边重算、共享/效果/源上下文回退。最终三文件拖动/旋转 12 组 held/settled/fresh 零差异、完整 authored Undo 恢复；动作矩阵仍有 FIG 松手 511/825ms 和拓扑 1.55/2.07s。计量排除 ready 后 QA 快照，不把暖采样或回执代理当物理显示；33/100ms 和全 G5 未通过。字段存储候选仅留验证补丁，未增加生产开关。
+
+2026-11-01 [连续操作续轮](../../../testing/verification-fluid-canvas-20261101/README.md)保留白底、独立400%网格及自适应面板的真实UI验证。图片驻留的交互默认策略按ABBA收紧；完整画面、位姿和像素来源约束不变。局部旋转可降低工作量，但重效果仍有秒级尾延迟。发生像素差异的区域/内阴影裁剪没有默认采用；渐变字段窗口仍为独立候选。不得将这些结果说成所有操作丝滑或完整G2/G5通过。
+
+2026-11-01 相机连续呈现修复见[本轮记录](../../../testing/verification-camera-continuity-20261101/README.md)。缺口占位和图像投影必须显式为预览，保留文档/页/session/chrome 与精确 ACK 边界。投影只用于 GPU 完成后原子交接的不可变图像；live canvas 的 CSS 双移失败须保留，不能用 DOM 延迟代替逐帧像素。可见/待交接图像计入原预算，64 命令分段和高水位观察保留资源 fence。GUI、DOM、ACK、精修各自报告，不关闭全源首屏或完整 G2/G5。
+
+2026-11-01 局部自身滤镜拖动与源视口回访见[本轮验证](../../../testing/verification-local-drag-revisit-20261101/README.md)。已证明的单个自身滤镜前景可缩小捕获，保留完整描边/滤镜支撑，剪切、叠加滤镜及后续背景读取继续保守。原生完整源的精确请求回访缓存共享原 64 MiB 额度，最多 32 项；重新发布有效帧序号并按当前 ACK 重发资源，不缓存第二份文档。`CORE_SOURCE_REPLAY=0` 回退。117 新鲜静态呈现对照、拓扑实际回放与 Metal 浮点对照分别记录；33 ms 可见 P95、100 ms 全场景精修与完整 G2/G5 仍未关闭。
+
+2026-11-01 后续[三项复用 A/B](../../../testing/verification-raster-reuse-ab-20261101/README.md)的描边蒙版、材质模板、程序身份候选及组合均未过5%速度门，保持隔离、不得描述为已默认启用。四相与像素逐位检查、HDR/精确入口分别通过。池化 driver 的 QA 包装必须恢复，计时阶段断言无QA像素返回；修正夹具后既有Gaussian自动选择四个命中视口约14.4%，替代旧速度口径，不代表全应用或完整G2/G5。
+
+2026-11-01 拓扑模糊先测后合入见[本轮证据](../../../testing/verification-blur-ab-20261101/README.md)。仅普通 SDR Gaussian 的直接/前缀和自动选择默认开启，`VITE_DESIGN_GAUSSIAN_AUTO=0` 回退；保留原核、六遍、RGBA32F、四相、输出密度及预算，HDR/精确输出禁入。RGBA16F 未达到预定提速门；缩小工作面仅有局部/隔离证据，旧 regions/reduction 开关保持显式启用。初轮16.8%速度记录由上述补测替代；两项可在基线复现的GPU suite队列测试失败保留，不关闭完整G2/G5。
+
 2026-10-30 的稀疏画布、源准备与实时像素修复见[本轮验证](../../../testing/verification-sparse-canvas-20261030/README.md)。实时捕获必须高于实际页面质量层级，不能用固定 layer 4：原精确 layer 5 曾遮挡已生成的新像素，渲染回执变快并未消除蓝框先动。必须保留真实截图负/正对照。FXSCENE4 共享完整图片/几何并保留原始 f64 位；两 CPU 转换槽按源序合并，单 GPU owner 不变。空白复用需完整源、同 owner/颜色/密度的实际 GPU texel 证明，白色 authored paint 仍保留。四采样子树/静态前缀与高斯分条均使用原预算；新实验准入与开关不整体放开。有界捕获扩展只保留 owner-valid 输出边界，最多一原生百万像素，不授予像素复用或完整性。截图会阻塞 IPC 回执，像素回放与无截图计时分开；冷启动、100 ms 精修、可见 P95、任意嵌套/HDR 覆盖及完整 G5 尚未关闭。
 
 

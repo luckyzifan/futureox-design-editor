@@ -13,6 +13,21 @@ function fixture(affine=false){
  return {d,board,frame,child}
 }
 
+test('a GPU-only move seeds the resolved translation plan before release without publishing or re-resolving layout',()=>{
+ const f=fixture(),e=new Editor(f.d),id=f.child.id,oracle=new Editor(f.d)
+ const calls=vi.spyOn(VectorEngine.prototype,'resolve_components_patch')
+ try{
+  for(const editor of [e,oracle]){editor.select([id]);editor.begin('Move')}
+  const before=e.state.doc,move={ids:[id],point:{x:79,y:40},force:false,preserveParent:false}
+  const patches={[id]:{transform:[1,0,0,1,25,0] as typeof f.child.transform}}
+  calls.mockClear();expect(e.canvasMovePreview(patches,move).retainsParents).toBe(true)
+  expect(e.state.doc).toBe(before);expect(calls).not.toHaveBeenCalled()
+  expect(e.preview(patches,move)).toBe(true);expect(calls).not.toHaveBeenCalled()
+  oracle.preview(patches,move);expect(e.state.doc).toEqual(oracle.state.doc)
+  e.commit();const final=e.state.doc;e.undo();expect(e.state.doc).toEqual(before);e.redo();expect(e.state.doc).toEqual(final)
+ }finally{calls.mockRestore();e.dispose();oracle.dispose()}
+})
+
 test.each([false,true])('same-parent placement reuses its resolved base and matches the uncached native path (affine=%s)',affine=>{
  const f=fixture(affine),a=new Editor(f.d),b=new Editor(f.d),id=f.child.id
  const calls=vi.spyOn(VectorEngine.prototype,'resolve_components_patch')

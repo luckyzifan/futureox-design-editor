@@ -47,6 +47,50 @@ function fixture() {
     setRequest(value: boolean) { requestCurrent = value } }
 }
 
+test('native pose ownership reuses needed images without retaining unused region assets',async()=>{
+ const f=fixture();vi.stubEnv('VITE_DESIGN_IMAGE_ASSET_RESIDENCY','0')
+ f.renderer.residentImageRequest=true
+ await f.region([A,B]);const a=f.renderer.imageFor(A),b=f.renderer.imageFor(B)
+ f.renderer.residentImageRequest=false;f.renderer.frameImageReuse=true
+ await f.region([A])
+ expect(f.renderer.imageFor(A)).toBe(a);expect(f.renderer.images.has(B)).toBe(false)
+ expect(f.driver.destroy).toHaveBeenCalledWith(b.texture);expect(f.driver.uploadLinear).toHaveBeenCalledTimes(2)
+ expect(f.renderer.imageAssetCounters.scopeRetiredTextures).toBe(0)
+ f.context={...f.context,scope:'replacement'};f.setPixels(.75)
+ await f.region([A]);expect(f.renderer.imageFor(A).texture).not.toBe(a.texture)
+ expect(f.uploaded.at(-1)!.pixels).toEqual(new Float32Array(16).fill(.75))
+ f.renderer.dispose()
+})
+
+test.each([false,true])('current native image preservation=%s keeps the hard budget and avoids phase-by-phase reupload',async preserve=>{
+ const f=fixture();vi.stubEnv('VITE_DESIGN_IMAGE_ASSET_RESIDENCY','0')
+ Object.assign(f.driver,{captureDisplay:true});f.renderer.frameImageReuse=preserve
+ await f.region([A]);Object.assign(f.renderer.scene,{nativeInteraction:true,interactionRetained:true})
+ f.renderer.frameBudget=70;const a=f.renderer.imageFor(A)
+ for(let phase=1;phase<4;phase++){await f.renderer.reclaimScratch();f.renderer.imageFor(A)}
+ expect(f.driver.uploadLinear).toHaveBeenCalledTimes(preserve?1:4)
+ expect(f.renderer.bytes).toBe(64);expect(f.renderer.frameBudget).toBe(70)
+ if(preserve){
+  expect(f.driver.checkpoint).not.toHaveBeenCalled();expect(f.driver.destroy).not.toHaveBeenCalled()
+  let finish!:()=>void;f.driver.checkpoint.mockImplementationOnce(()=>new Promise<void>(resolve=>{finish=resolve}))
+  const pressure=f.renderer.reclaimScratch(16)
+  expect(f.driver.checkpoint).toHaveBeenCalledOnce();expect(f.renderer.images.get(A)).toBe(a)
+  expect(f.driver.destroy).not.toHaveBeenCalled();finish();await pressure
+  expect(f.renderer.images.has(A)).toBe(false);expect(f.driver.destroy).toHaveBeenCalledWith(a.texture)
+  expect(f.renderer.frameBudget).toBe(70)
+ }
+ f.renderer.dispose()
+})
+
+test('current-frame retention declines an anonymous loader instead of inventing source ownership',async()=>{
+ const f=fixture();vi.stubEnv('VITE_DESIGN_IMAGE_ASSET_RESIDENCY','0')
+ f.renderer.managedImageLoader=()=>({width:2,height:2,pixels:new Float32Array(16)})
+ f.renderer.frameImageReuse=true;await f.region([A]);expect(f.renderer.frameImageReuse).toBe(false)
+ const a=f.renderer.imageFor(A);f.renderer.frameImageReuse=true;await f.region([B])
+ expect(f.renderer.images.has(A)).toBe(false);expect(f.driver.destroy).toHaveBeenCalledWith(a.texture)
+ f.renderer.dispose()
+})
+
 test('same private owner retains exact GPU assets for region A -> B -> A without a third upload or new range proof', async () => {
   const f = fixture()
   await f.region([A]); const a = f.renderer.imageFor(A)
@@ -363,4 +407,53 @@ test.each([false, true])('abort completion failure=%s only retires the covered a
   if (!fail) expect(f.driver.destroy).toHaveBeenCalledWith(a.texture)
   expect(f.renderer.retiredImageAssets.size).toBe(fail ? 1 : 0)
   expect(f.renderer.bytes).toBe(fail ? 64 : 0)
+})
+
+test('resident display admission retains only proven same-owner uploads across regional omissions',async()=>{
+ const f=fixture();vi.stubEnv('VITE_DESIGN_IMAGE_ASSET_RESIDENCY','0');f.renderer.residentImageRequest=true
+ await f.region([A]);const first=f.renderer.imageFor(A)
+ await f.region([B]);f.renderer.imageFor(B)
+ await f.region([A]);expect(f.renderer.imageFor(A)).toBe(first)
+ expect(f.driver.uploadLinear).toHaveBeenCalledTimes(2)
+ f.setOwner(false);expect(()=>f.renderer.imageFor(A)).toThrow('PREVIEW_CANCELLED')
+ expect(f.renderer.images.size).toBe(0)
+})
+
+test.each([
+ {name:'canvas default',retained:false,expected:true},
+ {name:'interaction default',retained:true,expected:false},
+ {name:'explicit interaction opt-in',retained:true,flag:'1',expected:true},
+ {name:'explicit canvas fallback',retained:false,flag:'0',expected:false},
+ {name:'exact readback',retained:false,readback:true,expected:false},
+ {name:'HDR output',retained:false,hdr:true,expected:false},
+])('image residency request policy preserves $name boundary',async row=>{
+ const f=fixture(),stop=Error('policy boundary inspected')
+ vi.stubEnv('VITE_DESIGN_RESIDENT_IMAGE_REUSE',row.flag)
+ Object.assign(f.driver,{captureDisplay:true,hdr:!!row.hdr})
+ const inspect=vi.spyOn(f.renderer,'painterStagesEnabled').mockImplementation(()=>{
+  expect(f.renderer.residentImageRequest).toBe(row.expected);throw stop
+ })
+ await expect(f.renderer.render({...scene([]),interactionRetained:row.retained},!!row.readback,true)).rejects.toBe(stop)
+ expect(inspect).toHaveBeenCalledOnce()
+ expect(f.driver.uploadLinear).not.toHaveBeenCalled()
+})
+
+test.each([
+ {name:'owned native pose',native:true,retained:true,expected:true},
+ {name:'non-native capture',native:false,retained:true,expected:false},
+ {name:'ordinary canvas',native:true,retained:false,expected:false},
+ {name:'explicit fallback',native:true,retained:true,flag:'0',expected:false},
+ {name:'exact readback',native:true,retained:true,readback:true,expected:false},
+ {name:'HDR',native:true,retained:true,hdr:true,expected:false},
+])('current-image reuse request preserves $name boundary',async row=>{
+ const f=fixture(),stop=Error('current image policy inspected')
+ vi.stubEnv('VITE_DESIGN_RESIDENT_IMAGE_REUSE',row.flag)
+ Object.assign(f.driver,{captureDisplay:true,hdr:!!row.hdr})
+ vi.spyOn(f.renderer,'painterStagesEnabled').mockImplementation(()=>{
+  expect(f.renderer.frameImageReuse).toBe(row.expected);throw stop
+ })
+ await expect(f.renderer.render({...scene([]),nativeInteraction:row.native,interactionRetained:row.retained},!!row.readback,true)).rejects.toBe(stop)
+ expect(f.renderer.frameImageReuse).toBe(false)
+ expect(f.driver.uploadLinear).not.toHaveBeenCalled()
+ f.renderer.dispose()
 })

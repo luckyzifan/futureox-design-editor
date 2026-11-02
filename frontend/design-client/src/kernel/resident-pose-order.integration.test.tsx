@@ -26,6 +26,7 @@ vi.mock('./gpu/factory',()=>({straightAlpha:(bytes:Uint8Array)=>bytes,
     abortFrameAndReleaseFilterScratch:async()=>{}},
     async render(scene:any){state.renders++;if(state.renderGate){state.renderBlocked=true;await state.renderGate}
       return {gpuTile:state.presenter.capture(scene.width,scene.height).id,drawCalls:0,triangles:0}},
+    hasUploadedImageSource:()=>false,
     dispose(){state.presenter?.dispose();state.presenter=undefined;state.gpu=undefined},abortFrameAndReleaseFilterScratch:async()=>{},releaseFilterBatch(){}})
 }))
 const real117Input=process.env.CORE_ROTATION_117_INPUT

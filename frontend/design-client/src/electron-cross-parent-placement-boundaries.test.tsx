@@ -223,9 +223,9 @@ test('placement negative: overlapping original frames stay on existing pointer p
  const {p,a,b}=await freeFixture('overlap'),before=editor.state.doc
  await drag(a.id,5,5);delta(before,a.id,5,5);delta(before,b.id,5,5);expect(parent(a.id)).toBe(p.id);expect(parent(b.id)).toBe(p.id);await oneHistory(before)
 })
-test('placement negative: nested group child is excluded from direct free-parent exception',async()=>{
+test('placement: ordinary multi-selection drag keeps a nested group member in its group',async()=>{
  const {p,a,b,group}=await freeFixture('nested'),before=editor.state.doc
- await drag(a.id,5,5);delta(before,a.id,5,5);delta(before,b.id,5,5);expect(parent(b.id)).toBe(p.id);expect(editor.state.doc.nodes[group!.id].children).toEqual([]);await oneHistory(before)
+ await drag(a.id,5,5);delta(before,a.id,5,5);delta(before,b.id,5,5);expect(parent(b.id)).toBe(group!.id);expect(editor.state.doc.nodes[group!.id].children).toEqual([b.id]);await oneHistory(before)
 })
 test('placement negative: auto-layout original parent keeps existing sizing-restoration path',async()=>{
  const {p,a,b}=await freeFixture('layout'),before=editor.state.doc,sizing=before.nodes[b.id].sizing

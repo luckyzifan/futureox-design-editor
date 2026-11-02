@@ -76,6 +76,8 @@ test.each(['unprepared', 'foreign', 'resource-changed', 'destroyed', 'alias', 'f
 test.each(['complete', 'reject', 'device-change', 'lost'])('raster queue pacing %s never retires live frame scratch', async outcome => {
   const f = fixture(); await f.driver.prepareByteTent(); f.encode()
   const bytes = f.driver.scratchBytes
+  // One older submission is already in flight: exercise the high-water wait.
+  f.driver.submissionSequence = 1
   const pending = f.driver.yieldRasterQueue()
   const assertion = outcome === 'complete' ? expect(pending).resolves.toBeUndefined() : expect(pending).rejects.toThrow()
   expect(f.device.queue.submit).toHaveBeenCalledOnce()

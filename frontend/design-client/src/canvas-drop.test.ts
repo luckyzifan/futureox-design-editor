@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'vitest'
-import { blank, node, defaultLayout } from './model'
+import { blank, node, defaultLayout, defaultSizing } from './model'
 import { Editor } from './engine'
 import { allParents, apply, multiply, translate, worldMatrix } from './geometry'
 import { canvasDropFrame, createCanvasDropIndex } from './canvas-drop'
@@ -53,4 +53,36 @@ test('gesture index uses current frame geometry and visibility rather than cache
  expect(canvasDropFrame(e.state.doc,e.state.page,[n.id],{x:730,y:40},false,index)).toBe(b.id)
  expect(canvasDropFrame(e.state.doc,e.state.page,[n.id],{x:380,y:40},false,index)).toBeUndefined()
  e.update([b.id],{visible:false});expect(canvasDropFrame(e.state.doc,e.state.page,[n.id],{x:730,y:40},false,index)).toBeUndefined()
+})
+
+test.each(['group','vector'] as const)('ordinary drag preserves %s membership and sibling order outside the enclosing frame',kind=>{
+ const {e,a,b,n}=fixture(),group=node(kind,0,0,100,100),sibling=node('rectangle',50,50,10,10)
+ if(kind==='vector')group.booleanOperation='union'
+ e.change('Nested member',d=>{group.children=[n.id,sibling.id];d.nodes[group.id]=group;d.nodes[sibling.id]=sibling;d.nodes[a.id].children=[group.id]})
+ const before=e.state.doc,move={ids:[n.id],point:{x:395,y:50},force:false,preserveParent:false}
+ e.begin('Drag member');e.preview({[n.id]:{transform:[1,0,0,1,380.125,40.375]}},move)
+ expect(allParents(e.state.doc).get(n.id)).toBe(group.id)
+ e.finishCanvasMove(move.point);e.commit()
+ expect(e.state.doc.nodes[group.id].children).toEqual([n.id,sibling.id]);expect(e.state.doc.nodes[b.id].children).toEqual([])
+ expect(worldMatrix(e.state.doc,n.id)[4]).toBe(380.125)
+ const after=e.state.doc;e.undo();expect(e.state.doc).toEqual(before);e.redo();expect(e.state.doc).toEqual(after)
+ // An explicit forced drop can still extract a member.
+ e.begin('Explicit placement');e.preview({[n.id]:{transform:[1,0,0,1,380.125,40.375]}},{...move,force:true})
+ e.finishCanvasMove(move.point,true);e.commit();expect(allParents(e.state.doc).get(n.id)).toBe(b.id)
+})
+
+test('release commits the flushed placement without a second hit test against the resized target',()=>{
+ const {e,a,b,n}=fixture(),overlap=node('frame',350,0,200,200)
+ // A Hug target shrinks around the temporarily absolute moved child. A second
+ // drop query against that new size would choose the frame underneath instead.
+ e.change('Overlapping target',d=>{d.nodes[overlap.id]=overlap;d.pages[0].children.push(overlap.id)
+  d.nodes[overlap.id].layout={...defaultLayout(),mode:'horizontal'}
+  d.nodes[overlap.id].sizing={...defaultSizing(),width:'hug',height:'hug',minWidth:200,minHeight:200}})
+ const move={ids:[n.id],point:{x:395,y:50},force:true,preserveParent:false},before=e.state.doc
+ e.begin('Placement');e.preview({[n.id]:{transform:[1,0,0,1,380.125,40.375]}},move)
+ const parent=allParents(e.state.doc).get(n.id),order=[...e.state.doc.nodes[parent!].children]
+ expect(parent).toBe(overlap.id);e.finishCanvasMove(move.point,true);e.commit()
+ expect(allParents(e.state.doc).get(n.id)).toBe(parent);expect(e.state.doc.nodes[parent!].children).toEqual(order)
+ expect(e.state.doc.nodes[a.id].children).toEqual([]);expect(e.state.doc.nodes[b.id].children).toEqual([])
+ e.undo();expect(e.state.doc).toEqual(before)
 })

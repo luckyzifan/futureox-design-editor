@@ -185,6 +185,7 @@
     "design-studio/Cargo.lock": "78ae3d7e5af5c388fef9abdf2320c22d406938c26ddd00d8af86ca2413b86bcf",
     "design-studio/crates/design-kernel/Cargo.toml": "16eda8485bd2326cc9a6cfbc4d476d0aebd1ebab4229cd888a794b02b539540e",
     "design-studio/crates/design-desktop-backend/Cargo.toml": "a01189c93483d3df22c76375558f36cbd6255dc11b096918c78521b00eb13eae",
-    "design-studio/crates/design-desktop-backend/src/large_document.rs": "1293b6bcf04b26f41faf7bfddb77804ae0f1464ddcdc7be3f648e7d23acc0b21"
+    "design-studio/crates/design-desktop-backend/src/large_document.rs": "1293b6bcf04b26f41faf7bfddb77804ae0f1464ddcdc7be3f648e7d23acc0b21",
+    "design-studio/crates/design-kernel/tests/text.rs": "0301d2f8684393fbaac8e75a4d8ecf969cc4da3d2885747fe0c9d2def45a0f52"
   }
 }

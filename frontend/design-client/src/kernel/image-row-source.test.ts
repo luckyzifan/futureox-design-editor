@@ -1,14 +1,26 @@
 import {afterEach,expect,test,vi} from 'vitest'
-const native=vi.hoisted(()=>({freed:0,reads:0,created:0}))
+const native=vi.hoisted(()=>({freed:0,reads:0,created:0,failures:0}))
 vi.mock('./generated-row-decoder',()=>({ImageRowDecoder:class{
  row=0
- constructor(){native.created++} width(){return 2}height(){return 3}free(){native.freed++}
+ constructor(){native.created++;if(native.failures>0){native.failures--;throw 'Invalid image data'}} width(){return 2}height(){return 3}free(){native.freed++}
  next_rows(){native.reads++;return new Float32Array(this.row++<3?8:0)}
 }}))
 import {nativeImageRows,largePngRowCandidate}from './image-row-source'
 import {managedSceneImageLoader}from './scene-image-hydration'
 import {DecodedImageCache,createDecodedImageOwner,decodedImageScope}from './decoded-image-cache'
-afterEach(async()=>{await Promise.resolve();native.freed=0;native.reads=0;native.created=0})
+afterEach(async()=>{await Promise.resolve();native.freed=0;native.reads=0;native.created=0;native.failures=0})
+test('canonical row input can retry one transient construction failure but never a malformed source or partial upload',()=>{
+ native.failures=1
+ const source=nativeImageRows('data:image/png;base64,AAAA','settings',()=>{})
+ expect([...source.linearRows()]).toHaveLength(3);expect(native.created).toBe(2);expect(native.freed).toBe(1)
+ native.failures=1;expect(()=>nativeImageRows('data:image/png;base64,invalid?','settings',()=>{})).toThrow('Invalid image data');expect(native.created).toBe(3)
+ native.failures=2;expect(()=>nativeImageRows('data:image/png;base64,AAAA','settings',()=>{})).toThrow('Invalid image data');expect(native.created).toBe(5)
+})
+test('row recovery rechecks cancellation before constructing its second decoder',()=>{
+ native.failures=1;let checks=0
+ expect(()=>nativeImageRows('data:image/png;base64,AAAA','settings',()=>{if(++checks===2)throw Error('PREVIEW_CANCELLED')})).toThrow('PREVIEW_CANCELLED')
+ expect(native.created).toBe(1);expect(native.freed).toBe(0)
+})
 test('dimension-only sources expire at the end of the synchronous upload turn',async()=>{
  const source=nativeImageRows('uri','settings',()=>{})
  expect([source.width,source.height]).toEqual([2,3]);expect(native.freed).toBe(0);expect(native.created).toBe(1);expect(native.reads).toBe(0)

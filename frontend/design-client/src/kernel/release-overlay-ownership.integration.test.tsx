@@ -31,7 +31,7 @@ function canvasContext(document:any,ids:string[],ui:Ui={}){
   measurementTarget:ui.target===undefined?{id:'target-one',bounds:{x:130,y:0,width:30,height:70}}:ui.target})
 }
 
-async function harness(kind:'rotate'|'scale'='rotate',workerPoses=false,options:{multiple?:boolean;selectedCount?:number;initialOverlay?:boolean}={}){
+async function harness(kind:'rotate'|'scale'|'move'='rotate',workerPoses=false,options:{multiple?:boolean;selectedCount?:number;initialOverlay?:boolean}={}){
  const dom=new JSDOM('<!doctype html><html><body></body></html>',{url:'https://design.invalid/'})
  for(const k of ['window','document','navigator','HTMLElement','HTMLCanvasElement','Node','Event'])vi.stubGlobal(k,k==='window'?dom.window:(dom.window as any)[k])
  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true)
@@ -68,7 +68,7 @@ async function harness(kind:'rotate'|'scale'='rotate',workerPoses=false,options:
  await act(async()=>{jobs[0].resolve({bytes:new Uint8Array(),gpuTile:oldSlot,compileMs:1,residentInteraction:workerPoses});await Promise.resolve()})
  expect(frames.at(-1).items.some((item:any)=>item.tile.gpuTile===oldSlot)).toBe(true)
  expect(acks.at(-1).presented.gpuOverlay).toBe(options.initialOverlay!==false)
- const matrix=kind==='scale'?[1.4,0,0,1.4,0,0]:[Math.cos(.4),Math.sin(.4),-Math.sin(.4),Math.cos(.4),0,0]
+ const matrix=kind==='move'?[1,0,0,1,12.5,3.25]:kind==='scale'?[1.4,0,0,1.4,0,0]:[Math.cos(.4),Math.sin(.4),-Math.sin(.4),Math.cos(.4),0,0]
  const patches=Object.fromEntries(ids.map(id=>[id,{transform:multiply(matrix as any,doc.nodes[id].transform)}]))
  await act(async()=>{expect(control.current.apply(doc,patches)).toBeTruthy()})
  expect(jobs).toHaveLength(workerPoses?1:2) // Deliberately leave the last capture/pose incomplete.
@@ -77,6 +77,38 @@ async function harness(kind:'rotate'|'scale'='rotate',workerPoses=false,options:
  return {doc,final,n,ids,props,control,render,frames,acks,jobs,oldSlot,overlay,onPresented,gpu,
   replaceClient:()=>{client={...client};return client}}
 }
+
+test('inline translation carries its compiled slot proof through release without borrowing newer geometry',async()=>{
+ let owner:InteractionRenderer|undefined
+ const original=InteractionRenderer.prototype.capturedOverlay
+ vi.spyOn(InteractionRenderer.prototype,'capturedOverlay').mockImplementation(function(this:InteractionRenderer,...args){owner=this;return original.apply(this,args)})
+ const h=await harness('move',true),committed=h.overlay(h.final)
+ const before=h.frames.length
+ await h.render({interaction:{...h.props.interaction,document:h.final,active:false},overlay:committed})
+ expect(h.frames.length).toBeGreaterThan(before)
+ expect(h.frames.at(-1).overlayPoseSlot).toBe(h.oldSlot)
+ expect(h.frames.at(-1).overlay).toEqual(h.overlay(h.doc).commands)
+ await act(async()=>owner!.acceptResidentSample({slot:h.oldSlot,sequence:1,at:0,nativePose:true}))
+ expect(h.frames.at(-1).overlay).toEqual(h.overlay(h.doc).commands)
+ expect(h.acks.at(-1).presented.gpuOverlay).toBe(true)
+ expect(h.frames.at(-1).overlay.transforms).not.toEqual(committed.commands.transforms)
+ // A changed UI or an authored size edit cannot reuse that translation proof.
+ await h.render({overlay:h.overlay(h.final,{handles:false})});expect(h.frames.at(-1).overlay).toBeUndefined()
+ const resized={...h.final,nodes:{...h.final.nodes,[h.n.id]:{...h.final.nodes[h.n.id],width:60}}}
+ await h.render({interaction:{...h.props.interaction,document:resized,active:true,gestureKind:'resize'},overlay:h.overlay(resized)})
+ expect(h.frames.at(-1).overlay).toBeUndefined()
+})
+test.each(['ui','camera'])('a released move references its compiled capture; changed %s revokes that chrome',async change=>{
+ const h=await harness('move',true)
+ const before=h.frames.length
+ await h.render({interaction:{...h.props.interaction,document:h.final,active:false},overlay:h.overlay(h.final)})
+ expect(h.frames.at(-1).overlayPoseSlot).toBe(h.oldSlot)
+ expect(h.frames.at(-1).overlay).toEqual(h.overlay(h.doc).commands)
+ await h.render(change==='ui'?{overlay:h.overlay(h.final,{handles:false})}:{view:{...h.props.view,x:1}})
+ expect(h.frames.length).toBeGreaterThan(before);expect(h.frames.at(-1).overlay).toBeUndefined()
+ if(change==='ui')expect(h.acks.at(-1).presented.gpuOverlay).toBe(false)
+ else {expect(h.acks.at(-1).coverageDeferred).toBe(1);expect(h.acks.at(-1).presented).toBeUndefined()}
+})
 
 test.each([{kind:'rotate',multiple:false},{kind:'scale',multiple:false},{kind:'rotate',multiple:true},{kind:'scale',multiple:true}] as const)('retained $kind (multiple=$multiple) keeps complete capture-owned Canvas commands',async ({kind,multiple})=>{
  const h=await harness(kind,false,{multiple})
