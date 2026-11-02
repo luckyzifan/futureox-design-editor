@@ -3,7 +3,7 @@ import { boardObjects, resizeBoardObjects, boardToolNames, type BoardTool } from
 import { reviewPoint } from './ReviewsPanel'
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { Editor, Tool } from './engine'
-import { type Point, type DesignNode, type ConnectorEndpoint, paint, node, stroke, uid } from './model'
+import { type Point, type DesignDocument, type DesignNode, type ConnectorEndpoint, paint, node, stroke, uid } from './model'
 import { apply, inverse, worldMatrix, allParents, scene, pointInContours } from './geometry'
 import { editableNetwork, materializeEditableNetwork } from './editable-network'
 import {
@@ -13,6 +13,7 @@ import {
 } from './generated/design-kernel/design_kernel'
 import { commitPendingEdits } from './pending-edits'
 import { creationToolStaysArmed } from './shape-creation'
+import { ERASER_RADIUS_PX, eraseNodeGeometry } from './vector-eraser'
 
 export const utilityToolNames: Partial<Record<Tool, string>> = {
   multiselect: '多选',
@@ -56,6 +57,8 @@ type Gesture = {
   edge?: string
   parameter?: number
   erased: Set<string>
+  removed: Set<string>
+  baseDoc?: DesignDocument
   scale: number
   origin: Point
   board?: ReturnType<typeof boardObjects>
@@ -175,6 +178,7 @@ export function useUtilityTools(
       start: p,
       points: [p],
       erased: new Set(),
+      removed: new Set(),
       scale: zoom,
       origin: { x: e.clientX - p.x * zoom, y: e.clientY - p.y * zoom },
     }
@@ -293,6 +297,7 @@ export function useUtilityTools(
         editor.select([n.id])
       }
       editor.begin(utilityToolNames[tool] || '画布操作')
+      g.baseDoc = editor.state.doc
       drag.current = g
       setDrawing({ tool, points: [p] })
       move(e, p)
@@ -350,14 +355,34 @@ export function useUtilityTools(
             cornerRadius: undefined,
           },
         })
-      } else if (g.tool === 'eraser') {
-        const id = hit(p, true),
-          n = id && editor.state.doc.nodes[id]
-        if (n && !n.locked && !n.fills.length && ['line', 'vector'].includes(n.kind)) {
-          g.erased.add(n.id)
-          editor.preview(Object.fromEntries([...g.erased].map((id) => [id, { visible: false }])))
-        } else if (n) { g.rejectedTargets++; g.action.sample({ lockedCount: n.locked ? 1 : 0 }) }
-        editor.notify(`橡皮：${g.erased.size} 条路径，松开删除`)
+      } else if (g.tool === 'eraser' && g.baseDoc) {
+        const id = hit(p, true)
+        const source = id ? g.baseDoc.nodes[id] : undefined
+        const parents = allParents(g.baseDoc)
+        let blocked = false
+        for (let at = id ? parents.get(id) : undefined; at && g.baseDoc.nodes[at]; at = parents.get(at)) blocked = blocked || !!g.baseDoc.nodes[at].locked
+        const erasable = !!source && source.visible && !source.locked && !blocked && !source.connector && !['frame', 'section', 'group', 'text', 'slice'].includes(source.kind)
+        if (erasable && id) g.erased.add(id)
+        else if (source) { g.rejectedTargets++; g.action.sample({ lockedCount: source.locked || blocked ? 1 : 0 }) }
+        const radius = ERASER_RADIUS_PX / Math.max(g.scale, 0.02)
+        const patch: Record<string, Partial<DesignNode>> = {}
+        g.removed.clear()
+        for (const target of g.erased) {
+          const node = g.baseDoc.nodes[target]
+          if (!node) continue
+          const matrix = worldMatrix(g.baseDoc, target)
+          const inverseMatrix = inverse(matrix)
+          const local = g.points.map(point => apply(inverseMatrix, point))
+          const origin = apply(inverseMatrix, { x: 0, y: 0 })
+          const unit = apply(inverseMatrix, { x: radius, y: 0 })
+          const localRadius = Math.max(0.5, Math.hypot(unit.x - origin.x, unit.y - origin.y))
+          const cut = eraseNodeGeometry(node, local, localRadius)
+          if (!cut?.changed) continue
+          if (!cut.network.edges.length) { g.removed.add(target); patch[target] = { visible: false }; continue }
+          patch[target] = { kind: 'vector', network: cut.network, arc: undefined, vectorGeometry: undefined, cornerRadius: undefined }
+        }
+        if (Object.keys(patch).length) editor.preview(patch)
+        editor.notify(g.erased.size ? `橡皮：松开后保留图层并擦掉经过的路径` : '橡皮：在矢量上拖动可擦掉一段路径')
       }
       if (g.tool in boardToolNames || g.tool === 'measure' || g.tool === 'bend') g.points = [g.start, p]
       else if (
@@ -434,9 +459,46 @@ export function useUtilityTools(
         if (!creationToolStaysArmed(g.tool)) editor.set({ tool: 'select' })
         setPreview(null)
       }
-      if (g.tool === 'eraser' && g.erased.size) {
-        editor.select([...g.erased])
-        editor.remove()
+      if (g.tool === 'eraser' && g.baseDoc && g.erased.size) {
+        const base = g.baseDoc
+        const radius = ERASER_RADIUS_PX / Math.max(g.scale, 0.02)
+        const cuts = new Map<string, ReturnType<typeof eraseNodeGeometry>>()
+        for (const target of g.erased) {
+          const node = base.nodes[target]
+          if (!node) continue
+          const inverseMatrix = inverse(worldMatrix(base, target))
+          const local = g.points.map(point => apply(inverseMatrix, point))
+          const origin = apply(inverseMatrix, { x: 0, y: 0 })
+          const unit = apply(inverseMatrix, { x: radius, y: 0 })
+          cuts.set(target, eraseNodeGeometry(node, local, Math.max(0.5, Math.hypot(unit.x - origin.x, unit.y - origin.y))))
+        }
+        const changed = [...cuts].filter(([, cut]) => cut?.changed)
+        if (changed.length) {
+          const removed = new Set(changed.filter(([, cut]) => cut && !cut.network.edges.length).map(([id]) => id))
+          editor.change('擦除矢量', document => {
+            for (const [id, cut] of changed) {
+              const live = document.nodes[id]
+              const source = base.nodes[id]
+              if (!live || !source || !cut) continue
+              if (!cut.network.edges.length) {
+                const parents = allParents(document)
+                const parent = parents.get(id)
+                const list = document.nodes[parent || '']?.children || document.pages.find(page => page.id === parent)?.children
+                const index = list?.indexOf(id) ?? -1
+                if (index >= 0) list!.splice(index, 1)
+                const drop = (child: string) => { document.nodes[child]?.children.forEach(drop); delete document.nodes[child] }
+                drop(id)
+              } else {
+                const next = materializeEditableNetwork(source, cut.network)
+                Object.assign(live, next)
+                delete live.arc
+                delete live.vectorGeometry
+                delete live.cornerRadius
+              }
+            }
+          }, editor.state.selection.filter(id => !removed.has(id)))
+        }
+        g.erased = new Set(changed.map(([id]) => id))
       }
     }
     if (g.tool === 'eraser' && !g.erased.size && g.rejectedTargets) g.action.block(ActionReason.validation, { targetCount: 0 })

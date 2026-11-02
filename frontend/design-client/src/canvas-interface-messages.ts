@@ -14,7 +14,7 @@ const phrases = {
   creationHint: ['拖拽绘制 · 单击 100×100 · Shift 约束 · Alt 从中心', 'Drag to draw · Click for 100×100 · Shift constrains · Alt from center'],
   creationHintLine: ['拖拽绘制 · 单击为 100 长 · Shift 锁定角度 · Alt 从中心', 'Drag to draw · Click for length 100 · Shift locks the angle · Alt from center'],
   canvasEditor: ['设计画布编辑器', 'Design canvas'],
-  penHint: ['点击添加节点，拖动创建曲线；点击已有节点可连接分支。', 'Click to add points, drag to curve; click an existing point to join a branch.'],
+  penHint: ['点击落点，拖动出曲线。Shift 约束 45°，Option 断开手柄。点击起点闭合，Esc 或 Enter 完成开放路径。', 'Click to add points and drag for curves. Shift constrains to 45°, Option disconnects the handle. Click the start point to close. Esc or Enter finishes an open path.'],
   penDone: ['完成 ↵', 'Done ↵'],
   rotateOrigin: ['拖动旋转中心 · 双击复位 · ⌥R 显示/隐藏', 'Drag the rotation origin · Double-click to reset · ⌥R show/hide'],
   arcStart: ['拖动调整圆弧起始角', 'Drag to change the arc start'],
@@ -41,7 +41,7 @@ export const canvasCommandEnglish: Readonly<Record<string, string>> = {
   'bring-to-front': 'Bring to front', 'bring-forward': 'Bring forward', 'send-backward': 'Send backward', 'send-to-back': 'Send to back',
   group: 'Group', 'frame-selection': 'Frame selection', 'create-component': 'Create component', 'detach-instance': 'Detach instance', 'mask-selection': 'Use as mask',
   'auto-layout': 'Add auto layout', 'remove-auto-layout': 'Remove auto layout', 'convert-section': 'Convert to section', ungroup: 'Ungroup', 'convert-vector': 'Convert to vector', 'outline-stroke': 'Outline stroke',
-  'unlock-selection': 'Unlock layers', 'lock-selection': 'Lock layers', 'hide-selection': 'Hide layers', 'show-selection': 'Show layers', 'zoom-selection': 'Zoom to selection', 'center-selection': 'Center selection (keep zoom)', delete: 'Delete', 'select-all': 'Select all', 'zoom-fit': 'Zoom to all content',
+  'unlock-selection': 'Unlock layers', 'lock-selection': 'Lock layers', 'hide-selection': 'Hide layers', 'show-selection': 'Show layers', 'zoom-selection': 'Zoom to selection', 'zoom-next-frame': 'Zoom to next frame', 'zoom-previous-frame': 'Zoom to previous frame', 'next-page': 'Next page', 'previous-page': 'Previous page', 'center-selection': 'Center selection (keep zoom)', delete: 'Delete', 'select-all': 'Select all', 'zoom-fit': 'Zoom to all content',
 }
 export function canvasCommandLabel(command: string, chinese: string, locale: InterfaceLocale, multiple: boolean, lockedParent: boolean) {
   if (locale !== 'en') return chinese
