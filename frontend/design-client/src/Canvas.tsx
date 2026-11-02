@@ -103,10 +103,10 @@ import { imageData } from './persistence'
 import { cropImageNode, imageNaturalSize } from './image-crop'
 import { PencilInput, freehandNode, type PencilSettings, type FreehandTool } from './freehand'
 import { NumberField } from './fields'
-import { createShapeSeed, resolveShapeCreation, creationPointCount, creationToolStaysArmed, type ShapeCreationKind, type ShapeCreationSeed } from './shape-creation'
+import { createShapeSeed, resolveShapeCreation, creationPointCount, creationToolStaysArmed, creationGhostNode, creationPreviewPoints, creationVisiblePaint, type ShapeCreationKind, type ShapeCreationSeed } from './shape-creation'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { editableNetwork } from './editable-network'
-import { dragThresholdPassed, selectedGroupDragIntent, selectedChildDragIntent, selectionPointerDown, frameTitleHit } from './canvas-pointer-intent'
+import { dragThresholdPassed, selectedGroupDragIntent, selectedChildDragIntent, selectedOwnedDragIntent, selectionPointerDown, frameTitleHit } from './canvas-pointer-intent'
 import { moveCanvasFeedback, concealCanvasFeedback, restoreCanvasFeedbackVisibility } from './canvas-move-feedback'
 import { gestureHoleColor, mountGestureFollow, visibleFollowBox, type GestureFollowLayer } from './gesture-follow'
 import { interactivePath } from './selection-hierarchy'
@@ -603,7 +603,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const pencilFrame = useRef<number | null>(null)
   const [pencilPreview, setPencilPreview] = useState<DesignNode | null>(null)
   const [shapePreview, setShapePreview] = useState<DesignNode | null>(null)
+  const [heldCreation, setHeldCreation] = useState<DesignNode | null>(null)
   const drawingPreview = pencilPreview || shapePreview
+  useEffect(() => {
+    if (heldCreation && !state.doc.nodes[heldCreation.id]) setHeldCreation(null)
+  }, [heldCreation, state.doc])
   function cancelPencil(recordCancellation = true) {
     if (pencil.current?.actionToken && recordCancellation) actionTrace.finish(pencil.current.actionToken, ActionOutcome.cancelled, ActionReason.unobserved)
     if (pencil.current) editor.cancel()
@@ -690,6 +694,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     setRubber(null)
     clearMoveGuides()
     setShapePreview(null)
+    setHeldCreation(null)
   }, [editor, editor.sessionGeneration, state.page])
   const hover = state.hover
   // Client coordinates survive sidebar resizing; convert against the current
@@ -939,6 +944,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   // Submit the current document immediately, not after an effect/timer turn.
   const surfaceDocument = !editPreviewSupported ? renderedDocument :
     refineDocument.id === renderedDocument.id && refineDocument.pages.some(page => page.id === state.page) ? refineDocument : renderedDocument
+  const creationGhost = creationGhostNode(shapePreview, heldCreation && state.doc.nodes[heldCreation.id] ? heldCreation : null,
+    id => !!state.doc.nodes[id] && presented?.document === state.doc)
   const refineOverview = snapshots.refineOverview(surfaceDocument, state.page)
   const editBaseDocument = useRef(renderedDocument)
   if (ownedDrag?.sourceDocument) editBaseDocument.current = ownedDrag.sourceDocument
@@ -1517,7 +1524,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const intentOptions = { inside: pointInContours(p, [selectionCorners]), deep: e.metaKey || e.ctrlKey || s.tool === 'vector',
         additive: e.shiftKey || s.tool === 'multiselect',
         readOnly: selectionFeedback.readOnly || !['select', 'scale'].includes(s.tool) }
-      const groupIntent = selectedGroupDragIntent(selectedNode, hit, intentOptions) ||
+      const hitNode = hit ? s.doc.nodes[hit] : null
+      const groupIntent = selectedOwnedDragIntent(selectedNode, hit, hitNode?.kind ?? null, selectionCorners, p, capturedView.zoom, intentOptions) ||
+        selectedGroupDragIntent(selectedNode, hit, intentOptions) ||
         selectedChildDragIntent(selectedNode, hit, selected.find(entry => entry.id === selectedNode?.id)?.ancestors || [], intentOptions)
       const containerHit=hit&&selected.length>1&&selected.every(entry=>entry.ancestors.includes(hit))
       const gap = (!hit||containerHit) && ids.length>1 && !e.metaKey && !e.ctrlKey && ['select','scale'].includes(s.tool) && contains(selectionBox,p)
@@ -1614,7 +1623,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       } : {}),
     }
     beginDragTrace(drag.current, e)
-    if (dragKind === 'create') editor.begin('绘制形状')
+    if (dragKind === 'create') {
+      editor.begin('绘制形状')
+      // The click default (including its fill) is visible on pointerdown.
+      // A later move past the threshold replaces it with the drag span.
+      updateCreation(drag.current, { shift: e.shiftKey, alt: e.altKey })
+    }
     if (['move', 'resize', 'scale', 'rotate', 'vertex', 'handle'].includes(dragKind))
       editor.begin(
         {
@@ -2110,6 +2124,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         }
       }, [n.id])
       if (n.kind === 'text') setTextEdit(n.id)
+      // Hold the filled ghost until this document is the presented frame.
+      setHeldCreation(n)
       setShapePreview(null)
       if (!creationToolStaysArmed(editor.state.tool)) editor.set({ tool: 'select' })
     } else if(d.kind==='zoom') {
@@ -2547,9 +2563,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         className="stage"
         width={size.width}
         height={size.height}
+        aria-label="设计画布"
         style={{ position: 'relative', zIndex: 3, background: 'transparent' }}
       >
-        <title>设计画布</title>
         {pixelGridPath && (!gpuOverlay||presented?.gpuPixelGrid===false) && (
           <g transform={`translate(${displayView.x} ${displayView.y}) scale(${zoom})`}>
             {/* Camera chrome, not presented-pixel content: the pixel grid
@@ -2733,10 +2749,16 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 x1={h.point.x} y1={h.point.y} x2={h.next.x} y2={h.next.y}
                 stroke="transparent" strokeWidth={8/zoom} pointerEvents="stroke" style={{cursor:h.edgeCursor}}
                 onPointerDown={e=>{e.stopPropagation();start(e,'resize',h.index+4)}} />)}
-              {canTransform && state.tool!=='scale' && transformHandles.map(h => <polygon key={`rotate-${h.index}`}
-                data-testid={`rotate-corner-${h.index}`} data-anchor-x={h.rotateAnchor.x} data-anchor-y={h.rotateAnchor.y}
-                points={h.rotatePoints.map(p=>`${p.x},${p.y}`).join(' ')} fill="transparent" pointerEvents="all"
-                style={{cursor:h.rotateCursor}} onPointerDown={e=>{e.stopPropagation();start(e,'rotate',h.index)}} />)}
+              {canTransform && state.tool!=='scale' && transformHandles.map(h => <g key={`rotate-${h.index}`}>
+                <polygon data-testid={`rotate-corner-${h.index}`} data-anchor-x={h.rotateAnchor.x} data-anchor-y={h.rotateAnchor.y}
+                  points={h.rotatePoints.map(p=>`${p.x},${p.y}`).join(' ')} fill="transparent" pointerEvents="all"
+                  style={{cursor:h.rotateCursor}} onPointerDown={e=>{e.stopPropagation();start(e,'rotate',h.index)}} />
+                <g data-testid={`rotate-handle-${h.index}`} pointerEvents="none" transform={`translate(${h.rotateAnchor.x} ${h.rotateAnchor.y}) scale(${1/zoom})`}>
+                  <circle r={8} fill="white" stroke="#0d99ff" strokeWidth={1} />
+                  <path d="M-3.2 2.4A4.4 4.4 0 1 1 3.4 2.2" fill="none" stroke="#0d99ff" strokeWidth={1.6} strokeLinecap="round" />
+                  <path d="M2.1 0.4 L3.6 2.5 L5.4 0.9" fill="none" stroke="#0d99ff" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
+                </g>
+              </g>)}
               {canTransform && transformHandles.map((h, i) => (
                 <polygon
                   key={i}
@@ -2796,14 +2818,22 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               >
                 {selectionSizeLabel(localSelection, selectionBox, selected[0]?.matrix)}
               </text>
-              {overlay.commands.labels.filter(label => label.kind === 'selection-name').map(label => (
-                <text key={label.text} data-testid="canvas-selection-name" opacity={gpuOverlay ? 0 : 1}
+              {(overlay.commands.labels ?? []).filter(label => label.kind === 'selection-name').map(label => (
+                <text key="selection-name" data-testid="canvas-selection-name" opacity={gpuOverlay ? 0 : 1}
                   x={label.anchor.x} y={label.anchor.y + label.offset.y / zoom}
                   fontSize={label.size / zoom} fill={label.color} pointerEvents="none">{label.text}</text>
               ))}
             </g>
           )}
         </g>
+        {creationGhost && <g transform={`translate(${displayView.x} ${displayView.y}) scale(${zoom})`} pointerEvents="none">
+          <g data-testid="creation-fill" data-fill={creationVisiblePaint(creationGhost)} transform={matrixString(creationGhost.transform)}>
+            {creationGhost.kind === 'ellipse' ? <ellipse cx={creationGhost.width / 2} cy={creationGhost.height / 2} rx={Math.max(creationGhost.width, 0.01) / 2} ry={Math.max(creationGhost.height, 0.01) / 2} fill={creationVisiblePaint(creationGhost)} stroke="#0d99ff" strokeWidth={1 / zoom} />
+              : creationGhost.kind === 'line' && creationGhost.network?.vertices.length === 2 ? <line x1={creationGhost.network.vertices[0].x} y1={creationGhost.network.vertices[0].y} x2={creationGhost.network.vertices[1].x} y2={creationGhost.network.vertices[1].y} stroke={creationVisiblePaint(creationGhost)} strokeWidth={Math.max(creationGhost.strokes[0]?.width || 1, 1)} strokeLinecap="round" />
+              : creationPreviewPoints(creationGhost) ? <polygon points={creationPreviewPoints(creationGhost)!} fill={creationVisiblePaint(creationGhost)} stroke="#0d99ff" strokeWidth={1 / zoom} />
+              : <rect width={creationGhost.width} height={creationGhost.height} fill={creationVisiblePaint(creationGhost)} stroke="#0d99ff" strokeWidth={1 / zoom} />}
+          </g>
+        </g>}
         <g transform={`translate(${displayView.x} ${displayView.y}) scale(${zoom})`}
           visibility={exactOverlayMatches || !!ownedDrag ? 'visible' : 'hidden'}>
           {vectorNode?.network && (
@@ -2943,7 +2973,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             </g>
           )}
           {rubber && (
-            <g><rect
+            <g>{creationGhost ? null : <rect
               {...rubber}
               fill={drag.current?.kind === 'marquee' ? '#0d99ff19' : 'none'}
               stroke="#0d99ff"
@@ -2952,7 +2982,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 drag.current?.kind === 'marquee' || drag.current?.kind === 'create' ? undefined : `${4 / zoom} ${3 / zoom}`
               }
               pointerEvents="none"
-            />{drag.current?.kind === 'create' && <text x={rubber.x + rubber.width / 2} y={rubber.y + rubber.height + 18 / zoom}
+            />}{drag.current?.kind === 'create' && <text x={rubber.x + rubber.width / 2} y={rubber.y + rubber.height + 18 / zoom}
               textAnchor="middle" fontSize={11 / zoom} fill="#0d99ff" pointerEvents="none" data-testid="creation-dimensions" data-width={rubber.width} data-height={rubber.height}>
               {Number(rubber.width.toFixed(2))} × {Number(rubber.height.toFixed(2))}
             </text>}</g>

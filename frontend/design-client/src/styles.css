@@ -1446,6 +1446,8 @@ footer button {
 .canvas-workspace .canvas-caption { bottom: 7px; left: 12px; font-size: 9px; }
 .canvas-workspace .pen-hint { bottom: 82px; max-width: calc(100% - 24px); left: 12px; }
 .floating-toolbar { position: absolute; z-index: 20; bottom: 30px; left: 50%; transform: translateX(-50%); height: 48px; max-width: calc(100% - 16px); padding: 6px 8px; gap: 8px; overflow: visible; border: 1px solid var(--workspace-border); border-radius: 12px; box-shadow: 0 4px 20px #00000012, 0 1px 3px #0000000a; }
+.creation-tool-hint { position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); display: flex; align-items: center; gap: 8px; width: max-content; max-width: min(520px, calc(100vw - 32px)); padding: 5px 10px; border: 1px solid var(--workspace-border); border-radius: 999px; background: var(--workspace-panel); color: var(--workspace-muted); font-size: 11px; line-height: 16px; pointer-events: none; white-space: nowrap; box-shadow: 0 2px 8px #18202c10; }
+.creation-tool-hint b { color: var(--workspace-accent); font-weight: 600; flex: none; }
 .floating-toolbar .tool-group { gap: 2px; align-items: center; }
 .floating-toolbar .tool-group > button, .floating-toolbar .tool-popover > button { width: 34px; height: 34px; border-radius: 7px; padding: 7px; color: var(--workspace-text); }
 .floating-toolbar .tool-group > button.active,
@@ -1698,6 +1700,11 @@ footer button {
 .remote-modal [role="alert"] { color: var(--workspace-danger); background: #fff1f2; border-radius: 6px; padding: 10px 12px; }
 .remote-modal .dialog-description { margin: 8px 0 20px; line-height: 1.65; }
 .remote-modal h2 button { width: 30px; height: 30px; padding: 0; color: var(--workspace-muted); }
+.automation-dialog h2 button { width: auto; min-width: 44px; height: 30px; padding: 0 12px; font-size: 12px; line-height: 16px; white-space: nowrap; }
+.automation-dialog fieldset { min-width: 0; }
+.automation-dialog fieldset > button, .automation-dialog summary, .automation-dialog label { height: auto; min-height: 28px; white-space: normal; overflow: visible; text-overflow: clip; }
+.editor-shell > .automation-launcher { grid-column: 3; grid-row: 3; justify-self: start; align-self: end; z-index: 33; margin: 0 0 10px 12px; }
+.automation-launcher > button { height: auto; min-height: 26px; padding: 4px 10px; font-size: 11px; line-height: 16px; white-space: nowrap; border: 1px solid var(--workspace-border); border-radius: 6px; background: var(--workspace-panel); color: var(--workspace-text); }
 .remote-actions { align-items: center; margin-top: 12px; flex-wrap: wrap; }
 .workspace-library { width: min(740px, calc(100vw - 32px)); }
 .desktop-catalog { width: min(640px, calc(100vw - 32px)); }

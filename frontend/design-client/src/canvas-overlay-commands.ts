@@ -37,15 +37,16 @@ export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlay
   const targetIdentity = measurementTarget ? [measurementTarget.id, measurementTarget.bounds.x, measurementTarget.bounds.y,
     measurementTarget.bounds.width, measurementTarget.bounds.height] : null
   // Prefix 2 retires overlay ACKs that omitted the selection name, so a stale
-  // GPU label cannot hide the name that the DOM is already showing.
+  // GPU label cannot hide the name the DOM is already showing.
   const uiIdentity = JSON.stringify([2, input.pixelGrid, selectionIdentity, selectionName, titleIdentity, targetIdentity])
   const measurements = measurementTarget ? measureBounds(selectionBox, measurementTarget.bounds) : []
   const labels: CanvasLabel[] = frameTitles.map(entry => ({anchor: apply(entry.matrix,{x:0,y:0}), offset:{x:0,y:-12},
     basis:entry.matrix.slice(0,4) as [number,number,number,number], text:document.nodes[entry.id].name, size:11,
-    color: selectedIds.has(entry.id) ? '#0d99ff' : '#73778b', kind: 'frame-title', owners:[...entry.ancestors,entry.id]}))
+    color: selectedIds.has(entry.id) ? '#0d99ff' : '#73778b', kind: 'frame-title' as const, owners:[...entry.ancestors,entry.id]}))
   const titled = new Set(frameTitles.map(entry => entry.id))
+  // Sit above the top edge, clear of the corner rotate marks.
   if (showSelection && selected.length === 1 && selectionName && !titled.has(selected[0].id))
-    labels.push({ anchor: { x: selectionBox.x, y: selectionBox.y }, offset: { x: 0, y: -14 },
+    labels.push({ anchor: { x: selectionBox.x, y: selectionBox.y }, offset: { x: 0, y: -24 },
       text: selectionName, size: 11, color: '#0d99ff', kind: 'selection-name', owners })
   if(showSelection) labels.push({anchor:{x:selectionBox.x+selectionBox.width/2,y:selectionBox.y+selectionBox.height},offset:{x:0,y:21},
     text:selectionSizeLabel(localSelection,selectionBox,selected[0]?.matrix),size:10,color:'#0d99ff',centered:true,kind:'selection-size',owners})

@@ -1,4 +1,5 @@
 import type { DesignDocument, DesignNode, Point } from './model'
+import { pointInContours, segmentDistance } from './geometry'
 import { interactivePath } from './selection-hierarchy'
 
 /** A title is canvas chrome outside the authored shape's hit bounds. It may
@@ -28,6 +29,51 @@ export function selectedGroupDragIntent(
   if (!group || group.kind !== 'group' || !group.visible || group.locked ||
       !options.inside || options.deep || options.additive || options.readOnly) return null
   return { selection: [group.id], clickSelection: hit === group.id ? null : hit ? [hit] : [] }
+}
+
+const THIN_SELECTION_PX = 8
+const SELECTION_SLOP_PX = 6
+
+function screenThickness(corners: readonly Point[], zoom: number): number {
+  if (corners.length < 2 || !(zoom > 0)) return Infinity
+  const edge = (index: number) => {
+    const a = corners[index], b = corners[(index + 1) % corners.length]
+    return Math.hypot(b.x - a.x, b.y - a.y) * zoom
+  }
+  return Math.min(edge(0), edge(1))
+}
+
+function screenDistanceToQuad(corners: readonly Point[], point: Point, zoom: number): number {
+  let nearest = Infinity
+  for (let index = 0; index < corners.length; index++)
+    nearest = Math.min(nearest, segmentDistance(point, corners[index], corners[(index + 1) % corners.length]) * zoom)
+  return nearest
+}
+
+/** An already selected layer keeps the drag. Overlapping text, and any hit
+ * within the slop of a thin bar, is only applied if the pointer never moves.
+ * Deep, additive and read-only presses keep the normal hit. Groups use the
+ * hollow-group rule instead. */
+export function selectedOwnedDragIntent(
+  node: Pick<DesignNode, 'id' | 'kind' | 'visible' | 'locked'> | null,
+  hit: string | null,
+  hitKind: string | null,
+  corners: readonly Point[],
+  point: Point,
+  zoom: number,
+  options: { deep: boolean; additive: boolean; readOnly: boolean },
+): SelectionPointerIntent | null {
+  if (!node || node.kind === 'group' || !node.visible || node.locked || options.deep || options.additive || options.readOnly) return null
+  if (corners.length < 4 || !(zoom > 0)) return null
+  const inside = pointInContours(point, [corners as Point[]])
+  const thickness = screenThickness(corners, zoom)
+  const thin = thickness < THIN_SELECTION_PX
+  const slop = thin ? Math.max(SELECTION_SLOP_PX, (THIN_SELECTION_PX - thickness) / 2) : 0
+  const near = thin && screenDistanceToQuad(corners, point, zoom) <= slop
+  if (!inside && !near) return null
+  if (hit === null || hit === node.id) return { selection: [node.id], clickSelection: null }
+  if (hitKind === 'text' || thin) return { selection: [node.id], clickSelection: [hit] }
+  return null
 }
 
 /** An already selected child keeps its drag target in transparent parts of

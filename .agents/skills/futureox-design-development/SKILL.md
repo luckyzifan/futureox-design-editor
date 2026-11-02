@@ -3,12 +3,10 @@ name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
 
+2026-11-02 [画布操作对照](../../../testing/verification-figma-canvas-ops-20261102/README.md)只改选择拖动、旋转手柄、尺寸标签、创建填充和自动化文案。已选图层的拖动不被重叠文字抢走；旋转手柄画在选区角外；尺寸标签最多两位小数。形状单击为 100×100，拖拽用指针跨度，填充在呈现前保持。不改缩放覆盖、粘性仿射或标签缓存。33/100ms 与完整 G2/G5 仍未关闭。
 2026-11-02 Figma plugin host MVP runs a documented Plugin API subset in a worker and commits each turn through Editor.change. Desktop UI is a separate sandboxed window. Network, components, variables, and exportAsync are unsupported. Sticky notes, the blue accent, and render or navigation paths are unchanged. See [the host guide](../../../docs/FIGMA_PLUGIN_HOST.md) and [the verification note](../../../testing/verification-figma-plugin-host-20261102/README.md).
-
 2026-11-02 大拓扑 Sketch 的 CPU 首屏见[记录](../../../testing/verification-large-topology-sketch-20261102/README.md)。解析帧在光晕或四表面下限放不进 256 MiB 合成账本时直接分块，几何准备在该帧内复用；放不进八分之一账本的效果略去，填充和页面底色留下。`--core-cpu-only` 的完整画板按屏幕瓦片画 CPU 位图，空瓦片列表只做快照准入。精确 `render_surfaces_regions` 仍先报错。低倍覆盖、驻留上的预算错误和标签缓存未改语义。33/100ms 与完整 G2/G5 未通过。仓库内没有约 113MB 原件。
-
 2026-11-02 [sRGB 标记与片段字距](../../../testing/verification-color-fonts-srgb-20261102/README.md)给 PNG sRGB 块、JPEG/WebP ICC 和 PDF ICCBased/DefaultRGB 同一套声明；省略的颜色调整不再在 SVG 里改走 linearRGB。FIG 片段 `letterSpacing`/`lineHeight` 进入 schema 21。不改合成预算、瓦片或实验开关。Display P3 仍不是默认 PNG，33/100ms 与完整 G2/G5 未通过。彩色字形、Auto 行高和半行距仍是后续项。
-
 2026-11-02 画布操作界面对照见[记录](../../../testing/verification-ui-chrome-figma-ops-20261102/README.md)。选中的非画板图层在包围盒上方显示名称，选中画板标题改为选择蓝；形状创建用实线预览，工具栏在工具待命时给出 Shift/Alt/单击提示。面板打开不再从透明淡入。强调色仍是 `--workspace-accent`（#3459d4）。图层列表、文档名和属性分区的界面文案随中/英切换；历史记录字符串未改。未改光栅、瓦片或预算，不关闭 33/100ms 或完整 G2/G5。
 
 2026-11-02 [导入与传输对照](../../../testing/verification-interop-transfer-20261102/README.md)只修浏览器 FIG 描边端点、`showShadowBehindNode` 保留，以及原生 `LAYER_BLUR` 与 `FOREGROUND_BLUR` 同义。不改缩放/瓦片导航、GPU 预算或实验开关。精确瓦片 `slice` 在缓存持有缓冲区时仍是所有权边界。Sketch 玻璃/纹理、FIG 反向堆叠与变量、Display P3 默认 PNG 编码、33/100ms 和完整 G2/G5 仍未关闭。

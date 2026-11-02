@@ -4,6 +4,7 @@ import { apply, bounds, boxPoints, scene, unionBounds } from './geometry'
 import { selectionLocalBounds } from './canvas-view'
 import { canvasOverlayCommands } from './canvas-overlay-commands'
 import { canvasText } from './canvas-interface-messages'
+import { automationText } from './automation-interface-messages'
 
 function fixture(select: 'rect' | 'frame' | 'both', tool = 'select', rectName = '按钮') {
   const doc = blank('chrome')
@@ -28,28 +29,32 @@ function fixture(select: 'rect' | 'frame' | 'both', tool = 'select', rectName = 
   })
 }
 
+const labelsOf = (overlay: ReturnType<typeof fixture>) => overlay.commands.labels ?? []
+
 test('a single shape shows its name above the box and leaves the parent frame title neutral', () => {
   const overlay = fixture('rect')
-  const name = overlay.commands.labels.find(label => label.kind === 'selection-name')
-  const title = overlay.commands.labels.find(label => label.kind === 'frame-title')
-  expect(name).toMatchObject({ text: '按钮', color: '#0d99ff', offset: { x: 0, y: -14 } })
+  const labels = labelsOf(overlay)
+  const name = labels.find(label => label.kind === 'selection-name')
+  const title = labels.find(label => label.kind === 'frame-title')
+  expect(name).toMatchObject({ text: '按钮', color: '#0d99ff', offset: { x: 0, y: -24 } })
   const corners = overlay.commands.selection!.corners
   expect(name!.anchor).toEqual({ x: Math.min(...corners.map(point => point.x)), y: Math.min(...corners.map(point => point.y)) })
   expect(title).toMatchObject({ text: '画板', color: '#73778b' })
-  expect(overlay.commands.labels.some(label => label.kind === 'selection-size')).toBe(true)
+  expect(labels.find(label => label.kind === 'selection-size')?.text).toBe('120 × 80')
 })
 
 test('selecting a frame turns its title blue instead of drawing a second name', () => {
-  const overlay = fixture('frame')
-  expect(overlay.commands.labels.find(label => label.kind === 'frame-title')).toMatchObject({ text: '画板', color: '#0d99ff' })
-  expect(overlay.commands.labels.some(label => label.kind === 'selection-name')).toBe(false)
+  const labels = labelsOf(fixture('frame'))
+  expect(labels.find(label => label.kind === 'frame-title')).toMatchObject({ text: '画板', color: '#0d99ff' })
+  expect(labels.some(label => label.kind === 'selection-name')).toBe(false)
 })
 
 test('multi-select and vector editing do not add a selection name', () => {
-  expect(fixture('both').commands.labels.some(label => label.kind === 'selection-name')).toBe(false)
+  expect(labelsOf(fixture('both')).some(label => label.kind === 'selection-name')).toBe(false)
   const vector = fixture('rect', 'vector')
-  expect(vector.commands.labels.some(label => label.kind === 'selection-name' || label.kind === 'selection-size')).toBe(false)
-  expect(vector.commands.labels.find(label => label.kind === 'frame-title')?.color).toBe('#73778b')
+  const labels = labelsOf(vector)
+  expect(labels.some(label => label.kind === 'selection-name' || label.kind === 'selection-size')).toBe(false)
+  expect(labels.find(label => label.kind === 'frame-title')?.color).toBe('#73778b')
   expect(vector.commands.selection).toBeUndefined()
 })
 
@@ -57,11 +62,17 @@ test('renaming the selected shape changes overlay identity so a stale GPU label 
   expect(fixture('rect', 'select', '按钮').uiIdentity).not.toBe(fixture('rect', 'select', '改名').uiIdentity)
 })
 
-test('creation and pen chrome copy exists in both interface languages', () => {
-  expect(canvasText['zh-CN'].creationHint).toContain('Shift')
+test('creation hints, pen chrome, and automation copy exist in both languages', () => {
+  expect(canvasText['zh-CN'].creationHint).toContain('100×100')
   expect(canvasText.en.creationHint).toContain('Alt from center')
   expect(canvasText.en.creationHintLine).toContain('length 100')
   expect(canvasText['zh-CN'].penDone).toBe('完成 ↵')
   expect(canvasText.en.penDone).toBe('Done ↵')
   expect(canvasText.en.rotateOrigin).toContain('Double-click')
+  expect(automationText['zh-CN'].open).toBe('设计 API')
+  expect(automationText.en.open).toBe('Design API')
+  expect(automationText.en.title).toBe('Design API and MCP')
+  expect(automationText.en.close).toBe('Close')
+  expect(`${automationText.en.title} ${automationText['zh-CN'].title}`.toLowerCase()).not.toContain('plugin')
+  expect(automationText['zh-CN'].title).not.toContain('插件')
 })
