@@ -315,6 +315,9 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                               target:
                                 doc.pages.flatMap((p) => p.children).find((id) => id !== n.id) ||
                                 n.id,
+                              /* Empty transition style is smart animate. 300ms ease-out matches a restrained Figma default. */
+                              durationMs: 300,
+                              easingCurve: 'ease-out',
                             },
                           ],
                         })
