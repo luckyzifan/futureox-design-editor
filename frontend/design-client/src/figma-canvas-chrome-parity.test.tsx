@@ -12,7 +12,8 @@ import { commonValue, selectionMetric } from './selection-properties'
 import { blank, node, type DesignNode } from './model'
 import { shortcutPreference } from './shortcut-preference'
 import { interfacePreference } from './interface-preference'
-import { HOVER_BLUE, MARQUEE_FILL, SELECTION_BLUE } from './selection-blue'
+import { crispOutlinePath } from './kernel/gpu/canvas-overlay'
+import { HOVER_BLUE, HOVER_STROKE_PX, MARQUEE_FILL, SELECTION_BLUE, SELECTION_UNION_STROKE_PX } from './selection-blue'
 import { SPACING_RED } from './canvas-measurements'
 
 vi.mock('./kernel/Surface', async () => {
@@ -57,6 +58,17 @@ afterEach(async () => {
   vi.unstubAllGlobals(); vi.restoreAllMocks()
 })
 const host = () => mount.querySelector<HTMLElement>('[data-testid="canvas"]')!
+const view = { x: 0, y: 0, zoom: 1 }
+function bandSpan(d: string) {
+  const quads = [...d.matchAll(/M([-\d.eE]+) ([-\d.eE]+) L([-\d.eE]+) ([-\d.eE]+) L([-\d.eE]+) ([-\d.eE]+) L([-\d.eE]+) ([-\d.eE]+) Z/g)]
+  expect(quads.length).toBeGreaterThan(0)
+  return quads.map(match => {
+    const values = match.slice(1).map(Number)
+    const xs = [0, 2, 4, 6].map(index => values[index])
+    const ys = [1, 3, 5, 7].map(index => values[index])
+    return Math.min(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys))
+  })
+}
 async function render(nodes: DesignNode[], roots = nodes.map(n => n.id)) {
   const doc = blank('Mac chrome'); doc.nodes = Object.fromEntries(nodes.map(n => [n.id, n])); doc.pages[0].children = roots
   editor.load(doc); editor.set({ view: { x: 0, y: 0, zoom: 1 }, snap: false, snapPixels: false, tool: 'select' })
@@ -113,8 +125,11 @@ test('hover is a lighter hairline and is not drawn on the selected layer', async
   const hover = mount.querySelector('[data-testid="canvas-hover-outline"]')
   expect(hover?.getAttribute('data-node-id')).toBe(other.id)
   expect(hover?.getAttribute('data-chrome')).toBe('hover')
-  expect(hover?.getAttribute('stroke')).toBe(HOVER_BLUE)
-  expect(hover?.getAttribute('stroke-width')).toBe('1')
+  expect(hover?.getAttribute('fill')).toBe(HOVER_BLUE)
+  expect(hover?.getAttribute('stroke')).toBe('none')
+  expect(hover?.getAttribute('d')).toBe(crispOutlinePath(
+    [{ x: 160, y: 40 }, { x: 200, y: 40 }, { x: 200, y: 70 }, { x: 160, y: 70 }], view, HOVER_STROKE_PX))
+  expect(bandSpan(hover?.getAttribute('d') || '').every(span => span === 1)).toBe(true)
   expect(HOVER_BLUE).toBe(SELECTION_BLUE)
   expect(hover?.querySelector('[data-testid^="resize-"]')).toBeNull()
   expect(hover?.querySelector('[data-testid="canvas-selection-size"]')).toBeNull()
@@ -137,8 +152,14 @@ test('a drag marquee selects the intersected layer and Shift adds the other', as
   await act(async () => pointer('pointermove', 270, 90, { shiftKey: true }))
   await flush()
   const band = mount.querySelector('[data-testid="canvas-marquee"]')
-  expect(band?.getAttribute('stroke')).toBe(SELECTION_BLUE)
   expect(band?.getAttribute('fill')).toBe(MARQUEE_FILL)
+  expect(band?.getAttribute('stroke')).toBe('none')
+  const border = mount.querySelector('[data-testid="canvas-marquee-border"]')
+  expect(border?.getAttribute('fill')).toBe(SELECTION_BLUE)
+  expect(border?.getAttribute('stroke')).toBe('none')
+  expect(border?.getAttribute('d')).toBe(crispOutlinePath(
+    [{ x: 190, y: 30 }, { x: 270, y: 30 }, { x: 270, y: 90 }, { x: 190, y: 90 }], view, SELECTION_UNION_STROKE_PX))
+  expect(bandSpan(border?.getAttribute('d') || '').every(span => span === 1)).toBe(true)
   await act(async () => pointer('pointerup', 270, 90, { shiftKey: true }))
   expect(editor.state.selection.slice().sort()).toEqual([left.id, right.id].sort())
   // Two pixels touches the right layer's edge. Under the drag threshold this stays a click.
@@ -191,7 +212,9 @@ test('an empty canvas has no selection blue, and a hover is an outline only', as
   await flush()
   const hover = mount.querySelector('[data-testid="canvas-hover-outline"]')
   expect(hover?.getAttribute('data-node-id')).toBe(target.id)
-  expect(hover?.getAttribute('stroke')).toBe(SELECTION_BLUE)
+  expect(hover?.getAttribute('fill')).toBe(SELECTION_BLUE)
+  expect(hover?.getAttribute('stroke')).toBe('none')
+  expect(bandSpan(hover?.getAttribute('d') || '').every(span => span === 1)).toBe(true)
   expect(mount.querySelector('[data-testid="canvas-selection-size"]')).toBeNull()
   expect(mount.querySelector('[data-testid="resize-0"]')).toBeNull()
 })
@@ -219,7 +242,10 @@ test('a 60 by 47 selection shows that size pill, and a three-layer marquee shows
   await flush()
   const band = mount.querySelector('[data-testid="canvas-marquee"]')
   expect(band?.getAttribute('fill')).toBe(MARQUEE_FILL)
-  expect(band?.getAttribute('stroke')).toBe(SELECTION_BLUE)
+  expect(band?.getAttribute('stroke')).toBe('none')
+  const border = mount.querySelector('[data-testid="canvas-marquee-border"]')
+  expect(border?.getAttribute('fill')).toBe(SELECTION_BLUE)
+  expect(bandSpan(border?.getAttribute('d') || '').every(span => span === 1)).toBe(true)
   const preview = mount.querySelector('[data-testid="canvas-marquee-selection"]')
   expect(preview?.querySelectorAll('[data-testid="canvas-selection-member"]')).toHaveLength(3)
   expect(preview?.querySelectorAll('[data-testid^="resize-"]')).toHaveLength(4)
