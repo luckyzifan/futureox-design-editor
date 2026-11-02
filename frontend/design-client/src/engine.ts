@@ -1327,11 +1327,11 @@ export class Editor {
         .map((e) => e.bounds),
     )
   }
-  /** Canvas press and the hover outline use the Mac Figma frame rule: child
-   * paint selects that child; empty frame area selects the frame. Groups do
-   * not replace that geometric target. Command/Ctrl deep-select returns the
-   * same target and does not depend on which group is selected. Components
-   * and instances still capture ordinary clicks. */
+  /** Canvas press and the hover outline use the Mac Figma rule. Child paint
+   * inside a frame selects that child; empty frame area selects the frame.
+   * A group or boolean group selects itself until a descendant is already
+   * selected. Command/Ctrl returns that same leaf every time. Components and
+   * instances still capture ordinary clicks. */
   selectionHit(p: Point, deep = false, index?: SpatialIndex, zoom = this.state.view.zoom, snapshot?: PickSnapshot): string | null {
     return this.hit(p, deep, index, zoom, snapshot)
   }
@@ -2133,8 +2133,9 @@ export class Editor {
     if (!this.clipboard || this.interactionActive) return
     const content=this.clipboard, before=this.state.doc, parents=allParents(before), selected=this.topSelection()
     if(this.topSelection(true).length!==selected.length) {this.notify('粘贴目标包含锁定图层，请先解锁');return}
+    const shared = selected.length && selected.every(id => parents.get(id) === parents.get(selected[0])) ? parents.get(selected[0]) : undefined
     const targets=replace?selected:selected.length && selected.every(id=>container(before.nodes[id]) && !content.roots.includes(id)) ? selected
-      : selected.length===1 && before.nodes[parents.get(selected[0])!]? [parents.get(selected[0])!] : []
+      : shared && before.nodes[shared] && !content.roots.includes(shared) ? [shared] : []
     if(!targets.length){if(replace)this.notify('请选择要替换的图层');else this.paste(false);return}
     for(const target of targets) {
       for(let id:string|undefined=target;id && before.nodes[id];id=parents.get(id)) {
@@ -2157,7 +2158,7 @@ export class Editor {
     try {
       for(const target of targets) {
         const page=this.state.doc.pages.find(p=>p.id===this.state.page)!,existing=new Set(page.children)
-        this.paste(true)
+        this.paste(true, undefined, false)
         const roots=this.state.doc.pages.find(p=>p.id===this.state.page)!.children.filter(id=>!existing.has(id))
         if(!roots.length)throw new Error(this.state.message || '未能粘贴图层')
         const destination=replace?parents.get(target)!:target,box=before.nodes[target]
@@ -2214,7 +2215,16 @@ export class Editor {
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
   }
-  paste(inPlace = false, position?: Point) {
+  /** A single unlocked frame, section, or group. Paste in place parents into it
+   * and keeps world position. A selected shape stays a page-level paste. */
+  private openContainerSelection(): string | undefined {
+    const ids = this.topSelection()
+    if (ids.length !== 1) return undefined
+    const n = this.state.doc.nodes[ids[0]]
+    if (!n || n.locked || n.instance || n.instanceOrigin || !container(n)) return undefined
+    return ids[0]
+  }
+  paste(inPlace = false, position?: Point, nestInSelection = true) {
     const action = beginEditorAction(this, CanvasAction.paste, ActionSource.unknown, 226)
     try {
     if (!this.clipboard) return
@@ -2222,6 +2232,7 @@ export class Editor {
       this.notify('粘贴位置无效'); return
     }
     const content = this.clipboard
+    const placeIn = inPlace && !position && nestInSelection ? this.openContainerSelection() : undefined
     const offset = inPlace ? 0 : this.duplicateOffset
     let delta = { x: offset, y: offset }
     if (position) {
@@ -2246,7 +2257,7 @@ export class Editor {
         created = Components.insertInstance(d, componentId, this.state.page, {
           x: source.transform[4] + delta.x,
           y: source.transform[5] + delta.y,
-        })
+        }, placeIn)
         if (position) d.nodes[created].transform = multiply(translate(delta.x, delta.y), source.transform)
       })
       if (this.state.doc.nodes[created]?.instance) this.select([created])
@@ -2279,8 +2290,17 @@ export class Editor {
             )
           d.nodes[n.id] = n
         }
-        d.pages.find((p) => p.id === this.state.page)!.children.push(...roots)
+        const page = d.pages.find((p) => p.id === this.state.page)!
+        const existing = new Set(page.children)
+        page.children.push(...roots)
         applyClipboardSemantics(d, content.document, content.roots, dependencies.nodeIds, dependencies.designSystem, semantics, this.state.page, delta, { internal })
+        const placed = page.children.filter(id => !existing.has(id))
+        if (placeIn && d.nodes[placeIn] && placed.length && !placed.includes(placeIn)) {
+          page.children = page.children.filter(id => !placed.includes(id))
+          d.nodes[placeIn].children.push(...placed)
+          const basis = inverse(worldMatrix(d, placeIn))
+          for (const id of placed) d.nodes[id].transform = multiply(basis, d.nodes[id].transform)
+        }
       },
       content.selection?.map(id => ids.get(id)!) || roots,
     )

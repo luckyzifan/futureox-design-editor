@@ -42,6 +42,12 @@ export function creationPointCount(current: number, delta: number) {
   return Math.max(3, Math.min(60, Math.round(current) + Math.trunc(delta)))
 }
 
+/** Space during a draw moves both corners by the same world delta. `anchor`
+ * and `origin` are the anchor and pointer captured when Space went down. */
+export function translateCreationAnchor(anchor: Point, origin: Point, pointer: Point): Point {
+  return { x: anchor.x + pointer.x - origin.x, y: anchor.y + pointer.y - origin.y }
+}
+
 /** Allocate once on pointerdown. All subsequent previews and the commit keep
  * this node's identity, paints, strokes and line vertex/edge identities. */
 export function createShapeSeed(kind: ShapeCreationKind, id: string = uid(), points?: number): ShapeCreationSeed {
