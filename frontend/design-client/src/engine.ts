@@ -1243,16 +1243,17 @@ export class Editor {
         .map((e) => e.bounds),
     )
   }
-  /** Ordinary canvas press and hover share one target. Container movement is
-   * explicit (existing selection or title); unopened ancestors must not replace
-   * the child that the pointer just identified. Native clipping/lock/foreground
-   * board checks remain in hit(). Legacy hierarchy navigation still uses hit(). */
+  /** Canvas press and the hover outline use Figma's parent-first target.
+   * An unentered frame, group, component, or instance wins over its children.
+   * Cmd/Ctrl (deep) returns the leaf. Selecting a child enters its ancestors,
+   * so the next click stays at that level. Clipping, locks, and foreground
+   * boards stay in hit(). */
   selectionHit(p: Point, deep = false, index?: SpatialIndex, zoom = this.state.view.zoom, snapshot?: PickSnapshot): string | null {
-    if (deep) return this.hit(p, true, index, zoom, snapshot)
-    return this.hoverHit(p,index,zoom,snapshot)
+    return this.hit(p, deep, index, zoom, snapshot)
   }
-  /** Hover identifies the smallest eligible object within the front board,
-   * independently of the hierarchy used by click/drag selection. */
+  /** Smallest eligible object inside the front board. Canvas hover uses
+   * selectionHit so the outline matches the click; this remains for callers
+   * that need the leaf independently of the entered hierarchy. */
   hoverHit(p: Point, index?: SpatialIndex, viewZoom = this.state.view.zoom, snapshot?: PickSnapshot): string | null {
     const hit=this.hit(p,true,index,viewZoom,snapshot,undefined,'smallest')
     if(!hit)return null

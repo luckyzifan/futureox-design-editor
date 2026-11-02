@@ -37,3 +37,28 @@ export function canvasMarqueeSelection(document: DesignDocument, page: string,
   }
   return options.additive ? [...new Set([...origin, ...ids])] : ids
 }
+
+/** Figma marquee is a drag, not a shaky click. Shift held at the start or at
+ * release adds. Sketch keeps release-time Shift for XOR and Option for
+ * full containment. Deep is the caller's Cmd/Ctrl or forced-X decision. */
+export function marqueeReleasePlan(input: {
+  sketch: boolean
+  shift: boolean
+  alt: boolean
+  deep: boolean
+  multiselect: boolean
+  startedAdditive: boolean
+  passedThreshold: boolean
+}): { apply: false } | { apply: true; deep: boolean; contained: boolean; additive: boolean; toggle: boolean } {
+  if (!input.passedThreshold) return { apply: false }
+  const additive = input.sketch
+    ? input.shift || input.multiselect
+    : input.shift || input.startedAdditive || input.multiselect
+  return {
+    apply: true,
+    deep: input.deep,
+    contained: input.sketch && input.alt,
+    additive,
+    toggle: input.sketch && additive,
+  }
+}
