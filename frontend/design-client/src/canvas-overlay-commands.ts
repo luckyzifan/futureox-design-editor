@@ -11,7 +11,7 @@ export type CanvasOverlayContext = {
   epoch: number
   /** UI render dependencies, not a document/geometry revision. */
   uiIdentity: string
-  commands: Omit<CanvasOverlay,'measurements'> & { measurements: Measurement[] }
+  commands: Omit<CanvasOverlay,'measurements' | 'labels'> & { measurements: Measurement[]; labels: CanvasLabel[] }
 }
 export type CanvasOverlayInputs = {
   document: DesignDocument; pageId: string; epoch: number
