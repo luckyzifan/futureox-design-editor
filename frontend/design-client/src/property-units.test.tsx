@@ -25,11 +25,25 @@ test('live Figma child X/Y/W/H/radii/glass numbers are displayed without changin
   const { editor, lens } = fixture(), before = JSON.stringify(editor.state.doc), raw = editor.state.doc.nodes[lens.id]
   expect(['x','y','width','height'].map(f => selectionMetric(raw, f as 'x', editor.state.doc))).toEqual([32,32,192,192])
   const html = renderToStaticMarkup(<Inspector editor={editor} />)
-  for (const [label,value] of [['左上',32],['深度',16],['磨砂',3],['粗细',4]])
+  for (const [label,value] of [['圆角',32],['深度',16],['磨砂',3],['粗细',4]])
     expect(html).toMatch(new RegExp(`aria-label="${label}"[^>]+aria-valuenow="${value}"`))
+  expect(html).toContain('aria-label="独立圆角"')
+  expect(html).toContain('aria-pressed="false"')
+  expect(html).not.toContain('aria-label="左上"')
+  expect(html).toContain('class="field-grid glass-fields"')
   expect(html).toContain('value="8 4"')
   expect(JSON.stringify(editor.state.doc)).toBe(before)
   expect(raw.width).toBe(96); expect(raw.effects[0].glass!.depth).toBe(8)
+})
+test('mixed corner radii show the four Mac corner fields in native units', () => {
+  const { editor, lens } = fixture()
+  editor.updateProperties([lens.id], n => { n.radii = [1, 2, 3, 4] })
+  const html = renderToStaticMarkup(<Inspector editor={editor} />)
+  expect(html).toContain('aria-pressed="true"')
+  expect(html).toMatch(/aria-label="左上"[^>]+aria-valuenow="2"/)
+  expect(html).toMatch(/aria-label="右上"[^>]+aria-valuenow="4"/)
+  expect(html).toMatch(/aria-label="右下"[^>]+aria-valuenow="6"/)
+  expect(html).toMatch(/aria-label="左下"[^>]+aria-valuenow="8"/)
 })
 test('an effective width edit is converted once; unrelated material bits and Undo are preserved', () => {
   const { editor, lens } = fixture(), before = editor.state.doc

@@ -21,6 +21,7 @@ const phrases = {
   arcSweep: ['拖动调整圆弧扫过角', 'Drag to change the arc sweep'],
   arcInner: ['拖动调整圆环内径', 'Drag to change the inner radius'],
   cornerRadiusHandle: ['拖动调整顶点圆角', 'Drag to change the corner radius'],
+  rectangleCorner: ['拖动调整圆角 · ⌥ 只改这一角 · Shift 取整', 'Drag to change the corner radius · ⌥ changes this corner · Shift rounds'],
   vertexCount: ['拖动调整顶点数量', 'Drag to change the point count'],
   starInner: ['拖动调整星形内半径', 'Drag to change the star inner radius'],
 } as const

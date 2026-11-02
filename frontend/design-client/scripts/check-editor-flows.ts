@@ -158,7 +158,7 @@ try {
     ['background-blur', '背景模糊'],
     ['noise', '噪声'],
     ['texture', '纹理'],
-    ['glass', '玻璃折射'],
+    ['glass', '玻璃'],
   ]) {
     await page.getByLabel('添加效果', { exact: true }).selectOption(value)
     await settle()

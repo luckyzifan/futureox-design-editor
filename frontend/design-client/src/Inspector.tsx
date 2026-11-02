@@ -20,6 +20,7 @@ import { TextStylePanel } from './TextStylePanel'
 import { clearWholeTextRunColor, setWholeTextFontSize } from './text'
 import { selectionParentBounds, rotationDegrees, rotateNode, selectionLocalBounds } from './canvas-view'
 import { ComponentPanel } from './ComponentPanel'
+import { CornerRadiusFields } from './corner-radius-fields'
 import { NumberField } from './fields'
 import { LayoutPanel } from './LayoutPanel'
 import { MultiSelectionInspector } from './MultiSelectionInspector'
@@ -72,7 +73,7 @@ const effects: Record<Effect['kind'], string> = {
   'inner-shadow': '内阴影',
   blur: '图层模糊',
   'background-blur': '背景模糊',
-  glass: '玻璃折射',
+  glass: '玻璃',
   noise: '噪声',
   texture: '纹理',
   'color-controls': '颜色调整',
@@ -621,35 +622,9 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
             </select>
           </label>
           {['rectangle', 'frame', 'section'].includes(n.kind) && (
-            <>
-              <h4>{tr("圆角")}</h4>
-              <div className="field-grid">
-                {n.radii.map((r, i) => (
-                  <UnitNumberField unitDescription={styleDescription} historyLabel={['左上', '右上', '右下', '左下'][i]} unit="length" diagnosticFamily={2} unitScale={units.style}
-                    key={i}
-                    label={tr(['左上', '右上', '右下', '左下'][i])}
-                    value={r}
-                    min={0}
-                    onChange={(v) =>
-                      update((n) => {
-                        n.radii[i] = v
-                      })
-                    }
-                  />
-                ))}
-              </div>
-              <NumberField historyLabel="圆角平滑 %" diagnosticFamily={2} unit="percent"
-                label={tr("圆角平滑 %")}
-                value={n.smoothing * 100}
-                min={0}
-                max={100}
-                onChange={(v) =>
-                  update((n) => {
-                    n.smoothing = v / 100
-                  })
-                }
-              />
-            </>
+            <CornerRadiusFields nodeId={n.id} radii={n.radii} smoothing={n.smoothing} scale={units.style} description={styleDescription}
+              onRadii={radii => update(node => { node.radii = radii })}
+              onSmoothing={value => update(node => { node.smoothing = value })} />
           )}
           {['star', 'polygon'].includes(n.kind) && (
             <NumberField historyLabel="顶点数量" diagnosticFamily={2} unit="number"
@@ -996,9 +971,9 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                 </div>}
               </>}
               {fx.glass && (
-                <div className="field-grid">
+                <div className="field-grid glass-fields">
                   {(
-                    ['depth', 'bevelSize', 'refraction', 'dispersion', 'lightAngle', 'lightIntensity'] as const
+                    ['refraction', 'depth', 'dispersion', 'lightAngle', 'lightIntensity', 'bevelSize'] as const
                   ).map((key) => {
                     const percentage =
                       key === 'refraction' || key === 'dispersion' || key === 'lightIntensity'

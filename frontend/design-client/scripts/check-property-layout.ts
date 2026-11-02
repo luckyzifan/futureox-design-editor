@@ -31,7 +31,7 @@ try{
  await page.getByTestId(`layer-${frame.id}`).click();await canvas.focus();await page.keyboard.press('k');await page.getByLabel('缩放倍率',{exact:true}).fill('2x');await page.getByLabel('缩放倍率',{exact:true}).press('Enter')
  await expect.poll(async()=>(await read()).nodes[frame.id].transform[0]).toBe(2)
  await page.getByTestId(`layer-${lens.id}`).click();await settle();const scaled=await read()
- for(const[label,value]of [['X','32'],['Y','32'],['W','192'],['H','192'],['左上','32'],['粗细','4'],['深度','16'],['磨砂','3']])await expect(page.getByLabel(label,{exact:true})).toHaveValue(value)
+ for(const[label,value]of [['X','32'],['Y','32'],['W','192'],['H','192'],['圆角','32'],['粗细','4'],['深度','16'],['磨砂','3']])await expect(page.getByLabel(label,{exact:true})).toHaveValue(value)
  await expect(page.getByLabel('虚线',{exact:true})).toHaveValue('8 4');expect((await read()).nodes).toEqual(scaled.nodes)
  await page.getByLabel('深度',{exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:join(output,'02-child-glass.png')})
  checks.push({name:'Figma-observed child position/size/radius/depth/frost displayed after Scale; inspection does not mutate native parameters'})
