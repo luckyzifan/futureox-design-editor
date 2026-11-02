@@ -1610,10 +1610,10 @@ footer button {
 .embedded-design-tools .feature-row input, .embedded-design-tools .feature-row select { min-width: 0; }
 
 /* The canvas context menu is a portal so the viewport never clips it. */
-.canvas-context-menu { position: fixed; z-index: 900; width: 252px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow: auto; padding: 5px; border: 1px solid var(--workspace-border); border-radius: 9px; background: var(--workspace-panel); color: var(--workspace-text); box-shadow: 0 8px 32px #0003, 0 1px 4px #0001; user-select: none; overscroll-behavior: contain; }
-.canvas-context-menu button { width: 100%; min-height: 29px; justify-content: space-between; gap: 16px; border-radius: 5px; padding: 6px 9px; font-size: 11px; text-align: left; }
-.canvas-context-menu button:hover:not(:disabled), .canvas-context-menu button:focus-visible { background: var(--workspace-accent); color: #fff; outline: none; }
-.canvas-context-menu button:disabled { opacity: 1; color: #a0a2a5; }
+.canvas-context-menu { position: fixed; z-index: 900; width: 252px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow: auto; padding: 5px; border: 1px solid #00000055; border-radius: 8px; background: #2c2c2c; color: #fff; box-shadow: 0 8px 24px #00000066, 0 2px 6px #00000040; user-select: none; overscroll-behavior: contain; }
+.canvas-context-menu button { width: 100%; min-height: 29px; justify-content: space-between; gap: 16px; border-radius: 5px; padding: 6px 9px; font-size: 11px; text-align: left; background: transparent; color: #fff; }
+.canvas-context-menu button:hover:not(:disabled), .canvas-context-menu button:focus-visible { background: #0d99ff; color: #fff; outline: none; }
+.canvas-context-menu button:disabled { opacity: 1; color: #ffffff59; }
 .canvas-context-menu .context-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .canvas-context-menu kbd { flex: none; font: inherit; font-size: 10px; color: var(--workspace-muted); }
 .canvas-context-menu button:focus-visible kbd, .canvas-context-menu button:hover:not(:disabled) kbd { color: inherit; }
@@ -2100,6 +2100,7 @@ html[data-reduced-motion=true] .editor-shell *, html[data-reduced-motion=true] .
     row-gap: 2px;
   }
   .editor-shell .header-right > .primary { font-size: 0; padding: 6px; }
+}
 
 /* Warm, quiet chrome. Accent stays #3459d4. Canvas pixels and selection stroke stay put. */
 .app-shell > header { background: var(--workspace-panel); }
