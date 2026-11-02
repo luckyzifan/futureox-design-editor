@@ -56,6 +56,8 @@ describe('bounded keyboard presets', () => {
     expect(await dispatchEditorShortcut(editor, key('x'), context)).toBe(false)
     expect(editor.state.doc).toBe(before)
     expect(shortcutLabel('set-tool-pencil', { ...context, profile: 'figma-like' })).toBe('Shift+P')
+    expect(resolveShortcut(key('E', { code: 'KeyE', shiftKey: true }), { profile: 'figma-like', platform: 'mac', desktop: true })?.command).toBe('set-tool-eraser')
+    expect(shortcutLabel('set-tool-eraser', { profile: 'figma-like', platform: 'mac', desktop: true })).toBe('E')
     expect(shortcutLabel('bring-to-front', { ...context, profile: 'figma-like' })).toBe(']')
   })
   test.each(contexts)('menu hints match the actual dispatcher: $profile $platform desktop=$desktop', context => {
