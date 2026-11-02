@@ -200,6 +200,29 @@ test('Figma Option marquee remains intersection-based and Shift remains additive
   expect(editor.state.selection).toEqual([a.id]); unchanged(doc)
 })
 
+test('Figma click stays on the frame, Shift during the marquee adds, and a short drag does not select', async () => {
+  const frame = node('frame', 80, 80, 220, 160), child = node('rectangle', 20, 20, 40, 30)
+  const other = node('rectangle', 400, 80, 30, 30)
+  frame.children = [child.id]
+  const doc = await render([frame, child, other], [frame.id, other.id])
+  await act(async () => shortcutPreference.set('figma-like'))
+  await act(async () => pointer('pointerdown', 110, 110))
+  await act(async () => pointer('pointerup', 110, 110))
+  expect(editor.state.selection).toEqual([frame.id]); unchanged(doc)
+  await act(async () => host().dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, clientX: 110, clientY: 110 })))
+  expect(editor.state.selection).toEqual([child.id]); unchanged(doc)
+  await act(async () => key('Enter', { shiftKey: true }))
+  expect(editor.state.selection).toEqual([frame.id]); unchanged(doc)
+  await marquee([20, 20], [22, 22])
+  expect(editor.state.selection).toEqual([]); unchanged(doc)
+  await act(async () => editor.select([other.id]))
+  await marquee([70, 70], [320, 260], { shiftKey: true }, {})
+  expect(ordered(editor.state.selection)).toEqual(ordered([frame.id, other.id])); unchanged(doc)
+  await act(async () => pointer('pointerdown', 110, 110, { metaKey: true }))
+  await act(async () => pointer('pointerup', 110, 110, { metaKey: true }))
+  expect(editor.state.selection).toEqual([child.id]); unchanged(doc)
+})
+
 test('held X clears on profile and document changes without becoming a persistent selection tool', async () => {
   const a = node('rectangle', 100, 100, 40, 40); await render([a]); await act(async () => editor.set({ tool: 'rectangle' }))
   await act(async () => key('x')); expect(host().style.cursor).toBe('crosshair')
@@ -341,21 +364,21 @@ test('desktop center shortcut respects empty selection, repeated/IME/modifier/in
   await act(async () => editor.redo()); expect(editor.state.doc.nodes[a.id].width).toBe(120)
 })
 
-test('entered-frame click and drag keep a small overlapping child, consume release, and undo once', async () => {
+test('entered-frame click hits the front sibling and a drag moves only that sibling', async () => {
   const frame = node('frame', 0, 0, 400, 300), child = node('rectangle', 40, 40, 40, 30), backing = node('rectangle', 20, 20, 300, 200)
   frame.children = [child.id, backing.id]
   const before = await render([frame, child, backing], [frame.id])
   await act(async () => editor.select([child.id]))
   await act(async () => pointer('pointerdown', 50, 50))
-  expect(editor.state.selection).toEqual([child.id])
+  expect(editor.state.selection).toEqual([backing.id])
   await act(async () => pointer('pointerup', 50, 50))
   unchanged(before)
   await act(async () => pointer('pointerdown', 50, 50))
   await act(async () => pointer('pointermove', 55, 55))
   await act(async () => pointer('pointerup', 70, 80))
-  expect(editor.state.selection).toEqual([child.id])
-  expect(editor.state.doc.nodes[child.id].transform).toEqual([1, 0, 0, 1, 60, 70])
-  expect(editor.state.doc.nodes[backing.id]).toEqual(before.nodes[backing.id])
+  expect(editor.state.selection).toEqual([backing.id])
+  expect(editor.state.doc.nodes[child.id]).toEqual(before.nodes[child.id])
+  expect(editor.state.doc.nodes[backing.id].transform).toEqual([1, 0, 0, 1, 40, 50])
   expect(editor.state.doc.nodes[frame.id]).toEqual(before.nodes[frame.id])
   expect(editor.interactionActive).toBe(false)
   const after = editor.state.doc
@@ -364,5 +387,5 @@ test('entered-frame click and drag keep a small overlapping child, consume relea
   await act(async () => editor.select([child.id, backing.id]))
   await act(async () => pointer('pointerdown', 70, 80, { shiftKey: true }))
   await act(async () => pointer('pointerup', 70, 80, { shiftKey: true }))
-  expect(editor.state.selection).toEqual([backing.id])
+  expect(editor.state.selection).toEqual([child.id])
 })
