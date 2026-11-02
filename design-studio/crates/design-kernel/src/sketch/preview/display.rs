@@ -445,7 +445,8 @@ impl Projection<'_> {
                     gradient_blur: None,
                     show_shadow_behind_node: false,
                     color_controls: None,
-                    zoom_blur: None, motion_angle: 0.,
+                    zoom_blur: None,
+                    motion_angle: 0.,
                 })
             }
         }
@@ -472,7 +473,8 @@ impl Projection<'_> {
                 gradient_blur: None,
                 show_shadow_behind_node: false,
                 color_controls: None,
-                zoom_blur: None, motion_angle: 0.,
+                zoom_blur: None,
+                motion_angle: 0.,
             });
         }
         if yes(&style["colorControls"], "isEnabled", false) {
@@ -631,25 +633,28 @@ impl Projection<'_> {
         .max(1.);
         let p = &first["paragraphStyle"];
         let line = num(p, "minimumLineHeight", 0.).max(num(p, "maximumLineHeight", 0.));
-        n.text_style = Some((TextStyle {
-            font_id: "default".into(),
-            line_height: if line > 0. {
-                (line / n.font_size).clamp(0.1, 10.)
-            } else {
-                1.35
-            },
-            letter_spacing: num(first, "kerning", 0.),
-            wrap: num(v, "textBehaviour", 0.) != 0.,
-            align: match num(p, "alignment", 0.) as i32 {
-                1 => "end",
-                2 => "center",
-                3 => "justify",
-                _ => "start",
-            }
+        n.text_style = Some(
+            (TextStyle {
+                font_id: "default".into(),
+                line_height: if line > 0. {
+                    (line / n.font_size).clamp(0.1, 10.)
+                } else {
+                    1.35
+                },
+                letter_spacing: num(first, "kerning", 0.),
+                wrap: num(v, "textBehaviour", 0.) != 0.,
+                align: match num(p, "alignment", 0.) as i32 {
+                    1 => "end",
+                    2 => "center",
+                    3 => "justify",
+                    _ => "start",
+                }
+                .into(),
+                paragraph_spacing: num(p, "paragraphSpacing", 0.),
+                ..TextStyle::default()
+            })
             .into(),
-            paragraph_spacing: num(p, "paragraphSpacing", 0.),
-            ..TextStyle::default()
-        }).into());
+        );
         if n.fills.is_empty() {
             n.fills.push(solid(
                 format!("{}:text", n.id),
@@ -667,7 +672,7 @@ impl Projection<'_> {
             let font_name = font["name"].as_str().unwrap_or("default");
             self.fonts.insert(font_name.into());
             n.text_runs.push(TextRun {
-                        paragraph: None,
+                paragraph: None,
                 text_case: None,
                 start,
                 end,
@@ -684,6 +689,8 @@ impl Projection<'_> {
                 underline: num(a, "underlineStyle", 0.) > 0.,
                 strikethrough: num(a, "strikethroughStyle", 0.) > 0.,
                 link: None,
+                letter_spacing: None,
+                line_height: None,
             });
         }
         Ok(())
@@ -813,7 +820,8 @@ pub fn display_snapshot(session: &Session, page_id: &str) -> Result<DisplaySnaps
                     p.assets
                         .get(key.as_ref())
                         .ok_or_else(|| Error::Missing("Sketch projected image".into()))?
-                        .clone().into(),
+                        .clone()
+                        .into(),
                 );
             }
         }

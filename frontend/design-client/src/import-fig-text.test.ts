@@ -15,3 +15,13 @@ test('mixed native FIG styles preserve UTF-16 ranges, casing, alpha and font ide
   expect(fonts).toEqual({style:'Poppins SemiBold',runs:{0:'Poppins Bold'}})
   expect(warnings.size).toBe(0)
 })
+
+test('per-run Figma line height and letter spacing become schema 21 metrics', () => {
+  const n=node('text'); n.text='ab'; n.fontSize=20; n.textStyle=defaultTextStyle()
+  const warnings=new Set<string>()
+  importFigTextRuns(n,{fontSize:20,textData:{characterStyleIDs:[1,0],styleOverrideTable:[
+    {styleID:1,fontSize:10,lineHeight:{units:'PIXELS',value:20},letterSpacing:{units:'PERCENT',value:10}},
+  ]}},warnings)
+  expect(n.textRuns?.[0]).toMatchObject({start:0,end:1,fontSize:10,lineHeight:2,letterSpacing:1})
+  expect(warnings.size).toBe(0)
+})
