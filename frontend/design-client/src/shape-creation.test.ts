@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { blank, uid, validateDocument } from './model'
-import { createShapeSeed, creationPointCount, creationToolStaysArmed, resolveShapeCreation, type ShapeCreationKind } from './shape-creation'
+import { createShapeSeed, creationGhostNode, creationPointCount, creationPreviewPoints, creationToolStaysArmed, creationVisiblePaint, resolveShapeCreation, type ShapeCreationKind } from './shape-creation'
 
 const anchor = { x: 10.25, y: -9.75 }
 const options = { anchor, pointer: { x: 31.875, y: 5.125 }, screenDistance: 30, snap: false }
@@ -44,11 +44,11 @@ test('click threshold uses CSS screen distance; narrow and returning drags never
   expect(returning.click).toBe(false); expect(returning.bounds.width).toBe(0.01)
 })
 
-test('click defaults retain frame dimensions and centre creation retains the anchor', () => {
+test('click defaults are 100×100 for shapes and frames, and centre creation retains the anchor', () => {
   for (const kind of ['rectangle', 'ellipse', 'frame', 'text'] as const) {
     const result = resolveShapeCreation(createShapeSeed(kind), { ...options, screenDistance: 0, alt: true, snap: true })
-    expect(result.bounds.width).toBe(kind === 'frame' ? 400 : 100)
-    expect(result.bounds.height).toBe(kind === 'frame' ? 300 : 100)
+    expect(result.bounds.width).toBe(100)
+    expect(result.bounds.height).toBe(100)
     expect(result.bounds.x + result.bounds.width / 2).toBe(10)
     expect(result.bounds.y + result.bounds.height / 2).toBe(-10)
   }
@@ -98,6 +98,20 @@ test('polygon creation defaults to three vertices and arrow changes are bounded'
   expect(creationPointCount(3, 1)).toBe(4)
   expect(creationPointCount(60, 1)).toBe(60)
   expect(creationPointCount(60, -1)).toBe(59)
+})
+
+test('the creation ghost keeps the seed fill until the committed node is presented', () => {
+  const seed = createShapeSeed('rectangle', 'ghost')
+  const preview = resolveShapeCreation(seed, { ...options, screenDistance: 0 })
+  expect(creationVisiblePaint(preview.node)).toBe('#d9d9d9')
+  expect(creationGhostNode(preview.node, null, () => true)?.id).toBe('ghost')
+  expect(creationGhostNode(null, preview.node, () => false)?.id).toBe('ghost')
+  expect(creationGhostNode(null, preview.node, () => true)).toBeNull()
+  const frame = resolveShapeCreation(createShapeSeed('frame', 'board'), { ...options, screenDistance: 0 })
+  expect(frame.bounds).toEqual({ x: 10.25, y: -9.75, width: 100, height: 100 })
+  expect(creationVisiblePaint(frame.node)).toBe('#ffffff')
+  expect(creationPreviewPoints(createShapeSeed('star', 'star'))).toContain(',')
+  expect(creationPreviewPoints(preview.node)).toBeNull()
 })
 
 test('a resolved line remains a valid portable design node', () => {

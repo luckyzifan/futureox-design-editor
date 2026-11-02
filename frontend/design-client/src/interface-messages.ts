@@ -2,7 +2,7 @@
 const zhCN = {
   "interface": "界面",
   "language": "界面语言",
-  "languageHelp": "适用于界面面板、设置及画布视图菜单；文件菜单、错误日志和其他编辑功能仍有未翻译内容。不会更改文档内容。",
+  "languageHelp": "适用于界面面板、设置、文件菜单及画布视图菜单。部分检查器文案和错误日志仍可能保持中文。不会更改文档内容。",
   "rememberViewport": "重新打开时恢复上次视图",
   "rememberViewportHelp": "默认适应页面；开启后记住每个文档的页面、缩放和位置。",
   "motion": "减少动态效果",
@@ -118,7 +118,7 @@ export type InterfaceMessageKey = keyof typeof zhCN
 const en: Record<InterfaceMessageKey, string> = {
   "interface": "Interface",
   "language": "Interface language",
-  "languageHelp": "Applies to interface panels, settings and the canvas view menu. The file menu, error logs and other editor features still contain untranslated text. Document content is unchanged.",
+  "languageHelp": "Applies to interface panels, settings, the file menu and the canvas view menu. Some inspector copy and error logs may stay in Chinese. Document content is unchanged.",
   "rememberViewport": "Restore last view when reopening",
   "rememberViewportHelp": "Fit the page by default. Enable to remember each document’s page, zoom and position.",
   "motion": "Reduce motion",

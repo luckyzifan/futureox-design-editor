@@ -21,6 +21,9 @@ export type ShapeCreationResult = {
   click: boolean
 }
 export const SHAPE_CLICK_DISTANCE = 3
+/** A bare click matches Figma's shape and frame tools: 100×100.
+ * Device frames stay on the preset command. Dragging still uses the pointer span. */
+export const CLICK_DEFAULT_SIZE = 100
 
 /** Repeatable creation tools stay armed after a successful drag, matching the
  * shape/frame/sticky tools in Figma. One-shot tools (select handoff, pen
@@ -42,7 +45,7 @@ export function creationPointCount(current: number, delta: number) {
 /** Allocate once on pointerdown. All subsequent previews and the commit keep
  * this node's identity, paints, strokes and line vertex/edge identities. */
 export function createShapeSeed(kind: ShapeCreationKind, id: string = uid(), points?: number): ShapeCreationSeed {
-  const seed = node(kind === 'arrow' ? 'line' : kind, 0, 0, kind === 'frame' ? 400 : 100, kind === 'frame' ? 300 : ['line', 'arrow'].includes(kind) ? 1 : 100) as ShapeCreationSeed
+  const seed = node(kind === 'arrow' ? 'line' : kind, 0, 0, CLICK_DEFAULT_SIZE, ['line', 'arrow'].includes(kind) ? 1 : CLICK_DEFAULT_SIZE) as ShapeCreationSeed
   seed.id = id
   // Fresh geometric tools use the neutral fill observed in the reference UI.
   // Existing documents and explicitly styled board/pencil tools retain their paints.
@@ -63,8 +66,8 @@ export function resolveShapeCreation(seed: ShapeCreationSeed, options: ShapeCrea
   const a = snap ? kernelSnapPoint(anchor) : { ...anchor }
   let delta: Point
   if (click) {
-    const width = seed.kind === 'frame' ? 400 : 100
-    const height = seed.kind === 'frame' ? 300 : seed.kind === 'line' ? 0 : 100
+    const width = CLICK_DEFAULT_SIZE
+    const height = seed.kind === 'line' ? 0 : CLICK_DEFAULT_SIZE
     delta = { x: width / (alt ? 2 : 1), y: height / (alt ? 2 : 1) }
   } else {
     const b = snap ? kernelSnapPoint(pointer) : pointer
@@ -109,4 +112,46 @@ export function resolveShapeCreation(seed: ShapeCreationSeed, options: ShapeCrea
     }
   }
   return { node: result, bounds, start, end, click }
+}
+
+/** Solid fill shown while a shape is being drawn. Lines use their stroke.
+ * The same color is already on the seed, so preview and commit cannot disagree. */
+export function creationVisiblePaint(node: { kind: string; fills: ShapeCreationSeed['fills']; strokes: ShapeCreationSeed['strokes'] }): string {
+  if (node.kind === 'line') {
+    const stroke = node.strokes.find(entry => entry.visible && entry.paint.visible && entry.paint.kind === 'solid' && entry.paint.color)
+    return stroke?.paint.color || '#303344'
+  }
+  const fill = node.fills.find(entry => entry.visible && entry.kind === 'solid' && entry.color)
+  return fill?.color || 'none'
+}
+
+/** Local polygon used only for the creation ghost. The committed node still
+ * uses the kernel's authored star/polygon geometry. */
+export function creationPreviewPoints(node: { kind: string; width: number; height: number; points: number; innerRadius: number }): string | null {
+  if (node.kind !== 'polygon' && node.kind !== 'star') return null
+  const count = Math.max(3, Math.min(60, Math.round(node.points || (node.kind === 'star' ? 5 : 3))))
+  const inner = node.kind === 'star' ? Math.max(0, Math.min(1, node.innerRadius || 0.45)) : 1
+  const coords: string[] = []
+  for (let index = 0; index < count; index++) {
+    const angle = -Math.PI / 2 + index * 2 * Math.PI / count
+    coords.push(`${node.width / 2 + Math.cos(angle) * node.width / 2},${node.height / 2 + Math.sin(angle) * node.height / 2}`)
+    if (inner < 1) {
+      const mid = angle + Math.PI / count
+      coords.push(`${node.width / 2 + Math.cos(mid) * node.width / 2 * inner},${node.height / 2 + Math.sin(mid) * node.height / 2 * inner}`)
+    }
+  }
+  return coords.join(' ')
+}
+
+/** Keep the filled ghost until the committed document has actually been presented.
+ * Clearing it on mouseup, while the surface still shows the previous frame,
+ * flashes an empty shape and then the fill. */
+export function creationGhostNode<T extends { id: string }>(
+  preview: T | null,
+  held: T | null,
+  committedAndPresented: (id: string) => boolean,
+): T | null {
+  if (preview) return preview
+  if (!held || committedAndPresented(held.id)) return null
+  return held
 }

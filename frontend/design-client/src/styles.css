@@ -1429,7 +1429,7 @@ footer button {
 .editor-workspace .workspace-icon { width: 28px; height: 28px; background: var(--workspace-hover); color: var(--workspace-text); }
 .editor-workspace .pages-heading { color: var(--workspace-muted); padding: 2px 12px 6px; font-size: 11px; }
 .editor-workspace .page { height: 30px; gap: 8px; border-radius: 5px; color: var(--workspace-text); }
-.editor-workspace .page.active, .editor-workspace .layer-row.selected { background: var(--workspace-selected); color: #0071c2; }
+.editor-workspace .page.active, .editor-workspace .layer-row.selected { background: var(--workspace-selected); color: var(--workspace-accent); }
 .editor-workspace .layer-row[data-hovered="true"]:not(.selected) { background: var(--workspace-hover); box-shadow: inset 0 0 0 1px var(--workspace-accent); }
 .editor-workspace .page-dot { background: var(--workspace-accent); }
 .editor-workspace .page-symbol { color: var(--workspace-muted); }
@@ -1448,13 +1448,15 @@ footer button {
 .floating-toolbar { position: absolute; z-index: 20; bottom: 30px; left: 50%; transform: translateX(-50%); height: 48px; max-width: calc(100% - 16px); padding: 6px 8px; gap: 8px; overflow: visible; border: 1px solid var(--workspace-border); border-radius: 12px; box-shadow: 0 4px 20px #00000012, 0 1px 3px #0000000a; }
 .floating-toolbar .tool-group { gap: 2px; align-items: center; }
 .floating-toolbar .tool-group > button, .floating-toolbar .tool-popover > button { width: 34px; height: 34px; border-radius: 7px; padding: 7px; color: var(--workspace-text); }
-.floating-toolbar .tool-group > button.active { color: white; background: var(--workspace-accent); }
+.floating-toolbar .tool-group > button.active,
+.floating-toolbar .tool-popover > button.active { color: var(--workspace-accent); background: var(--workspace-selected); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--workspace-accent) 32%, transparent); }
 .floating-toolbar button:hover:not(:disabled) { background: var(--workspace-hover); }
 .floating-toolbar button:disabled:hover { background: transparent; }
 .floating-toolbar button:focus-visible { outline: 2px solid var(--workspace-accent); outline-offset: 2px; }
 .floating-toolbar button[aria-expanded=true] { background: var(--workspace-selected); color: var(--workspace-accent); }
 .toolbar-tooltip { position: fixed; z-index: 90; max-width: min(280px, calc(100vw - 16px)); padding: 7px 9px; border: 1px solid var(--workspace-text); border-radius: 6px; background: var(--workspace-text); color: var(--workspace-panel); font-size: 11px; line-height: 16px; white-space: normal; pointer-events: none; box-shadow: 0 3px 10px #0002; }
-.floating-toolbar .tool-group > button.active:hover { background: var(--workspace-accent-hover); }
+.floating-toolbar .tool-group > button.active:hover,
+.floating-toolbar .tool-popover > button.active:hover { color: var(--workspace-accent); background: var(--workspace-selected); }
 .tool-popover { position: relative; display: flex; }
 .tool-popover-content { position: fixed; z-index: 80; width: 238px; max-width: calc(100vw - 16px); max-height: min(65dvh, calc(100dvh - 16px), 540px); overflow: auto; overscroll-behavior: contain; padding: 6px; border: 1px solid var(--workspace-border); border-radius: 9px; background: var(--workspace-panel); color: var(--workspace-text); box-shadow: 0 6px 28px #0002; user-select: none; }
 .tool-popover-content > button { display: flex; width: 100%; height: 32px; justify-content: flex-start; padding: 6px 8px; font-size: 11px; border-radius: 5px; }
@@ -1511,8 +1513,8 @@ footer button {
   .floating-toolbar .tool-group > button, .floating-toolbar .tool-popover > button { width: 30px; height: 32px; padding: 6px; }
   .app-shell > footer > div > button { display: none; }
 }
-.floating-toolbar .tool-popover > button.active { color: white; background: var(--workspace-accent); }
-.floating-toolbar .tool-popover > button.active:hover { background: var(--workspace-accent-hover); }
+.creation-tool-hint { position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); display: flex; align-items: center; gap: 8px; width: max-content; max-width: min(560px, calc(100vw - 32px)); margin: 0; padding: 5px 10px; border: 1px solid var(--workspace-border); border-radius: 999px; background: var(--workspace-panel); color: var(--workspace-muted); font-size: 11px; line-height: 16px; pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 2px 8px #18202c10; }
+.creation-tool-hint b { color: var(--workspace-accent); font-weight: 600; flex: none; }
 .floating-toolbar .tool-popover > .tool-picker-arrow { width: 12px; padding: 0; margin-left: -1px; }
 .canvas-workspace .pencil-controls { top: 57px; left: 12px; max-width: calc(100% - 24px); gap: 6px; padding: 7px; }
 .editor-workspace .layers-panel .layer-row:focus-visible { outline: 2px solid var(--workspace-accent); outline-offset: -2px; }
@@ -1647,7 +1649,8 @@ footer button {
 .editor-shell.chrome-hide-inspector .header-right { grid-column: 3; justify-self: end; border-radius: 8px; margin: 8px; }
 .editor-shell.chrome-minimized .brand { display: none; }
 .editor-shell.chrome-minimized > footer { left: 12px; }
-.editor-shell.chrome-hide-inspector .canvas-workspace .canvas-controls { top: 62px; }
+.editor-shell.chrome-hide-inspector .canvas-workspace .canvas-controls { top: auto; right: auto; bottom: 72px; left: 12px; }
+.editor-shell.chrome-hide-inspector .canvas-workspace .view-menu-body { top: auto; bottom: calc(100% + 8px); }
 .canvas-panel-toggles { position: absolute; inset: 0; pointer-events: none; z-index: 35; }
 .canvas-panel-toggle { position: absolute; top: 50%; transform: translateY(-50%); width: 24px; height: 44px; display: flex; align-items: center; justify-content: center; padding: 0; pointer-events: auto; color: var(--workspace-muted); background: var(--workspace-panel); border: 1px solid var(--workspace-border); box-shadow: 0 2px 6px #0000000a; }
 .canvas-panel-toggle.left { left: 0; border-left: 0; border-radius: 0 7px 7px 0; }
@@ -1659,7 +1662,7 @@ footer button {
 .editor-shell .layout-panel > h4 { display: flex; align-items: center; justify-content: space-between; }
 .layout-flow { display: flex; gap: 2px; padding: 2px; background: var(--workspace-hover); border-radius: 6px; margin: 8px 0; }
 .layout-flow button { flex: 1; height: 28px; padding: 4px; color: var(--workspace-muted); }
-.layout-flow button[aria-checked=true] { background: var(--workspace-panel); color: var(--workspace-text); box-shadow: 0 0 0 1px var(--workspace-border); }
+.layout-flow button[aria-checked=true] { background: var(--workspace-panel); color: var(--workspace-accent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--workspace-accent) 40%, var(--workspace-border)); }
 
 /* Shared controls stay readable at the density of a desktop design tool. */
 .workspace-rail { gap: 6px; }
@@ -1684,7 +1687,7 @@ footer button {
 .properties-content .inspector h4 { color: var(--workspace-muted); font-size: 11px; }
 .properties-content .inspector select, .properties-content .property-card > input:not([type="color"]), .properties-content .paint-row select { font-size: 11px; }
 .properties-content .text-button, .properties-content .selection-actions button { font-size: 11px; }
-.properties-tabs button[aria-selected=true] { background: var(--workspace-selected); color: var(--workspace-accent); }
+.properties-tabs button[aria-selected=true] { background: transparent; color: var(--workspace-accent); border-radius: 0; box-shadow: inset 0 -2px 0 var(--workspace-accent); font-weight: 600; }
 .floating-toolbar { box-shadow: 0 6px 24px #18233014, 0 1px 4px #1823300a; }
 .tool-popover-content > button, .canvas-context-menu button { font-size: 12px; min-height: 30px; }
 .file-menu { top: 48px; left: 10px; border-color: var(--workspace-border); }
@@ -1839,8 +1842,8 @@ body:has(.app-shell[data-color-picking="true"]) .feature-backdrop{visibility:hid
 html[data-reduced-motion=true] .editor-shell *, html[data-reduced-motion=true] .settings-backdrop *, html[data-reduced-motion=true] .modal-backdrop * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 
 /* Short, finite entrance transitions; no timers or continuously animated chrome. */
-@keyframes panel-enter-left { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: translateX(0); } }
-@keyframes panel-enter-right { from { opacity: 0; transform: translateX(6px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes panel-enter-left { from { transform: translateX(-4px); } to { transform: translateX(0); } }
+@keyframes panel-enter-right { from { transform: translateX(4px); } to { transform: translateX(0); } }
 @keyframes interface-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 .editor-shell .adaptive-layers-shell { animation: panel-enter-left 140ms ease-out; }
 .editor-shell .properties-workspace { animation: panel-enter-right 140ms ease-out; }
