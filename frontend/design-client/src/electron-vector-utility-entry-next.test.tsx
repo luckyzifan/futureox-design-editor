@@ -9,6 +9,8 @@ import { Canvas } from './Canvas'
 import { Editor } from './engine'
 import { blank, node, uid, stroke, type DesignNode } from './model'
 import { shortcutPreference } from './shortcut-preference'
+import { setPrototypeTab } from './prototype-chrome'
+import { constrainAngle } from './pen-constraints'
 import { scene, worldMatrix, apply } from './geometry'
 import { dispatchEditorCommand } from './editor-commands'
 import { AlignmentControls } from './AlignmentControls'
@@ -63,7 +65,7 @@ beforeEach(() => {
   mount = document.createElement('div'); document.body.append(mount); root = createRoot(mount)
 })
 afterEach(async () => {
-  await act(async () => root.unmount()); editor.dispose(); dom.window.close()
+  await act(async () => root.unmount()); setPrototypeTab('design'); editor.dispose(); dom.window.close()
   vi.unstubAllGlobals(); vi.restoreAllMocks(); expect(errors).toEqual([])
 })
 const host = () => mount.querySelector<HTMLElement>('[data-testid="canvas"]')!
@@ -121,10 +123,43 @@ test('set-tool-pen: open path commits exact endpoints through Enter, one undo an
   expect(n.width).toBe(100); expect(n.height).toBe(60); expect(editor.state.tool).toBe('select')
   await history(before)
 })
-test('set-tool-pen: Escape discards a multi-point unfinished path without document or history changes', async () => {
+test('set-tool-pen: Escape finishes an open path, a lone point stays out of history, Shift snaps 45 degrees, Option disconnects the handle, and the start point closes', async () => {
   await render([]); const before = editor.state.doc
-  await activate('set-tool-pen'); await clickPoint(100, 100); await clickPoint(200, 160)
+  await activate('set-tool-pen'); await clickPoint(100, 100)
   await act(async () => key('Escape')); unchanged(before); expect(editor.state.tool).toBe('select')
+  await activate('set-tool-pen'); await clickPoint(100, 100); await clickPoint(200, 160)
+  await act(async () => key('Escape'))
+  expect(editor.state.doc.pages[0].children).toHaveLength(1)
+  expect(editor.state.tool).toBe('select')
+  const open = editor.state.doc.nodes[editor.state.selection[0]]
+  expect(open.network!.edges).toHaveLength(1)
+  await history(before)
+  await act(async () => { editor.load(blank()); editor.set({ view: { x: 0, y: 0, zoom: 1 }, snap: false, snapPixels: false, tool: 'select' }) })
+  await activate('set-tool-pen'); await clickPoint(100, 100)
+  await act(async () => pointer('pointerdown', 180, 40, { shiftKey: true }))
+  await act(async () => pointer('pointerup', 180, 40, { shiftKey: true }))
+  await act(async () => key('Enter'))
+  const shifted = editor.state.doc.nodes[editor.state.selection[0]]
+  expect(shifted.network!.vertices.map(vertex => apply(worldMatrix(editor.state.doc, shifted.id), vertex))[1]).toEqual(constrainAngle({ x: 100, y: 100 }, { x: 180, y: 40 }))
+  await act(async () => { editor.load(blank()); editor.set({ view: { x: 0, y: 0, zoom: 1 }, snap: false, snapPixels: false, tool: 'select' }) })
+  await activate('set-tool-pen'); await clickPoint(100, 100)
+  await act(async () => pointer('pointerdown', 220, 100))
+  await act(async () => pointer('pointermove', 220, 170, { altKey: true }))
+  await act(async () => pointer('pointerup', 220, 170, { altKey: true }))
+  await act(async () => key('Enter'))
+  expect(editor.state.doc.nodes[editor.state.selection[0]].network!.edges[0].c2).toBeUndefined()
+  await act(async () => { editor.load(blank()); editor.set({ view: { x: 0, y: 0, zoom: 1 }, snap: false, snapPixels: false, tool: 'select' }) })
+  await activate('set-tool-pen'); await clickPoint(100, 100)
+  await act(async () => pointer('pointerdown', 220, 100))
+  await act(async () => pointer('pointermove', 220, 170))
+  await act(async () => pointer('pointerup', 220, 170))
+  await act(async () => key('Enter'))
+  expect(editor.state.doc.nodes[editor.state.selection[0]].network!.edges[0].c2).toBeDefined()
+  await act(async () => { editor.load(blank()); editor.set({ view: { x: 0, y: 0, zoom: 1 }, snap: false, snapPixels: false, tool: 'select' }) })
+  await activate('set-tool-pen')
+  await clickPoint(100, 100); await clickPoint(180, 100); await clickPoint(140, 170); await clickPoint(100, 100)
+  expect(editor.state.tool).toBe('select')
+  expect(editor.state.doc.nodes[editor.state.selection[0]].network!.edges).toHaveLength(3)
 })
 
 test('set-tool-eraser: real Canvas hits stroked line, cancellation restores, release deletes in one history step', async () => {
@@ -136,16 +171,35 @@ test('set-tool-eraser: real Canvas hits stroked line, cancellation restores, rel
   await act(async () => pointer('pointerdown', 140, 140)); await act(async () => pointer('pointermove', 150, 150))
   await act(async () => pointer('pointercancel', 150, 150)); unchanged(before)
   await act(async () => pointer('pointerdown', 140, 140)); await act(async () => pointer('pointerup', 150, 150))
-  expect(editor.state.doc.nodes[line.id]).toBeUndefined()
+  const erased = editor.state.doc.nodes[line.id]
+  expect(erased.kind).toBe('vector'); expect(erased.network!.edges.length).toBeGreaterThan(1)
   expect(editor.state.doc.nodes[locked.id]).toEqual(before.nodes[locked.id]); expect(editor.state.doc.nodes[filled.id]).toEqual(before.nodes[filled.id])
   await history(before)
 })
-test('set-tool-eraser: actual filled and locked hits cannot create a history entry', async () => {
+test('set-tool-eraser: a locked stroke is blocked and a filled shape loses only the brushed area', async () => {
   const locked = node('line', 100, 100, 100, 100); locked.fills = []; locked.strokes = [stroke()]; locked.locked = true
   const filled = node('rectangle', 300, 100, 100, 100)
   await render([locked, filled]); const before = editor.state.doc
-  await activate('set-tool-eraser'); await clickPoint(150, 150); await clickPoint(350, 150)
+  await activate('set-tool-eraser'); await clickPoint(150, 150)
   unchanged(before)
+  await clickPoint(350, 150)
+  const cut = editor.state.doc.nodes[filled.id]
+  expect(cut.kind).toBe('vector'); expect(cut.network!.edges.length).toBeGreaterThan(4)
+  expect(editor.state.doc.nodes[locked.id]).toEqual(before.nodes[locked.id])
+  await history(before)
+})
+test('prototype link head zooms to the destination and PageDown switches pages', async () => {
+  const a = node('frame', 40, 40, 200, 160), b = node('frame', 520, 40, 180, 140)
+  await render([a, b]); const first = editor.state.page
+  await act(async () => { editor.change('原型连线', d => { d.prototype = { interactions: { [a.id]: [{ trigger: 'click', actions: [{ kind: 'navigate', target: b.id }] }] } } }) })
+  shortcutPreference.set('figma-like')
+  await act(async () => { setPrototypeTab('prototype'); for (let i = 0; i < 4; i++) await Promise.resolve() })
+  expect(mount.querySelector('[data-testid="prototype-link"]')).not.toBeNull()
+  await clickPoint(520, 110)
+  expect(editor.state.selection).toEqual([b.id]); expect(editor.state.view.zoom).toBeGreaterThan(1)
+  await act(async () => { editor.addPage() }); expect(editor.state.page).not.toBe(first)
+  await act(async () => key('PageUp', { code: 'PageUp' }))
+  expect(editor.state.page).toBe(first)
 })
 
 test('set-tool-paint-bucket: selected closed outline receives an explicit filled face with one undo and redo', async () => {
