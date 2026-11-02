@@ -22,6 +22,7 @@ import { hasSchema15Features } from './schema-features'
 import { expandRepeats, repeatSourceId } from './repeat-transforms'
 import * as ComponentSlots from './component-slots'
 import { previewLayoutSuggestion, applyLayoutSuggestion, type LayoutSuggestionPreview } from './layout-suggestions'
+import { sameLiveRotation, type LiveRotation } from './rotation-field'
 import { interfacePreference } from './interface-preference'
 import { CameraState, savedCamera } from './camera-state'
 import { hasGradientBlur,hasLocalTools,hasRulerGuides,hasLayoutGrids,hasImageAdjusts,hasPatternTiles } from './model'
@@ -368,6 +369,22 @@ export class Editor {
     }
   }
   revealSnapshot = () => this.revealRequest
+  /** Canvas rotation while the GPU path has not published a document preview.
+   * Panels read this directly so the angle field is not held back by the
+   * 80ms panel snapshot. */
+  liveRotation: LiveRotation | null = null
+  private liveRotationListeners = new Set<() => void>()
+  subscribeLiveRotation = (fn: () => void) => {
+    this.liveRotationListeners.add(fn)
+    return () => { this.liveRotationListeners.delete(fn) }
+  }
+  setLiveRotation(next: LiveRotation | null) {
+    if (this.disposed || sameLiveRotation(this.liveRotation, next)) return
+    this.liveRotation = next
+    for (const fn of this.liveRotationListeners) {
+      try { fn() } catch { /* Angle feedback must not reject the gesture. */ }
+    }
+  }
   /** Panel-originated camera request: bring these ids into view. The canvas
    * owns the viewport size and applies the minimal pan; canvas clicks never
    * emit this, so selecting on-canvas keeps the camera perfectly still. */
@@ -2893,6 +2910,8 @@ export class Editor {
     this.listeners.clear()
     this.cameraListeners.clear()
     this.editListeners.clear()
+    this.liveRotation = null
+    this.liveRotationListeners.clear()
     this.revealRequest = null
     this.revealListeners.clear()
   }

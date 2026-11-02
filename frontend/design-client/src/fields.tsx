@@ -5,7 +5,7 @@ import { numericExpression, propertyUnit, type NumericUnit } from './numeric-exp
 import { useContext, useEffect, useMemo, useRef } from 'react'
 import { PendingEditContext } from './pending-edit-context'
 import { pendingEditsChanged, registerPendingEdit } from './pending-edits'
-export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, step = 1, unit = propertyUnit(label), unitDescription, diagnosticFamily, historyLabel = label }: {
+export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, step = 1, unit = propertyUnit(label), unitDescription, diagnosticFamily, historyLabel = label, formatValue, caption }: {
   label: string
   value: number
   onChange: (v: number) => void
@@ -17,6 +17,10 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, ste
   historyLabel?: string
   diagnosticFamily?: number
   unit?: NumericUnit
+  /** Display-only. The committed number stays full precision until the field edits it. */
+  formatValue?: (value: number) => string
+  /** Short mark shown in the field. `label` remains the accessible name. */
+  caption?: string
 }) {
   const { locale, tr } = usePropertyText()
   const editor = useContext(PendingEditContext)
@@ -87,6 +91,8 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, ste
     return draftRevision.current === revision && !dirty.current && !composing.current &&
       (!editor || (editor.sessionGeneration === ownerSession && target() === ownerTarget))
   }
+  const formatRef = useRef(formatValue)
+  formatRef.current = formatValue
   const scrub = useRef<{ pointer: number; x: number; base: number; session?: number; moved?: boolean } | null>(null)
   const applyScrub = (event: { pointerId: number; clientX: number; altKey: boolean; shiftKey: boolean }) => {
     const owner = scrub.current
@@ -96,7 +102,7 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, ste
     if (!owner.moved) return
     const next = delta === 0 ? owner.base : Math.min(max, Math.max(min, owner.base + delta * step * (event.altKey ? .1 : event.shiftKey ? 10 : 1)))
     onChange(next)
-    if (input.current) input.current.value = String(next)
+    if (input.current) input.current.value = shown(next)
   }
   const stopScrub = (cancel: boolean) => {
     const owner = scrub.current; scrub.current = null
@@ -110,7 +116,9 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, ste
     dirty: () => dirty.current || composing.current,
     commit: () => commit.current(),
   }) : undefined, [editor])
-  const shown = (next: number) => unit === 'angle' ? formatAngleDegrees(next) : String(Number(next.toFixed(2)))
+  const shown = (next: number) => formatRef.current
+    ? formatRef.current(next)
+    : unit === 'angle' ? formatAngleDegrees(next) : String(Number(next.toFixed(2)))
   useEffect(() => {
     if (!dirty.current && !composing.current) {
       original.current = value; draft.current = String(value)
@@ -134,7 +142,7 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, ste
         if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
       }} onPointerCancel={() => stopScrub(true)} onLostPointerCapture={() => stopScrub(true)}
       onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); stopScrub(true) } }}
-    >{label}{unitDescription && <small title={unitDescription}>＊</small>}</span>
+    >{caption ?? label}{unitDescription && <small title={unitDescription}>＊</small>}</span>
     <input ref={input} aria-label={label} aria-description={unitDescription} type="text" inputMode="decimal" role="spinbutton" aria-valuenow={value} aria-valuemin={min} aria-valuemax={max} title={unitDescription ? `${value}；${unitDescription}` : shown(value)} defaultValue={shown(value)}
       onFocus={(e) => { diagnostic.event(InputPhase.focus); if (!dirty.current) e.currentTarget.select() }}
       onChange={(e) => { startDraft(); draftRevision.current++; diagnostic.start(); draft.current = e.currentTarget.value; dirty.current = true; e.currentTarget.setCustomValidity(''); changed() }}
@@ -150,7 +158,7 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, ste
           diagnostic.start()
           try {
             const next = Math.min(max, Math.max(min, numericExpression(draft.current, original.current, unit) + (e.key === 'ArrowUp' ? 1 : -1) * step * (e.shiftKey ? 10 : e.altKey ? .1 : 1)))
-            draft.current = String(next); dirty.current = true; e.currentTarget.value = draft.current; changed()
+            draft.current = shown(next); dirty.current = true; e.currentTarget.value = draft.current; changed()
           } catch { e.currentTarget.setCustomValidity(tr('请先修正数值表达式')) }
         }
         if (e.key === 'Escape') {
