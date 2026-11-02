@@ -1,5 +1,17 @@
 # Futureox Design MCP
 
+The Figma-shaped facade is a separate entry point from the full `design_*` catalog below. It does not add aliases to the shared operation registry. See [the facade guide](../../docs/FIGMA_MCP_FACADE.md).
+
+```sh
+# stdio, same desktop socket and token as the full catalog
+node /absolute/path/futureox-desgin/frontend/design-mcp/src/figma-cli.mjs
+
+# or loopback HTTP, after the desktop app has enabled local automation
+node /absolute/path/futureox-desgin/frontend/design-mcp/src/figma-http.mjs
+```
+
+`figma-http.mjs` listens on `127.0.0.1` and prints the URL to stderr. Send `Authorization: Bearer <FUTUREOX_DESIGN_BRIDGE_TOKEN>`. The desktop app starts that listener itself when automation is enabled. The browser editor does not open a port.
+
 Local, dependency-free Node.js 22+ stdio adapter for the live editor's shared operation API. It owns no document store or independent mutation/history implementation. Production calls go through the explicitly enabled desktop bridge to `frontend/design-client/src/automation/` and the mounted `Editor`.
 
 ## Run / Codex configuration

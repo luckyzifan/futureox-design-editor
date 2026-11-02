@@ -35,6 +35,7 @@ export interface AutomationBridgeStatus {
   grants?: { workspace?: 'read' | 'write'; settings?: 'read' | 'write' }
   enabled: boolean; scope?: 'read' | 'write'; sessionId?: string; documentId?: string; session?: number
   editor?: { documentId: string; session: number; name: string }
+  figmaMcp?: { url?: string; transport?: 'http'; available?: boolean; reason?: string }
   connectedClients: number; pendingRequests: number; journal: AutomationJournalEntry[]; auditError?: string
 }
 export interface AutomationConfig {

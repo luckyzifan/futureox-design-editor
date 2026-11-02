@@ -102,7 +102,9 @@ export function AutomationDialog({editor,desktop,onClose,onHistory}:{editor:Edit
         <button onClick={()=>void task(async()=>setStatus(await bridge.enable({scope:'write',...selectedScopes()})))}>启用读写</button>
         <button disabled={!status?.enabled} onClick={()=>void task(async()=>setStatus(await bridge.disable()))}>停用</button>
         <button disabled={!status?.enabled} onClick={()=>void task(async()=>{const r=await bridge.copyConnection();setResult(r.copied?'连接配置已复制，请仅粘贴到可信本地 AI 客户端。不要分享其中的临时凭据。':'未复制连接配置')})}>复制连接配置</button>
-      </>:<p>Web 版可使用下方编辑 API、检查和导出；本地外部 MCP 连接需要 Electron 桌面版。</p>}
+        {status?.figmaMcp?.url && <p>Figma 风格 MCP（仅 127.0.0.1）：{status.figmaMcp.url}。HTTP 请求带上连接配置里的 token，头为 Authorization: Bearer。</p>}
+        {status?.figmaMcp?.available === false && <p>Figma 风格 HTTP MCP 未启动：{status.figmaMcp.reason}</p>}
+      </>:<p>Web 版可使用下方编辑 API、检查和导出；本地外部 MCP 连接需要 Electron 桌面版。浏览器页面不监听端口。桌面版启用本地自动化后，会在 127.0.0.1 上提供 Figma 风格 MCP；完整 design_* 目录仍使用原来的 stdio 适配器。</p>}
     </fieldset>
     <fieldset disabled={busy}><legend>检查、预览与导入导出</legend>
       <button onClick={()=>void task(()=>{execute('context.get',{pageId:editor.state.page,limit:100})})}>读取 AI 上下文</button>
