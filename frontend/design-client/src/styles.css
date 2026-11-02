@@ -189,6 +189,31 @@ h4 {
   margin: 17px 0 10px;
   color: var(--workspace-muted);
 }
+.corner-radius-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.corner-radius-title h4 { margin-bottom: 10px; }
+.corner-independent {
+  width: 22px;
+  height: 22px;
+  margin-top: 7px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--workspace-border);
+  border-radius: 4px;
+  background: var(--workspace-field);
+  color: var(--workspace-muted);
+}
+.corner-independent[aria-pressed="true"] {
+  color: var(--workspace-accent);
+  background: var(--workspace-selected);
+  border-color: var(--workspace-accent);
+}
 p {
   line-height: 1.8;
 }
