@@ -386,8 +386,12 @@ export class Editor {
     // immediately. The 80ms gate only skips repeats of the same document, so a
     // rotate sample cannot leave the right-hand angle on an older value.
     const sameDoc = this.panelState && next.doc === this.panelState.doc
-    if (this.transaction && this.panelState && sameDoc && next.page === this.panelState.page &&
-      next.selection === this.panelState.selection && next.tool === this.panelState.tool &&
+    const selectionChanged = !this.panelState || this.panelState.selection.length !== next.selection.length ||
+      this.panelState.selection.some((id, index) => id !== next.selection[index])
+    // Selection highlight must publish on the same turn as the canvas. The
+    // 80ms gate only skips repeated geometry while the highlight is unchanged.
+    if (!selectionChanged && this.transaction && this.panelState && sameDoc && next.page === this.panelState.page &&
+      next.tool === this.panelState.tool &&
       performance.now() - this.panelPublishedAt < 80) return this.panelState
     if (!this.panelState || (Object.keys(next) as (keyof typeof next)[])
       .some(key => next[key] !== this.panelState![key])) { this.panelState = next; this.panelPublishedAt = performance.now() }
@@ -2070,10 +2074,14 @@ export class Editor {
     }
     this.begin(replace?'粘贴替换':'粘贴到选中容器')
     const selection:string[]=[]
+    // Mac Figma steps the inspector X/Y by 10, then 20, then 30 from the
+    // copied local position. Restoring the placement alone leaves that delta
+    // at (0, 0). Paste in place first, then add the step in parent space.
+    const step = replace ? 0 : this.duplicateOffset
     try {
       for(const target of targets) {
         const page=this.state.doc.pages.find(p=>p.id===this.state.page)!,existing=new Set(page.children)
-        this.paste(replace)
+        this.paste(true)
         const roots=this.state.doc.pages.find(p=>p.id===this.state.page)!.children.filter(id=>!existing.has(id))
         if(!roots.length)throw new Error(this.state.message || '未能粘贴图层')
         const destination=replace?parents.get(target)!:target,box=before.nodes[target]
@@ -2087,8 +2095,10 @@ export class Editor {
           const parentWorld=d.nodes[destination]?worldMatrix(d,destination):[1,0,0,1,0,0] as Matrix
           for(const [i,id] of roots.entries()) {
             const source=content.roots[i],placement=content.placements?.[source]
-            if(replace && placement)d.nodes[id].transform=cloneValue(placement.transform)
-            else if(d.nodes[destination])d.nodes[id].transform=multiply(inverse(parentWorld),d.nodes[id].transform)
+            const placed = placement ? cloneValue(placement.transform)
+              : d.nodes[destination] ? multiply(inverse(parentWorld), d.nodes[id].transform) : d.nodes[id].transform
+            d.nodes[id].transform = replace && placement ? cloneValue(placement.transform)
+              : multiply(translate(step, step), placed)
           }
           const measure=(id:string,parent:Matrix): import('./model').Bounds => {
             const n=d.nodes[id],matrix=multiply(parent,n.transform)
@@ -2108,6 +2118,7 @@ export class Editor {
         if(!roots.every(id=>allParents(this.state.doc).get(id)===destination))throw new Error(this.state.message)
         selection.push(...roots)
       }
+      if(!replace) this.duplicateOffset += 10
       if(replace){this.select(targets);this.remove();if(targets.some(id=>this.state.doc.nodes[id]))throw new Error('替换目标无法删除')}
       this.select(selection);this.commit()
     } catch(error){this.cancel();this.notify(error instanceof Error?error.message:String(error))}
