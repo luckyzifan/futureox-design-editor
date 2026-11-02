@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { measureBounds, measurementLabel, measurementTicks } from './canvas-measurements'
+import { altMeasurementTarget, measureBounds, measurementLabel, measurementTicks, SPACING_RED } from './canvas-measurements'
 test('nested layer measurements report all four exact margins', () => {
   const outer = { x: 10, y: 20, width: 300, height: 200 }, inner = { x: 40, y: 65, width: 50, height: 60 }
   expect(measureBounds(inner, outer).map(item => item.distance)).toEqual([30, 220, 45, 95])
@@ -29,4 +29,29 @@ test('end ticks stay six CSS pixels and short labels step off the segment', () =
   ])
   expect(measurementLabel(line, 2).offset).toEqual({ x: 0, y: -16 })
   expect(measurementLabel({ ...line, distance: 40 }, 2).offset).toEqual({ x: 0, y: -6 })
+})
+test('Alt measures the hovered layer, not the selection, and stays off during drag or Space', () => {
+  expect(SPACING_RED).toBe('#f24822')
+  const selected = 'a', sibling = 'b'
+  expect(altMeasurementTarget({
+    alt: true, dragging: false, space: false, tool: 'select', selection: [selected], hover: sibling,
+  })).toBe(sibling)
+  expect(altMeasurementTarget({
+    alt: true, dragging: false, space: false, tool: 'select', selection: [selected], hover: selected,
+  })).toBeNull()
+  expect(altMeasurementTarget({
+    alt: false, dragging: false, space: false, tool: 'select', selection: [selected], hover: sibling,
+  })).toBeNull()
+  expect(altMeasurementTarget({
+    alt: true, dragging: true, space: false, tool: 'select', selection: [selected], hover: sibling,
+  })).toBeNull()
+  expect(altMeasurementTarget({
+    alt: true, dragging: false, space: true, tool: 'select', selection: [selected], hover: sibling,
+  })).toBeNull()
+  expect(altMeasurementTarget({
+    alt: true, dragging: false, space: false, tool: 'hand', selection: [selected], hover: sibling,
+  })).toBeNull()
+  expect(altMeasurementTarget({
+    alt: true, dragging: false, space: false, tool: 'select', selection: [], hover: sibling,
+  })).toBeNull()
 })

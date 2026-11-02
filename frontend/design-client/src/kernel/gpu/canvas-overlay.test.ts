@@ -1,5 +1,9 @@
 import { expect, test } from 'vitest'
 import { overlayVertices, translateOverlay } from './canvas-overlay'
+import { SELECTION_BLUE, srgbUnit } from '../../selection-blue'
+import { SPACING_RED } from '../../canvas-measurements'
+
+const stored = (hex: string) => [...new Float32Array(srgbUnit(hex))]
 
 test('selection uses f64 camera projection before narrowing screen coordinates', () => {
   const corners = [{ x: 1e7, y: -1e7 }, { x: 1e7 + 100, y: -1e7 }, { x: 1e7 + 100, y: -1e7 + 50 }, { x: 1e7, y: -1e7 + 50 }]
@@ -22,13 +26,22 @@ test('spacing guides draw the gap plus six-pixel end ticks', () => {
   const data = overlayVertices({ pixelGrid: false, measurements: [{ from: { x: 10, y: 20 }, to: { x: 40, y: 20 }, axis: 'horizontal' }] }, { x: 0, y: 0, zoom: 2 }, 200, 200)
   expect(data.length / 8 / 6).toBe(3)
   expect([...data].every(Number.isFinite)).toBe(true)
+  expect([data[2], data[3], data[4], data[5]]).toEqual(stored(SPACING_RED))
+})
+
+test('the selection box uses the same blue as the DOM chrome', () => {
+  const corners = [{ x: 10, y: 20 }, { x: 40, y: 20 }, { x: 40, y: 50 }, { x: 10, y: 50 }]
+  const data = overlayVertices({ pixelGrid: false, selection: { corners, handles: true } }, { x: 0, y: 0, zoom: 1 }, 200, 200)
+  expect([data[2], data[3], data[4], data[5]]).toEqual(stored(SELECTION_BLUE))
+  expect(SELECTION_BLUE).toBe('#3459d4')
 })
 
 test('zero-size selections retain visible finite resize handles', () => {
   const data=overlayVertices({pixelGrid:false,selection:{corners:Array.from({length:4},()=>({x:10,y:20})),handles:true}}, {x:0,y:0,zoom:1}, 800,600)
   const xs=Array.from({length:data.length/8},(_,i)=>data[i*8]), ys=Array.from({length:data.length/8},(_,i)=>data[i*8+1])
-  expect(Math.max(...xs)-Math.min(...xs)).toBe(9)
-  expect(Math.max(...ys)-Math.min(...ys)).toBe(9)
+  // A zero-length outline emits no segment. The visible span is the 8px corner square.
+  expect(Math.max(...xs)-Math.min(...xs)).toBe(8)
+  expect(Math.max(...ys)-Math.min(...ys)).toBe(8)
 })
 
 test('pose offsets move the selection and its labels but not unrelated chrome',()=>{

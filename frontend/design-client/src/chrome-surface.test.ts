@@ -11,6 +11,8 @@ test('chrome keeps the blue accent and warms the neutral surfaces', () => {
   expect(css).toContain('--workspace-canvas: #f3eee6;')
   expect(css).toContain('--workspace-panel: #fffcf9;')
   expect(css).toContain('.selection-chrome-frame')
+  expect(css).toContain('.selection-size-pill { fill: #3459d4; stroke: none; }')
+  expect(css).toContain('.selection-rotate-glyph { opacity: 0; }')
   expect(css).toContain('animation: panel-enter-left 140ms ease-out')
   expect(css).toContain('@keyframes panel-enter-left { from { transform: translateX(-4px); } to { transform: translateX(0); } }')
   expect(css).not.toContain('panel-enter-left { from { opacity: 0')
@@ -37,7 +39,7 @@ test('selection name and size use a pill frame and keep the existing blue', () =
     localSelection: local, selectionCorners: corners, selectionBox: bounds(corners), measurementTarget: null,
   }).commands.labels ?? []
   expect(labels.find(label => label.kind === 'selection-name')).toMatchObject({ text: '按钮', color: '#3459d4', frame: 'pill' })
-  expect(labels.find(label => label.kind === 'selection-size')).toMatchObject({ text: '120 × 80', color: '#3459d4', frame: 'pill' })
+  expect(labels.find(label => label.kind === 'selection-size')).toMatchObject({ text: '120 × 80', color: '#ffffff', frame: 'accent' })
   expect(labels.find(label => label.kind === 'frame-title')).toMatchObject({ text: '画板', color: '#73778b' })
   expect(labels.find(label => label.kind === 'frame-title')).not.toHaveProperty('frame')
   expect(selectionChromeChipWidth('按钮', 11)).toBe(22)
