@@ -1654,7 +1654,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }
     const values = Object.values(textById)
     const shared = values.length > 0 && values.every(value => value === values[0]) ? Number(values[0]) : undefined
-    d.rotationDegrees = shared ?? (d.rotationDegrees === undefined ? undefined : Number(formatFigmaAngle(d.rotationDegrees)))
+    // selectionRotation's fallback degrees are the opposite sign of the Mac field.
+    d.rotationDegrees = shared ?? (d.rotationDegrees === undefined ? undefined : Number(formatFigmaAngle(-d.rotationDegrees)))
     editor.setLiveRotation({ session: d.session, page: d.page, documentId: editor.state.doc.id, textById })
   }
   function gestureVisualMatrix(d: Drag, e: { shiftKey: boolean; altKey: boolean; ctrlKey: boolean }, p: Point, screen: Point): {

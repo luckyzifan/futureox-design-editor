@@ -172,10 +172,10 @@ for(const zoom of [.5,2]) {
  test(`T02 actual group rotation handle 30 degrees at zoom ${zoom}: live center, local bounds and one history`,async()=>{
   const group=node('group',100,100,250,50),a=node('rectangle',0,0,100,50),b=node('rectangle',250,50,100,50);group.children=[a.id,b.id]
   await render([group,a,b],[group.id]);await act(async()=>editor.select([group.id]));await camera(zoom);const before=editor.state.doc
-  // UI positive angles are counterclockwise; screen-y-down driver must turn -30.
-  const center={x:275,y:150};await rotateGesture(center,-30)
+  // Mac Figma positive angles are clockwise. Screen y-down turn(+30) is clockwise.
+  const center={x:275,y:150};await rotateGesture(center,30)
   const n=editor.state.doc.nodes[group.id],bounds=selectionLocalBounds(editor.state.doc,group.id)
-  expect(n.transform[0]).toBeCloseTo(Math.cos(Math.PI/6),10);expect(n.transform[1]).toBeCloseTo(-.5,10);expect(n.transform[2]).toBeCloseTo(.5,10);expect(n.transform[3]).toBeCloseTo(Math.cos(Math.PI/6),10)
+  expect(n.transform[0]).toBeCloseTo(Math.cos(Math.PI/6),10);expect(n.transform[1]).toBeCloseTo(.5,10);expect(n.transform[2]).toBeCloseTo(-.5,10);expect(n.transform[3]).toBeCloseTo(Math.cos(Math.PI/6),10)
   expect(selectionMetric(n,'rotation',editor.state.doc)).toBeCloseTo(30,8);expect(bounds.width).toBeCloseTo(350,8);expect(bounds.height).toBeCloseTo(100,8)
   const actual=apply(world(group.id),{x:175,y:50});expect(actual.x).toBeCloseTo(center.x,8);expect(actual.y).toBeCloseTo(center.y,8)
   expect(editor.state.doc.nodes[a.id]).toEqual(before.nodes[a.id]);expect(editor.state.doc.nodes[b.id]).toEqual(before.nodes[b.id]);await history(before)
@@ -220,9 +220,9 @@ test('R03 multiselect world right edge under 90-degree parent fixes only local h
 test('T02 multiselect actual rotation handle turns child centers around selection center, not individual property pivots',async()=>{
  const group=node('group',100,100,250,50),a=node('rectangle',0,0,100,50),b=node('rectangle',250,50,100,50);group.children=[a.id,b.id]
  await render([group,a,b],[group.id]);await act(async()=>editor.select([a.id,b.id]));await camera(.5);const before=editor.state.doc,center={x:275,y:150}
- const oldCenters=[a.id,b.id].map(id=>apply(world(id),{x:50,y:25}));await rotateGesture(center,-30)
- for(const [index,id] of [a.id,b.id].entries()){
-  const n=editor.state.doc.nodes[id],actual=apply(world(id),{x:50,y:25}),expected=turn(oldCenters[index],center,-30)
+  const oldCenters=[a.id,b.id].map(id=>apply(world(id),{x:50,y:25}));await rotateGesture(center,30)
+  for(const [index,id] of [a.id,b.id].entries()){
+  const n=editor.state.doc.nodes[id],actual=apply(world(id),{x:50,y:25}),expected=turn(oldCenters[index],center,30)
   expect(selectionMetric(n,'rotation',editor.state.doc)).toBeCloseTo(30,8);expect(actual.x).toBeCloseTo(expected.x,8);expect(actual.y).toBeCloseTo(expected.y,8)
   expect(actual).not.toEqual(oldCenters[index]);expect(n.width).toBeCloseTo(100,8);expect(n.height).toBeCloseTo(50,8)
  }

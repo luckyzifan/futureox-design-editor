@@ -6,15 +6,17 @@ import { Editor } from './engine'
 import { figmaRotationDegrees, formatFigmaAngle, snapRotationDelta } from './rotation-field'
 import { nextConstraint } from './layout-constraints'
 
-test('the angle field uses Figma sign, a half-turn wrap, and at most two decimals', () => {
+test('the angle field is clockwise-positive, wraps at a half turn, and keeps two decimals', () => {
   const n = node('rectangle', 10, 20, 80, 40)
   rotateNode(n, 17)
-  expect(figmaRotationDegrees(n.transform)).toBeCloseTo(rotationDegrees(n), 10)
-  expect(formatFigmaAngle(rotationDegrees(n))).toBe('17')
+  expect(figmaRotationDegrees(n.transform)).toBeCloseTo(-rotationDegrees(n), 10)
+  expect(formatFigmaAngle(figmaRotationDegrees(n.transform))).toBe('-17')
+  n.transform = rotate(90)
+  expect(formatFigmaAngle(figmaRotationDegrees(n.transform))).toBe('90')
   rotateNode(n, -45)
-  expect(formatFigmaAngle(rotationDegrees(n))).toBe('-45')
+  expect(formatFigmaAngle(figmaRotationDegrees(n.transform))).toBe('45')
   rotateNode(n, 0)
-  expect(formatFigmaAngle(rotationDegrees(n))).toBe('0')
+  expect(formatFigmaAngle(figmaRotationDegrees(n.transform))).toBe('0')
   expect(formatFigmaAngle(-45.256)).toBe('-45.26')
   expect(formatFigmaAngle(15.254)).toBe('15.25')
   expect(formatFigmaAngle(-0.004)).toBe('0')
@@ -29,7 +31,7 @@ test('shift-snap corrects the layer angle, not the parent, onto 15 degree steps'
   rotateNode(frame, 20)
   const world = multiply(frame.transform, child.transform)
   const center = apply(world, { x: 40, y: 20 })
-  const delta = around(center, rotate(-12))
+  const delta = around(center, rotate(12))
   const unsnapped = multiply(inverse(frame.transform), multiply(delta, world))
   expect(figmaRotationDegrees(unsnapped)).toBeCloseTo(12, 5)
   const snapped = snapRotationDelta(frame.transform, world, delta, center)

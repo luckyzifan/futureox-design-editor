@@ -18,8 +18,8 @@ import { StrokeProfilePanel } from './StrokeProfilePanel'
 import { TextInput } from './TextEditor'
 import { TextStylePanel } from './TextStylePanel'
 import { clearWholeTextRunColor, setWholeTextFontSize } from './text'
-import { selectionParentBounds, rotationDegrees, rotateNode, selectionLocalBounds } from './canvas-view'
-import { formatFigmaAngle, type LiveRotation } from './rotation-field'
+import { selectionParentBounds, rotateNode, selectionLocalBounds } from './canvas-view'
+import { figmaRotationDegrees, formatFigmaAngle, nodeDegreesForFigmaAngle, type LiveRotation } from './rotation-field'
 import { nextConstraint } from './layout-constraints'
 import { ComponentPanel } from './ComponentPanel'
 import { NumberField } from './fields'
@@ -441,7 +441,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
   const styleDescription = styleUnitDescription(s.doc, [n.id], editor.parentMap(s.doc))
   const liveText = live && editor.interactionActive && live.session === editor.sessionGeneration && live.page === s.page && live.documentId === s.doc.id
     ? live.textById[n.id] : undefined
-  const angle = liveText !== undefined ? Number(liveText) : rotationDegrees(n),
+  const angle = liveText !== undefined ? Number(liveText) : figmaRotationDegrees(n.transform),
     position = selectionParentBounds(s.doc, n.id)
   const constraintParent = editor.state.doc.nodes[editor.parentMap(s.doc).get(n.id) || '']
   const constraintFlow = !!constraintParent?.layout && constraintParent.layout.mode !== 'none'
@@ -544,7 +544,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
               value={angle}
               onChange={(v) =>
                 update((n) => {
-                  rotateNode(n, v, selectionLocalBounds(editor.state.doc, n.id))
+                  rotateNode(n, nodeDegreesForFigmaAngle(v), selectionLocalBounds(editor.state.doc, n.id))
                 })
               }
             />
