@@ -1,5 +1,7 @@
 # Futureox Design local v1 development contract
 
+The [2026-11-02 selection, marquee, and spacing increment](../testing/verification-figma-canvas-chrome-marquee-20261102/README.md) follows the Mac gaps5 samples: selection and hover share `#4597F7` at about 1pt, the marquee wash is `#DCE9F5`, and Option/Alt distance pills are `#E05634`. The workspace accent stays `#3459d4`. It does not change raster budgets or close 33/100ms or full G2/G5.
+
 The [2026-11-02 font catalog increment](../testing/verification-font-parity-20261102/README.md) lists macOS, Windows and Linux font directories and records weight, italic and variation axes on each face. Missing source fonts are replaced only after confirmation. The built-in Noto Sans SC variable face remains the CJK fallback. No font is downloaded. This does not change raster budgets or close 33/100ms or full G2/G5.
 
 The [2026-11-01 continuous-operation follow-up](../testing/verification-fluid-canvas-20261101/README.md) uses the user's requested white pending background and keeps the 400% pixel grid outside immutable images. Exact readiness remains separate. Automatic image residency now excludes retained interactions after measured mixed latency and higher nominal texture peaks; explicit `VITE_DESIGN_RESIDENT_IMAGE_REUSE=1` opts in and `0` opts out. The region/contained-effect capture and gradient-window experiments remain explicit opt-ins. Local rigid capture is fresh native rendering, not bitmap rotation. Full interaction and refinement gates remain open.
