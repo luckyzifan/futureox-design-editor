@@ -3,7 +3,7 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
-2026-11-02 [图层、属性与右键菜单](../../../testing/verification-figma-layers-properties-menu-20261102/README.md)只改检查器、图层面板和画布装饰。选中的画板标题和单个形状名称用 `#0d99ff`。旋转读数跟手，不改选择框与纹理的时序。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [图层、属性与右键菜单](../../../testing/verification-figma-layers-properties-menu-20261102/README.md)只改检查器、图层面板和画布装饰。选中的画板标题和单个形状名称用 `#0d99ff`。旋转读数跟手，正值为顺时针，不改选择框与纹理的时序。33/100ms 与完整 G2/G5 仍未通过。
 
 2026-11-02 [导入与传输对照](../../../testing/verification-interop-transfer-20261102/README.md)不解决渲染故障。浏览器 FIG 描边端点与阴影背后标记、原生 `LAYER_BLUR` 别名是导入保真；瓦片交付缓冲、缩放导航、预算和实验开关未改。33/100ms 与完整 G2/G5 仍未通过。
 
