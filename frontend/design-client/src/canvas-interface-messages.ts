@@ -3,7 +3,7 @@ import type { InterfaceLocale } from './interface-preference'
 const phrases = {
   devicePresets: ['设备与尺寸预设…', 'Device and size presets…'], editVector: ['编辑矢量', 'Edit vector'],
   menu: ['画布右键菜单', 'Canvas context menu'], selectLayer: ['选择图层', 'Select layer'], moveToPage: ['移动到页面', 'Move to page'],
-  copyAs: ['复制／粘贴为', 'Copy / paste as'], selectSame: ['选择相同', 'Select matching'], editText: ['编辑文字', 'Edit text'], lockedSuffix: ['（已锁定）', ' (locked)'],
+  copyAs: ['复制／粘贴为', 'Copy/Paste as'], selectSame: ['选择相同', 'Select matching'], editText: ['编辑文字', 'Edit text'], lockedSuffix: ['（已锁定）', ' (locked)'],
   designTools: ['设计工具', 'Design tools'], workspaceNavigation: ['工作区导航', 'Workspace navigation'],
   localDesignFiles: ['本机设计文件', 'Local design files'], files: ['文件', 'Files'], pagesAndLayers: ['页面与图层', 'Pages and layers'], layers: ['图层', 'Layers'],
   componentsAndAssets: ['组件与资源', 'Components and assets'], assets: ['资源', 'Assets'], tools: ['工具', 'Tools'], localDesignVariables: ['本地设计变量', 'Local design variables'], variables: ['变量', 'Variables'],

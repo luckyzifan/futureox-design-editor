@@ -21,6 +21,7 @@ import {
 import { NumberField } from './fields'
 import { ColorInput } from './ColorInput'
 import { LayoutDashboard, Rows3, Columns3, Grid2X2 } from 'lucide-react'
+const packed = ['start', 'center', 'end'] as const
 const alignments = [
   ['start', '起点'],
   ['center', '居中'],
@@ -124,6 +125,17 @@ export function LayoutPanel({
         {([['none','自由布局',LayoutDashboard],['vertical','纵向布局',Rows3],['horizontal','横向布局',Columns3],['grid','网格布局',Grid2X2]] as const).map(([mode,label,Icon]) =>
           <button key={mode} type="button" role="radio" aria-label={tr(label)} title={tr(label)} aria-checked={(active ? layout.mode : 'none') === mode}
             onClick={() => { if ((active ? layout.mode : 'none') !== mode) setLayoutMode(mode) }}><Icon size={16} /></button>)}
+      </div>}
+      {active && (layout.mode === 'horizontal' || layout.mode === 'vertical') && <div className="align-pad" role="group" aria-label={tr("对齐")}>
+        {packed.flatMap(row => packed.map(col => {
+          const justify = layout.mode === 'vertical' ? row : col
+          const align = layout.mode === 'vertical' ? col : row
+          const horizontal = layout.mode === 'vertical' ? align : justify
+          const vertical = layout.mode === 'vertical' ? justify : align
+          return <button key={`${row}-${col}`} type="button" aria-pressed={layout.justify === justify && layout.align === align}
+            aria-label={`${tr(horizontal === 'start' ? '左侧' : horizontal === 'end' ? '右侧' : '居中')} ${tr(vertical === 'start' ? '顶部' : vertical === 'end' ? '底部' : '居中')}`}
+            onClick={() => updateLayout({ justify, align })} />
+        }))}
       </div>}
       {active && (
         <>
@@ -320,7 +332,7 @@ export function LayoutPanel({
           )}
         </>
       )}
-      {parent && (!flow || sizing.absolute) && (
+      {parent && (parent.kind === 'frame' || parent.kind === 'section') && (!flow || sizing.absolute) && (
         <>
           <h4>{tr("父画板尺寸约束")}</h4>
           {(['horizontal', 'vertical'] as const).map((axis, i) => (
