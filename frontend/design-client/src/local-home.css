@@ -26,12 +26,14 @@
 .local-home-filter [role=group] { padding: 3px; border: 1px solid var(--workspace-border); border-radius: 7px; background: var(--workspace-field); }
 .local-home-filter [role=group] button { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 4px; color: var(--workspace-muted); }
 .local-home-filter [role=group] [aria-pressed=true] { background: var(--workspace-panel); color: var(--workspace-text); box-shadow: 0 0 0 1px var(--workspace-border); }
-.local-home-file { box-shadow: 0 1px 2px #00000004; }
-.local-home-file:not(:disabled):hover { border-color: var(--workspace-accent); background: var(--workspace-panel); box-shadow: 0 2px 8px #0000000a; }
+.local-home-file { border-radius: 14px; box-shadow: 0 1px 2px #1c191708; }
+.local-home-file:not(:disabled):hover { border-color: color-mix(in srgb, var(--workspace-accent) 45%, var(--workspace-border)); background: var(--workspace-panel); box-shadow: 0 8px 22px #1c191710; }
+.local-home-empty { display: grid; justify-items: center; gap: 6px; max-width: 420px; margin: 28px auto; padding: 28px 20px; border: 1px solid var(--workspace-border); border-radius: 16px; background: var(--workspace-panel); line-height: 1.5; }
 .local-home-file-meta { gap: 4px; padding: 12px 14px; width: 100%; border-top: 1px solid var(--workspace-border); }
 .local-home-files.list .local-home-file-meta { border-top: 0; }
 .local-home-file strong { font-size: 13px; font-weight: 600; }
 .local-home button:disabled { cursor: not-allowed; }
 .local-home button svg { flex-shrink: 0; }
-.local-home button { transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease; }
+.local-home button { transition: background-color 160ms var(--workspace-ease, ease), border-color 160ms var(--workspace-ease, ease), color 160ms var(--workspace-ease, ease); }
+.local-home-sidebar button, .local-home-content header > button, .local-home-actions button, .local-home-filter > button { border-radius: 10px; }
 @media (prefers-reduced-motion: reduce) { .local-home button { transition: none; } }

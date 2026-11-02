@@ -1,5 +1,5 @@
-.settings-backdrop { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 24px; background: #15202b66; overscroll-behavior: contain; }
-.settings-dialog { display: flex; flex-direction: column; width: min(760px, 100%); max-height: min(720px, calc(100dvh - 48px)); min-height: 0; overflow: hidden; border: 1px solid var(--workspace-border); border-radius: 14px; background: var(--workspace-panel); color: var(--workspace-text); box-shadow: 0 20px 70px #12213333; font-size: 13px; }
+.settings-backdrop { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 24px; background: #1c191752; backdrop-filter: blur(10px); overscroll-behavior: contain; }
+.settings-dialog { display: flex; flex-direction: column; width: min(760px, 100%); max-height: min(720px, calc(100dvh - 48px)); min-height: 0; overflow: hidden; border: 1px solid var(--workspace-border); border-radius: 18px; background: var(--workspace-panel); color: var(--workspace-text); box-shadow: 0 24px 64px #1c191724, 0 1px 2px #1c19170a; font-size: 13px; }
 .settings-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 24px 16px; border-bottom: 1px solid var(--workspace-border); flex: none; }
 .settings-header h2 { margin: 0; font-size: 18px; }
 .settings-header p { margin: 8px 0 0; color: var(--workspace-muted); line-height: 1.6; }
@@ -56,14 +56,14 @@
 .interface-settings > button { margin-top: 14px; min-height: 32px; border: 1px solid var(--workspace-border); border-radius: 6px; }
 
 /* Surface rhythm only: preserve native controls, focus trap and document guards. */
-.settings-dialog { font-size: 12px; line-height: 1.5; box-shadow: 0 16px 48px #00000024, 0 2px 8px #00000012; }
+.settings-dialog { font-size: 12px; line-height: 1.5; box-shadow: 0 24px 64px #1c191724, 0 1px 2px #1c19170a; }
 .settings-header { align-items: center; padding: 20px; }
-.settings-header h2 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.settings-header h2 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
 .settings-header p { margin-top: 4px; font-size: 12px; }
 .settings-header > button { color: var(--workspace-muted); border: 1px solid transparent; }
 .settings-layout { grid-template-columns: 156px minmax(0, 1fr); }
 .settings-tabs { padding: 12px 8px; background: var(--workspace-panel); }
-.settings-tabs button { min-height: 36px; border: 1px solid transparent; font-size: 12px; }
+.settings-tabs button { min-height: 36px; border: 1px solid transparent; border-radius: 10px; font-size: 12px; }
 .settings-tabs button:not(:disabled):not([aria-selected="true"]):hover { background: var(--workspace-hover); color: var(--workspace-text); }
 .settings-content { padding: 20px; }
 .settings-content h3 { font-size: 13px; font-weight: 600; margin-bottom: 12px; }
@@ -78,7 +78,7 @@
 .settings-actions button { border: 1px solid var(--workspace-border); background: var(--workspace-field); color: var(--workspace-text); }
 .settings-actions button:not(:disabled):hover, .settings-header > button:not(:disabled):hover { background: var(--workspace-hover); border-color: var(--workspace-border); }
 .settings-dialog button:disabled, .settings-dialog input:disabled, .settings-dialog select:disabled { cursor: not-allowed; }
-.settings-dialog button, .settings-dialog select, .settings-dialog .nudge-settings input { transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease; }
+.settings-dialog button, .settings-dialog select, .settings-dialog .nudge-settings input { transition: background-color 160ms var(--workspace-ease, ease), border-color 160ms var(--workspace-ease, ease), color 160ms var(--workspace-ease, ease); }
 @media (max-width: 560px) {
   .settings-header, .settings-content { padding: 16px; }
   .settings-footer { padding: 12px 16px; }
