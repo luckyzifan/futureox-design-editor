@@ -3,6 +3,8 @@ name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
 
+2026-11-02 Figma plugin host MVP runs a documented Plugin API subset in a worker and commits each turn through Editor.change. Desktop UI is a separate sandboxed window. Network, components, variables, and exportAsync are unsupported. Sticky notes, the blue accent, and render or navigation paths are unchanged. See [the host guide](../../../docs/FIGMA_PLUGIN_HOST.md) and [the verification note](../../../testing/verification-figma-plugin-host-20261102/README.md).
+
 2026-11-02 大拓扑 Sketch 的 CPU 首屏见[记录](../../../testing/verification-large-topology-sketch-20261102/README.md)。解析帧在光晕或四表面下限放不进 256 MiB 合成账本时直接分块，几何准备在该帧内复用；放不进八分之一账本的效果略去，填充和页面底色留下。`--core-cpu-only` 的完整画板按屏幕瓦片画 CPU 位图，空瓦片列表只做快照准入。精确 `render_surfaces_regions` 仍先报错。低倍覆盖、驻留上的预算错误和标签缓存未改语义。33/100ms 与完整 G2/G5 未通过。仓库内没有约 113MB 原件。
 
 2026-11-02 [sRGB 标记与片段字距](../../../testing/verification-color-fonts-srgb-20261102/README.md)给 PNG sRGB 块、JPEG/WebP ICC 和 PDF ICCBased/DefaultRGB 同一套声明；省略的颜色调整不再在 SVG 里改走 linearRGB。FIG 片段 `letterSpacing`/`lineHeight` 进入 schema 21。不改合成预算、瓦片或实验开关。Display P3 仍不是默认 PNG，33/100ms 与完整 G2/G5 未通过。彩色字形、Auto 行高和半行距仍是后续项。

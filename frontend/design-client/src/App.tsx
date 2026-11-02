@@ -101,6 +101,7 @@ import {
   VectorSquare,
   Check,
   HelpCircle,
+  Puzzle,
   Play,
   SlidersHorizontal,
   PanelLeftClose,
@@ -110,6 +111,7 @@ import {
 } from 'lucide-react'
 import { Editor, type Tool } from './engine'
 import { desktopBridge, type DesktopCommand } from './desktop'
+import { PluginPanel } from './plugins/PluginPanel'
 import { DesktopCatalog } from './DesktopCatalog'
 import { DesktopLeaveDialog } from './DesktopLeaveDialog'
 import { DesktopSession, type DesktopStatus, type LeaveDecision, type LeaveReason } from './desktop-session'
@@ -183,6 +185,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [showWorkspaceLibrary, setShowWorkspaceLibrary] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showPlugins, setShowPlugins] = useState(false)
   const [sketchMode, setSketchMode] = useState<'inspect' | 'edit' | null>(null)
   const [largeDocument, setLargeDocument] = useState<{file?:File}|null>(null)
   const sketchCapabilities = nativeSketchCapabilities(desktopBridge())
@@ -698,6 +701,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     const command = (name: DesktopCommand) => {
       if (largeDocument || source) return
       if (name === 'settings') { openSettings(); return }
+      if (name === 'plugins') { setMenu(false); setShowPlugins(true); return }
       if (showHome) {
         if (!admitHomeDocumentCommand(name, { ready, switching, busy: desktopStatus.busy,
           transitioning: desktopStatus.transitioning, interactionActive: editor.interactionActive,
@@ -1044,6 +1048,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           <div className="file-menu">
             <button type="button" onClick={enterHome}><FolderOpen size={15} />本机首页</button>
             <button type="button" onClick={openSettings}><SettingsIcon size={15} />设置</button>
+            <button type="button" disabled={!!largeDocument || !!source} onClick={() => { setMenu(false); setShowPlugins(true) }}><Puzzle size={15} />{locale === 'en' ? 'Plugins' : '插件'}</button>
             <button
               onClick={() => {
                 void switchDocument(blank())
@@ -1360,6 +1365,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       {showShapeBuilder && <ShapeBuilderDialog editor={editor} onClose={() => setShowShapeBuilder(false)} />}
       {sketchMode && desktop && <NativeSketchDialog bridge={desktop} mode={sketchMode} suspended={!!desktopPrompt} onClose={() => setSketchMode(null)} returnFocus={fileMenuTrigger.current} />}
       {showAnimation && <AnimationPanel editor={editor} onClose={() => setShowAnimation(false)} />}
+      {showPlugins && <PluginPanel editor={editor} desktop={desktop} onClose={() => setShowPlugins(false)} />}
       {showSettings && <SettingsDialog editor={editor} desktop={!!desktop} returnFocus={showHome ? homeSettingsFocus.current : fileMenuTrigger.current}
         busy={workspaceRootBusy} workspaceControls={desktop?.workspaceRoot && <>{!ready && <p role="status">设计尚未就绪，暂不能切换工作区目录。</p>}<WorkspaceRootControls bridge={desktop.workspaceRoot}
           busy={workspaceRootBusy || !ready || desktopStatus.busy} onChoose={original => {
