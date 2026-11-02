@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { blank, uid, validateDocument } from './model'
-import { createShapeSeed, creationPointCount, creationToolStaysArmed, resolveShapeCreation, type ShapeCreationKind } from './shape-creation'
+import { createShapeSeed, creationGhostNode, creationPointCount, creationPreviewPoints, creationToolStaysArmed, creationVisiblePaint, resolveShapeCreation, type ShapeCreationKind } from './shape-creation'
 
 const anchor = { x: 10.25, y: -9.75 }
 const options = { anchor, pointer: { x: 31.875, y: 5.125 }, screenDistance: 30, snap: false }
@@ -44,14 +44,35 @@ test('click threshold uses CSS screen distance; narrow and returning drags never
   expect(returning.click).toBe(false); expect(returning.bounds.width).toBe(0.01)
 })
 
-test('click defaults retain frame dimensions and centre creation retains the anchor', () => {
+test('click defaults are 100 squares for frames and shapes; centre creation retains the anchor', () => {
   for (const kind of ['rectangle', 'ellipse', 'frame', 'text'] as const) {
     const result = resolveShapeCreation(createShapeSeed(kind), { ...options, screenDistance: 0, alt: true, snap: true })
-    expect(result.bounds.width).toBe(kind === 'frame' ? 400 : 100)
-    expect(result.bounds.height).toBe(kind === 'frame' ? 300 : 100)
+    expect(result.bounds.width).toBe(100)
+    expect(result.bounds.height).toBe(100)
     expect(result.bounds.x + result.bounds.width / 2).toBe(10)
     expect(result.bounds.y + result.bounds.height / 2).toBe(-10)
   }
+})
+
+test('a frame click and a frame drag share one fill, and the drag keeps the pointer span', () => {
+  const seed = createShapeSeed('frame', 'frame')
+  const click = resolveShapeCreation(seed, { ...options, screenDistance: 0 })
+  const drag = resolveShapeCreation(seed, options)
+  expect(click.bounds).toMatchObject({ width: 100, height: 100 })
+  expect(drag.bounds).toEqual({ x: 10.25, y: -9.75, width: 21.625, height: 14.875 })
+  expect(creationVisiblePaint(click.node)).toBe('#ffffff')
+  expect(creationVisiblePaint(drag.node)).toBe(creationVisiblePaint(click.node))
+  expect(drag.node.fills).toEqual(click.node.fills)
+  expect(creationVisiblePaint(createShapeSeed('rectangle'))).toBe('#d9d9d9')
+  expect(creationPreviewPoints(createShapeSeed('polygon'))).toBeTruthy()
+})
+
+test('the creation fill stays until the committed document is the presented frame', () => {
+  const node = { id: 'new' }
+  expect(creationGhostNode(node, null, () => false)).toBe(node)
+  expect(creationGhostNode(null, node, () => false)).toBe(node)
+  expect(creationGhostNode(null, node, () => true)).toBeNull()
+  expect(creationGhostNode(null, null, () => false)).toBeNull()
 })
 
 test('line clicks create a 100px horizontal path with stable endpoints and compatibility height', () => {

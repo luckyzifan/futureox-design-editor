@@ -1,9 +1,9 @@
 import type { Bounds, Matrix } from './model'
 
-// Display-only formatting: never writes rounded values back to authored geometry.
-// Twelve significant digits suppress transform floating-point noise while retaining
-// fractional design units. This is not device/DPR or raster-output pixel size.
-const dimensionFormat = new Intl.NumberFormat('en-US', { useGrouping: false, maximumSignificantDigits: 12 })
+// Display-only formatting for the on-canvas W×H chip. Two decimal places match
+// the selection chip in Figma and drop float noise such as 20.6079998016.
+// Authored geometry and Inspector metrics stay exact; this never writes back.
+const dimensionFormat = new Intl.NumberFormat('en-US', { useGrouping: false, minimumFractionDigits: 0, maximumFractionDigits: 2 })
 export function formatLogicalDimension(value: number): string {
   return Number.isFinite(value) ? dimensionFormat.format(Object.is(value, -0) ? 0 : value) : '—'
 }
