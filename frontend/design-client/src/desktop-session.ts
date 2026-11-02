@@ -38,6 +38,16 @@ const rejectedWorkspaceWrite = (result: DesktopResult<unknown>) => result.status
 
 /** Disk acknowledgements are scoped to immutable snapshots, never to the latest edit. */
 export type WorkspaceTab = { id: string; name: string; persisted: boolean }
+
+/** Tab switches during an open/import must not surface the host file lock as
+ * a hard failure. A cached snapshot can replace the canvas immediately; a
+ * busy editor only queues the switch until that operation releases the document. */
+export function workspaceTabSwitchPlan(input: { sessionBusy: boolean; hostBusy: boolean; cached: boolean; sameDocument: boolean }) {
+  if (input.sameDocument) return 'ignore' as const
+  if (input.sessionBusy) return 'queue' as const
+  if (input.hostBusy) return input.cached ? 'adopt-cache' as const : 'queue' as const
+  return 'read' as const
+}
 export class DesktopSession {
   private readonly tabListeners = new Set<() => void>()
   private tabsValue: WorkspaceTab[] = []
@@ -53,6 +63,9 @@ export class DesktopSession {
     return true
   }
   private readonly workspaceHeads = new Map<string, number>()
+  private readonly workspaceCache = new Map<string, WorkspaceOpened>()
+  private pendingTab?: string
+  private pendingRefresh = false
   private workspacePending?: { documentJson: string; expectedRevision: number | null; mutationId: string; generation: number; id: string }
   get supportsWorkspace() { return !!this.bridge.workspace }
   get activeDocumentId() { return this.currentDocument.id }
@@ -76,10 +89,34 @@ export class DesktopSession {
     finally { trace.finish() }
   }
   openWorkspace(id: string) {
+    if (id === this.currentDocument.id && !this.pendingRefresh) return Promise.resolve(true)
+    this.pendingRefresh = false
+    if (this.active || this.disposed || this.closeSnapshot !== undefined) {
+      this.queueWorkspaceTab(id)
+      return Promise.resolve(false)
+    }
     return this.run('open', async () => {
       if (!this.bridge.workspace) return false
       const result = { ...await documentStageAsync(DocumentStage.read, () => this.bridge.workspace!.open({ id })) }
-      if (result.status !== 'ok') return result.status === 'cancelled' ? false : this.failed(result)
+      if (result.status !== 'ok') {
+        const hostBusy = result.status !== 'cancelled' && (result.code === 'BUSY' || result.code === 'WORKSPACE_BUSY')
+        const plan = workspaceTabSwitchPlan({ sessionBusy: false, hostBusy, cached: this.workspaceCache.has(id), sameDocument: false })
+        if (plan === 'adopt-cache') {
+          const cached = this.workspaceCache.get(id)!
+          const document = await this.parse(cached.documentJson)
+          this.assertWorkspace(document, cached, id)
+          if (!this.adoptWorkspace(document, cached)) return false
+          this.pendingTab = id
+          this.pendingRefresh = true
+          this.editor.notify('已切换到本机缓存。文件操作结束后会再核对版本。')
+          return true
+        }
+        if (plan === 'queue') {
+          this.queueWorkspaceTab(id)
+          return false
+        }
+        return result.status === 'cancelled' ? false : this.failed(result)
+      }
       const prepared = await this.parse(result.documentJson)
       this.assertWorkspace(prepared, result, id)
       const approved = await documentStageAsync(DocumentStage.leave, () => this.leave('open'))
@@ -139,12 +176,40 @@ export class DesktopSession {
     if(this.disposed||this.closeSnapshot!==undefined||id!==this.currentDocument.id||this.generation!==generation||version!==this.editor.state.version||this.dirty||(this.editor.interactionActive||this.editor.state.busy)||hasPendingEdits(this.editor))return false
     return this.adoptWorkspace(document,result,true)
   }
+  private tabRetry?: ReturnType<typeof setTimeout>
+  private queueWorkspaceTab(id: string) {
+    const announce = this.pendingTab !== id
+    this.pendingTab = id
+    if (announce) this.editor.notify('文件操作进行中，将在结束后切换到该标签。当前画布已保留。')
+    this.scheduleTabRetry()
+  }
+  private scheduleTabRetry() {
+    if (this.tabRetry || !this.pendingTab || this.disposed) return
+    this.tabRetry = setTimeout(() => {
+      this.tabRetry = undefined
+      const next = this.pendingTab
+      if (!next || this.disposed) { this.pendingTab = undefined; return }
+      if (this.active || this.operation !== 'idle') { this.scheduleTabRetry(); return }
+      const refresh = this.pendingRefresh
+      this.pendingTab = undefined
+      if (next === this.currentDocument.id && !refresh) return
+      void this.openWorkspace(next)
+    }, 400)
+  }
   private assertWorkspace(document: DesignDocument | PreparedDocument, result: WorkspaceOpened, requestedId = result.id) {
     if (document.id !== result.id || result.id !== requestedId || result.deleted || !Number.isSafeInteger(result.revision) || result.revision < 1)
       throw new Error('本机文档版本响应无效')
   }
   private adoptWorkspace(document: DesignDocument | PreparedDocument, result: WorkspaceOpened,preserveView=false) {
     this.assertWorkspace(document, result)
+    if (result.documentJson) {
+      this.workspaceCache.set(result.id, { ...result })
+      while (this.workspaceCache.size > 6) {
+        const stale = [...this.workspaceCache.keys()].find(key => key !== result.id && key !== this.currentDocument.id)
+        if (!stale) break
+        this.workspaceCache.delete(stale)
+      }
+    }
     if (!this.load(document, true, undefined, result.name,preserveView)) return false
     this.workspaceHeads.set(result.id, result.revision)
     this.publish()
@@ -547,6 +612,7 @@ export class DesktopSession {
 
   dispose() {
     this.disposed = true
+    clearTimeout(this.tabRetry)
     for (const controller of this.documentPreparations) controller.abort()
     this.documentPreparations.clear()
     cancelPendingOperations(this.editor)
@@ -615,6 +681,7 @@ export class DesktopSession {
       this.active = null
       this.operation = operation === 'close' && completed ? 'close' : 'idle'
       this.publish()
+      this.scheduleTabRetry()
       // Cancelled dialogs and failed saves still need the latest recovery snapshot.
       if (this.started && this.dirty && !(operation === 'close' && completed)) this.scheduleRecovery()
     })

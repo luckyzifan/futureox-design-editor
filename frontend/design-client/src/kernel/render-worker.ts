@@ -60,7 +60,7 @@ import { isDisplayBudgetError } from './gpu/display-budget'
 import { applyDocumentPatch, documentPatch, type DocumentPatch } from '../document-patch'
 import type { DesignDocument, Matrix } from '../model'
 import { preparePreviewSelection, previewTranslationDelta, translatePreviewScene } from './gpu/translated-scene'
-import { FrozenResidentOverlayPoses, resolveResidentOverlayFrame } from './gpu/resident-affine-pose'
+import { FrozenResidentOverlayPoses, resolveResidentOverlayFrame, stickyPresentedAffines } from './gpu/resident-affine-pose'
 import { interactionPatchTransforms } from './interaction-patch-transforms'
 import { capturePoseOrigins, residentPoseShift } from './gpu/resident-pose-origin'
 import { tilePrepareViewport, localDisplayPrepareScope, tileLocalPrepareViewport } from './tile-prepare-viewport'
@@ -356,8 +356,11 @@ let poseSession:PoseSession|undefined,pendingPose:ResidentPose|undefined,poseQue
 function latestPendingPose():ResidentPose|undefined{return pendingPose}
 const frozenOverlayPoses=new FrozenResidentOverlayPoses()
 function displayedOverlayAffines(frame:import('./gpu/resident-presenter').ResidentFrame) {
-  if(gpu)return resolveResidentOverlayFrame(frame,gpu.driver,poseSession,frozenOverlayPoses)
-  if(frame.overlayPoseSlot!==undefined)frame.overlay=undefined
+  const affines=gpu?resolveResidentOverlayFrame(frame,gpu.driver,poseSession,frozenOverlayPoses):undefined
+  if(!gpu&&frame.overlayPoseSlot!==undefined)frame.overlay=undefined
+  // A stopped session is the affine rebase gap: the texture is still the
+  // previous pose, so chrome must not take the new rotation alone.
+  return stickyPresentedAffines(affines,poseSession?.stopped===true)
 }
 function rebasePose(pose:ResidentPose,expandCapture=false){
   if(poseSession?.slot===pose.slot){

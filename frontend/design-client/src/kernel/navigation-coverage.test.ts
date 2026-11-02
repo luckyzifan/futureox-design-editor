@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight } from './navigation-coverage'
+import { navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError } from './navigation-coverage'
 import { navigationPreviewDensity } from './navigation-zoom'
 import { compositeDrawPlan, compositeRasterQuad } from './gpu/composite-draw-plan'
 import { physicalCoverage } from './gpu/physical-coverage'
@@ -55,6 +55,19 @@ test('one-pixel uncovered strip is not full coverage, including fractional camer
   const full = { ...tile, zoom: 2, x: -.25, y: .125 }
   expect(navigationHasCoverage([full], view, 1024, 512)).toBe(true)
   expect(navigationHasCoverage([{ ...full, width: 1023 }], view, 1024, 512)).toBe(false)
+})
+
+test('low-density residents do not count as finished coverage for a zoomed-out viewport', () => {
+  const overview = { ...tile, key: 'overview', zoom: 0.02, width: 2048, height: 1024 }
+  const view = { x: 0, y: 0, zoom: 0.06 }
+  expect(navigationHasCoverage([overview], view, 1024, 512)).toBe(true)
+  expect(navigationHasCoverage([overview], view, 1024, 512, navigationReadyDensity(view.zoom, 1, 1024, 512))).toBe(false)
+  expect(navigationReadyDensity(0.02, 2, 1600, 900)).toBeLessThan(0.05)
+  expect(previewUnderlayHides({ document, revision: 4 }, { document, revision: 4 })).toBe(false)
+  expect(previewUnderlayHides({ document, revision: 3 }, { document, revision: 4 })).toBe(true)
+  expect(retainedPressureError(Error('Compositing memory budget exceeded'))).toBe(true)
+  expect(retainedPressureError(Error('Combined filter dependency halo exceeds 2048 device pixels'))).toBe(true)
+  expect(retainedPressureError(Error('Page not found'))).toBe(false)
 })
 
 test('bounded coverage density is temporary and never raises the native sampling contract', () => {

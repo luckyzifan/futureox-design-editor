@@ -3,6 +3,8 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-02 低倍缩放连续覆盖与合成降级见[本轮记录](../../../testing/verification-zoom-coverage-budget-20261102/README.md)。低密度驻留不再取消连续性预览；同修订像素留在预览之上。合成预算或滤镜光晕超限时显示路径分块并丢掉放不下的效果，填充仍在。旋转进行中的选择框跟当前纹理，不先转。这不是 33/100ms 或完整 G2/G5。
+
 2026-11-02 [失败复核与定向修复](../../../testing/verification-rendering-audit-20261102/README.md)确认重效果、松手精修、全源首屏和模板二 3200% 仍未关闭；旧队列两例现已通过。当前原生交互只保留仍需使用且 owner 有效的图片，保留压力 fence 和未使用图片原策略。已解析 authored preview 不走 transport null 归一化；布局差量保留私有回执及全局字段身份。约束仿射逐次验证准确固定点，Rust 无效果叶节点只撤销自身及祖先支撑，描边重算、共享/效果/源上下文回退。最终三文件拖动/旋转 12 组 held/settled/fresh 零差异、完整 authored Undo 恢复；动作矩阵仍有 FIG 松手 511/825ms 和拓扑 1.55/2.07s。计量排除 ready 后 QA 快照，不把暖采样或回执代理当物理显示；33/100ms 和全 G5 未通过。字段存储候选仅留验证补丁，未增加生产开关。
 
 2026-11-01 [连续操作续轮](../../../testing/verification-fluid-canvas-20261101/README.md)保留白底、独立400%网格及自适应面板的真实UI验证。图片驻留的交互默认策略按ABBA收紧；完整画面、位姿和像素来源约束不变。局部旋转可降低工作量，但重效果仍有秒级尾延迟。发生像素差异的区域/内阴影裁剪没有默认采用；渐变字段窗口仍为独立候选。不得将这些结果说成所有操作丝滑或完整G2/G5通过。
