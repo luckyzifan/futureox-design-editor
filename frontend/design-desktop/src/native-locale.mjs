@@ -20,7 +20,9 @@ export function localizeNativeMenu(template, locale) {
   if (locale !== 'zh-CN' && locale !== 'en') throw new TypeError('Unsupported interface locale')
   return template.map(item => {
     const copy = { ...item }
-    if (typeof item.label === 'string' && Object.hasOwn(menuLabels, item.label))
+    const preserveLabel = copy.preserveLabel === true
+    delete copy.preserveLabel
+    if (!preserveLabel && typeof item.label === 'string' && Object.hasOwn(menuLabels, item.label))
       copy.label = locale === 'zh-CN' ? menuLabels[item.label] : item.label === 'Settings… / 设置' ? 'Settings…' : item.label
     else if (!item.label && Object.hasOwn(roles, item.role)) copy.label = roles[item.role][locale === 'zh-CN' ? 0 : 1]
     if (Array.isArray(item.submenu)) copy.submenu = localizeNativeMenu(item.submenu, locale)
