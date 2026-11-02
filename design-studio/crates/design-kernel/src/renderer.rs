@@ -17,6 +17,49 @@ use std::{collections::HashMap, sync::Arc};
 /// Pixel, path, coordinate, effect and allocation guards remain independent.
 pub(crate) const MAX_CANVAS_SAMPLE_SCALE: f64 = 4096.;
 
+fn display_pressure(error: &str) -> bool {
+    error == "Compositing memory budget exceeded"
+        || error == "Combined filter dependency halo exceeds 2048 device pixels"
+        || error == "Combined zoom source dependency halo exceeds 2048 device pixels"
+        || error == "Zoom source filter halo exceeds 2048 device pixels"
+        || error == "Frame compositing work budget exceeded"
+        || error.starts_with("Gaussian sigma must be in")
+        || error == "Layer surface exceeds 16 million pixels"
+}
+
+fn fitted_display_halo(viewport: Rect, mut halo: i32) -> i32 {
+    while halo > 0 {
+        let extent = viewport.expand(halo);
+        let pixels = u64::from(extent.w).saturating_mul(u64::from(extent.h));
+        if pixels <= 16_000_000 && extent.w <= 8192 && extent.h <= 8192 {
+            return halo;
+        }
+        halo /= 2;
+    }
+    0
+}
+
+/// Oversized device-pixel filters are dropped on the degraded display retry.
+/// The layer's fill and strokes stay. Exact attempts never call this.
+fn effect_exceeds_display(fx: &crate::scene::Effect, scale: f64) -> bool {
+    if let Some(zoom) = fx.zoom_blur {
+        if !zoom.amount.is_finite() || zoom.amount * scale > 2048. {
+            return true;
+        }
+    }
+    let sigma = fx.blur_radius().max(fx.radius) * scale;
+    if sigma.is_finite() && sigma > 512. {
+        return true;
+    }
+    let halo = (fx.blur_radius() * 2.
+        + fx.spread.abs()
+        + fx.x.abs()
+        + fx.y.abs()
+        + fx.material_halo())
+        * scale;
+    !halo.is_finite() || halo > 2048.
+}
+
 #[derive(Clone, Copy, Deserialize, Serialize)]
 pub struct View {
     pub x: f64,
@@ -186,6 +229,9 @@ pub struct Engine {
     scene_peak_bytes: usize,
     budget_rejections: u32,
     last_rejection: Option<(usize, usize)>,
+    /// Display-only retry after a halo or compositing-budget failure. Exact
+    /// export and the first attempt stay on the original path.
+    display_degrade: bool,
     /// Four-bucket GPU memory ledger (see `gpu_memory_breakdown`). The
     /// kernel itself allocates no GPU memory; the ledger is shared state a
     /// host installs into the allocating device (`NativeGpu`) so the export
@@ -256,6 +302,7 @@ impl Engine {
             scene_peak_bytes: 0,
             budget_rejections: 0,
             last_rejection: None,
+            display_degrade: false,
             gpu_memory: crate::memory::GpuMemoryLedger::default(),
             linear_tiles: std::collections::HashMap::new(),
             linear_tiles_order: Vec::new(),
@@ -981,6 +1028,60 @@ impl Engine {
         Ok(())
     }
     pub fn render(&mut self, options: &RenderOptions) -> Result<Vec<u8>, String> {
+        match self.render_once(options) {
+            Ok(bytes) => Ok(bytes),
+            Err(error) if display_pressure(&error) && !self.display_degrade => {
+                self.display_degrade = true;
+                let degraded = self.render_degraded_display(options);
+                self.display_degrade = false;
+                degraded.map_err(|_| error)
+            }
+            Err(error) => Err(error),
+        }
+    }
+    /// Split a frame that cannot admit its filter halo or working set. Tiles
+    /// that still fail keep the page background so one effect cannot blank
+    /// the whole viewport. Returns the original class of failure only when
+    /// no tile could be painted.
+    fn render_degraded_display(&mut self, options: &RenderOptions) -> Result<Vec<u8>, String> {
+        let side = 128u32;
+        let mut result = vec![0u8; options.width as usize * options.height as usize * 4];
+        let mut painted = false;
+        let mut last_error = String::from("Compositing memory budget exceeded");
+        for y in (0..options.height).step_by(side as usize) {
+            for x in (0..options.width).step_by(side as usize) {
+                let w = (options.width - x).min(side);
+                let h = (options.height - y).min(side);
+                let mut tile = options.clone();
+                tile.width = w;
+                tile.height = h;
+                match self.render_scene_inner_at(
+                    &tile,
+                    false,
+                    Rect::new(x as i32, y as i32, w, h),
+                    0,
+                ) {
+                    Ok(mut planes) => {
+                        let bytes = planes.remove(0);
+                        painted = true;
+                        for row in 0..h as usize {
+                            let dst = ((y as usize + row) * options.width as usize + x as usize) * 4;
+                            let src = row * w as usize * 4;
+                            let n = w as usize * 4;
+                            result[dst..dst + n].copy_from_slice(&bytes[src..src + n]);
+                        }
+                    }
+                    Err(error) => last_error = error,
+                }
+            }
+        }
+        if painted {
+            Ok(result)
+        } else {
+            Err(last_error)
+        }
+    }
+    fn render_once(&mut self, options: &RenderOptions) -> Result<Vec<u8>, String> {
         if self
             .doc
             .as_ref()
@@ -1203,7 +1304,11 @@ impl Engine {
                     .unwrap_or(0)
                     .min(2048),
         );
-        let zoom_guard=crate::zoom_support::scene_guard(doc,&page.children,camera,viewport.expand(extra_halo),&self.fonts)?;
+        let zoom_guard=match crate::zoom_support::scene_guard(doc,&page.children,camera,viewport.expand(extra_halo),&self.fonts) {
+            Ok(guard) => guard,
+            Err(error) if self.display_degrade && display_pressure(&error) => None,
+            Err(error) => return Err(error),
+        };
         let guard=zoom_guard.map_or(guard,|z|guard.union(z));
         for root in &page.children {
             prepare_node_geometry(
@@ -1223,12 +1328,23 @@ impl Engine {
             .map(|p| p.halo)
             .max()
             .unwrap_or(0);
-        if zoom_guard.is_none() && max_halo + extra_halo > 2048 {
-            return Err("Combined filter dependency halo exceeds 2048 device pixels".into());
+        let mut used_halo = max_halo.saturating_add(extra_halo);
+        if used_halo > 2048 {
+            if self.display_degrade {
+                used_halo = fitted_display_halo(viewport, 2048);
+            } else if zoom_guard.is_none() {
+                return Err("Combined filter dependency halo exceeds 2048 device pixels".into());
+            }
+        } else if self.display_degrade {
+            used_halo = fitted_display_halo(viewport, used_halo);
         }
-        let extent=zoom_guard.unwrap_or_else(||viewport.expand(max_halo+extra_halo));
+        let mut extent=zoom_guard.unwrap_or_else(||viewport.expand(used_halo));
         if zoom_guard.is_some() && [viewport.x-extent.x,viewport.y-extent.y,extent.right()-viewport.right(),extent.bottom()-viewport.bottom()].into_iter().max().unwrap_or(0)>2048 {
-            return Err("Combined zoom source dependency halo exceeds 2048 device pixels".into());
+            if self.display_degrade {
+                extent = viewport.expand(fitted_display_halo(viewport, 2048));
+            } else {
+                return Err("Combined zoom source dependency halo exceeds 2048 device pixels".into());
+            }
         }
         let mut target = Surface::new_in(extent, &budget)?;
         let background = if options.transparent {
@@ -1297,6 +1413,7 @@ impl Engine {
             coverage_compatible,
             profile: options.raster_profile,
             interactive_effects: options.interactive_effects,
+            display_degrade: self.display_degrade,
             sample: None,
             raster_workspace: RasterWorkspace::default(),
         };
@@ -1916,6 +2033,7 @@ impl Engine {
             scene_peak_bytes: 0,
             budget_rejections: 0,
             last_rejection: None,
+            display_degrade: false,
             // Workers share the owner's ledger handle so GPU accounting is
             // not split across engine clones (clone = same Arc state).
             gpu_memory: self.gpu_memory.clone(),
@@ -2084,6 +2202,7 @@ struct Painter<'a> {
     coverage_compatible: bool,
     profile: crate::fidelity::RasterProfile,
     interactive_effects: bool,
+    display_degrade: bool,
     sample: Option<usize>,
     raster_workspace: RasterWorkspace,
 }
@@ -3282,6 +3401,9 @@ impl Painter<'_> {
             })?;
         }
         for fx in n.effects.iter().filter(|e| apply_effects && e.visible) {
+            if self.display_degrade && effect_exceeds_display(fx, scale) {
+                continue;
+            }
             match fx.kind.as_str() {
                 "zoom-blur" => { layer=crate::zoom_blur::apply(&layer,fx.zoom_blur.ok_or("Missing zoom parameters")?,m,[n.width,n.height])?; }
                 "gaussian-blur" => { layer=effects::gaussian_surface(&layer,fx.radius*scale,self.compatible)?; }
