@@ -1,6 +1,6 @@
 # Futureox Design Core：渲染优先工程与验收规范
 
-2026-11-02 的[选区、框选与测距](../testing/verification-figma-canvas-chrome-marquee-20261102/README.md)只改画布交互叠层：选区蓝、悬停细线、框选和 Option 红色间距。不改瓦片、预算或实验开关，不关闭 33/100ms 或完整 G2/G5。
+2026-11-02 的[选区、框选与测距](../testing/verification-figma-canvas-chrome-marquee-20261102/README.md)只改画布交互叠层。gaps5：选区与悬停 `#4597F7`，框选填充 `#DCE9F5`，间距 `#E05634`。不改瓦片、预算或实验开关，不关闭 33/100ms 或完整 G2/G5。
 
 2026-11-02 的[原型播放](../testing/verification-playback-plugins-import-20261102/README.md)只在原型预览里封顶中间帧的玻璃和模糊，溶解用两张已结算画面交叉。落定帧和编辑器画布仍用原稿。不改瓦片、预算或实验开关，不关闭 33/100ms 或完整 G2/G5。
 

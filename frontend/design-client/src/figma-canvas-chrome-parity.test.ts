@@ -6,6 +6,7 @@ import { canvasOverlayCommands } from './canvas-overlay-commands'
 import { selectionLocalBounds } from './canvas-view'
 import { HOVER_BLUE, SELECTION_BLUE } from './selection-blue'
 import { measureBounds, SPACING_RED } from './canvas-measurements'
+import { selectionSizeLabel } from './selection-size-label'
 
 function documentOf(nodes: DesignNode[], roots = nodes.map(item => item.id)) {
   const doc = blank('chrome parity')
@@ -55,8 +56,9 @@ test('a page marquee selects the group, and a deep marquee selects the child it 
 })
 
 test('Alt spacing is red, meets a sibling gap, and reports four paddings inside a frame', () => {
-  expect(SPACING_RED).toBe('#f24822')
-  expect(HOVER_BLUE).not.toBe(SELECTION_BLUE)
+  expect(SPACING_RED).toBe('#e05634')
+  expect(HOVER_BLUE).toBe(SELECTION_BLUE)
+  expect(selectionSizeLabel({ x: 0, y: 0, width: 60, height: 47 }, { x: 0, y: 0, width: 60, height: 47 })).toBe('60 × 47')
   const frame = node('frame', 0, 0, 300, 200)
   const child = node('rectangle', 40, 50, 50, 40)
   const sibling = node('rectangle', 140, 50, 40, 40)
@@ -75,7 +77,10 @@ test('Alt spacing is red, meets a sibling gap, and reports four paddings inside 
     measurementTarget: { id: sibling.id, bounds: siblingEntry.bounds },
   })
   expect(gap.commands.measurements.map(item => item.distance)).toEqual([50])
-  expect(gap.commands.labels?.find(label => label.kind === 'measurement')).toMatchObject({ text: '50', color: SPACING_RED })
+  expect(gap.commands.labels?.find(label => label.kind === 'measurement')).toMatchObject({ text: '50', color: '#ffffff', frame: 'measure' })
+  const one = measureBounds({ x: 0, y: 0, width: 10, height: 10 }, { x: 11, y: 0, width: 10, height: 10 })
+  expect(one.map(item => item.distance)).toEqual([1])
+  expect(String(Number(one[0].distance.toFixed(2)))).toBe('1')
   expect(gap.commands.labels?.find(label => label.kind === 'selection-size')).toMatchObject({ color: '#ffffff', frame: 'accent' })
   const padding = measureBounds(bounds(corners), frameEntry.bounds).map(item => item.distance)
   expect(padding).toEqual([40, 210, 50, 110])
