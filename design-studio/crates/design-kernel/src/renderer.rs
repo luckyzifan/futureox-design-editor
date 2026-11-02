@@ -3244,7 +3244,15 @@ impl Painter<'_> {
                     && fx.spread == 0.
                     && offset.x.fract() == 0.
                     && offset.y.fract() == 0.;
-                let color = crate::color::pixel(self.doc.color_management, &fx.color, 1.)?.rgb();
+                // Color alpha and the effect's own opacity multiply. The byte
+                // shadow path used to keep only the effect opacity and drop the
+                // color's alpha; the linear path already multiplied both.
+                let painted = crate::color::pixel(
+                    self.doc.color_management,
+                    &fx.color,
+                    fx.opacity as f32,
+                )?;
+                let (color, shadow_opacity) = (painted.rgb(), painted.0[3]);
                 let mut outputs: Vec<Arc<Surface>> = Vec::with_capacity(4);
                 for (i, source) in planes.iter().enumerate() {
                     if let Some(previous) = planes[..i].iter().position(|p| Arc::ptr_eq(p, source))
@@ -3256,11 +3264,7 @@ impl Painter<'_> {
                         effects::color_shadow_linear(
                             source,
                             if pointwise { source } else { &alpha },
-                            crate::color::pixel(
-                                self.doc.color_management,
-                                &fx.color,
-                                fx.opacity as f32,
-                            )?,
+                            painted,
                             offset.x,
                             offset.y,
                             inner,
@@ -3270,7 +3274,7 @@ impl Painter<'_> {
                             source,
                             if pointwise { source } else { &alpha },
                             color,
-                            fx.opacity as f32,
+                            shadow_opacity,
                             offset.x,
                             offset.y,
                             inner,
@@ -3649,11 +3653,16 @@ impl Painter<'_> {
                             fx.spread * scale,
                             inner,
                         )?;
+                        let painted = crate::color::pixel(
+                            self.doc.color_management,
+                            &fx.color,
+                            fx.opacity as f32,
+                        )?;
                         effects::color_shadow_rgba8(
                             &layer,
                             &alpha,
-                            crate::color::pixel(self.doc.color_management, &fx.color, 1.)?.rgb(),
-                            fx.opacity as f32,
+                            painted.rgb(),
+                            painted.0[3],
                             offset.x,
                             offset.y,
                             inner,
