@@ -2817,9 +2817,15 @@ export class Editor {
     for (const id of ordered) inputs.push(...await operands(id))
     return inputs
   }
+  private containsBoolean(doc: DesignDocument, id: string): boolean {
+    const n = doc.nodes[id]
+    if (!n) return false
+    if (n.booleanOperation) return true
+    return n.children.some(child => this.containsBoolean(doc, child))
+  }
   /** Bake the selection into one vector. A single boolean uses its own
-   * operation. Other selections union their shape leaves. A boolean mixed
-   * with other layers is baked with its own operation first, then unioned. */
+   * operation, and a boolean nested inside it is baked first. A boolean mixed
+   * with other layers is baked with its own operation, then unioned. */
   async flattenSelection() {
     if (this.disposed || this.state.busy || this.interactionActive) return
     const ids = this.topSelection()
@@ -2877,8 +2883,9 @@ export class Editor {
     this.set({ busy: true, message: '正在展平…' })
     try {
       if (!current()) return
+      const nestedSingle = !!only?.booleanOperation && only.children.some(child => this.containsBoolean(doc, child))
       let results: Point[][][]
-      if (mixed) {
+      if (mixed || nestedSingle) {
         const inputs = await this.flattenMixedOperands(doc, ordered, parents)
         if (!current()) return
         if (!inputs.length || inputs.length > 64) {

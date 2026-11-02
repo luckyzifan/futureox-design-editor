@@ -254,8 +254,8 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
           </button>
         </header>
         <p className="export-color-note">{tx(
-          '默认是 sRGB：8 位 PNG 写入 sRGB 色彩块和 sRGB ICC。选择 Display P3 时，同一套 sRGB 像素会换算成 Display P3 并写入 ICC 与 cICP；JPEG、WebP 和位图 PDF 带上同一份描述文件。这不改画布合成，也不是默认 PNG。其他色彩空间仍用 PNG。本面板不编码 FFmpeg、MP4 或 WebM 视频。',
-          'The default is sRGB: 8-bit PNG writes an sRGB chunk and an sRGB ICC profile. Display P3 converts those sRGB samples and writes an ICC profile plus cICP. JPEG, WebP and bitmap PDF carry the same profile. This does not change canvas compositing, and it is not the default PNG. Other color spaces still use PNG. This panel does not encode FFmpeg, MP4 or WebM video.',
+          '默认是 sRGB：8 位 PNG 写入 sRGB 色彩块和 sRGB ICC。选择 Display P3 时，同一套 sRGB 像素会换算成 Display P3 并写入 ICC 与 cICP；JPEG、WebP 和位图 PDF 带上同一份描述文件。这不改画布合成，也不是默认 PNG。其他色彩空间仍用 PNG。SVG 的 gzip 导出是 .svgz。这一版面板仍只写静止图像；MP4/WebM 不在这里调用系统 PATH，桌面视频编码要走产品里的 Rust FFmpeg 接口。',
+          'The default is sRGB: 8-bit PNG writes an sRGB chunk and an sRGB ICC profile. Display P3 converts those sRGB samples and writes an ICC profile plus cICP. JPEG, WebP and bitmap PDF carry the same profile. This does not change canvas compositing, and it is not the default PNG. Other color spaces still use PNG. Gzip SVG export is .svgz. This panel revision still writes still images. MP4 and WebM are not encoded from PATH here; desktop video encoding goes through the product Rust FFmpeg API.',
         )}</p>
         {(format === 'png' || format === 'jpeg' || format === 'webp' || format === 'pdf') && <label>{tx('色彩空间', 'Color space')} <select aria-label={tx('导出色彩空间', 'Export color space')} value={gamut} disabled={busy} onChange={event => setGamut(event.target.value as 'srgb' | 'display-p3')}>
           <option value="srgb">sRGB</option>
