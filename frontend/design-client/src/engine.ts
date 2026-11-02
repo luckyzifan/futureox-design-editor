@@ -346,6 +346,17 @@ export class Editor {
       this.listeners.delete(fn)
     }
   }
+  /** Zoom readout only. A parked wheel camera must not re-render the whole editor. */
+  private cameraListeners = new Set<() => void>()
+  subscribeCamera = (fn: () => void) => {
+    this.cameraListeners.add(fn)
+    return () => { this.cameraListeners.delete(fn) }
+  }
+  private publishCamera() {
+    for (const fn of this.cameraListeners) {
+      try { fn() } catch { /* A readout must not roll back the parked camera. */ }
+    }
+  }
   snapshot = () => this.state
   subscribeReveal = (fn: () => void) => {
     this.revealListeners.add(fn)
@@ -474,6 +485,7 @@ export class Editor {
     this.state = next
     if (patch.view !== undefined || navigationChanged)
       this.cameraState.remember(next.doc.id, next.page, next.view)
+    if (patch.view !== undefined) this.publishCamera()
     // Notification callbacks do not inherit the internal preview capability.
     const propertyWrite = this.propertyPreviewWrite
     this.propertyPreviewWrite = 0
@@ -512,6 +524,7 @@ export class Editor {
   setViewCoalesced(next: EditorState['view'], leading = false) {
     if (this.disposed) return
     this.pendingView = savedCamera(next)||this.effectiveView()
+    this.publishCamera()
     if (this.pendingFrame !== null) return
     const commit=(view:EditorState['view'])=>{
       const session=this.sessionGeneration,doc=this.state.doc,page=this.state.page
@@ -2855,6 +2868,7 @@ export class Editor {
     this.geometryJob?.cancel()
     this.discardPendingView()
     this.listeners.clear()
+    this.cameraListeners.clear()
     this.editListeners.clear()
     this.revealRequest = null
     this.revealListeners.clear()

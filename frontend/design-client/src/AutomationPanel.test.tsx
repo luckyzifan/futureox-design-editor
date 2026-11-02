@@ -29,7 +29,7 @@ const click=async(text:string)=>{await act(async()=>button(text).click())}
 describe('automation actual DOM controls (no browser/GPU)',()=>{
   it('opens/closes an accessible dialog without auto-enabling MCP',async()=>{
     await act(async()=>root.render(<AutomationPanel editor={editor} desktop={undefined}/>));expect(element.querySelector('[role=dialog]')).toBeNull()
-    await click('AI / MCP');expect(element.querySelector('[role=dialog]')?.getAttribute('aria-label')).toBe('设计 API 与 MCP')
+    await click('设计 API');expect(element.querySelector('[role=dialog]')?.getAttribute('aria-label')).toBe('设计 API 与 MCP')
     expect(element.textContent).toContain('需要 Electron');await click('关闭');expect(element.querySelector('[role=dialog]')).toBeNull()
   })
   it('reads actual structured context and checks/font metadata',async()=>{

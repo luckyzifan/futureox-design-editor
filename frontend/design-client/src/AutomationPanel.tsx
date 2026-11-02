@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useInterfacePreferences } from './interface-preference'
+import { automationText } from './automation-interface-messages'
 import { zipSync, strToU8 } from 'fflate'
 import type { Editor } from './engine'
 import type { DesktopBridge } from './desktop'
@@ -38,6 +40,7 @@ export function sandboxedCodePreview(result: ReturnType<typeof exportDesignCode>
 export { AutomationPanel } from './AutomationPanelLauncher'
 export function AutomationDialog({editor,desktop,onClose,onHistory}:{editor:Editor;desktop:DesktopBridge|null|undefined;onClose:()=>void;onHistory?:()=>void}) {
   const api=useMemo(()=>createEditorDesignAutomation(editor),[editor])
+  const apiText=automationText[useInterfacePreferences().locale]
   const [status,setStatus]=useState<AutomationBridgeStatus|null>(null)
   const [workspaceScope,setWorkspaceScope]=useState<'none'|'read'|'write'>('none'),[settingsScope,setSettingsScope]=useState<'none'|'read'|'write'>('none')
   const selectedScopes=()=>({...workspaceScope==='none'?{}:{workspaceScope},...settingsScope==='none'?{}:{settingsScope}})
@@ -90,7 +93,7 @@ export function AutomationDialog({editor,desktop,onClose,onHistory}:{editor:Edit
     if(e.key==='Escape'){e.preventDefault();e.stopPropagation();onClose()}
     if(e.key==='Tab'){const items=[...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),summary,iframe')];const first=items[0],last=items.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus()}}
   }}>
-    <h2>设计 API 与 MCP <button autoFocus aria-label="关闭设计 API 与 MCP" onClick={onClose}>关闭</button></h2>
+    <h2>{apiText.title} <button autoFocus aria-label={apiText.closeLabel} onClick={onClose}>{apiText.close}</button></h2>
     <p>当前文档：{editor.state.doc.name}。共享编辑 API 支持原子修改、撤销、版本冲突检查。模型服务需由你的 AI 客户端提供。</p>
     <fieldset disabled={busy}><legend>本地 MCP 连接</legend>
       {bridge?<><p role="status">{status?.enabled?`已启用 · 当前文档${status.scope==='write'?'可读写':'只读'} · ${status.connectedClients} 个连接`:'未启用'}；文档切换将撤销连接授权。</p>
@@ -102,7 +105,7 @@ export function AutomationDialog({editor,desktop,onClose,onHistory}:{editor:Edit
         <button onClick={()=>void task(async()=>setStatus(await bridge.enable({scope:'write',...selectedScopes()})))}>启用读写</button>
         <button disabled={!status?.enabled} onClick={()=>void task(async()=>setStatus(await bridge.disable()))}>停用</button>
         <button disabled={!status?.enabled} onClick={()=>void task(async()=>{const r=await bridge.copyConnection();setResult(r.copied?'连接配置已复制，请仅粘贴到可信本地 AI 客户端。不要分享其中的临时凭据。':'未复制连接配置')})}>复制连接配置</button>
-      </>:<p>Web 版可使用下方编辑 API、检查和导出；本地外部 MCP 连接需要 Electron 桌面版。</p>}
+      </>:<p>{apiText.webOnly}</p>}
     </fieldset>
     <fieldset disabled={busy}><legend>检查、预览与导入导出</legend>
       <button onClick={()=>void task(()=>{execute('context.get',{pageId:editor.state.page,limit:100})})}>读取 AI 上下文</button>

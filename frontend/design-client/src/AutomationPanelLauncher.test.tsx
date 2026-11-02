@@ -38,7 +38,7 @@ afterEach(async () => {
   await act(async () => root.unmount())
   editor.dispose(); dom.window.close(); vi.doUnmock('./AutomationPanel'); vi.restoreAllMocks(); vi.unstubAllGlobals()
 })
-const trigger = () => [...mount.querySelectorAll('button')].find(button => button.textContent === 'AI / MCP')!
+const trigger = () => [...mount.querySelectorAll('button')].find(button => button.textContent === '设计 API')!
 const close = () => mount.querySelector<HTMLButtonElement>('[aria-label="关闭设计 API 与 MCP"]')!
 const dialog = () => mount.querySelector<HTMLElement>('[role="dialog"]')
 const key = (target: HTMLElement, value: string, shiftKey = false) => {
