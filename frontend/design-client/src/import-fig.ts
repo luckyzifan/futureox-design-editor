@@ -760,6 +760,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
   if(Object.values(doc.nodes).some(n=>n.vectorGeometry))doc.schemaVersion=16
   else if(Object.values(doc.nodes).some(n=>n.network?.filledFaces!==undefined))doc.schemaVersion=Math.max(10,doc.schemaVersion) as typeof doc.schemaVersion
   if (Object.values(doc.nodes).some(n=>(n.textStyle?.textCase && n.textStyle.textCase !== 'original') || n.textRuns?.some(r=>r.textCase !== undefined))) doc.schemaVersion = Math.max(15,doc.schemaVersion) as typeof doc.schemaVersion
+  if (Object.values(doc.nodes).some(n=>n.textRuns?.some(r=>r.letterSpacing !== undefined || r.lineHeight !== undefined))) doc.schemaVersion = Math.max(21, doc.schemaVersion) as typeof doc.schemaVersion
   if (hasStrokeMarkers(doc)) doc.schemaVersion = Math.max(8, doc.schemaVersion) as typeof doc.schemaVersion
   return { document: doc, backend: 'typescript-fig', ...warnings.result() }
 }

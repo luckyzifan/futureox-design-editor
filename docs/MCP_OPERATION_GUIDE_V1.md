@@ -216,6 +216,10 @@ The UI default open flow creates a new copy and also supports an explicit append
 Use the advertised `workspace.importCopy` schema with `rootHandle`, `format`, `mutationId` and exactly one native-JSON `content` or archive `base64`; keep the outer document/session/revision fences. The host generates the new UUID and commits create-only revision 1, then verifies saved readback. The active document, page, selection and editor undo remain unchanged. Dirty authored content may remain, while pending input, active gestures and busy/stale state reject. An unknown storage outcome or unverified readback blocks new workspace/settings mutations in that grant; exact receipt replay and reads remain available. Do not switch IDs after uncertainty or treat cancellation as rollback. See [the workspace contract](workspace-mcp.md) for completion codes and reconciliation boundaries.
 
 
+### Text run metrics schema 21
+
+`textRuns[].letterSpacing` is extra design pixels after each cluster in that run. `textRuns[].lineHeight` is a multiplier of that run's font size. Either field requires schema 21. Omitted fields keep the node `textStyle` values. A line that contains a line-height override uses the maximum resolved pixel height of its clusters; other lines keep the node font-size floor. Paragraph min/max line boxes still replace that height when present.
+
 ### Text layout schema 20
 
 `node.update` / the published node property schema accept `textStyle.verticalAlign` (`top`, `center`, `bottom`) and `textRuns[].paragraph`. Paragraph values are `align`, absolute `minimumLineHeight` / `maximumLineHeight` (0 means unbounded), `spacing`, and `indent`; the run covering a paragraph's first UTF-16 character determines its paragraph style. Intrinsic measurement stays independent of vertical alignment; path and caret placement use the fixed text box. Existing lineHeight remains a multiplier. Directional prototype `transitionStyle` accepts `none` and `slide-left/right/top/bottom` for navigate/back; omission preserves existing smart-animation behavior. These authored fields require schema20 and still pass the existing native commit boundary.

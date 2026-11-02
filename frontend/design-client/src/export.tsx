@@ -233,6 +233,7 @@ export async function exportVisualSvg(doc: DesignDocument, pageId: string, scale
       width={box.width}
       height={box.height}
       viewBox={`0 0 ${box.width} ${box.height}`}
+      colorInterpolation="sRGB"
     >
       <title>{doc.name}</title>
       <metadata>{`futureox-desgin: embedded raster for ${issues.join(', ')}`}</metadata>
@@ -264,6 +265,7 @@ export function svgSource(doc: DesignDocument, pageId: string, target: ExportTar
       width={b.width * scale}
       height={b.height * scale}
       viewBox={`${b.x} ${b.y} ${b.width} ${b.height}`}
+      colorInterpolation="sRGB"
     >
       <title>{doc.name}</title>
       {fontMode === 'embed' && <defs>{svgEmbeddedFonts(embeddedFonts ?? doc.fonts, new Set(scene(doc,pageId).filter(e=>doc.nodes[e.id].kind === 'text').flatMap(e=>['default', doc.nodes[e.id].textStyle?.fontId || 'default', ...(doc.nodes[e.id].textStyle?.fallbacks || []), ...(doc.nodes[e.id].textRuns || []).map(r=>r.fontId || doc.nodes[e.id].textStyle?.fontId || 'default')])), fontByteLimit).map(font => <style key={font.id} data-svg-font="1" data-font-id={font.id} data-font-family={font.family}>{font.css}</style>)}</defs>}
