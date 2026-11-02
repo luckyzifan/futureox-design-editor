@@ -86,11 +86,52 @@ export function shareDocument(before: DesignDocument, candidate: DesignDocument)
 const MAX_TRANSITION_IDS = 4096
 const MAX_TRANSITION_HOPS = 32
 const documentTransitions = new WeakMap<DesignDocument, {
-  before: WeakRef<DesignDocument>; ids: readonly string[]
+  before: WeakRef<DesignDocument>; ids: readonly string[]; structural: boolean; references: boolean
 }>()
+function sameChildList(a: readonly string[] | undefined, b: readonly string[] | undefined) {
+  return !!a && !!b && a.length === b.length && a.every((id, index) => id === b[index])
+}
+function transitionFlags(before: DesignDocument, after: DesignDocument, ids: readonly string[]) {
+  let structural = false
+  if (before.pages !== after.pages) {
+    if (before.pages.length !== after.pages.length) structural = true
+    else for (let i = 0; i < before.pages.length; i++) {
+      const left = before.pages[i], right = after.pages[i]
+      if (left === right) continue
+      if (left.id !== right.id || !sameChildList(left.children, right.children)) structural = true
+    }
+  }
+  let references = false
+  for (const id of ids) {
+    const left = before.nodes[id], right = after.nodes[id]
+    if (!left || !right) { structural = true; references = true; continue }
+    if (!sameChildList(left.children, right.children)) structural = true
+    if (left.connector !== right.connector || left.textPath !== right.textPath || left.repeat !== right.repeat ||
+      left.instance !== right.instance || left.instanceOrigin !== right.instanceOrigin || left.component !== right.component ||
+      left.componentSet !== right.componentSet || left.componentKey !== right.componentKey ||
+      left.booleanOperation !== right.booleanOperation || left.bindings !== right.bindings ||
+      left.styleRefs !== right.styleRefs || left.variableModes !== right.variableModes || left.board !== right.board)
+      references = true
+  }
+  return { structural, references }
+}
 function rememberTransition(before: DesignDocument, after: DesignDocument, ids: string[]) {
   if (before !== after && ids.length <= MAX_TRANSITION_IDS)
-    documentTransitions.set(after, { before: new WeakRef(before), ids })
+    documentTransitions.set(after, { before: new WeakRef(before), ids, ...transitionFlags(before, after, ids) })
+}
+/** The producing edit, when this snapshot is still the immediate result of one.
+ * Unpublished drafts have no transition and must not reuse a parent index. */
+export function documentTransition(document: DesignDocument): { before: DesignDocument; structural: boolean; references: boolean } | undefined {
+  const transition = documentTransitions.get(document)
+  const before = transition?.before.deref()
+  if (!transition || !before) return
+  return { before, structural: transition.structural, references: transition.references }
+}
+/** Parent links are unchanged back to this snapshot. Page membership edits do not qualify. */
+export function nonStructuralPredecessor(document: DesignDocument): DesignDocument | undefined {
+  const link = documentTransition(document)
+  if (!link || link.structural) return
+  return link.before
 }
 function witnessedIds(before: DesignDocument, after: DesignDocument): Set<string> | undefined {
   let cursor = after
@@ -123,6 +164,18 @@ export function produceDocumentDraft(before: DesignDocument, recipe: (draft: Des
   }
   if (complete) rememberTransition(before, after, [...ids])
   return after
+}
+/** Node identity diff without recording a transition. */
+export function peekChangedNodes(before: DesignDocument, after: DesignDocument): Record<string, DesignNode | null> {
+  const nodes: Record<string, DesignNode | null> = {}
+  const ids = before.nodes === after.nodes ? new Set<string>() : witnessedIds(before, after)
+  if (ids) {
+    for (const id of ids) if (after.nodes[id] !== before.nodes[id]) nodes[id] = after.nodes[id] ?? null
+    return nodes
+  }
+  for (const [id, n] of Object.entries(after.nodes)) if (n !== before.nodes[id]) nodes[id] = n
+  for (const id of Object.keys(before.nodes)) if (!after.nodes[id]) nodes[id] = null
+  return nodes
 }
 export function documentPatch(before: DesignDocument, after: DesignDocument): DocumentPatch {
   if (before.id !== after.id) throw new Error('编辑操作不能改变文件标识')
