@@ -22,6 +22,18 @@ export type ShapeCreationResult = {
 }
 export const SHAPE_CLICK_DISTANCE = 3
 
+/** Repeatable creation tools stay armed after a successful drag, matching the
+ * shape/frame/sticky tools in Figma. One-shot tools (select handoff, pen
+ * completion, text edit) still return to selection at their own call sites. */
+const armedCreationTools = new Set([
+  'rectangle', 'ellipse', 'polygon', 'star', 'line', 'arrow', 'frame', 'section', 'slice',
+  'pencil', 'marker', 'brush', 'washi-tape', 'sticky', 'table', 'code-block', 'sites-responsive-set',
+  'shape-whiteboard-square', 'shape-whiteboard-ellipse', 'shape-whiteboard-rounded-rectangle',
+  'shape-whiteboard-triangle-up', 'shape-whiteboard-triangle-down', 'shape-whiteboard-diamond',
+  'connector-straight', 'connector-elbowed',
+])
+export function creationToolStaysArmed(tool: string) { return armedCreationTools.has(tool) }
+
 export function creationPointCount(current: number, delta: number) {
   if (!Number.isFinite(current) || !Number.isFinite(delta)) throw new Error('Invalid polygon point count')
   return Math.max(3, Math.min(60, Math.round(current) + Math.trunc(delta)))

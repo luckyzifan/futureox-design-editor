@@ -101,7 +101,7 @@ import { imageData } from './persistence'
 import { cropImageNode, imageNaturalSize } from './image-crop'
 import { PencilInput, freehandNode, type PencilSettings, type FreehandTool } from './freehand'
 import { NumberField } from './fields'
-import { createShapeSeed, resolveShapeCreation, creationPointCount, type ShapeCreationKind, type ShapeCreationSeed } from './shape-creation'
+import { createShapeSeed, resolveShapeCreation, creationPointCount, creationToolStaysArmed, type ShapeCreationKind, type ShapeCreationSeed } from './shape-creation'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { editableNetwork } from './editable-network'
 import { dragThresholdPassed, selectedGroupDragIntent, selectedChildDragIntent, selectionPointerDown, frameTitleHit } from './canvas-pointer-intent'
@@ -2056,7 +2056,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       }, [n.id])
       if (n.kind === 'text') setTextEdit(n.id)
       setShapePreview(null)
-      editor.set({ tool: 'select' })
+      if (!creationToolStaysArmed(editor.state.tool)) editor.set({ tool: 'select' })
     } else if(d.kind==='zoom') {
       const area=createBox(d.start,screenToWorld(d.view,release),false)
       editor.set({view:area.width*d.view.zoom>=3&&area.height*d.view.zoom>=3

@@ -12,6 +12,7 @@ import {
   vector_translate_json,
 } from './generated/design-kernel/design_kernel'
 import { commitPendingEdits } from './pending-edits'
+import { creationToolStaysArmed } from './shape-creation'
 
 export const utilityToolNames: Partial<Record<Tool, string>> = {
   multiselect: '多选',
@@ -430,7 +431,7 @@ export function useUtilityTools(
           },
           [result.root],
         )
-        editor.set({ tool: 'select' })
+        if (!creationToolStaysArmed(g.tool)) editor.set({ tool: 'select' })
         setPreview(null)
       }
       if (g.tool === 'eraser' && g.erased.size) {
