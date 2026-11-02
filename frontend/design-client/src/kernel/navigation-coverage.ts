@@ -45,7 +45,7 @@ export function previewUnderlayHides(tile: { document?: object; revision?: numbe
  * residents. The kernel retries a degraded display; this keeps the last
  * pixels if that retry is still in flight. */
 export function retainedPressureError(error: unknown) {
-  return /Compositing memory budget exceeded|Combined filter dependency halo exceeds 2048 device pixels|Combined zoom source dependency halo exceeds 2048 device pixels|Zoom source filter halo exceeds 2048 device pixels|Frame compositing work budget exceeded/.test(String(error))
+  return /Compositing memory budget exceeded|Combined filter dependency halo exceeds 2048 device pixels|Combined zoom source dependency halo exceeds 2048 device pixels|Zoom source filter halo exceeds 2048 device pixels|Frame compositing work budget exceeded|Layer surface exceeds 16 million pixels|Gaussian sigma must be in/.test(String(error))
 }
 
 /** One running immutable capture may finish over quiet/release. Waiting goals

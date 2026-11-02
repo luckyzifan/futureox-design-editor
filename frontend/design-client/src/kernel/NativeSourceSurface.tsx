@@ -5,7 +5,7 @@ import {KernelClient,backendPreference,renderExecutionPolicy,type TileResult} fr
 import {canvasSamplingProfile} from './render-policy'
 import {SourceViewportPlanner} from './source-viewport-plan'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
-import {tileIntersectsView} from './tile-preview'
+import {tileIntersectsView, tilePlacementAtView} from './tile-preview'
 import {SourceRenderWork} from './source-render-work'
 import {useDevicePixelRatio} from './presentation'
 import type {ResidentAcknowledgement} from './resident-presentation'
@@ -62,8 +62,9 @@ export function NativeSourceSurface(props:Props){
       if(signature===lastStatus)return
       if(status.phase==='refining'&&lastStatus.startsWith('refining/')&&now-lastStatusAt<120)return
       lastStatus=signature;lastStatusAt=now
-      badge.textContent=status.phase==='ready'?'WebGPU · 清晰':status.phase==='error'?'画板绘制未完成':status.phase==='loading'?'正在准备完整画板…':`正在绘制 ${status.done} / ${status.total}`
-      badge.title=status.error??'当前视口完成全部瓦片与采样密度校验后显示清晰'
+      const cpu=renderExecutionPolicy.cpuOnly
+      badge.textContent=status.phase==='ready'?(cpu?'CPU · 已显示':'WebGPU · 清晰'):status.phase==='error'?'画板绘制未完成':status.phase==='loading'?'正在准备完整画板…':`正在绘制 ${status.done} / ${status.total}`
+      badge.title=status.error??(cpu?'CPU 按屏幕瓦片合成。放不进 256 MiB 合成账本的效果会略去，填充和页面底色留下。':'当前视口完成全部瓦片与采样密度校验后显示清晰')
       diagnostics.record('viewport-state',{state:status.phase==='loading'?0:status.phase==='refining'?1:status.phase==='ready'?2:3,
         previewTiles:status.done,count:status.total,zoom:latest.current.view.zoom,dpr:density.current,
         width:latest.current.width,height:latest.current.height,sceneReady:initialized?1:0,finalComplete:status.phase==='ready'?1:0})
@@ -91,9 +92,44 @@ export function NativeSourceSurface(props:Props){
       if([...cache.values()].some(other=>other!==tile&&other.gpuTile===tile.gpuTile))return
       if(tile.gpuTile)retired.set(tile.gpuTile,Math.max(retired.get(tile.gpuTile)??0,tile.lastSubmission))
     }
+    let cpuContext:CanvasRenderingContext2D|null=null
+    if(renderExecutionPolicy.cpuOnly){
+      try{cpuContext=element.getContext('2d',{alpha:false})||element.getContext('2d')}catch{cpuContext=null}
+    }
+    const paintCpu=()=>{
+      const {p,tiles}=plan()
+      const dpr=density.current
+      const pixelWidth=Math.max(1,Math.ceil(p.width*dpr)),pixelHeight=Math.max(1,Math.ceil(p.height*dpr))
+      if(cpuContext&&(element.width!==pixelWidth||element.height!==pixelHeight)){element.width=pixelWidth;element.height=pixelHeight}
+      if(cpuContext){
+        cpuContext.setTransform(1,0,0,1,0,0)
+        cpuContext.fillStyle='#eeeff3'
+        cpuContext.fillRect(0,0,element.width,element.height)
+        const visible=[...cache.values()].filter(tile=>tileIntersectsView(tile,p.view,p)).sort((a,b)=>a.zoom-b.zoom||a.used-b.used)
+        for(const tile of visible){
+          tile.used=++tick
+          const place=tilePlacementAtView(tile,p.view)
+          const dx=place.left*dpr,dy=place.top*dpr,dw=place.width*dpr,dh=place.height*dpr
+          if(tile.bitmap)cpuContext.drawImage(tile.bitmap,dx,dy,dw,dh)
+          else if(tile.bytes?.length===tile.width*tile.height*4&&Math.abs(dw-tile.width)<0.5&&Math.abs(dh-tile.height)<0.5){
+            cpuContext.putImageData(new ImageData(new Uint8ClampedArray(tile.bytes),tile.width,tile.height),Math.round(dx),Math.round(dy))
+          }
+        }
+      }
+      const keys=new Set(tiles.map(tile=>tile.key))
+      const keep=Math.max(32,tiles.length*3)
+      for(const tile of [...cache.values()].sort((a,b)=>a.used-b.used)){
+        if(cache.size<=keep)break
+        if(keys.has(tile.key))continue
+        cache.delete(tile.key);retire(tile)
+      }
+      const done=tiles.filter(tile=>cache.has(tile.key)).length
+      emit(done===tiles.length&&tiles.length>0?{phase:'ready',done,total:tiles.length}:{phase:'refining',done,total:tiles.length})
+    }
     const paint=()=>{
       frameHandle=0
       if(!alive||!initialized||failed||suspended)return
+      if(renderExecutionPolicy.cpuOnly){try{paintCpu()}catch(error){fail(error)};return}
       try{
         const {p,ratio,tiles,keys,exact}=plan(),done=tiles.filter(tile=>cache.has(tile.key)).length
         project()
@@ -127,11 +163,12 @@ export function NativeSourceSurface(props:Props){
     const schedulePaint=()=>{if(alive&&!frameHandle)frameHandle=requestAnimationFrame(paint)}
     const receive=(tile:TileResult)=>{
       if(!alive){tile.bitmap?.close();if(tile.gpuTile)client.releasePresented([tile.gpuTile]);return}
-      if(!tile.gpuTile){tile.bitmap?.close();throw Error('完整源画布尚未取得 GPU 显示纹理')}
+      if(tile.gpuTile==null&&!(renderExecutionPolicy.cpuOnly&&(tile.bitmap||tile.bytes?.length))){tile.bitmap?.close();throw Error('完整源画布尚未取得 GPU 显示纹理')}
       const old=cache.get(tile.key)
-      if(old&&old.gpuTile!==tile.gpuTile)retire(old)
-      retired.delete(tile.gpuTile)
-      cache.set(tile.key,{...tile,serial:old?.gpuTile===tile.gpuTile?old.serial:++serial,used:++tick,lastSubmission:old?.gpuTile===tile.gpuTile?old.lastSubmission:0})
+      const sameGpu=old!=null&&old.gpuTile!=null&&old.gpuTile===tile.gpuTile
+      if(old&&!sameGpu)retire(old)
+      if(tile.gpuTile!=null)retired.delete(tile.gpuTile)
+      cache.set(tile.key,{...tile,serial:sameGpu&&old?old.serial:++serial,used:++tick,lastSubmission:sameGpu&&old?old.lastSubmission:0})
       if(!tile.prefetch||tileIntersectsView(tile,latest.current.view,latest.current))schedulePaint()
     }
     const updateWorkDemand=()=>{
@@ -292,7 +329,8 @@ export function NativeSourceSurface(props:Props){
         await client.renderSource(source,{pageId:source.pageId,width:Math.ceil(p.width*density.current),height:Math.ceil(p.height*density.current),
           view:{x:0,y:0,zoom:p.view.zoom*density.current},transparent:false,grid:false,rasterProfile:profile,tileViewport:[],renderIntent:'canvas'})
         if(!alive)return
-        client.attachPresentation(bitmapContext?new OffscreenCanvas(1,1):element.transferControlToOffscreen(),!!bitmapContext);initialized=true;void run()
+        if(!renderExecutionPolicy.cpuOnly)client.attachPresentation(bitmapContext?new OffscreenCanvas(1,1):element.transferControlToOffscreen(),!!bitmapContext)
+        initialized=true;void run()
       }catch(error){if(alive)fail(error)}
     })()
     return()=>{alive=false;wake.current=()=>{};workQueue.close();document.removeEventListener('visibilitychange',visibility);clearTimeout(idleTimer);cancelAnimationFrame(frameHandle);client.onPresentation=undefined;client.dispose();diagnostics.flush();diagnostics.close();projection.dispose();bitmapContext?.transferFromImageBitmap(null);element.remove();badge.remove()}
