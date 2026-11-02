@@ -4,7 +4,7 @@ import { cloneValue } from '../draft'
 import { equalValue } from '../document-patch'
 import { allParents, worldMatrix, type ParentMap } from '../geometry'
 import { duplicateGraph, type Duplication, type GraphCopy } from '../duplicate-graph'
-import { bounds, boxPoints, apply, inverse, multiply, translate, unionBounds } from './affine'
+import { inverse, multiply, translate } from './affine'
 import { assertFreshSelection, assertStructuralParent, indexSelection, SelectionCommandError } from './selection-command'
 
 /** Local command state, never request JSON, identity authority or a replay token. */
@@ -79,19 +79,14 @@ export function prepareDuplication(doc: DesignDocument, selected: readonly strin
   }
   const repeat = intent.kind === 'default' && repeatMatches(state.repeat, index.ids) ? state.repeat : null
   if (repeat && !state.singleStep) reject('unsupported_duplicate_repeat_batch', 'Implicit duplicate repeat requires one normalized operation, not a multi-operation batch')
-  const topFrames = index.ids.every(id => doc.nodes[id].kind === 'frame' && index.parents.get(id) === index.pageId)
-  const frameBox = topFrames && intent.kind === 'default' && !repeat ? unionBounds(index.ids.map(id => {
-    const n = doc.nodes[id], matrix = worldMatrix(doc, id, index.parents)
-    return bounds(boxPoints({ x: 0, y: 0, width: n.width, height: n.height }).map(p => apply(matrix, p)))
-  })) : undefined
   const transforms = new Map<string, Matrix>()
   for (const id of index.ids) {
     const delta = intent.kind === 'world-offset' ? translate(intent.x, intent.y) : repeat
       ? supportedRepeatDelta(worldMatrix(doc, id, index.parents), repeat.reference.get(id)!)
-      // Mac Figma steps a normal duplicate +10,+10. Top-level frames still
-      // sit to the right by their width plus the 24px gap. A later duplicate
-      // repeats the last world displacement, including this first step.
-      : frameBox ? translate(frameBox.width + 24, 0) : translate(10, 10)
+      // Mac Figma steps Duplicate / Ctrl+D by +10,+10 in document units,
+      // including frames, sections, and groups. A later duplicate repeats
+      // that world displacement.
+      : translate(10, 10)
     if (!delta || !finite(delta)) throw new SelectionCommandError('unsupported_duplicate_transform', 'Duplicate repeat supports finite translation and rotation only')
     transforms.set(id, delta)
   }
