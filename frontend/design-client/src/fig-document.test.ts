@@ -46,7 +46,7 @@ test('Figma document name, shared styles, and component sets survive validation'
     const guide = value as { sessionID?: number; localID?: number } | undefined
     return guide ? `${guide.sessionID}:${guide.localID}` : ''
   }
-  const paint = { kind: 'solid', color: '#336699', opacity: 1, visible: true, angle: 0, stops: [], fit: 'cover', blend: 'normal' } as Paint
+  const paint: Paint = { id: uid(), kind: 'solid', color: '#336699', opacity: 1, visible: true, angle: 0, stops: [], fit: 'cover', blend: 'normal' }
   applyFigDocumentSemantics(doc, records, ids, guid, {
     toPaint: () => paint,
     effectsOf: () => [],

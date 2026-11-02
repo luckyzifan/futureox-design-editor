@@ -2752,7 +2752,7 @@ export class Editor {
       }
       into.push(id)
     }
-    let operation: BooleanOp = 'union'
+    let operation: NonNullable<DesignNode['booleanOperation']> = 'union'
     const sources: string[] = []
     const only = ordered.length === 1 ? doc.nodes[ordered[0]] : undefined
     if (only?.booleanOperation && only.children.length) {
