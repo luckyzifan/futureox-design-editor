@@ -3,6 +3,8 @@ name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
 
+2026-11-02 [Figma 插件运行时](../../../testing/verification-figma-plugin-runtime-20261102/README.md)在本机打开插件文件夹或 zip，用 QuickJS 跑主脚本，用无网络 iframe 显示 UI。创建、变换、命中测试和 `pluginData` 走 Rust `PluginSession`，再经 `Editor.change` 提交。这不是 Figma 账户，也不是设计 API/MCP。变量、组件、图片、SVG、导出和网络仍拒绝。不改光栅、瓦片或蓝色强调色，不关闭 33/100ms 与完整 G2/G5。运行前需要 `bun run build:kernel`，生成的 wasm 绑定不入库。
+
 2026-11-02 [导入与传输对照](../../../testing/verification-interop-transfer-20261102/README.md)只修浏览器 FIG 描边端点、`showShadowBehindNode` 保留，以及原生 `LAYER_BLUR` 与 `FOREGROUND_BLUR` 同义。不改缩放/瓦片导航、GPU 预算或实验开关。精确瓦片 `slice` 在缓存持有缓冲区时仍是所有权边界。Sketch 玻璃/纹理、FIG 反向堆叠与变量、Display P3 默认 PNG 编码、33/100ms 和完整 G2/G5 仍未关闭。
 
 2026-11-02 UI/ops 并行轨见[记录](../../../testing/verification-ui-ops-i18n-tabs-export-20261102/README.md)。界面语言可在顶栏切换中文/English，蓝色强调色不变。矩形、椭圆、多边形、画板及便签类工具在创建后保持选中。工作区标签在文件操作占用编辑器时排队，宿主 `workspace-open` 不再占用文件写锁；已打开文档在 BUSY 时从会话缓存切换，不把 “Another file operation is in progress” 当成当前画布失败。PNG 导出说明 sRGB 色彩块；本面板不编码 FFmpeg/MP4/WebM。未改光栅化或导航瓦片，不关闭 33/100ms 或完整 G2/G5。

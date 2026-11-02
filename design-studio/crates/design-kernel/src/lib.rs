@@ -86,6 +86,7 @@ pub mod vector_geometry;
 pub mod fig_geometry;
 mod mutation;
 pub mod ops;
+pub mod plugin_api;
 pub mod optics;
 pub mod paint;
 pub mod path;
@@ -1995,6 +1996,24 @@ mod wasm {
     pub fn hit_test_json(json: &str, x: f64, y: f64, tolerance: f64) -> Result<bool, JsValue> {
         let node = serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
         hit_test(&node, math::Point::new(x, y), tolerance).map_err(|e| JsValue::from_str(&e))
+    }
+    /// Live plugin document. Mutations stay here until `call("{\"op\":\"flush\"}")`.
+    /// The host commits the returned patch; this session is not a second editor.
+    #[wasm_bindgen]
+    pub struct PluginSession {
+        inner: crate::plugin_api::PluginSession,
+    }
+    #[wasm_bindgen]
+    impl PluginSession {
+        #[wasm_bindgen(constructor)]
+        pub fn new(document: &str, options: &str) -> Result<PluginSession, JsValue> {
+            crate::plugin_api::PluginSession::open(document, options)
+                .map(|inner| Self { inner })
+                .map_err(|e| JsValue::from_str(&e))
+        }
+        pub fn call(&mut self, command: &str) -> Result<String, JsValue> {
+            self.inner.call(command).map_err(|e| JsValue::from_str(&e))
+        }
     }
     /// Encode a document as the versioned binary format (magic + checksum).
     /// Pure over the serde model: no GraphApi session state is involved, so

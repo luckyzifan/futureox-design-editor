@@ -296,6 +296,10 @@ pub struct Node {
     pub instance: Option<Box<crate::components::Instance>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub instance_origin: Option<Box<crate::components::Origin>>,
+    /// Plugin-owned strings, keyed by plugin id then key. This is document
+    /// data for `setPluginData`, not a design-token binding.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub plugin_data: BTreeMap<String, BTreeMap<String, String>>,
 }
 impl Node {
     /// Freeze owned large-element vectors before publishing an immutable
@@ -1360,6 +1364,21 @@ impl Document {
                     g.vertices.len(),
                     g.edges.len()
                 ));
+            }
+            if n.plugin_data.len() > 32
+                || n.plugin_data.iter().any(|(plugin, entries)| {
+                    plugin.is_empty()
+                        || plugin.len() > 80
+                        || entries.len() > 50
+                        || entries.iter().any(|(key, value)| {
+                            key.is_empty()
+                                || key.chars().count() > 64
+                                || value.chars().count() > 10_000
+                                || key.chars().any(|ch| ch.is_control())
+                        })
+                })
+            {
+                return Err("Invalid plugin data".into());
             }
             for e in &n.effects {
                 if matches!(e.kind.as_str(),"gaussian-blur"|"motion-blur") && self.schema_version<18 {return Err("Spatial sigma filters require schema 18".into());}

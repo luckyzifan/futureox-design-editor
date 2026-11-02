@@ -311,6 +311,8 @@ export type DesignNode = {
   constrainProportions?: boolean
   booleanOperation?: 'union' | 'subtract' | 'intersect' | 'exclude' | 'compoundNonzero' | 'compoundEvenodd'
   bindings?: Record<string, string>
+  /** Per-plugin string map written by the Figma plugin host. Empty when unused. */
+  pluginData?: Record<string, Record<string, string>>
   styleRefs?: Record<string, string>
   /** Local collection selections, inherited by descendants. Instance roots keep authored placement only. */
   variableModes?: Record<string, string>

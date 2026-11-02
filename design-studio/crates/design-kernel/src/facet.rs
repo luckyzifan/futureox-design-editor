@@ -634,6 +634,7 @@ pub fn sample_node(id: &str, kind: &str) -> Node {
         component_key: None,
         instance: None,
         instance_origin: None,
+        plugin_data: BTreeMap::new(),
         derived_path: None,
     }
 }

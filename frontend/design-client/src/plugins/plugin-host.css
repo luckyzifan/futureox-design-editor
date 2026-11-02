@@ -1,0 +1,7 @@
+.plugin-host-dialog { width: min(760px, 95vw); }
+.plugin-host-dialog .plugin-host-actions,
+.plugin-host-dialog .plugin-host-commands { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; }
+.plugin-host-dialog .plugin-host-ui { margin-top: 12px; border: 1px solid #e3e4e8; border-radius: 8px; overflow: hidden; background: white; }
+.plugin-host-dialog .plugin-host-ui iframe { display: block; width: 100%; border: 0; background: white; }
+.plugin-host-dialog .plugin-host-log { min-height: 1.4em; color: var(--workspace-muted, #667085); }
+.plugin-host-dialog button.primary { background: var(--workspace-accent, #3459d4); color: white; }

@@ -28,6 +28,7 @@ import { useShortcutProfile } from './shortcut-preference'
 import { shortcutPlatform, toolShortcutLabel, shortcutLabel, formatShortcutCombo } from './shortcut-profiles'
 import { shortcutTargetOwnsKeyboard } from './editor-shortcuts'
 import { AutomationPanel } from './AutomationPanelLauncher'
+import { PluginHostDialog } from './plugins/PluginHostDialog'
 import { DesignAgentLauncher } from './design-ai/DesignAgentLauncher'
 import { attachDesktopAutomation } from './automation/bridge'
 import { createWorkspaceAutomationRenderer } from './automation/workspace-bridge'
@@ -183,6 +184,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [showWorkspaceLibrary, setShowWorkspaceLibrary] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showPlugins, setShowPlugins] = useState(false)
   const [sketchMode, setSketchMode] = useState<'inspect' | 'edit' | null>(null)
   const [largeDocument, setLargeDocument] = useState<{file?:File}|null>(null)
   const sketchCapabilities = nativeSketchCapabilities(desktopBridge())
@@ -1008,6 +1010,9 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           </button> : <button type="button" disabled={!ready} onClick={() => void openLocalFiles()}>
             <FolderOpen size={16} />本机文件
           </button>}
+          <button type="button" className="plugin-host-button" aria-label={locale === 'en' ? 'Figma plugins' : 'Figma 插件'}
+            disabled={!ready || !!source || switching} title={locale === 'en' ? 'Run a Figma plugin on this document' : '在当前文档运行 Figma 插件'}
+            onClick={() => setShowPlugins(true)}>{locale === 'en' ? 'Plugins' : '插件'}</button>
           <label className="locale-switch" data-locale-switch>
             <span className="sr-only">{panelText.language}</span>
             <select aria-label={panelText.language} value={locale} onChange={event => interfacePreference.set({ locale: event.target.value === 'en' ? 'en' : 'zh-CN' })}>
@@ -1203,6 +1208,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         <button type="button" disabled={desktopStatus.busy} onClick={() => { fileImports.invalidate(); if (desktopSession?.supportsWorkspace) setShowWorkspaceLibrary(true); else void desktopSession?.open() }}>{desktopSession?.supportsWorkspace ? '打开本机库' : '打开磁盘文件'}</button>
       </div>}
       {showExport && <ExportPanel editor={editor} onClose={() => setShowExport(false)} />}
+      {showPlugins && <PluginHostDialog editor={editor} locale={locale} onClose={() => setShowPlugins(false)} />}
       {showTools&&<DesignTools editor={editor} onClose={()=>setShowTools(false)}/>}
       {showPrototype && <PrototypePlayer document={s.doc} onClose={() => setShowPrototype(false)} />}
       {showWorkspaceLibrary && desktopSession && <WorkspaceLibrary session={desktopSession} onClose={() => setShowWorkspaceLibrary(false)} />}

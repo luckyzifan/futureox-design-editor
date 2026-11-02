@@ -1,0 +1,11 @@
+{
+  "name": "Labeled frames",
+  "id": "futureox.sample.labeled-frames",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "menu": [
+    { "name": "Create labels", "command": "run" }
+  ]
+}

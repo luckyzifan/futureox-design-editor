@@ -1,0 +1,26 @@
+<style>
+  body { margin: 0; font: 13px/1.4 "Segoe UI", sans-serif; color: #1d2128; background: #fff; }
+  main { padding: 16px; display: grid; gap: 10px; }
+  label { display: grid; gap: 4px; color: #5c6370; }
+  input { border: 1px solid #d5d8e0; border-radius: 6px; padding: 6px 8px; font: inherit; }
+  div { display: flex; gap: 8px; }
+  button { border: 0; border-radius: 6px; padding: 7px 12px; background: #3459d4; color: white; }
+  button.quiet { background: #eef0f4; color: #1d2128; }
+</style>
+<main>
+  <label>Label <input id="label" value="Label"></label>
+  <label>Count <input id="count" type="number" min="1" max="12" value="3"></label>
+  <div>
+    <button id="create" type="button">Create</button>
+    <button id="close" class="quiet" type="button">Close</button>
+  </div>
+</main>
+<script>
+  const label = document.querySelector('#label')
+  onmessage = (event) => {
+    const message = event.data && event.data.pluginMessage
+    if (message && message.type === 'ready' && typeof message.label === 'string') label.value = message.label
+  }
+  document.querySelector('#create').onclick = () => parent.postMessage({ pluginMessage: { type: 'create', text: label.value, count: Number(document.querySelector('#count').value) } }, '*')
+  document.querySelector('#close').onclick = () => parent.postMessage({ pluginMessage: { type: 'close' } }, '*')
+</script>

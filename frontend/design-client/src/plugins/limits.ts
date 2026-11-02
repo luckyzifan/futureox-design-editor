@@ -1,0 +1,16 @@
+export const pluginLimits = {
+  manifestBytes: 256 * 1024,
+  fileBytes: 1024 * 1024,
+  packageBytes: 2 * 1024 * 1024,
+  packageFiles: 32,
+  htmlCharacters: 200_000,
+  messageBytes: 64 * 1024,
+  storageKeys: 200,
+  storageValueBytes: 100 * 1024,
+  storageTotalBytes: 1024 * 1024,
+  runtimeMs: 8000,
+  guestMemoryBytes: 32 * 1024 * 1024,
+  guestStackBytes: 1024 * 1024,
+  uiWidth: { min: 80, max: 4096, fallback: 300 },
+  uiHeight: { min: 48, max: 4096, fallback: 240 },
+} as const

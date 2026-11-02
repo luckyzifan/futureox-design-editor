@@ -52,6 +52,7 @@
     "immer": "11.1.21",
     "kiwi-schema": "0.5.0",
     "lucide-react": "1.47.0",
+    "quickjs-emscripten": "0.32.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "svg-pathdata": "9.0.0"
