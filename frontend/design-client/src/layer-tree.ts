@@ -1,3 +1,4 @@
+import { displayedLayerChildren, layerFlowOrder } from './layer-order'
 import type { DesignDocument } from './model'
 import { layerTransition, sameLayerChildren } from './layer-row-transition'
 
@@ -16,9 +17,9 @@ export function layerTreeRows(doc: DesignDocument, pageId: string, collapsed: Re
   const visit = (id: string, depth: number) => {
     const n = doc.nodes[id]; if (!n || (query && !included.has(id))) return
     rows.push({ id, depth, context: !!query && !matches.has(id) })
-    if (query || !collapsed.has(id)) [...n.children].reverse().forEach(child => visit(child, depth + 1))
+    if (query || !collapsed.has(id)) displayedLayerChildren(n, n.children).forEach(child => visit(child, depth + 1))
   }
-  ;[...roots].reverse().forEach(id => visit(id, 0))
+  displayedLayerChildren(undefined, roots).forEach(id => visit(id, 0))
   return rows
 }
 
@@ -43,7 +44,7 @@ export class LayerRowsCache {
         const certificate = layerTransition(old.doc, doc)
         if (certificate) {
           this.stats.certificateHits++
-          reusable = !certificate.topology && (!query || !certificate.names)
+          reusable = !certificate.topology && !certificate.flow && (!query || !certificate.names)
         } else {
           // Preview, import, skipped publications, and other uncertified paths
           // must validate all references, not assume a revision implies safety.
@@ -53,7 +54,7 @@ export class LayerRowsCache {
             if (!reusable) break
             this.stats.nodeChecks++
             const a = old.doc.nodes[id], b = doc.nodes[id]
-            reusable = !!a && (a === b || (sameLayerChildren(a.children, b.children) && (!query || a.name === b.name)))
+            reusable = !!a && (a === b || (sameLayerChildren(a.children, b.children) && layerFlowOrder(a) === layerFlowOrder(b) && (!query || a.name === b.name)))
           }
         }
       }

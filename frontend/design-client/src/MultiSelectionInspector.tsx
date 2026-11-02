@@ -11,11 +11,14 @@ import type { Editor } from './engine'
 import { type DesignNode, type NodeBlend, type TextStyle, defaultTextStyle, defaultSizing, blendModes } from './model'
 import { applyWholeTextStyle, setWholeTextFontSize } from './text'
 import { commonValue, resizeNodeDimension, selectionMetric, setNodePosition, type SelectionMetric } from './selection-properties'
-import { selectionLocalBounds, rotateNode } from './canvas-view'
+import { useSyncExternalStore } from 'react'
+import { selectionLocalBounds, rotateNode, rotationDegrees } from './canvas-view'
+import { formatFigmaAngle } from './rotation-field'
 import { MixedNumberField } from './MixedNumberField'
 
 export function MultiSelectionInspector({ editor, nodes }: { editor: Editor; nodes: DesignNode[] }) {
   const { locale, tr } = usePropertyText()
+  const live = useSyncExternalStore(editor.subscribeLiveRotation, () => editor.liveRotation)
   const ids = nodes.map((node) => node.id)
   const readUnits = propertyUnitReader(editor.state.doc)
   const styleDescription = styleUnitDescription(editor.state.doc, nodes.filter(n => n.kind === 'text' || n.strokes.length || n.effects.length).map(n => n.id), editor.parentMap())
@@ -44,9 +47,18 @@ export function MultiSelectionInspector({ editor, nodes }: { editor: Editor; nod
         <AlignmentControls editor={editor}/>
         <div className="field-grid">
           {([['x', 'X'], ['y', 'Y'], ['width', 'W'], ['height', 'H'], ['rotation', '旋转 °'], ['opacity', '透明度 %']] as const).map(([field, label]) => {
-            const values = nodes.map(node => selectionMetric(node, field, editor.state.doc,
-              field === 'rotation' || field === 'opacity' ? undefined : readUnits(node.id)))
-            return <MixedNumberField historyLabel={label} key={field} unit={field === 'opacity' ? 'percent' : field === 'rotation' ? 'angle' : 'length'} diagnosticFamily={field === 'opacity' ? 10 : field === 'width' ? 3 : field === 'height' ? 4 : 2} label={tr(label)} value={commonValue(values)}
+            const liveOn = field === 'rotation' && live && editor.interactionActive && live.session === editor.sessionGeneration && live.page === editor.state.page && live.documentId === editor.state.doc.id
+            const values = nodes.map(node => {
+              if (field === 'rotation') {
+                const text = liveOn ? live!.textById[node.id] : undefined
+                return text !== undefined ? Number(text) : rotationDegrees(node)
+              }
+              return selectionMetric(node, field, editor.state.doc, field === 'opacity' ? undefined : readUnits(node.id))
+            })
+            const shared = field === 'rotation'
+              ? (values.every(value => formatFigmaAngle(value) === formatFigmaAngle(values[0])) ? Number(formatFigmaAngle(values[0])) : undefined)
+              : commonValue(values)
+            return <MixedNumberField historyLabel={label} key={field} unit={field === 'opacity' ? 'percent' : field === 'rotation' ? 'angle' : 'length'} diagnosticFamily={field === 'opacity' ? 10 : field === 'width' ? 3 : field === 'height' ? 4 : 2} label={tr(label)} caption={field === 'rotation' ? '∠' : undefined} formatValue={field === 'rotation' ? formatFigmaAngle : undefined} value={shared}
               min={field === 'width' || field === 'height' ? 0.01 : field === 'opacity' ? 0 : -1e6}
               max={field === 'opacity' ? 100 : 1e6} bases={values} onExpression={value => metric(field, value)} onChange={(value) => metric(field, value)} />})}
         </div>
