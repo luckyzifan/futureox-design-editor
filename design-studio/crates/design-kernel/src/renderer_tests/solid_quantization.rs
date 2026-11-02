@@ -64,6 +64,7 @@ impl Fixture {
                 crate::fidelity::RasterProfile::Analytic
             },
             interactive_effects: false,
+            display_degrade: false,
             sample,
             raster_workspace: RasterWorkspace::default(),
         }
