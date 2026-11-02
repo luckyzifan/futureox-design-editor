@@ -149,7 +149,7 @@ export function PrototypePlayer({
   const visibleDoc = useMemo(() => prototypeFrameView(doc,current).document, [doc,current])
   return (
     <div className="feature-backdrop">
-      <div className="prototype-player" data-transition-progress={progress} data-transition-ms={state.transitionMs} data-transition-easing={state.transitionEasing || 'linear'} data-animation-plan={transition ? (bakeSession ? "kernel-baked" : "kernel") : "none"} role="dialog" aria-label="交互原型预览">
+      <div className="prototype-player" data-transition-progress={progress} data-transition-ms={state.transitionMs} data-transition-easing={state.transitionEasing || 'linear'} data-transition-kind={transition ? 'smart' : state.transitionStyle?.startsWith('slide-') ? 'slide' : 'none'} data-animation-plan={transition ? (bakeSession ? "kernel-baked" : "kernel") : "none"} role="dialog" aria-label="交互原型预览">
         <header>
           <strong>原型 · {n.name}</strong>
           <button type="button" onClick={() => { setState(initialPrototype(snapshot.current)); setError(''); scroll.current?.scrollTo(0, 0) }}>

@@ -2031,3 +2031,51 @@ html[data-reduced-motion=true] .editor-shell *, html[data-reduced-motion=true] .
 .source-compatibility-card ul { padding-left:16px; margin:8px 0; max-height:180px; overflow:auto; line-height:1.6; }
 .editor-shell[data-source-document="true"] .adaptive-layers-shell { flex-direction:column; overflow:hidden; background:var(--workspace-panel); }
 .editor-shell[data-source-document="true"] .adaptive-layers-shell>.layers-panel { flex:1; min-height:0; }
+
+/* Desk width is the restored Electron window (minimum 1000, compact overlay at 900).
+   The browser uses the same shell, so a medium window reflows the same way. */
+.editor-shell[data-density="desk"] { --workspace-panel-cap: min(240px, 28vw); }
+.editor-shell[data-density="desk"] .editor-header .header-right {
+  grid-column: 3;
+  justify-self: end;
+  width: auto;
+  height: auto;
+  margin: 8px 10px;
+  max-width: calc(100% - 16px);
+  border: 1px solid var(--workspace-border);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px #1a243314;
+}
+.editor-shell[data-density="desk"] .properties-workspace { padding-top: 0; }
+.editor-shell[data-density="desk"] .floating-toolbar {
+  height: auto;
+  min-height: 44px;
+  flex-wrap: wrap;
+  justify-content: center;
+  row-gap: 2px;
+}
+.editor-shell[data-density="desk"] .header-right > .primary { font-size: 0; padding: 6px; }
+/* Same desk band as data-density, so the layout matches even before the attribute updates. */
+@media (min-width: 901px) and (max-width: 1180px) {
+  .editor-shell { --workspace-panel-cap: min(240px, 28vw); }
+  .editor-shell .editor-header .header-right {
+    grid-column: 3;
+    justify-self: end;
+    width: auto;
+    height: auto;
+    margin: 8px 10px;
+    max-width: calc(100% - 16px);
+    border: 1px solid var(--workspace-border);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px #1a243314;
+  }
+  .editor-shell .properties-workspace { padding-top: 0; }
+  .editor-shell .floating-toolbar {
+    height: auto;
+    min-height: 44px;
+    flex-wrap: wrap;
+    justify-content: center;
+    row-gap: 2px;
+  }
+  .editor-shell .header-right > .primary { font-size: 0; padding: 6px; }
+}
