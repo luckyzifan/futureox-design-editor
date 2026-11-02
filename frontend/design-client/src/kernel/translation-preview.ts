@@ -56,9 +56,18 @@ export class TranslationPreviewPlan {
     }
   }
   accepts(patches:Readonly<Record<string,Partial<DesignNode>>>){
+    return this.acceptsTransform(patches,false)
+  }
+  /** Only the native pose lane consumes this proof. A changed linear part
+   * still requires fresh native device coverage; it never admits bitmap or
+   * translation-only geometry reuse. Constraints use the same exact solver. */
+  acceptsAffine(patches:Readonly<Record<string,Partial<DesignNode>>>){
+    return this.acceptsTransform(patches,true)
+  }
+  private acceptsTransform(patches:Readonly<Record<string,Partial<DesignNode>>>,affine:boolean){
     if(!this.valid||Object.keys(patches).length!==this.ids.length)return false
     for(const id of this.ids){const before=this.base.nodes[id],patch=patches[id],m=patch?.transform
-      if(!before||!m||Object.keys(patch).some(key=>key!=='transform')||m.length!==6||m.some(v=>!Number.isFinite(v)||Math.abs(v)>1e7)||m.slice(0,4).some((v,i)=>!Object.is(v,before.transform[i])))return false
+      if(!before||!m||Object.keys(patch).some(key=>key!=='transform')||m.length!==6||m.some(v=>!Number.isFinite(v)||Math.abs(v)>1e7)||!affine&&m.slice(0,4).some((v,i)=>!Object.is(v,before.transform[i])))return false
       let at:string|undefined=id
       while(at){const source=this.base.nodes[at],parentId=this.parents.get(at),parent=parentId?this.base.nodes[parentId]:undefined
         const node=patches[at]?.transform?{...source,transform:patches[at].transform!}:source

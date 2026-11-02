@@ -43,6 +43,7 @@ import type { ExactImageTable } from './types'
 import { scalarCoverageSource, SCALAR_COVERAGE_UNIFORM } from './scalar-coverage'
 import { ResidentPresenter, type ResidentFrame } from './resident-presenter'
 import { RasterQueuePacer, RASTER_SLICE_COMMANDS } from './raster-queue-pacer'
+import { gradientWindowSource } from './gradient-window-source'
 import { isDisplayBudgetError } from './display-budget'
 import byteSamplingShader from '../../../../../design-studio/crates/design-kernel/shaders/byte-sampling.wgsl?raw'
 import { areaShaderWgsl } from './area-shader'
@@ -250,6 +251,7 @@ export class WebGpuDriver implements Driver {
   private backgroundScene?: ReturnType<typeof pageBackgroundSource>
   private contentScene?: ReturnType<typeof pixelContentProof>
   captureDisplay = false
+  get windowedGradientFields(){return this.managed&&!this.hdr&&import.meta.env.VITE_DESIGN_GRADIENT_WINDOW_FIELDS==='1'}
   private presenter?: ResidentPresenter
   private presentationDevice?:GPUDevice
   private lifecycleFields() {
@@ -822,7 +824,8 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
  return addRN4(src,mulRN4(dst,vec4<f32>(addRN(1.,-src.a))));
 }`
     const exactCode=import.meta.env.VITE_DESIGN_EXACT_IDENTITIES==='1'&&!this.displayMath?exactArithmeticIdentities(compositorCode):compositorCode
-    const addressedCode = this.managed ? scalarCoverageSource(imageCoordinateSource(exactCode + imageResolveStepWgsl + gradientPaintOverWgsl)) : exactCode
+    const imageAddressedCode = this.managed ? imageCoordinateSource(exactCode + imageResolveStepWgsl + gradientPaintOverWgsl) : exactCode
+    const addressedCode = this.managed ? scalarCoverageSource(import.meta.env.VITE_DESIGN_GRADIENT_WINDOW_FIELDS==='1'?gradientWindowSource(imageAddressedCode):imageAddressedCode) : exactCode
     if (this.managed && !this.displayMath && !this.hdr) this.displayImageBaseSource = addressedCode
     const module = this.device.createShaderModule({
       code: this.displayMath ? displayArithmeticSource(addressedCode, import.meta.env.VITE_DESIGN_NATIVE_DIVISION !== '0') : addressedCode,

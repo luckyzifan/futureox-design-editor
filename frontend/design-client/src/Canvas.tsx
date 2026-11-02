@@ -19,7 +19,7 @@ import { CanvasScrollbars } from './CanvasScrollbars'
 import { supportsEditPreview } from './edit-preview'
 import { resizedNode, resizeGestureAxes } from './selection-properties'
 import {cancelToolActivation} from './tool-activation'
-import {selectionHandles, selectionRotation} from './selection-handles'
+import {selectionHandles, selectionRotation, smallSelectionInterior} from './selection-handles'
 import {selectionScaleFrame} from './selection-scale'
 import {CanvasLayoutHandles} from './CanvasLayoutHandles'
 import {CanvasSmartSelection} from './CanvasSmartSelection'
@@ -1308,6 +1308,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     // sidebar. Only physical canvas targets can adopt the displayed camera.
     const target = e.target as Element
     if (!host.current?.contains(target) || target.closest('button,input,select,textarea,[contenteditable="true"],.canvas-controls,.canvas-scrollbars,.pencil-controls,.rich-text-editor')) return
+    if ((kind === 'resize' || kind === 'rotate') && state.tool === 'select' &&
+        smallSelectionInterior(selectionCorners, displayViewRef.current.zoom,
+          screenToWorld(displayViewRef.current, screenPoint(e)))) kind = 'move'
     if (textEdit) {
       actionTrace.event(CanvasAction.pointer, ActionSource.pointer, ActionOutcome.blocked, ActionReason.editingText)
       host.current?.focus({ preventScroll: true })

@@ -1421,6 +1421,16 @@ impl Document {
         crate::capacity::with_source_storage_scope(true,||self.validate())
     }
     pub fn validate(&self) -> Result<(), String> {
+        self.validate_edit_scope(None)
+    }
+    /// Only the resident derivation owner may reuse previously validated node
+    /// bodies. Its field-free patch names every source mutation; after scoped
+    /// resolution it must name every old/new node in the affected islands.
+    /// All whole-document schema, graph, component and reference checks remain.
+    pub(crate) fn validate_scoped_edit(&self, nodes:&std::collections::BTreeSet<String>) -> Result<(),String> {
+        self.validate_edit_scope(Some(nodes))
+    }
+    fn validate_edit_scope(&self, changed:Option<&std::collections::BTreeSet<String>>) -> Result<(),String> {
         if self.schema_version<20 && self.requires_schema20() {return Err("Paragraph and vertical text layout require schema 20".into());}
         if self.schema_version<19 && self.requires_schema19() {return Err("Zoom blur requires schema 19".into());}
         if self.schema_version<18 && self.requires_schema18() {return Err("Spatial sigma filters require schema 18".into());}
@@ -1530,7 +1540,7 @@ impl Document {
         for page in &self.pages {
             crate::color::pixel(self.color_management, &page.background, 1.)?;
         }
-        self.validate_nodes(self.nodes.iter())?;
+        self.validate_nodes(self.nodes.iter().filter(|(id,_)|changed.is_none_or(|ids|ids.contains(*id))))?;
         fn visit<'a>(
             d: &'a Document,
             id: &'a str,

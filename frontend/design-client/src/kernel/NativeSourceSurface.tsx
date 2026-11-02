@@ -12,7 +12,7 @@ import type {ResidentAcknowledgement} from './resident-presentation'
 import type {ResidentFrame} from './gpu/resident-presenter'
 import type {RasterTile} from './tile-cache'
 import {createRenderDiagnostics,PREFIX} from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
-import {CameraReprojection,atomicPresentationContext,consumePresentationBitmap} from './camera-reprojection'
+import {CameraReprojection,atomicPresentationContext,consumePresentationBitmap,keepCompleteCameraBacking} from './camera-reprojection'
 
 export type NativeSourceStatus={phase:'loading'|'refining'|'ready'|'error';done:number;total:number;error?:string}
 type Props={source:SourceCanvasSnapshot;view:CanvasCamera;width:number;height:number;
@@ -39,7 +39,7 @@ export function NativeSourceSurface(props:Props){
     Object.assign(element.style,{position:'absolute',inset:'0',pointerEvents:'none'})
     host.current!.append(element)
     const bitmapContext=atomicPresentationContext(element)
-    const projection=new CameraReprojection(element,host.current!)
+    const projection=new CameraReprojection(element,host.current!,()=>schedulePaint())
     let backing:ResidentAcknowledgement|undefined
     const project=()=>{const p=latest.current;return projection.update(backing,p.view,p.width,p.height,
       !!bitmapContext)}
@@ -216,6 +216,8 @@ export function NativeSourceSurface(props:Props){
       if(!actual?.presentationId?.startsWith(prefix+':'))return
       const sequence=Number(actual.presentationId.slice(prefix.length+1))
       if(!Number.isSafeInteger(sequence)||sequence<=0||sequence>submission||sequence<acknowledged)return
+      project()
+      if(bitmap&&keepCompleteCameraBacking(backing,actual,!!bitmapContext,projection.zooming,latest.current))return
       if(bitmap&&bitmapContext){consumePresentationBitmap(bitmapContext,element,bitmap);bitmapApplied=true}
       acknowledged=sequence;release()
       backing=actual;project()

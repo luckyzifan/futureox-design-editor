@@ -187,6 +187,20 @@ test('hidden trailing siblings do not change the final visible paint order', () 
   value.document.nodes[hidden.id] = hidden; value.root.children.push(hidden.id)
   expect(foregroundScope(value).localizedBounds.has(value.group.id)).toBe(true)
 })
+test('foreground can precede independent blurred and Boolean siblings without capturing earlier backdrops',()=>{
+ const value=foregroundFixture(),{document,root,group}=value
+ const later=node('group',5,5,80,60),shape=node('vector',0,0,80,60),a=node('rectangle',0,0,70,50),b=node('ellipse',10,10,30,30)
+ later.effects=[{...effect('gaussian-blur'),radius:4}];later.children=[shape.id]
+ shape.booleanOperation='subtract';shape.children=[a.id,b.id]
+ for(const n of [later,shape,a,b])document.nodes[n.id]=n
+ root.children.push(later.id)
+ expect(foregroundScope(value).finalForeground).toBe(true)
+ expect(foregroundScope(value).localizedBounds.has(group.id)).toBe(true)
+ b.effects=[effect('background-blur')]
+ expect(foregroundScope(value).finalForeground).toBe(false)
+ b.effects=[];later.blend='pass-through'
+ expect(foregroundScope(value).finalForeground).toBe(false)
+})
 test('a selected foreground subtree may keep its ordinary leaf text hug sizing', () => {
   const value = foregroundFixture()
   const text = node('text', 1, 1, 12, 10)
@@ -196,7 +210,8 @@ test('a selected foreground subtree may keep its ordinary leaf text hug sizing',
 })
 const foregroundRejections: [string, (value: ReturnType<typeof foregroundFixture>) => void][] = [
   ['parent effect', ({ root }) => { root.effects = [effect('blur')] }],
-  ['selected foreground effect', ({ group }) => { group.effects = [effect('shadow')] }],
+  ['stacked foreground effects', ({ group }) => { group.effects = [effect('shadow'), effect('blur')] }],
+  ['radial foreground effect', ({ group }) => { group.effects = [effect('zoom-blur')] }],
   ['descendant foreground effect', ({ leaf }) => { leaf.effects = [effect('blur')] }],
   ['selected backdrop', ({ group }) => { group.effects = [effect('background-blur')] }],
   ['descendant backdrop', ({ leaf }) => { leaf.effects = [effect('background-blur')] }],
@@ -233,8 +248,13 @@ test('new foreground admission does not broaden multi-selection or overlapping s
   const value = foregroundFixture()
   expect(foregroundScope(value, [value.group.id, value.leaf.id]).localizedBounds.size).toBe(0)
 })
-test('complete CPU-WASM scene changes stay inside old and new final foreground footprints', () => {
+test.each([false,true])('complete CPU-WASM changes stay inside foreground footprints with later isolated effects=%s', laterEffects => {
   const value = foregroundFixture(), { document, group } = value
+  if(laterEffects){
+    document.schemaVersion=18
+    const later=node('rectangle',10,10,80,60);later.fills=[{...paint('#b07547'),opacity:.6}]
+    later.effects=[{...effect('gaussian-blur'),radius:4}];document.nodes[later.id]=later;value.root.children.push(later.id)
+  }
   document.colorManagement = { documentSpace: 'srgb', referenceWhiteNits: 203, peakLuminanceNits: 1000 }
   document.rasterProfile = 'figma'
   const scope = foregroundScope(value), beforeBounds = scope.rootBounds.get(group.id)!
@@ -262,4 +282,52 @@ test('complete CPU-WASM scene changes stay inside old and new final foreground f
     }
     expect(changed).toBeGreaterThan(0)
   } finally { kernel.free() }
+})
+
+test.each(['blur', 'gaussian-blur', 'shadow', 'inner-shadow', 'color-controls'] as const)(
+  'selected self-filter %s localizes only after all backdrop reads, with complete float-pixel containment', kind => {
+    const value = foregroundFixture(), { document, group, root, backdrop } = value
+    document.schemaVersion = 20
+    document.colorManagement = { documentSpace: 'srgb', referenceWhiteNits: 203, peakLuminanceNits: 1000 }
+    document.rasterProfile = 'figma'
+    group.effects = [{ ...effect(kind), radius: 3.25, x: -2.5, y: 1.75 }]
+    value.leaf.strokes = kind === 'gaussian-blur' || kind === 'shadow' ? [stroke('#124e89',2)] : [] // single-halo source support
+    const scope = foregroundScope(value), bounds = scope.rootBounds.get(group.id)!
+    expect(scope.finalForeground).toBe(true)
+    expect(scope.localizedBounds.has(group.id)).toBe(true)
+    expect(scope.dependencyPadding).toBe(0)
+    const kernel = new VectorEngine(), dx = 11.25, dy = 7.5
+    const options = JSON.stringify({ pageId: document.pages[0].id, width: 128, height: 128,
+      view: { x: 0, y: 0, zoom: 1 }, transparent: true, grid: false, rasterProfile: 'figmaSubpixel' })
+    try {
+      kernel.load_document(JSON.stringify(document)); const before = kernel.render_linear(options)
+      const moved = { ...document, nodes: { ...document.nodes, [group.id]: { ...group,
+        transform: [...group.transform.slice(0, 4), group.transform[4] + dx, group.transform[5] + dy] } } }
+      kernel.load_document(JSON.stringify(moved)); const after = kernel.render_linear(options)
+      const a = new Uint32Array(before.buffer, before.byteOffset, before.length), b = new Uint32Array(after.buffer, after.byteOffset, after.length)
+      let changed = 0
+      for (let i = 0; i < 128 * 128; i++) {
+        if ([0, 1, 2, 3].every(c => a[i * 4 + c] === b[i * 4 + c])) continue
+        changed++
+        const x = i % 128, y = Math.floor(i / 128)
+        expect([bounds, { ...bounds, x: bounds.x + dx, y: bounds.y + dy }].some(r =>
+          x + 1 >= r.x && x <= r.x + r.width && y + 1 >= r.y && y <= r.y + r.height)).toBe(true)
+      }
+      expect(changed).toBeGreaterThan(0)
+    } finally { kernel.free() }
+    root.children = [group.id, backdrop.id]
+    expect(foregroundScope(value).finalForeground).toBe(false)
+  })
+
+
+test('one isolated root filter expands geometry and centered strokes once; outside strokes stay conservative',()=>{
+ const value=foregroundFixture(),{group,leaf}=value;group.effects=[{...effect('gaussian-blur'),radius:4}];leaf.strokes=[]
+ const plain=foregroundScope(value).rootBounds.get(group.id)!
+ const entries=scene(value.document,value.document.pages[0].id),geometry=unionBounds(entries.filter(e=>e.id===group.id||e.ancestors.includes(group.id)).map(e=>e.bounds))
+ expect(plain).toEqual({x:geometry.x-12,y:geometry.y-12,width:geometry.width+24,height:geometry.height+24})
+ leaf.strokes=[stroke('#124e89',3)]
+ const stroked=foregroundScope(value).rootBounds.get(group.id)!
+ expect(stroked.width).toBeGreaterThan(plain.width);expect(stroked.height).toBeGreaterThan(plain.height)
+ leaf.strokes[0].align='outside';const outside=foregroundScope(value).rootBounds.get(group.id)!
+ expect(outside.width).toBeGreaterThanOrEqual(stroked.width)
 })

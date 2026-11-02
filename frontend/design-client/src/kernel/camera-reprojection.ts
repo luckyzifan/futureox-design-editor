@@ -2,6 +2,16 @@ import type { CanvasCamera } from '../canvas-camera'
 import { frameTransform } from './presentation'
 import type { ResidentAcknowledgement } from './resident-presentation'
 
+function covers(backing: ResidentAcknowledgement, target: {view:CanvasCamera;width:number;height:number}) {
+  const scale=target.view.zoom/backing.view.zoom,x=target.view.x-backing.view.x*scale,y=target.view.y-backing.view.y*scale
+  return x<=1e-7&&y<=1e-7&&x+backing.width*scale>=target.width-1e-7&&y+backing.height*scale>=target.height-1e-7
+}
+export function keepCompleteCameraBacking(backing: ResidentAcknowledgement | undefined, next: ResidentAcknowledgement, allowed: boolean,
+  zooming=false,target?:{view:CanvasCamera;width:number;height:number}) {
+  return allowed && !!backing && !backing.preview && !backing.interaction && !next.interaction &&
+    (!!next.preview || zooming&&next.view.zoom>backing.view.zoom || !!target&&covers(backing,target)&&!covers(next,target))
+}
+
 /** Main-thread ownership makes image replacement and CSS camera publication
  * atomic. A worker-owned live canvas must never use this reprojection path. */
 export function atomicPresentationContext(canvas:HTMLCanvasElement) {
@@ -20,9 +30,26 @@ export function consumePresentationBitmap(context:ImageBitmapRenderingContext,ca
 export class CameraReprojection {
   private key = ''
   private gaps: HTMLDivElement[] = []
-  constructor(private canvas: HTMLCanvasElement, private host: HTMLElement) {}
+  private zoom?:number
+  private size=''
+  private zoomTimer?:ReturnType<typeof setTimeout>
+  zooming=false
+  constructor(private canvas: HTMLCanvasElement, private host: HTMLElement,private zoomSettled?:()=>void) {}
 
   update(backing: ResidentAcknowledgement | undefined, view: CanvasCamera, width: number, height: number, allowed: boolean) {
+    const size=`${width}/${height}`
+    if(!allowed||!backing||size!==this.size){clearTimeout(this.zoomTimer);this.zoomTimer=undefined;this.zooming=false;this.zoom=undefined}
+    this.size=size
+    if(allowed&&backing){
+      if(this.zoom!==undefined&&this.zoom!==view.zoom){
+        // Preserve the wide immutable basis across wheel reversals. Two quiet
+        // animation frames can occur between individual wheel events; accepting
+        // a narrow crop there makes the next zoom-out expose a white rectangle.
+        this.zooming=true;clearTimeout(this.zoomTimer)
+        this.zoomTimer=setTimeout(()=>{this.zoomTimer=undefined;this.zooming=false;this.zoomSettled?.()},80)
+      }
+      this.zoom=view.zoom
+    }
     const active = !!backing && allowed && (backing.view.x !== view.x || backing.view.y !== view.y ||
       backing.view.zoom !== view.zoom || backing.width !== width || backing.height !== height)
     const transform = active ? frameTransform(view, backing.view) : undefined
@@ -54,5 +81,5 @@ export class CameraReprojection {
     }
     return { active, changed }
   }
-  dispose() { this.gaps.forEach(gap => gap.remove()); this.gaps = []; this.canvas.style.transform = ''; this.canvas.style.imageRendering = '' }
+  dispose() { clearTimeout(this.zoomTimer);this.zoomTimer=undefined;this.zooming=false;this.gaps.forEach(gap => gap.remove()); this.gaps = []; this.canvas.style.transform = ''; this.canvas.style.imageRendering = '' }
 }

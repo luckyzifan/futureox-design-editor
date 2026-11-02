@@ -531,10 +531,10 @@ export function ProgressiveSurfaceImpl(
         }
         nativePageBacking.current = null
       }
-      if (nativeVisibleTiles && nativePageBacking.current?.contract !== contract && props.overview &&
+      if (nativePageBacking.current?.contract !== contract && props.overview &&
           props.overview.width > 0 && props.overview.height > 0 &&
-          completeViewportBacking([...residents.values()], { x: -plan.view.x / plan.view.zoom, y: -plan.view.y / plan.view.zoom,
-            width: plan.width / plan.view.zoom, height: plan.height / plan.view.zoom }, plan.rasterScale,
+          completeViewportBacking([...residents.values()], nativeVisibleTiles ? { x: -plan.view.x / plan.view.zoom, y: -plan.view.y / plan.view.zoom,
+            width: plan.width / plan.view.zoom, height: plan.height / plan.view.zoom } : props.overview, plan.rasterScale,
             estimatedTileResidencyBytes(residents.values()), budget)) {
         // Keep at most one existing wide-view cohort for this content epoch.
         // It is not a whole-page certificate: overview reuse still checks the

@@ -1,4 +1,5 @@
 import { desktopText, localizeNativeMenu } from './native-locale.mjs'
+import { createDesignAiHost } from './design-ai.mjs'
 import { createRenderDiagnostics, sanitizeRecord, sanitizeBatch, PREFIX } from './render-terminal-diagnostics.mjs'
 import { createPetHost } from './pet/host.mjs'
 import { diagnosticFileAdapter } from './diagnostic-file.mjs'
@@ -300,6 +301,11 @@ function register(name, action, exclusiveOperation = true) {
   })
 }
 // Renderer may choose presentation only. register retains current-window sender validation.
+const designAi = createDesignAiHost()
+register('design-ai-status', () => designAi.status(), false)
+register('design-ai-configure', value => designAi.configure(value), false)
+register('design-ai-run', value => designAi.run(value), false)
+register('design-ai-cancel', value => designAi.cancel(value), false)
 register('set-interface-locale', value => {
   if (value !== 'en' && value !== 'zh-CN') throw new TypeError('Unsupported interface locale')
   interfaceLocale = value
@@ -1116,6 +1122,7 @@ async function buildWindow() {
     closeTimer = setTimeout(() => void closeFallback(), 20_000)
   })
   window.on('closed', () => {
+    designAi.dispose()
     clearTimeout(closeTimer)
     clearTimeout(windowStateTimer)
     window = undefined

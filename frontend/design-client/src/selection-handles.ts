@@ -1,5 +1,14 @@
 import type { Point, Matrix } from './model'
-import { around, rotate } from './geometry'
+import { around, rotate, pointInContours } from './geometry'
+
+/** At overview zoom the fixed-size handles can cover the whole object. Keep
+ * its interior available for moving; the exterior still resizes/rotates. */
+export function smallSelectionInterior(corners: Point[], zoom: number, point: Point) {
+  return corners.length === 4 && corners.some((p, i) => {
+    const q = corners[(i + 1) % 4]
+    return Math.hypot(q.x - p.x, q.y - p.y) * zoom < 16
+  }) && pointInContours(point, [corners])
+}
 
 const unit = (p: Point, q: Point) => {
   const length = Math.hypot(q.x - p.x, q.y - p.y)

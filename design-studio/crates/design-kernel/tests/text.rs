@@ -57,7 +57,7 @@ fn display_case_changes_outlines_without_changing_authored_text_or_caret_indices
     assert!(layout.glyphs.iter().filter(|g|g.cluster==1).count()>=2);
     assert!(f.caret_at(&source,3).is_ok());
     assert!(f.caret_at(&source,4).is_err());
-    source.text_runs=vec![TextRun {start:1,end:2,text_case:Some(TextCase::Original),..Default::default()}];
+    source.text_runs=vec![TextRun {start:1,end:2,text_case:Some(TextCase::Original),..Default::default()}].into();
     assert_eq!(f.node_path(&source).unwrap().svg_data(),f.node_path(&text("AßZ",500.)).unwrap().svg_data());
 }
 #[test]
@@ -84,7 +84,7 @@ fn weight_and_styled_ranges_share_the_outline_and_measurement_pipeline() {
         font_size: Some(40.),
         weight: Some(600.),
         ..Default::default()
-    }];
+    }].into();
     let layout = f.node_layout(&n, Some(500.)).unwrap();
     assert_eq!(layout.height, 54.);
     let measured = f.node_measure(&n, Some(500.)).unwrap();
@@ -105,7 +105,7 @@ fn missing_fonts_and_split_grapheme_ranges_are_errors() {
         font_size: None,
         weight: Some(700.),
         ..Default::default()
-    }];
+    }].into();
     assert!(f.node_layout(&n, Some(100.)).is_err());
     n.text_runs.clear();
     n.text_style = Some(Box::new(TextStyle {

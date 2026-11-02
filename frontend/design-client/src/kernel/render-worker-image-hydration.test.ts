@@ -523,10 +523,10 @@ test('request-scoped cancellation applies its ordered patch but leaves independe
 
 // Real worker/native scene path; GPU transport deliberately mocked. These
 // assertions certify queue/pose ownership, not physical display or GPU pixels.
-async function affineWorker() {
+async function affineWorker(affine=true) {
   const f = fixture(1), w = await worker(); state.poseTiles = true
   const options = { ...f.options, renderIntent: 'preview', livePreview: true,
-    retainInteractionGraph: true, interactionNative: true, interactionAffine: true,
+    retainInteractionGraph: true, interactionNative: true, interactionAffine: affine,
     interactionSelection: ['image-0'], interactionWindowFixed: true,
     interactionWindow: { x: 0, y: 0, w: 48, h: 16 } }
   w.send({ id: 980, channel: 'interaction', document: JSON.stringify(f.doc), documentRevision: 1, options })
@@ -574,4 +574,24 @@ test('live capture document patches route pure affine transforms through native 
  expect(apply).toHaveBeenCalled()
  expect(w.messages.find(m=>m.id===981&&m.damage)?.damage.reason).toBe('native-interaction-pose')
  expect(state.scenes.at(-1).nodes['image-0'].matrix).toEqual(transform)
+})
+
+test.each(['same','changed','foreign'] as const)('release %s pose supersedes only matching owned preparations before GPU work',async kind=>{
+ const w=await affineWorker(false)
+ const pose=(sequence:number,x:number,owner='owner')=>({command:'interaction-pose',slot:77,
+  input:{owner,sequence,at:sequence},transforms:{'image-0':[1,0,0,1,x,0]}})
+ const original=w.kernel.VectorEngine.prototype.apply_interaction_transforms
+ const apply=vi.spyOn(w.kernel.VectorEngine.prototype,'apply_interaction_transforms').mockImplementationOnce(function(this:VectorEngine,input:string){
+  const owner=kind==='foreign'?'other':'owner'
+  w.send(pose(2,kind==='same'?2:4,owner))
+  w.send({command:'interaction-settle',slot:77,sequence:2,owner})
+  return original.call(this,input)
+ })
+ try{
+  w.send(pose(1,2))
+  await vi.waitFor(()=>expect(w.messages.some(m=>m.presentation?.residentSample?.sequence===2)).toBe(true))
+  expect(state.replacements.length).toBe(kind==='foreign'?2:1)
+  expect(w.messages.some(m=>m.presentation?.residentSample?.sequence===1)).toBe(kind==='foreign')
+  expect(state.scenes.at(-1).nodes['image-0'].matrix[4]).toBe(kind==='same'?2:4)
+ }finally{apply.mockRestore()}
 })

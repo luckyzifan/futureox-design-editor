@@ -112,6 +112,7 @@ export interface NativeRenderBridgeApi {
   stats(): Promise<NativeRenderReply<{ stats: { gpu_memory?: NativeGpuMemoryBreakdown } }>>
 }
 export interface DesktopBridge {
+  readonly designAi?: import('./design-ai/types').DesignAiBridge
   readonly renderDiagnostics?:boolean
   readonly renderDiagnosticsDetail?:boolean
   onPetStatus?(callback: (status: import('./desktop-pet').PetStatus) => void): () => void

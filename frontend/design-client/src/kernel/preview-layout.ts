@@ -1,7 +1,6 @@
 import type { DesignDocument, DesignNode } from '../model'
-import { applyDocumentPatch, shareDocument } from '../document-patch'
+import { produceDocumentDraft, shareDocument } from '../document-patch'
 import { kernelLayout, pickingGeometryEpoch } from './picking'
-import { translationOnlyChanges } from './translation-preview'
 
 /** One pointer transaction owns this topology. Dimensions still pass through
  * the existing Rust layout/constraint/Boolean resolver, on complete independent
@@ -34,17 +33,31 @@ export class PreviewLayout {
       nodes[id].children.forEach(include)
     }
     roots.forEach(include)
-    const subset = { ...this.base, nodes, pages: this.base.pages.map(page => ({ ...page, children: page.children.filter(id => roots.has(id)) })) }
+    const pages = this.base.pages.map(page => {
+      const children = page.children.filter(id => roots.has(id))
+      return children.length === page.children.length ? page : { ...page, children }
+    })
+    const subset = { ...this.base, nodes,
+      pages: pages.every((page,index) => page === this.base.pages[index]) ? this.base.pages : pages }
     if(this.subset?.key!==key)this.subset={key,document:{...subset,nodes:Object.fromEntries(Object.keys(nodes).map(id=>[id,this.base.nodes[id]]))}}
     // Keep the established exact rigid-translation proof before the scoped
     // resolver. Otherwise an unrelated Boolean in the same root forces a
     // full native resolve for each move despite unchanged geometry/layout.
     // Resizes, constraints that are not fixed points, and affine changes keep
     // their original full authoritative resolution.
-    const translated=translationOnlyChanges(this.subset.document,subset)
-    const resolved = kernelLayout(subset,translated?this.subset.document:undefined)
+    // Affine/size changes still run authoritative layout. They may diff the
+    // complete known resident component snapshot instead of serializing and
+    // resolving this whole island again at pointer-up. The resolver's private
+    // receipt, full diff and stale-receipt fallback remain authoritative.
+    const resolved = kernelLayout(subset,this.subset.document,true)
     const changed: DesignDocument['nodes'] = {}
     for (const [id,n] of Object.entries(resolved.nodes)) if (n !== this.base.nodes[id]) changed[id] = n
-    return shareDocument(this.base, applyDocumentPatch(this.base, { nodes:changed, fields:{} }))
+    // These are already resolved authored records, not native transport
+    // patches. Transport normalization drops explicit null optionals and
+    // turns a pure pose into a content edit. Preserve the complete shape and
+    // establish the usual producer witness for only these changed records.
+    return shareDocument(this.base, produceDocumentDraft(this.base, draft => {
+      for (const [id, n] of Object.entries(changed)) draft.nodes[id] = n
+    }))
   }
 }

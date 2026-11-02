@@ -43,6 +43,12 @@ contextBridge.exposeInMainWorld(
   'coreDesktop',
   Object.freeze({
     version: 1,
+    designAi: Object.freeze({
+      status: () => invoke('design-ai-status'),
+      configure: value => invoke('design-ai-configure', value),
+      run: value => invoke('design-ai-run', value),
+      cancel: value => invoke('design-ai-cancel', value),
+    }),
     ...(documentMemoryBytes === undefined ? {} : { documentCapacity: Object.freeze({ memoryBytes: documentMemoryBytes }) }),
     renderDiagnostics: process.argv.includes('--core-render-diagnostics'),
     renderDiagnosticsDetail: process.argv.includes('--core-render-diagnostics-detail'),

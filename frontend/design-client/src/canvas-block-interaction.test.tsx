@@ -110,6 +110,35 @@ test('entered nested child drag edits only child; copied frame descendants get i
  expect(editor.state.doc.nodes[copiedChild]).toMatchObject({kind:'rectangle',width:100,height:75})
  const pasted=editor.state.doc;await act(async()=>editor.update([copiedChild],{width:120.5,name:'Independent'},'Edit pasted child'));expect(editor.state.doc.nodes[child.id]).toEqual(before.nodes[child.id]);await act(async()=>editor.undo());expect(editor.state.doc).toEqual(pasted);await act(async()=>editor.undo());expect(editor.state.doc).toEqual(before);expect(editor.canUndo).toBe(false)
 })
+test('a continuing cross-frame drag does not end its GPU owner before the replacement preview',async()=>{
+ const a=node('frame',0,0,200,200),b=node('frame',300,0,200,200),child=node('rectangle',20,20,40,40)
+ a.children=[child.id];await render([a,b,child],[a.id,b.id]);await act(async()=>editor.select([child.id]))
+ const end=vi.fn(),apply=vi.fn(()=>({x:10,y:0}))
+ recordedOverlay.control={apply,end,isActive:()=>true,covers:()=>true,feedbackPending:()=>false}
+ await act(async()=>editor.set({snap:false}));end.mockClear()
+ await act(async()=>pointer('pointerdown',40,40))
+ end.mockClear() // Idle hover/selection notifications precede transaction start.
+ await act(async()=>pointer('pointermove',50,40))
+ await act(async()=>{const batch=[...frames.values()];frames.clear();batch.forEach(fn=>fn(performance.now()))})
+ expect(apply).toHaveBeenCalled();expect(end).not.toHaveBeenCalled()
+ await act(async()=>pointer('pointermove',350,40))
+ await act(async()=>{const batch=[...frames.values()];frames.clear();batch.forEach(fn=>fn(performance.now()))})
+ expect(editor.state.doc.nodes[b.id].children).toEqual([child.id]);expect(end).not.toHaveBeenCalled()
+ await act(async()=>pointer('pointerup',350,40));expect(end).toHaveBeenCalled()
+})
+test.each(['metaKey','ctrlKey'])('a %s move with unchanged placement keeps the admitted GPU preview',async modifier=>{
+ const a=node('frame',0,0,200,200),child=node('rectangle',20,20,40,40);a.children=[child.id]
+ await render([a,child],[a.id]);await act(async()=>editor.select([child.id]))
+ const apply=vi.fn(()=>({x:20,y:0}))
+ recordedOverlay.control={apply,end:vi.fn(),isActive:()=>true,covers:()=>true,feedbackPending:()=>false}
+ await act(async()=>editor.set({snap:false}));const before=editor.state.doc
+ await act(async()=>pointer('pointerdown',40,40))
+ await act(async()=>pointer('pointermove',60,40,{[modifier]:true}))
+ await act(async()=>{const batch=[...frames.values()];frames.clear();batch.forEach(fn=>fn(performance.now()))})
+ expect(apply).toHaveBeenCalled();expect(editor.state.doc).toBe(before)
+ await act(async()=>pointer('pointerup',60,40,{[modifier]:true}))
+ expect(editor.state.doc.nodes[a.id].children).toEqual([child.id]);expect(editor.state.doc.nodes[child.id].transform.slice(4)).toEqual([40,20])
+})
 test('Canvas SVG selected-size label preserves fractional dimensions after rotation without using world AABB',async()=>{
  const frame=node('frame',0,0,3000,3000),child=node('rectangle',20,20,1466.59,1049.02);frame.children=[child.id];frame.transform=[1,0,0,1,0,0];child.transform=[Math.SQRT1_2,Math.SQRT1_2,-Math.SQRT1_2,Math.SQRT1_2,20,20]
  await render([frame,child],[frame.id]);await act(async()=>editor.select([child.id]));expect([...mount.querySelectorAll('svg text')].map(n=>n.textContent)).toContain('1466.59 × 1049.02');expect(recordedOverlay.labels).toContain('1466.59 × 1049.02')
