@@ -1,11 +1,17 @@
 import { around, inverse, multiply, rotate } from './geometry'
 import type { Matrix, Point } from './model'
 
-/** Local x-axis angle in Figma's Design panel.
- * Positive is counterclockwise. The range follows atan2, [-180, 180]. */
+/** Mac Figma Design panel angle. Positive is clockwise.
+ * In this y-down canvas that is atan2 of the local x axis, in [-180, 180]. */
 export function figmaRotationDegrees(matrix: Matrix) {
-  const degrees = (-Math.atan2(matrix[1], matrix[0]) * 180) / Math.PI
-  return Number.isFinite(degrees) ? degrees : 0
+  const degrees = (Math.atan2(matrix[1], matrix[0]) * 180) / Math.PI
+  if (!Number.isFinite(degrees) || Object.is(degrees, -0)) return 0
+  return degrees
+}
+
+/** rotateNode still takes the historical matrix angle, which is the opposite sign. */
+export function nodeDegreesForFigmaAngle(fieldDegrees: number) {
+  return -fieldDegrees
 }
 
 /** At most two decimal places. Trailing zeros are omitted. Values outside
@@ -31,8 +37,8 @@ export function snapRotationDelta(parent: Matrix, worldStart: Matrix, delta: Mat
   const snapped = Math.round(angle / 15) * 15
   const correction = snapped - angle
   if (Math.abs(correction) < 1e-6) return delta
-  // A positive Figma correction is counterclockwise, which is rotate(-correction).
-  return multiply(around(center, rotate(-correction)), delta)
+  // A positive correction is more clockwise, and rotate(+) is clockwise in y-down.
+  return multiply(around(center, rotate(correction)), delta)
 }
 
 export type LiveRotation = {
