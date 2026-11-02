@@ -75,6 +75,7 @@ import {
   uid,
   paint,
   node,
+  identity,
 } from './model'
 import {
   apply,
@@ -106,6 +107,11 @@ import { NumberField } from './fields'
 import { createShapeSeed, resolveShapeCreation, creationPointCount, creationToolStaysArmed, creationGhostNode, creationPreviewPoints, creationVisiblePaint, type ShapeCreationKind, type ShapeCreationSeed } from './shape-creation'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { editableNetwork } from './editable-network'
+import {
+  PEN_BLUE, PEN_HIT_PX, constrainToAngles, penAffordance, penCurvePath, penHandleMove, penHitsNetwork,
+  penPointerDown, popPenPoint, dragBezierHandle, type PenDraft,
+} from './pen-geometry'
+import { ERASER_SCREEN_PX } from './vector-eraser'
 import { dragThresholdPassed, selectedGroupDragIntent, selectedChildDragIntent, selectedOwnedDragIntent, selectionPointerDown, frameTitleHit } from './canvas-pointer-intent'
 import { moveCanvasFeedback, concealCanvasFeedback, restoreCanvasFeedbackVisibility } from './canvas-move-feedback'
 import { gestureHoleColor, mountGestureFollow, visibleFollowBox, type GestureFollowLayer } from './gesture-follow'
@@ -183,14 +189,10 @@ type Drag = {
   rotationCenter?: Point
   originalPivot?: Point
 }
-type Pen = {
+type Pen = PenDraft & {
   session: number
   page: string
   id?: string
-  network: Network
-  last: string | null
-  first: string | null
-  outgoing?: Point
 }
 const emptyBox = { x: 0, y: 0, width: 0, height: 0 }
 /** Presentation signal: progressive tile commits that keep the camera,
@@ -716,6 +718,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const [pen, setPen] = useState<Pen | null>(null)
   const penRef = useRef(pen)
   penRef.current = pen
+  const [penKeys, setPenKeys] = useState({ shift: false, alt: false })
+  const rememberPenKeys = (shift: boolean, alt: boolean) => {
+    setPenKeys(previous => previous.shift === shift && previous.alt === alt ? previous : { shift, alt })
+  }
   useEffect(() => registerPendingEdit(editor, {
     dirty: () => !!penRef.current?.network.vertices.length,
     commit: () => {
@@ -972,24 +978,32 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if (editor.state.busy || (typeof document !== 'undefined' && shortcutTargetOwnsKeyboard(document.activeElement))) return
     if (command === 'zoomIn' || command === 'zoomOut' || command === 'zoom100') zoomCanvas(command)
   }), [editor])
-  function finishPen() {
+  function finishPen(mode: 'select' | 'deselect' = 'select') {
     const p = penRef.current
     if (!p) return
+    if (drag.current?.kind === 'vertex' && !drag.current.node) {
+      finishDragTrace(drag.current, ActionOutcome.observed, ActionReason.unobserved)
+      drag.current = null
+    }
     penRef.current = null
     setPen(null)
     pendingEditsChanged(editor)
     if (p.session !== editor.sessionGeneration || p.page !== editor.state.page) return
+    let created: string | undefined
     if (p.network.edges.length) {
-      if (p.id)
-        editor.update(
-          [p.id],
-          (n) => {
-            n.network = p.network
+      if (p.id) {
+        const source = editor.state.doc.nodes[p.id]
+        if (source)
+          editor.update([p.id], (n) => {
+            n.kind = 'vector'
+            n.network = structuredClone(p.network)
             delete n.vectorGeometry
-          },
-          '编辑矢量网络',
-        )
-      else {
+            delete n.arc
+            delete n.cornerRadius
+            if (p.closed && !n.fills.some(fill => fill.visible)) n.fills = [paint()]
+          }, '编辑矢量网络')
+        created = p.id
+      } else {
         const temp = node('vector', 0, 0, 1, 1)
         temp.network = p.network
         const b = kernelBounds(temp) || bounds(p.network.vertices)
@@ -1005,15 +1019,18 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               c.y -= b.y
             }
         })
-        editor.add(
-          'vector',
-          { ...b, width: Math.max(b.width, 1), height: Math.max(b.height, 1) },
-          undefined,
-          g,
-        )
+        const createdNode = node('vector', b.x, b.y, Math.max(b.width, 1), Math.max(b.height, 1))
+        createdNode.network = g
+        if (p.closed) createdNode.fills = [paint()]
+        editor.change(`创建${createdNode.name}`, (document) => {
+          document.nodes[createdNode.id] = createdNode
+          document.pages.find(page => page.id === editor.state.page)!.children.push(createdNode.id)
+        }, [createdNode.id])
+        created = createdNode.id
       }
     }
-    editor.set({ tool: 'select' })
+    if (mode === 'deselect') editor.set({ tool: 'pen', selection: [], editingVertex: null, editingVertices: [] })
+    else editor.set({ tool: 'select', ...(created ? {} : { editingVertex: null }) })
   }
   useEffect(() => {
     const nudge = createKeyboardNudgeGesture(editor)
@@ -1030,6 +1047,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         setMeasureKeys({alt:e.altKey,deep:e.metaKey||e.ctrlKey})
         if (e.altKey) setCursor(cursorPoint.current)
       }
+      if (penRef.current || editor.state.tool === 'pen') rememberPenKeys(e.shiftKey, e.altKey)
       if (['Shift', 'Alt', 'Control', 'Meta'].includes(e.key) && replayDragModifiers(e)) return
       if(utility.active() && e.key!=='Escape'){e.preventDefault();return}
       // X is a momentary selection override, never a persistent tool switch.
@@ -1094,6 +1112,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         setSpaceHeld(true)
         e.preventDefault()
       }
+      if (e.key === 'Escape' && penRef.current?.network.edges.length && (!drag.current || (drag.current.kind === 'vertex' && !drag.current.node))) {
+        e.preventDefault()
+        finishPen('deselect')
+        return
+      }
       if (e.key === 'Escape') {
         e.preventDefault()
         cancelQueuedMove()
@@ -1152,6 +1175,15 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         e.preventDefault()
         if (penRef.current) { finishPen(); return }
         editor.selectSibling(e.shiftKey ? -1 : 1)
+        return
+      }
+      if (penRef.current && mod && !e.shiftKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault()
+        const next = popPenPoint(penRef.current)
+        if (!next.network.vertices.length) { penRef.current = null; setPen(null) }
+        else { penRef.current = next; setPen(next) }
+        if (drag.current?.kind === 'vertex' && !drag.current.node) drag.current = null
+        pendingEditsChanged(editor)
         return
       }
       if (penRef.current && !['Shift', 'Alt', 'Control', 'Meta'].includes(e.key) && e.code !== 'Space') finishPen()
@@ -1219,6 +1251,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       nudge.release(e.key)
       if (e.code === 'KeyX' || e.key.toLowerCase() === 'x') { marqueeHeld.current = false; setMarqueeKeyHeld(false) }
       if(['Alt','Meta','Control'].includes(e.key))setMeasureKeys({alt:e.altKey,deep:e.metaKey||e.ctrlKey})
+      if (penRef.current || editor.state.tool === 'pen') rememberPenKeys(e.shiftKey, e.altKey)
       if (['Shift', 'Alt', 'Control', 'Meta'].includes(e.key) && replayDragModifiers(e)) return
       if (e.code === 'Space') { space.current = false; setSpaceHeld(false) }
       if (drag.current?.kind === 'create' && ['Shift', 'Alt'].includes(e.key))
@@ -1420,45 +1453,52 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       let draft = penRef.current
       const continuingDraft = !!draft
       const selectedNode = s.selection.length === 1 ? s.doc.nodes[s.selection[0]] : null
-      if (!draft && selectedNode?.network && editor.topSelection().includes(selectedNode.id))
-        draft = {
-          session: editor.sessionGeneration, page: s.page,
-          id: selectedNode.id,
-          network: structuredClone(selectedNode.network),
-          last: null,
-          first: null,
-        }
-      if (!draft)
-        draft = {
-          session: editor.sessionGeneration, page: s.page,
-          network: { vertices: [], edges: [], fillRule: 'evenodd' },
-          last: null,
-          first: null,
-        }
-      const anchor = s.snapPixels && !e.ctrlKey ? kernelSnapPoint(p) : p
-      const local = draft.id ? apply(inverse(worldMatrix(s.doc, draft.id)), anchor) : anchor
-      const shown = draft.id && !continuingDraft ? displayedSnapshot?.document.nodes[draft.id] : null
-      const near = draft.id && !continuingDraft
-        ? shown?.network ? presentedPenVertex(draft.network, shown.network, worldMatrix(displayedSnapshot!.document, draft.id), anchor, zoom) : undefined
-        : presentedPenVertex(draft.network, draft.network, draft.id ? worldMatrix(s.doc, draft.id) : [1, 0, 0, 1, 0, 0], anchor, zoom)
-      const v = near || { id: uid(), ...local }
-      if (!near) draft.network.vertices.push(v)
-      if (
-        draft.last &&
-        draft.last !== v.id &&
-        !draft.network.edges.some((edge) => edge.from === draft!.last && edge.to === v.id)
-      ) {
-        draft.network.edges.push({
-          id: uid(),
-          from: draft.last,
-          to: v.id,
-          ...(draft.outgoing ? { c1: draft.outgoing } : {}),
-        })
+      const penEditable = !!selectedNode && ['line', 'vector', 'rectangle', 'ellipse', 'polygon', 'star'].includes(selectedNode.kind)
+      if (!draft && penEditable && editor.topSelection().includes(selectedNode.id)) {
+        try {
+          const network = selectedNode.network ? structuredClone(selectedNode.network) : editableNetwork(selectedNode)
+          const probe = apply(inverse(worldMatrix(s.doc, selectedNode.id)), s.snapPixels && !e.ctrlKey ? kernelSnapPoint(p) : p)
+          const shown = displayedSnapshot?.document.nodes[selectedNode.id]
+          const shownVertex = shown?.network && displayedSnapshot
+            ? presentedPenVertex(network, shown.network, worldMatrix(displayedSnapshot.document, selectedNode.id), p, zoom) : undefined
+          if (shownVertex || penHitsNetwork(network, probe, PEN_HIT_PX / zoom))
+            draft = { session: editor.sessionGeneration, page: s.page, id: selectedNode.id, network, last: null, first: null }
+        } catch { /* A shape that cannot be edited yet starts a new path. */ }
       }
-      draft = { ...draft, last: v.id, first: draft.first || v.id, outgoing: undefined }
-      setPen(draft)
-      penRef.current = draft
+      if (!draft)
+        draft = { session: editor.sessionGeneration, page: s.page, network: { vertices: [], edges: [], fillRule: 'evenodd' }, last: null, first: null }
+      const liveMatrix = draft.id ? worldMatrix(s.doc, draft.id) : identity()
+      let worldPoint = p
+      if (e.shiftKey && draft.last) {
+        const from = draft.network.vertices.find(vertex => vertex.id === draft.last)
+        if (from) worldPoint = constrainToAngles(apply(liveMatrix, from), p)
+      } else if (s.snapPixels && !e.ctrlKey) worldPoint = kernelSnapPoint(p)
+      let local = draft.id ? apply(inverse(liveMatrix), worldPoint) : worldPoint
+      if (!continuingDraft && draft.id && displayedSnapshot?.document.nodes[draft.id]?.network) {
+        const shownVertex = presentedPenVertex(draft.network, displayedSnapshot.document.nodes[draft.id].network!, worldMatrix(displayedSnapshot.document, draft.id), worldPoint, zoom)
+        if (shownVertex) local = { x: shownVertex.x, y: shownVertex.y }
+      }
+      const placed = penPointerDown(draft, local, e.altKey, PEN_HIT_PX / zoom)
+      if (placed.healed && draft.id) {
+        const source = editor.state.doc.nodes[draft.id]
+        if (source && !placed.draft.network.edges.length) editor.removeNodes([draft.id], '删除矢量节点')
+        else if (source) editor.update([draft.id], (n) => {
+          n.kind = 'vector'
+          n.network = structuredClone(placed.draft.network)
+          delete n.vectorGeometry
+          delete n.arc
+          delete n.cornerRadius
+        }, '删除并愈合节点')
+        penRef.current = null
+        setPen(null)
+        pendingEditsChanged(editor)
+        return
+      }
+      const next: Pen = { ...draft, ...placed.draft }
+      setPen(next)
+      penRef.current = next
       pendingEditsChanged(editor)
+      if (!placed.dragVertex) return
       drag.current = {
         pointerId: e.pointerId,
         session: editor.sessionGeneration, page: s.page,
@@ -1469,7 +1509,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         ids: [],
         matrices: {},
         box: emptyBox,
-        vertex: v.id,
+        vertex: placed.dragVertex,
         originSelection: [],
       }
       beginDragTrace(drag.current, e)
@@ -1786,8 +1826,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     // that draw a pointer-position overlay need a React coordinate update.
     // Rotation used to republish the whole canvas on every sample so the degree
     // label could move. The follow layer writes that label directly.
-    if (!gestureFollow.current && (penRef.current || drag.current?.kind === 'rotate' || e.altKey && editor.state.tool === 'select'))
+    if (!gestureFollow.current && (penRef.current || editor.state.tool === 'pen' || editor.state.tool === 'eraser' || drag.current?.kind === 'rotate' || e.altKey && editor.state.tool === 'select'))
       setCursor(previous => previous?.x === p.x && previous.y === p.y ? previous : p)
+    if (editor.state.tool === 'pen' || penRef.current) rememberPenKeys(e.shiftKey, e.altKey)
     const d = drag.current
     if (!d) {
       setMeasureKeys(previous=>previous.alt===e.altKey&&previous.deep===(e.metaKey||e.ctrlKey)?previous:{alt:e.altKey,deep:e.metaKey||e.ctrlKey})
@@ -1865,16 +1906,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       return
     }
     if (penRef.current && d.kind === 'vertex' && !d.node) {
-      const pen = structuredClone(penRef.current)
-      const local = pen.id ? apply(inverse(worldMatrix(editor.state.doc, pen.id)), p) : p
-      const v = pen.network.vertices.find((v) => v.id === d.vertex)!
-      if (distance(local, d.start) > 2 / zoom) {
-        pen.outgoing = { x: v.x + local.x - d.start.x, y: v.y + local.y - d.start.y }
-        const previous = pen.network.edges.find((edge) => edge.to === v.id)
-        if (previous) previous.c2 = { x: 2 * v.x - pen.outgoing.x, y: 2 * v.y - pen.outgoing.y }
-        setPen(pen)
-        penRef.current = pen
-      }
+      const pen = penRef.current
+      const matrix = pen.id ? worldMatrix(editor.state.doc, pen.id) : identity()
+      let local = pen.id ? apply(inverse(matrix), p) : p
+      const vertex = pen.network.vertices.find(item => item.id === d.vertex)
+      if (e.shiftKey && vertex) local = apply(inverse(matrix), constrainToAngles(apply(matrix, vertex), p))
+      const next = penHandleMove(pen, d.vertex!, d.start, local, e.altKey, false, 2 / zoom)
+      if (next !== pen) { setPen(next); penRef.current = next }
+      rememberPenKeys(e.shiftKey, e.altKey)
       return
     }
     if (d.kind === 'pan') {
@@ -1920,9 +1959,16 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (d.kind === 'vertex') {
         Object.assign(network,translateVertices(network,d.vertices||[d.vertex!],delta))
       } else {
-        const edge = network.edges.find((edge) => edge.id === d.edge)!
-        if (edge[d.control!]?.x === local.x && edge[d.control!]?.y === local.y) return
-        edge[d.control!] = local
+        const sourceEdge = n.network!.edges.find(edge => edge.id === d.edge)
+        const anchorId = d.control === 'c1' ? sourceEdge?.from : sourceEdge?.to
+        const anchor = n.network!.vertices.find(vertex => vertex.id === anchorId)
+        let handle = local
+        if (e.shiftKey && anchor) handle = apply(inverse(worldMatrix(editor.state.doc, n.id)), constrainToAngles(apply(worldMatrix(editor.state.doc, n.id), anchor), p))
+        const edited = dragBezierHandle(n.network!, d.edge!, d.control!, handle, e.altKey)
+        const previous = n.network!.edges.find(edge => edge.id === d.edge)?.[d.control!]
+        const current = edited.edges.find(edge => edge.id === d.edge)?.[d.control!]
+        if (previous && current && previous.x === current.x && previous.y === current.y && !e.altKey && !e.shiftKey) return
+        Object.assign(network, edited)
       }
       // A real point edit replaces precise render curves, never adds a second
       // authority. d.node retains the authored curves for return-to-origin.
@@ -2241,8 +2287,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   )
   function replayDragModifiers(event: KeyboardEvent) {
     const active = drag.current
-    if (!active || !['move', 'resize', 'scale', 'rotate', 'parameter', 'width', 'handle', 'vertex'].includes(active.kind) ||
-        active.kind === 'vertex' && !active.node) return false
+    if (!active || !['move', 'resize', 'scale', 'rotate', 'parameter', 'width', 'handle', 'vertex'].includes(active.kind)) return false
     // A key can arrive before the first animation frame. Consume that latest
     // owner sample now, so an older queued modifier state cannot overwrite it.
     const input = queuedMove.current?.event || active.lastInput
@@ -2317,6 +2362,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       unsubscribe()
     }
   }
+  const penMatrix = pen?.id ? worldMatrix(state.doc, pen.id) : identity()
+  const penLocalCursor = pen && cursor ? (pen.id ? apply(inverse(penMatrix), cursor) : cursor) : null
+  const affordance = pen && penLocalCursor ? penAffordance(pen, penKeys.shift && pen.last ? (() => {
+    const from = pen.network.vertices.find(vertex => vertex.id === pen.last)
+    return from ? apply(inverse(penMatrix), constrainToAngles(apply(penMatrix, from), cursor!)) : penLocalCursor
+  })() : penLocalCursor, PEN_HIT_PX / zoom, penKeys.alt) : null
   return (
     <div
       ref={host}
@@ -2325,7 +2376,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       role="application"
       aria-label={chromeCopy.canvasEditor}
       className={`canvas canvas-${state.tool}${state.tool==='zoom'&&measureKeys.alt?' canvas-zoom-out':''}${spaceHeld ? ' canvas-space-held' : ''}${panning ? ' canvas-panning' : ''}${ownedDrag?.kind==='move'&&ownedDrag.moved?' canvas-object-dragging':''}`}
-      data-testid="canvas" aria-busy={state.busy}
+      data-testid="canvas" data-pen-affordance={affordance || undefined} aria-busy={state.busy}
       data-creation-kind={shapePreview?.kind}
       data-transform-gesture={drag.current?.kind}
       style={marqueeKeyHeld ? { cursor: 'crosshair' } : drag.current?.kind==='rotate'?{cursor:transformHandles[drag.current.handle ?? 0]?.rotateCursor}:undefined}
@@ -2591,6 +2642,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             <text x={0} y={-5/zoom} fontSize={11/zoom} fill="#c56e00">{state.doc.nodes[e.id].name}</text>
           </g>)}
           {utility.overlay}
+          {state.tool === 'eraser' && cursor && !utility.overlay && (
+            <circle data-testid="eraser-brush" cx={cursor.x} cy={cursor.y} r={ERASER_SCREEN_PX / zoom} fill="#0d99ff18" stroke={PEN_BLUE} strokeWidth={1 / zoom} pointerEvents="none" />
+          )}
           {utility.pins}
           {peers.filter(p=>p.documentId===state.doc.id&&p.pageId===state.page).flatMap(p=>entries.filter(e=>p.selection.includes(e.id)).map(e=><rect key={`${p.id}:${e.id}`} data-peer-selection={e.id} x={e.bounds.x} y={e.bounds.y} width={e.bounds.width} height={e.bounds.height} fill="none" stroke="#a355e8" strokeWidth={1.5/zoom} pointerEvents="none"/>))}
           {peers.filter(p=>p.documentId===state.doc.id&&p.pageId===state.page&&p.cursor).map(p=><g key={p.id} data-peer-id={p.id} pointerEvents="none" transform={`translate(${p.cursor![0]} ${p.cursor![1]}) scale(${1/zoom})`}><path d="M0 0 L0 16 L5 11 L10 21 L14 19 L9 9 L16 8 Z" fill="#a355e8" stroke="white"/><text x={16} y={24} fontSize={11} fill="#8b3ccd">{p.name}</text></g>)}
@@ -2868,10 +2922,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                     }}
                   />
                   {(['c1', 'c2'] as const).map((control) => {
+                    const anchorId = control === 'c1' ? edge.from : edge.to
+                    const selectedVertices = state.editingVertices?.length ? state.editingVertices : state.editingVertex ? [state.editingVertex] : null
+                    if (selectedVertices && !selectedVertices.includes(anchorId)) return null
                     const p = edge[control],
-                      v = vectorNode.network!.vertices.find(
-                        (v) => v.id === (control === 'c1' ? edge.from : edge.to),
-                      )!
+                      v = vectorNode.network!.vertices.find((v) => v.id === anchorId)!
                     return (
                       p && (
                         <g key={control}>
@@ -3008,33 +3063,41 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             <g
               transform={pen.id ? matrixString(worldMatrix(state.doc, pen.id)) : undefined}
               pointerEvents="none"
+              data-testid="pen-overlay"
             >
-              <path d={networkD(pen.network)} fill="none" stroke="#0d99ff" strokeWidth={2 / zoom} />
+              <path d={networkD(pen.network)} fill="none" stroke={PEN_BLUE} strokeWidth={1.5 / zoom} />
               {pen.network.vertices.map((v) => (
-                <circle
+                <rect
                   key={v.id}
-                  cx={v.x}
-                  cy={v.y}
-                  r={4 / zoom}
-                  fill="white"
-                  stroke="#0d99ff"
+                  data-testid="pen-anchor"
+                  data-pen-active={v.id === pen.last ? 'true' : undefined}
+                  x={v.x - 3.5 / zoom}
+                  y={v.y - 3.5 / zoom}
+                  width={7 / zoom}
+                  height={7 / zoom}
+                  fill={v.id === pen.last ? PEN_BLUE : 'white'}
+                  stroke={PEN_BLUE}
                   strokeWidth={1 / zoom}
                 />
               ))}
-              {pen.last &&
-                cursor &&
-                (() => {
-                  const from = pen.network.vertices.find((v) => v.id === pen.last)!,
-                    to = pen.id ? apply(inverse(worldMatrix(state.doc, pen.id)), cursor) : cursor
-                  return (
-                    <path
-                      d={`M${from.x} ${from.y} L${to.x} ${to.y}`}
-                      stroke="#0d99ff"
-                      strokeWidth={1 / zoom}
-                      strokeDasharray={`${4 / zoom} ${4 / zoom}`}
-                    />
-                  )
-                })()}
+              {affordance === 'close' && penLocalCursor && (
+                <circle cx={penLocalCursor.x} cy={penLocalCursor.y} r={7 / zoom} fill="none" stroke={PEN_BLUE} strokeWidth={1 / zoom} />
+              )}
+              {pen.outgoing && pen.last && (() => {
+                const from = pen.network.vertices.find(vertex => vertex.id === pen.last)
+                if (!from) return null
+                return (
+                  <g data-testid="pen-handle">
+                    <line x1={from.x} y1={from.y} x2={pen.outgoing.x} y2={pen.outgoing.y} stroke={PEN_BLUE} strokeWidth={1 / zoom} />
+                    <circle cx={pen.outgoing.x} cy={pen.outgoing.y} r={3.5 / zoom} fill="white" stroke={PEN_BLUE} strokeWidth={1 / zoom} />
+                  </g>
+                )
+              })()}
+              {pen.last && penLocalCursor && (() => {
+                const from = pen.network.vertices.find((v) => v.id === pen.last)!
+                const aim = penKeys.shift ? apply(inverse(penMatrix), constrainToAngles(apply(penMatrix, from), cursor!)) : penLocalCursor
+                return <path d={penCurvePath(from, pen.outgoing, aim)} fill="none" stroke={PEN_BLUE} strokeWidth={1 / zoom} />
+              })()}
             </g>
           )}
         </g>
