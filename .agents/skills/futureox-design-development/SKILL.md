@@ -3,7 +3,7 @@ name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
 
-2026-11-02 [画布呈现续](../../../testing/verification-canvas-render-continuity-20261102/README.md)只改 CPU 参考帧在缩小后的保留、合成压力不再整帧红字、旋转框跟当前纹理，以及文件锁期间的标签排队。不改预算和实验开关。33/100ms 与完整 G2/G5 未通过。
+2026-11-02 [画布呈现续](../../../testing/verification-canvas-render-continuity-20261102/README.md)旋转之后的快速缩小保留更宽的画面，CPU 选区跟实时相机。合成压力不再整帧红字。不改预算和实验开关。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [画布操作对照：粘贴与展平](../../../testing/verification-figma-canvas-ops-paste-20261102/README.md)按 Mac gaps4：不同父级的粘贴和粘贴到原位都留在各自画板。实例粘贴保留旋转。设计模式 Shift+E 仍开原型。轮廓化描边是 ⌘⇧O。布尔和其它图层混选可以展平。不改光栅、瓦片或预算。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [画布操作对照续](../../../testing/verification-figma-canvas-ops-next-20261102/README.md)按 Mac 桌面实测：空选区方向键不平移。编组普通点击选编组，⌘ 和双击选子级。Enter 选直接子级，Shift+Enter 回到编组。画板仍是子级实形选子级、空白选画板。右键按实测顺序，不含 Make / 查找相似 / 小组件。不改光栅、瓦片或预算。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [画布操作对照](../../../testing/verification-figma-canvas-ops-parity-20261102/README.md)按 Mac 桌面实测：Option 拖动的副本跟指针，原对象不动，不是固定 +10。方向键 1px，Shift+方向键 10px。点在子级实形上选子级，点在画板空白处选画板；⌘ 深选编组里的子级不随选区来回跳。右键补展平。不改光栅、瓦片或预算。33/100ms 与完整 G2/G5 未通过。
