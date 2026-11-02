@@ -1,4 +1,6 @@
 import { expect, test } from 'vitest'
+import { validatePrototype } from './automation/interactions'
+import { Editor } from './engine'
 import { blank, effect, node } from './model'
 import { initialPrototype, prototypeEvent } from './prototype'
 import { lightenPrototypeMotion, PROTOTYPE_MOTION_CAPS } from './prototype-motion'
@@ -30,6 +32,59 @@ test('in-between frames cap glass and blur and leave opacity and transform alone
   expect(nodeAfter.effects[2]).toEqual(glass.effects[2])
   expect(lightenPrototypeMotion(next)).toBe(next)
   expect(doc.nodes[glass.id].effects[0].radius).toBe(40)
+})
+
+test('setting dissolve inside an editor draft sticks instead of rolling back', () => {
+  const doc = blank('proto')
+  const from = node('frame', 0, 0, 100, 80)
+  const to = node('frame', 240, 0, 140, 90)
+  from.name = 'From'
+  to.name = 'To'
+  doc.schemaVersion = 12
+  doc.nodes = { [from.id]: from, [to.id]: to }
+  doc.pages[0].children = [from.id, to.id]
+  doc.prototype = {
+    interactions: {
+      [from.id]: [{ trigger: 'click', actions: [{ kind: 'navigate', target: to.id, durationMs: 300, easingCurve: 'ease-out' }] }],
+    },
+  }
+  const editor = new Editor(doc)
+  const result = editor.change('修改交互', (draft) => {
+    draft.prototype!.interactions[from.id][0].actions[0].transitionStyle = 'dissolve'
+    validatePrototype(draft, draft.prototype)
+  })
+  if (result?.status !== 'committed') throw new Error(JSON.stringify({ result, schema: editor.state.doc.schemaVersion, message: editor.state.message }))
+  expect(editor.state.doc.prototype?.interactions[from.id][0].actions[0].transitionStyle).toBe('dissolve')
+  expect(editor.state.doc.schemaVersion).toBeGreaterThanOrEqual(20)
+  const played = prototypeEvent(editor.state.doc, initialPrototype(editor.state.doc), from.id, 'click')
+  expect(played.current).toBe(to.id)
+  expect(played.transitionStyle).toBe('dissolve')
+  expect(played.transition).toBeUndefined()
+  editor.dispose()
+})
+
+test('a click on a frame hotspot navigates even when smart animate is the stored transition', () => {
+  const doc = blank('play')
+  const from = node('frame', 0, 0, 160, 100)
+  const spot = node('rectangle', 20, 20, 40, 30)
+  const to = node('frame', 400, 0, 180, 120)
+  from.name = 'Source'
+  to.name = 'Destination'
+  spot.name = 'Hotspot'
+  spot.fills = [{ ...spot.fills[0], color: '#888888' }]
+  from.children = [spot.id]
+  doc.nodes = { [from.id]: from, [spot.id]: spot, [to.id]: to }
+  doc.pages[0].children = [from.id, to.id]
+  doc.prototype = {
+    interactions: {
+      [spot.id]: [{ trigger: 'click', actions: [{ kind: 'navigate', target: to.id, durationMs: 300, easingCurve: 'ease-out' }] }],
+    },
+  }
+  const start = initialPrototype(doc)
+  expect(start.current).toBe(from.id)
+  const played = prototypeEvent(doc, start, spot.id, 'click')
+  expect(played.current).toBe(to.id)
+  expect(played.transitionMs).toBe(300)
 })
 
 test('a dissolve navigation crossfades without a smart-animate plan', () => {

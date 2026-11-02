@@ -42,7 +42,9 @@ pair.name = 'Pair'
 const released = figma.ungroup(pair)
 if (released.length !== 2) throw new Error('ungroup did not return both children')
 
-const png = figma.base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a14cAAAAASUVORK5CYII=')
+// 1×1 gray PNG. The previous fixture's IDAT CRC did not match its bytes
+// (expected 0xef9ad787, file had 0xefa2a75b), so the renderer rejected it.
+const png = figma.base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mPo6OgAAAM0AZn/URMdAAAAAElFTkSuQmCC')
 const image = figma.createImage(png)
 const swatch = figma.createRectangle()
 swatch.name = 'Swatch'
