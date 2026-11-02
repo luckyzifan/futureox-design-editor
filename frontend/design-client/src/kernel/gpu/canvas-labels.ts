@@ -4,6 +4,8 @@ import type { Point } from '../../model'
 export type CanvasLabel = {
   anchor: Point; offset: Point; text: string; size: number; color: string
   basis?: [number, number, number, number]; centered?: boolean; halo?: boolean; owners?: string[]
+  /** Warm paper chip behind selection name and size. Measurement labels stay bare. */
+  frame?: 'pill'
   /** DOM/GPU identity only. The resident wire copy does not require this field. */
   kind?: 'frame-title' | 'selection-name' | 'selection-size' | 'measurement'
 }
@@ -13,7 +15,7 @@ function measureLabel(label:CanvasLabel,density:number,measure:OffscreenCanvasRe
   if(!Number.isFinite(density)||density<=0)throw Error('Invalid chrome text density')
   const font=`${label.size}px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif`
   measure.font=font
-  const metrics=measure.measureText(label.text),pad=label.halo?3:2
+  const metrics=measure.measureText(label.text),pad=label.frame==='pill'?8:label.halo?3:2
   const left=pad+metrics.actualBoundingBoxLeft,top=pad+metrics.actualBoundingBoxAscent
   const width=Math.max(1,Math.ceil((metrics.actualBoundingBoxLeft+metrics.actualBoundingBoxRight+pad*2)*density))
   const height=Math.max(1,Math.ceil((metrics.actualBoundingBoxAscent+metrics.actualBoundingBoxDescent+pad*2)*density))
@@ -22,7 +24,20 @@ function measureLabel(label:CanvasLabel,density:number,measure:OffscreenCanvasRe
 function rasterLabel(label:CanvasLabel,density:number,metrics:ReturnType<typeof measureLabel>) {
   const {font,width,height,left,top}=metrics
   const canvas=new OffscreenCanvas(width,height),context=canvas.getContext('2d')!
-  context.setTransform(density,0,0,density,0,0);context.font=font;context.fillStyle=label.color
+  context.setTransform(density,0,0,density,0,0);context.font=font
+  if(label.frame==='pill'){
+    const cssW=width/density,cssH=height/density,radius=Math.min(7,cssW/2,cssH/2),inset=.5
+    context.beginPath()
+    context.moveTo(inset+radius,inset)
+    context.arcTo(cssW-inset,inset,cssW-inset,cssH-inset,radius)
+    context.arcTo(cssW-inset,cssH-inset,inset,cssH-inset,radius)
+    context.arcTo(inset,cssH-inset,inset,inset,radius)
+    context.arcTo(inset,inset,cssW-inset,inset,radius)
+    context.closePath()
+    context.fillStyle='#fffcf9';context.fill()
+    context.strokeStyle='#e4ddd3';context.lineWidth=1;context.stroke()
+  }
+  context.fillStyle=label.color
   if(label.halo){context.strokeStyle='#fff';context.lineWidth=2;context.strokeText(label.text,left,top)}
   context.fillText(label.text,left,top)
   return{canvas,...metrics}
@@ -67,7 +82,7 @@ struct V { @builtin(position) p:vec4<f32>, @location(0) uv:vec2<f32> }
         color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } }] } })
   }
   private entry(label: CanvasLabel, density: number, protectedKeys: Set<string>) {
-    const key = JSON.stringify([label.text,label.size,label.color,!!label.halo,density])
+    const key = JSON.stringify([label.text,label.size,label.color,!!label.halo,label.frame||'',density])
     const existing = this.entries.get(key)
     if (existing) { this.entries.delete(key); this.entries.set(key,existing); protectedKeys.add(key); return existing }
     const metrics=measureLabel(label,density,this.measure),{width,height,left,top,advance}=metrics,bytes=width*height*4
