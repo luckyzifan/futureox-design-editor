@@ -3,7 +3,7 @@ import { Editor } from './engine'
 import { blank, node, stroke, uid, type DesignDocument } from './model'
 import { allParents, multiply, translate, worldMatrix } from './geometry'
 import { canvasMenuItems, clampContextMenu } from './canvas-menu-model'
-import { dispatchEditorCommand } from './editor-commands'
+import { dispatchEditorCommand, type EditorCommand } from './editor-commands'
 import { createClip } from './animation'
 import { VectorEngine } from './generated/design-kernel/design_kernel'
 import { prepareDocumentForEditing } from './kernel/picking'
@@ -106,10 +106,12 @@ test('Paste here preserves nested animation world frames with independent x/y of
   editor.dispose()
 })
 
-test('ordinary Duplicate overlaps its source; top-level frames move right at unchanged y', () => {
+test('ordinary Duplicate steps 10px down-right; top-level frames move right at unchanged y', () => {
   const { editor, a, parent } = rotatedFixture()
   editor.select([a.id]); const before = worldMatrix(editor.state.doc, a.id)
-  editor.duplicate(); expect(worldMatrix(editor.state.doc, editor.state.selection[0])).toEqual(before)
+  editor.duplicate(); const copied = worldMatrix(editor.state.doc, editor.state.selection[0])
+  expect(copied[4] - before[4]).toBeCloseTo(10, 8)
+  expect(copied[5] - before[5]).toBeCloseTo(10, 8)
   editor.undo(); editor.select([parent.id]); const box = editor.selectionBounds()!
   editor.duplicate(); const duplicated = editor.selectionBounds()!
   expect(duplicated.x).toBeCloseTo(box.x + box.width + 24, 10)
@@ -137,6 +139,28 @@ test('context commands flip, order and unlock inherited locks through reversible
   await dispatchEditorCommand(editor, 'hide-selection')
   expect(editor.state.doc.nodes[parent.id].visible).toBe(false)
   editor.undo(); expect(editor.state.doc.nodes[parent.id].visible).toBe(true)
+  editor.dispose()
+})
+
+test('the object menu follows Mac Figma order: clipboard, stacking, structure, then history', () => {
+  const { editor, a } = rotatedFixture()
+  editor.select([a.id])
+  const commands = canvasMenuItems(editor).map(item => item.command)
+  const at = (command: EditorCommand) => commands.indexOf(command)
+  expect(at('copy')).toBeGreaterThanOrEqual(0)
+  for (const [earlier, later] of [
+    ['copy', 'cut'], ['cut', 'paste-here'], ['paste-here', 'duplicate'], ['duplicate', 'delete'],
+    ['delete', 'copy-properties'], ['copy-as-svg', 'bring-to-front'], ['bring-to-front', 'bring-forward'],
+    ['bring-forward', 'send-backward'], ['send-backward', 'send-to-back'], ['send-to-back', 'group'],
+    ['group', 'frame-selection'], ['frame-selection', 'auto-layout'], ['auto-layout', 'create-component'],
+    ['create-component', 'lock-selection'], ['lock-selection', 'hide-selection'], ['hide-selection', 'flip-horizontal'],
+    ['flip-horizontal', 'flip-vertical'], ['rename', 'select-matching'], ['zoom-selection', 'undo'], ['undo', 'redo'],
+  ] as const) expect(at(earlier), `${earlier} before ${later}`).toBeLessThan(at(later))
+  editor.select([])
+  const empty = canvasMenuItems(editor).map(item => item.command)
+  expect(empty.indexOf('paste-here' as EditorCommand)).toBeLessThan(empty.indexOf('select-all'))
+  expect(empty.indexOf('select-all')).toBeLessThan(empty.indexOf('undo'))
+  expect(empty.includes('delete')).toBe(false)
   editor.dispose()
 })
 

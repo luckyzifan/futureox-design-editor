@@ -238,7 +238,7 @@ test.each(['marquee', 'zoom', 'crop'] as const)('%s overlay batches latest input
   await act(async () => pointer('pointerdown', start[0], start[1]))
   for (let i = 1; i <= 20; i++) await act(async () => pointer('pointermove', start[0] + i, start[1] + i))
   const overlay = () => kind === 'crop' ? mount.querySelector('[data-testid="crop-overlay"] rect') :
-    mount.querySelector('svg.stage rect[stroke="#0d99ff"][pointer-events="none"]')
+    mount.querySelector('svg.stage rect[stroke="#3459d4"][pointer-events="none"]')
   if (kind === 'crop' && !baseline) expect(overlay()).toBeNull()
   if (kind !== 'crop') expect(Number(overlay()!.getAttribute('width'))).toBe(baseline ? 20 : 0)
   await flushFrames()

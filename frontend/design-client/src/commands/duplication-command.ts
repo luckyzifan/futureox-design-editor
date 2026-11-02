@@ -88,7 +88,10 @@ export function prepareDuplication(doc: DesignDocument, selected: readonly strin
   for (const id of index.ids) {
     const delta = intent.kind === 'world-offset' ? translate(intent.x, intent.y) : repeat
       ? supportedRepeatDelta(worldMatrix(doc, id, index.parents), repeat.reference.get(id)!)
-      : frameBox ? translate(frameBox.width + 24, 0) : identity()
+      // Mac Figma steps a normal duplicate +10,+10. Top-level frames still
+      // sit to the right by their width plus the 24px gap. A later duplicate
+      // repeats the last world displacement, including this first step.
+      : frameBox ? translate(frameBox.width + 24, 0) : translate(10, 10)
     if (!delta || !finite(delta)) throw new SelectionCommandError('unsupported_duplicate_transform', 'Duplicate repeat supports finite translation and rotation only')
     transforms.set(id, delta)
   }

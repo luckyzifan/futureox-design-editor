@@ -8,7 +8,9 @@ use crate::scene::Document;
 
 pub const FORMAT_VERSION: u16 = 2;
 /// Current resource allowance, not an FD format/version limit.
-pub fn max_value_bytes() -> usize { crate::capacity::document_byte_limit() }
+pub fn max_value_bytes() -> usize {
+    crate::capacity::document_byte_limit()
+}
 pub const MAGIC: [u8; 4] = [b'F', b'X', b'D', b'K'];
 
 #[derive(Debug)]
@@ -79,8 +81,10 @@ impl Writer {
     }
 
     /// Zigzag varint keeps small negative deltas single-byte.
+    /// Unsigned bits avoid the debug overflow of `i64::MIN << 1`.
     pub fn varint(&mut self, value: i64) {
-        self.varuint(((value << 1) ^ (value >> 63)) as u64);
+        let bits = value as u64;
+        self.varuint((bits << 1) ^ (bits >> 63).wrapping_neg());
     }
 
     pub fn f64(&mut self, value: f64) {
@@ -167,17 +171,28 @@ impl<'a> Reader<'a> {
             pos: 14,
             strings: Vec::new(),
         };
-        let count = reader.varuint()? as usize;
+        let count = reader.varuint_len()?;
         if count > data.len() {
             return Err(Error::Truncated);
         }
-        if count.checked_mul(std::mem::size_of::<&str>()).is_none_or(|bytes| bytes > crate::capacity::expanded_value_limit()) {
-            return Err(Error::Malformed("FD string table exceeds resource allowance".into()));
+        if count
+            .checked_mul(std::mem::size_of::<&str>())
+            .is_none_or(|bytes| bytes > crate::capacity::expanded_value_limit())
+        {
+            return Err(Error::Malformed(
+                "FD string table exceeds resource allowance".into(),
+            ));
         }
-        reader.strings.try_reserve(count).map_err(|_| Error::Malformed("FD string table allocation failed".into()))?;
+        reader
+            .strings
+            .try_reserve(count)
+            .map_err(|_| Error::Malformed("FD string table allocation failed".into()))?;
         for _ in 0..count {
             let raw = reader.blob()?;
-            reader.strings.push(std::str::from_utf8(raw).map_err(|_| Error::Truncated)?);
+            reader.strings.push(
+                std::str::from_utf8(raw)
+                    .map_err(|_| Error::Malformed("string table entry is not UTF-8".into()))?,
+            );
         }
         let body_start = reader.pos;
         let body = &data[if version == 1 { body_start } else { 14 }..];
@@ -216,6 +231,11 @@ impl<'a> Reader<'a> {
         Ok(((raw >> 1) as i64) ^ -((raw & 1) as i64))
     }
 
+    fn varuint_len(&mut self) -> Result<usize, Error> {
+        let value = self.varuint()?;
+        usize::try_from(value).map_err(|_| Error::Malformed("length exceeds address space".into()))
+    }
+
     fn f64(&mut self) -> Result<f64, Error> {
         let bytes: [u8; 8] = self
             .data
@@ -228,7 +248,7 @@ impl<'a> Reader<'a> {
     }
 
     fn blob(&mut self) -> Result<&'a [u8], Error> {
-        let len = self.varuint()? as usize;
+        let len = self.varuint_len()?;
         let start = self.pos;
         self.pos = self.pos.checked_add(len).ok_or(Error::Truncated)?;
         self.data.get(start..self.pos).ok_or(Error::Truncated)
@@ -268,21 +288,35 @@ const TAG_STR: u8 = 6;
 const TAG_ARRAY: u8 = 7;
 const TAG_OBJECT: u8 = 8;
 
-fn write_value(writer: &mut Writer, value: &Value) {
+fn write_value(writer: &mut Writer, value: &Value) -> Result<(), Error> {
     match value {
         Value::Null => writer.u8(TAG_NULL),
         Value::Bool(false) => writer.u8(TAG_FALSE),
         Value::Bool(true) => writer.u8(TAG_TRUE),
+        // Keep serde_json's storage variant. `as_u64`/`as_i64` also accept
+        // integer-valued floats and signed zero, which would erase the sign
+        // bit and the float-versus-integer distinction on the way back out.
         Value::Number(n) => {
-            if let Some(u) = n.as_u64() {
+            if n.is_u64() {
                 writer.u8(TAG_UINT);
-                writer.varuint(u);
-            } else if let Some(i) = n.as_i64() {
+                writer.varuint(
+                    n.as_u64()
+                        .ok_or_else(|| Error::Malformed("unsigned number".into()))?,
+                );
+            } else if n.is_i64() {
                 writer.u8(TAG_INT);
-                writer.varint(i);
-            } else {
+                writer.varint(
+                    n.as_i64()
+                        .ok_or_else(|| Error::Malformed("signed number".into()))?,
+                );
+            } else if let Some(float) = n.as_f64() {
+                if !float.is_finite() {
+                    return Err(Error::Malformed("non-finite number".into()));
+                }
                 writer.u8(TAG_FLOAT);
-                writer.f64(n.as_f64().unwrap_or_default());
+                writer.f64(float);
+            } else {
+                return Err(Error::Malformed("unrepresentable number".into()));
             }
         }
         Value::String(s) => {
@@ -293,7 +327,7 @@ fn write_value(writer: &mut Writer, value: &Value) {
             writer.u8(TAG_ARRAY);
             writer.varuint(items.len() as u64);
             for item in items {
-                write_value(writer, item);
+                write_value(writer, item)?;
             }
         }
         Value::Object(map) => {
@@ -301,10 +335,11 @@ fn write_value(writer: &mut Writer, value: &Value) {
             writer.varuint(map.len() as u64);
             for (key, item) in map {
                 writer.str_ref(key);
-                write_value(writer, item);
+                write_value(writer, item)?;
             }
         }
     }
+    Ok(())
 }
 
 fn read_value(reader: &mut Reader<'_>, depth: usize, budget: &mut usize) -> Result<Value, Error> {
@@ -329,7 +364,7 @@ fn read_value(reader: &mut Reader<'_>, depth: usize, budget: &mut usize) -> Resu
         }
         TAG_STR => Value::String(read_string(reader, budget)?),
         TAG_ARRAY => {
-            let len = reader.varuint()? as usize;
+            let len = reader.varuint_len()?;
             if len > reader.data.len().saturating_sub(reader.pos) {
                 return Err(Error::Truncated);
             }
@@ -340,7 +375,7 @@ fn read_value(reader: &mut Reader<'_>, depth: usize, budget: &mut usize) -> Resu
             Value::Array(items)
         }
         TAG_OBJECT => {
-            let len = reader.varuint()? as usize;
+            let len = reader.varuint_len()?;
             if len > reader.data.len().saturating_sub(reader.pos) {
                 return Err(Error::Truncated);
             }
@@ -367,20 +402,25 @@ fn read_string(reader: &mut Reader<'_>, budget: &mut usize) -> Result<String, Er
         .checked_sub(text.len())
         .ok_or_else(|| Error::Malformed("expanded string limit".into()))?;
     let mut value = String::new();
-    value.try_reserve(text.len()).map_err(|_| Error::Malformed("FD string allocation failed".into()))?;
+    value
+        .try_reserve(text.len())
+        .map_err(|_| Error::Malformed("FD string allocation failed".into()))?;
     value.push_str(text);
     Ok(value)
 }
 
-/// Preserve every authored field, including explicit nulls and extension data.
-pub fn encode_value(value: &Value) -> Vec<u8> {
+/// Preserve every authored field, including explicit nulls, extension data,
+/// and serde_json number variants (signed zero, float versus integer).
+pub fn encode_value(value: &Value) -> Result<Vec<u8>, Error> {
     let mut writer = Writer::new();
-    write_value(&mut writer, value);
-    writer.finish()
+    write_value(&mut writer, value)?;
+    Ok(writer.finish())
 }
 pub fn decode_value(data: &[u8]) -> Result<Value, Error> {
     if data.len() > max_value_bytes() {
-        return Err(Error::Malformed("DOCUMENT_RESOURCE_LIMIT: FD exceeds this session's resource allowance".into()));
+        return Err(Error::Malformed(
+            "DOCUMENT_RESOURCE_LIMIT: FD exceeds this session's resource allowance".into(),
+        ));
     }
     let mut reader = Reader::new(data)?;
     let value = read_value(&mut reader, 0, &mut crate::capacity::expanded_value_limit())?;
@@ -389,12 +429,43 @@ pub fn decode_value(data: &[u8]) -> Result<Value, Error> {
     }
     Ok(value)
 }
-/// Encode a typed document. Portable files use encode_value to retain extensions.
+/// Encode a typed document. Portable files use `encode_authored_json` so ignored
+/// fields and explicit nulls stay in the file.
 pub fn encode(document: &Document) -> Vec<u8> {
     encode_value(&serde_json::to_value(document).expect("document serializes"))
+        .expect("document numbers encode")
 }
 pub fn decode(data: &[u8]) -> Result<Document, Error> {
     serde_json::from_value(decode_value(data)?).map_err(|e| Error::Json(e.to_string()))
+}
+
+/// Validate the typed document, then encode the authored JSON value.
+/// Unknown fields the kernel ignores, explicit nulls, and `fdCompatibility`
+/// payloads remain. This does not install extension handlers.
+pub fn encode_authored_json(json: &str) -> Result<Vec<u8>, String> {
+    crate::capacity::check_document_bytes(json.len())?;
+    let value: Value = serde_json::from_str(json).map_err(|e| e.to_string())?;
+    {
+        let document: Document =
+            serde::Deserialize::deserialize(&value).map_err(|e| e.to_string())?;
+        document.validate()?;
+    }
+    let bytes = encode_value(&value).map_err(|e| e.to_string())?;
+    crate::capacity::check_document_bytes(bytes.len())?;
+    Ok(bytes)
+}
+
+/// Decode a portable file, validate it, and return the authored value tree.
+pub fn decode_authored_json(data: &[u8]) -> Result<String, String> {
+    let value = decode_value(data).map_err(|e| e.to_string())?;
+    {
+        let document: Document =
+            serde::Deserialize::deserialize(&value).map_err(|e| e.to_string())?;
+        document.validate()?;
+    }
+    let json = serde_json::to_string(&value).map_err(|e| e.to_string())?;
+    crate::capacity::check_document_bytes(json.len())?;
+    Ok(json)
 }
 
 #[cfg(test)]
@@ -475,46 +546,181 @@ mod tests {
     fn fd_extensions_survive_typed_binary_admission_and_history() {
         let mut doc = document();
         doc.nodes.remove("p1"); // Codec fixture has a synthetic page node; authored graph must not.
-        doc.fd_compatibility = Some(serde_json::from_value(serde_json::json!({
-            "contractVersion":1,"requiredCapabilities":[],"extensions":{
-                "org.example/metadata":{"array":[null,true,1.25,"文字"],"url":"file:///inert"}
-            }
-        })).unwrap());
+        doc.fd_compatibility = Some(
+            serde_json::from_value(serde_json::json!({
+                "contractVersion":1,"requiredCapabilities":[],"extensions":{
+                    "org.example/metadata":{"array":[null,true,1.25,"文字"],"url":"file:///inert"}
+                }
+            }))
+            .unwrap(),
+        );
         doc.validate().unwrap();
         let metadata = doc.fd_compatibility.clone();
         crate::layout::resolve(&mut doc, &crate::font::Fonts::new()).unwrap();
         assert_eq!(doc.fd_compatibility, metadata);
         crate::validate_document_json(&serde_json::to_string(&doc).unwrap()).unwrap();
-        assert_eq!(decode(&encode(&doc)).unwrap().fd_compatibility, doc.fd_compatibility);
+        assert_eq!(
+            decode(&encode(&doc)).unwrap().fd_compatibility,
+            doc.fd_compatibility
+        );
         let mut editor = crate::editing::DocumentEditor::new(doc.clone()).unwrap();
-        let mut changed = doc.clone(); changed.name = "Renamed".into();
-        editor.apply(0, crate::editing::DocumentPatch::between(&doc, &changed).unwrap()).unwrap();
+        let mut changed = doc.clone();
+        changed.name = "Renamed".into();
+        editor
+            .apply(
+                0,
+                crate::editing::DocumentPatch::between(&doc, &changed).unwrap(),
+            )
+            .unwrap();
         assert_eq!(editor.document().fd_compatibility, doc.fd_compatibility);
-        editor.undo().unwrap(); editor.redo().unwrap();
+        editor.undo().unwrap();
+        editor.redo().unwrap();
         assert_eq!(editor.document().fd_compatibility, doc.fd_compatibility);
         // Envelope changes participate in typed history too; unknown required semantics cannot commit.
         let mut invalid = editor.document().clone();
-        invalid.fd_compatibility.as_mut().unwrap().required_capabilities.push("org.example/render".into());
+        invalid
+            .fd_compatibility
+            .as_mut()
+            .unwrap()
+            .required_capabilities
+            .push("org.example/render".into());
         let patch = crate::editing::DocumentPatch::between(editor.document(), &invalid).unwrap();
         assert!(editor.apply(editor.revision(), patch).is_err());
         assert_eq!(editor.document().fd_compatibility, doc.fd_compatibility);
         assert!(crate::validate_document_json(&serde_json::to_string(&invalid).unwrap()).is_err());
         let mut changed_metadata = editor.document().clone();
-        changed_metadata.fd_compatibility.as_mut().unwrap().extensions.insert("org.example/new".into(), serde_json::json!({"safe":true}));
-        editor.apply(editor.revision(), crate::editing::DocumentPatch::between(editor.document(), &changed_metadata).unwrap()).unwrap();
-        assert_eq!(editor.document().fd_compatibility, changed_metadata.fd_compatibility);
-        editor.undo().unwrap(); assert_eq!(editor.document().fd_compatibility, doc.fd_compatibility);
-        editor.redo().unwrap(); assert_eq!(editor.document().fd_compatibility, changed_metadata.fd_compatibility);
+        changed_metadata
+            .fd_compatibility
+            .as_mut()
+            .unwrap()
+            .extensions
+            .insert("org.example/new".into(), serde_json::json!({"safe":true}));
+        editor
+            .apply(
+                editor.revision(),
+                crate::editing::DocumentPatch::between(editor.document(), &changed_metadata)
+                    .unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            editor.document().fd_compatibility,
+            changed_metadata.fd_compatibility
+        );
+        editor.undo().unwrap();
+        assert_eq!(editor.document().fd_compatibility, doc.fd_compatibility);
+        editor.redo().unwrap();
+        assert_eq!(
+            editor.document().fd_compatibility,
+            changed_metadata.fd_compatibility
+        );
     }
 
+    fn bits(value: &serde_json::Value) -> u64 {
+        value.as_f64().unwrap().to_bits()
+    }
     #[test]
     fn portable_value_preserves_extensions_nulls_and_precision() {
-        let value = serde_json::json!({"schemaVersion":9,"extensions":{"unicode":"玻璃🌈", "null":null,"negative":-0.0,"precise":0.12345678901234567,"large":u64::MAX}});
-        assert_eq!(decode_value(&encode_value(&value)).unwrap(), value);
+        let mut value = serde_json::json!({"schemaVersion":9,"extensions":{"unicode":"玻璃🌈", "null":null,"precise":0.12345678901234567,"large":u64::MAX,"min":i64::MIN,"intOne":1}});
+        value["negative"] = serde_json::Number::from_f64(-0.0).unwrap().into();
+        value["positiveZero"] = serde_json::Number::from_f64(0.0).unwrap().into();
+        value["floatOne"] = serde_json::Number::from_f64(1.0).unwrap().into();
+        let restored = decode_value(&encode_value(&value).unwrap()).unwrap();
+        assert_eq!(
+            serde_json::to_string(&restored).unwrap(),
+            serde_json::to_string(&value).unwrap()
+        );
+        assert_eq!(bits(&restored["negative"]), (-0.0f64).to_bits());
+        assert_eq!(bits(&restored["positiveZero"]), 0.0f64.to_bits());
+        assert!(restored["negative"].as_number().unwrap().is_f64());
+        assert!(restored["positiveZero"].as_number().unwrap().is_f64());
+        assert!(restored["floatOne"].as_number().unwrap().is_f64());
+        let extensions = &restored["extensions"];
+        assert!(extensions["intOne"].as_number().unwrap().is_u64());
+        assert_eq!(extensions["large"].as_u64(), Some(u64::MAX));
+        assert_eq!(extensions["min"].as_i64(), Some(i64::MIN));
+        assert!(extensions["null"].is_null());
+    }
+    #[test]
+    fn authored_json_keeps_ignored_fields_nulls_and_extension_numbers() {
+        let mut doc = document();
+        doc.nodes.remove("p1");
+        doc.fd_compatibility = Some(serde_json::from_value(serde_json::json!({
+            "contractVersion":1,"requiredCapabilities":[],"extensions":{"org.example/metadata":{"label":"inert"}}
+        })).unwrap());
+        let mut value = serde_json::to_value(&doc).unwrap();
+        value["portableUnknown"] = serde_json::json!({"keep":true});
+        value["nodes"]["n1"]["futureField"] = serde_json::json!("ignored");
+        value["nodes"]["n1"]["layout"] = serde_json::Value::Null;
+        value["fdCompatibility"]["extensions"]["org.example/metadata"]["signed"] =
+            serde_json::Number::from_f64(-0.0).unwrap().into();
+        value["fdCompatibility"]["extensions"]["org.example/metadata"]["float"] =
+            serde_json::Number::from_f64(1.0).unwrap().into();
+        value["nodes"]["n1"]["opacity"] = serde_json::Number::from_f64(-0.0).unwrap().into();
+        let json = serde_json::to_string(&value).unwrap();
+        let encoded = encode_authored_json(&json).unwrap();
+        let decoded = decode_authored_json(&encoded).unwrap();
+        assert_eq!(decoded, serde_json::to_string(&value).unwrap());
+        let restored: serde_json::Value = serde_json::from_str(&decoded).unwrap();
+        assert_eq!(restored["portableUnknown"]["keep"], true);
+        assert_eq!(restored["nodes"]["n1"]["futureField"], "ignored");
+        assert!(restored["nodes"]["n1"]["layout"].is_null());
+        assert_eq!(
+            bits(&restored["nodes"]["n1"]["opacity"]),
+            (-0.0f64).to_bits()
+        );
+        assert_eq!(
+            bits(&restored["fdCompatibility"]["extensions"]["org.example/metadata"]["signed"]),
+            (-0.0f64).to_bits()
+        );
+        assert!(
+            restored["fdCompatibility"]["extensions"]["org.example/metadata"]["float"]
+                .as_number()
+                .unwrap()
+                .is_f64()
+        );
+        let typed = decode(&encoded).unwrap();
+        assert_eq!(typed.nodes["n1"].opacity.to_bits(), (-0.0f64).to_bits());
+        value["pages"][0]["guides"] =
+            serde_json::json!([{"id":"g","axis":"x","position":1,"extra":true}]);
+        let rejected = encode_authored_json(&serde_json::to_string(&value).unwrap()).unwrap_err();
+        assert!(rejected.contains("unknown field"), "{rejected}");
+        value["pages"][0].as_object_mut().unwrap().remove("guides");
+        value["fdCompatibility"]["requiredCapabilities"] =
+            serde_json::json!(["org.example/render"]);
+        let required = encode_authored_json(&serde_json::to_string(&value).unwrap()).unwrap_err();
+        assert!(required.contains("unsupported required"), "{required}");
+    }
+    #[test]
+    fn duplicate_object_keys_and_invalid_string_table_text_are_rejected() {
+        let mut writer = Writer::new();
+        writer.u8(TAG_OBJECT);
+        writer.varuint(2);
+        writer.str_ref("k");
+        writer.u8(TAG_NULL);
+        writer.str_ref("k");
+        writer.u8(TAG_TRUE);
+        assert!(
+            decode_value(&writer.finish())
+                .unwrap_err()
+                .to_string()
+                .contains("duplicate")
+        );
+        let mut data = encode_value(&serde_json::json!({"label":"unique-string"})).unwrap();
+        let at = data
+            .windows(13)
+            .position(|s| s == b"unique-string")
+            .unwrap();
+        data[at] = 0xff;
+        assert!(
+            decode_value(&data)
+                .unwrap_err()
+                .to_string()
+                .contains("UTF-8")
+        );
     }
     #[test]
     fn string_table_corruption_is_checked() {
-        let mut data = encode_value(&serde_json::json!({"label":"unique-string"}));
+        let mut data = encode_value(&serde_json::json!({"label":"unique-string"})).unwrap();
         let at = data
             .windows(13)
             .position(|s| s == b"unique-string")
@@ -525,7 +731,7 @@ mod tests {
     #[test]
     fn legacy_version_one_is_readable() {
         let value = serde_json::json!({"before":"legacy"});
-        let mut data = encode_value(&value);
+        let mut data = encode_value(&value).unwrap();
         let body = Reader::new(&data).unwrap().consumed();
         data[4..6].copy_from_slice(&1u16.to_le_bytes());
         use sha2::{Digest, Sha256};

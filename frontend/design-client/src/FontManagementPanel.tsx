@@ -2,7 +2,8 @@ import { usePropertyText, fontEditStatus, propertyStatusText, type PropertyStatu
 import { useMemo, useState, useSyncExternalStore } from 'react'
 import type { Editor } from './engine'
 import { SystemFontPicker } from './SystemFontPicker'
-import { applySelectionFont, documentFontChoices, replaceFontReferences, searchFontChoices } from './font-management'
+import { applySelectionFont, documentFontChoices, replaceFontReferences, searchFontChoices, unmatchedEditableSourceFonts } from './font-management'
+import { suggestDocumentFont, substituteMissingFonts, suggestionNote } from './font-substitution'
 
 /** Metadata-only panel: no eager font loading, glyph previews, or camera subscriptions. */
 export function FontManagementPanel({ editor, ids, includeNative = true, detachSharedStyle, onDetachSharedStyleChange }: { editor: Editor; ids?: string[]; includeNative?: boolean; detachSharedStyle?: boolean; onDetachSharedStyleChange?: (value: boolean) => void }) {
@@ -16,6 +17,14 @@ export function FontManagementPanel({ editor, ids, includeNative = true, detachS
   const setDetach = onDetachSharedStyleChange || setLocalDetach
   const [message, setMessage] = useState<PropertyStatus>('')
   const filtered = useMemo(() => searchFontChoices(choices, query), [choices, query])
+  const missing = useMemo(() => {
+    const faces = choices.map(font => ({ id: font.id, family: font.family, style: font.style, postscript: font.postscript }))
+    return unmatchedEditableSourceFonts(doc).map(name => ({ name, suggestion: suggestDocumentFont(name, faces) }))
+  }, [choices, doc])
+  const confirmMissing = (items: typeof missing) => {
+    const result = substituteMissingFonts(editor, items.map(item => ({ name: item.name, fontId: item.suggestion.fontId || 'default' })))
+    setMessage(result.status === 'blocked' || result.status === 'rejected' ? result.message : { zh: result.message, en: `Confirmed ${result.changedReferences} missing-font references in ${result.changedNodes} text layers.` })
+  }
   const textIds = useMemo(() => selected.filter(id => doc.nodes[id]?.kind === 'text'), [doc.nodes, selected])
   const available = (id: string) => choices.some(font => font.id === id)
   const targetId = available(target) ? target : 'default', sourceId = available(source) ? source : 'default'
@@ -29,6 +38,18 @@ export function FontManagementPanel({ editor, ids, includeNative = true, detachS
     <button type="button" disabled={!textIds.length} onClick={() => setMessage(fontEditStatus(applySelectionFont(editor, textIds, targetId, { detachSharedStyle: detach }), 'apply'))}>{locale === 'en' ? `Apply to selected text (${textIds.length})` : `应用所选文字（${textIds.length}）`}</button>
     <small>{tr("应用会统一所选文字的字体，保留字号、字重和颜色。")}</small>
     {includeNative && <SystemFontPicker editor={editor} ids={textIds} detachSharedStyle={detach} />}
+    {missing.length > 0 && <details open><summary>{tr('缺失字体')} ({missing.length})</summary>
+      <small>{tr('下列原字体没有对应的字体文件。确认后才替换，不会下载或安装字体。本机若已安装同名字体，用「匹配文档原字体」。')}</small>
+      {missing.map(item => {
+        const note = suggestionNote(item.suggestion.kind, item.suggestion.scripts)
+        const label = note === 'exact' ? tr('与文档中的字体一致') : note === 'nearest' ? tr('同一家族里最接近的字重') : note === 'han-variant' ? tr('内置 Noto Sans SC。繁体、日文或韩文可能显示简体字形') : tr('没有同名字体。内置 Noto Sans SC 能显示文字，但字宽和字形会不同')
+        return <div key={item.name} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+          <span>{item.name}<br /><small>{label}</small></span>
+          <button type="button" onClick={() => confirmMissing([item])}>{tr('替换这一项')}</button>
+        </div>
+      })}
+      <button type="button" onClick={() => confirmMissing(missing)}>{tr('用建议字体替换全部')}</button>
+    </details>}
     <details><summary>{tr("按原字体批量替换")}</summary>
       <label className="labeled-select">{tr("范围")}<select aria-label={tr("字体替换范围")} value={scope} onChange={event => setScope(event.target.value)}>
         <option value="selection">{tr("所选文字")}</option><option value="document">{tr("整个文档")}</option>

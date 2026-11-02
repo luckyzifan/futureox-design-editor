@@ -2,6 +2,7 @@ import { dispatchEditorCommand } from './editor-commands'
 import { LayerRowsCache } from './layer-tree'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { PageList } from './PageList'
+import { userPages } from './fig-document'
 import { AssetsPanel } from './AssetsPanel'
 import { memo, useMemo, useState, useSyncExternalStore, useRef, useEffect, useId } from 'react'
 import {
@@ -236,7 +237,7 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
       <div className="pages-actions">
         <button
           title={text.deletePageTitle}
-          disabled={s.doc.pages.length === 1}
+          disabled={userPages(s.doc).length === 1}
           onClick={() => {
             if (editor.interactionActive || editor.state.busy) return
             if (confirm(text.deletePageConfirm) &&
@@ -416,9 +417,6 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
                   if (!editor.state.selection.includes(id)) editor.select([id])
                   setContext({ x: event.clientX, y: event.clientY, id })
                 }}
-                onDoubleClick={() => {
-                  if (commitPendingEdits(editor)) setRenaming(id)
-                }}
               >
                 <button
                   className="disclosure"
@@ -452,12 +450,13 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
                   <DraftInput key={`${editor.sessionGeneration}:${id}`} editor={editor} aria-label={text.renameLayer} autoFocus value={n.name}
                     normalize={(value) => value.trim()} validate={(value) => !!value}
                     onCommit={(value) => { editor.update([id], { name: value }, '重命名图层'); setRenaming(null) }} />
-                </span> : <span className="layer-name">
+                </span> : <span className="layer-name" onDoubleClick={(event) => { event.stopPropagation(); if (commitPendingEdits(editor)) setRenaming(id) }}>
                   {n.mask ? '◐ ' : ''}
                   {n.name}
                 </span>}
                 <button
                   title={n.locked ? text.unlockLayer : text.lockLayer}
+                  onDoubleClick={(event) => event.stopPropagation()}
                   className={n.locked ? 'always' : ''}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -468,6 +467,7 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
                 </button>
                 <button
                   title={n.visible ? text.hideLayer : text.showLayer}
+                  onDoubleClick={(event) => event.stopPropagation()}
                   className={!n.visible ? 'always' : ''}
                   onClick={(e) => {
                     e.stopPropagation()

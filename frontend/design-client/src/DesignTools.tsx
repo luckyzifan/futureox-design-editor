@@ -20,6 +20,7 @@ import { download } from './persistence'
 import type { Interaction, PrototypeAction } from './prototype'
 import { hasSchemaExtras } from './prototype'
 import { PrototypePlayer } from './PrototypePlayer'
+import { jumpToNode } from './canvas-navigation'
 import { ImportOwner, importStep } from './import-ownership'
 
 export type DesignToolsTab = 'variables' | 'styles' | 'libraries' | 'prototype'
@@ -315,6 +316,9 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                               target:
                                 doc.pages.flatMap((p) => p.children).find((id) => id !== n.id) ||
                                 n.id,
+                              /* Empty transition style is smart animate. 300ms ease-out matches a restrained Figma default. */
+                              durationMs: 300,
+                              easingCurve: 'ease-out',
                             },
                           ],
                         })
@@ -454,6 +458,12 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                                       </option>
                                     ))}
                             </select>
+                          )}
+                          {['navigate', 'overlay', 'scroll-to'].includes(a.kind) && a.target && doc.nodes[a.target] && (
+                            <button type="button" aria-label="跳转到目标" onClick={() => {
+                              const host = document.querySelector('[data-testid=canvas]')
+                              jumpToNode(editor, a.target!, { width: host?.clientWidth || 800, height: host?.clientHeight || 600 })
+                            }}>跳转到目标</button>
                           )}
                           {a.kind === 'set-variable' && a.target && system.variables[a.target] && (
                             <input

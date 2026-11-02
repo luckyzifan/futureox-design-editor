@@ -72,7 +72,8 @@ pub(crate) fn save_guarded(
     authorize()?;
     let path = document_path(path)?;
     document_bytes(document)?; // Validate and bound the authored value before encoding.
-    let bytes = futureox_design_kernel::binfmt::encode_value(document);
+    let bytes = futureox_design_kernel::binfmt::encode_value(document)
+        .map_err(|error| BackendError::new("INVALID_DOCUMENT", error.to_string()))?;
     if bytes.len() > document_byte_limit() {
         return Err(BackendError::new(
             "DOCUMENT_TOO_LARGE",

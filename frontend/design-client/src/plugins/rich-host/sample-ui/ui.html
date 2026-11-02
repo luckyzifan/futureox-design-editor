@@ -1,0 +1,8 @@
+<p style="font: 13px sans-serif; margin: 0 0 8px">Label</p>
+<input id="label" value="Futureox" style="width: 100%; box-sizing: border-box" />
+<button id="create" type="button" style="margin-top: 8px">Create</button>
+<script>
+document.getElementById('create').onclick = function () {
+  parent.postMessage({ pluginMessage: { type: 'create-label', text: document.getElementById('label').value } }, '*')
+}
+</script>

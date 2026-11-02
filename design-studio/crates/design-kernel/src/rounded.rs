@@ -6,6 +6,33 @@ use crate::{
     path::{Command, Path},
 };
 
+/// Radius actually consumed by each corner, in TL, TR, BR, BL order.
+/// Matches the limit inside [`rectangle`] before smoothing expands the handle.
+pub fn fitted_radii(width: f64, height: f64, radii: [f64; 4]) -> [f64; 4] {
+    let radii = radii.map(|r| r.max(0.));
+    let mut fitted = [0.; 4];
+    for i in 0..4 {
+        let r = radii[i];
+        let horizontal = if i == 0 {
+            1
+        } else if i == 1 {
+            0
+        } else if i == 2 {
+            3
+        } else {
+            2
+        };
+        let vertical = 3 - i;
+        let limit = if r == 0. {
+            0.
+        } else {
+            (width * r / (r + radii[horizontal])).min(height * r / (r + radii[vertical]))
+        };
+        fitted[i] = r.min(limit);
+    }
+    fitted
+}
+
 pub fn rectangle(width: f64, height: f64, radii: [f64; 4], smoothing: f64) -> Path {
     let radii = radii.map(|r| r.max(0.));
     let mut corners = Vec::with_capacity(4);

@@ -120,9 +120,12 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
     </> : <>
       {visible.length > 0 && <><button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={false} data-layer-picker="true" onClick={() => setLayers(true)}><span>{text.selectLayer}</span><ChevronRight size={14} /></button><div role="separator" /></>}
       {onEditText && selected?.kind === 'text' && !lockedSelectionIds(editor).length && <><button type="button" role="menuitem" onClick={() => { close.current(); queueMicrotask(() => onEditText(selected.id)) }}>{text.editText}</button><div role="separator" /></>}
-      {!!state.selection.length && <><button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={false} data-page-picker="true" disabled={state.busy || editor.interactionActive || !!lockedSelectionIds(editor).length || state.doc.pages.length < 2} onClick={() => setPages(true)}><span>{text.moveToPage}</span><ChevronRight size={14} /></button><div role="separator" /></>}
       {items.filter((item,index)=>!['copy-as','selection'].includes(item.group)||!state.selection.length||items.findIndex(other=>other.group===item.group)===index).map((item) => {
-        if(state.selection.length&&['copy-as','selection'].includes(item.group))return <div key={item.group} role="none"><div role="separator"/><button type="button" role="menuitem" aria-haspopup="menu" data-menu-group={item.group} onClick={()=>setGroup(item.group)}><span>{groupName(item.group)}</span><ChevronRight size={14}/></button></div>
+        if(state.selection.length&&['copy-as','selection'].includes(item.group)){
+          const submenuBreak = previousGroup && previousGroup !== item.group
+          previousGroup = item.group
+          return <div key={item.group} role="none">{submenuBreak && <div role="separator" />}<button type="button" role="menuitem" aria-haspopup="menu" data-menu-group={item.group} onClick={()=>setGroup(item.group)}><span>{groupName(item.group)}</span><ChevronRight size={14}/></button></div>
+        }
         const separator = previousGroup && previousGroup !== item.group
         previousGroup = item.group
         return <div key={item.command} role="none">
@@ -132,6 +135,7 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
             onClick={() => action(item.command)}><span className="context-label">{item.label}</span>{item.shortcut && <kbd>{item.shortcut}</kbd>}</button>
         </div>
       })}
+      {!!state.selection.length && <><div role="separator" /><button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={false} data-page-picker="true" disabled={state.busy || editor.interactionActive || !!lockedSelectionIds(editor).length || state.doc.pages.length < 2} onClick={() => setPages(true)}><span>{text.moveToPage}</span><ChevronRight size={14} /></button></>}
     </>}
   </div>, document.body)
 }

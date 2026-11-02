@@ -292,7 +292,7 @@ test('multi-move final reparenting reuses its parent scan and preserves world ge
   expect(work.explicitScans).toBeLessThanOrEqual(ids.length + 6)
 })
 
-test('entered-frame small child owns pointerdown and final release drag despite overlapping backing layer', async () => {
+test('entered-frame pointerdown hits the front sibling and the drag moves only that sibling', async () => {
   const doc = blank(), frame = node('frame', 0, 0, 400, 300),
     child = node('rectangle', 40, 40, 40, 30), backing = node('rectangle', 20, 20, 300, 200)
   frame.children = [child.id, backing.id]; doc.pages[0].children = [frame.id]
@@ -301,11 +301,11 @@ test('entered-frame small child owns pointerdown and final release drag despite 
   editor.select([child.id]); editor.set({ snap: false, snapPixels: false, view: { x: 0, y: 0, zoom: 1 } })
   const c = await canvas(editor), before = editor.state.doc
   c.tree.props.onPointerDown(c.event(50, 50))
-  expect(editor.state.selection).toEqual([child.id])
+  expect(editor.state.selection).toEqual([backing.id])
   c.tree.props.onPointerMove(c.event(55, 55))
   c.tree.props.onPointerUp(c.event(70, 80))
-  expect(editor.state.doc.nodes[child.id].transform).toEqual([1, 0, 0, 1, 60, 70])
-  expect(editor.state.doc.nodes[backing.id]).toEqual(before.nodes[backing.id])
+  expect(editor.state.doc.nodes[child.id]).toEqual(before.nodes[child.id])
+  expect(editor.state.doc.nodes[backing.id].transform).toEqual([1, 0, 0, 1, 40, 50])
   expect(editor.state.doc.nodes[frame.id]).toEqual(before.nodes[frame.id])
   expect(editor.interactionActive).toBe(false)
   const after = editor.state.doc

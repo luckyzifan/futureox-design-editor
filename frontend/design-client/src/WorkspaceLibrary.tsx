@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
-import { File, History, RefreshCw, Search, Trash2 } from 'lucide-react'
+import { History, RefreshCw, Search, Trash2 } from 'lucide-react'
+import { FileMark } from './chrome-icons'
 import type { DesktopSession } from './desktop-session'
 import type { WorkspaceDocument } from './desktop'
 import { modalKeyDown } from './modal-keyboard'
@@ -47,7 +48,7 @@ export function WorkspaceLibrary({ session, onClose }: { session: DesktopSession
       <div className="remote-list">
         {visibleDocuments.map(d => <div className="local-file-row" key={d.id}>
           <button type="button" disabled={busy || d.deleted} onClick={() => void action(async () => { if (await session.openWorkspace(d.id)) onClose(); else throw new Error(session.status.error || '当前设计已保留') })}>
-            <span className="library-file-icon"><File size={20} aria-hidden="true" /></span><span className="library-file-name"><b>{d.name}</b><small>版本 {d.revision} · {new Date(d.updatedAt).toLocaleString()}</small></span>
+            <span className="library-file-icon"><FileMark name={d.name} size={22} /></span><span className="library-file-name"><b>{d.name}</b><small>版本 {d.revision} · {new Date(d.updatedAt).toLocaleString()}</small></span>
           </button>
           <button type="button" className="library-row-action" disabled={busy} onClick={() => void action(async () => {
             const r = await session.listRevisions(d.id)
