@@ -252,8 +252,8 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
           </button>
         </header>
         <p className="export-color-note">{tx(
-          'PNG 写入 sRGB 色彩块。JPEG、WebP 与 PDF 固定为 sRGB；需要广色域时请改用 PNG。本面板不编码 FFmpeg、MP4 或 WebM 视频。',
-          'PNG writes an sRGB chunk. JPEG, WebP and PDF stay in sRGB; use PNG when a wide-gamut color output is requested. This panel does not encode FFmpeg, MP4 or WebM video.',
+          'PNG 写入 sRGB 色彩块。JPEG 与 WebP 写入 sRGB ICC；PDF 使用 sRGB ICCBased，并把页面 DefaultRGB 指到它。需要广色域时请改用 PNG。本面板不编码 FFmpeg、MP4 或 WebM 视频。',
+          'PNG writes an sRGB chunk. JPEG and WebP embed an sRGB ICC profile. PDF uses an sRGB ICCBased space and points the page DefaultRGB at it. Use PNG when a wide-gamut color output is requested. This panel does not encode FFmpeg, MP4 or WebM video.',
         )}</p>
         <label>{tx('格式', 'Format')} <select aria-label={tx('导出图像格式', 'Export image format')} value={format} disabled={busy} onChange={e=>setFormat(e.target.value as typeof format)}>
           <option value="svg">{tx('SVG / SVGZ（矢量）', 'SVG / SVGZ (vector)')}</option><option value="png">PNG</option><option value="jpeg">JPEG</option><option value="webp">{tx('WebP（无损）', 'WebP (lossless)')}</option><option value="pdf">{tx('PDF（精确位图）', 'PDF (exact bitmap)')}</option><option value="pdf-vector" disabled={vectorIssues.length>0}>{tx('PDF（矢量）', 'PDF (vector)')}</option>
@@ -268,10 +268,10 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
           <label>{tx('压缩', 'Compression')} <select aria-label={tx('SVG 压缩', 'SVG compression')} value={compression} onChange={e => setCompression(e.target.value as typeof compression)}><option value="none">{tx('无（.svg）', 'None (.svg)')}</option><option value="gzip">{tx('无损 gzip（.svgz）', 'Lossless gzip (.svgz)')}</option></select></label>
           <p>{tx('倍率仅改变矢量视口尺寸，不是像素分辨率。精度舍入会改变几何形状；无损 gzip 不改变解压后的 SVG。FD 和 Sketch 原生文件不使用这些矢量选项。', 'Scale changes the vector viewport, not pixel resolution. Precision rounding changes geometry; lossless gzip does not change the decompressed SVG. FD and Sketch files do not use these vector options.')}</p>
         </fieldset>}
-        {format==='jpeg'&&<p>{tx('JPEG 为有损格式，使用质量 100，透明区域填充为白色。', 'JPEG is lossy, uses quality 100, and fills transparent areas with white. It is encoded in sRGB.')}</p>}
-        {format==='pdf'&&<p>{tx('PDF 保留当前导出倍率的像素与透明度，页面按设计尺寸保存；使用 futureox-desgin 文件继续编辑图层。', 'PDF keeps the pixels and transparency of the chosen scale and stores the page at the design size, in sRGB. Keep the futureox-desgin file to edit layers.')}</p>}
+        {format==='jpeg'&&<p>{tx('JPEG 为有损格式，使用质量 100，透明区域填充为白色，并写入 sRGB ICC 描述文件。', 'JPEG is lossy, uses quality 100, fills transparent areas with white, and embeds an sRGB ICC profile.')}</p>}
+        {format==='pdf'&&<p>{tx('PDF 保留当前导出倍率的像素与透明度，页面按设计尺寸保存，并用 sRGB ICCBased 标记颜色。使用 futureox-desgin 文件继续编辑图层。', 'PDF keeps the pixels and transparency of the chosen scale, stores the page at the design size, and tags colors with an sRGB ICCBased space. Keep the futureox-desgin file to edit layers.')}</p>}
         {format==='pdf-vector'&&<p>{tx('矢量 PDF 把路径、渐变与文字轮廓写为原生 PDF 对象，按设计尺寸保存（1 设计单位 = 1 pt）。', 'Vector PDF writes paths, gradients and text outlines as native PDF objects at the design size (1 design unit = 1 pt).')}</p>}
-        {format==='png'&&<p>{tx('PNG 使用 CPU 导出并写入 sRGB 色彩块。画布上的 HDR / 广色域数值仍留在文档里；未单独请求色彩输出时，像素按 sRGB 量化。', 'PNG is exported on the CPU and writes an sRGB chunk. HDR and wide-gamut values stay in the document; pixels are quantized to sRGB unless a separate color output is requested.')}</p>}
+        {format==='png'&&<p>{tx('PNG 使用 CPU 导出。8 位 sRGB 写入 sRGB 色彩块；显式色彩输出再写入 ICC 与 cICP。画布上的 HDR / 广色域数值仍留在文档里；未单独请求色彩输出时，像素按 sRGB 量化。', 'PNG is exported on the CPU. 8-bit sRGB writes an sRGB chunk; an explicit color output also writes ICC and cICP. HDR and wide-gamut values stay in the document; pixels are quantized to sRGB unless a separate color output is requested.')}</p>}
         {vectorIssues.length>0&&<p role="note">{tx(`当前导出内容包含${vectorIssues.join('、')}，矢量 PDF 暂不支持，该项已禁用；可导出 PDF（精确位图）。`, `This export includes ${vectorIssues.join(', ')}. Vector PDF cannot keep that yet, so the option is disabled. Exact bitmap PDF is available.`)}</p>}
         <fieldset disabled={busy}>
           <legend>{tx('导出目标', 'Export target')}</legend>

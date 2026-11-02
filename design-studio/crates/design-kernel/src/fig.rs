@@ -490,8 +490,10 @@ fn style_weight(fig_style: &str) -> Option<f32> {
 }
 
 /// `Number { value, units }` → a line-height multiplier.
-/// Units follow fig2sketch converter/text.py `line_height`: PIXELS is
-/// absolute, PERCENT/RAW are relative (100% / 1.0 mean "auto").
+/// PIXELS is absolute. PERCENT and RAW are multipliers of the font size
+/// (100% and RAW 1.0 are one em, not the font's intrinsic auto line gap).
+/// Figma's UI Auto value is omitted or stored as that intrinsic ratio;
+/// an omitted line height stays the editor default.
 fn line_height_multiplier(number: &Value, font_size: f64) -> Option<f64> {
     let value = number.get("value").and_then(Value::as_f64)?;
     match str_of(number, "units") {
@@ -1218,7 +1220,7 @@ impl FigImporter {
                 // (整段回退). Rendering v1 still draws the whole string —
                 // storage stays faithful for the per-run renderer.
                 if !node.text.is_empty() {
-                    node.text_runs = styled_text_runs(&td, &node.text, untranslated).into();
+                    node.text_runs = styled_text_runs(&td, &node.text, node.font_size, untranslated).into();
                 }
             }
             "CODE_BLOCK" => {
@@ -1575,7 +1577,7 @@ impl FigImporter {
         if characters.is_empty() {
             return;
         }
-        node.text_runs = styled_text_runs(&td, &characters, untranslated).into();
+        node.text_runs = styled_text_runs(&td, &characters, node.font_size, untranslated).into();
         // node-level decoration applies to the whole string when no
         // per-character styles carve it up
         match str_of(change, "textDecoration") {
@@ -1594,6 +1596,8 @@ impl FigImporter {
                         font_id: None,
                         font_size: None,
                         weight: None,
+                        letter_spacing: None,
+                        line_height: None,
                     });
                 } else {
                     untranslated.push(format!(
@@ -1616,6 +1620,7 @@ impl FigImporter {
 fn styled_text_runs(
     td: &Value,
     characters: &str,
+    font_size: f64,
     untranslated: &mut Vec<String>,
 ) -> Vec<crate::font::TextRun> {
     let empty = Vec::new();
@@ -1665,7 +1670,7 @@ fn styled_text_runs(
         utf16 = end;
         let entry = entry.expect("checked");
         let mut run = crate::font::TextRun {
-                        paragraph: None,
+            paragraph: None,
             text_case: text_case_of(str_of(entry, "textCase")),
             color: None,
             underline: false,
@@ -1676,6 +1681,8 @@ fn styled_text_runs(
             font_id: None,
             font_size: None,
             weight: None,
+            letter_spacing: None,
+            line_height: None,
         };
         if let Some(size) = entry.get("fontSize").and_then(Value::as_f64) {
             run.font_size = Some(size.max(1.));
@@ -1702,11 +1709,26 @@ fn styled_text_runs(
             Some("STRIKETHROUGH") => run.strikethrough = true,
             _ => {}
         }
-        // keys with no kernel home must not vanish
-        for key in ["lineHeight", "letterSpacing", "textAlignHorizontal"] {
-            if let Some(v) = entry.get(key).filter(|v| !v.is_null()) {
-                dropped.push(format!("{key}={v}"));
+        let metric_size = run.font_size.unwrap_or(font_size).max(1.);
+        if let Some(v) = entry.get("lineHeight").filter(|v| !v.is_null()) {
+            match line_height_multiplier(v, metric_size) {
+                Some(multiplier) if (0.1..=10.).contains(&multiplier) => {
+                    run.line_height = Some(multiplier)
+                }
+                _ => dropped.push(format!("lineHeight={v}")),
             }
+        }
+        if let Some(v) = entry.get("letterSpacing").filter(|v| !v.is_null()) {
+            match letter_spacing_px(v, metric_size) {
+                Some(pixels) if pixels.is_finite() && pixels.abs() <= 1000. => {
+                    run.letter_spacing = Some(pixels)
+                }
+                _ => dropped.push(format!("letterSpacing={v}")),
+            }
+        }
+        // keys with no kernel home must not vanish
+        if let Some(v) = entry.get("textAlignHorizontal").filter(|v| !v.is_null()) {
+            dropped.push(format!("textAlignHorizontal={v}"));
         }
         if let Some(case) = str_of(entry, "textCase").filter(|c| !TEXT_CASES.contains(c)) {
             dropped.push(format!("textCase={case}"));
@@ -2298,6 +2320,13 @@ pub fn document_from_canvas(
             || n.text_runs.iter().any(|r| r.text_case.is_some())
     }) {
         version = version.max(15);
+    }
+    if doc.nodes.values().any(|n| {
+        n.text_runs
+            .iter()
+            .any(|r| r.letter_spacing.is_some() || r.line_height.is_some())
+    }) {
+        version = version.max(21);
     }
     if doc.nodes.values().any(|n| {
         n.fills
@@ -3776,6 +3805,37 @@ mod tests {
                 !source_note(&doc, n, "figUntranslated")
                     .is_some_and(|note| note.contains("textCase="))
             );
+        }
+
+        #[test]
+        fn per_segment_line_height_and_letter_spacing_are_kept() {
+            let mut changes = canvas_only();
+            let mut text = base_change("TEXT", 1, 2);
+            text["fontSize"] = json!(20);
+            text["textData"] = json!({
+                "characters": "ab",
+                "characterStyleIDs": [1, 0],
+                "styleOverrideTable": [{
+                    "styleID": 1,
+                    "fontSize": 10,
+                    "lineHeight": {"value": 20, "units": "PIXELS"},
+                    "letterSpacing": {"value": 10, "units": "PERCENT"}
+                }],
+            });
+            changes.push(text);
+            let doc = doc_with(changes).unwrap();
+            let n = node_of(&doc, 1, 2);
+            let run = &n.text_runs[0];
+            assert!((run.line_height.unwrap() - 2.).abs() < 1e-9);
+            assert!((run.letter_spacing.unwrap() - 1.).abs() < 1e-9);
+            assert!(doc.schema_version >= 21);
+            assert!(
+                !source_note(&doc, n, "figUntranslated")
+                    .is_some_and(|note| note.contains("lineHeight") || note.contains("letterSpacing"))
+            );
+            let mut stale = doc.clone();
+            stale.schema_version = 20;
+            assert!(stale.validate().unwrap_err().contains("schema 21"));
         }
 
         // ---------------- prototype ----------------

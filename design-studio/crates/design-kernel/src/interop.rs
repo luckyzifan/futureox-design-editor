@@ -1902,6 +1902,8 @@ impl<'a> Importer<'a> {
                             font_size,
                             weight: a.pointer("/MSAttributedStringFontAttribute/attributes/variation/2003265652")
                                 .and_then(Value::as_f64).map(|weight| weight as f32),
+                            letter_spacing: None,
+                            line_height: None,
                         });
                         // first run fills the defaults
                         if node.text_runs.len() == 1 {
@@ -7747,6 +7749,8 @@ mod tests {
                 font_id: Some("Inter-SemiBold".into()),
                 font_size: Some(24.),
                 weight: Some(600.),
+                letter_spacing: None,
+                line_height: None,
             },
             crate::font::TextRun {
                 paragraph: None,
@@ -7760,6 +7764,8 @@ mod tests {
                 font_id: None,
                 font_size: Some(10.),
                 weight: None,
+                letter_spacing: None,
+                line_height: None,
             },
         ].into();
         let bytes = export_sketch(&doc).unwrap();
