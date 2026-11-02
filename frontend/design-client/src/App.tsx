@@ -28,7 +28,6 @@ import { useShortcutProfile } from './shortcut-preference'
 import { getPrototypeTab, setPrototypeTab, subscribePrototypeTab } from './prototype-chrome'
 import { shortcutPlatform, toolShortcutLabel, shortcutLabel, formatShortcutCombo } from './shortcut-profiles'
 import { shortcutTargetOwnsKeyboard } from './editor-shortcuts'
-import { AutomationPanel } from './AutomationPanelLauncher'
 import { DesignAgentLauncher } from './design-ai/DesignAgentLauncher'
 import { attachDesktopAutomation } from './automation/bridge'
 import { createWorkspaceAutomationRenderer } from './automation/workspace-bridge'
@@ -1429,7 +1428,6 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           </section>
         </div>
       )}
-      <AutomationPanel editor={editor} desktop={desktop} onHistory={()=>setShowHistory(true)} />
       <footer>
         <span>
           {s.busy ? <span className="spinner" /> : <span className="footer-dot" />}
