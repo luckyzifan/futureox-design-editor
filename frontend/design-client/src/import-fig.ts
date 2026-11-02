@@ -16,10 +16,12 @@ import {
   defaultTextStyle,
   defaultLayout,
   defaultSizing,
+  hasStrokeMarkers,
   type DesignNode,
   type Matrix,
   type Paint,
   type Network,
+  type Stroke,
 } from './model'
 import type { ImportedDesign } from './import-svg'
 import { emptySystem } from './design-system'
@@ -335,6 +337,46 @@ function importLayout(n: DesignNode, r: FigLayoutRecord, parent?: FigLayoutRecor
     }
   }
 }
+function figStrokeAlign(align: unknown): Stroke['align'] {
+  switch (align ?? 'CENTER') {
+    case 'INSIDE': return 'inside'
+    case 'OUTSIDE': return 'outside'
+    case 'CENTER': return 'center'
+    default: throw new Error(`FIG 描边对齐 ${String(align)} 暂不支持；原文件未修改`)
+  }
+}
+function figStrokeJoin(join: unknown): Stroke['join'] {
+  switch (join ?? 'MITER') {
+    case 'ROUND': return 'round'
+    case 'BEVEL': return 'bevel'
+    case 'MITER': return 'miter'
+    default: throw new Error(`FIG 描边连接 ${String(join)} 暂不支持；原文件未修改`)
+  }
+}
+/** Kiwi StrokeCap. NONE is the native butt cap. Decorative caps become end markers. */
+function figStrokeCap(cap: unknown, warnings: { add(message: string): unknown }): { cap: Stroke['cap']; endMarker?: Stroke['endMarker'] } {
+  switch (cap ?? 'NONE') {
+    case 'NONE':
+    case 'BUTT':
+      return { cap: 'butt' }
+    case 'ROUND':
+      return { cap: 'round' }
+    case 'SQUARE':
+      return { cap: 'square' }
+    case 'ARROW_LINES':
+    case 'ARROW_EQUILATERAL':
+      return { cap: 'butt', endMarker: 'arrow' }
+    case 'TRIANGLE_FILLED':
+      return { cap: 'butt', endMarker: 'triangle' }
+    case 'DIAMOND_FILLED':
+      return { cap: 'butt', endMarker: 'diamond' }
+    case 'CIRCLE_FILLED':
+      return { cap: 'butt', endMarker: 'circle' }
+    default:
+      warnings.add(`FIG 描边端点 ${String(cap)} 尚不能无损表达，已按平头保留`)
+      return { cap: 'butt' }
+  }
+}
 export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesign & { backend: 'typescript-fig' } {
   const { data, files } = decodeFig(bytes),
     doc = blank(name),
@@ -520,14 +562,16 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     if (!Array.isArray(dash) || dash.some((value) => !Number.isFinite(value) || value < 0) ||
       (dash.length > 0 && dash.every((value) => value === 0)))
       throw new Error('FIG 虚线参数暂不能无损表达；原文件未修改')
+    const mappedCap = figStrokeCap(r.strokeCap, warnings)
     n.strokes = (r.strokePaints || []).map((p: any) => ({
       ...stroke(),
       paint: toPaint(p),
       width: strokeWidth,
       dash: dash.join(' '),
-      align: String(r.strokeAlign || 'CENTER').toLowerCase(),
-      cap: String(r.strokeCap || 'BUTT').toLowerCase(),
-      join: String(r.strokeJoin || 'MITER').toLowerCase(),
+      align: figStrokeAlign(r.strokeAlign),
+      cap: mappedCap.cap,
+      join: figStrokeJoin(r.strokeJoin),
+      ...(mappedCap.endMarker ? { endMarker: mappedCap.endMarker } : {}),
     }))
     n.radii = [
       r.rectangleTopLeftCornerRadius ?? r.cornerRadius ?? 0,
@@ -598,6 +642,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
               },
             }
           : {}),
+        ...(x.showShadowBehindNode === true ? { showShadowBehindNode: true } : {}),
       }
     })
     if (r.vectorData?.vectorNetworkBlob !== undefined) {
@@ -715,5 +760,6 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
   if(Object.values(doc.nodes).some(n=>n.vectorGeometry))doc.schemaVersion=16
   else if(Object.values(doc.nodes).some(n=>n.network?.filledFaces!==undefined))doc.schemaVersion=Math.max(10,doc.schemaVersion) as typeof doc.schemaVersion
   if (Object.values(doc.nodes).some(n=>(n.textStyle?.textCase && n.textStyle.textCase !== 'original') || n.textRuns?.some(r=>r.textCase !== undefined))) doc.schemaVersion = Math.max(15,doc.schemaVersion) as typeof doc.schemaVersion
+  if (hasStrokeMarkers(doc)) doc.schemaVersion = Math.max(8, doc.schemaVersion) as typeof doc.schemaVersion
   return { document: doc, backend: 'typescript-fig', ...warnings.result() }
 }
