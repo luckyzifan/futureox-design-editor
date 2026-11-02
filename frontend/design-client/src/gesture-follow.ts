@@ -123,7 +123,7 @@ export function mountGestureFollow(host: HTMLElement, options: {
     Object.assign(svg.style, { position: 'absolute', inset: '0', overflow: 'visible' })
     polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon')
     polygon.setAttribute('fill', 'none')
-    polygon.setAttribute('stroke', '#0d99ff')
+    polygon.setAttribute('stroke', '#3459d4')
     polygon.setAttribute('stroke-width', '2')
     svg.append(polygon)
     root.append(svg)

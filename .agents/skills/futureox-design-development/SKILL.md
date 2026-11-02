@@ -3,6 +3,7 @@ name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
 
+2026-11-02 选区描边、悬停轮廓和已选画板标题都用 `#3459d4`。多选时每个对象一条细轮廓，手柄和 2px 边只画在并集上。这是画布交互，不改文档模型。
 2026-11-02 终端界面不再挂出「设计 API」浮块（首页、编辑器底栏、网页同一处入口都拿掉）。右键菜单改为 Figma 桌面那种深色底和蓝色悬停。桌面自动化注册仍在，不经过这块浮块。
 2026-11-02 [批量回归整合](../../../testing/verification-integrate-batch-20261102/README.md)把当前打开的功能 PR 合到 `main` 之上，供 GUI 回归，不合并进 `main`。强调色保持 `#3459d4`。画布旋转、粘贴步进 10 和检查器共用顺时针角。插件面板保留本机自动加载，执行使用 #13 的 QuickJS 运行时（SVG、图片、变量、已声明域名的 fetch）。#8 已包含在 #13 中。#17 的另一套宿主没有并入，避免换成更窄的内核 API。没有新增终端用户可见的设计 API 入口，也没有协作服务器。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 Electron 缩放、拖动和打开 `.fig` 的主线程序列化见[记录](../../../testing/verification-electron-perf-flame-20261102/README.md)。相机提交不再打开编辑图；稳定后再用已校验 JSON 拼接页面投影。父级不变的平移留在 translation-only，预览事务期间图层和检查器保持打开前的快照。导入准入复用已交给布局内核的 JSON，组件仍走既有补丁；`bun run dev` 不再默认打开渲染诊断。未改光栅、瓦片或预算。33/100ms 与完整 G2/G5 未通过。
