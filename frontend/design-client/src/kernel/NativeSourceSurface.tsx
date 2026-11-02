@@ -6,6 +6,7 @@ import {canvasSamplingProfile} from './render-policy'
 import {SourceViewportPlanner} from './source-viewport-plan'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
 import {tileIntersectsView, tilePlacementAtView} from './tile-preview'
+import {cpuTileBlitOrigin} from './cpu-tile-frame'
 import {SourceRenderWork} from './source-render-work'
 import {useDevicePixelRatio} from './presentation'
 import type {ResidentAcknowledgement} from './resident-presentation'
@@ -112,7 +113,8 @@ export function NativeSourceSurface(props:Props){
           const dx=place.left*dpr,dy=place.top*dpr,dw=place.width*dpr,dh=place.height*dpr
           if(tile.bitmap)cpuContext.drawImage(tile.bitmap,dx,dy,dw,dh)
           else if(tile.bytes?.length===tile.width*tile.height*4&&Math.abs(dw-tile.width)<0.5&&Math.abs(dh-tile.height)<0.5){
-            cpuContext.putImageData(new ImageData(new Uint8ClampedArray(tile.bytes),tile.width,tile.height),Math.round(dx),Math.round(dy))
+            const origin = cpuTileBlitOrigin(dx, dy)
+            cpuContext.putImageData(new ImageData(new Uint8ClampedArray(tile.bytes),tile.width,tile.height),origin.x,origin.y)
           }
         }
       }

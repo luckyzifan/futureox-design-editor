@@ -2,6 +2,7 @@ import { CpuStage, measureCpuStage } from './cpu-stage-diagnostics'
 import { recoverInteractionPreview } from './kernel/interaction-preview-recovery'
 import { selectionSizeLabel } from './selection-size-label'
 import { SELECTION_BLUE, SELECTION_MEMBER_STROKE_PX, SELECTION_UNION_STROKE_PX } from './selection-blue'
+import { rotationChromeHeldToTexture, rotationStartMemberCorners, rotationStartOutline } from './selection-chrome-pose'
 import { canvasOverlayCommands, canvasGpuOverlayOwnsUi, selectionChromeChipWidth } from './canvas-overlay-commands'
 import { measurementLabel, measurementTicks } from './canvas-measurements'
 import { canvasText } from './canvas-interface-messages'
@@ -933,6 +934,20 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const transformHandles = useMemo(() => selectionHandles(selectionCorners, zoom), [selectionCorners, zoom])
   const ownedDrag = drag.current?.session === editor.sessionGeneration && drag.current.page === state.page
     ? drag.current : null
+  const holdRotationChrome = rotationChromeHeldToTexture({
+    kind: ownedDrag?.kind,
+    liveDocument: state.doc,
+    presentedDocument: presented?.document,
+    gestureFollow: !!gestureFollow.current && !gestureFollow.current.holding,
+  })
+  const heldRotationMembers = holdRotationChrome && ownedDrag
+    ? rotationStartMemberCorners(selected.map(entry => {
+      const node = (ownedDrag.sourceDocument || state.doc).nodes[entry.id]
+      return { id: entry.id, width: node?.width || 0, height: node?.height || 0 }
+    }), ownedDrag.matrices)
+    : null
+  const drawnCorners = heldRotationMembers ? rotationStartOutline(heldRotationMembers) : selectionCorners
+  const drawnHandles = heldRotationMembers ? selectionHandles(drawnCorners, zoom) : transformHandles
   const capturedTransform = !!ownedDrag && ['move', 'resize', 'scale', 'rotate', 'pivot', 'parameter'].includes(ownedDrag.kind)
   // New controls must describe the displayed document. Keep the existing
   // control DOM through its owned preview transaction so capture survives.
@@ -2938,30 +2953,33 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           })}
           {!!selected.length && !['vector', 'width', 'pencil', 'brush', 'marker', 'washi-tape'].includes(state.tool) && (
             <g className="selection" data-selection-readonly={selectionFeedback.readOnly} data-selection-count={selected.length}>
-              {selected.length > 1 && selected.map(entry => {
+              {selected.length > 1 && selected.map((entry, index) => {
                 const node = state.doc.nodes[entry.id]
                 if (!node || !(node.width > 0) || !(node.height > 0)) return null
-                const points = boxPoints({ x: 0, y: 0, width: node.width, height: node.height })
-                  .map(point => { const world = apply(entry.matrix, point); return `${world.x},${world.y}` }).join(' ')
+                const member = heldRotationMembers?.[index]
+                const points = (member || boxPoints({ x: 0, y: 0, width: node.width, height: node.height })
+                  .map(point => apply(entry.matrix, point)))
+                  .map(point => `${point.x},${point.y}`).join(' ')
                 return <polygon key={entry.id} data-testid="canvas-selection-member" data-node-id={entry.id} points={points}
                   fill="none" stroke={SELECTION_BLUE} strokeWidth={SELECTION_MEMBER_STROKE_PX} vectorEffect="non-scaling-stroke" pointerEvents="none" />
               })}
               <polygon
                 data-testid="canvas-selection-outline"
                 data-selection-role={selected.length > 1 ? 'union' : 'object'}
+                data-selection-held={heldRotationMembers ? 'texture' : undefined}
                 opacity={gpuOverlay && !(ownedDrag && ['move','rotate','resize','scale'].includes(ownedDrag.kind)) ? 0 : 1}
-                points={selectionCorners.map((p) => `${p.x},${p.y}`).join(' ')}
+                points={drawnCorners.map((p) => `${p.x},${p.y}`).join(' ')}
                 fill="none"
                 stroke={SELECTION_BLUE}
                 strokeWidth={SELECTION_UNION_STROKE_PX}
                 vectorEffect="non-scaling-stroke"
                 pointerEvents="none"
               />
-              {canTransform && transformHandles.map(h => <line key={`edge-${h.index}`} data-testid={`resize-edge-${h.index}`}
+              {canTransform && drawnHandles.map(h => <line key={`edge-${h.index}`} data-testid={`resize-edge-${h.index}`}
                 x1={h.point.x} y1={h.point.y} x2={h.next.x} y2={h.next.y}
                 stroke="transparent" strokeWidth={8/zoom} pointerEvents="stroke" style={{cursor:h.edgeCursor}}
                 onPointerDown={e=>{e.stopPropagation();start(e,'resize',h.index+4)}} />)}
-              {canTransform && state.tool!=='scale' && transformHandles.map(h => <g key={`rotate-${h.index}`}>
+              {canTransform && state.tool!=='scale' && drawnHandles.map(h => <g key={`rotate-${h.index}`}>
                 <polygon data-testid={`rotate-corner-${h.index}`} data-anchor-x={h.rotateAnchor.x} data-anchor-y={h.rotateAnchor.y}
                   points={h.rotatePoints.map(p=>`${p.x},${p.y}`).join(' ')} fill="transparent" pointerEvents="all"
                   style={{cursor:h.rotateCursor}} onPointerDown={e=>{e.stopPropagation();start(e,'rotate',h.index)}} />
@@ -2971,7 +2989,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                   <path d="M2.1 0.4 L3.6 2.5 L5.4 0.9" fill="none" stroke={SELECTION_BLUE} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
                 </g>
               </g>)}
-              {canTransform && transformHandles.map((h, i) => (
+              {canTransform && drawnHandles.map((h, i) => (
                 <polygon
                   key={i}
                   data-testid={`resize-${i}`}
