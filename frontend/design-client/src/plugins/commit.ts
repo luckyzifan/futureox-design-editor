@@ -78,7 +78,9 @@ export function applyPluginCommit(doc: DesignDocument, commit: PluginCommit) {
   if (commit.pages) doc.pages = commit.pages
   for (const id of commit.deleted) delete doc.nodes[id]
   for (const [id, sceneNode] of Object.entries(commit.upserts)) doc.nodes[id] = sceneNode
-  const hasPluginData = Object.values(doc.nodes).some(sceneNode =>
-    Object.keys(sceneNode.bindings ?? {}).some(key => key.startsWith('figmaPlugin:')))
-  if (hasPluginData) doc.schemaVersion = Math.max(doc.schemaVersion, 4) as DesignDocument['schemaVersion']
+  const needsSchema4 = Object.values(doc.nodes).some(sceneNode =>
+    Object.keys(sceneNode.bindings ?? {}).some(key => key.startsWith('figmaPlugin:')) ||
+    sceneNode.fills.some(item => item.transform != null || item.kind === 'angular' || item.kind === 'diamond') ||
+    sceneNode.strokes.some(item => item.paint.transform != null || item.paint.kind === 'angular' || item.paint.kind === 'diamond'))
+  if (needsSchema4) doc.schemaVersion = Math.max(doc.schemaVersion, 4) as DesignDocument['schemaVersion']
 }

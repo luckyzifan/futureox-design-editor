@@ -12,7 +12,7 @@ The sample is `frontend/design-client/src/plugins/sample/` (`manifest.json` + `c
 
 ## Load a plugin folder or archive
 
-Choose **载入插件文件夹** / **Load plugin folder** and pick a directory that contains a Figma-style `manifest.json` and the `main` script it names. Or choose **载入 .zip / .figma** / **Load .zip / .figma**. A `.figma` plugin file is a zip. The archive may nest the plugin in one folder. The loader reads `manifest.json`, the manifest `main` script, and the optional `ui` file. Other files are ignored. Paths that leave the folder are rejected.
+Choose **载入插件文件夹** / **Load plugin folder** and pick a directory that contains a Figma-style `manifest.json` and the `main` script it names. Or choose **载入 .zip / .figma** / **Load .zip / .figma** in the Plugins panel. A `.figma` plugin file is a zip. The same archive loader is covered by `pluginBundleFromZip`. The archive may nest the plugin in one folder. The loader reads `manifest.json`, the manifest `main` script, and the optional `ui` file. Other files are ignored. Paths that leave the folder are rejected.
 
 If the manifest has a `menu`, the panel lists those commands and runs the one you pick. `figma.command` is that command, or `undefined` when there is no menu.
 
@@ -60,7 +60,7 @@ Behavior follows the [Figma Plugin API](https://www.figma.com/plugin-docs/api/ap
 
 ## Still blocked
 
-These calls still throw or are absent: `createImageAsync`, vector networks, PNG/JPG/PDF `exportAsync`, remote variable libraries and variable aliases, `importStyleByKeyAsync`, payments, parameters, codegen, annotations, rich text ranges, reactions, relaunch buttons, `strokeStyleId`, UI-frame network, positive `setTimeout`, and `setInterval`. `loadFontAsync` does not download a font. `figma.currentUser` is null. Viewport center is the camera origin, not the visual center, and `scrollAndZoomIntoView` does not change zoom. `documentchange` does not list the changed nodes. Plugin data lives in FD extension metadata, so a document that has it cannot be appended into another file. `createImage` accepts 256 KiB. There is no collaboration server. This is not Figma and not a published-plugin catalog.
+These calls still throw or are absent: `createImageAsync`, vector networks, PNG/JPG/PDF `exportAsync`, remote variable libraries and variable aliases, `importStyleByKeyAsync`, payments, parameters, codegen, annotations, rich text ranges, reactions, relaunch buttons, `strokeStyleId`, UI-frame network, positive `setTimeout`, and `setInterval`. `loadFontAsync` does not download a font. `figma.currentUser` is null. Viewport center is the camera origin, not the visual center, and `scrollAndZoomIntoView` does not change zoom. `documentchange` does not list the changed nodes. Plugin data lives in FD extension metadata, so a document that has it cannot be appended into another file. `createImage` accepts 256 KiB of PNG, JPEG, or WebP. GIF bytes are refused. There is no collaboration server. This is not Figma and not a published-plugin catalog.
 
 ## API coverage
 
@@ -130,8 +130,8 @@ These calls still throw or are absent: `createImageAsync`, vector networks, PNG/
 | `SceneNode.layoutAlign` | partial | MIN, CENTER, MAX, STRETCH, or INHERIT. Writes sizing.alignSelf. |
 | `SceneNode.layoutGrow` | partial | 1 sets horizontal sizing to FILL and 0 sets FIXED. It does not follow a vertical parent axis. |
 | `SceneNode.blendMode` | partial | Mapped to the editor blend list, including PASS_THROUGH. Unlisted modes throw. |
-| `SceneNode.fills` | partial | SOLID and GRADIENT_LINEAR. Other paint types throw. Gradient handles are an angle plus stops, not gradientTransform fidelity. |
-| `SceneNode.strokes` | partial | SOLID strokes only. One strokeWeight is written onto every stroke. |
+| `SceneNode.fills` | partial | SOLID, GRADIENT_LINEAR, GRADIENT_RADIAL, GRADIENT_ANGULAR, GRADIENT_DIAMOND, and IMAGE. Any other paint throws on write and is returned as type UNSUPPORTED on read, so assigning the array back does not replace it with a solid. Gradient handles are an angle plus stops, not gradientTransform fidelity. |
+| `SceneNode.strokes` | partial | Same paint types as fills. A gradient or image stroke is not reported as SOLID. One strokeWeight is written onto every stroke. Unsupported paints throw on write and stay on the node. |
 | `SceneNode.strokeWeight` | partial | Creates one black stroke when the node has none. |
 | `SceneNode.strokeAlign` | partial | CENTER, INSIDE, or OUTSIDE. |
 | `SceneNode.strokeCap` | partial | NONE, BUTT, ROUND, or SQUARE. Arrow caps throw. |
@@ -175,8 +175,8 @@ These calls still throw or are absent: `createImageAsync`, vector networks, PNG/
 | `ComponentNode.createInstance` | supported | Local component only. No team library. |
 | `InstanceNode.detachInstance` | partial | Detaches a resolved outer instance. A brand-new instance is committed before detach. |
 | `PageNode.name` | supported | Renames a page. |
-| `figma.createImage` | partial | Accepts PNG, JPEG, GIF, or WebP bytes up to 256 KiB. The hash is the SHA-1 of those bytes, the same content id a .fig archive uses for images/<hash>. |
-| `figma.getImageByHash` | partial | Resolves a SHA-1 hash from this session or from an image paint already stored on a fill or stroke. getBytesAsync and getSizeAsync read those bytes. |
+| `figma.createImage` | partial | Accepts PNG, JPEG, or WebP bytes up to 256 KiB. GIF is refused because the document does not admit a GIF data URL. The hash is the SHA-1 of those bytes, the same content id a .fig archive uses for images/<hash>. |
+| `figma.getImageByHash` | partial | Resolves a SHA-1 hash from this session or from an image paint already stored on a fill or stroke. getBytesAsync reads those bytes. getSizeAsync supports PNG and JPEG. |
 | `figma.createImageAsync` | unsupported | Throws unsupported_api. No network image fetch. Pass bytes to createImage. |
 | `figma.createNodeFromSvg` | partial | Imports the SVG through the editor SVG importer and returns the created root. Scripts, external URLs, and animation are rejected. |
 | `figma.createVector` | unsupported | Throws unsupported_api. Vector networks are not exposed on this host. |

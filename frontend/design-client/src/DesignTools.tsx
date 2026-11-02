@@ -322,6 +322,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                             },
                           ],
                         })
+                        d.schemaVersion = Math.max(d.schemaVersion, 12) as DesignDocument['schemaVersion']
                       })
                     }
                   >

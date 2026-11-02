@@ -1,4 +1,5 @@
 import type { DesignDocument, DesignNode, Effect } from './model'
+import type { PrototypeAction, PrototypeEasing } from './prototype'
 
 /** In-between prototype frames keep opacity and transform from the kernel
  * sample, and cap backdrop filters so glass and blur are not rebuilt from a
@@ -76,3 +77,73 @@ export const PROTOTYPE_MOTION_CAPS = {
   glassRefraction: GLASS_REFRACTION_CAP,
   glassDispersion: GLASS_DISPERSION_CAP,
 } as const
+
+export type TransitionClock = {
+  now(): number
+  request(callback: FrameRequestCallback): number
+  cancel(id: number): void
+}
+
+const browserClock: TransitionClock = {
+  now: () => performance.now(),
+  request: callback => requestAnimationFrame(callback),
+  cancel: id => cancelAnimationFrame(id),
+}
+
+/** One animation clock. Cancel stops later ticks and does not schedule another. */
+export function startTransitionClock(
+  durationMs: number,
+  onProgress: (progress: number) => void,
+  clock: TransitionClock = browserClock,
+) {
+  if (!(durationMs > 0)) {
+    onProgress(1)
+    return () => {}
+  }
+  let live = true
+  let request = 0
+  const start = clock.now()
+  const tick: FrameRequestCallback = now => {
+    if (!live) return
+    const progress = Math.max(0, Math.min(1, (now - start) / durationMs))
+    onProgress(progress)
+    if (live && progress < 1) request = clock.request(tick)
+  }
+  request = clock.request(tick)
+  return () => {
+    live = false
+    clock.cancel(request)
+  }
+}
+
+export function reducedMotionRequested() {
+  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+/** Omitted smart-animate and slide durations use the same 300ms ease-out as a new interaction. Explicit 0 and "none" stay instant. */
+export function resolvePrototypeMotion(action: PrototypeAction, duration: number | undefined, easing: PrototypeEasing | undefined) {
+  const instant = action.transitionStyle === 'none'
+  const resolvedDuration = duration === undefined ? (instant ? 0 : 300) : duration
+  const resolvedEasing = easing === undefined && resolvedDuration > 0 && !instant ? 'ease-out' as const : easing
+  return { durationMs: resolvedDuration, easing: resolvedEasing }
+}
+
+function nodeRejectsSample(node: DesignNode) {
+  const paints = [...node.fills, ...node.strokes.map(stroke => stroke.paint)]
+  return paints.some(item => item.visible !== false && (item.kind === 'angular' || item.kind === 'diamond'))
+}
+
+/** Angular and diamond paints make the kernel sampler fail. Glass and blur stay
+ * on the sampled path and are capped by lightenPrototypeMotion. */
+export function framesNeedLightweightMotion(doc: DesignDocument, from: string, to: string) {
+  const seen = new Set<string>()
+  const walk = (id: string): boolean => {
+    if (!id || seen.has(id)) return false
+    seen.add(id)
+    const node = doc.nodes[id]
+    if (!node) return false
+    if (nodeRejectsSample(node)) return true
+    return node.children.some(walk)
+  }
+  return walk(from) || walk(to)
+}

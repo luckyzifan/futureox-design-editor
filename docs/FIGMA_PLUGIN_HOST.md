@@ -2,7 +2,9 @@
 
 Futureox Design can run a documented subset of the Figma Plugin API against the open document. This is a local desktop host. It does not add Figma aliases to the MCP operation registry, install handlers from file contents, or grant network, filesystem, or account permissions.
 
-The Plugins panel runs the rich host. Its matrix is `frontend/design-client/src/plugins/rich-host/coverage.ts` (`PLUGIN_API_COVERAGE`). The panel summary counts that list. `frontend/design-client/src/plugins/coverage.ts` is the earlier worker session (48 supported, 27 partial, 22 unsupported) and is not what the panel executes. Calling an unsupported API throws `PluginApiError` with `code: "unsupported_api"` on the rich host. Partial APIs do the documented subset and throw when a plugin asks for the rest.
+The Plugins panel runs the QuickJS rich host. Its matrix is `frontend/design-client/src/plugins/rich-host/coverage.ts` (`PLUGIN_API_COVERAGE`) and [FIGMA_PLUGIN_HOST_V1.md](FIGMA_PLUGIN_HOST_V1.md). The panel summary counts that list. Calling an unsupported API there throws `PluginApiError` with `code: "unsupported_api"`.
+
+This file's table is the snapshot worker in `frontend/design-client/src/plugins/coverage.ts`. Counts in this build: 49 supported, 38 partial, 13 unsupported. Calling an unsupported API throws `PluginApiError` with `code: "unsupported"`. Partial APIs do the documented subset and throw when a plugin asks for the rest. A thrown read or write leaves the previous paints on the node.
 
 ## What a plugin can change
 
@@ -33,7 +35,7 @@ Desktop:
 3. Click **Run sample plugin** / **运行示例插件**. The three labels appear on the canvas. Undo removes that turn.
 4. On the desktop app, the sample UI opens in its own window. Enter a label and count, then Create. Close stops the session.
 5. To load this folder, or another plugin, click **Load plugin folder…** and choose the folder that contains `manifest.json`. The host reads only `manifest.json` plus the manifest `main` and optional `ui` files, each up to 1 MiB, and only from inside that folder.
-6. Click **Load plugin archive…** and choose a `.zip` or `.figma` archive with exactly one `manifest.json`. The same size limits apply. The archive is unpacked in the renderer. It is not scanned at startup and it is not executed until you pick it.
+6. Click **Load plugin archive…** and choose a `.zip` or `.figma` archive with exactly one `manifest.json`. The same size limits apply. The archive is unpacked in the renderer. It is not scanned at startup and it is not executed until you pick it. `layout-kit` and `component-kit` are local fixtures. A marketplace download was not fetched in CI.
 
 ## Local plugins at startup
 
@@ -107,8 +109,8 @@ The table below is the earlier worker subset. The Plugins panel list is the rich
 | `node.insertChild` | supported | Index is the final index after the node leaves its old parent. |
 | `node.remove` | supported | Deletes the subtree. |
 | `node.clone` | supported | Deep-clones ordinary geometry. Components and boolean nodes throw. |
-| `node.fills` | partial | SOLID paints only. Reading a gradient, image, or other paint throws and leaves it unchanged. |
-| `node.strokes` | partial | SOLID strokes only. Assigning replaces the stack. |
+| `node.fills` | partial | SOLID, GRADIENT_LINEAR, GRADIENT_RADIAL, GRADIENT_ANGULAR, GRADIENT_DIAMOND, and IMAGE. Any other paint throws on read and on write, and the node is left unchanged. Gradient handles are an angle plus stops, not full gradientTransform fidelity. |
+| `node.strokes` | partial | Same paint types as fills. A gradient or image stroke is not reported as SOLID. Assigning replaces the stack only when every paint is supported. |
 | `node.strokeWeight` | supported | One width for every stroke. A positive weight creates a stroke when none exist. |
 | `node.cornerRadius` | supported | Rectangles, frames, and sections use the four radii. Polygons and stars use the authored corner radius. Mixed radii read as figma.mixed. |
 | `node.topLeftRadius` | supported | Rectangle, frame, and section top-left radius. Other nodes throw. |
@@ -145,25 +147,28 @@ The table below is the earlier worker subset. The Plugins panel list is the rich
 | `figma.root` | partial | Read-only document name and page children. |
 | `figma.variables` | unsupported | No variable, mode, or alias API. |
 | `figma.teamLibrary` | unsupported | No team library or published styles. |
-| `figma.clientStorage` | unsupported | No plugin preferences outside the document. |
+| `figma.clientStorage` | supported | getAsync, setAsync, deleteAsync, and keysAsync. JSON values, undefined, and Uint8Array. Stored for this plugin id outside the document, and not undone with the canvas. The QuickJS panel stores it in localStorage. This snapshot host keeps it in process memory for the plugin id. |
 | `figma.payments` | unsupported | No payments. |
 | `figma.parameters` | unsupported | No parameter UI. |
 | `figma.codegen` | unsupported | No codegen. |
 | `figma.currentUser` | unsupported | No Figma account. |
-| `figma.createComponent` | unsupported | Components and variants are unchanged by this host. |
-| `figma.createInstance` | unsupported | No instance creation. |
+| `figma.createComponent` | partial | Creates a local main component from an empty frame. No variants, component properties, or team library. |
+| `figma.createInstance` | partial | ComponentNode.createInstance and figma.createInstance copy a local component onto the page. No team library and no remote key. A name set in the same turn can be normalized to the main component name when the editor admits the instance. |
 | `figma.importComponentByKeyAsync` | unsupported | No remote components. |
-| `figma.createImage` | unsupported | No image hash API. |
-| `figma.getImageByHash` | unsupported | No image hash API. |
+| `figma.createImage` | partial | PNG, JPEG, or WebP bytes up to 256 KiB. The hash is the SHA-1 of those bytes. The paint stores a data URL. GIF bytes are refused because the document does not admit a GIF data URL. |
+| `figma.getImageByHash` | partial | Resolves a hash created in this session or already stored on a PNG, JPEG, or WebP fill or stroke. getBytesAsync returns those bytes. getSizeAsync reads PNG and JPEG headers. |
 | `figma.createNodeFromSvg` | unsupported | Use the editor’s SVG import, not the plugin API. |
-| `node.exportAsync` | unsupported | No plugin raster or SVG export. |
+| `node.exportAsync` | partial | SVG markup bytes for the node box, a solid fill, and text. PNG, JPG, and PDF throw. This is not the editor export panel. |
 | `node.vectorNetwork` | unsupported | Vector networks stay as authored geometry and cannot be edited here. |
 | `node.reactions` | unsupported | No prototype reactions. |
 | `figma.annotations` | unsupported | No annotations API. |
-| `node.layoutSizingHorizontal` | unsupported | Hug, fill, and fixed sizing are not mapped. |
-| `node.primaryAxisAlignItems` | unsupported | Auto-layout alignment is not mapped. |
+| `node.layoutSizingHorizontal` | partial | FIXED, HUG, or FILL on sizing.width. Hug still has to satisfy the editor layout rule. |
+| `node.layoutSizingVertical` | partial | FIXED, HUG, or FILL on sizing.height. |
+| `node.primaryAxisAlignItems` | partial | MIN, CENTER, MAX, or SPACE_BETWEEN after layoutMode. BASELINE throws. |
+| `node.counterAxisAlignItems` | partial | MIN, CENTER, or MAX after layoutMode. BASELINE throws. |
+| `node.layoutAlign` | partial | MIN, CENTER, MAX, STRETCH, or INHERIT. Writes sizing.alignSelf. |
 | `figma.ui.resize` | unsupported | Pass width and height to showUI. The window does not resize later. |
-| `figma.ungroup` | unsupported | Use the editor ungroup command. |
+| `figma.ungroup` | partial | Lifts children of a group, frame, or section that is not auto-layout, a component, or a boolean. Child transforms stay parent-local. |
 | `networkAccess` | unsupported | Manifest network access is ignored. The UI window cancels network requests. |
 
 ## Limits
@@ -174,4 +179,5 @@ The table below is the earlier worker subset. The Plugins panel list is the rich
 - A turn that runs longer than 15 seconds is stopped and not committed.
 - Text writes require `figma.loadFontAsync` first. The promise resolves, and the glyphs still use the document default font.
 - Geometry is parent-local. `rotation` turns around the node origin, not the visual center.
-- SOLID fills and strokes round-trip. Gradients, images, and other paints throw on read so a plugin cannot drop them by accident.
+- Supported paints round-trip. An unsupported paint throws, and the previous fills or strokes stay on the node.
+- `figma.variables`, `figma.teamLibrary`, `figma.payments`, `figma.currentUser`, and manifest `networkAccess` stay unsupported on this snapshot host. The UI window still cancels network requests. There is no collaboration server.
