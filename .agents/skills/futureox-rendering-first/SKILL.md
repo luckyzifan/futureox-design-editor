@@ -3,6 +3,7 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-02 [吸管与取色](../../../testing/verification-eyedropper-color-picker-20261102/README.md)只改颜色行、取色弹层和吸管提示。不改像素、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 [选区、框选与测距](../../../testing/verification-figma-canvas-chrome-marquee-20261102/README.md)只改选区描边、悬停、框选和 Option 间距。悬停轮廓和框选边跟选区一样，是整像素上的 1px `#4597F7` 实色填充。框选填充是 `#DCE9F5`，间距红是 `#E05634`。不改光栅、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 [画布操作对照：编组与右键](../../../testing/verification-figma-canvas-ops-group-menu-20261102/README.md)只改编组命中已经具备的路径上的右键菜单：无描边矩形仍列出轮廓化描边，插件子菜单打开现有插件面板。空选区方向键不平移，空格拖动不移动对象。不改像素、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 打包的 FFmpeg 只服务动效预览编码，不改像素、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。见[记录](../../../testing/verification-ffmpeg-bundle-20261102/README.md)。
