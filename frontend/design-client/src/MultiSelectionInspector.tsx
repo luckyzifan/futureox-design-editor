@@ -37,7 +37,10 @@ export function MultiSelectionInspector({ editor, nodes }: { editor: Editor; nod
     else if (field === 'opacity') node.opacity = value / 100
     else resizeNodeDimension(node, field, value, editor.state.doc, resolved)
   })
-  const smart=smartSelection(editor.state.doc,editor.state.page,editor.topSelection())
+  const smartIds = editor.topSelection()
+  const smart = smartIds.length >= 2 && smartIds.length <= 256
+    ? smartSelection(editor.state.doc, editor.state.page, smartIds, editor.entries())
+    : null
   const blend = commonValue(nodes.map((node) => node.blend))
   const visible = commonValue(nodes.map((node) => node.visible)), locked = commonValue(nodes.map((node) => node.locked))
   return <aside className="inspector" aria-label={tr("多选属性")}>

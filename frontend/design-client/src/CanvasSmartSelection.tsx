@@ -1,12 +1,13 @@
 import { utilityAction, CanvasAction, ActionReason, type UtilityAction } from './canvas-utility-action'
-import {useEffect,useRef,useState} from 'react'
+import {useEffect,useMemo,useRef,useState} from 'react'
+import type {SceneEntry} from './geometry'
 import type {Editor} from './engine'
 import type {DesignDocument,Point} from './model'
 import type {CanvasCamera,CanvasSize} from './canvas-camera'
 import {screenToWorld} from './canvas-camera'
 import {smartSelection,smartSpacing,smartReorder,type SmartSelection} from './smart-selection'
 
-export function CanvasSmartSelection({editor,view,size,visible}:{editor:Editor;view:CanvasCamera;size:CanvasSize;visible:boolean}){
+export function CanvasSmartSelection({editor,view,size,entries,visible}:{editor:Editor;view:CanvasCamera;size:CanvasSize;entries?:readonly SceneEntry[];visible:boolean}){
   const host=useRef<HTMLDivElement>(null),[marked,setMarked]=useState<string[]>([]),[label,setLabel]=useState<{point:Point;text:string}|null>(null)
   const active=useRef<{action:UtilityAction;pointer:number;session:number;page:string;doc:DesignDocument;model:SmartSelection;view:CanvasCamera;start:Point;axis?:'x'|'y';marked:string[];moved:boolean}|null>(null)
   const selectionKey=editor.state.selection.join('\n'),page=editor.state.page,session=editor.sessionGeneration
@@ -17,7 +18,10 @@ export function CanvasSmartSelection({editor,view,size,visible}:{editor:Editor;v
     window.addEventListener('keydown',key,true);window.addEventListener('blur',cancel)
     return()=>{window.removeEventListener('keydown',key,true);window.removeEventListener('blur',cancel)}
   },[editor])
-  const model=smartSelection(editor.state.doc,page,editor.topSelection())||active.current?.model
+  const {doc,selection} = editor.state
+  const selectionModel = useMemo(() => selection.length < 2 ? null :
+    smartSelection(doc,page,editor.topSelection(),entries), [editor,doc,page,selection,entries])
+  const model = selectionModel || active.current?.model
   if(!model||editor.state.tool!=='select')return null
   const point=(e:{clientX:number;clientY:number},camera=view)=>{const b=host.current!.getBoundingClientRect();return screenToWorld(camera,{x:e.clientX-b.left,y:e.clientY-b.top})}
   const begin=(e:React.PointerEvent,axis?:'x'|'y',id?:string)=>{
