@@ -2305,9 +2305,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if (host.current?.hasPointerCapture(e.pointerId))
       host.current.releasePointerCapture(e.pointerId)
     if (penRef.current && d.kind === 'vertex' && !d.node) {
-      const closing = penRef.current.closing
       finishDragTrace(d, ActionOutcome.observed, ActionReason.unobserved)
-      if (closing) finishPen()
       return
     }
     if (d.kind === 'create') {

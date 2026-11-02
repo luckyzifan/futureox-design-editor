@@ -39,7 +39,7 @@ test('desk density is the Electron restored band and the shell reflows there', (
   expect(shellDensity(1000)).toBe('desk')
   expect(shellDensity(1180)).toBe('desk')
   expect(shellDensity(1181)).toBe('wide')
-  const query = (active: string) => (text: string) => ({ matches: text === active, media: text, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false, onchange: null })
+  const query = (active: string) => (text: string) => ({ matches: text === active, media: text, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false, onchange: null })
   expect(shellDensityFromWindow({ innerWidth: 800, matchMedia: query('(max-width: 1180px)') })).toBe('desk')
   expect(shellDensityFromWindow({ innerWidth: 800, matchMedia: query('(min-width: 1181px)') })).toBe('wide')
   expect(shellDensityFromWindow({ innerWidth: 1000, matchMedia: query('') })).toBe('desk')

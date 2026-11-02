@@ -123,12 +123,13 @@ const WEIGHT_WORDS: ReadonlyArray<readonly [string, number]> = [
 export type StyleStretch = 'normal' | 'condensed' | 'expanded'
 export type ParsedStyle = { weight?: number; italic: boolean; stretch: StyleStretch }
 
-const STYLE_WORDS: ReadonlyArray<readonly [string, 'weight' | 'italic' | StyleStretch, number?]> = [
+type StyleWord = readonly [string, 'weight' | 'italic' | StyleStretch, number?]
+const STYLE_WORDS = ([
   ...WEIGHT_WORDS.map(([word, weight]) => [word, 'weight', weight] as const),
   ['italic', 'italic'], ['oblique', 'italic'],
   ['condensed', 'condensed'], ['narrow', 'condensed'],
   ['expanded', 'expanded'], ['extended', 'expanded'],
-].sort((a, b) => b[0].length - a[0].length)
+] satisfies StyleWord[]).sort((a, b) => b[0].length - a[0].length)
 
 function consumeStyle(token: string): ParsedStyle | undefined {
   if (!token) return { italic: false, stretch: 'normal' }

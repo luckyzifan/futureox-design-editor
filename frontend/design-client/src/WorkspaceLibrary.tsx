@@ -61,7 +61,7 @@ export function WorkspaceLibrary({ session, onClose }: { session: DesktopSession
             await refresh()
           })}>{d.deleted ? '恢复' : '移入回收站'}</button>
         </div>)}
-        {!visibleDocuments.length && <div className="library-empty">{query ? <Search size={30} aria-hidden="true" /> : trash ? <Trash2 size={30} aria-hidden="true" /> : <File size={30} aria-hidden="true" />}<strong>{query ? '没有匹配的设计' : trash ? '回收站为空' : '你的设计从这里开始'}</strong><p>{query ? '试试其他名称，或清空搜索。' : trash ? '移入回收站的设计可以在这里恢复。' : '编辑设计后会自动保存到这里。'}</p></div>}
+        {!visibleDocuments.length && <div className="library-empty">{query ? <Search size={30} aria-hidden="true" /> : trash ? <Trash2 size={30} aria-hidden="true" /> : <FileMark size={30} kind="fd" />}<strong>{query ? '没有匹配的设计' : trash ? '回收站为空' : '你的设计从这里开始'}</strong><p>{query ? '试试其他名称，或清空搜索。' : trash ? '移入回收站的设计可以在这里恢复。' : '编辑设计后会自动保存到这里。'}</p></div>}
       </div>
       {history && <section className="library-history" aria-label="文档历史版本"><h3>{history.document.name} · 历史版本</h3>
         <p>恢复会创建新版本，保留现有历史。</p>
