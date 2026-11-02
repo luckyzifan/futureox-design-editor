@@ -108,7 +108,7 @@ import { imageData } from './persistence'
 import { cropImageNode, imageNaturalSize } from './image-crop'
 import { PencilInput, freehandNode, type PencilSettings, type FreehandTool } from './freehand'
 import { NumberField } from './fields'
-import { createShapeSeed, resolveShapeCreation, creationPointCount, creationToolStaysArmed, creationGhostNode, creationPreviewPoints, creationVisiblePaint, type ShapeCreationKind, type ShapeCreationSeed } from './shape-creation'
+import { createShapeSeed, resolveShapeCreation, creationPointCount, creationToolStaysArmed, creationGhostNode, creationPreviewPoints, creationVisiblePaint, translateCreationAnchor, type ShapeCreationKind, type ShapeCreationSeed } from './shape-creation'
 import { cornerHandlePoint, cornerRadiiAfterDrag, editableGradient, firstGlass, glassHandleLocal, glassLightAngle, gradientAngleFromLocal, gradientAngleHandle, gradientEndpoints, gradientStopOffset, gradientStopPoint, rectangleCornerTarget, type CornerIndex } from './canvas-material-handles'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { editableNetwork } from './editable-network'
@@ -190,6 +190,9 @@ type Drag = {
   materialStop?: number
   pointer?: Point
   screenDistance?: number
+  /** Anchor and pointer captured when Space went down during shape creation. */
+  spaceAnchor?: Point
+  spacePointer?: Point
   modifiers?: { shift: boolean; alt: boolean }
   lastInput?: React.PointerEvent
   lastScreen?: Point
@@ -885,6 +888,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const displayedHit = (point: Point, deep = false, eligible?: (node:DesignNode)=>boolean) => displayedSnapshot && displayedIndex
     ? editor.hit(point, deep, displayedIndex, displayViewRef.current.zoom, displayedSnapshot,eligible) : null
   const displayedHoverHit = (point: Point, deep = measureKeys.deep) => displayedSnapshot && displayedIndex
+    // Same target as the click: group until entered, frame child, or empty frame.
     ? editor.selectionHit(point, deep, displayedIndex, displayViewRef.current.zoom, displayedSnapshot) : null
   refreshHover.current = () => {
     const client = hoverPoint.current, rect = host.current?.getBoundingClientRect()
@@ -1153,9 +1157,15 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         cancelPencil()
         return
       }
-      if (e.code === 'Space' && !mod && !e.altKey) {
+      if (e.code === 'Space' && !mod && (!e.altKey || drag.current?.kind === 'create')) {
         space.current = true
-        setSpaceHeld(true)
+        if (!e.altKey) setSpaceHeld(true)
+        // Space before the drag is the hand tool. Space after a shape drag
+        // starts repositions that shape and, on release, skips parenting.
+        if (!e.repeat && drag.current?.kind === 'create') {
+          drag.current.spaceAnchor = { ...drag.current.start }
+          drag.current.spacePointer = { ...(drag.current.pointer ?? drag.current.start) }
+        }
         e.preventDefault()
       }
       if (e.key === 'Escape' && penRef.current?.network.edges.length && (!drag.current || (drag.current.kind === 'vertex' && !drag.current.node))) {
@@ -1295,8 +1305,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             n.network=translateVertices(n.network,vertices,delta)
           }, '微移矢量节点'))
         } else if (!editor.state.selection.length) {
-          // Fold any parked wheel camera first so the nudge starts from what
-          // the user currently sees, not the pre-gesture committed camera.
+          // Nothing selected: pan. Figma uses a screen step, not the 1/10px
+          // layer nudge, including while a tool is armed. Shift is the fast
+          // step. World distance changes with zoom because view is in CSS px.
           const view = editor.flushPendingView(), amount = e.shiftKey ? 100 : 20
           editor.set({ view: { ...view, x: view.x + (e.key === 'ArrowLeft' ? amount : e.key === 'ArrowRight' ? -amount : 0),
             y: view.y + (e.key === 'ArrowUp' ? amount : e.key === 'ArrowDown' ? -amount : 0) } })
@@ -1316,7 +1327,14 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if(['Alt','Meta','Control'].includes(e.key))setMeasureKeys({alt:e.altKey,deep:deepSelectChord(e,shortcutPlatform())})
       if (penRef.current || editor.state.tool === 'pen') rememberPenKeys(e.shiftKey, e.altKey)
       if (['Shift', 'Alt', 'Control', 'Meta'].includes(e.key) && replayDragModifiers(e)) return
-      if (e.code === 'Space') { space.current = false; setSpaceHeld(false) }
+      if (e.code === 'Space') {
+        space.current = false
+        setSpaceHeld(false)
+        if (drag.current?.kind === 'create') {
+          drag.current.spaceAnchor = undefined
+          drag.current.spacePointer = undefined
+        }
+      }
       if (drag.current?.kind === 'create' && ['Shift', 'Alt'].includes(e.key))
         updateCreation(drag.current, { shift: e.shiftKey, alt: e.altKey })
     }
@@ -1418,6 +1436,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if (!relevant.length) return
     const b = unionBounds(relevant.map((e) => e.bounds))
     editor.set({ view: fitBounds(b, size) })
+  }
+  function creationPointer(d: Drag, p: Point) {
+    if (space.current && d.spaceAnchor && d.spacePointer)
+      d.start = translateCreationAnchor(d.spaceAnchor, d.spacePointer, p)
+    d.pointer = p
   }
   function updateCreation(d: Drag, modifiers: { shift: boolean; alt: boolean }) {
     if (!d.creationSeed || !d.pointer) return
@@ -1941,8 +1964,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const deep = deepSelectChord(e, shortcutPlatform())
       setMeasureKeys(previous=>previous.alt===e.altKey&&previous.deep===deep?previous:{alt:e.altKey,deep})
       editor.hoverLayer(performance.now() >= navigationUntil.current && !textEdit && !space.current && ['select', 'multiselect', 'scale', 'vector', 'width'].includes(editor.state.tool)
-        // The outline matches the click: child paint, or the frame on empty area.
-        // Command/Ctrl uses the same target and does not retarget a group.
+        // The outline matches the click: group until entered, child paint in a
+        // frame, or the frame on empty area. Command/Ctrl shows the leaf.
         ? displayedHoverHit(p, deep || editor.state.tool === 'vector') : null, 'canvas')
       return
     }
@@ -2066,7 +2089,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }
     if (d.kind === 'create' || d.kind === 'marquee' || d.kind==='zoom') {
       if (d.kind === 'create') {
-        d.pointer = p
+        creationPointer(d, p)
         d.screenDistance = Math.max(d.screenDistance || 0, distance(screenPoint(e), d.screen))
         updateCreation(d, { shift: e.shiftKey, alt: e.altKey })
       } else setRubber(createBox(d.start, p, false))
@@ -2293,7 +2316,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       return
     }
     if (d.kind === 'create') {
-      d.pointer = screenToWorld(d.view, screenPoint(e))
+      creationPointer(d, screenToWorld(d.view, screenPoint(e)))
       d.screenDistance = Math.max(d.screenDistance || 0, distance(screenPoint(e), d.screen))
       const n = updateCreation(d, { shift: e.shiftKey, alt: e.altKey })!
       editor.cancel()

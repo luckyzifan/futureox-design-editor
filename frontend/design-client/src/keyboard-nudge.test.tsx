@@ -150,6 +150,18 @@ test('fractional movement under scaled/rotated parents, vector movement and dime
   await act(async () => editor.undo()); expect(editor.state.doc).toEqual(vectorBefore)
 })
 
+test('empty-selection arrows pan in screen pixels while a tool is armed, including at zoom 2', async () => {
+  shortcutPreference.set('figma-like')
+  const before = await render([])
+  await act(async () => { editor.set({ tool: 'frame', view: { x: 0, y: 0, zoom: 2 } }); nudgePreference.set({ small: 1, big: 10 }) })
+  await act(async () => { key('ArrowRight'); key('ArrowRight', {}, 'keyup') })
+  expect(editor.state.view).toEqual({ x: -20, y: 0, zoom: 2 })
+  await act(async () => { key('ArrowDown', { shiftKey: true }); key('ArrowDown', { shiftKey: true }, 'keyup') })
+  expect(editor.state.view).toEqual({ x: -20, y: -100, zoom: 2 })
+  expect(editor.state.doc).toBe(before)
+  expect(editor.canUndo).toBe(false)
+})
+
 test('camera arrows keep the existing pan units and no document undo history', async () => {
   const before = await render([])
   await act(async () => { nudgePreference.set({ small: .25, big: 2.5 }); key('ArrowLeft'); key('ArrowDown', { shiftKey: true }) })

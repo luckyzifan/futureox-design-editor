@@ -85,3 +85,27 @@ test('a page marquee selects frames, and Cmd marquee selects nested leaves', () 
   expect(editor.selectionHit({ x: 45, y: 45 }, true)).toBe(frame.id)
   expect(editor.canUndo).toBe(false)
 })
+
+test('a page marquee selects the group, and Cmd marquee selects the child inside it', () => {
+  const document = blank()
+  const group = node('group', 40, 40, 80, 80), child = node('rectangle', 10, 10, 30, 30)
+  const beside = node('rectangle', 200, 40, 20, 20)
+  group.children = [child.id]
+  for (const n of [group, child, beside]) document.nodes[n.id] = n
+  document.pages[0].children = [group.id, beside.id]
+  const editor = new Editor(document); editors.push(editor)
+  const area = { x: 30, y: 30, width: 100, height: 100 }
+  const entries = editor.entries()
+  const shallow = canvasMarqueeSelection(document, document.pages[0].id, [], entries, area, {
+    deep: false, contained: false, additive: false, toggle: false,
+  })
+  expect(shallow).toEqual([group.id])
+  const deep = canvasMarqueeSelection(document, document.pages[0].id, [beside.id], entries, area, {
+    deep: true, contained: false, additive: true, toggle: false,
+  })
+  expect(deep.sort()).toEqual([beside.id, child.id].sort())
+  expect(editor.selectionHit({ x: 60, y: 60 })).toBe(group.id)
+  editor.select([child.id])
+  expect(editor.selectionHit({ x: 60, y: 60 })).toBe(child.id)
+  expect(editor.canUndo).toBe(false)
+})

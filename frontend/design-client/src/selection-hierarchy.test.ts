@@ -20,21 +20,40 @@ function fixture() {
   return { editor, outer, group, inner, a, b, hidden, locked, outside, point }
 }
 
-test('child paint selects the child, empty frame area selects the frame, and deep-select ignores the group', () => {
+test('a group takes the click until entered; a frame still selects child paint or its empty area', () => {
   const { editor, outer, group, inner, a, b, point } = fixture()
   const p = point(a.id)
   const empty = { x: 85, y: 95 }
-  expect(editor.hit(p)).toBe(a.id)
-  expect(editor.selectionHit(p)).toBe(a.id)
+  expect(editor.hit(p)).toBe(group.id)
+  expect(editor.selectionHit(p)).toBe(group.id)
   expect(editor.hit(empty)).toBe(outer.id)
   expect(editor.selectionHit(empty)).toBe(outer.id)
-  for (const selected of [[], [outer.id], [group.id], [inner.id], [a.id]]) {
+  for (const selected of [[], [outer.id], [group.id]]) {
     editor.select(selected)
+    expect(editor.selectionHit(p)).toBe(group.id)
     expect(editor.selectionHit(p, true)).toBe(a.id)
     expect(editor.selectionHit(empty, true)).toBe(outer.id)
   }
+  editor.select([inner.id]); expect(editor.selectionHit(p)).toBe(a.id)
   editor.select([a.id]); expect(editor.hit(point(b.id))).toBe(b.id)
   editor.select([]); expect(editor.hit(p, true)).toBe(a.id)
+  expect(editor.selectDeeper(p)).toEqual({ id: inner.id, changed: true })
+  expect(editor.selectDeeper(p)).toEqual({ id: a.id, changed: true })
+})
+
+test('a boolean group takes the click and deep-select reaches its child', () => {
+  const document = blank(), shape = node('vector', 10, 10, 80, 80), child = node('rectangle', 10, 10, 30, 30), other = node('ellipse', 40, 10, 20, 20)
+  shape.booleanOperation = 'union'
+  shape.children = [child.id, other.id]
+  document.schemaVersion = 4
+  document.nodes[shape.id] = shape
+  document.nodes[child.id] = child
+  document.nodes[other.id] = other
+  document.pages[0].children = [shape.id]
+  const editor = new Editor(document); editors.push(editor)
+  expect(editor.selectionHit({ x: 30, y: 30 })).toBe(shape.id)
+  expect(editor.selectionHit({ x: 30, y: 30 }, true)).toBe(child.id)
+  expect(editor.canUndo).toBe(false)
 })
 
 test('double click enters exactly one selected ancestor at a time and identifies an already selected leaf', () => {
@@ -98,7 +117,7 @@ test('hover ownership cannot erase a new panel hover and never mutates or persis
 test('a selected ancestor owns descendant hits even if a Shift selection also contains its child', () => {
   const { editor, outer, group, a, point } = fixture()
   editor.select([outer.id, a.id])
-  expect(editor.hit(point(a.id))).toBe(a.id)
+  expect(editor.hit(point(a.id))).toBe(group.id)
   expect(editor.selectDeeper(point(a.id))).toEqual({ id: group.id, changed: true })
 })
 
