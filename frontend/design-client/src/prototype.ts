@@ -376,13 +376,18 @@ export function prototypeEvent(
  * player falls back to its CSS enter animation). */
 function planTransition(doc: DesignDocument, from: string, to: string) {
   if (from === to || !doc.nodes[from] || !doc.nodes[to]) return undefined
-  const plan = JSON.parse(animation_plan_json(JSON.stringify(doc), JSON.stringify(doc), from, to))
-  return {
-    from, to,
-    magicMove: (plan.magicMove as [string,number[],number[]][]).map(([id,from,to])=>({id,from,to})),
-    dissolveStart: plan.dissolveStart as string[],
-    dissolveEnd: plan.dissolveEnd as string[],
-    frameDelta: plan.framePairDragTranslationDelta as [number,number],
+  try {
+    const plan = JSON.parse(animation_plan_json(JSON.stringify(doc), JSON.stringify(doc), from, to))
+    return {
+      from, to,
+      magicMove: (plan.magicMove as [string,number[],number[]][]).map(([id,from,to])=>({id,from,to})),
+      dissolveStart: plan.dissolveStart as string[],
+      dissolveEnd: plan.dissolveEnd as string[],
+      frameDelta: plan.framePairDragTranslationDelta as [number,number],
+    }
+  } catch {
+    // A failed smart-animate plan must not cancel the navigation itself.
+    return undefined
   }
 }
 
