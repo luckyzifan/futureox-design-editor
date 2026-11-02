@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { cpuDisplayPressure, cpuTileFrameOptions, solidDisplayTile } from './cpu-tile-frame'
+import { cpuDisplayPressure, cpuTileBlitOrigin, cpuTileFrameOptions, solidDisplayTile } from './cpu-tile-frame'
 
 test('cpu tile camera shifts the gpu viewport origin to device zero', () => {
   const frame = cpuTileFrameOptions(
@@ -21,4 +21,12 @@ test('pressure errors are the only cpu tile failures that stay on screen', () =>
   expect(cpuDisplayPressure(Error('Page not found'))).toBe(false)
   const solid = solidDisplayTile(2, 1, [255, 255, 255, 255])
   expect(solid).toEqual(new Uint8Array([255, 255, 255, 255, 255, 255, 255, 255]))
+})
+
+test('adjacent cpu tile blits do not round open a pasteboard seam', () => {
+  const width = 514
+  const left = cpuTileBlitOrigin(10.4, -3.2)
+  const right = cpuTileBlitOrigin(524.6, -3.2)
+  expect(left.x + width).toBeGreaterThanOrEqual(right.x)
+  expect(cpuTileBlitOrigin(10.6, 4.8)).toEqual({ x: 10, y: 4 })
 })

@@ -74,9 +74,10 @@ test('stopped slots preserve the actual old compiled parent basis after a new po
 })
 
 test('an in-flight affine rebase holds selection chrome on the texture still showing', () => {
-  const forward = { node: [1, 0, 0, 1, 4, 0] as [number, number, number, number, number, number] }
-  expect(stickyPresentedAffines(forward, true)).toBeUndefined()
-  expect(stickyPresentedAffines(forward, false)).toBe(forward)
+  const backToTexture = { node: [1, 0, 0, 1, -4, 0] as [number, number, number, number, number, number] }
+  expect(stickyPresentedAffines(backToTexture, true)).toBe(backToTexture)
+  expect(stickyPresentedAffines(backToTexture, false)).toBe(backToTexture)
+  expect(stickyPresentedAffines(undefined, true)).toBeUndefined()
 })
 
 test('native absolute affine poses compile the same scene and CPU pixels as a fresh final document', () => {
