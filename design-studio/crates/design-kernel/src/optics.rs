@@ -1,7 +1,9 @@
 //! Continuous rounded-rectangle glass geometry. The shared field contains
 //! displacement and scalar illumination, never sampled or rendered colours.
-//! Each backend still reads and composites its own backdrop. Nonuniform
-//! corners, smoothing and arbitrary paths retain the distance-field path.
+//! Each backend still reads and composites its own backdrop. Uniform corners
+//! keep the single-radius field. Independent corners use the same rounded-box
+//! evaluation with the fitted radius of that quadrant. Smoothing and arbitrary
+//! paths retain the distance-field path, which follows the authored outline.
 use crate::{
     blend::{Pixel, Surface},
     math::{Point, Rect, Transform},
@@ -13,32 +15,86 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields)]
 pub struct GlassShape {
     pub size: [f64; 2],
+    /// Uniform corner radius, or the largest fitted corner when `radii` is set.
+    /// The interior shortcut uses this value so a mixed shape stays inside
+    /// every corner's optical ramp.
     pub radius: f64,
+    /// Fitted TL, TR, BR, BL radii. Absent means every corner uses `radius`
+    /// and the uniform field stays bit-identical, including its JSON form.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub radii: Option<[f64; 4]>,
 }
 impl GlassShape {
     pub fn from_node(node: &Node) -> Option<Self> {
-        (matches!(node.kind.as_str(), "rectangle" | "frame")
-            && node.network.is_none()
-            && node.derived_path.is_none()
-            && node.smoothing == 0.
-            && node.radii.iter().all(|r| *r == node.radii[0]))
-        .then_some(Self {
+        if !matches!(node.kind.as_str(), "rectangle" | "frame" | "section")
+            || node.network.is_some()
+            || node.derived_path.is_some()
+            || node.smoothing != 0.
+        {
+            return None;
+        }
+        let uniform = node.radii.iter().all(|r| *r == node.radii[0]);
+        if uniform {
+            return Some(Self {
+                size: [node.width, node.height],
+                radius: node.radii[0].min(node.width.min(node.height) * 0.5),
+                radii: None,
+            });
+        }
+        let fitted = crate::rounded::fitted_radii(node.width, node.height, node.radii);
+        if fitted.iter().any(|r| !r.is_finite()) {
+            return None;
+        }
+        Some(Self {
             size: [node.width, node.height],
-            radius: node.radii[0].min(node.width.min(node.height) * 0.5),
+            radius: fitted.iter().copied().fold(0., f64::max),
+            radii: Some(fitted),
         })
     }
     pub fn validate(self) -> Result<(), String> {
         if self.size.iter().any(|v| !v.is_finite() || *v <= 0.)
             || !self.radius.is_finite()
             || self.radius < 0.
-            || self.radius > self.size[0].min(self.size[1]) * 0.5
+        {
+            return Err("Invalid analytic glass shape".into());
+        }
+        let side = self.size[0].min(self.size[1]);
+        if self.radii.is_none() {
+            if self.radius > side * 0.5 {
+                return Err("Invalid analytic glass shape".into());
+            }
+            return Ok(());
+        }
+        let radii = self.radii.unwrap();
+        if self.radius > side
+            || radii.iter().any(|r| !r.is_finite() || *r < 0. || *r > side)
+            || radii.iter().copied().fold(0., f64::max) > self.radius
         {
             return Err("Invalid analytic glass shape".into());
         }
         Ok(())
     }
+    fn quadrant_radius(self, point: [f64; 2]) -> f64 {
+        let Some(radii) = self.radii else {
+            return self.radius;
+        };
+        let index = match (point[0] >= 0., point[1] >= 0.) {
+            (false, false) => 0,
+            (true, false) => 1,
+            (true, true) => 2,
+            (false, true) => 3,
+        };
+        radii[index]
+    }
     fn geometry(self, point: [f64; 2], radius: f64, bevel: f64) -> (f64, [f64; 2]) {
-        let radius = radius.min(self.size[0].min(self.size[1]) * 0.5);
+        self.rounded(point, radius, bevel, true)
+    }
+    fn rounded(self, point: [f64; 2], radius: f64, bevel: f64, clamp_half: bool) -> (f64, [f64; 2]) {
+        let radius = if clamp_half {
+            radius.min(self.size[0].min(self.size[1]) * 0.5)
+        } else {
+            radius.max(0.)
+        };
         let q = std::array::from_fn::<_, 2, _>(|i| point[i].abs() - self.size[i] * 0.5 + radius);
         let outside = q.map(|v| v.max(0.));
         let length = outside[0].hypot(outside[1]);
@@ -175,10 +231,21 @@ impl Geometry {
             let m=self.matrix.0; let z=-0.0_f64;
             return [(m[0]*z+m[2]*z) as f32,(m[1]*z+m[3]*z) as f32,(glass.light_intensity*0.) as f32,0.];
         }
-        let (distance, normal) = self.shape.geometry(centered, self.shape.radius, glass.bevel_size());
-        let (_, bend_normal) = self
-            .shape
-            .geometry(centered, self.shape.radius.max(glass.depth).max(glass.bevel_size()), glass.bevel_size());
+        let (distance, normal, bend_normal) = if self.shape.radii.is_some() {
+            let corner = self.shape.quadrant_radius(centered);
+            let bevel = glass.bevel_size();
+            let (distance, normal) = self.shape.rounded(centered, corner, bevel, false);
+            let (_, bend_normal) = self.shape.geometry(centered, corner.max(glass.depth).max(bevel), bevel);
+            (distance, normal, bend_normal)
+        } else {
+            let (distance, normal) = self.shape.geometry(centered, self.shape.radius, glass.bevel_size());
+            let (_, bend_normal) = self.shape.geometry(
+                centered,
+                self.shape.radius.max(glass.depth).max(glass.bevel_size()),
+                glass.bevel_size(),
+            );
+            (distance, normal, bend_normal)
+        };
         let depth = glass.depth;
         let bevel = glass.bevel_size();
         let t = ramp(-depth - bevel, -bevel, distance);
@@ -482,7 +549,7 @@ mod spectral_tests {
     #[test]
     fn constant_interior_is_bit_exact_for_every_proved_pixel_and_sample() {
         use super::*;
-        let shape=GlassShape{size:[120.,96.],radius:7.};
+        let shape=GlassShape{size:[120.,96.],radius:7.,radii:None};
         let mut glass:GlassParameters=serde_json::from_value(serde_json::json!({"depth":3.,"bevelSize":2.,"refraction":0.5,"dispersion":0.3,"lightAngle":225.,"lightIntensity":0.5})).unwrap();
         let mut proved=0;
         for sx in [0.6,1.,1.2,-1.2] {for tx in [-20.375,0.125,51.75] {for sample in [None,Some(0),Some(1),Some(2),Some(3)] {
@@ -506,7 +573,7 @@ mod spectral_tests {
     fn optical_interior_shortcut_matches_full_arithmetic_including_zero_signs() {
         use super::*;
         let rect=Rect{x:-80,y:-70,w:180,h:160};
-        let shape=GlassShape{size:[140.,120.],radius:8.};
+        let shape=GlassShape{size:[140.,120.],radius:8.,radii:None};
         let glass:GlassParameters=serde_json::from_value(serde_json::json!({
             "depth":8.,"refraction":0.5,"dispersion":0.3,"lightAngle":225.,"lightIntensity":0.5
         })).unwrap();
@@ -527,7 +594,7 @@ mod spectral_tests {
         use super::*;
         let basis=Rect{x:-37,y:19,w:83,h:71};
         let crop=Rect{x:-21,y:28,w:27,h:39};
-        let shape=GlassShape{size:[58.,47.],radius:6.};
+        let shape=GlassShape{size:[58.,47.],radius:6.,radii:None};
         let glass:GlassParameters=serde_json::from_value(serde_json::json!({
             "depth":12.,"refraction":1.2,"dispersion":0.3,"lightAngle":37.,"lightIntensity":0.6,
             "bevelSize":4.
