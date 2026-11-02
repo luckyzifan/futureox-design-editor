@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { blank, node, type DesignDocument } from './model'
+import { blank, defaultLayout, node, type DesignDocument } from './model'
 import { documentPatch } from './document-patch'
 import { LayerRowsCache, layerTreeRows } from './layer-tree'
 import { layerSelection } from './layer-selection'
@@ -95,6 +95,16 @@ test('operation-count benchmark: wide, balanced and deep trees match the full tr
   console.log('LAYER_ROW_OPERATION_BENCHMARK', JSON.stringify(results))
 })
 
+
+test('auto layout lists children in flow order and a mode change rebuilds the rows', () => {
+  let doc = fixture(3)
+  const cache = new LayerRowsCache(), page = doc.pages[0].id, collapsed = new Set<string>()
+  expect(cache.read(doc, page, collapsed, '').slice(1).map(row => row.id)).toEqual(['n2', 'n1', 'n0'])
+  const next = edit(doc, 'frame', { layout: { ...defaultLayout(), mode: 'vertical' } })
+  documentPatch(doc, next)
+  expect(cache.read(next, page, collapsed, '').slice(1).map(row => row.id)).toEqual(['n0', 'n1', 'n2'])
+  expect(cache.stats.builds).toBe(2)
+})
 
 test('real editor commit, undo and redo preserve certified rows; clear releases cached snapshot', () => {
   const document = blank(), text = node('text', 0, 0, 100, 100)

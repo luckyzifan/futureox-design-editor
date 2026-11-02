@@ -30,14 +30,23 @@ export type CanvasOverlayInputs = {
 export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlayContext {
   const { document, selected, owners, frameTitles, localSelection, selectionCorners, selectionBox, measurementTarget } = input
   const showSelection = !!selected.length && !['vector','width','pencil','brush','marker','washi-tape'].includes(input.tool)
-  const titleIdentity = frameTitles.map(entry => [entry.id, document.nodes[entry.id].name, [...entry.ancestors, entry.id]])
-  const selectionIdentity = showSelection ? [owners, input.canTransform] : null
+  const selectedIds = new Set(selected.map(entry => entry.id))
+  const named = showSelection && selected.length === 1 && localSelection && !['frame', 'section'].includes(document.nodes[selected[0].id]?.kind || '')
+    ? selected[0] : null
+  const titleIdentity = frameTitles.map(entry => [entry.id, document.nodes[entry.id].name, selectedIds.has(entry.id), [...entry.ancestors, entry.id]])
+  const selectionIdentity = showSelection ? [owners, input.canTransform, named && document.nodes[named.id].name] : null
   const targetIdentity = measurementTarget ? [measurementTarget.id, measurementTarget.bounds.x, measurementTarget.bounds.y,
     measurementTarget.bounds.width, measurementTarget.bounds.height] : null
-  const uiIdentity = JSON.stringify([1, input.pixelGrid, selectionIdentity, titleIdentity, targetIdentity])
+  const uiIdentity = JSON.stringify([2, input.pixelGrid, selectionIdentity, titleIdentity, targetIdentity])
   const measurements = measurementTarget ? measureBounds(selectionBox, measurementTarget.bounds) : []
   const labels: CanvasLabel[] = frameTitles.map(entry => ({anchor: apply(entry.matrix,{x:0,y:0}), offset:{x:0,y:-12},
-    basis:entry.matrix.slice(0,4) as [number,number,number,number], text:document.nodes[entry.id].name, size:11,color:'#73778b',owners:[...entry.ancestors,entry.id]}))
+    basis:entry.matrix.slice(0,4) as [number,number,number,number], text:document.nodes[entry.id].name, size:11,
+    color: selectedIds.has(entry.id) ? '#0d99ff' : '#73778b', owners:[...entry.ancestors,entry.id]}))
+  if (named && localSelection) labels.push({
+    anchor: apply(named.matrix, { x: localSelection.x, y: localSelection.y }), offset: { x: 0, y: -12 },
+    basis: named.matrix.slice(0, 4) as [number, number, number, number],
+    text: document.nodes[named.id].name, size: 11, color: '#0d99ff', owners,
+  })
   if(showSelection) labels.push({anchor:{x:selectionBox.x+selectionBox.width/2,y:selectionBox.y+selectionBox.height},offset:{x:0,y:21},
     text:selectionSizeLabel(localSelection,selectionBox,selected[0]?.matrix),size:10,color:'#0d99ff',centered:true,owners})
   for(const m of measurements) labels.push({anchor:{x:(m.from.x+m.to.x)/2,y:(m.from.y+m.to.y)/2},offset:{x:4,y:-5},

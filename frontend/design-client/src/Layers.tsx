@@ -41,6 +41,7 @@ const Trash2 = memo(Trash2Glyph)
 const Copy = memo(CopyGlyph)
 const Diamond = memo(DiamondGlyph)
 
+import { usePropertyText } from './property-interface-messages'
 import type { Editor } from './engine'
 import { container } from './model'
 import { commitPendingEdits } from './pending-edits'
@@ -49,6 +50,7 @@ import { layerSelection } from './layer-selection'
 import { layerDropPlan, layerDropPosition, orderedLayerRoots, type LayerDropPosition } from './layer-drop'
 import type { WorkspaceSection } from './EditorChrome'
 export function Layers({ editor, section, onSection, showPages=true }: { editor: Editor; section?: WorkspaceSection; onSection?: (section: WorkspaceSection) => void; showPages?:boolean }) {
+  const { tr } = usePropertyText()
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
   const renderSession = editor.sessionGeneration
   const [localTab, setLocalTab] = useState<WorkspaceSection>('layers')
@@ -275,8 +277,8 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
       <label className="layer-search" style={{ display: tab === 'assets' ? 'none' : undefined }}>
         <Search size={13} />
         <input
-          aria-label="搜索图层"
-          placeholder="搜索图层…"
+          aria-label={tr("搜索图层")}
+          placeholder={tr("搜索图层…")}
           value={search}
           onChange={(e) => {
             setSearch(e.target.value)
@@ -414,13 +416,10 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
                   if (!editor.state.selection.includes(id)) editor.select([id])
                   setContext({ x: event.clientX, y: event.clientY, id })
                 }}
-                onDoubleClick={() => {
-                  if (commitPendingEdits(editor)) setRenaming(id)
-                }}
               >
                 <button
                   className="disclosure"
-                  aria-label={`${collapsed.has(id) ? '展开' : '折叠'} ${n.name}`}
+                  aria-label={`${collapsed.has(id) ? tr('展开') : tr('折叠')} ${n.name}`}
                   tabIndex={-1}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -447,15 +446,16 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
                 {renaming === id ? <span className="layer-name layer-rename" onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}
                   onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Escape') setRenaming(null) }}
                   onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node) && commitPendingEdits(editor)) setRenaming(null) }}>
-                  <DraftInput key={`${editor.sessionGeneration}:${id}`} editor={editor} aria-label="重命名图层" autoFocus value={n.name}
+                  <DraftInput key={`${editor.sessionGeneration}:${id}`} editor={editor} aria-label={tr("重命名图层")} autoFocus value={n.name}
                     normalize={(value) => value.trim()} validate={(value) => !!value}
                     onCommit={(value) => { editor.update([id], { name: value }, '重命名图层'); setRenaming(null) }} />
-                </span> : <span className="layer-name">
+                </span> : <span className="layer-name" onDoubleClick={(event) => { event.stopPropagation(); if (commitPendingEdits(editor)) setRenaming(id) }}>
                   {n.mask ? '◐ ' : ''}
                   {n.name}
                 </span>}
                 <button
-                  title={n.locked ? '解锁图层' : '锁定图层'}
+                  title={n.locked ? tr('解锁图层') : tr('锁定图层')}
+                  onDoubleClick={(event) => event.stopPropagation()}
                   className={n.locked ? 'always' : ''}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -465,7 +465,8 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
                   {n.locked ? <Lock size={11} /> : <Unlock size={11} />}
                 </button>
                 <button
-                  title={n.visible ? '隐藏图层' : '显示图层'}
+                  title={n.visible ? tr('隐藏图层') : tr('显示图层')}
+                  onDoubleClick={(event) => event.stopPropagation()}
                   className={!n.visible ? 'always' : ''}
                   onClick={(e) => {
                     e.stopPropagation()
