@@ -329,7 +329,9 @@ try {
   await p.keyboard.press('Enter'); await storedCount(1); await expect(p.locator('.pen-hint')).toHaveCount(0)
   await undo(); await storedCount(0)
   await penDraft(); await p.keyboard.press('Escape'); await expect(p.locator('.pen-hint')).toHaveCount(0)
-  expect(Object.keys((await document()).nodes)).toHaveLength(0)
+  expect(Object.keys((await document()).nodes)).toHaveLength(1)
+  await expect(canvas).toHaveClass(/canvas-pen/)
+  await undo(); await storedCount(0)
   await penDraft(); await p.getByRole('button', { name: '选择', exact: true }).click()
   await storedCount(1); await expect(p.locator('.pen-hint')).toHaveCount(0); await expect(canvas).toHaveClass(/canvas-select/)
   await undo(); await storedCount(0)
@@ -345,7 +347,7 @@ try {
   expect((await document()).pages[0].children).toEqual([firstPagePath]); expect((await document()).pages[1].children).toHaveLength(1)
   expect((await document()).nodes[firstPagePath]).toEqual(committedOldPath)
   await screenshot('16-pen-page-ownership')
-  passed('Pending pen draft: Enter commits once, Esc cancels, tool/page change commits to the original page and cannot leak old points into the next page')
+  passed('Pending pen draft: Enter commits and selects, Esc commits the open path and stays on the pen, tool/page change commits to the original page')
 
   const outsideDoc = blank('17-手势外侧指针围栏'), outsideShape = node('rectangle', 80, 90, 110, 80)
   outsideDoc.nodes[outsideShape.id] = outsideShape; outsideDoc.pages[0].children = [outsideShape.id]
