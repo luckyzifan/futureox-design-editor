@@ -24,6 +24,7 @@ import { figmaRotationDegrees, nodeDegreesForFigmaAngle, type LiveRotation } fro
 import { nextConstraint } from './layout-constraints'
 import { ComponentPanel } from './ComponentPanel'
 import { NumberField } from './fields'
+import { formatPercent } from './numeric-expression'
 import { LayoutPanel } from './LayoutPanel'
 import { MultiSelectionInspector } from './MultiSelectionInspector'
 import { resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
@@ -142,7 +143,7 @@ function PaintEditor({
         </details>
       )}
       <div className="field-grid">
-        {target ? <label className="paint-opacity-field">{tr("填充不透明度 %")}<SolidFillColorInput target={target} label={tr("填充不透明度")} value={String(p.opacity * 100)} opacity />
+        {target ? <label className="paint-opacity-field">{tr("填充不透明度 %")}<SolidFillColorInput target={target} label={tr("填充不透明度")} value={formatPercent(p.opacity * 100)} opacity />
         </label> : <NumberField historyLabel="不透明度 %" diagnosticFamily={11} unit="percent"
           label={tr("不透明度 %")}
           value={p.opacity * 100}
@@ -965,7 +966,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                           x: '偏移 X',
                           y: '偏移 Y',
                           spread: '扩展',
-                          opacity: '强度 %',
+                          opacity: ['shadow', 'inner-shadow'].includes(fx.kind) ? '不透明度 %' : '强度 %',
                           amount:
                             fx.kind === 'glass'
                               ? '折射'
@@ -981,7 +982,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                           x: '偏移 X',
                           y: '偏移 Y',
                           spread: '扩展',
-                          opacity: '强度 %',
+                          opacity: ['shadow', 'inner-shadow'].includes(fx.kind) ? '不透明度 %' : '强度 %',
                           amount:
                             fx.kind === 'glass'
                               ? '折射'

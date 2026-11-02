@@ -28,7 +28,17 @@ pub fn transcode(png: &[u8], format: &str, scale: f64) -> Result<Vec<u8>, String
     let rgba = image::load_from_memory_with_format(png, image::ImageFormat::Png)
         .map_err(|e| e.to_string())?
         .to_rgba8();
-    let profile = crate::export::srgb_icc_profile()?;
+    let space = tagged_space(png)?;
+    let profile = match space {
+        crate::color::ColorSpace::DisplayP3 => crate::export::display_p3_icc_profile()?,
+        crate::color::ColorSpace::Srgb => crate::export::srgb_icc_profile()?,
+        _ => {
+            return Err(
+                "JPEG/WebP/PDF can tag sRGB or Display P3. Export PNG for other color spaces."
+                    .into(),
+            )
+        }
+    };
     let mut bytes = Vec::new();
     match format {
         "webp" => {
@@ -61,6 +71,26 @@ pub fn transcode(png: &[u8], format: &str, scale: f64) -> Result<Vec<u8>, String
         _ => unreachable!(),
     }
     Ok(bytes)
+}
+
+/// sRGB when the PNG has an sRGB chunk or no cICP. Display P3 when cICP says
+/// so. Other cICP values are refused instead of being labeled sRGB.
+fn tagged_space(png: &[u8]) -> Result<crate::color::ColorSpace, String> {
+    use crate::color::ColorSpace;
+    let decoder = png::Decoder::new(std::io::Cursor::new(png));
+    let reader = decoder.read_info().map_err(|e| e.to_string())?;
+    let info = reader.info();
+    if let Some(code) = info.coding_independent_code_points {
+        return match (code.color_primaries, code.transfer_function) {
+            (12, 13) => Ok(ColorSpace::DisplayP3),
+            (1, 13) => Ok(ColorSpace::Srgb),
+            _ => Err(
+                "JPEG/WebP/PDF can tag sRGB or Display P3. Export PNG for other color spaces."
+                    .into(),
+            ),
+        };
+    }
+    Ok(ColorSpace::Srgb)
 }
 
 /// Insert an APP2 ICC profile after a leading JFIF APP0, otherwise immediately

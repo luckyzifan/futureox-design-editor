@@ -20,6 +20,9 @@
 //!   function only sees text the caller already expanded to outlines.
 //! - Angular and diamond gradients have no PDF shading equivalent; they fall
 //!   back to a solid fill of the first stop color.
+//! - Layer opacity multiplies ancestor opacity, paint opacity and the color's
+//!   own alpha. Effects are still ignored here; the raster export multiplies
+//!   shadow opacity with the shadow color alpha and the layer opacity.
 //! - Mask nodes and effects are ignored. Strokes with inside/outside
 //!   alignment, width profiles, markers, or non-solid paint export as the
 //!   kernel's expanded outline geometry instead of the `S` operator.
@@ -89,7 +92,7 @@ fn encode(
         );
     }
     for id in &page.children {
-        visit(&mut pdf, doc.color_management, fonts, doc, id)?;
+        visit(&mut pdf, doc.color_management, fonts, doc, id, 1.)?;
     }
     pdf.finish(width, height)
 }
@@ -131,12 +134,17 @@ fn visit(
     fonts: Option<&Fonts>,
     doc: &Document,
     id: &str,
+    inherited_opacity: f64,
 ) -> Result<(), String> {
     let node = doc
         .nodes
         .get(id)
         .ok_or_else(|| format!("Missing node {id}"))?;
-    if !node.visible || node.mask || node.opacity <= 0. {
+    // Ancestor opacity multiplies. PDF `/ca` replaces rather than stacking, so
+    // each paint carries the product. Overlapping semi-transparent children
+    // still composite one after another; a true group isolation is the raster.
+    let layer_opacity = (inherited_opacity * node.opacity).clamp(0., 1.);
+    if !node.visible || node.mask || layer_opacity <= 0. {
         return Ok(());
     }
     pdf.content.push_str("q\n");
@@ -148,7 +156,7 @@ fn visit(
         && let Some(fonts) = fonts
         && text_operators_apply(node)
     {
-        text = write_text_operators(pdf, settings, node, fonts)?;
+        text = write_text_operators(pdf, settings, node, fonts, layer_opacity)?;
     }
     let (fill, stroke) = if text {
         (Path::default(), Path::default())
@@ -164,7 +172,7 @@ fn visit(
             .is_none_or(|g| g.fill_rule == "evenodd");
     if !fill.commands.is_empty() {
         for paint in node.fills.iter().filter(|p| p.visible && p.opacity > 0.) {
-            write_fill(pdf, settings, node, paint, evenodd, |ops| {
+            write_fill(pdf, settings, node, paint, layer_opacity, evenodd, |ops| {
                 write_path(ops, &fill)
             })?;
         }
@@ -177,14 +185,14 @@ fn visit(
             .push_str(if evenodd { "W* n\n" } else { "W n\n" });
     }
     for child in node.render_children() {
-        visit(pdf, settings, fonts, doc, child)?;
+        visit(pdf, settings, fonts, doc, child, layer_opacity)?;
     }
     if clipped {
         pdf.content.push_str("Q\n");
     }
     if !stroke.commands.is_empty() {
         for s in node.strokes.iter().filter(|s| s.visible && s.width > 0.) {
-            write_stroke(pdf, settings, node, s, &stroke)?;
+            write_stroke(pdf, settings, node, s, &stroke, layer_opacity)?;
         }
     }
     pdf.content.push_str("Q\n");
@@ -232,6 +240,7 @@ fn write_text_operators(
     settings: Option<ColorSettings>,
     node: &Node,
     fonts: &Fonts,
+    layer_opacity: f64,
 ) -> Result<bool, String> {
     let layout = fonts.node_layout(node, Some(node.width))?;
     if layout.glyphs.iter().any(|g| g.path_transform.is_some()) {
@@ -270,7 +279,7 @@ fn write_text_operators(
     }
     for paint in node.fills.iter().filter(|p| p.visible && p.opacity > 0.) {
         let (rgb, _) = color(settings, &paint.color, 1.)?;
-        let alpha = (node.opacity * paint.opacity).clamp(0., 1.);
+        let alpha = coverage_alpha(settings, layer_opacity, paint)?;
         let gs = pdf.gstate(alpha, effective_blend(node, paint))?;
         emit_gs(&mut pdf.content, &gs);
         let _ = writeln!(
@@ -299,6 +308,35 @@ fn write_text_operators(
     Ok(true)
 }
 
+/// Layer opacity × paint opacity × color alpha. Gradient stops that do not
+/// share one alpha keep that coverage out of the single ExtGState; their RGB
+/// shading is unchanged.
+fn paint_color_alpha(settings: Option<ColorSettings>, paint: &Paint) -> Result<f32, String> {
+    if paint.kind == "solid" || paint.stops.is_empty() {
+        return Ok(color(settings, &paint.color, 1.)?.1);
+    }
+    if let Some(constant) = paint.constant_color() {
+        return Ok(color(settings, constant, 1.)?.1);
+    }
+    let mut shared = None;
+    for stop in &paint.stops {
+        let alpha = color(settings, &stop.color, 1.)?.1;
+        if shared.is_some_and(|previous: f32| (previous - alpha).abs() > 1e-5) {
+            return Ok(1.);
+        }
+        shared = Some(alpha);
+    }
+    Ok(shared.unwrap_or(1.))
+}
+
+fn coverage_alpha(
+    settings: Option<ColorSettings>,
+    layer_opacity: f64,
+    paint: &Paint,
+) -> Result<f64, String> {
+    Ok((layer_opacity * paint.opacity * f64::from(paint_color_alpha(settings, paint)?)).clamp(0., 1.))
+}
+
 fn effective_blend<'a>(node: &'a Node, paint: &'a Paint) -> &'a str {
     if paint.blend != "normal" {
         &paint.blend
@@ -315,10 +353,11 @@ fn write_fill(
     settings: Option<ColorSettings>,
     node: &Node,
     paint: &Paint,
+    layer_opacity: f64,
     evenodd: bool,
     ops: impl FnOnce(&mut String) -> Result<(), String>,
 ) -> Result<(), String> {
-    let alpha = (node.opacity * paint.opacity).clamp(0., 1.);
+    let alpha = coverage_alpha(settings, layer_opacity, paint)?;
     let gs = pdf.gstate(alpha, effective_blend(node, paint))?;
     let clip = if evenodd { "W* n " } else { "W n " };
     match paint.kind.as_str() {
@@ -401,6 +440,7 @@ fn write_stroke(
     node: &Node,
     s: &Stroke,
     path: &Path,
+    layer_opacity: f64,
 ) -> Result<(), String> {
     let solid = if s.paint.kind == "solid" {
         Some(color(settings, &s.paint.color, 1.)?.0)
@@ -413,7 +453,7 @@ fn write_stroke(
         && crate::stroke::Marker::is_none(&s.end_marker)
         && let Some(rgb) = solid
     {
-        let alpha = (node.opacity * s.paint.opacity).clamp(0., 1.);
+        let alpha = coverage_alpha(settings, layer_opacity, &s.paint)?;
         let gs = pdf.gstate(alpha, effective_blend(node, &s.paint))?;
         emit_gs(&mut pdf.content, &gs);
         let _ = write!(
@@ -454,7 +494,7 @@ fn write_stroke(
         return Ok(());
     }
     // Expanded stroke outlines carry positive winding, so they fill nonzero.
-    write_fill(pdf, settings, node, &s.paint, false, |ops| {
+    write_fill(pdf, settings, node, &s.paint, layer_opacity, false, |ops| {
         write_contours(ops, &outlines)
     })
 }
@@ -1486,6 +1526,25 @@ mod tests {
         assert!(content.contains("0 j"));
         assert!(content.contains("S\n"));
         assert_eq!(content.matches('q').count(), content.matches('Q').count());
+    }
+
+    #[test]
+    fn layer_fill_and_ancestor_opacity_include_color_alpha() {
+        let doc = document(
+            json!({
+                "g": {"id":"g","kind":"group","width":20.,"height":20.,"opacity":0.5,"children":["c"]},
+                "c": {"id":"c","kind":"rectangle","width":20.,"height":20.,
+                      "fills":[{"kind":"solid","color":"color(srgb 1 0 0 / 0.5)","opacity":0.5}],
+                      "strokes":[{"paint":{"kind":"solid","color":"color(srgb 0 0 1 / 0.5)","opacity":0.5},"width":2.}]}
+            }),
+            &["g"],
+        );
+        let pdf = encode_pdf_vector(&doc, "p", 40., 40., None).unwrap();
+        let text = String::from_utf8_lossy(&pdf);
+        // 0.5 ancestor × 0.5 paint × 0.5 color alpha.
+        assert!(text.contains("/ca 0.125"), "{text}");
+        assert!(!text.contains("/ca 0.25"), "{text}");
+        assert!(!text.contains("/ca 0.5"), "{text}");
     }
 
     #[test]
