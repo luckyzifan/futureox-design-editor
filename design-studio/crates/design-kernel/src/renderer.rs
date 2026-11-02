@@ -1918,6 +1918,30 @@ impl Engine {
         w: u32,
         h: u32,
     ) -> Result<Vec<u8>, String> {
+        match self.render_device_rect_once(options, x, y, w, h) {
+            Ok(bytes) => Ok(bytes),
+            // Exact tile entry used to fail the whole board. The display retry
+            // is the same one `render` uses: drop an effect that cannot share
+            // the ledger, and keep the fill and stroke. Exact
+            // `render_surfaces_regions` does not come through here.
+            Err(error) if display_pressure(&error) && !self.display_degrade => {
+                self.display_degrade = true;
+                let degraded = self.render_device_rect_once(options, x, y, w, h);
+                self.display_degrade = false;
+                self.clear_degrade_prep();
+                degraded.map_err(|_| error)
+            }
+            Err(error) => Err(error),
+        }
+    }
+    fn render_device_rect_once(
+        &mut self,
+        options: &RenderOptions,
+        x: u32,
+        y: u32,
+        w: u32,
+        h: u32,
+    ) -> Result<Vec<u8>, String> {
         self.prepare_frame(options)?;
         self.resolve_layout()?;
         if options.pixel_preview.is_some() {
