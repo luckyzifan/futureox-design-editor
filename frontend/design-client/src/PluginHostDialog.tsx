@@ -3,7 +3,7 @@ import type { Editor } from './engine'
 import type { DesktopBridge } from './desktop'
 import { modalKeyDown } from './modal-keyboard'
 import { useInterfacePreferences } from './interface-preference'
-import { pluginApiCoverage, pluginBundleFromFiles, samplePluginBundle, sampleUiPluginBundle, openPlugin, PluginApiError, type PluginController } from './plugins'
+import { pluginApiCoverage, pluginBundleFromFiles, pluginBundleFromZip, pluginEditorEvents, pluginUiMessage, pluginUiSrcdoc, samplePluginBundle, sampleUiPluginBundle, openPlugin, PluginApiError, type PluginBundle, type PluginController } from './plugins'
 import './PluginHostDialog.css'
 
 export function PluginHostDialog({ editor, desktop, onClose }: { editor: Editor; desktop?: DesktopBridge | null; onClose: () => void }) {
@@ -11,18 +11,21 @@ export function PluginHostDialog({ editor, desktop, onClose }: { editor: Editor;
   const en = locale === 'en'
   const coverage = pluginApiCoverage()
   const folder = useRef<HTMLInputElement>(null)
+  const archive = useRef<HTMLInputElement>(null)
   const frame = useRef<HTMLIFrameElement>(null)
   const controller = useRef<PluginController | null>(null)
+  const pluginId = useRef('')
   const queued = useRef<unknown[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [log, setLog] = useState<string[]>([])
   const [ui, setUi] = useState<PluginController['ui']>(null)
   const [frameUrl, setFrameUrl] = useState('')
-  const [draft, setDraft] = useState('{"type":"create-label","text":"Futureox"}')
+  const [pending, setPending] = useState<PluginBundle | null>(null)
+  const [networkNote, setNetworkNote] = useState('')
   const text = en
-    ? { title: 'Plugins', close: 'Close plugins', lead: 'Run a Figma-style plugin against the open document. The sample creates a labeled frame. A folder needs manifest.json and code.js.', sample: 'Run sample', uiSample: 'Run UI sample', folder: 'Load plugin folder', coverage: 'API coverage', send: 'Send JSON message', fallback: 'Scripted plugin UI runs in the desktop app. This form sends one JSON message to the plugin.' }
-    : { title: '插件', close: '关闭插件', lead: '在当前文档上运行 Figma 风格插件。示例会创建一个带文字的画板。文件夹需要 manifest.json 和 code.js。', sample: '运行示例', uiSample: '运行界面示例', folder: '载入插件文件夹', coverage: 'API 覆盖', send: '发送 JSON 消息', fallback: '带脚本的插件界面在桌面版的隔离页面里运行。这里可以把一条 JSON 消息发给插件。' }
+    ? { title: 'Plugins', close: 'Close plugins', lead: 'Run a Figma plugin on the open document. Load a folder or a .zip / .figma archive with manifest.json and code.js. The sample creates a labeled frame.', sample: 'Run sample', uiSample: 'Run UI sample', folder: 'Load plugin folder', archive: 'Load .zip / .figma', coverage: 'API coverage', commands: 'Choose a command', network: 'This plugin asks for network access. Futureox does not grant it.' }
+    : { title: '插件', close: '关闭插件', lead: '在当前文档上运行 Figma 插件。可以载入包含 manifest.json 和 code.js 的文件夹，或 .zip / .figma 压缩包。示例会创建一个带文字的画板。', sample: '运行示例', uiSample: '运行界面示例', folder: '载入插件文件夹', archive: '载入 .zip / .figma', coverage: 'API 覆盖', commands: '选择命令', network: '此插件声明了网络访问。Futureox 不会授予网络。' }
 
   useEffect(() => { folder.current?.setAttribute('webkitdirectory', ''); folder.current?.setAttribute('directory', '') }, [])
   useEffect(() => () => { controller.current?.close(); controller.current = null }, [])
@@ -30,15 +33,15 @@ export function PluginHostDialog({ editor, desktop, onClose }: { editor: Editor;
   function postToFrame(message: unknown) {
     const target = frame.current?.contentWindow
     if (!target) { queued.current.push(message); return }
-    target.postMessage({ pluginMessage: message }, '*')
+    target.postMessage(pluginUiMessage(pluginId.current, message), '*')
+  }
+  function flushQueued() {
+    const target = frame.current?.contentWindow
+    if (!target) return
+    for (const message of queued.current.splice(0)) target.postMessage(pluginUiMessage(pluginId.current, message), '*')
   }
   useEffect(() => {
-    const target = frame.current?.contentWindow
-    if (!target || !frameUrl) return
-    for (const message of queued.current.splice(0)) target.postMessage({ pluginMessage: message }, '*')
-  }, [frameUrl])
-  useEffect(() => {
-    if (!ui || !desktop?.pluginUi) { setFrameUrl(''); return }
+    if (!ui?.html || !desktop?.pluginUi) { setFrameUrl(''); return }
     let cancelled = false
     let published: string | undefined
     void desktop.pluginUi.publish({ html: ui.html }).then(result => {
@@ -47,34 +50,54 @@ export function PluginHostDialog({ editor, desktop, onClose }: { editor: Editor;
       else if (result.status !== 'cancelled') setError(result.message)
     })
     return () => { cancelled = true; if (published) void desktop.pluginUi?.revoke({ id: published }) }
-  }, [ui, desktop])
+  }, [ui?.html, desktop])
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow) return
       const data = event.data
       if (!data || typeof data !== 'object' || !('pluginMessage' in data)) return
-      try { controller.current?.deliver((data as { pluginMessage: unknown }).pluginMessage) }
-      catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)) }
+      try {
+        controller.current?.deliver((data as { pluginMessage: unknown }).pluginMessage)
+        if (controller.current?.closed) { controller.current.close(); controller.current = null; setUi(null) }
+      } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)) }
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
   }, [])
+  useEffect(() => {
+    let pageId = editor.state.page
+    let selection = editor.state.selection.join('\0')
+    return editor.subscribe(() => {
+      const next = { pageId: editor.state.page, selection: editor.state.selection.join('\0') }
+      const events = pluginEditorEvents({ pageId, selection }, next, !!controller.current?.applying)
+      pageId = next.pageId
+      selection = next.selection
+      for (const event of events) {
+        try { controller.current?.emit(event) }
+        catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)) }
+      }
+    })
+  }, [editor])
 
-  async function run(load: () => Promise<Parameters<typeof openPlugin>[1]>) {
-    setBusy(true); setError(''); setUi(null); setFrameUrl(''); queued.current = []
+  async function run(load: () => Promise<PluginBundle>, command?: string) {
+    setBusy(true); setError(''); setUi(null); setFrameUrl(''); setPending(null); queued.current = []
     controller.current?.close(); controller.current = null
     try {
       const bundle = await load()
-      const next = await openPlugin(editor, bundle, { onPostMessage: postToFrame })
-      controller.current = next
+      setNetworkNote(bundle.manifest.networkIgnored ? text.network : '')
+      if (!command && bundle.manifest.commands.length) { setPending(bundle); return }
+      pluginId.current = bundle.manifest.id
+      const next = await openPlugin(editor, bundle, { onPostMessage: postToFrame, onUi: setUi, command, storage: undefined })
+      controller.current = next.closed ? null : next
       setLog([...next.notifications, ...next.logs])
-      setUi(next.ui)
-      if (next.closed) { next.close(); controller.current = null }
+      setUi(next.closed ? null : next.ui)
+      if (next.closed) next.close()
     } catch (failure) {
       setError(failure instanceof PluginApiError ? `${failure.code}: ${failure.message}` : failure instanceof Error ? failure.message : String(failure))
     } finally { setBusy(false) }
   }
 
+  const frameTitle = ui?.title || text.title
   return <div className="modal-backdrop">
     <section className="remote-modal plugin-host-dialog" role="dialog" aria-modal="true" aria-label={text.title} onKeyDown={event => modalKeyDown(event, () => { controller.current?.close(); onClose() })}>
       <h2>{text.title}<button type="button" autoFocus aria-label={text.close} onClick={() => { controller.current?.close(); onClose() }}>{en ? 'Close' : '关闭'}</button></h2>
@@ -83,24 +106,27 @@ export function PluginHostDialog({ editor, desktop, onClose }: { editor: Editor;
         <button type="button" className="primary" data-testid="plugin-run-sample" disabled={busy} onClick={() => void run(async () => samplePluginBundle())}>{text.sample}</button>
         <button type="button" data-testid="plugin-run-ui-sample" disabled={busy} onClick={() => void run(async () => sampleUiPluginBundle())}>{text.uiSample}</button>
         <button type="button" disabled={busy} onClick={() => folder.current?.click()}>{text.folder}</button>
+        <button type="button" data-testid="plugin-archive-button" disabled={busy} onClick={() => archive.current?.click()}>{text.archive}</button>
         <input ref={folder} hidden type="file" multiple data-testid="plugin-folder" onChange={event => {
           const files = event.target.files
           event.target.value = ''
           if (files?.length) void run(() => pluginBundleFromFiles(files))
         }} />
+        <input ref={archive} hidden type="file" accept=".zip,.figma,application/zip" data-testid="plugin-archive" onChange={event => {
+          const file = event.target.files?.[0]
+          event.target.value = ''
+          if (file) void run(async () => pluginBundleFromZip(new Uint8Array(await file.arrayBuffer())))
+        }} />
       </div>
+      {pending && <div className="plugin-host-commands">
+        <p>{text.commands}</p>
+        {pending.manifest.commands.map(item => <button key={item.command} type="button" disabled={busy} onClick={() => void run(async () => pending, item.command)}>{item.name}</button>)}
+      </div>}
+      {networkNote && <p role="status">{networkNote}</p>}
       {error && <p role="alert">{error}</p>}
       {log.length > 0 && <pre className="plugin-host-log" role="status">{log.join('\n')}</pre>}
-      {ui && frameUrl && <iframe ref={frame} className="plugin-host-frame" title={text.title} sandbox="allow-scripts" src={frameUrl} style={{ width: ui.width, height: ui.height }} />}
-      {ui && !frameUrl && <form className="plugin-host-message" onSubmit={event => {
-        event.preventDefault()
-        try { controller.current?.deliver(JSON.parse(draft)) }
-        catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)) }
-      }}>
-        <p>{text.fallback}</p>
-        <textarea aria-label={text.send} value={draft} onChange={event => setDraft(event.target.value)} />
-        <button type="submit" data-testid="plugin-send-json">{text.send}</button>
-      </form>}
+      {ui?.visible && frameUrl && <iframe ref={frame} className="plugin-host-frame" title={frameTitle} sandbox="allow-scripts" src={frameUrl} style={{ width: ui.width, height: ui.height }} onLoad={flushQueued} />}
+      {ui?.visible && !frameUrl && !desktop?.pluginUi && <iframe ref={frame} className="plugin-host-frame" title={frameTitle} sandbox="allow-scripts" srcDoc={pluginUiSrcdoc(ui.html)} style={{ width: ui.width, height: ui.height }} onLoad={flushQueued} />}
       <details>
         <summary>{text.coverage} · {coverage.counts.supported} supported · {coverage.counts.partial} partial · {coverage.counts.unsupported} unsupported</summary>
         <ul className="plugin-host-coverage">

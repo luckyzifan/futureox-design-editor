@@ -1,12 +1,18 @@
 import { createEditorDesignAutomation } from '../automation'
+import { apply, bounds, worldMatrix } from '../geometry'
 import type { Editor } from '../engine'
 import {
   defaultLayout, defaultSizing, defaultTextStyle, effect, paint, stroke,
   type AutoLayout, type Constraints, type DesignNode, type Effect, type Kind, type Matrix, type Paint, type Sizing, type Stroke, type TextStyle,
 } from '../model'
+import { clientStorageDelete, clientStorageGet, clientStorageKeys, clientStorageSet, defaultPluginStorage, type PluginStorage } from './client-storage'
 import { figmaColorToHex, hexToFigmaColor } from './colors'
 import { PluginApiError, PluginClosed } from './errors'
 import { PLUGIN_LIMITS } from './limits'
+import {
+  pluginDataEmpty, pluginDataGet, pluginDataKeys, pluginDataSet, readPluginData, sharedPluginDataGet, sharedPluginDataKeys, sharedPluginDataSet,
+  pluginDataExtension, type PluginDataScope, type PluginDataStore,
+} from './plugin-data'
 
 type Assignment = { key: string; value: unknown }
 type Command =
@@ -30,6 +36,7 @@ type Working = {
   sizing: Sizing | null
   constraints: Constraints | null
   textStyle: TextStyle | null
+  fontSize: number
 }
 
 type AutomationOp = { method: string; params?: Record<string, unknown> }
@@ -38,7 +45,16 @@ type Hooks = {
   onUi?: (ui: PluginUiState) => void
   onPostMessage?: (message: unknown) => void
 }
-export type PluginUiState = { html: string; width: number; height: number }
+export type PluginUiState = { html: string; width: number; height: number; title: string; visible: boolean }
+
+export type PluginSessionOptions = {
+  name: string
+  pluginId: string
+  command?: string
+  uiHtml: string | null
+  storage?: PluginStorage
+  hooks?: Hooks
+}
 
 const KINDS = new Set<Kind>(['slice', 'frame', 'section', 'group', 'rectangle', 'ellipse', 'polygon', 'star', 'line', 'vector', 'text'])
 const TRANSFORM_KEYS = new Set(['x', 'y', 'rotation'])
@@ -228,20 +244,27 @@ function toFigmaEffects(effects: Effect[]) {
 
 export type PluginSession = ReturnType<typeof createPluginSession>
 
-export function createPluginSession(editor: Editor, options: { name: string; uiHtml: string | null; hooks?: Hooks }) {
-  const api = createEditorDesignAutomation(editor)
+export function createPluginSession(editor: Editor, options: PluginSessionOptions) {
+  const api = createEditorDesignAutomation(editor, undefined, [pluginDataExtension])
   const pluginName = options.name
+  const pluginId = options.pluginId
+  const storage = options.storage ?? defaultPluginStorage()
   const documentId = editor.state.doc.id
   const sessionId = editor.sessionGeneration
   const commands: Command[] = []
   const notifications: string[] = []
   const logs: string[] = []
   let ui: PluginUiState | null = null
+  let uiShown = false
+  let listening = false
   let closed = false
   let closeMessage = ''
   let flushing = false
   let flushes = 0
   let calls = 0
+  let applying = 0
+  let pluginStore: PluginDataStore = {}
+  let pluginStoreDirty = false
   let fontFamilies: Record<string, { family: string }> | null = null
 
   function failIfReplaced() {
@@ -250,15 +273,18 @@ export function createPluginSession(editor: Editor, options: { name: string; uiH
   }
   function execute(method: string, params: Record<string, unknown>, mutate: boolean) {
     failIfReplaced()
-    const response = api.execute({
-      method, params,
-      ...(mutate ? { documentId, session: sessionId, expectedRevision: editor.state.version } : {}),
-    })
-    if (!response.ok) throw new PluginApiError(response.error.code, response.error.message)
-    const result = response.result as { completion?: { superseded?: boolean } } | null
-    if (result && typeof result === 'object' && result.completion?.superseded)
-      throw new PluginApiError('document_changed', 'The document changed while the plugin was running')
-    return response.result
+    if (mutate) applying += 1
+    try {
+      const response = api.execute({
+        method, params,
+        ...(mutate ? { documentId, session: sessionId, expectedRevision: editor.state.version } : {}),
+      })
+      if (!response.ok) throw new PluginApiError(response.error.code, response.error.message)
+      const result = response.result as { completion?: { superseded?: boolean } } | null
+      if (result && typeof result === 'object' && result.completion?.superseded)
+        throw new PluginApiError('document_changed', 'The document changed while the plugin was running')
+      return response.result
+    } finally { if (mutate) applying -= 1 }
   }
   function batch(operations: AutomationOp[]) {
     if (!operations.length) return null
@@ -316,11 +342,65 @@ export function createPluginSession(editor: Editor, options: { name: string; uiH
     if (!fontId) throw new PluginApiError('font_unavailable', `Font ${family} is not loaded in this document`)
     return { fontId, weight }
   }
+  function ensureText(working: Working) {
+    if (working.kind !== 'text') throw new PluginApiError('invalid_kind', 'This property is only available on text')
+    working.textStyle = { ...(working.textStyle ?? defaultTextStyle()) }
+    return working.textStyle
+  }
+  function lineHeightOf(value: unknown, fontSize: number): number {
+    const spec = record(value, 'lineHeight')
+    const unit = String(spec.unit)
+    if (unit === 'AUTO') return 1.35
+    const amount = finite(spec.value, 'lineHeight.value', 0.1, 10000)
+    const multiplier = unit === 'PERCENT' ? amount / 100 : unit === 'PIXELS' ? amount / Math.max(fontSize, 1) : NaN
+    if (!Number.isFinite(multiplier) || multiplier < 0.1 || multiplier > 10)
+      throw new PluginApiError('invalid_value', 'lineHeight must be PERCENT, PIXELS, or AUTO within the document range')
+    return multiplier
+  }
+  function letterSpacingOf(value: unknown, fontSize: number): number {
+    const spec = record(value, 'letterSpacing')
+    const amount = finite(spec.value, 'letterSpacing.value', -10000, 10000)
+    const unit = String(spec.unit)
+    const pixels = unit === 'PIXELS' ? amount : unit === 'PERCENT' ? amount / 100 * fontSize : NaN
+    return finite(pixels, 'letterSpacing', -1000, 1000)
+  }
+  function relativeMatrix(value: unknown): Matrix {
+    if (!Array.isArray(value) || value.length !== 2 || !Array.isArray(value[0]) || !Array.isArray(value[1]) || value[0].length < 3 || value[1].length < 3)
+      throw new PluginApiError('invalid_value', 'relativeTransform must be a 2×3 matrix')
+    const matrix = [value[0][0], value[1][0], value[0][1], value[1][1], value[0][2], value[1][2]]
+    if (matrix.some(item => typeof item !== 'number' || !Number.isFinite(item)))
+      throw new PluginApiError('invalid_value', 'relativeTransform must be finite')
+    const determinant = matrix[0] * matrix[3] - matrix[1] * matrix[2]
+    if (Math.abs(determinant) < 1e-8) throw new PluginApiError('invalid_value', 'relativeTransform is singular')
+    return matrix as Matrix
+  }
+  function loadPluginStore() {
+    if (!pluginStoreDirty) pluginStore = readPluginData(editor.authoredDocument)
+  }
+  function dataScope(value: unknown): PluginDataScope {
+    if (value === 'node' || value === 'page' || value === 'root') return value
+    throw new PluginApiError('invalid_value', 'Plugin data scope is invalid')
+  }
+  function assertDataTarget(scope: PluginDataScope, id: string) {
+    if (commands.some(command => command.type === 'remove' && command.id === id))
+      throw new PluginApiError('not_found', 'Node has been removed')
+    if (scope === 'root') {
+      if (id !== documentId && id !== editor.state.doc.id) throw new PluginApiError('not_found', 'Document does not exist')
+      return
+    }
+    if (scope === 'page') {
+      if (commands.some(command => command.type === 'createPage' && command.id === id) || editor.state.doc.pages.some(page => page.id === id)) return
+      throw new PluginApiError('not_found', 'Page does not exist')
+    }
+    if (commands.some(command => command.type === 'create' && command.id === id) || editor.state.doc.nodes[id]) return
+    throw new PluginApiError('not_found', 'Node does not exist')
+  }
   function defaults(kind: Kind): Working {
     const [width, height] = CREATE_SIZE[kind] ?? [100, 100]
     return {
       kind, transform: [1, 0, 0, 1, 0, 0], width, height, radii: [0, 0, 0, 0], strokes: [],
       layout: null, sizing: null, constraints: null, textStyle: kind === 'text' ? defaultTextStyle() : null,
+      fontSize: 28,
     }
   }
   function fromDocument(id: string): Working {
@@ -337,6 +417,7 @@ export function createPluginSession(editor: Editor, options: { name: string; uiH
       sizing: node.sizing ? structuredClone(node.sizing) : null,
       constraints: node.constraints ? structuredClone(node.constraints) : null,
       textStyle: node.textStyle ? structuredClone(node.textStyle) : null,
+      fontSize: node.fontSize,
     }
   }
   function ensureStroke(working: Working) {
@@ -406,9 +487,25 @@ export function createPluginSession(editor: Editor, options: { name: string; uiH
       if (working.kind !== 'text') throw new PluginApiError('invalid_kind', 'characters is only available on text')
       patch.text = shortText(value, 'characters', 100_000)
       patch.textRuns = []
-    } else if (key === 'fontSize') {
+    }     else if (key === 'fontSize') {
       if (working.kind !== 'text') throw new PluginApiError('invalid_kind', 'fontSize is only available on text')
-      patch.fontSize = finite(value, 'fontSize', 1, 4096)
+      working.fontSize = finite(value, 'fontSize', 1, 4096)
+      patch.fontSize = working.fontSize
+    } else if (key === 'textAlignHorizontal' || key === 'textAlignVertical' || key === 'lineHeight' || key === 'letterSpacing') {
+      const style = ensureText(working)
+      if (key === 'textAlignHorizontal') {
+        const modes: Record<string, TextStyle['align']> = { LEFT: 'start', CENTER: 'center', RIGHT: 'end', JUSTIFIED: 'justify' }
+        const align = modes[String(value)]
+        if (!align) throw new PluginApiError('unsupported_api', `textAlignHorizontal ${String(value)} is not available`)
+        style.align = align
+      } else if (key === 'textAlignVertical') {
+        const modes: Record<string, NonNullable<TextStyle['verticalAlign']>> = { TOP: 'top', CENTER: 'center', BOTTOM: 'bottom' }
+        const align = modes[String(value)]
+        if (!align) throw new PluginApiError('unsupported_api', `textAlignVertical ${String(value)} is not available`)
+        style.verticalAlign = align
+      } else if (key === 'lineHeight') style.lineHeight = lineHeightOf(value, working.fontSize || 28)
+      else style.letterSpacing = letterSpacingOf(value, working.fontSize || 28)
+      patch.textStyle = style
     } else if (key === 'fontName') {
       if (working.kind !== 'text') throw new PluginApiError('invalid_kind', 'fontName is only available on text')
       const font = record(value, 'fontName')
@@ -444,6 +541,19 @@ export function createPluginSession(editor: Editor, options: { name: string; uiH
         working.layout.align = mode
       }
       patch.layout = { ...working.layout, padding: [...working.layout.padding] as AutoLayout['padding'] }
+    } else if (key === 'relativeTransform') working.transform = relativeMatrix(value)
+    else if (key === 'layoutAlign' || key === 'layoutGrow') {
+      working.sizing = { ...(working.sizing ?? defaultSizing()) }
+      if (key === 'layoutGrow') {
+        const grow = finite(value, 'layoutGrow', 0, 1)
+        working.sizing.width = grow > 0 ? 'fill' : 'fixed'
+      } else {
+        const modes: Record<string, Sizing['alignSelf']> = { MIN: 'start', CENTER: 'center', MAX: 'end', STRETCH: 'stretch', INHERIT: null }
+        if (!Object.prototype.hasOwnProperty.call(modes, String(value)))
+          throw new PluginApiError('unsupported_api', `layoutAlign ${String(value)} is not available`)
+        working.sizing.alignSelf = modes[String(value)]
+      }
+      patch.sizing = { ...working.sizing }
     } else if (key === 'layoutSizingHorizontal' || key === 'layoutSizingVertical') {
       working.sizing = { ...(working.sizing ?? defaultSizing()) }
       const modes: Record<string, Sizing['width']> = { FIXED: 'fixed', HUG: 'hug', FILL: 'fill' }
@@ -460,7 +570,7 @@ export function createPluginSession(editor: Editor, options: { name: string; uiH
       working.constraints = { horizontal, vertical, referenceWidth: null, referenceHeight: null }
       patch.constraints = working.constraints
     } else throw new PluginApiError('unsupported_api', `${key} is not available on this plugin host`)
-    if (key === 'x' || key === 'y' || key === 'rotation') patch.transform = [...working.transform]
+    if (key === 'x' || key === 'y' || key === 'rotation' || key === 'relativeTransform') patch.transform = [...working.transform]
     if (key === 'width') patch.width = working.width
     if (key === 'height') patch.height = working.height
   }
@@ -500,11 +610,43 @@ export function createPluginSession(editor: Editor, options: { name: string; uiH
     return ops
   }
   function flush() {
-    if (flushing || !commands.length) return
+    if (flushing || (!commands.length && !pluginStoreDirty)) return
     flushing = true
     const list = commands.splice(0)
-    try { batch(compile(list, editor.state.page)) }
-    finally { flushing = false }
+    const dirty = pluginStoreDirty
+    try {
+      const ops = compile(list, editor.state.page)
+      if (dirty) ops.push({ method: 'plugin.data.replace', params: { json: JSON.stringify(pluginStore) } })
+      if (ops.length) batch(ops)
+      if (dirty && pluginDataEmpty(pluginStore)) pluginStore = {}
+      pluginStoreDirty = false
+    } catch (error) {
+      commands.unshift(...list)
+      throw error
+    } finally { flushing = false }
+  }
+  function publishUi(next: PluginUiState) {
+    ui = next
+    uiShown = true
+    options.hooks?.onUi?.(ui)
+  }
+  function camera() { return editor.effectiveView() }
+  function worldOrigin() {
+    const view = camera()
+    const zoom = view.zoom || 1
+    return { x: -view.x / zoom, y: -view.y / zoom }
+  }
+  function toTransform(matrix: Matrix) {
+    return [[matrix[0], matrix[2], matrix[4]], [matrix[1], matrix[3], matrix[5]]]
+  }
+  function absoluteBox(id: string, node: DesignNode) {
+    const matrix = worldMatrix(editor.authoredDocument, id)
+    return bounds([
+      apply(matrix, { x: 0, y: 0 }),
+      apply(matrix, { x: node.width, y: 0 }),
+      apply(matrix, { x: node.width, y: node.height }),
+      apply(matrix, { x: 0, y: node.height }),
+    ])
   }
   function nodeView(id: string) {
     let result: { node: DesignNode; parentId?: string; pageId: string }
@@ -523,6 +665,9 @@ export function createPluginSession(editor: Editor, options: { name: string; uiH
     return {
       id: node.id, type: figmaType(node), name: node.name, x: node.transform[4], y: node.transform[5],
       width: node.width, height: node.height, rotation: rotationOf(node.transform),
+      relativeTransform: toTransform(node.transform),
+      absoluteTransform: toTransform(worldMatrix(editor.authoredDocument, id)),
+      absoluteBoundingBox: absoluteBox(id, node),
       visible: node.visible, locked: node.locked, opacity: node.opacity, blendMode: BLEND_TO_FIGMA[node.blend] || 'NORMAL',
       fills: toFigmaFills(node.fills),
       strokes: node.strokes.map(item => ({ type: 'SOLID', color: hexToFigmaColor(item.paint.color), opacity: item.paint.opacity, visible: item.visible })),
@@ -545,9 +690,15 @@ export function createPluginSession(editor: Editor, options: { name: string; uiH
       counterAxisAlignItems: align(layout?.align, 'MIN'),
       layoutSizingHorizontal: (sizing?.width || 'fixed').toUpperCase(),
       layoutSizingVertical: (sizing?.height || 'fixed').toUpperCase(),
+      layoutAlign: sizing?.alignSelf ? (ALIGN_TO_FIGMA[sizing.alignSelf] || 'INHERIT') : 'INHERIT',
+      layoutGrow: sizing?.width === 'fill' ? 1 : 0,
       characters: node.kind === 'text' ? node.text : '',
       fontSize: node.fontSize,
       fontName: node.kind === 'text' ? { family, style: styleName(node.textStyle?.weight ?? 400) } : null,
+      textAlignHorizontal: node.kind === 'text' ? ({ start: 'LEFT', center: 'CENTER', end: 'RIGHT', justify: 'JUSTIFIED' } as Record<string, string>)[node.textStyle?.align || 'start'] || 'LEFT' : null,
+      textAlignVertical: node.kind === 'text' ? ({ top: 'TOP', center: 'CENTER', bottom: 'BOTTOM' } as Record<string, string>)[node.textStyle?.verticalAlign || 'top'] || 'TOP' : null,
+      lineHeight: node.kind === 'text' ? { unit: 'PERCENT', value: Math.round((node.textStyle?.lineHeight ?? 1.35) * 1000) / 10 } : null,
+      letterSpacing: node.kind === 'text' ? { unit: 'PIXELS', value: node.textStyle?.letterSpacing ?? 0 } : null,
       pointCount: node.points, innerRadius: node.innerRadius,
       parentId: result.parentId ?? null, parentIsPage: result.parentId === result.pageId,
       childIds: node.children, mainComponentId: node.instance?.componentId ?? null,
@@ -568,7 +719,9 @@ export function createPluginSession(editor: Editor, options: { name: string; uiH
   }
 
   return {
-    notifications, logs, get ui() { return ui }, get closed() { return closed }, get closeMessage() { return closeMessage }, get flushes() { return flushes },
+    notifications, logs,
+    get ui() { return ui }, get uiShown() { return uiShown }, get listening() { return listening }, get applying() { return applying > 0 },
+    get closed() { return closed }, get closeMessage() { return closeMessage }, get flushes() { return flushes }, get pluginId() { return pluginId },
     flush, 
     call(op: string, payload: unknown): unknown {
       if (closed) throw new PluginClosed(closeMessage)
@@ -593,19 +746,80 @@ export function createPluginSession(editor: Editor, options: { name: string; uiH
         closeMessage = shortText(body.message ?? '', 'closePlugin', PLUGIN_LIMITS.notifyChars)
         throw new PluginClosed(closeMessage)
       }
+      if (op === 'meta') return {
+        pluginId, command: options.command ?? null, editorType: 'figma', mode: 'default', fileKey: null,
+      }
+      if (op === 'listen') { listening = true; return null }
+      if (op === 'commitUndo') { flush(); return null }
       if (op === 'showUI') {
-        if (!options.uiHtml) throw new PluginApiError('missing_ui', 'This plugin has no ui.html')
-        ui = { html: options.uiHtml, width: clampSize(finite(body.width ?? 300, 'width', 1, 10000), 80, 800), height: clampSize(finite(body.height ?? 200, 'height', 1, 10000), 40, 800) }
-        options.hooks?.onUi?.(ui)
+        const html = typeof body.html === 'string' ? body.html : options.uiHtml
+        if (!html) throw new PluginApiError('missing_ui', 'showUI needs HTML or a manifest ui file')
+        if (new TextEncoder().encode(html).byteLength > PLUGIN_LIMITS.uiBytes)
+          throw new PluginApiError('plugin_too_large', 'Plugin UI is too large')
+        const visible = body.visible === undefined ? true : boolean(body.visible, 'visible')
+        publishUi({
+          html,
+          title: body.title === undefined ? pluginName : shortText(body.title, 'title', 80),
+          visible,
+          width: clampSize(finite(body.width ?? ui?.width ?? 300, 'width', 1, 10000), 80, 800),
+          height: clampSize(finite(body.height ?? ui?.height ?? 200, 'height', 1, 10000), 40, 800),
+        })
         return null
       }
-      if (op === 'uiResize') {
+      if (op === 'uiResize' || op === 'uiShow' || op === 'uiHide' || op === 'uiClose') {
         if (!ui) throw new PluginApiError('missing_ui', 'showUI has not been called')
-        ui = { ...ui, width: clampSize(finite(body.width, 'width', 1, 10000), 80, 800), height: clampSize(finite(body.height, 'height', 1, 10000), 40, 800) }
-        options.hooks?.onUi?.(ui)
+        const next = { ...ui }
+        if (op === 'uiResize') {
+          next.width = clampSize(finite(body.width, 'width', 1, 10000), 80, 800)
+          next.height = clampSize(finite(body.height, 'height', 1, 10000), 40, 800)
+        } else next.visible = op === 'uiShow'
+        publishUi(next)
         return null
       }
       if (op === 'postMessage') { options.hooks?.onPostMessage?.(body.message); return null }
+      if (op === 'viewportRead') {
+        const origin = worldOrigin()
+        return { zoom: camera().zoom, center: origin }
+      }
+      if (op === 'viewportZoom') {
+        const zoom = finite(body.zoom, 'zoom', 0.02, 256)
+        const origin = worldOrigin()
+        editor.set({ view: { x: -origin.x * zoom, y: -origin.y * zoom, zoom } })
+        return null
+      }
+      if (op === 'viewportCenter') {
+        const x = finite(body.x, 'center.x', -1e7, 1e7)
+        const y = finite(body.y, 'center.y', -1e7, 1e7)
+        const zoom = camera().zoom || 1
+        editor.set({ view: { x: -x * zoom, y: -y * zoom, zoom } })
+        return null
+      }
+      if (op === 'viewportReveal') {
+        flush()
+        editor.requestReveal(ids(body.ids, 'scrollAndZoomIntoView'))
+        return null
+      }
+      if (op === 'clientStorageGet') return clientStorageGet(storage, pluginId, body.key)
+      if (op === 'clientStorageKeys') return clientStorageKeys(storage, pluginId)
+      if (op === 'clientStorageSet') { clientStorageSet(storage, pluginId, body.key, body.json); return null }
+      if (op === 'clientStorageDelete') { clientStorageDelete(storage, pluginId, body.key); return null }
+      if (op === 'pluginDataGet' || op === 'pluginDataKeys' || op === 'pluginDataSet' || op === 'sharedPluginDataGet' || op === 'sharedPluginDataKeys' || op === 'sharedPluginDataSet') {
+        const scope = dataScope(body.scope)
+        const id = shortText(body.id, 'id', 80)
+        assertDataTarget(scope, id)
+        if (op === 'pluginDataSet' || op === 'sharedPluginDataSet') {
+          loadPluginStore()
+          if (op === 'pluginDataSet') pluginDataSet(pluginStore, scope, id, pluginId, body.key, body.value)
+          else sharedPluginDataSet(pluginStore, scope, id, body.namespace, body.key, body.value)
+          pluginStoreDirty = true
+          return null
+        }
+        const stored = pluginStoreDirty ? pluginStore : readPluginData(editor.authoredDocument)
+        if (op === 'pluginDataGet') return pluginDataGet(stored, scope, id, pluginId, body.key)
+        if (op === 'pluginDataKeys') return pluginDataKeys(stored, scope, id, pluginId)
+        if (op === 'sharedPluginDataGet') return sharedPluginDataGet(stored, scope, id, body.namespace, body.key)
+        return sharedPluginDataKeys(stored, scope, id, body.namespace)
+      }
       if (op === 'readDocument') { flush(); return documentView() }
       if (op === 'readNode') {
         flush()

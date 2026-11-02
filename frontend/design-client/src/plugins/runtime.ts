@@ -1,4 +1,5 @@
 import { getQuickJS, shouldInterruptAfterDeadline, type QuickJSContext, type QuickJSHandle, type QuickJSRuntime } from 'quickjs-emscripten'
+import type { PluginStorage } from './client-storage'
 import { PluginApiError, PluginClosed } from './errors'
 import { PLUGIN_LIMITS } from './limits'
 import { assertPluginBundle, type PluginBundle } from './manifest'
@@ -35,6 +36,9 @@ export type PluginHooks = {
   onNotify?: (message: string) => void
   onUi?: (ui: PluginUiState) => void
   onPostMessage?: (message: unknown) => void
+  /** Manifest menu command. Omitted when the plugin has no menu. */
+  command?: string
+  storage?: PluginStorage
 }
 
 export class PluginController {
@@ -60,7 +64,14 @@ export class PluginController {
     runtime.setMemoryLimit(PLUGIN_LIMITS.guestMemoryBytes)
     runtime.setMaxStackSize(PLUGIN_LIMITS.guestStackBytes)
     const context = runtime.newContext()
-    const session = createPluginSession(editor, { name: bundle.manifest.name, uiHtml: bundle.ui, hooks })
+    const session = createPluginSession(editor, {
+      name: bundle.manifest.name,
+      pluginId: bundle.manifest.id,
+      command: hooks?.command,
+      uiHtml: bundle.ui,
+      storage: hooks?.storage,
+      hooks,
+    })
     const controller = new PluginController(session, runtime, context)
     const host = context.newFunction('__host', (opHandle, payloadHandle) => {
       try {
@@ -85,7 +96,7 @@ export class PluginController {
     try {
       controller.evaluate(PLUGIN_PRELUDE + '\n' + bundle.main)
       session.flush()
-      if (!session.ui || session.closed) controller.release()
+      if (session.closed || (!session.uiShown && !session.listening)) controller.release()
       return controller
     } catch (error) {
       controller.release()
@@ -97,6 +108,15 @@ export class PluginController {
   get closed() { return this.session.closed }
   get closeMessage() { return this.session.closeMessage }
   get flushes() { return this.session.flushes }
+  get pluginId() { return this.session.pluginId }
+  get applying() { return this.session.applying }
+
+  emit(type: 'selectionchange' | 'currentpagechange') {
+    if (!this.context || this.session.closed) return
+    this.evaluate(`globalThis.__deliverPluginEvent(${JSON.stringify(type)})`)
+    this.session.flush()
+    if (this.session.closed) this.release()
+  }
 
   deliver(message: unknown) {
     if (!this.context) throw new PluginApiError('plugin_closed', 'The plugin has finished')

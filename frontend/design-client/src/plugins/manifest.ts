@@ -1,6 +1,8 @@
 import { PluginApiError } from './errors'
 import { PLUGIN_LIMITS } from './limits'
 
+export type PluginCommand = { name: string; command: string }
+
 export type PluginManifest = {
   name: string
   id: string
@@ -8,6 +10,11 @@ export type PluginManifest = {
   main: string
   ui: string | null
   editorType: string[]
+  commands: PluginCommand[]
+  /** True when the manifest asked for domains other than none. The sandbox still has no fetch. */
+  networkIgnored: boolean
+  /** Declared permissions are recorded and not granted. */
+  permissionsIgnored: string[]
 }
 
 export type PluginBundle = {
@@ -37,15 +44,32 @@ export function pluginRelativePath(value: unknown, extension: string): string {
   return path
 }
 
-function noNetwork(value: unknown) {
-  if (value == null) return
-  if (!Array.isArray(value)) throw new PluginApiError('invalid_manifest', 'networkAccess domains must be an array')
-  const allowed = value.length === 0 || (value.length === 1 && value[0] === 'none')
-  if (!allowed)
-    throw new PluginApiError('network_denied', 'This host does not grant plugin network access. allowedDomains must be omitted, empty, or ["none"].')
+function domainList(value: unknown, label: string): boolean {
+  if (value == null) return false
+  if (!Array.isArray(value) || value.some(item => typeof item !== 'string'))
+    throw new PluginApiError('invalid_manifest', `${label} must be an array of strings`)
+  return value.some(item => item !== 'none')
 }
 
-/** Parse a Figma-style manifest. Network, permissions, and non-figma editors reject. */
+function menuCommands(value: unknown, into: PluginCommand[], depth: number) {
+  if (value === undefined) return
+  if (!Array.isArray(value) || depth > 3)
+    throw new PluginApiError('invalid_manifest', 'menu must be an array')
+  for (const item of value) {
+    if (!item || typeof item !== 'object' || Array.isArray(item))
+      throw new PluginApiError('invalid_manifest', 'menu items must be objects')
+    const entry = item as Record<string, unknown>
+    if (entry.separator === true) continue
+    if (entry.menu !== undefined) menuCommands(entry.menu, into, depth + 1)
+    if (entry.command !== undefined || (entry.name !== undefined && entry.menu === undefined)) {
+      if (entry.command === undefined) continue
+      into.push({ name: text(entry.name, 'menu name', 80), command: text(entry.command, 'command', 80) })
+    }
+    if (into.length > 40) throw new PluginApiError('invalid_manifest', 'menu can list at most 40 commands')
+  }
+}
+
+/** Parse a Figma-style manifest. Network and permissions are not granted; the plugin can still load. */
 export function parsePluginManifest(value: unknown): PluginManifest {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new PluginApiError('invalid_manifest', 'manifest.json must be an object')
@@ -54,7 +78,10 @@ export function parsePluginManifest(value: unknown): PluginManifest {
   const id = text(String(record.id ?? ''), 'id', 128)
   if (record.api !== '1.0.0') throw new PluginApiError('invalid_manifest', 'api must be "1.0.0"')
   const main = pluginRelativePath(record.main, '.js')
-  const ui = record.ui === undefined ? null : pluginRelativePath(record.ui, '.html')
+  const uiValue = record.ui && typeof record.ui === 'object' && !Array.isArray(record.ui)
+    ? (record.ui as Record<string, unknown>).main
+    : record.ui
+  const ui = uiValue === undefined ? null : pluginRelativePath(uiValue, '.html')
   let editorType = ['figma']
   if (record.editorType !== undefined) {
     if (!Array.isArray(record.editorType) || record.editorType.some(item => typeof item !== 'string'))
@@ -63,21 +90,27 @@ export function parsePluginManifest(value: unknown): PluginManifest {
     if (!editorType.includes('figma'))
       throw new PluginApiError('invalid_manifest', 'Only editorType "figma" can run in Futureox Design')
   }
-  if (record.documentAccess !== undefined && record.documentAccess !== 'dynamic-page')
-    throw new PluginApiError('invalid_manifest', 'documentAccess must be "dynamic-page". Plugins only see the open document.')
+  if (record.documentAccess !== undefined && typeof record.documentAccess !== 'string')
+    throw new PluginApiError('invalid_manifest', 'documentAccess must be a string. The open document is already local.')
+  let networkIgnored = false
   const network = record.networkAccess
   if (network != null) {
     if (typeof network !== 'object' || Array.isArray(network))
       throw new PluginApiError('invalid_manifest', 'networkAccess must be an object')
     const access = network as Record<string, unknown>
-    noNetwork(access.allowedDomains)
-    noNetwork(access.devAllowedDomains)
+    networkIgnored = domainList(access.allowedDomains, 'allowedDomains') || domainList(access.devAllowedDomains, 'devAllowedDomains')
+    if (access.reasoning !== undefined && typeof access.reasoning !== 'string')
+      throw new PluginApiError('invalid_manifest', 'networkAccess.reasoning must be a string')
   }
+  let permissionsIgnored: string[] = []
   if (record.permissions !== undefined) {
-    if (!Array.isArray(record.permissions) || record.permissions.length > 0)
-      throw new PluginApiError('invalid_manifest', 'Plugin permissions are not granted. Omit permissions or use [].')
+    if (!Array.isArray(record.permissions) || record.permissions.some(item => typeof item !== 'string'))
+      throw new PluginApiError('invalid_manifest', 'permissions must be an array of strings')
+    permissionsIgnored = record.permissions
   }
-  return { name, id, api: '1.0.0', main, ui, editorType }
+  const commands: PluginCommand[] = []
+  menuCommands(record.menu, commands, 0)
+  return { name, id, api: '1.0.0', main, ui, editorType, commands, networkIgnored, permissionsIgnored }
 }
 
 export function assertPluginSource(source: string, label: string, maxBytes: number) {

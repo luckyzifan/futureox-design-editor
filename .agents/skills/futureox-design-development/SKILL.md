@@ -3,6 +3,8 @@ name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
 
+2026-11-02 [Figma 插件运行时](../../../testing/verification-figma-plugin-runtime-20261102/README.md)在既有 QuickJS 宿主上补上 .zip/.figma 载入、沙箱 iframe 的 `pluginMessage`、`clientStorage`、节点 plugin data，以及选择/视口/常用属性。提交仍走 automation `batch.apply` 与 `Editor.change`。不改光栅、瓦片导航或蓝色强调色。33/100ms 与完整 G2/G5 仍未关闭。
+
 2026-11-02 [Figma 插件宿主](../../../docs/FIGMA_PLUGIN_HOST_V1.md)在 QuickJS 里跑文档化的 Plugin API 子集，经现有 automation `batch.apply` 提交到当前文档。桌面插件界面只在 `design-app://plugin` 沙箱帧。不改画布粘滞、光栅、瓦片导航或蓝色强调色。33/100ms 与完整 G2/G5 仍未关闭。
 
 2026-11-02 [导入与传输对照](../../../testing/verification-interop-transfer-20261102/README.md)只修浏览器 FIG 描边端点、`showShadowBehindNode` 保留，以及原生 `LAYER_BLUR` 与 `FOREGROUND_BLUR` 同义。不改缩放/瓦片导航、GPU 预算或实验开关。精确瓦片 `slice` 在缓存持有缓冲区时仍是所有权边界。Sketch 玻璃/纹理、FIG 反向堆叠与变量、Display P3 默认 PNG 编码、33/100ms 和完整 G2/G5 仍未关闭。

@@ -10,27 +10,40 @@ This host runs a documented subset of the Figma Plugin API against the open Futu
 
 The sample is `frontend/design-client/src/plugins/sample/` (`manifest.json` + `code.js`). It creates a 320×140 frame named “Plugin sample”, fills it with `#3459d4`, and adds a white text layer “Futureox”. One or more undo steps labeled `Plugin: Labeled frame` remove it.
 
-## Load a plugin folder
+## Load a plugin folder or archive
 
-Choose **载入插件文件夹** / **Load plugin folder** and pick a directory that contains a Figma-style `manifest.json` and the `main` script it names. Optional `ui` must be an `.html` file in that folder. The loader reads only those files.
+Choose **载入插件文件夹** / **Load plugin folder** and pick a directory that contains a Figma-style `manifest.json` and the `main` script it names. Or choose **载入 .zip / .figma** / **Load .zip / .figma**. A `.figma` plugin file is a zip. The archive may nest the plugin in one folder. The loader reads `manifest.json`, the manifest `main` script, and the optional `ui` file. Other files are ignored. Paths that leave the folder are rejected.
 
-`frontend/design-client/src/plugins/sample-ui/` is a small UI plugin. Its `ui.html` posts `{ pluginMessage: { type: "create-label", text } }`. In the desktop app that page is a sandboxed `design-app://plugin/<id>` frame (`sandbox="allow-scripts"`, no same-origin, no network). In the web app the same main script stays running and the panel can send that JSON message.
+If the manifest has a `menu`, the panel lists those commands and runs the one you pick. `figma.command` is that command, or `undefined` when there is no menu.
+
+`frontend/design-client/src/plugins/sample-ui/` is a small UI plugin. Its `ui.html` posts `{ pluginMessage: { type: "create-label", text } }`. The host answers with `{ pluginMessage, pluginId }`.
+
+- On the desktop app the page is a sandboxed `design-app://plugin/<id>` frame (`sandbox="allow-scripts"`, no same-origin). Its response policy is `script-src 'unsafe-inline'` and `connect-src 'none'`.
+- In the web app the same HTML is a sandboxed srcdoc iframe with that policy in a meta element. The parent page CSP can still block inline scripts; the desktop frame does not inherit it.
 
 Manifest rules:
 
 - `api` must be `1.0.0` and `editorType` must include `figma`.
-- `documentAccess`, when set, must be `dynamic-page`. Only the open document is visible.
-- `networkAccess.allowedDomains` must be omitted, empty, or `["none"]`. Any other domain rejects the plugin.
-- `permissions` must be omitted or empty.
-- `main` and `ui` must be relative paths inside the folder.
+- `documentAccess` is ignored. The open document is already local.
+- `networkAccess` may name domains. The sandbox still has no `fetch`. The panel says network was not granted.
+- `permissions` may be non-empty. They are not granted.
+- `main` and `ui` must be relative paths inside the folder. `ui` may be a string or `{ "main": "ui.html" }`.
 
 ## How a call reaches the document
 
 Plugin JavaScript runs in QuickJS. The only bridge is a fixed set of host operations. Those operations call the shared editor automation API (`batch.apply` and the existing node, page, component, and boolean methods) and commit through `Editor.change`. There is no second document model. Each flush is one undo entry. A throw before the next flush drops the unflushed edits. `figma.closePlugin` flushes, then stops the script.
 
-Desktop content security policy still has no `unsafe-eval`. Plugin UI is the only framed document, and only at `design-app://plugin`. Its own policy is `script-src 'unsafe-inline'` and `connect-src 'none'`.
+Desktop content security policy still has no `unsafe-eval`. Plugin UI is an iframe with `sandbox="allow-scripts"` and `connect-src 'none'`. Main-thread `fetch` throws. `figma.clientStorage` is local to this client. Node `getPluginData` / `setPluginData` is stored in the inert FD extension `design.futureox/plugin-data` and shares the undo step of that flush. A file that carries the extension cannot be appended into another document until the extension is removed; open it on its own to keep the data.
 
 Limits: main script 2 MiB, UI 512 KiB, guest heap 64 MiB, 8 seconds, 20,000 host calls, and 2,000 nodes in one `findAll`.
+
+## What a real .zip or .figma plugin can do
+
+A typical community plugin can load from a folder or a zip, read and set the selection, create rectangles, ellipses, frames, text, and the other shapes in the table, change fills, strokes, size, position, text, and auto-layout fields that are marked supported or partial, call `figma.showUI`, exchange `pluginMessage` with the iframe, use `figma.clientStorage`, write `setPluginData`, and finish with `figma.closePlugin`. One flush is one undo step labeled `Plugin: <name>`.
+
+## Still blocked
+
+These calls still throw or are absent: images (`createImage`, image paints), `createNodeFromSvg`, vector networks, `exportAsync`, variables, team libraries, payments, parameters, codegen, annotations, shared styles, rich text ranges, reactions, relaunch buttons, network `fetch`, positive `setTimeout`, and `setInterval`. `loadFontAsync` does not download or embed a font. `figma.currentUser` is null. Viewport center is the camera origin, not the visual center, and `scrollAndZoomIntoView` does not change zoom. Plugin data lives in FD extension metadata, so a document that has it cannot be appended into another file. This is not Figma and not a published-plugin catalog.
 
 ## API coverage
 
@@ -64,8 +77,18 @@ Limits: main script 2 MiB, UI 512 KiB, guest heap 64 MiB, 8 seconds, 20,000 host
 | `figma.root` | supported | Document name and page children. The root is not a frame. |
 | `figma.notify` | supported | Shows the editor status line and the plugin log. No toast UI. |
 | `figma.closePlugin` | supported | Flushes pending edits, then stops the script. The message is returned to the host. |
-| `figma.showUI` | partial | The first argument must be __html__. Desktop shows it in a sandboxed frame. Web keeps the script alive and can send JSON messages. |
-| `figma.ui.postMessage` | supported | Delivers a JSON value to the plugin UI frame. |
+| `figma.showUI` | partial | Accepts __html__ or an HTML string up to 512 KiB. Desktop shows a sandboxed design-app://plugin frame. Web shows a sandboxed srcdoc iframe. visible, width, height, and title are honored. themeColors is ignored. |
+| `figma.ui.show` | supported | Shows the plugin iframe after hide or showUI({ visible: false }). |
+| `figma.ui.hide` | supported | Hides the iframe. The plugin keeps running. |
+| `figma.ui.close` | partial | Hides the iframe. The plugin keeps running until closePlugin. show() can open it again. |
+| `figma.commitUndo` | supported | Flushes the current turn as its own undo entry. Later edits in the same run are a new undo step. |
+| `figma.editorType` | supported | Always "figma". |
+| `figma.mode` | partial | Always "default". Inspect and codegen modes are not available. |
+| `figma.pluginId` | partial | The manifest id. It is not a published Figma plugin id. |
+| `figma.command` | partial | The menu command the host launched, or undefined when the manifest has no menu. |
+| `figma.fileKey` | partial | Always null. Local documents have no Figma file key. |
+| `figma.mixed` | partial | A frozen object. Mixed corner radius reads as this value. Assigning it throws. |
+| `figma.ui.postMessage` | supported | Delivers a JSON value as event.data.pluginMessage. The frame also receives pluginId. |
 | `figma.ui.onmessage` | supported | Called when the UI posts { pluginMessage }. |
 | `figma.ui.on` | partial | Only the message event is accepted. |
 | `figma.ui.resize` | supported | Updates the host frame size. It does not reflow the document. |
@@ -84,6 +107,11 @@ Limits: main script 2 MiB, UI 512 KiB, guest heap 64 MiB, 8 seconds, 20,000 host
 | `SceneNode.locked` | supported | Locked nodes reject later edits, as in the editor. |
 | `SceneNode.opacity` | supported | 0 to 1. |
 | `SceneNode.rotation` | partial | Clockwise degrees around the node center. Skew is dropped when rotation is set. Scale is kept. |
+| `SceneNode.relativeTransform` | partial | 2×3 matrix [[a, c, tx], [b, d, ty]]. Singular matrices are rejected. |
+| `SceneNode.absoluteTransform` | partial | World 2×3 matrix from parent transforms. Stroke and effects are not included. |
+| `SceneNode.absoluteBoundingBox` | partial | Axis-aligned page bounds of the node rectangle. Stroke and effects are not included. |
+| `SceneNode.layoutAlign` | partial | MIN, CENTER, MAX, STRETCH, or INHERIT. Writes sizing.alignSelf. |
+| `SceneNode.layoutGrow` | partial | 1 sets horizontal sizing to FILL and 0 sets FIXED. It does not follow a vertical parent axis. |
 | `SceneNode.blendMode` | partial | Mapped to the editor blend list, including PASS_THROUGH. Unlisted modes throw. |
 | `SceneNode.fills` | partial | SOLID and GRADIENT_LINEAR. Other paint types throw. Gradient handles are an angle plus stops, not gradientTransform fidelity. |
 | `SceneNode.strokes` | partial | SOLID strokes only. One strokeWeight is written onto every stroke. |
@@ -113,6 +141,10 @@ Limits: main script 2 MiB, UI 512 KiB, guest heap 64 MiB, 8 seconds, 20,000 host
 | `TextNode.characters` | supported | Replaces the whole string. Existing text runs are cleared. |
 | `TextNode.fontSize` | supported | Document units, 1 to 4096. Not a screen pixel size. |
 | `TextNode.fontName` | partial | Noto Sans SC styles map to weights of the built-in face. Other families must already be in the document. Italic throws. |
+| `TextNode.textAlignHorizontal` | partial | LEFT, CENTER, RIGHT, or JUSTIFIED. JUSTIFIED requires the document schema that already accepts justify. |
+| `TextNode.textAlignVertical` | partial | TOP, CENTER, or BOTTOM. |
+| `TextNode.lineHeight` | partial | PERCENT, PIXELS, or AUTO. Stored as a unitless multiplier from 0.1 to 10. PIXELS divides by the node font size. |
+| `TextNode.letterSpacing` | partial | PIXELS or PERCENT of the font size, stored as pixels from -1000 to 1000. |
 | `PolygonNode.pointCount` | supported | 3 to 128. |
 | `StarNode.innerRadius` | supported | 0.01 to 1. |
 | `SceneNode.parent` | supported | Parent node or page. |
@@ -130,17 +162,23 @@ Limits: main script 2 MiB, UI 512 KiB, guest heap 64 MiB, 8 seconds, 20,000 host
 | `figma.createImageAsync` | unsupported | Throws unsupported_api. No network image fetch. |
 | `figma.createNodeFromSvg` | unsupported | Throws unsupported_api. Use the editor SVG import for SVG files. |
 | `figma.createVector` | unsupported | Throws unsupported_api. Vector networks are not exposed on this host. |
-| `figma.viewport` | unsupported | Absent. Camera and zoom are editor commands, not plugin API. |
-| `figma.clientStorage` | unsupported | Absent. Plugin key-value storage is not persisted. |
+| `figma.viewport.zoom` | partial | Get and set camera zoom from 0.02 to 256. Setting zoom keeps the world point at the top-left, not the visual center. |
+| `figma.viewport.center` | partial | Get and set the world point at the camera origin (top-left). The host does not know the canvas size, so this is not the visual center. |
+| `figma.viewport.scrollAndZoomIntoView` | partial | Asks the editor to reveal the nodes. It does not change zoom. |
+| `figma.clientStorage` | supported | getAsync, setAsync, keysAsync, and deleteAsync. JSON values, 100 keys, 256 KiB per plugin, stored in this client and not in the document. Not undone with the canvas. |
 | `figma.variables` | unsupported | Absent. Document variables stay on the editor variable operations. |
 | `figma.teamLibrary` | unsupported | Absent. There is no team library or cloud account. |
 | `figma.payments` | unsupported | Absent. |
 | `figma.parameters` | unsupported | Absent. Parameter UI is not collected. |
 | `figma.codegen` | unsupported | Absent. |
 | `figma.annotations` | unsupported | Absent. |
-| `figma.currentUser` | unsupported | Absent. There is no account user. |
-| `figma.util` | unsupported | Absent. |
-| `figma.on` | unsupported | Throws unsupported_api. Document change events are not subscribed. |
+| `figma.currentUser` | partial | Always null. There is no account user. Optional chaining works; reading an id does not. |
+| `figma.util.rgb` | supported | Returns {r, g, b} with channels from 0 to 1. |
+| `figma.util.solidPaint` | supported | SOLID paint from #RGB, #RRGGBB, #RRGGBBAA, or an {r, g, b} object. |
+| `figma.on` | partial | selectionchange and currentpagechange are delivered for editor changes outside the plugin. The plugin’s own selection writes do not emit them. close runs inside closePlugin. Other events throw. |
+| `figma.skipInvisibleInstanceChildren` | partial | The flag is stored. findAll does not skip invisible instance children. |
+| `setTimeout` | partial | Only a zero delay during the current turn. A positive delay throws. setInterval throws. |
+| `fetch` | unsupported | Throws unsupported_api. Manifest networkAccess does not grant fetch. |
 | `figma.loadAllPagesAsync` | unsupported | Throws unsupported_api. The open document is already local; this call is not required. |
 | `figma.importComponentByKeyAsync` | unsupported | Throws unsupported_api. Remote component keys are not imported. |
 | `figma.createPaintStyle` | unsupported | Throws unsupported_api. Shared styles are not created from plugins. |
@@ -148,10 +186,10 @@ Limits: main script 2 MiB, UI 512 KiB, guest heap 64 MiB, 8 seconds, 20,000 host
 | `figma.createEffectStyle` | unsupported | Throws unsupported_api. |
 | `figma.createGridStyle` | unsupported | Throws unsupported_api. |
 | `SceneNode.exportAsync` | unsupported | Throws unsupported_api. Use the editor export panel. |
-| `SceneNode.getPluginData` | unsupported | Throws unsupported_api. Plugin data is not stored on nodes. |
-| `SceneNode.setPluginData` | unsupported | Throws unsupported_api. Plugin data is not stored on nodes. |
-| `SceneNode.getSharedPluginData` | unsupported | Throws unsupported_api. |
-| `SceneNode.setSharedPluginData` | unsupported | Throws unsupported_api. |
+| `SceneNode.getPluginData` | supported | String values for this manifest id. A missing key returns "". Pages and the document root use the same methods. Stored in the fdCompatibility extension design.futureox/plugin-data and undone with the edit. |
+| `SceneNode.setPluginData` | supported | Up to 50 keys and 10000 characters. An empty string deletes the key. The same limits apply to pages and figma.root. |
+| `SceneNode.getSharedPluginData` | supported | Reads a namespace another plugin on this file could also read. Missing keys return "". |
+| `SceneNode.setSharedPluginData` | supported | Writes a namespaced string on the node, page, or root. An empty string deletes the key. |
 | `SceneNode.setRelaunchData` | unsupported | Throws unsupported_api. Relaunch buttons are not shown. |
 | `SceneNode.reactions` | unsupported | Absent. Prototype reactions are not edited from this host. |
 | `SceneNode.boundVariables` | unsupported | Absent. |

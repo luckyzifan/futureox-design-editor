@@ -10,10 +10,13 @@ import { sketchExtensions } from './sketch'
 import { appExportExtensions } from './app-export'
 import { bulkExtensions } from './bulk'
 import { shapeBuilderExtensions } from './shape-builder'
-/** Single shared registry for live editor, embedded UI and MCP. */
-export function createEditorDesignAutomation(editor: Editor, permissions?: AutomationPermissionPolicy) {
+import type { AutomationExtension } from './types'
+/** Single shared registry for live editor, embedded UI and MCP.
+ * `extra` stays on this instance. The plugin host uses it for document plugin data and does not register that method on MCP. */
+export function createEditorDesignAutomation(editor: Editor, permissions?: AutomationPermissionPolicy, extra: readonly AutomationExtension[] = []) {
   return createDesignAutomation(editor, [
     ...designSystemExtensions, ...contextExtensions, ...exportExtensions, ...interactionExtensions, ...sketchExtensions, ...appExportExtensions, ...bulkExtensions, ...shapeBuilderExtensions, ...clipboardExtensions,
+    ...extra,
   ], [validateDesignSystemDocument], permissions)
 }
 export * from './types'

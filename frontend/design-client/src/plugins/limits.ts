@@ -14,4 +14,13 @@ export const PLUGIN_LIMITS = {
   logLines: 80,
   logChars: 240,
   notifyChars: 500,
+  clientStorageBytes: 256 * 1024,
+  clientStorageKeys: 100,
+  clientStorageKeyChars: 200,
+  pluginDataKeys: 50,
+  pluginDataValueChars: 10_000,
+  pluginDataKeyChars: 100,
+  zipBytes: 8 * 1024 * 1024,
+  zipEntries: 200,
+  zipUncompressedBytes: 4 * 1024 * 1024,
 } as const
