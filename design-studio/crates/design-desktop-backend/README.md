@@ -235,8 +235,14 @@ container conversion invalidates their signatures. Malformed offsets, unsupporte
 versions, oversized faces and missing/duplicate required tables are rejected.
 `skippedCollections` reports collections with unsupported version/signature/header
 conditions; `skippedInvalid` and `skippedTooLarge` include rejected individual faces.
-Other operating systems return `FONT_PLATFORM_UNSUPPORTED`; manually imported
-portable fonts continue to work.
+macOS, Windows and Linux each scan their standard font directories (system,
+local, and the user font folder). A file symlink is read only when it
+resolves to a regular file inside one of those roots; directory symlinks are
+not walked. fontconfig configuration outside those directories is not
+consulted. Other operating systems return `FONT_PLATFORM_UNSUPPORTED`.
+Manually imported portable fonts continue to work. Listing includes OS/2
+weight, italic/oblique, and up to 16 variation axes so a variable `wght`
+face can be matched without a second parse.
 
 `fonts.read` requires a handle from the current catalog and rechecks the canonical
 path and SHA-256 before returning bytes. A font replaced since enumeration returns
