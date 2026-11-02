@@ -29,6 +29,7 @@ import {
   validHandle,
 } from './security.mjs'
 import { Sidecar } from './sidecar.mjs'
+import { createWorkspaceSqliteCodec, SQLITE_OFFTHREAD_BYTES } from './workspace-sqlite-worker-host.mjs'
 import { DOCUMENT_MEMORY_BYTES } from './document-capacity.mjs'
 import { registerNativeRender } from './native-render.mjs'
 import { registerNativePreparation } from './preparation.mjs'
@@ -146,12 +147,13 @@ const MIME = {
 }
 let window
 let backend
+const sqliteCodec = createWorkspaceSqliteCodec()
 let pendingWorkspaceRoot
 const workspaceRoots = new WorkspaceRoots({
   profileRoot: app.getPath('userData'), dialog, getWindow: () => window,
   canSwitch: () => peerWindowId === undefined && localChildren.size === 0 && pendingPeerLaunches === 0,
   probe: async ({ recoveryDir, catalogDb, workspaceDb }) => {
-    const candidate = new Sidecar(executable, recoveryDir, { catalogDb, workspaceDb })
+    const candidate = new Sidecar(executable, recoveryDir, { catalogDb, workspaceDb, sqliteCodec })
     try {
       const health = await candidate.request('health')
       if (health.protocolVersion !== 1 || health.documentCapacity?.memoryBytes !== DOCUMENT_MEMORY_BYTES || health.documentTransferVersion !== 1) throw new Error('Backend protocol mismatch')
@@ -513,6 +515,15 @@ register('workspace-open', async (value) => {
 register('workspace-commit', async (value) => {
   const r = record(value, ['documentJson', 'expectedRevision', 'mutationId'])
   workspaceRevision(r.expectedRevision, true); workspaceIdentity(r.mutationId)
+  // Large saves parse and frame on the SQLite worker. The main thread only
+  // forwards the finished bytes, so the window stays responsive during the write.
+  if (typeof r.documentJson === 'string' && Buffer.byteLength(r.documentJson) >= SQLITE_OFFTHREAD_BYTES) {
+    const id = randomUUID()
+    const encoded = await sqliteCodec.encodeRequest(id, 'workspace.commit', {
+      documentJson: r.documentJson, expectedRevision: r.expectedRevision, mutationId: r.mutationId,
+    })
+    return workspacePublic(await backend.requestFrame('workspace.commit', id, encoded.frame, encoded.wireBytes))
+  }
   return workspacePublic(await backend.request('workspace.commit', {
     document: documentFromString(r.documentJson), expectedRevision: r.expectedRevision, mutationId: r.mutationId,
   }))
@@ -1302,7 +1313,7 @@ else {
       }
       const { recoveryDir, catalogDb, workspaceDb } = workspaceRoots.config(workspaceRoots.current)
       await mkdir(recoveryDir, { recursive: true, mode: 0o700 })
-      backend = new Sidecar(executable, recoveryDir, { catalogDb, workspaceDb })
+      backend = new Sidecar(executable, recoveryDir, { catalogDb, workspaceDb, sqliteCodec })
       let startupError
       try {
         const health = await backend.request('health')
@@ -1330,6 +1341,7 @@ else {
     .catch(async (error) => {
       console.error('Desktop startup failed:', error.message)
       await backend?.stop()
+      await sqliteCodec.close()
       app.exit(1)
     })
 }
@@ -1347,6 +1359,7 @@ async function shutdown() {
       if(backend)try{await Promise.race([backend.request('workspace.leave',{id:localSessionId}),new Promise((_,reject)=>{leaseTimer=setTimeout(()=>reject(new Error('Local lease cleanup timed out')),3000)})])}catch(error){console.warn('Local presence lease will expire:',error.message)}finally{clearTimeout(leaseTimer)}
       if (backend && !(await backend.stop()))
         console.error('Backend termination did not complete within the timeout')
+      await sqliteCodec.close()
       await directoryGrants.clear()
       grants.clear()
       recoveryGrants.clear()

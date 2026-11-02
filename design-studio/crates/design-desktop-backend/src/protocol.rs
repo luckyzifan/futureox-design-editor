@@ -117,12 +117,207 @@ pub(crate) fn handle_request(
     }
 }
 
+pub(crate) fn sqlite_connection_method(method: &str) -> bool {
+    method.starts_with("workspace.")
+        || method.starts_with("automation.")
+        || method == "catalog.list"
+}
+
+/// Drive a SQLite future from a synchronous caller. The desktop runtime does
+/// not use this for production reads and writes: those run on the dedicated
+/// SQLite thread so the call does not nest `block_on`.
+fn drive_sqlite(
+    method: &str,
+    future: impl std::future::Future<Output = Result<Value>>,
+) -> Result<Value> {
+    let (code, message) = if method.starts_with("catalog.") {
+        ("CATALOG_UNAVAILABLE", "Catalog requires the Tokio worker")
+    } else {
+        (
+            "WORKSPACE_UNAVAILABLE",
+            "Workspace requires the Tokio worker",
+        )
+    };
+    tokio::runtime::Handle::try_current()
+        .map_err(|_| BackendError::new(code, message))?
+        .block_on(future)
+}
+
+pub(crate) async fn handle_sqlite_request(
+    backend: &Backend,
+    request: Request,
+    _cancel: &std::sync::atomic::AtomicBool,
+) -> Response {
+    match dispatch_sqlite(backend, &request.method, request.params).await {
+        Ok(result) => Response {
+            id: request.id,
+            result: Some(result),
+            error: None,
+        },
+        Err(error) => failed(request.id, error),
+    }
+}
+
+async fn dispatch_sqlite(backend: &Backend, method: &str, params: Value) -> Result<Value> {
+    match method {
+        method if method.starts_with("automation.") => {
+            let method = method.to_owned();
+            crate::automation::dispatch(backend.workspace()?, &method, params).await
+        }
+        "workspace.observe" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Observe {
+                control: futureox_design_kernel::protocol::Envelope,
+                presence: crate::workspace::LocalPresence,
+            }
+            let request = parse_params::<Observe>(params)?;
+            backend
+                .workspace()?
+                .observe(request.control, request.presence)
+                .await
+        }
+        "workspace.leave" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Leave {
+                id: String,
+            }
+            let request = parse_params::<Leave>(params)?;
+            backend.workspace()?.leave_session(&request.id).await?;
+            Ok(json!({"left":true}))
+        }
+        "workspace.list" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            struct List {
+                #[serde(default)]
+                include_deleted: bool,
+            }
+            let request = parse_params::<List>(params)?;
+            backend.workspace()?.list(request.include_deleted).await
+        }
+        "workspace.open" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Open {
+                id: String,
+                revision: Option<i64>,
+            }
+            let request = parse_params::<Open>(params)?;
+            output(
+                backend
+                    .workspace()?
+                    .read(&request.id, request.revision)
+                    .await?,
+            )
+        }
+        "workspace.commit" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            struct Commit {
+                document: Value,
+                expected_revision: Value,
+                mutation_id: String,
+            }
+            let request = parse_params::<Commit>(params)?;
+            let expected = if request.expected_revision.is_null() {
+                None
+            } else {
+                Some(request.expected_revision.as_i64().ok_or_else(|| {
+                    BackendError::new(
+                        "INVALID_REQUEST",
+                        "expectedRevision must be an integer or explicit null",
+                    )
+                })?)
+            };
+            output(
+                backend
+                    .workspace()?
+                    .commit(&request.document, expected, &request.mutation_id)
+                    .await?,
+            )
+        }
+        "workspace.trash" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            struct Trash {
+                id: String,
+                expected_revision: i64,
+                mutation_id: String,
+                deleted: Option<bool>,
+            }
+            let request = parse_params::<Trash>(params)?;
+            output(
+                backend
+                    .workspace()?
+                    .trash(
+                        &request.id,
+                        request.expected_revision,
+                        &request.mutation_id,
+                        request.deleted.unwrap_or(true),
+                    )
+                    .await?,
+            )
+        }
+        "workspace.revisions" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            struct Revisions {
+                id: String,
+                before_revision: Option<i64>,
+            }
+            let request = parse_params::<Revisions>(params)?;
+            backend
+                .workspace()?
+                .revisions(&request.id, request.before_revision)
+                .await
+        }
+        "workspace.restore" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            struct Restore {
+                id: String,
+                revision: i64,
+                expected_revision: i64,
+                mutation_id: String,
+            }
+            let request = parse_params::<Restore>(params)?;
+            output(
+                backend
+                    .workspace()?
+                    .restore(
+                        &request.id,
+                        request.revision,
+                        request.expected_revision,
+                        &request.mutation_id,
+                    )
+                    .await?,
+            )
+        }
+        "catalog.list" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Empty {}
+            parse_params::<Empty>(params)?;
+            backend.catalog()?.list().await
+        }
+        _ => Err(BackendError::new(
+            "UNKNOWN_METHOD",
+            "Unknown desktop backend method",
+        )),
+    }
+}
+
 fn dispatch(
     backend: &Backend,
     method: &str,
     params: Value,
     cancel: &std::sync::atomic::AtomicBool,
 ) -> Result<Value> {
+    if sqlite_connection_method(method) {
+        return drive_sqlite(method, dispatch_sqlite(backend, method, params));
+    }
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
     struct Empty {}
@@ -162,12 +357,6 @@ fn dispatch(
             backend
                 .large_documents
                 .dispatch(method, parse_params(params)?, cancel)
-        }
-        method if method.starts_with("automation.") => {
-            let method = method.to_owned();
-            workspace_call(backend, |store| {
-                Box::pin(async move { crate::automation::dispatch(store, &method, params).await })
-            })
         }
         "sketch.session.textTargets" => output(
             backend
@@ -357,151 +546,6 @@ fn dispatch(
             let request = parse_params::<ReadFont>(params)?;
             output(backend.fonts.read(&request.id)?)
         }
-        "workspace.observe" => {
-            #[derive(Deserialize)]
-            #[serde(deny_unknown_fields)]
-            struct Observe {
-                control: futureox_design_kernel::protocol::Envelope,
-                presence: crate::workspace::LocalPresence,
-            }
-            let request = parse_params::<Observe>(params)?;
-            workspace_call(backend, |store| {
-                Box::pin(async move { store.observe(request.control, request.presence).await })
-            })
-        }
-        "workspace.leave" => {
-            #[derive(Deserialize)]
-            #[serde(deny_unknown_fields)]
-            struct Leave {
-                id: String,
-            }
-            let request = parse_params::<Leave>(params)?;
-            workspace_call(backend, |store| {
-                Box::pin(async move {
-                    store.leave_session(&request.id).await?;
-                    Ok(json!({"left":true}))
-                })
-            })
-        }
-        "workspace.list" => {
-            #[derive(Deserialize)]
-            #[serde(rename_all = "camelCase", deny_unknown_fields)]
-            struct List {
-                #[serde(default)]
-                include_deleted: bool,
-            }
-            let request = parse_params::<List>(params)?;
-            workspace_call(backend, |store| {
-                Box::pin(store.list(request.include_deleted))
-            })
-        }
-        "workspace.open" => {
-            #[derive(Deserialize)]
-            #[serde(deny_unknown_fields)]
-            struct Open {
-                id: String,
-                revision: Option<i64>,
-            }
-            let request = parse_params::<Open>(params)?;
-            workspace_call(backend, |store| {
-                Box::pin(async move { output(store.read(&request.id, request.revision).await?) })
-            })
-        }
-        "workspace.commit" => {
-            #[derive(Deserialize)]
-            #[serde(rename_all = "camelCase", deny_unknown_fields)]
-            struct Commit {
-                document: Value,
-                expected_revision: Value,
-                mutation_id: String,
-            }
-            let request = parse_params::<Commit>(params)?;
-            let expected = if request.expected_revision.is_null() {
-                None
-            } else {
-                Some(request.expected_revision.as_i64().ok_or_else(|| {
-                    BackendError::new(
-                        "INVALID_REQUEST",
-                        "expectedRevision must be an integer or explicit null",
-                    )
-                })?)
-            };
-            workspace_call(backend, |store| {
-                Box::pin(async move {
-                    output(
-                        store
-                            .commit(&request.document, expected, &request.mutation_id)
-                            .await?,
-                    )
-                })
-            })
-        }
-        "workspace.trash" => {
-            #[derive(Deserialize)]
-            #[serde(rename_all = "camelCase", deny_unknown_fields)]
-            struct Trash {
-                id: String,
-                expected_revision: i64,
-                mutation_id: String,
-                deleted: Option<bool>,
-            }
-            let request = parse_params::<Trash>(params)?;
-            workspace_call(backend, |store| {
-                Box::pin(async move {
-                    output(
-                        store
-                            .trash(
-                                &request.id,
-                                request.expected_revision,
-                                &request.mutation_id,
-                                request.deleted.unwrap_or(true),
-                            )
-                            .await?,
-                    )
-                })
-            })
-        }
-        "workspace.revisions" => {
-            #[derive(Deserialize)]
-            #[serde(rename_all = "camelCase", deny_unknown_fields)]
-            struct Revisions {
-                id: String,
-                before_revision: Option<i64>,
-            }
-            let request = parse_params::<Revisions>(params)?;
-            workspace_call(backend, |store| {
-                Box::pin(async move { store.revisions(&request.id, request.before_revision).await })
-            })
-        }
-        "workspace.restore" => {
-            #[derive(Deserialize)]
-            #[serde(rename_all = "camelCase", deny_unknown_fields)]
-            struct Restore {
-                id: String,
-                revision: i64,
-                expected_revision: i64,
-                mutation_id: String,
-            }
-            let request = parse_params::<Restore>(params)?;
-            workspace_call(backend, |store| {
-                Box::pin(async move {
-                    output(
-                        store
-                            .restore(
-                                &request.id,
-                                request.revision,
-                                request.expected_revision,
-                                &request.mutation_id,
-                            )
-                            .await?,
-                    )
-                })
-            })
-        }
-        "catalog.list" => {
-            parse_params::<Empty>(params)?;
-            catalog_call(backend, |catalog| Box::pin(catalog.list()))
-        }
         "catalog.register" => {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields)]
@@ -556,39 +600,6 @@ fn check_directory(backend: &Backend, id: Option<&str>, path: &std::path::Path) 
     }
     Ok(())
 }
-fn catalog_call(
-    backend: &Backend,
-    f: impl for<'a> FnOnce(
-        &'a crate::catalog::Catalog,
-    ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = Result<Value>> + Send + 'a>,
-    >,
-) -> Result<Value> {
-    let catalog = backend.catalog()?;
-    tokio::runtime::Handle::try_current()
-        .map_err(|_| BackendError::new("CATALOG_UNAVAILABLE", "Catalog requires the Tokio worker"))?
-        .block_on(f(catalog))
-}
-
-fn workspace_call(
-    backend: &Backend,
-    f: impl for<'a> FnOnce(
-        &'a crate::workspace::WorkspaceStore,
-    ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = Result<Value>> + Send + 'a>,
-    >,
-) -> Result<Value> {
-    let workspace = backend.workspace()?;
-    tokio::runtime::Handle::try_current()
-        .map_err(|_| {
-            BackendError::new(
-                "WORKSPACE_UNAVAILABLE",
-                "Workspace requires the Tokio worker",
-            )
-        })?
-        .block_on(f(workspace))
-}
-
 /// Reads at most limit bytes into memory. An oversized line is drained without
 /// allocating it, then one error is emitted and the next request remains usable.
 fn read_frame(reader: &mut impl BufRead, limit: usize) -> io::Result<Option<(Vec<u8>, bool)>> {
