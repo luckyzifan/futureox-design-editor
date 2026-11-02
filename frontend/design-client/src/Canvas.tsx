@@ -422,7 +422,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     const document = state.doc, session = editor.sessionGeneration
     let cancelled = false
     let settled = editor.effectiveView()
-    let timer = 0
+    let timer: ReturnType<typeof setTimeout> | undefined
     // Viewport motion only changes the camera. Opening the editing graph
     // stringifies the document, so wait until one view stays current.
     const warm = () => {

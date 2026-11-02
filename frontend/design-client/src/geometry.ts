@@ -1,6 +1,7 @@
 import { multiply, inverse, apply, translate, rotate, around, matrixString, boxPoints, bounds, unionBounds } from './commands/affine'
 import { maximumStrokeWidth } from './stroke-profile'
 import { kernelBounds, kernelGeometryNetwork, kernelHit, kernelSvgPaths } from './kernel/picking'
+import { documentTransition } from './document-patch'
 import {
   type Point,
   type Matrix,
@@ -327,11 +328,38 @@ export function scene(d: DesignDocument, pageId: string, roots?: ReadonlySet<str
 /** Read-only topology shared within an immutable snapshot or one operation.
  * allParents deliberately stays fresh for callers working on mutable drafts. */
 export type ParentMap = ReadonlyMap<string, string>
-export function allParents(d: DesignDocument): Map<string, string> {
+const parentMaps = new WeakMap<DesignDocument, Map<string, string>>()
+function buildParents(d: DesignDocument): Map<string, string> {
   const map = new Map<string, string>()
   d.pages.forEach((p) => p.children.forEach((c) => map.set(c, p.id)))
   Object.values(d.nodes).forEach((n) => n.children.forEach((c) => map.set(c, n.id)))
   return map
+}
+function parentRoot(d: DesignDocument): DesignDocument {
+  let cursor = d
+  for (let hop = 0; hop < 32; hop++) {
+    const link = documentTransition(cursor)
+    if (!link || link.structural) return cursor
+    cursor = link.before
+  }
+  return cursor
+}
+export function allParents(d: DesignDocument): Map<string, string> {
+  const cached = parentMaps.get(d)
+  if (cached) return cached
+  const root = parentRoot(d)
+  // Only witnessed immutable snapshots share a map. A draft mutated between
+  // calls must observe the latest children arrays, so it never enters this cache.
+  if (root !== d || documentTransition(d)) {
+    let map = parentMaps.get(root)
+    if (!map) {
+      map = buildParents(root)
+      parentMaps.set(root, map)
+    }
+    if (root !== d) parentMaps.set(d, map)
+    return map
+  }
+  return buildParents(d)
 }
 export function worldMatrix(d: DesignDocument, id: string, parents: ParentMap = allParents(d)): Matrix {
   const n = d.nodes[id]

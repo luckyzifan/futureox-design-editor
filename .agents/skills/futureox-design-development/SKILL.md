@@ -3,6 +3,7 @@ name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
 
+2026-11-02 Electron 缩放、拖动、打开 `.fig` 和多页单页编辑见[记录](../../../testing/verification-electron-perf-flame-20261102/README.md)。相机提交不再打开编辑图。当前页的普通改动不再整份重布局或重校验；需要重排时只解该页的根岛屿。损伤父级表也只建这一页。其它页节点引用保持不动。跨页组件、连接线端点、页面结构和首次打开仍走全量。未改光栅、瓦片或预算。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 选区描边、悬停轮廓和已选画板标题都用 `#3459d4`。多选时每个对象一条细轮廓，手柄和 2px 边只画在并集上。这是画布交互，不改文档模型。
 2026-11-02 右键菜单的深色底写在所有宽度上，不再被 901–1180px 的媒体查询包住。Electron 与网页都是 `#2c2c2c`、浅色字、蓝色悬停。菜单项未改。
 2026-11-02 终端界面不再挂出「设计 API」浮块（首页、编辑器底栏、网页同一处入口都拿掉）。右键菜单改为 Figma 桌面那种深色底和蓝色悬停。桌面自动化注册仍在，不经过这块浮块。
