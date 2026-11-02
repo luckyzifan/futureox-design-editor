@@ -114,8 +114,42 @@ test('ordinary Duplicate steps 10px down-right; top-level frames move right at u
   expect(copied[5] - before[5]).toBeCloseTo(10, 8)
   editor.undo(); editor.select([parent.id]); const box = editor.selectionBounds()!
   editor.duplicate(); const duplicated = editor.selectionBounds()!
-  expect(duplicated.x).toBeCloseTo(box.x + box.width + 24, 10)
-  expect(duplicated.y).toBeCloseTo(box.y, 10)
+  expect(duplicated.x).toBeCloseTo(box.x + 10, 8)
+  expect(duplicated.y).toBeCloseTo(box.y + 10, 8)
+  editor.dispose()
+})
+
+test('Duplicate and paste step a frame, section, group, and nested frame by 10,10', () => {
+  const document = blank('container duplicate'), frame = node('frame', 140, 486, 500, 300), nested = node('frame', 16, 18, 40, 30)
+  const section = node('section', 20, 30, 80, 40), group = node('group', 8, 12, 40, 20), child = node('rectangle', 4, 6, 10, 10)
+  frame.children = [nested.id]; group.children = [child.id]
+  document.nodes = Object.fromEntries([frame, nested, section, group, child].map(n => [n.id, n]))
+  document.pages[0].children = [frame.id, section.id, group.id]
+  const editor = new Editor(document)
+  const step = (id: string) => {
+    editor.select([id])
+    const before = worldMatrix(editor.state.doc, id)
+    editor.duplicate()
+    const copy = editor.state.selection[0]
+    const after = worldMatrix(editor.state.doc, copy)
+    after.slice(0, 4).forEach((value, index) => expect(value).toBeCloseTo(before[index], 8))
+    expect(after[4] - before[4]).toBeCloseTo(10, 8)
+    expect(after[5] - before[5]).toBeCloseTo(10, 8)
+    editor.duplicate()
+    const again = worldMatrix(editor.state.doc, editor.state.selection[0])
+    expect(again[4] - after[4]).toBeCloseTo(10, 8)
+    expect(again[5] - after[5]).toBeCloseTo(10, 8)
+    editor.undo(); editor.undo()
+    expect(worldMatrix(editor.state.doc, id)).toEqual(before)
+  }
+  for (const id of [frame.id, section.id, group.id, nested.id]) step(id)
+  editor.select([frame.id]); const origin = worldMatrix(editor.state.doc, frame.id)
+  editor.copy(); editor.paste()
+  const pasted = worldMatrix(editor.state.doc, editor.state.selection[0])
+  pasted.slice(0, 4).forEach((value, index) => expect(value).toBeCloseTo(origin[index], 8))
+  expect(pasted[4] - origin[4]).toBeCloseTo(10, 8)
+  expect(pasted[5] - origin[5]).toBeCloseTo(10, 8)
+  editor.undo(); expect(worldMatrix(editor.state.doc, frame.id)).toEqual(origin)
   editor.dispose()
 })
 
