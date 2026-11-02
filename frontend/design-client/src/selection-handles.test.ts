@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { apply, boxPoints, inverse, multiply, rotate, translate, pointInContours } from './geometry'
-import { selectionHandles, selectionRotation, smallSelectionInterior } from './selection-handles'
+import { formatAngleDegrees, normalizeDegrees, selectionHandles, selectionRotation, smallSelectionInterior } from './selection-handles'
 import { resizeInBasis, selectionLocalBounds, rotateNode } from './canvas-view'
 import type { Matrix } from './model'
 import {blank,node} from './model'
@@ -24,10 +24,24 @@ test('four exterior rotate regions keep fixed screen size across zoom and transf
       expect(pointInContours(h.rotateAnchor,[h.rotatePoints],'nonzero')).toBe(true)
       expect(pointInContours(h.point,[h.rotatePoints],'nonzero')).toBe(false)
       expect(pointInContours(h.rotateAnchor,[corners],'nonzero')).toBe(false)
-      expect(Math.hypot(h.rotateAnchor.x-h.point.x,h.rotateAnchor.y-h.point.y)*zoom).toBeCloseTo(Math.sqrt(242),8)
+      expect(Math.hypot(h.rotateAnchor.x-h.point.x,h.rotateAnchor.y-h.point.y)*zoom).toBeCloseTo(Math.hypot(20,20),8)
       expect(h.resizeCursor.startsWith('url(')).toBe(true)
     }
   }
+})
+
+test('clockwise pointer motion is a positive Figma angle and the matrix follows the hand', () => {
+  const center = { x: 100, y: 80 }, start = { x: 160, y: 80 }, end = { x: 100, y: 140 }
+  const rotation = selectionRotation(center, start, end, 0, false)
+  expect(rotation.degrees).toBeCloseTo(90, 8)
+  expect(formatAngleDegrees(rotation.degrees)).toBe('90.00')
+  expect(formatAngleDegrees(-6.754)).toBe('-6.75')
+  expect(formatAngleDegrees(195)).toBe('-165.00')
+  const turned = apply(rotation.matrix, start)
+  expect(turned.x).toBeCloseTo(end.x, 8)
+  expect(turned.y).toBeCloseTo(end.y, 8)
+  const back = selectionRotation(center, start, { x: 100, y: 20 }, 0, false)
+  expect(back.degrees).toBeCloseTo(-90, 8)
 })
 
 test('rotation snaps the resulting orientation and preserves center and full nested matrix',()=>{
@@ -37,6 +51,7 @@ test('rotation snaps the resulting orientation and preserves center and full nes
   const angle=Math.atan2(world[1],world[0])*180/Math.PI,theta=28*Math.PI/180
   const end={x:center.x+100*Math.cos(theta),y:center.y+100*Math.sin(theta)}
   const r=selectionRotation(center,start,end,angle,true),next=multiply(inverse(parent),multiply(r.matrix,world))
+  expect(r.degrees).toBeCloseTo(normalizeDegrees(Math.round((angle+28)/15)*15),8)
   expect(r.degrees%15).toBeCloseTo(0,10)
   const after=multiply(parent,next),afterCenter=apply(after,{x:60,y:40})
   expect(afterCenter.x).toBeCloseTo(center.x,10);expect(afterCenter.y).toBeCloseTo(center.y,10)
