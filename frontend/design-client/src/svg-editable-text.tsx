@@ -1,5 +1,5 @@
 import React from 'react'
-import { blank, node, defaultTextStyle, validateDocument, hasSchema20Features, type DesignDocument, type DesignNode } from './model'
+import { blank, node, defaultTextStyle, validateDocument, hasSchema20Features, hasSchema21Features, type DesignDocument, type DesignNode } from './model'
 import { kernelTextLayout } from './kernel/picking'
 
 export const EDITABLE_TEXT_WARNING = 'Editable SVG references font families without embedding fonts. Missing fonts, fallback, shaping and browser layout can change appearance; use outlines for visual fidelity.'
@@ -69,6 +69,7 @@ export function readEditableSvgText(el: Element, target: DesignNode, fonts: Desi
   if (Array.isArray(probe.textRuns)) probe.textRuns = probe.textRuns.map(r=>({...r,...(r.fontId ? {fontId:resolve(r.fontId)} : {})}))
   const doc = blank(); doc.schemaVersion = 15; doc.fonts = fonts; doc.nodes[probe.id] = probe; doc.pages[0].children = [probe.id]
   if (hasSchema20Features(doc)) doc.schemaVersion=20
+  if (hasSchema21Features(doc)) doc.schemaVersion=21
   validateDocument(doc); supported(probe)
   if (el.textContent !== probe.text.replace(/\n/g,'')) throw new Error('Editable SVG text content does not match its model')
   for (const key of allowed) if (Object.hasOwn(value,key)) (target as unknown as Record<string,unknown>)[key] = (probe as unknown as Record<string,unknown>)[key]

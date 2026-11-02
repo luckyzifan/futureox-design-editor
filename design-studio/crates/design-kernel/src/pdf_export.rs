@@ -729,6 +729,7 @@ struct Pdf {
     image_list: Vec<(String, usize)>,
     fonts: BTreeMap<String, String>,
     font_list: Vec<(String, usize)>,
+    icc_spaces: BTreeMap<Vec<u8>, usize>,
 }
 
 impl Pdf {
@@ -744,7 +745,25 @@ impl Pdf {
             image_list: Vec::new(),
             fonts: BTreeMap::new(),
             font_list: Vec::new(),
+            icc_spaces: BTreeMap::new(),
         }
+    }
+
+    /// RGB samples are sRGB unless the caller passes the profile that actually
+    /// describes them. DeviceRGB is not used for those samples.
+    fn icc_color_space(&mut self, profile: &[u8]) -> Result<String, String> {
+        if let Some(number) = self.icc_spaces.get(profile) {
+            return Ok(format!("[/ICCBased {number} 0 R]"));
+        }
+        let body = crate::export::pdf_icc_based_object(profile)?;
+        let number = self.add_object(body);
+        self.icc_spaces.insert(profile.to_vec(), number);
+        Ok(format!("[/ICCBased {number} 0 R]"))
+    }
+
+    fn srgb_color_space(&mut self) -> Result<String, String> {
+        let profile = crate::export::srgb_icc_profile()?;
+        self.icc_color_space(&profile)
     }
 
     fn add_object(&mut self, body: Vec<u8>) -> usize {
@@ -888,8 +907,9 @@ impl Pdf {
             .map(|v| num(*v))
             .collect::<Result<Vec<_>, _>>()?
             .join(" ");
+        let space = self.srgb_color_space()?;
         let body = format!(
-            "<< /ShadingType {shading_type} /ColorSpace /DeviceRGB /Coords [{coords}] /Function {function} /Extend [true true] /Matrix [{matrix}] >>"
+            "<< /ShadingType {shading_type} /ColorSpace {space} /Coords [{coords}] /Function {function} /Extend [true true] /Matrix [{matrix}] >>"
         );
         let number = self.add_object(body.into_bytes());
         let name = format!("/Sh{}", self.shading_list.len());
@@ -1012,7 +1032,8 @@ impl Pdf {
     }
 
     fn finish(mut self, width: f64, height: f64) -> Result<Vec<u8>, String> {
-        let mut resources = String::new();
+        let srgb = self.srgb_color_space()?;
+        let mut resources = format!("/ColorSpace << /DefaultRGB {srgb} >> ");
         for (tag, list) in [
             ("/ExtGState", &self.gstate_list),
             ("/Shading", &self.shading_list),
@@ -1152,9 +1173,12 @@ fn embed_image(pdf: &mut Pdf, uri: &str) -> Result<(usize, u32, u32), String> {
         // representation and re-encoding would be lossy.
         let (width, height, components) = jpeg_geometry(&bytes)?;
         let colorspace = match components {
-            1 => "/DeviceGray",
-            3 => "/DeviceRGB",
-            4 => "/DeviceCMYK",
+            1 => "/DeviceGray".to_string(),
+            3 => {
+                let profile = jpeg_icc(&bytes)?.unwrap_or(crate::export::srgb_icc_profile()?);
+                pdf.icc_color_space(&profile)?
+            }
+            4 => "/DeviceCMYK".to_string(),
             _ => return Err("Unsupported JPEG component count".into()),
         };
         let body = stream(
@@ -1165,15 +1189,7 @@ fn embed_image(pdf: &mut Pdf, uri: &str) -> Result<(usize, u32, u32), String> {
         );
         return Ok((pdf.add_object(body), width, height));
     }
-    let mut reader = image::ImageReader::new(std::io::Cursor::new(&bytes))
-        .with_guessed_format()
-        .map_err(|e| e.to_string())?;
-    let mut limits = image::Limits::default();
-    limits.max_image_width = Some(8192);
-    limits.max_image_height = Some(8192);
-    limits.max_alloc = Some(128 * 1024 * 1024);
-    reader.limits(limits);
-    let rgba = reader.decode().map_err(|e| e.to_string())?.into_rgba8();
+    let rgba = decode_image_srgb(&bytes)?;
     let (width, height) = rgba.dimensions();
     if width == 0 || height == 0 {
         return Err("Image has no pixels".into());
@@ -1192,8 +1208,9 @@ fn embed_image(pdf: &mut Pdf, uri: &str) -> Result<(usize, u32, u32), String> {
             miniz_oxide::deflate::compress_to_vec_zlib(&alpha, 6),
         ))
     });
+    let space = pdf.srgb_color_space()?;
     let mut dictionary = format!(
-        "/Type /XObject /Subtype /Image /Width {width} /Height {height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode"
+        "/Type /XObject /Subtype /Image /Width {width} /Height {height} /ColorSpace {space} /BitsPerComponent 8 /Filter /FlateDecode"
     );
     if let Some(mask) = smask {
         dictionary.push_str(&format!(" /SMask {mask} 0 R"));
@@ -1208,6 +1225,112 @@ fn embed_image(pdf: &mut Pdf, uri: &str) -> Result<(usize, u32, u32), String> {
 /// Walk JPEG marker segments to the first SOF: (width, height, components).
 /// DCTDecode passthrough must state the true component count, which no other
 /// header field carries.
+fn jpeg_icc(bytes: &[u8]) -> Result<Option<Vec<u8>>, String> {
+    let mut at = 2;
+    let mut parts: Vec<Option<Vec<u8>>> = Vec::new();
+    while at + 4 <= bytes.len() {
+        if bytes[at] != 0xFF {
+            return Err("Malformed JPEG marker stream".into());
+        }
+        let marker = bytes[at + 1];
+        if marker == 0xDA || marker == 0xD9 {
+            break;
+        }
+        if (0xD0..=0xD7).contains(&marker) || marker == 0x01 {
+            at += 2;
+            continue;
+        }
+        if marker == 0xFF {
+            at += 1;
+            continue;
+        }
+        let length = u16::from_be_bytes([bytes[at + 2], bytes[at + 3]]) as usize;
+        if length < 2 || at + 2 + length > bytes.len() {
+            return Err("Truncated JPEG marker".into());
+        }
+        if marker == 0xE2 {
+            let payload = &bytes[at + 4..at + 2 + length];
+            if let Some(rest) = payload.strip_prefix(b"ICC_PROFILE\0") {
+                if rest.len() < 2 {
+                    return Err("Truncated JPEG ICC chunk".into());
+                }
+                let seq = rest[0] as usize;
+                let count = rest[1] as usize;
+                if count == 0 || count > 16 || seq == 0 || seq > count {
+                    return Err("Invalid JPEG ICC chunk index".into());
+                }
+                if parts.is_empty() {
+                    parts.resize(count, None);
+                }
+                if parts.len() != count || parts[seq - 1].is_some() {
+                    return Err("Inconsistent JPEG ICC profile".into());
+                }
+                parts[seq - 1] = Some(rest[2..].to_vec());
+            }
+        }
+        at += 2 + length;
+    }
+    if parts.is_empty() {
+        return Ok(None);
+    }
+    if parts.iter().any(Option::is_none) {
+        return Err("Incomplete JPEG ICC profile".into());
+    }
+    let mut profile = Vec::new();
+    for part in parts.into_iter().flatten() {
+        profile.extend(part);
+    }
+    if profile.len() < 128 || &profile[36..40] != b"acsp" || &profile[16..20] != b"RGB " {
+        return Err("JPEG ICC profile is not a usable RGB profile".into());
+    }
+    Ok(Some(profile))
+}
+
+/// Untagged samples stay byte-for-byte and are declared sRGB. A cICP space
+/// other than sRGB, or an ICC profile, is converted before that declaration.
+fn decode_image_srgb(bytes: &[u8]) -> Result<image::RgbaImage, String> {
+    let space = crate::image_color::png_space(bytes)?;
+    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|e| e.to_string())?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(8192);
+    limits.max_image_height = Some(8192);
+    limits.max_alloc = Some(128 * 1024 * 1024);
+    reader.limits(limits);
+    let mut decoder = reader.into_decoder().map_err(|e| e.to_string())?;
+    let profile = if space.is_none() {
+        crate::image_color::icc(&mut decoder)?
+    } else {
+        None
+    };
+    let orientation = crate::image_color::orientation(&mut decoder)?;
+    let mut decoded = image::DynamicImage::from_decoder(decoder).map_err(|e| e.to_string())?;
+    decoded.apply_orientation(orientation);
+    let convert = match space {
+        Some(crate::color::ColorSpace::Srgb) | None if profile.is_none() => false,
+        None => true,
+        Some(_) => true,
+    };
+    if !convert {
+        return Ok(decoded.into_rgba8());
+    }
+    let mut image = decoded.into_rgba32f();
+    crate::image_color::to_sdr(&mut image, space, profile.as_deref())?;
+    let mut out = image::RgbaImage::new(image.width(), image.height());
+    for (dst, src) in out.pixels_mut().zip(image.pixels()) {
+        for channel in 0..4 {
+            let value = f64::from(if channel == 3 {
+                src[channel]
+            } else {
+                src[channel].clamp(0., 1.)
+            });
+            dst[channel] = (value * 255.).round_ties_even() as u8;
+        }
+    }
+    Ok(out)
+}
+
 fn jpeg_geometry(bytes: &[u8]) -> Result<(u32, u32, u8), String> {
     let mut at = 2;
     while at + 4 <= bytes.len() {
@@ -1506,7 +1629,9 @@ mod tests {
         assert!(text.contains("/SMask"));
         assert!(text.contains("/Filter /FlateDecode"));
         assert!(text.contains("/Filter /DCTDecode"));
-        assert!(text.contains("/ColorSpace /DeviceRGB"));
+        assert!(text.contains("/ICCBased"));
+        assert!(text.contains("/DefaultRGB"));
+        assert!(!text.contains("/ColorSpace /DeviceRGB"));
         let content = content_stream(&pdf);
         assert!(content.contains("/Im0 Do"));
         assert!(content.contains("/Im1 Do"));

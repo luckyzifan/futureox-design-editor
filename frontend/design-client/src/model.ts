@@ -149,6 +149,10 @@ export function hasSchema18Features(d: DesignDocument): boolean {
     !!d.animations?.some(c=>c.tracks.some(t=>t.keyframes.some(k=>has(k.value.effects)))) ||
     Object.values(d.designSystem?.styles||{}).some(s=>has(s.effects)||(s.kind==='effect'&&has(s.value)))
 }
+export function hasSchema21Features(d: DesignDocument): boolean {
+  const runs = (r: any) => Array.isArray(r) && r.some(run => run && (run.letterSpacing !== undefined || run.lineHeight !== undefined))
+  return Object.values(d.nodes).some(n => runs(n.textRuns) || Object.values(n.instance?.overrides || {}).some(o => runs(o.textRuns)))
+}
 export function hasSchema20Features(d: DesignDocument): boolean {
   const action = (a: import('./prototype').PrototypeAction): boolean => a.transitionStyle !== undefined || !!a.thenActions?.some(action) || !!a.elseActions?.some(action)
   if (Object.values(d.prototype?.interactions||{}).some(es=>es.some(e=>e.actions.some(action)))) return true
@@ -388,6 +392,10 @@ export type TextRun = {
   fontId?: string
   fontSize?: number
   weight?: number
+  /** Design pixels added after each cluster in the run. */
+  letterSpacing?: number
+  /** Multiplier of this run's font size. Overrides the node line-height floor on lines that use it. */
+  lineHeight?: number
 }
 export const defaultTextStyle = (): TextStyle => ({
   fontId: 'default',
@@ -422,7 +430,7 @@ export type DesignDocument = {
   rasterProfile?: 'analytic' | 'figma' | 'figmaSoftware'
   fonts?: Record<string, { family: string; data: string; index?: number; postscript?: string }>
   animations?: AnimationClip[]
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21
   id: string
   name: string
   pages: Page[]
@@ -718,7 +726,7 @@ function validateNodeVariableModes(d: DesignDocument, nodes: DesignNode[]) {
 export function validateDocument(value: unknown): DesignDocument {
   if (
     !isObject(value) ||
-    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].includes(value.schemaVersion as number) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].includes(value.schemaVersion as number) ||
     typeof value.id !== 'string' ||
     typeof value.name !== 'string' ||
     !Array.isArray(value.pages) ||
@@ -763,6 +771,7 @@ export function validateDocument(value: unknown): DesignDocument {
   if (d.schemaVersion < 9 && hasGradientBlur(d)) throw new Error('渐变模糊需要设计文件版本 9')
   if (d.schemaVersion < 13 && hasImageAdjusts(d)) throw new Error('图片调整需要设计文件版本 13')
   if (d.schemaVersion < 14 && hasPatternTiles(d)) throw new Error('图案平铺需要设计文件版本 14')
+  if (d.schemaVersion < 21 && hasSchema21Features(d)) throw new Error('片段字距或行高需要设计文件版本 21')
   if (d.schemaVersion < 20 && hasSchema20Features(d)) throw new Error('段落和文本垂直对齐需要设计文件版本 20')
   if (d.schemaVersion < 19 && hasSchema19Features(d)) throw new Error('缩放模糊需要设计文件版本 19')
   if (d.schemaVersion < 18 && hasSchema18Features(d)) throw new Error('高斯与运动模糊需要设计文件版本 18')
@@ -966,6 +975,8 @@ export function validateDocument(value: unknown): DesignDocument {
           run.start >= run.end ||
           (run.fontSize !== undefined && !finite(run.fontSize, 1, 4096)) ||
           (run.weight !== undefined && !finite(run.weight, 1, 1000)) ||
+          (run.letterSpacing !== undefined && !finite(run.letterSpacing, -1000, 1000)) ||
+          (run.lineHeight !== undefined && !finite(run.lineHeight, 0.1, 10)) ||
           (run.fontId !== undefined &&
             run.fontId !== 'default' &&
             (!d.fonts || !Object.hasOwn(d.fonts, run.fontId)))
