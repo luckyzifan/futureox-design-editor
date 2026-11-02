@@ -30,7 +30,15 @@ Desktop:
 4. On the desktop app, the sample UI opens in its own window. Enter a label and count, then Create. Close stops the session.
 5. To load this folder, or another plugin, click **Load plugin folder…** and choose the folder that contains `manifest.json`. The host reads only `manifest.json` plus the manifest `main` and optional `ui` files, each up to 1 MiB, and only from inside that folder.
 
-The web build can run the sample main script. The UI window exists only in the Electron app.
+## Local plugins at startup
+
+The Electron app scans the `plugins` directory inside its user-data profile once, before the first window opens. Each immediate child directory that declares a valid `manifest.json` is enabled. A declaration is valid when `editorType` includes `figma` (or is omitted), and the declared `main` and optional `ui` files stay inside that directory within the existing size limits. The first folder name in English sort order wins when two folders use the same plugin id. At most 64 visible real child directories are considered, and at most 32 plugins are enabled.
+
+Enabled plugins appear in the **Plugins** menu and in the plugin host. Choosing one runs it through the same worker and `Editor.change` path as a folder picked by hand. The scan reads the manifest and the declared files. It does not execute plugin code and does not change the open document. Restart the app after adding or removing a plugin folder.
+
+Hidden directories, directory symlinks, FigJam-only manifests, and files that resolve outside the plugin folder are not enabled. The renderer receives the manifest text and a session grant. It does not receive the filesystem path. An additional local window uses its own profile, so it scans that profile’s `plugins` directory.
+
+The web build can run the sample main script. The UI window and the startup scan exist only in the Electron app.
 
 A plugin folder uses the Figma manifest shape:
 
