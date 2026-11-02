@@ -1,6 +1,18 @@
-import { defaultLayout, effect, node, paint, stroke, type DesignNode, type Kind, type Matrix, type Page } from '../model'
+import { defaultLayout, defaultSizing, effect, node, stroke, type DesignNode, type Kind, type Matrix, type Page } from '../model'
+import { memoryPluginStorage, clientStorageDelete, clientStorageGet, clientStorageKeys, clientStorageSet, type PluginStorage } from './rich-host/client-storage'
 import { PluginApiError, PluginClosed } from './errors'
+import { imageFromHash, pluginSvgMarkup, readPluginPaints, registerImageBytes, writePluginPaints, type PluginImageRecord } from './paints'
 import type { PluginCommit, PluginSnapshot, PluginTurn, PluginUiState } from './protocol'
+
+const pluginStores = new Map<string, PluginStorage>()
+function storeFor(pluginId: string) {
+  let found = pluginStores.get(pluginId)
+  if (!found) {
+    found = memoryPluginStorage()
+    pluginStores.set(pluginId, found)
+  }
+  return found
+}
 
 export type PluginHandle = {
   id: string
@@ -32,6 +44,8 @@ export type PluginHandle = {
   getPluginData(key: string): string
   setPluginData(key: string, value: string): void
   selection?: PluginHandle[]
+  exportAsync?(settings?: { format?: string }): Promise<Uint8Array>
+  createInstance?(): PluginHandle
 }
 
 export type PluginFigma = {
@@ -65,7 +79,18 @@ export type PluginFigma = {
   createStar(): PluginHandle
   createSection(): PluginHandle
   createPage(): PluginHandle
+  createComponent(): PluginHandle
+  createInstance(component: PluginHandle): PluginHandle
   group(nodes: PluginHandle[], parent: PluginHandle): PluginHandle
+  ungroup(node: PluginHandle): PluginHandle[]
+  createImage(bytes: Uint8Array): PluginImageHandle
+  getImageByHash(hash: string): PluginImageHandle | null
+  clientStorage: {
+    getAsync(key: string): Promise<unknown>
+    setAsync(key: string, value: unknown): Promise<void>
+    deleteAsync(key: string): Promise<void>
+    keysAsync(): Promise<string[]>
+  }
   getNodeById(id: string): PluginHandle | null
   notify(message: string): void
   closePlugin(message?: string): void
@@ -73,6 +98,12 @@ export type PluginFigma = {
   loadFontAsync(font: { family: string; style?: string }): Promise<void>
   on(event: string, handler: () => void): void
   off(event: string, handler: () => void): void
+}
+
+type PluginImageHandle = {
+  hash: string
+  getBytesAsync(): Promise<Uint8Array>
+  getSizeAsync(): Promise<{ width: number; height: number }>
 }
 
 const typeNames: Record<Kind, string> = {
@@ -142,7 +173,7 @@ function hexToRgb(value: string, api: string) {
   return { r: ((parsed >> 16) & 255) / 255, g: ((parsed >> 8) & 255) / 255, b: (parsed & 255) / 255 }
 }
 
-export function createPluginSession(snapshot: PluginSnapshot, plugin: { id: string; name: string; command: string }) {
+export function createPluginSession(snapshot: PluginSnapshot, plugin: { id: string; name: string; command: string }, storage: PluginStorage = storeFor(plugin.id)) {
   const doc = { pages: structuredClone(snapshot.pages), nodes: structuredClone(snapshot.nodes) }
   const parents = new Map<string, string>()
   const reindex = () => {
@@ -155,6 +186,7 @@ export function createPluginSession(snapshot: PluginSnapshot, plugin: { id: stri
   if (!doc.pages.some(page => page.id === currentPageId)) fail('current page', 'invalid')
   let selection = snapshot.selection.filter(id => doc.nodes[id])
   const camera = { ...snapshot.viewport, zoom: snapshot.viewport.zoom > 0 ? snapshot.viewport.zoom : 1 }
+  const images = new Map<string, PluginImageRecord>()
   const loadedFonts = new Set<string>()
   const fontNames = new Map<string, { family: string; style: string }>()
   const nodeProxies = new Map<string, PluginHandle>()
@@ -259,29 +291,64 @@ export function createPluginSession(snapshot: PluginSnapshot, plugin: { id: stri
     const name = fontNames.get(id) ?? { family: 'Inter', style: 'Regular' }
     if (!loadedFonts.has(`${name.family}\0${name.style}`)) fail('text write before figma.loadFontAsync', 'invalid')
   }
-  function readSolids(paints: { kind: string; color: string; opacity: number; visible: boolean }[], api: string) {
-    return paints.map(item => {
-      if (item.kind !== 'solid') fail(`${api} non-solid paint`, 'unsupported')
-      return { type: 'SOLID' as const, color: hexToRgb(item.color, api), opacity: item.opacity, visible: item.visible }
-    })
+  function readPaints(paints: DesignNode['fills'], api: string) {
+    return readPluginPaints(paints, images, api)
   }
-  function writeSolids(value: unknown, api: string) {
-    if (!Array.isArray(value) || value.length > 16) fail(api, 'invalid')
-    return value.map(entry => {
-      if (!entry || typeof entry !== 'object' || (entry as { type?: string }).type !== 'SOLID') fail(`${api} only supports SOLID`, 'unsupported')
-      const solid = entry as { color?: { r?: number; g?: number; b?: number }; opacity?: number; visible?: boolean }
-      const color = rgbToHex(solid.color ?? {}, api)
-      const createdPaint = paint(color)
-      createdPaint.opacity = solid.opacity === undefined ? 1 : finite(solid.opacity, 0, 1, `${api}.opacity`)
-      createdPaint.visible = solid.visible !== false
-      createdPaint.stops = [{ offset: 0, color }, { offset: 1, color }]
-      return createdPaint
-    })
+  function writePaints(value: unknown, api: string) {
+    return writePluginPaints(value, images, api)
+  }
+  function imageHandle(hash: string): PluginImageHandle {
+    const found = imageFromHash(images, hash)
+    if (!found) fail('figma.getImageByHash', 'invalid')
+    return {
+      hash,
+      async getBytesAsync() { return found.record.bytes.slice() },
+      async getSizeAsync() {
+        if (!found.size.width || !found.size.height) fail('image.getSizeAsync', 'unsupported')
+        return found.size
+      },
+    }
+  }
+  function multiply(parent: Matrix, child: Matrix): Matrix {
+    return [
+      parent[0] * child[0] + parent[2] * child[1],
+      parent[1] * child[0] + parent[3] * child[1],
+      parent[0] * child[2] + parent[2] * child[3],
+      parent[1] * child[2] + parent[3] * child[3],
+      parent[0] * child[4] + parent[2] * child[5] + parent[4],
+      parent[1] * child[4] + parent[3] * child[5] + parent[5],
+    ]
   }
   function ensureLayout(sceneNode: DesignNode, api: string) {
     if (!containers.has(sceneNode.kind) || !sceneNode.layout || sceneNode.layout.mode === 'none') fail(api, 'invalid')
     if (sceneNode.layout.mode === 'grid') fail(api, 'unsupported')
     return sceneNode.layout
+  }
+  function writeSizing(id: string, axis: 'width' | 'height', value: string, api: string) {
+    const mapped = value === 'FIXED' ? 'fixed' : value === 'HUG' ? 'hug' : value === 'FILL' ? 'fill' : ''
+    if (!mapped) fail(`${api} ${value}`, 'unsupported')
+    const sceneNode = live(id)
+    sceneNode.sizing = { ...(sceneNode.sizing ?? defaultSizing()), [axis]: mapped }
+    touchNode(id)
+  }
+  function instantiate(componentId: string) {
+    const source = live(componentId)
+    if (!source.component) fail('createInstance', 'invalid')
+    const parentId = parents.get(componentId) ?? currentPageId
+    const id = createRaw('frame', parentId)
+    const made = live(id)
+    made.name = source.name
+    made.width = source.width
+    made.height = source.height
+    made.fills = structuredClone(source.fills)
+    made.strokes = structuredClone(source.strokes)
+    made.effects = structuredClone(source.effects)
+    made.radii = [source.radii[0], source.radii[1], source.radii[2], source.radii[3]]
+    made.opacity = source.opacity
+    made.instance = { componentId, overrides: {}, propertyValues: {} }
+    made.transform = [source.transform[0], source.transform[1], source.transform[2], source.transform[3], source.transform[4] + 10, source.transform[5] + 10]
+    touchNode(id)
+    return id
   }
 
   function authoredCorners(id: string, api: string) {
@@ -300,10 +367,17 @@ export function createPluginSession(snapshot: PluginSnapshot, plugin: { id: stri
   function nodeApi(id: string): PluginHandle {
     const cached = nodeProxies.get(id)
     if (cached) return cached
-    const readOnly = new Set(['id', 'type', 'parent', 'children', 'removed', 'resize', 'remove', 'clone', 'appendChild', 'insertChild', 'findAll', 'findOne', 'getPluginData', 'setPluginData'])
+    const readOnly = new Set(['id', 'type', 'parent', 'children', 'removed', 'resize', 'remove', 'clone', 'appendChild', 'insertChild', 'findAll', 'findOne', 'getPluginData', 'setPluginData', 'exportAsync', 'createInstance'])
     const target = {
       get id() { return id },
-      get type() { return typeNames[live(id).kind] },
+      get type() {
+        const sceneNode = live(id)
+        if (sceneNode.componentSet) return 'COMPONENT_SET'
+        if (sceneNode.component) return 'COMPONENT'
+        if (sceneNode.instance) return 'INSTANCE'
+        if (sceneNode.booleanOperation) return 'BOOLEAN_OPERATION'
+        return typeNames[sceneNode.kind]
+      },
       get removed() { return removed.has(id) },
       get name() { return live(id).name },
       set name(value: string) { const sceneNode = live(id); sceneNode.name = plainText(value, 200, 'name', true); touchNode(id) },
@@ -356,12 +430,20 @@ export function createPluginSession(snapshot: PluginSnapshot, plugin: { id: stri
         return doc.nodes[parentId] ? nodeApi(parentId) : pageApi(parentId)
       },
       get children() { return live(id).children.filter(child => doc.nodes[child]).map(child => nodeApi(child)) },
-      get fills() { const sceneNode = live(id); if (sceneNode.kind === 'slice') fail('slice fills', 'unsupported'); return readSolids(sceneNode.fills, 'fills') },
-      set fills(value: unknown) { const sceneNode = live(id); if (sceneNode.kind === 'slice') fail('slice fills', 'unsupported'); sceneNode.fills = writeSolids(value, 'fills'); touchNode(id) },
-      get strokes() { return live(id).strokes.map(item => ({ ...readSolids([item.paint], 'strokes')[0], strokeWeight: item.width })) },
+      get fills() { const sceneNode = live(id); if (sceneNode.kind === 'slice') fail('slice fills', 'unsupported'); return readPaints(sceneNode.fills, 'fills') },
+      set fills(value: unknown) { const sceneNode = live(id); if (sceneNode.kind === 'slice') fail('slice fills', 'unsupported'); sceneNode.fills = writePaints(value, 'fills'); touchNode(id) },
+      get strokes() { return live(id).strokes.map(item => ({ ...readPaints([item.paint], 'strokes')[0], strokeWeight: item.width })) },
       set strokes(value: unknown) {
         const sceneNode = live(id)
-        sceneNode.strokes = writeSolids(value, 'strokes').map(item => { const created = stroke(item.color, 1); created.paint = item; return created })
+        if (!Array.isArray(value)) fail('strokes', 'invalid')
+        sceneNode.strokes = value.map(entry => {
+          const weight = entry && typeof entry === 'object' && typeof (entry as { strokeWeight?: unknown }).strokeWeight === 'number'
+            ? finite((entry as { strokeWeight: number }).strokeWeight, 0, 10000, 'strokeWeight')
+            : 1
+          const created = stroke('#303344', weight)
+          created.paint = writePaints([entry], 'strokes')[0]
+          return created
+        })
         touchNode(id)
       },
       get strokeWeight(): number | typeof pluginMixed {
@@ -454,6 +536,59 @@ export function createPluginSession(snapshot: PluginSnapshot, plugin: { id: stri
       set paddingBottom(value: number) { const layout = ensureLayout(live(id), 'paddingBottom'); layout.padding = [layout.padding[0], layout.padding[1], finite(value, 0, 1e5, 'paddingBottom'), layout.padding[3]]; touchNode(id) },
       get paddingLeft() { return live(id).layout?.padding[3] ?? 0 },
       set paddingLeft(value: number) { const layout = ensureLayout(live(id), 'paddingLeft'); layout.padding = [layout.padding[0], layout.padding[1], layout.padding[2], finite(value, 0, 1e5, 'paddingLeft')]; touchNode(id) },
+      get primaryAxisAlignItems() {
+        const layout = live(id).layout
+        if (!layout || layout.mode === 'none') return 'MIN'
+        if (layout.mode === 'grid') fail('primaryAxisAlignItems', 'unsupported')
+        if (layout.justify === 'center') return 'CENTER'
+        if (layout.justify === 'end') return 'MAX'
+        if (layout.justify === 'space-between') return 'SPACE_BETWEEN'
+        return 'MIN'
+      },
+      set primaryAxisAlignItems(value: string) {
+        const layout = ensureLayout(live(id), 'primaryAxisAlignItems')
+        const mapped = value === 'MIN' ? 'start' : value === 'CENTER' ? 'center' : value === 'MAX' ? 'end' : value === 'SPACE_BETWEEN' ? 'space-between' : ''
+        if (!mapped) fail(`primaryAxisAlignItems ${value}`, 'unsupported')
+        layout.justify = mapped
+        touchNode(id)
+      },
+      get counterAxisAlignItems() {
+        const layout = live(id).layout
+        if (!layout || layout.mode === 'none') return 'MIN'
+        if (layout.mode === 'grid') fail('counterAxisAlignItems', 'unsupported')
+        if (layout.align === 'center') return 'CENTER'
+        if (layout.align === 'end') return 'MAX'
+        if (layout.align === 'start') return 'MIN'
+        fail(`counterAxisAlignItems ${layout.align}`, 'unsupported')
+      },
+      set counterAxisAlignItems(value: string) {
+        const layout = ensureLayout(live(id), 'counterAxisAlignItems')
+        const mapped = value === 'MIN' ? 'start' : value === 'CENTER' ? 'center' : value === 'MAX' ? 'end' : ''
+        if (!mapped) fail(`counterAxisAlignItems ${value}`, 'unsupported')
+        layout.align = mapped
+        touchNode(id)
+      },
+      get layoutSizingHorizontal() { return (live(id).sizing?.width ?? 'fixed').toUpperCase() },
+      set layoutSizingHorizontal(value: string) { writeSizing(id, 'width', value, 'layoutSizingHorizontal') },
+      get layoutSizingVertical() { return (live(id).sizing?.height ?? 'fixed').toUpperCase() },
+      set layoutSizingVertical(value: string) { writeSizing(id, 'height', value, 'layoutSizingVertical') },
+      get layoutAlign() {
+        const align = live(id).sizing?.alignSelf
+        if (!align) return 'INHERIT'
+        if (align === 'center') return 'CENTER'
+        if (align === 'end') return 'MAX'
+        if (align === 'stretch') return 'STRETCH'
+        if (align === 'start') return 'MIN'
+        fail(`layoutAlign ${align}`, 'unsupported')
+      },
+      set layoutAlign(value: string) {
+        const sceneNode = live(id)
+        const sizing = sceneNode.sizing ?? defaultSizing()
+        const mapped = value === 'INHERIT' ? null : value === 'MIN' ? 'start' : value === 'CENTER' ? 'center' : value === 'MAX' ? 'end' : value === 'STRETCH' ? 'stretch' : ''
+        if (mapped === '') fail(`layoutAlign ${value}`, 'unsupported')
+        sceneNode.sizing = { ...sizing, alignSelf: mapped }
+        touchNode(id)
+      },
       get effects() {
         return live(id).effects.map(item => {
           if (item.kind === 'shadow') return { type: 'DROP_SHADOW', color: { ...hexToRgb(item.color, 'effects'), a: item.opacity }, offset: { x: item.x, y: item.y }, radius: item.radius, spread: item.spread, visible: item.visible }
@@ -514,6 +649,13 @@ export function createPluginSession(snapshot: PluginSnapshot, plugin: { id: stri
         sceneNode.bindings = bindings
         touchNode(id)
       },
+      async exportAsync(settings?: { format?: string }) {
+        const sceneNode = live(id)
+        const format = settings?.format === undefined ? 'PNG' : String(settings.format).toUpperCase()
+        if (format !== 'SVG') fail('node.exportAsync', 'unsupported')
+        return new TextEncoder().encode(pluginSvgMarkup(sceneNode))
+      },
+      createInstance() { return nodeApi(instantiate(id)) },
       remove() { removeNode(id) },
       clone() { return nodeApi(cloneNode(id, true)) },
     }
@@ -664,6 +806,86 @@ export function createPluginSession(snapshot: PluginSnapshot, plugin: { id: stri
     createPolygon: () => create('polygon'),
     createStar: () => create('star'),
     createSection: () => create('section'),
+    createComponent() {
+      const id = createRaw('frame', currentPageId)
+      const sceneNode = live(id)
+      sceneNode.name = 'Component'
+      sceneNode.component = { variants: {}, properties: {} }
+      sceneNode.componentKey = '$root'
+      touchNode(id)
+      return nodeApi(id)
+    },
+    createInstance(component: PluginHandle) {
+      if (!component?.id) fail('figma.createInstance', 'invalid')
+      return nodeApi(instantiate(component.id))
+    },
+    ungroup(node: PluginHandle) {
+      if (!node?.id) fail('figma.ungroup', 'invalid')
+      const sceneNode = live(node.id)
+      if (sceneNode.component || sceneNode.instance || sceneNode.componentSet || sceneNode.booleanOperation) fail('figma.ungroup', 'unsupported')
+      if (!containers.has(sceneNode.kind)) fail('figma.ungroup', 'invalid')
+      if (sceneNode.layout && sceneNode.layout.mode !== 'none') fail('figma.ungroup', 'unsupported')
+      const parentId = parents.get(node.id)
+      if (!parentId) fail('figma.ungroup', 'invalid')
+      const index = childList(parentId).indexOf(node.id)
+      const children = [...sceneNode.children]
+      for (const child of children) {
+        const childNode = live(child)
+        childNode.transform = multiply(sceneNode.transform, childNode.transform)
+        touchNode(child)
+        detach(child)
+      }
+      for (let offset = 0; offset < children.length; offset++) attach(children[offset], parentId, index + offset)
+      removeNode(node.id)
+      return children.filter(child => doc.nodes[child]).map(child => nodeApi(child))
+    },
+    createImage(bytes: Uint8Array) {
+      return imageHandle(registerImageBytes(images, bytes).hash)
+    },
+    getImageByHash(hash: string) {
+      if (typeof hash !== 'string' || !/^[0-9a-f]{40}$/i.test(hash)) fail('figma.getImageByHash', 'invalid')
+      if (!images.has(hash)) {
+        for (const sceneNode of Object.values(doc.nodes)) {
+          for (const item of [...sceneNode.fills, ...sceneNode.strokes.map(entry => entry.paint)]) {
+            if (item.kind === 'image' && item.image) readPaints([item], 'fills')
+          }
+        }
+      }
+      return images.has(hash) ? imageHandle(hash) : null
+    },
+    clientStorage: {
+      async getAsync(key: string) {
+        const result = clientStorageGet(storage, plugin.id, key)
+        if (!result.found || result.kind === 'undefined') return undefined
+        if (result.kind === 'bytes') {
+          const bytes: number[] = []
+          for (const part of result.parts ?? []) {
+            const binary = atob(part)
+            for (let index = 0; index < binary.length; index++) bytes.push(binary.charCodeAt(index))
+          }
+          return new Uint8Array(bytes)
+        }
+        return result.value
+      },
+      async setAsync(key: string, value: unknown) {
+        if (value === undefined) {
+          clientStorageSet(storage, plugin.id, key, { kind: 'undefined' })
+          return
+        }
+        if (value instanceof Uint8Array) {
+          let binary = ''
+          for (const byte of value) binary += String.fromCharCode(byte)
+          clientStorageSet(storage, plugin.id, key, { kind: 'bytes', part: 0, parts: 1, rawBytes: value.byteLength, base64: btoa(binary) })
+          return
+        }
+        let json: string
+        try { json = JSON.stringify(value) } catch { fail('figma.clientStorage', 'invalid') }
+        if (typeof json !== 'string') fail('figma.clientStorage', 'invalid')
+        clientStorageSet(storage, plugin.id, key, json)
+      },
+      async deleteAsync(key: string) { clientStorageDelete(storage, plugin.id, key) },
+      async keysAsync() { return clientStorageKeys(storage, plugin.id) },
+    },
     createPage() {
       if (doc.pages.length >= 50) fail('figma.createPage', 'invalid')
       const createdPage: Page = { id: crypto.randomUUID(), name: `Page ${doc.pages.length + 1}`, children: [], background: '#f5f5f5' }
@@ -740,7 +962,7 @@ export function createPluginSession(snapshot: PluginSnapshot, plugin: { id: stri
     },
     off(event: string, handler: () => void) { events.get(event)?.delete(handler) },
   }
-  const figma = guard(figmaTarget, 'figma', new Set(['mixed', 'fileKey', 'pluginId', 'command', 'editorType', 'mode', 'root', 'viewport', 'util', 'ui', 'createRectangle', 'createEllipse', 'createFrame', 'createText', 'createLine', 'createPolygon', 'createStar', 'createSection', 'createPage', 'group', 'getNodeById', 'notify', 'closePlugin', 'showUI', 'loadFontAsync', 'on', 'off'])) as unknown as PluginFigma
+  const figma = guard(figmaTarget, 'figma', new Set(['mixed', 'fileKey', 'pluginId', 'command', 'editorType', 'mode', 'root', 'viewport', 'util', 'ui', 'clientStorage', 'createRectangle', 'createEllipse', 'createFrame', 'createText', 'createLine', 'createPolygon', 'createStar', 'createSection', 'createPage', 'createComponent', 'createInstance', 'createImage', 'getImageByHash', 'group', 'ungroup', 'getNodeById', 'notify', 'closePlugin', 'showUI', 'loadFontAsync', 'on', 'off'])) as unknown as PluginFigma
 
   function exportTurn(): PluginTurn {
     const upserts: Record<string, DesignNode> = {}

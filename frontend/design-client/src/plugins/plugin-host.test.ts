@@ -113,7 +113,8 @@ describe('figma plugin host', () => {
     expect(written.bindings?.[`figmaPlugin:${encodeURIComponent('plugin.test')}:${encodeURIComponent('source')}`]).toBe('figma')
     expect(editor.state.doc.schemaVersion).toBeGreaterThanOrEqual(4)
     expect(() => (session.figma as unknown as { variables: { getVariableById(): void } }).variables.getVariableById()).toThrow(PluginApiError)
-    expect(() => (session.figma as unknown as { createComponent(): void }).createComponent()).toThrow(/does not implement figma.createComponent/)
+    expect(() => (session.figma as unknown as { teamLibrary: { getAvailableLibraryVariableCollectionsAsync(): void } }).teamLibrary.getAvailableLibraryVariableCollectionsAsync()).toThrow(PluginApiError)
+    expect(() => (session.figma as unknown as { payments: { getPluginPaymentStatusAsync(): void } }).payments.getPluginPaymentStatusAsync()).toThrow(PluginApiError)
   })
 
   test('per-corner radii and corner smoothing commit on rectangles and frames', () => {
@@ -166,9 +167,55 @@ describe('figma plugin host', () => {
     expect(() => parsePluginManifest('{"name":"A","id":"a","api":"1","main":"code.js","editorType":["figjam"]}')).toThrow(/editorType/)
   })
 
+  test('component kit stores locally, builds a component, and keeps an unsupported paint', async () => {
+    const editor = open()
+    const source = readFileSync(new URL('../../plugins/component-kit/code.js', import.meta.url), 'utf8')
+    const snapshot = snapshotFromEditor(editor)
+    const session = createPluginSession(snapshot, { id: 'futureox.fixture.component-kit', name: 'Component kit', command: 'run' })
+    await executePluginSource(session, `await (${source.trim().replace(/^;/, '')})`, '')
+    const turn = session.exportTurn()
+    expect(turn.notifications).toContain('kit ready')
+    const drafted = Object.values(turn.commit.upserts).find(item => item.name === 'Swatch instance')
+    expect(drafted?.instance?.componentId).toBeTruthy()
+    expect(commitPluginResult(editor, pluginEditLabel('Component kit'), { documentId: snapshot.documentId, revision: snapshot.revision }, turn).status).toBe('committed')
+    const swatch = Object.values(editor.state.doc.nodes).find(item => item.component)
+    const instance = Object.values(editor.state.doc.nodes).find(item => item.instance?.componentId === swatch?.id)
+    const kit = Object.values(editor.state.doc.nodes).find(item => item.name === 'Kit')
+    const photo = Object.values(editor.state.doc.nodes).find(item => item.name === 'Photo')
+    const radial = Object.values(editor.state.doc.nodes).find(item => item.name === 'Radial')
+    expect(swatch?.name).toBe('Swatch')
+    expect(swatch?.component).toEqual({ variants: {}, properties: {} })
+    expect(instance?.instance?.componentId).toBe(swatch?.id)
+    expect(kit?.children).toContain(instance?.id)
+    expect(kit?.layout).toMatchObject({ mode: 'vertical', justify: 'center', align: 'start', gap: 8 })
+    expect(kit?.sizing).toMatchObject({ width: 'hug', height: 'fixed' })
+    expect(photo?.fills[0].kind).toBe('image')
+    expect(photo?.fills[0].image).toMatch(/^data:image\/png;base64,/)
+    expect(radial?.fills[0].kind).toBe('radial')
+    expect(Object.values(editor.state.doc.nodes).some(item => item.name === 'Lifted')).toBe(true)
+    expect(Object.values(editor.state.doc.nodes).some(item => item.name === 'Temp group')).toBe(false)
+    expect(JSON.stringify(editor.state.doc)).not.toContain('futureox.fixture.component-kit')
+    const again = await session.figma.clientStorage.getAsync('runs')
+    expect(again).toEqual({ n: 1 })
+  })
+
+  test('exportAsync returns svg bytes and refuses png', async () => {
+    const editor = open()
+    await run(editor, `
+      const rect = figma.createRectangle()
+      rect.fills = [{ type: 'SOLID', color: { r: 0.204, g: 0.349, b: 0.831 } }]
+      const svg = await rect.exportAsync({ format: 'SVG' })
+      if (new TextDecoder().decode(svg).indexOf('<svg') < 0) throw new Error('svg')
+      let blocked = false
+      try { await rect.exportAsync({ format: 'PNG' }) } catch (error) { blocked = true }
+      if (!blocked) throw new Error('png')
+    `)
+  })
+
   test('coverage matrix is unique and documented', () => {
     const names = pluginApiCoverage.map(entry => entry.api)
     expect(new Set(names).size).toBe(names.length)
+    expect(pluginCoverageCounts()).toEqual({ supported: 49, partial: 38, unsupported: 13 })
     expect(pluginCoverageCounts()).toEqual({
       supported: pluginApiCoverage.filter(entry => entry.status === 'supported').length,
       partial: pluginApiCoverage.filter(entry => entry.status === 'partial').length,

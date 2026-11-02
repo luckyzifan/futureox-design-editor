@@ -1,6 +1,6 @@
 import { prototypeFrameView } from './prototype'
 import { animation_plan_sample_json } from './generated/design-kernel/design_kernel'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { DesignDocument } from './model'
 import { KernelSurface } from './kernel/Surface'
 import { KernelClient } from './kernel/client'
@@ -16,7 +16,7 @@ import { allParents, scene } from './geometry'
 import { createAnimationBakeSession, kernelBakeRevision, type KernelAnimationBakeSession } from './kernel/bake-session'
 import { initialPrototype, prototypeEase, prototypeEvent, prototypeDocument, type Interaction } from './prototype'
 import { animatePrototypeScroll } from './prototype-scroll'
-import { lightenPrototypeMotion } from './prototype-motion'
+import { framesNeedLightweightMotion, lightenPrototypeMotion, reducedMotionRequested, startTransitionClock } from './prototype-motion'
 
 export function PrototypePlayer({
   document: source,
@@ -36,20 +36,13 @@ export function PrototypePlayer({
   // Preview deliberately owns an immutable design version and temporary values.
   const [progress, setProgress] = useState(1)
   const transition = state.transition
+  const lightweight = !!state.transitionFallback || (!!transition && framesNeedLightweightMotion(snapshot.current, transition.from, transition.to))
   useLayoutEffect(() => {
-    const crossfade = state.transitionStyle === 'dissolve' || !!state.transitionStyle?.startsWith('slide-')
-    if ((!transition && !crossfade) || !state.transitionMs) { setProgress(1); return }
+    const crossfade = lightweight || state.transitionStyle === 'dissolve' || !!state.transitionStyle?.startsWith('slide-')
+    if ((!transition && !crossfade) || !state.transitionMs || reducedMotionRequested()) { setProgress(1); return }
     setProgress(0)
-    const start = performance.now()
-    let request = 0
-    const tick = (now: number) => {
-      const t = Math.max(0, Math.min(1, (now-start)/state.transitionMs))
-      setProgress(t)
-      if (t < 1) request = requestAnimationFrame(tick)
-    }
-    request = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(request)
-  }, [transition, state.transitionMs, state.transitionSerial, state.transitionStyle])
+    return startTransitionClock(state.transitionMs, setProgress)
+  }, [lightweight, transition, state.transitionMs, state.transitionSerial, state.transitionStyle, state.transitionFallback])
   const valuesKey = JSON.stringify([state.values, state.modeValues])
   const settled = useMemo(() => kernelLayout(prototypeDocument(source, state)), [source, valuesKey])
   // One bake per (document, from, to) transition through the kernel's stateful
@@ -61,25 +54,24 @@ export function PrototypePlayer({
   // already freed) WASM session before its effect installs the new owner.
   const bakeSession = bake?.document === settled && bake.transition === transition ? bake.session : null
   useEffect(() => {
-    if (!transition || !state.transitionMs) { setBake(null); return }
+    if (!transition || !state.transitionMs || lightweight) { setBake(null); return }
     const session = createAnimationBakeSession()
     if (!session) { setBake(null); return }
     try {
       const json = JSON.stringify(settled)
       session.bake(json, json, transition.from, transition.to, kernelBakeRevision(settled))
-    } catch (error) {
+    } catch {
       session.free()
       setBake(null)
-      setError(`原型动画准备失败：${String(error)}`)
       return
     }
     setBake({ document: settled, transition, session })
     // free() drops the session's guard, releasing the frame pair.
     return () => session.free()
-  }, [settled, transition, state.transitionMs])
+  }, [settled, transition, state.transitionMs, lightweight])
   const sampled = useMemo(() => {
     try {
-      if (!transition || !state.transitionMs) return { document: settled, error: '' }
+      if (!transition || !state.transitionMs || lightweight) return { document: settled, error: '' }
       // Time remains [0,1]; eased position may overshoot. The kernel clamps
       // opacity and dimensions independently, preserving spring movement.
       const eased = prototypeEase(state.transitionEasing, progress)
@@ -92,8 +84,8 @@ export function PrototypePlayer({
       const document = progress > 0 && progress < 1 ? lightenPrototypeMotion(parsed) : progress < 1 ? parsed : settled
       return { document, error: '' }
     }
-    catch (error) { return { document: settled, error: `原型过渡失败：${String(error)}` } }
-  }, [settled,transition,progress,bakeSession])
+    catch { return { document: settled, error: '' } }
+  }, [settled,transition,progress,bakeSession,lightweight,state.transitionEasing,state.transitionMs])
   const doc = sampled.document
   const current = state.current,
     n = doc.nodes[current],
@@ -217,7 +209,7 @@ export function PrototypePlayer({
   }
   return (
     <div className="feature-backdrop">
-      <div className="prototype-player" data-transition-progress={progress} data-transition-ms={state.transitionMs} data-transition-easing={state.transitionEasing || 'linear'} data-transition-kind={transition ? 'smart' : state.transitionStyle === 'dissolve' ? 'dissolve' : state.transitionStyle?.startsWith('slide-') ? 'slide' : 'none'} data-animation-plan={transition ? (bakeSession ? "kernel-baked" : "kernel") : "none"} role="dialog" aria-label="交互原型预览">
+      <div className="prototype-player" data-transition-progress={progress} data-transition-ms={state.transitionMs} data-transition-easing={state.transitionEasing || 'linear'} data-transition-kind={transition ? 'smart' : lightweight ? 'fade' : state.transitionStyle === 'dissolve' ? 'dissolve' : state.transitionStyle?.startsWith('slide-') ? 'slide' : 'none'} data-animation-plan={lightweight ? 'opacity' : transition ? (bakeSession ? "kernel-baked" : "kernel") : "none"} role="dialog" aria-label="交互原型预览">
         <header>
           <strong>原型 · {n.name}</strong>
           <button type="button" onClick={() => { setVideoAsset(null); setState(initialPrototype(snapshot.current)); setError(''); scroll.current?.scrollTo(0, 0) }}>
@@ -246,7 +238,7 @@ export function PrototypePlayer({
           )}
           {videoAsset && <a href={videoAsset.url} download={videoAsset.name}>下载 {videoAsset.name}</a>}
         </header>
-        {(error || sampled.error) && <p role="alert">{error || sampled.error}</p>}
+        {error && <p role="alert">{error}</p>}
         <div style={{ position: 'relative' }}>
           <div
             ref={scroll}
@@ -259,8 +251,8 @@ export function PrototypePlayer({
               background: '#fff',
             }}
           >
-            {previous?.entry && (state.transitionStyle?.startsWith('slide-') || state.transitionStyle === 'dissolve') && progress<1 && <div key={state.transitionFrom} aria-hidden="true" style={{position:'absolute',inset:0,pointerEvents:'none',opacity:state.transitionStyle==='dissolve'?1-slideProgress:1}}>
-              <KernelSurface document={previous.document} pageId={previous.pageId} width={Math.ceil(frame.width*zoom)} height={Math.ceil(frame.height*zoom)} view={{x:-previous.entry.bounds.x*zoom,y:-previous.entry.bounds.y*zoom,zoom}} grid={false}/>
+            {previous?.entry && progress<1 && (lightweight || state.transitionStyle?.startsWith('slide-') || state.transitionStyle === 'dissolve') && <div key={state.transitionFrom} aria-hidden="true" style={{position:'absolute',inset:0,pointerEvents:'none',opacity:state.transitionStyle==='dissolve'?1-slideProgress:lightweight?1-progress:1}}>
+              <StillFrame document={previous.document} pageId={previous.pageId} width={Math.ceil(frame.width*zoom)} height={Math.ceil(frame.height*zoom)} x={-previous.entry.bounds.x*zoom} y={-previous.entry.bounds.y*zoom} zoom={zoom}/>
             </div>}
             <div
               key={current}
@@ -269,17 +261,18 @@ export function PrototypePlayer({
                 width: frame.width * zoom,
                 height: frame.height * zoom,
                 transform: `translate(${slideOffset})`,
-                opacity: state.transitionStyle === 'dissolve' && progress < 1 ? slideProgress : 1,
+                opacity: state.transitionStyle === 'dissolve' && progress < 1 ? slideProgress : lightweight && progress < 1 ? progress : 1,
                 background: '#fff',
               }}
             >
-              <KernelSurface
+              <StillFrame
                 document={visibleDoc}
                 pageId={page.id}
                 width={Math.ceil(frame.width * zoom)}
                 height={Math.ceil(frame.height * zoom)}
-                view={{ x: -frame.x * zoom, y: -frame.y * zoom, zoom }}
-                grid={false}
+                x={-frame.x * zoom}
+                y={-frame.y * zoom}
+                zoom={zoom}
               />
               {entries
                 .filter((e) => descendants.has(e.id) && doc.prototype?.interactions[e.id]?.length)
@@ -333,6 +326,18 @@ export function PrototypePlayer({
     </div>
   )
 }
+
+const StillFrame = memo(function StillFrame({ document, pageId, width, height, x, y, zoom }: {
+  document: DesignDocument
+  pageId: string
+  width: number
+  height: number
+  x: number
+  y: number
+  zoom: number
+}) {
+  return <KernelSurface document={document} pageId={pageId} width={width} height={height} view={{ x, y, zoom }} grid={false} />
+})
 
 function Overlay({
   doc,

@@ -585,6 +585,51 @@ describe('Figma plugin host', () => {
     run.close()
   })
 
+  it('keeps a radial fill when a video paint is refused and does not report a gradient stroke as solid', async () => {
+    const current = editor()
+    const run = await openPlugin(current, bundle('Paints', `
+      const rect = figma.createRectangle()
+      rect.name = 'Radial'
+      rect.fills = [{ type: 'GRADIENT_RADIAL', gradientStops: [
+        { position: 0, color: { r: 0.2, g: 0.35, b: 0.83 } },
+        { position: 1, color: { r: 1, g: 1, b: 1 } }
+      ]}]
+      rect.strokes = [{ type: 'GRADIENT_LINEAR', gradientStops: [
+        { position: 0, color: { r: 0, g: 0, b: 0 } },
+        { position: 1, color: { r: 1, g: 0, b: 0 } }
+      ]}]
+      if (rect.strokes[0].type !== 'GRADIENT_LINEAR') throw new Error(String(rect.strokes[0].type))
+      var kept = false
+      try { rect.fills = [{ type: 'VIDEO' }] } catch (error) { kept = String(error).indexOf('not available') >= 0 }
+      if (!kept) throw new Error('video paint accepted')
+      if (rect.fills[0].type !== 'GRADIENT_RADIAL') throw new Error('dropped')
+    `))
+    const rect = named(current, 'Radial')
+    expect(rect?.fills[0].kind).toBe('radial')
+    expect(rect?.strokes[0].paint.kind).toBe('linear')
+    run.close()
+  })
+
+  it('runs the component-kit fixture from a zip', async () => {
+    const { zipSync } = await import('fflate')
+    const { readFileSync } = await import('node:fs')
+    const manifest = readFileSync(new URL('../../../plugins/component-kit/manifest.json', import.meta.url))
+    const main = readFileSync(new URL('../../../plugins/component-kit/code.js', import.meta.url))
+    const current = editor()
+    const bundle = pluginBundleFromZip(zipSync({ 'manifest.json': manifest, 'code.js': main }))
+    const run = await openPlugin(current, bundle)
+    expect(named(current, 'Swatch')?.component).toBeTruthy()
+    expect(named(current, 'Swatch instance')?.instance?.componentId).toBe(named(current, 'Swatch')?.id)
+    expect(named(current, 'Photo')?.fills[0].kind).toBe('image')
+    expect(named(current, 'Radial')?.fills[0].kind).toBe('radial')
+    expect(named(current, 'Kit')?.sizing?.width).toBe('hug')
+    expect(named(current, 'Lifted')?.kind).toBe('rectangle')
+    expect(run.notifications.join(' ')).toContain('kit ready')
+    const again = await openPlugin(current, bundle)
+    again.close()
+    run.close()
+  })
+
   it('documents every coverage entry', () => {
     const coverage = pluginApiCoverage()
     expect(coverage.counts.supported).toBeGreaterThan(20)
