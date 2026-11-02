@@ -25,12 +25,38 @@ export function selectionParentBounds(doc: DesignDocument, id: string, transform
 export function parentBounds(n: DesignNode): Bounds {
   return bounds(boxPoints(localBounds(n)).map((p) => apply(n.transform, p)))
 }
+/** Clockwise degrees of an affine x-axis. This is the inspector "旋转 °" value.
+ * Positive is clockwise on the y-down canvas, matching Mac Figma and
+ * `figma_rotation::clockwise_degrees`. */
+export function clockwiseDegrees(matrix: Matrix) {
+  const degrees = (Math.atan2(matrix[1], matrix[0]) * 180) / Math.PI
+  if (!Number.isFinite(degrees) || Object.is(degrees, -0)) return 0
+  return degrees
+}
 export function rotationDegrees(n: DesignNode) {
-  return (-Math.atan2(n.transform[1], n.transform[0]) * 180) / Math.PI
+  return clockwiseDegrees(n.transform)
+}
+/** Local clockwise angle after `delta` is applied in world space. Null when
+ * the parent cannot be inverted. The canvas hint and the inspector both use it. */
+export function localClockwiseAfter(parent: Matrix, worldStart: Matrix, delta: Matrix) {
+  try { return clockwiseDegrees(multiply(inverse(parent), multiply(delta, worldStart))) }
+  catch { return null }
+}
+/** Shift-snap that local angle onto 15° steps. A reflected parent conjugates
+ * the correction so the number the inspector stores still lands on the step. */
+export function snapLocalClockwise(parent: Matrix, worldStart: Matrix, delta: Matrix, center: Point): Matrix {
+  const angle = localClockwiseAfter(parent, worldStart, delta)
+  if (angle === null) return delta
+  const snapped = Math.round(angle / 15) * 15
+  const correction = snapped - angle
+  if (Math.abs(correction) < 1e-6) return delta
+  const det = parent[0] * parent[3] - parent[1] * parent[2]
+  const worldTurn = det < 0 ? -correction : correction
+  return multiply(around(center, rotate(worldTurn)), delta)
 }
 export function rotateNode(n: DesignNode, degrees: number, b = localBounds(n)) {
   const center = apply(n.transform, { x: b.x + b.width / 2, y: b.y + b.height / 2 })
-  n.transform = multiply(around(center, rotate(rotationDegrees(n) - degrees)), n.transform)
+  n.transform = multiply(around(center, rotate(degrees - rotationDegrees(n))), n.transform)
 }
 export const forcedPixelSnap = (n: DesignNode) =>
   ['frame', 'section'].includes(n.kind) || !!n.component || !!n.instance || !!n.componentSet

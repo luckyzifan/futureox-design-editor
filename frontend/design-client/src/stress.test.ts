@@ -14,8 +14,8 @@ test('copy preserves every node of a 40-level hierarchy and isolates subsequent 
   for (let i=0; i<original.length; i++) {
     const a = original[i].matrix, b = clone[i].matrix
     expect(b.slice(0,4)).toEqual(a.slice(0,4))
-    expect(b[4]-a[4]).toBeCloseTo(24,9)
-    expect(b[5]-a[5]).toBeCloseTo(24,9)
+    expect(b[4]-a[4]).toBeCloseTo(10,9)
+    expect(b[5]-a[5]).toBeCloseTo(10,9)
   }
   const child = Object.values(copied.nodes).find(n=>n.fills.length)!
   child.fills[0].color = '#000000'

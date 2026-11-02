@@ -39,8 +39,10 @@ export function selectionHandles(corners: Point[], zoom: number) {
     const outward = Math.atan2(-u.y - v.y, -u.x - v.x) * 180 / Math.PI
     return {
       index, point: p, next,
-      rotatePoints: [[-18,-18],[8,-18],[8,-6],[-6,-6],[-6,8],[-18,8]].map(([x,y]) => at(x,y)),
-      rotateAnchor: at(-11,-11),
+      // Outside the corner and clear of the resize square. The grab is about
+      // 32 CSS px, so a second drag still hits the handle after the box turns.
+      rotatePoints: [[-32,-32],[14,-32],[14,-10],[-10,-10],[-10,14],[-32,14]].map(([x,y]) => at(x,y)),
+      rotateAnchor: at(-20,-20),
       resizePoints: [[-4,-4],[4,-4],[4,4],[-4,4]].map(([x,y]) => at(x,y)),
       resizeCursor: transformCursor('resize', outward),
       rotateCursor: transformCursor('rotate', outward + 90),
@@ -49,9 +51,30 @@ export function selectionHandles(corners: Point[], zoom: number) {
   })
 }
 
+/** Wrap into (−180, 180]. Exactly 180° lands on −180°. Same rule as the kernel. */
+export function normalizeDegrees(degrees: number): number {
+  if (!Number.isFinite(degrees)) return 0
+  const wrapped = ((degrees + 180) % 360 + 360) % 360 - 180
+  return Object.is(wrapped, -0) ? 0 : wrapped
+}
+
+/** Canvas and the right-hand angle field share this text. Two decimals, no float tail. */
+export function formatAngleDegrees(degrees: number): string {
+  const wrapped = normalizeDegrees(degrees)
+  return (Object.is(wrapped, -0) ? 0 : Math.round(wrapped * 100) / 100).toFixed(2)
+}
+
+/**
+ * Pointer arc around `center`. `initialDegrees` is the object's clockwise
+ * angle at pointer-down (`atan2(m10, m00)`). Positive results are clockwise,
+ * matching Mac Figma's design panel. The matrix is that same arc, so the
+ * object follows the hand. Shift snaps the absolute angle to 15°.
+ * Kernel twin: `figma_rotation::rotation_drag`.
+ */
 export function selectionRotation(center: Point, start: Point, end: Point, initialDegrees: number, snap: boolean): { matrix: Matrix; degrees: number } {
-  const raw = (Math.atan2(end.y-center.y,end.x-center.x) - Math.atan2(start.y-center.y,start.x-center.x)) * 180 / Math.PI
-  const delta = snap ? Math.round((initialDegrees + raw) / 15) * 15 - initialDegrees : raw
-  const degrees = ((-(initialDegrees + delta) + 180) % 360 + 360) % 360 - 180
-  return { matrix: around(center, rotate(delta)), degrees }
+  const raw = normalizeDegrees((Math.atan2(end.y - center.y, end.x - center.x) - Math.atan2(start.y - center.y, start.x - center.x)) * 180 / Math.PI)
+  const absolute = initialDegrees + raw
+  const snapped = snap ? Math.round(absolute / 15) * 15 : absolute
+  const delta = snapped - initialDegrees
+  return { matrix: around(center, rotate(delta)), degrees: normalizeDegrees(snapped) }
 }
