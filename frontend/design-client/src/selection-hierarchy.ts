@@ -30,8 +30,14 @@ export function interactivePath(document: DesignDocument, page: string, id: stri
   return at === page ? path : []
 }
 
-/** Selection establishes an entered scope via its ancestors, not via the
- * selected container itself. A second ordinary click therefore stays selected. */
+/** Mac Figma selects the object whose paint is under the pointer. A frame is
+ * the hit only when the point misses every descendant and lands on the frame
+ * itself. Groups do not swallow that child. Components and instances still
+ * capture the click until Command/Ctrl deep-select or Enter. The current
+ * selection does not change this result, so a repeated deep-select stays put. */
+function clickBarrier(node: DesignNode): boolean {
+  return !!node.component || !!node.instance || !!node.componentSet
+}
 export function shallowSelectionHit(document: DesignDocument, selection: readonly string[],
   hit: string, path: readonly string[], parents: ParentMap = allParents(document)): string {
   const entered = new Set<string>()
@@ -41,7 +47,7 @@ export function shallowSelectionHit(document: DesignDocument, selection: readonl
     while (at && document.nodes[at]) { ancestors.push(at); at = parents.get(at) }
     if (!ancestors.some(parent => selection.includes(parent))) ancestors.forEach(parent => entered.add(parent))
   }
-  return path.find(id => boundary(document.nodes[id]) && !entered.has(id)) || hit
+  return path.find(id => clickBarrier(document.nodes[id]) && !entered.has(id)) || hit
 }
 
 export function deeperSelectionHit(document: DesignDocument, selection: readonly string[],
