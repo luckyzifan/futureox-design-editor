@@ -309,6 +309,44 @@ async fn dispatch_sqlite(backend: &Backend, method: &str, params: Value) -> Resu
     }
 }
 
+fn encode_video(params: Value, cancel: &std::sync::atomic::AtomicBool) -> Result<Value> {
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    struct Params {
+        ffmpeg_path: PathBuf,
+        frames_dir: PathBuf,
+        output_path: PathBuf,
+        container: String,
+        fps: u32,
+        frame_count: u32,
+    }
+    let request = parse_params::<Params>(params)?;
+    let container = match request.container.as_str() {
+        "mp4" => futureox_design_kernel::ffmpeg_encode::VideoContainer::Mp4,
+        "webm" => futureox_design_kernel::ffmpeg_encode::VideoContainer::Webm,
+        _ => {
+            return Err(BackendError::new(
+                "INVALID_REQUEST",
+                "container must be mp4 or webm",
+            ))
+        }
+    };
+    let receipt = futureox_design_kernel::ffmpeg_encode::encode_png_sequence(
+        &futureox_design_kernel::ffmpeg_encode::EncodePngSequence {
+            ffmpeg: &request.ffmpeg_path,
+            frames_dir: &request.frames_dir,
+            output: &request.output_path,
+            container,
+            fps: request.fps,
+            frame_count: request.frame_count,
+            timeout: std::time::Duration::from_secs(180),
+        },
+        cancel,
+    )
+    .map_err(|message| BackendError::new("VIDEO_ENCODE_FAILED", message))?;
+    output(receipt)
+}
+
 fn dispatch(
     backend: &Backend,
     method: &str,
@@ -454,6 +492,7 @@ fn dispatch(
                     .map_err(|message| BackendError::new("SKETCH_ADMISSION_FAILED", message))?,
             )
         }
+        "video.encode" => encode_video(params, cancel),
         "health" => {
             parse_params::<Empty>(params)?;
             Ok(
@@ -756,6 +795,56 @@ mod multipart_tests {
             String::from_utf8_lossy(&output)
         );
         assert_eq!(backend.open(&path).unwrap().document, doc);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(all(test, unix))]
+mod video_encode_tests {
+    use super::handle_frame;
+    use crate::Backend;
+    use serde_json::json;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn video_encode_method_spawns_the_supplied_binary() {
+        let root = std::env::temp_dir().join(format!("desktop-ffmpeg-{}", crate::unique_id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let backend = Backend::new(&root.join("recovery")).unwrap();
+        let frames = root.join("frames");
+        std::fs::create_dir(&frames).unwrap();
+        std::fs::write(frames.join("frame_000001.png"), b"\x89PNG\r\n\x1a\nrest").unwrap();
+        let ffmpeg = root.join("ffmpeg");
+        std::fs::write(
+            &ffmpeg,
+            r#"#!/bin/sh
+out=
+for arg in "$@"; do
+  out=$arg
+done
+printf '\000\000\000\030ftypisom\000\000\000\000isomavc1' > "$out"
+"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(&ffmpeg, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let output = root.join("motion.mp4");
+        let frame = serde_json::to_vec(&json!({
+            "id": "video-1",
+            "method": "video.encode",
+            "params": {
+                "ffmpegPath": ffmpeg,
+                "framesDir": frames,
+                "outputPath": output,
+                "container": "mp4",
+                "fps": 12,
+                "frameCount": 1
+            }
+        }))
+        .unwrap();
+        let response = handle_frame(&backend, &frame);
+        assert!(response.error.is_none(), "{:?}", response.error);
+        assert_eq!(response.result.unwrap()["container"], "mp4");
+        assert!(output.is_file());
         std::fs::remove_dir_all(root).unwrap();
     }
 }

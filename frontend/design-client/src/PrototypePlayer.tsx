@@ -3,6 +3,14 @@ import { animation_plan_sample_json } from './generated/design-kernel/design_ker
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { DesignDocument } from './model'
 import { KernelSurface } from './kernel/Surface'
+import { KernelClient } from './kernel/client'
+import { desktopBridge } from './desktop'
+import {
+  encodeDesktopFrames,
+  MOTION_PREVIEW_FPS,
+  motionPreviewTimes,
+  useVideoEncodeAvailable,
+} from './motion-video'
 import { kernelLayout } from './kernel/picking'
 import { allParents, scene } from './geometry'
 import { createAnimationBakeSession, kernelBakeRevision, type KernelAnimationBakeSession } from './kernel/bake-session'
@@ -18,7 +26,10 @@ export function PrototypePlayer({
   onClose: () => void
 }) {
   const [state, setState] = useState(() => initialPrototype(source)),
-    [error, setError] = useState('')
+    [error, setError] = useState(''),
+    [exporting, setExporting] = useState(false),
+    [videoAsset, setVideoAsset] = useState<{ url: string; name: string } | null>(null)
+  const videoReady = useVideoEncodeAvailable()
   const scroll = useRef<HTMLDivElement>(null),
     snapshot = useRef(source)
   snapshot.current = source
@@ -153,12 +164,63 @@ export function PrototypePlayer({
   }, [state.scrollTarget, state.current, state.scrollRequest])
   // Hide unrelated roots/siblings while retaining definitions for component resolution.
   const visibleDoc = useMemo(() => prototypeFrameView(doc,current).document, [doc,current])
+  useEffect(() => () => {
+    if (videoAsset) URL.revokeObjectURL(videoAsset.url)
+  }, [videoAsset])
+  async function exportTransition(format: 'mp4' | 'webm') {
+    const bridge = desktopBridge()?.videoEncode
+    if (!bridge || !transition || !state.transitionMs) {
+      setError('需要一次智能动画过渡。滑动仍是界面位移，不进入 FFmpeg。')
+      return
+    }
+    const client = new KernelClient()
+    setExporting(true)
+    try {
+      const times = motionPreviewTimes(state.transitionMs)
+      const destination = prototypeFrameView(settled, transition.to)
+      const box = scene(destination.document, destination.pageId).find(entry => entry.id === transition.to)?.bounds
+        || { x: 0, y: 0, width: settled.nodes[transition.to]?.width || 1, height: settled.nodes[transition.to]?.height || 1 }
+      const fitted = Math.min(960 / Math.max(1, box.width), 540 / Math.max(1, box.height), 1)
+      const width = Math.max(2, Math.ceil(box.width * fitted))
+      const height = Math.max(2, Math.ceil(box.height * fitted))
+      const camera = { x: -box.x * fitted, y: -box.y * fitted, zoom: fitted }
+      const settledJson = JSON.stringify(settled)
+      const frames: Uint8Array[] = []
+      for (const timeMs of times) {
+        const progress = Math.min(1, timeMs / Math.max(1, state.transitionMs))
+        const eased = prototypeEase(state.transitionEasing, progress)
+        const sampled = JSON.parse(animation_plan_sample_json(settledJson, transition.from, transition.to, eased)) as DesignDocument
+        const view = prototypeFrameView(sampled, transition.to)
+        const rendered = await client.render(view.document, {
+          pageId: view.pageId,
+          width,
+          height,
+          view: camera,
+          grid: false,
+          transparent: false,
+          rasterProfile: source.rasterProfile || 'analytic',
+        }, true)
+        frames.push(rendered.bytes)
+      }
+      const encoded = await encodeDesktopFrames(bridge, { format, fps: MOTION_PREVIEW_FPS, frames })
+      setVideoAsset({
+        url: URL.createObjectURL(new Blob([encoded.bytes], { type: encoded.mime })),
+        name: `prototype-transition.${format}`,
+      })
+      setError('')
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : String(exportError))
+    } finally {
+      client.dispose()
+      setExporting(false)
+    }
+  }
   return (
     <div className="feature-backdrop">
       <div className="prototype-player" data-transition-progress={progress} data-transition-ms={state.transitionMs} data-transition-easing={state.transitionEasing || 'linear'} data-transition-kind={transition ? 'smart' : state.transitionStyle === 'dissolve' ? 'dissolve' : state.transitionStyle?.startsWith('slide-') ? 'slide' : 'none'} data-animation-plan={transition ? (bakeSession ? "kernel-baked" : "kernel") : "none"} role="dialog" aria-label="交互原型预览">
         <header>
           <strong>原型 · {n.name}</strong>
-          <button type="button" onClick={() => { setState(initialPrototype(snapshot.current)); setError(''); scroll.current?.scrollTo(0, 0) }}>
+          <button type="button" onClick={() => { setVideoAsset(null); setState(initialPrototype(snapshot.current)); setError(''); scroll.current?.scrollTo(0, 0) }}>
             重新开始
           </button>
           <button
@@ -172,6 +234,17 @@ export function PrototypePlayer({
           <button type="button" onClick={onClose}>
             关闭预览
           </button>
+          {videoReady && (
+            <>
+              <button type="button" disabled={exporting || !transition} title={transition ? '用打包的 FFmpeg 编码这次智能动画' : '先触发一次智能动画过渡'} onClick={() => void exportTransition('mp4')}>
+                导出过渡 MP4
+              </button>
+              <button type="button" disabled={exporting || !transition} title={transition ? '用打包的 FFmpeg 编码这次智能动画' : '先触发一次智能动画过渡'} onClick={() => void exportTransition('webm')}>
+                导出过渡 WebM
+              </button>
+            </>
+          )}
+          {videoAsset && <a href={videoAsset.url} download={videoAsset.name}>下载 {videoAsset.name}</a>}
         </header>
         {(error || sampled.error) && <p role="alert">{error || sampled.error}</p>}
         <div style={{ position: 'relative' }}>
