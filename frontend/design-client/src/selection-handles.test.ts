@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { apply, boxPoints, inverse, multiply, rotate, translate, pointInContours } from './geometry'
 import { formatAngleDegrees, normalizeDegrees, selectionHandles, selectionRotation, smallSelectionInterior } from './selection-handles'
-import { resizeInBasis, selectionLocalBounds, rotateNode } from './canvas-view'
+import { clockwiseDegrees, localClockwiseAfter, resizeInBasis, rotateNode, selectionLocalBounds, snapLocalClockwise } from './canvas-view'
 import type { Matrix } from './model'
 import {blank,node} from './model'
 import {selectionScaleFrame,scaleAnchor} from './selection-scale'
@@ -42,6 +42,26 @@ test('clockwise pointer motion is a positive Figma angle and the matrix follows 
   expect(turned.y).toBeCloseTo(end.y, 8)
   const back = selectionRotation(center, start, { x: 100, y: 20 }, 0, false)
   expect(back.degrees).toBeCloseTo(-90, 8)
+})
+
+test('a clockwise drag stores the same positive angle the inspector reads', () => {
+  const parent = multiply(translate(12, -4), rotate(20))
+  const child = multiply(translate(40, 50), rotate(0))
+  const world = multiply(parent, child)
+  const center = apply(world, { x: 0, y: 0 })
+  const start = { x: center.x + 50, y: center.y }
+  const end = { x: center.x, y: center.y + 50 }
+  const drag = selectionRotation(center, start, end, 0, false)
+  const local = localClockwiseAfter(parent, world, drag.matrix)
+  expect(drag.degrees).toBeCloseTo(90, 6)
+  expect(local).toBeCloseTo(90, 6)
+  expect(clockwiseDegrees(multiply(inverse(parent), multiply(drag.matrix, world)))).toBeCloseTo(local!, 8)
+  const six = 6 * Math.PI / 180
+  const nudged = selectionRotation(center, start, { x: center.x + 50 * Math.cos(six), y: center.y + 50 * Math.sin(six) }, 0, false)
+  const turned = multiply(parent, rotate(10))
+  expect(localClockwiseAfter(parent, turned, nudged.matrix)).toBeCloseTo(16, 5)
+  const snapped = snapLocalClockwise(parent, turned, nudged.matrix, center)
+  expect(localClockwiseAfter(parent, turned, snapped)).toBeCloseTo(15, 5)
 })
 
 test('rotation snaps the resulting orientation and preserves center and full nested matrix',()=>{
