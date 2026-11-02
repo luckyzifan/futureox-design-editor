@@ -226,7 +226,10 @@ export class Sidecar extends EventEmitter {
   }
 
   executionTimeout(method) {
-    return largeDocumentJobs.has(method) ? Math.max(this.timeoutMs, 600_000) : this.timeoutMs
+    if (largeDocumentJobs.has(method)) return Math.max(this.timeoutMs, 600_000)
+    // PNG bake stays in the renderer. This bound covers the Rust FFmpeg spawn.
+    if (method === 'video.encode') return Math.max(this.timeoutMs, 180_000)
+    return this.timeoutMs
   }
   request(method, params = {}) {
     if (this.stopped || this.closing) return Promise.reject(failure('BACKEND_UNAVAILABLE', 'Backend unavailable'))

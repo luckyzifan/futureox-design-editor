@@ -100,6 +100,15 @@ try {
   const identities = { archive: await hash(archive), sidecar: await hash(sidecarBinary) }
   assert.equal(identities.archive, verification.artifacts['app.asar'], 'Packaged application archive differs from its verification')
   assert.equal(identities.sidecar, verification.artifacts['sidecar/futureox-design-desktop-backend'], 'Packaged Rust backend differs from its verification')
+  const ffmpegBinary = path.join(resources, 'bin', 'ffmpeg')
+  try {
+    await stat(ffmpegBinary)
+    identities.ffmpeg = await hash(ffmpegBinary)
+    checked('packaged resources/bin/ffmpeg is present')
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+    checked('macOS bundle has no resources/bin/ffmpeg yet; linux-x64 is the vendored build')
+  }
   report.identities = identities
   checked('new tagged bundle and Rust binary match verified current build inputs')
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
