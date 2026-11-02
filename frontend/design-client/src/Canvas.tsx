@@ -2,6 +2,7 @@ import { CpuStage, measureCpuStage } from './cpu-stage-diagnostics'
 import { recoverInteractionPreview } from './kernel/interaction-preview-recovery'
 import { selectionSizeLabel } from './selection-size-label'
 import { canvasOverlayCommands, canvasGpuOverlayOwnsUi } from './canvas-overlay-commands'
+import { measurementLabel, measurementTicks } from './canvas-measurements'
 import { canvasText } from './canvas-interface-messages'
 import { useInterfacePreferences } from './interface-preference'
 import { recordCanvasGrid } from './kernel/grid-measurements'
@@ -2980,10 +2981,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               {Number(rubber.width.toFixed(2))} × {Number(rubber.height.toFixed(2))}
             </text>}</g>
           )}
-          {measurements.map((m,i)=><g key={`measurement-${i}`} data-testid="canvas-measurement" pointerEvents="none" opacity={gpuOverlay?0:1}>
+          {measurements.map((m,i)=>{
+            const placed = measurementLabel(m, zoom)
+            return <g key={`measurement-${i}`} data-testid="canvas-measurement" pointerEvents="none" opacity={gpuOverlay?0:1}>
             <line x1={m.from.x} y1={m.from.y} x2={m.to.x} y2={m.to.y} stroke="#f24822" strokeWidth={1/zoom}/>
-            <text x={(m.from.x+m.to.x)/2+4/zoom} y={(m.from.y+m.to.y)/2-5/zoom} fontSize={11/zoom} fill="#f24822" paintOrder="stroke" stroke="#fff" strokeWidth={2/zoom}>{Number(m.distance.toFixed(2))}</text>
-          </g>)}
+            {measurementTicks(m, zoom).map(([from, to], tick) => <line key={tick} x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke="#f24822" strokeWidth={1/zoom}/>)}
+            <text x={placed.anchor.x + placed.offset.x / zoom} y={placed.anchor.y + placed.offset.y / zoom} textAnchor="middle" dominantBaseline="central" fontSize={11/zoom} fill="#f24822" paintOrder="stroke" stroke="#fff" strokeWidth={2/zoom}>{Number(m.distance.toFixed(2))}</text>
+          </g>}) }
           {!guides.surface && guides.x && (
             <line
               x1={guides.x.position}

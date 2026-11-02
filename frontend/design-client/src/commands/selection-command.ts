@@ -69,11 +69,11 @@ function assertPositionable(doc: DesignDocument, index: SelectionIndex) {
       reject('auto_layout_position', 'Auto-layout flow children must be positioned through layout controls')
   }
 }
-function assertWrap(doc: DesignDocument, index: SelectionIndex) {
+function assertWrap(doc: DesignDocument, index: SelectionIndex, allowLayoutParent = false) {
   const parent = index.parents.get(index.ids[0])!
   if (index.ids.some(id => index.parents.get(id) !== parent)) reject('different_parents', 'Grouping requires the same immediate parent')
   assertStructuralParent(doc, parent, index.parents)
-  if (activeLayout(doc.nodes[parent])) reject('unsupported_layout_topology', 'Grouping in auto-layout requires a layout-aware command')
+  if (!allowLayoutParent && activeLayout(doc.nodes[parent])) reject('unsupported_layout_topology', 'Grouping in auto-layout requires a layout-aware command')
   for (const id of index.ids) {
     const n = doc.nodes[id]
     if (n.component || n.componentSet || n.instance || n.instanceOrigin)
@@ -185,15 +185,17 @@ export function prepareSelectionArrangement(doc: DesignDocument, selected: reado
 export interface SelectionWrap {
   ids: string[]; parent: string; index: number; transform: Matrix; width: number; height: number; transforms: TransformPatch[]
 }
-export function prepareSelectionWrap(doc: DesignDocument, selected: readonly string[], state: SelectionGeometryState, knownIndex?: ReturnType<typeof indexSelection>): SelectionWrap {
-  const index = knownIndex ?? indexSelection(doc, selected); assertWrap(doc, index)
+export function prepareSelectionWrap(doc: DesignDocument, selected: readonly string[], state: SelectionGeometryState, knownIndex?: ReturnType<typeof indexSelection>, placementMode?: { allowLayoutParent?: boolean; stack?: 'back' | 'front' }): SelectionWrap {
+  const index = knownIndex ?? indexSelection(doc, selected); assertWrap(doc, index, placementMode?.allowLayoutParent)
   const parent = index.parents.get(index.ids[0])!
   const world = (id: string): Matrix => doc.nodes[id] ? multiply(world(index.parents.get(id)!), doc.nodes[id].transform) : identity()
   const parentWorld = world(parent), reader = geometry(doc, index, state, inverse(parentWorld))
   const box = unionBounds(index.ids.map(reader.measure)), placement = planContainerPlacement(CORE_SELECTION_PROFILE, box, parentWorld), transform = placement.transform
   const childBasis = inverse(multiply(parentWorld, transform))
   const siblingIndex = new Map(list(doc, parent).map((id, at) => [id, at]))
-  return { ids: index.ids, parent, index: siblingIndex.get(index.ids[0])!, transform,
+  const slots = index.ids.map(id => siblingIndex.get(id)!)
+  const at = placementMode?.stack === 'front' ? Math.max(...slots) : Math.min(...slots)
+  return { ids: index.ids, parent, index: at, transform,
     width: placement.width, height: placement.height,
     transforms: index.ids.map(id => ({ id, transform: multiply(childBasis, reader.matrix(id)) })) }
 }

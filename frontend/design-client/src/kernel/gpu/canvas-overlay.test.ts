@@ -18,6 +18,12 @@ test('grid is absent below four times zoom and remains bounded at high zoom', ()
   expect([...data].every(Number.isFinite)).toBe(true)
 })
 
+test('spacing guides draw the gap plus six-pixel end ticks', () => {
+  const data = overlayVertices({ pixelGrid: false, measurements: [{ from: { x: 10, y: 20 }, to: { x: 40, y: 20 }, axis: 'horizontal' }] }, { x: 0, y: 0, zoom: 2 }, 200, 200)
+  expect(data.length / 8 / 6).toBe(3)
+  expect([...data].every(Number.isFinite)).toBe(true)
+})
+
 test('zero-size selections retain visible finite resize handles', () => {
   const data=overlayVertices({pixelGrid:false,selection:{corners:Array.from({length:4},()=>({x:10,y:20})),handles:true}}, {x:0,y:0,zoom:1}, 800,600)
   const xs=Array.from({length:data.length/8},(_,i)=>data[i*8]), ys=Array.from({length:data.length/8},(_,i)=>data[i*8+1])
