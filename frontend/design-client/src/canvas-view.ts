@@ -25,12 +25,13 @@ export function selectionParentBounds(doc: DesignDocument, id: string, transform
 export function parentBounds(n: DesignNode): Bounds {
   return bounds(boxPoints(localBounds(n)).map((p) => apply(n.transform, p)))
 }
+/** Clockwise-positive, matching Mac Figma's design panel and `clockwise_degrees`. */
 export function rotationDegrees(n: DesignNode) {
-  return (-Math.atan2(n.transform[1], n.transform[0]) * 180) / Math.PI
+  return (Math.atan2(n.transform[1], n.transform[0]) * 180) / Math.PI
 }
 export function rotateNode(n: DesignNode, degrees: number, b = localBounds(n)) {
   const center = apply(n.transform, { x: b.x + b.width / 2, y: b.y + b.height / 2 })
-  n.transform = multiply(around(center, rotate(rotationDegrees(n) - degrees)), n.transform)
+  n.transform = multiply(around(center, rotate(degrees - rotationDegrees(n))), n.transform)
 }
 export const forcedPixelSnap = (n: DesignNode) =>
   ['frame', 'section'].includes(n.kind) || !!n.component || !!n.instance || !!n.componentSet
