@@ -10,7 +10,8 @@ import { desktopPet } from './desktop-pet'
 import { nudgePreference } from './nudge-preference'
 import { createKeyboardNudgeGesture } from './keyboard-nudge-gesture'
 import { isDimensionNudgeCommand, nudgeSelectionDimensions } from './canvas-workflow-shortcuts'
-import { canvasMarqueeSelection } from './canvas-selection-workflows'
+import { canvasMarqueeSelection, marqueeReleasePlan } from './canvas-selection-workflows'
+import { doubleClickFollowUp, enterKeyEditsText } from './figma-basic-ops'
 import { CanvasSceneSnapshots } from './canvas-scene-snapshots'
 import { StartupPreview } from './StartupPreview'
 import type { StartupPreview as StartupPixels, PreviewPixels } from './startup-preview'
@@ -828,7 +829,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const displayedHit = (point: Point, deep = false, eligible?: (node:DesignNode)=>boolean) => displayedSnapshot && displayedIndex
     ? editor.hit(point, deep, displayedIndex, displayViewRef.current.zoom, displayedSnapshot,eligible) : null
   const displayedHoverHit = (point: Point) => displayedSnapshot && displayedIndex
-    ? editor.hoverHit(point, displayedIndex, displayViewRef.current.zoom, displayedSnapshot) : null
+    ? editor.selectionHit(point, false, displayedIndex, displayViewRef.current.zoom, displayedSnapshot) : null
   refreshHover.current = () => {
     const client = hoverPoint.current, rect = host.current?.getBoundingClientRect()
     const point = client && rect ? { x: client.x - rect.left, y: client.y - rect.top } : null
@@ -1130,9 +1131,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if (editor.selectChildren()) return
         if (editor.state.selection.length === 1) {
           const selected = editor.state.doc.nodes[editor.state.selection[0]]
-          if (!editor.topSelection().includes(selected.id)) return
-          if (selected.kind === 'text') setTextEdit(selected.id)
-          else if (!['frame', 'section', 'group'].includes(selected.kind)) editor.set({ tool: 'vector', editingVertex: null })
+          // Figma Enter edits a selected text layer. Containers already
+          // consumed the key as Select Child. Shapes stay shapes.
+          if (enterKeyEditsText(selected, !editor.topSelection().includes(selected.id))) setTextEdit(selected.id)
         }
         return
       }
@@ -1774,9 +1775,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if (!d) {
       setMeasureKeys(previous=>previous.alt===e.altKey&&previous.deep===(e.metaKey||e.ctrlKey)?previous:{alt:e.altKey,deep:e.metaKey||e.ctrlKey})
       editor.hoverLayer(performance.now() >= navigationUntil.current && !textEdit && !space.current && ['select', 'multiselect', 'scale', 'vector', 'width'].includes(editor.state.tool)
-        // Hover identifies the visible object, independently of the entered
-        // selection hierarchy. Imported wrapper groups can otherwise put the
-        // only outline outside the viewport and hide the text under the cursor.
+        // The outline is the layer a click would select: the unentered frame
+        // or group, then the child after Enter or a double-click.
         ? displayedHoverHit(p) : null, 'canvas')
       return
     }
@@ -2114,17 +2114,23 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         ?fitBounds(area,{width:size.width,height:size.height},{padding:0})
         :zoomAt(d.view,zoomStep(d.view.zoom,e.altKey?-1:1),release)})
     } else if (d.kind === 'marquee') {
-      // React's rubber-band state may still describe the previous move. The
-      // committed selection uses the owner's actual final coordinates.
-      const area = createBox(d.start, screenToWorld(d.view, release), false)
+      // A click on empty canvas already applied its selection on pointerdown.
+      // Figma only commits a marquee after the same drag threshold as a move.
       const deep = d.forcedMarquee || (d.sketchMarquee
         ? shortcutPlatform() === 'mac' ? e.metaKey : e.ctrlKey : e.metaKey || e.ctrlKey)
-      // Use release-time modifiers and the original selection, not the last
-      // coalesced move or an earlier preview (which would toggle repeatedly).
-      const additive = d.sketchMarquee ? e.shiftKey || d.creationTool === 'multiselect' : !!d.additive
-      editor.select(canvasMarqueeSelection(editor.state.doc, editor.state.page, d.originSelection,
-        (d.pickIndex || index).query(area), area, { deep: !!deep, contained: !!d.sketchMarquee && e.altKey,
-          additive, toggle: !!d.sketchMarquee && additive, ignoreId: d.marqueeIgnoreId }))
+      const plan = marqueeReleasePlan({
+        sketch: !!d.sketchMarquee, shift: e.shiftKey, alt: e.altKey, deep: !!deep,
+        multiselect: d.creationTool === 'multiselect', startedAdditive: !!d.additive,
+        passedThreshold: dragThresholdPassed(d.screen, release, !!d.moved),
+      })
+      if (plan.apply) {
+        // React's rubber-band state may still describe the previous move. The
+        // committed selection uses the owner's actual final coordinates.
+        const area = createBox(d.start, screenToWorld(d.view, release), false)
+        editor.select(canvasMarqueeSelection(editor.state.doc, editor.state.page, d.originSelection,
+          (d.pickIndex || index).query(area), area, { deep: plan.deep, contained: plan.contained,
+            additive: plan.additive, toggle: plan.toggle, ignoreId: d.marqueeIgnoreId }))
+      }
     } else if(d.kind==='pivot') {
       // The origin is an editing handle, not document geometry or undo state.
     } else if ((d.kind === 'vertex' || d.kind === 'handle') &&
@@ -2402,28 +2408,18 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           finishPen()
           return
         }
-        const text = displayedHit(world(e), true)
-        if (text && editor.state.doc.nodes[text]?.kind === 'text') {
-          editor.select([text])
-          setTextEdit(text)
-          return
-        }
         const result = editor.selectDeeper(world(e), displayedIndex, displayViewRef.current.zoom, displayedSnapshot)
-        if (!result || result.changed) return
-        const id = result.id
-        if (!editor.topSelection().includes(id)) return
-        const n = state.doc.nodes[id]
+        const id = result?.id
+        const n = id ? state.doc.nodes[id] : null
+        const followUp = doubleClickFollowUp(result, n, !!id && editor.topSelection().includes(id))
         // Instance interiors are derived from the master component (imported
         // .fig material is mostly instances). The deep-select chain stops at
         // the instance boundary, so point the user at detach instead of a
         // silent no-op.
-        if (n.instance)
+        if (followUp === 'instance')
           editor.notify('实例内容由主组件派生：右键“分离实例”后即可编辑子元素', { key: 'instanceDetachHint' })
-        if (n.kind === 'text') {
-          setTextEdit(id)
-        } else if (!['frame', 'section', 'group'].includes(n.kind)) {
-          editor.set({ tool: 'vector', editingVertex: null })
-        }
+        else if (followUp === 'edit-text' && id) setTextEdit(id)
+        else if (followUp === 'edit-vector') editor.set({ tool: 'vector', editingVertex: null })
       }}
     >
       {state.tool==='eyedropper' && <div className="canvas-color-pick-hint" role="status" style={colorPick?{left:Math.max(8,Math.min(size.width-360,colorPick.x+18)),top:Math.max(8,Math.min(size.height-38,colorPick.y+18))}:undefined}>
