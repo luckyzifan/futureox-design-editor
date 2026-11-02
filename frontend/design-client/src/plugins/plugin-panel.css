@@ -4,7 +4,12 @@
 .plugin-panel header { border-bottom: 1px solid var(--workspace-border); }
 .plugin-panel h2 { margin: 0; font-size: 15px; }
 .plugin-panel header button, .plugin-panel footer button { border: 1px solid var(--workspace-border); border-radius: 8px; background: var(--workspace-panel); color: var(--workspace-text); padding: 6px 10px; }
-.plugin-panel header button:focus-visible, .plugin-panel footer button:focus-visible, .plugin-panel summary:focus-visible { outline: 2px solid var(--workspace-accent); outline-offset: 2px; }
+.plugin-panel header button:focus-visible, .plugin-panel footer button:focus-visible, .plugin-panel summary:focus-visible, .plugin-local-list button:focus-visible { outline: 2px solid var(--workspace-accent); outline-offset: 2px; }
+.plugin-panel h3 { margin: 0; font-size: 13px; font-weight: 600; }
+.plugin-local-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.plugin-local-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.plugin-local-list span { min-width: 0; overflow-wrap: anywhere; }
+.plugin-local-list button { border: 1px solid var(--workspace-border); border-radius: 8px; background: var(--workspace-panel); color: var(--workspace-text); padding: 6px 10px; }
 .plugin-panel .plugin-panel-primary { background: var(--workspace-accent); border-color: var(--workspace-accent); color: #fff; }
 .plugin-panel p, .plugin-panel li { color: var(--workspace-muted); font-size: 12px; line-height: 1.45; }
 .plugin-panel section { display: grid; gap: 8px; padding: 14px 16px; }

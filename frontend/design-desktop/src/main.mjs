@@ -39,7 +39,7 @@ import { planLegacyUserDataMigration, runLegacyUserDataMigration } from './legac
 import { renderCheckConfig, renderCheckHandler } from './render-check.mjs'
 import { WorkspaceRoots, workspaceRootError } from './workspace-roots.mjs'
 import { parseGpuWorkingBudgetMiB } from './gpu-working-budget.mjs'
-import { createPluginDirectoryHost } from './plugin-package.mjs'
+import { createPluginDirectoryHost, scanDeclaredPlugins } from './plugin-package.mjs'
 import { createPluginUiHost } from './plugin-ui.mjs'
 
 let interfaceLocale = 'zh-CN'
@@ -327,9 +327,27 @@ register('pet-configure', mode => getPetHost().configure(mode), false)
 register('pet-event', event => petHost ? petHost.event(event) : { ok: true, accepted: false }, false)
 let pluginDirectories = null
 let pluginUi = null
+let localPlugins = []
+let pendingPluginLaunch = null
 function pluginDirectoryHost() {
   if (!pluginDirectories) pluginDirectories = createPluginDirectoryHost()
   return pluginDirectories
+}
+function publicDeclaredPlugin(plugin) {
+  return { grant: plugin.grant, id: plugin.id, name: plugin.name, displayName: plugin.displayName, manifestText: plugin.manifestText }
+}
+async function loadDeclaredPlugins() {
+  localPlugins = []
+  try {
+    const scanned = await scanDeclaredPlugins(path.join(app.getPath('userData'), 'plugins'))
+    localPlugins = pluginDirectoryHost().enableDeclared(scanned.plugins)
+    if (localPlugins.length || scanned.skipped || scanned.truncated) {
+      console.log(`LOCAL_PLUGINS_ENABLED ${localPlugins.length}${scanned.skipped ? ` skipped ${scanned.skipped}` : ''}${scanned.truncated ? ' truncated' : ''}`)
+    }
+  } catch {
+    localPlugins = []
+    console.warn('Local plugin scan skipped')
+  }
 }
 function pluginUiHost() {
   if (!pluginUi) pluginUi = createPluginUiHost({
@@ -346,6 +364,10 @@ register('plugins-pick', async () => {
   })
   if (selected.canceled || selected.filePaths.length !== 1) return { status: 'cancelled' }
   return { status: 'ok', ...await pluginDirectoryHost().take(selected.filePaths[0]) }
+}, false)
+register('plugins-list', async value => {
+  if (value !== undefined) throw new Error('Unexpected arguments')
+  return { status: 'ok', plugins: localPlugins.map(publicDeclaredPlugin) }
 }, false)
 register('plugins-read', async value => {
   record(value, ['grant', 'paths'])
@@ -367,6 +389,19 @@ register('plugins-ui-close', async value => {
   return { status: 'ok' }
 }, false)
 
+function flushPluginLaunch() {
+  if (!pendingPluginLaunch || !window || window.isDestroyed() || !rendererReady) return
+  const grant = pendingPluginLaunch
+  pendingPluginLaunch = null
+  window.webContents.send('design-desktop:plugin-launch', { grant })
+}
+function launchDeclaredPlugin(grant) {
+  if (!localPlugins.some(plugin => plugin.grant === grant)) return
+  if (closePending || quitRequested || shutdownComplete) return
+  pendingPluginLaunch = grant
+  sendCommand('plugins')
+  flushPluginLaunch()
+}
 function sendCommand(command) {
   if (closePending || quitRequested || shutdownComplete) return
   if (!window || window.isDestroyed() || !rendererReady) {
@@ -389,6 +424,7 @@ register('renderer-ready', (value) => {
   if (value !== undefined) throw new Error('Unexpected arguments')
   rendererReady = true
   for (const command of pendingCommands.splice(0)) sendCommand(command)
+  flushPluginLaunch()
   return { status: 'ok' }
 }, false)
 
@@ -1177,6 +1213,7 @@ async function buildWindow() {
     window = undefined
     rendererReady = false
     pendingCommands.length = 0
+    pendingPluginLaunch = null
     activeHandle = undefined
     grants.clear(); recoveryGrants.clear(); recoveredSources.clear()
     recoveryId = randomUUID()
@@ -1237,6 +1274,14 @@ async function buildWindow() {
       ] },
       { label: 'Plugins', submenu: [
         { label: 'Open plugin host…', click: () => sendCommand('plugins') },
+        ...(localPlugins.length ? [
+          { type: 'separator' },
+          ...localPlugins.map(plugin => ({
+            label: plugin.name,
+            preserveLabel: true,
+            click: () => launchDeclaredPlugin(plugin.grant),
+          })),
+        ] : []),
       ] },
       {
         label: 'View',
@@ -1312,6 +1357,7 @@ else {
         startupError = error
       }
       hostReady = true
+      await loadDeclaredPlugins()
       const constrainWindow = () => constrainWindowToDisplays(window, screen.getAllDisplays(), screen.getPrimaryDisplay())
       screen.on('display-removed', constrainWindow)
       screen.on('display-metrics-changed', constrainWindow)
