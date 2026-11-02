@@ -6,7 +6,7 @@ export type PluginCoverageEntry = {
   note: string
 }
 
-/** Earlier worker-session matrix. The Plugins panel reads `rich-host/coverage.ts`. */
+/** Worker snapshot matrix documented in docs/FIGMA_PLUGIN_HOST.md. The Plugins panel runs the QuickJS host in ./rich-host/coverage.ts. */
 export const pluginApiCoverage: readonly PluginCoverageEntry[] = [
   { api: 'figma.createRectangle', status: 'supported', note: 'Appends a 100×100 rectangle to the current page.' },
   { api: 'figma.createEllipse', status: 'supported', note: 'Appends a 100×100 ellipse to the current page.' },
@@ -47,8 +47,8 @@ export const pluginApiCoverage: readonly PluginCoverageEntry[] = [
   { api: 'node.insertChild', status: 'supported', note: 'Index is the final index after the node leaves its old parent.' },
   { api: 'node.remove', status: 'supported', note: 'Deletes the subtree.' },
   { api: 'node.clone', status: 'supported', note: 'Deep-clones ordinary geometry. Components and boolean nodes throw.' },
-  { api: 'node.fills', status: 'partial', note: 'SOLID paints only. Reading a gradient, image, or other paint throws and leaves it unchanged.' },
-  { api: 'node.strokes', status: 'partial', note: 'SOLID strokes only. Assigning replaces the stack.' },
+  { api: 'node.fills', status: 'partial', note: 'SOLID, GRADIENT_LINEAR, GRADIENT_RADIAL, GRADIENT_ANGULAR, GRADIENT_DIAMOND, and IMAGE. Any other paint throws on read and on write, and the node is left unchanged. Gradient handles are an angle plus stops, not full gradientTransform fidelity.' },
+  { api: 'node.strokes', status: 'partial', note: 'Same paint types as fills. A gradient or image stroke is not reported as SOLID. Assigning replaces the stack only when every paint is supported.' },
   { api: 'node.strokeWeight', status: 'supported', note: 'One width for every stroke. A positive weight creates a stroke when none exist.' },
   { api: 'node.cornerRadius', status: 'supported', note: 'Rectangles, frames, and sections use the four radii. Polygons and stars use the authored corner radius. Mixed radii read as figma.mixed.' },
   { api: 'node.topLeftRadius', status: 'supported', note: 'Rectangle, frame, and section top-left radius. Other nodes throw.' },
@@ -85,25 +85,28 @@ export const pluginApiCoverage: readonly PluginCoverageEntry[] = [
   { api: 'figma.root', status: 'partial', note: 'Read-only document name and page children.' },
   { api: 'figma.variables', status: 'unsupported', note: 'No variable, mode, or alias API.' },
   { api: 'figma.teamLibrary', status: 'unsupported', note: 'No team library or published styles.' },
-  { api: 'figma.clientStorage', status: 'unsupported', note: 'No plugin preferences outside the document.' },
+  { api: 'figma.clientStorage', status: 'supported', note: 'getAsync, setAsync, deleteAsync, and keysAsync. JSON values, undefined, and Uint8Array. Stored for this plugin id outside the document, and not undone with the canvas. The QuickJS panel stores it in localStorage. This snapshot host keeps it in process memory for the plugin id.' },
   { api: 'figma.payments', status: 'unsupported', note: 'No payments.' },
   { api: 'figma.parameters', status: 'unsupported', note: 'No parameter UI.' },
   { api: 'figma.codegen', status: 'unsupported', note: 'No codegen.' },
   { api: 'figma.currentUser', status: 'unsupported', note: 'No Figma account.' },
-  { api: 'figma.createComponent', status: 'unsupported', note: 'Components and variants are unchanged by this host.' },
-  { api: 'figma.createInstance', status: 'unsupported', note: 'No instance creation.' },
+  { api: 'figma.createComponent', status: 'partial', note: 'Creates a local main component from an empty frame. No variants, component properties, or team library.' },
+  { api: 'figma.createInstance', status: 'partial', note: 'ComponentNode.createInstance and figma.createInstance copy a local component onto the page. No team library and no remote key. A name set in the same turn can be normalized to the main component name when the editor admits the instance.' },
   { api: 'figma.importComponentByKeyAsync', status: 'unsupported', note: 'No remote components.' },
-  { api: 'figma.createImage', status: 'unsupported', note: 'No image hash API.' },
-  { api: 'figma.getImageByHash', status: 'unsupported', note: 'No image hash API.' },
+  { api: 'figma.createImage', status: 'partial', note: 'PNG, JPEG, or WebP bytes up to 256 KiB. The hash is the SHA-1 of those bytes. The paint stores a data URL. GIF bytes are refused because the document does not admit a GIF data URL.' },
+  { api: 'figma.getImageByHash', status: 'partial', note: 'Resolves a hash created in this session or already stored on a PNG, JPEG, or WebP fill or stroke. getBytesAsync returns those bytes. getSizeAsync reads PNG and JPEG headers.' },
   { api: 'figma.createNodeFromSvg', status: 'unsupported', note: 'Use the editor’s SVG import, not the plugin API.' },
-  { api: 'node.exportAsync', status: 'unsupported', note: 'No plugin raster or SVG export.' },
+  { api: 'node.exportAsync', status: 'partial', note: 'SVG markup bytes for the node box, a solid fill, and text. PNG, JPG, and PDF throw. This is not the editor export panel.' },
   { api: 'node.vectorNetwork', status: 'unsupported', note: 'Vector networks stay as authored geometry and cannot be edited here.' },
   { api: 'node.reactions', status: 'unsupported', note: 'No prototype reactions.' },
   { api: 'figma.annotations', status: 'unsupported', note: 'No annotations API.' },
-  { api: 'node.layoutSizingHorizontal', status: 'unsupported', note: 'Hug, fill, and fixed sizing are not mapped.' },
-  { api: 'node.primaryAxisAlignItems', status: 'unsupported', note: 'Auto-layout alignment is not mapped.' },
+  { api: 'node.layoutSizingHorizontal', status: 'partial', note: 'FIXED, HUG, or FILL on sizing.width. Hug still has to satisfy the editor layout rule.' },
+  { api: 'node.layoutSizingVertical', status: 'partial', note: 'FIXED, HUG, or FILL on sizing.height.' },
+  { api: 'node.primaryAxisAlignItems', status: 'partial', note: 'MIN, CENTER, MAX, or SPACE_BETWEEN after layoutMode. BASELINE throws.' },
+  { api: 'node.counterAxisAlignItems', status: 'partial', note: 'MIN, CENTER, or MAX after layoutMode. BASELINE throws.' },
+  { api: 'node.layoutAlign', status: 'partial', note: 'MIN, CENTER, MAX, STRETCH, or INHERIT. Writes sizing.alignSelf.' },
   { api: 'figma.ui.resize', status: 'unsupported', note: 'Pass width and height to showUI. The window does not resize later.' },
-  { api: 'figma.ungroup', status: 'unsupported', note: 'Use the editor ungroup command.' },
+  { api: 'figma.ungroup', status: 'partial', note: 'Lifts children of a group, frame, or section that is not auto-layout, a component, or a boolean. Child transforms stay parent-local.' },
   { api: 'networkAccess', status: 'unsupported', note: 'Manifest network access is ignored. The UI window cancels network requests.' },
 ]
 

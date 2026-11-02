@@ -1,9 +1,9 @@
 import { expect, test } from 'vitest'
 import { validatePrototype } from './automation/interactions'
 import { Editor } from './engine'
-import { blank, effect, node } from './model'
+import { blank, effect, node, paint } from './model'
 import { initialPrototype, prototypeEvent } from './prototype'
-import { lightenPrototypeMotion, PROTOTYPE_MOTION_CAPS } from './prototype-motion'
+import { framesNeedLightweightMotion, lightenPrototypeMotion, PROTOTYPE_MOTION_CAPS, resolvePrototypeMotion, startTransitionClock } from './prototype-motion'
 
 test('in-between frames cap glass and blur and leave opacity and transform alone', () => {
   const doc = blank('motion')
@@ -102,4 +102,63 @@ test('a dissolve navigation crossfades without a smart-animate plan', () => {
   expect(next.transitionStyle).toBe('dissolve')
   expect(next.transition).toBeUndefined()
   expect(next.transitionMs).toBe(240)
+})
+
+test('omitted prototype motion uses 300ms ease-out and an explicit zero stays instant', () => {
+  expect(resolvePrototypeMotion({ kind: 'navigate', target: 'a' }, undefined, undefined)).toEqual({ durationMs: 300, easing: 'ease-out' })
+  expect(resolvePrototypeMotion({ kind: 'navigate', target: 'a', transitionStyle: 'none' }, undefined, undefined).durationMs).toBe(0)
+  expect(resolvePrototypeMotion({ kind: 'navigate', target: 'a', durationMs: 0 }, 0, undefined).durationMs).toBe(0)
+  const doc = blank()
+  const from = node('frame', 0, 0, 80, 80)
+  const to = node('frame', 120, 0, 80, 80)
+  doc.nodes[from.id] = from
+  doc.nodes[to.id] = to
+  doc.pages[0].children = [from.id, to.id]
+  doc.prototype = { interactions: { [from.id]: [{ trigger: 'click', actions: [{ kind: 'navigate', target: to.id }] }] } }
+  const state = prototypeEvent(doc, initialPrototype(doc), from.id, 'click')
+  expect(state.transitionMs).toBe(300)
+  expect(state.transitionEasing).toBe('ease-out')
+  expect(state.current).toBe(to.id)
+})
+
+test('angular and diamond paints skip per-tick sampling; capped glass and blur do not', () => {
+  const doc = blank()
+  const plain = node('frame', 0, 0, 40, 40)
+  const glassy = node('frame', 80, 0, 40, 40)
+  glassy.effects = [effect('glass')]
+  const blurred = node('rectangle', 0, 0, 10, 10)
+  blurred.effects = [effect('blur')]
+  glassy.children = [blurred.id]
+  const shadow = node('frame', 160, 0, 40, 40)
+  shadow.effects = [effect('shadow')]
+  const angular = node('rectangle', 0, 0, 10, 10)
+  angular.fills = [{ ...paint('#3459d4', 'angular'), stops: [{ offset: 0, color: '#3459d4' }, { offset: 1, color: '#ffffff' }] }]
+  doc.nodes[plain.id] = plain
+  doc.nodes[glassy.id] = glassy
+  doc.nodes[blurred.id] = blurred
+  doc.nodes[shadow.id] = shadow
+  doc.nodes[angular.id] = angular
+  expect(framesNeedLightweightMotion(doc, plain.id, plain.id)).toBe(false)
+  expect(framesNeedLightweightMotion(doc, plain.id, glassy.id)).toBe(false)
+  expect(framesNeedLightweightMotion(doc, shadow.id, plain.id)).toBe(false)
+  expect(framesNeedLightweightMotion(doc, angular.id, plain.id)).toBe(true)
+})
+
+test('a cancelled transition clock does not deliver a later tick', () => {
+  const frames = new Map<number, FrameRequestCallback>()
+  let id = 0
+  const clock = {
+    now: () => 0,
+    request: (callback: FrameRequestCallback) => { frames.set(++id, callback); return id },
+    cancel: (handle: number) => { frames.delete(handle) },
+  }
+  const seen: number[] = []
+  const queued = () => frames.get(1)
+  const cancel = startTransitionClock(300, value => { seen.push(value) }, clock)
+  const tick = queued()
+  expect(tick).toBeTypeOf('function')
+  cancel()
+  tick?.(300)
+  expect(seen).toEqual([])
+  expect(frames.size).toBe(0)
 })
