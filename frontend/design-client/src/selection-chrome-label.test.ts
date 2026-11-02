@@ -1,0 +1,67 @@
+import { expect, test } from 'vitest'
+import { blank, node } from './model'
+import { apply, bounds, boxPoints, scene, unionBounds } from './geometry'
+import { selectionLocalBounds } from './canvas-view'
+import { canvasOverlayCommands } from './canvas-overlay-commands'
+import { canvasText } from './canvas-interface-messages'
+
+function fixture(select: 'rect' | 'frame' | 'both', tool = 'select', rectName = '按钮') {
+  const doc = blank('chrome')
+  const frame = node('frame', 0, 0, 400, 300)
+  frame.name = '画板'
+  const rect = node('rectangle', 40, 50, 120, 80)
+  rect.name = rectName
+  frame.children = [rect.id]
+  doc.nodes[frame.id] = frame
+  doc.nodes[rect.id] = rect
+  doc.pages[0].children = [frame.id]
+  const ids = select === 'rect' ? [rect.id] : select === 'frame' ? [frame.id] : [frame.id, rect.id]
+  const entries = scene(doc, doc.pages[0].id)
+  const selected = entries.filter(entry => ids.includes(entry.id))
+  const local = selected.length === 1 ? selectionLocalBounds(doc, selected[0].id) : null
+  const corners = local ? boxPoints(local).map(point => apply(selected[0].matrix, point)) : boxPoints(unionBounds(selected.map(entry => entry.bounds)))
+  return canvasOverlayCommands({
+    document: doc, pageId: doc.pages[0].id, epoch: 1, tool, pixelGrid: false, canTransform: true,
+    selected, owners: ids,
+    frameTitles: entries.filter(entry => ['frame', 'section'].includes(doc.nodes[entry.id].kind) && (entry.depth === 0 || ids.includes(entry.id))),
+    localSelection: local, selectionCorners: corners, selectionBox: bounds(corners), measurementTarget: null,
+  })
+}
+
+test('a single shape shows its name above the box and leaves the parent frame title neutral', () => {
+  const overlay = fixture('rect')
+  const name = overlay.commands.labels.find(label => label.kind === 'selection-name')
+  const title = overlay.commands.labels.find(label => label.kind === 'frame-title')
+  expect(name).toMatchObject({ text: '按钮', color: '#0d99ff', offset: { x: 0, y: -14 } })
+  const corners = overlay.commands.selection!.corners
+  expect(name!.anchor).toEqual({ x: Math.min(...corners.map(point => point.x)), y: Math.min(...corners.map(point => point.y)) })
+  expect(title).toMatchObject({ text: '画板', color: '#73778b' })
+  expect(overlay.commands.labels.some(label => label.kind === 'selection-size')).toBe(true)
+})
+
+test('selecting a frame turns its title blue instead of drawing a second name', () => {
+  const overlay = fixture('frame')
+  expect(overlay.commands.labels.find(label => label.kind === 'frame-title')).toMatchObject({ text: '画板', color: '#0d99ff' })
+  expect(overlay.commands.labels.some(label => label.kind === 'selection-name')).toBe(false)
+})
+
+test('multi-select and vector editing do not add a selection name', () => {
+  expect(fixture('both').commands.labels.some(label => label.kind === 'selection-name')).toBe(false)
+  const vector = fixture('rect', 'vector')
+  expect(vector.commands.labels.some(label => label.kind === 'selection-name' || label.kind === 'selection-size')).toBe(false)
+  expect(vector.commands.labels.find(label => label.kind === 'frame-title')?.color).toBe('#73778b')
+  expect(vector.commands.selection).toBeUndefined()
+})
+
+test('renaming the selected shape changes overlay identity so a stale GPU label cannot stick', () => {
+  expect(fixture('rect', 'select', '按钮').uiIdentity).not.toBe(fixture('rect', 'select', '改名').uiIdentity)
+})
+
+test('creation and pen chrome copy exists in both interface languages', () => {
+  expect(canvasText['zh-CN'].creationHint).toContain('Shift')
+  expect(canvasText.en.creationHint).toContain('Alt from center')
+  expect(canvasText.en.creationHintLine).toContain('length 100')
+  expect(canvasText['zh-CN'].penDone).toBe('完成 ↵')
+  expect(canvasText.en.penDone).toBe('Done ↵')
+  expect(canvasText.en.rotateOrigin).toContain('Double-click')
+})
