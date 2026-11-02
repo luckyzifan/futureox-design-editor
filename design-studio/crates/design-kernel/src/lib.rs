@@ -1756,7 +1756,7 @@ mod wasm {
                 .parse_options(value)
                 .map_err(|e| JsValue::from_str(&e))?;
             self.inner
-                .render(&options)
+                .render_exact(&options)
                 .map_err(|e| JsValue::from_str(&e))
         }
         pub fn color_settings(&self) -> String {

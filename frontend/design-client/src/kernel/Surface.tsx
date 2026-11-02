@@ -68,6 +68,7 @@ export type SurfaceProps = {
   onPresentation?: (frame: PresentedFrame | null) => void
   fallbackReason?: string
   overview?: import('../model').Bounds
+  overviewNodes?: number
   presentationEpoch?: number
   maxPixelRatio?: number
   animation?: KernelOptions['animation']
@@ -694,7 +695,7 @@ export function KernelSurface(props: SurfaceProps) {
           document/export pixels. Transparent pages and a cold/failed renderer
           must still have a stable, opaque surface beneath their content. */}
       <div className="kernel-workspace-backdrop" aria-hidden="true"
-        style={{ position: 'absolute', inset: 0, pointerEvents: 'none', backgroundColor: '#eeeff3' }} />
+        style={{ position: 'absolute', inset: 0, pointerEvents: 'none', backgroundColor: '#ffffff' }} />
       {[...gpuSources].map((source) => {
         const held = holdGpu && presented?.computeBackend === source
         return <ProgressiveSurface key={`gpu:${source}`}
