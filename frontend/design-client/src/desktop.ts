@@ -125,6 +125,14 @@ export interface NativeRenderBridgeApi {
   stop(): Promise<NativeRenderReply>
   stats(): Promise<NativeRenderReply<{ stats: { gpu_memory?: NativeGpuMemoryBreakdown } }>>
 }
+export type VideoEncodeStatus = { status: 'ok'; available: boolean; source: 'bundled' | 'path' | 'missing' }
+export type VideoEncodeResult =
+  | { status: 'ok'; bytes: Uint8Array; mime: string; container: 'mp4' | 'webm'; byteLength?: number }
+  | { status: 'error'; code: string; message: string }
+export interface VideoEncodeBridge {
+  status(): Promise<VideoEncodeStatus>
+  encode(request: { format: 'mp4' | 'webm'; fps: number; frames: Uint8Array[] }): Promise<VideoEncodeResult>
+}
 export interface DesktopBridge {
   readonly designAi?: import('./design-ai/types').DesignAiBridge
   readonly renderDiagnostics?:boolean
@@ -162,6 +170,8 @@ export interface DesktopBridge {
   readonly documentCapacity?: Readonly<{ memoryBytes: number }>
   readonly renderPolicy: Readonly<{ cpuOnly: boolean; gpuWorkingBudgetMiB?: number }>
   readonly nativeRender?: NativeRenderBridgeApi
+  /** Desktop motion encode. Absent on the web. Never includes a filesystem path. */
+  readonly videoEncode?: VideoEncodeBridge
   nativeRenderStats?(): Promise<string | null>
   listCatalog(): Promise<DesktopResult<{ projects: CatalogProject[]; directories: CatalogDirectory[]; files: CatalogFile[] }>>
   selectCatalogDirectory(): Promise<DesktopResult<{ project: CatalogProject; directory: CatalogDirectory }>>

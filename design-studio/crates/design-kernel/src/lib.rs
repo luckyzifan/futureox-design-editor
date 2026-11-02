@@ -36,6 +36,8 @@ mod zoom_support;
 pub mod noise_fill;
 pub mod export;
 pub mod export_formats;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod ffmpeg_encode;
 pub mod facet;
 pub mod fidelity;
 pub mod fig;

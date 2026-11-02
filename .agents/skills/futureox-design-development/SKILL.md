@@ -3,6 +3,7 @@ name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
 
+2026-11-02 桌面把 Linux x64 FFmpeg 放进 `Resources/bin`，`resolveBundledFfmpegPath` 把路径交给 Rust `video.encode`，由它把 PNG 帧序列编成 MP4/WebM。Mac/Win 只有路径说明。不改光栅、瓦片或预算。不是 33/100ms 或完整 G2/G5。见[记录](../../../testing/verification-ffmpeg-bundle-20261102/README.md)。
 2026-11-02 [原型播放、嵌套布尔、插件夹具与 .svgz](../../../testing/verification-playback-plugins-import-20261102/README.md)。溶解过渡用两张已结算画面做透明度交叉，不逐帧重采样。智能动画的中间帧仍插值透明度和变换，玻璃和模糊半径在预览里封顶，落定帧用原稿。只选中一个布尔时，里面的布尔先按自己的运算烘焙。插件面板可载入 .zip / .figma；layout-kit 是本机夹具。桌面 Blob 导出允许 .svgz。MP4/WebM 仍不从本面板调用 PATH，视频编码留给产品里的 Rust FFmpeg 接口。不改光栅预算。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [画布呈现续](../../../testing/verification-canvas-render-continuity-20261102/README.md)旋转之后的快速缩小保留更宽的画面，CPU 选区跟实时相机。合成压力不再整帧红字。不改预算和实验开关。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [画布操作对照：粘贴与展平](../../../testing/verification-figma-canvas-ops-paste-20261102/README.md)按 Mac gaps4：不同父级的粘贴和粘贴到原位都留在各自画板。实例粘贴保留旋转。设计模式 Shift+E 仍开原型。轮廓化描边是 ⌘⇧O。布尔和其它图层混选可以展平。不改光栅、瓦片或预算。33/100ms 与完整 G2/G5 未通过。

@@ -83,6 +83,7 @@ test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or s
       'onCommand',
       'nativeRender',
       'nativeRenderStats',
+      'videoEncode',
     ].sort(),
   )
   assert.equal(api.version, 1)
@@ -277,6 +278,17 @@ test('native render API is frozen, maps the fixed native-render channels, and st
   // The stub invoke answers { status: 'ok' } (no ok/gpu_memory): the stats
   // convenience must report absence rather than fabricate a breakdown.
   assert.equal(await api.nativeRenderStats(), null)
+})
+
+test('video encode preload is frozen and does not accept a filesystem path', async () => {
+  const { api, calls } = load()
+  assert.equal(Object.isFrozen(api.videoEncode), true)
+  assert.deepEqual(Object.keys(api.videoEncode).sort(), ['encode', 'status'])
+  await api.videoEncode.status()
+  await api.videoEncode.encode({ format: 'mp4', fps: 12, frames: [] })
+  assert.deepEqual(calls.map(call => call[0]), ['design-desktop:video-encode-status', 'design-desktop:video-encode'])
+  assert.equal(calls[1][1].format, 'mp4')
+  assert.equal(Object.hasOwn(calls[1][1], 'ffmpegPath'), false)
 })
 
 

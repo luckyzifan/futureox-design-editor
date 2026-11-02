@@ -1,0 +1,12 @@
+{
+  "platform": "linux-x64",
+  "file": "ffmpeg",
+  "version": "7.0.2-static",
+  "license": "GPL-3.0-or-later",
+  "buildId": "edfa98c6c76982e3c1e0bf47fa06c97212951b21",
+  "configuration": "--enable-gpl --enable-version3 --enable-static --enable-libx264 --enable-libvpx",
+  "encoders": ["libx264", "libvpx-vp9"],
+  "upstreamBuild": "https://johnvansickle.com/ffmpeg/",
+  "obtainedFrom": "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-linux-x64.gz",
+  "ffmpegSourceTag": "n7.0.2"
+}
