@@ -273,6 +273,7 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
   source = source.replace("from './preparation.mjs'", `from ${JSON.stringify(new URL('../src/preparation.mjs', import.meta.url).href)}`)
   source = source.replace("from './large-document.mjs'", `from ${JSON.stringify(new URL('../src/large-document.mjs', import.meta.url).href)}`)
   source = source.replace("from './render-check.mjs'", `from ${JSON.stringify(new URL('../src/render-check.mjs', import.meta.url).href)}`)
+  source = source.replace("from './workspace-sqlite-worker-host.mjs'", `from ${JSON.stringify(new URL('../src/workspace-sqlite-worker-host.mjs', import.meta.url).href)}`)
   source = source.replace(
     "from './security.mjs'",
     `from ${JSON.stringify(new URL('../src/security.mjs', import.meta.url).href)}`,
