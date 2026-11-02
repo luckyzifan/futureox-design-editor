@@ -3,6 +3,7 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-02 [Electron SQLite audit](../../../testing/verification-electron-sqlite-20261102/README.md) does not change raster, tiles, budgets, or experimental flags. Workspace durability stays SQLx WAL with `synchronous=FULL`. The warm-commit proof is a storage decode skip for medium snapshots without extracted assets. It is not a 33/100ms or full G2/G5 result.
 2026-11-02 [Web 与桌面对齐](../../../testing/verification-web-desktop-parity-20261102/README.md)不改光栅、瓦片、预算或实验开关。网页画布操作仍走共享 Editor 与 WASM 命中/吸附，不另建网页文档模型。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 Figma 风格 MCP 门面见 [FIGMA_MCP_FACADE.md](../../../docs/FIGMA_MCP_FACADE.md)。它只调用现有 Design API，不改光栅、瓦片或导航。`get_screenshot` 仍是 CPU 设计内容导出，不是 GPU 截图。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [画布操作对照](../../../testing/verification-figma-canvas-ops-20261102/README.md)不改缩放覆盖、粘性仿射或标签缓存。选择拖动、旋转手柄、取整尺寸标签和创建填充是交互层。33/100ms 与完整 G2/G5 仍未通过。

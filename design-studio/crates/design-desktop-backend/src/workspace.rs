@@ -7,7 +7,10 @@ use sqlx::{
     Row, Sqlite, SqlitePool, Transaction,
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
 };
+#[cfg(test)]
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{
+    collections::HashMap,
     fs,
     path::Path,
     sync::{Arc, Mutex},
@@ -20,6 +23,11 @@ const MAX_REVISION: i64 = 9_007_199_254_740_991;
 const HISTORY_PAGE: i64 = 1000;
 // Optional, store-local metadata only. Never retain document snapshot BLOBs.
 const MAX_HEADS_CACHE_BYTES: usize = 4 * 1024 * 1024;
+// Outside this window the extra snapshot digest does not pay for itself:
+// tiny heads are cheaper to decode, and a multi-megabyte blob is cheaper to
+// reparse than to hash twice. Extracted font/image bytes are never covered.
+const HEAD_PROOF_MIN_BYTES: usize = 32 * 1024;
+const HEAD_PROOF_MAX_BYTES: usize = 1024 * 1024;
 
 fn db(error: sqlx::Error) -> BackendError {
     // SQLite extended result codes retain the primary code in the low byte.
@@ -128,11 +136,27 @@ fn entry(row: &sqlx::sqlite::SqliteRow) -> Result<Entry> {
         deleted: row.try_get("deleted").map_err(db)?,
     })
 }
-async fn opened(
-    connection: &mut sqlx::SqliteConnection,
-    row: &sqlx::sqlite::SqliteRow,
-) -> Result<Opened> {
+#[derive(Clone, PartialEq, Eq)]
+struct HeadProof {
+    revision: i64,
+    name: String,
+    hash: String,
+    deleted: bool,
+    encoding: i64,
+    snapshot_sha256: String,
+}
+struct ProvedHead {
+    entry: Entry,
+    decoded: Option<Opened>,
+}
+struct StoredRevision {
+    entry: Entry,
+    snapshot_sha256: String,
+    asset_count: usize,
+}
+fn snapshot_of(row: &sqlx::sqlite::SqliteRow) -> Result<(Entry, i64, Vec<u8>)> {
     let entry = entry(row)?;
+    let encoding: i64 = row.try_get("encoding").map_err(db)?;
     let bytes: Option<Vec<u8>> = row.try_get("snapshot").map_err(db)?;
     let bytes = bytes.ok_or_else(|| {
         BackendError::new(
@@ -140,9 +164,27 @@ async fn opened(
             "Snapshot exceeds this session's working-memory allowance; stored bytes retained",
         )
     })?;
-    let encoding: i64 = row.try_get("encoding").map_err(db)?;
+    Ok((entry, encoding, bytes))
+}
+fn proof_for(entry: &Entry, encoding: i64, snapshot_sha256: String) -> HeadProof {
+    HeadProof {
+        revision: entry.revision,
+        name: entry.name.clone(),
+        hash: entry.hash.clone(),
+        deleted: entry.deleted,
+        encoding,
+        snapshot_sha256,
+    }
+}
+async fn decode_snapshot(
+    connection: &mut sqlx::SqliteConnection,
+    entry: Entry,
+    encoding: i64,
+    bytes: &[u8],
+    snapshot_sha256: String,
+) -> Result<(Opened, HeadProof)> {
     let document =
-        crate::workspace_snapshot::decode(connection, &bytes, encoding, &entry.id, entry.revision)
+        crate::workspace_snapshot::decode(connection, bytes, encoding, &entry.id, entry.revision)
             .await?;
     let restored = document_bytes(&document)
         .map_err(|_| corrupt("Document snapshot failed validation; stored bytes retained"))?;
@@ -158,7 +200,35 @@ async fn opened(
             "Document snapshot metadata mismatch; stored bytes retained",
         ));
     }
-    Ok(Opened { entry, document })
+    let proof = proof_for(&entry, encoding, snapshot_sha256);
+    Ok((Opened { entry, document }, proof))
+}
+async fn revision_asset_count(
+    connection: &mut sqlx::SqliteConnection,
+    id: &str,
+    revision: i64,
+) -> Result<i64> {
+    // Extracted font/image bytes live outside the snapshot. A snapshot digest
+    // does not prove those rows, so only an empty reference list can skip decode.
+    sqlx::query_scalar("SELECT count(*) FROM revision_assets WHERE document_id=? AND revision=?")
+        .bind(id)
+        .bind(revision)
+        .fetch_one(&mut *connection)
+        .await
+        .map_err(db)
+}
+async fn opened(
+    connection: &mut sqlx::SqliteConnection,
+    row: &sqlx::sqlite::SqliteRow,
+) -> Result<Opened> {
+    let (entry, encoding, bytes) = snapshot_of(row)?;
+    // Reads do not hash the snapshot. Commit computes that digest only when it
+    // decides whether a previously validated head can skip JSON decode.
+    Ok(
+        decode_snapshot(connection, entry, encoding, &bytes, String::new())
+            .await?
+            .0,
+    )
 }
 
 fn prepare_database_file(path: &Path) -> Result<()> {
@@ -226,6 +296,11 @@ fn prepare_database_file(path: &Path) -> Result<()> {
 pub struct WorkspaceStore {
     pool: SqlitePool,
     heads_cache: Mutex<HeadsCache>,
+    // Bytes this process has already validated. A later commit still reads the
+    // snapshot and hashes it; any difference takes the full decode path.
+    head_proofs: Mutex<HashMap<String, HeadProof>>,
+    #[cfg(test)]
+    head_integrity_decodes: AtomicUsize,
 }
 
 #[derive(Default)]
@@ -339,6 +414,9 @@ impl WorkspaceStore {
         Ok(Self {
             pool,
             heads_cache: Mutex::new(HeadsCache::default()),
+            head_proofs: Mutex::new(HashMap::new()),
+            #[cfg(test)]
+            head_integrity_decodes: AtomicUsize::new(0),
         })
     }
     async fn inspect(pool: &SqlitePool) -> Result<i64> {
@@ -558,6 +636,87 @@ impl WorkspaceStore {
         }
         Ok((hash, response))
     }
+    fn proof_matches(&self, id: &str, proof: &HeadProof) -> bool {
+        self.head_proofs
+            .lock()
+            .ok()
+            .is_some_and(|proofs| proofs.get(id) == Some(proof))
+    }
+    fn install_proof(&self, id: &str, proof: HeadProof) {
+        if let Ok(mut proofs) = self.head_proofs.lock() {
+            proofs.insert(id.to_owned(), proof);
+        }
+    }
+    fn remember_head(&self, stored: &StoredRevision) {
+        if stored.asset_count == 0 && stored.snapshot_sha256.len() == 64 {
+            self.install_proof(
+                &stored.entry.id,
+                proof_for(&stored.entry, 2, stored.snapshot_sha256.clone()),
+            );
+        } else {
+            self.clear_proof(&stored.entry.id);
+        }
+    }
+    fn clear_proof(&self, id: &str) {
+        if let Ok(mut proofs) = self.head_proofs.lock() {
+            proofs.remove(id);
+        }
+    }
+    #[cfg(test)]
+    pub(super) fn head_integrity_decodes(&self) -> usize {
+        self.head_integrity_decodes.load(Ordering::Relaxed)
+    }
+    /// Commit's previous-head check. A matching in-memory proof skips JSON
+    /// decode; the snapshot bytes are still read and hashed inside this call.
+    async fn prove_head(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+        id: &str,
+        expected: Option<i64>,
+    ) -> Result<Option<ProvedHead>> {
+        let row = sqlx::query("SELECT r.document_id,r.revision,r.name,r.hash,r.updated_at,r.deleted,r.encoding,CASE WHEN length(r.snapshot)<=? THEN r.snapshot ELSE NULL END AS snapshot FROM documents d JOIN revisions r ON r.document_id=d.id AND r.revision=d.head_revision WHERE d.id=?").bind(crate::workspace_snapshot::snapshot_byte_limit() as i64).bind(id).fetch_optional(&mut **tx).await.map_err(db)?;
+        let Some(row) = row else {
+            if expected.is_some() {
+                return Err(conflict());
+            }
+            return Ok(None);
+        };
+        let (entry, encoding, bytes) = snapshot_of(&row)?;
+        let mut snapshot_sha256 = String::new();
+        let mut install = false;
+        if (HEAD_PROOF_MIN_BYTES..=HEAD_PROOF_MAX_BYTES).contains(&bytes.len())
+            && revision_asset_count(&mut **tx, &entry.id, entry.revision).await? == 0
+        {
+            snapshot_sha256 = hash(&bytes);
+            let candidate = proof_for(&entry, encoding, snapshot_sha256.clone());
+            if self.proof_matches(&entry.id, &candidate) {
+                if Some(entry.revision) != expected {
+                    return Err(conflict());
+                }
+                return Ok(Some(ProvedHead {
+                    entry,
+                    decoded: None,
+                }));
+            }
+            install = true;
+        }
+        #[cfg(test)]
+        self.head_integrity_decodes.fetch_add(1, Ordering::Relaxed);
+        let (opened, proof) = decode_snapshot(tx, entry, encoding, &bytes, snapshot_sha256).await?;
+        if install {
+            self.install_proof(&opened.entry.id, proof);
+        } else {
+            self.clear_proof(&opened.entry.id);
+        }
+        if Some(opened.entry.revision) != expected {
+            return Err(conflict());
+        }
+        let entry = opened.entry.clone();
+        Ok(Some(ProvedHead {
+            entry,
+            decoded: Some(opened),
+        }))
+    }
     pub async fn read(&self, id: &str, revision: Option<i64>) -> Result<Opened> {
         validate_id(id)?;
         if let Some(revision) = revision {
@@ -612,6 +771,7 @@ impl WorkspaceStore {
         }
     }
     async fn head(
+        &self,
         tx: &mut Transaction<'_, Sqlite>,
         id: &str,
         expected: Option<i64>,
@@ -634,7 +794,7 @@ impl WorkspaceStore {
         deleted: bool,
         mutation: &str,
         request_hash: &str,
-    ) -> Result<Entry> {
+    ) -> Result<StoredRevision> {
         let id = document["id"]
             .as_str()
             .ok_or_else(|| invalid("Missing document ID"))?;
@@ -690,6 +850,14 @@ impl WorkspaceStore {
         #[cfg(test)]
         lifetime_tests::before_encode(document);
         let encoded = crate::workspace_snapshot::encode(document)?;
+        let asset_count = encoded.assets.len();
+        let snapshot_sha256 = if asset_count == 0
+            && (HEAD_PROOF_MIN_BYTES..=HEAD_PROOF_MAX_BYTES).contains(&encoded.bytes.len())
+        {
+            hash(&encoded.bytes)
+        } else {
+            String::new()
+        };
         for asset in encoded.assets.values() {
             let inserted = sqlx::query("INSERT INTO assets(hash,kind,value,byte_length) VALUES(?,?,?,?) ON CONFLICT(hash) DO NOTHING")
                 .bind(&asset.hash).bind(asset.kind.label()).bind(asset.value.as_bytes()).bind(asset.value.len() as i64).execute(&mut **tx).await.map_err(db)?.rows_affected();
@@ -720,7 +888,11 @@ impl WorkspaceStore {
         .execute(&mut **tx)
         .await
         .map_err(db)?;
-        Ok(entry)
+        Ok(StoredRevision {
+            entry,
+            snapshot_sha256,
+            asset_count,
+        })
     }
     pub async fn commit(
         &self,
@@ -746,19 +918,24 @@ impl WorkspaceStore {
             tx.commit().await.map_err(db)?;
             return Ok(replayed.entry);
         }
-        let old = Self::head(&mut tx, id, expected).await?;
+        let mut proved = self.prove_head(&mut tx, id, expected).await?;
+        let decoded = proved.as_mut().and_then(|head| head.decoded.take());
         #[cfg(test)]
-        let old = lifetime_tests::TrackedHead::new(old);
-        if old.as_ref().is_some_and(|r| r.entry.deleted) {
+        let tracked = lifetime_tests::TrackedHead::new(decoded);
+        #[cfg(not(test))]
+        drop(decoded);
+        if proved.as_ref().is_some_and(|head| head.entry.deleted) {
             return Err(BackendError::new(
                 "WORKSPACE_DELETED",
                 "Restore this deleted document before editing it",
             ));
         }
-        // The prior head was fully validated above. Do not retain its authored
-        // graph while encoding the new snapshot; transaction/CAS checks stay intact.
-        drop(old);
-        let entry = Self::write_revision(
+        // Do not retain the previous authored graph while encoding the next
+        // snapshot. A warm proof never built that graph. Transaction checks stay.
+        #[cfg(test)]
+        drop(tracked);
+        drop(proved);
+        let stored = Self::write_revision(
             &mut tx,
             document,
             &bytes,
@@ -769,7 +946,8 @@ impl WorkspaceStore {
         )
         .await?;
         tx.commit().await.map_err(db)?;
-        Ok(entry)
+        self.remember_head(&stored);
+        Ok(stored.entry)
     }
     pub async fn trash(
         &self,
@@ -791,11 +969,12 @@ impl WorkspaceStore {
             tx.commit().await.map_err(db)?;
             return Ok(replayed.entry);
         }
-        let old = Self::head(&mut tx, id, Some(expected))
+        let old = self
+            .head(&mut tx, id, Some(expected))
             .await?
             .ok_or_else(not_found)?;
         let bytes = document_bytes(&old.document)?;
-        let entry = Self::write_revision(
+        let stored = Self::write_revision(
             &mut tx,
             &old.document,
             &bytes,
@@ -806,7 +985,8 @@ impl WorkspaceStore {
         )
         .await?;
         tx.commit().await.map_err(db)?;
-        Ok(entry)
+        self.remember_head(&stored);
+        Ok(stored.entry)
     }
     pub async fn restore(
         &self,
@@ -829,7 +1009,7 @@ impl WorkspaceStore {
             tx.commit().await.map_err(db)?;
             return Ok(replayed);
         }
-        Self::head(&mut tx, id, Some(expected))
+        self.head(&mut tx, id, Some(expected))
             .await?
             .ok_or_else(not_found)?;
         let row = sqlx::query("SELECT document_id,revision,name,hash,updated_at,deleted,encoding,CASE WHEN length(snapshot)<=? THEN snapshot ELSE NULL END AS snapshot FROM revisions WHERE document_id=? AND revision=?")
@@ -841,7 +1021,7 @@ impl WorkspaceStore {
             .ok_or_else(not_found)?;
         let source = opened(&mut tx, &row).await?;
         let bytes = document_bytes(&source.document)?;
-        let entry = Self::write_revision(
+        let stored = Self::write_revision(
             &mut tx,
             &source.document,
             &bytes,
@@ -852,8 +1032,9 @@ impl WorkspaceStore {
         )
         .await?;
         tx.commit().await.map_err(db)?;
+        self.remember_head(&stored);
         Ok(Opened {
-            entry,
+            entry: stored.entry,
             document: source.document,
         })
     }

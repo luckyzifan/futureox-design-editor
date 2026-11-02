@@ -1,0 +1,35 @@
+{
+  "profile": {
+    "os": "linux x86_64",
+    "node": "v22.23.4",
+    "rustProfile": "release with CARGO_PROFILE_RELEASE_LTO=off and CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16",
+    "packagedThinLto": false,
+    "betterSqlite3": "13.0.3",
+    "sqlJs": "1.15.2",
+    "sqliteWasm": "3.54.1-build1"
+  },
+  "engineUpdateP50Ms": {
+    "note": "WAL, synchronous=FULL, BEGIN IMMEDIATE, read previous blob, insert next blob. Not the sidecar.",
+    "nodeSqlite": { "8192": 0.135, "262144": 0.847, "1048576": 3.5, "4194304": 16.238 },
+    "nodeSqliteCheckpoint0": { "1048576": 3.432, "4194304": 11.367 },
+    "betterSqlite3SameThread": { "8192": 0.151, "262144": 0.975, "1048576": 2.54, "4194304": 14.288 },
+    "betterSqlite3Worker": { "8192": 0.222, "262144": 0.915, "1048576": 4.389, "4194304": 17.544 },
+    "sqlJsMemory": { "8192": 0.279, "262144": 0.926, "1048576": 2.267 },
+    "sqlJsExportWholeDatabase": { "8192": 0.455, "262144": 3.096, "1048576": 11.691 },
+    "sqliteWasmTransient": { "8192": 0.099, "262144": 0.391, "1048576": 1.556 }
+  },
+  "electronMainThreadJsonP50Ms": {
+    "7894": { "parse": 0.006, "capacityWalk": 0.022, "stringify": 0.02, "sha256": 0.007 },
+    "4194006": { "parse": 2.528, "capacityWalk": 5.063, "stringify": 10.182, "sha256": 2.56 }
+  },
+  "sidecarWarmCommitP50Ms": {
+    "idleBackToBack": {
+      "baseline": { "pad16kb": 0.728, "pad256kb": 5.685, "pad1mb": 18.134, "pad4mb": 73.46, "nodes2000": 23.222 },
+      "candidate": { "pad16kb": 0.756, "pad256kb": 4.402, "pad1mb": 18.546, "pad4mb": 67.149, "nodes2000": 18.262 }
+    },
+    "nodes2000x20": {
+      "baseline": { "p50": 24.63, "p95": 34.33, "min": 22.88, "max": 39.66, "openP50": 13.47 },
+      "candidate": { "p50": 18.22, "p95": 24.17, "min": 16.6, "max": 25.97, "openP50": 14.0 }
+    }
+  }
+}

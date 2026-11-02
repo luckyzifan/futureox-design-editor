@@ -62,6 +62,9 @@ fn document(name: &str) -> Value {
 async fn old_head_is_released_before_new_snapshot_encode() {
     let f = Fixture::new(); let store = WorkspaceStore::open(&f.db()).await.unwrap();
     let first = document("first"); store.commit(&first, None, "first").await.unwrap();
+    store.close().await;
+    // Reopen so this commit has no proof and must decode, then drop, the old head.
+    let store = WorkspaceStore::open(&f.db()).await.unwrap();
     let _scope = Scope::new(); let second = document("second");
     assert_eq!(store.commit(&second, Some(1), "second").await.unwrap().revision, 2);
     PROBE.with(|p| { let p = p.borrow(); assert!(p.armed.is_some(), "real SQLite old head was not observed"); assert_eq!(p.encodes, vec![true], "old SQLite Opened was still alive at snapshot encoding"); assert_eq!(p.armed, p.dropped); });
@@ -97,5 +100,36 @@ async fn release_keeps_old_head_integrity_check_before_any_write() {
     assert_eq!(store.commit(&document("next"), Some(1), "next").await.unwrap_err().code, "WORKSPACE_CORRUPT");
     assert_eq!(sqlx::query_scalar::<_,i64>("SELECT head_revision FROM documents WHERE id=?").bind(ID).fetch_one(&store.pool).await.unwrap(), 1);
     assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM mutations").fetch_one(&store.pool).await.unwrap(), 1);
+    store.close().await;
+}
+#[tokio::test(flavor = "current_thread")]
+async fn warm_head_proof_skips_decode_until_stored_bytes_or_flags_change() {
+    let f = Fixture::new();
+    let store = WorkspaceStore::open(&f.db()).await.unwrap();
+    store.commit(&document("first"), None, "first").await.unwrap();
+    assert_eq!(store.head_integrity_decodes(), 0);
+    assert_eq!(store.commit(&document("second"), Some(1), "second").await.unwrap().revision, 2);
+    assert_eq!(store.head_integrity_decodes(), 0);
+    assert_eq!(store.read(ID, Some(1)).await.unwrap().document, document("first"));
+    assert_eq!(store.commit(&document("third"), Some(2), "third").await.unwrap().revision, 3);
+    assert_eq!(store.head_integrity_decodes(), 0, "an old revision read must not replace the head proof");
+    store.close().await;
+    let store = WorkspaceStore::open(&f.db()).await.unwrap();
+    assert_eq!(store.commit(&document("fourth"), Some(3), "fourth").await.unwrap().revision, 4);
+    assert_eq!(store.head_integrity_decodes(), 1, "a restarted process validates the stored head once");
+    assert_eq!(store.commit(&document("fifth"), Some(4), "fifth").await.unwrap().revision, 5);
+    assert_eq!(store.head_integrity_decodes(), 1);
+    sqlx::query("UPDATE revisions SET deleted=1 WHERE revision=5").execute(&store.pool).await.unwrap();
+    assert_eq!(store.commit(&document("deleted"), Some(5), "deleted").await.unwrap_err().code, "WORKSPACE_DELETED");
+    assert_eq!(sqlx::query_scalar::<_, i64>("SELECT head_revision FROM documents WHERE id=?").bind(ID).fetch_one(&store.pool).await.unwrap(), 5);
+    sqlx::query("UPDATE revisions SET deleted=0, name='tampered' WHERE revision=5").execute(&store.pool).await.unwrap();
+    assert_eq!(store.commit(&document("renamed"), Some(5), "renamed").await.unwrap_err().code, "WORKSPACE_CORRUPT");
+    let bytes: Vec<u8> = sqlx::query_scalar("SELECT snapshot FROM revisions WHERE revision=5").fetch_one(&store.pool).await.unwrap();
+    let mut flipped = bytes.clone();
+    flipped[0] ^= 0xff;
+    sqlx::query("UPDATE revisions SET name=?, snapshot=? WHERE revision=5").bind("fifth").bind(flipped).execute(&store.pool).await.unwrap();
+    assert_eq!(store.commit(&document("sixth"), Some(5), "sixth").await.unwrap_err().code, "WORKSPACE_CORRUPT");
+    assert_eq!(sqlx::query_scalar::<_, i64>("SELECT head_revision FROM documents WHERE id=?").bind(ID).fetch_one(&store.pool).await.unwrap(), 5);
+    assert!(store.head_integrity_decodes() >= 2, "changed snapshot bytes must be decoded, not accepted from the old proof");
     store.close().await;
 }
