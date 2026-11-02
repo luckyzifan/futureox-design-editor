@@ -53,34 +53,13 @@ import { localizedToolCommands, localizedToolLabel, unavailableReason } from './
 import { canvasText } from './canvas-interface-messages'
 import { fileMenuText } from './file-menu-messages'
 import { canvasMenuItems } from './canvas-menu-model'
+import { ActivityBanner, EmptyCanvas } from './ActivityBanner'
+import { activityKind, activityLabel, activityText } from './activity-chrome'
+import { toolGlyph, type GlyphIcon } from './chrome-icons'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { flushSync } from 'react-dom'
 import {
   Settings as SettingsIcon,
-  MousePointer2,
-  Scaling,
-  Hand,
-  ZoomIn,
-  Frame,
-  Square,
-  Circle,
-  Triangle,
-  Star,
-  Minus,
-  ArrowUpRight,
-  PenTool,
-  Pencil,
-  Brush,
-  Type,
-  Eraser,
-  Pipette,
-  PaintBucket,
-  Ruler,
-  Slice,
-  Crop,
-  MessageSquare,
-  Undo2,
-  Redo2,
   ChevronDown,
   Download,
   Save,
@@ -94,12 +73,6 @@ import {
   AlignVerticalJustifyCenter,
   AlignHorizontalDistributeCenter,
   AlignVerticalDistributeCenter,
-  Scan,
-  Layers as LayersIcon,
-  Combine,
-  Scissors,
-  Diamond,
-  VectorSquare,
   Check,
   HelpCircle,
   Puzzle,
@@ -140,35 +113,35 @@ import { createImportedCopy } from './import-identity'
 import { exportSketchInWorker } from './import-file-worker'
 import { ImportOwner, importStep, type ImportRequest } from './import-ownership'
 import { ExportOwner, commitExportEdits, type ExportRequest } from './export-ownership'
-const toolItems: { id: Tool; label: string; icon: typeof Square }[] = [
-  { id: 'select', label: '选择', icon: MousePointer2 },
-  { id: 'hand', label: '平移', icon: Hand },
-  { id: 'zoom', label: '区域缩放', icon: ZoomIn },
-  { id: 'scale', label: '缩放', icon: Scaling },
-  { id: 'slice', label: '切片', icon: Scan },
-  { id: 'frame', label: '画板', icon: Frame },
-  { id: 'section', label: '分区', icon: Scan },
-  { id: 'rectangle', label: '矩形', icon: Square },
-  { id: 'ellipse', label: '椭圆', icon: Circle },
-  { id: 'polygon', label: '多边形', icon: Triangle },
-  { id: 'star', label: '星形', icon: Star },
-  { id: 'line', label: '直线', icon: Minus },
-  { id: 'arrow', label: '箭头', icon: ArrowUpRight },
-  { id: 'pen', label: '钢笔', icon: PenTool },
-  { id: 'pencil', label: '铅笔', icon: Pencil },
-  { id:'marker',label:'马克笔',icon:Brush },
-  { id:'washi-tape',label:'和纸胶带',icon:Brush },
-  { id: 'brush', label: '画笔', icon: Brush },
-  { id: 'text', label: '文字', icon: Type },
+const toolItems: { id: Tool; label: string; icon: GlyphIcon }[] = [
+  { id: 'select', label: '选择', icon: toolGlyph.select },
+  { id: 'hand', label: '平移', icon: toolGlyph.hand },
+  { id: 'zoom', label: '区域缩放', icon: toolGlyph.zoom },
+  { id: 'scale', label: '缩放', icon: toolGlyph.scale },
+  { id: 'slice', label: '切片', icon: toolGlyph.slice },
+  { id: 'frame', label: '画板', icon: toolGlyph.frame },
+  { id: 'section', label: '分区', icon: toolGlyph.section },
+  { id: 'rectangle', label: '矩形', icon: toolGlyph.rectangle },
+  { id: 'ellipse', label: '椭圆', icon: toolGlyph.ellipse },
+  { id: 'polygon', label: '多边形', icon: toolGlyph.polygon },
+  { id: 'star', label: '星形', icon: toolGlyph.star },
+  { id: 'line', label: '直线', icon: toolGlyph.line },
+  { id: 'arrow', label: '箭头', icon: toolGlyph.arrow },
+  { id: 'pen', label: '钢笔', icon: toolGlyph.pen },
+  { id: 'pencil', label: '铅笔', icon: toolGlyph.pencil },
+  { id:'marker',label:'马克笔',icon: toolGlyph.marker },
+  { id:'washi-tape',label:'和纸胶带',icon: toolGlyph['washi-tape'] },
+  { id: 'brush', label: '画笔', icon: toolGlyph.brush },
+  { id: 'text', label: '文字', icon: toolGlyph.text },
 ]
-const utilityToolItems: { id: Tool; label: string; icon: typeof Square }[] = [
-  { id: 'eraser', label: '橡皮', icon: Eraser },
-  { id: 'eyedropper', label: '吸管', icon: Pipette },
-  { id: 'paint-bucket', label: '油漆桶', icon: PaintBucket },
-  { id: 'measure', label: '测量', icon: Ruler },
-  { id: 'slice', label: '切片', icon: Slice },
-  { id: 'crop', label: '裁切', icon: Crop },
-  { id: 'comments', label: '评论', icon: MessageSquare },
+const utilityToolItems: { id: Tool; label: string; icon: GlyphIcon }[] = [
+  { id: 'eraser', label: '橡皮', icon: toolGlyph.eraser },
+  { id: 'eyedropper', label: '吸管', icon: toolGlyph.eyedropper },
+  { id: 'paint-bucket', label: '油漆桶', icon: toolGlyph['paint-bucket'] },
+  { id: 'measure', label: '测量', icon: toolGlyph.measure },
+  { id: 'slice', label: '切片', icon: toolGlyph.slice },
+  { id: 'crop', label: '裁切', icon: toolGlyph.crop },
+  { id: 'comments', label: '评论', icon: toolGlyph.comments },
 ]
 export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWorkspace}={}) {
   const { locale } = useInterfacePreferences()
@@ -303,8 +276,11 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     const trace = beginEditorAction(editor, CanvasAction.import, ActionSource.menu, 312)
     const diagnostic = beginImportDiagnostic(f, mode, trace)
     trace.result(ActionOutcome.cancelled, ActionReason.unobserved)
+    let trackImport = false
     try {
     if(!ready || switching || desktopStatus.busy || editor.interactionActive){trace.result(ActionOutcome.blocked, ActionReason.busy);editor.notify('请结束当前操作后打开文件', { key: 'openBlockedActiveOperation' });return}
+    trackImport = true
+    setImporting(true)
     const request = fileImports.begin(editor)
     diagnostic.bindRequest(request)
     try {
@@ -336,7 +312,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       }
     }
     finally { request.finish() }
-    } finally { trace.finish() }
+    } finally { if (trackImport) setImporting(false); trace.finish() }
   }
   async function importImageFiles(files: File[]) {
     const trace = beginEditorAction(editor, CanvasAction.import, ActionSource.menu, 313)
@@ -344,6 +320,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     try {
       if (!ready || editor.interactionActive) { trace.result(ActionOutcome.blocked, ActionReason.notReady); editor.notify('请结束当前操作后导入图片', { key: 'imageImportBlockedActiveOperation' }); return }
       if (!commitPendingEdits(editor)) { trace.result(ActionOutcome.blocked, ActionReason.validation); return }
+      setImporting(true)
       const canvas = document.querySelector<HTMLElement>('[data-testid=canvas]')
       const anchor = captureImageImportAnchor(editor, { width: canvas?.clientWidth ?? 0, height: canvas?.clientHeight ?? 0 })
       const result = await appendImageFiles(editor, files, anchor, undefined, file => { const diagnostic = beginImportDiagnostic(file, 'append', trace); diagnostics.push(diagnostic); return diagnostic })
@@ -354,7 +331,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         cancelled ? ActionReason.superseded : ActionReason.validation)
       if (cancelled) editor.notify('图片导入期间画布已变化，请重新导入')
       else { const detail = error instanceof Error ? error.message : String(error); const status = importInputStatus(error); editor.notify(status ? detail : `图片导入失败: ${detail}`, status || { key: 'imageImportFailed', error: detail }) }
-    } finally { trace.finish() }
+    } finally { setImporting(false); trace.finish() }
   }
   const switchLifetime = useRef(0)
   useEffect(() => {
@@ -404,6 +381,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [startupPreview, setStartupPreview] = useState<StartupPreview>()
   const [localFiles, setLocalFiles] = useState<LocalEntry[] | null>(null)
   const [switching, setSwitching] = useState(false)
+  const [importing, setImporting] = useState(false)
   const switchGate = useRef<object | null>(null)
   const panelHost = useRef<HTMLDivElement>(null)
   const leftPanel = useRef<HTMLDivElement>(null), rightPanel = useRef<HTMLDivElement>(null)
@@ -822,7 +800,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     setShowUtility(open && name === 'utility')
   }
   const actionLabels: Record<string, string> = { '撤销': toolbarText.undo, '重做': toolbarText.redo, '左对齐': toolbarText.alignLeft, '水平居中': toolbarText.alignCenter, '右对齐': toolbarText.alignRight, '顶部对齐': toolbarText.alignTop, '垂直居中': toolbarText.alignMiddle, '底部对齐': toolbarText.alignBottom, '水平等距': toolbarText.distributeHorizontal, '垂直等距': toolbarText.distributeVertical }
-  const action = (label: string, Icon: typeof Square, fn: () => void, disabled = false, menuItem = false) => (
+  const action = (label: string, Icon: GlyphIcon, fn: () => void, disabled = false, menuItem = false) => (
     <button type="button" title={menuItem ? actionLabels[label] || label : undefined} data-tooltip={menuItem ? undefined : label === '撤销' ? `${toolbarText.undo} (${shortcutLabel('undo', shortcutContext)})` : label === '重做' ? `${toolbarText.redo} (${shortcutLabel('redo', shortcutContext)})` : actionLabels[label] || label}
       aria-label={label === '撤销' ? toolbarText.undo : label === '重做' ? toolbarText.redo : actionLabels[label] || label} data-property-preview-undo={label === '撤销' ? '' : undefined} role={menuItem ? 'menuitem' : undefined} tabIndex={menuItem ? -1 : undefined} disabled={disabled}
       onClick={() => { focusCanvas(); fn() }}>
@@ -844,6 +822,9 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     const item = toolbarCommands.find(item => item.command === command)
     return !item || !!item.disabled
   }
+  const showFileActivity = !showHome && (!ready || switching || (desktopStatus.transitioning && !desktopPrompt))
+  const fileActivity = activityKind({ ready, switching, transitioning: !!(desktopStatus.transitioning && !desktopPrompt), importing })
+  const canvasEmpty = !source && (s.doc.pages.find(page => page.id === s.page)?.children.length ?? 0) === 0
   if (largeDocument && desktop?.largeDocument) return <LargeDocumentWorkspace bridge={desktop.largeDocument} parentEditor={editor} initialFile={largeDocument.file}
     renderWorkbench={workspace=><App sourceWorkspace={workspace}/>}
     onExit={file=>{setLargeDocument(null);if(file)queueMicrotask(()=>void importDesignFile(file))}} onWindowClose={async requestId=>{
@@ -862,6 +843,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         if (side) panelFocus.current[side] = { element, side, session: editor.sessionGeneration, page: editor.state.page, selection: JSON.stringify(editor.state.selection), section: side === 'left' ? workspaceSection : propertiesTab }
       }}
       style={adaptivePanels.style}
+      data-host={desktop ? 'electron' : 'web'}
+      data-density={adaptivePanels.density}
       className={`app-shell editor-shell ${showHome ? 'home-route-active' : ''} ${showLayers && !uiMinimized ? '' : 'chrome-hide-layers'} ${(uiMinimized ? !!s.selection.length : showInspector) ? '' : 'chrome-hide-inspector'} ${uiMinimized ? 'chrome-minimized' : ''}`}
       data-history-backend={editor.historyBackend} data-history-operation={editor.historyOperationMode} data-history-frame-bytes={editor.historyFrameBytes}
       data-desktop-ready={desktop ? String(ready) : undefined}
@@ -923,12 +906,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         }
       }}
     >
-      {!showHome && (!ready || switching || (desktopStatus.transitioning && !desktopPrompt)) && (
-        <div className="document-transition" role="status">
-          {source?source.notice||(locale === 'en' ? 'Opening the canvas…' : '正在打开画板…'):desktopSession ? (locale === 'en' ? 'Working on the local design file…' : '正在处理本机设计文件…') : (locale === 'en' ? 'Saving and opening the design…' : '正在保存并打开设计…')}
-          {source?.busy&&<button type="button" data-desktop-dialog onClick={source.cancel}>{menuText.stopOperation}</button>}
-        </div>
-      )}
+      {showFileActivity && <ActivityBanner activity={fileActivity} label={(!ready && startupError) || activityLabel(fileActivity, locale, source ? 'source' : desktopSession ? 'desktop' : 'web', source?.notice)}>
+        {source?.busy&&<button type="button" data-desktop-dialog onClick={source.cancel}>{menuText.stopOperation}</button>}
+      </ActivityBanner>}
+      {importing && !showHome && !showFileActivity && <ActivityBanner activity="import" label={activityText[locale].importing} />}
       {showHome && <LocalHome source={homeSource} ready={ready} startupError={startupError} busy={switching || desktopStatus.busy}
         currentName={s.doc.name} onResume={resumeEditor} onNew={() => switchDocument(blank())}
         onOpenFile={openHomeFile} onSettings={() => {
@@ -1264,6 +1245,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             nativeSource={source?.nativeCanvas?.snapshot} onNativeSourceStatus={source?.nativeCanvas?.onStatus} onOpenSourcePoint={source?.nativeCanvas?.openPoint}
             startupPreview={startupPreview} onCapturePreview={desktopSession || source ? undefined : capturePreview}
             zoomControlsTarget={(uiMinimized ? !!s.selection.length : showInspector) ? zoomHost : null} /></HomeCanvasGate>
+          {!showHome && ready && canvasEmpty && !switching && !desktopStatus.busy && !importing && <EmptyCanvas title={activityText[locale].emptyTitle} body={activityText[locale].emptyBody} />}
           <DesignToolbar disabled={!ready || switching || desktopStatus.transitioning || !!source?.nativeCanvas || (editor.interactionActive && !editor.propertyPreviewActive)}>
             {ready && !showHome && !source?.nativeCanvas && !editor.interactionActive && ['rectangle', 'ellipse', 'polygon', 'star', 'frame', 'section', 'slice', 'line', 'arrow'].includes(s.tool) && (
               <div className="creation-tool-hint" role="status">
@@ -1300,8 +1282,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                 <button type="button" role="menuitem" tabIndex={-1} disabled={s.busy || s.selection.length !== 1 || !editor.topSelection().includes(s.selection[0]) || ['frame', 'section', 'group', 'text'].includes(s.doc.nodes[s.selection[0]]?.kind)} onClick={() => { editor.set({ tool: 'vector', editingVertex: null }); setShowDrawing(false) }}>{toolbarText.editVector}</button>
                 <button type="button" role="menuitem" tabIndex={-1} disabled={commandDisabled('outline-stroke')} onClick={() => { void dispatchEditorCommand(editor, 'outline-stroke'); setShowDrawing(false) }}>{toolbarText.outlineStroke}</button>
               </ToolPopover>
-              <button type="button" data-tooltip={`${localizedToolLabel('comments', locale, '评论')}${toolShortcutLabel('comments', shortcutContext) ? ` (${toolShortcutLabel('comments', shortcutContext)})` : ''}`} aria-label={localizedToolLabel('comments', locale, '评论')} aria-pressed={s.tool==='comments'} className={s.tool === 'comments' ? 'active' : ''} onClick={()=>chooseTool('comments')}><MessageSquare size={18} /></button>
-              <button type="button" data-tooltip={`${localizedToolLabel('text', locale, '文字')}${toolShortcutLabel('text', shortcutContext) ? ` (${toolShortcutLabel('text', shortcutContext)})` : ''}`} aria-label={localizedToolLabel('text', locale, '文字')} aria-pressed={s.tool === 'text'} className={s.tool === 'text' ? 'active' : ''} onClick={() => chooseTool('text')}><Type size={18} /></button>
+              <button type="button" data-tooltip={`${localizedToolLabel('comments', locale, '评论')}${toolShortcutLabel('comments', shortcutContext) ? ` (${toolShortcutLabel('comments', shortcutContext)})` : ''}`} aria-label={localizedToolLabel('comments', locale, '评论')} aria-pressed={s.tool==='comments'} className={s.tool === 'comments' ? 'active' : ''} onClick={()=>chooseTool('comments')}>{toolGlyph.comments({ size: 18 })}</button>
+              <button type="button" data-tooltip={`${localizedToolLabel('text', locale, '文字')}${toolShortcutLabel('text', shortcutContext) ? ` (${toolShortcutLabel('text', shortcutContext)})` : ''}`} aria-label={localizedToolLabel('text', locale, '文字')} aria-pressed={s.tool === 'text'} className={s.tool === 'text' ? 'active' : ''} onClick={() => chooseTool('text')}>{toolGlyph.text({ size: 18 })}</button>
               <ToolPopover label={toolbarText.utilityTools} icon={<UtilityIcon size={18} />} open={showUtility} onOpenChange={open => openToolbarMenu('utility', open)}
                 primary={{ label: utilityTool.label, title: `${utilityTool.label}${utilityTool.key ? ` (${utilityTool.key})` : ''}`, active: s.tool === utilityTool.id, onClick: () => chooseTool(utilityTool.id) }}>
                 {utilityTools.map(({ id, label, key, icon: Icon }) => (
@@ -1317,8 +1299,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             </div>
             <i />
             <div className="tool-group">
-              {action('撤销', Undo2, () => { void dispatchEditorCommand(editor, 'undo') }, !editor.canUndo || s.busy)}
-              {action('重做', Redo2, () => { void dispatchEditorCommand(editor, 'redo') }, !editor.canRedo || s.busy)}
+              {action('撤销', toolGlyph.undo, () => { void dispatchEditorCommand(editor, 'undo') }, !editor.canUndo || s.busy)}
+              {action('重做', toolGlyph.redo, () => { void dispatchEditorCommand(editor, 'redo') }, !editor.canRedo || s.busy)}
               <ToolPopover label={toolbarText.arrangeAndEdit} icon={<SlidersHorizontal size={18} />} open={showCommands} onOpenChange={open => openToolbarMenu('commands', open)}>
                 {(['eyedropper','measure','comments','annotate'] as const).map(id=><button type="button" role="menuitem" tabIndex={-1} key={id} aria-label={localizedToolLabel(id, locale, utilityToolNames[id])} onClick={()=>{chooseTool(id);setShowCommands(false)}}>{localizedToolLabel(id, locale, utilityToolNames[id])}</button>)}
                 <strong>{toolbarText.whiteboardAndResponsive}</strong>{(Object.entries(boardToolNames) as [BoardTool,string][]).map(([id,label])=><button type="button" role="menuitem" tabIndex={-1} key={id} onClick={()=>{chooseTool(id);setShowCommands(false)}}>{localizedToolLabel(id, locale, label)}</button>)}

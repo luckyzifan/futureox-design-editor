@@ -1084,7 +1084,7 @@ async function buildWindow() {
     minHeight: placement.minHeight,
     title: applicationName,
     show: false,
-    backgroundColor: '#191919',
+    backgroundColor: '#e8eaee',
     webPreferences: {
       preload: path.join(here, 'preload.cjs'),
       additionalArguments: [
