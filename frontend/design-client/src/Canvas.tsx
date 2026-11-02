@@ -420,16 +420,24 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   useEffect(() => {
     if (!exactCurrent || editor.historyBackend !== 'uninitialized') return
     const document = state.doc, session = editor.sessionGeneration
+    let cancelled = false
+    let settled = editor.effectiveView()
+    let timer = 0
+    // Viewport motion only changes the camera. Opening the editing graph
+    // stringifies the document, so wait until one view stays current.
     const warm = () => {
+      if (cancelled || editor.historyBackend !== 'uninitialized') return
+      const live = editor.effectiveView()
+      if (editor.cameraCommitPending() || live.x !== settled.x || live.y !== settled.y || live.zoom !== settled.zoom) {
+        settled = live
+        timer = setTimeout(warm, 200)
+        return
+      }
       try { editor.warmEditingHistory(document, session) }
       catch (error) { console.warn('[editing-history] 预热未完成', error) }
     }
-    if (typeof requestIdleCallback === 'function') {
-      const handle = requestIdleCallback(warm)
-      return () => cancelIdleCallback(handle)
-    }
-    const timer = setTimeout(warm, 100)
-    return () => clearTimeout(timer)
+    timer = setTimeout(warm, 200)
+    return () => { cancelled = true; clearTimeout(timer) }
   }, [exactCurrent, state.doc, editor, editor.sessionGeneration])
   useEffect(() => { if (sameStartup && exactCurrent) setStartupConsumed(true) }, [sameStartup, exactCurrent])
   const untouchedStartup = state.doc === startupOwner.current.document && state.page === startupOwner.current.pageId &&
