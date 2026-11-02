@@ -158,5 +158,6 @@ export function NumberField({ label, value, onChange, min = -1e6, max = 1e6, ste
         if (e.key === 'Enter' && finish()) e.currentTarget.blur()
       }}
     />
+    {unit === 'percent' && <span className="number-unit" aria-hidden="true">%</span>}
   </label>
 }
