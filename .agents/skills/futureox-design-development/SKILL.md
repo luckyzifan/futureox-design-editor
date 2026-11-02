@@ -3,6 +3,8 @@ name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
 
+2026-11-02 UI/ops 并行轨见[记录](../../../testing/verification-ui-ops-i18n-tabs-export-20261102/README.md)。界面语言可在顶栏切换中文/English，蓝色强调色不变。矩形、椭圆、多边形、画板及便签类工具在创建后保持选中。工作区标签在文件操作占用编辑器时排队，宿主 `workspace-open` 不再占用文件写锁；已打开文档在 BUSY 时从会话缓存切换，不把 “Another file operation is in progress” 当成当前画布失败。PNG 导出说明 sRGB 色彩块；本面板不编码 FFmpeg/MP4/WebM。未改光栅化或导航瓦片，不关闭 33/100ms 或完整 G2/G5。
+
 2026-11-02 [失败复核与定向修复](../../../testing/verification-rendering-audit-20261102/README.md)确认重效果、松手精修、全源首屏和模板二 3200% 仍未关闭；旧队列两例现已通过。当前原生交互只保留仍需使用且 owner 有效的图片，保留压力 fence 和未使用图片原策略。已解析 authored preview 不走 transport null 归一化；布局差量保留私有回执及全局字段身份。约束仿射逐次验证准确固定点，Rust 无效果叶节点只撤销自身及祖先支撑，描边重算、共享/效果/源上下文回退。最终三文件拖动/旋转 12 组 held/settled/fresh 零差异、完整 authored Undo 恢复；动作矩阵仍有 FIG 松手 511/825ms 和拓扑 1.55/2.07s。计量排除 ready 后 QA 快照，不把暖采样或回执代理当物理显示；33/100ms 和全 G5 未通过。字段存储候选仅留验证补丁，未增加生产开关。
 
 2026-11-01 白底与连续操作续轮见[记录](../../../testing/verification-fluid-canvas-20261101/README.md)。按用户要求将缺口改为白色，网格独立于原子图像并在400%起显示，面板独立收起。局部刚性旋转仍做原生重绘。117图片驻留ABBA未显示稳定交互收益且增加约33–37MB记账，默认自动驻留限普通SDR画布，交互仅显式1、0仍回退。区域/含内阴影裁剪的失败候选和渐变字段窗口候选保持显式启用，不以局部快样本或DOM投影关闭33/100ms及完整G2/G5。
