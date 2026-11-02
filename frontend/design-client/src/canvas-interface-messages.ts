@@ -28,6 +28,7 @@ const phrases = {
   glassLight: ['拖动调整玻璃光线 · Shift 按 15°', 'Drag to change the glass light · Shift snaps to 15°'],
   gradientAngle: ['拖动调整渐变角度 · Shift 按 45°', 'Drag to change the gradient angle · Shift snaps to 45°'],
   gradientStop: ['拖动调整渐变色标', 'Drag to move the gradient stop'],
+  eyedropperSample: ['点击取样', 'Click to sample'],
   vertexCount: ['拖动调整顶点数量', 'Drag to change the point count'],
   starInner: ['拖动调整星形内半径', 'Drag to change the star inner radius'],
 } as const

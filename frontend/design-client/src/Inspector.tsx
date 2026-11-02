@@ -12,7 +12,9 @@ import { PendingEditContext } from './pending-edit-context'
 import { pendingOperationEpoch } from './pending-edits'
 import { DraftInput } from './DraftInput'
 import { ColorInput } from './ColorInput'
-import { SolidFillColorInput } from './ColorPickerPopover'
+import { LoosePaintColor, SolidFillColorInput } from './ColorPickerPopover'
+import { nearestStopIndex } from './color-field'
+import { rememberPaintChannel } from './eyedropper-target'
 import type { SolidFillTarget } from './property-preview'
 import { StrokeProfilePanel } from './StrokeProfilePanel'
 import { TextInput } from './TextEditor'
@@ -89,22 +91,38 @@ function PaintEditor({
   onChange,
   maxImagePixels,
   target,
+  channel = 'fill',
 }: {
   target?: SolidFillTarget
   value: Paint
   onChange: (p: Paint) => void
   maxImagePixels: number
+  channel?: 'fill' | 'stroke'
 }) {
   const { tr } = usePropertyText()
   const file = useRef<HTMLInputElement>(null)
   const editor = useContext(PendingEditContext), mounted = useRef(true), latestPaint = useRef(p), imageRequest = useRef(0)
+  const [stopAt, setStopAt] = useState(0)
   latestPaint.current = p
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
+  useEffect(() => { setStopAt(index => Math.min(index, Math.max(0, p.stops.length - 1))) }, [p.stops.length])
+  const hex = p.color.startsWith('#') ? p.color.slice(1).toUpperCase() : tr('扩展颜色')
+  const changeKind = (next: Paint['kind'] | 'none', patch?: { color: string; opacity: number }) => {
+    const base = { ...latestPaint.current, ...patch }
+    if (next === 'none') onChange({ ...base, visible: false })
+    else onChange({ ...base, kind: next, visible: true })
+  }
   return (
     <div className="paint-editor">
-      <div className="paint-row">
-        <ColorInput label={tr("颜色")} target={target} value={p.color} onChange={(color) => onChange({ ...p, color })} />
+      <div className="paint-color-row" onPointerDownCapture={() => rememberPaintChannel(editor, channel)}>
+        {target ? <>
+          <SolidFillColorInput target={target} label={tr('颜色')} value={p.color} kind={p.kind} onKind={changeKind} channel={channel} />
+          <span className="paint-hex">{hex}</span>
+          <SolidFillColorInput target={target} label={tr('填充不透明度')} value={formatPercent(p.opacity * 100)} opacity kind={p.kind} onKind={changeKind} channel={channel} />
+        </> : <LoosePaintColor label={tr('颜色')} color={p.color} opacity={p.opacity} hex={hex} kind={p.kind} channel={channel} onKind={changeKind}
+          onChange={patch => onChange({ ...p, ...patch })} />}
         <select
+          className="paint-kind-native"
           aria-label={tr("填充类型")}
           value={p.kind}
           onChange={(e) => onChange(e.target.value==='noise-image' ? {...kernelNoiseFillPreset(),id:p.id,visible:p.visible} : { ...p, kind: e.target.value as Paint['kind'] })}
@@ -117,9 +135,6 @@ function PaintEditor({
           <option value="image">{tr("图片")}</option>
           <option value="noise-image">{tr("噪声图片预设")}</option>
         </select>
-        <span className="hex">
-          {p.color.startsWith('#') ? p.color.slice(1).toUpperCase() : tr("扩展颜色")}
-        </span>
       </div>
       {p.kind !== 'solid' && (
         <details>
@@ -144,8 +159,7 @@ function PaintEditor({
         </details>
       )}
       <div className="field-grid">
-        {target ? <label className="paint-opacity-field">{tr("填充不透明度 %")}<SolidFillColorInput target={target} label={tr("填充不透明度")} value={formatPercent(p.opacity * 100)} opacity />
-        </label> : <NumberField historyLabel="不透明度 %" diagnosticFamily={11} unit="percent"
+        {target ? null : <NumberField historyLabel="不透明度 %" diagnosticFamily={11} unit="percent"
           label={tr("不透明度 %")}
           value={p.opacity * 100}
           min={0}
@@ -170,13 +184,25 @@ function PaintEditor({
             onChange={(v) => onChange({ ...p, angle: v })}
           />
           <div
-            className="gradient-preview"
+            className="gradient-preview gradient-stop-bar"
+            role="listbox"
+            aria-label={tr('色标')}
             style={{
-              background: `linear-gradient(${p.angle}deg,${p.stops.map((s) => `${s.color} ${s.offset * 100}%`).join(',')})`,
+              background: `linear-gradient(90deg,${p.stops.map((s) => `${s.color} ${s.offset * 100}%`).join(',')})`,
             }}
-          />
+            onPointerDown={event => {
+              if ((event.target as Element).closest('button')) return
+              const rect = event.currentTarget.getBoundingClientRect()
+              if (!rect.width) return
+              setStopAt(nearestStopIndex(p.stops, Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))))
+            }}
+          >
+            {p.stops.map((stop, index) => <button type="button" key={`${stop.offset}:${index}`} className="gradient-stop-thumb" aria-pressed={index === stopAt}
+              aria-label={`${tr('选择色标')} ${index + 1}`} style={{ left: `${stop.offset * 100}%`, background: stop.color }}
+              onClick={() => setStopAt(index)} />)}
+          </div>
           {p.stops.map((s, i) => (
-            <div className="stop-row" key={i}>
+            <div className="stop-row" key={i} data-selected={i === stopAt ? 'true' : undefined}>
               <ColorInput
                 label={`${tr("色标")} ${i + 1}`}
                 value={s.color}
@@ -818,6 +844,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
                 {listControls('strokes', i)}
               </div>
               <PaintEditor
+                channel="stroke"
                 maxImagePixels={s.doc.colorManagement ? 8_388_608 : 16_777_216}
                 value={st.paint}
                 onChange={(p) =>
