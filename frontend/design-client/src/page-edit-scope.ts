@@ -10,9 +10,14 @@ export type PageEditScope = {
   layout: boolean
 }
 
-const indexes = new WeakMap<DesignDocument, { parents: Map<string, string>; externalRefs: Set<string> }>()
+type EditIndex = { parents: Map<string, string>; externalRefs: Set<string>; pageChildren: readonly string[][] }
+const indexes = new WeakMap<DesignDocument, EditIndex>()
 
-function buildIndex(doc: DesignDocument) {
+function pageChildrenMatch(doc: DesignDocument, index: EditIndex) {
+  return doc.pages.length === index.pageChildren.length && doc.pages.every((page, i) => page.children === index.pageChildren[i])
+}
+
+function buildIndex(doc: DesignDocument): EditIndex {
   const parents = new Map<string, string>()
   const externalRefs = new Set<string>()
   for (const page of doc.pages) for (const id of page.children) parents.set(id, page.id)
@@ -26,32 +31,38 @@ function buildIndex(doc: DesignDocument) {
     }
     if (n.instanceOrigin) externalRefs.add(n.instanceOrigin.owner)
   }
-  return { parents, externalRefs }
+  return { parents, externalRefs, pageChildren: doc.pages.map(page => page.children) }
 }
 
 /** Immutable snapshots share one parent/reference index. Drafts are not cached. */
 function editIndex(doc: DesignDocument) {
   const cached = indexes.get(doc)
-  if (cached) return cached
+  if (cached && pageChildrenMatch(doc, cached)) return cached
   let cursor = doc
   for (let hop = 0; hop < 32; hop++) {
     const link = documentTransition(cursor)
     if (!link || link.structural || link.references) break
     const inherited = indexes.get(link.before)
-    if (inherited) { indexes.set(doc, inherited); return inherited }
+    if (inherited && pageChildrenMatch(doc, inherited)) { indexes.set(doc, inherited); return inherited }
     cursor = link.before
   }
-  const built = buildIndex(cursor)
-  if (cursor !== doc || documentTransition(doc)) {
-    indexes.set(cursor, built)
-    indexes.set(doc, built)
-  } else indexes.set(doc, built)
+  const built = buildIndex(doc)
+  indexes.set(doc, built)
   return built
 }
 
 /** Parent of a node in an immutable snapshot. Used by the op compiler. */
 export function snapshotParent(doc: DesignDocument, id: string): string | undefined {
   return editIndex(doc).parents.get(id)
+}
+/** Shared parent links for an immutable snapshot. Callers must not mutate the map. */
+export function snapshotParents(doc: DesignDocument): ReadonlyMap<string, string> {
+  return editIndex(doc).parents
+}
+/** True when a connector, instance, or slot on any page names one of these nodes. */
+export function snapshotTargets(doc: DesignDocument, ids: readonly string[]): boolean {
+  const refs = editIndex(doc).externalRefs
+  return ids.some(id => refs.has(id))
 }
 
 function crossNode(n: DesignNode | undefined): boolean {
