@@ -3,6 +3,7 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-02 Local plugin auto-load does not change raster, tile, sticky pose, or compositing paths. It is not a 33/100ms or G2/G5 result. See [the note](../../../testing/verification-local-plugin-autoload-20261102/README.md).
 2026-11-02 [界面暖色外壳](../../../testing/verification-ui-chrome-grok-20261102/README.md)不改光栅、瓦片、预算或实验开关。选择描边颜色未改。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 [界面抛光](../../../testing/verification-ui-chrome-grok-20261102/README.md)不改光栅、瓦片、预算或实验开关。加载动效和智能动画热区淡入只作用在界面状态；帧间形变仍走既有内核动画计划，不覆盖画布像素，也不把预览当成精确完成。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 [钢笔与橡皮](../../../testing/verification-pen-eraser-figma-20261102/README.md)只改矢量交互和橡皮预览。开放笔画保留未碰到的三次曲线；填充形状的减去结果来自展平轮廓。不改光栅、瓦片、预算或实验开关。33/100ms 与完整 G2/G5 仍未通过。

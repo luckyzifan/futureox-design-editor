@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld(
     renderDiagnosticsDetail: process.argv.includes('--core-render-diagnostics-detail'),
     plugins: Object.freeze({
       pick: () => invoke('plugins-pick'),
+      list: () => invoke('plugins-list'),
       read: value => invoke('plugins-read', value),
       openUi: value => invoke('plugins-ui-open', value),
       postUi: value => invoke('plugins-ui-post', value),
@@ -62,6 +63,9 @@ contextBridge.exposeInMainWorld(
         value => !!value && typeof value === 'object' && Object.hasOwn(value, 'pluginMessage')),
       onUiClosed: callback => subscribe('design-desktop:plugin-ui-closed', callback,
         value => !!value && value.closed === true),
+      onLaunch: callback => subscribe('design-desktop:plugin-launch', callback,
+        value => !!value && typeof value === 'object' && !Array.isArray(value) && typeof value.grant === 'string' &&
+          /^[0-9a-f-]{36}$/.test(value.grant) && Object.keys(value).length === 1),
     }),
     petConfigure: mode => invoke('pet-configure', mode),
     petEvent: event => invoke('pet-event', event),
