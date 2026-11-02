@@ -333,7 +333,7 @@ impl Writer {
         }
     }
 
-    fn write_shape(&mut self, node: &Node, path: &Path) {
+    fn write_shape(&mut self, node: &Node, path: &Path, emit_opacity: bool) {
         let d = path_data(path);
         if d.is_empty() {
             return;
@@ -341,7 +341,7 @@ impl Writer {
         let id = self.next_element_id(node);
         let mut out = String::new();
         let _ = write!(out, "  <path id=\"{id}\"");
-        if node.opacity < 1. {
+        if emit_opacity && node.opacity < 1. {
             let _ = write!(out, " opacity=\"{}\"", g6(node.opacity));
         }
         if node.fill_even_odd() {
@@ -372,14 +372,14 @@ impl Writer {
         self.body.push_str(&out);
     }
 
-    fn write_text(&mut self, node: &Node) {
+    fn write_text(&mut self, node: &Node, emit_opacity: bool) {
         if node.text.is_empty() {
             return;
         }
         let id = self.next_element_id(node);
         let mut out = String::new();
         let _ = write!(out, "  <text id=\"{id}\"");
-        if node.opacity < 1. {
+        if emit_opacity && node.opacity < 1. {
             let _ = write!(out, " opacity=\"{}\"", g6(node.opacity));
         }
         let _ = write!(out, " font-size=\"{}\"", g6(node.font_size));
@@ -416,21 +416,30 @@ impl Writer {
         let Some(node) = doc.nodes.get(id) else {
             return;
         };
-        if !node.visible {
+        if !node.visible || node.opacity <= 0. {
             return;
         }
+        // SVG group opacity multiplies the subtree once. Putting the same
+        // value on the parent shape as well would apply it twice.
+        let group = node.opacity < 1. && !node.children.is_empty();
+        if group {
+            let _ = writeln!(self.body, "  <g opacity=\"{}\">", g6(node.opacity));
+        }
         if node.kind == "text" {
-            self.write_text(node);
+            self.write_text(node, !group);
         } else if let Ok((_fill_path, line_path)) = node.paths() {
             let path = if node.kind == "line" || !node.fills.iter().any(|p| p.visible) {
                 &line_path
             } else {
                 &_fill_path
             };
-            self.write_shape(node, path);
+            self.write_shape(node, path, !group);
         }
         for child in &node.children {
             self.write_node(doc, child);
+        }
+        if group {
+            self.body.push_str("  </g>\n");
         }
     }
 }
@@ -694,6 +703,30 @@ mod tests {
         assert!(element.contains("x=\"8\" y=\"25\""));
         assert!(!element.contains("text-anchor"));
         assert!(element.contains(">Hello &lt;world&gt;</text>"));
+    }
+
+    #[test]
+    fn parent_opacity_wraps_children_once() {
+        let child = node(
+            "rectangle",
+            "Child",
+            json!({
+                "width": 4., "height": 4.,
+                "fills": [{"kind": "solid", "color": "#0000ff", "opacity": 0.5}]
+            }),
+        );
+        let frame = node(
+            "frame",
+            "Root",
+            json!({"width": 10., "height": 10., "opacity": 0.5, "children": [child.id]}),
+        );
+        let svg = export_svg(&doc_with_page(vec![frame, child]), "page").unwrap();
+        assert!(svg.contains("<g opacity=\"0.5\">"), "{svg}");
+        let frame_line = svg.lines().find(|line| line.contains("frame0_Root")).unwrap();
+        assert!(!frame_line.contains("opacity="), "{frame_line}");
+        let child_line = svg.lines().find(|line| line.contains("rect1_Child")).unwrap();
+        assert!(child_line.contains("fill-opacity=\"0.5\""), "{child_line}");
+        assert!(!child_line.contains(" opacity="), "{child_line}");
     }
 
     #[test]

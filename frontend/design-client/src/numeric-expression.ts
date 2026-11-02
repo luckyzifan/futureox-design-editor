@@ -47,6 +47,12 @@ export function numericExpression(source: string, base: number, unit: NumericUni
   return finite(value)
 }
 
+/** 0–100 display. Two decimal places, trailing zeros removed. */
+export function formatPercent(value: number) {
+  if (!Number.isFinite(value)) return ''
+  return String(Number(value.toFixed(2)))
+}
+
 export function propertyUnit(label: string): NumericUnit {
   if (label.includes('%')) return 'percent'
   if (/°|角度|旋转/.test(label)) return 'angle'

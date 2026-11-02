@@ -669,6 +669,13 @@ main {
   padding: 5px 2px;
   background: transparent;
 }
+.number-field > .number-unit,
+.properties-content .number-field > .number-unit {
+  flex: none;
+  overflow: visible;
+  min-width: auto;
+  margin-right: 6px;
+}
 .number-field input::-webkit-inner-spin-button {
   opacity: 0;
 }
