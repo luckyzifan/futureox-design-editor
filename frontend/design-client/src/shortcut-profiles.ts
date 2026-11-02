@@ -78,6 +78,7 @@ export function shortcutBindings({ profile, platform, desktop = false }: Shortcu
   if (desktop) bindings.unshift({ command: 'rename', combo: 'Mod+R' }, { command: 'paste-to-replace', combo: 'Mod+Shift+R' })
   if (platform !== 'mac') bindings.push({ command: 'redo', combo: 'Mod+Y' })
   bindings.push({ command: 'mask-selection', combo: platform === 'mac' ? 'Mod+Ctrl+M' : 'Mod+Alt+M' })
+  bindings.push({ command: 'flatten', combo: 'Mod+E' })
   for (const [command, combo] of tools) if (combo) bindings.push({ command: command as EditorCommand, combo })
   if (profile === 'figma-like') {
     bindings.push({ command: 'set-tool-pencil', combo: 'Alt+P' })

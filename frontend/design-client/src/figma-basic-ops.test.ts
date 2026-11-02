@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'vitest'
 import { canvasMarqueeSelection, marqueeReleasePlan } from './canvas-selection-workflows'
-import { doubleClickFollowUp, enterKeyEditsText } from './figma-basic-ops'
+import { deepSelectChord, doubleClickFollowUp, enterKeyEditsText } from './figma-basic-ops'
 import { Editor } from './engine'
 import { blank, node } from './model'
 
@@ -24,6 +24,13 @@ test('double-click edits text, drills containers, and only re-enters an already 
   expect(doubleClickFollowUp({ id: 'i', changed: true }, instance, true)).toBe('select')
   expect(doubleClickFollowUp({ id: 't', changed: false }, text, false)).toBe('select')
   expect(doubleClickFollowUp(null, text, true)).toBe('select')
+})
+
+test('deep select is Command on Mac and Control elsewhere', () => {
+  expect(deepSelectChord({ metaKey: true, ctrlKey: false }, 'mac')).toBe(true)
+  expect(deepSelectChord({ metaKey: false, ctrlKey: true }, 'mac')).toBe(false)
+  expect(deepSelectChord({ metaKey: false, ctrlKey: true }, 'windows')).toBe(true)
+  expect(deepSelectChord({ metaKey: true, ctrlKey: false }, 'linux')).toBe(false)
 })
 
 test('Enter edits only a selected text layer', () => {
@@ -72,7 +79,9 @@ test('a page marquee selects frames, and Cmd marquee selects nested leaves', () 
     deep: true, contained: false, additive: false, toggle: false,
   })
   expect(deep.sort()).toEqual([child.id, outside.id].sort())
-  expect(editor.selectionHit({ x: 70, y: 70 })).toBe(frame.id)
+  expect(editor.selectionHit({ x: 70, y: 70 })).toBe(child.id)
+  expect(editor.selectionHit({ x: 45, y: 45 })).toBe(frame.id)
   expect(editor.selectionHit({ x: 70, y: 70 }, true)).toBe(child.id)
+  expect(editor.selectionHit({ x: 45, y: 45 }, true)).toBe(frame.id)
   expect(editor.canUndo).toBe(false)
 })
