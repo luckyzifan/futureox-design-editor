@@ -52,6 +52,17 @@ contextBridge.exposeInMainWorld(
     ...(documentMemoryBytes === undefined ? {} : { documentCapacity: Object.freeze({ memoryBytes: documentMemoryBytes }) }),
     renderDiagnostics: process.argv.includes('--core-render-diagnostics'),
     renderDiagnosticsDetail: process.argv.includes('--core-render-diagnostics-detail'),
+    plugins: Object.freeze({
+      pick: () => invoke('plugins-pick'),
+      read: value => invoke('plugins-read', value),
+      openUi: value => invoke('plugins-ui-open', value),
+      postUi: value => invoke('plugins-ui-post', value),
+      closeUi: () => invoke('plugins-ui-close'),
+      onUiMessage: callback => subscribe('design-desktop:plugin-ui-message', callback,
+        value => !!value && typeof value === 'object' && Object.hasOwn(value, 'pluginMessage')),
+      onUiClosed: callback => subscribe('design-desktop:plugin-ui-closed', callback,
+        value => !!value && value.closed === true),
+    }),
     petConfigure: mode => invoke('pet-configure', mode),
     petEvent: event => invoke('pet-event', event),
     onPetStatus: callback => subscribe('design-desktop:pet-status', callback, value => value &&
@@ -201,7 +212,7 @@ contextBridge.exposeInMainWorld(
       ),
     onCommand: (callback) =>
       subscribe('design-desktop:command', callback, (value) =>
-        ['settings', 'new', 'new-page', 'open', 'openPending', 'save', 'saveAs', 'recover', 'zoomIn', 'zoomOut', 'zoom100', 'undo', 'redo', 'cut', 'copy', 'paste', 'copy-properties','paste-properties','select-matching','select-inverse', 'copy-as-png', 'copy-as-svg', 'paste-to-replace', 'paste-over-selection', 'paste-in-place', 'select-all', 'duplicate', 'group', 'ungroup', 'delete', 'zoom-fit', 'zoom-selection', 'center-selection'].includes(value),
+        ['settings', 'plugins', 'new', 'new-page', 'open', 'openPending', 'save', 'saveAs', 'recover', 'zoomIn', 'zoomOut', 'zoom100', 'undo', 'redo', 'cut', 'copy', 'paste', 'copy-properties','paste-properties','select-matching','select-inverse', 'copy-as-png', 'copy-as-svg', 'paste-to-replace', 'paste-over-selection', 'paste-in-place', 'select-all', 'duplicate', 'group', 'ungroup', 'delete', 'zoom-fit', 'zoom-selection', 'center-selection'].includes(value),
       ),
   }),
 )

@@ -38,6 +38,8 @@ import { planLegacyUserDataMigration, runLegacyUserDataMigration } from './legac
 import { renderCheckConfig, renderCheckHandler } from './render-check.mjs'
 import { WorkspaceRoots, workspaceRootError } from './workspace-roots.mjs'
 import { parseGpuWorkingBudgetMiB } from './gpu-working-budget.mjs'
+import { createPluginDirectoryHost } from './plugin-package.mjs'
+import { createPluginUiHost } from './plugin-ui.mjs'
 
 let interfaceLocale = 'zh-CN'
 let rebuildApplicationMenu = () => {}
@@ -322,6 +324,47 @@ function getPetHost() {
 }
 register('pet-configure', mode => getPetHost().configure(mode), false)
 register('pet-event', event => petHost ? petHost.event(event) : { ok: true, accepted: false }, false)
+let pluginDirectories = null
+let pluginUi = null
+function pluginDirectoryHost() {
+  if (!pluginDirectories) pluginDirectories = createPluginDirectoryHost()
+  return pluginDirectories
+}
+function pluginUiHost() {
+  if (!pluginUi) pluginUi = createPluginUiHost({
+    BrowserWindow, session, ipcMain,
+    preloadPath: path.join(here, 'plugin-ui-preload.cjs'),
+    send: (channel, value) => { if (window && !window.isDestroyed()) window.webContents.send(channel, value) },
+  })
+  return pluginUi
+}
+register('plugins-pick', async () => {
+  const selected = await dialog.showOpenDialog({
+    title: desktopText[interfaceLocale].openPlugin,
+    properties: ['openDirectory'],
+  })
+  if (selected.canceled || selected.filePaths.length !== 1) return { status: 'cancelled' }
+  return { status: 'ok', ...await pluginDirectoryHost().take(selected.filePaths[0]) }
+}, false)
+register('plugins-read', async value => {
+  record(value, ['grant', 'paths'])
+  return { status: 'ok', ...await pluginDirectoryHost().read(value.grant, value.paths) }
+}, false)
+register('plugins-ui-open', async value => {
+  record(value, ['html', 'width', 'height', 'title'])
+  await pluginUiHost().open({ ...value, parent: window })
+  return { status: 'ok' }
+}, false)
+register('plugins-ui-post', async value => {
+  record(value, ['pluginMessage'])
+  pluginUiHost().post(value.pluginMessage)
+  return { status: 'ok' }
+}, false)
+register('plugins-ui-close', async value => {
+  if (value !== undefined) throw new Error('Unexpected arguments')
+  if (pluginUi) pluginUi.close()
+  return { status: 'ok' }
+}, false)
 
 function sendCommand(command) {
   if (closePending || quitRequested || shutdownComplete) return
@@ -1126,6 +1169,8 @@ async function buildWindow() {
   })
   window.on('closed', () => {
     designAi.dispose()
+    if (pluginUi) pluginUi.close()
+    if (pluginDirectories) pluginDirectories.clear()
     clearTimeout(closeTimer)
     clearTimeout(windowStateTimer)
     window = undefined
@@ -1188,6 +1233,9 @@ async function buildWindow() {
       { label: 'Object', submenu: [
         { label: 'Group', accelerator: 'CmdOrCtrl+G', click: () => sendCommand('group') },
         { label: 'Ungroup', accelerator: 'CmdOrCtrl+Shift+G', click: () => sendCommand('ungroup') },
+      ] },
+      { label: 'Plugins', submenu: [
+        { label: 'Open plugin host…', click: () => sendCommand('plugins') },
       ] },
       {
         label: 'View',

@@ -33,6 +33,7 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
     closeCalls: 0,
     maxRecovery: 16,
     sent: [],
+    listeners: new Map(),
     platform,
     windows: [],
     recent: [],
@@ -144,7 +145,10 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
     screen,
     BrowserWindow: Window,
     dialog,
-    ipcMain: { handle: (name, fn) => state.handlers.set(name, fn) },
+    ipcMain: {
+      handle: (name, fn) => state.handlers.set(name, fn),
+      on: (name, fn) => state.listeners.set(name, fn),
+    },
     Menu: { buildFromTemplate: (value) => value, setApplicationMenu(value) { state.menu = value } },
     protocol: { registerSchemesAsPrivileged() {} },
     session: { fromPartition: () => isolated },
@@ -249,6 +253,9 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
     `import { registerAutomationBridge as registerRealAutomationBridge } from ${JSON.stringify(new URL('../src/automation-bridge.mjs', import.meta.url).href)}; const registerAutomationBridge = options => { globalThis[${JSON.stringify(key)}].automationOptions = options; return registerRealAutomationBridge(options) }`)
 
   source = source.replace("from './native-locale.mjs'", `from ${JSON.stringify(new URL('../src/native-locale.mjs', import.meta.url).href)}`)
+  source = source.replace("from './design-ai.mjs'", `from ${JSON.stringify(new URL('../src/design-ai.mjs', import.meta.url).href)}`)
+  source = source.replace("from './plugin-package.mjs'", `from ${JSON.stringify(new URL('../src/plugin-package.mjs', import.meta.url).href)}`)
+  source = source.replace("from './plugin-ui.mjs'", `from ${JSON.stringify(new URL('../src/plugin-ui.mjs', import.meta.url).href)}`)
   source = source.replace("from './clipboard.mjs'", `from ${JSON.stringify(new URL('../src/clipboard.mjs', import.meta.url).href)}`)
   source = source.replace("import { spawn } from 'node:child_process'", `const { spawn } = globalThis[${JSON.stringify(key)}]`)
   source = source.replaceAll('process.platform' , `globalThis[${JSON.stringify(key)}].platform`)
