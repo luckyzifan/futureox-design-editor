@@ -4,6 +4,7 @@ import { selectionSizeLabel } from './selection-size-label'
 import { canvasOverlayCommands, canvasGpuOverlayOwnsUi } from './canvas-overlay-commands'
 import { measurementLabel, measurementTicks } from './canvas-measurements'
 import { canvasText } from './canvas-interface-messages'
+import { frameHairline, frameTitleShown } from './page-frame-chrome'
 import { useInterfacePreferences } from './interface-preference'
 import { recordCanvasGrid } from './kernel/grid-measurements'
 import { canvasActions, CanvasAction, ActionSource, ActionOutcome, ActionReason, modifierBits, type ActionReasonCode, type ActionOutcomeCode } from './canvas-action-diagnostics'
@@ -903,10 +904,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const canTransform = capturedTransform || (['select','multiselect','scale'].includes(state.tool) && !spaceHeld && !textEdit &&
     !selectionFeedback.readOnly && state.selection.length > 0)
   const frameTitles = useMemo(() => entries.filter(e => {
-    const n=state.doc.nodes[e.id]
-    return ['frame','section'].includes(n.kind) && (e.depth===0||selection.has(e.id)) &&
-      ((!n.instance&&!n.instanceOrigin)||selection.has(e.id))
-  }), [entries,state.doc,selection])
+    const n = state.doc.nodes[e.id]
+    const parentId = e.ancestors.at(-1)
+    return frameTitleShown(e, n, selection, parentId ? state.doc.nodes[parentId] : undefined)
+  }), [entries, state.doc, selection])
+  const frameHairlines = useMemo(() => entries.filter(e => frameHairline(state.doc.nodes[e.id])), [entries, state.doc])
   const overlay = useMemo(() => canvasOverlayCommands({
     document:state.doc,pageId:state.page,epoch:editor.sessionGeneration,tool:state.tool,pixelGrid:state.pixelGrid,
     canTransform,selected,owners:selectionFeedback.ids,frameTitles,localSelection,selectionCorners,selectionBox,
@@ -2728,23 +2730,24 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 </g>
               )
             })}
-          {frameTitles
-            .map((e) => (
-              <g key={e.id} data-frame-title-owner={e.id}>
-              <text
-                data-frame-title={e.id}
-                opacity={gpuOverlay ? 0 : 1}
-                transform={matrixString(e.matrix)}
-                y={-12 / zoom}
-                fontSize={11 / zoom}
-                fill={!['vector', 'width', 'pencil', 'brush', 'marker', 'washi-tape'].includes(state.tool) && selection.has(e.id) ? '#0d99ff' : '#73778b'}
-                pointerEvents="all"
-                style={{cursor:e.locked?'default':state.tool==='hand'||spaceHeld?'grab':'move'}}
-              >
-                {state.doc.nodes[e.id].name}
-              </text>
+          {frameTitles.map(entry => {
+            const label = (overlay.commands.labels ?? []).find(item =>
+              (item.kind === 'frame-title' || item.kind === 'section-title') && item.owners?.at(-1) === entry.id)
+            if (!label) return null
+            const shown = gpuOverlay ? 0 : 1
+            return (
+              <g key={entry.id} data-frame-title-owner={entry.id} transform={matrixString(entry.matrix)}>
+                {label.chip && <rect data-section-chip={entry.id} opacity={shown} pointerEvents="none"
+                  x={(label.offset.x - 6) / zoom} y={(label.offset.y - 14) / zoom}
+                  width={(Math.max(label.text.length, 1) * 11 + 12) / zoom} height={18 / zoom} rx={4 / zoom} fill={label.chip} />}
+                <text data-frame-title={entry.id} opacity={shown} x={label.offset.x / zoom} y={label.offset.y / zoom}
+                  fontSize={11 / zoom} fill={label.color} pointerEvents="all"
+                  style={{cursor:entry.locked?'default':state.tool==='hand'||spaceHeld?'grab':'move'}}>
+                  {label.text}
+                </text>
               </g>
-            ))}
+            )
+          })}
           {(() => {
             // Layout-grid section highlight: solved tracks through the
             // kernel's section predicate, drawn as alternating cells.
@@ -2807,6 +2810,15 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         {/* Selection is document feedback, not part of the raster result.
             Keep it above tiles and responsive while that result refines. */}
         <g transform={`translate(${displayView.x} ${displayView.y}) scale(${zoom})`}>
+          {frameHairlines.map(entry => {
+            const node = state.doc.nodes[entry.id]
+            const points = boxPoints({ x: 0, y: 0, width: node.width, height: node.height }).map(point => {
+              const world = apply(entry.matrix, point)
+              return `${world.x},${world.y}`
+            }).join(' ')
+            return <polygon key={entry.id} data-testid="frame-hairline" data-node-id={entry.id} points={points}
+              fill="none" stroke="#0000001a" strokeWidth={1 / zoom} pointerEvents="none" />
+          })}
           {!!selected.length && !['vector', 'width', 'pencil', 'brush', 'marker', 'washi-tape'].includes(state.tool) && (
             <g className="selection" data-selection-readonly={selectionFeedback.readOnly}>
               <polygon

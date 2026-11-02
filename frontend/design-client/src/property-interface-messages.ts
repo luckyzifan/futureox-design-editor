@@ -269,7 +269,7 @@ export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
   "实心菱形": "Filled diamond",
   "实心方形": "Filled square",
   "垂线": "Perpendicular line",
-  "磨砂": "Frosting",
+  "磨砂": "Frost",
   "位移半径": "Displacement radius",
   "模糊": "Blur",
   "扩展": "Spread",
@@ -284,7 +284,7 @@ export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
   "折射 %": "Refraction %",
   "色散 %": "Dispersion %",
   "光线角度": "Light angle",
-  "照明 %": "Lighting %",
+  "照明 %": "Light intensity",
   "纹理尺寸 X": "Texture size X",
   "纹理尺寸 Y": "Texture size Y",
   "自由布局": "Free layout",
@@ -464,7 +464,7 @@ export function stylePropertyLabel(field: 'fills' | 'strokes' | 'effects', index
     '图片适配': 'image fit', '粗细': 'width', '位置': 'position', '端点': 'cap', '连接': 'join',
     '模糊': 'blur', '阴影颜色': 'shadow color', '偏移 X': 'offset X', '偏移 Y': 'offset Y', '扩展': 'spread',
     '强度 %': 'intensity %', '幅度': 'amount', '深度': 'depth', '倒角宽度': 'bevel width',
-    '折射 %': 'refraction %', '色散 %': 'dispersion %', '光线角度': 'light angle', '照明 %': 'lighting %',
+    '磨砂': 'frost', '折射 %': 'refraction %', '色散 %': 'dispersion %', '光线角度': 'light angle', '照明 %': 'light intensity',
     '纹理宽': 'texture width', '纹理高': 'texture height',
   }
   const stop = /^色标 (\d+)$/.exec(suffix), offset = /^色标位置 (\d+) %$/.exec(suffix)
