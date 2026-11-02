@@ -19,7 +19,7 @@ import { liveInteractionStack } from './resident-layer-stack'
 import { settleResidentImport } from './resident-import-ownership'
 import { viewportPreviewDeviceKey, type ViewportPreviewDevice } from './viewport-preview-cache'
 import {allowIncompletePanPreview,type PanPreviewBacking} from './pan-preview'
-import {CameraReprojection,atomicPresentationContext,consumePresentationBitmap} from './camera-reprojection'
+import {CameraReprojection,atomicPresentationContext,consumePresentationBitmap,keepCompleteCameraBacking} from './camera-reprojection'
 
 const activeAffineGesture = (interaction?: InteractionProps) =>
   !!interaction?.active && !!interaction.gestureKind && interaction.gestureKind !== 'move'
@@ -93,7 +93,7 @@ export function ResidentCompositeSurface(props: {
     // backing. Freeze that projection until a worker receipt replaces its basis;
     // never publish new camera/content authority across this boundary.
     if(!allowed&&!newBacking)return
-    return cameraProjection.current?.update(backing?.actual,p.view,p.width,p.height,allowed)
+    return { ...cameraProjection.current?.update(backing?.actual,p.view,p.width,p.height,allowed), allowed }
   }
   repaint.current = () => {
     if (!attached.current) return
@@ -288,7 +288,12 @@ export function ResidentCompositeSurface(props: {
     canvas.current = el
     const bitmapContext=atomicPresentationContext(el)
     atomicCanvas.current=!!bitmapContext
-    cameraProjection.current=new CameraReprojection(el,host.current!)
+    cameraProjection.current=new CameraReprojection(el,host.current!,()=>{
+      // A discarded narrow image may have been the worker's last submission.
+      // Re-request the latest cohort once the burst ends, even if its tiles
+      // and camera were already staged while the wide basis was held.
+      lastFrameSignature.current='';repaint.current()
+    })
     const unregisterContent=registerContentPlane(el,{
       pixel:(u,v)=>actualPresentation.current?p.client.readContentPixel(u,v,actualPresentation.current):Promise.reject(Error('当前画面尚未同步')),
       capture:async()=>{const resolveSnapshot=presentation.current.snapshotResolver()
@@ -353,6 +358,11 @@ export function ResidentCompositeSurface(props: {
           // Rejected display ACKs must not replace the readback expectation or
           // downstream exact ACK. Other message payloads were handled above.
           if(rejected||bitmap&&!source)return
+          // Keep the immutable complete image following the current camera.
+          // Publishing a partial white-filled tile cohort punches visible
+          // rectangles into pixels that are already available in this image.
+          if (bitmap && keepCompleteCameraBacking(acceptedCamera.current?.actual,actual,projectCamera()?.allowed === true,
+              cameraProjection.current?.zooming,latest.current)) return
           if(bitmap&&bitmapContext){consumePresentationBitmap(bitmapContext,el,bitmap);bitmapApplied=true}
           actualPresentation.current=actual
           acceptedChrome.current=source?.gpuOverlay&&actual.gpuOverlay?{source,actual,client:p.client}:undefined

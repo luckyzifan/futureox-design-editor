@@ -149,10 +149,10 @@ test('invalid source still reaches the production renderer validation', async ()
 })
 
 function baseline(persistence: ImagePersistence, documentId: string) {
-  const base = new URL('../../../../testing/verification-image-hydration-20261019/', import.meta.url)
-  const source = readFileSync(new URL('baseline-image-cache.txt', base), 'utf8')
-  const manifest = JSON.parse(readFileSync(new URL('baseline.json', base), 'utf8'))
-  expect(createHash('sha256').update(source).digest('hex')).toBe(manifest.excerptSha256)
+  // Frozen pre-hydration source from 5b7ed1a; keep the independent oracle in
+  // the test tree after historical verification directories were retired.
+  const source = readFileSync(new URL('./fixtures/image-cache-before-hydration.txt', import.meta.url), 'utf8')
+  expect(createHash('sha256').update(source).digest('hex')).toBe('518fe0433bde691a01e88cf900d13f022d9a89649e3ea94cb023a83463edb132')
   return new Function('DecodedImageCache', 'imageCacheKey', 'readCachedImage', 'writeCachedImage', 'loadedDocumentId',
     stripTypeScriptTypes(source, { mode: 'strip' }) + '\nreturn { warmImageCache, managedImageLoader };')(
       DecodedImageCache, persistence.key, persistence.read, persistence.write, documentId) as {

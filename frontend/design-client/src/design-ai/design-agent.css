@@ -1,0 +1,15 @@
+.design-agent-panel { width:min(880px,94vw); max-height:90vh; overflow:auto; }
+.design-agent-panel h2 { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.design-agent-panel p { line-height:1.6; }
+.design-agent-panel label { display:flex; flex-direction:column; gap:7px; }
+.design-agent-panel textarea { width:100%; resize:vertical; min-height:90px; font:inherit; padding:12px; box-sizing:border-box; }
+.design-agent-panel select,.design-agent-panel input { font:inherit; padding:8px; min-width:0; }
+.design-agent-panel small { display:block; opacity:.72; line-height:1.6; margin:8px 0; }
+.design-agent-panel details { border:1px solid #8884; border-radius:8px; padding:12px; margin:12px 0; }
+.design-ai-key-row,.design-ai-actions,.design-ai-options { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin:14px 0; }
+.design-ai-key-row input { flex:1; }
+.design-ai-options label { flex:1; min-width:140px; }
+.design-agent-panel .design-ai-check { flex-direction:row; align-items:center; margin:14px 0; }
+.design-ai-image-preview { position:relative; width:100%; max-width:600px; margin:16px auto; overflow:hidden; background:#fff; border:1px solid #8884; }
+.design-ai-image-preview img { position:absolute; object-fit:fill; }
+.design-agent-panel [role=alert] { color:#ba3535; }

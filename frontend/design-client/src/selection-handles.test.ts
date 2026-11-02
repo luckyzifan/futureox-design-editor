@@ -1,10 +1,20 @@
 import { expect, test } from 'vitest'
 import { apply, boxPoints, inverse, multiply, rotate, translate, pointInContours } from './geometry'
-import { selectionHandles, selectionRotation } from './selection-handles'
+import { selectionHandles, selectionRotation, smallSelectionInterior } from './selection-handles'
 import { resizeInBasis, selectionLocalBounds, rotateNode } from './canvas-view'
 import type { Matrix } from './model'
 import {blank,node} from './model'
 import {selectionScaleFrame,scaleAnchor} from './selection-scale'
+
+test('small text keeps a movable interior under overlapping fixed-size handles',()=>{
+  for(const zoom of [.122,.392])for(const angle of [0,37,-90]){
+    const transform=multiply(translate(200,-40),rotate(angle))
+    const corners=boxPoints({x:0,y:0,width:64,height:20}).map(p=>apply(transform,p))
+    expect(smallSelectionInterior(corners,zoom,apply(transform,{x:32,y:10}))).toBe(true)
+    for(const handle of selectionHandles(corners,zoom))expect(smallSelectionInterior(corners,zoom,handle.rotateAnchor)).toBe(false)
+  }
+  expect(smallSelectionInterior(boxPoints({x:0,y:0,width:64,height:20}),1,{x:32,y:1})).toBe(false)
+})
 
 test('four exterior rotate regions keep fixed screen size across zoom and transformed parents',()=>{
   for(const zoom of [0.25,1,4])for(const transform of [rotate(0),rotate(37),multiply(rotate(-20),[-2,0,0,3,0,0] as Matrix)]){

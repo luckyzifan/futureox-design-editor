@@ -383,6 +383,7 @@ export interface Driver {
   readonly certifiedFilter?: boolean
   readonly exactSolidPaintOver?: boolean
   readonly exactGradientPaintOver?: boolean
+  readonly windowedGradientFields?: boolean
   readonly managed?: boolean
   readonly linearLight?: boolean
   readonly hdr?: boolean

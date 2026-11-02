@@ -37,6 +37,82 @@ fn options() -> RenderOptions {
         "view":{"x":0.25,"y":0.5,"zoom":1.2},"transparent":false,"grid":false})).unwrap()
 }
 #[test]
+fn leaf_pose_keeps_private_unchanged_support_and_matches_fresh_packets() {
+    let mut doc=source();
+    let mut cold=doc.nodes["child"].clone();cold.id="cold".into();cold.transform.0[4]=20000.;
+    doc.nodes.insert(cold.id.clone(),cold);doc.pages[0].children.push("cold".into());
+    let mut engine=Engine::new();engine.install_document(doc).unwrap();
+    engine.compile_gpu(&options()).unwrap();
+    let pointer=Arc::as_ptr(&engine.world_support.as_ref().unwrap().index);
+    let charged=engine.world_support.as_ref().unwrap().bytes();
+    for x in [12.125,20000.25,-20.5,10.] {
+        assert!(engine.apply_interaction_transforms(&std::collections::BTreeMap::from([
+            ("child".into(),Transform([1.,0.,0.,1.,x,10.]))])).unwrap());
+        assert_eq!(Arc::as_ptr(&engine.world_support.as_ref().unwrap().index),pointer);
+        assert_eq!(engine.world_support.as_ref().unwrap().revision,engine.geo_revision);
+        assert_eq!(engine.world_support.as_ref().unwrap().bytes(),charged);
+        assert!(!engine.world_support.as_ref().unwrap().index.culls("child",Transform::default(),Rect::new(0,0,64,64)));
+        assert!(engine.world_support.as_ref().unwrap().index.culls("cold",Transform::default(),Rect::new(0,0,64,64)));
+        let mut fresh=Engine::new();fresh.install_document(engine.source_doc.as_ref().unwrap().clone()).unwrap();
+        assert_eq!(engine.compile_gpu(&options()).unwrap().into_packet().unwrap(),fresh.compile_gpu(&options()).unwrap().into_packet().unwrap());
+        assert_eq!(engine.render(&options()).unwrap(),fresh.render(&options()).unwrap());
+    }
+}
+#[test]
+fn shared_support_and_effectful_affine_poses_keep_the_ordinary_rebuild_boundary() {
+    let mut doc=source();doc.schema_version=18;
+    doc.nodes.get_mut("child").unwrap().effects=serde_json::from_value(json!([{"kind":"gaussian-blur","radius":2,"visible":true,"color":"#000000"}])).unwrap();
+    let mut engine=Engine::new();engine.install_document(doc).unwrap();engine.compile_gpu(&options()).unwrap();
+    let shared=engine.world_support.as_ref().unwrap().index.clone();let revision=engine.geo_revision;
+    assert!(engine.apply_interaction_transforms(&std::collections::BTreeMap::from([
+        ("child".into(),Transform([1.,0.,0.,1.,12.125,10.]))])).unwrap());
+    assert_eq!(engine.world_support.as_ref().unwrap().revision,revision);
+    engine.compile_gpu(&options()).unwrap();assert!(!Arc::ptr_eq(&shared,&engine.world_support.as_ref().unwrap().index));
+    let revision=engine.geo_revision;
+    assert!(engine.apply_interaction_transforms(&std::collections::BTreeMap::from([
+        ("child".into(),Transform([0.,1.,-1.,0.,22.,10.]))])).unwrap());
+    assert_eq!(engine.world_support.as_ref().unwrap().revision,revision);
+    let mut fresh=Engine::new();fresh.install_document(engine.source_doc.as_ref().unwrap().clone()).unwrap();
+    assert_eq!(engine.compile_gpu(&options()).unwrap().into_packet().unwrap(),fresh.compile_gpu(&options()).unwrap().into_packet().unwrap());
+}
+
+#[test]
+fn plain_leaf_affine_keeps_unmoved_support_with_exact_packets_and_pixels() {
+    let mut doc=source();
+    let mut cold=doc.nodes["child"].clone();cold.id="cold".into();cold.transform.0[4]=20000.;
+    doc.nodes.insert(cold.id.clone(),cold);doc.pages[0].children.push("cold".into());
+    let mut engine=Engine::new();engine.install_document(doc).unwrap();engine.compile_gpu(&options()).unwrap();
+    let pointer=Arc::as_ptr(&engine.world_support.as_ref().unwrap().index);
+    let bytes=engine.world_support.as_ref().unwrap().bytes();
+    for transform in [Transform([0.,1.,-1.,0.,35.,10.]),Transform([1.2,0.3,-0.2,0.8,20000.25,10.]),
+        Transform([-1.,0.,0.,1.,35.,10.]),Transform([1.,0.,0.,1.,10.,10.])] {
+        assert!(engine.apply_interaction_transforms(&std::collections::BTreeMap::from([("child".into(),transform)])).unwrap());
+        assert_eq!(engine.world_support.as_ref().unwrap().revision,engine.geo_revision);
+        assert_eq!(Arc::as_ptr(&engine.world_support.as_ref().unwrap().index),pointer);
+        assert_eq!(engine.world_support.as_ref().unwrap().bytes(),bytes);
+        assert!(!engine.world_support.as_ref().unwrap().index.culls("child",Transform::default(),Rect::new(0,0,64,64)));
+        assert!(engine.world_support.as_ref().unwrap().index.culls("cold",Transform::default(),Rect::new(0,0,64,64)));
+        let mut fresh=Engine::new();fresh.install_document(engine.source_doc.as_ref().unwrap().clone()).unwrap();
+        assert_eq!(engine.compile_gpu(&options()).unwrap().into_packet().unwrap(),fresh.compile_gpu(&options()).unwrap().into_packet().unwrap());
+        assert_eq!(engine.render(&options()).unwrap(),fresh.render(&options()).unwrap());
+    }
+}
+
+#[test]
+fn stroked_leaf_affine_invalidates_its_support_and_matches_fresh_pixels() {
+    let mut doc=source();
+    doc.nodes.get_mut("child").unwrap().strokes=serde_json::from_value(json!([{"width":3,"visible":true,"paint":{"kind":"solid","color":"#000000"}}])).unwrap();
+    let mut engine=Engine::new();engine.install_document(doc).unwrap();engine.compile_gpu(&options()).unwrap();
+    let pointer=Arc::as_ptr(&engine.world_support.as_ref().unwrap().index);
+    assert!(engine.apply_interaction_transforms(&std::collections::BTreeMap::from([("child".into(),Transform([0.,1.,-1.,0.,35.,10.]))])).unwrap());
+    assert_eq!(engine.world_support.as_ref().unwrap().revision,engine.geo_revision);
+    assert_eq!(Arc::as_ptr(&engine.world_support.as_ref().unwrap().index),pointer);
+    assert!(!engine.world_support.as_ref().unwrap().index.culls("child",Transform::default(),Rect::new(0,0,64,64)));
+    let mut fresh=Engine::new();fresh.install_document(engine.source_doc.as_ref().unwrap().clone()).unwrap();
+    assert_eq!(engine.compile_gpu(&options()).unwrap().into_packet().unwrap(),fresh.compile_gpu(&options()).unwrap().into_packet().unwrap());
+    assert_eq!(engine.render(&options()).unwrap(),fresh.render(&options()).unwrap());
+}
+#[test]
 fn ordinary_reparent_resolves_without_a_warm_camera_and_reuses_checked_bytes() {
     let mut original = source();
     let mut other = original.nodes["frame"].clone();
@@ -693,4 +769,30 @@ fn retained_receipt_preserves_affine_interaction_and_exact_packets() {
     assert!(engine.retained_source_size.is_none());
     assert_eq!(engine.source_doc_bytes, Some(serde_json::to_vec(engine.source_doc.as_ref().unwrap()).unwrap().len()));
     assert_retained_receipt_matches_fresh(&mut engine);
+}
+
+#[test]
+fn identical_native_interaction_pose_keeps_exact_compilation_and_geometry_lineage() {
+    let mut engine=Engine::new();engine.install_document(source()).unwrap();
+    engine.bind_frame_scene_scope("unchanged-pose").unwrap();
+    let request=serde_json::to_string(&options()).unwrap();
+    engine.compile_gpu_packet_request(&request).unwrap();
+    let pose=std::collections::BTreeMap::from([("child".into(),Transform([1.,0.,0.,1.,12.125,10.25]))]);
+    assert!(engine.apply_interaction_transforms(&pose).unwrap());
+    let first=engine.compile_gpu_packet_request(&request).unwrap();
+    let revision=engine.geo_revision;let bytes=engine.source_doc_bytes;
+    for _ in 0..3 {
+        assert!(engine.apply_interaction_transforms(&pose).unwrap());
+        assert_eq!(engine.geo_revision,revision);
+        assert_eq!(engine.source_doc_bytes,bytes);
+        assert_eq!(engine.compile_gpu_packet_request(&request).unwrap(),first);
+    }
+    assert_eq!(engine.gpu_compile_cache_stats()["frameScene"]["sameRequestHits"],3);
+    let mut signed=pose.clone();signed.get_mut("child").unwrap().0[1]=-0.;
+    assert!(engine.apply_interaction_transforms(&signed).unwrap());
+    assert!(engine.geo_revision>revision);
+    assert_eq!(engine.source_doc.as_ref().unwrap().nodes["child"].transform.0[1].to_bits(),(-0f64).to_bits());
+    let before=engine.geo_revision;
+    let invalid=std::collections::BTreeMap::from([("child".into(),Transform([1.,0.,0.,1.,f64::NAN,10.25]))]);
+    assert!(engine.apply_interaction_transforms(&invalid).is_err());assert_eq!(engine.geo_revision,before);
 }

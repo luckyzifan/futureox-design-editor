@@ -119,6 +119,18 @@ fn world_entry(n:&Node,m:Transform,absolute:Transform,depth:u32,fonts:&Fonts,out
 }
 pub(crate) struct WorldSupport {entries:HashMap<String,Entry>,bytes:usize}
 impl WorldSupport {
+    /// Validated leaf transforms change only their own support and ancestor
+    /// unions. Remove those optional culling certificates; unchanged siblings
+    /// keep their exact original bounds. Missing entries use ordinary geometry
+    /// preparation, never the old position. No replacement cache is allocated.
+    pub(crate) fn invalidate_leaf_transforms<'a>(&mut self,ids:impl Iterator<Item=&'a String>,parents:&impl crate::render_index::ParentLookup) {
+        for id in ids {
+            self.entries.remove(id);
+            parents.for_each_ancestor(id,|ancestor|{self.entries.remove(ancestor);});
+        }
+        // HashMap capacity stays resident. Keep the original conservative
+        // charge (including removed key bytes) until this owner is retired.
+    }
     /// Remember a declined optional allocation for this exact revision/page.
     /// A new camera must not rebuild the same over-budget index on every tile.
     pub(crate) fn disabled()->Self{Self{entries:HashMap::new(),bytes:0}}

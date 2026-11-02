@@ -17,10 +17,11 @@ import { tilePlacementAtView } from './tile-preview'
 import { scene, unionBounds } from '../geometry'
 import { buildInteractionDependencyScope } from './interaction-scene-bounds'
 import { rigidInteractionCapture } from './rigid-interaction-capture'
+import { guardedForegroundSafe } from './guarded-foreground'
 import { KernelClient, type KernelOptions, type KernelResult } from './client'
 import type { BackendPreference } from './gpu/types'
 import type { CompositeItem, CompositeTile } from './gpu/tile-compositor'
-import { interactionOffsets, interactionPatchedDocument, interactionPatchedOffsets, interactionPatchedTransforms, interactionAffineEligible, interactionPoseMatrices, interactionTransformsOnly, InteractionLayerPlanner,
+import { interactionOffsets, interactionPatchedDocument, interactionPatchedOffsets, interactionPatchedTransforms, InteractionAffinePlan, interactionPoseMatrices, interactionTransformsOnly, InteractionLayerPlanner,
   type GpuMoveControl, type InteractionPlan, type InteractionProps, type InteractionInput } from './interaction-layers'
 
 let serial = -1
@@ -36,7 +37,7 @@ type ResidentInteraction = {
   parentLinear?: Map<string, number[]>
   parentMatrices?: Map<string, Matrix>
   affine?: boolean
-  affineEligible?: boolean
+  affinePlan?: InteractionAffinePlan
   inputPriority?: boolean
   displayedTransforms?: Record<string, Matrix>
   // Only a complete capture may retain chrome from that exact document. World
@@ -49,9 +50,13 @@ type ResidentInteraction = {
   shortTravelBounds?: Set<string>
   fixedBounds?: Set<string>
   finalForeground?: boolean
+  foregroundExclusions?: Bounds[]
+  foregroundCapture?: boolean
+  foregroundCaptureBounds?: boolean
   captureBounds?: Bounds
   dependencyPadding?: number
   visibleBounds?: Bounds
+  repairBounds?: Bounds
   workerPoses?: boolean
   backgroundLinear?:KernelResult['backgroundLinear']
   requestedScale?:number
@@ -264,8 +269,14 @@ export class InteractionRenderer {
         const poses = interactionPatchedTransforms(r.plan, document, patches, affineBase)
         if (!poses || !affineBase) { this.poseEvent(7,13,0,0,trace);return null }
         const affine = !offsets
-        if (affine && !(r.affineEligible ??= interactionAffineEligible(r.plan))) {
-          this.poseEvent(7,13,0,0,trace); return null
+        if (affine) {
+          if(r.affinePlan?.plan!==r.plan)r.affinePlan=new InteractionAffinePlan(r.plan)
+          if(!r.affinePlan.accepts(patches)){this.poseEvent(7,13,0,0,trace);return null}
+        }
+        if (r.foregroundExclusions && guardedForegroundSafe(r.foregroundExclusions,r.rootBounds,r.plan.ids,
+            offsets,r.parentLinear,r.scale) !== r.foregroundCapture && !this.inlineDisabled) {
+          this.inlineDisabled = true; r.captureBounds = undefined
+          if (r.tiles[0]?.gpuTile) this.sharedClient?.stopResidentInteraction(r.tiles[0].gpuTile)
         }
         // Never affine-transform retained bitmap pixels. The first affine pose
         // promotes to a fresh native capture with compiler-owned halos.
@@ -273,7 +284,8 @@ export class InteractionRenderer {
           r.affine = true; r.captureBounds = undefined; this.inlineDisabled = true
           if (r.tiles[0]?.gpuTile) this.sharedClient?.stopResidentInteraction(r.tiles[0].gpuTile)
           if (!r.parentMatrices) Object.assign(r, buildInteractionDependencyScope(document, r.plan.pageId,
-            scene(document, r.plan.pageId), r.plan.ids, { zoom: this.qualityZoom, dpr: this.viewport?.dpr || 1, allowFixedBackdrop: false }))
+            this.props?.scene?.entriesFor(document,r.plan.pageId,this.props.epoch) ?? scene(document,r.plan.pageId),
+            r.plan.ids, { zoom: this.qualityZoom, dpr: this.viewport?.dpr || 1, allowFixedBackdrop: false }))
         }
         // A useful same-context capture can finish into the first/latest pose
         // handoff. Only an unstarted idle timer is cancelled by this gesture.
@@ -595,6 +607,7 @@ export class InteractionRenderer {
     profile: KernelOptions['rasterProfile'], backend: BackendPreference, settledDocument?: DesignDocument,
     size?: { width: number; height: number }, overlay?: SurfaceProps['overlay']) {
     this.prepareCurrent(props,pageId,view,dpr,profile,backend,settledDocument,size,overlay)
+    if (this.resident && props && !props.active && settledDocument === props.document) this.resident.repairBounds = undefined
     // Selection/capture replacement can close residents without replacing the
     // complete page. Publish this proof only after the new context is installed.
     if(props&&size&&this.props===props&&settledDocument===props.document)this.settledViewport={document:settledDocument,pageId,epoch:props.epoch,
@@ -793,13 +806,23 @@ export class InteractionRenderer {
         // capture is pending; never apply new parent matrices to those pixels.
         const held=r.held||{plan:r.plan,offsets:r.live?r.displayedOffsets:r.offsets,parentLinear:r.parentLinear,visibleBounds:r.visibleBounds,blend:!r.live||!!r.retainedFallback,
           capture:r.overlayCapture,workerPoses:!!r.workerPoses,viewportRevision:this.viewportRevision}
+        // The first capture may still be pending when the pointer crosses a
+        // parent. Its source pixels nevertheless exist in the settled page.
+        // Freeze their erase footprint before replacing the source/scope.
+        const original = r.plan.ids.every(id=>r.rootBounds?.has(id))
+          ? unionBounds(r.plan.ids.map(id=>r.rootBounds!.get(id)!)) : viewport
+        if (original) {
+          const halo=16+(r.dependencyPadding||0)
+          const erase={x:original.x-halo,y:original.y-halo,width:original.width+2*halo,height:original.height+2*halo}
+          r.repairBounds=unionBounds([erase,...(r.repairBounds?[r.repairBounds]:[]),...(r.visibleBounds?[r.visibleBounds]:[])])
+        }
         this.nextGeneration();if(r.tiles[0]?.gpuTile)this.sharedClient?.stopResidentInteraction(r.tiles[0].gpuTile)
         this.latestPatch=undefined;this.latestCandidate=undefined;this.patchBase=undefined;this.affineBase=undefined
         this.livePending=undefined;this.liveRequested=undefined;this.pending=undefined;this.pendingDensity=undefined
         r.held=r.tiles.length?held:undefined;r.plan={document:props.document,pageId,ids:[...props.selection],layers:[]}
         r.live=true;r.active=true
         r.offsets=new Map(props.selection.map(id=>[id,{x:0,y:0}]))
-        r.workerPoses=false;r.retainedFallback=false;r.displayedOffsets=undefined;r.displayedTransforms=undefined;r.overlayCapture=undefined;r.affineEligible=undefined;r.captureBounds=undefined
+        r.workerPoses=false;r.retainedFallback=false;r.displayedOffsets=undefined;r.displayedTransforms=undefined;r.overlayCapture=undefined;r.affinePlan=undefined;r.captureBounds=undefined
         this.inlineDisabled=true
         const entries=props.scene?.entriesFor(props.document,pageId,props.epoch)??scene(props.document,pageId)
         Object.assign(r,buildInteractionDependencyScope(props.document,pageId,entries,props.selection,{zoom:view.zoom,dpr,allowFixedBackdrop:!r.affine}))
@@ -1239,6 +1262,11 @@ export class InteractionRenderer {
           const offsets = interactionOffsets(resident.plan, document)
           const capturedCommands=this.captureMoveOverlay(document,resident,offsets)
           const roots = resident.rootBounds
+          const foregroundSafe = guardedForegroundSafe(resident.foregroundExclusions,roots,resident.plan.ids,
+            offsets,resident.parentLinear,resident.scale)
+          if (resident.foregroundExclusions && foregroundSafe !== resident.foregroundCaptureBounds) {
+            resident.captureBounds = undefined; resident.foregroundCaptureBounds = foregroundSafe
+          }
           let bounds = this.viewport ? { x: -this.viewport.view.x / this.viewport.view.zoom,
             y: -this.viewport.view.y / this.viewport.view.zoom, width: this.viewport.width / this.viewport.view.zoom,
             height: this.viewport.height / this.viewport.view.zoom } : offsets && roots && resident.plan.ids.every(id => roots.has(id))
@@ -1246,7 +1274,7 @@ export class InteractionRenderer {
             : unionBounds(scene(document, resident.plan.pageId).map(e => e.bounds))
           const pad = this.viewport ? 16 : Math.max(16, ...Object.values(document.nodes).flatMap(n => n.effects.filter(e => e.visible)
             .map(e => e.radius * 3 + Math.abs(e.x || 0) + Math.abs(e.y || 0) + Math.abs(e.spread || 0))))
-          const rotationBounds=this.viewport&&resident.affine?rigidInteractionCapture(resident.plan,document,roots,
+          const rotationBounds=this.viewport&&resident.affine&&!resident.foregroundExclusions?rigidInteractionCapture(resident.plan,document,roots,
             resident.localizedBounds,resident.fixedBounds,resident.parentMatrices,resident.scale):undefined
           if(rotationBounds){
             const x=Math.max(bounds.x,rotationBounds.x-pad),y=Math.max(bounds.y,rotationBounds.y-pad)
@@ -1254,7 +1282,7 @@ export class InteractionRenderer {
             const bottom=Math.min(bounds.y+bounds.height,rotationBounds.y+rotationBounds.height+pad)
             if(right>x&&bottom>y)bounds={x,y,width:right-x,height:bottom-y}
           }
-          if (this.viewport && !resident.affine && offsets && roots && resident.plan.ids.every(id => roots.has(id))) {
+          if (this.viewport && !resident.affine && foregroundSafe && offsets && roots && resident.plan.ids.every(id => roots.has(id))) {
             // Re-render the swept selection plus its backdrop dependency halo.
             // Unaffected pixels continue using the settled resident tile stack.
             const affected = unionBounds(resident.plan.ids.flatMap(id => {
@@ -1265,6 +1293,18 @@ export class InteractionRenderer {
             const halo=pad+(resident.dependencyPadding || 0)
             const x=Math.max(bounds.x,affected.x-halo),y=Math.max(bounds.y,affected.y-halo)
             const right=Math.min(bounds.x+bounds.width,affected.x+affected.width+halo),bottom=Math.min(bounds.y+bounds.height,affected.y+affected.height+halo)
+            if(right>x&&bottom>y)bounds={x,y,width:right-x,height:bottom-y}
+          }
+          if (this.viewport && resident.active && !resident.retainedFallback && (resident.visibleBounds || resident.repairBounds)) {
+            // A structural rebase can replace the pose's source document while
+            // the settled page still contains the gesture's original pixels.
+            // Keep repairing the previously displayed footprint too; shrinking
+            // to only the latest local source exposes old text/shapes below it.
+            const prior=unionBounds([...(resident.visibleBounds?[resident.visibleBounds]:[]),...(resident.repairBounds?[resident.repairBounds]:[])]),view=this.viewport
+            const x=Math.max(-view.view.x/view.view.zoom,Math.min(bounds.x,prior.x))
+            const y=Math.max(-view.view.y/view.view.zoom,Math.min(bounds.y,prior.y))
+            const right=Math.min((view.width-view.view.x)/view.view.zoom,Math.max(bounds.x+bounds.width,prior.x+prior.width))
+            const bottom=Math.min((view.height-view.view.y)/view.view.zoom,Math.max(bounds.y+bounds.height,prior.y+prior.height))
             if(right>x&&bottom>y)bounds={x,y,width:right-x,height:bottom-y}
           }
           // Keep a stable capture coordinate system through a gesture. Even
@@ -1281,10 +1321,11 @@ export class InteractionRenderer {
             const finalForeground = !!(this.viewport && offsets && resident.finalForeground)
             const localizedDesktop = !!(this.viewport && this.allowIdleWarm && this.sharedClient &&
               this.profile === 'figmaSubpixel' && resident.plan.ids.every(id => resident.localizedBounds?.has(id) && !resident.fixedBounds?.has(id)))
-            let guard = finalForeground ? pad + Math.max(32 / this.viewport!.view.zoom, bounds.width * .05) :
+            const shortTravel = this.profile === 'analytic' && resident.plan.ids.every(id => resident.shortTravelBounds?.has(id))
+            let guard = shortTravel && this.viewport ? pad + Math.max(16 / this.viewport.view.zoom, bounds.width * .05, bounds.height * .05) :
+              finalForeground ? pad + Math.max(32 / this.viewport!.view.zoom, bounds.width * .05) :
               localizedDesktop ? pad + Math.max(48 / this.viewport!.view.zoom, bounds.width * .05, bounds.height * .05) :
               pad + Math.max(64, this.viewport ? 96 / this.viewport.view.zoom : 0, bounds.width * .05, bounds.height * .05)
-            const shortTravel = this.profile === 'analytic' && resident.plan.ids.every(id => resident.shortTravelBounds?.has(id))
             if (!finalForeground && !localizedDesktop && !shortTravel && this.viewport && resident.plan.ids.every(id => resident.localizedBounds?.has(id))) {
               const travelGuard = Math.max(guard, pad + 256 / this.viewport.view.zoom)
               if ((bounds.width + 2 * travelGuard) * (bounds.height + 2 * travelGuard) * resident.scale ** 2 <= 4_194_304)
@@ -1360,18 +1401,23 @@ export class InteractionRenderer {
             }
             try {
               if(resident.tiledExact){result=await renderTiles();break}
+              const nativeDensity = scale === resident.scale && !adaptive
+              const localNativePose = reduced && nativeDensity && resident.plan.ids.every(id=>resident.shortTravelBounds?.has(id)) &&
+                import.meta.env.VITE_DESIGN_LOW_ZOOM_NATIVE_POSE !== '0'
               const canonical=this.viewport?canvasRasterPlan(this.viewport.view,scale/this.viewport.view.zoom,
-                this.viewport.width,this.viewport.height,{rasterProfile:this.profile,samplingScale:scale,exactPhase:!reduced}):undefined
+                this.viewport.width,this.viewport.height,{rasterProfile:this.profile,samplingScale:scale,exactPhase:nativeDensity}):undefined
               const worldCapture=!!this.sharedClient && !reduced && this.profile!=='figma' && this.profile!=='figmaSoftware' &&
                 canonical?.camera.x===0 && canonical?.camera.y===0
-              const canonicalCapture=import.meta.env.VITE_DESIGN_CANONICAL_CAPTURE==='1'&&this.allowIdleWarm&&!!this.sharedClient&&!reduced&&
+              const canonicalCapture=(import.meta.env.VITE_DESIGN_CANONICAL_CAPTURE==='1'||!!resident.foregroundExclusions&&foregroundSafe)&&this.allowIdleWarm&&!!this.sharedClient&&nativeDensity&&
                 this.profile==='figmaSubpixel'&&!!canonical
               phaseX = canonical?.phase.x || 0; phaseY = canonical?.phase.y || 0
               const captureCamera=canonicalCapture?canonical!.camera:{x:worldCapture?0:-originX+phaseX,y:worldCapture?0:-originY+phaseY,zoom:scale}
               // Keep the already-established camera arithmetic, but tell the
               // compiler the actual consumed output. A localized capture that
               // omits this region still prepares/allocates a whole page graph.
-              const boundedCapture=import.meta.env.VITE_DESIGN_BOUNDED_POSE_CAPTURE==='1'&&this.allowIdleWarm&&!!this.sharedClient&&!reduced&&this.profile==='figmaSubpixel'
+              const boundedCapture=this.allowIdleWarm&&!!this.sharedClient&&(
+                import.meta.env.VITE_DESIGN_BOUNDED_POSE_CAPTURE==='1'&&!reduced&&this.profile==='figmaSubpixel'||
+                localNativePose&&(this.profile==='figmaSubpixel'||this.profile==='analytic'))
               const captureViewport=canonicalCapture?{x:originX+Math.floor(captureCamera.x),y:originY+Math.floor(captureCamera.y),w:width,h:height}:
                 worldCapture?{x:originX,y:originY,w:width,h:height}:boundedCapture?{x:0,y:0,w:width,h:height}:undefined
               causePhase=2;causeBranch=3
@@ -1380,12 +1426,12 @@ export class InteractionRenderer {
                 ...(captureViewport?{captureViewport}:{}),
                 interactionOwner: this.interactionOwner, interactionGeneration: token, interactionBranch: 3,
                 rasterProfile: this.profile, livePreview: true, retainInteractionGraph: true, interactionSelection: resident.plan.ids,
-                interactionNative: !!resident.affine || !allowsReducedSampling(this.qualityZoom),
+                interactionNative: !!resident.affine || !reduced || localNativePose,
                 interactionAffine: !!resident.affine,
                 renderIntent: 'preview', interactionChannel: !!this.sharedClient,
                 interactionWindowFixed: !!resident.affine || resident.plan.ids.every(id=>resident.fixedBounds?.has(id)),
-                ...(this.viewport ? { interactionWindow: { x: canonicalCapture?bounds.x*scale+captureCamera.x:worldCapture?bounds.x*scale:(bounds.x - b.x) * scale,
-                  y:canonicalCapture?bounds.y*scale+captureCamera.y:worldCapture?bounds.y*scale:(bounds.y - b.y) * scale,
+                ...(this.viewport ? { interactionWindow: { x: bounds.x*scale+captureCamera.x,
+                  y:bounds.y*scale+captureCamera.y,
                   w: bounds.width * scale, h: bounds.height * scale } } : {}) }, false, this.backend, false, false, undefined, undefined, signal)
               causePhase=3
               break
@@ -1424,7 +1470,7 @@ export class InteractionRenderer {
             // changing it before the await would reinterpret old pixels using
             // new parent matrices. Keep pending newer captures and their order.
             resident.plan={document,pageId:resident.plan.pageId,ids:[...resident.plan.ids],layers:[]}
-            resident.affineEligible=undefined
+            resident.affinePlan=undefined
             completedOffsets=new Map(resident.plan.ids.map(id=>[id,{x:0,y:0}]))
             resident.offsets=completedOffsets
             const entries=this.props?.scene?.entriesFor(document,resident.plan.pageId,this.props.epoch)??scene(document,resident.plan.pageId)
@@ -1451,6 +1497,7 @@ export class InteractionRenderer {
           resident.displayedOffsets=completedOffsets||undefined
           resident.displayedTransforms = Object.fromEntries(resident.plan.ids.map(id => [id, [...document.nodes[id].transform] as Matrix]))
           resident.workerPoses=!capturedTiles && result.residentInteraction===true
+          resident.foregroundCapture=foregroundSafe
           this.inlineDisabled=false
           for (const tile of resident.tiles) tile.bitmap?.close()
           resident.tiles = capturedTiles || [{ key: `interaction-live:${token}`, serial: serial--,
@@ -1477,6 +1524,8 @@ export class InteractionRenderer {
               pendingInput.sequence > input.sequence && current() &&
               this.viewportRevision === viewportRevision && resident.workerPoses &&
               !this.inlineDisabled && this.sharedClient && result.gpuTile &&
+              guardedForegroundSafe(resident.foregroundExclusions,resident.rootBounds,resident.plan.ids,
+                interactionOffsets(resident.plan,pending),resident.parentLinear,resident.scale) === foregroundSafe &&
               interactionTransformsOnly({ ...resident.plan, document }, pending)) {
             // Inputs arriving during the first capture already belong to its
             // warmed worker session. Send their absolute transforms there;

@@ -296,6 +296,7 @@ export class GpuRenderer {
   // Private cumulative proof counters; no source URI, words or public protocol.
   private imageAssetCounters = { hits: 0, uploads: 0, scopeRetiredTextures: 0, legacyPrunes: 0, pressureEvictions: 0 }
   private residentImageRequest = false
+  private frameImageReuse = false
   private horizontalFilters = new HorizontalFilterCache(plane => this.release(plane))
   private staticImageBlurs = new StaticImageBlurCache(plane => this.release(plane), texture => this.driver.imageTableRange?.(texture))
   private staticImageTableProofs = new WeakMap<ExactImageTable, { source: StaticImageBlurSource; input: Rect }>()
@@ -2239,7 +2240,7 @@ export class GpuRenderer {
     // packet can omit an immutable document image and need it again on the next
     // tile. Keep its existing upload only under the same private owner, policy,
     // completion and working-budget rules used by the clamped-filter candidate.
-    if ((!this.residentImageRequest && import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX !== '1' &&
+    if ((!this.residentImageRequest && !this.frameImageReuse && import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX !== '1' &&
         import.meta.env.VITE_DESIGN_IMAGE_ASSET_RESIDENCY !== '1') ||
         this.driver.name !== 'webgpu' || !this.driver.waitForSubmittedWork) return
     let owner: ImageResidencyOwner | undefined
@@ -2314,6 +2315,11 @@ export class GpuRenderer {
   private async loadImages(scene: GpuScene) {
     const needed = sceneIndex(scene).images
     const next = this.currentImageResidency(scene)
+    // Required images may survive native pose samples under their private owner.
+    // This does not retain unused assets from other regions.
+    if (!next) this.frameImageReuse = false
+    const retainUnused = !!next && (this.residentImageRequest || import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1' ||
+      import.meta.env.VITE_DESIGN_IMAGE_ASSET_RESIDENCY === '1')
     const changed = this.imageResidencyOwner !== next?.owner || this.imageResidencyPolicy !== next?.policy
     if (changed && (this.imageResidencyOwner || next)) this.retireImageResidency()
     this.imageResidencyOwner = next?.owner; this.imageResidencyPolicy = next?.policy
@@ -2339,7 +2345,7 @@ export class GpuRenderer {
       // A regional scene's image subset is not the document's asset lifetime.
       // Only this private current owner may retain unused immutable uploads;
       // ordinary LRU/working pressure still owns their complete byte ledger.
-      if (next) continue
+      if (retainUnused) continue
       this.staticImageBlurs.retireSource(surface.texture)
       // A canceled prior frame can still own GPU reads. Such an optional
       // source leaves on a later completed frame, never before those reads.
@@ -2357,12 +2363,12 @@ export class GpuRenderer {
     // Atlas pages retire only when none of their slots' assets remain needed.
     for (const page of [...this.atlasPages]) {
       if ([...page.entries.values()].some((uri) => needed.has(uri))) continue
-      if (next) continue
+      if (retainUnused) continue
       this.destroyAtlasPage(page)
       this.imageAssetCounters.legacyPrunes++
     }
     for (const uri of this.imageDims.keys())
-      if (!next && !needed.has(uri)) this.imageDims.delete(uri)
+      if (!retainUnused && !needed.has(uri)) this.imageDims.delete(uri)
     // Validate every referenced source eagerly (same failure point as before),
     // but upload lazily at first sampling: an eagerly uploaded but not yet
     // sampled image would pin its bytes against eviction for the whole frame,
@@ -2580,6 +2586,22 @@ export class GpuRenderer {
    * generated in exact global-coordinate regions, never resampled/downscaled. */
   private paintWithBoundedImageFields(n: GpuNode, p: GpuPaint, mask: Surface): Surface | Promise<Surface> {
     const source = n.previewSource || n
+    if(import.meta.env.VITE_DESIGN_GRADIENT_WINDOW_FIELDS==='1'&&this.driver.windowedGradientFields&&this.driver.captureDisplay&&
+        this.scene.nativeInteraction&&this.scene.interactionRetained&&!this.interactionCapturing&&!this.scene.softwareRaster&&
+        ['linear','radial','angular','diamond'].includes(p.kind)&&n.rect.w*n.rect.h<=4_194_304&&
+        source.rect.w===n.rect.w&&source.rect.h===n.rect.h&&
+        exactBlendLattice([n.rect,source.rect])){
+      const draw=this.drawRegion(n.rect)
+      if(draw&&(!draw.w||!draw.h)){
+        // Validate the same original domain/paint before avoiding an unread
+        // field. run() still creates and clears the original full color target,
+        // so its later composition (including zero/NaN neighbours) is unchanged.
+        const parameters={kind:p.kind,color:'#000000',angle:p.angle,transform:p.transform,stops:p.stops.map(s=>({offset:s.offset,color:'#000000'}))}
+        gradient_sampling_grid_region(JSON.stringify(source.rect),JSON.stringify(rect(source.rect.x,source.rect.y,0,0)),
+          new Float64Array(source.matrix),new Float64Array(n.size),JSON.stringify(parameters),this.sampleIndex??4)
+        return this.paint(n,p,mask,undefined,true,mask)
+      }
+    }
     if (this.driver.managed && this.driver.name === 'webgpu' && this.driver.captureDisplay &&
         ['linear','radial','angular','diamond'].includes(p.kind) && n.rect.w*n.rect.h>262_144 &&
         n.rect.w*n.rect.h<=4_194_304 && source.rect.w===n.rect.w && source.rect.h===n.rect.h)
@@ -2602,6 +2624,12 @@ export class GpuRenderer {
     const key=JSON.stringify(inputs,(_key,value)=>Object.is(value,-0)?'-0':value)
     if(this.optimized&&import.meta.env.VITE_DESIGN_RETAIN_PARAMETER_FIELDS!=='0'&&this.materialFields.get(key,new Uint32Array(0)))
       return this.paint(n,p,mask,undefined,true)
+    const visible=this.drawRegion(n.rect)
+    if(import.meta.env.VITE_DESIGN_GRADIENT_WINDOW_FIELDS==='1'&&this.driver.windowedGradientFields&&
+        this.scene.nativeInteraction&&!this.scene.softwareRaster&&!this.driver.hdr&&visible&&visible.w>0&&visible.h>0&&
+        visible.w*visible.h<n.rect.w*n.rect.h*.9&&exactBlendLattice([n.rect,source.rect,visible])){
+      return this.paintWithGradientWindow(n,p,mask,visible,parameters,inputs)
+    }
     const bytes=n.rect.w*n.rect.h*16
     if(this.overBudget(bytes,n.rect.w,n.rect.h))throw this.budgetError('GPU 表面内存预算超限',2,3)
     const values=new Float32Array(n.rect.w*n.rect.h*4),rows=Math.max(1,Math.min(32,Math.floor(65_536/n.rect.w)))
@@ -2618,6 +2646,35 @@ export class GpuRenderer {
     const surface=this.materialField(inputs,n.rect,()=>values,(this.driver.uploadParameters||this.driver.uploadLinear),undefined,bytes,import.meta.env.VITE_DESIGN_RETAIN_PARAMETER_FIELDS!=='0')
     let grids=this.imageGrids.get(p);if(!grids){grids=new Map();this.imageGrids.set(p,grids)}grids.set(sample,surface)
     return this.paint(n,p,mask,undefined,true)
+  }
+  private async paintWithGradientWindow(n:GpuNode,p:GpuPaint,mask:Surface,local:Rect,parameters:unknown,inputs:unknown[]):Promise<Surface>{
+    const source=n.previewSource||n,sample=this.sampleIndex??4
+    const region=rect(n.rect.x+local.x,n.rect.y+local.y,local.w,local.h)
+    const sourceRegion=rect(source.rect.x+local.x,source.rect.y+local.y,local.w,local.h)
+    const windowInputs=['gradient-window',...inputs,local]
+    const key=JSON.stringify(windowInputs,(_key,value)=>Object.is(value,-0)?'-0':value)
+    const original=JSON.stringify(source.rect),matrix=new Float64Array(source.matrix),size=new Float64Array(n.size),paint=JSON.stringify(parameters)
+    let values:Float32Array|undefined
+    const cached=this.optimized&&import.meta.env.VITE_DESIGN_RETAIN_PARAMETER_FIELDS!=='0'&&this.materialFields.get(key,new Uint32Array(0))
+    if(!cached){
+      const bytes=local.w*local.h*16
+      if(this.overBudget(bytes,local.w,local.h))await this.reclaimScratch(bytes)
+      this.checkFrameCurrent()
+      values=new Float32Array(local.w*local.h*4)
+      const rows=Math.max(1,Math.min(32,Math.floor(65_536/local.w)))
+      for(let y=0;y<local.h;y+=rows){
+        this.checkFrameCurrent();const started=performance.now(),height=Math.min(rows,local.h-y)
+        const band=gradient_sampling_grid_region(original,JSON.stringify(rect(sourceRegion.x,sourceRegion.y+y,local.w,height)),matrix,size,paint,sample)
+        values.set(band,y*local.w*4);this.fieldBuildMs+=performance.now()-started
+        const pause=this.yieldEncoding();if(pause)await pause
+      }
+    }
+    this.checkFrameCurrent()
+    const surface=this.materialField(windowInputs,region,()=>values||gradient_sampling_grid_region(original,JSON.stringify(sourceRegion),matrix,size,paint,sample),
+      this.driver.uploadParameters||this.driver.uploadLinear!,undefined,local.w*local.h*16,import.meta.env.VITE_DESIGN_RETAIN_PARAMETER_FIELDS!=='0')
+    // Keep n.rect and the original scissor/halo. Only unused coordinate texels
+    // disappear; the color surface and all later zero/NaN neighbours stay intact.
+    return this.paint(n,p,mask,undefined,true,surface)
   }
   /** Probe one original phase only. A certified full compact field stays
    * reusable across bands; only its dense fallback needs regional generation. */
@@ -2700,8 +2757,8 @@ export class GpuRenderer {
     }
   }
   private paint(n: GpuNode, p: GpuPaint, mask: Surface, material?: Surface): Surface
-  private paint(n: GpuNode, p: GpuPaint, mask: Surface, material: Surface | undefined, admit: true): Surface | Promise<Surface>
-  private paint(n: GpuNode, p: GpuPaint, mask: Surface, material?: Surface, admit = false): Surface | Promise<Surface> {
+  private paint(n: GpuNode, p: GpuPaint, mask: Surface, material: Surface | undefined, admit: true, gradientField?:Surface): Surface | Promise<Surface>
+  private paint(n: GpuNode, p: GpuPaint, mask: Surface, material?: Surface, admit = false, gradientField?:Surface): Surface | Promise<Surface> {
     let image: Surface | undefined
     let imageLevel = 0
     let imageOrigin: [number, number] = [0, 0]
@@ -2725,7 +2782,7 @@ export class GpuRenderer {
         : [mask, image]
       : this.driver.managed &&
           ['linear', 'radial', 'angular', 'diamond'].includes(p.kind)
-        ? [mask, mask, mask, this.gradientGrid(n, p)]
+        ? [mask, mask, mask, gradientField||this.gradientGrid(n, p)]
         : [mask]
     if (p.stops.length > 32 && ['linear', 'radial', 'angular', 'diamond'].includes(p.kind)) {
       inputs[1] = this.gradientStopTable(p)
@@ -2735,6 +2792,7 @@ export class GpuRenderer {
         this.configurePaint(u, n, p)
         if (p.kind === 'image' && inputs[3])
           u.set([inputs[3].rect.x, inputs[3].rect.y], 204)
+        if(gradientField)u.set([1,gradientField.rect.x-n.rect.x,gradientField.rect.y-n.rect.y,0],188)
       })
       if (!material && image && this.imageZeroOverSource(n, p, mask, image))
         // Native managed coordinates clamp valid addresses to texel centres;
@@ -3203,7 +3261,7 @@ export class GpuRenderer {
     finally { this.bytes += (this.driver.scratchBytes || 0) - completedScratch }
     this.staticImageBlurs.collect(this.driver.completedResourceEpoch)
     this.collectRetiredImageAssets()
-    const preserveImmutableImages = this.residentImageRequest || import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1' ||
+    const preserveImmutableImages = this.residentImageRequest || this.frameImageReuse || import.meta.env.VITE_DESIGN_EXACT_CLAMP_PREFIX === '1' ||
       import.meta.env.VITE_DESIGN_IMAGE_ASSET_RESIDENCY === '1'
     const pressure = (required > 0 || preserveImmutableImages) && this.workingBytes + required > this.frameBudget
     if (pressure) {
@@ -6440,15 +6498,18 @@ export class GpuRenderer {
       console.debug('DESIGN_GPU_PREFIX_BUDGET_FALLBACK ' + JSON.stringify({ reserved, extent: scene.extent }))
       try { return await this.renderAttempt(scene, readback, present) }
       finally { this.prefixAllowed = true; this.nestedPrefixAllowed = true }
-    } finally { this.frameCurrent = undefined; this.displayBackpressure=false; this.driver.rasterPacing=false; this.residentImageRequest=false; this.encodingProgress=undefined; this.activeRuntimeConfiguration = undefined }
+    } finally { this.frameCurrent = undefined; this.displayBackpressure=false; this.driver.rasterPacing=false; this.residentImageRequest=false; this.frameImageReuse=false; this.encodingProgress=undefined; this.activeRuntimeConfiguration = undefined }
   }
   private async renderAttempt(scene: GpuScene, readback = false, present = true) {
     // Display-only automatic residency. The existing private source owner,
     // color/mip policy, completion and pressure gates still decide every hit.
     // Explicit outputs and unowned loaders keep their established paths.
-    this.residentImageRequest = present && !readback && !!this.driver.captureDisplay &&
-      this.driver.name==='webgpu' && !!this.driver.managed && !this.driver.hdr &&
-      import.meta.env.VITE_DESIGN_RESIDENT_IMAGE_REUSE!=='0'
+    const displayImages = present && !readback && !!this.driver.captureDisplay &&
+      this.driver.name === 'webgpu' && !!this.driver.managed && !this.driver.hdr &&
+      import.meta.env.VITE_DESIGN_RESIDENT_IMAGE_REUSE !== '0'
+    this.residentImageRequest = displayImages &&
+      (import.meta.env.VITE_DESIGN_RESIDENT_IMAGE_REUSE === '1' || !scene.interactionRetained)
+    this.frameImageReuse = displayImages && scene.nativeInteraction === true && scene.interactionRetained === true
     this.activeRuntimeConfiguration = undefined
     this.skippedPainterVisits=0
     this.opaquePrefixActive=this.opaquePrefixEnabled&&present&&!readback&&

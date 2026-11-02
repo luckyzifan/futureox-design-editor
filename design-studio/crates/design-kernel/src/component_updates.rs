@@ -61,6 +61,10 @@ pub(crate) fn resolve_plan(doc:&mut Document,fonts:&Fonts,plan:&Plan)->Result<()
  resolve_scoped(doc,fonts,plan,None)
 }
 fn resolve_scoped(doc:&mut Document,fonts:&Fonts,plan:&Plan,source_bytes:Option<usize>)->Result<(),String>{
+ resolve_scoped_model(doc,fonts,plan,source_bytes)?;
+ doc.validate()
+}
+fn resolve_scoped_model(doc:&mut Document,fonts:&Fonts,plan:&Plan,source_bytes:Option<usize>)->Result<(),String>{
  // plan_patch rejects all bindings/styles/modes and definition defaults.
  // Resolving authored bindings therefore has no work and must not walk cold
  // islands (or multiply unrelated Boolean children by an identity resize).
@@ -70,7 +74,7 @@ fn resolve_scoped(doc:&mut Document,fonts:&Fonts,plan:&Plan,source_bytes:Option<
  if !plan.instances.is_empty(){components::resolve_roots_budgeted(doc,Some(&plan.instances),source_bytes)?;}
  layout::resolve_roots(doc,fonts,Some(&plan.roots))?;
  curve_boolean::resolve_roots(doc,Some(&plan.roots))?;
- if source_bytes.is_none(){components::check_budget(doc)?;}doc.validate()
+ if source_bytes.is_none(){components::check_budget(doc)?;}Ok(())
 }
 fn resolve_full(doc:&mut Document,fonts:&Fonts)->Result<(),String>{
  design_system::resolve_authored(doc)?;components::resolve(doc)?;layout::resolve(doc,fonts)?;curve_boolean::resolve(doc)?;components::check_budget(doc)?;doc.validate()
@@ -124,12 +128,15 @@ impl State{
   for(id,node)in &patch.nodes {doc.nodes.insert(id.clone(),node.as_ref().unwrap().clone());}
   let mut ledger_update=None;
   let result=(||{
-   doc.validate()?;
-   let source_bytes=if let Some(ledger)=&self.ledger{Some(ledger.prepare(&doc,&patch.nodes.keys().cloned().collect())?.bytes())}
+   let changed=patch.nodes.keys().cloned().collect();
+   doc.validate_scoped_edit(&changed)?;
+   let source_bytes=if let Some(ledger)=&self.ledger{Some(ledger.prepare(&doc,&changed)?.bytes())}
    else{crate::capacity::check_document_bytes(crate::editing::serialized_document_size(&doc).map_err(|e|e.to_string())?)?;None};
-   resolve_scoped(&mut doc,&fonts,&scope,source_bytes)?;
+   resolve_scoped_model(&mut doc,&fonts,&scope,source_bytes)?;
    let current=collect(&doc,&scope.roots);
-   if let Some(ledger)=&self.ledger{ledger_update=Some(ledger.prepare(&doc,&ids.union(&current).cloned().collect())?);}
+   let affected=ids.union(&current).cloned().collect();
+   doc.validate_scoped_edit(&affected)?;
+   if let Some(ledger)=&self.ledger{ledger_update=Some(ledger.prepare(&doc,&affected)?);}
    let candidate=|id:&str|patch.nodes.get(id).and_then(Option::as_ref).or_else(||backup.get(id));
    let reply=Reply{nodes:current.iter().filter_map(|id|doc.nodes.get(id).filter(|n|candidate(id)!=Some(*n)).map(|n|(id.clone(),n.clone()))).collect(),
     removed:ids.iter().filter(|id|!doc.nodes.contains_key(*id)).cloned().collect(),receipt,
@@ -218,6 +225,23 @@ mod tests{
    let bad=DocumentPatch{nodes:BTreeMap::from([("left".into(),Some(n))]),fields:BTreeMap::new()};
    assert!(state.patch(&serde_json::to_string(&bad).unwrap(),receipt,&fonts).is_err());
    assert_eq!(state.document.as_ref(),Some(&candidate));assert_eq!(state.receipt,receipt);assert_eq!(state.ledger.as_ref().unwrap().bytes(),size);
+  }
+ }
+ #[test]fn scoped_validation_still_rejects_changed_node_bodies_and_invalid_derived_descendants(){
+  let fonts=Fonts::new();let mut doc=fixture();
+  let mut parent=crate::facet::sample_node("ordinary","frame");parent.width=1.;parent.children=vec!["sized".into()];
+  let mut child=crate::facet::sample_node("sized","rectangle");child.width=20.;child.transform.0[4]=2.;
+  child.constraints=Some(serde_json::from_value(json!({"horizontal":"scale","vertical":"start","referenceWidth":1,"referenceHeight":parent.height})).unwrap());
+  doc.pages[0].children.push(parent.id.clone());doc.nodes.insert(parent.id.clone(),parent);doc.nodes.insert(child.id.clone(),child);
+  let mut state=State::default();state.full(&serde_json::to_string(&doc).unwrap(),&fonts).unwrap();
+  let before=state.document.clone().unwrap();let receipt=state.receipt;let bytes=state.ledger.as_ref().unwrap().bytes();
+  for kind in 0..4 {
+   let id=if kind==3{"ordinary"}else{"sized"};let mut next=before.nodes[id].clone();
+   match kind {0=>next.opacity=2.,1=>next.transform.0[4]=1e12,2=>next.width=0.,_=>next.width=1e7}
+   let patch=DocumentPatch{nodes:BTreeMap::from([(id.into(),Some(next))]),fields:BTreeMap::new()};
+   assert!(plan_patch(&before,&patch).unwrap().is_some());
+   assert!(state.patch(&serde_json::to_string(&patch).unwrap(),receipt,&fonts).is_err(),"case {kind}");
+   assert_eq!(state.document.as_ref(),Some(&before));assert_eq!(state.receipt,receipt);assert_eq!(state.ledger.as_ref().unwrap().bytes(),bytes);
   }
  }
 }

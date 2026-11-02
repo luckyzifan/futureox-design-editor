@@ -2304,7 +2304,16 @@ export class Editor {
     const base=tx.previewBase||tx.doc,index=tx.dropIndex??=createCanvasDropIndex(base,this.state.page)
     const plan=this.movePlacement(this.moveQuery(base,patches,move.ids),move.ids,move.point,move.force,move.preserveParent,index)
     const current=this.parentMap()
-    return {patches,retainsParents:plan.moving.length===0&&move.ids.every(id=>current.get(id)===index.parents.get(id))}
+    const retainsParents=plan.moving.length===0&&move.ids.every(id=>current.get(id)===index.parents.get(id))
+    if(retainsParents&&base===this.state.doc&&!tx.copy&&!tx.flow&&move.ids.length===1){
+      // GPU-only movement has not published a preview document yet. Seed the
+      // same validated translation plan from the already resolved source so
+      // pointer-up need not resolve every component/layout island again.
+      const translation=new TranslationPreviewPlan(base,move.ids)
+      if(translation.accepts(patches))tx.movePreview={source:base,document:base,published:base,key:plan.key,
+        parents:current,epoch:pickingGeometryEpoch(),translation}
+    }
+    return {patches,retainsParents}
   }
   private movePlacement(source:DesignDocument,ids:string[],point:Point,force:boolean,preserveParent:boolean,index?:CanvasDropIndex){
     const tx=this.transaction

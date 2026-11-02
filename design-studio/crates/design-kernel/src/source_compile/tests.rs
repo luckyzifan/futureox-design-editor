@@ -655,3 +655,51 @@ fn unknown_capture_policy_keeps_the_complete_compiler() {
     compare(&mut runtime, &mut actual, &mut expected, &desc, &r);
     assert_eq!(runtime.stats["mode"], "complete");
 }
+
+#[test]
+fn exact_source_revisit_skips_projection_and_geometry_but_reissues_resources_and_sequence() {
+    let d=document();let desc=descriptor(&d);
+    let mut actual=owner(d.clone(),"revisit");let mut expected=owner(d.clone(),"oracle");
+    let mut runtime=Runtime::default();
+    let a=request(-480.25,-480.375,1.);let b=request(-1480.25,-480.375,1.);
+    let first=compare(&mut runtime,&mut actual,&mut expected,&desc,&a);
+    compare(&mut runtime,&mut actual,&mut expected,&desc,&b);
+    let builds=runtime.rebuilds;
+    let returned=compare(&mut runtime,&mut actual,&mut expected,&desc,&a);
+    assert_eq!(runtime.rebuilds,builds,"revisit must not reconstruct a projection");
+    assert_eq!(runtime.stats["mode"],"demand-replay");
+    assert_projection_equivalent(&returned,&first);
+    assert_ne!(first,returned,"revisit publishes a new frame sequence");
+    assert_eq!(compare(&mut runtime,&mut actual,&mut expected,&desc,&a),returned);
+    assert!(actual.frame_scene.bytes()<=CACHE);
+    let mut ack=a.clone();ack["frameResources"]=json!({"scope":"revisit","ranges":[[1,u32::MAX]]});
+    let packet=runtime.compile(&mut actual,&desc,"stage","page",&ack.to_string()).unwrap();
+    assert_eq!(u32::from_le_bytes(packet[20..24].try_into().unwrap()),0);
+    ack["frameResources"]=json!({"scope":"revisit","ranges":[[2,1]]});
+    assert!(runtime.compile(&mut actual,&desc,"stage","page",&ack.to_string()).is_err());
+    let cancelled=crate::render_cancellation::with_probe(||true,||runtime.compile(&mut actual,&desc,"stage","page",&a.to_string()));
+    assert!(cancelled.is_err());
+    actual.bind_frame_scene_scope("replacement").unwrap();
+    let packet=compare(&mut runtime,&mut actual,&mut expected,&desc,&a);
+    assert_eq!(wire::scope(&packet),"replacement");
+    assert_ne!(runtime.stats["mode"],"demand-replay");
+    actual.frame_scene.limit_retention(Some(0));
+    assert_eq!(actual.frame_scene.bytes(),0);
+    compare(&mut runtime,&mut actual,&mut expected,&desc,&a);
+    assert_ne!(runtime.stats["mode"],"demand-replay");
+}
+
+#[test]
+fn source_replay_cannot_cross_revision_or_source_descriptor() {
+    let d=document();let mut desc=descriptor(&d);let mut actual=owner(d.clone(),"live");
+    let mut expected=owner(d.clone(),"reference");let mut runtime=Runtime::default();let a=request(-480.25,-480.375,1.);
+    compare(&mut runtime,&mut actual,&mut expected,&desc,&a);
+    desc.footer_hash[0]=1;
+    compare(&mut runtime,&mut actual,&mut expected,&desc,&a);
+    assert_ne!(runtime.stats["mode"],"demand-replay");
+    let mut changed=d;changed.nodes.get_mut("a").unwrap().opacity=0.25;
+    crate::capacity::with_source_storage_scope(true,||actual.load_source_document(changed.clone())).unwrap();
+    crate::capacity::with_source_storage_scope(true,||expected.load_source_document(changed)).unwrap();
+    compare(&mut runtime,&mut actual,&mut expected,&desc,&a);
+    assert_ne!(runtime.stats["mode"],"demand-replay");
+}

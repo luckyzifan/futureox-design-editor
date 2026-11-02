@@ -1,6 +1,7 @@
 import { effectsAreKnown } from './render-dependency'
 import { allowsReducedSampling } from './render-quality'
 import { pageBackdropPadding } from './interaction-layers'
+import { boundedBackdropRead, guardedForegroundSafe } from './guarded-foreground'
 import type { Bounds, DesignDocument, DesignNode, Matrix } from '../model'
 import { unionBounds, type SceneEntry } from '../geometry'
 
@@ -47,6 +48,7 @@ export type InteractionDependencyScope = {
   dependencyPadding: number
   /** The branch follows every backdrop reader in its painter scopes. */
   finalForeground: boolean
+  foregroundExclusions?: Bounds[]
 }
 
 /** An ordinary foreground branch cannot feed any earlier backdrop.
@@ -55,7 +57,7 @@ export type InteractionDependencyScope = {
  * This proves only dependency locality; the authored bounds below retain
  * exactly the same geometry assumptions as the existing no-backdrop path. */
 function finalForegroundBranch(document: DesignDocument, pageId: string,
-  entries: readonly SceneEntry[], entry: SceneEntry | undefined): boolean {
+  entries: readonly SceneEntry[], entry: SceneEntry | undefined, exclusions?: Bounds[]): boolean {
   const page = document.pages.find(page => page.id === pageId)
   if (!page || !entry?.ancestors.length || document.animations?.length ||
       Object.values(document.nodes).some(node => node.connector || node.textPath)) return false
@@ -69,7 +71,7 @@ function finalForegroundBranch(document: DesignDocument, pageId: string,
   // filters and chains that grow output retain the full dependency path.
   const localRootEffects = (node: DesignNode) => {
     const effects = node.effects.filter(effect => effect.visible)
-    return (effects.length === 1 || import.meta.env.VITE_DESIGN_CONTAINED_EFFECT_CAPTURE!=='0'&&effects.length<=4&&effects.every(effect=>['inner-shadow','color-controls'].includes(effect.kind))) && effects.every(effect =>
+    return (effects.length === 1 || import.meta.env.VITE_DESIGN_CONTAINED_EFFECT_CAPTURE==='1'&&effects.length<=4&&effects.every(effect=>['inner-shadow','color-controls'].includes(effect.kind))) && effects.every(effect =>
       ['blur', 'gaussian-blur', 'shadow', 'inner-shadow', 'color-controls'].includes(effect.kind) &&
       !effect.gradientBlur && Number.isFinite(effect.radius) && effect.radius >= 0&&[effect.x??0,effect.y??0,effect.spread??0].every(Number.isFinite))
   }
@@ -79,6 +81,7 @@ function finalForegroundBranch(document: DesignDocument, pageId: string,
     node.fills.every(paint => !paint.visible || paint.blend === 'normal') &&
     node.strokes.every(stroke => !stroke.visible || !stroke.paint.visible || stroke.paint.blend === 'normal')
   const independentLater = new Map<string,boolean>()
+  const entryIndex = exclusions ? new Map(entries.map(entry=>[entry.id,entry])) : undefined
   const laterBranch = (id:string):boolean => {
     const known=independentLater.get(id);if(known!==undefined)return known
     const pending=[id],visited=new Set<string>()
@@ -88,6 +91,10 @@ function finalForegroundBranch(document: DesignDocument, pageId: string,
       if(!n.visible)continue
       const cached=independentLater.get(next);if(cached===false)return false;if(cached===true)continue
       if(visited.has(next))return false
+      if (exclusions && n.effects.some(e=>e.visible&&e.kind==='background-blur')) {
+        const support = boundedBackdropRead(document, entryIndex!, id)
+        if (support) { exclusions.push(support); independentLater.set(id,true); return true }
+      }
       // Later isolated sources may blur their own pixels, but cannot read
       // this earlier branch. Boolean children are local to that later source.
       // Keep external/unknown dependencies and pass-through effects excluded.
@@ -157,15 +164,21 @@ export function buildInteractionDependencyScope(document: DesignDocument, pageId
   const noBackdrop = knownEffects && entries.every(entry => !document.nodes[entry.id].effects.some(e =>
     e.visible && ['background-blur', 'glass'].includes(e.kind)))
   const selectedEffects=selection.length===1?document.nodes[selection[0]]?.effects.filter(effect=>effect.visible)||[]:[]
-  const containedRoot=import.meta.env.VITE_DESIGN_CONTAINED_EFFECT_CAPTURE!=='0'&&selectedEffects.length>0&&selectedEffects.length<=4&&
+  const containedRoot=import.meta.env.VITE_DESIGN_CONTAINED_EFFECT_CAPTURE==='1'&&selectedEffects.length>0&&selectedEffects.length<=4&&
     selectedEffects.every(effect=>['inner-shadow','color-controls'].includes(effect.kind))
   const finalForeground = (!noBackdrop||containedRoot) && knownEffects && selection.length === 1 &&
     finalForegroundBranch(document, pageId, entries, byId.get(selection[0]))
+  const exclusions: Bounds[] = []
+  const guardedForeground = import.meta.env.VITE_DESIGN_LOCAL_FOREGROUND_CAPTURE !== '0' && !noBackdrop && !finalForeground &&
+    knownEffects && selection.length === 1 && finalForegroundBranch(document,pageId,entries,byId.get(selection[0]),exclusions) && exclusions.length > 0 &&
+    guardedForegroundSafe(exclusions,new Map([[selection[0],unionBounds(entries.filter(e=>e.id===selection[0]||e.ancestors.includes(selection[0]))
+      .map(e=>paddedBounds(document,e)))]]),selection,new Map([[selection[0],{x:0,y:0}]]),scope.parentLinear,zoom*dpr)
+  scope.foregroundExclusions = guardedForeground ? exclusions : undefined
   scope.finalForeground = finalForeground
   // Earlier filters have already sampled their backdrop before this branch.
   // Their read support cannot propagate a change in the final foreground.
   if (finalForeground) scope.dependencyPadding = 0
-  if (noBackdrop || finalForeground) for (const id of selection) {
+  if (noBackdrop || finalForeground || guardedForeground) for (const id of selection) {
     const entry = byId.get(id), selected = document.nodes[id]
     if (!entry || !entry.ancestors.length || selected.mask || entry.ancestors.some(id => {
       const n = document.nodes[id]
@@ -187,7 +200,7 @@ export function buildInteractionDependencyScope(document: DesignDocument, pageId
       // Unioning individual padded nodes alone cannot account for that sum.
       const scale = Math.max(Math.hypot(entry.matrix[0], entry.matrix[1]), Math.hypot(entry.matrix[2], entry.matrix[3]))
       const effects=selected.effects.filter(effect=>effect.visible)
-      const contained=import.meta.env.VITE_DESIGN_CONTAINED_EFFECT_CAPTURE!=='0'&&effects.every(effect=>['inner-shadow','color-controls'].includes(effect.kind))
+      const contained=import.meta.env.VITE_DESIGN_CONTAINED_EFFECT_CAPTURE==='1'&&effects.every(effect=>['inner-shadow','color-controls'].includes(effect.kind))
       const pad = contained ? 2*effects.length/(zoom*dpr) : Math.max(0, ...effects.map(effect =>
         effect.radius * 3 + Math.abs(effect.x || 0) + Math.abs(effect.y || 0) + Math.abs(effect.spread || 0))) * scale
       bounds = { x: bounds.x-pad, y: bounds.y-pad, width: bounds.width+2*pad, height: bounds.height+2*pad }

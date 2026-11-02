@@ -256,8 +256,10 @@ test('complete C replaces S; missing C snapshot stays closed through D pending r
  await settleUntil(()=>transport.jobs.some(job=>!job.done&&!job.options.interactionOwner&&job.document===h.B),'authored B refinement request')
  schedulingSnapshot('B-refinement-arrived')
  const bTimer=timeline.find(event=>event.kind==='timer80-scheduled'&&event.document===documentTag(h.B))
- expect(bTimer?.refineDocument).toBe(true)
- expect(timeline.some(event=>event.kind==='timer80-fired'&&event.timer===bTimer?.timer)).toBe(true)
+ // The continuing GPU owner retains C while B refines immediately. It must
+ // not fall back to the SVG-only 80 ms coalescing timer at pointerup.
+ expect(bTimer).toBeUndefined()
+ expect(timeline.some(event=>event.kind==='request'&&event.document===documentTag(h.B)&&!event.owner)).toBe(true)
  const jobs=transport.jobs.filter(job=>!job.done&&!job.options.interactionOwner)
  expect(jobs.some(job=>job.document===h.B)).toBe(true)
  transport.autoPage=true

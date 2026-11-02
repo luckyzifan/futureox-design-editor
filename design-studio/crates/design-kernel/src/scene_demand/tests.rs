@@ -350,9 +350,10 @@ fn complete_topology_viewport_and_dependency_acquisition_matches_source() {
         }
         assert_eq!(loaded.reads().metadata_reads, 0);
         assert_eq!(loaded.reads().node_reads, loaded.nodes().len() as u64);
-        for unit in &loaded.demand.units {
+        let LoadedAuthority::Planned(planned) = &loaded.demand else { panic!("expected planned source demand") };
+        for unit in &planned.units {
             for dep in &f.catalog.units[*unit].dependencies {
-                assert!(loaded.demand.units.contains(dep));
+                assert!(planned.units.contains(dep));
             }
         }
         reports.push(json!({"name":name,"camera":[x,y,zoom],"demand":loaded.stats(),"nodeBytes":loaded.reads().node_bytes,"proofBytes":loaded.reads().index_bytes_verified,"metadataReads":0,"sourceNodesEqual":true}));

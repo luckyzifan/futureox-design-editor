@@ -28,6 +28,7 @@ import { useShortcutProfile } from './shortcut-preference'
 import { shortcutPlatform, toolShortcutLabel, shortcutLabel, formatShortcutCombo } from './shortcut-profiles'
 import { shortcutTargetOwnsKeyboard } from './editor-shortcuts'
 import { AutomationPanel } from './AutomationPanelLauncher'
+import { DesignAgentLauncher } from './design-ai/DesignAgentLauncher'
 import { attachDesktopAutomation } from './automation/bridge'
 import { createWorkspaceAutomationRenderer } from './automation/workspace-bridge'
 import { createAutomationSettingsAdapter } from './automation/settings-adapter'
@@ -1231,7 +1232,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           onTools={() => setShowCommands((value) => !value)} toolsOpen={showCommands} onVariables={() => setShowTools(true)} />
         <div ref={leftPanel} className="adaptive-layers-shell">{source?.navigation}{(!source||source.showLayers)&&<Layers editor={editor} section={workspaceSection} onSection={setWorkspaceSection} showPages={!source}/>}<PanelResizeHandle side="left" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} /></div>
         <div className="canvas-workspace" ref={source?.canvas}>
-          {!showHome&&!uiMinimized&&<div className="canvas-panel-toggles">
+          {!showHome&&!uiMinimized&&<div className="canvas-panel-toggles" onKeyDown={event=>event.stopPropagation()}>
             <button type="button" ref={leftPanelToggle} className="canvas-panel-toggle left"
               title={`${showLayers?panelText.collapse:panelText.expand} · ${panelText.left}`} aria-label={panelText.left}
               aria-expanded={showLayers} onClick={() => togglePanel('left')}>

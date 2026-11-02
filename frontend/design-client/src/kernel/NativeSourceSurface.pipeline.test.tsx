@@ -11,7 +11,7 @@ import type {ResidentFrame} from './gpu/resident-presenter'
 import type {RasterTile} from './tile-cache'
 
 type Job={options:KernelOptions;signal?:AbortSignal;receive:(tile:TileResult)=>void;finish:()=>void;active:boolean}
-const state=vi.hoisted(()=>({jobs:[] as Job[],frames:[] as ResidentFrame[],released:[] as number[],active:0,maxActive:0,disposed:0,phaseExact:true,motionMultiplier:1,prefetchEnabled:false}))
+const state=vi.hoisted(()=>({jobs:[] as Job[],frames:[] as ResidentFrame[],released:[] as number[],active:0,maxActive:0,disposed:0,phaseExact:true,motionMultiplier:1,prefetchEnabled:false,preview:false}))
 vi.mock('./client',()=>({backendPreference:()=> 'webgpu',renderExecutionPolicy:{desktopFullMath:true,desktopDisplay:true,cpuOnly:false,hdrCompositing:false},KernelClient:class{
  onPresentation?: (value:Record<string,unknown>)=>void
  renderSource(_source:unknown,options:KernelOptions,receive:(tile:TileResult)=>void,signal?:AbortSignal){
@@ -25,11 +25,11 @@ vi.mock('./client',()=>({backendPreference:()=> 'webgpu',renderExecutionPolicy:{
   })
  }
  attachPresentation(){}
- present(frame:ResidentFrame){state.frames.push(frame);this.onPresentation?.({presented:{presentationId:frame.presentationId,view:frame.view,width:frame.width,height:frame.height,dpr:frame.dpr,ids:frame.items.map(item=>item.tile.gpuTile)}})}
+ present(frame:ResidentFrame){state.frames.push(frame);this.onPresentation?.({presented:{presentationId:frame.presentationId,view:frame.view,width:frame.width,height:frame.height,dpr:frame.dpr,preview:state.preview,ids:frame.items.map(item=>item.tile.gpuTile)}})}
  releasePresented(ids:number[]){state.released.push(...ids)}
  dispose(){state.disposed++}
 }}))
-vi.mock('./presentation',()=>({useDevicePixelRatio:()=>1}))
+vi.mock('./presentation',async importOriginal=>({...await importOriginal<typeof import('./presentation')>(),useDevicePixelRatio:()=>1}))
 vi.mock('./canvas-raster-plan',()=>({canvasRasterPlan:(view:{zoom:number},_dpr:number,_w:number,_h:number,options:any)=>{const scale=options.samplingScale??view.zoom;return {scale,phase:{x:0,y:0},camera:{...view,zoom:scale}}},canvasRasterPhaseMatches:()=>state.phaseExact,nativeTileMotionScale:(view:{zoom:number})=>view.zoom*state.motionMultiplier}))
 vi.mock('./tile-computation-key',()=>({periodicComputationCamera:(camera:unknown)=>camera,tileComputationDependsOnCamera:()=>false,tileComputationKey:(tile:RasterTile)=>tile.key}))
 vi.mock('./tile-plan-aligned',()=>({planTilesWithPrefetchRim:(_bounds:unknown,zoom:number)=>({viewport:[0,1,2,3].map(index=>({key:`${zoom}:${index}`,x:(index%2)*512,y:Math.floor(index/2)*512,width:514,height:514,zoom,gutter:1,phaseX:0,phaseY:0})),rim:state.prefetchEnabled?[{key:`${zoom}:rim`,x:1024,y:0,width:514,height:514,zoom,gutter:1,phaseX:0,phaseY:0,prefetch:true}]:[],cacheLimitSkipped:0})}))
@@ -48,7 +48,7 @@ beforeEach(()=>{
  vi.stubGlobal('requestAnimationFrame',(fn:FrameRequestCallback)=>{frames.set(++sequence,fn);return sequence})
  vi.stubGlobal('cancelAnimationFrame',(id:number)=>frames.delete(id))
  Object.defineProperty(dom.window.HTMLCanvasElement.prototype,'transferControlToOffscreen',{value:()=>({})})
- Object.assign(state,{jobs:[],frames:[],released:[],active:0,maxActive:0,disposed:0,phaseExact:true,motionMultiplier:1,prefetchEnabled:false})
+ Object.assign(state,{jobs:[],frames:[],released:[],active:0,maxActive:0,disposed:0,phaseExact:true,motionMultiplier:1,prefetchEnabled:false,preview:false})
  root=createRoot(document.getElementById('root')!)
 })
 afterEach(async()=>{await act(async()=>{root.unmount();await pause()});dom.window.close();vi.unstubAllGlobals();expect(state.active).toBe(0)})
@@ -67,6 +67,21 @@ test('two-tile batches remain single-owner and the first tile presents before th
  expect(state.maxActive).toBe(1)
  expect(state.frames.at(-1)?.items.map(item=>item.tile.gpuTile).sort()).toEqual([11,12,13,14])
  expect(statuses.some(value=>value.phase==='ready'&&value.done===4&&value.total===4)).toBe(true)
+})
+
+test('actual placeholder ACK cannot certify an exact plan, and a cold camera still presents',async()=>{
+ state.preview=true
+ await draw();const first=state.jobs[0]
+ await act(async()=>{deliver(first,0,211);deliver(first,1,212);first.finish();await pause()})
+ const second=state.jobs[1]
+ await act(async()=>{deliver(second,0,213);deliver(second,1,214);second.finish();await pause();paint()})
+ expect(statuses.some(value=>value.phase==='ready')).toBe(false)
+ await draw({x:4000,y:0,zoom:1});await act(async()=>paint())
+ expect(state.frames.at(-1)).toMatchObject({view:{x:4000},items:[],cameraPreview:{anchor:expect.any(Number)}})
+ expect(statuses.some(value=>value.phase==='ready')).toBe(false)
+ state.preview=false
+ await draw();await act(async()=>paint())
+ expect(statuses.some(value=>value.phase==='ready')).toBe(true)
 })
 
 test('a batch resolving without its second tile fails instead of certifying a partial viewport',async()=>{
@@ -172,7 +187,7 @@ test('strict target: an exact native cache return bypasses unused motion headroo
  expect(obsolete.signal?.aborted).toBe(true)
  expect(state.active).toBe(0)
  expect(statuses.slice(before).some(s=>s.phase==='ready')).toBe(true)
- expect(state.frames.at(-1)?.allowEmpty).toBe(false)
+ expect(state.frames.at(-1)?.allowEmpty).not.toBe(true)
 })
 
 test('strict target: quiet input cancels compatible headroom that cannot certify the native phase',async()=>{

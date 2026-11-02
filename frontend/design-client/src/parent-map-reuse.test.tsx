@@ -131,3 +131,19 @@ test('ArrowLeft at a root scans topology once even when no parent row exists amo
   expect(editor.state.selection).toEqual([])
   expect(editor.canUndo).toBe(false)
 })
+
+test('layout-order probing shares the immutable gesture baseline and refreshes after reparent/undo', () => {
+  const { editor, a, b, child } = fixture()
+  editor.begin('Move')
+  const before = editor.state.doc
+  scans.count = 0
+  for (let i = 0; i < 32; i++) expect(editor.previewLayoutOrder(child.id, { x: 25+i, y: 45 })).toBe(false)
+  expect(scans.count).toBeLessThanOrEqual(1)
+  expect(editor.state.doc).toBe(before)
+  editor.cancel();editor.reparent(child.id,b.id)
+  expect(editor.parentMap().get(child.id)).toBe(b.id)
+  editor.begin('Move again');scans.count=0
+  for(let i=0;i<16;i++)expect(editor.previewLayoutOrder(child.id,{x:350+i,y:65})).toBe(false)
+  expect(scans.count).toBeLessThanOrEqual(1)
+  editor.cancel();editor.undo();expect(editor.parentMap().get(child.id)).toBe(a.id)
+})

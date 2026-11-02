@@ -31,7 +31,7 @@ class QueueModel {
   }
   outstanding(owner:string){return this.resources.filter(resource=>resource.owner===owner&&(!resource.destroyed||resource.lastUse>this.completed)).reduce((sum,resource)=>sum+resource.bytes,0)}
 }
-export function descriptorPresenter(report: (value: Record<string, unknown>) => void){
+export function descriptorPresenter(report: (value: Record<string, unknown>) => void, atomic=false){
   vi.stubGlobal('GPUTextureUsage',{RENDER_ATTACHMENT:1,TEXTURE_BINDING:2,COPY_DST:4,COPY_SRC:8})
   vi.stubGlobal('GPUBufferUsage',{UNIFORM:1,COPY_DST:2,MAP_READ:4})
   vi.stubGlobal('GPUShaderStage',{VERTEX:1,FRAGMENT:2});vi.stubGlobal('GPUMapMode',{READ:1})
@@ -63,6 +63,6 @@ export function descriptorPresenter(report: (value: Record<string, unknown>) => 
         },finish:()=>({uses})}
     }}
   const canvas=new MockCanvas(16,16);canvas.owner='display-canvas'
-  const presenter=new ResidentPresenter(device as unknown as GPUDevice,canvas as unknown as OffscreenCanvas,'rgba8unorm',value=>{reports.push(value);report(value)})
+  const presenter=new ResidentPresenter(device as unknown as GPUDevice,canvas as unknown as OffscreenCanvas,'rgba8unorm',value=>{reports.push(value);report(value)},atomic)
   return{queue,presenter,device,canvas,canvases,reports,lose}
 }
