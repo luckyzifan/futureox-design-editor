@@ -6,7 +6,7 @@ export function moveCanvasFeedback(host: ParentNode, ids: readonly string[], off
   originals: Map<SVGElement, string>) {
   const moving = new Set(ids)
   for (const element of host.querySelectorAll<SVGElement>(
-    '[data-testid="canvas-selection-outline"],[data-testid^="resize-"],[data-testid^="rotate-"],[data-testid="rotation-origin"],[data-frame-title-owner]',
+    '[data-testid="canvas-selection-outline"],[data-testid="canvas-selection-name"],[data-testid^="resize-"],[data-testid^="rotate-"],[data-testid="rotation-origin"],[data-frame-title-owner]',
   )) {
     const owner = element.getAttribute('data-frame-title-owner')
     if (owner && !moving.has(owner)) continue
@@ -18,7 +18,7 @@ export function moveCanvasFeedback(host: ParentNode, ids: readonly string[], off
 export function concealCanvasFeedback(host: ParentNode, ids: readonly string[], originals: Map<SVGElement, string>) {
   const moving = new Set(ids)
   for (const element of host.querySelectorAll<SVGElement>(
-    '[data-testid="canvas-selection-outline"],[data-testid^="resize-"],[data-testid^="rotate-"],[data-testid="rotation-origin"],[data-frame-title-owner]',
+    '[data-testid="canvas-selection-outline"],[data-testid="canvas-selection-name"],[data-testid^="resize-"],[data-testid^="rotate-"],[data-testid="rotation-origin"],[data-frame-title-owner]',
   )) {
     const owner = element.getAttribute('data-frame-title-owner')
     if (owner && !moving.has(owner)) continue

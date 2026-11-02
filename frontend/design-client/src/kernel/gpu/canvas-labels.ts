@@ -4,6 +4,8 @@ import type { Point } from '../../model'
 export type CanvasLabel = {
   anchor: Point; offset: Point; text: string; size: number; color: string
   basis?: [number, number, number, number]; centered?: boolean; halo?: boolean; owners?: string[]
+  /** DOM/GPU identity only. The resident wire copy does not require this field. */
+  kind?: 'frame-title' | 'selection-name' | 'selection-size' | 'measurement'
 }
 type Entry = { texture: GPUTexture; bind: GPUBindGroup; width: number; height: number; left: number; top: number; advance: number; bytes: number }
 
