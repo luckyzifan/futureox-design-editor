@@ -930,7 +930,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           openSettings()
         }} />}
       <header className="editor-header">
-        <button ref={fileMenuTrigger} className="brand" aria-label="文件菜单" aria-expanded={menu} onClick={() => setMenu(!menu)}>
+        <button ref={fileMenuTrigger} className="brand" aria-label={panelText.fileMenu} aria-expanded={menu} onClick={() => setMenu(!menu)}>
           <img className="brand-mark" src="/branding/futureox-desgin.svg" width="28" height="28" alt="" aria-hidden="true" />
           <strong>Futureox Design</strong>
           <ChevronDown size={13} />
@@ -941,10 +941,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             if (desktopSession?.supportsWorkspace) setShowWorkspaceLibrary(true)
             else if (desktopSession) setShowCatalog(true)
             else void openLocalFiles()
-          }}>{desktopSession ? '本机设计' : '我的设计'}</button>
+          }}>{desktopSession ? panelText.localDesign : panelText.myDesigns}</button>
           <b>/</b>
           <input
-            aria-label="文档名称"
+            aria-label={panelText.documentName}
             value={source?.name||s.doc.name}
             readOnly={!!source}
             onCompositionStart={() => { titleComposing.current = true; pendingEditsChanged(editor) }}
@@ -955,8 +955,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               })
             }
           />
-          <span className="draft-badge">本地</span>
-          <button type="button" aria-label={uiMinimized ? '展开界面' : '收起界面'} title={`收起 / 展开界面 (${formatShortcutCombo('Mod+Shift+\\', shortcutContext.platform)})`}
+          <span className="draft-badge">{panelText.localBadge}</span>
+          <button type="button" aria-label={uiMinimized ? panelText.expandChrome : panelText.collapseChrome} title={`${panelText.collapseChromeTitle} (${formatShortcutCombo('Mod+Shift+\\', shortcutContext.platform)})`}
             aria-pressed={uiMinimized} onClick={() => { if (!hasPendingEdits(editor) && !editor.interactionActive) setUiMinimized(value => !value) }}>
             {uiMinimized ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
           </button>
@@ -969,7 +969,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               event.preventDefault(); event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus()
             }
           }}>
-            <summary ref={panelActionsSummary} aria-label="更多工作区操作" title="更多工作区操作"><SlidersHorizontal size={16} /></summary>
+            <summary ref={panelActionsSummary} aria-label={panelText.moreActions} title={panelText.moreActions}><SlidersHorizontal size={16} /></summary>
             <div className="workspace-actions-menu" onClick={event => { if ((event.target as Element).closest('button')) { const menu = event.currentTarget.closest('details'); menu?.removeAttribute('open'); menu?.querySelector('summary')?.focus() } }}>
           <button type="button" aria-pressed={showColor} onClick={() => setShowColor((v) => !v)}>
             色彩与 HDR
@@ -1258,6 +1258,12 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             startupPreview={startupPreview} onCapturePreview={desktopSession || source ? undefined : capturePreview}
             zoomControlsTarget={(uiMinimized ? !!s.selection.length : showInspector) ? zoomHost : null} /></HomeCanvasGate>
           <DesignToolbar disabled={!ready || switching || desktopStatus.transitioning || !!source?.nativeCanvas || (editor.interactionActive && !editor.propertyPreviewActive)}>
+            {ready && !showHome && !source?.nativeCanvas && !editor.interactionActive && ['rectangle', 'ellipse', 'polygon', 'star', 'frame', 'section', 'slice', 'line', 'arrow'].includes(s.tool) && (
+              <div className="creation-tool-hint" role="status">
+                <b>{localizedToolLabel(s.tool, locale)}</b>
+                <span>{s.tool === 'line' || s.tool === 'arrow' ? toolbarText.creationHintLine : toolbarText.creationHint}</span>
+              </div>
+            )}
             <div className="tool-group">
               <ToolPopover label={toolbarText.moveTools} icon={<MoveIcon size={18} />} open={showMove} onOpenChange={open => openToolbarMenu('move', open)}
                 primary={{ label: moveTool.label, title: `${moveTool.label}${moveTool.key ? ` (${moveTool.key})` : ''}`, active: s.tool === moveTool.id, onClick: () => chooseTool(moveTool.id) }}>
@@ -1287,7 +1293,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                 <button type="button" role="menuitem" tabIndex={-1} disabled={s.busy || s.selection.length !== 1 || !editor.topSelection().includes(s.selection[0]) || ['frame', 'section', 'group', 'text'].includes(s.doc.nodes[s.selection[0]]?.kind)} onClick={() => { editor.set({ tool: 'vector', editingVertex: null }); setShowDrawing(false) }}>{toolbarText.editVector}</button>
                 <button type="button" role="menuitem" tabIndex={-1} disabled={commandDisabled('outline-stroke')} onClick={() => { void dispatchEditorCommand(editor, 'outline-stroke'); setShowDrawing(false) }}>{toolbarText.outlineStroke}</button>
               </ToolPopover>
-              <button type="button" data-tooltip={`${localizedToolLabel('comments', locale, '评论')}${toolShortcutLabel('comments', shortcutContext) ? ` (${toolShortcutLabel('comments', shortcutContext)})` : ''}`} aria-label={localizedToolLabel('comments', locale, '评论')} aria-pressed={s.tool==='comments'} onClick={()=>chooseTool('comments')}>◉</button>
+              <button type="button" data-tooltip={`${localizedToolLabel('comments', locale, '评论')}${toolShortcutLabel('comments', shortcutContext) ? ` (${toolShortcutLabel('comments', shortcutContext)})` : ''}`} aria-label={localizedToolLabel('comments', locale, '评论')} aria-pressed={s.tool==='comments'} className={s.tool === 'comments' ? 'active' : ''} onClick={()=>chooseTool('comments')}><MessageSquare size={18} /></button>
               <button type="button" data-tooltip={`${localizedToolLabel('text', locale, '文字')}${toolShortcutLabel('text', shortcutContext) ? ` (${toolShortcutLabel('text', shortcutContext)})` : ''}`} aria-label={localizedToolLabel('text', locale, '文字')} aria-pressed={s.tool === 'text'} className={s.tool === 'text' ? 'active' : ''} onClick={() => chooseTool('text')}><Type size={18} /></button>
               <ToolPopover label={toolbarText.utilityTools} icon={<UtilityIcon size={18} />} open={showUtility} onOpenChange={open => openToolbarMenu('utility', open)}
                 primary={{ label: utilityTool.label, title: `${utilityTool.label}${utilityTool.key ? ` (${utilityTool.key})` : ''}`, active: s.tool === utilityTool.id, onClick: () => chooseTool(utilityTool.id) }}>
@@ -1333,7 +1339,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         </div>
         <div ref={rightPanel} className="properties-workspace">
           <PanelResizeHandle side="right" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} />
-          <div className="properties-tabs"><div className="properties-tab-buttons" role="tablist" aria-label="属性工作区" onKeyDown={(event) => {
+          <div className="properties-tabs"><div className="properties-tab-buttons" role="tablist" aria-label={panelText.propertiesWorkspace} onKeyDown={(event) => {
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
             event.preventDefault(); event.stopPropagation()
             const next = event.key === 'Home' ? 'design' : event.key === 'End' ? 'prototype' : propertiesTab === 'design' ? 'prototype' : 'design'

@@ -64,7 +64,10 @@ test('corrupt and out-of-range storage is bounded; denied storage remains usable
 })
 test('static CSS contracts cover compact breakpoints and both motion preferences, not pixel layout', () => {
   const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8')
-  expect(css).toContain('@media (max-width: 900px)'); expect(css).toContain('@media (max-width: 560px)'); expect(css).toContain('@media (prefers-reduced-motion: reduce)'); expect(css).toContain('html[data-reduced-motion=true]'); expect(css).toContain('animation: panel-enter-left 140ms ease-out'); expect(css).toContain('animation: interface-enter 160ms ease-out')
+  expect(css).toContain('@media (max-width: 900px)'); expect(css).toContain('@media (max-width: 560px)'); expect(css).toContain('@media (prefers-reduced-motion: reduce)'); expect(css).toContain('html[data-reduced-motion=true]');   expect(css).toContain('animation: panel-enter-left 140ms ease-out'); expect(css).toContain('animation: interface-enter 160ms ease-out')
+  expect(css).toContain('@keyframes panel-enter-left { from { transform: translateX(-4px); } to { transform: translateX(0); } }')
+  expect(css).not.toContain('panel-enter-left { from { opacity: 0')
+  expect(interfaceText.en.documentName).toBe('Document name'); expect(interfaceText['zh-CN'].searchLayers).toBe('搜索图层'); expect(interfaceText.en.collapseChrome).toBe('Collapse interface')
   expect(Object.keys(interfaceText.en)).toEqual(Object.keys(interfaceText['zh-CN']))
 })
 test('compact resize mode preserves desktop collapse memory and live panel descendants', async () => {

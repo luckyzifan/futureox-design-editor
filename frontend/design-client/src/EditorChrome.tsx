@@ -134,6 +134,19 @@ export function WorkspaceRail({ section, onSection, onFiles, onTools, onVariable
   </nav>
 }
 
+/** First paint uses the trigger box so the menu is not parked at 0,0 while it measures.
+ * useLayoutEffect then clamps to the real menu size before the browser paints. */
+function menuStyle(position: { left: number; top: number } | null, host: HTMLElement | null): { left: number; top: number; visibility: 'visible' | 'hidden' } {
+  if (position) return { ...position, visibility: 'visible' }
+  const anchor = host?.getBoundingClientRect()
+  if (!anchor || typeof window === 'undefined') return { left: 0, top: 0, visibility: 'hidden' }
+  const width = 238, height = 280, margin = 8
+  const left = Math.max(margin, Math.min(anchor.left, window.innerWidth - width - margin))
+  const above = anchor.top - height - margin
+  const top = Math.max(margin, Math.min(above >= margin ? above : anchor.bottom + margin, window.innerHeight - 48))
+  return { left, top, visibility: 'visible' }
+}
+
 /** A menu owns keyboard input while open. Portaling avoids the canvas clip;
  * only Escape/Tab restore the trigger, so outside inputs retain normal focus. */
 export function ToolPopover({ label, children, open, onOpenChange, icon, primary }: {
@@ -204,7 +217,7 @@ export function ToolPopover({ label, children, open, onOpenChange, icon, primary
     {primary && <button type="button" aria-label={primary.label} data-tooltip={primary.title || primary.label} aria-pressed={primary.active} className={primary.active ? 'active' : ''} onClick={() => { dismiss(); primary.onClick() }}>{icon}</button>}
     <button ref={trigger} type="button" className={primary ? 'tool-picker-arrow' : undefined} data-tooltip={label} aria-label={label} aria-haspopup="menu" aria-controls={open ? id : undefined} aria-expanded={open} onClick={() => change.current(!open)}>{primary ? <ChevronDown size={10} /> : icon}</button>
     {open && createPortal(<div ref={menu} id={id} className="tool-popover-content" role="menu" aria-label={label} tabIndex={-1}
-      style={{ left: position?.left || 0, top: position?.top || 0, visibility: position ? 'visible' : 'hidden' }}
+      style={menuStyle(position, host.current)}
       onPointerDown={event => event.stopPropagation()} onPointerMove={event => {
         event.stopPropagation()
         const button = (event.target as Element).closest<HTMLButtonElement>('[role="menuitem"],[role="menuitemradio"]')
