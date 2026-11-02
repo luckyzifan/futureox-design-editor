@@ -3,7 +3,7 @@ import { boardObjects, resizeBoardObjects, boardToolNames, type BoardTool } from
 import { reviewPoint } from './ReviewsPanel'
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { Editor, Tool } from './engine'
-import { type Point, type DesignNode, type ConnectorEndpoint, paint, node, stroke, uid } from './model'
+import { type Point, type DesignNode, type DesignDocument, type ConnectorEndpoint, paint, node, stroke, uid } from './model'
 import { apply, inverse, worldMatrix, allParents, scene, pointInContours } from './geometry'
 import { editableNetwork, materializeEditableNetwork } from './editable-network'
 import {
@@ -13,6 +13,8 @@ import {
 } from './generated/design-kernel/design_kernel'
 import { commitPendingEdits } from './pending-edits'
 import { creationToolStaysArmed } from './shape-creation'
+import { ERASER_SCREEN_PX, applyEraserEdits, eraserPreviewPatches, planVectorEraser, type EraserEdit } from './vector-eraser'
+import { PEN_BLUE } from './pen-geometry'
 
 export const utilityToolNames: Partial<Record<Tool, string>> = {
   multiselect: '多选',
@@ -56,6 +58,8 @@ type Gesture = {
   edge?: string
   parameter?: number
   erased: Set<string>
+  eraserSource?: DesignDocument
+  eraserEdits?: EraserEdit[]
   scale: number
   origin: Point
   board?: ReturnType<typeof boardObjects>
@@ -175,6 +179,7 @@ export function useUtilityTools(
       start: p,
       points: [p],
       erased: new Set(),
+      eraserSource: tool === 'eraser' ? editor.state.doc : undefined,
       scale: zoom,
       origin: { x: e.clientX - p.x * zoom, y: e.clientY - p.y * zoom },
     }
@@ -350,14 +355,14 @@ export function useUtilityTools(
             cornerRadius: undefined,
           },
         })
-      } else if (g.tool === 'eraser') {
-        const id = hit(p, true),
-          n = id && editor.state.doc.nodes[id]
-        if (n && !n.locked && !n.fills.length && ['line', 'vector'].includes(n.kind)) {
-          g.erased.add(n.id)
-          editor.preview(Object.fromEntries([...g.erased].map((id) => [id, { visible: false }])))
-        } else if (n) { g.rejectedTargets++; g.action.sample({ lockedCount: n.locked ? 1 : 0 }) }
-        editor.notify(`橡皮：${g.erased.size} 条路径，松开删除`)
+      } else if (g.tool === 'eraser' && g.eraserSource) {
+        const last = g.points.at(-1)
+        const samples = !last || Math.hypot(p.x - last.x, p.y - last.y) > 1e-6 ? [...g.points, p] : g.points
+        const plan = planVectorEraser(g.eraserSource, g.page, samples, ERASER_SCREEN_PX / g.scale)
+        g.eraserEdits = plan.edits
+        g.erased = new Set(plan.edits.map(edit => edit.id))
+        g.rejectedTargets = plan.rejected
+        if (plan.edits.length && !editor.preview(eraserPreviewPatches(plan.edits))) { cancel(); return true }
       }
       if (g.tool in boardToolNames || g.tool === 'measure' || g.tool === 'bend') g.points = [g.start, p]
       else if (
@@ -434,9 +439,9 @@ export function useUtilityTools(
         if (!creationToolStaysArmed(g.tool)) editor.set({ tool: 'select' })
         setPreview(null)
       }
-      if (g.tool === 'eraser' && g.erased.size) {
-        editor.select([...g.erased])
-        editor.remove()
+      if (g.tool === 'eraser' && g.eraserEdits?.length) {
+        const keep = g.eraserEdits.flatMap(edit => edit.kind === 'update' ? [edit.id] : [])
+        editor.change('橡皮擦除', (doc) => applyEraserEdits(doc, g.eraserEdits!), keep)
       }
     }
     if (g.tool === 'eraser' && !g.erased.size && g.rejectedTargets) g.action.block(ActionReason.validation, { targetCount: 0 })
@@ -453,9 +458,12 @@ export function useUtilityTools(
         <polyline
           points={drawing.points.map((p) => `${p.x},${p.y}`).join(' ')}
           fill={drawing.tool === 'vector-lasso' ? '#0d99ff16' : 'none'}
-          stroke={drawing.tool === 'measure' ? '#f24822' : '#0d99ff'}
+          stroke={drawing.tool === 'measure' ? '#f24822' : drawing.tool === 'eraser' ? 'none' : PEN_BLUE}
           strokeWidth={1 / displayZoom}
         />
+        {drawing.tool === 'eraser' && drawing.points.length > 0 && (
+          <circle data-testid="eraser-brush" cx={drawing.points.at(-1)!.x} cy={drawing.points.at(-1)!.y} r={ERASER_SCREEN_PX / displayZoom} fill="#0d99ff18" stroke={PEN_BLUE} strokeWidth={1 / displayZoom} />
+        )}
         {drawing.tool === 'measure' &&
           (() => {
             const a = drawing.points[0],
