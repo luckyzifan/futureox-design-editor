@@ -3,6 +3,8 @@ import { recoverInteractionPreview } from './kernel/interaction-preview-recovery
 import { selectionSizeLabel } from './selection-size-label'
 import { canvasOverlayCommands, canvasGpuOverlayOwnsUi } from './canvas-overlay-commands'
 import { canvasText } from './canvas-interface-messages'
+import { cornerHandleLocal, cornerRadiusDrag, radiiUniform } from './corner-radius'
+import { cornerRadiusKind, frameHairline, frameTitleShown } from './page-frame-chrome'
 import { useInterfacePreferences } from './interface-preference'
 import { recordCanvasGrid } from './kernel/grid-measurements'
 import { canvasActions, CanvasAction, ActionSource, ActionOutcome, ActionReason, modifierBits, type ActionReasonCode, type ActionOutcomeCode } from './canvas-action-diagnostics'
@@ -171,7 +173,9 @@ type Drag = {
   layoutPointerOrigin?: Point
   creationSeed?: ShapeCreationSeed
   creationTool?: Tool
-  parameter?: 'points' | 'innerRadius' | 'arcStart' | 'arcSweep' | 'arcInner' | 'cornerRadius'
+  parameter?: 'points' | 'innerRadius' | 'arcStart' | 'arcSweep' | 'arcInner' | 'cornerRadius' | 'rectangleRadius'
+  cornerIndex?: number
+  cornerAll?: boolean
   pointer?: Point
   screenDistance?: number
   modifiers?: { shift: boolean; alt: boolean }
@@ -890,10 +894,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const canTransform = capturedTransform || (['select','multiselect','scale'].includes(state.tool) && !spaceHeld && !textEdit &&
     !selectionFeedback.readOnly && !!displayedSnapshot)
   const frameTitles = useMemo(() => entries.filter(e => {
-    const n=state.doc.nodes[e.id]
-    return ['frame','section'].includes(n.kind) && (e.depth===0||selection.has(e.id)) &&
-      ((!n.instance&&!n.instanceOrigin)||selection.has(e.id))
-  }), [entries,state.doc,selection])
+    const n = state.doc.nodes[e.id]
+    const parentId = e.ancestors.at(-1)
+    return frameTitleShown(e, n, selection, parentId ? state.doc.nodes[parentId] : undefined)
+  }), [entries, state.doc, selection])
+  const frameHairlines = useMemo(() => entries.filter(e => frameHairline(state.doc.nodes[e.id])), [entries, state.doc])
   const overlay = useMemo(() => canvasOverlayCommands({
     document:state.doc,pageId:state.page,epoch:editor.sessionGeneration,tool:state.tool,pixelGrid:state.pixelGrid,
     canTransform,selected,owners:selectionFeedback.ids,frameTitles,localSelection,selectionCorners,selectionBox,
@@ -1823,6 +1828,16 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (d.parameter === 'cornerRadius') {
         editor.preview({ [d.node.id]: { cornerRadius: Math.max(0, (d.node.cornerRadius ?? 0) + (d.screen.y - screenPoint(e).y) / d.view.zoom) } }); return
       }
+      if (d.parameter === 'rectangleRadius' && d.cornerIndex != null) {
+        const local = apply(inverse(d.matrices[d.node.id]), p)
+        const origin = apply(inverse(d.matrices[d.node.id]), d.start)
+        const radius = cornerRadiusDrag(d.node.radii[d.cornerIndex] ?? 0, d.cornerIndex, local.x - origin.x, local.y - origin.y,
+          Math.min(d.node.width, d.node.height), e.shiftKey)
+        const radii = !e.altKey && d.cornerAll
+          ? [radius, radius, radius, radius] as [number, number, number, number]
+          : [0, 1, 2, 3].map(index => index === d.cornerIndex ? radius : d.node!.radii[index]) as [number, number, number, number]
+        editor.preview({ [d.node.id]: { radii } }); return
+      }
       if (d.parameter === 'points') {
         editor.preview({ [d.node.id]: { points: creationPointCount(d.node.points, Math.round((d.screen.y - screenPoint(e).y) / 12)) } })
       } else {
@@ -2656,23 +2671,24 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 </g>
               )
             })}
-          {frameTitles
-            .map((e) => (
-              <g key={e.id} data-frame-title-owner={e.id}>
-              <text
-                data-frame-title={e.id}
-                opacity={gpuOverlay ? 0 : 1}
-                transform={matrixString(e.matrix)}
-                y={-12 / zoom}
-                fontSize={11 / zoom}
-                fill={!['vector', 'width', 'pencil', 'brush', 'marker', 'washi-tape'].includes(state.tool) && selection.has(e.id) ? '#0d99ff' : '#73778b'}
-                pointerEvents="all"
-                style={{cursor:e.locked?'default':state.tool==='hand'||spaceHeld?'grab':'move'}}
-              >
-                {state.doc.nodes[e.id].name}
-              </text>
+          {frameTitles.map(entry => {
+            const label = (overlay.commands.labels ?? []).find(item =>
+              (item.kind === 'frame-title' || item.kind === 'section-title') && item.owners?.at(-1) === entry.id)
+            if (!label) return null
+            const shown = gpuOverlay ? 0 : 1
+            return (
+              <g key={entry.id} data-frame-title-owner={entry.id} transform={matrixString(entry.matrix)}>
+                {label.chip && <rect data-section-chip={entry.id} opacity={shown} pointerEvents="none"
+                  x={(label.offset.x - 6) / zoom} y={(label.offset.y - 14) / zoom}
+                  width={(Math.max(label.text.length, 1) * 11 + 12) / zoom} height={18 / zoom} rx={4 / zoom} fill={label.chip} />}
+                <text data-frame-title={entry.id} opacity={shown} x={label.offset.x / zoom} y={label.offset.y / zoom}
+                  fontSize={11 / zoom} fill={label.color} pointerEvents="all"
+                  style={{cursor:entry.locked?'default':state.tool==='hand'||spaceHeld?'grab':'move'}}>
+                  {label.text}
+                </text>
               </g>
-            ))}
+            )
+          })}
           {(() => {
             // Layout-grid section highlight: solved tracks through the
             // kernel's section predicate, drawn as alternating cells.
@@ -2735,6 +2751,15 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         {/* Selection is document feedback, not part of the raster result.
             Keep it above tiles and responsive while that result refines. */}
         <g transform={`translate(${displayView.x} ${displayView.y}) scale(${zoom})`}>
+          {frameHairlines.map(entry => {
+            const node = state.doc.nodes[entry.id]
+            const points = boxPoints({ x: 0, y: 0, width: node.width, height: node.height }).map(point => {
+              const world = apply(entry.matrix, point)
+              return `${world.x},${world.y}`
+            }).join(' ')
+            return <polygon key={entry.id} data-testid="frame-hairline" data-node-id={entry.id} points={points}
+              fill="none" stroke="#0000001a" strokeWidth={1 / zoom} pointerEvents="none" />
+          })}
           {!!selected.length && !['vector', 'width', 'pencil', 'brush', 'marker', 'washi-tape'].includes(state.tool) && (
             <g className="selection" data-selection-readonly={selectionFeedback.readOnly}>
               <polygon
@@ -2807,6 +2832,32 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                       e.stopPropagation(); start(e, 'parameter', undefined, n.id)
                       if (drag.current?.kind === 'parameter') { drag.current.parameter = field; editor.begin(history) }
                     }}><title>{title}</title></circle>
+                })
+              })()}
+              {canTransform && state.tool !== 'scale' && selected.length === 1 && cornerRadiusKind(state.doc.nodes[selected[0].id]) && (() => {
+                const n = state.doc.nodes[selected[0].id]
+                const indexes = radiiUniform(n.radii) ? [0] : [0, 1, 2, 3]
+                return indexes.map(index => {
+                  const point = apply(selected[0].matrix, cornerHandleLocal(n.width, n.height, index, n.radii[index], 14 / zoom))
+                  const dragging = ownedDrag?.parameter === 'rectangleRadius' && ownedDrag.cornerIndex === index
+                  return <g key={`corner-${index}`}>
+                    <circle data-testid={`corner-radius-${index}`} data-node-id={n.id} cx={point.x} cy={point.y} r={5 / zoom}
+                      fill="white" stroke="#0d99ff" strokeWidth={1 / zoom} style={{ cursor: 'crosshair' }}
+                      onPointerDown={event => {
+                        event.stopPropagation()
+                        const isolate = event.altKey || !radiiUniform(n.radii)
+                        start(event, 'parameter', undefined, n.id)
+                        if (drag.current?.kind === 'parameter') {
+                          drag.current.parameter = 'rectangleRadius'
+                          drag.current.cornerIndex = index
+                          drag.current.cornerAll = !isolate
+                          editor.begin(isolate ? '拖动调整单角圆角' : '拖动调整圆角')
+                        }
+                      }}><title>{chromeCopy.rectangleCorner}</title></circle>
+                    {dragging && <text x={point.x + 8 / zoom} y={point.y - 8 / zoom} fontSize={10 / zoom} fill="#0d99ff" pointerEvents="none">
+                      {String(Math.round(n.radii[index] * 100) / 100)}
+                    </text>}
+                  </g>
                 })
               })()}
               <text

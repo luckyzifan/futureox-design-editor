@@ -243,3 +243,41 @@ test('retained child movement yields to a live tree change when crossing frames 
  expect(worldMatrix(editor.state.doc,child.id).slice(4)).toEqual([380,80])
  await act(async()=>editor.undo());expect(editor.state.doc).toEqual(before);expect(editor.canUndo).toBe(false)
 })
+
+test('a rectangle corner drag sets every radius, and alt keeps the other corners', async () => {
+  const rect = node('rectangle', 100, 100, 80, 60)
+  await render([rect])
+  await act(async () => editor.select([rect.id]))
+  const handle = () => mount.querySelector<SVGCircleElement>('[data-testid="corner-radius-0"]')!
+  expect(mount.querySelector('[data-testid="corner-radius-1"]')).toBeNull()
+  const first = handle()
+  const x = Number(first.getAttribute('cx')), y = Number(first.getAttribute('cy'))
+  await act(async () => pointer('pointerdown', x, y, {}, first))
+  await act(async () => pointer('pointermove', x + 20, y, {}, first))
+  await act(async () => pointer('pointerup', x + 20, y, {}, first))
+  expect(editor.state.doc.nodes[rect.id].radii).toEqual([20, 20, 20, 20])
+  const next = handle()
+  const nx = Number(next.getAttribute('cx')), ny = Number(next.getAttribute('cy'))
+  await act(async () => pointer('pointerdown', nx, ny, { altKey: true }, next))
+  await act(async () => pointer('pointermove', nx + 10, ny, { altKey: true }, next))
+  await act(async () => pointer('pointerup', nx + 10, ny, { altKey: true }, next))
+  expect(editor.state.doc.nodes[rect.id].radii).toEqual([30, 20, 20, 20])
+  expect(mount.querySelector('[data-testid="corner-radius-2"]')).not.toBeNull()
+})
+
+test('selecting a frame shows a direct child frame, and an empty frame keeps a hairline', async () => {
+  const frame = node('frame', 0, 0, 400, 300)
+  const child = node('frame', 40, 40, 80, 60)
+  child.name = 'Inner'
+  child.fills = [{ ...child.fills[0], opacity: 0 }]
+  frame.children = [child.id]
+  const section = node('section', 420, 0, 160, 80)
+  await render([frame, child, section], [frame.id, section.id])
+  expect(mount.querySelector(`[data-frame-title="${child.id}"]`)).toBeNull()
+  expect(mount.querySelector(`[data-testid="frame-hairline"][data-node-id="${child.id}"]`)).not.toBeNull()
+  expect(mount.querySelector(`[data-section-chip="${section.id}"]`)?.getAttribute('fill')).toBe('#e7e8ef')
+  await act(async () => editor.select([frame.id]))
+  expect(mount.querySelector(`[data-frame-title="${child.id}"]`)?.textContent).toBe('Inner')
+  await act(async () => editor.select([section.id]))
+  expect(mount.querySelector(`[data-frame-title="${section.id}"]`)?.getAttribute('fill')).toBe('#0d99ff')
+})
