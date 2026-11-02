@@ -51,6 +51,7 @@ import { ImportNotice } from './ImportNotice'
 import { dispatchEditorCommand, resolveDesktopEditorCommand, type EditorCommand } from './editor-commands'
 import { localizedToolCommands, localizedToolLabel, unavailableReason } from './tool-registry'
 import { canvasText } from './canvas-interface-messages'
+import { fileMenuText } from './file-menu-messages'
 import { canvasMenuItems } from './canvas-menu-model'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { flushSync } from 'react-dom'
@@ -172,6 +173,7 @@ const utilityToolItems: { id: Tool; label: string; icon: typeof Square }[] = [
 export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWorkspace}={}) {
   const { locale } = useInterfacePreferences()
   const toolbarText = canvasText[locale]
+  const menuText = fileMenuText[locale]
   const shortcutProfile = useShortcutProfile()
   const shortcutContext = useMemo(() => ({ profile: shortcutProfile, platform: shortcutPlatform(), desktop: !!desktopBridge() }), [shortcutProfile])
   const tools = useMemo(() => toolItems.map(tool => ({ ...tool, label: localizedToolLabel(tool.id, locale, tool.label), key: toolShortcutLabel(tool.id, shortcutContext) })), [shortcutContext, locale])
@@ -924,7 +926,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       {!showHome && (!ready || switching || (desktopStatus.transitioning && !desktopPrompt)) && (
         <div className="document-transition" role="status">
           {source?source.notice||(locale === 'en' ? 'Opening the canvas…' : '正在打开画板…'):desktopSession ? (locale === 'en' ? 'Working on the local design file…' : '正在处理本机设计文件…') : (locale === 'en' ? 'Saving and opening the design…' : '正在保存并打开设计…')}
-          {source?.busy&&<button type="button" data-desktop-dialog onClick={source.cancel}>停止当前操作</button>}
+          {source?.busy&&<button type="button" data-desktop-dialog onClick={source.cancel}>{menuText.stopOperation}</button>}
         </div>
       )}
       {showHome && <LocalHome source={homeSource} ready={ready} startupError={startupError} busy={switching || desktopStatus.busy}
@@ -945,10 +947,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             if (desktopSession?.supportsWorkspace) setShowWorkspaceLibrary(true)
             else if (desktopSession) setShowCatalog(true)
             else void openLocalFiles()
-          }}>{desktopSession ? panelText.localDesign : panelText.myDesigns}</button>
+          }}>{desktopSession ? menuText.localDesign : menuText.myDesigns}</button>
           <b>/</b>
           <input
-            aria-label={panelText.documentName}
+            aria-label={menuText.documentName}
             value={source?.name||s.doc.name}
             readOnly={!!source}
             onCompositionStart={() => { titleComposing.current = true; pendingEditsChanged(editor) }}
@@ -960,7 +962,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             }
           />
           <span className="draft-badge">{panelText.localBadge}</span>
-          <button type="button" aria-label={uiMinimized ? panelText.expandChrome : panelText.collapseChrome} title={`${panelText.collapseChromeTitle} (${formatShortcutCombo('Mod+Shift+\\', shortcutContext.platform)})`}
+          <button type="button" aria-label={uiMinimized ? menuText.expandUi : menuText.collapseUi} title={`${menuText.collapseUi} / ${menuText.expandUi} (${formatShortcutCombo('Mod+Shift+\\', shortcutContext.platform)})`}
             aria-pressed={uiMinimized} onClick={() => { if (!hasPendingEdits(editor) && !editor.interactionActive) setUiMinimized(value => !value) }}>
             {uiMinimized ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
           </button>
@@ -973,26 +975,26 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               event.preventDefault(); event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus()
             }
           }}>
-            <summary ref={panelActionsSummary} aria-label={panelText.moreActions} title={panelText.moreActions}><SlidersHorizontal size={16} /></summary>
+            <summary ref={panelActionsSummary} aria-label={menuText.moreActions} title={menuText.moreActions}><SlidersHorizontal size={16} /></summary>
             <div className="workspace-actions-menu" onClick={event => { if ((event.target as Element).closest('button')) { const menu = event.currentTarget.closest('details'); menu?.removeAttribute('open'); menu?.querySelector('summary')?.focus() } }}>
           <button type="button" aria-pressed={showColor} onClick={() => setShowColor((v) => !v)}>
-            色彩与 HDR
+            {menuText.colorHdr}
           </button>
           <button
             type="button"
             aria-pressed={showAnimation}
             onClick={() => setShowAnimation((v) => !v)}
           >
-            动画
+            {menuText.animation}
           </button>
           <button
             type="button"
             aria-pressed={showHistory}
             disabled={!ready||!!source}
-            title="查看当前设计的本地历史版本"
+            title={menuText.historyTitle}
             onClick={() => setShowHistory(true)}
           >
-            历史版本
+            {menuText.history}
           </button>
             </div>
           </details>
@@ -1007,10 +1009,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               : desktopStatus.dirty ? (desktopStatus.recoveryWarning ? '未保存，恢复副本有警告' : desktopSession.supportsWorkspace ? '待保存到本机' : '未保存到文件') : desktopStatus.warning ? '已写入，有持久化警告' : desktopSession.supportsWorkspace ? '已保存到本机' : '已保存到文件') : saved}
           </span>
           {desktopSession&&ready&&<LocalWindowControl editor={editor} session={desktopSession} live={localWindows}/>}
-          {source?<button type="button" disabled={!ready||source.busy||!source.ready} onClick={()=>void source.save()}><Save size={16}/>保存</button>:desktopSession ? <button type="button" disabled={!ready || desktopStatus.busy} onClick={() => void desktopSession.save()}>
-            <Save size={16} />保存
+          {source?<button type="button" disabled={!ready||source.busy||!source.ready} onClick={()=>void source.save()}><Save size={16}/>{menuText.save}</button>:desktopSession ? <button type="button" disabled={!ready || desktopStatus.busy} onClick={() => void desktopSession.save()}>
+            <Save size={16} />{menuText.save}
           </button> : <button type="button" disabled={!ready} onClick={() => void openLocalFiles()}>
-            <FolderOpen size={16} />本机文件
+            <FolderOpen size={16} />{panelText.localFiles}
           </button>}
           <label className="locale-switch" data-locale-switch>
             <span className="sr-only">{panelText.language}</span>
@@ -1036,7 +1038,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             title={!ready || switching || desktopStatus.transitioning ? '正在处理设计文件，完成后可打开设置' : `设置 (${formatShortcutCombo('Mod+,', shortcutContext.platform)})`}
             aria-haspopup="dialog" aria-expanded={showSettings}
             onClick={openSettings}>
-            <SettingsIcon size={16} /><span>设置</span>
+            <SettingsIcon size={16} /><span>{panelText.settingsTitle}</span>
           </button>
           <span className="avatar">我</span>
         </div>
@@ -1046,8 +1048,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         <>
           <div className="menu-scrim" onClick={() => setMenu(false)} />
           <div className="file-menu">
-            <button type="button" onClick={enterHome}><FolderOpen size={15} />本机首页</button>
-            <button type="button" onClick={openSettings}><SettingsIcon size={15} />设置</button>
+            <button type="button" onClick={enterHome}><FolderOpen size={15} />{menuText.localHome}</button>
+            <button type="button" onClick={openSettings}><SettingsIcon size={15} />{panelText.settingsTitle}</button>
             <button type="button" disabled={!!largeDocument || !!source} onClick={() => { setMenu(false); setShowPlugins(true) }}><Puzzle size={15} />{locale === 'en' ? 'Plugins' : '插件'}</button>
             <button
               onClick={() => {
@@ -1055,34 +1057,34 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               }}
             >
               <Plus size={15} />
-              新建设计
+              {panelText.newDesign}
             </button>
             {desktopSession ? <>
               <button type="button" disabled={!ready || desktopStatus.busy} onClick={() => { fileImports.invalidate(); setMenu(false); setShowCatalog(true) }}>
-                <FolderOpen size={15} />本机项目目录
+                <FolderOpen size={15} />{menuText.projectFolder}
               </button>
               <button type="button" disabled={!ready || desktopStatus.busy} onClick={() => { fileImports.invalidate(); setMenu(false); void desktopSession.open() }}>
-                <FolderOpen size={15} />打开本机设计文件 <kbd>{formatShortcutCombo('Mod+O', shortcutContext.platform)}</kbd>
+                <FolderOpen size={15} />{menuText.openLocalDesign} <kbd>{formatShortcutCombo('Mod+O', shortcutContext.platform)}</kbd>
               </button>
               <button type="button" disabled={!ready || desktopStatus.busy} onClick={() => { fileImports.invalidate(); setMenu(false); void desktopSession.recover() }}>
-                恢复未保存的设计
+                {menuText.recover}
               </button>
             </> : <button onClick={() => void openLocalFiles()}>
-              <FolderOpen size={15} />本机文件与回收站
+              <FolderOpen size={15} />{menuText.localFilesTrash}
             </button>}
-            <div className="render-quality" role="group" aria-label="文件渲染质量">
-              <span>渲染质量</span>
+            <div className="render-quality" role="group" aria-label={menuText.renderQuality}>
+              <span>{menuText.renderQualityShort}</span>
               <button
                 aria-pressed={(s.doc.rasterProfile || 'analytic') === 'analytic'}
                 disabled={!!s.doc.colorManagement}
-                title={s.doc.colorManagement ? '广色域 / HDR 使用精细覆盖采样' : undefined}
+                title={s.doc.colorManagement ? menuText.wideGamutTitle : undefined}
                 onClick={() =>
                   editor.change('标准渲染质量', (d) => {
                     d.rasterProfile = 'analytic'
                   })
                 }
               >
-                标准（更快）
+                {menuText.standardQuality}
               </button>
               <button
                 aria-pressed={s.doc.rasterProfile === 'figma'}
@@ -1092,18 +1094,18 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                   })
                 }
               >
-                精细（更耗内存）
+                {menuText.fineQuality}
               </button>
               <button
                 aria-pressed={s.doc.rasterProfile === 'figmaSoftware'}
-                title="保留精细采样，使用与当前 Figma 参考导出一致的颜色取整方式；配置随文件保存"
+                title={menuText.figmaQualityTitle}
                 onClick={() =>
                   editor.change('Figma 导出兼容渲染', (d) => {
                     d.rasterProfile = 'figmaSoftware'
                   })
                 }
               >
-                Figma 导出兼容
+                {menuText.figmaExportQuality}
               </button>
             </div>
             <button
@@ -1118,7 +1120,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               }}
             >
               <Plus size={15} />
-              {source?'导出完整文件…':desktopSession ? '另存为设计文件…' : '保存为本机副本'}
+              {source?menuText.exportFull:desktopSession ? menuText.saveAs : menuText.saveCopy}
             </button>
             <button
               onClick={() => {
@@ -1129,21 +1131,21 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               }}
             >
               <FolderOpen size={15} />
-              导入 Sketch / FIG / SVG / PDF
+              {menuText.importFormats}
             </button>
-            {!source&&desktop?.largeDocument&&<button type="button" disabled={!ready||switching||desktopStatus.busy||editor.interactionActive} onClick={()=>{if(!commitPendingEdits(editor))return;setMenu(false);setLargeDocument({})}}>打开大型 JSON / Sketch…</button>}
+            {!source&&desktop?.largeDocument&&<button type="button" disabled={!ready||switching||desktopStatus.busy||editor.interactionActive} onClick={()=>{if(!commitPendingEdits(editor))return;setMenu(false);setLargeDocument({})}}>{menuText.openLarge}</button>}
             {(['inspect', 'edit'] as const).map(mode => <button type="button" key={mode}
               disabled={!ready || switching || desktopStatus.busy || s.busy || editor.interactionActive || !sketchCapabilities[mode]}
-              title={sketchCapabilities[mode] ? (mode === 'inspect' ? '原生只读预览，不转换为当前画布，也不修改源文件' : '独立原生会话，仅支持已声明的编辑范围；另存为全新文件') : '当前宿主未提供此原生 Sketch 能力；可使用兼容格式导入'}
+              title={sketchCapabilities[mode] ? (mode === 'inspect' ? menuText.sketchInspectTitle : menuText.sketchEditTitle) : menuText.sketchUnavailable}
               onClick={() => { if (!commitPendingEdits(editor)) return; fileImports.invalidate(); setMenu(false); setSketchMode(mode) }}>
-              {mode === 'inspect' ? '预览原生 Sketch（只读）…' : '编辑原生 Sketch（有限支持）…'}
+              {mode === 'inspect' ? menuText.inspectSketch : menuText.editSketch}
             </button>)}
             <button disabled={!ready || switching || desktopStatus.busy} onClick={() => {
               fileImports.invalidate()
               importMode.current = 'append'
               file.current?.click()
               setMenu(false)
-            }}><Plus size={15} />追加到当前画布…</button>
+            }}><Plus size={15} />{menuText.appendCanvas}</button>
             <button
               onClick={() => {
                 if(source)void source.save()
@@ -1153,7 +1155,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               }}
             >
               <Download size={15} />
-              {source?'保存修改':desktopSession?.supportsWorkspace ? '保存到本机文档库' : '保存设计文件'} <kbd>{formatShortcutCombo('Mod+S', shortcutContext.platform)}</kbd>
+              {source?menuText.saveChanges:desktopSession?.supportsWorkspace ? menuText.saveToLibrary : menuText.saveDesign} <kbd>{formatShortcutCombo('Mod+S', shortcutContext.platform)}</kbd>
             </button>
             <hr />
             <button
@@ -1161,13 +1163,13 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                 void switchDocument(demo())
               }}
             >
-              打开示例画布
+              {menuText.openSample}
             </button>
-            <button onClick={() => { void generateExport('visual-svg'); setMenu(false) }}>导出 SVG（保留视觉效果，可包含位图）</button>
+            <button onClick={() => { void generateExport('visual-svg'); setMenu(false) }}>{menuText.exportVisualSvg}</button>
             <button type="button" disabled={!ready || exportAsset !== null}
-              title="用于 Sketch 交换，部分效果可能降级；完整编辑信息保存在 .fd 文件"
-              onClick={() => void generateSketchExport()}>导出 Sketch（兼容格式）</button>
-            <button onClick={() => { setShowExport(true); setMenu(false) }}>导出图像 · 1x / 2x / 3x</button>
+              title={menuText.exportSketchTitle}
+              onClick={() => void generateSketchExport()}>{menuText.exportSketch}</button>
+            <button onClick={() => { setShowExport(true); setMenu(false) }}>{menuText.exportImages}</button>
             {(['svg', 'png'] as const).map((format) => (
               <button
                 key={format}
@@ -1176,7 +1178,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                   setMenu(false)
                 }}
               >
-                导出 {format.toUpperCase()}
+                {locale === 'en' ? 'Export' : '导出'} {format.toUpperCase()}
                 {format === 'png' ? ' @2x' : ''}
               </button>
             ))}
@@ -1344,7 +1346,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         </div>
         <div ref={rightPanel} className="properties-workspace">
           <PanelResizeHandle side="right" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} />
-          <div className="properties-tabs"><div className="properties-tab-buttons" role="tablist" aria-label={panelText.propertiesWorkspace} onKeyDown={(event) => {
+          <div className="properties-tabs"><div className="properties-tab-buttons" role="tablist" aria-label={menuText.propertiesWorkspace} onKeyDown={(event) => {
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
             event.preventDefault(); event.stopPropagation()
             const next = event.key === 'Home' ? 'design' : event.key === 'End' ? 'prototype' : propertiesTab === 'design' ? 'prototype' : 'design'

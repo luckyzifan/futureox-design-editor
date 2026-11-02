@@ -3,7 +3,7 @@ import type { Editor } from './engine'
 import { zoomAt, zoomStep, MIN_CANVAS_ZOOM, MAX_CANVAS_ZOOM } from './canvas-camera'
 import { NumberField } from './fields'
 import { PendingEditContext } from './pending-edit-context'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useSyncExternalStore } from 'react'
 export function ViewControls({
   editor,
   size,
@@ -17,6 +17,7 @@ export function ViewControls({
 }) {
   const text = useInterfaceText()
   const s = editor.state
+  const liveZoom = useSyncExternalStore(editor.subscribeCamera, () => editor.effectiveView().zoom, () => editor.state.view.zoom)
   const menu = useRef<HTMLDetailsElement>(null)
   useEffect(() => {
     const dismiss = (event: Event) => { if (menu.current && !menu.current.contains(event.target as Node)) menu.current.open = false }
@@ -43,14 +44,14 @@ export function ViewControls({
         −
       </button>}
       <details ref={menu} className="view-menu">
-        <summary aria-label={text.zoomView}>{Number((s.view.zoom * 100).toFixed(1))}%</summary>
+        <summary aria-label={text.zoomView} data-testid="zoom-readout">{Number((liveZoom * 100).toFixed(1))}%</summary>
         <div className="view-menu-body">
           {compact && <div className="zoom-steps"><button type="button" title={text.zoomOut} onClick={() => zoom(zoomStep(editor.effectiveView().zoom, -1))}>−</button><button type="button" title={text.zoomIn} onClick={() => zoom(zoomStep(editor.effectiveView().zoom, 1))}>＋</button></div>}
           <PendingEditContext.Provider value={null}><NumberField
             label={text.zoomRatio}
             // Preserve the existing numeric semantics independently of the translated label.
             unit="number"
-            value={s.view.zoom * 100}
+            value={liveZoom * 100}
             min={MIN_CANVAS_ZOOM * 100}
             max={MAX_CANVAS_ZOOM * 100}
             onChange={(v) => zoom(v / 100)}

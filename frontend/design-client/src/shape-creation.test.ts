@@ -121,6 +121,20 @@ test('polygon creation defaults to three vertices and arrow changes are bounded'
   expect(creationPointCount(60, -1)).toBe(59)
 })
 
+test('the creation ghost keeps the seed fill until the committed node is presented', () => {
+  const seed = createShapeSeed('rectangle', 'ghost')
+  const preview = resolveShapeCreation(seed, { ...options, screenDistance: 0 })
+  expect(creationVisiblePaint(preview.node)).toBe('#d9d9d9')
+  expect(creationGhostNode(preview.node, null, () => true)?.id).toBe('ghost')
+  expect(creationGhostNode(null, preview.node, () => false)?.id).toBe('ghost')
+  expect(creationGhostNode(null, preview.node, () => true)).toBeNull()
+  const frame = resolveShapeCreation(createShapeSeed('frame', 'board'), { ...options, screenDistance: 0 })
+  expect(frame.bounds).toEqual({ x: 10.25, y: -9.75, width: 100, height: 100 })
+  expect(creationVisiblePaint(frame.node)).toBe('#ffffff')
+  expect(creationPreviewPoints(createShapeSeed('star', 'star'))).toContain(',')
+  expect(creationPreviewPoints(preview.node)).toBeNull()
+})
+
 test('a resolved line remains a valid portable design node', () => {
   const created = resolveShapeCreation(createShapeSeed('line'), { ...options, shift: true, alt: true, snap: true })
   const doc = blank(); doc.nodes[created.node.id] = created.node; doc.pages[0].children = [created.node.id]
