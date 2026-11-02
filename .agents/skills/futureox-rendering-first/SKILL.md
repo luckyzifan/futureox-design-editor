@@ -3,6 +3,12 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-02 [选区、框选与测距](../../../testing/verification-figma-canvas-chrome-marquee-20261102/README.md)只改选区描边、悬停、框选和 Option 间距。gaps5 的选区蓝是 `#4597F7`，框选填充是 `#DCE9F5`，间距红是 `#E05634`。不改像素、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [画布操作对照：编组与右键](../../../testing/verification-figma-canvas-ops-group-menu-20261102/README.md)只改编组命中已经具备的路径上的右键菜单：无描边矩形仍列出轮廓化描边，插件子菜单打开现有插件面板。空选区方向键不平移，空格拖动不移动对象。不改像素、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 打包的 FFmpeg 只服务动效预览编码，不改像素、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。见[记录](../../../testing/verification-ffmpeg-bundle-20261102/README.md)。
+2026-11-02 [原型播放](../../../testing/verification-playback-plugins-import-20261102/README.md)只改原型预览合成：溶解不逐帧重采样，中间帧把玻璃和模糊封顶，落定帧仍是原稿。不改编辑器光栅、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [画布呈现续](../../../testing/verification-canvas-render-continuity-20261102/README.md)旋转之后的快速缩小不再用更紧的完成帧换掉宽画面，CPU 选区跟实时相机。缩小后的 CPU 帧若盖住更多画面就留下。合成预算和光晕不再换成整帧红字。旋转进行中的蓝框留在当前纹理上。文件锁期间的标签继续排队。不放宽预算。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [画布操作对照：粘贴与展平](../../../testing/verification-figma-canvas-ops-paste-20261102/README.md)只改粘贴父级、实例旋转和混选展平。Shift+E 在设计模式仍开原型。不改像素、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 [画布操作对照续](../../../testing/verification-figma-canvas-ops-next-20261102/README.md)只改编组命中、Enter、空选区方向键和右键菜单。空选区方向键不平移。不改像素、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 [画布操作对照](../../../testing/verification-figma-canvas-ops-parity-20261102/README.md)只改命中、Option 拖动复制和键盘微移。子级实形选子级，画板空白选画板。不改像素、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 Electron 主线程缩放、拖动、打开 `.fig` 和多页里的单页编辑见[记录](../../../testing/verification-electron-perf-flame-20261102/README.md)。当前页改动不再整份重布局或重序列化；需要重排时只解当前根岛屿。损伤索引只覆盖这一页，视口瓦片仍按脏区相交丢掉。不改像素、瓦片预算或实验开关。33/100ms 与完整 G2/G5 仍未通过。

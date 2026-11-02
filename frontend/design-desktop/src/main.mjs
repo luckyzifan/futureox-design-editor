@@ -31,6 +31,7 @@ import {
 import { Sidecar } from './sidecar.mjs'
 import { createWorkspaceSqliteCodec, SQLITE_OFFTHREAD_BYTES } from './workspace-sqlite-worker-host.mjs'
 import { DOCUMENT_MEMORY_BYTES } from './document-capacity.mjs'
+import { registerVideoEncode } from './ffmpeg-encode.mjs'
 import { registerNativeRender } from './native-render.mjs'
 import { registerNativePreparation } from './preparation.mjs'
 import { formatForNativePath, sketchInspection } from './kernel-admission.mjs'
@@ -442,6 +443,13 @@ const closeNativePreparation = registerNativePreparation(ipcMain, {
   resourcesRoot: app.isPackaged ? process.resourcesPath : assets,
   assertSender: event => assertSender(event, window),
   resolveSourceSnapshot: (token, senderId) => largeDocuments.resolveCanvasSnapshot(token, senderId),
+})
+registerVideoEncode(ipcMain, {
+  packaged: () => app.isPackaged,
+  resourcesPath: () => process.resourcesPath,
+  resourcesRoot: assets,
+  getSidecar: () => backend,
+  assertSender: event => assertSender(event, window),
 })
 
 async function nativeOpenMenu() {
@@ -1028,7 +1036,7 @@ async function buildWindow() {
       )
       .join('')
       .slice(0, 200)
-      const allowed = ['.png', '.svg', '.jpg', '.jpeg', '.webp', '.pdf', '.json', '.fdlib', '.sketch'].includes(
+      const allowed = ['.png', '.svg', '.svgz', '.jpg', '.jpeg', '.webp', '.pdf', '.json', '.fdlib', '.sketch'].includes(
       path.extname(name).toLowerCase(),
     )
     if (

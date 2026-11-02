@@ -1,4 +1,6 @@
 import { ProgressiveSurface } from './ProgressiveSurface'
+import { retainedPressureError } from './navigation-coverage'
+import { acceptFinishedReferenceFrame } from './reference-zoom-frame'
 import type { ColorPresenter } from './color-presenter'
 import { allowsColorPresentation, effectiveBackend, canvasSamplingProfile } from './render-policy'
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
@@ -250,7 +252,27 @@ export function ReferenceSurface(
             (request.requireManaged || !presenters.current[slot]?.bitmapTransport),
         )
         bitmap = result.bitmap
-        if (!current()) continue
+        const requestedCamera = latest.current.requestedView || latest.current.view
+        const shown = displayedRef.current
+        const sameFile = alive.current && !latest.current.paused &&
+          request.document.id === latest.current.document.id &&
+          request.options.pageId === latest.current.pageId &&
+          request.epoch === (latest.current.presentationEpoch || 0) &&
+          request.options.grid === latest.current.grid &&
+          !!request.options.checkerboard === !!latest.current.checkerboard &&
+          (request.options.pixelPreview || 0) === (latest.current.pixelPreview || 0) &&
+          request.options.rasterProfile === latest.current.rasterProfile
+        const acceptFrame = () => sameFile && acceptFinishedReferenceFrame({
+          live: requestedCamera,
+          finished: request.camera,
+          displayed: shown ? { view: shown.view, width: shown.width, height: shown.height } : null,
+          frameWidth: request.width,
+          frameHeight: request.height,
+          viewportWidth: latest.current.width,
+          viewportHeight: latest.current.height,
+          renderViewCurrent: current(),
+        })
+        if (!acceptFrame()) continue
         const el = canvases.current[slot]
         if (!el) break
         el.width = request.options.width
@@ -265,7 +287,7 @@ export function ReferenceSurface(
         ) {
           try {
             await ensurePresenter()
-            if (!current()) continue
+            if (!acceptFrame()) continue
             const presenter = presenters.current[slot]
             if (presenter) {
               if (result.bitmap && result.bitmapExtended && presenter.bitmapTransport)
@@ -286,7 +308,7 @@ export function ReferenceSurface(
             presenters.current[slot] = null
           }
         }
-        if (!current()) {
+        if (!acceptFrame()) {
           continue
         }
         if (request.requireManaged && request.document.colorManagement && !colorDisplay)
@@ -354,6 +376,16 @@ export function ReferenceSurface(
       } catch (e) {
         if (current()) {
           const message = e instanceof Error ? e.message : String(e)
+          if (retainedPressureError(message)) {
+            if (!pending.current && (request.budgetAttempts || 0) < 1)
+              pending.current = { ...request, budgetAttempts: (request.budgetAttempts || 0) + 1 }
+            if (pending.current) continue
+            const previous = displayedRef.current
+            if (previous?.request.document === request.document && previous.request.options.pageId === request.options.pageId) {
+              setStatus('当前视口精修受限，已保留缓存画面')
+              continue
+            }
+          }
           setError(true)
           setStatus(message)
           latest.current.onRenderFailure?.()

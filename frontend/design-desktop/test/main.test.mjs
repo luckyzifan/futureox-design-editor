@@ -270,6 +270,7 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
   source = source.replace("from './window-state.mjs'", `from ${JSON.stringify(new URL('../src/window-state.mjs', import.meta.url).href)}`)
   source = source.replace("from './legacy-user-data.mjs'", `from ${JSON.stringify(new URL('../src/legacy-user-data.mjs', import.meta.url).href)}`)
   source = source.replace("from './native-render.mjs'", `from ${JSON.stringify(new URL('../src/native-render.mjs', import.meta.url).href)}`)
+  source = source.replace("from './ffmpeg-encode.mjs'", `from ${JSON.stringify(new URL('../src/ffmpeg-encode.mjs', import.meta.url).href)}`)
   source = source.replace("from './preparation.mjs'", `from ${JSON.stringify(new URL('../src/preparation.mjs', import.meta.url).href)}`)
   source = source.replace("from './large-document.mjs'", `from ${JSON.stringify(new URL('../src/large-document.mjs', import.meta.url).href)}`)
   source = source.replace("from './render-check.mjs'", `from ${JSON.stringify(new URL('../src/render-check.mjs', import.meta.url).href)}`)
@@ -550,6 +551,20 @@ test('only own-window known Blob exports reach a native save dialog, with byte b
     )
     assert.equal(blocked, 1)
     assert.equal(options.defaultPath, 'drawing.svg')
+    item.getFilename = () => 'board.svgz'
+    state.session.emit(
+      'will-download',
+      {
+        preventDefault() {
+          blocked++
+        },
+      },
+      item,
+      state.window.webContents,
+    )
+    assert.equal(blocked, 1)
+    assert.equal(options.defaultPath, 'board.svgz')
+    item.getFilename = () => 'drawing.svg'
     item.emit('updated')
     assert.equal(cancelled, true)
     item.getURL = () => 'https://evil.example/script.svg'

@@ -1962,6 +1962,28 @@ impl Engine {
         w: u32,
         h: u32,
     ) -> Result<Vec<u8>, String> {
+        match self.render_device_rect_once(options, x, y, w, h) {
+            Ok(bytes) => Ok(bytes),
+            // Only an explicitly interactive byte preview may drop an oversized
+            // effect. The tiled exact cache calls the strict implementation below.
+            Err(error) if options.interactive_effects && display_pressure(&error) && !self.display_degrade => {
+                self.display_degrade = true;
+                let degraded = self.render_device_rect_once(options, x, y, w, h);
+                self.display_degrade = false;
+                self.clear_degrade_prep();
+                degraded.map_err(|_| error)
+            }
+            Err(error) => Err(error),
+        }
+    }
+    fn render_device_rect_once(
+        &mut self,
+        options: &RenderOptions,
+        x: u32,
+        y: u32,
+        w: u32,
+        h: u32,
+    ) -> Result<Vec<u8>, String> {
         self.prepare_frame(options)?;
         self.resolve_layout()?;
         if options.pixel_preview.is_some() {
@@ -2429,7 +2451,7 @@ impl crate::tiled_renderer::TileRasterizer for Engine {
         &mut self,
         request: &crate::tiled_renderer::TileRequest,
     ) -> Result<Vec<u8>, String> {
-        self.render_device_rect(
+        self.render_device_rect_once(
             &request.options,
             0,
             0,

@@ -91,6 +91,20 @@ fn spring_position_overshoots_without_invalidating_dissolve_opacity() {
 }
 
 #[test]
+fn matched_layer_opacity_and_translation_meet_halfway() {
+    let mut doc = transition_document();
+    doc.nodes.get_mut("shared-old").unwrap().opacity = 1.;
+    doc.nodes.get_mut("shared-new").unwrap().opacity = 0.2;
+    let mid = PlanTree::sample_document(&doc, "old", "new", 0.5).unwrap();
+    let shared = &mid.nodes["shared-new"];
+    assert!((shared.opacity - 0.6).abs() < 1e-9);
+    assert!((shared.transform.0[4] - 75.).abs() < 1e-6);
+    assert!((shared.transform.0[5] - 50.).abs() < 1e-6);
+    let end = PlanTree::sample_document(&doc, "old", "new", 1.).unwrap();
+    assert!((end.nodes["shared-new"].opacity - 0.2).abs() < 1e-9);
+}
+
+#[test]
 fn in_flight_bake_conflicts_on_any_shared_endpoint() {
     let registry = SaBakeRegistry::new();
     let _guard = registry.begin_bake("frame-a", 7, "frame-b", 7).unwrap();

@@ -1398,9 +1398,9 @@ export function ProgressiveSurfaceImpl(
       recordRenderDiagnostic({ kind: 'error', zoom: view.zoom, dpr,
         requestedDensity: view.zoom * dpr, errorCode: renderDiagnosticError(error) })
       if (String(error).includes('PREVIEW_CANCELLED')) return
-      // A budget or halo miss keeps the residents already on screen. The
-      // kernel retries a degraded frame; this banner must not replace them.
-      if (retainedPressureError(error) && [...tileRef.current.values()].some(tile => ready.current.has(tile.key) && tile.document === doc)) return
+      // A retained camera image may cover the request. An empty or unrelated
+      // tile cannot hide a failed first frame or suppress backend recovery.
+      if (retainedPressureError(error) && hasReadyCoverage()) return
       // Recovery changes the renderer, not the fact that this GPU request failed.
       // Keep failure observers informed before handing off to the CPU surface.
       latestContext.current.onRenderFailure?.()

@@ -17,7 +17,7 @@ test('empty frames keep a hairline and sections chip their fill', () => {
   expect(frameHairline(empty)).toBe(true)
   expect(frameHairline(section)).toBe(false)
   expect(frameChromeLabel(section, false)).toMatchObject({ kind: 'section-title', chip: '#102040', color: '#ffffff', offset: { x: 6, y: -6 } })
-  expect(frameChromeLabel(section, true).color).toBe('#3459d4')
+  expect(frameChromeLabel(section, true).color).toBe('#4597f7')
   expect(frameChromeLabel(frame, false)).toMatchObject({ kind: 'frame-title', color: '#73778b', offset: { x: 0, y: -12 } })
   expect(sectionLabelColor('#e7e8ef')).toBe('#1e1e1e')
 })
@@ -48,7 +48,7 @@ test('a selected frame reveals direct child frame titles and the overlay chips a
     localSelection: local, selectionCorners: corners, selectionBox: bounds(corners), measurementTarget: null,
   })
   expect(overlay.commands.labels?.find(label => label.kind === 'section-title')).toMatchObject({
-    text: '区域', chip: '#e7e8ef', color: '#3459d4', offset: { x: 6, y: -6 },
+    text: '区域', chip: '#e7e8ef', color: '#4597f7', offset: { x: 6, y: -6 },
   })
   expect(overlay.commands.labels?.some(label => label.kind === 'selection-name')).toBe(false)
   expect(visible.some(entry => doc.nodes[entry.id].name === 'Deep')).toBe(false)

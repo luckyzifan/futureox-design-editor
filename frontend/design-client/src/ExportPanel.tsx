@@ -7,7 +7,19 @@ import { useInterfacePreferences } from './interface-preference'
 import type { Editor } from './engine'
 import { pdfVectorIssues, type ExportTarget } from './export-metadata'
 import { scene, unionBounds } from './geometry'
+import { fitBounds } from './canvas-camera'
 import { commitExportEdits } from './export-ownership'
+import { desktopBridge } from './desktop'
+import { KernelClient } from './kernel/client'
+import {
+  encodeDesktopFrames,
+  motionFileName,
+  motionPreviewTimes,
+  MOTION_PREVIEW_FPS,
+  MOTION_PREVIEW_HEIGHT,
+  MOTION_PREVIEW_WIDTH,
+  useVideoEncodeAvailable,
+} from './motion-video'
 
 type Asset = { name: string; url: string; width: number; height: number; scale: number; pdf: boolean; pdfVector: boolean }
 
@@ -39,6 +51,8 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
   const request = useRef<AbortController | null>(null)
   const urls = useRef<string[]>([])
   const dialog = useRef<HTMLElement>(null)
+  const videoReady = useVideoEncodeAvailable()
+  const pageClip = s.doc.animations?.find(clip => clip.pageId === s.page)
   const close = useRef(onClose)
   close.current = onClose
   const release = useCallback(() => {
@@ -236,6 +250,68 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
     }
     } finally { trace.finish() }
   }
+  async function exportPageMotion(format: 'mp4' | 'webm') {
+    const bridge = desktopBridge()?.videoEncode
+    const clip = editor.state.doc.animations?.find(item => item.pageId === editor.state.page)
+    if (!bridge || !clip) {
+      setStatus(tx('当前页没有可编码的动画，或桌面未安装 FFmpeg。', 'This page has no animation to encode, or the desktop FFmpeg is not installed.'))
+      return
+    }
+    if (request.current) return
+    const controller = new AbortController()
+    request.current = controller
+    setBusy(true)
+    setStatus(tx('正在烘焙动画帧，并由 Rust 调用打包的 FFmpeg 编码…', 'Baking frames. Rust will encode them with the bundled FFmpeg…'))
+    release()
+    setAssets([])
+    const client = new KernelClient()
+    try {
+      const doc = editor.state.doc
+      const bounds = unionBounds(scene(doc, clip.pageId).map(entry => entry.bounds))
+      const size = { width: MOTION_PREVIEW_WIDTH, height: MOTION_PREVIEW_HEIGHT }
+      const view = fitBounds(bounds, size, { padding: 24, maxZoom: 2 })
+      const times = motionPreviewTimes(clip.delayMs + clip.durationMs)
+      const frames: Uint8Array[] = []
+      for (const timeMs of times) {
+        if (controller.signal.aborted || request.current !== controller) return
+        const frame = await client.render(doc, {
+          ...size,
+          pageId: clip.pageId,
+          view,
+          grid: false,
+          transparent: false,
+          rasterProfile: doc.rasterProfile || 'analytic',
+          animation: { clipId: clip.id, timeMs },
+        }, true)
+        frames.push(frame.bytes)
+      }
+      if (controller.signal.aborted || request.current !== controller) return
+      const encoded = await encodeDesktopFrames(bridge, { format, fps: MOTION_PREVIEW_FPS, frames })
+      if (controller.signal.aborted || request.current !== controller) return
+      const url = URL.createObjectURL(new Blob([encoded.bytes], { type: encoded.mime }))
+      urls.current.push(url)
+      setAssets([{
+        name: motionFileName(clip.name, format),
+        url,
+        width: size.width,
+        height: size.height,
+        scale: 1,
+        pdf: false,
+        pdfVector: false,
+      }])
+      setStatus(tx(`已生成 ${format.toUpperCase()} 动效预览。`, `Generated a ${format.toUpperCase()} motion preview.`))
+    } catch (error) {
+      if (!controller.signal.aborted && request.current === controller) {
+        setStatus(error instanceof Error ? error.message : String(error))
+      }
+    } finally {
+      client.dispose()
+      if (request.current === controller) {
+        request.current = null
+        setBusy(false)
+      }
+    }
+  }
   return (
     <div className="feature-backdrop">
       <section
@@ -254,8 +330,8 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
           </button>
         </header>
         <p className="export-color-note">{tx(
-          '默认是 sRGB：8 位 PNG 写入 sRGB 色彩块和 sRGB ICC。选择 Display P3 时，同一套 sRGB 像素会换算成 Display P3 并写入 ICC 与 cICP；JPEG、WebP 和位图 PDF 带上同一份描述文件。这不改画布合成，也不是默认 PNG。其他色彩空间仍用 PNG。本面板不编码 FFmpeg、MP4 或 WebM 视频。',
-          'The default is sRGB: 8-bit PNG writes an sRGB chunk and an sRGB ICC profile. Display P3 converts those sRGB samples and writes an ICC profile plus cICP. JPEG, WebP and bitmap PDF carry the same profile. This does not change canvas compositing, and it is not the default PNG. Other color spaces still use PNG. This panel does not encode FFmpeg, MP4 or WebM video.',
+          '默认是 sRGB：8 位 PNG 写入 sRGB 色彩块和 sRGB ICC。选择 Display P3 时，同一套 sRGB 像素会换算成 Display P3 并写入 ICC 与 cICP；JPEG、WebP 和位图 PDF 带上同一份描述文件。这不改画布合成，也不是默认 PNG。其他色彩空间仍用 PNG。SVG 的 gzip 导出是 .svgz。桌面版在安装了打包的 FFmpeg 时，可以把当前页的动画烘焙成帧，再由 Rust 调用该二进制编成 MP4 或 WebM，不走系统 PATH。没有这个二进制时（含网页版）仍只导出静帧。',
+          'The default is sRGB: 8-bit PNG writes an sRGB chunk and an sRGB ICC profile. Display P3 converts those sRGB samples and writes an ICC profile plus cICP. JPEG, WebP and bitmap PDF carry the same profile. This does not change canvas compositing, and it is not the default PNG. Other color spaces still use PNG. Gzip SVG export is .svgz. On the desktop, when the bundled FFmpeg is installed, the current page animation can be baked to frames and encoded to MP4 or WebM by Rust invoking that binary, not a PATH lookup. Without that binary, including on the web, export stays a still image.',
         )}</p>
         {(format === 'png' || format === 'jpeg' || format === 'webp' || format === 'pdf') && <label>{tx('色彩空间', 'Color space')} <select aria-label={tx('导出色彩空间', 'Export color space')} value={gamut} disabled={busy} onChange={event => setGamut(event.target.value as 'srgb' | 'display-p3')}>
           <option value="srgb">sRGB</option>
@@ -376,6 +452,12 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
             ? tx('矢量输出与倍率无关，文件按设计尺寸保存。', 'Vector output ignores scale and is stored at the design size.')
             : tx('像素尺寸向上取整，不拉伸内容；不受画布缩放或设备 DPR 影响。小数尾像素覆盖范围会向右、向下扩展。', 'Pixel size rounds up without stretching. Canvas zoom and device DPR do not apply. A fractional edge extends right and down.')}
         </p>
+        {videoReady && pageClip && <fieldset disabled={busy}>
+          <legend>{tx('动效预览', 'Motion preview')}</legend>
+          <p>{tx(`把「${pageClip.name}」按 12 帧/秒烘焙一圈（最长 8 秒），再交给打包的 FFmpeg。重复播放只导出一轮。`, `Bakes one cycle of “${pageClip.name}” at 12 fps (8 seconds at most), then the bundled FFmpeg encodes it. Repeats export a single cycle.`)}</p>
+          <button type="button" onClick={() => void exportPageMotion('mp4')}>MP4</button>
+          <button type="button" onClick={() => void exportPageMotion('webm')}>WebM</button>
+        </fieldset>}
         <div className="feature-row">
           <button type="button" disabled={busy || (format !== 'pdf-vector' && format !== 'svg' && !scales.length)} onClick={() => void generate()}>
             {tx(`生成 ${format === 'pdf-vector' ? 'PDF（矢量）' : format.toUpperCase()}`, `Export ${format === 'pdf-vector' ? 'vector PDF' : format.toUpperCase()}`)}
@@ -399,8 +481,8 @@ export function ExportPanel({ editor, onClose }: { editor: Editor; onClose: () =
         </p>
         <div className="export-assets">
           {assets.map((asset) => (
-            <figure key={asset.scale}>
-              {asset.name.endsWith('.svgz') ? <span>{tx('SVGZ · 矢量', 'SVGZ · vector')}</span> : asset.pdf ? <span>{asset.pdfVector ? tx('PDF · 矢量', 'PDF · vector') : tx('PDF · 精确位图', 'PDF · exact bitmap')}</span> : <img src={asset.url} alt={tx(`${asset.scale}x 切图预览`, `${asset.scale}x export preview`)} />}
+            <figure key={`${asset.name}-${asset.scale}`}>
+              {asset.name.endsWith('.mp4') || asset.name.endsWith('.webm') ? <span>{asset.name.endsWith('.mp4') ? 'MP4' : 'WebM'}</span> : asset.name.endsWith('.svgz') ? <span>{tx('SVGZ · 矢量', 'SVGZ · vector')}</span> : asset.pdf ? <span>{asset.pdfVector ? tx('PDF · 矢量', 'PDF · vector') : tx('PDF · 精确位图', 'PDF · exact bitmap')}</span> : <img src={asset.url} alt={tx(`${asset.scale}x 切图预览`, `${asset.scale}x export preview`)} />}
               <figcaption>
                 {asset.width} × {asset.height} {asset.pdfVector ? 'pt' : 'px'}
               </figcaption>

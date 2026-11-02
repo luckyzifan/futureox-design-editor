@@ -7,6 +7,7 @@ import {canvasSamplingProfile} from './render-policy'
 import {SourceViewportPlanner} from './source-viewport-plan'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
 import {tileIntersectsView, tilePlacementAtView} from './tile-preview'
+import {cpuTileBlitOrigin} from './cpu-tile-frame'
 import {SourceRenderWork} from './source-render-work'
 import {useDevicePixelRatio} from './presentation'
 import type {ResidentAcknowledgement} from './resident-presentation'
@@ -121,11 +122,18 @@ export function NativeSourceSurface(props:Props){
           const sw=tile.width/divisor,sh=tile.height/divisor
           if(tile.bitmap)cpuContext.drawImage(tile.bitmap,0,0,sw,sh,dx,dy,dw,dh)
           else if(tile.bytes?.length===Math.ceil(sw)*Math.ceil(sh)*4){
+            const iw=Math.ceil(sw), ih=Math.ceil(sh)
+            const pixels=new ImageData(new Uint8ClampedArray(tile.bytes),iw,ih)
+            if (divisor===1 && Math.abs(dw-iw)<0.5 && Math.abs(dh-ih)<0.5) {
+              const origin=cpuTileBlitOrigin(dx,dy)
+              cpuContext.putImageData(pixels,origin.x,origin.y)
+              continue
+            }
             cpuScratch ??= document.createElement('canvas')
-            cpuScratch.width=Math.ceil(sw);cpuScratch.height=Math.ceil(sh)
+            cpuScratch.width=iw;cpuScratch.height=ih
             const ctx=cpuScratch.getContext('2d')
             if (!ctx) throw Error('CPU 瓦片不可用')
-            ctx.putImageData(new ImageData(new Uint8ClampedArray(tile.bytes),cpuScratch.width,cpuScratch.height),0,0)
+            ctx.putImageData(pixels,0,0)
             cpuContext.drawImage(cpuScratch,0,0,sw,sh,dx,dy,dw,dh)
           }
         }

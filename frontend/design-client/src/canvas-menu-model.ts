@@ -100,8 +100,9 @@ export function canvasMenuItems(editor: Editor, context: ShortcutContext = { pro
 }
 
 /** Mac desktop right-click on a selected shape, top to bottom. Cloud-only
- * rows (Figma Make, Find similar, Widgets) are omitted. Move to page is
- * inserted by the menu between Copy/Paste as and Bring to front. */
+ * rows (Figma Make, Find similar, Add motion, Widgets) are omitted. Move to
+ * page sits between Copy/Paste as and Bring to front. Plugins sits between
+ * Create component and Show/Hide. The menu component inserts those two rows. */
 const contextOrder: EditorCommand[] = [
   'copy', 'paste-here', 'paste-to-replace', 'paste-over-selection',
   'copy-properties', 'paste-properties', 'copy-fills', 'copy-strokes', 'copy-effects', 'copy-as-png', 'copy-as-svg',
@@ -113,14 +114,44 @@ const contextOrder: EditorCommand[] = [
   'flip-horizontal', 'flip-vertical',
   'select-all',
 ]
+function contextPresentation(item: CanvasMenuItem, locale: 'zh-CN' | 'en'): CanvasMenuItem {
+  if (item.command === 'hide-selection' || item.command === 'show-selection')
+    return { ...item, label: locale === 'en' ? 'Show/Hide' : '显示/隐藏' }
+  if (item.command === 'lock-selection' || item.command === 'unlock-selection')
+    return { ...item, label: locale === 'en' ? 'Lock/Unlock' : '锁定/解锁' }
+  return item
+}
+/** A rectangle with no stroke still lists Outline stroke, disabled. */
+function disabledOutlineItem(editor: Editor, context: ShortcutContext): CanvasMenuItem | null {
+  const nodes = editor.state.selection.map(id => editor.state.doc.nodes[id]).filter(Boolean)
+  if (!nodes.length || nodes.some(n => container(n) || n.kind === 'text' || n.kind === 'slice')) return null
+  const locale = interfacePreference.getSnapshot().locale
+  return {
+    command: 'outline-stroke',
+    label: canvasCommandLabel('outline-stroke', '轮廓化描边', locale, nodes.length > 1, false),
+    group: 'geometry',
+    disabled: true,
+    shortcut: shortcutLabel('outline-stroke', context),
+  }
+}
 export function canvasContextItems(editor: Editor, context: ShortcutContext = { profile: shortcutPreference.getSnapshot(), platform: shortcutPlatform(), desktop: !!desktopBridge() }): CanvasMenuItem[] {
   const available = new Map(canvasMenuItems(editor, context).map(item => [item.command, item]))
+  if (!available.has('outline-stroke')) {
+    const outline = disabledOutlineItem(editor, context)
+    if (outline) available.set('outline-stroke', outline)
+  }
+  const locale = interfacePreference.getSnapshot().locale
   return contextOrder.flatMap(command => {
     if (command === 'paste-over-selection' && context.profile !== 'sketch-like') return []
     const item = available.get(command)
     if (!item || (command === 'detach-instance' && item.disabled)) return []
-    return [item]
+    return [contextPresentation(item, locale)]
   })
+}
+/** Plugins sits after Create component and before Show/Hide or Lock/Unlock. */
+export function pluginsMenuIndex(commands: readonly string[]): number {
+  const at = commands.findIndex(command => command === 'hide-selection' || command === 'show-selection' || command === 'lock-selection' || command === 'unlock-selection')
+  return at < 0 ? commands.length : at
 }
 /** Where the page submenu sits in the Mac list: after Copy/Paste as, before stacking. */
 export function moveToPageIndex(commands: readonly string[]): number {
