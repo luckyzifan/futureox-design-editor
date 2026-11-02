@@ -42,7 +42,7 @@ import { lockedSelectionIds } from './canvas-menu-model'
 import { modalOwnsKeyboard } from './modal-keyboard'
 import { ViewControls } from './ViewControls'
 import { CanvasTextEditor } from './TextEditor'
-import { createBox, forcedPixelSnap, resizeInBasis, snapMove, selectionLocalBounds } from './canvas-view'
+import { createBox, forcedPixelSnap, localClockwiseAfter, resizeInBasis, snapLocalClockwise, snapMove, selectionLocalBounds } from './canvas-view'
 import { fitBounds, isNativePinch, revealInView, screenToWorld, worldToScreen, zoomAt, zoomStep, type CanvasCamera } from './canvas-camera'
 import { WheelCameraGesture } from './wheel-camera-gesture'
 import { desktopBridge,type LocalPeer } from './desktop'
@@ -885,8 +885,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   // Pixels lagging an edit (refinement in flight) no longer block gestures:
   // hit-testing runs against the displayed snapshot, mutations against the
   // live document, so the user can keep working while tiles re-render.
+  // Handles mount with the selection under Move/Scale. A missing display
+  // snapshot must not hide them; starting a gesture still waits for that snapshot.
   const canTransform = capturedTransform || (['select','multiselect','scale'].includes(state.tool) && !spaceHeld && !textEdit &&
-    !selectionFeedback.readOnly && !!displayedSnapshot)
+    !selectionFeedback.readOnly && state.selection.length > 0)
   const frameTitles = useMemo(() => entries.filter(e => {
     const n=state.doc.nodes[e.id]
     return ['frame','section'].includes(n.kind) && (e.depth===0||selection.has(e.id)) &&
@@ -1663,9 +1665,26 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       const center = d.rotationCenter || (d.basis && d.localBox
         ? apply(d.basis, { x: d.localBox.x + d.localBox.width / 2, y: d.localBox.y + d.localBox.height / 2 })
         : { x: d.box.x + d.box.width / 2, y: d.box.y + d.box.height / 2 })
-      const initial = d.ids.length === 1 ? Math.atan2(d.matrices[d.ids[0]][1], d.matrices[d.ids[0]][0]) * 180 / Math.PI : 0
-      const rotation = selectionRotation(center, d.start, p, initial, e.shiftKey)
-      return { matrix: rotation.matrix, guides: {}, degrees: rotation.degrees }
+      // The matrix follows the hand: y-down atan2 increase is clockwise.
+      // The number is the local angle the inspector will store, not a second
+      // world readout and not the negated historical selectionRotation text.
+      const single = d.ids.length === 1 ? d.ids[0] : undefined
+      const parent = single ? d.parentMatrices?.[single] : undefined
+      const worldStart = single ? d.matrices[single] : undefined
+      const snapLocal = e.shiftKey && !!parent && !!worldStart
+      const rotation = selectionRotation(center, d.start, p, 0, e.shiftKey && !snapLocal)
+      let matrix = rotation.matrix
+      if (snapLocal) matrix = snapLocalClockwise(parent, worldStart, matrix, center)
+      const samples = d.ids.flatMap(id => {
+        const owner = d.parentMatrices?.[id], base = d.matrices[id]
+        if (!owner || !base) return []
+        const local = localClockwiseAfter(owner, base, matrix)
+        return local === null ? [] : [local]
+      })
+      const degrees = samples.length === d.ids.length && samples.every(value => Math.abs(value - samples[0]) < 1e-4)
+        ? samples[0]
+        : rotation.degrees
+      return { matrix, guides: {}, degrees }
     }
     if (d.kind === 'resize' || d.kind === 'scale') {
       const args = resizeArgs(d, e, p)
