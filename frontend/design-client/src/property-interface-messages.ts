@@ -52,6 +52,7 @@ export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
   "透明度 %": "Opacity %",
   "混合模式": "Blend mode",
   "圆角": "Corner radius",
+  "独立圆角": "Independent corners",
   "圆角平滑 %": "Corner smoothing %",
   "顶点数量": "Point count",
   "内半径 %": "Inner radius %",

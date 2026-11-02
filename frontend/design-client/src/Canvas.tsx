@@ -106,6 +106,7 @@ import { cropImageNode, imageNaturalSize } from './image-crop'
 import { PencilInput, freehandNode, type PencilSettings, type FreehandTool } from './freehand'
 import { NumberField } from './fields'
 import { createShapeSeed, resolveShapeCreation, creationPointCount, creationToolStaysArmed, creationGhostNode, creationPreviewPoints, creationVisiblePaint, type ShapeCreationKind, type ShapeCreationSeed } from './shape-creation'
+import { cornerHandlePoint, cornerRadiiAfterDrag, editableGradient, firstGlass, glassHandleLocal, glassLightAngle, gradientAngleFromLocal, gradientAngleHandle, gradientEndpoints, gradientStopOffset, gradientStopPoint, rectangleCornerTarget, type CornerIndex } from './canvas-material-handles'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { editableNetwork } from './editable-network'
 import { dragThresholdPassed, selectedGroupDragIntent, selectedChildDragIntent, selectedOwnedDragIntent, selectionPointerDown, frameTitleHit } from './canvas-pointer-intent'
@@ -173,7 +174,9 @@ type Drag = {
   layoutPointerOrigin?: Point
   creationSeed?: ShapeCreationSeed
   creationTool?: Tool
-  parameter?: 'points' | 'innerRadius' | 'arcStart' | 'arcSweep' | 'arcInner' | 'cornerRadius'
+  parameter?: 'points' | 'innerRadius' | 'arcStart' | 'arcSweep' | 'arcInner' | 'cornerRadius' | 'rectangleCorner' | 'glassLight' | 'gradientAngle' | 'gradientStop'
+  materialFill?: number
+  materialStop?: number
   pointer?: Point
   screenDistance?: number
   modifiers?: { shift: boolean; alt: boolean }
@@ -1865,6 +1868,32 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (d.parameter === 'cornerRadius') {
         editor.preview({ [d.node.id]: { cornerRadius: Math.max(0, (d.node.cornerRadius ?? 0) + (d.screen.y - screenPoint(e).y) / d.view.zoom) } }); return
       }
+      if (d.parameter === 'rectangleCorner' && d.handle !== undefined) {
+        const local = apply(inverse(d.matrices[d.node.id]), p)
+        const radii = cornerRadiiAfterDrag(d.node.width, d.node.height, d.node.radii, d.handle as CornerIndex, local, !e.altKey)
+        editor.preview({ [d.node.id]: { radii } }); return
+      }
+      if (d.parameter === 'glassLight' && d.handle !== undefined) {
+        const local = apply(inverse(d.matrices[d.node.id]), p)
+        const effects = structuredClone(d.node.effects)
+        const glass = effects[d.handle]?.glass
+        if (glass) {
+          glass.lightAngle = glassLightAngle(local.x - d.node.width / 2, local.y - d.node.height / 2, e.shiftKey, glass.lightAngle)
+          editor.preview({ [d.node.id]: { effects } })
+        }
+        return
+      }
+      if ((d.parameter === 'gradientAngle' || d.parameter === 'gradientStop') && d.materialFill !== undefined) {
+        const local = apply(inverse(d.matrices[d.node.id]), p)
+        const fills = structuredClone(d.node.fills)
+        const fill = fills[d.materialFill]
+        if (fill && d.parameter === 'gradientAngle') fill.angle = gradientAngleFromLocal(d.node.width, d.node.height, local, e.shiftKey, fill.angle)
+        if (fill && d.parameter === 'gradientStop' && d.materialStop !== undefined && fill.stops[d.materialStop]) {
+          const ends = gradientEndpoints(d.node.width, d.node.height, fill.angle)
+          fill.stops[d.materialStop].offset = gradientStopOffset(ends.start, ends.end, local)
+        }
+        editor.preview({ [d.node.id]: { fills } }); return
+      }
       if (d.parameter === 'points') {
         editor.preview({ [d.node.id]: { points: creationPointCount(d.node.points, Math.round((d.screen.y - screenPoint(e).y) / 12)) } })
       } else {
@@ -2851,16 +2880,67 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                     }}><title>{title}</title></circle>
                 })
               })()}
-              {selected.length === 1 && localSelection && !['frame', 'section'].includes(state.doc.nodes[selected[0].id].kind) && <text
-                data-testid="selection-name"
-                opacity={gpuOverlay ? 0 : 1}
-                transform={matrixString(selected[0].matrix)}
-                x={localSelection.x}
-                y={localSelection.y - 12 / zoom}
-                fontSize={11 / zoom}
-                fill="#0d99ff"
-                pointerEvents="none"
-              >{state.doc.nodes[selected[0].id].name}</text>}
+              {canTransform && state.tool !== 'scale' && selected.length === 1 && (() => {
+                const n = state.doc.nodes[selected[0].id]
+                if (!n) return null
+                const worldPoint = (local: { x: number; y: number }) => apply(selected[0].matrix, local)
+                const beginMaterial = (event: React.PointerEvent, parameter: NonNullable<Drag['parameter']>, handle: number | undefined, history: string, fill?: number, stop?: number) => {
+                  event.stopPropagation()
+                  start(event, 'parameter', handle, n.id)
+                  if (drag.current?.kind === 'parameter') {
+                    drag.current.parameter = parameter
+                    drag.current.materialFill = fill
+                    drag.current.materialStop = stop
+                    editor.begin(history)
+                  }
+                }
+                const marks: React.ReactNode[] = []
+                if (rectangleCornerTarget(n)) {
+                  ([0, 1, 2, 3] as const).forEach((index) => {
+                    const p = worldPoint(cornerHandlePoint(n.width, n.height, n.radii, index, 14 / zoom))
+                    marks.push(<circle key={`corner-${index}`} data-testid={`corner-radius-${index}`} cx={p.x} cy={p.y} r={5 / zoom}
+                      fill="white" stroke="#0d99ff" strokeWidth={1 / zoom} style={{ cursor: 'crosshair' }}
+                      onPointerDown={(event) => beginMaterial(event, 'rectangleCorner', index, '调整圆角')}>
+                      <title>{chromeCopy.rectangleCorner}</title>
+                    </circle>)
+                  })
+                }
+                const glass = firstGlass(n)
+                if (glass) {
+                  const reach = Math.hypot(n.width, n.height) / 2 + 22 / zoom
+                  const origin = worldPoint({ x: n.width / 2, y: n.height / 2 })
+                  const p = worldPoint(glassHandleLocal(n.width, n.height, glass.angle, reach))
+                  marks.push(<g key="glass-light">
+                    <line data-testid="glass-light-ray" x1={origin.x} y1={origin.y} x2={p.x} y2={p.y} stroke="#0d99ff" strokeWidth={1 / zoom} pointerEvents="none" />
+                    <circle data-testid="glass-light-handle" cx={p.x} cy={p.y} r={5 / zoom} fill="white" stroke="#0d99ff" strokeWidth={1 / zoom} style={{ cursor: 'crosshair' }}
+                      onPointerDown={(event) => beginMaterial(event, 'glassLight', glass.index, '调整玻璃光线')}>
+                      <title>{chromeCopy.glassLight}</title>
+                    </circle>
+                  </g>)
+                }
+                const gradient = editableGradient(n)
+                if (gradient) {
+                  const ends = gradientEndpoints(n.width, n.height, gradient.paint.angle)
+                  const startPoint = worldPoint(ends.start)
+                  const endPoint = worldPoint(ends.end)
+                  const anglePoint = worldPoint(gradientAngleHandle(n.width, n.height, gradient.paint.angle, 14 / zoom))
+                  marks.push(<g key="gradient">
+                    <line data-testid="gradient-line" x1={startPoint.x} y1={startPoint.y} x2={endPoint.x} y2={endPoint.y} stroke="#0d99ff" strokeWidth={1 / zoom} pointerEvents="none" />
+                    <circle data-testid="gradient-angle-handle" cx={anglePoint.x} cy={anglePoint.y} r={5 / zoom} fill="white" stroke="#0d99ff" strokeWidth={1 / zoom} style={{ cursor: 'crosshair' }}
+                      onPointerDown={(event) => beginMaterial(event, 'gradientAngle', undefined, '调整渐变', gradient.index)}>
+                      <title>{chromeCopy.gradientAngle}</title>
+                    </circle>
+                    {gradient.paint.stops.map((stop, stopIndex) => {
+                      const p = worldPoint(gradientStopPoint(n.width, n.height, gradient.paint.angle, stop.offset))
+                      return <circle key={stopIndex} data-testid={`gradient-stop-${stopIndex}`} cx={p.x} cy={p.y} r={3.5 / zoom} fill={stop.color} stroke="#0d99ff" strokeWidth={1 / zoom} style={{ cursor: 'pointer' }}
+                        onPointerDown={(event) => beginMaterial(event, 'gradientStop', undefined, '调整渐变色标', gradient.index, stopIndex)}>
+                        <title>{chromeCopy.gradientStop}</title>
+                      </circle>
+                    })}
+                  </g>)
+                }
+                return marks.length ? <g data-testid="material-handles">{marks}</g> : null
+              })()}
               <text
                 opacity={gpuOverlay ? 0 : 1}
                 x={selectionBox.x + selectionBox.width / 2}
