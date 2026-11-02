@@ -6,7 +6,17 @@ export type DesktopResult<T = Record<never, never>> =
 export type DesktopFile = { pendingCount?: number; handle: string; displayName: string; documentJson?: string; warning?: string }
 export type DesktopFont = { id: string; family: string; style: string; postscript: string; index: number; sourceIndex?: number }
 export type DesktopFontData = { font: DesktopFont; data: string; index: number; sourceIndex: number; extracted: boolean }
-export type DesktopCommand = 'settings' | 'copy-properties'|'paste-properties'|'select-matching'|'select-inverse'| 'open' | 'openPending' | 'save' | 'saveAs' | 'new' | 'new-page' | 'recover' | 'zoomIn' | 'zoomOut' | 'zoom100' | 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'copy-as-png' | 'copy-as-svg' | 'paste-to-replace' | 'paste-in-place' | 'paste-over-selection' | 'select-all' | 'duplicate' | 'group' | 'ungroup' | 'delete' | 'zoom-fit' | 'zoom-selection' | 'center-selection'
+export type DesktopCommand = 'settings' | 'plugins' | 'copy-properties'|'paste-properties'|'select-matching'|'select-inverse'| 'open' | 'openPending' | 'save' | 'saveAs' | 'new' | 'new-page' | 'recover' | 'zoomIn' | 'zoomOut' | 'zoom100' | 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'copy-as-png' | 'copy-as-svg' | 'paste-to-replace' | 'paste-in-place' | 'paste-over-selection' | 'select-all' | 'duplicate' | 'group' | 'ungroup' | 'delete' | 'zoom-fit' | 'zoom-selection' | 'center-selection'
+export type PluginDirectoryGrant = { grant: string; manifestText: string; displayName: string }
+export interface PluginBridge {
+  pick(): Promise<DesktopResult<PluginDirectoryGrant>>
+  read(request: { grant: string; paths: string[] }): Promise<DesktopResult<{ files: Record<string, string> }>>
+  openUi(request: { html: string; width?: number; height?: number; title?: string }): Promise<DesktopResult>
+  postUi(request: { pluginMessage: unknown }): Promise<DesktopResult>
+  closeUi(): Promise<DesktopResult>
+  onUiMessage(callback: (message: { pluginMessage: unknown }) => void): () => void
+  onUiClosed(callback: () => void): () => void
+}
 export type CatalogProject = { id: string; name: string; updatedAt: number }
 export type CatalogDirectory = { id: string; projectId: string; displayName: string; updatedAt: number; directoryHandle?: string; requiresReselection: boolean }
 export type CatalogFile = { id: string; directoryId: string; relativePath: string; size: number; modifiedAt: number; indexedAt: number }
@@ -144,6 +154,7 @@ export interface DesktopBridge {
   readonly workspace?: WorkspaceBridge
   readonly clipboard?: { read(): Promise<DesktopResult<DesktopClipboard>>; write(value: DesktopClipboard): Promise<DesktopResult> }
   readonly version: 1
+  readonly plugins?: PluginBridge
   readonly documentCapacity?: Readonly<{ memoryBytes: number }>
   readonly renderPolicy: Readonly<{ cpuOnly: boolean; gpuWorkingBudgetMiB?: number }>
   readonly nativeRender?: NativeRenderBridgeApi
