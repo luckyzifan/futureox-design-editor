@@ -73,7 +73,7 @@ mod tests {
         let original = envelope(json!({"array":[null,true,1.25,"文字"],"url":"file:///inert","permission":"never grants access"}));
         original.validate().unwrap();
         let value = serde_json::to_value(&original).unwrap();
-        let bytes = crate::binfmt::encode_value(&value);
+        let bytes = crate::binfmt::encode_value(&value).unwrap();
         let restored: FdCompatibility = serde_json::from_value(crate::binfmt::decode_value(&bytes).unwrap()).unwrap();
         assert_eq!(original, restored);
     }
