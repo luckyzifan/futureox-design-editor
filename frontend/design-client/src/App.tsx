@@ -86,6 +86,7 @@ import {
 import { Editor, type Tool } from './engine'
 import { desktopBridge, type DesktopCommand } from './desktop'
 import { PluginPanel } from './plugins/PluginPanel'
+import { OPEN_PLUGINS_EVENT, pluginLaunchGrant } from './plugins/open-plugins'
 import { DesktopCatalog } from './DesktopCatalog'
 import { DesktopLeaveDialog } from './DesktopLeaveDialog'
 import { DesktopSession, type DesktopStatus, type LeaveDecision, type LeaveReason } from './desktop-session'
@@ -382,6 +383,20 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [ready, setReady] = useState(false),
     [saved, setSaved] = useState('载入中'),
     [menu, setMenu] = useState(false)
+  useEffect(() => {
+    const open = (event: Event) => {
+      if (largeDocument || source) return
+      const grant = pluginLaunchGrant((event as CustomEvent<{ grant?: string }>).detail?.grant)
+      setMenu(false)
+      setShowPlugins(true)
+      if (grant) {
+        pluginLaunchToken.current += 1
+        setPluginLaunch({ grant, token: pluginLaunchToken.current })
+      } else setPluginLaunch(null)
+    }
+    window.addEventListener(OPEN_PLUGINS_EVENT, open)
+    return () => window.removeEventListener(OPEN_PLUGINS_EVENT, open)
+  }, [largeDocument, source])
   const [startupPreview, setStartupPreview] = useState<StartupPreview>()
   const [localFiles, setLocalFiles] = useState<LocalEntry[] | null>(null)
   const [switching, setSwitching] = useState(false)
