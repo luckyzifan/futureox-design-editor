@@ -6593,9 +6593,11 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                 "sharedStyleFidelity"
                     | "sharedStyleIds"
                     | "foreignSymbolsUnresolved"
-                    | "nodeMetadata"
+                    |                 "nodeMetadata"
                     | "textSourceLayouts"
                     | "rulerData"
+                    | "figDocument"
+                    | "figRetainedStyles"
             ) {
                 continue;
             }
@@ -6691,6 +6693,11 @@ pub fn import_fig_report(bytes: &[u8]) -> Result<FigImportReport> {
                         if source.pointer("/bindings/prototypeFlow").is_some() {
                             warnings.push(format!("FIG {id}: prototype interactions retained as source metadata, not executable"));
                         }
+                    }
+                }
+                if let Some(notes)=document.design_system.as_ref().and_then(|s|s.sketch_containers.get("figDocument")).and_then(|v|v.get("notes")).and_then(Value::as_array) {
+                    for note in notes.iter().filter_map(Value::as_str) {
+                        warnings.push(format!("FIG document: {note}"));
                     }
                 }
                 Ok(FigImportReport {document, backend:"rust-native-fig", warnings, native_error:None})
