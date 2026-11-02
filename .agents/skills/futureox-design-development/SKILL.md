@@ -3,6 +3,8 @@ name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
 
+2026-11-02 [画布操作对照](../../../testing/verification-figma-canvas-ops-20261102/README.md)只改选择拖动、旋转手柄、尺寸标签、创建填充和自动化文案。已选图层的拖动不被重叠文字抢走；旋转手柄画在选区角外；尺寸标签最多两位小数。形状单击为 100×100，拖拽用指针跨度，填充在呈现前保持。不改缩放覆盖、粘性仿射或标签缓存。33/100ms 与完整 G2/G5 仍未关闭。
+
 2026-11-02 [导入与传输对照](../../../testing/verification-interop-transfer-20261102/README.md)只修浏览器 FIG 描边端点、`showShadowBehindNode` 保留，以及原生 `LAYER_BLUR` 与 `FOREGROUND_BLUR` 同义。不改缩放/瓦片导航、GPU 预算或实验开关。精确瓦片 `slice` 在缓存持有缓冲区时仍是所有权边界。Sketch 玻璃/纹理、FIG 反向堆叠与变量、Display P3 默认 PNG 编码、33/100ms 和完整 G2/G5 仍未关闭。
 
 2026-11-02 UI/ops 并行轨见[记录](../../../testing/verification-ui-ops-i18n-tabs-export-20261102/README.md)。界面语言可在顶栏切换中文/English，蓝色强调色不变。矩形、椭圆、多边形、画板及便签类工具在创建后保持选中。工作区标签在文件操作占用编辑器时排队，宿主 `workspace-open` 不再占用文件写锁；已打开文档在 BUSY 时从会话缓存切换，不把 “Another file operation is in progress” 当成当前画布失败。PNG 导出说明 sRGB 色彩块；本面板不编码 FFmpeg/MP4/WebM。未改光栅化或导航瓦片，不关闭 33/100ms 或完整 G2/G5。
