@@ -291,6 +291,7 @@ where
                 }
                 let id = job.request.id.clone();
                 let scan = job.request.method == "catalog.scan"
+                    || job.request.method == "video.encode"
                     || job.request.method.starts_with("large.");
                 let cancel = Arc::new(AtomicBool::new(false));
                 let worker_cancel = cancel.clone();

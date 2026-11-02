@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { buildInputs, buildOutput, buildProfile } from './build-inputs.mjs'
+import { installBundledFfmpeg } from './ffmpeg-bundle.mjs'
 import { installSidecar } from './install-sidecar.mjs'
 import { spawnSync } from 'node:child_process'
 import { mkdir, writeFile, copyFile } from 'node:fs/promises'
@@ -10,6 +11,9 @@ const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const core = path.resolve(desktop, '../..')
 const design = path.join(core, 'design-studio')
 const output = await buildOutput(desktop, process.argv.slice(2))
+const bundledFfmpeg = await installBundledFfmpeg({ desktop, output })
+if (bundledFfmpeg.installed) console.log(`Bundled FFmpeg (${bundledFfmpeg.triple}) -> ${bundledFfmpeg.dest}`)
+else console.warn(`FFmpeg is not vendored for ${bundledFfmpeg.triple}; motion video encode stays unavailable`)
 const profile = buildProfile(process.argv.slice(2))
 // Explicit native-only candidate. WASM/editor semantics keep their normal
 // build; the source wire format remains behind its runtime publication switch.
