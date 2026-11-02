@@ -1,6 +1,8 @@
 import type { Bounds, Point } from './model'
 export type MeasurementAxis = 'horizontal' | 'vertical'
 export type Measurement = { from: Point; to: Point; distance: number; axis: MeasurementAxis }
+/** Figma's spacing red. DOM and the GPU overlay both use this. */
+export const SPACING_RED = '#f24822'
 const EPS = 1e-9
 const encloses = (outer: Bounds, inner: Bounds) => outer.x <= inner.x + EPS && outer.y <= inner.y + EPS
   && outer.x + outer.width + EPS >= inner.x + inner.width && outer.y + outer.height + EPS >= inner.y + inner.height
@@ -55,4 +57,21 @@ export function measurementLabel(measurement: Measurement, zoom = 1): { anchor: 
   const short = measurement.distance * scale < 28
   if (measurement.axis === 'vertical') return { anchor, offset: short ? { x: 16, y: -6 } : { x: 0, y: -6 } }
   return { anchor, offset: short ? { x: 0, y: -16 } : { x: 0, y: -6 } }
+}
+
+/** Mac desktop Figma: hold Option/Alt with a selection and the red guides
+ * measure that selection against the layer the pointer would select. They do
+ * not measure through the selection to whatever is stacked behind it, and
+ * they stay off while a drag or Space-pan owns the pointer. */
+export function altMeasurementTarget(input: {
+  alt: boolean
+  dragging: boolean
+  space: boolean
+  tool: string
+  selection: readonly string[]
+  hover: string | null
+}): string | null {
+  if (!input.alt || input.dragging || input.space || input.tool !== 'select') return null
+  if (!input.selection.length || !input.hover || input.selection.includes(input.hover)) return null
+  return input.hover
 }
