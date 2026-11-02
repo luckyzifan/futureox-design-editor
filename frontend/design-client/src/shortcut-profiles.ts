@@ -84,6 +84,7 @@ export function shortcutBindings({ profile, platform, desktop = false }: Shortcu
   bindings.push({ command: 'mask-selection', combo: platform === 'mac' ? 'Mod+Ctrl+M' : 'Mod+Alt+M' })
   bindings.push({ command: 'flatten', combo: 'Mod+E' })
   for (const [command, combo] of tools) if (combo) bindings.push({ command: command as EditorCommand, combo })
+  if (profile === 'figma-like' && platform === 'mac') bindings.push({ command: 'set-tool-eyedropper', combo: 'Ctrl+C' })
   if (profile === 'figma-like') bindings.push({ command: 'set-tool-pencil', combo: 'Alt+P' })
   const result = Object.freeze(bindings.map(binding => Object.freeze(binding)))
   bindingCache.set(cacheKey, result)
