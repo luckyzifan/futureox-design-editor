@@ -22,6 +22,7 @@ import { selectionParentBounds, rotationDegrees, rotateNode, selectionLocalBound
 import { ComponentPanel } from './ComponentPanel'
 import { NumberField } from './fields'
 import { LayoutPanel } from './LayoutPanel'
+import { CornerRadiusFields } from './corner-radius-fields'
 import { MultiSelectionInspector } from './MultiSelectionInspector'
 import { resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
 import React, { memo, useContext, useEffect, useSyncExternalStore, useRef, useState } from 'react'
@@ -72,7 +73,7 @@ const effects: Record<Effect['kind'], string> = {
   'inner-shadow': '内阴影',
   blur: '图层模糊',
   'background-blur': '背景模糊',
-  glass: '玻璃折射',
+  glass: '玻璃',
   noise: '噪声',
   texture: '纹理',
   'color-controls': '颜色调整',
@@ -622,22 +623,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
           </label>
           {['rectangle', 'frame', 'section'].includes(n.kind) && (
             <>
-              <h4>{tr("圆角")}</h4>
-              <div className="field-grid">
-                {n.radii.map((r, i) => (
-                  <UnitNumberField unitDescription={styleDescription} historyLabel={['左上', '右上', '右下', '左下'][i]} unit="length" diagnosticFamily={2} unitScale={units.style}
-                    key={i}
-                    label={tr(['左上', '右上', '右下', '左下'][i])}
-                    value={r}
-                    min={0}
-                    onChange={(v) =>
-                      update((n) => {
-                        n.radii[i] = v
-                      })
-                    }
-                  />
-                ))}
-              </div>
+              <CornerRadiusFields nodeId={n.id} radii={n.radii} tr={tr} update={update} unitDescription={styleDescription} unitScale={units.style} />
               <NumberField historyLabel="圆角平滑 %" diagnosticFamily={2} unit="percent"
                 label={tr("圆角平滑 %")}
                 value={n.smoothing * 100}
@@ -998,7 +984,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
               {fx.glass && (
                 <div className="field-grid">
                   {(
-                    ['depth', 'bevelSize', 'refraction', 'dispersion', 'lightAngle', 'lightIntensity'] as const
+                    ['lightAngle', 'lightIntensity', 'refraction', 'depth', 'dispersion', 'bevelSize'] as const
                   ).map((key) => {
                     const percentage =
                       key === 'refraction' || key === 'dispersion' || key === 'lightIntensity'
