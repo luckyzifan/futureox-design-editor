@@ -4,6 +4,7 @@ import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { chmod, mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { WorkspaceAutomationHost, isWorkspaceAutomationMethod, permitsAutomationMethod, validAutomationGrants } from './workspace-automation.mjs'
+import { attachFigmaMcp } from './figma-mcp-host.mjs'
 
 export const AUTOMATION_PROTOCOL_VERSION = 1
 export const MAX_AUTOMATION_FRAME_BYTES = 32 * 1024 * 1024
@@ -263,7 +264,7 @@ export class LocalAutomationBridge {
 }
 
 /** Only trusted main-frame IPC can bind the live editor or answer a host request. */
-export function registerAutomationBridge({ ipcMain, getWindow, assertSender, dialog, clipboard, audit, storage, workspace }) {
+export function registerAutomationBridge({ ipcMain, getWindow, assertSender, dialog, clipboard, audit, storage, workspace, figmaMcp }) {
   const requests = new Map()
   let dialogOpen = false
   let auditError, statusTimer
@@ -319,6 +320,7 @@ export function registerAutomationBridge({ ipcMain, getWindow, assertSender, dia
     },
   }) : undefined
   const bridge = new LocalAutomationBridge({ dispatch: dispatchRenderer, workspaceHost, onChange: changed, onAudit: enqueueAudit })
+  const figma = typeof figmaMcp === 'function' ? attachFigmaMcp(bridge, figmaMcp) : null
   let editIdentity = '', editRevision = 0
   ipcMain.handle('design-desktop:automation-register', (event, value) => {
     assertSender(event, getWindow())
@@ -364,12 +366,13 @@ export function registerAutomationBridge({ ipcMain, getWindow, assertSender, dia
       if (confirmation.response !== 1) return
       if (rootAtPrompt && workspace.getRoot() !== rootAtPrompt) throw fail('WRONG_ROOT', 'The workspace changed during confirmation; review and enable again')
       const config = await bridge.enable(scope, editor, grants)
+      const shown = figma ? await figma.afterEnable(config) : config
       const copy = await dialog.showMessageBox(window, {
         type: 'info', title: 'Local automation enabled', message: `${scope === 'write' ? 'Read and edit' : 'Read-only'} access is enabled for this design.`,
-        detail: `Keep these temporary connection details private. Configure the stdio adapter with this JSON:\n\n${JSON.stringify(config, null, 2)}`,
+        detail: `Keep these temporary connection details private. The stdio adapter uses endpoint, sessionId and token. figmaMcp.url is the loopback Figma-shaped HTTP server; send the same token as Authorization: Bearer. Configure either client with this JSON:\n\n${JSON.stringify(shown, null, 2)}`,
         buttons: ['Done', 'Copy connection details'], defaultId: 0, cancelId: 0,
       })
-      if (copy.response === 1 && bridge.active?.sessionId === config.sessionId) clipboard.writeText(JSON.stringify(config, null, 2))
+      if (copy.response === 1 && bridge.active?.sessionId === config.sessionId) clipboard.writeText(JSON.stringify(bridge.connection() ?? shown, null, 2))
     } catch (error) {
       const window = getWindow()
       if (window && !window.isDestroyed()) await dialog.showMessageBox(window, { type: 'error', message: 'Could not enable local automation', detail: error.message })

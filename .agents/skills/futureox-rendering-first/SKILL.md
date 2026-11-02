@@ -3,6 +3,7 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-02 Figma 风格 MCP 门面见 [FIGMA_MCP_FACADE.md](../../../docs/FIGMA_MCP_FACADE.md)。它只调用现有 Design API，不改光栅、瓦片或导航。`get_screenshot` 仍是 CPU 设计内容导出，不是 GPU 截图。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [画布操作对照](../../../testing/verification-figma-canvas-ops-20261102/README.md)不改缩放覆盖、粘性仿射或标签缓存。选择拖动、旋转手柄、取整尺寸标签和创建填充是交互层。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 Figma plugin host does not change raster, tile, sticky pose, or compositing paths. It is not a 33/100ms or G2/G5 result. See [the plugin host note](../../../testing/verification-figma-plugin-host-20261102/README.md).
 2026-11-02 大拓扑 Sketch 的 CPU 首屏见[记录](../../../testing/verification-large-topology-sketch-20261102/README.md)。整帧放不进合成账本时改为分块并留下填充和页面底色，不再返回空的红字帧。CPU 完整画板按屏幕瓦片交付位图。精确入口仍先报错。这不是 33/100ms 或完整 G2/G5。约 113MB 原件不在仓库内。

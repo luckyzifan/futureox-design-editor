@@ -12,8 +12,8 @@
   },
   "scripts": {
     "start": "node src/cli.mjs",
-    "test": "node --test test/artifacts-prompts.test.mjs test/framing.test.mjs test/operation-backend.test.mjs test/server.test.mjs test/cli.test.mjs test/socket-client.test.mjs test/resource-lifecycle.test.mjs test/modern-protocol.test.mjs",
-    "check": "node --check src/cli.mjs && node --check src/server.mjs && node --check src/framing.mjs && node --check src/socket-backend.mjs && node --check src/operation-backend.mjs && node --check src/artifacts.mjs && node --check src/prompts.mjs && node --check src/modern-protocol.mjs",
+    "test": "node --test test/artifacts-prompts.test.mjs test/framing.test.mjs test/operation-backend.test.mjs test/server.test.mjs test/cli.test.mjs test/socket-client.test.mjs test/resource-lifecycle.test.mjs test/modern-protocol.test.mjs test/figma-facade.test.mjs test/figma-http.test.mjs",
+    "check": "node --check src/cli.mjs && node --check src/server.mjs && node --check src/framing.mjs && node --check src/socket-backend.mjs && node --check src/operation-backend.mjs && node --check src/artifacts.mjs && node --check src/prompts.mjs && node --check src/modern-protocol.mjs && node --check src/figma-facade.mjs && node --check src/figma-http.mjs && node --check src/figma-cli.mjs",
     "test:integration": "node --test test/socket-integration.test.mjs",
     "test:modern": "node --test test/modern-protocol.test.mjs",
     "test:modern:official": "node --test test/modern-official-stdio.test.mjs",

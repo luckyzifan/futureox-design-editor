@@ -5,6 +5,7 @@ import { createPetHost } from './pet/host.mjs'
 import { diagnosticFileAdapter } from './diagnostic-file.mjs'
 import { forwardNativeEditorShortcut } from './keyboard-shortcuts.mjs'
 import { registerAutomationBridge } from './automation-bridge.mjs'
+import { startDesktopFigmaMcp } from './figma-mcp-host.mjs'
 import { SketchSessionHost } from './sketch-session.mjs'
 import { LargeDocumentHost } from './large-document.mjs'
 import { readDesignClipboard, writeDesignClipboard } from './clipboard.mjs'
@@ -170,7 +171,7 @@ const automationBridge = registerAutomationBridge({
     select: useDefault => stageWorkspaceRoot(useDefault),
     activate: selectionId => activateWorkspaceRoot(selectionId),
   },
-  ipcMain, getWindow: () => window, assertSender, dialog, clipboard,
+  ipcMain, getWindow: () => window, assertSender, dialog, clipboard, figmaMcp: startDesktopFigmaMcp,
   storage: (method, params) => backend.request(method, params),
   audit: entry => backend.request('automation.audit.append', {
     event: entry.event === 'edit' ? 'edit' : entry.method === 'bridge.enable' ? 'grant' : entry.method === 'bridge.disable' ? 'revoke' : 'execute',
