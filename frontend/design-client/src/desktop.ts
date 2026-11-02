@@ -4,7 +4,7 @@ export type DesktopResult<T = Record<never, never>> =
   | { status: 'cancelled' }
   | { status: 'error' | 'conflict'; code: string; message: string }
 export type DesktopFile = { pendingCount?: number; handle: string; displayName: string; documentJson?: string; warning?: string }
-export type DesktopFont = { id: string; family: string; style: string; postscript: string; index: number; sourceIndex?: number }
+export type DesktopFont = { id: string; family: string; style: string; postscript: string; index: number; sourceIndex?: number; weight?: number; italic?: boolean; variable?: boolean; axes?: ReadonlyArray<{ tag: string; min: number; max: number; default: number }> }
 export type DesktopFontData = { font: DesktopFont; data: string; index: number; sourceIndex: number; extracted: boolean }
 export type DesktopCommand = 'settings' | 'plugins' | 'copy-properties'|'paste-properties'|'select-matching'|'select-inverse'| 'open' | 'openPending' | 'save' | 'saveAs' | 'new' | 'new-page' | 'recover' | 'zoomIn' | 'zoomOut' | 'zoom100' | 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'copy-as-png' | 'copy-as-svg' | 'paste-to-replace' | 'paste-in-place' | 'paste-over-selection' | 'select-all' | 'duplicate' | 'group' | 'ungroup' | 'delete' | 'zoom-fit' | 'zoom-selection' | 'center-selection'
 export type PluginDirectoryGrant = { grant: string; manifestText: string; displayName: string }
