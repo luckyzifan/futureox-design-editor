@@ -3,6 +3,7 @@ import { canvasCommandLabel } from './canvas-interface-messages'
 import type { Editor } from './engine'
 import type { EditorCommand } from './editor-commands'
 import { container, type Point } from './model'
+import { userPages } from './fig-document'
 import { shortcutLabel, shortcutPlatform, type ShortcutContext } from './shortcut-profiles'
 import { shortcutPreference } from './shortcut-preference'
 import { desktopBridge } from './desktop'
@@ -81,7 +82,15 @@ export function canvasMenuItems(editor: Editor, context: ShortcutContext = { pro
     { command: 'select-all', label: '全选', group: 'selection', disabled: !doc.pages.find((p) => p.id === editor.state.page)?.children.length },
     { command: 'zoom-fit', label: '缩放至全部内容', group: 'view', disabled: !doc.pages.find((p) => p.id === editor.state.page)?.children.length },
   )
+  const visiblePages = userPages(doc)
+  const pageIndex = visiblePages.findIndex(page => page.id === editor.state.page)
+  const page = doc.pages.find(item => item.id === editor.state.page)
+  const hasFrame = !!page?.children.some(id => doc.nodes[id]?.visible && (doc.nodes[id].kind === 'frame' || doc.nodes[id].kind === 'section'))
   items.push(
+    { command: 'zoom-next-frame', label: '缩放到下一画板', group: 'view', disabled: !hasFrame },
+    { command: 'zoom-previous-frame', label: '缩放到上一画板', group: 'view', disabled: !hasFrame },
+    { command: 'next-page', label: '下一页', group: 'view', disabled: pageIndex < 0 || pageIndex >= visiblePages.length - 1 },
+    { command: 'previous-page', label: '上一页', group: 'view', disabled: pageIndex <= 0 },
     { command: 'undo', label: '撤销', group: 'history', disabled: !editor.canUndo || busy },
     { command: 'redo', label: '重做', group: 'history', disabled: !editor.canRedo || busy },
   )

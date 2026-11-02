@@ -3,6 +3,7 @@ name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
 
+2026-11-02 [钢笔、橡皮与跳转](../../../testing/verification-figma-pen-eraser-nav-20261102/README.md)对照 Mac 桌面 Figma：钢笔 Shift 约束 45°、Option 断开手柄、点击起点闭合，Esc/Enter 完成开放路径。橡皮在同一图层上擦掉经过的笔画或填充区域，不拆成多个图层。原型页连线可点箭头缩放到目标（含跨页）；N/Shift+N 缩放相邻画板；PageUp/PageDown 切换页面。不改光栅、瓦片或预算。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [Mac 桌面 Figma 呈现](../../../testing/verification-figma-mac-presentation-20261102/README.md)让网页和 Electron 共用的编辑器对齐玻璃效果、四角圆角和页面/画板呈现。玻璃参数按磨砂、折射、深度、色散、光线排列，倒角仍可编辑；圆角默认一个数值，独立圆角展开左上/右上/左下/右下，画布手柄在按住 ⌥ 时只改一角。页面列表以当前页为标题，无填充画板保留细边，分区名称带底色条，选中画板时显示直接子画板名称。强调色仍是 `--workspace-accent`（#3459d4），画布选择蓝仍是 #0d99ff。未改光栅、瓦片、预算或实验开关。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [Figma 版面与测距](../../../testing/verification-figma-layout-chrome-20261102/README.md)让网页和 Electron 共用画布测距、布尔插入和属性控件。Option/Alt 红色间距只画正间隙和四边内边距，并带端点刻度。两个形状的联集/减去/交集/排除占最前同级的位置，自动布局父级里成为一块固定尺寸；普通编组仍拒绝自动布局。圆角相等时用一个字段，玻璃控件按光线、折射、深度、色散排列。页面行用蓝色强调色。不改光栅、玻璃着色器、圆角曲线、瓦片或预算。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [玻璃与圆角](../../../testing/verification-figma-glass-corners-20261102/README.md)让零平滑矩形、画板和分区的独立圆角走与均匀圆角同一条解析玻璃字段；平滑和任意路径仍用距离场。画布可拖均匀圆角、Alt 单角、玻璃光线和未变换渐变的角度与色标。属性在四角相同时用一个圆角字段。强调色仍是 #3459d4，手柄仍是 #0d99ff。未改预算或瓦片。33/100ms 与完整 G2/G5 未通过。
