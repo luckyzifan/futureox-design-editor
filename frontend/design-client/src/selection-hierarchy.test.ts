@@ -37,7 +37,6 @@ test('a group takes the click until entered; a frame still selects child paint o
   editor.select([inner.id]); expect(editor.selectionHit(p)).toBe(a.id)
   editor.select([a.id]); expect(editor.hit(point(b.id))).toBe(b.id)
   editor.select([]); expect(editor.hit(p, true)).toBe(a.id)
-  expect(editor.selectDeeper(p)).toEqual({ id: inner.id, changed: true })
   expect(editor.selectDeeper(p)).toEqual({ id: a.id, changed: true })
 })
 
@@ -56,15 +55,32 @@ test('a boolean group takes the click and deep-select reaches its child', () => 
   expect(editor.canUndo).toBe(false)
 })
 
-test('double click enters exactly one selected ancestor at a time and identifies an already selected leaf', () => {
-  const { editor, outer, group, inner, a, point } = fixture()
+test('double-click selects the group child; a selected frame still opens one level', () => {
+  const { editor, outer, group, a, point } = fixture()
+  editor.select([])
+  expect(editor.selectDeeper(point(a.id))).toEqual({ id: a.id, changed: true })
   editor.select([outer.id])
-  for (const id of [group.id, inner.id, a.id]) {
-    expect(editor.selectDeeper(point(a.id))).toEqual({ id, changed: true })
-    expect(editor.state.selection).toEqual([id])
-  }
+  expect(editor.selectDeeper(point(a.id))).toEqual({ id: group.id, changed: true })
+  expect(editor.selectDeeper(point(a.id))).toEqual({ id: a.id, changed: true })
   expect(editor.selectDeeper(point(a.id))).toEqual({ id: a.id, changed: false })
   expect(editor.state.tool).toBe('select')
+})
+
+test('Enter on a group selects both children and Shift+Enter returns to the group', () => {
+  const document = blank(), group = node('group', 20, 20, 180, 80), a = node('rectangle', 8, 8, 40, 40), b = node('ellipse', 70, 8, 36, 36)
+  group.children = [a.id, b.id]
+  for (const n of [group, a, b]) document.nodes[n.id] = n
+  document.pages[0].children = [group.id]
+  const editor = new Editor(document); editors.push(editor)
+  const original = editor.state.doc
+  editor.select([group.id])
+  expect(editor.selectChildren()).toBe(true)
+  expect(editor.state.selection).toHaveLength(2)
+  expect(new Set(editor.state.selection)).toEqual(new Set([a.id, b.id]))
+  expect(editor.selectParent()).toBe(true)
+  expect(editor.state.selection).toEqual([group.id])
+  expect(editor.state.doc).toBe(original)
+  expect(editor.canUndo).toBe(false)
 })
 
 test('Enter selects visible unlocked direct children, Shift+Enter deduplicates their parent, roots stay selected', () => {

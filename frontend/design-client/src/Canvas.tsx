@@ -1305,12 +1305,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             n.network=translateVertices(n.network,vertices,delta)
           }, '微移矢量节点'))
         } else if (!editor.state.selection.length) {
-          // Nothing selected: pan. Figma uses a screen step, not the 1/10px
-          // layer nudge, including while a tool is armed. Shift is the fast
-          // step. World distance changes with zoom because view is in CSS px.
-          const view = editor.flushPendingView(), amount = e.shiftKey ? 100 : 20
-          editor.set({ view: { ...view, x: view.x + (e.key === 'ArrowLeft' ? amount : e.key === 'ArrowRight' ? -amount : 0),
-            y: view.y + (e.key === 'ArrowUp' ? amount : e.key === 'ArrowDown' ? -amount : 0) } })
+          // Mac Figma: Arrow and Shift+Arrow with nothing selected do not pan.
         } else if (editor.topSelection().length) nudge.step(e, '微移图层', () => editor.transformSelection(
           translate(
             e.key === 'ArrowLeft' ? -amount : e.key === 'ArrowRight' ? amount : 0,
