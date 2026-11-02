@@ -104,6 +104,13 @@ export function hasSchemaExtras(a: PrototypeAction): boolean {
     a.transitionEasingVar
   )
 }
+/** Easing curves, overlay placement, and schema extras need schema 12 before the kernel will admit them. */
+export function prototypeNeedsSchema12(doc: DesignDocument): boolean {
+  const walk = (actions: PrototypeAction[]): boolean => actions.some(action =>
+    action.easingCurve !== undefined || action.overlayPosition !== undefined || hasSchemaExtras(action) ||
+    walk(action.thenActions || []) || walk(action.elseActions || []))
+  return Object.values(doc.prototype?.interactions || {}).some(events => events.some(event => walk(event.actions)))
+}
 export type Interaction = {
   trigger: 'click' | 'hover' | 'leave' | 'after-delay'
   actions: PrototypeAction[]

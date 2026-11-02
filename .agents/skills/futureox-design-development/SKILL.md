@@ -3,6 +3,7 @@ name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
 
+2026-11-02 添加交互写入 300ms `ease-out` 时，编辑器把文档升到 schema 12，内核才接受这条曲线。空白文档不再报 `Invalid prototype easing curve`。见[记录](../../../testing/verification-plugin-animation-20261102/README.md)。不是 33/100ms 或完整 G2/G5。
 2026-11-02 [插件与原型动效](../../../testing/verification-plugin-animation-20261102/README.md)补快照宿主的本地 clientStorage、本地组件实例、图片哈希、SVG `exportAsync` 子集、ungroup 和自动布局对齐。不支持的 paint 会抛错并留下原来的填充。缺省过渡是 300ms ease-out。采样失败不弹红条。玻璃和模糊的中间帧仍按主线封顶后采样，落定帧用原稿。没有下载商店插件。不是 33/100ms 或完整 G2/G5。
 2026-11-02 [吸管与取色](../../../testing/verification-eyedropper-color-picker-20261102/README.md)按 Mac gaps6：色块、不带 # 的 HEX 和透明度一行。弹层有自定义/资料库、类型图标、饱和度方块、色相和透明度，以及 Hex/RGB/CSS→HSL|HSB。I 和 Mac Control+C 打开紧凑像素网格，读数是 `HSB H° S B`。不改光栅、瓦片或预算。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [选区、框选与测距](../../../testing/verification-figma-canvas-chrome-marquee-20261102/README.md)按 Mac gaps5：选区描边约 `#4597F7`、约 1pt，白角手柄和尺寸药丸。悬停和框选边用同一条整像素 1px 实色填充，不再是居中描边的两条半透明边。框选填充约 `#DCE9F5`。Option 间距是 `#E05634` 的距离药丸。不改光栅、瓦片或预算。33/100ms 与完整 G2/G5 未通过。

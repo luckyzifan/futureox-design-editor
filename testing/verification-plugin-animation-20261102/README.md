@@ -27,7 +27,7 @@ A real Figma Community plugin was not downloaded in this environment. CI does no
 
 ## Animation
 
-A navigate, back, overlay, or scroll action with no duration and no `transitionStyle: "none"` uses 300ms ease-out. An explicit 0 and `none` stay instant. Dissolve still crossfades two settled frames and does not build a smart-animate plan. If the smart-animate plan cannot be built, the player crossfades opacity instead of sampling.
+Adding an interaction writes duration 300 and easing `ease-out`, and the editor raises the document to schema 12 so the kernel admits that curve. A navigate, back, overlay, or scroll action with no duration and no `transitionStyle: "none"` uses 300ms ease-out. An explicit 0 and `none` stay instant. Dissolve still crossfades two settled frames and does not build a smart-animate plan. If the smart-animate plan cannot be built, the player crossfades opacity instead of sampling.
 
 In-between smart-animate samples still interpolate opacity and transform. Glass and blur radii are capped for those ticks and the resting frame keeps the authored effect. Angular and diamond paints skip per-tick sampling because the sampler rejects them. A failed bake or sample does not open the red alert. The progress clock cancels when the preview unmounts and does not deliver a later tick. Reduced motion jumps to the end. FFmpeg MP4/WebM export of a smart-animate transition stays on the preview.
 

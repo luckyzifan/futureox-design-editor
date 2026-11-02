@@ -104,6 +104,28 @@ test('a dissolve navigation crossfades without a smart-animate plan', () => {
   expect(next.transitionMs).toBe(240)
 })
 
+test('adding a 300ms ease-out interaction on a blank document is admitted', () => {
+  const doc = blank()
+  const frame = node('frame', 0, 0, 100, 80)
+  doc.nodes[frame.id] = frame
+  doc.pages[0].children = [frame.id]
+  const editor = new Editor(doc)
+  const result = editor.change('添加交互', (draft) => {
+    draft.prototype ??= { interactions: {} }
+    ;(draft.prototype.interactions[frame.id] ??= []).push({
+      trigger: 'click',
+      actions: [{ kind: 'navigate', target: frame.id, durationMs: 300, easingCurve: 'ease-out' }],
+    })
+  })
+  expect(result?.status).toBe('committed')
+  expect(editor.state.doc.schemaVersion).toBeGreaterThanOrEqual(12)
+  expect(editor.state.doc.prototype?.interactions[frame.id][0].actions[0]).toMatchObject({
+    durationMs: 300,
+    easingCurve: 'ease-out',
+  })
+  editor.dispose()
+})
+
 test('omitted prototype motion uses 300ms ease-out and an explicit zero stays instant', () => {
   expect(resolvePrototypeMotion({ kind: 'navigate', target: 'a' }, undefined, undefined)).toEqual({ durationMs: 300, easing: 'ease-out' })
   expect(resolvePrototypeMotion({ kind: 'navigate', target: 'a', transitionStyle: 'none' }, undefined, undefined).durationMs).toBe(0)
