@@ -2733,10 +2733,17 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         else if (followUp === 'edit-vector') editor.set({ tool: 'vector', editingVertex: null })
       }}
     >
-      {state.tool==='eyedropper' && <div className="canvas-color-pick-hint" role="status" style={colorPick?{left:Math.max(8,Math.min(size.width-360,colorPick.x+18)),top:Math.max(8,Math.min(size.height-38,colorPick.y+18))}:undefined}>
-        {colorPick&&<><span style={{background:colorPick.color}}/>{colorPick.label} · </>}{state.selection.length?'点击取色':'点击复制颜色'} · Tab 格式 · Esc 取消
+      {state.tool==='eyedropper' && colorPick && <div className="canvas-color-tooltip" role="status" data-testid="color-sample-loupe"
+        style={{ left: Math.max(8, Math.min(size.width - 240, colorPick.x + 16)), top: Math.max(8, Math.min(size.height - 78, colorPick.y + 18)) }}>
+        <div className="canvas-color-grid" style={{ gridTemplateColumns: `repeat(${colorPick.span}, 1fr)`, gridTemplateRows: `repeat(${colorPick.span}, 1fr)` }}>
+          {colorPick.cells.map((cell, index) => <i key={index} style={{ background: cell }} data-center={index === colorPick.center ? '' : undefined}
+            data-testid={index === colorPick.center ? 'color-sample-point' : undefined} />)}
+        </div>
+        <div className="canvas-color-tooltip-copy">
+          <p><span style={{ background: colorPick.color }} />{colorPick.label}</p>
+          <p>{chromeCopy.eyedropperSample}</p>
+        </div>
       </div>}
-      {state.tool==='eyedropper'&&colorPick&&<div className="canvas-color-pick-point" data-testid="color-sample-point" style={{left:colorPick.x,top:colorPick.y}}/>}
       {drag.current?.kind==='rotate' && drag.current.rotationDegrees!==undefined && cursor && <div
         className="canvas-rotation-hint" role="status" data-testid="rotation-feedback"
         style={{left:cursor.x*zoom+displayView.x+18,top:cursor.y*zoom+displayView.y+18}}>
