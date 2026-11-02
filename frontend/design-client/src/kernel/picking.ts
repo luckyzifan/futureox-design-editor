@@ -22,6 +22,7 @@ import { InitializationGate, readKernelAsset } from './initialization'
 import { loadKernelResourcePair } from './kernel-resources'
 import type { DesignNode, Point, DesignDocument, Bounds, Matrix } from '../model'
 import { defaultLayout, defaultSizing, validateVariableModes } from '../model'
+import { pageEditScope, snapshotParent, type PageEditScope } from '../page-edit-scope'
 import { translationOnlyChanges } from './translation-preview'
 export function kernelNoiseFillPreset(): import('../model').Paint {
   if(!ready)throw Error('编辑内核尚未就绪')
@@ -208,7 +209,149 @@ export function activateDocumentFonts(input: DesignDocument) {
 }
 const layoutDefaultKeys = Object.keys(defaultLayout())
 const sizingDefaultKeys = Object.keys(defaultSizing())
+const pageLimitedEdits = new WeakMap<DesignDocument, readonly string[]>()
+/** Node ids whose latest layout stayed inside one page. Absent means a full resolve. */
+export function pageLimitedEditIds(document: DesignDocument): readonly string[] | undefined {
+  return pageLimitedEdits.get(document)
+}
+function normalizeIds(input: DesignDocument, ids: readonly string[]): DesignDocument {
+  let document = input
+  for (const id of ids) {
+    const n = document.nodes[id]
+    if (!n) continue
+    const patch: Partial<DesignNode> = {}
+    if (n.component && (!n.component.variants || !n.component.properties))
+      patch.component = { ...n.component, variants: n.component.variants ?? {}, properties: n.component.properties ?? {} }
+    if (n.instance && (!n.instance.overrides || !n.instance.propertyValues))
+      patch.instance = { ...n.instance, overrides: n.instance.overrides ?? {}, propertyValues: n.instance.propertyValues ?? {} }
+    if (n.layout && layoutDefaultKeys.some(key => !(key in n.layout!)))
+      patch.layout = { ...defaultLayout(), ...n.layout }
+    if (n.sizing && sizingDefaultKeys.some(key => !(key in n.sizing!)))
+      patch.sizing = { ...defaultSizing(), ...n.sizing }
+    if (Object.keys(patch).length) {
+      if (document === input) document = { ...input, nodes: { ...input.nodes } }
+      document.nodes[id] = { ...n, ...patch }
+    }
+  }
+  return document
+}
+function plainTranslation(previous: DesignDocument, next: DesignDocument, ids: readonly string[]): boolean {
+  if (!ids.length) return false
+  for (const id of ids) {
+    const before = previous.nodes[id], after = next.nodes[id]
+    if (!before || !after) return false
+    const fields = Object.keys(before)
+    if (fields.length !== Object.keys(after).length || fields.some(key =>
+      !Object.hasOwn(after, key) || (key !== 'transform' && before[key as keyof DesignNode] !== after[key as keyof DesignNode]))) return false
+    if (after.transform.length !== 6 || after.transform.slice(0, 4).some((value, index) => !Object.is(value, before.transform[index]))) return false
+  }
+  return true
+}
+function retainPoseGeometry(previous: DesignDocument, document: DesignDocument, ids: readonly string[]) {
+  if (!plainTranslation(previous, document, ids)) return
+  for (const id of ids) {
+    const geometry = geometryCache.get(previous.nodes[id])
+    const next = document.nodes[id]
+    if (geometry && next) geometryCache.set(next, geometry)
+  }
+}
+function omitNullImages(node: DesignNode): DesignNode {
+  let next = node
+  if (node.fills.some(paint => paint.image === null)) {
+    next = { ...node, fills: node.fills.map(paint => {
+      if (paint.image !== null) return paint
+      const copy = { ...paint }
+      delete copy.image
+      return copy
+    }) }
+  }
+  if (node.strokes.some(stroke => stroke.paint.image === null)) {
+    if (next === node) next = { ...node }
+    next.strokes = node.strokes.map(stroke => {
+      if (stroke.paint.image !== null) return stroke
+      const paint = { ...stroke.paint }
+      delete paint.image
+      return { ...stroke, paint }
+    })
+  }
+  return next
+}
+function limitPage(document: DesignDocument, ids: readonly string[]) {
+  pageLimitedEdits.set(document, ids)
+  return document
+}
+function islandBlocked(n: DesignNode): boolean {
+  return !!(n.component || n.componentSet || n.instance || n.instanceOrigin || n.componentKey != null ||
+    n.booleanOperation || n.connector || n.repeat || n.textPath ||
+    Object.keys(n.bindings || {}).length || Object.keys(n.styleRefs || {}).length ||
+    Object.keys(n.variableModes || {}).length)
+}
+/** Layout one changed root island. The subset omits designSystem so this call
+ * cannot replace the resident component snapshot. Cold pages are not walked. */
+function layoutPageIsland(previous: DesignDocument, document: DesignDocument, scope: PageEditScope): DesignDocument | undefined {
+  const page = document.pages.find(item => item.id === scope.pageId)
+  if (!page) return
+  const roots = new Set<string>()
+  for (const id of scope.ids) {
+    let at = id
+    const seen = new Set<string>()
+    while (!seen.has(at)) {
+      seen.add(at)
+      const parent = snapshotParent(previous, at)
+      if (!parent || !document.nodes[parent]) break
+      at = parent
+    }
+    roots.add(at)
+  }
+  const nodes: DesignDocument['nodes'] = {}
+  const collect = (id: string): boolean => {
+    const n = document.nodes[id]
+    if (!n || islandBlocked(n)) return false
+    nodes[id] = n
+    return n.children.every(collect)
+  }
+  if (!roots.size || ![...roots].every(collect)) return
+  const smaller = document.pages.some(item => item.id !== scope.pageId && item.children.length > 0) ||
+    page.children.some(id => !roots.has(id))
+  if (!smaller) return
+  const subset: DesignDocument = {
+    ...document,
+    nodes,
+    pages: document.pages.map(item => item.id === scope.pageId
+      ? { ...item, children: item.children.filter(id => roots.has(id)) }
+      : { ...item, children: [] }),
+    designSystem: undefined,
+    prototype: undefined,
+    animations: undefined,
+  }
+  const saved = componentBase
+  try {
+    const resolved = kernelLayout(subset)
+    let merged = document.nodes
+    for (const [id, n] of Object.entries(resolved.nodes)) {
+      if (merged[id] !== n) {
+        if (merged === document.nodes) merged = { ...document.nodes }
+        merged[id] = n
+      }
+    }
+    const result = merged === document.nodes ? document : { ...document, nodes: merged }
+    return limitPage(result, Object.keys(nodes))
+  } finally { componentBase = saved }
+}
 export function kernelLayout(input: DesignDocument, previous?: DesignDocument, residentDiff=false): DesignDocument {
+  if (previous) {
+    const scope = pageEditScope(previous, input)
+    if (scope && !scope.layout) {
+      activateDocumentFonts(input)
+      const document = normalizeIds(input, scope.ids)
+      retainPoseGeometry(previous, document, scope.ids)
+      return limitPage(document, scope.ids)
+    }
+    if (scope?.layout && !plainTranslation(previous, input, scope.ids)) {
+      const island = layoutPageIsland(previous, normalizeIds(input, scope.ids), scope)
+      if (island) return island
+    }
+  }
   validateVariableModes(input)
   activateDocumentFonts(input)
   const inputNodes = Object.values(input.nodes)
@@ -435,7 +578,7 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument, r
     }
     const nodes = { ...document.nodes, ...changes.nodes }
     for (const id of changes.removed) delete nodes[id]
-    for (const n of Object.values(changes.nodes)) {
+    for (const [id, n] of Object.entries(changes.nodes)) {
       for (const key of [
         'network',
       'vectorGeometry',
@@ -448,6 +591,7 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument, r
         'componentKey',
       ] as const)
         if (n[key] === null) delete n[key]
+      nodes[id] = omitNullImages(n)
     }
     return bind({ ...document, nodes })
   }
@@ -460,9 +604,10 @@ export function kernelLayout(input: DesignDocument, previous?: DesignDocument, r
   if (!Object.keys(patches).length) { layoutWire.set(document, json); return document }
   const nodes = { ...document.nodes }
   for (const [id, patch] of Object.entries(patches)) {
-    const next = { ...nodes[id], ...patch }
+    let next = { ...nodes[id], ...patch }
     for (const key of ['network', 'vectorGeometry', 'sizing', 'constraints'] as const)
       if (next[key] === null) delete next[key]
+    next = omitNullImages(next)
     nodes[id] = next
   }
   return { ...document, nodes }
