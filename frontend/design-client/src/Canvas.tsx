@@ -3023,7 +3023,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 fill="none"
                 stroke={SELECTION_BLUE}
                 strokeWidth={SELECTION_UNION_STROKE_PX}
+                strokeLinejoin="miter"
                 vectorEffect="non-scaling-stroke"
+                shapeRendering="crispEdges"
                 pointerEvents="none"
               />
               {measurements.length > 0 && <g data-testid="canvas-measurement" pointerEvents="none" opacity={gpuOverlay?0:1}>
@@ -3044,11 +3046,6 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 <polygon data-testid={`rotate-corner-${h.index}`} data-anchor-x={h.rotateAnchor.x} data-anchor-y={h.rotateAnchor.y}
                   points={h.rotatePoints.map(p=>`${p.x},${p.y}`).join(' ')} fill="transparent" pointerEvents="all"
                   style={{cursor:h.rotateCursor}} onPointerDown={e=>{e.stopPropagation();start(e,'rotate',h.index)}} />
-                <g className="selection-rotate-glyph" data-testid={`rotate-handle-${h.index}`} pointerEvents="none" transform={`translate(${h.rotateAnchor.x} ${h.rotateAnchor.y}) scale(${1/zoom})`}>
-                  <circle r={8} fill="white" stroke={SELECTION_BLUE} strokeWidth={1} />
-                  <path d="M-3.2 2.4A4.4 4.4 0 1 1 3.4 2.2" fill="none" stroke={SELECTION_BLUE} strokeWidth={1.6} strokeLinecap="round" />
-                  <path d="M2.1 0.4 L3.6 2.5 L5.4 0.9" fill="none" stroke={SELECTION_BLUE} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
-                </g>
               </g>)}
               {canTransform && drawnHandles.map((h, i) => (
                 <polygon
@@ -3059,6 +3056,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                   fill="white"
                   stroke={SELECTION_BLUE}
                   strokeWidth={1 / zoom}
+                  strokeLinejoin="miter"
+                  shapeRendering="crispEdges"
                   pointerEvents={canTransform?'all':'none'}
                   style={{ cursor: h.resizeCursor }}
                   onPointerDown={(e) => {
@@ -3114,7 +3113,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                   }
                 }
                 const marks: React.ReactNode[] = []
-                if (rectangleCornerTarget(n)) {
+                if (rectangleCornerTarget(n) && n.radii.some(radius => radius > 0)) {
                   ([0, 1, 2, 3] as const).forEach((index) => {
                     const p = worldPoint(cornerHandlePoint(n.width, n.height, n.radii, index, 14 / zoom))
                     marks.push(<circle key={`corner-${index}`} data-testid={`corner-radius-${index}`} cx={p.x} cy={p.y} r={5 / zoom}
@@ -3323,7 +3322,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             })}
             <polygon data-testid="canvas-selection-outline" data-selection-role={marqueeChrome.chosen.length > 1 ? 'union' : 'object'}
               points={marqueeChrome.corners.map(point => `${point.x},${point.y}`).join(' ')}
-              fill="none" stroke={SELECTION_BLUE} strokeWidth={SELECTION_UNION_STROKE_PX} vectorEffect="non-scaling-stroke" />
+              fill="none" stroke={SELECTION_BLUE} strokeWidth={SELECTION_UNION_STROKE_PX} strokeLinejoin="miter"
+              vectorEffect="non-scaling-stroke" shapeRendering="crispEdges" />
             {marqueeChrome.handles.map((handle, index) => <polygon key={index} data-testid={`resize-${index}`}
               points={handle.resizePoints.map(point => `${point.x},${point.y}`).join(' ')}
               fill="white" stroke={SELECTION_BLUE} strokeWidth={1 / zoom} />)}

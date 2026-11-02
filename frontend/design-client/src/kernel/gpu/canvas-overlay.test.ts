@@ -11,8 +11,10 @@ test('selection uses f64 camera projection before narrowing screen coordinates',
   const data = overlayVertices({ selection: { corners, handles: false }, pixelGrid: false }, view, 800, 600)
   expect(data.length).toBe(4 * 6 * 8)
   const mean = (axis: number) => Array.from({ length: 6 }, (_, i) => data[i * 8 + axis]).reduce((a,b) => a+b, 0) / 6
-  expect(mean(0)).toBeCloseTo(30.125, 5)
-  expect(mean(1)).toBeCloseTo(.375, 5)
+  // Precise projection is 0.125, 0.375. The stroke then snaps onto that pixel as a solid 1px row.
+  expect(mean(0)).toBeCloseTo(30.5, 5)
+  expect(mean(1)).toBeCloseTo(0.5, 5)
+  expect(data[7]).toBe(-1)
 })
 test('grid is absent below four times zoom and remains bounded at high zoom', () => {
   expect(overlayVertices({ pixelGrid: true }, { x: .5, y: .5, zoom: 3.99 }, 1000, 720)).toHaveLength(0)
@@ -27,6 +29,16 @@ test('spacing guides draw the gap plus six-pixel end ticks', () => {
   expect(data.length / 8 / 6).toBe(3)
   expect([...data].every(Number.isFinite)).toBe(true)
   expect([data[2], data[3], data[4], data[5]]).toEqual(stored(SPACING_RED))
+})
+
+test('an axis-aligned selection edge is one solid pixel of selection blue', () => {
+  const corners = [{ x: 10.2, y: 20.8 }, { x: 40.2, y: 20.8 }, { x: 40.2, y: 50.8 }, { x: 10.2, y: 50.8 }]
+  const data = overlayVertices({ pixelGrid: false, selection: { corners, handles: false } }, { x: 0, y: 0, zoom: 1 }, 200, 200)
+  const ys = Array.from({ length: 6 }, (_, i) => data[i * 8 + 1])
+  expect(Math.min(...ys)).toBe(20)
+  expect(Math.max(...ys)).toBe(21)
+  expect(data[7]).toBe(-1)
+  expect([data[2], data[3], data[4], data[5]]).toEqual(stored(SELECTION_BLUE))
 })
 
 test('the selection box uses the same blue as the DOM chrome', () => {
