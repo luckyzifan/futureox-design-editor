@@ -38,16 +38,16 @@ test('a single shape shows its name above the box and leaves the parent frame ti
   const labels = labelsOf(overlay)
   const name = labels.find(label => label.kind === 'selection-name')
   const title = labels.find(label => label.kind === 'frame-title')
-  expect(name).toMatchObject({ text: '按钮', color: '#0d99ff', offset: { x: 0, y: -24 }, frame: 'pill' })
+  expect(name).toMatchObject({ text: '按钮', color: '#3459d4', offset: { x: 0, y: -24 }, frame: 'pill' })
   const corners = overlay.commands.selection!.corners
   expect(name!.anchor).toEqual({ x: Math.min(...corners.map(point => point.x)), y: Math.min(...corners.map(point => point.y)) })
   expect(title).toMatchObject({ text: '画板', color: '#73778b' })
-  expect(labels.find(label => label.kind === 'selection-size')).toMatchObject({ text: '120 × 80', color: '#0d99ff', frame: 'pill' })
+  expect(labels.find(label => label.kind === 'selection-size')).toMatchObject({ text: '120 × 80', color: '#3459d4', frame: 'pill' })
 })
 
 test('selecting a frame turns its title blue instead of drawing a second name', () => {
   const labels = labelsOf(fixture('frame'))
-  expect(labels.find(label => label.kind === 'frame-title')).toMatchObject({ text: '画板', color: '#0d99ff' })
+  expect(labels.find(label => label.kind === 'frame-title')).toMatchObject({ text: '画板', color: '#3459d4' })
   expect(labels.some(label => label.kind === 'selection-name')).toBe(false)
 })
 

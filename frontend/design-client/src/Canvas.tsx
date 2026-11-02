@@ -1,6 +1,7 @@
 import { CpuStage, measureCpuStage } from './cpu-stage-diagnostics'
 import { recoverInteractionPreview } from './kernel/interaction-preview-recovery'
 import { selectionSizeLabel } from './selection-size-label'
+import { SELECTION_BLUE, SELECTION_MEMBER_STROKE_PX, SELECTION_UNION_STROKE_PX } from './selection-blue'
 import { canvasOverlayCommands, canvasGpuOverlayOwnsUi, selectionChromeChipWidth } from './canvas-overlay-commands'
 import { measurementLabel, measurementTicks } from './canvas-measurements'
 import { canvasText } from './canvas-interface-messages'
@@ -60,7 +61,6 @@ import {
   kernelSnapPoint,
   kernelHitWorld,
   kernelFillWorld,
-  kernelSvgPaths,
   type StrokeHandle,
 } from './kernel/picking'
 import { profileTopology } from './stroke-profile'
@@ -2858,8 +2858,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                   x={(label.offset.x - 6) / zoom} y={(label.offset.y - 14) / zoom}
                   width={(Math.max(label.text.length, 1) * 11 + 12) / zoom} height={18 / zoom} rx={4 / zoom} fill={label.chip} />}
                 <text data-frame-title={entry.id} opacity={shown} x={label.offset.x / zoom} y={label.offset.y / zoom}
-                  fontSize={11 / zoom} fill={label.color} pointerEvents="all"
-                  style={{cursor:entry.locked?'default':state.tool==='hand'||spaceHeld?'grab':'move'}}>
+                  fontSize={11 / zoom} fill={selection.has(entry.id) || hover === entry.id ? SELECTION_BLUE : label.color} pointerEvents="all"
+                  style={{cursor:entry.locked?'default':state.tool==='hand'||spaceHeld?'grab':'default'}}>
                   {label.text}
                 </text>
               </g>
@@ -2896,32 +2896,12 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             !drag.current &&
             (() => {
               const e = entries.find((v) => v.id === hover)
-              const n = state.doc.nodes[hover]
-              const path = e && n && !['text', 'group', 'section'].includes(n.kind) ? kernelSvgPaths(n) : null
-              if (e && path && (path.stroke || path.fill)) return <path data-testid="canvas-hover-outline" data-node-id={hover}
-                d={path.stroke || path.fill} transform={matrixString(e.matrix)} fill="none" stroke="#0d99ff"
-                strokeWidth={1} vectorEffect="non-scaling-stroke" pointerEvents="none" />
-              return e ? (
-                <polygon
-                  data-testid="canvas-hover-outline"
-                  data-node-id={hover}
-                  points={boxPoints({
-                    x: 0,
-                    y: 0,
-                    width: state.doc.nodes[hover].width,
-                    height: state.doc.nodes[hover].height,
-                  })
-                    .map((p) => {
-                      const v = apply(e.matrix, p)
-                      return `${v.x},${v.y}`
-                    })
-                    .join(' ')}
-                  fill="none"
-                  stroke="#0d99ff"
-                  strokeWidth={1 / zoom}
-                  pointerEvents="none"
-                />
-              ) : null
+              const n = e && state.doc.nodes[hover]
+              if (!e || !n) return null
+              const points = boxPoints({ x: 0, y: 0, width: n.width, height: n.height })
+                .map(p => { const v = apply(e.matrix, p); return `${v.x},${v.y}` }).join(' ')
+              return <polygon data-testid="canvas-hover-outline" data-node-id={hover} points={points}
+                fill="none" stroke={SELECTION_BLUE} strokeWidth={SELECTION_MEMBER_STROKE_PX} vectorEffect="non-scaling-stroke" pointerEvents="none" />
             })()}
         </g>
         {/* Selection is document feedback, not part of the raster result.
@@ -2937,14 +2917,24 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               fill="none" stroke="#0000001a" strokeWidth={1 / zoom} pointerEvents="none" />
           })}
           {!!selected.length && !['vector', 'width', 'pencil', 'brush', 'marker', 'washi-tape'].includes(state.tool) && (
-            <g className="selection" data-selection-readonly={selectionFeedback.readOnly}>
+            <g className="selection" data-selection-readonly={selectionFeedback.readOnly} data-selection-count={selected.length}>
+              {selected.length > 1 && selected.map(entry => {
+                const node = state.doc.nodes[entry.id]
+                if (!node || !(node.width > 0) || !(node.height > 0)) return null
+                const points = boxPoints({ x: 0, y: 0, width: node.width, height: node.height })
+                  .map(point => { const world = apply(entry.matrix, point); return `${world.x},${world.y}` }).join(' ')
+                return <polygon key={entry.id} data-testid="canvas-selection-member" data-node-id={entry.id} points={points}
+                  fill="none" stroke={SELECTION_BLUE} strokeWidth={SELECTION_MEMBER_STROKE_PX} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+              })}
               <polygon
                 data-testid="canvas-selection-outline"
+                data-selection-role={selected.length > 1 ? 'union' : 'object'}
                 opacity={gpuOverlay && !(ownedDrag && ['move','rotate','resize','scale'].includes(ownedDrag.kind)) ? 0 : 1}
                 points={selectionCorners.map((p) => `${p.x},${p.y}`).join(' ')}
                 fill="none"
-                stroke="#0d99ff"
-                strokeWidth={2 / zoom}
+                stroke={SELECTION_BLUE}
+                strokeWidth={SELECTION_UNION_STROKE_PX}
+                vectorEffect="non-scaling-stroke"
                 pointerEvents="none"
               />
               {canTransform && transformHandles.map(h => <line key={`edge-${h.index}`} data-testid={`resize-edge-${h.index}`}
@@ -2956,9 +2946,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                   points={h.rotatePoints.map(p=>`${p.x},${p.y}`).join(' ')} fill="transparent" pointerEvents="all"
                   style={{cursor:h.rotateCursor}} onPointerDown={e=>{e.stopPropagation();start(e,'rotate',h.index)}} />
                 <g data-testid={`rotate-handle-${h.index}`} pointerEvents="none" transform={`translate(${h.rotateAnchor.x} ${h.rotateAnchor.y}) scale(${1/zoom})`}>
-                  <circle r={8} fill="white" stroke="#0d99ff" strokeWidth={1} />
-                  <path d="M-3.2 2.4A4.4 4.4 0 1 1 3.4 2.2" fill="none" stroke="#0d99ff" strokeWidth={1.6} strokeLinecap="round" />
-                  <path d="M2.1 0.4 L3.6 2.5 L5.4 0.9" fill="none" stroke="#0d99ff" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
+                  <circle r={8} fill="white" stroke={SELECTION_BLUE} strokeWidth={1} />
+                  <path d="M-3.2 2.4A4.4 4.4 0 1 1 3.4 2.2" fill="none" stroke={SELECTION_BLUE} strokeWidth={1.6} strokeLinecap="round" />
+                  <path d="M2.1 0.4 L3.6 2.5 L5.4 0.9" fill="none" stroke={SELECTION_BLUE} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
                 </g>
               </g>)}
               {canTransform && transformHandles.map((h, i) => (
@@ -2968,7 +2958,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                   opacity={gpuOverlay && !(ownedDrag && ['move','rotate','resize','scale'].includes(ownedDrag.kind)) ? 0 : 1}
                   points={h.resizePoints.map(p=>`${p.x},${p.y}`).join(' ')}
                   fill="white"
-                  stroke="#0d99ff"
+                  stroke={SELECTION_BLUE}
                   strokeWidth={1 / zoom}
                   pointerEvents={canTransform?'all':'none'}
                   style={{ cursor: h.resizeCursor }}
@@ -2981,8 +2971,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
               {canTransform&&origin.current.visible&&(()=>{const p=drag.current?.kind==='rotate'?drag.current.rotationCenter!:originWorld();return <g
                 data-testid="rotation-origin" transform={`translate(${p.x} ${p.y}) scale(${1/zoom})`} style={{cursor:'move'}}
                 onPointerDown={e=>{e.stopPropagation();start(e,'pivot')}} onDoubleClick={e=>{e.stopPropagation();setOrigin({x:.5,y:.5},true)}}>
-                <circle r={10} fill="transparent" pointerEvents="all"/><circle r={5} fill="white" stroke="#0d99ff" strokeWidth={1}/>
-                <path d="M-9 0H9 M0 -9V9" fill="none" stroke="#0d99ff" strokeWidth={1}/><title>{chromeCopy.rotateOrigin}</title>
+                <circle r={10} fill="transparent" pointerEvents="all"/><circle r={5} fill="white" stroke={SELECTION_BLUE} strokeWidth={1}/>
+                <path d="M-9 0H9 M0 -9V9" fill="none" stroke={SELECTION_BLUE} strokeWidth={1}/><title>{chromeCopy.rotateOrigin}</title>
               </g>})()}
               {canTransform && state.tool !== 'scale' && selected.length === 1 && ['ellipse', 'polygon', 'star'].includes(state.doc.nodes[selected[0].id].kind) && !state.doc.nodes[selected[0].id].network && (() => {
                 const n = state.doc.nodes[selected[0].id]
@@ -3075,7 +3065,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 x={selectionBox.x + selectionBox.width / 2}
                 y={selectionBox.y + selectionBox.height + 21 / zoom}
                 text={selectionSizeLabel(localSelection, selectionBox, selected[0]?.matrix)}
-                size={10} zoom={zoom} fill="#0d99ff" />
+                size={10} zoom={zoom} fill={SELECTION_BLUE} />
               {(overlay.commands.labels ?? []).filter(label => label.kind === 'selection-name').map(label => (
                 <SelectionChromeChip key="selection-name" testId="canvas-selection-name" opacity={gpuOverlay ? 0 : 1}
                   x={label.anchor.x} y={label.anchor.y + label.offset.y / zoom}
@@ -3226,8 +3216,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           {rubber && (
             <g>{creationGhost ? null : <rect
               {...rubber}
-              fill={drag.current?.kind === 'marquee' ? '#0d99ff19' : 'none'}
-              stroke="#0d99ff"
+              fill={drag.current?.kind === 'marquee' ? '#3459d419' : 'none'}
+              stroke={SELECTION_BLUE}
               strokeWidth={1 / zoom}
               strokeDasharray={
                 drag.current?.kind === 'marquee' || drag.current?.kind === 'create' ? undefined : `${4 / zoom} ${3 / zoom}`

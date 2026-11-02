@@ -1873,7 +1873,7 @@ footer button {
 .canvas-ruler span{position:absolute;pointer-events:none}.canvas-ruler.horizontal span{border-left:1px solid #d0d0d0;padding-left:2px;top:5px;height:15px}.canvas-ruler.vertical span{border-top:1px solid #d0d0d0;padding-top:2px;left:3px;width:17px;writing-mode:vertical-rl}
 .ruler-origin{position:absolute;left:0;top:0;width:20px;height:20px;background:#fff;border-right:1px solid #e6e6e6;border-bottom:1px solid #e6e6e6}
 .guide-properties{position:absolute;top:28px;left:28px;display:flex;align-items:center;gap:8px;padding:8px;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 2px 8px #0002;pointer-events:auto;font-size:11px}.guide-properties .number-field{width:130px}
-.canvas-rotation-hint{position:absolute;z-index:60;pointer-events:none;background:#0d99ff;color:white;border-radius:3px;padding:3px 6px;font-size:11px;font-variant-numeric:tabular-nums}
+.canvas-rotation-hint{position:absolute;z-index:60;pointer-events:none;background:#3459d4;color:white;border-radius:3px;padding:3px 6px;font-size:11px;font-variant-numeric:tabular-nums}
 .canvas[data-transform-gesture="rotate"] .selection *{cursor:inherit!important}
 body:has(.app-shell[data-color-picking="true"]) .feature-backdrop{visibility:hidden;pointer-events:none}
 

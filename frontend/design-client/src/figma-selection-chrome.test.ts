@@ -22,7 +22,7 @@ test('selection chrome names a shape in blue and turns only the selected frame t
     localSelection: local, selectionCorners: corners, selectionBox: bounds(corners), measurementTarget: null,
   })
   const shapeLabels = shape.commands.labels ?? []
-  expect(shapeLabels.find(label => label.text === 'Thumb')?.color).toBe('#0d99ff')
+  expect(shapeLabels.find(label => label.text === 'Thumb')?.color).toBe('#3459d4')
   expect(shapeLabels.find(label => label.text === 'Card')?.color).toBe('#73778b')
   const frameLocal = selectionLocalBounds(doc, frame.id)
   const frameCorners = boxPoints(frameLocal).map(point => apply(frameEntry.matrix, point))
@@ -33,6 +33,6 @@ test('selection chrome names a shape in blue and turns only the selected frame t
   })
   const titles = (selectedFrame.commands.labels ?? []).filter(label => label.text === 'Card')
   expect(titles).toHaveLength(1)
-  expect(titles[0].color).toBe('#0d99ff')
+  expect(titles[0].color).toBe('#3459d4')
   expect(shape.uiIdentity).not.toBe(selectedFrame.uiIdentity)
 })
