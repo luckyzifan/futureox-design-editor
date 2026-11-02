@@ -18,8 +18,9 @@
  * it would advance undo depth while leaving imported font/page/color data stale.
  */
 import type { Op } from './graph'
-import { equalValue } from '../document-patch'
+import { documentPatch, equalValue } from '../document-patch'
 import { localEditProof } from '../local-edit-proof'
+import { snapshotParent } from '../page-edit-scope'
 import type { DesignDocument, DesignNode, Page } from '../model'
 
 /** Synthetic parent of the per-page pseudo nodes; never a real node id. */
@@ -320,6 +321,8 @@ export function compileEditOps(before: DesignDocument, after: DesignDocument): C
       // Non-scalar payloads keep the normal exact remove/insert compiler.
       if (complete) return { mode: 'ops', ops }
     }
+    const stable = compileStableNode(before, after)
+    if (stable) return stable
     return compile(before, after)
   } catch (error) {
     return replacement(`compile failed: ${String(error)}`)
@@ -328,6 +331,37 @@ export function compileEditOps(before: DesignDocument, after: DesignDocument): C
 
 function replacement(reason: string): CompiledEdit {
   return { mode: 'replace', reason }
+}
+
+/** One content node whose parent and children did not move. Scalar fields stay
+ * scalar ops. Anything else is one remove+insert at the existing sibling index.
+ * The payload keeps the real children list. Multi-node index shifts stay on compile(). */
+function compileStableNode(before: DesignDocument, after: DesignDocument): CompiledEdit | undefined {
+  const patch = documentPatch(before, after)
+  if (Object.keys(patch.fields).length) return
+  const ids = Object.keys(patch.nodes)
+  if (ids.length !== 1) return
+  const id = ids[0]
+  const prior = before.nodes[id]
+  const next = patch.nodes[id]
+  if (!prior || !next) return
+  if (prior.children.length !== next.children.length || prior.children.some((child, index) => child !== next.children[index])) return
+  if (next.children.some(child => !after.nodes[child])) return
+  const scalar = scalarOps(id, prior, next)
+  if (scalar) return scalar.length ? { mode: 'ops', ops: scalar } : undefined
+  const parent = snapshotParent(before, id)
+  if (!parent || snapshotParent(after, id) !== parent) return
+  const siblings = after.nodes[parent]?.children ?? after.pages.find(page => page.id === parent)?.children
+  if (!siblings) return
+  const index = siblings.indexOf(id)
+  if (index < 0 || siblings.indexOf(id, index + 1) !== -1) return
+  return {
+    mode: 'ops',
+    ops: [
+      { type: 'removeNode', id },
+      { type: 'insertNode', parent, index, node: { ...next, children: [...next.children] } },
+    ],
+  }
 }
 
 function compile(before: DesignDocument, after: DesignDocument): CompiledEdit {
