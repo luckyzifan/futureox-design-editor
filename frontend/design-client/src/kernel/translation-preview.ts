@@ -1,4 +1,5 @@
 import type { ConstraintAnchor, DesignDocument, DesignNode } from '../model'
+import { snapshotParents, snapshotTargets } from '../page-edit-scope'
 
 const hasReferences = (node: DesignNode) =>
   !!(node.component || node.componentSet || node.componentKey != null || node.instance ||
@@ -48,11 +49,11 @@ export class TranslationPreviewPlan {
     if(base.animations?.length||!ids.length||new Set(ids).size!==ids.length)this.valid=false
     base.pages.forEach(page=>page.children.forEach(id=>this.roots.add(id)))
     for(const node of Object.values(base.nodes)){
-      if(node.connector||node.board?.kind==='code-block'&&node.board.language)this.valid=false
       for(const child of node.children){if(!base.nodes[child]||this.parents.has(child))this.valid=false;this.parents.set(child,node.id)}
     }
+    if(snapshotTargets(base, ids))this.valid=false
     for(const id of ids){const seen=new Set<string>();let at:string|undefined=id
-      while(at){const n=base.nodes[at];if(seen.has(at)||!n||hasReferences(n)||n.layout&&n.layout.mode!=='none'||n.sizing&&(n.sizing.width!=='fixed'||n.sizing.height!=='fixed')){this.valid=false;break}seen.add(at);at=this.parents.get(at)}
+      while(at){const n=base.nodes[at];if(seen.has(at)||!n||hasReferences(n)||n.connector||(n.board?.kind==='code-block'&&n.board.language)||n.layout&&n.layout.mode!=='none'||n.sizing&&(n.sizing.width!=='fixed'||n.sizing.height!=='fixed')){this.valid=false;break}seen.add(at);at=this.parents.get(at)}
     }
   }
   accepts(patches:Readonly<Record<string,Partial<DesignNode>>>){
@@ -93,15 +94,10 @@ export function translationOnlyChanges(previous: DesignDocument, next: DesignDoc
   const ids = Object.keys(next.nodes)
   if (ids.length !== Object.keys(previous.nodes).length || ids.some(id => !previous.nodes[id])) return null
   const changed: string[] = []
-  const parents = new Map<string, string>()
-  const pageRoots = new Set(next.pages.flatMap(page => page.children))
+  const parents = snapshotParents(previous)
+  const pages = new Set(next.pages.map(page => page.id))
   for (const id of ids) {
     const node = next.nodes[id], before = previous.nodes[id]
-    if (node.connector || (node.board?.kind === 'code-block' && node.board.language)) return null
-    for (const child of node.children) {
-      if (!next.nodes[child] || parents.has(child)) return null
-      parents.set(child, id)
-    }
     if (node === before) continue
     const fields = Object.keys(before)
     if (fields.length !== Object.keys(node).length || fields.some(key =>
@@ -109,20 +105,24 @@ export function translationOnlyChanges(previous: DesignDocument, next: DesignDoc
       (key !== 'transform' && before[key as keyof DesignNode] !== node[key as keyof DesignNode]))) return null
     if (node.transform.length !== 6 || node.transform.some(value => !Number.isFinite(value) || Math.abs(value) > 1e7) ||
       node.transform.slice(0, 4).some((value, index) => !Object.is(value, before.transform[index]))) return null
+    if (node.children.length !== before.children.length || node.children.some((child, index) => child !== before.children[index])) return null
     changed.push(id)
   }
+  if (snapshotTargets(previous, changed)) return null
   for (const id of changed) {
     const seen = new Set<string>()
     let at: string | undefined = id
-    while (at) {
+    while (at && next.nodes[at]) {
       if (seen.has(at)) return null
       seen.add(at)
-      const node: DesignNode | undefined = next.nodes[at]
+      const node = next.nodes[at]
       const parentId = parents.get(at)
-      if (!node || hasReferences(node) || !fixedConstraints(node, parentId ? next.nodes[parentId] : undefined, pageRoots.has(at)) ||
+      const parent = parentId ? next.nodes[parentId] : undefined
+      if (!node || node.connector || (node.board?.kind === 'code-block' && node.board.language) ||
+        hasReferences(node) || !fixedConstraints(node, parent, !parent && !!parentId && pages.has(parentId)) ||
         (node.layout && node.layout.mode !== 'none') ||
         (node.sizing && (node.sizing.width !== 'fixed' || node.sizing.height !== 'fixed'))) return null
-      at = parentId
+      at = parent ? parentId : undefined
     }
   }
   return changed
