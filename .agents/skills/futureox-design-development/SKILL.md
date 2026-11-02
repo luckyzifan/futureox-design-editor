@@ -3,6 +3,7 @@ name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
 
+2026-11-02 [Figma 版面与测距](../../../testing/verification-figma-layout-chrome-20261102/README.md)让网页和 Electron 共用画布测距、布尔插入和属性控件。Option/Alt 红色间距只画正间隙和四边内边距，并带端点刻度。两个形状的联集/减去/交集/排除占最前同级的位置，自动布局父级里成为一块固定尺寸；普通编组仍拒绝自动布局。圆角相等时用一个字段，玻璃控件按光线、折射、深度、色散排列。页面行用蓝色强调色。不改光栅、玻璃着色器、圆角曲线、瓦片或预算。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [玻璃与圆角](../../../testing/verification-figma-glass-corners-20261102/README.md)让零平滑矩形、画板和分区的独立圆角走与均匀圆角同一条解析玻璃字段；平滑和任意路径仍用距离场。画布可拖均匀圆角、Alt 单角、玻璃光线和未变换渐变的角度与色标。属性在四角相同时用一个圆角字段。强调色仍是 #3459d4，手柄仍是 #0d99ff。未改预算或瓦片。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [色域与透明度](../../../testing/verification-color-gamut-opacity-20261102/README.md)在既有 sRGB 标记上增加可选 Display P3 标记导出，并把图层透明度按 0–100% 与填充、描边、阴影颜色 Alpha 相乘。不改 8 位画布的 sRGB 交换链、合成预算、瓦片或实验开关。Display P3 仍不是默认 PNG。33/100ms 与完整 G2/G5 未通过。
 2026-11-02 [.fd 往返](../../../testing/verification-fd-roundtrip-20261102/README.md)保持格式 2。数值按 serde_json 的整数/浮点变体保存，含负零；`i64::MIN` 的 zigzag 不再在调试构建里溢出。`binfmt_*` 与 `forma_*` 都先校验再保留被忽略字段、显式 null 和 `fdCompatibility`。编辑器 `json-stringify-v1` 仍是 `JSON.stringify`，会在进入编码器前把负零收成正零。不改光栅、瓦片、预算或实验开关。33/100ms 与完整 G2/G5 未通过。

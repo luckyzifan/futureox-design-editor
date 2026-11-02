@@ -3,6 +3,7 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-02 [Figma 版面与测距](../../../testing/verification-figma-layout-chrome-20261102/README.md)不改光栅、玻璃着色器、圆角曲线、瓦片、预算或实验开关。测距和布尔插入是交互与布局。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 [玻璃与圆角](../../../testing/verification-figma-glass-corners-20261102/README.md)只把零平滑、无网络的矩形/画板/分区玻璃扩到拟合后的四角半径。均匀半径的字段和 JSON 不变。平滑与其它形状仍走距离场。画布手柄不改光栅预算。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 [色域与透明度](../../../testing/verification-color-gamut-opacity-20261102/README.md)不改光栅预算、瓦片导航或实验开关。8 位画布仍是 sRGB。Display P3 只在导出时换算并标记。图层透明度乘进填充、描边和阴影，不是渲染故障修复。33/100ms 与完整 G2/G5 仍未通过。
 2026-11-02 [.fd 往返](../../../testing/verification-fd-roundtrip-20261102/README.md)只改原生容器的数值变体和被忽略字段的保留。不改光栅、瓦片、预算或实验开关，也不是 33/100ms 或完整 G2/G5。

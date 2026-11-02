@@ -26,6 +26,7 @@ import { ComponentPanel } from './ComponentPanel'
 import { NumberField } from './fields'
 import { formatPercent } from './numeric-expression'
 import { LayoutPanel } from './LayoutPanel'
+import { CornerRadiusFields } from './corner-radius-fields'
 import { MultiSelectionInspector } from './MultiSelectionInspector'
 import { resizeNodeDimension, selectionMetric, setNodePosition } from './selection-properties'
 import React, { memo, useContext, useEffect, useSyncExternalStore, useRef, useState } from 'react'
@@ -76,7 +77,7 @@ const effects: Record<Effect['kind'], string> = {
   'inner-shadow': '内阴影',
   blur: '图层模糊',
   'background-blur': '背景模糊',
-  glass: '玻璃折射',
+  glass: '玻璃',
   noise: '噪声',
   texture: '纹理',
   'color-controls': '颜色调整',
@@ -376,12 +377,10 @@ function PaintEditor({
 export const Inspector = memo(function Inspector({ editor }: { editor: Editor }) {
   const { locale, tr } = usePropertyText()
   const [context, setContext] = useState<{ x: number; y: number } | null>(null)
-  const [cornerDetail, setCornerDetail] = useState<{ id: string; open: boolean } | null>(null)
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot),
     ids = s.selection,
     n = s.doc.nodes[ids[0]]
   const live = useSyncExternalStore(editor.subscribeLiveRotation, () => editor.liveRotation) as LiveRotation | null
-  const cornerOpen = !!n && cornerDetail?.id === n.id && cornerDetail.open
   const update = (fn: (n: DesignNode) => void, label = '修改属性') => editor.updateProperties(ids, fn, label)
   if (s.tool === 'scale') return <ScaleInspector key={`${editor.sessionGeneration}:${s.page}:${s.selection.join(',')}`} editor={editor} />
   if (ids.length > 1) return <MultiSelectionInspector editor={editor} nodes={ids.map((id) => s.doc.nodes[id]).filter(Boolean)} />
@@ -659,44 +658,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
           </label>
           {['rectangle', 'frame', 'section'].includes(n.kind) && (
             <>
-              <div className="corner-radius-title">
-                <h4>{tr("圆角")}</h4>
-                <button type="button" className="corner-independent" aria-pressed={cornerOpen || n.radii.some((r) => r !== n.radii[0])} aria-label={tr("独立圆角")} title={tr("独立圆角")}
-                  onClick={() => setCornerDetail({ id: n.id, open: n.radii.some((r) => r !== n.radii[0]) ? true : !cornerOpen })}>
-                  <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
-                    <rect x="1" y="1" width="5" height="5" rx="1.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
-                    <rect x="8" y="1" width="5" height="5" rx="1.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
-                    <rect x="1" y="8" width="5" height="5" rx="1.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
-                    <rect x="8" y="8" width="5" height="5" rx="1.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
-                  </svg>
-                </button>
-              </div>
-              <div className="field-grid">
-                {(cornerOpen || n.radii.some((r) => r !== n.radii[0])) ? n.radii.map((r, i) => (
-                  <UnitNumberField unitDescription={styleDescription} historyLabel={['左上', '右上', '右下', '左下'][i]} unit="length" diagnosticFamily={2} unitScale={units.style}
-                    key={i}
-                    label={tr(['左上', '右上', '右下', '左下'][i])}
-                    value={r}
-                    min={0}
-                    onChange={(v) =>
-                      update((n) => {
-                        n.radii[i] = v
-                      })
-                    }
-                  />
-                )) : (
-                  <UnitNumberField unitDescription={styleDescription} historyLabel="圆角" unit="length" diagnosticFamily={2} unitScale={units.style}
-                    label={tr("圆角")}
-                    value={n.radii[0]}
-                    min={0}
-                    onChange={(v) =>
-                      update((n) => {
-                        n.radii = [v, v, v, v]
-                      })
-                    }
-                  />
-                )}
-              </div>
+              <CornerRadiusFields nodeId={n.id} radii={n.radii} tr={tr} update={update} unitDescription={styleDescription} unitScale={units.style} />
               <NumberField historyLabel="圆角平滑 %" diagnosticFamily={2} unit="percent"
                 label={tr("圆角平滑 %")}
                 value={n.smoothing * 100}
@@ -1057,7 +1019,7 @@ export const Inspector = memo(function Inspector({ editor }: { editor: Editor })
               {fx.glass && (
                 <div className="field-grid">
                   {(
-                    ['depth', 'bevelSize', 'refraction', 'dispersion', 'lightAngle', 'lightIntensity'] as const
+                    ['lightAngle', 'lightIntensity', 'refraction', 'depth', 'dispersion', 'bevelSize'] as const
                   ).map((key) => {
                     const percentage =
                       key === 'refraction' || key === 'dispersion' || key === 'lightIntensity'
