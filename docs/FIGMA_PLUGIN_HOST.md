@@ -2,7 +2,7 @@
 
 Futureox Design can run a documented subset of the Figma Plugin API against the open document. This is a local desktop host. It does not add Figma aliases to the MCP operation registry, install handlers from file contents, or grant network, filesystem, or account permissions.
 
-The canonical matrix lives in `frontend/design-client/src/plugins/coverage.ts`. Counts in this build: 43 supported, 27 partial, 22 unsupported. Calling an unsupported API throws `PluginApiError` with `code: "unsupported"`. Partial APIs do the documented subset and throw when a plugin asks for the rest.
+The canonical matrix lives in `frontend/design-client/src/plugins/coverage.ts`. Counts in this build: 48 supported, 27 partial, 22 unsupported. Calling an unsupported API throws `PluginApiError` with `code: "unsupported"`. Partial APIs do the documented subset and throw when a plugin asks for the rest.
 
 ## What a plugin can change
 
@@ -95,7 +95,12 @@ UI code talks to the plugin with `parent.postMessage({ pluginMessage }, '*')` an
 | `node.fills` | partial | SOLID paints only. Reading a gradient, image, or other paint throws and leaves it unchanged. |
 | `node.strokes` | partial | SOLID strokes only. Assigning replaces the stack. |
 | `node.strokeWeight` | supported | One width for every stroke. A positive weight creates a stroke when none exist. |
-| `node.cornerRadius` | supported | Rectangles and frames use the four radii. Polygons and stars use the authored corner radius. Mixed radii read as figma.mixed. |
+| `node.cornerRadius` | supported | Rectangles, frames, and sections use the four radii. Polygons and stars use the authored corner radius. Mixed radii read as figma.mixed. |
+| `node.topLeftRadius` | supported | Rectangle, frame, and section top-left radius. Other nodes throw. |
+| `node.topRightRadius` | supported | Rectangle, frame, and section top-right radius. Other nodes throw. |
+| `node.bottomRightRadius` | supported | Rectangle, frame, and section bottom-right radius. Other nodes throw. |
+| `node.bottomLeftRadius` | supported | Rectangle, frame, and section bottom-left radius. Other nodes throw. |
+| `node.cornerSmoothing` | supported | Rectangle, frame, and section corner smoothing from 0 to 1. |
 | `node.characters` | supported | Text only, after loadFontAsync for the node’s fontName. Clears style ranges. |
 | `node.fontSize` | supported | 1–4096, after loadFontAsync. Does not change per-range fonts. |
 | `node.getPluginData` | supported | String values stored on the node for this plugin id. Missing keys return an empty string. |
