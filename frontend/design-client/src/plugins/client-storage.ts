@@ -47,7 +47,19 @@ export function defaultPluginStorage(): PluginStorage {
   }
 }
 
-type Bag = Record<string, unknown>
+type JsonEntry = { t: 'j'; v: unknown }
+type UndefinedEntry = { t: 'u' }
+type BytesEntry = { t: 'b'; n: number; parts: string[] }
+type Entry = JsonEntry | UndefinedEntry | BytesEntry
+type Stored = { __v: 2; items: Record<string, Entry> }
+export type ClientStorageWrite =
+  | { kind: 'undefined' }
+  | { kind: 'bytes'; part: number; parts: number; rawBytes: number; base64: string }
+
+const BYTE_PARTS = 48
+const BYTE_PART_CHARS = 200_000
+type PendingBytes = { parts: string[]; lengths: number[]; rawBytes: number; expected: number; next: number }
+const pendingBytes = new Map<string, PendingBytes>()
 
 function storageKey(value: unknown): string {
   if (typeof value !== 'string' || !value || value.length > PLUGIN_LIMITS.clientStorageKeyChars || /[\u0000-\u001f]/.test(value))
@@ -57,52 +69,100 @@ function storageKey(value: unknown): string {
   return value
 }
 
-function readBag(storage: PluginStorage, pluginId: string): Bag {
+function pendingId(pluginId: string, key: string) {
+  return `${pluginId}\0${key}`
+}
+
+function readItems(storage: PluginStorage, pluginId: string): Record<string, Entry> {
   const raw = storage.get(clientStorageKey(pluginId))
   if (!raw) return {}
-  try {
-    const parsed = JSON.parse(raw) as unknown
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
-    return parsed as Bag
-  } catch {
-    throw new PluginApiError('storage_failed', 'clientStorage for this plugin is not valid JSON')
-  }
+  let parsed: unknown
+  try { parsed = JSON.parse(raw) } catch { throw new PluginApiError('storage_failed', 'clientStorage for this plugin is not valid JSON') }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+  const record = parsed as Stored & Record<string, unknown>
+  if (record.__v === 2 && record.items && typeof record.items === 'object' && !Array.isArray(record.items)) return record.items
+  const items: Record<string, Entry> = {}
+  for (const [key, value] of Object.entries(record)) items[key] = { t: 'j', v: value }
+  return items
 }
 
-function writeBag(storage: PluginStorage, pluginId: string, bag: Bag) {
-  const keys = Object.keys(bag)
+function entryBytes(key: string, entry: Entry) {
+  const keyBytes = new TextEncoder().encode(key).byteLength
+  if (entry.t === 'u') return keyBytes
+  if (entry.t === 'b') return keyBytes + entry.n
+  return keyBytes + new TextEncoder().encode(JSON.stringify(entry.v)).byteLength
+}
+
+function writeItems(storage: PluginStorage, pluginId: string, items: Record<string, Entry>) {
+  const keys = Object.keys(items)
   if (keys.length > PLUGIN_LIMITS.clientStorageKeys)
     throw new PluginApiError('plugin_limit', `clientStorage accepts at most ${PLUGIN_LIMITS.clientStorageKeys} keys`)
-  const json = JSON.stringify(bag)
-  if (new TextEncoder().encode(json).byteLength > PLUGIN_LIMITS.clientStorageBytes)
+  let total = 0
+  for (const key of keys) total += entryBytes(key, items[key])
+  if (total > PLUGIN_LIMITS.clientStorageBytes)
     throw new PluginApiError('plugin_limit', `clientStorage is limited to ${PLUGIN_LIMITS.clientStorageBytes} bytes per plugin`)
-  const key = clientStorageKey(pluginId)
-  if (!keys.length) storage.remove(key)
-  else storage.set(key, json)
+  const stored = clientStorageKey(pluginId)
+  if (!keys.length) storage.remove(stored)
+  else storage.set(stored, JSON.stringify({ __v: 2, items } satisfies Stored))
 }
 
-export function clientStorageGet(storage: PluginStorage, pluginId: string, key: unknown): { found: boolean; value: unknown } {
-  const bag = readBag(storage, pluginId)
+function decodedLength(base64: string) {
+  if (base64.length > BYTE_PART_CHARS || base64.length % 4 !== 0 || /[^A-Za-z0-9+/=]/.test(base64))
+    throw new PluginApiError('invalid_value', 'clientStorage bytes are not valid base64')
+  return atob(base64).length
+}
+
+export function clientStorageGet(storage: PluginStorage, pluginId: string, key: unknown): { found: boolean; kind?: 'json' | 'undefined' | 'bytes'; value: unknown; parts?: string[] } {
+  const items = readItems(storage, pluginId)
   const name = storageKey(key)
-  if (!Object.prototype.hasOwnProperty.call(bag, name)) return { found: false, value: null }
-  return { found: true, value: bag[name] }
+  if (!Object.prototype.hasOwnProperty.call(items, name)) return { found: false, value: null }
+  const entry = items[name]
+  if (entry.t === 'u') return { found: true, kind: 'undefined', value: null }
+  if (entry.t === 'b') return { found: true, kind: 'bytes', value: null, parts: entry.parts }
+  return { found: true, kind: 'json', value: entry.v }
 }
 
 export function clientStorageKeys(storage: PluginStorage, pluginId: string): string[] {
-  return Object.keys(readBag(storage, pluginId))
+  return Object.keys(readItems(storage, pluginId))
 }
 
-export function clientStorageSet(storage: PluginStorage, pluginId: string, key: unknown, json: unknown) {
-  if (typeof json !== 'string') throw new PluginApiError('invalid_value', 'clientStorage value must be JSON')
-  let value: unknown
-  try { value = JSON.parse(json) } catch { throw new PluginApiError('invalid_value', 'clientStorage value must be JSON') }
-  const bag = readBag(storage, pluginId)
-  bag[storageKey(key)] = value
-  writeBag(storage, pluginId, bag)
+export function clientStorageSet(storage: PluginStorage, pluginId: string, key: unknown, write: string | ClientStorageWrite) {
+  const name = storageKey(key)
+  const id = pendingId(pluginId, name)
+  const items = readItems(storage, pluginId)
+  if (typeof write === 'string' || write.kind === 'undefined') {
+    pendingBytes.delete(id)
+    if (typeof write === 'string') {
+      let value: unknown
+      try { value = JSON.parse(write) } catch { throw new PluginApiError('invalid_value', 'clientStorage value must be JSON') }
+      items[name] = { t: 'j', v: value }
+    } else items[name] = { t: 'u' }
+    writeItems(storage, pluginId, items)
+    return
+  }
+  if (!Number.isInteger(write.part) || !Number.isInteger(write.parts) || !Number.isInteger(write.rawBytes))
+    throw new PluginApiError('invalid_value', 'clientStorage bytes are incomplete')
+  if (write.parts < 1 || write.parts > BYTE_PARTS || write.rawBytes < 0 || write.rawBytes > PLUGIN_LIMITS.clientStorageBytes)
+    throw new PluginApiError('plugin_limit', `clientStorage is limited to ${PLUGIN_LIMITS.clientStorageBytes} bytes per plugin`)
+  if (write.part === 0) pendingBytes.set(id, { parts: [], lengths: [], rawBytes: write.rawBytes, expected: write.parts, next: 0 })
+  const pending = pendingBytes.get(id)
+  if (!pending || write.part !== pending.next || write.parts !== pending.expected || write.rawBytes !== pending.rawBytes)
+    throw new PluginApiError('invalid_value', 'clientStorage byte upload is out of order')
+  pending.lengths.push(decodedLength(write.base64))
+  pending.parts.push(write.base64)
+  pending.next += 1
+  if (pending.next < pending.expected) return
+  pendingBytes.delete(id)
+  const total = pending.lengths.reduce((sum, length) => sum + length, 0)
+  if (total !== pending.rawBytes) throw new PluginApiError('invalid_value', 'clientStorage bytes do not match the declared length')
+  items[name] = { t: 'b', n: pending.rawBytes, parts: pending.parts }
+  writeItems(storage, pluginId, items)
 }
 
 export function clientStorageDelete(storage: PluginStorage, pluginId: string, key: unknown) {
-  const bag = readBag(storage, pluginId)
-  delete bag[storageKey(key)]
-  writeBag(storage, pluginId, bag)
+  const name = storageKey(key)
+  pendingBytes.delete(pendingId(pluginId, name))
+  const items = readItems(storage, pluginId)
+  delete items[name]
+  writeItems(storage, pluginId, items)
 }

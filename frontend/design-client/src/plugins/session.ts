@@ -6,6 +6,8 @@ import {
   type AutoLayout, type Constraints, type DesignNode, type Effect, type Kind, type Matrix, type Paint, type Sizing, type Stroke, type TextStyle,
 } from '../model'
 import { clientStorageDelete, clientStorageGet, clientStorageKeys, clientStorageSet, defaultPluginStorage, type PluginStorage } from './client-storage'
+import { bytesFromDataUrl, dataUrlForImage, imageContentId, imageMime, imageSize } from './images'
+import { PLUGIN_FETCH_METHODS, matchNetworkAccess, pluginFetchHeaders, type PluginFetch } from './network'
 import { figmaColorToHex, hexToFigmaColor } from './colors'
 import { PluginApiError, PluginClosed } from './errors'
 import { PLUGIN_LIMITS } from './limits'
@@ -24,6 +26,14 @@ type Command =
   | { type: 'setPage'; id: string }
   | { type: 'createPage'; id: string; name?: string; makeCurrent: boolean }
   | { type: 'renamePage'; id: string; name: string }
+  | { type: 'styleCreate'; id: string; kind: 'paint' | 'text' | 'effect'; name: string; value: unknown }
+  | { type: 'styleUpdate'; id: string; name?: string; value?: unknown }
+  | { type: 'styleApply'; nodeId: string; field: 'fills' | 'textStyle' | 'effects'; styleId: string | null }
+  | { type: 'styleDelete'; id: string }
+  | { type: 'collectionCreate'; id: string; name: string; modes: string[] }
+  | { type: 'variableCreate'; id: string; name: string; collectionId: string; kind: 'color' | 'number' | 'boolean' | 'string'; values: Record<string, unknown> }
+  | { type: 'variableSet'; id: string; mode: string; value: unknown }
+  | { type: 'variableBind'; nodeId: string; path: string; variableId: string | null }
 
 type Working = {
   kind: Kind
@@ -37,6 +47,8 @@ type Working = {
   constraints: Constraints | null
   textStyle: TextStyle | null
   fontSize: number
+  text: string
+  textDecoration: 'NONE' | 'UNDERLINE' | 'STRIKETHROUGH'
 }
 
 type AutomationOp = { method: string; params?: Record<string, unknown> }
@@ -53,6 +65,8 @@ export type PluginSessionOptions = {
   command?: string
   uiHtml: string | null
   storage?: PluginStorage
+  networkDomains?: readonly string[]
+  fetch?: PluginFetch
   hooks?: Hooks
 }
 
@@ -124,7 +138,8 @@ function styleName(weight: number): string {
   for (const entry of WEIGHT_NAMES) if (Math.abs(entry[0] - weight) < Math.abs(best[0] - weight)) best = entry
   return best[1]
 }
-function mapFill(value: unknown): Paint {
+type PluginImage = { mime: string; bytes: Uint8Array; base64: string }
+function mapFill(value: unknown, images?: Map<string, PluginImage>): Paint {
   const fill = record(value, 'fill')
   const type = fill.type
   const visible = fill.visible === undefined ? true : boolean(fill.visible, 'fill.visible')
@@ -152,7 +167,19 @@ function mapFill(value: unknown): Paint {
     made.angle = Array.isArray(fill.gradientTransform) ? angleOf(fill.gradientTransform) : 180
     return made
   }
-  throw new PluginApiError('unsupported_api', `Fill ${String(type)} is not available. SOLID and GRADIENT_LINEAR are supported.`)
+  if (type === 'IMAGE') {
+    const hash = shortText(fill.imageHash, 'imageHash', 80)
+    const stored = images?.get(hash)
+    if (!stored) throw new PluginApiError('invalid_value', 'Unknown image hash. Create the image with figma.createImage first.')
+    const made = paint('#ffffff', 'image')
+    const scale = String(fill.scaleMode || 'FILL')
+    made.fit = scale === 'FIT' ? 'contain' : scale === 'CROP' ? 'stretch' : 'cover'
+    made.image = dataUrlForImage(stored.mime, stored.base64)
+    made.opacity = opacity
+    made.visible = visible
+    return made
+  }
+  throw new PluginApiError('unsupported_api', `Fill ${String(type)} is not available. SOLID, GRADIENT_LINEAR, and IMAGE are supported.`)
 }
 function angleOf(transform: unknown): number {
   if (!Array.isArray(transform) || !Array.isArray(transform[0]) || !Array.isArray(transform[1])) return 180
@@ -162,9 +189,9 @@ function angleOf(transform: unknown): number {
   const degrees = Math.atan2(b, a) * 180 / Math.PI
   return Number.isFinite(degrees) ? degrees : 180
 }
-function mapFills(value: unknown): Paint[] {
+function mapFills(value: unknown, images?: Map<string, PluginImage>): Paint[] {
   if (!Array.isArray(value) || value.length > 16) throw new PluginApiError('invalid_value', 'fills must be an array of at most 16 paints')
-  return value.map(mapFill)
+  return value.map(item => mapFill(item, images))
 }
 function mapStrokePaint(value: unknown): Paint {
   const fill = mapFill({ ...record(value, 'stroke'), type: record(value, 'stroke').type ?? 'SOLID' })
@@ -219,8 +246,23 @@ function figmaType(node: DesignNode): string {
   }
   return names[node.kind]
 }
-function toFigmaFills(fills: Paint[]) {
+function toFigmaFills(fills: Paint[], images?: Map<string, PluginImage>, urls?: Map<string, string>) {
   return fills.map(item => {
+    if (item.kind === 'image' && item.image) {
+      let hash = urls?.get(item.image) ?? null
+      if (!hash) {
+        const decoded = bytesFromDataUrl(item.image)
+        if (decoded && images && urls) {
+          hash = imageContentId(decoded.bytes)
+          let binary = ''
+          for (const byte of decoded.bytes) binary += String.fromCharCode(byte)
+          images.set(hash, { mime: decoded.mime, bytes: decoded.bytes, base64: btoa(binary) })
+          urls.set(item.image, hash)
+        }
+      }
+      const scale = item.fit === 'contain' ? 'FIT' : item.fit === 'stretch' ? 'CROP' : 'FILL'
+      return { type: 'IMAGE', imageHash: hash, scaleMode: scale, opacity: item.opacity, visible: item.visible }
+    }
     if (item.kind === 'solid') return { type: 'SOLID', color: hexToFigmaColor(item.color), opacity: item.opacity, visible: item.visible }
     if (item.kind === 'linear') return {
       type: 'GRADIENT_LINEAR', opacity: item.opacity, visible: item.visible,
@@ -249,6 +291,10 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   const pluginName = options.name
   const pluginId = options.pluginId
   const storage = options.storage ?? defaultPluginStorage()
+  const networkDomains = options.networkDomains ?? []
+  const images = new Map<string, PluginImage>()
+  const imageUrls = new Map<string, string>()
+  const networkJobs: { id: number; url: string; method: string; headers: Record<string, string>; body: string | null }[] = []
   const documentId = editor.state.doc.id
   const sessionId = editor.sessionGeneration
   const commands: Command[] = []
@@ -293,10 +339,13 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     flushes += 1
     return result
   }
+  function operationResult(result: unknown): Record<string, unknown> {
+    const operations = (result as { operations?: { result?: Record<string, unknown> }[] } | null)?.operations
+    return operations?.[0]?.result ?? (result && typeof result === 'object' ? result as Record<string, unknown> : {})
+  }
   function resultId(result: unknown): string {
-    const operations = (result as { operations?: { result?: { id?: string } }[] } | null)?.operations
-    const id = operations?.[0]?.result?.id
-    if (!id) throw new PluginApiError('plugin_failed', 'The editor did not return a new node id')
+    const id = operationResult(result).id
+    if (typeof id !== 'string' || !id) throw new PluginApiError('plugin_failed', 'The editor did not return a new node id')
     return id
   }
   function ensureRoom() {
@@ -308,7 +357,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   function bucket(id: string): { assignments: Assignment[] } {
     for (let index = commands.length - 1; index >= 0; index--) {
       const command = commands[index]
-      if (command.type === 'move' || command.type === 'remove' || command.type === 'setPage' || command.type === 'createPage' || command.type === 'renamePage' || command.type === 'selection') break
+      if (command.type === 'move' || command.type === 'remove' || command.type === 'setPage' || command.type === 'createPage' || command.type === 'renamePage' || command.type === 'selection' || command.type === 'styleCreate' || command.type === 'styleUpdate' || command.type === 'styleApply' || command.type === 'styleDelete' || command.type === 'collectionCreate' || command.type === 'variableCreate' || command.type === 'variableSet' || command.type === 'variableBind') break
       if ((command.type === 'create' || command.type === 'update') && command.id === id) return command
     }
     const update: Command = { type: 'update', id, assignments: [] }
@@ -346,6 +395,38 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     if (working.kind !== 'text') throw new PluginApiError('invalid_kind', 'This property is only available on text')
     working.textStyle = { ...(working.textStyle ?? defaultTextStyle()) }
     return working.textStyle
+  }
+  function decorationRuns(working: Working) {
+    if (working.textDecoration === 'NONE' || !working.text.length) return []
+    return [{
+      start: 0, end: working.text.length,
+      underline: working.textDecoration === 'UNDERLINE',
+      strikethrough: working.textDecoration === 'STRIKETHROUGH',
+    }]
+  }
+  function applyTextAutoResize(working: Working, value: string) {
+    const style = ensureText(working)
+    working.sizing = { ...(working.sizing ?? defaultSizing()) }
+    if (value === 'WIDTH_AND_HEIGHT') { style.wrap = false; working.sizing.width = 'hug'; working.sizing.height = 'hug' }
+    else if (value === 'HEIGHT') { style.wrap = true; working.sizing.width = 'fixed'; working.sizing.height = 'hug' }
+    else if (value === 'NONE') { style.wrap = true; working.sizing.width = 'fixed'; working.sizing.height = 'fixed' }
+    else if (value === 'TRUNCATE') { style.wrap = false; working.sizing.width = 'fixed'; working.sizing.height = 'fixed' }
+    else throw new PluginApiError('unsupported_api', `textAutoResize ${value} is not available`)
+  }
+  function textAutoResizeOf(style: TextStyle | null | undefined, sizing: Sizing | null | undefined) {
+    const wrap = style?.wrap !== false
+    const width = sizing?.width || 'fixed'
+    const height = sizing?.height || 'fixed'
+    if (width === 'hug' && height === 'hug') return 'WIDTH_AND_HEIGHT'
+    if (height === 'hug') return 'HEIGHT'
+    if (!wrap) return 'TRUNCATE'
+    return 'NONE'
+  }
+  function axisSizing(layout: AutoLayout | null | undefined, sizing: Sizing | null | undefined, axis: 'primary' | 'counter') {
+    if (!layout || layout.mode === 'none' || layout.mode === 'grid') return 'FIXED'
+    const horizontal = layout.mode === 'horizontal'
+    const key = axis === 'primary' ? (horizontal ? 'width' : 'height') : (horizontal ? 'height' : 'width')
+    return (sizing?.[key] || 'fixed') === 'hug' ? 'AUTO' : 'FIXED'
   }
   function lineHeightOf(value: unknown, fontSize: number): number {
     const spec = record(value, 'lineHeight')
@@ -400,7 +481,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     return {
       kind, transform: [1, 0, 0, 1, 0, 0], width, height, radii: [0, 0, 0, 0], strokes: [],
       layout: null, sizing: null, constraints: null, textStyle: kind === 'text' ? defaultTextStyle() : null,
-      fontSize: 28,
+      fontSize: 28, text: '', textDecoration: 'NONE',
     }
   }
   function fromDocument(id: string): Working {
@@ -418,6 +499,8 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       constraints: node.constraints ? structuredClone(node.constraints) : null,
       textStyle: node.textStyle ? structuredClone(node.textStyle) : null,
       fontSize: node.fontSize,
+      text: node.text,
+      textDecoration: node.textRuns?.some(run => run.strikethrough) ? 'STRIKETHROUGH' : node.textRuns?.some(run => run.underline) ? 'UNDERLINE' : 'NONE',
     }
   }
   function ensureStroke(working: Working) {
@@ -439,7 +522,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       const blend = FIGMA_TO_BLEND[String(value)]
       if (!blend) throw new PluginApiError('unsupported_api', `Blend mode ${String(value)} is not available`)
       patch.blend = blend
-    } else if (key === 'fills') patch.fills = mapFills(value)
+    } else if (key === 'fills') patch.fills = mapFills(value, images)
     else if (key === 'strokes') {
       if (!Array.isArray(value) || value.length > 16) throw new PluginApiError('invalid_value', 'strokes must be an array of at most 16 strokes')
       working.strokes = value.map(item => {
@@ -485,9 +568,26 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     } else if (key === 'effects') patch.effects = mapEffects(value)
     else if (key === 'characters') {
       if (working.kind !== 'text') throw new PluginApiError('invalid_kind', 'characters is only available on text')
-      patch.text = shortText(value, 'characters', 100_000)
-      patch.textRuns = []
-    }     else if (key === 'fontSize') {
+      working.text = shortText(value, 'characters', 100_000)
+      patch.text = working.text
+      patch.textRuns = decorationRuns(working)
+    } else if (key === 'textCase' || key === 'textDecoration' || key === 'paragraphSpacing' || key === 'paragraphIndent' || key === 'textAutoResize') {
+      const style = ensureText(working)
+      if (key === 'textCase') {
+        if (value !== 'ORIGINAL' && value !== 'UPPER' && value !== 'LOWER')
+          throw new PluginApiError('unsupported_api', `textCase ${String(value)} is not available`)
+        style.textCase = value === 'UPPER' ? 'upper' : value === 'LOWER' ? 'lower' : 'original'
+      } else if (key === 'textDecoration') {
+        if (value !== 'NONE' && value !== 'UNDERLINE' && value !== 'STRIKETHROUGH')
+          throw new PluginApiError('unsupported_api', `textDecoration ${String(value)} is not available`)
+        working.textDecoration = value as Working['textDecoration']
+        patch.textRuns = decorationRuns(working)
+      } else if (key === 'paragraphSpacing') style.paragraphSpacing = finite(value, 'paragraphSpacing', 0, 10000)
+      else if (key === 'paragraphIndent') style.paragraphIndent = finite(value, 'paragraphIndent', -10000, 10000)
+      else applyTextAutoResize(working, String(value))
+      patch.textStyle = style
+      if (working.sizing) patch.sizing = { ...working.sizing }
+    } else if (key === 'fontSize') {
       if (working.kind !== 'text') throw new PluginApiError('invalid_kind', 'fontSize is only available on text')
       working.fontSize = finite(value, 'fontSize', 1, 4096)
       patch.fontSize = working.fontSize
@@ -542,6 +642,33 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       }
       patch.layout = { ...working.layout, padding: [...working.layout.padding] as AutoLayout['padding'] }
     } else if (key === 'relativeTransform') working.transform = relativeMatrix(value)
+    else if (key === 'primaryAxisSizingMode' || key === 'counterAxisSizingMode') {
+      if (!working.layout || working.layout.mode === 'none') throw new PluginApiError('invalid_value', 'Set layoutMode before axis sizing')
+      const mode = String(value) === 'AUTO' ? 'hug' : String(value) === 'FIXED' ? 'fixed' : ''
+      if (!mode) throw new PluginApiError('unsupported_api', `${key} ${String(value)} is not available`)
+      const horizontal = working.layout.mode === 'horizontal'
+      const widthAxis = key === 'primaryAxisSizingMode' ? horizontal : !horizontal
+      working.sizing = { ...(working.sizing ?? defaultSizing()) }
+      if (widthAxis) working.sizing.width = mode
+      else working.sizing.height = mode
+      patch.sizing = { ...working.sizing }
+    } else if (key === 'layoutWrap' || key === 'counterAxisSpacing') {
+      if (!working.layout || working.layout.mode === 'none') throw new PluginApiError('invalid_value', 'Set layoutMode before wrap or counter-axis spacing')
+      if (key === 'layoutWrap') {
+        if (value !== 'NONE' && value !== 'WRAP') throw new PluginApiError('unsupported_api', `layoutWrap ${String(value)} is not available`)
+        working.layout.wrap = value === 'WRAP'
+      } else working.layout.lineGap = finite(value, 'counterAxisSpacing', 0, 1e5)
+      patch.layout = { ...working.layout, padding: [...working.layout.padding] as AutoLayout['padding'] }
+    } else if (key === 'layoutPositioning') {
+      if (value !== 'AUTO' && value !== 'ABSOLUTE') throw new PluginApiError('unsupported_api', `layoutPositioning ${String(value)} is not available`)
+      working.sizing = { ...(working.sizing ?? defaultSizing()), absolute: value === 'ABSOLUTE' }
+      patch.sizing = { ...working.sizing }
+    } else if (key === 'minWidth' || key === 'maxWidth' || key === 'minHeight' || key === 'maxHeight') {
+      working.sizing = { ...(working.sizing ?? defaultSizing()) }
+      const limit = value === null ? (key.startsWith('min') ? 0.01 : 1e7) : finite(value, key, key.startsWith('min') ? 0.01 : 0.01, 1e7)
+      working.sizing[key] = limit
+      patch.sizing = { ...working.sizing }
+    } else if (key === 'strokeStyleId') throw new PluginApiError('unsupported_api', 'strokeStyleId is not available on this plugin host')
     else if (key === 'layoutAlign' || key === 'layoutGrow') {
       working.sizing = { ...(working.sizing ?? defaultSizing()) }
       if (key === 'layoutGrow') {
@@ -605,7 +732,24 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       else if (command.type === 'createPage') {
         ops.push({ method: 'page.create', params: { id: command.id, ...(command.name ? { name: command.name } : {}), makeCurrent: command.makeCurrent } })
         if (command.makeCurrent) page = command.id
-      } else if (command.type === 'renamePage') ops.push({ method: 'page.update', params: { id: command.id, patch: { name: command.name } } })
+      }       else if (command.type === 'renamePage') ops.push({ method: 'page.update', params: { id: command.id, patch: { name: command.name } } })
+      else if (command.type === 'styleCreate') ops.push({ method: 'style.create', params: { id: command.id, name: command.name, kind: command.kind, value: command.value } })
+      else if (command.type === 'styleUpdate') {
+        const params: Record<string, unknown> = { styleId: command.id }
+        if (command.name !== undefined) params.name = command.name
+        if (command.value !== undefined) params.value = command.value
+        ops.push({ method: 'style.update', params })
+      } else if (command.type === 'styleApply') {
+        ops.push(command.styleId
+          ? { method: 'style.apply', params: { nodeId: command.nodeId, field: command.field, styleId: command.styleId } }
+          : { method: 'style.unapply', params: { nodeId: command.nodeId, field: command.field } })
+      } else if (command.type === 'styleDelete') ops.push({ method: 'style.delete', params: { styleId: command.id } })
+      else if (command.type === 'collectionCreate') ops.push({ method: 'collection.create', params: { id: command.id, name: command.name, modes: command.modes, defaultMode: command.modes[0] } })
+      else if (command.type === 'variableCreate') ops.push({ method: 'variable.create', params: { id: command.id, name: command.name, collectionId: command.collectionId, kind: command.kind, values: command.values } })
+      else if (command.type === 'variableSet') ops.push({ method: 'variable.setValue', params: { variableId: command.id, mode: command.mode, value: command.value } })
+      else if (command.type === 'variableBind') ops.push(command.variableId
+        ? { method: 'variable.bind', params: { nodeId: command.nodeId, path: command.path, variableId: command.variableId } }
+        : { method: 'variable.unbind', params: { nodeId: command.nodeId, path: command.path } })
     }
     return ops
   }
@@ -669,7 +813,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       absoluteTransform: toTransform(worldMatrix(editor.authoredDocument, id)),
       absoluteBoundingBox: absoluteBox(id, node),
       visible: node.visible, locked: node.locked, opacity: node.opacity, blendMode: BLEND_TO_FIGMA[node.blend] || 'NORMAL',
-      fills: toFigmaFills(node.fills),
+      fills: toFigmaFills(node.fills, images, imageUrls),
       strokes: node.strokes.map(item => ({ type: 'SOLID', color: hexToFigmaColor(item.paint.color), opacity: item.paint.opacity, visible: item.visible })),
       strokeWeight: node.strokes[0]?.width ?? 0,
       strokeAlign: (node.strokes[0]?.align || 'center').toUpperCase(),
@@ -692,6 +836,18 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       layoutSizingVertical: (sizing?.height || 'fixed').toUpperCase(),
       layoutAlign: sizing?.alignSelf ? (ALIGN_TO_FIGMA[sizing.alignSelf] || 'INHERIT') : 'INHERIT',
       layoutGrow: sizing?.width === 'fill' ? 1 : 0,
+      layoutPositioning: sizing?.absolute ? 'ABSOLUTE' : 'AUTO',
+      primaryAxisSizingMode: axisSizing(layout, sizing, 'primary'),
+      counterAxisSizingMode: axisSizing(layout, sizing, 'counter'),
+      layoutWrap: layout?.wrap ? 'WRAP' : 'NONE',
+      counterAxisSpacing: layout?.lineGap ?? 0,
+      minWidth: sizing?.minWidth ?? 0.01, maxWidth: sizing?.maxWidth ?? 1e7,
+      minHeight: sizing?.minHeight ?? 0.01, maxHeight: sizing?.maxHeight ?? 1e7,
+      fillStyleId: node.styleRefs?.fills ?? null,
+      strokeStyleId: null,
+      textStyleId: node.kind === 'text' ? node.styleRefs?.textStyle ?? null : null,
+      effectStyleId: node.styleRefs?.effects ?? null,
+      boundVariables: Object.fromEntries(Object.entries(node.bindings ?? {}).map(([path, id]) => [path === 'text' ? 'characters' : path === 'layout.gap' ? 'itemSpacing' : path, id])),
       characters: node.kind === 'text' ? node.text : '',
       fontSize: node.fontSize,
       fontName: node.kind === 'text' ? { family, style: styleName(node.textStyle?.weight ?? 400) } : null,
@@ -699,9 +855,153 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       textAlignVertical: node.kind === 'text' ? ({ top: 'TOP', center: 'CENTER', bottom: 'BOTTOM' } as Record<string, string>)[node.textStyle?.verticalAlign || 'top'] || 'TOP' : null,
       lineHeight: node.kind === 'text' ? { unit: 'PERCENT', value: Math.round((node.textStyle?.lineHeight ?? 1.35) * 1000) / 10 } : null,
       letterSpacing: node.kind === 'text' ? { unit: 'PIXELS', value: node.textStyle?.letterSpacing ?? 0 } : null,
+      textCase: node.kind === 'text' ? (node.textStyle?.textCase === 'upper' ? 'UPPER' : node.textStyle?.textCase === 'lower' ? 'LOWER' : 'ORIGINAL') : null,
+      textDecoration: node.kind === 'text' ? (node.textRuns?.some(run => run.strikethrough) ? 'STRIKETHROUGH' : node.textRuns?.some(run => run.underline) ? 'UNDERLINE' : 'NONE') : null,
+      textAutoResize: node.kind === 'text' ? textAutoResizeOf(node.textStyle, sizing) : null,
+      paragraphSpacing: node.kind === 'text' ? node.textStyle?.paragraphSpacing ?? 0 : null,
+      paragraphIndent: node.kind === 'text' ? node.textStyle?.paragraphIndent ?? 0 : null,
       pointCount: node.points, innerRadius: node.innerRadius,
       parentId: result.parentId ?? null, parentIsPage: result.parentId === result.pageId,
       childIds: node.children, mainComponentId: node.instance?.componentId ?? null,
+    }
+  }
+  function pendingStyle(id: string) {
+    for (let index = commands.length - 1; index >= 0; index--) {
+      const command = commands[index]
+      if ((command.type === 'styleCreate' || command.type === 'styleUpdate') && command.id === id) return command
+    }
+    return undefined
+  }
+  function styleRecord(id: string) {
+    const pending = pendingStyle(id)
+    if (pending?.type === 'styleCreate') return pending
+    try {
+      return execute('style.get', { styleId: id }, false) as { id: string; name: string; kind: 'paint' | 'text' | 'effect'; value: unknown }
+    } catch (error) {
+      if (error instanceof PluginApiError && error.message.includes('Unknown style')) return null
+      throw error
+    }
+  }
+  function styleView(id: string) {
+    const style = styleRecord(id)
+    if (!style) return null
+    const text = style.kind === 'text' ? { ...defaultTextStyle(), ...(style.value as TextStyle) } : null
+    const family = text ? (text.fontId === 'default' ? 'Noto Sans SC' : families()[text.fontId]?.family || 'Noto Sans SC') : ''
+    return {
+      id: style.id,
+      type: style.kind === 'paint' ? 'PAINT' : style.kind === 'text' ? 'TEXT' : 'EFFECT',
+      name: style.name,
+      paints: style.kind === 'paint' && Array.isArray(style.value) ? toFigmaFills(style.value as Paint[], images, imageUrls) : [],
+      effects: style.kind === 'effect' && Array.isArray(style.value) ? toFigmaEffects(style.value as Effect[]) : [],
+      fontName: text ? { family, style: styleName(text.weight) } : null,
+      fontSize: 16,
+      letterSpacing: text ? { unit: 'PIXELS', value: text.letterSpacing } : null,
+      lineHeight: text ? { unit: 'PERCENT', value: Math.round(text.lineHeight * 1000) / 10 } : null,
+      textCase: text ? (text.textCase === 'upper' ? 'UPPER' : text.textCase === 'lower' ? 'LOWER' : 'ORIGINAL') : null,
+      textDecoration: 'NONE',
+      textAlignHorizontal: text ? ({ start: 'LEFT', center: 'CENTER', end: 'RIGHT', justify: 'JUSTIFIED' } as Record<string, string>)[text.align] || 'LEFT' : null,
+      textAlignVertical: text ? ({ top: 'TOP', center: 'CENTER', bottom: 'BOTTOM' } as Record<string, string>)[text.verticalAlign || 'top'] || 'TOP' : null,
+      textAutoResize: text ? (text.wrap ? 'HEIGHT' : 'WIDTH_AND_HEIGHT') : null,
+      paragraphSpacing: text?.paragraphSpacing ?? 0,
+      paragraphIndent: text?.paragraphIndent ?? 0,
+    }
+  }
+  function writeStyle(id: string, patch: { name?: string; value?: unknown }) {
+    const pending = pendingStyle(id)
+    if (pending) {
+      if (patch.name !== undefined) pending.name = patch.name
+      if (patch.value !== undefined) pending.value = patch.value
+      return
+    }
+    ensureRoom()
+    commands.push({ type: 'styleUpdate', id, ...patch })
+  }
+  function patchStyle(id: string, body: Record<string, unknown>) {
+    const current = styleRecord(id)
+    if (!current) throw new PluginApiError('not_found', 'Style does not exist')
+    if (typeof body.name === 'string') writeStyle(id, { name: shortText(body.name, 'name', 200) })
+    if (current.kind === 'paint' && body.paints !== undefined) writeStyle(id, { value: mapFills(body.paints, images) })
+    if (current.kind === 'effect' && body.effects !== undefined) writeStyle(id, { value: mapEffects(body.effects) })
+    if (current.kind === 'text') {
+      const text = { ...defaultTextStyle(), ...(typeof current.value === 'object' && current.value ? current.value as TextStyle : {}) }
+      let changed = false
+      if (body.fontName !== undefined) {
+        const font = record(body.fontName, 'fontName')
+        const resolved = requireFont(shortText(font.family, 'fontName.family', 200), shortText(String(font.style ?? 'Regular'), 'fontName.style', 80))
+        text.fontId = resolved.fontId
+        text.weight = resolved.weight
+        changed = true
+      }
+      if (body.letterSpacing !== undefined) { text.letterSpacing = letterSpacingOf(body.letterSpacing, 16); changed = true }
+      if (body.lineHeight !== undefined) { text.lineHeight = lineHeightOf(body.lineHeight, 16); changed = true }
+      if (body.paragraphSpacing !== undefined) { text.paragraphSpacing = finite(body.paragraphSpacing, 'paragraphSpacing', 0, 10000); changed = true }
+      if (body.paragraphIndent !== undefined) { text.paragraphIndent = finite(body.paragraphIndent, 'paragraphIndent', -10000, 10000); changed = true }
+      if (body.textCase !== undefined) {
+        if (body.textCase !== 'ORIGINAL' && body.textCase !== 'UPPER' && body.textCase !== 'LOWER')
+          throw new PluginApiError('unsupported_api', `textCase ${String(body.textCase)} is not available`)
+        text.textCase = body.textCase === 'UPPER' ? 'upper' : body.textCase === 'LOWER' ? 'lower' : 'original'
+        changed = true
+      }
+      if (changed) writeStyle(id, { value: text })
+    }
+    return null
+  }
+  function variableKind(value: unknown) {
+    const kind = ({ COLOR: 'color', FLOAT: 'number', NUMBER: 'number', BOOLEAN: 'boolean', STRING: 'string' } as Record<string, 'color' | 'number' | 'boolean' | 'string'>)[String(value)]
+    if (!kind) throw new PluginApiError('unsupported_api', `Variable type ${String(value)} is not available`)
+    return kind
+  }
+  function variableDefault(kind: 'color' | 'number' | 'boolean' | 'string') {
+    if (kind === 'color') return '#000000'
+    if (kind === 'number') return 0
+    if (kind === 'boolean') return false
+    return ''
+  }
+  function variableValue(value: unknown, kind: 'color' | 'number' | 'boolean' | 'string') {
+    if (kind === 'color') return typeof value === 'string' ? shortText(value, 'color', 32) : figmaColorToHex(value).hex
+    if (kind === 'number') return finite(value, 'value', -1e7, 1e7)
+    if (kind === 'boolean') return boolean(value, 'value')
+    return shortText(value, 'value', 100_000)
+  }
+  function collectionModes(id: string) {
+    const pending = commands.find(command => command.type === 'collectionCreate' && command.id === id)
+    if (pending?.type === 'collectionCreate') return pending.modes
+    const listed = execute('collection.list', {}, false) as { id: string; modes: string[] }[]
+    const found = listed.find(item => item.id === id)
+    if (!found) throw new PluginApiError('not_found', 'Variable collection does not exist')
+    return found.modes
+  }
+  function variableKindOf(id: string) {
+    const pending = commands.find(command => command.type === 'variableCreate' && command.id === id)
+    if (pending?.type === 'variableCreate') return pending.kind
+    return (execute('variable.get', { variableId: id }, false) as { kind: 'color' | 'number' | 'boolean' | 'string' }).kind
+  }
+  function collectionView(id: string) {
+    const pending = commands.find(command => command.type === 'collectionCreate' && command.id === id)
+    if (pending?.type === 'collectionCreate') {
+      return {
+        id, name: pending.name, defaultModeId: pending.modes[0],
+        modes: pending.modes.map(name => ({ modeId: name, name })),
+        variableIds: commands.flatMap(command => command.type === 'variableCreate' && command.collectionId === id ? [command.id] : []),
+      }
+    }
+    const listed = execute('collection.list', {}, false) as { id: string; name: string; modes: string[]; defaultMode: string }[]
+    const found = listed.find(item => item.id === id)
+    if (!found) return null
+    const variables = execute('variable.list', { collectionId: id }, false) as { id: string }[]
+    return { id, name: found.name, defaultModeId: found.defaultMode, modes: found.modes.map(name => ({ modeId: name, name })), variableIds: variables.map(item => item.id) }
+  }
+  function variableView(id: string) {
+    const pending = commands.find(command => command.type === 'variableCreate' && command.id === id)
+    if (pending?.type === 'variableCreate') {
+      return { id, name: pending.name, collectionId: pending.collectionId, resolvedType: pending.kind === 'color' ? 'COLOR' : pending.kind === 'number' ? 'FLOAT' : pending.kind === 'boolean' ? 'BOOLEAN' : 'STRING' }
+    }
+    try {
+      const record = execute('variable.get', { variableId: id }, false) as { id: string; name: string; collection: string; kind: string }
+      return { id: record.id, name: record.name, collectionId: record.collection, resolvedType: record.kind === 'color' ? 'COLOR' : record.kind === 'number' ? 'FLOAT' : record.kind === 'boolean' ? 'BOOLEAN' : 'STRING' }
+    } catch (error) {
+      if (error instanceof PluginApiError && error.message.includes('Unknown variable')) return null
+      throw error
     }
   }
   function documentView() {
@@ -721,8 +1021,10 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   return {
     notifications, logs,
     get ui() { return ui }, get uiShown() { return uiShown }, get listening() { return listening }, get applying() { return applying > 0 },
-    get closed() { return closed }, get closeMessage() { return closeMessage }, get flushes() { return flushes }, get pluginId() { return pluginId },
-    flush, 
+    get closed() { return closed }, get closeMessage() { return closeMessage }, get flushes() { return flushes },     get pluginId() { return pluginId },
+    flush,
+    hasNetwork: () => networkJobs.length > 0,
+    takeNetwork: () => networkJobs.shift() ?? null,
     call(op: string, payload: unknown): unknown {
       if (closed) throw new PluginClosed(closeMessage)
       calls += 1
@@ -801,7 +1103,21 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       }
       if (op === 'clientStorageGet') return clientStorageGet(storage, pluginId, body.key)
       if (op === 'clientStorageKeys') return clientStorageKeys(storage, pluginId)
-      if (op === 'clientStorageSet') { clientStorageSet(storage, pluginId, body.key, body.json); return null }
+      if (op === 'clientStorageSet') {
+        if (body.kind === 'undefined') clientStorageSet(storage, pluginId, body.key, { kind: 'undefined' })
+        else if (body.kind === 'bytes') {
+          if (typeof body.part !== 'number' || typeof body.parts !== 'number' || typeof body.rawBytes !== 'number')
+            throw new PluginApiError('invalid_value', 'clientStorage bytes are incomplete')
+          clientStorageSet(storage, pluginId, body.key, {
+            kind: 'bytes', part: body.part, parts: body.parts, rawBytes: body.rawBytes,
+            base64: shortText(body.base64, 'clientStorage', 200_000),
+          })
+        } else {
+          if (typeof body.json !== 'string') throw new PluginApiError('invalid_value', 'clientStorage value must be JSON')
+          clientStorageSet(storage, pluginId, body.key, body.json)
+        }
+        return null
+      }
       if (op === 'clientStorageDelete') { clientStorageDelete(storage, pluginId, body.key); return null }
       if (op === 'pluginDataGet' || op === 'pluginDataKeys' || op === 'pluginDataSet' || op === 'sharedPluginDataGet' || op === 'sharedPluginDataKeys' || op === 'sharedPluginDataSet') {
         const scope = dataScope(body.scope)
@@ -858,7 +1174,14 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       if (op === 'patch') {
         const id = shortText(body.id, 'id', 80)
         const props = record(body.props, 'props')
-        for (const [key, value] of Object.entries(props)) write(id, key, value)
+        for (const [key, value] of Object.entries(props)) {
+          if (key === 'fillStyleId' || key === 'textStyleId' || key === 'effectStyleId') {
+            const field = key === 'fillStyleId' ? 'fills' : key === 'textStyleId' ? 'textStyle' : 'effects'
+            const styleId = value === null || value === '' ? null : shortText(value, key, 128)
+            ensureRoom()
+            commands.push({ type: 'styleApply', nodeId: id, field, styleId })
+          } else write(id, key, value)
+        }
         return null
       }
       if (op === 'resize') { write(shortText(body.id, 'id', 80), 'width', body.width); write(shortText(body.id, 'id', 80), 'height', body.height); return null }
@@ -919,6 +1242,212 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         const operation = String(body.operation)
         if (!['union', 'subtract', 'intersect', 'exclude'].includes(operation)) throw new PluginApiError('unsupported_api', `Boolean ${operation} is not available`)
         return { id: resultId(batch([{ method: 'vector.boolean.create', params: { ids: selected, operation } }])) }
+      }
+      if (op === 'svg') {
+        const svg = shortText(body.svg, 'svg', 1_000_000)
+        if (!/<svg[\s>]/i.test(svg)) throw new PluginApiError('invalid_value', 'createNodeFromSvg requires an <svg> element')
+        flush()
+        const imported = operationResult(execute('svg.import', { format: 'svg', content: svg, name: 'SVG' }, true))
+        const roots = Array.isArray(imported.rootIds) ? imported.rootIds.filter((id): id is string => typeof id === 'string') : []
+        if (!roots.length) throw new PluginApiError('plugin_failed', 'SVG import did not create a node')
+        if (roots.length === 1) return { id: roots[0] }
+        return { id: resultId(batch([{ method: 'node.group', params: { ids: roots } }])) }
+      }
+      if (op === 'base64Encode') {
+        if (!Array.isArray(body.bytes) || body.bytes.length > 262144) throw new PluginApiError('plugin_limit', 'base64Encode input is too large')
+        const bytes = new Uint8Array(body.bytes.length)
+        for (let index = 0; index < body.bytes.length; index++) {
+          const value = body.bytes[index]
+          if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 255)
+            throw new PluginApiError('invalid_value', 'base64Encode expects bytes 0–255')
+          bytes[index] = value
+        }
+        let text = ''
+        for (const value of bytes) text += String.fromCharCode(value)
+        return btoa(text)
+      }
+      if (op === 'base64Decode') {
+        const data = shortText(body.data, 'base64', 400_000)
+        if (data.length % 4 !== 0 || /[^A-Za-z0-9+/=]/.test(data)) throw new PluginApiError('invalid_value', 'base64Decode expects base64 text')
+        const binary = atob(data)
+        return [...binary].map(character => character.charCodeAt(0))
+      }
+      if (op === 'styleList') {
+        flush()
+        const kind = body.kind
+        if (kind !== 'paint' && kind !== 'text' && kind !== 'effect') throw new PluginApiError('invalid_value', 'Style kind is invalid')
+        const listed = execute('style.list', { kind }, false) as Array<{ id: string }>
+        return listed.map(item => styleView(item.id)).filter((item): item is NonNullable<typeof item> => !!item)
+      }
+      if (op === 'styleRead') {
+        flush()
+        return styleView(shortText(body.id, 'id', 128))
+      }
+      if (op === 'styleCreate') {
+        const kind = body.kind
+        if (kind !== 'paint' && kind !== 'text' && kind !== 'effect') throw new PluginApiError('invalid_value', 'Style kind is invalid')
+        ensureRoom()
+        const id = crypto.randomUUID()
+        commands.push({
+          type: 'styleCreate', id, kind,
+          name: kind === 'paint' ? 'Paint' : kind === 'text' ? 'Text' : 'Effect',
+          value: kind === 'text' ? defaultTextStyle() : [],
+        })
+        return { id }
+      }
+      if (op === 'stylePatch') return patchStyle(shortText(body.id, 'id', 128), body)
+      if (op === 'styleDelete') {
+        ensureRoom()
+        commands.push({ type: 'styleDelete', id: shortText(body.id, 'id', 128) })
+        return null
+      }
+      if (op === 'imageCreate') {
+        const base64 = shortText(body.base64, 'image', 400_000)
+        if (base64.length % 4 !== 0 || /[^A-Za-z0-9+/=]/.test(base64)) throw new PluginApiError('invalid_value', 'createImage expects image bytes')
+        const binary = atob(base64)
+        if (binary.length > 262144) throw new PluginApiError('plugin_limit', 'Plugin images are limited to 256 KiB')
+        const bytes = new Uint8Array(binary.length)
+        for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index)
+        const hash = imageContentId(bytes)
+        const mime = imageMime(bytes)
+        images.set(hash, { mime, bytes, base64 })
+        imageUrls.set(dataUrlForImage(mime, base64), hash)
+        return { hash }
+      }
+      if (op === 'imageFind' || op === 'imageBytes' || op === 'imageSize') {
+        const hash = shortText(body.hash, 'hash', 80)
+        let stored = images.get(hash)
+        if (!stored) {
+          for (const node of Object.values(editor.authoredDocument.nodes)) {
+            for (const fill of [...node.fills, ...node.strokes.map(stroke => stroke.paint)]) {
+              if (fill.kind !== 'image' || !fill.image) continue
+              const decoded = bytesFromDataUrl(fill.image)
+              if (!decoded) continue
+              const id = imageContentId(decoded.bytes)
+              let binary = ''
+              for (const byte of decoded.bytes) binary += String.fromCharCode(byte)
+              const next = { mime: decoded.mime, bytes: decoded.bytes, base64: btoa(binary) }
+              images.set(id, next)
+              imageUrls.set(fill.image, id)
+              if (id === hash) stored = next
+            }
+          }
+        }
+        if (!stored) return op === 'imageFind' ? null : (() => { throw new PluginApiError('not_found', 'Unknown image hash') })()
+        if (op === 'imageFind') return { hash }
+        if (op === 'imageBytes') return stored.base64
+        const size = imageSize(stored.bytes, stored.mime)
+        if (!size.width || !size.height) throw new PluginApiError('unsupported_api', 'Image size is available for PNG, JPEG, and GIF bytes')
+        return size
+      }
+      if (op === 'export') {
+        flush()
+        const id = shortText(body.id, 'id', 80)
+        const format = String(body.format || 'PNG').toUpperCase()
+        if (format !== 'SVG') throw new PluginApiError('unsupported_api', 'exportAsync supports SVG in this host. PNG, JPG, and PDF use the editor export panel.')
+        const scale = body.scale === undefined ? undefined : finite(body.scale, 'scale', 0.01, 4)
+        const exported = operationResult(execute('vector.export', { nodeIds: [id], textMode: 'path', fontMode: 'none', ...(scale === undefined ? {} : { scale }) }, false))
+        const text = exported.content
+        if (typeof text !== 'string' || !text) throw new PluginApiError('plugin_failed', 'SVG export did not return markup')
+        return { text }
+      }
+      if (op === 'fetchBegin') {
+        const decision = matchNetworkAccess(String(body.url ?? ''), networkDomains)
+        if (!decision.ok) throw new PluginApiError('network_denied', decision.reason)
+        const method = String(body.method || 'GET').toUpperCase()
+        if (!PLUGIN_FETCH_METHODS.has(method)) throw new PluginApiError('invalid_value', 'fetch method is not allowed')
+        let headers: Record<string, string>
+        try { headers = pluginFetchHeaders(body.headers) } catch (error) { throw new PluginApiError('invalid_value', error instanceof Error ? error.message : String(error)) }
+        const requestBody = body.body == null ? null : shortText(body.body, 'fetch body', 1_000_000)
+        const id = finite(body.id, 'fetch id', 1, 1_000_000)
+        networkJobs.push({ id, url: decision.url.toString(), method, headers, body: requestBody })
+        return { id }
+      }
+      if (op === 'collectionList') {
+        flush()
+        const listed = execute('collection.list', {}, false) as { id: string }[]
+        return listed.map(item => ({ id: item.id }))
+      }
+      if (op === 'collectionRead') {
+        flush()
+        return collectionView(shortText(body.id, 'id', 128))
+      }
+      if (op === 'collectionCreate') {
+        ensureRoom()
+        const id = crypto.randomUUID()
+        commands.push({ type: 'collectionCreate', id, name: shortText(body.name, 'name', 200), modes: ['Mode 1'] })
+        return { id }
+      }
+      if (op === 'collectionRename') {
+        flush()
+        execute('collection.update', { collectionId: shortText(body.id, 'id', 128), name: shortText(body.name, 'name', 200) }, true)
+        return null
+      }
+      if (op === 'collectionAddMode') {
+        flush()
+        const id = shortText(body.id, 'id', 128)
+        const name = shortText(body.name, 'mode', 80)
+        execute('collection.addMode', { collectionId: id, mode: name }, true)
+        return { modeId: name }
+      }
+      if (op === 'collectionRenameMode') {
+        flush()
+        execute('collection.renameMode', { collectionId: shortText(body.id, 'id', 128), mode: shortText(body.mode, 'mode', 80), name: shortText(body.name, 'name', 80) }, true)
+        return null
+      }
+      if (op === 'collectionDelete') {
+        flush()
+        execute('collection.delete', { collectionId: shortText(body.id, 'id', 128) }, true)
+        return null
+      }
+      if (op === 'variableList') {
+        flush()
+        const wanted = body.type == null ? null : variableKind(body.type)
+        const listed = execute('variable.list', {}, false) as { id: string; kind: string }[]
+        return listed.filter(item => !wanted || item.kind === wanted).map(item => ({ id: item.id }))
+      }
+      if (op === 'variableRead') {
+        flush()
+        return variableView(shortText(body.id, 'id', 128))
+      }
+      if (op === 'variableCreate') {
+        const kind = variableKind(body.resolvedType)
+        const collectionId = shortText(body.collectionId, 'collectionId', 128)
+        const modes = collectionModes(collectionId)
+        const values = Object.fromEntries(modes.map(mode => [mode, variableDefault(kind)]))
+        ensureRoom()
+        const id = crypto.randomUUID()
+        commands.push({ type: 'variableCreate', id, name: shortText(body.name, 'name', 200), collectionId, kind, values })
+        return { id }
+      }
+      if (op === 'variableRename') {
+        flush()
+        execute('variable.update', { variableId: shortText(body.id, 'id', 128), name: shortText(body.name, 'name', 200) }, true)
+        return null
+      }
+      if (op === 'variableSet') {
+        const id = shortText(body.id, 'id', 128)
+        const mode = shortText(body.mode, 'mode', 80)
+        const pending = commands.find(command => command.type === 'variableCreate' && command.id === id)
+        const value = variableValue(body.value, pending && pending.type === 'variableCreate' ? pending.kind : variableKindOf(id))
+        if (pending && pending.type === 'variableCreate') { pending.values[mode] = value; return null }
+        ensureRoom()
+        commands.push({ type: 'variableSet', id, mode, value })
+        return null
+      }
+      if (op === 'variableDelete') {
+        flush()
+        execute('variable.delete', { variableId: shortText(body.id, 'id', 128) }, true)
+        return null
+      }
+      if (op === 'variableBind') {
+        const field = String(body.field || '')
+        const path = field === 'characters' ? 'text' : field === 'itemSpacing' ? 'layout.gap' : field
+        if (!['width', 'height', 'opacity', 'fontSize', 'text', 'visible', 'layout.gap'].includes(path))
+          throw new PluginApiError('unsupported_api', `setBoundVariable(${field}) is not available`)
+        ensureRoom()
+        commands.push({ type: 'variableBind', nodeId: shortText(body.id, 'id', 80), path, variableId: body.variableId == null ? null : shortText(body.variableId, 'variableId', 128) })
+        return null
       }
       throw new PluginApiError('unsupported_api', `${op} is not available on this plugin host`)
     },

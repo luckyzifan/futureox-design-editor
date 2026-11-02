@@ -3,6 +3,8 @@ name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
 
+2026-11-02 对照 Design Lint、Feather Icons、官方 plugin-samples 与 Content Buddy / Super Tidy / Sort It / Nester / Sorter 后，插件宿主补上 `createNodeFromSvg`、SHA-1 `createImage` / `getImageByHash`、SVG `exportAsync`、本地变量与样式、5 MB `clientStorage`（含 `undefined` 与 `Uint8Array`），以及清单声明域名上的主线程 `fetch`。没有协作服务器。见[对照记录](../../../testing/verification-figma-plugin-api-20261102/README.md)。不改光栅或蓝色强调色。33/100ms 与完整 G2/G5 仍未关闭。
+
 2026-11-02 [Figma 插件运行时](../../../testing/verification-figma-plugin-runtime-20261102/README.md)在既有 QuickJS 宿主上补上 .zip/.figma 载入、沙箱 iframe 的 `pluginMessage`、`clientStorage`、节点 plugin data，以及选择/视口/常用属性。提交仍走 automation `batch.apply` 与 `Editor.change`。不改光栅、瓦片导航或蓝色强调色。33/100ms 与完整 G2/G5 仍未关闭。
 
 2026-11-02 [Figma 插件宿主](../../../docs/FIGMA_PLUGIN_HOST_V1.md)在 QuickJS 里跑文档化的 Plugin API 子集，经现有 automation `batch.apply` 提交到当前文档。桌面插件界面只在 `design-app://plugin` 沙箱帧。不改画布粘滞、光栅、瓦片导航或蓝色强调色。33/100ms 与完整 G2/G5 仍未关闭。

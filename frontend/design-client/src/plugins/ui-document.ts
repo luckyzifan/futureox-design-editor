@@ -29,13 +29,17 @@ export function pluginUiMessage(pluginId: string, pluginMessage: unknown) {
   return { pluginMessage, pluginId }
 }
 
+export type PluginEditorSnapshot = { pageId: string; selection: string; revision: number }
+
+/** Editor changes outside the plugin. documentchange carries an empty change list: it means the document revision moved. */
 export function pluginEditorEvents(
-  previous: { pageId: string; selection: string },
-  next: { pageId: string; selection: string },
+  previous: PluginEditorSnapshot,
+  next: PluginEditorSnapshot,
   applying: boolean,
-): Array<'selectionchange' | 'currentpagechange'> {
+): Array<'documentchange' | 'currentpagechange' | 'selectionchange'> {
   if (applying) return []
-  const events: Array<'selectionchange' | 'currentpagechange'> = []
+  const events: Array<'documentchange' | 'currentpagechange' | 'selectionchange'> = []
+  if (previous.revision !== next.revision) events.push('documentchange')
   if (previous.pageId !== next.pageId) events.push('currentpagechange')
   if (previous.selection !== next.selection) events.push('selectionchange')
   return events

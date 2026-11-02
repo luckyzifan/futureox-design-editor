@@ -1,6 +1,7 @@
 import { getQuickJS, shouldInterruptAfterDeadline, type QuickJSContext, type QuickJSHandle, type QuickJSRuntime } from 'quickjs-emscripten'
 import type { PluginStorage } from './client-storage'
 import { PluginApiError, PluginClosed } from './errors'
+import { matchNetworkAccess, type PluginFetch } from './network'
 import { PLUGIN_LIMITS } from './limits'
 import { assertPluginBundle, type PluginBundle } from './manifest'
 import { PLUGIN_PRELUDE } from './prelude'
@@ -39,6 +40,8 @@ export type PluginHooks = {
   /** Manifest menu command. Omitted when the plugin has no menu. */
   command?: string
   storage?: PluginStorage
+  /** Test double for declared-domain fetch. Production uses the platform fetch. */
+  fetch?: PluginFetch
 }
 
 export class PluginController {
@@ -50,6 +53,8 @@ export class PluginController {
     private readonly session: ReturnType<typeof createPluginSession>,
     runtime: QuickJSRuntime,
     context: QuickJSContext,
+    private readonly fetchImpl: PluginFetch | undefined,
+    private readonly networkDomains: readonly string[],
   ) {
     this.runtime = runtime
     this.context = context
@@ -70,9 +75,11 @@ export class PluginController {
       command: hooks?.command,
       uiHtml: bundle.ui,
       storage: hooks?.storage,
+      networkDomains: bundle.manifest.networkDomains,
+      fetch: hooks?.fetch,
       hooks,
     })
-    const controller = new PluginController(session, runtime, context)
+    const controller = new PluginController(session, runtime, context, hooks?.fetch, bundle.manifest.networkDomains)
     const host = context.newFunction('__host', (opHandle, payloadHandle) => {
       try {
         const op = context.getString(opHandle)
@@ -94,7 +101,8 @@ export class PluginController {
     context.setProp(context.global, '__html__', html)
     html.dispose()
     try {
-      controller.evaluate(PLUGIN_PRELUDE + '\n' + bundle.main)
+      const pending = controller.evaluate(PLUGIN_PRELUDE + '\n' + bundle.main)
+      if (pending) await pending
       session.flush()
       if (session.closed || (!session.uiShown && !session.listening)) controller.release()
       return controller
@@ -111,11 +119,12 @@ export class PluginController {
   get pluginId() { return this.session.pluginId }
   get applying() { return this.session.applying }
 
-  emit(type: 'selectionchange' | 'currentpagechange') {
+  emit(type: 'selectionchange' | 'currentpagechange' | 'documentchange') {
     if (!this.context || this.session.closed) return
-    this.evaluate(`globalThis.__deliverPluginEvent(${JSON.stringify(type)})`)
-    this.session.flush()
-    if (this.session.closed) this.release()
+    const pending = this.evaluate(`globalThis.__deliverPluginEvent(${JSON.stringify(type)})`)
+    const finish = () => { this.session.flush(); if (this.session.closed) this.release() }
+    if (pending) return pending.then(finish)
+    finish()
   }
 
   deliver(message: unknown) {
@@ -125,9 +134,10 @@ export class PluginController {
     const payload = this.context.newString(json)
     this.context.setProp(this.context.global, '__pluginMessageJson', payload)
     payload.dispose()
-    this.evaluate('globalThis.__deliverPluginMessage(JSON.parse(globalThis.__pluginMessageJson))')
-    this.session.flush()
-    if (this.session.closed) this.release()
+    const pending = this.evaluate('globalThis.__deliverPluginMessage(JSON.parse(globalThis.__pluginMessageJson))')
+    const finish = () => { this.session.flush(); if (this.session.closed) this.release() }
+    if (pending) return pending.then(finish)
+    finish()
   }
 
   close() { this.release() }
@@ -136,7 +146,7 @@ export class PluginController {
     this.runtime?.setInterruptHandler(shouldInterruptAfterDeadline(Date.now() + PLUGIN_LIMITS.runtimeMs))
   }
 
-  private evaluate(code: string) {
+  private evaluate(code: string): Promise<void> | void {
     if (!this.context) throw new PluginApiError('plugin_closed', 'The plugin has finished')
     this.arm()
     const evaluated = this.context.evalCode(code, 'plugin.js', { type: 'global' })
@@ -147,6 +157,32 @@ export class PluginController {
         throw errorFromGuest(message)
       }
       this.drain()
+      if (this.session.hasNetwork()) return this.finishNetwork()
+    } finally { evaluated.dispose() }
+  }
+
+  private async finishNetwork() {
+    while (this.session.hasNetwork()) {
+      const job = this.session.takeNetwork()
+      if (!job) break
+      let payload: Record<string, unknown>
+      try { payload = await performPluginFetch(job, this.fetchImpl, this.networkDomains) }
+      catch (error) {
+        payload = { ok: false, code: error instanceof PluginApiError ? error.code : 'network_denied', message: error instanceof Error ? error.message : String(error) }
+      }
+      this.inject(`globalThis.__finishFetch(${job.id}, ${JSON.stringify(payload)})`)
+      this.drain()
+    }
+  }
+
+  private inject(code: string) {
+    if (!this.context) return
+    const evaluated = this.context.evalCode(code, 'plugin-fetch.js', { type: 'global' })
+    try {
+      if (evaluated.error) {
+        const message = guestText(this.context, evaluated.error)
+        if (closedNotice(message) == null) throw errorFromGuest(message)
+      }
     } finally { evaluated.dispose() }
   }
 
@@ -172,6 +208,34 @@ export class PluginController {
     runtime?.dispose()
     this.runtime = null
   }
+}
+
+async function performPluginFetch(
+  job: { url: string; method: string; headers: Record<string, string>; body: string | null },
+  fetchImpl: PluginFetch | undefined,
+  domains: readonly string[],
+) {
+  const result = await (fetchImpl ?? platformFetch)(job.url, {
+    method: job.method, headers: job.headers, ...(job.body == null || job.method === 'GET' || job.method === 'HEAD' ? {} : { body: job.body }),
+  })
+  const decision = matchNetworkAccess(result.url, domains)
+  if (!decision.ok) throw new PluginApiError('network_denied', 'Plugin fetch redirected outside declared domains')
+  if (result.body.byteLength > 1_000_000) throw new PluginApiError('plugin_limit', 'Plugin fetch response is too large')
+  let binary = ''
+  for (const byte of result.body) binary += String.fromCharCode(byte)
+  return { ok: true, status: result.status, url: result.url, headers: result.headers, bodyBase64: btoa(binary) }
+}
+
+async function platformFetch(input: string, init: { method: string; headers: Record<string, string>; body?: string }) {
+  const response = await fetch(input, {
+    method: init.method, headers: init.headers, body: init.body, redirect: 'follow', credentials: 'omit',
+    signal: AbortSignal.timeout(8_000),
+  })
+  const bytes = new Uint8Array(await response.arrayBuffer())
+  const headers: Record<string, string> = {}
+  const type = response.headers.get('content-type')
+  if (type) headers['content-type'] = type
+  return { status: response.status, url: response.url, headers, body: bytes }
 }
 
 export async function openPlugin(editor: Parameters<typeof createPluginSession>[0], bundle: PluginBundle, hooks?: PluginHooks) {

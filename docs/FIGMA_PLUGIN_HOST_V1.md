@@ -25,7 +25,7 @@ Manifest rules:
 
 - `api` must be `1.0.0` and `editorType` must include `figma`.
 - `documentAccess` is ignored. The open document is already local.
-- `networkAccess` may name domains. The sandbox still has no `fetch`. The panel says network was not granted.
+- `networkAccess` may name domains. Main-thread `fetch` is allowed only for those origins (`https`, plus an explicit `localhost` origin). The UI frame still has `connect-src 'none'`. There is no collaboration server. The panel says when network is limited to the manifest.
 - `permissions` may be non-empty. They are not granted.
 - `main` and `ui` must be relative paths inside the folder. `ui` may be a string or `{ "main": "ui.html" }`.
 
@@ -33,17 +33,34 @@ Manifest rules:
 
 Plugin JavaScript runs in QuickJS. The only bridge is a fixed set of host operations. Those operations call the shared editor automation API (`batch.apply` and the existing node, page, component, and boolean methods) and commit through `Editor.change`. There is no second document model. Each flush is one undo entry. A throw before the next flush drops the unflushed edits. `figma.closePlugin` flushes, then stops the script.
 
-Desktop content security policy still has no `unsafe-eval`. Plugin UI is an iframe with `sandbox="allow-scripts"` and `connect-src 'none'`. Main-thread `fetch` throws. `figma.clientStorage` is local to this client. Node `getPluginData` / `setPluginData` is stored in the inert FD extension `design.futureox/plugin-data` and shares the undo step of that flush. A file that carries the extension cannot be appended into another document until the extension is removed; open it on its own to keep the data.
+Desktop content security policy still has no `unsafe-eval`. Plugin UI is an iframe with `sandbox="allow-scripts"` and `connect-src 'none'`. Main-thread `fetch` reaches only domains declared in `networkAccess`. `figma.clientStorage` is local to this client (5 MB, including JSON, `undefined`, and `Uint8Array`). Node `getPluginData` / `setPluginData` is stored in the inert FD extension `design.futureox/plugin-data` and shares the undo step of that flush. A file that carries the extension cannot be appended into another document until the extension is removed; open it on its own to keep the data.
 
 Limits: main script 2 MiB, UI 512 KiB, guest heap 64 MiB, 8 seconds, 20,000 host calls, and 2,000 nodes in one `findAll`.
 
 ## What a real .zip or .figma plugin can do
 
-A typical community plugin can load from a folder or a zip, read and set the selection, create rectangles, ellipses, frames, text, and the other shapes in the table, change fills, strokes, size, position, text, and auto-layout fields that are marked supported or partial, call `figma.showUI`, exchange `pluginMessage` with the iframe, use `figma.clientStorage`, write `setPluginData`, and finish with `figma.closePlugin`. One flush is one undo step labeled `Plugin: <name>`.
+A typical community plugin can load from a folder or a zip, read and set the selection, create rectangles, ellipses, frames, text, and the other shapes in the table, import an SVG string, create an image from bytes and paint with its SHA-1 hash, export SVG, create local paint/text/effect styles and local variables, change fills, strokes, size, position, text, and auto-layout fields that are marked supported or partial, call `figma.showUI`, exchange `pluginMessage` with the iframe, use `figma.clientStorage`, write `setPluginData`, `fetch` a declared origin from the main thread, and finish with `figma.closePlugin`. One flush is one undo step labeled `Plugin: <name>`.
+
+## Plugins compared
+
+Source checked on 2026-11-02, not executed inside Figma:
+
+- [destefanis/design-lint](https://github.com/destefanis/design-lint) (MIT, community Design Lint)
+- [figma/plugin-samples](https://github.com/figma/plugin-samples) (official samples, including svg-inserter and vote-tally)
+- [feathericons/figma-feather](https://github.com/feathericons/figma-feather) (Feather Icons)
+- [basiclines/figma-content-buddy](https://github.com/basiclines/figma-content-buddy)
+- [basiclines/figma-super-tidy](https://github.com/basiclines/figma-super-tidy)
+- [kawamurakazushi/figma-sort-it](https://github.com/kawamurakazushi/figma-sort-it)
+- [thomas-lowry/nester](https://github.com/thomas-lowry/nester)
+- [thomas-lowry/sorter](https://github.com/thomas-lowry/sorter)
+
+Those plugins need `createNodeFromSvg`, `findAllWithCriteria`, `primaryAxisSizingMode` / `counterAxisSizingMode`, `textAutoResize`, `textCase`, `textDecoration`, `documentchange`, local paint/text styles, `fillStyleId`, image hashes, and local variables. The host now covers that local subset, plus SVG `exportAsync` and main-thread `fetch` to a declared `networkAccess` origin. Design Lint’s remote styles, text-style font size, and team-library variables are still blocked. Feather Icons can insert a local SVG string. A fetch to its icon origin works only when that origin is declared; the UI frame still cannot connect.
+
+Behavior follows the [Figma Plugin API](https://www.figma.com/plugin-docs/api/api-reference/) where a coverage row names a property. Differences stay in the notes.
 
 ## Still blocked
 
-These calls still throw or are absent: images (`createImage`, image paints), `createNodeFromSvg`, vector networks, `exportAsync`, variables, team libraries, payments, parameters, codegen, annotations, shared styles, rich text ranges, reactions, relaunch buttons, network `fetch`, positive `setTimeout`, and `setInterval`. `loadFontAsync` does not download or embed a font. `figma.currentUser` is null. Viewport center is the camera origin, not the visual center, and `scrollAndZoomIntoView` does not change zoom. Plugin data lives in FD extension metadata, so a document that has it cannot be appended into another file. This is not Figma and not a published-plugin catalog.
+These calls still throw or are absent: `createImageAsync`, vector networks, PNG/JPG/PDF `exportAsync`, remote variable libraries and variable aliases, `importStyleByKeyAsync`, payments, parameters, codegen, annotations, rich text ranges, reactions, relaunch buttons, `strokeStyleId`, UI-frame network, positive `setTimeout`, and `setInterval`. `loadFontAsync` does not download a font. `figma.currentUser` is null. Viewport center is the camera origin, not the visual center, and `scrollAndZoomIntoView` does not change zoom. `documentchange` does not list the changed nodes. Plugin data lives in FD extension metadata, so a document that has it cannot be appended into another file. `createImage` accepts 256 KiB. There is no collaboration server. This is not Figma and not a published-plugin catalog.
 
 ## API coverage
 
@@ -158,15 +175,16 @@ These calls still throw or are absent: images (`createImage`, image paints), `cr
 | `ComponentNode.createInstance` | supported | Local component only. No team library. |
 | `InstanceNode.detachInstance` | partial | Detaches a resolved outer instance. A brand-new instance is committed before detach. |
 | `PageNode.name` | supported | Renames a page. |
-| `figma.createImage` | unsupported | Throws unsupported_api. Image bytes are not accepted from plugin code. |
-| `figma.createImageAsync` | unsupported | Throws unsupported_api. No network image fetch. |
-| `figma.createNodeFromSvg` | unsupported | Throws unsupported_api. Use the editor SVG import for SVG files. |
+| `figma.createImage` | partial | Accepts PNG, JPEG, GIF, or WebP bytes up to 256 KiB. The hash is the SHA-1 of those bytes, the same content id a .fig archive uses for images/<hash>. |
+| `figma.getImageByHash` | partial | Resolves a SHA-1 hash from this session or from an image paint already stored on a fill or stroke. getBytesAsync and getSizeAsync read those bytes. |
+| `figma.createImageAsync` | unsupported | Throws unsupported_api. No network image fetch. Pass bytes to createImage. |
+| `figma.createNodeFromSvg` | partial | Imports the SVG through the editor SVG importer and returns the created root. Scripts, external URLs, and animation are rejected. |
 | `figma.createVector` | unsupported | Throws unsupported_api. Vector networks are not exposed on this host. |
 | `figma.viewport.zoom` | partial | Get and set camera zoom from 0.02 to 256. Setting zoom keeps the world point at the top-left, not the visual center. |
 | `figma.viewport.center` | partial | Get and set the world point at the camera origin (top-left). The host does not know the canvas size, so this is not the visual center. |
 | `figma.viewport.scrollAndZoomIntoView` | partial | Asks the editor to reveal the nodes. It does not change zoom. |
-| `figma.clientStorage` | supported | getAsync, setAsync, keysAsync, and deleteAsync. JSON values, 100 keys, 256 KiB per plugin, stored in this client and not in the document. Not undone with the canvas. |
-| `figma.variables` | unsupported | Absent. Document variables stay on the editor variable operations. |
+| `figma.clientStorage` | supported | getAsync, setAsync, keysAsync, and deleteAsync. JSON values, undefined, and Uint8Array. 5 MB per plugin by the official size rule, with a host ceiling of 10000 keys. Stored in this client and not undone with the canvas. |
+| `figma.variables` | partial | Local collections and COLOR, FLOAT, STRING, and BOOLEAN variables. Mode ids are mode names. setValueForMode and setBoundVariable for width, height, opacity, characters, visible, fontSize, and itemSpacing. No remote libraries. |
 | `figma.teamLibrary` | unsupported | Absent. There is no team library or cloud account. |
 | `figma.payments` | unsupported | Absent. |
 | `figma.parameters` | unsupported | Absent. Parameter UI is not collected. |
@@ -175,22 +193,47 @@ These calls still throw or are absent: images (`createImage`, image paints), `cr
 | `figma.currentUser` | partial | Always null. There is no account user. Optional chaining works; reading an id does not. |
 | `figma.util.rgb` | supported | Returns {r, g, b} with channels from 0 to 1. |
 | `figma.util.solidPaint` | supported | SOLID paint from #RGB, #RRGGBB, #RRGGBBAA, or an {r, g, b} object. |
-| `figma.on` | partial | selectionchange and currentpagechange are delivered for editor changes outside the plugin. The plugin’s own selection writes do not emit them. close runs inside closePlugin. Other events throw. |
+| `figma.on` | partial | selectionchange, currentpagechange, and documentchange are delivered for editor changes outside the plugin. documentchange has an empty documentChanges list. The plugin’s own edits do not emit them. close runs inside closePlugin. run and other events throw. |
 | `figma.skipInvisibleInstanceChildren` | partial | The flag is stored. findAll does not skip invisible instance children. |
 | `setTimeout` | partial | Only a zero delay during the current turn. A positive delay throws. setInterval throws. |
-| `fetch` | unsupported | Throws unsupported_api. Manifest networkAccess does not grant fetch. |
+| `fetch` | partial | Main-thread fetch only, and only to origins declared in networkAccess. https except an explicit localhost origin. Private networks, metadata hosts, credentials, and the UI frame stay blocked. |
 | `figma.loadAllPagesAsync` | unsupported | Throws unsupported_api. The open document is already local; this call is not required. |
 | `figma.importComponentByKeyAsync` | unsupported | Throws unsupported_api. Remote component keys are not imported. |
-| `figma.createPaintStyle` | unsupported | Throws unsupported_api. Shared styles are not created from plugins. |
-| `figma.createTextStyle` | unsupported | Throws unsupported_api. |
-| `figma.createEffectStyle` | unsupported | Throws unsupported_api. |
+| `figma.createPaintStyle` | partial | Creates a local paint style. name and paints can be set. No cloud library or style key. |
+| `figma.createTextStyle` | partial | Creates a local text style. fontName, lineHeight, letterSpacing, textCase, and paragraph spacing can be set. fontSize and textDecoration are kept on the node, not the style. |
+| `figma.createEffectStyle` | partial | Creates a local effect style. name and effects can be set. No cloud library. |
 | `figma.createGridStyle` | unsupported | Throws unsupported_api. |
-| `SceneNode.exportAsync` | unsupported | Throws unsupported_api. Use the editor export panel. |
+| `SceneNode.exportAsync` | partial | SVG markup bytes only. PNG, JPG, and PDF stay on the editor export panel. |
 | `SceneNode.getPluginData` | supported | String values for this manifest id. A missing key returns "". Pages and the document root use the same methods. Stored in the fdCompatibility extension design.futureox/plugin-data and undone with the edit. |
 | `SceneNode.setPluginData` | supported | Up to 50 keys and 10000 characters. An empty string deletes the key. The same limits apply to pages and figma.root. |
 | `SceneNode.getSharedPluginData` | supported | Reads a namespace another plugin on this file could also read. Missing keys return "". |
 | `SceneNode.setSharedPluginData` | supported | Writes a namespaced string on the node, page, or root. An empty string deletes the key. |
 | `SceneNode.setRelaunchData` | unsupported | Throws unsupported_api. Relaunch buttons are not shown. |
 | `SceneNode.reactions` | unsupported | Absent. Prototype reactions are not edited from this host. |
-| `SceneNode.boundVariables` | unsupported | Absent. |
+| `SceneNode.boundVariables` | partial | Reads bindings written by setBoundVariable. Fields are width, height, opacity, characters, visible, fontSize, and itemSpacing. |
 | `TextNode.getStyledTextSegments` | unsupported | Throws unsupported_api. Rich-text ranges are not read back as styled segments. |
+| `figma.currentPage.findAllWithCriteria` | partial | Filters by types only, up to 2000 nodes. pluginData criteria throws. |
+| `figma.createNodeFromSvg` | partial | Imports the SVG through the editor SVG importer and returns the created root. Scripts, external URLs, and animation are rejected. A multi-root import is grouped. The import is its own undo step. |
+| `figma.createPaintStyle` | partial | Creates a local paint style. name and paints can be set. No cloud library or style key. |
+| `figma.createTextStyle` | partial | Creates a local text style. fontName, lineHeight, letterSpacing, textCase, and paragraph spacing can be set. fontSize and textDecoration are kept on the node, not the style. |
+| `figma.createEffectStyle` | partial | Creates a local effect style. name and effects can be set. No cloud library. |
+| `figma.getLocalPaintStyles` | partial | Lists local paint styles. Remote library styles are absent. |
+| `figma.getLocalTextStyles` | partial | Lists local text styles. fontSize reads as 16 because the style record stores the face, not a size. |
+| `figma.getLocalEffectStyles` | partial | Lists local effect styles. |
+| `figma.getStyleById` | partial | Returns a local style or null. Import by key is not available. |
+| `figma.base64Encode` | supported | Encodes up to 256 KiB. |
+| `figma.base64Decode` | supported | Decodes base64 text to bytes. |
+| `FrameNode.primaryAxisSizingMode` | partial | FIXED or AUTO after layoutMode. AUTO hugs the primary axis. layoutWrap WRAP stores that axis as FIXED. |
+| `FrameNode.counterAxisSizingMode` | partial | FIXED or AUTO after layoutMode. AUTO hugs the counter axis. |
+| `FrameNode.layoutWrap` | partial | NONE or WRAP. Set layoutMode first. WRAP stores the primary axis as FIXED. |
+| `FrameNode.counterAxisSpacing` | partial | Wrapped-row gap. Set layoutMode first. |
+| `SceneNode.layoutPositioning` | partial | AUTO or ABSOLUTE. ABSOLUTE sets sizing.absolute. |
+| `SceneNode.minWidth` | partial | minWidth, maxWidth, minHeight, and maxHeight write sizing limits. null resets the default bound. |
+| `TextNode.textAutoResize` | partial | NONE, WIDTH_AND_HEIGHT, HEIGHT, or TRUNCATE. TRUNCATE clears wrapping and does not clip glyphs. |
+| `TextNode.textCase` | partial | ORIGINAL, UPPER, or LOWER. TITLE and small caps throw. |
+| `TextNode.textDecoration` | partial | NONE, UNDERLINE, or STRIKETHROUGH on the whole string. |
+| `TextNode.paragraphSpacing` | partial | 0 to 10000. |
+| `TextNode.paragraphIndent` | partial | -10000 to 10000. |
+| `SceneNode.fillStyleId` | partial | Local paint style id, or null. No team-library styles. |
+| `SceneNode.textStyleId` | partial | Local text style id on text nodes, or null. |
+| `SceneNode.effectStyleId` | partial | Local effect style id, or null. |

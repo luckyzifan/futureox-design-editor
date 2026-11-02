@@ -81,6 +81,7 @@ function pageProxy(id) {
     insertChild: function (index, child) { host('move', { id: child.id, parentId: id, index: index }); return child },
     findAll: function (callback) { return findAll(id, callback) },
     findOne: function (callback) { return findOne(id, callback) },
+    findAllWithCriteria: function (criteria) { return findAll(id, function (node) { return criteriaMatch(criteria, node) }) },
     findChildren: function (callback) { return findChildren(id, callback) },
     getPluginData: data.getPluginData,
     setPluginData: data.setPluginData,
@@ -136,13 +137,35 @@ function wrap(id) {
       if (prop === 'appendChild') return function (child) { host('move', { id: child.id, parentId: nodeId }); return child }
       if (prop === 'insertChild') return function (index, child) { host('move', { id: child.id, parentId: nodeId, index: index }); return child }
       if (prop === 'findAll') return function (callback) { return findAll(nodeId, callback) }
+      if (prop === 'findAllWithCriteria') return function (criteria) { return findAll(nodeId, function (node) { return criteriaMatch(criteria, node) }) }
       if (prop === 'findOne') return function (callback) { return findOne(nodeId, callback) }
       if (prop === 'findChildren') return function (callback) { return findChildren(nodeId, callback) }
       if (prop === 'createInstance') return function () { return wrap(host('instance', { componentId: nodeId }).id) }
       if (prop === 'detachInstance') return function () { host('detach', { id: nodeId }); return wrap(nodeId) }
       if (prop === 'getPluginData' || prop === 'setPluginData' || prop === 'getPluginDataKeys' || prop === 'getSharedPluginData' || prop === 'setSharedPluginData' || prop === 'getSharedPluginDataKeys')
         return pluginDataMethods('node', nodeId)[prop]
-      if (prop === 'exportAsync' || prop === 'setRelaunchData' || prop === 'getStyledTextSegments')
+      if (prop === 'exportAsync') return function (settings) {
+        const format = settings && settings.format || 'PNG'
+        const constraint = settings && settings.constraint
+        return Promise.resolve().then(function () {
+          const result = host('export', { id: nodeId, format: format, scale: constraint && constraint.type === 'SCALE' ? constraint.value : undefined })
+          if (typeof TextEncoder === 'function') return new TextEncoder().encode(result.text)
+          const encoded = unescape(encodeURIComponent(result.text))
+          const bytes = new Uint8Array(encoded.length)
+          for (let i = 0; i < encoded.length; i++) bytes[i] = encoded.charCodeAt(i)
+          return bytes
+        })
+      }
+      if (prop === 'setBoundVariable') return function (field, variable) {
+        host('variableBind', { id: nodeId, field: field, variableId: variable ? variable.id : null })
+      }
+      if (prop === 'boundVariables') {
+        const snap = read(nodeId).boundVariables || {}
+        const bound = {}
+        for (const key in snap) if (snap[key]) bound[key] = variableProxy(snap[key])
+        return bound
+      }
+      if (prop === 'setRelaunchData' || prop === 'getStyledTextSegments')
         return function () { unsupported('SceneNode.' + prop) }
       const snap = read(nodeId)
       if (Object.prototype.hasOwnProperty.call(snap, prop)) return snap[prop]
@@ -157,12 +180,99 @@ function wrap(id) {
   proxies.set(id, proxy)
   return proxy
 }
+function criteriaMatch(criteria, node) {
+  if (!criteria || typeof criteria !== 'object' || !Array.isArray(criteria.types) || !criteria.types.length)
+    throw new Error('invalid_value: findAllWithCriteria requires types')
+  if (criteria.pluginData || criteria.sharedPluginData) unsupported('findAllWithCriteria plugin data filter')
+  for (let i = 0; i < criteria.types.length; i++) if (criteria.types[i] === node.type) return true
+  return false
+}
+function styleProxy(id) {
+  function read() {
+    const snap = host('styleRead', { id: id })
+    if (!snap) throw new Error('Style does not exist')
+    return snap
+  }
+  return {
+    get id() { return id },
+    get type() { return read().type },
+    get name() { return read().name },
+    set name(value) { host('stylePatch', { id: id, name: value }) },
+    get key() { return id },
+    get description() { return '' },
+    set description(_value) {},
+    get paints() { return read().paints },
+    set paints(value) { host('stylePatch', { id: id, paints: value }) },
+    get effects() { return read().effects },
+    set effects(value) { host('stylePatch', { id: id, effects: value }) },
+    get fontName() { return read().fontName },
+    set fontName(value) { host('stylePatch', { id: id, fontName: value }) },
+    get fontSize() { return read().fontSize },
+    set fontSize(value) { host('stylePatch', { id: id, fontSize: value }) },
+    get letterSpacing() { return read().letterSpacing },
+    set letterSpacing(value) { host('stylePatch', { id: id, letterSpacing: value }) },
+    get lineHeight() { return read().lineHeight },
+    set lineHeight(value) { host('stylePatch', { id: id, lineHeight: value }) },
+    get textCase() { return read().textCase },
+    set textCase(value) { host('stylePatch', { id: id, textCase: value }) },
+    get textDecoration() { return read().textDecoration },
+    set textDecoration(value) { host('stylePatch', { id: id, textDecoration: value }) },
+    get textAlignHorizontal() { return read().textAlignHorizontal },
+    get textAlignVertical() { return read().textAlignVertical },
+    get textAutoResize() { return read().textAutoResize },
+    get paragraphSpacing() { return read().paragraphSpacing },
+    set paragraphSpacing(value) { host('stylePatch', { id: id, paragraphSpacing: value }) },
+    get paragraphIndent() { return read().paragraphIndent },
+    set paragraphIndent(value) { host('stylePatch', { id: id, paragraphIndent: value }) },
+    remove: function () { host('styleDelete', { id: id }) },
+  }
+}
+function imageObject(hash) {
+  return {
+    hash: hash,
+    getBytesAsync: function () {
+      return Promise.resolve().then(function () { return figma.base64Decode(host('imageBytes', { hash: hash })) })
+    },
+    getSizeAsync: function () {
+      return Promise.resolve().then(function () { return host('imageSize', { hash: hash }) })
+    },
+  }
+}
+function variableProxy(id) {
+  return {
+    get id() { return id },
+    get name() { return host('variableRead', { id: id }).name },
+    set name(value) { host('variableRename', { id: id, name: String(value) }) },
+    get resolvedType() { return host('variableRead', { id: id }).resolvedType },
+    get variableCollectionId() { return host('variableRead', { id: id }).collectionId },
+    setValueForMode: function (modeId, value) { host('variableSet', { id: id, mode: String(modeId), value: value }) },
+    remove: function () { host('variableDelete', { id: id }) },
+  }
+}
+function collectionProxy(id) {
+  function read() {
+    const snap = host('collectionRead', { id: id })
+    if (!snap) throw new Error('Variable collection does not exist')
+    return snap
+  }
+  return {
+    get id() { return id },
+    get name() { return read().name },
+    set name(value) { host('collectionRename', { id: id, name: String(value) }) },
+    get modes() { return read().modes },
+    get defaultModeId() { return read().defaultModeId },
+    get variableIds() { return read().variableIds },
+    addMode: function (name) { return host('collectionAddMode', { id: id, name: String(name) }).modeId },
+    renameMode: function (modeId, name) { host('collectionRenameMode', { id: id, mode: String(modeId), name: String(name) }) },
+    remove: function () { host('collectionDelete', { id: id }) },
+  }
+}
 function create(kind) { return wrap(host('create', { kind: kind }).id) }
 function booleanOp(operation, nodes) {
   return wrap(host('boolean', { operation: operation, ids: nodes.map(function (node) { return node.id }) }).id)
 }
 const __pluginMeta = host('meta', null)
-const listeners = { selectionchange: [], currentpagechange: [], close: [] }
+const listeners = { selectionchange: [], currentpagechange: [], documentchange: [], close: [] }
 let closing = false
 let skipInvisibleInstanceChildren = true
 function channel(value) {
@@ -276,14 +386,44 @@ const figma = {
     getAsync: function (key) {
       return Promise.resolve().then(function () {
         const result = host('clientStorageGet', { key: key })
-        return result.found ? result.value : undefined
+        if (!result.found || result.kind === 'undefined') return undefined
+        if (result.kind === 'bytes') {
+          const parts = result.parts || []
+          const chunks = []
+          let total = 0
+          for (let index = 0; index < parts.length; index++) {
+            const chunk = figma.base64Decode(parts[index])
+            chunks.push(chunk)
+            total += chunk.length
+          }
+          const bytes = new Uint8Array(total)
+          let offset = 0
+          for (let index = 0; index < chunks.length; index++) {
+            bytes.set(chunks[index], offset)
+            offset += chunks[index].length
+          }
+          return bytes
+        }
+        return result.value
       })
     },
     setAsync: function (key, value) {
-      let json
-      try { json = JSON.stringify(value) } catch (error) { throw new Error('invalid_value: clientStorage value must be JSON') }
-      if (typeof json !== 'string') throw new Error('invalid_value: clientStorage value must be JSON')
-      return Promise.resolve().then(function () { host('clientStorageSet', { key: key, json: json }) })
+      return Promise.resolve().then(function () {
+        if (value === undefined) { host('clientStorageSet', { key: key, kind: 'undefined' }); return }
+        if (typeof Uint8Array === 'function' && value instanceof Uint8Array) {
+          const chunk = 120000
+          const parts = Math.max(1, Math.ceil(value.length / chunk))
+          for (let index = 0; index < parts; index++) {
+            const slice = value.subarray(index * chunk, Math.min(value.length, (index + 1) * chunk))
+            host('clientStorageSet', { key: key, kind: 'bytes', part: index, parts: parts, rawBytes: value.length, base64: figma.base64Encode(slice) })
+          }
+          return
+        }
+        let json
+        try { json = JSON.stringify(value) } catch (error) { throw new Error('invalid_value: clientStorage value must be JSON') }
+        if (typeof json !== 'string') throw new Error('invalid_value: clientStorage value must be JSON')
+        host('clientStorageSet', { key: key, json: json })
+      })
     },
     deleteAsync: function (key) {
       return Promise.resolve().then(function () { host('clientStorageDelete', { key: key }) })
@@ -310,15 +450,54 @@ const figma = {
     return Promise.resolve().then(function () { return host('loadFont', { family: fontName.family, style: fontName.style }) })
   },
   listAvailableFontsAsync: function () { return Promise.resolve().then(function () { return host('fonts', null) }) },
-  createImage: function () { unsupported('figma.createImage') },
+  createImage: function (data) {
+    if (!data || typeof data.length !== 'number') throw new Error('invalid_value: createImage expects bytes')
+    return imageObject(host('imageCreate', { base64: figma.base64Encode(data) }).hash)
+  },
   createImageAsync: function () { unsupported('figma.createImageAsync') },
-  createNodeFromSvg: function () { unsupported('figma.createNodeFromSvg') },
+  getImageByHash: function (hash) {
+    const found = host('imageFind', { hash: String(hash) })
+    return found ? imageObject(found.hash) : null
+  },
+  variables: {
+    getLocalVariableCollections: function () { return host('collectionList', null).map(function (item) { return collectionProxy(item.id) }) },
+    getLocalVariables: function (type) { return host('variableList', { type: type || null }).map(function (item) { return variableProxy(item.id) }) },
+    getVariableById: function (id) {
+      if (id == null) return null
+      const snap = host('variableRead', { id: String(id) })
+      return snap ? variableProxy(snap.id) : null
+    },
+    createVariableCollection: function (name) { return collectionProxy(host('collectionCreate', { name: String(name) }).id) },
+    createVariable: function (name, collection, resolvedType) {
+      return variableProxy(host('variableCreate', { name: String(name), collectionId: collection && collection.id, resolvedType: String(resolvedType) }).id)
+    },
+  },
+  createNodeFromSvg: function (svg) { return wrap(host('svg', { svg: String(svg) }).id) },
+  getLocalPaintStyles: function () { return host('styleList', { kind: 'paint' }).map(function (item) { return styleProxy(item.id) }) },
+  getLocalTextStyles: function () { return host('styleList', { kind: 'text' }).map(function (item) { return styleProxy(item.id) }) },
+  getLocalEffectStyles: function () { return host('styleList', { kind: 'effect' }).map(function (item) { return styleProxy(item.id) }) },
+  getStyleById: function (id) {
+    if (id == null) return null
+    const snap = host('styleRead', { id: String(id) })
+    return snap ? styleProxy(snap.id) : null
+  },
+  createPaintStyle: function () { return styleProxy(host('styleCreate', { kind: 'paint' }).id) },
+  createTextStyle: function () { return styleProxy(host('styleCreate', { kind: 'text' }).id) },
+  createEffectStyle: function () { return styleProxy(host('styleCreate', { kind: 'effect' }).id) },
+  base64Encode: function (data) {
+    const bytes = []
+    const view = data && typeof data.length === 'number' ? data : []
+    if (view.length > 262144) throw new Error('plugin_limit: base64Encode input is too large')
+    for (let i = 0; i < view.length; i++) bytes.push(view[i] & 255)
+    return host('base64Encode', { bytes: bytes })
+  },
+  base64Decode: function (data) {
+    const bytes = host('base64Decode', { data: String(data) })
+    return Uint8Array.from(bytes)
+  },
   createVector: function () { unsupported('figma.createVector') },
   loadAllPagesAsync: function () { unsupported('figma.loadAllPagesAsync') },
   importComponentByKeyAsync: function () { unsupported('figma.importComponentByKeyAsync') },
-  createPaintStyle: function () { unsupported('figma.createPaintStyle') },
-  createTextStyle: function () { unsupported('figma.createTextStyle') },
-  createEffectStyle: function () { unsupported('figma.createEffectStyle') },
   createGridStyle: function () { unsupported('figma.createGridStyle') },
   ui: {
     onmessage: null,
@@ -337,8 +516,9 @@ globalThis.__deliverPluginMessage = function (message) {
   if (typeof figma.ui.onmessage === 'function') figma.ui.onmessage(message)
 }
 globalThis.__deliverPluginEvent = function (type) {
+  const event = type === 'documentchange' ? { documentChanges: [] } : undefined
   const list = (listeners[type] || []).slice()
-  for (let i = 0; i < list.length; i++) list[i]()
+  for (let i = 0; i < list.length; i++) list[i](event)
 }
 globalThis.figma = figma
 globalThis.console = {
@@ -346,7 +526,49 @@ globalThis.console = {
   warn: function () { host('log', { level: 'warn', message: Array.prototype.join.call(arguments, ' ') }) },
   error: function () { host('log', { level: 'error', message: Array.prototype.join.call(arguments, ' ') }) },
 }
-globalThis.fetch = function () { unsupported('fetch') }
+const fetchWaiters = {}
+let fetchSerial = 1
+globalThis.fetch = function (input, init) {
+  const url = typeof input === 'string' ? input : input && input.url
+  const method = init && init.method || 'GET'
+  const headers = {}
+  const source = init && init.headers
+  if (source && typeof source.forEach === 'function') source.forEach(function (value, key) { headers[key] = String(value) })
+  else if (source && typeof source === 'object') {
+    for (const key in source) headers[key] = String(source[key])
+  }
+  const body = init && init.body
+  if (body != null && typeof body !== 'string') throw new Error('invalid_value: fetch body must be a string')
+  return new Promise(function (resolve, reject) {
+    const id = fetchSerial++
+    fetchWaiters[id] = { resolve: resolve, reject: reject }
+    try { host('fetchBegin', { id: id, url: String(url), method: method, headers: headers, body: body == null ? null : body }) }
+    catch (error) { delete fetchWaiters[id]; reject(error) }
+  })
+}
+globalThis.__finishFetch = function (id, payload) {
+  const waiter = fetchWaiters[id]
+  delete fetchWaiters[id]
+  if (!waiter) return
+  if (!payload || payload.ok === false && payload.code) {
+    waiter.reject(new Error((payload && payload.code || 'network_denied') + ': ' + (payload && payload.message || 'Plugin fetch failed')))
+    return
+  }
+  const bytes = figma.base64Decode(payload.bodyBase64 || '')
+  let text = ''
+  for (let i = 0; i < bytes.length; i++) text += String.fromCharCode(bytes[i])
+  try { text = decodeURIComponent(escape(text)) } catch (error) {}
+  const response = {
+    ok: payload.status >= 200 && payload.status < 300,
+    status: payload.status,
+    url: payload.url,
+    headers: { get: function (name) { const value = payload.headers && payload.headers[String(name).toLowerCase()]; return value == null ? null : value } },
+    text: function () { return Promise.resolve(text) },
+    json: function () { return Promise.resolve(JSON.parse(text)) },
+    arrayBuffer: function () { return Promise.resolve(bytes.buffer) },
+  }
+  waiter.resolve(response)
+}
 globalThis.setTimeout = function (fn, ms) {
   if (typeof fn !== 'function') throw new Error('invalid_value: setTimeout expects a function')
   if (ms !== undefined && ms !== 0) unsupported('setTimeout delay')

@@ -1,11 +1,14 @@
+// @ts-expect-error jsdom is a test-only dependency
+import { JSDOM } from 'jsdom'
 import { readFileSync } from 'node:fs'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Editor } from '../engine'
-import { blank } from '../model'
+import { blank, node, paint } from '../model'
 import { samplePluginBundle, sampleUiPluginBundle } from './bundles'
 import { pluginApiCoverage } from './coverage'
 import { PluginApiError } from './errors'
-import { memoryPluginStorage } from './client-storage'
+import { clientStorageSet, memoryPluginStorage } from './client-storage'
+import { imageContentId } from './images'
 import { pluginBundleFromFiles } from './load-folder'
 import { pluginBundleFromZip } from './load-zip'
 import { parsePluginManifest, type PluginBundle } from './manifest'
@@ -61,10 +64,10 @@ describe('Figma plugin host', () => {
     `))).resolves.toBeTruthy()
     expect(nodes(current)).toHaveLength(1)
     await expect(openPlugin(current, bundle('Image', `
-      if (typeof figma.variables !== 'undefined') throw new Error('variables leaked')
+      if (typeof figma.variables === 'undefined' || typeof figma.createImage !== 'function') throw new Error('host api missing')
       if (!figma.viewport || typeof figma.viewport.zoom !== 'number') throw new Error('viewport missing')
       if (figma.currentUser !== null) throw new Error('user leaked')
-      figma.createImage()
+      figma.createVector()
     `))).rejects.toMatchObject({ code: 'unsupported_api' })
     expect(current.state.version).toBe(version + 1)
   })
@@ -224,8 +227,11 @@ describe('Figma plugin host', () => {
     const saved = await openPlugin(current, bundle('Store', `
       ;(async function () {
         await figma.clientStorage.setAsync('count', { n: 2 })
+        await figma.clientStorage.setAsync('bytes', new Uint8Array([1, 2, 255]))
+        await figma.clientStorage.setAsync('empty', new Uint8Array())
+        await figma.clientStorage.setAsync('flag', undefined)
         const keys = await figma.clientStorage.keysAsync()
-        if (keys.indexOf('count') < 0) throw new Error('missing key')
+        if (keys.indexOf('count') < 0 || keys.indexOf('flag') < 0) throw new Error('missing key')
         const rect = figma.createRectangle()
         rect.name = 'Tagged'
         rect.setPluginData('role', 'button')
@@ -246,6 +252,12 @@ describe('Figma plugin host', () => {
       ;(async function () {
         const value = await figma.clientStorage.getAsync('count')
         if (!value || value.n !== 2) throw new Error('lost ' + JSON.stringify(value))
+        const bytes = await figma.clientStorage.getAsync('bytes')
+        if (!(bytes instanceof Uint8Array) || bytes.length !== 3 || bytes[2] !== 255) throw new Error('bytes')
+        const empty = await figma.clientStorage.getAsync('empty')
+        if (!(empty instanceof Uint8Array) || empty.length !== 0) throw new Error('empty')
+        if ((await figma.clientStorage.keysAsync()).indexOf('flag') < 0) throw new Error('undefined key')
+        if (await figma.clientStorage.getAsync('flag') !== undefined) throw new Error('undefined value')
         await figma.clientStorage.deleteAsync('count')
         if (await figma.clientStorage.getAsync('count') !== undefined) throw new Error('still stored')
       })()
@@ -305,8 +317,8 @@ describe('Figma plugin host', () => {
     expect(run.ui?.visible).toBe(true)
     run.emit('selectionchange')
     expect(run.notifications.some(message => message.startsWith('selected'))).toBe(true)
-    expect(pluginEditorEvents({ pageId: 'a', selection: '1' }, { pageId: 'a', selection: '1' }, true)).toEqual([])
-    expect(pluginEditorEvents({ pageId: 'a', selection: '1' }, { pageId: 'b', selection: '2' }, false)).toEqual(['currentpagechange', 'selectionchange'])
+    expect(pluginEditorEvents({ pageId: 'a', selection: '1', revision: 1 }, { pageId: 'a', selection: '1', revision: 1 }, true)).toEqual([])
+    expect(pluginEditorEvents({ pageId: 'a', selection: '1', revision: 1 }, { pageId: 'b', selection: '2', revision: 2 }, false)).toEqual(['documentchange', 'currentpagechange', 'selectionchange'])
     expect(pluginUiSrcdoc('<button>Go</button>')).toContain("connect-src 'none'")
     expect(pluginUiSrcdoc('<button>Go</button>')).toContain('<button>Go</button>')
     run.close()
@@ -321,11 +333,214 @@ describe('Figma plugin host', () => {
         var blocked = false
         try { setTimeout(function () {}, 10) } catch (error) { blocked = String(error).indexOf('unsupported_api') >= 0 }
         if (!blocked) throw new Error('delay accepted')
-        try { fetch('https://example.com') } catch (error) { blocked = String(error).indexOf('fetch') >= 0 }
+        try { await fetch('https://example.com/secret') } catch (error) { blocked = String(error).indexOf('network_denied') >= 0 }
         if (!blocked) throw new Error('fetch accepted')
       })()
     `))
     expect(named(current, 'Later')?.kind).toBe('rectangle')
+    run.close()
+  })
+
+  it('imports SVG, finds by type, and writes the sizing and text fields community plugins use', async () => {
+    const dom = new JSDOM('')
+    vi.stubGlobal('DOMParser', dom.window.DOMParser)
+    try {
+      const current = editor()
+      const run = await openPlugin(current, bundle('Community', `
+        const icon = figma.createNodeFromSvg('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><rect width="24" height="24" fill="#3459d4"/></svg>')
+        icon.name = 'Feather'
+        const texts = figma.currentPage.findAllWithCriteria({ types: ['TEXT', 'RECTANGLE'] })
+        const hug = figma.createFrame()
+        hug.name = 'Hug'
+        hug.layoutMode = 'HORIZONTAL'
+        hug.primaryAxisSizingMode = 'AUTO'
+        hug.counterAxisSizingMode = 'FIXED'
+        const wrapped = figma.createFrame()
+        wrapped.name = 'Wrap'
+        wrapped.layoutMode = 'HORIZONTAL'
+        wrapped.layoutWrap = 'WRAP'
+        wrapped.primaryAxisSizingMode = 'AUTO'
+        wrapped.counterAxisSizingMode = 'FIXED'
+        wrapped.counterAxisSpacing = 8
+        wrapped.itemSpacing = 4
+        const text = figma.createText()
+        text.characters = 'Hello'
+        text.textAutoResize = 'HEIGHT'
+        text.textCase = 'UPPER'
+        text.textDecoration = 'UNDERLINE'
+        text.paragraphSpacing = 4
+        text.paragraphIndent = 2
+        const encoded = figma.base64Encode(new Uint8Array([72, 105]))
+        if (encoded !== 'SGk=' || figma.base64Decode(encoded)[0] !== 72) throw new Error('base64 ' + encoded)
+        if (texts.length < 1) throw new Error('criteria')
+        figma.on('documentchange', function (event) {
+          if (!event || !event.documentChanges) throw new Error('event')
+          figma.notify('doc-changed')
+        })
+        figma.showUI('<p>community</p>', { width: 120, height: 40 })
+      `))
+      expect(named(current, 'Feather')).toBeTruthy()
+      const hug = named(current, 'Hug')
+      expect(hug?.layout?.mode).toBe('horizontal')
+      expect(hug?.sizing?.width).toBe('hug')
+      expect(hug?.sizing?.height).toBe('fixed')
+      const wrap = named(current, 'Wrap')
+      expect(wrap?.layout?.wrap).toBe(true)
+      expect(wrap?.layout?.lineGap).toBe(8)
+      expect(wrap?.layout?.gap).toBe(4)
+      expect(wrap?.sizing?.width).toBe('fixed')
+      expect(wrap?.sizing?.height).toBe('fixed')
+      const text = nodes(current).find(node => node.kind === 'text' && node.text === 'Hello')
+      expect(text?.textStyle?.textCase).toBe('upper')
+      expect(text?.textStyle?.wrap).toBe(true)
+      expect(text?.sizing?.height).toBe('hug')
+      expect(text?.textStyle?.paragraphSpacing).toBe(4)
+      expect(text?.textRuns?.[0]?.underline).toBe(true)
+      run.emit('documentchange')
+      expect(run.notifications).toContain('doc-changed')
+      run.close()
+    } finally { vi.unstubAllGlobals(); dom.window.close() }
+  })
+
+  it('creates a local paint style and applies it, the way Design Lint does', async () => {
+    const current = editor()
+    const run = await openPlugin(current, bundle('Styles', `
+      const style = figma.createPaintStyle()
+      style.name = 'Brand'
+      style.paints = [{ type: 'SOLID', color: { r: 0.2, g: 0.35, b: 0.83 } }]
+      const rect = figma.createRectangle()
+      rect.name = 'Styled'
+      rect.fillStyleId = style.id
+      const found = figma.getLocalPaintStyles().filter(function (item) { return item.name === 'Brand' })
+      if (found.length !== 1 || found[0].paints[0].type !== 'SOLID') throw new Error('style list')
+      if (figma.getStyleById(style.id).name !== 'Brand') throw new Error('style id')
+      const textStyle = figma.createTextStyle()
+      textStyle.name = 'Body'
+      textStyle.fontName = { family: 'Noto Sans SC', style: 'Regular' }
+      textStyle.paragraphSpacing = 6
+      const text = figma.createText()
+      text.characters = 'Styled'
+      text.textStyleId = textStyle.id
+    `))
+    const rect = named(current, 'Styled')
+    const paintId = rect?.styleRefs?.fills
+    expect(paintId).toBeTruthy()
+    expect(current.state.doc.designSystem?.styles[paintId!]).toMatchObject({ name: 'Brand', kind: 'paint' })
+    const text = nodes(current).find(node => node.text === 'Styled')
+    expect(text?.styleRefs?.textStyle).toBeTruthy()
+    expect(current.state.doc.designSystem?.styles[text!.styleRefs!.textStyle!].name).toBe('Body')
+    run.close()
+  })
+
+  it('stores image bytes, paints with the hash, and exports SVG', async () => {
+    const current = editor()
+    const run = await openPlugin(current, bundle('Image', `
+      ;(async function () {
+        const png = new Uint8Array([137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,3,8,2,0,0,0,0,0,0,0])
+        const image = figma.createImage(png)
+        const again = figma.getImageByHash(image.hash)
+        if (!again || again.hash !== image.hash) throw new Error('hash')
+        const size = await image.getSizeAsync()
+        if (size.width !== 2 || size.height !== 3) throw new Error('size ' + size.width + 'x' + size.height)
+        const bytes = await image.getBytesAsync()
+        if (bytes[0] !== 137) throw new Error('bytes')
+        const rect = figma.createRectangle()
+        rect.name = 'Photo'
+        rect.fills = [{ type: 'IMAGE', imageHash: image.hash, scaleMode: 'FIT' }]
+        const svg = await rect.exportAsync({ format: 'SVG' })
+        const text = new TextDecoder().decode(svg)
+        if (text.indexOf('<svg') < 0) throw new Error(text.slice(0, 80))
+        var pngBlocked = false
+        try { await rect.exportAsync({ format: 'PNG' }) } catch (error) { pngBlocked = String(error).indexOf('SVG') >= 0 }
+        if (!pngBlocked) throw new Error('png export accepted')
+      })()
+    `))
+    const rect = named(current, 'Photo')
+    expect(rect?.fills[0].kind).toBe('image')
+    expect(rect?.fills[0].fit).toBe('contain')
+    expect(rect?.fills[0].image).toMatch(/^data:image\/png;base64,/)
+    run.close()
+  })
+
+  it('creates a local variable and binds width', async () => {
+    const current = editor()
+    const run = await openPlugin(current, bundle('Vars', `
+      const collection = figma.variables.createVariableCollection('Spacing')
+      const variable = figma.variables.createVariable('Gap', collection, 'FLOAT')
+      variable.setValueForMode(collection.modes[0].modeId, 12)
+      const rect = figma.createRectangle()
+      rect.name = 'Bound'
+      rect.setBoundVariable('width', variable)
+      if (figma.variables.getLocalVariables('FLOAT').length !== 1) throw new Error('list')
+      if (!figma.variables.getVariableById(variable.id)) throw new Error('id')
+    `))
+    const rect = named(current, 'Bound')
+    expect(rect?.bindings?.width).toBeTruthy()
+    const variable = current.state.doc.designSystem?.variables[rect!.bindings!.width]
+    expect(variable).toMatchObject({ name: 'Gap', kind: 'number', values: { 'Mode 1': 12 } })
+    run.close()
+  })
+
+  it('fetches only declared https origins and refuses private hosts', async () => {
+    const current = editor()
+    const manifest = parsePluginManifest({
+      name: 'Net', id: 'net.fetch', api: '1.0.0', main: 'code.js', editorType: ['figma'],
+      networkAccess: { allowedDomains: ['https://api.example.test', '*.cdn.test'], devAllowedDomains: ['http://localhost:3000'] },
+    })
+    const seen: string[] = []
+    const run = await openPlugin(current, { manifest, main: `
+      ;(async function () {
+        const ok = await fetch('https://api.example.test/icons', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"q":1}' })
+        const body = await ok.json()
+        if (body.mark !== 'ok') throw new Error('body')
+        const local = await fetch('http://localhost:3000/dev')
+        if (local.status !== 204) throw new Error('local')
+        var denied = 0
+        for (const url of ['https://evil.test/x', 'http://169.254.169.254/latest', 'http://10.0.0.5/', 'https://api.example.test.evil/x']) {
+          try { await fetch(url) } catch (error) { if (String(error).indexOf('network_denied') >= 0) denied += 1 }
+        }
+        if (denied !== 4) throw new Error('denied ' + denied)
+      })()
+    `, ui: null }, {
+      fetch: async (url, init): Promise<{ status: number; url: string; headers: Record<string, string>; body: Uint8Array }> => {
+        seen.push(`${init.method} ${url}`)
+        if (url.startsWith('http://localhost')) return { status: 204, url, headers: {}, body: new Uint8Array() }
+        return { status: 200, url, headers: { 'content-type': 'application/json' }, body: new TextEncoder().encode('{"mark":"ok"}') }
+      },
+    })
+    expect(seen).toEqual(['POST https://api.example.test/icons', 'GET http://localhost:3000/dev'])
+    run.close()
+  })
+
+  it('uses the FIG SHA-1 image id and the 5 MB clientStorage quota', () => {
+    expect(imageContentId(new Uint8Array())).toBe('da39a3ee5e6b4b0d3255bfef95601890afd80709')
+    expect(imageContentId(new TextEncoder().encode('abc'))).toBe('a9993e364706816aba3e25717850c26c9cd0d89d')
+    const storage = memoryPluginStorage()
+    clientStorageSet(storage, 'quota.plugin', 'ok', JSON.stringify('hi'))
+    expect(() => clientStorageSet(storage, 'quota.plugin', 'big', JSON.stringify('x'.repeat(5 * 1024 * 1024)))).toThrow(PluginApiError)
+  })
+
+  it('resolves an image already stored on the document by its SHA-1', async () => {
+    const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 2, 0, 0, 0, 3, 8, 2, 0, 0, 0, 0, 0, 0, 0])
+    const hash = imageContentId(png)
+    let binary = ''
+    for (const byte of png) binary += String.fromCharCode(byte)
+    const current = editor()
+    current.change('Store image', doc => {
+      const layer = node('rectangle', 0, 0, 10, 10)
+      layer.name = 'Imported'
+      layer.fills = [{ ...paint('#000000', 'image'), image: `data:image/png;base64,${btoa(binary)}`, fit: 'cover' }]
+      doc.nodes[layer.id] = layer
+      doc.pages[0].children.push(layer.id)
+    })
+    const run = await openPlugin(current, bundle('Hash', `
+      ;(async function () {
+        const image = figma.getImageByHash('${hash}')
+        if (!image || image.hash !== '${hash}') throw new Error('missing hash')
+        const size = await image.getSizeAsync()
+        if (size.width !== 2 || size.height !== 3) throw new Error('size')
+      })()
+    `))
     run.close()
   })
 

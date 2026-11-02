@@ -11,8 +11,9 @@ export type PluginManifest = {
   ui: string | null
   editorType: string[]
   commands: PluginCommand[]
-  /** True when the manifest asked for domains other than none. The sandbox still has no fetch. */
+  /** True when the manifest asked for domains other than none. Fetch is limited to these origins. */
   networkIgnored: boolean
+  networkDomains: string[]
   /** Declared permissions are recorded and not granted. */
   permissionsIgnored: string[]
 }
@@ -44,11 +45,11 @@ export function pluginRelativePath(value: unknown, extension: string): string {
   return path
 }
 
-function domainList(value: unknown, label: string): boolean {
-  if (value == null) return false
-  if (!Array.isArray(value) || value.some(item => typeof item !== 'string'))
+function domainList(value: unknown, label: string): string[] {
+  if (value == null) return []
+  if (!Array.isArray(value) || value.some(item => typeof item !== 'string' || item.length > 200))
     throw new PluginApiError('invalid_manifest', `${label} must be an array of strings`)
-  return value.some(item => item !== 'none')
+  return value.filter(item => item !== 'none')
 }
 
 function menuCommands(value: unknown, into: PluginCommand[], depth: number) {
@@ -92,16 +93,18 @@ export function parsePluginManifest(value: unknown): PluginManifest {
   }
   if (record.documentAccess !== undefined && typeof record.documentAccess !== 'string')
     throw new PluginApiError('invalid_manifest', 'documentAccess must be a string. The open document is already local.')
-  let networkIgnored = false
+  let networkDomains: string[] = []
   const network = record.networkAccess
   if (network != null) {
     if (typeof network !== 'object' || Array.isArray(network))
       throw new PluginApiError('invalid_manifest', 'networkAccess must be an object')
     const access = network as Record<string, unknown>
-    networkIgnored = domainList(access.allowedDomains, 'allowedDomains') || domainList(access.devAllowedDomains, 'devAllowedDomains')
+    networkDomains = [...domainList(access.allowedDomains, 'allowedDomains'), ...domainList(access.devAllowedDomains, 'devAllowedDomains')]
+    if (networkDomains.length > 40) throw new PluginApiError('invalid_manifest', 'networkAccess lists too many domains')
     if (access.reasoning !== undefined && typeof access.reasoning !== 'string')
       throw new PluginApiError('invalid_manifest', 'networkAccess.reasoning must be a string')
   }
+  const networkIgnored = networkDomains.length > 0
   let permissionsIgnored: string[] = []
   if (record.permissions !== undefined) {
     if (!Array.isArray(record.permissions) || record.permissions.some(item => typeof item !== 'string'))
@@ -110,7 +113,7 @@ export function parsePluginManifest(value: unknown): PluginManifest {
   }
   const commands: PluginCommand[] = []
   menuCommands(record.menu, commands, 0)
-  return { name, id, api: '1.0.0', main, ui, editorType, commands, networkIgnored, permissionsIgnored }
+  return { name, id, api: '1.0.0', main, ui, editorType, commands, networkIgnored, networkDomains, permissionsIgnored }
 }
 
 export function assertPluginSource(source: string, label: string, maxBytes: number) {

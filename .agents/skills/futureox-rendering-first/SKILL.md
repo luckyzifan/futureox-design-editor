@@ -3,6 +3,8 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-02 插件 API 对照补上 SVG 导入、图片 SHA-1、SVG 导出、本地变量与样式、clientStorage 和声明域名 fetch。不改光栅、瓦片或蓝色强调色。见[对照记录](../../../testing/verification-figma-plugin-api-20261102/README.md)。33/100ms 与完整 G2/G5 仍未通过。
+
 2026-11-02 Figma 插件运行时只扩展插件宿主，不改光栅、瓦片、粘滞工具或蓝色强调色。见[本轮记录](../../../testing/verification-figma-plugin-runtime-20261102/README.md)。33/100ms 与完整 G2/G5 仍未通过。
 
 2026-11-02 Figma 插件宿主不改光栅、瓦片、粘滞工具或蓝色强调色。见[插件宿主说明](../../../docs/FIGMA_PLUGIN_HOST_V1.md)。33/100ms 与完整 G2/G5 仍未通过。

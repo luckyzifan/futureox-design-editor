@@ -24,8 +24,8 @@ export function PluginHostDialog({ editor, desktop, onClose }: { editor: Editor;
   const [pending, setPending] = useState<PluginBundle | null>(null)
   const [networkNote, setNetworkNote] = useState('')
   const text = en
-    ? { title: 'Plugins', close: 'Close plugins', lead: 'Run a Figma plugin on the open document. Load a folder or a .zip / .figma archive with manifest.json and code.js. The sample creates a labeled frame.', sample: 'Run sample', uiSample: 'Run UI sample', folder: 'Load plugin folder', archive: 'Load .zip / .figma', coverage: 'API coverage', commands: 'Choose a command', network: 'This plugin asks for network access. Futureox does not grant it.' }
-    : { title: '插件', close: '关闭插件', lead: '在当前文档上运行 Figma 插件。可以载入包含 manifest.json 和 code.js 的文件夹，或 .zip / .figma 压缩包。示例会创建一个带文字的画板。', sample: '运行示例', uiSample: '运行界面示例', folder: '载入插件文件夹', archive: '载入 .zip / .figma', coverage: 'API 覆盖', commands: '选择命令', network: '此插件声明了网络访问。Futureox 不会授予网络。' }
+    ? { title: 'Plugins', close: 'Close plugins', lead: 'Run a Figma plugin on the open document. Load a folder or a .zip / .figma archive with manifest.json and code.js. The sample creates a labeled frame.', sample: 'Run sample', uiSample: 'Run UI sample', folder: 'Load plugin folder', archive: 'Load .zip / .figma', coverage: 'API coverage', commands: 'Choose a command', network: 'Network is limited to the domains in networkAccess. The UI frame still cannot connect, and there is no account or collaboration server.' }
+    : { title: '插件', close: '关闭插件', lead: '在当前文档上运行 Figma 插件。可以载入包含 manifest.json 和 code.js 的文件夹，或 .zip / .figma 压缩包。示例会创建一个带文字的画板。', sample: '运行示例', uiSample: '运行界面示例', folder: '载入插件文件夹', archive: '载入 .zip / .figma', coverage: 'API 覆盖', commands: '选择命令', network: '网络仅限 networkAccess 声明的域名。界面帧仍不能联网，也没有账号或协作服务器。' }
 
   useEffect(() => { folder.current?.setAttribute('webkitdirectory', ''); folder.current?.setAttribute('directory', '') }, [])
   useEffect(() => () => { controller.current?.close(); controller.current = null }, [])
@@ -56,10 +56,9 @@ export function PluginHostDialog({ editor, desktop, onClose }: { editor: Editor;
       if (event.source !== frame.current?.contentWindow) return
       const data = event.data
       if (!data || typeof data !== 'object' || !('pluginMessage' in data)) return
-      try {
-        controller.current?.deliver((data as { pluginMessage: unknown }).pluginMessage)
+      void Promise.resolve(controller.current?.deliver((data as { pluginMessage: unknown }).pluginMessage)).then(() => {
         if (controller.current?.closed) { controller.current.close(); controller.current = null; setUi(null) }
-      } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)) }
+      }).catch(failure => { setError(failure instanceof Error ? failure.message : String(failure)) })
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
@@ -67,11 +66,13 @@ export function PluginHostDialog({ editor, desktop, onClose }: { editor: Editor;
   useEffect(() => {
     let pageId = editor.state.page
     let selection = editor.state.selection.join('\0')
+    let revision = editor.state.version
     return editor.subscribe(() => {
-      const next = { pageId: editor.state.page, selection: editor.state.selection.join('\0') }
-      const events = pluginEditorEvents({ pageId, selection }, next, !!controller.current?.applying)
+      const next = { pageId: editor.state.page, selection: editor.state.selection.join('\0'), revision: editor.state.version }
+      const events = pluginEditorEvents({ pageId, selection, revision }, next, !!controller.current?.applying)
       pageId = next.pageId
       selection = next.selection
+      revision = next.revision
       for (const event of events) {
         try { controller.current?.emit(event) }
         catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)) }
