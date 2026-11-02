@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { blank, uid, validateDocument } from './model'
-import { createShapeSeed, creationPointCount, resolveShapeCreation, type ShapeCreationKind } from './shape-creation'
+import { createShapeSeed, creationPointCount, creationToolStaysArmed, resolveShapeCreation, type ShapeCreationKind } from './shape-creation'
 
 const anchor = { x: 10.25, y: -9.75 }
 const options = { anchor, pointer: { x: 31.875, y: 5.125 }, screenDistance: 30, snap: false }
@@ -82,6 +82,13 @@ test('a nearly vertical line keeps its authored fractional endpoints', () => {
   const result = resolveShapeCreation(createShapeSeed('line'), { ...options, pointer: { x: anchor.x + 0.0001, y: anchor.y + 300 }, screenDistance: 300 })
   expect(result.node.network!.vertices[1].x).toBeCloseTo(0.0001, 12)
   expect(result.node.network!.vertices[1].y).toBe(300)
+})
+
+test('rectangle, ellipse, polygon and frame stay armed; text and select do not', () => {
+  for (const tool of ['rectangle', 'ellipse', 'polygon', 'frame', 'sticky']) expect(creationToolStaysArmed(tool)).toBe(true)
+  expect(creationToolStaysArmed('text')).toBe(false)
+  expect(creationToolStaysArmed('select')).toBe(false)
+  expect(creationToolStaysArmed('pen')).toBe(false)
 })
 
 test('polygon creation defaults to three vertices and arrow changes are bounded', () => {

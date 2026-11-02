@@ -457,12 +457,15 @@ register('workspace-list', async (value) => {
   if (r.includeDeleted !== undefined && typeof r.includeDeleted !== 'boolean') throw new Error('Invalid workspace filter')
   return { status: 'ok', ...await backend.request('workspace.list', r) }
 }, false)
+// Tab switches read an already-admitted workspace row. They must not take the
+// file-dialog/write gate, or an in-progress import/open reports BUSY and the
+// current canvas cannot change. The sidecar still admits the read on its own queue.
 register('workspace-open', async (value) => {
   const r = record(value, ['id', 'revision'])
   workspaceIdentity(r.id)
   if (r.revision !== undefined) workspaceRevision(r.revision)
   return workspacePublic(await backend.request('workspace.open', r))
-})
+}, false)
 register('workspace-commit', async (value) => {
   const r = record(value, ['documentJson', 'expectedRevision', 'mutationId'])
   workspaceRevision(r.expectedRevision, true); workspaceIdentity(r.mutationId)
