@@ -14,7 +14,7 @@ That example is the legacy wire shape. On a modern connection, omit the handshak
 
 The exact names, input schemas and current count come from result.tools. Count that array after applying the actual host grants, not a static marketing total. This catalog is bounded and returned whole; invented tools/list cursors reject. The shared API provides api.capabilities and the MCP resource futureox-design://automation/capabilities. Inspect methods, limits, editing and unsupported. The registry is composed in frontend/design-client/src/automation/index.ts and core.ts; host-only preview/workspace/preferences can change the exposed list. Missing methods are unavailable in that session, even if mentioned in documentation.
 
-Mapping is mechanical: node.update → design_node_update, text.styleRange → design_text_styleRange. Dots/hyphens normalize to underscores and collisions fail closed. Do not invent Figma aliases such as createFrame or executeJavaScript. Discovery does not grant access; execution rechecks authority.
+Mapping is mechanical: node.update → design_node_update, text.styleRange → design_text_styleRange. Dots/hyphens normalize to underscores and collisions fail closed. Do not invent Figma aliases such as createFrame or executeJavaScript inside this shared registry. A separate, explicit facade in `frontend/design-mcp/src/figma-facade.mjs` exposes a small Figma-shaped tool list and translates it back into this API; it is not a second document model and it does not eval plugin JavaScript. See [FIGMA_MCP_FACADE.md](FIGMA_MCP_FACADE.md). Discovery does not grant access; execution rechecks authority.
 
 For a saved tools/list JSON-RPC response, this counts exactly what was advertised without connecting to any endpoint:
 

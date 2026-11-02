@@ -105,6 +105,8 @@ export function AutomationDialog({editor,desktop,onClose,onHistory}:{editor:Edit
         <button onClick={()=>void task(async()=>setStatus(await bridge.enable({scope:'write',...selectedScopes()})))}>{text.enableWrite}</button>
         <button disabled={!status?.enabled} onClick={()=>void task(async()=>setStatus(await bridge.disable()))}>{text.disable}</button>
         <button disabled={!status?.enabled} onClick={()=>void task(async()=>{const r=await bridge.copyConnection();setResult(r.copied?text.copied:text.notCopied)})}>{text.copyConnection}</button>
+        {status?.figmaMcp?.url && <p>{text.figmaMcpUrl}{status.figmaMcp.url}{text.figmaMcpUrlRest}</p>}
+        {status?.figmaMcp?.available === false && <p>{text.figmaMcpUnavailable}{status.figmaMcp.reason}</p>}
       </>:<p>{text.webOnly}</p>}
     </fieldset>
     <fieldset disabled={busy}><legend>{text.inspect}</legend>

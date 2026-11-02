@@ -34,6 +34,7 @@ export class OperationBackend {
     this.execute = execute
     this.closeBackend = close
     this.capabilities = capabilities
+    this.scope = scope
     this.target = target
     this.methods = new Map()
     this.tools = []
