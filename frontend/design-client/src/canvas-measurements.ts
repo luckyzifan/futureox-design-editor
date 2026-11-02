@@ -1,8 +1,10 @@
 import type { Bounds, Point } from './model'
 export type MeasurementAxis = 'horizontal' | 'vertical'
 export type Measurement = { from: Point; to: Point; distance: number; axis: MeasurementAxis }
-/** Figma's spacing red. DOM and the GPU overlay both use this. */
-export const SPACING_RED = '#f24822'
+/** Mac desktop Figma spacing red from gaps5. DOM and the GPU overlay both use this. */
+export const SPACING_RED = '#e05634'
+/** White type on the red distance pill. */
+export const DISTANCE_PILL_TEXT = '#ffffff'
 const EPS = 1e-9
 const encloses = (outer: Bounds, inner: Bounds) => outer.x <= inner.x + EPS && outer.y <= inner.y + EPS
   && outer.x + outer.width + EPS >= inner.x + inner.width && outer.y + outer.height + EPS >= inner.y + inner.height

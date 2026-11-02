@@ -6,7 +6,9 @@ import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { Canvas } from './Canvas'
+import { Inspector } from './Inspector'
 import { Editor } from './engine'
+import { commonValue, selectionMetric } from './selection-properties'
 import { blank, node, type DesignNode } from './model'
 import { shortcutPreference } from './shortcut-preference'
 import { interfacePreference } from './interface-preference'
@@ -86,7 +88,7 @@ test('a selected layer shows the blue box, white corner handles, and a blue size
   await act(async () => editor.select([rect.id]))
   const outline = mount.querySelector('[data-testid="canvas-selection-outline"]')
   expect(outline?.getAttribute('stroke')).toBe(SELECTION_BLUE)
-  expect(outline?.getAttribute('stroke-width')).toBe('2')
+  expect(outline?.getAttribute('stroke-width')).toBe('1')
   expect(outline?.getAttribute('data-selection-role')).toBe('object')
   const handles = [...mount.querySelectorAll('[data-testid^="resize-"]')].filter(node => /^resize-\d+$/.test(node.getAttribute('data-testid') || ''))
   expect(handles).toHaveLength(4)
@@ -111,7 +113,9 @@ test('hover is a lighter hairline and is not drawn on the selected layer', async
   expect(hover?.getAttribute('data-chrome')).toBe('hover')
   expect(hover?.getAttribute('stroke')).toBe(HOVER_BLUE)
   expect(hover?.getAttribute('stroke-width')).toBe('1')
-  expect(HOVER_BLUE).not.toBe(SELECTION_BLUE)
+  expect(HOVER_BLUE).toBe(SELECTION_BLUE)
+  expect(hover?.querySelector('[data-testid^="resize-"]')).toBeNull()
+  expect(hover?.querySelector('[data-testid="canvas-selection-size"]')).toBeNull()
   await act(async () => pointer('pointermove', 60, 55))
   await flush()
   expect(mount.querySelector('[data-testid="canvas-hover-outline"]')).toBeNull()
@@ -155,7 +159,8 @@ test('Alt draws red gap lines to the hovered layer, not through the selection', 
   const lines = [...mount.querySelectorAll('[data-testid="canvas-measurement"]')]
   expect(lines.length).toBeGreaterThan(0)
   expect(lines.every(line => line.querySelector('line')?.getAttribute('stroke') === SPACING_RED)).toBe(true)
-  expect(lines.map(line => line.querySelector('text')?.textContent)).toContain('50')
+  expect(lines.every(line => line.querySelectorAll('[data-measure="edge"]').length === 2)).toBe(true)
+  expect(lines.map(line => line.querySelector('[data-pill="measure"]')?.textContent)).toContain('50')
   await act(async () => key('Alt', { altKey: false }, 'keyup'))
   expect(mount.querySelector('[data-testid="canvas-measurement"]')).toBeNull()
 })
@@ -170,6 +175,65 @@ test('Alt inside an empty frame reports the four paddings around the selection',
   await flush()
   const distances = [...mount.querySelectorAll('[data-testid="canvas-measurement"] text')].map(node => node.textContent).sort()
   expect(distances).toEqual(['110', '210', '40', '50'])
+})
+
+test('an empty canvas has no selection blue, and a hover is an outline only', async () => {
+  const target = node('rectangle', 80, 60, 60, 47)
+  await render([target])
+  await act(async () => pointer('pointermove', 20, 20))
+  await flush()
+  expect(mount.querySelector('[data-testid="canvas-hover-outline"]')).toBeNull()
+  expect(mount.querySelector('[data-testid="canvas-selection-outline"]')).toBeNull()
+  expect(mount.querySelector(`[stroke="${SELECTION_BLUE}"]`)).toBeNull()
+  await act(async () => pointer('pointermove', 100, 80))
+  await flush()
+  const hover = mount.querySelector('[data-testid="canvas-hover-outline"]')
+  expect(hover?.getAttribute('data-node-id')).toBe(target.id)
+  expect(hover?.getAttribute('stroke')).toBe(SELECTION_BLUE)
+  expect(mount.querySelector('[data-testid="canvas-selection-size"]')).toBeNull()
+  expect(mount.querySelector('[data-testid="resize-0"]')).toBeNull()
+})
+
+test('a 60 by 47 selection shows that size pill, and a three-layer marquee shows Mixed X and Y', async () => {
+  interfacePreference.set({ locale: 'en' })
+  const a = node('rectangle', 40, 40, 60, 47)
+  const b = node('rectangle', 140, 110, 40, 28)
+  const c = node('rectangle', 230, 70, 36, 22)
+  const doc = blank('Mac chrome')
+  doc.nodes = Object.fromEntries([a, b, c].map(item => [item.id, item]))
+  doc.pages[0].children = [a.id, b.id, c.id]
+  editor.load(doc)
+  editor.set({ view: { x: 0, y: 0, zoom: 1 }, snap: false, snapPixels: false, tool: 'select' })
+  await act(async () => {
+    root.render(<><Canvas editor={editor} /><Inspector editor={editor} /></>)
+    for (let i = 0; i < 8; i++) await Promise.resolve()
+  })
+  host().focus()
+  await act(async () => editor.select([a.id]))
+  expect(mount.querySelector('[data-testid="canvas-selection-size"]')?.textContent).toBe('60 × 47')
+  expect(mount.querySelectorAll('[data-testid^="resize-"]').length).toBeGreaterThanOrEqual(4)
+  await marquee([20, 20], [280, 160])
+  expect(editor.state.selection).toHaveLength(3)
+  const nodes = editor.state.selection.map(id => editor.state.doc.nodes[id])
+  expect(commonValue(nodes.map(item => selectionMetric(item, 'x', editor.state.doc)))).toBeUndefined()
+  expect(commonValue(nodes.map(item => selectionMetric(item, 'y', editor.state.doc)))).toBeUndefined()
+  expect(mount.querySelector<HTMLInputElement>('input[aria-label="X"]')?.placeholder).toBe('Mixed')
+  expect(mount.querySelector<HTMLInputElement>('input[aria-label="Y"]')?.placeholder).toBe('Mixed')
+  expect(editor.canUndo).toBe(false)
+})
+
+test('a one-pixel gap uses a red distance pill and edge ticks', async () => {
+  const selected = node('rectangle', 40, 40, 20, 20)
+  const neighbor = node('rectangle', 61, 40, 20, 20)
+  await render([selected, neighbor])
+  await act(async () => editor.select([selected.id]))
+  await act(async () => pointer('pointermove', 70, 50, { altKey: true }))
+  await flush()
+  const guide = mount.querySelector('[data-testid="canvas-measurement"]')
+  expect(guide?.getAttribute('data-distance')).toBe('1')
+  expect(guide?.querySelector('[data-pill="measure"]')?.textContent).toBe('1')
+  expect(guide?.querySelector('[data-measure="gap"]')?.getAttribute('stroke')).toBe(SPACING_RED)
+  expect(guide?.querySelectorAll('[data-measure="edge"]')).toHaveLength(2)
 })
 
 test('group click, empty arrows, and Space-pan stay as they were', async () => {

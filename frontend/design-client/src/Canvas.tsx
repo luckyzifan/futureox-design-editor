@@ -247,13 +247,16 @@ class PresentedSignal {
 }
 function SelectionChromeChip({ testId, x, y, text, size, zoom, fill, opacity, centered = false, tone = 'paper' }: {
   testId: string; x: number; y: number; text: string; size: number; zoom: number; fill: string; opacity: number; centered?: boolean
-  tone?: 'paper' | 'accent'
+  tone?: 'paper' | 'accent' | 'measure'
 }) {
   const width = selectionChromeChipWidth(text, size), pad = 7
   const boxW = (width + pad * 2) / zoom, boxH = (size + 8) / zoom
-  const textFill = tone === 'accent' ? SIZE_PILL_TEXT : fill
+  const textFill = tone === 'paper' ? fill : '#ffffff'
+  const frame = tone === 'accent' ? 'selection-chrome-frame selection-size-pill'
+    : tone === 'measure' ? 'selection-chrome-frame measurement-distance-pill'
+    : 'selection-chrome-frame'
   return <g data-testid={testId} data-pill={tone} opacity={opacity} pointerEvents="none">
-    <rect className={tone === 'accent' ? 'selection-chrome-frame selection-size-pill' : 'selection-chrome-frame'} vectorEffect="non-scaling-stroke"
+    <rect className={frame} vectorEffect="non-scaling-stroke"
       x={centered ? x - boxW / 2 : x - pad / zoom} y={y - (size + 3) / zoom}
       width={boxW} height={boxH} rx={7 / zoom} />
     <text x={x} y={y} textAnchor={centered ? 'middle' : 'start'} fontSize={size / zoom} fill={textFill}>{text}</text>
@@ -3282,10 +3285,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           )}
           {measurements.map((m,i)=>{
             const placed = measurementLabel(m, zoom)
-            return <g key={`measurement-${i}`} data-testid="canvas-measurement" pointerEvents="none" opacity={gpuOverlay?0:1}>
-            <line x1={m.from.x} y1={m.from.y} x2={m.to.x} y2={m.to.y} stroke={SPACING_RED} strokeWidth={1/zoom}/>
-            {measurementTicks(m, zoom).map(([from, to], tick) => <line key={tick} x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={SPACING_RED} strokeWidth={1/zoom}/>)}
-            <text x={placed.anchor.x + placed.offset.x / zoom} y={placed.anchor.y + placed.offset.y / zoom} textAnchor="middle" dominantBaseline="central" fontSize={11/zoom} fill={SPACING_RED} paintOrder="stroke" stroke="#fff" strokeWidth={2/zoom}>{Number(m.distance.toFixed(2))}</text>
+            const distanceText = String(Number(m.distance.toFixed(2)))
+            return <g key={`measurement-${i}`} data-testid="canvas-measurement" data-distance={distanceText} pointerEvents="none" opacity={gpuOverlay?0:1}>
+            <line data-measure="gap" x1={m.from.x} y1={m.from.y} x2={m.to.x} y2={m.to.y} stroke={SPACING_RED} strokeWidth={1/zoom}/>
+            {measurementTicks(m, zoom).map(([from, to], tick) => <line data-measure="edge" key={tick} x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={SPACING_RED} strokeWidth={1/zoom}/>)}
+            <SelectionChromeChip testId={`canvas-distance-pill-${i}`} tone="measure" centered opacity={1}
+              x={placed.anchor.x + placed.offset.x / zoom} y={placed.anchor.y + placed.offset.y / zoom}
+              text={distanceText} size={11} zoom={zoom} fill="#ffffff" />
           </g>}) }
           {!guides.surface && guides.x && (
             <line

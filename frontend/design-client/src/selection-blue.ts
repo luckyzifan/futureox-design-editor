@@ -1,19 +1,18 @@
-/** One selection blue for the canvas box, frame titles, handles, and the size pill.
- * It is the workspace accent, so a selected frame and its outline read as the same mark.
- * Mac desktop Figma uses a bright blue box; this is that blue in this product. */
-export const SELECTION_BLUE = '#3459d4'
-/** Hover is the same blue lifted toward white. A 1px hairline in this color
- * cannot be read as the 2px selection box or as a multi-select member outline. */
-export const HOVER_BLUE = '#859be5'
+/** Mac desktop Figma selection blue from gaps5 (about #4597F7, ~1pt).
+ * The workspace accent stays #3459d4. This blue is only the canvas box,
+ * hover outline, corner rims, selected frame titles, and the size pill. */
+export const SELECTION_BLUE = '#4597f7'
+/** Hover uses the same blue as the selection stroke. It has no handles and no size pill. */
+export const HOVER_BLUE = SELECTION_BLUE
 export const HOVER_STROKE_PX = 1
-/** Screen pixels. A single object and a multi-select union use the thicker stroke; each member is a hairline. */
-export const SELECTION_UNION_STROKE_PX = 2
+/** Screen pixels. Gaps5 measures the box at about 1pt. Members use the same hairline. */
+export const SELECTION_UNION_STROKE_PX = 1
 export const SELECTION_MEMBER_STROKE_PX = 1
 export const SELECTION_HANDLE_PX = 8
 /** White type on the selection-blue size chip under the box. */
 export const SIZE_PILL_TEXT = '#ffffff'
-/** Translucent selection blue for the drag marquee. */
-export const MARQUEE_FILL = '#3459d419'
+/** Marquee wash measured on the Mac desktop drag. The border is the selection blue. */
+export const MARQUEE_FILL = '#dce9f5'
 
 export function srgbUnit(hex: string): [number, number, number, number] {
   const value = Number.parseInt(hex.slice(1), 16)

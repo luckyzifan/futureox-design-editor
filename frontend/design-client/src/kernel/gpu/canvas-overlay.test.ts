@@ -33,7 +33,7 @@ test('the selection box uses the same blue as the DOM chrome', () => {
   const corners = [{ x: 10, y: 20 }, { x: 40, y: 20 }, { x: 40, y: 50 }, { x: 10, y: 50 }]
   const data = overlayVertices({ pixelGrid: false, selection: { corners, handles: true } }, { x: 0, y: 0, zoom: 1 }, 200, 200)
   expect([data[2], data[3], data[4], data[5]]).toEqual(stored(SELECTION_BLUE))
-  expect(SELECTION_BLUE).toBe('#3459d4')
+  expect(SELECTION_BLUE).toBe('#4597f7')
 })
 
 test('zero-size selections retain visible finite resize handles', () => {

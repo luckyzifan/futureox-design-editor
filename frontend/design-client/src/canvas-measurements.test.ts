@@ -31,7 +31,7 @@ test('end ticks stay six CSS pixels and short labels step off the segment', () =
   expect(measurementLabel({ ...line, distance: 40 }, 2).offset).toEqual({ x: 0, y: -6 })
 })
 test('Alt measures the hovered layer, not the selection, and stays off during drag or Space', () => {
-  expect(SPACING_RED).toBe('#f24822')
+  expect(SPACING_RED).toBe('#e05634')
   const selected = 'a', sibling = 'b'
   expect(altMeasurementTarget({
     alt: true, dragging: false, space: false, tool: 'select', selection: [selected], hover: sibling,

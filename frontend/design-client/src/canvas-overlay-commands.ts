@@ -1,6 +1,6 @@
 import type { Bounds, DesignDocument, Point } from './model'
 import { apply, type SceneEntry } from './geometry'
-import { measureBounds, measurementLabel, type Measurement } from './canvas-measurements'
+import { DISTANCE_PILL_TEXT, measureBounds, measurementLabel, type Measurement } from './canvas-measurements'
 import { selectionSizeLabel } from './selection-size-label'
 import { SELECTION_BLUE, SIZE_PILL_TEXT } from './selection-blue'
 import type { CanvasLabel } from './kernel/gpu/canvas-labels'
@@ -75,7 +75,7 @@ export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlay
   for (const measurement of measurements) {
     const placed = measurementLabel(measurement)
     labels.push({ anchor: placed.anchor, offset: placed.offset, text: String(Number(measurement.distance.toFixed(2))),
-      size: 11, color: '#f24822', halo: true, centered: true, kind: 'measurement' })
+      size: 11, color: DISTANCE_PILL_TEXT, centered: true, kind: 'measurement', frame: 'measure' })
   }
   return {document,pageId:input.pageId,epoch:input.epoch,uiIdentity,commands:{pixelGrid:input.pixelGrid,labels,measurements,
     transforms:Object.fromEntries(owners.map(id=>[id,document.nodes[id].transform])),
