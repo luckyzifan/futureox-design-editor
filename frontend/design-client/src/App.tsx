@@ -818,7 +818,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const actionLabels: Record<string, string> = { '撤销': toolbarText.undo, '重做': toolbarText.redo, '左对齐': toolbarText.alignLeft, '水平居中': toolbarText.alignCenter, '右对齐': toolbarText.alignRight, '顶部对齐': toolbarText.alignTop, '垂直居中': toolbarText.alignMiddle, '底部对齐': toolbarText.alignBottom, '水平等距': toolbarText.distributeHorizontal, '垂直等距': toolbarText.distributeVertical }
   const action = (label: string, Icon: typeof Square, fn: () => void, disabled = false, menuItem = false) => (
     <button type="button" title={menuItem ? actionLabels[label] || label : undefined} data-tooltip={menuItem ? undefined : label === '撤销' ? `${toolbarText.undo} (${shortcutLabel('undo', shortcutContext)})` : label === '重做' ? `${toolbarText.redo} (${shortcutLabel('redo', shortcutContext)})` : actionLabels[label] || label}
-      aria-label={actionLabels[label] || label} data-property-preview-undo={label === '撤销' ? '' : undefined} role={menuItem ? 'menuitem' : undefined} tabIndex={menuItem ? -1 : undefined} disabled={disabled}
+      aria-label={label === '撤销' ? toolbarText.undo : label === '重做' ? toolbarText.redo : actionLabels[label] || label} data-property-preview-undo={label === '撤销' ? '' : undefined} role={menuItem ? 'menuitem' : undefined} tabIndex={menuItem ? -1 : undefined} disabled={disabled}
       onClick={() => { focusCanvas(); fn() }}>
       <Icon size={16} />
     </button>
@@ -897,7 +897,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         if (!(e.button === 0 && (panelRecoveryEntry(target) || canRefocusPendingPanelInput(target))) && !penCanvas && target !== document.activeElement && !target.closest('.rich-text-editor') && !commitPendingEdits(editor)) {
           e.preventDefault(); e.stopPropagation(); return
         }
-        if (!ready || switching || (desktopStatus.transitioning && !(e.target as Element).closest('[data-desktop-dialog]'))) {
+        if (!ready || switching || (desktopStatus.transitioning && !(e.target as Element).closest('[data-desktop-dialog],[data-workspace-tabs],[data-locale-switch]'))) {
           e.preventDefault()
           e.stopPropagation()
         }
@@ -911,7 +911,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         if (!((e.key === 'Enter' || e.key === ' ') && panelRecoveryEntry(e.target as Element)) && !penCanvas && !nudgeKey && !(e.target as Element).closest('input,textarea,select,.rich-text-editor') && !commitPendingEdits(editor)) {
           e.preventDefault(); e.stopPropagation(); return
         }
-        if (!ready || switching || (desktopStatus.transitioning && !(e.target as Element).closest('[data-desktop-dialog]'))) {
+        if (!ready || switching || (desktopStatus.transitioning && !(e.target as Element).closest('[data-desktop-dialog],[data-workspace-tabs],[data-locale-switch]'))) {
           e.preventDefault()
           e.stopPropagation()
         }
@@ -919,7 +919,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     >
       {!showHome && (!ready || switching || (desktopStatus.transitioning && !desktopPrompt)) && (
         <div className="document-transition" role="status">
-          {source?source.notice||'正在打开画板…':desktopSession ? '正在处理本机设计文件…' : '正在保存并打开设计…'}
+          {source?source.notice||(locale === 'en' ? 'Opening the canvas…' : '正在打开画板…'):desktopSession ? (locale === 'en' ? 'Working on the local design file…' : '正在处理本机设计文件…') : (locale === 'en' ? 'Saving and opening the design…' : '正在保存并打开设计…')}
           {source?.busy&&<button type="button" data-desktop-dialog onClick={source.cancel}>停止当前操作</button>}
         </div>
       )}
@@ -1008,8 +1008,15 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           </button> : <button type="button" disabled={!ready} onClick={() => void openLocalFiles()}>
             <FolderOpen size={16} />本机文件
           </button>}
-          <button type="button" className="prototype-preview-button" aria-label="预览原型" title="预览原型"
-            disabled={!s.doc.pages.some((page) => page.children.length)} onClick={() => setShowPrototype(true)}><Play size={16} /><span>预览</span></button>
+          <label className="locale-switch" data-locale-switch>
+            <span className="sr-only">{panelText.language}</span>
+            <select aria-label={panelText.language} value={locale} onChange={event => interfacePreference.set({ locale: event.target.value === 'en' ? 'en' : 'zh-CN' })}>
+              <option value="zh-CN">中文</option>
+              <option value="en">English</option>
+            </select>
+          </label>
+          <button type="button" className="prototype-preview-button" aria-label={locale === 'en' ? 'Preview prototype' : '预览原型'} title={locale === 'en' ? 'Preview prototype' : '预览原型'}
+            disabled={!s.doc.pages.some((page) => page.children.length)} onClick={() => setShowPrototype(true)}><Play size={16} /><span>{locale === 'en' ? 'Preview' : '预览'}</span></button>
           <button
             className="primary"
             onClick={() => {
@@ -1017,10 +1024,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             }}
           >
             <Download size={14} />
-            导出
+            {locale === 'en' ? 'Export' : '导出'}
             <ChevronDown size={12} />
           </button>
-          <button type="button" className="app-settings-button" aria-label="打开设置"
+          <button type="button" className="app-settings-button" aria-label={panelText.openSettings}
             disabled={!ready || switching || desktopStatus.transitioning}
             title={!ready || switching || desktopStatus.transitioning ? '正在处理设计文件，完成后可打开设置' : `设置 (${formatShortcutCombo('Mod+,', shortcutContext.platform)})`}
             aria-haspopup="dialog" aria-expanded={showSettings}
