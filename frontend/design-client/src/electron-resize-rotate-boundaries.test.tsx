@@ -201,6 +201,8 @@ test('T02 right-hand angle is clockwise-positive and shows two decimals before p
   const field = mount.querySelector<HTMLInputElement>('input[aria-label="旋转 °"]')!
   expect(field.value).toBe(formatAngleDegrees(30))
   expect(field.value).toBe('30.00')
+  const hint = mount.querySelector('[data-testid="rotation-feedback"]')
+  expect(hint?.textContent).toBe(field.value)
   expect(selectionMetric(editor.state.doc.nodes[n.id], 'rotation', editor.state.doc)).toBeCloseTo(30, 6)
   const chip = [...mount.querySelectorAll('text')].map(node => node.textContent).find(text => text?.includes('×'))
   expect(chip).toBe('105.13 × 21.2')

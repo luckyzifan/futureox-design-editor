@@ -5,7 +5,7 @@ description: Develop, review, or test this Futureox Design local-first editor, i
 
 2026-11-02 [画布操作对照](../../../testing/verification-figma-canvas-ops-20261102/README.md)只改选择拖动、旋转手柄、尺寸标签、创建填充和自动化文案。已选图层的拖动不被重叠文字抢走；旋转手柄画在选区角外；尺寸标签最多两位小数。形状单击为 100×100，拖拽用指针跨度，填充在呈现前保持。不改缩放覆盖、粘性仿射或标签缓存。33/100ms 与完整 G2/G5 仍未关闭。
 
-2026-11-02 [画布操作与 Figma 旋转/粘贴](../../../testing/verification-figma-canvas-ops-20261102/README.md)把设计面板角度改成顺时针为正，拖动手柄时右侧角度与蓝色选框跟指针同帧更新。选框描边为 2px、角点为 8px。⌘V 每次平移 10px；选中画板时副本进入该画板并保持世界位置加这一步。⌘D 仍是原位重复上次位移。不改缩放覆盖、粘性仿射或 GPU 预算。33/100ms 与完整 G2/G5 未测。
+2026-11-02 [画布操作与 Figma 旋转/粘贴](../../../testing/verification-figma-canvas-ops-20261102/README.md)把画布旋转读数改成和检查器同一个局部顺时针角。⌘V 和 Ctrl/⌘D 都把普通图层加上 10。单角圆角画进矩形填充。不改缩放覆盖、粘性仿射或 GPU 预算。33/100ms 与完整 G2/G5 未测。
 
 2026-11-02 [导入与传输对照](../../../testing/verification-interop-transfer-20261102/README.md)只修浏览器 FIG 描边端点、`showShadowBehindNode` 保留，以及原生 `LAYER_BLUR` 与 `FOREGROUND_BLUR` 同义。不改缩放/瓦片导航、GPU 预算或实验开关。精确瓦片 `slice` 在缓存持有缓冲区时仍是所有权边界。Sketch 玻璃/纹理、FIG 反向堆叠与变量、Display P3 默认 PNG 编码、33/100ms 和完整 G2/G5 仍未关闭。
 
