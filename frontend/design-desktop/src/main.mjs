@@ -38,9 +38,11 @@ import { planLegacyUserDataMigration, runLegacyUserDataMigration } from './legac
 import { renderCheckConfig, renderCheckHandler } from './render-check.mjs'
 import { WorkspaceRoots, workspaceRootError } from './workspace-roots.mjs'
 import { parseGpuWorkingBudgetMiB } from './gpu-working-budget.mjs'
+import { createPluginUiHost, isPluginUiRequest, isRendererRequestAllowed } from './plugin-ui.mjs'
 
 let interfaceLocale = 'zh-CN'
 let rebuildApplicationMenu = () => {}
+const pluginUi = createPluginUiHost()
 
 const renderDiagnosticsEnabled = !app.isPackaged && ['1','detail'].includes(process.env.CORE_RENDER_DIAGNOSTICS)
 const terminalDiagnostics=createRenderDiagnostics({enabled:renderDiagnosticsEnabled,source:'host',session:Math.floor(Math.random()*1e12),sink:record=>console.log(PREFIX+JSON.stringify(record))})
@@ -321,6 +323,8 @@ function getPetHost() {
   return petHost
 }
 register('pet-configure', mode => getPetHost().configure(mode), false)
+register('plugin-ui-publish', value => pluginUi.publish(value), false)
+register('plugin-ui-revoke', value => pluginUi.revoke(value), false)
 register('pet-event', event => petHost ? petHost.event(event) : { ok: true, accepted: false }, false)
 
 function sendCommand(command) {
@@ -999,15 +1003,12 @@ async function buildWindow() {
     })
   })
   isolated.webRequest.onBeforeRequest((details, callback) => {
-    callback({
-      cancel:
-        !isAppResource(details.url) &&
-        !details.url.startsWith('blob:design-app://app/') &&
-        !details.url.startsWith('data:'),
-    })
+    callback({ cancel: !isRendererRequestAllowed(details.url) })
   })
   await isolated.protocol.handle('design-app', async (request) => {
     try {
+      const pluginResponse = pluginUi.respond(request)
+      if (pluginResponse) return pluginResponse
       if (renderCheck && isAppResource(request.url)) {
         const response = await serveRenderCheck(request)
         if (response) return response
@@ -1098,7 +1099,11 @@ async function buildWindow() {
     })
   })
   window.webContents.on('will-navigate', (event) => event.preventDefault())
-  window.webContents.on('will-frame-navigate', (event) => event.preventDefault())
+  window.webContents.on('will-frame-navigate', (event, url) => {
+    const target = typeof url === 'string' ? url : event?.url
+    if (isPluginUiRequest(target)) return
+    event.preventDefault()
+  })
   window.webContents.on('will-redirect', (event) => event.preventDefault())
   window.webContents.on('will-attach-webview', (event) => event.preventDefault())
   window.webContents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {

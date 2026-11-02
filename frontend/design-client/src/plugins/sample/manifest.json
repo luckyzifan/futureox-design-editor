@@ -1,0 +1,9 @@
+{
+  "name": "Labeled frame",
+  "id": "futureox.sample.labeled-frame",
+  "api": "1.0.0",
+  "main": "code.js",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": { "allowedDomains": ["none"] }
+}

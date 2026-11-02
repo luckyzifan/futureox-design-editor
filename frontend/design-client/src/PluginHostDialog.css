@@ -1,0 +1,16 @@
+.plugin-host-dialog { width: min(880px, 96vw); max-height: min(860px, 92vh); overflow: auto; }
+.plugin-host-dialog h2 { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.plugin-host-lead { margin: 0 0 12px; line-height: 1.55; color: var(--workspace-muted); }
+.plugin-host-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.plugin-host-actions .primary { background: var(--workspace-accent); border-color: var(--workspace-accent); color: #fff; }
+.plugin-host-actions .primary:hover:not(:disabled) { background: var(--workspace-accent-hover); border-color: var(--workspace-accent-hover); }
+.plugin-host-log, .plugin-host-coverage { max-height: 220px; overflow: auto; margin: 8px 0 0; padding: 8px 10px; border: 1px solid var(--workspace-border); border-radius: 8px; background: var(--workspace-field); }
+.plugin-host-log { white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.plugin-host-coverage { list-style: none; padding-left: 10px; }
+.plugin-host-coverage li { margin: 6px 0; line-height: 1.45; }
+.plugin-host-coverage li[data-status="unsupported"] { color: var(--workspace-muted); }
+.plugin-host-coverage code { font-size: 11px; }
+.plugin-host-frame { display: block; margin-top: 12px; background: #fff; border: 1px solid var(--workspace-border); border-radius: 8px; }
+.plugin-host-message { display: grid; gap: 8px; margin-top: 12px; }
+.plugin-host-message textarea { width: 100%; min-height: 72px; resize: vertical; }
+.plugin-host-dialog button:focus-visible, .plugin-host-dialog input:focus-visible, .plugin-host-dialog textarea:focus-visible { outline: 2px solid var(--workspace-accent); outline-offset: 2px; }

@@ -53,6 +53,10 @@ contextBridge.exposeInMainWorld(
     renderDiagnostics: process.argv.includes('--core-render-diagnostics'),
     renderDiagnosticsDetail: process.argv.includes('--core-render-diagnostics-detail'),
     petConfigure: mode => invoke('pet-configure', mode),
+    pluginUi: Object.freeze({
+      publish: value => invoke('plugin-ui-publish', value),
+      revoke: value => invoke('plugin-ui-revoke', value),
+    }),
     petEvent: event => invoke('pet-event', event),
     onPetStatus: callback => subscribe('design-desktop:pet-status', callback, value => value &&
       ['off', 'quiet', 'active'].includes(value.mode) && ['off', 'starting', 'ready', 'unavailable'].includes(value.phase) &&

@@ -13,7 +13,7 @@ export const CSP = [
   "font-src 'self' data: blob:",
   "connect-src 'self'",
   "worker-src 'self' blob:",
-  "frame-src 'none'",
+  "frame-src design-app://plugin",
   "object-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",
