@@ -279,5 +279,5 @@ test('selecting a frame shows a direct child frame, and an empty frame keeps a h
   await act(async () => editor.select([frame.id]))
   expect(mount.querySelector(`[data-frame-title="${child.id}"]`)?.textContent).toBe('Inner')
   await act(async () => editor.select([section.id]))
-  expect(mount.querySelector(`[data-frame-title="${section.id}"]`)?.getAttribute('fill')).toBe('#0d99ff')
+  expect(mount.querySelector(`[data-frame-title="${section.id}"]`)?.getAttribute('fill')).toBe('#3459d4')
 })
