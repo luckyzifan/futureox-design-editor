@@ -88,8 +88,9 @@ describe('bounded keyboard presets', () => {
     await dispatchEditorShortcut(editor, key('+', { code: 'Equal', shiftKey: true }), context)
     expect(screenToWorld(editor.state.view, editor.pointerScreen)).toEqual(before)
     const zoomed = editor.state.view.zoom
+    expect(zoomed).toBe(1.25)
     await dispatchEditorShortcut(editor, key('_', { code: 'Minus', shiftKey: true }), context)
-    expect(editor.state.view.zoom).toBeLessThan(zoomed)
+    expect(editor.state.view.zoom).toBe(1)
     expect(screenToWorld(editor.state.view, editor.pointerScreen)).toEqual(before)
   })
   test('Mac Option symbols resolve US/Generic chords without forcing unmodified letters to physical positions', () => {

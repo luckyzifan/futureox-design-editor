@@ -1327,11 +1327,11 @@ export class Editor {
         .map((e) => e.bounds),
     )
   }
-  /** Canvas press and the hover outline use Figma's parent-first target.
-   * An unentered frame, group, component, or instance wins over its children.
-   * Cmd/Ctrl (deep) returns the leaf. Selecting a child enters its ancestors,
-   * so the next click stays at that level. Clipping, locks, and foreground
-   * boards stay in hit(). */
+  /** Canvas press and the hover outline use the Mac Figma frame rule: child
+   * paint selects that child; empty frame area selects the frame. Groups do
+   * not replace that geometric target. Command/Ctrl deep-select returns the
+   * same target and does not depend on which group is selected. Components
+   * and instances still capture ordinary clicks. */
   selectionHit(p: Point, deep = false, index?: SpatialIndex, zoom = this.state.view.zoom, snapshot?: PickSnapshot): string | null {
     return this.hit(p, deep, index, zoom, snapshot)
   }
@@ -2687,6 +2687,115 @@ export class Editor {
       },
       '转换为矢量',
     )
+  }
+  /** Bake the selection into one vector. A single boolean uses its own
+   * operation. Other selections union their shape leaves. Nested booleans
+   * mixed with other layers are refused. */
+  async flattenSelection() {
+    if (this.disposed || this.state.busy || this.interactionActive) return
+    const ids = this.topSelection()
+    if (!ids.length) return
+    const doc = this.state.doc
+    const parents = allParents(doc)
+    const parent = parents.get(ids[0])
+    if (!parent || ids.some(id => parents.get(id) !== parent)) {
+      this.notify('展平需要选择同一容器内的图层')
+      return
+    }
+    if (ids.some(id => {
+      const n = doc.nodes[id]
+      return !n || n.kind === 'text' || n.kind === 'slice' || !!n.instance || !!n.component || !!n.componentSet
+    })) {
+      this.notify('文字、切片和组件不能展平')
+      return
+    }
+    const siblings = doc.nodes[parent]?.children || doc.pages.find(page => page.id === parent)?.children
+    if (!siblings) return
+    const ordered = [...ids].sort((a, b) => siblings.indexOf(a) - siblings.indexOf(b))
+    if (ordered.length > 1 && ordered.some(id => doc.nodes[id].booleanOperation)) {
+      this.notify('请单独展平布尔运算')
+      return
+    }
+    const shapeLeaves = (id: string, into: string[], seen: Set<string>) => {
+      if (seen.has(id)) return
+      const n = doc.nodes[id]
+      if (!n || !n.visible || n.kind === 'text' || n.kind === 'slice' || n.instance || n.component) return
+      seen.add(id)
+      if ((n.kind === 'group' || n.kind === 'frame' || n.kind === 'section') && n.children.length && !n.booleanOperation) {
+        if ((n.kind === 'frame' || n.kind === 'section') && n.fills.some(fill => fill.visible && fill.opacity > 0)) into.push(id)
+        n.children.forEach(child => shapeLeaves(child, into, seen))
+        return
+      }
+      if (n.booleanOperation && n.children.length) {
+        n.children.forEach(child => shapeLeaves(child, into, seen))
+        return
+      }
+      into.push(id)
+    }
+    let operation: BooleanOp = 'union'
+    const sources: string[] = []
+    const only = ordered.length === 1 ? doc.nodes[ordered[0]] : undefined
+    if (only?.booleanOperation && only.children.length) {
+      operation = only.booleanOperation
+      only.children.forEach(child => shapeLeaves(child, sources, new Set()))
+    } else ordered.forEach(id => shapeLeaves(id, sources, new Set()))
+    if (!sources.length || sources.length > 64) {
+      this.notify(sources.length > 64 ? '一次最多展平 64 个形状' : '没有可展平的形状')
+      return
+    }
+    const named = doc.nodes[ordered[ordered.length - 1]]
+    const front = doc.nodes[sources[sources.length - 1]]
+    const before = doc
+    const epoch = this.sessionEpoch
+    const current = () => !this.disposed && this.sessionEpoch === epoch
+    this.set({ busy: true, message: '正在展平…' })
+    try {
+      if (!current()) return
+      const results = await this.runGeometry({
+        operation,
+        nodes: sources.map(id => ({ ...doc.nodes[id], children: [], transform: worldMatrix(doc, id, parents) })),
+      })
+      if (!current()) return
+      if (this.state.doc !== before) throw new Error('文档已发生变化，请重新展平')
+      const contours = results[0] || []
+      if (!contours.length) {
+        this.notify('展平没有产生轮廓')
+        return
+      }
+      const box = bounds(contours.flat())
+      if (![box.x, box.y, box.width, box.height].every(Number.isFinite) || box.width <= 0 || box.height <= 0) {
+        this.notify('展平没有产生轮廓')
+        return
+      }
+      const vector = node('vector', box.x, box.y, Math.max(0.01, box.width), Math.max(0.01, box.height))
+      vector.name = named.name
+      vector.network = contoursToNetwork(contours.map(ring => ring.map(point => ({ x: point.x - box.x, y: point.y - box.y }))))
+      vector.fills = cloneValue(front.fills.length ? front.fills : named.fills)
+      vector.strokes = cloneValue(front.strokes.length ? front.strokes : named.strokes)
+      vector.opacity = named.opacity
+      vector.blend = named.blend
+      vector.effects = cloneValue(named.effects)
+      vector.transform = multiply(inverse(worldMatrix(doc, parent, parents)), vector.transform)
+      const position = Math.min(...ordered.map(id => siblings.indexOf(id)))
+      this.change('展平', next => {
+        const removeTree = (id: string) => {
+          for (const child of [...(next.nodes[id]?.children || [])]) removeTree(child)
+          delete next.nodes[id]
+        }
+        const list = next.nodes[parent]?.children || next.pages.find(page => page.id === parent)!.children
+        for (const id of ordered) {
+          const at = list.indexOf(id)
+          if (at >= 0) list.splice(at, 1)
+          removeTree(id)
+        }
+        next.nodes[vector.id] = vector
+        list.splice(Math.min(Math.max(position, 0), list.length), 0, vector.id)
+      }, [vector.id])
+    } catch (error) {
+      if (current()) this.notify(error instanceof Error ? error.message : String(error))
+    } finally {
+      if (current()) this.set({ busy: false })
+    }
   }
   async geometry(operation: BooleanOp | 'outline' | 'divide') {
     if (this.disposed) return
