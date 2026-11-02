@@ -5,7 +5,7 @@ import { blank, node, type DesignNode } from './model'
 import { canvasOverlayCommands } from './canvas-overlay-commands'
 import { selectionLocalBounds } from './canvas-view'
 import { HOVER_BLUE, SELECTION_BLUE } from './selection-blue'
-import { measureBounds, SPACING_RED } from './canvas-measurements'
+import { measureBounds, spacingDiagram, SPACING_RED } from './canvas-measurements'
 import { selectionSizeLabel } from './selection-size-label'
 
 function documentOf(nodes: DesignNode[], roots = nodes.map(item => item.id)) {
@@ -76,8 +76,8 @@ test('Alt spacing is red, meets a sibling gap, and reports four paddings inside 
     localSelection: local, selectionCorners: corners, selectionBox: bounds(corners),
     measurementTarget: { id: sibling.id, bounds: siblingEntry.bounds },
   })
-  expect(gap.commands.measurements.map(item => item.distance)).toEqual([50])
-  expect(gap.commands.labels?.find(label => label.kind === 'measurement')).toMatchObject({ text: '50', color: '#ffffff', frame: 'measure' })
+  expect(gap.commands.labels?.filter(label => label.kind === 'measurement').map(label => label.text).sort()).toEqual(['40', '50', '50'])
+  expect(gap.commands.labels?.find(label => label.kind === 'measurement')).toMatchObject({ color: '#ffffff', frame: 'measure' })
   const one = measureBounds({ x: 0, y: 0, width: 10, height: 10 }, { x: 11, y: 0, width: 10, height: 10 })
   expect(one.map(item => item.distance)).toEqual([1])
   expect(String(Number(one[0].distance.toFixed(2)))).toBe('1')
