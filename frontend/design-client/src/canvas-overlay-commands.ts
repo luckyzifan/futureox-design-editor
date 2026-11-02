@@ -36,9 +36,12 @@ export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlay
   const selectionName = showSelection && selected.length === 1 ? document.nodes[selected[0].id]?.name ?? '' : ''
   const targetIdentity = measurementTarget ? [measurementTarget.id, measurementTarget.bounds.x, measurementTarget.bounds.y,
     measurementTarget.bounds.width, measurementTarget.bounds.height] : null
-  // Prefix 2 retires overlay ACKs that omitted the selection name, so a stale
-  // GPU label cannot hide the name the DOM is already showing.
-  const uiIdentity = JSON.stringify([2, input.pixelGrid, selectionIdentity, selectionName, titleIdentity, targetIdentity])
+  const sizeText = showSelection ? selectionSizeLabel(localSelection, selectionBox, selected[0]?.matrix) : ''
+  // Tenths of a degree. A frozen overlay identity kept the W×H chip on the
+  // pre-rotation box while the glyphs turned.
+  const spin = selected[0]?.matrix ? Math.round(Math.atan2(selected[0].matrix[1], selected[0].matrix[0]) * 1800) / 10 : 0
+  // Prefix 3 retires overlays that omitted the live size text and angle.
+  const uiIdentity = JSON.stringify([3, input.pixelGrid, selectionIdentity, selectionName, sizeText, spin, titleIdentity, targetIdentity])
   const measurements = measurementTarget ? measureBounds(selectionBox, measurementTarget.bounds) : []
   const labels: CanvasLabel[] = frameTitles.map(entry => ({anchor: apply(entry.matrix,{x:0,y:0}), offset:{x:0,y:-12},
     basis:entry.matrix.slice(0,4) as [number,number,number,number], text:document.nodes[entry.id].name, size:11,
@@ -49,7 +52,7 @@ export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlay
     labels.push({ anchor: { x: selectionBox.x, y: selectionBox.y }, offset: { x: 0, y: -24 },
       text: selectionName, size: 11, color: '#0d99ff', kind: 'selection-name', owners })
   if(showSelection) labels.push({anchor:{x:selectionBox.x+selectionBox.width/2,y:selectionBox.y+selectionBox.height},offset:{x:0,y:21},
-    text:selectionSizeLabel(localSelection,selectionBox,selected[0]?.matrix),size:10,color:'#0d99ff',centered:true,kind:'selection-size',owners})
+    text:sizeText,size:10,color:'#0d99ff',centered:true,kind:'selection-size',owners})
   for(const m of measurements) labels.push({anchor:{x:(m.from.x+m.to.x)/2,y:(m.from.y+m.to.y)/2},offset:{x:4,y:-5},
     text:String(Number(m.distance.toFixed(2))),size:11,color:'#f24822',halo:true})
   return {document,pageId:input.pageId,epoch:input.epoch,uiIdentity,commands:{pixelGrid:input.pixelGrid,labels,measurements,

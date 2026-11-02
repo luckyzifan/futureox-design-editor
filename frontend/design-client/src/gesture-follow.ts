@@ -2,6 +2,7 @@ import type { Bounds, DesignDocument, DesignNode, Matrix, Point } from './model'
 import { apply, inverse, multiply } from './commands/affine'
 import { captureBoardFrame } from './retained-board-capture'
 import { concealCanvasFeedback, restoreCanvasFeedbackVisibility } from './canvas-move-feedback'
+import { formatAngleDegrees } from './selection-handles'
 
 export type FollowCamera = { x: number; y: number; zoom: number }
 
@@ -18,6 +19,8 @@ export function followCamera(view: FollowCamera): Matrix {
 export function screenWarp(view: FollowCamera, worldDelta: Matrix): Matrix | null {
   if (view.zoom <= 0 || !Number.isFinite(view.zoom) || worldDelta.length !== 6 ||
       !worldDelta.every(Number.isFinite)) return null
+  const determinant = worldDelta[0] * worldDelta[3] - worldDelta[1] * worldDelta[2]
+  if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12) return null
   try {
     const camera = followCamera(view)
     return multiply(camera, multiply(worldDelta, inverse(camera)))
@@ -121,7 +124,7 @@ export function mountGestureFollow(host: HTMLElement, options: {
     polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon')
     polygon.setAttribute('fill', 'none')
     polygon.setAttribute('stroke', '#0d99ff')
-    polygon.setAttribute('stroke-width', '1.3')
+    polygon.setAttribute('stroke-width', '2')
     svg.append(polygon)
     root.append(svg)
   }
@@ -157,7 +160,7 @@ export function mountGestureFollow(host: HTMLElement, options: {
         hint.style.display = 'block'
         hint.style.left = `${screen.x + 18}px`
         hint.style.top = `${screen.y + 18}px`
-        hint.textContent = `${Number(degrees.toFixed(2))}°`
+        hint.textContent = `${formatAngleDegrees(degrees)}°`
       }
     },
     holdForCommit() {

@@ -19,7 +19,7 @@ import { CanvasScrollbars } from './CanvasScrollbars'
 import { supportsEditPreview } from './edit-preview'
 import { resizedNode, resizeGestureAxes } from './selection-properties'
 import {cancelToolActivation} from './tool-activation'
-import {selectionHandles, selectionRotation, smallSelectionInterior} from './selection-handles'
+import {formatAngleDegrees, selectionHandles, selectionRotation, smallSelectionInterior} from './selection-handles'
 import {selectionScaleFrame} from './selection-scale'
 import {CanvasLayoutHandles} from './CanvasLayoutHandles'
 import {CanvasSmartSelection} from './CanvasSmartSelection'
@@ -545,7 +545,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     // These previews are functions of the captured gesture baseline and latest
     // pointer. Pen construction (vertex without a node), freehand and utility
     // tools accumulate samples and must continue receiving every input event.
-    const latestOnly = active && (['move','resize','scale','rotate','parameter','handle','width','crop','marquee','zoom'].includes(active.kind) ||
+    // Rotate is applied in this event. A frame queue left the right-hand angle
+    // on an older sample, then pointer-up snapped it to the pointer.
+    const latestOnly = active && (['move','resize','scale','parameter','handle','width','crop','marquee','zoom'].includes(active.kind) ||
       active.kind === 'vertex' && !!active.node)
     if (!hover && !latestOnly) { moveCallback.current(event); return }
     if (active && event.pointerId !== active.pointerId) return
@@ -2015,6 +2017,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         if (!gestureFollow.current && !gpuMove.current?.feedbackPending?.() && host.current) moveCanvasFeedback(host.current, d.ids, offset, gpuMovedOverlays.current)
         if (d.actionToken) actionTrace.sample(d.actionToken, { renderRouteCode: 1, poseSubmittedSequence: gpuMove.current?.inputSequence?.() || 0 })
         pendingBoardMove.current = [patches, placement]
+        // The compositor may follow later. The angle field and blue border read
+        // the document, so a rotate sample has to publish before the next paint.
+        if (d.kind === 'rotate') editor.preview(patches)
         return
       }
       if(d.actionToken) actionTrace.sample(d.actionToken,{renderRouteCode:gpuMove.current?2:3,renderFallbackCount:d.renderFallbackCount=Math.min(1e9,(d.renderFallbackCount||0)+1)})
@@ -2449,7 +2454,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       {drag.current?.kind==='rotate' && drag.current.rotationDegrees!==undefined && cursor && <div
         className="canvas-rotation-hint" role="status" data-testid="rotation-feedback"
         style={{left:cursor.x*zoom+displayView.x+18,top:cursor.y*zoom+displayView.y+18}}>
-        {Number(drag.current.rotationDegrees.toFixed(2))}°
+        {formatAngleDegrees(drag.current.rotationDegrees)}
       </div>}
       {contextMenu && <CanvasContextMenu editor={editor} {...contextMenu} onEditText={() => {
         if (editor.state.selection.length === 1) setTextEdit(editor.state.selection[0])
@@ -2734,11 +2739,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
             <g className="selection" data-selection-readonly={selectionFeedback.readOnly}>
               <polygon
                 data-testid="canvas-selection-outline"
-                opacity={gpuOverlay ? 0 : 1}
+                opacity={gpuOverlay && !(ownedDrag && ['move','rotate','resize','scale'].includes(ownedDrag.kind)) ? 0 : 1}
                 points={selectionCorners.map((p) => `${p.x},${p.y}`).join(' ')}
                 fill="none"
                 stroke="#0d99ff"
-                strokeWidth={1.3 / zoom}
+                strokeWidth={2 / zoom}
                 pointerEvents="none"
               />
               {canTransform && transformHandles.map(h => <line key={`edge-${h.index}`} data-testid={`resize-edge-${h.index}`}
@@ -2759,7 +2764,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
                 <polygon
                   key={i}
                   data-testid={`resize-${i}`}
-                  opacity={gpuOverlay ? 0 : 1}
+                  opacity={gpuOverlay && !(ownedDrag && ['move','rotate','resize','scale'].includes(ownedDrag.kind)) ? 0 : 1}
                   points={h.resizePoints.map(p=>`${p.x},${p.y}`).join(' ')}
                   fill="white"
                   stroke="#0d99ff"

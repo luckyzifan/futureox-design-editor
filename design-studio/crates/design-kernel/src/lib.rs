@@ -41,6 +41,7 @@ pub mod fidelity;
 pub mod fig;
 pub mod figma_gradient;
 pub mod figma_sampling;
+pub mod figma_rotation;
 pub mod figma_snap;
 pub mod ruler_units;
 pub mod svg_export;
