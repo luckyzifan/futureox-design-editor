@@ -55,6 +55,10 @@ export class PresenterPayloadLedger {
     if (!this.fits(bytes, kind)) throw budgetError('payload or concurrent capture limit')
     return this.admit(bytes, kind)
   }
+  reserveNavigationBacking(bytes: number, nextFrameBytes: number): PayloadToken | undefined {
+    this.assertOpen(); this.validate(bytes); this.validate(nextFrameBytes)
+    if (this.fits(bytes + nextFrameBytes, 'surface')) return this.admit(bytes, 'surface')
+  }
   reserveAsync(bytes: number, kind: 'capture' | 'readback'): Promise<PayloadToken> {
     try {
       this.assertOpen(); this.validate(bytes)

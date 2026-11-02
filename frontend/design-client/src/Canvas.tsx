@@ -121,7 +121,8 @@ import {
 import { ERASER_SCREEN_PX } from './vector-eraser'
 import { dragThresholdPassed, selectedGroupDragIntent, selectedChildDragIntent, selectedOwnedDragIntent, selectionPointerDown, frameTitleHit } from './canvas-pointer-intent'
 import { moveCanvasFeedback, concealCanvasFeedback, restoreCanvasFeedbackVisibility } from './canvas-move-feedback'
-import { gestureHoleColor, mountGestureFollow, visibleFollowBox, type GestureFollowLayer } from './gesture-follow'
+import { mountGestureFollow, isolatedGestureCrop, type GestureFollowLayer } from './gesture-follow'
+import { retainedBoardPlan } from './retained-board-preview'
 import { interactivePath } from './selection-hierarchy'
 import { presentedPenVertex, remapPointerAnchor } from './canvas-published-input'
 import { constrainAngle, penHandle } from './pen-constraints'
@@ -200,6 +201,7 @@ type Drag = {
   lastScreen?: Point
   lastModifiers?: { shift: boolean; alt: boolean; ctrl: boolean; meta: boolean }
   sampledMovement?: boolean
+  followPlan?: ReturnType<typeof retainedBoardPlan>
   rotationDegrees?: number
   rotationCenter?: Point
   originalPivot?: Point
@@ -610,7 +612,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     // Show the latest pointer on the pixels already on screen before the
     // frame callback does snapping, guides and the exact renderer. That work
     // can miss the paint; the snapshot has to move in this event.
-    if (active && !active.duplicating && ['move', 'rotate', 'scale', 'resize'].includes(active.kind)) {
+    if (active && !active.duplicating && active.followPlan !== null && active.ids.length === 1 &&
+        editor.parentMap().get(active.ids[0]) === editor.state.page && ['move', 'rotate', 'scale', 'resize'].includes(active.kind)) {
       try {
         const screen = screenPoint(event)
         const at = screenToWorld(active.view, screen)
@@ -1941,16 +1944,26 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if (d.duplicating || !host.current) { dropGestureFollow(); return }
     if (gestureFollow.current?.holding) dropGestureFollow()
     let layer = gestureFollow.current
+    if (d.followPlan === undefined) {
+      const isolatedRoot = d.ids.length === 1 && editor.parentMap().get(d.ids[0]) === state.page
+      const frame = presentedSignal.getSnapshot().frame
+      const page = state.doc.pages.find(page=>page.id === state.page)
+      // A rectangular screen crop also contains everything behind a selection.
+      // Nested, overlapping and optical content stays on its actual layer path.
+      d.followPlan = isolatedRoot && page && /^#[a-f0-9]{6}(?:ff)?$/i.test(page.background) &&
+        !state.grid && !state.checkerboard && !state.pixelPreview && frame && !frame.preview &&
+        frame.document === state.doc && frame.pageId === state.page && frame.epoch === d.session &&
+        frame.view.x === d.view.x && frame.view.y === d.view.y && frame.view.zoom === d.view.zoom &&
+        entries.length <= 3000 && entries.every(entry=>!state.doc.nodes[entry.id].effects.some(effect=>effect.visible))
+          ? retainedBoardPlan(state.doc,state.page,d.ids,{scene:interactionScene,epoch:d.session}) : null
+    }
+    if (!d.followPlan) return
+    const fitted = isolatedGestureCrop(d.followPlan.box,d.followPlan.others,d.view,matrix,host.current.clientWidth,host.current.clientHeight)
+    if (!fitted) { d.followPlan=null; dropGestureFollow(); return }
     if (!layer) {
-      const pad = 80 / Math.max(d.view.zoom, 1e-6)
-      const fitted = visibleFollowBox(
-        { x: d.box.x - pad, y: d.box.y - pad, width: d.box.width + pad * 2, height: d.box.height + pad * 2 },
-        d.view, host.current.clientWidth, host.current.clientHeight)
-      if (!fitted) return
-      const parentId = d.ids.length === 1 ? editor.parentMap().get(d.ids[0]) : undefined
       const mounted = mountGestureFollow(host.current, {
-        box: fitted,
-        view: d.view, corners: selectionCorners, hole: gestureHoleColor(state.doc, state.page, parentId ? state.doc.nodes[parentId] : undefined),
+        box: fitted, view:d.view, corners:selectionCorners,
+        hole:d.followPlan.source.pages.find(page=>page.id===state.page)!.background,
         drawSelection: !gpuOverlay, ids: d.ids,
         onDestroy: () => {
           if (gestureFollow.current === mounted) gestureFollow.current = null
@@ -2371,9 +2384,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     if (host.current?.hasPointerCapture(e.pointerId))
       host.current.releasePointerCapture(e.pointerId)
     if (penRef.current && d.kind === 'vertex' && !d.node) {
-      const closing = penRef.current.closing
       finishDragTrace(d, ActionOutcome.observed, ActionReason.unobserved)
-      if (closing) finishPen()
       return
     }
     if (d.kind === 'create') {
@@ -2774,7 +2785,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         overlay={overlay}
         interaction={gpuInteraction}
         onPresentation={recordPresentation}
-        overview={refineOverview}
+        overview={refineOverview} overviewNodes={entries.length}
         presentationEpoch={editor.sessionGeneration}
         document={surfaceDocument}
         interactionPreview={editPreviewVisible}

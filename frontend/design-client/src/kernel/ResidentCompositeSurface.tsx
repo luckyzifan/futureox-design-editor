@@ -1,5 +1,5 @@
 import { createHandoffTrace, gestureCode, type HandoffTrace } from './handoff-trace'
-import { useLayoutEffect, useRef } from 'react'
+import { useLayoutEffect, useMemo, useRef } from 'react'
 import { flushSync } from 'react-dom'
 import type { PresentedFrame } from './Surface'
 import type { SurfaceProps } from './Surface'
@@ -49,6 +49,8 @@ export function ResidentCompositeSurface(props: {
   terminalQuality?: ResidentFrame['terminalQuality']
   presentation: PresentedFrame | null
   allowPanPreview?:boolean
+  overview?: import('../model').Bounds
+  overviewTiles?: readonly (import('./tile-cache').RasterTile & {gpuTile?:number})[]
   panBacking?:PanPreviewBacking
   overlay?: SurfaceProps['overlay']
   onPresented?: (frame: ResidentAcknowledgement, source?: PresentedFrame, device?: ViewportPreviewDevice) => void
@@ -82,6 +84,10 @@ export function ResidentCompositeSurface(props: {
   const cameraProjection=useRef<CameraReprojection|undefined>(undefined)
   const atomicCanvas=useRef(false)
   const acceptedCamera=useRef<{source:PresentedFrame;actual:ResidentAcknowledgement;client:KernelClient;device?:ViewportPreviewDevice}|undefined>(undefined)
+  const historyScope = useMemo(() => ({}), [props.client, props.sourceDocument, props.pageId, props.contentRevision,
+    props.presentation?.epoch, props.rasterProfile, props.dpr, props.presentation?.displayCapability])
+  const currentHistoryScope = useRef(historyScope)
+  currentHistoryScope.current = historyScope
   const projectCamera=(newBacking=false)=>{
     const p=latest.current,backing=acceptedCamera.current
     const allowed=atomicCanvas.current&&p.allowPanPreview===true&&!!backing&&
@@ -92,6 +98,7 @@ export function ResidentCompositeSurface(props: {
     // Starting an edit must not suddenly undo a projection of the still-visible
     // backing. Freeze that projection until a worker receipt replaces its basis;
     // never publish new camera/content authority across this boundary.
+    cameraProjection.current?.history.bind(currentHistoryScope.current)
     if(!allowed&&!newBacking)return
     return { ...cameraProjection.current?.update(backing?.actual,p.view,p.width,p.height,allowed), allowed }
   }
@@ -144,6 +151,11 @@ export function ResidentCompositeSurface(props: {
       }
       published.current.set(tile.serial, { key: tile.key, gpuTile: tile.gpuTile })
       if (pageTiles.has(tile)) p.onReady(tile.key, tile.serial, false)
+    }
+    const nav = cameraProjection.current
+    if (nav && p.allowPanPreview && !p.interaction?.active && p.overviewTiles?.length && p.client.copyNavigationTile) {
+      nav.history.bind(currentHistoryScope.current)
+      nav.history.warm(p.overview, p.overviewTiles, (id,consume)=>p.client.copyNavigationTile(id,consume), () => repaint.current())
     }
     const moved = moving?.items(p.view)
     const projected=projectCamera(),camera=acceptedCamera.current
@@ -318,6 +330,7 @@ export function ResidentCompositeSurface(props: {
             latest.current.onError?.(item.tile.key, item.tile.serial, '显示纹理已失效，正在补画')
         }
         if (stats.error) {
+          cameraProjection.current?.history.bind(undefined)
           acceptedChrome.current=undefined
           latest.current.onFailure(String(stats.error))
           return
@@ -362,7 +375,7 @@ export function ResidentCompositeSurface(props: {
           // Publishing a partial white-filled tile cohort punches visible
           // rectangles into pixels that are already available in this image.
           if (bitmap && keepCompleteCameraBacking(acceptedCamera.current?.actual,actual,projectCamera()?.allowed === true,
-              cameraProjection.current?.zooming,latest.current)) return
+              cameraProjection.current?.zooming,latest.current,cameraProjection.current?.history.completeFrame)) return
           if(bitmap&&bitmapContext){consumePresentationBitmap(bitmapContext,el,bitmap);bitmapApplied=true}
           actualPresentation.current=actual
           acceptedChrome.current=source?.gpuOverlay&&actual.gpuOverlay?{source,actual,client:p.client}:undefined
@@ -376,8 +389,17 @@ export function ResidentCompositeSurface(props: {
           const device = { client: p.client, deviceWorkerScope: stats.deviceWorkerScope as number,
             deviceIncarnation: stats.deviceIncarnation as number, deviceOwner: stats.deviceOwner as number }
           const deviceOwner=viewportPreviewDeviceKey(device)?device:undefined
+          if (acceptedCamera.current?.device && deviceOwner &&
+              viewportPreviewDeviceKey(acceptedCamera.current.device)!==viewportPreviewDeviceKey(deviceOwner))
+            cameraProjection.current?.history.bind(undefined)
           acceptedCamera.current=source?{source,actual,client:p.client,device:deviceOwner}:undefined
           const projected=projectCamera(true),current=latest.current
+          if (bitmapApplied && projected?.allowed && source) {
+            cameraProjection.current?.history.capture(el, actual)
+            const nav = cameraProjection.current
+            if(nav && current.overviewTiles?.length && current.client.copyNavigationTile)
+              nav.history.warm(current.overview,current.overviewTiles,(id,consume)=>current.client.copyNavigationTile(id,consume),()=>repaint.current())
+          }
           flushSync(() => {
             if(input?.sequence&&!usePageTranslation.current)
               interaction.current?.acceptPresentedInput(input.sequence,input.at,input.owner===inputOwner.current,true,actual.ids)

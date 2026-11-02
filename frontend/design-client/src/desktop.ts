@@ -166,6 +166,10 @@ export interface DesktopBridge {
   readonly workspace?: WorkspaceBridge
   readonly clipboard?: { read(): Promise<DesktopResult<DesktopClipboard>>; write(value: DesktopClipboard): Promise<DesktopResult> }
   readonly version: 1
+  readonly pluginUi?: {
+    publish(request: { html: string }): Promise<DesktopResult<{ id: string; url: string }>>
+    revoke(request: { id: string }): Promise<DesktopResult>
+  }
   readonly plugins?: PluginBridge
   readonly documentCapacity?: Readonly<{ memoryBytes: number }>
   readonly renderPolicy: Readonly<{ cpuOnly: boolean; gpuWorkingBudgetMiB?: number }>

@@ -108,6 +108,7 @@ import {
   kernelFillWorld,
   kernelLayout,
   pageLimitedEditIds,
+  booleanPoseUnchanged,
   invalidateGeometry,
   prepareDocumentForEditing,
   activateDocumentFonts,
@@ -118,7 +119,9 @@ import { proveLocalEdit } from './local-edit-proof'
 import { documentForSchema, pageEditScope, singlePageScope } from './page-edit-scope'
 import { shareDocument, documentPatch, produceDocumentDraft, type EditResult } from './document-patch'
 import { createEditingHistory } from './kernel/graph-history'
-import { ensurePreparedDocument, takePreparedDocument, preparedDocumentEncoding, forgetPreparedDocumentEncoding } from './prepared-document'
+import { ensurePreparedDocument, takePreparedDocument, preparedDocumentEncoding, forgetPreparedDocumentEncoding, validatedPreparedPublication } from './prepared-document'
+import {captureImmutable,immutableDocument} from './immutable-document'
+import {producePoseDocument,retirePoseDocument} from './pose-document'
 function applyInferredFrame(doc: DesignDocument, id: string, inferred: {direction:string;gap:number|null;padding:[number,number,number,number];bannerChildren:string[];flowOrder:string[]}) {
   if (inferred.direction !== 'horizontal' && inferred.direction !== 'vertical') return
   const n=doc.nodes[id]
@@ -249,6 +252,34 @@ export class Editor {
   private undoStack: Omit<History, 'doc'>[] = []
   private redoStack: Omit<History, 'doc'>[] = []
   private historyCore: ReturnType<typeof createEditingHistory> | null = null
+  private readonly validatedPublications=new WeakSet<DesignDocument>()
+  private publicationValid(document:DesignDocument){
+    return immutableDocument(document)&&(this.validatedPublications.has(document)||validatedPreparedPublication(document))
+  }
+  private validatePublication(document:DesignDocument,source:DesignDocument,scope?:import('./model').DocumentValidationScope):DesignDocument{
+    if(this.publicationValid(document))return document
+    // Validate the private copy itself before certifying it. A page-scoped
+    // check never mints a whole-document validation receipt.
+    if (!scope && immutableDocument(source)) {
+      const captured=captureImmutable(document)
+      if (captured) {
+        validateDocument(captured)
+        this.validatedPublications.add(captured)
+        return captured
+      }
+    }
+    validateDocument(document,scope)
+    return document
+  }
+  private posePublication(before:DesignDocument,patches:Record<string,Partial<DesignNode>>){
+    // Effect-bearing selections keep the original live-document handoff;
+    // their source window and sampled pose have a separate pixel receipt.
+    if (Object.keys(patches).some(id => !before.nodes[id] || before.nodes[id].mask ||
+        before.nodes[id].effects.some(effect => effect.visible))) return
+    const next=producePoseDocument(before,patches)
+    if(next&&this.publicationValid(before)&&immutableDocument(next))this.validatedPublications.add(next)
+    return next
+  }
   private transaction: (History & { placement?: { document:DesignDocument; ids:string[]; point:Point; force:boolean; preserveParent:boolean }; movePreview?: {source:DesignDocument;document:DesignDocument;published:DesignDocument;key:string;parents:ParentMap;epoch:object;translation:TranslationPreviewPlan}; dropIndex?: CanvasDropIndex; placementSizing?: Map<string, DesignNode['sizing']>; flow?: { base: DesignDocument; sizing: Map<string, DesignNode['sizing']> }; previewBase?: DesignDocument; copy?: { document: DesignDocument; roots: string[]; originals: string[]; flowSizing: Map<string, DesignNode['sizing']> } }) | null = null
   private propertyPreview: {
     lease: PropertyPreviewLease; history: History; session: number; revision: number
@@ -621,6 +652,7 @@ export class Editor {
     // Rust calls the automation source "ai"; the UI/audit contract calls it
     // "automation". Do not change undo policy or grant authority from this tag.
     const result = this.historyCore.apply(revision, after, { source: source === 'automation' ? 'ai' : 'user' })
+    retirePoseDocument(result.document)
     renewComponentResolution(result.document)
     if (result.revision === revision) return
     this.undoStack.push({ page: h.page, selection: h.selection, label: h.label })
@@ -742,11 +774,12 @@ export class Editor {
         if (n !== before.doc.nodes[n.id]) invalidateGeometry(n)
       // Layout-independent edits still restore the correct native font owner.
       if (local || (scope && !scope.layout)) activateDocumentFonts(laid)
-      const resolved = shareDocument(before.doc, laid)
+      let resolved = shareDocument(before.doc, laid)
       for (const n of inspect)
         if ((n.pathOffset || n.vectorBrush) && n !== before.doc.nodes[n.id]) kernelBounds(n)
       if (!local && !validationIds) validateStructure(resolved)
-      validateDocument(resolved, scope && validationIds ? { pageId: scope.pageId, ids: validationIds } : undefined)
+      resolved=this.validatePublication(resolved,before.doc, scope && validationIds ? { pageId: scope.pageId, ids: validationIds } : undefined)
+      if (local) proveLocalEdit(before.doc,resolved)
       admitResolved?.(resolved)
       if (resolved === before.doc) { finish('unchanged'); return { status: 'unchanged' as const, revision: this.state.version } }
       if (this.transaction) {
@@ -889,8 +922,7 @@ export class Editor {
     // recoverable draft open; they cannot masquerade as a successful commit.
     let committed: EditResult | undefined, document: DesignDocument
     try {
-      validateDocument(this.state.doc)
-      document = shareDocument(owner.history.doc, this.state.doc)
+      document = shareDocument(owner.history.doc, this.validatePublication(this.state.doc,owner.history.doc))
       committed = document !== owner.history.doc ? this.push(owner.history, document) : undefined
     } catch {
       owner.valid = false
@@ -954,14 +986,29 @@ export class Editor {
   }
   /** Parent-preserving placement stays on the translation proof. Schema scans
    * and the full component/layout stringify run only when that proof declines. */
+  private certifiedGesturePose(base: DesignDocument, patches: Record<string,Partial<DesignNode>>) {
+    if (!this.publicationValid(base)) return
+    const ids=Object.keys(patches)
+    if (!ids.length || ids.length>16 || ids.some(id=>!base.nodes[id] || base.nodes[id].mask || base.nodes[id].effects.some(effect=>effect.visible) || Object.keys(patches[id]).length!==1 || !Object.hasOwn(patches[id],'transform'))) return
+    const key=JSON.stringify(ids),epoch=pickingGeometryEpoch()
+    if(this.posePreview?.base!==base || this.posePreview.epoch!==epoch || this.posePreview.key!==key)
+      this.posePreview={base,epoch,key,plan:new TranslationPreviewPlan(base,ids,'document-pose'),
+        allowed:!base.prototype && !base.reviews?.length && !Object.values(base.nodes).some(node=>!!node.repeat || !!node.textPath || Object.keys(node.instance?.slotContents || {}).length>0)}
+    if(this.posePreview.allowed && this.posePreview.plan.acceptsAffine(patches) &&
+        booleanPoseUnchanged(base,this.posePreview.plan.booleanRoots,patches)) return this.posePublication(base,patches)
+  }
   private publishTranslationPreview(base: DesignDocument, patches: Record<string, Partial<DesignNode>>, move: { ids: string[]; point: Point; force: boolean; preserveParent: boolean }, previewOwner: Editor['transaction'], previewStarted: number) {
     if (!this.canvasMovePreservesParents(move.ids, move.point, move.force, move.preserveParent)) return false
     if (Object.entries(patches).some(([id, patch]) => !base.nodes[id] || Object.keys(patch).some(key => key !== 'transform'))) return false
-    const nodes = { ...base.nodes }
-    for (const [id, patch] of Object.entries(patches)) nodes[id] = { ...base.nodes[id], ...patch }
-    const candidate = { ...base, nodes }
-    if (!translationOnlyChanges(base, candidate)) return false
-    const resolved = kernelLayout(candidate, base, true)
+    const pose = this.certifiedGesturePose(base,patches)
+    let candidate = pose
+    if (!candidate) {
+      const nodes = {...base.nodes}
+      for (const [id,patch] of Object.entries(patches)) nodes[id]={...base.nodes[id],...patch}
+      candidate={...base,nodes}
+      if (!translationOnlyChanges(base,candidate)) return false
+    }
+    const resolved=pose ?? kernelLayout(candidate,base,true)
     const published = performance.now()
     this.set({ doc: resolved })
     if (this.transaction === previewOwner && previewOwner && this.state.doc === resolved) {
@@ -989,6 +1036,7 @@ export class Editor {
     return canvasActions(this).cpu.run(CpuStage.preview, () => this.previewCore(patches, move))
   }
   private previewLayout?: PreviewLayout
+  private posePreview?:{base:DesignDocument;epoch:object;key:string;plan:TranslationPreviewPlan;allowed:boolean}
   private previewCore(patches: Record<string, Partial<DesignNode>>, move?: { ids:string[]; point:Point; force:boolean; preserveParent:boolean }) {
     if (this.propertyPreview && !this.propertyPreviewWrite) return false
     const previewStarted = performance.now()
@@ -997,7 +1045,7 @@ export class Editor {
     if(move){
       const cached=this.cachedMovePreview(patches,move)
       if(cached){
-        const document=produceDocumentDraft(this.state.doc,draft=>{for(const id of move.ids)draft.nodes[id].transform=cached.patches[id].transform!})
+        const document=this.posePublication(this.state.doc,cached.patches)||produceDocumentDraft(this.state.doc,draft=>{for(const id of move.ids)draft.nodes[id].transform=cached.patches[id].transform!})
         const published=performance.now();this.set({doc:document})
         if(this.transaction===previewOwner&&previewOwner?.movePreview&&this.state.doc===document){
           previewOwner.movePreview.published=document
@@ -1010,6 +1058,14 @@ export class Editor {
       if (this.publishTranslationPreview(base, patches, move, previewOwner, previewStarted)) return true
     }
     if (!move && this.transaction) {
+      const pose=this.certifiedGesturePose(base,patches)
+      if (pose) {
+        const published=performance.now()
+        this.set({doc:pose})
+        if(this.diagnosticOperation!==null)this.operationDiagnostics.preview(this.diagnosticOperation,true)
+        this.lastPreviewTiming={prepareMs:published-previewStarted,layoutMs:0,publishMs:performance.now()-published}
+        return true
+      }
       if (this.previewLayout?.base !== base) this.previewLayout = new PreviewLayout(base)
       try {
         const resolved = measureCpuStage(CpuStage.previewLayout, () => this.previewLayout!.prepare(patches))
@@ -1084,6 +1140,7 @@ export class Editor {
   }
   commit() {
     this.previewLayout = undefined
+    this.posePreview=undefined
     return canvasActions(this).cpu.run(CpuStage.commit, () => this.commitCore())
   }
   private commitCore() {
@@ -1094,18 +1151,17 @@ export class Editor {
     this.diagnosticOperation = null
     const finish = (outcome: 'committed' | 'unchanged' | 'rejected') => { if (operation !== null) this.operationDiagnostics.finish(operation, outcome, this.sessionGeneration, this.state.version, this.state.doc, this.state.page) }
     this.transaction = null
+    let checked:DesignDocument
     try {
-      measureCpuStage(CpuStage.commitValidate, () => {
-        const scope = pageEditScope(before.doc, this.state.doc)
-        validateDocument(this.state.doc, scope)
-      })
+      checked=measureCpuStage(CpuStage.commitValidate, () => this.publicationValid(this.state.doc) ? this.state.doc :
+        this.validatePublication(this.state.doc,before.doc,pageEditScope(before.doc,this.state.doc)))
     } catch (error) {
       finish('rejected')
       this.set({ doc: before.doc, selection: before.selection, message: String(error) })
       return
     }
     try {
-      const doc = measureCpuStage(CpuStage.commitShare, () => shareDocument(before.doc, this.state.doc))
+      const doc = measureCpuStage(CpuStage.commitShare, () => shareDocument(before.doc, checked))
       const committed = doc !== before.doc ? measureCpuStage(CpuStage.commitHistory, () => this.push(before, doc)) : undefined
       if (committed) {
         const editIdentity = { documentId: committed.document.id, session: this.sessionGeneration, revision: this.state.version + 1 }
@@ -1126,6 +1182,7 @@ export class Editor {
   }
   cancel() {
     this.previewLayout = undefined
+    this.posePreview=undefined
     if (this.propertyPreview) { this.cancelProperty(this.propertyPreview.lease); return }
     if (this.transaction) {
       const h = this.transaction
@@ -2864,7 +2921,7 @@ export class Editor {
       }
       into.push(id)
     }
-    let operation: BooleanOp = 'union'
+    let operation: NonNullable<DesignNode['booleanOperation']> = 'union'
     const sources: string[] = []
     const only = ordered.length === 1 ? doc.nodes[ordered[0]] : undefined
     if (only?.booleanOperation && only.children.length) {

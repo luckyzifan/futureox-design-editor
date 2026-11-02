@@ -58,7 +58,7 @@ test('a page marquee selects the group, and a deep marquee selects the child it 
 test('Alt spacing is red, meets a sibling gap, and reports four paddings inside a frame', () => {
   expect(SPACING_RED).toBe('#e05634')
   expect(HOVER_BLUE).toBe(SELECTION_BLUE)
-  expect(selectionSizeLabel({ x: 0, y: 0, width: 60, height: 47 }, { x: 0, y: 0, width: 60, height: 47 })).toBe('60 × 47')
+  expect(selectionSizeLabel({ width: 60, height: 47 }, { width: 60, height: 47 })).toBe('60 × 47')
   const frame = node('frame', 0, 0, 300, 200)
   const child = node('rectangle', 40, 50, 50, 40)
   const sibling = node('rectangle', 140, 50, 40, 40)

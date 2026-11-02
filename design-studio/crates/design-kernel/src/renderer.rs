@@ -503,6 +503,31 @@ impl Engine {
         &mut self,
         patch: &crate::editing::DocumentPatch,
     ) -> Result<crate::dirty_region::PatchDamage, String> {
+        if self.inert_boolean_pose(patch) {
+            let transforms=patch.nodes.iter().map(|(id,node)|(id.clone(),node.as_ref().unwrap().transform)).collect();
+            if self.apply_verified_transforms(&transforms,true)? {
+                if let Some(bytes)=self.source_doc_bytes.take() {
+                    self.retained_source_size=Some(RetainedSourceSize::new(self.source_doc.as_ref().unwrap(),bytes));
+                }
+                return Ok(crate::dirty_region::PatchDamage {full:false,reason:None,bounds:None,rects:Some(vec![]),translation_only:None});
+            }
+        }
+        if patch.nodes.len()<=16&&self.can_retain_interaction(patch,true){
+            let transforms=patch.nodes.iter().map(|(id,node)|(id.clone(),node.as_ref().unwrap().transform)).collect();
+            if let Some(damage)=crate::dirty_region::resolved_leaf_pose_damage(self.doc.as_ref().unwrap(),
+                &self.render_index.as_ref().unwrap().parents,&transforms,&self.fonts){
+                // The existing pose entry validates changed nodes and exact
+                // serialized-size deltas before mutating any snapshot.
+                if self.apply_interaction_transforms(&transforms)?{
+                    // Ordinary patches retain only the exact size receipt,
+                    // not the stronger whole-install/root-translation gate.
+                    if let Some(bytes)=self.source_doc_bytes.take(){
+                        self.retained_source_size=Some(RetainedSourceSize::new(self.source_doc.as_ref().unwrap(),bytes));
+                    }
+                    return Ok(damage)
+                }
+            }
+        }
         // Unknown optical read dependencies still invalidate all paint. A
         // proven translation need not clone the entire authored document just
         // to discover that same conservative certificate.
@@ -614,13 +639,24 @@ impl Engine {
     /// (rotation/scale): the moved subtree's prepared entries and aggregate
     /// ancestor bounds are always rebuilt, so only translation-specific cache
     /// retention (camera metadata) differs, which the caller invalidates.
+    fn inert_boolean_pose(&self, patch:&crate::editing::DocumentPatch) -> bool {
+        if patch.nodes.len()!=1 || !patch.fields.is_empty() || self.source_compile_context.is_some() { return false; }
+        let (id,next)=patch.nodes.first_key_value().unwrap();
+        let (Some(next),Some(index),Some(resolved))=(next,&self.render_index,&self.doc) else {return false;};
+        let Some(parent)=index.parents.ancestors(id).next() else {return false;};
+        resolved.nodes.get(parent).is_some_and(|n| n.boolean_operation.is_some()) &&
+            self.can_retain_pose(patch,true,true) && crate::curve_boolean::operand_keeps_outline(resolved,parent,id,next.transform)
+    }
     fn can_retain_interaction(&self, patch: &crate::editing::DocumentPatch, affine: bool) -> bool {
+        self.can_retain_pose(patch,affine,false)
+    }
+    fn can_retain_pose(&self, patch:&crate::editing::DocumentPatch, affine:bool, checked_boolean:bool) -> bool {
         let (Some(source), Some(resolved)) = (&self.source_doc, &self.doc) else { return false; };
         if crate::repeat::has_repeats(source) { return false; }
         let Some(index) = &self.render_index else { return false; };
         if self.layout_dirty || self.animation_base.is_some() || self.animation_sample.is_some()
             || !source.animations.is_empty() || !patch.fields.is_empty() || patch.nodes.is_empty()
-            || index.has_connectors { return false; }
+            || index.has_connectors || index.has_instance_slots { return false; }
         let parents = &index.parents;
         patch.nodes.iter().all(|(id, next)| {
             let (Some(old), Some(next), Some(derived)) = (source.nodes.get(id), next, resolved.nodes.get(id)) else { return false; };
@@ -631,11 +667,16 @@ impl Engine {
                 let node = &source.nodes[id];
                 if !node.bindings.is_empty() || !node.variable_modes.is_empty() || node.component.is_some()
                     || node.component_set || node.instance.is_some() || node.instance_origin.is_some()
-                    || node.component_key.is_some() || node.boolean_operation.is_some() { return false; }
+                    || node.component_key.is_some() || (!checked_boolean && node.boolean_operation.is_some()) { return false; }
                 // Descendant local layout survives rigid movement. An ancestor
                 // flow/hug layout can reposition siblings and must resolve normally.
                 if id != old.id && (node.layout.as_ref().is_some_and(|l| l.mode != crate::layout::Flow::None)
                     || node.sizing.as_ref().is_some_and(|s| s.width == crate::layout::SizeMode::Hug || s.height == crate::layout::SizeMode::Hug)) { return false; }
+                let candidate=if id==old.id{next}else{node};let derived=&resolved.nodes[id];
+                if candidate.width.to_bits()!=derived.width.to_bits()||candidate.height.to_bits()!=derived.height.to_bits()||
+                    (id!=old.id&&candidate.transform.0.iter().zip(derived.transform.0).any(|(a,b)|a.to_bits()!=b.to_bits()))||
+                    !crate::layout::pose_constraint_fixed(candidate,parents.ancestors(id).next().and_then(|id|resolved.nodes.get(id)),
+                        source.pages.iter().any(|page|page.children.iter().any(|child|child==id))){return false}
             }
             true
         })
@@ -649,6 +690,9 @@ impl Engine {
     /// summary (device-space effect margins can change). Validate all nodes
     /// atomically.
     pub fn apply_interaction_transforms(&mut self, transforms: &std::collections::BTreeMap<String, Transform>) -> Result<bool, String> {
+        self.apply_verified_transforms(transforms,false)
+    }
+    fn apply_verified_transforms(&mut self,transforms:&std::collections::BTreeMap<String,Transform>,checked_boolean:bool) -> Result<bool,String> {
         if transforms.is_empty() || transforms.len() > 16 { return Err("Invalid interaction transform count".into()); }
         let source = self.source_doc.as_ref().ok_or("Load document before interaction")?;
         let affine = transforms.iter().any(|(id, transform)| {
@@ -662,7 +706,7 @@ impl Engine {
             nodes.insert(id.clone(), Some(node));
         }
         let patch = crate::editing::DocumentPatch { nodes, fields: Default::default() };
-        if !self.can_retain_interaction(&patch, affine) { return Ok(false); }
+        if !self.can_retain_pose(&patch, affine, checked_boolean) && !self.inert_boolean_pose(&patch) { return Ok(false); }
         source.validate_nodes(patch.nodes.iter().map(|(id,node)| (id,node.as_ref().unwrap())))?;
         // The full apply already counted this exact, still-unchanged source.
         // Capacity is pinned for the process; keep node validation before this
@@ -1099,7 +1143,7 @@ impl Engine {
         if self.should_budget_display(options) {
             return self.finish_degraded_display(options);
         }
-        match self.render_once(options) {
+        match self.render_exact(options) {
             Ok(bytes) => Ok(bytes),
             Err(error) if display_pressure(&error) && !self.display_degrade => {
                 self.finish_degraded_display(options).map_err(|_| error)
@@ -1284,7 +1328,7 @@ impl Engine {
             Err(last_error)
         }
     }
-    fn render_once(&mut self, options: &RenderOptions) -> Result<Vec<u8>, String> {
+    pub(crate) fn render_exact(&mut self, options: &RenderOptions) -> Result<Vec<u8>, String> {
         if self
             .doc
             .as_ref()
@@ -1313,7 +1357,7 @@ impl Engine {
         self.resolve_layout()?;
         if options.pixel_preview.is_some() {
             let plan = crate::preview::plan(options)?;
-            let source = self.render(&plan.source)?;
+            let source = self.render_exact(&plan.source)?;
             return Ok(crate::preview::resample(&source, &plan));
         }
         if matches!(
@@ -1920,11 +1964,9 @@ impl Engine {
     ) -> Result<Vec<u8>, String> {
         match self.render_device_rect_once(options, x, y, w, h) {
             Ok(bytes) => Ok(bytes),
-            // Exact tile entry used to fail the whole board. The display retry
-            // is the same one `render` uses: drop an effect that cannot share
-            // the ledger, and keep the fill and stroke. Exact
-            // `render_surfaces_regions` does not come through here.
-            Err(error) if display_pressure(&error) && !self.display_degrade => {
+            // Only an explicitly interactive byte preview may drop an oversized
+            // effect. The tiled exact cache calls the strict implementation below.
+            Err(error) if options.interactive_effects && display_pressure(&error) && !self.display_degrade => {
                 self.display_degrade = true;
                 let degraded = self.render_device_rect_once(options, x, y, w, h);
                 self.display_degrade = false;
@@ -2409,7 +2451,7 @@ impl crate::tiled_renderer::TileRasterizer for Engine {
         &mut self,
         request: &crate::tiled_renderer::TileRequest,
     ) -> Result<Vec<u8>, String> {
-        self.render_device_rect(
+        self.render_device_rect_once(
             &request.options,
             0,
             0,

@@ -113,6 +113,47 @@ fn stroked_leaf_affine_invalidates_its_support_and_matches_fresh_pixels() {
     assert_eq!(engine.render(&options()).unwrap(),fresh.render(&options()).unwrap());
 }
 #[test]
+fn committed_leaf_poses_keep_geometry_and_bound_every_changed_pixel(){
+    let mut doc=source();
+    let mut cold=doc.nodes["child"].clone();cold.id="cold".into();cold.transform.0[4]=45.;
+    doc.nodes.insert(cold.id.clone(),cold);doc.pages[0].children.push("cold".into());
+    let mut engine=Engine::new();engine.install_document(doc).unwrap();engine.compile_gpu(&options()).unwrap();
+    let cold=engine.paths["cold"].clone();
+    for transform in [Transform([1.,0.,0.,1.,18.25,10.]),Transform([0.,1.,-1.,0.,35.,10.]),Transform([1.,0.,0.,1.,10.,10.])]{
+        let before=engine.render(&options()).unwrap();
+        let mut node=engine.source_doc.as_ref().unwrap().nodes["child"].clone();node.transform=transform;
+        let patch=crate::editing::DocumentPatch{nodes:std::collections::BTreeMap::from([("child".into(),Some(node))]),fields:Default::default()};
+        let damage=engine.apply_document_patch_with_damage(&patch).unwrap();
+        assert!(!damage.full);assert!(engine.source_doc_bytes.is_none());
+        assert_eq!(engine.retained_source_size.as_ref().unwrap().bytes_for(engine.source_doc.as_ref().unwrap()),Some(serde_json::to_vec(engine.source_doc.as_ref().unwrap()).unwrap().len()));
+        let mut fresh=Engine::new();fresh.install_document(engine.source_doc.as_ref().unwrap().clone()).unwrap();
+        assert_eq!(engine.compile_gpu(&options()).unwrap().into_packet().unwrap(),fresh.compile_gpu(&options()).unwrap().into_packet().unwrap());
+        assert!(Arc::ptr_eq(&cold,&engine.paths["cold"]));
+        let after=engine.render(&options()).unwrap();assert_eq!(after,fresh.render(&options()).unwrap());
+        let bounds=damage.bounds.unwrap();
+        for (index,(a,b)) in before.chunks(4).zip(after.chunks(4)).enumerate(){if a!=b{
+            let x=((index%128) as f64+0.5-options().view.x)/options().view.zoom;
+            let y=((index/128) as f64+0.5-options().view.y)/options().view.zoom;
+            assert!(x>=bounds[0]&&x<=bounds[0]+bounds[2]&&y>=bounds[1]&&y<=bounds[1]+bounds[3]);
+        }}
+    }
+}
+#[test]
+fn pose_constraints_use_exact_native_fixed_points_and_fall_back_on_cancellation_rounding(){
+    let mut doc=source();doc.nodes.get_mut("frame").unwrap().width=1e7;
+    doc.nodes.get_mut("child").unwrap().constraints=Some(serde_json::from_value(json!({
+        "horizontal":"end","vertical":"scale","referenceWidth":1e7,"referenceHeight":60
+    })).unwrap());
+    let mut engine=Engine::new();engine.install_document(doc).unwrap();engine.compile_gpu(&options()).unwrap();
+    assert!(!engine.apply_interaction_transforms(&std::collections::BTreeMap::from([
+        ("child".into(),Transform([0.,1.,-1.,0.,0.1,10.]))])).unwrap());
+    let mut next=engine.source_doc.as_ref().unwrap().clone();next.nodes.get_mut("child").unwrap().transform=Transform([0.,1.,-1.,0.,0.1,10.]);
+    let patch=crate::editing::DocumentPatch::between(engine.source_doc.as_ref().unwrap(),&next).unwrap();
+    engine.apply_document_patch_with_damage(&patch).unwrap();
+    let mut fresh=Engine::new();fresh.install_document(next).unwrap();
+    assert_eq!(engine.compile_gpu(&options()).unwrap().into_packet().unwrap(),fresh.compile_gpu(&options()).unwrap().into_packet().unwrap());
+}
+#[test]
 fn ordinary_reparent_resolves_without_a_warm_camera_and_reuses_checked_bytes() {
     let mut original = source();
     let mut other = original.nodes["frame"].clone();
@@ -795,4 +836,27 @@ fn identical_native_interaction_pose_keeps_exact_compilation_and_geometry_lineag
     let before=engine.geo_revision;
     let invalid=std::collections::BTreeMap::from([("child".into(),Transform([1.,0.,0.,1.,f64::NAN,10.25]))]);
     assert!(engine.apply_interaction_transforms(&invalid).is_err());assert_eq!(engine.geo_revision,before);
+}
+
+#[test]
+fn only_an_unchanged_resolved_boolean_can_certify_no_page_damage() {
+    let mut document:Document=serde_json::from_value(json!({"schemaVersion":16,"id":"d","name":"Boolean pose",
+        "pages":[{"id":"p","name":"page","children":["union"],"background":"#ffffff"}],"nodes":{
+          "union":{"id":"union","kind":"vector","width":50,"height":30,"booleanOperation":"union","children":["outer","inner"],"fills":[{"kind":"solid","color":"#cc3366"}]},
+          "outer":{"id":"outer","kind":"rectangle","width":35,"height":26,"fills":[{"kind":"solid","color":"#cc3366"}]},
+          "inner":{"id":"inner","kind":"rectangle","width":6,"height":8,"transform":[1,0,0,1,5,6],"fills":[{"kind":"solid","color":"#cc3366"}]}
+        }})).unwrap();
+    let options:RenderOptions=serde_json::from_value(json!({"pageId":"p","width":64,"height":36,"view":{"x":0,"y":0,"zoom":1}})).unwrap();
+    let mut engine=Engine::new();engine.install_document(document.clone()).unwrap();
+    let before=engine.render_exact(&options).unwrap();
+    for (x,unchanged) in [(9.,true),(41.,false)] {
+        let operand=document.nodes.get_mut("inner").unwrap();operand.transform.0[4]=x;
+        let patch=crate::editing::DocumentPatch {fields:Default::default(),nodes:[("inner".into(),Some(operand.clone()))].into_iter().collect()};
+        assert_eq!(engine.inert_boolean_pose(&patch),unchanged);
+        let damage=engine.apply_document_patch_with_damage(&patch).unwrap();
+        assert_eq!(!damage.full && damage.rects.as_ref().is_some_and(Vec::is_empty),unchanged);
+        let mut fresh=Engine::new();fresh.install_document(document.clone()).unwrap();
+        let actual=engine.render_exact(&options).unwrap();
+        assert_eq!(actual,fresh.render_exact(&options).unwrap());assert_eq!(actual==before,unchanged);
+    }
 }

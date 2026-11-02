@@ -52,7 +52,10 @@ const resolve=(canvasFallback=false)=>exactFilterWgsl(false,canvasFallback,canva
  let line=u32(select(position.x,position.y,horizontal)-u(50u).x);
  let start=line*u32(length+3);let point=position.xy+u(0u).xy;
  let axis=select(vec2<f32>(0,1),vec2<f32>(1,0),horizontal);
- if(prefix[start].x!=0.){return ${canvasFallback?'canvasBlurRgba(point,axis)':'vec4<f32>(exactFilterChannel(point,axis,0u),exactFilterChannel(point,axis,1u),exactFilterChannel(point,axis,2u),exactFilterChannel(point,axis,3u))'};}
+ if(prefix[start].x!=0.){
+  ${canvasFallback?'if(u(9u).x<=512.){return canvasBlurRgba(point,axis);}':''}
+  return vec4<f32>(exactFilterChannel(point,axis,0u),exactFilterChannel(point,axis,1u),exactFilterChannel(point,axis,2u),exactFilterChannel(point,axis,3u));
+ }
  let q=i32(floor(select(point.y-u(1u).y,point.x-u(1u).x,horizontal)));let r=i32(u(9u).x);
  let lo=clamp(q-r,0,length);let hi=clamp(q+r+1,0,length);
  if(prefix[start].y==0.&&(all(prefix[start+1u]==vec4<f32>(0.))||(lo==q-r&&hi==q+r+1))){return prefix[start+1u];}

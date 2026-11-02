@@ -45,6 +45,12 @@ import type { SourceCanvasSnapshot } from '../desktop'
 
 test('cpu-only source overview draws bitmap tiles without a gpu texture or a full-frame attach', async () => {
   const dom = new JSDOM('<div id="root"></div>')
+  const drawImage = vi.fn()
+  const contexts:string[]=[]
+  dom.window.HTMLCanvasElement.prototype.getContext = (type:string) => {
+    contexts.push(type)
+    return type==='2d' ? {setTransform(){},fillRect(){},drawImage} : null
+  }
   for (const name of ['window', 'document', 'navigator'] as const) vi.stubGlobal(name, name === 'window' ? dom.window : dom.window[name])
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => {
@@ -65,6 +71,10 @@ test('cpu-only source overview draws bitmap tiles without a gpu texture or a ful
     calls.attached = 0
     calls.presented = 0
     await act(async () => root.render(<NativeSourceSurface source={source} view={{ x: 12, y: 8, zoom: 0.05 }} width={800} height={600} onStatus={status => statuses.push(status)} />))
+    // Motion coverage remains a preview until the quiet camera requests its native lattice.
+    await act(async () => { await vi.waitFor(() => expect(statuses.at(-1)?.phase).toBe('ready')) })
+    expect(drawImage).toHaveBeenCalled()
+    expect(contexts).not.toContain('bitmaprenderer')
     expect(calls.attached).toBe(0)
     expect(calls.presented).toBe(0)
     expect(calls.requests).toBeGreaterThanOrEqual(2)

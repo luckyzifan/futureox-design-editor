@@ -69,7 +69,7 @@ test('confirming a built-in substitute clears the missing warning and keeps the 
   locked.textStyle = defaultTextStyle()
   doc.nodes[locked.id] = locked
   doc.pages[0].children.push(locked.id)
-  doc.designSystem.fontSources[locked.id] = { style: 'Microsoft YaHei' }
+  doc.designSystem.fontSources = { ...doc.designSystem.fontSources, [locked.id]: { style: 'Microsoft YaHei' } }
   expect(unmatchedSourceFonts(doc, text)).toEqual(['PingFang SC', 'PingFang SC Light'])
   const applied = applyFontSubstitutions(doc, [
     { name: 'PingFang SC', fontId: 'default' },
