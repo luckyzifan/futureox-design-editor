@@ -39,6 +39,15 @@ export const BUILD_FILES = [
   'vendor/flo_curves/Cargo.toml',
   'vendor/flo_curves/LICENSE',
   'vendor/flo_curves/PATCHES.md',
+  'frontend/design-desktop/vendor/ffmpeg/README.md',
+  'frontend/design-desktop/vendor/ffmpeg/linux-x64/ffmpeg',
+  'frontend/design-desktop/vendor/ffmpeg/linux-x64/LICENSE.txt',
+  'frontend/design-desktop/vendor/ffmpeg/linux-x64/COPYING.GPLv3',
+  'frontend/design-desktop/vendor/ffmpeg/linux-x64/COPYING.LGPLv2.1',
+  'frontend/design-desktop/vendor/ffmpeg/linux-x64/source.json',
+  'frontend/design-desktop/vendor/ffmpeg/darwin-arm64/README.md',
+  'frontend/design-desktop/vendor/ffmpeg/darwin-x64/README.md',
+  'frontend/design-desktop/vendor/ffmpeg/win32-x64/README.md',
 ]
 
 export function buildProfile(args) {

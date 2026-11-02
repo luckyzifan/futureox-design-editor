@@ -76,6 +76,18 @@ scene and renderer with f64 geometry, bounded decoding and source-preserving
 storage; it does not embed Desigma's app or renderer. Desigma has no Sketch
 importer in that revision; Sketch continues through this project's own codec.
 
+## Bundled FFmpeg
+
+The desktop package can include a separate linux-x64 `ffmpeg` executable under
+`frontend/design-desktop/vendor/ffmpeg/linux-x64/`. It is FFmpeg 7.0.2-static
+configured with `--enable-gpl --enable-version3` (GPL-3.0-or-later), including
+libx264 and libvpx. The binary is spawned by the Rust sidecar; it is not linked
+into Electron or the design kernel. License text and provenance are
+`linux-x64/LICENSE.txt`, `COPYING.GPLv3`, `COPYING.LGPLv2.1`, and `source.json`.
+macOS and Windows paths are documented stubs and do not ship a binary yet.
+Upstream build: https://johnvansickle.com/ffmpeg/ . Obtained from the
+ffmpeg-static b6.1.1 linux-x64 asset.
+
 ## RustCrypto ARM SHA-2 acceleration
 
 Native ARM builds enable the existing `sha2` 0.10.9 `asm` feature, including
