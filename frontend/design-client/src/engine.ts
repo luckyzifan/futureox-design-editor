@@ -25,6 +25,7 @@ import { previewLayoutSuggestion, applyLayoutSuggestion, type LayoutSuggestionPr
 import { interfacePreference } from './interface-preference'
 import { CameraState, savedCamera } from './camera-state'
 import { hasGradientBlur,hasLocalTools,hasRulerGuides,hasLayoutGrids,hasImageAdjusts,hasPatternTiles } from './model'
+import { canDeletePage, userPages } from './fig-document'
 import { inferred_layout_json } from './generated/design-kernel/design_kernel'
 import { prepareSelectionScale } from './selection-scale'
 import { canvasDropFrame, canvasMoveKeepsContainer, containingFrame, createCanvasDropIndex, type CanvasDropIndex } from './canvas-drop'
@@ -289,7 +290,7 @@ export class Editor {
     doc = kernelLayout(doc)
     this.state = {
       doc,
-      page: doc.pages[0].id,
+      page: userPages(doc)[0].id,
       selection: [],
       hover: null,
       hoverSource: null,
@@ -1747,7 +1748,7 @@ export class Editor {
     const session = this.sessionGeneration, documentId = this.state.doc.id
     const ownsDocument = () => this.sessionGeneration === session && this.state.doc.id === documentId
     if (!this.admitPageMutation() || !ownsDocument()) { action.result(ActionOutcome.blocked, this.interactionActive || this.state.busy ? ActionReason.busy : ActionReason.validation); return false }
-    if (this.state.doc.pages.length === 1) {
+    if (!canDeletePage(this.state.doc, this.state.page)) {
       this.notify('至少保留一个页面')
       return false
     }
@@ -1767,7 +1768,7 @@ export class Editor {
     )
     if (result.status !== 'committed') return false
     if (!ownsDocument()) { action.result(ActionOutcome.cancelled, ActionReason.superseded); return false }
-    this.set({ page: this.state.doc.pages[0].id })
+    this.set({ page: userPages(this.state.doc)[0].id })
     return ownsDocument()
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
