@@ -50,3 +50,73 @@ export function importFigTextRuns(node: DesignNode, record: any, warnings: Impor
   if (runs.length) node.textRuns=runs
   return {style:fontName(record.fontName),runs:fonts}
 }
+
+const featureTag = /^-?[a-z0-9]{4}$/
+function axisTag(variation: any): string | undefined {
+  const bits = variation?.axisTag
+  if (typeof bits === 'number' && Number.isInteger(bits) && bits >= 0 && bits <= 0xffffffff) {
+    const bytes = [(bits >>> 24) & 255, (bits >>> 16) & 255, (bits >>> 8) & 255, bits & 255]
+    const tag = String.fromCharCode(...bytes)
+    if (/^[A-Za-z0-9]{4}$/.test(tag)) return tag.toLowerCase()
+  }
+  if (typeof variation?.axisName === 'string' && /^[A-Za-z0-9]{4}$/.test(variation.axisName)) {
+    return variation.axisName.toLowerCase()
+  }
+  return undefined
+}
+
+/** Node-level OpenType toggles, variation axes, vertical alignment and decoration.
+ * `wght` stays on the weight field. TITLE/SMALL_CAPS remain outside the text model. */
+export function importFigTextExtras(node: DesignNode, record: any, warnings: ImportWarningSink) {
+  const style = node.textStyle
+  if (!style) return
+  const features: string[] = []
+  for (const [field, on] of [['toggledOnOTFeatures', true], ['toggledOffOTFeatures', false]] as const) {
+    const tags = record[field]
+    if (tags === undefined) continue
+    if (!Array.isArray(tags)) throw new Error(`FIG ${field} 无效；原文件未修改`)
+    for (const tag of tags) {
+      if (typeof tag !== 'string') throw new Error(`FIG OpenType 特性 ${String(tag)} 无效；原文件未修改`)
+      const mapped = `${on ? '' : '-'}${tag.toLowerCase()}`
+      if (!featureTag.test(mapped)) throw new Error(`FIG OpenType 特性 ${tag} 暂不能表达；原文件未修改`)
+      features.push(mapped)
+    }
+  }
+  if (features.length > 16) throw new Error('FIG OpenType 特性超过 16 项；原文件未修改')
+  if (features.length) style.features = features
+  if (record.fontVariations !== undefined) {
+    if (!Array.isArray(record.fontVariations)) throw new Error('FIG 字体变体轴无效；原文件未修改')
+    const axes: { tag: string; value: number }[] = []
+    for (const variation of record.fontVariations) {
+      const value = variation?.value
+      if (typeof value !== 'number' || !Number.isFinite(value)) continue
+      const tag = axisTag(variation)
+      if (tag === 'wght') continue
+      if (!tag || !/^[a-z0-9]{4}$/.test(tag) || Math.abs(value) > 10000) {
+        throw new Error(`FIG 字体变体轴 ${tag || variation?.axisTag || variation?.axisName || ''} 无效；原文件未修改`)
+      }
+      axes.push({ tag, value })
+    }
+    if (axes.length > 16) throw new Error('FIG 字体变体轴超过 16 项；原文件未修改')
+    if (axes.length) style.variations = axes
+  }
+  const vertical = record.textAlignVertical
+  if (vertical !== undefined && vertical !== 'TOP') {
+    if (vertical === 'CENTER') style.verticalAlign = 'center'
+    else if (vertical === 'BOTTOM') style.verticalAlign = 'bottom'
+    else warnings.add(`文字垂直对齐 ${vertical} 尚需核对`)
+  }
+  const decoration = record.textDecoration
+  if (!node.text || (decoration !== 'UNDERLINE' && decoration !== 'STRIKETHROUGH')) {
+    if (decoration && decoration !== 'NONE' && decoration !== 'UNDERLINE' && decoration !== 'STRIKETHROUGH') {
+      warnings.add(`文字装饰 ${decoration} 尚需核对`)
+    }
+    return
+  }
+  if (node.textRuns?.length) warnings.add(`文字装饰 ${decoration} 与片段样式并存，节点级装饰未叠加`)
+  else node.textRuns = [{
+    start: 0,
+    end: node.text.length,
+    ...(decoration === 'UNDERLINE' ? { underline: true } : { strikethrough: true }),
+  }]
+}
