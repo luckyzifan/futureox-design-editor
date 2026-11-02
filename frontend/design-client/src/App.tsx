@@ -188,6 +188,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [showHistory, setShowHistory] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showPlugins, setShowPlugins] = useState(false)
+  const [pluginLaunch, setPluginLaunch] = useState<{ grant: string; token: number } | null>(null)
+  const pluginLaunchToken = useRef(0)
   const [sketchMode, setSketchMode] = useState<'inspect' | 'edit' | null>(null)
   const [largeDocument, setLargeDocument] = useState<{file?:File}|null>(null)
   const sketchCapabilities = nativeSketchCapabilities(desktopBridge())
@@ -757,6 +759,13 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     }
     window.addEventListener('keydown', shortcut)
     const offCommand = desktop?.onCommand(command)
+    const offLaunch = desktop?.plugins?.onLaunch?.(({ grant }) => {
+      if (largeDocument || source) return
+      pluginLaunchToken.current += 1
+      setMenu(false)
+      setShowPlugins(true)
+      setPluginLaunch({ grant, token: pluginLaunchToken.current })
+    })
     const offClose = desktop?.onCloseRequested(({ requestId }) => {
       if (largeDocument || source) return
       fileImports.invalidate()
@@ -775,8 +784,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           editor.notify(`关闭请求失败，设计已保留：${detail}`, { key: 'closeFailedDocumentRetained', error: detail })
         })
     })
-    return () => { window.removeEventListener('keydown', shortcut); offCommand?.(); offClose?.() }
-  }, [editor, desktopSession, desktop, ready, fileImports, openSettings, showHome, switching, desktopStatus.busy, desktopStatus.transitioning, largeDocument])
+    return () => { window.removeEventListener('keydown', shortcut); offCommand?.(); offLaunch?.(); offClose?.() }
+  }, [editor, desktopSession, desktop, ready, fileImports, openSettings, showHome, switching, desktopStatus.busy, desktopStatus.transitioning, largeDocument, source])
   function resumeEditor() {
     if (!ready) return
     setShowHome(false)
@@ -1367,7 +1376,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       {showShapeBuilder && <ShapeBuilderDialog editor={editor} onClose={() => setShowShapeBuilder(false)} />}
       {sketchMode && desktop && <NativeSketchDialog bridge={desktop} mode={sketchMode} suspended={!!desktopPrompt} onClose={() => setSketchMode(null)} returnFocus={fileMenuTrigger.current} />}
       {showAnimation && <AnimationPanel editor={editor} onClose={() => setShowAnimation(false)} />}
-      {showPlugins && <PluginPanel editor={editor} desktop={desktop} onClose={() => setShowPlugins(false)} />}
+      {showPlugins && <PluginPanel editor={editor} desktop={desktop} launch={pluginLaunch} onClose={() => { setShowPlugins(false); setPluginLaunch(null) }} />}
       {showSettings && <SettingsDialog editor={editor} desktop={!!desktop} returnFocus={showHome ? homeSettingsFocus.current : fileMenuTrigger.current}
         busy={workspaceRootBusy} workspaceControls={desktop?.workspaceRoot && <>{!ready && <p role="status">设计尚未就绪，暂不能切换工作区目录。</p>}<WorkspaceRootControls bridge={desktop.workspaceRoot}
           busy={workspaceRootBusy || !ready || desktopStatus.busy} onChoose={original => {
