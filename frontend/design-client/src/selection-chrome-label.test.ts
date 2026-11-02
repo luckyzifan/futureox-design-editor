@@ -1,10 +1,12 @@
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { blank, node } from './model'
 import { apply, bounds, boxPoints, scene, unionBounds } from './geometry'
 import { selectionLocalBounds } from './canvas-view'
 import { canvasOverlayCommands } from './canvas-overlay-commands'
 import { canvasText } from './canvas-interface-messages'
 import { automationText } from './automation-interface-messages'
+import { fileMenuText } from './file-menu-messages'
+import { Editor } from './engine'
 
 function fixture(select: 'rect' | 'frame' | 'both', tool = 'select', rectName = '按钮') {
   const doc = blank('chrome')
@@ -75,4 +77,38 @@ test('creation hints, pen chrome, and automation copy exist in both languages', 
   expect(automationText.en.close).toBe('Close')
   expect(`${automationText.en.title} ${automationText['zh-CN'].title}`.toLowerCase()).not.toContain('plugin')
   expect(automationText['zh-CN'].title).not.toContain('插件')
+})
+
+test('web chrome copy follows the same CN/EN catalog as the desktop file menu', () => {
+  expect(canvasText['zh-CN'].creationHint).toContain('100×100')
+  expect(canvasText.en.creationHint).toContain('Alt from center')
+  expect(canvasText.en.creationHintLine).toContain('length 100')
+  expect(fileMenuText['zh-CN'].importFormats).toBe('导入 Sketch / FIG / SVG / PDF')
+  expect(fileMenuText.en.importFormats).toContain('Sketch')
+  expect(fileMenuText.en.importFormats).toContain('FIG')
+  expect(fileMenuText['zh-CN'].propertiesWorkspace).toBe('属性工作区')
+  expect(automationText['zh-CN'].open).toBe('设计 API')
+  expect(automationText.en.open).toBe('Design API')
+  expect(automationText.en.webOnly).toContain('Electron')
+  expect(automationText['zh-CN'].webOnly).toContain('Electron')
+  expect(`${automationText.en.title} ${automationText['zh-CN'].title}`.toLowerCase()).not.toContain('plugin')
+})
+
+test('a parked wheel camera publishes the live zoom without waiting for the next frame', () => {
+  vi.stubGlobal('requestAnimationFrame', () => 1)
+  vi.stubGlobal('cancelAnimationFrame', () => {})
+  const editor = new Editor(blank())
+  const seen: number[] = []
+  const stop = editor.subscribeCamera(() => { seen.push(editor.effectiveView().zoom) })
+  try {
+    editor.setViewCoalesced({ x: 12, y: 8, zoom: 2.5 })
+    expect(editor.effectiveView().zoom).toBe(2.5)
+    expect(seen.at(-1)).toBe(2.5)
+    expect(editor.state.view.zoom).toBe(1)
+    editor.flushPendingView()
+    expect(editor.state.view.zoom).toBe(2.5)
+  } finally {
+    stop()
+    editor.dispose()
+  }
 })

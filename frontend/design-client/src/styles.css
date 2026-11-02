@@ -1515,7 +1515,7 @@ footer button {
   .floating-toolbar .tool-group > button, .floating-toolbar .tool-popover > button { width: 30px; height: 32px; padding: 6px; }
   .app-shell > footer > div > button { display: none; }
 }
-.creation-tool-hint { position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); display: flex; align-items: center; gap: 8px; width: max-content; max-width: min(560px, calc(100vw - 32px)); padding: 5px 10px; border: 1px solid var(--workspace-border); border-radius: 999px; background: var(--workspace-panel); color: var(--workspace-muted); font-size: 11px; line-height: 16px; pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 2px 8px #18202c10; }
+.creation-tool-hint { position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); display: flex; align-items: center; gap: 8px; width: max-content; max-width: min(560px, calc(100vw - 32px)); margin: 0; padding: 5px 10px; border: 1px solid var(--workspace-border); border-radius: 999px; background: var(--workspace-panel); color: var(--workspace-muted); font-size: 11px; line-height: 16px; pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 2px 8px #18202c10; }
 .creation-tool-hint b { color: var(--workspace-accent); font-weight: 600; flex: none; }
 .floating-toolbar .tool-popover > .tool-picker-arrow { width: 12px; padding: 0; margin-left: -1px; }
 .canvas-workspace .pencil-controls { top: 57px; left: 12px; max-width: calc(100% - 24px); gap: 6px; padding: 7px; }
@@ -1651,7 +1651,8 @@ footer button {
 .editor-shell.chrome-hide-inspector .header-right { grid-column: 3; justify-self: end; border-radius: 8px; margin: 8px; }
 .editor-shell.chrome-minimized .brand { display: none; }
 .editor-shell.chrome-minimized > footer { left: 12px; }
-.editor-shell.chrome-hide-inspector .canvas-workspace .canvas-controls { top: 62px; }
+.editor-shell.chrome-hide-inspector .canvas-workspace .canvas-controls { top: auto; right: auto; bottom: 72px; left: 12px; }
+.editor-shell.chrome-hide-inspector .canvas-workspace .view-menu-body { top: auto; bottom: calc(100% + 8px); }
 .canvas-panel-toggles { position: absolute; inset: 0; pointer-events: none; z-index: 35; }
 .canvas-panel-toggle { position: absolute; top: 50%; transform: translateY(-50%); width: 24px; height: 44px; display: flex; align-items: center; justify-content: center; padding: 0; pointer-events: auto; color: var(--workspace-muted); background: var(--workspace-panel); border: 1px solid var(--workspace-border); box-shadow: 0 2px 6px #0000000a; }
 .canvas-panel-toggle.left { left: 0; border-left: 0; border-radius: 0 7px 7px 0; }

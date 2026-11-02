@@ -13,6 +13,7 @@ const phrases = {
   union: ['联合', 'Union'], subtract: ['减去顶层', 'Subtract top layer'], intersect: ['交集', 'Intersect'], exclude: ['排除交集', 'Exclude overlap'], divideLegacy: ['分割为多边形区域（旧版）', 'Divide into polygon regions (legacy)'], shapeBuilder: ['形状构建器…', 'Shape builder…'], maskGroup: ['蒙版组', 'Mask group'], group: ['编组', 'Group'], ungroup: ['解除编组', 'Ungroup'], designSystems: ['变量 · 组件库 · 原型', 'Variables · Libraries · Prototypes'], outlineStroke: ['轮廓化描边', 'Outline stroke'],
   creationHint: ['拖拽绘制 · 单击 100×100 · Shift 约束 · Alt 从中心', 'Drag to draw · Click for 100×100 · Shift constrains · Alt from center'],
   creationHintLine: ['拖拽绘制 · 单击为 100 长 · Shift 锁定角度 · Alt 从中心', 'Drag to draw · Click for length 100 · Shift locks the angle · Alt from center'],
+  canvasEditor: ['设计画布编辑器', 'Design canvas'],
   penHint: ['点击添加节点，拖动创建曲线；点击已有节点可连接分支。', 'Click to add points, drag to curve; click an existing point to join a branch.'],
   penDone: ['完成 ↵', 'Done ↵'],
   rotateOrigin: ['拖动旋转中心 · 双击复位 · ⌥R 显示/隐藏', 'Drag the rotation origin · Double-click to reset · ⌥R show/hide'],
