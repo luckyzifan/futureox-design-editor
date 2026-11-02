@@ -55,7 +55,11 @@ export function shortcutBindings({ profile, platform, desktop = false }: Shortcu
       { command: 'auto-layout', combo: 'Shift+A' }, { command: 'remove-auto-layout', combo: 'Alt+Shift+A' },
       { command: 'zoom-next-frame', combo: 'N' }, { command: 'zoom-previous-frame', combo: 'Shift+N' },
       { command: 'next-page', combo: 'PageDown' }, { command: 'previous-page', combo: 'PageUp' },
+      // Mac desktop Figma: Shift+E toggles Design and Prototype outside vector
+      // edit, and the eraser inside vector edit. Outline stroke is Mod+Shift+O
+      // (Mac ⌘⇧O, Windows/Linux Ctrl+Shift+O), not Shift+E.
       { command: 'eraser-or-prototype', combo: 'Shift+E' },
+      { command: 'outline-stroke', combo: 'Mod+Shift+O' },
     )
     // Figma documents Shift, rather than Alt, for the Windows front/back chord.
     if (platform !== 'mac') for (const binding of bindings) {
@@ -80,11 +84,7 @@ export function shortcutBindings({ profile, platform, desktop = false }: Shortcu
   bindings.push({ command: 'mask-selection', combo: platform === 'mac' ? 'Mod+Ctrl+M' : 'Mod+Alt+M' })
   bindings.push({ command: 'flatten', combo: 'Mod+E' })
   for (const [command, combo] of tools) if (combo) bindings.push({ command: command as EditorCommand, combo })
-  if (profile === 'figma-like') {
-    bindings.push({ command: 'set-tool-pencil', combo: 'Alt+P' })
-    // Mac Figma uses Shift+E for the vector eraser inside edit/draw. Plain E stays the toolbar eraser.
-    bindings.push({ command: 'set-tool-eraser', combo: 'Shift+E' })
-  }
+  if (profile === 'figma-like') bindings.push({ command: 'set-tool-pencil', combo: 'Alt+P' })
   const result = Object.freeze(bindings.map(binding => Object.freeze(binding)))
   bindingCache.set(cacheKey, result)
   return result
