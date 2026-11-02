@@ -15,6 +15,7 @@ import { PendingEditContext } from './pending-edit-context'
 import { interfacePreference } from './interface-preference'
 import { nudgePreference } from './nudge-preference'
 import { encodeDocumentBinary, decodeDocumentBinary } from './kernel/binfmt'
+import { dispatchEditorCommand } from './editor-commands'
 
 // React must detect DOM input event support before its module is evaluated.
 // Match the existing real-text integration harness without suppressing errors.
@@ -188,7 +189,7 @@ for (const end of ['Escape', 'pointercancel'] as const) test(`S03 marquee ${end}
 test('S04 actual menu and registered keyboard select-all/inverse have identical eligible root sets and focus guard', async () => {
   const a = node('rectangle', 100, 100, 30, 30), b = node('rectangle', 200, 100, 30, 30), l = node('rectangle', 300, 100, 30, 30), h = node('rectangle', 400, 100, 30, 30)
   l.locked = true; h.visible = false; await render([a, b, l, h]); const before = editor.state.doc
-  await act(async () => editor.select([a.id])); await menuAction('反选'); const inverse = [...editor.state.selection]; expect(inverse).toEqual([b.id])
+  await act(async () => { editor.select([a.id]); await dispatchEditorCommand(editor, 'select-inverse') }); const inverse = [...editor.state.selection]; expect(inverse).toEqual([b.id])
   await act(async () => { editor.select([a.id]); host().focus(); key('a', { metaKey: true, shiftKey: true }) }); expect(editor.state.selection).toEqual(inverse)
   await act(async () => editor.select([])); await menuAction('全选'); const all = [...editor.state.selection]; expect(ordered(all)).toEqual(ordered([a.id, b.id]))
   await act(async () => { editor.select([a.id]); host().focus(); key('a', { metaKey: true }) }); expect(editor.state.selection).toEqual(all)
