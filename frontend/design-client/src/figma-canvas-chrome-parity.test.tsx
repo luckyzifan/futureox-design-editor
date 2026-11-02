@@ -97,7 +97,9 @@ test('a selected layer shows the blue box, white corner handles, and a blue size
   expect(pill?.getAttribute('data-pill')).toBe('accent')
   expect(pill?.textContent).toBe('80 × 40')
   expect(pill?.querySelector('text')?.getAttribute('fill')).toBe('#ffffff')
-  expect(mount.querySelector('.selection-rotate-glyph')).not.toBeNull()
+  expect(mount.querySelector('[data-testid="rotate-handle-0"]')).toBeNull()
+  expect(mount.querySelector('[data-testid^="corner-radius-"]')).toBeNull()
+  expect(mount.querySelector('[data-testid="canvas-selection-outline"]')?.getAttribute('shape-rendering')).toBe('crispEdges')
   expect(mount.querySelector('[data-testid="canvas-hover-outline"]')).toBeNull()
 })
 
