@@ -550,6 +550,20 @@ test('only own-window known Blob exports reach a native save dialog, with byte b
     )
     assert.equal(blocked, 1)
     assert.equal(options.defaultPath, 'drawing.svg')
+    item.getFilename = () => 'board.svgz'
+    state.session.emit(
+      'will-download',
+      {
+        preventDefault() {
+          blocked++
+        },
+      },
+      item,
+      state.window.webContents,
+    )
+    assert.equal(blocked, 1)
+    assert.equal(options.defaultPath, 'board.svgz')
+    item.getFilename = () => 'drawing.svg'
     item.emit('updated')
     assert.equal(cancelled, true)
     item.getURL = () => 'https://evil.example/script.svg'

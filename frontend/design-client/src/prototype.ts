@@ -34,7 +34,7 @@ export type PrototypeMediaAction =
   | 'next'
   | 'forward'
   | 'rewind'
-export type PrototypeTransitionStyle = 'none'|'slide-left'|'slide-right'|'slide-top'|'slide-bottom'
+export type PrototypeTransitionStyle = 'none'|'dissolve'|'slide-left'|'slide-right'|'slide-top'|'slide-bottom'
 export type PrototypeAction = {
   transitionStyle?: PrototypeTransitionStyle
   kind: 'navigate' | 'overlay' | 'back' | 'close-overlay' | 'scroll-to' | 'set-variable' | 'if'
@@ -327,7 +327,7 @@ export function prototypeEvent(
           if (next.history.length) {
             const target = next.history.pop()!
             const previous = next.historyTransitions?.pop()
-            const reverse: Partial<Record<PrototypeTransitionStyle,PrototypeTransitionStyle>> = {'slide-left':'slide-right','slide-right':'slide-left','slide-top':'slide-bottom','slide-bottom':'slide-top',none:'none'}
+            const reverse: Partial<Record<PrototypeTransitionStyle,PrototypeTransitionStyle>> = {'slide-left':'slide-right','slide-right':'slide-left','slide-top':'slide-bottom','slide-bottom':'slide-top',none:'none',dissolve:'dissolve'}
             if (previous && a.durationMs === undefined) next.transitionMs=previous.duration
             if (previous && a.easingCurve === undefined) next.transitionEasing=previous.easing
             navigate(target,a.transitionStyle ?? (previous?.style ? reverse[previous.style] : undefined))

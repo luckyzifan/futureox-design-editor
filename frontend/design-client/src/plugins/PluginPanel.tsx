@@ -4,7 +4,7 @@ import { desktopBridge, type DesktopBridge } from '../desktop'
 import { useInterfacePreferences } from '../interface-preference'
 import { modalKeyDown } from '../modal-keyboard'
 import { acceptedDeclaredPlugins, type DeclaredPlugin } from './catalog'
-import { openPlugin, parsePluginManifest as parseRichManifest, PLUGIN_API_COVERAGE, type PluginController } from './rich-host'
+import { openPlugin, parsePluginManifest as parseRichManifest, pluginBundleFromZip, PLUGIN_API_COVERAGE, type PluginController } from './rich-host'
 import { samplePlugin } from './sample-plugin'
 import './plugin-panel.css'
 
@@ -14,8 +14,9 @@ const copy = {
     close: '关闭',
     sample: '运行示例插件',
     load: '加载插件文件夹…',
+    archive: '加载插件压缩包…',
     stop: '停止插件',
-    intro: '示例会在当前页面创建三个带标签的矩形。桌面版在启动时启用本机 plugins 文件夹里已声明的插件，也可以手动加载含 manifest.json 的文件夹。启动扫描不会改画布。',
+    intro: '示例会在当前页面创建三个带标签的矩形。桌面版在启动时启用本机 plugins 文件夹里已声明的插件，也可以手动加载含 manifest.json 的文件夹，或一个 .zip / .figma 压缩包。启动扫描不会改画布，也不会执行压缩包。',
     desktopUi: '插件界面在单独的沙箱窗口中打开。',
     webUi: '插件主程序已运行。插件界面窗口只在桌面版提供。',
     matrix: 'API 覆盖',
@@ -30,8 +31,9 @@ const copy = {
     close: 'Close',
     sample: 'Run sample plugin',
     load: 'Load plugin folder…',
+    archive: 'Load plugin archive…',
     stop: 'Stop plugin',
-    intro: 'The sample creates three labeled rectangles on the current page. The desktop app enables declared plugins from its local plugins folder at startup, and can also load a folder that contains manifest.json. The startup scan does not change the canvas.',
+    intro: 'The sample creates three labeled rectangles on the current page. The desktop app enables declared plugins from its local plugins folder at startup, and can also load a folder that contains manifest.json or a .zip / .figma archive. The startup scan does not change the canvas and does not run an archive.',
     desktopUi: 'The plugin interface opens in its own sandboxed window.',
     webUi: 'The plugin main script ran. The plugin UI window is available in the desktop app.',
     matrix: 'API coverage',
@@ -62,6 +64,7 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
   const [running, setRunning] = useState(false)
   const [enabled, setEnabled] = useState<DeclaredPlugin[] | null>(null)
   const controller = useRef<PluginController | null>(null)
+  const archive = useRef<HTMLInputElement>(null)
   const launchSeen = useRef<number | null>(null)
   const runListedRef = useRef<(plugin: DeclaredPlugin) => Promise<void>>(async () => {})
   const generation = useRef(0)
@@ -163,6 +166,24 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
     void runListedRef.current(entry)
   }, [launch, enabled, text.missing])
 
+  async function loadArchive(file: File) {
+    try {
+      const bundle = pluginBundleFromZip(new Uint8Array(await file.arrayBuffer()))
+      const manifestText = JSON.stringify({
+        name: bundle.manifest.name,
+        id: bundle.manifest.id,
+        api: bundle.manifest.api,
+        main: bundle.manifest.main,
+        ...(bundle.manifest.ui ? { ui: bundle.manifest.ui } : {}),
+        editorType: bundle.manifest.editorType,
+      })
+      await run(manifestText, bundle.main, bundle.ui ?? '', [])
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+      stop()
+    }
+  }
+
   async function loadFolder() {
     const plugins = desktop?.plugins
     if (!plugins) return
@@ -211,6 +232,12 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
         <footer>
           <button type="button" className="plugin-panel-primary" disabled={running} onClick={() => void runSample()}>{text.sample}</button>
           {desktop?.plugins ? <button type="button" disabled={running} onClick={() => void loadFolder()}>{text.load}</button> : null}
+          <button type="button" disabled={running} onClick={() => archive.current?.click()}>{text.archive}</button>
+          <input ref={archive} hidden type="file" accept=".zip,.figma,application/zip" data-testid="plugin-archive" onChange={event => {
+            const file = event.target.files?.[0]
+            event.target.value = ''
+            if (file) void loadArchive(file)
+          }} />
           <button type="button" disabled={!running} onClick={stop}>{text.stop}</button>
         </footer>
       </section>
