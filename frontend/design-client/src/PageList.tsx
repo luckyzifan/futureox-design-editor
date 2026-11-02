@@ -4,6 +4,7 @@ import { Plus, MoreHorizontal, Search } from 'lucide-react'
 import type { Editor } from './engine'
 import { commitPendingEdits } from './pending-edits'
 import { modalKeyDown } from './modal-keyboard'
+import { userPages } from './fig-document'
 
 export function PageList({ editor, onRename }: { editor: Editor; onRename: (id: string) => void }) {
   const state = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
@@ -34,7 +35,7 @@ export function PageList({ editor, onRename }: { editor: Editor; onRename: (id: 
     <label className="layer-search page-search"><Search size={13} /><input aria-label="搜索页面" placeholder="搜索页面…" value={search}
       onChange={event => { if (commitPendingEdits(editor)) setSearch(event.target.value) }} /></label>
     <nav className="pages" aria-label="页面列表">
-      {state.doc.pages.filter(page => page.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())).map(page => {
+      {userPages(state.doc).filter(page => page.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())).map(page => {
         const index = state.doc.pages.findIndex(value => value.id === page.id)
         return <div className="page-row" key={page.id} draggable
           onDragStart={event => {
@@ -61,17 +62,19 @@ export function PageList({ editor, onRename }: { editor: Editor; onRename: (id: 
           }}><MoreHorizontal size={14} /></button>
         </div>
       })}
-      {!state.doc.pages.some(page => page.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())) && <p className="muted">没有匹配页面</p>}
+      {!userPages(state.doc).some(page => page.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())) && <p className="muted">没有匹配页面</p>}
     </nav>
     {menu && createPortal(<div ref={menuRef} className="page-menu" role="menu" aria-label="页面操作" tabIndex={-1}
       style={{ position: 'fixed', left: menu.x, top: menu.y }} onKeyDown={event => modalKeyDown(event, () => setMenu(null))}>
       <button role="menuitem" onClick={() => action(onRename)}>重命名页面</button>
       <button role="menuitem" onClick={() => action(id => editor.duplicatePage(id), true)}>复制页面</button>
-      <button role="menuitem" disabled={state.doc.pages[0].id === menu.id} onClick={() => action(id => {
-        const at = editor.state.doc.pages.findIndex(page => page.id === id); if (at > 0) editor.reorderPage(id, editor.state.doc.pages[at - 1].id)
+      <button role="menuitem" disabled={userPages(state.doc)[0].id === menu.id} onClick={() => action(id => {
+        const visible = userPages(editor.state.doc), at = visible.findIndex(page => page.id === id)
+        if (at > 0) editor.reorderPage(id, visible[at - 1].id)
       }, true)}>页面上移</button>
-      <button role="menuitem" disabled={state.doc.pages.at(-1)?.id === menu.id} onClick={() => action(id => {
-        const at = editor.state.doc.pages.findIndex(page => page.id === id); editor.reorderPage(id, editor.state.doc.pages[at + 2]?.id)
+      <button role="menuitem" disabled={userPages(state.doc).at(-1)?.id === menu.id} onClick={() => action(id => {
+        const visible = userPages(editor.state.doc), at = visible.findIndex(page => page.id === id)
+        editor.reorderPage(id, visible[at + 2]?.id)
       }, true)}>页面下移</button>
     </div>, document.body)}
   </>
