@@ -6,7 +6,7 @@ export type PluginCoverageEntry = {
   note: string
 }
 
-/** Canonical Figma Plugin API matrix for this host. Docs and the plugin panel read this list. */
+/** Earlier worker-session matrix. The Plugins panel reads `rich-host/coverage.ts`. */
 export const pluginApiCoverage: readonly PluginCoverageEntry[] = [
   { api: 'figma.createRectangle', status: 'supported', note: 'Appends a 100×100 rectangle to the current page.' },
   { api: 'figma.createEllipse', status: 'supported', note: 'Appends a 100×100 ellipse to the current page.' },

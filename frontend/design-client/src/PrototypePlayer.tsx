@@ -8,6 +8,7 @@ import { allParents, scene } from './geometry'
 import { createAnimationBakeSession, kernelBakeRevision, type KernelAnimationBakeSession } from './kernel/bake-session'
 import { initialPrototype, prototypeEase, prototypeEvent, prototypeDocument, type Interaction } from './prototype'
 import { animatePrototypeScroll } from './prototype-scroll'
+import { lightenPrototypeMotion } from './prototype-motion'
 
 export function PrototypePlayer({
   document: source,
@@ -24,7 +25,8 @@ export function PrototypePlayer({
   const [progress, setProgress] = useState(1)
   const transition = state.transition
   useLayoutEffect(() => {
-    if ((!transition && !state.transitionStyle?.startsWith('slide-')) || !state.transitionMs) { setProgress(1); return }
+    const crossfade = state.transitionStyle === 'dissolve' || !!state.transitionStyle?.startsWith('slide-')
+    if ((!transition && !crossfade) || !state.transitionMs) { setProgress(1); return }
     setProgress(0)
     const start = performance.now()
     let request = 0
@@ -69,11 +71,14 @@ export function PrototypePlayer({
       // Time remains [0,1]; eased position may overshoot. The kernel clamps
       // opacity and dimensions independently, preserving spring movement.
       const eased = prototypeEase(state.transitionEasing, progress)
-      return { document: progress < 1
-        ? JSON.parse(bakeSession
-          ? bakeSession.sample_json(eased)
-          : animation_plan_sample_json(JSON.stringify(settled),transition.from,transition.to,eased)) as DesignDocument
-        : settled, error: '' }
+      const parsed = JSON.parse(bakeSession
+        ? bakeSession.sample_json(eased)
+        : animation_plan_sample_json(JSON.stringify(settled),transition.from,transition.to,eased)) as DesignDocument
+      // Open interval only. Endpoints stay on the authored document so glass
+      // and blur settle at their saved values. The cap is a preview composite,
+      // not a document edit and not a raster-budget change.
+      const document = progress > 0 && progress < 1 ? lightenPrototypeMotion(parsed) : progress < 1 ? parsed : settled
+      return { document, error: '' }
     }
     catch (error) { return { document: settled, error: `原型过渡失败：${String(error)}` } }
   }, [settled,transition,progress,bakeSession])
@@ -149,7 +154,7 @@ export function PrototypePlayer({
   const visibleDoc = useMemo(() => prototypeFrameView(doc,current).document, [doc,current])
   return (
     <div className="feature-backdrop">
-      <div className="prototype-player" data-transition-progress={progress} data-transition-ms={state.transitionMs} data-transition-easing={state.transitionEasing || 'linear'} data-transition-kind={transition ? 'smart' : state.transitionStyle?.startsWith('slide-') ? 'slide' : 'none'} data-animation-plan={transition ? (bakeSession ? "kernel-baked" : "kernel") : "none"} role="dialog" aria-label="交互原型预览">
+      <div className="prototype-player" data-transition-progress={progress} data-transition-ms={state.transitionMs} data-transition-easing={state.transitionEasing || 'linear'} data-transition-kind={transition ? 'smart' : state.transitionStyle === 'dissolve' ? 'dissolve' : state.transitionStyle?.startsWith('slide-') ? 'slide' : 'none'} data-animation-plan={transition ? (bakeSession ? "kernel-baked" : "kernel") : "none"} role="dialog" aria-label="交互原型预览">
         <header>
           <strong>原型 · {n.name}</strong>
           <button type="button" onClick={() => { setState(initialPrototype(snapshot.current)); setError(''); scroll.current?.scrollTo(0, 0) }}>
@@ -180,7 +185,7 @@ export function PrototypePlayer({
               background: '#fff',
             }}
           >
-            {previous?.entry && state.transitionStyle?.startsWith('slide-') && progress<1 && <div key={state.transitionFrom} aria-hidden="true" style={{position:'absolute',inset:0,pointerEvents:'none'}}>
+            {previous?.entry && (state.transitionStyle?.startsWith('slide-') || state.transitionStyle === 'dissolve') && progress<1 && <div key={state.transitionFrom} aria-hidden="true" style={{position:'absolute',inset:0,pointerEvents:'none',opacity:state.transitionStyle==='dissolve'?1-slideProgress:1}}>
               <KernelSurface document={previous.document} pageId={previous.pageId} width={Math.ceil(frame.width*zoom)} height={Math.ceil(frame.height*zoom)} view={{x:-previous.entry.bounds.x*zoom,y:-previous.entry.bounds.y*zoom,zoom}} grid={false}/>
             </div>}
             <div
@@ -190,6 +195,7 @@ export function PrototypePlayer({
                 width: frame.width * zoom,
                 height: frame.height * zoom,
                 transform: `translate(${slideOffset})`,
+                opacity: state.transitionStyle === 'dissolve' && progress < 1 ? slideProgress : 1,
                 background: '#fff',
               }}
             >

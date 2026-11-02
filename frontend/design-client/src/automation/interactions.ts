@@ -79,7 +79,7 @@ export function validatePrototype(d:DesignDocument, value:unknown): Prototype {
         if(Object.keys(a).some(k=>!keys.includes(k)))throw new Error('Unknown prototype action field')
         if(!['if','navigate','overlay','back','close-overlay','scroll-to','set-variable'].includes(String(a.kind)))throw new Error('Unsupported prototype action')
         if(['navigate','overlay','scroll-to'].includes(String(a.kind))&&!d.nodes[String(a.target)])throw new Error('Action target not found')
-        if(a.transitionStyle!==undefined && (!['none','slide-left','slide-right','slide-top','slide-bottom'].includes(String(a.transitionStyle)) || !['navigate','back'].includes(String(a.kind)))) throw new Error('Invalid directional transition')
+        if(a.transitionStyle!==undefined && (!['none','dissolve','slide-left','slide-right','slide-top','slide-bottom'].includes(String(a.transitionStyle)) || !['navigate','back'].includes(String(a.kind)))) throw new Error('Invalid directional transition')
         if(a.kind==='set-variable'&&!d.designSystem?.variables?.[String(a.targetVariable||(a.targetVariableData as {id?:string}|undefined)?.id||a.target)])throw new Error('Action variable not found')
         if(a.kind==='if')pending.push(...a.thenActions as unknown[],...a.elseActions as unknown[])
         if(a.durationMs!==undefined)num(a.durationMs,'durationMs',0,1e6)
