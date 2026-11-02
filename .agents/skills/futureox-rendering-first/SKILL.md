@@ -3,6 +3,8 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-02 大拓扑 Sketch 的 CPU 首屏见[记录](../../../testing/verification-large-topology-sketch-20261102/README.md)。整帧放不进合成账本时改为分块并留下填充和页面底色，不再返回空的红字帧。CPU 完整画板按屏幕瓦片交付位图。精确入口仍先报错。这不是 33/100ms 或完整 G2/G5。约 113MB 原件不在仓库内。
+
 2026-11-02 [sRGB 标记与片段字距](../../../testing/verification-color-fonts-srgb-20261102/README.md)只补导出色彩标记和 FIG 片段字距/行高。画布 8 位交换链仍是 sRGB；无覆盖的文字行盒不变。不是渲染故障修复，不关闭 33/100ms 或完整 G2/G5。
 
 2026-11-02 画布操作界面对照见[记录](../../../testing/verification-ui-chrome-figma-ops-20261102/README.md)。只改选择名称、创建预览描边、工具栏提示和面板入场，不改像素路径。面板不再以透明度 0 入场。33/100ms 与完整 G2/G5 仍未通过。

@@ -496,3 +496,53 @@ fn extreme_zoom_halo_keeps_layer_content_instead_of_failing_the_frame() {
     let outside = pixel(1, 1);
     assert_eq!(outside, [255, 255, 255, 255]);
 }
+
+#[test]
+fn small_analytic_frame_matches_exact_surfaces() {
+    let mut engine = Engine::new();
+    engine.load_document(&json!({"schemaVersion":5,"id":"d","name":"Small",
+        "pages":[{"id":"p","name":"p","background":"#ffffff","children":["a"]}],
+        "nodes":{"a":{"id":"a","kind":"rectangle","width":8,"height":8,
+            "fills":[{"kind":"solid","color":"#2244cc"}]}}
+    }).to_string()).unwrap();
+    let options: RenderOptions = serde_json::from_value(json!({"pageId":"p","width":16,"height":16,"transparent":false,"rasterProfile":"analytic","view":{"zoom":1,"x":0,"y":0}})).unwrap();
+    let exact = engine.render_surfaces_regions(&options, false, Rect::new(0, 0, 16, 16), 0, Budget::new(COMPOSITING_BYTES), true).unwrap();
+    let bytes = engine.render(&options).unwrap();
+    assert_eq!(bytes, exact[0].rgba8(Rect::new(0, 0, 16, 16)));
+}
+
+#[test]
+fn oversized_analytic_blur_keeps_fill_when_the_frame_cannot_fit() {
+    let mut engine = Engine::new();
+    // radius 800 at 1x is a 2402px gaussian outset. The exact frame reports
+    // the halo/budget error. Degraded tiles keep the fill and the page color.
+    engine.load_document(&json!({"schemaVersion":5,"id":"d","name":"Budget topology",
+        "pages":[{"id":"p","name":"p","background":"#ffffff","children":["a"]}],
+        "nodes":{"a":{"id":"a","kind":"rectangle","transform":[1,0,0,1,40,40],"width":48,"height":48,
+            "fills":[{"kind":"solid","color":"#cc2244"}],
+            "effects":[{"kind":"blur","radius":800,"color":"#000000"}]}}
+    }).to_string()).unwrap();
+    let options: RenderOptions = serde_json::from_value(json!({"pageId":"p","width":256,"height":256,"transparent":false,"rasterProfile":"analytic","view":{"zoom":1,"x":0,"y":0}})).unwrap();
+    let exact = engine.render_surfaces_regions(&options, false, Rect::new(0, 0, 256, 256), 0, Budget::new(COMPOSITING_BYTES), true);
+    let error = match exact {
+        Err(error) => error,
+        Ok(_) => panic!("full frame must not admit this blur stack"),
+    };
+    assert!(
+        error == "Compositing memory budget exceeded"
+            || error.contains("halo exceeds 2048")
+            || error == "Layer surface exceeds 16 million pixels"
+            || error == "Frame compositing work budget exceeded",
+        "{error}"
+    );
+    let bytes = engine.render(&options).expect("degraded display keeps the frame");
+    assert_eq!(bytes.len(), 256 * 256 * 4);
+    let pixel = |x: usize, y: usize| {
+        let i = (y * 256 + x) * 4;
+        [bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]
+    };
+    let inside = pixel(64, 64);
+    assert!(inside[0] > 140 && inside[1] < 120 && inside[2] < 140, "fill retained, got {inside:?}");
+    let outside = pixel(4, 4);
+    assert_eq!(outside, [255, 255, 255, 255]);
+}
