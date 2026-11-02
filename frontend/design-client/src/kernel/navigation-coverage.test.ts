@@ -67,6 +67,7 @@ test('low-density residents do not count as finished coverage for a zoomed-out v
   expect(previewUnderlayHides({ document, revision: 3 }, { document, revision: 4 })).toBe(true)
   expect(retainedPressureError(Error('Compositing memory budget exceeded'))).toBe(true)
   expect(retainedPressureError(Error('Combined filter dependency halo exceeds 2048 device pixels'))).toBe(true)
+  expect(retainedPressureError(Error('Layer surface exceeds 16 million pixels'))).toBe(true)
   expect(retainedPressureError(Error('Page not found'))).toBe(false)
 })
 
