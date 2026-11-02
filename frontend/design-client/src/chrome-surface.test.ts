@@ -36,8 +36,8 @@ test('selection name and size use a pill frame and keep the existing blue', () =
     frameTitles: entries.filter(entry => entry.id === frame.id),
     localSelection: local, selectionCorners: corners, selectionBox: bounds(corners), measurementTarget: null,
   }).commands.labels ?? []
-  expect(labels.find(label => label.kind === 'selection-name')).toMatchObject({ text: '按钮', color: '#0d99ff', frame: 'pill' })
-  expect(labels.find(label => label.kind === 'selection-size')).toMatchObject({ text: '120 × 80', color: '#0d99ff', frame: 'pill' })
+  expect(labels.find(label => label.kind === 'selection-name')).toMatchObject({ text: '按钮', color: '#3459d4', frame: 'pill' })
+  expect(labels.find(label => label.kind === 'selection-size')).toMatchObject({ text: '120 × 80', color: '#3459d4', frame: 'pill' })
   expect(labels.find(label => label.kind === 'frame-title')).toMatchObject({ text: '画板', color: '#73778b' })
   expect(labels.find(label => label.kind === 'frame-title')).not.toHaveProperty('frame')
   expect(selectionChromeChipWidth('按钮', 11)).toBe(22)

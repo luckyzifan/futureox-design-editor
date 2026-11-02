@@ -1,5 +1,6 @@
 import type { SceneEntry } from './geometry'
 import type { DesignNode } from './model'
+import { SELECTION_BLUE } from './selection-blue'
 
 export function cornerRadiusKind(node: DesignNode | undefined): boolean {
   return !!node && (node.kind === 'rectangle' || node.kind === 'frame' || node.kind === 'section') && !node.network
@@ -44,7 +45,7 @@ export type FrameChrome = {
 export function frameChromeLabel(node: DesignNode, selected: boolean): FrameChrome {
   if (node.kind === 'section') {
     const chip = sectionChipFill(node)
-    return { offset: { x: 6, y: -6 }, color: selected ? '#0d99ff' : sectionLabelColor(chip), kind: 'section-title', chip }
+    return { offset: { x: 6, y: -6 }, color: selected ? SELECTION_BLUE : sectionLabelColor(chip), kind: 'section-title', chip }
   }
-  return { offset: { x: 0, y: -12 }, color: selected ? '#0d99ff' : '#73778b', kind: 'frame-title' }
+  return { offset: { x: 0, y: -12 }, color: selected ? SELECTION_BLUE : '#73778b', kind: 'frame-title' }
 }

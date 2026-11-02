@@ -2,6 +2,7 @@ import type { Bounds, DesignDocument, Point } from './model'
 import { apply, type SceneEntry } from './geometry'
 import { measureBounds, measurementLabel, type Measurement } from './canvas-measurements'
 import { selectionSizeLabel } from './selection-size-label'
+import { SELECTION_BLUE } from './selection-blue'
 import type { CanvasLabel } from './kernel/gpu/canvas-labels'
 import type { CanvasOverlay } from './kernel/gpu/canvas-overlay'
 import { frameChromeLabel } from './page-frame-chrome'
@@ -68,9 +69,9 @@ export function canvasOverlayCommands(input: CanvasOverlayInputs): CanvasOverlay
   // Sit above the top edge, clear of the corner rotate marks.
   if (showSelection && selected.length === 1 && selectionName && !titled.has(selected[0].id))
     labels.push({ anchor: { x: selectionBox.x, y: selectionBox.y }, offset: { x: 0, y: -24 },
-      text: selectionName, size: 11, color: '#0d99ff', kind: 'selection-name', frame: 'pill', owners })
+      text: selectionName, size: 11, color: SELECTION_BLUE, kind: 'selection-name', frame: 'pill', owners })
   if(showSelection) labels.push({anchor:{x:selectionBox.x+selectionBox.width/2,y:selectionBox.y+selectionBox.height},offset:{x:0,y:21},
-    text:sizeText,size:10,color:'#0d99ff',centered:true,kind:'selection-size',frame:'pill',owners})
+    text:sizeText,size:10,color:SELECTION_BLUE,centered:true,kind:'selection-size',frame:'pill',owners})
   for (const measurement of measurements) {
     const placed = measurementLabel(measurement)
     labels.push({ anchor: placed.anchor, offset: placed.offset, text: String(Number(measurement.distance.toFixed(2))),
