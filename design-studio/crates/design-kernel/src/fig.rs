@@ -522,6 +522,7 @@ fn align_of_stack_justify(v: &str) -> Result<Align, Error> {
         "MAX" => Align::End,
         "SPACE_BETWEEN" => Align::SpaceBetween,
         "SPACE_EVENLY" => Align::SpaceEvenly,
+        "SPACE_AROUND" => Align::SpaceAround,
         other => return Err(layout_unsupported("stackPrimaryAlignItems", other)),
     })
 }
@@ -1231,6 +1232,8 @@ impl FigImporter {
                     Some("TYPESCRIPT") => Some("typescript".to_string()),
                     Some("JSON") => Some("json".to_string()),
                     Some("PYTHON") => Some("python".to_string()),
+                    Some("RUST") => Some("rust".to_string()),
+                    Some("PLAINTEXT") => Some("plain".to_string()),
                     Some(other) => {
                         untranslated.push(format!("codeBlockLanguage={other}"));
                         None
@@ -1516,8 +1519,12 @@ impl FigImporter {
             }
             _ => {}
         }
-        if let Some(v) = str_of(change, "textAlignVertical").filter(|v| *v != "TOP") {
-            untranslated.push(format!("textAlignVertical={v}"));
+        // TOP is the kernel default. CENTER/BOTTOM are schema 20 and already drawn.
+        match str_of(change, "textAlignVertical") {
+            None | Some("TOP") => {}
+            Some("CENTER") => style.vertical_align = "center".into(),
+            Some("BOTTOM") => style.vertical_align = "bottom".into(),
+            Some(other) => untranslated.push(format!("textAlignVertical={other}")),
         }
         // 21 号/23 号 C1 font_features: toggled OpenType features map
         // directly onto the kernel's harfbuzz-syntax toggle list ("liga" on,
@@ -2368,6 +2375,9 @@ pub fn document_from_canvas(
         doc.design_system.get_or_insert_with(Default::default).sketch_containers.insert("nodeMetadata".into(), Value::Object(metadata));
         version=version.max(4);
     }
+    if doc.requires_schema20() {
+        version = version.max(20);
+    }
     doc.schema_version = version;
     doc.validate().map_err(|e| Error::Unsupported(format!("imported document: {e}")))?;
     Ok(doc)
@@ -2988,6 +2998,7 @@ mod tests {
                         ("MAX", 0, false, 2),
                         ("SPACE_BETWEEN", 0, false, 3),
                         ("SPACE_EVENLY", 0, false, 4),
+                        ("SPACE_AROUND", 0, false, 5),
                     ],
                 ), // 31
                 (
@@ -3095,6 +3106,8 @@ mod tests {
                         ("JSON", 0, false, 2),
                         ("PYTHON", 0, false, 3),
                         ("CPP", 0, false, 4),
+                        ("RUST", 0, false, 5),
+                        ("PLAINTEXT", 0, false, 6),
                     ],
                 ), // 46
                 (
@@ -3401,6 +3414,22 @@ mod tests {
             assert!((sizing.min_height - 50.).abs() < 1e-9);
             assert!((sizing.max_width - 800.).abs() < 1e-9);
             assert!((sizing.max_height - 600.).abs() < 1e-9);
+        }
+
+        #[test]
+        fn space_around_and_space_evenly_map() {
+            for (name, align) in [
+                ("SPACE_EVENLY", Align::SpaceEvenly),
+                ("SPACE_AROUND", Align::SpaceAround),
+            ] {
+                let mut changes = canvas_only();
+                let mut frame = base_change("FRAME", 1, 2);
+                frame["stackMode"] = json!("HORIZONTAL");
+                frame["stackPrimaryAlignItems"] = json!(name);
+                changes.push(frame);
+                let doc = doc_with(changes).unwrap();
+                assert_eq!(node_of(&doc, 1, 2).layout.as_ref().unwrap().justify, align);
+            }
         }
 
         #[test]
@@ -4322,8 +4351,10 @@ mod tests {
             let paint = &node_of(&doc, 1, 2).fills[0];
             assert_eq!(paint.kind, "linear");
             let t = paint.transform.expect("gradient transform").0;
-            // kiwi floats are f32 on the wire
-            for (got, want) in t.iter().zip([0.7, 0.3, -0.3, 0.7, 0.2, -0.1]) {
+            // Linear paints store the inverse (gradient space → node UV).
+            // Kiwi floats are f32 on the wire; compare after that rounding.
+            let wire = Transform([0.7, 0.3, -0.3, 0.7, 0.2, -0.1]);
+            for (got, want) in t.iter().zip(wire.inverse().unwrap().0) {
                 assert!((got - want).abs() < 1e-6, "matrix {t:?}");
             }
         }
@@ -4483,6 +4514,51 @@ mod tests {
             assert_eq!(style.variations.len(), 1);
             assert_eq!(style.variations[0].tag, "slnt");
             assert!((style.variations[0].value + 8.).abs() < 1e-9);
+            assert!(doc.validate().is_ok(), "{:?}", doc.validate().err());
+        }
+
+        #[test]
+        fn text_align_vertical_maps_onto_schema20() {
+            let mut changes = canvas_only();
+            let mut text = base_change("TEXT", 1, 2);
+            text["textData"] = json!({"characters": "Hi"});
+            text["textAlignVertical"] = json!("CENTER");
+            changes.push(text);
+            let doc = doc_with(changes).unwrap();
+            assert_eq!(
+                node_of(&doc, 1, 2).text_style.as_ref().unwrap().vertical_align,
+                "center"
+            );
+            assert!(doc.schema_version >= 20, "{}", doc.schema_version);
+            assert!(source_note(&doc, node_of(&doc, 1, 2), "figUntranslated").is_none());
+
+            let mut bottom = canvas_only();
+            let mut lower = base_change("TEXT", 1, 2);
+            lower["textData"] = json!({"characters": "Hi"});
+            lower["textAlignVertical"] = json!("BOTTOM");
+            bottom.push(lower);
+            assert_eq!(
+                node_of(&doc_with(bottom).unwrap(), 1, 2)
+                    .text_style
+                    .as_ref()
+                    .unwrap()
+                    .vertical_align,
+                "bottom"
+            );
+        }
+
+        #[test]
+        fn rust_code_block_language_maps() {
+            let mut changes = canvas_only();
+            let mut code = base_change("CODE_BLOCK", 1, 2);
+            code["codeBlockLanguage"] = json!("RUST");
+            code["textData"] = json!({"characters": "fn main() {}"});
+            changes.push(code);
+            let doc = doc_with(changes).unwrap();
+            assert_eq!(
+                node_of(&doc, 1, 2).board.as_ref().unwrap().language.as_deref(),
+                Some("rust")
+            );
             assert!(doc.validate().is_ok(), "{:?}", doc.validate().err());
         }
 
