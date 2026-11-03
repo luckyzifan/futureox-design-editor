@@ -86,11 +86,18 @@ fn image_lod(paint: &mut Paint, images: &mut HashMap<Arc<str>, Arc<str>>) -> Res
     Ok(())
 }
 
-pub fn render(
+pub fn render(document: Document, page_id: String, bounds: [f64; 4], font: &[u8]) -> Result<NavigationImage, String> {
+    let mut engine=Engine::new();
+    engine.load_font(font)?;
+    render_fit(&mut engine,document,page_id,bounds,256)
+}
+
+pub fn render_fit(
+    engine: &mut Engine,
     mut document: Document,
     page_id: String,
     bounds: [f64; 4],
-    font: &[u8],
+    side: u32,
 ) -> Result<NavigationImage, String> {
     if document
         .color_management
@@ -101,7 +108,8 @@ pub fn render(
     {
         return Err("Unavailable SDR navigation view".into());
     }
-    let scale = (256. / bounds[2].max(bounds[3])).min(1.);
+    if !(1..=256).contains(&side) { return Err("Invalid navigation image size".into()); }
+    let scale = (f64::from(side) / bounds[2].max(bounds[3])).min(1.);
     if scale < 0.001 {
         return Err("Navigation density is outside the supported range".into());
     }
@@ -125,8 +133,6 @@ pub fn render(
         "view":{"x":-bounds[0]*scale,"y":-bounds[1]*scale,"zoom":scale},
         "grid":false,"transparent":false,"rasterProfile":if managed {RasterProfile::FigmaSubpixel}else{RasterProfile::Analytic}
     })).map_err(|e|e.to_string())?;
-    let mut engine = Engine::new();
-    engine.load_font(font)?;
     let rgba = crate::capacity::with_source_storage_scope(true, || {
         engine.load_source_document(document)?;
         crate::render_cancellation::checkpoint()?;

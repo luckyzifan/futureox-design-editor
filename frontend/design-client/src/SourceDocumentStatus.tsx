@@ -28,7 +28,7 @@ export function SourceDocumentStatus({source}:{source:SourceWorkspace}) {
   if(!showStatus&&!source.warnings.length)return null
   return <aside className="source-canvas-status" aria-label="源文件状态">
     {showStatus&&<section className="source-status-card" data-error={!!source.error}>
-      <div className="source-status-title">{source.error?<AlertCircle size={15}/>:pending?<LoaderCircle size={15}/>:<CheckCircle2 size={15}/>}<strong>{source.error?'操作未完成':source.busy?'正在载入':rendering?'正在绘制':'文件已就绪'}</strong><button aria-label="关闭状态提示" onClick={()=>{setDismissed(identity);if(source.error)source.dismissError?.()}}><X size={14}/></button></div>
+      <div className="source-status-title">{source.error?<AlertCircle size={15}/>:pending?<LoaderCircle size={15}/>:<CheckCircle2 size={15}/>}<strong>{source.error?'操作未完成':source.openingPreview&&(!source.nativeCanvas||source.hideNative)?'素材预览':source.busy?'正在载入':rendering?'正在绘制':'文件已就绪'}</strong><button aria-label="关闭状态提示" onClick={()=>{setDismissed(identity);if(source.error)source.dismissError?.()}}><X size={14}/></button></div>
       <p role={source.error?'alert':'status'}>{source.error?sourceErrorSummary(source.error):source.notice||'正在准备页面…'}</p>
       {source.error&&<details><summary>技术详情</summary><pre>{source.error}</pre></details>}
     </section>}

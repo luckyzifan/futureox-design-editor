@@ -275,3 +275,25 @@ test('derived capacity rejection narrows whole-root ranges and keeps complete fo
  expect(binding.editor!.authoredDocument.pages[0].children).toEqual(ids.slice(4,6))
  expect(document.querySelector('[role="alert"]')).toBeNull()
 })
+
+test('an admitted thumbnail catalogue avoids a full scene and only refines the requested material',async()=>{
+ const owner={documentId:'source-a',sessionEpoch:1}
+ const status={owner,revision:0,name:'sample.sketch',format:'sketch',dirty:false,undoCount:0,redoCount:0,indexedObjects:8,expandedBytes:100,maxExpandedBytes:100000}
+ const bounds={x:0,y:0,width:500,height:200},rect={x:0,y:0,width:100,height:100}
+ const items=['first','second'].map((name,i)=>({id:name,name,kind:'artboard',pageId:name,pageName:name,source:rect,placed:{...rect,x:i*250},key:'1:'+i,bytes:1024}))
+ let finish!:(value:unknown)=>void
+ const canvasSnapshot=vi.fn(async(request:{materialKeys?:string[]})=>({status:'ok',owner,revision:0,token:'detail',materialKeys:request.materialKeys,bytes:123,nodes:2,roots:1,pageId:'p',stageId:'s',bounds,warnings:[],rasterProfile:'figma',colorManaged:true}))
+ const bridge={open:()=>new Promise(resolve=>{finish=resolve}),openingView:async()=>({status:'ok',phase:'available',owner,bounds,revision:0,total:2,
+  items:items.map((item,i)=>({...item,key:'preview-'+i})),pages:[['first','first',1],['second','second',1]],offset:0,nextOffset:2,cursor:2,images:[{index:0,png:'a'},{index:1,png:'b'}],moreImages:false,finished:true,rendered:0,cacheHit:true}),
+  canvasLayout:async()=>({status:'ok',items,total:2,hasMore:false}),canvasSnapshot} as unknown as LargeDocumentBridge
+ await act(async()=>root.render(<LargeDocumentWorkspace renderWorkbench={workbench} bridge={bridge} parentEditor={parent} onExit={()=>{}} onWindowClose={async()=>{}}/>))
+ expect(document.querySelectorAll('.source-page-entry')).toHaveLength(2)
+ await act(async()=>finish({status:'ok',...status}))
+ expect(canvasSnapshot).not.toHaveBeenCalled();expect(binding.source!.nativeCanvas).toBeUndefined()
+ await act(async()=>binding.source!.onDetail!([1]))
+ expect(canvasSnapshot).toHaveBeenCalledTimes(1);expect(canvasSnapshot.mock.calls[0][0].materialKeys).toEqual(['1:1'])
+ expect(binding.source!.nativeCanvas!.snapshot.roots).toBe(1)
+ await act(async()=>binding.source!.onDetail!([1]));expect(canvasSnapshot).toHaveBeenCalledTimes(1)
+ await act(async()=>binding.source!.onDetail!([]));expect(binding.source!.nativeCanvas).toBeUndefined()
+ expect(document.querySelectorAll('.source-page-entry')).toHaveLength(2)
+})

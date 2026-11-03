@@ -17,7 +17,7 @@ import {createRenderDiagnostics,PREFIX} from '../../../design-desktop/src/render
 import {CameraReprojection,atomicPresentationContext,consumePresentationBitmap,keepCompleteCameraBacking} from './camera-reprojection'
 
 export type NativeSourceStatus={phase:'loading'|'refining'|'ready'|'error';done:number;total:number;error?:string}
-type Props={source:SourceCanvasSnapshot;view:CanvasCamera;width:number;height:number;
+type Props={hidden?:boolean;clipPath?:string;source:SourceCanvasSnapshot;view:CanvasCamera;width:number;height:number;
   onStatus?:(status:NativeSourceStatus)=>void;onPresented?:(frame:ResidentAcknowledgement,complete:boolean)=>void}
 type Tile=TileResult&{serial:number;used:number;lastSubmission:number}
 // One raster owner plus at most one speculative preparation in the existing
@@ -104,7 +104,7 @@ export function NativeSourceSurface(props:Props){
     }
     const requestOverview = async () => {
       const bridge = desktopBridge()?.largeDocument
-      if (!alive || failed || previewRequested || !bitmapContext || !bridge?.canvasPreview || source.nodes<20000) return
+      if (source.materialKeys || !alive || failed || previewRequested || !bitmapContext || !bridge?.canvasPreview || source.nodes<20000) return
       const generation=previewGeneration
       previewRequested = true
       try {
@@ -214,6 +214,7 @@ export function NativeSourceSurface(props:Props){
         while(alive&&!failed&&!suspended){
           const {p,ratio,raster,tiles,prefetch}=plan(),missing=tiles.filter(tile=>!cache.has(tile.key))
           const optional=missing.length===0
+          if(optional && source.materialKeys)break
           if(optional&&prefetchReady!==demandKey()){schedulePaint();break}
           // We already have real pixels for this entire source. An expensive
           // optional overview cannot fill another hole. Give the next input
@@ -395,5 +396,5 @@ export function NativeSourceSurface(props:Props){
     return()=>{alive=false;wake.current=()=>{};workQueue.close();document.removeEventListener('visibilitychange',visibility);clearTimeout(previewTimer);clearTimeout(optionalTimer);clearTimeout(idleTimer);cancelAnimationFrame(frameHandle);client.onPresentation=undefined;client.dispose();diagnostics.flush();diagnostics.close();projection.dispose();bitmapContext?.transferFromImageBitmap(null);element.remove();badge.remove()}
   },[props.source.token,props.width>0&&props.height>0])
   useLayoutEffect(()=>wake.current(),[props.view.x,props.view.y,props.view.zoom,props.width,props.height,dpr])
-  return <div ref={host} className="native-source-surface" style={{position:'absolute',inset:0,pointerEvents:'none',overflow:'hidden'}}/>
+  return <div ref={host} className="native-source-surface" style={{position:'absolute',inset:0,pointerEvents:'none',overflow:'hidden',visibility:props.hidden?'hidden':undefined,clipPath:props.clipPath}}/>
 }

@@ -4,6 +4,7 @@ use super::*;
 use futureox_design_kernel::{fidelity::RasterProfile, scene::Document};
 
 pub(super) struct Snapshot {
+    pub scope: Option<String>,
     pub revision: u64, pub path: PathBuf, pub store: futureox_design_kernel::scene_store::Descriptor,
     pub page_id: String, pub stage_id: String, pub nodes: usize, pub roots: usize,
     pub bounds: canvas_layout::Box2, pub warnings: Vec<String>,
@@ -69,6 +70,15 @@ fn build_inner(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool,
     // merging its result in source order; a slow neighbouring batch no longer
     // leaves the other conversion slot idle for the rest of a fixed pair.
     let convert=|batch:&Vec<(usize,usize)>| {
+        if layout.items.len()==1 {
+            // The exact material viewer and the editable workset use the same
+            // source conversion. Cache the complete original before stripping
+            // export-only metadata from the disposable display copy.
+            let (p,n)=batch[0];
+            let (mut document,warnings)=window_cache::convert(s,p,n,cancel,&context)?;
+            if render_only {if let Some(system)=&mut document.design_system{system.sketch_containers.clear();}}
+            return Ok((document,warnings.into_iter().collect()));
+        }
         let mut document=None;let mut notes=std::collections::BTreeSet::new();
         append_batch(s,batch,cancel,&context,&mut document,&mut notes,render_only)?;
         Ok::<_,BackendError>((document.ok_or_else(||issue("Empty source batch"))?,notes))
@@ -166,23 +176,41 @@ pub(super) fn build_individual(s: &Session, layout: &canvas_layout::Layout, canc
     Ok((document,id,warnings.into_iter().collect()))
 }
 
-pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool, navigation_preview:bool) -> Result<Value> {
-    if s.canvas_snapshot.as_ref().is_none_or(|snapshot|snapshot.revision!=s.revision) {
+pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool, navigation_preview:bool, material_keys:Option<&[String]>) -> Result<Value> {
+    let keys=material_keys.map(|keys| {
+        let mut keys=keys.to_vec();keys.sort();
+        if keys.is_empty() || keys.len()>32 || keys.windows(2).any(|v|v[0]==v[1]) ||
+           keys.iter().any(|key|key.len()>64 || !key.bytes().all(|b|b.is_ascii_digit()||b==b':')) {
+            return Err(issue("Invalid material detail scope"));
+        }
+        Ok(keys)
+    }).transpose()?;
+    let scope=keys.as_ref().map(|v|digest(v.join(",").as_bytes()));
+    if s.canvas_snapshot.as_ref().is_none_or(|snapshot|snapshot.revision!=s.revision || snapshot.scope!=scope) {
         let layout=match &s.canvas_layout {
             Some(layout) if layout.revision==s.revision => layout.clone(),
             _ => canvas_layout::build(s,cancel)?,
         };
-        let (document,stage_id,warnings)=build_inner(s,&layout,cancel,true)?;
-        let path=s.directory.join(format!("canvas-native-{}.scene",s.revision));
+        // Placement and source order always come from the full revision catalogue.
+        // Only the explicitly requested roots and their real dependencies are converted.
+        let selected=keys.as_ref().map(|keys|{
+            let items:Vec<_>=layout.items.iter().filter(|row| keys.binary_search(&row.key).is_ok()).cloned().collect();
+            if items.len()!=keys.len(){return Err(issue("Unknown source material in detail scope"));}
+            Ok(canvas_layout::Layout{revision:layout.revision,bounds:layout.bounds,items})
+        }).transpose()?;
+        let work=selected.as_ref().unwrap_or(&layout);
+        let (document,stage_id,warnings)=build_inner(s,work,cancel,true)?;
+        let suffix=scope.as_ref().map(|v|format!("-{v}")).unwrap_or_default();
+        let path=s.directory.join(format!("canvas-native-{}{suffix}.scene",s.revision));
         let next=s.directory.join("canvas-native.next");
         let result=(||{
-            let generation=format!("{}:{}:{}",s.owner.document_id,s.owner.session_epoch,s.revision);
+            let generation=format!("{}:{}:{}{suffix}",s.owner.document_id,s.owner.session_epoch,s.revision);
             let store=futureox_design_kernel::scene_store::write(&next,&generation,&document,&warnings,cancel).map_err(issue)?;
             check_cancel(cancel).map_err(issue)?;
             fs::rename(&next,&path).map_err(issue)?;
-            let mut snapshot=Snapshot{revision:s.revision,path,store,page_id:document.pages[0].id.clone(),stage_id,
-                nodes:document.nodes.len(),roots:layout.items.len(),bounds:layout.bounds,warnings,raster_profile:document.raster_profile.unwrap_or(RasterProfile::Analytic),color_managed:document.color_management.is_some(),navigation:None};
-            if navigation_preview {
+            let mut snapshot=Snapshot{scope:scope.clone(),revision:s.revision,path,store,page_id:document.pages[0].id.clone(),stage_id,
+                nodes:document.nodes.len(),roots:work.items.len(),bounds:layout.bounds,warnings,raster_profile:document.raster_profile.unwrap_or(RasterProfile::Analytic),color_managed:document.color_management.is_some(),navigation:None};
+            if navigation_preview && scope.is_none() {
                 snapshot.navigation=navigation_image::NavigationImage::start(document,snapshot.page_id.clone(),snapshot.bounds,snapshot.store.bytes);
             }
             Ok(snapshot)
@@ -196,6 +224,6 @@ pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool, navigation_preview:b
     // This path is host-only. The preload must expose an owner-bound opaque
     // capability, never forward this native filesystem descriptor to UI code.
     Ok(json!({"owner":s.owner,"revision":s.revision,"path":snapshot.path,"bytes":snapshot.store.bytes,"store":snapshot.store,
-        "pageId":snapshot.page_id,"stageId":snapshot.stage_id,"nodes":snapshot.nodes,"roots":snapshot.roots,
+        "scope":snapshot.scope,"pageId":snapshot.page_id,"stageId":snapshot.stage_id,"nodes":snapshot.nodes,"roots":snapshot.roots,
         "bounds":snapshot.bounds,"warnings":snapshot.warnings,"rasterProfile":snapshot.raster_profile,"colorManaged":snapshot.color_managed}))
 }
