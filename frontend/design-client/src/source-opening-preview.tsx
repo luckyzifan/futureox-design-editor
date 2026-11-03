@@ -80,14 +80,22 @@ export function SourceOpeningSurface({source,view,width,height,pageId,focused,on
   source:OpeningView;view:CanvasCamera;width:number;height:number;pageId?:string;focused?:number
   onDetail?:(roots:number[])=>void;onViewport?:(box:SourceCanvasBox)=>void
 }) {
+  const pending=useRef<ReturnType<typeof setTimeout>|undefined>(undefined)
+  const latest=useRef({source,view,width,height,pageId,focused,onDetail,onViewport})
+  latest.current={source,view,width,height,pageId,focused,onDetail,onViewport}
+  useEffect(()=>()=>{clearTimeout(pending.current);pending.current=undefined},[source.owner.documentId,source.owner.sessionEpoch])
   useEffect(()=>{
-    if(!onDetail||!width||!height)return
-    const timer=setTimeout(()=>{
+    if(!onDetail||!width||!height||pending.current!==undefined)return
+    // Sample the latest viewport during a continuous gesture as well as on
+    // its last event. Restarting this timer on every wheel tick starves refinement.
+    pending.current=setTimeout(()=>{
+      pending.current=undefined
+      const {source,view,width,height,pageId,focused,onDetail,onViewport}=latest.current
+      if(!onDetail||!width||!height)return
       onViewport?.({x:-view.x/view.zoom,y:-view.y/view.zoom,width:width/view.zoom,height:height/view.zoom})
       onDetail(visibleMaterialDetail(source,view,width,height,window.devicePixelRatio||1,pageId,focused))
     },120)
-    return()=>clearTimeout(timer)
-  },[source.items,view.x,view.y,view.zoom,width,height,pageId,focused,onDetail,onViewport,source.finished])
+  },[source.owner.documentId,source.owner.sessionEpoch,source.items,view.x,view.y,view.zoom,width,height,pageId,focused,onDetail,onViewport,source.finished])
   return <svg className="source-opening-surface" aria-label="源文件素材预览" data-material-count={source.items.length}
     data-rendered-materials={source.images.size} data-source-owner={source.owner.documentId}
     width={width} height={height} style={{position:'absolute',inset:0,overflow:'hidden',pointerEvents:'none'}}>

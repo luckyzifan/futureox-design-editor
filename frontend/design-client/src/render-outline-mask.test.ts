@@ -29,3 +29,10 @@ test('container outline context normalizes descendants without changing their au
  expect(projected.mask).toBe(false);expect(projected.opacity).toBe(1);expect(projected.fills[0].color).toBe('#ffffff')
  expect(outlineMaskForRendering(child)).toBe(child)
 })
+
+test('a Sketch shape mask uses its path even with no authored paint',()=>{
+ const mask=node('rectangle',0,0,40,30);mask.mask=true;mask.maskType='shape';mask.opacity=0;mask.fills=[]
+ const projected=outlineMaskForRendering(mask)
+ expect(projected.fills[0].color).toBe('#ffffff');expect(projected.opacity).toBe(1)
+ expect(mask.fills).toEqual([]);expect(mask.opacity).toBe(0)
+})

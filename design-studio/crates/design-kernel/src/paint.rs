@@ -1053,12 +1053,39 @@ pub fn gradient_sampling_grid(
 ) -> Result<Vec<f32>, String> {
     gradient_sampling_grid_region(rect, rect, matrix, size, paint, sample)
 }
+
+/// Unclamped coordinates of the four pixel centres for a single correlated
+/// sample plane. The display consumer checks stop spacing and colour range
+/// before interpolation. Original geometry bounds still select the inverse.
+pub fn source_linear_parameters(rect:Rect,matrix:Transform,size:[f64;2],paint:&Paint,sample:usize)->Result<Vec<f32>,String>{
+    if paint.kind!="linear" || !(2..=32).contains(&paint.stops.len()) || rect.empty() ||
+        rect.w>16384 || rect.h>16384 ||
+        size.iter().any(|v|!v.is_finite()||*v<=0.) {return Ok(Vec::new())}
+    let offset=crate::fidelity::SAMPLE_OFFSETS.get(sample).ok_or("Invalid image sample index")?;
+    let coordinates=GradientCoordinates::new(paint,size,matrix,rect)?;
+    let mut values=Vec::with_capacity(4);
+    for y in [rect.y,rect.bottom()-1] {for x in [rect.x,rect.right()-1] {
+        let point=Point::new(f64::from(x)+offset.0,f64::from(y)+offset.1);
+        let local=coordinates.inverse.point(point);
+        let uv=Point::new(local.x/size[0],local.y/size[1]);
+        let uv=coordinates.paint_inverse.map_or(uv,|m|m.point(uv));
+        let t=coordinates.fixed_gradient.as_ref().map_or_else(||coordinates.gradient_t(uv.x,uv.y),|g|g.unclamped(point));
+        if !t.is_finite(){return Ok(Vec::new())}
+        values.push(t as f32);
+    }}
+    if values.iter().all(|v|*v<=0.){values.fill(0.)}
+    else if values.iter().all(|v|*v>=1.){values.fill(1.)}
+    else if values.iter().any(|v|v.abs()>4.){return Ok(Vec::new())}
+    Ok(values)
+}
 /// Chunk computation retains the original inverse-composition domain and
 /// absolute sample coordinates. The full field's existing 64 MiB cap remains.
 pub fn gradient_sampling_grid_region(
     original: Rect, rect: Rect, matrix: Transform, size: [f64;2], paint: &Paint, sample:Option<usize>,
 ) -> Result<Vec<f32>,String> {
-    if u64::from(original.w)*u64::from(original.h)>4_194_304 {
+    // The original rectangle determines the same coordinate arithmetic as
+    // the full paint. Only the requested window allocates a parameter field.
+    if rect.pixels()>4_194_304 || original.w>16_777_216 || original.h>16_777_216 {
         return Err("Parameter field exceeds 64 MiB".into());
     }
     if rect.x<original.x || rect.y<original.y ||

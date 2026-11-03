@@ -55,6 +55,7 @@ impl Query {
                     | "gpuPageBackground"
                     | "gpuGaussianRegions"
                     | "gpuGaussianReduction"
+                    | "gpuSourceFilterFields"
                     | "gpuPainterSupport"
                     | "gpuPainterCaptureReads"
                     | "gpuViewport"
@@ -74,6 +75,7 @@ impl Query {
         }
         if !matches!(object.remove("gpuNeutralPageGroup"),None|Some(Value::Bool(false))){return Ok(None)}
         if !matches!(object.remove("gpuGaussianRegions"),None|Some(Value::Bool(_))){return Ok(None)}
+        if !matches!(object.remove("gpuSourceFilterFields"),None|Some(Value::Bool(_))){return Ok(None)}
         if object.remove("gpuGaussianReduction").is_some_and(|v|!matches!(v.as_u64(),Some(0|2|4|8))){return Ok(None)}
         let background = object.remove("gpuPageBackground");
         let region = object.remove("gpuViewport");

@@ -147,7 +147,59 @@ export function managedSceneImageLoader(cache: DecodedImageCache, context: () =>
     }
     return retained.owner
   })
-  return load
+  const windows=new Map<string,Map<string,string>>()
+  let windowScope=''
+  return Object.assign(load,{straightSrgb8:(uri:string)=>{
+    const next=context(),current=()=>{checkRequest(next);if(next.ownerCurrent&&!next.ownerCurrent())throw Error('PREVIEW_CANCELLED')}
+    current();cache.begin(next.scope)
+    const key='straight-srgb8:'+uri,hit=cache.get(next.scope,key)
+    if(hit?.data instanceof Uint8Array)return {width:hit.width,height:hit.height,bytes:hit.data}
+    if(!uri.startsWith('data:image/png;base64,'))return
+    try{
+      const rows=nativeImageRows(uri,next.settings,current)
+      try{
+        const bytes=rows.straightSrgb8()
+        if(!bytes.length)return
+        if(bytes.length!==rows.width*rows.height*4)throw Error('Incomplete straight PNG')
+        current();cache.set(next.scope,key,{width:rows.width,height:rows.height,data:bytes})
+        return {width:rows.width,height:rows.height,bytes}
+      }finally{rows.dispose()}
+    }catch(e){if(!/unrotated|orientation|noninterlaced still image|expanded 8-bit or 16-bit/i.test(String(e)))throw e}
+  },sampleWindow:(uri:string,dims:readonly number[],window:Rect)=>{
+    const next=context()
+    const current=()=>{checkRequest(next);if(next.ownerCurrent&&!next.ownerCurrent())throw Error('PREVIEW_CANCELLED')}
+    current();cache.begin(next.scope)
+    if(windowScope!==next.scope){windows.clear();windowScope=next.scope}
+    let keys=windows.get(uri)
+    if(!keys){if(windows.size>=64)windows.delete(windows.keys().next().value!);keys=new Map();windows.set(uri,keys)}
+    const suffix=[window.x,window.y,window.w,window.h].join('/')
+    let key=keys.get(suffix)
+    if(!key){if(keys.size>=64)keys.delete(keys.keys().next().value!);key='window:'+uri+'#'+suffix;keys.set(suffix,key)}
+    const cached=cache.get(next.scope,key)
+    if(cached?.data instanceof Float32Array)return cached.data
+    const full=cache.get(next.scope,'f:'+uri)
+    let pixels:Float32Array|undefined
+    if(full?.data instanceof Float32Array)
+      pixels=copySourceWindow({width:full.width,height:full.height,pixels:full.data},window)
+    if(!pixels && uri.startsWith('data:image/png;base64,')){
+      try{
+        const rows=nativeImageRows(uri,next.settings,current)
+        try{
+          if(rows.width!==dims[0]||rows.height!==dims[1])throw Error('Source image dimensions changed')
+          pixels=rows.linearWindow(window.x,window.y,window.w,window.h)
+        }finally{rows.dispose()}
+      }catch(e){
+        if(!/unrotated|orientation|noninterlaced still image|expanded 8-bit or 16-bit/i.test(String(e)))throw e
+      }
+    }
+    if(!pixels){
+      const image=load(uri,false,0)
+      try{pixels=copySourceWindow(image,window)}finally{if('dispose' in image)image.dispose?.()}
+    }
+    current()
+    cache.set(next.scope,key,{width:window.w,height:window.h,data:pixels})
+    return pixels
+  }})
 }
 
 /** One request's optional persistent reads. The exact compiler owns dependency
@@ -212,3 +264,5 @@ export class SceneImageHydration {
     }
   }
 }
+import {copySourceWindow} from './gpu/source-image-window'
+import type {Rect} from './gpu/types'

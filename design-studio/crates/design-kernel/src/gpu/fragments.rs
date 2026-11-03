@@ -41,7 +41,7 @@ impl Compiler<'_> {
             for old in &fragment.nodes {
                 crate::render_cancellation::checkpoint()?;
                 let mut node=old.clone();
-                for path in std::iter::once(&mut node.fill).chain(node.strokes.iter_mut().map(|s|&mut s.path)) {
+                for path in std::iter::once(&mut node.fill).chain(node.strokes.iter_mut().map(|s|&mut s.path)).chain(node.source_filter_field.iter_mut().flat_map(|f|f.channels_mut().map(|m|&mut m.path))) {
                     if let Some(area)=&mut path.area {
                         *area=self.install_program(fragment.programs[&area.first].clone())?;
                     }
@@ -55,7 +55,7 @@ impl Compiler<'_> {
         let bounds=self.compile_node(id,parent,requested,false)?;
         if self.fragment_targets.contains(id) {
             let nodes=self.compiled_order[begin..].iter().map(|id|&self.nodes[id]).collect::<Vec<_>>();
-            let needed=nodes.iter().flat_map(|n|std::iter::once(&n.fill).chain(n.strokes.iter().map(|s|&s.path)))
+            let needed=nodes.iter().flat_map(|n|std::iter::once(&n.fill).chain(n.strokes.iter().map(|s|&s.path)).chain(n.source_filter_field.iter().flat_map(|f|f.channels().map(|m|&m.path))))
                 .filter_map(|p|p.area.as_ref().map(|a|a.first)).collect::<HashSet<_>>();
             let programs=self.area_paths.iter().filter(|(_,area)|needed.contains(&area.first))
                 .map(|(program,area)|(area.first,program.0.clone())).collect::<HashMap<_,_>>();

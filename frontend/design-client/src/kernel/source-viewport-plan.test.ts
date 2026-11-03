@@ -117,3 +117,24 @@ test('actual WASM byte-gradient pixels repeat at 512 device pixels while one-pix
   expect(differences).toBeGreaterThan(0)
  } finally {engine.free()}
 })
+
+test('low zoom only lowers the moving density while shrinking and recovers on reversal',()=>{
+ const planner=new SourceViewportPlanner('figmaSubpixel',true)
+ const view=(zoom:number)=>({x:200,y:150,zoom})
+ planner.plan(view(.5),2,800,600,false)
+ const out=planner.plan(view(.2),2,800,600,true)
+ expect(out.raster.scale).toBeLessThan(.4);expect(out.exact).toBe(false)
+ expect(planner.plan(view(.2),2,800,600,false).raster.scale).toBe(.4)
+ planner.plan(view(.1),2,800,600,true)
+ expect(planner.plan(view(.2),2,800,600,true).raster.scale).toBeGreaterThanOrEqual(.4)
+ expect(planner.plan(view(.2),2,800,600,false,.1).exact).toBe(false)
+})
+
+test('far source coordinates are rebased without changing the world lattice or fractional phase',()=>{
+ const planner=new SourceViewportPlanner('figmaSubpixel',true),view={x:-1253000,y:-1693200,zoom:32}
+ const plan=planner.plan(view,2,850,888,false)
+ expect(plan.exact).toBe(true)
+ expect(plan.tiles.every(t=>Math.abs(t.x+plan.raster.camera.x)<200000&&Math.abs(t.y+plan.raster.camera.y)<200000)).toBe(true)
+ expect(plan.tiles.some(t=>Math.abs(t.x)>1000000)).toBe(true)
+ expect(plan.raster.phase).toEqual({x:0,y:0})
+})

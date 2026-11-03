@@ -1,4 +1,5 @@
 import {gaussianPrefixWorthwhile,gaussianPrefixDemand} from './gaussian-selection'
+import {straight_srgb8_table} from '../../generated/design-kernel/design_kernel'
 import {exactArithmeticIdentities} from './exact-arithmetic-identities'
 import {BoxPrefix,BOX_PREFIX_BYTES,uniformBoxRadius} from './box-prefix'
 import { pageBackgroundProof, pageBackgroundSource, pixelContentProof } from './page-background'
@@ -530,6 +531,11 @@ export class WebGpuDriver implements Driver {
   private paintPipeline!: GPURenderPipeline
   private compositorModule!: GPUShaderModule
   gestureSoftEffects = false
+  sourceSoftEffects = false
+  private sourceImageSampling=false
+  private straightSources=new WeakSet<Texture>()
+  private straightTable?:Uint8Array<ArrayBuffer>
+  get sourceImageLimit(){return this.device.limits.maxTextureDimension2D}
   private gaussianReductionModule?: GPUShaderModule
   private exactMotionSource?: string
   private exactMotionModule?: GPUShaderModule
@@ -832,7 +838,7 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     const exactCode=import.meta.env.VITE_DESIGN_EXACT_IDENTITIES==='1'&&!this.displayMath?exactArithmeticIdentities(compositorCode):compositorCode
     const imageAddressedCode = this.managed ? imageCoordinateSource(exactCode + imageResolveStepWgsl + gradientPaintOverWgsl) : exactCode
     const parameterCode = this.gradientPhaseFields ? gradientPhaseSource(imageAddressedCode) : imageAddressedCode
-    const addressedCode = this.managed ? scalarCoverageSource(import.meta.env.VITE_DESIGN_GRADIENT_WINDOW_FIELDS==='1'?gradientWindowSource(parameterCode):parameterCode) : exactCode
+    const addressedCode = this.managed ? scalarCoverageSource(gradientWindowSource(parameterCode)) : exactCode
     if (this.managed && !this.displayMath && !this.hdr) this.displayImageBaseSource = addressedCode
     const module = this.device.createShaderModule({
       code: this.displayMath ? displayArithmeticSource(addressedCode, import.meta.env.VITE_DESIGN_NATIVE_DIVISION !== '0') : addressedCode,
@@ -1177,7 +1183,9 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       }
       if(this.gaussianAutoEnabled&&this.canvasBlurRequested&&gaussianPrefixDemand(n))this.gaussianPrefixRequested=true
       if (n.effects.some(effect => effect.visible && effect.kind === 'gaussian-blur')) this.requiresExactBoxFilters = true
-      return [n.fill, ...n.strokes.map(s => s.path)]
+      const field=n.sourceFilterField
+      const filterMasks=field?[field,...(field.additional??[])].flatMap(f=>f.masks.map(m=>m.path)):[]
+      return [n.fill,...n.strokes.map(s=>s.path),...filterMasks]
     })
     this.scenePrograms = import.meta.env.VITE_DESIGN_PROGRAM_RESIDENCY !== '0' &&
       !paths.some(p=>p.analytic||p.area&&!p.area.fingerprint)
@@ -1204,7 +1212,13 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       Object.values(scene.nodes).some(node=>node.gaussianRegion?.factor!==undefined))modes.add(74)
     this.gestureSoftEffects = displayOnly && this.captureDisplay && this.managed && !this.hdr &&
       !this.displayMath && !scene.softwareRaster && scene.gestureSoftEffects === true
-    if (this.gestureSoftEffects) { modes.add(74); modes.add(75) }
+    this.sourceSoftEffects=import.meta.env.VITE_DESIGN_SOURCE_FILTER_LOD!=='0' && displayOnly && this.managed && !this.hdr &&
+      !this.displayMath && !scene.softwareRaster && scene.sourceDetailTile===true && scene.colorManagement?.documentSpace==='srgb' &&
+      Object.values(scene.nodes).some(n=>n.effects.some(fx=>fx.visible && fx.radius>0))
+    this.sourceImageSampling=import.meta.env.VITE_DESIGN_SOURCE_IMAGE_MATH!=='0' && displayOnly && this.managed &&
+      !this.hdr && !this.displayMath && !scene.softwareRaster && scene.sourceDetailTile===true && scene.colorManagement?.documentSpace==='srgb'
+    if (this.gestureSoftEffects||this.sourceSoftEffects) { modes.add(74); modes.add(75) }
+    if(displayOnly && this.canvasBlurRequested && scene.sourceDetailTile && Object.values(scene.nodes).some(n=>n.sourceFilterField))modes.add(74)
     if(this.exactGradientPaintOver&&gradientFusionWorthwhile(scene))modes.add(GRADIENT_PAINT_OVER_MODE)
     const layout = this.device.createPipelineLayout({ bindGroupLayouts: [this.layout] })
     const pending: string[] = []
@@ -2068,6 +2082,18 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     if (wide) this.wideKernelBounds.set(t,{packet:wide,resource:t.resource,width,height})
     return t
   }
+  uploadStraightSrgb8(bytes:Uint8Array,width:number,height:number){
+    if(!this.managed||this.hdr||this.displayMath||width<256||height<1||bytes.length!==width*height*4)
+      throw Error('Invalid straight sRGB source')
+    const table=this.straightTable??=new Uint8Array(straight_srgb8_table())
+    if(table.length!==2048)throw Error('Invalid sRGB transfer table')
+    const texture=this.createFormat(width,height+2,'rgba8unorm')
+    try{
+      this.device.queue.writeTexture({texture:texture.resource as GPUTexture},bytes as Uint8Array<ArrayBuffer>,{bytesPerRow:width*4},[width,height])
+      this.device.queue.writeTexture({texture:texture.resource as GPUTexture,origin:[0,height]},table,{bytesPerRow:1024},[256,2])
+      this.straightSources.add(texture);return texture
+    }catch(e){this.destroy(texture);throw e}
+  }
   get boundedShadowPacketMaxDimension():number|undefined {
     if(import.meta.env.VITE_DESIGN_BOUNDED_SHADOW_TENT==='0'||!this.managed||!this.certifiedFilter||this.displayMath||this.hdr||
       this.disposed||this.lost||!this.device)return
@@ -2687,6 +2713,12 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     this.triangles += count * 2
   }
   pass(target: Texture, u: Float32Array, inputs: Texture[], region?: Rect, channels = 15, filter?: {kind: 'tent'; radius: number}, clearOutside = false) {
+    if(u[16]===2 && u[28]===3){
+      const range=this.sourceImageSampling&&inputs[1]&&this.immutableImageRange(inputs[1])
+      const straight=!!inputs[1]&&this.straightSources?.has(inputs[1])===true
+      u[207]=Number(straight)
+      u[206]=this.sourceImageSampling&&straight||range&&range.unitAlpha&&range.nonnegativeRgb&&range.maximum.every(v=>v<=127)?1:0
+    }
     this.encodePass(target,u,inputs,region,channels,filter,clearOutside)
   }
   passFilterWindow(target: Texture, uniforms: Float32Array, inputs: Texture[], physicalWindow: Readonly<Rect>,

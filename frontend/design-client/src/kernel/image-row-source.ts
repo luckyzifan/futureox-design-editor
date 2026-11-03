@@ -3,17 +3,19 @@ import { canRebuildImageDecoder } from './image-decode-recovery'
 
 /** A routing hint only. Native PNG/ICC/EXIF and dimension checks remain the
  * authority; malformed and unsupported sources still reject in the decoder. */
-export function largePngRowCandidate(uri: string): boolean {
+export function pngSourceDimensions(uri:string):[number,number]|undefined {
   const prefix='data:image/png;base64,'
-  if(!uri.startsWith(prefix))return false
+  if(!uri.startsWith(prefix))return
   try {
     const bytes=Uint8Array.from(atob(uri.slice(prefix.length,prefix.length+44)),c=>c.charCodeAt(0))
-    if(bytes.length<29||![137,80,78,71,13,10,26,10].every((b,i)=>bytes[i]===b))return false
+    if(bytes.length<29||![137,80,78,71,13,10,26,10].every((b,i)=>bytes[i]===b))return
     const view=new DataView(bytes.buffer),width=view.getUint32(16),height=view.getUint32(20)
-    // These are routing thresholds for the legacy full-surface decoder, not
-    // source admission. Larger sources take the row path at native resolution.
-    return width*height>8_388_608||width>8192||height>8192||uri.length>12*1024*1024
-  }catch{return false}
+    return width&&height?[width,height]:undefined
+  }catch{return}
+}
+export function largePngRowCandidate(uri:string):boolean{
+  const dims=pngSourceDimensions(uri)
+  return !!dims&&(dims[0]*dims[1]>8_388_608||dims[0]>8192||dims[1]>8192||uri.length>12*1024*1024)
 }
 export type LinearImageRows = Iterable<{y:number;height:number;pixels:Float32Array}>
 export function nativeImageRows(uri:string,settings:string,current:()=>void){
@@ -32,7 +34,16 @@ export function nativeImageRows(uri:string,settings:string,current:()=>void){
   // it never creates/starts the iterator. The renderer also disposes explicitly
   // on admission failure and before returning an uploaded texture.
   queueMicrotask(()=>{if(!started)dispose()})
-  return {width,height,pixels:new Float32Array(0),bytes:undefined as Uint8Array|undefined,dispose,linearRows:function*(){
+  return {width,height,pixels:new Float32Array(0),bytes:undefined as Uint8Array|undefined,dispose,
+    linearWindow:(x:number,y:number,w:number,h:number)=>{
+      if(started||!decoder)throw Error('PNG row source already consumed or disposed')
+      started=true
+      try{current();return decoder.window(x,y,w,h)}finally{dispose()}
+    },straightSrgb8:()=>{
+      if(started||!decoder)throw Error('PNG row source already consumed or disposed')
+      started=true
+      try{current();return decoder.straight_srgb8()}finally{dispose()}
+    },linearRows:function*(){
     if(started||!decoder)throw Error('PNG row source already consumed or disposed')
     started=true
     const owned=decoder
