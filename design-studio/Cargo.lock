@@ -690,6 +690,7 @@ name = "futureox-design-desktop-backend"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "flate2",
  "fs2",
  "futureox-design-kernel",
  "same-file",

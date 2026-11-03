@@ -13,7 +13,7 @@ function failure(code, message) {
 export const MAX_PENDING_BYTES = DOCUMENT_TRANSFER_BYTES + 8 * 1024 * 1024
 // Reserve large result envelopes too; this is a wire/admission bound, not a JS RSS limit.
 const responseReservations = new Map([
-  ['large.scene', 64 * 1024], ['large.sceneRead', 768 * 1024], ['large.canvasLayout', 512 * 1024], ['large.canvasSnapshot', 512 * 1024], ['large.canvasPreview', 512 * 1024],
+  ['large.scene', 64 * 1024], ['large.sceneRead', 768 * 1024], ['large.canvasLayout', 512 * 1024], ['large.canvasSnapshot', 512 * 1024], ['large.canvasPreview', 512 * 1024], ['large.openingView', 512 * 1024],
   // A 2 MiB JSON fragment is itself a string inside the RPC envelope: reserve
   // its worst-case quote/backslash escaping as well as bounded metadata.
   ['large.read', 4 * 1024 * 1024 + 64 * 1024], ['large.project', 4 * 1024 * 1024 + 64 * 1024], ['large.children', 512 * 1024],

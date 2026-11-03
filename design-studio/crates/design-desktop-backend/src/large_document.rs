@@ -31,6 +31,7 @@ mod scene;
 mod canvas_layout;
 mod canvas_snapshot;
 mod navigation_image;
+mod opening;
 mod window_cache;
 #[cfg(test)]
 #[path = "large_document/fragment_validation_tests.rs"]
@@ -266,6 +267,7 @@ impl Fragments {
     }
 }
 pub(crate) struct Sessions {
+    opening: opening::Opening,
     root: PathBuf,
     current: Mutex<Option<Session>>,
     progress: Progress,
@@ -275,15 +277,25 @@ pub(crate) struct Sessions {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Open {
+    #[serde(default)] opening_preview: bool,
     path: PathBuf,
     document_id: String,
     session_epoch: u64,
+}
+#[derive(Deserialize)]
+#[serde(rename_all="camelCase",deny_unknown_fields)]
+pub(crate) struct OpeningRequest {
+    owner: Owner, expected_revision:u64, offset:usize, cursor:usize,
+    #[serde(default)] page_id:Option<String>,
+    #[serde(default)] material:Option<usize>,
+    #[serde(default)] viewport:Option<canvas_layout::Box2>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Request {
     #[serde(default)]
     navigation_preview: bool,
+    #[serde(default)] material_keys: Option<Vec<String>>,
     owner: Owner,
     expected_revision: u64,
     #[serde(default)]
@@ -313,6 +325,7 @@ impl Sessions {
             root,
             current: Mutex::new(None),
             progress: Progress::default(),
+            opening: opening::Opening::default(),
             fragments: Mutex::new(Fragments::default()),
         }
     }
@@ -330,6 +343,7 @@ impl Sessions {
         {
             return Err(issue("Invalid large document identity/path"));
         }
+        self.opening.clear(None);
         let _progress = self.progress.begin(
             Owner {
                 document_id: request.document_id.clone(),
@@ -386,7 +400,16 @@ impl Sessions {
             }
             self.progress.phase("validate", 0);
             let source_hash = hash_file(&original, cancel).map_err(issue)?;
-            if let Some(mut recovered) = recover(&self.root, &directory, &source_hash, source_limit, cancel)? {
+            let owner=Owner{document_id:request.document_id.clone(),session_epoch:request.session_epoch};
+            let previews=request.opening_preview && extension=="sketch";
+            let mut checked_cache=false;
+            if let Some(mut recovered) = recover_with_opening(&self.root, &directory, &source_hash, source_limit, cancel, || {
+                if !previews {return false}
+                checked_cache=true;
+                // Publish known pixels before the retained disk index is checked. A clean
+                // source with no preview cache may instead be re-indexed from the fresh copy.
+                !self.opening.restore(owner.clone(),&self.root,&source_hash)
+            })? {
                 recovered.owner = Owner {
                     document_id: request.document_id.clone(),
                     session_epoch: request.session_epoch,
@@ -395,6 +418,10 @@ impl Sessions {
                 return Ok(recovered);
             }
             let mut parts = Vec::new();
+            let opening_preview=previews && (checked_cache || !self.opening.restore(owner,&self.root,&source_hash));
+            let mut staged = Vec::new();
+            let mut preview_pages = Some(Vec::new());
+            let mut preview_roots=0usize;
             let mut expanded_bytes = 0;
             if extension == "json" {
                 self.progress.phase("index", before.len());
@@ -439,8 +466,8 @@ impl Sessions {
                     self.progress.phase("expand", declared);
                     if name.ends_with(".json") {
                         capacity::require_space(&directory, declared)?;
-                        let file = format!("part-{}", parts.len());
-                        let mut target = BufWriter::new(File::create(directory.join(&file)).map_err(issue)?);
+                        let file = format!("part-{}", parts.len()+staged.len());
+                        let mut target = BufWriter::with_capacity(256*1024,File::create(directory.join(&file)).map_err(issue)?);
                         let mut hash=Sha256::new();let mut copied=0u64;
                         let reader=CheckedReader{inner:&mut entry,cancel,progress:Some(&self.progress)};
                         self.progress.phase("index",declared);
@@ -450,21 +477,33 @@ impl Sessions {
                         let stream=IndexedSpool{
                             inner:reader.take(declared+1),output:&mut target,hash:&mut hash,bytes:&mut copied,
                         };
-                        let index=if declared>=1024*1024 {
-                            DiskIndex::build_pipelined(stream,source_limit-expanded_bytes,&directory)?
-                        } else {DiskIndex::build(stream,source_limit-expanded_bytes,&directory)?};
-                        if copied!=declared||index.bytes!=declared{return Err(issue("Sketch member length changed"));}
+                        let index=if opening_preview {
+                            // Publish immutable page members before indexing nested objects.
+                            if name.starts_with("pages/") && preview_pages.is_some() {
+                                let scanned=index::pipe(stream,|input|{
+                                    let mut input=BufReader::with_capacity(128*1024,input);
+                                    let page=opening::read_page(&mut input,staged.len(),cancel).ok();
+                                    // A declined optional projection still consumes the full member, including CRC/EOF.
+                                    io::copy(&mut input,&mut io::sink()).map_err(issue)?;
+                                    Ok(page)
+                                })?;
+                                if let Some(page)=scanned {preview_roots+=page.len();
+                                    if preview_roots<=16_384 && preview_pages.as_ref().unwrap().len()<512 {preview_pages.as_mut().unwrap().push(page)} else {preview_pages=None}
+                                } else {preview_pages=None}
+                            } else {
+                                let mut stream=stream;let mut buf=vec![0u8;128*1024];
+                                while stream.read(&mut buf).map_err(issue)?!=0 {}
+                            }
+                            None
+                        } else if declared>=1024*1024 {
+                            Some(DiskIndex::build_pipelined(stream,source_limit-expanded_bytes,&directory)?)
+                        } else {Some(DiskIndex::build(stream,source_limit-expanded_bytes,&directory)?)};
+                        if copied!=declared||index.as_ref().is_some_and(|i|i.bytes!=declared){return Err(issue("Sketch member length changed"));}
                         target.flush().map_err(issue)?;
                         target.get_ref().sync_all().map_err(issue)?;
                         let hash=format!("{:x}",hash.finalize());
-                        parts.push(Part {
-                            name,
-                            file,
-                            hash,
-                            base_bytes: index.bytes,
-                            index,
-                            additions: Vec::new(),
-                        });
+                        if let Some(index)=index {parts.push(Part{name,file,hash,base_bytes:declared,index,additions:Vec::new()})}
+                        else {staged.push((opening::Part{name,file,bytes:declared},hash));}
                     } else {
                         // Validate real decompression and CRC without retaining assets.
                         let mut reader = CheckedReader {
@@ -483,6 +522,18 @@ impl Sessions {
                 }
                 if !names.contains("document.json") || !names.contains("meta.json") {
                     return Err(issue("Sketch archive has no document/meta"));
+                }
+                if !staged.is_empty() {
+                    let owner=Owner{document_id:request.document_id.clone(),session_epoch:request.session_epoch};
+                    let files=staged.iter().map(|(p,_)|opening::Part{name:p.name.clone(),file:p.file.clone(),bytes:p.bytes}).collect();
+                    if let Some(pages)=preview_pages {self.opening.start(owner,directory.clone(),files,pages,&source_hash);}
+                    for (p,hash) in staged {
+                        self.progress.phase("index",p.bytes);
+                        let reader=CheckedReader{inner:File::open(directory.join(&p.file)).map_err(issue)?,cancel,progress:Some(&self.progress)};
+                        let index=DiskIndex::build(reader,p.bytes,&directory)?;
+                        if index.bytes!=p.bytes{return Err(issue("Sketch spool length changed"));}
+                        parts.push(Part{name:p.name,file:p.file,hash,base_bytes:p.bytes,index,additions:Vec::new()});
+                    }
                 }
             }
             Ok(Session {
@@ -519,17 +570,20 @@ impl Sessions {
         })();
         match result {
             Ok(session) => {
-                persist(&session)?;
+                if let Err(error)=persist(&session){self.opening.clear(None);return Err(error)}
+                self.opening.admitted(&session.owner);
                 let value = status(&session);
                 *slot = Some(session);
                 Ok(value)
             }
             Err(error) => {
+                self.opening.clear(None);
                 let _ = fs::remove_dir_all(&directory);
                 Err(error)
             }
         }
     }
+    pub(crate) fn opening_view(&self,request:OpeningRequest)->Result<Value> {self.opening.read(&request)}
     pub(crate) fn dispatch(
         &self,
         method: &str,
@@ -561,11 +615,14 @@ impl Sessions {
             return Err(issue("Stale or foreign large document revision"));
         }
         check_cancel(cancel).map_err(issue)?;
+        if matches!(method,"large.apply"|"large.commitCanvas"|"large.sceneCommit"|"large.undo"|"large.redo"|"large.close") {
+            self.opening.clear(Some(&request.owner));
+        }
         match method {
             "large.status" => Ok(status(s)),
             "large.children" => children(s, request),
             "large.canvasLayout" => canvas_layout::list(s, request, cancel),
-            "large.canvasSnapshot" => canvas_snapshot::prepare(s,cancel,request.navigation_preview),
+            "large.canvasSnapshot" => canvas_snapshot::prepare(s,cancel,request.navigation_preview,request.material_keys.as_deref()),
             "large.canvasPreview" => Ok(s.canvas_snapshot.as_ref().filter(|snapshot|snapshot.revision==s.revision)
                 .and_then(|snapshot|snapshot.navigation.as_ref()).map(|preview|preview.poll()).unwrap_or_else(||json!({"phase":"unavailable"}))),
             "large.read" => {
@@ -994,12 +1051,17 @@ struct RecoveryCheckpoint {
     redo: Vec<State>,
     additions: Vec<Vec<Addition>>,
 }
-fn recover(
+#[cfg(test)]
+fn recover(root:&Path,new_directory:&Path,source_hash:&str,source_limit:u64,cancel:&AtomicBool)->Result<Option<Session>> {
+    recover_with_opening(root,new_directory,source_hash,source_limit,cancel,||false)
+}
+fn recover_with_opening(
     root: &Path,
     new_directory: &Path,
     source_hash: &str,
     source_limit: u64,
     cancel: &AtomicBool,
+    mut on_pristine: impl FnMut() -> bool,
 ) -> Result<Option<Session>> {
     let mut candidates = Vec::new();
     for entry in fs::read_dir(root).map_err(issue)? {
@@ -1034,6 +1096,10 @@ fn recover(
             || checkpoint.redo.len() > HISTORY_LIMIT
         {
             return Err(issue("Retained large document checkpoint is invalid"));
+        }
+        if checkpoint.revision==0 && checkpoint.saved_revision==0 && checkpoint.undo.is_empty() && checkpoint.redo.is_empty() &&
+            checkpoint.additions.iter().all(Vec::is_empty) && checkpoint.state.changes.iter().all(Changes::is_pristine) && on_pristine() {
+            return Ok(None);
         }
         let index_path = directory.join("index.json");
         let metadata = fs::symlink_metadata(&index_path).map_err(issue)?;
@@ -1606,7 +1672,7 @@ mod tests {
             self.sessions
                 .open(
                     Open {
-                        path,
+                        opening_preview:false, path,
                         document_id: "test-document".into(),
                         session_epoch: epoch,
                     },
@@ -1781,7 +1847,7 @@ mod tests {
         let status = sessions
             .open(
                 Open {
-                    path,
+                    opening_preview:false, path,
                     document_id: "fresh-owner".into(),
                     session_epoch: 2,
                 },
@@ -1900,7 +1966,7 @@ mod tests {
             sessions
                 .open(
                     Open {
-                        path: over,
+                        opening_preview:false, path: over,
                         document_id: "over".into(),
                         session_epoch: 1
                     },

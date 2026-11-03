@@ -321,6 +321,16 @@ fn sketch_roots_in(s:&Session,roots:Vec<Value>,facts:RootFacts,mut source_bytes:
             return Err(issue("Select a smaller component dependency working set"));
         }
     }
+    import_source_roots(roots, masters, images, document, &s.directory.join("source"))
+}
+
+pub(super) fn preview_dependencies(root: &Value) -> (HashSet<String>, HashSet<String>) {
+    let facts = RootFacts::scan(root);
+    (facts.symbols, facts.images)
+}
+
+pub(super) fn import_source_roots(roots: Vec<Value>, masters: BTreeMap<String,Value>,
+    images: HashSet<String>, document: &Value, archive_path: &Path) -> Result<(Document,Vec<String>)> {
     let page_id = "00000000-0000-4000-8000-000000000001";
     let dependency_page_id = "00000000-0000-4000-8000-000000000002";
     // Sketch interop derives page IDs from member references. Keep those IDs
@@ -333,7 +343,7 @@ fn sketch_roots_in(s:&Session,roots:Vec<Value>,facts:RootFacts,mut source_bytes:
     let mut entries = BTreeMap::new();
     if !images.is_empty() {
         let mut archive =
-            zip::ZipArchive::new(File::open(s.directory.join("source")).map_err(issue)?)
+            zip::ZipArchive::new(File::open(archive_path).map_err(issue)?)
                 .map_err(issue)?;
         let mut size = 0u64;
         for image in images {

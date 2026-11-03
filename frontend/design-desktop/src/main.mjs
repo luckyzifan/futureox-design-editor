@@ -572,6 +572,7 @@ register('large-document-children', value => largeDocuments.children(value), fal
 register('large-document-canvas-layout', value => largeDocuments.canvasLayout(value), false)
 register('large-document-canvas-snapshot', value => largeDocuments.canvasSnapshot(value), false)
 register('large-document-canvas-preview', value => largeDocuments.canvasPreview(value), false)
+register('large-document-opening-view', value => largeDocuments.openingView(value), false)
 register('large-document-apply', value => largeDocuments.apply(value), false)
 register('large-document-project', value => largeDocuments.project(value), false)
 register('large-document-scene', value => largeDocuments.scene(value), false)

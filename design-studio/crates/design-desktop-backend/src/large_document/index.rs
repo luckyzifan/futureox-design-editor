@@ -55,7 +55,7 @@ pub(super) struct DiskIndex {
     data: String,
 }
 const STREAM_CHUNK: usize = 64 * 1024;
-struct ChunkReader {
+pub(super) struct ChunkReader {
     receiver: std::sync::mpsc::Receiver<Vec<u8>>,
     current: std::io::Cursor<Vec<u8>>,
 }
@@ -80,16 +80,13 @@ impl Read for ChunkReader {
     }
 }
 
-impl DiskIndex {
-    /// Decode/spool/hash on the caller while one worker parses the same byte
-    /// stream. Two queued chunks plus producer/consumer bound staging to256KiB.
-    /// Full EOF/CRC and parser success are both required before publication.
-    pub fn build_pipelined(mut reader: impl Read, limit: u64, directory: &Path) -> Result<Self> {
-        std::thread::scope(|scope| {
+/// Decode/spool/hash on this thread while one bounded consumer parses the same bytes.
+pub(super) fn pipe<T:Send>(mut reader:impl Read,consume:impl FnOnce(ChunkReader)->Result<T>+Send)->Result<T> {
+    std::thread::scope(|scope| {
             let (sender, receiver) = std::sync::mpsc::sync_channel(2);
-            let parser = scope.spawn(move || Self::build(ChunkReader {
+            let parser = scope.spawn(move || consume(ChunkReader {
                 receiver, current: std::io::Cursor::new(Vec::new()),
-            }, limit, directory));
+            }));
             let producer = (|| -> io::Result<()> {
                 loop {
                     let mut bytes = vec![0; STREAM_CHUNK];
@@ -110,6 +107,10 @@ impl DiskIndex {
         })
     }
 
+impl DiskIndex {
+    pub fn build_pipelined(reader:impl Read, limit:u64, directory:&Path)->Result<Self> {
+        pipe(reader,|stream|Self::build(stream,limit,directory))
+    }
     pub fn build(reader: impl Read, limit: u64, directory: &Path) -> Result<Self> {
         static NEXT: AtomicUsize = AtomicUsize::new(0);
         let data = format!(

@@ -26,7 +26,7 @@ impl Fixture {
         let status = sessions
             .open(
                 Open {
-                    path: source.clone(),
+                    opening_preview:false, path: source.clone(),
                     document_id: "checkpoint-test".into(),
                     session_epoch: 1,
                 },

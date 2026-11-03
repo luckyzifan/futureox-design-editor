@@ -53,7 +53,7 @@ impl Fixture {
         }
         zip.finish().unwrap();
         let sessions = Sessions::new(root.join("cache"));
-        let status = sessions.open(Open { path: source.clone(), document_id: "source-test".into(), session_epoch: 1 }, &AtomicBool::new(false)).unwrap();
+        let status = sessions.open(Open { opening_preview:false, path: source.clone(), document_id: "source-test".into(), session_epoch: 1 }, &AtomicBool::new(false)).unwrap();
         (Self { root, source, members, sessions }, status)
     }
     fn request(status: &Value, extra: Value) -> Request {
@@ -209,7 +209,7 @@ fn complete_topology_batched_canvas_matches_individual_conversion() {
     let root=std::env::temp_dir().join(format!("topology-batched-oracle-{}",std::process::id()));
     fs::create_dir(&root).unwrap();let sessions=Sessions::new(root.join("cache"));
     let cancel=AtomicBool::new(false);
-    let at=std::time::Instant::now();sessions.open(Open{path:source,document_id:"topology-batch-oracle".into(),session_epoch:1},&cancel).unwrap();
+    let at=std::time::Instant::now();sessions.open(Open{opening_preview:false, path:source,document_id:"topology-batch-oracle".into(),session_epoch:1},&cancel).unwrap();
     eprintln!("topology open seconds {}",at.elapsed().as_secs_f64());
     let slot=sessions.current.lock().unwrap();let s=slot.as_ref().unwrap();let layout=canvas_layout::build(s,&cancel).unwrap();
     assert_eq!(layout.items.len(),306);
@@ -393,7 +393,7 @@ fn later_page_range_edits_preserve_cold_roots_and_reopen_all_members() {
     assert_eq!(original["layers"][0], edited["layers"][0]);
     assert_eq!(edited["layers"][1]["name"], "edited later range");
     f.call(&changed, "large.close", json!({})).unwrap();
-    let reopened = f.sessions.open(Open { path:f.root.join("range-edit.sketch"), document_id:"range-reopen".into(), session_epoch:2 }, &AtomicBool::new(false)).unwrap();
+    let reopened = f.sessions.open(Open { opening_preview:false, path:f.root.join("range-edit.sketch"), document_id:"range-reopen".into(), session_epoch:2 }, &AtomicBool::new(false)).unwrap();
     let key = f.key(PAGE);
     let loaded = f.call(&reopened, "large.scene", json!({"key":key})).unwrap();
     assert_eq!(loaded["pageRange"]["end"], 2);
@@ -517,7 +517,7 @@ fn json_subtree_commit_rebinds_root_after_a_preceding_indexed_child_is_removed()
         "nodes":{RECT:child,OTHER:root},"fonts":{}});
     let path = f.root.join("source.json");
     fs::write(&path, serde_json::to_vec(&source).unwrap()).unwrap();
-    let opened = f.sessions.open(Open { path, document_id:"json-source".into(), session_epoch:2 }, &AtomicBool::new(false)).unwrap();
+    let opened = f.sessions.open(Open { opening_preview:false, path, document_id:"json-source".into(), session_epoch:2 }, &AtomicBool::new(false)).unwrap();
     let key = f.key(OTHER);
     let projected = f.call(&opened, "large.project", json!({"key":key,
         "workingDocumentId":"10000000-0000-4000-8000-000000000099"})).unwrap();
@@ -634,7 +634,7 @@ fn json_case_distinct_node_ids_keep_exact_identity_across_noop_and_edit() {
     let untouched_bytes = serde_json::to_vec(&source["nodes"]["Node"]).unwrap();
     let path = f.root.join("case-source.json");
     fs::write(&path, &source_bytes).unwrap();
-    let opened = f.sessions.open(Open { path:path.clone(), document_id:"case-source".into(), session_epoch:2 },
+    let opened = f.sessions.open(Open { opening_preview:false, path:path.clone(), document_id:"case-source".into(), session_epoch:2 },
         &AtomicBool::new(false)).unwrap();
     let key = f.key("node");
     let other_key = f.key("Node");
@@ -932,4 +932,35 @@ fn mixed_name_and_unsupported_smoothing_edit_never_partially_commits() {
     let (key,mut document)=project_new_node_fixture(&f,&status);
     let n=document.nodes.get_mut(RECT).unwrap();n.name="must not partially save".into();n.smoothing=0.6;
     assert_new_source_rejection(&f,&status,&key,&document,"smoothing","mixed-edit-refused.sketch");
+}
+
+#[test]
+fn material_snapshot_converts_only_requested_roots_and_keeps_full_source_placement() {
+    let (f,status)=Fixture::new(SOURCE_PAGE);
+    let layout=f.call(&status,"large.canvasLayout",json!({})).unwrap();
+    let both=f.call(&status,"large.canvasSnapshot",json!({})).unwrap();
+    let load=|v:&Value| {
+        let store=serde_json::from_value(v["store"].clone()).unwrap();
+        futureox_design_kernel::scene_store::Reader::open(&PathBuf::from(v["path"].as_str().unwrap()),&store,&AtomicBool::new(false)).unwrap()
+            .into_document(&AtomicBool::new(false)).unwrap().0
+    };
+    let full=load(&both);
+    let key=&layout["items"][0]["key"];
+    let scoped=f.call(&status,"large.canvasSnapshot",json!({"materialKeys":[key]})).unwrap();
+    assert_eq!(scoped["roots"],1);assert_ne!(scoped["path"],both["path"]);
+    assert_ne!(scoped["store"]["generation"],both["store"]["generation"]);
+    let doc=load(&scoped);let id=layout["items"][0]["id"].as_str().unwrap();
+    assert_eq!(doc.nodes[id],full.nodes[id]);
+    assert_eq!(doc.nodes[scoped["stageId"].as_str().unwrap()].children,vec![id]);
+    assert!(!doc.nodes.contains_key(OTHER));
+    assert_eq!(f.call(&status,"large.canvasSnapshot",json!({"materialKeys":[key]})).unwrap(),scoped);
+    assert!(f.call(&status,"large.canvasSnapshot",json!({"materialKeys":["0:999999"]})).is_err());
+    assert!(f.call(&status,"large.canvasSnapshot",json!({"materialKeys":[key,key]})).is_err());
+    assert_eq!(f.call(&status,"large.canvasLayout",json!({})).unwrap(),layout);
+    let hits=||f.sessions.current.lock().unwrap().as_ref().unwrap().converted_windows.lock().unwrap().hits;
+    let previous=hits();
+    f.call(&status,"large.scene",json!({"key":key})).unwrap();
+    assert_eq!(hits(),previous+1,"editing reuses the exact converted material");
+    assert_eq!(f.call(&status,"large.canvasSnapshot",json!({})).unwrap()["roots"],2);
+    assert_eq!(f.export_members(&status,"isolated-display.sketch"),f.members);
 }

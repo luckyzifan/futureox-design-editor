@@ -553,6 +553,7 @@ pub struct Addition {
     pub sha256: String,
 }
 impl Changes {
+    pub fn is_pristine(&self) -> bool { self.pieces.is_none() }
     fn pieces(&self, source_bytes: u64) -> Vec<Piece> {
         self.pieces.clone().unwrap_or_else(|| {
             vec![Piece {

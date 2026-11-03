@@ -157,6 +157,7 @@ contextBridge.exposeInMainWorld(
       canvasLayout: value => invoke('large-document-canvas-layout', value),
       canvasSnapshot: value => invoke('large-document-canvas-snapshot', value),
       canvasPreview: value => invoke('large-document-canvas-preview', value),
+      openingView: value => invoke('large-document-opening-view', value),
       apply: value => invoke('large-document-apply', value),
       project: value => invoke('large-document-project', value),
       scene: value => invoke('large-document-scene', value),

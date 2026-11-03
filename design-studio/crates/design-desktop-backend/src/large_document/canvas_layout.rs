@@ -1,7 +1,7 @@
 //! A whole-source canvas catalogue, independent of scene residency.
 use super::*;
 
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct Box2 {
     #[serde(default)] pub x: f64,
@@ -9,7 +9,7 @@ pub(super) struct Box2 {
     #[serde(default)] pub width: f64,
     #[serde(default)] pub height: f64,
 }
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct Item {
     pub key: String, pub id: String, pub name: String, pub kind: String,
@@ -32,6 +32,9 @@ fn field<T: serde::de::DeserializeOwned>(s: &Session, p: usize, entry: &large_js
 fn frame(s: &Session, p: usize, entry: &large_json::Entry, source: &mut File, cancel: &AtomicBool) -> Result<Box2> {
     let value = field::<Box2>(s, p, entry, source, "frame", cancel)?.unwrap_or_default();
     let angle = field::<f64>(s, p, entry, source, "rotation", cancel)?.unwrap_or(0.);
+    rotated_bounds(value, angle)
+}
+pub(super) fn rotated_bounds(value: Box2, angle: f64) -> Result<Box2> {
     if ![value.x, value.y, value.width, value.height, angle].iter().all(|n| n.is_finite()) || value.width < 0. || value.height < 0. {
         return Err(issue("Invalid source canvas geometry"));
     }
@@ -44,7 +47,7 @@ fn frame(s: &Session, p: usize, entry: &large_json::Entry, source: &mut File, ca
     }
     Ok(bounds)
 }
-fn arrange(items: &mut [Item]) -> Result<Box2> {
+pub(super) fn arrange(items: &mut [Item]) -> Result<Box2> {
     // Spacing is a layout choice, never a content admission quota.
     let gap = 128.;
     let largest = items.iter().map(|i| i.source.width.max(1.) + gap).fold(1., f64::max);

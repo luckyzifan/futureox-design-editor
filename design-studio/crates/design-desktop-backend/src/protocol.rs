@@ -158,6 +158,7 @@ fn dispatch(
     }
     match method {
         "large.open" => backend.large_documents.open(parse_params(params)?, cancel),
+        "large.openingView" => backend.large_documents.opening_view(parse_params(params)?),
         method if method.starts_with("large.") => {
             backend
                 .large_documents
