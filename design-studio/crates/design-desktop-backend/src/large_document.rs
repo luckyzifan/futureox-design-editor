@@ -30,6 +30,7 @@ mod symbol_index;
 mod scene;
 mod canvas_layout;
 mod canvas_snapshot;
+mod navigation_image;
 mod window_cache;
 #[cfg(test)]
 #[path = "large_document/fragment_validation_tests.rs"]
@@ -281,6 +282,8 @@ pub(crate) struct Open {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Request {
+    #[serde(default)]
+    navigation_preview: bool,
     owner: Owner,
     expected_revision: u64,
     #[serde(default)]
@@ -562,7 +565,9 @@ impl Sessions {
             "large.status" => Ok(status(s)),
             "large.children" => children(s, request),
             "large.canvasLayout" => canvas_layout::list(s, request, cancel),
-            "large.canvasSnapshot" => canvas_snapshot::prepare(s, cancel),
+            "large.canvasSnapshot" => canvas_snapshot::prepare(s,cancel,request.navigation_preview),
+            "large.canvasPreview" => Ok(s.canvas_snapshot.as_ref().filter(|snapshot|snapshot.revision==s.revision)
+                .and_then(|snapshot|snapshot.navigation.as_ref()).map(|preview|preview.poll()).unwrap_or_else(||json!({"phase":"unavailable"}))),
             "large.read" => {
                 let (part, node) = location(s, request.key.as_deref())?;
                 let (text, omitted) = self.fragments.lock().map_err(issue)?.read(
@@ -942,6 +947,11 @@ fn commit(
                 .and_then(|f| f.set_len(*start));
         }
         return Err(error);
+    }
+    if let Some(snapshot) = s.canvas_snapshot.as_mut() {
+        // Only a successfully persisted revision invalidates this job. The
+        // store itself remains available until its successor is published.
+        snapshot.navigation.take();
     }
     if let Some((p, index)) = index {
         s.parts[p].index = index;

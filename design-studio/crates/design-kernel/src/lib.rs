@@ -94,6 +94,8 @@ pub mod pdf_export;
 pub mod pdf_import;
 pub mod preview;
 pub mod preparation;
+#[cfg(not(target_arch="wasm32"))]
+pub mod navigation_image;
 pub mod render_cancellation;
 pub mod prototype;
 pub mod prototype_logic;

@@ -67,3 +67,23 @@ test('repeated accepted transfers keep only one visible image and release retire
   expect(f.presenter.payloadStats.retiringBytes).toBe(0)
  }
 })
+
+test('a copied overview tile holds its capture reservation through the browser handoff',async()=>{
+ const f=descriptorPresenter(()=>{},true)
+ const tile=f.presenter.capture(256,256,undefined,{owner:{},contract:'page'})
+ f.presenter.draw({view:{x:0,y:0,zoom:1},width:256,height:256,dpr:1,
+   cameraPreview:{anchor:tile.id},items:[{active:true,layer:1,gutter:0,tile:{key:'page',serial:1,gpuTile:tile.id,x:0,y:0,width:256,height:256,zoom:1}}]})
+ f.queue.completeThrough(f.queue.epoch);await flush()
+ const frame=f.reports.at(-1) as any
+ expect(frame.presented.navigationBackingBytes).toBe(1024*1024)
+ frame.bitmap.close();f.presenter.acceptPresentation(frame.presented.presentationToken)
+ const pending=f.presenter.captureNavigationTile(tile.id,719)
+ await expect(f.presenter.captureNavigationTile(tile.id,720)).rejects.toThrow(/unavailable/)
+ f.queue.completeThrough(f.queue.epoch);const result=await pending
+ expect(result.navigationToken).toBe(719)
+ expect(f.presenter.payloadStats).toMatchObject({pendingCaptures:1,captureReservedBytes:256*256*4})
+ f.presenter.releaseNavigationTransfer(720)
+ expect(f.presenter.payloadStats.pendingCaptures).toBe(1)
+ result.bitmap.close();f.presenter.releaseNavigationTransfer(719);await flush()
+ expect(f.presenter.payloadStats).toMatchObject({pendingCaptures:0,captureReservedBytes:0})
+})

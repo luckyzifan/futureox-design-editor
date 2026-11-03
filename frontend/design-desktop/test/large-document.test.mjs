@@ -148,6 +148,7 @@ test('native canvas snapshots expose only opaque, window-and-revision-bound capa
   if(method==='large.open')return live={...status({documentId:params.documentId,sessionEpoch:params.sessionEpoch}),format:'sketch'}
   if(method==='large.canvasSnapshot'){snapshotCalls++;return {owner:live.owner,revision:live.revision,path:`/native/cache/canvas-native-${live.revision}.scene`,bytes:600*1024**2,
    store:{generation:`${live.owner.documentId}:${live.owner.sessionEpoch}:${live.revision}`,documentId:live.owner.documentId,bytes:600*1024**2,nodes:124447,footerHash:Array(32).fill(42)},nodes:124447,roots:306,pageId:'page',stageId:'stage',bounds:{x:0,y:0,width:20000,height:30000},warnings:[],rasterProfile:'figma',colorManaged:true}}
+  if(method==='large.canvasPreview')return {phase:'ready',image:{width:1,height:1,scale:1/30000,png:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+nHoQAAAAASUVORK5CYII='}}
   if(method==='large.apply')return live={...live,revision:live.revision+1}
   throw Error(method)
  },{showOpenDialog:async()=>({canceled:false,filePaths:['/approved/source.sketch']})},()=>current)
@@ -155,11 +156,15 @@ test('native canvas snapshots expose only opaque, window-and-revision-bound capa
  await assert.rejects(()=>host.canvasSnapshot({...request,path:'/renderer/forged'}),/Invalid/)
  const snapshot=await host.canvasSnapshot(request)
  assert.equal(snapshot.bytes,600*1024**2);assert.equal(Object.hasOwn(snapshot,'path'),false);assert.equal(Object.hasOwn(snapshot,'hash'),false);assert.equal(Object.hasOwn(snapshot,'store'),false)
+ await assert.rejects(()=>host.canvasPreview({...request,token:'different'}),/Stale/)
+ const preview=await host.canvasPreview({...request,token:snapshot.token})
+ assert.equal(preview.phase,'ready');assert.equal(preview.width,1)
  const grant=host.resolveCanvasSnapshot(snapshot.token,17);assert.equal(grant.descriptor.path,'/native/cache/canvas-native-0.scene');assert.equal(Object.isFrozen(grant.descriptor),true)
  assert.throws(()=>host.resolveCanvasSnapshot(snapshot.token,18),/foreign/)
  assert.throws(()=>host.resolveCanvasSnapshot({path:'/renderer/forged'},17),/foreign/)
  assert.equal((await host.canvasSnapshot(request)).token,snapshot.token);assert.equal(snapshotCalls,1)
  await host.apply({...request,key:'0:0',json:'{"name":"edit"}',expectedHash:'b'.repeat(64)})
+ await assert.rejects(()=>host.canvasPreview({...request,token:snapshot.token}),/Stale/)
  assert.throws(()=>grant.assertCurrent(),/Stale/);assert.throws(()=>host.resolveCanvasSnapshot(snapshot.token,17),/Stale/)
  const next=await host.canvasSnapshot({...request,expectedRevision:1});assert.notEqual(next.token,snapshot.token)
  current={isDestroyed:()=>false,webContents:{id:17}}
