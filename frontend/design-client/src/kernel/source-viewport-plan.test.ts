@@ -138,3 +138,15 @@ test('far source coordinates are rebased without changing the world lattice or f
  expect(plan.tiles.some(t=>Math.abs(t.x)>1000000)).toBe(true)
  expect(plan.raster.phase).toEqual({x:0,y:0})
 })
+
+test('a continuous zoom retains its current lattice until visible detail advances',()=>{
+ const planner=new SourceViewportPlanner('figmaSubpixel',true)
+ const view=(zoom:number)=>({x:0,y:0,zoom})
+ planner.plan(view(.25),2,800,600,false);planner.presented(view(.25),2,800,600)
+ const first=planner.plan(view(.45),2,800,600,true,undefined,true)
+ const waiting=planner.plan(view(.56),2,800,600,true,undefined,true)
+ expect(waiting.raster.scale).toBe(first.raster.scale)
+ expect(planner.presentedDetail(waiting.raster.scale)).toBe(true)
+ expect(planner.plan(view(.58),2,800,600,true,undefined,true).raster.scale).toBeGreaterThan(waiting.raster.scale)
+ expect(planner.plan(view(.58),2,800,600,false).exact).toBe(true)
+})
