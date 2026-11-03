@@ -54,13 +54,45 @@ export class LargeDocumentHost {
     const owner = { documentId:randomUUID(), sessionEpoch:++this.#epoch }
     this.#active={window,status:{owner,revision:0,name:path.basename(selected.filePaths[0]),format,expandedBytes:0,maxExpandedBytes:0,indexedObjects:0,dirty:false,undoCount:0,redoCount:0}}
     let result
-    try{result=admitLargeStatus(await this.request('large.open', {path:selected.filePaths[0],...owner}), owner)}
+    try{result=admitLargeStatus(await this.request('large.open', {path:selected.filePaths[0],...owner,...(format==='sketch'?{openingPreview:true}:{})}), owner)}
     catch(error){if(error?.outcomeUnknown!==true)this.#active=undefined;throw error}
     if (window !== this.window() || window.isDestroyed()) {
       await this.request('large.close',{owner,expectedRevision:result.revision}); this.#active=undefined;return {status:'cancelled'}
     }
-    this.#active = {window,status:result}; return {status:'ok',...result}
+    this.#active.status=result; return {status:'ok',...result}
   }) }
+  async openingView(value) {
+    fields(value,['owner','offset','cursor','pageId','material','viewport'])
+    const active=this.#active
+    if (!active || active.window!==this.window() || active.window.isDestroyed()) return {status:'cancelled'}
+    if (active.status.format!=='sketch' || active.status.revision!==0) return {status:'ok',phase:'unavailable'}
+    const owner=active.status.owner
+    if (value.owner!==undefined && (value.owner?.documentId!==owner.documentId || value.owner?.sessionEpoch!==owner.sessionEpoch)) return {status:'cancelled'}
+    if (![value.offset,value.cursor].every(integer) || value.material!==undefined&&!integer(value.material) ||
+        value.pageId!==undefined&&(typeof value.pageId!=='string'||value.pageId.length>128)) throw Error('Invalid opening view request')
+    if(value.viewport!==undefined){
+      const b=fields(value.viewport,['x','y','width','height'])
+      if(![b.x,b.y,b.width,b.height,b.x+b.width,b.y+b.height].every(Number.isFinite)||b.width<=0||b.height<=0)throw Error('Invalid opening viewport')
+    }
+    const result=await this.request('large.openingView',{...value,owner,expectedRevision:0})
+    if (this.#active!==active || active.status.revision!==0 || active.window!==this.window() || active.window.isDestroyed()) return {status:'cancelled'}
+    if (result?.phase==='absent') return {status:'ok',phase:active.status.maxExpandedBytes?'unavailable':'pending'}
+    if (result?.phase==='pending'||result?.phase==='unavailable') return {status:'ok',phase:result.phase}
+    const box=b=>object(b)&&[b.x,b.y,b.width,b.height].every(Number.isFinite)&&b.width>=0&&b.height>=0
+    if (result?.phase!=='available'||result.owner?.documentId!==owner.documentId||result.owner?.sessionEpoch!==owner.sessionEpoch||result.revision!==0||
+        !box(result.bounds)||!integer(result.total)||result.offset!==value.offset||!Array.isArray(result.items)||result.items.length>128||
+        result.nextOffset!==value.offset+result.items.length||result.nextOffset>result.total||
+        !Array.isArray(result.images)||result.images.length>32||result.cursor!==value.cursor+result.images.length||
+        typeof result.moreImages!=='boolean'||typeof result.finished!=='boolean'||result.items.some(row=>!box(row.placed)||!box(row.source)||['id','name','kind','pageId','pageName','key'].some(k=>typeof row[k]!=='string'))||
+        (value.offset===0 && (!Array.isArray(result.pages)||result.pages.some(p=>!Array.isArray(p)||typeof p[0]!=='string'||typeof p[1]!=='string'||!integer(p[2]))))) throw Error('Invalid opening view response')
+    for (const image of result.images) {
+      if (!integer(image.index)||image.index>=result.total||typeof image.png!=='string'||image.png.length>64*1024) throw Error('Invalid material thumbnail')
+      const b=Buffer.from(image.png,'base64')
+      if (b.length<24||b.readUInt32BE(0)!==0x89504e47||b.readUInt32BE(4)!==0x0d0a1a0a||
+          b.toString('ascii',12,16)!=='IHDR'||![b.readUInt32BE(16),b.readUInt32BE(20)].every(n=>n>=1&&n<=96)) throw Error('Invalid material PNG')
+    }
+    return {status:'ok',...result}
+  }
   async read(value) {
     const active = this.#check(value,['owner','expectedRevision','key'])
     this.#key(value.key)
@@ -93,17 +125,27 @@ export class LargeDocumentHost {
     return {status:'ok',...result}
   }
   async canvasSnapshot(value) { return this.#exclusive(async()=>{
-    const active=this.#check(value,['owner','expectedRevision','navigationPreview'])
+    const fields=['owner','expectedRevision','navigationPreview','materialKeys']
+    const active=this.#check(value,fields)
     if (value.navigationPreview !== undefined && typeof value.navigationPreview !== 'boolean') throw Error('Invalid source preview option')
-    if(active.snapshot?.revision===active.status.revision)return {status:'ok',...active.snapshot.public}
+    let keys,scope
+    if(value.materialKeys!==undefined){
+      if(!Array.isArray(value.materialKeys)||!value.materialKeys.length||value.materialKeys.length>32)throw Error('Invalid detail scope')
+      keys=[...value.materialKeys].sort();for(const key of keys)this.#key(key)
+      if(new Set(keys).size!==keys.length)throw Error('Duplicate detail root')
+      scope=createHash('sha256').update(keys.join(',')).digest('hex')
+    }
+    const suffix=scope?'-'+scope:''
+    if(active.snapshot?.revision===active.status.revision && active.snapshot.scope===scope)return {status:'ok',...active.snapshot.public}
     const result=await this.request('large.canvasSnapshot',value)
-    this.#check(value,['owner','expectedRevision','navigationPreview'])
+    this.#check(value,fields)
     const box=result?.bounds
     if(!object(result)||result.owner?.documentId!==value.owner.documentId||result.owner?.sessionEpoch!==value.owner.sessionEpoch||result.revision!==value.expectedRevision||
-      typeof result.path!=='string'||!path.isAbsolute(result.path)||path.normalize(result.path)!==result.path||path.basename(result.path)!==`canvas-native-${result.revision}.scene`||
+      typeof result.path!=='string'||!path.isAbsolute(result.path)||path.normalize(result.path)!==result.path||path.basename(result.path)!==`canvas-native-${result.revision}${suffix}.scene`||
+      (result.scope??undefined)!==scope || keys&&result.roots!==keys.length||
       !integer(result.bytes)||result.bytes===0||!integer(result.nodes)||!result.nodes||!integer(result.roots)||!result.roots||
       !object(result.store)||Object.keys(result.store).sort().join(',')!=='bytes,documentId,footerHash,generation,nodes'||
-      result.store.generation!==`${value.owner.documentId}:${value.owner.sessionEpoch}:${result.revision}`||result.store.documentId!==value.owner.documentId||
+      result.store.generation!==`${value.owner.documentId}:${value.owner.sessionEpoch}:${result.revision}${suffix}`||result.store.documentId!==value.owner.documentId||
       result.store.bytes!==result.bytes||result.store.nodes!==result.nodes||!Array.isArray(result.store.footerHash)||result.store.footerHash.length!==32||result.store.footerHash.some(n=>!integer(n)||n>255)||
       ['pageId','stageId'].some(key=>typeof result[key]!=='string'||!/^[a-z0-9-]{1,128}$/i.test(result[key]))||
       !object(box)||!['x','y','width','height'].every(key=>typeof box[key]==='number'&&Number.isFinite(box[key]))||box.width<=0||box.height<=0||
@@ -111,7 +153,7 @@ export class LargeDocumentHost {
       !Array.isArray(result.warnings)||result.warnings.some(value=>typeof value!=='string'))throw Error('Invalid native canvas snapshot')
     const token=randomUUID(),revision=result.revision
     const descriptor=Object.freeze({path:result.path,store:Object.freeze({...result.store,footerHash:Object.freeze([...result.store.footerHash])}),documentId:value.owner.documentId,pageId:result.pageId,stageId:result.stageId,nodes:result.nodes})
-    const snapshot={token,revision,descriptor,public:{owner:{...value.owner},revision,token,bytes:result.bytes,nodes:result.nodes,roots:result.roots,
+    const snapshot={token,revision,scope,descriptor,public:{...(keys?{materialKeys:keys}:{}),owner:{...value.owner},revision,token,bytes:result.bytes,nodes:result.nodes,roots:result.roots,
       pageId:result.pageId,stageId:result.stageId,bounds:{...box},warnings:[...result.warnings],rasterProfile:result.rasterProfile,colorManaged:result.colorManaged}}
     active.snapshot=snapshot
     return {status:'ok',...snapshot.public}
@@ -140,7 +182,7 @@ export class LargeDocumentHost {
   resolveCanvasSnapshot(token,senderId) {
     const active=this.#active,snapshot=active?.snapshot
     const current=()=>{
-      if(!snapshot||typeof token!=='string'||snapshot.token!==token||this.#active!==active||active.window!==this.window()||
+      if(!snapshot||typeof token!=='string'||snapshot.token!==token||this.#active!==active||active.snapshot!==snapshot||active.window!==this.window()||
         active.window.isDestroyed()||active.window.webContents?.id!==senderId||active.status.revision!==snapshot.revision)
         throw Error('Stale or foreign source canvas capability')
     }

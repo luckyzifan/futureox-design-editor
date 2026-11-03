@@ -24,7 +24,7 @@ impl Fixture {
         fs::write(&source, source_bytes).unwrap();
         let sessions = Sessions::new(root.join("cache"));
         let status = sessions.open(
-            Open { path: source.clone(), document_id: "fragment-test".into(), session_epoch: 1 },
+            Open { opening_preview:false, path: source.clone(), document_id: "fragment-test".into(), session_epoch: 1 },
             &AtomicBool::new(false),
         ).unwrap();
         Self { root, source, sessions, status }
@@ -178,7 +178,7 @@ fn valid_nested_raw_numbers_and_escapes_survive_apply_history_export_and_reopen(
     assert_eq!(fs::read(&output).unwrap(), expected.as_bytes());
     assert_eq!(fs::read(&f.source).unwrap(), SOURCE);
     f.call("large.close", json!({}));
-    f.status = f.sessions.open(Open { path: output.clone(), document_id: "fragment-reopen".into(), session_epoch: 2 }, &AtomicBool::new(false)).unwrap();
+    f.status = f.sessions.open(Open { opening_preview:false, path: output.clone(), document_id: "fragment-reopen".into(), session_epoch: 2 }, &AtomicBool::new(false)).unwrap();
     let reopened_output = f.root.join("reopened-copy.json");
     f.call("large.export", json!({"path":reopened_output}));
     assert_eq!(fs::read(reopened_output).unwrap(), expected.as_bytes());

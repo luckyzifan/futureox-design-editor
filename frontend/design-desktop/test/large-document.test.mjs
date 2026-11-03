@@ -170,3 +170,42 @@ test('native canvas snapshots expose only opaque, window-and-revision-bound capa
  current={isDestroyed:()=>false,webContents:{id:17}}
  assert.throws(()=>host.resolveCanvasSnapshot(next.token,17),/foreign/)
 })
+
+test('detail snapshot capability includes the requested material set and cannot be reused as a full canvas', async()=>{
+ const win={isDestroyed:()=>false,webContents:{id:9}}, dialog={showOpenDialog:async()=>({canceled:false,filePaths:['/fixture.sketch']})}
+ const {createHash}=await import('node:crypto')
+ let live,calls=0
+ const host=new LargeDocumentHost(async(method,params)=>{
+  if(method==='large.open')return live={...status({documentId:params.documentId,sessionEpoch:params.sessionEpoch}),format:'sketch'}
+  if(method!=='large.canvasSnapshot')throw Error(method)
+  calls++
+  const keys=params.materialKeys,scope=keys?createHash('sha256').update([...keys].sort().join(',')).digest('hex'):undefined
+  const suffix=scope?'-'+scope:''
+  return {owner:live.owner,revision:0,path:'/native/canvas-native-0'+suffix+'.scene',scope,bytes:123,
+   store:{generation:live.owner.documentId+':'+live.owner.sessionEpoch+':0'+suffix,documentId:live.owner.documentId,bytes:123,nodes:2,footerHash:Array(32).fill(0)},
+   pageId:'p',stageId:'s',nodes:2,roots:keys?.length??10,bounds:{x:0,y:0,width:100,height:100},rasterProfile:'figma',colorManaged:true,warnings:[]}
+ },dialog,()=>win)
+ const owner=(await host.open()).owner,request={owner,expectedRevision:0}
+ const detail=await host.canvasSnapshot({...request,materialKeys:['1:3']})
+ assert.deepEqual(detail.materialKeys,['1:3'])
+ const grant=host.resolveCanvasSnapshot(detail.token,9)
+ assert.equal((await host.canvasSnapshot({...request,materialKeys:['1:3']})).token,detail.token)
+ await assert.rejects(()=>host.canvasSnapshot({...request,materialKeys:['1:3','1:3']}),/Duplicate/)
+ const full=await host.canvasSnapshot(request)
+ assert.equal(full.roots,10);assert.notEqual(full.token,detail.token);assert.throws(()=>grant.assertCurrent(),/Stale/);assert.equal(calls,2)
+})
+
+test('opening preview cannot return pixels for a different source owner or accept renderer paths', async()=>{
+ const win={isDestroyed:()=>false,webContents:{id:3}},dialog={showOpenDialog:async()=>({canceled:false,filePaths:['/real.sketch']})}
+ const calls=[]
+ const host=new LargeDocumentHost(async(method,params)=>{
+   calls.push(method)
+   if(method==='large.open')return {...status({documentId:params.documentId,sessionEpoch:params.sessionEpoch}),format:'sketch'}
+   return {phase:'available',owner:{documentId:'other',sessionEpoch:99}}
+ },dialog,()=>win)
+ const {owner}=await host.open()
+ await assert.rejects(()=>host.openingView({offset:0,cursor:0,path:'/arbitrary'}),/Invalid/)
+ assert.equal((await host.openingView({offset:0,cursor:0,owner:{...owner,sessionEpoch:3}})).status,'cancelled')
+ await assert.rejects(()=>host.openingView({offset:0,cursor:0,owner}),/Invalid opening view response/)
+ assert.deepEqual(calls,['large.open','large.openingView'])
+})

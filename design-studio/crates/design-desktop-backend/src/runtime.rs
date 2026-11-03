@@ -25,7 +25,7 @@ fn large_lane(method: &str) -> bool {
     method.starts_with("large.")
         && !matches!(
             method,
-            "large.read" | "large.children" | "large.status" | "large.progress"
+            "large.read" | "large.children" | "large.status" | "large.progress" | "large.openingView"
         )
 }
 async fn scheduling(

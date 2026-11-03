@@ -1,3 +1,4 @@
+import {SourceOpeningSurface,sourcePageClip,type OpeningView} from './source-opening-preview'
 import { CpuStage, measureCpuStage } from './cpu-stage-diagnostics'
 import { recoverInteractionPreview } from './kernel/interaction-preview-recovery'
 import { selectionSizeLabel } from './selection-size-label'
@@ -225,9 +226,14 @@ class PresentedSignal {
     this.listeners.forEach((listener) => listener())
   }
 }
-export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome = false, startupPreview, loading = false, onCapturePreview, nativeSource, onNativeSourceStatus, onOpenSourcePoint }: {
+export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome = false, startupPreview, loading = false, onCapturePreview, nativeSource, openingSource, openingPage, focusedMaterial, onSourceDetail, onSourceViewport, hideNative, sourcePageBoxes, onSourcePresented, onNativeSourceStatus, onOpenSourcePoint }: {
   editor: Editor; peers?:LocalPeer[]; zoomControlsTarget?: HTMLElement | null; compactChrome?: boolean
   startupPreview?: StartupPixels; loading?: boolean
+  focusedMaterial?:number;onSourceDetail?:(roots:number[])=>void;onSourceViewport?:(box:import('./desktop').SourceCanvasBox)=>void;hideNative?:boolean
+  openingPage?:string
+  sourcePageBoxes?:import('./desktop').SourceCanvasBox[]
+  openingSource?:OpeningView
+  onSourcePresented?:(view:{x:number;y:number;zoom:number})=>void
   nativeSource?:SourceCanvasSnapshot
   onNativeSourceStatus?:(status:NativeSourceStatus)=>void
   onOpenSourcePoint?:(point:Point)=>void
@@ -1276,7 +1282,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   function fitView(onlySelection = false) {
     if (pencil.current || drag.current) return
     flushView()
-    if(nativeSource){editor.set({view:fitBounds(nativeSource.bounds,size)});return}
+    if(nativeSource||openingSource){editor.set({view:fitBounds((openingSource||nativeSource)!.bounds,size)});return}
     const relevant = onlySelection ? selected : entries.filter((e) => e.depth === 0)
     if (!relevant.length) return
     const b = unionBounds(relevant.map((e) => e.bounds))
@@ -2336,7 +2342,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         setContextMenu({ x: e.clientX, y: e.clientY, worldPoint: point, candidates })
       }}
       onDoubleClick={(e) => {
-        if(nativeSource){
+        if(nativeSource||openingSource){
           if(e.target instanceof Element&&e.target.closest(canvasChromeSelector))return
           if(e.button===0)onOpenSourcePoint?.(screenToWorld(editor.flushPendingView(),{x:e.clientX-e.currentTarget.getBoundingClientRect().left,y:e.clientY-e.currentTarget.getBoundingClientRect().top}))
           return
@@ -2418,7 +2424,8 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         }
         return false
       }}/>
-      {nativeSource?<NativeSourceSurface source={nativeSource} view={state.view} width={size.width} height={size.height} onStatus={onNativeSourceStatus}/>:<KernelSurface
+      {openingSource&&<SourceOpeningSurface pageId={openingPage} focused={focusedMaterial} onDetail={onSourceDetail} onViewport={onSourceViewport} source={openingSource} view={state.view} width={size.width} height={size.height}/>}
+      {nativeSource?<NativeSourceSurface hidden={hideNative} clipPath={sourcePageClip(sourcePageBoxes,state.view,size.width,size.height)} source={nativeSource} view={state.view} width={size.width} height={size.height} onStatus={onNativeSourceStatus} onPresented={(frame,complete)=>{if(complete)onSourcePresented?.(frame.view)}}/>:openingSource?null:<KernelSurface
         navigationInputOwner={editor}
         panGestureActive={panning}
         overlay={overlay}
@@ -2436,7 +2443,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         checkerboard={state.checkerboard}
         pixelPreview={state.pixelPreview}
       />}
-      {!nativeSource&&showStartup && <StartupPreview preview={startupPreview!} view={state.view} loading={loading} width={size.width} height={size.height}/>}
+      {!nativeSource&&!openingSource&&showStartup && <StartupPreview preview={startupPreview!} view={state.view} loading={loading} width={size.width} height={size.height}/>}
       {geometryReady && !gpuPreviewAvailable && <CanvasEditPreview document={renderedDocument} baseDocument={editBaseDocument.current} selection={state.selection} pageId={state.page}
         vectorSupport={vectorPreviewSupport} captureFrame={presented} epoch={editor.sessionGeneration} scene={interactionScene}
         vectorSupported={vectorPreviewSupported} sourceHost={host} control={retainedMove} canCapture={!state.grid && !state.checkerboard && !!presentationScopeMatches && presented.document === state.doc && !presented.preview}
@@ -2974,7 +2981,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
           </button>
         </div>
       )}
-      <CanvasScrollbars editor={editor} entries={entries} view={state.view} size={size} onPanGestureChange={setPanning} contentBounds={nativeSource?.bounds}/>
+      <CanvasScrollbars editor={editor} entries={entries} view={state.view} size={size} onPanGestureChange={setPanning} contentBounds={openingSource?.bounds??nativeSource?.bounds}/>
       {zoomControlsTarget ? createPortal(<ViewControls editor={editor} size={size} fit={fitView} compact />, zoomControlsTarget) : <ViewControls editor={editor} size={size} fit={fitView} compact={compactChrome} />}
     </div>
   )

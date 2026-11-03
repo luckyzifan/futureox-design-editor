@@ -1,0 +1,192 @@
+{
+  "subject": "拓扑素材.sketch",
+  "revision": 0,
+  "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+  "rendererBuiltAt": "2026-11-03T06:17:58.193Z",
+  "cases": {
+    "full": {
+      "materials": 306,
+      "times": {
+        "catalog": 25344,
+        "nativeSurface": 25405,
+        "fullExact": 44158
+      },
+      "pages": [],
+      "detailWork": {
+        "exactRoots": "306"
+      },
+      "nativeSnapshots": [
+        {
+          "elapsedMs": 13871.241666999998,
+          "keys": null,
+          "roots": 306,
+          "nodes": 124447,
+          "bytes": 300408797
+        }
+      ],
+      "sourceGpuPacketRequests": 21
+    },
+    "cold": {
+      "materials": 306,
+      "times": {
+        "catalog": 2890,
+        "firstDecoded": 2723,
+        "firstCaptured": 2959,
+        "heavyMaterial": 1514,
+        "allThumbnails": 17363,
+        "nativeSurface": 20934,
+        "fullExact": 20940
+      },
+      "pages": [
+        {
+          "id": "b5e640b2-e777-404c-b121-8e866696d553",
+          "label": "浅色（209）",
+          "visibleMaterials": 2,
+          "rows": 209,
+          "paintMs": 28,
+          "confirmedMs": 71
+        },
+        {
+          "id": "FD2E5BD9-6AE9-41F7-A2BB-F30E54459927",
+          "label": "深色（55）",
+          "visibleMaterials": 1,
+          "rows": 55,
+          "paintMs": 40,
+          "confirmedMs": 79
+        },
+        {
+          "id": "9A250616-D3C6-4F06-A6C9-F2CE1DA3611D",
+          "label": "控件（42）",
+          "visibleMaterials": 1,
+          "rows": 42,
+          "paintMs": 28,
+          "confirmedMs": 71
+        }
+      ],
+      "overviewWork": {
+        "renders": "306",
+        "cached": "false",
+        "exactRoots": "0",
+        "images": "306"
+      },
+      "detailWork": {
+        "renders": "306",
+        "cached": "false",
+        "exactRoots": "1"
+      },
+      "noSceneBeforeFocus": true,
+      "nativeSnapshots": [
+        {
+          "elapsedMs": 39.15416599999662,
+          "keys": 1,
+          "roots": 1,
+          "nodes": 138,
+          "bytes": 533847
+        }
+      ],
+      "sourceGpuPacketRequests": 12
+    },
+    "warm": {
+      "materials": 306,
+      "times": {
+        "catalog": 889,
+        "firstDecoded": 664,
+        "firstCaptured": 1064,
+        "heavyMaterial": 26,
+        "allThumbnails": 740,
+        "nativeSurface": 15835,
+        "fullExact": 15841
+      },
+      "pages": [
+        {
+          "id": "b5e640b2-e777-404c-b121-8e866696d553",
+          "label": "浅色（209）",
+          "visibleMaterials": 209,
+          "rows": 209,
+          "paintMs": 102,
+          "confirmedMs": 257
+        },
+        {
+          "id": "FD2E5BD9-6AE9-41F7-A2BB-F30E54459927",
+          "label": "深色（55）",
+          "visibleMaterials": 55,
+          "rows": 55,
+          "paintMs": 37,
+          "confirmedMs": 161
+        },
+        {
+          "id": "9A250616-D3C6-4F06-A6C9-F2CE1DA3611D",
+          "label": "控件（42）",
+          "visibleMaterials": 42,
+          "rows": 42,
+          "paintMs": 16,
+          "confirmedMs": 69
+        }
+      ],
+      "overviewWork": {
+        "renders": "0",
+        "cached": "true",
+        "exactRoots": "0",
+        "images": "306"
+      },
+      "detailWork": {
+        "renders": "0",
+        "cached": "true",
+        "exactRoots": "1"
+      },
+      "noSceneBeforeFocus": true,
+      "nativeSnapshots": [
+        {
+          "elapsedMs": 38.560708999999406,
+          "keys": 1,
+          "roots": 1,
+          "nodes": 138,
+          "bytes": 533847
+        }
+      ],
+      "sourceGpuPacketRequests": 12
+    },
+    "single": {
+      "materials": 306,
+      "times": {
+        "catalog": 2927
+      },
+      "pages": [],
+      "pageOnly": {
+        "page": "控件（42）",
+        "first": {
+          "renders": 46,
+          "images": 46,
+          "scenes": 0,
+          "cached": "false"
+        },
+        "second": {
+          "renders": 46,
+          "images": 46,
+          "scenes": 0,
+          "cached": "false"
+        },
+        "at": 13876
+      },
+      "nativeSnapshots": [],
+      "sourceGpuPacketRequests": 0
+    }
+  },
+  "focusedPixelComparison": {
+    "view": {
+      "x": -4170.833333333333,
+      "y": -2241.052083333333,
+      "zoom": 0.4036458333333333
+    },
+    "devicePixelRatio": 2,
+    "cropPhysicalPixelsXYXY": [
+      82,
+      454,
+      1628,
+      1322
+    ],
+    "comparedPixels": 1341928,
+    "coldDifferentRgbaPixels": 0,
+    "warmDifferentRgbaPixels": 0
+  }
+}
