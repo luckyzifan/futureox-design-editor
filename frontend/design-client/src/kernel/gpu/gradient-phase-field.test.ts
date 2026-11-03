@@ -1,5 +1,5 @@
 import {afterEach,expect,test,vi} from 'vitest'
-import {GradientPhaseFieldBuilder,gradient_sampling_axes} from '../../generated/design-kernel/design_kernel'
+import {GradientPhaseFieldBuilder,gradient_sampling_axes,gradient_sampling_grid_region} from '../../generated/design-kernel/design_kernel'
 import {gradientPhaseFieldLayout} from './gradient-phase-field'
 import {GpuRenderer} from './renderer'
 import type {Driver,Texture} from './types'
@@ -54,11 +54,39 @@ test('compact linear axes retain all four original phases in one cache entry',as
    const expected=gradient_sampling_axes(JSON.stringify(f.n.rect),new Float64Array(f.n.matrix),new Float64Array(f.n.size),JSON.stringify(p),phase).subarray(4)
    const stored=values.subarray(phase*w*h*4,(phase+1)*w*h*4)
    expect(new Uint32Array(stored.buffer,stored.byteOffset,stored.length)).toEqual(new Uint32Array(expected.buffer,expected.byteOffset,expected.length))
-   r.sampleIndex=phase;const u=new Float32Array(256);r.configureGradientPhase(u,field.texture)
+   r.sampleIndex=phase;const u=new Float32Array(256);r.configureGradientPhase(u,field)
    expect(Array.from(u.subarray(189,192))).toEqual([w,h,-phase-1])
   }
   r.imageGrids.clear();r.materialFields.begin();await r.prepareGradientPhase(f.n,{...p})
   expect(f.driver.uploadLinear).toHaveBeenCalledOnce()
+ }finally{r.dispose()}
+})
+test('source display interpolates a single linear stop interval at each original sample phase',()=>{
+ const {driver,renderer:r}=fixture()
+ const n={rect:{x:729081,y:425465,w:156,h:288},size:[204.36,204.36],
+   matrix:[55.42562584220408,32,-32,55.42562584220408,717867.2277571323,407843.83127275726]}
+ const p={...paint('#66a6f9','linear'),transform:[0,1,-1,0,1,0],stops:[{offset:0,color:'#66a6f9'},{offset:1,color:'#cce2ff'}]}
+ r.sourceTileOcclusion=true;r.skippedPainterVisits=1
+ try{
+   for(let phase=0;phase<4;phase++){
+     r.sampleIndex=phase
+     const field=r.gradientAxisGrid(n,p),u=new Float32Array(256)
+     expect(field.linearParameterCorners).toBe(true)
+     r.configureGradientPhase(u,field)
+     expect(Array.from(u.subarray(189,192))).toEqual([156,288,8])
+     const values=driver.uploadLinear.mock.calls.at(-1)![0]
+     const reference=gradient_sampling_grid_region(JSON.stringify(n.rect),JSON.stringify(n.rect),
+       new Float64Array(n.matrix),new Float64Array(n.size),JSON.stringify(p),phase)
+     let maximum=0
+     for(let y=0;y<n.rect.h;y++)for(let x=0;x<n.rect.w;x++){
+       const fx=x/(n.rect.w-1),fy=y/(n.rect.h-1)
+       const top=values[2]*(1-fx)+values[6]*fx,bottom=values[10]*(1-fx)+values[14]*fx
+       maximum=Math.max(maximum,Math.abs(Math.fround(top*(1-fy)+bottom*fy)-reference[(y*n.rect.w+x)*4+2]))
+     }
+     expect(maximum).toBeLessThan(2e-7)
+   }
+   const crossing={...n,rect:{x:-64,y:0,w:128,h:64},matrix:[8,0,0,8,0,0]}
+   expect(r.linearGradientCorners(crossing,{...p,transform:[1,0,0,1,0,0]},0)).toBeUndefined()
  }finally{r.dispose()}
 })
 test('field containers reject foreign dimensions, shared buffers and invalid block pointers',()=>{

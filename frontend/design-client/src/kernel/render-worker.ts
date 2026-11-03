@@ -230,6 +230,7 @@ let tileFillGeneration = 0
 // resources. Ordered document synchronization and exact outputs always finish.
 const packetWaits = new Set<{ requestId: number; channel: string; tiled: boolean; controller: AbortController }>()
 const regionAdmissions = new Map<string, PreviewAdmission>()
+let fullDensityGaussianWindow = ''
 type TileRender = Awaited<ReturnType<typeof renderTiledPreview>>
 function backgroundTileResult(gpuTile:number,color:ColorSettings|undefined):TileRender {
   return {gpuTile,tileCost:undefined,bitmap:undefined,buffer:new ArrayBuffer(0),backend:'webgpu',description:'WebGPU',reason:'',colorManagement:color,
@@ -248,12 +249,14 @@ function invalidateTileCache() {
   terminalDiagnostics.record('cache-invalidate',{requestId:diagnosticRequestId,generation:cacheGeneration,reasonCode:0,tileCacheBytes:tileCaches.bytes})
   tileCaches.clear()
   regionAdmissions.clear()
+  fullDensityGaussianWindow = ''
   cacheGeneration++
 }
 
 function invalidateOwnerTileCache() {
   terminalDiagnostics.record('cache-invalidate',{requestId:diagnosticRequestId,generation:cacheGeneration,reasonCode:1,tileCacheBytes:tileCaches.bytes})
   tileCache.clear()
+  fullDensityGaussianWindow = ''
   // Admission heuristics are bounded separately and carry explicit owner keys.
   for (const key of regionAdmissions.keys()) if (key.startsWith(JSON.stringify(activeLane) + '/')) regionAdmissions.delete(key)
   cacheGeneration++
@@ -1253,12 +1256,18 @@ self.onmessage = (e) => {
                 }finally{captured?.bitmap?.close();if(captured?.gpuTile)gpu?.driver.releasePresented?.([captured.gpuTile])}
               }
             }
+            // Native source tiles use preview intent through the last tile
+            // at the requested density. Keep their display pixels in their own cache namespace.
+            const sourcePreviewTile = renderIntent === 'preview' && !!request.sourceSnapshot && !!tileOwner
+            const sourceDetailDisplay = sourcePreviewTile && channel==='canvas' && renderOptions.rasterProfile==='figmaSubpixel' &&
+              !request.referenceGpu && !request.png && !request.readback && !exportFormat &&
+              !renderOptions.exportRegion && !renderOptions.pixelPreview && !renderOptions.animation
             const namespace = JSON.stringify([
               laneState.documentGeneration, laneState.resourceGeneration, tileOwnerKey,
               renderOptions.pageId,
               renderOptions.rasterProfile,
               renderOptions.interactiveEffects,
-              renderOptions.gpuGaussianRegions,renderOptions.gpuGaussianReduction,
+              renderOptions.gpuGaussianRegions,renderOptions.gpuGaussianReduction,sourceDetailDisplay,
               canvasDisplayFilters,
               boundedDisplayLimit,
               canvasMath,
@@ -1311,17 +1320,46 @@ self.onmessage = (e) => {
             let preparationWaitMs = 0, overlappedPreparations = 0
             const current = () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
               (channel !== 'canvas' || fillGeneration === tileFillGeneration)
+            const canStreamGaussian = !renderOptions.gpuGaussianRegions && backend === 'webgpu' && channel === 'canvas' &&
+              (canvasDisplayFilters || sourcePreviewTile) && color?.documentSpace === 'srgb' &&
+              !request.readback && !request.png && !request.referenceGpu && !exportFormat && !renderOptions.exportRegion &&
+              renderOptions.rasterProfile === 'figmaSubpixel' && !renderOptions.pixelPreview && !renderOptions.animation &&
+              !executionPolicy.hdrCompositing && (renderIntent === 'preview' || renderIntent === 'canvas') &&
+              import.meta.env.VITE_DESIGN_GAUSSIAN_AUTO !== '0' && import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX !== '0' &&
+              import.meta.env.VITE_DESIGN_GAUSSIAN_REGIONS !== '0'
             const slot = (tile: RasterTile) => namespace + '/' + coordinateSlot([
               tile.x, tile.y, tile.width, tile.height, tile.zoom, tile.phaseX ?? 0, tile.phaseY ?? 0,
               ...(cameraDependent ? [renderOptions.view.x, renderOptions.view.y, tile.zoom] : [])])
             const compileTile = async (tile: RasterTile) => {
               if (!current()) throw Error('PREVIEW_CANCELLED')
               const at = performance.now()
-              const compile = () => compilePacket(kernel, JSON.stringify({ ...renderOptions,
-                view: { ...renderOptions.view, zoom: tile.zoom }, width: tile.width, height: tile.height,
-                gpuViewport: { x: tile.x + Math.floor(renderOptions.view.x), y: tile.y + Math.floor(renderOptions.view.y), w: tile.width, h: tile.height },
-                ...(prepareViewport ? { prepareViewport:prepareForTile(tile) } : {}),
-              }), packetWait?.controller.signal)
+              const compile = async () => {
+                const options = {...renderOptions,view:{...renderOptions.view,zoom:tile.zoom},width:tile.width,height:tile.height,
+                  gpuViewport:{x:tile.x+Math.floor(renderOptions.view.x),y:tile.y+Math.floor(renderOptions.view.y),w:tile.width,h:tile.height},
+                  ...(prepareViewport ? {prepareViewport:prepareForTile(tile)} : {})}
+                const signal=packetWait?.controller.signal
+                const ordinary=()=>compilePacket(kernel,JSON.stringify(options),signal)
+                const inBands=()=>compilePacket(kernel,JSON.stringify({...options,gpuGaussianRegions:true,gpuGaussianReduction:0}),signal)
+                // One admission hint for this owner, revision, scale and visible
+                // window. Every tile is still compiled and validated independently.
+                const windowKey=canStreamGaussian && sourcePreviewTile && prepareViewport
+                  ? JSON.stringify([namespace,tile.zoom,prepareViewport]) : ''
+                if(windowKey && fullDensityGaussianWindow===windowKey){
+                  try { return await inBands() }
+                  catch(error){
+                    if(!current() || String(error).replace(/^Error: /,'') !== 'GPU surface budget exceeded')throw error
+                    fullDensityGaussianWindow=''
+                    return ordinary()
+                  }
+                }
+                try { return await ordinary() }
+                catch (error) {
+                  if(!current() || !canStreamGaussian || String(error).replace(/^Error: /,'') !== 'GPU surface budget exceeded')throw error
+                  const packet=await inBands()
+                  if(windowKey && current())fullDensityGaussianWindow=windowKey
+                  return packet
+                }
+              }
               let bytes: ScenePacket
               try { bytes = await compile() }
               catch (error) {
@@ -1392,6 +1430,7 @@ self.onmessage = (e) => {
                 witness = () => scenePacketWitness(rawScene)
                 result = disableExactCache ? undefined : tileCache.get(cacheKey, witness)
                 preparedScene = result ? undefined : decodeScenePacket(rawScene)
+                if(preparedScene)preparedScene.sourceDetailTile=sourceDetailDisplay && tile.zoom>=8
               } catch (error) {
                 // A whole tile may exceed the working-surface budget. Let the
                 // regional renderer subdivide it; a compiler admission error

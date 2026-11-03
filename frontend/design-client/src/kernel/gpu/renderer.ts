@@ -143,7 +143,7 @@ type AtlasPage = {
   rowHeight: number
   entries: Map<string, string>
 }
-export type Surface = { texture: Texture; rect: Rect; opaqueInterior?:Rect; logicalBounds?: Rect; compactMaxAbs?: readonly number[]; imageZeroOverIdentity?: true }
+export type Surface = { texture: Texture; rect: Rect; opaqueInterior?:Rect; logicalBounds?: Rect; compactMaxAbs?: readonly number[]; imageZeroOverIdentity?: true; linearParameterCorners?:true }
 const containsRect = (outer: Rect | undefined, inner: Rect) => !!outer &&
   outer.x <= inner.x && outer.y <= inner.y && outer.x + outer.w >= inner.x + inner.w && outer.y + outer.h >= inner.y + inner.h
 const sameSurface = (a: Surface | undefined, b: Surface | undefined) => a === b || !!a && !!b &&
@@ -758,6 +758,7 @@ export class GpuRenderer {
   private readonly mixedSolidRunsEnabled = import.meta.env.VITE_DESIGN_MIXED_SOLID_RUNS!=='0'
   private constantCoverageActive=true
   private opaquePrefixActive=false
+  private sourceTileOcclusion=false
   private opaquePrefixEnabled=import.meta.env.VITE_DESIGN_OPAQUE_PAINTER_PREFIX==='1'
   private uniformColorSurfaces=import.meta.env.VITE_DESIGN_UNIFORM_COLOR_SURFACES==='1'
   private sequentialGaussian=import.meta.env.VITE_DESIGN_SEQUENTIAL_GAUSSIAN==='1'
@@ -792,7 +793,7 @@ export class GpuRenderer {
       },
     }
     let begin=opaquePainterStart(this.scene,ids,targets[0].rect,proofs)
-    if(!begin&&proofs.imageFilters){
+    if(!begin&&(proofs.imageFilters||this.sourceTileOcclusion)){
       // Find an otherwise proven full overwrite before doing optional work.
       // Only two actual source uploads may be prepared, under the same image
       // ledger. A decoder hint alone never authorizes omitting a painter.
@@ -950,7 +951,7 @@ export class GpuRenderer {
       if (this.overBudget(values.byteLength, width, height)) throw this.budgetError('GPU 表面内存预算超限', 3, fieldKind)
       try { texture = upload.call(this.driver, values, width, height) }
       catch (error) { throw this.failureOrigin(error, 7, fieldKind) }
-      if(this.driver.exactGradientPaintOver&&(inputs[0]==='gradient-grid'||inputs[0]==='gradient-axis-grid'||inputs[0]==='gradient-phase-axis')&&values instanceof Float32Array){
+      if(this.driver.exactGradientPaintOver&&(inputs[0]==='gradient-grid'||inputs[0]==='gradient-axis-grid'||inputs[0]==='gradient-phase-axis'||inputs[0]==='gradient-corners')&&values instanceof Float32Array){
         const maximumStop=gradientFieldMaximumStop(values)
         if(maximumStop!==undefined)this.gradientFieldProofs.set(texture,{resource:texture.resource,maximumStop})
       }
@@ -1939,7 +1940,7 @@ export class GpuRenderer {
         const u=parameters(dst.rect,mask.rect,second.rect,old.rect)
         u[16]=GRADIENT_PAINT_OVER_MODE;this.configurePaint(u,n,paint)
         u.set([n.rect.x,n.rect.y,n.rect.w,n.rect.h],36);u[19]=clip?1:0
-        this.configureGradientPhase(u,field.texture)
+        this.configureGradientPhase(u,field)
         const output=before?dst:this.acquire(dst.rect,false,false,SurfaceAllocationSite.passOutput,GRADIENT_PAINT_OVER_MODE)
         try{
           this.driver.pass(output.texture,u,[mask.texture,second.texture,old.texture,field.texture],plan?.region)
@@ -2527,6 +2528,18 @@ export class GpuRenderer {
     if(p.kind!=='linear'||import.meta.env.VITE_DESIGN_GRADIENT_AXES==='0'||!this.driver.uploadLinear)return
     const source=n.previewSource||n,sample=this.sampleIndex??4
     if(source.rect.w!==n.rect.w||source.rect.h!==n.rect.h)return
+    if(this.sourceTileOcclusion && this.skippedPainterVisits && this.driver.gradientPhaseFields &&
+        sample<4 && p.stops.length===2 && p.stops[0].offset===0 && p.stops[1].offset===1 &&
+        p.blend==='normal' && p.opacity>=0 && p.opacity<=1 &&
+        p.stops.every(stop=>/^#[\da-f]{6}([\da-f]{2})?$/i.test(stop.color))){
+      const corners=this.linearGradientCorners(n,p,sample)
+      if(corners){
+        let grids=this.imageGrids.get(p)
+        if(!grids){grids=new Map();this.imageGrids.set(p,grids)}
+        grids.set(sample,corners)
+        return corners
+      }
+    }
     if(this.gradientPhaseRequest&&this.driver.gradientPhaseFields&&sample<4){
       const grouped=this.gradientAxisPhases(n,p,sample)
       if(grouped!==false)return grouped
@@ -2586,7 +2599,12 @@ export class GpuRenderer {
     for(let phase=0;phase<4;phase++)grids.set(phase,surface)
     return surface
   }
-  private configureGradientPhase(u:Float32Array,texture:Texture){
+  private configureGradientPhase(u:Float32Array,field:Surface){
+    if(field.linearParameterCorners){
+      u.set([field.rect.w,field.rect.h,8],189)
+      return
+    }
+    const texture=field.texture
     const phase=this.gradientPhaseResources.get(texture)
     if(!phase)return
     if(phase.resource!==texture.resource||this.sampleIndex===undefined||this.sampleIndex>3)throw Error('Invalid gradient phase binding')
@@ -2648,6 +2666,30 @@ export class GpuRenderer {
       },()=>[layout.width,layout.height],bytes.byteLength)
       bind(surface.texture)
     })()
+  }
+  private linearGradientCorners(n:GpuNode,p:GpuPaint,sample:number):Surface|undefined {
+    const source=n.previewSource||n, bounds=source.rect, matrix=source.matrix, transform=p.transform
+    if(bounds.w<2 || bounds.h<2 || bounds.w>1024 || bounds.h>1024 || bounds.w*bounds.h<4096)return
+    // Bound coordinate cancellation in very distant or near-singular paints.
+    const axes=matrix.slice(0,4), norm=Math.hypot(...axes)
+    if(!norm || !axes.every(v=>Math.abs(v)<=4096) || Math.abs(matrix[0]*matrix[3]-matrix[1]*matrix[2])<norm ||
+        ![bounds.x,bounds.y,matrix[4],matrix[5]].every(v=>Math.abs(v)<=2**22) || !n.size.every(v=>v>=1&&v<=65536) ||
+        transform && (!transform.every(v=>Math.abs(v)<=4)||Math.abs(transform[0]*transform[3]-transform[1]*transform[2])<1/16))return
+    const original=JSON.stringify(bounds), placement=new Float64Array(matrix), size=new Float64Array(n.size)
+    const paint=JSON.stringify({kind:p.kind,color:'#000000',angle:p.angle,transform,stops:p.stops.map(s=>({offset:s.offset,color:'#000000'}))})
+    const values=new Float32Array(16)
+    for(let i=0;i<4;i++){
+      const point=rect(bounds.x+(i%2)*(bounds.w-1),bounds.y+Math.floor(i/2)*(bounds.h-1),1,1)
+      const tuple=gradient_sampling_grid_region(original,JSON.stringify(point),placement,size,paint,sample)
+      // All four corners must be strictly inside the same stop interval.
+      // A linear coordinate is affine there. A tile crossing a stop keeps
+      // its full field, including hard stops and clamped portions.
+      if(tuple.length!==4||tuple[0]!==0||tuple[1]!==1||!(tuple[2]>0&&tuple[2]<1))return
+      values.set(tuple,i*4)
+    }
+    const field=this.materialField(['gradient-corners',Array.from(values)],rect(0,0,2,2),()=>values,
+      this.driver.uploadParameters||this.driver.uploadLinear!)
+    return {texture:field.texture,rect:n.rect,linearParameterCorners:true}
   }
   private gradientGrid(n: GpuNode, p: GpuPaint): Surface {
     this.prepareGradientPhase(n,p,false)
@@ -2911,7 +2953,7 @@ export class GpuRenderer {
         if (p.kind === 'image' && inputs[3])
           u.set([inputs[3].rect.x, inputs[3].rect.y], 204)
         if(gradientField)u.set([1,gradientField.rect.x-n.rect.x,gradientField.rect.y-n.rect.y,0],188)
-        if(inputs[3])this.configureGradientPhase(u,inputs[3].texture)
+        if(inputs[3])this.configureGradientPhase(u,inputs[3])
       })
       if (!material && image && this.imageZeroOverSource(n, p, mask, image))
         // Native managed coordinates clamp valid addresses to texel centres;
@@ -6686,8 +6728,11 @@ export class GpuRenderer {
       import.meta.env.VITE_DESIGN_RETAIN_PARAMETER_FIELDS!=='0'
     this.activeRuntimeConfiguration = undefined
     this.skippedPainterVisits=0
-    this.opaquePrefixActive=this.opaquePrefixEnabled&&present&&!readback&&
-      this.driver.name==='webgpu'&&!!this.driver.managed&&!this.driver.hdr&&!this.driver.displayMath
+    const managedDisplay=present&&!readback&&this.driver.name==='webgpu'&&!!this.driver.managed&&!this.driver.hdr&&!this.driver.displayMath
+    this.sourceTileOcclusion=managedDisplay && scene.sourceDetailTile===true && import.meta.env.VITE_DESIGN_OPAQUE_PAINTER_PREFIX!=='0' &&
+      !!scene.output && scene.coherentSamples===true && scene.colorManagement?.documentSpace==='srgb' &&
+      !scene.resolve && !scene.presentation && !scene.interactionRetained && !scene.softwareRaster
+    this.opaquePrefixActive=managedDisplay&&(this.opaquePrefixEnabled||this.sourceTileOcclusion)
     if (this.painterStagesEnabled(scene)) {
       // Bind candidate coverage proofs and driver uploads to one private
       // snapshot before any pipeline preparation yields. Native JSON already
