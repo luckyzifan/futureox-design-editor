@@ -247,6 +247,7 @@ export type KernelStats = {
   allocatedLayerPixels: number
 }
 export type KernelResult = {
+  navigationToken?: number
   contentPixel?:number[]
   contentFrame?:import('./resident-presentation').ResidentAcknowledgement
   gpuTile?: number
@@ -437,6 +438,17 @@ export class KernelClient {
     this.worker?.postMessage({ command: 'display-frame', sequence, frame:residentFrameMessage({...frame, diagnosticSequence:this.terminalDiagnostics.enabled?sequence:undefined}) })
   }
   async readContentPixel(u:number,v:number,expected?:import('./resident-presentation').ResidentAcknowledgement){const result=await this.request({command:'display-read-pixel',u,v,expected});if(!result.contentPixel)throw Error('Missing document sample');return result.contentPixel}
+  async copyNavigationTile(id: number, consume: (bitmap: ImageBitmap) => void) {
+    const pending=this.request({command:'display-navigation-tile', tile:id}), owner=this.worker
+    const result = await pending
+    try {
+      if (!result.bitmap || !result.navigationToken) throw Error('Missing navigation tile')
+      consume(result.bitmap)
+    } finally {
+      result.bitmap?.close()
+      if (result.navigationToken) owner?.postMessage({command:'display-navigation-release', token:result.navigationToken})
+    }
+  }
   async captureContentBitmap(){const result=await this.request({command:'display-capture-content'});if(!result.bitmap||!result.contentFrame)throw Error('Missing document snapshot');return{bitmap:result.bitmap,frame:result.contentFrame}}
   releasePresented(ids: number[]) { if (ids.length) this.worker?.postMessage({ command: 'display-release', ids }) }
   moveResidentInteraction(slot:number,transforms:Record<string,import('../model').Matrix>,input:import('./interaction-layers').InteractionInput,terminal=false) {
@@ -601,6 +613,7 @@ export class KernelClient {
       const p = this.pending.get(e.data.id)
       if (!p) {
         this.terminalDiagnostics.record('stale-drop',{requestId:e.data.id,reasonCode:1})
+        if(e.data.navigationToken)worker.postMessage({command:'display-navigation-release',token:e.data.navigationToken})
         if (e.data.gpuTile || e.data.tile?.gpuTile) this.releasePresented([e.data.gpuTile || e.data.tile.gpuTile])
         e.data.bitmap?.close()
         e.data.tileBitmap?.close()

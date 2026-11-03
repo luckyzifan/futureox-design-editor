@@ -70,7 +70,8 @@ export interface LargeDocumentBridge {
   openFile(file:File):Promise<DesktopResult<LargeDocumentStatus>>
   children(request:LargeDocumentRequest&{key?:string;offset?:number;limit?:number;query?:string;canvasOnly?:boolean}):Promise<DesktopResult<{items:LargeDocumentRow[];total:number;hasMore:boolean}>>
   canvasLayout(request:LargeDocumentRequest&{offset?:number;limit?:number}):Promise<DesktopResult<SourceCanvasCatalogue>>
-  canvasSnapshot(request:LargeDocumentRequest):Promise<DesktopResult<SourceCanvasSnapshot>>
+  canvasPreview?(request:LargeDocumentRequest & {token:string}):Promise<DesktopResult<{phase:'pending'|'unavailable'}|{phase:'ready';width:number;height:number;scale:number;png:string}>>
+  canvasSnapshot(request:LargeDocumentRequest & {navigationPreview?:boolean}):Promise<DesktopResult<SourceCanvasSnapshot>>
   read(request:LargeDocumentRequest&{key:string}):Promise<DesktopResult<{key:string;json:string;hash:string;omittedFields:string[]}>>
   apply(request:LargeDocumentRequest&{key:string;json:string;expectedHash:string}):Promise<DesktopResult<LargeDocumentStatus>>
   project(request:LargeDocumentRequest&{key:string}):Promise<DesktopResult<{key:string;json:string;warnings:string[]}>>

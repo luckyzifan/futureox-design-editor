@@ -1,0 +1,226 @@
+{
+  "baseCommit": "db83526fa8b1533f86e264161b1adfee6eed91d4",
+  "buildManifestSha256": "028bc8c4c23d597d513f2738bb5c4d0e8c3689609bfd1293f41d3f2ea2c7d3bb",
+  "builtAt": "2026-11-03T04:26:34.553Z",
+  "profile": "desktop-dev",
+  "platform": "macOS arm64, Apple M2 Pro",
+  "electron": "44.7.0",
+  "checkedBuildSources": 2386,
+  "cases": [
+    {
+      "fixture": "117",
+      "before": {
+        "sourceSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+        "harnessSha256": "07974cd551da59f60a1480b65f55ab8841ca86e4a0da2a36ca13f9c67201872b",
+        "view": {
+          "x": 25.46634805084915,
+          "y": 304.9558301174392,
+          "zoom": 0.34597536311418753
+        },
+        "missingInkPixels": 181554,
+        "settledInkPixels": 198937,
+        "largestWrongWhiteSquareSide": 131,
+        "earlySha256": "fffac62f63b0f3020879a450d02abf1fefb84521f51ba9f854b8590adc1fa11e",
+        "settledSha256": "e3e0c35e1d05c59e5d13226537bdcb6ccbfbddac59aefc374eb2e5204d58a7bf",
+        "screenCamera": null,
+        "earlyToSettledScreenshotIntervalMs": 1198
+      },
+      "after": {
+        "sourceSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+        "harnessSha256": "696b013bbf393c40ba7a0e64b7cc43e4a2740ab01c34dd8bc26b66cb338f10f9",
+        "view": {
+          "x": 25.46634805084915,
+          "y": 304.9558301174392,
+          "zoom": 0.34597536311418753
+        },
+        "missingInkPixels": 210,
+        "settledInkPixels": 198937,
+        "largestWrongWhiteSquareSide": 2,
+        "earlySha256": "f97947b88063d0acabefa2879e5b740f042ebb110ed00aa83c86c2cef962dcd7",
+        "settledSha256": "e3e0c35e1d05c59e5d13226537bdcb6ccbfbddac59aefc374eb2e5204d58a7bf",
+        "screenCamera": {
+          "x": 25.46634805084915,
+          "y": 304.9558301174392,
+          "zoom": 0.34597536311418753
+        },
+        "earlyToSettledScreenshotIntervalMs": 1257
+      },
+      "settledDifferences": {
+        "pan": 0,
+        "zoom": 0,
+        "reverse": 0
+      }
+    },
+    {
+      "fixture": "FIG",
+      "before": {
+        "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+        "harnessSha256": "3d027c82f946d10eb5cf721807ed0a7a10a6c85638a5b87923b5412bcb531019",
+        "view": {
+          "x": -2669.9515040163733,
+          "y": -577.4474857033955,
+          "zoom": 0.34597536311418753
+        },
+        "missingInkPixels": 62980,
+        "settledInkPixels": 106649,
+        "largestWrongWhiteSquareSide": 94,
+        "earlySha256": "5aecad4decfcccfae558e846c6fdc66bdcfaaf8b86bcc17a7b638e4109f64ce5",
+        "settledSha256": "af84a3f59f3c43d66318dc2944d44020f38b5d507966651f6d74285b8982d93d",
+        "screenCamera": null,
+        "earlyToSettledScreenshotIntervalMs": 696
+      },
+      "after": {
+        "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+        "harnessSha256": "88355850edd60c49ed335ed29419d868370316053db439885460ec566b125d26",
+        "view": {
+          "x": -2669.9515040163733,
+          "y": -577.4474857033955,
+          "zoom": 0.34597536311418753
+        },
+        "missingInkPixels": 249,
+        "settledInkPixels": 106649,
+        "largestWrongWhiteSquareSide": 2,
+        "earlySha256": "28cde17eced9355995fb2fa9c029243ae22e12f06c4d5dae986310d50d42f0a0",
+        "settledSha256": "af84a3f59f3c43d66318dc2944d44020f38b5d507966651f6d74285b8982d93d",
+        "screenCamera": {
+          "x": -2669.9515040163733,
+          "y": -577.4474857033955,
+          "zoom": 0.34597536311418753
+        },
+        "earlyToSettledScreenshotIntervalMs": 695
+      },
+      "settledDifferences": {
+        "pan": 0,
+        "zoom": 0,
+        "reverse": 0
+      }
+    },
+    {
+      "fixture": "topology-template-2",
+      "before": {
+        "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+        "harnessSha256": "3d027c82f946d10eb5cf721807ed0a7a10a6c85638a5b87923b5412bcb531019",
+        "view": {
+          "x": -1163.8523821595536,
+          "y": -469.9618695117558,
+          "zoom": 0.13965151375702883
+        },
+        "missingInkPixels": 28877,
+        "settledInkPixels": 36631,
+        "largestWrongWhiteSquareSide": 22,
+        "earlySha256": "48d0f3091dcc59095510b56e873a598993d0e68c8b5b53946d7dc82967ea7e2e",
+        "settledSha256": "6b53d145c13e5b0ec3522597da73bb55ae647389669ac3ff60b749835bef652a",
+        "screenCamera": null,
+        "earlyToSettledScreenshotIntervalMs": 34257
+      },
+      "after": {
+        "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+        "harnessSha256": "88355850edd60c49ed335ed29419d868370316053db439885460ec566b125d26",
+        "view": {
+          "x": -1163.8523821595536,
+          "y": -469.9618695117558,
+          "zoom": 0.13965151375702883
+        },
+        "missingInkPixels": 1719,
+        "settledInkPixels": 36631,
+        "largestWrongWhiteSquareSide": 4,
+        "earlySha256": "6d7bd049dc39f194e4e108774e765e6a03a84ca8b953993bae9e7934ec6c738a",
+        "settledSha256": "6b53d145c13e5b0ec3522597da73bb55ae647389669ac3ff60b749835bef652a",
+        "screenCamera": {
+          "x": -1163.8523821595536,
+          "y": -469.9618695117558,
+          "zoom": 0.13965151375702883
+        },
+        "earlyToSettledScreenshotIntervalMs": 34808
+      },
+      "settledDifferences": {
+        "pan": 0,
+        "zoom": 0,
+        "reverse": 0
+      }
+    }
+  ],
+  "retina117": {
+    "sourceSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+    "harnessSha256": "ec50654ed97b0f3db71764c983e6e732973ca37400cc217d479423b1dda729b5",
+    "view": {
+      "x": 25.46634805084915,
+      "y": 304.9558301174392,
+      "zoom": 0.34597536311418753
+    },
+    "missingInkPixels": 627,
+    "settledInkPixels": 198890,
+    "largestWrongWhiteSquareSide": 2,
+    "earlySha256": "5b1c0fe4ad8877c70967b1773b215def9d3809d1260826bdcbfe6c377e5f29bf",
+    "settledSha256": "df94bbe791eeee9d552449e49cf6481b09896dc3a99540748d85783d8178487f",
+    "screenCamera": {
+      "x": 25.46634805084915,
+      "y": 304.9558301174392,
+      "zoom": 0.34597536311418753
+    },
+    "earlyToSettledScreenshotIntervalMs": 1739,
+    "dpr": 2,
+    "backingWidth": 1710
+  },
+  "nativeWindowReversal": {
+    "nativeDpr": 2,
+    "cameraCount": 9,
+    "sampleCount": 63,
+    "exactLabelMatches": 63,
+    "largestLabelMeanError": 0.0,
+    "patchesPerFrame": 504,
+    "falseWhiteFrames": 0,
+    "wheelInputs": 64,
+    "referenceReportSha256": "5f65a831d8ca5f41eefe371368128e991b1deed8be39b3975c39f7262f68a203",
+    "registeredAuditSha256": "1ce1c062cad9fb04e2d245d3990caf05447677cca91e32121a7762fa87218c42",
+    "rawTimingAuditFlaggedFrames": 3
+  },
+  "checks": {
+    "client": {
+      "passed": 155,
+      "skipped": 1
+    },
+    "desktopHost": {
+      "passed": 11
+    },
+    "nativeSourceRoundtrip": {
+      "passed": 24,
+      "ignored": 1
+    }
+  },
+  "deliveryBuild": {
+    "builtAt": "2026-11-03T04:39:23.786Z",
+    "manifestSha256": "a6ad44cf1489ec22cf5877af3cfc4cb4eddd8e01d8d11d3268fcf8a81cd7cc6e",
+    "sourceChangeAfterReplay": "Removed one trailing blank line in navigation-overview.ts",
+    "comparedRuntimeFiles": 66,
+    "differentRuntimeFiles": [
+      "renderer/assets/export-D50m36iS.js",
+      "renderer/assets/document-preparation-worker-BMjmPNCG.js",
+      "renderer/assets/render-worker-BFQPvk2e.js",
+      "renderer/assets/geometry-DS6N9y-o.js",
+      "renderer/assets/import-worker-DoouSFcO.js",
+      "renderer/assets/svg-editable-text-DGogtoXp.js",
+      "renderer/index.html",
+      "renderer/assets/client-HwWP3Wru.js",
+      "renderer/assets/document-preparation-worker-BUV9wIuR.js",
+      "renderer/assets/terminal-quality-B-4lTL2N.js",
+      "renderer/assets/index-Hl_Aid7L.js",
+      "renderer/assets/factory-By0QgNGL.js",
+      "renderer/assets/factory-CGXYPy9j.js",
+      "renderer/assets/render-worker-87hzCnBc.js",
+      "renderer/assets/client-CWfU-l8M.js",
+      "renderer/assets/NativeSketchDialogContent-DafEaBe9.js",
+      "renderer/assets/import-svg-BZ6loHl7.js",
+      "renderer/assets/terminal-quality-BtkmLj9O.js",
+      "renderer/assets/import-svg-BhGcXmVW.js",
+      "renderer/assets/NativeSketchDialogContent-CMh1giLL.js",
+      "renderer/assets/AutomationPanel-541SQDsQ.js",
+      "renderer/assets/import-worker-D0pAUZeH.js",
+      "renderer/assets/AutomationPanel-j0koXlwj.js",
+      "renderer/assets/export-CW6FnjZt.js",
+      "renderer/assets/geometry-rQnTwMsj.js",
+      "renderer/assets/svg-editable-text-Dr_FgeRa.js",
+      "renderer/assets/index-DUS1TNTc.js"
+    ]
+  }
+}

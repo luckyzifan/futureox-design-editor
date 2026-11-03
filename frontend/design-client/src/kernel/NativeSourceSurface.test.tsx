@@ -25,6 +25,11 @@ test('a permanent render failure cannot restart itself when its error banner res
  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true)
  vi.stubGlobal('requestAnimationFrame',()=>1);vi.stubGlobal('cancelAnimationFrame',()=>{})
  Object.defineProperty(dom.window.HTMLCanvasElement.prototype,'transferControlToOffscreen',{value:()=>({})})
+ let finishPreview: ((reply:unknown)=>void)|undefined
+ const decode=vi.fn()
+ Object.defineProperty(dom.window,'coreDesktop',{value:{version:1,largeDocument:{canvasPreview:()=>new Promise(resolve=>{finishPreview=resolve})}}})
+ vi.stubGlobal('OffscreenCanvas',class {});vi.stubGlobal('ImageBitmapRenderingContext',class {});vi.stubGlobal('createImageBitmap',decode)
+ Object.defineProperty(dom.window.HTMLCanvasElement.prototype,'getContext',{value:()=>({transferFromImageBitmap(){}})})
  const root=createRoot(document.getElementById('root')!),source:SourceCanvasSnapshot={owner:{documentId:'source',sessionEpoch:1},revision:0,token:'source-token',
   bytes:600*1024**2,nodes:124447,roots:306,pageId:'page',stageId:'stage',bounds:{x:0,y:0,width:16000,height:30000},warnings:[],rasterProfile:'figma',colorManaged:true}
  const draw=(height:number)=><NativeSourceSurface source={source} view={{x:0,y:0,zoom:1}} width={800} height={height} onStatus={value=>statuses.push(value)}/>
@@ -34,6 +39,10 @@ test('a permanent render failure cannot restart itself when its error banner res
   expect(calls.requests).toBe(2);expect(statuses.at(-1)).toMatchObject({phase:'error',error:'Scene path budget exceeded'})
   await act(async()=>{root.render(draw(560));await new Promise(resolve=>setTimeout(resolve,150))})
   expect(calls.requests).toBe(2);expect(statuses.at(-1)?.phase).toBe('error')
+  expect(finishPreview).toBeTypeOf('function')
+  await act(async()=>finishPreview!({status:'ok',phase:'ready',width:1,height:1,scale:1,png:'AA=='}))
+  expect(decode).not.toHaveBeenCalled()
+  expect(document.querySelector('.native-source-surface .kernel-status')?.textContent).toBe('画板绘制未完成')
  }finally{await act(async()=>root.unmount());dom.window.close();vi.unstubAllGlobals()}
  expect(calls.disposed).toBe(1)
 })

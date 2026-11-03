@@ -93,10 +93,11 @@ export class LargeDocumentHost {
     return {status:'ok',...result}
   }
   async canvasSnapshot(value) { return this.#exclusive(async()=>{
-    const active=this.#check(value,['owner','expectedRevision'])
+    const active=this.#check(value,['owner','expectedRevision','navigationPreview'])
+    if (value.navigationPreview !== undefined && typeof value.navigationPreview !== 'boolean') throw Error('Invalid source preview option')
     if(active.snapshot?.revision===active.status.revision)return {status:'ok',...active.snapshot.public}
     const result=await this.request('large.canvasSnapshot',value)
-    this.#check(value,['owner','expectedRevision'])
+    this.#check(value,['owner','expectedRevision','navigationPreview'])
     const box=result?.bounds
     if(!object(result)||result.owner?.documentId!==value.owner.documentId||result.owner?.sessionEpoch!==value.owner.sessionEpoch||result.revision!==value.expectedRevision||
       typeof result.path!=='string'||!path.isAbsolute(result.path)||path.normalize(result.path)!==result.path||path.basename(result.path)!==`canvas-native-${result.revision}.scene`||
@@ -115,6 +116,26 @@ export class LargeDocumentHost {
     active.snapshot=snapshot
     return {status:'ok',...snapshot.public}
   }) }
+  async canvasPreview(value) {
+    const active = this.#check(value,['owner','expectedRevision','token'])
+    const snapshot = active.snapshot
+    if (!snapshot || value.token !== snapshot.token || snapshot.revision !== value.expectedRevision) throw Error('Stale source preview')
+    const result = await this.request('large.canvasPreview',{owner:value.owner,expectedRevision:value.expectedRevision})
+    this.#check(value,['owner','expectedRevision','token'])
+    if (active.snapshot !== snapshot) throw Error('Stale source preview')
+    if (result?.phase === 'pending' || result?.phase === 'unavailable') return {status:'ok',phase:result.phase}
+    const image = result?.image
+    if (result?.phase !== 'ready' || !image || !Number.isInteger(image.width) || !Number.isInteger(image.height) ||
+        image.width < 1 || image.height < 1 || image.width > 256 || image.height > 256 ||
+        !Number.isFinite(image.scale) || image.scale <= 0 || image.scale > 1 ||
+        image.width !== Math.min(256,Math.ceil(snapshot.public.bounds.width*image.scale)) ||
+        image.height !== Math.min(256,Math.ceil(snapshot.public.bounds.height*image.scale)) ||
+        typeof image.png !== 'string' || image.png.length > 360000) throw Error('Invalid source preview')
+    const bytes = Buffer.from(image.png,'base64')
+    if (bytes.length < 24 || bytes.readUInt32BE(0) !== 0x89504e47 || bytes.readUInt32BE(4) !== 0x0d0a1a0a ||
+        bytes.toString('ascii',12,16) !== 'IHDR' || bytes.readUInt32BE(16) !== image.width || bytes.readUInt32BE(20) !== image.height) throw Error('Invalid source preview PNG')
+    return {status:'ok',phase:'ready',width:image.width,height:image.height,scale:image.scale,png:image.png}
+  }
   /** Host-only capability resolution. A renderer token never supplies a path. */
   resolveCanvasSnapshot(token,senderId) {
     const active=this.#active,snapshot=active?.snapshot

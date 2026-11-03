@@ -52,6 +52,19 @@ test('camera motion does not wait for worker completion and marks only newly exp
  expect(f.projection.update(f.backing,view,100,80,true).changed).toBe(false)
  expect(f.backing.view).toEqual({x:10,y:20,zoom:1})
 })
+test('cold zoom-out keeps the visible image until real pixels cover newly exposed artwork', () => {
+ const f=fixture(), bounds={x:0,y:0,width:400,height:400}
+ const backing={...f.backing,view:{x:0,y:0,zoom:1}}, target={x:25,y:20,zoom:0.5}
+ f.projection.update(backing,backing.view,100,80,true,bounds)
+ f.projection.update(backing,target,100,80,true,bounds)
+ expect(f.canvas.style.transform).toBe('')
+ expect(JSON.parse(f.canvas.dataset.projectedCamera!)).toEqual(backing.view)
+ // White pasteboard outside the actual page does not hold back navigation.
+ f.projection.update(backing,target,100,80,true,{x:0,y:0,width:100,height:80})
+ expect(JSON.parse(f.canvas.dataset.projectedCamera!)).toEqual(target)
+ f.projection.dispose()
+})
+
 test('a late worker camera is reprojected to the current view, and exact arrival clears the projection',()=>{
  const f=fixture(),view={x:42,y:20,zoom:1}
  f.projection.update(f.backing,view,100,80,true)
@@ -69,4 +82,14 @@ test('a context or editing boundary removes the preview and keeps ordinary autho
  expect(f.canvas.style.transform).toBe('');expect(f.canvas.style.width).toBe('120px')
  expect([...f.host.querySelectorAll('div')].every(e=>e.style.display==='none')).toBe(true)
  f.projection.dispose();expect(f.host.children).toHaveLength(1)
+})
+
+test('new pan strips can publish without painting a white block over a known part of the old image', () => {
+  const {backing} = fixture()
+  const view = {x:backing.view.x-30,y:backing.view.y,zoom:1}
+  const next = {...backing,view,preview:true}
+  // The 100 CSS pixel source moves left by 30. Pixels 0..69 still exist.
+  expect(keepCompleteCameraBacking(backing,{...next,previewGaps:[{x:180,y:0,width:20,height:160}]},true,false,next)).toBe(false)
+  expect(keepCompleteCameraBacking(backing,{...next,previewGaps:[{x:80,y:0,width:20,height:160}]},true,false,next)).toBe(true)
+  expect(keepCompleteCameraBacking(backing,{...next,previewGaps:[{x:80,y:0,width:20,height:160}]},true,false,next,backing)).toBe(false)
 })
