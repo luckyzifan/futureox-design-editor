@@ -388,6 +388,22 @@ impl Engine {
         &mut self,
         patch: &crate::editing::DocumentPatch,
     ) -> Result<crate::dirty_region::PatchDamage, String> {
+        if patch.nodes.len()<=16&&self.can_retain_interaction(patch,true){
+            let transforms=patch.nodes.iter().map(|(id,node)|(id.clone(),node.as_ref().unwrap().transform)).collect();
+            if let Some(damage)=crate::dirty_region::resolved_leaf_pose_damage(self.doc.as_ref().unwrap(),
+                &self.render_index.as_ref().unwrap().parents,&transforms,&self.fonts){
+                // The existing pose entry validates changed nodes and exact
+                // serialized-size deltas before mutating any snapshot.
+                if self.apply_interaction_transforms(&transforms)?{
+                    // Ordinary patches retain only the exact size receipt,
+                    // not the stronger whole-install/root-translation gate.
+                    if let Some(bytes)=self.source_doc_bytes.take(){
+                        self.retained_source_size=Some(RetainedSourceSize::new(self.source_doc.as_ref().unwrap(),bytes));
+                    }
+                    return Ok(damage)
+                }
+            }
+        }
         // Unknown optical read dependencies still invalidate all paint. A
         // proven translation need not clone the entire authored document just
         // to discover that same conservative certificate.
@@ -521,6 +537,11 @@ impl Engine {
                 // flow/hug layout can reposition siblings and must resolve normally.
                 if id != old.id && (node.layout.as_ref().is_some_and(|l| l.mode != crate::layout::Flow::None)
                     || node.sizing.as_ref().is_some_and(|s| s.width == crate::layout::SizeMode::Hug || s.height == crate::layout::SizeMode::Hug)) { return false; }
+                let candidate=if id==old.id{next}else{node};let derived=&resolved.nodes[id];
+                if candidate.width.to_bits()!=derived.width.to_bits()||candidate.height.to_bits()!=derived.height.to_bits()||
+                    (id!=old.id&&candidate.transform.0.iter().zip(derived.transform.0).any(|(a,b)|a.to_bits()!=b.to_bits()))||
+                    !crate::layout::pose_constraint_fixed(candidate,parents.ancestors(id).next().and_then(|id|resolved.nodes.get(id)),
+                        source.pages.iter().any(|page|page.children.iter().any(|child|child==id))){return false}
             }
             true
         })

@@ -28,7 +28,7 @@ test.each([false,true])('resize islands preserve full Rust layout, constraints, 
  }finally{editor.dispose()}
 })
 
-test('affine islands use the acknowledged native delta and match full resolution after undo and other islands',()=>{
+test('dimension-changing islands use the acknowledged native delta and match full resolution after undo and other islands',()=>{
  const f=fixture(),shape=node('vector',80,20,40,40),a=node('rectangle',0,0,20,20),b=node('rectangle',10,10,20,20)
  f.doc.schemaVersion=4;shape.booleanOperation='union';shape.children=[a.id,b.id];f.root.children.push(shape.id)
  for(const n of [shape,a,b])f.doc.nodes[n.id]=n
@@ -37,11 +37,12 @@ test('affine islands use the acknowledged native delta and match full resolution
   const before=editor.state.doc;editor.select([f.child.id])
   for(const transform of [[0,1,-1,0,20,30],[.8,.6,-.6,.8,15,20]] as typeof a.transform[]){
    editor.begin('Rotate');full.mockClear();patch.mockClear()
-   expect(editor.preview({[f.child.id]:{transform}})).toBe(true)
+   const width=before.nodes[f.child.id].width+5
+   expect(editor.preview({[f.child.id]:{transform,width}})).toBe(true)
    expect(full).not.toHaveBeenCalled();expect(patch).toHaveBeenCalled()
    const after=editor.state.doc,wire=JSON.parse(patch.mock.calls.at(-1)![0])
    expect(Object.keys(wire.nodes).length).toBeLessThanOrEqual(3)
-   const oracle=kernelLayout({...before,nodes:{...before.nodes,[f.child.id]:{...before.nodes[f.child.id],transform}}})
+   const oracle=kernelLayout({...before,nodes:{...before.nodes,[f.child.id]:{...before.nodes[f.child.id],transform,width}}})
    expect(after).toEqual(oracle)
    editor.commit();editor.undo();expect(editor.state.doc).toEqual(before)
    // A different resolved island may now own the native receipt. The next
@@ -51,7 +52,7 @@ test('affine islands use the acknowledged native delta and match full resolution
  }finally{full.mockRestore();patch.mockRestore();editor.dispose()}
 })
 
-test('a whole-page affine island does not invalidate native global state with unchanged page fields',()=>{
+test('a whole-page resize island does not invalidate native global state with unchanged page fields',()=>{
  const f=fixture(),shape=node('vector',80,20,40,40),a=node('rectangle',0,0,20,20)
  f.doc.schemaVersion=4;shape.booleanOperation='union';shape.children=[a.id];f.root.children.push(shape.id)
  delete f.doc.nodes[f.staticRoot.id];f.doc.pages[0].children=[f.root.id]
@@ -59,7 +60,7 @@ test('a whole-page affine island does not invalidate native global state with un
  const editor=new Editor(f.doc),patch=vi.spyOn(VectorEngine.prototype,'resolve_components_patch')
  try{
   editor.select([f.child.id]);editor.begin('Rotate');patch.mockClear()
-  expect(editor.preview({[f.child.id]:{transform:[0,1,-1,0,20,30]}})).toBe(true)
+  expect(editor.preview({[f.child.id]:{transform:[0,1,-1,0,20,30],width:45}})).toBe(true)
   expect(patch).toHaveBeenCalledOnce()
   const wire=JSON.parse(patch.mock.calls[0][0])
   expect(wire.fields).toEqual({});expect(Object.keys(wire.nodes)).toEqual([f.child.id])

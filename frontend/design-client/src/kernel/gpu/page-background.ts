@@ -15,6 +15,7 @@ export function bindContentOwner(scene:GpuScene,owner:object,contract?:string){
 export type PageBackgroundProof={owner:object;contract?:string;view:CanvasCamera;bounds:readonly (readonly number[])[];pixel?:[number,number]}
 export type PixelContentProof=Pick<PageBackgroundProof,'owner'|'contract'>
 export function pixelContentProof(scene:GpuScene):PixelContentProof|undefined{
+  if (scene.gestureSoftEffects || scene.interactionLocalFootprint) return
   const owner=(scene as unknown as Record<symbol,object>)[contentOwner],contract=(scene as unknown as Record<symbol,unknown>)[contentContract]
   return owner&&typeof contract==='string'?{owner,contract}:undefined
 }
@@ -22,7 +23,7 @@ export function pixelContentProof(scene:GpuScene):PixelContentProof|undefined{
  * uniform page background. Unknown/background-dependent display tiers decline. */
 export function pageBackgroundSource(scene:GpuScene):Omit<PageBackgroundProof,'pixel'>|undefined{
   const owner=(scene as unknown as Record<symbol,object>)[contentOwner], bounds=scene.pagePaintRects
-  if(!owner||!bounds||scene.transparent||scene.grid||scene.checkerboard||scene.resolve||scene.presentation||scene.softwareRaster)return
+  if(scene.interactionLocalFootprint||scene.gestureSoftEffects||!owner||!bounds||scene.transparent||scene.grid||scene.checkerboard||scene.resolve||scene.presentation||scene.softwareRaster)return
   if(bounds.some(b=>b.length!==4||!b.every(Number.isFinite)||b[0]>b[2]||b[1]>b[3]))return
   const contract=(scene as unknown as Record<symbol,unknown>)[contentContract]
   return {owner,...(typeof contract==='string'?{contract}:{}),view:{...scene.view},bounds:bounds.map(b=>b.slice())}

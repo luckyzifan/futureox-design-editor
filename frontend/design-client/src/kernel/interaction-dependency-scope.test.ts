@@ -331,3 +331,14 @@ test('one isolated root filter expands geometry and centered strokes once; outsi
  leaf.strokes[0].align='outside';const outside=foregroundScope(value).rootBounds.get(group.id)!
  expect(outside.width).toBeGreaterThanOrEqual(stroked.width)
 })
+
+test('a leaf with two inner shadows can localize its output until a later layer reads its backdrop', () => {
+  const value = foregroundFixture(), { root, group, leaf, backdrop } = value
+  leaf.effects = [{ ...effect('inner-shadow'), radius: 24 }, { ...effect('inner-shadow'), radius: 18 }]
+  const scope = foregroundScope(value, [leaf.id])
+  expect(scope.finalForeground).toBe(true)
+  expect(scope.localizedBounds.has(leaf.id)).toBe(true)
+  expect(scope.containedForeground).toBe(true)
+  root.children = [group.id, backdrop.id]
+  expect(foregroundScope(value, [leaf.id]).localizedBounds.has(leaf.id)).toBe(false)
+})

@@ -48,7 +48,18 @@ export type InteractionDependencyScope = {
   dependencyPadding: number
   /** The branch follows every backdrop reader in its painter scopes. */
   finalForeground: boolean
+  containedForeground?: boolean
   foregroundExclusions?: Bounds[]
+}
+
+// Inner shadows are multiplied by the sharp source alpha, and color controls
+// preserve alpha. For an ordinary leaf this chain has no new exterior pixels.
+// finalForegroundBranch still checks every ancestor and later backdrop reader.
+function containedLeafEffects(node: DesignNode, effects: DesignNode['effects']) {
+  const policy = import.meta.env.VITE_DESIGN_CONTAINED_EFFECT_CAPTURE
+  return policy !== '0' && (policy === '1' || node.children.length === 0 && effects.length >= 2) &&
+    effects.length > 0 && effects.length <= 4 &&
+    effects.every(effect => effect.kind === 'inner-shadow' || effect.kind === 'color-controls')
 }
 
 /** An ordinary foreground branch cannot feed any earlier backdrop.
@@ -71,7 +82,7 @@ function finalForegroundBranch(document: DesignDocument, pageId: string,
   // filters and chains that grow output retain the full dependency path.
   const localRootEffects = (node: DesignNode) => {
     const effects = node.effects.filter(effect => effect.visible)
-    return (effects.length === 1 || import.meta.env.VITE_DESIGN_CONTAINED_EFFECT_CAPTURE==='1'&&effects.length<=4&&effects.every(effect=>['inner-shadow','color-controls'].includes(effect.kind))) && effects.every(effect =>
+    return (effects.length === 1 || containedLeafEffects(node, effects)) && effects.every(effect =>
       ['blur', 'gaussian-blur', 'shadow', 'inner-shadow', 'color-controls'].includes(effect.kind) &&
       !effect.gradientBlur && Number.isFinite(effect.radius) && effect.radius >= 0&&[effect.x??0,effect.y??0,effect.spread??0].every(Number.isFinite))
   }
@@ -164,8 +175,8 @@ export function buildInteractionDependencyScope(document: DesignDocument, pageId
   const noBackdrop = knownEffects && entries.every(entry => !document.nodes[entry.id].effects.some(e =>
     e.visible && ['background-blur', 'glass'].includes(e.kind)))
   const selectedEffects=selection.length===1?document.nodes[selection[0]]?.effects.filter(effect=>effect.visible)||[]:[]
-  const containedRoot=import.meta.env.VITE_DESIGN_CONTAINED_EFFECT_CAPTURE==='1'&&selectedEffects.length>0&&selectedEffects.length<=4&&
-    selectedEffects.every(effect=>['inner-shadow','color-controls'].includes(effect.kind))
+  const selectedNode = selection.length === 1 ? document.nodes[selection[0]] : undefined
+  const containedRoot = !!selectedNode && containedLeafEffects(selectedNode, selectedEffects)
   const finalForeground = (!noBackdrop||containedRoot) && knownEffects && selection.length === 1 &&
     finalForegroundBranch(document, pageId, entries, byId.get(selection[0]))
   const exclusions: Bounds[] = []
@@ -175,6 +186,7 @@ export function buildInteractionDependencyScope(document: DesignDocument, pageId
       .map(e=>paddedBounds(document,e)))]]),selection,new Map([[selection[0],{x:0,y:0}]]),scope.parentLinear,zoom*dpr)
   scope.foregroundExclusions = guardedForeground ? exclusions : undefined
   scope.finalForeground = finalForeground
+  scope.containedForeground = finalForeground && containedRoot && selectedNode?.children.length === 0 || undefined
   // Earlier filters have already sampled their backdrop before this branch.
   // Their read support cannot propagate a change in the final foreground.
   if (finalForeground) scope.dependencyPadding = 0
@@ -200,7 +212,7 @@ export function buildInteractionDependencyScope(document: DesignDocument, pageId
       // Unioning individual padded nodes alone cannot account for that sum.
       const scale = Math.max(Math.hypot(entry.matrix[0], entry.matrix[1]), Math.hypot(entry.matrix[2], entry.matrix[3]))
       const effects=selected.effects.filter(effect=>effect.visible)
-      const contained=import.meta.env.VITE_DESIGN_CONTAINED_EFFECT_CAPTURE==='1'&&effects.every(effect=>['inner-shadow','color-controls'].includes(effect.kind))
+      const contained = containedLeafEffects(selected, effects)
       const pad = contained ? 2*effects.length/(zoom*dpr) : Math.max(0, ...effects.map(effect =>
         effect.radius * 3 + Math.abs(effect.x || 0) + Math.abs(effect.y || 0) + Math.abs(effect.spread || 0))) * scale
       bounds = { x: bounds.x-pad, y: bounds.y-pad, width: bounds.width+2*pad, height: bounds.height+2*pad }
