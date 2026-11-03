@@ -2425,7 +2425,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         return false
       }}/>
       {openingSource&&<SourceOpeningSurface pageId={openingPage} focused={focusedMaterial} onDetail={onSourceDetail} onViewport={onSourceViewport} source={openingSource} view={state.view} width={size.width} height={size.height}/>}
-      {nativeSource?<NativeSourceSurface hidden={hideNative} clipPath={sourcePageClip(sourcePageBoxes,state.view,size.width,size.height)} source={nativeSource} view={state.view} width={size.width} height={size.height} onStatus={onNativeSourceStatus} onPresented={(frame,complete)=>{if(complete)onSourcePresented?.(frame.view)}}/>:openingSource?null:<KernelSurface
+      {nativeSource?<NativeSourceSurface hidden={hideNative} clipPath={sourcePageClip(sourcePageBoxes,state.view,size.width,size.height)} source={nativeSource} view={state.view} width={size.width} height={size.height} onStatus={onNativeSourceStatus} onPresented={(frame,complete)=>{if(complete||nativeSource.materialKeys&&frame.ids.length&&(!frame.preview||frame.previewGaps))onSourcePresented?.(frame.view)}}/>:openingSource?null:<KernelSurface
         navigationInputOwner={editor}
         panGestureActive={panning}
         overlay={overlay}

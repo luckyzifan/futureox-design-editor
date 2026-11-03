@@ -89,7 +89,9 @@ export type PathMesh = {
   count: number
   rule: 'evenodd' | 'nonzero' | 'union'
 }
+export type SourceFilterField={factor:number;effectIndex:number;sharpHalo:number;radius:number;gaussian:boolean;input:Rect;output:Rect;masks:{path:PathMesh;opacity:number;paint?:GpuPaint}[];groupRoots?:string[];additional?:SourceFilterField[]}
 export type GpuNode = {
+  sourceFilterField?:SourceFilterField
   gaussianRegion?:import('./gaussian-region').GaussianRegion
   /** Worker-local transient placement identity; never serialized by the kernel. */
   previewSource?: GpuNode
@@ -125,7 +127,7 @@ export type GpuNode = {
   fills: GpuPaint[]
   strokes: { path: PathMesh; paint: GpuPaint; align: 'center' | 'inside' | 'outside' }[]
   children: string[]
-  maskType?: 'alpha' | 'luminance' | 'outline'
+  maskType?: 'alpha' | 'luminance' | 'outline' | 'shape'
   mask: boolean
   maskId?: string
   clip: boolean
@@ -152,6 +154,7 @@ export type GpuScene = {
   nativeInteraction?: boolean
   /** Worker-owned display hint for a source tile at high physical zoom. */
   sourceDetailTile?: boolean
+  sourceImageDisplay?:boolean
   /** Worker-owned quality of a transient selected-object capture. */
   gestureSoftEffects?: boolean
   interactionLocalFootprint?: boolean
@@ -393,6 +396,7 @@ export interface Driver {
   readonly windowedGradientFields?: boolean
   /** Prepared for this display call only, cleared before every exact request. */
   readonly gestureSoftEffects?: boolean
+  readonly sourceSoftEffects?: boolean
   readonly gradientPhaseFields?: boolean
   uploadGradientPhaseField?(values:Uint32Array):Texture
   readonly managed?: boolean
@@ -434,6 +438,8 @@ export interface Driver {
   destroy(texture: Texture): void
   upload(bitmap: ImageBitmap): Texture
   uploadRgba8?(bytes: Uint8Array, width: number, height: number): Texture
+  uploadStraightSrgb8?(bytes:Uint8Array,width:number,height:number):Texture
+  readonly sourceImageLimit?:number
   uploadExactTentKernel?(bytes:Uint8Array,width:number,height:number,operator:'rational-tent'|'certified-tent',radius:number):Texture
   /** Private coefficient upload for bounded isolated shadows; never a scene flag. */
   readonly boundedShadowPacketMaxDimension?: number
