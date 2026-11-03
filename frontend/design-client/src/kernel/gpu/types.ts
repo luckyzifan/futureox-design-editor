@@ -150,6 +150,8 @@ export type GpuScene = {
   /** Only explicitly transient whole-scene interactions can retain root paint. */
   interactionRetained?: boolean
   nativeInteraction?: boolean
+  /** Worker-owned display hint for a source tile at high physical zoom. */
+  sourceDetailTile?: boolean
   /** Worker-owned quality of a transient selected-object capture. */
   gestureSoftEffects?: boolean
   interactionLocalFootprint?: boolean

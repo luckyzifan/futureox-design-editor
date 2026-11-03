@@ -87,7 +87,12 @@ export function gradientPhaseSource(source:string){
   const start=source.indexOf(first),end=source.indexOf(last,start)
   if(start<0||end<start||source.indexOf(last,end+last.length)>=0)throw Error('Gradient field source contract changed')
   const legacy=source.slice(start,end+last.length).replace(last,'grid=textureLoad(sourceD,address,0);')
-  source=source.slice(0,start)+'var grid:vec4<f32>;if(u(47).w>0.5){grid=gpfTuple(address,u32(u(47).w)-1u);}else if(u(47).w< -0.5){grid=gpfAxisTuple(address,u32(-u(47).w)-1u,vec2<i32>(u(47).yz));}else{'+legacy+'}\n'+source.slice(end+last.length)
+  source=source.slice(0,start)+'var grid:vec4<f32>;if(u(47).w==8.){grid=linearCornerTuple(address,u(47).yz);}else if(u(47).w>0.5){grid=gpfTuple(address,u32(u(47).w)-1u);}else if(u(47).w< -0.5){grid=gpfAxisTuple(address,u32(-u(47).w)-1u,vec2<i32>(u(47).yz));}else{'+legacy+'}\n'+source.slice(end+last.length)
  }
- return gradientPhaseDecodeWgsl+source
+ return `fn linearCornerTuple(address:vec2<i32>,size:vec2<f32>)->vec4<f32>{
+  let uv=clamp(vec2<f32>(address)/(size-1.),vec2<f32>(0.),vec2<f32>(1.));
+  let top=mix(textureLoad(sourceD,vec2<i32>(0,0),0).z,textureLoad(sourceD,vec2<i32>(1,0),0).z,uv.x);
+  let bottom=mix(textureLoad(sourceD,vec2<i32>(0,1),0).z,textureLoad(sourceD,vec2<i32>(1,1),0).z,uv.x);
+  return vec4<f32>(0.,1.,mix(top,bottom,uv.y),0.);
+}\n`+gradientPhaseDecodeWgsl+source
 }

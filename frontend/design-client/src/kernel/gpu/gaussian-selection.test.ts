@@ -65,6 +65,19 @@ test('automatic box execution does not enable regional or reduced geometry polic
   vi.stubEnv('VITE_DESIGN_GAUSSIAN_REDUCTION','2');expect(f.driver.supportsGaussianReduction()).toBe(true)
 })
 
+test('full-density recovery can stream an SDR tile without enabling spatial reduction', () => {
+  const {driver, raw} = fixture()
+  raw.fullDensityRegionalGaussian = true
+  vi.stubEnv('VITE_DESIGN_GAUSSIAN_REDUCTION', '2')
+  expect(driver.supportsGaussianRegions()).toBe(true)
+  expect(driver.supportsGaussianReduction()).toBe(false)
+  raw.canvasBlurRequested = false
+  expect(driver.supportsGaussianRegions()).toBe(false)
+  raw.canvasBlurRequested = true
+  driver.hdr = true
+  expect(driver.supportsGaussianRegions()).toBe(false)
+})
+
 test('pipeline rejection falls back once, and a completed pipeline cannot publish after disposal',async()=>{
   for(const disposed of [false,true]){
     const f=fixture();f.raw.boxPrefix=undefined
