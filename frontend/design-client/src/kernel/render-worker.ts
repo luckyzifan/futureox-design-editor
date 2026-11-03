@@ -771,10 +771,15 @@ self.onmessage = (e) => {
       const displayBackpressure=displayRasterBackpressure(request.options,{channel,png:request.png,readback:request.readback,hdr:executionPolicy.hdrCompositing})
       // Never accept display arithmetic authority from caller or document fields.
       delete (renderOptions as { displayTentRadius?: unknown }).displayTentRadius
-      renderOptions.gpuGaussianRegions = import.meta.env.VITE_DESIGN_GAUSSIAN_REGIONS==='1'&&import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1'&&
+      const sourceFilterFields=import.meta.env.VITE_DESIGN_SOURCE_FILTER_LOD!=='0' && import.meta.env.VITE_DESIGN_GAUSSIAN_REGIONS!=='0' &&
+        import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX!=='0' && !!request.sourceSnapshot &&
+        channel==='canvas' && renderIntent==='preview' && !!tileOwner && renderOptions.view.zoom>=2 && !request.referenceGpu && !renderOptions.animation
+      renderOptions.gpuGaussianRegions = (sourceFilterFields||
+        import.meta.env.VITE_DESIGN_GAUSSIAN_REGIONS==='1'&&import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1')&&
         !executionPolicy.hdrCompositing&&backend==='webgpu'&&!request.png&&!request.readback&&!exportFormat&&
         !renderOptions.exportRegion&&!renderOptions.pixelPreview&&renderOptions.rasterProfile==='figmaSubpixel'
       const gaussianReduction=Number(import.meta.env.VITE_DESIGN_GAUSSIAN_REDUCTION)
+      renderOptions.gpuSourceFilterFields=!!renderOptions.gpuGaussianRegions&&sourceFilterFields
       renderOptions.gpuGaussianReduction=renderOptions.gpuGaussianRegions&&[2,4,8].includes(gaussianReduction)?gaussianReduction:0
       renderOptions.gpuNeutralPageGroup=import.meta.env.VITE_DESIGN_NEUTRAL_PAGE_GROUP==='1'&&!!renderOptions.gpuRoots&&
         renderOptions.rasterProfile==='figmaSubpixel'&&backend==='webgpu'&&!executionPolicy.hdrCompositing&&!request.png&&!request.readback&&
@@ -1267,7 +1272,7 @@ self.onmessage = (e) => {
               renderOptions.pageId,
               renderOptions.rasterProfile,
               renderOptions.interactiveEffects,
-              renderOptions.gpuGaussianRegions,renderOptions.gpuGaussianReduction,sourceDetailDisplay,
+              renderOptions.gpuGaussianRegions,renderOptions.gpuGaussianReduction,renderOptions.gpuSourceFilterFields,sourceDetailDisplay,
               canvasDisplayFilters,
               boundedDisplayLimit,
               canvasMath,
@@ -1430,7 +1435,7 @@ self.onmessage = (e) => {
                 witness = () => scenePacketWitness(rawScene)
                 result = disableExactCache ? undefined : tileCache.get(cacheKey, witness)
                 preparedScene = result ? undefined : decodeScenePacket(rawScene)
-                if(preparedScene)preparedScene.sourceDetailTile=sourceDetailDisplay && tile.zoom>=8
+                if(preparedScene){preparedScene.sourceImageDisplay=sourceDetailDisplay;preparedScene.sourceDetailTile=sourceDetailDisplay && tile.zoom>=2}
               } catch (error) {
                 // A whole tile may exceed the working-surface budget. Let the
                 // regional renderer subdivide it; a compiler admission error
@@ -1479,7 +1484,7 @@ self.onmessage = (e) => {
                   prepareForTile(tile), !request.readback, canvasDisplayFilters, canvasMath, reportRasterProgress,
                   () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
                     tileCurrent(), hydrateImages, filterBatchLease, canvasImageSource, boundedDisplayLimit, canvasMaterialSource, canvasTentRadius,
-                    draws=>reportWorkProgress(2,draws),displayBackpressure)
+                    draws=>reportWorkProgress(2,draws),displayBackpressure,sourceDetailDisplay && tile.zoom>=2,sourceDetailDisplay)
                 undelivered = result
                 if ((packetWait?.controller.signal.aborted || generation !== previewGenerations[channel])) throw new Error('PREVIEW_CANCELLED')
                 // Only the exact scene actually rendered once certifies these pixels.
@@ -2108,6 +2113,8 @@ async function renderTiledPreview(
   canvasTentRadius = false,
   onEncodingProgress?: (drawCalls:number)=>void,
   displayBackpressure=false,
+  sourceDetailTile=false,
+  sourceImageDisplay=false,
 ) {
   const tileCost = createTileCostDiagnostics(terminalDiagnostics.enabled)
   const checkCurrent = () => {
@@ -2300,6 +2307,8 @@ async function renderTiledPreview(
           }
           scene = decodeScenePacket(packet) as GpuScene
         }
+        scene.sourceDetailTile=sourceDetailTile
+        scene.sourceImageDisplay=sourceImageDisplay
         scene.filterBatchLease = filterBatchLease
         checkCurrent()
         compileMs += performance.now() - t

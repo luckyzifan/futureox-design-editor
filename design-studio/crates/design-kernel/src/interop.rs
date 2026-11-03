@@ -2242,6 +2242,9 @@ impl<'a> Importer<'a> {
 
         if bool_at(layer, "hasClippingMask") {
             node.mask = true;
+            // Sketch's outline clips to the layer path even when it has no
+            // fill. The alpha mode instead reads the rendered mask pixels.
+            node.mask_type=Some(if layer.get("clippingMaskMode").and_then(Value::as_f64).unwrap_or(0.)==0. {"shape"} else {"alpha"}.into());
         }
 
         // resizingConstraint 6-bit: X=low 3, Y=high 3 (22 号字典,BCConstraint and/ubfx 实证).
@@ -5956,6 +5959,11 @@ fn export_layer_impl(
         }
         if n.mask {
             layer.insert("hasClippingMask".into(), json!(true));
+            match n.mask_type.as_deref() {
+                Some("shape") => { layer.insert("clippingMaskMode".into(),json!(0)); }
+                Some("alpha") => { layer.insert("clippingMaskMode".into(),json!(1)); }
+                _ => {}
+            }
             layer.insert("shouldBreakMaskChain".into(), json!(false));
         }
         // Kernel-native payloads that Sketch cannot express travel through

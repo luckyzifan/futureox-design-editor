@@ -629,18 +629,20 @@ impl Node {
     /// paints, independently of their color/positive alpha. This is a render
     /// projection only; authored paints, effects and edit history stay intact.
     pub(crate) fn outline_mask_node(&self, inherited: bool) -> Option<Node> {
-        if !inherited && (!self.mask || self.mask_type.as_deref()!=Some("outline")) {return None;}
+        let shape=self.mask && self.mask_type.as_deref()==Some("shape");
+        if !shape && !inherited && (!self.mask || self.mask_type.as_deref()!=Some("outline")) {return None;}
         let white=Paint {id:String::new(),kind:"solid".into(),color:"#ffffff".into(),opacity:1.,visible:true,
             angle:0.,stops:Vec::new(),image:None,fit:"cover".into(),blend:"normal".into(),transform:None,adjust:None,tile:None};
         let mut node=self.clone();
-        node.fills=if self.fills.iter().any(|p|p.visible&&p.opacity>0.) {vec![white.clone()]} else {Vec::new()};
+        node.fills=if shape || self.fills.iter().any(|p|p.visible&&p.opacity>0.) {vec![white.clone()]} else {Vec::new()};
+        if shape {node.strokes.clear();}
         for stroke in &mut node.strokes {
             stroke.visible=stroke.visible&&stroke.paint.visible&&stroke.paint.opacity>0.;
             stroke.paint=white.clone();
         }
         for run in &mut node.text_runs {run.color=None;}
         node.effects.clear();
-        node.opacity=if self.opacity>0. {1.} else {0.};
+        node.opacity=if shape || self.opacity>0. {1.} else {0.};
         node.blend="normal".into();
         Some(node)
     }
@@ -1252,7 +1254,7 @@ impl Document {
             }
             if n.mask_type
                 .as_deref()
-                .is_some_and(|v| !["alpha", "luminance", "outline"].contains(&v))
+                .is_some_and(|v| !["alpha", "luminance", "outline", "shape"].contains(&v))
             {
                 return Err("Invalid mask type".into());
             }

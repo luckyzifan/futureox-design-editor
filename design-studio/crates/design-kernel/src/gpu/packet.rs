@@ -310,7 +310,7 @@ impl FrameSceneContext {
             let mut source_key=Vec::with_capacity(canonical.len()+64);
             source_key.extend(u32::try_from(canonical.len()).map_err(|_|"Source identity too large")?.to_le_bytes());
             source_key.extend(canonical);
-            for path in std::iter::once(&node.fill).chain(node.strokes.iter().map(|s|&s.path)) {
+            for path in std::iter::once(&node.fill).chain(node.strokes.iter().map(|s|&s.path)).chain(node.source_filter_field.iter().flat_map(|f|f.channels().map(|m|&m.path))) {
                 let (data,first,count)=if let Some(area)=&path.area{(&curves,area.first as usize*4,area.count as usize*4)}
                     else if let Some(analytic)=&path.analytic{(&curves,analytic.first as usize*4,analytic.count as usize*16)}
                     else{(&vertices,path.first as usize*2,path.count as usize*2)};

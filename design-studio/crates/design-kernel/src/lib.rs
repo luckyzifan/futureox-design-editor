@@ -745,6 +745,15 @@ mod wasm {
         };compute().map_err(|e|JsValue::from_str(&e))
     }
     #[wasm_bindgen]
+    pub fn source_linear_parameters(rect:&str,matrix:&[f64],size:&[f64],paint:&str,sample:u32)->Result<Vec<f32>,JsValue>{
+        let compute=||->Result<Vec<f32>,String>{crate::paint::source_linear_parameters(
+            serde_json::from_str(rect).map_err(|e|format!("{e}"))?,
+            crate::math::Transform(matrix.try_into().map_err(|_|"Invalid gradient transform")?),
+            size.try_into().map_err(|_|"Invalid gradient dimensions")?,
+            &serde_json::from_str(paint).map_err(|e|format!("{e}"))?,sample as usize)};
+        compute().map_err(|e|JsValue::from_str(&e))
+    }
+    #[wasm_bindgen]
     pub struct GradientPhaseFieldBuilder { inner:crate::paint::phase_field::Builder }
     #[wasm_bindgen]
     impl GradientPhaseFieldBuilder {
@@ -1483,7 +1492,11 @@ mod wasm {
         pub fn width(&self) -> u32 { self.inner.width() }
         pub fn height(&self) -> u32 { self.inner.height() }
         pub fn next_rows(&mut self) -> Result<Vec<f32>, JsValue> { self.inner.next_rows().map_err(|e| JsValue::from_str(&e)) }
+        pub fn window(&mut self,x:u32,y:u32,w:u32,h:u32)->Result<Vec<f32>,JsValue>{self.inner.window(x,y,w,h).map_err(|e|JsValue::from_str(&e))}
+        pub fn straight_srgb8(&mut self)->Result<Vec<u8>,JsValue>{self.inner.straight_srgb8().map_err(|e|JsValue::from_str(&e))}
     }
+    #[wasm_bindgen]
+    pub fn straight_srgb8_table()->Result<Vec<u8>,JsValue>{crate::image_rows::straight_srgb8_table().map_err(|e|JsValue::from_str(&e))}
     #[wasm_bindgen]
     pub struct DocumentHistory {
         inner: crate::editing::DocumentEditor,

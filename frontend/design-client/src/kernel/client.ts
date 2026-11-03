@@ -178,6 +178,7 @@ export type KernelOptions = {
   gpuNeutralPageGroup?: boolean;
   /** Overwritten by the worker's strict host experiment policy. */
   gpuGaussianRegions?: boolean
+  gpuSourceFilterFields?:boolean
   gpuPainterSupport?: boolean
   /** Separately gated captured-source optimization; never document state. */
   gpuPainterCaptureReads?: boolean

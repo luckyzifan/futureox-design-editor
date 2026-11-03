@@ -2,7 +2,10 @@ import type {GpuNode,GpuPaint,GpuScene,Rect} from './types'
 import {fullSampleCoverage} from './horizontal-filter-cache'
 import {exactBlendLattice} from './effect-region'
 
-type Proofs={color:(value:string)=>readonly number[];image:(node:GpuNode,paint:GpuPaint)=>boolean;imageFilters?:boolean}
+type Proofs={color:(value:string)=>readonly number[];image:(node:GpuNode,paint:GpuPaint)=>boolean;opaqueImage?:(node:GpuNode,paint:GpuPaint)=>boolean;imageFilters?:boolean;sourceLayers?:boolean}
+function covers(rect:Rect|undefined,region:Rect){
+ return !!rect&&rect.x<=region.x&&rect.y<=region.y&&rect.x+rect.w>=region.x+region.w&&rect.y+rect.h>=region.y+region.h
+}
 /** Only normal, bounded sources may disappear behind a complete overwrite.
  * This preserves the old zero/NaN behaviour: unknown images, HDR/overflow,
  * masks, backdrop reads and unsupported operators never grant this proof. */
@@ -28,11 +31,13 @@ function boundedPrefix(scene:GpuScene,ids:readonly string[],proofs:Proofs):boole
   const visible=n.effects.filter(e=>e.visible)
   if(visible.length){
    if(visible.length!==1||n.children.length||n.fills.length!==1||
-     !(n.fills[0].kind==='solid'||proofs.imageFilters&&n.fills[0].kind==='image'))return false
+     !(n.fills[0].kind==='solid'||proofs.sourceLayers&&n.fills[0].kind==='linear'||proofs.imageFilters&&n.fills[0].kind==='image'))return false
    const e=visible[0],sigma=e.radius*Math.max(Math.hypot(n.matrix[0],n.matrix[1]),Math.hypot(n.matrix[2],n.matrix[3]))
    // Positive normalized box convolution of bounded finite pixels remains
    // finite, including the admitted display arithmetic and streamed recipe.
-   if(e.kind!=='gaussian-blur'||e.gradientBlur||!Number.isFinite(sigma)||sigma<0||sigma>1024)return false
+   const shadow=proofs.sourceLayers && (e.kind==='shadow'||e.kind==='inner-shadow') && e.spread===0 &&
+     [e.x,e.y,e.opacity].every(Number.isFinite) && e.opacity>=0&&e.opacity<=1 && proofs.color(e.color).every(v=>v>=0&&v<=1)
+   if((e.kind!=='gaussian-blur'&&!shadow)||e.gradientBlur||!Number.isFinite(sigma)||sigma<0||sigma>1024)return false
   }
   pending.push(...n.children)
  }
@@ -48,16 +53,47 @@ export function opaquePainterStart(scene:GpuScene,ids:readonly string[],region:R
     !(scene.curves instanceof Float32Array)||!(scene.curves.buffer instanceof ArrayBuffer))return 0
  for(let i=ids.length-1;i>0;i--){
   const n=scene.nodes[ids[i]]
-  if(!n||n.opacity!==1||n.blend!=='normal'||n.passthrough||n.mask||n.maskId||n.clip||n.children.length||n.strokes.length||
+  if(!n||n.opacity!==1||n.blend!=='normal'||n.passthrough||n.mask||n.maskId||n.clip||n.children.length||
+    (n.strokes.length&&!proofs.sourceLayers)||
     n.effects.some(e=>e.visible)||n.captureReplay||n.textureReplay)continue
   const paints=n.fills.filter(p=>p.visible)
   if(paints.length!==1)continue
   const p=paints[0]
   if(p.opacity!==1||p.blend!=='normal'||!boundedPaint(p,proofs,n)||
-    !(p.kind==='solid'?proofs.color(p.color)[3]===1:p.kind==='linear'&&p.stops.every(s=>proofs.color(s.color)[3]===1)))continue
-  if(!fullSampleCoverage(n.fill,scene.curves,region))continue
+    !(p.kind==='solid'?proofs.color(p.color)[3]===1:p.kind==='image'?proofs.opaqueImage?.(n,p):p.kind==='linear'&&p.stops.every(s=>proofs.color(s.color)[3]===1)))continue
+  if(!(proofs.sourceLayers&&n.fill.count&&covers(n.fill.opaqueRect,region))&&!fullSampleCoverage(n.fill,scene.curves,region))continue
   if(!boundedPrefix(scene,ids.slice(0,i+1),proofs))return 0
   return i
  }
  return 0
+}
+
+/** Reuse the parent target for neutral source groups only when none of the
+ * descendants reads its initial backdrop. Keep masked groups isolated unless
+ * the source path certificate covers this entire destination, including halo. */
+export function sourcePainterOrder(scene:GpuScene,ids:string[],region:Rect):string[]{
+ const checked=new Map<string,boolean>()
+ const independent=(id:string):boolean=>{
+  const known=checked.get(id);if(known!==undefined)return known
+  if(checked.size>=4096)return false
+  checked.set(id,false)
+  const n=scene.nodes[id]
+  const result=!n || (!n.captureReplay&&!n.textureReplay&&(n.blend==='normal'||!!n.passthrough&&n.blend==='pass-through')&&
+    !n.effects.some(e=>e.visible&&(e.kind==='background-blur'||e.kind==='glass'))&&n.children.every(independent))
+  checked.set(id,result);return result
+ }
+ let changed=false
+ const result:string[]=[]
+ const append=(id:string)=>{
+  const n=scene.nodes[id],mask=n?.maskId?scene.nodes[n.maskId]:undefined
+  const identityMask=!n?.maskId||!!mask&&mask.maskType==='shape'&&mask.opacity===1&&
+    !mask.children.length&&mask.fill.count>0&&covers(mask.fill.opaqueRect,region)
+  if(n&&n.children.length&&!n.mask&&identityMask&&(!n.clip||covers(n.fill.opaqueRect,region))&&
+      n.opacity===1&&!n.fills.some(p=>p.visible)&&!n.strokes.length&&!n.effects.some(e=>e.visible)&&independent(id)){
+    changed=true
+    for(const child of n.children)if(child!==n.maskId)append(child)
+  }else result.push(id)
+ }
+ ids.forEach(append)
+ return changed?result:ids
 }

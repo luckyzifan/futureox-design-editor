@@ -47,6 +47,28 @@ impl Decoder {
     }
     pub fn width(&self) -> u32 { self.width }
     pub fn height(&self) -> u32 { self.height }
+    /// Original unassociated integer texels for the sRGB display sampler.
+    /// Other profiles, orientations and channel depths keep the float decoder.
+    pub fn straight_srgb8(&mut self)->Result<Vec<u8>,String>{
+        if self.failed||self.row!=0{return Err("PNG row decoder already consumed".into())}
+        if self.depth!=png::BitDepth::Eight||self.profile.is_some()||self.space.is_some_and(|v|v!=ColorSpace::Srgb)||
+            self.settings.document_space!=ColorSpace::Srgb||u64::from(self.width)*u64::from(self.height)>16_777_216{return Ok(Vec::new())}
+        self.failed=true;
+        let mut pixels=Vec::new();pixels.try_reserve_exact(self.width as usize*self.height as usize*4).map_err(|e|e.to_string())?;
+        while self.row<self.height{
+            let row=self.reader.next_row().map_err(|e|e.to_string())?.ok_or("Truncated PNG rows")?;
+            if row.data().len()!=self.width as usize*self.color.samples(){return Err("Unexpected PNG row width".into())}
+            match self.color{
+                png::ColorType::Rgba=>pixels.extend_from_slice(row.data()),
+                png::ColorType::Rgb=>for p in row.data().chunks_exact(3){pixels.extend_from_slice(&[p[0],p[1],p[2],255])},
+                png::ColorType::GrayscaleAlpha=>for p in row.data().chunks_exact(2){pixels.extend_from_slice(&[p[0],p[0],p[0],p[1]])},
+                png::ColorType::Grayscale=>for &v in row.data(){pixels.extend_from_slice(&[v,v,v,255])},
+                _=>return Err("Unsupported PNG source channels".into()),
+            }
+            self.row+=1;
+        }
+        self.reader.finish().map_err(|e|e.to_string())?;self.failed=false;Ok(pixels)
+    }
     pub fn next_rows(&mut self) -> Result<Vec<f32>, String> {
         if self.failed { return Err("PNG row decoder failed".into()); }
         if self.row == self.height { return Ok(Vec::new()); }
@@ -64,6 +86,35 @@ impl Decoder {
             if row.data().len() != stride { return Err("Unexpected PNG row width".into()); }
             bytes.extend_from_slice(row.data());
         }
+        let pixels=self.convert(bytes,self.width,height)?;
+        self.row += height;
+        // A bad trailing chunk rejects the last strip; the uploader must destroy
+        // its unpublished partial texture, never certify an incomplete asset.
+        if self.row == self.height { self.reader.finish().map_err(|e| e.to_string())?; }
+        Ok(pixels)
+    }
+    /// A crop consumes the same validated PNG stream. Only sampled texels
+    /// undergo ICC conversion and premultiplication; row filters and CRCs
+    /// are still checked through the final chunk.
+    pub fn window(&mut self,x:u32,y:u32,w:u32,h:u32)->Result<Vec<f32>,String>{
+        if self.failed || self.row!=0 || w==0 || h==0 || u64::from(w)*u64::from(h)>524288 ||
+            x.checked_add(w).is_none_or(|v|v>self.width)||y.checked_add(h).is_none_or(|v|v>self.height){
+            return Err("Invalid PNG sample window".into())
+        }
+        self.failed=true;
+        let step=self.color.samples()*if self.depth==png::BitDepth::Sixteen{2}else{1};
+        let stride=self.width as usize*step;let left=x as usize*step;let right=(x+w)as usize*step;
+        let mut bytes=Vec::new();bytes.try_reserve_exact((right-left)*h as usize).map_err(|e|e.to_string())?;
+        while self.row<self.height{
+            let row=self.reader.next_row().map_err(|e|e.to_string())?.ok_or("Truncated PNG rows")?;
+            if row.data().len()!=stride{return Err("Unexpected PNG row width".into())}
+            if self.row>=y&&self.row<y+h{bytes.extend_from_slice(&row.data()[left..right])}
+            self.row+=1;
+        }
+        self.reader.finish().map_err(|e|e.to_string())?;
+        let pixels=self.convert(bytes,w,h)?;self.failed=false;Ok(pixels)
+    }
+    fn convert(&mut self,bytes:Vec<u8>,width:u32,height:u32)->Result<Vec<f32>,String>{
         // Same integer-to-float conversion, color transform and premultiplication
         // as the complete decoder. None of these operations crosses a row boundary.
         let decoded = if self.depth == png::BitDepth::Sixteen {
@@ -72,17 +123,17 @@ impl Decoder {
             let mut words = Vec::new(); words.try_reserve_exact(bytes.len()/2).map_err(|e| e.to_string())?;
             words.extend(bytes.chunks_exact(2).map(|b|u16::from_be_bytes([b[0],b[1]])));
             match self.color {
-                png::ColorType::Grayscale => image::DynamicImage::ImageLuma16(image::ImageBuffer::from_raw(self.width, height, words).unwrap()),
-                png::ColorType::GrayscaleAlpha => image::DynamicImage::ImageLumaA16(image::ImageBuffer::from_raw(self.width, height, words).unwrap()),
-                png::ColorType::Rgb => image::DynamicImage::ImageRgb16(image::ImageBuffer::from_raw(self.width, height, words).unwrap()),
-                png::ColorType::Rgba => image::DynamicImage::ImageRgba16(image::ImageBuffer::from_raw(self.width, height, words).unwrap()),
+                png::ColorType::Grayscale => image::DynamicImage::ImageLuma16(image::ImageBuffer::from_raw(width, height, words).unwrap()),
+                png::ColorType::GrayscaleAlpha => image::DynamicImage::ImageLumaA16(image::ImageBuffer::from_raw(width, height, words).unwrap()),
+                png::ColorType::Rgb => image::DynamicImage::ImageRgb16(image::ImageBuffer::from_raw(width, height, words).unwrap()),
+                png::ColorType::Rgba => image::DynamicImage::ImageRgba16(image::ImageBuffer::from_raw(width, height, words).unwrap()),
                 _ => return Err("Unsupported PNG row channels".into()),
             }
         } else { match self.color {
-            png::ColorType::Grayscale => image::DynamicImage::ImageLuma8(image::ImageBuffer::from_raw(self.width, height, bytes).unwrap()),
-            png::ColorType::GrayscaleAlpha => image::DynamicImage::ImageLumaA8(image::ImageBuffer::from_raw(self.width, height, bytes).unwrap()),
-            png::ColorType::Rgb => image::DynamicImage::ImageRgb8(image::ImageBuffer::from_raw(self.width, height, bytes).unwrap()),
-            png::ColorType::Rgba => image::DynamicImage::ImageRgba8(image::ImageBuffer::from_raw(self.width, height, bytes).unwrap()),
+            png::ColorType::Grayscale => image::DynamicImage::ImageLuma8(image::ImageBuffer::from_raw(width, height, bytes).unwrap()),
+            png::ColorType::GrayscaleAlpha => image::DynamicImage::ImageLumaA8(image::ImageBuffer::from_raw(width, height, bytes).unwrap()),
+            png::ColorType::Rgb => image::DynamicImage::ImageRgb8(image::ImageBuffer::from_raw(width, height, bytes).unwrap()),
+            png::ColorType::Rgba => image::DynamicImage::ImageRgba8(image::ImageBuffer::from_raw(width, height, bytes).unwrap()),
             _ => return Err("Unsupported PNG row channels".into()),
         }};
         let mut image = decoded.into_rgba32f();
@@ -94,12 +145,19 @@ impl Decoder {
         }
         self.transform.as_mut().unwrap().apply(&mut image)?;
         for p in image.pixels_mut() { p.0 = Pixel::rgba(p[0], p[1], p[2], p[3]).0; }
-        self.row += height;
-        // A bad trailing chunk rejects the last strip; the uploader must destroy
-        // its unpublished partial texture, never certify an incomplete asset.
-        if self.row == self.height { self.reader.finish().map_err(|e| e.to_string())?; }
         Ok(image.into_raw())
     }
+}
+
+/// Table words come from the same 8-bit conversion and working transform as a
+/// full RGBA32F upload. The shader premultiplies each texel before bilinear filtering.
+pub fn straight_srgb8_table()->Result<Vec<u8>,String>{
+    let bytes=(0..=255u8).flat_map(|v|[v;4]).collect::<Vec<_>>();
+    let mut image=image::DynamicImage::ImageRgba8(image::RgbaImage::from_raw(256,1,bytes).unwrap()).into_rgba32f();
+    image_color::WorkingTransform::new(ColorSettings::default(),Some(ColorSpace::Srgb),None)?.apply(&mut image)?;
+    let mut words=Vec::with_capacity(2048);
+    for c in [0,3]{for p in image.pixels(){words.extend_from_slice(&p[c].to_le_bytes())}}
+    Ok(words)
 }
 
 #[cfg(test)]
@@ -129,6 +187,24 @@ mod tests {
                 let expected: Vec<_> = expected.pixels.iter().flat_map(|p| p.0).map(f32::to_bits).collect();
                 assert_eq!(actual.into_iter().map(f32::to_bits).collect::<Vec<_>>(), expected);
             }
+        }
+    }
+
+    #[test]
+    fn source_windows_and_straight_srgb_table_reconstruct_the_full_float_upload() {
+        let input=uri(17,11,png::ColorType::Rgba);
+        let settings=ColorSettings::default();
+        let mut full=Decoder::new(&input,settings).unwrap();
+        let reference=full.next_rows().unwrap();
+        let mut crop=Decoder::new(&input,settings).unwrap();
+        let pixels=crop.window(3,4,6,2).unwrap();
+        for y in 0..2 {assert_eq!(&pixels[y*24..(y+1)*24],&reference[((y+4)*17+3)*4..((y+4)*17+9)*4]);}
+        let raw=Decoder::new(&input,settings).unwrap().straight_srgb8().unwrap();
+        let table=straight_srgb8_table().unwrap();
+        let value=|index:usize|f32::from_le_bytes(table[index*4..index*4+4].try_into().unwrap());
+        for(i,p)in raw.chunks_exact(4).enumerate(){
+            let a=value(256+usize::from(p[3]));assert_eq!(a.to_bits(),reference[i*4+3].to_bits());
+            for c in 0..3{assert_eq!((value(usize::from(p[c]))*a).to_bits(),reference[i*4+c].to_bits());}
         }
     }
     #[test]

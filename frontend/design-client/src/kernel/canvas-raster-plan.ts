@@ -133,7 +133,8 @@ export function canvasRasterPlan(
   const needed = options.samplingScale ?? view.zoom * dpr
   if (!Number.isFinite(needed) || needed <= 0) throw new Error('Invalid canvas sampling scale')
   const native = () => {
-    const camera = { x: view.x * dpr, y: view.y * dpr, zoom: needed }
+    const ratio=needed===view.zoom*dpr ? dpr : needed/view.zoom
+    const camera = { x: view.x * ratio, y: view.y * ratio, zoom: needed }
     return { mode: 'native' as const, scale: needed, camera,
       phase: { x: camera.x - Math.floor(camera.x), y: camera.y - Math.floor(camera.y) }, density: dpr }
   }

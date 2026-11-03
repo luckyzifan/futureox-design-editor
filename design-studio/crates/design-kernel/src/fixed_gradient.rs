@@ -84,7 +84,7 @@ impl FixedGradient {
         }
         Ok(None)
     }
-    pub fn parameter(&self, point: Point) -> f32 {
+    fn numerator(&self,point:Point)->i64{
         let values = self.words.map(|words| {
             words
                 .into_iter()
@@ -93,7 +93,13 @@ impl FixedGradient {
         });
         let x = (point.x * 8.).round_ties_even() as i64;
         let y = (point.y * 8.).round_ties_even() as i64;
-        let value = values[0] * x + values[1] * y + values[2] * 8;
+        values[0] * x + values[1] * y + values[2] * 8
+    }
+    pub(crate) fn unclamped(&self,point:Point)->f64{
+        self.numerator(point) as f64 / (1_i64<<(self.bits+3)) as f64
+    }
+    pub fn parameter(&self, point: Point) -> f32 {
+        let value=self.numerator(point);
         let denominator = 1_i64 << (self.bits + 3);
         let value = value.clamp(0, denominator) as u64;
         if value == 0 {
