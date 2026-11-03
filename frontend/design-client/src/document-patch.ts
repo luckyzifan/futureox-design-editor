@@ -1,6 +1,6 @@
 import { produceDraftWithPatches } from './draft'
 import { certifyLayerTransition } from './layer-row-transition'
-import type { DesignDocument, DesignNode } from './model'
+import { validNodeTransform, type DesignDocument, type DesignNode } from './model'
 export type DocumentPatch = {
   nodes: Record<string, DesignNode | null>
   fields: Record<string, unknown>
@@ -55,11 +55,13 @@ export function shareDocument(before: DesignDocument, candidate: DesignDocument)
       changed ||= !same
     }
   } else {
-    nodes = {}
     changed = Object.keys(before.nodes).length !== Object.keys(candidate.nodes).length
     for (const [id, n] of Object.entries(candidate.nodes)) {
       const same = equalValue(before.nodes[id], n)
-      nodes[id] = same ? before.nodes[id] : n
+      if(same&&n!==before.nodes[id]){
+        if(nodes===candidate.nodes)nodes={...nodes}
+        nodes[id]=before.nodes[id]
+      }
       changed ||= !same
     }
   }
@@ -124,6 +126,31 @@ export function produceDocumentDraft(before: DesignDocument, recipe: (draft: Des
   if (complete) rememberTransition(before, after, [...ids])
   return after
 }
+/** Publish absolute poses with a complete changed-node witness. Copy the
+ * node table once, and own the six numbers supplied by each gesture. */
+export function producePoseDocument(before: DesignDocument, patches: Readonly<Record<string, Partial<DesignNode>>>) {
+  const ids = Object.keys(patches)
+  if (!ids.length || ids.length > 16) return
+  let nodes = before.nodes
+  const changed: string[] = []
+  for (const id of ids) {
+    const patch = patches[id], input = patch.transform
+    if (!Object.hasOwn(before.nodes, id) || Object.keys(patch).length !== 1 ||
+        !Object.hasOwn(patch, 'transform') || !Array.isArray(input) || input.length !== 6) return
+    const transform = Array.from({ length: 6 }, (_, i) => Object.getOwnPropertyDescriptor(input, i)?.value)
+    if (!validNodeTransform(transform)) return
+    const previous = before.nodes[id]
+    if (previous.transform.every((value,i) => Object.is(value, transform[i]))) continue
+    if (nodes === before.nodes) nodes = { ...before.nodes }
+    nodes[id] = { ...previous, transform }
+    changed.push(id)
+  }
+  if (nodes === before.nodes) return before
+  const after = { ...before, nodes }
+  rememberTransition(before, after, changed)
+  return after
+}
+
 export function documentPatch(before: DesignDocument, after: DesignDocument): DocumentPatch {
   if (before.id !== after.id) throw new Error('编辑操作不能改变文件标识')
   const nodes: DocumentPatch['nodes'] = {},

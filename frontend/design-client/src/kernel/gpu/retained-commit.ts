@@ -11,7 +11,7 @@ import { compositeDrawPlan, compositePlacement } from './composite-draw-plan'
 export function canCommitResidentFrame(scene: GpuScene, document: DesignDocument,
   next: DesignDocument, frame: ResidentFrame, input: { sequence: number; owner?: string } | undefined) {
   if (!input || frame.input?.sequence !== input.sequence || frame.input.owner !== input.owner || !frame.interaction ||
-      scene.softwareRaster || scene.grid || scene.checkerboard || !equalValue(document, next) ||
+      scene.interactionLocalFootprint || scene.gestureSoftEffects || scene.softwareRaster || scene.grid || scene.checkerboard || !equalValue(document, next) ||
       Math.abs(scene.view.zoom / (frame.view.zoom * frame.dpr) - 1) > 1e-8) return false
   for (const node of Object.values(scene.nodes)) {
     const source = node.previewSource

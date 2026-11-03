@@ -348,7 +348,7 @@ function yieldPreviewTask() {
 }
 const queue = new RenderWorkQueue()
 type ResidentPose={terminal?:boolean;slot:number;transforms:Record<string,Matrix>;input:import('./interaction-layers').InteractionInput & {owner?:string}}
-type PoseSession={reuse?:ResidentPoseReuse;controller:AbortController;slot:number;document:DesignDocument;baseDocument:DesignDocument;scene:GpuScene;
+type PoseSession={softEffectPreview?: boolean;reuse?:ResidentPoseReuse;controller:AbortController;slot:number;document:DesignDocument;baseDocument:DesignDocument;scene:GpuScene;
   origins:ReadonlyMap<string,readonly[number,number]>;
   patch?:TranslationPatchSession;native?:boolean;affine?:boolean;fixedWindow?:boolean;window:import('./gpu/types').Rect;options:string;stopped:boolean;input?:ResidentPose['input'] & {owner?:string};bounds?:{x:number;y:number;width:number;height:number}}
 let poseSession:PoseSession|undefined,pendingPose:ResidentPose|undefined,poseQueued=false
@@ -425,7 +425,9 @@ function schedulePose(){
         const displayGeometry=displayFrame?[displayFrame.view.x,displayFrame.view.y,displayFrame.view.zoom,
           displayFrame.width,displayFrame.height,displayFrame.dpr]:undefined
         const texture=gpu.driver.presentedContentToken?.(session.slot)
-        if(session.native&&session.bounds&&session.reuse?.matches({scene:session.scene,driver:gpu.driver,texture,window,transforms:pose.transforms})){
+        // A terminal receipt can reuse a full-quality frame. A soft preview
+        // of that same transform still owes the canvas its full filter.
+        if((!pose.terminal || !session.scene.gestureSoftEffects) && session.native&&session.bounds&&session.reuse?.matches({scene:session.scene,driver:gpu.driver,texture,window,transforms:pose.transforms})){
           // This newer input requests the exact already-rendered pixels. Only
           // advance its presentation cohort; no new native mutation, packet,
           // upload or raster is necessary. Resource completion fences remain.
@@ -455,6 +457,8 @@ function schedulePose(){
           poseCompileMs=performance.now()-compileStarted
           compileStats=kernel.compileStats
           next={...preparePreviewSelection(compiled,session.scene.interactionSelection||[]),
+            interactionLocalFootprint:session.scene.interactionLocalFootprint,
+            gestureSoftEffects:session.softEffectPreview === true && !pose.terminal,
             interactionSelection:session.scene.interactionSelection,interactionRetained:true,nativeInteraction:true,interactionLease:session.scene.interactionLease,interactionWindow:window,
             floatCompositing:session.scene.floatCompositing,pairedDisplayFilters:session.scene.pairedDisplayFilters,
             compactImageFields:session.scene.compactImageFields,displayFilters:session.scene.displayFilters,
@@ -475,6 +479,7 @@ function schedulePose(){
         }
         const translationMs=performance.now()-translationStarted,posePrepareMs=performance.now()-started
         if(!next){rebasePose(pose);break}
+        next.gestureSoftEffects = session.softEffectPreview === true && !pose.terminal
         try{
           const hydrateImages = sceneImageHydration(await engine(), current)
           await hydrateImages(next)
@@ -484,6 +489,9 @@ function schedulePose(){
           if(!result.gpuTile)throw Error('Resident movement did not produce a GPU texture')
           if(poseSession!==session||session.stopped){gpu.driver.releasePresented?.([result.gpuTile]);continue}
           gpu.driver.replacePresented(session.slot,result.gpuTile)
+          // This scene describes the actual texture which just replaced the
+          // slot. Small/unsupported effects can be admitted as exact pixels.
+          next.gestureSoftEffects = result.gestureBlurPixels > 0
           session.scene=next
           if(session.patch)session.patch.accept(next,pose.transforms)
           else {session.document=document!;laneState.interactionDocument=document;laneState.deferredInteractionDocument=document}
@@ -495,7 +503,7 @@ function schedulePose(){
           const poseStats=gpu.driver.stats?.()
           reportDisplay({residentSample:{slot:session.slot,...pose.input,bounds,total:performance.now()-started,
             nativePose:session.native===true,compileMs:poseCompileMs,
-            compileStats,fieldUploadBytes:result.materialFieldUploadBytes,
+            compileStats,fieldUploadBytes:result.materialFieldUploadBytes,gestureBlurPixels:result.gestureBlurPixels,
             sceneUpdateBytes:session.native?sceneUpdateBytes:undefined,
             geometryUploadBytes:poseStats?.geometryUploadBytes,
             residentProgramHits:poseStats?.residentProgramHits,residentProgramHitBytes:poseStats?.residentProgramHitBytes,
@@ -750,7 +758,7 @@ self.onmessage = (e) => {
       const retainInteraction = request.options?.retainInteractionGraph === true && request.options?.renderIntent === 'preview' && request.options?.livePreview === true &&
         !request.options?.tileViewport && allowsResidentSdr(executionPolicy) && !request.png &&
         !request.options?.exportFormat && !request.options?.exportRegion && !request.options?.pixelPreview
-      const { interactionOwner: _interactionOwner, interactionGeneration: _interactionGeneration, interactionBranch: _interactionBranch, interactionChannel: _interactionChannel, livePreview, sequentialViewport, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionAffine, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
+      const { interactionOwner: _interactionOwner, interactionGeneration: _interactionGeneration, interactionBranch: _interactionBranch, interactionChannel: _interactionChannel, livePreview, sequentialViewport, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionAffine, interactionLocalFootprint, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
         tilePrepareViewport: requestedPrepareViewport, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, ...renderOptions } = request.options
       const displayBackpressure=displayRasterBackpressure(request.options,{channel,png:request.png,readback:request.readback,hdr:executionPolicy.hdrCompositing})
       // Never accept display arithmetic authority from caller or document fields.
@@ -1671,6 +1679,14 @@ self.onmessage = (e) => {
           const retainedScene = allowsInteractionWindow(retainInteraction,scene!)
           scene!.interactionRetained = retainedScene
           scene!.nativeInteraction = retainedScene && interactionNative === true
+          scene!.gestureSoftEffects = import.meta.env.VITE_DESIGN_GESTURE_SOFT_EFFECTS !== '0' &&
+            scene!.nativeInteraction && channel === 'interaction' && _interactionBranch === 3 &&
+            livePreview === true && renderIntent === 'preview' && backend === 'webgpu' &&
+            !executionPolicy.hdrCompositing && !request.readback && !request.png && !exportFormat &&
+            !renderOptions.exportRegion && !renderOptions.pixelPreview && !scene!.softwareRaster &&
+            !!scene!.interactionSelection?.some(id => scene!.nodes[id]?.effects.some(fx =>
+              fx.visible && !fx.gradientBlur && ['inner-shadow', 'shadow', 'blur', 'gaussian-blur'].includes(fx.kind)))
+          scene!.interactionLocalFootprint = retainedScene && interactionLocalFootprint === true
           scene!.interactionLease = retainedScene ? {} : undefined
           scene!.interactionWindow = retainedScene ? interactionWindow : undefined
           scene!.pairedDisplayFilters = request.debug?.pairedDisplayFilters
@@ -1782,8 +1798,10 @@ self.onmessage = (e) => {
             const origins=capturePoseOrigins(scene!,interactionSelection||[])
             if(origins){
               if(poseSession){poseSession.controller.abort();frozenOverlayPoses.freeze(gpu.driver,poseSession.slot,poseSession.scene)}
+              const softEffectPreview = scene!.gestureSoftEffects
+              scene!.gestureSoftEffects = result.gestureBlurPixels > 0
               poseSession={controller:new AbortController(),slot:result.gpuTile,document:laneState.interactionDocument,baseDocument:laneState.interactionDocument,origins,
-              scene:scene!,native:interactionNative===true,affine:interactionAffine===true,window:interactionWindow,fixedWindow:interactionWindowFixed===true,options,stopped:false,
+              softEffectPreview,scene:scene!,native:interactionNative===true,affine:interactionAffine===true,window:interactionWindow,fixedWindow:interactionWindowFixed===true,options,stopped:false,
               patch:interactionNative||import.meta.env.VITE_DESIGN_POSE_PATCHES!=='0'?TranslationPatchSession.create(scene!,laneState.interactionDocument,interactionSelection||[],interactionNative===true)||undefined:undefined}
             }
           }

@@ -111,7 +111,7 @@ import {
   pickingGeometryEpoch,
 } from './kernel/picking'
 import { proveLocalEdit } from './local-edit-proof'
-import { shareDocument, documentPatch, produceDocumentDraft, type EditResult } from './document-patch'
+import { shareDocument, documentPatch, produceDocumentDraft, producePoseDocument, type EditResult } from './document-patch'
 import { createEditingHistory } from './kernel/graph-history'
 import { ensurePreparedDocument, takePreparedDocument, preparedDocumentEncoding, forgetPreparedDocumentEncoding } from './prepared-document'
 function applyInferredFrame(doc: DesignDocument, id: string, inferred: {direction:string;gap:number|null;padding:[number,number,number,number];bannerChildren:string[];flowOrder:string[]}) {
@@ -915,6 +915,7 @@ export class Editor {
     return canvasActions(this).cpu.run(CpuStage.preview, () => this.previewCore(patches, move))
   }
   private previewLayout?: PreviewLayout
+  private posePreview?:{base:DesignDocument;epoch:object;key:string;plan:TranslationPreviewPlan;allowed:boolean}
   private previewCore(patches: Record<string, Partial<DesignNode>>, move?: { ids:string[]; point:Point; force:boolean; preserveParent:boolean }) {
     if (this.propertyPreview && !this.propertyPreviewWrite) return false
     const previewStarted = performance.now()
@@ -923,7 +924,7 @@ export class Editor {
     if(move){
       const cached=this.cachedMovePreview(patches,move)
       if(cached){
-        const document=produceDocumentDraft(this.state.doc,draft=>{for(const id of move.ids)draft.nodes[id].transform=cached.patches[id].transform!})
+        const document=producePoseDocument(this.state.doc,cached.patches)||produceDocumentDraft(this.state.doc,draft=>{for(const id of move.ids)draft.nodes[id].transform=cached.patches[id].transform!})
         const published=performance.now();this.set({doc:document})
         if(this.transaction===previewOwner&&previewOwner?.movePreview&&this.state.doc===document){
           previewOwner.movePreview.published=document
@@ -935,6 +936,21 @@ export class Editor {
       }
     }
     if (!move && this.transaction) {
+      const ids=Object.keys(patches),key=JSON.stringify(ids),epoch=pickingGeometryEpoch()
+      if(ids.length&&ids.length<=16&&ids.every(id=>Object.keys(patches[id]).length===1&&Object.hasOwn(patches[id],'transform'))){
+        if(this.posePreview?.base!==base||this.posePreview.epoch!==epoch||this.posePreview.key!==key)
+          this.posePreview={base,epoch,key,plan:new TranslationPreviewPlan(base,ids),
+            allowed:!base.prototype&&!base.reviews?.length&&!Object.values(base.nodes).some(n=>!!n.repeat)}
+        if(this.posePreview.allowed&&this.posePreview.plan.acceptsAffine(patches)){
+          const document=producePoseDocument(base,patches)
+          if(document){
+            const published=performance.now();this.set({doc:document})
+            if(this.diagnosticOperation!==null)this.operationDiagnostics.preview(this.diagnosticOperation,true)
+            this.lastPreviewTiming={prepareMs:published-previewStarted,layoutMs:0,publishMs:performance.now()-published}
+            return true
+          }
+        }
+      }
       if (this.previewLayout?.base !== base) this.previewLayout = new PreviewLayout(base)
       try {
         const resolved = measureCpuStage(CpuStage.previewLayout, () => this.previewLayout!.prepare(patches))
@@ -1003,6 +1019,7 @@ export class Editor {
   }
   commit() {
     this.previewLayout = undefined
+    this.posePreview=undefined
     return canvasActions(this).cpu.run(CpuStage.commit, () => this.commitCore())
   }
   private commitCore() {
@@ -1042,6 +1059,7 @@ export class Editor {
   }
   cancel() {
     this.previewLayout = undefined
+    this.posePreview=undefined
     if (this.propertyPreview) { this.cancelProperty(this.propertyPreview.lease); return }
     if (this.transaction) {
       const h = this.transaction

@@ -50,6 +50,7 @@ type ResidentInteraction = {
   shortTravelBounds?: Set<string>
   fixedBounds?: Set<string>
   finalForeground?: boolean
+  containedForeground?: boolean
   foregroundExclusions?: Bounds[]
   foregroundCapture?: boolean
   foregroundCaptureBounds?: boolean
@@ -239,8 +240,10 @@ export class InteractionRenderer {
     this.control = {
       releaseInput:()=>{
         const r=this.resident
-        if(r?.active&&r.live&&r.workerPoses&&!this.error&&!this.inlineDisabled&&r.tiles[0]?.gpuTile)
-          this.sharedClient?.settleResidentInteraction(r.tiles[0].gpuTile,this.lastInput.sequence)
+        if(r?.active&&r.live&&r.workerPoses&&!this.error&&!this.inlineDisabled&&r.tiles[0]?.gpuTile) {
+          if (r.containedForeground) this.sharedClient?.stopResidentInteraction(r.tiles[0].gpuTile)
+          else this.sharedClient?.settleResidentInteraction(r.tiles[0].gpuTile,this.lastInput.sequence)
+        }
       },
       isActive: () => !!this.resident?.active,
       guidesInSurface: () => !!this.sharedClient,
@@ -415,7 +418,7 @@ export class InteractionRenderer {
           this.changed(); return
         }
         if (offsets) r.offsets = offsets
-        if(r.live&&r.active&&(offsets||affine)&&r.workerPoses&&this.sharedClient&&!this.liveRunning&&!this.livePending&&r.tiles[0]?.gpuTile){
+        if(!r.containedForeground&&r.live&&r.active&&(offsets||affine)&&r.workerPoses&&this.sharedClient&&!this.liveRunning&&!this.livePending&&r.tiles[0]?.gpuTile){
           // Finish the gesture through the already compiled pose session.
           // The settled document lane will apply its own patch; it must not
           // wait behind a redundant whole-viewport interaction render. Both
@@ -433,7 +436,7 @@ export class InteractionRenderer {
         }
         const contentRelease = this.props?.active && this.props.gestureKind === 'resize'
         if (this.sharedClient && r.live && (r.active || contentRelease) &&
-            (contentRelease || offsets && !r.workerPoses || affine) &&
+            (contentRelease || r.containedForeground || offsets && !r.workerPoses || affine) &&
             this.viewport && this.props && this.sessionEpoch !== undefined && this.props.epoch === this.sessionEpoch &&
             document.id === r.plan.document.id && this.props.document.id === document.id &&
             this.sameIds(this.props.selection) && document.pages.some(page => page.id === r.plan.pageId) &&
@@ -457,10 +460,9 @@ export class InteractionRenderer {
           // r.active describes visible preview ownership, not permission to
           // enqueue more work. Hiding it here would jump back to old page pixels.
           r.active = !contentRelease || r.tiles.length > 0
-          if (contentRelease) {
-            // Resize changes authored geometry, so an old pose program cannot
-            // sample or ACK that revision. Keep only its completed picture;
-            // the exact canvas owns the final content and next presentation.
+          if (contentRelease || r.containedForeground) {
+            // Keep the completed preview visible while ordinary page tiles
+            // repair resized geometry or the borders of a local filter capture.
             if (r.tiles[0]?.gpuTile) this.sharedClient.stopResidentInteraction(r.tiles[0].gpuTile)
             this.inlineDisabled = true
           }
@@ -1416,7 +1418,9 @@ export class InteractionRenderer {
               // compiler the actual consumed output. A localized capture that
               // omits this region still prepares/allocates a whole page graph.
               const boundedCapture=this.allowIdleWarm&&!!this.sharedClient&&(
-                import.meta.env.VITE_DESIGN_BOUNDED_POSE_CAPTURE==='1'&&!reduced&&this.profile==='figmaSubpixel'||
+                (import.meta.env.VITE_DESIGN_BOUNDED_POSE_CAPTURE === '1' ||
+                  resident.containedForeground && import.meta.env.VITE_DESIGN_BOUNDED_POSE_CAPTURE !== '0') &&
+                  !reduced && this.profile === 'figmaSubpixel' ||
                 localNativePose&&(this.profile==='figmaSubpixel'||this.profile==='analytic'))
               const captureViewport=canonicalCapture?{x:originX+Math.floor(captureCamera.x),y:originY+Math.floor(captureCamera.y),w:width,h:height}:
                 worldCapture?{x:originX,y:originY,w:width,h:height}:boundedCapture?{x:0,y:0,w:width,h:height}:undefined
@@ -1427,7 +1431,7 @@ export class InteractionRenderer {
                 interactionOwner: this.interactionOwner, interactionGeneration: token, interactionBranch: 3,
                 rasterProfile: this.profile, livePreview: true, retainInteractionGraph: true, interactionSelection: resident.plan.ids,
                 interactionNative: !!resident.affine || !reduced || localNativePose,
-                interactionAffine: !!resident.affine,
+                interactionAffine: !!resident.affine, interactionLocalFootprint: resident.containedForeground,
                 renderIntent: 'preview', interactionChannel: !!this.sharedClient,
                 interactionWindowFixed: !!resident.affine || resident.plan.ids.every(id=>resident.fixedBounds?.has(id)),
                 ...(this.viewport ? { interactionWindow: { x: bounds.x*scale+captureCamera.x,

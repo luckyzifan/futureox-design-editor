@@ -713,6 +713,16 @@ function validateNodeVariableModes(d: DesignDocument, nodes: DesignNode[]) {
     }
   }
 }
+/** Local numeric contract shared by full admission and immutable transform edits. */
+export function validNodeTransform(value: unknown): value is Matrix {
+  if (!Array.isArray(value) || value.length !== 6) return false
+  for (let i = 0; i < 6; i++) {
+    const v = value[i]
+    if (typeof v !== 'number' || !Number.isFinite(v) || Math.abs(v) > 1e7) return false
+  }
+  return Math.abs(value[0] * value[3] - value[1] * value[2]) >= 1e-9
+}
+
 export function validateDocument(value: unknown): DesignDocument {
   if (
     !isObject(value) ||
@@ -861,6 +871,8 @@ export function validateDocument(value: unknown): DesignDocument {
         p.stops.every((s) => finite(s.offset, 0, 1) && color.test(s.color)) &&
         (!p.image || /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(p.image)),
     )
+  const defaultStyle = defaultTextStyle()
+  let segmenter: Intl.Segmenter | undefined
   validateRepeatDocument(d)
   for (const [id, n] of entries) {
     if (n.repeat !== undefined) {
@@ -919,7 +931,7 @@ export function validateDocument(value: unknown): DesignDocument {
     )) throw new Error('扩展编辑属性需要设计文件版本 4')
     if (d.schemaVersion < 5 && hasMaterialParameters(n?.effects))
       throw new Error('材质参数需要设计文件版本 5')
-    const style = { ...defaultTextStyle(), ...n?.textStyle }
+    const style = n?.textStyle === undefined ? defaultStyle : { ...defaultStyle, ...n.textStyle }
     const cases = [style.textCase, ...(n.textRuns || []).map(r => r.textCase)]
     if (cases.some(c => c !== undefined && !['original','upper','lower'].includes(c))) throw Error('文字大小写属性无效')
     if (d.schemaVersion < 15 && (cases.some(c => c !== undefined && c !== 'original') || n.textRuns?.some(r=>r.textCase !== undefined))) throw Error('文字显示大小写需要设计文件版本 15')
@@ -945,14 +957,11 @@ export function validateDocument(value: unknown): DesignDocument {
     if (n?.textRuns !== undefined) {
       if (!Array.isArray(n.textRuns) || n.textRuns.length > 4096 || typeof n.text !== 'string')
         throw new Error('文字样式区间无效')
-      const boundaries = new Set([
-        0,
-        n.text.length,
-        ...Array.from(
-          new Intl.Segmenter('und', { granularity: 'grapheme' }).segment(n.text),
-          (s) => s.index,
-        ),
-      ])
+      const boundaries = new Set([0, n.text.length])
+      if (n.textRuns.length) {
+        segmenter ??= new Intl.Segmenter('und', { granularity: 'grapheme' })
+        for (const part of segmenter.segment(n.text)) boundaries.add(part.index)
+      }
       let end = 0
       for (const run of n.textRuns) {
         if (
@@ -977,10 +986,7 @@ export function validateDocument(value: unknown): DesignDocument {
       n.id !== id ||
       !uuid.test(id) ||
       !Object.hasOwn(names, n.kind) ||
-      !Array.isArray(n.transform) ||
-      n.transform.length !== 6 ||
-      !n.transform.every((v) => finite(v)) ||
-      Math.abs(n.transform[0] * n.transform[3] - n.transform[1] * n.transform[2]) < 1e-9 ||
+      !validNodeTransform(n.transform) ||
       // Import admission follows Rust's positive f64 extent contract. UI
       // resize minimums must not reject thin source groups/components.
       !finite(n.width, Number.MIN_VALUE) ||
