@@ -278,6 +278,8 @@ export class WebGpuDriver implements Driver {
     return this.presenter?.snapshotPageTranslation(sourceOwner,targetOwner,offset,width,height,scale,contract)
   }
   async readContentPixel(u:number,v:number,expected?:import('../resident-presentation').ResidentAcknowledgement){if(!this.presenter)throw Error('No resident display');return this.presenter.readContentPixel(u,v,expected)}
+  async captureNavigationTile(id:number,token:number){if(!this.presenter)throw Error('No resident display');return this.presenter.captureNavigationTile(id,token)}
+  releaseNavigationTransfer(token:number){this.presenter?.releaseNavigationTransfer(token)}
   async captureContentBitmap(){if(!this.presenter)throw Error('No resident display');return this.presenter.captureContentBitmap()}
   importPresented(bitmap: ImageBitmap) {
     if (!this.presenter) { bitmap.close(); throw Error('No resident display') }

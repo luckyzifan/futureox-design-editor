@@ -1,3 +1,4 @@
+import {renderExecutionPolicy} from './kernel/client'
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from 'react'
 import { flushSync } from 'react-dom'
 import { ArrowLeft, ChevronLeft, ChevronRight, Frame, Search, Undo2, Redo2, X } from 'lucide-react'
@@ -196,7 +197,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     setNotice('正在准备完整画板…')
     let snapshot=nativeSnapshotRef.current
     if(!snapshot||snapshot.owner.documentId!==owner.owner.documentId||snapshot.owner.sessionEpoch!==owner.owner.sessionEpoch||snapshot.revision!==owner.expectedRevision){
-      snapshot=admitted(await bridge.canvasSnapshot(owner))
+      snapshot=admitted(await bridge.canvasSnapshot({...owner,navigationPreview:!renderExecutionPolicy.cpuOnly && !renderExecutionPolicy.hdrCompositing}))
       const items:SourceCanvasItem[]=[]
       for(;;){const page=admitted(await bridge.canvasLayout({...owner,offset:items.length,limit:200}));items.push(...page.items);if(!page.hasMore)break}
       if(items.length!==snapshot.roots)throw Error('完整画板目录与源内容不一致')

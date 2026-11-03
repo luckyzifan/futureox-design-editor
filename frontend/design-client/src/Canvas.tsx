@@ -2424,7 +2424,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         overlay={overlay}
         interaction={gpuInteraction}
         onPresentation={recordPresentation}
-        overview={refineOverview}
+        overview={refineOverview} overviewNodes={entries.length}
         presentationEpoch={editor.sessionGeneration}
         document={surfaceDocument}
         interactionPreview={editPreviewVisible}

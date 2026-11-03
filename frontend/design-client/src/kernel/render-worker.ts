@@ -599,13 +599,18 @@ self.onmessage = (e) => {
     }
     return
   }
-  if(request.command==='display-read-pixel'||request.command==='display-capture-content'){
+  if (request.command === 'display-navigation-release') {
+    gpu?.driver.releaseNavigationTransfer?.(request.token)
+    return
+  }
+  if(request.command==='display-read-pixel'||request.command==='display-capture-content'||request.command==='display-navigation-tile'){
     void (async()=>{
       try{
-        const result=request.command==='display-read-pixel'?await gpu?.driver.readContentPixel?.(request.u,request.v,request.expected):await gpu?.driver.captureContentBitmap?.()
+        const result=request.command==='display-navigation-tile'?await gpu?.driver.captureNavigationTile?.(request.tile,request.id):
+          request.command==='display-read-pixel'?await gpu?.driver.readContentPixel?.(request.u,request.v,request.expected):await gpu?.driver.captureContentBitmap?.()
         if(!result)throw Error('No displayed document content')
         try { self.postMessage({id:request.id,...result},{transfer:'bitmap' in result?[result.bitmap]:[]}) }
-        catch (error) { if ('bitmap' in result) result.bitmap.close(); throw error }
+        catch (error) { if ('bitmap' in result) result.bitmap.close(); if ('navigationToken' in result) gpu?.driver.releaseNavigationTransfer?.(result.navigationToken); throw error }
       }catch(error){self.postMessage({id:request.id,error:String(error)})}
     })()
     return

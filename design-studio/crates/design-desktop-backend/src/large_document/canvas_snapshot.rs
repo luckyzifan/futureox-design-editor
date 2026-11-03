@@ -9,6 +9,7 @@ pub(super) struct Snapshot {
     pub bounds: canvas_layout::Box2, pub warnings: Vec<String>,
     pub raster_profile: RasterProfile,
     pub color_managed: bool,
+    pub navigation: Option<navigation_image::NavigationImage>,
 }
 
 fn stage_id(s: &Session, document: &Document) -> String {
@@ -165,7 +166,7 @@ pub(super) fn build_individual(s: &Session, layout: &canvas_layout::Layout, canc
     Ok((document,id,warnings.into_iter().collect()))
 }
 
-pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool) -> Result<Value> {
+pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool, navigation_preview:bool) -> Result<Value> {
     if s.canvas_snapshot.as_ref().is_none_or(|snapshot|snapshot.revision!=s.revision) {
         let layout=match &s.canvas_layout {
             Some(layout) if layout.revision==s.revision => layout.clone(),
@@ -179,8 +180,12 @@ pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool) -> Result<Value> {
             let store=futureox_design_kernel::scene_store::write(&next,&generation,&document,&warnings,cancel).map_err(issue)?;
             check_cancel(cancel).map_err(issue)?;
             fs::rename(&next,&path).map_err(issue)?;
-            Ok(Snapshot{revision:s.revision,path,store,page_id:document.pages[0].id.clone(),stage_id,
-                nodes:document.nodes.len(),roots:layout.items.len(),bounds:layout.bounds,warnings,raster_profile:document.raster_profile.unwrap_or(RasterProfile::Analytic),color_managed:document.color_management.is_some()})
+            let mut snapshot=Snapshot{revision:s.revision,path,store,page_id:document.pages[0].id.clone(),stage_id,
+                nodes:document.nodes.len(),roots:layout.items.len(),bounds:layout.bounds,warnings,raster_profile:document.raster_profile.unwrap_or(RasterProfile::Analytic),color_managed:document.color_management.is_some(),navigation:None};
+            if navigation_preview {
+                snapshot.navigation=navigation_image::NavigationImage::start(document,snapshot.page_id.clone(),snapshot.bounds,snapshot.store.bytes);
+            }
+            Ok(snapshot)
         })();
         if result.is_err(){let _=fs::remove_file(&next);}
         let snapshot=result?;

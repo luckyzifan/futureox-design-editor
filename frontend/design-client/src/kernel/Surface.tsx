@@ -68,6 +68,7 @@ export type SurfaceProps = {
   onPresentation?: (frame: PresentedFrame | null) => void
   fallbackReason?: string
   overview?: import('../model').Bounds
+  overviewNodes?: number
   presentationEpoch?: number
   maxPixelRatio?: number
   animation?: KernelOptions['animation']
