@@ -5,7 +5,7 @@ import {NAVIGATION_BACKING_BYTES} from './navigation-backing'
 import type {CanvasCamera} from '../canvas-camera'
 import {KernelClient,backendPreference,renderExecutionPolicy,type TileResult} from './client'
 import {canvasSamplingProfile} from './render-policy'
-import {SourceViewportPlanner,improvesSourceZoom,sourceTileBringsDetail} from './source-viewport-plan'
+import {SourceViewportPlanner,improvesSourceZoom,sourceTileBringsDetail,visibleSourceDensity} from './source-viewport-plan'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
 import {tileIntersectsView} from './tile-preview'
 import {SourceRenderWork} from './source-render-work'
@@ -20,7 +20,8 @@ import {CameraReprojection,atomicPresentationContext,consumePresentationBitmap,k
 export type NativeSourceStatus={phase:'loading'|'refining'|'ready'|'limited'|'error';done:number;total:number;error?:string}
 type Props={hidden?:boolean;clipPath?:string;source:SourceCanvasSnapshot;view:CanvasCamera;width:number;height:number;
   onStatus?:(status:NativeSourceStatus)=>void;onPresented?:(frame:ResidentAcknowledgement,complete:boolean)=>void}
-type Tile=TileResult&{serial:number;used:number;lastSubmission:number}
+type Placement=RasterTile & {gpuTile:number}
+type Tile=TileResult&{serial:number;used:number;lastSubmission:number;placement:Placement}
 // One raster owner plus at most one speculative preparation in the existing
 // worker. A larger batch is unnecessary and would extend cancellation work.
 const SOURCE_PIPELINE_TILES=2
@@ -77,6 +78,10 @@ export function NativeSourceSurface(props:Props){
     Object.assign(badge.style,{position:'absolute',right:'14px',top:'var(--kernel-status-top, 12px)',fontSize:'11px',color:'#7b8190',zIndex:'5'})
     host.current!.append(badge)
     const prefix=crypto.randomUUID(),cache=new Map<string,Tile>(),retired=new Map<number,number>()
+    // A displayed bitmap can outlive evicted GPU tiles. Its geometry remains
+    // needed to prove the next zoom frame preserves all visible detail.
+    const submittedPlacements=new Map<number,Placement[]>()
+    let backingTiles:Placement[]=[]
     let alive=true,initialized=false,running=false,failed=false,frameHandle=0,idleTimer:ReturnType<typeof setTimeout>|undefined
     let rejectedCamera:CanvasCamera|undefined
     let prefetchReady=''
@@ -153,6 +158,7 @@ export function NativeSourceSurface(props:Props){
       const ids:number[]=[]
       for(const[id,after]of retired)if(after<=acknowledged){ids.push(id);retired.delete(id)}
       client.releasePresented(ids)
+
     }
     const retire=(tile:Tile)=>{
       tile.bitmap?.close()
@@ -178,6 +184,8 @@ export function NativeSourceSurface(props:Props){
         // Even an offscreen anchor must survive until this display task is
         // acknowledged. Release messages can otherwise overtake deferred draw.
         anchor.lastSubmission=sequence;anchor.used=++tick
+        submittedPlacements.set(sequence,(visible.length?visible:[anchor]).map(t=>t.placement))
+        if(submittedPlacements.size>32)submittedPlacements.delete(submittedPlacements.keys().next().value!)
         // A coarse motion tile can fill a hole but must remain below sharper
         // history. Only the requested native lattice wins the phase handoff.
         const items:ResidentFrame['items']=visible.map(tile=>({active:true,layer:exact&&keys.has(tile.key)?4:1,
@@ -204,10 +212,12 @@ export function NativeSourceSurface(props:Props){
     const receive=(tile:TileResult)=>{
       if(!alive){tile.bitmap?.close();if(tile.gpuTile)client.releasePresented([tile.gpuTile]);return}
       if(!tile.gpuTile){tile.bitmap?.close();throw Error('完整源画布尚未取得 GPU 显示纹理')}
+      const {key,x,y,width,height,zoom,phaseX,phaseY,gutter,gpuTile}=tile
+      const placement={key,x,y,width,height,zoom,phaseX,phaseY,gutter,gpuTile}
       const old=cache.get(tile.key)
       if(old&&old.gpuTile!==tile.gpuTile)retire(old)
       retired.delete(tile.gpuTile)
-      cache.set(tile.key,{...tile,serial:old?.gpuTile===tile.gpuTile?old.serial:++serial,used:++tick,lastSubmission:old?.gpuTile===tile.gpuTile?old.lastSubmission:0})
+      cache.set(tile.key,{...tile,placement,serial:old?.gpuTile===tile.gpuTile?old.serial:++serial,used:++tick,lastSubmission:old?.gpuTile===tile.gpuTile?old.lastSubmission:0})
       if(!tile.prefetch||tileIntersectsView(tile,latest.current.view,latest.current))schedulePaint()
     }
     const updateWorkDemand=()=>{
@@ -325,10 +335,11 @@ export function NativeSourceSurface(props:Props){
       const sequence=Number(actual.presentationId.slice(prefix.length+1))
       if(!Number.isSafeInteger(sequence)||sequence<=0||sequence>submission||sequence<acknowledged)return
       project()
+      const ids=new Set(actual.ids),shownTiles=(submittedPlacements.get(sequence)??[]).filter(t=>ids.has(t.gpuTile))
       if(bitmap && backing && actual.preview && latest.current.view.zoom<backing.view.zoom &&
           !projection.history.canAdvance(backing,actual,latest.current,source.bounds))return
       if(bitmap && keepCompleteCameraBacking(backing,actual,!!bitmapContext,projection.zooming,latest.current,projection.history.completeFrame) &&
-          !improvesSourceZoom(backing,actual,latest.current,cache.values()))return
+          !improvesSourceZoom(backing,actual,latest.current,shownTiles,backingTiles))return
       if (bitmap && bitmapContext && startupPreview) {
         seededOverview=projection.history.seed(source,source.bounds,element,startupPreview.scale,actual)
         if (!seededOverview) previewRequested=false
@@ -350,8 +361,23 @@ export function NativeSourceSurface(props:Props){
             actual.preview&&!gaps?'inset(100%)':''
         }
       }
-      acknowledged=sequence;release()
-      backing=actual;project()
+      if(bitmapApplied){
+        const p=latest.current
+        const newlyVisible=shownTiles.filter(t=>!backingTiles.some(old=>old.gpuTile===t.gpuTile&&old.key===t.key)&&
+          tileIntersectsView(t,actual.view,actual)&&tileIntersectsView(t,p.view,p))
+        const scale=Math.max(0,...newlyVisible.map(t=>t.zoom))
+        if(window.coreDesktop?.renderDiagnostics){
+          element.dataset.sourceShownSequence=String(sequence)
+          element.dataset.sourceShownNewScale=String(scale)
+        }
+        // A real tile can already be visible through camera reprojection
+        // before this older submission qualifies for exact-camera readiness.
+        if(moving&&zoomingIn&&continuousZoom&&actual.view.zoom<=p.view.zoom&&quality.scale===undefined&&
+            scale>0&&planner.presentedDetail(Math.min(scale,p.view.zoom*density.current))){schedulePaint();void run()}
+      }
+      backing=actual;backingTiles=shownTiles;acknowledged=sequence
+      for(const id of submittedPlacements.keys())if(id<=sequence)submittedPlacements.delete(id)
+      release();project()
       if (bitmapApplied && !seededOverview && actual.navigationBackingBytes===NAVIGATION_BACKING_BYTES) void requestOverview()
       if(bitmapApplied && client.copyNavigationTile) {
         const cohort = nearOverviewTiles(overview?.tiles ?? [],latest.current.view,latest.current.width,latest.current.height)
@@ -417,6 +443,11 @@ export function NativeSourceSurface(props:Props){
       // demand may present immediately, without waiting for a quiet timer or
       // replacing its pixels with a more expensive density rung.
       if(initialized&&cache.size){
+        const p=latest.current
+        if(backing&&zoomingIn&&continuousZoom){
+          const density=visibleSourceDensity(backingTiles,p.view,p,source.bounds)
+          planner.presentedDetail(density)
+        }
         const native=plan(false)
         if(native.exact&&native.tiles.every(tile=>cache.has(tile.key))){
           moving=false
