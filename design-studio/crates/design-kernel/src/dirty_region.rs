@@ -126,6 +126,54 @@ pub(crate) fn resolved_material_damage(
     patch_damage_impl(resolved, resolved, patch, Some(fonts), true)
 }
 
+/// A checked leaf-pose update preserves topology and resolved local geometry.
+/// Borrow the existing parent index and evaluate only the old/new leaf paths.
+/// Effects/masks on the affected path and any backdrop reading that isolation
+/// keep the complete old damage derivation; no clip-box guess narrows support.
+pub(crate) fn resolved_leaf_pose_damage(doc:&Document,parents:&crate::render_index::Parents,
+    transforms:&BTreeMap<String,Transform>,fonts:&Fonts)->Option<PatchDamage>{
+    if transforms.is_empty()||transforms.len()>16{return None}
+    let contains=|ancestor:&str,child:&str|{
+        if ancestor==child||parents.ancestors(child).any(|p|p==ancestor){return true}
+        let root=parents.ancestors(child).last().unwrap_or(child);
+        doc.pages.iter().any(|p|p.id==ancestor&&p.children.iter().any(|id|id==root))
+    };
+    for (id,node) in &doc.nodes{
+        if node.effects.iter().any(|e|e.visible&&e.kind=="noise"){return None}
+        if node.backdrop_effect().is_none(){continue}
+        let mut root=id.as_str();let mut scope=None;
+        for parent in parents.ancestors(id){
+            if !doc.nodes.get(parent)?.passes_backdrop(){scope=Some(parent);break}
+            root=parent;
+        }
+        let scope=scope.or_else(||doc.pages.iter().find(|p|p.children.iter().any(|id|id==root)).map(|p|p.id.as_str()))?;
+        if transforms.keys().any(|edited|contains(scope,edited)||contains(edited,scope)){return None}
+    }
+    let mut union:Option<[f64;4]>=None;let mut rects=Vec::new();let mut translation=true;
+    for (id,transform) in transforms{
+        let node=doc.nodes.get(id)?;
+        if !node.render_children().is_empty()||node.mask||node.effects.iter().any(|e|e.visible){return None}
+        let ancestors:Vec<_>=parents.ancestors(id).collect();let mut matrix=Transform::default();
+        for id in ancestors.into_iter().rev(){
+            let n=doc.nodes.get(id)?;
+            if n.mask||n.effects.iter().any(|e|e.visible)||n.boolean_operation.is_some(){return None}
+            matrix=matrix.concat(n.transform);
+        }
+        let before=subtree_bounds_from(doc,id,matrix,Some(fonts),false)?;
+        let mut next=node.clone();next.transform=*transform;
+        let after=subtree_bounds_node_observed(doc,id,matrix,Some(fonts),false,false,&mut|_,_|true,Some(&next))?;
+        for bounds in [before,after]{
+            if bounds.iter().any(|v|!v.is_finite()||v.abs()>1e9){return None}
+            if let Some(union)=&mut union{union_box(union,bounds)}else{union=Some(bounds)}
+            rects.push([bounds[0],bounds[1],bounds[2]-bounds[0],bounds[3]-bounds[1]]);
+        }
+        translation&=node.transform.0[..4].iter().zip(transform.0).all(|(a,b)|a.to_bits()==b.to_bits());
+    }
+    let bounds=union?;
+    Some(PatchDamage{full:false,reason:None,bounds:Some([bounds[0],bounds[1],bounds[2]-bounds[0],bounds[3]-bounds[1]]),
+        rects:Some(rects),translation_only:translation.then_some(true)})
+}
+
 /// Backdrops read their nearest isolated ancestor (or page). An edit in a
 /// different scope cannot reach them. Ancestor edits remain conservative since
 /// they may change isolation or move the entire dependent subtree.
@@ -479,8 +527,14 @@ fn subtree_bounds_observed<F: FnMut(&str, Option<([f64;4], Transform)>) -> bool>
         controls: bool,
         observe: &mut F,
     ) -> Option<[f64; 4]> {
+        subtree_bounds_node_observed(doc,id,matrix,fonts,device,controls,observe,None)
+}
+fn subtree_bounds_node_observed<F: FnMut(&str, Option<([f64;4], Transform)>) -> bool>(
+        doc:&Document,id:&str,matrix:Transform,fonts:Option<&Fonts>,device:bool,controls:bool,
+        observe:&mut F,override_node:Option<&Node>,
+    )->Option<[f64;4]>{
         if !observe(id,None) {return None;}
-        let Some(node) = doc.nodes.get(id) else {
+        let Some(node) = override_node.or_else(||doc.nodes.get(id)) else {
             return None;
         };
         let m = matrix.concat(node.transform);

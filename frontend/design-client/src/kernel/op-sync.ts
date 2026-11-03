@@ -245,10 +245,30 @@ export function compileEditOps(before: DesignDocument, after: DesignDocument): C
       // Non-scalar payloads keep the normal exact remove/insert compiler.
       if (complete) return { mode: 'ops', ops }
     }
-    return compile(before, after)
+    const poses = sparseTransformOps(before.nodes, after.nodes)
+    return poses ? { mode: 'ops', ops: poses } : compile(before, after)
   } catch (error) {
     return replacement(`compile failed: ${String(error)}`)
   }
+}
+
+/** Check actual node membership and every distinct record. The public
+ * document can be versioned in place, so caller hints cannot certify a diff.
+ * A pose edits no child list. The original node order is also the op order. */
+function sparseTransformOps(before: DesignDocument['nodes'], after: DesignDocument['nodes']): Op[] | undefined {
+  const ids = Object.keys(before)
+  if (ids.length !== Object.keys(after).length) return
+  const ops: Op[] = []
+  for (const id of ids) {
+    if (!Object.hasOwn(after, id)) return
+    const a = before[id], b = after[id]
+    if (a === b) continue
+    if (ops.length >= 16 || a.id !== id || b.id !== id || a.transform === b.transform) return
+    const change = scalarOps(id, a, b)
+    if (change?.length !== 1 || change[0].type !== 'setTransform') return
+    ops.push(change[0])
+  }
+  return ops.length ? ops : undefined
 }
 
 function replacement(reason: string): CompiledEdit {

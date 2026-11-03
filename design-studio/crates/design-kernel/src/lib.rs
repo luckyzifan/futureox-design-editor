@@ -743,6 +743,22 @@ mod wasm {
         };compute().map_err(|e|JsValue::from_str(&e))
     }
     #[wasm_bindgen]
+    pub struct GradientPhaseFieldBuilder { inner:crate::paint::phase_field::Builder }
+    #[wasm_bindgen]
+    impl GradientPhaseFieldBuilder {
+        #[wasm_bindgen(constructor)]
+        pub fn new(rect:&str,matrix:&[f64],size:&[f64],paint:&str)->Result<Self,JsValue>{
+            let build=||->Result<Self,String>{Ok(Self{inner:crate::paint::phase_field::Builder::new(
+                serde_json::from_str(rect).map_err(|e|format!("{e}"))?,
+                math::Transform(matrix.try_into().map_err(|_|"Invalid gradient transform")?),
+                size.try_into().map_err(|_|"Invalid gradient dimensions")?,
+                &serde_json::from_str(paint).map_err(|e|format!("{e}"))?)?})};
+            build().map_err(|e|JsValue::from_str(&e))
+        }
+        pub fn advance(&mut self)->Result<bool,JsValue>{self.inner.advance().map_err(|e|JsValue::from_str(&e))}
+        pub fn finish(&mut self)->Result<Vec<u32>,JsValue>{self.inner.finish().map_err(|e|JsValue::from_str(&e))}
+    }
+    #[wasm_bindgen]
     pub fn gradient_sampling_grid_region(original:&str, region:&str, matrix:&[f64], size:&[f64], paint:&str, sample:u32) -> Result<Vec<f32>,JsValue> {
         let parse=||->Result<Vec<f32>,String>{
             if sample>4{return Err("Invalid gradient sample index".into());}

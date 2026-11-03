@@ -150,6 +150,9 @@ export type GpuScene = {
   /** Only explicitly transient whole-scene interactions can retain root paint. */
   interactionRetained?: boolean
   nativeInteraction?: boolean
+  /** Worker-owned quality of a transient selected-object capture. */
+  gestureSoftEffects?: boolean
+  interactionLocalFootprint?: boolean
   disableSparseGlass?: boolean
   /** Worker-local proof owner for transform-only recompiles; never a document field. */
   interactionLease?: object
@@ -384,6 +387,10 @@ export interface Driver {
   readonly exactSolidPaintOver?: boolean
   readonly exactGradientPaintOver?: boolean
   readonly windowedGradientFields?: boolean
+  /** Prepared for this display call only, cleared before every exact request. */
+  readonly gestureSoftEffects?: boolean
+  readonly gradientPhaseFields?: boolean
+  uploadGradientPhaseField?(values:Uint32Array):Texture
   readonly managed?: boolean
   readonly linearLight?: boolean
   readonly hdr?: boolean

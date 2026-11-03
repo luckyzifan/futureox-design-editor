@@ -44,6 +44,7 @@ import { scalarCoverageSource, SCALAR_COVERAGE_UNIFORM } from './scalar-coverage
 import { ResidentPresenter, type ResidentFrame } from './resident-presenter'
 import { RasterQueuePacer, RASTER_SLICE_COMMANDS } from './raster-queue-pacer'
 import { gradientWindowSource } from './gradient-window-source'
+import { gradientPhaseFieldLayout, gradientPhaseSource } from './gradient-phase-field'
 import { isDisplayBudgetError } from './display-budget'
 import byteSamplingShader from '../../../../../design-studio/crates/design-kernel/shaders/byte-sampling.wgsl?raw'
 import { areaShaderWgsl } from './area-shader'
@@ -252,6 +253,7 @@ export class WebGpuDriver implements Driver {
   private contentScene?: ReturnType<typeof pixelContentProof>
   captureDisplay = false
   get windowedGradientFields(){return this.managed&&!this.hdr&&import.meta.env.VITE_DESIGN_GRADIENT_WINDOW_FIELDS==='1'}
+  get gradientPhaseFields(){return this.managed && !this.hdr && import.meta.env.VITE_DESIGN_GRADIENT_PHASE_FIELDS !== '0'}
   private presenter?: ResidentPresenter
   private presentationDevice?:GPUDevice
   private lifecycleFields() {
@@ -524,6 +526,7 @@ export class WebGpuDriver implements Driver {
   private maskLayout!: GPUBindGroupLayout
   private paintPipeline!: GPURenderPipeline
   private compositorModule!: GPUShaderModule
+  gestureSoftEffects = false
   private gaussianReductionModule?: GPUShaderModule
   private exactMotionSource?: string
   private exactMotionModule?: GPUShaderModule
@@ -825,7 +828,8 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
 }`
     const exactCode=import.meta.env.VITE_DESIGN_EXACT_IDENTITIES==='1'&&!this.displayMath?exactArithmeticIdentities(compositorCode):compositorCode
     const imageAddressedCode = this.managed ? imageCoordinateSource(exactCode + imageResolveStepWgsl + gradientPaintOverWgsl) : exactCode
-    const addressedCode = this.managed ? scalarCoverageSource(import.meta.env.VITE_DESIGN_GRADIENT_WINDOW_FIELDS==='1'?gradientWindowSource(imageAddressedCode):imageAddressedCode) : exactCode
+    const parameterCode = this.gradientPhaseFields ? gradientPhaseSource(imageAddressedCode) : imageAddressedCode
+    const addressedCode = this.managed ? scalarCoverageSource(import.meta.env.VITE_DESIGN_GRADIENT_WINDOW_FIELDS==='1'?gradientWindowSource(parameterCode):parameterCode) : exactCode
     if (this.managed && !this.displayMath && !this.hdr) this.displayImageBaseSource = addressedCode
     const module = this.device.createShaderModule({
       code: this.displayMath ? displayArithmeticSource(addressedCode, import.meta.env.VITE_DESIGN_NATIVE_DIVISION !== '0') : addressedCode,
@@ -1189,6 +1193,9 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     if(this.canvasBlurRequested&&this.managed&&!this.hdr&&!this.displayMath&&
       import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1'&&[2,4,8].includes(Number(import.meta.env.VITE_DESIGN_GAUSSIAN_REDUCTION))&&
       Object.values(scene.nodes).some(node=>node.gaussianRegion?.factor!==undefined))modes.add(74)
+    this.gestureSoftEffects = displayOnly && this.captureDisplay && this.managed && !this.hdr &&
+      !this.displayMath && !scene.softwareRaster && scene.gestureSoftEffects === true
+    if (this.gestureSoftEffects) { modes.add(74); modes.add(75) }
     if(this.exactGradientPaintOver&&gradientFusionWorthwhile(scene))modes.add(GRADIENT_PAINT_OVER_MODE)
     const layout = this.device.createPipelineLayout({ bindGroupLayouts: [this.layout] })
     const pending: string[] = []
@@ -1196,13 +1203,14 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
       if (this.modePipelines.has(mode)) continue
       const key = `mode:${mode}`; pending.push(key)
       this.pipelines.register(key, async () => {
-      const module = mode===74
+      const resampling = mode === 74 || mode === 75
+      const module = resampling
         ? (this.gaussianReductionModule ??= this.device.createShaderModule({code:gaussianReductionWgsl,label:'Reduced Gaussian display reconstruction'}))
         : (mode === 61 || mode === 62) && this.exactMotionSource !== undefined
         ? (this.exactMotionModule ??= this.device.createShaderModule({code:this.exactMotionSource!,label:'Exact motion sampling and arithmetic'})) : this.compositorModule
       const pipeline = await this.device.createRenderPipelineAsync({ layout,
         vertex: { module, entryPoint: 'quad' },
-        fragment: { module, entryPoint: mode===GRADIENT_PAINT_OVER_MODE?'exactGradientPaintOver':'fragment', constants: mode===GRADIENT_PAINT_OVER_MODE||mode===74?{}:{ COMPOSITOR_MODE: mode }, targets: [{ format: this.layerFormat }] },
+        fragment: { module, entryPoint: mode===GRADIENT_PAINT_OVER_MODE?'exactGradientPaintOver':mode===75?'downsample':'fragment', constants: mode===GRADIENT_PAINT_OVER_MODE||resampling?{}:{ COMPOSITOR_MODE: mode }, targets: [{ format: this.layerFormat }] },
         primitive: { topology: 'triangle-list' } })
       this.modePipelines.set(mode, pipeline)
       })
@@ -2003,6 +2011,19 @@ fn exactShadowValue(p:vec2<f32>)->vec4<f32>{
     const texture=this.uploadRgba8(bytes,width,height)
     this.nativeTentKernels.set(texture,{operator,radius,resource:texture.resource,width,height,boundBits})
     return texture
+  }
+  uploadGradientPhaseField(values:Uint32Array){
+    if(!this.gradientPhaseFields)throw Error('Gradient phase fields unavailable')
+    const {width,height}=gradientPhaseFieldLayout(values)
+    const texture=this.createFormat(width,height,'rgba8unorm')
+    try {
+      this.device.queue.writeTexture({texture:texture.resource as GPUTexture},
+        new Uint8Array(values.buffer,values.byteOffset,values.byteLength),{bytesPerRow:width*4},[width,height])
+      return texture
+    } catch (error) {
+      this.destroy(texture)
+      throw error
+    }
   }
   uploadRgba8(bytes: Uint8Array, width: number, height: number) {
     if (bytes.length !== width * height * 4) throw new Error('无效的 RGBA8 数据纹理')

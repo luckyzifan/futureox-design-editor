@@ -15,6 +15,8 @@ function fixture() {
 test('only complete matching native integer poses can become a committed viewport',()=>{
  const {doc,scene,frame,input}=fixture()
  expect(canCommitResidentFrame(scene,doc,doc,frame,input)).toBe(true)
+ expect(canCommitResidentFrame({...scene,interactionLocalFootprint:true},doc,doc,frame,input)).toBe(false)
+ expect(canCommitResidentFrame({...scene,gestureSoftEffects:true},doc,doc,frame,input)).toBe(false)
  expect(canCommitResidentFrame(scene,doc,{...doc,name:'changed'},frame,input)).toBe(false)
  expect(canCommitResidentFrame(scene,doc,doc,frame,{...input,sequence:6})).toBe(false)
  expect(canCommitResidentFrame(scene,doc,doc,{...frame,interaction:false},input)).toBe(false)
