@@ -1,0 +1,35 @@
+{
+  "note": "Public real-world .sketch samples for codec round-trip triage, downloaded 2026-11-05. Each source keeps its own directory. Git metadata and non-Sketch design files (Adobe XD) were removed; only .sketch files, README and license text remain.",
+  "sources": [
+    {
+      "name": "free-sketch-bootstrap-ui-kit",
+      "repository": "https://github.com/themeselection/free-sketch-bootstrap-ui-kit",
+      "license": "MIT (ThemeSelection)",
+      "files": ["free-sketch-bootstrap5-ui-kit.sketch"]
+    },
+    {
+      "name": "semantic-ui-kit-for-sketch",
+      "repository": "https://github.com/guacamoly/semantic-ui-kit-for-sketch",
+      "license": "CC0 1.0 Universal",
+      "files": ["semantic-ui-kit.sketch"]
+    },
+    {
+      "name": "Simple-Sketch-Wireframe-Kit",
+      "repository": "https://github.com/PC108/Simple-Sketch-Wireframe-Kit",
+      "license": "No license file present in the repository when downloaded",
+      "files": ["wireframe_kit_chevalier.sketch"]
+    },
+    {
+      "name": "ui-design-kit",
+      "repository": "https://github.com/wfp/ui-design-kit",
+      "license": "No explicit license file for the Sketch assets when downloaded; WFP brand materials",
+      "files": ["[Legacy] WFP UI Kit.sketch", "[Legacy] WFP Template.sketch", "[Legacy] WFP Icons.sketch", "WFP Logos.sketch", "WFP Favicons.sketch", "Emergency icons.sketch"]
+    }
+  ],
+  "excluded": [
+    {
+      "name": "WestpacCXTeam/Sketch-UI-Kit",
+      "reason": "Repository contains no .sketch files (README/LICENSE only) and is GPL-3; dropped."
+    }
+  ]
+}
