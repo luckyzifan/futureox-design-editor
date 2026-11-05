@@ -92,7 +92,7 @@ fn read_window(s: &Session, p: usize, span: Span, limit: u64) -> Result<Vec<u8>>
     }
     Ok(bytes)
 }
-fn field(s: &Session, p: usize, n: usize, key: &str) -> Result<Vec<u8>> {
+pub(super) fn field(s: &Session, p: usize, n: usize, key: &str) -> Result<Vec<u8>> {
     let record = s.parts[p].index.entry(n, &s.directory)?;
     let span = record
         .fields
@@ -201,7 +201,7 @@ fn legacy_policy(root: &Value) -> Option<bool> {
     }
     Some(component)
 }
-fn legacy_refs_enabled() -> bool {
+pub(super) fn legacy_refs_enabled() -> bool {
     std::env::var("CORE_SOURCE_LEGACY_REFS").is_ok_and(|value| value == "1")
 }
 fn sketch_projection(s: &Session, p: usize, n: usize) -> Result<(Document, Vec<String>)> {
@@ -341,17 +341,27 @@ pub(super) fn import_source_roots(roots: Vec<Value>, masters: BTreeMap<String,Va
     let dependencies = json!({"_class":"page","do_objectID":"00000000-0000-4000-8000-000000000002","name":"组件依赖","layers":masters.into_values().collect::<Vec<_>>()});
     let pages = BTreeMap::from([(page_id.to_owned(),page),(dependency_page_id.to_owned(),dependencies)]);
     let mut entries = BTreeMap::new();
-    if !images.is_empty() {
+    // File-backed embedded fonts belong to the same bounded archive workset as images.
+    let mut resources = images;
+    for reference in document.get("fontReferences").and_then(Value::as_array).into_iter().flatten() {
+        let data = &reference["fontData"];
+        if data["_class"] == "MSJSONFileReference" && data["_ref_class"] == "MSFontData" {
+            if let Some(path) = data["_ref"].as_str().filter(|p| p.starts_with("fonts/")) {
+                resources.insert(path.to_owned());
+            }
+        }
+    }
+    if !resources.is_empty() {
         let mut archive =
             zip::ZipArchive::new(File::open(archive_path).map_err(issue)?)
                 .map_err(issue)?;
         let mut size = 0u64;
-        for image in images {
-            let mut entry = archive.by_name(&image).map_err(issue)?;
+        for resource in resources {
+            let mut entry = archive.by_name(&resource).map_err(issue)?;
             size += entry.size();
             if size > 16 * 1024 * 1024 {
                 return Err(issue(
-                    "Image working set exceeds the bounded canvas transfer; choose a smaller object",
+                    "Image and font working set exceeds the bounded canvas transfer; choose a smaller object",
                 ));
             }
             let mut bytes = Vec::new();
@@ -360,7 +370,7 @@ pub(super) fn import_source_roots(roots: Vec<Value>, masters: BTreeMap<String,Va
                 .take(16 * 1024 * 1024 + 1)
                 .read_to_end(&mut bytes)
                 .map_err(issue)?;
-            entries.insert(image, bytes);
+            entries.insert(resource, bytes);
         }
     }
     let report = interop::import_sketch_source_parts_with_pages(&entries,&json!({"version":136}),document,&pages,&page_references).map_err(issue)?;

@@ -18,7 +18,7 @@ const casing = (value: unknown): TextRun['textCase'] => value === 'UPPER' ? 'upp
 
 /** Embedded-schema UTF-16 style IDs, indexed once rather than searching the
  * style table per character. Original text stays editable and unmodified. */
-export function importFigTextRuns(node: DesignNode, record: any, warnings: ImportWarningSink) {
+export function importFigTextRuns(node: DesignNode, record: any, warnings: ImportWarningSink, colorSpace: 'srgb' | 'display-p3' = 'srgb') {
   const styles = new Map<number, any>((record.textData?.styleOverrideTable || []).map((s: any)=>[s.styleID,s]))
   const ids = record.textData?.characterStyleIDs || []
   const runs: TextRun[] = [], fonts: Record<string,string> = {}
@@ -37,7 +37,7 @@ export function importFigTextRuns(node: DesignNode, record: any, warnings: Impor
     const fill=style.fillPaints?.[0]
     if (fill?.type==='SOLID' && fill.color) {
       const {r=0,g=0,b=0,a=1}=fill.color
-      run.color=`color(srgb ${r} ${g} ${b} / ${a*(fill.opacity ?? 1)})`
+      run.color=`color(${colorSpace} ${r} ${g} ${b} / ${a*(fill.opacity ?? 1)})`
     } else if (fill) warnings.add('文字片段非纯色填充尚需核对')
     if (style.textDecoration === 'UNDERLINE') run.underline=true
     if (style.textDecoration === 'STRIKETHROUGH') run.strikethrough=true

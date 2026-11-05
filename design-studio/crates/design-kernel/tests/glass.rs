@@ -40,6 +40,76 @@ fn engine(doc: &Value) -> Engine {
 }
 
 #[test]
+fn coincident_lenses_preserve_rear_paint_and_restore_optics_on_separation() {
+    let mut doc=fixture("#778899",true);
+    doc["schemaVersion"]=json!(5);
+    let glass=json!({"kind":"glass","color":"#000000","radius":1.5,"glass":{
+        "depth":4.,"refraction":0.65,"lightAngle":38.,"lightIntensity":0.7,"dispersion":0.45}});
+    doc["nodes"]["glass"]["effects"]=json!([glass]);
+    doc["nodes"]["glass"]["fills"]=json!([{"kind":"solid","color":"#ff2018","opacity":0.25}]);
+    doc["nodes"]["front"]=doc["nodes"]["glass"].clone();
+    doc["nodes"]["front"]["id"]=json!("front");
+    doc["nodes"]["front"]["fills"]=json!([]);
+    doc["pages"][0]["children"]=json!(["bg","glass","front"]);
+    let opts=options("figmaSubpixel",1);
+    for front in [glass.clone(),json!({"kind":"background-blur","radius":2.,"color":"#000000"})] {
+        doc["nodes"]["front"]["effects"]=json!([front]);
+        let mut expected=doc.clone();
+        expected["nodes"]["glass"]["effects"]=json!([]);
+        let actual=engine(&doc).render_linear(&opts).unwrap();
+        assert_eq!(actual,engine(&expected).render_linear(&opts).unwrap());
+        expected["nodes"]["glass"]["fills"]=json!([]);
+        assert_ne!(actual,engine(&expected).render_linear(&opts).unwrap());
+        let compiled=engine(&doc).compile_gpu(&opts).unwrap();
+        assert!(compiled.nodes["glass"].effects.is_empty());
+        assert_eq!(compiled.nodes["front"].effects.len(),1);
+    }
+    doc["nodes"]["front"]["transform"][4]=json!(18.25);
+    assert_eq!(engine(&doc).compile_gpu(&opts).unwrap().nodes["glass"].effects.len(),1);
+    doc["nodes"]["front"]["transform"]=doc["nodes"]["glass"]["transform"].clone();
+    doc["nodes"]["glass"]["effects"]=json!([{"kind":"background-blur","radius":3.,"color":"#000000"}]);
+    doc["nodes"]["front"]["effects"]=json!([glass]);
+    assert_eq!(engine(&doc).compile_gpu(&opts).unwrap().nodes["glass"].effects.len(),1);
+    doc["nodes"]["glass"]["effects"]=doc["nodes"]["front"]["effects"].clone();
+    doc["designSystem"]=json!({"sketchContainers":{"nodeMetadata":{"glass":{"bindings":{"sketchSourceBlur":"{}"}}}}});
+    let imported=engine(&doc).compile_gpu(&opts).unwrap();
+    assert_eq!(imported.nodes["glass"].effects.len(),1);
+    assert!(imported.nodes["glass"].optical_prefix_next.is_none());
+}
+
+#[test]
+fn overlapping_unpainted_glass_excludes_only_the_rear_optics_from_the_next_capture() {
+    let mut doc=fixture("#556677",true);
+    doc["schemaVersion"]=json!(5);
+    let material=json!({"kind":"glass","radius":1.,"color":"#000000","glass":{
+        "depth":7.,"refraction":0.8,"dispersion":0.65,"lightIntensity":0.9,"lightAngle":205.}});
+    doc["nodes"]["glass"]["effects"]=json!([material]);
+    let mut front=doc["nodes"]["glass"].clone();
+    front["id"]=json!("front");front["transform"][4]=json!(18.25);
+    doc["nodes"]["front"]=front;
+    doc["pages"][0]["children"]=json!(["bg","glass","front"]);
+    let opts=options("figmaSubpixel",1);
+    for effect in [material.clone(),json!({"kind":"background-blur","color":"#000000","radius":3.})] {
+        doc["nodes"]["front"]["effects"]=json!([effect]);
+        let mut rear=doc.clone();rear["nodes"]["front"]["visible"]=json!(false);
+        let mut clean=doc.clone();clean["nodes"]["glass"]["effects"]=json!([]);
+        let mut tinted=doc.clone();tinted["nodes"]["glass"]["fills"]=json!([{"kind":"solid","color":"#ff0000","opacity":0.4}]);
+        let frame=engine(&doc).render_linear(&opts).unwrap();
+        let without_front=engine(&rear).render_linear(&opts).unwrap();
+        let without_rear=engine(&clean).render_linear(&opts).unwrap();
+        for y in 16..31 {for x in 23..45 {let i=y*48+x;assert_eq!(frame[i],without_rear[i]);}}
+        for y in 0..48 {for x in 0..16 {let i=y*48+x;assert_eq!(frame[i],without_front[i]);}}
+        assert!((0..48).any(|y|(0..16).any(|x|frame[y*48+x]!=without_rear[y*48+x])));
+        assert_eq!(engine(&doc).compile_gpu(&opts).unwrap().nodes["glass"].optical_prefix_next.as_deref(),Some("front"));
+        assert_eq!(engine(&tinted).compile_gpu(&opts).unwrap().nodes["glass"].optical_prefix_next.as_deref(),Some("front"));
+        let painted=engine(&tinted).render_linear(&opts).unwrap();
+        tinted["nodes"]["glass"]["effects"]=json!([]);
+        let ordinary=engine(&tinted).render_linear(&opts).unwrap();
+        for y in 16..31 {for x in 23..45 {let i=y*48+x;assert_eq!(painted[i],ordinary[i]);}}
+    }
+}
+
+#[test]
 fn managed_zero_distortion_glass_preserves_hdr_gamut_and_alpha() {
     // Binary-exact inputs make this an equality contract, without a new
     // tolerance that could conceal RGBA8 clipping or alpha quantization.

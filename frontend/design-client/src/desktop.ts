@@ -62,10 +62,10 @@ export type LargeDocumentPageRange = {offset:number;end:number;totalRoots:number
 export type SourceCanvasBox={x:number;y:number;width:number;height:number}
 export type SourceCanvasItem={key:string;id:string;name:string;kind:string;pageId:string;pageName:string;source:SourceCanvasBox;placed:SourceCanvasBox;bytes:number}
 export type SourceCanvasCatalogue={items:SourceCanvasItem[];bounds:SourceCanvasBox;total:number;offset:number;hasMore:boolean;boundsAreLayoutHints:true}
-export type SourceCanvasSnapshot={materialKeys?:readonly string[];owner:LargeDocumentOwner;revision:number;token:string;bytes:number;nodes:number;roots:number;pageId:string;stageId:string;bounds:SourceCanvasBox;warnings:string[];rasterProfile:'analytic'|'figma'|'figmaSubpixel'|'figmaSoftware';colorManaged:boolean}
+export type SourceCanvasSnapshot={viewportSubset?:boolean;openingMaterial?:number;materialKeys?:readonly string[];owner:LargeDocumentOwner;revision:number;token:string;bytes:number;nodes:number;roots:number;pageId:string;stageId:string;bounds:SourceCanvasBox;warnings:string[];rasterProfile:'analytic'|'figma'|'figmaSubpixel'|'figmaSoftware';colorManaged:boolean}
 export type OpeningPage = [id:string,name:string,materials:number]
 export type SourceOpeningResult = {phase:'pending'|'unavailable'} | {
-  phase:'available';cacheHit:boolean;rendered:number;owner:LargeDocumentOwner;revision:0;bounds:SourceCanvasBox;total:number;pages:OpeningPage[]|null;
+  phase:'available';indexing?:boolean;moreDetails?:boolean;detailPending?:boolean;detailBase?:number;nextDetailCursor?:number;detail?:{index:number;png:string}|null;materialDisplay?:SourceCanvasSnapshot;cacheHit:boolean;rendered:number;owner:LargeDocumentOwner;revision:0;bounds:SourceCanvasBox;total:number;pages:OpeningPage[]|null;
   offset:number;items:SourceCanvasItem[];nextOffset:number;cursor:number;moreImages:boolean;images:{index:number;png:string}[];finished:boolean
 }
 export interface LargeDocumentBridge {
@@ -73,11 +73,11 @@ export interface LargeDocumentBridge {
   cancel():Promise<DesktopResult<{requested:number;running:boolean;cancelled:boolean}>>
   open():Promise<DesktopResult<LargeDocumentStatus>>
   openFile(file:File):Promise<DesktopResult<LargeDocumentStatus>>
-  openingView?(request:{owner?:LargeDocumentOwner;offset:number;cursor:number;pageId?:string;material?:number;viewport?:SourceCanvasBox}):Promise<DesktopResult<SourceOpeningResult>>
+  openingView?(request:{owner?:LargeDocumentOwner;offset:number;cursor:number;detailCursor?:number;pageId?:string;material?:number;viewport?:SourceCanvasBox;viewportDensity?:number;viewportAnchor?:[number,number]}):Promise<DesktopResult<SourceOpeningResult>>
   children(request:LargeDocumentRequest&{key?:string;offset?:number;limit?:number;query?:string;canvasOnly?:boolean}):Promise<DesktopResult<{items:LargeDocumentRow[];total:number;hasMore:boolean}>>
   canvasLayout(request:LargeDocumentRequest&{offset?:number;limit?:number}):Promise<DesktopResult<SourceCanvasCatalogue>>
-  canvasPreview?(request:LargeDocumentRequest & {token:string}):Promise<DesktopResult<{phase:'pending'|'unavailable'}|{phase:'ready';width:number;height:number;scale:number;png:string}>>
-  canvasSnapshot(request:LargeDocumentRequest & {navigationPreview?:boolean;materialKeys?:readonly string[]}):Promise<DesktopResult<SourceCanvasSnapshot>>
+  canvasPreview?(request:LargeDocumentRequest & {token:string}):Promise<DesktopResult<{phase:'pending'|'unavailable'}|{phase:'ready';bounds?:SourceCanvasBox;width:number;height:number;scale:number;png:string}>>
+  canvasSnapshot(request:LargeDocumentRequest & {navigationPreview?:boolean;navigationWindow?:SourceCanvasBox;materialKeys?:readonly string[]}):Promise<DesktopResult<SourceCanvasSnapshot>>
   read(request:LargeDocumentRequest&{key:string}):Promise<DesktopResult<{key:string;json:string;hash:string;omittedFields:string[]}>>
   apply(request:LargeDocumentRequest&{key:string;json:string;expectedHash:string}):Promise<DesktopResult<LargeDocumentStatus>>
   project(request:LargeDocumentRequest&{key:string}):Promise<DesktopResult<{key:string;json:string;warnings:string[]}>>
@@ -128,6 +128,7 @@ export interface DesktopBridge {
   readonly automation?: import('./automation/bridge').DesktopAutomationTransport
   readonly documentCodec?: { readonly decoding?: 'json-parse-v1'; readonly encoding?: 'json-stringify-v1'; encode(document: unknown): Promise<string>; decode(json: string): Promise<unknown>; encodeIncremental?(request: import('./resident-document-encoder').CodecDelta): Promise<import('./resident-document-encoder').CodecReceipt> }
   readonly preparation?: {
+    readonly terminalPortV1?: boolean
     cancel?(session: string, cancellationId: number): Promise<void>
     open(): Promise<string>
     request(session: string, request: { lane: string; method: string; args: unknown[]; cancellationId?: number; diagnostics?: { originChannelId: number; requestId: number; preparationId: number } }): Promise<import('./kernel/preparation-channel').PreparationReply>

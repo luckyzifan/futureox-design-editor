@@ -56,3 +56,14 @@ export class OwnerTileCache<T> {
 export function ownsExactTileBytes(value: { buffer: ArrayBufferLike; bitmap?: unknown; gpuTile?: number }) {
   return value.buffer.byteLength > 0 && value.bitmap === undefined && value.gpuTile === undefined
 }
+
+export function exactTilePayloadBytes(tile: {
+  buffer: ArrayBufferLike; linearBuffer?: ArrayBufferLike; description: string; reason: string
+  backend: string; intermediateFormat: string; colorManagement?: { documentSpace: string } | null
+}) {
+  // The tile, its numeric counters, stats, color settings and world bounds have
+  // a fixed shape. The witness and LRU slot are charged by ExactTileCache.set.
+  const characters = tile.description.length + tile.reason.length + tile.backend.length +
+    tile.intermediateFormat.length + (tile.colorManagement?.documentSpace.length ?? 0)
+  return tile.buffer.byteLength + (tile.linearBuffer?.byteLength ?? 0) + 4096 + 2 * characters
+}

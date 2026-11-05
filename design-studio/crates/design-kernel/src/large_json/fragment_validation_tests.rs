@@ -144,6 +144,7 @@ fn utf8_and_escaped_keys_cross_internal_buffer_boundaries() {
     for capacity in 1..=16 {
         let mut scanner = Scanner {
             compact_keys:false,
+            short_names: HashMap::new(),
             input: BufReader::with_capacity(capacity, text),
             at: 0,
             limit: MAX_FRAGMENT_BYTES,
@@ -227,6 +228,7 @@ fn active_key_sets_release_after_children_and_do_not_emit_index_rows() {
     let text = format!("[{}]", (0..2000).map(|_| r#"{"x":{"x":1},"y":2}"#).collect::<Vec<_>>().join(","));
     let mut scanner = Scanner {
             compact_keys:false,
+            short_names: HashMap::new(),
         input: BufReader::with_capacity(64 * 1024, text.as_bytes()),
         at: 0,
         limit: MAX_FRAGMENT_BYTES,
@@ -288,6 +290,7 @@ fn selected_entry_count_rejects_only_address_overflow() {
     let text = b"{}".as_slice();
     let mut scanner = Scanner {
             compact_keys:false,
+            short_names: HashMap::new(),
         input: BufReader::with_capacity(64 * 1024, text),
         at: 0,
         limit: MAX_FRAGMENT_BYTES,

@@ -23,7 +23,7 @@ fn cvFetch(index:u32)->vec4<f32>{return curves[u32(params.values[9].x)+index];}
 }
 fn sampleCoverageSparse(pixel:vec2<i32>,index:u32)->f32{
  let header:vec4<f32>=cvFetch(0u);
- if(header.x==4.){return sampleCoverage(pixel,index);}
+ if(header.x==4.||header.x==5.){return sampleCoverage(pixel,index);}
  let record:vec4<f32>=cvFetch(u32(header.y)+u32(pixel.y)*4u+index);
  if(record.z==1.){return 1.;}
  return sampleCoverage(pixel,index);

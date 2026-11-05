@@ -236,3 +236,33 @@ test('synchronous retirement observer failure cannot strand the second replaceme
   expect(oldBack.texture.destroyed).toBe(true);expect(oldLinear.texture.destroyed).toBe(true)
   expect(f.canvas.width).toBe(16) // visible canvas was not cleared by the failed frame
 })
+
+test('regional repairs publish only complete old-owner coverage plus a verified new-owner patch', () => {
+  const f=fixture(), before={}, after={}, view={x:.25,y:.5,zoom:1}
+  const viewport={x:0,y:0,w:16,h:16}, damage={x:4,y:5,w:6,h:7}, contract='page/SDR'
+  const tile=(owner:object,rect:typeof viewport) => f.presenter.capture(rect.w,rect.h,undefined,
+    {owner,contract,raster:{view,rect}})
+  const base=tile(before,viewport), changed=tile(after,damage), foreign=tile({},damage)
+  const prepare=()=>f.presenter.beginViewportRepair(before,after,contract,view,16,16,damage)
+  expect(prepare()).toBeUndefined()
+  f.presenter.tagExactTile(base.id,before,contract,0)
+  expect(f.presenter.beginViewportRepair(before,after,contract,{...view,zoom:2},16,16,damage)).toBeUndefined()
+  expect(f.presenter.beginViewportRepair(before,after,'other',view,16,16,damage)).toBeUndefined()
+  const repair=prepare()!
+  f.presenter.tagExactTile(foreign.id,after,contract,0)
+  expect(repair.finish(foreign.id)).toBeUndefined()
+  expect(repair.finish(changed.id)).toBeUndefined()
+  f.presenter.tagExactTile(changed.id,after,contract,0)
+  expect(repair.finish(changed.id,{texture:{},rect:damage})).toBeUndefined()
+  expect(repair.finish(changed.id,{texture:changed.texture,rect:{...damage,x:damage.x+1}})).toBeUndefined()
+  const completed=repair.finish(changed.id)!
+  expect(completed).toBeGreaterThan(0)
+  repair.cancel()
+  expect(f.presenter.contentToken(completed)).toBeDefined()
+  expect(repair.finish(changed.id)).toBeUndefined()
+  const abandoned=prepare()!
+  abandoned.cancel();abandoned.cancel()
+  expect(abandoned.finish(changed.id)).toBeUndefined()
+  expect(f.presenter.contentToken(base.id)).toBe(base.texture)
+  f.presenter.release([base.id,changed.id,foreign.id,completed]);f.presenter.dispose()
+})

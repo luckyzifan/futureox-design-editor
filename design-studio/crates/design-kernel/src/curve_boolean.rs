@@ -233,7 +233,15 @@ fn clip_paths(paths: &[Vec<SimpleBezierPath>], inputs: &[(Path,Transform,bool)],
     let accuracy = 0.001;
     let mut graph = GraphPath::new();
     for (i, p) in paths.iter().enumerate() {
-        let mut operand = GraphPath::from_merged_paths(p.iter().map(|p| (p, PathLabel(i as u32))));
+        // flo_curves makes every input contour clockwise. A nonzero operand
+        // with several contours needs the original sign when crossings cancel.
+        let signed = op == Operation::CompoundNonzero || (!inputs[i].2 && p.len() > 1);
+        let mut operand = GraphPath::from_merged_paths(p.iter().map(|path| {
+            let label = if signed && matches!(PathDirection::from(path), PathDirection::Anticlockwise) {
+                i + inputs.len()
+            } else { i };
+            (path, PathLabel(label as u32))
+        }));
         // Operand self-intersections are split before cross-operand clipping.
         operand.self_collide(accuracy);
         if operand.num_points() > crate::vector_geometry::MAX_COMMANDS { return Err("Boolean intersection graph budget exceeded".into()); }
@@ -246,11 +254,13 @@ fn clip_paths(paths: &[Vec<SimpleBezierPath>], inputs: &[(Path,Transform,bool)],
     }
     graph.round(accuracy);
     graph.set_edge_kinds_by_ray_casting(|counts| {
+        let winding = |i: usize| i64::from(counts.get(i).copied().unwrap_or(0))
+            - i64::from(counts.get(i + inputs.len()).copied().unwrap_or(0));
         let filled: Vec<_> = inputs
             .iter()
             .enumerate()
             .map(|(i, (_, _, evenodd))| {
-                let w = counts.get(i).copied().unwrap_or(0);
+                let w = winding(i);
                 if *evenodd { w.abs() % 2 != 0 } else { w != 0 }
             })
             .collect();
@@ -259,7 +269,7 @@ fn clip_paths(paths: &[Vec<SimpleBezierPath>], inputs: &[(Path,Transform,bool)],
             Operation::Subtract => filled[0] && !filled[1..].iter().any(|v| *v),
             Operation::Intersect => filled.iter().all(|v| *v),
             Operation::Exclude => filled.iter().filter(|v| **v).count() % 2 != 0,
-            Operation::CompoundNonzero => counts.iter().map(|v|i64::from(*v)).sum::<i64>()!=0,
+            Operation::CompoundNonzero => (0..inputs.len()).map(winding).sum::<i64>() != 0,
             Operation::CompoundEvenodd => counts.iter().map(|v|i64::from(*v)).sum::<i64>().abs()%2!=0,
         }
     });
@@ -392,6 +402,26 @@ fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache
 #[cfg(test)]
 mod memo_tests {
     use super::*;
+    #[test]
+    fn union_keeps_opposite_winding_holes_in_one_operand() {
+        fn rect(path: &mut Path, lo: f64, hi: f64, reverse: bool) {
+            let corners = if reverse { [(lo,lo), (lo,hi), (hi,hi), (hi,lo)] }
+                else { [(lo,lo), (hi,lo), (hi,hi), (lo,hi)] };
+            for (i,(x,y)) in corners.into_iter().enumerate() {
+                let p = Point::new(x,y);
+                path.commands.push(if i == 0 { Command::Move(p) } else { Command::Line(p) });
+            }
+            path.commands.push(Command::Close);
+        }
+        for (inner_reversed, evenodd, contours) in [(true,false,2), (false,false,1), (false,true,2)] {
+            let mut path = Path::default();
+            rect(&mut path, 0., 20., false);
+            rect(&mut path, 5., 15., inner_reversed);
+            let inputs = [(path, Transform::default(), evenodd)];
+            let curves = [curves(&inputs[0].0, inputs[0].1).unwrap()];
+            assert_eq!(clip_paths(&curves,&inputs,Operation::Union,100).unwrap().len(), contours);
+        }
+    }
     #[test]
     fn repeated_boolean_geometry_matches_uncached_resolution() {
         let mut nodes=serde_json::Map::new();let mut roots=Vec::new();

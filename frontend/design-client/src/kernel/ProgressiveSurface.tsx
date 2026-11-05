@@ -2271,8 +2271,7 @@ export function ProgressiveSurfaceImpl(
   const plan = activePlan.current
   const currentPlan = !!plan && plan.key === frameKey && plan.document === doc &&
     plan.pageId === pageId && plan.epoch === (props.presentationEpoch || 0)
-  // A document edit cannot interleave old and new revisions. Camera-only
-  // refinement may mix precision levels because every level owns the same doc.
+  // Publish the target lattice together, including on camera-only changes.
   const fullPlanReady = currentPlan && !!plan?.ids.size && [...plan.ids].every(key=>ready.current.has(key)) && syncedDoc.current===doc
   // A new revision's complete viewport preview is an atomic replacement,
   // not a collection of partial new tiles over old-document pixels. The old
@@ -2305,28 +2304,36 @@ export function ProgressiveSurfaceImpl(
   const canRefine = !displayed || reusableFrame || fullPlanReady
   const startupPreview = !displayed && visible.some(tile => tile.viewportPreview &&
     tile.document === doc && tile.revision === contract.revision && ready.current.has(tile.key))
-  const fineTile = (tile: PaintedTile) => tileRef.current.get(tile.key) === tile && canRefine && currentPlan &&
-    (!startupPreview || fullPlanReady) &&
+  const fineTile = (tile: PaintedTile) => tileRef.current.get(tile.key) === tile && fullPlanReady &&
     !!plan?.ids.has(tile.key) && ready.current.has(tile.key) &&
     (syncedDoc.current === doc || tile.document === doc)
-  const coarseTile = (tile: PaintedTile) => tileRef.current.get(tile.key) === tile && canRefine && !complete &&
-    tile.lod === true && tile.document === doc && tile.revision === contract.revision &&
-    lodActive && tile.zoom === lodScale && tileIntersectsView(tile, requestedView, { width, height })
-  // Residents at previously visited exact scales also cover a zoom gesture.
-  // Keep their real sampling keys: reprojection supplies temporary coverage,
-  // while only a fully covered plan at or above screen density can publish a sharp frame.
-  const cachedPreviewTile = (tile: PaintedTile) => !complete && canRefine &&
-    (!startupPreview || !plan?.ids.has(tile.key)) &&
-    tileRef.current.get(tile.key) === tile && tile.document === doc &&
-    tile.revision === contract.revision && ready.current.has(tile.key) &&
-    !fineTile(tile) && !coarseTile(tile) && tileIntersectsView(tile, requestedView, { width, height })
+  // A lower-density preview may also hand off as a whole viewport. A cache
+  // hit or a single LOD tile does not authorize a patchwork over the backing.
+  const coarse = !fullPlanReady && canRefine && lodActive ? visible.filter(tile =>
+    !inactiveSet.has(tile) && tileRef.current.get(tile.key) === tile && tile.lod === true &&
+    tile.document === doc && tile.revision === contract.revision && tile.zoom === lodScale &&
+    ready.current.has(tile.key) && tileIntersectsView(tile,requestedView,{width,height})) : []
+  const coarseCohort = coarse.length && navigationHasCoverage(coarse, requestedView, width, height)
+    ? new Set(coarse) : undefined
+  const coarseTile = (tile: PaintedTile) => !!coarseCohort?.has(tile)
+  const previews = !fullPlanReady && !coarseCohort && canRefine ? visible.filter(tile =>
+    !inactiveSet.has(tile) && (!plan?.ids.has(tile.key) || tile.viewportPreview) && tileRef.current.get(tile.key) === tile &&
+    tile.document === doc && tile.revision === contract.revision && ready.current.has(tile.key) &&
+    tileIntersectsView(tile, requestedView, { width, height })).reverse() : []
+  // A whole capture from the previous camera can still be projected during a
+  // reversal. Keep that single image while a wider replacement is uploading.
+  const cachedViewport = previews.find(tile => navigationHasCoverage([tile], requestedView, width, height)) ??
+    (!displayed ? previews.find(tile => tile.viewportPreview) : undefined)
+  const cachedPreviewTile = (tile: PaintedTile) => tile === cachedViewport
+  const baseTile = (tile: PaintedTile) => !fullPlanReady && !coarseCohort && !cachedViewport &&
+    displayed?.residents.get(tile.key) === tile
   // One frame description owns both actual composition and cache-use proof.
   // Intersecting history that contributes no physical fragment stays evictable.
   const compositeItems = visible.map(tile => {
     // Full replacement starts from the compositor's cleared target; do not
     // source-over a translucent new page onto old-revision pixels.
     if (previewReplacement) return { tile, gutter: tile.gutter ?? 1, active: tile === previewReplacement, layer: 2 }
-    const fine = !inactiveSet.has(tile) && fineTile(tile), base = !inactiveSet.has(tile) && displayed?.residents.get(tile.key) === tile,
+    const fine = !inactiveSet.has(tile) && fineTile(tile), base = !inactiveSet.has(tile) && baseTile(tile),
       coarse = !inactiveSet.has(tile) && coarseTile(tile), cached = !inactiveSet.has(tile) && cachedPreviewTile(tile)
     return { tile, gutter: tile.gutter ?? 1, active: fine || base || coarse || cached,
       layer: progressiveTileLayer({ fine, cached, coarse, refining: !complete && canRefine, cameraDependent,
@@ -2629,7 +2636,7 @@ export function ProgressiveSurfaceImpl(
             if (residentDisplay || backend === 'auto') props.onFallback(`PREVIEW_CPU_FALLBACK: ${message}`) }}
         /> })() : visible.map((tile) => {
           const fineVisible = !inactiveSet.has(tile) && fineTile(tile)
-          const baseVisible = !inactiveSet.has(tile) && displayed?.residents.get(tile.key) === tile
+          const baseVisible = !inactiveSet.has(tile) && baseTile(tile)
           const lodVisible = !inactiveSet.has(tile) && coarseTile(tile)
           const cachedVisible = !inactiveSet.has(tile) && cachedPreviewTile(tile)
           // Per-tile coarse underlay: map this exact tile's device rect into

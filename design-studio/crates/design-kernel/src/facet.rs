@@ -600,6 +600,7 @@ pub fn sample_node(id: &str, kind: &str) -> Node {
         variable_modes: BTreeMap::new(),
         style_refs: BTreeMap::new(),
         mask_type: None,
+        mask_chain: None,
         id: id.into(),
         kind: kind.into(),
         name: String::new(),

@@ -15,7 +15,7 @@ export type InteractionPoseFeedback = { x: number; y: number; matrix?: Matrix }
 export type InteractionInput = { sequence:number; at:number; guides?:readonly import('./gpu/canvas-overlay').CanvasGuide[] }
 export type GpuMoveControl = {
   /** Release coordinates are flushed; this is only a preview priority hint. */
-  releaseInput?():void
+  releaseInput?(gesture?:'move'|'rotate'):void
   isActive(): boolean
   /** Private complete-layer authority; structural eligibility alone is not
    * enough to suspend an ordinary viewport repair. */
@@ -154,12 +154,17 @@ function buildInteractionLayers(document: DesignDocument, pageId: string, ids: r
     }
   }
   const roots: string[]=[]
+  let crossesMaskChain = false
   const appendRoots=(ids:readonly string[])=>{ for(const id of ids) {
-    const n=document.nodes[id];if(!n?.visible)continue
+    const n=document.nodes[id]
+    // A hidden Sketch mask still clips its siblings and cannot be omitted
+    // from an otherwise independent interaction capture.
+    if(n?.mask && (n.maskType==='shape' || n.maskChain)) crossesMaskChain = true
+    if(!n?.visible)continue
     if(ancestors.has(id))appendRoots(n.children);else roots.push(id)
   }}
   appendRoots(page.children)
-  if (ids.some(id=>!roots.includes(id))) return null
+  if (crossesMaskChain || ids.some(id=>!roots.includes(id))) return null
   const independent = (id: string): boolean => {
     const n = document.nodes[id]
     if (!n?.visible) return true

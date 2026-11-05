@@ -1,3 +1,5 @@
+import { equalValue } from '../document-patch'
+import {MATERIAL_BAND} from './source-display-band'
 import { ResidentPoseReuse, terminalPoseDisposition } from './resident-pose-reuse'
 import { MAX_CANVAS_RASTER_SCALE } from '../canvas-camera'
 import { pinDocumentCapacity } from '../document-capacity'
@@ -44,14 +46,15 @@ import type { GpuRenderer } from './gpu/renderer'
 import { decodeScenePacket, scenePacketWitness, CompiledScenePacket, type ScenePacket } from './gpu/scene-packet'
 import type {CompilationWitness} from './compilation-witness'
 import type { ColorSettings } from '../color'
-import type { BackendPreference, GpuScene } from './gpu/types'
+import { intersect, type BackendPreference, type Driver, type GpuScene, type Rect } from './gpu/types'
+import { guardedPixelWindow } from './gpu/effect-region'
 import type { KernelOptions } from './client'
 import { TILE_SIDE, type RasterTile } from './tile-cache'
 import { imageCacheKey, readCachedImage, writeCachedImage } from './image-mip-cache'
 import { DecodedImageCache, createDecodedImageOwner, decodedImageScope } from './decoded-image-cache'
 import { managedSceneImageLoader, SceneImageHydration, type ImageContext } from './scene-image-hydration'
 import { coordinateSlot } from './exact-tile-cache'
-import { OwnerTileCache, ownsExactTileBytes } from './owner-tile-cache'
+import { exactTilePayloadBytes, OwnerTileCache, ownsExactTileBytes } from './owner-tile-cache'
 import { tileComputationDependsOnCamera } from './tile-computation-key'
 import { recoverFailedTileRenderer } from './tile-failure'
 import { recoverPreviewBudget, isRecoverablePreviewBudget } from './preview-budget-recovery'
@@ -61,14 +64,14 @@ import { applyDocumentPatch, documentPatch, type DocumentPatch } from '../docume
 import type { DesignDocument, Matrix } from '../model'
 import { preparePreviewSelection, previewTranslationDelta, translatePreviewScene } from './gpu/translated-scene'
 import { FrozenResidentOverlayPoses, resolveResidentOverlayFrame } from './gpu/resident-affine-pose'
-import { interactionPatchTransforms } from './interaction-patch-transforms'
+import { interactionPatchTransforms, isInnerShadowFill, isInnerShadowPosePatch } from './interaction-patch-transforms'
 import { capturePoseOrigins, residentPoseShift } from './gpu/resident-pose-origin'
 import { tilePrepareViewport, localDisplayPrepareScope, tileLocalPrepareViewport } from './tile-prepare-viewport'
 import { compiledFilterColumnSupport, FilterTileOrder, validTileFillPriorities } from './filter-tile-order'
 import { GPU_PRIORITY_BURST, RenderWorkQueue } from './render-work-queue'
-import { paintDamageIntersects, type PaintDamage } from './paint-damage'
+import { paintDamageIntersects, viewportDamage, type PaintDamage } from './paint-damage'
 import {residentFrameSignature} from './gpu/resident-frame'
-import { canCommitResidentFrame } from './gpu/retained-commit'
+import { canCommitResidentFrame, matchesResidentFrame } from './gpu/retained-commit'
 import { pageTranslationCommit } from './gpu/page-translation-commit'
 import { pixelSourceContract } from './gpu/page-background'
 import { PreparationChannel } from './preparation-channel'
@@ -351,13 +354,49 @@ function yieldPreviewTask() {
 }
 const queue = new RenderWorkQueue()
 type ResidentPose={terminal?:boolean;slot:number;transforms:Record<string,Matrix>;input:import('./interaction-layers').InteractionInput & {owner?:string}}
-type PoseSession={softEffectPreview?: boolean;reuse?:ResidentPoseReuse;controller:AbortController;slot:number;document:DesignDocument;baseDocument:DesignDocument;scene:GpuScene;
+type PoseSession={canvasOwner?:object;baseFill?:{x:number;y:number;width:number;height:number};softEffectPreview?: boolean;reuse?:ResidentPoseReuse;controller:AbortController;slot:number;document:DesignDocument;baseDocument:DesignDocument;scene:GpuScene;
   origins:ReadonlyMap<string,readonly[number,number]>;
   patch?:TranslationPatchSession;native?:boolean;affine?:boolean;fixedWindow?:boolean;window:import('./gpu/types').Rect;options:string;stopped:boolean;input?:ResidentPose['input'] & {owner?:string};bounds?:{x:number;y:number;width:number;height:number}}
 let poseSession:PoseSession|undefined,pendingPose:ResidentPose|undefined,poseQueued=false
 /** Message handlers can replace this queue while native preparation awaits. */
 function latestPendingPose():ResidentPose|undefined{return pendingPose}
 const frozenOverlayPoses=new FrozenResidentOverlayPoses()
+/** Borrow only a completed full-quality native pose on the canonical
+ * pixel lattice. Its retained texture is authoritative inside the declared
+ * window only. The canvas kernel independently supplies the damage. */
+function localRepairSource(session: PoseSession | undefined, next:DesignDocument | undefined, driver:Driver,
+  view:KernelOptions['view'], contract:string, damage:Rect, canvasOwner:object) {
+  if (!session?.native || session.canvasOwner!==canvasOwner || !session.input || !session.reuse || !next) return
+  const scene=session.scene, window=scene.interactionWindow, output=scene.output, ids=scene.interactionSelection
+  const content=scene.interactionContentWindow??window
+  if (!scene.interactionLocalFootprint || scene.gestureSoftEffects || scene.displayFilters || scene.displayMaterialSource ||
+      scene.displayImageSource || scene.displayTentRadius || scene.linearRetainedCapture || scene.resolve || scene.presentation ||
+      scene.softwareRaster || !window || !output || ids?.length!==1 || !isInnerShadowFill(next.nodes[ids[0]]) ||
+      scene.view.x!==view.x || scene.view.y!==view.y || scene.view.zoom!==view.zoom ||
+      !content || content.x>damage.x || content.y>damage.y || content.x+content.w<damage.x+damage.w || content.y+content.h<damage.y+damage.h) return
+  // gpuPageBackground only asks the compiler for support metadata.
+  if (pixelSourceContract({...JSON.parse(session.options),gpuPageBackground:true})!==contract) return
+  const doc=session.patch?.snapshot()??session.document, texture=driver.presentedContentToken?.(session.slot)
+  if (!texture || !equalValue(doc,next) ||
+      !session.reuse.matches({scene,driver,texture,window,transforms:{[ids[0]]:next.nodes[ids[0]].transform}})) return
+  return {id:session.slot,texture,rect:output}
+}
+
+/** A finished pose is visible only inside the union of its initial and current
+ * fill. Keep this pixel-space contract on the scene for both display and repair. */
+function innerShadowContentWindow(session:PoseSession, scene:GpuScene, window:Rect, ids:string[]):Rect|undefined {
+  const original=session.baseFill, fill=ids.length===1 && scene.nodes[ids[0]]?.fill.rect
+  if(!original || !fill || !scene.nativeInteraction || !scene.interactionLocalFootprint ||
+      scene.gestureSoftEffects || session.softEffectPreview || !isInnerShadowFill(session.baseDocument.nodes[ids[0]]) ||
+      ![original.x,original.y,original.width,original.height].every(Number.isFinite) || original.width<=0 || original.height<=0)return
+  const {x,y,zoom}=scene.view
+  const left=Math.max(window.x,Math.min(original.x*zoom+x,fill.x)-2)
+  const top=Math.max(window.y,Math.min(original.y*zoom+y,fill.y)-2)
+  const right=Math.min(window.x+window.w,Math.max((original.x+original.width)*zoom+x,fill.x+fill.w)+2)
+  const bottom=Math.min(window.y+window.h,Math.max((original.y+original.height)*zoom+y,fill.y+fill.h)+2)
+  if(right>left && bottom>top)return {x:left,y:top,w:right-left,h:bottom-top}
+}
+
 function displayedOverlayAffines(frame:import('./gpu/resident-presenter').ResidentFrame) {
   if(gpu)return resolveResidentOverlayFrame(frame,gpu.driver,poseSession,frozenOverlayPoses)
   if(frame.overlayPoseSlot!==undefined)frame.overlay=undefined
@@ -380,17 +419,41 @@ function presentSampledPose(session:PoseSession,pose:ResidentPose,bounds:{x:numb
     gpu!.driver.presentFrame?.(displayFrame)
   }
 }
+// Set only during the physical finish of the preceding native pose. The
+// actual terminal input can use the idle CPU lane; it owns one one-use packet.
+let beginTerminalPreparation: ((next:ResidentPose)=>void) | undefined
 function schedulePose(){
   if(poseQueued||!pendingPose)return
   poseQueued=true
   void queue.run(async()=>{
     let runningPose: ResidentPose | undefined
+    type Advance={pose:ResidentPose; sequence:number; session:PoseSession; kernel:RenderKernel; previous:Record<string,Matrix>; mutated:boolean}
+    let advance:Advance|undefined
+    const ahead=new PrepareAhead<{packet:Awaited<ReturnType<RenderKernel['prepare_gpu_scene']>>|undefined; compileMs:number}>()
+    const discardAdvance=async()=>{
+      if (!advance) return
+      const old=advance;advance=undefined
+      await ahead.drain()
+      if (!old.mutated) return
+      // No other CPU mutation can enter this queue until the abandoned move
+      // is drained. Restore the pre-advance state, including on stop/rebase.
+      try { if (await old.kernel.apply_interaction_transforms(JSON.stringify(old.previous))) return } catch { /* reload the last published state */ }
+      const lane=lanes.get('interaction')
+      const last=old.session.patch?.snapshot()??old.session.document
+      lane.interactionDocument=lane.deferredInteractionDocument=last
+      lane.synchronizedInteractionDocument=undefined; lane.compiledScene=undefined
+      synchronizedAuthored.delete('interaction')
+      if (poseSession===old.session) rebasePose(old.pose)
+    }
     try{
       while(pendingPose){
         const pose=pendingPose;pendingPose=undefined;runningPose=pose
         const session=poseSession
-        if(!session||session.stopped||session.slot!==pose.slot||!gpu?.driver.replacePresented)continue
-        const current=()=>poseSession===session&&!session.stopped&&!session.controller.signal.aborted
+        if (advance && (advance.pose!==pose || advance.session!==session || session?.stopped)) await discardAdvance()
+        if(!session||session!==poseSession||session.stopped||session.slot!==pose.slot||!gpu?.driver.replacePresented)continue
+        const current=()=>poseSession===session&&!session.stopped&&!session.controller.signal.aborted &&
+          !(session.native && session.scene.interactionLocalFootprint && latestPendingPose()?.terminal &&
+            terminalPoseDisposition(pose,latestPendingPose())==='changed')
         const started=performance.now()
         selectLane('interaction')
         const ids=Object.keys(pose.transforms)
@@ -434,6 +497,13 @@ function schedulePose(){
           // This newer input requests the exact already-rendered pixels. Only
           // advance its presentation cohort; no new native mutation, packet,
           // upload or raster is necessary. Resource completion fences remain.
+          if(advance?.pose===pose){
+            const prepared=await ahead.take(advance.sequence)
+            if(!prepared?.packet){rebasePose(pose);break}
+            prepared.packet.discard()
+            if(!current())continue
+            advance=undefined
+          }
           const bounds=session.bounds
           presentSampledPose(session,pose,bounds)
           reportDisplay({residentSample:{slot:session.slot,...pose.input,bounds,total:performance.now()-started,
@@ -445,19 +515,34 @@ function schedulePose(){
         const translationStarted=performance.now()
         let poseCompileMs=0, sceneUpdateBytes=0
         let compileStats:Record<string,unknown>|undefined
-        let next: GpuScene | null
+        let next: GpuScene | null, poseKernel: RenderKernel | undefined
         if(session.native){
           const capture=session.scene.output||{x:0,y:0,w:session.scene.width,h:session.scene.height}
           if(x<capture.x||y<capture.y||right>capture.x+capture.w||bottom>capture.y+capture.h){rebasePose(pose,true);break}
-          const kernel=await engine()
-          if(!await kernel.apply_interaction_transforms(JSON.stringify(pose.transforms))){rebasePose(pose);break}
-          if(!current())continue
-          const compileStarted=performance.now()
-          const packet=await compilePacket(kernel,session.options,session.controller.signal)
-          if(!current())continue
+          const kernel=poseKernel=await engine()
+          let packet:CompiledScenePacket
+          if (advance?.pose===pose && advance.session===session) {
+            const prepared=await ahead.take(advance.sequence)
+            if(!prepared?.packet){rebasePose(pose);break}
+            if(!current())continue
+            packet=prepared.packet.consume()
+            poseCompileMs=prepared.compileMs
+            advance=undefined
+          } else {
+            // A real in-flight motion can become the terminal input before its native reply.
+            const direct=preparation && session.affine && session.canvasOwner && session.scene.interactionLocalFootprint &&
+              !session.softEffectPreview && ids.length===1 && isInnerShadowFill(session.baseDocument.nodes[ids[0]]) ? preparation : undefined
+            const apply=()=>kernel.apply_interaction_transforms(JSON.stringify(pose.transforms))
+            if(!await (direct?direct.withPoseTransport(apply):apply())){rebasePose(pose);break}
+            if(!current())continue
+            const compileStarted=performance.now()
+            const compile=()=>compilePacket(kernel,session.options,session.controller.signal)
+            packet=await (direct?direct.withPoseTransport(compile):compile())
+            if(!current())continue
+            poseCompileMs=performance.now()-compileStarted
+          }
           sceneUpdateBytes=packet.transport.scenePacketBytes
           const compiled=decodeScenePacket(packet)
-          poseCompileMs=performance.now()-compileStarted
           compileStats=kernel.compileStats
           next={...preparePreviewSelection(compiled,session.scene.interactionSelection||[]),
             interactionLocalFootprint:session.scene.interactionLocalFootprint,
@@ -473,7 +558,7 @@ function schedulePose(){
           translatePreviewScene({...session.scene,interactionWindow:window},session.document,document!)
         const sameDisplay=displayGeometry?!!displayFrame&&[displayFrame.view.x,displayFrame.view.y,displayFrame.view.zoom,
           displayFrame.width,displayFrame.height,displayFrame.dpr].every((value,i)=>Object.is(value,displayGeometry[i])):!displayFrame
-        if(session.native&&!session.affine&&current()&&sameDisplay){
+        if(session.native&&(!session.affine||session.scene.interactionLocalFootprint)&&current()&&sameDisplay){
           const ending=latestPendingPose(),disposition=terminalPoseDisposition(pose,ending)
           // Only a release hint can discard an obsolete preparation; moving
           // pointers keep normal sampling progress and cannot starve rendering.
@@ -483,14 +568,42 @@ function schedulePose(){
         const translationMs=performance.now()-translationStarted,posePrepareMs=performance.now()-started
         if(!next){rebasePose(pose);break}
         next.gestureSoftEffects = session.softEffectPreview === true && !pose.terminal
+        const visible=innerShadowContentWindow(session,next,window,ids)
+        // Canvas repair rounds damage outwards and samples integer neighbours.
+        next.interactionContentWindow=visible && intersect(window,guardedPixelWindow(visible))
         try{
           const hydrateImages = sceneImageHydration(await engine(), current)
           await hydrateImages(next)
           if(!current())continue
           prepareDisplay()
-          const result=await failureAttempt(12, () => gpu!.render(next,false,true,current))
+          const onFinishStarted = poseKernel && session.affine && session.canvasOwner && !pose.terminal &&
+            next.interactionLocalFootprint && !next.gestureSoftEffects && ids.length===1 && isInnerShadowFill(session.baseDocument.nodes[ids[0]])
+            ? () => {
+              const kernel=poseKernel!
+              beginTerminalPreparation=terminal=>{
+                if(advance || session!==poseSession || session.stopped || session.controller.signal.aborted ||
+                    terminalPoseDisposition(pose,terminal)!=='changed' || Object.keys(terminal.transforms).length!==1 ||
+                    !Object.hasOwn(terminal.transforms,ids[0]) || !Array.isArray(terminal.transforms[ids[0]]) ||
+                    terminal.transforms[ids[0]].length!==6 || !terminal.transforms[ids[0]].every(Number.isFinite))return
+                const work:Advance={pose:terminal,sequence:terminal.input.sequence,session,kernel,previous:pose.transforms,mutated:false}
+                advance=work
+                const prepare=async()=>{
+                  if(session!==poseSession || session.stopped || session.controller.signal.aborted)return {packet:undefined,compileMs:0}
+                  work.mutated=true
+                  if(!await kernel.apply_interaction_transforms(JSON.stringify(terminal.transforms))){work.mutated=false;return {packet:undefined,compileMs:0}}
+                  const at=performance.now()
+                  const packet=await journalCompile(()=>kernel.prepare_gpu_scene(session.options,session.controller.signal))
+                  return {packet,compileMs:performance.now()-at}
+                }
+                ahead.start(terminal.input.sequence,()=>preparation?preparation.withPoseTransport(prepare):prepare())
+              }
+              const last=latestPendingPose()
+              if(last?.terminal)beginTerminalPreparation(last)
+            } : undefined
+          const result=await failureAttempt(12, () => gpu!.render(next,false,true,current,undefined,false,onFinishStarted))
+            .finally(()=>{beginTerminalPreparation=undefined})
           if(!result.gpuTile)throw Error('Resident movement did not produce a GPU texture')
-          if(poseSession!==session||session.stopped){gpu.driver.releasePresented?.([result.gpuTile]);continue}
+          if(!current()){gpu.driver.releasePresented?.([result.gpuTile]);continue}
           gpu.driver.replacePresented(session.slot,result.gpuTile)
           // This scene describes the actual texture which just replaced the
           // slot. Small/unsupported effects can be admitted as exact pixels.
@@ -499,7 +612,8 @@ function schedulePose(){
           if(session.patch)session.patch.accept(next,pose.transforms)
           else {session.document=document!;laneState.interactionDocument=document;laneState.deferredInteractionDocument=document}
           laneState.compiledScene={revision:laneState.loadedRevision,options:session.options,scene:next}
-          const bounds={x:(window.x-next.view.x)/scale,y:(window.y-next.view.y)/scale,width:window.w/scale,height:window.h/scale}
+          const content=visible??window
+          const bounds={x:(content.x-next.view.x)/scale,y:(content.y-next.view.y)/scale,width:content.w/scale,height:content.h/scale}
           if(session.native){session.reuse??=new ResidentPoseReuse();session.reuse.record({scene:next,driver:gpu.driver,
             texture:gpu.driver.presentedContentToken?.(session.slot),window,transforms:pose.transforms})}
           presentSampledPose(session,pose,bounds)
@@ -517,14 +631,17 @@ function schedulePose(){
             groupBytes:result.retainedGroupBytes,prefixHits:result.retainedPrefixHits,fieldHits:result.materialFieldHits,checkpointMs:result.checkpointMs,fieldMs:result.materialFieldBuildMs,
             drawCalls:result.drawCalls,passPixels:result.passPixels,textureBytes:result.textureBytes,
             signature:displayFrame?residentFrameSignature(displayFrame):undefined}})
-        }catch(error){if(current()){console.warn('[resident-interaction] rebuilding capture',String(error));rebasePose(pose)}break}
+        }catch(error){
+          if(advance && latestPendingPose()===advance.pose && poseSession===session && !session.stopped &&
+              String(error).includes('PREVIEW_CANCELLED'))continue
+          if(current()){console.warn('[resident-interaction] rebuilding capture',String(error));rebasePose(pose)}break}
       }
     }catch(error){
       // Preparation/compilation can fail before GPU.render. Retire the lease
       // just like a raster failure so input never waits for an impossible ACK.
       if(runningPose && poseSession?.slot === runningPose.slot && !poseSession.stopped)rebasePose(runningPose)
       if(import.meta.env.DEV)console.warn('DESIGN_POSE',error)
-    }finally{poseQueued=false;if(pendingPose)schedulePose()}
+    }finally{beginTerminalPreparation=undefined;await discardAdvance();poseQueued=false;if(pendingPose)schedulePose()}
   },1)
 }
 self.onmessage = (e) => {
@@ -620,14 +737,20 @@ self.onmessage = (e) => {
   }
   if(request.command==='interaction-settle'){
     if(Number.isSafeInteger(request.sequence)&&poseSession&&!poseSession.stopped&&poseSession.slot===request.slot&&
-      pendingPose&&pendingPose.slot===request.slot&&pendingPose.input.sequence===request.sequence&&pendingPose.input.owner===request.owner)
-      pendingPose.terminal=true
+      pendingPose&&pendingPose.slot===request.slot&&pendingPose.input.sequence===request.sequence&&pendingPose.input.owner===request.owner){
+      pendingPose.terminal=true;beginTerminalPreparation?.(pendingPose)
+    }
     return
   }
   if(request.command==='interaction-pose'){
     if(!request.input||!Number.isSafeInteger(request.input.sequence)||!Number.isFinite(request.input.at)||
         !request.transforms||typeof request.transforms!=='object')return
-    if(poseSession&&poseSession.slot===request.slot&&!poseSession.stopped){pendingPose=request;schedulePose()}
+    if(poseSession&&poseSession.slot===request.slot&&!poseSession.stopped){
+      if(pendingPose?.terminal && terminalPoseDisposition(pendingPose,request)==='same') pendingPose.input=request.input
+      else pendingPose=request
+      if(pendingPose!.terminal)beginTerminalPreparation?.(pendingPose!)
+      schedulePose()
+    }
     else rebasePose(request)
     return
   }
@@ -707,6 +830,18 @@ self.onmessage = (e) => {
         self.postMessage({ id: request.id })
         return
       }
+      if(request.command==='prepare-source-display'){
+        if(!gpu&&preparation&&backend==='webgpu'&&!executionPolicy.cpuOnly&&!executionPolicy.hdrCompositing){
+          const {createGpu}=await import('./gpu/factory')
+          const [renderer,kernelReady]=await Promise.allSettled([createGpu('webgpu',true,false,{documentSpace:'srgb',referenceWhiteNits:203,peakLuminanceNits:1000},
+            managedImageLoader,false,true,!!executionPolicy.imageMips,!!executionPolicy.imageAtlas,false,executionPolicy.gpuWorkingBudgetMiB),engine()])
+          if(renderer.status==='rejected')throw renderer.reason
+          if(kernelReady.status==='rejected'){renderer.value.dispose();throw kernelReady.reason}
+          gpu=renderer.value
+          await gpu.driver.prepareSourceDisplay?.()
+        }
+        self.postMessage({id:request.id});return
+      }
       if (request.command === 'park-gpu') {
         // The serialized queue is idle at this boundary. Retain the document,
         // fonts, decoded assets and CPU cache, but relinquish the device lease.
@@ -766,11 +901,15 @@ self.onmessage = (e) => {
       const retainInteraction = request.options?.retainInteractionGraph === true && request.options?.renderIntent === 'preview' && request.options?.livePreview === true &&
         !request.options?.tileViewport && allowsResidentSdr(executionPolicy) && !request.png &&
         !request.options?.exportFormat && !request.options?.exportRegion && !request.options?.pixelPreview
-      const { interactionOwner: _interactionOwner, interactionGeneration: _interactionGeneration, interactionBranch: _interactionBranch, interactionChannel: _interactionChannel, livePreview, sequentialViewport, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionAffine, interactionLocalFootprint, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
-        tilePrepareViewport: requestedPrepareViewport, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, ...renderOptions } = request.options
+      const { interactionOwner: _interactionOwner, interactionGeneration: _interactionGeneration, interactionBranch: _interactionBranch, interactionChannel: _interactionChannel, livePreview, sequentialViewport, retainInteractionGraph: _retainInteractionGraph, interactionNative, interactionAffine, interactionLocalFootprint, interactionBaseFill, interactionSelection, interactionWindow, interactionWindowFixed, previewTileFallback, tileViewport,
+        tilePrepareViewport: requestedPrepareViewport, sourceMaterialOverview, tileFillPriorities, coverageTiles, tileOwner, exportFormat, renderIntent, ...renderOptions } = request.options
       const displayBackpressure=displayRasterBackpressure(request.options,{channel,png:request.png,readback:request.readback,hdr:executionPolicy.hdrCompositing})
       // Never accept display arithmetic authority from caller or document fields.
       delete (renderOptions as { displayTentRadius?: unknown }).displayTentRadius
+      renderOptions.gpuDensePaint=import.meta.env.VITE_DESIGN_DENSE_PAINT!=='0' && sourceMaterialOverview===true && !!request.sourceSnapshot && channel==='canvas' &&
+        renderIntent==='preview' && !!tileOwner && renderOptions.view.zoom<=1 && backend==='webgpu' &&
+        renderOptions.rasterProfile==='figmaSubpixel'&&!executionPolicy.hdrCompositing&&!request.referenceGpu&&!request.png&&!request.readback&&
+        !exportFormat&&!renderOptions.exportRegion&&!renderOptions.pixelPreview&&!renderOptions.animation || undefined
       const sourceFilterFields=import.meta.env.VITE_DESIGN_SOURCE_FILTER_LOD!=='0' && import.meta.env.VITE_DESIGN_GAUSSIAN_REGIONS!=='0' &&
         import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX!=='0' && !!request.sourceSnapshot &&
         channel==='canvas' && renderIntent==='preview' && !!tileOwner && renderOptions.view.zoom>=2 && !request.referenceGpu && !renderOptions.animation
@@ -868,6 +1007,7 @@ self.onmessage = (e) => {
       // Keep the immutable authored snapshot in both lanes. It also proves
       // whether the last displayed pose is exactly the patch being committed.
       let paintDamage: PaintDamage | undefined
+      let priorRepairOwner: object | undefined
       let translatedPageCommit:{sourceOwner:object;targetOwner:object;offset:{x:number;y:number}}|undefined
       let derived = false
       let derivedSource: { document: DesignDocument; json?: string } | undefined
@@ -1051,6 +1191,15 @@ self.onmessage = (e) => {
           // though these exact synchronized pixels and native translation proof
           // remain valid. A deferred/unsynchronized source cannot qualify.
           const synchronizedPixels=!wasDeferred&&!!actualBefore&&actualBefore===priorAuthoredDocument
+          if (synchronizedPixels && !damage.full && laneState.interactionDocument &&
+              isInnerShadowPosePatch(actualBefore,laneState.interactionDocument,patch)) {
+            priorRepairOwner = priorPixelOwner
+            // This accepted one-layer transform (including Undo) advances the
+            // same native pose lease. A reload or a different layer breaks it.
+            const session = poseSession, ids = session?.scene.interactionSelection
+            if (session?.native && session.canvasOwner === priorPixelOwner && ids?.length === 1 &&
+                Object.hasOwn(patch.nodes, ids[0])) session.canvasOwner = kernel.contentIdentity
+          }
           if(synchronizedPixels&&priorPixelOwner&&offset)translatedPageCommit={sourceOwner:priorPixelOwner,targetOwner:kernel.contentIdentity,offset}
           if(terminalDiagnostics.detail)terminalDiagnostics.record('cache',{requestId:request.id,pageCommitStage:1,
             pageCommitChecks:Number(synchronizedPixels)|Number(damage.translationOnly===true)<<1|Number(!!actualBefore)<<2|
@@ -1144,6 +1293,8 @@ self.onmessage = (e) => {
         rendererCode = backend === 'webgpu' ? 2 : backend === 'webgl2' ? 3 : 0
         try {
           if (tileViewport) {
+            const sourceBand=channel==='canvas'&&!!request.sourceSnapshot&&!!tileOwner&&renderOptions.view.zoom>=8&&renderIntent==='preview'&&renderOptions.rasterProfile==='figmaSubpixel'&&backend==='webgpu'&&!executionPolicy.hdrCompositing&&!request.referenceGpu&&!renderOptions.exportRegion&&!renderOptions.pixelPreview&&!renderOptions.animation&&!request.png&&!request.readback&&!exportFormat
+            const tileSide=(sourceBand?MATERIAL_BAND:TILE_SIDE)+2
             if (
               !Array.isArray(tileViewport) ||
               tileViewport.length > 256 ||
@@ -1152,8 +1303,8 @@ self.onmessage = (e) => {
                   ![t.x, t.y, t.width, t.height].every(Number.isSafeInteger) ||
                   t.width < 1 ||
                   t.height < 1 ||
-                  t.width > TILE_SIDE + 2 ||
-                  t.height > TILE_SIDE + 2 ||
+                  t.width > tileSide ||
+                  t.height > tileSide ||
                   !Number.isFinite(t.zoom) ||
                   t.zoom < 0.001 ||
                   t.zoom > MAX_CANVAS_RASTER_SCALE ||
@@ -1197,22 +1348,22 @@ self.onmessage = (e) => {
               selectLane('canvas')
               if (generation !== previewGenerations.canvas) throw Error('PREVIEW_CANCELLED')
             }
-            if(channel==='canvas'&&request.documentPatch&&!tileViewport.length&&poseSession?.patch)
-              poseSession.document=poseSession.patch.snapshot()
+            const settledPose = poseSession
             if (channel === 'canvas' && request.documentPatch && !tileViewport.length &&
                 renderIntent === 'canvas' && !request.readback && !renderOptions.grid && !renderOptions.checkerboard &&
                 !renderOptions.pixelPreview && allowsResidentSdr(executionPolicy) &&
-                laneState.interactionDocument && poseSession?.input && displayFrame && gpu?.driver.snapshotPresented &&
-                renderOptions.view.zoom === poseSession.scene.view.zoom &&
+                laneState.interactionDocument && settledPose?.input && displayFrame && gpu?.driver.snapshotPresented &&
+                renderOptions.view.zoom === settledPose.scene.view.zoom &&
                 renderOptions.width === Math.ceil(displayFrame.width * displayFrame.dpr) &&
                 renderOptions.height === Math.ceil(displayFrame.height * displayFrame.dpr) &&
-                JSON.parse(poseSession.options).pageId === renderOptions.pageId &&
-                JSON.parse(poseSession.options).rasterProfile === renderOptions.rasterProfile &&
-                canCommitResidentFrame(poseSession.scene, poseSession.document, laneState.interactionDocument, displayFrame, poseSession.input)) {
+                JSON.parse(settledPose.options).pageId === renderOptions.pageId &&
+                JSON.parse(settledPose.options).rasterProfile === renderOptions.rasterProfile &&
+                canCommitResidentFrame(settledPose.scene, () => settledPose.patch?.snapshot() ?? settledPose.document,
+                  laneState.interactionDocument, displayFrame, settledPose.input)) {
               let snapshot: ReturnType<NonNullable<typeof gpu.driver.snapshotPresented>>
               try { snapshot = gpu.driver.snapshotPresented() }
               catch (error) { if (!isDisplayBudgetError(error)) throw error }
-              if (snapshot && canCommitResidentFrame(poseSession.scene, poseSession.document, laneState.interactionDocument, snapshot.frame, poseSession.input)) {
+              if (snapshot && matchesResidentFrame(settledPose.scene, snapshot.frame, settledPose.input)) {
                 const { view, dpr, width, height } = snapshot.frame
                 self.postMessage({ id: request.id, tile: { key: `commit:${laneState.loadedRevision}:${snapshot.gpuTile}`,
                   x: -view.x * dpr, y: -view.y * dpr, width: Math.ceil(width * dpr), height: Math.ceil(height * dpr),
@@ -1223,6 +1374,61 @@ self.onmessage = (e) => {
                 return
               }
               if (snapshot) gpu.driver.releasePresented?.([snapshot.gpuTile])
+            }
+            if (priorRepairOwner && paintDamage && !tileViewport.length && displayFrame && renderIntent==='canvas' &&
+                renderOptions.rasterProfile==='figmaSubpixel' && backend==='webgpu' && allowsResidentSdr(executionPolicy) &&
+                !request.png && !request.readback && !exportFormat && !request.sourceSnapshot && !renderOptions.animation &&
+                !renderOptions.grid && !renderOptions.checkerboard && !renderOptions.exportRegion && !renderOptions.pixelPreview &&
+                !canvasDisplayFilters && !previewDisplayFilters && !canvasMath && !canvasTentRadius &&
+                !canvasImageSource && !canvasMaterialSource && gpu?.driver.beginViewportRepair) {
+              const {width,height,view}=renderOptions, frame=displayFrame, driver=gpu.driver
+              const contract=pixelSourceContract(renderOptions), owner=kernel.contentIdentity
+              const sameView=()=>displayFrame?.view.x===frame.view.x && displayFrame?.view.y===frame.view.y &&
+                displayFrame?.view.zoom===frame.view.zoom && displayFrame?.width===frame.width &&
+                displayFrame?.height===frame.height && displayFrame?.dpr===frame.dpr
+              const region=viewportDamage(paintDamage,view,width,height)
+              if (region && view.zoom===frame.view.zoom*frame.dpr && view.x===frame.view.x*frame.dpr && view.y===frame.view.y*frame.dpr &&
+                  width===frame.width*frame.dpr && height===frame.height*frame.dpr) {
+                let repair:ReturnType<NonNullable<Driver['beginViewportRepair']>>, captured:TileRender|undefined, output:number|undefined
+                let compileMs=0
+                try {
+                  repair=driver.beginViewportRepair!(priorRepairOwner,owner,contract,view,width,height,region)
+                  if(repair){
+                    const pose=localRepairSource(settledPose,laneState.interactionDocument,driver,view,contract,region,owner)
+                    if (pose) output=repair.finish(pose.id,pose)
+                    if (!output) {
+                      const at=performance.now()
+                      const packet=await compilePacket(kernel,JSON.stringify({...renderOptions,captureViewport:region}),packetWait?.controller.signal)
+                      compileMs=performance.now()-at
+                      if(!previewCurrent())throw Error('PREVIEW_CANCELLED')
+                      captured=await renderTiledPreview(kernel,renderOptions,backend,color,settingsJson,Math.max(region.w,region.h),
+                        {x:region.x,y:region.y,width:region.w,height:region.h},{...decodeScenePacket(packet),repairOutput:true},false,undefined,true,
+                        false,false,reportRasterProgress,previewCurrent,hydrateImages,undefined,false,undefined,false,false,undefined,displayBackpressure)
+                      if(!previewCurrent())throw Error('PREVIEW_CANCELLED')
+                      if(captured.gpuTile && gpu?.driver===driver && owner===kernel.contentIdentity && sameView()){
+                        driver.tagExactTile?.(captured.gpuTile,owner,contract,0)
+                        output=repair.finish(captured.gpuTile)
+                      }
+                    }
+                    if(output){
+                      self.postMessage({id:request.id,tile:{key:`repair:${laneState.loadedRevision}:${output}`,x:-view.x,y:-view.y,width,height,
+                        zoom:view.zoom,gutter:0,committedViewport:true,viewportPreview:true,gpuTile:output,backend,description:'exact local repair',cached:false}})
+                      output=undefined // ownership transferred to the surface
+                      self.postMessage({id:request.id,backend,milliseconds:performance.now()-start,compileMs:compileMs+(captured?.compileMs??0),
+                        graphMs:captured?.graphMs??0,finishMs:captured?.finishMs??0,drawCalls:captured?.drawCalls??0,retainedCommit:true})
+                      return
+                    }
+                  }
+                } catch(error) {
+                  if(!isDisplayBudgetError(error)&&!isAnalyticProgramBudget(error)&&!isScenePathBudget(error)&&
+                    !/GPU surface budget exceeded|GPU 表面内存预算超限/.test(String(error)))throw error
+                } finally {
+                  repair?.cancel()
+                  if(output)driver.releasePresented?.([output])
+                  if(captured?.gpuTile)driver.releasePresented?.([captured.gpuTile])
+                  captured?.bitmap?.close()
+                }
+              }
             }
             // A small exact viewport capture can replace dozens of repeated
             // tile graphs after a page translation. It uses the same native
@@ -1272,7 +1478,7 @@ self.onmessage = (e) => {
               renderOptions.pageId,
               renderOptions.rasterProfile,
               renderOptions.interactiveEffects,
-              renderOptions.gpuGaussianRegions,renderOptions.gpuGaussianReduction,renderOptions.gpuSourceFilterFields,sourceDetailDisplay,
+              renderOptions.gpuGaussianRegions,renderOptions.gpuGaussianReduction,renderOptions.gpuSourceFilterFields,renderOptions.gpuDensePaint,sourceDetailDisplay,
               canvasDisplayFilters,
               boundedDisplayLimit,
               canvasMath,
@@ -1293,7 +1499,9 @@ self.onmessage = (e) => {
             // kernel caches the flattened-geometry phase per camera, so the
             // whole-document walk happens once instead of once per tile.
             let prepareViewport = tilePrepareViewport(tileViewport, renderOptions.view, requestedPrepareViewport)
-            const localPrepare=localDisplayPrepareScope(laneState.loadedNodeCount,renderOptions.view.zoom,displayBackpressure)
+            const sharedSourcePrepare=renderOptions.gpuDensePaint===true&&laneState.loadedNodeCount<=32768&&
+              !!requestedPrepareViewport&&requestedPrepareViewport.w*requestedPrepareViewport.h<=8_388_608
+            const localPrepare=!sharedSourcePrepare&&localDisplayPrepareScope(laneState.loadedNodeCount,renderOptions.view.zoom,displayBackpressure)
             const prepareForTile=(tile:RasterTile)=>tileLocalPrepareViewport(tile,renderOptions.view,prepareViewport,localPrepare)
             let hits = 0, certifiedHits = 0,
               rendered = 0,
@@ -1340,7 +1548,7 @@ self.onmessage = (e) => {
               const at = performance.now()
               const compile = async () => {
                 const options = {...renderOptions,view:{...renderOptions.view,zoom:tile.zoom},width:tile.width,height:tile.height,
-                  gpuViewport:{x:tile.x+Math.floor(renderOptions.view.x),y:tile.y+Math.floor(renderOptions.view.y),w:tile.width,h:tile.height},
+                  [sourceBand&&Math.max(tile.width,tile.height)>TILE_SIDE+2?'captureViewport':'gpuViewport']:{x:tile.x+Math.floor(renderOptions.view.x),y:tile.y+Math.floor(renderOptions.view.y),w:tile.width,h:tile.height},
                   ...(prepareViewport ? {prepareViewport:prepareForTile(tile)} : {})}
                 const signal=packetWait?.controller.signal
                 const ordinary=()=>compilePacket(kernel,JSON.stringify(options),signal)
@@ -1479,12 +1687,16 @@ self.onmessage = (e) => {
                   panContinuation&&!!displayFrame&&tile.zoom===displayFrame.view.zoom*displayFrame.dpr,
                   () => displayFrame, () => displayCoverageVersion,()=>{cameraFallback=true})
                 result = await renderTiledPreview(kernel, tileOptions, backend, color,
-                  settingsJson, TILE_SIDE + 2, crop, preparedScene,
+                  settingsJson, tileSide, crop, preparedScene,
                   import.meta.env.DEV && request.debug?.forceFirstTileBudgetFailure === true,
                   prepareForTile(tile), !request.readback, canvasDisplayFilters, canvasMath, reportRasterProgress,
                   () => !packetWait?.controller.signal.aborted && generation === previewGenerations[channel] &&
                     tileCurrent(), hydrateImages, filterBatchLease, canvasImageSource, boundedDisplayLimit, canvasMaterialSource, canvasTentRadius,
                     draws=>reportWorkProgress(2,draws),displayBackpressure,sourceDetailDisplay && tile.zoom>=2,sourceDetailDisplay)
+                if (result.gpuTile && preparedScene && renderIntent==='canvas' && channel==='canvas' && !request.sourceSnapshot &&
+                    !request.png && !request.readback && !exportFormat && !canvasDisplayFilters && !canvasMath && !canvasTentRadius &&
+                    !canvasImageSource && !canvasMaterialSource && !renderOptions.animation && !renderOptions.grid && !renderOptions.checkerboard && !renderOptions.pixelPreview)
+                  gpu?.driver.tagExactTile?.(result.gpuTile,kernel.contentIdentity,pixelSourceContract(tileOptions),tile.gutter??1)
                 undelivered = result
                 if ((packetWait?.controller.signal.aborted || generation !== previewGenerations[channel])) throw new Error('PREVIEW_CANCELLED')
                 // Only the exact scene actually rendered once certifies these pixels.
@@ -1493,9 +1705,7 @@ self.onmessage = (e) => {
                   cacheOwner.set(cacheKey, witness(), {...result,tileCost:undefined,worldBounds:[
                     (crop.x-renderOptions.view.x-2)/tile.zoom,(crop.y-renderOptions.view.y-2)/tile.zoom,
                     (tile.width+4)/tile.zoom,(tile.height+4)/tile.zoom,
-                  ]},
-                    result.buffer.byteLength + (result.linearBuffer?.byteLength || 0) +
-                      JSON.stringify({ ...result, tileCost:undefined, buffer: undefined, linearBuffer: undefined }).length * 2, cacheTicket)
+                  ]}, exactTilePayloadBytes(result), cacheTicket)
                 rendered++
                 tileLeaves += result.previewTiles
                 tileBitmapLeaves += result.bitmapLeaves
@@ -1729,7 +1939,9 @@ self.onmessage = (e) => {
           scene!.interactionRetained = retainedScene
           scene!.nativeInteraction = retainedScene && interactionNative === true
           scene!.gestureSoftEffects = import.meta.env.VITE_DESIGN_GESTURE_SOFT_EFFECTS !== '0' &&
-            scene!.nativeInteraction && channel === 'interaction' && _interactionBranch === 3 &&
+            scene!.nativeInteraction && !(interactionLocalFootprint && interactionSelection?.length===1 &&
+              isInnerShadowFill(laneState.interactionDocument?.nodes[interactionSelection[0]])) &&
+            channel === 'interaction' && _interactionBranch === 3 &&
             livePreview === true && renderIntent === 'preview' && backend === 'webgpu' &&
             !executionPolicy.hdrCompositing && !request.readback && !request.png && !exportFormat &&
             !renderOptions.exportRegion && !renderOptions.pixelPreview && !scene!.softwareRaster &&
@@ -1799,6 +2011,10 @@ self.onmessage = (e) => {
           await hydrateImages(scene!)
           prepareDisplay(!request.png && !request.readback)
           const previewReadback = !!(request.png || request.readback || (!!color && !gpu.driver.hdr && !((retainInteraction || displayCanvas) && backend === 'webgpu')))
+          // Bind the canonical source before allocating or submitting the gesture texture.
+          const canvasOwner=retainInteraction && scene!.interactionLocalFootprint
+            ? (await lanes.get('canvas').enginePromise)?.contentIdentity : undefined
+          if (retainInteraction && !previewCurrent()) throw Error('PREVIEW_CANCELLED')
           const t = performance.now(),
             result = await failureAttempt(12, () => gpu!.render(scene!, previewReadback, true, (livePreview || tileViewport) ? previewCurrent : undefined,
               (livePreview||tileViewport)?draws=>reportWorkProgress(2,draws):undefined,displayBackpressure))
@@ -1849,8 +2065,8 @@ self.onmessage = (e) => {
               if(poseSession){poseSession.controller.abort();frozenOverlayPoses.freeze(gpu.driver,poseSession.slot,poseSession.scene)}
               const softEffectPreview = scene!.gestureSoftEffects
               scene!.gestureSoftEffects = result.gestureBlurPixels > 0
-              poseSession={controller:new AbortController(),slot:result.gpuTile,document:laneState.interactionDocument,baseDocument:laneState.interactionDocument,origins,
-              softEffectPreview,scene:scene!,native:interactionNative===true,affine:interactionAffine===true,window:interactionWindow,fixedWindow:interactionWindowFixed===true,options,stopped:false,
+              poseSession={canvasOwner,controller:new AbortController(),slot:result.gpuTile,document:laneState.interactionDocument,baseDocument:laneState.interactionDocument,origins,
+              baseFill:interactionBaseFill,softEffectPreview,scene:scene!,native:interactionNative===true,affine:interactionAffine===true,window:interactionWindow,fixedWindow:interactionWindowFixed===true,options,stopped:false,
               patch:interactionNative||import.meta.env.VITE_DESIGN_POSE_PATCHES!=='0'?TranslationPatchSession.create(scene!,laneState.interactionDocument,interactionSelection||[],interactionNative===true)||undefined:undefined}
             }
           }
@@ -1958,6 +2174,8 @@ self.onmessage = (e) => {
             throw renderErrorWithBudget(error, `PREVIEW_BUDGET: ${String(error)}`)
           }
           if (tileViewport) {
+            const sourceBand=channel==='canvas'&&!!request.sourceSnapshot&&!!tileOwner&&renderOptions.view.zoom>=8&&renderIntent==='preview'&&renderOptions.rasterProfile==='figmaSubpixel'&&backend==='webgpu'&&!executionPolicy.hdrCompositing&&!request.referenceGpu&&!renderOptions.exportRegion&&!renderOptions.pixelPreview&&!renderOptions.animation&&!request.png&&!request.readback&&!exportFormat
+            const tileSide=(sourceBand?MATERIAL_BAND:TILE_SIDE)+2
             if (
               backend === 'webgpu' &&
               preference === 'auto' &&
@@ -2267,7 +2485,12 @@ async function renderTiledPreview(
     }
   }
   const bitmapAssembly = presentOnly && backend === 'webgpu' && !managedOutput && !options.pixelPreview && !options.transparent
-  let skipFailedRegion = /GPU surface budget exceeded|GPU 表面内存预算超限|Invalid GPU viewport/.test(presentationFailure)
+  // A material band is admitted as a capture, but its recovery compiler
+  // takes ordinary GPU tile viewports. Bound both axes before subdivision.
+  const recoverySide = sourceImageDisplay ? Math.min(tileSide, TILE_SIDE + 2) : tileSide
+  const width = crop?.width ?? options.width, height = crop?.height ?? options.height
+  let skipFailedRegion = (recoverySide === tileSide || width <= recoverySide && height <= recoverySide) &&
+    /GPU surface budget exceeded|GPU 表面内存预算超限|Invalid GPU viewport/.test(presentationFailure)
   const rasterize = async (tile: import('./preview-tiles').PreviewTile) => {
       let bitmap: ImageBitmap | undefined
       try {
@@ -2435,20 +2658,19 @@ async function renderTiledPreview(
   let assembled: Awaited<ReturnType<typeof renderPreviewTiles>> | undefined
   let bitmapLeaves = 0
   if (!presented && !residentTile) {
-    const width = crop?.width ?? options.width, height = crop?.height ?? options.height
     if (bitmapAssembly) {
       const result = await renderBitmapPreviewTiles(width, height, async tile => {
         const pixels = await rasterize(tile)
         if (ArrayBuffer.isView(pixels)) throw new Error('Expected GPU display tile')
         return pixels
-      }, tileSide, admission, checkpoint)
+      }, recoverySide, admission, checkpoint)
       presented = result.bitmap
       bitmapLeaves = result.tiles
     } else assembled = await renderPreviewTiles(width, height, async tile => {
       const pixels = await rasterize(tile)
       if (!ArrayBuffer.isView(pixels)) { pixels.close(); throw new Error('Expected exact tile readback') }
       return pixels
-    }, tileSide, admission, checkpoint)
+    }, recoverySide, admission, checkpoint)
   }
   if (presented || residentTile)
     return {

@@ -11,7 +11,7 @@ import type {ResidentFrame} from './gpu/resident-presenter'
 import type {RasterTile} from './tile-cache'
 
 type Job={options:KernelOptions;signal?:AbortSignal;receive:(tile:TileResult)=>void;finish:()=>void;active:boolean}
-const state=vi.hoisted(()=>({jobs:[] as Job[],frames:[] as ResidentFrame[],released:[] as number[],active:0,maxActive:0,disposed:0,phaseExact:true,motionMultiplier:1,prefetchEnabled:false,preview:false}))
+const state=vi.hoisted(()=>({jobs:[] as Job[],frames:[] as ResidentFrame[],released:[] as number[],active:0,maxActive:0,disposed:0,phaseExact:true,motionMultiplier:1,prefetchEnabled:false,preview:false,deferAck:false,acks:[] as (()=>void)[],notify:undefined as undefined|((stats:Record<string,unknown>)=>void)}))
 vi.mock('./client',()=>({backendPreference:()=> 'webgpu',renderExecutionPolicy:{desktopFullMath:true,desktopDisplay:true,cpuOnly:false,hdrCompositing:false},KernelClient:class{
  onPresentation?: (value:Record<string,unknown>)=>void
  renderSource(_source:unknown,options:KernelOptions,receive:(tile:TileResult)=>void,signal?:AbortSignal){
@@ -24,8 +24,12 @@ vi.mock('./client',()=>({backendPreference:()=> 'webgpu',renderExecutionPolicy:{
    signal?.addEventListener('abort',()=>{done();reject(Error('PREVIEW_CANCELLED'))},{once:true})
   })
  }
- attachPresentation(){}
- present(frame:ResidentFrame){state.frames.push(frame);this.onPresentation?.({presented:{presentationId:frame.presentationId,view:frame.view,width:frame.width,height:frame.height,dpr:frame.dpr,preview:state.preview,ids:frame.items.map(item=>item.tile.gpuTile)}})}
+ attachPresentation(){state.notify=stats=>this.onPresentation?.(stats)}
+ present(frame:ResidentFrame){
+  state.frames.push(frame)
+  const ack=()=>this.onPresentation?.({presented:{presentationId:frame.presentationId,view:frame.view,width:frame.width,height:frame.height,dpr:frame.dpr,preview:state.preview,ids:frame.items.map(item=>item.tile.gpuTile)}})
+  if(state.deferAck)state.acks.push(ack);else ack()
+ }
  releasePresented(ids:number[]){state.released.push(...ids)}
  dispose(){state.disposed++}
 }}))
@@ -48,36 +52,42 @@ beforeEach(()=>{
  vi.stubGlobal('requestAnimationFrame',(fn:FrameRequestCallback)=>{frames.set(++sequence,fn);return sequence})
  vi.stubGlobal('cancelAnimationFrame',(id:number)=>frames.delete(id))
  Object.defineProperty(dom.window.HTMLCanvasElement.prototype,'transferControlToOffscreen',{value:()=>({})})
- Object.assign(state,{jobs:[],frames:[],released:[],active:0,maxActive:0,disposed:0,phaseExact:true,motionMultiplier:1,prefetchEnabled:false,preview:false})
+ Object.assign(state,{jobs:[],frames:[],released:[],active:0,maxActive:0,disposed:0,phaseExact:true,motionMultiplier:1,prefetchEnabled:false,preview:false,deferAck:false,acks:[] as (()=>void)[],notify:undefined as undefined|((stats:Record<string,unknown>)=>void)})
  root=createRoot(document.getElementById('root')!)
 })
 afterEach(async()=>{await act(async()=>{root.unmount();await pause()});dom.window.close();vi.unstubAllGlobals();expect(state.active).toBe(0)})
 
-test('two-tile batches remain single-owner and the first tile presents before the second finishes',async()=>{
+test('the visible viewport presents in one frame as soon as its last tile arrives',async()=>{
  await draw();const first=state.jobs[0]
  expect(first.options.tileViewport).toHaveLength(2)
  await act(async()=>{deliver(first,0,11);paint()})
- expect(state.frames.at(-1)?.items.map(item=>item.tile.gpuTile)).toEqual([11])
+ expect(state.frames).toHaveLength(0)
  expect(statuses.some(value=>value.phase==='ready')).toBe(false)
  expect(state.jobs).toHaveLength(1)
  await act(async()=>{deliver(first,1,12);first.finish();await pause()})
  const second=state.jobs[1];expect(second.options.tileViewport).toHaveLength(2)
  expect(second.options.tileViewport?.map(tile=>tile.key)).toEqual(['1:2','1:3'])
- await act(async()=>{deliver(second,0,13);deliver(second,1,14);second.finish();await pause();paint()})
+ await act(async()=>{deliver(second,0,13);paint()})
+ expect(state.frames).toHaveLength(0)
+ await act(async()=>{deliver(second,1,14)})
+ expect(state.frames).toHaveLength(1)
+ await act(async()=>{second.finish();await pause();paint()})
+ expect(state.frames).toHaveLength(1)
  expect(state.maxActive).toBe(1)
  expect(state.frames.at(-1)?.items.map(item=>item.tile.gpuTile).sort()).toEqual([11,12,13,14])
  expect(statuses.some(value=>value.phase==='ready'&&value.done===4&&value.total===4)).toBe(true)
 })
 
-test('actual placeholder ACK cannot certify an exact plan, and a cold camera still presents',async()=>{
+test('a placeholder ACK cannot certify a viewport or put a partial replacement on screen',async()=>{
  state.preview=true
  await draw();const first=state.jobs[0]
  await act(async()=>{deliver(first,0,211);deliver(first,1,212);first.finish();await pause()})
  const second=state.jobs[1]
  await act(async()=>{deliver(second,0,213);deliver(second,1,214);second.finish();await pause();paint()})
  expect(statuses.some(value=>value.phase==='ready')).toBe(false)
- await draw({x:4000,y:0,zoom:1});await act(async()=>paint())
- expect(state.frames.at(-1)).toMatchObject({view:{x:4000},items:[],cameraPreview:{anchor:expect.any(Number)}})
+ const submissions=state.frames.length
+ await draw({x:0,y:0,zoom:4});await act(async()=>paint())
+ expect(state.frames).toHaveLength(submissions)
  expect(statuses.some(value=>value.phase==='ready')).toBe(false)
  state.preview=false
  await draw();await act(async()=>paint())
@@ -158,7 +168,7 @@ test('a duplicate delivery cannot release the accepted texture or count as the m
  await draw();const job=state.jobs[0]
  await act(async()=>{deliver(job,0,51);deliver(job,0,51);deliver(job,0,52);paint()})
  expect(state.released).toEqual([52])
- expect(state.frames.at(-1)?.items.map(item=>item.tile.gpuTile)).toEqual([51])
+ expect(state.frames).toHaveLength(0)
  await act(async()=>{job.finish();await pause()})
  expect(statuses.at(-1)?.phase).toBe('error')
 })
@@ -174,14 +184,14 @@ test('replacing the source cancels its batch and isolates late results from the 
 })
 
 
-test('strict target: an exact native cache return bypasses unused motion headroom',async()=>{
+test('returning to an exact cached viewport cancels an unfinished zoom-out tier',async()=>{
  await draw();const a=state.jobs[0]
  await act(async()=>{deliver(a,0,201);deliver(a,1,202);a.finish();await pause()})
  const b=state.jobs[1]
  await act(async()=>{deliver(b,0,203);deliver(b,1,204);b.finish();await pause();paint()})
  const before=statuses.length;state.motionMultiplier=1.125
- await draw({x:0,y:0,zoom:1.5});const obsolete=state.jobs.at(-1)!
- expect(obsolete.options.view.zoom).toBe(1.6875)
+ await draw({x:0,y:0,zoom:.75});const obsolete=state.jobs.at(-1)!
+ expect(obsolete.options.view.zoom).toBe(.84375)
  await draw({x:0,y:0,zoom:1})
  await act(async()=>{paint();await pause()})
  expect(obsolete.signal?.aborted).toBe(true)
@@ -190,30 +200,31 @@ test('strict target: an exact native cache return bypasses unused motion headroo
  expect(state.frames.at(-1)?.allowEmpty).not.toBe(true)
 })
 
-test('strict target: quiet input cancels compatible headroom that cannot certify the native phase',async()=>{
+test('quiet input cancels an unfinished zoom-out tier that cannot certify the native phase',async()=>{
  await draw();const a=state.jobs[0]
  await act(async()=>{deliver(a,0,211);deliver(a,1,212);a.finish();await pause()})
  const b=state.jobs[1]
  await act(async()=>{deliver(b,0,213);deliver(b,1,214);b.finish();await pause();paint()})
  state.motionMultiplier=1.125
- await draw({x:0,y:0,zoom:1.25});const obsolete=state.jobs.at(-1)!
- expect(obsolete.options.view.zoom).toBe(1.40625)
+ await draw({x:0,y:0,zoom:.75});const obsolete=state.jobs.at(-1)!
+ expect(obsolete.options.view.zoom).toBe(.84375)
  // Controlled transport only; real pixel latency is measured by the replay.
  await act(async()=>{await new Promise(r=>setTimeout(r,60));paint()})
  expect(obsolete.signal?.aborted).toBe(true)
- expect(state.jobs.at(-1)?.options.view.zoom).toBe(1.25)
+ expect(state.jobs.at(-1)?.options.view.zoom).toBe(.75)
  expect(state.maxActive).toBe(1)
  expect(statuses.some(s=>s.phase==='error')).toBe(false)
 })
 
 test('optional rim begins only after visible presentation and is cancelled for required new density',async()=>{
- state.prefetchEnabled=true
+ state.prefetchEnabled=true;state.deferAck=true
  await draw();const a=state.jobs[0]
  await act(async()=>{deliver(a,0,301);deliver(a,1,302);a.finish();await pause()})
  const b=state.jobs[1]
  await act(async()=>{deliver(b,0,303);deliver(b,1,304);b.finish();await pause()})
  expect(state.jobs).toHaveLength(2)
- await act(async()=>{paint();await pause()})
+ expect(state.acks).toHaveLength(1)
+ await act(async()=>{state.acks.shift()!();paint();await pause()})
  const rim=state.jobs[2];expect(rim.options.tileViewport?.every(t=>t.prefetch)).toBe(true)
  expect(statuses.some(s=>s.phase==='ready'&&s.total===4)).toBe(true)
  expect(rim.options.tilePrepareViewport?.w).toBe(514)
@@ -221,4 +232,35 @@ test('optional rim begins only after visible presentation and is cancelled for r
  expect(rim.signal?.aborted).toBe(true)
  expect(state.jobs.at(-1)?.options.tileViewport?.some(t=>t.prefetch)).toBe(false)
  expect(state.maxActive).toBe(1)
+})
+
+
+test('only a coverage refusal for the current visible group can retry its handoff',async()=>{
+ state.deferAck=true
+ await draw();const a=state.jobs[0]
+ await act(async()=>{deliver(a,0,401);deliver(a,1,402);a.finish();await pause()})
+ const b=state.jobs[1]
+ await act(async()=>{deliver(b,0,403);deliver(b,1,404);b.finish();await pause();paint()})
+ expect(state.frames).toHaveLength(1)
+ const first=state.frames[0].presentationId
+ await act(async()=>{state.notify!({coverageDeferredPresentationId:'other-owner:1'});paint()})
+ expect(state.frames).toHaveLength(1)
+ await act(async()=>{state.notify!({coverageDeferredPresentationId:first,missingTextureCount:0});paint()})
+ expect(state.frames).toHaveLength(2)
+ expect(state.frames[1].presentationId).not.toBe(first)
+ await act(async()=>state.acks.shift()!())
+ expect(statuses.some(status=>status.phase==='ready')).toBe(false)
+ await act(async()=>state.acks.shift()!())
+ expect(statuses.at(-1)).toMatchObject({phase:'ready',done:4,total:4})
+})
+
+test('a focus scope cannot acknowledge the rest of the viewport as ready',async()=>{
+ await draw({x:0,y:0,zoom:1},{...source,viewportSubset:true,materialKeys:['a','b']})
+ const first=state.jobs[0]
+ await act(async()=>{deliver(first,0,311);deliver(first,1,312);first.finish();await pause()})
+ const next=state.jobs[1]
+ await act(async()=>{deliver(next,0,313);deliver(next,1,314);next.finish();await pause();paint()})
+ expect(state.frames.length).toBeGreaterThan(0)
+ expect(statuses.some(status=>status.phase==='ready')).toBe(false)
+ expect(document.querySelector('.native-source-content')?.getAttribute('data-source-ready-camera')).toBeNull()
 })

@@ -49,7 +49,11 @@ impl<'a> ser::Serializer for &'a mut Writer {
     fn serialize_f32(self,v:f32)->Result<(),Error>{
         // Preserve the old serde_json f32 spelling's binary64 interpretation.
         // GPU program words never enter this path and remain bit-for-bit f32.
-        let n=if v.is_finite(){serde_json::to_string(&v).map_err(ser::Error::custom)?.parse::<f64>().map_err(ser::Error::custom)?}else{f64::NAN};
+        let n = if !v.is_finite() || v == 0.0 || v.abs() == 1.0 {
+            f64::from(v)
+        } else {
+            zmij::Buffer::new().format_finite(v).parse::<f64>().map_err(ser::Error::custom)?
+        };
         self.number(n);Ok(())
     }
     fn serialize_f64(self,v:f64)->Result<(),Error>{self.number(v);Ok(())}
@@ -95,3 +99,28 @@ macro_rules! structure {($trait:ident)=>{impl $trait for Compound<'_>{type Ok=()
     fn serialize_field<T:Serialize+?Sized>(&mut self,k:&'static str,v:&T)->Result<(),Error>{self.writer.text(k)?;if self.writer.zero_offsets&&k=="first"{self.writer.number(0.);Ok(())}else{v.serialize(&mut *self.writer)}}
     fn end(self)->Result<(),Error>{self.finish()}}}}
 structure!(SerializeStruct);structure!(SerializeStructVariant);
+
+#[cfg(test)]
+#[test]
+fn metadata_f32_matches_the_json_number_seen_by_javascript() {
+    let mut state = 0x0310_2026u32;
+    let random = (0..10_000).map(|_| {
+        state ^= state << 13;
+        state ^= state >> 17;
+        state ^= state << 5;
+        state
+    });
+    let edges = [0, 0x80000000, 1, 0x007fffff, 0x00800000, 0x3dcccccd, 0x3f800000,
+        0xbf800000, 0x7f7fffff, 0xff7fffff, 0x7f800000, 0xff800000, 0x7fc00001];
+    for bits in edges.into_iter().chain(random) {
+        let value = f32::from_bits(bits);
+        let bytes = encode(&value).unwrap();
+        if value.is_finite() {
+            let reference = serde_json::to_string(&value).unwrap().parse::<f64>().unwrap();
+            assert_eq!(bytes[0], 4);
+            assert_eq!(bytes[1..], reference.to_le_bytes(), "f32 bits {bits:08x}");
+        } else {
+            assert_eq!(bytes, [1]);
+        }
+    }
+}

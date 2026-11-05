@@ -12,6 +12,8 @@ use serde::Serialize;
 mod suffix;
 mod fragments;
 mod source_filter;
+mod dense_paint;
+mod dense_coverage;
 mod source_occlusion;
 #[cfg(test)] mod page_dependency_tests;
 pub mod scene_plan;
@@ -530,6 +532,8 @@ fn reduced_gaussian_source(n:&Node,matrix:Transform,plan:&GaussianRegion,path:&c
 #[serde(rename_all = "camelCase")]
 pub struct GpuNode {
     #[serde(skip_serializing_if="Option::is_none")]
+    pub optical_prefix_next: Option<String>,
+    #[serde(skip_serializing_if="Option::is_none")]
     pub gaussian_region:Option<GaussianRegion>,
     #[serde(skip_serializing_if="Option::is_none")]
     pub source_filter_field:Option<source_filter::SourceFilter>,
@@ -584,6 +588,8 @@ pub struct GpuNode {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GpuScene {
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub dense_paint:Option<dense_paint::DensePaint>,
     /// Complete page support, in device coordinates; only for uniform screen backgrounds.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub page_paint_rects: Option<Vec<[f64;4]>>,
@@ -974,7 +980,12 @@ fn foreground_region_supported(
         (!(matches!(e.kind.as_str(), "blur" | "shadow" | "inner-shadow") ||
             // Colour controls transform just this foreground texel. They do
             // not make a neighbouring layer's shadow a full-scene capture.
-            soft_fields && e.kind=="color-controls" ||
+            soft_fields && (e.kind=="color-controls" ||
+                // The motion kernel reads only this foreground. effect_outset
+                // includes its entire three-sigma support and bilinear neighbours.
+                e.kind=="motion-blur" && e.gradient_blur.is_none() && n.render_children().is_empty() &&
+                [region.x,region.y,region.right(),region.bottom()].iter().all(|v|
+                    i64::from(*v).abs()+i64::from(halo(n,p.matrix))+2 <= 1_048_576)) ||
             e.kind=="gaussian-blur" && gaussian_supported) || n.passes_backdrop())) {
         return false;
     }
@@ -1805,7 +1816,7 @@ impl Compiler<'_> {
             .control_bounds(matrix)
             .union(stroke_path.control_bounds(matrix));
         let own = rect;
-        let children=if source_filter_field.is_some(){&[][..]}else{n.render_children()};
+        let children=if source_filter_field.as_ref().is_some_and(|f|f.gaussian){&[][..]}else{n.render_children()};
         let start=if self.source_filter_fields && self.stages.is_none() && !geometric {
             source_region.map_or(0,|r|source_occlusion::start(self.doc,&prepared_owner,children,r))
         }else{0};
@@ -1890,12 +1901,13 @@ impl Compiler<'_> {
                 align: s.align.clone(),
             });
         }
-        let packet_children=if source_filter_field.as_ref().is_some_and(|f|!f.group_roots.is_empty()){vec![]}else{n.render_children().to_vec()};
+        let packet_children=if source_filter_field.as_ref().is_some_and(|f|f.gaussian&&!f.group_roots.is_empty()){vec![]}else{n.render_children().to_vec()};
         let opaque_coverage = opaque_interior(n, matrix, extent);
         self.compiled_order.push(id.to_owned());
         self.nodes.insert(
             id.to_owned(),
             GpuNode {
+                optical_prefix_next: None,
                 source_filter_field,
                 gaussian_region:reduced.map(|(plan,_)|plan).or(full_gaussian),
                 opaque_coverage,
@@ -2607,14 +2619,43 @@ impl Engine {
             && options.raster_profile == crate::fidelity::RasterProfile::FigmaSubpixel && root_input_box.is_none() {
             suffix::annotate(&mut nodes, &page.children, viewport, extent);
         }
+        let coherent_samples=crate::fidelity::coherent_samples(doc, options);
         if options.raster_profile != crate::fidelity::RasterProfile::Analytic {
+            let mut has_glass=false;
             for n in nodes.values_mut() {
+                has_glass |= n.glass_shape.is_some() && n.effects.iter().any(|fx|fx.visible && fx.glass.is_some());
                 n.fill.analytic_rect = None;
                 n.fill.sample_count = Some(4);
                 for path in n.strokes.iter_mut().map(|s| &mut s.path).chain(
                     n.source_filter_field.iter_mut().flat_map(|f| f.channels_mut().map(|m| &mut m.path))) {
                     path.analytic_rect = None;
                     path.sample_count = Some(4);
+                }
+            }
+            // Apply this contextual omission after restoring any immutable
+            // fragments. Moving the foreground lens must restore the rear one.
+            if coherent_samples && has_glass {
+                let mut pairs = Vec::new();
+                let lists=std::iter::once(&page.children).chain(nodes.keys().filter_map(|id|doc.nodes.get(id)).map(|n|&n.children));
+                for siblings in lists {
+                    for pair in siblings.windows(2) {
+                        let Some(lower)=nodes.get(&pair[0]) else {continue};
+                        let Some(upper)=nodes.get(&pair[1]) else {continue};
+                        if lower.rect.intersect(upper.rect).empty() || crate::scene::selected_backdrop(&upper.effects).is_none() {continue;}
+                        let n=&doc.nodes[&pair[0]];
+                        if let Some(front)=crate::optics::next_glass_consumer(doc,n,Some(&pair[1])) {
+                            pairs.push((pair[0].clone(),pair[1].clone(),crate::optics::same_glass_coverage(n,front)));
+                        }
+                    }
+                }
+                for (id,next,concealed) in pairs {
+                    let n=nodes.get_mut(&id).expect("compiled optical leaf");
+                    if concealed {
+                        n.effects.retain(|fx|fx.kind!="glass" || !fx.visible);
+                        n.capture_replay=None;
+                    }
+                    n.optical_prefix_next=Some(next.clone());
+                    if let Some(front)=nodes.get_mut(&next) {front.capture_replay=None;}
                 }
             }
         }
@@ -2647,6 +2688,7 @@ impl Engine {
             }
         }
         Ok(GpuScene {
+            dense_paint:None,
             page_paint_rects: None,
             software_raster: options.raster_profile.is_software() && doc.color_management.is_none(),
             output: None,
@@ -2657,7 +2699,7 @@ impl Engine {
             colors,
             backdrop_samples: options.raster_profile != crate::fidelity::RasterProfile::Analytic
                 && self.source_compile_context.as_ref().map_or_else(||crate::fidelity::has_backdrop(doc, options),|c|c.backdrop),
-            coherent_samples: crate::fidelity::coherent_samples(doc, options),
+            coherent_samples,
             integrated_blur: doc.color_management.is_some()
                 || options.raster_profile != crate::fidelity::RasterProfile::Analytic,
             curves: compiler.curves,
@@ -3754,6 +3796,28 @@ mod page_predicate_cache_tests {
         assert_eq!(scene.nodes["second"].fills[0].color,"color(srgb 1 0 0.125 / 0.53)");
         assert!(scene.colors.contains_key("color(srgb 1 0 0.125 / 0.53)"));
         assert_eq!(scene.nodes["second"].fill.sample_count,Some(4));
+    }
+    #[test]
+    fn a_group_shadow_samples_the_small_silhouette_and_draws_its_native_child() {
+        let mut doc=document();
+        let mut group=doc.nodes["ellipse"].clone();
+        group.id="shadow-group".into();group.kind="group".into();group.fills.clear();
+        group.children=vec!["ellipse".into()];group.effects[0].kind="shadow".into();group.effects[0].radius=5.;
+        group.effects[0].x=4.;
+        let child=doc.nodes.get_mut("ellipse").unwrap();child.effects.clear();child.fills[0].opacity=0.6;
+        doc.pages[0].children=vec![group.id.clone()];doc.nodes.insert(group.id.clone(),group);
+        let mut engine=Engine::new();engine.load_document(&serde_json::to_string(&doc).unwrap()).unwrap();
+        let req=json!({"pageId":"p","width":514,"height":514,"view":{"x":-15000.,"y":-200.,"zoom":64.},
+            "rasterProfile":"figmaSubpixel","gpuViewport":{"x":0,"y":0,"w":514,"h":514},
+            "gpuGaussianRegions":true,"gpuSourceFilterFields":true});
+        let scene=engine.compile_gpu_request(&req.to_string()).unwrap();let parent=&scene.nodes["shadow-group"];
+        let field=parent.source_filter_field.as_ref().unwrap();
+        assert!(!field.gaussian && field.factor>1 && field.sharp_halo==0);
+        assert_eq!(parent.children, ["ellipse"]);
+        assert_eq!(scene.nodes["ellipse"].matrix.max_scale(),64.);
+        assert_eq!(field.group_roots.len(),1);
+        assert_eq!(scene.nodes[&field.group_roots[0]].matrix.max_scale(),64./f64::from(field.factor));
+        assert_eq!(engine.doc.as_ref().unwrap().nodes.len(),2);
     }
     #[test]
     fn pointwise_colour_controls_do_not_widen_a_siblings_source_shadow() {

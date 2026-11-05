@@ -718,12 +718,26 @@ fn opticalRayChannelAlpha(p:vec2<f32>,delta:vec2<f32>,factor:f32,channel:u32)->v
  let base:vec2<f32>=p+floor(offset);let k:vec2<f32>=offset-floor(offset);
  return bsBilinearChannelAlpha(at(sourceA,base,u(1)),at(sourceA,base+vec2<f32>(1,0),u(1)),at(sourceA,base+vec2<f32>(0,1),u(1)),at(sourceA,base+vec2<f32>(1,1),u(1)),k,channel,u32(u(63).w),u32(u(63).z));
 }
+fn glassFieldAxis(index:i32, fold:vec4<f32>)->i32{
+ let bounds=vec4<i32>(fold);
+ if(index<bounds.x){return index;}
+ if(index<bounds.y){return bounds.x;}
+ if(index<bounds.z){return bounds.x+1;}
+ return index-bounds.w;
+}
 fn analyticGlass(p:vec2<f32>)->vec4<f32>{
  // Explicit caller contract: immediate same-pixel mode-3 masked composition.
  // Its zero-alpha source returns the destination before source RGB is used.
  // Do not apply to arbitrary unmasked or masked optical outputs.
  if(!BYTE_SURFACE && u(10).y>0.5 && at(sourceC,p,u(3)).a==0.){return vec4<f32>(0);}
- var field:vec4<f32>=at(sourceB,p,u(2));if(!BYTE_SURFACE&&u(12).x==2.){field=u(13);}let dispersion:f32=u(10).x;
+ var field=vec4<f32>(0);
+ if(!BYTE_SURFACE&&u(12).x==3.){
+  let q=vec2<i32>(floor(p-u(2).xy));
+  if(all(q>=vec2<i32>(0))&&all(q<vec2<i32>(u(2).zw))){
+   field=textureLoad(sourceB,vec2<i32>(glassFieldAxis(q.x,u(13)),glassFieldAxis(q.y,u(14))),0);
+  }
+ }else if(!BYTE_SURFACE&&u(12).x==2.){field=u(13);}else{field=at(sourceB,p,u(2));}
+ let dispersion:f32=u(10).x;
  let capturedSpectrum:bool=BYTE_SURFACE&&u(12).x>0.5;
  // Flat interior: finite nonnegative ray factors all multiply the exact
  // zero displacement to the same offset. Keep every weighted accumulation.

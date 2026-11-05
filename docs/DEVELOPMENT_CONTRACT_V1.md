@@ -21,6 +21,33 @@ The [2026-10-29 four-attachment coverage candidate](../testing/verification-gpu-
 - Keep local-first SQLite/Tokio and browser IndexedDB adapters. No new cloud accounts, collaboration service, arbitrary filesystem/network operations, or self-built AI workflow/model orchestrator. A client may inspect → edit → inspect using the published bounded operations; the server executes operations only.
 - There is no obligation to preserve obsolete, unreleased application implementations. This does not license dropping current authored data, bypassing validation, or conflating independent version axes: app semver, FD binary format (currently 2), document schema (currently 1–20), automation capabilities (currently 1), FD extension contract (1), storage schema and editor/session/storage revisions.
 
+## AI-native production canvas direction (2026-11-03)
+
+The long-term ceiling is an AI-native production canvas: people and agents turn ideas into editable, executable, verifiable and exportable products. AI generates structured candidates; the canvas owns structure, preview, validation, editing and delivery. This section is product direction, not a claim that these capabilities have shipped. Existing rendering correctness and interaction gates remain the first priority and must not be deferred for these features.
+
+Product sequence:
+
+1. Prove one vertical Code Layer slice for a real frontend component.
+2. Add design-system constraints, review and governance around that working slice.
+3. Add other materials only after their independent runtime and export loops work. Do not attempt full 3ds Max or Final Cut clones.
+
+Code Layer contract:
+
+- Ordinary design layers retain the existing GPU renderer. Code Layers run real React or Vue code in an isolated iframe; never recreate general HTML/CSS layout inside the 2D GPU renderer. Each Code Layer stores only framework, source/component identity, editable props and source revision. A live DOM is not a second document model.
+- Bind source/AST nodes, editable schema and preview elements through stable `codeId` values, never DOM indices. Selection, text/style/layout edits and AI edits all become bounded source/AST changes through the existing `Editor.change` and Rust admission path. Do not mutate only the runtime DOM, because it cannot provide undo, persistence or reliable hot reload.
+- Preserve native framework semantics. React and Vue share the canvas operation protocol, not a fictitious universal runtime or lossless JSX↔SFC conversion. Framework-specific state and behavior remain native source; visual editing starts with a constrained component/CSS subset.
+- AI and manual edits share the same source, revision and undo timeline. AI changes are isolated diffs bound to an expected source revision/hash, validated and built before atomic publication. Reject stale results. A build failure preserves the last working preview and source. Each AI action has one undo entry; each user gesture has one undo entry.
+- Hot-update the preview for ordinary component/style changes. Rebuild the iframe only when entry/global runtime requirements change; do not restart the whole application for AI edits. Restore camera and valid selection after publication, and clear selection for deleted elements.
+- Preview code is sandboxed by default: no Node, filesystem, network or Electron authority. Capabilities require explicit scoped grants and controlled message passing. Undo covers source and declared props, not arbitrary asynchronous runtime state.
+- Do not promise arbitrary JavaScript/CSS round trips, arbitrary npm execution or a prompt-only generator. AI operates through the same inspect → isolated edit → validate → preview → commit loop rather than a new orchestrator or mutation engine.
+
+Later material directions use separate engines rather than forcing the 2D renderer to become every runtime:
+
+- Parametric 3D uses an editable feature graph of bounded operations and parameters, not an AI-authored black-box mesh. Add an independent 3D viewport, derived mesh ownership and GLB export before considering broader DCC features.
+- Video uses a timeline/media engine with hardware decode, an audio master clock, A/V sync, proxy/frame caches and deterministic export. The static design compositor alone is not a video engine.
+
+The first Code Layer acceptance slice must complete: AI generates one real React component → actual browser preview → direct text/layout/style edit → AI continuation → hot update → undo/redo → save/reopen → export runnable code. Verify AST diffs, actual browser layout/interactions, expected-revision conflicts, deleted selection, failed builds, sandbox denials and independent exported execution. A Vue adapter must pass the equivalent SFC gates. These checks do not establish arbitrary application support and do not relax G0–G8 or the current rendering acceptance targets.
+
 ## Forward extensibility without fictitious support
 
 The optional document field is fdCompatibility with contractVersion: 1, requiredCapabilities: [], and extensions: a namespace-to-JSON map. Current code supports no required capabilities: any nonempty required list rejects. Add support only with a real implementation and paired native/frontend tests.

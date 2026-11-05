@@ -1,3 +1,4 @@
+import {SourceOverviewImage} from './source-overview-image'
 import {SourceOpeningSurface,sourcePageClip,type OpeningView} from './source-opening-preview'
 import { CpuStage, measureCpuStage } from './cpu-stage-diagnostics'
 import { recoverInteractionPreview } from './kernel/interaction-preview-recovery'
@@ -226,14 +227,15 @@ class PresentedSignal {
     this.listeners.forEach((listener) => listener())
   }
 }
-export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome = false, startupPreview, loading = false, onCapturePreview, nativeSource, openingSource, openingPage, focusedMaterial, onSourceDetail, onSourceViewport, hideNative, sourcePageBoxes, onSourcePresented, onNativeSourceStatus, onOpenSourcePoint }: {
+export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome = false, startupPreview, loading = false, onCapturePreview, prepareSourceDisplay, nativeSource, openingSource, openingPage, focusedMaterial, onSourceDetail, onSourceViewport, hideNative, parkNative, sourcePageBoxes, onSourcePresented, onNativeSourceStatus, onOpenSourcePoint }: {
   editor: Editor; peers?:LocalPeer[]; zoomControlsTarget?: HTMLElement | null; compactChrome?: boolean
   startupPreview?: StartupPixels; loading?: boolean
-  focusedMaterial?:number;onSourceDetail?:(roots:number[])=>void;onSourceViewport?:(box:import('./desktop').SourceCanvasBox)=>void;hideNative?:boolean
+  focusedMaterial?:number;onSourceDetail?:(roots:number[])=>void;onSourceViewport?:(box:import('./desktop').SourceCanvasBox,anchor?:Point,density?:number)=>void;hideNative?:boolean;parkNative?:boolean
   openingPage?:string
   sourcePageBoxes?:import('./desktop').SourceCanvasBox[]
   openingSource?:OpeningView
   onSourcePresented?:(view:{x:number;y:number;zoom:number})=>void
+  prepareSourceDisplay?:boolean
   nativeSource?:SourceCanvasSnapshot
   onNativeSourceStatus?:(status:NativeSourceStatus)=>void
   onOpenSourcePoint?:(point:Point)=>void
@@ -242,6 +244,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const canvasChromeSelector = 'button,input,select,textarea,[contenteditable="true"],.canvas-controls,.canvas-scrollbars,.pencil-controls,.rich-text-editor'
   const state = useSyncExternalStore(editor.subscribe, editor.snapshot)
   const retainedMove = useRef<RetainedMoveControl|null>(null)
+  const thumbnailCoverage=useRef<((view:CanvasCamera,width:number,height:number)=>boolean)|undefined>(undefined)
+  const overviewAnchor=useRef<Point|undefined>(undefined)
+  const sourceWheel = useRef<{token:string; view:CanvasCamera} | undefined>(undefined)
   const gpuMove = useRef<GpuMoveControl | null>(null)
   const [gpuReadyRevision, gpuReadyChanged] = useState(0)
   const interactionReady = useMemo(() => () => gpuReadyChanged(value => value + 1), [])
@@ -555,11 +560,11 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
   const setOrigin=(point:Point,visible=origin.current.visible)=>{origin.current={point,visible};refreshOrigin(v=>v+1)}
   useLayoutEffect(()=>{setOrigin({x:.5,y:.5},false)},[editor.sessionGeneration,state.page,state.selection.join(',')])
   const originWorld=()=>{
-    const frame=selectionScaleFrame(editor.state.doc,editor.state.page,editor.topSelection())
+    const frame=selectionScaleFrame(editor.state.doc,editor.state.page,editor.topSelection(),editor.parentMap())
     return apply(frame.basis,{x:frame.box.x+frame.box.width*origin.current.point.x,y:frame.box.y+frame.box.height*origin.current.point.y})
   }
   const originFromWorld=(p:Point)=>{
-    const frame=selectionScaleFrame(editor.state.doc,editor.state.page,editor.topSelection()),local=apply(inverse(frame.basis),p)
+    const frame=selectionScaleFrame(editor.state.doc,editor.state.page,editor.topSelection(),editor.parentMap()),local=apply(inverse(frame.basis),p)
     return {x:(local.x-frame.box.x)/Math.max(frame.box.width,1e-10),y:(local.y-frame.box.y)/Math.max(frame.box.height,1e-10)}
   }
   const pencil = useRef<{
@@ -1264,8 +1269,13 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
       if (drag.current?.kind === 'pan') {
         const d = drag.current
         // Retain the pointer displacement already consumed by this gesture.
-        d.view = { ...next, x: d.view.x + next.x - v.x, y: d.view.y + next.y - v.y }
+        d.view = { ...next, x: d.view.x + (next.x - v.x), y: d.view.y + (next.y - v.y) }
       }
+      if(next.zoom!==v.zoom){
+        const anchor=screenPoint(e)
+        overviewAnchor.current={x:(anchor.x-v.x)/v.zoom,y:(anchor.y-v.y)/v.zoom}
+      }
+      if (nativeSource && next.zoom !== v.zoom) sourceWheel.current = {token:nativeSource.token, view:next}
       recordNavigationInput(editor, e, wheelSize, next, pinch)
       scheduleView(next)
     }
@@ -1727,7 +1737,9 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
     }
     if (d.kind === 'pan') {
       const now = screenPoint(e)
-      scheduleView({ ...d.view, x: d.view.x + now.x - d.screen.x, y: d.view.y + now.y - d.screen.y })
+      // Subtract screen positions first. Adding an absolute pointer coordinate
+      // to a fractional camera can discard the sampling phase of a whole-pixel pan.
+      scheduleView({ ...d.view, x: d.view.x + (now.x - d.screen.x), y: d.view.y + (now.y - d.screen.y) })
       return
     }
     if (d.kind === 'crop' && d.node) {
@@ -2108,7 +2120,7 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         else editor.notify('裁切区域过小，未应用')
       }
     } else {
-      if(d.kind==='move')gpuMove.current?.releaseInput?.()
+      if(d.kind==='move'||d.kind==='rotate')gpuMove.current?.releaseInput?.(d.kind)
       const notice = d.kind === 'move' ? editor.finishCanvasMove(screenToWorld(d.view, release), /Mac|iPhone|iPad/.test(navigator.platform) ? e.metaKey : e.ctrlKey, /Mac|iPhone|iPad/.test(navigator.platform) && e.ctrlKey, space.current) : undefined
       const commitResult = editor.commit()
       if(d.kind==='rotate'&&d.rotationCenter)setOrigin(originFromWorld(d.rotationCenter))
@@ -2424,8 +2436,10 @@ export function Canvas({ editor, peers = [], zoomControlsTarget, compactChrome =
         }
         return false
       }}/>
-      {openingSource&&<SourceOpeningSurface pageId={openingPage} focused={focusedMaterial} onDetail={onSourceDetail} onViewport={onSourceViewport} source={openingSource} view={state.view} width={size.width} height={size.height}/>}
-      {nativeSource?<NativeSourceSurface hidden={hideNative} clipPath={sourcePageClip(sourcePageBoxes,state.view,size.width,size.height)} source={nativeSource} view={state.view} width={size.width} height={size.height} onStatus={onNativeSourceStatus} onPresented={(frame,complete)=>{if(complete||nativeSource.materialKeys&&frame.ids.length&&(!frame.preview||frame.previewGaps))onSourcePresented?.(frame.view)}}/>:openingSource?null:<KernelSurface
+      {openingSource&&<SourceOpeningSurface coverage={thumbnailCoverage} pageId={openingPage} focused={focusedMaterial} onDetail={onSourceDetail} onViewport={(box,density)=>onSourceViewport?.(box,overviewAnchor.current,density)} source={openingSource} view={state.view} width={size.width} height={size.height}/>}
+      {openingSource&&focusedMaterial===undefined&&nativeSource?.materialKeys&&sourcePageBoxes&&
+        <SourceOverviewImage source={nativeSource} materials={sourcePageBoxes} view={state.view} width={size.width} height={size.height}/>}
+      {nativeSource||openingSource||prepareSourceDisplay?<NativeSourceSurface overviewBoxes={openingSource&&focusedMaterial===undefined&&nativeSource?.materialKeys?sourcePageBoxes:undefined} panGestureActive={panning} parked={parkNative} underlay={openingSource&&nativeSource?.revision===0&&openingSource.owner.documentId===nativeSource.owner.documentId&&openingSource.owner.sessionEpoch===nativeSource.owner.sessionEpoch?thumbnailCoverage:undefined} wheelView={sourceWheel.current?.token===nativeSource?.token?sourceWheel.current?.view:undefined} warm={!!openingSource||prepareSourceDisplay} hidden={hideNative} clipPath={sourcePageClip(sourcePageBoxes,state.view,size.width,size.height)} source={nativeSource} view={state.view} width={size.width} height={size.height} onStatus={onNativeSourceStatus} onPresented={(frame,complete)=>{if(complete||nativeSource?.materialKeys&&frame.ids.length&&(!frame.preview||frame.previewGaps))onSourcePresented?.(frame.view)}}/>:<KernelSurface
         navigationInputOwner={editor}
         panGestureActive={panning}
         overlay={overlay}

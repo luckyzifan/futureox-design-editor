@@ -271,6 +271,22 @@ pub(in crate::large_document) fn read_page(
         rows,
     })
 }
+pub(super) fn indexed_pages(session:&super::super::Session,layout:canvas_layout::Layout,cancel:&AtomicBool)->Result<Vec<Page>>{
+    let mut pages:Vec<Page>=session.parts.iter().filter(|p|p.name.starts_with("pages/"))
+        .filter_map(|p|p.index.entries.first().filter(|e|e.kind=="page")).map(|p|Page{id:p.id.clone(),name:p.name.clone(),rows:vec![]}).collect();
+    for item in layout.items{
+        super::super::check_cancel(cancel).map_err(issue)?;
+        let (part,index)=super::super::location(session,Some(&item.key))?;
+        let span=session.parts[part].index.entries[index].span;
+        let symbol=if item.kind=="symbolMaster"{
+            super::super::projection::field(session,part,index,"symbolID").ok().and_then(|bytes|serde_json::from_slice(&bytes).ok())
+        }else{None};
+        let page=pages.iter_mut().find(|p|p.id==item.page_id).ok_or_else(||issue("Missing indexed preview page"))?;
+        page.rows.push((item,Root{part,start:span.start,len:span.len(),symbol}));
+    }
+    Ok(pages)
+}
+
 pub(super) fn assemble(input: Vec<Page>) -> Result<Catalog> {
     let mut items = Vec::new();
     let mut roots = Vec::new();
@@ -301,6 +317,10 @@ pub(super) fn assemble(input: Vec<Page>) -> Result<Catalog> {
     })
 }
 pub(super) fn read_at(dir: &Path, parts: &[Part], root: &Root) -> Result<serde_json::Value> {
+    serde_json::from_slice(&bytes_at(dir,parts,root)?).map_err(issue)
+}
+
+pub(super) fn bytes_at(dir: &Path, parts: &[Part], root: &Root) -> Result<Vec<u8>> {
     use std::io::{Seek, SeekFrom};
     if root.len > 64 * 1024 * 1024 {
         return Err(issue("Thumbnail conversion window exceeded"));
@@ -312,7 +332,7 @@ pub(super) fn read_at(dir: &Path, parts: &[Part], root: &Root) -> Result<serde_j
     if data.len() as u64 != root.len {
         return Err(issue("Truncated thumbnail source"));
     }
-    serde_json::from_slice(&data).map_err(issue)
+    Ok(data)
 }
 
 #[cfg(test)]

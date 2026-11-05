@@ -88,6 +88,7 @@ impl<R:Read,W:Write> Read for IndexedSpool<'_,R,W>{
 fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
+#[cfg(test)]
 fn hash_file(path: &Path, cancel: &AtomicBool) -> io::Result<String> {
     hash_range(
         path,
@@ -176,6 +177,8 @@ struct Session {
     canvas_layout: Option<canvas_layout::Layout>,
     #[serde(skip)]
     canvas_snapshot: Option<canvas_snapshot::Snapshot>,
+    #[serde(skip)]
+    recent_materials: canvas_snapshot::RecentMaterials,
     #[serde(skip)]
     converted_windows: Mutex<window_cache::Windows>,
 }
@@ -286,6 +289,9 @@ pub(crate) struct Open {
 #[serde(rename_all="camelCase",deny_unknown_fields)]
 pub(crate) struct OpeningRequest {
     owner: Owner, expected_revision:u64, offset:usize, cursor:usize,
+    #[serde(default)] detail_cursor:usize,
+    #[serde(default)] viewport_density:Option<f64>,
+    #[serde(default)] viewport_anchor:Option<[f64;2]>,
     #[serde(default)] page_id:Option<String>,
     #[serde(default)] material:Option<usize>,
     #[serde(default)] viewport:Option<canvas_layout::Box2>,
@@ -295,6 +301,7 @@ pub(crate) struct OpeningRequest {
 pub(crate) struct Request {
     #[serde(default)]
     navigation_preview: bool,
+    #[serde(default)] navigation_window:Option<canvas_layout::Box2>,
     #[serde(default)] material_keys: Option<Vec<String>>,
     owner: Owner,
     expected_revision: u64,
@@ -385,12 +392,18 @@ impl Sessions {
                 .write(true)
                 .open(&original)
                 .map_err(issue)?;
-            let copied = io::copy(
-                &mut source.by_ref().take(source_limit + 1),
-                &mut destination,
-            )
-            .map_err(issue)?;
-            if copied != before.len() {
+            let mut copied=0;
+            let mut source_digest=Sha256::new();
+            {
+                // Hash only bytes successfully written to this exclusively
+                // created session file. The receipt is used after sync and
+                // the existing source-mutation check.
+                let mut spool=IndexedSpool{inner:source.by_ref().take(source_limit+1),output:&mut destination,
+                    hash:&mut source_digest,bytes:&mut copied};
+                let mut buffer=vec![0u8;128*1024];
+                while spool.read(&mut buffer).map_err(issue)?!=0 {}
+            }
+            if copied != before.len() || destination.metadata().map_err(issue)?.len()!=copied {
                 return Err(issue("Source changed or exceeded storage capacity while reading"));
             }
             destination.sync_all().map_err(issue)?;
@@ -399,7 +412,8 @@ impl Sessions {
                 return Err(issue("Source changed during import"));
             }
             self.progress.phase("validate", 0);
-            let source_hash = hash_file(&original, cancel).map_err(issue)?;
+            check_cancel(cancel).map_err(issue)?;
+            let source_hash = format!("{:x}",source_digest.finalize());
             let owner=Owner{document_id:request.document_id.clone(),session_epoch:request.session_epoch};
             let previews=request.opening_preview && extension=="sketch";
             let mut checked_cache=false;
@@ -415,10 +429,20 @@ impl Sessions {
                     session_epoch: request.session_epoch,
                 };
                 let _ = fs::remove_dir_all(&directory);
+                if previews&&recovered.revision==0{
+                    // Recovery has validated the authoritative index and original.
+                    // Rebind optional viewport refinement to this new session.
+                    let _=self.opening.resume_indexed(&recovered,&source_hash,cancel);
+                    check_cancel(cancel).map_err(issue)?;
+                }
                 return Ok(recovered);
             }
             let mut parts = Vec::new();
-            let opening_preview=previews && (checked_cache || !self.opening.restore(owner,&self.root,&source_hash));
+            if previews&&!checked_cache{self.opening.restore(owner,&self.root,&source_hash);}
+            // A restored thumbnail catalogue has no trusted source locators.
+            // Scan the fresh CRC-checked parts as before, so a free zoom can
+            // obtain more detail while the separate editing index is built.
+            let opening_preview=previews;
             let mut staged = Vec::new();
             let mut preview_pages = Some(Vec::new());
             let mut preview_roots=0usize;
@@ -526,7 +550,7 @@ impl Sessions {
                 if !staged.is_empty() {
                     let owner=Owner{document_id:request.document_id.clone(),session_epoch:request.session_epoch};
                     let files=staged.iter().map(|(p,_)|opening::Part{name:p.name.clone(),file:p.file.clone(),bytes:p.bytes}).collect();
-                    if let Some(pages)=preview_pages {self.opening.start(owner,directory.clone(),files,pages,&source_hash);}
+                    if let Some(pages)=preview_pages {self.opening.start(owner,directory.clone(),files,pages,&source_hash,request.path.file_name().unwrap_or_default().to_string_lossy().into_owned());}
                     for (p,hash) in staged {
                         self.progress.phase("index",p.bytes);
                         let reader=CheckedReader{inner:File::open(directory.join(&p.file)).map_err(issue)?,cancel,progress:Some(&self.progress)};
@@ -565,6 +589,7 @@ impl Sessions {
                 scene: None,
                 canvas_layout: None,
                 canvas_snapshot: None,
+                recent_materials: Default::default(),
                 converted_windows: Mutex::default(),
             })
         })();
@@ -622,7 +647,7 @@ impl Sessions {
             "large.status" => Ok(status(s)),
             "large.children" => children(s, request),
             "large.canvasLayout" => canvas_layout::list(s, request, cancel),
-            "large.canvasSnapshot" => canvas_snapshot::prepare(s,cancel,request.navigation_preview,request.material_keys.as_deref()),
+            "large.canvasSnapshot" => canvas_snapshot::prepare(s,cancel,request.navigation_preview,request.material_keys.as_deref(),request.navigation_window),
             "large.canvasPreview" => Ok(s.canvas_snapshot.as_ref().filter(|snapshot|snapshot.revision==s.revision)
                 .and_then(|snapshot|snapshot.navigation.as_ref()).map(|preview|preview.poll()).unwrap_or_else(||json!({"phase":"unavailable"}))),
             "large.read" => {
@@ -1010,6 +1035,7 @@ fn commit(
         // store itself remains available until its successor is published.
         snapshot.navigation.take();
     }
+    s.recent_materials.clear();
     if let Some((p, index)) = index {
         s.parts[p].index = index;
     }
@@ -1222,6 +1248,7 @@ fn recover_with_opening(
                 scene: None,
             canvas_layout: None,
                 canvas_snapshot: None,
+                recent_materials: Default::default(),
                 converted_windows: Mutex::default(),
         }));
     }

@@ -1,7 +1,7 @@
 import type { PathMesh, Rect } from './types'
 
 type Area = NonNullable<PathMesh['area']>
-type Header = { kind: 3 | 4; width: number; height: number }
+type Header = { kind: 3 | 4 | 5; width: number; height: number }
 type Binding = Header & { count: number; residentFirst: number }
 const MAX_SPAN_WORK = 262144
 
@@ -60,12 +60,34 @@ export class SampleOnlyAreaPrograms {
 
 function sampleHeader(values: Float32Array, first: number, count: number): Header | undefined {
   const begin = first * 4, end = (first + count) * 4, kind = values[begin], width = values[begin + 2], height = values[begin + 3]
-  if (!(kind === 3 || kind === 4) || !Number.isInteger(width) || !Number.isInteger(height) ||
+  if (!(kind === 3 || kind === 4 || kind === 5) || !Number.isInteger(width) || !Number.isInteger(height) ||
       width < 1 || height < 1 || width > 8192 || height > 8192) return
   const pair = (at: number) => {
     for (let i = 0; i < 4; i++) if (!Number.isInteger(values[at + i]) || values[at + i] < 0 || values[at + i] > 65535) return false
     // Native endpoints are finite binary64 signed remainders; preserve zeros.
     return ((values[at + 3] >>> 4) & 2047) !== 2047
+  }
+  if(kind===5){
+    const table=4+4*height
+    if(width>2047||values[begin+1]!==1||begin+table>end)return
+    const stride=width+1
+    const span=(v:number,previous:number)=>{
+      if(!Number.isSafeInteger(v)||v<0)return -1
+      const left=Math.floor(v/stride),right=v%stride
+      return left>=previous&&left<right&&right<=width?right:-1
+    }
+    let work=0
+    for(let row=begin+4;row<begin+table;row++){
+      const value=values[row]
+      if(value===0||value===-1)continue
+      if(!Number.isSafeInteger(value))return
+      if(value<0){if(span(-value-2,0)<0)return;continue}
+      const at=begin+value,n=values[at]
+      if(value<table||!Number.isSafeInteger(n)||n<2||at+n>=end||(work+=n)>MAX_SPAN_WORK)return
+      let previous=0
+      for(let i=1;i<=n;i++){previous=span(values[at+i],previous);if(previous<0)return}
+    }
+    return {kind,width,height}
   }
   const range = (at: number) => Number.isSafeInteger(values[at]) && Number.isSafeInteger(values[at + 1]) &&
     Math.abs(values[at]) <= 1048576 && Math.abs(values[at + 1]) <= 1048576 && values[at] <= values[at + 1] &&

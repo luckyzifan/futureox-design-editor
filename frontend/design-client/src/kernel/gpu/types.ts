@@ -91,6 +91,8 @@ export type PathMesh = {
 }
 export type SourceFilterField={factor:number;effectIndex:number;sharpHalo:number;radius:number;gaussian:boolean;input:Rect;output:Rect;masks:{path:PathMesh;opacity:number;paint?:GpuPaint}[];groupRoots?:string[];additional?:SourceFilterField[]}
 export type GpuNode = {
+  /** Adjacent consumer sees this lens's ordinary paints without its optics. */
+  opticalPrefixNext?:string
   sourceFilterField?:SourceFilterField
   gaussianRegion?:import('./gaussian-region').GaussianRegion
   /** Worker-local transient placement identity; never serialized by the kernel. */
@@ -142,17 +144,22 @@ export type GpuPaint = Paint & {
   fixedGradient?: { bits: number; words: number[][] }
 }
 export type GpuScene = {
+  /** Worker-owned exact regional display request. */
+  repairOutput?: boolean
   /** Worker-only SDR layer capture; original linear premultiplication survives. */
   linearRetainedCapture?: boolean
   pagePaintRects?: number[][];
   /** Transient viewport inside a larger geometry capture. Never exported. */
   interactionWindow?: Rect
+  /** Guaranteed display and repair pixels of this finished native movement. */
+  interactionContentWindow?: Rect
   compactImageFields?: boolean
   pairedDisplayFilters?: boolean
   /** Only explicitly transient whole-scene interactions can retain root paint. */
   interactionRetained?: boolean
   nativeInteraction?: boolean
   /** Worker-owned display hint for a source tile at high physical zoom. */
+  densePaint?:{vertexFloats:number;width:number;height:number;nodes:Record<string,number>;sources?:Record<string,number>;relocations:number[]}
   sourceDetailTile?: boolean
   sourceImageDisplay?:boolean
   /** Worker-owned quality of a transient selected-object capture. */
@@ -270,6 +277,12 @@ export type GpuAdmissionDiagnostic = Readonly<{
 export type ExactImageTable = { resource: unknown; width: number; height: number; bytes: number; opaqueAlpha?: true; nonnegativeResolved?: true }
 export type OpaqueSolidBatch = Readonly<{count:number;pixels:number}>
 export interface Driver {
+  readonly sourceLayersReady?:boolean
+  readonly sourceImageLayersReady?:boolean
+  prepareSourceDisplay?():Promise<void>
+  densePaintReady?:boolean
+  densePathOffset?(first:number):number|undefined
+  sourceProgramOffset?(path:PathMesh):number|undefined
   prepareOpaqueSolids?(nodes:readonly {path:PathMesh;bounds:Rect}[],target:Rect,color:readonly number[],region?:Rect):OpaqueSolidBatch|undefined
   drawOpaqueSolids?(batch:OpaqueSolidBatch,target:Texture,sample:number):boolean
   usesDisplayFilter?(radius: number, channels?: number): boolean
@@ -304,6 +317,9 @@ export interface Driver {
   replacePresented?(slot:number,next:number):void
   /** Private immutable captured-texture identity; absent after loss/release. */
   presentedContentToken?(slot:number):object|undefined
+  tagExactTile?(id:number, owner:object, contract:string, gutter:number):void
+  beginViewportRepair?(before:object, after:object, contract:string, view:{x:number;y:number;zoom:number}, width:number, height:number, damage:Rect):
+    { finish(patch:number, pose?:{texture:object;rect:Rect}):number|undefined; cancel():void } | undefined
   snapshotPresented?(): { gpuTile: number; frame: import('./resident-presenter').ResidentFrame } | undefined
   backgroundTile?(owner:object,contract:string,view:{x:number;y:number;zoom:number},output:Rect):number|undefined
   snapshotPageTranslation?(sourceOwner:object,targetOwner:object,offset:{x:number;y:number},width:number,height:number,scale:number,contract:string):
@@ -333,6 +349,7 @@ export interface Driver {
   /** New whole-filter lane only. Input is the unpadded logical packet;
    * allocation uses the pre-admitted physical row layout, not logical bytes. */
   uploadExactFilterPacket?(bytes: Uint8Array, width: number, height: number): Texture
+  readonly innerShadowPaintOver?: boolean
   readonly exactShadowOver?: boolean
   readonly scratchBytes?: number
   /** Logically retired table storage still owned until a real completion. */
@@ -466,6 +483,7 @@ export interface Driver {
     values: Float32Array,
   ): void
   uploadParameters?(values: Float32Array, width: number, height: number): Texture
+  uploadGradientParameters?(values: Float32Array, width: number, height: number): { texture: Texture; maximumStop?: number }
   /** Reuse one bounded 1024² float metadata texture, submitting prior reads before overwrite. */
   uploadReplayParameters?(
     values: Float32Array,

@@ -1,11 +1,15 @@
-import {useLayoutEffect,useRef} from 'react'
+import {materialRegions,completeMaterialRegions,orderMaterialTiles,focalMaterialTiles,retainsVisibleMaterials} from './source-material-refinement'
+import {sourcePageClip} from '../source-opening-preview'
+import {useLayoutEffect,useMemo,useRef} from 'react'
+import {SourceOverviewHandoff,type OverviewMaterial} from './source-overview-handoff'
+import {sourceOverviewWindow} from './source-overview-window'
 import {desktopBridge,type SourceCanvasSnapshot} from '../desktop'
 import {navigationOverview,nearOverviewTiles} from './navigation-overview'
 import {NAVIGATION_BACKING_BYTES} from './navigation-backing'
 import type {CanvasCamera} from '../canvas-camera'
 import {KernelClient,backendPreference,renderExecutionPolicy,type TileResult} from './client'
 import {canvasSamplingProfile} from './render-policy'
-import {SourceViewportPlanner,improvesSourceZoom,sourceTileBringsDetail,visibleSourceDensity} from './source-viewport-plan'
+import {SourceViewportPlanner,coveredSourceDetail,retainedZoomOut,improvesSourceZoom,sourceTileBringsDetail,visibleSourceDensity} from './source-viewport-plan'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
 import {tileIntersectsView} from './tile-preview'
 import {SourceRenderWork} from './source-render-work'
@@ -15,10 +19,10 @@ import type {ResidentAcknowledgement} from './resident-presentation'
 import type {ResidentFrame} from './gpu/resident-presenter'
 import type {RasterTile} from './tile-cache'
 import {createRenderDiagnostics,PREFIX} from '../../../design-desktop/src/render-terminal-diagnostics.mjs'
-import {CameraReprojection,atomicPresentationContext,consumePresentationBitmap,keepCompleteCameraBacking} from './camera-reprojection'
+import {CameraReprojection,atomicPresentationContext,consumePresentationBitmap} from './camera-reprojection'
 
 export type NativeSourceStatus={phase:'loading'|'refining'|'ready'|'limited'|'error';done:number;total:number;error?:string}
-type Props={hidden?:boolean;clipPath?:string;source:SourceCanvasSnapshot;view:CanvasCamera;width:number;height:number;
+type Props={overviewBoxes?:readonly OverviewMaterial[];hidden?:boolean;parked?:boolean;panGestureActive?:boolean;underlay?:import('../source-opening-preview').SourceThumbnailCoverage;clipPath?:string;source?:SourceCanvasSnapshot;warm?:boolean;wheelView?:CanvasCamera;view:CanvasCamera;width:number;height:number;
   onStatus?:(status:NativeSourceStatus)=>void;onPresented?:(frame:ResidentAcknowledgement,complete:boolean)=>void}
 type Placement=RasterTile & {gpuTile:number}
 type Tile=TileResult&{serial:number;used:number;lastSubmission:number;placement:Placement}
@@ -33,22 +37,38 @@ const SOURCE_WHEEL_QUIET_MS=100
 /** Same native compiler/GPU/presenter, with source ownership in place of a
  * whole JS document. Tiles and camera submissions stay outside React state. */
 export function NativeSourceSurface(props:Props){
+  const dpr=useDevicePixelRatio()
+  const profile=useMemo(()=>props.source&&canvasSamplingProfile(renderExecutionPolicy,props.source.rasterProfile,backendPreference(),props.source.colorManaged),[props.source?.rasterProfile,props.source?.colorManaged])
+  const priorityWindow=useRef<ReturnType<typeof sourceOverviewWindow>>(undefined)
+  const crop=profile==='figmaSubpixel'&&props.source?.colorManaged?sourceOverviewWindow(props.overviewBoxes,props.view,props.width,props.height,dpr,priorityWindow.current):undefined
+  priorityWindow.current=crop
+  const outer=useRef<HTMLDivElement>(null)
+  const handoff=useMemo(()=>new SourceOverviewHandoff(),[])
   const host=useRef<HTMLDivElement>(null),latest=useRef(props),wake=useRef<()=>void>(()=>{})
   const mounted=useRef(false),parked=useRef<{client:KernelClient;owner:string}|undefined>(undefined)
-  const dpr=useDevicePixelRatio(),density=useRef(dpr);density.current=dpr;latest.current=props
+  const warming=useRef<KernelClient|undefined>(undefined)
+  const density=useRef(dpr);density.current=dpr;latest.current=props
   useLayoutEffect(()=>{
     mounted.current=true
-    return ()=>{mounted.current=false;parked.current?.client.dispose();parked.current=undefined}
+    return ()=>{mounted.current=false;handoff.clear();warming.current?.dispose();warming.current=undefined;parked.current?.client.dispose();parked.current=undefined}
   },[])
   useLayoutEffect(()=>{
+    if(!latest.current.source){
+      if(latest.current.warm&&!warming.current&&!parked.current&&!renderExecutionPolicy.cpuOnly&&!renderExecutionPolicy.hdrCompositing&&backendPreference()!=='webgl2'){
+        const client=new KernelClient();warming.current=client
+        void client.prepareSourceDisplay().catch(()=>{if(warming.current===client){warming.current=undefined;client.dispose()}})
+      }
+      return
+    }
     if(latest.current.width<=0||latest.current.height<=0)return
     const source=latest.current.source,owner=JSON.stringify([source.owner,source.revision,source.rasterProfile,source.colorManaged])
     if(parked.current&&parked.current.owner!==owner){parked.current.client.dispose();parked.current=undefined}
-    const client=parked.current?.client??new KernelClient(),element=document.createElement('canvas'),badge=document.createElement('span')
-    parked.current=undefined
+    const client=parked.current?.client??warming.current??new KernelClient(),element=document.createElement('canvas'),badge=document.createElement('span')
+    parked.current=undefined;warming.current=undefined
     const diagnostics=createRenderDiagnostics({enabled:window.coreDesktop?.renderDiagnostics===true,session:Math.floor(Math.random()*1e12),sink:record=>console.log(PREFIX+JSON.stringify(record))})
     const profile=canvasSamplingProfile(renderExecutionPolicy,source.rasterProfile,backendPreference(),source.colorManaged)
-    const planner=new SourceViewportPlanner(profile,source.colorManaged)
+    const overviewMode=!!latest.current.overviewBoxes
+    const planner=new SourceViewportPlanner(profile,source.colorManaged,!!source.materialKeys,overviewMode)
     const quality=new SourceQualityLadder()
     let overview: ReturnType<typeof navigationOverview>
     element.className='kernel-compositor native-source-content'
@@ -59,6 +79,8 @@ export function NativeSourceSurface(props:Props){
     const projection=new CameraReprojection(element,host.current!,()=>schedulePaint())
     projection.history.bind(source)
     let backing:ResidentAcknowledgement|undefined
+    let shownMaterials:readonly OverviewMaterial[]|undefined
+    let partialMaterials:readonly OverviewMaterial[]|undefined
     let startupPreview: {scale:number} | undefined
     const project=()=>{
       const p=latest.current
@@ -72,15 +94,18 @@ export function NativeSourceSurface(props:Props){
         element.style.transform='translate('+(p.view.x+source.bounds.x*p.view.zoom)+'px,'+(p.view.y+source.bounds.y*p.view.zoom)+'px)'
         return {active:true,changed:true}
       }
-      return projection.update(backing,p.view,p.width,p.height,!!bitmapContext,source.bounds)
+      return projection.update(backing,p.view,p.width,p.height,!!bitmapContext,source.bounds,
+        !!backing && !!p.underlay?.current?.(p.view,p.width,p.height))
     }
     badge.className='kernel-status';badge.setAttribute('role','status');badge.setAttribute('aria-label','完整画板显示状态')
     Object.assign(badge.style,{position:'absolute',right:'14px',top:'var(--kernel-status-top, 12px)',fontSize:'11px',color:'#7b8190',zIndex:'5'})
-    host.current!.append(badge)
+    outer.current!.append(badge)
     const prefix=crypto.randomUUID(),cache=new Map<string,Tile>(),retired=new Map<number,number>()
     // A displayed bitmap can outlive evicted GPU tiles. Its geometry remains
     // needed to prove the next zoom frame preserves all visible detail.
-    const submittedPlacements=new Map<number,Placement[]>()
+    const submittedPlacements=new Map<number,{tiles:Placement[];wheel:boolean;outward:boolean;mixed:boolean;regions?:OverviewMaterial[];view:CanvasCamera;width:number;height:number;dpr:number}>()
+    const recentNative=new Map<number,Set<string>>()
+    let deferredOutward='',wheelInterval=SOURCE_WHEEL_QUIET_MS
     let backingTiles:Placement[]=[]
     let alive=true,initialized=false,running=false,failed=false,frameHandle=0,idleTimer:ReturnType<typeof setTimeout>|undefined
     let rejectedCamera:CanvasCamera|undefined
@@ -95,15 +120,21 @@ export function NativeSourceSurface(props:Props){
     let suspended=document.visibilityState==='hidden'
     let moving=false,serial=0,submission=0,acknowledged=0,tick=0,lastStatus='',lastStatusAt=-Infinity
     let lastZoom=latest.current.view.zoom,zoomingIn=false,lastZoomAt=-Infinity,continuousZoom=false
-    const workQueue=new SourceRenderWork<RasterTile>()
-    let wanted:{id:string;sequence:number;view:CanvasCamera;width:number;height:number;dpr:number;scale:number;complete:boolean;covered:boolean;demand:string;ids:Set<number>}|undefined
+    let priorView=latest.current.view,panHeld=!!latest.current.panGestureActive
+    const workQueue=new SourceRenderWork<RasterTile>(overviewMode?8:SOURCE_PIPELINE_TILES)
+    let wanted:{id:string;sequence:number;view:CanvasCamera;width:number;height:number;dpr:number;scale:number;complete:boolean;mixed:boolean;demand:string;ids:Set<number>}|undefined
     const emit=(status:NativeSourceStatus)=>{
       if(!alive)return
       const signature=`${status.phase}/${status.done}/${status.total}/${status.error??''}`,now=performance.now()
+      // A single visible decoded board is enough to keep routine status quiet.
+      // Reprojection and final receipts separately require full coverage.
+      const p=latest.current
+      badge.style.opacity=p.overviewBoxes&&status.phase!=='error'&&status.phase!=='limited'&&
+        (backing||p.underlay?.current?.(p.view,p.width,p.height,'any'))?'0':''
       if(signature===lastStatus)return
       if(status.phase==='refining'&&lastStatus.startsWith('refining/')&&now-lastStatusAt<120)return
       lastStatus=signature;lastStatusAt=now
-      badge.textContent=status.phase==='ready'?'WebGPU · 清晰':status.phase==='limited'?'当前倍率为预览精度':status.phase==='error'?'画板绘制未完成':status.phase==='loading'?'正在准备完整画板…':`正在绘制 ${status.done} / ${status.total}`
+      badge.textContent=status.phase==='ready'?(source.openingMaterial!==undefined?'素材清晰 · 源文件仍在索引':'WebGPU · 清晰'):status.phase==='limited'?'当前倍率为预览精度':status.phase==='error'?'画板绘制未完成':status.phase==='loading'?'正在准备完整画板…':`正在绘制 ${status.done} / ${status.total}`
       badge.title=status.error??'当前视口完成全部瓦片与采样密度校验后显示清晰'
       diagnostics.record('viewport-state',{state:status.phase==='loading'?0:status.phase==='refining'?1:status.phase==='ready'?2:3,
         previewTiles:status.done,count:status.total,zoom:latest.current.view.zoom,dpr:density.current,
@@ -121,8 +152,17 @@ export function NativeSourceSurface(props:Props){
     }
     const plan=(motion=moving)=>{
       const p=latest.current
-      return {p,...planner.plan(p.view,density.current,p.width,p.height,motion,quality.scale,continuousZoom)}
+      const planned=planner.plan(p.view,density.current,p.width,p.height,motion,quality.scale,continuousZoom,priorityWindow.current)
+      if(source.viewportSubset&&p.overviewBoxes?.length&&planned.exact&&quality.scale===undefined&&
+        source.colorManaged&&profile==='figmaSubpixel'&&planned.raster.scale<=1){
+        const focus=focalMaterialTiles(p.overviewBoxes,p,density.current,planned.raster.phase)
+        if(focus)return {...planned,p,tiles:focus,keys:new Set(focus.map(t=>t.key)),prefetch:[],prefetchKeys:new Set<string>(),focal:true}
+      }
+      return {...planned,p,focal:false}
     }
+    const outwardCover=()=>source.materialKeys&&source.colorManaged&&profile==='figmaSubpixel'&&moving&&continuousZoom&&!zoomingIn&&backing&&bitmapContext&&
+      quality.scale===undefined&&deferredOutward!==demandKey()
+      ?retainedZoomOut(cache.values(),latest.current.view,latest.current,density.current):undefined
     const requestOverview = async () => {
       const bridge = desktopBridge()?.largeDocument
       if (source.materialKeys || !alive || failed || previewRequested || !bitmapContext || !bridge?.canvasPreview || source.nodes<20000) return
@@ -167,45 +207,68 @@ export function NativeSourceSurface(props:Props){
     }
     const paint=()=>{
       frameHandle=0
-      if(!alive||!initialized||failed||suspended)return
+      if(!alive||!initialized||failed||suspended||latest.current.parked)return
       try{
-        const {p,ratio,tiles,keys,exact,raster}=plan(),done=tiles.filter(tile=>cache.has(tile.key)).length
+        const {p,ratio,tiles,keys,exact,raster,focal}=plan(),done=tiles.filter(tile=>cache.has(tile.key)).length
+        const complete=done===tiles.length&&exact&&!focal
         if(window.coreDesktop?.renderDiagnostics){
           element.dataset.sourceDemandScale=String(raster.scale)
           element.dataset.sourceDemandZoom=String(p.view.zoom)
           element.dataset.sourceMoving=String(moving)
         }
         project()
-        const visible=[...cache.values()].filter(tile=>tileIntersectsView(tile,p.view,p)).sort((a,b)=>a.zoom-b.zoom||a.used-b.used)
-        if(!cache.size){emit({phase:'refining',done,total:tiles.length});return}
-        const sequence=++submission,id=`${prefix}:${sequence}`,complete=done===tiles.length&&exact
-        for(const tile of visible){tile.lastSubmission=sequence;tile.used=++tick}
-        const anchor=visible[0]||cache.values().next().value!
-        // Even an offscreen anchor must survive until this display task is
-        // acknowledged. Release messages can otherwise overtake deferred draw.
-        anchor.lastSubmission=sequence;anchor.used=++tick
-        submittedPlacements.set(sequence,(visible.length?visible:[anchor]).map(t=>t.placement))
-        if(submittedPlacements.size>32)submittedPlacements.delete(submittedPlacements.keys().next().value!)
-        // A coarse motion tile can fill a hole but must remain below sharper
-        // history. Only the requested native lattice wins the phase handoff.
-        const items:ResidentFrame['items']=visible.map(tile=>({active:true,layer:exact&&keys.has(tile.key)?4:1,
-          tile:{key:tile.key,serial:tile.serial,gpuTile:tile.gpuTile!,x:tile.x,y:tile.y,width:tile.width,height:tile.height,zoom:tile.zoom,phaseX:tile.phaseX,phaseY:tile.phaseY}}))
-        wanted={id,sequence,view:{...p.view},width:p.width,height:p.height,dpr:ratio,scale:raster.scale,complete,covered:done===tiles.length,demand:demandKey(),ids:new Set(visible.map(tile=>tile.gpuTile!))}
-        // The live anchor certifies this source even when all cached content
-        // moves offscreen. The presenter marks unknown pixels as preview;
-        // its independent ACK is required before claiming exact readiness.
-        client.present({presentationId:id,view:p.view,width:p.width,height:p.height,dpr:ratio,items,allowBackground:true,
-          cameraPreview:import.meta.env.VITE_DESIGN_PAN_PRESENT_PREVIEW!=='0' && (bitmapContext || backing?.view.zoom===p.view.zoom)
-            ?{anchor:anchor.gpuTile!}:undefined})
-        emit({phase:'refining',done,total:tiles.length})
         // This is an evictable history allowance, never a source-size refusal.
         const keep=Math.max(32,tiles.length*3)
-        for(const tile of [...cache.values()].sort((a,b)=>a.used-b.used)){
+        const recent=(key:string)=>{for(const keys of recentNative.values())if(keys.has(key))return 1;return 0}
+        for(const tile of cache.size>keep?[...cache.values()].sort((a,b)=>recent(a.key)-recent(b.key)||a.used-b.used):[]){
           if(cache.size<=keep)break
           if(keys.has(tile.key) || overview?.tiles.some(base=>base.key===tile.key))continue
           cache.delete(tile.key);retire(tile)
         }
         release()
+        const wheel=!!(source.materialKeys && backing && !partialMaterials && bitmapContext && quality.scale===undefined &&
+          (moving&&continuousZoom&&zoomingIn || overviewMode&&exact&&p.view.zoom>=backing.view.zoom))
+        const refining=done<tiles.length
+        const stored=refining?outwardCover():undefined
+        let visible:Tile[],partialTiles:Tile[]|undefined,regions:OverviewMaterial[]|undefined
+        if((refining||focal)&&done&&exact&&p.overviewBoxes?.length&&bitmapContext&&(!backing||partialMaterials||focal)){
+          const ready=tiles.flatMap(tile=>{const entry=cache.get(tile.key);return entry?[entry]:[]})
+          const certified=completeMaterialRegions(materialRegions(p.overviewBoxes,p,ratio),ready,raster.scale)
+          if(certified.length&&retainsVisibleMaterials(partialMaterials,certified,p,ratio)){
+            regions=certified.map(r=>r.material);partialTiles=ready
+          }
+        }
+        if(focal&&!partialTiles){emit({phase:'refining',done,total:tiles.length});return}
+        if(partialTiles){visible=partialTiles}
+        else if(stored){visible=stored}
+        else if(refining && wheel){
+          // An immutable lower rung can cover the rest of the new viewport.
+          // Submit only a complete mosaic with genuinely sharper source pixels.
+          const mosaic=coveredSourceDetail(cache.values(),p,backingTiles)
+          if(!mosaic){emit({phase:'refining',done,total:tiles.length});return}
+          visible=mosaic
+        }else{
+          if(!tiles.length || refining){emit({phase:'refining',done,total:tiles.length});return}
+          visible=tiles.map(tile=>cache.get(tile.key)!)
+        }
+        const demand=demandKey(), ids=new Set(visible.map(tile=>tile.gpuTile!))
+        const previous=wanted
+        if(regions&&previous?.demand===demand){
+          const last=submittedPlacements.get(previous.sequence)?.regions??partialMaterials
+          if(last&&last.length===regions.length&&last.every(old=>regions!.some(r=>r.materialKey===old.materialKey)))return
+        }
+        if(previous?.demand===demand && previous.complete===complete && previous.mixed===refining && previous.scale===raster.scale &&
+            previous.ids.size===ids.size && [...ids].every(tile=>previous.ids.has(tile)))return
+        const sequence=++submission,id=`${prefix}:${sequence}`
+        for(const tile of visible){tile.lastSubmission=sequence;tile.used=++tick}
+        submittedPlacements.set(sequence,{tiles:visible.map(t=>t.placement),wheel,outward:!!stored,mixed:refining,regions,view:{...p.view},width:p.width,height:p.height,dpr:ratio})
+        if(submittedPlacements.size>32)submittedPlacements.delete(submittedPlacements.keys().next().value!)
+        const items:ResidentFrame['items']=visible.map(tile=>({active:true,layer:exact&&keys.has(tile.key)?4:1,
+          tile:{key:tile.key,serial:tile.serial,gpuTile:tile.gpuTile!,x:tile.x,y:tile.y,width:tile.width,height:tile.height,zoom:tile.zoom,phaseX:tile.phaseX,phaseY:tile.phaseY}}))
+        wanted={id,sequence,view:{...p.view},width:p.width,height:p.height,dpr:ratio,scale:raster.scale,complete,mixed:refining,demand,ids}
+        // The presenter independently checks actual textures and physical coverage.
+        emit({phase:'refining',done,total:tiles.length})
+        client.present({presentationId:id,view:p.view,width:p.width,height:p.height,dpr:ratio,items,allowBackground:!refining,...(regions?{cameraPreview:{anchor:visible[0].gpuTile!}}:{})})
       }catch(error){fail(error)}
     }
     const schedulePaint=()=>{if(alive&&!frameHandle)frameHandle=requestAnimationFrame(paint)}
@@ -218,7 +281,10 @@ export function NativeSourceSurface(props:Props){
       if(old&&old.gpuTile!==tile.gpuTile)retire(old)
       retired.delete(tile.gpuTile)
       cache.set(tile.key,{...tile,placement,serial:old?.gpuTile===tile.gpuTile?old.serial:++serial,used:++tick,lastSubmission:old?.gpuTile===tile.gpuTile?old.lastSubmission:0})
-      if(!tile.prefetch||tileIntersectsView(tile,latest.current.view,latest.current))schedulePaint()
+      if(!tile.prefetch && plan().tiles.every(t=>cache.has(t.key))){
+        cancelAnimationFrame(frameHandle)
+        paint()
+      }else if(!tile.prefetch || tileIntersectsView(tile,latest.current.view,latest.current))schedulePaint()
     }
     const updateWorkDemand=()=>{
       if(workQueue.current?.pending.size){
@@ -235,6 +301,7 @@ export function NativeSourceSurface(props:Props){
         workQueue.demand(covered&&!optional,tile=>{
           if(overview?.tiles.some(base=>base.key===tile.key))return !moving && !missing
           if(tile.prefetch)return next.keys.has(tile.key)||!missing&&next.prefetchKeys.has(tile.key)
+          if(moving&&continuousZoom&&zoomingIn&&!next.keys.has(tile.key)&&(tile.width>514||tile.height>514))return false
           const relative=next.raster.scale/tile.zoom
           return relative<=2&&relative>=.5&&tileIntersectsView(tile,next.p.view,next.p) ||
             zoomingIn&&continuousZoom&&relative>2&&relative<=8&&sourceTileBringsDetail(tile,next.p.view,next.p,cache.values())
@@ -242,20 +309,21 @@ export function NativeSourceSurface(props:Props){
       }
     }
     const run=async()=>{
-      if(!alive||!initialized||running||failed||suspended)return
+      if(!alive||!initialized||running||failed||suspended||latest.current.parked)return
       running=true
       try{
-        while(alive&&!failed&&!suspended){
+        while(alive&&!failed&&!suspended&&!latest.current.parked){
           const {p,ratio,raster,tiles,prefetch}=plan(),missing=tiles.filter(tile=>!cache.has(tile.key))
           const optional=missing.length===0
-          if(optional && source.materialKeys)break
+          if(!optional&&outwardCover()){schedulePaint();break}
+          if(optional && source.materialKeys && (moving||!prefetch.length))break
           if(optional&&prefetchReady!==demandKey()){schedulePaint();break}
           // We already have real pixels for this entire source. An expensive
           // optional overview cannot fill another hole. Give the next input
           // first use of the raster owner before warming native neighbours.
           const costlyOverview = seededOverview && projection.history.completeFrame && nativeTileMs > SOURCE_QUIET_MS
           if (optional) {
-            const nextOptional = Math.max(optionalNotBefore, costlyOverview ? lastInputAt+Math.min(nativeTileMs,1000) : 0)
+            const nextOptional = Math.max(optionalNotBefore, source.materialKeys ? lastInputAt+200 : 0, costlyOverview ? lastInputAt+Math.min(nativeTileMs,1000) : 0)
             const wait = nextOptional-performance.now()
             if (wait > 0) {
               clearTimeout(optionalTimer)
@@ -263,25 +331,30 @@ export function NativeSourceSurface(props:Props){
               break
             }
           }
-          if (optional && !costlyOverview && !moving && !overview) overview = navigationOverview(source.bounds,1,source.nodes)
+          if (optional && !source.materialKeys && !costlyOverview && !moving && !overview) overview = navigationOverview(source.bounds,1,source.nodes)
           const warmBase = optional && !costlyOverview && !moving && overview ? nearOverviewTiles(overview.tiles,p.view,p.width,p.height)
             .find(tile=>!cache.has(tile.key) && !skippedPrefetch.has(tile.key)) : undefined
           const candidates=warmBase ? [{...warmBase,prefetch:true as const}] :
             optional?prefetch.filter(tile=>!cache.has(tile.key)&&!skippedPrefetch.has(tile.key)):missing
           if(!candidates.length)break
-          const batch=candidates.slice(0,SOURCE_PIPELINE_TILES)
+          // The full visible cohort shares the bounded preparation pipeline,
+          // including inward zoom. There is still a single raster owner.
+          const ordered=p.overviewBoxes?.length&&!optional&&raster.scale===p.view.zoom*ratio?
+            orderMaterialTiles(candidates,materialRegions(p.overviewBoxes,p,ratio),planner.focus(p.view,p.width,p.height)):candidates
+          // A settled overview can stream its visible cohort in one request.
+          // The worker still prepares just one tile ahead of its GPU raster.
+          const limit=overviewMode&&!optional&&!moving&&raster.scale<=1?8:SOURCE_PIPELINE_TILES
+          const batch=ordered.slice(0,source.materialKeys && moving && zoomingIn && continuousZoom && backing ? 1 : limit)
           diagnostics.record('cache',{count:batch.length,prefetch:optional?1:0,reasonCode:optional?7:5})
-          const work=workQueue.begin(batch,SOURCE_PIPELINE_TILES)
+          const work=workQueue.begin(batch,limit)
           const camera = warmBase && overview ? overview.view : raster.camera
           const batchStarted=performance.now()
           try{
             await client.renderSource(source,{pageId:source.pageId,width:Math.ceil(p.width*ratio),height:Math.ceil(p.height*ratio),
               view:camera,transparent:false,grid:false,rasterProfile:profile,
-              tileViewport:batch,tilePrepareViewport:tileBatchPrepareViewport(optional?[]:tiles,[],batch,camera),renderIntent:'preview',
+              sourceMaterialOverview:overviewMode||undefined,tileViewport:batch,tilePrepareViewport:tileBatchPrepareViewport(optional||source.materialKeys&&moving&&zoomingIn&&continuousZoom?[]:tiles,[],batch,camera),renderIntent:'preview',
               tileOwner:{documentId:source.owner.documentId,sessionEpoch:source.owner.sessionEpoch}},tile=>{
-                // Every useful tile can present while the next one is still
-                // preparing/rasterizing. Late or duplicate delivery cannot
-                // populate a newer owner or retire a texture already in use.
+                // Stage each accepted tile while the rest of its viewport is being drawn.
                 if(!alive||!workQueue.accepts(work,tile.key)){
                   tile.bitmap?.close()
                   if(tile.gpuTile&&![...cache.values()].some(value=>value.gpuTile===tile.gpuTile))client.releasePresented([tile.gpuTile])
@@ -295,6 +368,10 @@ export function NativeSourceSurface(props:Props){
             }
           }catch(error){
             if(work.controller.signal.aborted||String(error).includes('PREVIEW_CANCELLED'))continue
+            if(!optional&&sourceRasterLimit(error)&&batch.some(t=>t.width>514||t.height>514)&&qualityPose===poseKey()&&
+                planner.retryNativeCoverage(p.view,ratio,p.width,p.height)){
+              work.controller.abort();schedulePaint();continue
+            }
             if(!optional && qualityPose===poseKey() && quality.rejected(raster.scale,error)){
               work.controller.abort();schedulePaint();continue
             }
@@ -312,7 +389,7 @@ export function NativeSourceSurface(props:Props){
           if(skippedPrefetch.size>32)for(const key of skippedPrefetch)if(!plan().prefetchKeys.has(key) && !overview?.tiles.some(tile=>tile.key===key))skippedPrefetch.delete(key)
           // Yield host bookkeeping; native preparation and GPU work already
           // use their existing independent threads and bounded task queues.
-          await new Promise<void>(resolve=>setTimeout(resolve,0))
+          if(optional) await new Promise<void>(resolve=>setTimeout(resolve,0))
         }
       }catch(error){if(alive)fail(error)}finally{running=false}
     }
@@ -328,18 +405,62 @@ export function NativeSourceSurface(props:Props){
       if(Array.isArray(stats.missingGpuTiles)){
         const missing=new Set(stats.missingGpuTiles)
         for(const[key,tile]of cache)if(missing.has(tile.gpuTile)){cache.delete(key);retire(tile)}
+        if(wanted && [...wanted.ids].some(id=>missing.has(id)))wanted=undefined
         release();void run()
+      }
+      if(wanted && stats.coverageDeferredPresentationId===wanted.id && submittedPlacements.get(wanted.sequence)?.outward){
+        deferredOutward=wanted.demand;wanted=undefined;schedulePaint();void run()
+      }
+      if(wanted && !wanted.mixed && stats.coverageDeferredPresentationId===wanted.id && wanted.demand===demandKey() && !stats.missingTextureCount){
+        const p=latest.current
+        if(planner.retryNativeCoverage(p.view,density.current,p.width,p.height)){
+          wanted=undefined
+          schedulePaint();void run()
+        }else{
+          const total=plan().tiles.length
+          emit({phase:'limited',done:total,total,error:'当前视口未获得完整像素覆盖'})
+        }
       }
       const actual=stats.presented as ResidentAcknowledgement|undefined
       if(!actual?.presentationId?.startsWith(prefix+':'))return
       const sequence=Number(actual.presentationId.slice(prefix.length+1))
       if(!Number.isSafeInteger(sequence)||sequence<=0||sequence>submission||sequence<acknowledged)return
       project()
-      const ids=new Set(actual.ids),shownTiles=(submittedPlacements.get(sequence)??[]).filter(t=>ids.has(t.gpuTile))
-      if(bitmap && backing && actual.preview && latest.current.view.zoom<backing.view.zoom &&
-          !projection.history.canAdvance(backing,actual,latest.current,source.bounds))return
-      if(bitmap && keepCompleteCameraBacking(backing,actual,!!bitmapContext,projection.zooming,latest.current,projection.history.completeFrame) &&
-          !improvesSourceZoom(backing,actual,latest.current,shownTiles,backingTiles))return
+      const ids=new Set(actual.ids),sent=submittedPlacements.get(sequence)
+      const shownTiles=(sent?.tiles??[]).filter(t=>ids.has(t.gpuTile))
+      const expected=wanted,p=latest.current
+      const current=expected&&actual.presentationId===expected.id&&
+        actual.view.x===expected.view.x&&actual.view.y===expected.view.y&&actual.view.zoom===expected.view.zoom&&
+        actual.width===expected.width&&actual.height===expected.height&&actual.dpr===expected.dpr&&
+        actual.view.x===p.view.x&&actual.view.y===p.view.y&&actual.view.zoom===p.view.zoom&&
+        actual.width===p.width&&actual.height===p.height&&actual.dpr===density.current&&expected.demand===demandKey()
+      const allIds=current&&[...expected.ids].every(id=>ids.has(id))
+      const terminal=allIds&&expected.complete&&!actual.preview
+      if(current&&expected.complete&&!terminal&&planner.retryNativeCoverage(p.view,actual.dpr,p.width,p.height)){
+        // Coverage is checked by the presenter. Keep the displayed bitmap
+        // and retry even when this incomplete handoff itself is declined.
+        if(window.coreDesktop?.renderDiagnostics)element.dataset.sourceCoverageRepair=String(sequence)
+        wanted=undefined; schedulePaint();void run()
+      }
+      // An ACK can retire resources even when its obsolete or incomplete bitmap
+      // cannot replace the image on screen. Leave the displayed camera intact.
+      acknowledged=sequence
+      for(const id of submittedPlacements.keys())if(id<=sequence)submittedPlacements.delete(id)
+      release()
+      const wheelAdvance=sent?.wheel && (moving&&continuousZoom&&zoomingIn || overviewMode&&current) && !actual.preview &&
+        bitmap && bitmapContext && sent.tiles.length===shownTiles.length &&
+        actual.view.x===sent.view.x && actual.view.y===sent.view.y && actual.view.zoom===sent.view.zoom &&
+        actual.width===sent.width && actual.height===sent.height && actual.dpr===sent.dpr &&
+        improvesSourceZoom(backing,actual,p,shownTiles,backingTiles)
+      const outwardAdvance=sent?.outward && current && allIds && bitmap && bitmapContext && sent.tiles.length===shownTiles.length
+      const planned=sent?.regions
+      const accepted=planned&&current&&bitmap&&bitmapContext&&(!actual.preview||actual.previewGaps)&&
+        completeMaterialRegions(materialRegions(planned,p,actual.dpr),shownTiles,actual.view.zoom*actual.dpr,actual.previewGaps)
+      const regional=!!(accepted&&accepted.length===planned?.length&&retainsVisibleMaterials(partialMaterials,accepted,p,actual.dpr))
+      if((actual.preview&&!regional) || ((sent?.mixed || !current || !allIds) && !wheelAdvance && !outwardAdvance && !regional)){
+        if(wanted?.id===actual.presentationId)wanted=undefined
+        return
+      }
       if (bitmap && bitmapContext && startupPreview) {
         seededOverview=projection.history.seed(source,source.bounds,element,startupPreview.scale,actual)
         if (!seededOverview) previewRequested=false
@@ -347,18 +468,20 @@ export function NativeSourceSurface(props:Props){
         delete element.dataset.sourcePreview
       }
       if(bitmap&&bitmapContext){
+        if(!regional)handoff.clear()
+        partialMaterials=regional?planned:undefined
+        element.style.clipPath=partialMaterials?sourcePageClip(partialMaterials,actual.view,actual.width,actual.height)??'':''
         consumePresentationBitmap(bitmapContext,element,bitmap);bitmapApplied=true
-        projection.history.capture(element,actual,source.bounds)
-        if(source.materialKeys){
-          // Let the immutable source preview show through GPU-confirmed gaps.
-          // Real white paint belongs to the tile and is never cut out.
-          const gaps=actual.preview?actual.previewGaps:undefined
-          const outlines=gaps?.map(g=>{
-            const x=g.x/actual.dpr,y=g.y/actual.dpr,w=g.width/actual.dpr,h=g.height/actual.dpr
-            return `M${x} ${y}v${h}h${w}v${-h}Z`
-          }).join(' ')
-          element.style.clipPath=outlines?`path(evenodd, "M0 0h${actual.width}v${actual.height}H0Z ${outlines}")`:
-            actual.preview&&!gaps?'inset(100%)':''
+        shownMaterials=partialMaterials??latest.current.overviewBoxes
+        if(!regional)projection.history.capture(element,actual,source.bounds)
+        if(window.coreDesktop?.renderDiagnostics){
+          if(partialMaterials){
+            element.dataset.sourceRegionalMaterials=JSON.stringify(partialMaterials.map(r=>r.materialKey))
+            element.dataset.sourceRegionalBounds=JSON.stringify(partialMaterials.map(({x,y,width,height})=>({x,y,width,height})))
+          }else{
+            delete element.dataset.sourceRegionalMaterials
+            delete element.dataset.sourceRegionalBounds
+          }
         }
       }
       if(bitmapApplied){
@@ -369,27 +492,42 @@ export function NativeSourceSurface(props:Props){
         if(window.coreDesktop?.renderDiagnostics){
           element.dataset.sourceShownSequence=String(sequence)
           element.dataset.sourceShownNewScale=String(scale)
+          const first=shownTiles[0]
+          const mixed=shownTiles.some(t=>t.zoom!==first.zoom||(t.phaseX??0)!==(first.phaseX??0)||(t.phaseY??0)!==(first.phaseY??0))
+          element.dataset.sourceShownCoverage=source.viewportSubset?'focal-preview':regional?'material-regions':mixed?'complete-mosaic':'complete-lattice'
+          element.dataset.sourceBitmapScale=String(actual.view.zoom*actual.dpr)
         }
         // A real tile can already be visible through camera reprojection
         // before this older submission qualifies for exact-camera readiness.
         if(moving&&zoomingIn&&continuousZoom&&actual.view.zoom<=p.view.zoom&&quality.scale===undefined&&
             scale>0&&planner.presentedDetail(Math.min(scale,p.view.zoom*density.current))){schedulePaint();void run()}
       }
-      backing=actual;backingTiles=shownTiles;acknowledged=sequence
-      for(const id of submittedPlacements.keys())if(id<=sequence)submittedPlacements.delete(id)
-      release();project()
+      backing=actual;backingTiles=shownTiles;project()
+      if(p.overviewBoxes&&!lastStatus.startsWith('error/')&&!lastStatus.startsWith('limited/'))badge.style.opacity='0'
       if (bitmapApplied && !seededOverview && actual.navigationBackingBytes===NAVIGATION_BACKING_BYTES) void requestOverview()
       if(bitmapApplied && client.copyNavigationTile) {
         const cohort = nearOverviewTiles(overview?.tiles ?? [],latest.current.view,latest.current.width,latest.current.height)
           .flatMap(tile => cache.get(tile.key) ?? [])
         projection.history.warm(source.bounds,[...cohort,...cache.values()],(id,consume)=>client.copyNavigationTile(id,consume),schedulePaint)
       }
-      const expected=wanted,p=latest.current
-      if(!expected||actual.presentationId!==expected.id||actual.view.x!==expected.view.x||actual.view.y!==expected.view.y||actual.view.zoom!==expected.view.zoom||
-        actual.width!==expected.width||actual.height!==expected.height||actual.dpr!==expected.dpr||
-        actual.view.x!==p.view.x||actual.view.y!==p.view.y||actual.view.zoom!==p.view.zoom||actual.width!==p.width||actual.height!==p.height||actual.dpr!==density.current||
-        [...expected.ids].some(id=>!actual.ids.includes(id)))return
-      const complete=expected.complete&&!actual.preview
+      // An in-flight wheel ACK may cover the newer camera after reprojection.
+      // It has no authority to acknowledge that newer camera's terminal state.
+      if(regional&&current){
+        latest.current.onPresented?.(actual,false)
+        return
+      }
+      if(!current||!allIds)return
+      const complete=!!terminal&&!source.viewportSubset
+      if(terminal&&source.viewportSubset){
+        // This snapshot covers the focal materials only. Its native pixels
+        // can be shown while the host prepares the rest of the same viewport.
+        planner.presented(actual.view,actual.dpr,actual.width,actual.height)
+        if(window.coreDesktop?.renderDiagnostics&&shownMaterials){
+          element.dataset.sourceRegionalMaterials=JSON.stringify(shownMaterials.map(r=>r.materialKey))
+          element.dataset.sourceRegionalBounds=JSON.stringify(shownMaterials.map(({x,y,width,height})=>({x,y,width,height})))
+          element.dataset.sourceShownCoverage='focal-preview'
+        }
+      }
       element.dataset.sourcePresentation=String(sequence)
       element.dataset.sourceTargetScale=String(expected.scale)
       const visibleTiles=[...cache.values()].filter(t=>actual.ids.includes(t.gpuTile!)&&tileIntersectsView(t,actual.view,actual))
@@ -397,6 +535,12 @@ export function NativeSourceSurface(props:Props){
       element.dataset.sourceRenderScale=String(Math.max(0,...visibleTiles.map(t=>t.zoom)))
       element.dataset.sourceVisibleDemandScale=hasRequestedDensity?String(expected.scale):''
       if(complete){
+        if(source.materialKeys){
+          const scale=actual.view.zoom*actual.dpr
+          recentNative.delete(scale)
+          if(recentNative.size>=2)recentNative.delete(recentNative.keys().next().value!)
+          recentNative.set(scale,new Set(shownTiles.map(t=>t.key)))
+        }
         quality.reset()
         element.dataset.sourceReadyCamera=JSON.stringify(actual.view)
         planner.presented(actual.view,actual.dpr,actual.width,actual.height)
@@ -405,13 +549,12 @@ export function NativeSourceSurface(props:Props){
       if(!complete&&moving&&zoomingIn&&quality.scale===undefined&&expected.scale<actual.view.zoom*actual.dpr &&
           hasRequestedDensity&&
           planner.presentedDetail(expected.scale)){schedulePaint();void run()}
-      if(actual.preview)badge.textContent='缓存预览 · 正在补画'
       latest.current.onPresented?.(actual,complete)
-      if(expected.covered&&!actual.preview&&expected.demand===demandKey()&&quality.scale!==undefined){
+      if(expected.demand===demandKey()&&quality.scale!==undefined){
         if(quality.presented(plan().raster.scale)){schedulePaint();void run()}
         else if(quality.limited){const total=plan().tiles.length;emit({phase:'limited',done:total,total,error:quality.reason})}
       }
-      if(expected.covered&&!actual.preview&&expected.demand===demandKey()&&prefetchReady!==expected.demand){
+      if(!expected.mixed&&expected.demand===demandKey()&&prefetchReady!==expected.demand){
         prefetchReady=expected.demand;void run()
       }
       }catch(error){fail(error)} finally {
@@ -428,15 +571,26 @@ export function NativeSourceSurface(props:Props){
         if(!initialized||!rejectedCamera||view.x===rejectedCamera.x&&view.y===rejectedCamera.y&&view.zoom===rejectedCamera.zoom)return
         failed=false;rejectedCamera=undefined;projection.history.bind(source)
       }
-      if(suspended){workQueue.demand(true,()=>false);return}
-      if(qualityPose!==poseKey()){qualityPose=poseKey();quality.reset()}
-      if(latest.current.view.zoom!==lastZoom){
-        const now=performance.now(),inward=latest.current.view.zoom>lastZoom
-        continuousZoom=inward===zoomingIn && now-lastZoomAt<180
-        zoomingIn=inward;lastZoom=latest.current.view.zoom;lastZoomAt=now
+      if(suspended||latest.current.parked){
+        if(!suspended)project()
+        clearTimeout(optionalTimer);clearTimeout(idleTimer);workQueue.demand(true,()=>false);return
       }
+      if(qualityPose!==poseKey()){qualityPose=poseKey();quality.reset()}
+      const currentView=latest.current.view,releasedPan=panHeld&&!latest.current.panGestureActive
+      panHeld=!!latest.current.panGestureActive
+      if(currentView.zoom!==lastZoom){
+        const now=performance.now(),inward=latest.current.view.zoom>lastZoom
+        wheelInterval=now-lastZoomAt
+        const wheel=latest.current.wheelView, view=latest.current.view
+        continuousZoom=!!wheel && wheel.x===view.x && wheel.y===view.y && wheel.zoom===view.zoom ||
+          inward===zoomingIn && now-lastZoomAt<180
+        zoomingIn=inward;lastZoom=latest.current.view.zoom;lastZoomAt=now
+      }else if(panHeld || currentView.x!==priorView.x || currentView.y!==priorView.y){
+        continuousZoom=false;zoomingIn=false
+      }
+      priorView=currentView
       lastInputAt=performance.now();optionalNotBefore=0;clearTimeout(optionalTimer)
-      moving=true;clearTimeout(idleTimer)
+      moving=!releasedPan;clearTimeout(idleTimer)
       project()
       try{
       // Motion headroom is optional work. An already complete exact native
@@ -457,7 +611,7 @@ export function NativeSourceSurface(props:Props){
         }
       }
       updateWorkDemand()
-      idleTimer=moving?setTimeout(()=>{
+      idleTimer=moving&&!panHeld?setTimeout(()=>{
         if(!alive||failed||suspended)return
         moving=false
         try{
@@ -471,7 +625,7 @@ export function NativeSourceSurface(props:Props){
             sourceTileBringsDetail(tile,native.p.view,native.p,cache.values()))
           schedulePaint();void run()
         }catch(error){fail(error)}
-      },continuousZoom&&lastInputAt-lastZoomAt<180?SOURCE_WHEEL_QUIET_MS:SOURCE_QUIET_MS):undefined
+      },continuousZoom&&lastInputAt-lastZoomAt<180?Math.min(SOURCE_WHEEL_QUIET_MS,Math.max(56,wheelInterval*2+8)):SOURCE_QUIET_MS):undefined
       schedulePaint();void run()
       }catch(error){fail(error)}
     }
@@ -494,8 +648,8 @@ export function NativeSourceSurface(props:Props){
     })()
     return()=>{
       alive=false;wake.current=()=>{}
-      const settled=mounted.current&&!!bitmapContext&&!!source.materialKeys&&initialized&&!running&&!failed&&
-        !workQueue.current&&acknowledged===submission&&lastStatus.startsWith('ready/')
+      const settled=mounted.current&&!!bitmapContext&&!!source.materialKeys&&initialized&&!failed&&
+        !workQueue.current?.pending.size&&acknowledged===submission&&lastStatus.startsWith('ready/')
       workQueue.close();document.removeEventListener('visibilitychange',visibility)
       clearTimeout(previewTimer);clearTimeout(optionalTimer);clearTimeout(idleTimer);cancelAnimationFrame(frameHandle)
       client.onPresentation=undefined
@@ -507,10 +661,17 @@ export function NativeSourceSurface(props:Props){
         for(const tile of cache.values())if(tile.gpuTile)ids.add(tile.gpuTile)
         client.releasePresented([...ids]);parked.current={client,owner}
       }else client.dispose()
-      diagnostics.flush();diagnostics.close();projection.dispose();bitmapContext?.transferFromImageBitmap(null)
-      element.remove();badge.remove()
+      diagnostics.flush();diagnostics.close();projection.dispose()
+      // Park only actual visible pixels, with the precise old material clip.
+      const held=mounted.current&&bitmapContext&&backing&&(!backing.preview||!!partialMaterials)&&shownMaterials&&latest.current.overviewBoxes&&outer.current&&
+        handoff.hold(element,outer.current,backing.view,backing.width,backing.height,source,shownMaterials,backing.dpr)
+      if(!held){bitmapContext?.transferFromImageBitmap(null);element.remove()}
+      badge.remove()
     }
-  },[props.source.token,props.width>0&&props.height>0])
-  useLayoutEffect(()=>wake.current(),[props.view.x,props.view.y,props.view.zoom,props.width,props.height,dpr])
-  return <div ref={host} className="native-source-surface" style={{position:'absolute',inset:0,pointerEvents:'none',overflow:'hidden',visibility:props.hidden?'hidden':undefined,clipPath:props.clipPath}}/>
+  },[props.source?.token??props.warm,props.width>0&&props.height>0,!!props.overviewBoxes,!!props.source?.viewportSubset])
+  useLayoutEffect(()=>wake.current(),[props.view.x,props.view.y,props.view.zoom,props.width,props.height,props.panGestureActive,props.parked,crop?.x,crop?.y,crop?.width,crop?.height,dpr])
+  useLayoutEffect(()=>{handoff.project(props.source,props.overviewBoxes,props.view,props.width,props.height,dpr)},[props.source,props.overviewBoxes,props.view,props.width,props.height,dpr,handoff])
+  return <div ref={outer} className="native-source-surface" style={{position:'absolute',inset:0,pointerEvents:'none',overflow:'hidden',visibility:props.hidden?'hidden':undefined,clipPath:props.clipPath}}>
+    <div ref={host} style={{position:'absolute',inset:0,overflow:'hidden'}}/>
+  </div>
 }

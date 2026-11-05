@@ -657,7 +657,10 @@ fn generic_install_and_load_replace_receipt_with_one_exact_measurement() {
         let mut engine = retained_painted_engine(source());
         let patch = crate::editing::DocumentPatch { nodes: Default::default(), fields: [(field.into(), value)].into() };
         let before_count = crate::editing::document_size_count_calls();
+        let validations = crate::scene::FULL_DOCUMENT_VALIDATIONS.get();
         engine.apply_document_patch_with_damage(&patch).unwrap();
+        assert_eq!(crate::scene::FULL_DOCUMENT_VALIDATIONS.get() - validations, 1,
+            "the installed {field} patch is the document already validated by apply_with_size");
         assert_eq!(crate::editing::document_size_count_calls() - before_count, 1,
             "installation reuses the exact validated patch byte count");
         assert!(engine.retained_source_size.is_none());
@@ -668,11 +671,35 @@ fn generic_install_and_load_replace_receipt_with_one_exact_measurement() {
     let mut replacement = source();
     replacement.id = "new-document".into();
     replacement.name = "loaded separately".into();
+    let validations = crate::scene::FULL_DOCUMENT_VALIDATIONS.get();
     engine.load_document(&serde_json::to_string(&replacement).unwrap()).unwrap();
+    assert_eq!(crate::scene::FULL_DOCUMENT_VALIDATIONS.get() - validations, 1);
     assert!(engine.retained_source_size.is_none());
     assert_eq!(engine.source_doc.as_deref(), Some(&replacement));
     assert_eq!(engine.source_doc_bytes, Some(serde_json::to_vec(&replacement).unwrap().len()));
     assert_retained_receipt_matches_fresh(&mut engine);
+}
+
+#[test]
+fn rejected_patch_and_external_loads_preserve_the_installed_document() {
+    let original = source();
+    let mut engine = Engine::new();
+    engine.install_document(original.clone()).unwrap();
+    let bytes = engine.source_doc_bytes;
+    let revision = engine.geo_revision;
+    let mut invalid = original.clone();
+    invalid.pages[0].children.push("missing".into());
+    let patch = crate::editing::DocumentPatch::between(&original, &invalid).unwrap();
+    let validations = crate::scene::FULL_DOCUMENT_VALIDATIONS.get();
+    assert!(engine.apply_document_patch(&patch).unwrap_err().contains("Missing node"));
+    assert!(engine.load_document(&serde_json::to_string(&invalid).unwrap()).unwrap_err().contains("Missing node"));
+    #[cfg(not(target_arch = "wasm32"))]
+    assert!(engine.load_source_document(invalid).unwrap_err().contains("Missing node"));
+    assert_eq!(crate::scene::FULL_DOCUMENT_VALIDATIONS.get() - validations,
+        2 + usize::from(cfg!(not(target_arch = "wasm32"))));
+    assert_eq!(engine.source_doc.as_deref(), Some(&original));
+    assert_eq!(engine.source_doc_bytes, bytes);
+    assert_eq!(engine.geo_revision, revision);
 }
 
 #[test]

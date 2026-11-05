@@ -36,6 +36,28 @@ pub enum Align {
     SpaceBetween,
     SpaceAround,
     SpaceEvenly,
+    UnsafeCenter,
+    UnsafeEnd,
+}
+
+impl Align {
+    // Signed alignment keeps the requested centre or trailing edge even when
+    // fixed children overflow. Existing safe layouts retain their origin.
+    fn overflow_offset(self, free: f64) -> f64 {
+        match self {
+            Self::UnsafeCenter => free / 2.,
+            Self::UnsafeEnd => free,
+            _ => 0.,
+        }
+    }
+
+    fn offset(self, free: f64) -> f64 {
+        match self {
+            Self::Center => free.max(0.) / 2.,
+            Self::End => free.max(0.),
+            _ => self.overflow_offset(free),
+        }
+    }
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -301,14 +323,7 @@ fn distribution(align: Align, free: f64, count: usize, gap: f64, min_extent: f64
             let free = free.max(0.);
             (free / (count + 1) as f64, gap + free / (count + 1) as f64)
         }
-        _ => {
-            let free = free.max(0.);
-            match align {
-                Align::Center => (free / 2., gap),
-                Align::End => (free, gap),
-                _ => (0., gap),
-            }
-        }
+        _ => (align.offset(free), gap),
     }
 }
 fn fill_sizes(
@@ -517,7 +532,11 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
     if lines.len() == 1 {
         line_cross[0] = cross_capacity;
     }
-    let mut cross_cursor = pad_start[cross];
+    // A single line already spans cross_capacity. Align a wrapped block once,
+    // then align each child within its own line.
+    let mut cross_cursor = pad_start[cross] + if lines.len() > 1 {
+        l.align.overflow_offset(cross_capacity - intrinsic_cross)
+    } else { 0. };
     for (line, span) in lines.iter().zip(line_cross) {
         let total = line
             .iter()
@@ -540,12 +559,7 @@ fn flex(doc: &mut Document, id: &str, l: &Layout) -> Result<(), String> {
                 fit_axis(c, cross, span)
             }
             let m = metrics(c);
-            let extra = (span - m[cross + 2]).max(0.);
-            let shift = match align {
-                Align::Center => extra / 2.,
-                Align::End => extra,
-                _ => 0.,
-            };
+            let shift = align.offset(span - m[cross + 2]);
             let mut p = [0., 0.];
             p[axis] = cursor;
             p[cross] = cross_cursor + shift;
@@ -712,16 +726,8 @@ fn grid_node_tracks(nodes: &mut BTreeMap<String, Node>, id: &str, l: &Layout) ->
         }
         let m = metrics(n);
         let align = s.align_self.unwrap_or(l.align);
-        let dx = match align {
-            Align::Center => (w - m[2]).max(0.) / 2.,
-            Align::End => (w - m[2]).max(0.),
-            _ => 0.,
-        };
-        let dy = match align {
-            Align::Center => (h - m[3]).max(0.) / 2.,
-            Align::End => (h - m[3]).max(0.),
-            _ => 0.,
-        };
+        let dx = align.offset(w - m[2]);
+        let dy = align.offset(h - m[3]);
         place(
             n,
             l.padding[3] + col as f64 * (cell + l.gap) + dx,
@@ -1165,6 +1171,20 @@ mod wrap_tests {
         )
     }
 
+    #[test]
+    fn signed_flex_alignment_positions_the_whole_track_block_and_fixed_overflow() {
+        let mut wrapped = wrap_doc(250., 10., 8., true, Align::UnsafeCenter);
+        let frame = wrapped.nodes.get_mut("f").unwrap();
+        frame.height = 200.;
+        frame.layout.as_mut().unwrap().align = Align::UnsafeCenter;
+        let layout = frame.layout.clone().unwrap();
+        flex(&mut wrapped, "f", &layout).unwrap();
+        // Two 50-high lines with an 8-unit gap leave 92 units to distribute.
+        assert_eq!(place_of(&wrapped,"c0"), (20.,46.));
+        assert_eq!(place_of(&wrapped,"c2"), (75.,104.));
+        assert_eq!(distribution(Align::UnsafeCenter,-100.,3,4.,10.),(-50.,4.));
+        assert_eq!(distribution(Align::UnsafeEnd,-100.,3,4.,10.),(-100.,4.));
+    }
     #[test]
     fn greedy_break_moves_third_child_to_second_line() {
         // capacity 250: c1(100)+gap+c2(100)=210 fits; c3 needs +110 → line 2.

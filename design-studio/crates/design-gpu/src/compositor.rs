@@ -1532,11 +1532,17 @@ impl Compositor<'_, '_, '_> {
         Ok(())
     }
     fn draw_list(
+        &mut self, ids: &[String], targets: Vec<Surface>, clip: Option<&[Surface]>, depth: usize,
+    ) -> Result<Vec<Surface>, String> {
+        self.draw_list_inner(ids,targets,clip,depth,false)
+    }
+    fn draw_list_inner(
         &mut self,
         ids: &[String],
         mut targets: Vec<Surface>,
         clip: Option<&[Surface]>,
         depth: usize,
+        omit_optics: bool,
     ) -> Result<Vec<Surface>, String> {
         if depth > 64 {
             return Err("Native GPU scene nesting exceeds 64".into());
@@ -1575,7 +1581,16 @@ impl Compositor<'_, '_, '_> {
         }
         let ids = &expanded;
         let mut at = 0;
+        let mut optical_prefix: Option<(&str, Vec<Surface>)> = None;
+        let mut paint_before: Option<&String>=None;
         while at < ids.len() {
+            if optical_prefix.as_ref().is_some_and(|(next,_)| *next!=ids[at]) {
+                self.frame.release(&optical_prefix.take().unwrap().1);
+                paint_before=None;
+            }
+            if let Some(prev)=paint_before.take() && let Some((_,base))=&mut optical_prefix {
+                *base=self.draw_list_inner(std::slice::from_ref(prev),std::mem::take(base),clip,depth,true)?;
+            }
             let Some(n) = scene.nodes.get(&ids[at]) else {
                 at += 1;
                 continue;
@@ -1583,6 +1598,15 @@ impl Compositor<'_, '_, '_> {
             at += 1;
             if n.opacity <= 0. {
                 continue;
+            }
+            let has_prior=optical_prefix.is_some();
+            if !omit_optics && let Some(next)=n.optical_prefix_next.as_deref().filter(|next|ids.get(at).is_some_and(|id|id==next)) {
+                if let Some(prefix)=&mut optical_prefix { prefix.0=next; }
+                else if futureox_design_kernel::scene::selected_backdrop(&n.effects).is_some() {
+                    let planes=targets.iter().map(|s|self.frame.snapshot(*s)).collect::<Result<Vec<_>,_>>()?;
+                    optical_prefix=Some((next,planes));
+                }
+                if optical_prefix.is_some() && (!n.fills.is_empty() || !n.strokes.is_empty()) {paint_before=Some(&ids[at-1]);}
             }
             if self.replay_texture(n, &mut targets, clip)? {
                 continue;
@@ -1713,7 +1737,7 @@ impl Compositor<'_, '_, '_> {
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             let mut coverage: Option<Vec<Surface>> = None;
-            if let Some(fx) = futureox_design_kernel::scene::selected_backdrop(&n.effects) {
+            if !omit_optics && let Some(fx) = futureox_design_kernel::scene::selected_backdrop(&n.effects) {
                 let cropped = fx.kind == "background-blur";
                 let b = n.backdrop_box;
                 let capture = if cropped {
@@ -1724,14 +1748,15 @@ impl Compositor<'_, '_, '_> {
                 // Fractional capture origins are shader coordinates, not texture
                 // dimensions. Preserve their phase exactly, as the browser does.
                 let mut background = self.frame.acquire(capture)?;
-                let mut u = parameters(capture, &targets);
+                let inputs = if has_prior { &optical_prefix.as_ref().unwrap().1 } else { &targets };
+                let mut u = parameters(capture, inputs);
                 u[16] = 26.;
                 if cropped {
                     u[0] = b[0] as f32;
                     u[1] = b[1] as f32;
                 }
                 if n.capture_replay.is_none() {
-                    self.frame.draw(background, u, &targets, false, None)?;
+                    self.frame.draw(background, u, inputs, false, None)?;
                 }
                 // The integer Rect cannot carry a fractional origin; compensate
                 // all subsequent pass parameters using the dedicated phase path.
@@ -1885,6 +1910,7 @@ impl Compositor<'_, '_, '_> {
                 self.frame.release(&coverage);
             }
         }
+        if let Some((_,planes))=optical_prefix { self.frame.release(&planes); }
         Ok(targets)
     }
     fn spatial_blur(&mut self,input:Surface,n:&GpuNode,fx:&Effect)->Result<Surface,String>{

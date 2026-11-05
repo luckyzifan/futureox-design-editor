@@ -172,7 +172,7 @@ fn layout(n: &Node, m: Transform, region: Rect, e: &Effect, bake_prefix: bool) -
     if !(96. ..=32768.).contains(&radius) {
         return None;
     }
-    let minimum_sigma = if n.render_children().is_empty() {
+    let minimum_sigma = if !gaussian || n.render_children().is_empty() {
         24.
     } else {
         8.
@@ -276,6 +276,9 @@ pub(super) fn eligible(n: &Node, m: Transform, region: Rect) -> bool {
     })
 }
 
+fn shadow_child_id(parent: &str, child: &str) -> String {
+    format!("\0source-shadow/{}/{}{}", parent.len(), parent, child)
+}
 // Only the isolated foreground is evaluated on this grid. Each descendant is
 // sent through the ordinary compiler and painter, including nested effects.
 fn subtree_layout(doc: &Document, n: &Node, m: Transform, region: Rect) -> Option<Layout> {
@@ -287,7 +290,11 @@ fn subtree_layout(doc: &Document, n: &Node, m: Transform, region: Rect) -> Optio
     }
     let mut active = n.effects.iter().filter(|e| e.visible);
     let effect = active.next()?;
-    if effect.kind != "gaussian-blur" || active.next().is_some() {
+    if !matches!(
+        effect.kind.as_str(),
+        "gaussian-blur" | "shadow" | "inner-shadow"
+    ) || active.next().is_some()
+    {
         return None;
     }
     let field = layout(n, m, region, effect, false)?;
@@ -302,12 +309,14 @@ fn subtree_layout(doc: &Document, n: &Node, m: Transform, region: Rect) -> Optio
         count: &mut usize,
         halo: f64,
         spatial_limit: f64,
+        shadow_parent: Option<&str>,
     ) -> bool {
         if !n.visible || n.opacity == 0. {
             return true;
         }
         *count += 1;
         if *count > 128
+            || shadow_parent.is_some_and(|id| doc.nodes.contains_key(&shadow_child_id(id, &n.id)))
             || n.clip
             || n.mask
             || n.blend != "normal"
@@ -332,9 +341,17 @@ fn subtree_layout(doc: &Document, n: &Node, m: Transform, region: Rect) -> Optio
         let support = halo + n.effect_outset(m.max_scale()) + 4.;
         support.is_finite()
             && support <= spatial_limit
-            && n.render_children()
-                .iter()
-                .all(|id| check(doc, &doc.nodes[id], m, count, support, spatial_limit))
+            && n.render_children().iter().all(|id| {
+                check(
+                    doc,
+                    &doc.nodes[id],
+                    m,
+                    count,
+                    support,
+                    spatial_limit,
+                    shadow_parent,
+                )
+            })
     }
     let mut count = 0;
     let spatial_limit = ((724. - f64::from(field.input.w.max(field.input.h))) / 2.)
@@ -342,7 +359,17 @@ fn subtree_layout(doc: &Document, n: &Node, m: Transform, region: Rect) -> Optio
         .floor();
     n.render_children()
         .iter()
-        .all(|id| check(doc, &doc.nodes[id], parent, &mut count, 0., spatial_limit))
+        .all(|id| {
+            check(
+                doc,
+                &doc.nodes[id],
+                parent,
+                &mut count,
+                0.,
+                spatial_limit,
+                (!field.gaussian).then_some(n.id.as_str()),
+            )
+        })
         .then_some(field)
 }
 pub(super) fn group_supported(doc: &Document, n: &Node, m: Transform, region: Rect) -> bool {
@@ -410,8 +437,25 @@ impl Compiler<'_> {
         self.vertices = small.vertices;
         self.area_paths = small.area_paths;
         result?;
-        self.compiled_order.extend(small.compiled_order);
-        self.nodes.append(&mut small.nodes);
+        let roots = if field.gaussian {
+            self.compiled_order.extend(small.compiled_order);
+            self.nodes.append(&mut small.nodes);
+            n.render_children().to_vec()
+        } else {
+            // A shadow also needs the original sharp subtree. Give its sampled
+            // geometry private names, preserving all declared child ordering.
+            let tag = |id: &str| shadow_child_id(&n.id, id);
+            self.compiled_order
+                .extend(small.compiled_order.iter().map(|id| tag(id)));
+            for (id, mut child) in small.nodes {
+                let key = tag(&id);
+                child.id = key.clone();
+                child.children = child.children.iter().map(|id| tag(id)).collect();
+                child.mask_id = child.mask_id.as_deref().map(tag);
+                self.nodes.insert(key, child);
+            }
+            n.render_children().iter().map(|id| tag(id)).collect()
+        };
         Ok(SourceFilter {
             factor: field.factor,
             effect_index: 0,
@@ -419,9 +463,9 @@ impl Compiler<'_> {
             input: field.input,
             output: field.output,
             radius: field.radius,
-            gaussian: true,
+            gaussian: field.gaussian,
             masks: Vec::new(),
-            group_roots: n.render_children().to_vec(),
+            group_roots: roots,
             additional: Vec::new(),
         })
     }

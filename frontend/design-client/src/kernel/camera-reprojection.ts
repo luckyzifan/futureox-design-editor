@@ -31,7 +31,7 @@ export class CameraReprojection {
   readonly history: NavigationBacking
   constructor(private canvas: HTMLCanvasElement, private host: HTMLElement,private zoomSettled?:()=>void) { this.history = new NavigationBacking(host) }
 
-  update(backing: ResidentAcknowledgement | undefined, view: CanvasCamera, width: number, height: number, allowed: boolean, bounds?: ScreenRect) {
+  update(backing: ResidentAcknowledgement | undefined, view: CanvasCamera, width: number, height: number, allowed: boolean, bounds?: ScreenRect, hasUnderlay=false) {
     const size=`${width}/${height}`
     const sameSize = size===this.size
     if(!allowed||!backing||!sameSize){clearTimeout(this.zoomTimer);this.zoomTimer=undefined;this.zooming=false;this.zoom=undefined}
@@ -46,7 +46,7 @@ export class CameraReprojection {
       }
       this.zoom=view.zoom
     }
-    if (allowed && backing && bounds && view.zoom < backing.view.zoom &&
+    if (allowed && backing && bounds && !hasUnderlay && view.zoom < backing.view.zoom &&
         !this.history.canProject(backing,{view,width,height},bounds)) {
       // Preserve the last visible camera if the overview is still cold or its
       // budget was declined. Warming a tile or accepting a frame retries it.
@@ -67,7 +67,7 @@ export class CameraReprojection {
     this.canvas.dataset.cameraReprojected = String(active)
     this.canvas.dataset.projectedCamera = JSON.stringify(active ? view : backing?.view || view)
     this.gaps.forEach(gap => { gap.style.display = 'none' })
-    if (active) {
+    if (active && !hasUnderlay) {
       const scale = view.zoom / backing.view.zoom
       const left = Math.max(0, Math.min(width, view.x - backing.view.x * scale))
       const top = Math.max(0, Math.min(height, view.y - backing.view.y * scale))

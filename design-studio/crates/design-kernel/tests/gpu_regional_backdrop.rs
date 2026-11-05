@@ -105,3 +105,26 @@ fn continuous_coverage_edges_and_layer_opacity_keep_their_backdrops() {
     let interior = engine.compile_gpu_region(&options, Rect::new(10, 10, 16, 16), None).unwrap();
     assert!(!interior.nodes["backdrop"].effects.is_empty());
 }
+
+#[test]
+fn source_motion_blur_keeps_its_own_support_without_a_scene_wide_halo() {
+    let mut doc = document();
+    doc["schemaVersion"] = json!(18);
+    doc["nodes"]["blur"]["effects"] = json!([
+        {"kind":"inner-shadow","radius":16,"spread":2,"color":"#203040","x":2,"y":1},
+        {"kind":"motion-blur","radius":3.5,"motionAngle":27,"color":"#000000"}
+    ]);
+    let mut engine = Engine::new();
+    engine.load_document(&doc.to_string()).unwrap();
+    let mut request = json!({"pageId":"p","width":48,"height":40,
+        "view":{"x":0,"y":0,"zoom":4},"rasterProfile":"figmaSubpixel",
+        "gpuViewport":{"x":128,"y":128,"w":48,"h":40},"gpuGaussianRegions":true});
+    let original = engine.compile_gpu_request(&request.to_string()).unwrap();
+    request["gpuSourceFilterFields"] = json!(true);
+    let local = engine.compile_gpu_request(&request.to_string()).unwrap();
+    assert_eq!(local.extent, Rect::new(126,126,52,44));
+    assert!(original.extent.pixels() > local.extent.pixels());
+    let node = &local.nodes["blur"];
+    assert_eq!(node.effects[1].kind, "motion-blur");
+    assert!(node.rect.w > local.extent.w && node.rect.h > local.extent.h);
+}

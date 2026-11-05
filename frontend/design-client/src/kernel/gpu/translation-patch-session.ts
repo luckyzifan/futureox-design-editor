@@ -10,7 +10,7 @@ export class TranslationPatchSession {
   private descendants = new Map<string, string[]>()
   private ancestors = new Map<string, string[]>()
   private touched = new Set<string>()
-  private buffers: [GpuScene['nodes'], GpuScene['nodes']]
+  private buffers?: [GpuScene['nodes'], GpuScene['nodes']]
   private latest: Record<string, Matrix>
   private materialized?: DesignDocument
   private current: GpuScene
@@ -19,7 +19,6 @@ export class TranslationPatchSession {
   get changedNodes(): ReadonlySet<string> { return this.touched }
   private constructor(scene:GpuScene,private document:DesignDocument,ids:readonly string[]) {
     this.current=scene;this.selected=[...ids]
-    this.buffers=[{...scene.nodes},{...scene.nodes}]
     this.latest=Object.fromEntries(ids.map(id=>[id,[...document.nodes[id].transform] as Matrix]))
   }
   static create(scene:GpuScene,document:DesignDocument,ids:readonly string[], exact = false):TranslationPatchSession|null {
@@ -79,6 +78,9 @@ export class TranslationPatchSession {
     }
     const source={...scene,interactionWindow:window}
     if(!offsets.size)return source
+    // Native poses compile their own scene and never call prepare. Only a
+    // translated JS scene needs writable tables distinct from the displayed one.
+    this.buffers ??= [{ ...scene.nodes }, { ...scene.nodes }]
     const nodes=scene.nodes===this.buffers[0]?this.buffers[1]:this.buffers[0]
     // Restore only the affected set from the displayed table before reusing
     // this scratch table; it may still contain values from two poses ago.

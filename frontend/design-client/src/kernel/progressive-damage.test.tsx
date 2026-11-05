@@ -222,7 +222,10 @@ test('overview is deferred after detail and cancelled by the next camera', async
   await vi.waitFor(() => expect(worker.calls).toHaveLength(1)); worker.calls[0].resolve()
   await vi.waitFor(() => expect(worker.maintenance).toHaveLength(1))
   expect(worker.calls).toHaveLength(1)
-  expect(worker.maintenance[0].jobs.every((tile: any) => tile.key.startsWith('overview:'))).toBe(true)
+  const jobs = worker.maintenance[0].jobs
+  expect(jobs).toHaveLength(1)
+  expect(jobs[0].tiles).toHaveLength(1)
+  expect(jobs[0].tiles[0].key).toMatch(/^navigation-overview:/)
   expect(worker.maintenance[0].current()).toBe(true)
   h.render({ overview, view: { x: 20, y: 0, zoom: 4 } })
   expect(worker.maintenance[0].cancel).toHaveBeenCalledTimes(1)
@@ -1030,7 +1033,7 @@ test.each(['webgl2', 'webgpu'] as const)('pending %s navigation replacement pres
   compositor.props.onReady(replacement.key, replacement.serial, false)
   compositor = surfaceParts(h.render({ backend, view: next, requestedView: live })).compositor
   expect(compositor.props.items.find((item: any) => item.tile === replacement)?.active).toBe(true)
-  expect(compositor.props.items.find((item: any) => item.tile === old)?.active).toBe(true)
+  expect(compositor.props.items.find((item: any) => item.tile === old)?.active).toBe(false)
 })
 
 test('repeated viewport extents of one navigation sample cannot replace an uploading capture', async () => {
@@ -1047,8 +1050,8 @@ test('repeated viewport extents of one navigation sample cannot replace an uploa
   }
   expect(new Set(captures.map(tile => tile.key)).size).toBe(3)
   const compositor = surfaceParts(h.render({ backend: 'webgl2', view, width: 800 })).compositor
-  for (const capture of captures)
-    expect(compositor.props.items.find((item: any) => item.tile === capture)?.active).toBe(true)
+  expect(captures.every(capture => compositor.props.items.some((item: any) => item.tile === capture))).toBe(true)
+  expect(compositor.props.items.filter((item: any) => item.active).map((item: any) => item.tile)).toEqual([captures[2]])
 })
 
 test('navigation history remains byte-budgeted during a long gesture', async () => {
@@ -2413,7 +2416,7 @@ test('transparent current-revision viewport replaces old color without drawing b
   expect(surfaceParts(f.h.render(f.next)).wrapper.props['data-revision']).toBe(2)
 })
 
-test('cold resident preview accepts its first real device ACK then reveals one exact tile without waiting for the last tile', async () => {
+test('cold resident preview holds its accepted whole image while exact tiles are incomplete', async () => {
   vi.stubGlobal('WebGL2RenderingContext', class {})
   vi.stubGlobal('navigator', { gpu: {} })
   worker.plan = planTiles({ x: 0, y: 0, width: 512, height: 256 }, 4)
@@ -2444,13 +2447,29 @@ test('cold resident preview accepts its first real device ACK then reveals one e
   parts.compositor.props.onReady(fine.key, fine.serial, false)
   parts = surfaceParts(h.render(options))
   const draws = compositeDrawPlan(parts.compositor.props.items, options.view, options.width, options.height)
-  expect(draws.some(row => row.item.tile === fine)).toBe(true)
+  expect(draws.some(row => row.item.tile === fine)).toBe(false)
   expect(draws.some(row => row.item.tile === preview)).toBe(true)
   expect(draws.every(row => row.item.blend !== true)).toBe(true)
   // Replacement clips, not source-over of the same translucent content twice.
   expect(draws.reduce((area, row) => area + (row.clip.right - row.clip.left) * (row.clip.bottom - row.clip.top), 0)).toBe(options.width * options.height)
   expect(parts.wrapper.props['data-detail-ready']).toBe('false')
   expect(parts.wrapper.props['data-native-pixel-ready']).toBe('false')
+  // Actual GPU imports become ready individually. Only the last upload
+  // activates the exact cohort; its presentation receipt is still pending.
+  const targets = worker.plan!.filter(tile => tile.key !== first.key)
+  const ids = [122]
+  for (const [index, tile] of targets.entries()) {
+    const id = 123 + index
+    ids.push(id)
+    worker.calls[2].progress({ ...tile, bytes: new Uint8Array(), backend: 'webgpu', gpuTile: id, cached: false })
+    parts = surfaceParts(h.render(options))
+    const imported = parts.compositor.props.items.find((item: any) => item.tile.gpuTile === id).tile
+    parts.compositor.props.onReady(imported.key, imported.serial, false)
+    parts = surfaceParts(h.render(options))
+    const current = parts.compositor.props.items.filter((item: any) => item.active).map((item: any) => item.tile.gpuTile)
+    expect(new Set(current)).toEqual(new Set(index + 1 === targets.length ? ids : [121]))
+  }
+  expect(parts.wrapper.props['data-detail-ready']).toBe('false')
 })
 
 test('whole-page translation fills original native world misses through the bounded existing canvas owner',async()=>{

@@ -1,5 +1,5 @@
 import type { Bounds, DesignDocument, Matrix, Point } from './model'
-import { allParents, apply, around, inverse, multiply, scene, unionBounds, worldMatrix } from './geometry'
+import { allParents, apply, around, inverse, multiply, scene, unionBounds, worldMatrix, type ParentMap } from './geometry'
 import { selectionLocalBounds } from './canvas-view'
 import { numericExpression } from './numeric-expression'
 
@@ -11,9 +11,9 @@ export function scaleInputFactor(value: string, dimension?: number): number {
 }
 
 export type ScaleFrame = { box: Bounds; basis: Matrix; width: number; height: number }
-export function selectionScaleFrame(doc: DesignDocument, page: string, ids: string[]): ScaleFrame {
+export function selectionScaleFrame(doc: DesignDocument, page: string, ids: string[], parents?: ParentMap): ScaleFrame {
   if (ids.length === 1 && doc.nodes[ids[0]]) {
-    const n = doc.nodes[ids[0]], box = selectionLocalBounds(doc,n.id), basis = worldMatrix(doc, n.id)
+    const n = doc.nodes[ids[0]], box = selectionLocalBounds(doc,n.id), basis = worldMatrix(doc, n.id, parents)
     return { box, basis, width: box.width * Math.hypot(basis[0], basis[1]), height: box.height * Math.hypot(basis[2], basis[3]) }
   }
   const selected = new Set(ids), box = unionBounds(scene(doc, page).filter(e => selected.has(e.id)).map(e => e.bounds))

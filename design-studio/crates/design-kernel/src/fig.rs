@@ -21,6 +21,7 @@ mod components;
 
 use crate::math::Transform;
 use crate::scene::{Document, Effect, Node, Page, Paint, Stroke};
+use crate::stroke::Marker;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -208,10 +209,17 @@ fn decode_value(
                 let Some(field) = ty.fields.iter().find(|f| f.ordinal == fid) else {
                     return Err(Error::Malformed(format!("field {fid} not in {}", ty.name)));
                 };
-                map.insert(
-                    field.name.clone(),
-                    decode_value(r, types, field.type_id, field.array)?,
-                );
+                // Kiwi encodes an inherited wrap gap as NaN. JSON has no NaN;
+                // preserve that one sentinel without accepting infinite spacing.
+                let value = if ty.name == "NodeChange" && field.name == "stackCounterSpacing"
+                    && field.type_id == -5 && !field.array {
+                    let gap = r.float()?;
+                    if gap.is_infinite() { return Err(Error::Malformed("Infinite stackCounterSpacing".into())); }
+                    Value::from(gap)
+                } else {
+                    decode_value(r, types, field.type_id, field.array)?
+                };
+                map.insert(field.name.clone(), value);
             }
             Ok(Value::Object(map))
         }
@@ -428,20 +436,15 @@ fn blend_name(v: &Value) -> String {
     .into()
 }
 
-fn hex_color(color: &Value) -> String {
+fn fig_color(color: &Value, display_p3: bool, alpha: f64) -> String {
     let rgb = ["r", "g", "b"].map(|key| f64_of(Some(color), key));
-    if rgb.iter().all(|v| (0. ..=1.).contains(v) && (v * 255.).round() / 255. == *v) {
+    if !display_p3 && alpha == 1. && rgb.iter().all(|v| (0. ..=1.).contains(v) && (v * 255.).round() / 255. == *v) {
         let [r,g,b] = rgb.map(|v| (v * 255.).round() as u8);
         format!("#{r:02x}{g:02x}{b:02x}")
     } else {
-        format!("color(srgb {} {} {} / 1)", rgb[0], rgb[1], rgb[2])
+        let space = if display_p3 { "display-p3" } else { "srgb" };
+        format!("color({space} {} {} {} / {alpha})", rgb[0], rgb[1], rgb[2])
     }
-}
-
-fn rgba_color(color: &Value) -> String {
-    if alpha_of(Some(color)) == 1. { return hex_color(color); }
-    format!("color(srgb {} {} {} / {})", f64_of(Some(color), "r"),
-        f64_of(Some(color), "g"), f64_of(Some(color), "b"), alpha_of(Some(color)))
 }
 
 fn alpha_of(color: Option<&Value>) -> f64 {
@@ -516,8 +519,8 @@ fn letter_spacing_px(number: &Value, font_size: f64) -> Option<f64> {
 fn align_of_stack_justify(v: &str) -> Result<Align, Error> {
     Ok(match v {
         "MIN" => Align::Start,
-        "CENTER" => Align::Center,
-        "MAX" => Align::End,
+        "CENTER" => Align::UnsafeCenter,
+        "MAX" => Align::UnsafeEnd,
         "SPACE_BETWEEN" => Align::SpaceBetween,
         "SPACE_EVENLY" => Align::SpaceEvenly,
         other => return Err(layout_unsupported("stackPrimaryAlignItems", other)),
@@ -527,8 +530,8 @@ fn align_of_stack_justify(v: &str) -> Result<Align, Error> {
 fn align_of_stack_align(v: &str) -> Result<Align, Error> {
     Ok(match v {
         "MIN" => Align::Start,
-        "CENTER" => Align::Center,
-        "MAX" => Align::End,
+        "CENTER" => Align::UnsafeCenter,
+        "MAX" => Align::UnsafeEnd,
         // BASELINE has no kernel counterpart; silently mapping it to any of
         // the plain aligns would change the rendered stack.
         other => return Err(layout_unsupported("stackCounterAlignItems", other)),
@@ -598,9 +601,23 @@ fn enum_str<'a>(record: &'a Value, field: &str) -> Option<&'a str> {
 }
 
 struct FigImporter {
+    display_p3: bool,
     images: BTreeMap<String, Vec<u8>>,
     kiwi_blobs: Vec<Vec<u8>>,
 }
+
+/// Shared by the native importer and the browser's Kiwi reader.
+pub(crate) const STROKE_CAPS: &[(&str, &str, Marker)] = &[
+    ("NONE", "butt", Marker::None),
+    ("BUTT", "butt", Marker::None),
+    ("ROUND", "round", Marker::None),
+    ("SQUARE", "square", Marker::None),
+    ("ARROW_LINES", "butt", Marker::Arrow),
+    ("ARROW_EQUILATERAL", "butt", Marker::Arrow),
+    ("TRIANGLE_FILLED", "butt", Marker::Triangle),
+    ("DIAMOND_FILLED", "butt", Marker::Diamond),
+    ("CIRCLE_FILLED", "butt", Marker::Circle),
+];
 
 impl FigImporter {
     fn image_bytes<'a>(&'a self, paint: &Value) -> Result<&'a [u8], Error> {
@@ -695,7 +712,7 @@ impl FigImporter {
                 let mut paint = blank_paint("solid");
                 paint.color = p
                     .get("color")
-                    .map(hex_color)
+                    .map(|c| fig_color(c, self.display_p3, 1.))
                     .unwrap_or_else(|| "#000000".into());
                 paint.opacity = alpha_of(p.get("color"));
                 paint
@@ -713,7 +730,7 @@ impl FigImporter {
                             offset: f64_of(Some(s), "position"),
                             color: s
                                 .get("color")
-                                .map(rgba_color)
+                                .map(|c| fig_color(c, self.display_p3, alpha_of(Some(c))))
                                 .unwrap_or_else(|| "#000000".into()),
                         });
                     }
@@ -871,17 +888,10 @@ impl FigImporter {
     /// kernel equivalent are returned as the untranslated marker name instead
     /// of being dropped or misnamed.
     fn stroke_cap(cap: Option<&str>) -> (&'static str, crate::stroke::Marker, Option<String>) {
-        use crate::stroke::Marker;
-        match cap.unwrap_or("NONE") {
-            "NONE" => ("butt", Marker::None, None),
-            "ROUND" => ("round", Marker::None, None),
-            "SQUARE" => ("square", Marker::None, None),
-            "ARROW_LINES" | "ARROW_EQUILATERAL" => ("butt", Marker::Arrow, None),
-            "TRIANGLE_FILLED" => ("butt", Marker::Triangle, None),
-            "DIAMOND_FILLED" => ("butt", Marker::Diamond, None),
-            "CIRCLE_FILLED" => ("butt", Marker::Circle, None),
-            // HIGHLIGHT / WASHI_TAPE_* / ERD_* have no kernel stroke shape.
-            other => ("butt", Marker::None, Some(other.to_string())),
+        let name = cap.unwrap_or("NONE");
+        match STROKE_CAPS.iter().find(|(source, _, _)| *source == name) {
+            Some(&(_, cap, marker)) => (cap, marker, None),
+            None => ("butt", Marker::None, Some(name.to_owned())),
         }
     }
 
@@ -1091,7 +1101,7 @@ impl FigImporter {
                     spread: f64_of(Some(e), "spread"),
                     color: e
                         .get("color")
-                        .map(hex_color)
+                        .map(|c| fig_color(c, self.display_p3, 1.))
                         .unwrap_or_else(|| "#000000".into()),
                     opacity: alpha_of(e.get("color")),
                     amount: 0.,
@@ -1217,7 +1227,7 @@ impl FigImporter {
                 // (整段回退). Rendering v1 still draws the whole string —
                 // storage stays faithful for the per-run renderer.
                 if !node.text.is_empty() {
-                    node.text_runs = styled_text_runs(&td, &node.text, untranslated).into();
+                    node.text_runs = styled_text_runs(&td, &node.text, self.display_p3, untranslated).into();
                 }
             }
             "CODE_BLOCK" => {
@@ -1574,7 +1584,7 @@ impl FigImporter {
         if characters.is_empty() {
             return;
         }
-        node.text_runs = styled_text_runs(&td, &characters, untranslated).into();
+        node.text_runs = styled_text_runs(&td, &characters, self.display_p3, untranslated).into();
         // node-level decoration applies to the whole string when no
         // per-character styles carve it up
         match str_of(change, "textDecoration") {
@@ -1615,6 +1625,7 @@ impl FigImporter {
 fn styled_text_runs(
     td: &Value,
     characters: &str,
+    display_p3: bool,
     untranslated: &mut Vec<String>,
 ) -> Vec<crate::font::TextRun> {
     let empty = Vec::new();
@@ -1694,7 +1705,7 @@ fn styled_text_runs(
         {
             let mut color=color.clone();
             color["a"]=Value::from(alpha_of(Some(&color))*paint.get("opacity").and_then(Value::as_f64).unwrap_or(1.));
-            run.color = Some(rgba_color(&color));
+            run.color = Some(fig_color(&color, display_p3, alpha_of(Some(&color))));
         }
         match str_of(entry, "textDecoration") {
             Some("UNDERLINE") => run.underline = true,
@@ -1832,10 +1843,12 @@ impl FigImporter {
                 Some(v) => align_of_stack_align(v)?,
                 None => Align::Start,
             };
+            let gap = distance(record, "stackSpacing")?;
             node.layout = Some(Layout {
                 mode,
-                gap: distance(record, "stackSpacing")?,
-                line_gap: distance(record, "stackCounterSpacing")?,
+                gap,
+                line_gap: if record.get("stackCounterSpacing") == Some(&Value::Null) { gap }
+                    else { distance(record, "stackCounterSpacing")? },
                 padding,
                 wrap,
                 justify,
@@ -2053,7 +2066,6 @@ pub fn document_from_canvas(
         .get("nodeChanges")
         .and_then(Value::as_array)
         .ok_or(Error::Malformed("nodeChanges missing".into()))?;
-    let importer = FigImporter { images, kiwi_blobs };
 
     // Merge every phase by guid (TS :397-401): CREATED then UPDATED patches
     // the same record; REMOVED deletes it.
@@ -2077,10 +2089,20 @@ pub fn document_from_canvas(
         }
     }
 
+    let display_p3 = records.values().any(|r| !bool_of(r, "internalOnly").unwrap_or(false)
+        && str_of(r, "type") == Some("DOCUMENT")
+        && ["documentColorProfile", "colorProfile"].iter().any(|key| str_of(r, key) == Some("DISPLAY_P3")));
+    if display_p3 {
+        doc.color_management = Some(crate::color::ColorSettings {
+            document_space: crate::color::ColorSpace::DisplayP3, ..Default::default()
+        });
+        doc.raster_profile = Some(crate::fidelity::RasterProfile::Figma);
+    }
+    let importer = FigImporter { images, kiwi_blobs, display_p3 };
     for record in records.values().filter(|r| !bool_of(r, "internalOnly").unwrap_or(false)) {
         for key in ["documentColorProfile", "colorProfile"] {
             if let Some(profile) = str_of(record, key) {
-                if !matches!(profile, "LEGACY" | "SRGB") {
+                if (display_p3 && profile != "DISPLAY_P3") || (!display_p3 && !matches!(profile, "LEGACY" | "SRGB")) {
                     return Err(Error::Unsupported(format!("{key}={profile}")));
                 }
             }
@@ -2239,7 +2261,7 @@ pub fn document_from_canvas(
             children: kids,
             background: record
                 .and_then(|r| r.get("backgroundColor"))
-                .map(hex_color)
+                .map(|c| fig_color(c, display_p3, 1.))
                 .unwrap_or_else(|| "#ffffff".into()),
         });
     }
@@ -2263,7 +2285,7 @@ pub fn document_from_canvas(
     normalize_mask_suffixes(&mut doc)?;
     // honest serialization version: bindings/booleans/text styles need 4,
     // stroke markers 8, slices 10 (scene.rs validate gates)
-    let mut version = 1u32;
+    let mut version = if display_p3 { 3 } else { 1 };
     if doc.nodes.values().any(|n| {
         n.requires_schema4()
             || n.layout.is_some()
@@ -3361,7 +3383,7 @@ mod tests {
             assert_eq!(layout.padding, [7., 9., 11., 5.]);
             assert!(layout.wrap);
             assert_eq!(layout.justify, Align::SpaceBetween);
-            assert_eq!(layout.align, Align::Center);
+            assert_eq!(layout.align, Align::UnsafeCenter);
             let sizing = n.sizing.as_ref().expect("sizing");
             // vertical stack: width = counter (fixed), height = primary (hug)
             assert_eq!(sizing.width, SizeMode::Fixed);
@@ -4244,10 +4266,16 @@ mod tests {
             let doc = doc_with(changes).unwrap();
             let paint = &node_of(&doc, 1, 2).fills[0];
             assert_eq!(paint.kind, "linear");
-            let t = paint.transform.expect("gradient transform").0;
-            // kiwi floats are f32 on the wire
-            for (got, want) in t.iter().zip([0.7, 0.3, -0.3, 0.7, 0.2, -0.1]) {
-                assert!((got - want).abs() < 1e-6, "matrix {t:?}");
+            let t = paint.transform.expect("gradient transform");
+            // The authored matrix sends the UV origin and its two basis
+            // points to these gradient coordinates. Paint maps them back.
+            for ((gx, gy), (u, v)) in [
+                ((0.2, -0.1), (0., 0.)),
+                ((0.9, 0.2), (1., 0.)),
+                ((-0.1, 0.6), (0., 1.)),
+            ] {
+                let point = t.point(crate::math::Point::new(gx, gy));
+                assert!((point.x - u).abs() < 1e-6 && (point.y - v).abs() < 1e-6, "{point:?}");
             }
         }
 
@@ -4262,7 +4290,7 @@ mod tests {
 
         #[test]
         fn tile_authored_tiling_parameters_map() {
-            let importer=FigImporter {images:BTreeMap::from([("test".into(),vec![137])]),kiwi_blobs:vec![]};
+            let importer=FigImporter {display_p3:false,images:BTreeMap::from([("test".into(),vec![137])]),kiwi_blobs:vec![]};
             let value=json!({"fillPaints":[{"type":"IMAGE","image":{"dataRef":"test"},"imageScaleMode":"TILE","spacing":96.,"horizontalAlignment":"CENTER"}]});
             assert!(importer.validate_record(&value).unwrap_err().to_string().contains("not rendered"));
         }
@@ -4273,6 +4301,7 @@ mod tests {
             // so the unknown-member path is exercised through the importer
             // directly.
             let importer = FigImporter {
+                display_p3: false,
                 images: BTreeMap::new(),
                 kiwi_blobs: vec![],
             };
@@ -4299,6 +4328,7 @@ mod tests {
         #[test]
         fn text_case_full_enum_maps() {
             let importer = FigImporter {
+                display_p3: false,
                 images: BTreeMap::new(),
                 kiwi_blobs: vec![],
             };
@@ -4331,6 +4361,7 @@ mod tests {
         #[test]
         fn native_image_filters_use_shader_domain_values() {
             let importer = FigImporter {
+                display_p3: false,
                 images: BTreeMap::new(),
                 kiwi_blobs: vec![],
             };

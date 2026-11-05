@@ -59,7 +59,6 @@ export function ComponentPanel({
   ids: string[]
 }) {
   const d = editor.state.doc,
-    masters = Object.values(d.nodes).filter((n) => n.component),
     definition = definitionOwner(d, n.id, editor.parentMap(d)),
     owner = instanceOwner(d, n.id),
     target = n.instance ? n : d.nodes[owner || ''],
@@ -81,6 +80,7 @@ export function ComponentPanel({
         )}
       </section>
     )
+  const masters = Object.values(d.nodes).filter(n => n.component)
   return (
     <section className="component-panel">
       <h3>

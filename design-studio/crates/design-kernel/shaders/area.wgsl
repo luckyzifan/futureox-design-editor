@@ -43,8 +43,20 @@ fn firstSpan(pixel:i32,first:u32,count:u32)->u32{
  }
  return lo;
 }
+fn spanWord(i:u32)->u32{return u32(cvFetch(i/4u)[i%4u]);}
+fn inPackedSpan(x:u32,span:u32,stride:u32)->bool{return x>=span/stride&&x<span%stride;}
+fn compactSample(pixel:vec2<i32>,index:u32,width:u32)->f32{
+ let row=i32(cvFetch(1u+u32(pixel.y))[index]);if(row==0){return 0.;}if(row== -1){return 1.;}
+ let x=u32(pixel.x);let stride=width+1u;
+ if(row<0){return select(0.,1.,inPackedSpan(x,u32(-row-2),stride));}
+ let at=u32(row);var lo=0u;var hi=spanWord(at);
+ while(lo<hi){let mid=lo+(hi-lo)/2u;let span=spanWord(at+1u+mid);
+  if(x<span/stride){hi=mid;}else if(x>=span%stride){lo=mid+1u;}else{return 1.;}}
+ return 0.;
+}
 fn sampleCoverage(pixel:vec2<i32>,index:u32)->f32{
  let header:vec4<f32>=cvFetch(0u);let offset:vec2<f32>=sampleOffset(index);
+ if(header.x==5.){return compactSample(pixel,index,u32(header.z));}
  if(header.x==4.){
   if(sampleInside(pixel.x,offset.x,cvFetch(1u),cvBits(cvFetch(3u)),cvBits(cvFetch(4u)))&&sampleInside(pixel.y,offset.y,cvFetch(2u),cvBits(cvFetch(5u)),cvBits(cvFetch(6u)))){return 1.;}return 0.;
  }
@@ -60,7 +72,7 @@ fn sampleCoverage(pixel:vec2<i32>,index:u32)->f32{
 fn areaCoverage(pixel:vec2<i32>)->f32{
  let header:vec4<f32>=cvFetch(0u);
  if(header.x==2.){return 0.;}
- if(header.x==3.||header.x==4.){
+ if(header.x==3.||header.x==4.||header.x==5.){
   let selected:i32=cvSampleIndex();if(selected>0){return sampleCoverage(pixel,u32(selected-1));}
   var sum:f32=0.;for(var i:u32=0u;i<4u;i=i+1u){sum=sum+sampleCoverage(pixel,i);}
   return sum*0.25;

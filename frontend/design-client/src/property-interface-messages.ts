@@ -109,6 +109,8 @@ export const propertyEnglish: Readonly<Record<string, string>> = Object.freeze({
   "起点": "Start",
   "终点": "End",
   "两端对齐": "Space between",
+  "居中（允许溢出）": "Center (allow overflow)",
+  "终点（允许溢出）": "End (allow overflow)",
   "环绕等距": "Space around",
   "全部等距": "Space evenly",
   "交叉轴对齐": "Cross axis alignment",

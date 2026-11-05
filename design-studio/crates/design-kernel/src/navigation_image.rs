@@ -18,7 +18,7 @@ pub struct NavigationImage {
     pub png: Vec<u8>,
 }
 
-fn image_lod(paint: &mut Paint, images: &mut HashMap<Arc<str>, Arc<str>>) -> Result<(), String> {
+fn image_lod(paint: &mut Paint, images: &mut HashMap<Arc<str>, Arc<str>>, side:u32) -> Result<(), String> {
     let Some(uri) = &mut paint.image else {
         return Ok(());
     };
@@ -44,7 +44,7 @@ fn image_lod(paint: &mut Paint, images: &mut HashMap<Arc<str>, Arc<str>>) -> Res
     reader.limits(limits);
     let mut decoder = reader.into_decoder().map_err(|e| e.to_string())?;
     let (w, h) = decoder.dimensions();
-    if w.max(h) <= 256 {
+    if w.max(h) <= side {
         images.insert(uri.clone(), uri.clone());
         return Ok(());
     }
@@ -66,7 +66,7 @@ fn image_lod(paint: &mut Paint, images: &mut HashMap<Arc<str>, Arc<str>>) -> Res
         return Ok(());
     }
     let decoded = image::DynamicImage::from_decoder(decoder).map_err(|e| e.to_string())?;
-    let small = decoded.thumbnail(256, 256).into_rgba8();
+    let small = decoded.thumbnail(side, side).into_rgba8();
     let mut encoded = Vec::new();
     image::codecs::png::PngEncoder::new(&mut encoded)
         .write_image(
@@ -94,27 +94,36 @@ pub fn render(document: Document, page_id: String, bounds: [f64; 4], font: &[u8]
 
 pub fn render_fit(
     engine: &mut Engine,
-    mut document: Document,
+    document: Document,
     page_id: String,
     bounds: [f64; 4],
     side: u32,
 ) -> Result<NavigationImage, String> {
-    if document
-        .color_management
-        .is_some_and(|c| c.document_space != ColorSpace::Srgb)
-        || !bounds.iter().all(|v| v.is_finite())
-        || bounds[2] <= 0.
-        || bounds[3] <= 0.
-    {
-        return Err("Unavailable SDR navigation view".into());
-    }
     if !(1..=256).contains(&side) { return Err("Invalid navigation image size".into()); }
-    let scale = (f64::from(side) / bounds[2].max(bounds[3])).min(1.);
-    if scale < 0.001 {
-        return Err("Navigation density is outside the supported range".into());
-    }
-    let width = (bounds[2] * scale).ceil().clamp(1., 256.) as u32;
-    let height = (bounds[3] * scale).ceil().clamp(1., 256.) as u32;
+    render_bounded(engine,document,page_id,bounds,side,256*256,false)
+}
+
+/// A disposable multi-material viewport preview. Its world bounds and density
+/// accompany the pixels. The original scene still supplies the precise frame.
+pub fn render_overview_window(engine:&mut Engine,document:Document,page_id:String,bounds:[f64;4])->Result<NavigationImage,String>{
+    render_bounded(engine,document,page_id,bounds,1024,262_144,true)
+}
+
+/// One of the visible artboards while the full source index is being verified.
+pub fn render_opening_material(engine:&mut Engine,document:Document,page_id:String,bounds:[f64;4])->Result<NavigationImage,String>{
+    render_bounded(engine,document,page_id,bounds,768,384*384,true)
+}
+
+fn render_bounded(engine:&mut Engine,mut document:Document,page_id:String,bounds:[f64;4],side:u32,max_pixels:u32,limit_png:bool)->Result<NavigationImage,String>{
+    if document.color_management.is_some_and(|c|c.document_space!=ColorSpace::Srgb) ||
+       !bounds.iter().all(|v|v.is_finite())||bounds[2]<=0.||bounds[3]<=0.{return Err("Unavailable SDR navigation view".into());}
+    let mut scale=(f64::from(side)/bounds[2].max(bounds[3])).min(1.);
+    if limit_png { scale=scale.min((f64::from(max_pixels)/(bounds[2]*bounds[3])).sqrt()); }
+    if scale<0.001{return Err("Navigation density is outside the supported range".into());}
+    let dimensions=|s:f64|((bounds[2]*s).ceil().clamp(1.,f64::from(side)) as u32,(bounds[3]*s).ceil().clamp(1.,f64::from(side)) as u32);
+    let (mut width,mut height)=dimensions(scale);
+    if width*height>max_pixels {scale*=0.995;(width,height)=dimensions(scale);}
+    if width*height>max_pixels{return Err("Navigation image working set exceeded".into())}
     let mut images = HashMap::new();
     for node in document.nodes.values_mut() {
         crate::render_cancellation::checkpoint()?;
@@ -123,7 +132,7 @@ pub fn render_fit(
             .iter_mut()
             .chain(node.strokes.iter_mut().map(|stroke| &mut stroke.paint))
         {
-            image_lod(paint, &mut images)?;
+            image_lod(paint, &mut images, if limit_png{width.max(height).clamp(256,768)}else{256})?;
         }
     }
     drop(images);
@@ -133,20 +142,21 @@ pub fn render_fit(
         "view":{"x":-bounds[0]*scale,"y":-bounds[1]*scale,"zoom":scale},
         "grid":false,"transparent":false,"rasterProfile":if managed {RasterProfile::FigmaSubpixel}else{RasterProfile::Analytic}
     })).map_err(|e|e.to_string())?;
-    let rgba = crate::capacity::with_source_storage_scope(true, || {
+    let mut rgba = crate::capacity::with_source_storage_scope(true, || {
         engine.load_source_document(document)?;
         crate::render_cancellation::checkpoint()?;
         engine.render(&options)
     })?;
     crate::render_cancellation::checkpoint()?;
-    let mut png = Vec::new();
-    image::codecs::png::PngEncoder::new(&mut png)
-        .write_image(&rgba, width, height, image::ExtendedColorType::Rgba8)
-        .map_err(|e| e.to_string())?;
-    Ok(NavigationImage {
-        width,
-        height,
-        scale,
-        png,
-    })
+    loop {
+        let mut png=Vec::new();
+        image::codecs::png::PngEncoder::new(&mut png)
+            .write_image(&rgba,width,height,image::ExtendedColorType::Rgba8).map_err(|e|e.to_string())?;
+        if !limit_png||png.len()<=270_000{return Ok(NavigationImage{width,height,scale,png});}
+        crate::render_cancellation::checkpoint()?;
+        let original=image::RgbaImage::from_raw(width,height,rgba).ok_or("Invalid navigation raster")?;
+        scale*=0.75;
+        (width,height)=dimensions(scale);
+        rgba=image::imageops::resize(&original,width,height,image::imageops::FilterType::Triangle).into_raw();
+    }
 }

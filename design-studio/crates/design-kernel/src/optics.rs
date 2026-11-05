@@ -60,6 +60,33 @@ impl GlassShape {
     }
 }
 
+/// A fully coincident foreground backdrop replaces every covered sample.
+/// Its read must include the rear lens's ordinary paints and strokes, while
+/// excluding the optical effect. Outside this common mask the rear lens
+/// contributes no optics. Other stack arrangements need a separate prefix.
+pub(crate) fn next_glass_consumer<'a>(doc: &'a crate::scene::Document, lower: &Node, next: Option<&String>) -> Option<&'a Node> {
+    if lower.effects.is_empty() || lower.mask || !lower.visible || lower.opacity != 1. || lower.blend!="normal" ||
+        !lower.render_children().is_empty() ||
+        !lower.backdrop_effect().is_some_and(|e| e.kind=="glass" && e.glass.is_some()) ||
+        lower.effects.iter().filter(|e| e.visible).count()!=1 ||
+        crate::interop::sketch_binding(doc,lower,"sketchSourceBlur").is_some() { return None; }
+    let upper=doc.nodes.get(next?)?;
+    (!upper.mask && upper.visible && upper.opacity==1. && upper.blend=="normal" && upper.render_children().is_empty() &&
+        upper.backdrop_effect().is_some_and(|e|e.kind=="background-blur" || e.glass.is_some()) &&
+        crate::interop::sketch_binding(doc,upper,"sketchSourceBlur").is_none() &&
+        upper.effects.iter().filter(|e|e.visible).count()==1 &&
+        GlassShape::from_node(lower).is_some() && GlassShape::from_node(upper).is_some()).then_some(upper)
+}
+
+pub(crate) fn same_glass_coverage(lower: &Node, upper: &Node) -> bool {
+    lower.same_geometry(upper) && lower.transform.0.map(f64::to_bits)==upper.transform.0.map(f64::to_bits)
+}
+
+pub(crate) fn unpainted_lens(n: &Node) -> bool {
+    !n.fills.iter().any(|p|p.visible && p.opacity>0.) &&
+        !n.strokes.iter().any(|s|s.visible && s.width>0. && s.paint.visible && s.paint.opacity>0.)
+}
+
 fn ramp(start: f64, end: f64, value: f64) -> f64 {
     ((value - start) / (end - start)).clamp(0., 1.)
 }
@@ -91,7 +118,86 @@ pub struct GlassFieldInterior {
     pub value: [f32; 4],
 }
 
-/// Exact constant interior of an axis-aligned optical field. Only this proved
+/// A straight part of an axis-aligned rounded rectangle has the same geometry
+/// along the tangent. Keep a representative on each side of zero so the
+/// original normal and displacement retain even the sign of zero.
+#[derive(Clone, Copy, Default)]
+struct AxisFold { start: u32, split: u32, end: u32, removed: u32 }
+
+impl AxisFold {
+    fn source(self, index: u32) -> u32 {
+        if index <= self.start { index }
+        else if index == self.start + 1 && self.split < self.end { self.split }
+        else { index + self.removed }
+    }
+}
+
+pub struct GlassFieldProgram {
+    geometry: Geometry,
+    glass: GlassParameters,
+    rect: Rect,
+    axes: [AxisFold; 2],
+}
+
+impl GlassFieldProgram {
+    pub fn new(basis: Rect, rect: Rect, shape: GlassShape, matrix: Transform, glass: GlassParameters,
+        sample: Option<usize>) -> Result<Option<Self>, String> {
+        let geometry = Geometry::new(basis, shape, matrix, &glass, sample)?;
+        if rect.checked_intersect(basis) != Some(rect) || rect.empty() || matrix.0[1] != 0. || matrix.0[2] != 0.
+            || u64::from(rect.w) * u64::from(rect.h) > 4_194_304 || rect.w.max(rect.h) > 16_384
+            || shape.size.iter().any(|v| *v > 1_048_576.) {
+            return Ok(None);
+        }
+        // In this range the other coordinate either takes the exact interior
+        // shortcut, or dominates both rounded-box distances by at least one
+        // local unit. Its normal, ramps, and light then depend on it alone.
+        let margin = shape.radius.max(glass.depth).max(glass.bevel_size()) + glass.depth + glass.bevel_size() + 3.;
+        let axes = std::array::from_fn(|axis| {
+            let size = shape.size[axis];
+            let (origin, count) = if axis == 0 { (rect.x, rect.w) } else { (rect.y, rect.h) };
+            let coordinate = |i: u32| {
+                let p = f64::from(origin) + f64::from(i) + 0.5 + f64::from(geometry.offset[axis]);
+                let m = geometry.inverse.0;
+                (m[axis * 3] * p + m[4 + axis]) - size * 0.5
+            };
+            let sign = geometry.inverse.0[axis * 3].signum();
+            let bound = size * 0.5 - margin;
+            if bound <= 0. { return AxisFold::default(); }
+            // The signed coordinate is monotone even on mirrored axes.
+            let first = |predicate: &dyn Fn(f64) -> bool| {
+                let (mut lo, mut hi) = (0, count);
+                while lo < hi {
+                    let mid = lo + (hi - lo) / 2;
+                    if predicate(coordinate(mid) * sign) { hi = mid; } else { lo = mid + 1; }
+                }
+                lo
+            };
+            let start = first(&|x| x > -bound);
+            let end = first(&|x| x >= bound);
+            if end.saturating_sub(start) < 3 { return AxisFold::default(); }
+            // A zero centred coordinate uses signum(+0) in the full kernel.
+            let middle = if sign > 0. { first(&|x| x >= 0.) } else { first(&|x| x > 0.) };
+            let split = if middle > start && middle < end { middle } else { end };
+            let removed = end - start - 1 - u32::from(split < end);
+            AxisFold { start, split, end, removed }
+        });
+        let packed = u64::from(rect.w - axes[0].removed) * u64::from(rect.h - axes[1].removed);
+        Ok((packed * 2 <= u64::from(rect.w) * u64::from(rect.h)).then_some(Self { geometry, glass, rect, axes }))
+    }
+
+    pub fn layout(&self) -> Vec<u32> {
+        self.axes.iter().flat_map(|a| [a.start, a.split, a.end, a.removed]).collect()
+    }
+
+    pub fn field(&self) -> Result<Vec<f32>, String> {
+        let [x, y] = self.axes;
+        let packed = Rect::new(0, 0, self.rect.w - x.removed, self.rect.h - y.removed);
+        crate::sampling::parameter_grid(packed, |col, row| Ok(self.geometry.at(
+            self.rect.x + x.source(col as u32) as i32, self.rect.y + y.source(row as u32) as i32, &self.glass)))
+    }
+}
+
+/// Exact constant interior in device coordinates. Only this proved
 /// region may omit per-pixel evaluation; the border still uses the original
 /// binary64 geometry, sample phase, and inverse validation domain.
 pub fn field_interior(basis: Rect, region: Rect, shape: GlassShape, matrix: Transform,
@@ -99,11 +205,25 @@ pub fn field_interior(basis: Rect, region: Rect, shape: GlassShape, matrix: Tran
     if region.x < basis.x || region.y < basis.y || i64::from(region.x)+i64::from(region.w)>i64::from(basis.x)+i64::from(basis.w)
         || i64::from(region.y)+i64::from(region.h)>i64::from(basis.y)+i64::from(basis.h) {return Err("Glass field region exceeds original geometry domain".into());}
     let g=Geometry::with_raster(basis,shape,matrix,glass,sample,software)?;
-    if matrix.0[1]!=0. || matrix.0[2]!=0. || region.empty() { return Ok(None); }
+    if region.empty() { return Ok(None); }
     let margin=shape.radius.max(glass.depth).max(glass.bevel_size()) + glass.depth + glass.bevel_size() + 2.;
     if shape.size.iter().any(|v|*v<=margin*2.) {return Ok(None);}
-    let corners=[Point::new(margin,margin),Point::new(shape.size[0]-margin,shape.size[1]-margin)]
-        .map(|p|matrix.point(p));
+    let corners=if matrix.0[1]==0. && matrix.0[2]==0. {
+        [Point::new(margin,margin),Point::new(shape.size[0]-margin,shape.size[1]-margin)].map(|p|matrix.point(p))
+    } else {
+        // Inscribe a device-axis rectangle in the transformed centre. The
+        // inverse maps each axis into both local axes. Check its four actual
+        // sample centres below before certifying even a single pixel.
+        let half=shape.size.map(|s|s*0.5-margin);
+        let m=matrix.0;
+        let center=matrix.point(Point::new(shape.size[0]*0.5,shape.size[1]*0.5));
+        let x=m[0].abs()*half[0]+m[2].abs()*half[1];
+        let y=m[1].abs()*half[0]+m[3].abs()*half[1];
+        let inv=g.inverse.0;
+        let k=(half[0]/(inv[0].abs()*x+inv[2].abs()*y)).min(half[1]/(inv[1].abs()*x+inv[3].abs()*y));
+        if !k.is_finite() || k<=0. { return Ok(None); }
+        [Point::new(center.x-k*x,center.y-k*y),Point::new(center.x+k*x,center.y+k*y)]
+    };
     let interior=Rect::from_points(corners.into_iter()).expand(-2).intersect(region);
     if interior.empty() {return Ok(None);}
     for (x,y) in [(interior.x,interior.y),(interior.right()-1,interior.y),
@@ -391,16 +511,22 @@ pub(crate) fn input_region(
 ) -> Result<Rect, String> {
     let geometry = Geometry::with_raster(basis, shape, matrix, glass, sample, false)?;
     let bounds = std::cell::Cell::new(Rect::new(0, 0, 0, 0));
+    let dispersion = glass.chromatic_aberration();
     for y in output.y..output.bottom() {
         for x in output.x..output.right() {
             let params = geometry.at(x, y, glass);
-            shade(params, glass.chromatic_aberration(), false, |factor| {
+            let include = |factor: f32| {
                 let delta: [f32; 2] = std::array::from_fn(|i| geometry.offset[i] + params[i] * factor);
                 let ix = x + delta[0].floor() as i32;
                 let iy = y + delta[1].floor() as i32;
                 bounds.set(bounds.get().union(Rect::new(ix, iy, 2, 2).intersect(basis)));
                 Pixel::default()
-            });
+            };
+            if dispersion < 0.001 || (params[0] == 0. && params[1] == 0.) {
+                include(1.);
+            } else {
+                shade(params, dispersion, false, include);
+            }
         }
     }
     Ok(bounds.get())
@@ -480,6 +606,35 @@ mod spectral_tests {
     use super::{Pixel, shade};
 
     #[test]
+    fn folded_glass_shader_addresses_reproduce_dense_field_words() {
+        use super::*;
+        let shape = GlassShape { size: [135., 89.], radius: 8. };
+        let basis = Rect::new(-250, -190, 530, 390);
+        let glass: GlassParameters = serde_json::from_value(serde_json::json!({
+            "depth":5., "bevelSize":2., "refraction":0.9, "dispersion":1., "lightAngle":11., "lightIntensity":0.8
+        })).unwrap();
+        for matrix in [Transform([1.,0.,0.,1.,-32.375,2.125]), Transform([-0.75,0.,0.,1.5,84.5,-21.]),
+                       Transform([1.,0.,0.,-1.,-3.,68.])] {
+            for sample in [None,Some(0),Some(1),Some(2),Some(3)] {
+                for region in [Rect::new(-20,-10,104,71),Rect::new(6,8,37,29)] {
+                    let p = GlassFieldProgram::new(basis,region,shape,matrix,glass.clone(),sample).unwrap().unwrap();
+                    let field = p.field().unwrap();
+                    let [ax,ay] = p.axes;
+                    let address = |i: u32,a: AxisFold| if i<a.start {i} else if i<a.split {a.start}
+                        else if i<a.end {a.start+1} else {i-a.removed};
+                    let dense = field_region_with_raster(basis,region,shape,matrix,&glass,sample,false).unwrap();
+                    for y in 0..region.h { for x in 0..region.w {
+                        let slot = ((region.w-ax.removed)*address(y,ay)+address(x,ax)) as usize*4;
+                        let original=(y*region.w+x) as usize*4;
+                        for c in 0..4 { assert_eq!(field[slot+c].to_bits(),dense[original+c].to_bits()); }
+                    }}
+                }
+            }
+        }
+        assert!(GlassFieldProgram::new(basis,basis,shape,Transform([1.,0.1,0.,1.,0.,0.]),glass,None).unwrap().is_none());
+    }
+
+    #[test]
     fn constant_interior_is_bit_exact_for_every_proved_pixel_and_sample() {
         use super::*;
         let shape=GlassShape{size:[120.,96.],radius:7.};
@@ -499,7 +654,15 @@ mod spectral_tests {
         let basis=Rect::new(-100,-100,300,300);
         let plan=field_interior(basis,basis,shape,Transform::default(),&glass,None,false).unwrap().unwrap();
         assert_eq!(plan.value[2].to_bits(),(-0_f32).to_bits());
-        assert!(field_interior(basis,basis,shape,Transform([1.,0.1,0.,1.,0.,0.]),&glass,None,false).unwrap().is_none());
+        for matrix in [Transform([1.,0.1,0.,1.,0.,0.]),Transform([-0.71,0.71,0.71,0.71,46.25,-17.375])] {
+            for sample in 0..4 {
+                let plan=field_interior(basis,basis,shape,matrix,&glass,Some(sample),false).unwrap().unwrap();
+                let g=Geometry::new(basis,shape,matrix,&glass,Some(sample)).unwrap();
+                for y in plan.interior.y..plan.interior.bottom(){for x in plan.interior.x..plan.interior.right(){
+                    assert_eq!(plan.value.map(f32::to_bits),g.at_impl(x,y,&glass,false).map(f32::to_bits));
+                }}
+            }
+        }
     }
 
     #[test]

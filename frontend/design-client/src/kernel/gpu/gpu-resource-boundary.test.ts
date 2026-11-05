@@ -519,6 +519,28 @@ test('interaction fence reason retains periodic short-circuit cadence and native
   driver.dispose()
 })
 
+test('interaction validation overlaps the pose fence and failure is published only after completion', async () => {
+  const { boundary, driver } = await createDriver(true)
+  const target = driver.create(8, 8)
+  driver.begin(new Float32Array(0)); driver.clear(target)
+  ;(driver as any).interactionPresentation = true
+  const oldEpoch = driver.completedResourceEpoch
+  boundary.holdWait(); boundary.rejectScope(true)
+  const checked = vi.spyOn((driver as any).device, 'popErrorScope')
+  const finish = driver.finish(target, empty.extent, 8, 8, false, undefined, false)
+  try {
+    expect(checked).toHaveBeenCalledTimes(1)
+    expect(driver.completedResourceEpoch).toBe(oldEpoch)
+  } finally {
+    boundary.releaseWait()
+    await expect(finish).rejects.toThrow('Injected validation failure')
+    boundary.rejectScope(false)
+    await driver.abortFrameAndReleaseFilterScratch()
+    expect(checked).toHaveBeenCalledTimes(1)
+    checked.mockRestore(); driver.dispose()
+  }
+})
+
 test.each([undefined, '0', 'true', '01', '1'])('resident filter scratch requires explicit opt-in %s', async value => {
   vi.stubEnv('VITE_DESIGN_RESIDENT_FILTER_SCRATCH', value)
   const { driver } = await createDriver(false)

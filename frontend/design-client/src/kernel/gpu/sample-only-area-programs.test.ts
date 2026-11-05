@@ -117,3 +117,17 @@ test('repeated row payloads cannot evade the bounded format-work budget', () => 
   proof.bind(new Uint32Array(curves.buffer), new Map([[0, 0]]), [area], buffer, 1)
   expect(proof.accepts(path, 0, path.rect, 0, buffer, 1)).toBe(false)
 })
+
+test('compact exact row spans require sorted in-range pixel intervals',()=>{
+  const path:PathMesh={area:{first:0,count:3,fingerprint:[5,1]},sampleCount:4,rect:{x:0,y:0,w:8,h:1},first:0,count:3,rule:'nonzero'}
+  const check=(last:number)=>{
+    const words=new Float32Array([5,1,8,1, 0,-1,-13,8, 2,2,last,0])
+    const buffer={},proof=new SampleOnlyAreaPrograms(),arena=new ResidentPrograms()
+    const plan=arena.plan(words,[path.area!])!
+    proof.bind(plan.words,plan.offsets,[path.area!],buffer,1)
+    return proof.accepts(path,3,path.rect,plan.offsets.get(0),buffer,1)
+  }
+  expect(check(3*9+7)).toBe(true)
+  expect(check(1*9+7)).toBe(false)
+  expect(check(3*9+2)).toBe(false)
+})

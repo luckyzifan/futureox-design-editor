@@ -723,6 +723,7 @@ name = "futureox-design-kernel"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "bytemuck",
  "flo_curves",
  "half",
  "im",
@@ -750,6 +751,7 @@ dependencies = [
  "unicode-segmentation",
  "wasm-bindgen",
  "zip 2.4.2",
+ "zmij",
 ]
 
 [[package]]

@@ -11,12 +11,13 @@ import { NumberField } from './fields'
 export function VectorBrushPanel({ editor, node }: { editor: Editor; node: DesignNode }) {
   const [source, setSource] = useState('')
   const [sourceJson, setSourceJson] = useState('')
+  const [open, setOpen] = useState(false)
   if (node.kind !== 'vector' || !node.network) return null
   const brush = node.vectorBrush
   const update = (change: Partial<VectorBrush>) => editor.updateProperties([node.id], n => { if (n.vectorBrush) Object.assign(n.vectorBrush, change) }, '修改矢量笔刷')
   const attempt = (action: () => void) => { try { action() } catch (error) { editor.notify(String(error)) } }
-  const candidates = Object.values(editor.state.doc.nodes).filter(n => n.id !== node.id && n.kind === 'vector' && n.network?.fillRule === 'nonzero' && !n.vectorBrush && n.fills.some(f => f.visible !== false))
-  return <details><summary>矢量笔刷 {brush ? `· ${brush.mode}` : ''}</summary>
+  const candidates = open || brush ? Object.values(editor.state.doc.nodes).filter(n => n.id !== node.id && n.kind === 'vector' && n.network?.fillRule === 'nonzero' && !n.vectorBrush && n.fills.some(f => f.visible !== false)) : []
+  return <details onToggle={event => setOpen(event.currentTarget.open)}><summary>矢量笔刷 {brush ? `· ${brush.mode}` : ''}</summary>
     <p>源图形使用当前图层的填充。Scatter 保留贝塞尔曲线；Stretch 当前仅支持同向直线路径。</p>
     <select aria-label="笔刷源图形" value={source} onChange={e => setSource(e.target.value)}><option value="">选择闭合非零填充矢量源</option>{candidates.map(n => <option key={n.id} value={n.id}>{n.name || n.id}</option>)}</select>
     <button disabled={!source} onClick={() => attempt(() => {

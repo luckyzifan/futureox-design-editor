@@ -192,7 +192,15 @@ fn complete_fallback_and_projection_share_one_resource_owner() {
     export["rasterProfile"] = json!("figma");
     compare(&mut runtime, &mut actual, &mut expected, &desc, &export);
     assert_eq!(runtime.stats["mode"], "complete");
+    assert!(runtime.stats.get("timingUs").is_none());
+    runtime.time_fallbacks = true;
+    compare(&mut runtime, &mut actual, &mut expected, &desc, &export);
+    assert_eq!(runtime.stats["reason"], "request-contract");
+    for phase in ["beforeFallback", "reset", "fullPacket", "restore"] {
+        assert!(runtime.stats["timingUs"][phase].is_u64(), "{phase}");
+    }
     let returned = compare(&mut runtime, &mut actual, &mut expected, &desc, &r);
+    assert!(runtime.stats.get("timingUs").is_none());
     assert_eq!(wire::scope(&first), wire::scope(&returned));
     assert_ne!(first, returned);
     let mut acknowledged = r;

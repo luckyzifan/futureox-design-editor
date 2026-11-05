@@ -1,4 +1,4 @@
-import { decode_fig_network_json, decode_fig_rounded_network_json, decode_fig_fill_commands_json, network_geometry_json, fig_mask_suffixes } from './generated/design-kernel/design_kernel'
+import { decode_fig_network_json, decode_fig_rounded_network_json, decode_fig_fill_commands_json, network_geometry_json, fig_mask_suffixes, fig_stroke_caps_json } from './generated/design-kernel/design_kernel'
 import { assertImportInputBytes } from './import-input-policy'
 import { figArchive, inflateFigDeflate } from './import-fig-archive'
 export { figArchive } from './import-fig-archive'
@@ -19,11 +19,14 @@ import {
   type DesignNode,
   type Matrix,
   type Paint,
+  type Stroke,
+  type StrokeMarker,
   type Network,
 } from './model'
 import type { ImportedDesign } from './import-svg'
 import { emptySystem } from './design-system'
 import { importFigTextRuns } from './import-fig-text'
+import { defaultColorSettings } from './color'
 import { figImageAdjust } from './import-fig-image'
 import { importFigComponents } from './import-fig-components'
 import { inverse } from './commands/affine'
@@ -150,24 +153,25 @@ export function decodeFig(bytes: Uint8Array) {
   return { data: decodeKiwi(decodeBinarySchema(schema), data), files }
 }
 const guid = (g: any) => (typeof g === 'string' ? g : g ? `${g.sessionID}:${g.localID}` : '')
-const rgb = (c: any) => {
+type FigColorSpace = 'srgb' | 'display-p3'
+const rgb = (c: any, space: FigColorSpace) => {
   const values = ['r','g','b'].map(k=>c?.[k] ?? 0)
   if(values.some(v=>typeof v!=='number'||!Number.isFinite(v)))throw new Error('FIG 颜色数值无效')
-  if(values.every(v=>v>=0&&v<=1&&Math.round(v*255)/255===v))
+  if(space==='srgb' && values.every(v=>v>=0&&v<=1&&Math.round(v*255)/255===v))
     return '#'+values.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('')
-  return `color(srgb ${values.join(' ')} / 1)`
+  return `color(${space} ${values.join(' ')} / 1)`
 }
 // Figma keeps alpha on each stop's Color, independently of paint opacity.
 // Use the same portable straight-RGBA representation as the Sketch codec.
-const gradientStopColor = (c: any) => {
+const gradientStopColor = (c: any, space: FigColorSpace) => {
   const alpha = c?.a ?? 1
   if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1)
     throw new Error('FIG 渐变色标透明度无效')
-  if (alpha === 1) return rgb(c)
+  if (alpha === 1) return rgb(c, space)
   const components = ['r', 'g', 'b'].map(k => c?.[k] ?? 0)
   if (components.some(v => !Number.isFinite(v) || v < 0 || v > 1))
     throw new Error('FIG 渐变色标颜色无效')
-  return `color(srgb ${components.join(' ')} / ${alpha})`
+  return `color(${space} ${components.join(' ')} / ${alpha})`
 }
 const matrix = (m: any): Matrix =>
   m ? [m.m00, m.m10, m.m01, m.m11, m.m02, m.m12] : [1, 0, 0, 1, 0, 0]
@@ -221,6 +225,7 @@ function importLayout(n: DesignNode, r: FigLayoutRecord, parent?: FigLayoutRecor
   )
   const hasLayout = mode !== 'none'
   const align = { MIN: 'start', CENTER: 'center', MAX: 'end' } as const
+  const stackAlign = { MIN: 'start', CENTER: 'unsafe-center', MAX: 'unsafe-end' } as const
   // Older layout generations have different sizing/alignment contracts. Do not
   // apply a modern interpretation to a non-default legacy value.
   if (hasLayout) {
@@ -243,7 +248,7 @@ function importLayout(n: DesignNode, r: FigLayoutRecord, parent?: FigLayoutRecor
       ...defaultLayout(),
       mode,
       gap: distance('stackSpacing'),
-      lineGap: distance('stackCounterSpacing'),
+      lineGap: Number.isNaN(r.stackCounterSpacing) ? distance('stackSpacing') : distance('stackCounterSpacing'),
       padding: [
         vertical,
         distance('stackPaddingRight', horizontal),
@@ -253,10 +258,10 @@ function importLayout(n: DesignNode, r: FigLayoutRecord, parent?: FigLayoutRecor
       wrap: choice('stackWrap', { NO_WRAP: false, WRAP: true }, false),
       justify: choice(
         'stackPrimaryAlignItems',
-        { ...align, SPACE_BETWEEN: 'space-between' } as const,
+        { ...stackAlign, SPACE_BETWEEN: 'space-between' } as const,
         'start',
       ),
-      align: choice('stackCounterAlignItems', align, 'start'),
+      align: choice('stackCounterAlignItems', stackAlign, 'start'),
     }
   }
   const sizing = defaultSizing()
@@ -341,16 +346,25 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     warnings = boundedImportWarnings(),
     source: any[] = data.nodeChanges || []
   if (source.length > 20000) throw new Error('FIG 图层超过 20000 个')
+  const capEntries: [string, Stroke['cap'], StrokeMarker][] = JSON.parse(fig_stroke_caps_json())
+  const strokeCaps = new Map(capEntries.map(([name, cap, marker]) => [name, { cap, marker }]))
   const records = new Map<string, any>()
   for (const n of source) {
     const id = guid(n.guid)
     if (n.phase === 'REMOVED') records.delete(id)
     else records.set(id, { ...records.get(id), ...n })
   }
+  const p3 = [...records.values()].some(r => !r.internalOnly && r.type === 'DOCUMENT' &&
+    (r.documentColorProfile === 'DISPLAY_P3' || r.colorProfile === 'DISPLAY_P3'))
+  const colorSpace: FigColorSpace = p3 ? 'display-p3' : 'srgb'
+  if (p3) {
+    doc.colorManagement = { ...defaultColorSettings(), documentSpace: colorSpace }
+    doc.rasterProfile = 'figma'
+  }
   for (const record of records.values()) {
     if (record.internalOnly) continue
     for (const profile of [record.documentColorProfile, record.colorProfile])
-      if (profile !== undefined && !['LEGACY', 'SRGB'].includes(profile))
+      if (profile !== undefined && (p3 ? profile !== 'DISPLAY_P3' : !['LEGACY', 'SRGB'].includes(profile)))
         throw new Error(`FIG 色域 ${profile} 暂不能无损导入；请保留原文件，或从 Figma 导出明确转换为 sRGB 的副本`)
     if (record.interpolationColorSpace !== undefined && record.interpolationColorSpace !== 'DEFAULT')
       throw new Error(`FIG 插值色彩空间 ${record.interpolationColorSpace} 暂不能无损导入；原文件未修改`)
@@ -377,7 +391,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     )[p.type]
     if (!kind) throw new Error(`FIG 填充 ${p.type} 暂不支持`)
     const result = {
-      ...paint(rgb(p.color), kind),
+      ...paint(rgb(p.color, colorSpace), kind),
       opacity: (p.opacity ?? 1) * (p.type === 'SOLID' ? (p.color?.a ?? 1) : 1),
       visible: p.visible !== false,
       blend: String(p.blendMode || 'NORMAL')
@@ -387,7 +401,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     if (p.stops)
       result.stops = p.stops.map((s: any) => ({
         offset: s.position ?? s.offset,
-        color: gradientStopColor(s.color),
+        color: gradientStopColor(s.color, colorSpace),
       }))
     // FIG maps normalized node coordinates into gradient space; Paint stores
     // the opposite direction. Image placement has its own convention below.
@@ -442,7 +456,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
         id: ids.get(key)!,
         name: r.name || '页面',
         children: [],
-        background: rgb(r.backgroundColor || { r: 1, g: 1, b: 1 }),
+        background: rgb(r.backgroundColor || { r: 1, g: 1, b: 1 }, colorSpace),
       })
       continue
     }
@@ -520,15 +534,27 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     if (!Array.isArray(dash) || dash.some((value) => !Number.isFinite(value) || value < 0) ||
       (dash.length > 0 && dash.every((value) => value === 0)))
       throw new Error('FIG 虚线参数暂不能无损表达；原文件未修改')
-    n.strokes = (r.strokePaints || []).map((p: any) => ({
-      ...stroke(),
-      paint: toPaint(p),
-      width: strokeWidth,
-      dash: dash.join(' '),
-      align: String(r.strokeAlign || 'CENTER').toLowerCase(),
-      cap: String(r.strokeCap || 'BUTT').toLowerCase(),
-      join: String(r.strokeJoin || 'MITER').toLowerCase(),
-    }))
+    const strokePaints = r.strokePaints || []
+    if (!Array.isArray(strokePaints)) throw new Error('FIG 描边画笔列表无效')
+    if (strokePaints.length) {
+      const name = r.strokeCap ?? 'NONE'
+      const ending = typeof name === 'string' ? strokeCaps.get(name.toUpperCase()) : undefined
+      if (!ending) warnings.add(`FIG strokeCap=${name} 尚不能表达，已使用平头描边`)
+      const align = String(r.strokeAlign || 'CENTER').toLowerCase()
+      const join = String(r.strokeJoin || 'MITER').toLowerCase()
+      if (align !== 'center' && align !== 'inside' && align !== 'outside') throw new Error(`FIG 描边对齐 ${align} 无效`)
+      if (join !== 'miter' && join !== 'round' && join !== 'bevel') throw new Error(`FIG 描边连接 ${join} 无效`)
+      n.strokes = strokePaints.map<Stroke>(p => ({
+        ...stroke(),
+        paint: toPaint(p),
+        width: strokeWidth,
+        dash: dash.join(' '),
+        align,
+        cap: ending?.cap ?? 'butt',
+        ...(ending && ending.marker !== 'none' ? { endMarker: ending.marker } : {}),
+        join,
+      }))
+    } else n.strokes = []
     n.radii = [
       r.rectangleTopLeftCornerRadius ?? r.cornerRadius ?? 0,
       r.rectangleTopRightCornerRadius ?? r.cornerRadius ?? 0,
@@ -571,7 +597,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
         throw new Error('FIG 纹理参数不完整；原文件未修改')
       return {
         ...effect(kind),
-        color: rgb(x.color),
+        color: rgb(x.color, colorSpace),
         opacity: x.color?.a ?? 1,
         x: x.offset?.x || 0,
         y: x.offset?.y || 0,
@@ -637,7 +663,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       if (r.lineHeight?.units === 'PERCENT') n.textStyle.lineHeight = r.lineHeight.value / 100
       if (r.letterSpacing?.units === 'PIXELS') n.textStyle.letterSpacing = r.letterSpacing.value
       if (r.letterSpacing?.units === 'PERCENT') n.textStyle.letterSpacing = r.letterSpacing.value * n.fontSize / 100
-      const importedFonts=importFigTextRuns(n,r,warnings)
+      const importedFonts=importFigTextRuns(n,r,warnings,colorSpace)
       if (importedFonts.style || Object.keys(importedFonts.runs).length) {
         doc.designSystem ??= emptySystem()
         doc.designSystem.fontSources ??= {}
@@ -704,16 +730,18 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     )
   )
     warnings.add('原型、变量与部分组件属性尚需手动核对')
-  doc.schemaVersion = Object.values(doc.nodes).some((n) =>
-    n.effects.some((e) => e.glass || e.texture),
-  )
-    ? 5
-    : 4
-  if(Object.values(doc.nodes).some(n=>n.arc || n.cornerRadius))doc.schemaVersion=Math.max(7,doc.schemaVersion) as typeof doc.schemaVersion
-  if (Object.values(doc.nodes).some(n=>[...n.fills,...n.strokes.map(s=>s.paint)].some(p=>p.adjust))) doc.schemaVersion = 13
-  if(Object.values(doc.nodes).some(n=>[...n.fills,...n.strokes.map(s=>s.paint)].some(p=>p.tile)))doc.schemaVersion=Math.max(14,doc.schemaVersion) as typeof doc.schemaVersion
-  if(Object.values(doc.nodes).some(n=>n.vectorGeometry))doc.schemaVersion=16
-  else if(Object.values(doc.nodes).some(n=>n.network?.filledFaces!==undefined))doc.schemaVersion=Math.max(10,doc.schemaVersion) as typeof doc.schemaVersion
-  if (Object.values(doc.nodes).some(n=>(n.textStyle?.textCase && n.textStyle.textCase !== 'original') || n.textRuns?.some(r=>r.textCase !== undefined))) doc.schemaVersion = Math.max(15,doc.schemaVersion) as typeof doc.schemaVersion
+  let version = 4
+  for (const n of Object.values(doc.nodes)) {
+    if (n.vectorGeometry) { version = 16; break }
+    if (n.effects.some(e => e.glass || e.texture)) version = Math.max(version, 5)
+    if (n.arc || n.cornerRadius) version = Math.max(version, 7)
+    if (n.strokes.some(s => s.endMarker && s.endMarker !== 'none')) version = Math.max(version, 8)
+    if (n.network?.filledFaces !== undefined) version = Math.max(version, 10)
+    for (const p of n.fills) version = Math.max(version, p.tile ? 14 : p.adjust ? 13 : 4)
+    for (const { paint } of n.strokes) version = Math.max(version, paint.tile ? 14 : paint.adjust ? 13 : 4)
+    if ((n.textStyle?.textCase && n.textStyle.textCase !== 'original') || n.textRuns?.some(r => r.textCase !== undefined))
+      version = Math.max(version, 15)
+  }
+  doc.schemaVersion = version as typeof doc.schemaVersion
   return { document: doc, backend: 'typescript-fig', ...warnings.result() }
 }
