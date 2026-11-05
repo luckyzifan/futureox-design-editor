@@ -274,11 +274,23 @@ pub fn is_fig_file(bytes: &[u8]) -> bool {
 
 /// Detect and import either supported foreign format in one call.
 pub fn import_any(bytes: &[u8]) -> Result<Document> {
-    if is_sketch_file(bytes) {
-        import_sketch(bytes)
-    } else if is_fig_file(bytes) {
-        import_fig(bytes)
-    } else if crate::pdf_import::is_pdf_file(bytes) {
+    // Sniff once so a zip-shaped bundle that fails archive admission keeps its
+    // resource-limit diagnostic instead of falling through to the generic
+    // "markers not found" message that hides the real rejection reason.
+    let sniffed = read_zip(bytes);
+    let sketch = matches!(&sniffed, Ok(files)
+        if files.contains_key("meta.json") && files.contains_key("document.json"));
+    let fig = matches!(&sniffed, Ok(files) if files.contains_key("canvas.fig"));
+    if sketch {
+        return import_sketch(bytes);
+    }
+    if fig {
+        return import_fig(bytes);
+    }
+    if let Err(Error::Unsupported(limit)) = &sniffed {
+        return Err(Error::Unsupported(limit.clone()));
+    }
+    if crate::pdf_import::is_pdf_file(bytes) {
         crate::pdf_import::import_pdf(bytes).map_err(Error::Pdf)
     } else {
         Err(Error::NotAZip(
