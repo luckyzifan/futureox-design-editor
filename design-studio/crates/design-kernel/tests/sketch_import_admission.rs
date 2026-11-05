@@ -581,3 +581,35 @@ fn native_text_behaviour_uses_shared_sizing_and_retains_source_text_metadata() {
         assert_ne!(page["layers"][0]["frame"]["x"], 30);
     }
 }
+
+// A zip-shaped Sketch bundle that exceeds the per-entry expansion budget must
+// surface the archive resource limit from import_any instead of the generic
+// marker-sniff message that hides the real rejection reason (a real 18 MiB
+// single-page public logo kit first reported "markers not found").
+#[test]
+fn import_any_reports_archive_limits_instead_of_marker_miss() {
+    let oversized = vec![b' '; 17 * 1024 * 1024];
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    for (name, body) in [
+        ("meta.json", &br#"{"app":"com.bohemiancoding.sketch3","appVersion":"74.1"}"#[..]),
+        ("document.json", &br#"{"_class":"document","pages":[]}"#[..]),
+        ("pages/toolarge.json", oversized.as_slice()),
+    ] {
+        zip.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
+        zip.write_all(body).unwrap();
+    }
+    let bytes = zip.finish().unwrap().into_inner();
+    match interop::import_any(&bytes) {
+        Err(interop::Error::Unsupported(message)) => {
+            assert!(message.contains("archive resource limit"), "{message}");
+        }
+        other => panic!("expected archive resource limit, got {other:?}"),
+    }
+    // A non-zip payload still falls through to the generic marker message.
+    match interop::import_any(b"not a design file") {
+        Err(interop::Error::NotAZip(message)) => {
+            assert!(message.contains("markers"), "{message}");
+        }
+        other => panic!("expected marker miss, got {other:?}"),
+    }
+}
