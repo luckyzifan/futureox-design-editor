@@ -324,10 +324,9 @@ fn tent_blur_impl(
     }
     Ok(current)
 }
-fn box_pass_in_place(input: &mut Surface, r: i32, horizontal: bool) -> Result<(), String> {
-    box_pass_in_place_domain(input, r, horizontal, true)
-}
-fn box_pass_in_place_domain(input: &mut Surface, r: i32, horizontal: bool, bounded: bool) -> Result<(), String> {
+// Shadow inputs have zero RGB. The one-channel specialization uses exactly
+// the same sums, rounding proof and rational fallback for their alpha.
+fn box_pass_in_place_domain<const CHANNELS: usize>(input: &mut Surface, r: i32, horizontal: bool, bounded: bool) -> Result<(), String> {
     let domain = |value: f64| if bounded { value.clamp(0., 1.) } else { value };
     let rect = input.rect;
     if r <= 0 {
@@ -345,36 +344,37 @@ fn box_pass_in_place_domain(input: &mut Surface, r: i32, horizontal: bool, bound
     // Every pass reads only its own scanline. Preserve that line before writing
     // it back: identical samples and operation order, O(max(width,height)) scratch
     // instead of a second full RGBA32F surface. Outside samples remain transparent.
-    let _line_allocation = input.reserve_scratch::<Pixel>(len as usize)?;
-    let mut source_line = vec![Pixel::default(); len as usize];
+    let _line_allocation = input.reserve_scratch::<[f32; CHANNELS]>(len as usize)?;
+    let mut source_line = vec![[0.; CHANNELS]; len as usize];
     for line in 0..lines {
         for at in 0..len {
-            source_line[at as usize] = if horizontal {
+            let pixel = if horizontal {
                 input.at(rect.x + at, rect.y + line)
             } else {
                 input.at(rect.x + line, rect.y + at)
             };
+            source_line[at as usize] = std::array::from_fn(|c| pixel.0[4 - CHANNELS + c]);
         }
         let sample = |at: i32| {
-            if at >= 0 && at < len { source_line[at as usize] } else { Pixel::default() }
+            if at >= 0 && at < len { source_line[at as usize] } else { [0.; CHANNELS] }
         };
         // Higham's gamma_n bound for an ordered sum: at most n operations
         // over n terms of magnitude <= M. 8*eps*n^2*M also encloses the
         // endpoint/division rounding below. Accept only when both interval
         // endpoints round to the same binary32; otherwise use exact rationals.
-        let magnitude = (0..len).fold([0_f64; 4], |mut m, at| {
-            for (c, value) in sample(at).0.iter().enumerate() {
+        let magnitude = (0..len).fold([0_f64; CHANNELS], |mut m, at| {
+            for (c, value) in sample(at).iter().enumerate() {
                 m[c] = m[c].max(f64::from(*value).abs());
             }
             m
         });
         let operations = f64::from(2 * r + 1 + 2 * len);
         let error = magnitude.map(|m| 8. * f64::EPSILON * operations * operations * m);
-        let mut sum = [0_f64; 4];
+        let mut sum = [0_f64; CHANNELS];
         for k in -r..=r {
             let p = sample(k);
             for (i, s) in sum.iter_mut().enumerate() {
-                *s += f64::from(p.0[i]);
+                *s += f64::from(p[i]);
             }
         }
         for at in 0..len {
@@ -383,25 +383,23 @@ fn box_pass_in_place_domain(input: &mut Surface, r: i32, horizontal: bool, bound
             } else {
                 at as usize * rect.w as usize + line as usize
             };
-            let mut channels = [0.; 4];
-            for c in 0..4 {
+            for c in 0..CHANNELS {
                 let lo = domain((sum[c] - error[c]) / denominator) as f32;
                 let hi = domain((sum[c] + error[c]) / denominator) as f32;
-                channels[c] = if lo.to_bits() == hi.to_bits() {
+                input.pixels[index].0[4 - CHANNELS + c] = if lo.to_bits() == hi.to_bits() {
                     lo
                 } else {
                     for (i, tap) in taps.iter_mut().enumerate() {
-                        *tap = sample(at - r + i as i32).0[c];
+                        *tap = sample(at - r + i as i32)[c];
                     }
                     domain(f64::from(kernel.convolve(&taps)?)) as f32
                 };
             }
-            input.pixels[index] = Pixel(channels);
             let remove = sample(at - r);
             let add = sample(at + r + 1);
             for (i, s) in sum.iter_mut().enumerate() {
-                *s += f64::from(add.0[i]);
-                *s -= f64::from(remove.0[i]);
+                *s += f64::from(add[i]);
+                *s -= f64::from(remove[i]);
             }
         }
     }
@@ -531,7 +529,7 @@ fn gaussian_box_radii_bounded(sigma:f64,limit:f64)->Result<[u32;3],String> {
 }
 // Premultiplied three-box Gaussian; certified sliding sums, exact tie fallback.
 pub fn blur(surface: &Surface, sigma: f64) -> Result<Surface, String> {
-    blur_owned(surface.try_clone()?, sigma)
+    blur_owned::<4>(surface.try_clone()?, sigma)
 }
 /// Explicit layer Gaussian preserves extended linear values. The historical
 /// Gaussian helper remains bounded for existing callers and alpha masks.
@@ -540,19 +538,19 @@ pub fn gaussian_surface(surface: &Surface, sigma: f64, byte: bool) -> Result<Sur
     for r in gaussian_box_radii(sigma)? {
         if r == 0 { continue; }
         for horizontal in [true, false] {
-            box_pass_in_place_domain(&mut out, r as i32, horizontal, byte)?;
+            box_pass_in_place_domain::<4>(&mut out, r as i32, horizontal, byte)?;
             if byte { out.quantize_rgba8(); }
         }
     }
     Ok(out)
 }
-fn blur_owned(mut out: Surface, sigma: f64) -> Result<Surface, String> {
+fn blur_owned<const CHANNELS: usize>(mut out: Surface, sigma: f64) -> Result<Surface, String> {
     for radius in gaussian_box_radii(sigma)? {
         if radius == 0 {
             continue;
         }
-        box_pass_in_place(&mut out, radius as i32, true)?;
-        box_pass_in_place(&mut out, radius as i32, false)?;
+        box_pass_in_place_domain::<CHANNELS>(&mut out, radius as i32, true, true)?;
+        box_pass_in_place_domain::<CHANNELS>(&mut out, radius as i32, false, true)?;
     }
     Ok(out)
 }
@@ -565,7 +563,7 @@ pub(crate) fn gaussian_region(
 ) -> Result<Surface, String> {
     let support: u32 = gaussian_box_radii(sigma)?.into_iter().sum();
     let capture = output.expand(support as i32).intersect(domain);
-    blur_owned(copy_region(source, capture)?, sigma)
+    blur_owned::<4>(copy_region(source, capture)?, sigma)
 }
 
 pub fn morphology_alpha(input: &Surface, r: i32, dilate: bool) -> Result<Surface, String> {
@@ -656,9 +654,9 @@ pub(crate) fn shadow_alpha(
     spread: f64,
     inner: bool,
 ) -> Result<Surface, String> {
-    let mut alpha = surface.try_clone()?;
-    for p in &mut alpha.pixels {
-        *p = Pixel([0., 0., 0., p.0[3]]);
+    let mut alpha = surface.new_like(surface.rect)?;
+    for (dst, src) in alpha.pixels.iter_mut().zip(&surface.pixels) {
+        dst.0[3] = src.0[3];
     }
     if spread.abs() >= 0.5 {
         alpha = morphology_alpha(
@@ -670,7 +668,7 @@ pub(crate) fn shadow_alpha(
     match filter {
         // Alpha is no longer needed after filtering. Consume it rather than
         // retaining an additional full surface through all six Gaussian passes.
-        BlurFilter::Gaussian(sigma) => blur_owned(alpha, sigma),
+        BlurFilter::Gaussian(sigma) => blur_owned::<1>(alpha, sigma),
         _ => filter.apply(&alpha),
     }
 }
@@ -1150,7 +1148,7 @@ mod gaussian_scanline_memory_tests {
                 for horizontal in [false, true] {
                     let expected = box_pass_reference(&source, radius, horizontal).unwrap();
                     let mut actual = source.try_clone().unwrap();
-                    box_pass_in_place(&mut actual, radius, horizontal).unwrap();
+                    box_pass_in_place_domain::<4>(&mut actual, radius, horizontal, true).unwrap();
                     for (a, b) in actual.pixels.iter().zip(&expected.pixels) {
                         assert_eq!(a.0.map(f32::to_bits), b.0.map(f32::to_bits));
                     }
@@ -1163,7 +1161,9 @@ mod gaussian_scanline_memory_tests {
     fn shadow_gaussian_fits_two_surfaces_plus_scanline_without_quality_change() {
         let rect = Rect::new(-31, 11, 64, 48);
         let surface_bytes = 64 * 48 * std::mem::size_of::<Pixel>();
-        let budget = Budget::new(2 * surface_bytes + 64 * 16 + 257 * 4);
+        let largest_radius = gaussian_box_radii(4.).unwrap().into_iter().max().unwrap() as usize;
+        let limit = 2 * surface_bytes + (64 + 2 * largest_radius + 1) * size_of::<f32>();
+        let budget = Budget::new(limit);
         let mut source = Surface::new_in(rect, &budget).unwrap();
         for (i, p) in source.pixels.iter_mut().enumerate() {
             *p = Pixel([0.2, 0.1, 0.3, ((i * 17) % 256) as f32 / 255.]);
@@ -1184,7 +1184,7 @@ mod gaussian_scanline_memory_tests {
         for (a, b) in actual.pixels.iter().zip(&expected.pixels) {
             assert_eq!(a.0.map(f32::to_bits), b.0.map(f32::to_bits));
         }
-        assert!(budget.usage().peak_bytes <= 2 * surface_bytes + 64 * 16 + 257 * 4);
+        assert!(budget.usage().peak_bytes <= limit);
         drop(actual);
         drop(source);
         assert_eq!(budget.usage().live_bytes, 0);

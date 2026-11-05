@@ -802,6 +802,32 @@ for (const { radius, clipped, original } of [
   })
 }
 
+test('transient material fields skip key generation and retained fields distinguish signed zero', () => {
+  const { driver } = textureReplayDriver()
+  const renderer = new GpuRenderer(driver) as any
+  const field = (descriptor: unknown, retain: boolean) => renderer.materialField(['test', descriptor],
+    {x: 0, y: 0, w: 1, h: 1}, () => new Uint8Array(4), () => driver.create(1, 1), undefined, 4, retain)
+  try {
+    field({toJSON() { throw Error('unnecessary cache key') }}, false)
+    const negative = field(-0, true)
+    expect(field(0, true).texture).not.toBe(negative.texture)
+    expect(field(-0, true).texture).toBe(negative.texture)
+  } finally { renderer.dispose() }
+})
+
+test('texture capture preflights each phase once and reuses its own plan', async () => {
+  const kernel = await import('../../generated/design-kernel/design_kernel')
+  const plans = vi.spyOn(kernel, 'texture_replay_tiles')
+  const renderer = new GpuRenderer(textureReplayDriver().driver, true, true, undefined, false, false, 256)
+  try {
+    await renderer.render(textureReplayScene())
+    expect(plans.mock.calls.map(([, , sample]) => sample)).toEqual([0, 1, 2, 3])
+  } finally {
+    plans.mockRestore()
+    renderer.dispose()
+  }
+})
+
 test('texture passthrough skips texture processing while unsupported replay keeps the old effect', async () => {
   const pass = textureReplayDriver()
   const ordinary = new GpuRenderer(pass.driver, undefined, undefined, undefined, undefined, undefined, 256)

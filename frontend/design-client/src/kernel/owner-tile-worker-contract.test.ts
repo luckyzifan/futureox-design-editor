@@ -19,6 +19,6 @@ test('worker full load/fonts invalidate owner while driver resets invalidate agg
 test('worker cache commits require owned bytes, uncanceled request, and captured lifetime',()=>{
   expect(source).toContain('ownsExactTileBytes(result) && cacheOwner.current(cacheTicket)')
   expect(source).toContain('cacheTicket = cacheOwner.capture()')
-  expect(source).toContain('length * 2, cacheTicket)')
+  expect(source).toContain('exactTilePayloadBytes(result), cacheTicket)')
   expect(source).toMatch(/packetWait\?\.controller\.signal\.aborted[^\n]*throw new Error\('PREVIEW_CANCELLED'\)\s+\/\/ Only the exact scene/)
 })

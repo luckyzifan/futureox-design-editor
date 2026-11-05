@@ -47,7 +47,7 @@ export function validStroke(s: Stroke): boolean {
   )
     return false
   if (
-    s.dash
+    s.dash.length !== 0 && s.dash
       .split(/[\s,]+/)
       .filter(Boolean)
       .some((v) => {

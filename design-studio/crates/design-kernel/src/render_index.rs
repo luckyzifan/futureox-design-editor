@@ -53,17 +53,26 @@ impl ParentLookup for HashMap<String,String> {
 pub(crate) struct RenderIndex {
     pub(crate) parents: Parents,
     pub(crate) has_connectors: bool,
+    pub(crate) sketch_mask_owners: std::collections::HashSet<String>,
 }
 impl RenderIndex {
+    pub(crate) fn in_sketch_mask_chain(&self, id: &str) -> bool {
+        !self.sketch_mask_owners.is_empty() && (self.sketch_mask_owners.contains(id)
+            || self.parents.ancestors(id).any(|p| self.sketch_mask_owners.contains(p)))
+    }
     pub(crate) fn preserved_by(document:&Document,patch:&crate::editing::DocumentPatch)->bool {
         !patch.fields.contains_key("pages") && patch.nodes.iter().all(|(id,next)| {
             document.nodes.get(id).zip(next.as_ref()).is_some_and(|(old,next)|
-                old.id==next.id&&old.children==next.children&&old.connector.is_some()==next.connector.is_some())
+                old.id==next.id&&old.children==next.children&&old.connector.is_some()==next.connector.is_some()
+                && crate::sketch_masks::starts(old)==crate::sketch_masks::starts(next)
+                && old.boolean_operation.is_some()==next.boolean_operation.is_some())
         })
     }
     pub(crate) fn new(document: &Document) -> Self {
+        let parents = Parents::new(document);
         Self {
-            parents: Parents::new(document),
+            sketch_mask_owners: crate::sketch_masks::owners(document, &parents),
+            parents,
             has_connectors: document.nodes.values().any(|node| node.connector.is_some()),
         }
     }

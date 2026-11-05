@@ -1,3 +1,4 @@
+import type { Rect } from './types'
 import { MAX_NAVIGATION_GAPS, NAVIGATION_BACKING_BYTES } from '../navigation-backing'
 import { PresenterPayloadLedger, type PayloadToken } from './presenter-payload-ledger'
 import { deviceDiagnosticFields, registerDeviceDiagnosticOwner, recordDeviceLifecycle, recordDeviceCallback, deviceLostReason, deviceLifecyclePhase } from './device-lifecycle-diagnostics'
@@ -6,7 +7,7 @@ import { gpuDiagnosticsDetail } from '../../../../design-desktop/src/render-term
 import type { CanvasCamera } from '../../canvas-camera'
 import type { CompositeItem } from './tile-compositor'
 import { presentationQuality } from './presentation-quality'
-import { compositeDrawPlan, compositeRasterQuad } from './composite-draw-plan'
+import { compositeDrawPlan, compositeRasterQuad, subtract } from './composite-draw-plan'
 import { DISPLAY_TEXTURE_BUDGET } from './display-budget'
 import { CanvasOverlayRenderer, translateOverlay, transformOverlay, type CanvasOverlay } from './canvas-overlay'
 import { ResidentUniforms } from './resident-uniforms'
@@ -98,7 +99,7 @@ export class ResidentPresenter {
   private linearTarget?: { texture: GPUTexture; bind: GPUBindGroup; width: number; height: number; samples:1|4; payload: PayloadToken }
   private sampler: GPUSampler
   private uniforms: GPUBuffer
-  private textures = new Map<number, { texture: GPUTexture; bytes: number; bind: GPUBindGroup; payload: PayloadToken; background?:PageBackgroundProof; content?:PixelContentProof; constantBackground?:boolean;linear?:boolean;samples?:1|4 }>()
+  private textures = new Map<number, { texture: GPUTexture; bytes: number; bind: GPUBindGroup; payload: PayloadToken; background?:PageBackgroundProof; content?:PixelContentProof; raster?:{view:CanvasCamera; rect:Rect; gutter:number}; constantBackground?:boolean;linear?:boolean;samples?:1|4 }>()
   private terminalQualityGate = new TerminalQualityGate()
   private latest?: ResidentFrame
   private drawn?: ResidentFrame
@@ -364,6 +365,80 @@ export class ResidentPresenter {
     this.textures.delete(next)
     this.textures.set(slot, replacement)
   }
+  tagExactTile(id:number, owner:object, contract:string, gutter:number) {
+    const entry = this.textures.get(id)
+    const raster = entry?.content?.raster
+    if (!entry || !raster || this.disposed || entry.linear || entry.content?.owner !== owner || entry.content.contract !== contract ||
+        !Object.values(raster.rect).every(Number.isSafeInteger) || entry.texture.width !== raster.rect.w ||
+        entry.texture.height !== raster.rect.h || (gutter !== 0 && gutter !== 1)) return
+    entry.raster = {...raster, gutter}
+  }
+
+  /** Copy only the unchanged core texels from already-owned native tiles.
+   * The unpublished destination is charged to the existing display ledger.
+   * Cancellation releases it; only an exact new-owner patch can publish it. */
+  beginViewportRepair(before:object, after:object, contract:string, view:CanvasCamera, width:number, height:number, damage:Rect) {
+    if (this.disposed || !contract || before === after || ![width,height,damage.x,damage.y,damage.w,damage.h].every(Number.isSafeInteger) ||
+        width<=0 || height<=0 || width*height>4_194_304 || damage.w<=0 || damage.h<=0 || damage.x<0 || damage.y<0 ||
+        damage.x+damage.w>width || damage.y+damage.h>height) return
+    const box = {left:damage.x, top:damage.y, right:damage.x+damage.w, bottom:damage.y+damage.h}
+    let holes = subtract([{left:0,top:0,right:width,bottom:height}], box)
+    const copies: { texture:GPUTexture; x:number; y:number; dstX:number; dstY:number; w:number; h:number }[] = []
+    for (const entry of this.textures.values()) {
+      const r=entry.raster
+      if (!r || entry.linear || entry.content?.owner!==before || entry.content.contract!==contract ||
+          r.view.zoom!==view.zoom || r.view.x!==view.x || r.view.y!==view.y) continue
+      const core={left:r.rect.x+r.gutter,top:r.rect.y+r.gutter,right:r.rect.x+r.rect.w-r.gutter,bottom:r.rect.y+r.rect.h-r.gutter}
+      for(const hole of holes){
+        const x=Math.max(core.left,hole.left),y=Math.max(core.top,hole.top)
+        const w=Math.min(core.right,hole.right)-x,h=Math.min(core.bottom,hole.bottom)-y
+        if(w>0 && h>0) copies.push({texture:entry.texture,x:x-r.rect.x,y:y-r.rect.y,dstX:x,dstY:y,w,h})
+      }
+      holes=subtract(holes,core)
+      if(copies.length>128||holes.length>128)return
+      if(!holes.length)break
+    }
+    const background=holes.length ? [...this.textures.values()].find(e=>!e.linear && e.background?.pixel &&
+      holes.every(h=>emptyBackgroundTile(e.background!,before,contract,view,{x:h.left,y:h.top,w:h.right-h.left,h:h.bottom-h.top}))) : undefined
+    if (holes.length && !background) return
+
+    const target=this.capture(width,height)
+    let live=true
+    const cancel=()=>{if(live){live=false;this.release([target.id])}}
+    try{
+      const encoder=this.device.createCommandEncoder()
+      if (background) {
+        const [u,v]=background.background!.pixel!
+        this.transformData.begin()
+        this.transformData.set(0,[0,0,width,height,u,v,0,0,width,height,0,0])
+        const update=this.transformData.changed()
+        if(update)this.device.queue.writeBuffer(this.uniforms,update.offset,update.data)
+        const pass=encoder.beginRenderPass({colorAttachments:[{view:target.texture.createView(),loadOp:'clear',storeOp:'store',clearValue:[0,0,0,0]}]})
+        pass.setPipeline(this.pipeline);pass.setBindGroup(0,background.bind,[0]);pass.draw(6);pass.end()
+      }
+      for(const c of copies)encoder.copyTextureToTexture({texture:c.texture,origin:[c.x,c.y]},
+        {texture:target.texture,origin:[c.dstX,c.dstY]},[c.w,c.h])
+      this.device.queue.submit([encoder.finish()])
+    }catch(error){cancel();throw error}
+    return { cancel, finish:(id:number, pose?:{texture:object;rect:Rect})=>{
+      const patch=this.textures.get(id),dst=this.textures.get(target.id),r=patch?.raster
+      if(!live||this.disposed||dst?.texture!==target.texture||!patch||patch.linear)return
+      const source=pose?.rect??r?.rect
+      if(!source||source.w!==patch.texture.width||source.h!==patch.texture.height)return
+      if(pose ? patch.texture!==pose.texture : (!r||patch.content?.owner!==after||patch.content.contract!==contract||
+          r.view.x!==view.x||r.view.y!==view.y||r.view.zoom!==view.zoom))return
+      const x=damage.x-source.x,y=damage.y-source.y
+      if(!Number.isSafeInteger(x)||!Number.isSafeInteger(y)||x<0||y<0||x+damage.w>source.w||y+damage.h>source.h)return
+      const encoder=this.device.createCommandEncoder()
+      encoder.copyTextureToTexture({texture:patch.texture,origin:[x,y]},{texture:target.texture,origin:[damage.x,damage.y]},[damage.w,damage.h])
+      this.device.queue.submit([encoder.finish()])
+      dst.content={owner:after,contract}
+      dst.raster={view:{...view},rect:{x:0,y:0,w:width,h:height},gutter:0}
+      live=false
+      return target.id
+    }}
+  }
+
   snapshot(background?:PageBackgroundProof) {
     if (!this.backbuffer || !this.drawn || this.disposed) return
     const { width, height, texture } = this.backbuffer
@@ -536,7 +611,7 @@ export class ResidentPresenter {
       throw Error('Display dimensions exceed device limits')
     const rows: {
       item: ResidentItem
-      entry: { texture: GPUTexture; bytes: number; bind: GPUBindGroup; background?:PageBackgroundProof; content?:PixelContentProof; constantBackground?:boolean;linear?:boolean;samples?:1|4 }
+      entry: { texture: GPUTexture; bytes: number; bind: GPUBindGroup; background?:PageBackgroundProof; content?:PixelContentProof; raster?:{view:CanvasCamera; rect:Rect; gutter:number}; constantBackground?:boolean;linear?:boolean;samples?:1|4 }
       raster: NonNullable<ReturnType<typeof compositeRasterQuad>>
       constant?:boolean
     }[] = []
@@ -611,6 +686,7 @@ export class ResidentPresenter {
         const dx=view.x*dpr-p.view.x,dy=view.y*dpr-p.view.y;return Math.max(Math.abs(dx-Math.round(dx)),Math.abs(dy-Math.round(dy)))
       })):0
       this.report({ coverageDeferred: 1, coverageDeferredDraws: rows.length, backgroundDecline,
+        coverageDeferredPresentationId: frame.presentationId,
         backgroundDensitySources:densityProofs.length,backgroundPhaseError,
         ...(frame.interaction ? { interactionCoverageMissing: true, input: frame.input } : {}),
         diagnosticSequence: frame.diagnosticSequence, missingTextureCount: missing.length })

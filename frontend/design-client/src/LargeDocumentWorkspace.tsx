@@ -7,6 +7,7 @@ import { Editor } from './engine'
 import { blank, type DesignDocument, type Point } from './model'
 import type {SourceCanvasSnapshot,SourceCanvasItem} from './desktop'
 import type {NativeSourceStatus} from './kernel/NativeSourceSurface'
+import {includesMaterials,materialScope,thumbnailScale,visibleMaterialWindow,firstVisibleMaterialKeys} from './source-material-scope'
 import {fitBounds}from'./canvas-camera'
 import { commitPendingEdits, hasPendingEdits, registerPendingEdit, pendingEditsChanged } from './pending-edits'
 import { prepareDocumentJson, prepareDocumentJsonInWorker } from './prepared-document'
@@ -25,8 +26,9 @@ export type SourceWorkspace = {
   editor:Editor; ready:boolean; busy:boolean; locked:boolean; dirty:boolean; name:string; notice:string; error:string
   canvas:RefObject<HTMLDivElement|null>; navigation:ReactNode; showLayers:boolean; warnings:string[]
   dismissWarnings():void; dismissError?():void; cancel():void; save():Promise<void>; exportFile():Promise<void>; leave():Promise<void>; openFile(file:File):Promise<void>
-  onViewport?:(box:SourceCanvasItem['placed'])=>void
-  openingPreview?:OpeningView; openingPage?:string; focusedMaterial?:number; onDetail?:(roots:number[])=>void; hideNative?:boolean; pageBoxes?:SourceCanvasItem['placed'][]; onSourcePresented?(view:{x:number;y:number;zoom:number}):void; openPreviewPoint?(point:Point):void
+  onViewport?:(box:SourceCanvasItem['placed'],anchor?:Point,density?:number)=>void
+  navigatingMaterials?:boolean
+  prepareSourceDisplay?:boolean;openingPreview?:OpeningView; openingPage?:string; focusedMaterial?:number; onDetail?:(roots:number[])=>void; hideNative?:boolean;parkNative?:boolean; pageBoxes?:SourceCanvasItem['placed'][]; onSourcePresented?(view:{x:number;y:number;zoom:number}):void; openPreviewPoint?(point:Point):void
   nativeCanvas?:{snapshot:SourceCanvasSnapshot;status?:NativeSourceStatus;onStatus(status:NativeSourceStatus):void;openPoint(point:Point):void}
 }
 /** Source storage owns the full archive and commits only its admitted workset.
@@ -49,15 +51,29 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   const [focusedMaterial,setFocusedMaterial]=useState<number>()
   const [detailIndices,setDetailIndices]=useState<number[]>([])
   const demand=useRef(''),detailRunning=useRef(false),declinedDemand=useRef('')
-  const requestDetail=useCallback((indices:number[])=>{
+  const viewportDemand=useRef(false),zoomAnchor=useRef<Point|undefined>(undefined)
+  const requestedIndices=useRef<number[]>([]),preparingKeys=useRef<readonly string[]>([])
+  const lastMaterialToken=useRef<string|undefined>(undefined)
+  const pageDetailIntent=useRef<string|undefined>(undefined)
+  const requestDetail=useCallback((indices:number[],retry=false,fromViewport=false)=>{
     const key=indices.join(',')
-    if(key===demand.current)return
-    demand.current=key;declinedDemand.current='';setDetailIndices(indices);setShowOpening(true)
-    if(detailRunning.current)void bridge.cancel().catch(()=>{})
+    if(key===demand.current && !(retry && key===declinedDemand.current))return
+    demand.current=key;declinedDemand.current='';viewportDemand.current=fromViewport;requestedIndices.current=indices;setDetailIndices(indices)
+    if(!indices.length)setShowOpening(true)
+    if(detailRunning.current && indices.length){
+      const wanted=indices.map(i=>itemsForSnapshot.current[i]?.key)
+      if(!includesMaterials(preparingKeys.current,wanted))
+        void bridge.cancel().catch(()=>{})
+    }
   },[bridge])
+  const requestViewportDetail=useCallback((indices:number[])=>{
+    // A preview wheel or idle callback must not cancel explicit page work.
+    if(pageDetailIntent.current!==demand.current)requestDetail(indices,false,true)
+  },[requestDetail])
 
   const fittedOpening=useRef(''),pendingMaterial=useRef<{id:string;pageId:string}|null>(null)
   const [nativeRenderStatus,setNativeRenderStatus]=useState<NativeSourceStatus>()
+  const [failedOpeningToken,setFailedOpeningToken]=useState<string>()
   // The import notification owns first display only. Navigation has its own
   // canvas badge and must not repeatedly reopen the large import card.
   const nativePresentedToken=useRef<string|undefined>(undefined)
@@ -279,26 +295,53 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     if(!overview || !opening || !status || busy || active || !itemsForSnapshot.current.length)return
     if(nativeSnapshotRef.current && !nativeSnapshotRef.current.materialKeys)return
     const signature=detailIndices.join(',')
-    if(!signature){
-      if(nativeSnapshotRef.current?.materialKeys){nativeSnapshotRef.current=null;setNativeSnapshot(null);setNativeRenderStatus(undefined);setShowOpening(true)}
+    if(!signature)return
+    if(declinedDemand.current===signature)return
+    const items=itemsForSnapshot.current,snapshot=nativeSnapshotRef.current
+    const current=snapshot && snapshot.token===lastMaterialToken.current && snapshot.owner.documentId===status.owner.documentId &&
+      snapshot.owner.sessionEpoch===status.owner.sessionEpoch && snapshot.revision===status.revision ? snapshot : undefined
+    const wanted=materialScope(items,detailIndices,undefined)
+    if(!wanted.length)return
+    if(!current?.viewportSubset&&includesMaterials(current?.materialKeys,wanted)){
+      if(nativePresentedToken.current===current?.token)setShowOpening(false)
       return
     }
-    if(declinedDemand.current===signature)return
-    const keys=detailIndices.map(i=>itemsForSnapshot.current[i]?.key).filter((key):key is string=>!!key).sort()
-    if(!keys.length || nativeSnapshotRef.current?.materialKeys?.join(',')===keys.join(','))return
+    const view=editor.effectiveView(),host=canvas.current
+    const viewport=viewportDemand.current&&host?{x:-view.x/view.zoom,y:-view.y/view.zoom,width:host.clientWidth/view.zoom,height:host.clientHeight/view.zoom}:undefined
+    const previous=nativePresentedToken.current===current?.token?current?.materialKeys:undefined
+    const keys=materialScope(items,detailIndices,previous,viewport)
+    const navigationWindow=viewport&&focusedMaterial===undefined?visibleMaterialWindow(items,detailIndices,viewport):undefined
     const selected=status
+    const focal=viewport&&focusedMaterial===undefined?firstVisibleMaterialKeys(items,detailIndices,viewport,current?.materialKeys,zoomAnchor.current):undefined
     void run(async()=>{
-      detailRunning.current=true;setShowOpening(true)
+      detailRunning.current=true;preparingKeys.current=keys
       try{
-        const frame=admitted(await bridge.canvasSnapshot({owner:selected.owner,expectedRevision:selected.revision,materialKeys:keys}))
-        if(!alive.current || demand.current!==signature || activeRef.current || !sameSource(selected,statusRef.current))return
+        if(focal){
+          const first=await bridge.canvasSnapshot({owner:selected.owner,expectedRevision:selected.revision,materialKeys:focal}).catch(()=>undefined)
+          if(!alive.current||activeRef.current||!sameSource(selected,statusRef.current))return
+          if(first?.status==='ok'){
+            lastMaterialToken.current=first.token
+            if(first.materialKeys?.join(',')!==focal.join(',')||first.roots!==focal.length)throw Error('素材精修范围不匹配')
+            if(demand.current!==signature)return
+            const subset={...first,viewportSubset:true}
+            nativeSnapshotRef.current=subset;setNativeSnapshot(subset)
+          }else if(demand.current!==signature||queuedLoad.current)return
+        }
+        const frame=admitted(await bridge.canvasSnapshot({owner:selected.owner,expectedRevision:selected.revision,materialKeys:keys,...(navigationWindow?{navigationWindow}:{})}))
+        if(!alive.current || activeRef.current || !sameSource(selected,statusRef.current))return
+        // A successful host publication revokes the previous token even if
+        // the viewport changed while native preparation was running.
+        lastMaterialToken.current=frame.token
+        const latestWanted=requestedIndices.current.map(i=>itemsForSnapshot.current[i]?.key)
+        if(demand.current!==signature && latestWanted.length && !includesMaterials(keys,latestWanted))return
         if(frame.materialKeys?.join(',')!==keys.join(',') || frame.roots!==keys.length)throw Error('素材精修范围不匹配')
         nativeSnapshotRef.current=frame;setNativeSnapshot(frame);setWarnings(frame.warnings)
         setNativeRenderStatus({phase:'refining',done:0,total:frame.roots})
       }catch(error){
         if(demand.current!==signature || queuedLoad.current)return
+        if(pageDetailIntent.current===signature)pageDetailIntent.current=undefined
         declinedDemand.current=signature;throw error
-      }finally{detailRunning.current=false}
+      }finally{detailRunning.current=false;preparingKeys.current=[]}
     })
   },[overview,opening?.owner.documentId,status,busy,active,detailIndices,bridge])
   useEffect(()=>{
@@ -373,7 +416,8 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     editor.setMutationRestriction(undefined);editor.load(blank(),true);editor.setMutationRestriction('正在准备源文件，暂时只能浏览。');editor.set({tool:'hand',selection:[]})
     openingRef.current=undefined;statusRef.current=null;setStatus(null)
     nativeSnapshotRef.current=null;setNativeSnapshot(null);setCatalogue([]);setOverview(false);setSourcePage('')
-    setFocusedMaterial(undefined);requestDetail([]);pendingMaterial.current=null;fittedOpening.current='';exactView.current=undefined;setShowOpening(true);setOpeningGeneration(++openingSerial.current)
+    nativePresentedToken.current=undefined
+    pageDetailIntent.current=undefined;setFocusedMaterial(undefined);requestDetail([]);pendingMaterial.current=null;fittedOpening.current='';exactView.current=undefined;setShowOpening(true);setOpeningGeneration(++openingSerial.current)
     const next=admitted(await openSelectedFile(file));if(!alive.current)return
     baseline.current=null;activeRef.current=null;setActive(null);setPageRange(null);nativeSnapshotRef.current=null;setNativeSnapshot(null);setCatalogue([]);setOverview(false);updateStatus(next)
     await openInitialCanvas()
@@ -390,11 +434,11 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   const pageBoxes=useMemo(()=>sourcePage?materialRows.filter(row=>row.pageId===sourcePage).map(row=>row.placed):undefined,[materialRows,sourcePage])
   const navigate=(pageId:string,item?:SourceCanvasItem)=>{
     const host=canvas.current;if(!host)return
-    navigationIntent.current++;pendingMaterial.current=null;queuedLoad.current=null;setSourcePage(pageId)
+    navigationIntent.current++;pageDetailIntent.current=undefined;pendingMaterial.current=null;queuedLoad.current=null;setSourcePage(pageId)
     if(preparingSource.current){abort.current?.abort();void bridge.cancel().catch(()=>{})}
     const index=item?materialRows.indexOf(item):-1
     setFocusedMaterial(index>=0?index:undefined);requestDetail(index>=0?[index]:[])
-    quick.focus(pageId||undefined,index>=0?index:undefined)
+    quick.focus(pageId||undefined,index>=0?index:undefined,!statusRef.current)
     const group=pageId?materialRows.filter(row=>row.pageId===pageId):materialRows
     const box=item?.placed??(group.length?unionBounds(group.map(row=>row.placed)):undefined)
     if(box){
@@ -415,15 +459,27 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   const scopedBoxes=useMemo(()=>{
     const keys=nativeSnapshot?.materialKeys
     if(!keys)return pageBoxes
-    const selected=new Set(keys)
-    return catalogue.filter(row=>selected.has(row.key)&&(!sourcePage||row.pageId===sourcePage)).map(row=>row.placed)
-  },[catalogue,nativeSnapshot?.materialKeys,pageBoxes,sourcePage])
+    // A retained neighbour can supply a later visit. Only the currently
+    // requested roots overlay the corresponding catalogue thumbnails.
+    const wanted=new Set(detailIndices.map(i=>catalogue[i]?.key))
+    const selected=new Set(keys.filter(key=>wanted.has(key)))
+    return catalogue.flatMap((row,i)=>selected.has(row.key)&&(!sourcePage||row.pageId===sourcePage)
+      ? [{...row.placed,materialKey:row.key,previewScale:thumbnailScale(opening?.images.get(i),row.placed)}] : [])
+  },[catalogue,nativeSnapshot?.materialKeys,pageBoxes,sourcePage,detailIndices,opening?.images])
   const browsing=overview||!!opening&&!active
   const nativeNavigation=<section className="source-board-navigation" data-preview-cache={opening?.cacheHit} data-thumbnail-renders={opening?.rendered} data-detail-roots={nativeSnapshot?.roots??0} data-preview-count={opening?.images.size} data-preview-complete={!!opening && opening.finished && opening.images.size===opening.items.length} data-active-source-page={sourcePage} data-listing="true" data-has-canvas={!overview} aria-label="完整画板素材">
     <div className="source-pages-heading"><Frame size={15}/><span>完整画板</span><small>{materialRows.length} 个素材</small></div>
     {browsing&&<label className="source-page-picker">页面 <select aria-label="素材页面" value={sourcePage} onChange={e=>{setQuery('');navigate(e.target.value)}}>
       <option value="">全部页面</option>{pages.map(([id,name,count])=><option key={id} value={id}>{name}（{count}）</option>)}</select></label>}
-    {browsing&&opening&&(!nativeSnapshot||nativeSnapshot.materialKeys)&&<button className="source-overview-back" disabled={busy} onClick={()=>void run(()=>enterOverview(true),true)}>精修完整画板</button>}
+    {browsing&&opening&&(!nativeSnapshot||nativeSnapshot.materialKeys)&&<>
+      {sourcePage&&pageBoxes&&pageBoxes.length>0&&pageBoxes.length<=32&&<button className="source-overview-back" disabled={busy||!status}
+        onClick={()=>{
+          const indices=materialRows.flatMap((item,i)=>item.pageId===sourcePage?[i]:[])
+          pageDetailIntent.current=indices.join(',')
+          requestDetail(indices,true)
+        }}>精修当前页</button>}
+      <button className="source-overview-back" disabled={busy||!status} onClick={()=>void run(()=>enterOverview(true),true)}>精修完整画板</button>
+    </>}
     {!browsing&&<button className="source-overview-back" disabled={busy} onClick={()=>void run(enterOverview,true)}><ArrowLeft size={14}/>返回完整画板</button>}
     <form className="layer-search source-search" onSubmit={event=>event.preventDefault()}><Search size={13}/><input aria-label="搜索素材" placeholder="搜索素材…" value={query} onChange={event=>setQuery(event.target.value)}/></form>
     <div className="source-workspace-rows" role="list" aria-label="全部素材">{materialRows.filter(item=>(!sourcePage||item.pageId===sourcePage)&&`${item.name} ${item.pageName}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())).map(item=><div className="source-page-row" data-active={active?.id===item.id} role="listitem" key={item.key}>
@@ -449,15 +505,26 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     {active&&pageRange&&(pageRange.offset>0||pageRange.nextOffset!==null)&&<nav className="source-page-range" aria-label="页面分段"><span title={active.name}>内容 {pageRange.offset+1}–{pageRange.end} / {pageRange.totalRoots}</span><button aria-label="上一部分" title="上一部分" disabled={busy||!active.previousRanges?.length} onClick={()=>{const previous=active.previousRanges!,range=previous.at(-1)!;requestLoad({...active,sceneOffset:range.offset,sceneLimit:range.limit,previousRanges:previous.slice(0,-1)})}}><ChevronLeft size={14}/></button><button aria-label="下一部分" title="下一部分" disabled={busy||pageRange.nextOffset===null} onClick={()=>requestLoad({...active,sceneOffset:pageRange.nextOffset!,previousRanges:[...(active.previousRanges??[]),{offset:pageRange.offset,limit:pageRange.end-pageRange.offset}]})}><ChevronRight size={14}/></button></nav>}
     <footer className="source-history"><span>全部内容随文件导出</span><button aria-label="撤销已保存修改" title="撤销已保存修改" disabled={busy||!status?.undoCount} onClick={()=>void history('undo')}><Undo2 size={14}/></button><button aria-label="重做已保存修改" title="重做已保存修改" disabled={busy||!status?.redoCount} onClick={()=>void history('redo')}><Redo2 size={14}/></button></footer>
   </section>
+  const earlyDisplay=!active && !nativeSnapshot && focusedMaterial!==undefined &&
+    opening?.materialDisplay?.openingMaterial===focusedMaterial && opening.materialDisplay.token!==failedOpeningToken ? opening.materialDisplay : undefined
   return renderWorkbench({editor,ready:!!active||overview||!!opening,busy,locked:editorLocked,dirty:!!active&&editor.authoredDocument!==baseline.current,
     name:status?.name||initialFile?.name||'正在打开文件',notice:opening&&busy&&!active?`${pages.length} 页，素材预览 ${opening.images.size}/${materialRows.length}。可切页、平移和缩放，原始图层正在后台准备。`:notice,error,canvas,navigation,showLayers:!!active&&!overview,warnings,
-    openingPreview:!active?opening:undefined,openingPage:sourcePage||undefined,focusedMaterial,onDetail:requestDetail,onViewport:quick.setViewport,hideNative:!!opening&&showOpening,pageBoxes:!active?scopedBoxes:undefined,openPreviewPoint,
+    navigatingMaterials:overview&&!!opening&&!!nativePresentedToken.current&&viewportDemand.current&&(!busy||detailRunning.current),
+    prepareSourceDisplay:!active&&openingGeneration!==undefined&&/\.sketch$/i.test(initialFile?.name??''),
+    openingPreview:!active?opening:undefined,openingPage:sourcePage||undefined,focusedMaterial,onDetail:requestViewportDetail,onViewport:(box,anchor,density)=>{zoomAnchor.current=anchor;quick.setViewport(box,density,anchor)},hideNative:!!opening&&showOpening,
+    parkNative:!!opening&&!!nativeSnapshot?.materialKeys&&(!detailIndices.length||nativeSnapshot.token!==lastMaterialToken.current),pageBoxes:!active?scopedBoxes:undefined,openPreviewPoint,
     onSourcePresented:view=>{
       const v=editor.effectiveView(),keys=nativeSnapshotRef.current?.materialKeys
-      const matches=!keys||detailIndices.map(i=>itemsForSnapshot.current[i]?.key).sort().join(',')===keys.join(',')
+      const wanted=detailIndices.map(i=>itemsForSnapshot.current[i]?.key)
+      const matches=!keys||wanted.length>0&&(nativeSnapshotRef.current?.viewportSubset?
+        viewportDemand.current&&wanted.some(key=>keys.includes(key)):includesMaterials(keys,wanted))
       if(matches&&view.x===v.x&&view.y===v.y&&view.zoom===v.zoom)setShowOpening(false)
     },
-    nativeCanvas:overview&&nativeSnapshot?{snapshot:nativeSnapshot,status:nativeRenderStatus,onStatus:status=>{if(nativeRenderError.current&&status.phase==='ready'){nativeRenderError.current=false;setError('');setNativeRenderStatus(status);}if(status.phase==='error')nativeRenderError.current=true;if(nativePresentedToken.current===nativeSnapshot.token&&status.phase!=='error')return;if(status.phase==='ready')nativePresentedToken.current=nativeSnapshot.token;setNativeRenderStatus(status);if(status.phase==='error')setError(status.error??'画板绘制未完成');else if(status.phase==='ready')setNotice(nativeSnapshot.materialKeys?`当前视口已精修 ${nativeSnapshot.roots} 个素材。`:`完整画板已显示：${nativeSnapshot.roots} 个素材。双击素材进入编辑。`);else setNotice(status.phase==='loading'?'正在准备完整画板显示…':`正在绘制完整画板 ${status.done} / ${status.total}…`)},openPoint:point=>{if(busyRef.current)return;const item=catalogue.filter(item=>point.x>=item.placed.x&&point.x<=item.placed.x+item.placed.width&&point.y>=item.placed.y&&point.y<=item.placed.y+item.placed.height).sort((a,b)=>a.placed.width*a.placed.height-b.placed.width*b.placed.height)[0];if(item)openMaterial(item)}}:undefined,
+    nativeCanvas:overview&&nativeSnapshot?{snapshot:nativeSnapshot,status:nativeRenderStatus,onStatus:status=>{if(nativeRenderError.current&&status.phase==='ready'){nativeRenderError.current=false;setError('');setNativeRenderStatus(status);}if(status.phase==='error')nativeRenderError.current=true;if(nativePresentedToken.current===nativeSnapshot.token&&status.phase!=='error')return;if(status.phase==='ready')nativePresentedToken.current=nativeSnapshot.token;setNativeRenderStatus(status);if(status.phase==='error')setError(status.error??'画板绘制未完成');else if(status.phase==='ready')setNotice(nativeSnapshot.materialKeys?`当前视口已精修。`:`完整画板已显示：${nativeSnapshot.roots} 个素材。双击素材进入编辑。`);else setNotice(status.phase==='loading'?'正在准备完整画板显示…':`正在绘制完整画板 ${status.done} / ${status.total}…`)},openPoint:point=>{if(busyRef.current)return;const item=catalogue.filter(item=>point.x>=item.placed.x&&point.x<=item.placed.x+item.placed.width&&point.y>=item.placed.y&&point.y<=item.placed.y+item.placed.height).sort((a,b)=>a.placed.width*a.placed.height-b.placed.width*b.placed.height)[0];if(item)openMaterial(item)}}:earlyDisplay?{
+      snapshot:earlyDisplay,
+      onStatus:status=>{if(status.phase==='error'){setFailedOpeningToken(earlyDisplay.token);setShowOpening(true)}},
+      openPoint:openPreviewPoint,
+    }:undefined,
     dismissWarnings:()=>setWarnings([]),dismissError:()=>setError(''),cancel:()=>{abort.current?.abort();void bridge.cancel().catch(error=>setError(String(error)))},
     save:()=>run(save),exportFile,leave,openFile})
 }

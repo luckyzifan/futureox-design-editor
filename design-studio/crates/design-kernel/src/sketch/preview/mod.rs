@@ -492,6 +492,7 @@ fn visit(
     scene.nodes.insert(
         id.clone(),
         GpuNode {
+            optical_prefix_next: None,
             source_filter_field:None,
             gaussian_region:None,
             opaque_coverage: false,
@@ -564,6 +565,7 @@ pub fn compile_preview(session: &Session, request: &PreviewRequest) -> Result<Pr
     )?;
     let extent = Rect::new(0, 0, request.width, request.height);
     let mut scene = GpuScene {
+        dense_paint:None,
         page_paint_rects: None,
         software_raster: false,
         output: None,

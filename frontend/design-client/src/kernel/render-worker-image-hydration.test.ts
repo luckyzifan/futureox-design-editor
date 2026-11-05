@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { color_encode_png, encode_png_rgba, VectorEngine } from '../generated/design-kernel/design_kernel'
-import { blank, node, paint } from '../model'
+import { blank, node, paint, effect } from '../model'
 import { documentPatch } from '../document-patch'
 import { createRenderPolicy } from './render-policy'
 
@@ -41,7 +41,7 @@ vi.mock('./gpu/factory', async () => {
         abortFrameAndReleaseFilterScratch: async () => {},
         releaseFilterBatch() {},
         hasUploadedImageSource: (scene: any, uri: string) => resources.hasUploadedImageSource(scene, uri),
-        async render(scene: any, readback = false, present = true) {
+        async render(scene: any, readback = false, present = true, _current?:()=>boolean, _progress?:unknown, _pacing?:boolean, onFinishStarted?:()=>void) {
           state.renders.push({ readback, present, scene })
           if (state.failBudgetOnce) { state.failBudgetOnce = false; throw Error('GPU surface budget exceeded') }
           state.scenes.push(scene); resources.scene = scene
@@ -52,16 +52,17 @@ vi.mock('./gpu/factory', async () => {
               pixels: image instanceof Float32Array ? image : new Float32Array(),
               bytes: image instanceof Uint8Array ? image : undefined })
           }
+          onFinishStarted?.()
           if (state.renderGate) { state.renderBlocked = true; await state.renderGate }
           // Mock transport only. Pixel/texture equivalence is separately tested
           // with the real WASM and production GpuRenderer upload path.
           if (!readback && present && (globalThis as any).__mockBitmapPreview) {
             const bitmap = { width: scene.width, height: scene.height, close: vi.fn() }
             state.bitmaps.push(bitmap)
-            return { bitmap, drawCalls: 0, triangles: 0 }
+            return { description: backend, bitmap, drawCalls: 0, triangles: 0 }
           }
-          if(state.poseTiles) return { gpuTile: 77, drawCalls: 0, triangles: 0 }
-          return { rgba: new Uint8Array((scene.presentation?.width ?? scene.resolve?.width ?? scene.width) *
+          if(state.poseTiles) return { description: backend, gpuTile: 77, drawCalls: 0, triangles: 0 }
+          return { description: backend, rgba: new Uint8Array((scene.presentation?.width ?? scene.resolve?.width ?? scene.width) *
             (scene.presentation?.height ?? scene.resolve?.height ?? scene.height) * 4), drawCalls: 0, triangles: 0 }
         },
       }
@@ -594,4 +595,58 @@ test.each(['same','changed','foreign'] as const)('release %s pose supersedes onl
   expect(w.messages.some(m=>m.presentation?.residentSample?.sequence===1)).toBe(kind==='foreign')
   expect(state.scenes.at(-1).nodes['image-0'].matrix[4]).toBe(kind==='same'?2:4)
  }finally{apply.mockRestore()}
+})
+
+test.each(['consume','stop','foreign','compile failure'] as const)('terminal CPU handoff under an owned GPU finish fence: %s',async mode=>{
+  const w=await worker(), f=fixture(0)
+  f.doc.schemaVersion=16
+  const shape=node('vector',0,0,12,12);shape.id='inner';delete shape.network
+  shape.vectorGeometry={fillRule:'nonzero',fill:[{move:[0,0]},{line:[10,0]},{line:[6,10]},'close']}
+  shape.fills=[paint('#ace0ff')];shape.strokes=[];shape.effects=[effect('inner-shadow')]
+  f.doc.nodes[shape.id]=shape;f.doc.pages[0].children=[shape.id]
+  const doc=JSON.stringify(f.doc),canvas={...f.options,rasterProfile:'figmaSubpixel'}
+  w.send({id:700,channel:'canvas',document:doc,documentRevision:1,options:canvas,readback:true})
+  expect((await w.finish(700)).error).toBeUndefined()
+  state.poseTiles=true
+  const options={...canvas,renderIntent:'preview',livePreview:true,retainInteractionGraph:true,interactionNative:true,
+    interactionAffine:true,interactionLocalFootprint:true,interactionBranch:3,interactionWindowFixed:true,
+    interactionSelection:['inner'],interactionWindow:{x:0,y:0,w:48,h:16}}
+  w.send({id:701,channel:'interaction',document:doc,documentRevision:1,options})
+  expect((await w.finish(701)).residentInteraction).toBe(true)
+  const make=(sequence:number,angle:number,owner='same')=>({command:'interaction-pose',slot:77,input:{owner,sequence,at:sequence},
+    transforms:{inner:[Math.cos(angle),Math.sin(angle),-Math.sin(angle),Math.cos(angle),4,2]}})
+  const first=make(1,.1), last=make(2,.2,mode==='foreign'?'foreign':'same')
+  const apply=vi.spyOn(w.kernel.VectorEngine.prototype,'apply_interaction_transforms')
+  const compile=vi.spyOn(w.kernel.VectorEngine.prototype,'compile_gpu_packet')
+  let resume!:()=>void;state.renderGate=new Promise<void>(resolve=>{resume=resolve})
+  try{
+    w.send(first);await vi.waitFor(()=>expect(state.renderBlocked).toBe(true))
+    if(mode==='compile failure')compile.mockImplementationOnce(()=>{throw Error('synthetic terminal compilation failure')})
+    w.send(last);w.send({command:'interaction-settle',slot:77,sequence:2,owner:last.input.owner})
+    if(mode==='foreign'){
+      await new Promise(resolve=>setTimeout(resolve,10));expect(apply).toHaveBeenCalledTimes(1)
+    }else{
+      await vi.waitFor(()=>expect(compile).toHaveBeenCalledTimes(2))
+      expect(state.replacements).toHaveLength(0)
+    }
+    if(mode==='stop'||mode==='foreign')w.send({command:'interaction-pose-stop',slot:77})
+    if(mode==='consume')w.send({...make(3,.2),terminal:true})
+    state.renderGate=undefined;resume()
+    const sample=(seq:number)=>w.messages.filter(m=>m.presentation?.residentSample?.sequence===seq).map(m=>m.presentation.residentSample)
+    if(mode==='consume'){
+      await vi.waitFor(()=>expect(sample(3).some(s=>!s.needsRebase)).toBe(true))
+      expect(compile).toHaveBeenCalledTimes(2);expect(apply).toHaveBeenCalledTimes(2)
+      expect(sample(1).filter(s=>!s.needsRebase)).toHaveLength(0)
+      expect(state.scenes.at(-1).nodes.inner.matrix).toEqual(last.transforms.inner)
+    }else{
+      if(mode==='compile failure')await vi.waitFor(()=>expect(sample(2).some(s=>s.needsRebase)).toBe(true))
+      w.send({id:702,channel:'interaction',document:doc,documentRevision:2,options})
+      expect((await w.finish(702)).residentInteraction).toBe(true)
+      expect(sample(2).filter(s=>!s.needsRebase)).toHaveLength(0)
+      if(mode!=='foreign'){
+        expect(apply).toHaveBeenCalledTimes(3)
+        expect(JSON.parse(apply.mock.calls.at(-1)![0])).toEqual(first.transforms)
+      }
+    }
+  }finally{state.renderGate=undefined;resume();apply.mockRestore();compile.mockRestore()}
 })

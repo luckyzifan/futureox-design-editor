@@ -213,7 +213,10 @@ export class DesktopSession {
 
   // Candidate dirtiness is O(1) even during drag previews. At lifecycle/recovery boundaries,
   // lazy byte equality recognizes undo-to-saved without serializing in the render hot path.
-  get dirty() { return hasPendingEdits(this.editor) || this.baselineGeneration !== this.generation }
+  get dirty() {
+    return hasPendingEdits(this.editor) || this.baselineGeneration !== this.generation ||
+      (!!this.editor.interactionActive && (this.editor.authoredDocument ?? this.editor.state.doc) !== this.currentDocument)
+  }
   private residentEncoder?: ResidentDocumentEncoder
   private encode(document: DesignDocument) {
     const codec = this.bridge.documentCodec
@@ -557,7 +560,16 @@ export class DesktopSession {
 
   private observe() {
     const authored = this.editor.authoredDocument ?? this.editor.state.doc
-    if (this.suppressObservation || (authored === this.currentDocument && this.editor.state.version === this.currentVersion)) return
+    if (this.suppressObservation) return
+    // Pointer previews publish a replacement root at the existing revision.
+    // Storage owns the last committed root until commit or cancel. Otherwise
+    // committing that same preview looks like an in-place authored mutation
+    // and discards the acknowledged incremental encoder.
+    if (this.editor.state.version === this.currentVersion &&
+        (authored === this.currentDocument || (this.editor.interactionActive && authored.id === this.currentDocument.id))) {
+      if ((authored !== this.currentDocument || this.lastDirty !== undefined) && this.lastDirty !== this.dirty) this.publish()
+      return
+    }
     // A versioned in-place replacement has no immutable delta baseline.
     if (authored === this.currentDocument) this.residentEncoder = undefined
     this.currentDocument = authored

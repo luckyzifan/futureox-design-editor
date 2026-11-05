@@ -23,6 +23,8 @@ struct EncodedFrame {
     key:StaticRequest,
     prefix:Vec<u8>,
     resources:Vec<(u32,u8,Arc<[u8]>)>,
+    resource_bounds: Option<(u32, u32)>,
+    resource_wire_bytes: usize,
     charge:usize,
     sequence_offset:usize,
     sequence:u32,
@@ -45,24 +47,63 @@ fn acknowledged_ranges(scope:&str,request:Option<&serde_json::Value>)->Result<Ve
 fn known(ranges:&[(u32,u32)],id:u32)->bool{
     let at=ranges.partition_point(|&(a,_)|a<=id);at>0&&id<=ranges[at-1].1
 }
+
+fn append_geometry(bytes: &mut Vec<u8>, words: &[f32]) {
+    #[cfg(target_endian = "little")]
+    bytes.extend_from_slice(bytemuck::cast_slice(words));
+    #[cfg(target_endian = "big")]
+    for word in words { bytes.extend_from_slice(&word.to_le_bytes()); }
+}
+
+fn append_resource(bytes: &mut Vec<u8>, id: u32, kind: u8, data: &[u8]) -> Result<(), String> {
+    let length = u32::try_from(data.len()).map_err(|_| "Frame resource too large")?;
+    bytes.extend_from_slice(&id.to_le_bytes());
+    bytes.push(kind);
+    bytes.extend_from_slice(&length.to_le_bytes());
+    bytes.extend_from_slice(data);
+    Ok(())
+}
 impl EncodedFrame {
     fn emit(&self,ranges:&[(u32,u32)])->Result<Vec<u8>,String>{
         crate::render_cancellation::checkpoint()?;
-        let mut bytes=self.prefix.clone();
-        for (id,kind,data) in &self.resources {
+        // A cached prefix always has a zero payload header. One covering ACK
+        // range certifies every entry, even when its IDs were minted out of order.
+        if self.resource_bounds.is_none_or(|(lo, hi)| {
+            let at = ranges.partition_point(|&(start, _)| start <= lo);
+            at > 0 && hi <= ranges[at - 1].1
+        }) {
+            let bytes = self.prefix.clone();
             crate::render_cancellation::checkpoint()?;
-            if known(ranges,*id){continue}
-            bytes.extend(id.to_le_bytes());bytes.push(*kind);
-            bytes.extend(u32::try_from(data.len()).map_err(|_|"Frame resource too large")?.to_le_bytes());bytes.extend(data.as_ref());
+            return Ok(bytes);
         }
-        let payload=u32::try_from(bytes.len()-self.prefix.len()).map_err(|_|"GPU frame too large")?;
-        bytes[20..24].copy_from_slice(&payload.to_le_bytes());Ok(bytes)
+        let mut payload_len = self.resource_wire_bytes;
+        if !ranges.is_empty() {
+            for (id, _, data) in &self.resources {
+                crate::render_cancellation::checkpoint()?;
+                if known(ranges, *id) { payload_len -= 9 + data.len(); }
+            }
+        }
+        let payload = u32::try_from(payload_len).map_err(|_| "GPU frame too large")?;
+        let mut bytes = Vec::with_capacity(self.prefix.len().checked_add(payload_len).ok_or("GPU frame too large")?);
+        bytes.extend_from_slice(&self.prefix);
+        bytes[20..24].copy_from_slice(&payload.to_le_bytes());
+        if payload != 0 {
+            for (id,kind,data) in &self.resources {
+                crate::render_cancellation::checkpoint()?;
+                if known(ranges,*id){continue}
+                append_resource(&mut bytes, *id, *kind, data)?;
+            }
+        }
+        crate::render_cancellation::checkpoint()?;
+        Ok(bytes)
     }
 }
 #[derive(Default)]
 pub(crate) struct FrameSceneContext {
     scope:String, binding:String, entries:HashMap<Key,Entry>, ages:BTreeMap<u64,Key>, bytes:usize,
-    next:u32, clock:u64, frame:u32, frame_key:Option<String>,
+    // Only transferable resources occupy the receiver's acknowledgement
+    // ranges. Node/image comparison IDs live in their own scope-local space.
+    next:u32, next_semantic:u32, clock:u64, frame:u32, frame_key:Option<String>,
     resource_hasher:RandomState,
     semantics:HashMap<String,SemanticEntry>,image_semantics:HashMap<Arc<str>,u32>,semantic_bytes:usize,semantic_hits:u64,
     // Numeric addresses are private lookup hints backed by the strong Arc key
@@ -106,6 +147,7 @@ impl FrameSceneContext {
     pub(crate) fn clear_source_history(&mut self){self.source_history.clear();self.source_history_bytes=0;}
     pub(crate) fn reuse_source(&mut self,revision:(u64,bool,bool),request:&str)->Result<Option<(Vec<u8>,usize,usize)>,String>{
         crate::render_cancellation::checkpoint()?;
+        if self.source_history.is_empty() { return Ok(None); }
         let fields:serde_json::Value=serde_json::from_str(request).map_err(|e|e.to_string())?;
         let key=source_request_key(revision,&fields)?;
         let Some(index)=self.source_history.iter().position(|frame|frame.key==key)else{return Ok(None)};
@@ -122,20 +164,17 @@ impl FrameSceneContext {
         let frame=self.source_history.remove(index).unwrap();self.source_history.push_back(frame);
         self.source_history_hits+=1;Ok(Some((bytes,nodes,authored)))
     }
-    pub(crate) fn retain_source(&mut self,revision:(u64,bool,bool),request:&str,authored_nodes:usize)->Result<(),String>{
-        let fields:serde_json::Value=serde_json::from_str(request).map_err(|e|e.to_string())?;
-        let key=source_request_key(revision,&fields)?;
-        if key.1.len()>65536{return Ok(())}
-        let Some(mut frame)=self.cached.take()else{return Ok(())};
+    pub(crate) fn retain_source(&mut self,revision:(u64,bool,bool),authored_nodes:usize){
+        let Some(mut frame)=self.cached.take()else{return};
         frame.authored_nodes=authored_nodes;
         // replace the projection-local epoch with the complete source lineage;
         // this method is called only after demand closure and successful encode.
-        frame.charge=frame.charge.saturating_sub(frame.key.1.capacity()).saturating_add(key.1.capacity());frame.key=key;
-        if frame.charge>self.limit(){return Ok(())}
+        frame.key.0=revision;
+        if frame.charge>self.limit(){return}
         while self.source_history.len()>=32 || self.bytes().saturating_add(frame.charge)>self.limit(){
-            if self.source_history.is_empty(){return Ok(())}self.evict_source_frame();
+            if self.source_history.is_empty(){return}self.evict_source_frame();
         }
-        self.source_history_bytes+=frame.charge;self.source_history.push_back(frame);Ok(())
+        self.source_history_bytes+=frame.charge;self.source_history.push_back(frame);
     }
     pub(crate) fn stats(&self)->serde_json::Value{
         serde_json::json!({"compilations":self.compilations,"sameRequestHits":self.reuses,"semanticHits":self.semantic_hits,"semanticBytes":self.semantic_bytes,"bytes":self.bytes(),"limit":self.limit(),"limitSource":"trusted-host-memory",
@@ -190,8 +229,8 @@ impl FrameSceneContext {
         let address=Arc::as_ptr(uri) as *const u8 as usize;
         if let Some(id)=self.image_allocations.get(&address){self.image_allocation_hits+=1;return Ok((*id,true))}
         if let Some(id)=self.image_semantics.get(uri){return Ok((*id,true))}
-        self.next=self.next.checked_add(1).ok_or("Frame resource ID exhausted")?;
-        let id=self.next;let charge=uri.len().saturating_add(256);
+        self.next_semantic=self.next_semantic.checked_add(1).ok_or("Frame semantic ID exhausted")?;
+        let id=self.next_semantic;let charge=uri.len().saturating_add(256);
         let limit=self.limit().saturating_sub(self.source_history_bytes).saturating_sub(self.cached.as_ref().map_or(0,|f|f.charge));
         if !self.scope.is_empty()&&self.semantic_bytes.saturating_add(charge)<=limit{
             while self.bytes+self.semantic_bytes+charge>limit{
@@ -231,8 +270,8 @@ impl FrameSceneContext {
             if old.key==key {self.semantic_hits+=1;return Ok(old.id)}
         }
         if let Some(old)=self.semantics.remove(name){self.semantic_bytes-=old.charge;}
-        self.next=self.next.checked_add(1).ok_or("Frame resource ID exhausted")?;
-        let id=self.next;
+        self.next_semantic=self.next_semantic.checked_add(1).ok_or("Frame semantic ID exhausted")?;
+        let id=self.next_semantic;
         let charge=key.capacity().saturating_add(name.len()).saturating_add(256);
         let limit=self.limit().saturating_sub(self.source_history_bytes).saturating_sub(self.cached.as_ref().map_or(0,|f|f.charge));
         if !self.scope.is_empty()&&self.semantic_bytes.saturating_add(charge)<=limit {
@@ -257,7 +296,7 @@ impl FrameSceneContext {
         let ranges=acknowledged_ranges(&self.scope,request)?;
         let mut cache_key=self.pending_request.take();let cache_limit=self.limit();
         let mut resources=Vec::new();let mut resource_charge=0usize;
-        let mut payload=Vec::new();let mut included=HashSet::new();
+        let mut pending_resources=Vec::new();let mut payload_len=0usize;let mut included=HashSet::new();
         let mut record=|id:u32,kind:u8,data:&Arc<[u8]>|->Result<(),String>{
             if !included.insert(id){return Ok(())}
             if cache_key.is_some(){
@@ -265,8 +304,9 @@ impl FrameSceneContext {
                 if resource_charge<=cache_limit{resources.push((id,kind,data.clone()))}else{resources.clear();cache_key=None;}
             }
             if known(&ranges,id){return Ok(())}
-            payload.extend(id.to_le_bytes());payload.push(kind);
-            payload.extend(u32::try_from(data.len()).map_err(|_|"Frame resource too large")?.to_le_bytes());payload.extend(data.as_ref());Ok(())
+            payload_len=payload_len.checked_add(9).and_then(|n|n.checked_add(data.len())).ok_or("GPU frame too large")?;
+            pending_resources.push((id,kind,Arc::clone(data)));
+            Ok(())
         };
         self.semantics.retain(|name,entry|{
             if scene.nodes.contains_key(name){true}else{self.semantic_bytes-=entry.charge;false}
@@ -316,7 +356,7 @@ impl FrameSceneContext {
                     else{(&vertices,path.first as usize*2,path.count as usize*2)};
                 let values=data.get(first..first.checked_add(count).ok_or("Invalid program span")?).ok_or("Invalid program span")?;
                 source_key.extend(u32::try_from(count).map_err(|_|"Invalid program span")?.to_le_bytes());
-                for value in values{source_key.extend(value.to_le_bytes());}
+                append_geometry(&mut source_key,values);
             }
             let children=node.children.iter().map(|id|(id,source_ids.get(id).copied())).collect::<Vec<_>>();
             source_key.extend(frame_wire::encode(&children)?);
@@ -340,19 +380,37 @@ impl FrameSceneContext {
         let (metadata,sequence_offset)=frame_wire::encode_frame(&Metadata{scene:&scene,resource_scope:&self.scope,frame_sequence:frame_wire::FrameSequence(self.frame),node_resources,scene_plan:plan_id})?;
         let start=24usize.checked_add(metadata.len()).and_then(|n|n.checked_add(3)).map(|n|n&!3).ok_or("GPU frame too large")?;
         let total=vertices.len().checked_add(curves.len()).and_then(|n|n.checked_mul(4)).and_then(|n|n.checked_add(start))
-            .and_then(|n|n.checked_add(payload.len())).ok_or("GPU frame too large")?;
+            .and_then(|n|n.checked_add(payload_len)).ok_or("GPU frame too large")?;
         let mut bytes=Vec::with_capacity(total);bytes.extend(b"FGSC");
-        for value in [1,metadata.len(),vertices.len(),curves.len(),payload.len()]{bytes.extend(u32::try_from(value).map_err(|_|"GPU frame too large")?.to_le_bytes());}
-        bytes.extend(metadata);bytes.resize(start,0);for v in vertices.iter().chain(&curves){bytes.extend(v.to_le_bytes())}
+        for value in [1,metadata.len(),vertices.len(),curves.len(),payload_len]{bytes.extend(u32::try_from(value).map_err(|_|"GPU frame too large")?.to_le_bytes());}
+        bytes.extend(metadata);bytes.resize(start,0);
+        append_geometry(&mut bytes,&vertices);
+        append_geometry(&mut bytes,&curves);
+        let prefix_len = bytes.len();
+        for (id, kind, data) in pending_resources {
+            crate::render_cancellation::checkpoint()?;
+            append_resource(&mut bytes, id, kind, &data)?;
+        }
+        crate::render_cancellation::checkpoint()?;
         if let Some(key)=cache_key {
-            let charge=resource_charge.saturating_add(bytes.len()).saturating_add(key.1.capacity()).saturating_add(256);
+            let charge=resource_charge.saturating_add(prefix_len).saturating_add(key.1.capacity()).saturating_add(256);
             if charge.saturating_add(self.semantic_bytes)<=cache_limit {
                 while self.source_history_bytes.saturating_add(self.semantic_bytes).saturating_add(charge)>cache_limit && !self.source_history.is_empty(){self.evict_source_frame();}
                 while self.bytes+self.semantic_bytes+self.source_history_bytes+charge>cache_limit {let Some((_,old))=self.ages.pop_first()else{break};self.evict_transfer(&old);}
-                self.cached=Some(EncodedFrame{key,prefix:bytes.clone(),resources,charge,sequence_offset:24+sequence_offset,sequence:self.frame,nodes:compiled_nodes,authored_nodes:compiled_nodes});
+                let mut prefix = bytes[..prefix_len].to_vec();
+                prefix[20..24].fill(0);
+                let (mut min_id, mut max_id) = (u32::MAX, 0);
+                let mut resource_wire_bytes = 0;
+                for (id, _, data) in &resources {
+                    min_id = min_id.min(*id);
+                    max_id = max_id.max(*id);
+                    resource_wire_bytes += 9 + data.len();
+                }
+                let resource_bounds = (!resources.is_empty()).then_some((min_id, max_id));
+                self.cached=Some(EncodedFrame{key,prefix,resources,resource_bounds,resource_wire_bytes,charge,sequence_offset:24+sequence_offset,sequence:self.frame,nodes:compiled_nodes,authored_nodes:compiled_nodes});
             }
         }
-        bytes.extend(payload);Ok(bytes)
+        Ok(bytes)
     }
 }
 impl GpuScene {
@@ -386,9 +444,18 @@ impl crate::Engine {
         // frame sequence, and no ACK dictionary participates in compilation.
         self.frame_scene.cached=None;
         self.frame_scene.compilations+=1;
-        let compiler_fields=serde_json::Value::Object(semantic.into_iter().map(|(key,value)|(key.clone(),value.clone())).collect());
-        let scene=self.compile_gpu_request_value(compiler_fields)?;
+        let dense=match fields.get("gpuDensePaint"){
+            None=>false, Some(serde_json::Value::Bool(value))=>*value,
+            _=>return Err("Invalid dense source paint option".into()),
+        };
+        let compiler_fields=serde_json::Value::Object(semantic.into_iter().filter(|(k,_)|k.as_str()!="gpuDensePaint").map(|(key,value)|(key.clone(),value.clone())).collect());
+        let mut scene=self.compile_gpu_request_value(compiler_fields)?;
         accept(&scene)?;
+        if dense && scene.color_management.is_some_and(|s|s.document_space==crate::color::ColorSpace::Srgb)
+            && scene.resolve.is_none() && scene.presentation.is_none() {
+            super::dense_coverage::pack(&mut scene)?;
+            super::dense_paint::compile(&mut scene)?;
+        }
         if self.frame_scene.scope.is_empty() { return scene.into_packet(); }
         self.frame_scene.pending_request=request_key.and_then(|key|self.static_scene_revision().map(|revision|(revision,key)));
         let result=self.frame_scene.encode(scene,Some(&fields),self.geo_revision);
@@ -466,6 +533,26 @@ impl crate::Engine {
         assert!(engine.compile_gpu_packet_request(&request.to_string()).is_err());
         assert_eq!(engine.frame_scene.reuses,2);
     }
+    #[test]
+    fn partial_ack_replays_exact_records_and_full_ack_checks_cancellation_before_return() {
+        let (mut engine, options) = fixture();
+        engine.bind_frame_scene_scope("partial").unwrap();
+        let first = engine.compile_gpu_packet_request(&options).unwrap();
+        let frame = engine.frame_scene.cached.as_ref().unwrap();
+        let payload = u32::from_le_bytes(first[20..24].try_into().unwrap()) as usize;
+        let start = first.len() - payload;
+        let id = u32::from_le_bytes(first[start..start + 4].try_into().unwrap());
+        let length = u32::from_le_bytes(first[start + 5..start + 9].try_into().unwrap()) as usize;
+        let partial = frame.emit(&[(id, id)]).unwrap();
+        assert_eq!(&partial[start..], &first[start + 9 + length..]);
+        assert!(!partial[start..].is_empty());
+        assert_eq!(u32::from_le_bytes(partial[20..24].try_into().unwrap()) as usize, partial.len() - start);
+
+        let seen = std::cell::Cell::new(false);
+        let cancelled = crate::render_cancellation::with_probe(move || seen.replace(true),
+            || frame.emit(&[(1, u32::MAX)]));
+        assert_eq!(cancelled.unwrap_err(), "PREVIEW_CANCELLED");
+    }
     #[test] fn runtime_policy_camera_and_document_changes_revoke_the_static_compile_shortcut(){
         let (mut engine,options)=fixture();engine.bind_frame_scene_scope("invalidation").unwrap();
         engine.compile_gpu_packet_request(&options).unwrap();engine.compile_gpu_packet_request(&options).unwrap();
@@ -522,6 +609,18 @@ impl crate::Engine {
         context.encode(changed,None,0).unwrap();
         assert_ne!(context.semantics["r"].id,original);
         assert!(context.bytes()<=context.limit());
+    }
+    #[test]
+    fn semantic_ids_do_not_fragment_transfer_acknowledgements(){
+        let mut frame=FrameSceneContext::default();frame.bind("dense-test");
+        let mut ids=Vec::new();
+        for i in 0..32u8{
+            frame.source_identity(&format!("n{i}"),vec![i]).unwrap();
+            ids.push(frame.intern(2,vec![i]).unwrap().0);
+        }
+        assert_eq!(ids,(1..=32).collect::<Vec<_>>());
+        let first=frame.source_identity("n1",vec![1]).unwrap();
+        assert_ne!(first,frame.source_identity("n1",vec![0,1]).unwrap());
     }
     #[test] fn cancelled_compilation_never_publishes_a_partial_packet_and_next_compile_recovers(){
         use std::{cell::Cell,rc::Rc};

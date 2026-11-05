@@ -416,3 +416,16 @@ test('an uploaded-source hint avoids disk work but cannot replace decoder or res
  await s.hydration.hydrate(compiled,()=>true,()=>false)
  expect(s.cache.get(s.context.scope,'b:'+uri(1))?.data).toEqual(record().data)
 })
+
+test('a decoded plane that cannot fit the source cache skips the persistent key and read', async()=>{
+  const pixels = new Uint8Array(16*16*4).fill(255)
+  const source = 'data:image/png;base64,'+Buffer.from(encode_png_rgba(16,16,pixels)).toString('base64')
+  const s = setup({limit:2048}), candidate=scene([source],true)
+  candidate.sourceImageDisplay=true
+  await s.hydration.hydrate(candidate)
+  expect(s.persistence.key).not.toHaveBeenCalled()
+  expect(s.persistence.read).not.toHaveBeenCalled()
+  const ordinary=setup({limit:2048})
+  await ordinary.hydration.hydrate(scene([source],true))
+  expect(ordinary.persistence.key).toHaveBeenCalledOnce()
+})

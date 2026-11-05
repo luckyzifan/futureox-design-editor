@@ -52,27 +52,39 @@ export class LargeDocumentHost {
     if(!['json','sketch'].includes(format))throw Error('Choose a JSON or Sketch source')
     if (this.#epoch >= Number.MAX_SAFE_INTEGER) throw Error('Large document session epoch exhausted')
     const owner = { documentId:randomUUID(), sessionEpoch:++this.#epoch }
-    this.#active={window,status:{owner,revision:0,name:path.basename(selected.filePaths[0]),format,expandedBytes:0,maxExpandedBytes:0,indexedObjects:0,dirty:false,undoCount:0,redoCount:0}}
+    this.#active={window,opening:true,status:{owner,revision:0,name:path.basename(selected.filePaths[0]),format,expandedBytes:0,maxExpandedBytes:0,indexedObjects:0,dirty:false,undoCount:0,redoCount:0}}
     let result
     try{result=admitLargeStatus(await this.request('large.open', {path:selected.filePaths[0],...owner,...(format==='sketch'?{openingPreview:true}:{})}), owner)}
-    catch(error){if(error?.outcomeUnknown!==true)this.#active=undefined;throw error}
+    catch(error){
+      if(this.#active){this.#active.opening=false;if(this.#active.snapshot?.openingMaterial!==undefined)this.#active.snapshot=undefined}
+      if(error?.outcomeUnknown!==true)this.#active=undefined
+      throw error
+    }
     if (window !== this.window() || window.isDestroyed()) {
       await this.request('large.close',{owner,expectedRevision:result.revision}); this.#active=undefined;return {status:'cancelled'}
     }
-    this.#active.status=result; return {status:'ok',...result}
+    this.#active.opening=false; this.#active.status=result; return {status:'ok',...result}
   }) }
   async openingView(value) {
-    fields(value,['owner','offset','cursor','pageId','material','viewport'])
+    fields(value,['owner','offset','cursor','detailCursor','pageId','material','viewport','viewportDensity','viewportAnchor'])
     const active=this.#active
     if (!active || active.window!==this.window() || active.window.isDestroyed()) return {status:'cancelled'}
     if (active.status.format!=='sketch' || active.status.revision!==0) return {status:'ok',phase:'unavailable'}
     const owner=active.status.owner
     if (value.owner!==undefined && (value.owner?.documentId!==owner.documentId || value.owner?.sessionEpoch!==owner.sessionEpoch)) return {status:'cancelled'}
-    if (![value.offset,value.cursor].every(integer) || value.material!==undefined&&!integer(value.material) ||
+    if (![value.offset,value.cursor].every(integer) || value.detailCursor!==undefined&&!integer(value.detailCursor) || value.material!==undefined&&!integer(value.material) ||
         value.pageId!==undefined&&(typeof value.pageId!=='string'||value.pageId.length>128)) throw Error('Invalid opening view request')
+    if(value.viewportAnchor!==undefined&&(!value.viewport||!Array.isArray(value.viewportAnchor)||value.viewportAnchor.length!==2||
+      !value.viewportAnchor.every(Number.isFinite)))throw Error('Invalid material viewport anchor')
+    if(value.viewportDensity!==undefined&&(!value.viewport||!Number.isFinite(value.viewportDensity)||value.viewportDensity<=0||value.viewportDensity>65536))throw Error('Invalid material viewport density')
     if(value.viewport!==undefined){
       const b=fields(value.viewport,['x','y','width','height'])
       if(![b.x,b.y,b.width,b.height,b.x+b.width,b.y+b.height].every(Number.isFinite)||b.width<=0||b.height<=0)throw Error('Invalid opening viewport')
+    }
+    const material=value.material
+    if(active.opening && active.openingSelection!==material) {
+      active.openingSelection=material
+      if(active.snapshot?.openingMaterial!==undefined)active.snapshot=undefined
     }
     const result=await this.request('large.openingView',{...value,owner,expectedRevision:0})
     if (this.#active!==active || active.status.revision!==0 || active.window!==this.window() || active.window.isDestroyed()) return {status:'cancelled'}
@@ -85,13 +97,33 @@ export class LargeDocumentHost {
         !Array.isArray(result.images)||result.images.length>32||result.cursor!==value.cursor+result.images.length||
         typeof result.moreImages!=='boolean'||typeof result.finished!=='boolean'||result.items.some(row=>!box(row.placed)||!box(row.source)||['id','name','kind','pageId','pageName','key'].some(k=>typeof row[k]!=='string'))||
         (value.offset===0 && (!Array.isArray(result.pages)||result.pages.some(p=>!Array.isArray(p)||typeof p[0]!=='string'||typeof p[1]!=='string'||!integer(p[2]))))) throw Error('Invalid opening view response')
-    for (const image of result.images) {
-      if (!integer(image.index)||image.index>=result.total||typeof image.png!=='string'||image.png.length>64*1024) throw Error('Invalid material thumbnail')
+    const checkImage=(image,side,limit)=>{
+      if (!image||!integer(image.index)||image.index>=result.total||typeof image.png!=='string'||image.png.length>limit) throw Error('Invalid material thumbnail')
       const b=Buffer.from(image.png,'base64')
       if (b.length<24||b.readUInt32BE(0)!==0x89504e47||b.readUInt32BE(4)!==0x0d0a1a0a||
-          b.toString('ascii',12,16)!=='IHDR'||![b.readUInt32BE(16),b.readUInt32BE(20)].every(n=>n>=1&&n<=96)) throw Error('Invalid material PNG')
+          b.toString('ascii',12,16)!=='IHDR'||![b.readUInt32BE(16),b.readUInt32BE(20)].every(n=>n>=1&&n<=side)||b.readUInt32BE(16)*b.readUInt32BE(20)>384*384) throw Error('Invalid material PNG')
     }
-    return {status:'ok',...result}
+    for (const image of result.images)checkImage(image,176,192*1024)
+    if(result.nextDetailCursor!==undefined){
+      const base=result.detailBase,next=result.nextDetailCursor,prior=value.detailCursor??0
+      if(!integer(base)||!integer(next)||next!==Math.max(base,prior)+Number(!!result.detail)||
+         next-base>16||typeof result.detailPending!=='boolean')throw Error('Invalid detail preview cursor')
+    }
+    if(result.detail){
+      if(result.images.length||result.items.length)throw Error('Invalid detail preview batch')
+      checkImage(result.detail,768,360000)
+    }
+    // The backing path and store descriptor stay in the host. Only mint a
+    // display token for this window's still-opening, immutable revision zero.
+    const {materialSnapshot,materialDisplay:untrustedDisplay,...view}=result
+    if(materialSnapshot && active.opening && this.#active===active && material!==undefined && active.openingSelection===material && active.status.revision===0){
+      const keys=['preview-'+value.material], scope=createHash('sha256').update(keys[0]).digest('hex')
+      const source=active.snapshot?.scope===scope ? active.snapshot.public :
+        this.#publishSnapshot(active,{owner,expectedRevision:0},materialSnapshot,keys,scope)
+      active.snapshot.openingMaterial=material
+      view.materialDisplay={...source,openingMaterial:material}
+    }
+    return {status:'ok',...view}
   }
   async read(value) {
     const active = this.#check(value,['owner','expectedRevision','key'])
@@ -125,7 +157,7 @@ export class LargeDocumentHost {
     return {status:'ok',...result}
   }
   async canvasSnapshot(value) { return this.#exclusive(async()=>{
-    const fields=['owner','expectedRevision','navigationPreview','materialKeys']
+    const fields=['owner','expectedRevision','navigationPreview','materialKeys','navigationWindow']
     const active=this.#check(value,fields)
     if (value.navigationPreview !== undefined && typeof value.navigationPreview !== 'boolean') throw Error('Invalid source preview option')
     let keys,scope
@@ -135,10 +167,19 @@ export class LargeDocumentHost {
       if(new Set(keys).size!==keys.length)throw Error('Duplicate detail root')
       scope=createHash('sha256').update(keys.join(',')).digest('hex')
     }
-    const suffix=scope?'-'+scope:''
+    if(value.navigationWindow!==undefined){
+      const b=value.navigationWindow
+      if(!keys||!object(b)||!['x','y','width','height'].every(k=>Number.isFinite(b[k]))||
+         Object.keys(b).length!==4||!(b.width>0&&b.height>0)||![b.x+b.width,b.y+b.height].every(Number.isFinite))
+        throw Error('Invalid material navigation window')
+    }
     if(active.snapshot?.revision===active.status.revision && active.snapshot.scope===scope)return {status:'ok',...active.snapshot.public}
     const result=await this.request('large.canvasSnapshot',value)
     this.#check(value,fields)
+    return {status:'ok',...this.#publishSnapshot(active,value,result,keys,scope)}
+  }) }
+  #publishSnapshot(active,value,result,keys,scope) {
+    const suffix=scope?'-'+scope:''
     const box=result?.bounds
     if(!object(result)||result.owner?.documentId!==value.owner.documentId||result.owner?.sessionEpoch!==value.owner.sessionEpoch||result.revision!==value.expectedRevision||
       typeof result.path!=='string'||!path.isAbsolute(result.path)||path.normalize(result.path)!==result.path||path.basename(result.path)!==`canvas-native-${result.revision}${suffix}.scene`||
@@ -156,8 +197,8 @@ export class LargeDocumentHost {
     const snapshot={token,revision,scope,descriptor,public:{...(keys?{materialKeys:keys}:{}),owner:{...value.owner},revision,token,bytes:result.bytes,nodes:result.nodes,roots:result.roots,
       pageId:result.pageId,stageId:result.stageId,bounds:{...box},warnings:[...result.warnings],rasterProfile:result.rasterProfile,colorManaged:result.colorManaged}}
     active.snapshot=snapshot
-    return {status:'ok',...snapshot.public}
-  }) }
+    return snapshot.public
+  }
   async canvasPreview(value) {
     const active = this.#check(value,['owner','expectedRevision','token'])
     const snapshot = active.snapshot
@@ -166,17 +207,20 @@ export class LargeDocumentHost {
     this.#check(value,['owner','expectedRevision','token'])
     if (active.snapshot !== snapshot) throw Error('Stale source preview')
     if (result?.phase === 'pending' || result?.phase === 'unavailable') return {status:'ok',phase:result.phase}
-    const image = result?.image
+    const image = result?.image, full=snapshot.public.bounds, scoped=!!snapshot.public.materialKeys
+    const bounds=scoped?image?.bounds:full,side=scoped?1024:256
+    if(!bounds||![bounds.x,bounds.y,bounds.width,bounds.height].every(Number.isFinite)||bounds.width<=0||bounds.height<=0||
+       bounds.x<full.x||bounds.y<full.y||bounds.x+bounds.width>full.x+full.width+1e-7||bounds.y+bounds.height>full.y+full.height+1e-7)throw Error('Invalid source preview bounds')
     if (result?.phase !== 'ready' || !image || !Number.isInteger(image.width) || !Number.isInteger(image.height) ||
-        image.width < 1 || image.height < 1 || image.width > 256 || image.height > 256 ||
+        image.width < 1 || image.height < 1 || image.width > side || image.height > side || scoped && image.width*image.height>262144 ||
         !Number.isFinite(image.scale) || image.scale <= 0 || image.scale > 1 ||
-        image.width !== Math.min(256,Math.ceil(snapshot.public.bounds.width*image.scale)) ||
-        image.height !== Math.min(256,Math.ceil(snapshot.public.bounds.height*image.scale)) ||
+        image.width !== Math.min(side,Math.ceil(bounds.width*image.scale)) ||
+        image.height !== Math.min(side,Math.ceil(bounds.height*image.scale)) ||
         typeof image.png !== 'string' || image.png.length > 360000) throw Error('Invalid source preview')
     const bytes = Buffer.from(image.png,'base64')
     if (bytes.length < 24 || bytes.readUInt32BE(0) !== 0x89504e47 || bytes.readUInt32BE(4) !== 0x0d0a1a0a ||
         bytes.toString('ascii',12,16) !== 'IHDR' || bytes.readUInt32BE(16) !== image.width || bytes.readUInt32BE(20) !== image.height) throw Error('Invalid source preview PNG')
-    return {status:'ok',phase:'ready',width:image.width,height:image.height,scale:image.scale,png:image.png}
+    return {status:'ok',phase:'ready',...(scoped?{bounds}:{}),width:image.width,height:image.height,scale:image.scale,png:image.png}
   }
   /** Host-only capability resolution. A renderer token never supplies a path. */
   resolveCanvasSnapshot(token,senderId) {

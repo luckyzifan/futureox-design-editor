@@ -63,7 +63,7 @@ test('retained baseline is hash-verified and only declared repeat, SVG option an
   const deltas: [string, string][] = [
     [
         "/** Page presentation retains its explicit historical 40-unit margin. */\nexport function exportBounds(doc: DesignDocument, pageId: string, padding = 40) {\n  if (!Number.isFinite(padding) || padding < 0 || padding > 1e6)\n    throw new Error('页面留白必须为 0–1000000')\n",
-        "/** Page presentation retains its explicit historical 40-unit margin. */\nexport function exportBounds(doc: DesignDocument, pageId: string, padding = 40) {\n  doc = expandRepeats(doc)\n  if (!Number.isFinite(padding) || padding < 0 || padding > 1e6)\n    throw new Error('页面留白必须为 0–1000000')\n"
+        "/** Page presentation retains its explicit historical 40-unit margin. */\nexport function exportBounds(doc: DesignDocument, pageId: string, padding = 40) {\n  doc = sketchMaskScene(expandRepeats(doc))\n  if (!Number.isFinite(padding) || padding < 0 || padding > 1e6)\n    throw new Error('页面留白必须为 0–1000000')\n"
     ],
     [
         "  }\n  const ids = new Set(target.nodeIds)\n  const entries = scene(doc, pageId).filter((entry) => ids.has(entry.id))\n  if (!ids.size || ids.size > 1000 || entries.length !== ids.size)\n    throw new Error('请选择当前页面的 1–1000 个可见图层')\n  return unionBounds(\n    entries\n      .filter((entry) => !entry.ancestors.some((id) => ids.has(id)))\n      .map((entry) => {\n        const n=doc.nodes[entry.id]\n",

@@ -1,7 +1,20 @@
 import {beforeAll,expect,test} from 'vitest'
 import {initializeKernelModule} from './module'
 import {SourceViewportPlanner} from './source-viewport-plan'
+import {tilesCoverBounds} from './tile-cache'
 beforeAll(()=>initializeKernelModule())
+test('long diagonal travel resumes wide bands with complete, stable world coverage',()=>{
+ const planner=new SourceViewportPlanner('figmaSubpixel',true,true)
+ const width=855,height=888,zoom=32
+ planner.plan({x:0,y:0,zoom},2,width,height,false)
+ for(const sign of [-1,1]){
+   const far={x:sign*8000,y:-sign*5000,zoom}
+   const plan=planner.plan(far,2,width,height,false)
+   expect(plan.tiles.length).toBeLessThanOrEqual(9)
+   expect(tilesCoverBounds(plan.tiles,{x:-far.x/zoom,y:-far.y/zoom,width:width/zoom,height:height/zoom},2*zoom)).toBe(true)
+   expect(planner.plan({...far,x:far.x+24},2,width,height,true).tiles.some(t=>plan.keys.has(t.key))).toBe(true)
+ }
+})
 test('unchanged demand reuses addressing while DPR, phase and scale changes get independent plans',()=>{
  const planner=new SourceViewportPlanner('figmaSubpixel',true),view={x:.25,y:.375,zoom:1.25}
  const settled=planner.plan(view,2,800,600,false)
@@ -149,4 +162,51 @@ test('a continuous zoom retains its current lattice until visible detail advance
  expect(planner.presentedDetail(waiting.raster.scale)).toBe(true)
  expect(planner.plan(view(.58),2,800,600,true,undefined,true).raster.scale).toBeGreaterThan(waiting.raster.scale)
  expect(planner.plan(view(.58),2,800,600,false).exact).toBe(true)
+})
+
+test('an incomplete native material handoff retries a complete same-density lattice once',()=>{
+ const planner=new SourceViewportPlanner('figmaSubpixel',true,true),view={x:-1670.375,y:-3287.125,zoom:32}
+ const band=planner.plan(view,2,855,888,false)
+ expect(band.exact).toBe(true);expect(band.tiles).toHaveLength(4)
+ expect(band.tiles.every(t=>t.width<=962&&t.height<=962)).toBe(true)
+ expect(planner.retryNativeCoverage(view,2,855,888)).toBe(true)
+ const repair=planner.plan(view,2,855,888,false)
+ expect(repair.raster).toEqual(band.raster)
+ expect(repair.tiles.every(t=>t.width===514&&t.height===514)).toBe(true)
+ expect(planner.retryNativeCoverage(view,2,855,888)).toBe(false)
+ const next=planner.plan({...view,x:view.x+64},2,855,888,false)
+ expect(next.tiles.some(t=>t.width>514)).toBe(true)
+})
+
+test('a high-density material pan reuses its accepted bands through drag, settle and return',()=>{
+ const planner=new SourceViewportPlanner('figmaSubpixel',true,true)
+ const view={x:-132180.5,y:-632132,zoom:32},dpr=2,width=855,height=888
+ const start=planner.plan(view,dpr,width,height,false)
+ planner.presented(view,dpr,width,height)
+ const next={...view,x:view.x+96},motion=planner.plan(next,dpr,width,height,true),settled=planner.plan(next,dpr,width,height,false)
+ expect(motion.exact).toBe(true)
+ expect(motion.keys).toEqual(settled.keys)
+ expect(start.tiles.every(t=>settled.keys.has(t.key))).toBe(true)
+ const incoming=settled.tiles.filter(t=>!start.keys.has(t.key))
+ expect(incoming.length).toBeGreaterThan(0)
+ expect(incoming.every(t=>t.width<=258)).toBe(true)
+ planner.presented(next,dpr,width,height)
+ expect(planner.plan(view,dpr,width,height,true).keys).toEqual(start.keys)
+ const fractional={...view,x:view.x+.25}
+ expect(planner.plan(fractional,dpr,width,height,true).exact).toBe(false)
+ expect(planner.plan(fractional,dpr,width,height,false).keys).not.toEqual(start.keys)
+})
+
+test('an overview narrows the existing global tiles and restores the full set if physical coverage is declined',()=>{
+ const v={x:-1290.7641421142123,y:319.62935841138074,zoom:.20763036280235658}
+ const requested=new SourceViewportPlanner('figmaSubpixel',true,true,true)
+ const reference=new SourceViewportPlanner('figmaSubpixel',true,true)
+ const all=reference.plan(v,2,855,888,false)
+ const window={x:0,y:256,width:855,height:288}
+ const local=requested.plan(v,2,855,888,false,undefined,false,window)
+ expect(local.raster).toEqual(all.raster);expect(local.tiles.length).toBeLessThan(all.tiles.length)
+ expect(local.tiles.every(t=>all.tiles.some(original=>original.key===t.key&&original.width===t.width&&original.height===t.height))).toBe(true)
+ expect(requested.retryNativeCoverage(v,2,855,888)).toBe(true)
+ const retry=requested.plan(v,2,855,888,false,undefined,false,window)
+ expect(retry.tiles).toEqual(all.tiles)
 })

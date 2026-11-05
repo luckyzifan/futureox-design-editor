@@ -35,24 +35,66 @@ function fixedConstraints(node: DesignNode, parent: DesignNode | undefined, page
   return Object.is(nx, x) && Object.is(ny, y) && Object.is(width, node.width) && Object.is(height, node.height)
 }
 
+/** The editor's published-snapshot index. Child links, repeat presence and
+ * global pose dependencies come from the same traversal as the picking map. */
+export class PoseTopology implements ReadonlyMap<string, string> {
+  readonly #source: WeakRef<DesignDocument>
+  readonly #parents = new Map<string, string>()
+  readonly #pages = new Set<string>()
+  readonly hasSketchMasks: boolean
+  readonly hasRepeats: boolean
+  readonly permitsPose: boolean
+  constructor(document: DesignDocument) {
+    this.#source = new WeakRef(document)
+    let repeats = false, sketchMasks = false, valid = true
+    for (const page of document.pages) {
+      if (document.nodes[page.id] || this.#pages.has(page.id)) valid = false
+      this.#pages.add(page.id)
+      for (const id of page.children) {
+        if (this.#parents.has(id) || !document.nodes[id]) valid = false
+        this.#parents.set(id, page.id)
+      }
+    }
+    for (const node of Object.values(document.nodes)) {
+      repeats ||= node.repeat !== undefined
+      sketchMasks ||= node.mask && (node.maskType === 'shape' || node.maskChain !== undefined)
+      if (node.connector || (node.board?.kind === 'code-block' && node.board.language)) valid = false
+      for (const child of node.children) {
+        if (this.#parents.has(child) || !document.nodes[child]) valid = false
+        this.#parents.set(child, node.id)
+      }
+    }
+    this.hasSketchMasks = sketchMasks
+    this.hasRepeats = repeats
+    this.permitsPose = valid
+    Object.freeze(this)
+  }
+  get size() { return this.#parents.size }
+  get(id: string) { return this.#parents.get(id) }
+  has(id: string) { return this.#parents.has(id) }
+  keys() { return this.#parents.keys() }
+  values() { return this.#parents.values() }
+  entries() { return this.#parents.entries() }
+  [Symbol.iterator]() { return this.entries() }
+  forEach(fn: (value: string, key: string, map: ReadonlyMap<string, string>) => void, thisArg?: unknown) {
+    this.#parents.forEach((value, key) => fn.call(thisArg, value, key, this))
+  }
+  matches(document: DesignDocument) { return this.#source.deref() === document }
+  isRoot(id: string) { const parent = this.get(id); return parent !== undefined && this.#pages.has(parent) }
+  nodeParent(id: string) { return this.isRoot(id) ? undefined : this.get(id) }
+}
+
 /** Internal immutable pointer-transaction plan. Topology/dependency admission
  * is done once; each pose still evaluates the exact constraint fixed point.
  * The Editor owns its base and revokes it on content/font/transaction changes. */
 export class TranslationPreviewPlan {
-  private readonly parents=new Map<string,string>()
-  private readonly roots=new Set<string>()
   private readonly ids:readonly string[]
   private valid=true
-  constructor(readonly base:DesignDocument,ids:readonly string[]){
+  constructor(readonly base:DesignDocument,ids:readonly string[],private readonly topology=new PoseTopology(base)){
     this.ids=[...ids]
-    if(base.animations?.length||!ids.length||new Set(ids).size!==ids.length)this.valid=false
-    base.pages.forEach(page=>page.children.forEach(id=>this.roots.add(id)))
-    for(const node of Object.values(base.nodes)){
-      if(node.connector||node.board?.kind==='code-block'&&node.board.language)this.valid=false
-      for(const child of node.children){if(!base.nodes[child]||this.parents.has(child))this.valid=false;this.parents.set(child,node.id)}
-    }
+    if(!topology.matches(base)||!topology.permitsPose||base.animations?.length||!ids.length||new Set(ids).size!==ids.length)this.valid=false
     for(const id of ids){const seen=new Set<string>();let at:string|undefined=id
-      while(at){const n=base.nodes[at];if(seen.has(at)||!n||hasReferences(n)||n.layout&&n.layout.mode!=='none'||n.sizing&&(n.sizing.width!=='fixed'||n.sizing.height!=='fixed')){this.valid=false;break}seen.add(at);at=this.parents.get(at)}
+      while(at){const n=base.nodes[at];if(seen.has(at)||!n||hasReferences(n)||n.layout&&n.layout.mode!=='none'||n.sizing&&(n.sizing.width!=='fixed'||n.sizing.height!=='fixed')){this.valid=false;break}seen.add(at);at=topology.nodeParent(at)}
     }
   }
   accepts(patches:Readonly<Record<string,Partial<DesignNode>>>){
@@ -69,10 +111,10 @@ export class TranslationPreviewPlan {
     for(const id of this.ids){const before=this.base.nodes[id],patch=patches[id],m=patch?.transform
       if(!before||!m||Object.keys(patch).some(key=>key!=='transform')||m.length!==6||m.some(v=>!Number.isFinite(v)||Math.abs(v)>1e7)||!affine&&m.slice(0,4).some((v,i)=>!Object.is(v,before.transform[i])))return false
       let at:string|undefined=id
-      while(at){const source=this.base.nodes[at],parentId=this.parents.get(at),parent=parentId?this.base.nodes[parentId]:undefined
+      while(at){const source=this.base.nodes[at],parentId=this.topology.nodeParent(at),parent=parentId?this.base.nodes[parentId]:undefined
         const node=patches[at]?.transform?{...source,transform:patches[at].transform!}:source
         const parentNode=parent&&patches[parent.id]?.transform?{...parent,transform:patches[parent.id].transform!}:parent
-        if(!fixedConstraints(node,parentNode,this.roots.has(at)))return false
+        if(!fixedConstraints(node,parentNode,this.topology.isRoot(at)))return false
         at=parentId
       }
     }

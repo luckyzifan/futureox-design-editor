@@ -8,11 +8,12 @@ const filename = process.env.CORE_DESKTOP_TEST_SOURCE
   ? new URL('preload.cjs', process.env.CORE_DESKTOP_TEST_SOURCE)
   : new URL('../src/preload.cjs', import.meta.url)
 const source = await readFile(filename, 'utf8')
-function load(argv = [], reply = { status: 'ok' }) {
+function load(argv = [], reply = { status: 'ok' }, window) {
   const events = new EventEmitter()
   const calls = []
   let api
   const ipcRenderer = Object.assign(events, {
+    postMessage: (...args) => calls.push(args),
     invoke: async (...args) => {
       calls.push(args)
       return reply
@@ -25,7 +26,7 @@ function load(argv = [], reply = { status: 'ok' }) {
     },
   }
   const context = vm.createContext({
-    process: { argv },
+    process: { argv }, window,
     require: (name) => {
       assert.equal(name, 'electron', 'Sandboxed preload must load no filesystem/process library')
       return { ipcRenderer, contextBridge }
@@ -46,6 +47,7 @@ test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or s
       'petEvent',
       'onPetStatus',
       'diagnostics',
+      'designAi',
       'automation',
       'setInterfaceLocale',
       'rendererReady',
@@ -83,6 +85,8 @@ test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or s
       'nativeRenderStats',
     ].sort(),
   )
+  assert.equal(Object.isFrozen(api.designAi),true)
+  assert.deepEqual(Object.keys(api.designAi).sort(),['cancel','configure','run','status'])
   assert.equal(api.version, 1)
   for (const key of [
     'require',
@@ -384,4 +388,16 @@ test('document capacity is frozen trusted launch policy and cannot be supplied b
  assert.equal(Object.isFrozen(api.documentCapacity),true)
  for(const value of ['0','Infinity','1073741824.5','-1','9007199254740992']) assert.throws(()=>load([`--core-document-memory-bytes=${value}`]))
  assert.throws(()=>load(['--core-document-memory-bytes=1073741824','--core-document-memory-bytes=1073741824']))
+})
+
+test('preload transfers one pose port only from its own window and issued session',async()=>{
+ let handle
+ const window={addEventListener(name,listener){if(name==='message')handle=listener}}
+ const {api,calls}=load([],'session',window)
+ const port={},send=(source,session)=>handle({source,data:{type:'futureox-terminal-port-v1',session},ports:[port]})
+ assert.equal(api.preparation.terminalPortV1,true)
+ send(window,'session');await api.preparation.open();send({},'session');send(window,'other')
+ assert.equal(calls.length,1);send(window,'session');send(window,'session')
+ assert.equal(calls.length,2);assert.equal(calls[1][0],'native-preparation:terminal-port');assert.equal(calls[1][2][0],port)
+ await api.preparation.open();await api.preparation.close('session');send(window,'session');assert.equal(calls.length,4)
 })

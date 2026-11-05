@@ -137,31 +137,47 @@ export function validColorControls(c: unknown): c is ColorControls {
     v.brightness >= -1 && v.brightness <= 1 && v.contrast >= 0 && v.contrast <= 4 &&
     v.saturation >= 0 && v.saturation <= 4 && Math.abs(v.hue) <= 1e7
 }
+const usesColorControls = (e: Effect) => e.kind === 'color-controls' || e.colorControls != null
+const usesSpatialBlur = (e: Effect) => e.kind === 'gaussian-blur' || e.kind === 'motion-blur'
+const usesZoomBlur = (e: Effect) => e.kind === 'zoom-blur'
+
+function findDocumentEffect(d: DesignDocument, nodes: DesignNode[], match: (e: Effect) => boolean): Effect | undefined {
+  const find = (list: unknown): Effect | undefined => Array.isArray(list) ? list.find(e => e && match(e)) : undefined
+  for (const n of nodes) {
+    const own = find(n.effects)
+    if (own) return own
+    if (n.instance?.overrides) for (const o of Object.values(n.instance.overrides)) {
+      const effect = find(o.effects)
+      if (effect) return effect
+    }
+  }
+  let animated: Effect | undefined
+  if (d.animations?.some(clip => clip.tracks.some(track => track.keyframes.some(key => {
+    animated = find(key.value.effects)
+    return !!animated
+  })))) return animated
+  for (const style of Object.values(d.designSystem?.styles ?? {})) {
+    const effect = find(style.effects) ?? (style.kind === 'effect' ? find(style.value) : undefined)
+    if (effect) return effect
+  }
+}
 export function hasSchema17Features(d: DesignDocument): boolean {
-  const has = (list: unknown) => Array.isArray(list) && list.some(e => e && (e.kind === 'color-controls' || e.colorControls != null))
-  return Object.values(d.nodes).some(n => has(n.effects) || Object.values(n.instance?.overrides || {}).some(o => has(o.effects))) ||
-    !!d.animations?.some(c => c.tracks.some(t => t.keyframes.some(k => has(k.value.effects)))) ||
-    Object.values(d.designSystem?.styles || {}).some(s => has(s.effects) || (s.kind === 'effect' && has(s.value)))
+  return !!findDocumentEffect(d, Object.values(d.nodes), usesColorControls)
 }
 export function hasSchema18Features(d: DesignDocument): boolean {
-  const has=(v:unknown)=>Array.isArray(v)&&v.some(e=>e&&['gaussian-blur','motion-blur'].includes(e.kind))
-  return Object.values(d.nodes).some(n=>has(n.effects)||Object.values(n.instance?.overrides||{}).some(o=>has(o.effects))) ||
-    !!d.animations?.some(c=>c.tracks.some(t=>t.keyframes.some(k=>has(k.value.effects)))) ||
-    Object.values(d.designSystem?.styles||{}).some(s=>has(s.effects)||(s.kind==='effect'&&has(s.value)))
+  return !!findDocumentEffect(d, Object.values(d.nodes), usesSpatialBlur)
 }
-export function hasSchema20Features(d: DesignDocument): boolean {
+export function hasSchema19Features(d: DesignDocument): boolean {
+  return !!findDocumentEffect(d, Object.values(d.nodes), usesZoomBlur)
+}
+export function hasSchema20Features(d: DesignDocument, nodes = Object.values(d.nodes)): boolean {
   const action = (a: import('./prototype').PrototypeAction): boolean => a.transitionStyle !== undefined || !!a.thenActions?.some(action) || !!a.elseActions?.some(action)
   if (Object.values(d.prototype?.interactions||{}).some(es=>es.some(e=>e.actions.some(action)))) return true
   const style = (s: any) => s?.verticalAlign !== undefined && s.verticalAlign !== 'top'
   const runs = (r: any) => Array.isArray(r) && r.some(r=>r?.paragraph != null)
-  return Object.values(d.nodes).some(n=>style(n.textStyle)||runs(n.textRuns)||Object.values(n.instance?.overrides||{}).some(o=>style(o.textStyle)||runs(o.textRuns)))
+  return nodes.some(n => style(n.textStyle) || runs(n.textRuns) ||
+    (n.instance?.overrides && Object.values(n.instance.overrides).some(o => style(o.textStyle) || runs(o.textRuns))))
     || Object.values(d.designSystem?.styles||{}).some(s=>s.kind==='text'&&style(s.value))
-}
-export function hasSchema19Features(d: DesignDocument): boolean {
-  const has=(v:unknown)=>Array.isArray(v)&&v.some(e=>e&&['zoom-blur'].includes(e.kind))
-  return Object.values(d.nodes).some(n=>has(n.effects)||Object.values(n.instance?.overrides||{}).some(o=>has(o.effects))) ||
-    !!d.animations?.some(c=>c.tracks.some(t=>t.keyframes.some(k=>has(k.value.effects)))) ||
-    Object.values(d.designSystem?.styles||{}).some(s=>has(s.effects)||(s.kind==='effect'&&has(s.value)))
 }
 export type ZoomBlur = {amount:number;center:[number,number]}
 export function validZoomBlur(value:unknown):value is ZoomBlur {
@@ -206,6 +222,8 @@ export type LayoutAlign =
   | 'space-between'
   | 'space-around'
   | 'space-evenly'
+  | 'unsafe-center'
+  | 'unsafe-end'
 export type AutoLayout = {
   mode: 'none' | 'horizontal' | 'vertical' | 'grid'
   gap: number
@@ -313,6 +331,7 @@ export type DesignNode = {
   /** Local collection selections, inherited by descendants. Instance roots keep authored placement only. */
   variableModes?: Record<string, string>
   maskType?: 'alpha' | 'luminance' | 'outline' | 'shape'
+  maskChain?: 'start' | 'break'
   id: string
   name: string
   kind: Kind
@@ -723,6 +742,23 @@ export function validNodeTransform(value: unknown): value is Matrix {
   return Math.abs(value[0] * value[3] - value[1] * value[2]) >= 1e-9
 }
 
+// Dense local wire IDs are common in imported paths. Reuse their immutable
+// alphabet only after checking every actual ID in order. Arbitrary IDs retain
+// exact Set membership, including duplicate detection.
+function networkIndex(prefix: string) {
+  const ids = Array.from({ length: 256 }, (_, i) => prefix + i)
+  return { ids, positions: new Map(ids.map((id, i) => [id, i])) }
+}
+const vertexIndex = networkIndex('v'), edgeIndex = networkIndex('e'), numericIndex = networkIndex('')
+
+function networkIdDomain(rows: { id: string }[], index: ReturnType<typeof networkIndex>) {
+  const table = rows[0]?.id === '0' ? numericIndex : index
+  const size = rows.length
+  let indexed = size <= table.ids.length
+  for (let i = 0; indexed && i < size; i++) indexed = rows[i]?.id === table.ids[i]
+  if (indexed) return { size, has: (id: string) => (table.positions.get(id) ?? Infinity) < size }
+  return new Set(rows.map(row => row.id))
+}
 export function validateDocument(value: unknown): DesignDocument {
   if (
     !isObject(value) ||
@@ -737,7 +773,8 @@ export function validateDocument(value: unknown): DesignDocument {
   const d = value as unknown as DesignDocument
   // Reuse one local enumeration while retaining every validation below.
   // This is not a cached validity certificate for mutable document objects.
-  const entries = Object.entries(d.nodes), nodes = entries.map(([, node]) => node)
+  const nodeIds = Object.keys(d.nodes)
+  const nodes = nodeIds.map(id => d.nodes[id])
   let guideCount=0
   const validateGuides=(guides:unknown,frame=true)=>{
     if(guides===undefined)return
@@ -747,13 +784,11 @@ export function validateDocument(value: unknown): DesignDocument {
     guideCount+=guides.length;if(guideCount>20000)throw new Error('参考线数量超限')
   }
   for(const page of d.pages)validateGuides(page?.guides)
-  for(const n of nodes)validateGuides(n?.guides,!!n&&['frame','section'].includes(n.kind))
   if (d.rasterProfile !== undefined && !['analytic', 'figma', 'figmaSoftware'].includes(d.rasterProfile))
     throw new Error('未知的文档渲染模式')
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   if (!uuid.test(d.id) || !d.name.trim() || d.name.length > 200 || !wellFormed(d.name))
     throw new Error('文档标识或名称无效')
-  if (nodes.some(n=>n.kind==='slice' && (d.schemaVersion<10 || n.fills.length || n.strokes.length || n.effects.length || n.children.length || n.network || n.mask))) throw new Error('切片需要版本10，且不能包含绘制内容')
   if(d.reviews!==undefined){
     if(!Array.isArray(d.reviews)||d.reviews.length>2000||(d.reviews.length&&d.schemaVersion<10))throw new Error('本地评论需要版本10')
     const ids=new Set<string>()
@@ -763,18 +798,21 @@ export function validateDocument(value: unknown): DesignDocument {
       for(const m of r.messages){if(!m||typeof m.id!=='string'||!m.id||m.id.length>128||ids.has(m.id)||typeof m.author!=='string'||!m.author||m.author.length>200||typeof m.text!=='string'||!m.text.trim()||m.text.length>10000||!Number.isSafeInteger(m.createdAt)||m.createdAt<0)throw new Error('本地评论消息无效');ids.add(m.id)}
     }
   }
-  for(const n of nodes)if(n.network?.filledFaces!==undefined && (d.schemaVersion<10||!Array.isArray(n.network.filledFaces)||n.network.filledFaces.length>10000||n.network.filledFaces.some(f=>!Array.isArray(f)||f.length>10000||f.some(id=>!n.network!.edges.some(e=>e.id===id)))))throw new Error('矢量区域填充数据无效')
-  for(const n of nodes)if(n.pathOffset!==undefined&&(!Number.isFinite(n.pathOffset)||Math.abs(n.pathOffset)>10000||(n.pathOffset!==0&&(d.schemaVersion<10||['text','frame','section','group','slice'].includes(n.kind)))))throw new Error('路径偏移数据无效')
   if(d.schemaVersion<10&&hasLocalTools(d))throw new Error('本地扩展工具需要设计文件版本10')
-  for (const n of nodes) if (n.vectorBrush !== undefined) validateVectorBrush(n)
   validateNodeVariableModes(d, nodes)
   if (d.schemaVersion < 9 && hasGradientBlur(d)) throw new Error('渐变模糊需要设计文件版本 9')
   if (d.schemaVersion < 13 && hasImageAdjusts(d)) throw new Error('图片调整需要设计文件版本 13')
   if (d.schemaVersion < 14 && hasPatternTiles(d)) throw new Error('图案平铺需要设计文件版本 14')
-  if (d.schemaVersion < 20 && hasSchema20Features(d)) throw new Error('段落和文本垂直对齐需要设计文件版本 20')
-  if (d.schemaVersion < 19 && hasSchema19Features(d)) throw new Error('缩放模糊需要设计文件版本 19')
-  if (d.schemaVersion < 18 && hasSchema18Features(d)) throw new Error('高斯与运动模糊需要设计文件版本 18')
-  if (d.schemaVersion < 17 && hasSchema17Features(d)) throw new Error('颜色调整需要设计文件版本 17')
+  if (d.schemaVersion < 20 && hasSchema20Features(d, nodes)) throw new Error('段落和文本垂直对齐需要设计文件版本 20')
+  if (d.schemaVersion < 19) {
+    const unsupported = findDocumentEffect(d, nodes, e => usesZoomBlur(e) ||
+      (d.schemaVersion < 18 && usesSpatialBlur(e)) || (d.schemaVersion < 17 && usesColorControls(e)))
+    if (unsupported) {
+      if (usesZoomBlur(unsupported)) throw new Error('缩放模糊需要设计文件版本 19')
+      if (usesSpatialBlur(unsupported) && d.schemaVersion < 18) throw new Error('高斯与运动模糊需要设计文件版本 18')
+      throw new Error('颜色调整需要设计文件版本 17')
+    }
+  }
   if (d.schemaVersion < 15 && hasSchema15Features(d)) throw new Error('此设计功能需要设计文件版本 15')
   if (d.schemaVersion < 8 && (hasStrokeMarkers(d) || hasLayerExports(d))) throw new Error('描边端点需要设计文件版本 8')
   // Mirror scene::Document::validate and animation::validate schema gates.
@@ -814,7 +852,7 @@ export function validateDocument(value: unknown): DesignDocument {
       ))
   )
     throw new Error('字体资源无效或超过限制')
-  assertDocumentStructure(entries.length, d.pages.length)
+  assertDocumentStructure(nodes.length, d.pages.length)
   const seen = new Set<string>()
   if (
     d.colorManagement !== undefined &&
@@ -823,7 +861,16 @@ export function validateDocument(value: unknown): DesignDocument {
       !validColorSettings(d.colorManagement))
   )
     throw new Error('广色域/HDR 配置无效，或文件版本不支持')
-  const color = { test: (v: unknown) => validColor(v, !!d.colorManagement) }
+  // Imported palettes repeat across fills, stops and strokes. Only immutable
+  // color strings share a positive result, within this document's color mode.
+  const managed = !!d.colorManagement, knownColors = new Set<string>()
+  const color = { test: (value: unknown) => {
+    if (typeof value !== 'string') return false
+    if (knownColors.has(value)) return true
+    if (!validColor(value, managed)) return false
+    if (knownColors.size < 1024) knownColors.add(value)
+    return true
+  } }
   const finite = (n: unknown, min = -1e7, max = 1e7) =>
     typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max
   const validAdjust = (a: unknown) =>
@@ -846,91 +893,30 @@ export function validateDocument(value: unknown): DesignDocument {
     (t.offset as unknown[]).every((v) => finite(v)) &&
     (t.alignment === undefined || (Array.isArray(t.alignment) && t.alignment.length === 2 &&
       t.alignment.every(value => ['start','center','end'].includes(value))))
-  const paints = (ps: Paint[]) =>
-    Array.isArray(ps) &&
-    ps.length <= 16 &&
-    ps.every(
-      (p) =>
-        p &&
-        ['solid', 'linear', 'radial', 'image', 'angular', 'diamond'].includes(p.kind) &&
-        color.test(p.color) &&
-        blendModes.includes(p.blend ?? 'normal') &&
-        finite(p.opacity, 0, 1) &&
-        finite(p.angle) &&
-        (p.fit === undefined || ['cover', 'contain', 'stretch'].includes(p.fit)) &&
-        (p.adjust === undefined || (p.kind === 'image' && validAdjust(p.adjust))) &&
-        (p.tile === undefined || (p.kind === 'image' && validTile(p.tile))) &&
-        (p.transform == null || (
-          Array.isArray(p.transform) && p.transform.length === 6 &&
-          p.transform.every((v) => finite(v)) &&
-          Math.abs(p.transform[0] * p.transform[3] - p.transform[1] * p.transform[2]) >= 1e-12
-        )) &&
-        Array.isArray(p.stops) &&
-        (!['linear', 'radial', 'angular', 'diamond'].includes(p.kind) || p.stops.length >= 2) &&
-        p.stops.length <= MAX_GRADIENT_STOPS &&
-        p.stops.every((s) => finite(s.offset, 0, 1) && color.test(s.color)) &&
-        (!p.image || /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(p.image)),
-    )
+  const validPaint = (p: Paint) =>
+    p &&
+    ['solid', 'linear', 'radial', 'image', 'angular', 'diamond'].includes(p.kind) &&
+    color.test(p.color) &&
+    blendModes.includes(p.blend ?? 'normal') &&
+    finite(p.opacity, 0, 1) &&
+    finite(p.angle) &&
+    (p.fit === undefined || ['cover', 'contain', 'stretch'].includes(p.fit)) &&
+    (p.adjust === undefined || (p.kind === 'image' && validAdjust(p.adjust))) &&
+    (p.tile === undefined || (p.kind === 'image' && validTile(p.tile))) &&
+    (p.transform == null || (
+      Array.isArray(p.transform) && p.transform.length === 6 &&
+      p.transform.every((v) => finite(v)) &&
+      Math.abs(p.transform[0] * p.transform[3] - p.transform[1] * p.transform[2]) >= 1e-12
+    )) &&
+    Array.isArray(p.stops) &&
+    (!['linear', 'radial', 'angular', 'diamond'].includes(p.kind) || p.stops.length >= 2) &&
+    p.stops.length <= MAX_GRADIENT_STOPS &&
+    p.stops.every((s) => finite(s.offset, 0, 1) && color.test(s.color)) &&
+    (!p.image || /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(p.image))
+  const paints = (list: Paint[]) => Array.isArray(list) && list.length <= 16 && list.every(validPaint)
   const defaultStyle = defaultTextStyle()
   let segmenter: Intl.Segmenter | undefined
-  validateRepeatDocument(d)
-  for (const [id, n] of entries) {
-    if (n.repeat !== undefined) {
-      if (d.schemaVersion < 15) throw Error('重复变换需要版本 15')
-      validateRepeat(n.repeat)
-    }
-    // Layout grids mirror scene.rs: schema-12 frames only, finite ranges
-    // and a parseable color.
-    if (n?.layoutGrid !== undefined) {
-      const g = { ...defaultLayoutGrid(), ...n.layoutGrid }
-      if (
-        d.schemaVersion < 12 ||
-        n.kind !== 'frame' ||
-        !['column', 'row', 'uniform'].includes(g.axis) ||
-        !Number.isInteger(g.count) ||
-        !(g.count >= 1 && g.count <= 64) ||
-        !finite(g.gutter, 0) ||
-        !finite(g.margin, 0) ||
-        !finite(g.opacity, 0, 1) ||
-        typeof g.visible !== 'boolean' ||
-        !color.test(g.color)
-      )
-        throw new Error('布局网格需要版本12，且只能属于画板')
-    }
-    if (n?.exportSettings !== undefined) {
-      const settings = n.exportSettings
-      if (!Array.isArray(settings) || settings.length > 16 || new Set(settings.map(s => s?.id)).size !== settings.length || settings.some(s =>
-        !s || typeof s.id !== 'string' || !s.id || !wellFormed(s.id) || new TextEncoder().encode(s.id).length > 128 || !['png','svg','jpeg','jpg','webp','pdf','pdf-vector','tiff','eps'].includes(s.format) ||
-        !finite(s.scale,0,128) || typeof s.suffix !== 'string' || !wellFormed(s.suffix) || s.suffix.length>80 || exportSuffixHasForbiddenCharacters(s.suffix))) throw new Error('图层导出设置无效')
-      if(settings.length && d.schemaVersion<8) throw new Error('图层导出设置需要设计文件版本 8')
-    }
-    if (d.schemaVersion < 7 && (n?.arc != null || (n?.cornerRadius ?? 0) !== 0 || n?.constrainProportions))
-      throw new Error('参数化图形和比例锁定需要设计文件版本 7')
-    if (n?.constrainProportions !== undefined && typeof n.constrainProportions !== 'boolean')
-      throw new Error('比例锁定属性无效')
-    if (!finite(n?.cornerRadius ?? 0, 0) || ((n?.cornerRadius ?? 0) !== 0 && (!['polygon', 'star'].includes(n.kind) || n.network != null)))
-      throw new Error('多边形圆角无效')
-    if (n?.arc != null && (!isObject(n.arc) || n.kind !== 'ellipse' || n.network != null ||
-      !finite(n.arc.startAngle) || !finite(n.arc.sweepAngle, -Math.PI * 2, Math.PI * 2) ||
-      !finite(n.arc.innerRadius, 0, 1) || Object.keys(n.arc).some(k => !['startAngle', 'sweepAngle', 'innerRadius'].includes(k))))
-      throw new Error('椭圆圆弧参数无效')
-    // Match the kernel's Option<String>: omitted/null is the legacy default;
-    // either explicit mask mode is extended authoring and requires schema 4.
-    if (n?.maskType != null) {
-      if (!['alpha', 'luminance', 'outline', 'shape'].includes(n.maskType)) throw new Error('蒙版类型无效')
-      if (d.schemaVersion < 4) throw new Error('显式蒙版类型需要设计文件版本 4')
-    }
-    // Node::requires_schema4 applies even to currently invisible/inactive content.
-    const extendedPaint = (p: Paint) => p && (p.transform != null || p.kind === 'angular' || p.kind === 'diamond')
-    if (d.schemaVersion < 4 && (
-      n?.booleanOperation != null || Object.keys(n?.bindings || {}).length > 0 || Object.keys(n?.styleRefs || {}).length > 0 ||
-      (Array.isArray(n?.textRuns) && n.textRuns.some((r) => r && (r.color != null || r.link != null || r.underline === true || r.strikethrough === true))) ||
-      (n?.textStyle && ((n.textStyle.paragraphSpacing ?? 0) !== 0 || (n.textStyle.paragraphIndent ?? 0) !== 0 || n.textStyle.align === 'justify')) ||
-      (Array.isArray(n?.fills) && n.fills.some(extendedPaint)) ||
-      (Array.isArray(n?.strokes) && n.strokes.some((s) => extendedPaint(s?.paint)))
-    )) throw new Error('扩展编辑属性需要设计文件版本 4')
-    if (d.schemaVersion < 5 && hasMaterialParameters(n?.effects))
-      throw new Error('材质参数需要设计文件版本 5')
+  function validateText(n: DesignNode) {
     const style = n?.textStyle === undefined ? defaultStyle : { ...defaultStyle, ...n.textStyle }
     const cases = [style.textCase, ...(n.textRuns || []).map(r => r.textCase)]
     if (cases.some(c => c !== undefined && !['original','upper','lower'].includes(c))) throw Error('文字大小写属性无效')
@@ -981,6 +967,78 @@ export function validateDocument(value: unknown): DesignDocument {
         end = run.end
       }
     }
+  }
+  const constraintModes = ['start', 'center', 'end', 'stretch', 'scale']
+  let hasRepeat = false
+  for (let index = 0; index < nodes.length; index++) {
+    const id = nodeIds[index], n = nodes[index]
+    if (n.guides !== undefined) validateGuides(n.guides, n.kind === 'frame' || n.kind === 'section')
+    if (n.kind === 'slice' && (d.schemaVersion < 10 || n.fills.length || n.strokes.length || n.effects.length || n.children.length || n.network || n.mask))
+      throw new Error('切片需要版本10，且不能包含绘制内容')
+    if (n.pathOffset !== undefined && (!Number.isFinite(n.pathOffset) || Math.abs(n.pathOffset) > 10000 ||
+        (n.pathOffset !== 0 && (d.schemaVersion < 10 || ['text', 'frame', 'section', 'group', 'slice'].includes(n.kind)))))
+      throw new Error('路径偏移数据无效')
+    if (n.vectorBrush !== undefined) validateVectorBrush(n)
+    if (n.repeat !== undefined) {
+      hasRepeat = true
+      if (d.schemaVersion < 15) throw Error('重复变换需要版本 15')
+      validateRepeat(n.repeat)
+    }
+    // Layout grids mirror scene.rs: schema-12 frames only, finite ranges
+    // and a parseable color.
+    if (n?.layoutGrid !== undefined) {
+      const g = { ...defaultLayoutGrid(), ...n.layoutGrid }
+      if (
+        d.schemaVersion < 12 ||
+        n.kind !== 'frame' ||
+        !['column', 'row', 'uniform'].includes(g.axis) ||
+        !Number.isInteger(g.count) ||
+        !(g.count >= 1 && g.count <= 64) ||
+        !finite(g.gutter, 0) ||
+        !finite(g.margin, 0) ||
+        !finite(g.opacity, 0, 1) ||
+        typeof g.visible !== 'boolean' ||
+        !color.test(g.color)
+      )
+        throw new Error('布局网格需要版本12，且只能属于画板')
+    }
+    if (n?.exportSettings !== undefined) {
+      const settings = n.exportSettings
+      if (!Array.isArray(settings) || settings.length > 16 || new Set(settings.map(s => s?.id)).size !== settings.length || settings.some(s =>
+        !s || typeof s.id !== 'string' || !s.id || !wellFormed(s.id) || new TextEncoder().encode(s.id).length > 128 || !['png','svg','jpeg','jpg','webp','pdf','pdf-vector','tiff','eps'].includes(s.format) ||
+        !finite(s.scale,0,128) || typeof s.suffix !== 'string' || !wellFormed(s.suffix) || s.suffix.length>80 || exportSuffixHasForbiddenCharacters(s.suffix))) throw new Error('图层导出设置无效')
+      if(settings.length && d.schemaVersion<8) throw new Error('图层导出设置需要设计文件版本 8')
+    }
+    if (d.schemaVersion < 7 && (n?.arc != null || (n?.cornerRadius ?? 0) !== 0 || n?.constrainProportions))
+      throw new Error('参数化图形和比例锁定需要设计文件版本 7')
+    if (n?.constrainProportions !== undefined && typeof n.constrainProportions !== 'boolean')
+      throw new Error('比例锁定属性无效')
+    if (!finite(n?.cornerRadius ?? 0, 0) || ((n?.cornerRadius ?? 0) !== 0 && (!['polygon', 'star'].includes(n.kind) || n.network != null)))
+      throw new Error('多边形圆角无效')
+    if (n?.arc != null && (!isObject(n.arc) || n.kind !== 'ellipse' || n.network != null ||
+      !finite(n.arc.startAngle) || !finite(n.arc.sweepAngle, -Math.PI * 2, Math.PI * 2) ||
+      !finite(n.arc.innerRadius, 0, 1) || Object.keys(n.arc).some(k => !['startAngle', 'sweepAngle', 'innerRadius'].includes(k))))
+      throw new Error('椭圆圆弧参数无效')
+    // Match the kernel's Option<String>: omitted/null is the legacy default;
+    // either explicit mask mode is extended authoring and requires schema 4.
+    if (n?.maskChain != null && (d.schemaVersion < 4 || !['start', 'break'].includes(n.maskChain)))
+      throw new Error('蒙版链无效或文档版本低于 4')
+    if (n?.maskType != null) {
+      if (!['alpha', 'luminance', 'outline', 'shape'].includes(n.maskType)) throw new Error('蒙版类型无效')
+      if (d.schemaVersion < 4) throw new Error('显式蒙版类型需要设计文件版本 4')
+    }
+    // Node::requires_schema4 applies even to currently invisible/inactive content.
+    const extendedPaint = (p: Paint) => p && (p.transform != null || p.kind === 'angular' || p.kind === 'diamond')
+    if (d.schemaVersion < 4 && (
+      n?.booleanOperation != null || Object.keys(n?.bindings || {}).length > 0 || Object.keys(n?.styleRefs || {}).length > 0 ||
+      (Array.isArray(n?.textRuns) && n.textRuns.some((r) => r && (r.color != null || r.link != null || r.underline === true || r.strikethrough === true))) ||
+      (n?.textStyle && ((n.textStyle.paragraphSpacing ?? 0) !== 0 || (n.textStyle.paragraphIndent ?? 0) !== 0 || n.textStyle.align === 'justify')) ||
+      (Array.isArray(n?.fills) && n.fills.some(extendedPaint)) ||
+      (Array.isArray(n?.strokes) && n.strokes.some((s) => extendedPaint(s?.paint)))
+    )) throw new Error('扩展编辑属性需要设计文件版本 4')
+    if (d.schemaVersion < 5 && hasMaterialParameters(n?.effects))
+      throw new Error('材质参数需要设计文件版本 5')
+    if (n.textStyle !== undefined || n.textRuns !== undefined) validateText(n)
     if (
       !n ||
       n.id !== id ||
@@ -996,7 +1054,7 @@ export function validateDocument(value: unknown): DesignDocument {
       !paints(n.fills) ||
       !Array.isArray(n.strokes) ||
       n.strokes.length > 16 ||
-      !n.strokes.every((s) => validStroke(s) && paints([s.paint])) ||
+      !n.strokes.every((s) => validStroke(s) && validPaint(s.paint)) ||
       !validProfiles(n) ||
       !Array.isArray(n.effects) ||
       n.effects.length > 16 ||
@@ -1017,7 +1075,7 @@ export function validateDocument(value: unknown): DesignDocument {
           (e.zoomBlur == null ? e.kind!=='zoom-blur' : (e.kind==='zoom-blur' && validZoomBlur(e.zoomBlur) && e.radius===0 && !e.colorControls && !e.glass && !e.texture && !e.gradientBlur)) &&
           (e.motionAngle === undefined || (finite(e.motionAngle,-1e7,1e7) && (e.kind==='motion-blur'||e.motionAngle===0))) &&
           (e.kind !== 'color-controls' || e.colorControls != null) &&
-          (e.colorControls == null || (d.schemaVersion >= 17 && ['color-controls','background-blur'].includes(e.kind) && validColorControls(e.colorControls) && !e.glass && !e.texture && !e.gradientBlur)) &&
+          (e.colorControls == null || (d.schemaVersion >= 17 && (['color-controls','background-blur'].includes(e.kind) || e.kind==='glass' && !!e.glass) && validColorControls(e.colorControls) && !e.texture && !e.gradientBlur)) &&
           finite(e.radius, 0, 1000) &&
           [e.x, e.y, e.spread, e.amount].every((v) => finite(v)) &&
           finite(e.opacity, 0, 1) &&
@@ -1080,9 +1138,9 @@ export function validateDocument(value: unknown): DesignDocument {
           'stretch',
           'space-between',
           'space-around',
-          'space-evenly',
+          'space-evenly', 'unsafe-center', 'unsafe-end',
         ].includes(l.justify) ||
-        !['start', 'center', 'end', 'stretch'].includes(l.align)
+        !['start', 'center', 'end', 'stretch', 'unsafe-center', 'unsafe-end'].includes(l.align)
       )
         throw new Error('自动布局参数无效')
     }
@@ -1110,16 +1168,11 @@ export function validateDocument(value: unknown): DesignDocument {
     }
     if (n.constraints !== undefined) {
       if (!isObject(n.constraints)) throw new Error('约束配置无效')
-      const c = {
-        ...n.constraints,
-        horizontal: n.constraints.horizontal ?? 'start',
-        vertical: n.constraints.vertical ?? 'start',
-      }
+      const c = n.constraints
       if (
-        ![c.horizontal, c.vertical].every((v) =>
-          ['start', 'center', 'end', 'stretch', 'scale'].includes(v),
-        ) ||
-        [c.referenceWidth, c.referenceHeight].some((v) => v != null && !finite(v, 0.01))
+        !constraintModes.includes(c.horizontal ?? 'start') || !constraintModes.includes(c.vertical ?? 'start') ||
+        (c.referenceWidth != null && !finite(c.referenceWidth, 0.01)) ||
+        (c.referenceHeight != null && !finite(c.referenceHeight, 0.01))
       )
         throw new Error('约束参数无效')
     }
@@ -1132,19 +1185,15 @@ export function validateDocument(value: unknown): DesignDocument {
         g.edges.length > 20000
       )
         throw new Error('矢量网络超过限制')
-      const ids = new Set(g.vertices.map((v) => v.id))
-      const edges = new Set(g.edges.map((e) => e.id))
-      if (
-        ids.size !== g.vertices.length ||
-        edges.size !== g.edges.length ||
-        !g.vertices.every((v) => finite(v.x) && finite(v.y)) ||
-        !g.edges.every(
-          (e) =>
-            ids.has(e.from) &&
-            ids.has(e.to) &&
-            [e.c1, e.c2].every((p) => !p || (finite(p.x) && finite(p.y))),
-        )
-      )
+      const vertices = networkIdDomain(g.vertices, vertexIndex), edges = networkIdDomain(g.edges, edgeIndex)
+      if (g.filledFaces !== undefined && (d.schemaVersion < 10 || !Array.isArray(g.filledFaces) ||
+          g.filledFaces.length > 10000 || g.filledFaces.some(face => !Array.isArray(face) || face.length > 10000 ||
+            face.some(edgeId => Number.isNaN(edgeId) || !edges.has(edgeId)))))
+        throw new Error('矢量区域填充数据无效')
+      if (vertices.size !== g.vertices.length || edges.size !== g.edges.length ||
+          !g.vertices.every(v => finite(v.x) && finite(v.y)) ||
+          !g.edges.every(e => vertices.has(e.from) && vertices.has(e.to) &&
+            (!e.c1 || finite(e.c1.x) && finite(e.c1.y)) && (!e.c2 || finite(e.c2.x) && finite(e.c2.y))))
         throw new Error('矢量网络引用无效')
     }
     if(n.vectorGeometry!==undefined) {
@@ -1210,6 +1259,7 @@ export function validateDocument(value: unknown): DesignDocument {
         throw new Error('实例图层来源无效')
     }
   }
+  if (hasRepeat) validateRepeatDocument(d)
   const visit = (id: string, depth: number) => {
     if (depth > 64 || seen.has(id) || !d.nodes[id])
       throw new Error('图层结构包含循环、重复或无效引用')
@@ -1232,7 +1282,7 @@ export function validateDocument(value: unknown): DesignDocument {
     pages.add(p.id)
     p.children.forEach((id) => visit(id, 0))
   }
-  if (seen.size !== entries.length) throw new Error('文件包含未归属页面的图层')
+  if (seen.size !== nodes.length) throw new Error('文件包含未归属页面的图层')
   return d
 }
 

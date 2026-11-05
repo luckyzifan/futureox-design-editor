@@ -1,3 +1,4 @@
+import { isInnerShadowFill } from './interaction-patch-transforms'
 import { captureFailureCause, observedFailureCause, type FailedCaptureCause } from './pose-failed-cause'
 import { PoseActionCorrelation, type PoseActionToken } from './pose-action-correlation'
 import type { OverlayCaptureCohort, SurfaceProps } from './Surface'
@@ -69,6 +70,10 @@ type IdleWarmContext = {
   epoch: number; generation: number; viewportRevision: number
   view: CanvasCamera; width: number; height: number; dpr: number
   profile: KernelOptions['rasterProfile']; backend: BackendPreference | undefined
+}
+
+function exactInnerShadowGesture(r: ResidentInteraction) {
+  return r.containedForeground && r.plan.ids.length === 1 && isInnerShadowFill(r.plan.document.nodes[r.plan.ids[0]])
 }
 
 /** A bounded, kernel-rendered set of isolated layer intervals. It is reusable
@@ -238,10 +243,11 @@ export class InteractionRenderer {
     private readonly allowIdleWarm = false, poseDiagnostics?:PoseDiagnostics, private readonly handoffTrace:HandoffTrace=createHandoffTrace()) {
     this.poseLog=poseDiagnostics??createPoseDiagnostics(this.interactionOwner)
     this.control = {
-      releaseInput:()=>{
+      releaseInput:gesture=>{
         const r=this.resident
+        if(gesture==='rotate' && (!r?.affine || !exactInnerShadowGesture(r)))return
         if(r?.active&&r.live&&r.workerPoses&&!this.error&&!this.inlineDisabled&&r.tiles[0]?.gpuTile) {
-          if (r.containedForeground) this.sharedClient?.stopResidentInteraction(r.tiles[0].gpuTile)
+          if(r.containedForeground&&!exactInnerShadowGesture(r))this.sharedClient?.stopResidentInteraction(r.tiles[0].gpuTile)
           else this.sharedClient?.settleResidentInteraction(r.tiles[0].gpuTile,this.lastInput.sequence)
         }
       },
@@ -418,7 +424,7 @@ export class InteractionRenderer {
           this.changed(); return
         }
         if (offsets) r.offsets = offsets
-        if(!r.containedForeground&&r.live&&r.active&&(offsets||affine)&&r.workerPoses&&this.sharedClient&&!this.liveRunning&&!this.livePending&&r.tiles[0]?.gpuTile){
+        if((!r.containedForeground||exactInnerShadowGesture(r))&&r.live&&r.active&&(offsets||affine)&&r.workerPoses&&this.sharedClient&&!this.liveRunning&&!this.livePending&&r.tiles[0]?.gpuTile){
           // Finish the gesture through the already compiled pose session.
           // The settled document lane will apply its own patch; it must not
           // wait behind a redundant whole-viewport interaction render. Both
@@ -914,7 +920,7 @@ export class InteractionRenderer {
       // Dependency-sensitive/nested selections keep the complete kernel scene.
       // Coalesce input, but present every completed interaction sample instead
       // of cancelling it on the next pointer move and starving the display.
-      if (props.selection.length && props.selection.every(id => props.document.nodes[id])) {
+      if (props.selection.length && props.selection.length <= 16 && props.selection.every(id => props.document.nodes[id])) {
         // Live captures use liveRunning/livePending, not the independent-layer
         // marker. A stale marker here blocked a fresh scope after undo. Keep
         // the no-selection marker below to deduplicate idle notifications.
@@ -1410,7 +1416,7 @@ export class InteractionRenderer {
                 this.viewport.width,this.viewport.height,{rasterProfile:this.profile,samplingScale:scale,exactPhase:nativeDensity}):undefined
               const worldCapture=!!this.sharedClient && !reduced && this.profile!=='figma' && this.profile!=='figmaSoftware' &&
                 canonical?.camera.x===0 && canonical?.camera.y===0
-              const canonicalCapture=(import.meta.env.VITE_DESIGN_CANONICAL_CAPTURE==='1'||!!resident.foregroundExclusions&&foregroundSafe)&&this.allowIdleWarm&&!!this.sharedClient&&nativeDensity&&
+              const canonicalCapture=(import.meta.env.VITE_DESIGN_CANONICAL_CAPTURE==='1'||exactInnerShadowGesture(resident)||!!resident.foregroundExclusions&&foregroundSafe)&&this.allowIdleWarm&&!!this.sharedClient&&nativeDensity&&
                 this.profile==='figmaSubpixel'&&!!canonical
               phaseX = canonical?.phase.x || 0; phaseY = canonical?.phase.y || 0
               const captureCamera=canonicalCapture?canonical!.camera:{x:worldCapture?0:-originX+phaseX,y:worldCapture?0:-originY+phaseY,zoom:scale}
@@ -1426,12 +1432,13 @@ export class InteractionRenderer {
                 worldCapture?{x:originX,y:originY,w:width,h:height}:boundedCapture?{x:0,y:0,w:width,h:height}:undefined
               causePhase=2;causeBranch=3
               result = await client.render(document, { pageId: resident.plan.pageId, width, height,
-                view:captureCamera,transparent:false,grid:false,
+                view:captureCamera,transparent:false,grid:false,...(exactInnerShadowGesture(resident)?{checkerboard:false}:{}),
                 ...(captureViewport?{captureViewport}:{}),
                 interactionOwner: this.interactionOwner, interactionGeneration: token, interactionBranch: 3,
                 rasterProfile: this.profile, livePreview: true, retainInteractionGraph: true, interactionSelection: resident.plan.ids,
                 interactionNative: !!resident.affine || !reduced || localNativePose,
                 interactionAffine: !!resident.affine, interactionLocalFootprint: resident.containedForeground,
+                ...(exactInnerShadowGesture(resident)&&roots?.get(resident.plan.ids[0])&&!resident.repairBounds?{interactionBaseFill:roots.get(resident.plan.ids[0])}:{}),
                 renderIntent: 'preview', interactionChannel: !!this.sharedClient,
                 interactionWindowFixed: !!resident.affine || resident.plan.ids.every(id=>resident.fixedBounds?.has(id)),
                 ...(this.viewport ? { interactionWindow: { x: bounds.x*scale+captureCamera.x,

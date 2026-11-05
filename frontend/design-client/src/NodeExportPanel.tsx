@@ -14,9 +14,10 @@ export function NodeExportPanel({editor,node}:{editor:Editor;node:DesignNode}) {
   const owner=useRef(new ExportOwner()),urls=useRef<string[]>([]),mounted=useRef(true)
   // A vector preset is only offered when the node's own subtree stays inside
   // the true-vector writer's v1 scope; otherwise the bitmap PDF remains.
+  const hasSettings = !!node.exportSettings?.length
   const vectorIssues=useMemo(
-    ()=>pdfVectorIssues(editor.state.doc,editor.state.page,{kind:'selection',nodeIds:[node.id]}),
-    [editor.state.doc,editor.state.page,node.id])
+    ()=>hasSettings ? pdfVectorIssues(editor.state.doc,editor.state.page,{kind:'selection',nodeIds:[node.id]}) : [],
+    [editor.state.doc,editor.state.page,node.id,hasSettings])
   const release=()=>{for(const url of urls.current)URL.revokeObjectURL(url);urls.current=[]}
   useEffect(()=>{mounted.current=true;const manager=owner.current;manager.activate(editor);return()=>{mounted.current=false;manager.dispose();release()}},[editor,node.id])
   useEffect(()=>{release();setPreviews([])},[node,editor.state.doc,editor.state.page])

@@ -49,6 +49,7 @@ impl Fixture {
 
     fn painter(&mut self, extent: Rect, compatible: bool, sample: Option<usize>) -> Painter<'_> {
         Painter {
+            concealed_glass: Default::default(),
             doc: &self.doc,
             prepared: &self.prepared,
             images: &mut self.images,

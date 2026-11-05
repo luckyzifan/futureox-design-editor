@@ -87,12 +87,14 @@ export function gradientPhaseSource(source:string){
   const start=source.indexOf(first),end=source.indexOf(last,start)
   if(start<0||end<start||source.indexOf(last,end+last.length)>=0)throw Error('Gradient field source contract changed')
   const legacy=source.slice(start,end+last.length).replace(last,'grid=textureLoad(sourceD,address,0);')
-  source=source.slice(0,start)+'var grid:vec4<f32>;if(u(47).w==9.){grid=sourcePlaneTuple(address,u(47).yz);}else if(u(47).w==8.){grid=linearCornerTuple(address,u(47).yz);}else if(u(47).w>0.5){grid=gpfTuple(address,u32(u(47).w)-1u);}else if(u(47).w< -0.5){grid=gpfAxisTuple(address,u32(-u(47).w)-1u,vec2<i32>(u(47).yz));}else{'+legacy+'}\n'+source.slice(end+last.length)
+  source=source.slice(0,start)+'var grid:vec4<f32>;if(u(47).w==10.){let t=fixedLinear(p+u(46).xy);grid=select(vec4<f32>(0.,1.,t,0.),vec4<f32>(0.),t==0.);}else if(u(47).w==9.||u(47).w==11.){grid=sourcePlaneTuple(address,u(47).yz);}else if(u(47).w==8.){grid=linearCornerTuple(address,u(47).yz);}else if(u(47).w>0.5){grid=gpfTuple(address,u32(u(47).w)-1u);}else if(u(47).w< -0.5){grid=gpfAxisTuple(address,u32(-u(47).w)-1u,vec2<i32>(u(47).yz));}else{'+legacy+'}\n'+source.slice(end+last.length)
  }
  return `fn sourcePlaneTuple(address:vec2<i32>,size:vec2<f32>)->vec4<f32>{
   let v=textureLoad(sourceD,vec2<i32>(0,0),0);
-  let uv=clamp(vec2<f32>(address)/(size-1.),vec2<f32>(0.),vec2<f32>(1.));
-  let t=clamp(mix(mix(v.x,v.y,uv.x),mix(v.z,v.w,uv.x),uv.y),0.,1.);
+  let uv=clamp(vec2<f32>(address)/max(vec2<f32>(1.),size-1.),vec2<f32>(0.),vec2<f32>(1.));
+  var t=mix(mix(v.x,v.y,uv.x),mix(v.z,v.w,uv.x),uv.y);
+  if(u(47).w==11.){let w=textureLoad(sourceD,vec2<i32>(1,0),0);t=length(vec2<f32>(t,mix(mix(w.x,w.y,uv.x),mix(w.z,w.w,uv.x),uv.y)));}
+  t=clamp(t,0.,1.);
   let count=u32(u(8).w);
   for(var index=0u;index<count;index++){
     let end=gradientStop(index).x;
@@ -105,7 +107,7 @@ export function gradientPhaseSource(source:string){
   return vec4<f32>(f32(count-1u),f32(count-1u),0.,0.);
 }
 fn linearCornerTuple(address:vec2<i32>,size:vec2<f32>)->vec4<f32>{
-  let uv=clamp(vec2<f32>(address)/(size-1.),vec2<f32>(0.),vec2<f32>(1.));
+  let uv=clamp(vec2<f32>(address)/max(vec2<f32>(1.),size-1.),vec2<f32>(0.),vec2<f32>(1.));
   let first=textureLoad(sourceD,vec2<i32>(0,0),0);
   let top=mix(first.z,textureLoad(sourceD,vec2<i32>(1,0),0).z,uv.x);
   let bottom=mix(textureLoad(sourceD,vec2<i32>(0,1),0).z,textureLoad(sourceD,vec2<i32>(1,1),0).z,uv.x);

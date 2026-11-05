@@ -20,7 +20,7 @@ const corners = partial(Object.fromEntries(cornerKeys.map(key => [key, number(0)
 const sides = partial(Object.fromEntries(sideKeys.map(key => [key, number(0, 1e5)])))
 const alignment = enumeration('start', 'center', 'end', 'stretch')
 const layout = partial({ mode: enumeration('none', 'horizontal', 'vertical', 'grid'), gap: number(0, 1e5), lineGap: number(0, 1e5), padding: sides,
-  wrap: bool, justify: enumeration('start', 'center', 'end', 'stretch', 'space-between', 'space-around', 'space-evenly'), align: alignment,
+  wrap: bool, justify: enumeration('start', 'center', 'end', 'stretch', 'space-between', 'space-around', 'space-evenly', 'unsafe-center', 'unsafe-end'), align: enumeration('start','center','end','stretch','unsafe-center','unsafe-end'),
   columns: { type: 'integer', minimum: 1, maximum: 64 }, fillRows: bool })
 const sizing = partial({ width: enumeration('fixed', 'hug', 'fill'), height: enumeration('fixed', 'hug', 'fill'),
   minWidth: number(.01), minHeight: number(.01), maxWidth: number(.01), maxHeight: number(.01), absolute: bool,

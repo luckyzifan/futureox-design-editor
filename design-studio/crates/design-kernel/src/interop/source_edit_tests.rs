@@ -315,7 +315,7 @@ fn sketch_outline_masks_use_unpainted_geometry_and_round_trip_both_modes(){
             ("meta.json".into(),br#"{"version":136}"#.to_vec()),
             ("document.json".into(),br#"{"colorSpace":1,"pages":[{"_ref":"pages/p"}]}"#.to_vec()),
             ("pages/p.json".into(),serde_json::to_vec(&json!({"_class":"page","do_objectID":"p","layers":[{
-                "_class":"rectangle","do_objectID":RECT,"name":"clip","hasClippingMask":true,"clippingMaskMode":mode,
+                "_class":"rectangle","do_objectID":RECT,"name":"clip","hasClippingMask":true,"clippingMaskMode":mode,"shouldBreakMaskChain":true,
                 "frame":{"x":0,"y":0,"width":100,"height":80},"style":{"fills":[]}
             }]})).unwrap())
         ]);
@@ -325,5 +325,7 @@ fn sketch_outline_masks_use_unpainted_geometry_and_round_trip_both_modes(){
         else{assert!(mask.outline_mask_node(false).is_none());}
         let fields=export_sketch_layer_fields(&doc,RECT).unwrap();
         assert_eq!(fields["clippingMaskMode"],json!(mode));
+        assert_eq!(fields["shouldBreakMaskChain"],true);
+        assert_eq!(mask.mask_chain,Some(crate::scene::MaskChain::Break));
     }
 }

@@ -55,6 +55,7 @@ mod geometry_support;
 mod world_support;
 mod margin_index;
 mod render_index;
+mod sketch_masks;
 mod resident_strokes;
 mod derived_invalidation;
 mod text_case;
@@ -460,6 +461,10 @@ mod wasm {
         serde_json::to_string(&decoded).map_err(|e|JsValue::from_str(&e.to_string()))
     }
     #[wasm_bindgen]
+    pub fn fig_stroke_caps_json() -> String {
+        serde_json::to_string(fig::STROKE_CAPS).expect("static FIG stroke caps serialize")
+    }
+    #[wasm_bindgen]
     pub fn fig_mask_suffixes(flags:&[u8])->Result<Vec<u32>,JsValue>{
         fig_geometry::mask_suffixes(flags).map_err(|e|JsValue::from_str(&e))
     }
@@ -512,6 +517,20 @@ mod wasm {
     #[wasm_bindgen]
     pub fn validate_document_json(json: &str) -> Result<(), JsValue> {
         super::validate_document_json(json).map_err(|e| JsValue::from_str(&e))
+    }
+    /// SVG consumes the same ordered draw plan as the raster backends. The
+    /// input contains topology only, with no image, font, path or paint bytes.
+    #[wasm_bindgen]
+    pub fn sketch_mask_draw_plan(json: &str) -> Result<String, JsValue> {
+        crate::capacity::check_document_bytes(json.len()).map_err(|e| JsValue::from_str(&e))?;
+        let mut doc: scene::Document = serde_json::from_str(json).map_err(|e| JsValue::from_str(&format!("{e}")))?;
+        // This entry point is callable with untrusted topology. Bound the tree
+        // and reject cycles, repeated IDs and missing children before walking.
+        doc.validate().map_err(|e| JsValue::from_str(&e))?;
+        let mut ops = Vec::new();
+        crate::sketch_masks::resolve_with(&mut doc, &mut |op| ops.push(serde_json::json!(op)))
+            .map_err(|e| JsValue::from_str(&e))?;
+        serde_json::to_string(&ops).map_err(|e| JsValue::from_str(&e.to_string()))
     }
     #[wasm_bindgen]
     pub fn snap_pixel_json(json: &str) -> Result<String, JsValue> {
@@ -752,6 +771,18 @@ mod wasm {
             size.try_into().map_err(|_|"Invalid gradient dimensions")?,
             &serde_json::from_str(paint).map_err(|e|format!("{e}"))?,sample as usize)};
         compute().map_err(|e|JsValue::from_str(&e))
+    }
+    #[wasm_bindgen]
+    pub fn source_linear_phase_parameters(rect: &str, matrix: &[f64], size: &[f64], paint: &str) -> Result<Vec<f32>, JsValue> {
+        let compute = || -> Result<Vec<f32>, String> {
+            crate::paint::source_linear_phase_parameters(
+                serde_json::from_str(rect).map_err(|e| format!("{e}"))?,
+                math::Transform(matrix.try_into().map_err(|_| "Invalid gradient transform")?),
+                size.try_into().map_err(|_| "Invalid gradient dimensions")?,
+                &serde_json::from_str(paint).map_err(|e| format!("{e}"))?,
+            )
+        };
+        compute().map_err(|e| JsValue::from_str(&e))
     }
     #[wasm_bindgen]
     pub struct GradientPhaseFieldBuilder { inner:crate::paint::phase_field::Builder }
@@ -1345,6 +1376,32 @@ mod wasm {
         parse().map_err(|e| JsValue::from_str(&e))
     }
     #[wasm_bindgen]
+    pub struct GlassFieldProgram(crate::optics::GlassFieldProgram);
+
+    #[wasm_bindgen]
+    impl GlassFieldProgram {
+        pub fn layout(&self) -> Vec<u32> { self.0.layout() }
+        pub fn field(&self) -> Result<Vec<f32>, JsValue> { self.0.field().map_err(|e| JsValue::from_str(&e)) }
+    }
+
+    #[wasm_bindgen]
+    pub fn glass_field_program(basis: &str, region: &str, matrix: &[f64], shape: &str, effect: &str, sample: i32)
+        -> Result<Option<GlassFieldProgram>, JsValue> {
+        let parse = || -> Result<Option<GlassFieldProgram>, String> {
+            let effect: scene::Effect = serde_json::from_str(effect).map_err(|e| e.to_string())?;
+            effect.validate_material()?;
+            if !(-1..=3).contains(&sample) { return Err("Invalid glass sample index".into()); }
+            Ok(crate::optics::GlassFieldProgram::new(
+                serde_json::from_str(basis).map_err(|e| e.to_string())?,
+                serde_json::from_str(region).map_err(|e| e.to_string())?,
+                serde_json::from_str(shape).map_err(|e| e.to_string())?,
+                math::Transform(matrix.try_into().map_err(|_| "Glass matrix requires six values")?),
+                effect.glass.ok_or("Missing glass parameters")?, (sample >= 0).then_some(sample as usize),
+            )?.map(GlassFieldProgram))
+        };
+        parse().map_err(|e| JsValue::from_str(&e))
+    }
+    #[wasm_bindgen]
     pub fn glass_geometry_interior(basis: &str, region: &str, matrix: &[f64], shape: &str, effect: &str, sample: i32) -> Result<String, JsValue> {
         let parse=||->Result<String,String>{
             let basis=serde_json::from_str(basis).map_err(|e|format!("{e}"))?;
@@ -1495,6 +1552,8 @@ mod wasm {
         pub fn window(&mut self,x:u32,y:u32,w:u32,h:u32)->Result<Vec<f32>,JsValue>{self.inner.window(x,y,w,h).map_err(|e|JsValue::from_str(&e))}
         pub fn straight_srgb8(&mut self)->Result<Vec<u8>,JsValue>{self.inner.straight_srgb8().map_err(|e|JsValue::from_str(&e))}
     }
+    #[wasm_bindgen]
+    pub fn source_jpeg_srgb8(uri:&str)->Result<Vec<u8>,JsValue>{crate::image_rows::source_jpeg_srgb8(uri).map_err(|e|JsValue::from_str(&e))}
     #[wasm_bindgen]
     pub fn straight_srgb8_table()->Result<Vec<u8>,JsValue>{crate::image_rows::straight_srgb8_table().map_err(|e|JsValue::from_str(&e))}
     #[wasm_bindgen]

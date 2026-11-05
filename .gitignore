@@ -6,6 +6,10 @@
 **/test-results/
 **/playwright-report/
 
+# Local verification/evidence dumps and agent session data (kept on disk only)
+/testing/
+.zcode/
+
 # Generated kernel outputs (rebuilt via design-client `build:kernel`)
 /frontend/design-client/public/kernel/
 /frontend/design-client/src/generated/

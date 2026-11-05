@@ -90,7 +90,7 @@ impl FragmentKeyBudget {
 struct ObjectFrame {
     depth: usize, owner: Option<usize>, label: String, start: u64,
     member_start: Option<u64>, ordinal: usize, entry: Option<Entry>, select: bool,
-    keys: HashSet<[u8; 32]>, fragment_keys: BTreeSet<Box<str>>,
+    common_keys: u64, keys: HashSet<[u8; 32]>, fragment_keys: BTreeSet<Box<str>>,
     fragment_key_bytes: usize, field_bytes: usize, first: bool,
 }
 struct ValueFrame {
@@ -110,6 +110,7 @@ struct Scanner<R, F> {
     entries: usize,
     fragment_keys: Option<FragmentKeyBudget>,
     compact_keys: bool,
+    short_names: HashMap<String,u8>,
 }
 impl<R: Read, F: FnMut(usize, Entry) -> io::Result<()>> Scanner<R, F> {
     fn peek(&mut self) -> io::Result<Option<u8>> {
@@ -327,6 +328,17 @@ impl<R: Read, F: FnMut(usize, Entry) -> io::Result<()>> Scanner<R, F> {
         }
         Ok(())
     }
+    fn scalar(&mut self, token: Option<u8>) -> io::Result<()> {
+        match token {
+            Some(b'"') => { self.string(false, 0)?; }
+            Some(b't') => { for b in b"true" { self.expect(*b)?; } }
+            Some(b'f') => { for b in b"false" { self.expect(*b)?; } }
+            Some(b'n') => { for b in b"null" { self.expect(*b)?; } }
+            Some(b'-' | b'0'..=b'9') => self.number()?,
+            _ => return Err(invalid("Invalid JSON value")),
+        }
+        Ok(())
+    }
     fn value(&mut self, depth: usize, parent: Option<usize>, select: bool, label: &str,
         array_children: bool, member_start: Option<u64>) -> io::Result<Span> {
         use sha2::{Digest, Sha256};
@@ -356,18 +368,13 @@ impl<R: Read, F: FnMut(usize, Entry) -> io::Result<()>> Scanner<R, F> {
                             work.push(ScanWork::Object(ObjectFrame { depth: value.depth,
                                 owner: if value.select { Some(ordinal) } else { value.parent },
                                 label: value.label, start, member_start: value.member_start, ordinal, entry, select: value.select,
-                                keys: HashSet::new(), fragment_keys: BTreeSet::new(), fragment_key_bytes: 0, field_bytes: 0, first: true }));
+                                common_keys:0, keys: HashSet::new(), fragment_keys: BTreeSet::new(), fragment_key_bytes: 0, field_bytes: 0, first: true }));
                         }
                         Some(b'[') => {
                             self.byte()?;
                             work.push(ScanWork::Array(ArrayFrame { depth: value.depth, parent: value.parent, select: value.array_children, count: 0 }));
                         }
-                        Some(b'"') => { self.string(false, 0)?; }
-                        Some(b't') => { for b in b"true" { self.expect(*b)?; } }
-                        Some(b'f') => { for b in b"false" { self.expect(*b)?; } }
-                        Some(b'n') => { for b in b"null" { self.expect(*b)?; } }
-                        Some(b'-' | b'0'..=b'9') => self.number()?,
-                        _ => return Err(invalid("Invalid JSON value")),
+                        scalar => self.scalar(scalar)?,
                     }
                 }
                 ScanWork::Array(mut array) => {
@@ -391,8 +398,22 @@ impl<R: Read, F: FnMut(usize, Entry) -> io::Result<()>> Scanner<R, F> {
                         object.fragment_key_bytes = object.fragment_key_bytes.checked_add(key.len()).ok_or_else(|| invalid("JSON fragment key byte overflow"))?;
                     }
                     if object.entry.is_some() {
-                        object.keys.try_reserve(1).map_err(io::Error::other)?;
-                        if !object.keys.insert(<[u8; 32]>::from(Sha256::digest(key.as_bytes()))) { return Err(invalid("Duplicate indexed JSON object key")); }
+                        // Slots never move or expire within this scan, including while
+                        // a parent object is suspended. Other names retain the old guard.
+                        let slot=if let Some(slot)=self.short_names.get(&key) {Some(*slot)}
+                            else if self.short_names.len()<u64::BITS as usize && key.len()<=64 {
+                                let slot=self.short_names.len() as u8;
+                                self.short_names.try_reserve(1).map_err(io::Error::other)?;
+                                self.short_names.insert(key.clone(),slot);Some(slot)
+                            } else {None};
+                        let duplicate=if let Some(slot)=slot {
+                            let bit=1u64<<slot;
+                            let present=object.common_keys&bit!=0;object.common_keys|=bit;present
+                        } else {
+                            object.keys.try_reserve(1).map_err(io::Error::other)?;
+                            !object.keys.insert(<[u8; 32]>::from(Sha256::digest(key.as_bytes())))
+                        };
+                        if duplicate { return Err(invalid("Duplicate indexed JSON object key")); }
                     }
                     self.whitespace()?; self.expect(b':')?; self.whitespace()?;
                     let field = Field { key, member: Span { start: field_start, end: 0 }, value: Span { start: self.at, end: 0 } };
@@ -400,6 +421,11 @@ impl<R: Read, F: FnMut(usize, Entry) -> io::Result<()>> Scanner<R, F> {
                     if metadata && self.peek()? == Some(b'"') {
                         let text = self.string(true, string_limit)?;
                         self.finish_field(&mut object, field, text);
+                        work.push(ScanWork::Object(object));
+                    } else if !matches!(self.peek()?,Some(b'{'|b'[')) {
+                        let token=self.peek()?;
+                        self.scalar(token)?;
+                        self.finish_field(&mut object,field,None);
                         work.push(ScanWork::Object(object));
                     } else {
                         let nested = (object.depth == 0 || object.label == "nodes") && self.peek()? == Some(b'{');
@@ -448,7 +474,7 @@ fn scan_at<R: Read, F: FnMut(usize, Entry) -> io::Result<()>>(
         sink,
         entries: 0,
         fragment_keys: None,
-        compact_keys:true,
+        compact_keys:true,short_names:HashMap::new(),
     };
     scanner.value(depth, None, true, "JSON", true, None)?;
     scanner.whitespace()?;
@@ -474,7 +500,7 @@ pub fn validate_fragment(bytes: &[u8]) -> io::Result<()> {
         limit: MAX_FRAGMENT_BYTES,
         sink: |_, _| Ok(()),
         entries: 0,
-        compact_keys:false,
+        compact_keys:false,short_names:HashMap::new(),
         fragment_keys: Some(FragmentKeyBudget {
             limit: bytes.len(),
             bytes: 0,
@@ -810,7 +836,7 @@ mod tests {
         let mut entries=std::collections::BTreeMap::new();
         {
             let mut scanner=Scanner{input:BufReader::with_capacity(capacity,source),at:0,limit:MAX_EXPANDED_BYTES,
-                sink:|ordinal,entry|{entries.insert(ordinal,entry);Ok(())},entries:0,fragment_keys:None,compact_keys};
+                sink:|ordinal,entry|{entries.insert(ordinal,entry);Ok(())},entries:0,fragment_keys:None,compact_keys,short_names:HashMap::new()};
             scanner.value(0,None,true,"JSON",true,None).unwrap();scanner.whitespace().unwrap();assert!(scanner.peek().unwrap().is_none());
         }
         serde_json::to_value(entries).unwrap()
@@ -822,6 +848,16 @@ mod tests {
         for capacity in [1,2,3,7,16,64,1024,65536] {assert_eq!(indexed_with_keys(source,true,capacity),reference,"buffer={capacity}");}
         let names=reference.as_object().unwrap().values().filter_map(|v|v["name"].as_str()).collect::<Vec<_>>();
         assert!(names.contains(&"named")&&names.contains(&"unnamed")&&names.contains(&"unicode-雪"));
+    }
+    #[test]
+    fn duplicate_index_keys_still_reject_after_short_name_slots_fill() {
+        let entries=(0..80).map(|i|format!(r#""field{i}":null"#)).collect::<Vec<_>>().join(",");
+        for repeated in [r#""field0":1"#, r#""field79":2"#, r#""\u0066ield1":false"#] {
+            let source=format!("{{{entries},{repeated}}}");
+            assert!(index(source.as_bytes(),MAX_EXPANDED_BYTES).unwrap_err().to_string().contains("Duplicate"));
+        }
+        let nested=format!(r#"{{"id":"outer","layers":[{{{entries}}}],"\u0069d":"again"}}"#);
+        assert!(index(nested.as_bytes(),MAX_EXPANDED_BYTES).unwrap_err().to_string().contains("Duplicate"));
     }
     #[test]
     fn nested_subtree_index_keeps_source_context() {

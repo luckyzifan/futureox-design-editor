@@ -110,10 +110,42 @@ export class NativePreparation {
   return this.done
  }
 }
+/** The renderer owns its existing preparation process. Only real pose mutations
+ * and packets cross this port, in the same physical queue as ordinary calls. */
+export function bindPosePreparationPort(port,worker,current,retire){
+ let active=0,last=0,closed=false
+ const fatal=error=>{
+  if(!closed&&current())port.postMessage({fatal:String(error)})
+  closed=true;retire();port.close()
+ }
+ port.on('message',async({data})=>{
+  if(closed)return
+  if(!current()||worker.closed){fatal('Terminal preparation session closed');return}
+  if(data?.cancel!==undefined){if(active&&data.cancel===active)worker.cancel(active);return}
+  const {id,lane,method,args,cancellable,diagnostics}=data??{}
+  if(active||!Number.isSafeInteger(id)||id<=last||lane!=='interaction'||
+     !['apply_interaction_transforms','compile_gpu_packet'].includes(method)||
+     !Array.isArray(args)||args.length!==1||typeof args[0]!=='string'){
+   port.postMessage({id,error:'Invalid terminal preparation request'});return
+  }
+  active=last=id
+  try{
+   if(diagnostics)port.postMessage({id,progress:{backendCode:2,boundaryCode:1}})
+   const reply=await worker.request({lane,method,args,
+    ...(diagnostics?{diagnostics:{...diagnostics,preparationId:id}}:{}),
+    ...(method==='compile_gpu_packet'&&cancellable?{cancellationId:id}:{})})
+   if(!closed&&current())port.postMessage({...reply,id})
+  }catch(error){if(!closed&&current())fatal(error)}finally{active=0}
+ })
+ port.on('close',()=>{closed=true;if(active&&current())retire()})
+ port.start();port.postMessage({terminalReady:true})
+}
+
 export function registerNativePreparation(ipcMain,{resourcesRoot,assertSender,resolveSourceSnapshot}){
  const sessions=new Map(),owners=new Set(),retiring=new Set(),codecs=new Map()
  const close=worker=>{const done=worker.close();retiring.add(done);void done.finally(()=>retiring.delete(done));return done}
- const retire=owner=>{for(const [id,s] of sessions)if(s.owner===owner){close(s.worker);sessions.delete(id)}const codec=codecs.get(owner);if(codec){codecs.delete(owner);close(codec)}}
+ const retireSession=s=>{s.terminal?.close();return close(s.worker)}
+ const retire=owner=>{for(const [id,s] of sessions)if(s.owner===owner){retireSession(s);sessions.delete(id)}const codec=codecs.get(owner);if(codec){codecs.delete(owner);close(codec)}}
  const observeOwner=event=>{
   const owner=event.sender.id
   if(!owners.has(owner)){
@@ -141,6 +173,15 @@ export function registerNativePreparation(ipcMain,{resourcesRoot,assertSender,re
   return id
  })
  const session=(event,id)=>{assertSender(event);const s=sessions.get(id);if(!s||s.owner!==event.sender.id)throw Error('Unknown native preparation session');return s}
+ ipcMain.on?.('native-preparation:terminal-port',(event,id)=>{
+  let owned
+  try { owned=session(event,id) } catch { for(const port of event.ports)port.close();return }
+  if(event.ports.length!==1||owned.terminal){for(const port of event.ports)port.close();return}
+  owned.terminal=event.ports[0]
+  bindPosePreparationPort(owned.terminal,owned.worker,()=>sessions.get(id)===owned,()=>{
+   if(sessions.get(id)===owned){sessions.delete(id);void retireSession(owned)}
+  })
+ })
  ipcMain.handle('native-preparation:cancel',(event,id,cancellationId)=>session(event,id).worker.cancel(cancellationId))
  ipcMain.handle('native-preparation:request',async(event,id,request)=>{
   const owned=session(event,id)
@@ -154,6 +195,6 @@ export function registerNativePreparation(ipcMain,{resourcesRoot,assertSender,re
   }
   return owned.worker.request(request)
  })
- ipcMain.handle('native-preparation:close',(event,id)=>{const s=session(event,id);sessions.delete(id);return close(s.worker)})
- return ()=>{for(const s of sessions.values())close(s.worker);for(const codec of codecs.values())close(codec);sessions.clear();codecs.clear();return Promise.all([...retiring])}
+ ipcMain.handle('native-preparation:close',(event,id)=>{const s=session(event,id);sessions.delete(id);return retireSession(s)})
+ return ()=>{for(const s of sessions.values())retireSession(s);for(const codec of codecs.values())close(codec);sessions.clear();codecs.clear();return Promise.all([...retiring])}
 }

@@ -766,6 +766,16 @@ impl<'a> Frame<'a> {
     pub fn acquire(&mut self, rect: Rect) -> Result<Surface, String> {
         self.acquire_impl(rect, true, self.floating)
     }
+    pub fn snapshot(&mut self, source: Surface) -> Result<Surface, String> {
+        self.commands += 1;
+        if self.commands > MAX_COMMANDS { return Err("Native GPU command budget exceeded".into()); }
+        let target = self.acquire_impl(source.rect, true, self.textures[source.id].floating)?;
+        let image = |id: usize| wgpu::TexelCopyTextureInfo { texture: &self.textures[id].texture, mip_level: 0,
+            origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All };
+        self.encoder.as_mut().unwrap().copy_texture_to_texture(image(source.id),image(target.id),
+            wgpu::Extent3d{width:source.rect.w,height:source.rect.h,depth_or_array_layers:1});
+        Ok(target)
+    }
     fn acquire_impl(&mut self, rect: Rect, reuse: bool, floating: bool) -> Result<Surface, String> {
         let max = self.gpu.device.limits().max_texture_dimension_2d;
         if rect.empty() || rect.w > max || rect.h > max {

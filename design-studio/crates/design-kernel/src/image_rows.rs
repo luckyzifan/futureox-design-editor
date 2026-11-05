@@ -149,20 +149,91 @@ impl Decoder {
     }
 }
 
+/// Decode ordinary SDR JPEG through the same native codec as the full float
+/// path. Profiled/oriented imagery retains its usual colour-managed decoder.
+pub fn source_jpeg_srgb8(uri: &str) -> Result<Vec<u8>, String> {
+    use image::ImageDecoder;
+    let Some(data) = uri.strip_prefix("data:image/jpeg;base64,") else {
+        return Ok(Vec::new());
+    };
+    if uri.len() > 12 * 1024 * 1024 {
+        return Err("Image exceeds 12 MB encoded limit".into());
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data)
+        .map_err(|_| "Invalid image data")?;
+    let mut reader = image::ImageReader::with_format(Cursor::new(bytes), image::ImageFormat::Jpeg);
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(8192);
+    limits.max_image_height = Some(8192);
+    limits.max_alloc = Some(320 * 1024 * 1024);
+    reader.limits(limits);
+    let mut decoder = reader.into_decoder().map_err(|e| e.to_string())?;
+    let (w, h) = decoder.dimensions();
+    if u64::from(w) * u64::from(h) > 8_388_608
+        || decoder.color_type() != image::ColorType::Rgb8
+        || image_color::icc(&mut decoder)?.is_some()
+        || image_color::orientation(&mut decoder)? != image::metadata::Orientation::NoTransforms
+    {
+        return Ok(Vec::new());
+    }
+    let image = image::DynamicImage::from_decoder(decoder)
+        .map_err(|e| e.to_string())?
+        .into_rgba8();
+    let mut out = Vec::with_capacity(image.as_raw().len() + 8);
+    out.extend_from_slice(&w.to_le_bytes());
+    out.extend_from_slice(&h.to_le_bytes());
+    out.extend_from_slice(image.as_raw());
+    Ok(out)
+}
 /// Table words come from the same 8-bit conversion and working transform as a
 /// full RGBA32F upload. The shader premultiplies each texel before bilinear filtering.
-pub fn straight_srgb8_table()->Result<Vec<u8>,String>{
-    let bytes=(0..=255u8).flat_map(|v|[v;4]).collect::<Vec<_>>();
-    let mut image=image::DynamicImage::ImageRgba8(image::RgbaImage::from_raw(256,1,bytes).unwrap()).into_rgba32f();
-    image_color::WorkingTransform::new(ColorSettings::default(),Some(ColorSpace::Srgb),None)?.apply(&mut image)?;
-    let mut words=Vec::with_capacity(2048);
-    for c in [0,3]{for p in image.pixels(){words.extend_from_slice(&p[c].to_le_bytes())}}
-    Ok(words)
+pub(crate) fn srgb8_channels() -> &'static [[f32; 256]; 2] {
+    static CHANNELS: std::sync::OnceLock<[[f32; 256]; 2]> = std::sync::OnceLock::new();
+    CHANNELS.get_or_init(|| {
+        // Use image's own byte-to-float conversion before the same working
+        // transfer as full decode, including its exact normalization order.
+        let image = image::RgbaImage::from_fn(256, 1, |x, _| image::Rgba([x as u8; 4]));
+        let image = image::DynamicImage::ImageRgba8(image).into_rgba32f();
+        let mut table = [[0.; 256]; 2];
+        let settings = ColorSettings::default();
+        for (i, pixel) in image.pixels().enumerate() {
+            table[0][i] = settings.to_working([f64::from(pixel[0]); 3], ColorSpace::Srgb)[0] as f32;
+            table[1][i] = pixel[3];
+        }
+        table
+    })
+}
+pub fn straight_srgb8_table() -> Result<Vec<u8>, String> {
+    Ok(srgb8_channels()
+        .iter()
+        .flatten()
+        .flat_map(|c| c.to_le_bytes())
+        .collect())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn ordinary_jpeg_bytes_reconstruct_the_native_float_decode() {
+        let mut input=Vec::new();
+        let pixels=(0..769*3).map(|i|((i*43+i/7)%256) as u8).collect::<Vec<_>>();
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut input,92)
+            .encode(&pixels,769,1,image::ExtendedColorType::Rgb8).unwrap();
+        let uri=format!("data:image/jpeg;base64,{}",base64::engine::general_purpose::STANDARD.encode(&input));
+        let packed=source_jpeg_srgb8(&uri).unwrap();
+        assert_eq!(u32::from_le_bytes(packed[..4].try_into().unwrap()),769);
+        let mut reference=image::load_from_memory_with_format(&input,image::ImageFormat::Jpeg).unwrap().into_rgba32f();
+        image_color::to_working(&mut reference,ColorSettings::default(),None,None).unwrap();
+        let [rgb,alpha]=srgb8_channels();
+        for (raw,pixel) in packed[8..].chunks_exact(4).zip(reference.pixels()){
+            let from_row=Pixel::rgba(rgb[raw[0] as usize],rgb[raw[1] as usize],rgb[raw[2] as usize],alpha[raw[3] as usize]);
+            assert_eq!(from_row.0.map(f32::to_bits),Pixel::rgba(pixel[0],pixel[1],pixel[2],pixel[3]).0.map(f32::to_bits));
+        }
+        assert!(source_jpeg_srgb8("data:image/jpeg;base64,invalid").is_err());
+        assert!(source_jpeg_srgb8("data:image/png;base64,AAAA").unwrap().is_empty());
+    }
     fn uri(width: u32, height: u32, color: png::ColorType) -> String {
         let mut bytes = Vec::new();
         {

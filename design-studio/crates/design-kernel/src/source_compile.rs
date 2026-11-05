@@ -11,6 +11,7 @@ use crate::{
     scene_store::Descriptor,
 };
 use serde_json::{Value, json};
+use std::time::Instant;
 use std::sync::{Arc, atomic::AtomicBool};
 const CACHE: usize = 64 * 1024 * 1024;
 #[cfg(feature="mapped-source-snapshot")]
@@ -21,6 +22,7 @@ struct Query {
     options: RenderOptions,
     prepare: Rect,
     page_background: bool,
+    dense_paint:bool,
 }
 impl Query {
     fn parse(owner: &Engine, request: &str) -> Result<Option<Self>, String> {
@@ -56,6 +58,7 @@ impl Query {
                     | "gpuGaussianRegions"
                     | "gpuGaussianReduction"
                     | "gpuSourceFilterFields"
+                    | "gpuDensePaint"
                     | "gpuPainterSupport"
                     | "gpuPainterCaptureReads"
                     | "gpuViewport"
@@ -75,6 +78,7 @@ impl Query {
         }
         if !matches!(object.remove("gpuNeutralPageGroup"),None|Some(Value::Bool(false))){return Ok(None)}
         if !matches!(object.remove("gpuGaussianRegions"),None|Some(Value::Bool(_))){return Ok(None)}
+        let dense_paint=match object.remove("gpuDensePaint"){Some(Value::Bool(v))=>v,None=>false,_=>return Ok(None)};
         if !matches!(object.remove("gpuSourceFilterFields"),None|Some(Value::Bool(_))){return Ok(None)}
         if object.remove("gpuGaussianReduction").is_some_and(|v|!matches!(v.as_u64(),Some(0|2|4|8))){return Ok(None)}
         let background = object.remove("gpuPageBackground");
@@ -133,6 +137,7 @@ impl Query {
             options,
             prepare,
             page_background: background == Some(Value::Bool(true)),
+            dense_paint,
         }))
     }
 }
@@ -149,6 +154,7 @@ struct Plan {
 pub(crate) struct Runtime {
     identity: Option<(String, [u8;32], String, String, String)>,
     replay: bool,
+    time_fallbacks: bool,
     key: Option<(u64, bool, bool)>,
     plan: Option<Plan>,
     declined: Option<&'static str>,
@@ -167,6 +173,7 @@ impl Default for Runtime {
     fn default() -> Self {
         Self {
             identity: None,
+            time_fallbacks: std::env::var("CORE_SOURCE_COMPILE_TIMING").as_deref() == Ok("1"),
             replay: std::env::var("CORE_SOURCE_REPLAY").as_deref()!=Ok("0"),
             key: None,
             plan: None,
@@ -185,7 +192,8 @@ impl Default for Runtime {
     }
 }
 impl Runtime {
-    fn full(&mut self, owner: &mut Engine, request: &str, reason: &str) -> Result<Vec<u8>, String> {
+    fn full(&mut self, owner: &mut Engine, request: &str, reason: &str, started: Option<Instant>) -> Result<Vec<u8>, String> {
+        let fallback = started.map(|_| Instant::now());
         owner.frame_scene.limit_retention(None);
         if self.active {
             owner.invalidate_frame_scene_request();
@@ -198,7 +206,9 @@ impl Runtime {
             plan.margin = None;
         }
         self.stats = json!({"mode":"complete","reason":reason,"projectionRebuilds":self.rebuilds,"projectionReuses":self.reuses});
+        let compile = started.map(|_| Instant::now());
         let result = owner.compile_gpu_packet_request(request);
+        let completed = started.map(|_| Instant::now());
         if owner.static_scene_revision() == self.key {
             if let Some(plan) = &mut self.plan {
                 plan.margin = owner
@@ -207,6 +217,16 @@ impl Runtime {
                     .filter(|cache| cache.page == plan.page)
                     .and_then(|cache| cache.margin.clone());
             }
+        }
+        if let (Some(started), Some(fallback), Some(compile), Some(completed)) =
+            (started, fallback, compile, completed)
+        {
+            self.stats["timingUs"] = json!({
+                "beforeFallback": (fallback - started).as_micros() as u64,
+                "reset": (compile - fallback).as_micros() as u64,
+                "fullPacket": (completed - compile).as_micros() as u64,
+                "restore": completed.elapsed().as_micros() as u64,
+            });
         }
         result
     }
@@ -218,6 +238,7 @@ impl Runtime {
         page: &str,
         request: &str,
     ) -> Result<Vec<u8>, String> {
+        let started = self.time_fallbacks.then(Instant::now);
         crate::render_cancellation::checkpoint()?;
         let identity=(descriptor.generation.clone(),descriptor.footer_hash,descriptor.document_id.clone(),stage.to_owned(),page.to_owned());
         if self.identity.as_ref()!=Some(&identity) {
@@ -225,16 +246,53 @@ impl Runtime {
             self.key=None;self.identity=Some(identity);
         }
         let Some(query) = Query::parse(owner, request)? else {
-            return self.full(owner, request, "request-contract");
+            return self.full(owner, request, "request-contract", started);
         };
         if query.options.page_id != page {
-            return self.full(owner, request, "different-page");
+            return self.full(owner, request, "different-page", started);
         }
         owner.prepare_frame(&query.options)?;
         owner.resolve_layout()?;
         let key = owner.static_scene_revision();
         if key.is_none() {
-            return self.full(owner, request, "non-static-source");
+            return self.full(owner, request, "non-static-source", started);
+        }
+        // A scoped material with exactly one drawable unit and no dependency
+        // page cannot drop any other unit while showing it. Avoid building
+        // two whole-source indices just to choose the normal regional path.
+        let singleton=descriptor.nodes >= 4096 && owner.doc.as_ref().is_some_and(|doc|
+            doc.nodes.get(stage).is_some_and(|root| root.children.len() == 1)
+                && doc.pages.iter().all(|p| p.id == page || p.children.is_empty()));
+        let direct=!singleton&&query.dense_paint&&owner.doc.as_ref().is_some_and(|doc|{
+            let Some(root)=doc.nodes.get(stage)else{return false};
+            if !(2..=32).contains(&root.children.len())||doc.nodes.len()>32_768||query.prepare.pixels()>8_388_608{return false;}
+            // A complete compiler keeps the already-loaded source and its
+            // image transfers. Select it only when the request spans most of
+            // this material scope. Bounds here affect cost, never admission.
+            let view=query.options.view;
+            let area=query.prepare;
+            let seen=root.children.iter().filter_map(|id|doc.nodes.get(id)).filter(|n|{
+                let corners=[[0.,0.],[n.width,0.],[n.width,n.height],[0.,n.height]].map(|[x,y]|{
+                    let p=n.transform.point(crate::math::Point::new(x,y));
+                    (view.x+p.x*view.zoom,view.y+p.y*view.zoom)
+                });
+                let intersects=|low:f64,high:f64,axis:usize|{
+                    let mut a=f64::INFINITY;let mut b=f64::NEG_INFINITY;
+                    for (x,y) in corners{let v=if axis==0{x}else{y};a=a.min(v);b=b.max(v);}
+                    a<high&&b>low
+                };
+                intersects(area.x as f64,area.right() as f64,0)&&intersects(area.y as f64,area.bottom() as f64,1)
+            }).count();
+            seen*3>=root.children.len()*2
+        });
+        if singleton||direct
+        {
+            if self.key != key {
+                owner.frame_scene.clear_source_history();
+                self.plan = None;
+                self.key = key;
+            }
+            return self.full(owner,request,if singleton{"single-material-unit"}else{"visible-material-scope"},started);
         }
         if self.key != key {
             owner.frame_scene.clear_source_history();
@@ -306,7 +364,7 @@ impl Runtime {
             }
         }
         let Some(plan) = &mut self.plan else {
-            return self.full(owner, request, self.declined.unwrap_or("no-plan"));
+            return self.full(owner, request, self.declined.unwrap_or("no-plan"), started);
         };
         let view = query.options.view;
         let camera = Transform([view.zoom, 0., 0., view.zoom, view.x, view.y]);
@@ -323,7 +381,7 @@ impl Runtime {
         // A complete demand stays on the old compiler without destroying its
         // warm geometry on every tile. Only an actual subset needs the handoff.
         if demand_stats.required_nodes==demand_stats.total_nodes {
-            return self.full(owner,request,"complete-demand");
+            return self.full(owner,request,"complete-demand", started);
         }
         if !self.active {
             owner.release_source_compile_caches();
@@ -339,7 +397,7 @@ impl Runtime {
             .map(Arc::new);
         }
         let Some(margin) = plan.margin.clone() else {
-            return self.full(owner, request, "context-budget");
+            return self.full(owner, request, "context-budget", started);
         };
         if margin.bytes() > CACHE {
             // Do not retain two optional geometry caches beside the full path.
@@ -347,7 +405,7 @@ impl Runtime {
             self.plan = None;
             self.declined = Some("context-budget");
             drop(margin);
-            return self.full(owner, request, "context-budget");
+            return self.full(owner, request, "context-budget", started);
         }
         owner.frame_scene.limit_retention(Some(CACHE-margin.bytes()));
         let doc = owner.doc.as_ref().unwrap();
@@ -364,7 +422,7 @@ impl Runtime {
         } else {
             let Some(value) = margin.padding(doc, camera)? else {
                 drop(margin);
-                return self.full(owner, request, "margin-scratch");
+                return self.full(owner, request, "margin-scratch", started);
             };
             plan.padding = Some((view.zoom.to_bits(), value));
             self.margin_evaluations += 1;
@@ -372,7 +430,7 @@ impl Runtime {
         };
         if !(0..=16_000_000).contains(&padding) {
             drop(margin);
-            return self.full(owner, request, "effect-coordinate-domain");
+            return self.full(owner, request, "effect-coordinate-domain", started);
         }
         let base_units = demand.unit_key();
         let catalog = plan.catalog.clone();
@@ -380,13 +438,12 @@ impl Runtime {
         let backdrop = plan.backdrop;
         let stage_id = plan.stage.clone();
         let stage_children = plan.children.clone();
-        let source = owner.doc.as_ref().unwrap().clone();
         let mut expansions = 0;
         loop {
             let demand_stats = demand.stats();
             if demand_stats.required_nodes == demand_stats.total_nodes {
                 drop(margin);
-                return self.full(owner, request, "complete-demand");
+                return self.full(owner, request, "complete-demand", started);
             }
             let units = demand.unit_key();
             // At most one prior demand is retained, never the union of every
@@ -395,7 +452,7 @@ impl Runtime {
                 && self.base_units == base_units
                 && units.iter().all(|u| self.units.binary_search(u).is_ok());
             if self.compiler.is_none() || !reuse {
-                let nodes = demand.resolved_nodes(&source)?;
+                let nodes = demand.resolved_nodes(owner.doc.as_ref().unwrap())?;
                 self.epoch = self
                     .epoch
                     .checked_add(1)
@@ -454,12 +511,12 @@ impl Runtime {
                 expansions += 1;
                 if expansions > 1 {
                     drop(margin);
-                    return self.full(owner, request, "scope-convergence");
+                    return self.full(owner, request, "scope-convergence", started);
                 }
                 demand = next;
                 continue;
             }
-            if result.is_ok() && self.replay {owner.frame_scene.retain_source(key.unwrap(),request,self.authored_nodes)?;}
+            if result.is_ok() && self.replay {owner.frame_scene.retain_source(key.unwrap(),self.authored_nodes);}
             self.stats = json!({"mode":"demand","sourceNodes":descriptor.nodes,"residentAuthoredNodes":self.authored_nodes,
                 "resolvedCompileNodes":compiler.doc.as_ref().unwrap().nodes.len(),"projectionRebuilds":self.rebuilds,"projectionReuses":self.reuses,
                 "scopeExpansions":expansions,"excludedNodePayloadCopies":0,"residentAuthority":true,"globalPadding":padding,

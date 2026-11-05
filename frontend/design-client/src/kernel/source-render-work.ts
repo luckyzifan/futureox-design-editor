@@ -9,13 +9,14 @@ export type SourceWork<T extends {key:string}> = Readonly<{
   controller:AbortController
 }>
 export class SourceRenderWork<T extends {key:string}> {
+  constructor(private readonly limit=2){}
   private sequence=0
   private active?:SourceWork<T>
   private closed=false
   get current(){return this.active}
   begin(tiles:readonly T[],limit=2):SourceWork<T> {
     if(this.closed||this.active)throw Error('Source raster owner is not available')
-    if(!Number.isSafeInteger(limit)||limit<1||limit>2||!tiles.length)throw Error('Invalid source work batch')
+    if(!Number.isSafeInteger(limit)||limit<1||limit>this.limit||limit>8||!tiles.length)throw Error('Invalid source work batch')
     const selected=tiles.slice(0,limit)
     const pending=new Map(selected.map(tile=>[tile.key,tile]))
     if(pending.size!==selected.length)throw Error('Duplicate source work tile')

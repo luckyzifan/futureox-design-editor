@@ -280,20 +280,38 @@ test('an admitted thumbnail catalogue avoids a full scene and only refines the r
  const owner={documentId:'source-a',sessionEpoch:1}
  const status={owner,revision:0,name:'sample.sketch',format:'sketch',dirty:false,undoCount:0,redoCount:0,indexedObjects:8,expandedBytes:100,maxExpandedBytes:100000}
  const bounds={x:0,y:0,width:500,height:200},rect={x:0,y:0,width:100,height:100}
- const items=['first','second'].map((name,i)=>({id:name,name,kind:'artboard',pageId:name,pageName:name,source:rect,placed:{...rect,x:i*250},key:'1:'+i,bytes:1024}))
+ const items=['first','second','third'].map((name,i)=>({id:name,name,kind:'artboard',pageId:i<2?'first':'third',pageName:i<2?'first':'third',source:rect,placed:{...rect,x:i*250},key:'1:'+i,bytes:1024}))
  let finish!:(value:unknown)=>void
- const canvasSnapshot=vi.fn(async(request:{materialKeys?:string[]})=>({status:'ok',owner,revision:0,token:'detail',materialKeys:request.materialKeys,bytes:123,nodes:2,roots:1,pageId:'p',stageId:'s',bounds,warnings:[],rasterProfile:'figma',colorManaged:true}))
- const bridge={open:()=>new Promise(resolve=>{finish=resolve}),openingView:async()=>({status:'ok',phase:'available',owner,bounds,revision:0,total:2,
-  items:items.map((item,i)=>({...item,key:'preview-'+i})),pages:[['first','first',1],['second','second',1]],offset:0,nextOffset:2,cursor:2,images:[{index:0,png:'a'},{index:1,png:'b'}],moreImages:false,finished:true,rendered:0,cacheHit:true}),
-  canvasLayout:async()=>({status:'ok',items,total:2,hasMore:false}),canvasSnapshot} as unknown as LargeDocumentBridge
- await act(async()=>root.render(<LargeDocumentWorkspace renderWorkbench={workbench} bridge={bridge} parentEditor={parent} onExit={()=>{}} onWindowClose={async()=>{}}/>))
- expect(document.querySelectorAll('.source-page-entry')).toHaveLength(2)
+ const canvasSnapshot=vi.fn(async(request:{materialKeys?:string[]})=>({status:'ok',owner,revision:0,token:'detail',materialKeys:request.materialKeys,bytes:123,nodes:3,roots:request.materialKeys?.length||3,pageId:'p',stageId:'s',bounds,warnings:[],rasterProfile:'figma',colorManaged:true}))
+ const bridge={open:()=>new Promise(resolve=>{finish=resolve}),openingView:async()=>({status:'ok',phase:'available',owner,bounds,revision:0,total:3,
+  items:items.map((item,i)=>({...item,key:'preview-'+i})),pages:[['first','first',2],['third','third',1]],offset:0,nextOffset:3,cursor:3,images:[{index:0,png:'a'},{index:1,png:'b'},{index:2,png:'c'}],moreImages:false,finished:true,rendered:0,cacheHit:true}),
+  canvasLayout:async()=>({status:'ok',items,total:3,hasMore:false}),canvasSnapshot} as unknown as LargeDocumentBridge
+ await act(async()=>root.render(<LargeDocumentWorkspace renderWorkbench={s=><div ref={s.canvas}>{workbench(s)}</div>} bridge={bridge} parentEditor={parent} onExit={()=>{}} onWindowClose={async()=>{}}/>))
+ expect(document.querySelectorAll('.source-page-entry')).toHaveLength(3)
  await act(async()=>finish({status:'ok',...status}))
  expect(canvasSnapshot).not.toHaveBeenCalled();expect(binding.source!.nativeCanvas).toBeUndefined()
  await act(async()=>binding.source!.onDetail!([1]))
  expect(canvasSnapshot).toHaveBeenCalledTimes(1);expect(canvasSnapshot.mock.calls[0][0].materialKeys).toEqual(['1:1'])
  expect(binding.source!.nativeCanvas!.snapshot.roots).toBe(1)
  await act(async()=>binding.source!.onDetail!([1]));expect(canvasSnapshot).toHaveBeenCalledTimes(1)
- await act(async()=>binding.source!.onDetail!([]));expect(binding.source!.nativeCanvas).toBeUndefined()
- expect(document.querySelectorAll('.source-page-entry')).toHaveLength(2)
+ const parked=binding.source!.nativeCanvas!.snapshot
+ await act(async()=>binding.source!.onDetail!([]))
+ expect(binding.source!.nativeCanvas!.snapshot).toBe(parked)
+ expect(binding.source!.parkNative).toBe(true)
+ expect(binding.source!.hideNative).toBe(true)
+ await act(async()=>binding.source!.onDetail!([1]))
+ expect(binding.source!.nativeCanvas!.snapshot).toBe(parked)
+ expect(binding.source!.parkNative).toBe(false)
+ expect(canvasSnapshot).toHaveBeenCalledTimes(1)
+ expect(document.querySelectorAll('.source-page-entry')).toHaveLength(3)
+ const picker=document.querySelector('select[aria-label="素材页面"]') as HTMLSelectElement
+ await act(async()=>{picker.value='first';picker.dispatchEvent(new Event('change',{bubbles:true}))})
+ await act(async()=>button('精修当前页').click())
+ expect(canvasSnapshot.mock.calls.at(-1)?.[0].materialKeys).toEqual(['1:0','1:1'])
+ expect(binding.source!.nativeCanvas!.snapshot.roots).toBe(2)
+ const afterPage=canvasSnapshot.mock.calls.length
+ await act(async()=>binding.source!.onDetail!([2]))
+ expect(canvasSnapshot).toHaveBeenCalledTimes(afterPage)
+ expect(binding.source!.nativeCanvas!.snapshot.roots).toBe(2)
+
 })

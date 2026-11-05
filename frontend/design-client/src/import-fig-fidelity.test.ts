@@ -45,6 +45,22 @@ function subject(layer: Record<string, unknown>) {
   return { ...result, node: Object.values(reopened.nodes).find((n) => n.name === 'Subject')! }
 }
 
+test.each([
+  [undefined, 'butt', 'none'], ['NONE', 'butt', 'none'], ['ROUND', 'round', 'none'],
+  ['SQUARE', 'square', 'none'], ['ARROW_LINES', 'butt', 'arrow'], ['ARROW_EQUILATERAL', 'butt', 'arrow'],
+  ['TRIANGLE_FILLED', 'butt', 'triangle'], ['DIAMOND_FILLED', 'butt', 'diamond'], ['CIRCLE_FILLED', 'butt', 'circle'],
+  ['WASHI_TAPE_1', 'butt', 'none'],
+] as const)('Kiwi stroke cap %s survives import and reopen', (source, cap, marker) => {
+  const { node, document, warnings } = subject({
+    ...(source === undefined ? {} : { strokeCap: source }),
+    strokePaints: [{ type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 } }],
+  })
+  expect(node.strokes[0].cap).toBe(cap)
+  expect(node.strokes[0].endMarker ?? 'none').toBe(marker)
+  expect(document.schemaVersion).toBe(marker === 'none' ? 4 : 8)
+  expect(warnings.some(w => w.includes('strokeCap='))).toBe(source === 'WASHI_TAPE_1')
+})
+
 test('a native trailing mask cannot erase content painted before it',()=>{
  const {document}=importFig(encoded({type:'FRAME',resizeToFit:true,fillPaints:[]},{},[],[
   {guid:guid(4),type:'RECTANGLE',name:'Before mask',parentIndex:{guid:guid(3),position:'!'},size:{x:40,y:24},fillPaints:[{type:'SOLID',color:{r:1,g:0,b:0,a:1}}]},
@@ -186,8 +202,33 @@ test('FIG dash pattern and a zero-width stroke are not replaced with a solid one
   expect(subject({ strokePaints: [blackStroke], strokeWeight: 0 }).node.strokes[0].width).toBe(0)
 })
 
-test('unsupported FIG document gamut is rejected instead of silently interpreted as sRGB', () => {
-  expect(() => importFig(encoded({}, { documentColorProfile: 'DISPLAY_P3' }))).toThrow(/色域|色彩/)
+test('a file-level Display P3 profile preserves paint channels, alpha and its working space', () => {
+  const color = { r: 1, g: 0.625, b: 0.25, a: 0.5 }
+  const { document } = importFig(encoded({ fillPaints: [
+    { type: 'SOLID', color },
+    { type: 'GRADIENT_LINEAR', stops: [{ position: 0, color }, { position: 1, color: { ...color, a: 1 } }] },
+  ], strokePaints: [{ type: 'SOLID', color }], strokeWeight: 1 }, { documentColorProfile: 'DISPLAY_P3' }))
+  expect(validateDocument(document)).toBe(document)
+  expect(document.colorManagement?.documentSpace).toBe('display-p3')
+  expect(document.rasterProfile).toBe('figma')
+  const n = Object.values(document.nodes)[0]
+  expect(n.fills[0].color).toBe('color(display-p3 1 0.625 0.25 / 1)')
+  expect(n.fills[0].opacity).toBe(.5)
+  expect(n.strokes[0].paint.color).toBe(n.fills[0].color)
+  expect(n.fills[1].stops[0].color).toBe('color(display-p3 1 0.625 0.25 / 0.5)')
+})
+
+test('signed stack alignment and wrap survive Sketch export and reopen', () => {
+  const { document } = importFig(encoded({ type:'FRAME', stackMode:'HORIZONTAL', stackWrap:'WRAP',
+    stackPrimaryAlignItems:'MAX', stackCounterAlignItems:'CENTER', stackSpacing:4, stackCounterSpacing:8 }))
+  const frame = Object.values(document.nodes)[0]
+  expect(frame.layout).toMatchObject({wrap:true, lineGap:8, justify:'unsafe-end', align:'unsafe-center'})
+  const round = JSON.parse(import_sketch_json(export_sketch_json(JSON.stringify(document)))).document
+  expect(round.nodes[frame.id].layout).toMatchObject({wrap:true, gap:4, lineGap:8, justify:'unsafe-end', align:'unsafe-center'})
+})
+
+test('a layer-level P3 declaration without a P3 document is not silently reinterpreted', () => {
+  expect(() => importFig(encoded({ documentColorProfile: 'DISPLAY_P3' }))).toThrow(/色域|色彩/)
 })
 
 test('unsupported FIG gradient interpolation is rejected before returning a document', () => {

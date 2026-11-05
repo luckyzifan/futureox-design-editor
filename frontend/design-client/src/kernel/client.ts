@@ -172,12 +172,15 @@ export type GpuMemorySnapshot = {
   deviceLost: boolean
 }
 export type KernelOptions = {
+  interactionBaseFill?: { x:number;y:number;width:number;height:number }
   gpuPageBackground?: boolean;
   /** Native render-only root visibility; authored document/receipts stay intact. */
   gpuRoots?: string[];
   gpuNeutralPageGroup?: boolean;
   /** Overwritten by the worker's strict host experiment policy. */
   gpuGaussianRegions?: boolean
+  sourceMaterialOverview?:boolean
+  gpuDensePaint?:boolean
   gpuSourceFilterFields?:boolean
   gpuPainterSupport?: boolean
   /** Separately gated captured-source optimization; never document state. */
@@ -1014,6 +1017,11 @@ export class KernelClient {
   }
   /** Full source pixels use the same worker, compiler and GPU. The complete
    * source model stays native and never enters JSON.stringify/structuredClone. */
+  async prepareSourceDisplay(){
+    if(this.disposed||effectiveBackend(renderExecutionPolicy,backendPreference(),false)!=='webgpu'||renderExecutionPolicy.hdrCompositing)return
+    await this.acquireGpuPermit()
+    if(!this.disposed)await this.request({command:'prepare-source-display',backend:'webgpu',channel:'canvas'})
+  }
   renderSource(snapshot:SourceRenderSnapshot,options:KernelOptions,progress?:(tile:TileResult)=>void,signal?:AbortSignal):Promise<KernelResult> {
     if(this.disposed)return Promise.reject(Error('渲染器已关闭'))
     if(this.documentSnapshot||this.interactionSnapshot)return Promise.reject(Error('Use a separate native source render owner'))

@@ -36,7 +36,7 @@ export function compositePlacement(item: { tile: RasterTile; placement?: TilePla
  * when an occluder really cuts one; tiled resident grids otherwise allocate
  * two short-lived arrays for every non-overlapping tile pair. The comparison,
  * fragment order and arithmetic stay identical to the original subtraction. */
-const subtract = (fragments: Box[], b: Box): Box[] => {
+export const subtract = (fragments: Box[], b: Box): Box[] => {
   let pieces: Box[] | undefined
   for (let index = 0; index < fragments.length; index++) {
     const a = fragments[index],

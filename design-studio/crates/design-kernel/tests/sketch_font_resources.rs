@@ -58,6 +58,9 @@ fn archive_json(bytes: &[u8]) -> Value {
     serde_json::from_str(&json).unwrap()
 }
 fn replace_document(bytes: &[u8], document: &Value) -> Vec<u8> {
+    replace_document_with_parts(bytes, document, &[])
+}
+fn replace_document_with_parts(bytes: &[u8], document: &Value, parts: &[(&str, &[u8])]) -> Vec<u8> {
     let mut source = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
     let mut output = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     for i in 0..source.len() {
@@ -75,6 +78,10 @@ fn replace_document(bytes: &[u8], document: &Value) -> Vec<u8> {
             )
             .unwrap();
         output.write_all(&data).unwrap();
+    }
+    for (name, data) in parts {
+        output.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+        output.write_all(data).unwrap();
     }
     output.finish().unwrap().into_inner()
 }
@@ -295,4 +302,33 @@ fn nonembedded_native_declarations_preserve_names_and_report_substitution() {
         let mut corrupt = source.clone(); corrupt["fontReferences"][0][field] = value;
         assert!(interop::import_sketch_report(&replace_document(&bytes, &corrupt)).is_err());
     }
+}
+
+#[test]
+fn thirty_four_declarations_with_file_fonts_preserve_bytes_and_installed_metadata() {
+    let original = fixture();
+    let bytes = interop::export_sketch(&original).unwrap();
+    let mut source = archive_json(&bytes);
+    let references = source["fontReferences"].as_array_mut().unwrap();
+    let contents = STANDARD.decode(references[0]["fontData"]["data"]["_data"].as_str().unwrap()).unwrap();
+    let part = "fonts/external-archive-id";
+    references[0]["fontData"] = json!({"_class":"MSJSONFileReference","_ref_class":"MSFontData","_ref":part});
+    let installed: Vec<_> = (0..31).map(|n| json!({"_class":"fontReference","fontFamilyName":"External",
+        "postscriptNames":[format!("External-{n}")]})).collect();
+    references.extend(installed.clone());
+    let parse = |d: &Value| interop::import_sketch_report(&replace_document_with_parts(&bytes, d, &[(part,&contents)]));
+    let imported = parse(&source).unwrap().document;
+    assert_eq!(imported.fonts, original.fonts);
+    assert_eq!(imported.design_system.as_ref().unwrap().sketch_containers["nonEmbeddedFontReferences"], json!(installed));
+    let exported = archive_json(&interop::export_sketch(&imported).unwrap());
+    assert_eq!(&exported["fontReferences"].as_array().unwrap()[3..], installed);
+    for bad in [json!({"_ref":"fonts/missing"}),json!({"_ref":"../fonts/wrong"}),
+        json!({"sha1":{"_data":"AA=="}}),json!({"data":{"_data":""}})] {
+        let mut corrupt = source.clone();
+        corrupt["fontReferences"][0]["fontData"].as_object_mut().unwrap().extend(bad.as_object().unwrap().clone());
+        assert!(parse(&corrupt).is_err());
+    }
+    let mut too_many = source;
+    too_many["fontReferences"] = json!(vec![too_many["fontReferences"][0].clone();33]);
+    assert!(parse(&too_many).err().unwrap().to_string().contains("32 embedded"));
 }

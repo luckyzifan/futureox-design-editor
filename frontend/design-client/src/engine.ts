@@ -1,7 +1,7 @@
 import { CpuStage, measureCpuStage } from './cpu-stage-diagnostics'
 import type { CanvasSceneBorrow } from './canvas-scene-snapshots'
 import { PreviewLayout } from './kernel/preview-layout'
-import { TranslationPreviewPlan } from './kernel/translation-preview'
+import { PoseTopology, TranslationPreviewPlan } from './kernel/translation-preview'
 import type { OperationStatus, MessagePresentation } from './operation-status-messages'
 import { prepareBooleanCreate, applyBooleanCreate } from './commands/boolean-command'
 import { applyDuplication, prepareDuplication, canContinueDuplication, type DuplicationRepeat } from './commands/duplication-command'
@@ -40,6 +40,7 @@ import { applyClipboardSemantics, captureClipboardSemantics, clipboardDependency
 import { editableNetwork } from './editable-network'
 import { defaultPencil, defaultBrush, defaultMarker, defaultTape, type PencilSettings } from './freehand'
 import { wrappedInsertion } from './layout-order'
+import { sketchMaskScene } from './render-outline-mask'
 import { isEmptyLeafAlphaMask } from './mask-coverage'
 import { deeperSelectionHit, interactivePath, marqueeScope, navigateSelection, shallowSelectionHit } from './selection-hierarchy'
 import * as Components from './components'
@@ -211,13 +212,13 @@ export class Editor {
   }
   // Published documents are immutable snapshots. Keep topology and clip/mask
   // transforms with that snapshot, never with a mutable edit draft or a point.
-  private pickContexts = new WeakMap<DesignDocument, { nodes: DesignDocument['nodes']; pages: DesignDocument['pages']; version?: number; parents: Map<string, string>; matrices: Map<string, Matrix> }>()
+  private pickContexts = new WeakMap<DesignDocument, { nodes: DesignDocument['nodes']; pages: DesignDocument['pages']; version?: number; parents: PoseTopology; matrices: Map<string, Matrix>; maskScene?: DesignDocument }>()
   private pickContext(document: DesignDocument) {
     const version = document === this.state.doc ? this.state.version : undefined
     let context = this.pickContexts.get(document)
     if (!context || context.nodes !== document.nodes || context.pages !== document.pages ||
       (version !== undefined && context.version !== version)) {
-      context = { nodes: document.nodes, pages: document.pages, version, parents: allParents(document), matrices: new Map() }
+      context = { nodes: document.nodes, pages: document.pages, version, parents: new PoseTopology(document), matrices: new Map() }
       this.pickContexts.set(document, context)
     }
     return context
@@ -645,7 +646,7 @@ export class Editor {
           Object.values(authored.nodes).some(
             (n) =>
               n.booleanOperation ||
-              n.maskType ||
+              n.maskType || n.maskChain ||
               n.textRuns?.some((r) => r.color || r.link || r.underline || r.strikethrough) ||
               n.textStyle?.paragraphSpacing ||
               n.textStyle?.paragraphIndent ||
@@ -938,9 +939,11 @@ export class Editor {
     if (!move && this.transaction) {
       const ids=Object.keys(patches),key=JSON.stringify(ids),epoch=pickingGeometryEpoch()
       if(ids.length&&ids.length<=16&&ids.every(id=>Object.keys(patches[id]).length===1&&Object.hasOwn(patches[id],'transform'))){
-        if(this.posePreview?.base!==base||this.posePreview.epoch!==epoch||this.posePreview.key!==key)
-          this.posePreview={base,epoch,key,plan:new TranslationPreviewPlan(base,ids),
-            allowed:!base.prototype&&!base.reviews?.length&&!Object.values(base.nodes).some(n=>!!n.repeat)}
+        if(this.posePreview?.base!==base||this.posePreview.epoch!==epoch||this.posePreview.key!==key) {
+          const topology=this.pickContext(base).parents
+          this.posePreview={base,epoch,key,plan:new TranslationPreviewPlan(base,ids,topology),
+            allowed:!base.prototype&&!base.reviews?.length&&!topology.hasRepeats}
+        }
         if(this.posePreview.allowed&&this.posePreview.plan.acceptsAffine(patches)){
           const document=producePoseDocument(base,patches)
           if(document){
@@ -1280,7 +1283,7 @@ export class Editor {
   }
   hit(p: Point, deep = false, index?: SpatialIndex, viewZoom = this.state.view.zoom, snapshot?: PickSnapshot, eligible?: (node:DesignNode)=>boolean, priority: 'paint-order' | 'smallest' = 'paint-order'): string | null {
     const authored = snapshot?.document || this.state.doc,
-      d = expandRepeats(authored),
+      d = this.pickContext(authored).parents.hasRepeats ? expandRepeats(authored) : authored,
       page = snapshot?.pageId || this.state.page,
       entries = (d === authored ? index : undefined) || new SpatialIndex(scene(d, page)),
       tol = 5 / viewZoom
@@ -1292,14 +1295,16 @@ export class Editor {
     // Exclusions depend on the query point and density; topology and world
     // matrices depend only on the immutable document, not the camera.
     const excluded = new Map<string, boolean>()
-    const { parents, matrices } = this.pickContext(d)
+    const context = this.pickContext(d), {parents} = context
+    const rendered = context.parents.hasSketchMasks ? (context.maskScene ??= sketchMaskScene(d)) : d
+    const {parents: renderParents, matrices} = this.pickContext(rendered)
     const matrixFor = (id: string): Matrix => {
       const cached = matrices.get(id)
       if (cached) return cached
-      const parent = parents.get(id),
-        n = d.nodes[id]
+      const parent = renderParents.get(id),
+        n = rendered.nodes[id]
       const matrix = n
-        ? multiply(parent && d.nodes[parent] ? matrixFor(parent) : identity(), n.transform)
+        ? multiply(parent && rendered.nodes[parent] ? matrixFor(parent) : identity(), n.transform)
         : identity()
       matrices.set(id, matrix)
       return matrix
@@ -1307,8 +1312,8 @@ export class Editor {
     const blocks = (id: string): boolean => {
       const cached = excluded.get(id)
       if (cached !== undefined) return cached
-      const a = d.nodes[id],
-        mask = maskChild(d, a)
+      const a = rendered.nodes[id],
+        mask = maskChild(rendered, a)
       // Group/text constraints retain their existing bounding-shape proxy here;
       // full text/group mask alpha requires a separate compositing contract.
       const legacyShape = (n: DesignNode) => !n.network && (n.kind === 'group' || n.kind === 'text')
@@ -1348,7 +1353,13 @@ export class Editor {
         if (owner(e) !== hoverOwner || hovered.ancestors.includes(e.id)) continue
         if (!e.ancestors.includes(hovered.id) && area(e) >= area(hovered)) continue
       }
-      if (e.ancestors.some(blocks)) continue
+      if (rendered === d) {
+        if (e.ancestors.some(blocks)) continue
+      } else {
+        let ancestor = renderParents.get(e.id)
+        while (ancestor && rendered.nodes[ancestor] && !blocks(ancestor)) ancestor = renderParents.get(ancestor)
+        if (ancestor && rendered.nodes[ancestor]) continue
+      }
       if (!kernelHitWorld(n, p, e.matrix, viewZoom)) continue
       if (priority === 'smallest') { hovered = e; hoverOwner ??= owner(e); continue }
       if (deep) return repeatSourceId(d, e.id)

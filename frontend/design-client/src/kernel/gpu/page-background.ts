@@ -13,7 +13,7 @@ export function bindContentOwner(scene:GpuScene,owner:object,contract?:string){
   if(contract!==undefined)Object.defineProperty(scene,contentContract,{value:contract,enumerable:true})
 }
 export type PageBackgroundProof={owner:object;contract?:string;view:CanvasCamera;bounds:readonly (readonly number[])[];pixel?:[number,number]}
-export type PixelContentProof=Pick<PageBackgroundProof,'owner'|'contract'>
+export type PixelContentProof=Pick<PageBackgroundProof,'owner'|'contract'> & { raster?:{view:CanvasCamera;rect:Rect} }
 export function pixelContentProof(scene:GpuScene):PixelContentProof|undefined{
   if (scene.gestureSoftEffects || scene.interactionLocalFootprint) return
   const owner=(scene as unknown as Record<symbol,object>)[contentOwner],contract=(scene as unknown as Record<symbol,unknown>)[contentContract]

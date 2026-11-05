@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { PreparationChannel } from './preparation-channel'
 
 const close: (() => void)[] = []
@@ -187,4 +187,24 @@ test('empty derive capability alone never implies backend patch CAS', async () =
   const { client, server } = fixture()
   server.onmessage = event => server.postMessage({ id: event.data.id, value: { protocol: 1, emptyDeltaDerivation: true } })
   expect(await client.supportsDerivation()).toBe(true); expect(await client.supportsGuardedPatch()).toBe(false)
+})
+
+test('native pose port shares the physical queue, ignores foreign replies and drains cancellation',async()=>{
+  const {client,server}=fixture(), direct=new MessageChannel()
+  const wait=(port:MessagePort)=>new Promise<MessageEvent>(resolve=>port.addEventListener('message',resolve,{once:true}))
+  server.start();server.postMessage({terminalPort:direct.port1},[direct.port1]);direct.port2.start()
+  direct.port2.postMessage({terminalReady:true})
+  await vi.waitFor(()=>expect(Reflect.get(client,'terminalReady')).toBe(true))
+  const request=wait(server), initial=client.request('canvas','stats')
+  const initialId=(await request).data.id;server.postMessage({id:initialId,value:0});await initial
+  const controller=new AbortController(), packet=wait(direct.port2)
+  const aborted=expect(client.withPoseTransport(()=>client.request('interaction','compile_gpu_packet',['pose'],controller.signal))).rejects.toThrow('PREVIEW_CANCELLED')
+  const id=(await packet).data.id, cancel=wait(direct.port2)
+  controller.abort();expect((await cancel).data.cancel).toBe(id);await aborted
+  let published=false
+  server.onmessage=e=>{published=true;server.postMessage({id:e.data.id,value:'live'})}
+  const next=client.request('canvas','stats');server.postMessage({id,value:'foreign'})
+  await new Promise(resolve=>setTimeout(resolve,10));expect(published).toBe(false)
+  direct.port2.postMessage({id,value:new Uint8Array([1])});await expect(next).resolves.toMatchObject({value:'live'})
+  direct.port2.close()
 })

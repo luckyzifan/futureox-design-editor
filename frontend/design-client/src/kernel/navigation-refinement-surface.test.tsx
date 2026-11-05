@@ -176,7 +176,7 @@ for (const boundary of ['paused', 'visible', 'contract', 'device'] as const) {
   })
 }
 
-test('finished native world tile is visible only where it intersects and never certifies the whole frame', async () => {
+test('one finished native world tile is staged through camera changes and cannot certify the viewport', async () => {
   const f = await fixture()
   try {
     await f.complete(0); await vi.waitFor(() => expect(state.pending).toHaveLength(2))
@@ -186,7 +186,7 @@ test('finished native world tile is visible only where it intersects and never c
     expect(item).toBeDefined()
     await act(async () => state.composites.at(-1).onReady(item.tile.key, item.tile.serial, false))
     item = state.composites.at(-1).items.find((item: any) => item.tile.bitmap === bitmap)
-    expect(item.active).toBe(true)
+    expect(item.active).toBe(false)
     expect(item.tile.zoom).toBe(64)
     expect(f.container.querySelector('[data-detail-ready="true"]')).toBeNull()
     state.sequence++; await f.render({ view: { x: 100000, y: 0, zoom: 32 } })

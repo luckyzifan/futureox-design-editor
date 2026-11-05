@@ -19,12 +19,18 @@ export function SourceDocumentStatus({source}:{source:SourceWorkspace}) {
   const rendering=source.nativeCanvas?.status?.phase==='loading'||source.nativeCanvas?.status?.phase==='refining'
   const pending=source.busy||rendering
   const identity=`${source.error}\n${source.notice}\n${pending}`
+  // A new operation can fail with exactly the message the user dismissed on
+  // an earlier attempt. Its error is cleared while the native call is pending.
+  useEffect(()=>{if(source.error)setDismissed('')},[source.error])
+
   useEffect(()=>{
     if(source.error||pending||!source.notice)return
     const timer=setTimeout(()=>setDismissed(identity),5000)
     return()=>clearTimeout(timer)
   },[identity,source.error,pending,source.notice])
-  const showStatus=identity!==dismissed&&(source.error||source.notice||pending)
+  // Automatic material refinement reports in the canvas badge. Keep the
+  // file operation card available for initial loading and genuine errors.
+  const showStatus=identity!==dismissed&&(source.error||!source.navigatingMaterials&&(source.notice||pending))
   if(!showStatus&&!source.warnings.length)return null
   return <aside className="source-canvas-status" aria-label="源文件状态">
     {showStatus&&<section className="source-status-card" data-error={!!source.error}>

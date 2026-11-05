@@ -26,6 +26,7 @@ pub(super) struct Saved {
     pages: Vec<(String, String, usize)>,
     items: Vec<Item>,
     images: Vec<(usize, String)>,
+    #[serde(default)] details:Vec<(usize,String)>,
 }
 pub(super) fn location(root: &Path, source: &str) -> Option<PathBuf> {
     if source.len() != 64 || !source.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -45,7 +46,7 @@ pub(super) fn location(root: &Path, source: &str) -> Option<PathBuf> {
         digest(format!("{source}/{policy}").as_bytes())
     )))
 }
-pub(super) fn read(path: &Path) -> Option<(Catalog, Vec<(usize, String)>)> {
+pub(super) fn read(path: &Path) -> Option<(Catalog, Vec<(usize, String)>, Vec<(usize,String)>)> {
     let meta = fs::symlink_metadata(path).ok()?;
     if !meta.is_file() || meta.len() > LIMIT || meta.len() < 72 {
         return None;
@@ -77,23 +78,24 @@ pub(super) fn read(path: &Path) -> Option<(Catalog, Vec<(usize, String)>)> {
     {
         return None;
     }
-    let mut seen = vec![false; n];
-    for (i, png) in &s.images {
-        if *i >= n || seen[*i] || png.len() > 64 * 1024 {
-            return None;
+    fn valid(images:&[(usize,String)],n:usize,side:u32,limit:usize)->Option<Vec<bool>>{
+        let mut seen=vec![false;n];
+        for (i,png) in images{
+            if *i>=n||seen[*i]||png.len()>limit{return None;}
+            let head=base64::engine::general_purpose::STANDARD.decode(png.as_bytes().get(..32)?).ok()?;
+            if head.get(..8)?!=b"\x89PNG\r\n\x1a\n"||head.get(12..16)?!=b"IHDR"||
+                !(1..=side).contains(&u32::from_be_bytes(head.get(16..20)?.try_into().ok()?))||
+                !(1..=side).contains(&u32::from_be_bytes(head.get(20..24)?.try_into().ok()?)){return None;}
+            let w=u32::from_be_bytes(head[16..20].try_into().ok()?);
+            let h=u32::from_be_bytes(head[20..24].try_into().ok()?);
+            if u64::from(w)*u64::from(h)>384*384{return None;}
+            seen[*i]=true;
         }
-        let head = base64::engine::general_purpose::STANDARD
-            .decode(png.as_bytes().get(..32)?)
-            .ok()?;
-        if head.get(..8)? != b"\x89PNG\r\n\x1a\n"
-            || head.get(12..16)? != b"IHDR"
-            || !(1..=96).contains(&u32::from_be_bytes(head.get(16..20)?.try_into().ok()?))
-            || !(1..=96).contains(&u32::from_be_bytes(head.get(20..24)?.try_into().ok()?))
-        {
-            return None;
-        }
-        seen[*i] = true
+        Some(seen)
     }
+    let base=valid(&s.images,n,super::MAX_THUMB_SIDE,super::MAX_THUMB_ENCODED)?;
+    if s.details.len()>8||s.details.iter().any(|(i,_)|!base.get(*i).copied().unwrap_or(false)){return None;}
+    valid(&s.details,n,768,360_000)?;
     Some((
         Catalog {
             items: s.items,
@@ -101,7 +103,7 @@ pub(super) fn read(path: &Path) -> Option<(Catalog, Vec<(usize, String)>)> {
             pages: s.pages,
             bounds: s.bounds,
         },
-        s.images,
+        s.images,s.details,
     ))
 }
 pub(super) fn snapshot(path: &Path, state: &State) -> Option<Saved> {
@@ -115,6 +117,7 @@ pub(super) fn snapshot(path: &Path, state: &State) -> Option<Saved> {
         pages: c.pages.clone(),
         items: c.items.clone(),
         images: state.images.clone(),
+        details:state.details.iter().rev().take(8).rev().cloned().collect(),
     })
 }
 pub(super) fn write(path: &Path, mut saved: Saved) -> Option<()> {
@@ -133,7 +136,13 @@ pub(super) fn write(path: &Path, mut saved: Saved) -> Option<()> {
         .open(dir.join(".writer"))
         .ok()?;
     fs2::FileExt::try_lock_exclusive(&lock).ok()?;
-    if let Some((_, existing)) = read(path) {
+    if let Some((_, existing, previous)) = read(path) {
+        // Merge only this source/producer. Bound the retained sharper images
+        // independently of the base catalogue, with newly viewed roots first.
+        for entry in previous.into_iter().rev(){
+            if saved.details.len()>=8{break;}
+            if !saved.details.iter().any(|(i,_)|*i==entry.0){saved.details.insert(0,entry);}
+        }
         let mut have: std::collections::HashSet<_> = saved.images.iter().map(|v| v.0).collect();
         for entry in existing {
             if have.insert(entry.0) {
@@ -237,11 +246,13 @@ mod tests {
             pages: vec![("p".into(), "Page".into(), 2)],
             items: vec![item("a"), item("b")],
             images: vec![(i, png.into())],
+            details:vec![(i,png.into())],
         };
         write(&path, saved(1)).unwrap();
         assert_eq!(read(&path).unwrap().1.len(), 1);
         write(&path, saved(0)).unwrap();
-        let (_, mut images) = read(&path).unwrap();
+        let (_, mut images,details) = read(&path).unwrap();
+        assert_eq!(details.len(),2);
         images.sort();
         assert_eq!(images.len(), 2);
         assert_eq!(images[0].0, 0);

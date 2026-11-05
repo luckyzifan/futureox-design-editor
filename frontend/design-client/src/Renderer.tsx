@@ -4,7 +4,7 @@ import { EditableSvgText } from './svg-editable-text'
 import { kernelTextLayout, kernelStrokePaths, kernelSvgPaths } from './kernel/picking'
 import React, { useMemo, useRef } from 'react'
 import { maskChild } from './model'
-import { outlineMaskForRendering } from './render-outline-mask'
+import { outlineMaskForRendering, sketchMaskScene } from './render-outline-mask'
 import type { DesignDocument, DesignNode, Paint, Effect, Matrix, Bounds, Point } from './model'
 import {
   shapeD as approximateShapeD,
@@ -284,7 +284,7 @@ const Surface = React.memo(function Surface({ n, fonts, textMode }: { n: DesignN
 })
 type Props = { doc: DesignDocument; pageId: string; viewport?: Bounds; exporting?: boolean; retainedNodeId?: string; textMode?: 'outlines' | 'editable' }
 export function Scene({ doc, pageId, viewport, exporting = false, retainedNodeId, textMode = 'outlines' }: Props) {
-  doc = expandRepeats(doc)
+  doc = useMemo(() => sketchMaskScene(expandRepeats(doc)), [doc])
   const page = doc.pages.find((p) => p.id === pageId)!
   const definitions = useRef(new Map<string, {node:DesignNode; children:string; mask:DesignNode|undefined; fonts:DesignDocument['fonts']; textMode: 'outlines' | 'editable'; element:React.ReactNode}>())
   const parents = useMemo(() => allParents(doc), [doc])

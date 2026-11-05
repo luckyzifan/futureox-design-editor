@@ -277,6 +277,17 @@ fn decode(
     // mipmaps, when requested, remain separate derivatives of this base.
     // Preserve 16-bit/float input in managed documents. Untagged bitmap
     // samples are sRGB, independently of the document's vector palette.
+    if settings.is_some() && profile.is_none() && matches!(space,None|Some(crate::color::ColorSpace::Srgb)) &&
+        matches!(decoded.color(),image::ColorType::Rgb8|image::ColorType::Rgba8) {
+        let bytes=decoded.into_rgba8();
+        let size=bytes.width() as usize * bytes.height() as usize;
+        let mut surface=Surface::new(Rect::new(0,0,bytes.width(),bytes.height()))?;
+        let [rgb,alpha]=crate::image_rows::srgb8_channels();
+        for(out,p)in surface.pixels.iter_mut().zip(bytes.pixels()){
+            *out=Pixel::rgba(rgb[p[0] as usize],rgb[p[1] as usize],rgb[p[2] as usize],alpha[p[3] as usize]);
+        }
+        return Ok((surface,size));
+    }
     let mut image = decoded.into_rgba32f();
     if let Some(settings) = settings {
         crate::image_color::to_working(&mut image, settings, space, profile.as_deref())?;
@@ -925,7 +936,7 @@ pub fn image_byte_sampling_field_placed(
     }
     Ok(values)
 }
-struct GradientCoordinates {
+pub(crate) struct GradientCoordinates {
     kind: String,
     inverse: Transform,
     w: f64,
@@ -937,7 +948,7 @@ struct GradientCoordinates {
 }
 pub mod phase_field;
 impl GradientCoordinates {
-    fn new(paint: &Paint, size: [f64; 2], matrix: Transform, bounds: Rect) -> Result<Self, String> {
+    pub(crate) fn new(paint: &Paint, size: [f64; 2], matrix: Transform, bounds: Rect) -> Result<Self, String> {
         let inverse = matrix.inverse_composed(bounds)?;
         let mut offsets: Vec<f64> = paint.stops.iter().map(|s| s.offset).collect();
         offsets.sort_by(f64::total_cmp);
@@ -954,7 +965,7 @@ impl GradientCoordinates {
             offsets,
         })
     }
-    fn locate(&self, device: Point) -> Option<(usize, usize, f32)> {
+    pub(crate) fn locate(&self, device: Point) -> Option<(usize, usize, f32)> {
         if self.offsets.is_empty() {
             return None;
         }
@@ -1058,24 +1069,41 @@ pub fn gradient_sampling_grid(
 /// sample plane. The display consumer checks stop spacing and colour range
 /// before interpolation. Original geometry bounds still select the inverse.
 pub fn source_linear_parameters(rect:Rect,matrix:Transform,size:[f64;2],paint:&Paint,sample:usize)->Result<Vec<f32>,String>{
+    source_linear_planes(rect, matrix, size, paint, sample, 1)
+}
+
+/// The source-layer shader consumes all four phases or declines the brush.
+/// Share the inverse and fixed-gradient setup while preserving each phase's
+/// independent clamp and rejection decisions.
+pub fn source_linear_phase_parameters(rect: Rect, matrix: Transform, size: [f64; 2], paint: &Paint) -> Result<Vec<f32>, String> {
+    source_linear_planes(rect, matrix, size, paint, 0, 4)
+}
+
+fn source_linear_planes(rect: Rect, matrix: Transform, size: [f64; 2], paint: &Paint,
+    first: usize, count: usize) -> Result<Vec<f32>, String> {
     if paint.kind!="linear" || !(2..=32).contains(&paint.stops.len()) || rect.empty() ||
         rect.w>16384 || rect.h>16384 ||
         size.iter().any(|v|!v.is_finite()||*v<=0.) {return Ok(Vec::new())}
-    let offset=crate::fidelity::SAMPLE_OFFSETS.get(sample).ok_or("Invalid image sample index")?;
+    let offsets = crate::fidelity::SAMPLE_OFFSETS.get(first..).and_then(|s| s.get(..count))
+        .ok_or("Invalid image sample index")?;
     let coordinates=GradientCoordinates::new(paint,size,matrix,rect)?;
-    let mut values=Vec::with_capacity(4);
-    for y in [rect.y,rect.bottom()-1] {for x in [rect.x,rect.right()-1] {
-        let point=Point::new(f64::from(x)+offset.0,f64::from(y)+offset.1);
-        let local=coordinates.inverse.point(point);
-        let uv=Point::new(local.x/size[0],local.y/size[1]);
-        let uv=coordinates.paint_inverse.map_or(uv,|m|m.point(uv));
-        let t=coordinates.fixed_gradient.as_ref().map_or_else(||coordinates.gradient_t(uv.x,uv.y),|g|g.unclamped(point));
-        if !t.is_finite(){return Ok(Vec::new())}
-        values.push(t as f32);
-    }}
-    if values.iter().all(|v|*v<=0.){values.fill(0.)}
-    else if values.iter().all(|v|*v>=1.){values.fill(1.)}
-    else if values.iter().any(|v|v.abs()>4.){return Ok(Vec::new())}
+    let mut values=Vec::with_capacity(4 * count);
+    for offset in offsets {
+        let start = values.len();
+        for y in [rect.y,rect.bottom()-1] {for x in [rect.x,rect.right()-1] {
+            let point=Point::new(f64::from(x)+offset.0,f64::from(y)+offset.1);
+            let local=coordinates.inverse.point(point);
+            let uv=Point::new(local.x/size[0],local.y/size[1]);
+            let uv=coordinates.paint_inverse.map_or(uv,|m|m.point(uv));
+            let t=coordinates.fixed_gradient.as_ref().map_or_else(||coordinates.gradient_t(uv.x,uv.y),|g|g.unclamped(point));
+            if !t.is_finite(){return Ok(Vec::new())}
+            values.push(t as f32);
+        }}
+        let plane = &mut values[start..];
+        if plane.iter().all(|v|*v<=0.){plane.fill(0.)}
+        else if plane.iter().all(|v|*v>=1.){plane.fill(1.)}
+        else if plane.iter().any(|v|v.abs()>4.){return Ok(Vec::new())}
+    }
     Ok(values)
 }
 /// Chunk computation retains the original inverse-composition domain and

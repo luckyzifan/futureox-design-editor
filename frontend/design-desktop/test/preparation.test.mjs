@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
-import { NativePreparation, PreparationAdmission, registerNativePreparation } from '../src/preparation.mjs'
+import { NativePreparation, PreparationAdmission, registerNativePreparation, bindPosePreparationPort } from '../src/preparation.mjs'
 import { DOCUMENT_BYTE_LIMIT } from '../src/document-capacity.mjs'
 
 test('native transport admits negotiated derivation methods without weakening the method allowlist', async () => {
@@ -112,4 +112,21 @@ test('host admission is shared across sessions and cancellation retains clones u
   assert.equal((await second.request({lane:'canvas',method:'serialize',args:['usable']})).value,'"usable"')
   assert.equal(admission.bytes,0)
  }finally{await codec.close();await second.close()}
+})
+
+test('pose transport binds one native interaction owner and retains the physical cancellation fence',async()=>{
+ const port=new EventEmitter(),sent=[],jobs=[],cancels=[]
+ let resolve,valid=true,retired=0
+ Object.assign(port,{start(){},close(){this.emit('close')},postMessage(value){sent.push(value)}})
+ const worker={request(request){jobs.push(request);return new Promise(done=>{resolve=done})},cancel:id=>cancels.push(id)}
+ bindPosePreparationPort(port,worker,()=>valid,()=>{retired++;valid=false})
+ const send=data=>port.emit('message',{data})
+ send({id:1,lane:'canvas',method:'compile_gpu_packet',args:['{}']});assert.match(sent.at(-1).error,/Invalid/)
+ send({id:2,lane:'interaction',method:'load_document',args:['x']});assert.equal(jobs.length,0)
+ const packet={id:3,lane:'interaction',method:'compile_gpu_packet',args:['{}'],cancellable:true};send(packet)
+ send({...packet,id:4});assert.equal(jobs.length,1);send({cancel:2});send({cancel:3});assert.deepEqual(cancels,[3])
+ resolve({value:new Uint8Array([3])});await new Promise(done=>setImmediate(done));assert.equal(sent.at(-1).value[0],3)
+ send(packet);assert.match(sent.at(-1).error,/Invalid/);assert.equal(jobs.length,1)
+ send({...packet,id:5});port.close();assert.equal(retired,1)
+ const count=sent.length;resolve({value:new Uint8Array([5])});await new Promise(done=>setImmediate(done));assert.equal(sent.length,count)
 })
