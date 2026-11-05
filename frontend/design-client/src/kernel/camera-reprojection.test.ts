@@ -93,3 +93,13 @@ test('new pan strips can publish without painting a white block over a known par
   expect(keepCompleteCameraBacking(backing,{...next,previewGaps:[{x:80,y:0,width:20,height:160}]},true,false,next)).toBe(true)
   expect(keepCompleteCameraBacking(backing,{...next,previewGaps:[{x:80,y:0,width:20,height:160}]},true,false,next,backing)).toBe(false)
 })
+
+test('an installed thumbnail underlay follows zoom-out immediately and stays visible in new strips',()=>{
+ const f=fixture(),backing={...f.backing,view:{x:0,y:0,zoom:1}},bounds={x:0,y:0,width:400,height:400}
+ f.projection.update(backing,backing.view,100,80,true,bounds,true)
+ const target={x:25,y:20,zoom:.5}
+ expect(f.projection.update(backing,target,100,80,true,bounds,true).active).toBe(true)
+ expect(JSON.parse(f.canvas.dataset.projectedCamera!)).toEqual(target)
+ expect([...f.host.querySelectorAll('div')].filter(e=>e.style.display==='block')).toHaveLength(0)
+ f.projection.dispose()
+})

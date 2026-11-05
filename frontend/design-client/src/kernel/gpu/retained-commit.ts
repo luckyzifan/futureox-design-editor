@@ -8,11 +8,11 @@ import { compositeDrawPlan, compositePlacement } from './composite-draw-plan'
  * validated integer translation. This is canvas residency, never an export or
  * an exact-tile-cache certificate. Changed content, density reduction, stale
  * input and incomplete coverage all take the normal compiler path. */
-export function canCommitResidentFrame(scene: GpuScene, document: DesignDocument,
+export function canCommitResidentFrame(scene: GpuScene, document: DesignDocument | (() => DesignDocument),
   next: DesignDocument, frame: ResidentFrame, input: { sequence: number; owner?: string } | undefined) {
-  if (!input || frame.input?.sequence !== input.sequence || frame.input.owner !== input.owner || !frame.interaction ||
-      scene.interactionLocalFootprint || scene.gestureSoftEffects || scene.softwareRaster || scene.grid || scene.checkerboard || !equalValue(document, next) ||
-      Math.abs(scene.view.zoom / (frame.view.zoom * frame.dpr) - 1) > 1e-8) return false
+  if (scene.interactionLocalFootprint || scene.gestureSoftEffects || scene.softwareRaster || scene.grid || scene.checkerboard ||
+      !matchesResidentFrame(scene, frame, input)) return false
+  if (!equalValue(typeof document === 'function' ? document() : document, next)) return false
   for (const node of Object.values(scene.nodes)) {
     const source = node.previewSource
     if (source && [node.matrix[4] - source.matrix[4], node.matrix[5] - source.matrix[5]]
@@ -21,6 +21,15 @@ export function canCommitResidentFrame(scene: GpuScene, document: DesignDocument
     if (node.effects.some(effect => effect.kind === 'blur' && effect.radius === 0) &&
         next.nodes[node.id]?.effects.some(effect => effect.visible && effect.kind === 'blur' && effect.radius > 0)) return false
   }
+  return true
+}
+
+/** Check the actual frame returned by the synchronous presenter snapshot.
+ * The authored documents and compiled scene are fixed across that call. */
+export function matchesResidentFrame(scene: GpuScene, frame: ResidentFrame,
+  input: { sequence: number; owner?: string } | undefined) {
+  if (!input || frame.input?.sequence !== input.sequence || frame.input.owner !== input.owner || !frame.interaction ||
+      Math.abs(scene.view.zoom / (frame.view.zoom * frame.dpr) - 1) > 1e-8) return false
   // The draw planner only reads geometry; resident handles intentionally carry
   // no CPU byte payload.
   const draws = compositeDrawPlan(frame.items as unknown as Parameters<typeof compositeDrawPlan>[0], frame.view, frame.width, frame.height)

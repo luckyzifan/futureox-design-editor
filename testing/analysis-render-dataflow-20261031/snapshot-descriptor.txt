@@ -1,6 +1,0 @@
-/Users/Apple/project/design-kernel/testing/verification-source-work-reuse-20261031/baseline-1/recovery/large-documents/01234567-89ab-4cde-8fab-0123456789ab-1/canvas-native-0.scene
-01234567-89ab-4cde-8fab-0123456789ab:1:0
-01234567-89ab-4cde-8fab-0123456789ab
-124447
-300408797
-18e4dcb125f8acbe5342b3632e1b27d79afc67b69fcf7077dd614323d0ede9f4

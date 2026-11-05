@@ -203,6 +203,8 @@ export function LayoutPanel({
                 <option value="start">{tr("起点")}</option>
                 <option value="center">{tr("居中")}</option>
                 <option value="end">{tr("终点")}</option>
+                <option value="unsafe-center">{tr("居中（允许溢出）")}</option>
+                <option value="unsafe-end">{tr("终点（允许溢出）")}</option>
                 <option value="space-between">{tr("两端对齐")}</option>
                 <option value="space-around">{tr("环绕等距")}</option>
                 <option value="space-evenly">{tr("全部等距")}</option>
@@ -214,6 +216,8 @@ export function LayoutPanel({
               value={layout.align}
               onChange={(e) => updateLayout({ align: e.target.value as AutoLayout['align'] })}
             >
+              <option value="unsafe-center">{tr("居中（允许溢出）")}</option>
+              <option value="unsafe-end">{tr("终点（允许溢出）")}</option>
               {alignments.map(([value, label]) => (
                 <option key={value} value={value}>
                   {tr(label)}

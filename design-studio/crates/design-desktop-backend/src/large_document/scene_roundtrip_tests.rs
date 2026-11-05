@@ -950,6 +950,15 @@ fn material_snapshot_converts_only_requested_roots_and_keeps_full_source_placeme
     assert_eq!(scoped["roots"],1);assert_ne!(scoped["path"],both["path"]);
     assert_ne!(scoped["store"]["generation"],both["store"]["generation"]);
     let doc=load(&scoped);let id=layout["items"][0]["id"].as_str().unwrap();
+    {
+        let guard=f.sessions.current.lock().unwrap();
+        let s=guard.as_ref().unwrap();
+        let early=opening::selected_snapshot_for_test(s,id,&AtomicBool::new(false)).unwrap().unwrap();
+        assert_ne!(early["store"]["generation"],scoped["store"]["generation"]);
+        assert_eq!(serde_json::to_value(load(&early)).unwrap(),serde_json::to_value(&doc).unwrap());
+        assert_eq!(early["bounds"],scoped["bounds"]);
+        assert!(opening::selected_snapshot_for_test(s,id,&AtomicBool::new(true)).is_err());
+    }
     assert_eq!(doc.nodes[id],full.nodes[id]);
     assert_eq!(doc.nodes[scoped["stageId"].as_str().unwrap()].children,vec![id]);
     assert!(!doc.nodes.contains_key(OTHER));
@@ -963,4 +972,39 @@ fn material_snapshot_converts_only_requested_roots_and_keeps_full_source_placeme
     assert_eq!(hits(),previous+1,"editing reuses the exact converted material");
     assert_eq!(f.call(&status,"large.canvasSnapshot",json!({})).unwrap()["roots"],2);
     assert_eq!(f.export_members(&status,"isolated-display.sketch"),f.members);
+}
+
+#[test]
+fn revisiting_a_material_uses_the_same_scene_store_and_repairs_a_missing_optional_file() {
+    let (f,status)=Fixture::new(SOURCE_PAGE);
+    let layout=f.call(&status,"large.canvasLayout",json!({})).unwrap();
+    let first=&layout["items"][0]["key"];
+    let second=&layout["items"][1]["key"];
+    let get=|key:&Value|f.call(&status,"large.canvasSnapshot",json!({"materialKeys":[key]})).unwrap();
+    let a=get(first);let file=PathBuf::from(a["path"].as_str().unwrap());
+    let stamp=fs::metadata(&file).unwrap().modified().unwrap();
+    let b=get(second);
+    assert_ne!(a["scope"],b["scope"]);assert!(file.is_file());
+    assert_eq!(get(first),a);
+    assert_eq!(fs::metadata(&file).unwrap().modified().unwrap(),stamp);
+    get(second);
+    fs::remove_file(&file).unwrap();
+    let repaired=get(first);
+    assert_eq!(repaired["roots"],1);
+    let descriptor=serde_json::from_value(repaired["store"].clone()).unwrap();
+    futureox_design_kernel::scene_store::Reader::open(&file,&descriptor,&AtomicBool::new(false)).unwrap()
+        .into_document(&AtomicBool::new(false)).unwrap();
+}
+
+#[test]
+fn unresolved_source_symbol_must_wait_for_the_authoritative_dependency_index() {
+    let mut source:Value=serde_json::from_str(SOURCE_PAGE).unwrap();
+    let layer=&mut source["layers"][0];
+    layer["_class"]=json!("symbolInstance");
+    layer["symbolID"]=json!("external-symbol");
+    let id=layer["do_objectID"].as_str().unwrap().to_owned();
+    let (fixture,_)=Fixture::new(&source.to_string());
+    let session=fixture.sessions.current.lock().unwrap();
+    let early=opening::selected_snapshot_for_test(session.as_ref().unwrap(),&id,&AtomicBool::new(false)).unwrap();
+    assert!(early.is_none());
 }

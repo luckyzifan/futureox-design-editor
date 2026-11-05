@@ -5,6 +5,9 @@ import { desktopBridge, type DesktopBridge, type DesktopFile, type DesktopResult
 import { DesktopSession, type LeaveDecision } from './desktop-session'
 import { Backend } from './persistence'
 import { registerPendingEdit } from './pending-edits'
+import type { CodecDelta } from './resident-document-encoder'
+// @ts-expect-error The actual host codec is an ESM module.
+import { ResidentDocumentCodec } from '../../design-desktop/src/resident-document-codec.mjs'
 
 const ok = { status: 'ok' } as const
 const cancelled = { status: 'cancelled' } as const
@@ -299,6 +302,49 @@ describe('native document lifecycle', () => {
     expect(f.editor.state.doc).toEqual(saved)
     expect(await f.session.requestClose()).toBe(true)
     expect(f.confirm).not.toHaveBeenCalled()
+  })
+  test('a real rotation during a pending save retains the codec base and saves the committed pose', async () => {
+    const doc = blank('Rotation'), shape = node('rectangle'), sibling = node('ellipse')
+    doc.nodes = { [shape.id]: shape, [sibling.id]: sibling }
+    doc.pages[0].children = [shape.id, sibling.id]
+    const f = fixture('discard', doc), codec = new ResidentDocumentCodec(2 ** 20)
+    const requests: CodecDelta[] = []
+    Object.assign(f.bridge, { documentCodec: {
+      encoding: 'json-stringify-v1', encode: async value => JSON.stringify(value),
+      decode: async value => JSON.parse(value),
+      encodeIncremental: async request => { requests.push(request); return codec.encode(request) },
+    } satisfies NonNullable<DesktopBridge['documentCodec']> })
+    await f.session.start(); await f.session.save()
+    const before = f.editor.state.doc, originalVersion = f.editor.state.version
+    f.editor.begin('Cancelled rotation')
+    f.editor.preview({ [shape.id]: { transform: [0, 1, -1, 0, 1, 2] } })
+    expect(f.session.dirty).toBe(true)
+    f.editor.cancel()
+    expect(f.session.dirty).toBe(false)
+    expect(requests).toHaveLength(1)
+    const gate = deferred<DesktopResult<DesktopFile>>()
+    f.bridge.saveDocument.mockReturnValueOnce(gate.promise)
+    const saving = f.session.save()
+    await turn()
+    f.editor.begin('Rotate')
+    expect(f.editor.preview({ [shape.id]: { transform: [0, 1, -1, 0, 9, 12] } })).toBe(true)
+    expect(f.editor.state.version).toBe(originalVersion)
+    expect(f.session.dirty).toBe(true)
+    f.editor.commit()
+    gate.resolve(savedFile); await saving
+    expect(f.session.dirty).toBe(true)
+    await f.session.save()
+    expect(requests.map(r => r.install)).toEqual([true, false])
+    expect(requests[1].nodes.map(([id]) => id)).toEqual([shape.id])
+    expect(JSON.parse(f.bridge.saveDocument.mock.calls.at(-1)![0].documentJson)).toEqual(JSON.parse(JSON.stringify(f.editor.state.doc)))
+    f.editor.undo()
+    expect(f.editor.state.doc).toEqual(before)
+    // Raw versioned writes still lack a trustworthy immutable delta baseline.
+    f.editor.state.doc.name = 'External change'
+    f.editor.set({ version: f.editor.state.version + 1 })
+    await f.session.save()
+    expect(requests.at(-1)?.install).toBe(true)
+    expect(JSON.parse(f.bridge.saveDocument.mock.calls.at(-1)![0].documentJson).name).toBe('External change')
   })
   test('redo after undo-to-saved remains dirty and requires confirmation', async () => {
     const f = fixture('cancel'); await f.session.start(); f.edit('Saved name'); await f.session.save()

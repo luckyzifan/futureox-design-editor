@@ -152,17 +152,35 @@ pub(crate) fn resolved_leaf_pose_damage(doc:&Document,parents:&crate::render_ind
     let mut union:Option<[f64;4]>=None;let mut rects=Vec::new();let mut translation=true;
     for (id,transform) in transforms{
         let node=doc.nodes.get(id)?;
-        if !node.render_children().is_empty()||node.mask||node.effects.iter().any(|e|e.visible){return None}
+        if !node.render_children().is_empty() || node.mask { return None; }
+        let has_effects = node.effects.iter().any(|e| e.visible);
+        if has_effects && (node.kind != "vector" || node.blend != "normal" || node.path_offset != 0. ||
+            node.vector_brush.is_some() || node.derived_path.is_some() || node.strokes.iter().any(|s| s.visible) ||
+            !node.fills.iter().any(|p| p.visible) ||
+            node.effects.iter().any(|e| e.visible && e.kind != "inner-shadow")) { return None; }
         let ancestors:Vec<_>=parents.ancestors(id).collect();let mut matrix=Transform::default();
         for id in ancestors.into_iter().rev(){
             let n=doc.nodes.get(id)?;
             if n.mask||n.effects.iter().any(|e|e.visible)||n.boolean_operation.is_some(){return None}
             matrix=matrix.concat(n.transform);
         }
-        let before=subtree_bounds_from(doc,id,matrix,Some(fonts),false)?;
-        let mut next=node.clone();next.transform=*transform;
-        let after=subtree_bounds_node_observed(doc,id,matrix,Some(fonts),false,false,&mut|_,_|true,Some(&next))?;
-        for bounds in [before,after]{
+        let bounds = if has_effects {
+            // An inner shadow multiplies its coverage by the original plane's
+            // alpha. Even a stack cannot paint outside the filled path. Its
+            // sampling support is still required when rasterizing these pixels.
+            let (path, _) = node.paths().ok()?;
+            let support = |pose| {
+                let b = crate::bounds::path_bounds(&path, matrix.concat(pose))?;
+                Some([b.x - 2., b.y - 2., b.x + b.width + 2., b.y + b.height + 2.])
+            };
+            [support(node.transform)?, support(*transform)?]
+        } else {
+            let before=subtree_bounds_from(doc,id,matrix,Some(fonts),false)?;
+            let mut next=node.clone();next.transform=*transform;
+            let after=subtree_bounds_node_observed(doc,id,matrix,Some(fonts),false,false,&mut|_,_|true,Some(&next))?;
+            [before,after]
+        };
+        for bounds in bounds {
             if bounds.iter().any(|v|!v.is_finite()||v.abs()>1e9){return None}
             if let Some(union)=&mut union{union_box(union,bounds)}else{union=Some(bounds)}
             rects.push([bounds[0],bounds[1],bounds[2]-bounds[0],bounds[3]-bounds[1]]);

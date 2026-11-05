@@ -22,6 +22,13 @@ if (documentBudgetArguments.length) {
   if (documentBudgetArguments.length !== 1 || !/^[1-9][0-9]*$/.test(raw) || !Number.isSafeInteger(documentMemoryBytes) || documentMemoryBytes < 1024 * 1024 || documentMemoryBytes > 4 * 1024 ** 3)
     throw new TypeError('Invalid trusted document memory policy')
 }
+// An issued session may bind exactly one worker port from this top-level document.
+const terminalSessions = new Set()
+if (typeof window !== 'undefined') window.addEventListener('message', event => {
+  if (event.source !== window || event.data?.type !== 'futureox-terminal-port-v1' ||
+      event.ports?.length !== 1 || !terminalSessions.delete(event.data.session)) return
+  ipcRenderer.postMessage('native-preparation:terminal-port', event.data.session, [event.ports[0]])
+})
 const diagnosticListeners = new Set()
 const reportDiagnostic = code => { for (const listener of diagnosticListeners) { try { listener({code}) } catch {} } }
 const invoke = (name, value) => ipcRenderer.invoke(`design-desktop:${name}`, value).then(result => {
@@ -106,10 +113,15 @@ contextBridge.exposeInMainWorld(
     }),
     renderPolicy: Object.freeze({ cpuOnly: process.argv.includes('--core-cpu-only'), ...(gpuWorkingBudgetMiB === undefined ? {} : { gpuWorkingBudgetMiB }) }),
     preparation: Object.freeze({
-      open: () => ipcRenderer.invoke('native-preparation:open'),
+      terminalPortV1: typeof window !== 'undefined' && typeof ipcRenderer.postMessage === 'function',
+      open: async () => {
+        const session = await ipcRenderer.invoke('native-preparation:open')
+        if (typeof session === 'string') terminalSessions.add(session)
+        return session
+      },
       cancel: (session, cancellationId) => ipcRenderer.invoke('native-preparation:cancel', session, cancellationId),
       request: (session, request) => ipcRenderer.invoke('native-preparation:request', session, request),
-      close: session => ipcRenderer.invoke('native-preparation:close', session),
+      close: session => { terminalSessions.delete(session); return ipcRenderer.invoke('native-preparation:close', session) },
     }),
     documentCodec: Object.freeze({
       // The persistent codec worker serializes plain admitted objects with JSON.stringify.

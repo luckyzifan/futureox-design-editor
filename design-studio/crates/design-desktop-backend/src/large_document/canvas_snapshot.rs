@@ -13,9 +13,41 @@ pub(super) struct Snapshot {
     pub navigation: Option<navigation_image::NavigationImage>,
 }
 
-fn stage_id(s: &Session, document: &Document) -> String {
+/// Only immutable stores for previously requested material scopes are kept.
+/// The active host capability and the renderer's GPU ownership are separate.
+#[derive(Default)]
+pub(super) struct RecentMaterials(std::collections::VecDeque<(Snapshot,std::time::SystemTime)>);
+impl RecentMaterials {
+    const BYTES:u64=64*1024*1024;
+    pub(super) fn clear(&mut self) {
+        for (item,_) in self.0.drain(..) { let _=fs::remove_file(item.path); }
+    }
+    fn park(&mut self, mut item:Snapshot, revision:u64) {
+        if item.navigation.as_ref().is_some_and(|image|image.pending()){item.navigation=None;}
+        let stamp=fs::symlink_metadata(&item.path).ok().filter(|m|m.is_file() && m.len()==item.store.bytes)
+            .and_then(|m|m.modified().ok());
+        if let Some(stamp)=stamp && item.scope.is_some() && item.revision==revision && item.store.bytes<=Self::BYTES {
+            while self.0.len()>=8 || self.0.iter().map(|(s,_)|s.store.bytes).sum::<u64>()+item.store.bytes>Self::BYTES {
+                if let Some((old,_))=self.0.pop_front(){let _=fs::remove_file(old.path);}
+            }
+            self.0.push_back((item,stamp));
+        } else { let _=fs::remove_file(item.path); }
+    }
+    fn take(&mut self, scope:&str, revision:u64, cancel:&AtomicBool)->Result<Option<Snapshot>> {
+        let Some(at)=self.0.iter().position(|(s,_)| s.scope.as_deref()==Some(scope) && s.revision==revision) else {return Ok(None)};
+        let (s,stamp)=&self.0[at];
+        let valid=fs::symlink_metadata(&s.path).is_ok_and(|m|m.is_file() && m.len()==s.store.bytes && m.modified().ok()==Some(*stamp)) &&
+            futureox_design_kernel::scene_store::Reader::open(&s.path,&s.store,cancel).is_ok();
+        check_cancel(cancel).map_err(issue)?;
+        let (s,_)=self.0.remove(at).expect("retained material index");
+        if valid {Ok(Some(s))} else {let _=fs::remove_file(s.path);Ok(None)}
+    }
+}
+impl Drop for RecentMaterials { fn drop(&mut self){self.clear();} }
+
+fn stage_id(document_id: &str, document: &Document) -> String {
     for nonce in 0u64.. {
-        let hash = digest(format!("source-canvas:{}:{nonce}", s.owner.document_id).as_bytes());
+        let hash = digest(format!("source-canvas:{document_id}:{nonce}").as_bytes());
         let id = format!("{}-{}-5{}-a{}-{}", &hash[..8], &hash[8..12], &hash[13..16], &hash[17..20], &hash[20..32]);
         if !document.nodes.contains_key(&id) && document.pages.iter().all(|page|page.id!=id) { return id; }
     }
@@ -101,7 +133,13 @@ fn build_inner(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool,
         }
         Ok(())
     })?;
-    let mut document = full.ok_or_else(||issue("The source has no drawable canvas objects"))?;
+    let document = full.ok_or_else(||issue("The source has no drawable canvas objects"))?;
+    let (document,id)=place_materials(document,&s.owner.document_id,&s.name,layout)?;
+    Ok((document,id,warnings.into_iter().collect()))
+}
+
+pub(super) fn place_materials(mut document:Document, document_id:&str, name:&str, layout:&canvas_layout::Layout)
+    -> Result<(Document,String)> {
     // Merge dependency masters at their original transforms first. Only then
     // translate displayed roots, so a visible master and its references retain
     // one source identity rather than conflicting duplicate geometry.
@@ -116,20 +154,20 @@ fn build_inner(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool,
         node.transform.0[5] += item.placed.y-item.source.y;
         if !node.transform.0.iter().all(|v|v.is_finite()) { return Err(issue("Source canvas transform is not representable")); }
     }
-    let id = stage_id(s,&document);
+    let id = stage_id(document_id,&document);
     let mut stage = futureox_design_kernel::facet::sample_node(&id,"frame");
-    stage.name = s.name.clone(); stage.transform = futureox_design_kernel::math::Transform::default();
+    stage.name = name.to_owned(); stage.transform = futureox_design_kernel::math::Transform::default();
     stage.width = layout.bounds.width; stage.height = layout.bounds.height;
     stage.fills.clear(); stage.strokes.clear(); stage.effects.clear(); stage.clip = false;
     stage.blend="pass-through".into();
     stage.children = roots;
     document.nodes.insert(id.clone(),stage);
-    document.id=s.owner.document_id.clone(); document.name=s.name.clone();
-    document.pages[0].name=s.name.clone(); document.pages[0].children=vec![id.clone()];
+    document.id=document_id.to_owned(); document.name=name.to_owned();
+    document.pages[0].name=name.to_owned(); document.pages[0].children=vec![id.clone()];
     for page in document.pages.iter_mut().skip(1) {page.children.retain(|id|!visible.contains(id));}
     document.raster_profile = Some(if document.color_management.is_some(){RasterProfile::Figma}else{RasterProfile::Analytic});
     document.validate_native_source().map_err(issue)?;
-    Ok((document,id,warnings.into_iter().collect()))
+    Ok((document,id))
 }
 
 #[cfg(test)]
@@ -160,7 +198,7 @@ pub(super) fn build_individual(s: &Session, layout: &canvas_layout::Layout, canc
         node.transform.0[5] += item.placed.y-item.source.y;
         if !node.transform.0.iter().all(|v|v.is_finite()) { return Err(issue("Source canvas transform is not representable")); }
     }
-    let id = stage_id(s,&document);
+    let id = stage_id(&s.owner.document_id,&document);
     let mut stage = futureox_design_kernel::facet::sample_node(&id,"frame");
     stage.name = s.name.clone(); stage.transform = futureox_design_kernel::math::Transform::default();
     stage.width = layout.bounds.width; stage.height = layout.bounds.height;
@@ -176,7 +214,7 @@ pub(super) fn build_individual(s: &Session, layout: &canvas_layout::Layout, canc
     Ok((document,id,warnings.into_iter().collect()))
 }
 
-pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool, navigation_preview:bool, material_keys:Option<&[String]>) -> Result<Value> {
+pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool, navigation_preview:bool, material_keys:Option<&[String]>,navigation_window:Option<canvas_layout::Box2>) -> Result<Value> {
     let keys=material_keys.map(|keys| {
         let mut keys=keys.to_vec();keys.sort();
         if keys.is_empty() || keys.len()>32 || keys.windows(2).any(|v|v[0]==v[1]) ||
@@ -185,8 +223,16 @@ pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool, navigation_preview:b
         }
         Ok(keys)
     }).transpose()?;
+    if let Some(b)=navigation_window && (keys.is_none()||![b.x,b.y,b.width,b.height,b.x+b.width,b.y+b.height].iter().all(|v|v.is_finite())||b.width<=0.||b.height<=0.) {
+        return Err(issue("Invalid material navigation window"));
+    }
     let scope=keys.as_ref().map(|v|digest(v.join(",").as_bytes()));
     if s.canvas_snapshot.as_ref().is_none_or(|snapshot|snapshot.revision!=s.revision || snapshot.scope!=scope) {
+        check_cancel(cancel).map_err(issue)?;
+        if let Some(key)=scope.as_deref() && let Some(cached)=s.recent_materials.take(key,s.revision,cancel)? {
+            if let Some(old)=s.canvas_snapshot.replace(cached) {s.recent_materials.park(old,s.revision);}
+            return Ok(snapshot_descriptor(s.canvas_snapshot.as_ref().unwrap(),&s.owner));
+        }
         let layout=match &s.canvas_layout {
             Some(layout) if layout.revision==s.revision => layout.clone(),
             _ => canvas_layout::build(s,cancel)?,
@@ -205,25 +251,45 @@ pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool, navigation_preview:b
         let next=s.directory.join("canvas-native.next");
         let result=(||{
             let generation=format!("{}:{}:{}{suffix}",s.owner.document_id,s.owner.session_epoch,s.revision);
-            let store=futureox_design_kernel::scene_store::write(&next,&generation,&document,&warnings,cancel).map_err(issue)?;
+            let write=||futureox_design_kernel::scene_store::write(&next,&generation,&document,&warnings,cancel);
+            let store=match write(){
+                Err(error) if error.kind()==std::io::ErrorKind::StorageFull && !s.recent_materials.0.is_empty()=>{
+                    s.recent_materials.clear();check_cancel(cancel).map_err(issue)?;write().map_err(issue)?
+                }
+                result=>result.map_err(issue)?,
+            };
             check_cancel(cancel).map_err(issue)?;
             fs::rename(&next,&path).map_err(issue)?;
             let mut snapshot=Snapshot{scope:scope.clone(),revision:s.revision,path,store,page_id:document.pages[0].id.clone(),stage_id,
                 nodes:document.nodes.len(),roots:work.items.len(),bounds:layout.bounds,warnings,raster_profile:document.raster_profile.unwrap_or(RasterProfile::Analytic),color_managed:document.color_management.is_some(),navigation:None};
-            if navigation_preview && scope.is_none() {
-                snapshot.navigation=navigation_image::NavigationImage::start(document,snapshot.page_id.clone(),snapshot.bounds,snapshot.store.bytes);
+            if let Some(window)=navigation_window{
+                let margin=32.;
+                let left=work.items.iter().map(|i|i.placed.x-margin).fold(f64::INFINITY,f64::min).max(window.x).max(layout.bounds.x);
+                let top=work.items.iter().map(|i|i.placed.y-margin).fold(f64::INFINITY,f64::min).max(window.y).max(layout.bounds.y);
+                let right=work.items.iter().map(|i|i.placed.x+i.placed.width+margin).fold(f64::NEG_INFINITY,f64::max).min(window.x+window.width).min(layout.bounds.x+layout.bounds.width);
+                let bottom=work.items.iter().map(|i|i.placed.y+i.placed.height+margin).fold(f64::NEG_INFINITY,f64::max).min(window.y+window.height).min(layout.bounds.y+layout.bounds.height);
+                if right>left&&bottom>top {
+                    let region=canvas_layout::Box2{x:left,y:top,width:right-left,height:bottom-top};
+                    snapshot.navigation=navigation_image::NavigationImage::start(document,snapshot.page_id.clone(),region,snapshot.store.bytes,true);
+                }
+            }else if navigation_preview && scope.is_none() {
+                snapshot.navigation=navigation_image::NavigationImage::start(document,snapshot.page_id.clone(),snapshot.bounds,snapshot.store.bytes,false);
             }
             Ok(snapshot)
         })();
         if result.is_err(){let _=fs::remove_file(&next);}
         let snapshot=result?;
-        if let Some(previous)=s.canvas_snapshot.replace(snapshot) {let _=fs::remove_file(previous.path);}
+        if let Some(previous)=s.canvas_snapshot.replace(snapshot) {s.recent_materials.park(previous,s.revision);}
         s.canvas_layout=Some(layout);
     }
     let snapshot=s.canvas_snapshot.as_ref().unwrap();
+    Ok(snapshot_descriptor(snapshot,&s.owner))
+}
+
+pub(super) fn snapshot_descriptor(snapshot:&Snapshot,owner:&Owner)->Value {
     // This path is host-only. The preload must expose an owner-bound opaque
     // capability, never forward this native filesystem descriptor to UI code.
-    Ok(json!({"owner":s.owner,"revision":s.revision,"path":snapshot.path,"bytes":snapshot.store.bytes,"store":snapshot.store,
+    json!({"owner":owner,"revision":snapshot.revision,"path":snapshot.path,"bytes":snapshot.store.bytes,"store":snapshot.store,
         "scope":snapshot.scope,"pageId":snapshot.page_id,"stageId":snapshot.stage_id,"nodes":snapshot.nodes,"roots":snapshot.roots,
-        "bounds":snapshot.bounds,"warnings":snapshot.warnings,"rasterProfile":snapshot.raster_profile,"colorManaged":snapshot.color_managed}))
+        "bounds":snapshot.bounds,"warnings":snapshot.warnings,"rasterProfile":snapshot.raster_profile,"colorManaged":snapshot.color_managed})
 }

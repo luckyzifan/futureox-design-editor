@@ -1,3 +1,4 @@
+import {fixedMaterialTiles,materialBandGrid,materialTiles,MOVING_DETAIL_CORE,type MaterialBandGrid} from './source-display-band'
 import type {CanvasCamera} from '../canvas-camera'
 import {canvasRasterPlan,canvasRasterPhaseMatches,nativeTileMotionScale} from './canvas-raster-plan'
 import {allowsReducedSampling} from './render-quality'
@@ -15,8 +16,10 @@ export const SOURCE_PREFETCH_BUDGET={tiles:8,bytes:8*514*514*4} as const
  * texture. The presenter has already certified physical coverage. */
 export function improvesSourceZoom(previous:ResidentAcknowledgement|undefined, next:ResidentAcknowledgement,
   target:{view:CanvasCamera;width:number;height:number}, tiles:Iterable<RasterTile & {gpuTile?:number}>, previousTiles?:Iterable<RasterTile & {gpuTile?:number}>){
-  if(!previous||next.preview||next.dpr!==previous.dpr||next.width!==target.width||next.height!==target.height||
-      next.view.zoom<=previous.view.zoom||next.view.zoom>target.view.zoom)return false
+  if(!previous||next.preview||next.dpr!==previous.dpr||previous.width!==target.width||previous.height!==target.height||
+      next.width!==target.width||next.height!==target.height||
+      next.view.zoom<previous.view.zoom||next.view.zoom>target.view.zoom||
+      (next.view.zoom===previous.view.zoom && (next.view.x!==previous.view.x||next.view.y!==previous.view.y)))return false
   // A newer wheel event may already have arrived. An immutable frame can
   // advance if its world rectangle still covers the entire current viewport.
   const ratio=next.view.zoom/target.view.zoom
@@ -28,8 +31,41 @@ export function improvesSourceZoom(previous:ResidentAcknowledgement|undefined, n
   if(previous.ids.some(id=>!former.some(t=>t.gpuTile===id)))return false
   const same=(a:typeof entries[number],b:typeof entries[number])=>a.gpuTile===b.gpuTile&&a.key===b.key
   if(former.some(t=>!current.some(c=>same(c,t))&&sourceTileBringsDetail(t,target.view,target,current)))return false
-  return current.some(t=>!former.some(f=>same(f,t))&&t.zoom>previous.view.zoom*previous.dpr&&
+  // A projected frame's camera can already be finer than the texels it
+  // displays. Compare against its actual retained tiles at this location.
+  return current.some(t=>!former.some(f=>same(f,t)) &&
+    (former.length>0 || t.zoom>previous.view.zoom*previous.dpr) &&
     sourceTileBringsDetail(t,target.view,target,former))
+}
+
+/** A moving view may mix native texture densities only when the entire current
+ * viewport is covered and at least one visible region gains source detail. */
+export function coveredSourceDetail<T extends RasterTile & {used: number}>(
+  cached: Iterable<T>, target: {view: CanvasCamera; width: number; height: number}, previous: RasterTile[],
+): T[] | undefined {
+  const {view,width,height}=target
+  const visible=[...cached].filter(tile=>tileIntersectsView(tile,view,target)).sort((a,b)=>a.zoom-b.zoom||a.used-b.used)
+  if(!visible.some(tile=>sourceTileBringsDetail(tile,view,target,previous)))return
+  const world={x:-view.x/view.zoom,y:-view.y/view.zoom,width:width/view.zoom,height:height/view.zoom}
+  // Prefer an already complete finest lattice. A pending overscan tile can
+  // still prevent terminal readiness. The presenter verifies physical cover.
+  const finest=visible[visible.length-1]
+  const tier=visible.filter(t=>t.zoom===finest.zoom)
+  if(tier.length<visible.length && tier.every(t=>(t.phaseX??0)===(finest.phaseX??0)&&(t.phaseY??0)===(finest.phaseY??0)) &&
+      tilesCoverBounds(tier,world))return tier
+  return tilesCoverBounds(visible,world)?visible:undefined
+}
+
+/** During an outward wheel gesture finer resident source pixels can already
+ * cover the new view. Their physical presentation is still a preview until
+ * the exact requested sampling phase has its own receipt. */
+export function retainedZoomOut<T extends RasterTile & {used:number}>(cache:Iterable<T>,view:CanvasCamera,
+  size:{width:number;height:number}, dpr:number):T[]|undefined {
+  const scale=view.zoom*dpr
+  const visible=[...cache].filter(t=>t.zoom>=scale&&tileIntersectsView(t,view,size))
+  if(!visible.length)return
+  const bounds={x:-view.x/view.zoom,y:-view.y/view.zoom,width:size.width/view.zoom,height:size.height/view.zoom}
+  if(tilesCoverBounds(visible,bounds,scale))return visible.sort((a,b)=>a.zoom-b.zoom||a.used-b.used)
 }
 
 export function sourceTileBringsDetail(tile:RasterTile,view:CanvasCamera,size:{width:number;height:number},resident:Iterable<RasterTile>){
@@ -70,10 +106,27 @@ export class SourceViewportPlanner {
   private zoomingOut=false
   private zoomingIn=false
   private visibleDensity=0
+  private zoomFocus?:{x:number;y:number}
   private inwardRung=0
+  private coverageRetry?:{view:CanvasCamera;ratio:number;width:number;height:number}
   private direction?:{previous:CanvasCamera;view:CanvasCamera}
   private accepted?:{view:CanvasCamera;dpr:number;raster:ReturnType<typeof canvasRasterPlan>}
-  constructor(private readonly rasterProfile:string,private readonly colorManaged:boolean){}
+  private readonly bandGrids=new Map<string,MaterialBandGrid>()
+  constructor(private readonly rasterProfile:string,private readonly colorManaged:boolean, private readonly material=false,private readonly overview=false){}
+  focus(view:CanvasCamera,width:number,height:number){
+    const focus=this.zoomFocus
+    if(focus&&focus.x*view.zoom+view.x>=0&&focus.x*view.zoom+view.x<width&&focus.y*view.zoom+view.y>=0&&focus.y*view.zoom+view.y<height)return focus
+    return {x:(width/2-view.x)/view.zoom,y:(height/2-view.y)/view.zoom}
+  }
+  /** A physical gap or rejected display band retries the same native density
+   * on the established, uncropped tile lattice before any lower tier. */
+  retryNativeCoverage(view:CanvasCamera,ratio:number,width:number,height:number){
+    const old=this.coverageRetry
+    if(old&&old.view.x===view.x&&old.view.y===view.y&&old.view.zoom===view.zoom&&old.ratio===ratio&&old.width===width&&old.height===height)return false
+    this.coverageRetry={view:{...view},ratio,width,height}
+    this.demands[0]=this.demands[1]=undefined
+    return true
+  }
   /** Only a completed native presentation establishes the lattice to retain
    * through a pan. Speculative settled plans must not replace this receipt. */
   presented(view:CanvasCamera,dpr:number,width:number,height:number){
@@ -87,24 +140,31 @@ export class SourceViewportPlanner {
     if(scale>this.visibleDensity){this.visibleDensity=scale;this.demands[1]=undefined;return true}
     return false
   }
-  plan(view:CanvasCamera,dpr:number,width:number,height:number,moving:boolean,ceiling?:number,continuousZoom=false){
+  plan(view:CanvasCamera,dpr:number,width:number,height:number,moving:boolean,ceiling?:number,continuousZoom=false,window?:{x:number;y:number;width:number;height:number}){
+    const retry=this.coverageRetry
+    if(retry&&(retry.view.x!==view.x||retry.view.y!==view.y||retry.view.zoom!==view.zoom||retry.ratio!==dpr||retry.width!==width||retry.height!==height))this.coverageRetry=undefined
     if(this.previous && (this.previous.x!==view.x || this.previous.y!==view.y || this.previous.zoom!==view.zoom)) {
       this.zoomingOut=view.zoom<this.previous.zoom
       if(this.zoomingOut)this.inwardRung=0
       this.zoomingIn=view.zoom>this.previous.zoom
+      if(this.zoomingIn){
+        const delta=view.zoom-this.previous.zoom
+        this.zoomFocus={x:(this.previous.x-view.x)/delta,y:(this.previous.y-view.y)/delta}
+      }
       this.direction=this.previous.zoom===view.zoom?{previous:this.previous,view:{...view}}:undefined
     }
     this.previous={...view}
-    const key=[view.x,view.y,view.zoom,dpr,width,height,Number(moving),Number(this.zoomingOut),ceiling??0,Number(continuousZoom)]
+    const key=[view.x,view.y,view.zoom,dpr,width,height,Number(moving),Number(this.zoomingOut),ceiling??0,Number(continuousZoom),window?.x??0,window?.y??0,window?.width??width,window?.height??height]
     const slot=moving?1:0,previous=this.demands[slot]
     if(previous?.key.every((v,i)=>Object.is(v,key[i])))return previous.value
-    const value=this.compute(view,dpr,width,height,moving,ceiling,continuousZoom)
+    const value=this.compute(view,dpr,width,height,moving,ceiling,continuousZoom,window)
     this.demands[slot]={key,value};return value
   }
-  private compute(view:CanvasCamera,ratio:number,width:number,height:number,moving:boolean,ceiling?:number,continuousZoom=false){
+  private compute(view:CanvasCamera,ratio:number,width:number,height:number,moving:boolean,ceiling?:number,continuousZoom=false,window?:{x:number;y:number;width:number;height:number}){
     const reduced=moving && this.zoomingOut && allowsReducedSampling(view.zoom)
     const native=view.zoom*ratio
-    const nativeLattice=!moving || this.zoomingIn&&!continuousZoom
+    const panBands=!!this.direction && this.material && this.colorManaged && this.rasterProfile==='figmaSubpixel'
+    const nativeLattice=!moving || this.zoomingIn&&!continuousZoom || panBands
     let scale=reduced ? Math.min(native,tileLevel(native/2)) : !nativeLattice ? nativeTileMotionScale(view,ratio,width,height) : undefined
     if(moving&&continuousZoom&&this.zoomingIn&&this.visibleDensity>0&&native>this.visibleDensity){
       // Keep one drawable lattice in flight across wheel events. A new camera
@@ -142,8 +202,22 @@ export class SourceViewportPlanner {
     const addressed=planTilesWithPrefetchRim(bounds,raster.scale,256,raster.phase,
       import.meta.env.VITE_DESIGN_SOURCE_PREFETCH==='0'?0:1)
     const rekey=(tile:RasterTile)=>({...tile,key:tileComputationKey(tile,computationCamera,dependent)})
-    let viewport=addressed.viewport
-    if(nativeLattice&&this.colorManaged&&raster.scale>=8&&this.rasterProfile==='figmaSubpixel'){
+    let viewport=addressed.viewport,bandGrid:MaterialBandGrid|undefined
+    if(!this.coverageRetry&&this.material&&this.colorManaged&&this.rasterProfile==='figmaSubpixel'){
+      if(nativeLattice&&raster.scale>=8){
+        const slot=[raster.scale,ratio,width,height].join('/')
+        bandGrid=this.bandGrids.get(slot)
+        if(!bandGrid){
+          bandGrid=materialBandGrid(bounds,raster.scale,raster.phase)
+          if(this.bandGrids.size>=16)this.bandGrids.delete(this.bandGrids.keys().next().value!)
+          this.bandGrids.set(slot,bandGrid)
+        }
+        viewport=fixedMaterialTiles(bounds,raster.scale,raster.phase,bandGrid)??viewport
+      }
+      else if(moving&&this.zoomingIn&&continuousZoom&&raster.scale>=2)
+        viewport=materialTiles(bounds,raster.scale,raster.phase,MOVING_DETAIL_CORE,this.zoomFocus)??viewport
+    }
+    if(!bandGrid&&!this.coverageRetry&&nativeLattice&&this.colorManaged&&raster.scale>=8&&this.rasterProfile==='figmaSubpixel'){
       // Edge tiles often cover less than half a GPU surface on a Retina
       // viewport. Keep a stable 64-device-pixel rim and the original AA
       // gutter. Crops have their own texture identity and world placement.
@@ -159,7 +233,23 @@ export class SourceViewportPlanner {
         return {...tile,x,y,width:w,height:h,key:[tile.key,'crop',x,y,w,h].join('/')}
       })
     }
-    const tiles=viewport.map(rekey),rim=addressed.rim.map(rekey)
+    // The original global tile coordinates and computation camera are also
+    // the exact numerical reference. Catalogue bounds only prioritize work.
+    // The presenter must independently prove pending gaps are paint-free
+    // page background, or retryNativeCoverage draws the complete old lattice.
+    if(window&&this.overview&&!this.coverageRetry&&raster.scale<8){
+      const clipped={...view,x:view.x-window.x,y:view.y-window.y}
+      const priority=viewport.filter(tile=>tileIntersectsView(tile,clipped,window))
+      if(priority.length)viewport=priority
+    }
+    const tiles=viewport.map(rekey)
+    let rim=addressed.rim.map(rekey)
+    if(bandGrid){
+      const pad=256/raster.scale,keys=new Set(viewport.map(t=>t.key))
+      const neighbours=this.direction && import.meta.env.VITE_DESIGN_SOURCE_PREFETCH!=='0' &&
+        fixedMaterialTiles({x:bounds.x-pad,y:bounds.y-pad,width:bounds.width+2*pad,height:bounds.height+2*pad},raster.scale,raster.phase,bandGrid)
+      rim=neighbours?neighbours.filter(t=>!keys.has(t.key)).map(t=>({...rekey(t),prefetch:true})):[]
+    }
     const directional=this.direction?.view.zoom===view.zoom
       ?panPrefetch(rim,this.direction.previous,this.direction.view,bounds,SOURCE_PREFETCH_BUDGET):[]
     // Directionless idle frames warm both horizontal neighbours first. No
@@ -173,7 +263,7 @@ export class SourceViewportPlanner {
     const idle=rim.slice().sort((a,b)=>Number(horizontal(b))-Number(horizontal(a)) ||
       Math.hypot(a.x+a.width/2-center.x,a.y+a.height/2-center.y)-Math.hypot(b.x+b.width/2-center.x,b.y+b.height/2-center.y))
     let bytes=0
-    const prefetch=(directional.length?directional:idle).filter(tile=>{
+    const prefetch=(this.material&&!this.direction?[]:directional.length?directional:idle).filter(tile=>{
       const cost=tile.width*tile.height*4
       if(bytes+cost>SOURCE_PREFETCH_BUDGET.bytes)return false
       bytes+=cost;return true

@@ -183,7 +183,7 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     }
     warn('UNSUPPORTED_GRADIENT', `${paint.kind} gradients are not supported in semantic HTML export.`, nodeId)
   }
-  const align: Record<string, string> = { start: 'flex-start', end: 'flex-end', center: 'center', stretch: 'stretch', 'space-between': 'space-between', 'space-around': 'space-around', 'space-evenly': 'space-evenly' }
+  const align: Record<string, string> = { start: 'flex-start', end: 'flex-end', center: 'center', 'unsafe-center': 'unsafe center', 'unsafe-end': 'unsafe end', stretch: 'stretch', 'space-between': 'space-between', 'space-around': 'space-around', 'space-evenly': 'space-evenly' }
   const rootSet = new Set(roots)
   // Keep selected roots in their authored parent coordinate system. Different
   // parents require world composition, so explicitly report this limitation.
@@ -258,6 +258,7 @@ export function exportDesignCode(document: DesignDocument, input: CodeExportOpti
     if (backdrop.length) declarations.push(`backdrop-filter:${backdrop.join(' ')}`)
     if (n.layout && n.layout.mode !== 'none') {
       const l = n.layout
+      if (l.wrap && (l.align === 'unsafe-center' || l.align === 'unsafe-end')) declarations.push('align-content:' + align[l.align])
       declarations.push(`display:${n.visible ? l.mode === 'grid' ? 'grid' : 'flex' : 'none'}`, `padding:${l.padding.map(px).join(' ')}`, `gap:${px(l.mode === 'vertical' ? l.gap : l.lineGap)} ${px(l.mode === 'vertical' ? l.lineGap : l.gap)}`, `justify-content:${align[l.justify]}`, `align-items:${align[l.align]}`)
       if (l.mode === 'grid') declarations.push(`grid-template-columns:repeat(${number(l.columns)},minmax(0,1fr))`)
       else declarations.push(`flex-direction:${l.mode === 'horizontal' ? 'row' : 'column'}`, `flex-wrap:${l.wrap ? 'wrap' : 'nowrap'}`)

@@ -1,0 +1,11 @@
+{
+  "name": "Hello Futureox",
+  "id": "futureox-local.hello-world",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": { "allowedDomains": ["none"], "httpsAllowed": true },
+  "manifestVersion": 2
+}

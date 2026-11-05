@@ -1,5 +1,0 @@
-{
-  "status": "failed",
-  "output": "/var/folders/w8/x8s0mxjd1f38qc493f2g8rpr0000gn/T/futureox-dataflow-editor-5Yfk4L",
-  "error": "Error: expect(locator).toHaveAttribute(expected) failed\n\nLocator:  locator('.kernel-presentation')\nExpected: \"webgpu\"\nReceived: \"gpu\"\nTimeout:  5000ms\n\nCall log:\n  - Expect \"toHaveAttribute\" locator('.kernel-presentation') with timeout 5000ms\n  - waiting for locator('.kernel-presentation')\n    14 \u00d7 locator resolved to <div aria-busy=\"false\" data-camera-x=\"40\" data-camera-y=\"40\" data-camera-zoom=\"1\" data-pixel-ratio=\"2\" data-requested-epoch=\"1\" data-displayed-epoch=\"1\" data-visual-camera-x=\"40\" data-visual-camera-y=\"40\" data-fallback-phase=\"none\" class=\"kernel-presentation\" data-preview-active=\"false\" data-requested-camera-x=\"40\" data-requested-camera-y=\"40\" data-presentation-ready=\"true\" data-requested-camera-zoom=\"1\" data-requested-pixel-ratio=\"2\" data-presentation-backend=\"gpu\" data-presentation-state=\"ready\" \u2026>\u2026</div>\n       - unexpected value \"gpu\"\n"
-}

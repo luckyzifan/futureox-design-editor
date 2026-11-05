@@ -7,7 +7,7 @@ export type PreparationReply = { progress?: PreparationProgress; bridgeBoundaryA
 
 const methods: PreparationMethod[] = ['warm_resources','initialize','load_document','apply_document_patch_with_damage','apply_interaction_transforms','compile_gpu_packet','render_linear','render_png','render_color_png','render_region_png','render_cpu_frame','stats','gpu_memory_breakdown','preparation_capabilities_v1','derive_document_v1','load_source_snapshot']
 type Diagnostics = { enabled: () => boolean; owner: () => number; record: (event: string, fields: Record<string, number | boolean>) => void }
-type Job = { cancellation?: Int32Array<SharedArrayBuffer>; cancellable?: boolean; owner?: number; queuedAt?: number; startedAt?: number; id: number; lane: string; method: PreparationMethod; args: unknown[];
+type Job = { terminal?:MessagePort; cancellation?: Int32Array<SharedArrayBuffer>; cancellable?: boolean; owner?: number; queuedAt?: number; startedAt?: number; id: number; lane: string; method: PreparationMethod; args: unknown[];
   resolve: (reply: PreparationReply) => void; reject: (error: Error) => void; cleanup?: () => void; cancelled?: boolean; backendCode?: number; boundaryCode?: number; diagnosticTimer?: ReturnType<typeof setTimeout> }
 /** CPU preparation has its own event loop. Keep at most one physical job in
  * flight until its actual reply, including cooperative cancellation. Later packet
@@ -47,12 +47,36 @@ export class PreparationChannel {
   private closed?: Error
   private active?: Job
   private queued: Job[] = []
+  private terminalPort?: MessagePort
+  private terminalReady=false
+  private terminalDepth=0
+  // The GPU work queue owns this pose. PreparationChannel still dispatches only
+  // one physical call at a time across both ports, including aborted packets.
+  async withPoseTransport<T>(work:()=>Promise<T>):Promise<T> {
+    this.terminalDepth++
+    try {return await work()} finally {this.terminalDepth--}
+  }
   constructor(private port: MessagePort, private diagnostics?: Diagnostics) {
-    port.onmessage = event => {
+    const receive=(event:MessageEvent,source:MessagePort)=>{
+      if(source===port && event.data?.terminalPort instanceof MessagePort && !this.terminalPort){
+        const direct:MessagePort=event.data.terminalPort;this.terminalPort=direct
+        direct.onmessage=e=>{if(e.data?.terminalReady===true)this.terminalReady=true;else receive(e,direct)}
+        const lost=()=>{
+          this.terminalReady=false
+          if(!this.closed && this.active?.terminal===direct){
+            this.port.postMessage({terminalTransportFailed:true})
+            this.close(Error('Terminal preparation transport closed'))
+          }
+        }
+        direct.addEventListener('close',lost);direct.onmessageerror=lost;direct.start();return
+      }
       const reply = event.data as PreparationReply
-      if (reply.fatal) { this.close(new Error(reply.fatal)); return }
+      if (reply.fatal) {
+        if(source===this.terminalPort)this.port.postMessage({terminalTransportFailed:true})
+        this.close(new Error(reply.fatal));return
+      }
       const job = this.active
-      if (!job || job.id !== reply.id) return
+      if (!job || job.id !== reply.id || source!==(job.terminal??port)) return
       // Clocks carry their performance time origin: retain sender time separately
       // from this worker's receive timestamp. This is delivery/event-loop delay,
       // not Rust execution time. Invalid or clock-discontinuous ages are omitted.
@@ -88,6 +112,7 @@ export class PreparationChannel {
       }
       this.dispatch()
     }
+    port.onmessage=event=>receive(event,port)
     port.onmessageerror = () => this.close(new Error('CPU preparation response could not be decoded'))
     port.start()
   }
@@ -98,14 +123,16 @@ export class PreparationChannel {
     if (this.queued.length + Number(!!this.active) >= 128) return Promise.reject(new Error('CPU preparation request budget exceeded'))
     return new Promise((resolve, reject) => {
       const job: Job = { id: ++this.sequence, lane, method, args, resolve, reject, cancellable: !!signal }
-      if (signal && typeof SharedArrayBuffer !== 'undefined') job.cancellation = new Int32Array(new SharedArrayBuffer(4))
+      if(this.terminalDepth && this.terminalReady && lane==='interaction' &&
+          (method==='apply_interaction_transforms'||method==='compile_gpu_packet'))job.terminal=this.terminalPort
+      if (signal && !job.terminal && typeof SharedArrayBuffer !== 'undefined') job.cancellation = new Int32Array(new SharedArrayBuffer(4))
       if (this.diagnostics?.enabled()) { job.owner = this.diagnostics.owner(); job.queuedAt = performance.now() }
       this.trace(job, 1)
       if (signal) {
         const cancel = () => {
           job.cancelled = true
           if (job.cancellation) Atomics.store(job.cancellation, 0, 1)
-          else if (this.active === job) this.port.postMessage({ cancel: job.id })
+          else if (this.active === job) (job.terminal??this.port).postMessage({ cancel: job.id })
           this.trace(job, 3)
           const index = this.queued.indexOf(job)
           if (index >= 0) this.queued.splice(index, 1)
@@ -144,7 +171,8 @@ export class PreparationChannel {
     if (this.diagnostics?.enabled()) job.startedAt = performance.now()
     this.trace(job, 2, { waitMs: (job.startedAt ?? 0) - (job.queuedAt ?? 0) })
     this.watch(job)
-    try { this.port.postMessage({ id: job.id, lane: job.lane, method: job.method, args: job.args, ...(job.cancellable ? { cancellable: true, cancellation: job.cancellation?.buffer } : {}), ...(this.diagnostics?.enabled() ? { diagnostics: { originChannelId: this.originChannelId, requestId: job.owner ?? 0 } } : {}) }) }
+    if(job.terminal && !this.terminalReady)job.terminal=undefined
+    try { (job.terminal??this.port).postMessage({ id: job.id, lane: job.lane, method: job.method, args: job.args, ...(job.cancellable ? { cancellable: true, cancellation: job.cancellation?.buffer } : {}), ...(this.diagnostics?.enabled() ? { diagnostics: { originChannelId: this.originChannelId, requestId: job.owner ?? 0 } } : {}) }) }
     catch (error) {
       clearTimeout(job.diagnosticTimer); this.trace(job, 7, { reasonCode: 1 }); this.active = undefined; job.cleanup?.(); job.reject(error as Error); this.dispatch()
     }
@@ -152,6 +180,7 @@ export class PreparationChannel {
   close(error = new Error('CPU preparation closed')) {
     this.closed = error
     this.receipts.clear()
+    this.terminalReady=false;this.terminalPort?.close()
     this.port.close()
     for (const job of [...(this.active ? [this.active] : []), ...this.queued]) { clearTimeout(job.diagnosticTimer); this.trace(job, 7, { reasonCode: 2 }); job.cleanup?.(); job.reject(error) }
     this.active = undefined; this.queued = []

@@ -1,17 +1,18 @@
 //! Handle-based editing API over the document.
 //!
 //! The JS side addresses nodes, tiles and op batches through opaque `u32`
-//! handles instead of shuttling JSON per query.  Every mutation flows
-//! through the op log, so undo, redo and transport all replay the same
-//! operations.
+//! handles instead of shuttling JSON per query. Node edits stage transport
+//! operations against a persistent store. Undo and redo restore snapshots
+//! from the same journal that records whole-document replacements.
 use crate::facet::{self, Facet, FacetKind};
 use crate::handles::{Arena, Handle, INVALID};
-use crate::ops::{EditScope, EditSource, Op, OpError, OpLog};
+use crate::ops::{EditScope, EditSource, Op, OpError};
 use crate::protocol::{self, Compression, Frame};
 use crate::scene::{Document, Node};
 use crate::snapshot::NodeStore;
 use crate::tile_stack::{Rect, TileKey, TileStack};
 use serde::Deserialize;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub enum Error {
@@ -45,7 +46,7 @@ pub const NO_EDIT_SCOPE_ACTIVE: &str = "no edit scope is active";
 
 #[derive(Clone)]
 struct GraphSnapshot {
-    base: Document,
+    base: Arc<Document>,
     store: NodeStore,
     /// Provenance of the edit this history entry reverts (undo stack) or
     /// re-applies (redo stack); the entry travels between both stacks.
@@ -68,8 +69,8 @@ struct OpsSubmission {
 }
 
 pub struct GraphApi {
-    base: Document,
-    log: OpLog,
+    base: Arc<Document>,
+    store: NodeStore,
     nodes: Arena<String>,
     tiles: TileStack,
     // One chronological journal for document replacements and op batches.
@@ -94,9 +95,9 @@ impl GraphApi {
         let mut document: Document =
             serde_json::from_str(document_json).map_err(|e| Error::Json(e.to_string()))?;
         let store = NodeStore::from_owned_json_nodes(std::mem::take(&mut document.nodes), document_json);
-        let mut api = GraphApi {
-            log: OpLog::new(store),
-            base: document,
+        Ok(GraphApi {
+            store,
+            base: Arc::new(document),
             nodes: Arena::default(),
             tiles: TileStack::default(),
             undo: Vec::new(),
@@ -106,36 +107,35 @@ impl GraphApi {
             scope_stack: Vec::new(),
             next_scope_token: 1,
             last_scope: None,
-        };
-        let ids: Vec<String> = api.log.store().ids().cloned().collect();
-        for id in ids {
-            api.nodes.alloc(id);
-        }
-        Ok(api)
+        })
     }
 
     pub fn revision(&self) -> u64 {
         self.revision
     }
 
-    fn snapshot(&self) -> GraphSnapshot {
+    fn snapshot(&self, edit_source: EditSource) -> GraphSnapshot {
         GraphSnapshot {
             base: self.base.clone(),
-            store: self.log.store().clone(),
-            edit_source: EditSource::User,
+            store: self.store.clone(),
+            edit_source,
         }
     }
 
     fn install(&mut self, snapshot: GraphSnapshot) {
         self.base = snapshot.base;
-        self.log = OpLog::new(snapshot.store);
+        self.store = snapshot.store;
+        self.revision += 1;
+    }
+
+    fn retire_missing_handles(&mut self) {
         // Keep existing identities, retire removed ones; never reset generations.
         let stale: Vec<_> = self
             .nodes
             .handles()
             .filter(|h| {
                 self.nodes.get(*h).is_some_and(|id| {
-                    self.log.store().get(id).is_none()
+                    self.store.get(id).is_none()
                         && !self.base.pages.iter().any(|p| &p.id == id)
                 })
             })
@@ -143,18 +143,18 @@ impl GraphApi {
         for h in stale {
             self.nodes.free(h);
         }
-        self.revision += 1;
     }
 
-    fn commit_scoped(&mut self, next: GraphSnapshot, source: EditSource) {
-        let mut previous = self.snapshot();
-        previous.edit_source = source;
-        self.undo.push(previous);
-        if self.undo.len() > HISTORY_LIMIT {
-            self.undo.remove(0);
+    fn commit_scoped(&mut self, next: GraphSnapshot, scope: EditScope) {
+        if !scope.ignore_undo_redo {
+            self.undo.push(self.snapshot(scope.source));
+            if self.undo.len() > HISTORY_LIMIT {
+                self.undo.remove(0);
+            }
         }
         self.redo.clear();
         self.install(next);
+        self.last_scope = Some(scope);
     }
 
     // -- edit scopes ----------------------------------------------------------
@@ -247,27 +247,22 @@ impl GraphApi {
         // the previous document's allocations, even if its IDs/content coincide.
         let nodes = std::mem::take(&mut next.nodes);
         let store = if next.id == self.base.id {
-            self.log.store().replacing_nodes(nodes, document_json)
+            self.store.replacing_nodes(nodes, document_json)
         } else {
             NodeStore::from_owned_json_nodes(nodes, document_json)
         };
-        self.last_scope = Some(scope);
         let snapshot = GraphSnapshot {
-            base: next,
+            base: Arc::new(next),
             store,
             edit_source: scope.source,
         };
-        if scope.ignore_undo_redo {
-            self.redo.clear();
-            self.install(snapshot);
-        } else {
-            self.commit_scoped(snapshot, scope.source);
-        }
+        self.commit_scoped(snapshot, scope);
+        self.retire_missing_handles();
         Ok(self.revision())
     }
 
     pub fn document_json(&self) -> String {
-        serde_json::to_string(&self.log.store().to_document(&self.base))
+        serde_json::to_string(&self.store.to_document(&self.base))
             .expect("document serializes")
     }
 
@@ -281,7 +276,7 @@ impl GraphApi {
         {
             return handle.raw();
         }
-        match self.log.store().get(id) {
+        match self.store.get(id) {
             Some(_) => self.nodes.alloc(id.into()).raw(),
             None if self.base.pages.iter().any(|p| p.id == id) => self.nodes.alloc(id.into()).raw(),
             None => INVALID,
@@ -305,7 +300,7 @@ impl GraphApi {
 
     fn node(&self, handle: u32) -> Result<&Node, Error> {
         let id = self.node_id(handle)?;
-        self.log.store().get(id).ok_or(Error::UnknownHandle(handle))
+        self.store.get(id).ok_or(Error::UnknownHandle(handle))
     }
 
     pub fn node_kind(&self, handle: u32) -> Result<String, Error> {
@@ -336,13 +331,10 @@ impl GraphApi {
 
     pub fn node_parent(&mut self, handle: u32) -> Result<u32, Error> {
         let id = self.node_id(handle)?.to_owned();
-        let parent = self
-            .log
-            .store()
+        let parent = self.store
             .ids()
             .find(|pid| {
-                self.log
-                    .store()
+                self.store
                     .get(pid)
                     .is_some_and(|p| p.children.contains(&id))
             })
@@ -388,7 +380,7 @@ impl GraphApi {
         Ok(self.node(handle)?.opacity)
     }
 
-    // -- writes (all through the op log) --------------------------------------
+    // -- atomic node edits ----------------------------------------------------
 
     fn apply(&mut self, ops: Vec<Op>) -> Result<(), Error> {
         self.apply_scoped(ops, None)
@@ -403,20 +395,21 @@ impl GraphApi {
             return Ok(());
         }
         let scope = self.scope_for_commit(explicit)?;
-        let mut staged = OpLog::new(self.log.store().clone());
-        staged.apply_scoped(ops, scope).map_err(Error::Op)?;
-        self.last_scope = Some(scope);
-        let next = GraphSnapshot {
-            base: self.base.clone(),
-            store: staged.store().clone(),
-            edit_source: scope.source,
-        };
-        if scope.ignore_undo_redo {
-            self.redo.clear();
-            self.install(next);
-            return Ok(());
+        let mut next = self.snapshot(scope.source);
+        let mut removed = false;
+        for op in ops {
+            // Snapshot history already owns the pre-edit state. Removal also
+            // requires an existing parent, a precondition of the op journal.
+            if matches!(op, Op::RemoveNode { .. }) {
+                op.invert_against(&next.store).map_err(Error::Op)?;
+                removed = true;
+            }
+            op.apply(&mut next.store).map_err(Error::Op)?;
         }
-        self.commit_scoped(next, scope.source);
+        self.commit_scoped(next, scope);
+        if removed {
+            self.retire_missing_handles();
+        }
         Ok(())
     }
 
@@ -461,9 +454,7 @@ impl GraphApi {
             return Err(Error::Protocol("scale factor out of range".into()));
         }
         let id = self.node_id(handle)?.to_owned();
-        let node = self
-            .log
-            .store()
+        let node = self.store
             .get(&id)
             .ok_or(Error::UnknownHandle(handle))?;
         let m = node.transform.0;
@@ -522,11 +513,9 @@ impl GraphApi {
         };
         // The state being left re-enters the redo stack tagged with the same
         // edit's source, so provenance survives undo/redo round trips.
-        let source = previous.edit_source;
-        let mut left = self.snapshot();
-        left.edit_source = source;
-        self.redo.push(left);
+        self.redo.push(self.snapshot(previous.edit_source));
         self.install(previous);
+        self.retire_missing_handles();
         Ok(true)
     }
 
@@ -534,11 +523,9 @@ impl GraphApi {
         let Some(next) = self.redo.pop() else {
             return Ok(false);
         };
-        let source = next.edit_source;
-        let mut left = self.snapshot();
-        left.edit_source = source;
-        self.undo.push(left);
+        self.undo.push(self.snapshot(next.edit_source));
         self.install(next);
+        self.retire_missing_handles();
         Ok(true)
     }
 
@@ -635,7 +622,7 @@ impl GraphApi {
     // -- binary documents ---------------------------------------------------------
 
     pub fn export_binary(&self) -> Vec<u8> {
-        crate::binfmt::encode(&self.log.store().to_document(&self.base))
+        crate::binfmt::encode(&self.store.to_document(&self.base))
     }
 
     pub fn import_binary(&mut self, bytes: &[u8]) -> Result<(), Error> {
@@ -644,10 +631,11 @@ impl GraphApi {
         let store = NodeStore::from_document(&document);
         document.nodes.clear();
         self.install(GraphSnapshot {
-            base: document,
+            base: Arc::new(document),
             store,
             edit_source: scope.source,
         });
+        self.retire_missing_handles();
         self.undo.clear();
         self.redo.clear();
         self.last_scope = Some(scope);
@@ -765,6 +753,39 @@ mod tests {
     }
 
     #[test]
+    fn pose_history_shares_metadata_and_allocates_only_requested_handles() {
+        let mut api = GraphApi::new(&document_json()).unwrap();
+        let original = api.document_json();
+        assert!(api.nodes.is_empty());
+        let frame = api.node_handle("f1");
+        api.set_transform(frame, [0., 1., -1., 0., 3., 5.]).unwrap();
+        assert_eq!(api.nodes.len(), 1);
+        assert!(Arc::ptr_eq(&api.base, &api.undo.last().unwrap().base));
+        assert!(api.undo().unwrap());
+        assert_eq!(api.document_json(), original);
+        assert!(api.redo().unwrap());
+        assert_eq!(api.node_handle("f1"), frame);
+
+        // The second removal has no parent. The first staged removal must
+        // leave neither a history entry nor a retired handle on failure.
+        let revision = api.revision();
+        assert!(matches!(
+            api.apply_ops_json(r#"[{"type":"removeNode","id":"f1"},{"type":"removeNode","id":"p1"}]"#),
+            Err(Error::Op(OpError::UnknownParent(_)))
+        ));
+        assert_eq!(api.revision(), revision);
+        assert_eq!(api.undo_depth(), 1);
+        assert!(api.node_exists(frame));
+        api.apply_ops_json(r#"[{"type":"removeNode","id":"f1"}]"#).unwrap();
+        assert!(!api.node_exists(frame));
+        assert!(api.undo().unwrap());
+        let restored = api.node_handle("f1");
+        assert_ne!(restored, frame);
+        assert!(api.redo().unwrap());
+        assert!(!api.node_exists(restored));
+    }
+
+    #[test]
     fn edits_go_through_ops_and_undo() {
         let mut api = GraphApi::new(&document_json()).unwrap();
         let frame = api.node_handle("f1");
@@ -785,7 +806,7 @@ mod tests {
         api.set_transform(frame, [1., 0., 0., 1., 10., 20.])
             .unwrap();
         api.apply_scale_transform(frame, 2.).unwrap();
-        let node = api.log.store().get("f1").unwrap();
+        let node = api.store.get("f1").unwrap();
         assert_eq!(
             (node.width, node.height),
             (100., 60.),
@@ -1161,7 +1182,7 @@ mod tests {
     fn replacement_reuses_unchanged_nodes_and_preserves_metadata() {
         let mut api = GraphApi::new(&document_json()).unwrap();
         let original = api.document_json();
-        let unchanged = api.log.store().arc_ptr("f1").unwrap();
+        let unchanged = api.store.arc_ptr("f1").unwrap();
         let mut next: Document = serde_json::from_str(&original).unwrap();
         next.name = "Appended document".into();
         next.pages[0].name = "Renamed page".into();
@@ -1170,12 +1191,12 @@ mod tests {
         next.nodes.insert("new".into(), sample_node("new", "frame"));
         let expected = serde_json::to_value(&next).unwrap();
         api.replace_document(&serde_json::to_string(&next).unwrap()).unwrap();
-        assert_eq!(api.log.store().arc_ptr("f1").unwrap(), unchanged, "whole replacements must share unchanged native nodes");
+        assert_eq!(api.store.arc_ptr("f1").unwrap(), unchanged, "whole replacements must share unchanged native nodes");
         assert_eq!(serde_json::from_str::<serde_json::Value>(&api.document_json()).unwrap(), expected);
         assert_eq!(api.undo_depth(), 1);
         assert!(api.undo().unwrap());
         assert_eq!(api.document_json(), original);
-        assert_eq!(api.log.store().arc_ptr("f1").unwrap(), unchanged);
+        assert_eq!(api.store.arc_ptr("f1").unwrap(), unchanged);
         assert!(api.redo().unwrap());
         assert_eq!(serde_json::from_str::<serde_json::Value>(&api.document_json()).unwrap(), expected);
     }
@@ -1191,15 +1212,15 @@ mod tests {
             |n| { n.bindings.insert("fill".into(), "new-token".into()); },
         ];
         for mutate in mutations {
-            let old = api.log.store().arc_ptr("f1").unwrap();
-            let page = api.log.store().arc_ptr("p1").unwrap();
+            let old = api.store.arc_ptr("f1").unwrap();
+            let page = api.store.arc_ptr("p1").unwrap();
             let before = api.document_json();
             let mut next: Document = serde_json::from_str(&before).unwrap();
             mutate(next.nodes.get_mut("f1").unwrap());
             let expected = serde_json::to_value(&next).unwrap();
             api.replace_document(&serde_json::to_string(&next).unwrap()).unwrap();
-            assert_ne!(api.log.store().arc_ptr("f1").unwrap(), old);
-            assert_eq!(api.log.store().arc_ptr("p1").unwrap(), page);
+            assert_ne!(api.store.arc_ptr("f1").unwrap(), old);
+            assert_eq!(api.store.arc_ptr("p1").unwrap(), page);
             assert_eq!(serde_json::from_str::<serde_json::Value>(&api.document_json()).unwrap(), expected);
             assert!(api.undo().unwrap());
             assert_eq!(api.document_json(), before);
@@ -1212,41 +1233,41 @@ mod tests {
     fn replacement_deletion_and_readdition_preserve_exact_history() {
         let mut api = GraphApi::new(&document_json()).unwrap();
         let original = api.document_json();
-        let old = api.log.store().arc_ptr("f1").unwrap();
+        let old = api.store.arc_ptr("f1").unwrap();
         let mut removed: Document = serde_json::from_str(&original).unwrap();
         removed.nodes.remove("f1");
         removed.nodes.get_mut("p1").unwrap().children.clear();
         removed.pages[0].children.clear();
         let removed_json = serde_json::to_string(&removed).unwrap();
         api.replace_document(&removed_json).unwrap();
-        assert!(api.log.store().get("f1").is_none());
+        assert!(api.store.get("f1").is_none());
         api.replace_document(&original).unwrap();
-        let readded = api.log.store().arc_ptr("f1").unwrap();
+        let readded = api.store.arc_ptr("f1").unwrap();
         assert_ne!(readded, old, "do not search deleted historical nodes or cross ownership boundaries");
         assert_eq!(api.document_json(), original);
         assert!(api.undo().unwrap());
         assert_eq!(api.document_json(), removed_json);
         assert!(api.undo().unwrap());
-        assert_eq!(api.log.store().arc_ptr("f1").unwrap(), old);
+        assert_eq!(api.store.arc_ptr("f1").unwrap(), old);
         assert_eq!(api.document_json(), original);
         assert!(api.redo().unwrap());
-        assert!(api.log.store().get("f1").is_none());
+        assert!(api.store.get("f1").is_none());
         assert!(api.redo().unwrap());
-        assert_eq!(api.log.store().arc_ptr("f1").unwrap(), readded);
+        assert_eq!(api.store.arc_ptr("f1").unwrap(), readded);
     }
 
     #[test]
     fn replacement_different_document_never_reuses_previous_owner() {
         let mut api = GraphApi::new(&document_json()).unwrap();
-        let old = api.log.store().arc_ptr("f1").unwrap();
+        let old = api.store.arc_ptr("f1").unwrap();
         let mut next: Document = serde_json::from_str(&api.document_json()).unwrap();
         next.id = "different-document".into();
         api.replace_document(&serde_json::to_string(&next).unwrap()).unwrap();
-        assert_ne!(api.log.store().arc_ptr("f1").unwrap(), old);
+        assert_ne!(api.store.arc_ptr("f1").unwrap(), old);
         assert_eq!(api.base.id, "different-document");
         assert!(api.undo().unwrap());
         assert_eq!(api.base.id, "d1");
-        assert_eq!(api.log.store().arc_ptr("f1").unwrap(), old);
+        assert_eq!(api.store.arc_ptr("f1").unwrap(), old);
         assert!(api.redo().unwrap());
         assert_eq!(api.base.id, "different-document");
     }
@@ -1254,12 +1275,12 @@ mod tests {
     #[test]
     fn replacement_retains_all_128_history_entries_with_shared_nodes() {
         let mut api = GraphApi::new(&document_json()).unwrap();
-        let original = api.log.store().arc_ptr("f1").unwrap();
+        let original = api.store.arc_ptr("f1").unwrap();
         let mut next: Document = serde_json::from_str(&api.document_json()).unwrap();
         for revision in 1..=130 {
             next.name = format!("revision-{revision}");
             api.replace_document(&serde_json::to_string(&next).unwrap()).unwrap();
-            assert_eq!(api.log.store().arc_ptr("f1").unwrap(), original);
+            assert_eq!(api.store.arc_ptr("f1").unwrap(), original);
         }
         assert_eq!(api.undo_depth(), 128);
         for _ in 0..128 { assert!(api.undo().unwrap()); }
@@ -1268,7 +1289,7 @@ mod tests {
         for _ in 0..128 { assert!(api.redo().unwrap()); }
         assert_eq!(api.base.name, "revision-130");
         assert!(!api.redo().unwrap());
-        assert_eq!(api.log.store().arc_ptr("f1").unwrap(), original);
+        assert_eq!(api.store.arc_ptr("f1").unwrap(), original);
     }
 
     #[test]
@@ -1278,15 +1299,15 @@ mod tests {
             source.nodes.get_mut("f1").unwrap().opacity = from;
             let before = serde_json::to_string(&source).unwrap();
             let mut api = GraphApi::new(&before).unwrap();
-            let old = api.log.store().arc_ptr("f1").unwrap();
+            let old = api.store.arc_ptr("f1").unwrap();
             source.nodes.get_mut("f1").unwrap().opacity = to;
             let after = serde_json::to_string(&source).unwrap();
             api.replace_document(&after).unwrap();
-            assert_eq!(api.log.store().get("f1").unwrap().opacity.to_bits(), to.to_bits());
+            assert_eq!(api.store.get("f1").unwrap().opacity.to_bits(), to.to_bits());
             assert_eq!(api.document_json(), after);
-            assert_ne!(api.log.store().arc_ptr("f1").unwrap(), old, "signed-zero projections conservatively allocate fresh nodes");
+            assert_ne!(api.store.arc_ptr("f1").unwrap(), old, "signed-zero projections conservatively allocate fresh nodes");
             assert!(api.undo().unwrap());
-            assert_eq!(api.log.store().get("f1").unwrap().opacity.to_bits(), from.to_bits());
+            assert_eq!(api.store.get("f1").unwrap().opacity.to_bits(), from.to_bits());
             assert_eq!(api.document_json(), before);
             assert!(api.redo().unwrap());
             assert_eq!(api.document_json(), after);
@@ -1305,7 +1326,7 @@ mod tests {
             .insert("nested".into(), serde_json::from_str(r#"{"items":[-0.0]}"#).unwrap());
         let after = serde_json::to_string(&source).unwrap();
         api.replace_document(&after).unwrap();
-        let value = &api.log.store().get("f1").unwrap().instance.as_ref().unwrap().property_values["nested"]["items"][0];
+        let value = &api.store.get("f1").unwrap().instance.as_ref().unwrap().property_values["nested"]["items"][0];
         assert_eq!(value.as_f64().unwrap().to_bits(), (-0.0_f64).to_bits());
         assert_eq!(api.document_json(), after, "Value::PartialEq is not a signed-zero oracle");
         assert!(api.undo().unwrap()); assert_eq!(api.document_json(), before);
@@ -1319,22 +1340,22 @@ mod tests {
         source.nodes.get_mut("f1").unwrap().name = "quoted \\\" -0 -1e-999 \\ tail".into();
         let before = serde_json::to_string(&source).unwrap();
         let mut api = GraphApi::new(&before).unwrap();
-        let old = api.log.store().arc_ptr("f1").unwrap();
+        let old = api.store.arc_ptr("f1").unwrap();
         source.name = "metadata-only".into();
         let metadata = serde_json::to_string(&source).unwrap();
         api.replace_document(&metadata).unwrap();
-        assert_eq!(api.log.store().arc_ptr("f1").unwrap(), old, "escaped text does not disable safe reuse");
+        assert_eq!(api.store.arc_ptr("f1").unwrap(), old, "escaped text does not disable safe reuse");
         let raw = metadata.replace("\"opacity\":0.0", "\"opacity\":-1e-999");
         assert_ne!(raw, metadata);
         let normalized: Document = serde_json::from_str(&raw).unwrap();
         assert_eq!(normalized.nodes["f1"].opacity.to_bits(), (-0.0_f64).to_bits());
         api.replace_document(&raw).unwrap();
-        assert_eq!(api.log.store().get("f1").unwrap().opacity.to_bits(), (-0.0_f64).to_bits());
+        assert_eq!(api.store.get("f1").unwrap().opacity.to_bits(), (-0.0_f64).to_bits());
         assert_eq!(api.document_json(), serde_json::to_string(&normalized).unwrap());
         assert!(api.undo().unwrap()); assert_eq!(api.document_json(), metadata);
-        assert_eq!(api.log.store().arc_ptr("f1").unwrap(), old);
+        assert_eq!(api.store.arc_ptr("f1").unwrap(), old);
         assert!(api.redo().unwrap());
-        assert_eq!(api.log.store().get("f1").unwrap().opacity.to_bits(), (-0.0_f64).to_bits());
+        assert_eq!(api.store.get("f1").unwrap().opacity.to_bits(), (-0.0_f64).to_bits());
     }
 
     #[test]
@@ -1344,18 +1365,18 @@ mod tests {
         let mut api = GraphApi::new(&serde_json::to_string(&source).unwrap()).unwrap();
         let handle = api.node_handle("f1");
         api.set_opacity(handle, -0.0).unwrap();
-        assert_eq!(api.log.store().get("f1").unwrap().opacity.to_bits(), (-0.0_f64).to_bits());
+        assert_eq!(api.store.get("f1").unwrap().opacity.to_bits(), (-0.0_f64).to_bits());
         let positive = serde_json::to_string(&source).unwrap();
         api.replace_document(&positive).unwrap();
-        assert_eq!(api.log.store().get("f1").unwrap().opacity.to_bits(), 0.0_f64.to_bits());
+        assert_eq!(api.store.get("f1").unwrap().opacity.to_bits(), 0.0_f64.to_bits());
         assert_eq!(api.document_json(), positive);
         assert!(api.undo().unwrap());
-        assert_eq!(api.log.store().get("f1").unwrap().opacity.to_bits(), (-0.0_f64).to_bits());
+        assert_eq!(api.store.get("f1").unwrap().opacity.to_bits(), (-0.0_f64).to_bits());
         assert!(api.redo().unwrap()); assert_eq!(api.document_json(), positive);
-        let restored = api.log.store().arc_ptr("f1").unwrap();
+        let restored = api.store.arc_ptr("f1").unwrap();
         source.name = "proof restored by redo".into();
         api.replace_document(&serde_json::to_string(&source).unwrap()).unwrap();
-        assert_eq!(api.log.store().arc_ptr("f1").unwrap(), restored);
+        assert_eq!(api.store.arc_ptr("f1").unwrap(), restored);
     }
 
 }

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { OwnerTileCache, ownsExactTileBytes } from './owner-tile-cache'
+import { exactTilePayloadBytes, OwnerTileCache, ownsExactTileBytes } from './owner-tile-cache'
 import { compilationWitness as w } from './exact-tile-cache'
 const fixture = (limit?: number) => { const cache = new OwnerTileCache<number>(limit); return { cache, a: cache.owner('canvas'), b: cache.owner('interaction') } }
 test('canvas interaction canvas preserves actual isolated hits', () => {
@@ -42,6 +42,15 @@ test('transfer bitmaps and driver texture leases are not CPU byte cache payloads
   const buffer=new ArrayBuffer(4); expect(ownsExactTileBytes({buffer})).toBe(true)
   expect(ownsExactTileBytes({buffer,bitmap:{}})).toBe(false); expect(ownsExactTileBytes({buffer,gpuTile:0})).toBe(false)
   expect(ownsExactTileBytes({buffer:new ArrayBuffer(0)})).toBe(false)
+})
+
+test('tile admission charges owned buffers and variable strings without serializing the render result',()=>{
+  const tile={buffer:new ArrayBuffer(128),backend:'webgpu',intermediateFormat:'rgba8unorm',
+    description:'adapter',reason:'',toJSON(){throw Error('unexpected serialization')}}
+  const base=exactTilePayloadBytes(tile)
+  const reason='\u0000中'.repeat(2000)
+  expect(exactTilePayloadBytes({...tile,linearBuffer:new ArrayBuffer(512),reason})).toBe(base+512+reason.length*2)
+  expect(exactTilePayloadBytes({...tile,colorManagement:{documentSpace:'srgb'}})).toBe(base+8)
 })
 
 test('deterministic exact-byte replay reports saved compile/render work, not generic cache percentages',()=>{

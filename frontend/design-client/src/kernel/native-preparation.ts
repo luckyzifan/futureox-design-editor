@@ -14,7 +14,16 @@ export function connectNativePreparation(bridge: NonNullable<DesktopBridge['prep
   }
   const session = bridge.open()
   session.catch(failed)
+  if (bridge.terminalPortV1) void session.then(owner => {
+    if (closed) return
+    const direct = new MessageChannel()
+    try {
+      window.postMessage({ type:'futureox-terminal-port-v1', session:owner }, window.location.origin, [direct.port1])
+      port.postMessage({ terminalPort:direct.port2 }, [direct.port2])
+    } catch { direct.port1.close(); direct.port2.close() }
+  }, () => {})
   port.onmessage = async event => {
+    if(event.data?.terminalTransportFailed){failed(Error('Terminal preparation transport closed'));return}
     if (event.data.cancel) { active.get(event.data.cancel)?.(); return }
     const { id, lane, method, args, diagnostics, cancellable, cancellation } = event.data as { id: number; lane: string; method: PreparationMethod; args: unknown[]; diagnostics?: { originChannelId: number; requestId: number }; cancellable?: boolean; cancellation?: SharedArrayBuffer }
     let timer: ReturnType<typeof setInterval> | undefined

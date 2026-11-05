@@ -1,7 +1,8 @@
+import {source_jpeg_srgb8} from '../generated/design-kernel/design_kernel'
 import { DecodedImageCache, decodedImageScope, validDecodedImage, type DecodedImage, type DecodedImageOwner } from './decoded-image-cache'
 import { sceneIndex } from './gpu/scene-index'
 import type { GpuScene } from './gpu/types'
-import { largePngRowCandidate, nativeImageRows } from './image-row-source'
+import { largePngRowCandidate, nativeImageRows, sourceBitmapDimensions } from './image-row-source'
 
 export type ImageVariant = 'byte' | 'linear'
 export type ImagePersistence = {
@@ -154,6 +155,13 @@ export function managedSceneImageLoader(cache: DecodedImageCache, context: () =>
     current();cache.begin(next.scope)
     const key='straight-srgb8:'+uri,hit=cache.get(next.scope,key)
     if(hit?.data instanceof Uint8Array)return {width:hit.width,height:hit.height,bytes:hit.data}
+    if(uri.startsWith('data:image/jpeg;base64,')){
+      const value=source_jpeg_srgb8(uri)
+      if(!value.length)return
+      const info=new DataView(value.buffer,value.byteOffset,value.byteLength),width=info.getUint32(0,true),height=info.getUint32(4,true)
+      const bytes=value.subarray(8);if(bytes.length!==width*height*4)throw Error('Incomplete source JPEG')
+      current();cache.set(next.scope,key,{width,height,data:bytes});return {width,height,bytes}
+    }
     if(!uri.startsWith('data:image/png;base64,'))return
     try{
       const rows=nativeImageRows(uri,next.settings,current)
@@ -243,6 +251,13 @@ export class SceneImageHydration {
       if (this.attempted.size >= this.limits.entries || bytes > this.limits.keyBytes - this.keyBytes ||
           this.readBytes >= this.limits.readBytes) return
       this.attempted.add(key); this.keyBytes += bytes
+      // A full decoded plane that cannot fit either allowance cannot be
+      // restored. Native decoding still validates the actual stream.
+      if (scene.sourceImageDisplay) {
+        const size = sourceBitmapDimensions(uri)
+        if (size && size[0] * size[1] * (variant === 'linear' ? 16 : 4) >
+            Math.min(this.cache.limit, this.limits.readBytes - this.readBytes)) continue
+      }
       let persistentKey: string | undefined
       try { persistentKey = await this.persistence.key(uri, variant, settings) } catch { /* Cache miss. */ }
       check()

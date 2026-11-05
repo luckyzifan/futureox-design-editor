@@ -3,6 +3,7 @@ import { expandRepeats, repeatSourceId, hasRepeats } from './repeat-transforms'
 import { roundSvgCoordinates } from './export-options'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Scene } from './Renderer'
+import { sketchMaskScene } from './render-outline-mask'
 import { scene, unionBounds, boxPoints, apply, bounds as pointBounds, inverse, multiply, translate } from './geometry'
 import { maskChild, container, type DesignDocument, type Bounds } from './model'
 import { KernelClient } from './kernel/client'
@@ -48,7 +49,7 @@ function projectSlice(doc: DesignDocument, pageId: string, target: ExportTarget)
 
 /** Page presentation retains its explicit historical 40-unit margin. */
 export function exportBounds(doc: DesignDocument, pageId: string, padding = 40) {
-  doc = expandRepeats(doc)
+  doc = sketchMaskScene(expandRepeats(doc))
   if (!Number.isFinite(padding) || padding < 0 || padding > 1e6)
     throw new Error('页面留白必须为 0–1000000')
   if (!doc.pages.some((p) => p.id === pageId)) throw new Error('导出页面不存在')

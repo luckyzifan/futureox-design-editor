@@ -1,9 +1,0 @@
-{
-  "documentSha256": "bb2d49940183e4b1ce5d30f107b813bcf219e7c573f85fd26646c060f9a52431",
-  "requestsSha256": "481a362b12e59a91f29ee4bba571a65f89a83c4a7995715443d75f5b449889f8",
-  "nativeSceneSha256": "31e4d9d6d1ede8f2180f09f0e2cbe5f610d66172a2c17236455d01923a72959b",
-  "wasmSha256": "716874b090648364ef792bfdb68028dfd49b1357b115d6cd6620bbc44c3b2a3d",
-  "fontSha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
-  "nodes": 14,
-  "scope": "Production GpuRenderer display presentation and returned ImageBitmap; same source private packed toggle; paired warm wall time including production graph and queue completion, not physical scanout or input latency."
-}

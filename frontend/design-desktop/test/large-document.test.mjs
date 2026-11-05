@@ -209,3 +209,48 @@ test('opening preview cannot return pixels for a different source owner or accep
  await assert.rejects(()=>host.openingView({offset:0,cursor:0,owner}),/Invalid opening view response/)
  assert.deepEqual(calls,['large.open','large.openingView'])
 })
+
+test('pending Sketch material only publishes its current window-bound display token', async()=>{
+ const {createHash}=await import('node:crypto')
+ const win={isDestroyed:()=>false,webContents:{id:29}}, box={x:0,y:0,width:120,height:100}
+ let owner,finish,overrideScope,waiting
+ const started=new Promise(r=>waiting=r)
+ const host=new LargeDocumentHost(async(method,req)=>{
+  if(method==='large.open'){owner={documentId:req.documentId,sessionEpoch:req.sessionEpoch};waiting();return new Promise(r=>finish=r)}
+  assert.equal(method,'large.openingView')
+  const scope=overrideScope||createHash('sha256').update('preview-0').digest('hex')
+  const snapshot={owner,revision:0,path:'/native/canvas-native-0-'+scope+'.scene',scope,bytes:80,nodes:3,roots:1,pageId:'p',stageId:'s',
+   colorManaged:true,rasterProfile:'figma',warnings:[],bounds:box,
+   store:{bytes:80,nodes:3,documentId:owner.documentId,footerHash:Array(32).fill(1),generation:owner.documentId+':'+owner.sessionEpoch+':0-'+scope}}
+  return {phase:'available',owner,revision:0,bounds:box,total:1,offset:0,items:[{key:'preview-0',id:'material',kind:'artboard',name:'a',pageId:'p',pageName:'p',source:box,placed:box}],
+    pages:[['p','p',1]],nextOffset:1,cursor:0,images:[],finished:false,moreImages:false,cacheHit:false,rendered:0,
+    materialSnapshot:req.material===0?snapshot:null}
+ },{},()=>win)
+ const opening=host.open(undefined,'/approved/input.sketch');await started
+ const request={owner,offset:0,cursor:0,material:0}
+ const first=await host.openingView(request)
+ assert.equal(first.materialDisplay.openingMaterial,0)
+ assert(!JSON.stringify(first).includes('/native/'));assert(!Object.hasOwn(first,'materialSnapshot'))
+ assert.throws(()=>host.resolveCanvasSnapshot(first.materialDisplay.token,30),/foreign/)
+ const grant=host.resolveCanvasSnapshot(first.materialDisplay.token,29);grant.assertCurrent()
+ assert.equal((await host.openingView(request)).materialDisplay.token,first.materialDisplay.token)
+ await host.openingView({owner,offset:0,cursor:0});assert.throws(()=>grant.assertCurrent(),/Stale/)
+ overrideScope='a'.repeat(64);await assert.rejects(host.openingView(request),/Invalid native canvas snapshot/)
+ finish({...status(owner),format:'sketch'});await opening
+ assert.equal((await host.openingView(request)).materialDisplay,undefined)
+})
+
+test('multi-material detail images are bounded and must match the opening catalogue',async()=>{
+ const win={isDestroyed:()=>false,webContents:{id:3}},dialog={showOpenDialog:async()=>({canceled:false,filePaths:['/example.sketch']})}
+ const h=Buffer.alloc(24);h.writeUInt32BE(0x89504e47,0);h.writeUInt32BE(0x0d0a1a0a,4);h.write('IHDR',12);h.writeUInt32BE(384,16);h.writeUInt32BE(240,20)
+ const rect={x:0,y:0,width:1000,height:500};let detailIndex=0
+ const host=new LargeDocumentHost(async(method,p)=>{
+   if(method==='large.open')return {...status({documentId:p.documentId,sessionEpoch:p.sessionEpoch}),format:'sketch'}
+   return {phase:'available',owner:p.owner,revision:0,bounds:rect,offset:1,nextOffset:1,total:1,items:[],images:[],cursor:1,moreImages:false,finished:true,
+     detail:{index:detailIndex,png:h.toString('base64')}}
+ },dialog,()=>win)
+ const owner=(await host.open()).owner,arg={owner,offset:1,cursor:1,detailCursor:0}
+ assert.equal((await host.openingView(arg)).detail.index,0)
+ detailIndex=1;await assert.rejects(()=>host.openingView(arg),/Invalid material thumbnail/)
+ detailIndex=0;h.writeUInt32BE(769,16);await assert.rejects(()=>host.openingView(arg),/Invalid material PNG/)
+})

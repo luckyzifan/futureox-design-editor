@@ -1,9 +1,0 @@
-{
-  "exit_code": 1,
-  "expected_failures": [
-    "preferred SVG prepares no bitmap or split-document plan until a fallback is displayed",
-    "continuous camera input performs no copy and captures only the final quiet presentation",
-    "deferred capture rejects stale cameras, sessions, sizes, DPR, preview frames and replaced presentations"
-  ],
-  "evidence": "CPU mock: same production component boundary test, frozen preimage implementation"
-}

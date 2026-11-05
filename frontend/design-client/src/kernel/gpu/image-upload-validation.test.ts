@@ -23,6 +23,24 @@ function fixture() {
 const raw = [0, 0x80000000, 1, 0x3f800000, 0x7f7fffff, 0xff7fffff, 0x007fffff, 0x3f800000]
 const pixels = () => new Float32Array(new Uint32Array(raw).buffer)
 
+test('only a complete private gradient proof skips a second parameter scan', () => {
+  const f = fixture(), fallback = vi.spyOn(f.driver, 'uploadParameters')
+  const field = new Float32Array([0, 1, 0.25, -0, -1, -1, 0, 0])
+  const result = f.driver.uploadGradientParameters(field, 2, 1)
+  expect(result.maximumStop).toBe(1)
+  expect(fallback).not.toHaveBeenCalled()
+  expect(f.writes[0]).toEqual(new Uint32Array(field.buffer))
+  const shared = new Float32Array(new SharedArrayBuffer(32))
+  shared.set(field)
+  expect(f.driver.uploadGradientParameters(shared, 2, 1).maximumStop).toBeUndefined()
+  expect(fallback).toHaveBeenCalledTimes(1)
+  field[0] = 64
+  expect(f.driver.uploadGradientParameters(field, 2, 1).maximumStop).toBeUndefined()
+  field[7] = NaN
+  expect(() => f.driver.uploadGradientParameters(field, 2, 1)).toThrow('材质参数')
+  expect(f.writes).toHaveLength(3)
+})
+
 test('one actual image range proof replaces the repeated finite scan without changing uploaded bits', () => {
   vi.stubEnv('VITE_DESIGN_EXACT_IMAGE_X_TABLE', '1')
   const f = fixture(), data = pixels(), proof = vi.spyOn(imageRange, 'certifyExactImageRange')

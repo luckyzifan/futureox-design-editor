@@ -144,6 +144,11 @@ impl std::ops::DerefMut for SharedDocument {
     fn deref_mut(&mut self) -> &mut Document { Arc::make_mut(&mut self.0) }
 }
 
+enum DocumentInstall {
+    Load { document: Document, measure_size: bool },
+    Patch { applied: crate::editing::AppliedDocument, retain_index: bool },
+}
+
 // A size receipt is tied to the exact immutable authored allocation, not
 // Document::PartialEq, a caller-supplied revision, or a lossy content hash.
 // Weak does not keep the document alive or add a strong owner. Arc::make_mut
@@ -277,6 +282,7 @@ impl Engine {
     pub fn load_font(&mut self, data: &[u8]) -> Result<(), String> {
         self.prepare_animation(None)?;
         self.fonts.load(data)?;
+        if self.has_sketch_masks() { self.doc = self.source_doc.clone(); }
         self.layout_dirty = true;
         self.pending_camera = None;
         self.pending_layout = None;
@@ -330,7 +336,7 @@ impl Engine {
         // Native indexed source navigation has no whole-document edit receipt.
         // Validation is mandatory; an optional normalized JSON size used only
         // by the small-edit fast path need not serialize the whole source here.
-        self.install_document_policy(document,false,false)
+        self.install_document_policy(DocumentInstall::Load { document, measure_size: false })
     }
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn release_source_compile_caches(&mut self){
@@ -420,17 +426,22 @@ impl Engine {
             .source_doc
             .as_ref()
             .ok_or("Load document before applying a patch")?;
-        let (next, next_bytes) = patch.apply_with_size(source)
-            .map_err(|e| e.to_string())?.into_parts();
+        let applied = patch.apply_with_size(source).map_err(|e| e.to_string())?;
+        let next = applied.document();
         let retained_paint = self.retainable_paint_changes(patch);
         let mut damage = if retained_paint.as_ref().is_some_and(Vec::is_empty) {
             // Certify once from resolved placement. The exact material proof
             // preserves geometry, effect support and optical isolation.
             crate::dirty_region::resolved_material_damage(self.doc.as_ref().unwrap(), patch, &self.fonts)
         } else {
-            crate::dirty_region::patch_damage_with_fonts(source, &next, patch, &self.fonts)
+            crate::dirty_region::patch_damage_with_fonts(source, next, patch, &self.fonts)
         };
-        if crate::repeat::has_repeats(source) || crate::repeat::has_repeats(&next) {
+        if patch.nodes.iter().any(|(id, node)| self.render_index.as_ref().is_some_and(|i| i.in_sketch_mask_chain(id))
+            || node.as_ref().is_some_and(crate::sketch_masks::starts)) {
+            damage = crate::dirty_region::PatchDamage { full: true, reason: Some("masked-chain"),
+                bounds: None, rects: None, translation_only: None };
+        }
+        if crate::repeat::has_repeats(source) || crate::repeat::has_repeats(next) {
             damage.full = true; damage.reason = Some("repeat-derived-scene"); damage.bounds = None; damage.rects = None;
         }
         // A proven rigid translation does not change local layout, shaped text,
@@ -444,6 +455,7 @@ impl Engine {
                     if let Some(node) = base.nodes.get_mut(id) { node.transform = transform; }
                 }
             }
+            let (next, next_bytes) = applied.into_parts();
             self.source_doc = Some(next.into());
             self.source_doc_bytes = None;
             self.retained_source_size = Some(RetainedSourceSize::new(self.source_doc.as_ref().unwrap(), next_bytes));
@@ -460,6 +472,7 @@ impl Engine {
                     if let Some(target) = base.nodes.get_mut(id) { crate::derived_invalidation::apply_paint(target, node); }
                 }
             }
+            let (next, next_bytes) = applied.into_parts();
             self.source_doc = Some(next.into());
             self.source_doc_bytes = None;
             self.retained_source_size = Some(RetainedSourceSize::new(self.source_doc.as_ref().unwrap(), next_bytes));
@@ -471,11 +484,8 @@ impl Engine {
                 cache.paint_changed(self.geo_revision,self.doc.as_ref().unwrap(),patch.nodes.keys().cloned(),&self.render_index.as_ref().unwrap().parents);
             }
         } else {
-            let retain_index=crate::render_index::RenderIndex::preserved_by(source,patch);
-            // apply_with_size already validated and measured these exact values.
-            // Storage compaction/sharing during installation changes no JSON.
-            self.install_document_policy(next,retain_index,false)?;
-            self.source_doc_bytes = Some(next_bytes);
+            let retain_index = crate::render_index::RenderIndex::preserved_by(source, patch);
+            self.install_document_policy(DocumentInstall::Patch { applied, retain_index })?;
         }
         Ok(damage)
     }
@@ -489,6 +499,7 @@ impl Engine {
             || !patch.fields.is_empty() || patch.nodes.is_empty() { return None; }
         let mut bounds = Vec::new();
         for (id, next) in &patch.nodes {
+            if index.in_sketch_mask_chain(id) { return None; }
             let (old, next) = (source.nodes.get(id)?, next.as_ref()?);
             let derived = resolved.nodes.get(id)?;
             // Shared styles/bindings are rejected below. Font-source metadata
@@ -524,6 +535,7 @@ impl Engine {
             || index.has_connectors { return false; }
         let parents = &index.parents;
         patch.nodes.iter().all(|(id, next)| {
+            if index.in_sketch_mask_chain(id) { return false; }
             let (Some(old), Some(next), Some(derived)) = (source.nodes.get(id), next, resolved.nodes.get(id)) else { return false; };
             if !affine && old.transform.0[..4] != next.transform.0[..4] || derived.transform != old.transform { return false; }
             let mut translated = old.clone(); translated.transform = next.transform;
@@ -698,13 +710,19 @@ impl Engine {
             self.doc.as_ref().unwrap(), rects, patch.nodes.keys().cloned().collect(), &self.fonts)))
     }
     fn install_document(&mut self, doc: impl Into<Document>) -> Result<(), String> {
-        self.install_document_with_index(doc.into(),false)
+        self.install_document_policy(DocumentInstall::Load { document: doc.into(), measure_size: true })
     }
-    fn install_document_with_index(&mut self,doc:Document,retain_index:bool)->Result<(),String>{
-        self.install_document_policy(doc,retain_index,true)
-    }
-    fn install_document_policy(&mut self,mut doc:Document,retain_index:bool,measure_size:bool)->Result<(),String>{
-        doc.validate()?;
+    fn install_document_policy(&mut self, input: DocumentInstall) -> Result<(), String> {
+        let (mut doc, retain_index, measure_size, checked_bytes) = match input {
+            DocumentInstall::Load { document, measure_size } => {
+                document.validate()?;
+                (document, false, measure_size, None)
+            }
+            DocumentInstall::Patch { applied, retain_index } => {
+                let (document, bytes) = applied.into_parts();
+                (document, retain_index, false, Some(bytes))
+            }
+        };
         // Preserve exact authored strings while sharing identical immutable
         // payload allocations. Derived snapshots and packet preparation can
         // then recognize a retained image without copying/hash-scanning it at
@@ -720,7 +738,7 @@ impl Engine {
             && old.id==doc.id && old.pages==doc.pages && old.fonts==doc.fonts
             && old.color_management==doc.color_management && old.raster_profile==doc.raster_profile
             && old.animations.is_empty() && doc.animations.is_empty()).cloned();
-        let resolved_source=self.source_doc.as_ref().zip(self.doc.as_ref()).is_some_and(|(source,resolved)|source==resolved);
+        let resolved_source=previous.is_some() && self.source_doc.as_ref().zip(self.doc.as_ref()).is_some_and(|(source,resolved)|source==resolved);
         self.pending_layout = resolved_source.then(|| previous.clone()).flatten();
         self.pending_camera = previous.zip(self.camera_prepare.take()).map(|(doc,cache)|(doc,cache,resolved_source));
         self.images.set_color_settings(doc.color_management);
@@ -738,7 +756,7 @@ impl Engine {
         self.text_base = None;
         // Loading historically admits by input size; oversized normalized
         // documents keep that behaviour, but cannot take the local fast path.
-        self.source_doc_bytes = if measure_size {crate::editing::serialized_document_size(&doc).ok()} else {None};
+        self.source_doc_bytes = if measure_size { crate::editing::serialized_document_size(&doc).ok() } else { checked_bytes };
         self.retained_source_size = None;
         if !retain_index||self.render_index.is_none(){
             self.render_index = Some(Arc::new(crate::render_index::RenderIndex::new(&doc)));
@@ -871,7 +889,7 @@ impl Engine {
         if let Some(request) = request {
             let candidate = if self.animation_base.is_none() {
                 self.resolve_layout()?;
-                if self.source_doc.as_ref().is_some_and(|d| crate::repeat::has_repeats(d)) {
+                if self.has_sketch_masks() || self.source_doc.as_ref().is_some_and(|d| crate::repeat::has_repeats(d)) {
                     // Sample editable sources first, then regenerate every appearance.
                     let mut base = self.source_doc.as_ref().unwrap().clone();
                     crate::design_system::resolve_authored(&mut base)?;
@@ -901,6 +919,7 @@ impl Engine {
             });
             crate::curve_boolean::resolve(&mut sampled)?;
             crate::repeat::resolve(&mut sampled)?;
+            if self.has_sketch_masks() { crate::sketch_masks::resolve(&mut sampled)?; }
             crate::font::expand_rich_text(&mut sampled, &self.fonts)?;
             self.doc = Some(sampled.into());
             // Sample resolved layout geometry. Timeline recording captures the
@@ -916,6 +935,7 @@ impl Engine {
                     .is_some_and(|(a, b)| a.same_geometry(b))
             });
             crate::repeat::resolve(&mut base)?;
+            if self.has_sketch_masks() { crate::sketch_masks::resolve(&mut base)?; }
             crate::font::expand_rich_text(&mut base, &self.fonts)?;
             self.doc = Some(base);
             self.animation_sample = None;
@@ -935,6 +955,9 @@ impl Engine {
         cache.transformed(after,changed.into_iter(),self.geo_revision,&parents);
         self.camera_prepare=Some(cache);
     }
+    fn has_sketch_masks(&self) -> bool {
+        self.render_index.as_ref().is_some_and(|index| !index.sketch_mask_owners.is_empty())
+    }
     pub(crate) fn resolve_layout(&mut self) -> Result<(), String> {
         if !self.layout_dirty {
             return Ok(());
@@ -942,6 +965,7 @@ impl Engine {
         let scope=match (&self.pending_layout,&self.doc){
             (Some(before),Some(after))=>crate::component_updates::plan(before,after)?, _=>None,
         };
+        let sketch_masks = self.has_sketch_masks();
         if let Some(doc) = &mut self.doc {
             if !doc
                 .nodes
@@ -955,6 +979,13 @@ impl Engine {
                     .values()
                     .any(|n| n.boolean_operation.is_some() || !n.text_runs.is_empty())
             {
+                if sketch_masks {
+                    let before = doc.clone();
+                    if let Err(error) = crate::sketch_masks::resolve(doc) {
+                        *doc = before;
+                        return Err(error);
+                    }
+                }
                 self.layout_dirty = false;
                 self.pending_layout = None;
                 self.restore_resolved_camera();
@@ -982,6 +1013,7 @@ impl Engine {
                                 .any(|r| r.color.is_some() || r.underline || r.strikethrough)
                         })
                         .then(|| doc.clone());
+                    if sketch_masks { crate::sketch_masks::resolve(doc)?; }
                     crate::font::expand_rich_text(doc, &self.fonts)
                 })
             {
@@ -1200,26 +1232,31 @@ impl Engine {
         ]);
         let mut prepared = HashMap::new();
         self.stats = Stats::default();
-        fn scene_halo(doc: &Document, id: &str, parent: Transform) -> i32 {
+        fn scene_halo(doc: &Document, id: &str, parent: Transform, next: Option<&String>,
+            coherent: bool, concealed: &mut std::collections::HashSet<String>) -> i32 {
             let n = &doc.nodes[id];
             if !n.visible {
                 return 0;
+            }
+            if coherent && crate::optics::next_glass_consumer(doc,n,next).is_some_and(|upper|crate::optics::same_glass_coverage(n,upper)) {
+                concealed.insert(id.to_owned());
             }
             let m = parent.concat(n.transform);
             effect_halo(n, m).saturating_add(
                 n.children
                     .iter()
-                    .map(|id| scene_halo(doc, id, m))
+                    .enumerate().map(|(i,id)| scene_halo(doc, id, m, n.children.get(i+1), coherent, concealed))
                     .max()
                     .unwrap_or(0),
             )
         }
+        let mut concealed_glass=std::collections::HashSet::new();
         let guard = viewport.expand(
             extra_halo
                 + page
                     .children
                     .iter()
-                    .map(|id| scene_halo(doc, id, camera))
+                    .enumerate().map(|(i,id)| scene_halo(doc, id, camera, page.children.get(i+1), synchronized && coverage_compatible, &mut concealed_glass))
                     .max()
                     .unwrap_or(0)
                     .min(2048),
@@ -1307,6 +1344,7 @@ impl Engine {
             }
         }
         let mut painter = Painter {
+            concealed_glass,
             doc,
             prepared: &prepared,
             images: &mut self.images,
@@ -1330,9 +1368,7 @@ impl Engine {
             }
             let mut targets: [Surface; 4] =
                 targets.try_into().map_err(|_| "Invalid target samples")?;
-            for root in &page.children {
-                painter.node_bundle(root, &mut targets, None)?;
-            }
+            painter.paint_siblings(&page.children, &mut targets, None, false, None)?;
             Ok(targets.into_iter().collect())
         } else {
             // Reverse paint order: earlier layers must retain every input read
@@ -2005,6 +2041,14 @@ impl Engine {
                 ancestors.insert(*parent);at=parent;
             }
         }
+        // Hiding an ordered mask to isolate one of its consumers changes that
+        // consumer's pixels. Keep the complete parent interval on the live lane.
+        for siblings in std::iter::once(&page.children).chain(ancestors.iter().map(|id| &source.nodes[*id].children)) {
+            if siblings.iter().any(|id| crate::sketch_masks::starts(&source.nodes[id]))
+                && siblings.iter().any(|id| !selected.contains(id) && !ancestors.contains(id)) {
+                return Err("Render root scope crosses a Sketch mask chain".into());
+            }
+        }
         let mut scoped=self.snapshot_static_worker().ok_or("Animated render root scope is unsupported")?;
         let mut patch=crate::editing::DocumentPatch{fields:Default::default(),nodes:Default::default()};
         for id in page.children.iter().chain(ancestors.iter().flat_map(|id|source.nodes[*id].children.iter())) {
@@ -2094,6 +2138,7 @@ impl std::ops::Deref for AccountedMask {
     }
 }
 struct Painter<'a> {
+    concealed_glass: std::collections::HashSet<String>,
     doc: &'a Document,
     prepared: &'a HashMap<String, Prepared>,
     images: &'a mut Images,
@@ -2297,8 +2342,45 @@ impl Painter<'_> {
         self.stats.backdrop_reads += 1;
         Ok(out)
     }
-    fn node_bundle(&mut self,id:&str,targets:&mut [Surface;4],clip:Option<&AccountedSamples>)->Result<(),String>{
-        self.node_bundle_with_outline(id,targets,clip,false)
+    fn paint_siblings(&mut self, ids: &[String], targets: &mut [Surface;4], clip: Option<&AccountedSamples>,
+        outline: bool, skip: Option<&str>) -> Result<(),String> {
+        let mut clean: Option<[Surface;4]> = None;
+        for (i,id) in ids.iter().enumerate() {
+            if skip==Some(id) { clean=None; continue; }
+            let n=&self.doc.nodes[id];
+            let continues=!outline && !n.effects.is_empty() &&
+                crate::optics::next_glass_consumer(self.doc,n,ids.get(i+1)).is_some_and(|upper|
+                    self.prepared.get(id).zip(self.prepared.get(&upper.id)).is_some_and(|(a,b)| !a.bounds.intersect(b.bounds).empty()));
+            let reads_prior=clean.is_some();
+            if continues && clean.is_none() && !self.concealed_glass.contains(id) {
+                let mut reads=Rect::default();
+                for pair in ids[i..].windows(2) {
+                    let Some(front)=crate::optics::next_glass_consumer(self.doc,&self.doc.nodes[&pair[0]],Some(&pair[1])) else {break};
+                    let Some(prepared)=self.prepared.get(&front.id) else {break};
+                    let capture=if front.backdrop_effect().is_some_and(|e|e.kind=="background-blur") {
+                        let [x,y,w,h]=crate::coverage::backdrop_box(prepared.fill_bounds,self.extent);
+                        Rect::from_points([Point::new(x,y),Point::new(x+w,y+h)].into_iter())
+                    }else{prepared.bounds.intersect(self.extent)};
+                    reads=reads.union(capture.expand(2).intersect(targets[0].rect));
+                }
+                if !reads.empty() {
+                    let mut original=self.allocate_bundle(reads)?;
+                    for (dst,src) in original.iter_mut().zip(&*targets) {
+                        for (row,y) in dst.pixels.chunks_exact_mut(reads.w as usize).zip(reads.y..reads.bottom()) {
+                            let start=src.rect.index(reads.x,y).expect("optical prefix in target");
+                            row.copy_from_slice(&src.pixels[start..start+reads.w as usize]);
+                        }
+                    }
+                    clean=Some(original);
+                }
+            }
+            self.node_bundle_with_outline(id,targets,clip,outline,if reads_prior {clean.as_ref()} else {None},false)?;
+            if !continues { clean=None; }
+            else if let Some(base)=&mut clean && !crate::optics::unpainted_lens(n) {
+                self.node_bundle_with_outline(id,base,clip,outline,None,true)?;
+            }
+        }
+        Ok(())
     }
     fn node_bundle_with_outline(
         &mut self,
@@ -2306,6 +2388,8 @@ impl Painter<'_> {
         targets: &mut [Surface; 4],
         clip: Option<&AccountedSamples>,
         inherited_outline: bool,
+        clean_backdrop: Option<&[Surface;4]>,
+        omit_optics: bool,
     ) -> Result<(), String> {
         let n = &self.doc.nodes[id];
         let geometric=inherited_outline || n.mask && n.mask_type.as_deref()==Some("outline");
@@ -2358,9 +2442,7 @@ impl Painter<'_> {
                     self.paint(n, paint, m, &fill.plane(sample), &mut targets[sample], |_, _| 1.)?;
                 }
             }
-            for child in n.render_children() {
-                self.node_bundle_with_outline(child, targets, Some(&fill), geometric)?;
-            }
+            self.paint_siblings(n.render_children(), targets, Some(&fill), geometric, None)?;
             self.sample = None;
             return Ok(());
         }
@@ -2377,11 +2459,11 @@ impl Painter<'_> {
             }
         }
         let mut coverage: Option<[Arc<Surface>; 4]> = None;
-        let backgrounds: Vec<_> = n.backdrop_effect().into_iter().collect();
+        let backgrounds: Vec<_> = n.backdrop_effect().filter(|_| !omit_optics && !self.concealed_glass.contains(id)).into_iter().collect();
         if !backgrounds.is_empty() {
             let optical = crate::optics::GlassShape::from_node(n)
                 .zip(n.backdrop_effect().and_then(|effect| effect.glass.as_ref()));
-            let replay = if self.compatible && self.profile.is_export() {
+            let replay = if clean_backdrop.is_none() && self.compatible && self.profile.is_export() {
                 n.backdrop_effect()
                     .map(|fx| crate::glass_capture::recipe(self.doc, n, m, fx))
                     .transpose()?
@@ -2404,7 +2486,7 @@ impl Painter<'_> {
             let mut background = if replay.is_some() {
                 self.allocate(capture)?
             } else {
-                self.resolve_backdrop(capture, origin, targets)?
+                self.resolve_backdrop(capture, origin, clean_backdrop.unwrap_or(targets))?
             };
             let mut masks = Vec::with_capacity(4);
             for sample in 0..4 {
@@ -2516,7 +2598,7 @@ impl Painter<'_> {
         }
         if let Some(mask_id) = mask_id {
             let mut masks = self.allocate_bundle(r)?;
-            self.node_bundle_with_outline(mask_id, &mut masks, None, geometric)?;
+            self.node_bundle_with_outline(mask_id, &mut masks, None, geometric, None, false)?;
             let mut content = self.allocate_bundle(r)?;
             if passthrough {
                 for sample in 0..4 {
@@ -2525,11 +2607,7 @@ impl Painter<'_> {
                         .clone_from_slice(&layers[sample].pixels);
                 }
             }
-            for child in n.render_children() {
-                if child != mask_id {
-                    self.node_bundle_with_outline(child, &mut content, if n.clip { Some(&fill) } else { None }, geometric)?;
-                }
-            }
+            self.paint_siblings(n.render_children(), &mut content, if n.clip { Some(&fill) } else { None }, geometric, Some(mask_id))?;
             for sample in 0..4 {
                 if passthrough {
                     layers[sample].interpolate(
@@ -2553,9 +2631,7 @@ impl Painter<'_> {
                 }
             }
         } else {
-            for child in n.render_children() {
-                self.node_bundle_with_outline(child, &mut layers, if n.clip { Some(&fill) } else { None }, geometric)?;
-            }
+            self.paint_siblings(n.render_children(), &mut layers, if n.clip { Some(&fill) } else { None }, geometric, None)?;
         }
         for (i, stroke) in n.strokes.iter().enumerate().filter(|(_, s)| s.visible && s.width > 0.) {
             let masks = self.rasterize_bundle(&prepared.strokes[i], r, false)?;

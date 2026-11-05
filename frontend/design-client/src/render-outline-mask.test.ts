@@ -36,3 +36,35 @@ test('a Sketch shape mask uses its path even with no authored paint',()=>{
  expect(projected.fills[0].color).toBe('#ffffff');expect(projected.opacity).toBe(1)
  expect(mask.fills).toEqual([]);expect(mask.opacity).toBe(0)
 })
+
+test('paint and clip use separate definitions and the same source history after a transparent edit', async () => {
+  const {sketchMaskScene} = await import('./render-outline-mask')
+  const {svgSource, exportBounds} = await import('./export')
+  const d = blank('Sketch poster'), bg = node('rectangle', 0, 0, 100, 80)
+  const mask = node('ellipse', 10, 10, 50, 50), stripe = node('rectangle', 0, 30, 100, 10)
+  const top = node('rectangle', 78, 10, 15, 15)
+  mask.mask = true; mask.maskType = 'shape'; mask.fills = [paint('#2e2e2a')]
+  top.maskChain = 'break'; stripe.fills = [paint('#00ffff')]
+  d.schemaVersion = 4; d.pages[0].children = [bg.id,mask.id,stripe.id,top.id]
+  d.nodes = Object.fromEntries([bg,mask,stripe,top].map(n => [n.id,n]))
+  const e = new Editor(d)
+  try {
+    const render = () => svgSource(e.state.doc,e.state.page).source
+    const original = render(), visual = sketchMaskScene(e.state.doc)
+    const [before, own, clipped, after] = visual.pages[0].children
+    expect([before,own,after]).toEqual([bg.id,mask.id,top.id])
+    const [clip, child] = visual.nodes[clipped].children
+    expect(child).toBe(stripe.id)
+    expect(visual.nodes[clip]).toMatchObject({kind:'ellipse',mask:true,fills:[{color:'#ffffff'}]})
+    expect(visual.nodes[own]).toMatchObject({mask:false,fills:[{color:'#2e2e2a'}]})
+    expect(original).toContain('mask="url(#mask-'+clipped+')"')
+    expect(exportBounds(e.state.doc,e.state.page,0)).toMatchObject({x:0,y:0,width:100,height:80})
+    e.change('Clear mask paint',doc=>{doc.nodes[mask.id].fills=[]})
+    expect(render()).not.toContain('#2e2e2a')
+    expect(e.hit({x:30,y:35},true)).toBe(stripe.id)
+    expect(e.hit({x:95,y:35},true)).toBe(bg.id)
+    expect(e.hit({x:80,y:15},true)).toBe(top.id)
+    e.undo();expect(render()).toBe(original)
+    expect(Object.keys(e.state.doc.nodes).sort()).toEqual(Object.keys(d.nodes).sort())
+  } finally {e.dispose()}
+})

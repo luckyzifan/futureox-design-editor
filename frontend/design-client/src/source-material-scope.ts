@@ -1,0 +1,77 @@
+import {MATERIAL_MARGIN} from './kernel/source-overview-window'
+import type {SourceCanvasBox,SourceCanvasItem} from './desktop'
+
+export function includesMaterials(active:readonly string[]|undefined, wanted:readonly string[]) {
+  return !!active && wanted.every(key=>active.includes(key))
+}
+
+/** Keep already prepared neighbours across a viewport edge. Explicit page
+ * and material choices retain their requested scope. Source order and
+ * ownership are still resolved by the native session. */
+export function materialScope(items:readonly SourceCanvasItem[],indices:readonly number[],active:readonly string[]|undefined,
+  viewport?:SourceCanvasBox) {
+  const wanted=indices.map(i=>items[i]).filter((item):item is SourceCanvasItem=>!!item)
+  const keys=new Set(wanted.map(item=>item.key))
+  if(viewport && active && wanted.length){
+    const pages=new Set(wanted.map(item=>item.pageId)),previous=new Set(active)
+    const v=viewport,left=v.x-v.width,top=v.y-v.height,right=v.x+v.width*2,bottom=v.y+v.height*2
+    let retainedBytes=0
+    for(const item of items){
+      const b=item.placed
+      if(keys.size>=32)break
+      if(!previous.has(item.key)||keys.has(item.key)||!pages.has(item.pageId)||
+          b.x>=right||b.y>=bottom||b.x+b.width<=left||b.y+b.height<=top||
+          retainedBytes+item.bytes>8*1024*1024)continue
+      keys.add(item.key);retainedBytes+=item.bytes
+    }
+  }
+  return [...keys].sort()
+}
+
+/** The PNG IHDR comes from the validated native catalogue. Avoid decoding
+ * the entire data URL just to decide when a higher display rung is worthwhile. */
+export function thumbnailScale(src:string|undefined,box:SourceCanvasBox){
+  const prefix='data:image/png;base64,'
+  if(!src)return 0
+  if(!src.startsWith(prefix)||!(box.width>0&&box.height>0))return
+  try{
+    const header=atob(src.slice(prefix.length,prefix.length+32))
+    if(header.length!==24||header.slice(12,16)!=='IHDR')return
+    const size=(i:number)=>header.charCodeAt(i)*16777216+header.charCodeAt(i+1)*65536+header.charCodeAt(i+2)*256+header.charCodeAt(i+3)
+    const w=size(16),h=size(20)
+    if(w>0&&h>0&&w<=768&&h<=768&&w*h<=384*384)return Math.max(w/box.width,h/box.height)
+  }catch{return}
+}
+
+// A parked neighbour may remain in an exact scene without occupying any
+// texels of the navigation image. Fit the image to the live consumers.
+export function visibleMaterialWindow(items:readonly SourceCanvasItem[],indices:readonly number[],viewport:SourceCanvasBox){
+  let left=Infinity,top=Infinity,right=-Infinity,bottom=-Infinity
+  for(const index of indices){
+    const b=items[index]?.placed
+    if(!b)continue
+    const x=Math.max(viewport.x,b.x-MATERIAL_MARGIN),y=Math.max(viewport.y,b.y-MATERIAL_MARGIN)
+    const r=Math.min(viewport.x+viewport.width,b.x+b.width+MATERIAL_MARGIN),d=Math.min(viewport.y+viewport.height,b.y+b.height+MATERIAL_MARGIN)
+    if(r<=x||d<=y)continue
+    left=Math.min(left,x);top=Math.min(top,y);right=Math.max(right,r);bottom=Math.max(bottom,d)
+  }
+  if(right>left&&bottom>top)return {x:left,y:top,width:right-left,height:bottom-top}
+}
+
+/** While a large new visible set is being prepared, start the bounded group
+ * under the user's wheel. Remaining boards continue showing their own pixels. */
+export function firstVisibleMaterialKeys(items:readonly SourceCanvasItem[],indices:readonly number[],viewport:SourceCanvasBox,
+  active:readonly string[]|undefined,anchor?:{x:number;y:number}){
+  if(indices.length<8)return
+  const center={x:viewport.x+viewport.width/2,y:viewport.y+viewport.height/2}
+  const p=anchor&&anchor.x>=viewport.x&&anchor.y>=viewport.y&&anchor.x<=viewport.x+viewport.width&&anchor.y<=viewport.y+viewport.height?anchor:center
+  const candidates=indices.map(i=>items[i]).filter((r):r is SourceCanvasItem=>!!r)
+  const total=candidates.reduce((sum,r)=>sum+r.bytes,0)
+  if(total<12*1024*1024)return
+  const distance=({placed:b}:SourceCanvasItem)=>Math.hypot(Math.max(b.x-p.x,0,p.x-b.x-b.width),Math.max(b.y-p.y,0,p.y-b.y-b.height))
+  candidates.sort((a,b)=>distance(a)-distance(b)||a.bytes-b.bytes)
+  const first=candidates.slice(0,2)
+  if(!first.length||first.reduce((sum,r)=>sum+r.bytes,0)>Math.min(total/3,12*1024*1024))return
+  const keys=first.map(r=>r.key).sort()
+  return includesMaterials(active,keys)?undefined:keys
+}

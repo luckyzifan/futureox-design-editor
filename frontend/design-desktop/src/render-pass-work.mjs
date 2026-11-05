@@ -6,14 +6,15 @@ export const fastPathKeys=['fastSampleOnlyPasses','fastSampleOnlyPixels','fastPa
  'fastCoverageConstant','fastCoverageShared','fastCoverageRejected','fastCoverageCacheHits','fastCoverageCacheMissKeys','fastCoverageCacheMissWords','fastCoverageCacheOversize','fastCoverageCachePinned',
  'fastGradientFused','fastGradientPaintReject','fastGradientLatticeReject','fastGradientCoverageReject','fastGradientColorReject',
  'fastRegionalUsed','fastRegionalSharedReject','fastRegionalFeedbackReject','fastRegionalLatticeReject','fastRegionalLargeReject',
- 'fastRegionalPixels','fastRegionalFullPixels','fastGradientSavedPixels','fastCoverageSavedPixels']
+ 'fastRegionalPixels','fastRegionalFullPixels','fastGradientSavedPixels','fastCoverageSavedPixels',
+ 'backdropCapturePixels','glassCapturePixels','glassFieldTexelsSaved','densePaintBatches','densePaintRoots','densePaintEffects','sourceLayerNodes','sourceLayerBatches','sourceShadowPaintsSaved','sourceProgramPixelsSaved','denseGradientBuildPixels','gradientWindowBuildPixels']
 export const drawWorkLimits={drawWorkVersion:2,drawWorkCapped:1,clearPasses:1e9,drawPixelsMeasuredDraws:1e9,drawPixelsUnmeasuredDraws:1e9,...Object.fromEntries(groups.map(name=>['draw'+name,1e9])),
   ...Object.fromEntries(groups.map(name=>['drawPixels'+name,1e15])),
   ...Object.fromEntries(fastPathKeys.map(name=>[name,1e15])),
-  ...Object.fromEntries(Array.from({length:66},(_,mode)=>['drawMode'+mode,1e9]))}
+  ...Object.fromEntries([...Array.from({length:66},(_,mode)=>mode),76,77].map(mode=>['drawMode'+mode,1e9]))}
 const group=mode=>[1,17,19,20,30,31,63].includes(mode)?'Coverage':[2,12].includes(mode)?'Paint':[3,15,25,28,29].includes(mode)?'Merge':
  [4,5,6,7,8,9,10,11,22,34,40,41,43,45,46,50,60,61,62].includes(mode)?'Effect':
- [0,27,44].includes(mode)?'Copy':[14,18,33].includes(mode)?'Present':[16,35,42,47,64,65].includes(mode)?'PaintMerge':
+ [0,27,44].includes(mode)?'Copy':[14,18,33].includes(mode)?'Present':[16,35,42,47,64,65,76,77].includes(mode)?'PaintMerge':
  [21,23,24,26,36].includes(mode)?'Resolve':'Other'
 export class PassDrawWork {
   enabled=false
@@ -23,7 +24,7 @@ export class PassDrawWork {
   draw(mode,count=1,pixels){
     if(!this.enabled||!Number.isInteger(count)||count<0)return
     this.add('draw'+group(mode),count)
-    if(Number.isInteger(mode)&&mode>=0&&mode<66)this.add('drawMode'+mode,count)
+    if((Number.isInteger(mode)&&mode>=0&&mode<66)||mode===76||mode===77)this.add('drawMode'+mode,count)
     if(Number.isSafeInteger(pixels)&&pixels>=0){this.add('drawPixels'+group(mode),pixels);this.add('drawPixelsMeasuredDraws',count)}
     else this.add('drawPixelsUnmeasuredDraws',count)
   }

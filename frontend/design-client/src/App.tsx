@@ -28,6 +28,7 @@ import { useShortcutProfile } from './shortcut-preference'
 import { shortcutPlatform, toolShortcutLabel, shortcutLabel, formatShortcutCombo } from './shortcut-profiles'
 import { shortcutTargetOwnsKeyboard } from './editor-shortcuts'
 import { AutomationPanel } from './AutomationPanelLauncher'
+import { PluginPanel } from './plugins/PluginPanel'
 import { DesignAgentLauncher } from './design-ai/DesignAgentLauncher'
 import { attachDesktopAutomation } from './automation/bridge'
 import { createWorkspaceAutomationRenderer } from './automation/workspace-bridge'
@@ -176,6 +177,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const utilityTools = useMemo(() => utilityToolItems.map(tool => ({ ...tool, label: localizedToolLabel(tool.id, locale, tool.label), key: toolShortcutLabel(tool.id, shortcutContext) })), [shortcutContext, locale])
   const [importReport, setImportReport] = useState<{ documentId: string; warnings: string[] } | null>(null)
   const [showHome, setShowHome] = useState(!source)
+  const [homeImportError, setHomeImportError] = useState('')
   const [startupError, setStartupError] = useState('')
   const homeSettingsFocus = useRef<HTMLElement | null>(null)
   const [showTools, setShowTools] = useState(false)
@@ -301,6 +303,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     try {
     if(!ready || switching || desktopStatus.busy || editor.interactionActive){trace.result(ActionOutcome.blocked, ActionReason.busy);editor.notify('请结束当前操作后打开文件', { key: 'openBlockedActiveOperation' });return}
     const request = fileImports.begin(editor)
+    setHomeImportError('')
     diagnostic.bindRequest(request)
     try {
       const imported = await importStep(request, () => readDesignFile(f, request.signal, diagnostic))
@@ -327,7 +330,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       trace.result(cancelled ? ActionOutcome.cancelled : ActionOutcome.rejected, cancelled ? ActionReason.superseded : ActionReason.validation)
       if (!cancelled && request.isCurrent()) {
         if(mode==='open'&&desktopBridge()?.largeDocument&&/\.(json|sketch)$/i.test(f.name)&&/Sketch archive: Limit|archive resource limit:/.test(String(error))){setLargeDocument({file:f});return}
-        desktopPet.event('error'); const status = importInputStatus(error); editor.notify(error instanceof Error ? error.message : String(error), status)
+        desktopPet.event('error')
+        const reason = error instanceof Error ? error.message : String(error)
+        editor.notify(reason, importInputStatus(error))
+        if (showHome) setHomeImportError(reason)
       }
     }
     finally { request.finish() }
@@ -365,6 +371,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     dirty: true, busy: false, transitioning: false, operation: 'idle', conflict: false,
   })
   const desktopStatus=source?{...desktopState,busy:source.busy,transitioning:source.locked}:desktopState
+  const openingNavigation=(target:Element,pan=false)=>!!source?.openingPreview && !desktopPrompt &&
+    (!!target.closest('.canvas-controls,.canvas-scrollbars,.source-page-picker,[data-source-material-id],.source-board-navigation input') ||
+      pan && editor.state.tool==='hand' && !!target.closest('[data-testid="canvas"]') &&
+      !target.closest('button,input,select,textarea,[contenteditable="true"]'))
   const [desktopPrompt, setDesktopPrompt] = useState<{
     reason: LeaveReason; resolve: (decision: LeaveDecision) => void
   } | null>(null)
@@ -780,7 +790,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     if (!ready || switching || desktopStatus.busy || editor.interactionActive || !commitPendingEdits(editor)) return
     setMenu(false); setShowMove(false); setShowRegions(false); setShowShapes(false); setShowDrawing(false); setShowUtility(false)
     if(source){void source.leave();return}
-    setShowHome(true)
+    setHomeImportError(''); setShowHome(true)
   }
   async function openHomeFile(): Promise<boolean | 'pending'> {
     if (!ready || switching || desktopStatus.busy || editor.interactionActive || !commitPendingEdits(editor)) return false
@@ -897,7 +907,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         if (!(e.button === 0 && (panelRecoveryEntry(target) || canRefocusPendingPanelInput(target))) && !penCanvas && target !== document.activeElement && !target.closest('.rich-text-editor') && !commitPendingEdits(editor)) {
           e.preventDefault(); e.stopPropagation(); return
         }
-        if (!ready || switching || (desktopStatus.transitioning && !(e.target as Element).closest('[data-desktop-dialog]'))) {
+        if (!ready || switching || (desktopStatus.transitioning && !target.closest('[data-desktop-dialog]') && !openingNavigation(target,true))) {
           e.preventDefault()
           e.stopPropagation()
         }
@@ -911,7 +921,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         if (!((e.key === 'Enter' || e.key === ' ') && panelRecoveryEntry(e.target as Element)) && !penCanvas && !nudgeKey && !(e.target as Element).closest('input,textarea,select,.rich-text-editor') && !commitPendingEdits(editor)) {
           e.preventDefault(); e.stopPropagation(); return
         }
-        if (!ready || switching || (desktopStatus.transitioning && !(e.target as Element).closest('[data-desktop-dialog]'))) {
+        if (!ready || switching || (desktopStatus.transitioning && !(e.target as Element).closest('[data-desktop-dialog]') && !openingNavigation(e.target as Element))) {
           e.preventDefault()
           e.stopPropagation()
         }
@@ -923,7 +933,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           {source?.busy&&<button type="button" data-desktop-dialog onClick={source.cancel}>停止当前操作</button>}
         </div>
       )}
-      {showHome && <LocalHome source={homeSource} ready={ready} startupError={startupError} busy={switching || desktopStatus.busy}
+      {showHome && <LocalHome source={homeSource} ready={ready} startupError={startupError} importError={homeImportError} busy={switching || desktopStatus.busy}
         currentName={s.doc.name} onResume={resumeEditor} onNew={() => switchDocument(blank())}
         onOpenFile={openHomeFile} onSettings={() => {
           homeSettingsFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -1247,7 +1257,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           {source&&<SourceDocumentStatus source={source}/>}
           {importReport?.documentId === s.doc.id && <ImportNotice warnings={importReport.warnings} onClose={() => setImportReport(null)} />}
           <HomeCanvasGate home={showHome}><Canvas editor={editor} peers={localWindows.peers} compactChrome loading={!ready||!!source&&!source.ready}
-            nativeSource={source?.nativeCanvas?.snapshot} openingSource={source?.openingPreview} openingPage={source?.openingPage} focusedMaterial={source?.focusedMaterial} onSourceDetail={source?.onDetail} onSourceViewport={source?.onViewport} hideNative={source?.hideNative} sourcePageBoxes={source?.pageBoxes} onSourcePresented={source?.onSourcePresented} onNativeSourceStatus={source?.nativeCanvas?.onStatus} onOpenSourcePoint={source?.nativeCanvas?.openPoint??source?.openPreviewPoint}
+            prepareSourceDisplay={source?.prepareSourceDisplay} nativeSource={source?.nativeCanvas?.snapshot} openingSource={source?.openingPreview} openingPage={source?.openingPage} focusedMaterial={source?.focusedMaterial} onSourceDetail={source?.onDetail} onSourceViewport={source?.onViewport} hideNative={source?.hideNative} parkNative={source?.parkNative} sourcePageBoxes={source?.pageBoxes} onSourcePresented={source?.onSourcePresented} onNativeSourceStatus={source?.nativeCanvas?.onStatus} onOpenSourcePoint={source?.nativeCanvas?.openPoint??source?.openPreviewPoint}
             startupPreview={startupPreview} onCapturePreview={desktopSession || source ? undefined : capturePreview}
             zoomControlsTarget={(uiMinimized ? !!s.selection.length : showInspector) ? zoomHost : null} /></HomeCanvasGate>
           <DesignToolbar disabled={!ready || switching || desktopStatus.transitioning || !!source?.nativeCanvas || !!source?.openingPreview || (editor.interactionActive && !editor.propertyPreviewActive)}>
@@ -1415,6 +1425,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         </div>
       )}
       <AutomationPanel editor={editor} desktop={desktop} onHistory={()=>setShowHistory(true)} />
+      <PluginPanel editor={editor} />
       <footer>
         <span>
           {s.busy ? <span className="spinner" /> : <span className="footer-dot" />}

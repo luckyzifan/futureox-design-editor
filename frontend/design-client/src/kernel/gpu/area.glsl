@@ -44,8 +44,19 @@ uint firstSpan(int pixel,uint first,uint count){
  }
  return lo;
 }
+uint spanWord(uint i){return uint(cvFetch(i/4u)[i%4u]);}
+float compactSample(ivec2 pixel,uint phase,uint width){
+ int row=int(cvFetch(1u+uint(pixel.y))[phase]);if(row==0)return 0.;if(row== -1)return 1.;
+ uint x=uint(pixel.x),stride=width+1u;
+ if(row<0){uint span=uint(-row-2);return x>=span/stride&&x<span%stride?1.:0.;}
+ uint at=uint(row),lo=0u,hi=spanWord(at);
+ while(lo<hi){uint mid=lo+(hi-lo)/2u,span=spanWord(at+1u+mid);
+ if(x<span/stride)hi=mid;else if(x>=span%stride)lo=mid+1u;else return 1.;}
+ return 0.;
+}
 float sampleCoverage(ivec2 pixel,uint index){
  vec4 header=cvFetch(0u);vec2 offset=sampleOffset(index);
+ if(header.x==5.)return compactSample(pixel,index,uint(header.z));
  if(header.x==4.){
   if(sampleInside(pixel.x,offset.x,cvFetch(1u),cvBits(cvFetch(3u)),cvBits(cvFetch(4u)))&&sampleInside(pixel.y,offset.y,cvFetch(2u),cvBits(cvFetch(5u)),cvBits(cvFetch(6u)))){return 1.;}return 0.;
  }
@@ -61,7 +72,7 @@ float sampleCoverage(ivec2 pixel,uint index){
 float areaCoverage(ivec2 pixel){
  vec4 header=cvFetch(0u);
  if(header.x==2.){return 0.;}
- if(header.x==3.||header.x==4.){
+ if(header.x==3.||header.x==4.||header.x==5.){
   int selected=cvSampleIndex();if(selected>0){return sampleCoverage(pixel,uint(selected-1));}
   float sum=0.;for(uint i=0u;i<4u;i=i+1u){sum=sum+sampleCoverage(pixel,i);}
   return sum*0.25;

@@ -1,6 +1,6 @@
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { blank, node, effect } from '../../model'
-import { canCommitResidentFrame } from './retained-commit'
+import { canCommitResidentFrame, matchesResidentFrame } from './retained-commit'
 import type { GpuScene } from './types'
 import type { ResidentFrame } from './resident-presenter'
 function fixture() {
@@ -33,4 +33,16 @@ test('fractional masks and preview-only blur changes keep normal refinement',()=
  const blur=effect('blur');blur.radius=.2;n.effects=[blur]
  scene.nodes[n.id].effects=[{...blur,radius:0}]
  expect(canCommitResidentFrame(scene,doc,doc,frame,input)).toBe(false)
+})
+
+test('materializes a pose only for an eligible frame and checks the actual snapshot separately', () => {
+  const { doc, scene, frame, input } = fixture()
+  const snapshot = vi.fn(() => doc)
+  expect(canCommitResidentFrame({ ...scene, interactionLocalFootprint: true }, snapshot, doc, frame, input)).toBe(false)
+  expect(canCommitResidentFrame(scene, snapshot, doc, { ...frame, items: [] }, input)).toBe(false)
+  expect(snapshot).not.toHaveBeenCalled()
+  expect(canCommitResidentFrame(scene, snapshot, doc, frame, input)).toBe(true)
+  expect(matchesResidentFrame(scene, { ...frame, input: { ...input, owner: 'another gesture' } }, input)).toBe(false)
+  expect(matchesResidentFrame(scene, { ...frame, items: [] }, input)).toBe(false)
+  expect(snapshot).toHaveBeenCalledTimes(1)
 })

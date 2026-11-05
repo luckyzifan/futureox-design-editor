@@ -1,9 +1,0 @@
-{
-  "scope": "Frozen before confirmation runs; diagnostic navigation mitigation only, not full G2/G5",
-  "case": "same main FIG, selected root, 6.25% pan, 10s quiet, 48 negative/24 positive wheel steps",
-  "pixelGate": "identical final camera and complete window PNG bytes",
-  "callbackGateMs": 100,
-  "rafGapGateMs": 33,
-  "exactRefinementGoalMs": 100,
-  "notes": "Initial runs already showed the 100ms exact-refinement goal is unmet; keep that separate from reduced submission backlog."
-}

@@ -143,7 +143,7 @@ test('modern horizontal auto-layout preserves actual padding fields, wrapping, a
     padding: [9, 17, 0, 11],
     wrap: true,
     justify: 'space-between',
-    align: 'center',
+    align: 'unsafe-center',
     columns: 3,
     fillRows: false,
   })
@@ -168,7 +168,7 @@ test('modern vertical layout maps primary and counter sizing to their actual axe
   expect(frame.layout).toMatchObject({
     mode: 'vertical',
     padding: [6, 5, 6, 5],
-    justify: 'end',
+    justify: 'unsafe-end',
     align: 'start',
     gap: 0,
     lineGap: 0,
@@ -267,7 +267,7 @@ test('all parser containers use the layout mapper and merged node changes retain
       expect(frame.layout).toMatchObject({
         mode: 'horizontal',
         padding: [0, 3, 0, 12],
-        align: 'end',
+        align: 'unsafe-end',
       })
     }
   }

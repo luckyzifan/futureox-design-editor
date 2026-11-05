@@ -81,6 +81,18 @@ function pointer(type: string, x: number, y: number, options: MouseEventInit = {
   Object.defineProperties(event, { pointerId: { value: pointerId }, isPrimary: { value: true }, pointerType: { value: 'mouse' } })
   target.dispatchEvent(event); return event
 }
+
+test('a middle-button pan preserves the native fractional phase through a 64-pixel round trip',async()=>{
+  await render([])
+  const original={x:30.6352521843815,y:-1212.8690463838038,zoom:.09855276255057686}
+  await act(async()=>editor.set({view:original}))
+  for(const [start,end] of [[428,492],[492,428]]){
+    await act(async()=>pointer('pointerdown',start,400,{button:1,buttons:4}))
+    await act(async()=>pointer('pointermove',end,400,{button:1,buttons:4}))
+    await act(async()=>pointer('pointerup',end,400,{button:1}))
+    expect(editor.effectiveView()).toEqual({...original,x:original.x+(end-428)})
+  }
+})
 function key(value: string, options: KeyboardEventInit = {}, type = 'keydown', target: EventTarget = host()) {
   const event = new KeyboardEvent(type, { key: value, code: value.length === 1 ? `Key${value.toUpperCase()}` : value, bubbles: true, cancelable: true, ...options })
   target.dispatchEvent(event); return event

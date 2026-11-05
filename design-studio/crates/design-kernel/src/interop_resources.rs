@@ -5,7 +5,7 @@ use crate::{font::FontResource, interop::Error, scene::Document};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use sha1::{Digest, Sha1};
-use std::collections::BTreeMap;
+use std::{borrow::Cow, collections::BTreeMap};
 
 const FONT_LIMIT: usize = 20 * 1024 * 1024;
 const TOTAL_LIMIT: usize = 24 * 1024 * 1024;
@@ -43,6 +43,13 @@ fn check_embedding(face: &ttf_parser::Face<'_>) -> Result<(), Error> {
         ));
     }
     Ok(())
+}
+
+fn valid_installed_reference(reference: &Value) -> bool {
+    reference["_class"] == "fontReference" && reference.get("fontData").is_none()
+        && reference["fontFamilyName"].as_str().is_some_and(|name| !name.is_empty())
+        && reference["postscriptNames"].as_array().is_some_and(|names| !names.is_empty()
+            && names.iter().all(|name| name.as_str().is_some_and(|s| !s.is_empty())))
 }
 
 pub(crate) fn export_fonts(doc: &Document, output: &mut Value) -> Result<(), Error> {
@@ -99,6 +106,14 @@ pub(crate) fn export_fonts(doc: &Document, output: &mut Value) -> Result<(), Err
                 "_ref":format!("fonts/{hex}"),"data":{"_data":STANDARD.encode(&bytes)},"sha1":{"_data":STANDARD.encode(hash)}}}));
         identities.push(json!({"sha1":hex,"id":id,"index":font.index,"family":font.family,"postscript":font.postscript,"name":name}));
     }
+    if let Some(value) = doc.design_system.as_ref().and_then(|s| s.sketch_containers.get("nonEmbeddedFontReferences")) {
+        let installed = value.as_array().ok_or_else(|| invalid("Invalid Sketch installed font declarations"))?;
+        if installed.len().saturating_add(refs.len()) > crate::sketch::archive::MAX_ENTRIES ||
+            !installed.iter().all(valid_installed_reference) {
+            return Err(invalid("Invalid Sketch installed font declarations"));
+        }
+        refs.extend(installed.iter().cloned());
+    }
     output["fontReferences"] = Value::Array(refs);
     if !identities.is_empty() {
         if !output["userInfo"].is_object() {
@@ -113,14 +128,19 @@ pub(crate) fn export_fonts(doc: &Document, output: &mut Value) -> Result<(), Err
     Ok(())
 }
 
-pub(crate) fn import_fonts(source: &Value, doc: &mut Document) -> Result<BTreeMap<String,String>, Error> {
+pub(crate) fn import_fonts(
+    source: &Value, files: &BTreeMap<String, Vec<u8>>, doc: &mut Document,
+) -> Result<BTreeMap<String,String>, Error> {
     let Some(refs) = source.get("fontReferences") else {
         return Ok(BTreeMap::new());
     };
     let refs = refs
         .as_array()
         .ok_or_else(|| invalid("Sketch fontReferences must be an array"))?;
-    if refs.len() > 32 {
+    if refs.len() > crate::sketch::archive::MAX_ENTRIES {
+        return Err(invalid("Sketch font declaration limit exceeded"));
+    }
+    if refs.iter().filter(|r| r.get("fontData").is_some()).take(33).count() > 32 {
         return Err(invalid("Sketch import exceeds 32 embedded font resources"));
     }
     let identities = source
@@ -134,29 +154,37 @@ pub(crate) fn import_fonts(source: &Value, doc: &mut Document) -> Result<BTreeMa
         // Installed-font declarations need no bytes. A present malformed
         // fontData must still fail rather than silently becoming a fallback.
         if reference.get("fontData").is_none() && reference["_class"] == "fontReference" {
-            let valid_names = reference["postscriptNames"].as_array().is_some_and(|names| {
-                !names.is_empty() && names.iter().all(|name| name.as_str().is_some_and(|s| !s.is_empty()))
-            });
-            if !valid_names || !reference["fontFamilyName"].as_str().is_some_and(|s| !s.is_empty()) {
+            if !valid_installed_reference(reference) {
                 return Err(invalid("Malformed Sketch non-embedded font declaration"));
             }
             nonembedded.push(reference.clone());
             continue;
         }
         let data = &reference["fontData"];
-        if reference["_class"] != "fontReference"
-            || data["_class"] != "MSJSONOriginalDataReference"
-            || data["_ref_class"] != "MSFontData"
-        {
-            return Err(invalid(
-                "Unsupported Sketch embedded font reference; keep original archive",
-            ));
+        if reference["_class"] != "fontReference" || data["_ref_class"] != "MSFontData" {
+            return Err(invalid("Unsupported Sketch embedded font reference; keep original archive"));
         }
-        let bytes = decode(
-            data.pointer("/data/_data")
-                .and_then(Value::as_str)
-                .ok_or_else(|| invalid("Sketch embedded font bytes are missing"))?,
-        )?;
+        let bytes: Cow<'_, [u8]> = match data["_class"].as_str() {
+            Some("MSJSONOriginalDataReference") => Cow::Owned(decode(
+                data.pointer("/data/_data").and_then(Value::as_str)
+                    .ok_or_else(|| invalid("Sketch embedded font bytes are missing"))?,
+            )?),
+            Some("MSJSONFileReference") => {
+                let path = data["_ref"].as_str().filter(|path| path.strip_prefix("fonts/")
+                    .is_some_and(|name| !name.is_empty() && !matches!(name, "." | "..") &&
+                        !name.contains(['/', '\\', '\0'])))
+                    .ok_or_else(|| invalid("Invalid Sketch font archive reference"))?;
+                let file = files.get(path).ok_or_else(|| invalid("Sketch font archive entry is missing"))?;
+                if file.len() > FONT_LIMIT {
+                    return Err(invalid("Sketch font exceeds 20 MiB"));
+                }
+                if data.get("data").is_some() {
+                    return Err(invalid("Ambiguous Sketch file-backed font data"));
+                }
+                Cow::Borrowed(file)
+            }
+            _ => return Err(invalid("Unsupported Sketch embedded font reference; keep original archive")),
+        };
         total += bytes.len();
         if total > TOTAL_LIMIT {
             return Err(invalid("Sketch font resources exceed 24 MiB"));
@@ -167,7 +195,8 @@ pub(crate) fn import_fonts(source: &Value, doc: &mut Document) -> Result<BTreeMa
             .pointer("/sha1/_data")
             .and_then(Value::as_str)
             .and_then(|s| STANDARD.decode(s).ok());
-        if digest.as_deref() != Some(hash.as_slice()) {
+        if (data["_class"] == "MSJSONOriginalDataReference" || data.get("sha1").is_some())
+            && digest.as_deref() != Some(hash.as_slice()) {
             return Err(invalid(
                 "Sketch embedded font SHA-1 does not match its bytes",
             ));

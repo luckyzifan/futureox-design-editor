@@ -47,6 +47,43 @@ fn assert_parity(gpu: &mut NativeGpu, document: &str, options: &RenderOptions) {
     assert_eq!(native.rgba.len(), cpu.len());
     assert_eq!((max, different), (0, 0), "native/CPU differ");
 }
+
+#[tokio::test]
+#[cfg_attr(not(feature = "hardware-tests"), ignore = "requires actual GPU host")]
+async fn overlapping_glass_reads_the_unpainted_prefix_on_the_device() {
+    let mut gpu=NativeGpu::new(Backends::PRIMARY).await.unwrap();
+    let opts:RenderOptions=serde_json::from_value(json!({"pageId":"p","width":80,"height":60,
+        "rasterProfile":"figmaSubpixel","view":{"x":0.125,"y":0.375,"zoom":1}})).unwrap();
+    let glass=json!({"kind":"glass","color":"#000000","radius":3.,"glass":{
+        "depth":4.,"refraction":0.7,"dispersion":0.5,"lightAngle":30.,"lightIntensity":0.8}});
+    let mut document=json!({"schemaVersion":5,"id":"d","name":"Optical prefix",
+        "colorManagement":{"documentSpace":"srgb","referenceWhiteNits":203,"peakLuminanceNits":1000},
+        "pages":[{"id":"p","name":"p","children":["bg","stripe","rear","front"],"background":"#ffffff"}],
+        "nodes":{"bg":{"id":"bg","kind":"rectangle","width":80,"height":60,"fills":[{"kind":"solid","color":"#74989b"}]},
+            "stripe":rect("stripe",28.,5.,"#b23c31"),"rear":{"id":"rear","kind":"rectangle","width":36,"height":33,
+              "transform":[1,0,0,1,8.25,8.5],"radii":[3,3,3,3],"effects":[glass]}}});
+    document["nodes"]["front"]=document["nodes"]["rear"].clone();
+    document["nodes"]["front"]["id"]=json!("front");document["nodes"]["front"]["transform"][4]=json!(20.25);
+    let mut raster=|d:&Value|{let mut e=Engine::new();e.load_document(&d.to_string()).unwrap();gpu.render(&e.compile_gpu(&opts).unwrap()).unwrap().rgba};
+    for painted in [false,true] {
+      if painted { document["nodes"]["rear"]["fills"]=json!([{"kind":"solid","color":"#c92360","opacity":0.3}]); }
+      for front in [glass.clone(),json!({"kind":"background-blur","radius":3.,"color":"#000000"})] {
+        document["nodes"]["front"]["effects"]=json!([front]);
+        let frame=raster(&document);
+        let mut ref_front=document.clone();ref_front["nodes"]["rear"]["effects"]=json!([]);
+        let clean=raster(&ref_front);
+        let mut ref_rear=document.clone();ref_rear["nodes"]["front"]["visible"]=json!(false);
+        let rear=raster(&ref_rear);
+        let mut signal=false;
+        for y in 14..36 {for x in 0..52 {
+            let range=(y*80+x)*4..(y*80+x+1)*4;
+            if x<18 {assert_eq!(frame[range.clone()],rear[range.clone()]);signal|=frame[range.clone()]!=clean[range];}
+            else if x>=25 {assert_eq!(frame[range.clone()],clean[range]);}
+        }}
+        assert!(signal);
+      }
+    }
+}
 /// Parity with image mips enabled on BOTH sides: the CPU reference sampler and
 /// the compositor must derive the same level from the same pure geometry.
 fn assert_parity_at_mips(gpu: &mut NativeGpu, document: &str, options: &RenderOptions) {

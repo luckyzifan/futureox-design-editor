@@ -28,6 +28,9 @@ pub(crate) struct AppliedDocument {
     serialized_bytes: usize,
 }
 impl AppliedDocument {
+    pub(crate) fn document(&self) -> &Document {
+        &self.document
+    }
     pub(crate) fn into_parts(self) -> (Document, usize) {
         (self.document, self.serialized_bytes)
     }

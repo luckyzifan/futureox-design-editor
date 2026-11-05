@@ -3,15 +3,12 @@
 // arrays, GPU, shader execution, or claim of visual/pixel-fidelity validation.
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { registerHooks } from 'node:module'
-import {rendererTestTypes} from './renderer-test-types.mjs'
-import './renderer-test-plan.mjs'
+import {loadRendererTestModule} from './renderer-test-types.mjs'
+import {rendererKernelStubNames} from './renderer-test-plan.mjs'
 
 const rendererUrl = new URL('./renderer.ts', import.meta.url)
-const source = readFileSync(rendererUrl, 'utf8')
-const kernelNames = [...source.matchAll(/import\s*\{([^}]+)\}\s*from\s*['"][^'"]*generated\/design-kernel\/design_kernel['"]/g)]
-  .flatMap(match => match[1].split(',').map(name => name.trim()).filter(Boolean))
 const boundaries = {
   // The production materialField still checks layout, charges the full byte
   // cost and uploads to the driver. Only coordinate generation is a fixture.
@@ -36,16 +33,13 @@ const hooks = registerHooks({
   },
   load(url, context, next) {
     if (url === 'sample-effect-test:kernel') return { format: 'module', shortCircuit: true,
-      source: kernelNames.filter(name=>name!=='compiled_scene_plan_json').map(name => boundaries[name]
+      source: rendererKernelStubNames.map(name => boundaries[name]
         ? `export const ${name} = ${boundaries[name]};`
         : `export function ${name}(){ throw Error('Unexpected WASM boundary: ${name}') }`).join('\n')+
         '\nexport {compiled_scene_plan_json} from '+JSON.stringify(new URL('./renderer-test-plan.mjs',import.meta.url).href) }
     if (url === 'sample-effect-test:geometry') return { format: 'module', shortCircuit: true,
       source: "export function inverse(){ throw Error('Unexpected geometry boundary') }" }
-    if (url.startsWith('file:') && url.endsWith('.ts')) return { format: 'module', shortCircuit: true,
-      source: rendererTestTypes(readFileSync(new URL(url), 'utf8'),new URL(url).pathname)
-        .replaceAll('import.meta.env', '({ DEV: false })') }
-    return next(url, context)
+    return loadRendererTestModule(url, context, next)
   },
 })
 let GpuRenderer

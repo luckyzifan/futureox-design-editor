@@ -1,7 +1,21 @@
 import { expect, test } from 'vitest'
 import { blank, node, defaultLayout, defaultSizing, type DesignDocument, type DesignNode } from '../model'
 import { emptySystem } from '../design-system'
-import { translationOnlyChanges, TranslationPreviewPlan } from './translation-preview'
+import { PoseTopology, translationOnlyChanges, TranslationPreviewPlan } from './translation-preview'
+
+test('the published pose index exposes page and node parents without a writable proof', () => {
+  const { document, parent, moving } = fixture()
+  const index = new PoseTopology(document)
+  expect(index.get(parent.id)).toBe(document.pages[0].id)
+  expect(index.nodeParent(parent.id)).toBeUndefined()
+  expect(index.get(moving.id)).toBe(parent.id)
+  expect('set' in index).toBe(false)
+  index.forEach((_value, _key, view) => expect(view).toBe(index))
+  const patches = { [moving.id]: {transform: [0, 1, -1, 0, 10, 10] as DesignNode['transform']} }
+  expect(new TranslationPreviewPlan(document, [moving.id], index).acceptsAffine(patches)).toBe(true)
+  const otherRoot = { ...document, nodes: { ...document.nodes } }
+  expect(new TranslationPreviewPlan(otherRoot, [moving.id], index).acceptsAffine(patches)).toBe(false)
+})
 
 function fixture() {
   const document = blank()

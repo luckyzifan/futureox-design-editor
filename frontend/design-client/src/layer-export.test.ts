@@ -1,9 +1,27 @@
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { Editor } from './engine'
 import { blank, exportSuffixHasForbiddenCharacters, node, uid, validateDocument } from './model'
 import { exportImage, svgSource, sliceExportTarget, targetBounds } from './export'
+import * as metadata from './export-metadata'
+import { NodeExportPanel } from './NodeExportPanel'
 const editors:Editor[]=[]
 afterEach(()=>editors.splice(0).forEach(e=>e.dispose()))
+test('vector PDF eligibility is evaluated only when a preset renders its format selector', () => {
+  const d = blank(), shape = node('rectangle')
+  d.nodes[shape.id] = shape; d.pages[0].children.push(shape.id)
+  const editor = new Editor(d); editors.push(editor)
+  const issues = vi.spyOn(metadata, 'pdfVectorIssues').mockReturnValue(['滤镜效果'])
+  try {
+    const draw = () => renderToStaticMarkup(createElement(NodeExportPanel, {editor, node: editor.state.doc.nodes[shape.id]}))
+    draw()
+    expect(issues).not.toHaveBeenCalled()
+    editor.updateProperties([shape.id], n => { n.exportSettings = [{id: uid(), format: 'png', scale: 1, suffix: ''}] }, 'Add export')
+    expect(draw()).toMatch(/<option[^>]*value="pdf-vector"[^>]*disabled/)
+    expect(issues).toHaveBeenCalledTimes(1)
+  } finally { issues.mockRestore() }
+})
 test('export suffix admission rejects controls and filename separators while retaining Unicode names',()=>{
  const d=blank(),n=node('rectangle');d.schemaVersion=8;d.nodes[n.id]=n;d.pages[0].children=[n.id]
  n.exportSettings=[{id:uid(),format:'png',scale:1,suffix:''}]

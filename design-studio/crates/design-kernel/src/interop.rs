@@ -728,6 +728,77 @@ fn modern_blur(mut blur: Value) -> Value {
     if let Some(object) = blur.as_object_mut() { object.entry("layeringType").or_insert(json!(0)); }
     blur
 }
+
+// Native Custom Glass stores a unit depth, whereas our optical model uses
+// document pixels. Anchor the portable preview at the two defaults (.5 and
+// 8). The original native dictionary and the authored FD receipt are kept
+// independently, including values outside this preview projection.
+const SKETCH_GLASS_DEPTH_SCALE: f64 = 16.;
+fn sketch_glass(blur: &Value, space: ColorSpace) -> Option<Effect> {
+    if blur.get("isCustomGlass").and_then(Value::as_bool) == Some(false) { return None; }
+    let number = |key: &str, default: f64, max: f64| {
+        let v = match blur.get(key) { Some(v) => v.as_f64()?, None => default };
+        (v.is_finite() && (0. ..=max).contains(&v)).then_some(v)
+    };
+    let light = match blur.get("skipLightingEffects") { Some(v) => !v.as_bool()?, None => true };
+    let controls = crate::color_controls::ColorControls { space: Some(space),
+        brightness: number("brightness",1.,2.)?-1., saturation: number("saturation",1.,2.)?, ..Default::default() };
+    Some(Effect { id: String::new(), kind: "glass".into(), visible: true,
+        radius: number("radius",0.,1000.)?, x:0., y:0., spread:0., color:"#000000".into(), opacity:1., amount:0.,
+        glass: Some(crate::scene::GlassParameters { depth:(number("depth",0.5,1.)? * SKETCH_GLASS_DEPTH_SCALE).max(1.),
+            refraction:number("distortion",0.5,1.)?, dispersion:number("chromaticAberrationMultiplier",0.,1.)?,
+            bevel_size:None,light_angle:45.,light_intensity:if light {0.5} else {0.} }),
+        color_controls: (!controls.is_identity()).then_some(controls),
+        texture:None,gradient_blur:None,zoom_blur:None,motion_angle:0.,show_shadow_behind_node:false })
+}
+
+fn sketch_blur_value(e: &Effect) -> Value {
+    let mut value=json!({"_class":"blur","isEnabled":e.visible,
+        "center":e.zoom_blur.map_or_else(||"{0.5, 0.5}".to_string(),|z|format!("{{{}, {}}}",z.center[0],z.center[1])),
+        "motionAngle":e.motion_angle,"radius":e.zoom_blur.map_or(e.radius.max(0.),|z|z.amount),
+        "saturation":e.color_controls.map_or(1.,|c|c.saturation),
+        "type":match e.kind.as_str() {"background-blur"=>3,"motion-blur"=>1,"zoom-blur"=>2,_=>0}});
+    if let Some(g)=&e.glass {
+        value["type"]=json!(4);
+        value["brightness"]=json!((1.+e.color_controls.map_or(0.,|c|c.brightness)).clamp(0.,2.));
+        value["saturation"]=json!(e.color_controls.map_or(1.,|c|c.saturation).clamp(0.,2.));
+        value["depth"]=json!((g.depth/SKETCH_GLASS_DEPTH_SCALE).clamp(0.,1.));
+        value["distortion"]=json!(g.refraction.clamp(0.,1.));
+        value["chromaticAberrationMultiplier"]=json!(g.dispersion.clamp(0.,1.));
+        value["skipLightingEffects"]=json!(g.light_intensity==0.);
+        value["isProgressive"]=json!(false);
+    }
+    value
+}
+
+fn modern_blurs(effects: &[Effect], first: &Value) -> Value {
+    if effects.iter().any(|e| e.glass.is_some()) {
+        Value::Array(blur_projection(effects).iter().map(|e| modern_blur(sketch_blur_value(e))).collect())
+    } else { json!([modern_blur(first.clone())]) }
+}
+
+// Patch only the modeled native controls that actually changed. In
+// particular, editing frost must not quantize a small original unit depth or
+// discard disabled effects and future optional native fields.
+fn edited_glass_blurs(source: &Value, current: &[Effect]) -> Option<Vec<Value>> {
+    let old: Vec<Effect> = serde_json::from_value(source.get("effects")?.clone()).ok()?;
+    let current = blur_projection(current);
+    if old.len()!=current.len() { return None; }
+    let mut parts = source.get("blurs")?.as_array()?.clone();
+    let mut enabled = parts.iter_mut().filter(|b| sketch_blur_enabled(b));
+    for (before,after) in old.iter().zip(&current) {
+        let raw = enabled.next()?;
+        if before==after { continue; }
+        if before.glass.is_none() || after.glass.is_none() || raw["type"]!=4 {return None;}
+        let baseline = sketch_blur_value(before);
+        let update = sketch_blur_value(after);
+        for (key,value) in update.as_object()? {
+            if baseline.get(key)!=Some(value) { raw[key]=value.clone(); }
+        }
+    }
+    if enabled.next().is_some() { return None; }
+    Some(parts)
+}
 // Old FD files may contain admitted paints in the former noise-retention
 // list. Do not resurrect or duplicate those paints on compatibility export.
 fn inactive_retained_noise(node:&Node,part:&Value,borders:bool)->bool {
@@ -1223,6 +1294,10 @@ impl<'a> Importer<'a> {
         push_shadow(style.get("shadows").and_then(Value::as_array), false);
         push_shadow(style.get("innerShadows").and_then(Value::as_array), true);
         for blur in sketch_blurs(style).into_iter().filter(|blur| sketch_blur_enabled(blur)) {
+            if blur.get("type").and_then(Value::as_i64)==Some(4) {
+                if let Some(effect)=sketch_glass(blur,self.color_space) { out.push(effect); }
+                continue;
+            }
             if sketch_blur_enabled(blur)
             && (f64_at(blur, "radius") > 0. || blur.get("type").and_then(Value::as_i64)==Some(2) || (blur.get("type").and_then(Value::as_i64) == Some(3)
                 && blur.get("saturation").and_then(Value::as_f64).unwrap_or(1.) != 1.))
@@ -1421,15 +1496,17 @@ impl<'a> Importer<'a> {
             }
 
             let source_blurs = sketch_blurs(&style);
-            if source_blurs.iter().any(|b| bool_at(b,"isEnabled") || f64_at(b,"radius") > 0.) {
+            if source_blurs.iter().any(|b| sketch_blur_enabled(b) || f64_at(b,"radius") > 0. || b["type"]==4) {
                 node.bindings.insert("sketchSourceBlur".into(), json!({
                     "blur":source_blurs.first(), "blurs":style.get("blurs"),
                     "effects":blur_projection(&node.effects),
                 }).to_string());
-                for blur in source_blurs.iter().filter(|b| bool_at(b,"isEnabled")) {
+                for blur in source_blurs.iter().filter(|b| sketch_blur_enabled(b)) {
                     match blur.get("type").and_then(Value::as_i64).unwrap_or(0) {
                         2 if sketch_zoom_parameters(blur).is_none()=>import_lossy.push("zoom-blur-invalid-parameters;source-retained".into()),
                         0 | 1 | 2 | 3 => {},
+                        4 if sketch_glass(blur,self.color_space).is_some()=>import_lossy.push("glass-portable-optics-projection;native-parameters-retained".into()),
+                        4=>import_lossy.push("glass-parameters-not-modeled;source-blur-retained".into()),
                         _ => import_lossy.push("unknown-blur-type-not-modeled;source-blur-retained".into()),
                     }
                     if blur.get("layeringType").and_then(Value::as_i64).unwrap_or(0) != 0 {
@@ -1593,19 +1670,30 @@ impl<'a> Importer<'a> {
                 2 => crate::layout::Align::End,
                 _ => crate::layout::Align::Start,
             };
+            let wrap = bool_at(group_layout, "wrappingEnabled");
+            let saved = layer.pointer("/userInfo/com.futureox.design-kernel/stackAlignment");
+            let axis = |value: crate::layout::Align, key: &str| {
+                use crate::layout::Align::*;
+                let hint = saved.and_then(|v| v.get(key)).and_then(Value::as_str);
+                match value {
+                    Center if hint == Some("unsafe-center") || (wrap && hint != Some("center")) => UnsafeCenter,
+                    End if hint == Some("unsafe-end") || (wrap && hint != Some("end")) => UnsafeEnd,
+                    value => value,
+                }
+            };
             node.layout = Some(crate::layout::Layout {
                 mode,
                 gap: f64_at(group_layout, "allGuttersGap"),
-                line_gap: 0.,
+                line_gap: f64_at(group_layout, "crossAxisGutterGap"),
                 padding: [
                     f64_at(layer, "topPadding"),
                     f64_at(layer, "rightPadding"),
                     f64_at(layer, "bottomPadding"),
                     f64_at(layer, "leftPadding"),
                 ],
-                wrap: false,
-                justify: justify(f64_at(group_layout, "justifyContent") as i64),
-                align: align(f64_at(group_layout, "alignItems") as i64),
+                wrap,
+                justify: axis(justify(f64_at(group_layout, "justifyContent") as i64), "justify"),
+                align: axis(align(f64_at(group_layout, "alignItems") as i64), "align"),
                 ..crate::layout::Layout::default()
             });
         } else if let Some(group_layout) = layer.get("groupLayout")
@@ -2240,11 +2328,18 @@ impl<'a> Importer<'a> {
             self.flow_home = Some(id.clone());
         }
 
+        if bool_at(layer, "shouldBreakMaskChain") {
+            node.mask_chain = Some(crate::scene::MaskChain::Break);
+        }
         if bool_at(layer, "hasClippingMask") {
             node.mask = true;
             // Sketch's outline clips to the layer path even when it has no
             // fill. The alpha mode instead reads the rendered mask pixels.
-            node.mask_type=Some(if layer.get("clippingMaskMode").and_then(Value::as_f64).unwrap_or(0.)==0. {"shape"} else {"alpha"}.into());
+            let alpha = layer.get("clippingMaskMode").and_then(Value::as_f64).unwrap_or(0.) != 0.;
+            node.mask_type = Some(if alpha { "alpha" } else { "shape" }.into());
+            if alpha && node.mask_chain.is_none() {
+                node.mask_chain = Some(crate::scene::MaskChain::Start);
+            }
         }
 
         // resizingConstraint 6-bit: X=low 3, Y=high 3 (22 号字典,BCConstraint and/ubfx 实证).
@@ -2667,7 +2762,7 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
     };
 
     // Restore private text identities only when this archive still owns their resources.
-    let font_aliases=crate::interop_resources::import_fonts(&document,&mut doc)?;
+    let font_aliases=crate::interop_resources::import_fonts(document, files, &mut doc)?;
     let mut importer = Importer {
         image_sources: Default::default(),
         available_fonts: doc.fonts.keys().cloned().collect(),
@@ -3154,6 +3249,7 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
     // newly imported constraints/layouts/components/text styles need 4+,
     // stroke markers 8, slices 10
     let mut version = doc.schema_version.max(1);
+    if doc.nodes.values().any(|n| n.effects.iter().any(|e| e.glass.is_some())) { version=version.max(5); }
     if doc.color_management.is_some() {
         version = version.max(3);
     }
@@ -3266,7 +3362,7 @@ fn admit_sketch_symbols(document: &mut Document) -> Result<()> {
                 .get(&instance.component_id.to_ascii_uppercase())
                 .cloned()
                 .ok_or_else(|| {
-                    Error::Unsupported("Sketch instance requires an embedded symbol master".into())
+                    Error::Unsupported(format!("Sketch instance requires an embedded symbol master: {}", instance.component_id.chars().take(128).collect::<String>()))
                 })?;
         }
         // Stable keys must survive the host's fresh node-ID assignment.
@@ -4209,7 +4305,6 @@ fn export_style_parts(
         .map(shadow_json)
         .collect::<Result<Vec<_>>>()?;
     // The legacy dictionary mirrors the first blur; modern arrays are written below.
-    // Glass refraction parameters have no native Sketch representation.
     let blur_like: Vec<&Effect> = effects
         .iter()
         .filter(|e| matches!(e.kind.as_str(), "blur" | "gaussian-blur" | "motion-blur" | "zoom-blur" | "background-blur" | "glass"))
@@ -4217,15 +4312,14 @@ fn export_style_parts(
     let blur = match blur_like.first() {
         Some(e) => {
             match e.kind.as_str() {
+                "glass" if e.glass.is_some() => note_lossy(lossy, "glass-native-depth-and-lighting-projection;authored-optics-retained"),
                 "glass" => note_lossy(lossy, "effect-glass->gaussian(refraction-lost)"),
                 _ => {}
             }
-            if blur_like.len() > 1 {
+            if blur_like.len() > 1 && !blur_like.iter().any(|e| e.glass.is_some()) {
                 note_lossy(lossy, "effect-multiple-blurs-collapsed");
             }
-            json!({"_class": "blur", "isEnabled": e.visible, "center": e.zoom_blur.map_or_else(||"{0.5, 0.5}".to_string(),|z|format!("{{{}, {}}}",z.center[0],z.center[1])),
-                    "motionAngle": e.motion_angle, "radius": e.zoom_blur.map_or(e.radius.max(0.),|z|z.amount), "saturation": e.color_controls.map_or(1.,|c|c.saturation),
-                    "type": if e.kind == "background-blur" {3} else if e.kind=="motion-blur" {1} else if e.kind=="zoom-blur" {2} else {0}})
+            sketch_blur_value(e)
         }
         None => {
             json!({"_class": "blur", "isEnabled": false, "center": "{0.5, 0.5}", "motionAngle": 0.,
@@ -4267,8 +4361,8 @@ fn flex_justify(align: crate::layout::Align, lossy: &mut Vec<String>) -> i64 {
     use crate::layout::Align;
     match align {
         Align::Start => 0,
-        Align::Center => 1,
-        Align::End => 2,
+        Align::Center | Align::UnsafeCenter => 1,
+        Align::End | Align::UnsafeEnd => 2,
         Align::SpaceBetween => 3,
         Align::SpaceAround => 4,
         Align::SpaceEvenly => 5,
@@ -4285,8 +4379,8 @@ fn flex_align(align: crate::layout::Align, lossy: &mut Vec<String>) -> i64 {
     use crate::layout::Align;
     match align {
         Align::Start => 0,
-        Align::Center => 1,
-        Align::End => 2,
+        Align::Center | Align::UnsafeCenter => 1,
+        Align::End | Align::UnsafeEnd => 2,
         other => {
             note_lossy(lossy, "stack-align-not-supported");
             let _ = other;
@@ -4851,7 +4945,7 @@ fn export_layer_impl(
     layer.insert("nameIsFixed".into(), json!(false));
     layer.insert("resizingConstraint".into(), json!(63));
     layer.insert("resizingType".into(), json!(0));
-    layer.insert("shouldBreakMaskChain".into(), json!(false));
+    layer.insert("shouldBreakMaskChain".into(), json!(node.is_some_and(|n| n.mask_chain == Some(crate::scene::MaskChain::Break))));
     layer.insert("prototypeScrolling".into(), json!(0));
     layer.insert("prototypeVisibility".into(), json!(0));
     layer.insert("prototypeVisibilityTrigger".into(), json!(0));
@@ -5098,14 +5192,18 @@ fn export_layer_impl(
             .bindings
             .get("sketchSourceBlur")
             .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
-            && source
+        {
+            if source
                 .get("effects")
                 .and_then(|value| serde_json::from_value::<Vec<Effect>>(value.clone()).ok())
                 .as_ref()
-                == Some(&blur_projection(&n.effects))
-        {
-            blur = source["blur"].clone();
-            source_blurs = source.get("blurs").filter(|v|v.is_array()).cloned();
+                == Some(&blur_projection(&n.effects)) {
+                blur = source["blur"].clone();
+                source_blurs = source.get("blurs").filter(|v|v.is_array()).cloned();
+            } else if n.effects.iter().any(|e|e.glass.is_some()) && let Some(parts)=edited_glass_blurs(&source,&n.effects) {
+                if let Some(first)=parts.first() { blur=first.clone(); }
+                source_blurs=Some(Value::Array(parts));
+            }
         }
         // Border-side twin of the fill splice: pattern tile scales and noise
         // parts return at their recorded admitted-borders positions.
@@ -5159,7 +5257,7 @@ fn export_layer_impl(
         style.insert("borders".into(), Value::Array(borders));
         style.insert("shadows".into(), Value::Array(shadows));
         style.insert("innerShadows".into(), Value::Array(inner_shadows));
-        style.insert("blurs".into(), source_blurs.unwrap_or_else(|| json!([modern_blur(blur.clone())])));
+        style.insert("blurs".into(), source_blurs.unwrap_or_else(|| modern_blurs(&n.effects,&blur)));
         // Keep the old dictionary for old readers; current Sketch reads blurs.
         style.insert("blur".into(), blur);
         style.insert("borderOptions".into(), border_options);
@@ -5803,7 +5901,7 @@ fn export_layer_impl(
                     "_class": "MSImmutableFlexGroupLayout",
                     "flexDirection": if l.mode == crate::layout::Flow::Vertical { 1 } else { 0 },
                     "justifyContent": justify, "alignItems": align,
-                    "allGuttersGap": l.gap
+                    "allGuttersGap": l.gap, "crossAxisGutterGap": l.line_gap, "wrappingEnabled": l.wrap
                 }),
             );
             layer.insert("topPadding".into(), json!(l.padding[0]));
@@ -5964,14 +6062,19 @@ fn export_layer_impl(
                 Some("alpha") => { layer.insert("clippingMaskMode".into(),json!(1)); }
                 _ => {}
             }
-            layer.insert("shouldBreakMaskChain".into(), json!(false));
         }
         // Kernel-native payloads that Sketch cannot express travel through
         // our userInfo namespace: the component definition (variants and
         // properties) survives symbol round-trips this way.
         let mut user_info = Map::new();
         user_info.insert("originalId".into(), json!(id));
-        if n.effects.iter().any(|e|e.kind=="blur") {
+        if let Some(l) = &n.layout {
+            use crate::layout::Align::{UnsafeCenter, UnsafeEnd};
+            if l.wrap || matches!(l.justify, UnsafeCenter | UnsafeEnd) || matches!(l.align, UnsafeCenter | UnsafeEnd) {
+                user_info.insert("stackAlignment".into(), json!({"align":l.align,"justify":l.justify}));
+            }
+        }
+        if n.effects.iter().any(|e|e.kind=="blur" || e.glass.is_some()) {
             user_info.insert("legacyEffectModel".into(),json!({"native":native_effect_projection(&layer["style"]),"effects":n.effects}));
         }
 
@@ -6089,7 +6192,7 @@ fn adaptable_apply_shared_style(object: &mut Value, fidelity: &Value) {
 /// re-exported from the live node (it may have been edited); everything
 /// else — originalMaster, remoteToLocalIDMap, library flags — comes from
 /// the raw entry kept at import.
-fn sketch_binding<'a>(doc: &'a Document, node: &'a Node, key: &str) -> Option<&'a str> {
+pub(crate) fn sketch_binding<'a>(doc: &'a Document, node: &'a Node, key: &str) -> Option<&'a str> {
     node.bindings.get(key).map(String::as_str).or_else(||doc.design_system.as_ref()?.sketch_containers.get("nodeMetadata")?.get(&node.id)?.get("bindings")?.get(key)?.as_str())
 }
 fn foreign_symbol_export(doc: &Document, images: &mut ExportedImages) -> Result<Vec<Value>> {
@@ -6461,7 +6564,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                            "value": {"_class": "style", "do_objectID": sketch_id(style_id),
                                      "fills": paints, "borders": borders,
                                      "shadows": shadows, "innerShadows": inner_shadows,
-                                     "blurs": [modern_blur(blur.clone())], "blur": blur, "borderOptions": border_options,
+                                     "blurs": modern_blurs(&shared.effects,&blur), "blur": blur, "borderOptions": border_options,
                                      "colorControls": controls.unwrap_or_else(||json!({"_class":"colorControls","isEnabled":false,"brightness":0.,"contrast":1.,"saturation":1.,"hue":0.}))}})
                 }
                 "text" => {
@@ -6557,7 +6660,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                     adaptable_apply_shared_style(&mut object, fidelity);
                 }
             }
-            if shared.kind == "paint" && shared.effects.iter().any(|e| e.kind == "blur") {
+            if shared.kind == "paint" && shared.effects.iter().any(|e| e.kind == "blur" || e.glass.is_some()) {
                 object["userInfo"] = json!({"com.futureox.design-kernel": {"legacyEffectModel": {
                     "native": native_effect_projection(&object["value"]), "effects": shared.effects
                 }}});
@@ -6599,6 +6702,7 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                 "sharedStyleFidelity"
                     | "sharedStyleIds"
                     | "foreignSymbolsUnresolved"
+                    | "nonEmbeddedFontReferences"
                     | "nodeMetadata"
                     | "textSourceLayouts"
                     | "rulerData"
@@ -6622,18 +6726,23 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
         document["foreignSymbols"] = Value::Array(foreign_symbols);
     }
     validate_sketch_shared_style_ids(&document)?;
-    let meta = json!({
+    let has_glass = doc.nodes.values().any(|n| n.effects.iter().any(|e|e.glass.is_some())) ||
+        doc.design_system.as_ref().is_some_and(|s|s.styles.values().any(|style|style.effects.iter().any(|e|e.glass.is_some())));
+    let archive_version=if has_glass {196} else {160};
+    let producer = json!({
         "app": "com.futureox.design-kernel",
-        "appVersion": "3.0",
+        "appVersion": env!("CARGO_PKG_VERSION"),
         "build": 1,
         "commit": "interop",
-        "pagesAndArtboards": pages_and_artboards,
-        "version": 160,
+        "version": archive_version,
         "compatibilityVersion": 99,
-        "cocompatibilityVersion": 99,
-        "created": {"_class": "date", "iso8601": "2026-01-01T00:00:00Z"},
-        "saveHistory": ["interop"]
+        "coeditCompatibilityVersion": archive_version,
+        "variant": "NONAPPSTORE",
     });
+    let mut meta=producer.clone();
+    meta["created"]=producer;
+    meta["pagesAndArtboards"]=json!(pages_and_artboards);
+    meta["saveHistory"]=json!(["interop"]);
 
     let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
     // Compact JSON halves the archive weight versus pretty printing (native
@@ -7999,7 +8108,7 @@ mod tests {
             glass: Some(crate::scene::GlassParameters {
                 bevel_size: None,
                 depth: 2.,
-                refraction: 1.5,
+                refraction: 0.75,
                 dispersion: 0.2,
                 light_angle: 45.,
                 light_intensity: 0.8,
@@ -8023,8 +8132,7 @@ mod tests {
             notes.iter().any(|n| n.contains("texture")),
             "texture degradation must be reported: {notes:?}"
         );
-        // glass degrades to the nearest Sketch equivalent: a Gaussian blur
-        assert!(node.effects.iter().any(|e| e.kind == "gaussian-blur"));
+        assert!(node.effects.iter().any(|e| e.kind=="glass" && e.glass.as_ref().is_some_and(|g|g.refraction==0.75 && g.depth==2.)));
     }
 
     fn shadow_like() -> Effect {

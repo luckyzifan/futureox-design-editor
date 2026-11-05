@@ -13,6 +13,28 @@ export function pngSourceDimensions(uri:string):[number,number]|undefined {
     return width&&height?[width,height]:undefined
   }catch{return}
 }
+/** A bounded SOF size hint; the native codec still verifies dimensions,
+ * colour, orientation and the complete stream before any texture is used. */
+export function sourceBitmapDimensions(uri:string):[number,number]|undefined{
+ if(!uri.startsWith('data:image/jpeg;base64,'))return pngSourceDimensions(uri)
+ try{
+   const start='data:image/jpeg;base64,'.length
+   const bytes=atob(uri.slice(start,start+Math.min(uri.length-start,87380)))
+   const word=(i:number)=>(bytes.charCodeAt(i)<<8)|bytes.charCodeAt(i+1)
+   if(word(0)!==0xffd8)return
+   for(let i=2;i+4<bytes.length;){
+     if(bytes.charCodeAt(i++)!==255)return
+     while(bytes.charCodeAt(i)===255)i++
+     const code=bytes.charCodeAt(i++),size=word(i)
+     if(code===0xda||code===0xd9||size<2||i+size>bytes.length)return
+     if([0xc0,0xc1,0xc2].includes(code)){
+       const width=word(i+5),height=word(i+3)
+       return size>=8&&bytes.charCodeAt(i+2)===8&&width&&height?[width,height]:undefined
+     }
+     i+=size
+   }
+ }catch{return}
+}
 export function largePngRowCandidate(uri:string):boolean{
   const dims=pngSourceDimensions(uri)
   return !!dims&&(dims[0]*dims[1]>8_388_608||dims[0]>8192||dims[1]>8192||uri.length>12*1024*1024)

@@ -1,5 +1,0 @@
-{
-  "error": "Error: expect(received).toMatchObject(expected)\n\n- Expected  - 4\n+ Received  + 4\n\n  Object {\n-   \"height\": 940,\n-   \"width\": 863,\n-   \"x\": 297,\n-   \"y\": 0,\n+   \"height\": 898,\n+   \"width\": 855,\n+   \"x\": 305,\n+   \"y\": 42,\n  }",
-  "checks": [],
-  "errors": []
-}

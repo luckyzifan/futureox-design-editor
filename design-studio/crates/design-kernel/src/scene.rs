@@ -7,6 +7,11 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 pub const MAX_GRADIENT_STOPS: usize = 64;
 
+#[cfg(test)]
+std::thread_local! {
+    pub(crate) static FULL_DOCUMENT_VALIDATIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 fn yes() -> bool {
     true
 }
@@ -188,6 +193,10 @@ pub type ColdNodeVec<T> = thin_vec::ThinVec<T>;
 pub type ColdNodeVec<T> = Vec<T>;
 fn cold_node_vec_is_empty<T>(values:&ColdNodeVec<T>)->bool {values.is_empty()}
 
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum MaskChain { Start, Break }
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Node {
@@ -232,6 +241,9 @@ pub struct Node {
     pub style_refs: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mask_type: Option<String>,
+    /// Ordered sibling clipping in Sketch. Shape masks already imply a chain start.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mask_chain: Option<MaskChain>,
     pub id: String,
     pub kind: String,
     #[serde(default)]
@@ -507,8 +519,8 @@ impl Effect {
 
         if self.kind == "color-controls" && self.color_controls.is_none() { return Err("Color controls parameters required".into()); }
         if let Some(c) = &self.color_controls
-            && (!matches!(self.kind.as_str(), "color-controls" | "background-blur") || !c.validate()
-                || self.glass.is_some() || self.texture.is_some() || self.gradient_blur.is_some()) {
+            && (!(matches!(self.kind.as_str(), "color-controls" | "background-blur") || self.kind=="glass" && self.glass.is_some())
+                || !c.validate() || self.texture.is_some() || self.gradient_blur.is_some()) {
             return Err("Invalid color controls".into());
         }
         if let Some(g) = &self.gradient_blur
@@ -631,6 +643,9 @@ impl Node {
     pub(crate) fn outline_mask_node(&self, inherited: bool) -> Option<Node> {
         let shape=self.mask && self.mask_type.as_deref()==Some("shape");
         if !shape && !inherited && (!self.mask || self.mask_type.as_deref()!=Some("outline")) {return None;}
+        Some(self.mask_geometry(shape))
+    }
+    pub(crate) fn mask_geometry(&self, shape: bool) -> Node {
         let white=Paint {id:String::new(),kind:"solid".into(),color:"#ffffff".into(),opacity:1.,visible:true,
             angle:0.,stops:Vec::new(),image:None,fit:"cover".into(),blend:"normal".into(),transform:None,adjust:None,tile:None};
         let mut node=self.clone();
@@ -644,7 +659,7 @@ impl Node {
         node.effects.clear();
         node.opacity=if shape || self.opacity>0. {1.} else {0.};
         node.blend="normal".into();
-        Some(node)
+        node
     }
 
     /// Preserve the old summation/multiplication order for existing documents.
@@ -667,6 +682,7 @@ impl Node {
     pub fn requires_schema4(&self) -> bool {
         self.boolean_operation.is_some()
             || self.mask_type.is_some()
+            || self.mask_chain.is_some()
             || !self.bindings.is_empty()
             || !self.style_refs.is_empty()
             || self
@@ -1423,6 +1439,8 @@ impl Document {
         crate::capacity::with_source_storage_scope(true,||self.validate())
     }
     pub fn validate(&self) -> Result<(), String> {
+        #[cfg(test)]
+        FULL_DOCUMENT_VALIDATIONS.with(|count| count.set(count.get() + 1));
         self.validate_edit_scope(None)
     }
     /// Only the resident derivation owner may reuse previously validated node

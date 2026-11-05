@@ -11,6 +11,15 @@ import { layerDropPlan } from './layer-drop'
 import { propertyUnits } from './property-units'
 
 const scans = vi.hoisted(() => ({ count: 0 }))
+vi.mock('./kernel/translation-preview', async importOriginal => {
+  const actual = await importOriginal<typeof import('./kernel/translation-preview')>()
+  return { ...actual, PoseTopology: class extends actual.PoseTopology {
+    constructor(document: ConstructorParameters<typeof actual.PoseTopology>[0]) {
+      super(document)
+      scans.count++
+    }
+  } }
+})
 vi.mock('./geometry', async importOriginal => {
   const actual = await importOriginal<typeof import('./geometry')>()
   return { ...actual, allParents: (...args: Parameters<typeof actual.allParents>) => {

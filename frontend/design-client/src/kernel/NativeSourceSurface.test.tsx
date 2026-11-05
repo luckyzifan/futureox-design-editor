@@ -4,12 +4,12 @@ import {JSDOM} from 'jsdom'
 import React,{act}from'react'
 import{createRoot}from'react-dom/client'
 import{expect,test,vi}from'vitest'
-const calls=vi.hoisted(()=>({requests:0,disposed:0,defer:false,error:'Scene path budget exceeded',jobs:[] as {zoom:number;signal?:AbortSignal}[]}))
+const calls=vi.hoisted(()=>({requests:0,disposed:0,defer:false,error:'Scene path budget exceeded',scales:[] as number[],jobs:[] as {zoom:number;signal?:AbortSignal}[]}))
 vi.mock('./client',()=>({backendPreference:()=> 'webgpu',renderExecutionPolicy:{desktopFullMath:true,desktopDisplay:true,cpuOnly:false,hdrCompositing:false},KernelClient:class{
  onPresentation?:unknown
  renderSource(_source:unknown,options:{tileViewport:unknown[];view:{zoom:number}},_receive?:unknown,signal?:AbortSignal){
   calls.requests++;if(!options.tileViewport.length)return Promise.resolve({})
-  if(!calls.defer)return Promise.reject(Error(calls.error))
+  if(!calls.defer){calls.scales.push(options.view.zoom);return Promise.reject(Error(calls.error))}
   calls.jobs.push({zoom:options.view.zoom,signal})
   return new Promise((_resolve,reject)=>signal?.addEventListener('abort',()=>reject(Error('PREVIEW_CANCELLED')),{once:true}))
  }
@@ -75,10 +75,13 @@ test('a large camera jump cancels obsolete raster work and starts the latest vie
  const statuses:NativeSourceStatus[]=[]
  const draw=(zoom:number,height=600)=><NativeSourceSurface source={source} view={{x:0,y:0,zoom}} width={800} height={height} onStatus={value=>statuses.push(value)}/>
  try{
-  calls.requests=0;calls.disposed=0;calls.defer=false;calls.error=error;calls.jobs=[]
+  calls.requests=0;calls.disposed=0;calls.defer=false;calls.error=error;calls.scales=[];calls.jobs=[]
   await act(async()=>root.render(draw(256)))
-  expect(statuses.at(-1)?.phase).toBe('error');expect(calls.requests).toBe(2)
-  await act(async()=>root.render(draw(256,560)));expect(calls.requests).toBe(2)
+  const scales=error==='Invalid tile request'?[256]:[256,128,64,32,16,8,4]
+  expect(calls.scales).toEqual(scales)
+  expect(statuses.at(-1)?.phase).toBe('error')
+  await act(async()=>root.render(draw(256,560)))
+  expect(calls.requests).toBe(1+scales.length)
   calls.defer=true
   await act(async()=>root.render(draw(1,560)))
   expect(calls.jobs).toHaveLength(1);expect(calls.jobs[0].zoom).toBe(1);expect(calls.disposed).toBe(0)

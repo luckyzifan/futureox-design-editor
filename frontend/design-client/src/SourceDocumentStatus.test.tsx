@@ -25,3 +25,9 @@ test('native rendering progress is not labelled as a ready file',()=>{
  const html=renderToStaticMarkup(<SourceDocumentStatus source={source}/>)
  expect(html).toContain('正在绘制');expect(html).not.toContain('文件已就绪')
 })
+
+test('background viewport refinement does not reopen the file loading card',()=>{
+ const source={error:'',notice:'正在准备画板',busy:true,warnings:[],navigatingMaterials:true} as unknown as SourceWorkspace
+ expect(renderToStaticMarkup(<SourceDocumentStatus source={source}/>)).not.toContain('source-status-card')
+ expect(renderToStaticMarkup(<SourceDocumentStatus source={{...source,error:'读取失败'}}/>)).toContain('role="alert"')
+})
