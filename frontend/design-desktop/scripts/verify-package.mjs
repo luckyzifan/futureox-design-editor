@@ -1,3 +1,6 @@
+import { assertPackagedFfmpeg } from './ffmpeg-bundle.mjs'
+import { verifyMcp } from './mcp-bundle.mjs'
+import { verifyPackagedMcpTransport } from '../test/runtime/packaged-mcp-transport.mjs'
 import { verifyWasmIdentity } from './wasm-identity.mjs'
 import { buildInputs } from './build-inputs.mjs'
 import assert from 'node:assert/strict'
@@ -132,6 +135,11 @@ try {
         : native.subarray(0, 2).toString() === 'MZ',
     'Native executable format must match host',
   )
+  await verifyMcp(core, path.join(resources, 'design-mcp'))
+  const executable = process.platform === 'darwin' ? path.join(resources, '../MacOS/futureox-desgin')
+    : path.join(bundle, process.platform === 'win32' ? 'futureox-desgin.exe' : 'futureox-desgin')
+  await verifyPackagedMcpTransport({ resources, executable, hostSource: temporary })
+  manifest.checks.push('packaged Electron stdio + loopback HTTP discovery, reads and resource revocation')
   manifest.artifacts['app.asar'] = sha(await readFile(archive))
   manifest.artifacts[`sidecar/${binaryName}`] = sha(native)
   for (const name of ['design-render', 'design-prepare']) {
@@ -140,6 +148,17 @@ try {
     assert.equal(sha(packaged), sha(await readFile(path.join(desktop, 'dist/bin', filename))), `${name} must match the current build`)
     assert.equal(packaged.subarray(0,4).toString('hex'), native.subarray(0,4).toString('hex'), `${name} must use the host executable format`)
     manifest.artifacts[`bin/${filename}`] = sha(packaged)
+  }
+  const ffmpegBytes = await assertPackagedFfmpeg({
+    resourcesBin: path.join(resources, 'bin'),
+    distBin: path.join(desktop, 'dist/bin'),
+  })
+  if (ffmpegBytes.present) {
+    const ffmpegName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'
+    manifest.artifacts[`bin/${ffmpegName}`] = sha(ffmpegBytes.bytes)
+    manifest.checks.push('bundled ffmpeg identity')
+  } else {
+    manifest.checks.push('ffmpeg not vendored for this platform')
   }
   // The generated WASM may be nested under assets or wasm; verify every packaged WASM
   // against its canonical public input, including Vite content-hashed filenames.

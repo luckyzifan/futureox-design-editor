@@ -28,6 +28,24 @@ test('untrusted JSON cannot forge admission and failed preparation creates no to
   expect(() => prepareDocument(source)).toThrow()
 })
 
+test('admission does not stringify the same prepared graph twice', () => {
+  const doc = blank('wire'), shape = node('rectangle', 1, 2, 10, 12)
+  doc.nodes[shape.id] = shape
+  doc.pages[0].children = [shape.id]
+  const seen: object[] = []
+  const original = JSON.stringify
+  const spy = vi.spyOn(JSON, 'stringify').mockImplementation((value: unknown, ...rest: unknown[]) => {
+    if (value && typeof value === 'object' && 'nodes' in value && 'pages' in value) seen.push(value)
+    return original(value, ...(rest as []))
+  })
+  try {
+    prepareDocument(doc)
+    expect(seen.filter((value, index) => seen.indexOf(value) !== index)).toEqual([])
+    expect(seen.length).toBeGreaterThan(0)
+    expect(seen.length).toBeLessThan(3)
+  } finally { spy.mockRestore() }
+})
+
 test('idle history preparation keeps one undo timeline and refuses stale sessions or active edits', () => {
   const editor = new Editor(blank()), before = editor.state.doc
   const version = editor.state.version, session = editor.sessionGeneration

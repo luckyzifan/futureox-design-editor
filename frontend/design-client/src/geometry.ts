@@ -1,6 +1,7 @@
 import { multiply, inverse, apply, translate, rotate, around, matrixString, boxPoints, bounds, unionBounds } from './commands/affine'
 import { maximumStrokeWidth } from './stroke-profile'
 import { kernelBounds, kernelGeometryNetwork, kernelHit, kernelSvgPaths } from './kernel/picking'
+import { documentTransition } from './document-patch'
 import {
   type Point,
   type Matrix,
@@ -327,11 +328,38 @@ export function scene(d: DesignDocument, pageId: string, roots?: ReadonlySet<str
 /** Read-only topology shared within an immutable snapshot or one operation.
  * allParents deliberately stays fresh for callers working on mutable drafts. */
 export type ParentMap = ReadonlyMap<string, string>
-export function allParents(d: DesignDocument): Map<string, string> {
+const parentMaps = new WeakMap<DesignDocument, Map<string, string>>()
+function buildParents(d: DesignDocument): Map<string, string> {
   const map = new Map<string, string>()
   d.pages.forEach((p) => p.children.forEach((c) => map.set(c, p.id)))
   Object.values(d.nodes).forEach((n) => n.children.forEach((c) => map.set(c, n.id)))
   return map
+}
+function parentRoot(d: DesignDocument): DesignDocument {
+  let cursor = d
+  for (let hop = 0; hop < 32; hop++) {
+    const link = documentTransition(cursor)
+    if (!link || link.structural) return cursor
+    cursor = link.before
+  }
+  return cursor
+}
+export function allParents(d: DesignDocument): Map<string, string> {
+  const cached = parentMaps.get(d)
+  if (cached) return cached
+  const root = parentRoot(d)
+  // Only witnessed immutable snapshots share a map. A draft mutated between
+  // calls must observe the latest children arrays, so it never enters this cache.
+  if (root !== d || documentTransition(d)) {
+    let map = parentMaps.get(root)
+    if (!map) {
+      map = buildParents(root)
+      parentMaps.set(root, map)
+    }
+    if (root !== d) parentMaps.set(d, map)
+    return map
+  }
+  return buildParents(d)
 }
 export function worldMatrix(d: DesignDocument, id: string, parents: ParentMap = allParents(d)): Matrix {
   const n = d.nodes[id]
@@ -386,17 +414,17 @@ function boundedCellRange(b: Bounds, limit: number) {
     return null
   return { x, y, width, height }
 }
-export class SpatialIndex {
-  private cells = new Map<string, SceneEntry[]>()
-  private large: SceneEntry[] = []
+export class SpatialIndex<T extends Pick<SceneEntry, 'id'|'bounds'|'hitBounds'> = SceneEntry> {
+  private cells = new Map<string, T[]>()
+  private large: T[] = []
   private ranks = new Map<string, number>()
-  constructor(public entries: SceneEntry[], previous?: SpatialIndex) {
+  constructor(public entries: T[], previous?: SpatialIndex<T>) {
     if (previous) {
       this.cells = new Map(previous.cells)
       this.large = previous.large.slice()
       const next = new Map(entries.map((entry,i) => { this.ranks.set(entry.id,i); return [entry.id,entry] }))
       const touched = new Set<string>()
-      const update = (entry:SceneEntry, add:boolean) => {
+      const update = (entry:T, add:boolean) => {
         const range = boundedCellRange(entry.hitBounds || entry.bounds,256)
         if (!range) { if (add) this.large.push(entry); else this.large = this.large.filter(e => e !== entry); return }
         for(let x=0;x<range.width;x++)for(let y=0;y<range.height;y++) {
@@ -427,8 +455,8 @@ export class SpatialIndex {
         }
     })
   }
-  query(b: Bounds): SceneEntry[] {
-    const found = new Map<string, SceneEntry>()
+  query(b: Bounds): T[] {
+    const found = new Map<string, T>()
     const range = boundedCellRange(b, 4096)
     if (!range)
       return this.entries.filter((e) => intersects(e.hitBounds || e.bounds, b))

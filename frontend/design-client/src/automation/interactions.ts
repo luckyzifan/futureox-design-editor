@@ -1,4 +1,5 @@
 /** Authored interaction data only. Uses the editor's atomic commit/validation boundary. */
+import { current, isDraft, type Draft } from 'immer'
 import { createClip, recordKeyframe, type AnimationClip, type Easing } from '../animation'
 import { uid, type DesignDocument, type LocalReview } from '../model'
 import { type Prototype, isPrototypeEasing, hasSchemaExtras } from '../prototype'
@@ -17,7 +18,9 @@ const obj = (v: unknown): Record<string, unknown> => {
   if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('Expected object')
   return v as Record<string, unknown>
 }
-const copy = <T>(v: T): T => structuredClone(v)
+/** Immer drafts cannot be structuredClone'd. The prototype panel validates inside
+ * editor.change, so unwrap before cloning or the transition select rolls back. */
+const copy = <T>(v: T): T => structuredClone(isDraft(v) ? current<T>(v as Draft<T>) : v)
 const page = (d: DesignDocument, id: unknown) => {
   const p = d.pages.find(p => p.id === id)
   if (!p) throw new Error('Page not found')
@@ -79,7 +82,7 @@ export function validatePrototype(d:DesignDocument, value:unknown): Prototype {
         if(Object.keys(a).some(k=>!keys.includes(k)))throw new Error('Unknown prototype action field')
         if(!['if','navigate','overlay','back','close-overlay','scroll-to','set-variable'].includes(String(a.kind)))throw new Error('Unsupported prototype action')
         if(['navigate','overlay','scroll-to'].includes(String(a.kind))&&!d.nodes[String(a.target)])throw new Error('Action target not found')
-        if(a.transitionStyle!==undefined && (!['none','slide-left','slide-right','slide-top','slide-bottom'].includes(String(a.transitionStyle)) || !['navigate','back'].includes(String(a.kind)))) throw new Error('Invalid directional transition')
+        if(a.transitionStyle!==undefined && (!['none','dissolve','slide-left','slide-right','slide-top','slide-bottom'].includes(String(a.transitionStyle)) || !['navigate','back'].includes(String(a.kind)))) throw new Error('Invalid directional transition')
         if(a.kind==='set-variable'&&!d.designSystem?.variables?.[String(a.targetVariable||(a.targetVariableData as {id?:string}|undefined)?.id||a.target)])throw new Error('Action variable not found')
         if(a.kind==='if')pending.push(...a.thenActions as unknown[],...a.elseActions as unknown[])
         if(a.durationMs!==undefined)num(a.durationMs,'durationMs',0,1e6)

@@ -207,7 +207,7 @@ it('runs inspect → guarded modification → actual CPU preview through rendere
 
 it('replays the agent visual-review decision against the exact previously inspected CPU pixels', async () => {
   installWorker()
-  const decision = JSON.parse(await readFile(new URL('../../../../testing/verification-visual-feedback/agent-refinement.json', import.meta.url), 'utf8'))
+  const decision = JSON.parse(await readFile(new URL('../../test-fixtures/mcp-visual/agent-refinement.json', import.meta.url), 'utf8'))
   const fixture = sceneFixture(); fixture.button.fills = [paint('#245bd6')]
   const f = await liveMcp(fixture.document), pageId = fixture.document.pages[0].id
   const inspected = await f.call('context.get', { pageId, nodeIds: [fixture.board.id] })

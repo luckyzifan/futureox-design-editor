@@ -6,7 +6,8 @@ export class RasterQueuePacer {
   private failure?: { error: unknown }
   private check() { if (this.failure) throw this.failure.error }
 
-  async yield(sequence: number, completed: number, observe: () => Promise<void>) {
+  async yield(sequence: number, completed: number, observe: () => Promise<void>,
+    measureBlock?: (wait: () => Promise<void>) => Promise<void>) {
     this.check()
     this.observations = this.observations.filter(item => item.sequence > completed)
     if (sequence <= completed) return
@@ -24,8 +25,9 @@ export class RasterQueuePacer {
     if (sequence - completed >= 2) {
       // Wait only for the oldest recorded prefix, not for work/presentation
       // submitted after it. New camera composition can run during this await.
-      await this.observations[0]?.done
-      this.check()
+      const oldest=this.observations[0]
+      if(measureBlock && oldest) await measureBlock(async()=>{await oldest.done; this.check()})
+      else {await oldest?.done; this.check()}
     }
   }
 }

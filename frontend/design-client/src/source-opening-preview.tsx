@@ -7,6 +7,7 @@ export type OpeningView = {
   owner:LargeDocumentOwner; bounds:SourceCanvasBox; items:SourceCanvasItem[]; pages:OpeningPage[];
   materialDisplay?:SourceCanvasSnapshot; images:ReadonlyMap<number,string>; finished:boolean; cacheHit:boolean; rendered:number
 }
+export const SOURCE_DETAIL_SAMPLE_MS=120
 export function useSourceOpening(bridge:LargeDocumentBridge, generation:number|undefined) {
   const [value,setValue]=useState<{generation:number;view:OpeningView}>()
   const priority=useRef<{pageId?:string;material?:number;viewport?:SourceCanvasBox;viewportDensity?:number;viewportAnchor?:[number,number]}>({})
@@ -131,7 +132,7 @@ export function SourceOpeningSurface({source,view,width,height,pageId,focused,on
   const loaded=useMemo(()=>new Map<number,string>(),[source.owner.documentId,source.owner.sessionEpoch])
   // Ordinary source pages keep their thumbnails mounted. On very large pages
   // move an overscanned window in whole viewport steps, outside pointer events.
-  const scale=rows.length>512?2**Math.floor(Math.log2(view.zoom)):0
+  const scale=rows.length>512||rows.length>32&&view.zoom>=1?2**Math.floor(Math.log2(view.zoom)):0
   const sx=scale?width/scale:0,sy=scale?height/scale:0
   const cx=sx?Math.floor((width/2-view.x)/view.zoom/sx):0,cy=sy?Math.floor((height/2-view.y)/view.zoom/sy):0
   const windowRows=useMemo(()=>sx&&sy?rows.filter(({item:{placed:b}})=>
@@ -179,7 +180,7 @@ export function SourceOpeningSurface({source,view,width,height,pageId,focused,on
       if(!onDetail||!width||!height)return
       onViewport?.({x:-view.x/view.zoom,y:-view.y/view.zoom,width:width/view.zoom,height:height/view.zoom},view.zoom*(window.devicePixelRatio||1))
       onDetail(visibleMaterialDetail(source,view,width,height,window.devicePixelRatio||1,pageId,focused))
-    },120)
+    },SOURCE_DETAIL_SAMPLE_MS)
   },[source.owner.documentId,source.owner.sessionEpoch,source.items,view.x,view.y,view.zoom,width,height,pageId,focused,onDetail,onViewport,source.finished])
   return <svg className="source-opening-surface" aria-label="源文件素材预览" data-material-count={source.items.length}
     data-rendered-materials={source.images.size} data-source-owner={source.owner.documentId}

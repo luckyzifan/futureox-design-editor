@@ -448,6 +448,7 @@ pub(super) fn commit_nodes(
         let (p, root) = location(s, request.key.as_deref())?;
         let root_id = s.parts[p].index.entries[root].id.clone();
         let mut source_nodes = Vec::new();
+        let mut hierarchy = BTreeMap::new();
         for (id, edit) in &updates {
             let old = baseline
                 .nodes
@@ -458,7 +459,7 @@ pub(super) fn commit_nodes(
                 if projection::equal(value.get(key), Some(next)) {
                     continue;
                 }
-                if key != "instance" && !futureox_design_kernel::components::FIELDS.contains(&key.as_str()) {
+                if key != "children" && key != "instance" && !futureox_design_kernel::components::FIELDS.contains(&key.as_str()) {
                     return Err(issue(format!(
                         "Source field {key} requires a dedicated structural transaction",
                     )));
@@ -484,7 +485,6 @@ pub(super) fn commit_nodes(
             projection::preserve_point_order(old, &node)?;
             if id != &node.id
                 || old.kind != node.kind
-                || old.children != node.children
                 || old.component != node.component
                 || !instance_resize_only(old, &node, &edit.patch)
                 || old.boolean_operation != node.boolean_operation
@@ -503,6 +503,12 @@ pub(super) fn commit_nodes(
                 .collect::<Vec<_>>();
             if found.len() != 1 {
                 return Err(issue("Edit this dependency in its original source page"));
+            }
+            if old.children != node.children {
+                if old.instance.is_some() || !matches!(old.kind.as_str(), "group"|"frame"|"section") {
+                    return Err(issue("Only source containers can change layer order"));
+                }
+                hierarchy.insert(id.clone(), (old.children.clone(), node.children.clone()));
             }
             source_nodes.push((id.clone(), found[0]));
             scene.document.nodes.insert(id.clone(), node);
@@ -632,7 +638,7 @@ pub(super) fn commit_nodes(
                 added_fields = true;
             }
         }
-        if edits.is_empty() {
+        if edits.is_empty() && hierarchy.is_empty() {
             return Err(issue("Source edit has no lossless Sketch representation; keep the draft or save a native document"));
         }
         edits.sort_by_key(|(span, _)| std::cmp::Reverse(span.start));
@@ -649,11 +655,15 @@ pub(super) fn commit_nodes(
                 next.changes[p].replace(*span, bytes.clone(), s.parts[p].base_bytes).map_err(issue)?;
             }
         }
-        let index = if added_fields {
+        let mut index = if added_fields {
             rebuild_index(s, p, &next.changes[p], cancel)?
         } else {
             adjusted_index(s, p, &next.changes[p], &edits, cancel)?
         };
+        if !hierarchy.is_empty() {
+            next.changes[p] = super::hierarchy::reorder(s, p, &root_id, &index, &next.changes[p], &hierarchy, cancel)?;
+            index = rebuild_index(s, p, &next.changes[p], cancel)?;
+        }
         // A new object-valued property can shift later catalog ordinals.
         // Resolve the selected source identity before publishing, never reuse a
         // stale ordinal or choose an ambiguous duplicate after a successful save.

@@ -1,7 +1,7 @@
 import { DOCUMENT_MEMORY_BYTES, DOCUMENT_BYTE_LIMIT } from '../src/document-capacity.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFile, mkdtemp, rm, mkdir, writeFile, rename, realpath } from 'node:fs/promises'
+import { readFile, mkdtemp, rm, mkdir, writeFile, rename, realpath, symlink } from 'node:fs/promises'
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url'
 
 // Exercise the real main module's registered handlers. Only OS/Electron/stdio boundaries
 // are replaced; no production test hooks or renderer privilege exceptions are shipped.
-async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWorkingBudget } = {}) {
+async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWorkingBudget, prepare } = {}) {
   // macOS tmpdir is a /var -> /private/var symlink; resolved grant paths use it.
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'forma-host-')))
   const key = `__formaHost_${randomUUID()}`
@@ -33,6 +33,7 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
     closeCalls: 0,
     maxRecovery: 16,
     sent: [],
+    listeners: new Map(),
     platform,
     windows: [],
     recent: [],
@@ -144,7 +145,10 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
     screen,
     BrowserWindow: Window,
     dialog,
-    ipcMain: { handle: (name, fn) => state.handlers.set(name, fn) },
+    ipcMain: {
+      handle: (name, fn) => state.handlers.set(name, fn),
+      on: (name, fn) => state.listeners.set(name, fn),
+    },
     Menu: { buildFromTemplate: (value) => value, setApplicationMenu(value) { state.menu = value } },
     protocol: { registerSchemesAsPrivileged() {} },
     session: { fromPartition: () => isolated },
@@ -245,10 +249,14 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
   source = source.replace("from './gpu-working-budget.mjs'", `from ${JSON.stringify(new URL('../src/gpu-working-budget.mjs', import.meta.url).href)}`)
   source = source.replace('process.env.CORE_GPU_WORKING_BUDGET_MIB', `globalThis[${JSON.stringify(key)}].gpuWorkingBudget`)
   source = source.replace("from './keyboard-shortcuts.mjs'", `from ${JSON.stringify(new URL('../src/keyboard-shortcuts.mjs', import.meta.url).href)}`)
+  source = source.replace("from './figma-mcp-host.mjs'", `from ${JSON.stringify(new URL('../src/figma-mcp-host.mjs', import.meta.url).href)}`)
   source = source.replace("import { registerAutomationBridge } from './automation-bridge.mjs'",
     `import { registerAutomationBridge as registerRealAutomationBridge } from ${JSON.stringify(new URL('../src/automation-bridge.mjs', import.meta.url).href)}; const registerAutomationBridge = options => { globalThis[${JSON.stringify(key)}].automationOptions = options; return registerRealAutomationBridge(options) }`)
 
   source = source.replace("from './native-locale.mjs'", `from ${JSON.stringify(new URL('../src/native-locale.mjs', import.meta.url).href)}`)
+  source = source.replace("from './design-ai.mjs'", `from ${JSON.stringify(new URL('../src/design-ai.mjs', import.meta.url).href)}`)
+  source = source.replace("from './plugin-package.mjs'", `from ${JSON.stringify(new URL('../src/plugin-package.mjs', import.meta.url).href)}`)
+  source = source.replace("from './plugin-ui.mjs'", `from ${JSON.stringify(new URL('../src/plugin-ui.mjs', import.meta.url).href)}`)
   source = source.replace("from './clipboard.mjs'", `from ${JSON.stringify(new URL('../src/clipboard.mjs', import.meta.url).href)}`)
   source = source.replace("import { spawn } from 'node:child_process'", `const { spawn } = globalThis[${JSON.stringify(key)}]`)
   source = source.replaceAll('process.platform' , `globalThis[${JSON.stringify(key)}].platform`)
@@ -262,9 +270,11 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
   source = source.replace("from './window-state.mjs'", `from ${JSON.stringify(new URL('../src/window-state.mjs', import.meta.url).href)}`)
   source = source.replace("from './legacy-user-data.mjs'", `from ${JSON.stringify(new URL('../src/legacy-user-data.mjs', import.meta.url).href)}`)
   source = source.replace("from './native-render.mjs'", `from ${JSON.stringify(new URL('../src/native-render.mjs', import.meta.url).href)}`)
+  source = source.replace("from './ffmpeg-encode.mjs'", `from ${JSON.stringify(new URL('../src/ffmpeg-encode.mjs', import.meta.url).href)}`)
   source = source.replace("from './preparation.mjs'", `from ${JSON.stringify(new URL('../src/preparation.mjs', import.meta.url).href)}`)
   source = source.replace("from './large-document.mjs'", `from ${JSON.stringify(new URL('../src/large-document.mjs', import.meta.url).href)}`)
   source = source.replace("from './render-check.mjs'", `from ${JSON.stringify(new URL('../src/render-check.mjs', import.meta.url).href)}`)
+  source = source.replace("from './workspace-sqlite-worker-host.mjs'", `from ${JSON.stringify(new URL('../src/workspace-sqlite-worker-host.mjs', import.meta.url).href)}`)
   source = source.replace(
     "from './security.mjs'",
     `from ${JSON.stringify(new URL('../src/security.mjs', import.meta.url).href)}`,
@@ -278,6 +288,7 @@ async function host({ platform = 'darwin', savedWindow, startupFiles = [], gpuWo
     JSON.stringify(key) +
     '].timers.push(callback); return 0 }; const clearTimeout = () => {};\n' +
     source
+  if (prepare) await prepare(root)
   try {
     await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`)
   } catch (error) {
@@ -540,6 +551,20 @@ test('only own-window known Blob exports reach a native save dialog, with byte b
     )
     assert.equal(blocked, 1)
     assert.equal(options.defaultPath, 'drawing.svg')
+    item.getFilename = () => 'board.svgz'
+    state.session.emit(
+      'will-download',
+      {
+        preventDefault() {
+          blocked++
+        },
+      },
+      item,
+      state.window.webContents,
+    )
+    assert.equal(blocked, 1)
+    assert.equal(options.defaultPath, 'board.svgz')
+    item.getFilename = () => 'drawing.svg'
     item.emit('updated')
     assert.equal(cancelled, true)
     item.getURL = () => 'https://evil.example/script.svg'
@@ -1400,5 +1425,60 @@ test('native filter display names follow locale while extensions, defaults and c
       assert.deepEqual(options.properties, ['showOverwriteConfirmation'])
     }
     assert.equal(state.requests.length, before, 'Cancelled native dialogs and export configuration perform no sidecar IO')
+  } finally { await state.dispose() }
+})
+
+test('startup enables declared plugins in the menu without exposing filesystem paths', async () => {
+  const state = await host({
+    prepare: async root => {
+      const plugins = path.join(root, 'plugins')
+      const declared = path.join(plugins, 'save-plugin')
+      const figjam = path.join(plugins, 'figjam-only')
+      const outside = path.join(root, 'outside-plugin')
+      await mkdir(declared, { recursive: true })
+      await mkdir(figjam, { recursive: true })
+      await mkdir(outside, { recursive: true })
+      const manifest = (name, id, editorType = ['figma']) => JSON.stringify({ name, id, api: '1.0.0', main: 'code.js', editorType })
+      await writeFile(path.join(declared, 'manifest.json'), manifest('Save', 'local.save'))
+      await writeFile(path.join(declared, 'code.js'), 'figma.notify("ok")')
+      await writeFile(path.join(figjam, 'manifest.json'), manifest('FigJam only', 'local.figjam', ['figjam']))
+      await writeFile(path.join(figjam, 'code.js'), 'figma.closePlugin()')
+      await writeFile(path.join(outside, 'manifest.json'), manifest('Outside', 'local.outside'))
+      await writeFile(path.join(outside, 'code.js'), 'secret')
+      await symlink(outside, path.join(plugins, 'linked'), 'dir')
+    },
+  })
+  try {
+    const listed = await state.invoke('plugins-list')
+    assert.equal(listed.status, 'ok')
+    assert.equal(listed.plugins.length, 1)
+    assert.equal(listed.plugins[0].name, 'Save')
+    assert.equal(listed.plugins[0].id, 'local.save')
+    assert.equal(listed.plugins[0].displayName, 'Save')
+    assert.equal(Object.hasOwn(listed.plugins[0], 'root'), false)
+    const encoded = JSON.stringify(listed)
+    assert.equal(encoded.includes(state.root), false)
+    assert.equal(encoded.includes('save-plugin'), false)
+    assert.equal(encoded.includes('secret'), false)
+    assert.equal(encoded.includes('FigJam'), false)
+    const menu = state.menu.find(item => item.label === '插件')
+    assert.deepEqual(menu.submenu.map(item => item.label ?? item.type), ['打开插件宿主…', 'separator', 'Save'])
+    assert.equal(menu.submenu[2].preserveLabel, undefined)
+    state.sent = []
+    menu.submenu[2].click()
+    assert.deepEqual(state.sent, [
+      ['design-desktop:command', 'plugins'],
+      ['design-desktop:plugin-launch', { grant: listed.plugins[0].grant }],
+    ])
+    const read = await state.invoke('plugins-read', { grant: listed.plugins[0].grant, paths: ['code.js'] })
+    assert.equal(read.files['code.js'], 'figma.notify("ok")')
+    assert.equal((await state.invoke('plugins-read', { grant: listed.plugins[0].grant, paths: ['../secret.js'] })).status, 'error')
+    assert.equal((await state.invoke('plugins-list', { plugins: [] })).status, 'error')
+    assert.equal((await state.invoke('set-interface-locale', 'en')).status, 'ok')
+    const english = state.menu.find(item => item.label === 'Plugins')
+    assert.equal(english.submenu[0].label, 'Open plugin host…')
+    assert.equal(english.submenu[2].label, 'Save')
+    const fileSave = state.menu.find(item => item.label === 'File').submenu.find(item => item.label === 'Save')
+    assert.equal(fileSave.accelerator, 'CmdOrCtrl+S')
   } finally { await state.dispose() }
 })

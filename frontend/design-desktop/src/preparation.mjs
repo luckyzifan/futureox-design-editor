@@ -5,8 +5,9 @@ import path from 'node:path'
 import { createRenderDiagnostics, PREFIX } from './render-terminal-diagnostics.mjs'
 const methods=new Set(['serialize','serialize_delta','parse','warm_resources','initialize','load_document','apply_document_patch_with_damage','apply_interaction_transforms',
  'compile_gpu_packet','render_linear','render_png','render_color_png','render_region_png','render_cpu_frame','stats','gpu_memory_breakdown',
- 'preparation_capabilities_v1','derive_document_v1'])
+ 'preparation_capabilities_v1','derive_document_v1','source_hit'])
 const sourceSnapshotRequests=new WeakSet()
+const cpuRenderMethods=new Set(['render_linear','render_png','render_color_png','render_region_png','render_cpu_frame'])
 // A single host-wide ledger includes every preparation/codec session. A close
 // rejects callers immediately but holds their leases until the worker exits:
 // rejecting a promise does not free a clone already queued in another thread.
@@ -50,7 +51,7 @@ export class NativePreparation {
   this.worker.on('error',error=>this.close(error))
   this.worker.on('exit',()=>this.close(Error('Native preparation worker exited')))
  }
- request(request){
+ request(request,sourceBitmaps){
   if(this.closed)return Promise.reject(Error('Native preparation closed'))
   const sourceSnapshot=!!request&&sourceSnapshotRequests.has(request)
   if(sourceSnapshot)sourceSnapshotRequests.delete(request)
@@ -63,7 +64,7 @@ export class NativePreparation {
   const input=request.diagnostics
   const diagnostic=this.diagnostics.enabled&&input&&Number.isSafeInteger(input.originChannelId)&&input.originChannelId>=0&&input.originChannelId<=0xffffffffffff&&Number.isSafeInteger(input.requestId)&&input.requestId>=0&&Number.isSafeInteger(input.preparationId)&&input.preparationId>0
    ?{originChannelId:input.originChannelId,requestId:input.requestId,preparationId:input.preparationId}:undefined
-  const message={id,lane:request.lane,method:request.method,args:request.args,...(diagnostic?{diagnostics:true}:{})}
+  const message={id,lane:request.lane,method:request.method,args:request.args,...(sourceBitmaps?{sourceBitmaps}:{}),...(diagnostic?{diagnostics:true}:{})}
   let release
   try{
    // Count the complete posted envelope, including ID and diagnostic flag,
@@ -141,7 +142,7 @@ export function bindPosePreparationPort(port,worker,current,retire){
  port.start();port.postMessage({terminalReady:true})
 }
 
-export function registerNativePreparation(ipcMain,{resourcesRoot,assertSender,resolveSourceSnapshot}){
+export function registerNativePreparation(ipcMain,{resourcesRoot,assertSender,resolveSourceSnapshot,sourceBitmaps}){
  const sessions=new Map(),owners=new Set(),retiring=new Set(),codecs=new Map()
  const close=worker=>{const done=worker.close();retiring.add(done);void done.finally(()=>retiring.delete(done));return done}
  const retireSession=s=>{s.terminal?.close();return close(s.worker)}
@@ -193,7 +194,12 @@ export function registerNativePreparation(ipcMain,{resourcesRoot,assertSender,re
    grant.assertCurrent()
    return reply
   }
-  return owned.worker.request(request)
+  // The renderer cannot supply a filesystem grant. Bind it only for a CPU
+  // render in the original window and discard a reply if its source closed.
+  const grant=cpuRenderMethods.has(request?.method)?sourceBitmaps?.(event.sender.id):undefined
+  const reply=await owned.worker.request(request,grant)
+  if(grant && sourceBitmaps?.(event.sender.id)?.owner!==grant.owner)throw Error('Sketch source changed during export')
+  return reply
  })
  ipcMain.handle('native-preparation:close',(event,id)=>{const s=session(event,id);sessions.delete(id);return retireSession(s)})
  return ()=>{for(const s of sessions.values())retireSession(s);for(const codec of codecs.values())close(codec);sessions.clear();codecs.clear();return Promise.all([...retiring])}

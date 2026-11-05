@@ -12,6 +12,8 @@ struct Request {
     lane: String,
     method: String,
     args: Vec<Value>,
+    #[serde(rename="sourceBitmaps",default)]
+    source_bitmaps:Option<futureox_design_kernel::source_bitmap_pixels::Directory>,
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
@@ -59,7 +61,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (request, cancelled)=incoming?;
         let (mut metadata, bytes) =
             match futureox_design_kernel::render_cancellation::with_probe(move || cancelled.load(Ordering::Acquire),
-                || session.request(&request.lane, &request.method, &request.args)) {
+                || match request.source_bitmaps {
+                    Some(grant)=>session.render_with_bitmaps(&request.lane,&request.method,&request.args,grant),
+                    None=>session.request(&request.lane,&request.method,&request.args),
+                }) {
                 Ok(reply) => (reply.metadata, reply.bytes),
                 Err(error) => (json!({"error":error}), Vec::new()),
             };

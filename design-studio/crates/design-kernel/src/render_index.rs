@@ -54,6 +54,9 @@ pub(crate) struct RenderIndex {
     pub(crate) parents: Parents,
     pub(crate) has_connectors: bool,
     pub(crate) sketch_mask_owners: std::collections::HashSet<String>,
+    pub(crate) has_instance_slots: bool,
+    pub(crate) has_repeats: bool,
+    pub(crate) page_roots: std::collections::HashSet<String>,
 }
 impl RenderIndex {
     pub(crate) fn in_sketch_mask_chain(&self, id: &str) -> bool {
@@ -65,7 +68,10 @@ impl RenderIndex {
             document.nodes.get(id).zip(next.as_ref()).is_some_and(|(old,next)|
                 old.id==next.id&&old.children==next.children&&old.connector.is_some()==next.connector.is_some()
                 && crate::sketch_masks::starts(old)==crate::sketch_masks::starts(next)
-                && old.boolean_operation.is_some()==next.boolean_operation.is_some())
+                && old.boolean_operation.is_some()==next.boolean_operation.is_some()
+                && old.repeat.is_some()==next.repeat.is_some()
+                && old.instance.as_ref().is_some_and(|i| !i.slot_contents.is_empty())
+                    ==next.instance.as_ref().is_some_and(|i| !i.slot_contents.is_empty()))
         })
     }
     pub(crate) fn new(document: &Document) -> Self {
@@ -74,6 +80,9 @@ impl RenderIndex {
             sketch_mask_owners: crate::sketch_masks::owners(document, &parents),
             parents,
             has_connectors: document.nodes.values().any(|node| node.connector.is_some()),
+            has_instance_slots: document.nodes.values().any(|node| node.instance.as_ref().is_some_and(|i|!i.slot_contents.is_empty())),
+            has_repeats: crate::repeat::has_repeats(document),
+            page_roots: document.pages.iter().flat_map(|page| page.children.iter().cloned()).collect(),
         }
     }
 }

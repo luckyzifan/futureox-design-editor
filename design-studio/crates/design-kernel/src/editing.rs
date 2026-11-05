@@ -26,8 +26,13 @@ pub struct DocumentPatch {
 pub(crate) struct AppliedDocument {
     document: Document,
     serialized_bytes: usize,
+    local_nodes: Option<Vec<String>>,
+    stable_images: bool,
 }
 impl AppliedDocument {
+    pub(crate) fn into_install_parts(self) -> (Document, usize, Option<Vec<String>>, bool) {
+        (self.document, self.serialized_bytes, self.local_nodes, self.stable_images)
+    }
     pub(crate) fn document(&self) -> &Document {
         &self.document
     }
@@ -178,11 +183,56 @@ impl DocumentPatch {
     pub(crate) fn apply(&self, before: &Document) -> Result<Document, EditError> {
         self.apply_with_size(before).map(|applied| applied.into_parts().0)
     }
+    /// The caller owns a validated baseline and its exact serialization size.
+    /// The existing local-property gate excludes graph and document changes.
+    pub(crate) fn apply_local_with_size(&self, before: &Document, baseline_bytes: usize) -> Result<Option<AppliedDocument>, EditError> {
+        if !self.is_local_properties(before) { return Ok(None); }
+        fn images(node: &Node) -> impl Iterator<Item=&std::sync::Arc<str>> {
+            node.fills.iter().chain(node.strokes.iter().map(|s| &s.paint)).filter_map(|p| p.image.as_ref())
+        }
+        let mut bytes = baseline_bytes;
+        let mut stable_images = true;
+        for (id, node) in &self.nodes {
+            let node = node.as_ref().unwrap();
+            let old = serialized_size(&before.nodes[id]).map_err(|e| error("serialization", e.to_string()))?;
+            let next = serialized_size(node).map_err(|e| error("serialization", e.to_string()))?;
+            bytes = bytes.checked_sub(old).and_then(|size| size.checked_add(next))
+                .ok_or_else(|| error("document_budget", "Invalid incremental document size"))?;
+            stable_images &= images(&before.nodes[id]).eq(images(node));
+        }
+        // Only an actual image change needs a pass over the old owners. Read
+        // them immutably; normalizing a replacement must not detach siblings.
+        let mut owners = std::collections::HashSet::new();
+        if !stable_images { owners.extend(before.nodes.values().flat_map(images).cloned()); }
+        // Installed editable scenes share their topology and immutable node
+        // slots. Only the replacements below detach from the old snapshot.
+        let mut document = before.clone();
+        for (id, next) in &self.nodes {
+            let mut node = next.as_ref().unwrap().clone();
+            node.compact_storage();
+            let new_images = node.fills.iter_mut().chain(node.strokes.iter_mut().map(|s| &mut s.paint))
+                .filter_map(|paint| paint.image.as_mut());
+            if stable_images {
+                for (uri, old) in new_images.zip(images(&before.nodes[id])) { *uri = old.clone(); }
+            } else {
+                for uri in new_images {
+                    if let Some(old) = owners.get(uri) { *uri = old.clone(); }
+                    else { owners.insert(uri.clone()); }
+                }
+            }
+            document.nodes.set(id, node);
+        }
+        let changed = self.nodes.keys().cloned().collect();
+        document.validate_scoped_edit(&changed).map_err(|e| error("invalid_document", e))?;
+        crate::capacity::check_document_bytes(bytes).map_err(|e| error("document_budget", e))?;
+        Ok(Some(AppliedDocument { document, serialized_bytes: bytes,
+            local_nodes: Some(self.nodes.keys().cloned().collect()), stable_images }))
+    }
     pub(crate) fn apply_with_size(&self, before: &Document) -> Result<AppliedDocument, EditError> {
         let mut result = before.clone();
         for (id, node) in &self.nodes {
             if let Some(node) = node {
-                result.nodes.insert(id.clone(), node.clone());
+                result.nodes.set(id, node.clone());
             } else {
                 result.nodes.remove(id);
             }
@@ -241,7 +291,7 @@ impl DocumentPatch {
                 .with_resources(&result.fonts)
                 .map_err(|e| error("invalid_font", e))?;
         }
-        Ok(AppliedDocument { document: result, serialized_bytes })
+        Ok(AppliedDocument { document: result, serialized_bytes, local_nodes: None, stable_images: false })
     }
     fn empty(&self) -> bool {
         self.nodes.is_empty() && self.fields.is_empty()

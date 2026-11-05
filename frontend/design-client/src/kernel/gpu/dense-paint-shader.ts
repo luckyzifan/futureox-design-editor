@@ -74,4 +74,59 @@ fn evaluate(p:vec2<i32>,phase:u32,start:u32,back:vec4<f32>,clip:f32)->vec4<f32>{
  let phase=u32(params.values[4].z);
  for(var k=0u;k<u32(params.values[4].y);k++){out=evaluate(p,phase,u32(params.values[5u+k/4u][k%4u]),out,clip);}
  return out;
-}`
+}
+struct DenseSourcePair {
+ @location(0) first:vec4<f32>,
+ @location(1) second:vec4<f32>,
+}
+// Both phases visit the same isolated node tree. Coverage and gradient
+// sampling stay per phase; program decoding and the isolation stack are shared.
+fn evalPair(p:vec2<i32>,phase:u32,start:u32,back:DenseSourcePair)->DenseSourcePair {
+ if(!inside(p,word(start+1u))){return back;}
+ var colors:array<DenseSourcePair,17>; var ends:array<u32,17>; var alpha:array<f32,17>;
+ colors[0]=back;let limit=u32(word(start).x);var depth=0u;var pc=start;
+ loop{
+  if(depth>0u && pc==ends[depth]){
+   let src=colors[depth];let amount=alpha[depth];depth--;
+   colors[depth]=DenseSourcePair(sourceOver(colors[depth].first,scaleColor(src.first,amount)),
+                                 sourceOver(colors[depth].second,scaleColor(src.second,amount)));
+   continue;
+  }
+  if(pc>=limit){break;}
+  let hdr=word(pc);let end=u32(hdr.x);
+  if(pc!=start && !inside(p,word(pc+1u))){pc=end;continue;}
+  let children=u32(hdr.y);var c0=vec4<f32>(0.);var c1=vec4<f32>(0.);var cursor=pc+4u;
+  while(cursor<children){
+   let h=word(cursor);let r=word(cursor+1u);
+   var f0=mask(p,r,h.z,phase);var f1=mask(p,r,h.z,phase+1u);
+   if(h.y!=0. && (f0||f1)){
+    let fr=word(pc+3u);let at=word(pc+2u).x;
+    if(f0){f0=mask(p,fr,at,phase)==(h.y>0.);}
+    if(f1){f1=mask(p,fr,at,phase+1u)==(h.y>0.);}
+   }
+   if(f0){c0=sourceOver(c0,scaleColor(brush(p,cursor,phase),h.w));}
+   if(f1){c1=sourceOver(c1,scaleColor(brush(p,cursor,phase+1u),h.w));}
+   cursor=u32(h.x);
+  }
+  if(children==end){
+   colors[depth]=DenseSourcePair(sourceOver(colors[depth].first,scaleColor(c0,hdr.w)),
+                                sourceOver(colors[depth].second,scaleColor(c1,hdr.w)));pc=end;
+  }else{depth++;colors[depth]=DenseSourcePair(c0,c1);ends[depth]=end;alpha[depth]=hdr.w;pc=children;}
+ }
+ return colors[0];
+}
+@fragment fn denseSourcePair(@builtin(position) pos:vec4<f32>)->DenseSourcePair {
+ let p=vec2<i32>(floor(pos.xy))+vec2<i32>(params.values[0].xy);
+ let phase=u32(params.values[4].z);let r=params.values[1];
+ var back=DenseSourcePair(vec4<f32>(0.),vec4<f32>(0.));
+ if(params.values[54].x==0. && inside(p,r)){
+  let q=p-vec2<i32>(r.xy);
+  back=DenseSourcePair(textureLoad(dst,min(q,vec2<i32>(textureDimensions(dst))-1),0),
+                       textureLoad(clipTex,min(q,vec2<i32>(textureDimensions(clipTex))-1),0));
+ }
+ for(var k=0u;k<u32(params.values[4].y);k++){
+  back=evalPair(p,phase,u32(params.values[5u+k/4u][k%4u]),back);
+ }
+ return back;
+}
+`

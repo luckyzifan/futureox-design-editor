@@ -1,4 +1,5 @@
-use crate::geometry_snapshot::{Prepared, effect_halo, prepare_node_geometry};
+use crate::cpu_frame_plan::{CpuFramePlan, PageHalo};
+use crate::geometry_snapshot::{Prepared, prepare_node_geometry};
 use crate::{
     blend::{Pixel, Surface, over},
     effects,
@@ -11,11 +12,99 @@ use crate::{
     scene::{Document, Node, Paint},
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 /// Device-pixel camera scale for 2%–25600% navigation, including DPR.
 /// Pixel, path, coordinate, effect and allocation guards remain independent.
 pub(crate) const MAX_CANVAS_SAMPLE_SCALE: f64 = 4096.;
+
+fn display_pressure(error: &str) -> bool {
+    error == "Compositing memory budget exceeded"
+        || error == "Combined filter dependency halo exceeds 2048 device pixels"
+        || error == "Combined zoom source dependency halo exceeds 2048 device pixels"
+        || error == "Zoom source filter halo exceeds 2048 device pixels"
+        || error == "Frame compositing work budget exceeded"
+        || error.starts_with("Gaussian sigma must be in")
+        || error == "Layer surface exceeds 16 million pixels"
+}
+
+/// One live surface on the degraded display path. Eight of them have to fit
+/// in the compositing ledger (target, layer, and filter scratch). A single
+/// 16-million-pixel surface would consume the whole 256 MiB by itself.
+fn display_surface_pixel_cap() -> u64 {
+    let slot = std::mem::size_of::<crate::blend::Pixel>().max(1);
+    ((COMPOSITING_BYTES / (8 * slot)) as u64).min(16_000_000)
+}
+
+fn fill_rgba8(buffer: &mut [u8], pixel: [u8; 4]) {
+    if buffer.len() < 4 {
+        return;
+    }
+    buffer[..4].copy_from_slice(&pixel);
+    let mut filled = 4;
+    while filled < buffer.len() {
+        let n = filled.min(buffer.len() - filled);
+        buffer.copy_within(0..n, filled);
+        filled += n;
+    }
+}
+
+fn fitted_display_halo(viewport: Rect, mut halo: i32) -> i32 {
+    let cap = display_surface_pixel_cap();
+    while halo > 0 {
+        let extent = viewport.expand(halo);
+        let pixels = u64::from(extent.w).saturating_mul(u64::from(extent.h));
+        if pixels <= cap && extent.w <= 8192 && extent.h <= 8192 {
+            return halo;
+        }
+        halo /= 2;
+    }
+    0
+}
+
+/// Degraded display also drops an effect whose own support cannot share the
+/// ledger with the other live surfaces. Exact attempts never call this.
+fn effect_exceeds_display_budget(fx: &crate::scene::Effect, scale: f64, layer: Rect) -> bool {
+    if effect_exceeds_display(fx, scale) {
+        return true;
+    }
+    let halo = (fx.blur_radius() * 2.
+        + fx.spread.abs()
+        + fx.x.abs()
+        + fx.y.abs()
+        + fx.material_halo())
+        * scale;
+    if !halo.is_finite() || halo.ceil() > 16_000_000. {
+        return true;
+    }
+    let extent = layer.expand(halo.ceil() as i32);
+    let pixels = u64::from(extent.w).saturating_mul(u64::from(extent.h));
+    pixels > display_surface_pixel_cap()
+}
+
+/// Oversized device-pixel filters are dropped on the degraded display retry.
+/// The layer's fill and strokes stay. Exact attempts never call this.
+fn effect_exceeds_display(fx: &crate::scene::Effect, scale: f64) -> bool {
+    if let Some(zoom) = fx.zoom_blur {
+        if !zoom.amount.is_finite() || zoom.amount * scale > 2048. {
+            return true;
+        }
+    }
+    let sigma = fx.blur_radius().max(fx.radius) * scale;
+    if sigma.is_finite() && sigma > 512. {
+        return true;
+    }
+    let halo = (fx.blur_radius() * 2.
+        + fx.spread.abs()
+        + fx.x.abs()
+        + fx.y.abs()
+        + fx.material_halo())
+        * scale;
+    !halo.is_finite() || halo > 2048.
+}
 
 #[derive(Clone, Copy, Deserialize, Serialize)]
 pub struct View {
@@ -130,6 +219,12 @@ impl Stats {
 #[derive(Clone, Debug, PartialEq, serde::Serialize)]
 #[serde(transparent)]
 pub(crate) struct SharedDocument(Arc<Document>);
+impl SharedDocument {
+    fn from_edit(mut document: Document) -> Self {
+        document.nodes.share();
+        document.into()
+    }
+}
 impl From<Document> for SharedDocument {
     fn from(document: Document) -> Self { Self(Arc::new(document)) }
 }
@@ -142,6 +237,13 @@ impl std::ops::Deref for SharedDocument {
 }
 impl std::ops::DerefMut for SharedDocument {
     fn deref_mut(&mut self) -> &mut Document { Arc::make_mut(&mut self.0) }
+}
+
+#[derive(Clone, Copy)]
+struct RetainedPose<'a> {
+    patch: &'a crate::editing::DocumentPatch,
+    revision: u64,
+    affine: bool,
 }
 
 enum DocumentInstall {
@@ -168,6 +270,23 @@ impl RetainedSourceSize {
     }
 }
 
+/// Shared geometry for one degraded display frame. Sub-tiles keep the same
+/// camera, so the flattened map is built once and reused.
+struct DegradeFrame {
+    epoch: u64,
+    page_id: String,
+    x_bits: u64,
+    y_bits: u64,
+    zoom_bits: u64,
+    width: u32,
+    height: u32,
+}
+struct DegradePrepared {
+    epoch: u64,
+    guard: Rect,
+    map: HashMap<String, Prepared>,
+}
+
 pub struct Engine {
     source_doc: Option<SharedDocument>,
     source_doc_bytes: Option<usize>,
@@ -191,6 +310,12 @@ pub struct Engine {
     scene_peak_bytes: usize,
     budget_rejections: u32,
     last_rejection: Option<(usize, usize)>,
+    /// Display-only retry after a halo or compositing-budget failure. Exact
+    /// export and the first attempt stay on the original path.
+    display_degrade: bool,
+    degrade_epoch: u64,
+    degrade_frame: Option<DegradeFrame>,
+    degrade_prepared: Option<DegradePrepared>,
     /// Four-bucket GPU memory ledger (see `gpu_memory_breakdown`). The
     /// kernel itself allocates no GPU memory; the ledger is shared state a
     /// host installs into the allocating device (`NativeGpu`) so the export
@@ -261,6 +386,10 @@ impl Engine {
             scene_peak_bytes: 0,
             budget_rejections: 0,
             last_rejection: None,
+            display_degrade: false,
+            degrade_epoch: 0,
+            degrade_frame: None,
+            degrade_prepared: None,
             gpu_memory: crate::memory::GpuMemoryLedger::default(),
             linear_tiles: std::collections::HashMap::new(),
             linear_tiles_order: Vec::new(),
@@ -309,6 +438,8 @@ impl Engine {
     pub fn set_text_quantization(&mut self, on: bool) {
         self.fonts.set_glyph_origin_quantization(on);
     }
+    #[cfg(not(target_arch="wasm32"))]
+    pub(crate) fn set_source_bitmaps(&mut self,access:Option<crate::source_bitmap_pixels::Access>){self.images.source=access;}
     pub fn image_data(&mut self, uri: &str) -> Result<Arc<Surface>, String> {
         self.images.image(uri)
     }
@@ -379,7 +510,7 @@ impl Engine {
         // can only be used by the native source compiler, never edit/export.
         let document=Document{fd_compatibility:None,reviews:vec![],design_system:None,prototype:None,
             schema_version:source.schema_version,color_management:source.color_management,raster_profile:source.raster_profile,
-            id:source.id.clone(),name:source.name.clone(),pages:vec![page],nodes,fonts:Default::default(),animations:vec![]};
+            id:source.id.clone(),name:source.name.clone(),pages:vec![page],nodes:nodes.into(),fonts:Default::default(),animations:vec![]};
         let mut compiler=Engine::new();compiler.fonts=self.fonts.clone();compiler.images=self.images.clone();
         let document=SharedDocument::from(document);compiler.source_doc=Some(document.clone());compiler.doc=Some(document);
         compiler.layout_dirty=false;compiler.geo_revision=revision;Ok(compiler)
@@ -394,13 +525,26 @@ impl Engine {
         &mut self,
         patch: &crate::editing::DocumentPatch,
     ) -> Result<crate::dirty_region::PatchDamage, String> {
-        if patch.nodes.len()<=16&&self.can_retain_interaction(patch,true){
+        if self.inert_boolean_pose(patch) {
+            let transforms: std::collections::BTreeMap<_, _> = patch.nodes.iter().map(|(id,node)|(id.clone(),node.as_ref().unwrap().transform)).collect();
+            let affine = transforms.iter().any(|(id, transform): (&String, &Transform)|
+                self.source_doc.as_ref().unwrap().nodes[id].transform.0[..4] != transform.0[..4]);
+            if self.apply_retained_pose(RetainedPose { patch, revision: self.geo_revision, affine })? {
+                if let Some(bytes)=self.source_doc_bytes.take() {
+                    self.retained_source_size=Some(RetainedSourceSize::new(self.source_doc.as_ref().unwrap(),bytes));
+                }
+                return Ok(crate::dirty_region::PatchDamage {full:false,reason:None,bounds:None,rects:Some(vec![]),translation_only:None});
+            }
+        }
+        let pose = self.retained_pose(patch, true);
+        let translation = pose.is_some_and(|proof| !proof.affine);
+        if patch.nodes.len()<=16 && let Some(proof) = pose {
             let transforms=patch.nodes.iter().map(|(id,node)|(id.clone(),node.as_ref().unwrap().transform)).collect();
             if let Some(damage)=crate::dirty_region::resolved_leaf_pose_damage(self.doc.as_ref().unwrap(),
                 &self.render_index.as_ref().unwrap().parents,&transforms,&self.fonts){
                 // The existing pose entry validates changed nodes and exact
                 // serialized-size deltas before mutating any snapshot.
-                if self.apply_interaction_transforms(&transforms)?{
+                if self.apply_retained_pose(proof)?{
                     // Ordinary patches retain only the exact size receipt,
                     // not the stronger whole-install/root-translation gate.
                     if let Some(bytes)=self.source_doc_bytes.take(){
@@ -413,20 +557,22 @@ impl Engine {
         // Unknown optical read dependencies still invalidate all paint. A
         // proven translation need not clone the entire authored document just
         // to discover that same conservative certificate.
-        if self.source_doc_bytes.is_some() && patch.nodes.len() <= 16 && self.can_retain_translation(patch)
+        if self.source_doc_bytes.is_some() && patch.nodes.len() <= 16 && translation
             && crate::dirty_region::has_unbounded_backdrop_for_patch(self.source_doc.as_ref().unwrap(), patch) {
-            let transforms = patch.nodes.iter().map(|(id,n)| (id.clone(), n.as_ref().unwrap().transform)).collect();
-            if self.apply_interaction_transforms(&transforms)? {
+            if self.apply_retained_pose(pose.unwrap())? {
                 return Ok(crate::dirty_region::PatchDamage { full:true,reason:Some("glass-effect"),
                     bounds:None,rects:None,translation_only:Some(true) });
             }
         }
-        if let Some(damage) = self.apply_clipped_root_translation(patch)? { return Ok(damage); }
+        if let Some(damage) = self.apply_clipped_root_translation(patch, translation)? { return Ok(damage); }
         let source = self
             .source_doc
             .as_ref()
             .ok_or("Load document before applying a patch")?;
-        let applied = patch.apply_with_size(source).map_err(|e| e.to_string())?;
+        let baseline_bytes = self.source_doc_bytes.or_else(|| self.retained_source_size.as_ref().and_then(|r| r.bytes_for(source)));
+        let local = baseline_bytes.map(|bytes| patch.apply_local_with_size(source, bytes)).transpose()
+            .map_err(|e| e.to_string())?.flatten();
+        let applied = match local { Some(applied) => applied, None => patch.apply_with_size(source).map_err(|e| e.to_string())? };
         let next = applied.document();
         let retained_paint = self.retainable_paint_changes(patch);
         let mut damage = if retained_paint.as_ref().is_some_and(Vec::is_empty) {
@@ -447,7 +593,7 @@ impl Engine {
         // A proven rigid translation does not change local layout, shaped text,
         // resource identity or path topology. Keep those derived products; only
         // device geometry and the damage-dependent tile programs become dirty.
-        if self.can_retain_translation(patch) {
+        if translation {
             for (id, node) in &patch.nodes {
                 let transform = node.as_ref().expect("validated translation").transform;
                 self.doc.as_mut().unwrap().nodes.get_mut(id).unwrap().transform = transform;
@@ -456,7 +602,7 @@ impl Engine {
                 }
             }
             let (next, next_bytes) = applied.into_parts();
-            self.source_doc = Some(next.into());
+            self.source_doc = Some(SharedDocument::from_edit(next));
             self.source_doc_bytes = None;
             self.retained_source_size = Some(RetainedSourceSize::new(self.source_doc.as_ref().unwrap(), next_bytes));
             self.geo_revision += 1;
@@ -465,15 +611,15 @@ impl Engine {
             }
             damage.translation_only = Some(true);
         } else if let Some(bounds_dirty) = retained_paint {
-            for (id, node) in &patch.nodes {
-                let node = node.as_ref().unwrap();
+            for id in patch.nodes.keys() {
+                let node = &next.nodes[id];
                 crate::derived_invalidation::apply_paint(self.doc.as_mut().unwrap().nodes.get_mut(id).unwrap(), node);
                 if let Some(base) = &mut self.text_base {
                     if let Some(target) = base.nodes.get_mut(id) { crate::derived_invalidation::apply_paint(target, node); }
                 }
             }
             let (next, next_bytes) = applied.into_parts();
-            self.source_doc = Some(next.into());
+            self.source_doc = Some(SharedDocument::from_edit(next));
             self.source_doc_bytes = None;
             self.retained_source_size = Some(RetainedSourceSize::new(self.source_doc.as_ref().unwrap(), next_bytes));
             self.geo_revision += 1;
@@ -519,20 +665,28 @@ impl Engine {
         }
         Some(bounds)
     }
-    fn can_retain_translation(&self, patch: &crate::editing::DocumentPatch) -> bool {
-        self.can_retain_interaction(patch, false)
-    }
     /// Shared interaction-lane validation. `affine` admits linear-part changes
     /// (rotation/scale): the moved subtree's prepared entries and aggregate
     /// ancestor bounds are always rebuilt, so only translation-specific cache
     /// retention (camera metadata) differs, which the caller invalidates.
+    fn inert_boolean_pose(&self, patch:&crate::editing::DocumentPatch) -> bool {
+        if patch.nodes.len()!=1 || !patch.fields.is_empty() || self.source_compile_context.is_some() { return false; }
+        let (id,next)=patch.nodes.first_key_value().unwrap();
+        let (Some(next),Some(index),Some(resolved))=(next,&self.render_index,&self.doc) else {return false;};
+        let Some(parent)=index.parents.ancestors(id).next() else {return false;};
+        resolved.nodes.get(parent).is_some_and(|n| n.boolean_operation.is_some()) &&
+            self.can_retain_pose(patch,true,true) && crate::curve_boolean::operand_keeps_outline(resolved,parent,id,next.transform)
+    }
     fn can_retain_interaction(&self, patch: &crate::editing::DocumentPatch, affine: bool) -> bool {
+        self.can_retain_pose(patch,affine,false)
+    }
+    fn can_retain_pose(&self, patch:&crate::editing::DocumentPatch, affine:bool, checked_boolean:bool) -> bool {
         let (Some(source), Some(resolved)) = (&self.source_doc, &self.doc) else { return false; };
-        if crate::repeat::has_repeats(source) { return false; }
         let Some(index) = &self.render_index else { return false; };
+        if index.has_repeats { return false; }
         if self.layout_dirty || self.animation_base.is_some() || self.animation_sample.is_some()
             || !source.animations.is_empty() || !patch.fields.is_empty() || patch.nodes.is_empty()
-            || index.has_connectors { return false; }
+            || index.has_connectors || index.has_instance_slots { return false; }
         let parents = &index.parents;
         patch.nodes.iter().all(|(id, next)| {
             if index.in_sketch_mask_chain(id) { return false; }
@@ -544,7 +698,7 @@ impl Engine {
                 let node = &source.nodes[id];
                 if !node.bindings.is_empty() || !node.variable_modes.is_empty() || node.component.is_some()
                     || node.component_set || node.instance.is_some() || node.instance_origin.is_some()
-                    || node.component_key.is_some() || node.boolean_operation.is_some() { return false; }
+                    || node.component_key.is_some() || (!checked_boolean && node.boolean_operation.is_some()) { return false; }
                 // Descendant local layout survives rigid movement. An ancestor
                 // flow/hug layout can reposition siblings and must resolve normally.
                 if id != old.id && (node.layout.as_ref().is_some_and(|l| l.mode != crate::layout::Flow::None)
@@ -553,7 +707,7 @@ impl Engine {
                 if candidate.width.to_bits()!=derived.width.to_bits()||candidate.height.to_bits()!=derived.height.to_bits()||
                     (id!=old.id&&candidate.transform.0.iter().zip(derived.transform.0).any(|(a,b)|a.to_bits()!=b.to_bits()))||
                     !crate::layout::pose_constraint_fixed(candidate,parents.ancestors(id).next().and_then(|id|resolved.nodes.get(id)),
-                        source.pages.iter().any(|page|page.children.iter().any(|child|child==id))){return false}
+                        index.page_roots.contains(id)){return false}
             }
             true
         })
@@ -580,7 +734,24 @@ impl Engine {
             nodes.insert(id.clone(), Some(node));
         }
         let patch = crate::editing::DocumentPatch { nodes, fields: Default::default() };
-        if !self.can_retain_interaction(&patch, affine) { return Ok(false); }
+        let proof = self.retained_pose(&patch, affine).or_else(|| self.inert_boolean_pose(&patch)
+            .then_some(RetainedPose { patch: &patch, revision: self.geo_revision, affine }));
+        let Some(proof) = proof else { return Ok(false); };
+        self.apply_retained_pose(proof)
+    }
+    fn retained_pose<'a>(&self, patch: &'a crate::editing::DocumentPatch, allow_affine: bool) -> Option<RetainedPose<'a>> {
+        if !self.can_retain_interaction(patch, allow_affine) { return None; }
+        let source = self.source_doc.as_ref()?;
+        let affine = patch.nodes.iter().any(|(id, next)| source.nodes[id].transform.0[..4] != next.as_ref().unwrap().transform.0[..4]);
+        Some(RetainedPose { patch, revision: self.geo_revision, affine })
+    }
+    fn apply_retained_pose(&mut self, proof: RetainedPose<'_>) -> Result<bool, String> {
+        if proof.revision != self.geo_revision { return Err("Pose proof no longer matches the document".into()); }
+        let patch = proof.patch;
+        let affine = proof.affine;
+        let source = self.source_doc.as_ref().ok_or("Load document before interaction")?;
+        let transforms: std::collections::BTreeMap<_, _> = patch.nodes.iter()
+            .map(|(id, next)| (id.clone(), next.as_ref().unwrap().transform)).collect();
         source.validate_nodes(patch.nodes.iter().map(|(id,node)| (id,node.as_ref().unwrap())))?;
         // The full apply already counted this exact, still-unchanged source.
         // Capacity is pinned for the process; keep node validation before this
@@ -611,8 +782,12 @@ impl Engine {
         // All fallible checks have completed. Release the Weak receipt before
         // mutating so a sole owner need not detach only because of this cache.
         self.retained_source_size = None;
-        for (id, transform) in transforms {
-            self.source_doc.as_mut().unwrap().nodes.get_mut(id).unwrap().transform = *transform;
+        // A complete native source may have been loaded without an editing
+        // size receipt. Its first admitted pose now establishes one.
+        let source = self.source_doc.as_mut().unwrap();
+        source.nodes.share();
+        for (id, transform) in &transforms {
+            source.nodes.get_mut(id).unwrap().transform = *transform;
             self.doc.as_mut().unwrap().nodes.get_mut(id).unwrap().transform = *transform;
             if let Some(node) = self.text_base.as_mut().and_then(|doc| doc.nodes.get_mut(id)) { node.transform = *transform; }
         }
@@ -653,10 +828,10 @@ impl Engine {
         }
         Ok(true)
     }
-    fn apply_clipped_root_translation(&mut self, patch: &crate::editing::DocumentPatch)
+    fn apply_clipped_root_translation(&mut self, patch: &crate::editing::DocumentPatch, translation: bool)
         -> Result<Option<crate::dirty_region::PatchDamage>, String> {
-        if self.source_doc_bytes.is_none() || !self.can_retain_translation(patch) { return Ok(None); }
-        if !patch.nodes.keys().all(|id| self.source_doc.as_ref().unwrap().pages.iter().any(|page| page.children.contains(id))) { return Ok(None); }
+        if self.source_doc_bytes.is_none() || !translation { return Ok(None); }
+        if !patch.nodes.keys().all(|id| self.render_index.as_ref().unwrap().page_roots.contains(id)) { return Ok(None); }
         let source = self.source_doc.as_ref().unwrap();
         if !patch.nodes.keys().all(|id| {
             let authored=&source.nodes[id];let resolved=&self.doc.as_ref().unwrap().nodes[id];
@@ -713,14 +888,14 @@ impl Engine {
         self.install_document_policy(DocumentInstall::Load { document: doc.into(), measure_size: true })
     }
     fn install_document_policy(&mut self, input: DocumentInstall) -> Result<(), String> {
-        let (mut doc, retain_index, measure_size, checked_bytes) = match input {
+        let (mut doc, retain_index, measure_size, checked_bytes, local_nodes, stable_images) = match input {
             DocumentInstall::Load { document, measure_size } => {
                 document.validate()?;
-                (document, false, measure_size, None)
+                (document, false, measure_size, None, None, false)
             }
             DocumentInstall::Patch { applied, retain_index } => {
-                let (document, bytes) = applied.into_parts();
-                (document, retain_index, false, Some(bytes))
+                let (document, bytes, local_nodes, stable_images) = applied.into_install_parts();
+                (document, retain_index, false, Some(bytes), local_nodes, stable_images)
             }
         };
         // Preserve exact authored strings while sharing identical immutable
@@ -728,12 +903,12 @@ impl Engine {
         // then recognize a retained image without copying/hash-scanning it at
         // every camera. This changes no serialized value or resource grant.
         let mut image_owners=std::collections::HashMap::<std::sync::Arc<str>,std::sync::Arc<str>>::new();
-        for n in doc.nodes.values_mut(){n.compact_storage();for paint in n.fills.iter_mut().chain(n.strokes.iter_mut().map(|s|&mut s.paint)){
+        if local_nodes.is_none() { for n in doc.nodes.values_mut(){n.compact_storage();for paint in n.fills.iter_mut().chain(n.strokes.iter_mut().map(|s|&mut s.paint)){
             if let Some(uri)=&mut paint.image {
                 *uri=image_owners.entry(uri.clone()).or_insert_with(||uri.clone()).clone();
             }
-        }}
-        let fonts = self.fonts.with_resources(&doc.fonts)?;
+        }} }
+        let fonts = if local_nodes.is_some() { self.fonts.clone() } else { self.fonts.with_resources(&doc.fonts)? };
         let previous = self.doc.as_ref().filter(|old| !self.layout_dirty && self.animation_sample.is_none()
             && old.id==doc.id && old.pages==doc.pages && old.fonts==doc.fonts
             && old.color_management==doc.color_management && old.raster_profile==doc.raster_profile
@@ -742,21 +917,25 @@ impl Engine {
         self.pending_layout = resolved_source.then(|| previous.clone()).flatten();
         self.pending_camera = previous.zip(self.camera_prepare.take()).map(|(doc,cache)|(doc,cache,resolved_source));
         self.images.set_color_settings(doc.color_management);
-        self.images.retain_document(&doc);
+        if !stable_images { self.images.retain_document(&doc); }
         if self.doc.as_ref().is_some_and(|old| old.fonts != doc.fonts) {
             self.paths.clear();
         }
-        self.paths.retain(|id, _| {
+        let same_path = |id: &String| {
             self.doc
                 .as_ref()
                 .and_then(|old| old.nodes.get(id))
                 .zip(doc.nodes.get(id))
                 .is_some_and(|(old, new)| old.same_geometry(new))
-        });
+        };
+        if let Some(ids) = &local_nodes {
+            for id in ids { if !same_path(id) { self.paths.remove(id); } }
+        } else { self.paths.retain(|id, _| same_path(id)); }
         self.text_base = None;
         // Loading historically admits by input size; oversized normalized
         // documents keep that behaviour, but cannot take the local fast path.
         self.source_doc_bytes = if measure_size { crate::editing::serialized_document_size(&doc).ok() } else { checked_bytes };
+        if self.source_doc_bytes.is_some() { doc.nodes.share(); }
         self.retained_source_size = None;
         if !retain_index||self.render_index.is_none(){
             self.render_index = Some(Arc::new(crate::render_index::RenderIndex::new(&doc)));
@@ -1034,6 +1213,195 @@ impl Engine {
         Ok(())
     }
     pub fn render(&mut self, options: &RenderOptions) -> Result<Vec<u8>, String> {
+        if self.should_budget_display(options) {
+            return self.finish_degraded_display(options);
+        }
+        match self.render_exact(options) {
+            Ok(bytes) => Ok(bytes),
+            Err(error) if display_pressure(&error) && !self.display_degrade => {
+                self.finish_degraded_display(options).map_err(|_| error)
+            }
+            Err(error) => Err(error),
+        }
+    }
+    fn finish_degraded_display(&mut self, options: &RenderOptions) -> Result<Vec<u8>, String> {
+        self.display_degrade = true;
+        let degraded = self.render_degraded_display(options);
+        self.display_degrade = false;
+        self.clear_degrade_prep();
+        degraded
+    }
+    fn clear_degrade_prep(&mut self) {
+        self.degrade_frame = None;
+        self.degrade_prepared = None;
+    }
+    /// Analytic display whose viewport-plus-halo working set cannot hold the
+    /// live surfaces. Figma profiles already tile inside `render_once`; color
+    /// managed and pixel-preview frames keep that exact entry.
+    fn should_budget_display(&self, options: &RenderOptions) -> bool {
+        if self.display_degrade || options.pixel_preview.is_some() {
+            return false;
+        }
+        if matches!(
+            options.raster_profile,
+            crate::fidelity::RasterProfile::Figma
+                | crate::fidelity::RasterProfile::FigmaSubpixel
+                | crate::fidelity::RasterProfile::FigmaSoftware
+        ) {
+            return false;
+        }
+        if self.doc.as_ref().is_some_and(|d| d.color_management.is_some()) {
+            return false;
+        }
+        if options.width == 0
+            || options.height == 0
+            || options.width > 8192
+            || options.height > 8192
+            || u64::from(options.width) * u64::from(options.height) > 8_388_608
+            || !(0.001..=MAX_CANVAS_SAMPLE_SCALE).contains(&options.view.zoom)
+        {
+            return false;
+        }
+        self.exact_display_exceeds_budget(options)
+    }
+    fn exact_display_exceeds_budget(&self, options: &RenderOptions) -> bool {
+        let Some(doc) = self.doc.as_ref() else {
+            return false;
+        };
+        let Some(page) = doc.pages.iter().find(|p| p.id == options.page_id) else {
+            return false;
+        };
+        let mut max_halo = 0.0f64;
+        let mut seen = HashSet::new();
+        fn walk(doc: &Document, id: &str, scale: f64, max_halo: &mut f64, seen: &mut HashSet<String>) -> bool {
+            if !seen.insert(id.to_owned()) {
+                return false;
+            }
+            let Some(n) = doc.nodes.get(id) else {
+                return false;
+            };
+            if !n.visible {
+                return false;
+            }
+            let local = n.transform.max_scale();
+            if !local.is_finite() || local > 1e6 || !scale.is_finite() {
+                return true;
+            }
+            let next = scale * local.max(1e-6);
+            let halo = n.effect_outset(next);
+            if !halo.is_finite() {
+                return true;
+            }
+            *max_halo = max_halo.max(halo);
+            let children = n.children.clone();
+            children.into_iter().any(|child| walk(doc, &child, next, max_halo, seen))
+        }
+        let unbounded = page
+            .children
+            .iter()
+            .any(|id| walk(doc, id, options.view.zoom, &mut max_halo, &mut seen));
+        if unbounded || max_halo <= 0. {
+            return unbounded;
+        }
+        let viewport = Rect::new(0, 0, options.width, options.height);
+        let halo = max_halo.ceil().min(2048.) as i32;
+        let extent = viewport.expand(halo.max(0));
+        let pixels = u64::from(extent.w).saturating_mul(u64::from(extent.h));
+        // Target, layer, and two filter buffers. This is a lower bound on a
+        // single effect stack, not a sum across sibling layers.
+        pixels.saturating_mul(4).saturating_mul(std::mem::size_of::<Pixel>() as u64)
+            > COMPOSITING_BYTES as u64
+            || pixels > 16_000_000
+    }
+    fn page_background_rgba8(&self, options: &RenderOptions) -> Result<[u8; 4], String> {
+        if options.transparent {
+            return Ok([0, 0, 0, 0]);
+        }
+        let doc = self.doc.as_ref().ok_or("Load a document before rendering")?;
+        let page = doc
+            .pages
+            .iter()
+            .find(|p| p.id == options.page_id)
+            .ok_or("Page not found")?;
+        let pixel = crate::color::pixel(doc.color_management, &page.background, 1.)?;
+        Ok(pixel
+            .0
+            .map(|c| (c.clamp(0., 1.) * 255.).round_ties_even() as u8))
+    }
+    fn degrade_prepare_guard(&self, options: &RenderOptions) -> Option<Rect> {
+        let frame = self.degrade_frame.as_ref()?;
+        if frame.page_id != options.page_id
+            || frame.x_bits != options.view.x.to_bits()
+            || frame.y_bits != options.view.y.to_bits()
+            || frame.zoom_bits != options.view.zoom.to_bits()
+        {
+            return None;
+        }
+        Some(Rect::new(0, 0, frame.width, frame.height).expand(256))
+    }
+    /// Split a frame that cannot admit its filter halo or working set. Tiles
+    /// share one geometry preparation. A tile that still fails keeps the page
+    /// background, so pressure alone does not return an empty error frame.
+    /// A non-pressure error is returned only when nothing was painted.
+    fn render_degraded_display(&mut self, options: &RenderOptions) -> Result<Vec<u8>, String> {
+        self.clear_degrade_prep();
+        self.prepare_frame(options)?;
+        let background = self.page_background_rgba8(options)?;
+        let mut result = vec![0u8; options.width as usize * options.height as usize * 4];
+        fill_rgba8(&mut result, background);
+        self.degrade_epoch = self.degrade_epoch.wrapping_add(1);
+        self.degrade_frame = Some(DegradeFrame {
+            epoch: self.degrade_epoch,
+            page_id: options.page_id.clone(),
+            x_bits: options.view.x.to_bits(),
+            y_bits: options.view.y.to_bits(),
+            zoom_bits: options.view.zoom.to_bits(),
+            width: options.width,
+            height: options.height,
+        });
+        let side = 128u32;
+        let mut painted = false;
+        let mut pressure_only = true;
+        let mut last_error = String::from("Compositing memory budget exceeded");
+        for y in (0..options.height).step_by(side as usize) {
+            for x in (0..options.width).step_by(side as usize) {
+                let w = (options.width - x).min(side);
+                let h = (options.height - y).min(side);
+                let mut tile = options.clone();
+                tile.width = w;
+                tile.height = h;
+                match self.render_scene_inner_at(
+                    &tile,
+                    false,
+                    Rect::new(x as i32, y as i32, w, h),
+                    0,
+                ) {
+                    Ok(mut planes) => {
+                        let bytes = planes.remove(0);
+                        painted = true;
+                        for row in 0..h as usize {
+                            let dst = ((y as usize + row) * options.width as usize + x as usize) * 4;
+                            let src = row * w as usize * 4;
+                            let n = w as usize * 4;
+                            result[dst..dst + n].copy_from_slice(&bytes[src..src + n]);
+                        }
+                    }
+                    Err(error) => {
+                        if !display_pressure(&error) {
+                            pressure_only = false;
+                        }
+                        last_error = error;
+                    }
+                }
+            }
+        }
+        if painted || pressure_only {
+            Ok(result)
+        } else {
+            Err(last_error)
+        }
+    }
+    pub(crate) fn render_exact(&mut self, options: &RenderOptions) -> Result<Vec<u8>, String> {
         if self
             .doc
             .as_ref()
@@ -1062,7 +1430,7 @@ impl Engine {
         self.resolve_layout()?;
         if options.pixel_preview.is_some() {
             let plan = crate::preview::plan(options)?;
-            let source = self.render(&plan.source)?;
+            let source = self.render_exact(&plan.source)?;
             return Ok(crate::preview::resample(&source, &plan));
         }
         if matches!(
@@ -1163,11 +1531,17 @@ impl Engine {
         extra_halo: i32,
         budget: Budget,
     ) -> Result<Vec<Surface>, String> {
+        self.render_surfaces_budget_plan(options, synchronized, viewport, extra_halo, budget, None)
+    }
+    fn render_surfaces_budget_plan(
+        &mut self, options: &RenderOptions, synchronized: bool, viewport: Rect,
+        extra_halo: i32, budget: Budget, plan: Option<&mut CpuFramePlan>,
+    ) -> Result<Vec<Surface>, String> {
         // The ledger clone shares the budget's usage Arc, so pressure events
         // stay observable even when the render below fails and returns early.
         let ledger_budget = budget.clone();
         let result =
-            self.render_surfaces_with_budget_inner(options, synchronized, viewport, extra_halo, budget);
+            self.render_surfaces_planned(options, synchronized, viewport, extra_halo, budget, true, plan);
         let ledger_usage = ledger_budget.usage();
         self.scene_peak_bytes = self.scene_peak_bytes.max(ledger_usage.peak_bytes);
         self.budget_rejections += ledger_usage.rejections;
@@ -1179,19 +1553,16 @@ impl Engine {
         }
         result
     }
-    fn render_surfaces_with_budget_inner(
-        &mut self,
-        options: &RenderOptions,
-        synchronized: bool,
-        viewport: Rect,
-        extra_halo: i32,
-        budget: Budget,
-    ) -> Result<Vec<Surface>, String> {
-        self.render_surfaces_regions(options, synchronized, viewport, extra_halo, budget, true)
-    }
+    #[cfg(test)]
     fn render_surfaces_regions(
         &mut self, options: &RenderOptions, synchronized: bool, viewport: Rect,
         extra_halo: i32, budget: Budget, regional: bool,
+    ) -> Result<Vec<Surface>, String> {
+        self.render_surfaces_planned(options, synchronized, viewport, extra_halo, budget, regional, None)
+    }
+    fn render_surfaces_planned(
+        &mut self, options: &RenderOptions, synchronized: bool, viewport: Rect,
+        extra_halo: i32, budget: Budget, regional: bool, plan: Option<&mut CpuFramePlan>,
     ) -> Result<Vec<Surface>, String> {
         let coverage_compatible =
             options.raster_profile != crate::fidelity::RasterProfile::Analytic;
@@ -1230,49 +1601,57 @@ impl Engine {
             options.view.x,
             options.view.y,
         ]);
-        let mut prepared = HashMap::new();
         self.stats = Stats::default();
-        fn scene_halo(doc: &Document, id: &str, parent: Transform, next: Option<&String>,
-            coherent: bool, concealed: &mut std::collections::HashSet<String>) -> i32 {
-            let n = &doc.nodes[id];
-            if !n.visible {
-                return 0;
+        let coherent = synchronized && coverage_compatible;
+        let tile_halo;
+        let (halo, zoom_result, mut geometry) = match plan {
+            Some(frame) => {
+                let (analysis, geometry) = frame.analysis(doc, &page.children, camera, coherent, &self.fonts)?;
+                (&analysis.halo, analysis.zoom_guard(doc, &page.children, viewport.expand(extra_halo), camera, &self.fonts), Some(geometry))
             }
-            if coherent && crate::optics::next_glass_consumer(doc,n,next).is_some_and(|upper|crate::optics::same_glass_coverage(n,upper)) {
-                concealed.insert(id.to_owned());
+            None => {
+                tile_halo = PageHalo::build(doc, &page.children, camera, coherent)?;
+                (&tile_halo, crate::zoom_support::scene_guard(doc, &page.children, camera, viewport.expand(extra_halo), &self.fonts), None)
             }
-            let m = parent.concat(n.transform);
-            effect_halo(n, m).saturating_add(
-                n.children
-                    .iter()
-                    .enumerate().map(|(i,id)| scene_halo(doc, id, m, n.children.get(i+1), coherent, concealed))
-                    .max()
-                    .unwrap_or(0),
-            )
-        }
-        let mut concealed_glass=std::collections::HashSet::new();
-        let guard = viewport.expand(
-            extra_halo
-                + page
-                    .children
-                    .iter()
-                    .enumerate().map(|(i,id)| scene_halo(doc, id, camera, page.children.get(i+1), synchronized && coverage_compatible, &mut concealed_glass))
-                    .max()
-                    .unwrap_or(0)
-                    .min(2048),
-        );
-        let zoom_guard=crate::zoom_support::scene_guard(doc,&page.children,camera,viewport.expand(extra_halo),&self.fonts)?;
+        };
+        let guard = viewport.expand(extra_halo + halo.pixels);
+        let zoom_guard = match zoom_result {
+            Ok(guard) => guard,
+            Err(error) if self.display_degrade && display_pressure(&error) => None,
+            Err(error) => return Err(error),
+        };
         let guard=zoom_guard.map_or(guard,|z|guard.union(z));
+        let prepare_guard = self.degrade_prepare_guard(options).unwrap_or(guard);
+        let mut prepared = HashMap::new();
+        if self.display_degrade {
+            if let Some(cache) = self.degrade_prepared.take() {
+                if self.degrade_frame.as_ref().is_some_and(|frame| frame.epoch == cache.epoch)
+                    && cache.guard == prepare_guard
+                {
+                    prepared = cache.map;
+                }
+            }
+        }
+        let epoch = self.degrade_frame.as_ref().map(|frame| frame.epoch);
         for root in &page.children {
-            prepare_node_geometry(
-                root,
-                camera,
-                (doc, &self.fonts, guard, coverage_compatible),
-                &mut self.paths,
-                &mut self.local_strokes,
-                &mut prepared,
-                &mut self.stats.path_segments,
-            )?;
+            let context = (doc as &Document, &self.fonts, prepare_guard, coverage_compatible);
+            if let Some(cache) = geometry.as_deref_mut() {
+                crate::geometry_snapshot::prepare_cpu_frame_geometry(root, camera, context, &mut self.paths,
+                    &mut self.local_strokes, &mut prepared, &mut self.stats.path_segments, cache)?;
+            } else {
+                prepare_node_geometry(root, camera, context, &mut self.paths, &mut self.local_strokes,
+                    &mut prepared, &mut self.stats.path_segments)?;
+            }
+        }
+        if let Some(cache) = geometry.as_deref_mut() { cache.retire_if_finished(); }
+        if self.display_degrade {
+            if let Some(epoch) = epoch {
+                self.degrade_prepared = Some(DegradePrepared {
+                    epoch,
+                    guard: prepare_guard,
+                    map: prepared.clone(),
+                });
+            }
         }
         // Expand before clipping so offscreen content can contribute to filters.
         let max_halo = prepared
@@ -1281,20 +1660,48 @@ impl Engine {
             .map(|p| p.halo)
             .max()
             .unwrap_or(0);
-        if zoom_guard.is_none() && max_halo + extra_halo > 2048 {
-            return Err("Combined filter dependency halo exceeds 2048 device pixels".into());
+        let mut used_halo = max_halo.saturating_add(extra_halo);
+        if used_halo > 2048 {
+            if self.display_degrade {
+                used_halo = fitted_display_halo(viewport, 2048);
+            } else if zoom_guard.is_none() {
+                return Err("Combined filter dependency halo exceeds 2048 device pixels".into());
+            }
+        } else if self.display_degrade {
+            used_halo = fitted_display_halo(viewport, used_halo);
         }
-        let extent=zoom_guard.unwrap_or_else(||viewport.expand(max_halo+extra_halo));
+        let mut extent=zoom_guard.unwrap_or_else(||viewport.expand(used_halo));
         if zoom_guard.is_some() && [viewport.x-extent.x,viewport.y-extent.y,extent.right()-viewport.right(),extent.bottom()-viewport.bottom()].into_iter().max().unwrap_or(0)>2048 {
-            return Err("Combined zoom source dependency halo exceeds 2048 device pixels".into());
+            if self.display_degrade {
+                extent = viewport.expand(fitted_display_halo(viewport, 2048));
+            } else {
+                return Err("Combined zoom source dependency halo exceeds 2048 device pixels".into());
+            }
         }
-        let mut target = Surface::new_in(extent, &budget)?;
+        // The linear caller consumes only viewport pixels. A single normal,
+        // unpainted root isolates its children on transparent planes, so its
+        // constant page background need not occupy four halo-sized allocations
+        // during the entire descendant traversal.
+        let isolated_root = if geometry.is_some() && synchronized && doc.color_management.is_some()
+            && !options.grid && !options.checkerboard && extent.pixels() <= 16_777_216 {
+            match page.children.as_slice() {
+                [id] => doc.nodes.get(id).filter(|n| n.visible && n.opacity == 1. && n.blend == "normal"
+                    && matches!(n.kind.as_str(), "frame" | "group") && !n.clip && !n.mask
+                    && n.boolean_operation.is_none() && !n.render_children().is_empty()
+                    && doc.mask_child(n).is_none() && n.fills.iter().all(|p| !p.visible)
+                    && n.strokes.iter().all(|s| !s.visible || s.width <= 0.)
+                    && n.effects.iter().all(|e| !e.visible) && !prepared[id].bounds.intersect(extent).empty()),
+                _ => None,
+            }
+        } else { None };
+        let target_rect = isolated_root.map_or(extent, |root| prepared[&root.id].bounds.intersect(extent));
+        let mut target = Surface::new_in(target_rect, &budget)?;
         let background = if options.transparent {
             Pixel::default()
         } else {
             crate::color::pixel(doc.color_management, &page.background, 1.)?
         };
-        target.pixels.fill(background);
+        if isolated_root.is_none() { target.pixels.fill(background); }
         // Figma renders canvas chrome in the engine (its checkerboardStyle
         // shader family); this is the kernel tier of that contract —
         // screen-anchored 16px cells in the CSS tier's colors, painted under
@@ -1344,7 +1751,7 @@ impl Engine {
             }
         }
         let mut painter = Painter {
-            concealed_glass,
+            concealed_glass: &halo.concealed,
             doc,
             prepared: &prepared,
             images: &mut self.images,
@@ -1356,18 +1763,45 @@ impl Engine {
             coverage_compatible,
             profile: options.raster_profile,
             interactive_effects: options.interactive_effects,
+            display_degrade: self.display_degrade,
             sample: None,
             raster_workspace: RasterWorkspace::default(),
         };
         let rendered = if synchronized {
             let mut targets = vec![target];
             for _ in 1..4 {
-                let mut next = painter.allocate(extent)?;
+                let mut next = painter.allocate(target_rect)?;
                 next.pixels.clone_from_slice(&targets[0].pixels);
                 targets.push(next);
             }
             let mut targets: [Surface; 4] =
                 targets.try_into().map_err(|_| "Invalid target samples")?;
+            if let Some(root) = isolated_root {
+                painter.stats.nodes += 1;
+                // Keep the same coverage/segment checks and child read domain
+                // as node_bundle_with_outline. The root owns no paint or clip.
+                let _fill = painter.rasterize_bundle(&prepared[&root.id].fill, target_rect, root.fill_even_odd())?;
+                painter.paint_siblings(root.render_children(), &mut targets, None, false, None)?;
+                drop(_fill);
+                let mut output = Vec::with_capacity(4);
+                for mut plane in targets {
+                    if target_rect.intersect(viewport) == viewport {
+                        for y in viewport.y..viewport.bottom() {
+                            let at = plane.rect.index(viewport.x, y).expect("covered viewport");
+                            for p in &mut plane.pixels[at..at+viewport.w as usize] {
+                                *p = crate::blend::over_mode(background, p.opacity(1.), crate::blend::BlendMode::Normal);
+                            }
+                        }
+                        output.push(plane);
+                    } else {
+                        let mut result = painter.allocate(viewport)?;
+                        result.pixels.fill(background);
+                        result.composite(&plane, "normal", 1., |_,_| 1.);
+                        output.push(result);
+                    }
+                }
+                return Ok(output);
+            }
             painter.paint_siblings(&page.children, &mut targets, None, false, None)?;
             Ok(targets.into_iter().collect())
         } else {
@@ -1536,11 +1970,16 @@ impl Engine {
         let mut pixels = vec![Pixel::default(); options.width as usize * options.height as usize];
         let mut stats = Stats::default();
         let tile_side = 512 / density;
+        let mut plan = (!self.display_degrade && (options.width > tile_side || options.height > tile_side))
+            .then(CpuFramePlan::new);
         for y in (0..options.height).step_by(tile_side as usize) {
             for x in (0..options.width).step_by(tile_side as usize) {
                 let w = (options.width - x).min(tile_side);
                 let h = (options.height - y).min(tile_side);
-                let rect = self.linear_rect_pixels(options, x, y, w, h)?;
+                if x+w==options.width && y+h==options.height && let Some(frame) = &mut plan {
+                    frame.last_tile();
+                }
+                let rect = self.linear_rect_pixels_planned(options, x, y, w, h, plan.as_mut())?;
                 stats.accumulate(&self.stats);
                 for (row, chunk) in rect.chunks(w as usize).enumerate() {
                     let start = (y as usize + row) * options.width as usize + x as usize;
@@ -1566,12 +2005,20 @@ impl Engine {
         w: u32,
         h: u32,
     ) -> Result<Vec<Pixel>, String> {
+        self.linear_rect_pixels_planned(options, x, y, w, h, None)
+    }
+    fn linear_rect_pixels_planned(
+        &mut self, options: &RenderOptions, x: u32, y: u32, w: u32, h: u32,
+        mut plan: Option<&mut CpuFramePlan>,
+    ) -> Result<Vec<Pixel>, String> {
         let density = if options.raster_profile.is_export() { 2 } else { 1 };
-        let extra = crate::export::backdrop_padding(
-            self,
-            options,
-            Rect::new(x as i32, y as i32, w, h),
-        )?;
+        let tile = Rect::new(x as i32, y as i32, w, h);
+        // The original first padding query precedes layout resolution. Never
+        // use that provisional document to populate the frame's backdrop list.
+        let extra = match plan.as_deref_mut() {
+            Some(frame) if !self.layout_dirty => frame.padding(self, options, tile, density)?,
+            _ => crate::export::backdrop_padding(self, options, tile)?,
+        };
         let source = if density == 2 {
             crate::fidelity::source(options, 0, 0, w, h)?
         } else {
@@ -1590,7 +2037,8 @@ impl Engine {
                 self.doc.as_ref().unwrap_or_else(|| panic!("document loaded")),
                 options,
             );
-        let surfaces = self.render_surfaces_at(&source, coherent, viewport, extra * density as i32)?;
+        let surfaces = self.render_surfaces_budget_plan(&source, coherent, viewport, extra * density as i32,
+            Budget::new(COMPOSITING_BYTES), plan)?;
         let mut pixels = Vec::with_capacity((w * h) as usize);
         for ty in y..y + h {
             for tx in x..x + w {
@@ -1628,6 +2076,28 @@ impl Engine {
     /// a full [`Self::render`] because full renders are themselves stitched
     /// from these tiles.
     pub fn render_device_rect(
+        &mut self,
+        options: &RenderOptions,
+        x: u32,
+        y: u32,
+        w: u32,
+        h: u32,
+    ) -> Result<Vec<u8>, String> {
+        match self.render_device_rect_once(options, x, y, w, h) {
+            Ok(bytes) => Ok(bytes),
+            // Only an explicitly interactive byte preview may drop an oversized
+            // effect. The tiled exact cache calls the strict implementation below.
+            Err(error) if options.interactive_effects && display_pressure(&error) && !self.display_degrade => {
+                self.display_degrade = true;
+                let degraded = self.render_device_rect_once(options, x, y, w, h);
+                self.display_degrade = false;
+                self.clear_degrade_prep();
+                degraded.map_err(|_| error)
+            }
+            Err(error) => Err(error),
+        }
+    }
+    fn render_device_rect_once(
         &mut self,
         options: &RenderOptions,
         x: u32,
@@ -1973,6 +2443,10 @@ impl Engine {
             scene_peak_bytes: 0,
             budget_rejections: 0,
             last_rejection: None,
+            display_degrade: false,
+            degrade_epoch: 0,
+            degrade_frame: None,
+            degrade_prepared: None,
             // Workers share the owner's ledger handle so GPU accounting is
             // not split across engine clones (clone = same Arc state).
             gpu_memory: self.gpu_memory.clone(),
@@ -2106,7 +2580,7 @@ impl crate::tiled_renderer::TileRasterizer for Engine {
         &mut self,
         request: &crate::tiled_renderer::TileRequest,
     ) -> Result<Vec<u8>, String> {
-        self.render_device_rect(
+        self.render_device_rect_once(
             &request.options,
             0,
             0,
@@ -2138,7 +2612,7 @@ impl std::ops::Deref for AccountedMask {
     }
 }
 struct Painter<'a> {
-    concealed_glass: std::collections::HashSet<String>,
+    concealed_glass: &'a HashSet<String>,
     doc: &'a Document,
     prepared: &'a HashMap<String, Prepared>,
     images: &'a mut Images,
@@ -2150,6 +2624,7 @@ struct Painter<'a> {
     coverage_compatible: bool,
     profile: crate::fidelity::RasterProfile,
     interactive_effects: bool,
+    display_degrade: bool,
     sample: Option<usize>,
     raster_workspace: RasterWorkspace,
 }
@@ -2597,8 +3072,13 @@ impl Painter<'_> {
             }
         }
         if let Some(mask_id) = mask_id {
-            let mut masks = self.allocate_bundle(r)?;
-            self.node_bundle_with_outline(mask_id, &mut masks, None, geometric, None, false)?;
+            // An isolated, still-transparent carrier has no previous pixels
+            // to save. Let the mask occupy its four planes until the children
+            // are ready; each mask texel is consumed before being overwritten.
+            let use_clear_layers = self.doc.color_management.is_some() && !passthrough
+                && n.backdrop_effect().is_none() && n.fills.iter().all(|p| !p.visible);
+            let mut masks = if use_clear_layers { None } else { Some(self.allocate_bundle(r)?) };
+            self.node_bundle_with_outline(mask_id, masks.as_mut().unwrap_or(&mut layers), None, geometric, None, false)?;
             let mut content = self.allocate_bundle(r)?;
             if passthrough {
                 for sample in 0..4 {
@@ -2608,23 +3088,26 @@ impl Painter<'_> {
                 }
             }
             self.paint_siblings(n.render_children(), &mut content, if n.clip { Some(&fill) } else { None }, geometric, Some(mask_id))?;
+            let luminance = self.doc.nodes[mask_id].mask_type.as_deref() == Some("luminance");
             for sample in 0..4 {
-                if passthrough {
-                    layers[sample].interpolate(
-                        &content[sample],
-                        |x, y| {
-                            masks[sample].at(x, y).mask_alpha(
-                                self.doc.nodes[mask_id].mask_type.as_deref() == Some("luminance"),
-                            )
-                        },
-                        self.compatible,
-                    );
+                if let Some(masks) = &masks {
+                    if passthrough {
+                        layers[sample].interpolate(
+                            &content[sample],
+                            |x, y| masks[sample].at(x, y).mask_alpha(luminance),
+                            self.compatible,
+                        );
+                    } else {
+                        layers[sample].composite(&content[sample], "normal", 1., |x, y| {
+                            masks[sample].at(x, y).mask_alpha(luminance)
+                        });
+                    }
                 } else {
-                    layers[sample].composite(&content[sample], "normal", 1., |x, y| {
-                        masks[sample].at(x, y).mask_alpha(
-                            self.doc.nodes[mask_id].mask_type.as_deref() == Some("luminance"),
-                        )
-                    });
+                    debug_assert_eq!(layers[sample].rect, content[sample].rect);
+                    for (mask, src) in layers[sample].pixels.iter_mut().zip(&content[sample].pixels) {
+                        let opacity = mask.mask_alpha(luminance);
+                        *mask = crate::blend::over_mode(Pixel::default(), src.opacity(opacity), crate::blend::BlendMode::Normal);
+                    }
                 }
                 if self.compatible {
                     layers[sample].quantize_rgba8();
@@ -2996,7 +3479,15 @@ impl Painter<'_> {
                     && fx.spread == 0.
                     && offset.x.fract() == 0.
                     && offset.y.fract() == 0.;
-                let color = crate::color::pixel(self.doc.color_management, &fx.color, 1.)?.rgb();
+                // Color alpha and the effect's own opacity multiply. The byte
+                // shadow path used to keep only the effect opacity and drop the
+                // color's alpha; the linear path already multiplied both.
+                let painted = crate::color::pixel(
+                    self.doc.color_management,
+                    &fx.color,
+                    fx.opacity as f32,
+                )?;
+                let (color, shadow_opacity) = (painted.rgb(), painted.0[3]);
                 let mut outputs: Vec<Arc<Surface>> = Vec::with_capacity(4);
                 for (i, source) in planes.iter().enumerate() {
                     if let Some(previous) = planes[..i].iter().position(|p| Arc::ptr_eq(p, source))
@@ -3008,11 +3499,7 @@ impl Painter<'_> {
                         effects::color_shadow_linear(
                             source,
                             if pointwise { source } else { &alpha },
-                            crate::color::pixel(
-                                self.doc.color_management,
-                                &fx.color,
-                                fx.opacity as f32,
-                            )?,
+                            painted,
                             offset.x,
                             offset.y,
                             inner,
@@ -3022,7 +3509,7 @@ impl Painter<'_> {
                             source,
                             if pointwise { source } else { &alpha },
                             color,
-                            fx.opacity as f32,
+                            shadow_opacity,
                             offset.x,
                             offset.y,
                             inner,
@@ -3264,7 +3751,9 @@ impl Painter<'_> {
             r,
             n.fill_even_odd() && n.kind != "text",
         )?;
-        if let Some(fx) = n.backdrop_effect().filter(|_| apply_effects) {
+        if let Some(fx) = n.backdrop_effect().filter(|fx| {
+            apply_effects && !(self.display_degrade && effect_exceeds_display_budget(fx, scale, r))
+        }) {
             let mut blurred = if bounded {
                 let samples = if let Some((shape, glass)) = crate::optics::GlassShape::from_node(n).zip(fx.glass.as_ref()) {
                     crate::optics::input_region(basis, r, shape, m, glass, None)?
@@ -3379,6 +3868,9 @@ impl Painter<'_> {
             })?;
         }
         for fx in n.effects.iter().filter(|e| apply_effects && e.visible) {
+            if self.display_degrade && effect_exceeds_display_budget(fx, scale, r) {
+                continue;
+            }
             match fx.kind.as_str() {
                 "zoom-blur" => { layer=crate::zoom_blur::apply(&layer,fx.zoom_blur.ok_or("Missing zoom parameters")?,m,[n.width,n.height])?; }
                 "gaussian-blur" => { layer=effects::gaussian_surface(&layer,fx.radius*scale,self.compatible)?; }
@@ -3396,11 +3888,16 @@ impl Painter<'_> {
                             fx.spread * scale,
                             inner,
                         )?;
+                        let painted = crate::color::pixel(
+                            self.doc.color_management,
+                            &fx.color,
+                            fx.opacity as f32,
+                        )?;
                         effects::color_shadow_rgba8(
                             &layer,
                             &alpha,
-                            crate::color::pixel(self.doc.color_management, &fx.color, 1.)?.rgb(),
-                            fx.opacity as f32,
+                            painted.rgb(),
+                            painted.0[3],
                             offset.x,
                             offset.y,
                             inner,
@@ -3524,6 +4021,10 @@ mod translation_retention_tests;
 #[cfg(test)]
 #[path = "renderer_tests/linear_tile_residency.rs"]
 mod linear_tile_residency_tests;
+
+#[cfg(test)]
+#[path = "renderer_tests/cpu_frame.rs"]
+mod cpu_frame_tests;
 
 #[cfg(test)]
 mod image_payload_owner_tests {

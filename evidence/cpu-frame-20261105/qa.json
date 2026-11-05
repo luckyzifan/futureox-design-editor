@@ -1,0 +1,84 @@
+{
+  "blur": {
+    "floatHash": "84b4a221ec818088aa26c2b139236093c733d2d2f29f2531b23d6e32af8b560d",
+    "channels": 1231316,
+    "seamCounts": [
+      29,
+      28,
+      28,
+      28
+    ],
+    "changedPixels": 2117
+  },
+  "backdrop": {
+    "floatHash": "e59939cedcb99de4bbfbe362d364f77bb12e43b159ac55014209e9dc35339e7e",
+    "channels": 1231316,
+    "seamCounts": [
+      58,
+      58,
+      22,
+      22
+    ],
+    "changedPixels": 1276
+  },
+  "mask": {
+    "floatHash": "b757d6e563b902877f9bb572247a5aff7f3390d862e501946b17fce1ca70b6ec",
+    "channels": 1231316,
+    "seamCounts": [
+      46,
+      46,
+      45,
+      45
+    ],
+    "changedPixels": 1672
+  },
+  "zoom": {
+    "floatHash": "f8417017e7ae078f7a78b233c813c4f4c59763559c9b7be4eb9c753597cb3e6a",
+    "channels": 1231316,
+    "seamCounts": [
+      40,
+      41,
+      39,
+      39
+    ],
+    "changedPixels": 4609
+  },
+  "hdr": {
+    "floatHash": "a36d1b98cd41d9b2df14e924b447e00a6a45825cf8b533254dd812c7d467efbf",
+    "channels": 356820,
+    "seamCounts": [
+      40,
+      40,
+      46,
+      46
+    ],
+    "changedPixels": 1468,
+    "pngHash": "6d8578d0f3f3f1805630cf3df37b76a188418f400858e003bb6cfa3394a57333",
+    "rgba16Hash": "08a32e6c676268155f800e07aea220235497f2cd16190c45ce00f34b7e20ebae",
+    "maxLinear": 3.0
+  },
+  "sparse-512": {
+    "floatHash": "695d8f3b9416dcfb156232673ea2dc1d1fd91aeb1f6723b223dea450869b4f62",
+    "channels": 1048576
+  },
+  "sparse-1024": {
+    "floatHash": "cbb5365b42b1d69acf49c8788560d1c2814ee4b5874547eeff1293d1ee2ef49c",
+    "channels": 4194304
+  },
+  "sparse-2048": {
+    "floatHash": "2c5283a4b4e4a4602006a9bf779a0a70dbb8b9bac10ce9aece3aae6e61da65b5",
+    "channels": 16777216
+  },
+  "117-overview-512": {
+    "floatHash": "056880c6984325717125af4d2ac895d18109e35b530c77d8cc1aae8d747b9358",
+    "channels": 1048576
+  },
+  "117-overview-1024": {
+    "floatHash": "51845a271ad40f590469026a0fa9709912c730a55b0fc4a7ca24ce7e42b7d563",
+    "channels": 4194304
+  },
+  "117-overview-2048": {
+    "floatHash": "d608838cedfa1e1467fc437e575af81827861849d85ef5573d46cd9257446854",
+    "channels": 16777216
+  }
+}

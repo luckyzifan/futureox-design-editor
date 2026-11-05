@@ -36,10 +36,43 @@ pub fn faces_json(bytes: &[u8]) -> Result<String, String> {
                 .find_map(|n| n.to_string())
                 .unwrap_or_default()
         };
-        faces.push(serde_json::json!({"index":index,
-            "family":name(ttf_parser::name_id::FAMILY),
-            "style":name(ttf_parser::name_id::SUBFAMILY),
-            "postscript":name(ttf_parser::name_id::POST_SCRIPT_NAME)}));
+        // Legacy name IDs stay in family/style so existing importers keep their
+        // current identity. Typographic names, OS/2 weight and fvar axes are
+        // additive: a variable file can be matched by wght instead of a static
+        // style sibling. At most 16 axes are reported.
+        let mut axes = Vec::new();
+        for axis in face.variation_axes() {
+            if axes.len() >= 16 {
+                break;
+            }
+            let tag = axis.tag.to_string();
+            if tag.len() != 4
+                || !tag.chars().all(|c| c.is_ascii_alphanumeric())
+                || ![axis.min_value, axis.def_value, axis.max_value]
+                    .iter()
+                    .all(|value| value.is_finite())
+            {
+                continue;
+            }
+            axes.push(serde_json::json!({
+                "tag": tag,
+                "min": axis.min_value,
+                "default": axis.def_value,
+                "max": axis.max_value,
+            }));
+        }
+        faces.push(serde_json::json!({
+            "index": index,
+            "family": name(ttf_parser::name_id::FAMILY),
+            "style": name(ttf_parser::name_id::SUBFAMILY),
+            "postscript": name(ttf_parser::name_id::POST_SCRIPT_NAME),
+            "typographicFamily": name(ttf_parser::name_id::TYPOGRAPHIC_FAMILY),
+            "typographicStyle": name(ttf_parser::name_id::TYPOGRAPHIC_SUBFAMILY),
+            "weight": face.weight().to_number(),
+            "italic": face.is_italic() || face.is_oblique(),
+            "variable": face.is_variable(),
+            "axes": axes,
+        }));
     }
     serde_json::to_string(&faces).map_err(|e| e.to_string())
 }
@@ -103,7 +136,9 @@ pub struct TextVariation {
     pub tag: String,
     pub value: f64,
 }
-fn is_top(s: &str) -> bool { s == "top" }
+fn is_top(s: &str) -> bool {
+    s == "top"
+}
 impl Default for TextStyle {
     fn default() -> Self {
         Self {
@@ -136,14 +171,31 @@ pub struct TextParagraph {
     pub indent: f64,
 }
 impl Default for TextParagraph {
-    fn default() -> Self { Self { align: "start".into(), minimum_line_height: 0., maximum_line_height: 0., spacing: 0., indent: 0. } }
+    fn default() -> Self {
+        Self {
+            align: "start".into(),
+            minimum_line_height: 0.,
+            maximum_line_height: 0.,
+            spacing: 0.,
+            indent: 0.,
+        }
+    }
 }
 impl TextParagraph {
     pub fn validate(&self) -> Result<(), String> {
         if !["start", "center", "end", "justify"].contains(&self.align.as_str())
-            || [self.minimum_line_height, self.maximum_line_height, self.spacing].iter().any(|v| !v.is_finite() || !(0. ..=10000.).contains(v))
-            || !self.indent.is_finite() || self.indent.abs() > 10000.
-            || (self.maximum_line_height > 0. && self.minimum_line_height > self.maximum_line_height) {
+            || [
+                self.minimum_line_height,
+                self.maximum_line_height,
+                self.spacing,
+            ]
+            .iter()
+            .any(|v| !v.is_finite() || !(0. ..=10000.).contains(v))
+            || !self.indent.is_finite()
+            || self.indent.abs() > 10000.
+            || (self.maximum_line_height > 0.
+                && self.minimum_line_height > self.maximum_line_height)
+        {
             return Err("Invalid paragraph style".into());
         }
         Ok(())
@@ -175,6 +227,16 @@ pub struct TextRun {
     pub font_size: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub weight: Option<f32>,
+    /// Extra advance after this run's clusters, in design pixels. `None`
+    /// keeps the node style's letter spacing. Figma PERCENT is resolved to
+    /// pixels at import using the run's font size.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub letter_spacing: Option<f64>,
+    /// Line-box multiplier for this run's font size. `None` keeps the node
+    /// style's multiplier. A line that contains any override uses the maximum
+    /// resolved pixel height instead of the node font-size floor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line_height: Option<f64>,
 }
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct FontResource {
@@ -440,7 +502,9 @@ pub fn validate_node(node: &Node) -> Result<(), String> {
     }
     let mut end = 0;
     for run in &node.text_runs {
-        if let Some(p) = &run.paragraph { p.validate()?; }
+        if let Some(p) = &run.paragraph {
+            p.validate()?;
+        }
         if run.start < end
             || run
                 .color
@@ -462,6 +526,12 @@ pub fn validate_node(node: &Node) -> Result<(), String> {
             || run
                 .weight
                 .is_some_and(|v| !v.is_finite() || !(1. ..=1000.).contains(&v))
+            || run
+                .letter_spacing
+                .is_some_and(|v| !v.is_finite() || v.abs() > 1000.)
+            || run
+                .line_height
+                .is_some_and(|v| !v.is_finite() || !(0.1..=10.).contains(&v))
         {
             return Err("Invalid text style range or grapheme boundary".into());
         }
@@ -515,12 +585,15 @@ pub fn expand_rich_text(doc: &mut crate::scene::Document, fonts: &Fonts) -> Resu
             n.text.clear();
             n.text_runs.clear();
             n.derived_path = Some(Arc::new(span.outline));
-            n.network = Some((crate::scene::Network {
-                vertices: vec![],
-                edges: vec![],
-                filled_faces: None,
-                fill_rule: "nonzero".into(),
-            }).into());
+            n.network = Some(
+                (crate::scene::Network {
+                    vertices: vec![],
+                    edges: vec![],
+                    filled_faces: None,
+                    fill_rule: "nonzero".into(),
+                })
+                .into(),
+            );
             if let Some(color) = span.color {
                 n.fills = vec![crate::scene::Paint {
                     id: String::new(),
@@ -557,6 +630,23 @@ pub fn expand_rich_text(doc: &mut crate::scene::Document, fonts: &Fonts) -> Resu
         n.children = children;
     }
     Ok(())
+}
+fn run_covering(runs: &[TextRun], cluster: usize) -> Option<&TextRun> {
+    runs.get(
+        runs.partition_point(|run| run.start <= cluster)
+            .saturating_sub(1),
+    )
+    .filter(|run| run.start <= cluster && cluster < run.end)
+}
+fn cluster_tracking(runs: &[TextRun], cluster: usize, style: &TextStyle) -> f64 {
+    run_covering(runs, cluster)
+        .and_then(|run| run.letter_spacing)
+        .unwrap_or(style.letter_spacing)
+}
+fn cluster_line_multiplier(runs: &[TextRun], cluster: usize, style: &TextStyle) -> f64 {
+    run_covering(runs, cluster)
+        .and_then(|run| run.line_height)
+        .unwrap_or(style.line_height)
 }
 impl Fonts {
     pub fn new() -> Self {
@@ -949,17 +1039,31 @@ impl Fonts {
             node.text_path.as_deref(),
         )?;
         if style.writing_mode == "horizontal" && node.text_path.is_none() {
-            let offset = (node.height - result.height).max(0.) * match style.vertical_align.as_str() { "center" => 0.5, "bottom" => 1., _ => 0. };
+            let offset = (node.height - result.height).max(0.)
+                * match style.vertical_align.as_str() {
+                    "center" => 0.5,
+                    "bottom" => 1.,
+                    _ => 0.,
+                };
             if offset != 0. {
-                let matrix = crate::math::Transform([1.,0.,0.,1.,0.,offset]);
+                let matrix = crate::math::Transform([1., 0., 0., 1., 0., offset]);
                 crate::text_path::transform_outline(&mut result.path, matrix);
                 for span in &mut result.spans {
                     crate::text_path::transform_outline(&mut span.outline, matrix);
-                    if output == OutlineOutput::Svg { span.path = span.outline.svg_data(); }
+                    if output == OutlineOutput::Svg {
+                        span.path = span.outline.svg_data();
+                    }
                 }
-                for glyph in &mut result.glyphs { glyph.y += offset; }
-                for line in &mut result.lines { line.y += offset; }
-                if output == OutlineOutput::Svg { result.bounds = crate::bounds::path_bounds(&result.path, crate::math::Transform::default()); }
+                for glyph in &mut result.glyphs {
+                    glyph.y += offset;
+                }
+                for line in &mut result.lines {
+                    line.y += offset;
+                }
+                if output == OutlineOutput::Svg {
+                    result.bounds =
+                        crate::bounds::path_bounds(&result.path, crate::math::Transform::default());
+                }
             }
         }
         Ok(result)
@@ -1282,19 +1386,20 @@ impl Fonts {
                         .infos
                         .get(index + 1)
                         .is_none_or(|next| next.cluster != glyph.cluster);
+                    let cluster = utf16[base + start + glyph.cluster as usize];
                     glyphs.push(Glyph {
                         path_transform: None,
                         id: glyph.glyph_id as u16,
                         font_id: id.clone(),
                         size,
                         weight,
-                        cluster: utf16[base + start + glyph.cluster as usize],
+                        cluster,
                         cluster_end: 0,
                         x: p.x_offset as f64 * scale,
                         y: -p.y_offset as f64 * scale,
                         advance: (p.x_advance as f64 * scale).abs()
                             + if last_in_cluster {
-                                style.letter_spacing
+                                cluster_tracking(runs, cluster, style)
                             } else {
                                 0.
                             },
@@ -1396,7 +1501,10 @@ impl Fonts {
         }
         paragraphs.push(start..text.len());
         for paragraph in paragraphs {
-            let attributes = runs.iter().find(|r| r.start <= utf16[paragraph.start] && utf16[paragraph.start] < r.end).and_then(|r| r.paragraph.as_ref());
+            let attributes = runs
+                .iter()
+                .find(|r| r.start <= utf16[paragraph.start] && utf16[paragraph.start] < r.end)
+                .and_then(|r| r.paragraph.as_ref());
             let mut paragraph_style;
             let style = if let Some(p) = attributes {
                 p.validate()?;
@@ -1405,7 +1513,9 @@ impl Fonts {
                 paragraph_style.paragraph_spacing = p.spacing;
                 paragraph_style.paragraph_indent = p.indent;
                 &paragraph_style
-            } else { style };
+            } else {
+                style
+            };
             let value = &text[paragraph.clone()];
             let initial = self.shape(value, paragraph.start, size, style, runs, &utf16)?;
             let mut clusters = BTreeMap::<usize, f64>::new();
@@ -1584,36 +1694,57 @@ impl Fonts {
                     let face = face.borrow_face();
                     face.ascender() as f64 * size / face.units_per_em() as f64
                 };
-                let mut height = size * style.line_height;
+                let explicit_line_height = shaped.iter().any(|glyph| {
+                    run_covering(runs, glyph.cluster).is_some_and(|run| run.line_height.is_some())
+                });
+                // Without a run override the node font size remains the line-box
+                // floor, including when every glyph is smaller than that size.
+                let mut height = if explicit_line_height {
+                    0.
+                } else {
+                    size * style.line_height
+                };
                 let mut natural = 0f64;
                 for glyph in &shaped {
                     let face = self.face(&glyph.font_id, glyph.weight)?;
                     let face = face.borrow_face();
                     ascent = ascent
                         .max(face.ascender() as f64 * glyph.size / face.units_per_em() as f64);
-                    height = height.max(glyph.size * style.line_height);
-                    natural = natural.max((face.ascender() as f64 - face.descender() as f64 + face.line_gap() as f64) * glyph.size / face.units_per_em() as f64);
+                    let multiplier = if explicit_line_height {
+                        cluster_line_multiplier(runs, glyph.cluster, style)
+                    } else {
+                        style.line_height
+                    };
+                    height = height.max(glyph.size * multiplier);
+                    natural = natural.max(
+                        (face.ascender() as f64 - face.descender() as f64 + face.line_gap() as f64)
+                            * glyph.size
+                            / face.units_per_em() as f64,
+                    );
                 }
                 if let Some(p) = attributes {
                     if shaped.is_empty() {
                         let face = self.face(&style.font_id, style.weight)?;
                         let face = face.borrow_face();
-                        natural = (face.ascender() as f64 - face.descender() as f64 + face.line_gap() as f64) * size / face.units_per_em() as f64;
+                        natural = (face.ascender() as f64 - face.descender() as f64
+                            + face.line_gap() as f64)
+                            * size
+                            / face.units_per_em() as f64;
                         ascent = face.ascender() as f64 * size / face.units_per_em() as f64;
                     }
                     height = natural.max(p.minimum_line_height);
-                    if p.maximum_line_height > 0. { height = height.min(p.maximum_line_height); }
+                    if p.maximum_line_height > 0. {
+                        height = height.min(p.maximum_line_height);
+                    }
                     // Center the font metrics in the constrained line box.
                     // Keep unrounded document-space values; raster sampling stays unchanged.
                     ascent += (height - natural) / 2.;
                 }
-                let line_width = (shaped.iter().map(|g| g.advance).sum::<f64>()
-                    - if shaped.is_empty() {
-                        0.
-                    } else {
-                        style.letter_spacing
-                    })
-                .max(0.);
+                let trailing = shaped
+                    .last()
+                    .map(|glyph| cluster_tracking(runs, glyph.cluster, style))
+                    .unwrap_or(0.);
+                let line_width = (shaped.iter().map(|g| g.advance).sum::<f64>() - trailing).max(0.);
                 let available = width.unwrap_or(line_width);
                 let rtl = style.direction == "rtl"
                     || (style.direction == "auto"
@@ -1930,12 +2061,69 @@ mod tests {
             .filter(|g| line.start <= g.cluster && g.cluster < line.end)
             .collect()
     }
+    #[test]
+    fn bundled_noto_sans_sc_reports_variable_weight_axis() {
+        let faces: Vec<serde_json::Value> =
+            serde_json::from_str(&faces_json(&font_bytes()).unwrap()).unwrap();
+        assert_eq!(faces.len(), 1);
+        let face = &faces[0];
+        // Legacy name ID 1 stays available for existing importers.
+        assert!(face["family"].as_str().unwrap_or("").contains("Noto Sans"));
+        assert_eq!(face["variable"], true);
+        assert!(face["typographicFamily"]
+            .as_str()
+            .unwrap_or("")
+            .contains("Noto Sans"));
+        let wght = face["axes"]
+            .as_array()
+            .and_then(|axes| axes.iter().find(|axis| axis["tag"] == "wght"))
+            .expect("wght axis");
+        assert!(wght["min"].as_f64().unwrap() <= 200.);
+        assert!(wght["max"].as_f64().unwrap() >= 700.);
+        assert!((1..=1000).contains(&face["weight"].as_u64().unwrap()));
+    }
     fn round_trip(fonts: &Fonts, node: &Node, offset: usize) {
         let caret = fonts.caret_at(node, offset).unwrap();
         let hit = fonts
             .hit_caret(node, caret.x, caret.y + caret.height / 2.)
             .unwrap();
         assert_eq!(hit, offset, "caret at offset {offset} round trips");
+    }
+
+    #[test]
+    fn run_tracking_and_line_height_override_node_metrics() {
+        let fonts = fonts();
+        let plain = node(
+            "AB",
+            serde_json::json!({"letterSpacing": 0, "lineHeight": 1.35}),
+            400.,
+        );
+        let base = fonts.node_layout(&plain, Some(400.)).unwrap();
+        let mut tracked = plain.clone();
+        tracked.text_runs.push(TextRun {
+            start: 0,
+            end: 1,
+            letter_spacing: Some(8.),
+            ..TextRun::default()
+        });
+        let layout = fonts.node_layout(&tracked, Some(400.)).unwrap();
+        assert!(
+            (layout.lines[0].width - base.lines[0].width - 8.).abs() < 1e-6,
+            "tracking on the first cluster widens the line by that many pixels"
+        );
+        let mut tall = plain.clone();
+        tall.text_runs.push(TextRun {
+            start: 1,
+            end: 2,
+            line_height: Some(2.),
+            ..TextRun::default()
+        });
+        let layout = fonts.node_layout(&tall, Some(400.)).unwrap();
+        assert!((base.lines[0].height - 27.).abs() < 1e-6);
+        assert!(
+            (layout.lines[0].height - 40.).abs() < 1e-6,
+            "a 2× run override replaces the 1.35 node floor"
+        );
     }
 
     #[test]
@@ -2346,7 +2534,8 @@ mod persistent_font_cache_tests {
             font_size: Some(31.5),
             weight: Some(850.),
             ..Default::default()
-        }].into();
+        }]
+        .into();
         assert_layout_equal(&fonts, &reference, &rich);
     }
 

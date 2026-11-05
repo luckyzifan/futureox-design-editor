@@ -4,6 +4,7 @@ import { EventEmitter } from 'node:events'
 import { MAX_FRAME_BYTES } from './security.mjs'
 import { DOCUMENT_TRANSFER_BYTES, documentChildEnvironment, assertDocumentSerialization } from './document-capacity.mjs'
 import { documentWrites, DocumentFrameAssembler } from './document-transport.mjs'
+import { SQLITE_OFFTHREAD_BYTES } from './workspace-sqlite-worker-host.mjs'
 
 function failure(code, message) {
   return Object.assign(new Error(message), { code })
@@ -40,7 +41,7 @@ for(const method of ['large.open','large.apply','large.commitCanvas','large.scen
 const largeDocumentJobs = new Set(['large.open','large.export','large.project','large.scene','large.canvasLayout','large.canvasSnapshot','large.apply','large.commitCanvas','large.sceneCommit','large.undo','large.redo'])
 
 export class Sidecar extends EventEmitter {
-  constructor(executable, recoveryDir, { timeoutMs = 30_000, queueTimeoutMs = 600_000, spawnProcess = spawn, catalogDb, workspaceDb, maxPendingBytes = MAX_PENDING_BYTES } = {}) {
+  constructor(executable, recoveryDir, { timeoutMs = 30_000, queueTimeoutMs = 600_000, spawnProcess = spawn, catalogDb, workspaceDb, maxPendingBytes = MAX_PENDING_BYTES, sqliteCodec = null } = {}) {
     super()
     if (!Number.isSafeInteger(maxPendingBytes) || maxPendingBytes < 1 || maxPendingBytes > MAX_PENDING_BYTES)
       throw new TypeError('Invalid aggregate request byte limit')
@@ -58,6 +59,8 @@ export class Sidecar extends EventEmitter {
     this.assembler = new DocumentFrameAssembler(DOCUMENT_TRANSFER_BYTES)
     this.bufferBytes = 0
     this.stopped = false
+    this.sqliteCodec = sqliteCodec
+    this.decoding = undefined
     this.exited = false
     this.closed = false
     this.termination = null
@@ -119,41 +122,73 @@ export class Sidecar extends EventEmitter {
       this.parts = []
       this.bufferBytes = 0
       offset = newline + 1
-      try {
-        const assembled = this.assembler.accept(line)
-        if (!assembled) continue
-        const response = JSON.parse(assembled.toString('utf8'))
-        if (Object.hasOwn(response, 'desktopScheduling')) {
-          const event=response.desktopScheduling, pending=this.pending.get(event?.id)
-          if(Object.keys(response).length!==1 || !event || Object.keys(event).length!==2 || !pending ||
-            !['queued','running'].includes(event.phase) ||
-            event.phase==='queued' && pending.phase!=='submitted' ||
-            event.phase==='running' && pending.phase!=='queued') throw Error('Invalid scheduling receipt')
-          clearTimeout(pending.timer);pending.phase=event.phase
-          pending.timer=setTimeout(()=>this.fail(failure('BACKEND_TIMEOUT',event.phase==='queued'?'Backend queue wait exceeded its bound':'Backend execution timed out; verify files before retrying')),
-            event.phase==='queued'?this.queueTimeoutMs:this.executionTimeout(pending.method))
-          continue
-        }
-        const pending = this.pending.get(response.id)
-        if (!pending || !!response.error === Object.hasOwn(response, 'result'))
-          throw new Error('Invalid response')
-        clearTimeout(pending.timer)
-        this.pending.delete(response.id)
-        pending.completed = true
-        this.releaseBytes(pending)
-        if (response.error)
-          pending.reject(
-            failure(
-              response.error.code || 'BACKEND_ERROR',
-              response.error.message || 'Backend request failed',
-            ),
-          )
-        else pending.resolve(response.result)
-      } catch {
-        this.fail(failure('BACKEND_UNAVAILABLE', 'Malformed backend response'))
-        return
-      }
+      this.enqueueLine(line)
     }
+  }
+
+  enqueueLine(line) {
+    if (this.stopped) return
+    const heavy = !!(this.sqliteCodec && line.length >= SQLITE_OFFTHREAD_BYTES && !line.subarray(0, 17).toString().startsWith('{"desktopChunk":'))
+    if (!heavy && !this.decoding) {
+      this.decodeLineSync(line)
+      return
+    }
+    // A large SQLite document is parsed on the codec worker. Later lines wait
+    // so scheduling receipts and results keep their original order.
+    this.decoding = (this.decoding ?? Promise.resolve()).then(() => this.decodeLineAsync(line)).catch(() => {
+      this.fail(failure('BACKEND_UNAVAILABLE', 'Malformed backend response'))
+    })
+    const current = this.decoding
+    void current.finally(() => { if (this.decoding === current) this.decoding = undefined })
+  }
+
+  decodeLineSync(line) {
+    try {
+      const assembled = this.assembler.accept(line)
+      if (!assembled) return
+      this.applyResponse(JSON.parse(assembled.toString('utf8')))
+    } catch {
+      this.fail(failure('BACKEND_UNAVAILABLE', 'Malformed backend response'))
+    }
+  }
+
+  async decodeLineAsync(line) {
+    if (this.stopped) return
+    const assembled = this.assembler.accept(line)
+    if (!assembled) return
+    const response = this.sqliteCodec && assembled.length >= SQLITE_OFFTHREAD_BYTES
+      ? (await this.sqliteCodec.decodeResponse(assembled)).response
+      : JSON.parse(assembled.toString('utf8'))
+    this.applyResponse(response)
+  }
+
+  applyResponse(response) {
+    if (Object.hasOwn(response, 'desktopScheduling')) {
+      const event=response.desktopScheduling, pending=this.pending.get(event?.id)
+      if(Object.keys(response).length!==1 || !event || Object.keys(event).length!==2 || !pending ||
+        !['queued','running'].includes(event.phase) ||
+        event.phase==='queued' && pending.phase!=='submitted' ||
+        event.phase==='running' && pending.phase!=='queued') throw Error('Invalid scheduling receipt')
+      clearTimeout(pending.timer);pending.phase=event.phase
+      pending.timer=setTimeout(()=>this.fail(failure('BACKEND_TIMEOUT',event.phase==='queued'?'Backend queue wait exceeded its bound':'Backend execution timed out; verify files before retrying')),
+        event.phase==='queued'?this.queueTimeoutMs:this.executionTimeout(pending.method))
+      return
+    }
+    const pending = this.pending.get(response.id)
+    if (!pending || !!response.error === Object.hasOwn(response, 'result'))
+      throw new Error('Invalid response')
+    clearTimeout(pending.timer)
+    this.pending.delete(response.id)
+    pending.completed = true
+    this.releaseBytes(pending)
+    if (response.error)
+      pending.reject(
+        failure(
+          response.error.code || 'BACKEND_ERROR',
+          response.error.message || 'Backend request failed',
+        ),
+      )
+    else pending.resolve(response.result)
   }
 
   releaseBytes(pending) {
@@ -191,7 +226,10 @@ export class Sidecar extends EventEmitter {
   }
 
   executionTimeout(method) {
-    return largeDocumentJobs.has(method) ? Math.max(this.timeoutMs, 600_000) : this.timeoutMs
+    if (largeDocumentJobs.has(method)) return Math.max(this.timeoutMs, 600_000)
+    // PNG bake stays in the renderer. This bound covers the Rust FFmpeg spawn.
+    if (method === 'video.encode') return Math.max(this.timeoutMs, 180_000)
+    return this.timeoutMs
   }
   request(method, params = {}) {
     if (this.stopped || this.closing) return Promise.reject(failure('BACKEND_UNAVAILABLE', 'Backend unavailable'))
@@ -208,6 +246,24 @@ export class Sidecar extends EventEmitter {
         return Promise.reject(failure('BUSY', 'Backend aggregate byte budget full'))
       frame = JSON.stringify({ id, method, params, scheduling:true })
     } catch (error) { return Promise.reject(failure(/working-memory/.test(error.message) ? 'TOO_LARGE' : 'INVALID_REQUEST', error.message)) }
+    return this.enqueue(method, id, Buffer.from(frame), bytes)
+  }
+
+  // `frame` is the JSON object without its newline. The caller already counted
+  // `wireBytes` with the same admission walk the inline path uses.
+  requestFrame(method, id, frame, wireBytes) {
+    if (this.stopped || this.closing) return Promise.reject(failure('BACKEND_UNAVAILABLE', 'Backend unavailable'))
+    if (this.admittedCount >= 8) return Promise.reject(failure('BUSY', 'Backend queue full'))
+    if (typeof method !== 'string' || typeof id !== 'string' || id.length < 1 || id.length > 128 || this.pending.has(id))
+      return Promise.reject(failure('INVALID_REQUEST', 'Invalid prepared SQLite frame'))
+    if (!Buffer.isBuffer(frame) || !Number.isSafeInteger(wireBytes) || wireBytes < 2 || frame.length > DOCUMENT_TRANSFER_BYTES || wireBytes > DOCUMENT_TRANSFER_BYTES)
+      return Promise.reject(failure('TOO_LARGE', 'Document exceeds the available working-memory allowance'))
+    const bytes = Math.max(frame.length, wireBytes, responseReservation(method))
+    if (this.pendingBytes + bytes > this.maxPendingBytes) return Promise.reject(failure('BUSY', 'Backend aggregate byte budget full'))
+    return this.enqueue(method, id, frame, bytes)
+  }
+
+  enqueue(method, id, frame, bytes) {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         // A transmitted commit may have reached disk. Never claim rollback or retry it.
@@ -217,7 +273,7 @@ export class Sidecar extends EventEmitter {
       this.pendingBytes += bytes
       this.admittedCount++
       this.pending.set(id, pending)
-      const frames = documentWrites(Buffer.from(frame), id, MAX_FRAME_BYTES)
+      const frames = documentWrites(frame, id, MAX_FRAME_BYTES)
       this.writeQueue.push({ frames, next: frames.next(), pending })
       this.flushWrites()
     })

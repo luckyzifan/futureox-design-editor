@@ -2,8 +2,9 @@ use futureox_design_kernel::{
     blend::{Pixel, Surface},
     math::{Rect, Transform},
     optics::{GlassShape, field, render},
-    scene::GlassParameters,
+    scene::{GlassParameters, Node},
 };
+use serde_json::json;
 
 fn glass() -> GlassParameters {
     GlassParameters {
@@ -19,6 +20,7 @@ fn shape() -> GlassShape {
     GlassShape {
         size: [96., 96.],
         radius: 16.,
+        radii: None,
     }
 }
 
@@ -121,12 +123,75 @@ fn malformed_public_geometry_inputs_are_errors() {
             Rect::new(0, 0, 1, 1),
             GlassShape {
                 size: [96., f64::NAN],
-                radius: 1.
+                radius: 1.,
+                radii: None,
             },
             Transform::default(),
             &glass(),
             None
         )
         .is_err()
+    );
+}
+
+fn rect_node(kind: &str, radii: [f64; 4], smoothing: f64) -> Node {
+    serde_json::from_value(json!({
+        "id": "n", "kind": kind, "width": 100., "height": 80.,
+        "radii": radii, "smoothing": smoothing,
+        "fills": [{"kind": "solid", "color": "#000000"}]
+    }))
+    .unwrap()
+}
+
+#[test]
+fn uniform_glass_keeps_the_single_radius_packet_and_field() {
+    let node = rect_node("rectangle", [12.; 4], 0.);
+    let parsed = GlassShape::from_node(&node).unwrap();
+    assert_eq!(parsed.radius, 12.);
+    assert!(parsed.radii.is_none());
+    let encoded = serde_json::to_string(&parsed).unwrap();
+    assert!(!encoded.contains("radii"));
+    let legacy: GlassShape = serde_json::from_str(r#"{"size":[100.0,80.0],"radius":12.0}"#).unwrap();
+    assert!(legacy.radii.is_none());
+    let rect = Rect::new(0, 0, 24, 16);
+    let manual = GlassShape { size: [100., 80.], radius: 12., radii: None };
+    assert_eq!(
+        field(rect, parsed, Transform::default(), &glass(), Some(1)).unwrap(),
+        field(rect, manual, Transform::default(), &glass(), Some(1)).unwrap()
+    );
+    let shared = GlassShape::from_node(&rect_node("rectangle", [80., 80., 0., 0.], 0.)).unwrap();
+    assert_eq!(shared.radii, Some([50., 50., 0., 0.]));
+}
+
+#[test]
+fn independent_corners_use_the_analytic_field_and_smoothing_does_not() {
+    let mixed = GlassShape::from_node(&rect_node("frame", [30., 0., 4., 0.], 0.)).unwrap();
+    assert_eq!(mixed.radii, Some([30., 0., 4., 0.]));
+    assert_eq!(mixed.radius, 30.);
+    mixed.validate().unwrap();
+    let wide = GlassShape::from_node(&rect_node("rectangle", [70., 0., 0., 0.], 0.)).unwrap();
+    assert_eq!(wide.radii, Some([70., 0., 0., 0.]));
+    wide.validate().unwrap();
+    let clamped = GlassShape { size: wide.size, radius: 40., radii: Some([40., 0., 0., 0.]) };
+    let corner = Rect::new(0, 0, 8, 8);
+    assert_ne!(
+        field(corner, wide, Transform::default(), &glass(), None).unwrap(),
+        field(corner, clamped, Transform::default(), &glass(), None).unwrap()
+    );
+    let section = GlassShape::from_node(&rect_node("section", [6.; 4], 0.)).unwrap();
+    assert!(section.radii.is_none());
+    assert!(GlassShape::from_node(&rect_node("rectangle", [8.; 4], 0.4)).is_none());
+    assert!(GlassShape::from_node(&rect_node("ellipse", [8.; 4], 0.)).is_none());
+    let rect = Rect::new(-4, -4, 36, 28);
+    let sharp = field(rect, mixed, Transform::default(), &glass(), None).unwrap();
+    let flat = GlassShape::from_node(&rect_node("rectangle", [0.; 4], 0.)).unwrap();
+    let plain = field(rect, flat, Transform::default(), &glass(), None).unwrap();
+    assert_ne!(sharp, plain);
+    assert!(sharp.iter().all(|v| v.is_finite()));
+    let encoded = serde_json::to_string(&mixed).unwrap();
+    let round = serde_json::from_str::<GlassShape>(&encoded).unwrap();
+    assert_eq!(
+        field(rect, round, Transform::default(), &glass(), None).unwrap(),
+        sharp
     );
 }

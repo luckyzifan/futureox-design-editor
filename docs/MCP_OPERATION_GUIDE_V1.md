@@ -14,7 +14,7 @@ That example is the legacy wire shape. On a modern connection, omit the handshak
 
 The exact names, input schemas and current count come from result.tools. Count that array after applying the actual host grants, not a static marketing total. This catalog is bounded and returned whole; invented tools/list cursors reject. The shared API provides api.capabilities and the MCP resource futureox-design://automation/capabilities. Inspect methods, limits, editing and unsupported. The registry is composed in frontend/design-client/src/automation/index.ts and core.ts; host-only preview/workspace/preferences can change the exposed list. Missing methods are unavailable in that session, even if mentioned in documentation.
 
-Mapping is mechanical: node.update → design_node_update, text.styleRange → design_text_styleRange. Dots/hyphens normalize to underscores and collisions fail closed. Do not invent Figma aliases such as createFrame or executeJavaScript. Discovery does not grant access; execution rechecks authority.
+Mapping is mechanical: node.update → design_node_update, text.styleRange → design_text_styleRange. Dots/hyphens normalize to underscores and collisions fail closed. Do not invent Figma aliases such as createFrame or executeJavaScript inside this shared registry. A separate, explicit facade in `frontend/design-mcp/src/figma-facade.mjs` exposes a small Figma-shaped tool list and translates it back into this API; it is not a second document model and it does not eval plugin JavaScript. See [FIGMA_MCP_FACADE.md](FIGMA_MCP_FACADE.md). Discovery does not grant access; execution rechecks authority.
 
 For a saved tools/list JSON-RPC response, this counts exactly what was advertised without connecting to any endpoint:
 
@@ -215,6 +215,10 @@ The UI default open flow creates a new copy and also supports an explicit append
 
 Use the advertised `workspace.importCopy` schema with `rootHandle`, `format`, `mutationId` and exactly one native-JSON `content` or archive `base64`; keep the outer document/session/revision fences. The host generates the new UUID and commits create-only revision 1, then verifies saved readback. The active document, page, selection and editor undo remain unchanged. Dirty authored content may remain, while pending input, active gestures and busy/stale state reject. An unknown storage outcome or unverified readback blocks new workspace/settings mutations in that grant; exact receipt replay and reads remain available. Do not switch IDs after uncertainty or treat cancellation as rollback. See [the workspace contract](workspace-mcp.md) for completion codes and reconciliation boundaries.
 
+
+### Text run metrics schema 21
+
+`textRuns[].letterSpacing` is extra design pixels after each cluster in that run. `textRuns[].lineHeight` is a multiplier of that run's font size. Either field requires schema 21. Omitted fields keep the node `textStyle` values. A line that contains a line-height override uses the maximum resolved pixel height of its clusters; other lines keep the node font-size floor. Paragraph min/max line boxes still replace that height when present.
 
 ### Text layout schema 20
 

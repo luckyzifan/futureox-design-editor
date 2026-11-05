@@ -36,6 +36,81 @@ fn options() -> RenderOptions {
     serde_json::from_value(json!({"pageId":"p","width":128,"height":128,
         "view":{"x":0.25,"y":0.5,"zoom":1.2},"transparent":false,"grid":false})).unwrap()
 }
+
+#[test]
+fn local_resize_shares_unchanged_nodes_across_worker_and_rejected_revision() {
+    let mut authored = source();
+    for i in 0..256 {
+        let id = format!("cold-{i:03}");
+        let mut sibling = authored.nodes["child"].clone();
+        sibling.id = id.clone();
+        sibling.transform.0[4] = 20_000.;
+        authored.pages[0].children.push(id.clone());
+        authored.nodes.insert(id, sibling);
+    }
+    let mut engine = Engine::new();
+    engine.install_document(authored.clone()).unwrap();
+    let before_pixels = engine.render(&options()).unwrap();
+    let mut worker = engine.snapshot_worker();
+    let before = worker.source_doc.as_ref().unwrap().clone();
+    let mut next = authored.clone();
+    next.nodes.get_mut("child").unwrap().width = 32.;
+    let patch = crate::editing::DocumentPatch::between(&authored, &next).unwrap();
+    let damage = engine.apply_document_patch_with_damage(&patch).unwrap();
+    assert_eq!(serde_json::to_value(&damage).unwrap(),
+        serde_json::to_value(crate::dirty_region::patch_damage_with_fonts(&authored, &next, &patch, &engine.fonts)).unwrap());
+    let installed = engine.source_doc.as_ref().unwrap();
+    assert_eq!(serde_json::to_vec(installed).unwrap(), serde_json::to_vec(&next).unwrap());
+    assert_eq!(engine.source_doc_bytes, Some(serde_json::to_vec(&next).unwrap().len()));
+    // Check every untouched payload and key, including neighbours in the same
+    // persistent-vector leaf. A clone of either the node table or nodes fails.
+    for (old_key, new_key) in before.nodes.keys().zip(installed.nodes.keys()) {
+        assert!(std::ptr::eq(old_key, new_key));
+        assert_eq!(std::ptr::eq(&before.nodes[old_key], &installed.nodes[new_key]), old_key != "child");
+    }
+    let mut invalid = patch;
+    invalid.nodes.get_mut("child").unwrap().as_mut().unwrap().width = -1.;
+    let previous = installed.clone();
+    let revision = engine.geo_revision;
+    assert!(engine.apply_document_patch(&invalid).is_err());
+    assert!(Arc::ptr_eq(&previous.0, &engine.source_doc.as_ref().unwrap().0));
+    assert_eq!(engine.geo_revision, revision);
+    let mut fresh = Engine::new();
+    fresh.install_document(next).unwrap();
+    let pixels = engine.render(&options()).unwrap();
+    assert_ne!(pixels, before_pixels);
+    assert_eq!(pixels, fresh.render(&options()).unwrap());
+    assert_eq!(before_pixels, worker.render(&options()).unwrap());
+}
+
+#[test]
+fn local_image_replacement_interns_the_new_uri_without_detaching_its_owner() {
+    let mut doc = source();
+    let mut png = Vec::new();
+    {
+        let mut writer = png::Encoder::new(&mut png, 1, 1).write_header().unwrap();
+        writer.write_image_data(&[123]).unwrap();
+    }
+    use base64::Engine as _;
+    let uri = format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(png));
+    let paint = || serde_json::from_value(json!({"kind":"image","color":"#ffffff","image":uri})).unwrap();
+    doc.nodes.get_mut("frame").unwrap().fills[0] = paint();
+    let mut engine = Engine::new();
+    engine.install_document(doc.clone()).unwrap();
+    let baseline = engine.source_doc.clone().unwrap();
+    let owner = baseline.nodes["frame"].fills[0].image.as_ref().unwrap();
+    let child = doc.nodes.get_mut("child").unwrap();
+    child.fills[0] = paint(); // Equal bytes, allocated independently as on the wire.
+    child.width += 1.;
+    assert!(!Arc::ptr_eq(owner, child.fills[0].image.as_ref().unwrap()));
+    engine.apply_document_patch(&crate::editing::DocumentPatch::between(&baseline, &doc).unwrap()).unwrap();
+    let after = engine.source_doc.as_ref().unwrap();
+    assert!(std::ptr::eq(&baseline.nodes["frame"], &after.nodes["frame"]));
+    assert!(Arc::ptr_eq(owner, after.nodes["child"].fills[0].image.as_ref().unwrap()));
+    let mut fresh = Engine::new();
+    fresh.install_document(doc).unwrap();
+    assert_eq!(engine.render(&options()).unwrap(), fresh.render(&options()).unwrap());
+}
 #[test]
 fn leaf_pose_keeps_private_unchanged_support_and_matches_fresh_packets() {
     let mut doc=source();
@@ -270,7 +345,7 @@ fn pure_root_move_retains_layout_and_matches_fresh_render() {
     for dx in [10., 10.25, -20.] {
         let mut next = original.clone(); next.nodes.get_mut("frame").unwrap().transform.0[4] = dx;
         let patch = crate::editing::DocumentPatch::between(engine.source_doc.as_ref().unwrap(), &next).unwrap();
-        assert!(engine.can_retain_translation(&patch));
+        assert!(engine.retained_pose(&patch, false).is_some());
         let damage = engine.apply_document_patch_with_damage(&patch).unwrap();
         assert!(!damage.full);
         assert!(!engine.layout_dirty);
@@ -293,7 +368,7 @@ fn derived_or_non_translation_edits_keep_normal_invalidation() {
         let mut engine = Engine::new(); engine.install_document(original.clone()).unwrap();
         engine.render(&options()).unwrap();
         let patch = crate::editing::DocumentPatch::between(&original, &next).unwrap();
-        assert!(!engine.can_retain_translation(&patch));
+        assert!(!engine.retained_pose(&patch, false).is_some());
         engine.apply_document_patch_with_damage(&patch).unwrap();
         assert_eq!(engine.layout_dirty, field != "opacity");
         let mut fresh = Engine::new(); fresh.install_document(next).unwrap();
@@ -387,7 +462,7 @@ fn nested_translation_retains_derived_layout_and_matches_fresh_pixels() {
     engine.render(&options()).unwrap();
     let paths = engine.paths["child"].clone();
     let patch = crate::editing::DocumentPatch::between(&original,&next).unwrap();
-    assert!(engine.can_retain_translation(&patch));
+    assert!(engine.retained_pose(&patch, false).is_some());
     engine.apply_document_patch_with_damage(&patch).unwrap();
     assert!(!engine.layout_dirty);
     assert!(Arc::ptr_eq(&paths,&engine.paths["child"]));
@@ -524,15 +599,15 @@ fn retained_patch_does_not_advance_clipped_root_eligibility() {
             let mut moved = before.clone();
             moved.nodes.get_mut("frame").unwrap().transform.0[4] += dx;
             let patch = crate::editing::DocumentPatch::between(&before, &moved).unwrap();
-            assert!(engine.can_retain_translation(&patch));
-            assert!(engine.apply_clipped_root_translation(&patch).unwrap().is_none(),
+            assert!(engine.retained_pose(&patch, false).is_some());
+            assert!(engine.apply_clipped_root_translation(&patch, engine.retained_pose(&patch, false).is_some()).unwrap().is_none(),
                 "the private receipt must not authorize the root fast lane");
             let mut expected = crate::dirty_region::patch_damage_with_fonts(&before, &moved, &patch, &engine.fonts);
             expected.translation_only = Some(true);
             let before_count = crate::editing::document_size_count_calls();
             let actual = engine.apply_document_patch_with_damage(&patch).unwrap();
-            assert_eq!(crate::editing::document_size_count_calls() - before_count, 1,
-                "generic apply, including validation and its count, still runs");
+            assert_eq!(crate::editing::document_size_count_calls() - before_count, 0,
+                "scoped validation keeps an exact changed-node byte delta");
             assert_eq!(serde_json::to_value(actual).unwrap(), serde_json::to_value(expected).unwrap());
             assert_eq!(engine.source_doc_bytes, None);
             assert_eq!(retained_receipt_bytes(&engine), Some(serde_json::to_vec(&moved).unwrap().len()));
@@ -575,7 +650,7 @@ fn retained_paint_does_not_advance_glass_eligibility() {
         let patch = crate::editing::DocumentPatch::between(&before, &moved).unwrap();
         let before_count = crate::editing::document_size_count_calls();
         let damage = engine.apply_document_patch_with_damage(&patch).unwrap();
-        assert_eq!(crate::editing::document_size_count_calls() - before_count, 1);
+        assert_eq!(crate::editing::document_size_count_calls() - before_count, 0);
         assert!(damage.full);
         assert_eq!(damage.reason, Some("glass-effect"));
         assert_eq!(damage.translation_only, Some(true));
@@ -863,4 +938,27 @@ fn identical_native_interaction_pose_keeps_exact_compilation_and_geometry_lineag
     let before=engine.geo_revision;
     let invalid=std::collections::BTreeMap::from([("child".into(),Transform([1.,0.,0.,1.,f64::NAN,10.25]))]);
     assert!(engine.apply_interaction_transforms(&invalid).is_err());assert_eq!(engine.geo_revision,before);
+}
+
+#[test]
+fn only_an_unchanged_resolved_boolean_can_certify_no_page_damage() {
+    let mut document:Document=serde_json::from_value(json!({"schemaVersion":16,"id":"d","name":"Boolean pose",
+        "pages":[{"id":"p","name":"page","children":["union"],"background":"#ffffff"}],"nodes":{
+          "union":{"id":"union","kind":"vector","width":50,"height":30,"booleanOperation":"union","children":["outer","inner"],"fills":[{"kind":"solid","color":"#cc3366"}]},
+          "outer":{"id":"outer","kind":"rectangle","width":35,"height":26,"fills":[{"kind":"solid","color":"#cc3366"}]},
+          "inner":{"id":"inner","kind":"rectangle","width":6,"height":8,"transform":[1,0,0,1,5,6],"fills":[{"kind":"solid","color":"#cc3366"}]}
+        }})).unwrap();
+    let options:RenderOptions=serde_json::from_value(json!({"pageId":"p","width":64,"height":36,"view":{"x":0,"y":0,"zoom":1}})).unwrap();
+    let mut engine=Engine::new();engine.install_document(document.clone()).unwrap();
+    let before=engine.render_exact(&options).unwrap();
+    for (x,unchanged) in [(9.,true),(41.,false)] {
+        let operand=document.nodes.get_mut("inner").unwrap();operand.transform.0[4]=x;
+        let patch=crate::editing::DocumentPatch {fields:Default::default(),nodes:[("inner".into(),Some(operand.clone()))].into_iter().collect()};
+        assert_eq!(engine.inert_boolean_pose(&patch),unchanged);
+        let damage=engine.apply_document_patch_with_damage(&patch).unwrap();
+        assert_eq!(!damage.full && damage.rects.as_ref().is_some_and(Vec::is_empty),unchanged);
+        let mut fresh=Engine::new();fresh.install_document(document.clone()).unwrap();
+        let actual=engine.render_exact(&options).unwrap();
+        assert_eq!(actual,fresh.render_exact(&options).unwrap());assert_eq!(actual==before,unchanged);
+    }
 }

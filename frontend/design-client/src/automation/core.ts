@@ -27,6 +27,7 @@ import {
 } from '../model'
 import { allParents, inverse, multiply, worldMatrix, bounds, boxPoints, apply } from '../geometry'
 import { duplicateGraph, type GraphCopy } from '../duplicate-graph'
+import { canDeletePage, userPages } from '../fig-document'
 import { equalValue } from '../document-patch'
 import { AutomationError, type AutomationCapabilities, type AutomationContext, type AutomationExtension,
   type AutomationMethod, type AutomationRequest, type AutomationResponse, type AutomationMutationCompletion } from './types'
@@ -288,10 +289,10 @@ const coreExtensions: AutomationExtension[] = [
     (doc, p) => { const page = getPage(doc, p.id); Object.assign(page, structuredClone(record(p.patch, 'patch'))); return { id: page.id } }),
   operation('page.delete', 'Delete a page and its descendants. At least one page must remain.', schema({ id: stringSchema }, ['id']), true, (doc, p, ctx) => {
     const page = getPage(doc, p.id)
-    if (doc.pages.length === 1) fail('last_page', 'At least one page must remain')
+    if (!canDeletePage(doc, page.id)) fail('last_page', 'At least one page must remain')
     const removedIds = page.children.length ? removeNodes(doc, [...page.children]) : []
     doc.pages.splice(doc.pages.indexOf(page), 1)
-    if (ctx.pageId === page.id) { ctx.pageId = doc.pages[0].id; ctx.selection = [] }
+    if (ctx.pageId === page.id) { ctx.pageId = userPages(doc)[0].id; ctx.selection = [] }
     return { id: page.id, removedIds }
   }),
   operation('page.reorder', 'Move a page to its final zero-based index.', schema({ id: stringSchema, index: indexSchema }, ['id', 'index']), true, (doc, p) => {
@@ -323,7 +324,7 @@ const coreExtensions: AutomationExtension[] = [
     (doc, p) => ({ removedIds: removeNodes(doc, ids(p.ids)) })),
   operation('node.move', 'Reparent nodes in one atomic operation. index is the final insertion position after removal; world transforms are preserved by default.', schema({ ids: idsSchema, parentId: stringSchema, index: indexSchema, preserveWorld: { type: 'boolean' } }, ['ids', 'parentId']), true,
     (doc, p) => ({ ids: moveNodes(doc, ids(p.ids), text(p.parentId, 'parentId'), p.index, p.preserveWorld !== false) })),
-  operation('node.duplicate', 'Duplicate with shared editor placement: ordinary nodes in place, top-level frames to the right (Core gap 24), and trusted single-step translation/rotation repeat. Explicit offsetX or offsetY selects world-offset placement; an omitted other axis remains 24. Selects the new roots. Main components retain native linked-instance behavior.', schema({ ids: idsSchema, parentId: stringSchema, index: indexSchema, offsetX: numberSchema, offsetY: numberSchema }, ['ids']), true, (doc, p, ctx) => {
+  operation('node.duplicate', 'Duplicate with shared editor placement: default +10,+10 document units for shapes and containers, and trusted single-step translation/rotation repeat. Explicit offsetX or offsetY selects world-offset placement; an omitted other axis remains 24. Selects the new roots. Main components retain native linked-instance behavior.', schema({ ids: idsSchema, parentId: stringSchema, index: indexSchema, offsetX: numberSchema, offsetY: numberSchema }, ['ids']), true, (doc, p, ctx) => {
     if (p.index !== undefined && p.parentId === undefined) fail('invalid_params', 'index requires parentId')
     if (p.parentId !== undefined) childList(doc, text(p.parentId, 'parentId'))
     const intent = duplicationIntent(p.offsetX as number | undefined, p.offsetY as number | undefined)

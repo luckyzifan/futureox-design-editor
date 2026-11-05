@@ -1,0 +1,356 @@
+[
+  {
+    "arm": "A",
+    "samples": [
+      {
+        "tile": 0,
+        "wall": 839.7972909999999,
+        "bytes": 1666039,
+        "hash": "421eeac471ec7db58bc7d94b696fdddfcfa2929999a9e211d5bc20d29e18b582",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 0
+      },
+      {
+        "tile": 1,
+        "wall": 8.837374999999838,
+        "bytes": 1672670,
+        "hash": "94cf7e76eb62ab0d610e6cafcbb172ad15ddd2e3c684b8ca6cc41cbe04c9b3cf",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 1
+      },
+      {
+        "tile": 2,
+        "wall": 9.513249999999971,
+        "bytes": 1673483,
+        "hash": "42b8c7f689ab8f62c3a9fe15dddd80f4438f6000ccf55359bc01888dd7b3da76",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 2
+      },
+      {
+        "tile": 3,
+        "wall": 9.79954100000009,
+        "bytes": 1649682,
+        "hash": "1ba026b412be7d4693f912807856b51a0cdc6d578964882b403af9c21f9b6292",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 3
+      },
+      {
+        "tile": 4,
+        "wall": 448.6589160000001,
+        "bytes": 1440759,
+        "hash": "61930d6eb99ee94373ff34f45e5d642d4b7757094b8c83ee21a6c1f3d428e138",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 0
+      },
+      {
+        "tile": 5,
+        "wall": 6.569332999999915,
+        "bytes": 1448203,
+        "hash": "8439025d45616589db35a1ae19528d49103ea842273c5b57b17b7fcf028cdcdc",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 1
+      }
+    ]
+  },
+  {
+    "arm": "B",
+    "samples": [
+      {
+        "tile": 0,
+        "wall": 657.859375,
+        "bytes": 1666039,
+        "hash": "73d06de6952769af0ce632d7661a09144ea12cbe99827f899ea47260883bc0bc",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 0
+      },
+      {
+        "tile": 1,
+        "wall": 9.125375000000076,
+        "bytes": 1672670,
+        "hash": "0caf85fb610fb2ab37068ee26f1c63cc96220780afcab7e40bc7a319a385ebfc",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 1
+      },
+      {
+        "tile": 2,
+        "wall": 9.848332999999911,
+        "bytes": 1673483,
+        "hash": "03e9d27e91893db99e0cc1520b953ec2cb4cbf9884abfa7d1e2514837d194053",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 2
+      },
+      {
+        "tile": 3,
+        "wall": 9.130208000000039,
+        "bytes": 1649682,
+        "hash": "88c23dc1ce4490e39b2ebe0571fe344a9f441c5af73c7495938407c6823023e0",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 3
+      },
+      {
+        "tile": 4,
+        "wall": 263.54491599999983,
+        "bytes": 1440759,
+        "hash": "3ab731078c9b11b081dd965375f7ef256552cee75d1e2267f13d6d98ac40aa2b",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 0
+      },
+      {
+        "tile": 5,
+        "wall": 6.629249999999956,
+        "bytes": 1448203,
+        "hash": "9bd4aea8281b2606b7949e359ae7be2da65194536629b007f3b26e320c1673e2",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 1
+      }
+    ]
+  },
+  {
+    "arm": "B",
+    "samples": [
+      {
+        "tile": 0,
+        "wall": 650.60475,
+        "bytes": 1666039,
+        "hash": "4f6db6bbf2fc452bc82b2590367ed342dfa495aaba2d7dbd1e8fa59b55239b29",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 0
+      },
+      {
+        "tile": 1,
+        "wall": 9.41095899999982,
+        "bytes": 1672670,
+        "hash": "593e75293e1e5e43dddd4d57dc53c1f1bde7e46f54ef7a7c4b297de43be1bcc8",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 1
+      },
+      {
+        "tile": 2,
+        "wall": 9.991250000000036,
+        "bytes": 1673483,
+        "hash": "c3a5d722e5f916cc9c98abd92997c6c5139fc7a7db59f6e455c907609dda3e81",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 2
+      },
+      {
+        "tile": 3,
+        "wall": 9.672332999999526,
+        "bytes": 1649682,
+        "hash": "7d0ddb56e0173a9e78b8882fbc1676ce7315b9976d2c816a013980528b4582c8",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 3
+      },
+      {
+        "tile": 4,
+        "wall": 260.2579999999998,
+        "bytes": 1440759,
+        "hash": "25accb1fe70c5e3aefe0ed91331b88ca56bc9e1037bf8668523f1c69c0dd2012",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 0
+      },
+      {
+        "tile": 5,
+        "wall": 6.437167000000045,
+        "bytes": 1448203,
+        "hash": "e2cb09038b3e591090ce2061def0a9d075a01b9869980e1f0212f5fc97e79298",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 1
+      }
+    ]
+  },
+  {
+    "arm": "A",
+    "samples": [
+      {
+        "tile": 0,
+        "wall": 832.2746660000003,
+        "bytes": 1666039,
+        "hash": "d27247667b511a53d6a4655167d3ac26485cb371835aba4da8bf2f7fd98a7452",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 0
+      },
+      {
+        "tile": 1,
+        "wall": 8.951000000000022,
+        "bytes": 1672670,
+        "hash": "a50a88b7b33550d02961cea6aa0d3d55b32c18c4f384cb1903216fc1169b4bd9",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 1
+      },
+      {
+        "tile": 2,
+        "wall": 9.631457999999839,
+        "bytes": 1673483,
+        "hash": "bba2a6006eed45a622879a103ac13364ba9cb706a8c684114e036b9c103a2170",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 2
+      },
+      {
+        "tile": 3,
+        "wall": 9.648874999999862,
+        "bytes": 1649682,
+        "hash": "4ddd41050218c482e9e8888afbca0a5e236a243d2958db63f3cedb60254a994e",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 3
+      },
+      {
+        "tile": 4,
+        "wall": 447.1029580000004,
+        "bytes": 1440759,
+        "hash": "a2c8f75a8d38c99ec6380189d29981270336938c18616d13e794464d9ff222b9",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 0
+      },
+      {
+        "tile": 5,
+        "wall": 6.534249999999702,
+        "bytes": 1448203,
+        "hash": "ffa37bd17fa0a7005772950a062c121b527bf7b946f3d356f6b87a30028c8534",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 1
+      }
+    ]
+  },
+  {
+    "arm": "A",
+    "samples": [
+      {
+        "tile": 0,
+        "wall": 819.0077089999995,
+        "bytes": 1666039,
+        "hash": "c5a36698f4ad6e3c4e4a1cafa75e251f9ba4cb4b87873772969b80e95e298e62",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 0
+      },
+      {
+        "tile": 1,
+        "wall": 9.373624999999265,
+        "bytes": 1672670,
+        "hash": "a6fcc1d48e453562bf7edf8f916a1232899cfc06b7abdf5b0e31d16bfcbdbc69",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 1
+      },
+      {
+        "tile": 2,
+        "wall": 9.814083999999639,
+        "bytes": 1673483,
+        "hash": "5b18434c48e5f90f3c699647f325abec5a0fb337fe2830547378785badd68350",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 2
+      },
+      {
+        "tile": 3,
+        "wall": 9.241124999999556,
+        "bytes": 1649682,
+        "hash": "d3cea263180d1f9b2a413667153a7ca2219ecdc74d7738ab1261e234e47f7d20",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 3
+      },
+      {
+        "tile": 4,
+        "wall": 448.2043330000006,
+        "bytes": 1440759,
+        "hash": "88ec80aa45a077783ebf5e00a095fcd9807cb85c9ae7735fe4f865512383b083",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 0
+      },
+      {
+        "tile": 5,
+        "wall": 7.0506249999998545,
+        "bytes": 1448203,
+        "hash": "8d966f9939e1afdfc2c5a72124b8e990be61d8258fcd114301b735698280a36e",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 1
+      }
+    ]
+  },
+  {
+    "arm": "B",
+    "samples": [
+      {
+        "tile": 0,
+        "wall": 626.0533329999998,
+        "bytes": 1666039,
+        "hash": "88b4979ca2b58c83723ec37918d1f99e7018a0949e9e9b2829c54d5785f760e2",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 0
+      },
+      {
+        "tile": 1,
+        "wall": 8.87604199999987,
+        "bytes": 1672670,
+        "hash": "1dbabadee2803127277b04612443aec0dcb82a0ab3fe006ea5354dead8f51ed6",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 1
+      },
+      {
+        "tile": 2,
+        "wall": 9.551332999999431,
+        "bytes": 1673483,
+        "hash": "a3ee5214228db96ac85954d32f19bcc27ece1094f816427732954c34777242cc",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 2
+      },
+      {
+        "tile": 3,
+        "wall": 9.271500000000742,
+        "bytes": 1649682,
+        "hash": "ce269530afbf5f7e57b7dd1c5bdd5c3a96ee5f56fcb9878a2d056217b8535834",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 3
+      },
+      {
+        "tile": 4,
+        "wall": 274.24479099999917,
+        "bytes": 1440759,
+        "hash": "1a108f5c362f11ba3ef8c3fc2ff01a154b0b9d883aa5db0e76008b8ab906838c",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 0
+      },
+      {
+        "tile": 5,
+        "wall": 6.549874999998792,
+        "bytes": 1448203,
+        "hash": "d0240c2c3e01c8c1bfac009e669515c96e54d7398c162d2527f645d5070a9611",
+        "mode": "demand",
+        "prepared": 4552,
+        "reuses": 1
+      }
+    ]
+  }
+]

@@ -1,0 +1,2732 @@
+{
+  "arms": {
+    "A": "original desktop",
+    "B": "integrated CPU and GPU build"
+  },
+  "order": "BAAB",
+  "runs": {
+    "integrated-time-1-B": {
+      "sha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "viewport": {
+        "x": 305,
+        "y": 0,
+        "width": 855,
+        "height": 928
+      },
+      "segments": {
+        "overview-pan": {
+          "ready": null,
+          "visible": 106,
+          "camera": [
+            255.05744432432215,
+            506.40142159186865,
+            0.023834419977857055
+          ],
+          "afterGestureMs": 0.699951171875,
+          "afterLastInputMs": 44.39990234375,
+          "uncachedTileRecords": 0,
+          "packetBytes": 0,
+          "compiles": 0,
+          "sceneScopes": [],
+          "texturePeak": 0,
+          "work": {
+            "compileMs": 0,
+            "graphMs": 0,
+            "checkpointMs": 0,
+            "finishMs": 0,
+            "graphNonCheckpointElapsedMs": 0,
+            "encodedPassPixels": 0,
+            "tileDrawCalls": 0,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "zoom-to-neighbours": {
+          "ready": true,
+          "visible": 9,
+          "camera": [
+            -694.6067868436319,
+            739.2366152152579,
+            0.15471427216445813
+          ],
+          "afterGestureMs": 5209.89990234375,
+          "afterLastInputMs": 5261.300048828125,
+          "uncachedTileRecords": 8,
+          "packetBytes": 42947495,
+          "compiles": 17,
+          "sceneScopes": [
+            {
+              "nodes": 690,
+              "keys": [
+                "1:29585",
+                "1:31358"
+              ]
+            },
+            {
+              "nodes": 10119,
+              "keys": [
+                "1:29354",
+                "1:29585",
+                "1:29979",
+                "1:31358",
+                "1:32480",
+                "1:40138",
+                "1:47101",
+                "1:48076"
+              ]
+            }
+          ],
+          "texturePeak": 437720812,
+          "work": {
+            "compileMs": 1376.7999999523163,
+            "graphMs": 1986.4000000953674,
+            "checkpointMs": 849.8999998569489,
+            "finishMs": 18.299999952316284,
+            "graphNonCheckpointElapsedMs": 1136.5000002384186,
+            "encodedPassPixels": 124690744,
+            "tileDrawCalls": 13898,
+            "densePaintBatches": 577,
+            "densePaintEffects": 415
+          }
+        },
+        "short-pan": {
+          "ready": true,
+          "visible": 9,
+          "camera": [
+            -619.6067868436319,
+            763.2366152152579,
+            0.15471427216445813
+          ],
+          "afterGestureMs": 3.400146484375,
+          "afterLastInputMs": 17.800048828125,
+          "uncachedTileRecords": 1,
+          "packetBytes": 0,
+          "compiles": 0,
+          "sceneScopes": [],
+          "texturePeak": 437720812,
+          "work": {
+            "compileMs": 10.5,
+            "graphMs": 0.2999999523162842,
+            "checkpointMs": 0,
+            "finishMs": 1.8000001907348633,
+            "graphNonCheckpointElapsedMs": 0.2999999523162842,
+            "encodedPassPixels": 268325,
+            "tileDrawCalls": 3,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "return": {
+          "ready": true,
+          "visible": 9,
+          "camera": [
+            -694.6067868436319,
+            739.2366152152579,
+            0.15471427216445813
+          ],
+          "afterGestureMs": 1.900146484375,
+          "afterLastInputMs": 17.7001953125,
+          "uncachedTileRecords": 0,
+          "packetBytes": 0,
+          "compiles": 0,
+          "sceneScopes": [],
+          "texturePeak": 0,
+          "work": {
+            "compileMs": 0,
+            "graphMs": 0,
+            "checkpointMs": 0,
+            "finishMs": 0,
+            "graphNonCheckpointElapsedMs": 0,
+            "encodedPassPixels": 0,
+            "tileDrawCalls": 0,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "zoom-in": {
+          "ready": true,
+          "visible": 5,
+          "camera": [
+            -1648.822522595029,
+            973.1877300413024,
+            0.28622139894723414
+          ],
+          "afterGestureMs": 1233.800048828125,
+          "afterLastInputMs": 1285.199951171875,
+          "uncachedTileRecords": 5,
+          "packetBytes": 23020577,
+          "compiles": 15,
+          "sceneScopes": [],
+          "texturePeak": 587893536,
+          "work": {
+            "compileMs": 312.0,
+            "graphMs": 578.0,
+            "checkpointMs": 354.60000014305115,
+            "finishMs": 12.700000047683716,
+            "graphNonCheckpointElapsedMs": 223.39999985694885,
+            "encodedPassPixels": 85680498,
+            "tileDrawCalls": 5085,
+            "densePaintBatches": 231,
+            "densePaintEffects": 142
+          }
+        },
+        "across": {
+          "ready": true,
+          "visible": 5,
+          "camera": [
+            -1948.822522595029,
+            883.1877300413024,
+            0.28622139894723414
+          ],
+          "afterGestureMs": 1369.599853515625,
+          "afterLastInputMs": 1385.099853515625,
+          "uncachedTileRecords": 3,
+          "packetBytes": 32971705,
+          "compiles": 9,
+          "sceneScopes": [],
+          "texturePeak": 940697224,
+          "work": {
+            "compileMs": 645.1999998092651,
+            "graphMs": 684.3999998569489,
+            "checkpointMs": 440.59999895095825,
+            "finishMs": 12.099999904632568,
+            "graphNonCheckpointElapsedMs": 243.8000009059906,
+            "encodedPassPixels": 127186786,
+            "tileDrawCalls": 6822,
+            "densePaintBatches": 266,
+            "densePaintEffects": 144
+          }
+        },
+        "reverse-zoom-out": {
+          "ready": true,
+          "visible": 14,
+          "camera": [
+            -452.30463895188416,
+            619.2547149983155,
+            0.106007925650862
+          ],
+          "afterGestureMs": 6546.199951171875,
+          "afterLastInputMs": 6604.89990234375,
+          "uncachedTileRecords": 7,
+          "packetBytes": 60528943,
+          "compiles": 22,
+          "sceneScopes": [
+            {
+              "nodes": 14537,
+              "keys": [
+                "1:29354",
+                "1:29585",
+                "1:29979",
+                "1:30873",
+                "1:31358",
+                "1:31653",
+                "1:32054",
+                "1:32480",
+                "1:40138",
+                "1:40471",
+                "1:47101",
+                "1:47952",
+                "1:48076"
+              ]
+            }
+          ],
+          "texturePeak": 476183428,
+          "work": {
+            "compileMs": 1551.2999997138977,
+            "graphMs": 1875.3000001907349,
+            "checkpointMs": 806.6000008583069,
+            "finishMs": 13.700000047683716,
+            "graphNonCheckpointElapsedMs": 1068.699999332428,
+            "encodedPassPixels": 115199963,
+            "tileDrawCalls": 19348,
+            "densePaintBatches": 736,
+            "densePaintEffects": 594
+          }
+        },
+        "zoom-back": {
+          "ready": true,
+          "visible": 7,
+          "camera": [
+            -856.768927082602,
+            690.5879614702377,
+            0.1547142692135176
+          ],
+          "afterGestureMs": 2675.60009765625,
+          "afterLastInputMs": 2719.400146484375,
+          "uncachedTileRecords": 7,
+          "packetBytes": 45094843,
+          "compiles": 13,
+          "sceneScopes": [],
+          "texturePeak": 581183144,
+          "work": {
+            "compileMs": 1110.3000001907349,
+            "graphMs": 1421.4999997615814,
+            "checkpointMs": 951.5000011920929,
+            "finishMs": 11.100000143051147,
+            "graphNonCheckpointElapsedMs": 469.9999985694885,
+            "encodedPassPixels": 156147435,
+            "tileDrawCalls": 18359,
+            "densePaintBatches": 627,
+            "densePaintEffects": 490
+          }
+        },
+        "cross-return": {
+          "ready": true,
+          "visible": 9,
+          "camera": [
+            -694.768927082602,
+            739.5879614702377,
+            0.1547142692135176
+          ],
+          "afterGestureMs": 434.199951171875,
+          "afterLastInputMs": 450.7998046875,
+          "uncachedTileRecords": 2,
+          "packetBytes": 1652804,
+          "compiles": 4,
+          "sceneScopes": [],
+          "texturePeak": 581183144,
+          "work": {
+            "compileMs": 209.20000004768372,
+            "graphMs": 122.89999985694885,
+            "checkpointMs": 102.79999995231628,
+            "finishMs": 5.000000238418579,
+            "graphNonCheckpointElapsedMs": 20.09999990463257,
+            "encodedPassPixels": 15049045,
+            "tileDrawCalls": 690,
+            "densePaintBatches": 37,
+            "densePaintEffects": 26
+          }
+        },
+        "whole-file": {
+          "ready": null,
+          "visible": 216,
+          "camera": [
+            63.119388624315604,
+            181.09734958741598,
+            0.02383442043246254
+          ],
+          "afterGestureMs": 0.5,
+          "afterLastInputMs": 49.60009765625,
+          "uncachedTileRecords": 0,
+          "packetBytes": 0,
+          "compiles": 2,
+          "sceneScopes": [
+            {
+              "nodes": 7765,
+              "keys": [
+                "1:29354",
+                "1:29585",
+                "1:29979",
+                "1:30873",
+                "1:31358",
+                "1:40471",
+                "1:42766",
+                "1:47101"
+              ]
+            }
+          ],
+          "texturePeak": 0,
+          "work": {
+            "compileMs": 0,
+            "graphMs": 0,
+            "checkpointMs": 0,
+            "finishMs": 0,
+            "graphNonCheckpointElapsedMs": 0,
+            "encodedPassPixels": 0,
+            "tileDrawCalls": 0,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "dense-cold-view": {
+          "ready": true,
+          "visible": 10,
+          "camera": [
+            30.635265266867407,
+            -1212.8690868585725,
+            0.09855276495819335
+          ],
+          "afterGestureMs": 9936.0,
+          "afterLastInputMs": 9978.60009765625,
+          "uncachedTileRecords": 12,
+          "packetBytes": 127130724,
+          "compiles": 23,
+          "sceneScopes": [
+            {
+              "nodes": 3,
+              "keys": [
+                "2:24193",
+                "2:24194"
+              ]
+            },
+            {
+              "nodes": 15604,
+              "keys": [
+                "2:16659",
+                "2:18245",
+                "2:19452",
+                "2:20659",
+                "2:24989",
+                "2:279",
+                "2:3457",
+                "2:5",
+                "2:6361",
+                "2:9265"
+              ]
+            }
+          ],
+          "texturePeak": 831501124,
+          "work": {
+            "compileMs": 2549.9999997615814,
+            "graphMs": 5366.000000238419,
+            "checkpointMs": 1782.99999833107,
+            "finishMs": 200.20000004768372,
+            "graphNonCheckpointElapsedMs": 3583.0000019073486,
+            "encodedPassPixels": 378949017,
+            "tileDrawCalls": 28071,
+            "densePaintBatches": 1532,
+            "densePaintEffects": 954
+          }
+        },
+        "dense-pan": {
+          "ready": true,
+          "visible": 12,
+          "camera": [
+            94.6352652668674,
+            -1180.8690868585725,
+            0.09855276495819335
+          ],
+          "afterGestureMs": 2.199951171875,
+          "afterLastInputMs": 18.199951171875,
+          "uncachedTileRecords": 0,
+          "packetBytes": 0,
+          "compiles": 0,
+          "sceneScopes": [],
+          "texturePeak": 0,
+          "work": {
+            "compileMs": 0,
+            "graphMs": 0,
+            "checkpointMs": 0,
+            "finishMs": 0,
+            "graphNonCheckpointElapsedMs": 0,
+            "encodedPassPixels": 0,
+            "tileDrawCalls": 0,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "dense-pan-back": {
+          "ready": true,
+          "visible": 10,
+          "camera": [
+            30.635265266867407,
+            -1212.8690868585725,
+            0.09855276495819335
+          ],
+          "afterGestureMs": 2.0,
+          "afterLastInputMs": 14.7001953125,
+          "uncachedTileRecords": 0,
+          "packetBytes": 0,
+          "compiles": 0,
+          "sceneScopes": [],
+          "texturePeak": 0,
+          "work": {
+            "compileMs": 0,
+            "graphMs": 0,
+            "checkpointMs": 0,
+            "finishMs": 0,
+            "graphNonCheckpointElapsedMs": 0,
+            "encodedPassPixels": 0,
+            "tileDrawCalls": 0,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "dense-more-detail": {
+          "ready": true,
+          "visible": 4,
+          "camera": [
+            -128.3106328774236,
+            -1883.6167395412735,
+            0.1379738719957956
+          ],
+          "afterGestureMs": 2180.60009765625,
+          "afterLastInputMs": 2227.300048828125,
+          "uncachedTileRecords": 5,
+          "packetBytes": 53471576,
+          "compiles": 17,
+          "sceneScopes": [],
+          "texturePeak": 901333060,
+          "work": {
+            "compileMs": 586.0,
+            "graphMs": 749.5,
+            "checkpointMs": 419.09999990463257,
+            "finishMs": 10.299999952316284,
+            "graphNonCheckpointElapsedMs": 330.40000009536743,
+            "encodedPassPixels": 143972384,
+            "tileDrawCalls": 7368,
+            "densePaintBatches": 383,
+            "densePaintEffects": 256
+          }
+        },
+        "dense-zoom-back": {
+          "ready": true,
+          "visible": 10,
+          "camera": [
+            30.635265266867407,
+            -1212.8690868585725,
+            0.09855276495819335
+          ],
+          "afterGestureMs": 1803.099853515625,
+          "afterLastInputMs": 1854.699951171875,
+          "uncachedTileRecords": 6,
+          "packetBytes": 35867639,
+          "compiles": 10,
+          "sceneScopes": [],
+          "texturePeak": 946858820,
+          "work": {
+            "compileMs": 849.6999998092651,
+            "graphMs": 786.9999997615814,
+            "checkpointMs": 463.39999985694885,
+            "finishMs": 29.200000286102295,
+            "graphNonCheckpointElapsedMs": 323.59999990463257,
+            "encodedPassPixels": 157824585,
+            "tileDrawCalls": 11434,
+            "densePaintBatches": 569,
+            "densePaintEffects": 309
+          }
+        },
+        "dense-inflight-return": {
+          "ready": true,
+          "visible": 10,
+          "camera": [
+            30.635265266867407,
+            -1212.8690868585725,
+            0.09855276495819335
+          ],
+          "afterGestureMs": 1591.89990234375,
+          "afterLastInputMs": 1634.599853515625,
+          "uncachedTileRecords": 6,
+          "packetBytes": 45325043,
+          "compiles": 14,
+          "sceneScopes": [],
+          "texturePeak": 946858820,
+          "work": {
+            "compileMs": 455.5000002384186,
+            "graphMs": 655.099999666214,
+            "checkpointMs": 494.5000014305115,
+            "finishMs": 17.500000476837158,
+            "graphNonCheckpointElapsedMs": 160.59999823570251,
+            "encodedPassPixels": 86623439,
+            "tileDrawCalls": 6209,
+            "densePaintBatches": 345,
+            "densePaintEffects": 209
+          }
+        }
+      },
+      "openToFirstThumbnailMs": 2838.5,
+      "openToFiveNamedPreviewsMs": 14472.10009765625,
+      "decodedMaterialIds": 219,
+      "materialClicks": 0
+    },
+    "integrated-time-2-A": {
+      "sha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "viewport": {
+        "x": 305,
+        "y": 0,
+        "width": 855,
+        "height": 928
+      },
+      "segments": {
+        "overview-pan": {
+          "ready": null,
+          "visible": 106,
+          "camera": [
+            255.05744432432215,
+            506.40142159186865,
+            0.023834419977857055
+          ],
+          "afterGestureMs": 0.5,
+          "afterLastInputMs": 43.199951171875,
+          "uncachedTileRecords": 0,
+          "packetBytes": 0,
+          "compiles": 0,
+          "sceneScopes": [],
+          "texturePeak": 0,
+          "work": {
+            "compileMs": 0,
+            "graphMs": 0,
+            "checkpointMs": 0,
+            "finishMs": 0,
+            "graphNonCheckpointElapsedMs": 0,
+            "encodedPassPixels": 0,
+            "tileDrawCalls": 0,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "zoom-to-neighbours": {
+          "ready": true,
+          "visible": 9,
+          "camera": [
+            -694.6067868436319,
+            739.2366152152579,
+            0.15471427216445813
+          ],
+          "afterGestureMs": 4728.300048828125,
+          "afterLastInputMs": 4770.900146484375,
+          "uncachedTileRecords": 7,
+          "packetBytes": 42947495,
+          "compiles": 17,
+          "sceneScopes": [
+            {
+              "nodes": 690,
+              "keys": [
+                "1:29585",
+                "1:31358"
+              ]
+            },
+            {
+              "nodes": 10119,
+              "keys": [
+                "1:29354",
+                "1:29585",
+                "1:29979",
+                "1:31358",
+                "1:32480",
+                "1:40138",
+                "1:47101",
+                "1:48076"
+              ]
+            }
+          ],
+          "texturePeak": 425325580,
+          "work": {
+            "compileMs": 840.4999995231628,
+            "graphMs": 1355.5999999046326,
+            "checkpointMs": 594.2000012397766,
+            "finishMs": 14.200000047683716,
+            "graphNonCheckpointElapsedMs": 761.399998664856,
+            "encodedPassPixels": 90649199,
+            "tileDrawCalls": 12265,
+            "densePaintBatches": 469,
+            "densePaintEffects": 330
+          }
+        },
+        "short-pan": {
+          "ready": true,
+          "visible": 9,
+          "camera": [
+            -619.6067868436319,
+            763.2366152152579,
+            0.15471427216445813
+          ],
+          "afterGestureMs": 2.7998046875,
+          "afterLastInputMs": 20.7998046875,
+          "uncachedTileRecords": 1,
+          "packetBytes": 0,
+          "compiles": 0,
+          "sceneScopes": [],
+          "texturePeak": 425325580,
+          "work": {
+            "compileMs": 23.899999856948853,
+            "graphMs": 0.20000004768371582,
+            "checkpointMs": 0,
+            "finishMs": 2,
+            "graphNonCheckpointElapsedMs": 0.20000004768371582,
+            "encodedPassPixels": 268325,
+            "tileDrawCalls": 3,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "return": {
+          "ready": true,
+          "visible": 9,
+          "camera": [
+            -694.6067868436319,
+            739.2366152152579,
+            0.15471427216445813
+          ],
+          "afterGestureMs": 3.599853515625,
+          "afterLastInputMs": 19.89990234375,
+          "uncachedTileRecords": 0,
+          "packetBytes": 0,
+          "compiles": 0,
+          "sceneScopes": [],
+          "texturePeak": 0,
+          "work": {
+            "compileMs": 0,
+            "graphMs": 0,
+            "checkpointMs": 0,
+            "finishMs": 0,
+            "graphNonCheckpointElapsedMs": 0,
+            "encodedPassPixels": 0,
+            "tileDrawCalls": 0,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "zoom-in": {
+          "ready": true,
+          "visible": 5,
+          "camera": [
+            -1648.822522595029,
+            973.1877300413024,
+            0.28622139894723414
+          ],
+          "afterGestureMs": 1101.300048828125,
+          "afterLastInputMs": 1144.699951171875,
+          "uncachedTileRecords": 2,
+          "packetBytes": 23020577,
+          "compiles": 15,
+          "sceneScopes": [],
+          "texturePeak": 425325580,
+          "work": {
+            "compileMs": 108.79999995231628,
+            "graphMs": 238.20000004768372,
+            "checkpointMs": 144.0,
+            "finishMs": 0.9000000953674316,
+            "graphNonCheckpointElapsedMs": 94.20000004768372,
+            "encodedPassPixels": 29741565,
+            "tileDrawCalls": 3075,
+            "densePaintBatches": 128,
+            "densePaintEffects": 73
+          }
+        },
+        "across": {
+          "ready": true,
+          "visible": 5,
+          "camera": [
+            -1948.822522595029,
+            883.1877300413024,
+            0.28622139894723414
+          ],
+          "afterGestureMs": 1384.300048828125,
+          "afterLastInputMs": 1400.099853515625,
+          "uncachedTileRecords": 3,
+          "packetBytes": 32952989,
+          "compiles": 8,
+          "sceneScopes": [],
+          "texturePeak": 715931908,
+          "work": {
+            "compileMs": 360.2000000476837,
+            "graphMs": 418.0,
+            "checkpointMs": 277.70000076293945,
+            "finishMs": 13.799999952316284,
+            "graphNonCheckpointElapsedMs": 140.29999923706055,
+            "encodedPassPixels": 67609036,
+            "tileDrawCalls": 4008,
+            "densePaintBatches": 122,
+            "densePaintEffects": 60
+          }
+        },
+        "reverse-zoom-out": {
+          "ready": true,
+          "visible": 14,
+          "camera": [
+            -452.30463895188416,
+            619.2547149983155,
+            0.106007925650862
+          ],
+          "afterGestureMs": 5926.699951171875,
+          "afterLastInputMs": 5969.300048828125,
+          "uncachedTileRecords": 6,
+          "packetBytes": 60513685,
+          "compiles": 20,
+          "sceneScopes": [
+            {
+              "nodes": 14537,
+              "keys": [
+                "1:29354",
+                "1:29585",
+                "1:29979",
+                "1:30873",
+                "1:31358",
+                "1:31653",
+                "1:32054",
+                "1:32480",
+                "1:40138",
+                "1:40471",
+                "1:47101",
+                "1:47952",
+                "1:48076"
+              ]
+            }
+          ],
+          "texturePeak": 462658164,
+          "work": {
+            "compileMs": 1658.3999996185303,
+            "graphMs": 2475.699999809265,
+            "checkpointMs": 1100.900002002716,
+            "finishMs": 14.600000381469727,
+            "graphNonCheckpointElapsedMs": 1374.799997806549,
+            "encodedPassPixels": 128424361,
+            "tileDrawCalls": 25946,
+            "densePaintBatches": 926,
+            "densePaintEffects": 673
+          }
+        },
+        "zoom-back": {
+          "ready": true,
+          "visible": 7,
+          "camera": [
+            -856.768927082602,
+            690.5879614702377,
+            0.1547142692135176
+          ],
+          "afterGestureMs": 3576.900146484375,
+          "afterLastInputMs": 3627.699951171875,
+          "uncachedTileRecords": 8,
+          "packetBytes": 45094843,
+          "compiles": 13,
+          "sceneScopes": [],
+          "texturePeak": 564216168,
+          "work": {
+            "compileMs": 1392.0000004768372,
+            "graphMs": 2075.499999523163,
+            "checkpointMs": 1208.300002336502,
+            "finishMs": 16.200000047683716,
+            "graphNonCheckpointElapsedMs": 867.1999971866608,
+            "encodedPassPixels": 156174608,
+            "tileDrawCalls": 22051,
+            "densePaintBatches": 671,
+            "densePaintEffects": 517
+          }
+        },
+        "cross-return": {
+          "ready": true,
+          "visible": 9,
+          "camera": [
+            -694.768927082602,
+            739.5879614702377,
+            0.1547142692135176
+          ],
+          "afterGestureMs": 517.199951171875,
+          "afterLastInputMs": 534.099853515625,
+          "uncachedTileRecords": 1,
+          "packetBytes": 1652804,
+          "compiles": 4,
+          "sceneScopes": [],
+          "texturePeak": 564216168,
+          "work": {
+            "compileMs": 15.400000095367432,
+            "graphMs": 35.200000047683716,
+            "checkpointMs": 28.699999809265137,
+            "finishMs": 6.099999904632568,
+            "graphNonCheckpointElapsedMs": 6.500000238418579,
+            "encodedPassPixels": 2654206,
+            "tileDrawCalls": 282,
+            "densePaintBatches": 12,
+            "densePaintEffects": 9
+          }
+        },
+        "whole-file": {
+          "ready": null,
+          "visible": 216,
+          "camera": [
+            63.119388624315604,
+            181.09734958741598,
+            0.02383442043246254
+          ],
+          "afterGestureMs": 0.800048828125,
+          "afterLastInputMs": 48.300048828125,
+          "uncachedTileRecords": 0,
+          "packetBytes": 0,
+          "compiles": 2,
+          "sceneScopes": [
+            {
+              "nodes": 7765,
+              "keys": [
+                "1:29354",
+                "1:29585",
+                "1:29979",
+                "1:30873",
+                "1:31358",
+                "1:40471",
+                "1:42766",
+                "1:47101"
+              ]
+            }
+          ],
+          "texturePeak": 0,
+          "work": {
+            "compileMs": 0,
+            "graphMs": 0,
+            "checkpointMs": 0,
+            "finishMs": 0,
+            "graphNonCheckpointElapsedMs": 0,
+            "encodedPassPixels": 0,
+            "tileDrawCalls": 0,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "dense-cold-view": {
+          "ready": true,
+          "visible": 10,
+          "camera": [
+            30.635265266867407,
+            -1212.8690868585725,
+            0.09855276495819335
+          ],
+          "afterGestureMs": 11871.900146484375,
+          "afterLastInputMs": 11914.60009765625,
+          "uncachedTileRecords": 18,
+          "packetBytes": 142835207,
+          "compiles": 23,
+          "sceneScopes": [
+            {
+              "nodes": 3,
+              "keys": [
+                "2:24193",
+                "2:24194"
+              ]
+            },
+            {
+              "nodes": 20106,
+              "keys": [
+                "2:12169",
+                "2:15073",
+                "2:16659",
+                "2:18245",
+                "2:19452",
+                "2:20659",
+                "2:24989",
+                "2:279",
+                "2:3457",
+                "2:5",
+                "2:6361",
+                "2:9265"
+              ]
+            }
+          ],
+          "texturePeak": 951440320,
+          "work": {
+            "compileMs": 3842.5000002384186,
+            "graphMs": 8049.499999761581,
+            "checkpointMs": 3491.9000041484833,
+            "finishMs": 315.00000071525574,
+            "graphNonCheckpointElapsedMs": 4557.599995613098,
+            "encodedPassPixels": 694016286,
+            "tileDrawCalls": 56610,
+            "densePaintBatches": 2746,
+            "densePaintEffects": 1494
+          }
+        },
+        "dense-pan": {
+          "ready": true,
+          "visible": 12,
+          "camera": [
+            94.6352652668674,
+            -1180.8690868585725,
+            0.09855276495819335
+          ],
+          "afterGestureMs": 2.5,
+          "afterLastInputMs": 17.39990234375,
+          "uncachedTileRecords": 0,
+          "packetBytes": 0,
+          "compiles": 0,
+          "sceneScopes": [],
+          "texturePeak": 0,
+          "work": {
+            "compileMs": 0,
+            "graphMs": 0,
+            "checkpointMs": 0,
+            "finishMs": 0,
+            "graphNonCheckpointElapsedMs": 0,
+            "encodedPassPixels": 0,
+            "tileDrawCalls": 0,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "dense-pan-back": {
+          "ready": true,
+          "visible": 10,
+          "camera": [
+            30.635265266867407,
+            -1212.8690868585725,
+            0.09855276495819335
+          ],
+          "afterGestureMs": 1.89990234375,
+          "afterLastInputMs": 17.89990234375,
+          "uncachedTileRecords": 0,
+          "packetBytes": 0,
+          "compiles": 0,
+          "sceneScopes": [],
+          "texturePeak": 0,
+          "work": {
+            "compileMs": 0,
+            "graphMs": 0,
+            "checkpointMs": 0,
+            "finishMs": 0,
+            "graphNonCheckpointElapsedMs": 0,
+            "encodedPassPixels": 0,
+            "tileDrawCalls": 0,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "dense-more-detail": {
+          "ready": true,
+          "visible": 4,
+          "camera": [
+            -128.3106328774236,
+            -1883.6167395412735,
+            0.1379738719957956
+          ],
+          "afterGestureMs": 2842.699951171875,
+          "afterLastInputMs": 2885.199951171875,
+          "uncachedTileRecords": 6,
+          "packetBytes": 53476182,
+          "compiles": 17,
+          "sceneScopes": [],
+          "texturePeak": 951440320,
+          "work": {
+            "compileMs": 858.1999998092651,
+            "graphMs": 994.8000001907349,
+            "checkpointMs": 708.6000003814697,
+            "finishMs": 11.900000095367432,
+            "graphNonCheckpointElapsedMs": 286.19999980926514,
+            "encodedPassPixels": 236039094,
+            "tileDrawCalls": 9276,
+            "densePaintBatches": 526,
+            "densePaintEffects": 268
+          }
+        },
+        "dense-zoom-back": {
+          "ready": true,
+          "visible": 10,
+          "camera": [
+            30.635265266867407,
+            -1212.8690868585725,
+            0.09855276495819335
+          ],
+          "afterGestureMs": 2883.300048828125,
+          "afterLastInputMs": 2926.60009765625,
+          "uncachedTileRecords": 6,
+          "packetBytes": 47847751,
+          "compiles": 10,
+          "sceneScopes": [],
+          "texturePeak": 958816176,
+          "work": {
+            "compileMs": 1137.3000004291534,
+            "graphMs": 1894.5,
+            "checkpointMs": 1249.3000011444092,
+            "finishMs": 13.90000033378601,
+            "graphNonCheckpointElapsedMs": 645.1999988555908,
+            "encodedPassPixels": 341699136,
+            "tileDrawCalls": 23021,
+            "densePaintBatches": 1104,
+            "densePaintEffects": 621
+          }
+        },
+        "dense-inflight-return": {
+          "ready": true,
+          "visible": 10,
+          "camera": [
+            30.635265266867407,
+            -1212.8690868585725,
+            0.09855276495819335
+          ],
+          "afterGestureMs": 1862.199951171875,
+          "afterLastInputMs": 1922.400146484375,
+          "uncachedTileRecords": 5,
+          "packetBytes": 39170600,
+          "compiles": 12,
+          "sceneScopes": [],
+          "texturePeak": 958816176,
+          "work": {
+            "compileMs": 744.4999997615814,
+            "graphMs": 841.2999999523163,
+            "checkpointMs": 614.699999332428,
+            "finishMs": 3.5999999046325684,
+            "graphNonCheckpointElapsedMs": 226.6000006198883,
+            "encodedPassPixels": 113034769,
+            "tileDrawCalls": 8249,
+            "densePaintBatches": 411,
+            "densePaintEffects": 230
+          }
+        }
+      },
+      "openToFirstThumbnailMs": 2136.5,
+      "openToFiveNamedPreviewsMs": 13387.60009765625,
+      "decodedMaterialIds": 219,
+      "materialClicks": 0
+    },
+    "integrated-time-3-A": {
+      "sha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "viewport": {
+        "x": 305,
+        "y": 0,
+        "width": 855,
+        "height": 928
+      },
+      "segments": {
+        "overview-pan": {
+          "ready": null,
+          "visible": 106,
+          "camera": [
+            255.05744432432215,
+            506.40142159186865,
+            0.023834419977857055
+          ],
+          "afterGestureMs": 0.60009765625,
+          "afterLastInputMs": 43.10009765625,
+          "uncachedTileRecords": 0,
+          "packetBytes": 0,
+          "compiles": 0,
+          "sceneScopes": [],
+          "texturePeak": 0,
+          "work": {
+            "compileMs": 0,
+            "graphMs": 0,
+            "checkpointMs": 0,
+            "finishMs": 0,
+            "graphNonCheckpointElapsedMs": 0,
+            "encodedPassPixels": 0,
+            "tileDrawCalls": 0,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "zoom-to-neighbours": {
+          "ready": true,
+          "visible": 9,
+          "camera": [
+            -694.6067868436319,
+            739.2366152152579,
+            0.15471427216445813
+          ],
+          "afterGestureMs": 4847.10009765625,
+          "afterLastInputMs": 4899.699951171875,
+          "uncachedTileRecords": 6,
+          "packetBytes": 42947427,
+          "compiles": 17,
+          "sceneScopes": [
+            {
+              "nodes": 690,
+              "keys": [
+                "1:29585",
+                "1:31358"
+              ]
+            },
+            {
+              "nodes": 10119,
+              "keys": [
+                "1:29354",
+                "1:29585",
+                "1:29979",
+                "1:31358",
+                "1:32480",
+                "1:40138",
+                "1:47101",
+                "1:48076"
+              ]
+            }
+          ],
+          "texturePeak": 425325580,
+          "work": {
+            "compileMs": 866.2000000476837,
+            "graphMs": 1356.4000000953674,
+            "checkpointMs": 479.30000042915344,
+            "finishMs": 13.300000190734863,
+            "graphNonCheckpointElapsedMs": 877.099999666214,
+            "encodedPassPixels": 78622468,
+            "tileDrawCalls": 11791,
+            "densePaintBatches": 418,
+            "densePaintEffects": 281
+          }
+        },
+        "short-pan": {
+          "ready": true,
+          "visible": 9,
+          "camera": [
+            -619.6067868436319,
+            763.2366152152579,
+            0.15471427216445813
+          ],
+          "afterGestureMs": 2.5,
+          "afterLastInputMs": 22.699951171875,
+          "uncachedTileRecords": 0,
+          "packetBytes": 0,
+          "compiles": 0,
+          "sceneScopes": [],
+          "texturePeak": 0,
+          "work": {
+            "compileMs": 0,
+            "graphMs": 0,
+            "checkpointMs": 0,
+            "finishMs": 0,
+            "graphNonCheckpointElapsedMs": 0,
+            "encodedPassPixels": 0,
+            "tileDrawCalls": 0,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "return": {
+          "ready": true,
+          "visible": 9,
+          "camera": [
+            -694.6067868436319,
+            739.2366152152579,
+            0.15471427216445813
+          ],
+          "afterGestureMs": 2.60009765625,
+          "afterLastInputMs": 19.60009765625,
+          "uncachedTileRecords": 1,
+          "packetBytes": 0,
+          "compiles": 0,
+          "sceneScopes": [],
+          "texturePeak": 425325580,
+          "work": {
+            "compileMs": 5.700000047683716,
+            "graphMs": 0.19999980926513672,
+            "checkpointMs": 0,
+            "finishMs": 1.9000000953674316,
+            "graphNonCheckpointElapsedMs": 0.19999980926513672,
+            "encodedPassPixels": 268325,
+            "tileDrawCalls": 3,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "zoom-in": {
+          "ready": true,
+          "visible": 5,
+          "camera": [
+            -1648.822522595029,
+            973.1877300413024,
+            0.28622139894723414
+          ],
+          "afterGestureMs": 1126.0,
+          "afterLastInputMs": 1177.900146484375,
+          "uncachedTileRecords": 5,
+          "packetBytes": 23020517,
+          "compiles": 15,
+          "sceneScopes": [],
+          "texturePeak": 573871088,
+          "work": {
+            "compileMs": 206.9000005722046,
+            "graphMs": 356.09999990463257,
+            "checkpointMs": 200.10000014305115,
+            "finishMs": 6.1000001430511475,
+            "graphNonCheckpointElapsedMs": 155.99999976158142,
+            "encodedPassPixels": 62987919,
+            "tileDrawCalls": 4763,
+            "densePaintBatches": 214,
+            "densePaintEffects": 95
+          }
+        },
+        "across": {
+          "ready": true,
+          "visible": 5,
+          "camera": [
+            -1948.822522595029,
+            883.1877300413024,
+            0.28622139894723414
+          ],
+          "afterGestureMs": 1350.60009765625,
+          "afterLastInputMs": 1371.89990234375,
+          "uncachedTileRecords": 2,
+          "packetBytes": 32971669,
+          "compiles": 9,
+          "sceneScopes": [],
+          "texturePeak": 715931908,
+          "work": {
+            "compileMs": 348.7999997138977,
+            "graphMs": 423.40000009536743,
+            "checkpointMs": 227.89999985694885,
+            "finishMs": 9.299999952316284,
+            "graphNonCheckpointElapsedMs": 195.50000023841858,
+            "encodedPassPixels": 66112975,
+            "tileDrawCalls": 3981,
+            "densePaintBatches": 122,
+            "densePaintEffects": 60
+          }
+        },
+        "reverse-zoom-out": {
+          "ready": true,
+          "visible": 14,
+          "camera": [
+            -452.30463895188416,
+            619.2547149983155,
+            0.106007925650862
+          ],
+          "afterGestureMs": 5927.400146484375,
+          "afterLastInputMs": 5970.10009765625,
+          "uncachedTileRecords": 6,
+          "packetBytes": 60513637,
+          "compiles": 21,
+          "sceneScopes": [
+            {
+              "nodes": 14537,
+              "keys": [
+                "1:29354",
+                "1:29585",
+                "1:29979",
+                "1:30873",
+                "1:31358",
+                "1:31653",
+                "1:32054",
+                "1:32480",
+                "1:40138",
+                "1:40471",
+                "1:47101",
+                "1:47952",
+                "1:48076"
+              ]
+            }
+          ],
+          "texturePeak": 462658164,
+          "work": {
+            "compileMs": 1674.6999998092651,
+            "graphMs": 2500.5999999046326,
+            "checkpointMs": 1097.900001525879,
+            "finishMs": 15.799999713897705,
+            "graphNonCheckpointElapsedMs": 1402.6999983787537,
+            "encodedPassPixels": 128424361,
+            "tileDrawCalls": 25946,
+            "densePaintBatches": 926,
+            "densePaintEffects": 673
+          }
+        },
+        "zoom-back": {
+          "ready": true,
+          "visible": 7,
+          "camera": [
+            -856.768927082602,
+            690.5879614702377,
+            0.1547142692135176
+          ],
+          "afterGestureMs": 2859.099853515625,
+          "afterLastInputMs": 2910.199951171875,
+          "uncachedTileRecords": 6,
+          "packetBytes": 45094815,
+          "compiles": 13,
+          "sceneScopes": [],
+          "texturePeak": 564216168,
+          "work": {
+            "compileMs": 614.0,
+            "graphMs": 1235.7000002861023,
+            "checkpointMs": 829.7000019550323,
+            "finishMs": 4.099999904632568,
+            "graphNonCheckpointElapsedMs": 405.99999833106995,
+            "encodedPassPixels": 101736286,
+            "tileDrawCalls": 15641,
+            "densePaintBatches": 436,
+            "densePaintEffects": 359
+          }
+        },
+        "cross-return": {
+          "ready": true,
+          "visible": 9,
+          "camera": [
+            -694.768927082602,
+            739.5879614702377,
+            0.1547142692135176
+          ],
+          "afterGestureMs": 492.39990234375,
+          "afterLastInputMs": 507.0,
+          "uncachedTileRecords": 0,
+          "packetBytes": 1652792,
+          "compiles": 4,
+          "sceneScopes": [],
+          "texturePeak": 0,
+          "work": {
+            "compileMs": 0,
+            "graphMs": 0,
+            "checkpointMs": 0,
+            "finishMs": 0,
+            "graphNonCheckpointElapsedMs": 0,
+            "encodedPassPixels": 0,
+            "tileDrawCalls": 0,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "whole-file": {
+          "ready": null,
+          "visible": 215,
+          "camera": [
+            63.119388624315604,
+            181.09734958741598,
+            0.02383442043246254
+          ],
+          "afterGestureMs": 0.60009765625,
+          "afterLastInputMs": 43.60009765625,
+          "uncachedTileRecords": 0,
+          "packetBytes": 0,
+          "compiles": 2,
+          "sceneScopes": [
+            {
+              "nodes": 7765,
+              "keys": [
+                "1:29354",
+                "1:29585",
+                "1:29979",
+                "1:30873",
+                "1:31358",
+                "1:40471",
+                "1:42766",
+                "1:47101"
+              ]
+            }
+          ],
+          "texturePeak": 0,
+          "work": {
+            "compileMs": 0,
+            "graphMs": 0,
+            "checkpointMs": 0,
+            "finishMs": 0,
+            "graphNonCheckpointElapsedMs": 0,
+            "encodedPassPixels": 0,
+            "tileDrawCalls": 0,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "dense-cold-view": {
+          "ready": true,
+          "visible": 10,
+          "camera": [
+            30.635265266867464,
+            -1212.8690868585725,
+            0.09855276495819335
+          ],
+          "afterGestureMs": 10933.400146484375,
+          "afterLastInputMs": 10984.800048828125,
+          "uncachedTileRecords": 14,
+          "packetBytes": 127129080,
+          "compiles": 23,
+          "sceneScopes": [
+            {
+              "nodes": 15604,
+              "keys": [
+                "2:16659",
+                "2:18245",
+                "2:19452",
+                "2:20659",
+                "2:24989",
+                "2:279",
+                "2:3457",
+                "2:5",
+                "2:6361",
+                "2:9265"
+              ]
+            }
+          ],
+          "texturePeak": 806020916,
+          "work": {
+            "compileMs": 2963.9000000953674,
+            "graphMs": 6853.299999952316,
+            "checkpointMs": 2779.1999979019165,
+            "finishMs": 32.200000286102295,
+            "graphNonCheckpointElapsedMs": 4074.1000020504,
+            "encodedPassPixels": 413043690,
+            "tileDrawCalls": 37688,
+            "densePaintBatches": 1706,
+            "densePaintEffects": 1014
+          }
+        },
+        "dense-pan": {
+          "ready": true,
+          "visible": 12,
+          "camera": [
+            94.63526526686746,
+            -1180.8690868585725,
+            0.09855276495819335
+          ],
+          "afterGestureMs": 2.39990234375,
+          "afterLastInputMs": 24.0,
+          "uncachedTileRecords": 0,
+          "packetBytes": 0,
+          "compiles": 0,
+          "sceneScopes": [],
+          "texturePeak": 0,
+          "work": {
+            "compileMs": 0,
+            "graphMs": 0,
+            "checkpointMs": 0,
+            "finishMs": 0,
+            "graphNonCheckpointElapsedMs": 0,
+            "encodedPassPixels": 0,
+            "tileDrawCalls": 0,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "dense-pan-back": {
+          "ready": true,
+          "visible": 10,
+          "camera": [
+            30.635265266867464,
+            -1212.8690868585725,
+            0.09855276495819335
+          ],
+          "afterGestureMs": 1.89990234375,
+          "afterLastInputMs": 15.89990234375,
+          "uncachedTileRecords": 0,
+          "packetBytes": 0,
+          "compiles": 0,
+          "sceneScopes": [],
+          "texturePeak": 0,
+          "work": {
+            "compileMs": 0,
+            "graphMs": 0,
+            "checkpointMs": 0,
+            "finishMs": 0,
+            "graphNonCheckpointElapsedMs": 0,
+            "encodedPassPixels": 0,
+            "tileDrawCalls": 0,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "dense-more-detail": {
+          "ready": true,
+          "visible": 4,
+          "camera": [
+            -128.31063287742347,
+            -1883.6167395412735,
+            0.1379738719957956
+          ],
+          "afterGestureMs": 2767.2998046875,
+          "afterLastInputMs": 2810.5,
+          "uncachedTileRecords": 5,
+          "packetBytes": 53471544,
+          "compiles": 17,
+          "sceneScopes": [],
+          "texturePeak": 909771972,
+          "work": {
+            "compileMs": 607.0,
+            "graphMs": 932.2999997138977,
+            "checkpointMs": 664.4000000953674,
+            "finishMs": 11.300000429153442,
+            "graphNonCheckpointElapsedMs": 267.8999996185303,
+            "encodedPassPixels": 218712544,
+            "tileDrawCalls": 8554,
+            "densePaintBatches": 469,
+            "densePaintEffects": 247
+          }
+        },
+        "dense-zoom-back": {
+          "ready": true,
+          "visible": 10,
+          "camera": [
+            30.635265266867464,
+            -1212.8690868585725,
+            0.09855276495819335
+          ],
+          "afterGestureMs": 2594.7001953125,
+          "afterLastInputMs": 2645.60009765625,
+          "uncachedTileRecords": 8,
+          "packetBytes": 35865249,
+          "compiles": 10,
+          "sceneScopes": [],
+          "texturePeak": 909771972,
+          "work": {
+            "compileMs": 1335.9000005722046,
+            "graphMs": 1914.6000001430511,
+            "checkpointMs": 1185.299998998642,
+            "finishMs": 20.0,
+            "graphNonCheckpointElapsedMs": 729.3000011444092,
+            "encodedPassPixels": 211670769,
+            "tileDrawCalls": 17518,
+            "densePaintBatches": 786,
+            "densePaintEffects": 418
+          }
+        },
+        "dense-inflight-return": {
+          "ready": true,
+          "visible": 10,
+          "camera": [
+            30.635265266867464,
+            -1212.8690868585725,
+            0.09855276495819335
+          ],
+          "afterGestureMs": 1525.10009765625,
+          "afterLastInputMs": 1574.10009765625,
+          "uncachedTileRecords": 4,
+          "packetBytes": 39171706,
+          "compiles": 13,
+          "sceneScopes": [],
+          "texturePeak": 909771972,
+          "work": {
+            "compileMs": 726.2999997138977,
+            "graphMs": 784.3999996185303,
+            "checkpointMs": 562.7999999523163,
+            "finishMs": 2.700000047683716,
+            "graphNonCheckpointElapsedMs": 221.599999666214,
+            "encodedPassPixels": 110505398,
+            "tileDrawCalls": 8242,
+            "densePaintBatches": 403,
+            "densePaintEffects": 251
+          }
+        }
+      },
+      "openToFirstThumbnailMs": 2241.7998046875,
+      "openToFiveNamedPreviewsMs": 13476.7998046875,
+      "decodedMaterialIds": 219,
+      "materialClicks": 0
+    },
+    "integrated-time-4-B": {
+      "sha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "viewport": {
+        "x": 305,
+        "y": 0,
+        "width": 855,
+        "height": 928
+      },
+      "segments": {
+        "overview-pan": {
+          "ready": null,
+          "visible": 106,
+          "camera": [
+            255.05744432432215,
+            506.40142159186865,
+            0.023834419977857055
+          ],
+          "afterGestureMs": 0.699951171875,
+          "afterLastInputMs": 41.5,
+          "uncachedTileRecords": 0,
+          "packetBytes": 0,
+          "compiles": 0,
+          "sceneScopes": [],
+          "texturePeak": 0,
+          "work": {
+            "compileMs": 0,
+            "graphMs": 0,
+            "checkpointMs": 0,
+            "finishMs": 0,
+            "graphNonCheckpointElapsedMs": 0,
+            "encodedPassPixels": 0,
+            "tileDrawCalls": 0,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "zoom-to-neighbours": {
+          "ready": true,
+          "visible": 9,
+          "camera": [
+            -694.6067868436319,
+            739.2366152152579,
+            0.15471427216445813
+          ],
+          "afterGestureMs": 4616.10009765625,
+          "afterLastInputMs": 4667.2001953125,
+          "uncachedTileRecords": 7,
+          "packetBytes": 42947471,
+          "compiles": 17,
+          "sceneScopes": [
+            {
+              "nodes": 690,
+              "keys": [
+                "1:29585",
+                "1:31358"
+              ]
+            },
+            {
+              "nodes": 10119,
+              "keys": [
+                "1:29354",
+                "1:29585",
+                "1:29979",
+                "1:31358",
+                "1:32480",
+                "1:40138",
+                "1:47101",
+                "1:48076"
+              ]
+            }
+          ],
+          "texturePeak": 437720812,
+          "work": {
+            "compileMs": 985.3999993801117,
+            "graphMs": 1473.599999666214,
+            "checkpointMs": 564.2999994754791,
+            "finishMs": 15.300000190734863,
+            "graphNonCheckpointElapsedMs": 909.3000001907349,
+            "encodedPassPixels": 103322784,
+            "tileDrawCalls": 12193,
+            "densePaintBatches": 476,
+            "densePaintEffects": 317
+          }
+        },
+        "short-pan": {
+          "ready": true,
+          "visible": 9,
+          "camera": [
+            -619.6067868436319,
+            763.2366152152579,
+            0.15471427216445813
+          ],
+          "afterGestureMs": 2.0,
+          "afterLastInputMs": 24.199951171875,
+          "uncachedTileRecords": 0,
+          "packetBytes": 0,
+          "compiles": 0,
+          "sceneScopes": [],
+          "texturePeak": 0,
+          "work": {
+            "compileMs": 0,
+            "graphMs": 0,
+            "checkpointMs": 0,
+            "finishMs": 0,
+            "graphNonCheckpointElapsedMs": 0,
+            "encodedPassPixels": 0,
+            "tileDrawCalls": 0,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "return": {
+          "ready": true,
+          "visible": 9,
+          "camera": [
+            -694.6067868436319,
+            739.2366152152579,
+            0.15471427216445813
+          ],
+          "afterGestureMs": 2.0,
+          "afterLastInputMs": 14.199951171875,
+          "uncachedTileRecords": 1,
+          "packetBytes": 0,
+          "compiles": 0,
+          "sceneScopes": [],
+          "texturePeak": 437720812,
+          "work": {
+            "compileMs": 6.3999998569488525,
+            "graphMs": 0.2999999523162842,
+            "checkpointMs": 0,
+            "finishMs": 6.599999904632568,
+            "graphNonCheckpointElapsedMs": 0.2999999523162842,
+            "encodedPassPixels": 268325,
+            "tileDrawCalls": 3,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "zoom-in": {
+          "ready": true,
+          "visible": 5,
+          "camera": [
+            -1648.822522595029,
+            973.1877300413024,
+            0.28622139894723414
+          ],
+          "afterGestureMs": 1320.800048828125,
+          "afterLastInputMs": 1362.60009765625,
+          "uncachedTileRecords": 6,
+          "packetBytes": 23020545,
+          "compiles": 15,
+          "sceneScopes": [],
+          "texturePeak": 587893536,
+          "work": {
+            "compileMs": 255.7999997138977,
+            "graphMs": 609.9999997615814,
+            "checkpointMs": 390.39999985694885,
+            "finishMs": 7.800000190734863,
+            "graphNonCheckpointElapsedMs": 219.59999990463257,
+            "encodedPassPixels": 96606222,
+            "tileDrawCalls": 5620,
+            "densePaintBatches": 298,
+            "densePaintEffects": 121
+          }
+        },
+        "across": {
+          "ready": true,
+          "visible": 5,
+          "camera": [
+            -1948.822522595029,
+            883.1877300413024,
+            0.28622139894723414
+          ],
+          "afterGestureMs": 1183.800048828125,
+          "afterLastInputMs": 1198.699951171875,
+          "uncachedTileRecords": 2,
+          "packetBytes": 32952969,
+          "compiles": 8,
+          "sceneScopes": [],
+          "texturePeak": 725500932,
+          "work": {
+            "compileMs": 359.2000000476837,
+            "graphMs": 385.60000014305115,
+            "checkpointMs": 268.2000002861023,
+            "finishMs": 10.5,
+            "graphNonCheckpointElapsedMs": 117.39999985694885,
+            "encodedPassPixels": 66112975,
+            "tileDrawCalls": 3617,
+            "densePaintBatches": 122,
+            "densePaintEffects": 60
+          }
+        },
+        "reverse-zoom-out": {
+          "ready": true,
+          "visible": 14,
+          "camera": [
+            -452.30463895188416,
+            619.2547149983155,
+            0.106007925650862
+          ],
+          "afterGestureMs": 5737.10009765625,
+          "afterLastInputMs": 5788.199951171875,
+          "uncachedTileRecords": 7,
+          "packetBytes": 60513637,
+          "compiles": 21,
+          "sceneScopes": [
+            {
+              "nodes": 14537,
+              "keys": [
+                "1:29354",
+                "1:29585",
+                "1:29979",
+                "1:30873",
+                "1:31358",
+                "1:31653",
+                "1:32054",
+                "1:32480",
+                "1:40138",
+                "1:40471",
+                "1:47101",
+                "1:47952",
+                "1:48076"
+              ]
+            }
+          ],
+          "texturePeak": 476183428,
+          "work": {
+            "compileMs": 1702.8000004291534,
+            "graphMs": 2334.9000000953674,
+            "checkpointMs": 1062.0000002384186,
+            "finishMs": 22.700000047683716,
+            "graphNonCheckpointElapsedMs": 1272.8999998569489,
+            "encodedPassPixels": 134590580,
+            "tileDrawCalls": 23830,
+            "densePaintBatches": 991,
+            "densePaintEffects": 688
+          }
+        },
+        "zoom-back": {
+          "ready": true,
+          "visible": 7,
+          "camera": [
+            -856.768927082602,
+            690.5879614702377,
+            0.1547142692135176
+          ],
+          "afterGestureMs": 2909.0,
+          "afterLastInputMs": 2964.0,
+          "uncachedTileRecords": 6,
+          "packetBytes": 50348159,
+          "compiles": 14,
+          "sceneScopes": [],
+          "texturePeak": 581183144,
+          "work": {
+            "compileMs": 832.7999999523163,
+            "graphMs": 1228.4999992847443,
+            "checkpointMs": 807.0000014305115,
+            "finishMs": 11.000000476837158,
+            "graphNonCheckpointElapsedMs": 421.4999978542328,
+            "encodedPassPixels": 115291793,
+            "tileDrawCalls": 17358,
+            "densePaintBatches": 688,
+            "densePaintEffects": 430
+          }
+        },
+        "cross-return": {
+          "ready": true,
+          "visible": 9,
+          "camera": [
+            -694.768927082602,
+            739.5879614702377,
+            0.1547142692135176
+          ],
+          "afterGestureMs": 400.900146484375,
+          "afterLastInputMs": 414.300048828125,
+          "uncachedTileRecords": 0,
+          "packetBytes": 1652792,
+          "compiles": 4,
+          "sceneScopes": [],
+          "texturePeak": 0,
+          "work": {
+            "compileMs": 0,
+            "graphMs": 0,
+            "checkpointMs": 0,
+            "finishMs": 0,
+            "graphNonCheckpointElapsedMs": 0,
+            "encodedPassPixels": 0,
+            "tileDrawCalls": 0,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "whole-file": {
+          "ready": null,
+          "visible": 214,
+          "camera": [
+            63.119388624315604,
+            181.09734958741598,
+            0.02383442043246254
+          ],
+          "afterGestureMs": 1.400146484375,
+          "afterLastInputMs": 43.7001953125,
+          "uncachedTileRecords": 0,
+          "packetBytes": 0,
+          "compiles": 2,
+          "sceneScopes": [
+            {
+              "nodes": 7765,
+              "keys": [
+                "1:29354",
+                "1:29585",
+                "1:29979",
+                "1:30873",
+                "1:31358",
+                "1:40471",
+                "1:42766",
+                "1:47101"
+              ]
+            }
+          ],
+          "texturePeak": 0,
+          "work": {
+            "compileMs": 0,
+            "graphMs": 0,
+            "checkpointMs": 0,
+            "finishMs": 0,
+            "graphNonCheckpointElapsedMs": 0,
+            "encodedPassPixels": 0,
+            "tileDrawCalls": 0,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "dense-cold-view": {
+          "ready": true,
+          "visible": 10,
+          "camera": [
+            30.635265266867407,
+            -1212.8690868585725,
+            0.09855276495819335
+          ],
+          "afterGestureMs": 11162.300048828125,
+          "afterLastInputMs": 11212,
+          "uncachedTileRecords": 13,
+          "packetBytes": 127130672,
+          "compiles": 23,
+          "sceneScopes": [
+            {
+              "nodes": 3,
+              "keys": [
+                "2:24193",
+                "2:24194"
+              ]
+            },
+            {
+              "nodes": 15604,
+              "keys": [
+                "2:16659",
+                "2:18245",
+                "2:19452",
+                "2:20659",
+                "2:24989",
+                "2:279",
+                "2:3457",
+                "2:5",
+                "2:6361",
+                "2:9265"
+              ]
+            }
+          ],
+          "texturePeak": 831501124,
+          "work": {
+            "compileMs": 2955.9999997615814,
+            "graphMs": 6470.400000333786,
+            "checkpointMs": 2425.499999523163,
+            "finishMs": 30.59999966621399,
+            "graphNonCheckpointElapsedMs": 4044.900000810623,
+            "encodedPassPixels": 330378952,
+            "tileDrawCalls": 27392,
+            "densePaintBatches": 1402,
+            "densePaintEffects": 871
+          }
+        },
+        "dense-pan": {
+          "ready": true,
+          "visible": 12,
+          "camera": [
+            94.6352652668674,
+            -1180.8690868585725,
+            0.09855276495819335
+          ],
+          "afterGestureMs": 2.0,
+          "afterLastInputMs": 16.699951171875,
+          "uncachedTileRecords": 0,
+          "packetBytes": 0,
+          "compiles": 0,
+          "sceneScopes": [],
+          "texturePeak": 0,
+          "work": {
+            "compileMs": 0,
+            "graphMs": 0,
+            "checkpointMs": 0,
+            "finishMs": 0,
+            "graphNonCheckpointElapsedMs": 0,
+            "encodedPassPixels": 0,
+            "tileDrawCalls": 0,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "dense-pan-back": {
+          "ready": true,
+          "visible": 10,
+          "camera": [
+            30.635265266867407,
+            -1212.8690868585725,
+            0.09855276495819335
+          ],
+          "afterGestureMs": 1.89990234375,
+          "afterLastInputMs": 17.0,
+          "uncachedTileRecords": 0,
+          "packetBytes": 0,
+          "compiles": 0,
+          "sceneScopes": [],
+          "texturePeak": 0,
+          "work": {
+            "compileMs": 0,
+            "graphMs": 0,
+            "checkpointMs": 0,
+            "finishMs": 0,
+            "graphNonCheckpointElapsedMs": 0,
+            "encodedPassPixels": 0,
+            "tileDrawCalls": 0,
+            "densePaintBatches": 0,
+            "densePaintEffects": 0
+          }
+        },
+        "dense-more-detail": {
+          "ready": true,
+          "visible": 4,
+          "camera": [
+            -128.3106328774236,
+            -1883.6167395412735,
+            0.1379738719957956
+          ],
+          "afterGestureMs": 2270.300048828125,
+          "afterLastInputMs": 2320.400146484375,
+          "uncachedTileRecords": 5,
+          "packetBytes": 53471544,
+          "compiles": 17,
+          "sceneScopes": [],
+          "texturePeak": 946858820,
+          "work": {
+            "compileMs": 411.1000003814697,
+            "graphMs": 387.10000014305115,
+            "checkpointMs": 217.7000012397766,
+            "finishMs": 7.799999952316284,
+            "graphNonCheckpointElapsedMs": 169.39999890327454,
+            "encodedPassPixels": 116811582,
+            "tileDrawCalls": 5041,
+            "densePaintBatches": 252,
+            "densePaintEffects": 193
+          }
+        },
+        "dense-zoom-back": {
+          "ready": true,
+          "visible": 10,
+          "camera": [
+            30.635265266867407,
+            -1212.8690868585725,
+            0.09855276495819335
+          ],
+          "afterGestureMs": 2444.699951171875,
+          "afterLastInputMs": 2550.39990234375,
+          "uncachedTileRecords": 4,
+          "packetBytes": 31884147,
+          "compiles": 9,
+          "sceneScopes": [],
+          "texturePeak": 946858820,
+          "work": {
+            "compileMs": 527.3000001907349,
+            "graphMs": 861.1000001430511,
+            "checkpointMs": 463.0000014305115,
+            "finishMs": 7.799999713897705,
+            "graphNonCheckpointElapsedMs": 398.0999987125397,
+            "encodedPassPixels": 182374490,
+            "tileDrawCalls": 9065,
+            "densePaintBatches": 559,
+            "densePaintEffects": 241
+          }
+        },
+        "dense-inflight-return": {
+          "ready": true,
+          "visible": 10,
+          "camera": [
+            30.635265266867407,
+            -1212.8690868585725,
+            0.09855276495819335
+          ],
+          "afterGestureMs": 1351.10009765625,
+          "afterLastInputMs": 1393.900146484375,
+          "uncachedTileRecords": 6,
+          "packetBytes": 38514205,
+          "compiles": 13,
+          "sceneScopes": [],
+          "texturePeak": 946858820,
+          "work": {
+            "compileMs": 967.5,
+            "graphMs": 1171.5,
+            "checkpointMs": 842.899998664856,
+            "finishMs": 4.400000095367432,
+            "graphNonCheckpointElapsedMs": 328.60000133514404,
+            "encodedPassPixels": 211697267,
+            "tileDrawCalls": 11424,
+            "densePaintBatches": 725,
+            "densePaintEffects": 421
+          }
+        }
+      },
+      "openToFirstThumbnailMs": 1979.699951171875,
+      "openToFiveNamedPreviewsMs": 13440.199951171875,
+      "decodedMaterialIds": 216,
+      "materialClicks": 0
+    }
+  },
+  "medians": {
+    "zoom-to-neighbours": {
+      "A": {
+        "afterGestureMs": 4787.7000732421875,
+        "afterLastInputMs": 4835.300048828125,
+        "texturePeak": 425325580.0,
+        "visible": 9.0,
+        "uncachedTileRecords": 6.5
+      },
+      "B": {
+        "afterGestureMs": 4913.0,
+        "afterLastInputMs": 4964.2501220703125,
+        "texturePeak": 437720812.0,
+        "visible": 9.0,
+        "uncachedTileRecords": 7.5
+      }
+    },
+    "dense-cold-view": {
+      "A": {
+        "afterGestureMs": 11402.650146484375,
+        "afterLastInputMs": 11449.700073242188,
+        "texturePeak": 878730618.0,
+        "visible": 10.0,
+        "uncachedTileRecords": 16.0
+      },
+      "B": {
+        "afterGestureMs": 10549.150024414062,
+        "afterLastInputMs": 10595.300048828125,
+        "texturePeak": 831501124.0,
+        "visible": 10.0,
+        "uncachedTileRecords": 12.5
+      }
+    },
+    "dense-more-detail": {
+      "A": {
+        "afterGestureMs": 2804.9998779296875,
+        "afterLastInputMs": 2847.8499755859375,
+        "texturePeak": 930606146.0,
+        "visible": 4.0,
+        "uncachedTileRecords": 5.5
+      },
+      "B": {
+        "afterGestureMs": 2225.4500732421875,
+        "afterLastInputMs": 2273.85009765625,
+        "texturePeak": 924095940.0,
+        "visible": 4.0,
+        "uncachedTileRecords": 5.0
+      }
+    },
+    "dense-zoom-back": {
+      "A": {
+        "afterGestureMs": 2739.0001220703125,
+        "afterLastInputMs": 2786.10009765625,
+        "texturePeak": 934294074.0,
+        "visible": 10.0,
+        "uncachedTileRecords": 7.0
+      },
+      "B": {
+        "afterGestureMs": 2123.89990234375,
+        "afterLastInputMs": 2202.5499267578125,
+        "texturePeak": 946858820.0,
+        "visible": 10.0,
+        "uncachedTileRecords": 5.0
+      }
+    },
+    "dense-pan": {
+      "A": {
+        "afterGestureMs": 2.449951171875,
+        "afterLastInputMs": 20.699951171875,
+        "texturePeak": 0.0,
+        "visible": 12.0,
+        "uncachedTileRecords": 0.0
+      },
+      "B": {
+        "afterGestureMs": 2.0999755859375,
+        "afterLastInputMs": 17.449951171875,
+        "texturePeak": 0.0,
+        "visible": 12.0,
+        "uncachedTileRecords": 0.0
+      }
+    },
+    "dense-pan-back": {
+      "A": {
+        "afterGestureMs": 1.89990234375,
+        "afterLastInputMs": 16.89990234375,
+        "texturePeak": 0.0,
+        "visible": 10.0,
+        "uncachedTileRecords": 0.0
+      },
+      "B": {
+        "afterGestureMs": 1.949951171875,
+        "afterLastInputMs": 15.85009765625,
+        "texturePeak": 0.0,
+        "visible": 10.0,
+        "uncachedTileRecords": 0.0
+      }
+    },
+    "dense-inflight-return": {
+      "A": {
+        "afterGestureMs": 1693.6500244140625,
+        "afterLastInputMs": 1748.2501220703125,
+        "texturePeak": 934294074.0,
+        "visible": 10.0,
+        "uncachedTileRecords": 4.5
+      },
+      "B": {
+        "afterGestureMs": 1471.5,
+        "afterLastInputMs": 1514.25,
+        "texturePeak": 946858820.0,
+        "visible": 10.0,
+        "uncachedTileRecords": 6.0
+      }
+    }
+  },
+  "smokeWithPixelObserver": {
+    "sha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+    "viewport": {
+      "x": 305,
+      "y": 0,
+      "width": 855,
+      "height": 928
+    },
+    "segments": {
+      "overview-pan": {
+        "ready": null,
+        "visible": 107,
+        "camera": [
+          255.05744432432215,
+          506.40142159186865,
+          0.023834419977857055
+        ],
+        "afterGestureMs": 0.7001953125,
+        "afterLastInputMs": 44.900146484375,
+        "uncachedTileRecords": 0,
+        "packetBytes": 0,
+        "compiles": 0,
+        "sceneScopes": [],
+        "texturePeak": 0,
+        "work": {
+          "compileMs": 0,
+          "graphMs": 0,
+          "checkpointMs": 0,
+          "finishMs": 0,
+          "graphNonCheckpointElapsedMs": 0,
+          "encodedPassPixels": 0,
+          "tileDrawCalls": 0,
+          "densePaintBatches": 0,
+          "densePaintEffects": 0
+        }
+      },
+      "zoom-to-neighbours": {
+        "ready": true,
+        "visible": 9,
+        "camera": [
+          -694.6067868436319,
+          739.2366152152579,
+          0.15471427216445813
+        ],
+        "afterGestureMs": 5445.5,
+        "afterLastInputMs": 5489.599853515625,
+        "uncachedTileRecords": 7,
+        "packetBytes": 42947495,
+        "compiles": 17,
+        "sceneScopes": [
+          {
+            "nodes": 690,
+            "keys": [
+              "1:29585",
+              "1:31358"
+            ]
+          },
+          {
+            "nodes": 10119,
+            "keys": [
+              "1:29354",
+              "1:29585",
+              "1:29979",
+              "1:31358",
+              "1:32480",
+              "1:40138",
+              "1:47101",
+              "1:48076"
+            ]
+          }
+        ],
+        "texturePeak": 437720812,
+        "work": {
+          "compileMs": 1317.8999998569489,
+          "graphMs": 1752.7000000476837,
+          "checkpointMs": 674.5,
+          "finishMs": 13.499999761581421,
+          "graphNonCheckpointElapsedMs": 1078.2000000476837,
+          "encodedPassPixels": 113770251,
+          "tileDrawCalls": 13860,
+          "densePaintBatches": 546,
+          "densePaintEffects": 378
+        }
+      },
+      "short-pan": {
+        "ready": true,
+        "visible": 9,
+        "camera": [
+          -619.6067868436319,
+          763.2366152152579,
+          0.15471427216445813
+        ],
+        "afterGestureMs": 2.0,
+        "afterLastInputMs": 14.89990234375,
+        "uncachedTileRecords": 1,
+        "packetBytes": 0,
+        "compiles": 0,
+        "sceneScopes": [],
+        "texturePeak": 437720812,
+        "work": {
+          "compileMs": 6.6000001430511475,
+          "graphMs": 0.2999999523162842,
+          "checkpointMs": 0,
+          "finishMs": 1.5999999046325684,
+          "graphNonCheckpointElapsedMs": 0.2999999523162842,
+          "encodedPassPixels": 268325,
+          "tileDrawCalls": 3,
+          "densePaintBatches": 0,
+          "densePaintEffects": 0
+        }
+      },
+      "return": {
+        "ready": true,
+        "visible": 9,
+        "camera": [
+          -694.6067868436319,
+          739.2366152152579,
+          0.15471427216445813
+        ],
+        "afterGestureMs": 2.10009765625,
+        "afterLastInputMs": 16.900146484375,
+        "uncachedTileRecords": 0,
+        "packetBytes": 0,
+        "compiles": 0,
+        "sceneScopes": [],
+        "texturePeak": 0,
+        "work": {
+          "compileMs": 0,
+          "graphMs": 0,
+          "checkpointMs": 0,
+          "finishMs": 0,
+          "graphNonCheckpointElapsedMs": 0,
+          "encodedPassPixels": 0,
+          "tileDrawCalls": 0,
+          "densePaintBatches": 0,
+          "densePaintEffects": 0
+        }
+      },
+      "zoom-in": {
+        "ready": true,
+        "visible": 5,
+        "camera": [
+          -1648.822522595029,
+          973.1877300413024,
+          0.28622139894723414
+        ],
+        "afterGestureMs": 1561.89990234375,
+        "afterLastInputMs": 1604.599853515625,
+        "uncachedTileRecords": 4,
+        "packetBytes": 23020577,
+        "compiles": 15,
+        "sceneScopes": [],
+        "texturePeak": 437720812,
+        "work": {
+          "compileMs": 176.90000009536743,
+          "graphMs": 405.09999990463257,
+          "checkpointMs": 263.5000011920929,
+          "finishMs": 9.600000143051147,
+          "graphNonCheckpointElapsedMs": 141.59999871253967,
+          "encodedPassPixels": 48781382,
+          "tileDrawCalls": 3520,
+          "densePaintBatches": 158,
+          "densePaintEffects": 107
+        }
+      },
+      "across": {
+        "ready": true,
+        "visible": 5,
+        "camera": [
+          -1948.822522595029,
+          883.1877300413024,
+          0.28622139894723414
+        ],
+        "afterGestureMs": 1318.10009765625,
+        "afterLastInputMs": 1338.5,
+        "uncachedTileRecords": 2,
+        "packetBytes": 32971705,
+        "compiles": 9,
+        "sceneScopes": [],
+        "texturePeak": 725500932,
+        "work": {
+          "compileMs": 421.0,
+          "graphMs": 290.0,
+          "checkpointMs": 145.50000047683716,
+          "finishMs": 9.500000238418579,
+          "graphNonCheckpointElapsedMs": 144.49999952316284,
+          "encodedPassPixels": 66112975,
+          "tileDrawCalls": 3617,
+          "densePaintBatches": 122,
+          "densePaintEffects": 60
+        }
+      },
+      "reverse-zoom-out": {
+        "ready": true,
+        "visible": 14,
+        "camera": [
+          -452.30463895188416,
+          619.2547149983155,
+          0.106007925650862
+        ],
+        "afterGestureMs": 6240.900146484375,
+        "afterLastInputMs": 6496.5,
+        "uncachedTileRecords": 7,
+        "packetBytes": 60513685,
+        "compiles": 21,
+        "sceneScopes": [
+          {
+            "nodes": 14537,
+            "keys": [
+              "1:29354",
+              "1:29585",
+              "1:29979",
+              "1:30873",
+              "1:31358",
+              "1:31653",
+              "1:32054",
+              "1:32480",
+              "1:40138",
+              "1:40471",
+              "1:47101",
+              "1:47952",
+              "1:48076"
+            ]
+          }
+        ],
+        "texturePeak": 476183428,
+        "work": {
+          "compileMs": 1850.5000002384186,
+          "graphMs": 2302.7000002861023,
+          "checkpointMs": 996.4000015258789,
+          "finishMs": 14.400000095367432,
+          "graphNonCheckpointElapsedMs": 1306.2999987602234,
+          "encodedPassPixels": 134590580,
+          "tileDrawCalls": 23830,
+          "densePaintBatches": 991,
+          "densePaintEffects": 688
+        }
+      },
+      "zoom-back": {
+        "ready": true,
+        "visible": 7,
+        "camera": [
+          -856.768927082602,
+          690.5879614702377,
+          0.1547142692135176
+        ],
+        "afterGestureMs": 2753.5,
+        "afterLastInputMs": 2795.7001953125,
+        "uncachedTileRecords": 6,
+        "packetBytes": 45094843,
+        "compiles": 13,
+        "sceneScopes": [],
+        "texturePeak": 581183144,
+        "work": {
+          "compileMs": 646.4000005722046,
+          "graphMs": 1063.0000002384186,
+          "checkpointMs": 718.5,
+          "finishMs": 2.700000047683716,
+          "graphNonCheckpointElapsedMs": 344.5000002384186,
+          "encodedPassPixels": 101736286,
+          "tileDrawCalls": 14051,
+          "densePaintBatches": 436,
+          "densePaintEffects": 359
+        }
+      },
+      "cross-return": {
+        "ready": true,
+        "visible": 9,
+        "camera": [
+          -694.768927082602,
+          739.5879614702377,
+          0.1547142692135176
+        ],
+        "afterGestureMs": 469.800048828125,
+        "afterLastInputMs": 483.5,
+        "uncachedTileRecords": 0,
+        "packetBytes": 1652804,
+        "compiles": 4,
+        "sceneScopes": [],
+        "texturePeak": 0,
+        "work": {
+          "compileMs": 0,
+          "graphMs": 0,
+          "checkpointMs": 0,
+          "finishMs": 0,
+          "graphNonCheckpointElapsedMs": 0,
+          "encodedPassPixels": 0,
+          "tileDrawCalls": 0,
+          "densePaintBatches": 0,
+          "densePaintEffects": 0
+        }
+      },
+      "whole-file": {
+        "ready": null,
+        "visible": 216,
+        "camera": [
+          63.119388624315604,
+          181.09734958741598,
+          0.02383442043246254
+        ],
+        "afterGestureMs": 8.39990234375,
+        "afterLastInputMs": 109.2998046875,
+        "uncachedTileRecords": 0,
+        "packetBytes": 0,
+        "compiles": 2,
+        "sceneScopes": [
+          {
+            "nodes": 7765,
+            "keys": [
+              "1:29354",
+              "1:29585",
+              "1:29979",
+              "1:30873",
+              "1:31358",
+              "1:40471",
+              "1:42766",
+              "1:47101"
+            ]
+          }
+        ],
+        "texturePeak": 0,
+        "work": {
+          "compileMs": 0,
+          "graphMs": 0,
+          "checkpointMs": 0,
+          "finishMs": 0,
+          "graphNonCheckpointElapsedMs": 0,
+          "encodedPassPixels": 0,
+          "tileDrawCalls": 0,
+          "densePaintBatches": 0,
+          "densePaintEffects": 0
+        }
+      },
+      "dense-cold-view": {
+        "ready": true,
+        "visible": 10,
+        "camera": [
+          30.635265266867464,
+          -1212.8690868585725,
+          0.09855276495819335
+        ],
+        "afterGestureMs": 15125.599853515625,
+        "afterLastInputMs": 15176.39990234375,
+        "uncachedTileRecords": 12,
+        "packetBytes": 127129126,
+        "compiles": 23,
+        "sceneScopes": [
+          {
+            "nodes": 15604,
+            "keys": [
+              "2:16659",
+              "2:18245",
+              "2:19452",
+              "2:20659",
+              "2:24989",
+              "2:279",
+              "2:3457",
+              "2:5",
+              "2:6361",
+              "2:9265"
+            ]
+          }
+        ],
+        "texturePeak": 831501124,
+        "work": {
+          "compileMs": 6230.399999856949,
+          "graphMs": 5285.0,
+          "checkpointMs": 1556.8000011444092,
+          "finishMs": 266.39999985694885,
+          "graphNonCheckpointElapsedMs": 3728.199998855591,
+          "encodedPassPixels": 402402383,
+          "tileDrawCalls": 29520,
+          "densePaintBatches": 1628,
+          "densePaintEffects": 987
+        }
+      },
+      "dense-pan": {
+        "ready": true,
+        "visible": 12,
+        "camera": [
+          94.63526526686746,
+          -1180.8690868585725,
+          0.09855276495819335
+        ],
+        "afterGestureMs": 2.300048828125,
+        "afterLastInputMs": 16.900146484375,
+        "uncachedTileRecords": 0,
+        "packetBytes": 0,
+        "compiles": 0,
+        "sceneScopes": [],
+        "texturePeak": 0,
+        "work": {
+          "compileMs": 0,
+          "graphMs": 0,
+          "checkpointMs": 0,
+          "finishMs": 0,
+          "graphNonCheckpointElapsedMs": 0,
+          "encodedPassPixels": 0,
+          "tileDrawCalls": 0,
+          "densePaintBatches": 0,
+          "densePaintEffects": 0
+        }
+      },
+      "dense-pan-back": {
+        "ready": true,
+        "visible": 10,
+        "camera": [
+          30.635265266867464,
+          -1212.8690868585725,
+          0.09855276495819335
+        ],
+        "afterGestureMs": 2.89990234375,
+        "afterLastInputMs": 20.199951171875,
+        "uncachedTileRecords": 0,
+        "packetBytes": 0,
+        "compiles": 0,
+        "sceneScopes": [],
+        "texturePeak": 0,
+        "work": {
+          "compileMs": 0,
+          "graphMs": 0,
+          "checkpointMs": 0,
+          "finishMs": 0,
+          "graphNonCheckpointElapsedMs": 0,
+          "encodedPassPixels": 0,
+          "tileDrawCalls": 0,
+          "densePaintBatches": 0,
+          "densePaintEffects": 0
+        }
+      },
+      "dense-more-detail": {
+        "ready": true,
+        "visible": 4,
+        "camera": [
+          -128.31063287742347,
+          -1883.6167395412735,
+          0.1379738719957956
+        ],
+        "afterGestureMs": 2443.800048828125,
+        "afterLastInputMs": 2486.10009765625,
+        "uncachedTileRecords": 5,
+        "packetBytes": 53471576,
+        "compiles": 17,
+        "sceneScopes": [],
+        "texturePeak": 946858820,
+        "work": {
+          "compileMs": 517.8999993801117,
+          "graphMs": 427.7000002861023,
+          "checkpointMs": 215.10000038146973,
+          "finishMs": 12.59999966621399,
+          "graphNonCheckpointElapsedMs": 212.59999990463257,
+          "encodedPassPixels": 116811582,
+          "tileDrawCalls": 5041,
+          "densePaintBatches": 252,
+          "densePaintEffects": 193
+        }
+      },
+      "dense-zoom-back": {
+        "ready": true,
+        "visible": 10,
+        "camera": [
+          30.635265266867464,
+          -1212.8690868585725,
+          0.09855276495819335
+        ],
+        "afterGestureMs": 4754.7998046875,
+        "afterLastInputMs": 4805.39990234375,
+        "uncachedTileRecords": 6,
+        "packetBytes": 35865266,
+        "compiles": 10,
+        "sceneScopes": [],
+        "texturePeak": 946858820,
+        "work": {
+          "compileMs": 3235.5999994277954,
+          "graphMs": 2486.800000190735,
+          "checkpointMs": 925.5999991893768,
+          "finishMs": 15.299999952316284,
+          "graphNonCheckpointElapsedMs": 1561.200001001358,
+          "encodedPassPixels": 213761724,
+          "tileDrawCalls": 12091,
+          "densePaintBatches": 691,
+          "densePaintEffects": 313
+        }
+      },
+      "dense-inflight-return": {
+        "ready": true,
+        "visible": 10,
+        "camera": [
+          30.635265266867464,
+          -1212.8690868585725,
+          0.09855276495819335
+        ],
+        "afterGestureMs": 1843.2001953125,
+        "afterLastInputMs": 1885.800048828125,
+        "uncachedTileRecords": 4,
+        "packetBytes": 22493731,
+        "compiles": 11,
+        "sceneScopes": [],
+        "texturePeak": 946858820,
+        "work": {
+          "compileMs": 1583.5999999046326,
+          "graphMs": 933.5999999046326,
+          "checkpointMs": 472.79999804496765,
+          "finishMs": 10.100000143051147,
+          "graphNonCheckpointElapsedMs": 460.8000018596649,
+          "encodedPassPixels": 115339597,
+          "tileDrawCalls": 6893,
+          "densePaintBatches": 344,
+          "densePaintEffects": 260
+        }
+      }
+    },
+    "openToFirstThumbnailMs": 5119.10009765625,
+    "openToFiveNamedPreviewsMs": 16273.699951171875,
+    "decodedMaterialIds": 219,
+    "materialClicks": 0,
+    "focusAfterGestureMs": 7148.7998046875
+  }
+}

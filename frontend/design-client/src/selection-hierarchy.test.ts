@@ -20,26 +20,67 @@ function fixture() {
   return { editor, outer, group, inner, a, b, hidden, locked, outside, point }
 }
 
-test('single click respects unentered frame/group ancestry; repeated clicks do not drill into the selected container', () => {
+test('a group takes the click until entered; a frame still selects child paint or its empty area', () => {
   const { editor, outer, group, inner, a, b, point } = fixture()
   const p = point(a.id)
-  expect(editor.hit(p)).toBe(outer.id)
-  editor.select([outer.id]); expect(editor.hit(p)).toBe(outer.id)
-  editor.select([group.id]); expect(editor.hit(p)).toBe(group.id)
-  editor.select([inner.id]); expect(editor.hit(p)).toBe(inner.id)
+  const empty = { x: 85, y: 95 }
+  expect(editor.hit(p)).toBe(group.id)
+  expect(editor.selectionHit(p)).toBe(group.id)
+  expect(editor.hit(empty)).toBe(outer.id)
+  expect(editor.selectionHit(empty)).toBe(outer.id)
+  for (const selected of [[], [outer.id], [group.id]]) {
+    editor.select(selected)
+    expect(editor.selectionHit(p)).toBe(group.id)
+    expect(editor.selectionHit(p, true)).toBe(a.id)
+    expect(editor.selectionHit(empty, true)).toBe(outer.id)
+  }
+  editor.select([inner.id]); expect(editor.selectionHit(p)).toBe(a.id)
   editor.select([a.id]); expect(editor.hit(point(b.id))).toBe(b.id)
   editor.select([]); expect(editor.hit(p, true)).toBe(a.id)
+  expect(editor.selectDeeper(p)).toEqual({ id: a.id, changed: true })
 })
 
-test('double click enters exactly one selected ancestor at a time and identifies an already selected leaf', () => {
-  const { editor, outer, group, inner, a, point } = fixture()
+test('a boolean group takes the click and deep-select reaches its child', () => {
+  const document = blank(), shape = node('vector', 10, 10, 80, 80), child = node('rectangle', 10, 10, 30, 30), other = node('ellipse', 40, 10, 20, 20)
+  shape.booleanOperation = 'union'
+  shape.children = [child.id, other.id]
+  document.schemaVersion = 4
+  document.nodes[shape.id] = shape
+  document.nodes[child.id] = child
+  document.nodes[other.id] = other
+  document.pages[0].children = [shape.id]
+  const editor = new Editor(document); editors.push(editor)
+  expect(editor.selectionHit({ x: 30, y: 30 })).toBe(shape.id)
+  expect(editor.selectionHit({ x: 30, y: 30 }, true)).toBe(child.id)
+  expect(editor.canUndo).toBe(false)
+})
+
+test('double-click selects the group child; a selected frame still opens one level', () => {
+  const { editor, outer, group, a, point } = fixture()
+  editor.select([])
+  expect(editor.selectDeeper(point(a.id))).toEqual({ id: a.id, changed: true })
   editor.select([outer.id])
-  for (const id of [group.id, inner.id, a.id]) {
-    expect(editor.selectDeeper(point(a.id))).toEqual({ id, changed: true })
-    expect(editor.state.selection).toEqual([id])
-  }
+  expect(editor.selectDeeper(point(a.id))).toEqual({ id: group.id, changed: true })
+  expect(editor.selectDeeper(point(a.id))).toEqual({ id: a.id, changed: true })
   expect(editor.selectDeeper(point(a.id))).toEqual({ id: a.id, changed: false })
   expect(editor.state.tool).toBe('select')
+})
+
+test('Enter on a group selects both children and Shift+Enter returns to the group', () => {
+  const document = blank(), group = node('group', 20, 20, 180, 80), a = node('rectangle', 8, 8, 40, 40), b = node('ellipse', 70, 8, 36, 36)
+  group.children = [a.id, b.id]
+  for (const n of [group, a, b]) document.nodes[n.id] = n
+  document.pages[0].children = [group.id]
+  const editor = new Editor(document); editors.push(editor)
+  const original = editor.state.doc
+  editor.select([group.id])
+  expect(editor.selectChildren()).toBe(true)
+  expect(editor.state.selection).toHaveLength(2)
+  expect(new Set(editor.state.selection)).toEqual(new Set([a.id, b.id]))
+  expect(editor.selectParent()).toBe(true)
+  expect(editor.state.selection).toEqual([group.id])
+  expect(editor.state.doc).toBe(original)
+  expect(editor.canUndo).toBe(false)
 })
 
 test('Enter selects visible unlocked direct children, Shift+Enter deduplicates their parent, roots stay selected', () => {
@@ -92,7 +133,7 @@ test('hover ownership cannot erase a new panel hover and never mutates or persis
 test('a selected ancestor owns descendant hits even if a Shift selection also contains its child', () => {
   const { editor, outer, group, a, point } = fixture()
   editor.select([outer.id, a.id])
-  expect(editor.hit(point(a.id))).toBe(outer.id)
+  expect(editor.hit(point(a.id))).toBe(group.id)
   expect(editor.selectDeeper(point(a.id))).toEqual({ id: group.id, changed: true })
 })
 
@@ -114,7 +155,8 @@ test('generated component descendants keep the instance boundary and parent navi
   const label = originNode(editor.state.doc, ids.a, editor.state.doc.nodes[ids.label].componentKey!)
   const p = apply(worldMatrix(editor.state.doc, label.id), { x: 2, y: 2 })
   expect(editor.hit(p)).toBe(ids.a)
-  expect(editor.selectionHit(p)).toBe(label.id)
+  expect(editor.selectionHit(p)).toBe(ids.a)
+  expect(editor.selectionHit(p, true)).toBe(label.id)
   expect(editor.hit(p, true)).toBe(label.id)
   editor.select([ids.a])
   expect(editor.selectDeeper(p)).toEqual({ id: label.id, changed: true })
@@ -148,16 +190,23 @@ function overlappingFixture() {
   return { editor, frame, small, backing, p: { x: 50, y: 50 } }
 }
 
-test('ordinary click and hover select the same child; explicitly selected containers retain ownership', () => {
+test('front paint wins over the frame; empty frame area stays on the frame', () => {
   const { editor, frame, small, backing, p } = overlappingFixture()
-  expect(editor.selectionHit(p)).toBe(small.id);expect(editor.hoverHit(p)).toBe(small.id)
-  editor.select([frame.id]); expect(editor.selectionHit(p)).toBe(frame.id)
+  const empty = { x: 5, y: 5 }
+  expect(editor.selectionHit(p)).toBe(backing.id)
+  expect(editor.selectionHit(empty)).toBe(frame.id)
+  expect(editor.hoverHit(p)).toBe(small.id)
+  editor.select([frame.id])
+  expect(editor.selectionHit(p)).toBe(backing.id)
+  expect(editor.selectionHit(empty)).toBe(frame.id)
   editor.select([small.id])
   expect(editor.hit(p)).toBe(backing.id)
   expect(editor.hoverHit(p)).toBe(small.id)
-  expect(editor.selectionHit(p)).toBe(small.id)
+  expect(editor.selectionHit(p)).toBe(backing.id)
   expect(editor.selectionHit(p, true)).toBe(backing.id)
-  editor.selectParent(); expect(editor.selectionHit(p)).toBe(frame.id)
+  editor.selectParent()
+  expect(editor.selectionHit(p)).toBe(backing.id)
+  expect(editor.selectionHit(empty, true)).toBe(frame.id)
   expect(editor.canUndo).toBe(false)
 })
 
@@ -167,7 +216,7 @@ test('scoped picking preserves unopened groups and foreground boards', () => {
   editor.change('Nest small target', d => {
     group.children = [small.id]; d.nodes[group.id] = group; d.nodes[frame.id].children = [group.id, backing.id]
   })
-  editor.select([backing.id]); expect(editor.selectionHit(p)).toBe(small.id);expect(editor.hoverHit(p)).toBe(small.id)
+  editor.select([backing.id]); expect(editor.selectionHit(p)).toBe(backing.id);expect(editor.hoverHit(p)).toBe(small.id)
   const front = node('frame', 0, 0, 400, 300)
   editor.change('Foreground board', d => { d.nodes[front.id] = front; d.pages[0].children.push(front.id) })
   editor.select([small.id]); expect(editor.selectionHit(p)).toBe(front.id)

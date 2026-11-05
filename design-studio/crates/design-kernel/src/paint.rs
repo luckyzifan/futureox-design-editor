@@ -11,6 +11,8 @@ use std::{
 };
 #[derive(Clone, Default)]
 pub struct Images {
+    #[cfg(not(target_arch="wasm32"))]
+    pub(crate) source:Option<crate::source_bitmap_pixels::Access>,
     cache: HashMap<Arc<str>, CachedImage>,
     pixels: usize,
     settings: Option<crate::color::ColorSettings>,
@@ -183,8 +185,17 @@ impl Images {
             .map_or(cached.base.clone(), |l| l.clone()))
     }
     fn base(&mut self, data: &str) -> Result<&mut CachedImage, String> {
+        #[cfg(not(target_arch="wasm32"))]
+        let asset=if crate::source_bitmap_pixels::is_source(data){
+            Some(self.source.as_ref().ok_or("Sketch source bitmap is not open")?.resolve(data)?)
+        }else{None};
         if !self.cache.contains_key(data) {
-            let decoded = decode(data, self.settings, self.pixels);
+            let decode_owned=|resident| {
+                #[cfg(not(target_arch="wasm32"))]
+                if let Some(asset)=&asset{return decode_bytes(asset.png()?,self.settings,resident);}
+                decode(data,self.settings,resident)
+            };
+            let decoded = decode_owned(self.pixels);
             let (surface, count) = match decoded {
                 Err(error) if self.pixels > 0 && error.starts_with("Decoded image budget exceeded") => {
                     let before = self.pixels;
@@ -201,7 +212,7 @@ impl Images {
                     });
                     self.pixels = self.pixels.checked_sub(released).ok_or("Decoded image cache accounting underflow")?;
                     if self.pixels == before { return Err(error); }
-                    decode(data, self.settings, self.pixels)?
+                    decode_owned(self.pixels)?
                 }
                 other => other?,
             };
@@ -244,6 +255,9 @@ fn decode(
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(b64)
         .map_err(|_| "Invalid image data")?;
+    decode_bytes(bytes,settings,resident)
+}
+fn decode_bytes(bytes:Vec<u8>,settings:Option<crate::color::ColorSettings>,resident:usize)->Result<(Surface,usize),String>{
     let space = crate::image_color::png_space(&bytes)?;
     let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
         .with_guessed_format()
@@ -1137,6 +1151,21 @@ fn gradient_parameters(rect:Rect,coordinates:&GradientCoordinates,sample:Option<
             .map_or([-1., -1., 0., 0.], |(a, b, k)| [a as f32, b as f32, k, 0.]))
     })
 }
+enum SampleImage {
+    Surface(Arc<Surface>),
+    #[cfg(not(target_arch="wasm32"))]
+    Rows(crate::source_bitmap_pixels::Rows),
+}
+impl SampleImage {
+    fn size(&self)->[u32;2]{match self {
+        Self::Surface(s)=>[s.rect.w,s.rect.h],
+        #[cfg(not(target_arch="wasm32"))] Self::Rows(s)=>[s.width,s.height],
+    }}
+    fn at(&self,x:i32,y:i32)->Pixel{match self{
+        Self::Surface(s)=>s.at(x,y),
+        #[cfg(not(target_arch="wasm32"))] Self::Rows(s)=>s.at(x,y),
+    }}
+}
 pub struct Sampler {
     linear_sampling: bool,
     image_coordinates: Option<ImageCoordinates>,
@@ -1144,7 +1173,7 @@ pub struct Sampler {
     base: Pixel,
     stops: Vec<(f64, Pixel)>,
     byte_stops: Vec<[f32; 4]>,
-    image: Option<Arc<Surface>>,
+    image: Option<SampleImage>,
     opacity: f32,
     gradient_coordinates: Option<GradientCoordinates>,
     /// Authored image adjustments; `None` covers absent and identity. The
@@ -1205,6 +1234,7 @@ impl Sampler {
         stops.sort_by(|a, b| a.0.total_cmp(&b.0));
         let image = if p.kind == "image" {
             let uri = p.image.as_deref().ok_or("Image fill has no asset")?;
+            let ordinary=|images:&mut Images|->Result<Option<SampleImage>,String>{
             let base = images.image(uri)?;
             // Coordinate compilation and surface must agree on the level, so
             // the selection stays inside the same pure geometry the exported
@@ -1221,7 +1251,17 @@ impl Sampler {
             } else {
                 0
             };
-            Some(images.image_at(uri, level)?)
+                Ok(Some(SampleImage::Surface(images.image_at(uri,level)?)))
+            };
+            #[cfg(not(target_arch="wasm32"))]
+            {
+                let rows=if crate::source_bitmap_pixels::is_source(uri) && !images.mips_enabled(){
+                    images.source.as_ref().ok_or("Sketch source bitmap is not open")?.resolve(uri)?.raw(images.settings)?
+                }else{None};
+                if let Some(rows)=rows {Some(SampleImage::Rows(rows))} else {ordinary(images)?}
+            }
+            #[cfg(target_arch="wasm32")]
+            ordinary(images)?
         } else {
             None
         };
@@ -1233,7 +1273,7 @@ impl Sampler {
                     [n.width, n.height],
                     m,
                     samples,
-                    [image.rect.w, image.rect.h],
+                    image.size(),
                 )
             })
             .transpose()?;
@@ -1313,7 +1353,12 @@ impl Sampler {
         else {
             return Pixel::default();
         };
-        let sampled = image.sample_rgba8_index(x, y, if self.adjust.is_some() { 1. } else { self.opacity });
+        let opacity=if self.adjust.is_some(){1.}else{self.opacity};
+        let sampled=match image {
+            SampleImage::Surface(image)=>image.sample_rgba8_index(x,y,opacity),
+            #[cfg(not(target_arch="wasm32"))]
+            SampleImage::Rows(image)=>crate::blend::sample_rgba8_index_from(x,y,opacity,|x,y|image.at(x,y)),
+        };
         if self.adjust.is_none() {
             return sampled;
         }
@@ -1328,9 +1373,9 @@ impl Sampler {
                 None => Pixel::default(),
                 Some(q) => {
                     let sampled = if self.linear_sampling {
-                        image.sample_linear(q.x, q.y)
+                        crate::blend::sample_linear_from(q.x,q.y,|x,y|image.at(x,y))
                     } else {
-                        image.sample(q.x, q.y)
+                        crate::blend::sample_from(q.x,q.y,|x,y|image.at(x,y))
                     };
                     self.adjusted(sampled)
                 }

@@ -611,7 +611,7 @@ struct LayerContext<'a> {
 }
 struct Builder<'a> {
     source: &'a Document,
-    output: BTreeMap<String, Node>,
+    output: crate::scene::DocumentNodes,
     owner: String,
     stack: Vec<String>,
     budget: usize,
@@ -926,7 +926,7 @@ pub(crate) fn resolve_roots_budgeted(doc:&mut Document, selected:Option<&BTreeSe
         if let Some(limit)=byte_limit {bytes=bytes.saturating_sub(encoded_len(&result[&id],limit)?+id.len()+4);}
         let mut builder = Builder {
             source: &source,
-            output: BTreeMap::new(),
+            output: Default::default(),
             owner: id.clone(),
             stack: Vec::new(),
             budget: crate::capacity::node_limit().saturating_add(1).saturating_sub(result.len()),

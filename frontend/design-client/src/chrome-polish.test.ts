@@ -1,0 +1,63 @@
+import { readFileSync } from 'node:fs'
+import { expect, test } from 'vitest'
+import { activityKind, activityLabel, activityText } from './activity-chrome'
+import { fileKind } from './chrome-icons'
+import { shellDensity, shellDensityFromWindow } from './AdaptivePanels'
+
+test('activity copy stays bilingual and boot, open, and import stay distinct', () => {
+  expect(Object.keys(activityText.en)).toEqual(Object.keys(activityText['zh-CN']))
+  expect(Object.values(activityText.en).every(text => text.length > 0 && !/\p{Script=Han}/u.test(text))).toBe(true)
+  expect(activityText['zh-CN'].boot).toContain('设计内核')
+  expect(activityKind({ ready: false, switching: false, transitioning: false, importing: false })).toBe('boot')
+  expect(activityKind({ ready: true, switching: true, transitioning: false, importing: false })).toBe('open')
+  expect(activityKind({ ready: true, switching: true, transitioning: false, importing: true })).toBe('import')
+  expect(activityLabel('boot', 'en', 'desktop')).toBe(activityText.en.boot)
+  expect(activityLabel('open', 'zh-CN', 'source', '正在绘制')).toBe('正在绘制')
+  expect(activityLabel('import', 'en', 'web')).toBe('Importing the design…')
+  expect(activityLabel('open', 'en', 'desktop')).toBe('Working on the local design file…')
+})
+
+test('file marks follow the extension and the F mark stays the shared blue master', () => {
+  expect(fileKind('Board.sketch')).toBe('sketch')
+  expect(fileKind('page.FIG')).toBe('fig')
+  expect(fileKind('icon.svgz')).toBe('svg')
+  expect(fileKind('notes.pdf')).toBe('pdf')
+  expect(fileKind('photo.webp')).toBe('image')
+  expect(fileKind('Untitled')).toBe('fd')
+  const svg = readFileSync(new URL('../public/branding/futureox-desgin.svg', import.meta.url), 'utf8')
+  expect(svg).toContain('Futureox / original F-D brand icon')
+  expect(svg).toContain('viewBox="0 0 512 512"')
+  expect(svg.toLowerCase()).toContain('#3459d4')
+  expect(svg.match(/<path /g)?.length).toBeGreaterThanOrEqual(3)
+  expect(svg).not.toMatch(/<script|<image|<foreignObject|figma|electron/i)
+})
+
+test('desk density is the Electron restored band and the shell reflows there', () => {
+  expect(shellDensity(800)).toBe('narrow')
+  expect(shellDensity(900)).toBe('narrow')
+  expect(shellDensity(901)).toBe('desk')
+  expect(shellDensity(1000)).toBe('desk')
+  expect(shellDensity(1180)).toBe('desk')
+  expect(shellDensity(1181)).toBe('wide')
+  const query = (active: string) => (text: string) => ({ matches: text === active, media: text, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false, onchange: null })
+  expect(shellDensityFromWindow({ innerWidth: 800, matchMedia: query('(max-width: 1180px)') })).toBe('desk')
+  expect(shellDensityFromWindow({ innerWidth: 800, matchMedia: query('(min-width: 1181px)') })).toBe('wide')
+  expect(shellDensityFromWindow({ innerWidth: 1000, matchMedia: query('') })).toBe('desk')
+  const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8')
+  expect(css).toContain('@media (min-width: 901px) and (max-width: 1180px)')
+  expect(css).toContain('.editor-shell[data-density="desk"]')
+  expect(css).toContain('.editor-shell[data-density="desk"] .editor-header .header-right')
+  expect(css).toContain('grid-column: 3;')
+  expect(css).toContain('.editor-shell[data-density="desk"] .floating-toolbar')
+  expect(css).toContain('.editor-shell[data-density="desk"] .header-right > .primary { font-size: 0; padding: 6px; }')
+  expect(css).toContain('.editor-shell .header-right > .app-settings-button { font-size: 12px; flex-shrink: 0; white-space: nowrap; }')
+  const polish = readFileSync(new URL('./chrome-polish.css', import.meta.url), 'utf8')
+  expect(polish).toContain('scrollbar-width: thin')
+  expect(polish).toContain('.canvas-scrollbar-thumb')
+  expect(polish).toContain('.prototype-player[data-transition-kind="smart"] .prototype-hotspot')
+  const tools = readFileSync(new URL('./DesignTools.tsx', import.meta.url), 'utf8')
+  expect(tools).toContain('durationMs: 300')
+  expect(tools).toContain("easingCurve: 'ease-out'")
+  const player = readFileSync(new URL('./PrototypePlayer.tsx', import.meta.url), 'utf8')
+  expect(player).toContain("data-transition-kind={transition ? 'smart'")
+})

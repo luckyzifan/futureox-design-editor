@@ -14,6 +14,19 @@ const weight = (style: string | undefined) => {
   return 400
 }
 const fontName = (font: any): string | undefined => font?.postscript || [font?.family,font?.style].filter(Boolean).join(' ') || undefined
+const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
+/** Figma PIXELS / PERCENT / RAW. 100% and RAW 1 are one em, not font-metric auto. */
+function lineHeightMultiplier(value: any, size: number): number | undefined {
+  if (!value || typeof value !== 'object' || !finite(value.value) || !(size >= 1)) return
+  if (value.units === 'PIXELS') return value.value / size
+  if (value.units === 'PERCENT') return value.value / 100
+  if (value.units === 'RAW') return value.value
+}
+function letterSpacingPixels(value: any, size: number): number | undefined {
+  if (!value || typeof value !== 'object' || !finite(value.value)) return
+  if (value.units === 'PIXELS') return value.value
+  if (value.units === 'PERCENT' && size >= 1) return size * value.value / 100
+}
 const casing = (value: unknown): TextRun['textCase'] => value === 'UPPER' ? 'upper' : value === 'LOWER' ? 'lower' : value === 'ORIGINAL' ? 'original' : undefined
 
 /** Embedded-schema UTF-16 style IDs, indexed once rather than searching the
@@ -41,12 +54,88 @@ export function importFigTextRuns(node: DesignNode, record: any, warnings: Impor
     } else if (fill) warnings.add('文字片段非纯色填充尚需核对')
     if (style.textDecoration === 'UNDERLINE') run.underline=true
     if (style.textDecoration === 'STRIKETHROUGH') run.strikethrough=true
+    const metricSize = Number.isFinite(style.fontSize) ? style.fontSize : node.fontSize
+    const lineHeight = lineHeightMultiplier(style.lineHeight, metricSize)
+    if (style.lineHeight !== undefined && (lineHeight === undefined || lineHeight < 0.1 || lineHeight > 10)) warnings.add('文字片段 lineHeight 尚需核对')
+    else if (lineHeight !== undefined) run.lineHeight = lineHeight
+    const tracking = letterSpacingPixels(style.letterSpacing, metricSize)
+    if (style.letterSpacing !== undefined && (tracking === undefined || Math.abs(tracking) > 1000)) warnings.add('文字片段 letterSpacing 尚需核对')
+    else if (tracking !== undefined) run.letterSpacing = tracking
     const font=fontName(style.fontName)
     if (font) fonts[String(runs.length)]=font
-    for (const key of ['lineHeight','letterSpacing','textAlignHorizontal'])
-      if (style[key] !== undefined) warnings.add(`文字片段 ${key} 尚需核对`)
+    if (style.textAlignHorizontal !== undefined) warnings.add('文字片段 textAlignHorizontal 尚需核对')
     runs.push(run); previous=id
   }
   if (runs.length) node.textRuns=runs
   return {style:fontName(record.fontName),runs:fonts}
+}
+
+const featureTag = /^-?[a-z0-9]{4}$/
+function axisTag(variation: any): string | undefined {
+  const bits = variation?.axisTag
+  if (typeof bits === 'number' && Number.isInteger(bits) && bits >= 0 && bits <= 0xffffffff) {
+    const bytes = [(bits >>> 24) & 255, (bits >>> 16) & 255, (bits >>> 8) & 255, bits & 255]
+    const tag = String.fromCharCode(...bytes)
+    if (/^[A-Za-z0-9]{4}$/.test(tag)) return tag.toLowerCase()
+  }
+  if (typeof variation?.axisName === 'string' && /^[A-Za-z0-9]{4}$/.test(variation.axisName)) {
+    return variation.axisName.toLowerCase()
+  }
+  return undefined
+}
+
+/** Node-level OpenType toggles, variation axes, vertical alignment and decoration.
+ * `wght` stays on the weight field. TITLE/SMALL_CAPS remain outside the text model. */
+export function importFigTextExtras(node: DesignNode, record: any, warnings: ImportWarningSink) {
+  const style = node.textStyle
+  if (!style) return
+  const features: string[] = []
+  for (const [field, on] of [['toggledOnOTFeatures', true], ['toggledOffOTFeatures', false]] as const) {
+    const tags = record[field]
+    if (tags === undefined) continue
+    if (!Array.isArray(tags)) throw new Error(`FIG ${field} 无效；原文件未修改`)
+    for (const tag of tags) {
+      if (typeof tag !== 'string') throw new Error(`FIG OpenType 特性 ${String(tag)} 无效；原文件未修改`)
+      const mapped = `${on ? '' : '-'}${tag.toLowerCase()}`
+      if (!featureTag.test(mapped)) throw new Error(`FIG OpenType 特性 ${tag} 暂不能表达；原文件未修改`)
+      features.push(mapped)
+    }
+  }
+  if (features.length > 16) throw new Error('FIG OpenType 特性超过 16 项；原文件未修改')
+  if (features.length) style.features = features
+  if (record.fontVariations !== undefined) {
+    if (!Array.isArray(record.fontVariations)) throw new Error('FIG 字体变体轴无效；原文件未修改')
+    const axes: { tag: string; value: number }[] = []
+    for (const variation of record.fontVariations) {
+      const value = variation?.value
+      if (typeof value !== 'number' || !Number.isFinite(value)) continue
+      const tag = axisTag(variation)
+      if (tag === 'wght') continue
+      if (!tag || !/^[a-z0-9]{4}$/.test(tag) || Math.abs(value) > 10000) {
+        throw new Error(`FIG 字体变体轴 ${tag || variation?.axisTag || variation?.axisName || ''} 无效；原文件未修改`)
+      }
+      axes.push({ tag, value })
+    }
+    if (axes.length > 16) throw new Error('FIG 字体变体轴超过 16 项；原文件未修改')
+    if (axes.length) style.variations = axes
+  }
+  const vertical = record.textAlignVertical
+  if (vertical !== undefined && vertical !== 'TOP') {
+    if (vertical === 'CENTER') style.verticalAlign = 'center'
+    else if (vertical === 'BOTTOM') style.verticalAlign = 'bottom'
+    else warnings.add(`文字垂直对齐 ${vertical} 尚需核对`)
+  }
+  const decoration = record.textDecoration
+  if (!node.text || (decoration !== 'UNDERLINE' && decoration !== 'STRIKETHROUGH')) {
+    if (decoration && decoration !== 'NONE' && decoration !== 'UNDERLINE' && decoration !== 'STRIKETHROUGH') {
+      warnings.add(`文字装饰 ${decoration} 尚需核对`)
+    }
+    return
+  }
+  if (node.textRuns?.length) warnings.add(`文字装饰 ${decoration} 与片段样式并存，节点级装饰未叠加`)
+  else node.textRuns = [{
+    start: 0,
+    end: node.text.length,
+    ...(decoration === 'UNDERLINE' ? { underline: true } : { strikethrough: true }),
+  }]
 }

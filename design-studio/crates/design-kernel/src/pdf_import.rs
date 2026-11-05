@@ -1973,7 +1973,7 @@ pub fn import_pdf(bytes: &[u8]) -> Result<Document, String> {
         id: "imported-pdf".into(),
         name: format!("Imported from PDF {version}"),
         pages: Vec::new(),
-        nodes: BTreeMap::new(),
+        nodes: Default::default(),
         fonts: BTreeMap::new(),
         animations: Vec::new(),
     };
@@ -2002,6 +2002,6 @@ pub fn import_pdf(bytes: &[u8]) -> Result<Document, String> {
             background: "#ffffff".into(),
         });
     }
-    doc.nodes = builder.nodes;
+    doc.nodes = builder.nodes.into();
     Ok(doc)
 }

@@ -28,6 +28,9 @@ mod capacity;
 mod projection;
 mod symbol_index;
 mod scene;
+mod hierarchy;
+mod selection_export;
+mod bitmaps;
 mod canvas_layout;
 mod canvas_snapshot;
 mod navigation_image;
@@ -303,6 +306,8 @@ pub(crate) struct Request {
     navigation_preview: bool,
     #[serde(default)] navigation_window:Option<canvas_layout::Box2>,
     #[serde(default)] material_keys: Option<Vec<String>>,
+    #[serde(default)]
+    selection: Option<selection_export::Selection>,
     owner: Owner,
     expected_revision: u64,
     #[serde(default)]
@@ -698,6 +703,9 @@ impl Sessions {
 
             "large.close" => {
                 let result = status(s);
+                // These are disposable decoded rows and copies of immutable ZIP entries;
+                // the source, history and checkpoints do not depend on their lifetime.
+                let _ = fs::remove_dir_all(s.directory.join("bitmaps"));
                 *slot = None;
                 Ok(result)
             }
@@ -1359,7 +1367,7 @@ struct ExportSnapshot {
 }
 impl Sessions {
     fn export_snapshot(&self, request: Request, cancel: &AtomicBool) -> Result<Value> {
-        let snapshot = {
+        let (snapshot, selection) = {
             let guard = self.current.lock().map_err(issue)?;
             let s = guard
                 .as_ref()
@@ -1367,7 +1375,10 @@ impl Sessions {
             if s.owner != request.owner || s.revision != request.expected_revision {
                 return Err(issue("Stale or foreign large document revision"));
             }
-            ExportSnapshot {
+            let selection = request.selection.as_ref().map(|target| {
+                selection_export::Archive::capture(s, target, request.request_id.as_deref(), cancel)
+            }).transpose()?;
+            (ExportSnapshot {
                 owner: s.owner.clone(),
                 revision: s.revision,
                 format: s.format.clone(),
@@ -1386,10 +1397,13 @@ impl Sessions {
                     .collect(),
                 state: s.state.clone(),
                 status: status(s),
-            }
+            }, selection)
         };
         let _progress = self.progress.begin(snapshot.owner.clone(), "validate");
-        let warning = write_export(&snapshot, request, cancel, &self.progress)?;
+        let warning = write_export(&snapshot, request, cancel, &self.progress, selection.as_ref())?;
+        if selection.is_some() {
+            return Ok(json!({"document":snapshot.status,"exported":true,"exportedRevision":snapshot.revision,"warning":warning}));
+        }
         let mut guard = self.current.lock().map_err(issue)?;
         let mut output = snapshot.status;
         output["dirty"] = json!(false);
@@ -1414,6 +1428,7 @@ fn write_export(
     request: Request,
     cancel: &AtomicBool,
     progress: &Progress,
+    selection: Option<&selection_export::Archive>,
 ) -> Result<Option<&'static str>> {
     let path = request
         .path
@@ -1485,7 +1500,15 @@ fn write_export(
                 })
                 .sum(),
         );
-        if s.format == "json" {
+        if let Some(subset) = selection {
+            for p in &subset.source_parts {
+                let part = &s.parts[*p];
+                if hash_range(&s.directory.join(&part.file), Span{start:0,end:part.base_bytes},cancel).map_err(issue)? != part.hash {
+                    return Err(issue("Retained JSON part integrity check failed"));
+                }
+            }
+            subset.write(output,&s.directory.join("source"),cancel)?;
+        } else if s.format == "json" {
             let mut file = CheckedReader {
                 inner: File::open(s.directory.join(&s.parts[0].file)).map_err(issue)?,
                 cancel,

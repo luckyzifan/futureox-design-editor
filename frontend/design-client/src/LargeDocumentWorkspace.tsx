@@ -1,4 +1,4 @@
-import {useSourceOpening,type OpeningView} from './source-opening-preview'
+import {SOURCE_DETAIL_SAMPLE_MS,useSourceOpening,visibleMaterialDetail,type OpeningView} from './source-opening-preview'
 import {renderExecutionPolicy} from './kernel/client'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from 'react'
 import { flushSync } from 'react-dom'
@@ -7,26 +7,31 @@ import { Editor } from './engine'
 import { blank, type DesignDocument, type Point } from './model'
 import type {SourceCanvasSnapshot,SourceCanvasItem} from './desktop'
 import type {NativeSourceStatus} from './kernel/NativeSourceSurface'
-import {includesMaterials,materialScope,thumbnailScale,visibleMaterialWindow,firstVisibleMaterialKeys} from './source-material-scope'
+import {includesMaterials,materialScope,thumbnailScale,visibleMaterialWindow,firstVisibleMaterialKeys,smallerMaterialRequest} from './source-material-scope'
 import {fitBounds}from'./canvas-camera'
 import { commitPendingEdits, hasPendingEdits, registerPendingEdit, pendingEditsChanged } from './pending-edits'
 import { prepareDocumentJson, prepareDocumentJsonInWorker } from './prepared-document'
 import { documentPreparationRuntime } from './document-preparation-identity'
 import { dispatchEditorCommand, resolveDesktopEditorCommand } from './editor-commands'
 import { desktopBridge, type LargeDocumentBridge, type LargeDocumentRow, type LargeDocumentPageRange, type LargeDocumentStatus, type DesktopResult } from './desktop'
-import { apply, bounds, boxPoints, unionBounds } from './geometry'
+import { apply, bounds, boxPoints, SpatialIndex, unionBounds } from './geometry'
 import { sourceNodeEdit,type SourceNodeEdit } from './source-scene-patch'
 import { validSourceObjectKey } from './source-object-key'
 
 const admitted=<T,>(result:DesktopResult<T>):T=>{if(result.status!=='ok')throw Error(result.status==='cancelled'?'操作已取消':result.message);return result as T}
 const sameSource=(a:LargeDocumentStatus|null,b:LargeDocumentStatus|null)=>!!a&&!!b&&a.owner.documentId===b.owner.documentId&&a.owner.sessionEpoch===b.owner.sessionEpoch&&a.revision===b.revision
-type CanvasSelection=LargeDocumentRow&{sceneOffset?:number;sceneLimit?:number;previousRanges?:{offset:number;limit:number}[];pageId?:string}
+type CanvasSelection=LargeDocumentRow&{afterLoad?:(id:string)=>void;catalogueMaterial?:boolean;sceneOffset?:number;sceneLimit?:number;previousRanges?:{offset:number;limit:number}[];pageId?:string}
 const sceneRequest=(row:CanvasSelection)=>({key:row.key,...(row.sceneOffset?{offset:row.sceneOffset}:{}),...(row.sceneLimit===undefined?{}:{limit:row.sceneLimit})})
 export type SourceWorkspace = {
   editor:Editor; ready:boolean; busy:boolean; locked:boolean; dirty:boolean; name:string; notice:string; error:string
   canvas:RefObject<HTMLDivElement|null>; navigation:ReactNode; showLayers:boolean; warnings:string[]
   dismissWarnings():void; dismissError?():void; cancel():void; save():Promise<void>; exportFile():Promise<void>; leave():Promise<void>; openFile(file:File):Promise<void>
+  prepareExport(open:()=>void):void
+  exportSelectedSketch?():Promise<string|undefined>
+  selectMaterialAt?:(point:Point)=>void
+  selectedMaterialBox?:SourceCanvasItem['placed']
   onViewport?:(box:SourceCanvasItem['placed'],anchor?:Point,density?:number)=>void
+  pickMaterial?:(point:Point)=>SourceCanvasItem|undefined
   navigatingMaterials?:boolean
   prepareSourceDisplay?:boolean;openingPreview?:OpeningView; openingPage?:string; focusedMaterial?:number; onDetail?:(roots:number[])=>void; hideNative?:boolean;parkNative?:boolean; pageBoxes?:SourceCanvasItem['placed'][]; onSourcePresented?(view:{x:number;y:number;zoom:number}):void; openPreviewPoint?(point:Point):void
   nativeCanvas?:{snapshot:SourceCanvasSnapshot;status?:NativeSourceStatus;onStatus(status:NativeSourceStatus):void;openPoint(point:Point):void}
@@ -48,30 +53,41 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   const opening=quick.view && (!status || status.revision===0 && status.owner.documentId===quick.view.owner.documentId &&
     status.owner.sessionEpoch===quick.view.owner.sessionEpoch) ? quick.view : undefined
   const openingRef=useRef(opening);openingRef.current=opening
+  const [selectedMaterialId,setSelectedMaterialId]=useState<string>()
   const [focusedMaterial,setFocusedMaterial]=useState<number>()
   const [detailIndices,setDetailIndices]=useState<number[]>([])
-  const demand=useRef(''),detailRunning=useRef(false),declinedDemand=useRef('')
+  const demand=useRef(''), demandGeneration=useRef(0),detailRunning=useRef(false),declinedDemand=useRef('')
   const viewportDemand=useRef(false),zoomAnchor=useRef<Point|undefined>(undefined)
   const requestedIndices=useRef<number[]>([]),preparingKeys=useRef<readonly string[]>([])
+  const reviewedScope=useRef<{token:string;at:number}|undefined>(undefined)
   const lastMaterialToken=useRef<string|undefined>(undefined)
   const pageDetailIntent=useRef<string|undefined>(undefined)
   const requestDetail=useCallback((indices:number[],retry=false,fromViewport=false)=>{
     const key=indices.join(',')
     if(key===demand.current && !(retry && key===declinedDemand.current))return
-    demand.current=key;declinedDemand.current='';viewportDemand.current=fromViewport;requestedIndices.current=indices;setDetailIndices(indices)
+    demandGeneration.current++;demand.current=key;declinedDemand.current='';viewportDemand.current=fromViewport;requestedIndices.current=indices;setDetailIndices(indices)
     if(!indices.length)setShowOpening(true)
-    if(detailRunning.current && indices.length){
-      const wanted=indices.map(i=>itemsForSnapshot.current[i]?.key)
-      if(!includesMaterials(preparingKeys.current,wanted))
+    if(detailRunning.current && preparingKeys.current.length && indices.length){
+      const items=itemsForSnapshot.current,wanted=indices.map(i=>items[i]?.key)
+      const current=nativeSnapshotRef.current
+      const active=current&&current.token===lastMaterialToken.current&&!current.viewportSubset?current:undefined
+      let cancel=!includesMaterials(preparingKeys.current,wanted)||!!active&&includesMaterials(active.materialKeys,wanted)
+      if(!cancel&&fromViewport&&indices.length<=2&&preparingKeys.current.length>=6&&canvas.current){
+        const v=editor.effectiveView()
+        const viewport={x:-v.x/v.zoom,y:-v.y/v.zoom,width:canvas.current.clientWidth/v.zoom,height:canvas.current.clientHeight/v.zoom}
+        const next=materialScope(items,indices,nativePresentedToken.current===active?.token?active?.materialKeys:undefined,viewport)
+        cancel=smallerMaterialRequest(items,preparingKeys.current,next)
+      }
+      if(cancel)
         void bridge.cancel().catch(()=>{})
     }
-  },[bridge])
+  },[bridge,editor])
   const requestViewportDetail=useCallback((indices:number[])=>{
     // A preview wheel or idle callback must not cancel explicit page work.
     if(pageDetailIntent.current!==demand.current)requestDetail(indices,false,true)
   },[requestDetail])
 
-  const fittedOpening=useRef(''),pendingMaterial=useRef<{id:string;pageId:string}|null>(null)
+  const fittedOpening=useRef(''),pendingMaterial=useRef<{id:string;pageId:string;afterLoad?:(id:string)=>void}|null>(null)
   const [nativeRenderStatus,setNativeRenderStatus]=useState<NativeSourceStatus>()
   const [failedOpeningToken,setFailedOpeningToken]=useState<string>()
   // The import notification owns first display only. Navigation has its own
@@ -176,14 +192,14 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     const selectedPage=activeRef.current
     await save()
     if(queuedLoad.current||navigationIntent.current!==intent)return
-    if(!sameSource(selectedSource,statusRef.current)){
+    if(!sameSource(selectedSource,statusRef.current)||row.catalogueMaterial&&!sameSource(catalogueStatus.current,statusRef.current)){
       const current=statusRef.current,rebound=activeRef.current
-      if(nativeSnapshotRef.current&&current&&selectedSource&&current.owner.documentId===selectedSource.owner.documentId&&current.owner.sessionEpoch===selectedSource.owner.sessionEpoch){
+      if((row.catalogueMaterial||nativeSnapshotRef.current)&&current&&selectedSource&&current.owner.documentId===selectedSource.owner.documentId&&current.owner.sessionEpoch===selectedSource.owner.sessionEpoch){
         const items:SourceCanvasItem[]=[]
         for(;;){const page=admitted(await bridge.canvasLayout({...request(),offset:items.length,limit:200}));items.push(...page.items);if(!page.hasMore)break}
-        const item=items.find(item=>item.id===row.id)
+        const item=items.find(item=>item.id===row.id&&(!row.pageId||item.pageId===row.pageId))
         if(!item)throw Error('该素材已不在当前源文件中')
-        setCatalogue(items);row={...row,key:item.key}
+        itemsForSnapshot.current=items;catalogueStatus.current=current;setCatalogue(items);row={...row,key:item.key}
       }
       // Property-only source saves keep page-root order. A paging request for
       // that same active page can use its new native key receipt immediately.
@@ -223,11 +239,13 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
       throw Error(editor.state.message||'页面未能进入画布')
     }
     setOverview(false)
-    baseline.current=editor.authoredDocument;activeRef.current=row;setActive(row);setViewTab('source')
+    const {afterLoad,...loaded}=row
+    baseline.current=editor.authoredDocument;activeRef.current=loaded;setActive(loaded);setViewTab('source')
     setPageRange(result.pageRange??null)
     const range=result.pageRange,partial=range&&(range.offset>0||range.end<range.totalRoots)
     setWarnings(result.warnings);setNotice(partial?`${row.name}：已载入第 ${range.offset+1}–${range.end} 个画板 / 对象，共 ${range.totalRoots} 个。可切换上一部分 / 下一部分；完整导出包含全部内容。`:`${row.kind==='page'?'完整页面':'当前画板 / 对象'}已载入：${result.nodes.toLocaleString()} 个场景节点。`)
     requestAnimationFrame(fit)
+    afterLoad?.(row.id)
     break
     }
     } catch(error) {
@@ -256,7 +274,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     const edit=pendingMaterial.current;pendingMaterial.current=null
     if(edit){
       const target=items.find(row=>row.pageId===edit.pageId&&row.id===edit.id)
-      if(target){requestLoad({...target,part:target.pageName,hasChildren:true});return}
+      if(target){requestLoad({...target,part:target.pageName,hasChildren:true,catalogueMaterial:true,afterLoad:edit.afterLoad});return}
     }
     const provisional=openingRef.current
     const canBrowse=!!provisional && provisional.owner.documentId===owner.owner.documentId &&
@@ -294,7 +312,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   useEffect(()=>{
     if(!overview || !opening || !status || busy || active || !itemsForSnapshot.current.length)return
     if(nativeSnapshotRef.current && !nativeSnapshotRef.current.materialKeys)return
-    const signature=detailIndices.join(',')
+    const signature=detailIndices.join(','),generation=demandGeneration.current
     if(!signature)return
     if(declinedDemand.current===signature)return
     const items=itemsForSnapshot.current,snapshot=nativeSnapshotRef.current
@@ -314,18 +332,40 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     const selected=status
     const focal=viewport&&focusedMaterial===undefined?firstVisibleMaterialKeys(items,detailIndices,viewport,current?.materialKeys,zoomAnchor.current):undefined
     void run(async()=>{
-      detailRunning.current=true;preparingKeys.current=keys
+      detailRunning.current=true
       try{
+        // Publishing a replacement revokes the displayed snapshot. A single
+        // sampled neighbour on a reversing gesture must not discard all of
+        // its native tiles. Recheck the actual camera before asking the host.
+        const held=current?.materialKeys
+        if(viewport && focusedMaterial===undefined && current && !current.viewportSubset && held && held.length>=6 &&
+            nativePresentedToken.current===current.token && wanted.some(key=>held.includes(key)) &&
+            wanted.filter(key=>!held.includes(key)).length<=2 && host){
+          const now=performance.now(),last=reviewedScope.current
+          if(last?.token!==current.token || now-last.at>=2*SOURCE_DETAIL_SAMPLE_MS){
+            reviewedScope.current={token:current.token,at:now}
+            await new Promise<void>(resolve=>setTimeout(resolve,SOURCE_DETAIL_SAMPLE_MS))
+          }
+          if(!alive.current || activeRef.current || queuedLoad.current || !sameSource(selected,statusRef.current) ||
+              demandGeneration.current!==generation || nativeSnapshotRef.current!==current || !viewportDemand.current)return
+          const live=openingRef.current
+          if(live){
+            const needed=visibleMaterialDetail(live,editor.effectiveView(),host.clientWidth,host.clientHeight,
+              window.devicePixelRatio||1,sourcePage||undefined,undefined)
+            if(needed.join(',')!==signature){requestDetail(needed,false,true);return}
+          }
+        }
+        preparingKeys.current=keys
         if(focal){
           const first=await bridge.canvasSnapshot({owner:selected.owner,expectedRevision:selected.revision,materialKeys:focal}).catch(()=>undefined)
           if(!alive.current||activeRef.current||!sameSource(selected,statusRef.current))return
           if(first?.status==='ok'){
             lastMaterialToken.current=first.token
             if(first.materialKeys?.join(',')!==focal.join(',')||first.roots!==focal.length)throw Error('素材精修范围不匹配')
-            if(demand.current!==signature)return
+            if(demandGeneration.current!==generation)return
             const subset={...first,viewportSubset:true}
             nativeSnapshotRef.current=subset;setNativeSnapshot(subset)
-          }else if(demand.current!==signature||queuedLoad.current)return
+          }else if(demandGeneration.current!==generation||queuedLoad.current)return
         }
         const frame=admitted(await bridge.canvasSnapshot({owner:selected.owner,expectedRevision:selected.revision,materialKeys:keys,...(navigationWindow?{navigationWindow}:{})}))
         if(!alive.current || activeRef.current || !sameSource(selected,statusRef.current))return
@@ -333,12 +373,12 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
         // the viewport changed while native preparation was running.
         lastMaterialToken.current=frame.token
         const latestWanted=requestedIndices.current.map(i=>itemsForSnapshot.current[i]?.key)
-        if(demand.current!==signature && latestWanted.length && !includesMaterials(keys,latestWanted))return
+        if(demandGeneration.current!==generation && (!latestWanted.length||!includesMaterials(keys,latestWanted)))return
         if(frame.materialKeys?.join(',')!==keys.join(',') || frame.roots!==keys.length)throw Error('素材精修范围不匹配')
         nativeSnapshotRef.current=frame;setNativeSnapshot(frame);setWarnings(frame.warnings)
         setNativeRenderStatus({phase:'refining',done:0,total:frame.roots})
       }catch(error){
-        if(demand.current!==signature || queuedLoad.current)return
+        if(demandGeneration.current!==generation || queuedLoad.current)return
         if(pageDetailIntent.current===signature)pageDetailIntent.current=undefined
         declinedDemand.current=signature;throw error
       }finally{detailRunning.current=false;preparingKeys.current=[]}
@@ -417,14 +457,14 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     openingRef.current=undefined;statusRef.current=null;setStatus(null)
     nativeSnapshotRef.current=null;setNativeSnapshot(null);setCatalogue([]);setOverview(false);setSourcePage('')
     nativePresentedToken.current=undefined
-    pageDetailIntent.current=undefined;setFocusedMaterial(undefined);requestDetail([]);pendingMaterial.current=null;fittedOpening.current='';exactView.current=undefined;setShowOpening(true);setOpeningGeneration(++openingSerial.current)
+    pageDetailIntent.current=undefined;setFocusedMaterial(undefined);setSelectedMaterialId(undefined);requestDetail([]);pendingMaterial.current=null;fittedOpening.current='';exactView.current=undefined;setShowOpening(true);setOpeningGeneration(++openingSerial.current)
     const next=admitted(await openSelectedFile(file));if(!alive.current)return
     baseline.current=null;activeRef.current=null;setActive(null);setPageRange(null);nativeSnapshotRef.current=null;setNativeSnapshot(null);setCatalogue([]);setOverview(false);updateStatus(next)
     await openInitialCanvas()
   },true)
   const allPages=()=>{setParents([]);setOffset(0);setFilter('');setQuery('')}
-  const openMaterial=(item:SourceCanvasItem)=>requestLoad({...item,part:item.pageName,hasChildren:true})
-  const materialRows=nativeSnapshot?catalogue:(opening?.items??[])
+  const openMaterial=(item:SourceCanvasItem,afterLoad?:(id:string)=>void)=>requestLoad({...item,part:item.pageName,hasChildren:true,catalogueMaterial:true,afterLoad})
+  const materialRows=catalogue.length?catalogue:(opening?.items??[])
   const pages=useMemo(()=>{
     if(opening?.pages)return opening.pages
     const groups=new Map<string,[string,string,number]>()
@@ -437,7 +477,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     navigationIntent.current++;pageDetailIntent.current=undefined;pendingMaterial.current=null;queuedLoad.current=null;setSourcePage(pageId)
     if(preparingSource.current){abort.current?.abort();void bridge.cancel().catch(()=>{})}
     const index=item?materialRows.indexOf(item):-1
-    setFocusedMaterial(index>=0?index:undefined);requestDetail(index>=0?[index]:[])
+    setSelectedMaterialId(item?.id);setFocusedMaterial(index>=0?index:undefined);requestDetail(index>=0?[index]:[])
     quick.focus(pageId||undefined,index>=0?index:undefined,!statusRef.current)
     const group=pageId?materialRows.filter(row=>row.pageId===pageId):materialRows
     const box=item?.placed??(group.length?unionBounds(group.map(row=>row.placed)):undefined)
@@ -447,14 +487,47 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
       editor.set({view})
     }
   }
-  const editMaterial=(row:SourceCanvasItem)=>{
+  const editMaterial=(row:SourceCanvasItem,afterLoad?:(id:string)=>void)=>{
     const exact=itemsForSnapshot.current.find(item=>item.id===row.id&&item.pageId===row.pageId)
-    if(!exact||!statusRef.current){pendingMaterial.current={id:row.id,pageId:row.pageId};setNotice('正在准备这个素材的原始图层…');return}
-    openMaterial(exact)
+    if(!exact||!statusRef.current){pendingMaterial.current={id:row.id,pageId:row.pageId,afterLoad};setNotice('正在准备这个素材的原始图层…');return}
+    openMaterial(exact,afterLoad)
   }
+  const materialIndex=useMemo(()=>new SpatialIndex(materialRows.filter(row=>!sourcePage||row.pageId===sourcePage)
+    .map(row=>({id:row.key,bounds:row.placed,row}))),[materialRows,sourcePage])
+  const pickMaterial=useCallback((point:Point)=>materialIndex.query({...point,width:0,height:0}).at(-1)?.row,[materialIndex])
   const openPreviewPoint=(point:Point)=>{
-    const item=materialRows.find(row=>point.x>=row.placed.x&&point.y>=row.placed.y&&point.x<=row.placed.x+row.placed.width&&point.y<=row.placed.y+row.placed.height)
+    const item=pickMaterial(point)
     if(item)editMaterial(item)
+  }
+  const chosenMaterial=materialRows.find(item=>item.id===selectedMaterialId && (!sourcePage||item.pageId===sourcePage))
+  const prepareExport=(open:()=>void)=>{
+    if(!active && (opening || overview)){
+      if(!chosenMaterial){setError('请先在画布或左侧列表中点选要导出的素材。');return}
+      editMaterial(chosenMaterial,id=>{editor.select([id]);open()})
+      return
+    }
+    if(active && !editor.state.selection.length && editor.state.doc.nodes[active.id])editor.select([active.id])
+    open()
+  }
+  const exportSelectedSketch=async():Promise<string|undefined>=>{
+    const row=activeRef.current,source=statusRef.current
+    if(!source||source.format!=='sketch'||!row||busyRef.current)throw Error('请先打开要导出的 Sketch 图层')
+    if(!commitPendingEdits(editor)||editor.interactionActive)throw Error('请先完成当前编辑')
+    const ids=editor.topSelection(),doc=editor.authoredDocument,epoch=editor.sessionGeneration
+    if(!ids.length)throw Error('请选择要导出的图层或画板')
+    const pageId=row.kind==='page'?row.id:row.pageId
+    if(!pageId)throw Error('无法确定所选图层的源页面')
+    const name=ids.length===1?doc.nodes[ids[0]].name:'选区'
+    busyRef.current=true;setBusy(true)
+    try{
+      await save()
+      const selected=editor.topSelection()
+      if(editor.authoredDocument!==doc || editor.sessionGeneration!==epoch || activeRef.current?.id!==row.id ||
+          !ids.every((id,i)=>selected[i]===id) || selected.length!==ids.length)throw Error('选区已改变，请重新导出')
+      const result=await bridge.export({...request(),selection:{pageId,nodeIds:ids},selectionName:name})
+      if(result.status==='cancelled')return
+      const exported=admitted(result);setNotice(`选区已导出：${exported.displayName}`);return exported.displayName
+    }finally{busyRef.current=false;if(alive.current)setBusy(false)}
   }
   const scopedBoxes=useMemo(()=>{
     const keys=nativeSnapshot?.materialKeys
@@ -482,12 +555,12 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     </>}
     {!browsing&&<button className="source-overview-back" disabled={busy} onClick={()=>void run(enterOverview,true)}><ArrowLeft size={14}/>返回完整画板</button>}
     <form className="layer-search source-search" onSubmit={event=>event.preventDefault()}><Search size={13}/><input aria-label="搜索素材" placeholder="搜索素材…" value={query} onChange={event=>setQuery(event.target.value)}/></form>
-    <div className="source-workspace-rows" role="list" aria-label="全部素材">{materialRows.filter(item=>(!sourcePage||item.pageId===sourcePage)&&`${item.name} ${item.pageName}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())).map(item=><div className="source-page-row" data-active={active?.id===item.id} role="listitem" key={item.key}>
-      <button className="source-page-entry" data-source-material-id={item.id} disabled={busy&&!browsing} title={`${item.pageName} · ${item.name}；双击编辑`} onClick={()=>{if(browsing)navigate(sourcePage,item);else openMaterial(item)}} onDoubleClick={()=>editMaterial(item)}><span className="source-row-icon"><Frame size={14}/></span><span className="source-row-name">{item.name}</span><small className="source-row-page">{item.pageName}</small></button>
+    <div className="source-workspace-rows" role="list" aria-label="全部素材">{materialRows.filter(item=>(!sourcePage||item.pageId===sourcePage)&&`${item.name} ${item.pageName}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())).map(item=><div className="source-page-row" data-active={browsing?selectedMaterialId===item.id:active?.id===item.id} role="listitem" key={item.key}>
+      <button className="source-page-entry" data-source-material-id={item.id} disabled={busy&&!browsing} title={`${item.pageName} · ${item.name}；双击编辑`} onClick={event=>{if(browsing)navigate(sourcePage,item);else if(event.detail<2)editMaterial(item)}} onDoubleClick={()=>{if(browsing)editMaterial(item)}}><span className="source-row-icon"><Frame size={14}/></span><span className="source-row-name">{item.name}</span><small className="source-row-page">{item.pageName}</small></button>
     </div>)}</div>
     <footer className="source-history"><span>完整源文件保留全部内容</span><button aria-label="撤销已保存修改" disabled={busy||!status?.undoCount} onClick={()=>void history('undo')}><Undo2 size={14}/></button><button aria-label="重做已保存修改" disabled={busy||!status?.redoCount} onClick={()=>void history('redo')}><Redo2 size={14}/></button></footer>
   </section>
-  const navigation=nativeSnapshot||opening?nativeNavigation:<section className="source-board-navigation" data-listing={viewTab==='source'} data-has-canvas={!!active} aria-label="源文件页面">
+  const navigation=nativeSnapshot||opening||active&&catalogue.length?nativeNavigation:<section className="source-board-navigation" data-listing={viewTab==='source'} data-has-canvas={!!active} aria-label="源文件页面">
     <nav className="source-view-tabs" aria-label="侧栏视图"><button aria-pressed={viewTab==='source'} onClick={()=>setViewTab('source')}>页面 / 画板</button><button disabled={!active} aria-pressed={viewTab==='layers'} onClick={()=>setViewTab('layers')}>图层</button></nav>
     {viewTab==='source'&&<>
       <div className="source-pages-heading">{parents.length>0?<button className="source-back" aria-label="全部页面" title="返回全部页面" disabled={busy} onClick={allPages}><ArrowLeft size={14}/></button>:null}<span title={parents.at(-1)?.name}>{parents.at(-1)?.name||'页面'}</span><small>{total}</small></div>
@@ -507,12 +580,21 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   </section>
   const earlyDisplay=!active && !nativeSnapshot && focusedMaterial!==undefined &&
     opening?.materialDisplay?.openingMaterial===focusedMaterial && opening.materialDisplay.token!==failedOpeningToken ? opening.materialDisplay : undefined
+  const neededKeys=detailIndices.map(i=>itemsForSnapshot.current[i]?.key)
+  const knownKeys=nativeSnapshot?.materialKeys
+  const shared=!!knownKeys&&neededKeys.some(key=>knownKeys.includes(key))
+  const missingScope=!!knownKeys&&neededKeys.length>0&&
+    !(nativeSnapshot?.viewportSubset?shared:includesMaterials(knownKeys,neededKeys))
   return renderWorkbench({editor,ready:!!active||overview||!!opening,busy,locked:editorLocked,dirty:!!active&&editor.authoredDocument!==baseline.current,
     name:status?.name||initialFile?.name||'正在打开文件',notice:opening&&busy&&!active?`${pages.length} 页，素材预览 ${opening.images.size}/${materialRows.length}。可切页、平移和缩放，原始图层正在后台准备。`:notice,error,canvas,navigation,showLayers:!!active&&!overview,warnings,
+    prepareExport,exportSelectedSketch:status?.format==='sketch'?exportSelectedSketch:undefined,
+    selectMaterialAt:browsing?point=>setSelectedMaterialId(pickMaterial(point)?.id):undefined,
+    selectedMaterialBox:browsing?chosenMaterial?.placed:undefined,
+    pickMaterial:browsing?pickMaterial:undefined,
     navigatingMaterials:overview&&!!opening&&!!nativePresentedToken.current&&viewportDemand.current&&(!busy||detailRunning.current),
     prepareSourceDisplay:!active&&openingGeneration!==undefined&&/\.sketch$/i.test(initialFile?.name??''),
-    openingPreview:!active?opening:undefined,openingPage:sourcePage||undefined,focusedMaterial,onDetail:requestViewportDetail,onViewport:(box,anchor,density)=>{zoomAnchor.current=anchor;quick.setViewport(box,density,anchor)},hideNative:!!opening&&showOpening,
-    parkNative:!!opening&&!!nativeSnapshot?.materialKeys&&(!detailIndices.length||nativeSnapshot.token!==lastMaterialToken.current),pageBoxes:!active?scopedBoxes:undefined,openPreviewPoint,
+    openingPreview:!active?opening:undefined,openingPage:sourcePage||undefined,focusedMaterial,onDetail:requestViewportDetail,onViewport:(box,anchor,density)=>{zoomAnchor.current=anchor;quick.setViewport(box,density,anchor)},hideNative:!!opening&&(showOpening||missingScope&&!shared),
+    parkNative:!!opening&&!!nativeSnapshot?.materialKeys&&(!detailIndices.length||missingScope||nativeSnapshot.token!==lastMaterialToken.current),pageBoxes:!active?scopedBoxes:undefined,openPreviewPoint,
     onSourcePresented:view=>{
       const v=editor.effectiveView(),keys=nativeSnapshotRef.current?.materialKeys
       const wanted=detailIndices.map(i=>itemsForSnapshot.current[i]?.key)
@@ -520,7 +602,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
         viewportDemand.current&&wanted.some(key=>keys.includes(key)):includesMaterials(keys,wanted))
       if(matches&&view.x===v.x&&view.y===v.y&&view.zoom===v.zoom)setShowOpening(false)
     },
-    nativeCanvas:overview&&nativeSnapshot?{snapshot:nativeSnapshot,status:nativeRenderStatus,onStatus:status=>{if(nativeRenderError.current&&status.phase==='ready'){nativeRenderError.current=false;setError('');setNativeRenderStatus(status);}if(status.phase==='error')nativeRenderError.current=true;if(nativePresentedToken.current===nativeSnapshot.token&&status.phase!=='error')return;if(status.phase==='ready')nativePresentedToken.current=nativeSnapshot.token;setNativeRenderStatus(status);if(status.phase==='error')setError(status.error??'画板绘制未完成');else if(status.phase==='ready')setNotice(nativeSnapshot.materialKeys?`当前视口已精修。`:`完整画板已显示：${nativeSnapshot.roots} 个素材。双击素材进入编辑。`);else setNotice(status.phase==='loading'?'正在准备完整画板显示…':`正在绘制完整画板 ${status.done} / ${status.total}…`)},openPoint:point=>{if(busyRef.current)return;const item=catalogue.filter(item=>point.x>=item.placed.x&&point.x<=item.placed.x+item.placed.width&&point.y>=item.placed.y&&point.y<=item.placed.y+item.placed.height).sort((a,b)=>a.placed.width*a.placed.height-b.placed.width*b.placed.height)[0];if(item)openMaterial(item)}}:earlyDisplay?{
+    nativeCanvas:overview&&nativeSnapshot?{snapshot:nativeSnapshot,status:nativeRenderStatus,onStatus:status=>{if(nativeRenderError.current&&status.phase==='ready'){nativeRenderError.current=false;setError('');setNativeRenderStatus(status);}if(status.phase==='error')nativeRenderError.current=true;if(nativePresentedToken.current===nativeSnapshot.token&&status.phase!=='error')return;if(status.phase==='ready')nativePresentedToken.current=nativeSnapshot.token;setNativeRenderStatus(status);if(status.phase==='error')setError(status.error??'画板绘制未完成');else if(status.phase==='ready')setNotice(nativeSnapshot.materialKeys?`当前视口已精修。`:`完整画板已显示：${nativeSnapshot.roots} 个素材。双击素材进入编辑。`);else setNotice(status.phase==='loading'?'正在准备完整画板显示…':`正在绘制完整画板 ${status.done} / ${status.total}…`)},openPoint:point=>{if(busyRef.current)return;const item=pickMaterial(point);if(item)openMaterial(item)}}:earlyDisplay?{
       snapshot:earlyDisplay,
       onStatus:status=>{if(status.phase==='error'){setFailedOpeningToken(earlyDisplay.token);setShowOpening(true)}},
       openPoint:openPreviewPoint,

@@ -1,12 +1,26 @@
 /** Capability-only bridge. Native paths, Node and raw IPC never enter the renderer. */
+import type { DeclaredPlugin } from './plugins/catalog'
 export type DesktopResult<T = Record<never, never>> =
   | ({ status: 'ok'; warning?: string } & T)
   | { status: 'cancelled' }
   | { status: 'error' | 'conflict'; code: string; message: string }
 export type DesktopFile = { pendingCount?: number; handle: string; displayName: string; documentJson?: string; warning?: string }
-export type DesktopFont = { id: string; family: string; style: string; postscript: string; index: number; sourceIndex?: number }
+export type DesktopFont = { id: string; family: string; style: string; postscript: string; index: number; sourceIndex?: number; weight?: number; italic?: boolean; variable?: boolean; axes?: ReadonlyArray<{ tag: string; min: number; max: number; default: number }> }
 export type DesktopFontData = { font: DesktopFont; data: string; index: number; sourceIndex: number; extracted: boolean }
-export type DesktopCommand = 'settings' | 'copy-properties'|'paste-properties'|'select-matching'|'select-inverse'| 'open' | 'openPending' | 'save' | 'saveAs' | 'new' | 'new-page' | 'recover' | 'zoomIn' | 'zoomOut' | 'zoom100' | 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'copy-as-png' | 'copy-as-svg' | 'paste-to-replace' | 'paste-in-place' | 'paste-over-selection' | 'select-all' | 'duplicate' | 'group' | 'ungroup' | 'delete' | 'zoom-fit' | 'zoom-selection' | 'center-selection'
+export type DesktopCommand = 'settings' | 'automation-settings' | 'plugins' | 'copy-properties'|'paste-properties'|'select-matching'|'select-inverse'| 'open' | 'openPending' | 'save' | 'saveAs' | 'new' | 'new-page' | 'recover' | 'zoomIn' | 'zoomOut' | 'zoom100' | 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'copy-as-png' | 'copy-as-svg' | 'paste-to-replace' | 'paste-in-place' | 'paste-over-selection' | 'select-all' | 'duplicate' | 'group' | 'ungroup' | 'delete' | 'zoom-fit' | 'zoom-selection' | 'center-selection'
+export type PluginDirectoryGrant = { grant: string; manifestText: string; displayName: string }
+export interface PluginBridge {
+  pick(): Promise<DesktopResult<PluginDirectoryGrant>>
+  /** Plugins declared in the desktop plugins folder and enabled at startup. No filesystem paths. */
+  list(): Promise<DesktopResult<{ plugins: DeclaredPlugin[] }>>
+  read(request: { grant: string; paths: string[] }): Promise<DesktopResult<{ files: Record<string, string> }>>
+  openUi(request: { html: string; width?: number; height?: number; title?: string }): Promise<DesktopResult>
+  postUi(request: { pluginMessage: unknown }): Promise<DesktopResult>
+  closeUi(): Promise<DesktopResult>
+  onUiMessage(callback: (message: { pluginMessage: unknown }) => void): () => void
+  onUiClosed(callback: () => void): () => void
+  onLaunch(callback: (message: { grant: string }) => void): () => void
+}
 export type CatalogProject = { id: string; name: string; updatedAt: number }
 export type CatalogDirectory = { id: string; projectId: string; displayName: string; updatedAt: number; directoryHandle?: string; requiresReselection: boolean }
 export type CatalogFile = { id: string; directoryId: string; relativePath: string; size: number; modifiedAt: number; indexedAt: number }
@@ -86,7 +100,7 @@ export interface LargeDocumentBridge {
   commitCanvas(request:LargeDocumentRequest&{key:string;json:string}):Promise<DesktopResult<LargeDocumentStatus&{key:string}>>
   undo(request:LargeDocumentRequest):Promise<DesktopResult<LargeDocumentStatus>>
   redo(request:LargeDocumentRequest):Promise<DesktopResult<LargeDocumentStatus>>
-  export(request:LargeDocumentRequest):Promise<DesktopResult<LargeDocumentStatus&{exported:true;displayName:string}>>
+  export(request:LargeDocumentRequest & {selection?:{pageId:string;nodeIds:string[]};selectionName?:string}):Promise<DesktopResult<LargeDocumentStatus&{exported:true;displayName:string}>>
   close(request:LargeDocumentRequest):Promise<DesktopResult>
 }
 export type LocalPeer={id:string;name:string;documentId:string;pageId:string;view:[number,number,number];cursor:[number,number]|null;selection:string[]}
@@ -117,6 +131,14 @@ export interface NativeRenderBridgeApi {
   frame(options: NativeRenderFrameOptions, pan?: number): Promise<NativeRenderReply<{ width: number; height: number; stats: NativeRenderFrameStats } & NativeRenderFramePayload>>
   stop(): Promise<NativeRenderReply>
   stats(): Promise<NativeRenderReply<{ stats: { gpu_memory?: NativeGpuMemoryBreakdown } }>>
+}
+export type VideoEncodeStatus = { status: 'ok'; available: boolean; source: 'bundled' | 'path' | 'missing' }
+export type VideoEncodeResult =
+  | { status: 'ok'; bytes: Uint8Array; mime: string; container: 'mp4' | 'webm'; byteLength?: number }
+  | { status: 'error'; code: string; message: string }
+export interface VideoEncodeBridge {
+  status(): Promise<VideoEncodeStatus>
+  encode(request: { format: 'mp4' | 'webm'; fps: number; frames: Uint8Array[] }): Promise<VideoEncodeResult>
 }
 export interface DesktopBridge {
   readonly designAi?: import('./design-ai/types').DesignAiBridge
@@ -152,9 +174,16 @@ export interface DesktopBridge {
   readonly workspace?: WorkspaceBridge
   readonly clipboard?: { read(): Promise<DesktopResult<DesktopClipboard>>; write(value: DesktopClipboard): Promise<DesktopResult> }
   readonly version: 1
+  readonly pluginUi?: {
+    publish(request: { html: string }): Promise<DesktopResult<{ id: string; url: string }>>
+    revoke(request: { id: string }): Promise<DesktopResult>
+  }
+  readonly plugins?: PluginBridge
   readonly documentCapacity?: Readonly<{ memoryBytes: number }>
   readonly renderPolicy: Readonly<{ cpuOnly: boolean; gpuWorkingBudgetMiB?: number }>
   readonly nativeRender?: NativeRenderBridgeApi
+  /** Desktop motion encode. Absent on the web. Never includes a filesystem path. */
+  readonly videoEncode?: VideoEncodeBridge
   nativeRenderStats?(): Promise<string | null>
   listCatalog(): Promise<DesktopResult<{ projects: CatalogProject[]; directories: CatalogDirectory[]; files: CatalogFile[] }>>
   selectCatalogDirectory(): Promise<DesktopResult<{ project: CatalogProject; directory: CatalogDirectory }>>

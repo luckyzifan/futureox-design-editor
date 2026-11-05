@@ -51,7 +51,16 @@ export function shortcutBindings({ profile, platform, desktop = false }: Shortcu
     bindings.push({ command: 'auto-layout', combo: 'Shift+S' }, { command: 'remove-auto-layout', combo: 'Alt+Shift+S' })
     if (desktop) bindings.unshift({ command: 'new-page', combo: 'Mod+Shift+N' }, { command: 'zoom-100', combo: 'Mod+0' }, { command: 'zoom-fit', combo: 'Mod+1' }, { command: 'zoom-selection', combo: 'Mod+2' }, { command: 'center-selection', combo: 'Mod+3' }, { command: 'frame-selection', combo: 'Mod+F' })
   } else {
-    bindings.push({ command: 'auto-layout', combo: 'Shift+A' }, { command: 'remove-auto-layout', combo: 'Alt+Shift+A' })
+    bindings.push(
+      { command: 'auto-layout', combo: 'Shift+A' }, { command: 'remove-auto-layout', combo: 'Alt+Shift+A' },
+      { command: 'zoom-next-frame', combo: 'N' }, { command: 'zoom-previous-frame', combo: 'Shift+N' },
+      { command: 'next-page', combo: 'PageDown' }, { command: 'previous-page', combo: 'PageUp' },
+      // Mac desktop Figma: Shift+E toggles Design and Prototype outside vector
+      // edit, and the eraser inside vector edit. Outline stroke is Mod+Shift+O
+      // (Mac ⌘⇧O, Windows/Linux Ctrl+Shift+O), not Shift+E.
+      { command: 'eraser-or-prototype', combo: 'Shift+E' },
+      { command: 'outline-stroke', combo: 'Mod+Shift+O' },
+    )
     // Figma documents Shift, rather than Alt, for the Windows front/back chord.
     if (platform !== 'mac') for (const binding of bindings) {
       if (binding.command === 'bring-to-front') binding.combo = 'Mod+Shift+]'
@@ -73,7 +82,9 @@ export function shortcutBindings({ profile, platform, desktop = false }: Shortcu
   if (desktop) bindings.unshift({ command: 'rename', combo: 'Mod+R' }, { command: 'paste-to-replace', combo: 'Mod+Shift+R' })
   if (platform !== 'mac') bindings.push({ command: 'redo', combo: 'Mod+Y' })
   bindings.push({ command: 'mask-selection', combo: platform === 'mac' ? 'Mod+Ctrl+M' : 'Mod+Alt+M' })
+  bindings.push({ command: 'flatten', combo: 'Mod+E' })
   for (const [command, combo] of tools) if (combo) bindings.push({ command: command as EditorCommand, combo })
+  if (profile === 'figma-like' && platform === 'mac') bindings.push({ command: 'set-tool-eyedropper', combo: 'Ctrl+C' })
   if (profile === 'figma-like') bindings.push({ command: 'set-tool-pencil', combo: 'Alt+P' })
   const result = Object.freeze(bindings.map(binding => Object.freeze(binding)))
   bindingCache.set(cacheKey, result)

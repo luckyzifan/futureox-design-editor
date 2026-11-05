@@ -59,6 +59,21 @@ contextBridge.exposeInMainWorld(
     ...(documentMemoryBytes === undefined ? {} : { documentCapacity: Object.freeze({ memoryBytes: documentMemoryBytes }) }),
     renderDiagnostics: process.argv.includes('--core-render-diagnostics'),
     renderDiagnosticsDetail: process.argv.includes('--core-render-diagnostics-detail'),
+    plugins: Object.freeze({
+      pick: () => invoke('plugins-pick'),
+      list: () => invoke('plugins-list'),
+      read: value => invoke('plugins-read', value),
+      openUi: value => invoke('plugins-ui-open', value),
+      postUi: value => invoke('plugins-ui-post', value),
+      closeUi: () => invoke('plugins-ui-close'),
+      onUiMessage: callback => subscribe('design-desktop:plugin-ui-message', callback,
+        value => !!value && typeof value === 'object' && Object.hasOwn(value, 'pluginMessage')),
+      onUiClosed: callback => subscribe('design-desktop:plugin-ui-closed', callback,
+        value => !!value && value.closed === true),
+      onLaunch: callback => subscribe('design-desktop:plugin-launch', callback,
+        value => !!value && typeof value === 'object' && !Array.isArray(value) && typeof value.grant === 'string' &&
+          /^[0-9a-f-]{36}$/.test(value.grant) && Object.keys(value).length === 1),
+    }),
     petConfigure: mode => invoke('pet-configure', mode),
     petEvent: event => invoke('pet-event', event),
     onPetStatus: callback => subscribe('design-desktop:pet-status', callback, value => value &&
@@ -77,7 +92,7 @@ contextBridge.exposeInMainWorld(
       storageStatus: () => invoke('automation-storage-status'),
       enable: value => invoke('automation-enable', value),
       disable: () => invoke('automation-disable'),
-      copyConnection: () => invoke('automation-copy-connection'),
+      copyConnection: format => invoke('automation-copy-connection', format === 'stdio' || format === 'codex' ? format : undefined),
       onStatus: callback => subscribe('design-desktop:automation-status', callback,
         value => value && typeof value.enabled === 'boolean'),
       register: value => invoke('automation-register', value),
@@ -140,6 +155,10 @@ contextBridge.exposeInMainWorld(
     }),
     // Latest E6 four-bucket GPU memory breakdown as a JSON string, or null
     // when no native frame has rendered yet (GpuMemoryPanel consumes this).
+    videoEncode: Object.freeze({
+      status: () => invoke('video-encode-status'),
+      encode: value => invoke('video-encode', value),
+    }),
     nativeRenderStats: async () => {
       try {
         const result = await ipcRenderer.invoke('native-render:stats')
@@ -215,7 +234,7 @@ contextBridge.exposeInMainWorld(
       ),
     onCommand: (callback) =>
       subscribe('design-desktop:command', callback, (value) =>
-        ['settings', 'new', 'new-page', 'open', 'openPending', 'save', 'saveAs', 'recover', 'zoomIn', 'zoomOut', 'zoom100', 'undo', 'redo', 'cut', 'copy', 'paste', 'copy-properties','paste-properties','select-matching','select-inverse', 'copy-as-png', 'copy-as-svg', 'paste-to-replace', 'paste-over-selection', 'paste-in-place', 'select-all', 'duplicate', 'group', 'ungroup', 'delete', 'zoom-fit', 'zoom-selection', 'center-selection'].includes(value),
+        ['settings', 'automation-settings', 'plugins', 'new', 'new-page', 'open', 'openPending', 'save', 'saveAs', 'recover', 'zoomIn', 'zoomOut', 'zoom100', 'undo', 'redo', 'cut', 'copy', 'paste', 'copy-properties','paste-properties','select-matching','select-inverse', 'copy-as-png', 'copy-as-svg', 'paste-to-replace', 'paste-over-selection', 'paste-in-place', 'select-all', 'duplicate', 'group', 'ungroup', 'delete', 'zoom-fit', 'zoom-selection', 'center-selection'].includes(value),
       ),
   }),
 )

@@ -313,7 +313,10 @@ impl FrameSceneContext {
         });
         let plan=scene.scene_plan();
         let vertices=std::mem::take(&mut scene.vertices);let curves=std::mem::take(&mut scene.curves);
-        let mut nodes=std::mem::take(&mut scene.nodes);let mut images=HashMap::<Arc<str>,(u32,u32)>::new();
+        let mut nodes=std::mem::take(&mut scene.nodes);
+        // Admitted image identities already own and compare the complete URI.
+        // Only an over-budget image needs a second, packet-local content table.
+        let mut unretained_images=HashMap::<Arc<str>,(u32,u32)>::new();
         let mut image_addresses=HashMap::<usize,(u32,u32)>::new();
         let mut image_transports=HashMap::<u32,u32>::new();
         let mut node_resources=Vec::new();
@@ -330,11 +333,23 @@ impl FrameSceneContext {
                 let mut image=|paint:&mut Paint|->Result<(),String>{
                     if let Some(uri)=paint.image.take(){
                         let address=Arc::as_ptr(&uri) as *const u8 as usize;
-                        let (source,id)=if let Some(ids)=image_addresses.get(&address){*ids}else if let Some(ids)=images.get(&uri){*ids}else{
+                        let local=|| if unretained_images.is_empty(){None}else{unretained_images.get(&uri)};
+                        let (source,_)=if let Some(ids)=image_addresses.get(&address).or_else(local){*ids}else{
                             let (source,retained)=self.image_identity(&uri)?;
-                            let (id,data)=self.intern_image(source,&uri,retained)?;record(id,1,&data)?;
-                            images.insert(uri,(source,id));image_addresses.insert(address,(source,id));image_transports.insert(source,id);(source,id)
-                        };let _=id;paint.image=Some(source.to_string().into());
+                            let id=if let Some(id)=image_transports.get(&source){*id}else{
+                                let (id,data)=self.intern_image(source,&uri,retained)?;record(id,1,&data)?;
+                                image_transports.insert(source,id);id
+                            };
+                            // Never memoize a bare address for an equal but
+                            // separately allocated URI: its last owner can
+                            // disappear when this paint is replaced below.
+                            if !retained {
+                                unretained_images.insert(uri,(source,id));image_addresses.insert(address,(source,id));
+                            } else if self.image_allocations.contains_key(&address) {
+                                image_addresses.insert(address,(source,id));
+                            }
+                            (source,id)
+                        };paint.image=Some(source.to_string().into());
                     }Ok(())
                 };
                 for p in &mut node.fills{image(&mut p.paint)?}for s in &mut node.strokes{image(&mut s.paint.paint)?}
@@ -673,6 +688,28 @@ impl crate::Engine {
         let (next,restored)=context.intern_image(source,&uri,true).unwrap();
         assert_ne!(next,transport);assert_eq!(&*restored,&*data);
         context.bind("replacement-owner");assert!(context.image_allocations.is_empty());assert!(context.image_transfer_keys.is_empty());
+    }
+    #[test] fn equal_image_allocations_emit_one_resource_even_when_neither_can_be_retained(){
+        for limit in [0, 4*1024*1024] {
+            let (mut engine,options)=fixture();
+            let mut scene=engine.compile_gpu_request_value(serde_json::from_str(&options).unwrap()).unwrap();
+            let node=scene.nodes.get_mut("r").unwrap();
+            let a:Arc<str>=Arc::from("test:image-a");
+            let same:Arc<str>=Arc::from(a.as_ref());
+            assert!(!Arc::ptr_eq(&a,&same));
+            let paint=node.fills[0].clone();
+            node.fills=[a.clone(),same.clone(),a,same,Arc::from("test:image-b")].into_iter().map(|uri|{
+                let mut p=paint.clone();p.paint.image=Some(uri);p
+            }).collect();
+            let mut ctx=FrameSceneContext::default();ctx.bind("owner");ctx.limit_override=Some(limit);
+            let bytes=ctx.encode(scene,None,1).unwrap();
+            let word=|i|u32::from_le_bytes(bytes[i..i+4].try_into().unwrap()) as usize;
+            let mut ptr=(24+word(8)+3)&!3;ptr+=4*(word(12)+word(16));
+            let mut images=Vec::new();
+            while ptr<bytes.len(){let n=word(ptr+5);if bytes[ptr+4]==1{images.push(&bytes[ptr+9..ptr+9+n])}ptr+=9+n;}
+            assert_eq!(images,[b"test:image-a".as_slice(),b"test:image-b".as_slice()]);
+            assert!(ctx.bytes()<=limit);
+        }
     }
     #[test] fn resources_are_bounded_without_turning_a_large_resource_into_document_rejection(){
         let mut context=FrameSceneContext::default();context.bind("bounded");

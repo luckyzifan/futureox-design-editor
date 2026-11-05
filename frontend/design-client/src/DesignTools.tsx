@@ -20,6 +20,7 @@ import { download } from './persistence'
 import type { Interaction, PrototypeAction } from './prototype'
 import { hasSchemaExtras } from './prototype'
 import { PrototypePlayer } from './PrototypePlayer'
+import { jumpToNode } from './canvas-navigation'
 import { ImportOwner, importStep } from './import-ownership'
 
 export type DesignToolsTab = 'variables' | 'styles' | 'libraries' | 'prototype'
@@ -315,9 +316,13 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                               target:
                                 doc.pages.flatMap((p) => p.children).find((id) => id !== n.id) ||
                                 n.id,
+                              /* Empty transition style is smart animate. 300ms ease-out matches a restrained Figma default. */
+                              durationMs: 300,
+                              easingCurve: 'ease-out',
                             },
                           ],
                         })
+                        d.schemaVersion = Math.max(d.schemaVersion, 12) as DesignDocument['schemaVersion']
                       })
                     }
                   >
@@ -455,6 +460,12 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                                     ))}
                             </select>
                           )}
+                          {['navigate', 'overlay', 'scroll-to'].includes(a.kind) && a.target && doc.nodes[a.target] && (
+                            <button type="button" aria-label="跳转到目标" onClick={() => {
+                              const host = document.querySelector('[data-testid=canvas]')
+                              jumpToNode(editor, a.target!, { width: host?.clientWidth || 800, height: host?.clientHeight || 600 })
+                            }}>跳转到目标</button>
+                          )}
                           {a.kind === 'set-variable' && a.target && system.variables[a.target] && (
                             <input
                               aria-label="变量新值"
@@ -470,7 +481,7 @@ export function DesignTools({ editor, onClose, initialTab = 'variables', embedde
                             />
                           )}
                           {['navigate','back'].includes(a.kind) && <select aria-label="过渡方式" value={a.transitionStyle ?? ''} onChange={ev=>action(i,j,x=>{x.transitionStyle=(ev.target.value || undefined) as PrototypeAction['transitionStyle']})}>
-                            <option value="">智能动画</option><option value="none">无动画</option><option value="slide-left">从左滑入</option><option value="slide-right">从右滑入</option><option value="slide-top">从上滑入</option><option value="slide-bottom">从下滑入</option>
+                            <option value="">智能动画</option><option value="dissolve">溶解（透明度）</option><option value="none">无动画</option><option value="slide-left">从左滑入</option><option value="slide-right">从右滑入</option><option value="slide-top">从上滑入</option><option value="slide-bottom">从下滑入</option>
                           </select>}
                           <input
                             aria-label="过渡毫秒"

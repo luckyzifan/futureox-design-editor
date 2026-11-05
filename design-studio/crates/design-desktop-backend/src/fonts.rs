@@ -23,6 +23,14 @@ const LIMITS: Limits = Limits {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct FontAxis {
+    pub tag: String,
+    pub min: f32,
+    pub default: f32,
+    pub max: f32,
+}
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Font {
     pub id: String,
     pub family: String,
@@ -30,6 +38,12 @@ pub struct Font {
     pub postscript: String,
     pub index: u32,
     pub source_index: u32,
+    /// OS/2 usWeightClass. Variable faces still report the default instance.
+    pub weight: u16,
+    pub italic: bool,
+    pub variable: bool,
+    /// Empty for static faces. `wght` is the axis the text weight field drives.
+    pub axes: Vec<FontAxis>,
 }
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -106,6 +120,27 @@ fn describe(bytes: &[u8], id: String, source_index: u32) -> Result<Font> {
         ],
     )
     .ok_or_else(|| error("FONT_INVALID", "The font has no supported family name"))?;
+    let mut axes = Vec::new();
+    for axis in face.variation_axes() {
+        if axes.len() >= 16 {
+            break;
+        }
+        let tag = axis.tag.to_string();
+        if tag.len() != 4
+            || !tag.chars().all(|c| c.is_ascii_alphanumeric())
+            || ![axis.min_value, axis.def_value, axis.max_value]
+                .iter()
+                .all(|value| value.is_finite())
+        {
+            continue;
+        }
+        axes.push(FontAxis {
+            tag,
+            min: axis.min_value,
+            default: axis.def_value,
+            max: axis.max_value,
+        });
+    }
     Ok(Font {
         id,
         family,
@@ -120,7 +155,69 @@ fn describe(bytes: &[u8], id: String, source_index: u32) -> Result<Font> {
         postscript: name(&face, &[ttf_parser::name_id::POST_SCRIPT_NAME]).unwrap_or_default(),
         index: source_index,
         source_index,
+        weight: face.weight().to_number(),
+        italic: face.is_italic() || face.is_oblique(),
+        variable: face.is_variable(),
+        axes,
     })
+}
+/// Directories scanned for TTF/OTF/TTC/OTC. Paths are fixed per platform; the
+/// RPC never accepts a caller-supplied directory. fontconfig files outside
+/// these roots are not consulted.
+pub(crate) fn system_roots() -> Option<Vec<PathBuf>> {
+    let mut roots = Vec::new();
+    #[cfg(target_os = "macos")]
+    {
+        roots.push(PathBuf::from("/System/Library/Fonts"));
+        roots.push(PathBuf::from("/Library/Fonts"));
+        if let Some(home) = std::env::var_os("HOME") {
+            let home = PathBuf::from(home);
+            if home.is_absolute() {
+                roots.push(home.join("Library/Fonts"));
+            }
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        roots.push(PathBuf::from("/usr/local/share/fonts"));
+        roots.push(PathBuf::from("/usr/share/fonts"));
+        if let Some(xdg) = std::env::var_os("XDG_DATA_HOME") {
+            let xdg = PathBuf::from(xdg);
+            if xdg.is_absolute() {
+                roots.push(xdg.join("fonts"));
+            }
+        }
+        if let Some(home) = std::env::var_os("HOME") {
+            let home = PathBuf::from(home);
+            if home.is_absolute() {
+                roots.push(home.join(".local/share/fonts"));
+                roots.push(home.join(".fonts"));
+            }
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(windir) = std::env::var_os("WINDIR") {
+            let windir = PathBuf::from(windir);
+            if windir.is_absolute() {
+                roots.push(windir.join("Fonts"));
+            }
+        }
+        if !roots.iter().any(|path| path.ends_with("Fonts")) {
+            roots.push(PathBuf::from(r"C:\Windows\Fonts"));
+        }
+        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+            let local = PathBuf::from(local);
+            if local.is_absolute() {
+                roots.push(local.join("Microsoft").join("Windows").join("Fonts"));
+            }
+        }
+    }
+    if roots.is_empty() {
+        None
+    } else {
+        Some(roots)
+    }
 }
 impl Default for FontCatalog {
     fn default() -> Self {
@@ -129,24 +226,8 @@ impl Default for FontCatalog {
 }
 impl FontCatalog {
     pub fn system() -> Self {
-        #[cfg(target_os = "macos")]
-        let roots = {
-            let mut roots = vec![
-                PathBuf::from("/System/Library/Fonts"),
-                PathBuf::from("/Library/Fonts"),
-            ];
-            if let Some(home) = std::env::var_os("HOME") {
-                let home = PathBuf::from(home);
-                if home.is_absolute() {
-                    roots.push(home.join("Library/Fonts"));
-                }
-            }
-            Some(roots)
-        };
-        #[cfg(not(target_os = "macos"))]
-        let roots = None;
         Self {
-            roots,
+            roots: system_roots(),
             grants: Mutex::new(HashMap::new()),
             limits: LIMITS,
         }
@@ -160,14 +241,16 @@ impl FontCatalog {
         }
     }
     pub fn list(&self) -> Result<FontList> {
-        let roots = self.roots.as_ref().ok_or_else(||error("FONT_PLATFORM_UNSUPPORTED", "System font discovery currently supports macOS; portable embedded fonts remain available."))?;
+        let roots = self.roots.as_ref().ok_or_else(||error("FONT_PLATFORM_UNSUPPORTED", "System font discovery supports macOS, Windows and Linux font directories. Other platforms keep portable embedded fonts."))?;
         let mut output = FontList::default();
         let mut stack = Vec::new();
         let mut seen = std::collections::HashSet::new();
+        let mut canonical_roots = Vec::new();
         for root in roots {
             match root.canonicalize() {
                 Ok(root) if root.is_dir() => {
                     if seen.insert(root.clone()) {
+                        canonical_roots.push(root.clone());
                         stack.push((root, 0));
                     }
                 }
@@ -179,6 +262,7 @@ impl FontCatalog {
         let mut entries = 0usize;
         let mut scanned_bytes = 0usize;
         let mut grants = HashMap::new();
+        let mut seen_files = std::collections::HashSet::new();
         'scan: while let Some((directory, depth)) = stack.pop() {
             let listing = match fs::read_dir(&directory) {
                 Ok(listing) => listing,
@@ -208,7 +292,26 @@ impl FontCatalog {
                         continue;
                     }
                 };
+                // File symlinks are readable only when they resolve to a regular
+                // file inside a configured root. Directory symlinks are not
+                // walked, so a link cannot escape the root.
+                let canonical = match path.canonicalize() {
+                    Ok(path) => path,
+                    Err(_) => {
+                        output.skipped_invalid += 1;
+                        continue;
+                    }
+                };
                 if metadata.file_type().is_symlink() {
+                    let inside = canonical.is_file()
+                        && canonical_roots
+                            .iter()
+                            .any(|root| canonical.starts_with(root));
+                    if !inside {
+                        output.skipped_invalid += 1;
+                        continue;
+                    }
+                } else if canonical != path {
                     output.skipped_invalid += 1;
                     continue;
                 }
@@ -222,7 +325,12 @@ impl FontCatalog {
                     }
                     continue;
                 }
-                if !metadata.is_file() {
+                let linked = metadata.file_type().is_symlink();
+                if !linked && !metadata.is_file() {
+                    continue;
+                }
+                let file_path = if linked { canonical } else { path.clone() };
+                if !seen_files.insert(file_path.clone()) {
                     continue;
                 }
                 let extension = path
@@ -238,19 +346,26 @@ impl FontCatalog {
                 } else {
                     MAX_FONT_BYTES
                 };
-                if metadata.len() > read_limit as u64 {
+                let file_len = if linked {
+                    match fs::metadata(&file_path) {
+                        Ok(metadata) if metadata.is_file() => metadata.len(),
+                        _ => {
+                            output.skipped_invalid += 1;
+                            continue;
+                        }
+                    }
+                } else {
+                    metadata.len()
+                };
+                if file_len > read_limit as u64 {
                     output.skipped_too_large += 1;
                     continue;
                 }
-                if metadata.len() > self.limits.bytes.saturating_sub(scanned_bytes) as u64 {
+                if file_len > self.limits.bytes.saturating_sub(scanned_bytes) as u64 {
                     output.truncated = true;
                     break 'scan;
                 }
-                if path.canonicalize().ok().as_ref() != Some(&path) {
-                    output.skipped_invalid += 1;
-                    continue;
-                }
-                let bytes = match storage::read_bounded(&path, read_limit) {
+                let bytes = match storage::read_bounded(&file_path, read_limit) {
                     Ok(bytes) => bytes,
                     Err(_) => {
                         output.skipped_invalid += 1;
@@ -294,7 +409,7 @@ impl FontCatalog {
                             grants.insert(
                                 id,
                                 Grant {
-                                    path: path.clone(),
+                                    path: file_path.clone(),
                                     digest: digest.clone(),
                                     font: font.clone(),
                                     collection,
@@ -569,5 +684,71 @@ mod tests {
             .unwrap();
         assert!(result.fonts.is_empty());
         assert_eq!(result.skipped_invalid, 1);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn symlink_inside_the_root_is_listed_once() {
+        use std::os::unix::fs::symlink;
+        let f = Fixture::new();
+        let path = f.font();
+        symlink(&path, f.0.join("alias.ttf")).unwrap();
+        let catalog = FontCatalog::for_directories(vec![f.0.clone()]);
+        let listed = catalog.list().unwrap();
+        assert_eq!(listed.fonts.len(), 1);
+        assert_eq!(listed.skipped_invalid, 0);
+        let bytes = catalog.read(&listed.fonts[0].id).unwrap();
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(bytes.data)
+                .unwrap(),
+            fs::read(&path).unwrap()
+        );
+    }
+    #[test]
+    fn bundled_noto_face_reports_weight_axis() {
+        let f = Fixture::new();
+        f.font();
+        let listed = FontCatalog::for_directories(vec![f.0.clone()])
+            .list()
+            .unwrap();
+        assert_eq!(listed.fonts.len(), 1);
+        let font = &listed.fonts[0];
+        assert!(font.variable, "{font:?}");
+        assert!(font
+            .axes
+            .iter()
+            .any(|axis| axis.tag == "wght" && axis.min <= 200. && axis.max >= 700.));
+        assert!((1..=1000).contains(&font.weight));
+    }
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_roots_cover_usr_share_and_dejavu_styles() {
+        let roots = system_roots().expect("linux font roots");
+        assert!(roots.iter().any(|path| path == Path::new("/usr/share/fonts")));
+        assert!(roots
+            .iter()
+            .any(|path| path == Path::new("/usr/local/share/fonts")));
+        let dejavu = Path::new("/usr/share/fonts/truetype/dejavu");
+        if !dejavu.join("DejaVuSans.ttf").is_file() {
+            return;
+        }
+        let listed = FontCatalog::for_directories(vec![dejavu.to_path_buf()])
+            .list()
+            .unwrap();
+        let regular = listed
+            .fonts
+            .iter()
+            .find(|font| font.postscript == "DejaVuSans")
+            .expect("DejaVu Sans");
+        assert_eq!(regular.weight, 400);
+        assert!(!regular.italic);
+        assert!(!regular.variable);
+        let bold = listed
+            .fonts
+            .iter()
+            .find(|font| font.postscript == "DejaVuSans-Bold")
+            .expect("DejaVu Sans Bold");
+        assert_eq!(bold.weight, 700);
+        assert!(listed.fonts.iter().any(|font| font.italic));
     }
 }

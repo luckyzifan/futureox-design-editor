@@ -1,8 +1,9 @@
 import type { ConstraintAnchor, DesignDocument, DesignNode } from '../model'
+import { snapshotParents, snapshotTargets } from '../page-edit-scope'
 
-const hasReferences = (node: DesignNode) =>
+const hasReferences = (node: DesignNode, booleanGeometry = true) =>
   !!(node.component || node.componentSet || node.componentKey != null || node.instance ||
-    node.instanceOrigin || node.booleanOperation || Object.keys(node.bindings || {}).length ||
+    node.instanceOrigin || (booleanGeometry && node.booleanOperation) || Object.keys(node.bindings || {}).length ||
     Object.keys(node.styleRefs || {}).length || Object.keys(node.variableModes || {}).length)
 
 const anchors: readonly ConstraintAnchor[] = ['start', 'center', 'end', 'stretch', 'scale']
@@ -90,11 +91,22 @@ export class PoseTopology implements ReadonlyMap<string, string> {
 export class TranslationPreviewPlan {
   private readonly ids:readonly string[]
   private valid=true
-  constructor(readonly base:DesignDocument,ids:readonly string[],private readonly topology=new PoseTopology(base)){
-    this.ids=[...ids]
-    if(!topology.matches(base)||!topology.permitsPose||base.animations?.length||!ids.length||new Set(ids).size!==ids.length)this.valid=false
+  private readonly topology: PoseTopology
+  readonly booleanRoots = new Set<string>()
+  constructor(readonly base:DesignDocument,ids:readonly string[],topologyOrPurpose:PoseTopology|'pixels'|'document-pose'=new PoseTopology(base)){
+    const purpose=typeof topologyOrPurpose==='string'?topologyOrPurpose:'pixels'
+    const topology=typeof topologyOrPurpose==='string'?new PoseTopology(base):topologyOrPurpose
+    this.topology=topology;this.ids=[...ids]
+    if(!topology.matches(base)||!topology.permitsPose||base.animations?.length||!ids.length||new Set(ids).size!==ids.length||snapshotTargets(base,ids))this.valid=false
     for(const id of ids){const seen=new Set<string>();let at:string|undefined=id
-      while(at){const n=base.nodes[at];if(seen.has(at)||!n||hasReferences(n)||n.layout&&n.layout.mode!=='none'||n.sizing&&(n.sizing.width!=='fixed'||n.sizing.height!=='fixed')){this.valid=false;break}seen.add(at);at=topology.nodeParent(at)}
+      let booleanRoot:string|undefined
+      const documentLeaf=purpose==='document-pose'&&base.nodes[id]?.children.length===0
+      while(at){const n=base.nodes[at]
+        if(seen.has(at)||!n||hasReferences(n,!documentLeaf||at===id)||n.layout&&n.layout.mode!=='none'||n.sizing&&(n.sizing.width!=='fixed'||n.sizing.height!=='fixed')){this.valid=false;break}
+        if(n.booleanOperation)booleanRoot=at
+        seen.add(at);at=topology.nodeParent(at)
+      }
+      if(booleanRoot)this.booleanRoots.add(booleanRoot)
     }
   }
   accepts(patches:Readonly<Record<string,Partial<DesignNode>>>){
@@ -135,15 +147,10 @@ export function translationOnlyChanges(previous: DesignDocument, next: DesignDoc
   const ids = Object.keys(next.nodes)
   if (ids.length !== Object.keys(previous.nodes).length || ids.some(id => !previous.nodes[id])) return null
   const changed: string[] = []
-  const parents = new Map<string, string>()
-  const pageRoots = new Set(next.pages.flatMap(page => page.children))
+  const parents = snapshotParents(previous)
+  const pages = new Set(next.pages.map(page => page.id))
   for (const id of ids) {
     const node = next.nodes[id], before = previous.nodes[id]
-    if (node.connector || (node.board?.kind === 'code-block' && node.board.language)) return null
-    for (const child of node.children) {
-      if (!next.nodes[child] || parents.has(child)) return null
-      parents.set(child, id)
-    }
     if (node === before) continue
     const fields = Object.keys(before)
     if (fields.length !== Object.keys(node).length || fields.some(key =>
@@ -151,20 +158,24 @@ export function translationOnlyChanges(previous: DesignDocument, next: DesignDoc
       (key !== 'transform' && before[key as keyof DesignNode] !== node[key as keyof DesignNode]))) return null
     if (node.transform.length !== 6 || node.transform.some(value => !Number.isFinite(value) || Math.abs(value) > 1e7) ||
       node.transform.slice(0, 4).some((value, index) => !Object.is(value, before.transform[index]))) return null
+    if (node.children.length !== before.children.length || node.children.some((child, index) => child !== before.children[index])) return null
     changed.push(id)
   }
+  if (snapshotTargets(previous, changed)) return null
   for (const id of changed) {
     const seen = new Set<string>()
     let at: string | undefined = id
-    while (at) {
+    while (at && next.nodes[at]) {
       if (seen.has(at)) return null
       seen.add(at)
-      const node: DesignNode | undefined = next.nodes[at]
+      const node = next.nodes[at]
       const parentId = parents.get(at)
-      if (!node || hasReferences(node) || !fixedConstraints(node, parentId ? next.nodes[parentId] : undefined, pageRoots.has(at)) ||
+      const parent = parentId ? next.nodes[parentId] : undefined
+      if (!node || node.connector || (node.board?.kind === 'code-block' && node.board.language) ||
+        hasReferences(node) || !fixedConstraints(node, parent, !parent && !!parentId && pages.has(parentId)) ||
         (node.layout && node.layout.mode !== 'none') ||
         (node.sizing && (node.sizing.width !== 'fixed' || node.sizing.height !== 'fixed'))) return null
-      at = parentId
+      at = parent ? parentId : undefined
     }
   }
   return changed

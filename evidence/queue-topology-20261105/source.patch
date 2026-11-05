@@ -1,0 +1,486 @@
+--- a/design-studio/crates/design-kernel/src/path.rs
++++ b/design-studio/crates/design-kernel/src/path.rs
+@@ -204,6 +204,35 @@
+     let t = ((p - a).dot(d) / d.dot(d).max(1e-30)).clamp(0., 1.);
+     (p - a.lerp(b, t)).length()
+ }
++
++// The projection and subdivision points are unchanged. Away from the
++// threshold the squared norm decides the same comparison without hypot.
++// The wide uncertainty band leaves all rounding-sensitive decisions (and
++// exceptional operands) to the original operation.
++#[inline]
++fn cubic_flatness_band(tolerance: f64) -> (f64, f64) {
++    if (1e-12..=1e12).contains(&tolerance) {
++        let squared = tolerance * tolerance;
++        (squared * (1. - 1. / 1024.), squared * (1. + 1. / 1024.))
++    } else {
++        (f64::NEG_INFINITY, f64::INFINITY)
++    }
++}
++
++#[inline]
++fn cubic_controls_flat(a: Point, b: Point, c: Point, d: Point, tolerance: f64, band: (f64, f64)) -> bool {
++    let chord = d - a;
++    let denominator = chord.dot(chord).max(1e-30);
++    let distance = |p: Point| {
++        let t = ((p - a).dot(chord) / denominator).clamp(0., 1.);
++        let delta = p - a.lerp(d, t);
++        let squared = delta.dot(delta);
++        if squared < band.0 { 0. } else if squared > band.1 { f64::INFINITY } else { delta.length() }
++    };
++    let first = distance(b);
++    // Keep f64::max's handling of a single NaN in the ambiguous case.
++    !(first > tolerance) && first.max(distance(c)) <= tolerance
++}
+ // Convex-hull distance bounds handle collinear overshoot and coincident endpoints.
+ // De Casteljau subdivision is performed AFTER the device transform, so tolerance
+ // is measured in device pixels, including nonuniform scale and shear.
+@@ -228,6 +257,7 @@
+     clip: Option<FillGuard>,
+ ) -> Result<(), String> {
+     let mut stack = vec![(a, b, c, d, 0u8)];
++    let band = cubic_flatness_band(tolerance);
+     while let Some((a, b, c, d, depth)) = stack.pop() {
+         if out.len() > 131072 {
+             return Err("Curve subdivision budget exceeded".into());
+@@ -236,6 +266,9 @@
+         // Replacing a subcurve entirely beyond one guard half-plane preserves
+         // fill winding inside the guard; stroke/length/export callers use None.
+         let outside = clip.is_some_and(|clip| {
++            if a.x >= clip.min.x && a.x <= clip.max.x && a.y >= clip.min.y && a.y <= clip.max.y {
++                return false;
++            }
+             let ps = [a, b, c, d];
+             let pad = 64.
+                 * f64::EPSILON
+@@ -247,8 +280,7 @@
+                 || ps.iter().all(|p| p.y < clip.min.y - pad)
+                 || ps.iter().all(|p| p.y > clip.max.y + pad)
+         });
+-        let flat =
+-            outside || distance_to_segment(b, a, d).max(distance_to_segment(c, a, d)) <= tolerance;
++        let flat = outside || cubic_controls_flat(a, b, c, d, tolerance, band);
+         if flat {
+             out.push(d);
+             continue;
+@@ -769,6 +801,25 @@
+     use crate::{math::Rect, raster::rasterize};
+ 
+     #[test]
++    fn cubic_flatness_matches_original_at_rounding_boundaries_and_degenerate_chords() {
++        let p = Point::new;
++        for scale in [1e-100, 1e-12, 1./64., 1., 1e12, 1e100] {
++            for (a,b,c,d) in [
++                (p(0.,0.),p(0.6,0.8),p(-0.8,0.6),p(0.,0.)),
++                (p(1.,0.),p(-2.,0.),p(3.,0.),p(2.,0.)),
++                (p(-1.,2.),p(1.,-1.),p(3.,2.),p(2.,3.)),
++                (p(1.,0.),p(f64::NAN,2.),p(2.,1.),p(3.,0.)),
++            ] {
++                let (a,b,c,d) = (a*scale,b*scale,c*scale,d*scale);
++                let actual = distance_to_segment(b,a,d).max(distance_to_segment(c,a,d));
++                for tolerance in [actual.next_down(), actual, actual.next_up(), actual*0.5, actual*2.] {
++                    assert_eq!(cubic_controls_flat(a,b,c,d,tolerance,cubic_flatness_band(tolerance)),
++                        actual<=tolerance, "scale={scale} tolerance={tolerance}");
++                }
++            }
++        }
++    }
++    #[test]
+     fn point_guard_preserves_compound_signed_winding_with_reversed_holes() {
+         let outer = Path::superellipse_rectangle(4000., 4000., [2000.; 4], 1.);
+         let inner = Path::superellipse_rectangle(3000., 3000., [1500.; 4], 1.);
+--- a/frontend/design-client/src/LargeDocumentWorkspace.tsx
++++ b/frontend/design-client/src/LargeDocumentWorkspace.tsx
+@@ -1,4 +1,4 @@
+-import {useSourceOpening,type OpeningView} from './source-opening-preview'
++import {SOURCE_DETAIL_SAMPLE_MS,useSourceOpening,visibleMaterialDetail,type OpeningView} from './source-opening-preview'
+ import {renderExecutionPolicy} from './kernel/client'
+ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from 'react'
+ import { flushSync } from 'react-dom'
+@@ -54,6 +54,7 @@
+   const demand=useRef(''), demandGeneration=useRef(0),detailRunning=useRef(false),declinedDemand=useRef('')
+   const viewportDemand=useRef(false),zoomAnchor=useRef<Point|undefined>(undefined)
+   const requestedIndices=useRef<number[]>([]),preparingKeys=useRef<readonly string[]>([])
++  const reviewedScope=useRef<{token:string;at:number}|undefined>(undefined)
+   const lastMaterialToken=useRef<string|undefined>(undefined)
+   const pageDetailIntent=useRef<string|undefined>(undefined)
+   const requestDetail=useCallback((indices:number[],retry=false,fromViewport=false)=>{
+@@ -61,7 +62,7 @@
+     if(key===demand.current && !(retry && key===declinedDemand.current))return
+     demandGeneration.current++;demand.current=key;declinedDemand.current='';viewportDemand.current=fromViewport;requestedIndices.current=indices;setDetailIndices(indices)
+     if(!indices.length)setShowOpening(true)
+-    if(detailRunning.current && indices.length){
++    if(detailRunning.current && preparingKeys.current.length && indices.length){
+       const items=itemsForSnapshot.current,wanted=indices.map(i=>items[i]?.key)
+       const current=nativeSnapshotRef.current
+       const active=current&&current.token===lastMaterialToken.current&&!current.viewportSubset?current:undefined
+@@ -324,8 +325,30 @@
+     const selected=status
+     const focal=viewport&&focusedMaterial===undefined?firstVisibleMaterialKeys(items,detailIndices,viewport,current?.materialKeys,zoomAnchor.current):undefined
+     void run(async()=>{
+-      detailRunning.current=true;preparingKeys.current=keys
++      detailRunning.current=true
+       try{
++        // Publishing a replacement revokes the displayed snapshot. A single
++        // sampled neighbour on a reversing gesture must not discard all of
++        // its native tiles. Recheck the actual camera before asking the host.
++        const held=current?.materialKeys
++        if(viewport && focusedMaterial===undefined && current && !current.viewportSubset && held && held.length>=6 &&
++            nativePresentedToken.current===current.token && wanted.some(key=>held.includes(key)) &&
++            wanted.filter(key=>!held.includes(key)).length<=2 && host){
++          const now=performance.now(),last=reviewedScope.current
++          if(last?.token!==current.token || now-last.at>=2*SOURCE_DETAIL_SAMPLE_MS){
++            reviewedScope.current={token:current.token,at:now}
++            await new Promise<void>(resolve=>setTimeout(resolve,SOURCE_DETAIL_SAMPLE_MS))
++          }
++          if(!alive.current || activeRef.current || queuedLoad.current || !sameSource(selected,statusRef.current) ||
++              demandGeneration.current!==generation || nativeSnapshotRef.current!==current || !viewportDemand.current)return
++          const live=openingRef.current
++          if(live){
++            const needed=visibleMaterialDetail(live,editor.effectiveView(),host.clientWidth,host.clientHeight,
++              window.devicePixelRatio||1,sourcePage||undefined,undefined)
++            if(needed.join(',')!==signature){requestDetail(needed,false,true);return}
++          }
++        }
++        preparingKeys.current=keys
+         if(focal){
+           const first=await bridge.canvasSnapshot({owner:selected.owner,expectedRevision:selected.revision,materialKeys:focal}).catch(()=>undefined)
+           if(!alive.current||activeRef.current||!sameSource(selected,statusRef.current))return
+--- a/frontend/design-client/src/source-opening-preview.tsx
++++ b/frontend/design-client/src/source-opening-preview.tsx
+@@ -7,6 +7,7 @@
+   owner:LargeDocumentOwner; bounds:SourceCanvasBox; items:SourceCanvasItem[]; pages:OpeningPage[];
+   materialDisplay?:SourceCanvasSnapshot; images:ReadonlyMap<number,string>; finished:boolean; cacheHit:boolean; rendered:number
+ }
++export const SOURCE_DETAIL_SAMPLE_MS=120
+ export function useSourceOpening(bridge:LargeDocumentBridge, generation:number|undefined) {
+   const [value,setValue]=useState<{generation:number;view:OpeningView}>()
+   const priority=useRef<{pageId?:string;material?:number;viewport?:SourceCanvasBox;viewportDensity?:number;viewportAnchor?:[number,number]}>({})
+@@ -179,7 +180,7 @@
+       if(!onDetail||!width||!height)return
+       onViewport?.({x:-view.x/view.zoom,y:-view.y/view.zoom,width:width/view.zoom,height:height/view.zoom},view.zoom*(window.devicePixelRatio||1))
+       onDetail(visibleMaterialDetail(source,view,width,height,window.devicePixelRatio||1,pageId,focused))
+-    },120)
++    },SOURCE_DETAIL_SAMPLE_MS)
+   },[source.owner.documentId,source.owner.sessionEpoch,source.items,view.x,view.y,view.zoom,width,height,pageId,focused,onDetail,onViewport,source.finished])
+   return <svg className="source-opening-surface" aria-label="源文件素材预览" data-material-count={source.items.length}
+     data-rendered-materials={source.images.size} data-source-owner={source.owner.documentId}
+--- /dev/null
++++ b/frontend/design-client/src/kernel/gpu/dense-batch.ts
+@@ -0,0 +1,25 @@
++import type {GpuNode, Rect} from './types'
++
++/** Missing source nodes have no painter in this projection. Cross a gap only
++ * when the extra per-pixel root tests remain close to those of separate draws. */
++export function denseBatch(ids:readonly string[], at:number, nodes:Readonly<Record<string,GpuNode>>,
++  programs:Readonly<Record<string,number>>, limit:number, crossGaps:boolean) {
++  const starts:number[]=[],first=nodes[ids[at]].rect
++  let x=first.x,y=first.y,right=x+first.w,bottom=y+first.h,last=at,gap=false,joined=false
++  for(let k=at;k<ids.length && k-at<96 && starts.length<32;k++){
++    const n=nodes[ids[k]]
++    if(!n && crossGaps){gap=true;continue}
++    const pc=programs[ids[k]]
++    if(!n || !Number.isSafeInteger(pc) || pc<0 || pc>=limit)break
++    const r=n.rect,l=Math.min(x,r.x),t=Math.min(y,r.y),h=Math.max(right,r.x+r.w),b=Math.max(bottom,r.y+r.h)
++    if(gap || joined){
++      const area=(right-x)*(bottom-y),combined=(h-l)*(b-t)
++      if(n.opticalPrefixNext || starts.length>=8 || combined*(starts.length+1)>2*(area*starts.length+r.w*r.h))break
++      joined=true;gap=false
++    }
++    if(n.opticalPrefixNext)crossGaps=false
++    starts.push(pc);last=k;x=l;y=t;right=h;bottom=b
++  }
++  const write:Rect={x,y,w:right-x,h:bottom-y}
++  return {starts,write,last}
++}
+--- a/frontend/design-client/src/kernel/gpu/renderer.ts
++++ b/frontend/design-client/src/kernel/gpu/renderer.ts
+@@ -1,5 +1,6 @@
+ import {DENSE_PAINT_MODE} from './dense-paint-shader'
+ import {SOURCE_LAYER_MODE,SOURCE_IMAGE_LAYER_MODE,SOURCE_LAYER_FLOATS,sourceLayer,radialCorners, type SourceLayerProgram} from './source-layer'
++import {denseBatch} from './dense-batch'
+ import {gaussianRegionRects} from './gaussian-region'
+ import {copySourceWindow, linearSrgbWindow, magnifiedImageWindow, sourceImageWindow} from './source-image-window'
+ import {sourceBitmapDimensions} from '../image-row-source'
+@@ -4181,18 +4182,11 @@
+       const dense=this.scene.densePaint
+       if(dense&&this.denseAtlas&&Object.hasOwn(dense.nodes,id)&&
+           (!clip||clip.every(c=>c.texture.binaryCoverage))){
+-        const starts:number[]=[],first=n.rect
+-        let left=first.x,top=first.y,right=first.x+first.w,bottom=first.y+first.h
+-        for(let k=at;k<ids.length&&starts.length<32;k++){
+-          const child=this.scene.nodes[ids[k]],pc=dense.nodes[ids[k]]
+-          if(!child||!Number.isSafeInteger(pc)||pc<0||pc>=dense.width*dense.height)break
+-          starts.push(pc)
+-          left=Math.min(left,child.rect.x);top=Math.min(top,child.rect.y)
+-          right=Math.max(right,child.rect.x+child.rect.w);bottom=Math.max(bottom,child.rect.y+child.rect.h)
+-        }
++        const crossGaps=import.meta.env.VITE_DESIGN_DENSE_SPARSE_BATCH==='1' &&
++          !prefix && !compactSource && !opticalPrefix && !this.interactionCapturing && !this.poseDemand
++        const {starts,write,last}=denseBatch(ids,at,this.scene.nodes,dense.nodes,dense.width*dense.height,crossGaps)
+         if(starts.length){
+           this.fastWork.add('densePaintBatches');this.fastWork.add('densePaintRoots',starts.length)
+-          const write=rect(left,top,right-left,bottom-top)
+           for(let phase=0;phase<4;phase++){
+             if (!(phase & 1) && !clip && this.driver.densePairsReady) {
+               const pair = await this.denseBatchPair(targets[phase],targets[phase+1],this.denseAtlas,write,starts,phase)
+@@ -4203,7 +4197,7 @@
+               u.set([starts.length,phase,Number(!!clip)],17);u.set(starts,20)
+             })
+           }
+-          at+=starts.length-1;continue
++          at=last;continue
+         }
+       }
+       const preSource=dense?.sources?.[id]
+@@ -4236,7 +4230,12 @@
+           this.fastWork.add('sourceLayerBatches')
+           try{
+             for(const [i,l]of layers.entries())for(const field of l.fields)fields.push(await this.sampleSourceFilter(this.scene.nodes[ids[at+i]],field))
+-            for(let phase=0;phase<4;phase++){
++            // With no brushes, each source starts at +0. If every sampled
++            // shadow field is also zero, over(back, transparent) returns the
++            // original texel, including on a non-transparent destination.
++            const empty=import.meta.env.VITE_DESIGN_SPARSE_SOURCE_WORK!=='0' && fields.length>0 &&
++              fields.every(f=>f.texture.transparentZero) && layers.every(l=>l.transparentOnZeroFields)
++            for(let phase=0;!empty && phase<4;phase++){
+               targets[phase]=await this.composeSourceProgram(SOURCE_LAYER_MODE,targets[phase],fields,layers.length===1?n.rect:undefined,
+                 u=>{u[17]=layers.length;let start=20;for(const l of layers){u.set(l.data[phase],start);start+=l.data[phase].length}})
+             }
+@@ -5976,6 +5975,17 @@
+     // Independent inner shadows preserve every binary source sample's alpha.
+     // A compound filter instead consumes the result of its actual prefix.
+     const prefix=plan.effectIndex>0&&!n.sourceFilterField?.additional?.length?n.effects.slice(0,plan.effectIndex):[]
++    const shadow=n.effects[plan.effectIndex]
++    if(import.meta.env.VITE_DESIGN_SPARSE_SOURCE_WORK!=='0' && this.sourceTileOcclusion && this.driver.zeroTextureSampling &&
++        !this.allowSolidBatch && !colour && !plan.masks.length && !plan.groupRoots?.length && !prefix.length &&
++        (shadow?.kind==='inner-shadow'||shadow?.kind==='shadow') && shadow.spread===0 &&
++        plan.input.w>0 && plan.input.h>0 && plan.output.w>0 && plan.output.h>0 &&
++        Math.max(plan.input.w,plan.input.h,plan.output.w,plan.output.h)<=(this.driver.sourceImageLimit||0)){
++      // A linear resolve, blur and reconstruction of four cleared inputs is
++      // exactly zero. Keep the filter's world rect and the normal pool lease.
++      this.checkFrameCurrent()
++      return this.empty(plan.output)
++    }
+     const raster=async(channels:typeof plan.masks,preceding:Effect[])=>{
+       let planes:Surface[]=[],accumulator:Surface|undefined
+       const silhouette=!colour && !preceding.length && channels.length===1 && !channels[0].paint && channels[0].opacity===1
+--- a/frontend/design-client/src/kernel/gpu/source-layer.ts
++++ b/frontend/design-client/src/kernel/gpu/source-layer.ts
+@@ -32,7 +32,7 @@
+   if (values.every(v => Number.isFinite(v) && Math.abs(v) <= 8)) return values
+ }
+ 
+-export type SourceLayerProgram = { data: Float32Array[]; fields: SourceFilterField[] }
++export type SourceLayerProgram = { data: Float32Array[]; fields: SourceFilterField[]; transparentOnZeroFields:boolean }
+ 
+ /** Pack normal, independent leaves for the display driver. A brush carries
+  * its native interval program, inside/outside alignment and a material.
+@@ -123,5 +123,7 @@
+   if (end > 56 || (end - 5) * 4 > availableFloats || (brushesEnd === 9 && !effects.length)) return
+   const data = phases.map((words, i) => new Float32Array([i, node.opacity, brushesEnd, end,
+     ...rectWords(node.rect), ...rectWords(node.fill.rect), fill, 0, 0, 0, ...words, ...shadows]))
+-  return { data, fields }
++  // Without brushes, phases differ only in their index. Nonfinite shadow
++  // operands cannot justify omitting the original floating-point operations.
++  return { data, fields, transparentOnZeroFields:brushesEnd===9 && data[0].every(Number.isFinite) }
+ }
+--- a/frontend/design-client/src/kernel/gpu/webgpu.ts
++++ b/frontend/design-client/src/kernel/gpu/webgpu.ts
+@@ -2452,7 +2452,8 @@
+           // for finish's existing error boundary as well as the next slice.
+           if (!this.disposed && this.device === device) this.errors.push(String(error))
+           throw error
+-        }))
++        }), this.queueWaitStats.timingEnabled
++          ? wait=>this.queueWaitStats.wait('raster-yield',wait,()=>this.lost) : undefined)
+     }
+     if (this.disposed || this.lost || this.device !== device) throw Error('GPU 设备已丢失')
+   }
+--- a/frontend/design-client/src/kernel/gpu/raster-queue-pacer.ts
++++ b/frontend/design-client/src/kernel/gpu/raster-queue-pacer.ts
+@@ -6,7 +6,8 @@
+   private failure?: { error: unknown }
+   private check() { if (this.failure) throw this.failure.error }
+ 
+-  async yield(sequence: number, completed: number, observe: () => Promise<void>) {
++  async yield(sequence: number, completed: number, observe: () => Promise<void>,
++    measureBlock?: (wait: () => Promise<void>) => Promise<void>) {
+     this.check()
+     this.observations = this.observations.filter(item => item.sequence > completed)
+     if (sequence <= completed) return
+@@ -24,8 +25,9 @@
+     if (sequence - completed >= 2) {
+       // Wait only for the oldest recorded prefix, not for work/presentation
+       // submitted after it. New camera composition can run during this await.
+-      await this.observations[0]?.done
+-      this.check()
++      const oldest=this.observations[0]
++      if(measureBlock && oldest) await measureBlock(async()=>{await oldest.done; this.check()})
++      else {await oldest?.done; this.check()}
+     }
+   }
+ }
+--- a/frontend/design-client/src/kernel/NativeSourceSurface.tsx
++++ b/frontend/design-client/src/kernel/NativeSourceSurface.tsx
+@@ -9,7 +9,7 @@
+ import type {CanvasCamera} from '../canvas-camera'
+ import {KernelClient,backendPreference,renderExecutionPolicy,type TileResult} from './client'
+ import {canvasSamplingProfile} from './render-policy'
+-import {SourceViewportPlanner,coveredSourceDetail,retainedZoomOut,improvesSourceZoom,sourceTileBringsDetail,visibleSourceDensity} from './source-viewport-plan'
++import {SourceViewportPlanner,backingCoversSettledSource,coveredSourceDetail,retainedZoomOut,improvesSourceZoom,sourceTileBringsDetail,visibleSourceDensity} from './source-viewport-plan'
+ import {tileBatchPrepareViewport} from './tile-prepare-viewport'
+ import {tileIntersectsView, tilePlacementAtView} from './tile-preview'
+ import {cpuTileBlitOrigin} from './cpu-tile-frame'
+@@ -708,8 +708,15 @@
+           // satisfy the current density/phase/owner keys. The request slot
+           // still belongs to its real completion, including late GPU work.
+           const missing=native.tiles.some(tile=>!cache.has(tile.key))
++          // A rung four times coarser in each direction cannot satisfy this
++          // settled demand. Keep the displayed frame and let obsolete work
++          // leave through its normal cancellation/completion boundary.
++          const coveredDetail=import.meta.env.VITE_DESIGN_SETTLED_SOURCE_PRIORITY!=='0' &&
++            missing && source.materialKeys && zoomingIn && continuousZoom && native.raster.scale>1 &&
++            backingCoversSettledSource(backing,native.p,density.current)
+           workQueue.demand(false,tile=>native.keys.has(tile.key)||!missing&&tile.prefetch===true&&native.prefetchKeys.has(tile.key)||
+             missing&&zoomingIn&&continuousZoom&&!tile.prefetch&&tile.zoom<native.raster.scale&&tile.zoom>=native.raster.scale/8&&
++            !(coveredDetail && tile.zoom*4<=native.raster.scale) &&
+             sourceTileBringsDetail(tile,native.p.view,native.p,cache.values()))
+           schedulePaint();void run()
+         }catch(error){fail(error)}
+--- a/frontend/design-client/src/kernel/source-viewport-plan.ts
++++ b/frontend/design-client/src/kernel/source-viewport-plan.ts
+@@ -11,6 +11,19 @@
+ import type {ResidentAcknowledgement} from './resident-presentation'
+ 
+ export const SOURCE_PREFETCH_BUDGET={tiles:8,bytes:8*514*514*4} as const
++
++/** Only a physically acknowledged, gap-free backing can stand in for an
++ * intermediate zoom rung while the exact settled view gets the raster slot.
++ * This is containment for display continuity, never a native-ready receipt. */
++export function backingCoversSettledSource(backing:ResidentAcknowledgement|undefined,
++  target:{view:CanvasCamera;width:number;height:number},dpr:number){
++  if(!backing || backing.preview || backing.previewGaps?.length || backing.dpr!==dpr ||
++      backing.width!==target.width || backing.height!==target.height)return false
++  const ratio=backing.view.zoom/target.view.zoom
++  const left=backing.view.x-target.view.x*ratio,top=backing.view.y-target.view.y*ratio
++  return ratio>0 && ratio<=1 && left>=-1e-6 && top>=-1e-6 &&
++    left+target.width*ratio<=backing.width+1e-6 && top+target.height*ratio<=backing.height+1e-6
++}
+ 
+ /** Publish a sharper tile during a zoom without losing any old visible
+  * texture. The presenter has already certified physical coverage. */
+--- /dev/null
++++ b/frontend/design-client/src/kernel/gpu/dense-batch.test.ts
+@@ -0,0 +1,18 @@
++import {expect,test} from 'vitest'
++import {denseBatch} from './dense-batch'
++import type {GpuNode} from './types'
++
++const node=(x:number)=>({rect:{x,y:0,w:8,h:8}} as GpuNode)
++test('a sparse batch preserves painter order, handles program zero and stops at a present ordinary painter',()=>{
++  const ids=['a','missing','b','ordinary','c'],nodes={a:node(0),b:node(2),ordinary:node(3),c:node(4)}
++  const pcs={a:9,b:0,c:12}
++  expect(denseBatch(ids,0,nodes,pcs,16,true)).toEqual({starts:[9,0],write:{x:0,y:0,w:10,h:8},last:2})
++  expect(denseBatch(ids,0,nodes,pcs,16,false).last).toBe(0)
++  expect(denseBatch(ids,0,nodes,{...pcs,b:16},16,true).last).toBe(0)
++})
++test('a gap cannot create a large sparse rectangle, cross an optical prefix or scan unbounded missing IDs',()=>{
++  const ids=['a','gap','b'],pcs={a:0,b:1}
++  expect(denseBatch(ids,0,{a:node(0),b:node(1000)},pcs,2,true).starts).toEqual([0])
++  expect(denseBatch(ids,0,{a:{...node(0),opticalPrefixNext:'b'},b:node(0)},pcs,2,true).last).toBe(0)
++  expect(denseBatch(['a',...Array(96).fill('missing'),'b'],0,{a:node(0),b:node(0)},pcs,2,true).last).toBe(0)
++})
+--- a/frontend/design-client/src/kernel/gpu/raster-queue-pacer.test.ts
++++ b/frontend/design-client/src/kernel/gpu/raster-queue-pacer.test.ts
+@@ -25,6 +25,17 @@
+   await p.yield(13, 13, observe)
+   expect(observe).toHaveBeenCalledOnce()
+ })
++test('timing measures just the awaited prefix and never creates a second fence',async()=>{
++  const p=new RasterQueuePacer(),a=fence(),b=fence(),observe=vi.fn(()=>a.promise)
++  const block=vi.fn((wait:()=>Promise<void>)=>wait())
++  await p.yield(1,0,observe,block)
++  expect(block).not.toHaveBeenCalled()
++  const next=p.yield(2,0,()=>b.promise,block)
++  expect(block).toHaveBeenCalledOnce()
++  a.resolve();await next
++  expect(observe).toHaveBeenCalledOnce()
++  b.resolve()
++})
+ test('background completion failure is retained and cannot become success or an unhandled rejection', async () => {
+   const p = new RasterQueuePacer(), a = fence(), error = Error('device queue rejected')
+   await p.yield(1, 0, () => a.promise)
+--- a/frontend/design-client/src/kernel/gpu/source-layer.test.ts
++++ b/frontend/design-client/src/kernel/gpu/source-layer.test.ts
+@@ -34,6 +34,16 @@
+     n.effects[0].x=1
+     expect(sourceLayer(n,()=>0,colour)!.data[0][effects+3]).toBe(-1)
+   })
++  it('only omits a zero-field source without brushes and with finite encoded operands',()=>{
++    const n=fixture()
++    n.effects=[{kind:'inner-shadow',visible:true,radius:2,spread:0,x:0,y:0,color:'#ffffff',opacity:1} as GpuNode['effects'][number]]
++    n.sourceFilterField={factor:2,effectIndex:0,sharpHalo:0,radius:1,gaussian:false,input:bounds,output:bounds,masks:[]}
++    expect(sourceLayer(n,()=>17,colour)?.transparentOnZeroFields).toBe(false)
++    n.fill.count=0
++    expect(sourceLayer(n,()=>17,colour)?.transparentOnZeroFields).toBe(true)
++    n.effects[0].x=Number.MAX_VALUE
++    expect(sourceLayer(n,()=>17,colour)?.transparentOnZeroFields).toBe(false)
++  })
+   it('computes unclamped radial coordinates for the four original coverage phases', () => {
+     const n=fixture(),paint={kind:'radial'} as GpuPaint
+     const values=radialCorners(n,paint,0)!
+--- /dev/null
++++ b/frontend/design-client/src/kernel/gpu/source-filter-zero.test.ts
+@@ -0,0 +1,29 @@
++import {expect,test,vi} from 'vitest'
++import {GpuRenderer} from './renderer'
++import type {SourceFilterField} from './types'
++
++const rect={x:4,y:-3,w:128,h:96}
++const field:SourceFilterField={factor:8,effectIndex:0,sharpHalo:0,radius:4,gaussian:false,input:rect,output:rect,masks:[]}
++const shadow={kind:'inner-shadow',spread:0,visible:true}
++async function evaluate(plan:SourceFilterField,effects=[shadow],current=true){
++  // Stop at the first real raster operation. A source plan which needs its
++  // group/prefix/coverage must reach it, even when its own mask array is empty.
++  const sentinel=Error('ordinary raster'),zero={texture:{transparentZero:true,width:1,height:1},rect}
++  const owner={driver:{zeroTextureSampling:true,sourceImageLimit:8192},sourceTileOcclusion:true,allowSolidBatch:false,
++    checkFrameCurrent:()=>{if(!current)throw Error('PREVIEW_CANCELLED')},
++    empty:vi.fn(()=>zero),release(){},drawBundle:()=>{throw sentinel},run:()=>{throw sentinel},
++    applySampleEffects:()=>{throw sentinel},reclaimForSurface:()=>{throw sentinel}}
++  return (GpuRenderer.prototype as any).sampleSourceFilter.call(owner,
++    {effects,matrix:[1,0,0,1,0,0],inverse:[1,0,0,1,0,0],sourceFilterField:plan},plan)
++}
++test('only a validated empty shadow with no group, spread or preceding effect borrows zero',async()=>{
++  expect((await evaluate(field)).texture.width).toBe(1)
++  for(const [plan,effects] of [
++    [{...field,groupRoots:['visible-source']},[shadow]], [{...field,effectIndex:1},[shadow,shadow]],
++    [{...field,masks:[{opacity:1,path:{count:0,rect}}]},[shadow]],
++    [field,[{...shadow,spread:3}]], [field,[{...shadow,kind:'gaussian-blur'}]],
++    [{...field,output:{...rect,w:16384}},[shadow]],
++  ] as [SourceFilterField,typeof shadow[]][])await expect(evaluate(plan,effects)).rejects.toThrow('ordinary raster')
++  await expect(evaluate({...field,factor:3})).rejects.toThrow('Invalid source shadow sampling window')
++  await expect(evaluate(field,[shadow],false)).rejects.toThrow('PREVIEW_CANCELLED')
++})
+--- a/frontend/design-client/src/kernel/source-quality-ladder.test.ts
++++ b/frontend/design-client/src/kernel/source-quality-ladder.test.ts
+@@ -1,7 +1,17 @@
+ import {expect,test} from 'vitest'
+ import {SourceQualityLadder} from './source-quality-ladder'
+-import {coveredSourceDetail,improvesSourceZoom,retainedZoomOut,sourceTileBringsDetail,visibleSourceDensity} from './source-viewport-plan'
++import {backingCoversSettledSource,coveredSourceDetail,improvesSourceZoom,retainedZoomOut,sourceTileBringsDetail,visibleSourceDensity} from './source-viewport-plan'
+ import type {ResidentAcknowledgement} from './resident-presentation'
++test('settled source priority requires full acknowledged coverage at the current device density',()=>{
++ const backing={view:{x:0,y:0,zoom:4},width:100,height:80,dpr:2,ids:[1],interaction:false} as ResidentAcknowledgement
++ const target={width:100,height:80,view:{x:-20,y:-16,zoom:16}}
++ expect(backingCoversSettledSource(backing,target,2)).toBe(true)
++ expect(backingCoversSettledSource({...backing,preview:true},target,2)).toBe(false)
++ expect(backingCoversSettledSource({...backing,previewGaps:[{x:0,y:0,width:1,height:1}]},target,2)).toBe(false)
++ expect(backingCoversSettledSource(backing,target,1)).toBe(false)
++ expect(backingCoversSettledSource(backing,{...target,view:{...target.view,x:1}},2)).toBe(false)
++ expect(backingCoversSettledSource(backing,{...target,width:101},2)).toBe(false)
++})
+ test('fallback resolution advances on covered presentations and bounds retries at a failed camera',()=>{
+  const q=new SourceQualityLadder()
+  expect(q.rejected(64,'GPU surface budget exceeded')).toBe(true)

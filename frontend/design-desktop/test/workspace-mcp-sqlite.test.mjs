@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { PassThrough } from 'node:stream'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -14,7 +14,7 @@ import { DesignMcpServer } from '../../design-mcp/src/server.mjs'
 // facade, the production stdio Sidecar, and actual SQLite. The editor adapter is
 // deterministic; actual Editor/DesktopSession guards are tested in the client.
 test('MCP tools/list/call reaches root-bound workspace CAS and history in real temporary SQLite', { skip: !process.env.FUTUREOX_BACKEND_TEST_BINARY }, async t => {
-  const directory = await mkdtemp(path.join(tmpdir(), 'futureox-workspace-mcp-'))
+  const directory = await mkdtemp(path.join(await realpath(tmpdir()), 'futureox-workspace-mcp-'))
   const options = { workspaceDb: path.join(directory, 'workspace.sqlite3'), catalogDb: path.join(directory, 'catalog.sqlite3') }
   let sidecar = new Sidecar(process.env.FUTUREOX_BACKEND_TEST_BINARY, path.join(directory, 'recovery'), options)
   t.after(async () => { await sidecar.stop(); await rm(directory, { recursive: true, force: true }) })

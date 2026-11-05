@@ -4,6 +4,8 @@ use crate::Engine;
 use serde_json::{Value, json};
 #[cfg(not(target_arch = "wasm32"))]
 mod source_snapshot;
+#[cfg(not(target_arch = "wasm32"))]
+mod source_hit;
 
 #[derive(Default)]
 struct Lane {
@@ -101,6 +103,16 @@ impl Preparation {
         let receipt = self.mint(1, Some(request.base_receipt), false);
         Ok(Reply { metadata: json!({"stateReceipt":receipt,"settings":settings,"documentFork":true}), bytes: Vec::new() })
     }
+    #[cfg(not(target_arch="wasm32"))]
+    pub fn render_with_bitmaps(&mut self,lane:&str,method:&str,args:&[Value],directory:crate::source_bitmap_pixels::Directory)->Result<Reply,String>{
+        if !matches!(method,"render_linear"|"render_png"|"render_color_png"|"render_region_png"|"render_cpu_frame"){return Err("Invalid source bitmap render request".into());}
+        let index=match lane {"canvas"=>0,"interaction"=>1,_=>return Err("Invalid preparation lane".into())};
+        let access=crate::source_bitmap_pixels::Access::new(directory);
+        self.lanes[index].engine.set_source_bitmaps(Some(access.clone()));
+        let result=self.request(lane,method,args);
+        self.lanes[index].engine.set_source_bitmaps(None);
+        access.check()?;result
+    }
     pub fn request(&mut self, lane: &str, method: &str, args: &[Value]) -> Result<Reply, String> {
         let index=match lane{"canvas"=>0,"interaction"=>1,_=>return Err("Invalid preparation lane".into())};
         let source=method=="load_source_snapshot"||method=="derive_document_v1"&&self.lanes[0].source_storage||method!="load_document"&&self.lanes[index].source_storage;
@@ -195,6 +207,18 @@ impl Preparation {
                 lane.source = None; lane.reusable = false;
                 let transforms = serde_json::from_str(string(0)?).map_err(|e|format!("Invalid transforms: {e}"))?;
                 value = json!(engine.apply_interaction_transforms(&transforms)?);
+            }
+            #[cfg(not(target_arch="wasm32"))]
+            "source_hit" => {
+                if index!=0 || args.len()!=1 {return Err("Invalid source hit request".into())}
+                let q:source_hit::Query=serde_json::from_value(args[0].clone()).map_err(|_|"Invalid source hit query")?;
+                if let Some(access)=lane.source_access.as_ref() {
+                    if let Some(owner)=access.pick_engine(engine) {
+                        if let (Some(doc),Some(authored))=(owner.doc.as_deref(),owner.authored_document()) {
+                            value=source_hit::pick(doc,authored,&q)?;
+                        }
+                    }
+                }
             }
             "compile_gpu_packet" => {
                 #[cfg(not(target_arch = "wasm32"))]
@@ -297,7 +321,7 @@ fn render_cpu_frame(
         if engine.tiled_renderer().is_some() {
             *engine.tiled_renderer_mut() = Default::default();
         }
-        return Ok((engine.render(options)?, "exact"));
+        return Ok((engine.render_exact(options)?, "exact"));
     }
     engine.prepare_frame(options)?;
     let instruction = engine.render_instruction_for(options)?;
@@ -447,7 +471,7 @@ mod tests {
         let mut actual=session();actual.request("canvas","load_source_snapshot",&[descriptor]).unwrap();
         let mut query=json!({"pageId":"p","width":64,"height":64,"view":{"x":-480,"y":-480,"zoom":1},"rasterProfile":"figmaSubpixel","gpuViewport":{"x":0,"y":0,"w":64,"h":64}});
         for x in [-480,-9980,-480]{query["view"]["x"]=json!(x);let reply=actual.request("canvas","compile_gpu_packet",&[json!(query.to_string())]).unwrap();
-            assert_eq!(reply.metadata["compileStats"]["sourceDemand"]["mode"],"demand");
+            assert!(matches!(reply.metadata["compileStats"]["sourceDemand"]["mode"].as_str(),Some("demand" | "demand-replay")));
             assert_eq!(reply.metadata["compileStats"]["sourceDemand"]["resolvedCompileNodes"],2);
         }
         source["nodes"]["r"]["fills"][0]["color"]=json!("#0000ff");

@@ -1,7 +1,17 @@
 import {expect,test} from 'vitest'
 import {SourceQualityLadder} from './source-quality-ladder'
-import {coveredSourceDetail,improvesSourceZoom,retainedZoomOut,sourceTileBringsDetail,visibleSourceDensity} from './source-viewport-plan'
+import {backingCoversSettledSource,coveredSourceDetail,improvesSourceZoom,retainedZoomOut,sourceTileBringsDetail,visibleSourceDensity} from './source-viewport-plan'
 import type {ResidentAcknowledgement} from './resident-presentation'
+test('settled source priority requires full acknowledged coverage at the current device density',()=>{
+ const backing={view:{x:0,y:0,zoom:4},width:100,height:80,dpr:2,ids:[1],interaction:false} as ResidentAcknowledgement
+ const target={width:100,height:80,view:{x:-20,y:-16,zoom:16}}
+ expect(backingCoversSettledSource(backing,target,2)).toBe(true)
+ expect(backingCoversSettledSource({...backing,preview:true},target,2)).toBe(false)
+ expect(backingCoversSettledSource({...backing,previewGaps:[{x:0,y:0,width:1,height:1}]},target,2)).toBe(false)
+ expect(backingCoversSettledSource(backing,target,1)).toBe(false)
+ expect(backingCoversSettledSource(backing,{...target,view:{...target.view,x:1}},2)).toBe(false)
+ expect(backingCoversSettledSource(backing,{...target,width:101},2)).toBe(false)
+})
 test('fallback resolution advances on covered presentations and bounds retries at a failed camera',()=>{
  const q=new SourceQualityLadder()
  expect(q.rejected(64,'GPU surface budget exceeded')).toBe(true)

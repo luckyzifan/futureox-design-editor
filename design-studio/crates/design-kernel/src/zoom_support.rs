@@ -99,10 +99,11 @@ fn foreground_source(
 }
 struct Planner<'a> {
     doc: &'a Document,
-    bounds: HashMap<String, ([f64; 4], Transform)>,
+    bounds: &'a ZoomBounds,
     extent: Rect,
     viewport: Rect,
 }
+pub(crate) type ZoomBounds = HashMap<String, ([f64; 4], Transform)>;
 impl Planner<'_> {
     fn include(&mut self, r: Rect) -> Result<(), String> {
         if r.empty() {
@@ -217,6 +218,9 @@ pub(crate) fn scene_guard(doc:&Document,roots:&[String],camera:Transform,viewpor
 /// detection walk is skipped. All source planning and admission stay identical.
 pub(crate) fn scene_guard_active(doc:&Document,roots:&[String],camera:Transform,viewport:Rect,fonts:&Fonts)->Result<Rect,String>{
     let bounds = crate::dirty_region::render_bounds_map(doc, roots, camera, fonts)?;
+    scene_guard_with_bounds(doc, roots, viewport, &bounds)
+}
+pub(crate) fn scene_guard_with_bounds(doc: &Document, roots: &[String], viewport: Rect, bounds: &ZoomBounds) -> Result<Rect, String> {
     let mut planner = Planner {
         doc,
         bounds,

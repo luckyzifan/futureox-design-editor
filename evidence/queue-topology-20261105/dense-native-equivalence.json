@@ -1,0 +1,212 @@
+[
+  {
+    "tile": 0,
+    "packetBytes": 7514709,
+    "geometrySha256": "398da4fb4031571132b81d6173c496c616b214c7b9edc96d25667b20b25d5377",
+    "resourcePayloadSha256": "8e03eaaaf24b39bb630d763b6dd7fd32347b4d4d5ee39e8b5d4ea85bc481b583",
+    "comparisons": [
+      {
+        "arm": "B",
+        "sceneEqual": true,
+        "metadataOutsideOwnerEqual": true,
+        "resourcePayloadEqual": true,
+        "geometrySha256": "398da4fb4031571132b81d6173c496c616b214c7b9edc96d25667b20b25d5377",
+        "scopeEqual": false,
+        "wireEqual": false
+      },
+      {
+        "arm": "B",
+        "sceneEqual": true,
+        "metadataOutsideOwnerEqual": true,
+        "resourcePayloadEqual": true,
+        "geometrySha256": "398da4fb4031571132b81d6173c496c616b214c7b9edc96d25667b20b25d5377",
+        "scopeEqual": false,
+        "wireEqual": false
+      },
+      {
+        "arm": "A",
+        "sceneEqual": true,
+        "metadataOutsideOwnerEqual": true,
+        "resourcePayloadEqual": true,
+        "geometrySha256": "398da4fb4031571132b81d6173c496c616b214c7b9edc96d25667b20b25d5377",
+        "scopeEqual": false,
+        "wireEqual": false
+      }
+    ]
+  },
+  {
+    "tile": 1,
+    "packetBytes": 7877254,
+    "geometrySha256": "435a371b6a7cc8f92de2d32dd39a4c096819e1209eff8532e219368928016ddc",
+    "resourcePayloadSha256": "5f3a36cf92a50d0ff86fe1d41710a6fa7c74b7c9a138d7b9e6f4ea462aae2c07",
+    "comparisons": [
+      {
+        "arm": "B",
+        "sceneEqual": true,
+        "metadataOutsideOwnerEqual": true,
+        "resourcePayloadEqual": true,
+        "geometrySha256": "435a371b6a7cc8f92de2d32dd39a4c096819e1209eff8532e219368928016ddc",
+        "scopeEqual": false,
+        "wireEqual": false
+      },
+      {
+        "arm": "B",
+        "sceneEqual": true,
+        "metadataOutsideOwnerEqual": true,
+        "resourcePayloadEqual": true,
+        "geometrySha256": "435a371b6a7cc8f92de2d32dd39a4c096819e1209eff8532e219368928016ddc",
+        "scopeEqual": false,
+        "wireEqual": false
+      },
+      {
+        "arm": "A",
+        "sceneEqual": true,
+        "metadataOutsideOwnerEqual": true,
+        "resourcePayloadEqual": true,
+        "geometrySha256": "435a371b6a7cc8f92de2d32dd39a4c096819e1209eff8532e219368928016ddc",
+        "scopeEqual": false,
+        "wireEqual": false
+      }
+    ]
+  },
+  {
+    "tile": 2,
+    "packetBytes": 4189191,
+    "geometrySha256": "f3fe239f6674df99a1a1c842e2a6ab6db9b7cfd141af6d59e6d328c500930114",
+    "resourcePayloadSha256": "e97fa590cca9b15f4c17223aa62f1cfc2cc1f7e24b25a62769b17158069a6010",
+    "comparisons": [
+      {
+        "arm": "B",
+        "sceneEqual": true,
+        "metadataOutsideOwnerEqual": true,
+        "resourcePayloadEqual": true,
+        "geometrySha256": "f3fe239f6674df99a1a1c842e2a6ab6db9b7cfd141af6d59e6d328c500930114",
+        "scopeEqual": false,
+        "wireEqual": false
+      },
+      {
+        "arm": "B",
+        "sceneEqual": true,
+        "metadataOutsideOwnerEqual": true,
+        "resourcePayloadEqual": true,
+        "geometrySha256": "f3fe239f6674df99a1a1c842e2a6ab6db9b7cfd141af6d59e6d328c500930114",
+        "scopeEqual": false,
+        "wireEqual": false
+      },
+      {
+        "arm": "A",
+        "sceneEqual": true,
+        "metadataOutsideOwnerEqual": true,
+        "resourcePayloadEqual": true,
+        "geometrySha256": "f3fe239f6674df99a1a1c842e2a6ab6db9b7cfd141af6d59e6d328c500930114",
+        "scopeEqual": false,
+        "wireEqual": false
+      }
+    ]
+  },
+  {
+    "tile": 3,
+    "packetBytes": 9144606,
+    "geometrySha256": "05cec5b78f7c49f2ae7540e099db0f335eb135be39f402235124e9f3ef503f3c",
+    "resourcePayloadSha256": "bf32ba4adba4299c978a843dced7fa3b24de67dc534f2024c41ae4a6b589cbbc",
+    "comparisons": [
+      {
+        "arm": "B",
+        "sceneEqual": true,
+        "metadataOutsideOwnerEqual": true,
+        "resourcePayloadEqual": true,
+        "geometrySha256": "05cec5b78f7c49f2ae7540e099db0f335eb135be39f402235124e9f3ef503f3c",
+        "scopeEqual": false,
+        "wireEqual": false
+      },
+      {
+        "arm": "B",
+        "sceneEqual": true,
+        "metadataOutsideOwnerEqual": true,
+        "resourcePayloadEqual": true,
+        "geometrySha256": "05cec5b78f7c49f2ae7540e099db0f335eb135be39f402235124e9f3ef503f3c",
+        "scopeEqual": false,
+        "wireEqual": false
+      },
+      {
+        "arm": "A",
+        "sceneEqual": true,
+        "metadataOutsideOwnerEqual": true,
+        "resourcePayloadEqual": true,
+        "geometrySha256": "05cec5b78f7c49f2ae7540e099db0f335eb135be39f402235124e9f3ef503f3c",
+        "scopeEqual": false,
+        "wireEqual": false
+      }
+    ]
+  },
+  {
+    "tile": 4,
+    "packetBytes": 14177805,
+    "geometrySha256": "022a253091273213c022ba0fbeeec8fa02ef05e6479f66d1606c6acc5277648e",
+    "resourcePayloadSha256": "2b2670031dfbf7f8188bef22ae65fdb7fc63a15bf2d5cb8467570f236fb53eb6",
+    "comparisons": [
+      {
+        "arm": "B",
+        "sceneEqual": true,
+        "metadataOutsideOwnerEqual": true,
+        "resourcePayloadEqual": true,
+        "geometrySha256": "022a253091273213c022ba0fbeeec8fa02ef05e6479f66d1606c6acc5277648e",
+        "scopeEqual": false,
+        "wireEqual": false
+      },
+      {
+        "arm": "B",
+        "sceneEqual": true,
+        "metadataOutsideOwnerEqual": true,
+        "resourcePayloadEqual": true,
+        "geometrySha256": "022a253091273213c022ba0fbeeec8fa02ef05e6479f66d1606c6acc5277648e",
+        "scopeEqual": false,
+        "wireEqual": false
+      },
+      {
+        "arm": "A",
+        "sceneEqual": true,
+        "metadataOutsideOwnerEqual": true,
+        "resourcePayloadEqual": true,
+        "geometrySha256": "022a253091273213c022ba0fbeeec8fa02ef05e6479f66d1606c6acc5277648e",
+        "scopeEqual": false,
+        "wireEqual": false
+      }
+    ]
+  },
+  {
+    "tile": 5,
+    "packetBytes": 20433496,
+    "geometrySha256": "83f4e78179cf5fe05905786fa8b50f4242687489d2ec9c91de98503a7e7c2aba",
+    "resourcePayloadSha256": "22dd209d8f66df972f442b502c75c79fcc3ef5b5c35a57cb81aa04330439e137",
+    "comparisons": [
+      {
+        "arm": "B",
+        "sceneEqual": true,
+        "metadataOutsideOwnerEqual": true,
+        "resourcePayloadEqual": true,
+        "geometrySha256": "83f4e78179cf5fe05905786fa8b50f4242687489d2ec9c91de98503a7e7c2aba",
+        "scopeEqual": false,
+        "wireEqual": false
+      },
+      {
+        "arm": "B",
+        "sceneEqual": true,
+        "metadataOutsideOwnerEqual": true,
+        "resourcePayloadEqual": true,
+        "geometrySha256": "83f4e78179cf5fe05905786fa8b50f4242687489d2ec9c91de98503a7e7c2aba",
+        "scopeEqual": false,
+        "wireEqual": false
+      },
+      {
+        "arm": "A",
+        "sceneEqual": true,
+        "metadataOutsideOwnerEqual": true,
+        "resourcePayloadEqual": true,
+        "geometrySha256": "83f4e78179cf5fe05905786fa8b50f4242687489d2ec9c91de98503a7e7c2aba",
+        "scopeEqual": false,
+        "wireEqual": false
+      }
+    ]
+  }
+]

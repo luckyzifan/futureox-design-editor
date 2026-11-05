@@ -37,6 +37,13 @@ describe('canvas color controls', () => {
     expect(source).toContain('color-interpolation-filters="sRGB"')
     expect(source).toContain('0.21250000596046448')
   })
+  it('keeps an omitted control domain in encoded sRGB instead of SVG linearRGB', () => {
+    const {doc,n}=fixture(); delete n.effects[0].colorControls!.space
+    const {source}=svgSource(doc,doc.pages[0].id)
+    expect(source).toContain('color-interpolation-filters="sRGB"')
+    expect(source).not.toContain('linearRGB')
+    expect(source).toContain('color-interpolation="sRGB"')
+  })
   it('does not silently flatten a Display-P3 control domain into SVG sRGB', () => {
     const {doc,n}=fixture();n.effects[0].colorControls!.space='display-p3'
     expect(() => svgSource(doc,doc.pages[0].id)).toThrow(/Display-P3/)

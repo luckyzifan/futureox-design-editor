@@ -7,7 +7,7 @@
 #![forbid(unsafe_code)]
 pub(crate) mod archive;
 mod curve;
-pub(crate) mod geometry;
+pub mod geometry;
 mod model;
 mod raw_json;
 mod resize;

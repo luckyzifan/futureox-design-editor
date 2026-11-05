@@ -1,7 +1,7 @@
 import { CpuStage, measureCpuStage } from './cpu-stage-diagnostics'
 import type { CanvasSceneBorrow } from './canvas-scene-snapshots'
 import { PreviewLayout } from './kernel/preview-layout'
-import { PoseTopology, TranslationPreviewPlan } from './kernel/translation-preview'
+import { PoseTopology, TranslationPreviewPlan, translationOnlyChanges } from './kernel/translation-preview'
 import type { OperationStatus, MessagePresentation } from './operation-status-messages'
 import { prepareBooleanCreate, applyBooleanCreate } from './commands/boolean-command'
 import { applyDuplication, prepareDuplication, canContinueDuplication, type DuplicationRepeat } from './commands/duplication-command'
@@ -22,9 +22,11 @@ import { hasSchema15Features } from './schema-features'
 import { expandRepeats, repeatSourceId } from './repeat-transforms'
 import * as ComponentSlots from './component-slots'
 import { previewLayoutSuggestion, applyLayoutSuggestion, type LayoutSuggestionPreview } from './layout-suggestions'
+import { sameLiveRotation, type LiveRotation } from './rotation-field'
 import { interfacePreference } from './interface-preference'
 import { CameraState, savedCamera } from './camera-state'
 import { hasGradientBlur,hasLocalTools,hasRulerGuides,hasLayoutGrids,hasImageAdjusts,hasPatternTiles } from './model'
+import { canDeletePage, userPages } from './fig-document'
 import { inferred_layout_json } from './generated/design-kernel/design_kernel'
 import { prepareSelectionScale } from './selection-scale'
 import { canvasDropFrame, canvasMoveKeepsContainer, containingFrame, createCanvasDropIndex, type CanvasDropIndex } from './canvas-drop'
@@ -35,7 +37,7 @@ import { cloneValue, produceDraft } from './draft'
 import { validStroke, validProfiles } from './stroke-profile'
 import { remapDesignDependencies } from './design-system'
 import { pruneAnimations } from './animation'
-import { prunePrototypeReferences } from './prototype'
+import { prunePrototypeReferences, prototypeNeedsSchema12 } from './prototype'
 import { applyClipboardSemantics, captureClipboardSemantics, clipboardDependencyNodes, hasClipboardSemantics } from './clipboard-semantics'
 import { editableNetwork } from './editable-network'
 import { defaultPencil, defaultBrush, defaultMarker, defaultTape, type PencilSettings } from './freehand'
@@ -67,6 +69,7 @@ import {
   hasSchema18Features,
   hasSchema19Features,
   hasSchema20Features,
+  hasSchema21Features,
   hasLocalVariableModes,
   hasStrokeMarkers,
   hasLayerExports,
@@ -105,6 +108,8 @@ import {
   kernelHitWorld,
   kernelFillWorld,
   kernelLayout,
+  pageLimitedEditIds,
+  booleanPoseUnchanged,
   invalidateGeometry,
   prepareDocumentForEditing,
   activateDocumentFonts,
@@ -112,9 +117,12 @@ import {
   pickingGeometryEpoch,
 } from './kernel/picking'
 import { proveLocalEdit } from './local-edit-proof'
-import { shareDocument, documentPatch, produceDocumentDraft, producePoseDocument, type EditResult } from './document-patch'
+import { documentForSchema, pageEditScope, singlePageScope } from './page-edit-scope'
+import { shareDocument, documentPatch, produceDocumentDraft, type EditResult } from './document-patch'
 import { createEditingHistory } from './kernel/graph-history'
-import { ensurePreparedDocument, takePreparedDocument, preparedDocumentEncoding, forgetPreparedDocumentEncoding } from './prepared-document'
+import { ensurePreparedDocument, takePreparedDocument, preparedDocumentEncoding, forgetPreparedDocumentEncoding, validatedPreparedPublication } from './prepared-document'
+import {captureImmutable,immutableDocument} from './immutable-document'
+import {producePoseDocument,retirePoseDocument} from './pose-document'
 function applyInferredFrame(doc: DesignDocument, id: string, inferred: {direction:string;gap:number|null;padding:[number,number,number,number];bannerChildren:string[];flowOrder:string[]}) {
   if (inferred.direction !== 'horizontal' && inferred.direction !== 'vertical') return
   const n=doc.nodes[id]
@@ -245,6 +253,34 @@ export class Editor {
   private undoStack: Omit<History, 'doc'>[] = []
   private redoStack: Omit<History, 'doc'>[] = []
   private historyCore: ReturnType<typeof createEditingHistory> | null = null
+  private readonly validatedPublications=new WeakSet<DesignDocument>()
+  private publicationValid(document:DesignDocument){
+    return immutableDocument(document)&&(this.validatedPublications.has(document)||validatedPreparedPublication(document))
+  }
+  private validatePublication(document:DesignDocument,source:DesignDocument,scope?:import('./model').DocumentValidationScope):DesignDocument{
+    if(this.publicationValid(document))return document
+    // Validate the private copy itself before certifying it. A page-scoped
+    // check never mints a whole-document validation receipt.
+    if (!scope && immutableDocument(source)) {
+      const captured=captureImmutable(document)
+      if (captured) {
+        validateDocument(captured)
+        this.validatedPublications.add(captured)
+        return captured
+      }
+    }
+    validateDocument(document,scope)
+    return document
+  }
+  private posePublication(before:DesignDocument,patches:Record<string,Partial<DesignNode>>){
+    // Effect-bearing selections keep the original live-document handoff;
+    // their source window and sampled pose have a separate pixel receipt.
+    if (Object.keys(patches).some(id => !before.nodes[id] || before.nodes[id].mask ||
+        before.nodes[id].effects.some(effect => effect.visible))) return
+    const next=producePoseDocument(before,patches)
+    if(next&&this.publicationValid(before)&&immutableDocument(next))this.validatedPublications.add(next)
+    return next
+  }
   private transaction: (History & { placement?: { document:DesignDocument; ids:string[]; point:Point; force:boolean; preserveParent:boolean }; movePreview?: {source:DesignDocument;document:DesignDocument;published:DesignDocument;key:string;parents:ParentMap;epoch:object;translation:TranslationPreviewPlan}; dropIndex?: CanvasDropIndex; placementSizing?: Map<string, DesignNode['sizing']>; flow?: { base: DesignDocument; sizing: Map<string, DesignNode['sizing']> }; previewBase?: DesignDocument; copy?: { document: DesignDocument; roots: string[]; originals: string[]; flowSizing: Map<string, DesignNode['sizing']> } }) | null = null
   private propertyPreview: {
     lease: PropertyPreviewLease; history: History; session: number; revision: number
@@ -283,14 +319,15 @@ export class Editor {
   private sessionEpoch = 0
   get sessionGeneration() { return this.sessionEpoch }
   get interactionActive() { return this.transaction !== null }
-  private duplicateOffset = 24
+  /** Mac Figma paste steps 10px right and down. Duplicate (⌘D) stays on the repeat path. */
+  private duplicateOffset = 10
   private disposed = false
   private geometryJob: { cancel: () => void } | null = null
   constructor(doc = demo()) {
     doc = kernelLayout(doc)
     this.state = {
       doc,
-      page: doc.pages[0].id,
+      page: userPages(doc)[0].id,
       selection: [],
       hover: null,
       hoverSource: null,
@@ -347,6 +384,17 @@ export class Editor {
       this.listeners.delete(fn)
     }
   }
+  /** Zoom readout only. A parked wheel camera must not re-render the whole editor. */
+  private cameraListeners = new Set<() => void>()
+  subscribeCamera = (fn: () => void) => {
+    this.cameraListeners.add(fn)
+    return () => { this.cameraListeners.delete(fn) }
+  }
+  private publishCamera() {
+    for (const fn of this.cameraListeners) {
+      try { fn() } catch { /* A readout must not roll back the parked camera. */ }
+    }
+  }
   snapshot = () => this.state
   subscribeReveal = (fn: () => void) => {
     this.revealListeners.add(fn)
@@ -355,6 +403,22 @@ export class Editor {
     }
   }
   revealSnapshot = () => this.revealRequest
+  /** Canvas rotation while the GPU path has not published a document preview.
+   * Panels read this directly so the angle field is not held back by the
+   * 80ms panel snapshot. */
+  liveRotation: LiveRotation | null = null
+  private liveRotationListeners = new Set<() => void>()
+  subscribeLiveRotation = (fn: () => void) => {
+    this.liveRotationListeners.add(fn)
+    return () => { this.liveRotationListeners.delete(fn) }
+  }
+  setLiveRotation(next: LiveRotation | null) {
+    if (this.disposed || sameLiveRotation(this.liveRotation, next)) return
+    this.liveRotation = next
+    for (const fn of this.liveRotationListeners) {
+      try { fn() } catch { /* Angle feedback must not reject the gesture. */ }
+    }
+  }
   /** Panel-originated camera request: bring these ids into view. The canvas
    * owns the viewport size and applies the minimal pan; canvas clicks never
    * emit this, so selecting on-canvas keeps the camera perfectly still. */
@@ -375,18 +439,20 @@ export class Editor {
     return true
   }
   private panelState: Omit<EditorState, 'view'> | undefined
-  private panelPublishedAt = 0
   /** Panels do not consume the camera. Preserve their immutable snapshot during
    * navigation so a pointer sample does not rebuild the layer tree/inspector. */
   panelSnapshot = () => {
     const { view: _view, ...next } = this.state
-    // Full layer/Inspector trees must not compete with every pointer sample.
-    // Keep coordinates fresh at a bounded cadence; release/undo publishes now.
-    if (this.transaction && this.panelState && next.page === this.panelState.page &&
+    // A canvas preview transaction keeps the last authored Layers/Inspector
+    // tree until release, undo, or a selection/page/tool change. Property
+    // preview still publishes because the inspector owns that draft.
+    // The clockwise angle readout uses setLiveRotation, not this snapshot.
+    if (this.transaction && !this.propertyPreview && this.panelState && next.page === this.panelState.page &&
       next.selection === this.panelState.selection && next.tool === this.panelState.tool &&
-      next.doc.id === this.panelState.doc.id && performance.now() - this.panelPublishedAt < 80) return this.panelState
+      next.renamingLayer === this.panelState.renamingLayer &&
+      next.doc.id === this.panelState.doc.id) return this.panelState
     if (!this.panelState || (Object.keys(next) as (keyof typeof next)[])
-      .some(key => next[key] !== this.panelState![key])) { this.panelState = next; this.panelPublishedAt = performance.now() }
+      .some(key => next[key] !== this.panelState![key])) this.panelState = next
     return this.panelState
   }
   set(patch: Partial<EditorState>) { this.setState(patch) }
@@ -475,6 +541,7 @@ export class Editor {
     this.state = next
     if (patch.view !== undefined || navigationChanged)
       this.cameraState.remember(next.doc.id, next.page, next.view)
+    if (patch.view !== undefined) this.publishCamera()
     // Notification callbacks do not inherit the internal preview capability.
     const propertyWrite = this.propertyPreviewWrite
     this.propertyPreviewWrite = 0
@@ -513,6 +580,7 @@ export class Editor {
   setViewCoalesced(next: EditorState['view'], leading = false) {
     if (this.disposed) return
     this.pendingView = savedCamera(next)||this.effectiveView()
+    this.publishCamera()
     if (this.pendingFrame !== null) return
     const commit=(view:EditorState['view'])=>{
       const session=this.sessionGeneration,doc=this.state.doc,page=this.state.page
@@ -532,6 +600,8 @@ export class Editor {
     if(leading){const pending=this.pendingView;this.pendingView=null;commit(pending)}
     else this.pendingFrame=requestAnimationFrame(flush)
   }
+  /** A parked wheel/zoom write has not landed. History must not stringify yet. */
+  cameraCommitPending() { return this.pendingView !== null || this.pendingFrame !== null }
   /** Commit a parked camera write now; returns the committed view. */
   flushPendingView(): EditorState['view'] {
     if (this.pendingFrame !== null) {
@@ -583,6 +653,7 @@ export class Editor {
     // Rust calls the automation source "ai"; the UI/audit contract calls it
     // "automation". Do not change undo policy or grant authority from this tag.
     const result = this.historyCore.apply(revision, after, { source: source === 'automation' ? 'ai' : 'user' })
+    retirePoseDocument(result.document)
     renewComponentResolution(result.document)
     if (result.revision === revision) return
     this.undoStack.push({ page: h.page, selection: h.selection, label: h.label })
@@ -619,20 +690,24 @@ export class Editor {
       // component/connector/layout walk from observing an invalid tree.
       const authored = produceDocumentDraft(before.doc, draft => { fn(draft as DesignDocument) })
       const local = proveLocalEdit(before.doc, authored)
-      if (!local) validateStructure(authored)
-      const components = !local && Object.values(before.doc.nodes).some(
+      const scope = local ? singlePageScope(before.doc, local.ids) : pageEditScope(before.doc, authored)
+      if (!local && !scope) validateStructure(authored)
+      const featureNodesOf = (doc: DesignDocument) => scope ? scope.ids.map(id => doc.nodes[id]).filter((n): n is DesignNode => !!n) : Object.values(doc.nodes)
+      const featureDocOf = (doc: DesignDocument) => scope ? documentForSchema(doc, scope.ids) : doc
+      const components = !local && !scope && Object.values(before.doc.nodes).some(
         n => n.component || n.instance || n.instanceOrigin || n.componentSet,
       )
       const componentScope = components ? Components.propertyEditScope(before.doc, authored) : undefined
       let detached = false
       const d = local ? authored : produceDraft(authored, (draft) => {
         draft.schemaVersion = Math.max(2, draft.schemaVersion) as 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
-        if (draft.schemaVersion < 15 && hasSchema15Features(authored)) draft.schemaVersion = 15
-        if(draft.schemaVersion < 16 && Object.values(authored.nodes).some(n=>n.vectorGeometry))draft.schemaVersion=16
-        if(draft.schemaVersion < 17 && hasSchema17Features(authored))draft.schemaVersion=17
-        if(draft.schemaVersion < 18 && hasSchema18Features(authored))draft.schemaVersion=18
-        if(draft.schemaVersion < 20 && hasSchema20Features(authored))draft.schemaVersion=20
-        if(draft.schemaVersion < 19 && hasSchema19Features(authored))draft.schemaVersion=19
+        if (draft.schemaVersion < 15 && hasSchema15Features(featureDocOf(authored))) draft.schemaVersion = 15
+        if(draft.schemaVersion < 16 && featureNodesOf(authored).some(n=>n.vectorGeometry))draft.schemaVersion=16
+        if(draft.schemaVersion < 17 && hasSchema17Features(featureDocOf(authored)))draft.schemaVersion=17
+        if(draft.schemaVersion < 18 && hasSchema18Features(featureDocOf(authored)))draft.schemaVersion=18
+        if(draft.schemaVersion < 20 && hasSchema20Features(featureDocOf(authored)))draft.schemaVersion=20
+        if(draft.schemaVersion < 21 && hasSchema21Features(featureDocOf(authored)))draft.schemaVersion=21
+        if(draft.schemaVersion < 19 && hasSchema19Features(featureDocOf(authored)))draft.schemaVersion=19
         draft.rasterProfile ??= before.doc.rasterProfile || (draft.colorManagement ? 'figma' : 'analytic')
         // Before component/dependency cleanup, only root schema/profile fields
         // have changed. Inspect finalized authored nodes here to avoid creating
@@ -643,7 +718,7 @@ export class Editor {
         if (draft.schemaVersion < 4 && (
           draft.designSystem ||
           draft.prototype ||
-          Object.values(authored.nodes).some(
+          featureNodesOf(authored).some(
             (n) =>
               n.booleanOperation ||
               n.maskType || n.maskChain ||
@@ -659,8 +734,10 @@ export class Editor {
           )
         ))
           draft.schemaVersion = Math.max(draft.schemaVersion, 4) as 4 | 5 | 6 | 7 | 8 | 9 | 10
+        if (draft.schemaVersion < 12 && prototypeNeedsSchema12(draft as DesignDocument))
+          draft.schemaVersion = Math.max(draft.schemaVersion, 12) as DesignDocument['schemaVersion']
         if (draft.schemaVersion < 5 && (
-          Object.values(authored.nodes).some((n) => n.effects.some((e) => e.glass || e.texture)) ||
+          featureNodesOf(authored).some((n) => n.effects.some((e) => e.glass || e.texture)) ||
           draft.animations?.some((c) =>
             c.tracks.some((t) =>
               t.keyframes.some((k) => k.value.effects.some((e) => e.glass || e.texture)),
@@ -676,29 +753,36 @@ export class Editor {
           draft.schemaVersion = Math.max(draft.schemaVersion, 5) as 5 | 6 | 7 | 8 | 9 | 10
         detached = !!(components && !componentScope && Components.detachMissing(before.doc, draft as DesignDocument))
         if (components) Components.captureOverrides(before.doc, draft as DesignDocument, componentScope)
-        if (draft.schemaVersion < 6 && hasLocalVariableModes(draft as DesignDocument)) draft.schemaVersion = Math.max(draft.schemaVersion, 6) as 6 | 7 | 8 | 9 | 10
-        if (draft.schemaVersion < 7 && (Object.values(draft.nodes).some(n => n.arc || n.cornerRadius || n.constrainProportions) ||
+        if (draft.schemaVersion < 6 && hasLocalVariableModes(featureDocOf(authored))) draft.schemaVersion = Math.max(draft.schemaVersion, 6) as 6 | 7 | 8 | 9 | 10
+        if (draft.schemaVersion < 7 && (featureNodesOf(authored).some(n => n.arc || n.cornerRadius || n.constrainProportions) ||
           draft.animations?.some(c => c.tracks.some(t => t.keyframes.some(k => k.value.arc || k.value.cornerRadius))))) draft.schemaVersion = Math.max(7, draft.schemaVersion) as 7 | 8 | 9 | 10
-        if (draft.schemaVersion < 9 && hasGradientBlur(draft as DesignDocument)) draft.schemaVersion = Math.max(9,draft.schemaVersion) as 9 | 10
-        if(draft.schemaVersion < 10 && hasLocalTools(draft as DesignDocument))draft.schemaVersion=Math.max(10,draft.schemaVersion) as DesignDocument['schemaVersion'];if(draft.schemaVersion < 11 && hasRulerGuides(draft as DesignDocument))draft.schemaVersion=Math.max(11,draft.schemaVersion) as DesignDocument['schemaVersion'];if(draft.schemaVersion < 12 && hasLayoutGrids(draft as DesignDocument))draft.schemaVersion=Math.max(12,draft.schemaVersion) as DesignDocument['schemaVersion'];if(draft.schemaVersion < 13 && hasImageAdjusts(draft as DesignDocument))draft.schemaVersion=Math.max(13,draft.schemaVersion) as DesignDocument['schemaVersion'];if(draft.schemaVersion < 14 && hasPatternTiles(draft as DesignDocument))draft.schemaVersion=Math.max(14,draft.schemaVersion) as DesignDocument['schemaVersion']
-        for(const n of Object.values(draft.nodes))if(n.connector)for(const e of [n.connector.from,n.connector.to])if(e.nodeId&&!draft.nodes[e.nodeId]){const old=before.doc.nodes[e.nodeId];if(old&&e.anchor)e.point=apply(worldMatrix(before.doc,e.nodeId),{x:old.width*e.anchor.x,y:old.height*e.anchor.y});delete e.nodeId;delete e.anchor}
-        if(draft.reviews) {
+        if (draft.schemaVersion < 9 && hasGradientBlur(featureDocOf(authored))) draft.schemaVersion = Math.max(9,draft.schemaVersion) as 9 | 10
+        if(draft.schemaVersion < 10 && hasLocalTools(featureDocOf(authored)))draft.schemaVersion=Math.max(10,draft.schemaVersion) as DesignDocument['schemaVersion'];if(draft.schemaVersion < 11 && hasRulerGuides(featureDocOf(authored)))draft.schemaVersion=Math.max(11,draft.schemaVersion) as DesignDocument['schemaVersion'];if(draft.schemaVersion < 12 && hasLayoutGrids(featureDocOf(authored)))draft.schemaVersion=Math.max(12,draft.schemaVersion) as DesignDocument['schemaVersion'];if(draft.schemaVersion < 13 && hasImageAdjusts(featureDocOf(authored)))draft.schemaVersion=Math.max(13,draft.schemaVersion) as DesignDocument['schemaVersion'];if(draft.schemaVersion < 14 && hasPatternTiles(featureDocOf(authored)))draft.schemaVersion=Math.max(14,draft.schemaVersion) as DesignDocument['schemaVersion']
+        if (!scope) for(const n of Object.values(draft.nodes))if(n.connector)for(const e of [n.connector.from,n.connector.to])if(e.nodeId&&!draft.nodes[e.nodeId]){const old=before.doc.nodes[e.nodeId];if(old&&e.anchor)e.point=apply(worldMatrix(before.doc,e.nodeId),{x:old.width*e.anchor.x,y:old.height*e.anchor.y});delete e.nodeId;delete e.anchor}
+        if(draft.reviews && !scope) {
           draft.reviews=draft.reviews.filter(r=>draft.pages.some(p=>p.id===r.pageId))
           for(const r of draft.reviews)if(r.nodeId&&!draft.nodes[r.nodeId]){if(before.doc.nodes[r.nodeId])r.position=apply(worldMatrix(before.doc,r.nodeId),r.position);delete r.nodeId}
         }
-        if (draft.schemaVersion < 8 && (hasStrokeMarkers(draft as DesignDocument) || hasLayerExports(draft as DesignDocument))) draft.schemaVersion = Math.max(8,draft.schemaVersion) as 8 | 9 | 10
-        pruneAnimations(draft as DesignDocument)
-        prunePrototypeReferences(before.doc, draft as DesignDocument)
+        if (draft.schemaVersion < 8 && (hasStrokeMarkers(featureDocOf(authored)) || hasLayerExports(featureDocOf(authored)))) draft.schemaVersion = Math.max(8,draft.schemaVersion) as 8 | 9 | 10
+        if (!scope) pruneAnimations(draft as DesignDocument)
+        if (!scope) prunePrototypeReferences(before.doc, draft as DesignDocument)
       })
-      for (const n of local ? local.ids.map(id => d.nodes[id]) : Object.values(d.nodes))
+      const laid = local || (scope && !scope.layout) ? d : kernelLayout(d, before.doc)
+      const hinted = pageLimitedEditIds(laid)
+      const validationIds = !scope ? undefined : hinted ?? (!scope.layout || local ? scope.ids : undefined)
+      const inspect = validationIds
+        ? validationIds.map(id => laid.nodes[id]).filter((n): n is DesignNode => !!n)
+        : Object.values(laid.nodes)
+      for (const n of inspect)
         if (n !== before.doc.nodes[n.id]) invalidateGeometry(n)
       // Layout-independent edits still restore the correct native font owner.
-      if (local) activateDocumentFonts(d)
-      const resolved = shareDocument(before.doc, local ? d : kernelLayout(d, before.doc))
-      for (const n of local ? local.ids.map(id => resolved.nodes[id]) : Object.values(resolved.nodes))
+      if (local || (scope && !scope.layout)) activateDocumentFonts(laid)
+      let resolved = shareDocument(before.doc, laid)
+      for (const n of inspect)
         if ((n.pathOffset || n.vectorBrush) && n !== before.doc.nodes[n.id]) kernelBounds(n)
-      if (!local) validateStructure(resolved)
-      validateDocument(resolved)
+      if (!local && !validationIds) validateStructure(resolved)
+      resolved=this.validatePublication(resolved,before.doc, scope && validationIds ? { pageId: scope.pageId, ids: validationIds } : undefined)
+      if (local) proveLocalEdit(before.doc,resolved)
       admitResolved?.(resolved)
       if (resolved === before.doc) { finish('unchanged'); return { status: 'unchanged' as const, revision: this.state.version } }
       if (this.transaction) {
@@ -841,8 +925,7 @@ export class Editor {
     // recoverable draft open; they cannot masquerade as a successful commit.
     let committed: EditResult | undefined, document: DesignDocument
     try {
-      validateDocument(this.state.doc)
-      document = shareDocument(owner.history.doc, this.state.doc)
+      document = shareDocument(owner.history.doc, this.validatePublication(this.state.doc,owner.history.doc))
       committed = document !== owner.history.doc ? this.push(owner.history, document) : undefined
     } catch {
       owner.valid = false
@@ -904,6 +987,46 @@ export class Editor {
     }
     canvasActions(this).finish(owner.trace, ActionOutcome.cancelled, reason, { fieldFamily: 9, inputPhase: 7 })
   }
+  /** Parent-preserving placement stays on the translation proof. Schema scans
+   * and the full component/layout stringify run only when that proof declines. */
+  private certifiedGesturePose(base: DesignDocument, patches: Record<string,Partial<DesignNode>>) {
+    if (!this.publicationValid(base)) return
+    const ids=Object.keys(patches)
+    if (!ids.length || ids.length>16 || ids.some(id=>!base.nodes[id] || base.nodes[id].mask || base.nodes[id].effects.some(effect=>effect.visible) || Object.keys(patches[id]).length!==1 || !Object.hasOwn(patches[id],'transform'))) return
+    const key=JSON.stringify(ids),epoch=pickingGeometryEpoch()
+    if(this.posePreview?.base!==base || this.posePreview.epoch!==epoch || this.posePreview.key!==key)
+      this.posePreview={base,epoch,key,plan:new TranslationPreviewPlan(base,ids,'document-pose'),
+        allowed:!base.prototype && !base.reviews?.length && !Object.values(base.nodes).some(node=>!!node.repeat || !!node.textPath || Object.keys(node.instance?.slotContents || {}).length>0)}
+    if(this.posePreview.allowed && this.posePreview.plan.acceptsAffine(patches) &&
+        booleanPoseUnchanged(base,this.posePreview.plan.booleanRoots,patches)) return this.posePublication(base,patches)
+  }
+  private publishTranslationPreview(base: DesignDocument, patches: Record<string, Partial<DesignNode>>, move: { ids: string[]; point: Point; force: boolean; preserveParent: boolean }, previewOwner: Editor['transaction'], previewStarted: number) {
+    if (!this.canvasMovePreservesParents(move.ids, move.point, move.force, move.preserveParent)) return false
+    if (Object.entries(patches).some(([id, patch]) => !base.nodes[id] || Object.keys(patch).some(key => key !== 'transform'))) return false
+    const pose = this.certifiedGesturePose(base,patches)
+    let candidate = pose
+    if (!candidate) {
+      const nodes = {...base.nodes}
+      for (const [id,patch] of Object.entries(patches)) nodes[id]={...base.nodes[id],...patch}
+      candidate={...base,nodes}
+      if (!translationOnlyChanges(base,candidate)) return false
+    }
+    const resolved=pose ?? kernelLayout(candidate,base,true)
+    const published = performance.now()
+    this.set({ doc: resolved })
+    if (this.transaction === previewOwner && previewOwner && this.state.doc === resolved) {
+      previewOwner.placement = { ...move, ids: [...move.ids], point: { ...move.point }, document: resolved }
+      if (move.ids.length === 1 && Object.keys(patches).length === 1 && !previewOwner.copy && !previewOwner.flow) {
+        const plan = this.movePlacement(candidate, move.ids, move.point, move.force, move.preserveParent)
+        previewOwner.movePreview = { source: base, document: resolved, published: resolved, key: plan.key,
+          parents: this.parentMap(resolved), epoch: pickingGeometryEpoch(),
+          translation: new TranslationPreviewPlan(resolved, move.ids) }
+      }
+    }
+    if (this.diagnosticOperation !== null) this.operationDiagnostics.preview(this.diagnosticOperation, true)
+    this.lastPreviewTiming = { prepareMs: published - previewStarted, layoutMs: 0, publishMs: performance.now() - published }
+    return true
+  }
   begin(label: string) {
     if (!this.settleOwnedPropertyPreview('edit')) return
     if (!this.transaction) {
@@ -925,7 +1048,7 @@ export class Editor {
     if(move){
       const cached=this.cachedMovePreview(patches,move)
       if(cached){
-        const document=producePoseDocument(this.state.doc,cached.patches)||produceDocumentDraft(this.state.doc,draft=>{for(const id of move.ids)draft.nodes[id].transform=cached.patches[id].transform!})
+        const document=this.posePublication(this.state.doc,cached.patches)||produceDocumentDraft(this.state.doc,draft=>{for(const id of move.ids)draft.nodes[id].transform=cached.patches[id].transform!})
         const published=performance.now();this.set({doc:document})
         if(this.transaction===previewOwner&&previewOwner?.movePreview&&this.state.doc===document){
           previewOwner.movePreview.published=document
@@ -935,24 +1058,16 @@ export class Editor {
         this.lastPreviewTiming={prepareMs:published-previewStarted,layoutMs:0,publishMs:performance.now()-published}
         return true
       }
+      if (this.publishTranslationPreview(base, patches, move, previewOwner, previewStarted)) return true
     }
     if (!move && this.transaction) {
-      const ids=Object.keys(patches),key=JSON.stringify(ids),epoch=pickingGeometryEpoch()
-      if(ids.length&&ids.length<=16&&ids.every(id=>Object.keys(patches[id]).length===1&&Object.hasOwn(patches[id],'transform'))){
-        if(this.posePreview?.base!==base||this.posePreview.epoch!==epoch||this.posePreview.key!==key) {
-          const topology=this.pickContext(base).parents
-          this.posePreview={base,epoch,key,plan:new TranslationPreviewPlan(base,ids,topology),
-            allowed:!base.prototype&&!base.reviews?.length&&!topology.hasRepeats}
-        }
-        if(this.posePreview.allowed&&this.posePreview.plan.acceptsAffine(patches)){
-          const document=producePoseDocument(base,patches)
-          if(document){
-            const published=performance.now();this.set({doc:document})
-            if(this.diagnosticOperation!==null)this.operationDiagnostics.preview(this.diagnosticOperation,true)
-            this.lastPreviewTiming={prepareMs:published-previewStarted,layoutMs:0,publishMs:performance.now()-published}
-            return true
-          }
-        }
+      const pose=this.certifiedGesturePose(base,patches)
+      if (pose) {
+        const published=performance.now()
+        this.set({doc:pose})
+        if(this.diagnosticOperation!==null)this.operationDiagnostics.preview(this.diagnosticOperation,true)
+        this.lastPreviewTiming={prepareMs:published-previewStarted,layoutMs:0,publishMs:performance.now()-published}
+        return true
       }
       if (this.previewLayout?.base !== base) this.previewLayout = new PreviewLayout(base)
       try {
@@ -978,17 +1093,20 @@ export class Editor {
     try {
       const visible = measureCpuStage(CpuStage.previewPrepare, () => {
         const candidate = { ...base, nodes }
+        const editScope = pageEditScope(base, candidate)
+        const featureDoc = editScope ? documentForSchema(candidate, editScope.ids) : candidate
+        const featureNodes = editScope ? editScope.ids.map(id => candidate.nodes[id]).filter((n): n is DesignNode => !!n) : Object.values(candidate.nodes)
         // Ordinary pointer patches preserve the published tree. Explicit
         // topology/ID edits must be checked before any dependency traversal.
         if (Object.entries(patches).some(([id, patch]) => !base.nodes[id] ||
             Object.hasOwn(patch, 'children') || Object.hasOwn(patch, 'id')))
           validateStructure(candidate)
-        Components.captureOverrides(base, candidate)
-        if (candidate.schemaVersion < 6 && hasLocalVariableModes(candidate)) candidate.schemaVersion = Math.max(candidate.schemaVersion, 6) as 6 | 7 | 8 | 9 | 10
-        if (candidate.schemaVersion < 7 && Object.values(candidate.nodes).some(n => n.arc || n.cornerRadius || n.constrainProportions)) candidate.schemaVersion = Math.max(7, candidate.schemaVersion) as 7 | 8 | 9 | 10
-        if (candidate.schemaVersion < 9 && hasGradientBlur(candidate)) candidate.schemaVersion = Math.max(9,candidate.schemaVersion) as 9 | 10
-        if(candidate.schemaVersion < 10 && hasLocalTools(candidate))candidate.schemaVersion=Math.max(10,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 11 && hasRulerGuides(candidate as DesignDocument))candidate.schemaVersion=Math.max(11,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 12 && hasLayoutGrids(candidate as DesignDocument))candidate.schemaVersion=Math.max(12,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 13 && hasImageAdjusts(candidate as DesignDocument))candidate.schemaVersion=Math.max(13,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 14 && hasPatternTiles(candidate as DesignDocument))candidate.schemaVersion=Math.max(14,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 15 && hasSchema15Features(candidate))candidate.schemaVersion=15;if(candidate.schemaVersion < 16 && Object.values(candidate.nodes).some(n=>n.vectorGeometry))candidate.schemaVersion=16;if(candidate.schemaVersion < 17 && hasSchema17Features(candidate))candidate.schemaVersion=17;if(candidate.schemaVersion < 18 && hasSchema18Features(candidate))candidate.schemaVersion=18;if(candidate.schemaVersion < 20 && hasSchema20Features(candidate))candidate.schemaVersion=20;if(candidate.schemaVersion < 19 && hasSchema19Features(candidate))candidate.schemaVersion=19
-        if (candidate.schemaVersion < 8 && (hasStrokeMarkers(candidate) || hasLayerExports(candidate))) candidate.schemaVersion = Math.max(8,candidate.schemaVersion) as 8 | 9 | 10
+        if (!editScope) Components.captureOverrides(base, candidate)
+        if (candidate.schemaVersion < 6 && hasLocalVariableModes(featureDoc)) candidate.schemaVersion = Math.max(candidate.schemaVersion, 6) as 6 | 7 | 8 | 9 | 10
+        if (candidate.schemaVersion < 7 && featureNodes.some(n => n.arc || n.cornerRadius || n.constrainProportions)) candidate.schemaVersion = Math.max(7, candidate.schemaVersion) as 7 | 8 | 9 | 10
+        if (candidate.schemaVersion < 9 && hasGradientBlur(featureDoc)) candidate.schemaVersion = Math.max(9,candidate.schemaVersion) as 9 | 10
+        if(candidate.schemaVersion < 10 && hasLocalTools(featureDoc))candidate.schemaVersion=Math.max(10,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 11 && hasRulerGuides(featureDoc))candidate.schemaVersion=Math.max(11,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 12 && hasLayoutGrids(featureDoc))candidate.schemaVersion=Math.max(12,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 13 && hasImageAdjusts(featureDoc))candidate.schemaVersion=Math.max(13,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 14 && hasPatternTiles(featureDoc))candidate.schemaVersion=Math.max(14,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 15 && hasSchema15Features(featureDoc))candidate.schemaVersion=15;if(candidate.schemaVersion < 16 && featureNodes.some(n=>n.vectorGeometry))candidate.schemaVersion=16;if(candidate.schemaVersion < 17 && hasSchema17Features(featureDoc))candidate.schemaVersion=17;if(candidate.schemaVersion < 18 && hasSchema18Features(featureDoc))candidate.schemaVersion=18;if(candidate.schemaVersion < 20 && hasSchema20Features(featureDoc))candidate.schemaVersion=20;if(candidate.schemaVersion < 21 && hasSchema21Features(featureDoc))candidate.schemaVersion=21;if(candidate.schemaVersion < 19 && hasSchema19Features(featureDoc))candidate.schemaVersion=19
+        if (candidate.schemaVersion < 8 && (hasStrokeMarkers(featureDoc) || hasLayerExports(featureDoc))) candidate.schemaVersion = Math.max(8,candidate.schemaVersion) as 8 | 9 | 10
         const visible=move?this.movePreviewDocument(candidate,move.ids,move.point,move.force,move.preserveParent):candidate
         if (visible !== candidate) validateStructure(visible)
         return visible
@@ -999,8 +1117,11 @@ export class Editor {
       // A failed derived offset must never become the React scene. Scene/hit
       // queries are synchronous: publishing it first can unmount the editor.
       measureCpuStage(CpuStage.previewBounds, () => {
-        for(const n of Object.values(resolved.nodes))
-          if((n.pathOffset||n.vectorBrush)&&n!==this.state.doc.nodes[n.id])kernelBounds(n)
+        const ids = pageLimitedEditIds(resolved) ?? Object.keys(resolved.nodes)
+        for (const id of ids) {
+          const n = resolved.nodes[id]
+          if (n && (n.pathOffset || n.vectorBrush) && n !== this.state.doc.nodes[id]) kernelBounds(n)
+        }
       })
       const published = performance.now()
       measureCpuStage(CpuStage.previewPublish, () => this.set({ doc: resolved }))
@@ -1033,15 +1154,17 @@ export class Editor {
     this.diagnosticOperation = null
     const finish = (outcome: 'committed' | 'unchanged' | 'rejected') => { if (operation !== null) this.operationDiagnostics.finish(operation, outcome, this.sessionGeneration, this.state.version, this.state.doc, this.state.page) }
     this.transaction = null
+    let checked:DesignDocument
     try {
-      measureCpuStage(CpuStage.commitValidate, () => validateDocument(this.state.doc))
+      checked=measureCpuStage(CpuStage.commitValidate, () => this.publicationValid(this.state.doc) ? this.state.doc :
+        this.validatePublication(this.state.doc,before.doc,pageEditScope(before.doc,this.state.doc)))
     } catch (error) {
       finish('rejected')
       this.set({ doc: before.doc, selection: before.selection, message: String(error) })
       return
     }
     try {
-      const doc = measureCpuStage(CpuStage.commitShare, () => shareDocument(before.doc, this.state.doc))
+      const doc = measureCpuStage(CpuStage.commitShare, () => shareDocument(before.doc, checked))
       const committed = doc !== before.doc ? measureCpuStage(CpuStage.commitHistory, () => this.push(before, doc)) : undefined
       if (committed) {
         const editIdentity = { documentId: committed.document.id, session: this.sessionGeneration, revision: this.state.version + 1 }
@@ -1264,22 +1387,19 @@ export class Editor {
         .map((e) => e.bounds),
     )
   }
-  /** Ordinary canvas press and hover share one target. Container movement is
-   * explicit (existing selection or title); unopened ancestors must not replace
-   * the child that the pointer just identified. Native clipping/lock/foreground
-   * board checks remain in hit(). Legacy hierarchy navigation still uses hit(). */
+  /** Canvas press and the hover outline use the Mac Figma rule. Child paint
+   * inside a frame selects that child; empty frame area selects the frame.
+   * A group or boolean group selects itself until a descendant is already
+   * selected. Command/Ctrl returns that same leaf every time. Components and
+   * instances still capture ordinary clicks. */
   selectionHit(p: Point, deep = false, index?: SpatialIndex, zoom = this.state.view.zoom, snapshot?: PickSnapshot): string | null {
-    if (deep) return this.hit(p, true, index, zoom, snapshot)
-    return this.hoverHit(p,index,zoom,snapshot)
+    return this.hit(p, deep, index, zoom, snapshot)
   }
-  /** Hover identifies the smallest eligible object within the front board,
-   * independently of the hierarchy used by click/drag selection. */
+  /** Smallest eligible object inside the front board. Canvas hover uses
+   * selectionHit so the outline matches the click; this remains for callers
+   * that need the leaf independently of the entered hierarchy. */
   hoverHit(p: Point, index?: SpatialIndex, viewZoom = this.state.view.zoom, snapshot?: PickSnapshot): string | null {
-    const hit=this.hit(p,true,index,viewZoom,snapshot,undefined,'smallest')
-    if(!hit)return null
-    const document=snapshot?.document||this.state.doc,page=snapshot?.pageId||this.state.page,parents=this.pickContext(document).parents
-    const path=interactivePath(document,page,hit,false,parents),selected=new Set(this.state.selection)
-    return path.find(id=>selected.has(id)&&(container(document.nodes[id])||document.nodes[id].component||document.nodes[id].instance||document.nodes[id].componentSet))||hit
+    return this.hit(p,true,index,viewZoom,snapshot,undefined,'smallest')
   }
   hit(p: Point, deep = false, index?: SpatialIndex, viewZoom = this.state.view.zoom, snapshot?: PickSnapshot, eligible?: (node:DesignNode)=>boolean, priority: 'paint-order' | 'smallest' = 'paint-order'): string | null {
     const authored = snapshot?.document || this.state.doc,
@@ -1600,7 +1720,7 @@ export class Editor {
       if (candidate.schemaVersion < 6 && hasLocalVariableModes(candidate)) candidate.schemaVersion = Math.max(candidate.schemaVersion, 6) as 6 | 7 | 8 | 9 | 10
       if (candidate.schemaVersion < 7 && Object.values(candidate.nodes).some(n => n.arc || n.cornerRadius || n.constrainProportions)) candidate.schemaVersion = Math.max(7, candidate.schemaVersion) as 7 | 8 | 9 | 10
       if (candidate.schemaVersion < 9 && hasGradientBlur(candidate)) candidate.schemaVersion = Math.max(9,candidate.schemaVersion) as 9 | 10
-      if(candidate.schemaVersion < 10 && hasLocalTools(candidate))candidate.schemaVersion=Math.max(10,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 11 && hasRulerGuides(candidate as DesignDocument))candidate.schemaVersion=Math.max(11,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 12 && hasLayoutGrids(candidate as DesignDocument))candidate.schemaVersion=Math.max(12,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 13 && hasImageAdjusts(candidate as DesignDocument))candidate.schemaVersion=Math.max(13,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 14 && hasPatternTiles(candidate as DesignDocument))candidate.schemaVersion=Math.max(14,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 15 && hasSchema15Features(candidate))candidate.schemaVersion=15;if(candidate.schemaVersion < 16 && Object.values(candidate.nodes).some(n=>n.vectorGeometry))candidate.schemaVersion=16;if(candidate.schemaVersion < 17 && hasSchema17Features(candidate))candidate.schemaVersion=17;if(candidate.schemaVersion < 18 && hasSchema18Features(candidate))candidate.schemaVersion=18;if(candidate.schemaVersion < 20 && hasSchema20Features(candidate))candidate.schemaVersion=20;if(candidate.schemaVersion < 19 && hasSchema19Features(candidate))candidate.schemaVersion=19
+      if(candidate.schemaVersion < 10 && hasLocalTools(candidate))candidate.schemaVersion=Math.max(10,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 11 && hasRulerGuides(candidate as DesignDocument))candidate.schemaVersion=Math.max(11,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 12 && hasLayoutGrids(candidate as DesignDocument))candidate.schemaVersion=Math.max(12,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 13 && hasImageAdjusts(candidate as DesignDocument))candidate.schemaVersion=Math.max(13,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 14 && hasPatternTiles(candidate as DesignDocument))candidate.schemaVersion=Math.max(14,candidate.schemaVersion) as DesignDocument['schemaVersion'];if(candidate.schemaVersion < 15 && hasSchema15Features(candidate))candidate.schemaVersion=15;if(candidate.schemaVersion < 16 && Object.values(candidate.nodes).some(n=>n.vectorGeometry))candidate.schemaVersion=16;if(candidate.schemaVersion < 17 && hasSchema17Features(candidate))candidate.schemaVersion=17;if(candidate.schemaVersion < 18 && hasSchema18Features(candidate))candidate.schemaVersion=18;if(candidate.schemaVersion < 20 && hasSchema20Features(candidate))candidate.schemaVersion=20;if(candidate.schemaVersion < 21 && hasSchema21Features(candidate))candidate.schemaVersion=21;if(candidate.schemaVersion < 19 && hasSchema19Features(candidate))candidate.schemaVersion=19
       if (candidate.schemaVersion < 8 && (hasStrokeMarkers(candidate) || hasLayerExports(candidate))) candidate.schemaVersion = Math.max(8,candidate.schemaVersion) as 8 | 9 | 10
       this.set({ doc: kernelLayout(candidate) })
     } catch (error) {
@@ -1776,7 +1896,7 @@ export class Editor {
     const session = this.sessionGeneration, documentId = this.state.doc.id
     const ownsDocument = () => this.sessionGeneration === session && this.state.doc.id === documentId
     if (!this.admitPageMutation() || !ownsDocument()) { action.result(ActionOutcome.blocked, this.interactionActive || this.state.busy ? ActionReason.busy : ActionReason.validation); return false }
-    if (this.state.doc.pages.length === 1) {
+    if (!canDeletePage(this.state.doc, this.state.page)) {
       this.notify('至少保留一个页面')
       return false
     }
@@ -1796,7 +1916,7 @@ export class Editor {
     )
     if (result.status !== 'committed') return false
     if (!ownsDocument()) { action.result(ActionOutcome.cancelled, ActionReason.superseded); return false }
-    this.set({ page: this.state.doc.pages[0].id })
+    this.set({ page: userPages(this.state.doc)[0].id })
     return ownsDocument()
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
@@ -2012,7 +2132,7 @@ export class Editor {
       return [id,{transform:cloneValue(n.transform),outsideX:!!parent&&(b.x<0||b.x+b.width>parent.width),outsideY:!!parent&&(b.y<0||b.y+b.height>parent.height)}]
     }))
     this.clipboard = { ...graph, placements, sourceSession: this.sessionEpoch }
-    this.duplicateOffset = 24
+    this.duplicateOffset = 10
     this.notify('已复制图层')
   }
   exportClipboard(cut = false): string | null {
@@ -2068,7 +2188,7 @@ export class Editor {
         placements=cloneValue(value.placements)
       }
       this.clipboard = { nodes, roots, document, placements, selection: value.selection ? [...new Set(value.selection as string[])] : undefined }
-      this.duplicateOffset = 24
+      this.duplicateOffset = 10
     } finally { activateDocumentFonts(this.state.doc) }
   }
   pasteToSelection(replace = false) {
@@ -2077,9 +2197,14 @@ export class Editor {
     if (!this.clipboard || this.interactionActive) return
     const content=this.clipboard, before=this.state.doc, parents=allParents(before), selected=this.topSelection()
     if(this.topSelection(true).length!==selected.length) {this.notify('粘贴目标包含锁定图层，请先解锁');return}
+    const shared = selected.length && selected.every(id => parents.get(id) === parents.get(selected[0])) ? parents.get(selected[0]) : undefined
     const targets=replace?selected:selected.length && selected.every(id=>container(before.nodes[id]) && !content.roots.includes(id)) ? selected
-      : selected.length===1 && before.nodes[parents.get(selected[0])!]? [parents.get(selected[0])!] : []
-    if(!targets.length){if(replace)this.notify('请选择要替换的图层');else this.paste(true);return}
+      : shared && before.nodes[shared] && !content.roots.includes(shared) ? [shared] : []
+    if(!targets.length){
+      if(replace){this.notify('请选择要替换的图层');return}
+      if(this.pasteUnderSourceParents(content, before))return
+      this.paste(false);return
+    }
     for(const target of targets) {
       for(let id:string|undefined=target;id && before.nodes[id];id=parents.get(id)) {
         const n=before.nodes[id]
@@ -2094,10 +2219,14 @@ export class Editor {
     }
     this.begin(replace?'粘贴替换':'粘贴到选中容器')
     const selection:string[]=[]
+    // Mac Figma steps the inspector X/Y by 10, then 20, then 30 from the
+    // copied local position. Restoring the placement alone leaves that delta
+    // at (0, 0). Paste in place first, then add the step in parent space.
+    const step = replace ? 0 : this.duplicateOffset
     try {
       for(const target of targets) {
         const page=this.state.doc.pages.find(p=>p.id===this.state.page)!,existing=new Set(page.children)
-        this.paste(true)
+        this.paste(true, undefined, false)
         const roots=this.state.doc.pages.find(p=>p.id===this.state.page)!.children.filter(id=>!existing.has(id))
         if(!roots.length)throw new Error(this.state.message || '未能粘贴图层')
         const destination=replace?parents.get(target)!:target,box=before.nodes[target]
@@ -2105,11 +2234,16 @@ export class Editor {
           const currentPage=d.pages.find(p=>p.id===this.state.page)!
           currentPage.children=currentPage.children.filter(id=>!roots.includes(id))
           const list=d.nodes[destination]?.children || d.pages.find(p=>p.id===destination)!.children
-          const at=replace?list.indexOf(target):-1
+          const anchor=!replace && selected.length===1 && parents.get(selected[0])===destination ? selected[0] : null
+          const at=replace?list.indexOf(target):anchor?list.indexOf(anchor)+1:list.length
           list.splice(at<0?list.length:at,0,...roots)
+          const parentWorld=d.nodes[destination]?worldMatrix(d,destination):[1,0,0,1,0,0] as Matrix
           for(const [i,id] of roots.entries()) {
             const source=content.roots[i],placement=content.placements?.[source]
-            if(placement)d.nodes[id].transform=cloneValue(placement.transform)
+            const placed = placement ? cloneValue(placement.transform)
+              : d.nodes[destination] ? multiply(inverse(parentWorld), d.nodes[id].transform) : d.nodes[id].transform
+            d.nodes[id].transform = replace && placement ? cloneValue(placement.transform)
+              : multiply(translate(step, step), placed)
           }
           const measure=(id:string,parent:Matrix): import('./model').Bounds => {
             const n=d.nodes[id],matrix=multiply(parent,n.transform)
@@ -2119,8 +2253,8 @@ export class Editor {
           const localBounds=unionBounds(roots.map(id=>measure(id,identity())))
           const targetBounds=replace?bounds(boxPoints({x:0,y:0,width:box.width,height:box.height}).map(p=>apply(box.transform,p))):null
           const outsideX=content.roots.some(id=>content.placements?.[id]?.outsideX),outsideY=content.roots.some(id=>content.placements?.[id]?.outsideY)
-          const dx=targetBounds?targetBounds.x-localBounds.x:!outsideX&&(localBounds.x<0||localBounds.x+localBounds.width>box.width)?(box.width-localBounds.width)/2-localBounds.x:0
-          const dy=targetBounds?targetBounds.y-localBounds.y:!outsideY&&(localBounds.y<0||localBounds.y+localBounds.height>box.height)?(box.height-localBounds.height)/2-localBounds.y:0
+          const dx=replace?(targetBounds?targetBounds.x-localBounds.x:!outsideX&&(localBounds.x<0||localBounds.x+localBounds.width>box.width)?(box.width-localBounds.width)/2-localBounds.x:0):0
+          const dy=replace?(targetBounds?targetBounds.y-localBounds.y:!outsideY&&(localBounds.y<0||localBounds.y+localBounds.height>box.height)?(box.height-localBounds.height)/2-localBounds.y:0):0
           for(const id of roots) {
             const n=d.nodes[id];n.transform[4]+=dx;n.transform[5]+=dy
             if(replace){n.constraints=cloneValue(box.constraints);n.sizing=cloneValue(box.sizing)}
@@ -2129,6 +2263,7 @@ export class Editor {
         if(!roots.every(id=>allParents(this.state.doc).get(id)===destination))throw new Error(this.state.message)
         selection.push(...roots)
       }
+      if(!replace) this.duplicateOffset += 10
       if(replace){this.select(targets);this.remove();if(targets.some(id=>this.state.doc.nodes[id]))throw new Error('替换目标无法删除')}
       this.select(selection);this.commit()
     } catch(error){this.cancel();this.notify(error instanceof Error?error.message:String(error))}
@@ -2148,7 +2283,76 @@ export class Editor {
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
   }
-  paste(inPlace = false, position?: Point) {
+  /** Multi-selection paste whose live sources sit under different parents.
+   * Each copy stays in that source's parent. `step` is parent-space X/Y;
+   * paste-in-place passes 0. A single shared parent, a chosen container, or a
+   * foreign clipboard keeps the existing destination. */
+  private pasteUnderSourceParents(content: { roots: string[]; placements?: Record<string, { transform: Matrix }> }, before: DesignDocument, step = this.duplicateOffset, advanceStep = true): boolean {
+    if (content.roots.length < 2) return false
+    const parents = allParents(before)
+    const located = content.roots.map(id => {
+      if (!before.nodes[id]) return null
+      const parent = parents.get(id)
+      return parent ? { id, parent } : null
+    })
+    if (located.some(item => !item)) return false
+    const plan = located as { id: string; parent: string }[]
+    if (plan.every(item => item.parent === plan[0].parent)) return false
+    for (const item of plan) {
+      for (let id: string | undefined = item.parent; id && before.nodes[id]; id = parents.get(id)) {
+        const n = before.nodes[id]
+        if (n.locked || n.instance || n.instanceOrigin) {
+          this.notify('不能向锁定图层或组件实例内部粘贴新结构')
+          return true
+        }
+      }
+    }
+    this.begin(step === 0 ? '粘贴到原位' : '粘贴到各自父级')
+    try {
+      const page = this.state.doc.pages.find(p => p.id === this.state.page)!
+      const existing = new Set(page.children)
+      this.paste(true, undefined, false)
+      const created = this.state.doc.pages.find(p => p.id === this.state.page)!.children.filter(id => !existing.has(id))
+      if (created.length !== content.roots.length) throw new Error(this.state.message || '未能粘贴图层')
+      this.change('放置粘贴图层', d => {
+        const currentPage = d.pages.find(p => p.id === this.state.page)!
+        currentPage.children = currentPage.children.filter(id => !created.includes(id))
+        for (const [i, id] of created.entries()) {
+          const source = content.roots[i], parent = plan[i].parent
+          const list = d.nodes[parent]?.children || d.pages.find(p => p.id === parent)!.children
+          const at = list.indexOf(source)
+          list.splice(at < 0 ? list.length : at + 1, 0, id)
+          const placement = content.placements?.[source]
+          const parentWorld = d.nodes[parent] ? worldMatrix(d, parent) : identity()
+          const local = placement ? cloneValue(placement.transform) : multiply(inverse(parentWorld), d.nodes[id].transform)
+          d.nodes[id].transform = multiply(translate(step, step), local)
+        }
+      }, created)
+      const committed = this.commit()
+      if (!committed) throw new Error(this.state.message || '未能粘贴图层')
+      if (created.some((id, i) => allParents(this.state.doc).get(id) !== plan[i].parent)) {
+        this.undo()
+        throw new Error('粘贴父级无效')
+      }
+      if (advanceStep) this.duplicateOffset += 10
+      this.select(created)
+      return true
+    } catch (error) {
+      this.cancel()
+      this.notify(error instanceof Error ? error.message : String(error))
+      return true
+    }
+  }
+  /** A single unlocked frame, section, or group. Paste in place parents into it
+   * and keeps world position. A selected shape stays a page-level paste. */
+  private openContainerSelection(): string | undefined {
+    const ids = this.topSelection()
+    if (ids.length !== 1) return undefined
+    const n = this.state.doc.nodes[ids[0]]
+    if (!n || n.locked || n.instance || n.instanceOrigin || !container(n)) return undefined
+    return ids[0]
+  }
+  paste(inPlace = false, position?: Point, nestInSelection = true) {
     const action = beginEditorAction(this, CanvasAction.paste, ActionSource.unknown, 226)
     try {
     if (!this.clipboard) return
@@ -2156,6 +2360,10 @@ export class Editor {
       this.notify('粘贴位置无效'); return
     }
     const content = this.clipboard
+    const placeIn = inPlace && !position && nestInSelection ? this.openContainerSelection() : undefined
+    // Mac Paste Over Selection / paste-in-place keeps a multi-parent copy
+    // under each source frame. A single selected container still receives it.
+    if (inPlace && !position && nestInSelection && !placeIn && this.pasteUnderSourceParents(content, this.state.doc, 0, false)) return
     const offset = inPlace ? 0 : this.duplicateOffset
     let delta = { x: offset, y: offset }
     if (position) {
@@ -2180,11 +2388,16 @@ export class Editor {
         created = Components.insertInstance(d, componentId, this.state.page, {
           x: source.transform[4] + delta.x,
           y: source.transform[5] + delta.y,
-        })
-        if (position) d.nodes[created].transform = multiply(translate(delta.x, delta.y), source.transform)
+        }, placeIn)
+        // insertInstance writes translation only. Mac paste of a rotated
+        // instance keeps the full affine, then steps ordinary paste by delta.
+        const world = multiply(translate(delta.x, delta.y), source.transform)
+        d.nodes[created].transform = placeIn && d.nodes[placeIn]
+          ? multiply(inverse(worldMatrix(d, placeIn)), world)
+          : world
       })
       if (this.state.doc.nodes[created]?.instance) this.select([created])
-      if (!inPlace && !position) this.duplicateOffset += 24
+      if (!inPlace && !position) this.duplicateOffset += 10
       return
     }
     const ids = new Map(Object.keys(content.nodes).map((id) => [id, uid()]))
@@ -2213,12 +2426,21 @@ export class Editor {
             )
           d.nodes[n.id] = n
         }
-        d.pages.find((p) => p.id === this.state.page)!.children.push(...roots)
+        const page = d.pages.find((p) => p.id === this.state.page)!
+        const existing = new Set(page.children)
+        page.children.push(...roots)
         applyClipboardSemantics(d, content.document, content.roots, dependencies.nodeIds, dependencies.designSystem, semantics, this.state.page, delta, { internal })
+        const placed = page.children.filter(id => !existing.has(id))
+        if (placeIn && d.nodes[placeIn] && placed.length && !placed.includes(placeIn)) {
+          page.children = page.children.filter(id => !placed.includes(id))
+          d.nodes[placeIn].children.push(...placed)
+          const basis = inverse(worldMatrix(d, placeIn))
+          for (const id of placed) d.nodes[id].transform = multiply(basis, d.nodes[id].transform)
+        }
       },
       content.selection?.map(id => ids.get(id)!) || roots,
     )
-    if (!inPlace && !position) this.duplicateOffset += 24
+    if (!inPlace && !position) this.duplicateOffset += 10
     } catch (error) { action.result(ActionOutcome.rejected, ActionReason.validation); throw error }
     finally { action.finish() }
   }
@@ -2622,6 +2844,167 @@ export class Editor {
       '转换为矢量',
     )
   }
+  /** World-space contour as a geometry operand. The kernel reads the network. */
+  private contourVector(rings: Point[][]): DesignNode {
+    const box = bounds(rings.flat())
+    const vector = node('vector', box.x, box.y, Math.max(0.01, box.width), Math.max(0.01, box.height))
+    vector.strokes = []
+    vector.fills = [paint()]
+    vector.network = contoursToNetwork(rings.map(ring => ring.map(point => ({ x: point.x - box.x, y: point.y - box.y }))))
+    return vector
+  }
+  /** Resolve each boolean with its own operation, including nested booleans,
+   * then return world-space operands for a final union. */
+  private async flattenMixedOperands(doc: DesignDocument, ordered: string[], parents: ParentMap): Promise<DesignNode[]> {
+    const leaf = (id: string): DesignNode => ({ ...doc.nodes[id], children: [], transform: worldMatrix(doc, id, parents) })
+    const operands = async (id: string): Promise<DesignNode[]> => {
+      const n = doc.nodes[id]
+      if (!n || !n.visible || n.kind === 'text' || n.kind === 'slice' || n.instance || n.component) return []
+      if (n.booleanOperation && n.children.length) {
+        const parts: DesignNode[] = []
+        for (const child of n.children) parts.push(...await operands(child))
+        if (parts.length > 64) throw new Error('一次最多展平 64 个形状')
+        if (parts.length <= 1) return parts
+        const results = await this.runGeometry({ operation: n.booleanOperation, nodes: parts })
+        const rings = results[0] || []
+        return rings.length ? [this.contourVector(rings)] : []
+      }
+      if ((n.kind === 'group' || n.kind === 'frame' || n.kind === 'section') && n.children.length) {
+        const parts: DesignNode[] = []
+        if ((n.kind === 'frame' || n.kind === 'section') && n.fills.some(fill => fill.visible && fill.opacity > 0)) parts.push(leaf(id))
+        for (const child of n.children) parts.push(...await operands(child))
+        return parts
+      }
+      return [leaf(id)]
+    }
+    const inputs: DesignNode[] = []
+    for (const id of ordered) inputs.push(...await operands(id))
+    return inputs
+  }
+  private containsBoolean(doc: DesignDocument, id: string): boolean {
+    const n = doc.nodes[id]
+    if (!n) return false
+    if (n.booleanOperation) return true
+    return n.children.some(child => this.containsBoolean(doc, child))
+  }
+  /** Bake the selection into one vector. A single boolean uses its own
+   * operation, and a boolean nested inside it is baked first. A boolean mixed
+   * with other layers is baked with its own operation, then unioned. */
+  async flattenSelection() {
+    if (this.disposed || this.state.busy || this.interactionActive) return
+    const ids = this.topSelection()
+    if (!ids.length) return
+    const doc = this.state.doc
+    const parents = allParents(doc)
+    const parent = parents.get(ids[0])
+    if (!parent || ids.some(id => parents.get(id) !== parent)) {
+      this.notify('展平需要选择同一容器内的图层')
+      return
+    }
+    if (ids.some(id => {
+      const n = doc.nodes[id]
+      return !n || n.kind === 'text' || n.kind === 'slice' || !!n.instance || !!n.component || !!n.componentSet
+    })) {
+      this.notify('文字、切片和组件不能展平')
+      return
+    }
+    const siblings = doc.nodes[parent]?.children || doc.pages.find(page => page.id === parent)?.children
+    if (!siblings) return
+    const ordered = [...ids].sort((a, b) => siblings.indexOf(a) - siblings.indexOf(b))
+    const mixed = ordered.length > 1 && ordered.some(id => !!doc.nodes[id].booleanOperation)
+    const shapeLeaves = (id: string, into: string[], seen: Set<string>) => {
+      if (seen.has(id)) return
+      const n = doc.nodes[id]
+      if (!n || !n.visible || n.kind === 'text' || n.kind === 'slice' || n.instance || n.component) return
+      seen.add(id)
+      if ((n.kind === 'group' || n.kind === 'frame' || n.kind === 'section') && n.children.length && !n.booleanOperation) {
+        if ((n.kind === 'frame' || n.kind === 'section') && n.fills.some(fill => fill.visible && fill.opacity > 0)) into.push(id)
+        n.children.forEach(child => shapeLeaves(child, into, seen))
+        return
+      }
+      if (n.booleanOperation && n.children.length) {
+        n.children.forEach(child => shapeLeaves(child, into, seen))
+        return
+      }
+      into.push(id)
+    }
+    let operation: NonNullable<DesignNode['booleanOperation']> = 'union'
+    const sources: string[] = []
+    const only = ordered.length === 1 ? doc.nodes[ordered[0]] : undefined
+    if (only?.booleanOperation && only.children.length) {
+      operation = only.booleanOperation
+      only.children.forEach(child => shapeLeaves(child, sources, new Set()))
+    } else ordered.forEach(id => shapeLeaves(id, sources, new Set()))
+    if (!sources.length || sources.length > 64) {
+      this.notify(sources.length > 64 ? '一次最多展平 64 个形状' : '没有可展平的形状')
+      return
+    }
+    const named = doc.nodes[ordered[ordered.length - 1]]
+    const front = doc.nodes[sources[sources.length - 1]]
+    const before = doc
+    const epoch = this.sessionEpoch
+    const current = () => !this.disposed && this.sessionEpoch === epoch
+    this.set({ busy: true, message: '正在展平…' })
+    try {
+      if (!current()) return
+      const nestedSingle = !!only?.booleanOperation && only.children.some(child => this.containsBoolean(doc, child))
+      let results: Point[][][]
+      if (mixed || nestedSingle) {
+        const inputs = await this.flattenMixedOperands(doc, ordered, parents)
+        if (!current()) return
+        if (!inputs.length || inputs.length > 64) {
+          this.notify(inputs.length > 64 ? '一次最多展平 64 个形状' : '没有可展平的形状')
+          return
+        }
+        results = await this.runGeometry({ operation: 'union', nodes: inputs })
+      } else {
+        results = await this.runGeometry({
+          operation,
+          nodes: sources.map(id => ({ ...doc.nodes[id], children: [], transform: worldMatrix(doc, id, parents) })),
+        })
+      }
+      if (!current()) return
+      if (this.state.doc !== before) throw new Error('文档已发生变化，请重新展平')
+      const contours = results[0] || []
+      if (!contours.length) {
+        this.notify('展平没有产生轮廓')
+        return
+      }
+      const box = bounds(contours.flat())
+      if (![box.x, box.y, box.width, box.height].every(Number.isFinite) || box.width <= 0 || box.height <= 0) {
+        this.notify('展平没有产生轮廓')
+        return
+      }
+      const vector = node('vector', box.x, box.y, Math.max(0.01, box.width), Math.max(0.01, box.height))
+      vector.name = named.name
+      vector.network = contoursToNetwork(contours.map(ring => ring.map(point => ({ x: point.x - box.x, y: point.y - box.y }))))
+      vector.fills = cloneValue(front.fills.length ? front.fills : named.fills)
+      vector.strokes = cloneValue(front.strokes.length ? front.strokes : named.strokes)
+      vector.opacity = named.opacity
+      vector.blend = named.blend
+      vector.effects = cloneValue(named.effects)
+      vector.transform = multiply(inverse(worldMatrix(doc, parent, parents)), vector.transform)
+      const position = Math.min(...ordered.map(id => siblings.indexOf(id)))
+      this.change('展平', next => {
+        const removeTree = (id: string) => {
+          for (const child of [...(next.nodes[id]?.children || [])]) removeTree(child)
+          delete next.nodes[id]
+        }
+        const list = next.nodes[parent]?.children || next.pages.find(page => page.id === parent)!.children
+        for (const id of ordered) {
+          const at = list.indexOf(id)
+          if (at >= 0) list.splice(at, 1)
+          removeTree(id)
+        }
+        next.nodes[vector.id] = vector
+        list.splice(Math.min(Math.max(position, 0), list.length), 0, vector.id)
+      }, [vector.id])
+    } catch (error) {
+      if (current()) this.notify(error instanceof Error ? error.message : String(error))
+    } finally {
+      if (current()) this.set({ busy: false })
+    }
+  }
   async geometry(operation: BooleanOp | 'outline' | 'divide') {
     if (this.disposed) return
     if (['union', 'subtract', 'intersect', 'exclude'].includes(operation)) {
@@ -2884,7 +3267,10 @@ export class Editor {
     this.geometryJob?.cancel()
     this.discardPendingView()
     this.listeners.clear()
+    this.cameraListeners.clear()
     this.editListeners.clear()
+    this.liveRotation = null
+    this.liveRotationListeners.clear()
     this.revealRequest = null
     this.revealListeners.clear()
   }

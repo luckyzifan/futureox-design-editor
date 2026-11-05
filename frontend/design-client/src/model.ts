@@ -1,3 +1,4 @@
+import {sourceBitmap} from './source-bitmap'
 import { assertDocumentStructure } from './document-capacity'
 import { hasSchema15Features } from './schema-features'
 import { validateRepeat, validateRepeatDocument, type RepeatTransform } from './repeat-transforms'
@@ -170,6 +171,10 @@ export function hasSchema18Features(d: DesignDocument): boolean {
 export function hasSchema19Features(d: DesignDocument): boolean {
   return !!findDocumentEffect(d, Object.values(d.nodes), usesZoomBlur)
 }
+export function hasSchema21Features(d: DesignDocument): boolean {
+  const runs = (r: any) => Array.isArray(r) && r.some(run => run && (run.letterSpacing !== undefined || run.lineHeight !== undefined))
+  return Object.values(d.nodes).some(n => runs(n.textRuns) || Object.values(n.instance?.overrides || {}).some(o => runs(o.textRuns)))
+}
 export function hasSchema20Features(d: DesignDocument, nodes = Object.values(d.nodes)): boolean {
   const action = (a: import('./prototype').PrototypeAction): boolean => a.transitionStyle !== undefined || !!a.thenActions?.some(action) || !!a.elseActions?.some(action)
   if (Object.values(d.prototype?.interactions||{}).some(es=>es.some(e=>e.actions.some(action)))) return true
@@ -210,6 +215,8 @@ export type Effect = {
   }
   texture?: { noiseSize: [number, number]; clipToShape: boolean; noise?: 'figma' | 'gabor' | 'perlin' }
   gradientBlur?: {start:[number,number];end:[number,number];startCount:number;endCount:number;smooth:boolean}
+  /** kiwi Effect.showShadowBehindNode. Preserved on import; shadow clipping does not branch on it yet. */
+  showShadowBehindNode?: boolean
 }
 export type Vertex = Point & { id: string }
 export type Edge = { id: string; from: string; to: string; c1?: Point; c2?: Point }
@@ -405,6 +412,10 @@ export type TextRun = {
   fontId?: string
   fontSize?: number
   weight?: number
+  /** Design pixels added after each cluster in the run. */
+  letterSpacing?: number
+  /** Multiplier of this run's font size. Overrides the node line-height floor on lines that use it. */
+  lineHeight?: number
 }
 export const defaultTextStyle = (): TextStyle => ({
   fontId: 'default',
@@ -439,7 +450,7 @@ export type DesignDocument = {
   rasterProfile?: 'analytic' | 'figma' | 'figmaSoftware'
   fonts?: Record<string, { family: string; data: string; index?: number; postscript?: string }>
   animations?: AnimationClip[]
-  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20
+  schemaVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21
   id: string
   name: string
   pages: Page[]
@@ -759,10 +770,12 @@ function networkIdDomain(rows: { id: string }[], index: ReturnType<typeof networ
   if (indexed) return { size, has: (id: string) => (table.positions.get(id) ?? Infinity) < size }
   return new Set(rows.map(row => row.id))
 }
-export function validateDocument(value: unknown): DesignDocument {
+/** Page-scoped admission of an already valid document. Cold pages are not rechecked. */
+export type DocumentValidationScope = { pageId: string; ids: readonly string[] }
+export function validateDocument(value: unknown, scope?: DocumentValidationScope): DesignDocument {
   if (
     !isObject(value) ||
-    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].includes(value.schemaVersion as number) ||
+    ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].includes(value.schemaVersion as number) ||
     typeof value.id !== 'string' ||
     typeof value.name !== 'string' ||
     !Array.isArray(value.pages) ||
@@ -773,8 +786,14 @@ export function validateDocument(value: unknown): DesignDocument {
   const d = value as unknown as DesignDocument
   // Reuse one local enumeration while retaining every validation below.
   // This is not a cached validity certificate for mutable document objects.
-  const nodeIds = Object.keys(d.nodes)
-  const nodes = nodeIds.map(id => d.nodes[id])
+  // A page scope validates the edited nodes only. The caller has already proved
+  // the previous snapshot and that this edit did not retarget cold pages.
+  const entries = scope
+    ? scope.ids.filter(id => d.nodes[id]).map(id => [id, d.nodes[id]] as [string, DesignNode])
+    : Object.entries(d.nodes)
+  const nodes = entries.map(([, node]) => node)
+  const featureDoc = scope ? { ...d, nodes: Object.fromEntries(entries) } as DesignDocument : d
+  const nodeIds=entries.map(([id])=>id)
   let guideCount=0
   const validateGuides=(guides:unknown,frame=true)=>{
     if(guides===undefined)return
@@ -798,12 +817,12 @@ export function validateDocument(value: unknown): DesignDocument {
       for(const m of r.messages){if(!m||typeof m.id!=='string'||!m.id||m.id.length>128||ids.has(m.id)||typeof m.author!=='string'||!m.author||m.author.length>200||typeof m.text!=='string'||!m.text.trim()||m.text.length>10000||!Number.isSafeInteger(m.createdAt)||m.createdAt<0)throw new Error('本地评论消息无效');ids.add(m.id)}
     }
   }
-  if(d.schemaVersion<10&&hasLocalTools(d))throw new Error('本地扩展工具需要设计文件版本10')
-  validateNodeVariableModes(d, nodes)
-  if (d.schemaVersion < 9 && hasGradientBlur(d)) throw new Error('渐变模糊需要设计文件版本 9')
-  if (d.schemaVersion < 13 && hasImageAdjusts(d)) throw new Error('图片调整需要设计文件版本 13')
-  if (d.schemaVersion < 14 && hasPatternTiles(d)) throw new Error('图案平铺需要设计文件版本 14')
-  if (d.schemaVersion < 20 && hasSchema20Features(d, nodes)) throw new Error('段落和文本垂直对齐需要设计文件版本 20')
+  if(d.schemaVersion<10&&hasLocalTools(featureDoc))throw new Error('本地扩展工具需要设计文件版本10')
+  validateNodeVariableModes(featureDoc, nodes)
+  if (d.schemaVersion < 9 && hasGradientBlur(featureDoc)) throw new Error('渐变模糊需要设计文件版本 9')
+  if (d.schemaVersion < 13 && hasImageAdjusts(featureDoc)) throw new Error('图片调整需要设计文件版本 13')
+  if (d.schemaVersion < 14 && hasPatternTiles(featureDoc)) throw new Error('图案平铺需要设计文件版本 14')
+  if (d.schemaVersion < 20 && hasSchema20Features(featureDoc, nodes)) throw new Error('段落和文本垂直对齐需要设计文件版本 20')
   if (d.schemaVersion < 19) {
     const unsupported = findDocumentEffect(d, nodes, e => usesZoomBlur(e) ||
       (d.schemaVersion < 18 && usesSpatialBlur(e)) || (d.schemaVersion < 17 && usesColorControls(e)))
@@ -813,8 +832,9 @@ export function validateDocument(value: unknown): DesignDocument {
       throw new Error('颜色调整需要设计文件版本 17')
     }
   }
-  if (d.schemaVersion < 15 && hasSchema15Features(d)) throw new Error('此设计功能需要设计文件版本 15')
-  if (d.schemaVersion < 8 && (hasStrokeMarkers(d) || hasLayerExports(d))) throw new Error('描边端点需要设计文件版本 8')
+  if (d.schemaVersion < 15 && hasSchema15Features(featureDoc)) throw new Error('此设计功能需要设计文件版本 15')
+  if (d.schemaVersion < 8 && (hasStrokeMarkers(featureDoc) || hasLayerExports(featureDoc))) throw new Error('描边端点需要设计文件版本 8')
+  if (d.schemaVersion < 21 && hasSchema21Features(featureDoc)) throw new Error('片段字距或行高需要设计文件版本 21')
   // Mirror scene::Document::validate and animation::validate schema gates.
   // This pre-initialization boundary is not a replacement for full Rust validation.
   for (const events of Object.values(d.prototype?.interactions || {})) for (const event of events) {
@@ -852,7 +872,7 @@ export function validateDocument(value: unknown): DesignDocument {
       ))
   )
     throw new Error('字体资源无效或超过限制')
-  assertDocumentStructure(nodes.length, d.pages.length)
+  assertDocumentStructure(scope ? Math.max(entries.length, 1) : entries.length, d.pages.length)
   const seen = new Set<string>()
   if (
     d.colorManagement !== undefined &&
@@ -912,7 +932,7 @@ export function validateDocument(value: unknown): DesignDocument {
     (!['linear', 'radial', 'angular', 'diamond'].includes(p.kind) || p.stops.length >= 2) &&
     p.stops.length <= MAX_GRADIENT_STOPS &&
     p.stops.every((s) => finite(s.offset, 0, 1) && color.test(s.color)) &&
-    (!p.image || /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(p.image))
+    (!p.image || !!sourceBitmap(p.image) || /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(p.image))
   const paints = (list: Paint[]) => Array.isArray(list) && list.length <= 16 && list.every(validPaint)
   const defaultStyle = defaultTextStyle()
   let segmenter: Intl.Segmenter | undefined
@@ -959,6 +979,8 @@ export function validateDocument(value: unknown): DesignDocument {
           run.start >= run.end ||
           (run.fontSize !== undefined && !finite(run.fontSize, 1, 4096)) ||
           (run.weight !== undefined && !finite(run.weight, 1, 1000)) ||
+          (run.letterSpacing !== undefined && !finite(run.letterSpacing, -1000, 1000)) ||
+          (run.lineHeight !== undefined && !finite(run.lineHeight, 0.1, 10)) ||
           (run.fontId !== undefined &&
             run.fontId !== 'default' &&
             (!d.fonts || !Object.hasOwn(d.fonts, run.fontId)))
@@ -1072,6 +1094,7 @@ export function validateDocument(value: unknown): DesignDocument {
             'gaussian-blur',
             'motion-blur', 'zoom-blur',
           ].includes(e.kind) &&
+          (e.showShadowBehindNode === undefined || typeof e.showShadowBehindNode === 'boolean') &&
           (e.zoomBlur == null ? e.kind!=='zoom-blur' : (e.kind==='zoom-blur' && validZoomBlur(e.zoomBlur) && e.radius===0 && !e.colorControls && !e.glass && !e.texture && !e.gradientBlur)) &&
           (e.motionAngle === undefined || (finite(e.motionAngle,-1e7,1e7) && (e.kind==='motion-blur'||e.motionAngle===0))) &&
           (e.kind !== 'color-controls' || e.colorControls != null) &&
@@ -1280,7 +1303,12 @@ export function validateDocument(value: unknown): DesignDocument {
     )
       throw new Error('页面数据无效')
     pages.add(p.id)
-    p.children.forEach((id) => visit(id, 0))
+    if (!scope) p.children.forEach((id) => visit(id, 0))
+  }
+  if (scope) {
+    if (!pages.has(scope.pageId)) throw new Error('页面数据无效')
+    for (const id of scope.ids) if (!d.nodes[id]) throw new Error('文件包含未归属页面的图层')
+    return d
   }
   if (seen.size !== nodes.length) throw new Error('文件包含未归属页面的图层')
   return d

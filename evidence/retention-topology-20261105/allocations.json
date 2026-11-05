@@ -1,0 +1,289 @@
+{
+  "A": {
+    "largeObjects": 22970,
+    "stackCount": 175,
+    "vmSamples": 1506,
+    "allocatorPeakInUse": 282083136,
+    "largeBytesAtHeapPeak": 267879424,
+    "peakOwners": [
+      {
+        "stack": "futureox_design_kernel::blend::Surface::new_accounted > futureox_design_kernel::renderer::Painter::allocate_bundle > futureox_design_kernel::renderer::Painter::node_bundle_with_outline > futureox_design_kernel::renderer::Painter::paint_siblings > futureox_design_kernel::renderer::Painter::node_bundle_with_outline",
+        "bytes": 101482496,
+        "blocks": 20
+      },
+      {
+        "stack": "futureox_design_kernel::blend::Surface::new_accounted > futureox_design_kernel::renderer::Engine::render_surfaces_at > futureox_design_kernel::renderer::Engine::linear_rect_pixels > futureox_design_kernel::renderer::Engine::render_linear > cpu_frame_probe::main",
+        "bytes": 41811968,
+        "blocks": 4
+      },
+      {
+        "stack": "futureox_design_kernel::blend::Surface::new_accounted > futureox_design_kernel::paint::decode > futureox_design_kernel::paint::Images::base > futureox_design_kernel::paint::Images::image > futureox_design_kernel::paint::Sampler::new",
+        "bytes": 38141952,
+        "blocks": 2
+      },
+      {
+        "stack": "futureox_design_kernel::blend::Surface::new_accounted > futureox_design_kernel::renderer::Painter::allocate_bundle > futureox_design_kernel::renderer::Painter::node_bundle_with_outline > futureox_design_kernel::renderer::Painter::paint_siblings > futureox_design_kernel::renderer::Engine::render_surfaces_at",
+        "bytes": 28049408,
+        "blocks": 4
+      },
+      {
+        "stack": "futureox_design_kernel::renderer::Engine::render_linear > cpu_frame_probe::main",
+        "bytes": 17776640,
+        "blocks": 1
+      },
+      {
+        "stack": "futureox_design_kernel::font::Fonts::load > futureox_design_kernel::renderer::Engine::load_font > cpu_frame_probe::main",
+        "bytes": 17776640,
+        "blocks": 1
+      },
+      {
+        "stack": "futureox_design_kernel::path::flatten_cubic_guarded > futureox_design_kernel::path::Path::flatten_impl > futureox_design_kernel::path::Path::flatten_for_fill > futureox_design_kernel::geometry_snapshot::prepare_node_geometry_supported > futureox_design_kernel::geometry_snapshot::prepare_node_geometry_supported",
+        "bytes": 6832128,
+        "blocks": 685
+      }
+    ],
+    "lastTile": {
+      "kind": "T",
+      "at": 1414363689029791,
+      "rss": 348848128,
+      "footprint": 413352680,
+      "internal": 343392256,
+      "compressed": 69435392,
+      "reusable": 0,
+      "live": 101967936,
+      "reserved": 189284352,
+      "blocks": 110851,
+      "skewMs": 0.004,
+      "residentLargePagesByLastObject": {
+        "live: frame output": 16777216,
+        "released: painter four-plane layers": 150044672,
+        "live: other": 3178496,
+        "live: decoded image": 37208064,
+        "released: tile output": 4194304,
+        "released: other painter surfaces": 2260992,
+        "released: filter surfaces": 14483456,
+        "live: image resources": 3178496,
+        "released: frame sample surfaces": 41811968
+      }
+    },
+    "lastFrame": {
+      "kind": "G",
+      "at": 1414363729069125,
+      "rss": 348848128,
+      "footprint": 413352680,
+      "internal": 343392256,
+      "compressed": 69435392,
+      "reusable": 0,
+      "live": 84192048,
+      "reserved": 171507712,
+      "blocks": 110857,
+      "skewMs": 0.005,
+      "residentLargePagesByLastObject": {
+        "released: frame output": 16777216,
+        "released: painter four-plane layers": 150044672,
+        "live: other": 3178496,
+        "live: decoded image": 37208064,
+        "released: tile output": 4194304,
+        "released: other painter surfaces": 2260992,
+        "released: filter surfaces": 14483456,
+        "live: image resources": 3178496,
+        "released: frame sample surfaces": 41811968
+      }
+    },
+    "planFreedObjectsAfterLastTile": 0.0,
+    "planFreedBytesAfterLastTile": 0.0,
+    "contourFreedBytesAfterLastTile": 0.0
+  },
+  "B": {
+    "largeObjects": 22782,
+    "stackCount": 190,
+    "vmSamples": 1488,
+    "allocatorPeakInUse": 283943520,
+    "largeBytesAtHeapPeak": 269214720,
+    "peakOwners": [
+      {
+        "stack": "futureox_design_kernel::blend::Surface::new_accounted > futureox_design_kernel::renderer::Painter::allocate_bundle > futureox_design_kernel::renderer::Painter::node_bundle_with_outline > futureox_design_kernel::renderer::Painter::paint_siblings > futureox_design_kernel::renderer::Painter::node_bundle_with_outline",
+        "bytes": 101482496,
+        "blocks": 20
+      },
+      {
+        "stack": "futureox_design_kernel::blend::Surface::new_accounted > futureox_design_kernel::renderer::Engine::render_surfaces_budget_plan > futureox_design_kernel::renderer::Engine::linear_rect_pixels_planned > futureox_design_kernel::renderer::Engine::render_linear > cpu_frame_probe::main",
+        "bytes": 41811968,
+        "blocks": 4
+      },
+      {
+        "stack": "futureox_design_kernel::blend::Surface::new_accounted > futureox_design_kernel::paint::decode > futureox_design_kernel::paint::Images::base > futureox_design_kernel::paint::Images::image > futureox_design_kernel::paint::Sampler::new",
+        "bytes": 38141952,
+        "blocks": 2
+      },
+      {
+        "stack": "futureox_design_kernel::blend::Surface::new_accounted > futureox_design_kernel::renderer::Painter::allocate_bundle > futureox_design_kernel::renderer::Painter::node_bundle_with_outline > futureox_design_kernel::renderer::Painter::paint_siblings > futureox_design_kernel::renderer::Engine::render_surfaces_budget_plan",
+        "bytes": 28049408,
+        "blocks": 4
+      },
+      {
+        "stack": "futureox_design_kernel::renderer::Engine::render_linear > cpu_frame_probe::main",
+        "bytes": 17776640,
+        "blocks": 1
+      },
+      {
+        "stack": "futureox_design_kernel::font::Fonts::load > futureox_design_kernel::renderer::Engine::load_font > cpu_frame_probe::main",
+        "bytes": 17776640,
+        "blocks": 1
+      },
+      {
+        "stack": "futureox_design_kernel::path::flatten_cubic_guarded > futureox_design_kernel::path::Path::flatten_impl > futureox_design_kernel::path::Path::flatten_for_fill > futureox_design_kernel::geometry_snapshot::prepare_node_geometry_supported > futureox_design_kernel::geometry_snapshot::prepare_node_geometry_supported",
+        "bytes": 8118272,
+        "blocks": 813
+      }
+    ],
+    "lastTile": {
+      "kind": "T",
+      "at": 1414350209938458,
+      "rss": 381272064,
+      "footprint": 414728936,
+      "internal": 375881728,
+      "compressed": 38322176,
+      "reusable": 0,
+      "live": 103882880,
+      "reserved": 189284352,
+      "blocks": 112447,
+      "skewMs": 0.005,
+      "residentLargePagesByLastObject": {
+        "live: frame output": 16777216,
+        "live: font data": 180224,
+        "released: painter four-plane layers": 172818432,
+        "live: other": 3178496,
+        "live: decoded image": 38060032,
+        "released: tile output": 4194304,
+        "released: other painter surfaces": 3391488,
+        "released: filter surfaces": 16072704,
+        "live: image resources": 3342336,
+        "released: frame sample surfaces": 41811968
+      }
+    },
+    "lastFrame": {
+      "kind": "G",
+      "at": 1414350276813333,
+      "rss": 381272064,
+      "footprint": 414728936,
+      "internal": 375881728,
+      "compressed": 38322176,
+      "reusable": 0,
+      "live": 84192048,
+      "reserved": 171507712,
+      "blocks": 110857,
+      "skewMs": 0.004,
+      "residentLargePagesByLastObject": {
+        "released: frame output": 16777216,
+        "live: font data": 180224,
+        "released: painter four-plane layers": 172818432,
+        "live: other": 3178496,
+        "live: decoded image": 38060032,
+        "released: tile output": 4194304,
+        "released: other painter surfaces": 3391488,
+        "released: filter surfaces": 16072704,
+        "live: image resources": 3342336,
+        "released: frame sample surfaces": 41811968
+      }
+    },
+    "planFreedObjectsAfterLastTile": 1622.0,
+    "planFreedBytesAfterLastTile": 1936037.3333333333,
+    "contourFreedBytesAfterLastTile": 1758421.3333333333
+  },
+  "C": {
+    "largeObjects": 22770,
+    "stackCount": 182,
+    "vmSamples": 1259,
+    "allocatorPeakInUse": 240329008,
+    "largeBytesAtHeapPeak": 225600512,
+    "peakOwners": [
+      {
+        "stack": "futureox_design_kernel::blend::Surface::new_accounted > futureox_design_kernel::renderer::Painter::allocate_bundle > futureox_design_kernel::renderer::Painter::node_bundle_with_outline > futureox_design_kernel::renderer::Painter::paint_siblings > futureox_design_kernel::renderer::Painter::node_bundle_with_outline",
+        "bytes": 80674816,
+        "blocks": 16
+      },
+      {
+        "stack": "futureox_design_kernel::blend::Surface::new_accounted > futureox_design_kernel::paint::decode > futureox_design_kernel::paint::Images::base > futureox_design_kernel::paint::Images::image > futureox_design_kernel::paint::Sampler::new",
+        "bytes": 38141952,
+        "blocks": 2
+      },
+      {
+        "stack": "futureox_design_kernel::blend::Surface::new_accounted > futureox_design_kernel::renderer::Engine::render_surfaces_budget_plan > futureox_design_kernel::renderer::Engine::linear_rect_pixels_planned > futureox_design_kernel::renderer::Engine::render_linear > cpu_frame_probe::main",
+        "bytes": 26247168,
+        "blocks": 4
+      },
+      {
+        "stack": "futureox_design_kernel::blend::Surface::new_accounted > futureox_design_kernel::renderer::Painter::allocate_bundle > futureox_design_kernel::renderer::Painter::node_bundle_with_outline > futureox_design_kernel::renderer::Painter::paint_siblings > futureox_design_kernel::renderer::Engine::render_surfaces_budget_plan",
+        "bytes": 20807680,
+        "blocks": 4
+      },
+      {
+        "stack": "futureox_design_kernel::renderer::Engine::render_linear > cpu_frame_probe::main",
+        "bytes": 17776640,
+        "blocks": 1
+      },
+      {
+        "stack": "futureox_design_kernel::font::Fonts::load > futureox_design_kernel::renderer::Engine::load_font > cpu_frame_probe::main",
+        "bytes": 17776640,
+        "blocks": 1
+      },
+      {
+        "stack": "futureox_design_kernel::path::flatten_cubic_guarded > futureox_design_kernel::path::Path::flatten_impl > futureox_design_kernel::path::Path::flatten_for_fill > futureox_design_kernel::geometry_snapshot::prepare_node_geometry_supported > futureox_design_kernel::geometry_snapshot::prepare_node_geometry_supported",
+        "bytes": 8118272,
+        "blocks": 813
+      }
+    ],
+    "lastTile": {
+      "kind": "T",
+      "at": 1416253411615500,
+      "rss": 334249984,
+      "footprint": 396837632,
+      "internal": 328679424,
+      "compressed": 67616768,
+      "reusable": 0,
+      "live": 101968224,
+      "reserved": 197672960,
+      "blocks": 110853,
+      "skewMs": 0.005,
+      "residentLargePagesByLastObject": {
+        "live: frame output": 16777216,
+        "released: painter four-plane layers": 99500032,
+        "released: frame sample surfaces": 80740352,
+        "live: other": 3178496,
+        "live: decoded image": 37208064,
+        "released: tile output": 4194304,
+        "released: other painter surfaces": 8372224,
+        "released: filter surfaces": 2260992,
+        "live: image resources": 3178496
+      }
+    },
+    "lastFrame": {
+      "kind": "G",
+      "at": 1416253452580291,
+      "rss": 334086144,
+      "footprint": 396837632,
+      "internal": 328515584,
+      "compressed": 67780608,
+      "reusable": 0,
+      "live": 84192096,
+      "reserved": 179896320,
+      "blocks": 110857,
+      "skewMs": 0.005,
+      "residentLargePagesByLastObject": {
+        "released: frame output": 16777216,
+        "released: painter four-plane layers": 99500032,
+        "released: frame sample surfaces": 80740352,
+        "live: other": 3178496,
+        "live: decoded image": 37208064,
+        "released: tile output": 4194304,
+        "released: other painter surfaces": 8372224,
+        "released: filter surfaces": 2260992,
+        "live: image resources": 3178496
+      }
+    },
+    "planFreedObjectsAfterLastTile": 1.0,
+    "planFreedBytesAfterLastTile": 192.0,
+    "contourFreedBytesAfterLastTile": 0.0
+  }
+}

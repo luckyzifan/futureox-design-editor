@@ -30,8 +30,16 @@ export function interactivePath(document: DesignDocument, page: string, id: stri
   return at === page ? path : []
 }
 
-/** Selection establishes an entered scope via its ancestors, not via the
- * selected container itself. A second ordinary click therefore stays selected. */
+/** Mac Figma: frames and sections pass clicks through to child paint, and an
+ * empty frame interior selects the frame. Groups and boolean groups take the
+ * click until a descendant is the selection (entered). Components and
+ * instances do the same. Command/Ctrl skips this and returns the leaf, and
+ * repeating it does not walk back out. */
+function clickBarrier(node: DesignNode): boolean {
+  if (node.component || node.instance || node.componentSet) return true
+  if (node.kind === 'frame' || node.kind === 'section') return false
+  return node.kind === 'group' || !!node.booleanOperation
+}
 export function shallowSelectionHit(document: DesignDocument, selection: readonly string[],
   hit: string, path: readonly string[], parents: ParentMap = allParents(document)): string {
   const entered = new Set<string>()
@@ -41,15 +49,30 @@ export function shallowSelectionHit(document: DesignDocument, selection: readonl
     while (at && document.nodes[at]) { ancestors.push(at); at = parents.get(at) }
     if (!ancestors.some(parent => selection.includes(parent))) ancestors.forEach(parent => entered.add(parent))
   }
-  return path.find(id => boundary(document.nodes[id]) && !entered.has(id)) || hit
+  return path.find(id => clickBarrier(document.nodes[id]) && !entered.has(id)) || hit
 }
 
+function groupClickTarget(node: DesignNode): boolean {
+  if (node.component || node.instance || node.componentSet) return false
+  if (node.kind === 'frame' || node.kind === 'section') return false
+  return node.kind === 'group' || !!node.booleanOperation
+}
 export function deeperSelectionHit(document: DesignDocument, selection: readonly string[],
   hit: string, path: readonly string[], parents?: ParentMap): string {
   const chain = path.filter(id => id === hit || boundary(document.nodes[id]))
   const selected = chain.findIndex(id => selection.includes(id))
-  return selected >= 0 ? chain[Math.min(selected + 1, chain.length - 1)] :
-    shallowSelectionHit(document, selection, hit, path, parents)
+  // Mac Figma: double-click on a group's child selects that child. A selected
+  // frame still moves one container level.
+  if (selected >= 0) {
+    const chosen = document.nodes[chain[selected]]
+    if (chosen && groupClickTarget(chosen)) return hit
+    return chain[Math.min(selected + 1, chain.length - 1)]
+  }
+  const shallow = shallowSelectionHit(document, selection, hit, path, parents)
+  if (document.nodes[shallow] && groupClickTarget(document.nodes[shallow])) return hit
+  if (shallow === hit) return hit
+  const at = path.indexOf(shallow)
+  return at >= 0 && at + 1 < path.length ? path[at + 1] : shallow
 }
 
 export function navigateSelection(document: DesignDocument, page: string, selection: readonly string[],

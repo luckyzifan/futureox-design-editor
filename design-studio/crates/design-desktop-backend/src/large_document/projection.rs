@@ -18,7 +18,7 @@ impl SketchContext {
     pub fn new(s: &Session) -> Result<Self> {
         Ok(Self { document: json_part(s, "document.json")?, symbols: OnceLock::new(), revision:s.revision, directory:s.directory.clone() })
     }
-    fn symbol(&self, s: &Session, symbol: &str, cancel:&AtomicBool) -> Result<Option<(usize, usize)>> {
+    pub(super) fn symbol(&self, s: &Session, symbol: &str, cancel:&AtomicBool) -> Result<Option<(usize, usize)>> {
         check_cancel(cancel).map_err(issue)?;
         if s.revision!=self.revision || s.directory!=self.directory {return Err(issue("Symbol source revision changed"));}
         let lookup = self.symbols.get_or_init(|| {
@@ -71,7 +71,7 @@ fn read_span(s: &Session, p: usize, span: Span) -> Result<Vec<u8>> {
         .fragment(&mut file, span, s.parts[p].base_bytes)
         .map_err(issue)
 }
-fn read_window(s: &Session, p: usize, span: Span, limit: u64) -> Result<Vec<u8>> {
+pub(super) fn read_window(s: &Session, p: usize, span: Span, limit: u64) -> Result<Vec<u8>> {
     if span.len() > limit {
         return Err(issue(
             "Source subtree exceeds the bounded conversion window; select a smaller subtree",
@@ -102,7 +102,7 @@ pub(super) fn field(s: &Session, p: usize, n: usize, key: &str) -> Result<Vec<u8
         .value;
     read_span(s, p, span)
 }
-fn json_part(s: &Session, name: &str) -> Result<Value> {
+pub(super) fn json_part(s: &Session, name: &str) -> Result<Value> {
     let (p, part) = s
         .parts
         .iter()
@@ -321,7 +321,7 @@ fn sketch_roots_in(s:&Session,roots:Vec<Value>,facts:RootFacts,mut source_bytes:
             return Err(issue("Select a smaller component dependency working set"));
         }
     }
-    import_source_roots(roots, masters, images, document, &s.directory.join("source"))
+    import_source_roots(roots, masters, images, document, &s.directory.join("source"), false)
 }
 
 pub(super) fn preview_dependencies(root: &Value) -> (HashSet<String>, HashSet<String>) {
@@ -330,7 +330,7 @@ pub(super) fn preview_dependencies(root: &Value) -> (HashSet<String>, HashSet<St
 }
 
 pub(super) fn import_source_roots(roots: Vec<Value>, masters: BTreeMap<String,Value>,
-    images: HashSet<String>, document: &Value, archive_path: &Path) -> Result<(Document,Vec<String>)> {
+    images: HashSet<String>, document: &Value, archive_path: &Path, thumbnail: bool) -> Result<(Document,Vec<String>)> {
     let page_id = "00000000-0000-4000-8000-000000000001";
     let dependency_page_id = "00000000-0000-4000-8000-000000000002";
     // Sketch interop derives page IDs from member references. Keep those IDs
@@ -351,13 +351,26 @@ pub(super) fn import_source_roots(roots: Vec<Value>, masters: BTreeMap<String,Va
             }
         }
     }
+    let mut bitmaps=interop::SourceBitmapRefs::new();
     if !resources.is_empty() {
         let mut archive =
             zip::ZipArchive::new(File::open(archive_path).map_err(issue)?)
                 .map_err(issue)?;
+        let mut image_bytes=0u64;
+        for i in 0..archive.len() {
+            let file=archive.by_index_raw(i).map_err(issue)?;
+            if file.name().starts_with("images/"){image_bytes=image_bytes.saturating_add(file.size());}
+            if image_bytes>16*1024*1024{break;}
+        }
+        let large=image_bytes>16*1024*1024;
         let mut size = 0u64;
         for resource in resources {
             let mut entry = archive.by_name(&resource).map_err(issue)?;
+            if large && resource.starts_with("images/") && resource.to_ascii_lowercase().ends_with(".png") {
+                if let Some((uri,dims))=super::bitmaps::project(archive_path,&resource,entry.size(),&mut entry,thumbnail)? {
+                    bitmaps.insert(resource,(uri.into(),dims));continue;
+                }
+            }
             size += entry.size();
             if size > 16 * 1024 * 1024 {
                 return Err(issue(
@@ -373,7 +386,7 @@ pub(super) fn import_source_roots(roots: Vec<Value>, masters: BTreeMap<String,Va
             entries.insert(resource, bytes);
         }
     }
-    let report = interop::import_sketch_source_parts_with_pages(&entries,&json!({"version":136}),document,&pages,&page_references).map_err(issue)?;
+    let report = interop::import_sketch_source_bitmap_window(&entries,&json!({"version":136}),document,&pages,&page_references,&bitmaps).map_err(issue)?;
     Ok((report.document, report.warnings))
 }
 fn json_projection(s: &Session, p: usize, n: usize) -> Result<(Document, Vec<String>)> {

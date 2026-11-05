@@ -1,6 +1,6 @@
 import {beforeAll,expect,test} from 'vitest'
 import {initializeKernelModule} from './module'
-import {SourceViewportPlanner} from './source-viewport-plan'
+import {SourceViewportPlanner,coveredSourceDetail} from './source-viewport-plan'
 import {tilesCoverBounds} from './tile-cache'
 beforeAll(()=>initializeKernelModule())
 test('long diagonal travel resumes wide bands with complete, stable world coverage',()=>{
@@ -209,4 +209,18 @@ test('an overview narrows the existing global tiles and restores the full set if
  expect(requested.retryNativeCoverage(v,2,855,888)).toBe(true)
  const retry=requested.plan(v,2,855,888,false,undefined,false,window)
  expect(retry.tiles).toEqual(all.tiles)
+})
+
+
+test('a magnified wheel frame hands off one complete density and does not queue a screen of tiny tiles',()=>{
+ const planner=new SourceViewportPlanner('figmaSubpixel',true,true,true),size={width:855,height:928}
+ const base={x:0,y:0,zoom:31}
+ planner.plan(base,2,size.width,size.height,false);planner.presented(base,2,size.width,size.height)
+ const plan=planner.plan({x:-.25,y:.125,zoom:32},2,size.width,size.height,true,undefined,true)
+ expect(plan.tiles.length).toBeLessThanOrEqual(32)
+ const view={x:0,y:0,zoom:1},target={view,width:100,height:100}
+ const old={key:'old',x:0,y:0,width:100,height:100,gutter:0,zoom:1,used:1}
+ const left={...old,key:'left',width:100,height:200,zoom:2,used:2},right={...left,key:'right',x:100}
+ expect(coveredSourceDetail([old,left],target,[old],true)).toBeUndefined()
+ expect(coveredSourceDetail([old,left,right],target,[old],true)).toEqual([left,right])
 })

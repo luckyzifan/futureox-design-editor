@@ -501,7 +501,7 @@ describe('production compose admission at a mocked GPU device', () => {
     const frameResources = vi.spyOn(driver, 'prepareFrameResources')
     let current = true
     const empty = scene(), pending = observe(renderer.render(empty, false, true, () => current))
-    expect(prepare).toHaveBeenCalledWith(empty, true)
+    expect(prepare).toHaveBeenCalledWith(empty, true, false)
     expect(boundary.composeEntries()).toEqual(copies)
     current = false; await nextTurn()
     expect(pending.settled()).toBe(false)

@@ -50,12 +50,14 @@ export function nudgeSelectionDimensions(editor: Editor, command: DimensionNudge
   }, '键盘调整图层尺寸')
 }
 
-/** Figma-like deliberately preserves the current page-level Select All policy.
- * Sketch-like selects direct siblings in the already-entered common container.
- * Neither includes hidden/locked paths or claims the forced-selection variants. */
+/** Mac Figma and Sketch both select siblings inside the entered container.
+ * An empty selection, a top-level selection, or a selection that does not
+ * share one container falls back to the current page. Hidden and locked
+ * paths stay out. */
 export function selectAllCanvasIds(document: DesignDocument, page: string, selection: readonly string[], profile: ShortcutProfile): string[] {
+  if (profile !== 'figma-like' && profile !== 'sketch-like') return []
   const parents = allParents(document)
-  const scope = profile === 'sketch-like' ? marqueeScope(document, page, selection, parents) : page
+  const scope = marqueeScope(document, page, selection, parents)
   const children = scope === page ? document.pages.find(value => value.id === page)?.children : document.nodes[scope]?.children
   return (children || []).filter(id => interactivePath(document, page, id, false, parents).length > 0)
 }

@@ -11,6 +11,7 @@ import { RenderFailureAttempts, renderFailureFields, withRenderFailureStage } fr
 import { boundedPatchWire, supportsAcknowledgedPropertyPatch } from './authored-patch-transition'
 import type { PreparationStateReceiptV1 } from './preparation-state'
 import { displayRasterBackpressure } from './display-raster-scheduling'
+import { cpuTileFrameOptions, sampleCpuTile } from './cpu-tile-frame'
 import { samePreparationReceipt } from './authored-preparation-binding'
 import { renderQualityContract } from './render-quality'
 import { usesPainterCaptureReads, usesPainterSupport } from './painter-support-policy'
@@ -63,7 +64,7 @@ import { isDisplayBudgetError } from './gpu/display-budget'
 import { applyDocumentPatch, documentPatch, type DocumentPatch } from '../document-patch'
 import type { DesignDocument, Matrix } from '../model'
 import { preparePreviewSelection, previewTranslationDelta, translatePreviewScene } from './gpu/translated-scene'
-import { FrozenResidentOverlayPoses, resolveResidentOverlayFrame } from './gpu/resident-affine-pose'
+import { FrozenResidentOverlayPoses, resolveResidentOverlayFrame, stickyPresentedAffines } from './gpu/resident-affine-pose'
 import { interactionPatchTransforms, isInnerShadowFill, isInnerShadowPosePatch } from './interaction-patch-transforms'
 import { capturePoseOrigins, residentPoseShift } from './gpu/resident-pose-origin'
 import { tilePrepareViewport, localDisplayPrepareScope, tileLocalPrepareViewport } from './tile-prepare-viewport'
@@ -398,8 +399,11 @@ function innerShadowContentWindow(session:PoseSession, scene:GpuScene, window:Re
 }
 
 function displayedOverlayAffines(frame:import('./gpu/resident-presenter').ResidentFrame) {
-  if(gpu)return resolveResidentOverlayFrame(frame,gpu.driver,poseSession,frozenOverlayPoses)
-  if(frame.overlayPoseSlot!==undefined)frame.overlay=undefined
+  const affines=gpu?resolveResidentOverlayFrame(frame,gpu.driver,poseSession,frozenOverlayPoses):undefined
+  if(!gpu&&frame.overlayPoseSlot!==undefined)frame.overlay=undefined
+  // A stopped session is the affine rebase gap: the texture is still the
+  // previous pose, so chrome must not take the new rotation alone.
+  return stickyPresentedAffines(affines,poseSession?.stopped===true)
 }
 function rebasePose(pose:ResidentPose,expandCapture=false){
   if(poseSession?.slot===pose.slot){
@@ -686,6 +690,20 @@ self.onmessage = (e) => {
     return
   }
   const channel = request.channel === 'interaction' ? 'interaction' : 'canvas'
+  if(request.command==='source-hit'){
+    const canvas=lanes.get('canvas'),token=request.token
+    void (async()=>{
+      let sourceHit:unknown
+      try{
+        if(token&&canvas.sourceSnapshotToken===token&&preparation?.idle){
+          const reply=await preparation.request('canvas','source_hit',[request.query])
+          if(canvas.sourceSnapshotToken===token)sourceHit=reply.value
+        }
+      }catch{ /* An unavailable pick never changes the raster owner. */ }
+      self.postMessage({id:request.id,sourceHit})
+    })()
+    return
+  }
   if (request.command === 'display-attach') {
     try {
       executionPolicy=pinRenderPolicy(executionPolicy,request.executionPolicy)
@@ -2227,6 +2245,94 @@ self.onmessage = (e) => {
           }
           if (displayCanvas || preference !== 'auto') throw renderErrorWithBudget(error, message)
           failures.set(backend, message)
+        }
+      }
+      // CPU has no GPU candidate. A source overview must paint screen tiles,
+      // not one viewport-sized composite, and an empty tile list is only the
+      // snapshot admission that precedes those tiles.
+      if (executionPolicy.cpuOnly && Array.isArray(tileViewport) && !request.png && !request.readback) {
+        if (tileViewport.length > 256) throw new Error('Invalid tile request')
+        if (tileViewport.length === 0 && request.sourceSnapshot !== undefined) {
+          self.postMessage({
+            id: request.id,
+            backend: 'cpu',
+            buffer: new ArrayBuffer(0),
+            milliseconds: performance.now() - start,
+            drawCalls: 0,
+            triangles: 0,
+            compileMs: 0,
+            renderMs: 0,
+            reason: 'cpu-source-admission',
+          })
+          return
+        }
+        if (tileViewport.length > 0) {
+          await synchronizeDeferred()
+          const tileStarted = performance.now()
+          for (let index = 0; index < tileViewport.length; index++) {
+            if (packetWait?.controller.signal.aborted || generation !== previewGenerations[channel]) throw new Error('PREVIEW_CANCELLED')
+            const tile = tileViewport[index]
+            if (!tile || typeof tile.key !== 'string' || tile.key.length > 256 ||
+                ![tile.x, tile.y, tile.width, tile.height].every(Number.isSafeInteger) ||
+                tile.width < 1 || tile.height < 1 || tile.width > 8192 || tile.height > 8192 ||
+                !Number.isFinite(tile.zoom) || tile.zoom <= 0 || tile.zoom > MAX_CANVAS_RASTER_SCALE)
+              throw new Error('Invalid tile request')
+            const {bytes,width,height,divisor,reason} = await sampleCpuTile(cpuTileFrameOptions(renderOptions,tile),
+              options=>kernel.render_cpu_frame(JSON.stringify(options)),
+              ()=>!packetWait?.controller.signal.aborted && generation===previewGenerations[channel],
+              !!request.sourceSnapshot && renderIntent==='preview' && !exportFormat && !renderOptions.exportRegion &&
+                !renderOptions.pixelPreview && !executionPolicy.hdrCompositing)
+            let bitmap: ImageBitmap | undefined
+            if (divisor && typeof createImageBitmap === 'function') {
+              try {
+                bitmap = await createImageBitmap(new ImageData(new Uint8ClampedArray(bytes), width, height))
+              } catch { bitmap = undefined }
+            }
+            if (packetWait?.controller.signal.aborted || generation !== previewGenerations[channel]) {
+              bitmap?.close()
+              throw new Error('PREVIEW_CANCELLED')
+            }
+            const transfer: Transferable[] = []
+            let buffer: ArrayBuffer | undefined
+            if (bitmap) transfer.push(bitmap)
+            else {
+              const copy = bytes.slice()
+              buffer = copy.buffer
+              transfer.push(buffer)
+            }
+            self.postMessage({
+              id: request.id,
+              tile: {
+                ...tile,
+                backend: 'cpu',
+                description: divisor===1 ? 'cpu tile' : 'cpu navigation preview',
+                cpuDivisor:divisor,
+                reason,
+                cached: false,
+                milliseconds: 0,
+                compileMs: 0,
+                graphMs: 0,
+                finishMs: 0,
+                checkpointMs: 0,
+              },
+              ...(buffer ? { buffer } : {}),
+              tileBitmap: bitmap,
+            }, { transfer })
+            await yieldPreviewTask()
+          }
+          self.postMessage({
+            id: request.id,
+            backend: 'cpu',
+            buffer: new ArrayBuffer(0),
+            milliseconds: performance.now() - start,
+            renderMs: performance.now() - tileStarted,
+            drawCalls: 0,
+            triangles: 0,
+            compileMs: 0,
+            previewTiles: tileViewport.length,
+            reason: 'cpu-tiles',
+          })
+          return
         }
       }
       rendererCode=1

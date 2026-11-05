@@ -234,6 +234,7 @@ export async function exportVisualSvg(doc: DesignDocument, pageId: string, scale
       width={box.width}
       height={box.height}
       viewBox={`0 0 ${box.width} ${box.height}`}
+      colorInterpolation="sRGB"
     >
       <title>{doc.name}</title>
       <metadata>{`futureox-desgin: embedded raster for ${issues.join(', ')}`}</metadata>
@@ -265,6 +266,7 @@ export function svgSource(doc: DesignDocument, pageId: string, target: ExportTar
       width={b.width * scale}
       height={b.height * scale}
       viewBox={`${b.x} ${b.y} ${b.width} ${b.height}`}
+      colorInterpolation="sRGB"
     >
       <title>{doc.name}</title>
       {fontMode === 'embed' && <defs>{svgEmbeddedFonts(embeddedFonts ?? doc.fonts, new Set(scene(doc,pageId).filter(e=>doc.nodes[e.id].kind === 'text').flatMap(e=>['default', doc.nodes[e.id].textStyle?.fontId || 'default', ...(doc.nodes[e.id].textStyle?.fallbacks || []), ...(doc.nodes[e.id].textRuns || []).map(r=>r.fontId || doc.nodes[e.id].textStyle?.fontId || 'default')])), fontByteLimit).map(font => <style key={font.id} data-svg-font="1" data-font-id={font.id} data-font-family={font.family}>{font.css}</style>)}</defs>}
@@ -394,7 +396,7 @@ export async function exportRasterBatch(
   colorOutput?: import('./color').ColorOutput, signal?: AbortSignal,
   format: 'png' | 'jpeg' | 'webp' | 'pdf' = 'png',
 ) {
-  if (format !== 'png' && colorOutput && colorOutput.space !== 'srgb') throw new Error('JPEG/WebP/PDF 当前使用 sRGB；广色域请导出 PNG')
+  if (format !== 'png' && colorOutput && colorOutput.space !== 'srgb' && colorOutput.space !== 'display-p3') throw new Error('JPEG、WebP 与 PDF 只标记 sRGB 或 Display P3；其他色彩空间请导出 PNG')
   if (signal?.aborted) throw new Error('已取消导出')
   if (!scales.length || scales.length > 16 || new Set(scales).size !== scales.length)
     throw new Error('请选择 1–16 个不重复的导出倍率')

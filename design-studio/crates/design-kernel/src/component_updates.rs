@@ -8,6 +8,9 @@ mod byte_ledger;
 pub(crate) struct Plan { pub instances:BTreeSet<String>, pub roots:BTreeSet<String> }
 fn parents(doc:&Document)->BTreeMap<String,String>{doc.nodes.iter().flat_map(|(id,n)|n.children.iter().map(move|c|(c.clone(),id.clone()))).collect()}
 fn ancestors(id:&str,parents:&BTreeMap<String,String>)->Vec<String>{let mut out=vec![id.to_owned()];while let Some(p)=parents.get(out.last().unwrap()){out.push(p.clone());}out}
+fn blocks_scoped_patch(n:&Node)->bool{
+ n.connector.is_some()||n.text_path.is_some()||n.repeat.is_some()||n.board.as_ref().is_some_and(|b|b.kind=="code-block")||!n.bindings.is_empty()||!n.style_refs.is_empty()||!n.variable_modes.is_empty()||n.instance.as_ref().is_some_and(|i|!i.slot_contents.is_empty())||n.component.as_ref().is_some_and(|c|!c.properties.is_empty()||!c.slots.is_empty())
+}
 pub(crate) fn plan(before:&Document,after:&Document)->Result<Option<Plan>,String>{
  let patch=DocumentPatch::between(before,after).map_err(|e|e.to_string())?;
  plan_patch(before,&patch)
@@ -18,8 +21,18 @@ fn plan_patch(before:&Document,patch:&DocumentPatch)->Result<Option<Plan>,String
   if old.kind!=next.kind||old.component!=next.component||old.component_set!=next.component_set||old.component_key!=next.component_key||old.instance_origin!=next.instance_origin{return Ok(None)}
  }
  let next=|id:&str|patch.nodes.get(id).and_then(Option::as_ref).unwrap_or(&before.nodes[id]);
- if before.nodes.keys().map(|id|next(id)).any(|n|n.connector.is_some()||n.text_path.is_some()||n.repeat.is_some()||n.board.as_ref().is_some_and(|b|b.kind=="code-block")||!n.bindings.is_empty()||!n.style_refs.is_empty()||!n.variable_modes.is_empty()||n.instance.as_ref().is_some_and(|i|!i.slot_contents.is_empty())||n.component.as_ref().is_some_and(|c|!c.properties.is_empty()||!c.slots.is_empty())){return Ok(None)}
  let parent=parents(before);
+ // Cold connectors, repeats and bindings do not force a full resolve. A
+ // connector forces it only when an endpoint names a patched node. Patched
+ // nodes and their ancestors keep the previous dependency gate.
+ for id in patch.nodes.keys(){if ancestors(id,&parent).iter().any(|id|blocks_scoped_patch(next(id))){return Ok(None)}}
+ let edited:BTreeSet<&str>=patch.nodes.keys().map(String::as_str).collect();
+ for (id,node) in &before.nodes {
+  if patch.nodes.contains_key(id){continue}
+  if let Some(connector)=&node.connector {
+   if connector.from.node_id.as_deref().is_some_and(|target|edited.contains(target))||connector.to.node_id.as_deref().is_some_and(|target|edited.contains(target)){return Ok(None)}
+  }
+ }
  // An ordinary reparent/reorder affects both complete original root islands.
  // Parent lists are explicit patch entries; global validation below still
  // rejects missing counterparts, duplicate parents and cycles atomically.
@@ -47,13 +60,13 @@ fn plan_patch(before:&Document,patch:&DocumentPatch)->Result<Option<Plan>,String
    if let Some(origin)=&n.instance_origin{instances.insert(origin.owner.clone());}
   }
  }
- for depth in 0..=32{let count=definitions.len();
+ if !definitions.is_empty(){for depth in 0..=32{let count=definitions.len();
   for id in before.nodes.keys(){let n=next(id);if n.instance.as_ref().is_some_and(|i|definitions.contains(&i.component_id)){
    instances.insert(n.instance_origin.as_ref().map_or(id.clone(),|o|o.owner.clone()));
    for ancestor in ancestors(id,&parent){if next(&ancestor).component.is_some(){definitions.insert(ancestor);}}
   }}
   if definitions.len()==count{break}if depth==32{return Ok(None)}
- }
+ }}
  for id in &instances{if !before.nodes.contains_key(id){return Ok(None)}if let Some(root)=ancestors(id,&parent).last(){roots.insert(root.clone());}}
  Ok(Some(Plan{instances,roots}))
 }
@@ -243,5 +256,24 @@ mod tests{
    assert!(state.patch(&serde_json::to_string(&patch).unwrap(),receipt,&fonts).is_err(),"case {kind}");
    assert_eq!(state.document.as_ref(),Some(&before));assert_eq!(state.receipt,receipt);assert_eq!(state.ledger.as_ref().unwrap().bytes(),bytes);
   }
+ }
+ #[test]fn connector_on_another_page_does_not_force_a_full_plan(){
+  let mut doc=fixture();
+  let plain=crate::facet::sample_node("plain","rectangle");
+  doc.pages[0].children.push(plain.id.clone());
+  doc.nodes.insert(plain.id.clone(),plain.clone());
+  let cold=crate::facet::sample_node("cold","rectangle");
+  let mut wire=crate::facet::sample_node("wire","vector");
+  wire.connector=Some(serde_json::from_value(json!({"from":{"point":{"x":0.0,"y":0.0},"nodeId":"cold"},"to":{"point":{"x":10.0,"y":0.0},"nodeId":"cold"},"style":"straight"})).unwrap());
+  doc.nodes.insert(cold.id.clone(),cold);
+  doc.nodes.insert(wire.id.clone(),wire);
+  doc.pages.push(crate::scene::Page{guides:Vec::new(),id:"p2".into(),name:"assets".into(),children:vec!["cold".into(),"wire".into()],background:"#ffffff".into()});
+  let mut changed=plain;changed.transform.0[4]=12.;
+  let patch=DocumentPatch{nodes:BTreeMap::from([("plain".into(),Some(changed))]),fields:BTreeMap::new()};
+  assert!(plan_patch(&doc,&patch).unwrap().is_some());
+  let mut aimed=doc.nodes["wire"].clone();
+  aimed.connector.as_mut().unwrap().to.node_id=Some("plain".into());
+  doc.nodes.insert("wire".into(),aimed);
+  assert!(plan_patch(&doc,&patch).unwrap().is_none());
  }
 }
