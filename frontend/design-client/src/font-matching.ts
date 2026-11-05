@@ -2,7 +2,11 @@ import { defaultTextStyle, type DesignDocument, type DesignNode } from './model'
 
 export type FontResource = NonNullable<DesignDocument['fonts']>[string]
 export type FontIdentity = { family: string; style: string; postscript: string }
-type Source = { style?: string; runs?: Record<string, string> }
+export type FontSourceRecord = { style?: string; runs?: Record<string, string>; resolved?: string[] }
+type Source = FontSourceRecord
+export function sourceNameResolved(source: Source, name: string) {
+  return !!source.resolved?.includes(name)
+}
 export function sourceFonts(document: DesignDocument, node: DesignNode): Source {
   const direct = document.designSystem?.fontSources?.[node.id]
   if (direct) return direct
@@ -17,10 +21,10 @@ export function sourceFonts(document: DesignDocument, node: DesignNode): Source 
 export function unmatchedSourceFonts(document: DesignDocument, node: DesignNode): string[] {
   const source = sourceFonts(document, node), names = new Set<string>()
   const font = node.textStyle?.fontId ?? 'default'
-  if (typeof source.style === 'string' && font === 'default') names.add(source.style)
+  if (typeof source.style === 'string' && font === 'default' && !sourceNameResolved(source, source.style)) names.add(source.style)
   for (const [index, name] of Object.entries(source.runs || {})) {
     const run = node.textRuns?.[Number(index)]
-    if (run && typeof name === 'string' && (run.fontId ?? font) === 'default') names.add(name)
+    if (run && typeof name === 'string' && (run.fontId ?? font) === 'default' && !sourceNameResolved(source, name)) names.add(name)
   }
   return [...names]
 }

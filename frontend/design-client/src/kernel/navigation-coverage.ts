@@ -1,4 +1,5 @@
 import type { CanvasCamera } from '../canvas-camera'
+import { navigationPreviewDensity } from './navigation-zoom'
 import { tilesCoverBounds, type RasterTile } from './tile-cache'
 
 export type CoverageTile = RasterTile & {
@@ -24,6 +25,27 @@ export function navigationCoverageTiles<T extends CoverageTile>(tiles: Iterable<
 
 export function navigationHasCoverage(tiles: Iterable<RasterTile>, view: CanvasCamera, width: number, height: number, density = 0) {
   return tilesCoverBounds([...tiles], navigationCoverageBounds(view, width, height), density)
+}
+
+/** Density a bounded continuity preview would sample. A coarser resident may
+ * stay on screen, but it is not finished coverage and must not cancel the
+ * preview that fills the rest of the viewport. */
+export function navigationReadyDensity(zoom: number, dpr: number, width: number, height: number, native = false) {
+  if (!Number.isFinite(zoom) || zoom <= 0) return 0
+  return zoom * navigationPreviewDensity(dpr, width, height, native)
+}
+
+/** A viewport preview fills holes under same-content residents. It hides a
+ * tile only when that tile belongs to another document revision. */
+export function previewUnderlayHides(tile: { document?: object; revision?: number }, preview: { document?: object; revision?: number }) {
+  return tile.document !== preview.document || tile.revision !== preview.revision
+}
+
+/** Compositing and halo failures must not replace a frame that still has
+ * residents. The kernel retries a degraded display; this keeps the last
+ * pixels if that retry is still in flight. */
+export function retainedPressureError(error: unknown) {
+  return /Compositing memory budget exceeded|Combined filter dependency halo exceeds 2048 device pixels|Combined zoom source dependency halo exceeds 2048 device pixels|Zoom source filter halo exceeds 2048 device pixels|Frame compositing work budget exceeded|Layer surface exceeds 16 million pixels|Gaussian sigma must be in/.test(String(error))
 }
 
 /** One running immutable capture may finish over quiet/release. Waiting goals

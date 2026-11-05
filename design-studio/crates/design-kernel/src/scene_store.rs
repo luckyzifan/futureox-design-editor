@@ -513,11 +513,51 @@ fn build_tree(
     Ok(())
 }
 
+/// Native source admission tied to the exact placed document. There is no
+/// mutable access: taking the document back consumes the proof.
+pub struct ValidatedSource(Document);
+impl ValidatedSource {
+    pub fn new(document: Document) -> Result<Self, String> {
+        document.validate_native_source()?;
+        Ok(Self(document))
+    }
+    pub fn into_document(self) -> Document { self.0 }
+    pub fn write(&self, path: &Path, generation: &str, warnings: &[String], cancel: &AtomicBool) -> io::Result<Descriptor> {
+        write_source(path, generation, SourceToWrite::Validated(self), warnings, cancel)
+    }
+}
+impl std::ops::Deref for ValidatedSource {
+    type Target = Document;
+    fn deref(&self) -> &Document { &self.0 }
+}
+#[derive(Clone, Copy)]
+enum SourceToWrite<'a> {
+    Raw(&'a Document),
+    Validated(&'a ValidatedSource),
+}
+impl<'a> SourceToWrite<'a> {
+    fn document(self) -> &'a Document {
+        match self { Self::Raw(doc) => doc, Self::Validated(doc) => doc }
+    }
+    #[cfg(feature="mapped-source-snapshot")]
+    fn checked_document(self) -> io::Result<&'a Document> {
+        if let Self::Raw(doc) = self {
+            doc.validate_native_source().map_err(invalid_owned)?;
+        }
+        Ok(self.document())
+    }
+}
+
 /// Create a new derived store. Never overwrites an existing path. Publication
 /// is the returned descriptor after all records/index/footer have been flushed;
 /// failed or cancelled writes remove only their own newly-created files.
 pub fn write(
     path:&Path,generation:&str,document:&Document,warnings:&[String],cancel:&AtomicBool,
+) -> io::Result<Descriptor> {
+    write_source(path, generation, SourceToWrite::Raw(document), warnings, cancel)
+}
+fn write_source(
+    path:&Path,generation:&str,source:SourceToWrite<'_>,warnings:&[String],cancel:&AtomicBool,
 ) -> io::Result<Descriptor> {
     let mapped=match std::env::var("CORE_SOURCE_SNAPSHOT_FORMAT").as_deref() {
         Err(std::env::VarError::NotPresent)|Ok("legacy")=>false,
@@ -525,10 +565,10 @@ pub fn write(
     };
     #[cfg(not(feature="mapped-source-snapshot"))]
     if mapped {return Err(invalid("Mapped source snapshot support was not compiled"));}
-    let base=write_legacy(path,generation,document,warnings,cancel)?;
+    let base=write_legacy(path,generation,source.document(),warnings,cancel)?;
     #[cfg(feature="mapped-source-snapshot")]
     if mapped {
-        return match archive::append(path,base,document,cancel) {
+        return match archive::append(path,base,source,cancel) {
             Ok(descriptor)=>Ok(descriptor),Err(error)=>{let _=fs::remove_file(path);Err(error)},
         };
     }
@@ -548,7 +588,7 @@ pub fn migrate(source:&Path,expected:&Descriptor,destination:&Path,cancel:&Atomi
     // Validate the copied prefix, not a prior view of a mutable source path.
     // All original bytes (including unknown/provenance fields) stay unchanged.
     let (document,_)=Reader::open(destination,&base,cancel)?.into_document(cancel)?;
-    let descriptor=archive::append(destination,base,&document,cancel)?;owned.published=true;Ok(descriptor)
+    let descriptor=archive::append(destination,base,SourceToWrite::Raw(&document),cancel)?;owned.published=true;Ok(descriptor)
 }
 
 fn write_legacy(
@@ -1046,7 +1086,7 @@ impl Reader {
             warnings,
             ..
         } = self.metadata.take().unwrap();
-        document.nodes = self.read_all_nodes(cancel)?;
+        document.nodes = self.read_all_nodes(cancel)?.into();
         Ok((document, warnings))
     }
     /// Explicit complete fallback for a shared lazy reader. Metadata owns no
@@ -1055,7 +1095,7 @@ impl Reader {
         #[cfg(feature="mapped-source-snapshot")]
         {self.render_metadata=None;}
         self.ensure_metadata(cancel)?;let mut document=self.metadata.take().unwrap().document;
-        self.clear_payload_cache();let nodes=self.read_all_nodes(cancel);self.clear_payload_cache();document.nodes=nodes?;Ok(document)
+        self.clear_payload_cache();let nodes=self.read_all_nodes(cancel);self.clear_payload_cache();document.nodes=nodes?.into();Ok(document)
     }
 }
 

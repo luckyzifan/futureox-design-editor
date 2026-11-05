@@ -1,0 +1,20 @@
+.plugin-panel-backdrop { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 24px; background: #1c191752; backdrop-filter: blur(10px); }
+.plugin-panel { width: min(560px, 100%); max-height: min(720px, calc(100dvh - 48px)); overflow: auto; border: 1px solid var(--workspace-border); border-radius: 18px; background: var(--workspace-panel); color: var(--workspace-text); box-shadow: 0 24px 64px #1c191724, 0 1px 2px #1c19170a; }
+.plugin-panel header, .plugin-panel footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; }
+.plugin-panel header { border-bottom: 1px solid var(--workspace-border); }
+.plugin-panel h2 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+.plugin-panel header button, .plugin-panel footer button { border: 1px solid var(--workspace-border); border-radius: 8px; background: var(--workspace-panel); color: var(--workspace-text); padding: 6px 10px; }
+.plugin-panel header button:focus-visible, .plugin-panel footer button:focus-visible, .plugin-panel summary:focus-visible, .plugin-local-list button:focus-visible { outline: 2px solid var(--workspace-accent); outline-offset: 2px; }
+.plugin-panel h3 { margin: 0; font-size: 13px; font-weight: 600; }
+.plugin-local-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.plugin-local-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.plugin-local-list span { min-width: 0; overflow-wrap: anywhere; }
+.plugin-local-list button { border: 1px solid var(--workspace-border); border-radius: 8px; background: var(--workspace-panel); color: var(--workspace-text); padding: 6px 10px; }
+.plugin-panel .plugin-panel-primary { background: var(--workspace-accent); border-color: var(--workspace-accent); color: #fff; }
+.plugin-panel p, .plugin-panel li { color: var(--workspace-muted); font-size: 12px; line-height: 1.45; }
+.plugin-panel section { display: grid; gap: 8px; padding: 14px 16px; }
+.plugin-panel footer { border-top: 1px solid var(--workspace-border); }
+.plugin-panel [role="alert"] { color: var(--workspace-danger, #b63a42); }
+.plugin-panel table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.plugin-panel th, .plugin-panel td { border-top: 1px solid var(--workspace-border); padding: 6px 4px; text-align: left; vertical-align: top; }
+.plugin-panel code { font-size: 11px; }

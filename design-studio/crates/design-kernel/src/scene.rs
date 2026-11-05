@@ -5,6 +5,9 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+mod nodes;
+pub use nodes::DocumentNodes;
+
 pub const MAX_GRADIENT_STOPS: usize = 64;
 
 #[cfg(test)]
@@ -64,7 +67,7 @@ pub struct Document {
     pub id: String,
     pub name: String,
     pub pages: Vec<Page>,
-    pub nodes: BTreeMap<String, Node>,
+    pub nodes: DocumentNodes,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub fonts: BTreeMap<String, crate::font::FontResource>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1006,6 +1009,15 @@ impl Node {
         if let Some(path) = &self.derived_path {
             return Ok((path.as_ref().clone(), path.as_ref().clone()));
         }
+        // A rectangle, frame, section, or slice with a stored corner radius
+        // draws that radius on the fill. An imported sharp outline must not
+        // keep the corner square after the inspector saves TL/TR/BR/BL.
+        if matches!(self.kind.as_str(), "slice" | "frame" | "section" | "rectangle")
+            && (self.radii.iter().any(|radius| *radius != 0.) || self.smoothing != 0.)
+        {
+            let path = Path::rectangle(self.width, self.height, self.radii, self.smoothing);
+            return Ok((path.clone(), path));
+        }
         if let Some(g) = &self.network {
             return g.paths();
         }
@@ -1399,6 +1411,14 @@ impl Document {
         }
         Ok(())
     }
+    pub fn requires_schema21(&self) -> bool {
+        let runs = |v: &serde_json::Value| v.as_array().is_some_and(|rows| rows.iter().any(|run| {
+            run.get("letterSpacing").is_some_and(|value| !value.is_null())
+                || run.get("lineHeight").is_some_and(|value| !value.is_null())
+        }));
+        self.nodes.values().any(|n| n.text_runs.iter().any(|r| r.letter_spacing.is_some() || r.line_height.is_some())
+            || n.instance.as_ref().is_some_and(|i| i.overrides.values().any(|o| o.get("textRuns").is_some_and(runs))))
+    }
     pub fn requires_schema20(&self) -> bool {
         fn extended(a:&crate::prototype::Action)->bool {a.transition_style.is_some() || a.then_actions.iter().flatten().chain(a.else_actions.iter().flatten()).any(extended)}
         if self.prototype.as_ref().is_some_and(|p|p.interactions.values().flatten().flat_map(|e|&e.actions).any(extended)) {return true}
@@ -1451,6 +1471,7 @@ impl Document {
         self.validate_edit_scope(Some(nodes))
     }
     fn validate_edit_scope(&self, changed:Option<&std::collections::BTreeSet<String>>) -> Result<(),String> {
+        if self.schema_version<21 && self.requires_schema21() {return Err("Per-run letter spacing and line height require schema 21".into());}
         if self.schema_version<20 && self.requires_schema20() {return Err("Paragraph and vertical text layout require schema 20".into());}
         if self.schema_version<19 && self.requires_schema19() {return Err("Zoom blur requires schema 19".into());}
         if self.schema_version<18 && self.requires_schema18() {return Err("Spatial sigma filters require schema 18".into());}
@@ -1540,7 +1561,7 @@ impl Document {
         {
             return Err("Ruler guide limit exceeded".into());
         }
-        if ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].contains(&self.schema_version)
+        if ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].contains(&self.schema_version)
             || self.name.trim().is_empty()
             || self.name.encode_utf16().count() > 200
             || self.fonts.len() > 32
@@ -1700,5 +1721,33 @@ mod storage_layout_tests {
         assert_eq!(serde_json::to_vec(&n).unwrap(),encoded);
         assert_eq!(n.fills.capacity(),n.fills.len());assert_eq!(n.effects.capacity(),0);assert_eq!(n.strokes.capacity(),0);
         assert!(std::mem::size_of::<Node>()<=1024,"hot Node slots must not regain inline cold payloads: {}",std::mem::size_of::<Node>());
+    }
+    #[test]
+    fn stored_top_left_radius_rounds_the_fill_ahead_of_a_sharp_outline() {
+        use crate::math::Point;
+        use crate::path::Command;
+        let mut node = crate::facet::sample_node("n", "rectangle");
+        node.width = 100.;
+        node.height = 80.;
+        node.radii = [24., 0., 0., 0.];
+        let sharp = crate::path::Path::polygon(
+            &[
+                Point::new(0., 0.),
+                Point::new(100., 0.),
+                Point::new(100., 80.),
+                Point::new(0., 80.),
+            ],
+            true,
+        );
+        node.vector_geometry = Some(Arc::new(
+            crate::vector_geometry::VectorGeometry::from_paths(&sharp, &sharp, "nonzero").unwrap(),
+        ));
+        let (fill, stroke) = node.paths().unwrap();
+        assert!(fill.commands.iter().any(|command| matches!(command, Command::Arc { .. })));
+        assert!(stroke.commands.iter().any(|command| matches!(command, Command::Arc { .. })));
+        let flat = fill.flatten(crate::math::Transform::default(), 0.5).unwrap();
+        let points = &flat[0].points;
+        assert!(points.iter().any(|point| point.x < 8. && point.y < 8.));
+        assert!(points.iter().all(|point| point.x > 1. || point.y > 1.));
     }
 }

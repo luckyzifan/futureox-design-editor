@@ -50,6 +50,46 @@ fn modify(path: &Path, at: u64, bytes: &[u8]) {
     file.flush().unwrap();
 }
 
+#[cfg(feature = "mapped-source-snapshot")]
+#[test]
+fn mapped_write_reuses_only_the_validated_document() {
+    let cancel = AtomicBool::new(false);
+    let mut doc = document(2);
+    for node in doc.nodes.values_mut() { node.bindings.clear(); }
+    let mut stage = crate::facet::sample_node("stage", "frame");
+    stage.children = std::mem::replace(&mut doc.pages[0].children, vec!["stage".into()]);
+    stage.fills.clear();
+    stage.blend = "pass-through".into();
+    stage.transform = crate::math::Transform::default();
+    stage.clip = false;
+    doc.nodes.insert("stage".into(), stage);
+    let expected = serde_json::to_vec(&doc).unwrap();
+    let count = || crate::scene::FULL_DOCUMENT_VALIDATIONS.with(std::cell::Cell::get);
+    let start = count();
+    let checked = ValidatedSource::new(doc).unwrap();
+    assert_eq!(count() - start, 1);
+    let a = Fixture::new();
+    let b = Fixture::new();
+    let append = |f: &Fixture, source: SourceToWrite<'_>| {
+        let base = write_legacy(&f.path, "gen", source.document(), &[], &cancel).unwrap();
+        archive::append(&f.path, base, source, &cancel)
+    };
+    let receipt = append(&a, SourceToWrite::Validated(&checked)).unwrap();
+    assert_eq!(count() - start, 1);
+    let raw = append(&b, SourceToWrite::Raw(&checked)).unwrap();
+    assert_eq!(count() - start, 2);
+    assert_eq!(receipt, raw);
+    assert_eq!(fs::read(&a.path).unwrap(), fs::read(&b.path).unwrap());
+    let reader = Reader::open(&a.path, &receipt, &cancel).unwrap();
+    assert!(reader.directory().is_some(), "exercise an actual mapped directory");
+    assert_eq!(serde_json::to_vec(&reader.into_document(&cancel).unwrap().0).unwrap(), expected);
+
+    let mut invalid = checked.into_document();
+    invalid.pages[0].children = vec!["missing".into()];
+    assert!(append(&Fixture::new(), SourceToWrite::Raw(&invalid)).is_err());
+    assert!(ValidatedSource::new(invalid).is_err());
+}
+
 #[test]
 fn complete_roundtrip_preserves_metadata_order_and_float_bits_after_reopen() {
     let fixture = Fixture::new();
@@ -312,7 +352,7 @@ fn dense_node_demand_streams_once_without_loading_metadata() {
     let descriptor = fixture.write(&doc);
     let cancel = AtomicBool::new(false);
     let mut reader = Reader::open(&fixture.path, &descriptor, &cancel).unwrap();
-    assert_eq!(reader.read_all_nodes(&cancel).unwrap(), doc.nodes);
+    assert_eq!(reader.read_all_nodes(&cancel).unwrap(), doc.nodes.into_map());
     let stats = reader.stats();
     assert_eq!(stats.metadata_reads, 0);
     assert_eq!(stats.node_reads, 1001);

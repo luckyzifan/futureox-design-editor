@@ -14,6 +14,7 @@ import {
   isNativePinch,
   worldToScreen,
   zoomAt,
+  zoomStep,
 } from './canvas-camera'
 
 // Preserve the original precision matrix; expanded zooms are tested separately.
@@ -293,7 +294,7 @@ test.each(['zh-CN', 'en'] as const)('repeated control clicks use the latest came
   const zoomIn = button(interfaceText[locale].zoomIn)
   const zoomOut = button(interfaceText[locale].zoomOut)
   for (let i = 0; i < 3; i++) zoomIn()
-  expect(editor.state.view.zoom).toBe(2 ** 3)
+  expect(editor.state.view.zoom).toBe(2)
   closePoint(worldToScreen(editor.state.view, point), anchor)
   for (let i = 0; i < 3; i++) zoomOut()
   expect(editor.state.view.zoom).toBe(initial.zoom)
@@ -352,6 +353,17 @@ test('revealInView keeps visible selections perfectly still and pans minimally o
   const centred = revealInView(view, huge, size)!
   expect(centred.x).toBe(size.width / 2 - (huge.x + huge.width / 2))
   expect(centred.y).toBe(size.height / 2 - (huge.y + huge.height / 2))
+})
+
+test('keyboard zoom stops step through the Figma ladder and stay inside the camera clamp', () => {
+  expect(zoomStep(1, 1)).toBe(1.25)
+  expect(zoomStep(1.25, 1)).toBe(1.5)
+  expect(zoomStep(1.5, 1)).toBe(2)
+  expect(zoomStep(1.1, -1)).toBe(1)
+  expect(zoomStep(1, -1)).toBe(0.75)
+  expect(zoomStep(0.02, -1)).toBe(0.02)
+  expect(zoomStep(256, 1)).toBe(256)
+  expect(zoomStep(Number.NaN, 1)).toBe(1)
 })
 
 test('requestReveal publishes a discrete signal the canvas can consume and filters unknown ids', () => {

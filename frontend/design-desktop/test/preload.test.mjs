@@ -43,11 +43,11 @@ test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or s
     Object.keys(api).sort(),
     [
       'version',
+      'plugins',
       'petConfigure',
       'petEvent',
       'onPetStatus',
       'diagnostics',
-      'designAi',
       'automation',
       'setInterfaceLocale',
       'rendererReady',
@@ -55,6 +55,7 @@ test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or s
       'workspaceRoot',
       'live',
       'clipboard',
+      'designAi',
       'fonts',
       'performTextCommand',
       'renderPolicy',
@@ -83,6 +84,7 @@ test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or s
       'onCommand',
       'nativeRender',
       'nativeRenderStats',
+      'videoEncode',
     ].sort(),
   )
   assert.equal(Object.isFrozen(api.designAi),true)
@@ -141,7 +143,7 @@ test('command subscription strips IPC event, rejects invalid payloads and remove
   const observed = []
   const event = { sender: { dangerous: 'never expose' } }
   const unsubscribe = api.onCommand((...args) => observed.push(args))
-  const commands = ['copy-properties','paste-properties','select-matching','select-inverse','new', 'new-page', 'open', 'openPending', 'save', 'saveAs', 'recover', 'zoomIn', 'zoomOut', 'zoom100', 'undo', 'redo', 'cut', 'copy', 'paste', 'copy-as-png', 'copy-as-svg', 'paste-to-replace', 'paste-over-selection', 'paste-in-place', 'select-all', 'duplicate', 'group', 'ungroup', 'delete', 'zoom-fit', 'zoom-selection', 'center-selection']
+  const commands = ['plugins', 'copy-properties','paste-properties','select-matching','select-inverse','new', 'new-page', 'open', 'openPending', 'save', 'saveAs', 'recover', 'zoomIn', 'zoomOut', 'zoom100', 'undo', 'redo', 'cut', 'copy', 'paste', 'copy-as-png', 'copy-as-svg', 'paste-to-replace', 'paste-over-selection', 'paste-in-place', 'select-all', 'duplicate', 'group', 'ungroup', 'delete', 'zoom-fit', 'zoom-selection', 'center-selection']
   for (const command of commands) {
     events.emit('design-desktop:command', event, command)
   }
@@ -281,6 +283,17 @@ test('native render API is frozen, maps the fixed native-render channels, and st
   assert.equal(await api.nativeRenderStats(), null)
 })
 
+test('video encode preload is frozen and does not accept a filesystem path', async () => {
+  const { api, calls } = load()
+  assert.equal(Object.isFrozen(api.videoEncode), true)
+  assert.deepEqual(Object.keys(api.videoEncode).sort(), ['encode', 'status'])
+  await api.videoEncode.status()
+  await api.videoEncode.encode({ format: 'mp4', fps: 12, frames: [] })
+  assert.deepEqual(calls.map(call => call[0]), ['design-desktop:video-encode-status', 'design-desktop:video-encode'])
+  assert.equal(calls[1][1].format, 'mp4')
+  assert.equal(Object.hasOwn(calls[1][1], 'ffmpegPath'), false)
+})
+
 
 test('automation preload is frozen and routes only named IPC methods', async () => {
   const { api, calls } = load()
@@ -376,6 +389,25 @@ test('pet health subscription validates payload, strips IPC event and unsubscrib
   events.emit('design-desktop:pet-status',{}, {mode:'active',phase:'unknown',revision:4})
   assert.equal(received.length,3)
   unsubscribe(); assert.equal(events.listenerCount('design-desktop:pet-status'),0)
+})
+
+test('local plugin preload lists startup plugins and accepts only a grant launch', async () => {
+  const { api, calls, events } = load()
+  assert.equal(Object.isFrozen(api.plugins), true)
+  assert.deepEqual(await api.plugins.list({ path: '/tmp/plugins' }), { status: 'ok' })
+  assert.deepEqual(calls.at(-1), ['design-desktop:plugins-list', undefined])
+  const seen = []
+  const stop = api.plugins.onLaunch(value => seen.push(value))
+  const grant = '00000000-0000-4000-8000-000000000001'
+  events.emit('design-desktop:plugin-launch', { sender: { secret: true } }, { grant })
+  events.emit('design-desktop:plugin-launch', {}, { grant, root: '/tmp/plugins' })
+  events.emit('design-desktop:plugin-launch', {}, { grant: '../plugins' })
+  events.emit('design-desktop:plugin-launch', {}, null)
+  assert.deepEqual(seen, [{ grant }])
+  stop()
+  events.emit('design-desktop:plugin-launch', {}, { grant })
+  assert.equal(seen.length, 1)
+  assert.equal(events.listenerCount('design-desktop:plugin-launch'), 0)
 })
 
 test('terminal diagnostics is disabled unless explicit native launch flag is present',()=>{assert.equal(load().api.renderDiagnostics,false);assert.equal(load(['--core-render-diagnostics']).api.renderDiagnostics,true)})

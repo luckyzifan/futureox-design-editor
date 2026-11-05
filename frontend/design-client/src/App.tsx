@@ -25,10 +25,10 @@ import { interfaceText, interfacePreference, useInterfacePreferences } from './i
 import { bindEditorSettings } from './settings-preference'
 import { WorkspaceRootControls, chooseWorkspaceRoot } from './WorkspaceRootControls'
 import { useShortcutProfile } from './shortcut-preference'
+import { getPrototypeTab, setPrototypeTab, subscribePrototypeTab } from './prototype-chrome'
 import { shortcutPlatform, toolShortcutLabel, shortcutLabel, formatShortcutCombo } from './shortcut-profiles'
 import { shortcutTargetOwnsKeyboard } from './editor-shortcuts'
-import { AutomationPanel } from './AutomationPanelLauncher'
-import { PluginPanel } from './plugins/PluginPanel'
+import { NativeAutomationDialog } from './AutomationPanelLauncher'
 import { DesignAgentLauncher } from './design-ai/DesignAgentLauncher'
 import { attachDesktopAutomation } from './automation/bridge'
 import { createWorkspaceAutomationRenderer } from './automation/workspace-bridge'
@@ -52,35 +52,15 @@ import { ImportNotice } from './ImportNotice'
 import { dispatchEditorCommand, resolveDesktopEditorCommand, type EditorCommand } from './editor-commands'
 import { localizedToolCommands, localizedToolLabel, unavailableReason } from './tool-registry'
 import { canvasText } from './canvas-interface-messages'
+import { fileMenuText } from './file-menu-messages'
 import { canvasMenuItems } from './canvas-menu-model'
+import { ActivityBanner, EmptyCanvas } from './ActivityBanner'
+import { activityKind, activityLabel, activityText } from './activity-chrome'
+import { toolGlyph, type GlyphIcon } from './chrome-icons'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { flushSync } from 'react-dom'
 import {
   Settings as SettingsIcon,
-  MousePointer2,
-  Scaling,
-  Hand,
-  ZoomIn,
-  Frame,
-  Square,
-  Circle,
-  Triangle,
-  Star,
-  Minus,
-  ArrowUpRight,
-  PenTool,
-  Pencil,
-  Brush,
-  Type,
-  Eraser,
-  Pipette,
-  PaintBucket,
-  Ruler,
-  Slice,
-  Crop,
-  MessageSquare,
-  Undo2,
-  Redo2,
   ChevronDown,
   Download,
   Save,
@@ -94,14 +74,9 @@ import {
   AlignVerticalJustifyCenter,
   AlignHorizontalDistributeCenter,
   AlignVerticalDistributeCenter,
-  Scan,
-  Layers as LayersIcon,
-  Combine,
-  Scissors,
-  Diamond,
-  VectorSquare,
   Check,
   HelpCircle,
+  Puzzle,
   Play,
   SlidersHorizontal,
   PanelLeftClose,
@@ -111,6 +86,8 @@ import {
 } from 'lucide-react'
 import { Editor, type Tool } from './engine'
 import { desktopBridge, type DesktopCommand } from './desktop'
+import { PluginPanel } from './plugins/PluginPanel'
+import { OPEN_PLUGINS_EVENT, pluginLaunchGrant } from './plugins/open-plugins'
 import { DesktopCatalog } from './DesktopCatalog'
 import { DesktopLeaveDialog } from './DesktopLeaveDialog'
 import { DesktopSession, type DesktopStatus, type LeaveDecision, type LeaveReason } from './desktop-session'
@@ -138,39 +115,40 @@ import { createImportedCopy } from './import-identity'
 import { exportSketchInWorker } from './import-file-worker'
 import { ImportOwner, importStep, type ImportRequest } from './import-ownership'
 import { ExportOwner, commitExportEdits, type ExportRequest } from './export-ownership'
-const toolItems: { id: Tool; label: string; icon: typeof Square }[] = [
-  { id: 'select', label: '选择', icon: MousePointer2 },
-  { id: 'hand', label: '平移', icon: Hand },
-  { id: 'zoom', label: '区域缩放', icon: ZoomIn },
-  { id: 'scale', label: '缩放', icon: Scaling },
-  { id: 'slice', label: '切片', icon: Scan },
-  { id: 'frame', label: '画板', icon: Frame },
-  { id: 'section', label: '分区', icon: Scan },
-  { id: 'rectangle', label: '矩形', icon: Square },
-  { id: 'ellipse', label: '椭圆', icon: Circle },
-  { id: 'polygon', label: '多边形', icon: Triangle },
-  { id: 'star', label: '星形', icon: Star },
-  { id: 'line', label: '直线', icon: Minus },
-  { id: 'arrow', label: '箭头', icon: ArrowUpRight },
-  { id: 'pen', label: '钢笔', icon: PenTool },
-  { id: 'pencil', label: '铅笔', icon: Pencil },
-  { id:'marker',label:'马克笔',icon:Brush },
-  { id:'washi-tape',label:'和纸胶带',icon:Brush },
-  { id: 'brush', label: '画笔', icon: Brush },
-  { id: 'text', label: '文字', icon: Type },
+const toolItems: { id: Tool; label: string; icon: GlyphIcon }[] = [
+  { id: 'select', label: '选择', icon: toolGlyph.select },
+  { id: 'hand', label: '平移', icon: toolGlyph.hand },
+  { id: 'zoom', label: '区域缩放', icon: toolGlyph.zoom },
+  { id: 'scale', label: '缩放', icon: toolGlyph.scale },
+  { id: 'slice', label: '切片', icon: toolGlyph.slice },
+  { id: 'frame', label: '画板', icon: toolGlyph.frame },
+  { id: 'section', label: '分区', icon: toolGlyph.section },
+  { id: 'rectangle', label: '矩形', icon: toolGlyph.rectangle },
+  { id: 'ellipse', label: '椭圆', icon: toolGlyph.ellipse },
+  { id: 'polygon', label: '多边形', icon: toolGlyph.polygon },
+  { id: 'star', label: '星形', icon: toolGlyph.star },
+  { id: 'line', label: '直线', icon: toolGlyph.line },
+  { id: 'arrow', label: '箭头', icon: toolGlyph.arrow },
+  { id: 'pen', label: '钢笔', icon: toolGlyph.pen },
+  { id: 'pencil', label: '铅笔', icon: toolGlyph.pencil },
+  { id:'marker',label:'马克笔',icon: toolGlyph.marker },
+  { id:'washi-tape',label:'和纸胶带',icon: toolGlyph['washi-tape'] },
+  { id: 'brush', label: '画笔', icon: toolGlyph.brush },
+  { id: 'text', label: '文字', icon: toolGlyph.text },
 ]
-const utilityToolItems: { id: Tool; label: string; icon: typeof Square }[] = [
-  { id: 'eraser', label: '橡皮', icon: Eraser },
-  { id: 'eyedropper', label: '吸管', icon: Pipette },
-  { id: 'paint-bucket', label: '油漆桶', icon: PaintBucket },
-  { id: 'measure', label: '测量', icon: Ruler },
-  { id: 'slice', label: '切片', icon: Slice },
-  { id: 'crop', label: '裁切', icon: Crop },
-  { id: 'comments', label: '评论', icon: MessageSquare },
+const utilityToolItems: { id: Tool; label: string; icon: GlyphIcon }[] = [
+  { id: 'eraser', label: '橡皮', icon: toolGlyph.eraser },
+  { id: 'eyedropper', label: '吸管', icon: toolGlyph.eyedropper },
+  { id: 'paint-bucket', label: '油漆桶', icon: toolGlyph['paint-bucket'] },
+  { id: 'measure', label: '测量', icon: toolGlyph.measure },
+  { id: 'slice', label: '切片', icon: toolGlyph.slice },
+  { id: 'crop', label: '裁切', icon: toolGlyph.crop },
+  { id: 'comments', label: '评论', icon: toolGlyph.comments },
 ]
 export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWorkspace}={}) {
   const { locale } = useInterfacePreferences()
   const toolbarText = canvasText[locale]
+  const menuText = fileMenuText[locale]
   const shortcutProfile = useShortcutProfile()
   const shortcutContext = useMemo(() => ({ profile: shortcutProfile, platform: shortcutPlatform(), desktop: !!desktopBridge() }), [shortcutProfile])
   const tools = useMemo(() => toolItems.map(tool => ({ ...tool, label: localizedToolLabel(tool.id, locale, tool.label), key: toolShortcutLabel(tool.id, shortcutContext) })), [shortcutContext, locale])
@@ -185,6 +163,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [showWorkspaceLibrary, setShowWorkspaceLibrary] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showPlugins, setShowPlugins] = useState(false)
+  const [showAutomation, setShowAutomation] = useState(false)
+  const [pluginLaunch, setPluginLaunch] = useState<{ grant: string; token: number } | null>(null)
+  const pluginLaunchToken = useRef(0)
   const [sketchMode, setSketchMode] = useState<'inspect' | 'edit' | null>(null)
   const [largeDocument, setLargeDocument] = useState<{file?:File}|null>(null)
   const sketchCapabilities = nativeSketchCapabilities(desktopBridge())
@@ -200,7 +182,9 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     document.addEventListener('pointerdown', dismiss, true); window.addEventListener('blur', blur)
     return () => { document.removeEventListener('pointerdown', dismiss, true); window.removeEventListener('blur', blur) }
   }, [])
-  const [propertiesTab, setPropertiesTab] = useState<'design' | 'prototype'>('design')
+  const [propertiesTab, setPropertiesTabState] = useState<'design' | 'prototype'>('design')
+  const setPropertiesTab = (next: 'design' | 'prototype') => { setPropertiesTabState(next); setPrototypeTab(next) }
+  useEffect(() => subscribePrototypeTab(() => setPropertiesTabState(getPrototypeTab())), [])
   const [showPrototype, setShowPrototype] = useState(false)
   const [showCommands, setShowCommands] = useState(false)
   const [showShapeBuilder, setShowShapeBuilder] = useState(false)
@@ -250,6 +234,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     exports.activate(editor)
     return () => exports.dispose()
   }, [editor, exports])
+  function openExportPanel() {
+    if(source)source.prepareExport(()=>setShowExport(true))
+    else setShowExport(true)
+  }
   async function generateExport(format: 'svg' | 'png' | 'visual-svg') {
     const trace = beginEditorAction(editor, CanvasAction.export, ActionSource.menu, 310)
     try {
@@ -300,8 +288,11 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     const trace = beginEditorAction(editor, CanvasAction.import, ActionSource.menu, 312)
     const diagnostic = beginImportDiagnostic(f, mode, trace)
     trace.result(ActionOutcome.cancelled, ActionReason.unobserved)
+    let trackImport = false
     try {
     if(!ready || switching || desktopStatus.busy || editor.interactionActive){trace.result(ActionOutcome.blocked, ActionReason.busy);editor.notify('请结束当前操作后打开文件', { key: 'openBlockedActiveOperation' });return}
+    trackImport = true
+    setImporting(true)
     const request = fileImports.begin(editor)
     setHomeImportError('')
     diagnostic.bindRequest(request)
@@ -337,7 +328,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       }
     }
     finally { request.finish() }
-    } finally { trace.finish() }
+    } finally { if (trackImport) setImporting(false); trace.finish() }
   }
   async function importImageFiles(files: File[]) {
     const trace = beginEditorAction(editor, CanvasAction.import, ActionSource.menu, 313)
@@ -345,6 +336,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     try {
       if (!ready || editor.interactionActive) { trace.result(ActionOutcome.blocked, ActionReason.notReady); editor.notify('请结束当前操作后导入图片', { key: 'imageImportBlockedActiveOperation' }); return }
       if (!commitPendingEdits(editor)) { trace.result(ActionOutcome.blocked, ActionReason.validation); return }
+      setImporting(true)
       const canvas = document.querySelector<HTMLElement>('[data-testid=canvas]')
       const anchor = captureImageImportAnchor(editor, { width: canvas?.clientWidth ?? 0, height: canvas?.clientHeight ?? 0 })
       const result = await appendImageFiles(editor, files, anchor, undefined, file => { const diagnostic = beginImportDiagnostic(file, 'append', trace); diagnostics.push(diagnostic); return diagnostic })
@@ -355,7 +347,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         cancelled ? ActionReason.superseded : ActionReason.validation)
       if (cancelled) editor.notify('图片导入期间画布已变化，请重新导入')
       else { const detail = error instanceof Error ? error.message : String(error); const status = importInputStatus(error); editor.notify(status ? detail : `图片导入失败: ${detail}`, status || { key: 'imageImportFailed', error: detail }) }
-    } finally { trace.finish() }
+    } finally { setImporting(false); trace.finish() }
   }
   const switchLifetime = useRef(0)
   useEffect(() => {
@@ -406,9 +398,24 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [ready, setReady] = useState(false),
     [saved, setSaved] = useState('载入中'),
     [menu, setMenu] = useState(false)
+  useEffect(() => {
+    const open = (event: Event) => {
+      if (largeDocument || source) return
+      const grant = pluginLaunchGrant((event as CustomEvent<{ grant?: string }>).detail?.grant)
+      setMenu(false)
+      setShowPlugins(true)
+      if (grant) {
+        pluginLaunchToken.current += 1
+        setPluginLaunch({ grant, token: pluginLaunchToken.current })
+      } else setPluginLaunch(null)
+    }
+    window.addEventListener(OPEN_PLUGINS_EVENT, open)
+    return () => window.removeEventListener(OPEN_PLUGINS_EVENT, open)
+  }, [largeDocument, source])
   const [startupPreview, setStartupPreview] = useState<StartupPreview>()
   const [localFiles, setLocalFiles] = useState<LocalEntry[] | null>(null)
   const [switching, setSwitching] = useState(false)
+  const [importing, setImporting] = useState(false)
   const switchGate = useRef<object | null>(null)
   const panelHost = useRef<HTMLDivElement>(null)
   const leftPanel = useRef<HTMLDivElement>(null), rightPanel = useRef<HTMLDivElement>(null)
@@ -708,6 +715,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     const command = (name: DesktopCommand) => {
       if (largeDocument || source) return
       if (name === 'settings') { openSettings(); return }
+      if (name === 'automation-settings') { setMenu(false); setShowAutomation(true); return }
+      if (name === 'plugins') { setMenu(false); setShowPlugins(true); return }
       if (showHome) {
         if (!admitHomeDocumentCommand(name, { ready, switching, busy: desktopStatus.busy,
           transitioning: desktopStatus.transitioning, interactionActive: editor.interactionActive,
@@ -761,6 +770,13 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     }
     window.addEventListener('keydown', shortcut)
     const offCommand = desktop?.onCommand(command)
+    const offLaunch = desktop?.plugins?.onLaunch?.(({ grant }) => {
+      if (largeDocument || source) return
+      pluginLaunchToken.current += 1
+      setMenu(false)
+      setShowPlugins(true)
+      setPluginLaunch({ grant, token: pluginLaunchToken.current })
+    })
     const offClose = desktop?.onCloseRequested(({ requestId }) => {
       if (largeDocument || source) return
       fileImports.invalidate()
@@ -779,8 +795,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           editor.notify(`关闭请求失败，设计已保留：${detail}`, { key: 'closeFailedDocumentRetained', error: detail })
         })
     })
-    return () => { window.removeEventListener('keydown', shortcut); offCommand?.(); offClose?.() }
-  }, [editor, desktopSession, desktop, ready, fileImports, openSettings, showHome, switching, desktopStatus.busy, desktopStatus.transitioning, largeDocument])
+    return () => { window.removeEventListener('keydown', shortcut); offCommand?.(); offLaunch?.(); offClose?.() }
+  }, [editor, desktopSession, desktop, ready, fileImports, openSettings, showHome, switching, desktopStatus.busy, desktopStatus.transitioning, largeDocument, source])
   function resumeEditor() {
     if (!ready) return
     setShowHome(false)
@@ -826,9 +842,9 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     setShowUtility(open && name === 'utility')
   }
   const actionLabels: Record<string, string> = { '撤销': toolbarText.undo, '重做': toolbarText.redo, '左对齐': toolbarText.alignLeft, '水平居中': toolbarText.alignCenter, '右对齐': toolbarText.alignRight, '顶部对齐': toolbarText.alignTop, '垂直居中': toolbarText.alignMiddle, '底部对齐': toolbarText.alignBottom, '水平等距': toolbarText.distributeHorizontal, '垂直等距': toolbarText.distributeVertical }
-  const action = (label: string, Icon: typeof Square, fn: () => void, disabled = false, menuItem = false) => (
+  const action = (label: string, Icon: GlyphIcon, fn: () => void, disabled = false, menuItem = false) => (
     <button type="button" title={menuItem ? actionLabels[label] || label : undefined} data-tooltip={menuItem ? undefined : label === '撤销' ? `${toolbarText.undo} (${shortcutLabel('undo', shortcutContext)})` : label === '重做' ? `${toolbarText.redo} (${shortcutLabel('redo', shortcutContext)})` : actionLabels[label] || label}
-      aria-label={actionLabels[label] || label} data-property-preview-undo={label === '撤销' ? '' : undefined} role={menuItem ? 'menuitem' : undefined} tabIndex={menuItem ? -1 : undefined} disabled={disabled}
+      aria-label={label === '撤销' ? toolbarText.undo : label === '重做' ? toolbarText.redo : actionLabels[label] || label} data-property-preview-undo={label === '撤销' ? '' : undefined} role={menuItem ? 'menuitem' : undefined} tabIndex={menuItem ? -1 : undefined} disabled={disabled}
       onClick={() => { focusCanvas(); fn() }}>
       <Icon size={16} />
     </button>
@@ -848,6 +864,9 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     const item = toolbarCommands.find(item => item.command === command)
     return !item || !!item.disabled
   }
+  const showFileActivity = !showHome && !source?.openingPreview && (!ready || switching || (desktopStatus.transitioning && !desktopPrompt))
+  const fileActivity = activityKind({ ready, switching, transitioning: !!(desktopStatus.transitioning && !desktopPrompt), importing })
+  const canvasEmpty = !source && (s.doc.pages.find(page => page.id === s.page)?.children.length ?? 0) === 0
   if (largeDocument && desktop?.largeDocument) return <LargeDocumentWorkspace bridge={desktop.largeDocument} parentEditor={editor} initialFile={largeDocument.file}
     renderWorkbench={workspace=><App sourceWorkspace={workspace}/>}
     onExit={file=>{setLargeDocument(null);if(file)queueMicrotask(()=>void importDesignFile(file))}} onWindowClose={async requestId=>{
@@ -866,6 +885,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         if (side) panelFocus.current[side] = { element, side, session: editor.sessionGeneration, page: editor.state.page, selection: JSON.stringify(editor.state.selection), section: side === 'left' ? workspaceSection : propertiesTab }
       }}
       style={adaptivePanels.style}
+      data-host={desktop ? 'electron' : 'web'}
+      data-density={adaptivePanels.density}
       className={`app-shell editor-shell ${showHome ? 'home-route-active' : ''} ${showLayers && !uiMinimized ? '' : 'chrome-hide-layers'} ${(uiMinimized ? !!s.selection.length : showInspector) ? '' : 'chrome-hide-inspector'} ${uiMinimized ? 'chrome-minimized' : ''}`}
       data-history-backend={editor.historyBackend} data-history-operation={editor.historyOperationMode} data-history-frame-bytes={editor.historyFrameBytes}
       data-desktop-ready={desktop ? String(ready) : undefined}
@@ -907,7 +928,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         if (!(e.button === 0 && (panelRecoveryEntry(target) || canRefocusPendingPanelInput(target))) && !penCanvas && target !== document.activeElement && !target.closest('.rich-text-editor') && !commitPendingEdits(editor)) {
           e.preventDefault(); e.stopPropagation(); return
         }
-        if (!ready || switching || (desktopStatus.transitioning && !target.closest('[data-desktop-dialog]') && !openingNavigation(target,true))) {
+        if (!ready || switching || (desktopStatus.transitioning && !target.closest('[data-desktop-dialog],[data-workspace-tabs],[data-locale-switch]') && !openingNavigation(target,true))) {
           e.preventDefault()
           e.stopPropagation()
         }
@@ -921,18 +942,16 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         if (!((e.key === 'Enter' || e.key === ' ') && panelRecoveryEntry(e.target as Element)) && !penCanvas && !nudgeKey && !(e.target as Element).closest('input,textarea,select,.rich-text-editor') && !commitPendingEdits(editor)) {
           e.preventDefault(); e.stopPropagation(); return
         }
-        if (!ready || switching || (desktopStatus.transitioning && !(e.target as Element).closest('[data-desktop-dialog]') && !openingNavigation(e.target as Element))) {
+        if (!ready || switching || (desktopStatus.transitioning && !(e.target as Element).closest('[data-desktop-dialog],[data-workspace-tabs],[data-locale-switch]') && !openingNavigation(e.target as Element))) {
           e.preventDefault()
           e.stopPropagation()
         }
       }}
     >
-      {!showHome && (!ready || switching || (desktopStatus.transitioning && !desktopPrompt)) && (
-        <div className="document-transition" role="status">
-          {source?source.notice||'正在打开画板…':desktopSession ? '正在处理本机设计文件…' : '正在保存并打开设计…'}
-          {source?.busy&&<button type="button" data-desktop-dialog onClick={source.cancel}>停止当前操作</button>}
-        </div>
-      )}
+      {showFileActivity && <ActivityBanner activity={fileActivity} label={(!ready && startupError) || activityLabel(fileActivity, locale, source ? 'source' : desktopSession ? 'desktop' : 'web', source?.notice)}>
+        {source?.busy&&<button type="button" data-desktop-dialog onClick={source.cancel}>{menuText.stopOperation}</button>}
+      </ActivityBanner>}
+      {importing && !showHome && !showFileActivity && <ActivityBanner activity="import" label={activityText[locale].importing} />}
       {showHome && <LocalHome source={homeSource} ready={ready} startupError={startupError} importError={homeImportError} busy={switching || desktopStatus.busy}
         currentName={s.doc.name} onResume={resumeEditor} onNew={() => switchDocument(blank())}
         onOpenFile={openHomeFile} onSettings={() => {
@@ -940,7 +959,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           openSettings()
         }} />}
       <header className="editor-header">
-        <button ref={fileMenuTrigger} className="brand" aria-label="文件菜单" aria-expanded={menu} onClick={() => setMenu(!menu)}>
+        <button ref={fileMenuTrigger} className="brand" aria-label={panelText.fileMenu} aria-expanded={menu} onClick={() => setMenu(!menu)}>
           <img className="brand-mark" src="/branding/futureox-desgin.svg" width="28" height="28" alt="" aria-hidden="true" />
           <strong>Futureox Design</strong>
           <ChevronDown size={13} />
@@ -951,10 +970,10 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             if (desktopSession?.supportsWorkspace) setShowWorkspaceLibrary(true)
             else if (desktopSession) setShowCatalog(true)
             else void openLocalFiles()
-          }}>{desktopSession ? '本机设计' : '我的设计'}</button>
+          }}>{desktopSession ? menuText.localDesign : menuText.myDesigns}</button>
           <b>/</b>
           <input
-            aria-label="文档名称"
+            aria-label={menuText.documentName}
             value={source?.name||s.doc.name}
             readOnly={!!source}
             onCompositionStart={() => { titleComposing.current = true; pendingEditsChanged(editor) }}
@@ -965,8 +984,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               })
             }
           />
-          <span className="draft-badge">本地</span>
-          <button type="button" aria-label={uiMinimized ? '展开界面' : '收起界面'} title={`收起 / 展开界面 (${formatShortcutCombo('Mod+Shift+\\', shortcutContext.platform)})`}
+          <span className="draft-badge">{panelText.localBadge}</span>
+          <button type="button" aria-label={uiMinimized ? menuText.expandUi : menuText.collapseUi} title={`${menuText.collapseUi} / ${menuText.expandUi} (${formatShortcutCombo('Mod+Shift+\\', shortcutContext.platform)})`}
             aria-pressed={uiMinimized} onClick={() => { if (!hasPendingEdits(editor) && !editor.interactionActive) setUiMinimized(value => !value) }}>
             {uiMinimized ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
           </button>
@@ -979,26 +998,26 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               event.preventDefault(); event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus()
             }
           }}>
-            <summary ref={panelActionsSummary} aria-label="更多工作区操作" title="更多工作区操作"><SlidersHorizontal size={16} /></summary>
+            <summary ref={panelActionsSummary} aria-label={menuText.moreActions} title={menuText.moreActions}><SlidersHorizontal size={16} /></summary>
             <div className="workspace-actions-menu" onClick={event => { if ((event.target as Element).closest('button')) { const menu = event.currentTarget.closest('details'); menu?.removeAttribute('open'); menu?.querySelector('summary')?.focus() } }}>
           <button type="button" aria-pressed={showColor} onClick={() => setShowColor((v) => !v)}>
-            色彩与 HDR
+            {menuText.colorHdr}
           </button>
           <button
             type="button"
             aria-pressed={showAnimation}
             onClick={() => setShowAnimation((v) => !v)}
           >
-            动画
+            {menuText.animation}
           </button>
           <button
             type="button"
             aria-pressed={showHistory}
             disabled={!ready||!!source}
-            title="查看当前设计的本地历史版本"
+            title={menuText.historyTitle}
             onClick={() => setShowHistory(true)}
           >
-            历史版本
+            {menuText.history}
           </button>
             </div>
           </details>
@@ -1013,29 +1032,34 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               : desktopStatus.dirty ? (desktopStatus.recoveryWarning ? '未保存，恢复副本有警告' : desktopSession.supportsWorkspace ? '待保存到本机' : '未保存到文件') : desktopStatus.warning ? '已写入，有持久化警告' : desktopSession.supportsWorkspace ? '已保存到本机' : '已保存到文件') : saved}
           </span>
           {desktopSession&&ready&&<LocalWindowControl editor={editor} session={desktopSession} live={localWindows}/>}
-          {source?<button type="button" disabled={!ready||source.busy||!source.ready} onClick={()=>void source.save()}><Save size={16}/>保存</button>:desktopSession ? <button type="button" disabled={!ready || desktopStatus.busy} onClick={() => void desktopSession.save()}>
-            <Save size={16} />保存
+          {source?<button type="button" disabled={!ready||source.busy||!source.ready} onClick={()=>void source.save()}><Save size={16}/>{menuText.save}</button>:desktopSession ? <button type="button" disabled={!ready || desktopStatus.busy} onClick={() => void desktopSession.save()}>
+            <Save size={16} />{menuText.save}
           </button> : <button type="button" disabled={!ready} onClick={() => void openLocalFiles()}>
-            <FolderOpen size={16} />本机文件
+            <FolderOpen size={16} />{panelText.localFiles}
           </button>}
-          <button type="button" className="prototype-preview-button" aria-label="预览原型" title="预览原型"
-            disabled={!s.doc.pages.some((page) => page.children.length)} onClick={() => setShowPrototype(true)}><Play size={16} /><span>预览</span></button>
+          <label className="locale-switch" data-locale-switch>
+            <span className="sr-only">{panelText.language}</span>
+            <select aria-label={panelText.language} value={locale} onChange={event => interfacePreference.set({ locale: event.target.value === 'en' ? 'en' : 'zh-CN' })}>
+              <option value="zh-CN">中文</option>
+              <option value="en">English</option>
+            </select>
+          </label>
+          <button type="button" className="prototype-preview-button" aria-label={locale === 'en' ? 'Preview prototype' : '预览原型'} title={locale === 'en' ? 'Preview prototype' : '预览原型'}
+            disabled={!s.doc.pages.some((page) => page.children.length)} onClick={() => setShowPrototype(true)}><Play size={16} /><span>{locale === 'en' ? 'Preview' : '预览'}</span></button>
           <button
             className="primary"
-            onClick={() => {
-              setShowExport(true)
-            }}
+            onClick={openExportPanel}
           >
             <Download size={14} />
-            导出
+            {locale === 'en' ? 'Export' : '导出'}
             <ChevronDown size={12} />
           </button>
-          <button type="button" className="app-settings-button" aria-label="打开设置"
+          <button type="button" className="app-settings-button" aria-label={panelText.openSettings}
             disabled={!ready || switching || desktopStatus.transitioning}
             title={!ready || switching || desktopStatus.transitioning ? '正在处理设计文件，完成后可打开设置' : `设置 (${formatShortcutCombo('Mod+,', shortcutContext.platform)})`}
             aria-haspopup="dialog" aria-expanded={showSettings}
             onClick={openSettings}>
-            <SettingsIcon size={16} /><span>设置</span>
+            <SettingsIcon size={16} /><span>{panelText.settingsTitle}</span>
           </button>
           <span className="avatar">我</span>
         </div>
@@ -1045,42 +1069,43 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         <>
           <div className="menu-scrim" onClick={() => setMenu(false)} />
           <div className="file-menu">
-            <button type="button" onClick={enterHome}><FolderOpen size={15} />本机首页</button>
-            <button type="button" onClick={openSettings}><SettingsIcon size={15} />设置</button>
+            <button type="button" onClick={enterHome}><FolderOpen size={15} />{menuText.localHome}</button>
+            <button type="button" onClick={openSettings}><SettingsIcon size={15} />{panelText.settingsTitle}</button>
+            <button type="button" disabled={!!largeDocument || !!source} onClick={() => { setMenu(false); setShowPlugins(true) }}><Puzzle size={15} />{locale === 'en' ? 'Plugins' : '插件'}</button>
             <button
               onClick={() => {
                 void switchDocument(blank())
               }}
             >
               <Plus size={15} />
-              新建设计
+              {panelText.newDesign}
             </button>
             {desktopSession ? <>
               <button type="button" disabled={!ready || desktopStatus.busy} onClick={() => { fileImports.invalidate(); setMenu(false); setShowCatalog(true) }}>
-                <FolderOpen size={15} />本机项目目录
+                <FolderOpen size={15} />{menuText.projectFolder}
               </button>
               <button type="button" disabled={!ready || desktopStatus.busy} onClick={() => { fileImports.invalidate(); setMenu(false); void desktopSession.open() }}>
-                <FolderOpen size={15} />打开本机设计文件 <kbd>{formatShortcutCombo('Mod+O', shortcutContext.platform)}</kbd>
+                <FolderOpen size={15} />{menuText.openLocalDesign} <kbd>{formatShortcutCombo('Mod+O', shortcutContext.platform)}</kbd>
               </button>
               <button type="button" disabled={!ready || desktopStatus.busy} onClick={() => { fileImports.invalidate(); setMenu(false); void desktopSession.recover() }}>
-                恢复未保存的设计
+                {menuText.recover}
               </button>
             </> : <button onClick={() => void openLocalFiles()}>
-              <FolderOpen size={15} />本机文件与回收站
+              <FolderOpen size={15} />{menuText.localFilesTrash}
             </button>}
-            <div className="render-quality" role="group" aria-label="文件渲染质量">
-              <span>渲染质量</span>
+            <div className="render-quality" role="group" aria-label={menuText.renderQuality}>
+              <span>{menuText.renderQualityShort}</span>
               <button
                 aria-pressed={(s.doc.rasterProfile || 'analytic') === 'analytic'}
                 disabled={!!s.doc.colorManagement}
-                title={s.doc.colorManagement ? '广色域 / HDR 使用精细覆盖采样' : undefined}
+                title={s.doc.colorManagement ? menuText.wideGamutTitle : undefined}
                 onClick={() =>
                   editor.change('标准渲染质量', (d) => {
                     d.rasterProfile = 'analytic'
                   })
                 }
               >
-                标准（更快）
+                {menuText.standardQuality}
               </button>
               <button
                 aria-pressed={s.doc.rasterProfile === 'figma'}
@@ -1090,18 +1115,18 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                   })
                 }
               >
-                精细（更耗内存）
+                {menuText.fineQuality}
               </button>
               <button
                 aria-pressed={s.doc.rasterProfile === 'figmaSoftware'}
-                title="保留精细采样，使用与当前 Figma 参考导出一致的颜色取整方式；配置随文件保存"
+                title={menuText.figmaQualityTitle}
                 onClick={() =>
                   editor.change('Figma 导出兼容渲染', (d) => {
                     d.rasterProfile = 'figmaSoftware'
                   })
                 }
               >
-                Figma 导出兼容
+                {menuText.figmaExportQuality}
               </button>
             </div>
             <button
@@ -1116,7 +1141,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               }}
             >
               <Plus size={15} />
-              {source?'导出完整文件…':desktopSession ? '另存为设计文件…' : '保存为本机副本'}
+              {source?menuText.exportFull:desktopSession ? menuText.saveAs : menuText.saveCopy}
             </button>
             <button
               onClick={() => {
@@ -1127,21 +1152,21 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               }}
             >
               <FolderOpen size={15} />
-              导入 Sketch / FIG / SVG / PDF
+              {menuText.importFormats}
             </button>
-            {!source&&desktop?.largeDocument&&<button type="button" disabled={!ready||switching||desktopStatus.busy||editor.interactionActive} onClick={()=>{if(!commitPendingEdits(editor))return;setMenu(false);setLargeDocument({})}}>打开大型 JSON / Sketch…</button>}
+            {!source&&desktop?.largeDocument&&<button type="button" disabled={!ready||switching||desktopStatus.busy||editor.interactionActive} onClick={()=>{if(!commitPendingEdits(editor))return;setMenu(false);setLargeDocument({})}}>{menuText.openLarge}</button>}
             {(['inspect', 'edit'] as const).map(mode => <button type="button" key={mode}
               disabled={!ready || switching || desktopStatus.busy || s.busy || editor.interactionActive || !sketchCapabilities[mode]}
-              title={sketchCapabilities[mode] ? (mode === 'inspect' ? '原生只读预览，不转换为当前画布，也不修改源文件' : '独立原生会话，仅支持已声明的编辑范围；另存为全新文件') : '当前宿主未提供此原生 Sketch 能力；可使用兼容格式导入'}
+              title={sketchCapabilities[mode] ? (mode === 'inspect' ? menuText.sketchInspectTitle : menuText.sketchEditTitle) : menuText.sketchUnavailable}
               onClick={() => { if (!commitPendingEdits(editor)) return; fileImports.invalidate(); setMenu(false); setSketchMode(mode) }}>
-              {mode === 'inspect' ? '预览原生 Sketch（只读）…' : '编辑原生 Sketch（有限支持）…'}
+              {mode === 'inspect' ? menuText.inspectSketch : menuText.editSketch}
             </button>)}
             <button disabled={!ready || switching || desktopStatus.busy} onClick={() => {
               fileImports.invalidate()
               importMode.current = 'append'
               file.current?.click()
               setMenu(false)
-            }}><Plus size={15} />追加到当前画布…</button>
+            }}><Plus size={15} />{menuText.appendCanvas}</button>
             <button
               onClick={() => {
                 if(source)void source.save()
@@ -1151,7 +1176,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               }}
             >
               <Download size={15} />
-              {source?'保存修改':desktopSession?.supportsWorkspace ? '保存到本机文档库' : '保存设计文件'} <kbd>{formatShortcutCombo('Mod+S', shortcutContext.platform)}</kbd>
+              {source?menuText.saveChanges:desktopSession?.supportsWorkspace ? menuText.saveToLibrary : menuText.saveDesign} <kbd>{formatShortcutCombo('Mod+S', shortcutContext.platform)}</kbd>
             </button>
             <hr />
             <button
@@ -1159,13 +1184,13 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                 void switchDocument(demo())
               }}
             >
-              打开示例画布
+              {menuText.openSample}
             </button>
-            <button onClick={() => { void generateExport('visual-svg'); setMenu(false) }}>导出 SVG（保留视觉效果，可包含位图）</button>
+            <button onClick={() => { void generateExport('visual-svg'); setMenu(false) }}>{menuText.exportVisualSvg}</button>
             <button type="button" disabled={!ready || exportAsset !== null}
-              title="用于 Sketch 交换，部分效果可能降级；完整编辑信息保存在 .fd 文件"
-              onClick={() => void generateSketchExport()}>导出 Sketch（兼容格式）</button>
-            <button onClick={() => { setShowExport(true); setMenu(false) }}>导出图像 · 1x / 2x / 3x</button>
+              title={menuText.exportSketchTitle}
+              onClick={() => void generateSketchExport()}>{menuText.exportSketch}</button>
+            <button onClick={() => { openExportPanel(); setMenu(false) }}>{menuText.exportImages}</button>
             {(['svg', 'png'] as const).map((format) => (
               <button
                 key={format}
@@ -1174,7 +1199,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                   setMenu(false)
                 }}
               >
-                导出 {format.toUpperCase()}
+                {locale === 'en' ? 'Export' : '导出'} {format.toUpperCase()}
                 {format === 'png' ? ' @2x' : ''}
               </button>
             ))}
@@ -1205,7 +1230,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         <button type="button" disabled={desktopStatus.busy} onClick={() => void (desktopSession?.supportsWorkspace ? desktopSession.saveCopy() : desktopSession?.save(true))}>{desktopSession?.supportsWorkspace ? '保存本机副本' : '另存为'}</button>
         <button type="button" disabled={desktopStatus.busy} onClick={() => { fileImports.invalidate(); if (desktopSession?.supportsWorkspace) setShowWorkspaceLibrary(true); else void desktopSession?.open() }}>{desktopSession?.supportsWorkspace ? '打开本机库' : '打开磁盘文件'}</button>
       </div>}
-      {showExport && <ExportPanel editor={editor} onClose={() => setShowExport(false)} />}
+      {showExport && <ExportPanel editor={editor} exportSelectedSketch={source?.exportSelectedSketch} onClose={() => setShowExport(false)} />}
       {showTools&&<DesignTools editor={editor} onClose={()=>setShowTools(false)}/>}
       {showPrototype && <PrototypePlayer document={s.doc} onClose={() => setShowPrototype(false)} />}
       {showWorkspaceLibrary && desktopSession && <WorkspaceLibrary session={desktopSession} onClose={() => setShowWorkspaceLibrary(false)} />}
@@ -1257,10 +1282,17 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           {source&&<SourceDocumentStatus source={source}/>}
           {importReport?.documentId === s.doc.id && <ImportNotice warnings={importReport.warnings} onClose={() => setImportReport(null)} />}
           <HomeCanvasGate home={showHome}><Canvas editor={editor} peers={localWindows.peers} compactChrome loading={!ready||!!source&&!source.ready}
-            prepareSourceDisplay={source?.prepareSourceDisplay} nativeSource={source?.nativeCanvas?.snapshot} openingSource={source?.openingPreview} openingPage={source?.openingPage} focusedMaterial={source?.focusedMaterial} onSourceDetail={source?.onDetail} onSourceViewport={source?.onViewport} hideNative={source?.hideNative} parkNative={source?.parkNative} sourcePageBoxes={source?.pageBoxes} onSourcePresented={source?.onSourcePresented} onNativeSourceStatus={source?.nativeCanvas?.onStatus} onOpenSourcePoint={source?.nativeCanvas?.openPoint??source?.openPreviewPoint}
+            onSelectSourcePoint={source?.selectMaterialAt} selectedMaterialBox={source?.selectedMaterialBox} pickSourceMaterial={source?.pickMaterial} prepareSourceDisplay={source?.prepareSourceDisplay} nativeSource={source?.nativeCanvas?.snapshot} openingSource={source?.openingPreview} openingPage={source?.openingPage} focusedMaterial={source?.focusedMaterial} onSourceDetail={source?.onDetail} onSourceViewport={source?.onViewport} hideNative={source?.hideNative} parkNative={source?.parkNative} sourcePageBoxes={source?.pageBoxes} onSourcePresented={source?.onSourcePresented} onNativeSourceStatus={source?.nativeCanvas?.onStatus} onOpenSourcePoint={source?.nativeCanvas?.openPoint??source?.openPreviewPoint}
             startupPreview={startupPreview} onCapturePreview={desktopSession || source ? undefined : capturePreview}
             zoomControlsTarget={(uiMinimized ? !!s.selection.length : showInspector) ? zoomHost : null} /></HomeCanvasGate>
+          {!showHome && ready && canvasEmpty && !switching && !desktopStatus.busy && !importing && <EmptyCanvas title={activityText[locale].emptyTitle} body={activityText[locale].emptyBody} />}
           <DesignToolbar disabled={!ready || switching || desktopStatus.transitioning || !!source?.nativeCanvas || !!source?.openingPreview || (editor.interactionActive && !editor.propertyPreviewActive)}>
+            {ready && !showHome && !source?.nativeCanvas && !source?.openingPreview && !editor.interactionActive && ['rectangle', 'ellipse', 'polygon', 'star', 'frame', 'section', 'slice', 'line', 'arrow', 'pen', 'eraser'].includes(s.tool) && (
+              <div className="creation-tool-hint" role="status">
+                <b>{localizedToolLabel(s.tool, locale)}</b>
+                <span>{s.tool === 'pen' ? toolbarText.penToolHint : s.tool === 'eraser' ? toolbarText.eraserToolHint : s.tool === 'line' || s.tool === 'arrow' ? toolbarText.creationHintLine : toolbarText.creationHint}</span>
+              </div>
+            )}
             <div className="tool-group">
               <ToolPopover label={toolbarText.moveTools} icon={<MoveIcon size={18} />} open={showMove} onOpenChange={open => openToolbarMenu('move', open)}
                 primary={{ label: moveTool.label, title: `${moveTool.label}${moveTool.key ? ` (${moveTool.key})` : ''}`, active: s.tool === moveTool.id, onClick: () => chooseTool(moveTool.id) }}>
@@ -1290,8 +1322,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
                 <button type="button" role="menuitem" tabIndex={-1} disabled={s.busy || s.selection.length !== 1 || !editor.topSelection().includes(s.selection[0]) || ['frame', 'section', 'group', 'text'].includes(s.doc.nodes[s.selection[0]]?.kind)} onClick={() => { editor.set({ tool: 'vector', editingVertex: null }); setShowDrawing(false) }}>{toolbarText.editVector}</button>
                 <button type="button" role="menuitem" tabIndex={-1} disabled={commandDisabled('outline-stroke')} onClick={() => { void dispatchEditorCommand(editor, 'outline-stroke'); setShowDrawing(false) }}>{toolbarText.outlineStroke}</button>
               </ToolPopover>
-              <button type="button" data-tooltip={`${localizedToolLabel('comments', locale, '评论')}${toolShortcutLabel('comments', shortcutContext) ? ` (${toolShortcutLabel('comments', shortcutContext)})` : ''}`} aria-label={localizedToolLabel('comments', locale, '评论')} aria-pressed={s.tool==='comments'} onClick={()=>chooseTool('comments')}>◉</button>
-              <button type="button" data-tooltip={`${localizedToolLabel('text', locale, '文字')}${toolShortcutLabel('text', shortcutContext) ? ` (${toolShortcutLabel('text', shortcutContext)})` : ''}`} aria-label={localizedToolLabel('text', locale, '文字')} aria-pressed={s.tool === 'text'} className={s.tool === 'text' ? 'active' : ''} onClick={() => chooseTool('text')}><Type size={18} /></button>
+              <button type="button" data-tooltip={`${localizedToolLabel('comments', locale, '评论')}${toolShortcutLabel('comments', shortcutContext) ? ` (${toolShortcutLabel('comments', shortcutContext)})` : ''}`} aria-label={localizedToolLabel('comments', locale, '评论')} aria-pressed={s.tool==='comments'} className={s.tool === 'comments' ? 'active' : ''} onClick={()=>chooseTool('comments')}><toolGlyph.comments size={18} /></button>
+              <button type="button" data-tooltip={`${localizedToolLabel('text', locale, '文字')}${toolShortcutLabel('text', shortcutContext) ? ` (${toolShortcutLabel('text', shortcutContext)})` : ''}`} aria-label={localizedToolLabel('text', locale, '文字')} aria-pressed={s.tool === 'text'} className={s.tool === 'text' ? 'active' : ''} onClick={() => chooseTool('text')}><toolGlyph.text size={18} /></button>
               <ToolPopover label={toolbarText.utilityTools} icon={<UtilityIcon size={18} />} open={showUtility} onOpenChange={open => openToolbarMenu('utility', open)}
                 primary={{ label: utilityTool.label, title: `${utilityTool.label}${utilityTool.key ? ` (${utilityTool.key})` : ''}`, active: s.tool === utilityTool.id, onClick: () => chooseTool(utilityTool.id) }}>
                 {utilityTools.map(({ id, label, key, icon: Icon }) => (
@@ -1307,8 +1339,8 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             </div>
             <i />
             <div className="tool-group">
-              {action('撤销', Undo2, () => { void dispatchEditorCommand(editor, 'undo') }, !editor.canUndo || s.busy)}
-              {action('重做', Redo2, () => { void dispatchEditorCommand(editor, 'redo') }, !editor.canRedo || s.busy)}
+              {action('撤销', toolGlyph.undo, () => { void dispatchEditorCommand(editor, 'undo') }, !editor.canUndo || s.busy)}
+              {action('重做', toolGlyph.redo, () => { void dispatchEditorCommand(editor, 'redo') }, !editor.canRedo || s.busy)}
               <ToolPopover label={toolbarText.arrangeAndEdit} icon={<SlidersHorizontal size={18} />} open={showCommands} onOpenChange={open => openToolbarMenu('commands', open)}>
                 {(['eyedropper','measure','comments','annotate'] as const).map(id=><button type="button" role="menuitem" tabIndex={-1} key={id} aria-label={localizedToolLabel(id, locale, utilityToolNames[id])} onClick={()=>{chooseTool(id);setShowCommands(false)}}>{localizedToolLabel(id, locale, utilityToolNames[id])}</button>)}
                 <strong>{toolbarText.whiteboardAndResponsive}</strong>{(Object.entries(boardToolNames) as [BoardTool,string][]).map(([id,label])=><button type="button" role="menuitem" tabIndex={-1} key={id} onClick={()=>{chooseTool(id);setShowCommands(false)}}>{localizedToolLabel(id, locale, label)}</button>)}
@@ -1336,7 +1368,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         </div>
         <div ref={rightPanel} className="properties-workspace">
           <PanelResizeHandle side="right" blocked={editor.interactionActive || hasPendingEdits(editor)} canResize={() => !editor.interactionActive && !hasPendingEdits(editor)} />
-          <div className="properties-tabs"><div className="properties-tab-buttons" role="tablist" aria-label="属性工作区" onKeyDown={(event) => {
+          <div className="properties-tabs"><div className="properties-tab-buttons" role="tablist" aria-label={menuText.propertiesWorkspace} onKeyDown={(event) => {
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
             event.preventDefault(); event.stopPropagation()
             const next = event.key === 'Home' ? 'design' : event.key === 'End' ? 'prototype' : propertiesTab === 'design' ? 'prototype' : 'design'
@@ -1357,6 +1389,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
       {showShapeBuilder && <ShapeBuilderDialog editor={editor} onClose={() => setShowShapeBuilder(false)} />}
       {sketchMode && desktop && <NativeSketchDialog bridge={desktop} mode={sketchMode} suspended={!!desktopPrompt} onClose={() => setSketchMode(null)} returnFocus={fileMenuTrigger.current} />}
       {showAnimation && <AnimationPanel editor={editor} onClose={() => setShowAnimation(false)} />}
+      {showPlugins && <PluginPanel editor={editor} desktop={desktop} launch={pluginLaunch} onClose={() => { setShowPlugins(false); setPluginLaunch(null) }} />}
       {showSettings && <SettingsDialog editor={editor} desktop={!!desktop} returnFocus={showHome ? homeSettingsFocus.current : fileMenuTrigger.current}
         busy={workspaceRootBusy} workspaceControls={desktop?.workspaceRoot && <>{!ready && <p role="status">设计尚未就绪，暂不能切换工作区目录。</p>}<WorkspaceRootControls bridge={desktop.workspaceRoot}
           busy={workspaceRootBusy || !ready || desktopStatus.busy} onChoose={original => {
@@ -1424,8 +1457,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           </section>
         </div>
       )}
-      <AutomationPanel editor={editor} desktop={desktop} onHistory={()=>setShowHistory(true)} />
-      <PluginPanel editor={editor} />
+      {showAutomation && desktop?.automation && !source && !largeDocument && <NativeAutomationDialog editor={editor} desktop={desktop} onDismiss={()=>setShowAutomation(false)} onHistory={()=>setShowHistory(true)} />}
       <footer>
         <span>
           {s.busy ? <span className="spinner" /> : <span className="footer-dot" />}

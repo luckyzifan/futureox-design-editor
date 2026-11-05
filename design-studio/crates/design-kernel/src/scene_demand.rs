@@ -143,7 +143,7 @@ impl LoadedDemand {
 
 fn references(
     value: &serde_json::Value,
-    nodes: &BTreeMap<String, Node>,
+    nodes: &crate::scene::DocumentNodes,
     out: &mut BTreeSet<String>,
 ) {
     match value {

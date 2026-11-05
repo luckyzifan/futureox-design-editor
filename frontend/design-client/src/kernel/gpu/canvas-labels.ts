@@ -1,9 +1,17 @@
 import type { CanvasCamera } from '../../canvas-camera'
 import type { Point } from '../../model'
+import { SELECTION_BLUE } from '../../selection-blue'
+import { SPACING_RED } from '../../canvas-measurements'
 
 export type CanvasLabel = {
   anchor: Point; offset: Point; text: string; size: number; color: string
   basis?: [number, number, number, number]; centered?: boolean; halo?: boolean; owners?: string[]
+  /** Paper chip behind a selection name. The size chip is selection blue. Distance chips are the spacing red. */
+  frame?: 'pill' | 'accent' | 'measure'
+  /** DOM/GPU identity only. The resident wire copy does not require this field. */
+  kind?: 'frame-title' | 'section-title' | 'selection-name' | 'selection-size' | 'measurement'
+  /** Section title chip. Absent for ordinary frame names. */
+  chip?: string
 }
 type Entry = { texture: GPUTexture; bind: GPUBindGroup; width: number; height: number; left: number; top: number; advance: number; bytes: number }
 
@@ -11,16 +19,45 @@ function measureLabel(label:CanvasLabel,density:number,measure:OffscreenCanvasRe
   if(!Number.isFinite(density)||density<=0)throw Error('Invalid chrome text density')
   const font=`${label.size}px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif`
   measure.font=font
-  const metrics=measure.measureText(label.text),pad=label.halo?3:2
-  const left=pad+metrics.actualBoundingBoxLeft,top=pad+metrics.actualBoundingBoxAscent
-  const width=Math.max(1,Math.ceil((metrics.actualBoundingBoxLeft+metrics.actualBoundingBoxRight+pad*2)*density))
-  const height=Math.max(1,Math.ceil((metrics.actualBoundingBoxAscent+metrics.actualBoundingBoxDescent+pad*2)*density))
+  const metrics=measure.measureText(label.text)
+  const framed=label.frame==='pill'||label.frame==='accent'||label.frame==='measure'
+  const padX=label.chip?6:framed?8:label.halo?3:2
+  const padY=label.chip?3:padX
+  const left=padX+metrics.actualBoundingBoxLeft,top=padY+metrics.actualBoundingBoxAscent
+  const width=Math.max(1,Math.ceil((metrics.actualBoundingBoxLeft+metrics.actualBoundingBoxRight+padX*2)*density))
+  const height=Math.max(1,Math.ceil((metrics.actualBoundingBoxAscent+metrics.actualBoundingBoxDescent+padY*2)*density))
   return{font,width,height,left,top,advance:metrics.width}
+}
+function fillChip(context:OffscreenCanvasRenderingContext2D,width:number,height:number,color:string) {
+  const radius=Math.min(4,width/2,height/2)
+  context.beginPath()
+  context.moveTo(radius,0)
+  context.arcTo(width,0,width,height,radius)
+  context.arcTo(width,height,0,height,radius)
+  context.arcTo(0,height,0,0,radius)
+  context.arcTo(0,0,width,0,radius)
+  context.closePath()
+  context.fillStyle=color
+  context.fill()
 }
 function rasterLabel(label:CanvasLabel,density:number,metrics:ReturnType<typeof measureLabel>) {
   const {font,width,height,left,top}=metrics
   const canvas=new OffscreenCanvas(width,height),context=canvas.getContext('2d')!
-  context.setTransform(density,0,0,density,0,0);context.font=font;context.fillStyle=label.color
+  context.setTransform(density,0,0,density,0,0);context.font=font
+  if(label.chip)fillChip(context,width/density,height/density,label.chip)
+  else if(label.frame==='pill'||label.frame==='accent'||label.frame==='measure'){
+    const cssW=width/density,cssH=height/density,radius=Math.min(7,cssW/2,cssH/2),inset=.5
+    context.beginPath()
+    context.moveTo(inset+radius,inset)
+    context.arcTo(cssW-inset,inset,cssW-inset,cssH-inset,radius)
+    context.arcTo(cssW-inset,cssH-inset,inset,cssH-inset,radius)
+    context.arcTo(inset,cssH-inset,inset,inset,radius)
+    context.arcTo(inset,inset,cssW-inset,inset,radius)
+    context.closePath()
+    context.fillStyle=label.frame==='accent'?SELECTION_BLUE:label.frame==='measure'?SPACING_RED:'#fffcf9';context.fill()
+    if(label.frame==='pill'){context.strokeStyle='#e4ddd3';context.lineWidth=1;context.stroke()}
+  }
+  context.fillStyle=label.color
   if(label.halo){context.strokeStyle='#fff';context.lineWidth=2;context.strokeText(label.text,left,top)}
   context.fillText(label.text,left,top)
   return{canvas,...metrics}
@@ -65,7 +102,7 @@ struct V { @builtin(position) p:vec4<f32>, @location(0) uv:vec2<f32> }
         color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } }] } })
   }
   private entry(label: CanvasLabel, density: number, protectedKeys: Set<string>) {
-    const key = JSON.stringify([label.text,label.size,label.color,!!label.halo,density])
+    const key = JSON.stringify([label.text,label.size,label.color,!!label.halo,label.chip||'',label.frame||'',density])
     const existing = this.entries.get(key)
     if (existing) { this.entries.delete(key); this.entries.set(key,existing); protectedKeys.add(key); return existing }
     const metrics=measureLabel(label,density,this.measure),{width,height,left,top,advance}=metrics,bytes=width*height*4

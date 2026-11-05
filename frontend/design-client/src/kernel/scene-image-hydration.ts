@@ -1,3 +1,4 @@
+import {sourceBitmapPayload} from './source-bitmap-loader'
 import {source_jpeg_srgb8} from '../generated/design-kernel/design_kernel'
 import { DecodedImageCache, decodedImageScope, validDecodedImage, type DecodedImage, type DecodedImageOwner } from './decoded-image-cache'
 import { sceneIndex } from './gpu/scene-index'
@@ -65,6 +66,7 @@ export function managedSceneImageLoader(cache: DecodedImageCache, context: () =>
     if (next.ownerCurrent && !next.ownerCurrent()) {
       revokeOwner(retained?.owner); retained = undefined; throw Error('PREVIEW_CANCELLED')
     }
+    uri=sourceBitmapPayload(uri)
     const { kernel, scope, settings } = next
     cache.begin(scope)
     const key = `${byte ? 'b' : 'f'}:${uri}`
@@ -152,7 +154,7 @@ export function managedSceneImageLoader(cache: DecodedImageCache, context: () =>
   let windowScope=''
   return Object.assign(load,{straightSrgb8:(uri:string)=>{
     const next=context(),current=()=>{checkRequest(next);if(next.ownerCurrent&&!next.ownerCurrent())throw Error('PREVIEW_CANCELLED')}
-    current();cache.begin(next.scope)
+    current();cache.begin(next.scope);uri=sourceBitmapPayload(uri)
     const key='straight-srgb8:'+uri,hit=cache.get(next.scope,key)
     if(hit?.data instanceof Uint8Array)return {width:hit.width,height:hit.height,bytes:hit.data}
     if(uri.startsWith('data:image/jpeg;base64,')){
@@ -176,7 +178,7 @@ export function managedSceneImageLoader(cache: DecodedImageCache, context: () =>
   },sampleWindow:(uri:string,dims:readonly number[],window:Rect)=>{
     const next=context()
     const current=()=>{checkRequest(next);if(next.ownerCurrent&&!next.ownerCurrent())throw Error('PREVIEW_CANCELLED')}
-    current();cache.begin(next.scope)
+    current();cache.begin(next.scope);uri=sourceBitmapPayload(uri)
     if(windowScope!==next.scope){windows.clear();windowScope=next.scope}
     let keys=windows.get(uri)
     if(!keys){if(windows.size>=64)windows.delete(windows.keys().next().value!);keys=new Map();windows.set(uri,keys)}

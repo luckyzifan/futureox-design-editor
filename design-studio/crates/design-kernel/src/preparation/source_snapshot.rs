@@ -60,6 +60,13 @@ fn check(cancel: &AtomicBool) -> Result<(), String> {
     crate::render_cancellation::checkpoint()
 }
 impl Access {
+    pub(super) fn pick_engine<'a>(&'a self,owner:&'a crate::Engine)->Option<&'a crate::Engine>{
+        if self.complete {return Some(owner)}
+        #[cfg(feature="mapped-source-snapshot")]
+        {return self.lazy.pick_engine()}
+        #[cfg(not(feature="mapped-source-snapshot"))]
+        None
+    }
     pub(super) fn is_lazy(&self) -> bool {
         !self.complete
     }

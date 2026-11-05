@@ -918,6 +918,37 @@ mod tests {
     }
 
     #[test]
+    fn transforms_keep_handles_and_same_size_structural_edits_retire_them() {
+        let mut api = GraphApi::new(&document_json()).unwrap();
+        let initial = api.document_json();
+        let page = api.node_handle("p1");
+        let frame = api.node_handle("f1");
+        api.set_transform(frame, [0.0, 1.0, -1.0, 0.0, 21.0, 9.0]).unwrap();
+        let rotated = api.document_json();
+        assert!(api.undo().unwrap());
+        assert_eq!(api.document_json(), initial);
+        assert!(api.redo().unwrap());
+        assert_eq!(api.document_json(), rotated);
+        assert_eq!(api.node_handle("f1"), frame);
+
+        api.apply_ops_json(&serde_json::json!([
+            {"type":"removeNode","id":"f1"},
+            {"type":"insertNode","parent":"p1","index":0,"node":sample_node("f2","frame")}
+        ]).to_string()).unwrap();
+        let replacement = api.node_handle("f2");
+        assert!(!api.node_exists(frame));
+        assert!(api.node_exists(replacement));
+        assert!(api.undo().unwrap());
+        let restored = api.node_handle("f1");
+        assert_ne!(restored, frame);
+        assert!(!api.node_exists(replacement));
+        assert_eq!(api.document_json(), rotated);
+        assert!(api.redo().unwrap());
+        assert!(!api.node_exists(restored));
+        assert_eq!(api.node_handle("p1"), page);
+    }
+
+    #[test]
     fn replace_document_stacks_for_exact_undo() {
         let mut api = GraphApi::new(&document_json()).unwrap();
         let frame = api.node_handle("f1");

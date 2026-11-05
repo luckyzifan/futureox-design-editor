@@ -210,7 +210,7 @@ fn inspection_preserves_parent_layout_and_stage_request_is_complete() {
     let loaded = f.load(&["c"]);
     assert!(matches!(loaded.lookup("b"), Lookup::Loaded(_)));
     assert!(matches!(loaded.lookup("a"), Lookup::Cold));
-    assert_eq!(f.load(&["stage"]).nodes(), &f.document.nodes);
+    assert!(f.load(&["stage"]).nodes().iter().eq(&f.document.nodes));
 }
 #[test]
 fn unknown_optics_and_page_masks_remain_conservative() {

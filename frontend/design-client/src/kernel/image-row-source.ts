@@ -1,3 +1,4 @@
+import {sourceBitmap} from '../source-bitmap'
 import { ImageRowDecoder } from './generated-row-decoder'
 import { canRebuildImageDecoder } from './image-decode-recovery'
 
@@ -16,6 +17,7 @@ export function pngSourceDimensions(uri:string):[number,number]|undefined {
 /** A bounded SOF size hint; the native codec still verifies dimensions,
  * colour, orientation and the complete stream before any texture is used. */
 export function sourceBitmapDimensions(uri:string):[number,number]|undefined{
+ const ref=sourceBitmap(uri);if(ref)return [ref.width,ref.height]
  if(!uri.startsWith('data:image/jpeg;base64,'))return pngSourceDimensions(uri)
  try{
    const start='data:image/jpeg;base64,'.length

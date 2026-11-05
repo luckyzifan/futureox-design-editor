@@ -1008,3 +1008,70 @@ fn unresolved_source_symbol_must_wait_for_the_authoritative_dependency_index() {
     let early=opening::selected_snapshot_for_test(session.as_ref().unwrap(),&id,&AtomicBool::new(false)).unwrap();
     assert!(early.is_none());
 }
+
+#[test]
+fn source_layer_move_reparents_and_reorders_raw_objects_with_one_history_entry() {
+    let a="10000000-0000-4000-8000-000000000031";
+    let b="10000000-0000-4000-8000-000000000032";
+    let mut page:Value=serde_json::from_str(SOURCE_PAGE).unwrap();
+    let mut children=page["layers"].take().as_array().unwrap().clone();
+    let group=|id:&str,children:Vec<Value>|json!({"_class":"group","do_objectID":id,"name":"g","frame":{"x":0,"y":0,"width":200,"height":200},"layers":children});
+    page["layers"]=json!([group(a,vec![children.remove(0)]),group(b,children)]);
+    let raw=page.to_string().replace("\"privateUnknown\":{\"bytes\":100.0}","\"privateUnknown\": { \"bytes\" : 1e+02 }");
+    let (f,status)=Fixture::new(&raw);let key=f.key(PAGE);
+    f.call(&status,"large.scene",json!({"key":key})).unwrap();
+    // A one-sided move would lose a child or duplicate its identity.
+    assert!(f.call(&status,"large.sceneCommit",json!({"key":key,"requestId":"bad-move","json":json!({(a):{"patch":{"children":[]}}}).to_string()})).is_err());
+    let change=json!({(a):{"patch":{"children":[]}},(b):{"patch":{"children":[OTHER,RECT]}},(RECT):{"patch":{"name":"moved"}}});
+    let next=f.call(&status,"large.sceneCommit",json!({"key":key,"requestId":"move","json":change.to_string()})).unwrap();
+    assert_eq!(next["undoCount"],1);let archive=f.export_members(&next,"moved.sketch");
+    let name=format!("pages/{PAGE}.json");let moved:Value=serde_json::from_slice(&archive[&name]).unwrap();
+    assert_eq!(moved["layers"][0]["layers"],json!([]));
+    assert_eq!(moved["layers"][1]["layers"][0],page["layers"][1]["layers"][0]);
+    assert_eq!(moved["layers"][1]["layers"][1]["name"],"moved");
+    for(k,v) in &f.members{if k!=&name{assert_eq!(&archive[k],v)}}
+    let undone=f.call(&next,"large.undo",json!({"requestId":"undo-move"})).unwrap();
+    assert_eq!(f.export_members(&undone,"undo.sketch"),f.members);
+    let redone=f.call(&undone,"large.redo",json!({"requestId":"redo-move"})).unwrap();
+    assert_eq!(f.export_members(&redone,"redo.sketch"),archive);
+}
+
+#[test]
+fn selection_export_promotes_roots_keeps_required_masters_and_does_not_save_the_document() {
+    let group="20000000-0000-4000-8000-000000000003";
+    let master="20000000-0000-4000-8000-000000000004";
+    let symbol="20000000-0000-4000-8000-000000000005";
+    let mut page:Value=serde_json::from_str(SOURCE_PAGE).unwrap();
+    let frame=json!({"_class":"rect","x":0,"y":0,"width":100,"height":100});
+    let instance=json!({"_class":"symbolInstance","name":"Badge","do_objectID":RECT,"symbolID":symbol,
+        "frame":{"x":40,"y":20,"width":20,"height":10},"userInfo":{"plugin":{"custom":777}}});
+    page["layers"]=json!([
+        {"_class":"group","name":"Ancestor","do_objectID":group,"frame":frame,"rotation":90,"layers":[instance]},
+        page["layers"][1],
+        {"_class":"symbolMaster","name":"Badge symbol","do_objectID":master,"symbolID":symbol,"frame":frame,"layers":[]}
+    ]);
+    let(f,status)=Fixture::new(&page.to_string());
+    let request=|ids:Value,path:&str|json!({"path":f.root.join(path),"requestId":"20000000-0000-4000-8000-000000000000","selection":{"pageId":PAGE,"nodeIds":ids}});
+    let before=f.snapshot();
+    let result=f.call(&status,"large.export",request(json!([RECT]),"selected.sketch")).unwrap();
+    assert_eq!(result["exported"],true);
+    assert_eq!(f.snapshot(),before);
+    let mut archive=zip::ZipArchive::new(File::open(f.root.join("selected.sketch")).unwrap()).unwrap();
+    assert!(archive.by_name("previews/preview.png").is_err());
+    let doc:Value=serde_json::from_reader(archive.by_name("document.json").unwrap()).unwrap();
+    let pages=doc["pages"].as_array().unwrap();assert_eq!(pages.len(),2);
+    let read=|arc:&mut zip::ZipArchive<File>,i:usize|->Value{serde_json::from_reader(arc.by_name(&format!("{}.json",pages[i]["_ref"].as_str().unwrap())).unwrap()).unwrap()};
+    let output=read(&mut archive,0);let root=&output["layers"][0];
+    assert_eq!(output["layers"].as_array().unwrap().len(),1);assert_eq!(root["do_objectID"],RECT);
+    assert_eq!(root["userInfo"]["plugin"]["custom"],777);assert_eq!(root["rotation"].as_f64(),Some(90.));
+    assert_eq!(root["symbolID"],read(&mut archive,1)["layers"][0]["symbolID"]);
+    for ids in [json!([]),json!([OTHER,OTHER]),json!(["missing"])] {
+        assert!(f.call(&status,"large.export",request(ids,"invalid.sketch")).is_err());
+        assert!(!f.root.join("invalid.sketch").exists());
+    }
+    f.call(&status,"large.export",request(json!([RECT,group]),"parent.sketch")).unwrap();
+    let mut nested=zip::ZipArchive::new(File::open(f.root.join("parent.sketch")).unwrap()).unwrap();
+    let grouped=read(&mut nested,0);
+    assert_eq!(grouped["layers"].as_array().unwrap().len(),1);
+    assert_eq!(grouped["layers"][0]["layers"][0]["do_objectID"],RECT);
+}

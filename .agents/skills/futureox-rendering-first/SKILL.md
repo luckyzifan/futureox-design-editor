@@ -3,6 +3,52 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-02 原型「添加交互」把带 `ease-out` 的文档升到 schema 12。不改光栅、瓦片或预算。不是 33/100ms 或完整 G2/G5。
+2026-11-02 [插件与原型动效](../../../testing/verification-plugin-animation-20261102/README.md)不改光栅、瓦片或预算。采样失败不弹红条。玻璃和模糊的中间帧仍按主线封顶，落定帧用原稿。不是 33/100ms 或完整 G2/G5。
+2026-11-02 [吸管与取色](../../../testing/verification-eyedropper-color-picker-20261102/README.md)只改颜色行、取色弹层和吸管提示。不改像素、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [选区、框选与测距](../../../testing/verification-figma-canvas-chrome-marquee-20261102/README.md)只改选区描边、悬停、框选和 Option 间距。悬停轮廓和框选边跟选区一样，是整像素上的 1px `#4597F7` 实色填充。框选填充是 `#DCE9F5`，间距红是 `#E05634`。不改光栅、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [画布操作对照：编组与右键](../../../testing/verification-figma-canvas-ops-group-menu-20261102/README.md)只改编组命中已经具备的路径上的右键菜单：无描边矩形仍列出轮廓化描边，插件子菜单打开现有插件面板。空选区方向键不平移，空格拖动不移动对象。不改像素、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 打包的 FFmpeg 只服务动效预览编码，不改像素、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。见[记录](../../../testing/verification-ffmpeg-bundle-20261102/README.md)。
+2026-11-02 [原型播放](../../../testing/verification-playback-plugins-import-20261102/README.md)只改原型预览合成：溶解不逐帧重采样，中间帧把玻璃和模糊封顶，落定帧仍是原稿。不改编辑器光栅、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [画布呈现续](../../../testing/verification-canvas-render-continuity-20261102/README.md)旋转之后的快速缩小不再用更紧的完成帧换掉宽画面，CPU 选区跟实时相机。缩小后的 CPU 帧若盖住更多画面就留下。合成预算和光晕不再换成整帧红字。旋转进行中的蓝框留在当前纹理上。文件锁期间的标签继续排队。不放宽预算。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [画布操作对照：粘贴与展平](../../../testing/verification-figma-canvas-ops-paste-20261102/README.md)只改粘贴父级、实例旋转和混选展平。Shift+E 在设计模式仍开原型。不改像素、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [画布操作对照续](../../../testing/verification-figma-canvas-ops-next-20261102/README.md)只改编组命中、Enter、空选区方向键和右键菜单。空选区方向键不平移。不改像素、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [画布操作对照](../../../testing/verification-figma-canvas-ops-parity-20261102/README.md)只改命中、Option 拖动复制和键盘微移。子级实形选子级，画板空白选画板。不改像素、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 Electron 主线程缩放、拖动、打开 `.fig` 和多页里的单页编辑见[记录](../../../testing/verification-electron-perf-flame-20261102/README.md)。当前页改动不再整份重布局或重序列化；需要重排时只解当前根岛屿。损伤索引只覆盖这一页，视口瓦片仍按脏区相交丢掉。不改像素、瓦片预算或实验开关。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 选区、悬停和已选画板标题共用 `#3459d4`。单选是 2px 包围盒加 8px 手柄；多选另给每个对象 1px 轮廓，手柄只留在并集上。不改光栅、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 右键菜单在所有窗口宽度都是 `#2c2c2c`。不改光栅、瓦片或预算。
+2026-11-02 拿掉「设计 API」浮块，并把右键菜单改成深色。不改光栅、瓦片或预算。
+2026-11-02 [批量回归整合](../../../testing/verification-integrate-batch-20261102/README.md)只把功能分支合在一起，不改光栅默认、瓦片预算或实验开关。预览事务不再为每次缩放和拖动刷新整份图层面板。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 Electron 主线程缩放/拖动/打开 `.fig` 见[记录](../../../testing/verification-electron-perf-flame-20261102/README.md)。只少做整份文档 `JSON.stringify` 和预览期间的图层面板刷新，不改像素、瓦片、预算或实验开关。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [Electron SQLite 工作线程](../../../testing/verification-electron-sqlite-worker-20261102/README.md)只改桌面存储调度和主进程文档 JSON。不改光栅、瓦片、预算或实验开关。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 Local plugin auto-load does not change raster, tile, sticky pose, or compositing paths. It is not a 33/100ms or G2/G5 result. See [the note](../../../testing/verification-local-plugin-autoload-20261102/README.md).
+2026-11-02 [界面暖色外壳](../../../testing/verification-ui-chrome-grok-20261102/README.md)不改光栅、瓦片、预算或实验开关。选择描边颜色未改。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [界面抛光](../../../testing/verification-ui-chrome-grok-20261102/README.md)不改光栅、瓦片、预算或实验开关。加载动效和智能动画热区淡入只作用在界面状态；帧间形变仍走既有内核动画计划，不覆盖画布像素，也不把预览当成精确完成。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [钢笔与橡皮](../../../testing/verification-pen-eraser-figma-20261102/README.md)只改矢量交互和橡皮预览。开放笔画保留未碰到的三次曲线；填充形状的减去结果来自展平轮廓。不改光栅、瓦片、预算或实验开关。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [钢笔、橡皮与跳转](../../../testing/verification-figma-pen-eraser-nav-20261102/README.md)只改输入、矢量草稿和视图命令。不改光栅、瓦片、预算或实验开关。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [Mac 桌面 Figma 呈现](../../../testing/verification-figma-mac-presentation-20261102/README.md)不改光栅、瓦片、预算或实验开关。玻璃、圆角和页面/画板标题是界面与交互。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [Figma 版面与测距](../../../testing/verification-figma-layout-chrome-20261102/README.md)不改光栅、玻璃着色器、圆角曲线、瓦片、预算或实验开关。测距和布尔插入是交互与布局。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [玻璃与圆角](../../../testing/verification-figma-glass-corners-20261102/README.md)只把零平滑、无网络的矩形/画板/分区玻璃扩到拟合后的四角半径。均匀半径的字段和 JSON 不变。平滑与其它形状仍走距离场。画布手柄不改光栅预算。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [色域与透明度](../../../testing/verification-color-gamut-opacity-20261102/README.md)不改光栅预算、瓦片导航或实验开关。8 位画布仍是 sRGB。Display P3 只在导出时换算并标记。图层透明度乘进填充、描边和阴影，不是渲染故障修复。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [.fd 往返](../../../testing/verification-fd-roundtrip-20261102/README.md)只改原生容器的数值变体和被忽略字段的保留。不改光栅、瓦片、预算或实验开关，也不是 33/100ms 或完整 G2/G5。
+2026-11-02 [图层、属性与右键菜单](../../../testing/verification-figma-layers-properties-menu-20261102/README.md)只改检查器、图层面板和画布装饰。选中的画板标题和单个形状名称用 `#0d99ff`。旋转读数跟手，正值为顺时针，不改选择框与纹理的时序。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [画布操作对照](../../../testing/verification-figma-canvas-ops-20261102/README.md)画布旋转读数与检查器共用局部顺时针角。⌘V 与 Ctrl/⌘D 把普通图层加上 10。单角圆角画进填充。不改缩放覆盖、粘性仿射或 GPU 预算。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [画布基础操作对照](../../../testing/verification-figma-basic-ops-20261102/README.md)只改选择命中、双击/Enter 和框选提交。不改相机、瓦片、粘性仿射、缩放铺满或合成预算。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [字体目录与缺失替换](../../../testing/verification-font-parity-20261102/README.md)只增加字体枚举、字重匹配和确认后的替换。不改绘制预算、瓦片或实验开关，也不把字体覆盖说成 33/100ms 或完整 G2/G5。
+2026-11-02 [Figma 文档模型](../../../testing/verification-figma-document-model-20261102/README.md)只补文档/页面/样式/组件集语义和保存往返，不解决渲染故障。瓦片、预算和实验开关未改。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [FIG 导入对照](../../../testing/verification-fig-import-parity-20261102/README.md)不解决渲染故障。反向堆叠、对齐、文字样式、切片、连接线和白板只改变导入结果。瓦片、缩放、预算和实验开关未改。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 [Web 与桌面对齐](../../../testing/verification-web-desktop-parity-20261102/README.md)不改光栅、瓦片、预算或实验开关。网页画布操作仍走共享 Editor 与 WASM 命中/吸附，不另建网页文档模型。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 Figma 风格 MCP 门面见 [FIGMA_MCP_FACADE.md](../../../docs/FIGMA_MCP_FACADE.md)。它只调用现有 Design API，不改光栅、瓦片或导航。`get_screenshot` 仍是 CPU 设计内容导出，不是 GPU 截图。33/100ms 与完整 G2/G5 未通过。
+2026-11-02 [画布操作对照](../../../testing/verification-figma-canvas-ops-20261102/README.md)不改缩放覆盖、粘性仿射或标签缓存。选择拖动、旋转手柄、取整尺寸标签和创建填充是交互层。33/100ms 与完整 G2/G5 仍未通过。
+2026-11-02 Figma plugin host does not change raster, tile, sticky pose, or compositing paths. It is not a 33/100ms or G2/G5 result. See [the plugin host note](../../../testing/verification-figma-plugin-host-20261102/README.md).
+2026-11-02 大拓扑 Sketch 的 CPU 首屏见[记录](../../../testing/verification-large-topology-sketch-20261102/README.md)。整帧放不进合成账本时改为分块并留下填充和页面底色，不再返回空的红字帧。CPU 完整画板按屏幕瓦片交付位图。精确入口仍先报错。这不是 33/100ms 或完整 G2/G5。约 113MB 原件不在仓库内。
+2026-11-02 [sRGB 标记与片段字距](../../../testing/verification-color-fonts-srgb-20261102/README.md)只补导出色彩标记和 FIG 片段字距/行高。画布 8 位交换链仍是 sRGB；无覆盖的文字行盒不变。不是渲染故障修复，不关闭 33/100ms 或完整 G2/G5。
+2026-11-02 画布操作界面对照见[记录](../../../testing/verification-ui-chrome-figma-ops-20261102/README.md)。只改选择名称、创建预览描边、工具栏提示和面板入场，不改像素路径。面板不再以透明度 0 入场。33/100ms 与完整 G2/G5 仍未通过。
+
+2026-11-02 [导入与传输对照](../../../testing/verification-interop-transfer-20261102/README.md)不解决渲染故障。浏览器 FIG 描边端点与阴影背后标记、原生 `LAYER_BLUR` 别名是导入保真；瓦片交付缓冲、缩放导航、预算和实验开关未改。33/100ms 与完整 G2/G5 仍未通过。
+
+2026-11-02 低倍缩放连续覆盖与合成降级见[本轮记录](../../../testing/verification-zoom-coverage-budget-20261102/README.md)。低密度驻留不再取消连续性预览；同修订像素留在预览之上。合成预算或滤镜光晕超限时显示路径分块并丢掉放不下的效果，填充仍在。旋转进行中的选择框跟当前纹理，不先转。这不是 33/100ms 或完整 G2/G5。
+
 2026-11-02 [失败复核与定向修复](../../../testing/verification-rendering-audit-20261102/README.md)确认重效果、松手精修、全源首屏和模板二 3200% 仍未关闭；旧队列两例现已通过。当前原生交互只保留仍需使用且 owner 有效的图片，保留压力 fence 和未使用图片原策略。已解析 authored preview 不走 transport null 归一化；布局差量保留私有回执及全局字段身份。约束仿射逐次验证准确固定点，Rust 无效果叶节点只撤销自身及祖先支撑，描边重算、共享/效果/源上下文回退。最终三文件拖动/旋转 12 组 held/settled/fresh 零差异、完整 authored Undo 恢复；动作矩阵仍有 FIG 松手 511/825ms 和拓扑 1.55/2.07s。计量排除 ready 后 QA 快照，不把暖采样或回执代理当物理显示；33/100ms 和全 G5 未通过。字段存储候选仅留验证补丁，未增加生产开关。
 
 2026-11-01 [连续操作续轮](../../../testing/verification-fluid-canvas-20261101/README.md)保留白底、独立400%网格及自适应面板的真实UI验证。图片驻留的交互默认策略按ABBA收紧；完整画面、位姿和像素来源约束不变。局部旋转可降低工作量，但重效果仍有秒级尾延迟。发生像素差异的区域/内阴影裁剪没有默认采用；渐变字段窗口仍为独立候选。不得将这些结果说成所有操作丝滑或完整G2/G5通过。

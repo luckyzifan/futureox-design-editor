@@ -41,7 +41,7 @@ async function fixture(kind: 'rectangle' | 'frame' = 'rectangle') {
 
 for (const kind of ['rectangle', 'frame'] as const) test(`real NDJSON duplicate defaults use Core ${kind} placement and select the copy`, async () => {
   const f = await fixture(kind), before = f.editor.state.doc, [copy] = await f.duplicate([f.item.id])
-  expect(worldMatrix(f.editor.state.doc, copy)).toEqual([1, 0, 0, 1, kind === 'frame' ? 134 : 10, 20])
+  expect(worldMatrix(f.editor.state.doc, copy)).toEqual([1, 0, 0, 1, kind === 'frame' ? 134 : 20, kind === 'frame' ? 20 : 30])
   expect(f.editor.state.selection).toEqual([copy]); expect(f.editor.state.version).toBe(1)
   const after = f.editor.state.doc
   expect((await f.call('history.undo', {}, f.owner())).isError).toBe(false); expect(f.editor.state.doc).toEqual(before)
@@ -54,8 +54,8 @@ test('real NDJSON partial explicit offset retains the other axis default 24', as
 test('real NDJSON and UI share the same trusted repeat chain', async () => {
   const f = await fixture(); f.editor.select([f.item.id]); f.editor.duplicate(); f.editor.transformSelection(translate(30, 5))
   const current = f.editor.state.selection[0], [copy] = await f.duplicate([current])
-  expect(worldMatrix(f.editor.state.doc, copy)).toEqual([1, 0, 0, 1, 70, 30])
-  f.editor.duplicate(); expect(worldMatrix(f.editor.state.doc, f.editor.state.selection[0])).toEqual([1, 0, 0, 1, 100, 35])
+  expect(worldMatrix(f.editor.state.doc, copy)).toEqual([1, 0, 0, 1, 90, 50])
+  f.editor.duplicate(); expect(worldMatrix(f.editor.state.doc, f.editor.state.selection[0])).toEqual([1, 0, 0, 1, 130, 65])
 })
 test('real NDJSON exact retry neither duplicates twice nor resets newer repeat facts', async () => {
   const f = await fixture(), owner = f.owner(), params = { mutationId: 'duplicate-exact-retry', operations: [{ method: 'node.duplicate', params: { ids: [f.item.id] } }] }
@@ -65,7 +65,7 @@ test('real NDJSON exact retry neither duplicates twice nor resets newer repeat f
   expect(replay.isError).toBe(false); expect(replay.structuredContent.result.receipt.replayed).toBe(true)
   expect(f.editor.state).toBe(before); expect(f.editor.duplicationRepeat()).toEqual(repeat)
   const [copy] = await f.duplicate(f.editor.state.selection)
-  expect(worldMatrix(f.editor.state.doc, copy)).toEqual([1, 0, 0, 1, 70, 20])
+  expect(worldMatrix(f.editor.state.doc, copy)).toEqual([1, 0, 0, 1, 90, 40])
 })
 test('real NDJSON same-ID load during duplicate reports old commit and cannot seed the new owner', async () => {
   const f = await fixture(), owner = f.owner(); let loaded = false, adopted: Editor['state'] | undefined

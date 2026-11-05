@@ -16,19 +16,25 @@ import {
   defaultTextStyle,
   defaultLayout,
   defaultSizing,
+  hasStrokeMarkers,
+  hasLocalTools,
+  hasSchema20Features,
   type DesignNode,
   type Matrix,
   type Paint,
-  type Stroke,
   type StrokeMarker,
   type Network,
+  type Stroke,
+  type Effect,
 } from './model'
 import type { ImportedDesign } from './import-svg'
 import { emptySystem } from './design-system'
-import { importFigTextRuns } from './import-fig-text'
+import { importFigTextExtras, importFigTextRuns } from './import-fig-text'
+import { applyFigFacet, assertFigStructure, figNodeKind, figNote, importFigPrototype, parkFigReceipts, type FigReceipts } from './import-fig-nodes'
 import { defaultColorSettings } from './color'
 import { figImageAdjust } from './import-fig-image'
 import { importFigComponents } from './import-fig-components'
+import { applyFigDocumentSemantics, figGuides, includeFigRecord, storeFigVariables } from './import-fig-document'
 import { inverse } from './commands/affine'
 
 const MAX = 64 * 1024 * 1024
@@ -200,7 +206,7 @@ type FigLayoutRecord = Record<string, unknown> & {
   minSize?: { value?: { x: number; y: number } }
   maxSize?: { value?: { x: number; y: number } }
 }
-function importLayout(n: DesignNode, r: FigLayoutRecord, parent?: FigLayoutRecord) {
+function importLayout(n: DesignNode, r: FigLayoutRecord, parent: FigLayoutRecord | undefined, reverseZ: Set<string>) {
   const unsupported = (field: string, value: unknown): never => {
     throw new Error(
       `FIG 图层「${n.name}」的 ${field}=${String(value)} 暂不支持无损导入；原文件未修改`,
@@ -236,10 +242,14 @@ function importLayout(n: DesignNode, r: FigLayoutRecord, parent?: FigLayoutRecor
       stackAlign: 'MIN',
       stackWidth: 'FIXED',
       stackHeight: 'FIXED',
-      stackReverseZIndex: false,
       stackCounterAlignContent: 'AUTO',
     })) {
       if (r[field] !== undefined && r[field] !== neutral) unsupported(field, r[field])
+    }
+    // Figma "first on top" is authored order reversed, the same child flip the native reader applies.
+    if (r.stackReverseZIndex !== undefined && r.stackReverseZIndex !== false) {
+      if (r.stackReverseZIndex !== true) unsupported('stackReverseZIndex', r.stackReverseZIndex)
+      reverseZ.add(n.id)
     }
     if (!['frame', 'group', 'section'].includes(n.kind)) unsupported('stackMode', r.stackMode)
     const horizontal = distance('stackHorizontalPadding'),
@@ -258,7 +268,7 @@ function importLayout(n: DesignNode, r: FigLayoutRecord, parent?: FigLayoutRecor
       wrap: choice('stackWrap', { NO_WRAP: false, WRAP: true }, false),
       justify: choice(
         'stackPrimaryAlignItems',
-        { ...stackAlign, SPACE_BETWEEN: 'space-between' } as const,
+        { ...stackAlign, SPACE_BETWEEN: 'space-between', SPACE_EVENLY: 'space-evenly', SPACE_AROUND: 'space-around' } as const,
         'start',
       ),
       align: choice('stackCounterAlignItems', stackAlign, 'start'),
@@ -340,6 +350,46 @@ function importLayout(n: DesignNode, r: FigLayoutRecord, parent?: FigLayoutRecor
     }
   }
 }
+function figStrokeAlign(align: unknown): Stroke['align'] {
+  switch (align ?? 'CENTER') {
+    case 'INSIDE': return 'inside'
+    case 'OUTSIDE': return 'outside'
+    case 'CENTER': return 'center'
+    default: throw new Error(`FIG 描边对齐 ${String(align)} 暂不支持；原文件未修改`)
+  }
+}
+function figStrokeJoin(join: unknown): Stroke['join'] {
+  switch (join ?? 'MITER') {
+    case 'ROUND': return 'round'
+    case 'BEVEL': return 'bevel'
+    case 'MITER': return 'miter'
+    default: throw new Error(`FIG 描边连接 ${String(join)} 暂不支持；原文件未修改`)
+  }
+}
+/** Kiwi StrokeCap. NONE is the native butt cap. Decorative caps become end markers. */
+function figStrokeCap(cap: unknown, warnings: { add(message: string): unknown }): { cap: Stroke['cap']; endMarker?: Stroke['endMarker'] } {
+  switch (cap ?? 'NONE') {
+    case 'NONE':
+    case 'BUTT':
+      return { cap: 'butt' }
+    case 'ROUND':
+      return { cap: 'round' }
+    case 'SQUARE':
+      return { cap: 'square' }
+    case 'ARROW_LINES':
+    case 'ARROW_EQUILATERAL':
+      return { cap: 'butt', endMarker: 'arrow' }
+    case 'TRIANGLE_FILLED':
+      return { cap: 'butt', endMarker: 'triangle' }
+    case 'DIAMOND_FILLED':
+      return { cap: 'butt', endMarker: 'diamond' }
+    case 'CIRCLE_FILLED':
+      return { cap: 'butt', endMarker: 'circle' }
+    default:
+      warnings.add(`FIG strokeCap=${String(cap)} 尚不能无损表达，已按平头保留`)
+      return { cap: 'butt' }
+  }
+}
 export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesign & { backend: 'typescript-fig' } {
   const { data, files } = decodeFig(bytes),
     doc = blank(name),
@@ -362,7 +412,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     doc.rasterProfile = 'figma'
   }
   for (const record of records.values()) {
-    if (record.internalOnly) continue
+    if (record.internalOnly && record.type !== 'DOCUMENT' && record.type !== 'CANVAS') continue
     for (const profile of [record.documentColorProfile, record.colorProfile])
       if (profile !== undefined && (p3 ? profile !== 'DISPLAY_P3' : !['LEGACY', 'SRGB'].includes(profile)))
         throw new Error(`FIG 色域 ${profile} 暂不能无损导入；请保留原文件，或从 Figma 导出明确转换为 sRGB 的副本`)
@@ -370,7 +420,24 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       throw new Error(`FIG 插值色彩空间 ${record.interpolationColorSpace} 暂不能无损导入；原文件未修改`)
   }
   const ids = new Map([...records.keys()].map((id) => [id, uid()])),
-    blobs = data.blobs || []
+    blobs = data.blobs || [],
+    reverseZ = new Set<string>()
+  const receipts: FigReceipts = new Map()
+  const resolveLayer = (g: any) => {
+    const source = guid(g)
+    const record = records.get(source)
+    if (!record || record.internalOnly || record.type === 'DOCUMENT' || record.type === 'CANVAS') return undefined
+    return ids.get(source)
+  }
+  const keepFonts = (layer: DesignNode, record: any) => {
+    const importedFonts = importFigTextRuns(layer, record, warnings, colorSpace)
+    if (importedFonts.style || Object.keys(importedFonts.runs).length) {
+      doc.designSystem ??= emptySystem()
+      doc.designSystem.fontSources ??= {}
+      doc.designSystem.fontSources[layer.id] = importedFonts
+      warnings.add(`字体 ${record.fontName?.family || importedFonts.style || '片段字体'} 尚需匹配，已保留文字内容`)
+    }
+  }
   const getBlob = (index: number) => {
     const b = blobs[index]?.bytes
     if (!(b instanceof Uint8Array)) throw new Error('FIG 缺少二进制资源')
@@ -448,15 +515,110 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     }
     return result
   }
+  const strokesOf = (record: any, note?: (message: string) => void): Stroke[] => {
+    let strokeWidth = record.strokeWeight ?? 1
+    if (record.borderStrokeWeightsIndependent && record.strokePaints?.length) {
+      const borders = [record.borderTopWeight, record.borderRightWeight, record.borderBottomWeight, record.borderLeftWeight]
+        .map((value) => value ?? strokeWidth)
+      if (!borders.every((value: number) => value === borders[0])) {
+        // One kernel stroke width. Record the four edges instead of dropping the node.
+        note?.('borderStrokeWeightsIndependent(non-uniform)')
+        warnings.add('FIG 独立非均匀边描边已保留统一线宽，四边宽度尚未分别绘制')
+      } else strokeWidth = borders[0]
+    }
+    const dash: unknown = record.dashPattern ?? []
+    if (!Array.isArray(dash) || dash.some((value) => !Number.isFinite(value) || value < 0) ||
+      (dash.length > 0 && dash.every((value) => value === 0)))
+      throw new Error('FIG 虚线参数暂不能无损表达；原文件未修改')
+    const mappedCap = figStrokeCap(record.strokeCap, warnings)
+    return (record.strokePaints || []).map((p: any) => ({
+      ...stroke(),
+      paint: toPaint(p),
+      width: strokeWidth,
+      dash: dash.join(' '),
+      align: figStrokeAlign(record.strokeAlign),
+      cap: mappedCap.cap,
+      join: figStrokeJoin(record.strokeJoin),
+      ...(mappedCap.endMarker ? { endMarker: mappedCap.endMarker } : {}),
+    }))
+  }
+  const effectsOf = (record: any): Effect[] => (record.effects || []).map((x: any) => {
+    const kind = (
+      {
+        DROP_SHADOW: 'shadow',
+        INNER_SHADOW: 'inner-shadow',
+        LAYER_BLUR: 'blur',
+        FOREGROUND_BLUR: 'blur',
+        BACKGROUND_BLUR: 'background-blur',
+        GLASS: 'glass',
+        GRAIN: 'texture',
+      } as Record<string, Parameters<typeof effect>[0]>
+    )[x.type]
+    if (!kind) throw new Error(`FIG 效果 ${x.type} 暂不支持`)
+    if (kind === 'glass' && x.bevelSize !== undefined && (!Number.isFinite(x.bevelSize) || x.bevelSize < 0.001 || x.bevelSize > 1000))
+      throw new Error('FIG 玻璃倒角宽度无效；原文件未修改')
+    if (
+      kind === 'glass' &&
+      ![
+        x.refractionRadius,
+        x.refractionIntensity,
+        x.chromaticAberration,
+        x.specularAngle,
+        x.specularIntensity,
+      ].every(Number.isFinite)
+    )
+      throw new Error('FIG 玻璃参数不完整；原文件未修改')
+    if (
+      kind === 'texture' &&
+      (!Number.isFinite(x.noiseSize?.x) ||
+        !Number.isFinite(x.noiseSize?.y) ||
+        typeof x.clipToShape !== 'boolean')
+    )
+      throw new Error('FIG 纹理参数不完整；原文件未修改')
+    return {
+      ...effect(kind),
+      color: rgb(x.color, colorSpace),
+      opacity: x.color?.a ?? 1,
+      x: x.offset?.x || 0,
+      y: x.offset?.y || 0,
+      radius: x.radius || 0,
+      spread: x.spread || 0,
+      visible: x.visible !== false,
+      ...(kind === 'glass'
+        ? {
+            glass: {
+              ...(x.bevelSize !== undefined && x.bevelSize !== 1 ? { bevelSize: x.bevelSize } : {}),
+              depth: x.refractionRadius,
+              refraction: x.refractionIntensity,
+              dispersion: x.chromaticAberration,
+              lightAngle: x.specularAngle,
+              lightIntensity: x.specularIntensity,
+            },
+          }
+        : {}),
+      ...(kind === 'texture'
+        ? {
+            texture: {
+              noiseSize: [x.noiseSize.x, x.noiseSize.y] as [number, number],
+              clipToShape: x.clipToShape,
+            },
+          }
+        : {}),
+      ...(x.showShadowBehindNode === true ? { showShadowBehindNode: true } : {}),
+    }
+  })
   doc.pages = []
   for (const [key, r] of records) {
-    if (r.type === 'DOCUMENT' || r.internalOnly) continue
+    if (!includeFigRecord(r, records, guid)) continue
     if (r.type === 'CANVAS') {
+      const id = ids.get(key)!
+      const guides = figGuides(r, id)
       doc.pages.push({
-        id: ids.get(key)!,
+        id,
         name: r.name || '页面',
         children: [],
         background: rgb(r.backgroundColor || { r: 1, g: 1, b: 1 }, colorSpace),
+        ...(guides ? { guides } : {}),
       })
       continue
     }
@@ -464,25 +626,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     // They have no clipping/auto-layout frame semantics (desigma fig.rs).
     const nativeGroup = r.type === 'FRAME' && r.resizeToFit === true && r.isStateGroup !== true &&
       (r.stackMode === undefined || r.stackMode === 'NONE')
-    const kind = nativeGroup ? 'group' : (
-      {
-        FRAME: 'frame',
-        GROUP: 'group',
-        RECTANGLE: 'rectangle',
-        ROUNDED_RECTANGLE: 'rectangle',
-        ELLIPSE: 'ellipse',
-        LINE: 'line',
-        VECTOR: 'vector',
-        BOOLEAN_OPERATION: 'vector',
-        REGULAR_POLYGON: 'polygon',
-        STAR: 'star',
-        TEXT: 'text',
-        SYMBOL: 'frame',
-        INSTANCE: 'frame',
-        SECTION: 'section',
-      } as Record<string, Parameters<typeof node>[0]>
-    )[r.type]
-    if (!kind) throw new Error(`FIG 节点类型 ${r.type} 暂不支持；原文件未修改`)
+    const kind = nativeGroup ? 'group' : figNodeKind(r, warnings)
     const width = r.size?.x ?? 100, height = r.size?.y ?? 100
     if (![width, height].every((v) => Number.isFinite(v) && v >= 0 && v <= 1e7))
       throw new Error('FIG 图层尺寸无效；原文件未修改')
@@ -522,39 +666,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     }
     if (kind === 'star') n.innerRadius = r.starInnerScale ?? n.innerRadius
     n.fills = (r.fillPaints || r.backgroundPaints || []).map(toPaint)
-    let strokeWidth = r.strokeWeight ?? 1
-    if (r.borderStrokeWeightsIndependent && r.strokePaints?.length) {
-      const borders = [r.borderTopWeight, r.borderRightWeight, r.borderBottomWeight, r.borderLeftWeight]
-        .map((value) => value ?? strokeWidth)
-      if (!borders.every((value) => value === borders[0]))
-        throw new Error('FIG 独立非均匀边描边暂不能无损导入；原文件未修改')
-      strokeWidth = borders[0]
-    }
-    const dash: unknown = r.dashPattern ?? []
-    if (!Array.isArray(dash) || dash.some((value) => !Number.isFinite(value) || value < 0) ||
-      (dash.length > 0 && dash.every((value) => value === 0)))
-      throw new Error('FIG 虚线参数暂不能无损表达；原文件未修改')
-    const strokePaints = r.strokePaints || []
-    if (!Array.isArray(strokePaints)) throw new Error('FIG 描边画笔列表无效')
-    if (strokePaints.length) {
-      const name = r.strokeCap ?? 'NONE'
-      const ending = typeof name === 'string' ? strokeCaps.get(name.toUpperCase()) : undefined
-      if (!ending) warnings.add(`FIG strokeCap=${name} 尚不能表达，已使用平头描边`)
-      const align = String(r.strokeAlign || 'CENTER').toLowerCase()
-      const join = String(r.strokeJoin || 'MITER').toLowerCase()
-      if (align !== 'center' && align !== 'inside' && align !== 'outside') throw new Error(`FIG 描边对齐 ${align} 无效`)
-      if (join !== 'miter' && join !== 'round' && join !== 'bevel') throw new Error(`FIG 描边连接 ${join} 无效`)
-      n.strokes = strokePaints.map<Stroke>(p => ({
-        ...stroke(),
-        paint: toPaint(p),
-        width: strokeWidth,
-        dash: dash.join(' '),
-        align,
-        cap: ending?.cap ?? 'butt',
-        ...(ending && ending.marker !== 'none' ? { endMarker: ending.marker } : {}),
-        join,
-      }))
-    } else n.strokes = []
+    n.strokes = strokesOf(r, (message) => figNote(receipts, n.id, message))
     n.radii = [
       r.rectangleTopLeftCornerRadius ?? r.cornerRadius ?? 0,
       r.rectangleTopRightCornerRadius ?? r.cornerRadius ?? 0,
@@ -562,70 +674,13 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       r.rectangleBottomLeftCornerRadius ?? r.cornerRadius ?? 0,
     ]
     n.smoothing = r.cornerSmoothing || 0
-    n.effects = (r.effects || []).map((x: any) => {
-      const kind = (
-        {
-          DROP_SHADOW: 'shadow',
-          INNER_SHADOW: 'inner-shadow',
-          LAYER_BLUR: 'blur',
-          FOREGROUND_BLUR: 'blur',
-          BACKGROUND_BLUR: 'background-blur',
-          GLASS: 'glass',
-          GRAIN: 'texture',
-        } as Record<string, Parameters<typeof effect>[0]>
-      )[x.type]
-      if (!kind) throw new Error(`FIG 效果 ${x.type} 暂不支持`)
-      if (kind === 'glass' && x.bevelSize !== undefined && (!Number.isFinite(x.bevelSize) || x.bevelSize < 0.001 || x.bevelSize > 1000))
-        throw new Error('FIG 玻璃倒角宽度无效；原文件未修改')
-      if (
-        kind === 'glass' &&
-        ![
-          x.refractionRadius,
-          x.refractionIntensity,
-          x.chromaticAberration,
-          x.specularAngle,
-          x.specularIntensity,
-        ].every(Number.isFinite)
-      )
-        throw new Error('FIG 玻璃参数不完整；原文件未修改')
-      if (
-        kind === 'texture' &&
-        (!Number.isFinite(x.noiseSize?.x) ||
-          !Number.isFinite(x.noiseSize?.y) ||
-          typeof x.clipToShape !== 'boolean')
-      )
-        throw new Error('FIG 纹理参数不完整；原文件未修改')
-      return {
-        ...effect(kind),
-        color: rgb(x.color, colorSpace),
-        opacity: x.color?.a ?? 1,
-        x: x.offset?.x || 0,
-        y: x.offset?.y || 0,
-        radius: x.radius || 0,
-        spread: x.spread || 0,
-        visible: x.visible !== false,
-        ...(kind === 'glass'
-          ? {
-              glass: {
-                ...(x.bevelSize !== undefined && x.bevelSize !== 1 ? { bevelSize: x.bevelSize } : {}),
-                depth: x.refractionRadius,
-                refraction: x.refractionIntensity,
-                dispersion: x.chromaticAberration,
-                lightAngle: x.specularAngle,
-                lightIntensity: x.specularIntensity,
-              },
-            }
-          : {}),
-        ...(kind === 'texture'
-          ? {
-              texture: {
-                noiseSize: [x.noiseSize.x, x.noiseSize.y] as [number, number],
-                clipToShape: x.clipToShape,
-              },
-            }
-          : {}),
+    n.effects = effectsOf(r)
+    for (const x of r.effects || []) {
+      if (x?.blendMode && x.blendMode !== 'NORMAL') {
+        figNote(receipts, n.id, `effectBlendMode=${x.blendMode}`)
+        warnings.add(`FIG 效果混合 ${x.blendMode} 已保留效果，混合方式尚未绘制`)
       }
-    })
+    }
     if (r.vectorData?.vectorNetworkBlob !== undefined) {
       const normalized=r.vectorData.normalizedSize
       const sx=normalized?.x===undefined?1:n.width/normalized.x,sy=normalized?.y===undefined?1:n.height/normalized.y
@@ -638,6 +693,12 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       if(!source&&n.strokes.some(s=>s.visible&&s.width>0))throw Error('FIG 仅提供填充轮廓，缺少可精确保留描边的路径')
       n.vectorGeometry={fillRule:paths[0].rule,fill:paths.flatMap((p:any)=>p.commands),...(source?{stroke:source.stroke??source.fill}:{})}
       delete n.network
+    }
+    applyFigFacet(n, r, resolveLayer, receipts, warnings)
+    if (r.type === 'STICKY' || r.type === 'CODE_BLOCK' || r.type === 'SHAPE_WITH_TEXT') {
+      n.text = r.textData?.characters || ''
+      if (r.type === 'STICKY' && Number.isFinite(r.fontSize)) n.fontSize = Math.max(1, r.fontSize)
+      if (r.type === 'STICKY') keepFonts(n, r)
     }
     if (kind === 'text') {
       n.text = r.textData?.characters || ''
@@ -663,15 +724,8 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       if (r.lineHeight?.units === 'PERCENT') n.textStyle.lineHeight = r.lineHeight.value / 100
       if (r.letterSpacing?.units === 'PIXELS') n.textStyle.letterSpacing = r.letterSpacing.value
       if (r.letterSpacing?.units === 'PERCENT') n.textStyle.letterSpacing = r.letterSpacing.value * n.fontSize / 100
-      const importedFonts=importFigTextRuns(n,r,warnings,colorSpace)
-      if (importedFonts.style || Object.keys(importedFonts.runs).length) {
-        doc.designSystem ??= emptySystem()
-        doc.designSystem.fontSources ??= {}
-        doc.designSystem.fontSources[n.id] = importedFonts
-        warnings.add(
-          `字体 ${r.fontName?.family || importedFonts.style || '片段字体'} 尚需匹配，已保留文字内容`,
-        )
-      }
+      keepFonts(n, r)
+      importFigTextExtras(n, r, warnings)
     }
     if (r.type === 'SYMBOL') n.component = { variants: {}, properties: {} }
     if (r.type === 'INSTANCE') n.instance = { componentId: '', overrides: {}, propertyValues: {} }
@@ -682,7 +736,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       if (!(operation in operations)) throw new Error(`FIG 布尔运算 ${operation} 暂不支持；原文件未修改`)
       n.booleanOperation = operations[operation as keyof typeof operations]
     }
-    importLayout(n, r, records.get(guid(r.parentIndex?.guid)))
+    importLayout(n, r, records.get(guid(r.parentIndex?.guid)), reverseZ)
     doc.nodes[n.id] = n
   }
   // Figma's fractional positions are lexicographic identifiers. Locale collation
@@ -702,6 +756,14 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       parent && (doc.nodes[parent]?.children || doc.pages.find((p) => p.id === parent)?.children)
     if (!children) throw new Error('FIG 图层父节点缺失')
     children.push(id)
+  }
+  for (const id of reverseZ) {
+    const layer = doc.nodes[id]
+    if (!layer) continue
+    layer.children.reverse()
+    const bindings = receipts.get(id) ?? {}
+    bindings.figStackReverseZIndex = 'true'
+    receipts.set(id, bindings)
   }
   if (!doc.pages.length) throw new Error('FIG 文件没有可导入页面')
   importFigComponents(doc, records, ids, toPaint)
@@ -724,24 +786,38 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
       parent.children=[...parent.children.slice(0,at),group.id]
     }
   }
+  assertFigStructure(doc)
+  importFigPrototype(records, ids, doc, receipts)
+  parkFigReceipts(doc, receipts)
+  applyFigDocumentSemantics(doc, records, ids, guid, { toPaint, effectsOf, strokesOf, fallbackName: name }, warnings)
+  storeFigVariables(doc, data)
   if (
     [...records.values()].some(
       (r) => r.prototypeInteractions || r.componentPropDefs || r.boundVariables,
     )
   )
     warnings.add('原型、变量与部分组件属性尚需手动核对')
-  let version = 4
-  for (const n of Object.values(doc.nodes)) {
-    if (n.vectorGeometry) { version = 16; break }
-    if (n.effects.some(e => e.glass || e.texture)) version = Math.max(version, 5)
-    if (n.arc || n.cornerRadius) version = Math.max(version, 7)
-    if (n.strokes.some(s => s.endMarker && s.endMarker !== 'none')) version = Math.max(version, 8)
-    if (n.network?.filledFaces !== undefined) version = Math.max(version, 10)
-    for (const p of n.fills) version = Math.max(version, p.tile ? 14 : p.adjust ? 13 : 4)
-    for (const { paint } of n.strokes) version = Math.max(version, paint.tile ? 14 : paint.adjust ? 13 : 4)
-    if ((n.textStyle?.textCase && n.textStyle.textCase !== 'original') || n.textRuns?.some(r => r.textCase !== undefined))
-      version = Math.max(version, 15)
-  }
-  doc.schemaVersion = version as typeof doc.schemaVersion
+  if ([...records.values()].some((r) => r.prototypeInteractions))
+    warnings.add('原型交互已保留为来源数据，尚不能直接播放')
+  doc.schemaVersion = Object.values(doc.nodes).some((n) =>
+    n.effects.some((e) => e.glass || e.texture),
+  )
+    ? 5
+    : 4
+  if(Object.values(doc.nodes).some(n=>n.arc || n.cornerRadius))doc.schemaVersion=Math.max(7,doc.schemaVersion) as typeof doc.schemaVersion
+  if (Object.values(doc.nodes).some(n=>[...n.fills,...n.strokes.map(s=>s.paint)].some(p=>p.adjust))) doc.schemaVersion = 13
+  if(Object.values(doc.nodes).some(n=>[...n.fills,...n.strokes.map(s=>s.paint)].some(p=>p.tile)))doc.schemaVersion=Math.max(14,doc.schemaVersion) as typeof doc.schemaVersion
+  if(Object.values(doc.nodes).some(n=>n.vectorGeometry))doc.schemaVersion=16
+  else if(Object.values(doc.nodes).some(n=>n.network?.filledFaces!==undefined))doc.schemaVersion=Math.max(10,doc.schemaVersion) as typeof doc.schemaVersion
+  if (Object.values(doc.nodes).some(n=>(n.textStyle?.textCase && n.textStyle.textCase !== 'original') || n.textRuns?.some(r=>r.textCase !== undefined))) doc.schemaVersion = Math.max(15,doc.schemaVersion) as typeof doc.schemaVersion
+  if (Object.values(doc.nodes).some(n=>n.textRuns?.some(r=>r.letterSpacing !== undefined || r.lineHeight !== undefined))) doc.schemaVersion = Math.max(21, doc.schemaVersion) as typeof doc.schemaVersion
+  if (hasStrokeMarkers(doc)) doc.schemaVersion = Math.max(8, doc.schemaVersion) as typeof doc.schemaVersion
+  if (hasLocalTools(doc)) doc.schemaVersion = Math.max(10, doc.schemaVersion) as typeof doc.schemaVersion
+  if (doc.pages.some(page => page.guides?.length)) doc.schemaVersion = Math.max(11, doc.schemaVersion) as typeof doc.schemaVersion
+  if (Object.values(doc.designSystem?.styles || {}).some(style => style.strokes?.length || style.effects?.length))
+    doc.schemaVersion = Math.max(12, doc.schemaVersion) as typeof doc.schemaVersion
+  if (Object.values(doc.designSystem?.styles || {}).some(style => style.kind === 'text' && style.value && typeof style.value === 'object' && 'textCase' in style.value && style.value.textCase && style.value.textCase !== 'original'))
+    doc.schemaVersion = Math.max(15, doc.schemaVersion) as typeof doc.schemaVersion
+  if (hasSchema20Features(doc)) doc.schemaVersion = Math.max(20, doc.schemaVersion) as typeof doc.schemaVersion
   return { document: doc, backend: 'typescript-fig', ...warnings.result() }
 }

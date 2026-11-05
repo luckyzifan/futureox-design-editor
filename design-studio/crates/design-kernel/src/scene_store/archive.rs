@@ -38,8 +38,16 @@ struct Index {
     eligible: bool,
 }
 
+// The checked reference borrows the same private, read-only mapping for its
+// lifetime. Looking up an entry never repeats rkyv validation.
+#[ouroboros::self_referencing]
+struct CheckedIndex {
+    mapping: Mmap,
+    #[borrows(mapping)]
+    archive: &'this ArchivedIndex,
+}
 pub(crate) struct Directory {
-    bytes: Mmap,
+    checked: CheckedIndex,
     orphans: Vec<usize>,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -79,9 +87,10 @@ impl Directory {
         if <[u8; 32]>::from(hash.finalize()) != envelope.hash {
             return Err(invalid("Archive directory hash changed"));
         }
-        let bytes = bytes.make_read_only()?;
-        let index =
-            rkyv::access::<ArchivedIndex, rkyv::rancor::Error>(&bytes).map_err(io::Error::other)?;
+        let checked = CheckedIndex::try_new(bytes.make_read_only()?, |mapping| {
+            rkyv::access::<ArchivedIndex, rkyv::rancor::Error>(mapping).map_err(io::Error::other)
+        })?;
+        let index = checked.borrow_archive();
         if index.version.to_native() != 2
             || index.document_id.as_str() != envelope.base.document_id
             || index.generation.as_str() != envelope.base.generation
@@ -155,17 +164,13 @@ impl Directory {
             .filter(|id| !roots.contains(id))
             .collect();
         check(cancel)?;
-        Ok(Some(Arc::new(Self { bytes, orphans })))
+        Ok(Some(Arc::new(Self { checked, orphans })))
     }
     fn index(&self) -> &ArchivedIndex {
-        // SAFETY: open() checked this exact type with bytecheck on these exact
-        // bytes. The private anonymous map was made read-only before publication
-        // and cannot be changed through a file handle, path or exposed API.
-        unsafe { rkyv::access_unchecked::<ArchivedIndex>(&self.bytes) }
+        self.checked.borrow_archive()
     }
     pub(crate) fn bytes(&self) -> usize {
-        self.bytes
-            .len()
+        self.mapped_bytes()
             .saturating_add(
                 self.orphans
                     .capacity()
@@ -174,7 +179,7 @@ impl Directory {
             .saturating_add(128)
     }
     pub(crate) fn mapped_bytes(&self) -> usize {
-        self.bytes.len()
+        self.checked.borrow_mapping().len()
     }
     pub(crate) fn eligible(&self) -> bool {
         self.index().eligible
@@ -507,11 +512,11 @@ fn neutral(n: &Node) -> bool {
 pub(super) fn append(
     path: &Path,
     base: Descriptor,
-    document: &Document,
+    source: SourceToWrite<'_>,
     cancel: &AtomicBool,
 ) -> io::Result<Descriptor> {
     check(cancel)?;
-    document.validate_native_source().map_err(invalid_owned)?;
+    let document = source.checked_document()?;
     // This optional directory has its own bound; declining it never rejects a
     // large source or removes the existing complete loader.
     let root_count = document
@@ -663,7 +668,7 @@ pub(super) fn append(
         id: document.id.clone(),
         name: document.name.clone(),
         pages: document.pages.clone(),
-        nodes: BTreeMap::new(),
+        nodes: Default::default(),
         fonts: BTreeMap::new(),
         animations: vec![],
     };

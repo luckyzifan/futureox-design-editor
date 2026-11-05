@@ -138,7 +138,7 @@ pub(crate) fn reconcile(old: &Node, next: &mut Node, network_explicit: bool, run
 /// Live Boolean geometry is rebuilt from operands, so resize those operands
 /// too. Left-scaling their transforms preserves curves and nested groups.
 pub(crate) fn resize_boolean_children(
-    nodes: &mut std::collections::BTreeMap<String, Node>,
+    nodes: &mut crate::scene::DocumentNodes,
     children: &[String],
     sx: f64,
     sy: f64,

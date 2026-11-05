@@ -96,6 +96,10 @@ test('retained baseline is hash-verified and only declared repeat, SVG option an
     "  if (scene(doc,pageId).some(entry => doc.nodes[entry.id].effects.some(e => e.visible && e.colorControls?.space === 'display-p3'))) throw new Error('Display-P3 编码域颜色调整需要保留视觉效果的 SVG 或位图导出')\n" +
     "  const source = renderToStaticMarkup(\n",
   ])
+  deltas.push([
+    "  if (format !== 'png' && colorOutput && colorOutput.space !== 'srgb') throw new Error('JPEG/WebP/PDF 当前使用 sRGB；广色域请导出 PNG')\n",
+    "  if (format !== 'png' && colorOutput && colorOutput.space !== 'srgb' && colorOutput.space !== 'display-p3') throw new Error('JPEG、WebP 与 PDF 只标记 sRGB 或 Display P3；其他色彩空间请导出 PNG')\n",
+  ])
   let approved = retained
   for (const [before, after] of deltas) {
     expect(approved.split(before)).toHaveLength(2)

@@ -4,6 +4,8 @@ import { blank, node } from './model'
 import { requestCanvasColor, hasCanvasColorPicker, cancelCanvasColorPicker, acceptCanvasColor, pickSelectionColor } from './canvas-color-picker'
 import { kernelTextLayout } from './kernel/picking'
 import {sampleColorLabel} from './canvas-color-picker'
+import { rememberPaintChannel } from './eyedropper-target'
+import { stroke } from './model'
 
 test('cancelled or superseded color requests cannot cancel a newer picker or mutate the document',async()=>{
  const editor=new Editor(blank()),document=editor.state.doc,version=editor.state.version
@@ -50,3 +52,25 @@ test('whole-layer canvas sampling replaces imported run colors while retaining r
   editor.redo();expect(editor.state.doc.nodes).toEqual(after.nodes)
  }finally{editor.dispose()}
 })
+
+test('the active stroke receives the sample and the fill stays put', async () => {
+  const document = blank(), shape = node('rectangle', 0, 0, 40, 40)
+  shape.fills[0].color = '#112233'
+  shape.strokes = [stroke('#445566')]
+  document.nodes[shape.id] = shape
+  document.pages[0].children = [shape.id]
+  const editor = new Editor(document)
+  editor.select([shape.id])
+  rememberPaintChannel(editor, 'stroke')
+  try {
+    const picked = pickSelectionColor(editor)
+    acceptCanvasColor(editor, '#00ff00')
+    await picked
+    expect(editor.state.doc.nodes[shape.id].strokes[0].paint.color).toBe('#00ff00')
+    expect(editor.state.doc.nodes[shape.id].strokes[0].paint.kind).toBe('solid')
+    expect(editor.state.doc.nodes[shape.id].fills[0].color).toBe('#112233')
+    editor.undo()
+    expect(editor.state.doc.nodes[shape.id].strokes[0].paint.color).toBe('#445566')
+  } finally { editor.dispose() }
+})
+

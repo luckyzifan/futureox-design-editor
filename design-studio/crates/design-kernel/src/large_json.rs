@@ -589,6 +589,39 @@ impl Changes {
             }]
         })
     }
+    /// Reorder already indexed source spans without reading or retaining subtree bytes.
+    /// None is a JSON array separator. The host validates both the typed topology
+    /// and the new virtual JSON before publishing the result.
+    pub fn compose_spans(&self, source_bytes: u64, ranges: &[Option<Span>]) -> io::Result<Self> {
+        let old = self.pieces(source_bytes);
+        let mut ends = Vec::with_capacity(old.len());
+        let mut end = 0u64;
+        for piece in &old {
+            end = end.checked_add(piece.length).ok_or_else(|| invalid("JSON piece overflow"))?;
+            ends.push(end);
+        }
+        let comma = Arc::new(",".to_owned());
+        let mut output = Vec::new();
+        for range in ranges {
+            let Some(span) = range else {
+                output.push(Piece { start:0, length:1, added:Some(comma.clone()) });
+                continue;
+            };
+            if span.start > span.end || span.end > end { return Err(invalid("Invalid source composition span")); }
+            let mut at = span.start;
+            let mut i = ends.partition_point(|v| *v <= at);
+            while at < span.end {
+                let piece = &old[i];
+                let start = ends[i] - piece.length;
+                let length = span.end.min(ends[i]) - at;
+                if length != 0 { output.push(Piece { start:piece.start + (at-start), length, added:piece.added.clone() }); }
+                at += length; i += 1;
+            }
+        }
+        let next = Self { pieces:Some(output) };
+        if next.output_bytes(source_bytes)? > MAX_SOURCE_OFFSET {return Err(invalid("JSON piece budget exceeded"));}
+        Ok(next)
+    }
     pub fn retained_bytes(&self) -> usize {
         self.pieces
             .as_ref()

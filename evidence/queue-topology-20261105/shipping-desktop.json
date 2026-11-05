@@ -1,0 +1,2366 @@
+{
+  "dense-1-G": {
+    "dense-cold-view": {
+      "ready": true,
+      "camera": [
+        30.635265266867464,
+        -1212.8690868585725,
+        0.09855276495819335
+      ],
+      "visible": [
+        209,
+        210,
+        212,
+        213,
+        214,
+        217,
+        218,
+        219,
+        220,
+        261
+      ],
+      "afterGestureMs": 18559.8,
+      "afterLastInputMs": 18611.2,
+      "scope": [
+        {
+          "keys": [
+            "2:16659",
+            "2:18245",
+            "2:19452",
+            "2:20659",
+            "2:24989",
+            "2:279",
+            "2:3457",
+            "2:5",
+            "2:6361",
+            "2:9265"
+          ],
+          "nodes": 15604,
+          "relativeMs": 180.4
+        }
+      ],
+      "captures": [],
+      "uncachedTileRecords": 16,
+      "peakTextureBytes": 831501124,
+      "sampledGraphMs": 10107.9,
+      "sampledCheckpointMs": 2912.2
+    },
+    "dense-pan": {
+      "ready": true,
+      "camera": [
+        94.63526526686746,
+        -1180.8690868585725,
+        0.09855276495819335
+      ],
+      "visible": [
+        209,
+        210,
+        212,
+        213,
+        214,
+        215,
+        217,
+        218,
+        219,
+        220,
+        221,
+        261
+      ],
+      "afterGestureMs": 1.8,
+      "afterLastInputMs": 18.5,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 0,
+      "peakTextureBytes": 0,
+      "sampledGraphMs": 0,
+      "sampledCheckpointMs": 0
+    },
+    "dense-pan-back": {
+      "ready": true,
+      "camera": [
+        30.635265266867464,
+        -1212.8690868585725,
+        0.09855276495819335
+      ],
+      "visible": [
+        209,
+        210,
+        212,
+        213,
+        214,
+        217,
+        218,
+        219,
+        220,
+        261
+      ],
+      "afterGestureMs": 1.8,
+      "afterLastInputMs": 17.1,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 0,
+      "peakTextureBytes": 0,
+      "sampledGraphMs": 0,
+      "sampledCheckpointMs": 0
+    },
+    "dense-more-detail": {
+      "ready": true,
+      "camera": [
+        -128.31063287742347,
+        -1883.6167395412735,
+        0.1379738719957956
+      ],
+      "visible": [
+        212,
+        213,
+        219,
+        261
+      ],
+      "afterGestureMs": 2487.7,
+      "afterLastInputMs": 2531.0,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 5,
+      "peakTextureBytes": 946858820,
+      "sampledGraphMs": 392.5,
+      "sampledCheckpointMs": 238.9
+    },
+    "dense-zoom-back": {
+      "ready": true,
+      "camera": [
+        30.635265266867464,
+        -1212.8690868585725,
+        0.09855276495819335
+      ],
+      "visible": [
+        209,
+        210,
+        212,
+        213,
+        214,
+        217,
+        218,
+        219,
+        220,
+        261
+      ],
+      "afterGestureMs": 1754.4,
+      "afterLastInputMs": 1809.9,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 4,
+      "peakTextureBytes": 946858820,
+      "sampledGraphMs": 751.1,
+      "sampledCheckpointMs": 453.0
+    },
+    "dense-inflight-return": {
+      "ready": true,
+      "camera": [
+        30.635265266867464,
+        -1212.8690868585725,
+        0.09855276495819335
+      ],
+      "visible": [
+        209,
+        210,
+        212,
+        213,
+        214,
+        217,
+        218,
+        219,
+        220,
+        261
+      ],
+      "afterGestureMs": 2192.4,
+      "afterLastInputMs": 2235.2,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 7,
+      "peakTextureBytes": 946858820,
+      "sampledGraphMs": 1232.1,
+      "sampledCheckpointMs": 758.9
+    }
+  },
+  "dense-2-A": {
+    "dense-cold-view": {
+      "ready": true,
+      "camera": [
+        30.635265266867407,
+        -1212.8690868585725,
+        0.09855276495819335
+      ],
+      "visible": [
+        209,
+        210,
+        212,
+        213,
+        214,
+        217,
+        218,
+        219,
+        220,
+        261
+      ],
+      "afterGestureMs": 11567.7,
+      "afterLastInputMs": 11620.8,
+      "scope": [
+        {
+          "keys": [
+            "2:24193",
+            "2:24194"
+          ],
+          "nodes": 3,
+          "relativeMs": -592.6
+        },
+        {
+          "keys": [
+            "2:16659",
+            "2:18245",
+            "2:19452",
+            "2:20659",
+            "2:24989",
+            "2:279",
+            "2:3457",
+            "2:5",
+            "2:6361",
+            "2:9265"
+          ],
+          "nodes": 15604,
+          "relativeMs": 88.4
+        }
+      ],
+      "captures": [],
+      "uncachedTileRecords": 14,
+      "peakTextureBytes": 831501124,
+      "sampledGraphMs": 6868.1,
+      "sampledCheckpointMs": 2625.8
+    },
+    "dense-pan": {
+      "ready": true,
+      "camera": [
+        94.6352652668674,
+        -1180.8690868585725,
+        0.09855276495819335
+      ],
+      "visible": [
+        209,
+        210,
+        212,
+        213,
+        214,
+        215,
+        217,
+        218,
+        219,
+        220,
+        221,
+        261
+      ],
+      "afterGestureMs": 3.4,
+      "afterLastInputMs": 17.9,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 0,
+      "peakTextureBytes": 0,
+      "sampledGraphMs": 0,
+      "sampledCheckpointMs": 0
+    },
+    "dense-pan-back": {
+      "ready": true,
+      "camera": [
+        30.635265266867407,
+        -1212.8690868585725,
+        0.09855276495819335
+      ],
+      "visible": [
+        209,
+        210,
+        212,
+        213,
+        214,
+        217,
+        218,
+        219,
+        220,
+        261
+      ],
+      "afterGestureMs": 2.2,
+      "afterLastInputMs": 17.4,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 0,
+      "peakTextureBytes": 0,
+      "sampledGraphMs": 0,
+      "sampledCheckpointMs": 0
+    },
+    "dense-more-detail": {
+      "ready": true,
+      "camera": [
+        -128.3106328774236,
+        -1883.6167395412735,
+        0.1379738719957956
+      ],
+      "visible": [
+        212,
+        213,
+        219,
+        261
+      ],
+      "afterGestureMs": 2177.3,
+      "afterLastInputMs": 2218.9,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 5,
+      "peakTextureBytes": 946858820,
+      "sampledGraphMs": 396.9,
+      "sampledCheckpointMs": 220.6
+    },
+    "dense-zoom-back": {
+      "ready": true,
+      "camera": [
+        30.635265266867407,
+        -1212.8690868585725,
+        0.09855276495819335
+      ],
+      "visible": [
+        209,
+        210,
+        212,
+        213,
+        214,
+        217,
+        218,
+        219,
+        220,
+        261
+      ],
+      "afterGestureMs": 1867.4,
+      "afterLastInputMs": 1909.9,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 3,
+      "peakTextureBytes": 946858820,
+      "sampledGraphMs": 678.9,
+      "sampledCheckpointMs": 398.3
+    },
+    "dense-inflight-return": {
+      "ready": true,
+      "camera": [
+        30.635265266867407,
+        -1212.8690868585725,
+        0.09855276495819335
+      ],
+      "visible": [
+        209,
+        210,
+        212,
+        213,
+        214,
+        217,
+        218,
+        219,
+        220,
+        261
+      ],
+      "afterGestureMs": 1659.2,
+      "afterLastInputMs": 1701.8,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 5,
+      "peakTextureBytes": 946858820,
+      "sampledGraphMs": 989.3,
+      "sampledCheckpointMs": 681.5
+    }
+  },
+  "dense-3-A": {
+    "dense-cold-view": {
+      "ready": true,
+      "camera": [
+        30.635265266867464,
+        -1212.8690868585725,
+        0.09855276495819335
+      ],
+      "visible": [
+        209,
+        210,
+        212,
+        213,
+        214,
+        217,
+        218,
+        219,
+        220,
+        261
+      ],
+      "afterGestureMs": 10610.5,
+      "afterLastInputMs": 10662.2,
+      "scope": [
+        {
+          "keys": [
+            "2:16659",
+            "2:18245",
+            "2:19452",
+            "2:20659",
+            "2:24989",
+            "2:279",
+            "2:3457",
+            "2:5",
+            "2:6361",
+            "2:9265"
+          ],
+          "nodes": 15604,
+          "relativeMs": 93
+        }
+      ],
+      "captures": [],
+      "uncachedTileRecords": 14,
+      "peakTextureBytes": 831501124,
+      "sampledGraphMs": 6325.4,
+      "sampledCheckpointMs": 2395.3
+    },
+    "dense-pan": {
+      "ready": true,
+      "camera": [
+        94.63526526686746,
+        -1180.8690868585725,
+        0.09855276495819335
+      ],
+      "visible": [
+        209,
+        210,
+        212,
+        213,
+        214,
+        215,
+        217,
+        218,
+        219,
+        220,
+        221,
+        261
+      ],
+      "afterGestureMs": 2.1,
+      "afterLastInputMs": 17.1,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 0,
+      "peakTextureBytes": 0,
+      "sampledGraphMs": 0,
+      "sampledCheckpointMs": 0
+    },
+    "dense-pan-back": {
+      "ready": true,
+      "camera": [
+        30.635265266867464,
+        -1212.8690868585725,
+        0.09855276495819335
+      ],
+      "visible": [
+        209,
+        210,
+        212,
+        213,
+        214,
+        217,
+        218,
+        219,
+        220,
+        261
+      ],
+      "afterGestureMs": 2.1,
+      "afterLastInputMs": 18.1,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 0,
+      "peakTextureBytes": 0,
+      "sampledGraphMs": 0,
+      "sampledCheckpointMs": 0
+    },
+    "dense-more-detail": {
+      "ready": true,
+      "camera": [
+        -128.31063287742347,
+        -1883.6167395412735,
+        0.1379738719957956
+      ],
+      "visible": [
+        212,
+        213,
+        219,
+        261
+      ],
+      "afterGestureMs": 2390.3,
+      "afterLastInputMs": 2433,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 6,
+      "peakTextureBytes": 946858820,
+      "sampledGraphMs": 789.0,
+      "sampledCheckpointMs": 402.7
+    },
+    "dense-zoom-back": {
+      "ready": true,
+      "camera": [
+        30.635265266867464,
+        -1212.8690868585725,
+        0.09855276495819335
+      ],
+      "visible": [
+        209,
+        210,
+        212,
+        213,
+        214,
+        217,
+        218,
+        219,
+        220,
+        261
+      ],
+      "afterGestureMs": 1667.0,
+      "afterLastInputMs": 1709.8,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 5,
+      "peakTextureBytes": 946858820,
+      "sampledGraphMs": 480.3,
+      "sampledCheckpointMs": 298.8
+    },
+    "dense-inflight-return": {
+      "ready": true,
+      "camera": [
+        30.635265266867464,
+        -1212.8690868585725,
+        0.09855276495819335
+      ],
+      "visible": [
+        209,
+        210,
+        212,
+        213,
+        214,
+        217,
+        218,
+        219,
+        220,
+        261
+      ],
+      "afterGestureMs": 1317.4,
+      "afterLastInputMs": 1360.0,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 3,
+      "peakTextureBytes": 946858820,
+      "sampledGraphMs": 362.3,
+      "sampledCheckpointMs": 238.5
+    }
+  },
+  "dense-4-G": {
+    "dense-cold-view": {
+      "ready": true,
+      "camera": [
+        30.635265266867464,
+        -1212.8690868585725,
+        0.09855276495819335
+      ],
+      "visible": [
+        209,
+        210,
+        212,
+        213,
+        214,
+        217,
+        218,
+        219,
+        220,
+        261
+      ],
+      "afterGestureMs": 10506.1,
+      "afterLastInputMs": 10548.8,
+      "scope": [
+        {
+          "keys": [
+            "2:16659",
+            "2:18245",
+            "2:19452",
+            "2:20659",
+            "2:24989",
+            "2:279",
+            "2:3457",
+            "2:5",
+            "2:6361",
+            "2:9265"
+          ],
+          "nodes": 15604,
+          "relativeMs": 120
+        }
+      ],
+      "captures": [],
+      "uncachedTileRecords": 13,
+      "peakTextureBytes": 831501124,
+      "sampledGraphMs": 6038.3,
+      "sampledCheckpointMs": 2318.7
+    },
+    "dense-pan": {
+      "ready": true,
+      "camera": [
+        94.63526526686746,
+        -1180.8690868585725,
+        0.09855276495819335
+      ],
+      "visible": [
+        209,
+        210,
+        212,
+        213,
+        214,
+        215,
+        217,
+        218,
+        219,
+        220,
+        221,
+        261
+      ],
+      "afterGestureMs": 1.9,
+      "afterLastInputMs": 18.3,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 0,
+      "peakTextureBytes": 0,
+      "sampledGraphMs": 0,
+      "sampledCheckpointMs": 0
+    },
+    "dense-pan-back": {
+      "ready": true,
+      "camera": [
+        30.635265266867464,
+        -1212.8690868585725,
+        0.09855276495819335
+      ],
+      "visible": [
+        209,
+        210,
+        212,
+        213,
+        214,
+        217,
+        218,
+        219,
+        220,
+        261
+      ],
+      "afterGestureMs": 1.8,
+      "afterLastInputMs": 19.2,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 0,
+      "peakTextureBytes": 0,
+      "sampledGraphMs": 0,
+      "sampledCheckpointMs": 0
+    },
+    "dense-more-detail": {
+      "ready": true,
+      "camera": [
+        -128.31063287742347,
+        -1883.6167395412735,
+        0.1379738719957956
+      ],
+      "visible": [
+        212,
+        213,
+        219,
+        261
+      ],
+      "afterGestureMs": 2334.3,
+      "afterLastInputMs": 2376.9,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 5,
+      "peakTextureBytes": 946858820,
+      "sampledGraphMs": 418.8,
+      "sampledCheckpointMs": 243.9
+    },
+    "dense-zoom-back": {
+      "ready": true,
+      "camera": [
+        30.635265266867464,
+        -1212.8690868585725,
+        0.09855276495819335
+      ],
+      "visible": [
+        209,
+        210,
+        212,
+        213,
+        214,
+        217,
+        218,
+        219,
+        220,
+        261
+      ],
+      "afterGestureMs": 1767.3,
+      "afterLastInputMs": 1810.4,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 6,
+      "peakTextureBytes": 946858820,
+      "sampledGraphMs": 1072.8,
+      "sampledCheckpointMs": 624.9
+    },
+    "dense-inflight-return": {
+      "ready": true,
+      "camera": [
+        30.635265266867464,
+        -1212.8690868585725,
+        0.09855276495819335
+      ],
+      "visible": [
+        209,
+        210,
+        212,
+        213,
+        214,
+        217,
+        218,
+        219,
+        220,
+        261
+      ],
+      "afterGestureMs": 1710.6,
+      "afterLastInputMs": 1753.9,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 6,
+      "peakTextureBytes": 946858820,
+      "sampledGraphMs": 909.4,
+      "sampledCheckpointMs": 495.9
+    }
+  },
+  "high-1-G": {
+    "high-focus": {
+      "ready": null,
+      "camera": [
+        -184.14345371374907,
+        745.8120470389883,
+        0.15471427216445813
+      ],
+      "visible": [
+        4,
+        5,
+        9,
+        13,
+        17,
+        18,
+        83,
+        86
+      ],
+      "afterGestureMs": 0.8,
+      "afterLastInputMs": 43.5,
+      "scope": [
+        {
+          "keys": [
+            "1:16029",
+            "1:29354",
+            "1:29585",
+            "1:29979",
+            "1:31358",
+            "1:32480",
+            "1:40138",
+            "1:47101",
+            "1:48076"
+          ],
+          "nodes": 23444,
+          "relativeMs": -60.2
+        }
+      ],
+      "captures": [],
+      "uncachedTileRecords": 0,
+      "peakTextureBytes": 0,
+      "sampledGraphMs": 0,
+      "sampledCheckpointMs": 0
+    },
+    "high-100": {
+      "ready": true,
+      "camera": [
+        -3528.6063151252138,
+        2285.500039293455,
+        1.0000000205379098
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 3635.4,
+      "afterLastInputMs": 3678.7,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 4,
+      "peakTextureBytes": 526857880,
+      "sampledGraphMs": 569.6,
+      "sampledCheckpointMs": 294.0
+    },
+    "high-800-moving": {
+      "ready": null,
+      "camera": [
+        -31224.85190932538,
+        15036.00095348922,
+        8.000000515190779
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 0.8,
+      "afterLastInputMs": 43.7,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 2,
+      "peakTextureBytes": 526857880,
+      "sampledGraphMs": 135.7,
+      "sampledCheckpointMs": 98.6
+    },
+    "high-3200": {
+      "ready": true,
+      "camera": [
+        -126183.40811960342,
+        58752.004035993865,
+        32.00000218266099
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 518.1,
+      "afterLastInputMs": 560.4,
+      "scope": [],
+      "captures": [
+        {
+          "startAfterGestureMs": 63.41,
+          "wallMs": 317.15,
+          "bytes": 1666043,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -16,
+            "y": -1,
+            "w": 962,
+            "h": 962
+          }
+        },
+        {
+          "startAfterGestureMs": 387.35,
+          "wallMs": 10.05,
+          "bytes": 341292,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -16,
+            "y": 959,
+            "w": 962,
+            "h": 898
+          }
+        },
+        {
+          "startAfterGestureMs": 443.1,
+          "wallMs": 10.32,
+          "bytes": 345108,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": 944,
+            "y": -1,
+            "w": 770,
+            "h": 962
+          }
+        },
+        {
+          "startAfterGestureMs": 456.62,
+          "wallMs": 9.35,
+          "bytes": 317259,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": 944,
+            "y": 959,
+            "w": 770,
+            "h": 898
+          }
+        }
+      ],
+      "uncachedTileRecords": 1,
+      "peakTextureBytes": 638107428,
+      "sampledGraphMs": 161.2,
+      "sampledCheckpointMs": 111.0
+    },
+    "high-pan": {
+      "ready": true,
+      "camera": [
+        -126119.40811960342,
+        58784.004035993865,
+        32.00000218266099
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 568.7,
+      "afterLastInputMs": 591.5,
+      "scope": [],
+      "captures": [
+        {
+          "startAfterGestureMs": -412.32,
+          "wallMs": 349.35,
+          "bytes": 109381,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -16,
+            "y": -257,
+            "w": 962,
+            "h": 258
+          }
+        },
+        {
+          "startAfterGestureMs": -59.59,
+          "wallMs": 12.62,
+          "bytes": 1448207,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": 944,
+            "y": -257,
+            "w": 770,
+            "h": 258
+          }
+        },
+        {
+          "startAfterGestureMs": -32.02,
+          "wallMs": 283.34,
+          "bytes": 1663184,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -272,
+            "y": -1,
+            "w": 258,
+            "h": 962
+          }
+        },
+        {
+          "startAfterGestureMs": 256.94,
+          "wallMs": 9.1,
+          "bytes": 248796,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -272,
+            "y": 959,
+            "w": 258,
+            "h": 898
+          }
+        },
+        {
+          "startAfterGestureMs": 568.62,
+          "wallMs": 19.58,
+          "bytes": 0,
+          "mode": "rejected",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -400,
+            "y": 63,
+            "w": 258,
+            "h": 962
+          }
+        }
+      ],
+      "uncachedTileRecords": 2,
+      "peakTextureBytes": 689440348,
+      "sampledGraphMs": 4.5,
+      "sampledCheckpointMs": 0
+    },
+    "high-pan-return": {
+      "ready": true,
+      "camera": [
+        -126183.40811960342,
+        58752.004035993865,
+        32.00000218266099
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 2.2,
+      "afterLastInputMs": 18.1,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 0,
+      "peakTextureBytes": 0,
+      "sampledGraphMs": 0,
+      "sampledCheckpointMs": 0
+    },
+    "high-down-moving": {
+      "ready": null,
+      "camera": [
+        -3528.6069943217603,
+        2285.500351974687,
+        1.0000001921993051
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 0.6,
+      "afterLastInputMs": 43.4,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 0,
+      "peakTextureBytes": 0,
+      "sampledGraphMs": 0,
+      "sampledCheckpointMs": 0
+    },
+    "high-up-moving": {
+      "ready": null,
+      "camera": [
+        -126183.40811960342,
+        58752.004035993865,
+        32.00000218266099
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 0.8,
+      "afterLastInputMs": 52.1,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 0,
+      "peakTextureBytes": 0,
+      "sampledGraphMs": 0,
+      "sampledCheckpointMs": 0
+    },
+    "high-return": {
+      "ready": true,
+      "camera": [
+        -3528.6069943217603,
+        2285.500351974687,
+        1.0000001921993051
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 1824.6,
+      "afterLastInputMs": 1868.2,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 5,
+      "peakTextureBytes": 811622740,
+      "sampledGraphMs": 632.3,
+      "sampledCheckpointMs": 367.9
+    },
+    "high-second-up": {
+      "ready": true,
+      "camera": [
+        -126183.4032897616,
+        58752.00181248302,
+        32.00000096195781
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 501.4,
+      "afterLastInputMs": 543.9,
+      "scope": [],
+      "captures": [
+        {
+          "startAfterGestureMs": 59.49,
+          "wallMs": 286.63,
+          "bytes": 1666043,
+          "mode": "demand",
+          "zoom": 64.00000192391562,
+          "viewport": {
+            "x": -16,
+            "y": -1,
+            "w": 962,
+            "h": 962
+          }
+        },
+        {
+          "startAfterGestureMs": 351.72,
+          "wallMs": 8.75,
+          "bytes": 318780,
+          "mode": "demand",
+          "zoom": 64.00000192391562,
+          "viewport": {
+            "x": -16,
+            "y": 959,
+            "w": 962,
+            "h": 898
+          }
+        },
+        {
+          "startAfterGestureMs": 406.22,
+          "wallMs": 10.25,
+          "bytes": 345108,
+          "mode": "demand",
+          "zoom": 64.00000192391562,
+          "viewport": {
+            "x": 944,
+            "y": -1,
+            "w": 770,
+            "h": 962
+          }
+        },
+        {
+          "startAfterGestureMs": 420.52,
+          "wallMs": 12.4,
+          "bytes": 1620918,
+          "mode": "demand",
+          "zoom": 64.00000192391562,
+          "viewport": {
+            "x": 944,
+            "y": 959,
+            "w": 770,
+            "h": 898
+          }
+        }
+      ],
+      "uncachedTileRecords": 1,
+      "peakTextureBytes": 811622740,
+      "sampledGraphMs": 62.1,
+      "sampledCheckpointMs": 57.5
+    },
+    "high-second-return": {
+      "ready": true,
+      "camera": [
+        -3528.6069943217603,
+        2285.500351974687,
+        1.0000001921993051
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 2.1,
+      "afterLastInputMs": 43.8,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 0,
+      "peakTextureBytes": 0,
+      "sampledGraphMs": 0,
+      "sampledCheckpointMs": 0
+    }
+  },
+  "high-2-A": {
+    "high-focus": {
+      "ready": null,
+      "camera": [
+        -184.14345371374907,
+        745.8120470389883,
+        0.15471427216445813
+      ],
+      "visible": [
+        4,
+        5,
+        9,
+        13,
+        17,
+        18,
+        83,
+        86
+      ],
+      "afterGestureMs": 0.7,
+      "afterLastInputMs": 44.8,
+      "scope": [
+        {
+          "keys": [
+            "1:16029",
+            "1:29354",
+            "1:29585",
+            "1:29979",
+            "1:31358",
+            "1:32480",
+            "1:40138",
+            "1:47101",
+            "1:48076"
+          ],
+          "nodes": 23444,
+          "relativeMs": -179.6
+        }
+      ],
+      "captures": [],
+      "uncachedTileRecords": 0,
+      "peakTextureBytes": 0,
+      "sampledGraphMs": 0,
+      "sampledCheckpointMs": 0
+    },
+    "high-100": {
+      "ready": true,
+      "camera": [
+        -3528.6063151252138,
+        2285.500039293455,
+        1.0000000205379098
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 4211.4,
+      "afterLastInputMs": 4254.1,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 4,
+      "peakTextureBytes": 526857880,
+      "sampledGraphMs": 605.7,
+      "sampledCheckpointMs": 324.3
+    },
+    "high-800-moving": {
+      "ready": null,
+      "camera": [
+        -31224.85190932538,
+        15036.00095348922,
+        8.000000515190779
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 0.6,
+      "afterLastInputMs": 43.2,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 2,
+      "peakTextureBytes": 526857880,
+      "sampledGraphMs": 138.2,
+      "sampledCheckpointMs": 102.7
+    },
+    "high-3200": {
+      "ready": true,
+      "camera": [
+        -126183.40811960342,
+        58752.004035993865,
+        32.00000218266099
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 815.8,
+      "afterLastInputMs": 863.8,
+      "scope": [],
+      "captures": [
+        {
+          "startAfterGestureMs": 54.46,
+          "wallMs": 539.51,
+          "bytes": 1666042,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -16,
+            "y": -1,
+            "w": 962,
+            "h": 962
+          }
+        },
+        {
+          "startAfterGestureMs": 599.55,
+          "wallMs": 9.23,
+          "bytes": 341291,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -16,
+            "y": 959,
+            "w": 962,
+            "h": 898
+          }
+        },
+        {
+          "startAfterGestureMs": 719.7,
+          "wallMs": 11.07,
+          "bytes": 345107,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": 944,
+            "y": -1,
+            "w": 770,
+            "h": 962
+          }
+        },
+        {
+          "startAfterGestureMs": 733.84,
+          "wallMs": 9.95,
+          "bytes": 317258,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": 944,
+            "y": 959,
+            "w": 770,
+            "h": 898
+          }
+        }
+      ],
+      "uncachedTileRecords": 1,
+      "peakTextureBytes": 526857880,
+      "sampledGraphMs": 171.8,
+      "sampledCheckpointMs": 135.2
+    },
+    "high-pan": {
+      "ready": true,
+      "camera": [
+        -126119.40811960342,
+        58784.004035993865,
+        32.00000218266099
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 692.2,
+      "afterLastInputMs": 707.7,
+      "scope": [],
+      "captures": [
+        {
+          "startAfterGestureMs": -404.36,
+          "wallMs": 538.01,
+          "bytes": 109380,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -16,
+            "y": -257,
+            "w": 962,
+            "h": 258
+          }
+        },
+        {
+          "startAfterGestureMs": 136.98,
+          "wallMs": 6.51,
+          "bytes": 115779,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": 944,
+            "y": -257,
+            "w": 770,
+            "h": 258
+          }
+        },
+        {
+          "startAfterGestureMs": 181.57,
+          "wallMs": 458.42,
+          "bytes": 334516,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -144,
+            "y": 63,
+            "w": 258,
+            "h": 962
+          }
+        },
+        {
+          "startAfterGestureMs": 643.56,
+          "wallMs": 8.59,
+          "bytes": 247931,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -144,
+            "y": 1023,
+            "w": 258,
+            "h": 898
+          }
+        },
+        {
+          "startAfterGestureMs": 687.58,
+          "wallMs": 17.83,
+          "bytes": 0,
+          "mode": "rejected",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -400,
+            "y": 63,
+            "w": 258,
+            "h": 962
+          }
+        }
+      ],
+      "uncachedTileRecords": 2,
+      "peakTextureBytes": 706415328,
+      "sampledGraphMs": 14.3,
+      "sampledCheckpointMs": 7
+    },
+    "high-pan-return": {
+      "ready": true,
+      "camera": [
+        -126183.40811960342,
+        58752.004035993865,
+        32.00000218266099
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 2.0,
+      "afterLastInputMs": 17.5,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 0,
+      "peakTextureBytes": 0,
+      "sampledGraphMs": 0,
+      "sampledCheckpointMs": 0
+    },
+    "high-down-moving": {
+      "ready": null,
+      "camera": [
+        -3528.6069943217603,
+        2285.500351974687,
+        1.0000001921993051
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 0.6,
+      "afterLastInputMs": 43.1,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 1,
+      "peakTextureBytes": 706415328,
+      "sampledGraphMs": 2.9,
+      "sampledCheckpointMs": 0
+    },
+    "high-up-moving": {
+      "ready": null,
+      "camera": [
+        -126183.40811960342,
+        58752.004035993865,
+        32.00000218266099
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 0.6,
+      "afterLastInputMs": 43.1,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 0,
+      "peakTextureBytes": 0,
+      "sampledGraphMs": 0,
+      "sampledCheckpointMs": 0
+    },
+    "high-return": {
+      "ready": true,
+      "camera": [
+        -3528.6069943217603,
+        2285.500351974687,
+        1.0000001921993051
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 1978.2,
+      "afterLastInputMs": 2020.5,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 6,
+      "peakTextureBytes": 706415328,
+      "sampledGraphMs": 1027.4,
+      "sampledCheckpointMs": 693.1
+    },
+    "high-second-up": {
+      "ready": true,
+      "camera": [
+        -126183.4032897616,
+        58752.00181248302,
+        32.00000096195781
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 844.7,
+      "afterLastInputMs": 887.6,
+      "scope": [],
+      "captures": [
+        {
+          "startAfterGestureMs": 56.02,
+          "wallMs": 473.12,
+          "bytes": 1666043,
+          "mode": "demand",
+          "zoom": 64.00000192391562,
+          "viewport": {
+            "x": -16,
+            "y": -1,
+            "w": 962,
+            "h": 962
+          }
+        },
+        {
+          "startAfterGestureMs": 534.47,
+          "wallMs": 8.9,
+          "bytes": 318780,
+          "mode": "demand",
+          "zoom": 64.00000192391562,
+          "viewport": {
+            "x": -16,
+            "y": 959,
+            "w": 962,
+            "h": 898
+          }
+        },
+        {
+          "startAfterGestureMs": 700.8,
+          "wallMs": 25.79,
+          "bytes": 1673487,
+          "mode": "demand",
+          "zoom": 64.00000192391562,
+          "viewport": {
+            "x": 944,
+            "y": -1,
+            "w": 770,
+            "h": 962
+          }
+        },
+        {
+          "startAfterGestureMs": 736.72,
+          "wallMs": 11.63,
+          "bytes": 1620918,
+          "mode": "demand",
+          "zoom": 64.00000192391562,
+          "viewport": {
+            "x": 944,
+            "y": 959,
+            "w": 770,
+            "h": 898
+          }
+        }
+      ],
+      "uncachedTileRecords": 1,
+      "peakTextureBytes": 706415328,
+      "sampledGraphMs": 91.9,
+      "sampledCheckpointMs": 75.8
+    },
+    "high-second-return": {
+      "ready": true,
+      "camera": [
+        -3528.6069943217603,
+        2285.500351974687,
+        1.0000001921993051
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 2.0,
+      "afterLastInputMs": 45.8,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 1,
+      "peakTextureBytes": 706415328,
+      "sampledGraphMs": 52.6,
+      "sampledCheckpointMs": 48.3
+    }
+  },
+  "high-3-A": {
+    "high-focus": {
+      "ready": null,
+      "camera": [
+        -184.14345371374907,
+        745.8120470389883,
+        0.15471427216445813
+      ],
+      "visible": [
+        4,
+        5,
+        9,
+        13,
+        17,
+        18,
+        83,
+        86
+      ],
+      "afterGestureMs": 0.6,
+      "afterLastInputMs": 43.4,
+      "scope": [
+        {
+          "keys": [
+            "1:16029",
+            "1:29354",
+            "1:29585",
+            "1:29979",
+            "1:31358",
+            "1:32480",
+            "1:40138",
+            "1:47101",
+            "1:48076"
+          ],
+          "nodes": 23444,
+          "relativeMs": -177.5
+        }
+      ],
+      "captures": [],
+      "uncachedTileRecords": 0,
+      "peakTextureBytes": 0,
+      "sampledGraphMs": 0,
+      "sampledCheckpointMs": 0
+    },
+    "high-100": {
+      "ready": true,
+      "camera": [
+        -3528.6063151252138,
+        2285.500039293455,
+        1.0000000205379098
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 5212.9,
+      "afterLastInputMs": 5255.7,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 4,
+      "peakTextureBytes": 526857880,
+      "sampledGraphMs": 1449.9,
+      "sampledCheckpointMs": 357.6
+    },
+    "high-800-moving": {
+      "ready": null,
+      "camera": [
+        -31224.85190932538,
+        15036.00095348922,
+        8.000000515190779
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 0.7,
+      "afterLastInputMs": 43.2,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 2,
+      "peakTextureBytes": 526857880,
+      "sampledGraphMs": 147.4,
+      "sampledCheckpointMs": 106.4
+    },
+    "high-3200": {
+      "ready": true,
+      "camera": [
+        -126183.40811960342,
+        58752.004035993865,
+        32.00000218266099
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 735.4,
+      "afterLastInputMs": 777.9,
+      "scope": [],
+      "captures": [
+        {
+          "startAfterGestureMs": 61.95,
+          "wallMs": 481.37,
+          "bytes": 1666042,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -16,
+            "y": -1,
+            "w": 962,
+            "h": 962
+          }
+        },
+        {
+          "startAfterGestureMs": 549.39,
+          "wallMs": 9.1,
+          "bytes": 341291,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -16,
+            "y": 959,
+            "w": 962,
+            "h": 898
+          }
+        },
+        {
+          "startAfterGestureMs": 631.72,
+          "wallMs": 17.55,
+          "bytes": 345107,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": 944,
+            "y": -1,
+            "w": 770,
+            "h": 962
+          }
+        },
+        {
+          "startAfterGestureMs": 652.4,
+          "wallMs": 9.39,
+          "bytes": 317258,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": 944,
+            "y": 959,
+            "w": 770,
+            "h": 898
+          }
+        }
+      ],
+      "uncachedTileRecords": 1,
+      "peakTextureBytes": 526857880,
+      "sampledGraphMs": 148.4,
+      "sampledCheckpointMs": 110.6
+    },
+    "high-pan": {
+      "ready": true,
+      "camera": [
+        -126119.40811960342,
+        58784.004035993865,
+        32.00000218266099
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 684.2,
+      "afterLastInputMs": 699.7,
+      "scope": [],
+      "captures": [
+        {
+          "startAfterGestureMs": -404.02,
+          "wallMs": 504.79,
+          "bytes": 109380,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -16,
+            "y": -257,
+            "w": 962,
+            "h": 258
+          }
+        },
+        {
+          "startAfterGestureMs": 104.07,
+          "wallMs": 6.4,
+          "bytes": 115779,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": 944,
+            "y": -257,
+            "w": 770,
+            "h": 258
+          }
+        },
+        {
+          "startAfterGestureMs": 146.35,
+          "wallMs": 486.25,
+          "bytes": 334516,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -144,
+            "y": 63,
+            "w": 258,
+            "h": 962
+          }
+        },
+        {
+          "startAfterGestureMs": 636.16,
+          "wallMs": 8.67,
+          "bytes": 247931,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -144,
+            "y": 1023,
+            "w": 258,
+            "h": 898
+          }
+        },
+        {
+          "startAfterGestureMs": 680.28,
+          "wallMs": 17.92,
+          "bytes": 0,
+          "mode": "rejected",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -400,
+            "y": 63,
+            "w": 258,
+            "h": 962
+          }
+        }
+      ],
+      "uncachedTileRecords": 2,
+      "peakTextureBytes": 706415328,
+      "sampledGraphMs": 15.6,
+      "sampledCheckpointMs": 8.6
+    },
+    "high-pan-return": {
+      "ready": true,
+      "camera": [
+        -126183.40811960342,
+        58752.004035993865,
+        32.00000218266099
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 2.9,
+      "afterLastInputMs": 20.6,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 0,
+      "peakTextureBytes": 0,
+      "sampledGraphMs": 0,
+      "sampledCheckpointMs": 0
+    },
+    "high-down-moving": {
+      "ready": null,
+      "camera": [
+        -3528.6069943217603,
+        2285.500351974687,
+        1.0000001921993051
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 0.5,
+      "afterLastInputMs": 42.9,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 1,
+      "peakTextureBytes": 706415328,
+      "sampledGraphMs": 2.4,
+      "sampledCheckpointMs": 0
+    },
+    "high-up-moving": {
+      "ready": null,
+      "camera": [
+        -126183.40811960342,
+        58752.004035993865,
+        32.00000218266099
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 0.7,
+      "afterLastInputMs": 43.3,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 0,
+      "peakTextureBytes": 0,
+      "sampledGraphMs": 0,
+      "sampledCheckpointMs": 0
+    },
+    "high-return": {
+      "ready": true,
+      "camera": [
+        -3528.6069943217603,
+        2285.500351974687,
+        1.0000001921993051
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 2460.2,
+      "afterLastInputMs": 2533.7,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 4,
+      "peakTextureBytes": 745428052,
+      "sampledGraphMs": 738.8,
+      "sampledCheckpointMs": 368.2
+    },
+    "high-second-up": {
+      "ready": true,
+      "camera": [
+        -126183.4032897616,
+        58752.00181248302,
+        32.00000096195781
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 1491.8,
+      "afterLastInputMs": 1548.2,
+      "scope": [],
+      "captures": [
+        {
+          "startAfterGestureMs": 55.5,
+          "wallMs": 1066.35,
+          "bytes": 337664,
+          "mode": "demand",
+          "zoom": 64.00000192391562,
+          "viewport": {
+            "x": -16,
+            "y": -1,
+            "w": 962,
+            "h": 962
+          }
+        },
+        {
+          "startAfterGestureMs": 1134.25,
+          "wallMs": 10.13,
+          "bytes": 318780,
+          "mode": "demand",
+          "zoom": 64.00000192391562,
+          "viewport": {
+            "x": -16,
+            "y": 959,
+            "w": 962,
+            "h": 898
+          }
+        },
+        {
+          "startAfterGestureMs": 1351.91,
+          "wallMs": 13.87,
+          "bytes": 1673487,
+          "mode": "demand",
+          "zoom": 64.00000192391562,
+          "viewport": {
+            "x": 944,
+            "y": -1,
+            "w": 770,
+            "h": 962
+          }
+        },
+        {
+          "startAfterGestureMs": 1372.42,
+          "wallMs": 13.46,
+          "bytes": 1620918,
+          "mode": "demand",
+          "zoom": 64.00000192391562,
+          "viewport": {
+            "x": 944,
+            "y": 959,
+            "w": 770,
+            "h": 898
+          }
+        }
+      ],
+      "uncachedTileRecords": 2,
+      "peakTextureBytes": 745428052,
+      "sampledGraphMs": 92.3,
+      "sampledCheckpointMs": 75.7
+    },
+    "high-second-return": {
+      "ready": true,
+      "camera": [
+        -3528.6069943217603,
+        2285.500351974687,
+        1.0000001921993051
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 3.0,
+      "afterLastInputMs": 53.2,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 1,
+      "peakTextureBytes": 745428052,
+      "sampledGraphMs": 55.3,
+      "sampledCheckpointMs": 38.4
+    }
+  },
+  "high-4-G": {
+    "high-focus": {
+      "ready": null,
+      "camera": [
+        -184.14345371374907,
+        745.8120470389883,
+        0.15471427216445813
+      ],
+      "visible": [
+        4,
+        5,
+        9,
+        13,
+        17,
+        18,
+        83,
+        86
+      ],
+      "afterGestureMs": 0.9,
+      "afterLastInputMs": 43,
+      "scope": [
+        {
+          "keys": [
+            "1:16029",
+            "1:29354",
+            "1:29585",
+            "1:29979",
+            "1:31358",
+            "1:32480",
+            "1:40138",
+            "1:47101",
+            "1:48076"
+          ],
+          "nodes": 23444,
+          "relativeMs": -59.1
+        }
+      ],
+      "captures": [],
+      "uncachedTileRecords": 0,
+      "peakTextureBytes": 0,
+      "sampledGraphMs": 0,
+      "sampledCheckpointMs": 0
+    },
+    "high-100": {
+      "ready": true,
+      "camera": [
+        -3528.6063151252138,
+        2285.500039293455,
+        1.0000000205379098
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 4172.1,
+      "afterLastInputMs": 4215.1,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 4,
+      "peakTextureBytes": 526857880,
+      "sampledGraphMs": 639.9,
+      "sampledCheckpointMs": 350.3
+    },
+    "high-800-moving": {
+      "ready": null,
+      "camera": [
+        -31224.85190932538,
+        15036.00095348922,
+        8.000000515190779
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 0.9,
+      "afterLastInputMs": 44.2,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 2,
+      "peakTextureBytes": 526857880,
+      "sampledGraphMs": 53.9,
+      "sampledCheckpointMs": 35.7
+    },
+    "high-3200": {
+      "ready": true,
+      "camera": [
+        -126183.40811960342,
+        58752.004035993865,
+        32.00000218266099
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 609.1,
+      "afterLastInputMs": 660.9,
+      "scope": [],
+      "captures": [
+        {
+          "startAfterGestureMs": 48.16,
+          "wallMs": 358.69,
+          "bytes": 1666043,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -16,
+            "y": -1,
+            "w": 962,
+            "h": 962
+          }
+        },
+        {
+          "startAfterGestureMs": 418.17,
+          "wallMs": 46.58,
+          "bytes": 341292,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -16,
+            "y": 959,
+            "w": 962,
+            "h": 898
+          }
+        },
+        {
+          "startAfterGestureMs": 503.69,
+          "wallMs": 10.24,
+          "bytes": 345108,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": 944,
+            "y": -1,
+            "w": 770,
+            "h": 962
+          }
+        },
+        {
+          "startAfterGestureMs": 517.14,
+          "wallMs": 11.73,
+          "bytes": 317259,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": 944,
+            "y": 959,
+            "w": 770,
+            "h": 898
+          }
+        }
+      ],
+      "uncachedTileRecords": 1,
+      "peakTextureBytes": 638107428,
+      "sampledGraphMs": 190,
+      "sampledCheckpointMs": 136.7
+    },
+    "high-pan": {
+      "ready": true,
+      "camera": [
+        -126119.40811960342,
+        58784.004035993865,
+        32.00000218266099
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 440.8,
+      "afterLastInputMs": 474.7,
+      "scope": [],
+      "captures": [
+        {
+          "startAfterGestureMs": -423.75,
+          "wallMs": 445.82,
+          "bytes": 109381,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -16,
+            "y": -257,
+            "w": 962,
+            "h": 258
+          }
+        },
+        {
+          "startAfterGestureMs": 29.09,
+          "wallMs": 46.32,
+          "bytes": 1448207,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": 944,
+            "y": -257,
+            "w": 770,
+            "h": 258
+          }
+        },
+        {
+          "startAfterGestureMs": 90.92,
+          "wallMs": 283.75,
+          "bytes": 1662896,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -144,
+            "y": 63,
+            "w": 258,
+            "h": 962
+          }
+        },
+        {
+          "startAfterGestureMs": 381.38,
+          "wallMs": 9.77,
+          "bytes": 247932,
+          "mode": "demand",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -144,
+            "y": 1023,
+            "w": 258,
+            "h": 898
+          }
+        },
+        {
+          "startAfterGestureMs": 437.37,
+          "wallMs": 16.64,
+          "bytes": 0,
+          "mode": "rejected",
+          "zoom": 64.00000436532198,
+          "viewport": {
+            "x": -400,
+            "y": 63,
+            "w": 258,
+            "h": 962
+          }
+        }
+      ],
+      "uncachedTileRecords": 2,
+      "peakTextureBytes": 689440348,
+      "sampledGraphMs": 46.9,
+      "sampledCheckpointMs": 37.1
+    },
+    "high-pan-return": {
+      "ready": true,
+      "camera": [
+        -126183.40811960342,
+        58752.004035993865,
+        32.00000218266099
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 2.2,
+      "afterLastInputMs": 24.9,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 0,
+      "peakTextureBytes": 0,
+      "sampledGraphMs": 0,
+      "sampledCheckpointMs": 0
+    },
+    "high-down-moving": {
+      "ready": null,
+      "camera": [
+        -3528.6069943217603,
+        2285.500351974687,
+        1.0000001921993051
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 0.5,
+      "afterLastInputMs": 42.1,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 1,
+      "peakTextureBytes": 689440348,
+      "sampledGraphMs": 2.6,
+      "sampledCheckpointMs": 0
+    },
+    "high-up-moving": {
+      "ready": null,
+      "camera": [
+        -126183.40811960342,
+        58752.004035993865,
+        32.00000218266099
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 0.8,
+      "afterLastInputMs": 52.3,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 1,
+      "peakTextureBytes": 689440348,
+      "sampledGraphMs": 213.9,
+      "sampledCheckpointMs": 138.3
+    },
+    "high-return": {
+      "ready": true,
+      "camera": [
+        -3528.6069943217603,
+        2285.500351974687,
+        1.0000001921993051
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 1876.6,
+      "afterLastInputMs": 1919.0,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 3,
+      "peakTextureBytes": 728384712,
+      "sampledGraphMs": 566.9,
+      "sampledCheckpointMs": 385.3
+    },
+    "high-second-up": {
+      "ready": true,
+      "camera": [
+        -126183.4032897616,
+        58752.00181248302,
+        32.00000096195781
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 609.3,
+      "afterLastInputMs": 660.2,
+      "scope": [],
+      "captures": [
+        {
+          "startAfterGestureMs": 51.67,
+          "wallMs": 290.5,
+          "bytes": 1666043,
+          "mode": "demand",
+          "zoom": 64.00000192391562,
+          "viewport": {
+            "x": -16,
+            "y": -1,
+            "w": 962,
+            "h": 962
+          }
+        },
+        {
+          "startAfterGestureMs": 348.3,
+          "wallMs": 9.25,
+          "bytes": 318780,
+          "mode": "demand",
+          "zoom": 64.00000192391562,
+          "viewport": {
+            "x": -16,
+            "y": 959,
+            "w": 962,
+            "h": 898
+          }
+        },
+        {
+          "startAfterGestureMs": 478.0,
+          "wallMs": 11.56,
+          "bytes": 345108,
+          "mode": "demand",
+          "zoom": 64.00000192391562,
+          "viewport": {
+            "x": 944,
+            "y": -1,
+            "w": 770,
+            "h": 962
+          }
+        },
+        {
+          "startAfterGestureMs": 494.44,
+          "wallMs": 11.68,
+          "bytes": 1620918,
+          "mode": "demand",
+          "zoom": 64.00000192391562,
+          "viewport": {
+            "x": 944,
+            "y": 959,
+            "w": 770,
+            "h": 898
+          }
+        }
+      ],
+      "uncachedTileRecords": 1,
+      "peakTextureBytes": 728384712,
+      "sampledGraphMs": 54.1,
+      "sampledCheckpointMs": 49.1
+    },
+    "high-second-return": {
+      "ready": true,
+      "camera": [
+        -3528.6069943217603,
+        2285.500351974687,
+        1.0000001921993051
+      ],
+      "visible": [
+        4
+      ],
+      "afterGestureMs": 3.0,
+      "afterLastInputMs": 47.6,
+      "scope": [],
+      "captures": [],
+      "uncachedTileRecords": 1,
+      "peakTextureBytes": 728384712,
+      "sampledGraphMs": 15.1,
+      "sampledCheckpointMs": 11.4
+    }
+  }
+}

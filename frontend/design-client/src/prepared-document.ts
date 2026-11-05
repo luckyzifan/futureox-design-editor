@@ -2,9 +2,12 @@ import { activateDocumentFonts, prepareDocumentForEditing, prepareDocumentJsonFo
 import type { DesignDocument } from './model'
 import { requestDocumentPreparation, type DocumentPreparationIdentity } from './document-preparation-worker-client'
 import { documentPreparationRuntime, sameDocumentPreparationRuntime } from './document-preparation-identity'
+import {freezeOwnedDocument,freezeOwnedDocumentInTasks,immutableDocument} from './immutable-document'
 
 const owned = new WeakMap<object, { document?: DesignDocument; validatedJson?: string }>()
 const currentEncodings = new WeakMap<DesignDocument, { json: string; current: () => boolean }>()
+const validPublications=new WeakSet<DesignDocument>()
+export function validatedPreparedPublication(document:DesignDocument){return validPublications.has(document)&&immutableDocument(document)}
 export type PreparedDocument = Readonly<{ id: string; snapshot(): DesignDocument }>
 
 /** One-use ownership transfer across save/adoption. The admitted document is
@@ -36,6 +39,7 @@ export async function prepareDocumentJsonInWorker(source: string, identity: Docu
   // Mutable main document-font/geometry epochs are deliberately not reused as
   // preparation identity. The worker installs this source's own font map, and
   // takePreparedDocument restores it atomically before main-thread adoption.
+  await freezeOwnedDocumentInTasks(result.document,()=>!signal.aborted&&isCurrent()&&sameDocumentPreparationRuntime(runtime,documentPreparationRuntime()))
   return ownDocument(result.document, result.validatedJson)
 }
 
@@ -63,6 +67,7 @@ export function preparedDocumentAdoptionOwner(value: unknown) {
 }
 
 function ownDocument(document: DesignDocument, validatedJson?: string): PreparedDocument {
+  if(freezeOwnedDocument(document))validPublications.add(document)
   const record = { document: document as DesignDocument | undefined, validatedJson }
   const token = Object.freeze({ id: document.id, snapshot() {
     if (!record.document) throw Error('已准备的文档已被接收')

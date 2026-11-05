@@ -139,6 +139,28 @@ test('save admission recognizes only the current property popover; save settles 
     expect(saved.nodes[id].fills[0].color).toBe('#abcdef')
   } finally { desktop.dispose() }
 })
+test('the Mac picker shows the saturation square, eyedropper, and RGB 217 217 217 for #D9D9D9', async () => {
+  await open()
+  expect(document.querySelector('[data-color-area]')).toBeTruthy()
+  expect(button('从画布取色')).toBeTruthy()
+  await type(field('填充颜色值'), '#d9d9d9')
+  await click(button('颜色模型'))
+  await click(button('RGB'))
+  expect(field('填充 R').value).toBe('217')
+  expect(field('填充 G').value).toBe('217')
+  expect(field('填充 B').value).toBe('217')
+  expect(field('填充不透明度 %').value).toBe('60')
+})
+
+test('I inside the picker starts the canvas sampler without committing', async () => {
+  const base = editor.state.doc
+  await open()
+  await key(field('填充颜色值'), 'i')
+  expect(editor.state.tool).toBe('eyedropper')
+  expect(editor.state.doc).toBe(base)
+  expect(editor.state.version).toBe(0)
+})
+
 test('native tool command settles its own focused popover but cannot bypass an invalid draft', async () => {
   await open(); await type(field('填充颜色值'), '#invalid')
   await act(async () => dispatchEditorCommand(editor, 'set-tool-rectangle'))

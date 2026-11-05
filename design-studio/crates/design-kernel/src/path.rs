@@ -204,6 +204,35 @@ fn distance_to_segment(p: Point, a: Point, b: Point) -> f64 {
     let t = ((p - a).dot(d) / d.dot(d).max(1e-30)).clamp(0., 1.);
     (p - a.lerp(b, t)).length()
 }
+
+// The projection and subdivision points are unchanged. Away from the
+// threshold the squared norm decides the same comparison without hypot.
+// The wide uncertainty band leaves all rounding-sensitive decisions (and
+// exceptional operands) to the original operation.
+#[inline]
+fn cubic_flatness_band(tolerance: f64) -> (f64, f64) {
+    if (1e-12..=1e12).contains(&tolerance) {
+        let squared = tolerance * tolerance;
+        (squared * (1. - 1. / 1024.), squared * (1. + 1. / 1024.))
+    } else {
+        (f64::NEG_INFINITY, f64::INFINITY)
+    }
+}
+
+#[inline]
+fn cubic_controls_flat(a: Point, b: Point, c: Point, d: Point, tolerance: f64, band: (f64, f64)) -> bool {
+    let chord = d - a;
+    let denominator = chord.dot(chord).max(1e-30);
+    let distance = |p: Point| {
+        let t = ((p - a).dot(chord) / denominator).clamp(0., 1.);
+        let delta = p - a.lerp(d, t);
+        let squared = delta.dot(delta);
+        if squared < band.0 { 0. } else if squared > band.1 { f64::INFINITY } else { delta.length() }
+    };
+    let first = distance(b);
+    // Keep f64::max's handling of a single NaN in the ambiguous case.
+    !(first > tolerance) && first.max(distance(c)) <= tolerance
+}
 // Convex-hull distance bounds handle collinear overshoot and coincident endpoints.
 // De Casteljau subdivision is performed AFTER the device transform, so tolerance
 // is measured in device pixels, including nonuniform scale and shear.
@@ -228,6 +257,7 @@ fn flatten_cubic_guarded(
     clip: Option<FillGuard>,
 ) -> Result<(), String> {
     let mut stack = vec![(a, b, c, d, 0u8)];
+    let band = cubic_flatness_band(tolerance);
     while let Some((a, b, c, d, depth)) = stack.pop() {
         if out.len() > 131072 {
             return Err("Curve subdivision budget exceeded".into());
@@ -236,6 +266,9 @@ fn flatten_cubic_guarded(
         // Replacing a subcurve entirely beyond one guard half-plane preserves
         // fill winding inside the guard; stroke/length/export callers use None.
         let outside = clip.is_some_and(|clip| {
+            if a.x >= clip.min.x && a.x <= clip.max.x && a.y >= clip.min.y && a.y <= clip.max.y {
+                return false;
+            }
             let ps = [a, b, c, d];
             let pad = 64.
                 * f64::EPSILON
@@ -247,8 +280,7 @@ fn flatten_cubic_guarded(
                 || ps.iter().all(|p| p.y < clip.min.y - pad)
                 || ps.iter().all(|p| p.y > clip.max.y + pad)
         });
-        let flat =
-            outside || distance_to_segment(b, a, d).max(distance_to_segment(c, a, d)) <= tolerance;
+        let flat = outside || cubic_controls_flat(a, b, c, d, tolerance, band);
         if flat {
             out.push(d);
             continue;
@@ -768,6 +800,25 @@ mod smooth_fill_tests {
     use super::*;
     use crate::{math::Rect, raster::rasterize};
 
+    #[test]
+    fn cubic_flatness_matches_original_at_rounding_boundaries_and_degenerate_chords() {
+        let p = Point::new;
+        for scale in [1e-100, 1e-12, 1./64., 1., 1e12, 1e100] {
+            for (a,b,c,d) in [
+                (p(0.,0.),p(0.6,0.8),p(-0.8,0.6),p(0.,0.)),
+                (p(1.,0.),p(-2.,0.),p(3.,0.),p(2.,0.)),
+                (p(-1.,2.),p(1.,-1.),p(3.,2.),p(2.,3.)),
+                (p(1.,0.),p(f64::NAN,2.),p(2.,1.),p(3.,0.)),
+            ] {
+                let (a,b,c,d) = (a*scale,b*scale,c*scale,d*scale);
+                let actual = distance_to_segment(b,a,d).max(distance_to_segment(c,a,d));
+                for tolerance in [actual.next_down(), actual, actual.next_up(), actual*0.5, actual*2.] {
+                    assert_eq!(cubic_controls_flat(a,b,c,d,tolerance,cubic_flatness_band(tolerance)),
+                        actual<=tolerance, "scale={scale} tolerance={tolerance}");
+                }
+            }
+        }
+    }
     #[test]
     fn point_guard_preserves_compound_signed_winding_with_reversed_holes() {
         let outer = Path::superellipse_rectangle(4000., 4000., [2000.; 4], 1.);

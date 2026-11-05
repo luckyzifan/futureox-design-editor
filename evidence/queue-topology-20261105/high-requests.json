@@ -1,0 +1,230 @@
+[
+  {
+    "tile": "high_-16_-1_962_962",
+    "options": {
+      "pageId": "00000000-0000-4000-8000-000000000001",
+      "width": 962,
+      "height": 962,
+      "view": {
+        "x": -252366.81623920685,
+        "y": 117504.00807198773,
+        "zoom": 64.00000436532198
+      },
+      "transparent": false,
+      "grid": false,
+      "rasterProfile": "figmaSubpixel",
+      "gpuGaussianRegions": true,
+      "gpuSourceFilterFields": true,
+      "gpuGaussianReduction": 0,
+      "gpuNeutralPageGroup": false,
+      "gpuPageBackground": true,
+      "gpuPainterSupport": false,
+      "gpuPainterCaptureReads": false,
+      "interactiveEffects": false,
+      "captureViewport": {
+        "x": -16,
+        "y": -1,
+        "w": 962,
+        "h": 962
+      },
+      "prepareViewport": {
+        "x": -16,
+        "y": -1,
+        "w": 1730,
+        "h": 1858
+      }
+    },
+    "bytes": 1666039,
+    "sha256": "8f4a80866759121d2507f999d389e11e34ab5952c43975397edab927bb14a9b6"
+  },
+  {
+    "tile": "high_-16_959_962_898",
+    "options": {
+      "pageId": "00000000-0000-4000-8000-000000000001",
+      "width": 962,
+      "height": 898,
+      "view": {
+        "x": -252366.81623920685,
+        "y": 117504.00807198773,
+        "zoom": 64.00000436532198
+      },
+      "transparent": false,
+      "grid": false,
+      "rasterProfile": "figmaSubpixel",
+      "gpuGaussianRegions": true,
+      "gpuSourceFilterFields": true,
+      "gpuGaussianReduction": 0,
+      "gpuNeutralPageGroup": false,
+      "gpuPageBackground": true,
+      "gpuPainterSupport": false,
+      "gpuPainterCaptureReads": false,
+      "interactiveEffects": false,
+      "captureViewport": {
+        "x": -16,
+        "y": 959,
+        "w": 962,
+        "h": 898
+      },
+      "prepareViewport": {
+        "x": -16,
+        "y": -1,
+        "w": 1730,
+        "h": 1858
+      }
+    },
+    "bytes": 1672670,
+    "sha256": "5486e957bada47650bccf66b0c3f350f8c1145d555dfd934664e38a17ef5a439"
+  },
+  {
+    "tile": "high_944_-1_770_962",
+    "options": {
+      "pageId": "00000000-0000-4000-8000-000000000001",
+      "width": 770,
+      "height": 962,
+      "view": {
+        "x": -252366.81623920685,
+        "y": 117504.00807198773,
+        "zoom": 64.00000436532198
+      },
+      "transparent": false,
+      "grid": false,
+      "rasterProfile": "figmaSubpixel",
+      "gpuGaussianRegions": true,
+      "gpuSourceFilterFields": true,
+      "gpuGaussianReduction": 0,
+      "gpuNeutralPageGroup": false,
+      "gpuPageBackground": true,
+      "gpuPainterSupport": false,
+      "gpuPainterCaptureReads": false,
+      "interactiveEffects": false,
+      "captureViewport": {
+        "x": 944,
+        "y": -1,
+        "w": 770,
+        "h": 962
+      },
+      "prepareViewport": {
+        "x": -16,
+        "y": -1,
+        "w": 1730,
+        "h": 1858
+      }
+    },
+    "bytes": 1673483,
+    "sha256": "107865eab7836d87a3dc0caefef13b03d2330470e79517cda95feeb6e2fc8f99"
+  },
+  {
+    "tile": "high_944_959_770_898",
+    "options": {
+      "pageId": "00000000-0000-4000-8000-000000000001",
+      "width": 770,
+      "height": 898,
+      "view": {
+        "x": -252366.81623920685,
+        "y": 117504.00807198773,
+        "zoom": 64.00000436532198
+      },
+      "transparent": false,
+      "grid": false,
+      "rasterProfile": "figmaSubpixel",
+      "gpuGaussianRegions": true,
+      "gpuSourceFilterFields": true,
+      "gpuGaussianReduction": 0,
+      "gpuNeutralPageGroup": false,
+      "gpuPageBackground": true,
+      "gpuPainterSupport": false,
+      "gpuPainterCaptureReads": false,
+      "interactiveEffects": false,
+      "captureViewport": {
+        "x": 944,
+        "y": 959,
+        "w": 770,
+        "h": 898
+      },
+      "prepareViewport": {
+        "x": -16,
+        "y": -1,
+        "w": 1730,
+        "h": 1858
+      }
+    },
+    "bytes": 1649682,
+    "sha256": "ee1d19ae314182f6d22f8bcd232797508d26d921182ba857697761c4d4d7910a"
+  },
+  {
+    "tile": "high_-16_-257_962_258",
+    "options": {
+      "pageId": "00000000-0000-4000-8000-000000000001",
+      "width": 962,
+      "height": 258,
+      "view": {
+        "x": -252366.81623920685,
+        "y": 117504.00807198773,
+        "zoom": 64.00000436532198
+      },
+      "transparent": false,
+      "grid": false,
+      "rasterProfile": "figmaSubpixel",
+      "gpuGaussianRegions": true,
+      "gpuSourceFilterFields": true,
+      "gpuGaussianReduction": 0,
+      "gpuNeutralPageGroup": false,
+      "gpuPageBackground": true,
+      "gpuPainterSupport": false,
+      "gpuPainterCaptureReads": false,
+      "interactiveEffects": false,
+      "captureViewport": {
+        "x": -16,
+        "y": -257,
+        "w": 962,
+        "h": 258
+      },
+      "prepareViewport": {
+        "x": -16,
+        "y": -257,
+        "w": 1730,
+        "h": 2114
+      }
+    },
+    "bytes": 1440759,
+    "sha256": "8696dc34325649be4e4c34c3435c15162a23329c9f08b44c82b3a6abc03d9f63"
+  },
+  {
+    "tile": "high_944_-257_770_258",
+    "options": {
+      "pageId": "00000000-0000-4000-8000-000000000001",
+      "width": 770,
+      "height": 258,
+      "view": {
+        "x": -252366.81623920685,
+        "y": 117504.00807198773,
+        "zoom": 64.00000436532198
+      },
+      "transparent": false,
+      "grid": false,
+      "rasterProfile": "figmaSubpixel",
+      "gpuGaussianRegions": true,
+      "gpuSourceFilterFields": true,
+      "gpuGaussianReduction": 0,
+      "gpuNeutralPageGroup": false,
+      "gpuPageBackground": true,
+      "gpuPainterSupport": false,
+      "gpuPainterCaptureReads": false,
+      "interactiveEffects": false,
+      "captureViewport": {
+        "x": 944,
+        "y": -257,
+        "w": 770,
+        "h": 258
+      },
+      "prepareViewport": {
+        "x": -16,
+        "y": -257,
+        "w": 1730,
+        "h": 2114
+      }
+    },
+    "bytes": 1448203,
+    "sha256": "2acf8dbf5422512d337a0ae8d1bf05e82ab6d6e918b529f16535841dd0390025"
+  }
+]

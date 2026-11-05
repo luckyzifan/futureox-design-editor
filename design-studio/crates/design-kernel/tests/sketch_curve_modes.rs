@@ -66,7 +66,7 @@ fn kernel_doc(net: Network) -> Document {
             children: vec!["n1".into()],
             background: "#ffffff".into(),
         }],
-        nodes: BTreeMap::new(),
+        nodes: Default::default(),
         fonts: BTreeMap::new(),
         animations: Vec::new(),
     };

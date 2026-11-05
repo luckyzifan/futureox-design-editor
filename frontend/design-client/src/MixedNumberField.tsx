@@ -5,11 +5,13 @@ import { DraftInput } from './DraftInput'
 import { NumberField } from './fields'
 
 /** Mixed values are intentionally blank. A new value is an explicit batch edit. */
-export function MixedNumberField({ label, value, onChange, min = -1e6, max = 1e6, bases, onExpression, unit = propertyUnit(label), unitDescription, diagnosticFamily, historyLabel = label }: {
+export function MixedNumberField({ label, value, onChange, min = -1e6, max = 1e6, bases, onExpression, unit = propertyUnit(label), unitDescription, diagnosticFamily, historyLabel = label, formatValue, caption }: {
   unitDescription?: string
   unit?: NumericUnit
   historyLabel?: string
   diagnosticFamily?: number
+  formatValue?: (value: number) => string
+  caption?: string
   label: string
   value: number | undefined
   onChange: (value: number) => void
@@ -19,7 +21,7 @@ export function MixedNumberField({ label, value, onChange, min = -1e6, max = 1e6
   onExpression?: (expression: string) => void
 }) {
   const { tr } = usePropertyText()
-  if (value !== undefined) return <NumberField unitDescription={unitDescription} historyLabel={historyLabel} unit={unit} diagnosticFamily={diagnosticFamily} label={label} value={value} min={min} max={max} onChange={onChange} />
+  if (value !== undefined) return <NumberField unitDescription={unitDescription} historyLabel={historyLabel} unit={unit} diagnosticFamily={diagnosticFamily} label={label} caption={caption} formatValue={formatValue} value={value} min={min} max={max} onChange={onChange} />
   const parsed = (text: string, base = 0) => { try { return numericExpression(text, base, unit) } catch { return NaN } }
   const valid = (text: string) => {
     if (!onExpression && (/^[+*/-]=/.test(text) || text.includes('%')) && unit !== 'percent') return false

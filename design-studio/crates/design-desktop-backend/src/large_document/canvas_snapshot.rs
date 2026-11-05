@@ -1,7 +1,7 @@
 //! A native, full-source indexed canvas. Node records stay on disk and must never be
 //! returned as a giant renderer string or mistaken for an editable workset.
 use super::*;
-use futureox_design_kernel::{fidelity::RasterProfile, scene::Document};
+use futureox_design_kernel::{fidelity::RasterProfile, scene::Document, scene_store::ValidatedSource};
 
 pub(super) struct Snapshot {
     pub scope: Option<String>,
@@ -79,9 +79,9 @@ fn append_batch(s:&Session,batch:&[(usize,usize)],cancel:&AtomicBool,context:&pr
 
 #[cfg(test)]
 pub(super) fn build(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool) -> Result<(Document, String, Vec<String>)> {
-    build_inner(s,layout,cancel,false)
+    build_inner(s,layout,cancel,false).map(|(doc, id, notes)| (doc.into_document(), id, notes))
 }
-fn build_inner(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool, render_only:bool) -> Result<(Document, String, Vec<String>)> {
+fn build_inner(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool, render_only:bool) -> Result<(ValidatedSource, String, Vec<String>)> {
     if layout.revision != s.revision { return Err(issue("Source canvas layout is stale")); }
     let context = projection::SketchContext::new(s)?;
     let mut full: Option<Document> = None;
@@ -139,7 +139,7 @@ fn build_inner(s: &Session, layout: &canvas_layout::Layout, cancel: &AtomicBool,
 }
 
 pub(super) fn place_materials(mut document:Document, document_id:&str, name:&str, layout:&canvas_layout::Layout)
-    -> Result<(Document,String)> {
+    -> Result<(ValidatedSource,String)> {
     // Merge dependency masters at their original transforms first. Only then
     // translate displayed roots, so a visible master and its references retain
     // one source identity rather than conflicting duplicate geometry.
@@ -166,8 +166,7 @@ pub(super) fn place_materials(mut document:Document, document_id:&str, name:&str
     document.pages[0].name=name.to_owned(); document.pages[0].children=vec![id.clone()];
     for page in document.pages.iter_mut().skip(1) {page.children.retain(|id|!visible.contains(id));}
     document.raster_profile = Some(if document.color_management.is_some(){RasterProfile::Figma}else{RasterProfile::Analytic});
-    document.validate_native_source().map_err(issue)?;
-    Ok((document,id))
+    Ok((ValidatedSource::new(document).map_err(issue)?, id))
 }
 
 #[cfg(test)]
@@ -251,7 +250,7 @@ pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool, navigation_preview:b
         let next=s.directory.join("canvas-native.next");
         let result=(||{
             let generation=format!("{}:{}:{}{suffix}",s.owner.document_id,s.owner.session_epoch,s.revision);
-            let write=||futureox_design_kernel::scene_store::write(&next,&generation,&document,&warnings,cancel);
+            let write=||document.write(&next,&generation,&warnings,cancel);
             let store=match write(){
                 Err(error) if error.kind()==std::io::ErrorKind::StorageFull && !s.recent_materials.0.is_empty()=>{
                     s.recent_materials.clear();check_cancel(cancel).map_err(issue)?;write().map_err(issue)?
@@ -270,10 +269,10 @@ pub(super) fn prepare(s: &mut Session, cancel: &AtomicBool, navigation_preview:b
                 let bottom=work.items.iter().map(|i|i.placed.y+i.placed.height+margin).fold(f64::NEG_INFINITY,f64::max).min(window.y+window.height).min(layout.bounds.y+layout.bounds.height);
                 if right>left&&bottom>top {
                     let region=canvas_layout::Box2{x:left,y:top,width:right-left,height:bottom-top};
-                    snapshot.navigation=navigation_image::NavigationImage::start(document,snapshot.page_id.clone(),region,snapshot.store.bytes,true);
+                    snapshot.navigation=navigation_image::NavigationImage::start(document.into_document(),snapshot.page_id.clone(),region,snapshot.store.bytes,true);
                 }
             }else if navigation_preview && scope.is_none() {
-                snapshot.navigation=navigation_image::NavigationImage::start(document,snapshot.page_id.clone(),snapshot.bounds,snapshot.store.bytes,false);
+                snapshot.navigation=navigation_image::NavigationImage::start(document.into_document(),snapshot.page_id.clone(),snapshot.bounds,snapshot.store.bytes,false);
             }
             Ok(snapshot)
         })();

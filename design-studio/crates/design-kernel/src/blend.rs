@@ -314,6 +314,56 @@ pub struct Surface {
     pub pixels: Vec<Pixel>,
     allocation: Option<crate::memory::Allocation>,
 }
+pub(crate) fn sample_rgba8_index_from(x: f32, y: f32, opacity: f32, at:impl Fn(i32,i32)->Pixel) -> Pixel {
+        let (ix, iy) = (x.floor() as i32, y.floor() as i32);
+        let (u, v) = (x - x.floor(), y - y.floor());
+        let byte = |x, y| at(x, y).0.map(|c| (c * 255.).round_ties_even());
+        let (a, b, c, d) = (
+            byte(ix, iy),
+            byte(ix + 1, iy),
+            byte(ix, iy + 1),
+            byte(ix + 1, iy + 1),
+        );
+        Pixel(std::array::from_fn(|i| {
+            let top = a[i] * (1. - u) + b[i] * u;
+            let bottom = c[i] * (1. - u) + d[i] * u;
+            ((top * (1. - v) + bottom * v) * opacity).round_ties_even() / 255.
+        }))
+}
+pub(crate) fn sample_from(x: f64, y: f64, at:impl Fn(i32,i32)->Pixel) -> Pixel {
+        let x = x - 0.5;
+        let y = y - 0.5;
+        let (ix, iy) = (x.floor() as i32, y.floor() as i32);
+        let (u, v) = ((x - x.floor()) as f32, (y - y.floor()) as f32);
+        let ps = [
+            at(ix, iy),
+            at(ix + 1, iy),
+            at(ix, iy + 1),
+            at(ix + 1, iy + 1),
+        ];
+        let ws = [(1. - u) * (1. - v), u * (1. - v), (1. - u) * v, u * v];
+        let mut out = [0.; 4];
+        for (p, w) in ps.into_iter().zip(ws) {
+            for (i, c) in out.iter_mut().enumerate() {
+                *c += p.0[i] * w;
+            }
+        }
+        Pixel(out)
+}
+pub(crate) fn sample_linear_from(x: f64, y: f64, at:impl Fn(i32,i32)->Pixel) -> Pixel {
+        let (x, y) = (x - 0.5, y - 0.5);
+        let (ix, iy) = (x.floor() as i32, y.floor() as i32);
+        let (u, v) = ((x - x.floor()) as f32, (y - y.floor()) as f32);
+        let p = [
+            at(ix, iy),
+            at(ix + 1, iy),
+            at(ix, iy + 1),
+            at(ix + 1, iy + 1),
+        ];
+        Pixel(std::array::from_fn(|c| {
+            crate::sampling::bilinear(p.map(|p| p.0[c]), u, v)
+        }))
+}
 impl Surface {
     pub fn quantize_rgba8(&mut self) {
         for p in &mut self.pixels {
@@ -373,20 +423,7 @@ impl Surface {
             .transpose()
     }
     pub(crate) fn sample_rgba8_index(&self, x: f32, y: f32, opacity: f32) -> Pixel {
-        let (ix, iy) = (x.floor() as i32, y.floor() as i32);
-        let (u, v) = (x - x.floor(), y - y.floor());
-        let byte = |x, y| self.at(x, y).0.map(|c| (c * 255.).round_ties_even());
-        let (a, b, c, d) = (
-            byte(ix, iy),
-            byte(ix + 1, iy),
-            byte(ix, iy + 1),
-            byte(ix + 1, iy + 1),
-        );
-        Pixel(std::array::from_fn(|i| {
-            let top = a[i] * (1. - u) + b[i] * u;
-            let bottom = c[i] * (1. - u) + d[i] * u;
-            ((top * (1. - v) + bottom * v) * opacity).round_ties_even() / 255.
-        }))
+        sample_rgba8_index_from(x,y,opacity,|x,y|self.at(x,y))
     }
     pub fn at(&self, x: i32, y: i32) -> Pixel {
         self.rect
@@ -394,40 +431,12 @@ impl Surface {
             .map_or(Pixel::default(), |i| self.pixels[i])
     }
     pub fn sample(&self, x: f64, y: f64) -> Pixel {
-        let x = x - 0.5;
-        let y = y - 0.5;
-        let (ix, iy) = (x.floor() as i32, y.floor() as i32);
-        let (u, v) = ((x - x.floor()) as f32, (y - y.floor()) as f32);
-        let ps = [
-            self.at(ix, iy),
-            self.at(ix + 1, iy),
-            self.at(ix, iy + 1),
-            self.at(ix + 1, iy + 1),
-        ];
-        let ws = [(1. - u) * (1. - v), u * (1. - v), (1. - u) * v, u * v];
-        let mut out = [0.; 4];
-        for (p, w) in ps.into_iter().zip(ws) {
-            for (i, c) in out.iter_mut().enumerate() {
-                *c += p.0[i] * w;
-            }
-        }
-        Pixel(out)
+        sample_from(x,y,|x,y|self.at(x,y))
     }
     /// Managed linear-light sampling: exact bilinear expression, one f32 RNE.
     /// Geometry selects the texel cell in f64; interpolation fractions are f32.
     pub fn sample_linear(&self, x: f64, y: f64) -> Pixel {
-        let (x, y) = (x - 0.5, y - 0.5);
-        let (ix, iy) = (x.floor() as i32, y.floor() as i32);
-        let (u, v) = ((x - x.floor()) as f32, (y - y.floor()) as f32);
-        let p = [
-            self.at(ix, iy),
-            self.at(ix + 1, iy),
-            self.at(ix, iy + 1),
-            self.at(ix + 1, iy + 1),
-        ];
-        Pixel(std::array::from_fn(|c| {
-            crate::sampling::bilinear(p.map(|p| p.0[c]), u, v)
-        }))
+        sample_linear_from(x,y,|x,y|self.at(x,y))
     }
     /// Bilinear resampling at an RGBA8 filter boundary. Interpolate byte values
     /// before normalizing so binary UNORM representations cannot move exact

@@ -81,11 +81,11 @@ export function captureNodeGraph(source:DesignDocument,nodeIds:string[]){
     return { nodes, roots, document: source }
 }
 
-export function serializeNodePacket(source:DesignDocument,nodeIds:string[]):string{
+export function selectedDocument(source:DesignDocument,nodeIds:string[],name:string,rootLimit=1000){
   const content=captureNodeGraph(source,nodeIds)
-  if(content.roots.length>MAX_NODE_ROOTS)throw Error('Clipboard supports at most 64 roots')
+  if(content.roots.length>rootLimit)throw Error(`Selection exceeds ${rootLimit} roots`)
   const semantics=captureClipboardSemantics(content.document,Object.values(content.nodes),content.roots,{external:true})
-  const document=blank('剪贴板');document.schemaVersion=source.schemaVersion
+  const document=blank(name);document.schemaVersion=source.schemaVersion
   document.colorManagement=cloneValue(source.colorManagement);document.rasterProfile=source.rasterProfile
   const mapping=new Map(Object.keys(content.nodes).map(id=>[id,id]))
   const dependencies=Components.importClipboardDependencies(document,content.document,clipboardDependencyNodes(Object.values(content.nodes),semantics),mapping)
@@ -95,7 +95,11 @@ export function serializeNodePacket(source:DesignDocument,nodeIds:string[]):stri
   document.pages[0].children=[...content.roots]
   const remapped=applyClipboardSemantics(document,content.document,content.roots,dependencies.nodeIds,dependencies.designSystem,semantics,document.pages[0].id,0)
   validateDocument(document)
-  return bounded(JSON.stringify({format:'forma-nodes',version:1,document,roots:content.roots.map(id=>remapped.get(id)!),selection:content.roots}))
+  return {document,roots:content.roots.map(id=>remapped.get(id)!),selection:content.roots}
+}
+export function serializeNodePacket(source:DesignDocument,nodeIds:string[]):string{
+  const selection=selectedDocument(source,nodeIds,'剪贴板',MAX_NODE_ROOTS)
+  return bounded(JSON.stringify({format:'forma-nodes',version:1,...selection}))
 }
 
 /** Only a private schema-checked graph; deliberately NOT native admission. */

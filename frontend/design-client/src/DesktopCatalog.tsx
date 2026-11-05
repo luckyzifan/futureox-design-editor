@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { File, FolderOpen, RefreshCw } from 'lucide-react'
+import { FolderOpen, RefreshCw } from 'lucide-react'
+import { FileMark } from './chrome-icons'
 import { modalKeyDown } from './modal-keyboard'
 import type { CatalogDirectory, CatalogFile, CatalogProject, DesktopBridge, DesktopResult } from './desktop'
 
@@ -106,7 +107,7 @@ export function DesktopCatalog({ bridge, onOpen, onClose, disabled = false, susp
         {!authorized && <p role="status">此目录需要重新选择授权。保存的目录记录不能直接访问文件。</p>}
         {authorized && !canOpen && <p>请先扫描目录，核实本次会话中可打开的设计文件。</p>}
         <div className="library-section-heading"><strong>设计文件 <span>{files.length}</span></strong><button type="button" className="secondary" disabled={blocked || !authorized} onClick={() => void run((ticket) => scan(directory, ticket))}><RefreshCw size={13} aria-hidden="true" />扫描设计文件</button></div>
-        {!files.length && !busy && <div className="library-empty"><File size={28} aria-hidden="true" /><strong>暂无已索引的 .fd 文件</strong><p>扫描文件夹以查看其中的设计文件。</p></div>}
+        {!files.length && !busy && <div className="library-empty"><FileMark kind="fd" size={28} /><strong>暂无已索引的 .fd 文件</strong><p>扫描文件夹以查看其中的设计文件。</p></div>}
         <div className="catalog-file-list">
           {files.map((file) => <div className="local-file-row" key={file.id}>
             <button type="button" disabled={blocked || !canOpen} onClick={() => void run(async (ticket) => {
@@ -114,7 +115,7 @@ export function DesktopCatalog({ bridge, onOpen, onClose, disabled = false, susp
               if (!current(ticket)) return
               if (opened) onClose()
               else setNotice('未完成打开，请查看底部文件状态。若目录授权已失效，请重新选择目录；文件变动后请重新扫描。')
-            })}><File size={17} className="library-file-icon" aria-hidden="true" /><span className="library-file-name">{file.relativePath}</span></button>
+            })}><FileMark name={file.relativePath} size={18} /><span className="library-file-name">{file.relativePath}</span></button>
             <span className="library-file-size">{Math.ceil(file.size / 1024)} KiB</span>
           </div>)}
         </div>

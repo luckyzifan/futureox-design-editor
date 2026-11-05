@@ -1,0 +1,164 @@
+{
+  "nativeUnit": [
+    {
+      "passed": 879,
+      "failed": 0,
+      "ignored": 10
+    }
+  ],
+  "nativeEffects": [
+    {
+      "passed": 10,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "passed": 10,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "passed": 7,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "passed": 7,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "passed": 7,
+      "failed": 0,
+      "ignored": 0
+    }
+  ],
+  "frontendTests": {
+    "gpuAndNavigation": 46,
+    "emptyShadowField": 1,
+    "materialScopeAndWorkspace": 21
+  },
+  "typecheck": "passed as part of full desktop build",
+  "fullDesktopBuild": true,
+  "wasm": "rebuilt portable kernel; CPU and WASM golden match",
+  "referenceAndFinalNativePixelChecks": "both real per-tile comparisons plus independent fixed desktop camera checks; see linked artifacts",
+  "earlierAndFinalIdenticalArtifacts": [
+    "renderer/kernel/design_kernel_bg.wasm",
+    "bin/design-prepare",
+    "bin/design-render",
+    "sidecar/futureox-design-desktop-backend"
+  ],
+  "finalGuiRuns": [
+    {
+      "name": "dense-1-G",
+      "code": 0,
+      "seconds": 73.1
+    },
+    {
+      "name": "high-1-G",
+      "code": 0,
+      "seconds": 38.6
+    },
+    {
+      "name": "high-2-A",
+      "code": 0,
+      "seconds": 38.8
+    },
+    {
+      "name": "dense-2-A",
+      "code": 0,
+      "seconds": 61.5
+    },
+    {
+      "name": "dense-3-A",
+      "code": 0,
+      "seconds": 61.2
+    },
+    {
+      "name": "high-3-A",
+      "code": 0,
+      "seconds": 39.9
+    },
+    {
+      "name": "high-4-G",
+      "code": 0,
+      "seconds": 38.4
+    },
+    {
+      "name": "dense-4-G",
+      "code": 0,
+      "seconds": 63.0
+    }
+  ],
+  "previousGuiRuns": [
+    {
+      "name": "dense-1-A",
+      "code": 0,
+      "seconds": 66.6
+    },
+    {
+      "name": "high-1-A",
+      "code": 0,
+      "seconds": 41.1
+    },
+    {
+      "name": "high-2-E",
+      "code": 0,
+      "seconds": 38.8
+    },
+    {
+      "name": "dense-2-E",
+      "code": 0,
+      "seconds": 75.4
+    },
+    {
+      "name": "dense-3-E",
+      "code": 0,
+      "seconds": 71.4
+    },
+    {
+      "name": "high-3-E",
+      "code": 0,
+      "seconds": 39.0
+    },
+    {
+      "name": "high-4-A",
+      "code": 0,
+      "seconds": 38.4
+    },
+    {
+      "name": "dense-4-A",
+      "code": 0,
+      "seconds": 61.3
+    }
+  ],
+  "cpuMatrix": "latest isolated run; four fresh processes (ABBA) per side, one cold and two warm frames each",
+  "notes": [
+    "Diagnostic runs and readbacks are separate from hardware timing.",
+    "An intermediate replay launcher used a symlink as its fake Electron host and failed before loading either product. All those launches were excluded and rerun from the real host directory.",
+    "Other platforms, universal latency and commercial release gates not evaluated."
+  ],
+  "additionalColdRuns": [
+    {
+      "name": "cold-1-A",
+      "code": 0
+    },
+    {
+      "name": "cold-2-G",
+      "code": 0
+    },
+    {
+      "name": "cold-3-G",
+      "code": 0
+    },
+    {
+      "name": "cold-4-A",
+      "code": 0
+    }
+  ]
+}

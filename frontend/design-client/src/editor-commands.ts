@@ -13,6 +13,8 @@ import { commitPendingEdits } from './pending-edits'
 import { blank, node, paint, type DesignDocument, type Point } from './model'
 import { lockedSelectionIds } from './canvas-menu-model'
 import { fitBounds, zoomAt, zoomStep } from './canvas-camera'
+import { jumpFrame, jumpPage, jumpToNode } from './canvas-navigation'
+import { togglePrototypeTab } from './prototype-chrome'
 import { unionBounds } from './geometry'
 import {querySelection,type SelectionQuery} from './selection-queries'
 import { dimensionNudgeCommands, isDimensionNudgeCommand, nudgeSelectionDimensions, selectAllCanvasIds, type DimensionNudgeCommand } from './canvas-workflow-shortcuts'
@@ -24,8 +26,8 @@ import type { ShortcutProfile } from './shortcut-profiles'
 import { toolForCommand, unavailableReason, TOOL_COMMANDS } from './tool-registry'
 
 export type SetToolCommand = `set-tool-${string}`
-export type EditorCommand = DimensionNudgeCommand | 'copy-properties'|'paste-properties'|'copy-fills'|'copy-strokes'|'copy-effects' | SetToolCommand | `select-${SelectionQuery}` | 'rename' | 'new-page' | 'frame-selection' | 'auto-layout' | 'remove-auto-layout' | 'create-component' | 'detach-instance' | 'mask-selection' | 'convert-section' | 'move-to-page' | 'copy-as-png' | 'copy-as-svg' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'paste-to-replace' | 'paste-in-place' | 'paste-over-selection' | 'paste-here' | 'delete' | 'duplicate' | 'group' | 'ungroup' | 'select-all' | 'zoom-in' | 'zoom-out' | 'zoom-100' | 'zoom-fit' | 'zoom-selection' | 'center-selection' | 'flip-horizontal' | 'flip-vertical' | 'bring-to-front' | 'send-to-back' | 'bring-forward' | 'send-backward' | 'lock-selection' | 'unlock-selection' | 'hide-selection' | 'show-selection' | 'outline-stroke' | 'convert-vector'
-export const editorCommands: readonly EditorCommand[] = [...dimensionNudgeCommands,'copy-properties','paste-properties','copy-fills','copy-strokes','copy-effects',...(['fill','stroke','effect','text','font','instance','properties','matching','inverse'] as const).map(q=>`select-${q}` as const), ...TOOL_COMMANDS.map((c) => `set-tool-${c.id.slice(9)}` as const).filter((v, i, a) => a.indexOf(v) === i), 'rename','frame-selection','auto-layout','remove-auto-layout','create-component','detach-instance','mask-selection','convert-section','move-to-page','copy-as-png','copy-as-svg','undo','redo','copy','cut','paste','paste-to-replace','paste-in-place','paste-over-selection','paste-here','delete','duplicate','group','ungroup','select-all','zoom-in','zoom-out','zoom-100','zoom-fit','zoom-selection','center-selection','flip-horizontal','flip-vertical','bring-to-front','send-to-back','bring-forward','send-backward','lock-selection','unlock-selection','hide-selection','show-selection','outline-stroke','convert-vector','new-page']
+export type EditorCommand = DimensionNudgeCommand | 'copy-properties'|'paste-properties'|'copy-fills'|'copy-strokes'|'copy-effects' | SetToolCommand | `select-${SelectionQuery}` | 'rename' | 'new-page' | 'frame-selection' | 'auto-layout' | 'remove-auto-layout' | 'create-component' | 'detach-instance' | 'mask-selection' | 'convert-section' | 'move-to-page' | 'copy-as-png' | 'copy-as-svg' | 'undo' | 'redo' | 'copy' | 'cut' | 'paste' | 'paste-to-replace' | 'paste-in-place' | 'paste-over-selection' | 'paste-here' | 'delete' | 'duplicate' | 'group' | 'ungroup' | 'select-all' | 'zoom-in' | 'zoom-out' | 'zoom-100' | 'zoom-fit' | 'zoom-selection' | 'zoom-next-frame' | 'zoom-previous-frame' | 'next-page' | 'previous-page' | 'eraser-or-prototype' | 'jump-to-node' | 'center-selection' | 'flip-horizontal' | 'flip-vertical' | 'bring-to-front' | 'send-to-back' | 'bring-forward' | 'send-backward' | 'lock-selection' | 'unlock-selection' | 'hide-selection' | 'show-selection' | 'outline-stroke' | 'flatten' | 'convert-vector'
+export const editorCommands: readonly EditorCommand[] = [...dimensionNudgeCommands,'copy-properties','paste-properties','copy-fills','copy-strokes','copy-effects',...(['fill','stroke','effect','text','font','instance','properties','matching','inverse'] as const).map(q=>`select-${q}` as const), ...TOOL_COMMANDS.map((c) => `set-tool-${c.id.slice(9)}` as const).filter((v, i, a) => a.indexOf(v) === i), 'rename','frame-selection','auto-layout','remove-auto-layout','create-component','detach-instance','mask-selection','convert-section','move-to-page','copy-as-png','copy-as-svg','undo','redo','copy','cut','paste','paste-to-replace','paste-in-place','paste-over-selection','paste-here','delete','duplicate','group','ungroup','select-all','zoom-in','zoom-out','zoom-100','zoom-fit','zoom-selection','center-selection','flip-horizontal','flip-vertical','bring-to-front','send-to-back','bring-forward','send-backward','lock-selection','unlock-selection','hide-selection','show-selection','outline-stroke','flatten','convert-vector','new-page','zoom-next-frame','zoom-previous-frame','next-page','previous-page','eraser-or-prototype','jump-to-node']
 /** Normalize the native menu/accelerator bridge at one renderer boundary.
  * Focus ownership remains in dispatchEditorCommand, not in the native host. */
 export function resolveDesktopEditorCommand(name: string): EditorCommand | undefined {
@@ -34,7 +36,7 @@ export function resolveDesktopEditorCommand(name: string): EditorCommand | undef
 }
 const copiedPackets = new WeakMap<Editor, string>()
 function packet(document: DesignDocument) { return JSON.stringify({ format:'forma-nodes', version:1, document, roots:document.pages[0].children }) }
-export async function dispatchEditorCommand(editor: Editor, command: EditorCommand, options: { worldPoint?: Point; pageId?: string; zoomAnchor?: Point; shortcutProfile?: ShortcutProfile; actionSource?: ActionSourceCode } = {}): Promise<void> {
+export async function dispatchEditorCommand(editor: Editor, command: EditorCommand, options: { worldPoint?: Point; pageId?: string; nodeId?: string; zoomAnchor?: Point; shortcutProfile?: ShortcutProfile; actionSource?: ActionSourceCode } = {}): Promise<void> {
   const category = command === 'copy' ? CanvasAction.copy : command === 'cut' ? CanvasAction.cut : command.startsWith('paste') ? CanvasAction.paste : command === 'undo' ? CanvasAction.undo : command === 'redo' ? CanvasAction.redo : command === 'delete' ? CanvasAction.delete : command === 'duplicate' ? CanvasAction.duplicate : command === 'group' || command === 'frame-selection' ? CanvasAction.group : command === 'ungroup' ? CanvasAction.ungroup : command === 'select-all' ? CanvasAction.selectAll : CanvasAction.command
   const action = beginEditorAction(editor, category, options.actionSource ?? ActionSource.unknown, editorCommands.indexOf(command) + 1)
   try {
@@ -183,6 +185,19 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       else editor.paste(command === 'paste-in-place', command === 'paste-here' ? options.worldPoint : undefined)
       return
     }
+    if (command === 'eraser-or-prototype' || command === 'zoom-next-frame' || command === 'zoom-previous-frame' || command === 'next-page' || command === 'previous-page' || command === 'jump-to-node') {
+      const host = typeof document === 'undefined' ? null : document.querySelector('[data-testid=canvas]')
+      const size = { width: host?.clientWidth || 800, height: host?.clientHeight || 600 }
+      if (command === 'eraser-or-prototype') {
+        const tool = editor.state.tool
+        if (tool === 'eraser') await activateTool(editor, 'vector')
+        else if (['vector', 'pen', 'pencil', 'brush', 'marker'].includes(tool)) await activateTool(editor, 'eraser')
+        else togglePrototypeTab()
+      } else if (command === 'zoom-next-frame' || command === 'zoom-previous-frame') jumpFrame(editor, command === 'zoom-next-frame' ? 1 : -1, size)
+      else if (command === 'next-page' || command === 'previous-page') jumpPage(editor, command === 'next-page' ? 1 : -1)
+      else if (options.nodeId) jumpToNode(editor, options.nodeId, size)
+      return
+    }
     if (command === 'center-selection') {
       const selected = new Set(editor.state.selection)
       const entries = editor.entries().filter(entry => selected.has(entry.id))
@@ -245,6 +260,7 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       case 'show-selection': editor.update(editor.state.selection, { visible: true }, '切换可见性'); break
       case 'convert-vector': editor.convert(); break
       case 'outline-stroke': await editor.geometry('outline'); action.result(ActionOutcome.observed, ActionReason.unobserved); break
+      case 'flatten': await editor.flattenSelection(); break
       case 'flip-horizontal':
       case 'flip-vertical': {
         const box = editor.selectionBounds()

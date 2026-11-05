@@ -12,7 +12,9 @@ import type { DesignDocument } from '../model'
 
 export const BINARY_DOCUMENT_FORMAT = 2
 
-/** Encode a validated document into kernel binfmt bytes. */
+/** Encode a validated document into kernel binfmt bytes.
+ * `JSON.stringify` canonicalizes signed zero before the kernel sees it.
+ * A JSON string that still contains `-0.0` keeps that sign in the file. */
 export function encodeDocumentBinary(document: DesignDocument): Uint8Array {
   if (!kernelModuleReady()) throw new Error('二进制文档内核尚未就绪')
   return forma_encode_json(JSON.stringify(document))

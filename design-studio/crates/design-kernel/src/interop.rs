@@ -1017,7 +1017,14 @@ fn kind_for_class(class: &str) -> &'static str {
     }
 }
 
+/// Images already admitted and owned by the native Sketch source session.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn source_bitmap_upright(exif: &[u8]) -> std::result::Result<bool,String>{
+    Ok(crate::image_color::exif_orientation(exif)? == image::metadata::Orientation::NoTransforms)
+}
+pub type SourceBitmapRefs = BTreeMap<String,(std::sync::Arc<str>,[u32;2])>;
 struct Importer<'a> {
+    source_bitmaps: &'a SourceBitmapRefs,
     image_sources: std::cell::RefCell<std::collections::HashMap<&'a str,std::sync::Arc<str>>>,
     available_fonts: std::collections::BTreeSet<String>,
     color_space: ColorSpace,
@@ -1036,17 +1043,24 @@ struct Importer<'a> {
 }
 
 impl<'a> Importer<'a> {
+    fn source_bitmap(&self, reference:&str)->Option<&(std::sync::Arc<str>,[u32;2])>{
+        self.source_bitmaps.get(reference).or_else(|| self.source_bitmaps.get(&format!("images/{reference}")))
+    }
     fn pattern_size(&self, part: &Value) -> Option<[f64; 2]> {
         let scale = part.get("patternTileScale").and_then(Value::as_f64).unwrap_or(1.);
         if !scale.is_finite() || scale <= 0. { return None; }
         if scale == 1. { return Some([0., 0.]); }
         let reference = part.pointer("/image/_ref")?.as_str()?;
-        let bytes = self.files.get(&format!("images/{reference}")).or_else(|| self.files.get(reference))?;
-        let size = bitmap_extent(bytes)?.map(|value| value * scale);
+        let extent=if let Some((_,dims))=self.source_bitmap(reference){dims.map(f64::from)} else {
+            let bytes = self.files.get(&format!("images/{reference}")).or_else(|| self.files.get(reference))?;
+            bitmap_extent(bytes)?
+        };
+        let size = extent.map(|value| value * scale);
         size.iter().all(|v| v.is_finite() && *v > 0. && *v <= 1e7).then_some(size)
     }
     fn image_ref(&self, layer: &Value) -> Option<std::sync::Arc<str>> {
         let reference = layer.get("image").and_then(|i| i.get("_ref"))?.as_str()?;
+        if let Some((uri,_))=self.source_bitmap(reference){return Some(uri.clone());}
         let (key,bytes)=self.files.get_key_value(&format!("images/{reference}"))
             .or_else(||self.files.get_key_value(reference))?;
         // The same immutable archive asset is often painted by many layers.
@@ -1085,7 +1099,7 @@ impl<'a> Importer<'a> {
             .and_then(|i| i.get("_ref"))
             .and_then(Value::as_str)
             .map(|r| {
-                self.files.contains_key(&format!("images/{r}")) || self.files.contains_key(r)
+                self.source_bitmap(r).is_some() || self.files.contains_key(&format!("images/{r}")) || self.files.contains_key(r)
             })
             .unwrap_or(false)
     }
@@ -1990,6 +2004,8 @@ impl<'a> Importer<'a> {
                             font_size,
                             weight: a.pointer("/MSAttributedStringFontAttribute/attributes/variation/2003265652")
                                 .and_then(Value::as_f64).map(|weight| weight as f32),
+                            letter_spacing: None,
+                            line_height: None,
                         });
                         // first run fills the defaults
                         if node.text_runs.len() == 1 {
@@ -2182,7 +2198,7 @@ impl<'a> Importer<'a> {
                             // dangle. An unresolvable reference keeps the raw
                             // dict and is reported, never silently dropped.
                             let value =
-                                match sketch_override_value_from_native(self.files, field, &raw) {
+                                match sketch_override_value_from_native(self.files, self.source_bitmaps, field, &raw) {
                                     Some(resolved) => resolved,
                                     None => {
                                         import_lossy.push(format!(
@@ -2731,14 +2747,14 @@ fn import_sketch_files(files: &BTreeMap<String, Vec<u8>>) -> Result<Document> {
         }
     }
 
-    import_sketch_parts(files, &meta, &document, &page_index,None)
+    import_sketch_parts(files, &meta, &document, &page_index,None,&Default::default())
 }
 
 // Both archive and native-source imports execute the same semantic codec.
 // Parsed native windows borrow their values instead of serializing and then
 // parsing the complete layer tree again.
 fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
-    document: &Value, page_index: &BTreeMap<String, Value>,page_references:Option<&Value>) -> Result<Document> {
+    document: &Value, page_index: &BTreeMap<String, Value>,page_references:Option<&Value>,source_bitmaps:&SourceBitmapRefs) -> Result<Document> {
     validate_sketch_shared_style_ids(&document)?;
 
     let mut doc = Document {
@@ -2756,7 +2772,7 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
             .map(|v| format!("Imported from Sketch {v}"))
             .unwrap_or_else(|| "Imported from Sketch".into()),
         pages: Vec::new(),
-        nodes: BTreeMap::new(),
+        nodes: Default::default(),
         fonts: BTreeMap::new(),
         animations: Vec::new(),
     };
@@ -2764,6 +2780,7 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
     // Restore private text identities only when this archive still owns their resources.
     let font_aliases=crate::interop_resources::import_fonts(document, files, &mut doc)?;
     let mut importer = Importer {
+        source_bitmaps,
         image_sources: Default::default(),
         available_fonts: doc.fonts.keys().cloned().collect(),
         color_space: if document.get("colorSpace").and_then(Value::as_i64) == Some(2) {
@@ -3117,7 +3134,7 @@ fn import_sketch_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
     // Prototype flows → interactions (21 号 P2-11). Destinations address the
     // archived do_objectID; the uuid map built during layer import restores
     // the kernel id. Unmappable fields are reported on the node, not dropped.
-    doc.nodes = importer.nodes;
+    doc.nodes = importer.nodes.into();
     crate::interop_resources::remap_fonts(&font_aliases, &mut doc)?;
     let mut text_layouts = Map::new();
     for node in doc.nodes.values_mut() {
@@ -3522,7 +3539,7 @@ pub fn import_sketch_source_window(
 #[cfg(not(target_arch = "wasm32"))]
 pub fn import_sketch_source_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Value,
     document: &Value, pages: &BTreeMap<String, Value>) -> Result<SketchImportReport> {
-    import_sketch_source_parts_inner(files,meta,document,pages,None)
+    import_sketch_source_parts_inner(files,meta,document,pages,None,&Default::default())
 }
 /// Native windows share immutable document metadata and project their two
 /// page references without cloning the entire styles/fonts/foreign-symbol tree.
@@ -3530,11 +3547,17 @@ pub fn import_sketch_source_parts(files: &BTreeMap<String, Vec<u8>>, meta: &Valu
 pub fn import_sketch_source_parts_with_pages(files:&BTreeMap<String,Vec<u8>>,meta:&Value,
     document:&Value,pages:&BTreeMap<String,Value>,page_references:&Value)->Result<SketchImportReport> {
     if !document.is_object() || !page_references.is_array() {return Err(Error::MalformedJson("Invalid source page projection".into()));}
-    import_sketch_source_parts_inner(files,meta,document,pages,Some(page_references))
+    import_sketch_source_parts_inner(files,meta,document,pages,Some(page_references),&Default::default())
+}
+#[cfg(not(target_arch = "wasm32"))]
+pub fn import_sketch_source_bitmap_window(files:&BTreeMap<String,Vec<u8>>,meta:&Value,
+    document:&Value,pages:&BTreeMap<String,Value>,page_references:&Value,images:&SourceBitmapRefs)->Result<SketchImportReport>{
+    if !document.is_object() || !page_references.is_array() {return Err(Error::MalformedJson("Invalid source page projection".into()));}
+    import_sketch_source_parts_inner(files,meta,document,pages,Some(page_references),images)
 }
 #[cfg(not(target_arch = "wasm32"))]
 fn import_sketch_source_parts_inner(files:&BTreeMap<String,Vec<u8>>,meta:&Value,
-    document:&Value,pages:&BTreeMap<String,Value>,page_references:Option<&Value>)->Result<SketchImportReport> {
+    document:&Value,pages:&BTreeMap<String,Value>,page_references:Option<&Value>,images:&SourceBitmapRefs)->Result<SketchImportReport> {
     use std::io::Write;
     const ENTRY: usize = 64 * 1024 * 1024;
     const TOTAL: usize = 96 * 1024 * 1024;
@@ -3548,7 +3571,7 @@ fn import_sketch_source_parts_inner(files:&BTreeMap<String,Vec<u8>>,meta:&Value,
         fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
     }
     let failure = || Error::Unsupported("Source conversion window exceeds its memory allowance".into());
-    if files.len().saturating_add(pages.len()).saturating_add(2) > 4096 || files.values().any(|v|v.len()>ENTRY) {
+    if files.len().saturating_add(images.len()).saturating_add(pages.len()).saturating_add(2) > 4096 || files.values().any(|v|v.len()>ENTRY) {
         return Err(failure());
     }
     let base = files.values().try_fold(0usize, |n,v|n.checked_add(v.len())).ok_or_else(failure)?;
@@ -3569,7 +3592,7 @@ fn import_sketch_source_parts_inner(files:&BTreeMap<String,Vec<u8>>,meta:&Value,
             total = total.checked_add(count.0).filter(|n|*n<=TOTAL).ok_or_else(failure)?;
         }
     }
-    finish_sketch_report(import_sketch_parts(files,meta,document,pages,page_references)?)
+    finish_sketch_report(import_sketch_parts(files,meta,document,pages,page_references,images)?)
 }
 
 fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
@@ -3592,6 +3615,7 @@ fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
     // bytes. Rendering requires portable resources; retain source identities
     // as format metadata and make the substitution visible before admission.
     let mut large_booleans = Vec::new();
+    let mut mixed_booleans = Vec::new();
     for node in document.nodes.values_mut() {
         if node
                 .bindings
@@ -3676,9 +3700,7 @@ fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
                     node.children.len()
                 )));
             }
-            if node.children.len() > 64 {
-                large_booleans.push(node.id.clone());
-            }
+
             if node.children.is_empty() {
                 node.kind = "vector".into();
                 node.boolean_operation = None;
@@ -3712,12 +3734,14 @@ fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
                 } else {
                     ordinary
                 };
-                if !compound && operations.iter().any(|other| *other != ordinary) {
-                    return Err(Error::Unsupported(format!(
-                        "Sketch shapeGroup `{}` uses mixed operand operations; keep the original .sketch file",
-                        node.id
-                    )));
-                }
+                let operation = if !compound && operations.iter().any(|other| *other != ordinary) {
+                    let outer = *operations.last().unwrap();
+                    mixed_booleans.push((node.id.clone(),operations));
+                    outer
+                } else {
+                    if node.children.len() > 64 { large_booleans.push(node.id.clone()); }
+                    operation
+                };
                 node.kind = "vector".into();
                 node.boolean_operation = Some(operation);
                 node.bindings.insert(
@@ -3799,6 +3823,7 @@ fn finish_sketch_report(mut document: Document) -> Result<SketchImportReport> {
         }
     }
     boolean_worksets::bound(&mut document, &large_booleans)?;
+    for (id,operations) in mixed_booleans { boolean_worksets::mixed(&mut document,&id,&operations)?; }
     let mut omitted = false;
     for node in document.nodes.values() {
         for key in [
@@ -4462,7 +4487,7 @@ fn override_object_to_sketch(value: &Value, settings: ColorSettings) -> Result<O
 /// and layerStyle override dicts pass through untouched; the export side
 /// writes native `_class` payloads back verbatim.
 fn sketch_override_value_from_native(
-    files: &BTreeMap<String, Vec<u8>>,
+    files: &BTreeMap<String, Vec<u8>>, sources:&SourceBitmapRefs,
     field: &str,
     value: &Value,
 ) -> Option<Value> {
@@ -4473,6 +4498,7 @@ fn sketch_override_value_from_native(
         return Some(value.clone());
     }
     let reference = value.get("_ref").and_then(Value::as_str)?;
+    if let Some((uri,_))=sources.get(reference).or_else(||sources.get(&format!("images/{reference}"))){return Some(Value::String(uri.to_string()));}
     files
         .get(&format!("images/{reference}"))
         .or_else(|| files.get(reference))
@@ -4766,29 +4792,7 @@ fn exported_override_path(doc: &Document, component: &str, path: &str) -> Option
 /// Sketch's frame/rotation/flips represent rigid local placement. Test only
 /// floating-point orthogonality here; never flatten scale/shear to identity.
 fn sketch_placement(node: &Node) -> Option<([f64; 4], f64, [bool; 2])> {
-    let [a, b, c, d, x, y] = node.transform.0;
-    let determinant = a * d - b * c;
-    if [a, b, c, d, x, y].iter().any(|value| !value.is_finite())
-        || (a * a + b * b - 1.).abs() > 1e-12
-        || (c * c + d * d - 1.).abs() > 1e-12
-        || (a * c + b * d).abs() > 1e-12
-        || (determinant.abs() - 1.).abs() > 1e-12
-    {
-        return None;
-    }
-    let flip = determinant < 0.;
-    let sign = if flip { -1. } else { 1. };
-    let rotation = -(b * sign).atan2(a * sign).to_degrees();
-    Some((
-        [
-            x - node.width / 2. + a * node.width / 2. + c * node.height / 2.,
-            y - node.height / 2. + b * node.width / 2. + d * node.height / 2.,
-            node.width,
-            node.height,
-        ],
-        rotation,
-        [flip, false],
-    ))
+    crate::sketch::geometry::frame_placement(node.transform, node.width, node.height)
 }
 
 fn export_layer(doc: &Document, id: &str, images: &mut ExportedImages) -> Result<Value> {
@@ -6706,6 +6710,8 @@ pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
                     | "nodeMetadata"
                     | "textSourceLayouts"
                     | "rulerData"
+                    | "figDocument"
+                    | "figRetainedStyles"
             ) {
                 continue;
             }
@@ -6806,6 +6812,11 @@ pub fn import_fig_report(bytes: &[u8]) -> Result<FigImportReport> {
                         if source.pointer("/bindings/prototypeFlow").is_some() {
                             warnings.push(format!("FIG {id}: prototype interactions retained as source metadata, not executable"));
                         }
+                    }
+                }
+                if let Some(notes)=document.design_system.as_ref().and_then(|s|s.sketch_containers.get("figDocument")).and_then(|v|v.get("notes")).and_then(Value::as_array) {
+                    for note in notes.iter().filter_map(Value::as_str) {
+                        warnings.push(format!("FIG document: {note}"));
                     }
                 }
                 Ok(FigImportReport {document, backend:"rust-native-fig", warnings, native_error:None})
@@ -7864,6 +7875,8 @@ mod tests {
                 font_id: Some("Inter-SemiBold".into()),
                 font_size: Some(24.),
                 weight: Some(600.),
+                letter_spacing: None,
+                line_height: None,
             },
             crate::font::TextRun {
                 paragraph: None,
@@ -7877,6 +7890,8 @@ mod tests {
                 font_id: None,
                 font_size: Some(10.),
                 weight: None,
+                letter_spacing: None,
+                line_height: None,
             },
         ].into();
         let bytes = export_sketch(&doc).unwrap();

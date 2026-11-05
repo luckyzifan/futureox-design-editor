@@ -28,6 +28,11 @@ pub struct DesignSystem {
 pub struct FontSource {
     pub style: Option<String>,
     pub runs: BTreeMap<String, String>,
+    /// Source names the user explicitly replaced. Provenance stays in `style`
+    /// and `runs`; a built-in substitute keeps font id `default`, so this set
+    /// is what stops that layer from looking missing forever.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub resolved: BTreeSet<String>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -280,6 +285,12 @@ pub fn validate(doc: &Document) -> Result<(), String> {
         id.len() > 256 || source.runs.len() > 4096
             || source.style.iter().chain(source.runs.values()).any(|s| s.is_empty() || s.len() > 512)
             || source.runs.keys().any(|index| index.parse::<usize>().is_err())
+            || source.resolved.len() > 4097
+            || source.resolved.iter().any(|name| {
+                name.is_empty()
+                    || name.len() > 512
+                    || (source.style.as_ref() != Some(name) && !source.runs.values().any(|value| value == name))
+            })
     }) {
         return Err("Invalid imported font identities".into());
     }
@@ -594,6 +605,21 @@ mod mode_scope_tests {
     use serde_json::json;
     use std::sync::Arc;
 
+    #[test]
+    fn resolved_font_names_round_trip_only_when_they_name_a_real_source() {
+        let mut doc: Document = serde_json::from_value(json!({
+            "schemaVersion":4,"id":"d","name":"Fonts",
+            "pages":[{"id":"p","name":"Page","background":"#ffffff","children":[]}],
+            "nodes":{},
+            "designSystem":{"fontSources":{"text":{"style":"PingFang SC","runs":{"0":"PingFang SC Bold"},"resolved":["PingFang SC"]}}}
+        }))
+        .unwrap();
+        validate(&doc).unwrap();
+        let again = serde_json::to_value(&doc.design_system).unwrap();
+        assert_eq!(again["fontSources"]["text"]["resolved"], json!(["PingFang SC"]));
+        doc.design_system.as_mut().unwrap().font_sources.get_mut("text").unwrap().resolved.insert("Unknown".into());
+        assert!(validate(&doc).is_err());
+    }
     #[test]
     fn long_mode_names_share_ancestor_and_template_storage() {
         let mut doc: Document = serde_json::from_value(json!({

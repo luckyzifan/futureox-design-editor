@@ -11,7 +11,7 @@ import { importFonts } from './text'
 import { remapReferences } from './components'
 export type VariableValue = string | number | boolean | { alias: string }
 export type DesignSystem = {
-  fontSources?: Record<string, { style?: string; runs?: Record<string, string> }>
+  fontSources?: Record<string, { style?: string; runs?: Record<string, string>; resolved?: string[] }>
   /** Format metadata is preserved separately from executable variable bindings. */
   sketchContainers?: Record<string, unknown>
   collections: Record<string, { name: string; modes: string[]; defaultMode: string }>

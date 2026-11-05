@@ -62,7 +62,7 @@ pub fn orientation(
         None => Ok(image::metadata::Orientation::NoTransforms),
     }
 }
-fn exif_orientation(bytes: &[u8]) -> Result<image::metadata::Orientation, String> {
+pub(crate) fn exif_orientation(bytes: &[u8]) -> Result<image::metadata::Orientation, String> {
     use image::metadata::Orientation;
     if bytes.len() > 4 * 1024 * 1024 {
         return Err("Image EXIF metadata exceeds 4 MiB".into());

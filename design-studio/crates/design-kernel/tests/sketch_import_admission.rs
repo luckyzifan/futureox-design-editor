@@ -448,19 +448,27 @@ fn three_native_subtract_rings_use_parent_paint_editable_operands_and_keep_sourc
 }
 
 #[test]
-fn mixed_native_boolean_operations_are_explicitly_refused() {
+fn mixed_native_boolean_operations_follow_source_order_and_restore_original_operands() {
     let mut last = native_rectangle_path("last", 2., 2., 5., 5.);
     last["booleanOperation"] = json!(0);
     let group = json!({"_class":"shapeGroup","do_objectID":"mixed","booleanOperation":-1,
-        "frame":{"x":0,"y":0,"width":20,"height":20},
+        "frame":{"x":0,"y":0,"width":20,"height":20},"style":{"fills":[{"isEnabled":true,"fillType":0,"color":{"red":1,"green":0,"blue":0,"alpha":1}}]},
         "layers":[native_rectangle_path("outer",0.,0.,20.,20.),native_rectangle_path("inner",5.,5.,10.,10.),last]});
     let bytes = archive(
         json!({"pages":[{"_ref":"pages/p"}]}),
         &[("p", page("p", vec![group]))],
     );
-    let error = interop::import_sketch_report(&bytes).err().unwrap();
-    assert!(matches!(error, interop::Error::Unsupported(_)));
-    assert!(error.to_string().contains("mixed operand operations"));
+    let doc=interop::import_sketch_report(&bytes).unwrap().document;
+    let pixels=render(&doc,20,20);
+    assert_eq!(pixels[(10*20+10)*4+3],0,"subtracted centre");
+    assert_eq!(pixels[(6*20+6)*4+3],255,"last operand adds its corner back");
+    let exported=interop::export_sketch(&doc).unwrap();
+    let files=interop::read_zip_public(&exported).unwrap();
+    let page:Value=serde_json::from_slice(&files.iter().find(|(name,_)|name.starts_with("pages/")).unwrap().1).unwrap();
+    let ops=page["layers"][0]["layers"].as_array().unwrap();
+    assert_eq!(ops.len(),3);
+    assert_eq!(ops.iter().map(|n|n["booleanOperation"].as_i64().unwrap()).collect::<Vec<_>>(),vec![1,1,0]);
+    assert_eq!(render(&interop::import_sketch_report(&exported).unwrap().document,20,20),pixels);
 }
 
 #[test]

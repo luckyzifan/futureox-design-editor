@@ -41,7 +41,7 @@ impl RenderMetadata {
             reviews: vec![],
             prototype: None,
             animations: vec![],
-            nodes: BTreeMap::new(),
+            nodes: Default::default(),
             schema_version: d.schema_version,
             id: d.id,
             name: d.name,

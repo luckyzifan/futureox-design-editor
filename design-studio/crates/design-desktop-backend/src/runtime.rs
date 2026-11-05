@@ -137,6 +137,11 @@ where
 }
 
 type Handler = Arc<dyn Fn(Request, &AtomicBool) -> Response + Send + Sync>;
+struct SqliteJob {
+    request: Request,
+    cancel: Arc<AtomicBool>,
+    done: tokio::sync::oneshot::Sender<io::Result<Vec<u8>>>,
+}
 async fn serve_impl<R, W>(
     backend: Arc<Backend>,
     reader: R,
@@ -238,6 +243,30 @@ where
         }
     });
     let slots = Arc::new(Semaphore::new(2));
+    // One ordinary-lane turn at a time, but SQLite does not take a blocking-pool
+    // slot. SQLx runs statements on its own connection worker; holding a pool
+    // thread across that wait left file parsing with no spare thread.
+    let (sqlite_tx, sqlite_rx) = std::sync::mpsc::sync_channel::<SqliteJob>(1);
+    let sqlite_backend = backend.clone();
+    let sqlite_handle = tokio::runtime::Handle::current();
+    let sqlite_thread = std::thread::Builder::new()
+        .name("sqlite-io".into())
+        .spawn(move || {
+            while let Ok(job) = sqlite_rx.recv() {
+                let SqliteJob {
+                    request,
+                    cancel,
+                    done,
+                } = job;
+                let response = sqlite_handle.block_on(protocol::handle_sqlite_request(
+                    &sqlite_backend,
+                    request,
+                    &cancel,
+                ));
+                let _ = done.send(encode(response));
+            }
+        })
+        .map_err(io::Error::other)?;
     let mut queue = VecDeque::<Job>::new();
     let mut running: Option<Running> = None;
     let mut large_running: Option<Running> = None;
@@ -260,20 +289,52 @@ where
                         break;
                     }
                 }
-                let permit = slots
-                    .clone()
-                    .try_acquire_owned()
-                    .expect("at most one worker per lane");
                 let id = job.request.id.clone();
                 let scan = job.request.method == "catalog.scan"
+                    || job.request.method == "video.encode"
                     || job.request.method.starts_with("large.");
                 let cancel = Arc::new(AtomicBool::new(false));
                 let worker_cancel = cancel.clone();
-                let worker = handler.clone();
-                let join = tokio::task::spawn_blocking(move || {
-                    let _permit = permit;
-                    encode(worker(job.request, &worker_cancel))
-                });
+                let sqlite = !large && protocol::sqlite_connection_method(&job.request.method);
+                let join = if sqlite {
+                    let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+                    match sqlite_tx.try_send(SqliteJob {
+                        request: job.request,
+                        cancel: worker_cancel,
+                        done: done_tx,
+                    }) {
+                        Ok(()) => tokio::spawn(async move {
+                            match done_rx.await {
+                                Ok(encoded) => encoded,
+                                Err(_) => encode(failed(
+                                    Value::Null,
+                                    "WORKSPACE_UNAVAILABLE",
+                                    "SQLite worker stopped",
+                                )),
+                            }
+                        }),
+                        Err(_) => {
+                            let err_id = id.clone();
+                            tokio::spawn(async move {
+                                encode(failed(
+                                    err_id,
+                                    "WORKSPACE_UNAVAILABLE",
+                                    "SQLite worker is unavailable",
+                                ))
+                            })
+                        }
+                    }
+                } else {
+                    let permit = slots
+                        .clone()
+                        .try_acquire_owned()
+                        .expect("at most one worker per lane");
+                    let worker = handler.clone();
+                    tokio::task::spawn_blocking(move || {
+                        let _permit = permit;
+                        encode(worker(job.request, &worker_cancel))
+                    })
+                };
                 *lane = Some(Running {
                     id,
                     scan,
@@ -370,6 +431,8 @@ where
     let _ = stop.send(true);
     receiver.close();
     let _ = input.await;
+    drop(sqlite_tx);
+    let _ = sqlite_thread.join();
     if let Some(e) = failure {
         Err(e)
     } else {
@@ -643,5 +706,152 @@ mod tests {
         server.await.unwrap().unwrap();
         assert_eq!(*calls.lock().unwrap(), vec![json!(1), json!(5)]);
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// SQLite waits on its connection worker. A saturated blocking pool must
+    /// still have a slot for other file work while that wait continues.
+    #[test]
+    fn sqlite_wait_does_not_consume_a_blocking_slot() {
+        use std::sync::{Arc, Barrier};
+        use std::time::{Duration, Instant};
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        const ID: &str = "10000000-0000-0000-0000-000000000001";
+        struct Release(Option<Arc<Barrier>>);
+        impl Drop for Release {
+            fn drop(&mut self) {
+                if let Some(barrier) = self.0.take() {
+                    barrier.wait();
+                }
+            }
+        }
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .max_blocking_threads(4)
+            .enable_all()
+            .build()
+            .unwrap();
+        let handle = runtime.handle().clone();
+        let root = std::env::temp_dir().join(format!("sqlite-slot-{}", crate::unique_id()));
+        std::fs::create_dir(&root).unwrap();
+        let root = root.canonicalize().unwrap();
+        let db = root.join("workspace.sqlite3");
+        let document = json!({"schemaVersion":6,"id":ID,"name":"local design",
+            "pages":[{"id":"10000000-0000-0000-0000-000000000002","name":"Page","background":"#ffffff","children":[]}],"nodes":{},
+            "extensionData":{"nested":[1.23456789012345,{"future-field":"preserve"}]}});
+        let (mut input, mut output, server, backend) = handle.block_on(async {
+            let workspace = crate::workspace::WorkspaceStore::open(&db).await.unwrap();
+            workspace
+                .commit(&document, None, "create-slot")
+                .await
+                .unwrap();
+            let backend = Arc::new(Backend::new(&root).unwrap().with_workspace(workspace));
+            let (mut input, read) = tokio::io::duplex(64 * 1024);
+            let (write, output) = tokio::io::duplex(64 * 1024);
+            let server = tokio::spawn(serve(backend.clone(), read, write));
+            let mut output = BufReader::new(output);
+            input
+                .write_all(
+                    format!(
+                        "{}\n",
+                        json!({"id":1,"method":"workspace.list","params":{}})
+                    )
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
+            let mut line = String::new();
+            output.read_line(&mut line).await.unwrap();
+            let listed: Value = serde_json::from_str(&line).unwrap();
+            assert_eq!(listed["result"]["documents"][0]["id"], ID);
+            assert_eq!(listed["result"]["documents"][0]["revision"], 1);
+            (input, output, server, backend)
+        });
+        let entered = Arc::new(Barrier::new(4));
+        let release = Arc::new(Barrier::new(4));
+        let mut blockers = Vec::new();
+        for _ in 0..3 {
+            let entered = entered.clone();
+            let release = release.clone();
+            blockers.push(handle.spawn_blocking(move || {
+                entered.wait();
+                release.wait();
+            }));
+        }
+        entered.wait();
+        let release_guard = Release(Some(release));
+        let (delay, committed) = handle.block_on(async {
+            use sqlx::{Connection, Executor, sqlite::SqliteConnection};
+            let mut external = SqliteConnection::connect(&format!("sqlite://{}", db.display()))
+                .await
+                .unwrap();
+            external.execute("BEGIN IMMEDIATE").await.unwrap();
+            let mut next = document.clone();
+            next["name"] = json!("after the lock");
+            input
+                .write_all(
+                    format!(
+                        "{}\n",
+                        json!({"id":2,"method":"workspace.commit","params":{"document":next,"expectedRevision":1,"mutationId":"pool-wait"},"scheduling":true})
+                    )
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
+            let mut running = false;
+            for _ in 0..4 {
+                let mut line = String::new();
+                tokio::time::timeout(Duration::from_secs(3), output.read_line(&mut line))
+                    .await
+                    .unwrap()
+                    .unwrap();
+                let value: Value = serde_json::from_str(&line).unwrap();
+                if value["desktopScheduling"]["phase"] == "running" {
+                    running = true;
+                    break;
+                }
+            }
+            assert!(running, "SQLite commit did not start");
+            tokio::time::sleep(Duration::from_millis(40)).await;
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let sent = Instant::now();
+            let probe = tokio::task::spawn_blocking(move || {
+                let _ = tx.send(Instant::now());
+            });
+            let delay = match tokio::time::timeout(Duration::from_millis(200), rx).await {
+                Ok(Ok(started)) => started.saturating_duration_since(sent),
+                _ => Duration::from_millis(200),
+            };
+            external.execute("ROLLBACK").await.unwrap();
+            external.close().await.unwrap();
+            let mut committed = None;
+            for _ in 0..4 {
+                let mut line = String::new();
+                tokio::time::timeout(Duration::from_secs(3), output.read_line(&mut line))
+                    .await
+                    .unwrap()
+                    .unwrap();
+                let value: Value = serde_json::from_str(&line).unwrap();
+                if value["id"] == 2 && value.get("result").is_some() {
+                    committed = Some(value);
+                    break;
+                }
+            }
+            probe.await.unwrap();
+            input.shutdown().await.unwrap();
+            server.await.unwrap().unwrap();
+            backend.close_stores().await;
+            (delay, committed)
+        });
+        drop(release_guard);
+        for blocker in blockers {
+            handle.block_on(blocker).unwrap();
+        }
+        let committed = committed.expect("commit result missing");
+        assert_eq!(committed["result"]["revision"], 2);
+        assert!(
+            delay < Duration::from_millis(150),
+            "SQLite busy wait occupied the last blocking slot: {delay:?}"
+        );
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }

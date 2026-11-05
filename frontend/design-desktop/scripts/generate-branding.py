@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Regenerate committed icon resources from the repo-native SVG master.
-Requires Pillow and outputs of the real MCP branding example. No network required.
+"""Regenerate committed icon resources from a verified MCP export.
+
+The 2026-11-02 letter-F rasters are produced by render-brand-mark.mjs instead.
+This script still requires Pillow and matching MCP SVG exports. No network required.
 """
 from pathlib import Path
 import argparse

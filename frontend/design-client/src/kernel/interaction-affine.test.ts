@@ -4,7 +4,7 @@ import { apply, multiply } from '../geometry'
 import { documentPatch } from '../document-patch'
 import { interactionPatchedDocument, interactionPatchedTransforms, interactionAffineEligible, InteractionAffinePlan, interactionPoseMatrices, interactionOffsets } from './interaction-layers'
 import { interactionPatchTransforms } from './interaction-patch-transforms'
-import { FrozenResidentOverlayPoses, residentOverlayAffines, resolveResidentOverlayFrame } from './gpu/resident-affine-pose'
+import { FrozenResidentOverlayPoses, residentOverlayAffines, resolveResidentOverlayFrame, stickyPresentedAffines } from './gpu/resident-affine-pose'
 import { transformOverlay } from './gpu/canvas-overlay'
 import { VectorEngine } from '../generated/design-kernel/design_kernel'
 import { decodeScenePacket } from './gpu/scene-packet'
@@ -71,6 +71,13 @@ test('stopped slots preserve the actual old compiled parent basis after a new po
  expect(cache.freeze(owner,24,compiled)).toBe(true)
  expect(cache.resolve({},24,transforms)).toBeUndefined()
  expect(new FrozenResidentOverlayPoses(1).freeze(owner,24,compiled)).toBe(false)
+})
+
+test('an in-flight affine rebase holds selection chrome on the texture still showing', () => {
+  const backToTexture = { node: [1, 0, 0, 1, -4, 0] as [number, number, number, number, number, number] }
+  expect(stickyPresentedAffines(backToTexture, true)).toBe(backToTexture)
+  expect(stickyPresentedAffines(backToTexture, false)).toBe(backToTexture)
+  expect(stickyPresentedAffines(undefined, true)).toBeUndefined()
 })
 
 test('native absolute affine poses compile the same scene and CPU pixels as a fresh final document', () => {

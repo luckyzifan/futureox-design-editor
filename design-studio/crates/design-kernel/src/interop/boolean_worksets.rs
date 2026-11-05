@@ -3,6 +3,7 @@
 use super::*;
 use std::borrow::Cow;
 
+const MIXED:&str="sketchMixedBooleanGroups";
 const ROOT: &str = "sketchBooleanWorkset";
 const HELPER: &str = "sketchBooleanWorksetRoot";
 const MAX_SOURCE_OPERANDS: usize = 4096;
@@ -92,6 +93,27 @@ pub(super) fn bound(doc: &mut Document, roots: &[String]) -> Result<()> {
     }
     Ok(())
 }
+/// Sketch applies each operand to the accumulated result, back to front.
+pub(super) fn mixed(doc:&mut Document, id:&str, operations:&[crate::boolean::Operation])->Result<()> {
+    let root=doc.nodes[id].clone();
+    if root.children.len()!=operations.len()+1 || operations.is_empty() {return Err(Error::InvalidDocument("Invalid mixed Sketch boolean operands".into()));}
+    let mut children=vec![root.children[0].clone()];
+    let mut current=operations[0];let mut serial=0;let mut plan=BTreeMap::new();
+    for (&op,child) in operations.iter().zip(&root.children[1..]){
+        if op!=current || children.len()==64 {
+            // Do not manufacture a helper tree beyond the shared model's bounded depth.
+            if serial>=64{return Err(Error::Unsupported("Mixed boolean exceeds the bounded CSG nesting depth".into()));}
+            let group=helper(doc,&root,children.clone(),current,&mut serial)?;
+            plan.insert(group.clone(),(current,children));children=vec![group];current=op;
+        }
+        children.push(child.clone());
+    }
+    plan.insert(id.to_owned(),(current,children.clone()));
+    let node=doc.nodes.get_mut(id).unwrap();
+    node.children=children;node.boolean_operation=Some(current);
+    node.bindings.insert(ROOT.into(),json!(current).to_string());
+    node.bindings.insert(MIXED.into(),json!(plan).to_string());Ok(())
+}
 /// Restore source hierarchy for compatibility serialization. Generated nodes
 /// may carry placement, but never paints, effects, layout or a different CSG
 /// operation. Unsupported edits fail before any file is published.
@@ -117,6 +139,11 @@ pub(super) fn source_view(doc: &Document) -> Result<Cow<'_, Document>> {
                 "Keep source boolean workset operators unchanged for Sketch export".into(),
             ));
         }
+        let plan:Option<BTreeMap<String,(crate::boolean::Operation,Vec<String>)>>=binding(doc,&doc.nodes[&id],MIXED)
+            .map(serde_json::from_str).transpose().map_err(|e|Error::MalformedJson(e.to_string()))?;
+        if let Some(plan)=&plan && (!plan.contains_key(&id)||plan.iter().any(|(key,(op,children))|{
+            result.nodes.get(key).is_none_or(|n|n.boolean_operation!=Some(*op)||n.children!=*children)
+        })){return Err(Error::Unsupported("Edited mixed operand topology cannot be flattened to its source sequence".into()));}
         let inner = if operation == crate::boolean::Operation::Subtract {
             crate::boolean::Operation::Union
         } else {
@@ -142,7 +169,7 @@ pub(super) fn source_view(doc: &Document) -> Result<Cow<'_, Document>> {
                 .ok_or_else(|| Error::MissingPart("Boolean workset child".into()))?;
             if binding(doc, doc.nodes.get(&child).unwrap_or(node), HELPER) == Some(id.as_str()) {
                 if node.kind != "vector"
-                    || node.boolean_operation != Some(inner)
+                    || node.boolean_operation != Some(plan.as_ref().and_then(|p|p.get(&child)).map_or(inner,|(op,_)|*op))
                     || node.opacity != 1.
                     || node.blend != "normal"
                     || !node.visible

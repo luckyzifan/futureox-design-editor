@@ -1,0 +1,638 @@
+diff --git a/design-studio/crates/design-kernel/src/renderer.rs b/design-studio/crates/design-kernel/src/renderer.rs
+--- a/design-studio/crates/design-kernel/src/renderer.rs
++++ b/design-studio/crates/design-kernel/src/renderer.rs
+@@ -1641,6 +1641,7 @@
+                     &mut prepared, &mut self.stats.path_segments)?;
+             }
+         }
++        if let Some(cache) = geometry.as_deref_mut() { cache.retire_if_finished(); }
+         if self.display_degrade {
+             if let Some(epoch) = epoch {
+                 self.degrade_prepared = Some(DegradePrepared {
+@@ -1675,13 +1676,30 @@
+                 return Err("Combined zoom source dependency halo exceeds 2048 device pixels".into());
+             }
+         }
+-        let mut target = Surface::new_in(extent, &budget)?;
++        // The linear caller consumes only viewport pixels. A single normal,
++        // unpainted root isolates its children on transparent planes, so its
++        // constant page background need not occupy four halo-sized allocations
++        // during the entire descendant traversal.
++        let isolated_root = if geometry.is_some() && synchronized && doc.color_management.is_some()
++            && !options.grid && !options.checkerboard && extent.pixels() <= 16_777_216 {
++            match page.children.as_slice() {
++                [id] => doc.nodes.get(id).filter(|n| n.visible && n.opacity == 1. && n.blend == "normal"
++                    && matches!(n.kind.as_str(), "frame" | "group") && !n.clip && !n.mask
++                    && n.boolean_operation.is_none() && !n.render_children().is_empty()
++                    && doc.mask_child(n).is_none() && n.fills.iter().all(|p| !p.visible)
++                    && n.strokes.iter().all(|s| !s.visible || s.width <= 0.)
++                    && n.effects.iter().all(|e| !e.visible) && !prepared[id].bounds.intersect(extent).empty()),
++                _ => None,
++            }
++        } else { None };
++        let target_rect = isolated_root.map_or(extent, |root| prepared[&root.id].bounds.intersect(extent));
++        let mut target = Surface::new_in(target_rect, &budget)?;
+         let background = if options.transparent {
+             Pixel::default()
+         } else {
+             crate::color::pixel(doc.color_management, &page.background, 1.)?
+         };
+-        target.pixels.fill(background);
++        if isolated_root.is_none() { target.pixels.fill(background); }
+         // Figma renders canvas chrome in the engine (its checkerboardStyle
+         // shader family); this is the kernel tier of that contract —
+         // screen-anchored 16px cells in the CSS tier's colors, painted under
+@@ -1750,12 +1768,38 @@
+         let rendered = if synchronized {
+             let mut targets = vec![target];
+             for _ in 1..4 {
+-                let mut next = painter.allocate(extent)?;
++                let mut next = painter.allocate(target_rect)?;
+                 next.pixels.clone_from_slice(&targets[0].pixels);
+                 targets.push(next);
+             }
+             let mut targets: [Surface; 4] =
+                 targets.try_into().map_err(|_| "Invalid target samples")?;
++            if let Some(root) = isolated_root {
++                painter.stats.nodes += 1;
++                // Keep the same coverage/segment checks and child read domain
++                // as node_bundle_with_outline. The root owns no paint or clip.
++                let _fill = painter.rasterize_bundle(&prepared[&root.id].fill, target_rect, root.fill_even_odd())?;
++                painter.paint_siblings(root.render_children(), &mut targets, None, false, None)?;
++                drop(_fill);
++                let mut output = Vec::with_capacity(4);
++                for mut plane in targets {
++                    if target_rect.intersect(viewport) == viewport {
++                        for y in viewport.y..viewport.bottom() {
++                            let at = plane.rect.index(viewport.x, y).expect("covered viewport");
++                            for p in &mut plane.pixels[at..at+viewport.w as usize] {
++                                *p = crate::blend::over_mode(background, p.opacity(1.), crate::blend::BlendMode::Normal);
++                            }
++                        }
++                        output.push(plane);
++                    } else {
++                        let mut result = painter.allocate(viewport)?;
++                        result.pixels.fill(background);
++                        result.composite(&plane, "normal", 1., |_,_| 1.);
++                        output.push(result);
++                    }
++                }
++                return Ok(output);
++            }
+             painter.paint_siblings(&page.children, &mut targets, None, false, None)?;
+             Ok(targets.into_iter().collect())
+         } else {
+@@ -1930,6 +1974,9 @@
+             for x in (0..options.width).step_by(tile_side as usize) {
+                 let w = (options.width - x).min(tile_side);
+                 let h = (options.height - y).min(tile_side);
++                if x+w==options.width && y+h==options.height && let Some(frame) = &mut plan {
++                    frame.last_tile();
++                }
+                 let rect = self.linear_rect_pixels_planned(options, x, y, w, h, plan.as_mut())?;
+                 stats.accumulate(&self.stats);
+                 for (row, chunk) in rect.chunks(w as usize).enumerate() {
+@@ -3023,8 +3070,13 @@
+             }
+         }
+         if let Some(mask_id) = mask_id {
+-            let mut masks = self.allocate_bundle(r)?;
+-            self.node_bundle_with_outline(mask_id, &mut masks, None, geometric, None, false)?;
++            // An isolated, still-transparent carrier has no previous pixels
++            // to save. Let the mask occupy its four planes until the children
++            // are ready; each mask texel is consumed before being overwritten.
++            let use_clear_layers = self.doc.color_management.is_some() && !passthrough
++                && n.backdrop_effect().is_none() && n.fills.iter().all(|p| !p.visible);
++            let mut masks = if use_clear_layers { None } else { Some(self.allocate_bundle(r)?) };
++            self.node_bundle_with_outline(mask_id, masks.as_mut().unwrap_or(&mut layers), None, geometric, None, false)?;
+             let mut content = self.allocate_bundle(r)?;
+             if passthrough {
+                 for sample in 0..4 {
+@@ -3034,23 +3086,26 @@
+                 }
+             }
+             self.paint_siblings(n.render_children(), &mut content, if n.clip { Some(&fill) } else { None }, geometric, Some(mask_id))?;
++            let luminance = self.doc.nodes[mask_id].mask_type.as_deref() == Some("luminance");
+             for sample in 0..4 {
+-                if passthrough {
+-                    layers[sample].interpolate(
+-                        &content[sample],
+-                        |x, y| {
+-                            masks[sample].at(x, y).mask_alpha(
+-                                self.doc.nodes[mask_id].mask_type.as_deref() == Some("luminance"),
+-                            )
+-                        },
+-                        self.compatible,
+-                    );
++                if let Some(masks) = &masks {
++                    if passthrough {
++                        layers[sample].interpolate(
++                            &content[sample],
++                            |x, y| masks[sample].at(x, y).mask_alpha(luminance),
++                            self.compatible,
++                        );
++                    } else {
++                        layers[sample].composite(&content[sample], "normal", 1., |x, y| {
++                            masks[sample].at(x, y).mask_alpha(luminance)
++                        });
++                    }
+                 } else {
+-                    layers[sample].composite(&content[sample], "normal", 1., |x, y| {
+-                        masks[sample].at(x, y).mask_alpha(
+-                            self.doc.nodes[mask_id].mask_type.as_deref() == Some("luminance"),
+-                        )
+-                    });
++                    debug_assert_eq!(layers[sample].rect, content[sample].rect);
++                    for (mask, src) in layers[sample].pixels.iter_mut().zip(&content[sample].pixels) {
++                        let opacity = mask.mask_alpha(luminance);
++                        *mask = crate::blend::over_mode(Pixel::default(), src.opacity(opacity), crate::blend::BlendMode::Normal);
++                    }
+                 }
+                 if self.compatible {
+                     layers[sample].quantize_rgba8();
+diff --git a/design-studio/crates/design-kernel/src/cpu_frame_plan.rs b/design-studio/crates/design-kernel/src/cpu_frame_plan.rs
+--- a/design-studio/crates/design-kernel/src/cpu_frame_plan.rs
++++ b/design-studio/crates/design-kernel/src/cpu_frame_plan.rs
+@@ -127,6 +127,9 @@
+     geometry: FrameGeometry,
+ }
+ impl CpuFramePlan {
++    pub fn last_tile(&mut self) {
++        self.geometry.retiring = true;
++    }
+     pub fn new() -> Self {
+         Self {
+             backdrops: Backdrops::Unbuilt,
+@@ -244,12 +247,14 @@
+     empty: Arc<Vec<Contour>>,
+     bytes: usize,
+     limit: usize,
++    retiring: bool,
+ }
+ impl FrameGeometry {
+     fn new() -> Self {
+         Self {
+             leaves: HashMap::new(),
+             empty: Arc::default(),
++            retiring: false,
+             bytes: 0,
+             limit: (crate::capacity::memory_budget_bytes() / 512).min(2 * 1024 * 1024) as usize,
+         }
+@@ -278,6 +283,7 @@
+         Some(result)
+     }
+     pub fn cull(&mut self, node: &Node, matrix: Transform, support: Rect) {
++        if self.retiring { return; }
+         let key = std::ptr::from_ref(node);
+         let charge = 4 * (std::mem::size_of::<(*const Node, Leaf)>() + 16);
+         if self.bytes + charge <= self.limit
+@@ -303,6 +309,7 @@
+         path: &Path,
+         prepared: &Prepared,
+     ) {
++        if self.retiring { return; }
+         self.cull(node, prepared.matrix, support);
+         let Some(entry) = self.leaves.get_mut(&std::ptr::from_ref(node)) else {
+             return;
+@@ -352,4 +359,12 @@
+             entry.shape = Some((hull, Box::new(prepared.clone())));
+         }
+     }
+-}
++    /// On the last tile the painter already owns every contour it will use.
++    /// Release other tiles' payloads and the key table before allocating layers.
++    pub fn retire_if_finished(&mut self) {
++        if self.retiring {
++            self.leaves = HashMap::new();
++            self.bytes = 0;
++        }
++    }
++}
+diff --git a/design-studio/crates/design-kernel/src/renderer_tests/cpu_frame.rs b/design-studio/crates/design-kernel/src/renderer_tests/cpu_frame.rs
+--- a/design-studio/crates/design-kernel/src/renderer_tests/cpu_frame.rs
++++ b/design-studio/crates/design-kernel/src/renderer_tests/cpu_frame.rs
+@@ -1,5 +1,44 @@
+ use super::*;
+ use serde_json::json;
++
++#[test]
++fn deferred_page_and_reused_luminance_mask_match_separate_clear_layers() {
++    let mut doc = json!({"id":"d","name":"isolation","schemaVersion":19,
++    "colorManagement":{"documentSpace":"srgb","referenceWhiteNits":203,"peakLuminanceNits":1000},
++    "pages":[{"id":"p","name":"p","background":"#832517","children":["root"]}],
++    "nodes":{
++        "root":{"id":"root","kind":"frame","width":540,"height":24,"children":["base","group","glass"]},
++        "base":{"id":"base","kind":"rectangle","width":522,"height":19,"opacity":0.3,"fills":[{"kind":"solid","color":"#3580ff"}]},
++        "group":{"id":"group","kind":"group","width":535,"height":24,"children":["mask","ink"]},
++        "mask":{"id":"mask","kind":"ellipse","width":49,"height":22,"transform":[1,0,0,1,484.125,1],
++            "mask":true,"maskType":"luminance","opacity":0.6,"fills":[{"kind":"solid","color":"#8cd340"}]},
++        "ink":{"id":"ink","kind":"rectangle","width":535,"height":24,"fills":[{"kind":"solid","color":"color(srgb-linear 3 -0.1 0.8)"}]},
++        "glass":{"id":"glass","kind":"rectangle","width":53,"height":17,"transform":[1,0,0,1,482,3],
++            "effects":[{"kind":"background-blur","radius":3,"color":"#000000"}]}
++    }});
++    let mut reused = Engine::new();
++    reused.load_document(&doc.to_string()).unwrap();
++    // A visible zero-alpha paint forces both conventional isolation buffers.
++    for id in ["root", "group"] {
++        doc["nodes"][id]["fills"] = json!([{"kind":"solid","color":"#000000","opacity":0.}]);
++    }
++    let mut ordinary = Engine::new();
++    ordinary.load_document(&doc.to_string()).unwrap();
++    for transparent in [false, true] {
++        let view = reused
++            .parse_options(
++                json!({"pageId":"p","width":539,"height":29,"transparent":transparent,
++            "view":{"x":0.125,"y":0.375,"zoom":1},"rasterProfile":"figmaSubpixel"}),
++            )
++            .unwrap();
++        let actual = reused.render_linear(&view).unwrap();
++        let expected = ordinary.render_linear(&view).unwrap();
++        for (a, b) in actual.iter().zip(&expected) {
++            assert_eq!(a.0.map(f32::to_bits), b.0.map(f32::to_bits));
++        }
++        assert_ne!(actual[10 * 539 + 510].0, actual[28 * 539 + 538].0);
++    }
++}
+ 
+ #[test]
+ fn oversized_backdrop_index_preserves_each_tiles_support_and_budget_error() {
+diff --git a/frontend/design-client/src/kernel/gpu/renderer.ts b/frontend/design-client/src/kernel/gpu/renderer.ts
+--- a/frontend/design-client/src/kernel/gpu/renderer.ts
++++ b/frontend/design-client/src/kernel/gpu/renderer.ts
+@@ -4194,6 +4194,10 @@
+           this.fastWork.add('densePaintBatches');this.fastWork.add('densePaintRoots',starts.length)
+           const write=rect(left,top,right-left,bottom-top)
+           for(let phase=0;phase<4;phase++){
++            if (!(phase & 1) && !clip && this.driver.densePairsReady) {
++              const pair = await this.denseBatchPair(targets[phase],targets[phase+1],this.denseAtlas,write,starts,phase)
++              if (pair) { [targets[phase],targets[phase+1]]=pair; phase++; continue }
++            }
+             const fields=clip?[this.denseAtlas,clip[phase]]:[this.denseAtlas]
+             targets[phase]=await this.composeSourceProgram(DENSE_PAINT_MODE,targets[phase],fields,write,u=>{
+               u.set([starts.length,phase,Number(!!clip)],17);u.set(starts,20)
+@@ -4205,12 +4209,7 @@
+       const preSource=dense?.sources?.[id]
+       if(this.denseAtlas&&preSource!==undefined&&Number.isSafeInteger(preSource)&&preSource>=0&&
+           preSource<dense!.width*dense!.height&&!n.passthrough&&!n.clip&&!n.maskId&&!backdropEffect(n.effects)){
+-        let planes:Surface[]=[]
+-        for(let phase=0;phase<4;phase++){
+-          await this.reclaimForSurface(n.rect);this.checkFrameCurrent()
+-          const atlas=this.denseAtlas
+-          planes.push(this.run(DENSE_PAINT_MODE,n.rect,[atlas,atlas],u=>{u.set([1,phase,0,preSource],17);u[216]=1}))
+-        }
++        let planes = await this.denseEffectPlanes(n.rect,this.denseAtlas,preSource)
+         planes=await this.applySampleEffects(n,planes,{owned:false})
+         this.orderedEffectLayers++;this.fastWork.add('densePaintEffects')
+         targets=await this.cropPainterTargets(targets,n.postCompositeBox)
+@@ -5772,47 +5771,94 @@
+     }
+     return this.sourceTransfer
+   }
+-  /** Both source programs return a point load of the old target outside
+-   * their brush bounds. Encode only the write rectangle when it is small.
+-   * The copy follows the pass in the same encoder and never samples itself. */
+-  private async composeSourceProgram(mode:number,dest:Surface,fields:Surface[],bounds:Rect|undefined,configure:(u:Float32Array)=>void) {
++  private async denseEffectPlanes(r:Rect, atlas:Surface, pc:number):Promise<Surface[]> {
++    const planes:Surface[]=[]
++    if (this.driver.densePairsReady && this.driver.drawDensePair && !this.drawRegion(r) && !this.surfaceNeedsAdmission(r,4)) {
++      await this.reclaimForSurface(r,4);this.checkFrameCurrent()
++      let paired=0
++      try {
++        for(let i=0;i<4;i++) planes.push(this.acquire(r,false,false,SurfaceAllocationSite.passOutput,DENSE_PAINT_MODE))
++        for(const phase of [0,2]) {
++          const u=parameters(r,atlas.rect,atlas.rect)
++          u.set([DENSE_PAINT_MODE,1,phase,0,pc],16);u[216]=1
++          if(!this.driver.drawDensePair([planes[phase].texture,planes[phase+1].texture],[atlas.texture,atlas.texture],atlas.texture,u))break
++          paired+=2;this.passPixels+=2*r.w*r.h
++        }
++        if(paired===4)return planes
++      } finally { if(paired!==4){this.release(...planes);planes.length=0} }
++    }
++    for(let phase=0;phase<4;phase++){
++      await this.reclaimForSurface(r);this.checkFrameCurrent()
++      planes.push(this.run(DENSE_PAINT_MODE,r,[atlas,atlas],u=>{u.set([1,phase,0,pc],17);u[216]=1}))
++    }
++    return planes
++  }
++
++  /** Both the one-attachment and two-attachment paths use the same logical
++   * bounds, copy-back ownership and allocation decision for each phase. */
++  private sourceProgramOutput(mode:number,dest:Surface,fields:Surface[],bounds:Rect|undefined) {
+     const logical=dest.logicalBounds??dest.rect
+     const region=bounds && exactBlendLattice([bounds,dest.rect,logical]) ? intersect(bounds,logical) : undefined
+-    if(region && (!region.w || !region.h))return dest
++    if(region && (!region.w || !region.h))return {kind:'empty' as const,output:region,logical}
+     if(mode===DENSE_PAINT_MODE&&region&&this.driver.copyColorRegion&&(dest.logicalBounds||dest.texture.transparentZero)){
+-      // Outside both the old support and every authored write the strict
+-      // shader returns transparent black. Preserve that support through the
+-      // next dense span. All spatial consumers materialize their full input.
+       const prior=dest.texture.transparentZero?region:dest.rect
+       const x=Math.min(prior.x,region.x),y=Math.min(prior.y,region.y)
+       const out=rect(x,y,Math.max(prior.x+prior.w,region.x+region.w)-x,Math.max(prior.y+prior.h,region.y+region.h)-y)
+-      if(dest.logicalBounds||out.w*out.h*2<=logical.w*logical.h){
+-        await this.reclaimForSurface(out);this.checkFrameCurrent()
+-        const painted=this.run(mode,out,[dest,...fields],configure)
+-        if(!containsRect(out,logical)){
+-          painted.logicalBounds={...logical}
+-          // Input colours are finite in [0,1]. Allow the rounding headroom
+-          // of all ordered operations and keep unknown consumer proofs out.
+-          painted.compactMaxAbs=[2,2,2,2]
+-        }
+-        this.release(dest);return painted
+-      }
+-    }
+-    const regional=region && region.w*region.h*4<=dest.rect.w*dest.rect.h && this.driver.copyRegion &&
+-      this.privateBandDestination(dest) && !fields.some(f=>f.texture===dest.texture) &&
+-      import.meta.env.VITE_DESIGN_SOURCE_PROGRAM_REGIONS!=='0'
+-    const output=regional ? region : dest.rect
+-    await this.reclaimForSurface(output);this.checkFrameCurrent()
+-    const next=this.run(mode,output,[dest,...fields],configure)
+-    if(regional){
++      if(dest.logicalBounds||out.w*out.h*2<=logical.w*logical.h)return {kind:'compact' as const,output:out,logical}
++    }
++    if(region && region.w*region.h*4<=dest.rect.w*dest.rect.h && this.driver.copyRegion &&
++        this.privateBandDestination(dest) && !fields.some(f=>f.texture===dest.texture) &&
++        import.meta.env.VITE_DESIGN_SOURCE_PROGRAM_REGIONS!=='0')return {kind:'regional' as const,output:region,logical}
++    return {kind:'full' as const,output:dest.rect,logical}
++  }
++
++  private finishSourceProgram(dest:Surface, painted:Surface, placement:ReturnType<GpuRenderer['sourceProgramOutput']>) {
++    const {kind,output,logical}=placement
++    if(kind==='regional'){
+       try{
+-        this.driver.copyRegion!(dest.texture,next.texture,rect(0,0,output.w,output.h),[output.x-dest.rect.x,output.y-dest.rect.y])
++        this.driver.copyRegion!(dest.texture,painted.texture,rect(0,0,output.w,output.h),[output.x-dest.rect.x,output.y-dest.rect.y])
+         this.fastWork.add('sourceProgramPixelsSaved',dest.rect.w*dest.rect.h-output.w*output.h)
+-      }finally{this.release(next)}
++      }finally{this.release(painted)}
+       return dest
+     }
++    if(kind==='compact'&&!containsRect(output,logical)){
++      painted.logicalBounds={...logical};painted.compactMaxAbs=[2,2,2,2]
++    }
+     this.release(dest)
+-    return next
++    return painted
++  }
++
++  private async composeSourceProgram(mode:number,dest:Surface,fields:Surface[],bounds:Rect|undefined,configure:(u:Float32Array)=>void) {
++    const placement=this.sourceProgramOutput(mode,dest,fields,bounds)
++    if(placement.kind==='empty')return dest
++    await this.reclaimForSurface(placement.output);this.checkFrameCurrent()
++    return this.finishSourceProgram(dest,this.run(mode,placement.output,[dest,...fields],configure),placement)
++  }
++
++  private async denseBatchPair(a:Surface,b:Surface,atlas:Surface,bounds:Rect,starts:number[],phase:number):Promise<[Surface,Surface]|undefined> {
++    if(!this.driver.drawDensePair)return
++    const same=(x:Rect,y:Rect)=>x.x===y.x&&x.y===y.y&&x.w===y.w&&x.h===y.h
++    if(!same(a.rect,b.rect))return
++    const first=this.sourceProgramOutput(DENSE_PAINT_MODE,a,[atlas],bounds)
++    const second=this.sourceProgramOutput(DENSE_PAINT_MODE,b,[atlas],bounds)
++    if(first.kind!==second.kind||!same(first.output,second.output))return
++    if(first.kind==='empty')return [a,b]
++    const output=first.output
++    if(this.drawRegion(output)||this.surfaceNeedsAdmission(output,2))return
++    await this.reclaimForSurface(output,2);this.checkFrameCurrent()
++    let left:Surface|undefined,right:Surface|undefined
++    try {
++      left=this.acquire(output,false,false,SurfaceAllocationSite.passOutput,DENSE_PAINT_MODE)
++      right=this.acquire(output,false,false,SurfaceAllocationSite.passOutput,DENSE_PAINT_MODE)
++      const u=parameters(output,a.rect,atlas.rect,b.rect)
++      u.set([DENSE_PAINT_MODE,starts.length,phase,0],16);u.set(starts,20)
++      if(!this.driver.drawDensePair([left.texture,right.texture],[a.texture,b.texture],atlas.texture,u))return
++      this.passPixels+=2*output.w*output.h
++      const lp=left;left=undefined
++      const l=this.finishSourceProgram(a,lp,first)
++      const rp=right;right=undefined
++      return [l,this.finishSourceProgram(b,rp,second)]
++    }finally{this.release(left,right)}
+   }
+   private async drawSourceImage(n:GpuNode,targets:Surface[]):Promise<boolean>{
+     if(!this.sourceTileOcclusion||!this.driver.sourceImageLayersReady||!this.driver.sourceProgramOffset||!this.managedImageLoader||
+diff --git a/frontend/design-client/src/kernel/gpu/webgpu.ts b/frontend/design-client/src/kernel/gpu/webgpu.ts
+--- a/frontend/design-client/src/kernel/gpu/webgpu.ts
++++ b/frontend/design-client/src/kernel/gpu/webgpu.ts
+@@ -1265,7 +1265,10 @@
+     if (this.gestureSoftEffects||this.sourceSoftEffects) { modes.add(74); modes.add(75) }
+     if(displayOnly && this.canvasBlurRequested && scene.sourceDetailTile && hasSourceFilters)modes.add(74)
+     if(displayOnly&&scene.sourceDetailTile)await this.prepareSourceLayers()
+-    if(displayOnly&&scene.densePaint)await this.prepareDensePaint()
++    if (displayOnly && scene.densePaint) {
++      await this.prepareDensePaint()
++      if (Object.keys(scene.densePaint.sources ?? {}).length >= 8) await this.prepareDensePairs()
++    }
+     if(this.exactGradientPaintOver&&(gradientFusion??gradientFusionWorthwhile(scene)))modes.add(GRADIENT_PAINT_OVER_MODE)
+     await this.prepareModes(modes)
+     if (this.canvasBlurRequested) await this.prepareCanvasSpatialBlur(modes)
+@@ -2564,9 +2567,66 @@
+         const module=device.createShaderModule({code:densePaintWgsl,label:'dense-paint'})
+         const pipeline=await device.createRenderPipelineAsync({layout:device.createPipelineLayout({bindGroupLayouts:[this.layout]}),
+           vertex:{module,entryPoint:'quad'},fragment:{module,entryPoint:'densePaint',targets:[{format:this.layerFormat}]},primitive:{topology:'triangle-list'}})
+-        this.assertPipelinePublicationOwner(device);this.modePipelines.set(DENSE_PAINT_MODE,pipeline)
++        this.assertPipelinePublicationOwner(device);this.modePipelines.set(DENSE_PAINT_MODE,pipeline);this.denseShader=module
+       })
+       try{await this.pipelines.prepare(['dense-paint'])}catch{this.assertPipelinePublicationOwner(device);this.densePaintFailed=true}
++  }
++  private denseShader?: GPUShaderModule
++  private densePairPipeline?: GPURenderPipeline
++  private densePairFailed = false
++  get densePairsReady() { return !!this.densePairPipeline }
++
++  private async prepareDensePairs() {
++    if (import.meta.env.VITE_DESIGN_DENSE_PHASE_PAIRS === '0' || this.densePairPipeline || this.densePairFailed ||
++        !this.denseShader || this.timingQueries || this.layerFormat !== 'rgba32float' ||
++        this.device.limits.maxColorAttachments < 2 || this.device.limits.maxColorAttachmentBytesPerSample < 32) return
++    const device = this.device, module = this.denseShader
++    this.pipelines.register('dense-phase-pair',async () => {
++      const pipeline = await device.createRenderPipelineAsync({
++        layout:device.createPipelineLayout({bindGroupLayouts:[this.layout]}),
++        vertex:{module,entryPoint:'quad'},
++        fragment:{module,entryPoint:'denseSourcePair',targets:[{format:'rgba32float'},{format:'rgba32float'}]},
++        primitive:{topology:'triangle-list'},
++      })
++      this.assertPipelinePublicationOwner(device)
++      this.densePairPipeline = pipeline
++    })
++    try { await this.pipelines.prepare(['dense-phase-pair']) }
++    catch { this.assertPipelinePublicationOwner(device); this.densePairFailed = true }
++  }
++
++  /** Same atlas instructions and two original sample phases. Only the walk
++   * through the program is shared; each attachment keeps its own RGBA32F. */
++  drawDensePair(targets: readonly [Texture,Texture], inputs: readonly [Texture,Texture], atlas: Texture, u: Float32Array) {
++    if (!this.densePairPipeline || !this.curves || this.lost || this.disposed || !this.textures.has(atlas) ||
++        targets[0].resource === targets[1].resource || u.length !== 256 ||
++        u[16] !== DENSE_PAINT_MODE || !Number.isInteger(u[17]) || u[17] < 1 || u[17] > 32 ||
++        (u[18] !== 0 && u[18] !== 2) || u[19] !== 0) return false
++    for (let i=0;i<u[17];i++) {
++      const pc=u[20+i]
++      if (!Number.isSafeInteger(pc) || pc<0 || pc>=atlas.width*atlas.height) return false
++    }
++    for (const target of targets) {
++      const texture=target.resource as GPUTexture, creation=this.byteTentTextures.get(target)
++      if (!this.textures.has(target) || !creation || creation.resource!==texture || creation.format!=='rgba32float' ||
++          target.binaryCoverage || target.scalarCoverage || target.width!==u[2] || target.height!==u[3] ||
++          texture.width!==u[2] || texture.height!==u[3] || texture.format!=='rgba32float' ||
++          texture===atlas.resource || inputs.some(input=>input.resource===texture)) return false
++    }
++    if (inputs.some(t=>!this.textures.has(t)||(t.resource as GPUTexture).format!=='rgba32float')) return false
++    this.closeOver()
++    for (const target of targets) this.invalidateTextureCertificates(target)
++    const bind=this.bind(u,[inputs[0],atlas,inputs[1]])
++    const pass=this.encoder.beginRenderPass({colorAttachments:targets.map(t=>({
++      view:this.bindingCache.view(t.resource as GPUTexture),loadOp:'clear' as const,storeOp:'store' as const,clearValue:[0,0,0,0],
++    }))})
++    pass.setPipeline(this.densePairPipeline)
++    pass.setBindGroup(0,bind.group,bind.offsets)
++    pass.draw(3)
++    pass.end()
++    this.noteDraw(DENSE_PAINT_MODE,1,2*u[2]*u[3])
++    this.triangles++
++    return true
+   }
+   private densePaintFailed=false
+   get densePaintReady(){return this.modePipelines.has(DENSE_PAINT_MODE)}
+@@ -3396,6 +3456,7 @@
+   }
+   /** Full synchronous teardown: reclaim every resource and destroy the device. */
+   private destroyDeviceNow() {
++    this.densePairPipeline=undefined;this.denseShader=undefined
+     this.terminal = true
+     recordDeviceLifecycle(this, deviceLifecyclePhase.disposed, this.lifecycleFields())
+     this.boxPrefix?.release();this.boxPrefix=undefined
+diff --git a/frontend/design-client/src/kernel/gpu/types.ts b/frontend/design-client/src/kernel/gpu/types.ts
+--- a/frontend/design-client/src/kernel/gpu/types.ts
++++ b/frontend/design-client/src/kernel/gpu/types.ts
+@@ -280,6 +280,8 @@
+   readonly sourceLayersReady?:boolean
+   readonly sourceImageLayersReady?:boolean
+   prepareSourceDisplay?():Promise<void>
++  readonly densePairsReady?: boolean
++  drawDensePair?(targets: readonly [Texture, Texture], inputs: readonly [Texture, Texture], atlas: Texture, uniforms: Float32Array): boolean
+   densePaintReady?:boolean
+   densePathOffset?(first:number):number|undefined
+   sourceProgramOffset?(path:PathMesh):number|undefined
+diff --git a/frontend/design-client/src/kernel/gpu/dense-paint-shader.ts b/frontend/design-client/src/kernel/gpu/dense-paint-shader.ts
+--- a/frontend/design-client/src/kernel/gpu/dense-paint-shader.ts
++++ b/frontend/design-client/src/kernel/gpu/dense-paint-shader.ts
+@@ -74,4 +74,59 @@
+  let phase=u32(params.values[4].z);
+  for(var k=0u;k<u32(params.values[4].y);k++){out=evaluate(p,phase,u32(params.values[5u+k/4u][k%4u]),out,clip);}
+  return out;
+-}`
++}
++struct DenseSourcePair {
++ @location(0) first:vec4<f32>,
++ @location(1) second:vec4<f32>,
++}
++// Both phases visit the same isolated node tree. Coverage and gradient
++// sampling stay per phase; program decoding and the isolation stack are shared.
++fn evalPair(p:vec2<i32>,phase:u32,start:u32,back:DenseSourcePair)->DenseSourcePair {
++ if(!inside(p,word(start+1u))){return back;}
++ var colors:array<DenseSourcePair,17>; var ends:array<u32,17>; var alpha:array<f32,17>;
++ colors[0]=back;let limit=u32(word(start).x);var depth=0u;var pc=start;
++ loop{
++  if(depth>0u && pc==ends[depth]){
++   let src=colors[depth];let amount=alpha[depth];depth--;
++   colors[depth]=DenseSourcePair(sourceOver(colors[depth].first,scaleColor(src.first,amount)),
++                                 sourceOver(colors[depth].second,scaleColor(src.second,amount)));
++   continue;
++  }
++  if(pc>=limit){break;}
++  let hdr=word(pc);let end=u32(hdr.x);
++  if(pc!=start && !inside(p,word(pc+1u))){pc=end;continue;}
++  let children=u32(hdr.y);var c0=vec4<f32>(0.);var c1=vec4<f32>(0.);var cursor=pc+4u;
++  while(cursor<children){
++   let h=word(cursor);let r=word(cursor+1u);
++   var f0=mask(p,r,h.z,phase);var f1=mask(p,r,h.z,phase+1u);
++   if(h.y!=0. && (f0||f1)){
++    let fr=word(pc+3u);let at=word(pc+2u).x;
++    if(f0){f0=mask(p,fr,at,phase)==(h.y>0.);}
++    if(f1){f1=mask(p,fr,at,phase+1u)==(h.y>0.);}
++   }
++   if(f0){c0=sourceOver(c0,scaleColor(brush(p,cursor,phase),h.w));}
++   if(f1){c1=sourceOver(c1,scaleColor(brush(p,cursor,phase+1u),h.w));}
++   cursor=u32(h.x);
++  }
++  if(children==end){
++   colors[depth]=DenseSourcePair(sourceOver(colors[depth].first,scaleColor(c0,hdr.w)),
++                                sourceOver(colors[depth].second,scaleColor(c1,hdr.w)));pc=end;
++  }else{depth++;colors[depth]=DenseSourcePair(c0,c1);ends[depth]=end;alpha[depth]=hdr.w;pc=children;}
++ }
++ return colors[0];
++}
++@fragment fn denseSourcePair(@builtin(position) pos:vec4<f32>)->DenseSourcePair {
++ let p=vec2<i32>(floor(pos.xy))+vec2<i32>(params.values[0].xy);
++ let phase=u32(params.values[4].z);let r=params.values[1];
++ var back=DenseSourcePair(vec4<f32>(0.),vec4<f32>(0.));
++ if(params.values[54].x==0. && inside(p,r)){
++  let q=p-vec2<i32>(r.xy);
++  back=DenseSourcePair(textureLoad(dst,min(q,vec2<i32>(textureDimensions(dst))-1),0),
++                       textureLoad(clipTex,min(q,vec2<i32>(textureDimensions(clipTex))-1),0));
++ }
++ for(var k=0u;k<u32(params.values[4].y);k++){
++  back=evalPair(p,phase,u32(params.values[5u+k/4u][k%4u]),back);
++ }
++ return back;
++}
++`
+diff --git a/frontend/design-client/src/kernel/gpu/empty-scene-compose.test.ts b/frontend/design-client/src/kernel/gpu/empty-scene-compose.test.ts
+--- a/frontend/design-client/src/kernel/gpu/empty-scene-compose.test.ts
++++ b/frontend/design-client/src/kernel/gpu/empty-scene-compose.test.ts
+@@ -501,7 +501,7 @@
+     const frameResources = vi.spyOn(driver, 'prepareFrameResources')
+     let current = true
+     const empty = scene(), pending = observe(renderer.render(empty, false, true, () => current))
+-    expect(prepare).toHaveBeenCalledWith(empty, true)
++    expect(prepare).toHaveBeenCalledWith(empty, true, false)
+     expect(boundary.composeEntries()).toEqual(copies)
+     current = false; await nextTurn()
+     expect(pending.settled()).toBe(false)
+diff --git a/frontend/design-client/src/kernel/gpu/dense-phase-pair.test.ts b/frontend/design-client/src/kernel/gpu/dense-phase-pair.test.ts
+new file mode 100644
+--- /dev/null
++++ b/frontend/design-client/src/kernel/gpu/dense-phase-pair.test.ts
+@@ -0,0 +1,43 @@
++import {expect, test, vi} from 'vitest'
++import {WebGpuDriver} from './webgpu'
++import {DENSE_PAINT_MODE} from './dense-paint-shader'
++import {parameters, type Texture} from './types'
++
++function fixture() {
++  const rect={x:17,y:-3,w:8,h:6}
++  const make=()=>({width:8,height:6,bytes:768,resource:{format:'rgba32float',width:8,height:6}} as unknown as Texture)
++  const a=make(), b=make(), atlas=make(), source=make()
++  const renderPass={setPipeline:vi.fn(),setBindGroup:vi.fn(),draw:vi.fn(),end:vi.fn()}
++  const beginRenderPass=vi.fn(()=>renderPass)
++  const driver=Object.assign(Object.create(WebGpuDriver.prototype),{
++    densePairPipeline:{},curves:{},disposed:false,lost:false,textures:new Set([a,b,atlas,source]),
++    byteTentTextures:new WeakMap([a,b].map(t=>[t,{resource:t.resource,format:'rgba32float'}])),
++    closeOver:vi.fn(),invalidateTextureCertificates:vi.fn(),bind:()=>({group:{},offsets:[0]}),
++    bindingCache:{view:(v:unknown)=>v},encoder:{beginRenderPass},noteDraw:vi.fn(),triangles:0,
++  }) as WebGpuDriver
++  const u=parameters(rect,rect,rect,rect)
++  u.set([DENSE_PAINT_MODE,1,2,0,0],16)
++  return {a,b,atlas,source,u,driver,beginRenderPass,renderPass}
++}
++
++test('two distinct color attachments can read one immutable backdrop',()=>{
++  const {a,b,atlas,source,u,driver,renderPass,beginRenderPass}=fixture()
++  expect(driver.drawDensePair([a,b],[source,source],atlas,u)).toBe(true)
++  expect(beginRenderPass).toHaveBeenCalledOnce()
++  expect(renderPass.draw).toHaveBeenCalledWith(3)
++  expect(renderPass.end).toHaveBeenCalledOnce()
++})
++
++test('reject aliasing, invalid phases or program addresses, and a changed physical extent before encoding',()=>{
++  const {a,b,atlas,source,u,driver,beginRenderPass}=fixture()
++  expect(driver.drawDensePair([a,a],[source,source],atlas,u)).toBe(false)
++  expect(driver.drawDensePair([a,b],[a,source],atlas,u)).toBe(false)
++  u[18]=1
++  expect(driver.drawDensePair([a,b],[source,source],atlas,u)).toBe(false)
++  u[18]=0;u[20]=48
++  expect(driver.drawDensePair([a,b],[source,source],atlas,u)).toBe(false)
++  u[20]=0
++  Object.defineProperty(b.resource,'height',{value:7})
++  expect(driver.drawDensePair([a,b],[source,source],atlas,u)).toBe(false)
++  expect(beginRenderPass).not.toHaveBeenCalled()
++})

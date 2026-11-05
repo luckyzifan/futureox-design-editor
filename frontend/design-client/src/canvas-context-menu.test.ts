@@ -2,8 +2,9 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { Editor } from './engine'
 import { blank, node, stroke, uid, type DesignDocument } from './model'
 import { allParents, multiply, translate, worldMatrix } from './geometry'
-import { canvasMenuItems, clampContextMenu } from './canvas-menu-model'
-import { dispatchEditorCommand } from './editor-commands'
+import { canvasContextItems, canvasMenuItems, clampContextMenu, moveToPageIndex, pluginsMenuIndex } from './canvas-menu-model'
+import { interfacePreference } from './interface-preference'
+import { dispatchEditorCommand, type EditorCommand } from './editor-commands'
 import { createClip } from './animation'
 import { VectorEngine } from './generated/design-kernel/design_kernel'
 import { prepareDocumentForEditing } from './kernel/picking'
@@ -106,14 +107,50 @@ test('Paste here preserves nested animation world frames with independent x/y of
   editor.dispose()
 })
 
-test('ordinary Duplicate overlaps its source; top-level frames move right at unchanged y', () => {
+test('ordinary Duplicate steps 10px down-right; top-level frames move right at unchanged y', () => {
   const { editor, a, parent } = rotatedFixture()
   editor.select([a.id]); const before = worldMatrix(editor.state.doc, a.id)
-  editor.duplicate(); expect(worldMatrix(editor.state.doc, editor.state.selection[0])).toEqual(before)
+  editor.duplicate(); const copied = worldMatrix(editor.state.doc, editor.state.selection[0])
+  expect(copied[4] - before[4]).toBeCloseTo(10, 8)
+  expect(copied[5] - before[5]).toBeCloseTo(10, 8)
   editor.undo(); editor.select([parent.id]); const box = editor.selectionBounds()!
   editor.duplicate(); const duplicated = editor.selectionBounds()!
-  expect(duplicated.x).toBeCloseTo(box.x + box.width + 24, 10)
-  expect(duplicated.y).toBeCloseTo(box.y, 10)
+  expect(duplicated.x).toBeCloseTo(box.x + 10, 8)
+  expect(duplicated.y).toBeCloseTo(box.y + 10, 8)
+  editor.dispose()
+})
+
+test('Duplicate and paste step a frame, section, group, and nested frame by 10,10', () => {
+  const document = blank('container duplicate'), frame = node('frame', 140, 486, 500, 300), nested = node('frame', 16, 18, 40, 30)
+  const section = node('section', 20, 30, 80, 40), group = node('group', 8, 12, 40, 20), child = node('rectangle', 4, 6, 10, 10)
+  frame.children = [nested.id]; group.children = [child.id]
+  document.nodes = Object.fromEntries([frame, nested, section, group, child].map(n => [n.id, n]))
+  document.pages[0].children = [frame.id, section.id, group.id]
+  const editor = new Editor(document)
+  const step = (id: string) => {
+    editor.select([id])
+    const before = worldMatrix(editor.state.doc, id)
+    editor.duplicate()
+    const copy = editor.state.selection[0]
+    const after = worldMatrix(editor.state.doc, copy)
+    after.slice(0, 4).forEach((value, index) => expect(value).toBeCloseTo(before[index], 8))
+    expect(after[4] - before[4]).toBeCloseTo(10, 8)
+    expect(after[5] - before[5]).toBeCloseTo(10, 8)
+    editor.duplicate()
+    const again = worldMatrix(editor.state.doc, editor.state.selection[0])
+    expect(again[4] - after[4]).toBeCloseTo(10, 8)
+    expect(again[5] - after[5]).toBeCloseTo(10, 8)
+    editor.undo(); editor.undo()
+    expect(worldMatrix(editor.state.doc, id)).toEqual(before)
+  }
+  for (const id of [frame.id, section.id, group.id, nested.id]) step(id)
+  editor.select([frame.id]); const origin = worldMatrix(editor.state.doc, frame.id)
+  editor.copy(); editor.paste()
+  const pasted = worldMatrix(editor.state.doc, editor.state.selection[0])
+  pasted.slice(0, 4).forEach((value, index) => expect(value).toBeCloseTo(origin[index], 8))
+  expect(pasted[4] - origin[4]).toBeCloseTo(10, 8)
+  expect(pasted[5] - origin[5]).toBeCloseTo(10, 8)
+  editor.undo(); expect(worldMatrix(editor.state.doc, frame.id)).toEqual(origin)
   editor.dispose()
 })
 
@@ -140,6 +177,62 @@ test('context commands flip, order and unlock inherited locks through reversible
   editor.dispose()
 })
 
+test('the canvas right-click list follows the Mac desktop order for a selected shape', () => {
+  interfacePreference.set({ locale: 'zh-CN' })
+  const { editor, a } = rotatedFixture()
+  editor.select([a.id])
+  const items = canvasContextItems(editor, { profile: 'figma-like', platform: 'mac', desktop: true })
+  const commands = items.map(item => item.command)
+  expect(commands).toEqual([
+    'copy', 'paste-here', 'paste-to-replace',
+    'copy-properties', 'paste-properties', 'copy-fills', 'copy-strokes', 'copy-effects', 'copy-as-png', 'copy-as-svg',
+    'bring-to-front', 'send-to-back',
+    'group', 'frame-selection', 'flatten', 'outline-stroke', 'mask-selection',
+    'auto-layout', 'create-component',
+    'hide-selection', 'lock-selection',
+    'flip-horizontal', 'flip-vertical',
+  ])
+  expect(items.find(item => item.command === 'outline-stroke')?.disabled).toBe(true)
+  expect(items.find(item => item.command === 'hide-selection')?.label).toBe('显示/隐藏')
+  expect(items.find(item => item.command === 'lock-selection')?.label).toBe('锁定/解锁')
+  interfacePreference.set({ locale: 'en' })
+  const english = canvasContextItems(editor, { profile: 'figma-like', platform: 'mac', desktop: true })
+  expect(english.find(item => item.command === 'hide-selection')?.label).toBe('Show/Hide')
+  expect(english.find(item => item.command === 'lock-selection')?.label).toBe('Lock/Unlock')
+  expect(english.find(item => item.command === 'outline-stroke')?.label).toBe('Outline stroke')
+  interfacePreference.set({ locale: 'zh-CN' })
+  expect(moveToPageIndex(commands)).toBe(commands.indexOf('bring-to-front'))
+  expect(pluginsMenuIndex(commands)).toBe(commands.indexOf('hide-selection'))
+  for (const absent of ['cut', 'duplicate', 'delete', 'paste-in-place', 'bring-forward', 'send-backward', 'undo', 'select-inverse', 'paste-over-selection'] as const)
+    expect(commands, absent).not.toContain(absent)
+  editor.select([])
+  expect(canvasContextItems(editor, { profile: 'figma-like', platform: 'mac' }).map(item => item.command))
+    .toEqual(['paste-here', 'select-all'])
+  editor.dispose()
+})
+
+test('the object menu follows Mac Figma order: clipboard, stacking, structure, then history', () => {
+  const { editor, a } = rotatedFixture()
+  editor.select([a.id])
+  const commands = canvasMenuItems(editor).map(item => item.command)
+  const at = (command: EditorCommand) => commands.indexOf(command)
+  expect(at('copy')).toBeGreaterThanOrEqual(0)
+  for (const [earlier, later] of [
+    ['copy', 'cut'], ['cut', 'paste-here'], ['paste-here', 'duplicate'], ['duplicate', 'delete'],
+    ['delete', 'copy-properties'], ['copy-as-svg', 'bring-to-front'], ['bring-to-front', 'bring-forward'],
+    ['bring-forward', 'send-backward'], ['send-backward', 'send-to-back'], ['send-to-back', 'group'],
+    ['group', 'frame-selection'], ['frame-selection', 'flatten'], ['flatten', 'auto-layout'], ['auto-layout', 'create-component'],
+    ['create-component', 'lock-selection'], ['lock-selection', 'hide-selection'], ['hide-selection', 'flip-horizontal'],
+    ['flip-horizontal', 'flip-vertical'], ['rename', 'select-matching'], ['zoom-selection', 'undo'], ['undo', 'redo'],
+  ] as const) expect(at(earlier), `${earlier} before ${later}`).toBeLessThan(at(later))
+  editor.select([])
+  const empty = canvasMenuItems(editor).map(item => item.command)
+  expect(empty.indexOf('paste-here' as EditorCommand)).toBeLessThan(empty.indexOf('select-all'))
+  expect(empty.indexOf('select-all')).toBeLessThan(empty.indexOf('undo'))
+  expect(empty.includes('delete')).toBe(false)
+  editor.dispose()
+})
+
 test('the menu lists applicable operations for empty, multiple, text, vector and locked selections', () => {
   const { editor, a, b } = rotatedFixture()
   editor.select([])
@@ -150,6 +243,7 @@ test('the menu lists applicable operations for empty, multiple, text, vector and
   expect(canvasMenuItems(editor).some((item) => item.command === 'convert-vector')).toBe(true)
   editor.update([a.id], { kind: 'text' }, 'text'); editor.select([a.id])
   expect(canvasMenuItems(editor).some((item) => item.command === 'convert-vector' || item.command === 'outline-stroke')).toBe(false)
+  expect(canvasMenuItems(editor).find((item) => item.command === 'flatten')?.disabled).toBe(true)
   editor.update([b.id], { strokes: [stroke()] }, 'stroke'); editor.select([b.id])
   expect(canvasMenuItems(editor).some((item) => item.command === 'outline-stroke')).toBe(true)
   editor.update([b.id], { locked: true }, 'lock')

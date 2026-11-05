@@ -23,6 +23,18 @@ test('normalizes old camera hints to the supported zoom range', () => {
   expect(savedCamera({ ...view, zoom: 0.0001 })?.zoom).toBe(.02)
   expect(savedCamera({ ...view, zoom: 1000 })?.zoom).toBe(256)
 })
+test('a parked zoom does not open the editing graph', () => {
+  const editor = new Editor(blank())
+  expect(editor.cameraCommitPending()).toBe(false)
+  editor.setViewCoalesced({ x: 4, y: 5, zoom: 2 })
+  expect(editor.cameraCommitPending()).toBe(true)
+  expect(editor.historyBackend).toBe('uninitialized')
+  editor.flushPendingView()
+  expect(editor.state.view).toEqual({ x: 4, y: 5, zoom: 2 })
+  expect(editor.cameraCommitPending()).toBe(false)
+  expect(editor.historyBackend).toBe('uninitialized')
+  editor.dispose()
+})
 test('leading pan publishes immediately and coalesces a dense input burst into one latest frame',()=>{
  const editor=new Editor(blank()),original=JSON.stringify(editor.state.doc)
  const frame=()=>{const [id,callback]=frames.entries().next().value!;frames.delete(id);callback(0)}

@@ -354,7 +354,16 @@ fn run(
     owner: &Owner,
     name: &str,
 ) -> Result<()> {
-    let c = Arc::new(catalog::assemble(pages)?);
+    let doc = parts
+        .iter()
+        .find(|p| p.name == "document.json" && p.bytes <= 16 * 1024 * 1024)
+        .ok_or_else(|| issue("Source metadata unavailable"))?;
+    let raw_metadata=fs::read(dir.join(&doc.file)).map_err(issue)?;
+    let document: Value = serde_json::from_slice(&raw_metadata).map_err(issue)?;
+    let independent_metadata=raw_metadata.len() as u64<=futureox_design_kernel::large_json::MAX_FRAGMENT_BYTES &&
+        futureox_design_kernel::large_json::validate_fragment(&raw_metadata).is_ok();
+    drop(raw_metadata);
+    let c = Arc::new(catalog::assemble(catalog::order_pages(pages,parts,&document)?)?);
     {
         let mut s = job.state.lock().map_err(issue)?;
         if s.catalog.as_ref().is_some_and(|saved| {
@@ -378,15 +387,6 @@ fn run(
             .collect();
         s.catalog = Some(c.clone());
     }
-    let doc = parts
-        .iter()
-        .find(|p| p.name == "document.json" && p.bytes <= 16 * 1024 * 1024)
-        .ok_or_else(|| issue("Source metadata unavailable"))?;
-    let raw_metadata=fs::read(dir.join(&doc.file)).map_err(issue)?;
-    let document: Value = serde_json::from_slice(&raw_metadata).map_err(issue)?;
-    let independent_metadata=raw_metadata.len() as u64<=futureox_design_kernel::large_json::MAX_FRAGMENT_BYTES &&
-        futureox_design_kernel::large_json::validate_fragment(&raw_metadata).is_ok();
-    drop(raw_metadata);
     let exe = std::env::current_exe().map_err(issue)?;
     let font = exe
         .parent()
@@ -431,7 +431,7 @@ fn run(
             }
         }
         let (doc, _) =
-            projection::import_source_roots(vec![root], dependencies, images, &document, &archive)?;
+            projection::import_source_roots(vec![root], dependencies, images, &document, &archive, true)?;
         let page = doc.pages[0].id.clone();
         let b = c.items[i].source;
         let guard = job.clone();
@@ -578,7 +578,7 @@ fn run(
 fn selected_snapshot(c:&Catalog, i:usize, parts:&[Part], dir:&Path, owner:&Owner, name:&str,
     metadata:&Value, cancel:&AtomicBool) -> Result<Option<Value>> {
     use super::{canvas_layout,canvas_snapshot,digest};
-    use futureox_design_kernel::{fidelity::RasterProfile,large_json,scene_store};
+    use futureox_design_kernel::{fidelity::RasterProfile,large_json};
     let root=&c.roots[i];
     if root.len>large_json::MAX_FRAGMENT_BYTES || projection::legacy_refs_enabled() { return Ok(None); }
     let bytes=catalog::bytes_at(dir,parts,root)?;
@@ -589,7 +589,7 @@ fn selected_snapshot(c:&Catalog, i:usize, parts:&[Part], dir:&Path, owner:&Owner
         c.items.iter().filter(|r|r.id==item.id).count()!=1 { return Ok(None) }
     let (symbols,images)=projection::preview_dependencies(&value);
     if !symbols.is_empty() || cancel.load(Ordering::Acquire) {return Ok(None)}
-    let (mut doc,mut warnings)=projection::import_source_roots(vec![value],BTreeMap::new(),images,metadata,&dir.join("source"))?;
+    let (mut doc,mut warnings)=projection::import_source_roots(vec![value],BTreeMap::new(),images,metadata,&dir.join("source"),false)?;
     if let Some(system)=&mut doc.design_system {system.sketch_containers.clear();}
     let layout=canvas_layout::Layout {revision:0,bounds:c.bounds,items:vec![item.clone()]};
     let (doc,stage_id)=canvas_snapshot::place_materials(doc,&owner.document_id,name,&layout)?;
@@ -599,7 +599,7 @@ fn selected_snapshot(c:&Catalog, i:usize, parts:&[Part], dir:&Path, owner:&Owner
     let path=dir.join(format!("canvas-native-0-{scope}.scene"));
     let next=dir.join("opening-material.next");
     let result=(||{
-        let store=scene_store::write(&next,&generation,&doc,&warnings,cancel).map_err(issue)?;
+        let store=doc.write(&next,&generation,&warnings,cancel).map_err(issue)?;
         super::check_cancel(cancel).map_err(issue)?;
         fs::rename(&next,&path).map_err(issue)?;
         Ok(canvas_snapshot::snapshot_descriptor(&canvas_snapshot::Snapshot{

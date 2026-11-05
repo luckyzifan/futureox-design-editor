@@ -1169,7 +1169,7 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
       this.overPipeline = this.normalPipeline!
     })
   }
-  async prepareScene(scene: GpuScene, displayOnly = false) {
+  async prepareScene(scene: GpuScene, displayOnly = false, gradientFusion?: boolean) {
     this.linearCapture=import.meta.env.VITE_DESIGN_LINEAR_RETAINED_CAPTURE==='1'&&scene.linearRetainedCapture===true&&displayOnly&&
       this.captureDisplay&&this.managed&&this.linearLight&&!this.hdr&&!this.displayMath&&!scene.presentation&&!scene.resolve
     if(this.linearCapture){
@@ -1216,7 +1216,11 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
     this.gaussianPrefixRequested=false
     this.fullDensityRegionalGaussian=false
     this.requiresExactBoxFilters = false
+    let hasReducedGaussian = false, hasSoftEffects = false, hasSourceFilters = false
     const paths = Object.values(scene.nodes).flatMap(n => {
+      hasReducedGaussian ||= n.gaussianRegion?.factor !== undefined
+      hasSoftEffects ||= n.effects.some(effect => effect.visible && effect.radius > 0)
+      hasSourceFilters ||= !!n.sourceFilterField
       if (n.gaussianRegion && !n.gaussianRegion.factor && scene.colorManagement?.documentSpace === 'srgb' &&
           this.gaussianAutoEnabled && this.canvasBlurRequested && !this.hdr && !this.displayMath) {
         this.fullDensityRegionalGaussian = true
@@ -1250,19 +1254,22 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
     // rather than the other task's transient readiness.
     if(this.canvasBlurRequested&&this.managed&&!this.hdr&&!this.displayMath&&
       import.meta.env.VITE_DESIGN_GAUSSIAN_PREFIX==='1'&&[2,4,8].includes(Number(import.meta.env.VITE_DESIGN_GAUSSIAN_REDUCTION))&&
-      Object.values(scene.nodes).some(node=>node.gaussianRegion?.factor!==undefined))modes.add(74)
+      hasReducedGaussian)modes.add(74)
     this.gestureSoftEffects = displayOnly && this.captureDisplay && this.managed && !this.hdr &&
       !this.displayMath && !scene.softwareRaster && scene.gestureSoftEffects === true
     this.sourceSoftEffects=import.meta.env.VITE_DESIGN_SOURCE_FILTER_LOD!=='0' && displayOnly && this.managed && !this.hdr &&
       !this.displayMath && !scene.softwareRaster && scene.sourceDetailTile===true && scene.colorManagement?.documentSpace==='srgb' &&
-      Object.values(scene.nodes).some(n=>n.effects.some(fx=>fx.visible && fx.radius>0))
+      hasSoftEffects
     this.sourceImageSampling=import.meta.env.VITE_DESIGN_SOURCE_IMAGE_MATH!=='0' && displayOnly && this.managed &&
       !this.hdr && !this.displayMath && !scene.softwareRaster && scene.sourceDetailTile===true && scene.colorManagement?.documentSpace==='srgb'
     if (this.gestureSoftEffects||this.sourceSoftEffects) { modes.add(74); modes.add(75) }
-    if(displayOnly && this.canvasBlurRequested && scene.sourceDetailTile && Object.values(scene.nodes).some(n=>n.sourceFilterField))modes.add(74)
+    if(displayOnly && this.canvasBlurRequested && scene.sourceDetailTile && hasSourceFilters)modes.add(74)
     if(displayOnly&&scene.sourceDetailTile)await this.prepareSourceLayers()
-    if(displayOnly&&scene.densePaint)await this.prepareDensePaint()
-    if(this.exactGradientPaintOver&&gradientFusionWorthwhile(scene))modes.add(GRADIENT_PAINT_OVER_MODE)
+    if (displayOnly && scene.densePaint) {
+      await this.prepareDensePaint()
+      if (Object.keys(scene.densePaint.sources ?? {}).length >= 8) await this.prepareDensePairs()
+    }
+    if(this.exactGradientPaintOver&&(gradientFusion??gradientFusionWorthwhile(scene)))modes.add(GRADIENT_PAINT_OVER_MODE)
     await this.prepareModes(modes)
     if (this.canvasBlurRequested) await this.prepareCanvasSpatialBlur(modes)
     if (displayImageRequested) await this.prepareDisplayImagePipeline()
@@ -2445,7 +2452,8 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
           // for finish's existing error boundary as well as the next slice.
           if (!this.disposed && this.device === device) this.errors.push(String(error))
           throw error
-        }))
+        }), this.queueWaitStats.timingEnabled
+          ? wait=>this.queueWaitStats.wait('raster-yield',wait,()=>this.lost) : undefined)
     }
     if (this.disposed || this.lost || this.device !== device) throw Error('GPU 设备已丢失')
   }
@@ -2560,9 +2568,66 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
         const module=device.createShaderModule({code:densePaintWgsl,label:'dense-paint'})
         const pipeline=await device.createRenderPipelineAsync({layout:device.createPipelineLayout({bindGroupLayouts:[this.layout]}),
           vertex:{module,entryPoint:'quad'},fragment:{module,entryPoint:'densePaint',targets:[{format:this.layerFormat}]},primitive:{topology:'triangle-list'}})
-        this.assertPipelinePublicationOwner(device);this.modePipelines.set(DENSE_PAINT_MODE,pipeline)
+        this.assertPipelinePublicationOwner(device);this.modePipelines.set(DENSE_PAINT_MODE,pipeline);this.denseShader=module
       })
       try{await this.pipelines.prepare(['dense-paint'])}catch{this.assertPipelinePublicationOwner(device);this.densePaintFailed=true}
+  }
+  private denseShader?: GPUShaderModule
+  private densePairPipeline?: GPURenderPipeline
+  private densePairFailed = false
+  get densePairsReady() { return !!this.densePairPipeline }
+
+  private async prepareDensePairs() {
+    if (import.meta.env.VITE_DESIGN_DENSE_PHASE_PAIRS === '0' || this.densePairPipeline || this.densePairFailed ||
+        !this.denseShader || this.timingQueries || this.layerFormat !== 'rgba32float' ||
+        this.device.limits.maxColorAttachments < 2 || this.device.limits.maxColorAttachmentBytesPerSample < 32) return
+    const device = this.device, module = this.denseShader
+    this.pipelines.register('dense-phase-pair',async () => {
+      const pipeline = await device.createRenderPipelineAsync({
+        layout:device.createPipelineLayout({bindGroupLayouts:[this.layout]}),
+        vertex:{module,entryPoint:'quad'},
+        fragment:{module,entryPoint:'denseSourcePair',targets:[{format:'rgba32float'},{format:'rgba32float'}]},
+        primitive:{topology:'triangle-list'},
+      })
+      this.assertPipelinePublicationOwner(device)
+      this.densePairPipeline = pipeline
+    })
+    try { await this.pipelines.prepare(['dense-phase-pair']) }
+    catch { this.assertPipelinePublicationOwner(device); this.densePairFailed = true }
+  }
+
+  /** Same atlas instructions and two original sample phases. Only the walk
+   * through the program is shared; each attachment keeps its own RGBA32F. */
+  drawDensePair(targets: readonly [Texture,Texture], inputs: readonly [Texture,Texture], atlas: Texture, u: Float32Array) {
+    if (!this.densePairPipeline || !this.curves || this.lost || this.disposed || !this.textures.has(atlas) ||
+        targets[0].resource === targets[1].resource || u.length !== 256 ||
+        u[16] !== DENSE_PAINT_MODE || !Number.isInteger(u[17]) || u[17] < 1 || u[17] > 32 ||
+        (u[18] !== 0 && u[18] !== 2) || u[19] !== 0) return false
+    for (let i=0;i<u[17];i++) {
+      const pc=u[20+i]
+      if (!Number.isSafeInteger(pc) || pc<0 || pc>=atlas.width*atlas.height) return false
+    }
+    for (const target of targets) {
+      const texture=target.resource as GPUTexture, creation=this.byteTentTextures.get(target)
+      if (!this.textures.has(target) || !creation || creation.resource!==texture || creation.format!=='rgba32float' ||
+          target.binaryCoverage || target.scalarCoverage || target.width!==u[2] || target.height!==u[3] ||
+          texture.width!==u[2] || texture.height!==u[3] || texture.format!=='rgba32float' ||
+          texture===atlas.resource || inputs.some(input=>input.resource===texture)) return false
+    }
+    if (inputs.some(t=>!this.textures.has(t)||(t.resource as GPUTexture).format!=='rgba32float')) return false
+    this.closeOver()
+    for (const target of targets) this.invalidateTextureCertificates(target)
+    const bind=this.bind(u,[inputs[0],atlas,inputs[1]])
+    const pass=this.encoder.beginRenderPass({colorAttachments:targets.map(t=>({
+      view:this.bindingCache.view(t.resource as GPUTexture),loadOp:'clear' as const,storeOp:'store' as const,clearValue:[0,0,0,0],
+    }))})
+    pass.setPipeline(this.densePairPipeline)
+    pass.setBindGroup(0,bind.group,bind.offsets)
+    pass.draw(3)
+    pass.end()
+    this.noteDraw(DENSE_PAINT_MODE,1,2*u[2]*u[3])
+    this.triangles++
+    return true
   }
   private densePaintFailed=false
   get densePaintReady(){return this.modePipelines.has(DENSE_PAINT_MODE)}
@@ -3392,6 +3457,7 @@ fn canonicalShadowZero(v:vec4<f32>)->vec4<f32>{
   }
   /** Full synchronous teardown: reclaim every resource and destroy the device. */
   private destroyDeviceNow() {
+    this.densePairPipeline=undefined;this.denseShader=undefined
     this.terminal = true
     recordDeviceLifecycle(this, deviceLifecyclePhase.disposed, this.lifecycleFields())
     this.boxPrefix?.release();this.boxPrefix=undefined

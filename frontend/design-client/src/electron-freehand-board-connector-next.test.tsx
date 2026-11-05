@@ -128,7 +128,7 @@ for (const shape of ['square', 'ellipse', 'rounded-rectangle', 'triangle-up', 't
   await act(async () => pointer('pointerup', 260, 220))
   expect(editor.state.doc.pages[0].children).toHaveLength(1)
   const id = editor.state.doc.pages[0].children[0], n = editor.state.doc.nodes[id]
-  expect(n.board?.kind).toBe(tool); expect(editor.state.selection).toEqual([id]); expect(editor.state.tool).toBe('select')
+  expect(n.board?.kind).toBe(tool); expect(editor.state.selection).toEqual([id]); expect(editor.state.tool).toBe(tool)
   expect(n.transform.slice(4)).toEqual([100, 100]); expect(n.width).toBeCloseTo(160, 8); expect(n.height).toBeCloseTo(120, 8)
   expect(n.children.length).toBeGreaterThan(0)
   for (const child of n.children) expect(editor.state.doc.nodes[child]).toBeDefined()

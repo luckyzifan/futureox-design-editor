@@ -4,7 +4,7 @@ use futureox_design_kernel::scene::Node;
 
 fn collect_subtree(
     id: &str,
-    nodes: &std::collections::BTreeMap<String, Node>,
+    nodes: &futureox_design_kernel::scene::DocumentNodes,
     out: &mut std::collections::BTreeMap<String, Node>,
 ) {
     if let Some(n) = nodes.get(id) {
@@ -89,7 +89,7 @@ fn main() {
                 }
             }
         }
-        doc.nodes = new_nodes;
+        doc.nodes = new_nodes.into();
         doc.pages = pages;
         doc
     } else if let Some(i) = only_i {
@@ -111,7 +111,7 @@ fn main() {
                 collect_subtree(c, &doc.nodes, &mut new_nodes);
             }
         }
-        doc.nodes = new_nodes;
+        doc.nodes = new_nodes.into();
         doc.pages = pages;
         doc
     } else if let Some(n) = top_n {
@@ -127,7 +127,7 @@ fn main() {
                 collect_subtree(c, &doc.nodes, &mut new_nodes);
             }
         }
-        doc.nodes = new_nodes;
+        doc.nodes = new_nodes.into();
         doc.pages = pages;
         doc
     } else if kinds.is_empty() {
@@ -150,7 +150,7 @@ fn main() {
                 collect_subtree(c, &doc.nodes, &mut new_nodes);
             }
         }
-        doc.nodes = new_nodes;
+        doc.nodes = new_nodes.into();
         doc.pages = pages;
         doc
     };

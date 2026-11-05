@@ -1,9 +1,8 @@
-import {selectedChildDragIntent} from './canvas-pointer-intent'
 import { expect, test } from 'vitest'
-import { dragThresholdPassed, selectedGroupDragIntent, selectionPointerDown, frameTitleHit } from './canvas-pointer-intent'
+import { dragThresholdPassed, selectedChildDragIntent, selectedGroupDragIntent, selectedOwnedDragIntent, selectionPointerDown, frameTitleHit } from './canvas-pointer-intent'
+import { boxPoints, contains } from './geometry'
 import { Editor } from './engine'
 import { blank, node } from './model'
-import { contains } from './geometry'
 
 test('frame title picking keeps page, inherited lock and visibility boundaries',()=>{
   const doc=blank(),frame=node('frame'),section=node('section'),child=node('frame'),leaf=node('rectangle')
@@ -141,4 +140,33 @@ test('selected child drag only defers ancestor/empty hits within its own outline
  expect(selectedChildDragIntent(child,'sibling',['frame','parent'],options)).toBeNull()
  for(const change of [{inside:false},{deep:true},{additive:true},{readOnly:true}])expect(selectedChildDragIntent(child,'parent',['parent'],{...options,...change})).toBeNull()
  expect(selectedChildDragIntent({...child,locked:true},'parent',['parent'],options)).toBeNull()
+})
+
+const plain = { deep: false, additive: false, readOnly: false }
+test('overlapping text cannot take a drag away from the already selected layer', () => {
+  const doc = blank(), rect = node('rectangle', 10, 10, 120, 40), label = node('text', 20, 12, 80, 24)
+  rect.name = '矩形 6'; label.text = '重叠文字'
+  doc.nodes = { [rect.id]: rect, [label.id]: label }
+  doc.pages[0].children = [rect.id, label.id]
+  const editor = new Editor(doc)
+  try {
+    editor.select([rect.id])
+    const point = { x: 40, y: 24 }
+    const hit = editor.hoverHit(point)
+    expect(hit).toBe(label.id)
+    const corners = boxPoints({ x: 10, y: 10, width: 120, height: 40 })
+    expect(selectedOwnedDragIntent(rect, hit, 'text', corners, point, 1, plain)).toEqual({ selection: [rect.id], clickSelection: [label.id] })
+    expect(selectedOwnedDragIntent(rect, hit, 'text', corners, point, 1, { ...plain, deep: true })).toBeNull()
+  } finally { editor.dispose() }
+})
+
+test('a thin selected bar stays the drag target inside its screen slop', () => {
+  const bar = { id: 'bar', kind: 'rectangle' as const, visible: true, locked: false }
+  const corners = boxPoints({ x: 0, y: 10, width: 200, height: 1 })
+  expect(selectedOwnedDragIntent(bar, 'text', 'text', corners, { x: 40, y: 13 }, 1, plain)).toEqual({ selection: ['bar'], clickSelection: ['text'] })
+  expect(selectedOwnedDragIntent(bar, 'other', 'rectangle', corners, { x: 40, y: 13 }, 1, plain)?.selection).toEqual(['bar'])
+  expect(selectedOwnedDragIntent(bar, 'text', 'text', corners, { x: 40, y: 40 }, 1, plain)).toBeNull()
+  const wide = boxPoints({ x: 0, y: 0, width: 200, height: 80 })
+  expect(selectedOwnedDragIntent(bar, 'sibling', 'rectangle', wide, { x: 20, y: 20 }, 1, plain)).toBeNull()
+  expect(selectedOwnedDragIntent({ ...bar, kind: 'group' }, 'text', 'text', wide, { x: 20, y: 20 }, 1, plain)).toBeNull()
 })
