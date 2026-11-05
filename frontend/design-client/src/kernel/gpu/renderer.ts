@@ -1,5 +1,8 @@
+import {compactSourceAxes,readSourceGrid,readDenseSourceGrid} from './source-bitmap-grid'
+import {sourceBitmap} from '../../source-bitmap'
 import {DENSE_PAINT_MODE} from './dense-paint-shader'
 import {SOURCE_LAYER_MODE,SOURCE_IMAGE_LAYER_MODE,SOURCE_LAYER_FLOATS,sourceLayer,radialCorners, type SourceLayerProgram} from './source-layer'
+import {denseBatch} from './dense-batch'
 import {gaussianRegionRects} from './gaussian-region'
 import {copySourceWindow, linearSrgbWindow, magnifiedImageWindow, sourceImageWindow} from './source-image-window'
 import {sourceBitmapDimensions} from '../image-row-source'
@@ -885,6 +888,7 @@ export class GpuRenderer {
   // Samples that cannot separate keep their original dense strip fallback.
   private filterImageFields?: { rect: Rect; fields: Map<string, Surface | null>; pinned: Set<Texture> }
   private imageGrids = new Map<GpuPaint, Map<number, Surface>>()
+  private imageLevels = new WeakMap<GpuNode, WeakMap<GpuPaint, {width:number;height:number;level:number}>>()
   private readonly gradientFieldProofs = new WeakMap<Texture,{resource:Texture['resource'];maximumStop:number}>()
   private gradientPhaseRequest=false
   private readonly gradientPhaseResources=new WeakMap<Texture,{resource:Texture['resource'];width:number;height:number;axis?:[number,number]}>()
@@ -2105,7 +2109,7 @@ export class GpuRenderer {
     return policy ? { uri, policy } : undefined
   }
   private uploadImage(uri: string, level: number, intoAtlas: boolean, adjust?: ImageAdjust): Surface {
-    if (!/^data:image\/(png|jpeg|webp);base64,/.test(uri))
+    if (!sourceBitmap(uri) && !/^data:image\/(png|jpeg|webp);base64,/.test(uri))
       throw new Error('无效的 GPU 图片资源')
     // Image adjustments (image-adjust math, ported in image-adjust.ts) run on the
     // decoded texels at upload time: premultiplied storage in and out, so no
@@ -2255,6 +2259,7 @@ export class GpuRenderer {
   /** Cache base dimensions without retaining a transient row decoder. */
   private baseDims(uri: string): [number, number] {
     this.requireImageResidencyCurrent()
+    const external=sourceBitmap(uri);if(external)return [external.width,external.height]
     let dims = this.imageDims.get(uri)
     if (!dims) {
       if (!this.managedImageLoader) throw new Error('后端缺少统一的图片解码器')
@@ -2274,6 +2279,9 @@ export class GpuRenderer {
     if (!this.imageMips || !p.image) return 0
 
     const dims = this.baseDims(p.image)
+    const levels = this.imageLevels.get(n)
+    const cached = levels?.get(p)
+    if (cached && cached.width === dims[0] && cached.height === dims[1]) return cached.level
     const paintJson = JSON.stringify({ kind: 'image', color: p.color, fit: p.fit, transform: p.transform, tile: p.tile })
 
     // Call Rust to compute geometric mip level based on screen-space size
@@ -2284,7 +2292,11 @@ export class GpuRenderer {
       new Uint32Array(dims),
       paintJson,
     )
-    return Math.min(raw, mipLevelsFor(dims) - 1)
+    const level = Math.min(raw, mipLevelsFor(dims) - 1)
+    const entries = levels ?? new WeakMap()
+    entries.set(p, {width:dims[0],height:dims[1],level})
+    if (!levels) this.imageLevels.set(n, entries)
+    return level
   }
   /** Images evicted under budget pressure reload on demand through the same
    * deterministic decoder; a reload reproduces identical sampled bytes.
@@ -2310,7 +2322,7 @@ export class GpuRenderer {
     return surface
   }
   private sourceSrgbImage(p:GpuPaint,level:number):Surface|undefined{
-    if(import.meta.env.VITE_DESIGN_SOURCE_SRGB8==='0'||!this.scene.sourceImageDisplay||level!==0||this.imageAtlas||
+    if(import.meta.env.VITE_DESIGN_SOURCE_SRGB8==='0'||(!this.scene.sourceImageDisplay&&!sourceBitmap(p.image))||level!==0||this.imageAtlas||
         !this.driver.managed||this.driver.hdr||this.driver.displayMath||this.scene.colorManagement?.documentSpace!=='srgb'||
         !p.image||imageAdjustActive(p.adjust)||!this.driver.uploadStraightSrgb8||!this.managedImageLoader?.straightSrgb8)return
     const uri=p.image
@@ -2339,6 +2351,30 @@ export class GpuRenderer {
       this.bytes+=texture.bytes;this.peak=Math.max(this.peak,this.bytes);this.imageAssetCounters.uploads++
     }else this.imageAssetCounters.hits++
     this.used.add(image.texture);this.touch(image.texture);return image
+  }
+  private sourceBitmapGrid(n:GpuNode,p:GpuPaint){
+    const ref=sourceBitmap(p.image)
+    if(!ref?.samples||!p.image||!this.driver.managed||!this.driver.uploadLinear||!this.driver.uploadParameters||
+      this.scene.colorManagement?.documentSpace!=='srgb'||this.imageMips)return
+    const source=n.previewSource||n,b=source.rect,phase=this.sampleIndex??4,uri=p.image
+    if(b.w!==n.rect.w||b.h!==n.rect.h||!b.w||!b.h)return
+    const paint=JSON.stringify({kind:'image',color:p.color,fit:p.fit,transform:p.transform,tile:p.tile})
+    const axes=image_sampling_axes_placed(JSON.stringify(b),new Float64Array(source.matrix),new Float64Array(n.size),
+      new Uint32Array([ref.width,ref.height]),paint,phase,0,new Int32Array([0,0]))
+    const grid=compactSourceAxes(axes,b,ref.width,ref.height)
+    const w=grid?grid.xs.length:2*b.w,h=grid?grid.ys.length:2*b.h
+    if(this.overBudget(w*h*16,w,h))throw this.budgetError('GPU 原图采样区域超出可用内存',4)
+    const tag=['file-source-texels',uri,b,source.matrix,n.size,paint,phase,p.adjust]
+    const coords=grid?axes:image_sampling_grid_placed(JSON.stringify(b),new Float64Array(source.matrix),new Float64Array(n.size),
+      new Uint32Array([ref.width,ref.height]),paint,phase,0,new Int32Array([0,0]))
+    const image=this.materialField(tag,rect(0,0,w,h),()=>{
+      const lut=this.straightSourceTransfer()
+      const pixels=grid?readSourceGrid(uri,grid.xs,grid.ys,lut):readDenseSourceGrid(uri,coords,b,ref.width,ref.height,lut)
+      return imageAdjustActive(p.adjust)?adjustLinearPremultiplied(pixels,p.adjust):pixels
+    },this.driver.uploadLinear,undefined,w*h*16,false)
+    const field=this.materialField(['file-source-axes',...tag],grid?rect(n.rect.x,n.rect.y,Math.max(b.w,b.h),2):n.rect,()=>coords,this.driver.uploadParameters)
+    this.imageAxes.set(field.texture,!!grid)
+    return {image,field}
   }
   private sourceImagePaint(n:GpuNode,p:GpuPaint){
     if(!this.scene.sourceDetailTile||!this.driver.managed||this.driver.hdr||this.driver.displayMath||
@@ -2536,7 +2572,7 @@ export class GpuRenderer {
     // defeating the shared-budget working set this ledger provides.
     for (const uri of needed) {
       if (this.images.keysFor(uri).size || this.images.has(uri))continue
-      if (!/^data:image\/(png|jpeg|webp);base64,/.test(uri))
+      if (!sourceBitmap(uri) && !/^data:image\/(png|jpeg|webp);base64,/.test(uri))
         throw new Error('无效的 GPU 图片资源')
       if ((scene.floatCompositing || scene.colorManagement) &&
         (!this.managedImageLoader || !this.driver.uploadLinear))
@@ -3180,7 +3216,9 @@ export class GpuRenderer {
       // Source fidelity and grid coordinates use the same geometric level.
       // Memory pressure must never silently substitute a coarser image.
       imageLevel = this.imageLevel(n, p)
-      const raw=material||this.sourceSrgbImage(p,imageLevel),window=raw?undefined:this.sourceImagePaint(n,p)
+      const external=material?undefined:this.sourceBitmapGrid(n,p)
+      const raw=material||external?.image||this.sourceSrgbImage(p,imageLevel),window=raw?undefined:this.sourceImagePaint(n,p)
+      if(external)parameterField=external.field
       image = raw || window?.image || this.imageFor(uri, imageLevel, intoAtlas, p.adjust)
       if(window)parameterField=window.field
       if (intoAtlas)
@@ -4173,36 +4211,28 @@ export class GpuRenderer {
       const dense=this.scene.densePaint
       if(dense&&this.denseAtlas&&Object.hasOwn(dense.nodes,id)&&
           (!clip||clip.every(c=>c.texture.binaryCoverage))){
-        const starts:number[]=[],first=n.rect
-        let left=first.x,top=first.y,right=first.x+first.w,bottom=first.y+first.h
-        for(let k=at;k<ids.length&&starts.length<32;k++){
-          const child=this.scene.nodes[ids[k]],pc=dense.nodes[ids[k]]
-          if(!child||!Number.isSafeInteger(pc)||pc<0||pc>=dense.width*dense.height)break
-          starts.push(pc)
-          left=Math.min(left,child.rect.x);top=Math.min(top,child.rect.y)
-          right=Math.max(right,child.rect.x+child.rect.w);bottom=Math.max(bottom,child.rect.y+child.rect.h)
-        }
+        const crossGaps=import.meta.env.VITE_DESIGN_DENSE_SPARSE_BATCH==='1' &&
+          !prefix && !compactSource && !opticalPrefix && !this.interactionCapturing && !this.poseDemand
+        const {starts,write,last}=denseBatch(ids,at,this.scene.nodes,dense.nodes,dense.width*dense.height,crossGaps)
         if(starts.length){
           this.fastWork.add('densePaintBatches');this.fastWork.add('densePaintRoots',starts.length)
-          const write=rect(left,top,right-left,bottom-top)
           for(let phase=0;phase<4;phase++){
+            if (!(phase & 1) && !clip && this.driver.densePairsReady) {
+              const pair = await this.denseBatchPair(targets[phase],targets[phase+1],this.denseAtlas,write,starts,phase)
+              if (pair) { [targets[phase],targets[phase+1]]=pair; phase++; continue }
+            }
             const fields=clip?[this.denseAtlas,clip[phase]]:[this.denseAtlas]
             targets[phase]=await this.composeSourceProgram(DENSE_PAINT_MODE,targets[phase],fields,write,u=>{
               u.set([starts.length,phase,Number(!!clip)],17);u.set(starts,20)
             })
           }
-          at+=starts.length-1;continue
+          at=last;continue
         }
       }
       const preSource=dense?.sources?.[id]
       if(this.denseAtlas&&preSource!==undefined&&Number.isSafeInteger(preSource)&&preSource>=0&&
           preSource<dense!.width*dense!.height&&!n.passthrough&&!n.clip&&!n.maskId&&!backdropEffect(n.effects)){
-        let planes:Surface[]=[]
-        for(let phase=0;phase<4;phase++){
-          await this.reclaimForSurface(n.rect);this.checkFrameCurrent()
-          const atlas=this.denseAtlas
-          planes.push(this.run(DENSE_PAINT_MODE,n.rect,[atlas,atlas],u=>{u.set([1,phase,0,preSource],17);u[216]=1}))
-        }
+        let planes = await this.denseEffectPlanes(n.rect,this.denseAtlas,preSource)
         planes=await this.applySampleEffects(n,planes,{owned:false})
         this.orderedEffectLayers++;this.fastWork.add('densePaintEffects')
         targets=await this.cropPainterTargets(targets,n.postCompositeBox)
@@ -4229,7 +4259,12 @@ export class GpuRenderer {
           this.fastWork.add('sourceLayerBatches')
           try{
             for(const [i,l]of layers.entries())for(const field of l.fields)fields.push(await this.sampleSourceFilter(this.scene.nodes[ids[at+i]],field))
-            for(let phase=0;phase<4;phase++){
+            // With no brushes, each source starts at +0. If every sampled
+            // shadow field is also zero, over(back, transparent) returns the
+            // original texel, including on a non-transparent destination.
+            const empty=import.meta.env.VITE_DESIGN_SPARSE_SOURCE_WORK!=='0' && fields.length>0 &&
+              fields.every(f=>f.texture.transparentZero) && layers.every(l=>l.transparentOnZeroFields)
+            for(let phase=0;!empty && phase<4;phase++){
               targets[phase]=await this.composeSourceProgram(SOURCE_LAYER_MODE,targets[phase],fields,layers.length===1?n.rect:undefined,
                 u=>{u[17]=layers.length;let start=20;for(const l of layers){u.set(l.data[phase],start);start+=l.data[phase].length}})
             }
@@ -5764,47 +5799,94 @@ export class GpuRenderer {
     }
     return this.sourceTransfer
   }
-  /** Both source programs return a point load of the old target outside
-   * their brush bounds. Encode only the write rectangle when it is small.
-   * The copy follows the pass in the same encoder and never samples itself. */
-  private async composeSourceProgram(mode:number,dest:Surface,fields:Surface[],bounds:Rect|undefined,configure:(u:Float32Array)=>void) {
+  private async denseEffectPlanes(r:Rect, atlas:Surface, pc:number):Promise<Surface[]> {
+    const planes:Surface[]=[]
+    if (this.driver.densePairsReady && this.driver.drawDensePair && !this.drawRegion(r) && !this.surfaceNeedsAdmission(r,4)) {
+      await this.reclaimForSurface(r,4);this.checkFrameCurrent()
+      let paired=0
+      try {
+        for(let i=0;i<4;i++) planes.push(this.acquire(r,false,false,SurfaceAllocationSite.passOutput,DENSE_PAINT_MODE))
+        for(const phase of [0,2]) {
+          const u=parameters(r,atlas.rect,atlas.rect)
+          u.set([DENSE_PAINT_MODE,1,phase,0,pc],16);u[216]=1
+          if(!this.driver.drawDensePair([planes[phase].texture,planes[phase+1].texture],[atlas.texture,atlas.texture],atlas.texture,u))break
+          paired+=2;this.passPixels+=2*r.w*r.h
+        }
+        if(paired===4)return planes
+      } finally { if(paired!==4){this.release(...planes);planes.length=0} }
+    }
+    for(let phase=0;phase<4;phase++){
+      await this.reclaimForSurface(r);this.checkFrameCurrent()
+      planes.push(this.run(DENSE_PAINT_MODE,r,[atlas,atlas],u=>{u.set([1,phase,0,pc],17);u[216]=1}))
+    }
+    return planes
+  }
+
+  /** Both the one-attachment and two-attachment paths use the same logical
+   * bounds, copy-back ownership and allocation decision for each phase. */
+  private sourceProgramOutput(mode:number,dest:Surface,fields:Surface[],bounds:Rect|undefined) {
     const logical=dest.logicalBounds??dest.rect
     const region=bounds && exactBlendLattice([bounds,dest.rect,logical]) ? intersect(bounds,logical) : undefined
-    if(region && (!region.w || !region.h))return dest
+    if(region && (!region.w || !region.h))return {kind:'empty' as const,output:region,logical}
     if(mode===DENSE_PAINT_MODE&&region&&this.driver.copyColorRegion&&(dest.logicalBounds||dest.texture.transparentZero)){
-      // Outside both the old support and every authored write the strict
-      // shader returns transparent black. Preserve that support through the
-      // next dense span. All spatial consumers materialize their full input.
       const prior=dest.texture.transparentZero?region:dest.rect
       const x=Math.min(prior.x,region.x),y=Math.min(prior.y,region.y)
       const out=rect(x,y,Math.max(prior.x+prior.w,region.x+region.w)-x,Math.max(prior.y+prior.h,region.y+region.h)-y)
-      if(dest.logicalBounds||out.w*out.h*2<=logical.w*logical.h){
-        await this.reclaimForSurface(out);this.checkFrameCurrent()
-        const painted=this.run(mode,out,[dest,...fields],configure)
-        if(!containsRect(out,logical)){
-          painted.logicalBounds={...logical}
-          // Input colours are finite in [0,1]. Allow the rounding headroom
-          // of all ordered operations and keep unknown consumer proofs out.
-          painted.compactMaxAbs=[2,2,2,2]
-        }
-        this.release(dest);return painted
-      }
+      if(dest.logicalBounds||out.w*out.h*2<=logical.w*logical.h)return {kind:'compact' as const,output:out,logical}
     }
-    const regional=region && region.w*region.h*4<=dest.rect.w*dest.rect.h && this.driver.copyRegion &&
-      this.privateBandDestination(dest) && !fields.some(f=>f.texture===dest.texture) &&
-      import.meta.env.VITE_DESIGN_SOURCE_PROGRAM_REGIONS!=='0'
-    const output=regional ? region : dest.rect
-    await this.reclaimForSurface(output);this.checkFrameCurrent()
-    const next=this.run(mode,output,[dest,...fields],configure)
-    if(regional){
+    if(region && region.w*region.h*4<=dest.rect.w*dest.rect.h && this.driver.copyRegion &&
+        this.privateBandDestination(dest) && !fields.some(f=>f.texture===dest.texture) &&
+        import.meta.env.VITE_DESIGN_SOURCE_PROGRAM_REGIONS!=='0')return {kind:'regional' as const,output:region,logical}
+    return {kind:'full' as const,output:dest.rect,logical}
+  }
+
+  private finishSourceProgram(dest:Surface, painted:Surface, placement:ReturnType<GpuRenderer['sourceProgramOutput']>) {
+    const {kind,output,logical}=placement
+    if(kind==='regional'){
       try{
-        this.driver.copyRegion!(dest.texture,next.texture,rect(0,0,output.w,output.h),[output.x-dest.rect.x,output.y-dest.rect.y])
+        this.driver.copyRegion!(dest.texture,painted.texture,rect(0,0,output.w,output.h),[output.x-dest.rect.x,output.y-dest.rect.y])
         this.fastWork.add('sourceProgramPixelsSaved',dest.rect.w*dest.rect.h-output.w*output.h)
-      }finally{this.release(next)}
+      }finally{this.release(painted)}
       return dest
     }
+    if(kind==='compact'&&!containsRect(output,logical)){
+      painted.logicalBounds={...logical};painted.compactMaxAbs=[2,2,2,2]
+    }
     this.release(dest)
-    return next
+    return painted
+  }
+
+  private async composeSourceProgram(mode:number,dest:Surface,fields:Surface[],bounds:Rect|undefined,configure:(u:Float32Array)=>void) {
+    const placement=this.sourceProgramOutput(mode,dest,fields,bounds)
+    if(placement.kind==='empty')return dest
+    await this.reclaimForSurface(placement.output);this.checkFrameCurrent()
+    return this.finishSourceProgram(dest,this.run(mode,placement.output,[dest,...fields],configure),placement)
+  }
+
+  private async denseBatchPair(a:Surface,b:Surface,atlas:Surface,bounds:Rect,starts:number[],phase:number):Promise<[Surface,Surface]|undefined> {
+    if(!this.driver.drawDensePair)return
+    const same=(x:Rect,y:Rect)=>x.x===y.x&&x.y===y.y&&x.w===y.w&&x.h===y.h
+    if(!same(a.rect,b.rect))return
+    const first=this.sourceProgramOutput(DENSE_PAINT_MODE,a,[atlas],bounds)
+    const second=this.sourceProgramOutput(DENSE_PAINT_MODE,b,[atlas],bounds)
+    if(first.kind!==second.kind||!same(first.output,second.output))return
+    if(first.kind==='empty')return [a,b]
+    const output=first.output
+    if(this.drawRegion(output)||this.surfaceNeedsAdmission(output,2))return
+    await this.reclaimForSurface(output,2);this.checkFrameCurrent()
+    let left:Surface|undefined,right:Surface|undefined
+    try {
+      left=this.acquire(output,false,false,SurfaceAllocationSite.passOutput,DENSE_PAINT_MODE)
+      right=this.acquire(output,false,false,SurfaceAllocationSite.passOutput,DENSE_PAINT_MODE)
+      const u=parameters(output,a.rect,atlas.rect,b.rect)
+      u.set([DENSE_PAINT_MODE,starts.length,phase,0],16);u.set(starts,20)
+      if(!this.driver.drawDensePair([left.texture,right.texture],[a.texture,b.texture],atlas.texture,u))return
+      this.passPixels+=2*output.w*output.h
+      const lp=left;left=undefined
+      const l=this.finishSourceProgram(a,lp,first)
+      const rp=right;right=undefined
+      return [l,this.finishSourceProgram(b,rp,second)]
+    }finally{this.release(left,right)}
   }
   private async drawSourceImage(n:GpuNode,targets:Surface[]):Promise<boolean>{
     if(!this.sourceTileOcclusion||!this.driver.sourceImageLayersReady||!this.driver.sourceProgramOffset||!this.managedImageLoader||
@@ -5922,6 +6004,17 @@ export class GpuRenderer {
     // Independent inner shadows preserve every binary source sample's alpha.
     // A compound filter instead consumes the result of its actual prefix.
     const prefix=plan.effectIndex>0&&!n.sourceFilterField?.additional?.length?n.effects.slice(0,plan.effectIndex):[]
+    const shadow=n.effects[plan.effectIndex]
+    if(import.meta.env.VITE_DESIGN_SPARSE_SOURCE_WORK!=='0' && this.sourceTileOcclusion && this.driver.zeroTextureSampling &&
+        !this.allowSolidBatch && !colour && !plan.masks.length && !plan.groupRoots?.length && !prefix.length &&
+        (shadow?.kind==='inner-shadow'||shadow?.kind==='shadow') && shadow.spread===0 &&
+        plan.input.w>0 && plan.input.h>0 && plan.output.w>0 && plan.output.h>0 &&
+        Math.max(plan.input.w,plan.input.h,plan.output.w,plan.output.h)<=(this.driver.sourceImageLimit||0)){
+      // A linear resolve, blur and reconstruction of four cleared inputs is
+      // exactly zero. Keep the filter's world rect and the normal pool lease.
+      this.checkFrameCurrent()
+      return this.empty(plan.output)
+    }
     const raster=async(channels:typeof plan.masks,preceding:Effect[])=>{
       let planes:Surface[]=[],accumulator:Surface|undefined
       const silhouette=!colour && !preceding.length && channels.length===1 && !channels[0].paint && channels[0].opacity===1
@@ -7423,6 +7516,7 @@ export class GpuRenderer {
     } finally { this.frameCurrent = undefined; this.displayBackpressure=false; this.driver.rasterPacing=false; this.residentImageRequest=false; this.frameImageReuse=false; this.gradientPhaseRequest=false; this.encodingProgress=undefined; this.activeRuntimeConfiguration = undefined }
   }
   private async renderAttempt(scene: GpuScene, readback = false, present = true, onFinishStarted?:()=>void) {
+    this.imageLevels = new WeakMap()
     // Display-only automatic residency. The existing private source owner,
     // color/mip policy, completion and pressure gates still decide every hit.
     // Explicit outputs and unowned loaders keep their established paths.
@@ -7597,7 +7691,7 @@ export class GpuRenderer {
     const started = performance.now()
     // Scene policy is installed synchronously before its async pipeline work.
     // Filter programs and image uploads can then prepare independently.
-    const preparation = [this.prepareWithFailureOrigin(1, () => this.driver.prepareScene?.(scene, !readback && present))]
+    const preparation = [this.prepareWithFailureOrigin(1, () => this.driver.prepareScene?.(scene, !readback && present, this.gradientFusionActive))]
     if (index.hasFilters)
       preparation.push(this.prepareWithFailureOrigin(2, () => this.driver.prepareFilters?.(Boolean(this.prefixAllowed && this.optimized && this.driver.managed && scene.integratedBlur && index.hasPrefixFilter))))
     preparation.push(this.loadImages(scene))

@@ -8,6 +8,7 @@ import type { Editor } from './engine'
 import type { WorkspaceAutomationGuard } from './automation/workspace-bridge'
 import { prepareDocument, prepareDocumentJson, prepareDocumentJsonInWorker, takePreparedDocument, forkPreparedDocument, ensurePreparedDocument, preparedDocumentAdoptionOwner, preparedDocumentEncoding, type PreparedDocument } from './prepared-document'
 import { documentStage, documentStageAsync, DocumentStage } from './document-lifecycle-diagnostics'
+import { interfacePreference } from './interface-preference'
 import { blank, type DesignDocument } from './model'
 import { consumeDocumentJsonSyntaxFailure } from './document-admission'
 import { consumeDocumentPreparationSourceFailure } from './document-preparation-worker-client'
@@ -38,11 +39,33 @@ const rejectedWorkspaceWrite = (result: DesktopResult<unknown>) => result.status
 
 /** Disk acknowledgements are scoped to immutable snapshots, never to the latest edit. */
 export type WorkspaceTab = { id: string; name: string; persisted: boolean }
+type WorkspaceCacheEntry = { revision: number; name: string; hash: string; updatedAt: number; documentJson: string }
+
+/** Tab switches during an open/import must not surface the host file lock as
+ * a hard failure. A cached snapshot can replace the canvas immediately; a
+ * busy editor only queues the switch until that operation releases the document. */
+export function workspaceTabSwitchPlan(input: { sessionBusy: boolean; hostBusy: boolean; cached: boolean; sameDocument: boolean }) {
+  if (input.sameDocument) return 'ignore' as const
+  if (input.sessionBusy) return 'queue' as const
+  if (input.hostBusy) return input.cached ? 'adopt-cache' as const : 'queue' as const
+  return 'read' as const
+}
 export class DesktopSession {
   private readonly tabListeners = new Set<() => void>()
   private tabsValue: WorkspaceTab[] = []
+  private readonly workspaceCache = new Map<string, WorkspaceCacheEntry>()
+  private pendingTabId?: string
+  private tabWaitAttempts = 0
+  private tabWaitNotified = false
   subscribeTabs = (listener: () => void) => { this.tabListeners.add(listener); return () => { this.tabListeners.delete(listener) } }
   tabsSnapshot = () => this.tabsValue
+  /** Switches tabs immediately, or queues one switch when a file operation still owns the editor. */
+  requestWorkspaceTab(id: string) {
+    if (this.disposed || this.closeSnapshot !== undefined) return Promise.resolve(false)
+    if (id === this.currentDocument.id) return Promise.resolve(true)
+    if (this.active) { this.pendingTabId = id; return Promise.resolve(false) }
+    return this.openWorkspace(id)
+  }
   async closeWorkspaceTab(id: string) {
     if (id === this.currentDocument.id) {
       const next = this.tabsValue.find(t => t.id !== id && t.persisted)
@@ -79,7 +102,8 @@ export class DesktopSession {
     return this.run('open', async () => {
       if (!this.bridge.workspace) return false
       const result = { ...await documentStageAsync(DocumentStage.read, () => this.bridge.workspace!.open({ id })) }
-      if (result.status !== 'ok') return result.status === 'cancelled' ? false : this.failed(result)
+      if (result.status !== 'ok') return result.status === 'cancelled' ? false : this.workspaceReadBusy(result) ? this.openCachedWorkspace(id) : this.failed(result)
+      this.rememberWorkspace(result)
       const prepared = await this.parse(result.documentJson)
       this.assertWorkspace(prepared, result, id)
       const approved = await documentStageAsync(DocumentStage.leave, () => this.leave('open'))
@@ -88,7 +112,11 @@ export class DesktopSession {
       // waits for the leave dialog. Adopt a fresh immutable head, never that stale read.
       const latest = { ...await documentStageAsync(DocumentStage.freshRead, () => this.bridge.workspace!.open({ id })) }
       if (!this.authorized(approved)) return false
-      if (latest.status !== 'ok') return latest.status === 'cancelled' ? false : this.failed(latest)
+      if (latest.status !== 'ok') {
+        if (latest.status === 'cancelled') return false
+        if (this.workspaceReadBusy(latest)) return this.adoptBusyWorkspace(id, approved, prepared, result.documentJson)
+        return this.failed(latest)
+      }
       // Revision/hash labels alone are not proof. Exact immutable source bytes
       // retain schema/admission ownership across the leave/save await.
       const document = latest.documentJson === result.documentJson
@@ -143,12 +171,123 @@ export class DesktopSession {
     if (document.id !== result.id || result.id !== requestedId || result.deleted || !Number.isSafeInteger(result.revision) || result.revision < 1)
       throw new Error('本机文档版本响应无效')
   }
-  private adoptWorkspace(document: DesignDocument | PreparedDocument, result: WorkspaceOpened,preserveView=false) {
+  private workspaceReadBusy(result: { status: string; code?: string }) {
+    return result.status === 'error' && (result.code === 'BUSY' || result.code === 'WORKSPACE_BUSY')
+  }
+  private tabMessage(kind: 'waiting' | 'stopped' | 'cached') {
+    const en = interfacePreference.getSnapshot().locale === 'en'
+    if (kind === 'cached') return en
+      ? 'Opened the cached copy of this tab while a file operation is running. It will refresh when that operation finishes.'
+      : '文件操作仍在进行，已从会话缓存切换到此标签，结束后会刷新。'
+    if (kind === 'stopped') return en
+      ? 'This tab could not open because a file operation is still running. Try again when it finishes.'
+      : '文件操作仍在进行，此标签暂时无法打开。请在结束后重试。'
+    return en
+      ? 'A file operation is still running. This tab will open when it finishes.'
+      : '文件操作仍在进行，此标签将在结束后打开。'
+  }
+  private clearTabWait() { this.tabWaitAttempts = 0; this.tabWaitNotified = false }
+  private armTabWait(id: string): false {
+    this.tabWaitAttempts += 1
+    // A long import can hold the file lock well past a second. Keep the one
+    // requested tab queued. Do not surface the host BUSY sentence, and do not
+    // give up after a handful of immediate retries.
+    if (this.tabWaitAttempts > 120) {
+      this.pendingTabId = undefined
+      this.clearTabWait()
+      this.editor.notify(this.tabMessage('stopped'))
+      return false
+    }
+    this.pendingTabId = id
+    if (!this.tabWaitNotified) { this.tabWaitNotified = true; this.editor.notify(this.tabMessage('waiting')) }
+    return false
+  }
+  private rememberWorkspace(opened: WorkspaceOpened) {
+    if (opened.deleted || typeof opened.documentJson !== 'string') { this.workspaceCache.delete(opened.id); return }
+    this.workspaceCache.delete(opened.id)
+    this.workspaceCache.set(opened.id, { revision: opened.revision, name: opened.name, hash: opened.hash, updatedAt: opened.updatedAt, documentJson: opened.documentJson })
+    while (this.workspaceCache.size > 8) {
+      const victim = [...this.workspaceCache.keys()].find(key => key !== opened.id && key !== this.currentDocument.id)
+      if (!victim) break
+      this.workspaceCache.delete(victim)
+    }
+  }
+  private compatibleCache(id: string) {
+    const cached = this.workspaceCache.get(id)
+    if (!cached) return undefined
+    const head = this.workspaceHeads.get(id)
+    if (head !== undefined && head !== cached.revision) return undefined
+    return cached
+  }
+  private openedFromCache(id: string, cached: WorkspaceCacheEntry): WorkspaceOpened {
+    return { id, name: cached.name, revision: cached.revision, hash: cached.hash, updatedAt: cached.updatedAt, deleted: false, documentJson: cached.documentJson }
+  }
+  private async openCachedWorkspace(id: string) {
+    const cached = this.compatibleCache(id)
+    if (!cached) return this.armTabWait(id)
+    const prepared = await this.parse(cached.documentJson)
+    const approved = await this.leave('open')
+    if (!this.authorized(approved)) return false
+    const latest = { ...await this.bridge.workspace!.open({ id }) }
+    if (latest.status === 'ok') {
+      this.rememberWorkspace(latest)
+      const document = latest.documentJson === cached.documentJson ? prepared : await this.parse(latest.documentJson)
+      this.assertWorkspace(document, latest, id)
+      const adopted = this.authorized(approved) && this.adoptWorkspace(document, latest)
+      if (adopted) this.clearTabWait()
+      return adopted
+    }
+    if (latest.status === 'cancelled') return false
+    if (!this.workspaceReadBusy(latest)) return this.failed(latest)
+    return this.adoptCacheSnapshot(id, approved, prepared, cached)
+  }
+  private async adoptBusyWorkspace(id: string, approved: number, prepared: DesignDocument | PreparedDocument, firstJson: string) {
+    const cached = this.compatibleCache(id)
+    if (cached && cached.documentJson !== firstJson) {
+      const document = await this.parse(cached.documentJson)
+      const opened = this.openedFromCache(id, cached)
+      this.assertWorkspace(document, opened, id)
+      const adopted = this.authorized(approved) && this.adoptWorkspace(document, opened)
+      if (adopted) { this.clearTabWait(); this.editor.notify(this.tabMessage('cached')); this.scheduleCacheRefresh(id, cached.revision) }
+      return adopted
+    }
+    if (!cached) return this.armTabWait(id)
+    return this.adoptCacheSnapshot(id, approved, prepared, cached)
+  }
+  private adoptCacheSnapshot(id: string, approved: number, prepared: DesignDocument | PreparedDocument, cached: WorkspaceCacheEntry) {
+    const opened = this.openedFromCache(id, cached)
+    this.assertWorkspace(prepared, opened, id)
+    const adopted = this.authorized(approved) && this.adoptWorkspace(prepared, opened)
+    if (!adopted) return false
+    this.clearTabWait()
+    this.editor.notify(this.tabMessage('cached'))
+    this.scheduleCacheRefresh(id, cached.revision)
+    return true
+  }
+  private scheduleCacheRefresh(id: string, revision: number) {
+    setTimeout(() => { void this.refreshCachedTab(id, revision) }, 400)
+  }
+  private async refreshCachedTab(id: string, revision: number) {
+    try {
+      if (!this.bridge.workspace || this.disposed || this.active || this.operation !== 'idle' || this.closeSnapshot !== undefined) return
+      if (this.currentDocument.id !== id || this.dirty || (this.editor.interactionActive || this.editor.state.busy) || hasPendingEdits(this.editor)) return
+      const result = await this.bridge.workspace.open({ id })
+      if (this.disposed || this.currentDocument.id !== id || this.dirty || this.operation !== 'idle') return
+      if (result.status !== 'ok' || (result.revision === revision && result.documentJson === this.workspaceCache.get(id)?.documentJson)) return
+      const document = await this.parse(result.documentJson)
+      if (this.disposed || this.currentDocument.id !== id || this.dirty || this.operation !== 'idle' || (this.editor.interactionActive || this.editor.state.busy) || hasPendingEdits(this.editor)) return
+      this.rememberWorkspace(result)
+      this.adoptWorkspace(document, result, true, false)
+    } catch { /* A late refresh must not surface a file-lock error over the cached tab. */ }
+  }
+  private adoptWorkspace(document: DesignDocument | PreparedDocument, result: WorkspaceOpened, preserveView = false, announce = true) {
     this.assertWorkspace(document, result)
+    if (typeof result.documentJson === 'string') this.rememberWorkspace(result)
     if (!this.load(document, true, undefined, result.name,preserveView)) return false
     this.workspaceHeads.set(result.id, result.revision)
     this.publish()
-    this.editor.notify(`已打开本机设计 · 版本 ${result.revision}`)
+    if (announce) this.editor.notify(`已打开本机设计 · 版本 ${result.revision}`)
+    this.clearTabWait()
     return true
   }
   private baselineGeneration: number | null = null
@@ -550,6 +689,8 @@ export class DesktopSession {
 
   dispose() {
     this.disposed = true
+    this.pendingTabId = undefined
+    this.clearTabWait()
     for (const controller of this.documentPreparations) controller.abort()
     this.documentPreparations.clear()
     cancelPendingOperations(this.editor)
@@ -627,6 +768,12 @@ export class DesktopSession {
       this.active = null
       this.operation = operation === 'close' && completed ? 'close' : 'idle'
       this.publish()
+      const queued = this.pendingTabId
+      this.pendingTabId = undefined
+      if (queued && this.operation === 'idle' && !this.disposed && this.closeSnapshot === undefined) {
+        const delay = Math.min(2000, 200 * Math.max(1, this.tabWaitAttempts))
+        setTimeout(() => { if (!this.disposed && !this.active && this.closeSnapshot === undefined) void this.openWorkspace(queued) }, delay)
+      }
       // Cancelled dialogs and failed saves still need the latest recovery snapshot.
       if (this.started && this.dirty && !(operation === 'close' && completed)) this.scheduleRecovery()
     })
@@ -827,6 +974,7 @@ export class DesktopSession {
       this.workspaceBusyRetries = 0
       desktopPet.event('save')
       this.workspaceHeads.set(result.id, result.revision)
+      this.rememberWorkspace({ id: result.id, name: result.name, revision: result.revision, hash: result.hash, updatedAt: result.updatedAt, deleted: result.deleted, documentJson: older.documentJson })
       this.workspacePending = undefined
       if (this.currentDocument.id === older.id) {
         this.baselineGeneration = older.generation
@@ -858,6 +1006,7 @@ export class DesktopSession {
     this.workspaceBusyRetries = 0
     desktopPet.event('save')
     this.workspaceHeads.set(result.id, result.revision)
+    this.rememberWorkspace({ id: result.id, name: result.name, revision: result.revision, hash: result.hash, updatedAt: result.updatedAt, deleted: result.deleted, documentJson: snapshot })
     if (!this.disposed && this.currentDocument.id === id) {
       this.baselineGeneration = generation
       this.baselineJson = snapshot

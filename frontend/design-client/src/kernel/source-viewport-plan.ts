@@ -12,6 +12,19 @@ import type {ResidentAcknowledgement} from './resident-presentation'
 
 export const SOURCE_PREFETCH_BUDGET={tiles:8,bytes:8*514*514*4} as const
 
+/** Only a physically acknowledged, gap-free backing can stand in for an
+ * intermediate zoom rung while the exact settled view gets the raster slot.
+ * This is containment for display continuity, never a native-ready receipt. */
+export function backingCoversSettledSource(backing:ResidentAcknowledgement|undefined,
+  target:{view:CanvasCamera;width:number;height:number},dpr:number){
+  if(!backing || backing.preview || backing.previewGaps?.length || backing.dpr!==dpr ||
+      backing.width!==target.width || backing.height!==target.height)return false
+  const ratio=backing.view.zoom/target.view.zoom
+  const left=backing.view.x-target.view.x*ratio,top=backing.view.y-target.view.y*ratio
+  return ratio>0 && ratio<=1 && left>=-1e-6 && top>=-1e-6 &&
+    left+target.width*ratio<=backing.width+1e-6 && top+target.height*ratio<=backing.height+1e-6
+}
+
 /** Publish a sharper tile during a zoom without losing any old visible
  * texture. The presenter has already certified physical coverage. */
 export function improvesSourceZoom(previous:ResidentAcknowledgement|undefined, next:ResidentAcknowledgement,
@@ -41,12 +54,16 @@ export function improvesSourceZoom(previous:ResidentAcknowledgement|undefined, n
 /** A moving view may mix native texture densities only when the entire current
  * viewport is covered and at least one visible region gains source detail. */
 export function coveredSourceDetail<T extends RasterTile & {used: number}>(
-  cached: Iterable<T>, target: {view: CanvasCamera; width: number; height: number}, previous: RasterTile[],
+  cached: Iterable<T>, target: {view: CanvasCamera; width: number; height: number}, previous: RasterTile[], wholeTier=false,
 ): T[] | undefined {
   const {view,width,height}=target
   const visible=[...cached].filter(tile=>tileIntersectsView(tile,view,target)).sort((a,b)=>a.zoom-b.zoom||a.used-b.used)
-  if(!visible.some(tile=>sourceTileBringsDetail(tile,view,target,previous)))return
   const world={x:-view.x/view.zoom,y:-view.y/view.zoom,width:width/view.zoom,height:height/view.zoom}
+  if(wholeTier){
+    const tier=completeSourceTier(visible,world)
+    return tier?.some(t=>sourceTileBringsDetail(t,view,target,previous))?tier:undefined
+  }
+  if(!visible.some(tile=>sourceTileBringsDetail(tile,view,target,previous)))return
   // Prefer an already complete finest lattice. A pending overscan tile can
   // still prevent terminal readiness. The presenter verifies physical cover.
   const finest=visible[visible.length-1]
@@ -56,15 +73,26 @@ export function coveredSourceDetail<T extends RasterTile & {used: number}>(
   return tilesCoverBounds(visible,world)?visible:undefined
 }
 
+function completeSourceTier<T extends RasterTile>(tiles:T[],world:{x:number;y:number;width:number;height:number}):T[]|undefined {
+  const tiers=new Map<string,T[]>()
+  for(const tile of tiles){
+    const key=[tile.zoom,tile.phaseX??0,tile.phaseY??0].join('/')
+    const tier=tiers.get(key)
+    if(tier)tier.push(tile);else tiers.set(key,[tile])
+  }
+  return [...tiers.values()].sort((a,b)=>b[0].zoom-a[0].zoom).find(tier=>tilesCoverBounds(tier,world))
+}
+
 /** During an outward wheel gesture finer resident source pixels can already
  * cover the new view. Their physical presentation is still a preview until
  * the exact requested sampling phase has its own receipt. */
 export function retainedZoomOut<T extends RasterTile & {used:number}>(cache:Iterable<T>,view:CanvasCamera,
-  size:{width:number;height:number}, dpr:number):T[]|undefined {
+  size:{width:number;height:number}, dpr:number,wholeTier=false):T[]|undefined {
   const scale=view.zoom*dpr
   const visible=[...cache].filter(t=>t.zoom>=scale&&tileIntersectsView(t,view,size))
   if(!visible.length)return
   const bounds={x:-view.x/view.zoom,y:-view.y/view.zoom,width:size.width/view.zoom,height:size.height/view.zoom}
+  if(wholeTier)return completeSourceTier(visible,bounds)
   if(tilesCoverBounds(visible,bounds,scale))return visible.sort((a,b)=>a.zoom-b.zoom||a.used-b.used)
 }
 
@@ -214,7 +242,7 @@ export class SourceViewportPlanner {
         }
         viewport=fixedMaterialTiles(bounds,raster.scale,raster.phase,bandGrid)??viewport
       }
-      else if(moving&&this.zoomingIn&&continuousZoom&&raster.scale>=2)
+      else if(moving&&this.zoomingIn&&continuousZoom&&raster.scale>=2&&view.zoom*ratio<8)
         viewport=materialTiles(bounds,raster.scale,raster.phase,MOVING_DETAIL_CORE,this.zoomFocus)??viewport
     }
     if(!bandGrid&&!this.coverageRetry&&nativeLattice&&this.colorManaged&&raster.scale>=8&&this.rasterProfile==='figmaSubpixel'){

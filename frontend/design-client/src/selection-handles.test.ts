@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { apply, boxPoints, inverse, multiply, rotate, translate, pointInContours } from './geometry'
-import { selectionHandles, selectionRotation, smallSelectionInterior } from './selection-handles'
-import { resizeInBasis, selectionLocalBounds, rotateNode } from './canvas-view'
+import { formatAngleDegrees, normalizeDegrees, selectionHandles, selectionRotation, smallSelectionInterior } from './selection-handles'
+import { clockwiseDegrees, localClockwiseAfter, resizeInBasis, rotateNode, selectionLocalBounds, snapLocalClockwise } from './canvas-view'
 import type { Matrix } from './model'
 import {blank,node} from './model'
 import {selectionScaleFrame,scaleAnchor} from './selection-scale'
@@ -24,10 +24,44 @@ test('four exterior rotate regions keep fixed screen size across zoom and transf
       expect(pointInContours(h.rotateAnchor,[h.rotatePoints],'nonzero')).toBe(true)
       expect(pointInContours(h.point,[h.rotatePoints],'nonzero')).toBe(false)
       expect(pointInContours(h.rotateAnchor,[corners],'nonzero')).toBe(false)
-      expect(Math.hypot(h.rotateAnchor.x-h.point.x,h.rotateAnchor.y-h.point.y)*zoom).toBeCloseTo(Math.sqrt(242),8)
+      expect(Math.hypot(h.rotateAnchor.x-h.point.x,h.rotateAnchor.y-h.point.y)*zoom).toBeCloseTo(Math.hypot(20,20),8)
       expect(h.resizeCursor.startsWith('url(')).toBe(true)
     }
   }
+})
+
+test('clockwise pointer motion is a positive Figma angle and the matrix follows the hand', () => {
+  const center = { x: 100, y: 80 }, start = { x: 160, y: 80 }, end = { x: 100, y: 140 }
+  const rotation = selectionRotation(center, start, end, 0, false)
+  expect(rotation.degrees).toBeCloseTo(90, 8)
+  expect(formatAngleDegrees(rotation.degrees)).toBe('90.00')
+  expect(formatAngleDegrees(-6.754)).toBe('-6.75')
+  expect(formatAngleDegrees(195)).toBe('-165.00')
+  const turned = apply(rotation.matrix, start)
+  expect(turned.x).toBeCloseTo(end.x, 8)
+  expect(turned.y).toBeCloseTo(end.y, 8)
+  const back = selectionRotation(center, start, { x: 100, y: 20 }, 0, false)
+  expect(back.degrees).toBeCloseTo(-90, 8)
+})
+
+test('a clockwise drag stores the same positive angle the inspector reads', () => {
+  const parent = multiply(translate(12, -4), rotate(20))
+  const child = multiply(translate(40, 50), rotate(0))
+  const world = multiply(parent, child)
+  const center = apply(world, { x: 0, y: 0 })
+  const start = { x: center.x + 50, y: center.y }
+  const end = { x: center.x, y: center.y + 50 }
+  const drag = selectionRotation(center, start, end, 0, false)
+  const local = localClockwiseAfter(parent, world, drag.matrix)
+  expect(drag.degrees).toBeCloseTo(90, 6)
+  expect(local).toBeCloseTo(90, 6)
+  expect(clockwiseDegrees(multiply(inverse(parent), multiply(drag.matrix, world)))).toBeCloseTo(local!, 8)
+  const six = 6 * Math.PI / 180
+  const nudged = selectionRotation(center, start, { x: center.x + 50 * Math.cos(six), y: center.y + 50 * Math.sin(six) }, 0, false)
+  const turned = multiply(parent, rotate(10))
+  expect(localClockwiseAfter(parent, turned, nudged.matrix)).toBeCloseTo(16, 5)
+  const snapped = snapLocalClockwise(parent, turned, nudged.matrix, center)
+  expect(localClockwiseAfter(parent, turned, snapped)).toBeCloseTo(15, 5)
 })
 
 test('rotation snaps the resulting orientation and preserves center and full nested matrix',()=>{
@@ -37,6 +71,7 @@ test('rotation snaps the resulting orientation and preserves center and full nes
   const angle=Math.atan2(world[1],world[0])*180/Math.PI,theta=28*Math.PI/180
   const end={x:center.x+100*Math.cos(theta),y:center.y+100*Math.sin(theta)}
   const r=selectionRotation(center,start,end,angle,true),next=multiply(inverse(parent),multiply(r.matrix,world))
+  expect(r.degrees).toBeCloseTo(normalizeDegrees(Math.round((angle+28)/15)*15),8)
   expect(r.degrees%15).toBeCloseTo(0,10)
   const after=multiply(parent,next),afterCenter=apply(after,{x:60,y:40})
   expect(afterCenter.x).toBeCloseTo(center.x,10);expect(afterCenter.y).toBeCloseTo(center.y,10)

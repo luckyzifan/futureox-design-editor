@@ -1,43 +1,248 @@
-import { useEffect, useRef, useState, type ComponentType } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Editor } from '../engine'
-import { createEditorDesignAutomation } from '../automation'
+import { desktopBridge, type DesktopBridge } from '../desktop'
+import { useInterfacePreferences } from '../interface-preference'
 import { modalKeyDown } from '../modal-keyboard'
-import { loadPluginFromFileList, loadPluginFromGitHub, loadPluginFromZipBytes } from './loader'
-import { PluginHost, type PluginBundle } from './host'
+import { acceptedDeclaredPlugins, type DeclaredPlugin } from './catalog'
+import { openPlugin, parsePluginManifest as parseRichManifest, pluginBundleFromZip, PLUGIN_API_COVERAGE, type PluginBundle, type PluginController } from './rich-host'
+import { samplePlugin } from './sample-plugin'
+import './plugin-panel.css'
 
-type PanelProps = { editor: Editor }
-type DialogComponent = ComponentType<PanelProps & { onClose: () => void }>
+const copy = {
+  'zh-CN': {
+    title: 'Figma 插件',
+    close: '关闭',
+    sample: '运行示例插件',
+    load: '加载插件文件夹…',
+    archive: '加载插件压缩包…',
+    stop: '停止插件',
+    intro: '示例会在当前页面创建三个带标签的矩形。桌面版在启动时启用本机 plugins 文件夹里已声明的插件，也可以手动加载含 manifest.json 的文件夹，或一个 .zip / .figma 压缩包。启动扫描不会改画布，也不会执行压缩包。',
+    desktopUi: '插件界面在单独的沙箱窗口中打开。',
+    webUi: '插件主程序已运行。插件界面窗口只在桌面版提供。',
+    matrix: 'API 覆盖',
+    path: '示例文件夹：frontend/design-client/plugins/labeled-rectangles',
+    enabled: '启动时已启用',
+    run: '运行',
+    none: '这次启动没有启用本机插件。放入插件文件夹后重新打开桌面应用。',
+    missing: '这个本机插件已不再启用。',
+  },
+  en: {
+    title: 'Figma plugins',
+    close: 'Close',
+    sample: 'Run sample plugin',
+    load: 'Load plugin folder…',
+    archive: 'Load plugin archive…',
+    stop: 'Stop plugin',
+    intro: 'The sample creates three labeled rectangles on the current page. The desktop app enables declared plugins from its local plugins folder at startup, and can also load a folder that contains manifest.json or a .zip / .figma archive. The startup scan does not change the canvas and does not run an archive.',
+    desktopUi: 'The plugin interface opens in its own sandboxed window.',
+    webUi: 'The plugin main script ran. The plugin UI window is available in the desktop app.',
+    matrix: 'API coverage',
+    path: 'Sample folder: frontend/design-client/plugins/labeled-rectangles',
+    enabled: 'Enabled at startup',
+    run: 'Run',
+    none: 'No local plugins were enabled at startup. Add a plugin folder and reopen the desktop app.',
+    missing: 'That local plugin is no longer enabled.',
+  },
+} as const
 
-/** 常驻按钮保持轻量；对话框按需异步加载（与 AI/MCP 面板同模式）。 */
-export function PluginPanel(props: PanelProps) {
-  const [open, setOpen] = useState(false)
-  const [Dialog, setDialog] = useState<DialogComponent | null>(null)
+export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, onClose }: {
+  editor: Editor
+  desktop?: DesktopBridge
+  launch?: { grant: string; token: number } | null
+  onClose: () => void
+}) {
+  const { locale } = useInterfacePreferences()
+  const text = copy[locale]
+  const counts = {
+    supported: PLUGIN_API_COVERAGE.filter(entry => entry.status === 'supported').length,
+    partial: PLUGIN_API_COVERAGE.filter(entry => entry.status === 'partial').length,
+    unsupported: PLUGIN_API_COVERAGE.filter(entry => entry.status === 'unsupported').length,
+  }
+  const [status, setStatus] = useState('')
   const [error, setError] = useState('')
-  const [attempt, setAttempt] = useState(0)
-  const trigger = useRef<HTMLButtonElement>(null)
-  const loadingClose = useRef<HTMLButtonElement>(null)
+  const [warnings, setWarnings] = useState<string[]>([])
+  const [running, setRunning] = useState(false)
+  const [enabled, setEnabled] = useState<DeclaredPlugin[] | null>(null)
+  const controller = useRef<PluginController | null>(null)
+  const archive = useRef<HTMLInputElement>(null)
+  const launchSeen = useRef<number | null>(null)
+  const runListedRef = useRef<(plugin: DeclaredPlugin) => Promise<void>>(async () => {})
+  const generation = useRef(0)
+  const uiOpen = useRef(false)
+  const unlisten = useRef<(() => void) | null>(null)
+
+  function stop() {
+    generation.current += 1
+    controller.current?.close()
+    controller.current = null
+    uiOpen.current = false
+    unlisten.current?.()
+    unlisten.current = null
+    void desktop?.plugins?.closeUi()
+    setRunning(false)
+  }
+
+  useEffect(() => stop, [desktop])
+
   useEffect(() => {
-    if (!open || Dialog) return
-    let current = true
-    void import('./PluginDialog').then(module => {
-      if (current) setDialog(() => module.PluginDialog)
-    }).catch(failure => {
-      if (current) setError(failure instanceof Error ? failure.message : String(failure))
+    const list = desktop?.plugins?.list
+    if (!list) return
+    let live = true
+    void list().then(result => {
+      if (!live) return
+      if (result.status === 'ok') setEnabled(acceptedDeclaredPlugins(result.plugins))
+      else if (result.status === 'error' || result.status === 'conflict') { setEnabled([]); setError(result.message) }
+      else setEnabled([])
+    }).catch(cause => {
+      if (live) { setEnabled([]); setError(cause instanceof Error ? cause.message : String(cause)) }
     })
-    return () => { current = false }
-  }, [open, Dialog, attempt])
-  const close = () => { setOpen(false); trigger.current?.focus() }
-  return <>
-    <button ref={trigger} type="button" onClick={() => { if (!open) { setError(''); setOpen(true) } }}>插件</button>
-    {open && (Dialog ? <Dialog {...props} onClose={close} /> :
-      <div className="modal-backdrop">
-        <section className="remote-modal" role="dialog" aria-modal="true" aria-label="插件容器"
-          style={{ width: 'min(760px,95vw)', maxHeight: '90vh', overflow: 'auto' }}
-          onKeyDown={event => modalKeyDown(event, close)}>
-          <h2>插件 <button ref={loadingClose} autoFocus type="button" aria-label="关闭插件面板" onClick={close}>关闭</button></h2>
-          {error ? <><p role="alert">面板载入失败：{error}</p><button type="button" onClick={() => { loadingClose.current?.focus(); setError(''); setAttempt(value => value + 1) }}>重试</button></> :
-            <p role="status" aria-live="polite">正在载入插件容器…</p>}
+    return () => { live = false }
+  }, [desktop])
+
+  async function run(manifestText: string, mainSource: string, uiHtml: string, notes: string[]) {
+    try {
+      const manifest = parseRichManifest(JSON.parse(manifestText))
+      await runBundle({ manifest, main: mainSource, ui: uiHtml || null }, notes)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+      stop()
+    }
+  }
+
+  async function runBundle(bundle: PluginBundle, notes: string[]) {
+    stop()
+    const token = generation.current
+    setError('')
+    setWarnings(notes)
+    setRunning(true)
+    try {
+      const manifest = bundle.manifest
+      const next = await openPlugin(editor, bundle, {
+        command: manifest.commands[0]?.command,
+        onNotify: message => { if (token === generation.current) setStatus(message) },
+        onUi: ui => {
+          if (token !== generation.current || !ui.visible) return
+          if (desktop?.plugins) {
+            if (uiOpen.current) return
+            uiOpen.current = true
+            void desktop.plugins.openUi(ui).then(opened => {
+              if (token !== generation.current) return
+              if (opened.status === 'error') setError(opened.message)
+              else setStatus(text.desktopUi)
+            })
+          } else setStatus(text.webUi)
+        },
+        onPostMessage: message => { void desktop?.plugins?.postUi({ pluginMessage: message }) },
+      })
+      if (token !== generation.current) { next.close(); return }
+      controller.current = next
+      setStatus(manifest.name)
+      if (desktop?.plugins) {
+        const offMessage = desktop.plugins.onUiMessage(message => { void next.deliver(message.pluginMessage) })
+        const offClosed = desktop.plugins.onUiClosed(() => { if (token === generation.current) stop() })
+        unlisten.current = () => { offMessage(); offClosed() }
+      }
+    } catch (cause) {
+      if (token === generation.current) { setError(cause instanceof Error ? cause.message : String(cause)); stop() }
+    }
+  }
+
+  async function runSample() {
+    await run(samplePlugin.manifestText, samplePlugin.mainSource, samplePlugin.uiHtml, [])
+  }
+
+  async function runManifest(grant: string, manifestText: string) {
+    const plugins = desktop?.plugins
+    if (!plugins) return
+    const manifest = parseRichManifest(JSON.parse(manifestText))
+    const paths = manifest.ui ? [manifest.main, manifest.ui] : [manifest.main]
+    const read = await plugins.read({ grant, paths })
+    if (read.status === 'cancelled') return
+    if (read.status !== 'ok') { setError(read.message); return }
+    await run(manifestText, read.files[manifest.main] ?? '', manifest.ui ? read.files[manifest.ui] ?? '' : '', [])
+  }
+
+  async function runListed(plugin: DeclaredPlugin) {
+    try { await runManifest(plugin.grant, plugin.manifestText) }
+    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); stop() }
+  }
+  runListedRef.current = runListed
+
+  useEffect(() => {
+    if (!launch || enabled === null || launchSeen.current === launch.token) return
+    launchSeen.current = launch.token
+    const entry = enabled.find(plugin => plugin.grant === launch.grant)
+    if (!entry) { setError(text.missing); return }
+    void runListedRef.current(entry)
+  }, [launch, enabled, text.missing])
+
+  async function loadArchive(file: File) {
+    try {
+      const bundle = pluginBundleFromZip(new Uint8Array(await file.arrayBuffer()))
+      await runBundle(bundle, [])
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+      stop()
+    }
+  }
+
+  async function loadFolder() {
+    const plugins = desktop?.plugins
+    if (!plugins) return
+    const picked = await plugins.pick()
+    if (picked.status === 'cancelled') return
+    if (picked.status !== 'ok') { setError(picked.message); return }
+    try { await runManifest(picked.grant, picked.manifestText) }
+    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); stop() }
+  }
+
+  return (
+    <div className="plugin-panel-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
+      <section className="plugin-panel" role="dialog" aria-modal="true" aria-labelledby="plugin-panel-title" tabIndex={-1} onKeyDown={event => modalKeyDown(event, onClose)}>
+        <header>
+          <h2 id="plugin-panel-title">{text.title}</h2>
+          <button type="button" onClick={onClose}>{text.close}</button>
+        </header>
+        <section>
+          <p>{text.intro}</p>
+          <p>{text.path}</p>
+          {enabled && enabled.length > 0 ? (
+            <div>
+              <h3>{text.enabled}</h3>
+              <ul className="plugin-local-list" aria-label={text.enabled}>
+                {enabled.map(plugin => (
+                  <li key={plugin.grant}>
+                    <span>{plugin.name}</span>
+                    <button type="button" disabled={running} onClick={() => void runListed(plugin)}>{text.run}</button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : enabled ? <p>{text.none}</p> : null}
+          {warnings.map(warning => <p key={warning}>{warning}</p>)}
+          {status ? <p role="status">{status}</p> : null}
+          {error ? <p role="alert">{error}</p> : null}
+          <details>
+            <summary>{text.matrix}: {counts.supported} supported, {counts.partial} partial, {counts.unsupported} unsupported</summary>
+            <table>
+              <tbody>
+                {PLUGIN_API_COVERAGE.map(entry => <tr key={entry.api}><td><code>{entry.api}</code></td><td>{entry.status}</td><td>{entry.notes}</td></tr>)}
+              </tbody>
+            </table>
+          </details>
         </section>
-      </div>)}
-  </>
+        <footer>
+          <button type="button" className="plugin-panel-primary" disabled={running} onClick={() => void runSample()}>{text.sample}</button>
+          {desktop?.plugins ? <button type="button" disabled={running} onClick={() => void loadFolder()}>{text.load}</button> : null}
+          <button type="button" disabled={running} onClick={() => archive.current?.click()}>{text.archive}</button>
+          <input ref={archive} hidden type="file" accept=".zip,.figma,application/zip" data-testid="plugin-archive" onChange={event => {
+            const file = event.target.files?.[0]
+            event.target.value = ''
+            if (file) void loadArchive(file)
+          }} />
+          <button type="button" disabled={!running} onClick={stop}>{text.stop}</button>
+        </footer>
+      </section>
+    </div>
+  )
 }

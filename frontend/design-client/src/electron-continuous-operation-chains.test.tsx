@@ -19,7 +19,7 @@ import { Editor } from './engine'
 import { DesktopSession } from './desktop-session'
 import type { DesktopBridge, DesktopClipboard, DesktopCommand } from './desktop'
 import { blank, node, paint, type DesignDocument, type DesignNode } from './model'
-import { worldMatrix } from './geometry'
+import { multiply, translate, worldMatrix } from './geometry'
 import { shortcutPreference } from './shortcut-preference'
 import { interfacePreference } from './interface-preference'
 import { shortcutBindings, resolveShortcut, type ShortcutAction } from './shortcut-profiles'
@@ -86,8 +86,8 @@ for(const zoom of[.5,2])test(`C01 chain select drag rotate width copy paste Undo
  const c=Math.cos(Math.PI/6),center={x:190,y:155};await perform('rotate',async()=>rotate(center));closeMatrix(editor.state.doc.nodes[a.id].transform,[c,-.5,.5,c,center.x-c*50-.5*30,center.y+.5*50-c*30])
  const rotated=editor.state.doc.nodes[a.id];await perform('width',async()=>edit('W','140'));const resized=editor.state.doc.nodes[a.id];expect(resized.width).toBeCloseTo(140,8);expect(resized.height).toBe(60);closeMatrix(resized.transform,rotated.transform);expect(resized.fills).toEqual(a.fills)
  const beforeCopy=editor.state.doc,version=editor.state.version;await shortcut('copy');expect(writeClipboard).toHaveBeenCalledTimes(1);expect(clipboard.forma).toBeTypeOf('string');expect(editor.state.doc).toBe(beforeCopy);expect(editor.state.version).toBe(version)
- // Registered paste -> pasteToSelection(false); selected page-root rectangle has no container target, so paste(true) preserves world position. Direct paste(false) +24 is NOT this entry.
- await perform('paste',async()=>shortcut('paste'));expect(readClipboard).toHaveBeenCalledTimes(1);const copied=editor.state.selection[0];expect(copied).not.toBe(a.id);expect(editor.state.selection).toHaveLength(1);const clone=editor.state.doc.nodes[copied];closeMatrix(clone.transform,resized.transform);closeMatrix(worldMatrix(editor.state.doc,copied),worldMatrix(beforeCopy,a.id));expect(editor.state.doc.pages[0].children).toEqual([...beforeCopy.pages[0].children,copied]);expect(editor.parentMap(editor.state.doc).get(copied)).toBe(editor.state.page);expect(clone.width).toBeCloseTo(140,8);expect(clone.height).toBe(60);expect(clone.fills.map(p=>({color:p.color,opacity:p.opacity}))).toEqual(resized.fills.map(p=>({color:p.color,opacity:p.opacity})));expect(editor.state.doc.nodes[a.id]).toEqual(beforeCopy.nodes[a.id]);expect(editor.state.doc.nodes[other.id]).toEqual(initial.nodes[other.id]);expect(Object.keys(editor.state.doc.nodes)).toHaveLength(3)
+ // Mac Figma paste of a page layer steps 10px right and down and stays on the page.
+ await perform('paste',async()=>shortcut('paste'));expect(readClipboard).toHaveBeenCalledTimes(1);const copied=editor.state.selection[0];expect(copied).not.toBe(a.id);expect(editor.state.selection).toHaveLength(1);const clone=editor.state.doc.nodes[copied];closeMatrix(clone.transform,multiply(translate(10,10),resized.transform));closeMatrix(worldMatrix(editor.state.doc,copied),multiply(translate(10,10),worldMatrix(beforeCopy,a.id)));expect(editor.state.doc.pages[0].children).toEqual([...beforeCopy.pages[0].children,copied]);expect(editor.parentMap(editor.state.doc).get(copied)).toBe(editor.state.page);expect(clone.width).toBeCloseTo(140,8);expect(clone.height).toBe(60);expect(clone.fills.map(p=>({color:p.color,opacity:p.opacity}))).toEqual(resized.fills.map(p=>({color:p.color,opacity:p.opacity})));expect(editor.state.doc.nodes[a.id]).toEqual(beforeCopy.nodes[a.id]);expect(editor.state.doc.nodes[other.id]).toEqual(initial.nodes[other.id]);expect(Object.keys(editor.state.doc.nodes)).toHaveLength(3)
  await replayAll();await persist()
 })
 

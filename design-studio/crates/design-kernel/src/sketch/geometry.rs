@@ -3,7 +3,7 @@ use crate::math::Transform;
 
 /// Sketch rotates counter-clockwise around the local frame center; screen
 /// coordinates point down. Flips share that center and precede rotation.
-pub(crate) fn layer_transform(frame: [f64; 4], rotation: f64, flip: [bool; 2]) -> Transform {
+pub fn layer_transform(frame: [f64; 4], rotation: f64, flip: [bool; 2]) -> Transform {
     let [x, y, width, height] = frame;
     let (s, c) = (-rotation.to_radians()).sin_cos();
     let sx = if flip[0] { -1. } else { 1. };
@@ -17,4 +17,35 @@ pub(crate) fn layer_transform(frame: [f64; 4], rotation: f64, flip: [bool; 2]) -
         x + width / 2. - a * width / 2. - cc * height / 2.,
         y + height / 2. - b * width / 2. - d * height / 2.,
     ])
+}
+
+/// Recover the native centre-based frame from a rigid affine placement.
+pub fn frame_placement(
+    transform: Transform,
+    width: f64,
+    height: f64,
+) -> Option<([f64; 4], f64, [bool; 2])> {
+    let [a, b, c, d, x, y] = transform.0;
+    let determinant = a * d - b * c;
+    if [a, b, c, d, x, y].iter().any(|value| !value.is_finite())
+        || (a * a + b * b - 1.).abs() > 1e-12
+        || (c * c + d * d - 1.).abs() > 1e-12
+        || (a * c + b * d).abs() > 1e-12
+        || (determinant.abs() - 1.).abs() > 1e-12
+    {
+        return None;
+    }
+    let flip = determinant < 0.;
+    let sign = if flip { -1. } else { 1. };
+    let rotation = -(b * sign).atan2(a * sign).to_degrees();
+    Some((
+        [
+            x - width / 2. + a * width / 2. + c * height / 2.,
+            y - height / 2. + b * width / 2. + d * height / 2.,
+            width,
+            height,
+        ],
+        rotation,
+        [flip, false],
+    ))
 }

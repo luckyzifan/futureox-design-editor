@@ -5,6 +5,18 @@ export function includesMaterials(active:readonly string[]|undefined, wanted:rea
   return !!active && wanted.every(key=>active.includes(key))
 }
 
+/** Replace a costly pending conversion when a zoom now needs a small subset. */
+export function smallerMaterialRequest(items:readonly SourceCanvasItem[],pending:readonly string[],next:readonly string[]) {
+  if(!next.length||pending.length<6||next.length*3>pending.length||!includesMaterials(pending,next))return false
+  const old=new Set(pending),needed=new Set(next)
+  let previousBytes=0,nextBytes=0
+  for(const item of items){
+    if(old.has(item.key))previousBytes+=item.bytes
+    if(needed.has(item.key))nextBytes+=item.bytes
+  }
+  return previousBytes>=12*1024*1024&&nextBytes*3<=previousBytes
+}
+
 /** Keep already prepared neighbours across a viewport edge. Explicit page
  * and material choices retain their requested scope. Source order and
  * ownership are still resolved by the native session. */

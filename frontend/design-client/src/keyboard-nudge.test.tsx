@@ -150,8 +150,72 @@ test('fractional movement under scaled/rotated parents, vector movement and dime
   await act(async () => editor.undo()); expect(editor.state.doc).toEqual(vectorBefore)
 })
 
-test('camera arrows keep the existing pan units and no document undo history', async () => {
+test('empty-selection arrows do not pan, with or without Shift, and do not write history', async () => {
+  shortcutPreference.set('figma-like')
   const before = await render([])
-  await act(async () => { nudgePreference.set({ small: .25, big: 2.5 }); key('ArrowLeft'); key('ArrowDown', { shiftKey: true }) })
-  expect(editor.state.view).toEqual({ x: 20, y: -100, zoom: 1 }); expect(editor.state.doc).toBe(before); expect(editor.canUndo).toBe(false)
+  await act(async () => { editor.set({ tool: 'frame', view: { x: 12, y: -4, zoom: 2 } }); nudgePreference.set({ small: 1, big: 10 }) })
+  const view = { ...editor.state.view }
+  await act(async () => {
+    key('ArrowRight'); key('ArrowLeft'); key('ArrowUp'); key('ArrowDown', { shiftKey: true })
+  })
+  expect(editor.state.view).toEqual(view)
+  expect(editor.state.doc).toBe(before)
+  expect(editor.canUndo).toBe(false)
+})
+
+test('Enter selects both children of a group and Shift+Enter selects the group', async () => {
+  shortcutPreference.set('figma-like')
+  const group = node('group', 40, 40, 200, 80), a = node('rectangle', 10, 10, 40, 40), b = node('ellipse', 80, 10, 36, 36)
+  group.children = [a.id, b.id]
+  const before = await render([group, a, b], [group.id])
+  await act(async () => editor.select([group.id]))
+  await act(async () => key('Enter'))
+  expect(editor.state.selection).toHaveLength(2)
+  expect(new Set(editor.state.selection)).toEqual(new Set([a.id, b.id]))
+  await act(async () => key('Enter', { shiftKey: true }))
+  expect(editor.state.selection).toEqual([group.id])
+  expect(editor.state.doc).toBe(before)
+  expect(editor.canUndo).toBe(false)
+})
+
+test('Figma defaults nudge 1px and Shift+arrow 10px as one undo each', async () => {
+  shortcutPreference.set('figma-like')
+  const n = node('rectangle', 20, 40, 100, 80), before = await render([n])
+  await act(async () => editor.select([n.id]))
+  await act(async () => { key('ArrowRight'); key('ArrowRight', {}, 'keyup') })
+  expect(editor.state.doc.nodes[n.id].transform[4]).toBe(21)
+  await act(async () => { key('ArrowDown', { shiftKey: true }); key('ArrowDown', { shiftKey: true }, 'keyup') })
+  expect(editor.state.doc.nodes[n.id].transform[5]).toBe(50)
+  await act(async () => editor.undo()); await act(async () => editor.undo())
+  expect(editor.state.doc).toEqual(before); expect(editor.canUndo).toBe(false)
+})
+
+test('Delete and Backspace remove the selection and undo restores it', async () => {
+  shortcutPreference.set('figma-like')
+  const n = node('rectangle', 20, 40, 40, 40), before = await render([n])
+  await act(async () => editor.select([n.id]))
+  await act(async () => key('Backspace'))
+  expect(editor.state.doc.nodes[n.id]).toBeUndefined()
+  await act(async () => editor.undo()); expect(editor.state.doc).toEqual(before)
+  await act(async () => { editor.select([n.id]); key('Delete') })
+  expect(editor.state.doc.nodes[n.id]).toBeUndefined()
+  await act(async () => editor.undo()); expect(editor.state.doc).toEqual(before)
+})
+
+test('Cmd+A selects entered siblings, and bracket keys reorder inside the parent', async () => {
+  shortcutPreference.set('figma-like')
+  const frame = node('frame', 0, 0, 400, 300), a = node('rectangle', 20, 30, 40, 40), b = node('rectangle', 80, 30, 40, 40), outside = node('rectangle', 500, 30, 40, 40)
+  frame.children = [a.id, b.id]
+  await render([frame, a, b, outside], [frame.id, outside.id])
+  await act(async () => editor.select([a.id]))
+  await act(async () => key('a', { metaKey: true }))
+  expect(editor.state.selection).toEqual([a.id, b.id])
+  await act(async () => editor.select([frame.id]))
+  await act(async () => key('a', { metaKey: true }))
+  expect(editor.state.selection).toEqual([frame.id, outside.id])
+  await act(async () => editor.select([a.id]))
+  await act(async () => key(']', { code: 'BracketRight' }))
+  expect(editor.state.doc.nodes[frame.id].children).toEqual([b.id, a.id])
+  await act(async () => key('[', { code: 'BracketLeft' }))
+  expect(editor.state.doc.nodes[frame.id].children).toEqual([a.id, b.id])
 })

@@ -1,4 +1,5 @@
 import { animation_plan_json } from './generated/design-kernel/design_kernel'
+import { resolvePrototypeMotion } from './prototype-motion'
 import type { DesignDocument } from './model'
 import { variableValue } from './design-system'
 import { evaluate, tick, validateLogicActions, type Expr } from './prototype-logic'
@@ -34,7 +35,7 @@ export type PrototypeMediaAction =
   | 'next'
   | 'forward'
   | 'rewind'
-export type PrototypeTransitionStyle = 'none'|'slide-left'|'slide-right'|'slide-top'|'slide-bottom'
+export type PrototypeTransitionStyle = 'none'|'dissolve'|'slide-left'|'slide-right'|'slide-top'|'slide-bottom'
 export type PrototypeAction = {
   transitionStyle?: PrototypeTransitionStyle
   kind: 'navigate' | 'overlay' | 'back' | 'close-overlay' | 'scroll-to' | 'set-variable' | 'if'
@@ -103,6 +104,13 @@ export function hasSchemaExtras(a: PrototypeAction): boolean {
     a.transitionEasingVar
   )
 }
+/** Easing curves, overlay placement, and schema extras need schema 12 before the kernel will admit them. */
+export function prototypeNeedsSchema12(doc: DesignDocument): boolean {
+  const walk = (actions: PrototypeAction[]): boolean => actions.some(action =>
+    action.easingCurve !== undefined || action.overlayPosition !== undefined || hasSchemaExtras(action) ||
+    walk(action.thenActions || []) || walk(action.elseActions || []))
+  return Object.values(doc.prototype?.interactions || {}).some(events => events.some(event => walk(event.actions)))
+}
 export type Interaction = {
   trigger: 'click' | 'hover' | 'leave' | 'after-delay'
   actions: PrototypeAction[]
@@ -150,6 +158,8 @@ export type PrototypeState = {
   navigation?: { serial: number; preserveScroll: boolean }
   scrollTarget?: string
   scrollRequest?: number
+  /** Set when a smart-animate plan could not be built. The player crossfades opacity instead of sampling. */
+  transitionFallback?: 'opacity'
   transitionStyle?: PrototypeTransitionStyle
   transitionFrom?: string
   transitionSerial?: number
@@ -292,21 +302,26 @@ export function prototypeEvent(
         return variableValue(system, id)
       }
       if (['navigate', 'back', 'overlay', 'scroll-to'].includes(a.kind)) {
-        const duration = a.transitionDurationVar ? variable(a.transitionDurationVar) : a.durationMs ?? 0
-        if (typeof duration !== 'number' || !Number.isFinite(duration) || duration < 0 || duration > 10000)
+        const authoredDuration = a.transitionDurationVar ? variable(a.transitionDurationVar) : a.durationMs
+        if (authoredDuration !== undefined && (typeof authoredDuration !== 'number' || !Number.isFinite(authoredDuration) || authoredDuration < 0 || authoredDuration > 10000))
           throw new Error('过渡时长变量必须为 0–10000 毫秒')
-        const easing = a.transitionEasingVar ? variable(a.transitionEasingVar) : a.easingCurve
-        if (easing !== undefined && !isPrototypeEasing(easing)) throw new Error('过渡曲线变量不是支持的曲线名称')
-        next.transitionMs = duration
-        next.transitionEasing = easing
+        const authoredEasing = a.transitionEasingVar ? variable(a.transitionEasingVar) : a.easingCurve
+        if (authoredEasing !== undefined && !isPrototypeEasing(authoredEasing)) throw new Error('过渡曲线变量不是支持的曲线名称')
+        const motion = resolvePrototypeMotion(a, typeof authoredDuration === 'number' ? authoredDuration : undefined, authoredEasing)
+        next.transitionMs = motion.durationMs
+        next.transitionEasing = motion.easing
       }
       const navigate = (target: string, style = a.transitionStyle) => {
         next.transitionFrom = next.current
         next.transitionStyle = style
         next.transitionSerial = (next.transitionSerial ?? 0) + 1
         if (style === 'none') next.transitionMs = 0
-        next.transition = style || a.transitionShouldSmartAnimate === false
+        next.transitionFallback = undefined
+        const planned = style || a.transitionShouldSmartAnimate === false
           ? undefined : planTransition(doc, next.current, target)
+        next.transition = planned
+        if (!planned && !style && a.transitionShouldSmartAnimate !== false && next.transitionMs > 0)
+          next.transitionFallback = 'opacity'
         next.current = target
         next.overlays = []; next.overlayPositions = []
         next.scrollTarget = undefined
@@ -327,7 +342,7 @@ export function prototypeEvent(
           if (next.history.length) {
             const target = next.history.pop()!
             const previous = next.historyTransitions?.pop()
-            const reverse: Partial<Record<PrototypeTransitionStyle,PrototypeTransitionStyle>> = {'slide-left':'slide-right','slide-right':'slide-left','slide-top':'slide-bottom','slide-bottom':'slide-top',none:'none'}
+            const reverse: Partial<Record<PrototypeTransitionStyle,PrototypeTransitionStyle>> = {'slide-left':'slide-right','slide-right':'slide-left','slide-top':'slide-bottom','slide-bottom':'slide-top',none:'none',dissolve:'dissolve'}
             if (previous && a.durationMs === undefined) next.transitionMs=previous.duration
             if (previous && a.easingCurve === undefined) next.transitionEasing=previous.easing
             navigate(target,a.transitionStyle ?? (previous?.style ? reverse[previous.style] : undefined))
@@ -376,13 +391,19 @@ export function prototypeEvent(
  * player falls back to its CSS enter animation). */
 function planTransition(doc: DesignDocument, from: string, to: string) {
   if (from === to || !doc.nodes[from] || !doc.nodes[to]) return undefined
-  const plan = JSON.parse(animation_plan_json(JSON.stringify(doc), JSON.stringify(doc), from, to))
-  return {
-    from, to,
-    magicMove: (plan.magicMove as [string,number[],number[]][]).map(([id,from,to])=>({id,from,to})),
-    dissolveStart: plan.dissolveStart as string[],
-    dissolveEnd: plan.dissolveEnd as string[],
-    frameDelta: plan.framePairDragTranslationDelta as [number,number],
+  try {
+    const plan = JSON.parse(animation_plan_json(JSON.stringify(doc), JSON.stringify(doc), from, to))
+    if (!plan || !Array.isArray(plan.magicMove) || !Array.isArray(plan.dissolveStart) || !Array.isArray(plan.dissolveEnd)) return undefined
+    return {
+      from, to,
+      magicMove: (plan.magicMove as [string,number[],number[]][]).map(([id,from,to])=>({id,from,to})),
+      dissolveStart: plan.dissolveStart as string[],
+      dissolveEnd: plan.dissolveEnd as string[],
+      frameDelta: plan.framePairDragTranslationDelta as [number,number],
+    }
+  } catch {
+    // A failed smart-animate plan must not cancel the navigation itself.
+    return undefined
   }
 }
 

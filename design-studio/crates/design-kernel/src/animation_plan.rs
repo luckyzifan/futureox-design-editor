@@ -485,7 +485,7 @@ mod tests {
             id: "d".into(),
             name: "d".into(),
             pages: Vec::new(),
-            nodes: BTreeMap::new(),
+            nodes: Default::default(),
             fonts: BTreeMap::new(),
             animations: Vec::new(),
         };

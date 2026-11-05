@@ -2,6 +2,7 @@ import { dispatchEditorCommand } from './editor-commands'
 import { LayerRowsCache } from './layer-tree'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { PageList } from './PageList'
+import { userPages } from './fig-document'
 import { AssetsPanel } from './AssetsPanel'
 import { memo, useMemo, useState, useSyncExternalStore, useRef, useEffect, useId } from 'react'
 import {
@@ -48,7 +49,9 @@ import { DraftInput } from './DraftInput'
 import { layerSelection } from './layer-selection'
 import { layerDropPlan, layerDropPosition, orderedLayerRoots, type LayerDropPosition } from './layer-drop'
 import type { WorkspaceSection } from './EditorChrome'
+import { useInterfaceText } from './interface-preference'
 export function Layers({ editor, section, onSection, showPages=true }: { editor: Editor; section?: WorkspaceSection; onSection?: (section: WorkspaceSection) => void; showPages?:boolean }) {
+  const text = useInterfaceText()
   const s = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
   const renderSession = editor.sessionGeneration
   const [localTab, setLocalTab] = useState<WorkspaceSection>('layers')
@@ -222,31 +225,31 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
     return layerDropPlan(editor.state.doc, editor.state.page, payload.ids, id, position, editor.parentMap())
   }
   return (
-    <aside className="layers-panel" style={{ width: panelWidth }} aria-label={tab === 'assets' ? '组件资源' : '页面与图层'}>
+    <aside className="layers-panel" style={{ width: panelWidth }} aria-label={tab === 'assets' ? text.componentAssetsLabel : text.pagesAndLayersLabel}>
       <div className="workspace-title">
         <span className="workspace-icon">F</span>
         <div>
-          <b>本机工作空间</b>
+          <b>{text.localWorkspace}</b>
           <small>{s.doc.name}</small>
         </div>
       </div>
       {showPages&&<><PageList editor={editor} onRename={renameIntendedPage} />
       <div className="pages-actions">
         <button
-          title="删除当前页面"
-          disabled={s.doc.pages.length === 1}
+          title={text.deletePageTitle}
+          disabled={userPages(s.doc).length === 1}
           onClick={() => {
             if (editor.interactionActive || editor.state.busy) return
-            if (confirm('删除当前页面及其所有图层？可通过撤销恢复。') &&
+            if (confirm(text.deletePageConfirm) &&
                 !editor.interactionActive && !editor.state.busy) editor.removePage()
           }}
         >
           <Trash2 size={12} />
-          删除页面
+          {text.deletePage}
         </button>
       </div></>}
       <div className="layer-heading">
-        <div role="tablist" aria-label="侧栏内容" style={{ display: 'contents' }}>
+        <div role="tablist" aria-label={text.sidebarContent} style={{ display: 'contents' }}>
           {(['layers', 'assets'] as const).map((name, index) => <button key={name} type="button"
             id={`${tabId}-${name}-tab`} role="tab" aria-selected={tab === name} aria-pressed={tab === name}
             aria-controls={`${tabId}-${name}-panel`} tabIndex={tab === name ? 0 : -1}
@@ -257,9 +260,9 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
               if (!next) return
               event.preventDefault(); event.stopPropagation()
               if (setTab(next)) document.getElementById(`${tabId}-${next}-tab`)?.focus()
-            }}>{name === 'layers' ? '图层' : '组件'}</button>)}
+            }}>{name === 'layers' ? text.layerTree : text.componentsTab}</button>)}
         </div>
-        <button title="折叠全部图层" onClick={() => {
+        <button title={text.collapseAllLayers} onClick={() => {
           const parents = editor.parentMap(s.doc), keep = new Set(s.selection)
           for (const id of s.selection) for (let parent = parents.get(id); parent && s.doc.nodes[parent]; parent = parents.get(parent)) keep.add(parent)
           setCollapsed(old => new Set([...old, ...Object.values(s.doc.nodes).filter(n => n.children.length && !keep.has(n.id)).map(n => n.id)]))
@@ -275,8 +278,8 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
       <label className="layer-search" style={{ display: tab === 'assets' ? 'none' : undefined }}>
         <Search size={13} />
         <input
-          aria-label="搜索图层"
-          placeholder="搜索图层…"
+          aria-label={text.searchLayers}
+          placeholder={text.searchLayersPlaceholder}
           value={search}
           onChange={(e) => {
             setSearch(e.target.value)
@@ -287,7 +290,7 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
       </label>
       <div
         className="layer-list"
-        role="tree" aria-label="图层" aria-multiselectable="true"
+        role="tree" aria-label={text.layerTree} aria-multiselectable="true"
         style={{ display: tab === 'assets' ? 'none' : undefined }}
         ref={list}
         onScroll={(e) => setScroll(e.currentTarget.scrollTop)}
@@ -414,13 +417,10 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
                   if (!editor.state.selection.includes(id)) editor.select([id])
                   setContext({ x: event.clientX, y: event.clientY, id })
                 }}
-                onDoubleClick={() => {
-                  if (commitPendingEdits(editor)) setRenaming(id)
-                }}
               >
                 <button
                   className="disclosure"
-                  aria-label={`${collapsed.has(id) ? '展开' : '折叠'} ${n.name}`}
+                  aria-label={`${collapsed.has(id) ? text.expandLayer : text.collapseLayer} ${n.name}`}
                   tabIndex={-1}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -447,15 +447,16 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
                 {renaming === id ? <span className="layer-name layer-rename" onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}
                   onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Escape') setRenaming(null) }}
                   onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node) && commitPendingEdits(editor)) setRenaming(null) }}>
-                  <DraftInput key={`${editor.sessionGeneration}:${id}`} editor={editor} aria-label="重命名图层" autoFocus value={n.name}
+                  <DraftInput key={`${editor.sessionGeneration}:${id}`} editor={editor} aria-label={text.renameLayer} autoFocus value={n.name}
                     normalize={(value) => value.trim()} validate={(value) => !!value}
                     onCommit={(value) => { editor.update([id], { name: value }, '重命名图层'); setRenaming(null) }} />
-                </span> : <span className="layer-name">
+                </span> : <span className="layer-name" onDoubleClick={(event) => { event.stopPropagation(); if (commitPendingEdits(editor)) setRenaming(id) }}>
                   {n.mask ? '◐ ' : ''}
                   {n.name}
                 </span>}
                 <button
-                  title={n.locked ? '解锁图层' : '锁定图层'}
+                  title={n.locked ? text.unlockLayer : text.lockLayer}
+                  onDoubleClick={(event) => event.stopPropagation()}
                   className={n.locked ? 'always' : ''}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -465,7 +466,8 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
                   {n.locked ? <Lock size={11} /> : <Unlock size={11} />}
                 </button>
                 <button
-                  title={n.visible ? '隐藏图层' : '显示图层'}
+                  title={n.visible ? text.hideLayer : text.showLayer}
+                  onDoubleClick={(event) => event.stopPropagation()}
                   className={!n.visible ? 'always' : ''}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -483,14 +485,14 @@ export function Layers({ editor, section, onSection, showPages=true }: { editor:
       <div className="layer-footer">
         <button onClick={() => editor.group()} disabled={!s.selection.length}>
           <LayersIcon size={14} />
-          编组
+          {text.groupLayers}
         </button>
         <button onClick={() => editor.duplicate()} disabled={!s.selection.length}>
           <Copy size={14} />
-          复制
+          {text.duplicateLayers}
         </button>
       </div>
-      <div className="panel-resizer" role="separator" aria-label="调整图层面板宽度" aria-orientation="vertical"
+      <div className="panel-resizer" role="separator" aria-label={text.resizeLayers} aria-orientation="vertical"
         aria-valuemin={200} aria-valuemax={360} aria-valuenow={panelWidth} tabIndex={0}
         onKeyDown={(event) => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); event.stopPropagation(); setPanelWidth((width) => Math.max(200, Math.min(360, width + (event.key === 'ArrowRight' ? 10 : -10)))) } }}
         onPointerDown={(event) => { if (event.button !== 0) return; event.preventDefault(); resizeStart.current = { x: event.clientX, width: panelWidth }; event.currentTarget.setPointerCapture(event.pointerId) }}

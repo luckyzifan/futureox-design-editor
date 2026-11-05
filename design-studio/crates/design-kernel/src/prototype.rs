@@ -349,7 +349,7 @@ pub fn validate(doc: &Document) -> Result<(), String> {
             while let Some(a) = pending.pop() {
                 if let Some(branch) = &a.then_actions { pending.extend(branch); }
                 if let Some(branch) = &a.else_actions { pending.extend(branch); }
-                if a.transition_style.as_deref().is_some_and(|v|doc.schema_version<20 || !["none","slide-left","slide-right","slide-top","slide-bottom"].contains(&v) || !matches!(a.kind.as_str(),"navigate"|"back")) {return Err("Invalid directional prototype transition".into());}
+                if a.transition_style.as_deref().is_some_and(|v|doc.schema_version<20 || !["none","dissolve","slide-left","slide-right","slide-top","slide-bottom"].contains(&v) || !matches!(a.kind.as_str(),"navigate"|"back")) {return Err("Invalid directional prototype transition".into());}
                 if a.duration_ms > 10000 {
                     return Err("Prototype transition too long".into());
                 }

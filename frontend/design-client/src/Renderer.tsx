@@ -44,7 +44,7 @@ function Color({ paint: p, id, n }: { paint: Paint; id: string; n: DesignNode })
     )
   if (p.kind === 'radial')
     return (
-      <radialGradient id={id} gradientTransform={p.transform?matrixString(p.transform):undefined}>
+      <radialGradient id={id} gradientTransform={p.transform?matrixString(p.transform):undefined} colorInterpolation="sRGB">
         {p.stops.map((s, i) => (
           <stop key={i} offset={s.offset} stopColor={s.color} />
         ))}
@@ -79,7 +79,7 @@ function Filter({ id, effects }: { id: string; effects: Effect[] }) {
     const out = `fx${i}`,
       alpha = `a${i}`
     if (e.kind === 'color-controls' && e.colorControls)
-      children.push(<feColorMatrix key={i} in={input} type="matrix" colorInterpolationFilters={e.colorControls.space ? "sRGB" : "linearRGB"} values={colorControlValues(e.colorControls)} result={out} />)
+      children.push(<feColorMatrix key={i} in={input} type="matrix" colorInterpolationFilters="sRGB" values={colorControlValues(e.colorControls)} result={out} />)
     else if (e.kind === 'blur' || e.kind === 'gaussian-blur')
       children.push(
         <feGaussianBlur key={i} in={input} stdDeviation={Math.max(0, e.radius) / (e.kind==='gaussian-blur'?1:2)} result={out} />,
@@ -442,7 +442,7 @@ export function Scene({ doc, pageId, viewport, exporting = false, retainedNodeId
                     colorInterpolationFilters="sRGB"
                   >
                     <feGaussianBlur stdDeviation={Math.max(0, background.radius) / 2} />
-                    {background.colorControls && <feColorMatrix type="matrix" colorInterpolationFilters={background.colorControls.space ? "sRGB" : "linearRGB"} values={colorControlValues(background.colorControls)} />}
+                    {background.colorControls && <feColorMatrix type="matrix" colorInterpolationFilters="sRGB" values={colorControlValues(background.colorControls)} />}
                     {background.kind === 'glass' && (
                       <>
                         <feTurbulence
@@ -463,7 +463,7 @@ export function Scene({ doc, pageId, viewport, exporting = false, retainedNodeId
                       </>
                     )}
                   </filter>
-                  <linearGradient id={`glass-light-${id}`} x1="0" y1="0" x2="1" y2="1">
+                  <linearGradient id={`glass-light-${id}`} x1="0" y1="0" x2="1" y2="1" colorInterpolation="sRGB">
                     <stop stopColor="white" stopOpacity=".65" />
                     <stop offset=".45" stopColor="white" stopOpacity=".02" />
                     <stop offset="1" stopColor="white" stopOpacity=".3" />

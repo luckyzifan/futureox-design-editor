@@ -1,13 +1,22 @@
 import { prototypeFrameView } from './prototype'
 import { animation_plan_sample_json } from './generated/design-kernel/design_kernel'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { DesignDocument } from './model'
 import { KernelSurface } from './kernel/Surface'
+import { KernelClient } from './kernel/client'
+import { desktopBridge } from './desktop'
+import {
+  encodeDesktopFrames,
+  MOTION_PREVIEW_FPS,
+  motionPreviewTimes,
+  useVideoEncodeAvailable,
+} from './motion-video'
 import { kernelLayout } from './kernel/picking'
 import { allParents, scene } from './geometry'
 import { createAnimationBakeSession, kernelBakeRevision, type KernelAnimationBakeSession } from './kernel/bake-session'
 import { initialPrototype, prototypeEase, prototypeEvent, prototypeDocument, type Interaction } from './prototype'
 import { animatePrototypeScroll } from './prototype-scroll'
+import { framesNeedLightweightMotion, lightenPrototypeMotion, reducedMotionRequested, startTransitionClock } from './prototype-motion'
 
 export function PrototypePlayer({
   document: source,
@@ -17,27 +26,25 @@ export function PrototypePlayer({
   onClose: () => void
 }) {
   const [state, setState] = useState(() => initialPrototype(source)),
-    [error, setError] = useState('')
+    [error, setError] = useState(''),
+    [exporting, setExporting] = useState(false),
+    [videoAsset, setVideoAsset] = useState<{ url: string; name: string } | null>(null)
+  const videoReady = useVideoEncodeAvailable()
   const scroll = useRef<HTMLDivElement>(null),
     snapshot = useRef(source)
+  snapshot.current = source
   // Preview deliberately owns an immutable design version and temporary values.
   const [progress, setProgress] = useState(1)
   const transition = state.transition
+  const lightweight = !!state.transitionFallback || (!!transition && framesNeedLightweightMotion(snapshot.current, transition.from, transition.to))
   useLayoutEffect(() => {
-    if ((!transition && !state.transitionStyle?.startsWith('slide-')) || !state.transitionMs) { setProgress(1); return }
+    const crossfade = lightweight || state.transitionStyle === 'dissolve' || !!state.transitionStyle?.startsWith('slide-')
+    if ((!transition && !crossfade) || !state.transitionMs || reducedMotionRequested()) { setProgress(1); return }
     setProgress(0)
-    const start = performance.now()
-    let request = 0
-    const tick = (now: number) => {
-      const t = Math.max(0, Math.min(1, (now-start)/state.transitionMs))
-      setProgress(t)
-      if (t < 1) request = requestAnimationFrame(tick)
-    }
-    request = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(request)
-  }, [transition, state.transitionMs, state.transitionSerial, state.transitionStyle])
+    return startTransitionClock(state.transitionMs, setProgress)
+  }, [lightweight, transition, state.transitionMs, state.transitionSerial, state.transitionStyle, state.transitionFallback])
   const valuesKey = JSON.stringify([state.values, state.modeValues])
-  const settled = useMemo(() => kernelLayout(prototypeDocument(snapshot.current, state)), [valuesKey])
+  const settled = useMemo(() => kernelLayout(prototypeDocument(source, state)), [source, valuesKey])
   // One bake per (document, from, to) transition through the kernel's stateful
   // bake session (plan cache + in-flight mutex); per-frame ticks only sample.
   // The stateless per-frame sampler below stays as the fallback when the
@@ -47,36 +54,38 @@ export function PrototypePlayer({
   // already freed) WASM session before its effect installs the new owner.
   const bakeSession = bake?.document === settled && bake.transition === transition ? bake.session : null
   useEffect(() => {
-    if (!transition || !state.transitionMs) { setBake(null); return }
+    if (!transition || !state.transitionMs || lightweight) { setBake(null); return }
     const session = createAnimationBakeSession()
     if (!session) { setBake(null); return }
     try {
       const json = JSON.stringify(settled)
       session.bake(json, json, transition.from, transition.to, kernelBakeRevision(settled))
-    } catch (error) {
+    } catch {
       session.free()
       setBake(null)
-      setError(`原型动画准备失败：${String(error)}`)
       return
     }
     setBake({ document: settled, transition, session })
     // free() drops the session's guard, releasing the frame pair.
     return () => session.free()
-  }, [settled, transition, state.transitionMs])
+  }, [settled, transition, state.transitionMs, lightweight])
   const sampled = useMemo(() => {
     try {
-      if (!transition || !state.transitionMs) return { document: settled, error: '' }
+      if (!transition || !state.transitionMs || lightweight) return { document: settled, error: '' }
       // Time remains [0,1]; eased position may overshoot. The kernel clamps
       // opacity and dimensions independently, preserving spring movement.
       const eased = prototypeEase(state.transitionEasing, progress)
-      return { document: progress < 1
-        ? JSON.parse(bakeSession
-          ? bakeSession.sample_json(eased)
-          : animation_plan_sample_json(JSON.stringify(settled),transition.from,transition.to,eased)) as DesignDocument
-        : settled, error: '' }
+      const parsed = JSON.parse(bakeSession
+        ? bakeSession.sample_json(eased)
+        : animation_plan_sample_json(JSON.stringify(settled),transition.from,transition.to,eased)) as DesignDocument
+      // Open interval only. Endpoints stay on the authored document so glass
+      // and blur settle at their saved values. The cap is a preview composite,
+      // not a document edit and not a raster-budget change.
+      const document = progress > 0 && progress < 1 ? lightenPrototypeMotion(parsed) : progress < 1 ? parsed : settled
+      return { document, error: '' }
     }
-    catch (error) { return { document: settled, error: `原型过渡失败：${String(error)}` } }
-  }, [settled,transition,progress,bakeSession])
+    catch { return { document: settled, error: '' } }
+  }, [settled,transition,progress,bakeSession,lightweight,state.transitionEasing,state.transitionMs])
   const doc = sampled.document
   const current = state.current,
     n = doc.nodes[current],
@@ -147,12 +156,63 @@ export function PrototypePlayer({
   }, [state.scrollTarget, state.current, state.scrollRequest])
   // Hide unrelated roots/siblings while retaining definitions for component resolution.
   const visibleDoc = useMemo(() => prototypeFrameView(doc,current).document, [doc,current])
+  useEffect(() => () => {
+    if (videoAsset) URL.revokeObjectURL(videoAsset.url)
+  }, [videoAsset])
+  async function exportTransition(format: 'mp4' | 'webm') {
+    const bridge = desktopBridge()?.videoEncode
+    if (!bridge || !transition || !state.transitionMs) {
+      setError('需要一次智能动画过渡。滑动仍是界面位移，不进入 FFmpeg。')
+      return
+    }
+    const client = new KernelClient()
+    setExporting(true)
+    try {
+      const times = motionPreviewTimes(state.transitionMs)
+      const destination = prototypeFrameView(settled, transition.to)
+      const box = scene(destination.document, destination.pageId).find(entry => entry.id === transition.to)?.bounds
+        || { x: 0, y: 0, width: settled.nodes[transition.to]?.width || 1, height: settled.nodes[transition.to]?.height || 1 }
+      const fitted = Math.min(960 / Math.max(1, box.width), 540 / Math.max(1, box.height), 1)
+      const width = Math.max(2, Math.ceil(box.width * fitted))
+      const height = Math.max(2, Math.ceil(box.height * fitted))
+      const camera = { x: -box.x * fitted, y: -box.y * fitted, zoom: fitted }
+      const settledJson = JSON.stringify(settled)
+      const frames: Uint8Array[] = []
+      for (const timeMs of times) {
+        const progress = Math.min(1, timeMs / Math.max(1, state.transitionMs))
+        const eased = prototypeEase(state.transitionEasing, progress)
+        const sampled = JSON.parse(animation_plan_sample_json(settledJson, transition.from, transition.to, eased)) as DesignDocument
+        const view = prototypeFrameView(sampled, transition.to)
+        const rendered = await client.render(view.document, {
+          pageId: view.pageId,
+          width,
+          height,
+          view: camera,
+          grid: false,
+          transparent: false,
+          rasterProfile: source.rasterProfile || 'analytic',
+        }, true)
+        frames.push(rendered.bytes)
+      }
+      const encoded = await encodeDesktopFrames(bridge, { format, fps: MOTION_PREVIEW_FPS, frames })
+      setVideoAsset({
+        url: URL.createObjectURL(new Blob([encoded.bytes], { type: encoded.mime })),
+        name: `prototype-transition.${format}`,
+      })
+      setError('')
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : String(exportError))
+    } finally {
+      client.dispose()
+      setExporting(false)
+    }
+  }
   return (
     <div className="feature-backdrop">
-      <div className="prototype-player" data-transition-progress={progress} data-transition-ms={state.transitionMs} data-transition-easing={state.transitionEasing || 'linear'} data-animation-plan={transition ? (bakeSession ? "kernel-baked" : "kernel") : "none"} role="dialog" aria-label="交互原型预览">
+      <div className="prototype-player" data-transition-progress={progress} data-transition-ms={state.transitionMs} data-transition-easing={state.transitionEasing || 'linear'} data-transition-kind={transition ? 'smart' : lightweight ? 'fade' : state.transitionStyle === 'dissolve' ? 'dissolve' : state.transitionStyle?.startsWith('slide-') ? 'slide' : 'none'} data-animation-plan={lightweight ? 'opacity' : transition ? (bakeSession ? "kernel-baked" : "kernel") : "none"} role="dialog" aria-label="交互原型预览">
         <header>
           <strong>原型 · {n.name}</strong>
-          <button type="button" onClick={() => { setState(initialPrototype(snapshot.current)); setError(''); scroll.current?.scrollTo(0, 0) }}>
+          <button type="button" onClick={() => { setVideoAsset(null); setState(initialPrototype(snapshot.current)); setError(''); scroll.current?.scrollTo(0, 0) }}>
             重新开始
           </button>
           <button
@@ -166,8 +226,19 @@ export function PrototypePlayer({
           <button type="button" onClick={onClose}>
             关闭预览
           </button>
+          {videoReady && (
+            <>
+              <button type="button" disabled={exporting || !transition} title={transition ? '用打包的 FFmpeg 编码这次智能动画' : '先触发一次智能动画过渡'} onClick={() => void exportTransition('mp4')}>
+                导出过渡 MP4
+              </button>
+              <button type="button" disabled={exporting || !transition} title={transition ? '用打包的 FFmpeg 编码这次智能动画' : '先触发一次智能动画过渡'} onClick={() => void exportTransition('webm')}>
+                导出过渡 WebM
+              </button>
+            </>
+          )}
+          {videoAsset && <a href={videoAsset.url} download={videoAsset.name}>下载 {videoAsset.name}</a>}
         </header>
-        {(error || sampled.error) && <p role="alert">{error || sampled.error}</p>}
+        {error && <p role="alert">{error}</p>}
         <div style={{ position: 'relative' }}>
           <div
             ref={scroll}
@@ -180,8 +251,8 @@ export function PrototypePlayer({
               background: '#fff',
             }}
           >
-            {previous?.entry && state.transitionStyle?.startsWith('slide-') && progress<1 && <div key={state.transitionFrom} aria-hidden="true" style={{position:'absolute',inset:0,pointerEvents:'none'}}>
-              <KernelSurface document={previous.document} pageId={previous.pageId} width={Math.ceil(frame.width*zoom)} height={Math.ceil(frame.height*zoom)} view={{x:-previous.entry.bounds.x*zoom,y:-previous.entry.bounds.y*zoom,zoom}} grid={false}/>
+            {previous?.entry && progress<1 && (lightweight || state.transitionStyle?.startsWith('slide-') || state.transitionStyle === 'dissolve') && <div key={state.transitionFrom} aria-hidden="true" style={{position:'absolute',inset:0,pointerEvents:'none',opacity:state.transitionStyle==='dissolve'?1-slideProgress:lightweight?1-progress:1}}>
+              <StillFrame document={previous.document} pageId={previous.pageId} width={Math.ceil(frame.width*zoom)} height={Math.ceil(frame.height*zoom)} x={-previous.entry.bounds.x*zoom} y={-previous.entry.bounds.y*zoom} zoom={zoom}/>
             </div>}
             <div
               key={current}
@@ -190,21 +261,22 @@ export function PrototypePlayer({
                 width: frame.width * zoom,
                 height: frame.height * zoom,
                 transform: `translate(${slideOffset})`,
+                opacity: state.transitionStyle === 'dissolve' && progress < 1 ? slideProgress : lightweight && progress < 1 ? progress : 1,
                 background: '#fff',
               }}
             >
-              <KernelSurface
+              <StillFrame
                 document={visibleDoc}
                 pageId={page.id}
                 width={Math.ceil(frame.width * zoom)}
                 height={Math.ceil(frame.height * zoom)}
-                view={{ x: -frame.x * zoom, y: -frame.y * zoom, zoom }}
-                grid={false}
+                x={-frame.x * zoom}
+                y={-frame.y * zoom}
+                zoom={zoom}
               />
               {entries
                 .filter((e) => descendants.has(e.id) && doc.prototype?.interactions[e.id]?.length)
                 .map((e) => {
-                  const m = e.matrix
                   return (
                     <button
                       type="button"
@@ -213,12 +285,11 @@ export function PrototypePlayer({
                       className="prototype-hotspot"
                       style={{
                         position: 'absolute',
-                        left: 0,
-                        top: 0,
-                        width: doc.nodes[e.id].width,
-                        height: doc.nodes[e.id].height,
-                        transformOrigin: '0 0',
-                        transform: `matrix(${m[0] * zoom},${m[1] * zoom},${m[2] * zoom},${m[3] * zoom},${(m[4] - frame.x) * zoom},${(m[5] - frame.y) * zoom})`,
+                        left: (e.bounds.x - frame.x) * zoom,
+                        top: (e.bounds.y - frame.y) * zoom,
+                        width: Math.max(1, e.bounds.width * zoom),
+                        height: Math.max(1, e.bounds.height * zoom),
+                        zIndex: 2,
                       }}
                       disabled={state.overlays.length > 0 || progress < 1}
                       onClick={() => dispatch(e.id, 'click')}
@@ -255,6 +326,18 @@ export function PrototypePlayer({
     </div>
   )
 }
+
+const StillFrame = memo(function StillFrame({ document, pageId, width, height, x, y, zoom }: {
+  document: DesignDocument
+  pageId: string
+  width: number
+  height: number
+  x: number
+  y: number
+  zoom: number
+}) {
+  return <KernelSurface document={document} pageId={pageId} width={width} height={height} view={{ x, y, zoom }} grid={false} />
+})
 
 function Overlay({
   doc,

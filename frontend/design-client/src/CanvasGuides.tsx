@@ -1,5 +1,6 @@
 import { utilityAction, runUtilityAction, ActionSource, CanvasAction, ActionReason, type UtilityAction } from './canvas-utility-action'
-import {useEffect,useRef,useState} from 'react'
+import {useEffect,useMemo,useRef,useState} from 'react'
+import type {SceneEntry} from './geometry'
 import type {Editor} from './engine'
 import type {CanvasCamera,CanvasSize} from './canvas-camera'
 import {screenToWorld} from './canvas-camera'
@@ -7,11 +8,11 @@ import {uid,type RulerGuide} from './model'
 import {guideOwner,guidePosition,worldGuides} from './ruler-guides'
 import {NumberField} from './fields'
 
-export function CanvasGuides({editor,view,size,intercept}:{editor:Editor;view:CanvasCamera;size:CanvasSize;intercept:(e:React.PointerEvent)=>boolean}){
+export function CanvasGuides({editor,view,size,entries,intercept}:{editor:Editor;view:CanvasCamera;size:CanvasSize;entries?:readonly SceneEntry[];intercept:(e:React.PointerEvent)=>boolean}){
   const host=useRef<HTMLDivElement>(null),[selected,setSelected]=useState<{owner:string;id:string}|null>(null)
   const active=useRef<{action:UtilityAction;pointer:number;session:number;page:string;owner:string;id:string;axis:'x'|'y';view:CanvasCamera;created:boolean;start:{x:number;y:number};moved:boolean}|null>(null)
   const doc=editor.state.doc,page=editor.state.page,shown=!!editor.state.rulers
-  const guides=shown?worldGuides(doc,page):[]
+  const guides = useMemo(() => shown ? worldGuides(doc,page,entries) : [], [shown,doc,page,entries])
   const selectedGuide=selected&&guideOwner(doc,selected.owner)?.guides?.find(g=>g.id===selected.id)
   const cancel=()=>{const d=active.current;active.current=null;if(d?.session===editor.sessionGeneration&&d.page===editor.state.page)editor.cancel();d?.action.cancel()}
   useEffect(()=>{cancel();setSelected(null)},[editor.sessionGeneration,page,shown])

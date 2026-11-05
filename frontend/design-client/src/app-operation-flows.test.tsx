@@ -218,7 +218,7 @@ test('source workset uses normal App panels and never enters FD recovery or brow
  const start=vi.spyOn(DesktopSession.prototype,'start'),save=vi.fn(async()=>{}),exportFile=vi.fn(async()=>{})
  Object.defineProperty(window,'coreDesktop',{configurable:true,value:{version:1,renderPolicy:{cpuOnly:true},
   onCommand:()=>()=>{},onCloseRequested:()=>()=>{},setDirty:async()=>({status:'ok'})}as unknown as DesktopBridge})
- const source:import('./LargeDocumentWorkspace').SourceWorkspace={editor:sourceEditor,ready:true,busy:false,locked:false,dirty:false,
+ const source:import('./LargeDocumentWorkspace').SourceWorkspace={prepareExport:open=>open(),editor:sourceEditor,ready:true,busy:false,locked:false,dirty:false,
   name:'Full source.sketch',notice:'Loaded board',error:'',canvas:{current:null},navigation:<nav>Source pages</nav>,showLayers:true,warnings:[],
   dismissWarnings(){},cancel(){},save,exportFile,leave:async()=>{},openFile:async()=>{}}
  await act(async()=>{root.render(<App sourceWorkspace={source}/>);for(let i=0;i<30;i++)await Promise.resolve()})

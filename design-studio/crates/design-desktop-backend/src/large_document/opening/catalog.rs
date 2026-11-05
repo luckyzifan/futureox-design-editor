@@ -209,6 +209,7 @@ impl<R: BufRead> Reader<'_, R> {
 }
 
 pub(in crate::large_document) struct Page {
+    part: usize,
     id: String,
     name: String,
     rows: Vec<(Item, Root)>,
@@ -266,14 +267,17 @@ pub(in crate::large_document) fn read_page(
         return Err(issue("Invalid source preview page"));
     }
     Ok(Page {
+        part: index,
         id,
         name: name.chars().take(160).collect(),
         rows,
     })
 }
 pub(super) fn indexed_pages(session:&super::super::Session,layout:canvas_layout::Layout,cancel:&AtomicBool)->Result<Vec<Page>>{
-    let mut pages:Vec<Page>=session.parts.iter().filter(|p|p.name.starts_with("pages/"))
-        .filter_map(|p|p.index.entries.first().filter(|e|e.kind=="page")).map(|p|Page{id:p.id.clone(),name:p.name.clone(),rows:vec![]}).collect();
+    let mut pages:Vec<Page>=canvas_layout::page_order(session)?.into_iter().map(|part|{
+        let p=&session.parts[part].index.entries[0];
+        Page{part,id:p.id.clone(),name:p.name.clone(),rows:vec![]}
+    }).collect();
     for item in layout.items{
         super::super::check_cancel(cancel).map_err(issue)?;
         let (part,index)=super::super::location(session,Some(&item.key))?;
@@ -285,6 +289,18 @@ pub(super) fn indexed_pages(session:&super::super::Session,layout:canvas_layout:
         page.rows.push((item,Root{part,start:span.start,len:span.len(),symbol}));
     }
     Ok(pages)
+}
+
+pub(super) fn order_pages(input: Vec<Page>, parts: &[super::Part], document: &serde_json::Value) -> Result<Vec<Page>> {
+    let Some(references) = document["pages"].as_array() else { return Ok(input); };
+    let mut available: std::collections::HashMap<_, _> = input.into_iter().map(|p| (parts[p.part].name.clone(), p)).collect();
+    let mut ordered = Vec::new();
+    for reference in references {
+        let name = reference["_ref"].as_str().ok_or_else(|| issue("Invalid source page reference"))?;
+        let path = format!("{}.json", name.trim_end_matches(".json"));
+        ordered.push(available.remove(&path).ok_or_else(|| issue("Missing or duplicate source page"))?);
+    }
+    Ok(ordered)
 }
 
 pub(super) fn assemble(input: Vec<Page>) -> Result<Catalog> {

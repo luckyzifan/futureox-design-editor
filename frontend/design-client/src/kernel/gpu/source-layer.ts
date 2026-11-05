@@ -32,7 +32,7 @@ export function radialCorners(node: GpuNode, paint: GpuPaint, phase: number) {
   if (values.every(v => Number.isFinite(v) && Math.abs(v) <= 8)) return values
 }
 
-export type SourceLayerProgram = { data: Float32Array[]; fields: SourceFilterField[] }
+export type SourceLayerProgram = { data: Float32Array[]; fields: SourceFilterField[]; transparentOnZeroFields:boolean }
 
 /** Pack normal, independent leaves for the display driver. A brush carries
  * its native interval program, inside/outside alignment and a material.
@@ -123,5 +123,7 @@ export function sourceLayer(node: GpuNode, programOffset: (path: PathMesh) => nu
   if (end > 56 || (end - 5) * 4 > availableFloats || (brushesEnd === 9 && !effects.length)) return
   const data = phases.map((words, i) => new Float32Array([i, node.opacity, brushesEnd, end,
     ...rectWords(node.rect), ...rectWords(node.fill.rect), fill, 0, 0, 0, ...words, ...shadows]))
-  return { data, fields }
+  // Without brushes, phases differ only in their index. Nonfinite shadow
+  // operands cannot justify omitting the original floating-point operations.
+  return { data, fields, transparentOnZeroFields:brushesEnd===9 && data[0].every(Number.isFinite) }
 }

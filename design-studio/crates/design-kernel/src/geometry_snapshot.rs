@@ -30,6 +30,13 @@ pub(crate) struct Prepared {
     /// Complete subtree count, including cached children, for the same admission budget.
     pub(crate) segments: usize,
 }
+impl Prepared {
+    pub(crate) fn culled(matrix: Transform, fill: Arc<Vec<Contour>>) -> Self {
+        Self { support_culled: false, fill_bounds: None, matrix, fill,
+            fill_program_bounds: Rect::default(), strokes: Vec::new(), stroke_program_bounds: Vec::new(),
+            bounds: Rect::default(), halo: 0, segments: 0 }
+    }
+}
 pub(crate) fn prepare_node_geometry(
     id: &str,
     parent: Transform,
@@ -47,20 +54,28 @@ fn prepare_node_geometry_impl(
     local_strokes: &mut crate::resident_strokes::ResidentStrokes,
     prepared: &mut HashMap<String, Prepared>, segments: &mut usize, early: bool,
 ) -> Result<Rect, String> {
-    prepare_node_geometry_supported(id,parent,context,paths,local_strokes,prepared,segments,early,None)
+    prepare_node_geometry_supported::<false>(id,parent,context,paths,local_strokes,prepared,segments,early,None,None)
 }
 pub(crate) fn prepare_node_geometry_indexed(
     id:&str,parent:Transform,context:(&Document,&Fonts,Rect,bool),
     paths:&mut HashMap<String,crate::path::SharedPaths>,local_strokes:&mut crate::resident_strokes::ResidentStrokes,
     prepared:&mut HashMap<String,Prepared>,segments:&mut usize,support:Option<&crate::world_support::WorldSupport>,
 ) -> Result<Rect,String>{
-    prepare_node_geometry_supported(id,parent,context,paths,local_strokes,prepared,segments,true,support.map(|index|(index,parent)))
+    prepare_node_geometry_supported::<false>(id,parent,context,paths,local_strokes,prepared,segments,true,support.map(|index|(index,parent)),None)
 }
-fn prepare_node_geometry_supported(
+pub(crate) fn prepare_cpu_frame_geometry(
+    id: &str, camera: Transform, context: (&Document, &Fonts, Rect, bool),
+    paths: &mut HashMap<String, crate::path::SharedPaths>, strokes: &mut crate::resident_strokes::ResidentStrokes,
+    prepared: &mut HashMap<String, Prepared>, segments: &mut usize, reuse: &mut crate::cpu_frame_plan::FrameGeometry,
+) -> Result<Rect, String> {
+    prepare_node_geometry_supported::<true>(id, camera, context, paths, strokes, prepared, segments, true, None, Some(reuse))
+}
+fn prepare_node_geometry_supported<const FRAME: bool>(
     id:&str,parent:Transform,context:(&Document,&Fonts,Rect,bool),
     paths:&mut HashMap<String,crate::path::SharedPaths>,local_strokes:&mut crate::resident_strokes::ResidentStrokes,
     prepared:&mut HashMap<String,Prepared>,segments:&mut usize,early:bool,
     support:Option<(&crate::world_support::WorldSupport,Transform)>,
+    mut reuse:Option<&mut crate::cpu_frame_plan::FrameGeometry>,
 ) -> Result<Rect,String>{
     crate::render_cancellation::checkpoint()?;
     if let Some(cached) = prepared.get(id) {
@@ -76,6 +91,12 @@ fn prepare_node_geometry_supported(
     let matrix = parent.concat(n.transform);
     if matrix.0.iter().any(|v| !v.is_finite() || v.abs() > 1e12) {
         return Err("Composed transform exceeds precision budget".into());
+    }
+    if FRAME && let Some(hit) = reuse.as_deref().and_then(|cache| cache.get(n, matrix, guard)) {
+        account_segments(segments, hit.segments)?;
+        let bounds = hit.bounds;
+        prepared.insert(id.to_owned(), hit);
+        return Ok(bounds);
     }
     let scale = matrix.max_scale().max(1e-6);
     if support.is_some_and(|(index,camera)|index.culls(id,camera,guard)) {
@@ -111,6 +132,7 @@ fn prepare_node_geometry_supported(
         let bound = fill.control_bounds(matrix).union(stroke_path.control_bounds(matrix))
             .expand(padding.saturating_add(2));
         if bound.intersect(guard).empty() {
+            if FRAME && let Some(cache) = reuse.as_deref_mut() { cache.cull(n, matrix, bound); }
             prepared.insert(id.to_owned(), Prepared { support_culled:false,fill_bounds: None, matrix,
                 fill: Arc::new(Vec::new()), fill_program_bounds:Rect::default(),strokes: Vec::new(),stroke_program_bounds:Vec::new(), bounds: Rect::default(), halo: 0, segments: 0 });
             return Ok(Rect::default());
@@ -146,7 +168,9 @@ fn prepare_node_geometry_supported(
                 .ceil() as i32,
         )
         .saturating_add(2);
-    if n.children.is_empty() && conservative.expand(padding).intersect(guard).empty() {
+    let support_bounds = if n.children.is_empty() { conservative.expand(padding) } else { Rect::default() };
+    if n.children.is_empty() && support_bounds.intersect(guard).empty() {
+        if FRAME && let Some(cache) = reuse.as_deref_mut() { cache.cull(n, matrix, support_bounds); }
         prepared.insert(
             id.to_owned(),
             Prepared {
@@ -200,8 +224,8 @@ fn prepare_node_geometry_supported(
     let own = bound;
     let mut child_bounds = Rect::default();
     for child in n.render_children() {
-        child_bounds = child_bounds.union(prepare_node_geometry_supported(
-            child, matrix, context, paths, local_strokes, prepared, segments, early,support,
+        child_bounds = child_bounds.union(prepare_node_geometry_supported::<FRAME>(
+            child, matrix, context, paths, local_strokes, prepared, segments, early,support,reuse.as_deref_mut(),
         )?);
     }
     if n.clip && !own.empty() {
@@ -239,6 +263,10 @@ fn prepare_node_geometry_supported(
             segments: *segments - start_segments,
         },
     );
+    if FRAME && n.children.is_empty() && !(n.kind == "frame" && n.clip)
+        && let Some(cache) = reuse {
+        cache.shape(n, support_bounds, guard, paths[id].pair().0, &prepared[id]);
+    }
     Ok(bound)
 }
 

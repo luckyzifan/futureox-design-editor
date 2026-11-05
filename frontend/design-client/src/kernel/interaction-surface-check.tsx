@@ -101,7 +101,7 @@ try {
     return {document,pageId:page.id,epoch:1,commands:{pixelGrid:false,
       transforms:Object.fromEntries(selection.map(id=>[id,document.nodes[id].transform])),
       selection:{corners:[{x:box.x,y:box.y},{x:box.x+box.width,y:box.y},{x:box.x+box.width,y:box.y+box.height},{x:box.x,y:box.y+box.height}],handles:false,owners:selection},
-      labels:selectedEntries.map(e=>({anchor:{x:e.matrix[4],y:e.matrix[5]},offset:{x:0,y:-12},text:document.nodes[e.id].name,size:11,color:'#73778b',owners:[e.id]}))}}
+      labels:selectedEntries.map(e=>({anchor:{x:e.matrix[4],y:e.matrix[5]},offset:{x:0,y:-12},text:document.nodes[e.id].name,size:11,color:'#0d99ff',owners:[e.id]}))}}
   }
   const render = () =>
     flushSync(() =>

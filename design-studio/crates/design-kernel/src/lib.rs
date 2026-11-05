@@ -36,11 +36,14 @@ mod zoom_support;
 pub mod noise_fill;
 pub mod export;
 pub mod export_formats;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod ffmpeg_encode;
 pub mod facet;
 pub mod fidelity;
 pub mod fig;
 pub mod figma_gradient;
 pub mod figma_sampling;
+pub mod figma_rotation;
 pub mod figma_snap;
 pub mod ruler_units;
 pub mod svg_export;
@@ -51,6 +54,7 @@ mod text_path_cache;
 mod read_cache;
 pub mod freehand;
 mod geometry_snapshot;
+mod cpu_frame_plan;
 mod geometry_support;
 mod world_support;
 mod margin_index;
@@ -66,6 +70,8 @@ pub mod graph_api;
 pub mod handles;
 mod image_color;
 pub mod image_rows;
+#[cfg(not(target_arch="wasm32"))]
+pub mod source_bitmap_pixels;
 pub mod image_adjust;
 pub mod image_mipmap;
 pub mod inferred_layout;
@@ -1845,7 +1851,7 @@ mod wasm {
                 .parse_options(value)
                 .map_err(|e| JsValue::from_str(&e))?;
             self.inner
-                .render(&options)
+                .render_exact(&options)
                 .map_err(|e| JsValue::from_str(&e))
         }
         pub fn color_settings(&self) -> String {
@@ -2086,22 +2092,18 @@ mod wasm {
         let node = serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
         hit_test(&node, math::Point::new(x, y), tolerance).map_err(|e| JsValue::from_str(&e))
     }
-    /// Encode a document as the versioned binary format (magic + checksum).
-    /// Pure over the serde model: no GraphApi session state is involved, so
-    /// persistence callers can encode whatever validated document they hold.
+    /// Encode a validated document as the versioned binary format.
+    /// The authored JSON value is retained, including ignored fields, explicit
+    /// nulls and extension payloads. No GraphApi session is involved.
     #[wasm_bindgen]
     pub fn binfmt_encode(document_json: &str) -> Result<Vec<u8>, JsValue> {
-        let document: scene::Document =
-            serde_json::from_str(document_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
-        Ok(crate::binfmt::encode(&document))
+        crate::binfmt::encode_authored_json(document_json).map_err(|e| JsValue::from_str(&e))
     }
-    /// Decode binary document bytes back to document JSON. Checksum or format
-    /// errors surface explicitly instead of yielding partial documents.
+    /// Decode binary document bytes back to the authored JSON value. Checksum,
+    /// format and document-validation errors surface instead of partial files.
     #[wasm_bindgen]
     pub fn binfmt_decode(bytes: &[u8]) -> Result<String, JsValue> {
-        let document =
-            crate::binfmt::decode(bytes).map_err(|e| JsValue::from_str(&e.to_string()))?;
-        serde_json::to_string(&document).map_err(|e| JsValue::from_str(&e.to_string()))
+        crate::binfmt::decode_authored_json(bytes).map_err(|e| JsValue::from_str(&e))
     }
 
     /// Handle-based editing surface: nodes, facets, ops, undo and tiles
@@ -2841,30 +2843,10 @@ mod portable_wasm {
     /// Portable Forma files retain authored JSON, including extension fields.
     #[wasm_bindgen]
     pub fn forma_encode_json(json: &str) -> Result<Vec<u8>, JsValue> {
-        capacity::check_document_bytes(json.len()).map_err(|e| JsValue::from_str(&e))?;
-        let value: serde_json::Value =
-            serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
-        let document: scene::Document =
-            serde::Deserialize::deserialize(&value).map_err(|e| JsValue::from_str(&e.to_string()))?;
-        document.validate().map_err(|e| JsValue::from_str(&e))?;
-        // Validation is complete. Release its typed graph before allocating
-        // the encoded/output representation; Value retains all authored fields.
-        drop(document);
-        let bytes = binfmt::encode_value(&value);
-        capacity::check_document_bytes(bytes.len()).map_err(|e| JsValue::from_str(&e))?;
-        Ok(bytes)
+        binfmt::encode_authored_json(json).map_err(|e| JsValue::from_str(&e))
     }
     #[wasm_bindgen]
     pub fn forma_decode_json(bytes: &[u8]) -> Result<String, JsValue> {
-        let value = binfmt::decode_value(bytes).map_err(|e| JsValue::from_str(&e.to_string()))?;
-        let document: scene::Document =
-            serde::Deserialize::deserialize(&value).map_err(|e| JsValue::from_str(&e.to_string()))?;
-        document.validate().map_err(|e| JsValue::from_str(&e))?;
-        // Validation is complete. Release its typed graph before allocating
-        // the encoded/output representation; Value retains all authored fields.
-        drop(document);
-        let json = serde_json::to_string(&value).map_err(|e| JsValue::from_str(&e.to_string()))?;
-        capacity::check_document_bytes(json.len()).map_err(|e| JsValue::from_str(&e))?;
-        Ok(json)
+        binfmt::decode_authored_json(bytes).map_err(|e| JsValue::from_str(&e))
     }
 }

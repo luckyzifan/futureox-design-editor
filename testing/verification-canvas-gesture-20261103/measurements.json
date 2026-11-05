@@ -1,0 +1,3798 @@
+{
+  "comparisonBase": "1331e50416af57e50cd4c95c2806d4cbad7ded79",
+  "finalParent": "2883d1b6e484a7c51ee48363e6ec64fba88db4eb",
+  "testedCommit": "3dfd20d8087f151cf201bd8dedad321bbd879895",
+  "environment": {
+    "platform": "macOS-26.3-arm64-arm-64bit-Mach-O",
+    "hardware": "Apple M2 Pro",
+    "macOS": "26.3",
+    "electron": "44.7.0",
+    "offscreen": true,
+    "inputIsolation": true,
+    "browserHasWebGpu": "enabled"
+  },
+  "products": {
+    "control-products": {
+      "manifestSha256": "65c203349f22ca02179e6acefb8718149b2d24fd012b7d33a5bf2a96ce1debd3",
+      "sourceFiles": 2518,
+      "sourceSetSha256": "477a330f981156340ea303a743328c40b136e428ea5b766eec5e4d91c4fdddb6",
+      "hardware": "darwin/arm64",
+      "profile": "desktop-dev",
+      "nativeFeatures": [],
+      "wasmSha256": "8f0b6c4826c6561cccdb2c7c96d29c858c178a9da05c1318369e2183612e6828",
+      "sidecarSha256": "4972812c47bcdc8b90f3cc39fbe3a5000b5e868cc9122c94fc8dcc121590b6c4"
+    },
+    "graph-products": {
+      "manifestSha256": "67c581613aeea0300e2208d48ccf245f1803fa5c6b72c1de570dbe1b397f2265",
+      "sourceFiles": 2518,
+      "sourceSetSha256": "69a43dfdb4adc5b6777fc57025c91f51be5c2405e9b6c5ea661b4371770f36de",
+      "hardware": "darwin/arm64",
+      "profile": "desktop-dev",
+      "nativeFeatures": [],
+      "wasmSha256": "6bda5a7b7557456c972cb38c50543fe5c3e17c54de31939134b6e920686e68cf",
+      "sidecarSha256": "a83f6f06ea5af36549419336452675b97c946b92ac331f8d17997e262e665d2c"
+    },
+    "chrome-only-products": {
+      "manifestSha256": "d2d0ce1c2af0ae6de77b84bb50902d716689791cf53da7f7638c27adf8fd9ecd",
+      "sourceFiles": 2518,
+      "sourceSetSha256": "1b84ccf0863c6ea4d23f4ca15ecee220175471d9c87553b28ae6cad094c224a2",
+      "hardware": "darwin/arm64",
+      "profile": "desktop-dev",
+      "nativeFeatures": [],
+      "wasmSha256": "657c083836ada65c83cbc93fc916d534be6c56b5230750a4afa27685e5c61154",
+      "sidecarSha256": "4972812c47bcdc8b90f3cc39fbe3a5000b5e868cc9122c94fc8dcc121590b6c4"
+    },
+    "chrome-products": {
+      "manifestSha256": "74957b49b66494c815c91e1ac5a673b22f16899f36d133d926253a0eef7481f6",
+      "sourceFiles": 2518,
+      "sourceSetSha256": "54b16cecd7e44ea9d1640e6bbc9dbcb170bcf11b48e8a2430732ca5d6a8ec1ed",
+      "hardware": "darwin/arm64",
+      "profile": "desktop-dev",
+      "nativeFeatures": [],
+      "wasmSha256": "6bda5a7b7557456c972cb38c50543fe5c3e17c54de31939134b6e920686e68cf",
+      "sidecarSha256": "a83f6f06ea5af36549419336452675b97c946b92ac331f8d17997e262e665d2c"
+    },
+    "upstream-control": {
+      "manifestSha256": "349af0d2c74db860d6322d924a49a2fc29a59342a7b2abd8d861e62bdca40377",
+      "sourceFiles": 2522,
+      "sourceSetSha256": "1e0e2d64f90b6973c62420db7cb9aa1396e9bf8255a0d6a33701470c9da2e9aa",
+      "hardware": "darwin/arm64",
+      "profile": "desktop-dev",
+      "nativeFeatures": [],
+      "wasmSha256": "657c083836ada65c83cbc93fc916d534be6c56b5230750a4afa27685e5c61154",
+      "sidecarSha256": "4972812c47bcdc8b90f3cc39fbe3a5000b5e868cc9122c94fc8dcc121590b6c4"
+    },
+    "upstream-products": {
+      "manifestSha256": "722695635216c892c2882456cb5bfc2e3d934452029c7ff840be4896ea066a23",
+      "sourceFiles": 2522,
+      "sourceSetSha256": "eee9aeb4ccfca8bb7188e962817826c7cd7cd631621071830b48d6f9d40e35bc",
+      "hardware": "darwin/arm64",
+      "profile": "desktop-dev",
+      "nativeFeatures": [],
+      "wasmSha256": "6bda5a7b7557456c972cb38c50543fe5c3e17c54de31939134b6e920686e68cf",
+      "sidecarSha256": "a83f6f06ea5af36549419336452675b97c946b92ac331f8d17997e262e665d2c"
+    },
+    "integrated-products": {
+      "manifestSha256": "acda0e7a1572a752e5636c714bc7de3c1a5cdb36f6143aeca3ee7b2dd3ad1c4f",
+      "sourceFiles": 2522,
+      "sourceSetSha256": "eee9aeb4ccfca8bb7188e962817826c7cd7cd631621071830b48d6f9d40e35bc",
+      "hardware": "darwin/arm64",
+      "profile": "desktop-dev",
+      "nativeFeatures": [],
+      "wasmSha256": "6bda5a7b7557456c972cb38c50543fe5c3e17c54de31939134b6e920686e68cf",
+      "sidecarSha256": "a83f6f06ea5af36549419336452675b97c946b92ac331f8d17997e262e665d2c"
+    }
+  },
+  "runs": {
+    "control_plain_A": {
+      "reportSha256": "a19f83100a76e8625dd618231e1874ed260f3c26261226f4cbf201ae1f6886ae",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "scriptSha256": "527a3575a48573ad7a6b446d2e5fec82e16dd5c16c517f712adc6e8f3601ef50",
+      "status": "completed-replay",
+      "sourceUnchanged": true,
+      "drift": [],
+      "errors": [],
+      "nodeCount": 20082,
+      "actions": [
+        {
+          "action": "00-inside",
+          "stopToGuiReadyMs": 215.7,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 139,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            144
+          ],
+          "releaseStagesMs": {
+            "21": 0,
+            "22": 0.2,
+            "34": 0,
+            "37": 28.9,
+            "20": 39.1,
+            "4": 72.3
+          },
+          "pointerupTaskMs": 144,
+          "pose": {
+            "inputs": 19,
+            "matched": 17,
+            "ms": [
+              112.1,
+              13.9,
+              30.1,
+              31.1,
+              6.8,
+              34.0,
+              6.8,
+              34.4,
+              6.8,
+              2.5,
+              34.7,
+              7.8,
+              33.4,
+              37.7,
+              14.4,
+              143.9,
+              85.1
+            ]
+          }
+        },
+        {
+          "action": "00-rotate",
+          "stopToGuiReadyMs": 278.3,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 171,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            146,
+            71,
+            66,
+            69,
+            61,
+            59,
+            66,
+            83,
+            71,
+            70,
+            77,
+            77,
+            80,
+            70,
+            73,
+            72,
+            73,
+            70,
+            71,
+            73,
+            70,
+            70,
+            86,
+            79,
+            79,
+            71,
+            72,
+            75,
+            68,
+            73,
+            70,
+            70,
+            131
+          ],
+          "releaseStagesMs": {
+            "21": 0,
+            "22": 0,
+            "34": 0.1,
+            "37": 26,
+            "20": 32.3,
+            "4": 48.5
+          },
+          "pointerupTaskMs": 131,
+          "pose": {
+            "inputs": 18,
+            "matched": 12,
+            "ms": [
+              225.0,
+              184.4,
+              162.3,
+              290.5,
+              256.9,
+              259.2,
+              270.4,
+              197.7,
+              173.2,
+              174.5,
+              167.5,
+              246.4
+            ]
+          }
+        },
+        {
+          "action": "01-inside",
+          "stopToGuiReadyMs": 471.5,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 139,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            312
+          ],
+          "releaseStagesMs": {
+            "21": 0,
+            "22": 0.1,
+            "34": 0,
+            "37": 76.5,
+            "20": 87.7,
+            "4": 126.5
+          },
+          "pointerupTaskMs": 312,
+          "pose": {
+            "inputs": 19,
+            "matched": 11,
+            "ms": [
+              231.4,
+              132.9,
+              78.4,
+              135.5,
+              37.4,
+              7.1,
+              152.9,
+              69.6,
+              12.9,
+              313.9,
+              213.1
+            ]
+          }
+        },
+        {
+          "action": "01-rotate",
+          "stopToGuiReadyMs": 233.5,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 186,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            90,
+            65,
+            64,
+            62,
+            58,
+            55,
+            61,
+            60,
+            59,
+            58,
+            63,
+            55,
+            58,
+            63,
+            60,
+            59,
+            61,
+            63,
+            54,
+            60,
+            59,
+            59,
+            65,
+            60,
+            55,
+            54,
+            61,
+            59,
+            62,
+            55,
+            60,
+            59,
+            123
+          ],
+          "releaseStagesMs": {
+            "21": 0,
+            "22": 0.1,
+            "34": 0,
+            "37": 23.3,
+            "20": 29.5,
+            "4": 45.6
+          },
+          "pointerupTaskMs": 123,
+          "pose": {
+            "inputs": 27,
+            "matched": 22,
+            "ms": [
+              202.5,
+              165.4,
+              162.6,
+              143.2,
+              138,
+              167.3,
+              194.5,
+              159.2,
+              154.9,
+              162.9,
+              205.2,
+              174.2,
+              158.3,
+              159.4,
+              190.2,
+              168.7,
+              159.8,
+              161.9,
+              172.7,
+              142.3,
+              142.8,
+              208.0
+            ]
+          }
+        }
+      ],
+      "runId": "control_plain_A",
+      "exitCode": 0,
+      "rawReport": "control_plain_A/report.json",
+      "rawLogSha256": "71c5bbe6e4c8f984c44fb744f2c2439a4d3201a3d2db5774b78b8f5f9a32fe2b"
+    },
+    "graph_plain_B": {
+      "reportSha256": "383c4f6772123211db6b70108ff888a2c4342edd671ef0b962ab8823f37886cf",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "scriptSha256": "527a3575a48573ad7a6b446d2e5fec82e16dd5c16c517f712adc6e8f3601ef50",
+      "status": "completed-replay",
+      "sourceUnchanged": true,
+      "drift": [],
+      "errors": [],
+      "nodeCount": 20082,
+      "actions": [
+        {
+          "action": "00-inside",
+          "stopToGuiReadyMs": 179.2,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 139,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            59,
+            109
+          ],
+          "releaseStagesMs": {
+            "21": 0,
+            "22": 0.1,
+            "34": 0.1,
+            "37": 3.3,
+            "20": 13.1,
+            "4": 44.6
+          },
+          "pointerupTaskMs": 109,
+          "pose": {
+            "inputs": 19,
+            "matched": 15,
+            "ms": [
+              180.6,
+              49.6,
+              22.3,
+              27.3,
+              4.5,
+              26.0,
+              5.3,
+              2.8,
+              33.6,
+              6.9,
+              30.1,
+              36.9,
+              11.3,
+              108.7,
+              77.9
+            ]
+          }
+        },
+        {
+          "action": "00-rotate",
+          "stopToGuiReadyMs": 299.1,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 171,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            173,
+            69,
+            61,
+            68,
+            58,
+            57,
+            59,
+            82,
+            72,
+            73,
+            74,
+            70,
+            67,
+            69,
+            69,
+            69,
+            70,
+            77,
+            68,
+            80,
+            71,
+            73,
+            73,
+            72,
+            70,
+            75,
+            70,
+            73,
+            69,
+            75,
+            88,
+            93,
+            109
+          ],
+          "releaseStagesMs": {
+            "21": 0,
+            "22": 0,
+            "34": 0,
+            "37": 0.9,
+            "20": 7.5,
+            "4": 23.8
+          },
+          "pointerupTaskMs": 109,
+          "pose": {
+            "inputs": 18,
+            "matched": 12,
+            "ms": [
+              195.2,
+              157.9,
+              288.8,
+              267.1,
+              258,
+              188.3,
+              192.6,
+              171.1,
+              175.4,
+              178.2,
+              380.6,
+              297.2
+            ]
+          }
+        },
+        {
+          "action": "01-inside",
+          "stopToGuiReadyMs": 180.4,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 139,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            115
+          ],
+          "releaseStagesMs": {
+            "21": 0.1,
+            "22": 0,
+            "34": 0,
+            "37": 0.8,
+            "20": 7.2,
+            "4": 34.2
+          },
+          "pointerupTaskMs": 115,
+          "pose": {
+            "inputs": 19,
+            "matched": 16,
+            "ms": [
+              147.9,
+              58.7,
+              96.6,
+              66.4,
+              84.2,
+              35.2,
+              29.9,
+              4.7,
+              8.2,
+              32.4,
+              16.1,
+              27.9,
+              26.9,
+              6.8,
+              115.3,
+              94.3
+            ]
+          }
+        },
+        {
+          "action": "01-rotate",
+          "stopToGuiReadyMs": 217.2,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 186,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            102,
+            58,
+            64,
+            61,
+            57,
+            62,
+            57,
+            65,
+            62,
+            59,
+            59,
+            58,
+            55,
+            57,
+            57,
+            61,
+            56,
+            60,
+            58,
+            57,
+            55,
+            55,
+            57,
+            60,
+            59,
+            67,
+            62,
+            60,
+            56,
+            58,
+            57,
+            62,
+            119
+          ],
+          "releaseStagesMs": {
+            "21": 0,
+            "22": 0,
+            "34": 0.1,
+            "37": 7.5,
+            "20": 17.6,
+            "4": 36
+          },
+          "pointerupTaskMs": 119,
+          "pose": {
+            "inputs": 28,
+            "matched": 21,
+            "ms": [
+              377.2,
+              241.9,
+              145.6,
+              163.4,
+              204.1,
+              176.7,
+              161.4,
+              159.3,
+              177.5,
+              139.2,
+              148.8,
+              172.6,
+              143.2,
+              176.0,
+              164.6,
+              202.7,
+              184.4,
+              163.2,
+              176.9,
+              154.6,
+              162.6
+            ]
+          }
+        }
+      ],
+      "runId": "graph_plain_B",
+      "exitCode": 0,
+      "rawReport": "graph_plain_B/report.json",
+      "rawLogSha256": "b2e5dd86fa850662ef8ca5b414792a4816ec18d8d4705e3cf1bfaf6add85ae1b"
+    },
+    "graph_plain_B2": {
+      "reportSha256": "b54291025e1127efab51961371a90342265665bbaba02fd95cf094573095da2a",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "scriptSha256": "527a3575a48573ad7a6b446d2e5fec82e16dd5c16c517f712adc6e8f3601ef50",
+      "status": "completed-replay",
+      "sourceUnchanged": true,
+      "drift": [],
+      "errors": [],
+      "nodeCount": 20082,
+      "actions": [
+        {
+          "action": "00-inside",
+          "stopToGuiReadyMs": 199.9,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 139,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            121
+          ],
+          "releaseStagesMs": {
+            "21": 0.1,
+            "22": 0.2,
+            "34": 0.1,
+            "37": 1.7,
+            "20": 11.2,
+            "4": 45.7
+          },
+          "pointerupTaskMs": 121,
+          "pose": {
+            "inputs": 19,
+            "matched": 16,
+            "ms": [
+              159.6,
+              55.7,
+              47.9,
+              21.2,
+              30.0,
+              4.5,
+              32.6,
+              6.0,
+              4.6,
+              33.8,
+              6.4,
+              28.4,
+              40.0,
+              5.9,
+              120.7,
+              88.3
+            ]
+          }
+        },
+        {
+          "action": "00-rotate",
+          "stopToGuiReadyMs": 211.2,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 171,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            137,
+            65,
+            63,
+            62,
+            63,
+            66,
+            82,
+            81,
+            71,
+            71,
+            72,
+            72,
+            78,
+            72,
+            71,
+            75,
+            73,
+            71,
+            71,
+            73,
+            72,
+            72,
+            72,
+            73,
+            69,
+            72,
+            71,
+            82,
+            71,
+            72,
+            72,
+            71,
+            105
+          ],
+          "releaseStagesMs": {
+            "21": 0,
+            "22": 0.1,
+            "34": 0,
+            "37": 1.2,
+            "20": 7.2,
+            "4": 23.6
+          },
+          "pointerupTaskMs": 105,
+          "pose": {
+            "inputs": 17,
+            "matched": 9,
+            "ms": [
+              216.9,
+              198.8,
+              180.4,
+              177.9,
+              192.0,
+              170.4,
+              164.3,
+              201.0,
+              177.6
+            ]
+          }
+        },
+        {
+          "action": "01-inside",
+          "stopToGuiReadyMs": 213.1,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 139,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            107
+          ],
+          "releaseStagesMs": {
+            "21": 0,
+            "22": 0,
+            "34": 0.1,
+            "37": 1.3,
+            "20": 7.5,
+            "4": 32.4
+          },
+          "pointerupTaskMs": 107,
+          "pose": {
+            "inputs": 19,
+            "matched": 15,
+            "ms": [
+              198.1,
+              61.8,
+              36.0,
+              31.2,
+              7.6,
+              27.8,
+              8.1,
+              5.5,
+              29.3,
+              4.8,
+              26.6,
+              26,
+              6.4,
+              106.4,
+              97.2
+            ]
+          }
+        },
+        {
+          "action": "01-rotate",
+          "stopToGuiReadyMs": 194.5,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 186,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            134,
+            68,
+            62,
+            64,
+            64,
+            60,
+            57,
+            62,
+            56,
+            59,
+            62,
+            67,
+            58,
+            73,
+            59,
+            54,
+            60,
+            65,
+            57,
+            60,
+            56,
+            54,
+            58,
+            57,
+            55,
+            57,
+            55,
+            55,
+            55,
+            55,
+            55,
+            57,
+            101
+          ],
+          "releaseStagesMs": {
+            "21": 0.1,
+            "22": 0.1,
+            "34": 0,
+            "37": 0.8,
+            "20": 6.9,
+            "4": 22.7
+          },
+          "pointerupTaskMs": 101,
+          "pose": {
+            "inputs": 26,
+            "matched": 15,
+            "ms": [
+              349.2,
+              148.3,
+              170.4,
+              256.5,
+              148.1,
+              267.2,
+              163.6,
+              274.5,
+              193.1,
+              176.8,
+              157.1,
+              138.3,
+              162.8,
+              259.8,
+              162.1
+            ]
+          }
+        }
+      ],
+      "runId": "graph_plain_B2",
+      "exitCode": 0,
+      "rawReport": "graph_plain_B2/report.json",
+      "rawLogSha256": "232f7b204ac6abfe9e60fa5adcf2c07ff036a3be107b1612fa3c7bd318ff8c92"
+    },
+    "control_plain_A2": {
+      "reportSha256": "19d8a8538d8e787f7d8c9a1969f57fcdd17b54a00ec95cd3b3a83fe65a71842f",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "scriptSha256": "527a3575a48573ad7a6b446d2e5fec82e16dd5c16c517f712adc6e8f3601ef50",
+      "status": "completed-replay",
+      "sourceUnchanged": true,
+      "drift": [],
+      "errors": [],
+      "nodeCount": 20082,
+      "actions": [
+        {
+          "action": "00-inside",
+          "stopToGuiReadyMs": 234.4,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 139,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            55,
+            158
+          ],
+          "releaseStagesMs": {
+            "21": 0,
+            "22": 0.1,
+            "34": 0.1,
+            "37": 36,
+            "20": 45.6,
+            "4": 86.1
+          },
+          "pointerupTaskMs": 158,
+          "pose": {
+            "inputs": 19,
+            "matched": 16,
+            "ms": [
+              159.1,
+              68.2,
+              69.8,
+              43.2,
+              28.7,
+              4.2,
+              30.1,
+              4.4,
+              5.6,
+              29.4,
+              4.9,
+              29.9,
+              38.0,
+              12.6,
+              158.0,
+              85.8
+            ]
+          }
+        },
+        {
+          "action": "00-rotate",
+          "stopToGuiReadyMs": 207.9,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 171,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            122,
+            60,
+            57,
+            59,
+            54,
+            72,
+            78,
+            67,
+            67,
+            67,
+            67,
+            74,
+            66,
+            67,
+            64,
+            67,
+            66,
+            74,
+            67,
+            70,
+            68,
+            71,
+            68,
+            72,
+            65,
+            67,
+            69,
+            124,
+            75,
+            72,
+            69,
+            66,
+            116
+          ],
+          "releaseStagesMs": {
+            "21": 0.1,
+            "22": 0,
+            "34": 0,
+            "37": 20.8,
+            "20": 26.7,
+            "4": 42.2
+          },
+          "pointerupTaskMs": 116,
+          "pose": {
+            "inputs": 18,
+            "matched": 10,
+            "ms": [
+              195.6,
+              167.2,
+              199.6,
+              182.0,
+              169.1,
+              157.6,
+              343.3,
+              243.9,
+              186.7,
+              159.2
+            ]
+          }
+        },
+        {
+          "action": "01-inside",
+          "stopToGuiReadyMs": 203.5,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 139,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            136
+          ],
+          "releaseStagesMs": {
+            "21": 0.1,
+            "22": 0.1,
+            "34": 0.1,
+            "37": 40.3,
+            "20": 46.6,
+            "4": 71.9
+          },
+          "pointerupTaskMs": 136,
+          "pose": {
+            "inputs": 19,
+            "matched": 17,
+            "ms": [
+              134.7,
+              46.8,
+              47.9,
+              41.8,
+              16.6,
+              27.3,
+              7.1,
+              33.7,
+              5.8,
+              5.7,
+              29.9,
+              3.8,
+              29.1,
+              31.3,
+              6.1,
+              136.7,
+              82.7
+            ]
+          }
+        },
+        {
+          "action": "01-rotate",
+          "stopToGuiReadyMs": 264.9,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 186,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            93,
+            54,
+            58,
+            63,
+            64,
+            61,
+            66,
+            52,
+            56,
+            57,
+            60,
+            58,
+            55,
+            54,
+            55,
+            54,
+            55,
+            51,
+            53,
+            52,
+            54,
+            52,
+            51,
+            56,
+            53,
+            56,
+            57,
+            61,
+            55,
+            51,
+            55,
+            51,
+            134
+          ],
+          "releaseStagesMs": {
+            "21": 0.1,
+            "22": 0,
+            "34": 0,
+            "37": 38.5,
+            "20": 45.1,
+            "4": 60.3
+          },
+          "pointerupTaskMs": 134,
+          "pose": {
+            "inputs": 27,
+            "matched": 20,
+            "ms": [
+              211.2,
+              173.9,
+              181.2,
+              166,
+              171.0,
+              173.9,
+              140.6,
+              165.8,
+              194.4,
+              156.8,
+              151.5,
+              152.5,
+              135.5,
+              141.3,
+              152.5,
+              140.2,
+              235.9,
+              144.7,
+              235.0,
+              214.3
+            ]
+          }
+        }
+      ],
+      "runId": "control_plain_A2",
+      "exitCode": 0,
+      "rawReport": "control_plain_A2/report.json",
+      "rawLogSha256": "bdb11d0717e7cf233c8ee486b6c9697dea944c87b7878ac3a49bf566a89a53f1"
+    },
+    "control_rulers_A": {
+      "reportSha256": "43963d8e06a0303b1b4873f35b5ba741047c1b33a35b7576a9929b8a32b8906d",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "scriptSha256": "527a3575a48573ad7a6b446d2e5fec82e16dd5c16c517f712adc6e8f3601ef50",
+      "status": "completed-replay",
+      "sourceUnchanged": true,
+      "drift": [],
+      "errors": [],
+      "nodeCount": 20082,
+      "actions": [
+        {
+          "action": "00-pan",
+          "stopToGuiReadyMs": 103.6,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            51,
+            61,
+            50,
+            53,
+            51,
+            65,
+            50
+          ],
+          "camera": {
+            "inputs": 96,
+            "matched": 96,
+            "p95Ms": 49.6,
+            "documentUnchanged": true
+          }
+        },
+        {
+          "action": "00-inside",
+          "stopToGuiReadyMs": 301,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 139,
+            "rulers": true
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            68,
+            179
+          ],
+          "releaseStagesMs": {
+            "21": 0,
+            "22": 0.2,
+            "34": 0.1,
+            "37": 30.1,
+            "20": 40.8,
+            "4": 74.8
+          },
+          "pointerupTaskMs": 179,
+          "pose": {
+            "inputs": 19,
+            "matched": 15,
+            "ms": [
+              152.6,
+              68.1,
+              92.5,
+              70.3,
+              37.4,
+              37.0,
+              39.4,
+              42.1,
+              2.1,
+              34.2,
+              45.3,
+              34.3,
+              68.7,
+              237.4,
+              124.3
+            ]
+          }
+        },
+        {
+          "action": "00-rotate",
+          "stopToGuiReadyMs": 317.9,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 171,
+            "rulers": true
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            161,
+            74,
+            76,
+            78,
+            109,
+            91,
+            87,
+            88,
+            87,
+            83,
+            90,
+            83,
+            85,
+            83,
+            84,
+            85,
+            81,
+            78,
+            83,
+            86,
+            89,
+            85,
+            82,
+            83,
+            82,
+            80,
+            90,
+            86,
+            82,
+            79,
+            99,
+            80,
+            167
+          ],
+          "releaseStagesMs": {
+            "21": 0,
+            "22": 0,
+            "34": 0,
+            "37": 24.8,
+            "20": 30.7,
+            "4": 46
+          },
+          "pointerupTaskMs": 167,
+          "pose": {
+            "inputs": 21,
+            "matched": 14,
+            "ms": [
+              334.3,
+              216.7,
+              300.4,
+              214.2,
+              204.0,
+              203.6,
+              250.9,
+              207.9,
+              252.0,
+              209.3,
+              253.2,
+              200.9,
+              332.1,
+              176
+            ]
+          }
+        },
+        {
+          "action": "00-zoom",
+          "stopToGuiReadyMs": 101.6,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            80,
+            58,
+            106
+          ],
+          "camera": {
+            "inputs": 96,
+            "matched": 61,
+            "p95Ms": 48.3,
+            "documentUnchanged": true
+          }
+        }
+      ],
+      "runId": "control_rulers_A",
+      "exitCode": 0,
+      "rawReport": "control_rulers_A/report.json",
+      "rawLogSha256": "374178678d77c367ab2d106bd12c88b4146c4ee9a6f99feddfa1ba13b64c472b"
+    },
+    "uionly_rulers_B": {
+      "reportSha256": "9758a2936a19389c229c1fe86a550fef01b25624aa31c4513bf82aeeff4ba809",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "scriptSha256": "527a3575a48573ad7a6b446d2e5fec82e16dd5c16c517f712adc6e8f3601ef50",
+      "status": "completed-replay",
+      "sourceUnchanged": true,
+      "drift": [],
+      "errors": [],
+      "nodeCount": 20082,
+      "actions": [
+        {
+          "action": "00-pan",
+          "stopToGuiReadyMs": 56.2,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "camera": {
+            "inputs": 96,
+            "matched": 96,
+            "p95Ms": 9.5,
+            "documentUnchanged": true
+          }
+        },
+        {
+          "action": "00-inside",
+          "stopToGuiReadyMs": 198.3,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 139,
+            "rulers": true
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            75,
+            138
+          ],
+          "releaseStagesMs": {
+            "21": 0,
+            "22": 0.3,
+            "34": 0.1,
+            "37": 25.1,
+            "20": 35.2,
+            "4": 70.2
+          },
+          "pointerupTaskMs": 138,
+          "pose": {
+            "inputs": 19,
+            "matched": 14,
+            "ms": [
+              198.6,
+              81.3,
+              55.1,
+              29.7,
+              34.0,
+              6.7,
+              1.8,
+              33.8,
+              6.7,
+              33.7,
+              34.4,
+              6.8,
+              138.6,
+              82.2
+            ]
+          }
+        },
+        {
+          "action": "00-rotate",
+          "stopToGuiReadyMs": 239.4,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 171,
+            "rulers": true
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            120,
+            62,
+            70,
+            57,
+            61,
+            89,
+            85,
+            68,
+            70,
+            68,
+            71,
+            78,
+            92,
+            75,
+            67,
+            70,
+            87,
+            91,
+            74,
+            73,
+            74,
+            73,
+            71,
+            74,
+            72,
+            72,
+            70,
+            71,
+            70,
+            77,
+            69,
+            72,
+            137
+          ],
+          "releaseStagesMs": {
+            "21": 0.1,
+            "22": 0,
+            "34": 0,
+            "37": 33.1,
+            "20": 39.5,
+            "4": 55.2
+          },
+          "pointerupTaskMs": 137,
+          "pose": {
+            "inputs": 17,
+            "matched": 8,
+            "ms": [
+              217.6,
+              200.5,
+              255.7,
+              188.7,
+              172.5,
+              181.1,
+              195.3,
+              170.6
+            ]
+          }
+        },
+        {
+          "action": "00-zoom",
+          "stopToGuiReadyMs": 55,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "camera": {
+            "inputs": 96,
+            "matched": 67,
+            "p95Ms": 19.4,
+            "documentUnchanged": true
+          }
+        }
+      ],
+      "runId": "uionly_rulers_B",
+      "exitCode": 0,
+      "rawReport": "uionly_rulers_B/report.json",
+      "rawLogSha256": "22c74ef9abdd1009e91bd31f6523428bf6836eed82417a1dc0457da4cb08131d"
+    },
+    "uionly_rulers_B2": {
+      "reportSha256": "7c03406464beb8f87b631a55443879e42a3a48a7b6cb05dabff36a76474fe0ab",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "scriptSha256": "527a3575a48573ad7a6b446d2e5fec82e16dd5c16c517f712adc6e8f3601ef50",
+      "status": "completed-replay",
+      "sourceUnchanged": true,
+      "drift": [],
+      "errors": [],
+      "nodeCount": 20082,
+      "actions": [
+        {
+          "action": "00-pan",
+          "stopToGuiReadyMs": 56.6,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "camera": {
+            "inputs": 96,
+            "matched": 96,
+            "p95Ms": 9.3,
+            "documentUnchanged": true
+          }
+        },
+        {
+          "action": "00-inside",
+          "stopToGuiReadyMs": 224.6,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 139,
+            "rulers": true
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            139
+          ],
+          "releaseStagesMs": {
+            "21": 0.1,
+            "22": 0.3,
+            "34": 0.1,
+            "37": 29.3,
+            "20": 39.3,
+            "4": 73
+          },
+          "pointerupTaskMs": 139,
+          "pose": {
+            "inputs": 19,
+            "matched": 16,
+            "ms": [
+              156.7,
+              50.9,
+              50.8,
+              20.8,
+              34.5,
+              9.0,
+              29.8,
+              7.4,
+              1.9,
+              31.4,
+              6.7,
+              34.1,
+              43.8,
+              15.6,
+              139.2,
+              79.8
+            ]
+          }
+        },
+        {
+          "action": "00-rotate",
+          "stopToGuiReadyMs": 266.9,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 171,
+            "rulers": true
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            164,
+            98,
+            57,
+            68,
+            56,
+            64,
+            60,
+            79,
+            68,
+            66,
+            73,
+            79,
+            66,
+            78,
+            69,
+            71,
+            68,
+            68,
+            74,
+            73,
+            69,
+            69,
+            71,
+            74,
+            75,
+            81,
+            79,
+            75,
+            73,
+            71,
+            70,
+            71,
+            141
+          ],
+          "releaseStagesMs": {
+            "21": 0,
+            "22": 0.1,
+            "34": 0,
+            "37": 37.1,
+            "20": 43.3,
+            "4": 59
+          },
+          "pointerupTaskMs": 141,
+          "pose": {
+            "inputs": 20,
+            "matched": 15,
+            "ms": [
+              166.2,
+              287.6,
+              271.2,
+              253.3,
+              252.8,
+              259.2,
+              257.5,
+              252.7,
+              253.4,
+              255.5,
+              258.2,
+              191.2,
+              236.1,
+              232.1,
+              185.6
+            ]
+          }
+        },
+        {
+          "action": "00-zoom",
+          "stopToGuiReadyMs": 58.2,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "camera": {
+            "inputs": 96,
+            "matched": 63,
+            "p95Ms": 20.0,
+            "documentUnchanged": true
+          }
+        }
+      ],
+      "runId": "uionly_rulers_B2",
+      "exitCode": 0,
+      "rawReport": "uionly_rulers_B2/report.json",
+      "rawLogSha256": "60b89fce4f039b41705f3e8143fd568f138893e4c53c3469fc90b62a76ba3ab9"
+    },
+    "control_rulers_A2": {
+      "reportSha256": "7a2d83b763f30c3d0b5db9efca024119c4a112baa8d22de2eac97230cb6f5e0c",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "scriptSha256": "527a3575a48573ad7a6b446d2e5fec82e16dd5c16c517f712adc6e8f3601ef50",
+      "status": "completed-replay",
+      "sourceUnchanged": true,
+      "drift": [],
+      "errors": [],
+      "nodeCount": 20082,
+      "actions": [
+        {
+          "action": "00-pan",
+          "stopToGuiReadyMs": 87.1,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            50,
+            52,
+            55
+          ],
+          "camera": {
+            "inputs": 96,
+            "matched": 96,
+            "p95Ms": 47.6,
+            "documentUnchanged": true
+          }
+        },
+        {
+          "action": "00-inside",
+          "stopToGuiReadyMs": 298.4,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 139,
+            "rulers": true
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            72,
+            184
+          ],
+          "releaseStagesMs": {
+            "21": 0,
+            "22": 0.2,
+            "34": 0,
+            "37": 37.6,
+            "20": 47.7,
+            "4": 78.3
+          },
+          "pointerupTaskMs": 184,
+          "pose": {
+            "inputs": 19,
+            "matched": 15,
+            "ms": [
+              138.1,
+              65.2,
+              85.7,
+              62.8,
+              28.1,
+              3.7,
+              32.8,
+              44.3,
+              3.8,
+              29.5,
+              6.1,
+              30.2,
+              41.5,
+              230.7,
+              121.2
+            ]
+          }
+        },
+        {
+          "action": "00-rotate",
+          "stopToGuiReadyMs": 289.7,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 171,
+            "rulers": true
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            231,
+            76,
+            75,
+            72,
+            76,
+            75,
+            76,
+            93,
+            84,
+            84,
+            97,
+            83,
+            83,
+            88,
+            91,
+            90,
+            84,
+            87,
+            81,
+            81,
+            79,
+            80,
+            82,
+            90,
+            83,
+            79,
+            89,
+            87,
+            86,
+            86,
+            82,
+            81,
+            170
+          ],
+          "releaseStagesMs": {
+            "21": 0,
+            "22": 0.1,
+            "34": 0,
+            "37": 28.5,
+            "20": 34.9,
+            "4": 50.3
+          },
+          "pointerupTaskMs": 170,
+          "pose": {
+            "inputs": 18,
+            "matched": 12,
+            "ms": [
+              351,
+              305,
+              210.2,
+              207.3,
+              221.1,
+              222.8,
+              207.1,
+              338.5,
+              305.9,
+              216.1,
+              200.9,
+              192.6
+            ]
+          }
+        },
+        {
+          "action": "00-zoom",
+          "stopToGuiReadyMs": 79.1,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            68,
+            68
+          ],
+          "camera": {
+            "inputs": 96,
+            "matched": 57,
+            "p95Ms": 46.3,
+            "documentUnchanged": true
+          }
+        }
+      ],
+      "runId": "control_rulers_A2",
+      "exitCode": 0,
+      "rawReport": "control_rulers_A2/report.json",
+      "rawLogSha256": "3bcde9f73afc18003af3bd81120e12c6eb0a3ccdf7a5b9947acc97caadf24edd"
+    },
+    "control_fidelity_preflight": {
+      "reportSha256": "b7f128fe7e3a4592c41a26b3a5f7e8e95f7f7c5240668e30a69b2e941ff07a82",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "scriptSha256": "527a3575a48573ad7a6b446d2e5fec82e16dd5c16c517f712adc6e8f3601ef50",
+      "status": "completed-replay",
+      "sourceUnchanged": true,
+      "drift": [],
+      "errors": [],
+      "nodeCount": 20082,
+      "actions": [
+        {
+          "action": "inside",
+          "stopToGuiReadyMs": 341.8,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 139,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": true,
+          "authoredRedo": true,
+          "longTasksMs": [
+            188
+          ],
+          "releaseStagesMs": {
+            "21": 0.2,
+            "22": 0.1,
+            "34": 0.1,
+            "37": 35.9,
+            "20": 46.6,
+            "4": 97.2
+          },
+          "pointerupTaskMs": 188,
+          "pose": {
+            "inputs": 19,
+            "matched": 14,
+            "ms": [
+              231.1,
+              59,
+              69.3,
+              38.9,
+              40.7,
+              20.1,
+              5.1,
+              36.1,
+              13.6,
+              42.8,
+              54.9,
+              25.9,
+              187.4,
+              115.6
+            ]
+          },
+          "freshPlane": {
+            "width": 855,
+            "height": 926,
+            "held": {
+              "differentPixels": 0,
+              "maxChannelDelta": 0
+            },
+            "after": {
+              "differentPixels": 0,
+              "maxChannelDelta": 0
+            }
+          }
+        },
+        {
+          "action": "rotate",
+          "stopToGuiReadyMs": 653,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 171,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": true,
+          "authoredRedo": true,
+          "longTasksMs": [
+            281,
+            82,
+            73,
+            60,
+            65,
+            64,
+            63,
+            61,
+            64,
+            67,
+            85,
+            87,
+            76,
+            74,
+            78,
+            118,
+            87,
+            86,
+            89,
+            79,
+            107,
+            103,
+            81,
+            81,
+            77,
+            82,
+            78,
+            99,
+            145,
+            116,
+            98,
+            108,
+            281
+          ],
+          "releaseStagesMs": {
+            "21": 0,
+            "22": 0.1,
+            "34": 0,
+            "37": 42.8,
+            "20": 53.7,
+            "4": 89.9
+          },
+          "pointerupTaskMs": 281,
+          "pose": {
+            "inputs": 18,
+            "matched": 13,
+            "ms": [
+              204.8,
+              194.4,
+              190.2,
+              484.6,
+              251.4,
+              246.2,
+              210.1,
+              247.2,
+              232.0,
+              344.9,
+              345.4,
+              260.4,
+              355.1
+            ]
+          },
+          "freshPlane": {
+            "width": 855,
+            "height": 926,
+            "held": {
+              "differentPixels": 0,
+              "maxChannelDelta": 0
+            },
+            "after": {
+              "differentPixels": 0,
+              "maxChannelDelta": 0
+            }
+          }
+        }
+      ],
+      "runId": "control_fidelity_preflight",
+      "exitCode": 0,
+      "rawReport": "control_fidelity_preflight/report.json",
+      "rawLogSha256": "f486b492c4606f102f6079c16b37b4cc452c714dd365fb795d72af0b8b6961c7"
+    },
+    "chrome_plain_C": {
+      "reportSha256": "282b2563eea189378de7e818da9e770849885ec5e3527a1dfe9ad4ecf0dbc2e3",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "scriptSha256": "527a3575a48573ad7a6b446d2e5fec82e16dd5c16c517f712adc6e8f3601ef50",
+      "status": "completed-replay",
+      "sourceUnchanged": true,
+      "drift": [],
+      "errors": [],
+      "nodeCount": 20082,
+      "actions": [
+        {
+          "action": "00-inside",
+          "stopToGuiReadyMs": 203.7,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 139,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            74,
+            129
+          ],
+          "releaseStagesMs": {
+            "21": 0,
+            "22": 0.3,
+            "34": 0.1,
+            "37": 3.2,
+            "20": 14.2,
+            "4": 46.8
+          },
+          "pointerupTaskMs": 129,
+          "pose": {
+            "inputs": 19,
+            "matched": 15,
+            "ms": [
+              188.4,
+              66.8,
+              39.5,
+              38.4,
+              13.0,
+              35.7,
+              5,
+              1.9,
+              34.9,
+              7.0,
+              35.2,
+              41.7,
+              15.3,
+              128.7,
+              97.2
+            ]
+          }
+        },
+        {
+          "action": "00-rotate",
+          "stopToGuiReadyMs": 265,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 171,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            159,
+            70,
+            66,
+            69,
+            59,
+            63,
+            71,
+            68,
+            87,
+            82,
+            92,
+            76,
+            77,
+            74,
+            78,
+            86,
+            78,
+            78,
+            73,
+            87,
+            73,
+            69,
+            70,
+            72,
+            67,
+            92,
+            74,
+            67,
+            67,
+            76,
+            66,
+            75,
+            94
+          ],
+          "releaseStagesMs": {
+            "21": 0,
+            "22": 0,
+            "34": 0,
+            "37": 0.8,
+            "20": 6.5,
+            "4": 22.3
+          },
+          "pointerupTaskMs": 94,
+          "pose": {
+            "inputs": 17,
+            "matched": 10,
+            "ms": [
+              308.4,
+              270.4,
+              181.5,
+              180.0,
+              171.7,
+              176.1,
+              194.0,
+              167.7,
+              297.3,
+              228.8
+            ]
+          }
+        },
+        {
+          "action": "01-inside",
+          "stopToGuiReadyMs": 179,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 139,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            107
+          ],
+          "releaseStagesMs": {
+            "21": 0.1,
+            "22": 0.1,
+            "34": 0,
+            "37": 0.8,
+            "20": 6.4,
+            "4": 34.4
+          },
+          "pointerupTaskMs": 107,
+          "pose": {
+            "inputs": 19,
+            "matched": 15,
+            "ms": [
+              138.7,
+              70.1,
+              74.3,
+              35.9,
+              8.4,
+              26.0,
+              4.0,
+              6.2,
+              24.7,
+              4.6,
+              26.3,
+              24.1,
+              3.7,
+              106.1,
+              81.9
+            ]
+          }
+        },
+        {
+          "action": "01-rotate",
+          "stopToGuiReadyMs": 204.3,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 186,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            80,
+            69,
+            60,
+            56,
+            55,
+            58,
+            60,
+            62,
+            61,
+            52,
+            54,
+            52,
+            56,
+            57,
+            52,
+            54,
+            55,
+            52,
+            54,
+            53,
+            50,
+            53,
+            52,
+            54,
+            52,
+            51,
+            63,
+            54,
+            53,
+            54,
+            51,
+            54,
+            93
+          ],
+          "releaseStagesMs": {
+            "21": 0,
+            "22": 0.1,
+            "34": 0,
+            "37": 0.7,
+            "20": 6.6,
+            "4": 22.3
+          },
+          "pointerupTaskMs": 93,
+          "pose": {
+            "inputs": 29,
+            "matched": 20,
+            "ms": [
+              279.4,
+              156.5,
+              138.5,
+              142.1,
+              166.5,
+              186.2,
+              143.3,
+              173.7,
+              144.1,
+              238.6,
+              143.8,
+              198.4,
+              219.9,
+              141.5,
+              169.2,
+              141.8,
+              254.1,
+              141.6,
+              251.5,
+              142.4
+            ]
+          }
+        }
+      ],
+      "runId": "chrome_plain_C",
+      "exitCode": 0,
+      "rawReport": "chrome_plain_C/report.json",
+      "rawLogSha256": "940ecd63202bd273c6130e35189d00106507676fa7a52241adf87de4233c4f0a"
+    },
+    "chrome_rulers_D": {
+      "reportSha256": "02b4edb62cb028bff0639f928dd85546a806626217556dcd7c4750a2651eae6f",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "scriptSha256": "527a3575a48573ad7a6b446d2e5fec82e16dd5c16c517f712adc6e8f3601ef50",
+      "status": "completed-replay",
+      "sourceUnchanged": true,
+      "drift": [],
+      "errors": [],
+      "nodeCount": 20082,
+      "actions": [
+        {
+          "action": "00-pan",
+          "stopToGuiReadyMs": 56.1,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "camera": {
+            "inputs": 96,
+            "matched": 96,
+            "p95Ms": 10.3,
+            "documentUnchanged": true
+          }
+        },
+        {
+          "action": "00-inside",
+          "stopToGuiReadyMs": 216,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 139,
+            "rulers": true
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            125
+          ],
+          "releaseStagesMs": {
+            "21": 0.1,
+            "22": 0.1,
+            "34": 0.1,
+            "37": 2.7,
+            "20": 12.2,
+            "4": 46.1
+          },
+          "pointerupTaskMs": 125,
+          "pose": {
+            "inputs": 19,
+            "matched": 16,
+            "ms": [
+              161.8,
+              60.7,
+              54.2,
+              27.1,
+              35.2,
+              7.1,
+              33.9,
+              8.2,
+              2.1,
+              34,
+              9.4,
+              34.2,
+              47.7,
+              19.1,
+              125.5,
+              93.3
+            ]
+          }
+        },
+        {
+          "action": "00-rotate",
+          "stopToGuiReadyMs": 409.7,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 171,
+            "rulers": true
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            144,
+            62,
+            58,
+            58,
+            59,
+            79,
+            90,
+            74,
+            71,
+            68,
+            72,
+            77,
+            77,
+            71,
+            71,
+            84,
+            79,
+            74,
+            72,
+            85,
+            80,
+            84,
+            78,
+            89,
+            80,
+            85,
+            82,
+            80,
+            80,
+            77,
+            84,
+            73,
+            126
+          ],
+          "releaseStagesMs": {
+            "21": 0,
+            "22": 0,
+            "34": 0,
+            "37": 3.2,
+            "20": 11.2,
+            "4": 28
+          },
+          "pointerupTaskMs": 126,
+          "pose": {
+            "inputs": 16,
+            "matched": 8,
+            "ms": [
+              220.6,
+              197.3,
+              176.4,
+              216.8,
+              221.0,
+              222.1,
+              218.9,
+              179.4
+            ]
+          }
+        },
+        {
+          "action": "00-zoom",
+          "stopToGuiReadyMs": 55.3,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            51
+          ],
+          "camera": {
+            "inputs": 96,
+            "matched": 67,
+            "p95Ms": 20.5,
+            "documentUnchanged": true
+          }
+        }
+      ],
+      "runId": "chrome_rulers_D",
+      "exitCode": 0,
+      "rawReport": "chrome_rulers_D/report.json",
+      "rawLogSha256": "273f7a1505f8b62876e06e29585868bc033e740c6650c92eadf07cd02be208f4"
+    },
+    "chrome_fidelity_D": {
+      "reportSha256": "d06f34b586c91a18454de816f9069ebd8d3c0ccbf7c8a1dec6553fb329a72aac",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "scriptSha256": "527a3575a48573ad7a6b446d2e5fec82e16dd5c16c517f712adc6e8f3601ef50",
+      "status": "completed-replay",
+      "sourceUnchanged": true,
+      "drift": [],
+      "errors": [],
+      "nodeCount": 20082,
+      "actions": [
+        {
+          "action": "inside",
+          "stopToGuiReadyMs": 173.3,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 139,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": true,
+          "authoredRedo": true,
+          "longTasksMs": [
+            54,
+            107
+          ],
+          "releaseStagesMs": {
+            "21": 0,
+            "22": 0.1,
+            "34": 0.1,
+            "37": 1.3,
+            "20": 10.3,
+            "4": 44.2
+          },
+          "pointerupTaskMs": 107,
+          "pose": {
+            "inputs": 19,
+            "matched": 17,
+            "ms": [
+              122.4,
+              29.5,
+              32.3,
+              31.6,
+              4.5,
+              35.2,
+              8.8,
+              32.4,
+              9.9,
+              1.9,
+              34.0,
+              9.4,
+              31.7,
+              31.9,
+              8.4,
+              105.1,
+              75.9
+            ]
+          },
+          "freshPlane": {
+            "width": 855,
+            "height": 926,
+            "held": {
+              "differentPixels": 0,
+              "maxChannelDelta": 0
+            },
+            "after": {
+              "differentPixels": 0,
+              "maxChannelDelta": 0
+            }
+          }
+        },
+        {
+          "action": "rotate",
+          "stopToGuiReadyMs": 206.1,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 171,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": true,
+          "authoredRedo": true,
+          "longTasksMs": [
+            139,
+            59,
+            59,
+            58,
+            60,
+            58,
+            72,
+            83,
+            73,
+            83,
+            79,
+            76,
+            89,
+            76,
+            77,
+            80,
+            71,
+            71,
+            74,
+            78,
+            73,
+            73,
+            76,
+            74,
+            70,
+            70,
+            69,
+            72,
+            67,
+            77,
+            77,
+            86,
+            101
+          ],
+          "releaseStagesMs": {
+            "21": 0.1,
+            "22": 0,
+            "34": 0.1,
+            "37": 0.6,
+            "20": 7.2,
+            "4": 26.7
+          },
+          "pointerupTaskMs": 101,
+          "pose": {
+            "inputs": 20,
+            "matched": 14,
+            "ms": [
+              360.4,
+              286.6,
+              267.6,
+              271.9,
+              272.6,
+              257.9,
+              262.8,
+              277.8,
+              214.3,
+              187.9,
+              169.3,
+              225.2,
+              138.7,
+              106.8
+            ]
+          },
+          "freshPlane": {
+            "width": 855,
+            "height": 926,
+            "held": {
+              "differentPixels": 0,
+              "maxChannelDelta": 0
+            },
+            "after": {
+              "differentPixels": 0,
+              "maxChannelDelta": 0
+            }
+          }
+        }
+      ],
+      "runId": "chrome_fidelity_D",
+      "exitCode": 0,
+      "rawReport": "chrome_fidelity_D/report.json",
+      "rawLogSha256": "88ebcf4b5c85e972b570e5e891edc9dbf0b9916792cf7c31b6ce457854ae26c3"
+    },
+    "chrome_117_D": {
+      "reportSha256": "046e6ddac989ada112656c49e3c73afdc98e55e881a8cf055702c703a4a0e57a",
+      "sourceSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "scriptSha256": "527a3575a48573ad7a6b446d2e5fec82e16dd5c16c517f712adc6e8f3601ef50",
+      "status": "completed-replay",
+      "sourceUnchanged": true,
+      "drift": [],
+      "errors": [],
+      "nodeCount": 752,
+      "actions": [
+        {
+          "action": "pan",
+          "stopToGuiReadyMs": 57.1,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "camera": {
+            "inputs": 96,
+            "matched": 96,
+            "p95Ms": 5.4,
+            "documentUnchanged": true
+          }
+        },
+        {
+          "action": "inside",
+          "stopToGuiReadyMs": 71.7,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 106,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "releaseStagesMs": {
+            "21": 0.4,
+            "22": 0.1,
+            "34": 0.3,
+            "37": 0.9,
+            "20": 6.9,
+            "4": 10.9
+          },
+          "pointerupTaskMs": null,
+          "pose": {
+            "inputs": 19,
+            "matched": 18,
+            "ms": [
+              59.5,
+              68.6,
+              3.9,
+              2.2,
+              1.7,
+              2.3,
+              44.8,
+              15.1,
+              1.8,
+              2.5,
+              2.2,
+              2.0,
+              2.5,
+              2.5,
+              49.6,
+              20.2,
+              30.8,
+              26.8
+            ]
+          }
+        },
+        {
+          "action": "rotate",
+          "stopToGuiReadyMs": 113,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 187,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "pointerupTaskMs": null,
+          "pose": {
+            "inputs": 17,
+            "matched": 10,
+            "ms": [
+              45.1,
+              46.9,
+              47.3,
+              58.5,
+              47.7,
+              50.4,
+              52.2,
+              62.1,
+              73.9,
+              48.0
+            ]
+          }
+        },
+        {
+          "action": "zoom",
+          "stopToGuiReadyMs": 58,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "camera": {
+            "inputs": 96,
+            "matched": 65,
+            "p95Ms": 18.0,
+            "documentUnchanged": true
+          }
+        }
+      ],
+      "runId": "chrome_117_D",
+      "exitCode": 0,
+      "rawReport": "chrome_117_D/report.json",
+      "rawLogSha256": "5178b7d089995a1a0d20179d87bba0d60630daeea3a651bf7d34feb3a3879f8d"
+    },
+    "chrome_topo_D": {
+      "reportSha256": "f01e29ff61c6c909dabf673af9422b669a52810be47b5a066ea054419e30e173",
+      "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "scriptSha256": "527a3575a48573ad7a6b446d2e5fec82e16dd5c16c517f712adc6e8f3601ef50",
+      "status": "completed-replay",
+      "sourceUnchanged": true,
+      "drift": [],
+      "errors": [],
+      "nodeCount": 394,
+      "actions": [
+        {
+          "action": "pan",
+          "stopToGuiReadyMs": 53.9,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "camera": {
+            "inputs": 96,
+            "matched": 96,
+            "p95Ms": 5.3,
+            "documentUnchanged": true
+          }
+        },
+        {
+          "action": "inside",
+          "stopToGuiReadyMs": 233.5,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 122,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "releaseStagesMs": {
+            "21": 0.7,
+            "22": 0.1,
+            "34": 0.2,
+            "37": 0.8,
+            "20": 6.2,
+            "4": 9.3
+          },
+          "pointerupTaskMs": null,
+          "pose": {
+            "inputs": 19,
+            "matched": 3,
+            "ms": [
+              255.4,
+              275.3,
+              199.8
+            ]
+          }
+        },
+        {
+          "action": "rotate",
+          "stopToGuiReadyMs": 1210.8,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 188,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "releaseStagesMs": {
+            "21": 0.2,
+            "22": 0.1,
+            "34": 0.1,
+            "37": 0.2,
+            "20": 2.2,
+            "4": 3.4
+          },
+          "pointerupTaskMs": null,
+          "pose": {
+            "inputs": 19,
+            "matched": 4,
+            "ms": [
+              297.2,
+              286.9,
+              270.6,
+              453.8
+            ]
+          }
+        },
+        {
+          "action": "zoom",
+          "stopToGuiReadyMs": 55.5,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "camera": {
+            "inputs": 96,
+            "matched": 65,
+            "p95Ms": 18.8,
+            "documentUnchanged": true
+          }
+        }
+      ],
+      "runId": "chrome_topo_D",
+      "exitCode": 0,
+      "rawReport": "chrome_topo_D/report.json",
+      "rawLogSha256": "2c4a883d4d9a713ac71cb716e094919fac67e775ace7d1c633f81e620ada7c57"
+    },
+    "control_multi_D": {
+      "reportSha256": "daa463bfef2c82368e7e6f783bfd38c4cda40d5e2edba5bd4252a6b2251c216a",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "scriptSha256": "768095c1bf1b2369baaf7410ae897c17e6f6b7ac6abd4992ee2ee4c05e1a05e6",
+      "status": "completed-replay",
+      "sourceUnchanged": true,
+      "drift": [],
+      "errors": [],
+      "nodeCount": 20082,
+      "actions": [
+        {
+          "action": "00-pan",
+          "stopToGuiReadyMs": 88.4,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            73,
+            55,
+            52,
+            55,
+            50
+          ],
+          "camera": {
+            "inputs": 96,
+            "matched": 96,
+            "p95Ms": 49.2,
+            "documentUnchanged": true
+          }
+        },
+        {
+          "action": "00-zoom",
+          "stopToGuiReadyMs": 122.4,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [
+            104
+          ],
+          "camera": {
+            "inputs": 96,
+            "matched": 5,
+            "p95Ms": 104,
+            "documentUnchanged": true
+          }
+        }
+      ],
+      "runId": "control_multi_D",
+      "exitCode": 0,
+      "rawReport": "control_multi_D/report.json",
+      "rawLogSha256": "ab114afd5700cc52b4f873600b6a6b6bb1d6697403b3dd01950e517e52934519"
+    },
+    "chrome_multi_D": {
+      "reportSha256": "679b50295f8c9e0380a278781ff70ce00ee6abd4853f13e5bb1bf8645bbb0209",
+      "sourceSha256": "701877664bf271305c8bc103c4036a228d7bd8816f1d98f18cdc332a75c36c46",
+      "scriptSha256": "768095c1bf1b2369baaf7410ae897c17e6f6b7ac6abd4992ee2ee4c05e1a05e6",
+      "status": "completed-replay",
+      "sourceUnchanged": true,
+      "drift": [],
+      "errors": [],
+      "nodeCount": 20082,
+      "actions": [
+        {
+          "action": "00-pan",
+          "stopToGuiReadyMs": 56.2,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "camera": {
+            "inputs": 96,
+            "matched": 96,
+            "p95Ms": 9.2,
+            "documentUnchanged": true
+          }
+        },
+        {
+          "action": "00-zoom",
+          "stopToGuiReadyMs": 56.5,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "camera": {
+            "inputs": 96,
+            "matched": 74,
+            "p95Ms": 19.7,
+            "documentUnchanged": true
+          }
+        }
+      ],
+      "runId": "chrome_multi_D",
+      "exitCode": 0,
+      "rawReport": "chrome_multi_D/report.json",
+      "rawLogSha256": "8a4d96b727ebbe1516560edc2428ba1d7073895adaf2509bd62460f386aa55ac"
+    },
+    "upcontrol_topo_H1": {
+      "reportSha256": "cc7e821d47f0fc6d8f6d490ec948eac958012b1b0ac008e7a0ff1ce55b3c1841",
+      "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "scriptSha256": "527a3575a48573ad7a6b446d2e5fec82e16dd5c16c517f712adc6e8f3601ef50",
+      "status": "completed-replay",
+      "sourceUnchanged": true,
+      "drift": [],
+      "errors": [],
+      "nodeCount": 394,
+      "actions": [
+        {
+          "action": "pan",
+          "stopToGuiReadyMs": 57.3,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "camera": {
+            "inputs": 96,
+            "matched": 96,
+            "p95Ms": 4.5,
+            "documentUnchanged": true
+          }
+        },
+        {
+          "action": "inside",
+          "stopToGuiReadyMs": 253,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 122,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "releaseStagesMs": {
+            "21": 0.8,
+            "22": 0.2,
+            "34": 0.2,
+            "37": 1.6,
+            "20": 7,
+            "4": 10.3
+          },
+          "pointerupTaskMs": null,
+          "pose": {
+            "inputs": 19,
+            "matched": 4,
+            "ms": [
+              261.2,
+              281.8,
+              266.9,
+              206.7
+            ]
+          }
+        },
+        {
+          "action": "rotate",
+          "stopToGuiReadyMs": 1343.5,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 188,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "releaseStagesMs": {
+            "21": 0.2,
+            "22": 0.3,
+            "34": 0.1,
+            "37": 2,
+            "20": 4.3,
+            "4": 5.7
+          },
+          "pointerupTaskMs": null,
+          "pose": {
+            "inputs": 11,
+            "matched": 3,
+            "ms": [
+              278.7,
+              285.6,
+              552.9
+            ]
+          }
+        },
+        {
+          "action": "zoom",
+          "stopToGuiReadyMs": 54.2,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "camera": {
+            "inputs": 96,
+            "matched": 67,
+            "p95Ms": 18.5,
+            "documentUnchanged": true
+          }
+        }
+      ],
+      "runId": "upcontrol_topo_H1",
+      "exitCode": 0,
+      "rawReport": "upcontrol_topo_H1/report.json",
+      "rawLogSha256": "f884baa03e7bfbd1e37219c1d5154c44a1d31b60071ac163cc23ed143dceaf7e"
+    },
+    "chrome_topo_H": {
+      "reportSha256": "38090703cfc8f4d24237e43c9157a9afd529fa1ee3c95f9d7edc6c88a197ff18",
+      "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "scriptSha256": "527a3575a48573ad7a6b446d2e5fec82e16dd5c16c517f712adc6e8f3601ef50",
+      "status": "completed-replay",
+      "sourceUnchanged": true,
+      "drift": [],
+      "errors": [],
+      "nodeCount": 394,
+      "actions": [
+        {
+          "action": "pan",
+          "stopToGuiReadyMs": 56.5,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "camera": {
+            "inputs": 96,
+            "matched": 96,
+            "p95Ms": 5.4,
+            "documentUnchanged": true
+          }
+        },
+        {
+          "action": "inside",
+          "stopToGuiReadyMs": 235.3,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 122,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "releaseStagesMs": {
+            "21": 0.8,
+            "22": 0.1,
+            "34": 0.2,
+            "37": 0.8,
+            "20": 6.3,
+            "4": 9.7
+          },
+          "pointerupTaskMs": null,
+          "pose": {
+            "inputs": 19,
+            "matched": 4,
+            "ms": [
+              258.3,
+              279.5,
+              257.7,
+              198.2
+            ]
+          }
+        },
+        {
+          "action": "rotate",
+          "stopToGuiReadyMs": 795.6,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 188,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "releaseStagesMs": {
+            "21": 0.2,
+            "22": 0.2,
+            "34": 0.1,
+            "37": 0.1,
+            "20": 2,
+            "4": 3.3
+          },
+          "pointerupTaskMs": null,
+          "pose": {
+            "inputs": 2,
+            "matched": 0,
+            "ms": []
+          }
+        },
+        {
+          "action": "zoom",
+          "stopToGuiReadyMs": 53.8,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "camera": {
+            "inputs": 96,
+            "matched": 67,
+            "p95Ms": 18.5,
+            "documentUnchanged": true
+          }
+        }
+      ],
+      "runId": "chrome_topo_H",
+      "exitCode": 0,
+      "rawReport": "chrome_topo_H/report.json",
+      "rawLogSha256": "ef1ffb8cdb5bc59cd408d088db59685457a518cec0e1e5dcbe5e4fce4ece23c9"
+    },
+    "upcontrol_topo_H2": {
+      "reportSha256": "399d4ed895d52d2551c16018be24760128b3e44f4e35135dddebc9971c0a21ea",
+      "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "scriptSha256": "527a3575a48573ad7a6b446d2e5fec82e16dd5c16c517f712adc6e8f3601ef50",
+      "status": "completed-replay",
+      "sourceUnchanged": true,
+      "drift": [],
+      "errors": [],
+      "nodeCount": 394,
+      "actions": [
+        {
+          "action": "pan",
+          "stopToGuiReadyMs": 58.6,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "camera": {
+            "inputs": 96,
+            "matched": 96,
+            "p95Ms": 5.5,
+            "documentUnchanged": true
+          }
+        },
+        {
+          "action": "inside",
+          "stopToGuiReadyMs": 234,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 122,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "releaseStagesMs": {
+            "21": 0.8,
+            "22": 0.1,
+            "34": 0.2,
+            "37": 1.5,
+            "20": 7.1,
+            "4": 10.5
+          },
+          "pointerupTaskMs": null,
+          "pose": {
+            "inputs": 19,
+            "matched": 4,
+            "ms": [
+              255.0,
+              277.8,
+              256.4,
+              195.2
+            ]
+          }
+        },
+        {
+          "action": "rotate",
+          "stopToGuiReadyMs": 1292.4,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 188,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "releaseStagesMs": {
+            "21": 0.2,
+            "22": 0.2,
+            "34": 0.1,
+            "37": 1.1,
+            "20": 3.5,
+            "4": 4.7
+          },
+          "pointerupTaskMs": null,
+          "pose": {
+            "inputs": 11,
+            "matched": 3,
+            "ms": [
+              283.9,
+              282.2,
+              511.4
+            ]
+          }
+        },
+        {
+          "action": "zoom",
+          "stopToGuiReadyMs": 55,
+          "graph": null,
+          "undo": null,
+          "authoredUndo": null,
+          "authoredRedo": null,
+          "longTasksMs": [],
+          "camera": {
+            "inputs": 96,
+            "matched": 66,
+            "p95Ms": 18.3,
+            "documentUnchanged": true
+          }
+        }
+      ],
+      "runId": "upcontrol_topo_H2",
+      "exitCode": 0,
+      "rawReport": "upcontrol_topo_H2/report.json",
+      "rawLogSha256": "34c0fceeafcb8ef3a4cab373eeeeeabf84d132bf6e43b2ef331c65d24b9dd308"
+    },
+    "chrome_117pixels_Z": {
+      "reportSha256": "93dcec5004f9c0b48b53677ebbe2d296dbcc7a711b02ac8c49a2ac051096c830",
+      "sourceSha256": "d494693eadf269e7fa29e4cc56e893f5890c02f4d96f4561065c851818a85d70",
+      "scriptSha256": "527a3575a48573ad7a6b446d2e5fec82e16dd5c16c517f712adc6e8f3601ef50",
+      "status": "completed-replay",
+      "sourceUnchanged": true,
+      "drift": [],
+      "errors": [],
+      "nodeCount": 752,
+      "actions": [
+        {
+          "action": "inside",
+          "stopToGuiReadyMs": 67.1,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 106,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": true,
+          "authoredRedo": true,
+          "longTasksMs": [],
+          "releaseStagesMs": {
+            "21": 0.4,
+            "22": 0.2,
+            "34": 0.1,
+            "37": 0.9,
+            "20": 5.9,
+            "4": 9.2
+          },
+          "pointerupTaskMs": null,
+          "pose": {
+            "inputs": 19,
+            "matched": 18,
+            "ms": [
+              53,
+              58.6,
+              4.1,
+              2.1,
+              3.7,
+              2.4,
+              40.7,
+              12.2,
+              1.9,
+              3.0,
+              3.9,
+              3.0,
+              3.8,
+              2.8,
+              43.6,
+              12.6,
+              25.2,
+              24.4
+            ]
+          },
+          "freshPlane": {
+            "width": 855,
+            "height": 926,
+            "held": {
+              "differentPixels": 0,
+              "maxChannelDelta": 0
+            },
+            "after": {
+              "differentPixels": 0,
+              "maxChannelDelta": 0
+            }
+          }
+        },
+        {
+          "action": "rotate",
+          "stopToGuiReadyMs": 134.2,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 187,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": true,
+          "authoredRedo": true,
+          "longTasksMs": [],
+          "releaseStagesMs": {
+            "21": 0.2,
+            "22": 0.2,
+            "34": 0,
+            "37": 0.3,
+            "20": 2.8,
+            "4": 4.9
+          },
+          "pointerupTaskMs": null,
+          "pose": {
+            "inputs": 11,
+            "matched": 1,
+            "ms": [
+              80.6
+            ]
+          },
+          "freshPlane": {
+            "width": 855,
+            "height": 926,
+            "held": {
+              "differentPixels": 0,
+              "maxChannelDelta": 0
+            },
+            "after": {
+              "differentPixels": 0,
+              "maxChannelDelta": 0
+            }
+          }
+        }
+      ],
+      "runId": "chrome_117pixels_Z",
+      "exitCode": 0,
+      "rawReport": "chrome_117pixels_Z/report.json",
+      "rawLogSha256": "7ac86f80cf8bb5bc7e98cdc6b55230bf5248db09fb3400925e6816e0994b6c6b"
+    },
+    "chrome_topopixels_Z": {
+      "reportSha256": "9f5cb7d801e76acd342c032288e7b78873c090676035fff1a55a66fc2b451c32",
+      "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "scriptSha256": "527a3575a48573ad7a6b446d2e5fec82e16dd5c16c517f712adc6e8f3601ef50",
+      "status": "completed-replay",
+      "sourceUnchanged": true,
+      "drift": [],
+      "errors": [],
+      "nodeCount": 394,
+      "actions": [
+        {
+          "action": "inside",
+          "stopToGuiReadyMs": 58.2,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 122,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": true,
+          "authoredRedo": true,
+          "longTasksMs": [],
+          "releaseStagesMs": {
+            "21": 0.9,
+            "22": 0.2,
+            "34": 0.3,
+            "37": 0.7,
+            "20": 6.4,
+            "4": 10.2
+          },
+          "pointerupTaskMs": null,
+          "pose": {
+            "inputs": 19,
+            "matched": 6,
+            "ms": [
+              255.1,
+              271.8,
+              261.1,
+              230.4,
+              28.3,
+              23.4
+            ]
+          },
+          "freshPlane": {
+            "width": 855,
+            "height": 960,
+            "held": {
+              "differentPixels": 0,
+              "maxChannelDelta": 0
+            },
+            "after": {
+              "differentPixels": 0,
+              "maxChannelDelta": 0
+            }
+          }
+        },
+        {
+          "action": "rotate",
+          "stopToGuiReadyMs": 757,
+          "graph": {
+            "mode": "op-batch",
+            "frameBytes": 188,
+            "rulers": false
+          },
+          "undo": true,
+          "authoredUndo": true,
+          "authoredRedo": true,
+          "longTasksMs": [],
+          "releaseStagesMs": {
+            "21": 0.2,
+            "22": 0.1,
+            "34": 0.1,
+            "37": 0.4,
+            "20": 3.4,
+            "4": 5.1
+          },
+          "pointerupTaskMs": null,
+          "pose": {
+            "inputs": 13,
+            "matched": 3,
+            "ms": [
+              293.7,
+              292.5,
+              459.7
+            ]
+          },
+          "freshPlane": {
+            "width": 855,
+            "height": 960,
+            "held": {
+              "differentPixels": 0,
+              "maxChannelDelta": 0
+            },
+            "after": {
+              "differentPixels": 0,
+              "maxChannelDelta": 0
+            }
+          }
+        }
+      ],
+      "runId": "chrome_topopixels_Z",
+      "exitCode": 0,
+      "rawReport": "chrome_topopixels_Z/report.json",
+      "rawLogSha256": "18b942759d8979c20142023427c013f3bb4703a293090ea193457f2e47ad6cc4"
+    }
+  },
+  "figControlToFinalPixelDiff": {
+    "inside": {
+      "before": {
+        "size": [
+          855,
+          926
+        ],
+        "differentPixels": 0,
+        "maxChannelDelta": 0
+      },
+      "held": {
+        "size": [
+          855,
+          926
+        ],
+        "differentPixels": 0,
+        "maxChannelDelta": 0
+      },
+      "after": {
+        "size": [
+          855,
+          926
+        ],
+        "differentPixels": 0,
+        "maxChannelDelta": 0
+      },
+      "fresh": {
+        "size": [
+          855,
+          926
+        ],
+        "differentPixels": 0,
+        "maxChannelDelta": 0
+      }
+    },
+    "rotate": {
+      "before": {
+        "size": [
+          855,
+          926
+        ],
+        "differentPixels": 0,
+        "maxChannelDelta": 0
+      },
+      "held": {
+        "size": [
+          855,
+          926
+        ],
+        "differentPixels": 0,
+        "maxChannelDelta": 0
+      },
+      "after": {
+        "size": [
+          855,
+          926
+        ],
+        "differentPixels": 0,
+        "maxChannelDelta": 0
+      },
+      "fresh": {
+        "size": [
+          855,
+          926
+        ],
+        "differentPixels": 0,
+        "maxChannelDelta": 0
+      }
+    }
+  },
+  "fullSource": {
+    "previousIntegrated": {
+      "reportSha256": "a5618fe89fb729f8a5d3007b3c41a79beb527c30cb4e6e4f18177e0f5d64d319",
+      "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "scriptSha256": "da6b8863caf1423f7bd12bd27b146ecb03cb7c8f03f0e97a1b9ea3534bea8d3a",
+      "openToUsableMs": 32238.6,
+      "nativeStagesMs": {
+        "open": 8319.2,
+        "canvasSnapshot": 11325.7,
+        "canvasLayout": 86.4
+      },
+      "coldNavigation": {
+        "pan": {
+          "pixelsEarlyWhiteFinalInk": 0,
+          "exactInk": 2045,
+          "size": [
+            831,
+            840
+          ]
+        },
+        "zoom": {
+          "pixelsEarlyWhiteFinalInk": 24542,
+          "exactInk": 39375,
+          "size": [
+            831,
+            840
+          ]
+        },
+        "reverse": {
+          "pixelsEarlyWhiteFinalInk": 0,
+          "exactInk": 52013,
+          "size": [
+            831,
+            840
+          ]
+        }
+      },
+      "zoomChain": null
+    },
+    "current": {
+      "reportSha256": "d89ac373711a403506640fd61f139ff97e99d38d08062dff1511c3e6f80f5318",
+      "sourceSha256": "b70f04948a8729d99224d94cd5328ad67673aa20d7c17d11bba3986c151c6c12",
+      "scriptSha256": "3d8a1eb0f9e2daa30f611538163c5127661d9d5a5eeb09409c0407c510aa43cd",
+      "openToUsableMs": 36148.0,
+      "nativeStagesMs": {
+        "open": 9297.9,
+        "canvasSnapshot": 11941.7,
+        "canvasLayout": 27.1
+      },
+      "coldNavigation": {
+        "pan": {
+          "pixelsEarlyWhiteFinalInk": 0,
+          "exactInk": 2045,
+          "size": [
+            831,
+            840
+          ]
+        },
+        "zoom": {
+          "pixelsEarlyWhiteFinalInk": 24542,
+          "exactInk": 39375,
+          "size": [
+            831,
+            840
+          ]
+        },
+        "reverse": {
+          "pixelsEarlyWhiteFinalInk": 0,
+          "exactInk": 52013,
+          "size": [
+            831,
+            840
+          ]
+        }
+      },
+      "zoomChain": [
+        {
+          "zoom": 32,
+          "projectedMs": 13.092124999995576,
+          "exactMs": 2097.6216249999998
+        },
+        {
+          "zoom": 1.25,
+          "projectedMs": 9.33475000000908,
+          "exactMs": 1052.1393330000137
+        },
+        {
+          "zoom": 9.5,
+          "projectedMs": 6.96341699999175,
+          "exactMs": 1628.7782919999881
+        },
+        {
+          "zoom": 0.4036458333333333,
+          "projectedMs": 6.405958000003011,
+          "exactMs": 4133.777833
+        }
+      ]
+    },
+    "reference3200": {
+      "sha256": "3c51fb605363b6fc172a45b1ddc85d51dc788002b15e9aadc7472780ed1a21b8",
+      "currentSha256": "3c51fb605363b6fc172a45b1ddc85d51dc788002b15e9aadc7472780ed1a21b8",
+      "size": [
+        855,
+        960
+      ],
+      "differentPixels": 0,
+      "maxChannelDelta": 0
+    }
+  },
+  "checks": [
+    {
+      "name": "kernel graph 30",
+      "exitCode": 0,
+      "log": "graph-tests.log",
+      "sha256": "69967d07dd3d7d432b648298cfd2d9fb5b898ddedf0a755d5b6e367f61bed080"
+    },
+    {
+      "name": "kernel snapshot 6",
+      "exitCode": 0,
+      "log": "snapshot-tests.log",
+      "sha256": "6e7bf82af24dcd128aa14ee4871105a5de840d9cf406c18b1f8aca3f7a585929"
+    },
+    {
+      "name": "frontend history 18",
+      "exitCode": 0,
+      "log": "history-tests.log",
+      "sha256": "ae0a4c9c2fae0ebe135d46f1aba3de2cb99847d14e69642d2dcc41666f2b37b0"
+    },
+    {
+      "name": "frontend snapshot 26 with pinned fonts",
+      "exitCode": 0,
+      "log": "font-scene-fresh.log",
+      "sha256": "7d48bbaa4f3f0b524f94c2ed3cbda4ed8f9a7526a67d8f9de57cd9f0cd1ead8e"
+    },
+    {
+      "name": "client types",
+      "exitCode": 0,
+      "log": "ui-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "integrated desktop build",
+      "exitCode": 0,
+      "log": "integrated-build.log",
+      "sha256": "e094d1ecf16b6d4b867174d997339ff7e607ca4daced3a6c154acd62c65d0f1f"
+    },
+    {
+      "name": "final client geometry, guides, selection and color picker (46)",
+      "exitCode": 0,
+      "log": "shipping-ui-tests.log",
+      "sha256": "527889818b523af498f34578094717be205056978e6430d4d5f6e4615fcc1031"
+    },
+    {
+      "name": "final client typecheck",
+      "exitCode": 0,
+      "log": "shipping-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "replaySources": {
+    "actions.mjs": "527a3575a48573ad7a6b446d2e5fec82e16dd5c16c517f712adc6e8f3601ef50",
+    "multi-actions.mjs": "768095c1bf1b2369baaf7410ae897c17e6f6b7ac6abd4992ee2ee4c05e1a05e6",
+    "full-zoom.mjs": "3d8a1eb0f9e2daa30f611538163c5127661d9d5a5eeb09409c0407c510aa43cd"
+  },
+  "replayArchiveSha256": "bc439ce21af6bc52737dcddf40f2c1d57be3e6345e0c8dbcfabd0942c457ec16",
+  "gates": [
+    {
+      "gateId": "G1",
+      "caseId": "graphHandleMembership",
+      "status": "PASS",
+      "reason": "Real WASM op-batch, stable and retired handles, authored undo/redo, bounded history and atomic failure covered",
+      "runs": [
+        "graph_plain_B",
+        "graph_plain_B2",
+        "chrome_fidelity_D"
+      ]
+    },
+    {
+      "gateId": "G2",
+      "caseId": "rulerCameraProjection33",
+      "status": "PARTIAL",
+      "reason": "Projected camera P95 below 33ms among matched samples. Latest combined zoom matched 67 of 96 inputs; physical scanout not measured",
+      "runs": [
+        "chrome_rulers_D"
+      ]
+    },
+    {
+      "gateId": "G2",
+      "caseId": "settle100",
+      "status": "FAIL",
+      "reason": "Default FIG above 100ms; repeat heavy topology rotation above 790ms",
+      "runs": [
+        "graph_plain_B",
+        "graph_plain_B2",
+        "chrome_topo_D",
+        "chrome_topo_H"
+      ]
+    },
+    {
+      "gateId": "G2",
+      "caseId": "fullSourceColdZoom",
+      "status": "FAIL",
+      "reason": "24542 early-white / final-ink screenshot pixels at identical cameras",
+      "runs": [
+        "source-final"
+      ]
+    },
+    {
+      "gateId": "G2",
+      "caseId": "template2-3200",
+      "status": "PASS_PIXEL_ONLY",
+      "reason": "Full-density 855x960 reference identical; the four exact zoom targets still took 1.05 to 4.13 seconds",
+      "runs": [
+        "source-final"
+      ]
+    },
+    {
+      "gateId": "G5",
+      "caseId": "fullMatrix",
+      "status": "NOT_RUN",
+      "reason": "This round used three real fixtures and explicit action samples"
+    }
+  ],
+  "previousCandidatesNotShipped": {
+    "merged-topology": {
+      "reportSha256": "fd858551ce5912176331aacc347238e7ad19e9e769b2f6b74037f091ca45c4b9",
+      "ms": {
+        "inside": 446.9,
+        "rotate": 735.1
+      }
+    },
+    "cohort-topology": {
+      "reportSha256": "e2b97a5015c74b76c96cf3a39bb053e6a74e95613de404eda6b6b8482336f1f4",
+      "ms": {
+        "inside": 467.4,
+        "rotate": 1412.6
+      }
+    },
+    "gutter-topology": {
+      "reportSha256": "fb70209aebf9be8f7c8bfab11ff51efceac5ee52acefc65e02add0ea59949476",
+      "ms": {
+        "inside": 433.9,
+        "rotate": 877.8
+      }
+    },
+    "pipeline-topology": {
+      "reportSha256": "3f0580821edab173b8ac5714d387feddab33dba6c69446b13b64a254cbc97857",
+      "ms": {
+        "inside": 547.9,
+        "rotate": 840.3
+      }
+    },
+    "snapshot-control1": {
+      "snapshotMs": 10646.61,
+      "bytes": 300408797,
+      "nodes": 124447,
+      "roots": 306,
+      "sha256": "0f9b394a0f157f5f4a6a6d69ceb4fd794aa2d4455d850be77b8d6a7f8fd98c1f",
+      "warningsSha256": "295c2ed3b254b8a93a4fd73efbaebdb81c0fd0261e69bb257c31412a41cd1037",
+      "reportSha256": "1b2b7a989118a96b5fa299bd3c34187cbcd431f6f22aebb80a43b2ebb5c75eb1"
+    },
+    "snapshot-control2": {
+      "snapshotMs": 10629.15,
+      "bytes": 300408797,
+      "nodes": 124447,
+      "roots": 306,
+      "sha256": "0f9b394a0f157f5f4a6a6d69ceb4fd794aa2d4455d850be77b8d6a7f8fd98c1f",
+      "warningsSha256": "295c2ed3b254b8a93a4fd73efbaebdb81c0fd0261e69bb257c31412a41cd1037",
+      "reportSha256": "e4caf4a3fb58e5c09d8a02559d58d21277ef3c30afb601d70195827c01a880db"
+    },
+    "snapshot-candidate1": {
+      "snapshotMs": 10736.6,
+      "bytes": 300408797,
+      "nodes": 124447,
+      "roots": 306,
+      "sha256": "0f9b394a0f157f5f4a6a6d69ceb4fd794aa2d4455d850be77b8d6a7f8fd98c1f",
+      "warningsSha256": "295c2ed3b254b8a93a4fd73efbaebdb81c0fd0261e69bb257c31412a41cd1037",
+      "reportSha256": "803101289ca6b50e5886fa95d8d44571b13ddb14f263e506f29d7628c568aa71"
+    },
+    "snapshot-candidate2": {
+      "snapshotMs": 11280.51,
+      "bytes": 300408797,
+      "nodes": 124447,
+      "roots": 306,
+      "sha256": "0f9b394a0f157f5f4a6a6d69ceb4fd794aa2d4455d850be77b8d6a7f8fd98c1f",
+      "warningsSha256": "295c2ed3b254b8a93a4fd73efbaebdb81c0fd0261e69bb257c31412a41cd1037",
+      "reportSha256": "447526ce2a1a5db9264288240511fd813dd5906c10a224e9c21cdf444e23b059"
+    }
+  }
+}

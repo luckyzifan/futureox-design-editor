@@ -18,6 +18,7 @@
 //! - struct: every field in ordinal order; enum(kind 0): uvarint → name
 //! - arrays: uvarint count then items
 mod components;
+mod document;
 
 use crate::math::Transform;
 use crate::scene::{Document, Effect, Node, Page, Paint, Stroke};
@@ -493,8 +494,10 @@ fn style_weight(fig_style: &str) -> Option<f32> {
 }
 
 /// `Number { value, units }` → a line-height multiplier.
-/// Units follow fig2sketch converter/text.py `line_height`: PIXELS is
-/// absolute, PERCENT/RAW are relative (100% / 1.0 mean "auto").
+/// PIXELS is absolute. PERCENT and RAW are multipliers of the font size
+/// (100% and RAW 1.0 are one em, not the font's intrinsic auto line gap).
+/// Figma's UI Auto value is omitted or stored as that intrinsic ratio;
+/// an omitted line height stays the editor default.
 fn line_height_multiplier(number: &Value, font_size: f64) -> Option<f64> {
     let value = number.get("value").and_then(Value::as_f64)?;
     match str_of(number, "units") {
@@ -523,6 +526,7 @@ fn align_of_stack_justify(v: &str) -> Result<Align, Error> {
         "MAX" => Align::UnsafeEnd,
         "SPACE_BETWEEN" => Align::SpaceBetween,
         "SPACE_EVENLY" => Align::SpaceEvenly,
+        "SPACE_AROUND" => Align::SpaceAround,
         other => return Err(layout_unsupported("stackPrimaryAlignItems", other)),
     })
 }
@@ -688,7 +692,7 @@ impl FigImporter {
                 }
                 for effect in value.get("effects").and_then(Value::as_array).into_iter().flatten() {
                     let kind = str_of(effect, "type").unwrap_or("");
-                    if !matches!(kind, "DROP_SHADOW" | "INNER_SHADOW" | "FOREGROUND_BLUR" | "BACKGROUND_BLUR" | "GLASS" | "GRAIN") {
+                    if !matches!(kind, "DROP_SHADOW" | "INNER_SHADOW" | "FOREGROUND_BLUR" | "LAYER_BLUR" | "BACKGROUND_BLUR" | "GLASS" | "GRAIN") {
                         return Err(Error::Unsupported(format!("effectType={kind}")));
                     }
                 }
@@ -1070,12 +1074,13 @@ impl FigImporter {
         if let Some(effects) = change.get("effects").and_then(Value::as_array) {
             for e in effects {
                 let etype = str_of(e, "type").unwrap_or("");
-                // Native FOREGROUND_BLUR is the layer blur. Modern effect
-                // types must be modeled or rejected by validate_record.
+                // Native FOREGROUND_BLUR is the layer blur. Older kiwi schemas
+                // and the REST/plugin name LAYER_BLUR are the same kernel blur.
+                // Other effect types must be modeled or rejected by validate_record.
                 let kind = match etype {
                     "DROP_SHADOW" => "shadow",
                     "INNER_SHADOW" => "inner-shadow",
-                    "FOREGROUND_BLUR" => "blur",
+                    "FOREGROUND_BLUR" | "LAYER_BLUR" => "blur",
                     "BACKGROUND_BLUR" => "background-blur",
                     "GLASS" => "glass",
                     "GRAIN" => "texture",
@@ -1227,7 +1232,7 @@ impl FigImporter {
                 // (整段回退). Rendering v1 still draws the whole string —
                 // storage stays faithful for the per-run renderer.
                 if !node.text.is_empty() {
-                    node.text_runs = styled_text_runs(&td, &node.text, self.display_p3, untranslated).into();
+                    node.text_runs = styled_text_runs(&td, &node.text, self.display_p3, node.font_size, untranslated).into();
                 }
             }
             "CODE_BLOCK" => {
@@ -1238,6 +1243,8 @@ impl FigImporter {
                     Some("TYPESCRIPT") => Some("typescript".to_string()),
                     Some("JSON") => Some("json".to_string()),
                     Some("PYTHON") => Some("python".to_string()),
+                    Some("RUST") => Some("rust".to_string()),
+                    Some("PLAINTEXT") => Some("plain".to_string()),
                     Some(other) => {
                         untranslated.push(format!("codeBlockLanguage={other}"));
                         None
@@ -1523,8 +1530,12 @@ impl FigImporter {
             }
             _ => {}
         }
-        if let Some(v) = str_of(change, "textAlignVertical").filter(|v| *v != "TOP") {
-            untranslated.push(format!("textAlignVertical={v}"));
+        // TOP is the kernel default. CENTER/BOTTOM are schema 20 and already drawn.
+        match str_of(change, "textAlignVertical") {
+            None | Some("TOP") => {}
+            Some("CENTER") => style.vertical_align = "center".into(),
+            Some("BOTTOM") => style.vertical_align = "bottom".into(),
+            Some(other) => untranslated.push(format!("textAlignVertical={other}")),
         }
         // 21 号/23 号 C1 font_features: toggled OpenType features map
         // directly onto the kernel's harfbuzz-syntax toggle list ("liga" on,
@@ -1584,7 +1595,7 @@ impl FigImporter {
         if characters.is_empty() {
             return;
         }
-        node.text_runs = styled_text_runs(&td, &characters, self.display_p3, untranslated).into();
+        node.text_runs = styled_text_runs(&td, &characters, self.display_p3, node.font_size, untranslated).into();
         // node-level decoration applies to the whole string when no
         // per-character styles carve it up
         match str_of(change, "textDecoration") {
@@ -1603,6 +1614,8 @@ impl FigImporter {
                         font_id: None,
                         font_size: None,
                         weight: None,
+                        letter_spacing: None,
+                        line_height: None,
                     });
                 } else {
                     untranslated.push(format!(
@@ -1626,6 +1639,7 @@ fn styled_text_runs(
     td: &Value,
     characters: &str,
     display_p3: bool,
+    font_size: f64,
     untranslated: &mut Vec<String>,
 ) -> Vec<crate::font::TextRun> {
     let empty = Vec::new();
@@ -1675,7 +1689,7 @@ fn styled_text_runs(
         utf16 = end;
         let entry = entry.expect("checked");
         let mut run = crate::font::TextRun {
-                        paragraph: None,
+            paragraph: None,
             text_case: text_case_of(str_of(entry, "textCase")),
             color: None,
             underline: false,
@@ -1686,6 +1700,8 @@ fn styled_text_runs(
             font_id: None,
             font_size: None,
             weight: None,
+            letter_spacing: None,
+            line_height: None,
         };
         if let Some(size) = entry.get("fontSize").and_then(Value::as_f64) {
             run.font_size = Some(size.max(1.));
@@ -1712,11 +1728,26 @@ fn styled_text_runs(
             Some("STRIKETHROUGH") => run.strikethrough = true,
             _ => {}
         }
-        // keys with no kernel home must not vanish
-        for key in ["lineHeight", "letterSpacing", "textAlignHorizontal"] {
-            if let Some(v) = entry.get(key).filter(|v| !v.is_null()) {
-                dropped.push(format!("{key}={v}"));
+        let metric_size = run.font_size.unwrap_or(font_size).max(1.);
+        if let Some(v) = entry.get("lineHeight").filter(|v| !v.is_null()) {
+            match line_height_multiplier(v, metric_size) {
+                Some(multiplier) if (0.1..=10.).contains(&multiplier) => {
+                    run.line_height = Some(multiplier)
+                }
+                _ => dropped.push(format!("lineHeight={v}")),
             }
+        }
+        if let Some(v) = entry.get("letterSpacing").filter(|v| !v.is_null()) {
+            match letter_spacing_px(v, metric_size) {
+                Some(pixels) if pixels.is_finite() && pixels.abs() <= 1000. => {
+                    run.letter_spacing = Some(pixels)
+                }
+                _ => dropped.push(format!("letterSpacing={v}")),
+            }
+        }
+        // keys with no kernel home must not vanish
+        if let Some(v) = entry.get("textAlignHorizontal").filter(|v| !v.is_null()) {
+            dropped.push(format!("textAlignHorizontal={v}"));
         }
         if let Some(case) = str_of(entry, "textCase").filter(|c| !TEXT_CASES.contains(c)) {
             dropped.push(format!("textCase={case}"));
@@ -2058,7 +2089,7 @@ pub fn document_from_canvas(
         id: "imported-fig".into(),
         name: "Imported from Figma".into(),
         pages: Vec::new(),
-        nodes: BTreeMap::new(),
+        nodes: Default::default(),
         fonts: BTreeMap::new(),
         animations: Vec::new(),
     };
@@ -2116,7 +2147,7 @@ pub fn document_from_canvas(
     // here so unsupported variants fail loudly with the offending value.
     let mut unknown: Vec<String> = Vec::new();
     for record in records.values() {
-        if bool_of(record, "internalOnly").unwrap_or(false) {
+        if !document::include_in_scene(record, &records) {
             continue;
         }
         let Some(fig_type) = str_of(record, "type") else {
@@ -2178,15 +2209,13 @@ pub fn document_from_canvas(
     let mut children_of: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
     let mut canvases: Vec<(String, String)> = Vec::new();
     let mut untranslated_by_id: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut internal_pages = Vec::new();
 
     for (id, record) in &records {
-        if bool_of(record, "internalOnly").unwrap_or(false) {
+        if !document::include_in_scene(record, &records) {
             continue;
         }
         let fig_type = str_of(record, "type").unwrap_or("");
-        if fig_type == "DOCUMENT" {
-            continue;
-        }
         let parent = record
             .get("parentIndex")
             .and_then(|pi| pi.get("guid"))
@@ -2254,8 +2283,11 @@ pub fn document_from_canvas(
             // single child so it stays reachable
             kids = vec![canvas_id.clone()];
         }
+        if record.and_then(|r| bool_of(r, "internalOnly")).unwrap_or(false) {
+            internal_pages.push(canvas_id.clone());
+        }
         doc.pages.push(Page {
-            guides: vec![],
+            guides: document::page_guides(record.unwrap_or(&Value::Null), canvas_id)?,
             id: canvas_id.clone(),
             name: canvas_name,
             children: kids,
@@ -2280,9 +2312,12 @@ pub fn document_from_canvas(
             );
         }
     }
-    doc.nodes = nodes;
+    doc.nodes = nodes.into();
+    let mut document_notes = Vec::new();
+    document::import_styles(&mut doc, &records, &importer, &mut document_notes)?;
     components::import(&mut doc, &records, &importer)?;
     normalize_mask_suffixes(&mut doc)?;
+    document::apply_component_sets(&mut doc, &records, &mut document_notes)?;
     // honest serialization version: bindings/booleans/text styles need 4,
     // stroke markers 8, slices 10 (scene.rs validate gates)
     let mut version = if display_p3 { 3 } else { 1 };
@@ -2319,6 +2354,13 @@ pub fn document_from_canvas(
             || n.text_runs.iter().any(|r| r.text_case.is_some())
     }) {
         version = version.max(15);
+    }
+    if doc.nodes.values().any(|n| {
+        n.text_runs
+            .iter()
+            .any(|r| r.letter_spacing.is_some() || r.line_height.is_some())
+    }) {
+        version = version.max(21);
     }
     if doc.nodes.values().any(|n| {
         n.fills
@@ -2360,6 +2402,8 @@ pub fn document_from_canvas(
         doc.design_system.get_or_insert_with(Default::default).sketch_containers.insert("nodeMetadata".into(), Value::Object(metadata));
         version=version.max(4);
     }
+    document::write_receipt(&mut doc, &records, tree, &internal_pages, &document_notes);
+    document::raise_schema(&doc, &mut version);
     doc.schema_version = version;
     doc.validate().map_err(|e| Error::Unsupported(format!("imported document: {e}")))?;
     Ok(doc)
@@ -2714,6 +2758,7 @@ mod tests {
                         ("INNER_SHADOW", 0, false, 1),
                         ("FOREGROUND_BLUR", 0, false, 2),
                         ("BACKGROUND_BLUR", 0, false, 3),
+                        ("LAYER_BLUR", 0, false, 4),
                     ],
                 ), // 10
                 (
@@ -2979,6 +3024,7 @@ mod tests {
                         ("MAX", 0, false, 2),
                         ("SPACE_BETWEEN", 0, false, 3),
                         ("SPACE_EVENLY", 0, false, 4),
+                        ("SPACE_AROUND", 0, false, 5),
                     ],
                 ), // 31
                 (
@@ -3086,6 +3132,8 @@ mod tests {
                         ("JSON", 0, false, 2),
                         ("PYTHON", 0, false, 3),
                         ("CPP", 0, false, 4),
+                        ("RUST", 0, false, 5),
+                        ("PLAINTEXT", 0, false, 6),
                     ],
                 ), // 46
                 (
@@ -3395,6 +3443,22 @@ mod tests {
         }
 
         #[test]
+        fn space_around_and_space_evenly_map() {
+            for (name, align) in [
+                ("SPACE_EVENLY", Align::SpaceEvenly),
+                ("SPACE_AROUND", Align::SpaceAround),
+            ] {
+                let mut changes = canvas_only();
+                let mut frame = base_change("FRAME", 1, 2);
+                frame["stackMode"] = json!("HORIZONTAL");
+                frame["stackPrimaryAlignItems"] = json!(name);
+                changes.push(frame);
+                let doc = doc_with(changes).unwrap();
+                assert_eq!(node_of(&doc, 1, 2).layout.as_ref().unwrap().justify, align);
+            }
+        }
+
+        #[test]
         fn horizontal_stack_primary_axis_is_width() {
             let mut changes = canvas_only();
             let mut frame = base_change("FRAME", 1, 2);
@@ -3700,6 +3764,21 @@ mod tests {
             assert!(!fx[3].visible);
         }
 
+        #[test]
+        fn layer_blur_alias_maps_like_foreground_blur() {
+            let mut changes = canvas_only();
+            let mut frame = base_change("FRAME", 1, 2);
+            frame["effects"] = json!([
+                {"type": "LAYER_BLUR", "radius": 6, "visible": true},
+            ]);
+            changes.push(frame);
+            let doc = doc_with(changes).unwrap();
+            let fx = &node_of(&doc, 1, 2).effects;
+            assert_eq!(fx.len(), 1);
+            assert_eq!(fx[0].kind, "blur");
+            assert!((fx[0].radius - 6.).abs() < 1e-9);
+        }
+
         // ---------------- text ----------------
 
         #[test]
@@ -3781,6 +3860,37 @@ mod tests {
                 !source_note(&doc, n, "figUntranslated")
                     .is_some_and(|note| note.contains("textCase="))
             );
+        }
+
+        #[test]
+        fn per_segment_line_height_and_letter_spacing_are_kept() {
+            let mut changes = canvas_only();
+            let mut text = base_change("TEXT", 1, 2);
+            text["fontSize"] = json!(20);
+            text["textData"] = json!({
+                "characters": "ab",
+                "characterStyleIDs": [1, 0],
+                "styleOverrideTable": [{
+                    "styleID": 1,
+                    "fontSize": 10,
+                    "lineHeight": {"value": 20, "units": "PIXELS"},
+                    "letterSpacing": {"value": 10, "units": "PERCENT"}
+                }],
+            });
+            changes.push(text);
+            let doc = doc_with(changes).unwrap();
+            let n = node_of(&doc, 1, 2);
+            let run = &n.text_runs[0];
+            assert!((run.line_height.unwrap() - 2.).abs() < 1e-9);
+            assert!((run.letter_spacing.unwrap() - 1.).abs() < 1e-9);
+            assert!(doc.schema_version >= 21);
+            assert!(
+                !source_note(&doc, n, "figUntranslated")
+                    .is_some_and(|note| note.contains("lineHeight") || note.contains("letterSpacing"))
+            );
+            let mut stale = doc.clone();
+            stale.schema_version = 20;
+            assert!(stale.validate().unwrap_err().contains("schema 21"));
         }
 
         // ---------------- prototype ----------------
@@ -4437,6 +4547,51 @@ mod tests {
             assert_eq!(style.variations.len(), 1);
             assert_eq!(style.variations[0].tag, "slnt");
             assert!((style.variations[0].value + 8.).abs() < 1e-9);
+            assert!(doc.validate().is_ok(), "{:?}", doc.validate().err());
+        }
+
+        #[test]
+        fn text_align_vertical_maps_onto_schema20() {
+            let mut changes = canvas_only();
+            let mut text = base_change("TEXT", 1, 2);
+            text["textData"] = json!({"characters": "Hi"});
+            text["textAlignVertical"] = json!("CENTER");
+            changes.push(text);
+            let doc = doc_with(changes).unwrap();
+            assert_eq!(
+                node_of(&doc, 1, 2).text_style.as_ref().unwrap().vertical_align,
+                "center"
+            );
+            assert!(doc.schema_version >= 20, "{}", doc.schema_version);
+            assert!(source_note(&doc, node_of(&doc, 1, 2), "figUntranslated").is_none());
+
+            let mut bottom = canvas_only();
+            let mut lower = base_change("TEXT", 1, 2);
+            lower["textData"] = json!({"characters": "Hi"});
+            lower["textAlignVertical"] = json!("BOTTOM");
+            bottom.push(lower);
+            assert_eq!(
+                node_of(&doc_with(bottom).unwrap(), 1, 2)
+                    .text_style
+                    .as_ref()
+                    .unwrap()
+                    .vertical_align,
+                "bottom"
+            );
+        }
+
+        #[test]
+        fn rust_code_block_language_maps() {
+            let mut changes = canvas_only();
+            let mut code = base_change("CODE_BLOCK", 1, 2);
+            code["codeBlockLanguage"] = json!("RUST");
+            code["textData"] = json!({"characters": "fn main() {}"});
+            changes.push(code);
+            let doc = doc_with(changes).unwrap();
+            assert_eq!(
+                node_of(&doc, 1, 2).board.as_ref().unwrap().language.as_deref(),
+                Some("rust")
+            );
             assert!(doc.validate().is_ok(), "{:?}", doc.validate().err());
         }
 

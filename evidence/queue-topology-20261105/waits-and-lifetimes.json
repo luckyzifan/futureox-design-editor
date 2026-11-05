@@ -1,0 +1,448 @@
+{
+  "A": {
+    "dense": {
+      "frames": 6,
+      "nativeDensePayload": 6,
+      "pairBatchAttempts": 1704,
+      "batchOutcomes": {
+        "drawn": 1704
+      },
+      "effectPairOutcomes": {
+        "pair.effect.paired": 442,
+        "pair.effect.single": 0
+      },
+      "graphMs": 813.3,
+      "checkpointMs": 542.0,
+      "blockingByReason": {
+        "readback": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "timing": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "prefix-scratch": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "interaction": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "periodic": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "admission": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "checkpoint": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "cancel": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "initialization": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "park": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "image-table-scratch": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "presentation-transfer": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "raster-yield": {
+          "count": 177,
+          "wallMs": 533.8
+        }
+      },
+      "maintenanceSyncCalls": 8462,
+      "maintenanceSyncMs": 9.6,
+      "shadowFields": 0,
+      "zeroMaskFields": 0,
+      "virtualZeroFields": 0,
+      "maxSimultaneousFieldBytes": 0,
+      "drawsToProduceFields": 0
+    },
+    "visible3200": {
+      "frames": 4,
+      "nativeDensePayload": 0,
+      "pairBatchAttempts": 0,
+      "batchOutcomes": {},
+      "effectPairOutcomes": {
+        "pair.effect.paired": 0,
+        "pair.effect.single": 0
+      },
+      "graphMs": 65.4,
+      "checkpointMs": 47.3,
+      "blockingByReason": {
+        "readback": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "timing": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "prefix-scratch": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "interaction": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "periodic": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "admission": {
+          "count": 4,
+          "wallMs": 44.7
+        },
+        "checkpoint": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "cancel": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "initialization": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "park": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "image-table-scratch": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "presentation-transfer": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "raster-yield": {
+          "count": 1,
+          "wallMs": 1.8
+        }
+      },
+      "maintenanceSyncCalls": 145,
+      "maintenanceSyncMs": 0.7,
+      "shadowFields": 18,
+      "zeroMaskFields": 18,
+      "virtualZeroFields": 0,
+      "maxSimultaneousFieldBytes": 48288432,
+      "drawsToProduceFields": 126
+    },
+    "edge3200": {
+      "frames": 2,
+      "nativeDensePayload": 0,
+      "pairBatchAttempts": 0,
+      "batchOutcomes": {},
+      "effectPairOutcomes": {
+        "pair.effect.paired": 0,
+        "pair.effect.single": 0
+      },
+      "graphMs": 22.9,
+      "checkpointMs": 15.4,
+      "blockingByReason": {
+        "readback": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "timing": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "prefix-scratch": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "interaction": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "periodic": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "admission": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "checkpoint": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "cancel": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "initialization": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "park": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "image-table-scratch": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "presentation-transfer": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "raster-yield": {
+          "count": 1,
+          "wallMs": 15.4
+        }
+      },
+      "maintenanceSyncCalls": 67,
+      "maintenanceSyncMs": 0.1,
+      "shadowFields": 9,
+      "zeroMaskFields": 9,
+      "virtualZeroFields": 0,
+      "maxSimultaneousFieldBytes": 14395056,
+      "drawsToProduceFields": 63
+    }
+  },
+  "B": {
+    "dense": {
+      "frames": 6,
+      "nativeDensePayload": 6,
+      "pairBatchAttempts": 1266,
+      "batchOutcomes": {
+        "drawn": 1266
+      },
+      "effectPairOutcomes": {
+        "pair.effect.paired": 442,
+        "pair.effect.single": 0
+      },
+      "graphMs": 846.2,
+      "checkpointMs": 514.3,
+      "blockingByReason": {
+        "readback": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "timing": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "prefix-scratch": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "interaction": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "periodic": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "admission": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "checkpoint": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "cancel": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "initialization": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "park": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "image-table-scratch": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "presentation-transfer": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "raster-yield": {
+          "count": 171,
+          "wallMs": 501.1
+        }
+      },
+      "maintenanceSyncCalls": 8462,
+      "maintenanceSyncMs": 11.7,
+      "shadowFields": 0,
+      "zeroMaskFields": 0,
+      "virtualZeroFields": 0,
+      "maxSimultaneousFieldBytes": 0,
+      "drawsToProduceFields": 0
+    },
+    "visible3200": {
+      "frames": 4,
+      "nativeDensePayload": 0,
+      "pairBatchAttempts": 0,
+      "batchOutcomes": {},
+      "effectPairOutcomes": {
+        "pair.effect.paired": 0,
+        "pair.effect.single": 0
+      },
+      "graphMs": 58.1,
+      "checkpointMs": 44.2,
+      "blockingByReason": {
+        "readback": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "timing": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "prefix-scratch": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "interaction": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "periodic": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "admission": {
+          "count": 4,
+          "wallMs": 43.6
+        },
+        "checkpoint": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "cancel": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "initialization": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "park": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "image-table-scratch": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "presentation-transfer": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "raster-yield": {
+          "count": 0,
+          "wallMs": 0
+        }
+      },
+      "maintenanceSyncCalls": 138,
+      "maintenanceSyncMs": 1.0,
+      "shadowFields": 18,
+      "zeroMaskFields": 18,
+      "virtualZeroFields": 18,
+      "maxSimultaneousFieldBytes": 16,
+      "drawsToProduceFields": 0
+    },
+    "edge3200": {
+      "frames": 2,
+      "nativeDensePayload": 0,
+      "pairBatchAttempts": 0,
+      "batchOutcomes": {},
+      "effectPairOutcomes": {
+        "pair.effect.paired": 0,
+        "pair.effect.single": 0
+      },
+      "graphMs": 4.8,
+      "checkpointMs": 0,
+      "blockingByReason": {
+        "readback": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "timing": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "prefix-scratch": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "interaction": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "periodic": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "admission": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "checkpoint": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "cancel": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "initialization": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "park": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "image-table-scratch": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "presentation-transfer": {
+          "count": 0,
+          "wallMs": 0
+        },
+        "raster-yield": {
+          "count": 0,
+          "wallMs": 0
+        }
+      },
+      "maintenanceSyncCalls": 67,
+      "maintenanceSyncMs": 0.1,
+      "shadowFields": 9,
+      "zeroMaskFields": 9,
+      "virtualZeroFields": 9,
+      "maxSimultaneousFieldBytes": 16,
+      "drawsToProduceFields": 0
+    }
+  }
+}

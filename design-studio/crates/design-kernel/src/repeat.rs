@@ -109,7 +109,7 @@ pub fn resolve(d:&mut Document)->Result<(),String>{
     }
     let mut nodes=BTreeMap::new();let mut pages=d.pages.clone();
     for p in &mut pages {let roots=p.children.clone();p.children.clear();for id in roots {p.children.extend(walk(d,&id,"",&mut nodes)?);}}
-    d.nodes=nodes;d.pages=pages;Ok(())
+    d.nodes=nodes.into();d.pages=pages;Ok(())
 }
 
 #[cfg(test)]

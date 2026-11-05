@@ -16,6 +16,9 @@ const HISTORY_LIMIT: usize = 128;
 #[derive(Clone, Default)]
 pub struct NodeStore {
     nodes: OrdMap<String, Arc<Node>>,
+    // Clones keep this witness while they contain the same node IDs. Values
+    // and sibling order may change without invalidating graph handles.
+    node_ids: Arc<()>,
     // PartialEq collapses signed zero. Reuse is allowed only for projections
     // proven free of negative-zero f32/f64 values by their original JSON.
     // Arbitrary typed writes invalidate this proof; Clone/undo retain it.
@@ -29,6 +32,7 @@ impl NodeStore {
 
     pub fn from_document(document: &Document) -> Self {
         NodeStore {
+            node_ids: Arc::default(),
             nodes: document
                 .nodes
                 .iter()
@@ -39,8 +43,9 @@ impl NodeStore {
     }
 
     /// Adopt a freshly parsed node map without cloning each owned node.
-    pub(crate) fn from_owned_json_nodes(nodes: std::collections::BTreeMap<String, Node>, json: &str) -> Self {
+    pub(crate) fn from_owned_json_nodes(nodes: crate::scene::DocumentNodes, json: &str) -> Self {
         Self {
+            node_ids: Arc::default(),
             nodes: nodes.into_iter().map(|(id, node)| (id, Arc::new(node))).collect(),
             exact_float_equality_safe: json_supports_exact_float_equality(json),
         }
@@ -51,10 +56,11 @@ impl NodeStore {
     /// once; only changed/inserted/deleted entries update the persistent map.
     /// Cost is O(old + new + compared payload + changes * log N), not all-pairs.
     /// The caller owns document-identity checks; no process-global interning occurs.
-    pub(crate) fn replacing_nodes(&self, nodes: std::collections::BTreeMap<String, Node>, json: &str) -> Self {
+    pub(crate) fn replacing_nodes(&self, nodes: crate::scene::DocumentNodes, json: &str) -> Self {
         let exact_float_equality_safe = json_supports_exact_float_equality(json);
         if !self.exact_float_equality_safe || !exact_float_equality_safe {
             return Self {
+                node_ids: Arc::default(),
                 nodes: nodes.into_iter().map(|(id, node)| (id, Arc::new(node))).collect(),
                 exact_float_equality_safe,
             };
@@ -75,7 +81,7 @@ impl NodeStore {
             if !unchanged { result.insert(id, Arc::new(node)); }
         }
         for (removed, _) in previous { result.remove(removed); }
-        Self { nodes: result, exact_float_equality_safe }
+        Self { nodes: result, node_ids: Arc::default(), exact_float_equality_safe }
     }
 
     pub fn get(&self, id: &str) -> Option<&Node> {
@@ -97,11 +103,19 @@ impl NodeStore {
 
     pub fn insert(&mut self, node: Node) {
         self.exact_float_equality_safe = false;
-        self.nodes.insert(node.id.clone(), Arc::new(node));
+        if self.nodes.insert(node.id.clone(), Arc::new(node)).is_none() {
+            Arc::make_mut(&mut self.node_ids);
+        }
     }
 
     pub fn remove(&mut self, id: &str) -> Option<Arc<Node>> {
-        self.nodes.remove(id)
+        let removed = self.nodes.remove(id)?;
+        Arc::make_mut(&mut self.node_ids);
+        Some(removed)
+    }
+
+    pub(crate) fn shares_node_ids(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.node_ids, &other.node_ids)
     }
 
     pub fn ids(&self) -> impl Iterator<Item = &String> {

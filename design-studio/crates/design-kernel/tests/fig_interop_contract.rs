@@ -129,3 +129,71 @@ fn resized_group_frames_preserve_overflow_pixels_and_do_not_become_auto_layout_f
       assert_eq!(import(record).nodes["fig-1-3"].kind,"frame");
     }
 }
+
+#[test]
+fn figma_document_pages_styles_component_set_and_save_open() {
+    let input = json!({"variableCollections":[{"id":"collection","name":"Theme","modes":["Light"]}],
+        "nodeChanges":[
+        {"guid":{"sessionID":2,"localID":1},"type":"DOCUMENT","name":"Brand kit","documentColorProfile":"SRGB"},
+        {"guid":{"sessionID":2,"localID":2},"type":"CANVAS","name":"Cover","parentIndex":{"guid":{"sessionID":2,"localID":1},"position":"a"},
+            "backgroundColor":{"r":1,"g":1,"b":1,"a":1},"guides":[{"axis":"X","offset":12},{"axis":"Y","offset":-4}]},
+        {"guid":{"sessionID":2,"localID":3},"type":"CANVAS","name":"Components","internalOnly":true,"parentIndex":{"guid":{"sessionID":2,"localID":1},"position":"b"}},
+        {"guid":{"sessionID":2,"localID":4},"type":"COMPONENT_SET","name":"Button","parentIndex":{"guid":{"sessionID":2,"localID":3},"position":"a"},"size":{"x":200,"y":80}},
+        {"guid":{"sessionID":2,"localID":5},"type":"SYMBOL","name":"Size=Small","parentIndex":{"guid":{"sessionID":2,"localID":4},"position":"a"},"size":{"x":40,"y":24},"componentKey":"pub-small",
+            "componentPropDefs":[{"id":{"sessionID":8,"localID":1},"name":"Size","type":"VARIANT"}]},
+        {"guid":{"sessionID":2,"localID":6},"type":"SYMBOL","name":"Size=Large","parentIndex":{"guid":{"sessionID":2,"localID":4},"position":"b"},"size":{"x":80,"y":24}},
+        {"guid":{"sessionID":2,"localID":7},"type":"RECTANGLE","name":"Swatch","styleType":"FILL","fillPaints":[{"type":"SOLID","color":{"r":0.2,"g":0.4,"b":0.6,"a":1},"opacity":1}]},
+        {"guid":{"sessionID":2,"localID":8},"type":"RECTANGLE","name":"Chip","parentIndex":{"guid":{"sessionID":2,"localID":2},"position":"a"},"size":{"x":40,"y":24},
+            "inheritFillStyleID":{"sessionID":2,"localID":7},"fillPaints":[{"type":"SOLID","color":{"r":0.2,"g":0.4,"b":0.6,"a":1}}],
+            "boundVariables":{"fill":"collection/color"}},
+        {"guid":{"sessionID":2,"localID":9},"type":"TEXT","name":"Label style","styleType":"TEXT","fontSize":18,"textAlignHorizontal":"CENTER","fontName":{"family":"Inter","style":"Bold"}},
+        {"guid":{"sessionID":2,"localID":10},"type":"TEXT","name":"Title","parentIndex":{"guid":{"sessionID":2,"localID":2},"position":"b"},"size":{"x":80,"y":24},
+            "textData":{"characters":"Hi"},"inheritTextStyleID":{"sessionID":2,"localID":9},"fontSize":18},
+        {"guid":{"sessionID":2,"localID":11},"type":"INSTANCE","name":"Use","parentIndex":{"guid":{"sessionID":2,"localID":2},"position":"c"},"size":{"x":40,"y":24},
+            "symbolData":{"symbolID":{"sessionID":2,"localID":5}}},
+        {"guid":{"sessionID":2,"localID":12},"type":"FRAME","name":"Columns","styleType":"GRID","internalOnly":true},
+        {"guid":{"sessionID":2,"localID":13},"type":"WIDGET","name":"Hidden helper","internalOnly":true,"parentIndex":{"guid":{"sessionID":2,"localID":2},"position":"d"}}
+    ]});
+    let doc = fig::document_from_canvas(&input, BTreeMap::new(), vec![]).unwrap();
+    assert_eq!(doc.name, "Brand kit");
+    assert_eq!(doc.pages.iter().map(|page| page.name.as_str()).collect::<Vec<_>>(), ["Cover", "Components"]);
+    assert_eq!(doc.pages[0].guides.len(), 2);
+    assert_eq!(doc.pages[0].guides[0].axis, "x");
+    assert!((doc.pages[0].guides[0].position - 12.).abs() < 1e-9);
+    assert_eq!(doc.pages[0].guides[1].axis, "y");
+    assert!(doc.pages[1].children.iter().any(|id| id == "fig-2-4"));
+    assert!(doc.nodes["fig-2-4"].component_set);
+    assert_eq!(doc.nodes["fig-2-5"].component.as_ref().unwrap().variants["Size"], "Small");
+    assert_eq!(doc.nodes["fig-2-6"].component.as_ref().unwrap().variants["Size"], "Large");
+    assert!(!doc.nodes.contains_key("fig-2-7"), "library styles are not layers");
+    assert!(!doc.nodes.contains_key("fig-2-12"));
+    assert!(!doc.nodes.contains_key("fig-2-13"), "internal helpers on a user page stay out of the scene");
+    assert_eq!(doc.nodes["fig-2-8"].style_refs["fills"], "fig-2-7");
+    assert_eq!(doc.nodes["fig-2-10"].style_refs["textStyle"], "fig-2-9");
+    assert_eq!(doc.nodes["fig-2-11"].instance.as_ref().unwrap().component_id, "fig-2-5");
+    let system = doc.design_system.as_ref().unwrap();
+    assert_eq!(system.styles["fig-2-7"].kind, "paint");
+    assert_eq!(system.styles["fig-2-7"].name, "Swatch");
+    assert_eq!(system.styles["fig-2-9"].kind, "text");
+    assert_eq!(system.styles["fig-2-9"].value["align"], "center");
+    assert_eq!(system.styles["fig-2-9"].value["weight"], 700.0);
+    let receipt = system.sketch_containers.get("figDocument").unwrap();
+    assert_eq!(receipt["source"], "figma");
+    assert_eq!(receipt["documentId"], "fig-2-1");
+    assert_eq!(receipt["colorProfile"], "SRGB");
+    assert_eq!(receipt["internalPages"][0], "fig-2-3");
+    assert_eq!(receipt["variables"]["variableCollections"][0]["name"], "Theme");
+    let metadata = system.sketch_containers.get("nodeMetadata").unwrap();
+    assert_eq!(metadata["fig-2-5"]["bindings"]["figComponentKey"], "pub-small");
+    assert!(metadata["fig-2-8"]["bindings"]["figBoundVariables"].as_str().unwrap().contains("collection/color"));
+    assert!(receipt["notes"].as_array().unwrap().iter().any(|note| note.as_str().unwrap_or("").contains("GRID")));
+    let reopened: Document = serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
+    assert_eq!(reopened, doc);
+    let opened = futureox_design_kernel::binfmt::decode(&futureox_design_kernel::binfmt::encode(&doc)).unwrap();
+    assert_eq!(opened.name, doc.name);
+    assert_eq!(opened.pages, doc.pages);
+    assert_eq!(opened.design_system, doc.design_system);
+    assert_eq!(opened.nodes["fig-2-4"].component_set, true);
+    assert_eq!(opened.nodes["fig-2-8"].style_refs, doc.nodes["fig-2-8"].style_refs);
+    opened.validate().unwrap();
+}

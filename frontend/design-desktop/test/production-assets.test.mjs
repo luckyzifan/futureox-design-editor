@@ -1,4 +1,5 @@
 import test from 'node:test'
+import { execFileSync } from 'node:child_process'
 import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, copyFile, writeFile, readFile, access, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -46,6 +47,15 @@ test('distributed notices match installed runtime packages', async () => {
       const cargo=await readFile(path.join(vendored,'Cargo.toml'),'utf8')
       assert.equal(item.version,cargo.match(/^version\s*=\s*"([^"]+)"/m)?.[1])
       assert.deepEqual(await readFile(path.join(publicDir,'licenses',item.file)),await readFile(path.join(vendored,'LICENSE')))
+      continue
+    }
+    if (item.source?.startsWith('https://crates.io/crates/')) {
+      const metadata = JSON.parse(execFileSync('cargo', ['metadata', '--locked', '--offline', '--format-version', '1',
+        '--manifest-path', path.join(root, 'design-studio/Cargo.toml')], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }))
+      const installed = metadata.packages.find(p => p.name === item.package && p.version === item.version)
+      assert.ok(installed, `Missing native dependency ${item.package}`)
+      assert.deepEqual(await readFile(path.join(publicDir, 'licenses', item.file)),
+        await readFile(path.join(path.dirname(installed.manifest_path), 'LICENSE')))
       continue
     }
     const installed = path.join(root, 'frontend/design-client/node_modules', item.package)

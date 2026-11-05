@@ -1,6 +1,6 @@
 import { expect,test } from 'vitest'
 import { node,defaultTextStyle } from './model'
-import { importFigTextRuns } from './import-fig-text'
+import { importFigTextExtras, importFigTextRuns } from './import-fig-text'
 test('mixed native FIG styles preserve UTF-16 ranges, casing, alpha and font identities',()=>{
   const n=node('text');n.text='a😀CD';n.textStyle=defaultTextStyle()
   const warnings=new Set<string>()
@@ -14,4 +14,43 @@ test('mixed native FIG styles preserve UTF-16 ranges, casing, alpha and font ide
     {start:3,end:5,textCase:'lower',color:'color(srgb 1 0 0 / 0.2)',underline:true}])
   expect(fonts).toEqual({style:'Poppins SemiBold',runs:{0:'Poppins Bold'}})
   expect(warnings.size).toBe(0)
+})
+
+test('per-run Figma line height and letter spacing become schema 21 metrics', () => {
+  const n=node('text'); n.text='ab'; n.fontSize=20; n.textStyle=defaultTextStyle()
+  const warnings=new Set<string>()
+  importFigTextRuns(n,{fontSize:20,textData:{characterStyleIDs:[1,0],styleOverrideTable:[
+    {styleID:1,fontSize:10,lineHeight:{units:'PIXELS',value:20},letterSpacing:{units:'PERCENT',value:10}},
+  ]}},warnings)
+  expect(n.textRuns?.[0]).toMatchObject({start:0,end:1,fontSize:10,lineHeight:2,letterSpacing:1})
+  expect(warnings.size).toBe(0)
+})
+test('node-level OpenType toggles, variation axes, vertical alignment and decoration are kept', () => {
+  const n = node('text')
+  n.text = 'fi'
+  n.textStyle = defaultTextStyle()
+  const warnings = new Set<string>()
+  importFigTextExtras(n, {
+    toggledOnOTFeatures: ['LIGA', 'CALT'],
+    toggledOffOTFeatures: ['DLIG'],
+    fontVariations: [{ axisTag: 0x77676874, value: 700 }, { axisTag: 0x736c6e74, value: -8 }],
+    textAlignVertical: 'CENTER',
+    textDecoration: 'UNDERLINE',
+  }, warnings)
+  expect(n.textStyle?.features).toEqual(['liga', 'calt', '-dlig'])
+  expect(n.textStyle?.variations).toEqual([{ tag: 'slnt', value: -8 }])
+  expect(n.textStyle?.verticalAlign).toBe('center')
+  expect(n.textRuns).toEqual([{ start: 0, end: 2, underline: true }])
+  expect(warnings.size).toBe(0)
+})
+
+test('node decoration is not stacked on top of styled runs', () => {
+  const n = node('text')
+  n.text = 'ab'
+  n.textStyle = defaultTextStyle()
+  n.textRuns = [{ start: 0, end: 2, underline: true }]
+  const warnings = new Set<string>()
+  importFigTextExtras(n, { textDecoration: 'STRIKETHROUGH' }, warnings)
+  expect(n.textRuns).toEqual([{ start: 0, end: 2, underline: true }])
+  expect([...warnings].some((w) => w.includes('STRIKETHROUGH'))).toBe(true)
 })

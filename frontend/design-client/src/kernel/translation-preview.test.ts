@@ -96,11 +96,10 @@ test.each(['component', 'componentSet', 'componentKey', 'instance', 'instanceOri
     }
   })
 
-test('reparent, node-set changes, parent resize, connectors and animations fall back', () => {
-  for (const variant of ['reparent', 'insert', 'parentResize', 'connector', 'code', 'animation']) {
-    const { document, parent, other, translated } = fixture()
-    if (variant === 'connector') other.connector = { from: { point: { x: 0, y: 0 } }, to: { point: { x: 1, y: 1 } }, style: 'straight' }
-    if (variant === 'code') other.board = { kind: 'code-block', language: 'rust' }
+test('reparent, node-set changes, parent resize, attached connectors and animations fall back', () => {
+  for (const variant of ['reparent', 'insert', 'parentResize', 'connector', 'animation']) {
+    const { document, parent, moving, other, translated } = fixture()
+    if (variant === 'connector') other.connector = { from: { point: { x: 0, y: 0 }, nodeId: moving.id, anchor: { x: 0, y: 0 } }, to: { point: { x: 1, y: 1 } }, style: 'straight' }
     if (variant === 'animation') Object.assign(document, { animations: [{}] })
     const after = translated()
     if (variant === 'reparent') after.nodes[parent.id] = { ...parent, children: [] }
@@ -108,6 +107,13 @@ test('reparent, node-set changes, parent resize, connectors and animations fall 
     if (variant === 'insert') { const added = node('rectangle', 0, 0, 5, 5); after.nodes[added.id] = added }
     expect(translationOnlyChanges(document, after)).toBeNull()
   }
+})
+
+test('a connector or code block on another node does not reject a placement-only edit', () => {
+  const { document, moving, other, translated } = fixture()
+  other.connector = { from: { point: { x: 0, y: 0 } }, to: { point: { x: 1, y: 1 } }, style: 'straight' }
+  other.board = { kind: 'code-block', language: 'rust' }
+  expect(translationOnlyChanges(document, translated())).toEqual([moving.id])
 })
 
 test.each(['start', 'center', 'end', 'stretch', 'scale'] as const)('constraints admit only exact per-axis fixed points: %s', mode => {

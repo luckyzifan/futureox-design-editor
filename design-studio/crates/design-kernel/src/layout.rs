@@ -327,7 +327,7 @@ fn distribution(align: Align, free: f64, count: usize, gap: f64, min_extent: f64
     }
 }
 fn fill_sizes(
-    nodes: &BTreeMap<String, Node>,
+    nodes: &crate::scene::DocumentNodes,
     ids: &[String],
     axis: usize,
     available: f64,
@@ -385,7 +385,7 @@ fn enforce_stack_layout_invariants(
 ) -> Result<(), String> {
     enforce_node_layout_invariants(&doc.nodes, frame, children_before)
 }
-fn enforce_node_layout_invariants(nodes: &BTreeMap<String, Node>, frame: &str, children_before: &[String]) -> Result<(), String> {
+fn enforce_node_layout_invariants(nodes: &crate::scene::DocumentNodes, frame: &str, children_before: &[String]) -> Result<(), String> {
     let violation = |what: &str| Err(format!("Stack layout invariant violated: {what}"));
     let f = &nodes[frame];
     if f.children != children_before {
@@ -597,7 +597,7 @@ pub fn grid_tracks(doc: &Document, id: &str) -> Result<(Vec<f64>, Vec<f64>), Str
 fn grid_with_tracks(doc: &mut Document, id: &str, l: &Layout) -> Result<(Vec<f64>, Vec<f64>), String> {
     grid_node_tracks(&mut doc.nodes, id, l)
 }
-fn grid_node_tracks(nodes: &mut BTreeMap<String, Node>, id: &str, l: &Layout) -> Result<(Vec<f64>, Vec<f64>), String> {
+fn grid_node_tracks(nodes: &mut crate::scene::DocumentNodes, id: &str, l: &Layout) -> Result<(Vec<f64>, Vec<f64>), String> {
     let children_before = nodes[id].children.clone();
     let ids: Vec<_> = nodes[id]
         .children
@@ -865,15 +865,23 @@ pub(crate) fn resolve_roots(doc:&mut Document,fonts:&Fonts,roots:Option<&std::co
     // Component/variable expansion does not run inside this solve. Retain two
     // scalars per constrained Hug text, keyed by this document's stable map ID;
     // discard them on return, before any subsequent edits or component rebuild.
-    let active:std::collections::BTreeSet<_>=ordered.iter().cloned().collect();
     let scoped_state=|doc:&Document|ordered.iter().map(|id|{let n=&doc.nodes[id];(n.transform,n.width,n.height)}).collect::<Vec<_>>();
     let mut constrained_text_sizes = BTreeMap::new();
-    for (id, n) in &mut doc.nodes {
-        if roots.is_some()&&!active.contains(id){continue;}
+    let mut initial_size = |id: &String, n: &mut Node| -> Result<(), String> {
         resize(n, n.width, n.height);
         if size_text(n, fonts)? {
             constrained_text_sizes.insert(id.clone(), (n.width, n.height));
         }
+        Ok(())
+    };
+    if roots.is_some() {
+        // Mutable iteration detaches a shared payload. Select the island
+        // before getting mutable nodes, in the same key order as the full map.
+        for id in ordered.iter().collect::<std::collections::BTreeSet<_>>() {
+            initial_size(id, doc.nodes.get_mut(id).expect("ordered node"))?;
+        }
+    } else {
+        for (id, n) in &mut doc.nodes { initial_size(id, n)?; }
     }
     for _ in 0..68 {
         let before = if roots.is_some(){scoped_state(doc)}else{state(doc)};
@@ -1027,7 +1035,7 @@ mod hug_clamp_tests {
             id: "d".into(),
             name: "d".into(),
             pages: Vec::new(),
-            nodes: BTreeMap::new(),
+            nodes: Default::default(),
             fonts: BTreeMap::new(),
             animations: Vec::new(),
         };
@@ -1128,7 +1136,7 @@ mod wrap_tests {
             id: "d".into(),
             name: "d".into(),
             pages: Vec::new(),
-            nodes: BTreeMap::new(),
+            nodes: Default::default(),
             fonts: BTreeMap::new(),
             animations: Vec::new(),
         };
@@ -1320,7 +1328,7 @@ mod stack_invariant_tests {
             id: "d".into(),
             name: "d".into(),
             pages: Vec::new(),
-            nodes: BTreeMap::new(),
+            nodes: Default::default(),
             fonts: BTreeMap::new(),
             animations: Vec::new(),
         };
@@ -1421,7 +1429,7 @@ mod grid_tests {
             id: "d".into(),
             name: "d".into(),
             pages: Vec::new(),
-            nodes: BTreeMap::new(),
+            nodes: Default::default(),
             fonts: BTreeMap::new(),
             animations: Vec::new(),
         };
@@ -1599,7 +1607,7 @@ mod measured_truth_tests {
             id: "d".into(),
             name: "d".into(),
             pages: Vec::new(),
-            nodes: BTreeMap::new(),
+            nodes: Default::default(),
             fonts: BTreeMap::new(),
             animations: Vec::new(),
         };

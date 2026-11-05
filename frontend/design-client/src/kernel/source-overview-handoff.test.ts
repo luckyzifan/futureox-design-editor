@@ -14,3 +14,18 @@ test('only shared material pixels survive navigation and the next source revisio
  carry.project({...source,revision:1},[a],v,600,400,2)
  expect(parent.childElementCount).toBe(0)
 })
+
+test('only a complete returning source at the same device pose may show through loading',()=>{
+ const carry=new SourceOverviewHandoff(),parent=document.createElement('div'),canvas=document.createElement('canvas')
+ const a={materialKey:'a',x:0,y:0,width:400,height:400},s={...source,materialKeys:['a']},view={x:0,y:0,zoom:32}
+ const visible=()=>canvas.parentElement?.style.visibility==='visible'
+ for(const complete of [false,true]){
+   carry.hold(canvas,parent,view,200,160,s,[a],2,complete);carry.project(s,[a],view,200,160,2)
+   expect(visible()).toBe(complete)
+   carry.project({...s,pageId:'other-page'},undefined,view,200,160,2);expect(visible()).toBe(false)
+   carry.project(s,[a],view,200,160,2);expect(visible()).toBe(complete)
+   carry.project({...s,materialKeys:['a','b']},[a],view,200,160,2);expect(visible()).toBe(false)
+   carry.project(s,[a],{...view,x:.5},200,160,2);expect(visible()).toBe(false)
+ }
+ carry.clear()
+})

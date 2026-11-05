@@ -4,6 +4,7 @@
  */
 
 import React from 'react'
+import { measurementTicks, SPACING_RED } from '../canvas-measurements'
 
 export interface Measurement {
   nodeId: string
@@ -20,26 +21,21 @@ interface MeasurementOverlayProps {
   dpr: number
 }
 
-export function MeasurementOverlay({ measurements, zoom, dpr }: MeasurementOverlayProps) {
+export function MeasurementOverlay({ measurements, zoom }: MeasurementOverlayProps) {
   if (measurements.length === 0) return null
 
-  // CSS properties for measurement overlay
   const lineStyle: React.CSSProperties = {
-    stroke: '#f24822',
+    stroke: SPACING_RED,
     strokeWidth: 1 / zoom,
     fill: 'none',
     vectorEffect: 'non-scaling-stroke',
   }
 
-  const labelBgStyle: React.CSSProperties = {
-    fill: 'white',
-    stroke: '#f24822',
-    strokeWidth: 0.5 / zoom,
-    vectorEffect: 'non-scaling-stroke',
-  }
-
   const textStyle: React.CSSProperties = {
-    fill: '#000',
+    fill: SPACING_RED,
+    stroke: '#fff',
+    strokeWidth: 2 / zoom,
+    paintOrder: 'stroke',
     fontSize: `${11 / zoom}px`,
     fontFamily: 'Inter, system-ui, sans-serif',
     fontWeight: 500,
@@ -64,53 +60,14 @@ export function MeasurementOverlay({ measurements, zoom, dpr }: MeasurementOverl
         const { start, end, distance, direction } = m
         const midX = (start.x + end.x) / 2
         const midY = (start.y + end.y) / 2
-
-        // Label dimensions
-        const labelText = Math.round(distance).toString()
-        const labelWidth = Math.max(30, labelText.length * 7) / zoom
-        const labelHeight = 18 / zoom
-        const padding = 4 / zoom
-
-        // Arrow endpoints (shortened to make room for label)
-        const isVertical = direction === 'vertical'
-        const arrowStart = isVertical
-          ? { x: start.x, y: start.y + labelHeight / 2 + padding }
-          : { x: start.x + labelWidth / 2 + padding, y: start.y }
-        const arrowEnd = isVertical
-          ? { x: end.x, y: end.y - labelHeight / 2 - padding }
-          : { x: end.x - labelWidth / 2 - padding, y: end.y }
+        const labelText = String(Number(distance.toFixed(2)))
 
         return (
           <g key={`${m.nodeId}-${idx}`}>
-            {/* Measurement line */}
-            <line
-              x1={arrowStart.x}
-              y1={arrowStart.y}
-              x2={arrowEnd.x}
-              y2={arrowEnd.y}
-              style={lineStyle}
-            />
-
-            {/* Arrowheads */}
-            {distance > 20 && (
-              <>
-                <circle cx={start.x} cy={start.y} r={2 / zoom} fill="#f24822" />
-                <circle cx={end.x} cy={end.y} r={2 / zoom} fill="#f24822" />
-              </>
-            )}
-
-            {/* Distance label */}
-            <g transform={`translate(${midX}, ${midY})`}>
-              <rect
-                x={-labelWidth / 2}
-                y={-labelHeight / 2}
-                width={labelWidth}
-                height={labelHeight}
-                rx={2 / zoom}
-                style={labelBgStyle}
-              />
-              <text style={textStyle}>{labelText}</text>
-            </g>
+            <line x1={start.x} y1={start.y} x2={end.x} y2={end.y} style={lineStyle} />
+            {measurementTicks({ from: start, to: end, axis: direction === 'vertical' ? 'vertical' : 'horizontal' }, zoom).map(([from, to], tick) =>
+              <line key={tick} x1={from.x} y1={from.y} x2={to.x} y2={to.y} style={lineStyle} />)}
+            <text x={midX} y={midY - 6 / zoom} style={textStyle}>{labelText}</text>
           </g>
         )
       })}

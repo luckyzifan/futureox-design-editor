@@ -693,6 +693,7 @@ dependencies = [
  "flate2",
  "fs2",
  "futureox-design-kernel",
+ "png",
  "same-file",
  "serde",
  "serde_json",
@@ -724,6 +725,7 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "bytemuck",
+ "either",
  "flo_curves",
  "half",
  "im",

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import net from 'node:net'
 import path from 'node:path'
 import os from 'node:os'
-import { mkdtemp, chmod, rm, symlink } from 'node:fs/promises'
+import { mkdtemp, chmod, rm, symlink, realpath } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { fileURLToPath } from 'node:url'
@@ -20,7 +20,7 @@ const sessionId = 'session-test'
 const cli = fileURLToPath(new URL('../src/cli.mjs', import.meta.url))
 
 async function bridge(t, { scope = 'write', execute, handshakeError } = {}) {
-  const directory = await mkdtemp(path.join(os.tmpdir(), 'design-mcp-test-'))
+  const directory = await mkdtemp(path.join(await realpath(os.tmpdir()), 'design-mcp-test-'))
   await chmod(directory, 0o700)
   const endpoint = path.join(directory, 'bridge.sock')
   const sockets = new Set(), requests = [], cancellations = []

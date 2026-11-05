@@ -1,0 +1,216 @@
+{
+  "sourceSHA256": "498098eb5e390e7088245c267a01896b1b832ad61098faddb1fba35f5ac8da86",
+  "sourceBytes": 119392711,
+  "totalMaterials": 306,
+  "materialListClicks": 0,
+  "initialFit": [
+    63.11938737852137,
+    181.0973520728257,
+    0.023834419977857055
+  ],
+  "viewport": {
+    "x": 305,
+    "y": 0,
+    "width": 855,
+    "height": 928
+  },
+  "focalPoint": {
+    "focus": {
+      "ordinal": 116,
+      "x": 22338,
+      "y": 918,
+      "w": 2020,
+      "h": 1829
+    },
+    "point": {
+      "x": 23350.512437810947,
+      "y": 1950.581043956044
+    }
+  },
+  "hover": {
+    "overview": [
+      {
+        "id": "08856B36-020D-46FC-AC59-55F38CDB82BE",
+        "visible": true
+      },
+      {
+        "id": "89C4CB84-57C4-4D24-BB9C-50690C2F2681",
+        "visible": true
+      },
+      {
+        "id": null,
+        "visible": false
+      }
+    ],
+    "native": [
+      {
+        "node": "CA6F308B-D86A-4671-8428-2D58B63CB8F8",
+        "submission": "1"
+      },
+      {
+        "node": "2F47F0D2-F75E-42E1-A5F4-886C51530760",
+        "submission": "1"
+      },
+      {
+        "node": "CA6F308B-D86A-4671-8428-2D58B63CB8F8",
+        "submission": "1"
+      }
+    ],
+    "changeOnCommand": {
+      "width": 1710,
+      "height": 1856,
+      "changedPixels": 13752,
+      "maxChannelDelta": 150
+    },
+    "restoreOnKeyUp": {
+      "width": 1710,
+      "height": 1856,
+      "changedPixels": 1520,
+      "maxChannelDelta": 5
+    },
+    "artworkBox": [
+      0,
+      822,
+      1710,
+      1094
+    ],
+    "artworkOnCommand": {
+      "width": 1710,
+      "height": 272,
+      "changedPixels": 12232,
+      "maxChannelDelta": 150
+    },
+    "artworkOnKeyUp": {
+      "width": 1710,
+      "height": 272,
+      "changedPixels": 0,
+      "maxChannelDelta": 0
+    }
+  },
+  "highZoom": {
+    "high-3200": {
+      "pose": [
+        -746788.4618263512,
+        -61954.59899105431,
+        32.00000218266099
+      ],
+      "native": {
+        "width": 1710,
+        "height": 1856,
+        "changedPixels": 0,
+        "maxChannelDelta": 0
+      },
+      "window": {
+        "width": 1654,
+        "height": 1386,
+        "changedPixels": 0,
+        "maxChannelDelta": 0
+      }
+    },
+    "high-cross-return": {
+      "pose": [
+        -746788.4618263512,
+        -61954.59899105431,
+        32.00000218266099
+      ],
+      "native": {
+        "width": 1710,
+        "height": 1856,
+        "changedPixels": 0,
+        "maxChannelDelta": 0
+      },
+      "held_native": {
+        "width": 1710,
+        "height": 1856,
+        "changedPixels": 0,
+        "maxChannelDelta": 0
+      },
+      "window": {
+        "width": 1654,
+        "height": 1386,
+        "changedPixels": 0,
+        "maxChannelDelta": 0
+      },
+      "held_window": {
+        "width": 1654,
+        "height": 1386,
+        "changedPixels": 0,
+        "maxChannelDelta": 0
+      }
+    }
+  },
+  "timingsAfterGestureMs": {
+    "high-100": 5049.3,
+    "high-3200": 301.1,
+    "high-cross-return": 13.3,
+    "high-pan": 1.9,
+    "high-pan-return": 1.6,
+    "high-return": 1310.0,
+    "high-second-up": 233.2,
+    "high-second-return": 2.5
+  },
+  "oldCrossReturn": {
+    "width": 1710,
+    "height": 1856,
+    "changedPixels": 3173760,
+    "maxChannelDelta": 155
+  },
+  "earlier62MaterialLayout": {
+    "visible": 62,
+    "firstCompleteBoardMs": 866.6,
+    "wholeMs": 7233.4,
+    "peakTrackedTextureBytes": 810531980
+  },
+  "afterSettledRemoteVisit": {
+    "remote": {
+      "point": {
+        "x": 8016.8,
+        "y": 12143.8
+      },
+      "view": [
+        -256109.63370135124,
+        -388137.6380535543,
+        32.00000218266099
+      ],
+      "at": 1793854630964.8
+    },
+    "returnMs": 1659.3,
+    "pixels": {
+      "high-cross-return/native": {
+        "width": 1710,
+        "height": 1856,
+        "changedPixels": 0,
+        "maxChannelDelta": 0
+      },
+      "high-cross-return/window": {
+        "width": 1654,
+        "height": 1386,
+        "changedPixels": 0,
+        "maxChannelDelta": 0
+      },
+      "high-cross-held/native": {
+        "width": 1710,
+        "height": 1856,
+        "changedPixels": 0,
+        "maxChannelDelta": 0
+      },
+      "high-cross-held/window": {
+        "width": 1654,
+        "height": 1386,
+        "changedPixels": 0,
+        "maxChannelDelta": 0
+      }
+    }
+  },
+  "installed": {
+    "previousManifest": "a231e97000581d70b79d072e6a9a8be51e70e1335b9622e3591071a05b95fe87",
+    "manifest": "1a0390df5fe361edab5941385f828b833dc13e2d6f6546d93d85d26edb3d4a78",
+    "wasm": "e57b2f8609556a24735c2c4409f63ac28d5cde93a6e7cdd776248121a6bfa9bd",
+    "entry": "9d4ef4926a45588307f50789e642fbc8c342d7fe240da8247a701cf03a1e7158",
+    "sources": 2574,
+    "productFilesChecked": 101,
+    "priorHashedAssetsRetained": 35,
+    "builtAt": "2026-11-05T04:52:32.109Z",
+    "profile": "desktop-dev"
+  }
+}

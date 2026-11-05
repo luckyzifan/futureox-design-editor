@@ -125,7 +125,7 @@ export class RenderKernel {
       }
       return reply.value as T
     }
-    if(method==='load_source_snapshot')throw Error('NATIVE_SOURCE_UNSUPPORTED')
+    if(method==='load_source_snapshot'||method==='source_hit')throw Error('NATIVE_SOURCE_UNSUPPORTED')
     if (method === 'derive_document_v1' || method === 'preparation_capabilities_v1') throw Error('DERIVATION_UNSUPPORTED')
     if (method === 'render_cpu_frame') return renderCpuFrame(this.assets, args[0] as string, args[1] as PaintDamage | undefined) as T
     if (method === 'initialize') return undefined as T

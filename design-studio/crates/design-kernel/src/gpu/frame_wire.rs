@@ -2,6 +2,7 @@
 //! Tags: end/null/bool/f64/string/new-string/array/map. Strings are interned per record.
 use serde::ser::{self, Serialize, SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple, SerializeTupleStruct, SerializeTupleVariant};
 use std::collections::HashMap;
+use std::borrow::Cow;
 #[derive(Debug)] pub struct Error(String);
 impl std::fmt::Display for Error {fn fmt(&self,f:&mut std::fmt::Formatter<'_>)->std::fmt::Result{f.write_str(&self.0)}}
 impl std::error::Error for Error {}
@@ -28,14 +29,30 @@ pub(super) fn encode_frame<T:Serialize+?Sized>(value:&T)->Result<(Vec<u8>,usize)
     let offset=writer.sequence_offset.ok_or("Missing frame sequence marker")?;
     Ok((writer.bytes,offset))
 }
-struct Writer {bytes:Vec<u8>,strings:HashMap<String,u32>,zero_offsets:bool,sequence_offset:Option<usize>}
+struct Writer {bytes:Vec<u8>,strings:HashMap<Cow<'static,str>,u32>,zero_offsets:bool,sequence_offset:Option<usize>}
 impl Writer {
     fn number(&mut self,n:f64){if !n.is_finite(){self.bytes.push(1)}else{self.bytes.push(4);self.bytes.extend(n.to_le_bytes())}}
     fn text(&mut self,value:&str)->Result<(),Error>{
         if let Some(index)=self.strings.get(value){self.bytes.push(5);self.bytes.extend(index.to_le_bytes());return Ok(())}
         let length=u32::try_from(value.len()).map_err(ser::Error::custom)?;
         let index=u32::try_from(self.strings.len()).map_err(ser::Error::custom)?;
-        self.bytes.push(6);self.bytes.extend(length.to_le_bytes());self.bytes.extend(value.as_bytes());self.strings.insert(value.to_owned(),index);Ok(())
+        self.bytes.push(6);self.bytes.extend(length.to_le_bytes());self.bytes.extend(value.as_bytes());self.strings.insert(Cow::Owned(value.to_owned()),index);Ok(())
+    }
+    // Serde struct field names live for the whole program. Use the same
+    // content-based dictionary as dynamic values, without copying field names
+    // or hashing the new field twice. Insertion order is the wire ID.
+    fn field(&mut self,value:&'static str)->Result<(),Error>{
+        use std::collections::hash_map::Entry;
+        let next=self.strings.len();
+        match self.strings.entry(Cow::Borrowed(value)){
+            Entry::Occupied(e)=>{self.bytes.push(5);self.bytes.extend(e.get().to_le_bytes());}
+            Entry::Vacant(e)=>{
+                let len=u32::try_from(value.len()).map_err(ser::Error::custom)?;
+                let index=u32::try_from(next).map_err(ser::Error::custom)?;
+                self.bytes.push(6);self.bytes.extend(len.to_le_bytes());self.bytes.extend(value.as_bytes());e.insert(index);
+            }
+        }
+        Ok(())
     }
 }
 struct Compound<'a>{writer:&'a mut Writer,extra:bool}
@@ -96,9 +113,17 @@ impl SerializeMap for Compound<'_>{type Ok=();type Error=Error;
     fn end(self)->Result<(),Error>{self.finish()}
 }
 macro_rules! structure {($trait:ident)=>{impl $trait for Compound<'_>{type Ok=();type Error=Error;
-    fn serialize_field<T:Serialize+?Sized>(&mut self,k:&'static str,v:&T)->Result<(),Error>{self.writer.text(k)?;if self.writer.zero_offsets&&k=="first"{self.writer.number(0.);Ok(())}else{v.serialize(&mut *self.writer)}}
+    fn serialize_field<T:Serialize+?Sized>(&mut self,k:&'static str,v:&T)->Result<(),Error>{self.writer.field(k)?;if self.writer.zero_offsets&&k=="first"{self.writer.number(0.);Ok(())}else{v.serialize(&mut *self.writer)}}
     fn end(self)->Result<(),Error>{self.finish()}}}}
 structure!(SerializeStruct);structure!(SerializeStructVariant);
+
+#[cfg(test)]
+#[test]
+fn borrowed_field_names_and_dynamic_values_share_the_same_wire_ids() {
+    #[derive(serde::Serialize)] struct Example { a:String, b:String }
+    let names=std::collections::BTreeMap::from([("a".to_owned(),"b"),("b".to_owned(),"a")]);
+    assert_eq!(encode(&Example{a:"b".into(),b:"a".into()}).unwrap(),encode(&names).unwrap());
+}
 
 #[cfg(test)]
 #[test]

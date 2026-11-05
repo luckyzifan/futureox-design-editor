@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import vm from 'node:vm'
-import detector from '../../../testing/verification-electron-display-tier-20261021/visual-omission.cjs'
+import detector from '../scripts/visual-omission.cjs'
 
 const thresholds = { transparentMaxAlpha: 4, referenceOpaqueMinAlpha: 240, nearWhiteMin: 250, referenceContentContrast: 32 }
 const sample = label => ({ label, file: label + '.png', matchedAcknowledgement: 0,
@@ -127,7 +127,7 @@ test('transparent white page background is not missing content, while missing da
 })
 test('browser initialization runs the same classifier as the Node regression', async () => {
   const context = vm.createContext({})
-  vm.runInContext(await readFile(new URL('../../../testing/verification-electron-display-tier-20261021/visual-omission.cjs', import.meta.url), 'utf8'), context)
+  vm.runInContext(await readFile(new URL('../scripts/visual-omission.cjs', import.meta.url), 'utf8'), context)
   const detect = context.__sharpTransparentContentOmission
   for (const color of [[255, 255, 255, 255], [0, 20, 64, 255], [240, 240, 240, 255]])
     assert.equal(detect(0, color, 0, [255, 255, 255, 255], thresholds), detector.transparentContentOmission(0, color, 0, [255, 255, 255, 255], thresholds))

@@ -28,7 +28,7 @@ import { useZoomActivity, useCameraActivity } from './use-zoom-activity'
 import { useSharpZoomActivity } from './use-sharp-zoom-activity'
 import { useNavigationZoom } from './use-navigation-zoom'
 import { navigationPreviewDensity } from './navigation-zoom'
-import { navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, type NavigationCoverageFlight } from './navigation-coverage'
+import { navigationCoverageTiles, navigationHasCoverage, navigationCoverageFlight, navigationReadyDensity, previewUnderlayHides, retainedPressureError, type NavigationCoverageFlight } from './navigation-coverage'
 import { RenderMailbox } from './render-mailbox'
 import { scheduleRasterMaintenance } from './idle-raster-maintenance'
 import { panPrefetch } from './pan-prefetch'
@@ -1019,7 +1019,8 @@ export function ProgressiveSurfaceImpl(
       document: doc, revision: contract.revision, resident: residentDisplay, client: c,
       device: previewDevice.current.client === c ? previewDevice.current.key : undefined,
     })
-    const hasReadyCoverage = () => navigationHasCoverage(validCoverage(), requestedView, width, height)
+    const hasReadyCoverage = () => navigationHasCoverage(validCoverage(), requestedView, width, height,
+      navigationReadyDensity(requestedView.zoom, dpr, width, height, nativeNavigation))
     // A large reversal can leave a costly zoom-in capture occupying the sole
     // raster lane after its crop stopped covering the current view. Already
     // acknowledged current-content coverage supplies continuity, so revoke
@@ -1397,6 +1398,9 @@ export function ProgressiveSurfaceImpl(
       recordRenderDiagnostic({ kind: 'error', zoom: view.zoom, dpr,
         requestedDensity: view.zoom * dpr, errorCode: renderDiagnosticError(error) })
       if (String(error).includes('PREVIEW_CANCELLED')) return
+      // A retained camera image may cover the request. An empty or unrelated
+      // tile cannot hide a failed first frame or suppress backend recovery.
+      if (retainedPressureError(error) && hasReadyCoverage()) return
       // Recovery changes the renderer, not the fact that this GPU request failed.
       // Keep failure observers informed before handing off to the CPU surface.
       latestContext.current.onRenderFailure?.()

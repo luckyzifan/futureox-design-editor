@@ -1,0 +1,18 @@
+This linux-x64 `ffmpeg` executable is a GPL build of FFmpeg 7.0.2-static.
+Its configuration includes `--enable-gpl --enable-version3 --enable-static
+--enable-libx264 --enable-libvpx`.
+
+Upstream build: https://johnvansickle.com/ffmpeg/
+Obtained as the ffmpeg-static release asset b6.1.1:
+https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-linux-x64.gz
+
+Futureox Design ships it as a separate program at `Resources/bin/ffmpeg`
+(Electron extraResource from `dist/bin`). The desktop host resolves that path
+and the Rust sidecar spawns it with a fixed argument list. It is not linked
+into the Electron or Rust binaries.
+
+License texts for this build are `COPYING.GPLv3` and `COPYING.LGPLv2.1` in
+this directory (FFmpeg tag n7.0.2). Because the build uses `--enable-gpl` and
+`--enable-version3`, the executable is distributed under GPL-3.0-or-later.
+Source for the build is published by the upstream static build and by the
+FFmpeg project tag n7.0.2.

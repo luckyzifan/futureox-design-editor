@@ -1,11 +1,11 @@
 import type { PreparationStateReceiptV1 } from './preparation-state'
 export type PreparationMethod = 'preparation_capabilities_v1' | 'derive_document_v1' | 'warm_resources' | 'initialize' | 'load_document' | 'load_source_snapshot' | 'apply_document_patch_with_damage' | 'apply_interaction_transforms' |
   'compile_gpu_packet' | 'render_linear' | 'render_png' | 'render_color_png' | 'render_region_png' |
-  'render_cpu_frame' | 'stats' | 'gpu_memory_breakdown'
+  'render_cpu_frame' | 'stats' | 'gpu_memory_breakdown' | 'source_hit'
 export type PreparationProgress = { backendCode: 1 | 2; boundaryCode: number; boundaryDurationMs?: number; bridgeBoundaryAt?: number }
 export type PreparationReply = { progress?: PreparationProgress; bridgeBoundaryAt?: number; id: number; value?: unknown; settings?: string; error?: string; fatal?: string; documentFork?: boolean; compileStats?:Record<string,unknown>; stateReceipt?: PreparationStateReceiptV1 | null }
 
-const methods: PreparationMethod[] = ['warm_resources','initialize','load_document','apply_document_patch_with_damage','apply_interaction_transforms','compile_gpu_packet','render_linear','render_png','render_color_png','render_region_png','render_cpu_frame','stats','gpu_memory_breakdown','preparation_capabilities_v1','derive_document_v1','load_source_snapshot']
+const methods: PreparationMethod[] = ['warm_resources','initialize','load_document','apply_document_patch_with_damage','apply_interaction_transforms','compile_gpu_packet','render_linear','render_png','render_color_png','render_region_png','render_cpu_frame','stats','gpu_memory_breakdown','preparation_capabilities_v1','derive_document_v1','load_source_snapshot','source_hit']
 type Diagnostics = { enabled: () => boolean; owner: () => number; record: (event: string, fields: Record<string, number | boolean>) => void }
 type Job = { terminal?:MessagePort; cancellation?: Int32Array<SharedArrayBuffer>; cancellable?: boolean; owner?: number; queuedAt?: number; startedAt?: number; id: number; lane: string; method: PreparationMethod; args: unknown[];
   resolve: (reply: PreparationReply) => void; reject: (error: Error) => void; cleanup?: () => void; cancelled?: boolean; backendCode?: number; boundaryCode?: number; diagnosticTimer?: ReturnType<typeof setTimeout> }
@@ -21,6 +21,7 @@ export class PreparationChannel {
   private static mutates(method: PreparationMethod) {
     return ['initialize', 'load_document', 'load_source_snapshot', 'apply_document_patch_with_damage', 'apply_interaction_transforms', 'derive_document_v1'].includes(method)
   }
+  get idle(){return !this.closed&&!this.active&&!this.queued.length}
   currentReceipt(lane: string): PreparationStateReceiptV1 | undefined {
     if (this.closed || [this.active, ...this.queued].some(job => job && PreparationChannel.mutates(job.method) &&
       job.lane === lane)) return undefined

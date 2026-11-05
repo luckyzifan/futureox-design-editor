@@ -122,7 +122,7 @@ export type GpuNode = {
   matrix: Matrix
   inverse: Matrix
   size: [number, number]
-  glassShape?: { size: [number, number]; radius: number }
+  glassShape?: { size: [number, number]; radius: number; radii?: [number, number, number, number] }
   captureReplay?: GlassCaptureReplay
   textureReplay?: TextureReplay
   fill: PathMesh
@@ -280,6 +280,8 @@ export interface Driver {
   readonly sourceLayersReady?:boolean
   readonly sourceImageLayersReady?:boolean
   prepareSourceDisplay?():Promise<void>
+  readonly densePairsReady?: boolean
+  drawDensePair?(targets: readonly [Texture, Texture], inputs: readonly [Texture, Texture], atlas: Texture, uniforms: Float32Array): boolean
   densePaintReady?:boolean
   densePathOffset?(first:number):number|undefined
   sourceProgramOffset?(path:PathMesh):number|undefined
@@ -427,7 +429,7 @@ export interface Driver {
   triangles: number
   commandSubmissions?: number
   /** Render-call intent, never a document/scene capability. Omission is exact. */
-  prepareScene?(scene: GpuScene, displayOnly?: boolean): Promise<void>
+  prepareScene?(scene: GpuScene, displayOnly?: boolean, gradientFusion?: boolean): Promise<void>
   prepareFilters?(prefixUseful?: boolean): Promise<void>
   /** Before begin, retire pending prior-frame image leases if geometry may
    * replace an in-flight buffer. Caller accounts scratch deltas across await. */

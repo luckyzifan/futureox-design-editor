@@ -23,6 +23,9 @@ pub(crate) struct LazyRuntime {
     pub(crate) stats: Value,
 }
 impl LazyRuntime {
+    pub(crate) fn pick_engine(&self)->Option<&Engine>{
+        self.compiler.as_ref()
+    }
     pub(crate) fn request_key(
         owner: &Engine,
         header: &Document,
@@ -141,7 +144,7 @@ impl LazyRuntime {
                 let authored: BTreeSet<_> = ids.iter().cloned().collect();
                 document.nodes = reader
                     .read_demand(ids, &cancel)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| e.to_string())?.into();
                 let stage = document
                     .nodes
                     .get_mut(directory.stage())

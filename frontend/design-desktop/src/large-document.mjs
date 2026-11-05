@@ -35,6 +35,18 @@ export class LargeDocumentHost {
       value.owner.sessionEpoch !== active.status.owner.sessionEpoch || value.expectedRevision !== active.status.revision) throw Error('Stale or foreign large document request')
     return active
   }
+  bitmapGrant(senderId,recoveryDir) {
+    const active=this.#active, owner=active?.status.owner
+    if(!owner || active.window!==this.window() || active.window.isDestroyed() ||
+       active.window.webContents.id!==senderId || active.status.format!=='sketch')return
+    const name=owner.documentId+'-'+owner.sessionEpoch
+    return {owner:name,directory:path.join(recoveryDir,'large-documents',name,'bitmaps')}
+  }
+  bitmapOwner(name) {
+    const active=this.#active, owner=active?.status?.owner
+    return !!owner && active.window===this.window() && !active.window.isDestroyed() && active.status.format==='sketch' &&
+      name===owner.documentId+'-'+owner.sessionEpoch
+  }
   async open(value, selectedPath) { return this.#exclusive(async () => {
     if (value !== undefined) throw Error('Unexpected large document open arguments')
     if (this.#active) {
@@ -305,11 +317,22 @@ export class LargeDocumentHost {
     return {status:'ok',...active.status}
   }) }
   async export(value) { return this.#exclusive(async()=>{
-    const active=this.#check(value,['owner','expectedRevision']),window=this.window()
-    const selected=await this.dialog.showSaveDialog(window,{title:'导出完整文件',defaultPath:active.status.name.replace(/\.(json|sketch)$/i,`-edited.${active.status.format}`),filters:[{name:active.status.format,extensions:[active.status.format]}]})
+    const fieldsAllowed=['owner','expectedRevision','selection','selectionName']
+    const active=this.#check(value,fieldsAllowed),window=this.window(),target=value.selection
+    let defaultPath=active.status.name.replace(/\.(json|sketch)$/i,`-edited.${active.status.format}`)
+    if(target!==undefined){
+      fields(target,['pageId','nodeIds'])
+      const validId=id=>typeof id==='string' && id.length>0 && id.length<=128
+      if(active.status.format!=='sketch'||!validId(target.pageId)||!Array.isArray(target.nodeIds)||!target.nodeIds.length||
+         target.nodeIds.length>1000||!target.nodeIds.every(validId)||new Set(target.nodeIds).size!==target.nodeIds.length)throw Error('Invalid Sketch selection')
+      if(typeof value.selectionName!=='string')throw Error('Missing selection name')
+      const name=value.selectionName.replace(/[\x00-\x1f\/\\:*?"<>|]/g,'_').replace(/^[. ]+|[. ]+$/g,'').slice(0,120)
+      defaultPath=(name||'Selection')+'.sketch'
+    }
+    const selected=await this.dialog.showSaveDialog(window,{title:target?'导出选区为 Sketch':'导出完整文件',defaultPath,filters:[{name:active.status.format,extensions:[active.status.format]}]})
     if(selected.canceled||!selected.filePath||window!==this.window()||window.isDestroyed())return {status:'cancelled'}
-    this.#check(value,['owner','expectedRevision'])
-    const result=await this.request('large.export',{...value,path:selected.filePath,requestId:randomUUID()})
+    this.#check(value,fieldsAllowed)
+    const result=await this.request('large.export',{owner:value.owner,expectedRevision:value.expectedRevision,...(target?{selection:target}:{}),path:selected.filePath,requestId:randomUUID()})
     if(result.exported!==true)throw Error('Large document export was not confirmed')
     active.status=admitLargeStatus(result.document,active.status.owner)
     return {status:'ok',...active.status,exported:true,displayName:path.basename(selected.filePath),...(result.warning?{saveWarning:result.warning}:{})}

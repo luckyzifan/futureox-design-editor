@@ -43,7 +43,10 @@ function commonAdmission(doc: DesignDocument, ids: readonly string[]) {
   for (const id of index.ids) visit(id)
   for (let at = index.parents.get(index.ids[0]); at && doc.nodes[at]; at = index.parents.get(at)) {
     const n = doc.nodes[at]
-    if (n.mask || n.booleanOperation || n.repeat || n.bindings || n.styleRefs || n.variableModes || n.component || n.componentSet || n.constraints || (n.layout && n.layout.mode !== 'none') || (n.sizing && (n.sizing.width !== 'fixed' || n.sizing.height !== 'fixed')))
+    // An auto-layout ancestor is a normal Figma parent: the boolean becomes
+    // one fixed flow item and the layout pass reflows. Masks, components and
+    // nested booleans still need their own command.
+    if (n.mask || n.booleanOperation || n.repeat || n.bindings || n.styleRefs || n.variableModes || n.component || n.componentSet)
       reject('unsupported_boolean_context', 'Derived or masked ancestors require a dedicated boolean command')
   }
   const parent = index.parents.get(index.ids[0])!, siblings = doc.nodes[parent]?.children ?? doc.pages.find(p => p.id === parent)!.children
@@ -55,7 +58,9 @@ export function prepareBooleanCreate(doc: DesignDocument, ids: readonly string[]
   if (!['existing-fill', 'verified-fill'].includes(policy) || !['union', 'subtract', 'intersect', 'exclude'].includes(options.operation))
     reject('invalid_params', 'Invalid boolean operation or policy')
   const index = policy === 'verified-fill' ? commonAdmission(doc, ids) : undefined
-  const wrap = prepareSelectionWrap(doc, ids, state, index)
+  // Figma places the boolean where the front-most selected sibling was, including
+  // inside an auto-layout parent. Ordinary grouping keeps the back-most slot.
+  const wrap = prepareSelectionWrap(doc, ids, state, index, { allowLayoutParent: true, stack: 'front' })
   const wrapper = node('vector', 0, 0, wrap.width, wrap.height)
   if (options.id !== undefined) {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(options.id)) reject('invalid_params', 'Boolean identifiers must be UUIDs')
@@ -64,7 +69,7 @@ export function prepareBooleanCreate(doc: DesignDocument, ids: readonly string[]
   if (Object.hasOwn(doc.nodes, wrapper.id) || doc.pages.some(p => p.id === wrapper.id)) reject('duplicate_id', 'Boolean identifier already exists')
   if (options.name !== undefined && (!options.name.trim() || options.name.length > 200)) reject('invalid_params', 'Boolean name must contain 1–200 characters')
   configureSelectionWrapper(wrapper, wrap)
-  wrapper.name = options.name ?? `布尔组合 · ${options.operation}`
+  wrapper.name = options.name ?? ({ union: '联集', subtract: '减去', intersect: '交集', exclude: '排除' } as const)[options.operation]
   wrapper.booleanOperation = options.operation; wrapper.blend = 'normal'
   // Scene children are bottom-to-top. Subtract is bottom minus all upper operands.
   const styleSourceId = policy === 'existing-fill' || options.operation === 'subtract' ? wrap.ids[0] : wrap.ids[wrap.ids.length - 1]
@@ -75,4 +80,11 @@ export function prepareBooleanCreate(doc: DesignDocument, ids: readonly string[]
 }
 export function applyBooleanCreate(doc: DesignDocument, plan: BooleanCreatePlan): void {
   applySelectionWrap(doc, plan.wrap, plan.wrapper)
+  // The boolean group is not an auto-layout frame. Freeze fill/hug on the
+  // operands so their sizes stay the ones measured at the merge.
+  for (const id of plan.wrap.ids) {
+    const child = doc.nodes[id]
+    if (child.sizing && (child.sizing.width !== 'fixed' || child.sizing.height !== 'fixed'))
+      child.sizing = { ...child.sizing, width: 'fixed', height: 'fixed' }
+  }
 }

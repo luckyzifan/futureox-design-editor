@@ -93,7 +93,7 @@ test.each(['union', 'subtract', 'intersect', 'exclude'])('NDJSON %s creates actu
   const after = f.editor.state.doc, result = after.nodes['30000000-0000-4000-8000-000000000001']
   expect(result.booleanOperation).toBe(operation); expect(result.children).toEqual([d.a.id, d.b.id])
   expect(result.network!.edges.length).toBeGreaterThan(0); expect(result.network!.edges.some(e => e.c1)).toBe(true)
-  expect(result.fills).toEqual((operation === 'subtract' ? before.nodes[d.a.id].fills : before.nodes[d.b.id].fills).map(p => ({ ...p, image: p.image ?? null })))
+  expect(result.fills).toEqual((operation === 'subtract' ? before.nodes[d.a.id].fills : before.nodes[d.b.id].fills))
   expect(after.nodes[d.a.id].kind).toBe('ellipse'); expect(after.nodes[d.b.id].kind).toBe('ellipse')
   for (const id of ['30000000-0000-4000-8000-000000000001', d.a.id, d.b.id]) await f.read('node.get', { id })
   const replay = await f.call('batch.apply', params, fences)
@@ -161,7 +161,7 @@ test('public MCP creates both moon circles, live subtract, exact undo/redo and n
   expect(n.kind).toBe('vector'); expect(n.booleanOperation).toBe('subtract'); expect(n.children).toEqual([a, b])
   expect(n.network!.edges.length).toBeGreaterThan(0); expect(n.network!.edges.some(e => !!e.c1)).toBe(true)
   expect(after.nodes[a].kind).toBe('ellipse'); expect(after.nodes[b].kind).toBe('ellipse')
-  expect(n.fills).toEqual(before.nodes[a].fills.map(p => ({ ...p, image: p.image ?? null })))
+  expect(n.fills).toEqual(before.nodes[a].fills)
   expect((await f.mutate('history.undo')).isError).toBe(false); expect(f.editor.state.doc).toEqual(before)
   expect((await f.mutate('history.redo')).isError).toBe(false); expect(f.editor.state.doc).toEqual(after)
   const native = await f.read('document.export', { format: 'native-json' }), svg = await f.read('vector.export', { nodeIds: [moon] })

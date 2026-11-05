@@ -252,6 +252,7 @@ export type KernelStats = {
 }
 export type KernelResult = {
   navigationToken?: number
+  sourceHit?:import('../source-hover-detail').SourceHitReply|null
   contentPixel?:number[]
   contentFrame?:import('./resident-presentation').ResidentAcknowledgement
   gpuTile?: number
@@ -316,6 +317,7 @@ export type KernelResult = {
   maskRasterizations?: number
 }
 export type TileResult = RasterTile & {
+  cpuDivisor?: number
   cameraFallback?: boolean
   gpuTile?: number
   reason?: string
@@ -440,6 +442,10 @@ export class KernelClient {
     if (this.navigationJournal.recording) this.navigationJournal.record(2, { ...input, sequence, x: frame.view.x, y: frame.view.y, zoom: frame.view.zoom })
     if(this.terminalDiagnostics.enabled)this.frameMeasurements.request(sequence,frame.view,input)
     this.worker?.postMessage({ command: 'display-frame', sequence, frame:residentFrameMessage({...frame, diagnosticSequence:this.terminalDiagnostics.enabled?sequence:undefined}) })
+  }
+  async pickSource(token:string,query:import('../source-hover-detail').SourceHitQuery){
+    const reply=await this.request({command:'source-hit',token,query})
+    return reply.sourceHit??undefined
   }
   async readContentPixel(u:number,v:number,expected?:import('./resident-presentation').ResidentAcknowledgement){const result=await this.request({command:'display-read-pixel',u,v,expected});if(!result.contentPixel)throw Error('Missing document sample');return result.contentPixel}
   async copyNavigationTile(id: number, consume: (bitmap: ImageBitmap) => void) {
@@ -682,7 +688,7 @@ export class KernelClient {
           recordRenderProfile(p.channel === 'interaction' ? '交互准备' : '渲染请求', e.data, performance.now() - p.started)
         // Control-command replies (gpuMemory) carry no render accounting;
         // leave the last real sample in place for subscribers.
-        if (e.data.gpuMemory === undefined && e.data.contentFrame === undefined)
+        if (!('sourceHit' in e.data) && e.data.gpuMemory === undefined && e.data.contentFrame === undefined)
           publishRendererMemory({
             backend: e.data.backend,
             workingTextureBytes: e.data.workingTextureBytes,

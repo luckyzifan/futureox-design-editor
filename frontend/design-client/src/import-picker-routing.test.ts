@@ -54,8 +54,8 @@ test.each([true,false])('actual image action maps locked diagnostic cancellation
  const append=vi.fn(async(_editor:unknown,files:File[],_anchor:unknown,_decode:unknown,diagnose:(file:File)=>unknown)=>{
   diagnose(files[0]);throw Error('opaque')
  })
- const run=new Function('beginEditorAction','CanvasAction','ActionSource','ImportFailure','ActionOutcome','ActionReason','ready','editor','commitPendingEdits','document','captureImageImportAnchor','appendImageFiles','beginImportDiagnostic','StaleImageImport','importInputStatus',`${executable};return importImageFiles`)(
-  ()=>trace,{import:1},{menu:1},{cancelled:1},{cancelled:2,rejected:3,blocked:4},{superseded:5,validation:6},true,editor,()=>true,{querySelector:()=>({clientWidth:10,clientHeight:10})},()=>({x:0,y:0}),append,()=>diagnostic,class Stale extends Error{},()=>undefined)
+ const run=new Function('beginEditorAction','CanvasAction','ActionSource','ImportFailure','ActionOutcome','ActionReason','ready','editor','commitPendingEdits','document','captureImageImportAnchor','appendImageFiles','beginImportDiagnostic','StaleImageImport','importInputStatus','setImporting',`${executable};return importImageFiles`)(
+  ()=>trace,{import:1},{menu:1},{cancelled:1},{cancelled:2,rejected:3,blocked:4},{superseded:5,validation:6},true,editor,()=>true,{querySelector:()=>({clientWidth:10,clientHeight:10})},()=>({x:0,y:0}),append,()=>diagnostic,class Stale extends Error{},()=>undefined,vi.fn())
  await run([new File(['x'],'image.png')])
  expect(trace.result).toHaveBeenCalledExactlyOnceWith(cancelled?2:3,cancelled?5:6)
  expect(append).toHaveBeenCalledOnce();expect(trace.finish).toHaveBeenCalledOnce()

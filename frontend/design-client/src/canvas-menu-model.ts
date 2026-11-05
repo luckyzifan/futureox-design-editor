@@ -3,6 +3,7 @@ import { canvasCommandLabel } from './canvas-interface-messages'
 import type { Editor } from './engine'
 import type { EditorCommand } from './editor-commands'
 import { container, type Point } from './model'
+import { userPages } from './fig-document'
 import { shortcutLabel, shortcutPlatform, type ShortcutContext } from './shortcut-profiles'
 import { shortcutPreference } from './shortcut-preference'
 import { desktopBridge } from './desktop'
@@ -21,13 +22,18 @@ export function canvasMenuItems(editor: Editor, context: ShortcutContext = { pro
   const roots = editor.topSelection(), parents = editor.parentMap(), locks = lockedSelectionIds(editor)
   const mutable = !!roots.length && !locks.length && !busy && !editor.interactionActive
   const siblings = roots.length > 0 && roots.every((id) => parents.get(id) === parents.get(roots[0]))
-  const items: CanvasMenuItem[] = [
-    { command: 'undo', label: '撤销', group: 'history', disabled: !editor.canUndo || busy },
-    { command: 'redo', label: '重做', group: 'history', disabled: !editor.canRedo || busy },
-  ]
+  // Desktop Figma order: clipboard, copy/paste as, stacking, group/frame,
+  // auto layout, component, show/lock, flip, geometry, then extras.
+  const items: CanvasMenuItem[] = []
   if (nodes.length) items.push(
-    { command: 'paste-over-selection', label: '覆盖粘贴（保留目标）', group: 'clipboard', disabled: !mutable || (context.profile === 'figma-like' && roots.length !== 1) },
+    { command: 'copy', label: '复制', group: 'clipboard', disabled: busy || editor.interactionActive },
+    { command: 'cut', label: '剪切', group: 'clipboard', disabled: !mutable },
+    { command: 'paste-here', label: '粘贴到此处', group: 'clipboard', disabled: busy },
+    { command: 'paste-in-place', label: '粘贴到原位', group: 'clipboard', disabled: busy },
     { command: 'paste-to-replace', label: '粘贴替换', group: 'clipboard', disabled: !mutable },
+    { command: 'paste-over-selection', label: '覆盖粘贴（保留目标）', group: 'clipboard', disabled: !mutable || (context.profile === 'figma-like' && roots.length !== 1) },
+    { command: 'duplicate', label: '创建副本', group: 'clipboard', disabled: !mutable },
+    { command: 'delete', label: '删除', group: 'clipboard', disabled: !mutable, danger: true },
     { command:'copy-properties',label:'复制属性',group:'copy-as',disabled:nodes.length!==1||busy },
     { command:'paste-properties',label:'粘贴属性',group:'copy-as',disabled:!mutable },
     { command:'copy-fills',label:'复制填充',group:'copy-as',disabled:nodes.length!==1||busy },
@@ -35,56 +41,122 @@ export function canvasMenuItems(editor: Editor, context: ShortcutContext = { pro
     { command:'copy-effects',label:'复制效果',group:'copy-as',disabled:nodes.length!==1||busy },
     { command: 'copy-as-png', label: '复制为 PNG', group: 'copy-as', disabled: busy || editor.interactionActive },
     { command: 'copy-as-svg', label: '复制为 SVG', group: 'copy-as', disabled: busy || editor.interactionActive },
-    { command: 'copy', label: '复制', group: 'clipboard', disabled: busy || editor.interactionActive },
-    { command: 'cut', label: '剪切', group: 'clipboard', disabled: !mutable },
+    { command: 'bring-to-front', label: '置于顶层', group: 'order', disabled: !mutable },
+    { command: 'bring-forward', label: '向上一层', group: 'order', disabled: !mutable },
+    { command: 'send-backward', label: '向下一层', group: 'order', disabled: !mutable },
+    { command: 'send-to-back', label: '置于底层', group: 'order', disabled: !mutable },
+    { command: 'group', label: '编组', group: 'structure', disabled: !mutable || !siblings },
+    { command: 'frame-selection', label: '创建选区画板', group: 'structure', disabled: !mutable || !siblings },
   )
-  items.push(
-    { command: 'paste-here', label: '粘贴到此处', group: 'clipboard', disabled: busy },
-    { command: 'paste-in-place', label: '粘贴到原位', group: 'clipboard', disabled: busy },
+  if (nodes.length && nodes.every((n) => (['group', 'frame', 'section'].includes(n.kind) || n.booleanOperation) && !n.component && !n.instance && !n.componentSet))
+    items.push({ command: 'ungroup', label: '解除编组', group: 'structure', disabled: !mutable })
+  if (nodes.length) items.push({ command: 'flatten', label: '展平', group: 'structure', disabled: !mutable || nodes.some(n => n.kind === 'text' || n.kind === 'slice' || !!n.instance || !!n.component || !!n.componentSet) })
+  if (nodes.length) items.push({ command: 'auto-layout', label: '添加自动布局', group: 'layout', disabled: !mutable || !siblings })
+  if (nodes.length === 1 && nodes[0].layout?.mode && nodes[0].layout.mode !== 'none') items.push({ command: 'remove-auto-layout', label: '移除自动布局', group: 'layout', disabled: !mutable })
+  if (nodes.length) items.push(
+    { command: 'create-component', label: '创建组件', group: 'component', disabled: !mutable || !siblings },
+    { command: 'detach-instance', label: '分离实例', group: 'component', disabled: !mutable || nodes.length !== 1 || !nodes[0].instance },
+    locks.length ? { command: 'unlock-selection', label: locks.some((id) => !selection.includes(id)) ? '解锁图层及父级' : '解锁图层', group: 'visibility', disabled: busy }
+      : { command: 'lock-selection', label: '锁定图层', group: 'visibility', disabled: busy },
+    nodes.every((n) => n.visible) ? { command: 'hide-selection', label: '隐藏图层', group: 'visibility', disabled: busy }
+      : { command: 'show-selection', label: '显示图层', group: 'visibility', disabled: busy },
+    { command: 'flip-horizontal', label: '水平翻转', group: 'transform', disabled: !mutable },
+    { command: 'flip-vertical', label: '垂直翻转', group: 'transform', disabled: !mutable },
   )
+  if (nodes.length && nodes.every((n) => !container(n) && n.kind !== 'text' && n.kind !== 'vector')) items.push({ command: 'convert-vector', label: '转换为矢量', group: 'geometry', disabled: !mutable })
+  if (nodes.length && nodes.every((n) => !container(n) && n.kind !== 'text') && nodes.some((n) => n.strokes.some((stroke) => stroke.visible && stroke.width > 0)))
+    items.push({ command: 'outline-stroke', label: '轮廓化描边', group: 'geometry', disabled: !mutable || !siblings })
+  if (nodes.length) items.push({ command: 'mask-selection', label: '用作蒙版', group: 'geometry', disabled: !mutable || !siblings || roots.length < 2 })
+  if (nodes.length) items.push({ command: 'rename', label: nodes.length > 1 ? '批量重命名…' : '重命名', group: 'naming', disabled: busy || editor.interactionActive || (nodes.length > 1 && (!mutable || nodes.some(n => n.instanceOrigin))) })
+  if (nodes.length && nodes.every(n => n.kind === 'frame' && !n.component && !n.instance && !n.componentSet)) items.push({ command: 'convert-section', label: '转换为分区', group: 'naming', disabled: !mutable })
   if (nodes.length) {
-    for(const [query,label] of [['matching','匹配图层'],['properties','相同属性'],['fill','相同填充'],['stroke','相同描边'],['effect','相同效果'],['text','相同文字属性'],['font','相同字体'],['instance','同一组件实例']] as const)
-      items.push({command:`select-${query}`,label:`选择${label}`,group:'selection',disabled:busy})
-    items.push({command:'select-inverse',label:'反选',group:'selection',disabled:busy})
-    items.push({ command: 'rename', label: nodes.length > 1 ? '批量重命名…' : '重命名', group: 'structure', disabled: busy || editor.interactionActive || (nodes.length > 1 && (!mutable || nodes.some(n => n.instanceOrigin))) })
-    items.push({ command: 'duplicate', label: '创建副本', group: 'clipboard', disabled: !mutable })
+    for (const [query, label] of [['matching','匹配图层'],['properties','相同属性'],['fill','相同填充'],['stroke','相同描边'],['effect','相同效果'],['text','相同文字属性'],['font','相同字体'],['instance','同一组件实例']] as const)
+      items.push({ command: `select-${query}`, label: `选择${label}`, group: 'selection', disabled: busy })
+    items.push({ command: 'select-inverse', label: '反选', group: 'selection', disabled: busy })
     items.push(
-      { command: 'flip-horizontal', label: '水平翻转', group: 'transform', disabled: !mutable },
-      { command: 'flip-vertical', label: '垂直翻转', group: 'transform', disabled: !mutable },
-      { command: 'bring-to-front', label: '置于顶层', group: 'order', disabled: !mutable },
-      { command: 'bring-forward', label: '向上一层', group: 'order', disabled: !mutable },
-      { command: 'send-backward', label: '向下一层', group: 'order', disabled: !mutable },
-      { command: 'send-to-back', label: '置于底层', group: 'order', disabled: !mutable },
-      { command: 'group', label: '编组', group: 'structure', disabled: !mutable || !siblings },
-    )
-    items.push(
-      { command: 'frame-selection', label: '创建选区画板', group: 'structure', disabled: !mutable || !siblings },
-      { command: 'create-component', label: '创建组件', group: 'structure', disabled: !mutable || !siblings },
-      { command: 'detach-instance', label: '分离实例', group: 'structure', disabled: !mutable || nodes.length !== 1 || !nodes[0].instance },
-      { command: 'mask-selection', label: '用作蒙版', group: 'structure', disabled: !mutable || !siblings || roots.length < 2 },
-      { command: 'auto-layout', label: '添加自动布局', group: 'layout', disabled: !mutable || !siblings },
-    )
-    if (nodes.length === 1 && nodes[0].layout?.mode && nodes[0].layout.mode !== 'none') items.push({ command: 'remove-auto-layout', label: '移除自动布局', group: 'layout', disabled: !mutable })
-    if (nodes.every(n => n.kind === 'frame' && !n.component && !n.instance && !n.componentSet)) items.push({ command: 'convert-section', label: '转换为分区', group: 'structure', disabled: !mutable })
-    if (nodes.every((n) => (['group', 'frame', 'section'].includes(n.kind) || n.booleanOperation) && !n.component && !n.instance && !n.componentSet)) items.push({ command: 'ungroup', label: '解除编组', group: 'structure', disabled: !mutable })
-    if (nodes.every((n) => !container(n) && n.kind !== 'text' && n.kind !== 'vector')) items.push({ command: 'convert-vector', label: '转换为矢量', group: 'geometry', disabled: !mutable })
-    if (nodes.every((n) => !container(n) && n.kind !== 'text') && nodes.some((n) => n.strokes.some((stroke) => stroke.visible && stroke.width > 0)))
-      items.push({ command: 'outline-stroke', label: '轮廓化描边', group: 'geometry', disabled: !mutable || !siblings })
-    items.push(
-      locks.length ? { command: 'unlock-selection', label: locks.some((id) => !selection.includes(id)) ? '解锁图层及父级' : '解锁图层', group: 'visibility', disabled: busy }
-        : { command: 'lock-selection', label: '锁定图层', group: 'visibility', disabled: busy },
-      nodes.every((n) => n.visible) ? { command: 'hide-selection', label: '隐藏图层', group: 'visibility', disabled: busy }
-        : { command: 'show-selection', label: '显示图层', group: 'visibility', disabled: busy },
       { command: 'zoom-selection', label: '缩放至选区', group: 'view' },
       { command: 'center-selection', label: '居中选区（保留缩放）', group: 'view' },
-      { command: 'delete', label: '删除', group: 'delete', disabled: !mutable, danger: true },
     )
   } else items.push(
+    { command: 'paste-here', label: '粘贴到此处', group: 'clipboard', disabled: busy },
+    { command: 'paste-in-place', label: '粘贴到原位', group: 'clipboard', disabled: busy },
     { command: 'select-all', label: '全选', group: 'selection', disabled: !doc.pages.find((p) => p.id === editor.state.page)?.children.length },
     { command: 'zoom-fit', label: '缩放至全部内容', group: 'view', disabled: !doc.pages.find((p) => p.id === editor.state.page)?.children.length },
   )
+  const visiblePages = userPages(doc)
+  const pageIndex = visiblePages.findIndex(page => page.id === editor.state.page)
+  const page = doc.pages.find(item => item.id === editor.state.page)
+  const hasFrame = !!page?.children.some(id => doc.nodes[id]?.visible && (doc.nodes[id].kind === 'frame' || doc.nodes[id].kind === 'section'))
+  items.push(
+    { command: 'zoom-next-frame', label: '缩放到下一画板', group: 'view', disabled: !hasFrame },
+    { command: 'zoom-previous-frame', label: '缩放到上一画板', group: 'view', disabled: !hasFrame },
+    { command: 'next-page', label: '下一页', group: 'view', disabled: pageIndex < 0 || pageIndex >= visiblePages.length - 1 },
+    { command: 'previous-page', label: '上一页', group: 'view', disabled: pageIndex <= 0 },
+    { command: 'undo', label: '撤销', group: 'history', disabled: !editor.canUndo || busy },
+    { command: 'redo', label: '重做', group: 'history', disabled: !editor.canRedo || busy },
+  )
   const locale = interfacePreference.getSnapshot().locale
   return items.map(item => ({ ...item, label: canvasCommandLabel(item.command, item.label, locale, nodes.length > 1, locks.some(id => !selection.includes(id))), shortcut: shortcutLabel(item.command, context), disabled: !!item.disabled || busy || editor.interactionActive }))
+}
+
+/** Mac desktop right-click on a selected shape, top to bottom. Cloud-only
+ * rows (Figma Make, Find similar, Add motion, Widgets) are omitted. Move to
+ * page sits between Copy/Paste as and Bring to front. Plugins sits between
+ * Create component and Show/Hide. The menu component inserts those two rows. */
+const contextOrder: EditorCommand[] = [
+  'copy', 'paste-here', 'paste-to-replace', 'paste-over-selection',
+  'copy-properties', 'paste-properties', 'copy-fills', 'copy-strokes', 'copy-effects', 'copy-as-png', 'copy-as-svg',
+  'bring-to-front', 'send-to-back',
+  'group', 'frame-selection', 'ungroup', 'flatten', 'outline-stroke', 'mask-selection',
+  'auto-layout', 'remove-auto-layout',
+  'create-component', 'detach-instance',
+  'hide-selection', 'show-selection', 'lock-selection', 'unlock-selection',
+  'flip-horizontal', 'flip-vertical',
+  'select-all',
+]
+function contextPresentation(item: CanvasMenuItem, locale: 'zh-CN' | 'en'): CanvasMenuItem {
+  if (item.command === 'hide-selection' || item.command === 'show-selection')
+    return { ...item, label: locale === 'en' ? 'Show/Hide' : '显示/隐藏' }
+  if (item.command === 'lock-selection' || item.command === 'unlock-selection')
+    return { ...item, label: locale === 'en' ? 'Lock/Unlock' : '锁定/解锁' }
+  return item
+}
+/** A rectangle with no stroke still lists Outline stroke, disabled. */
+function disabledOutlineItem(editor: Editor, context: ShortcutContext): CanvasMenuItem | null {
+  const nodes = editor.state.selection.map(id => editor.state.doc.nodes[id]).filter(Boolean)
+  if (!nodes.length || nodes.some(n => container(n) || n.kind === 'text' || n.kind === 'slice')) return null
+  const locale = interfacePreference.getSnapshot().locale
+  return {
+    command: 'outline-stroke',
+    label: canvasCommandLabel('outline-stroke', '轮廓化描边', locale, nodes.length > 1, false),
+    group: 'geometry',
+    disabled: true,
+    shortcut: shortcutLabel('outline-stroke', context),
+  }
+}
+export function canvasContextItems(editor: Editor, context: ShortcutContext = { profile: shortcutPreference.getSnapshot(), platform: shortcutPlatform(), desktop: !!desktopBridge() }): CanvasMenuItem[] {
+  const available = new Map(canvasMenuItems(editor, context).map(item => [item.command, item]))
+  if (!available.has('outline-stroke')) {
+    const outline = disabledOutlineItem(editor, context)
+    if (outline) available.set('outline-stroke', outline)
+  }
+  const locale = interfacePreference.getSnapshot().locale
+  return contextOrder.flatMap(command => {
+    if (command === 'paste-over-selection' && context.profile !== 'sketch-like') return []
+    const item = available.get(command)
+    if (!item || (command === 'detach-instance' && item.disabled)) return []
+    return [contextPresentation(item, locale)]
+  })
+}
+/** Plugins sits after Create component and before Show/Hide or Lock/Unlock. */
+export function pluginsMenuIndex(commands: readonly string[]): number {
+  const at = commands.findIndex(command => command === 'hide-selection' || command === 'show-selection' || command === 'lock-selection' || command === 'unlock-selection')
+  return at < 0 ? commands.length : at
+}
+/** Where the page submenu sits in the Mac list: after Copy/Paste as, before stacking. */
+export function moveToPageIndex(commands: readonly string[]): number {
+  const stacking = commands.findIndex(command => command === 'bring-to-front' || command === 'send-to-back')
+  return stacking < 0 ? commands.length : stacking
 }
 
 export function clampContextMenu(point: Point, size: { width: number; height: number }, viewport: { width: number; height: number }): Point {

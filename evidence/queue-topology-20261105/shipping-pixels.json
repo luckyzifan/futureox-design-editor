@@ -1,0 +1,122 @@
+[
+  {
+    "name": "dense-settled",
+    "plane": "native",
+    "size": [
+      1710,
+      1856
+    ],
+    "different": 0,
+    "maxChannelError": 0,
+    "box": null,
+    "hashes": [
+      "de7ca2536a6269661c0aaf7fa4cf643f7b0b04820e35ad47e955a9dd2a7bfc37",
+      "de7ca2536a6269661c0aaf7fa4cf643f7b0b04820e35ad47e955a9dd2a7bfc37"
+    ]
+  },
+  {
+    "name": "dense-settled",
+    "plane": "window-crop",
+    "size": [
+      1654,
+      1386
+    ],
+    "different": 0,
+    "maxChannelError": 0,
+    "box": null,
+    "hashes": [
+      "d69a077787d842cdf918061608060057064328bed696dfda5bc953b6f5c75307",
+      "d69a077787d842cdf918061608060057064328bed696dfda5bc953b6f5c75307"
+    ]
+  },
+  {
+    "name": "dense-shifted",
+    "plane": "native",
+    "size": [
+      1710,
+      1856
+    ],
+    "different": 0,
+    "maxChannelError": 0,
+    "box": null,
+    "hashes": [
+      "a86166d59c2de1e625cf465fa9122e9e00ce8cfbaf803a5e0fc349a62250cce8",
+      "a86166d59c2de1e625cf465fa9122e9e00ce8cfbaf803a5e0fc349a62250cce8"
+    ]
+  },
+  {
+    "name": "dense-shifted",
+    "plane": "window-crop",
+    "size": [
+      1654,
+      1386
+    ],
+    "different": 0,
+    "maxChannelError": 0,
+    "box": null,
+    "hashes": [
+      "d7954f2405df1eb053ef2e838b85b210eff4288c09d34243d935e0b5e8225b06",
+      "d7954f2405df1eb053ef2e838b85b210eff4288c09d34243d935e0b5e8225b06"
+    ]
+  },
+  {
+    "name": "dense-return",
+    "plane": "native",
+    "size": [
+      1710,
+      1856
+    ],
+    "different": 0,
+    "maxChannelError": 0,
+    "box": null,
+    "hashes": [
+      "de7ca2536a6269661c0aaf7fa4cf643f7b0b04820e35ad47e955a9dd2a7bfc37",
+      "de7ca2536a6269661c0aaf7fa4cf643f7b0b04820e35ad47e955a9dd2a7bfc37"
+    ]
+  },
+  {
+    "name": "dense-return",
+    "plane": "window-crop",
+    "size": [
+      1654,
+      1386
+    ],
+    "different": 0,
+    "maxChannelError": 0,
+    "box": null,
+    "hashes": [
+      "d69a077787d842cdf918061608060057064328bed696dfda5bc953b6f5c75307",
+      "d69a077787d842cdf918061608060057064328bed696dfda5bc953b6f5c75307"
+    ]
+  },
+  {
+    "name": "high-3200",
+    "plane": "native",
+    "size": [
+      1710,
+      1856
+    ],
+    "different": 0,
+    "maxChannelError": 0,
+    "box": null,
+    "hashes": [
+      "89c4e308f682ecb89821ecc4281898bacc4060ec1dd70679ee92309053f63d91",
+      "89c4e308f682ecb89821ecc4281898bacc4060ec1dd70679ee92309053f63d91"
+    ]
+  },
+  {
+    "name": "high-3200",
+    "plane": "window-crop",
+    "size": [
+      1654,
+      1386
+    ],
+    "different": 0,
+    "maxChannelError": 0,
+    "box": null,
+    "hashes": [
+      "63fe07d0122b4811af3b6ee82f79890e7467251bd27bda5e44a68adb8fae38a1",
+      "63fe07d0122b4811af3b6ee82f79890e7467251bd27bda5e44a68adb8fae38a1"
+    ]
+  }
+]

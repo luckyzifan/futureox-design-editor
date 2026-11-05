@@ -289,12 +289,12 @@ mod tests {
     }
 
     #[test]
-    fn center_alignment_wins_over_far_edge() {
-        // Moving center x = 55; target center = 56 (delta -1), target left
-        // edge = 50 vs moving left 50 (delta 0 skipped as exact). The center
-        // snap must apply.
+    fn aligned_edge_stays_still_when_another_center_is_nearby() {
+        // The already aligned left edges have the smallest displacement.
+        // A nearby center must not pull them one pixel apart.
         let result = snap(rect(50, 0, 10, 10), None, &[rect(50, 30, 12, 4)], 2.);
-        assert!((result.dx - 1.).abs() < 1e-9);
+        assert_eq!(result.dx, 0.);
+        assert_eq!(result.guides[0].unwrap().position, 50.);
     }
 
     #[test]

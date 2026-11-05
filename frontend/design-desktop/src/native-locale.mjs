@@ -6,9 +6,10 @@ const menuLabels = {
   'Copy as PNG': '复制为 PNG', 'Copy Properties': '复制属性', 'Paste Properties': '粘贴属性', 'Copy as SVG': '复制为 SVG',
   'Paste': '粘贴', 'Paste to Replace': '粘贴并替换', 'Paste Over Selection': '粘贴到所选图层上方', 'Paste in Place': '原位粘贴',
   'Duplicate': '创建副本', 'Select Matching': '选择相似图层', 'Select Inverse': '反向选择', 'Select All': '全选',
-  'Object': '对象', 'Group': '编组', 'Ungroup': '取消编组', 'View': '视图', 'Capture GUI test screenshot': '截取 GUI 测试截图',
+  'Object': '对象', 'Group': '编组', 'Ungroup': '取消编组', 'Plugins': '插件', 'Open plugin host…': '打开插件宿主…',
+  'View': '视图', 'Capture GUI test screenshot': '截取 GUI 测试截图',
   'Center Selection': '居中显示所选图层', 'Actual Size': '实际大小', 'Zoom In': '放大', 'Zoom Out': '缩小',
-  'Automation': '自动化', 'Enable local automation (read-only)…': '启用本机自动化（只读）…',
+  'Automation': '自动化', 'MCP connection and permissions…': 'MCP 连接与权限…', 'Enable local automation (read-only)…': '启用本机自动化（只读）…',
   'Enable local automation (read and edit)…': '启用本机自动化（读写）…', 'Disable local automation': '停用本机自动化',
 }
 const roles = {
@@ -19,7 +20,9 @@ export function localizeNativeMenu(template, locale) {
   if (locale !== 'zh-CN' && locale !== 'en') throw new TypeError('Unsupported interface locale')
   return template.map(item => {
     const copy = { ...item }
-    if (typeof item.label === 'string' && Object.hasOwn(menuLabels, item.label))
+    const preserveLabel = copy.preserveLabel === true
+    delete copy.preserveLabel
+    if (!preserveLabel && typeof item.label === 'string' && Object.hasOwn(menuLabels, item.label))
       copy.label = locale === 'zh-CN' ? menuLabels[item.label] : item.label === 'Settings… / 设置' ? 'Settings…' : item.label
     else if (!item.label && Object.hasOwn(roles, item.role)) copy.label = roles[item.role][locale === 'zh-CN' ? 0 : 1]
     if (Array.isArray(item.submenu)) copy.submenu = localizeNativeMenu(item.submenu, locale)
@@ -49,6 +52,7 @@ const en = {
   exportInterrupted: 'The export was interrupted and was not completed. Please export again.',
   exportTooLarge: 'The export exceeds the 64 MiB desktop limit.',
   tooManyPendingFiles: 'At most 16 design files can wait to open. Process the current files before opening more.',
+  openPlugin: 'Open a Figma plugin folder',
 }
 const zhCN = {
   designFileFilter: 'futureox-desgin 设计文件', sketchFileFilter: 'Sketch 原生文档', exportFileFilter: '设计导出文件',
@@ -73,5 +77,6 @@ const zhCN = {
   exportInterrupted: '导出中断，尚未完成。请重新导出。',
   exportTooLarge: '导出超过桌面端 64 MiB 的限制。',
   tooManyPendingFiles: '最多同时等待打开 16 个设计文件，请先处理当前文件后再打开。',
+  openPlugin: '打开 Figma 插件文件夹',
 }
 export const desktopText = Object.freeze({ en: Object.freeze(en), 'zh-CN': Object.freeze(zhCN) })

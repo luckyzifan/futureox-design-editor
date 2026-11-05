@@ -1,5 +1,6 @@
 //! A whole-source canvas catalogue, independent of scene residency.
 use super::*;
+use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -48,27 +49,83 @@ pub(super) fn rotated_bounds(value: Box2, angle: f64) -> Result<Box2> {
     Ok(bounds)
 }
 pub(super) fn arrange(items: &mut [Item]) -> Result<Box2> {
-    // Spacing is a layout choice, never a content admission quota.
     let gap = 128.;
-    let largest = items.iter().map(|i| i.source.width.max(1.) + gap).fold(1., f64::max);
-    let area: f64 = items.iter().map(|i| (i.source.width.max(1.) + gap) * (i.source.height.max(1.) + gap)).sum();
-    let target = if area.is_finite() { area.sqrt().max(largest) } else { largest };
-    let (mut x, mut y, mut row_height, mut right) = (gap, gap, 0_f64, gap);
-    for item in items {
-        let width = item.source.width.max(1.); let height = item.source.height.max(1.);
-        if x > gap && x + width + gap > target { x = gap; y += row_height + gap; row_height = 0.; }
-        item.placed = Box2 { x, y, width, height };
-        x += width + gap; right = right.max(x); row_height = row_height.max(height);
-        if ![x, y, right, row_height].iter().all(|n| n.is_finite()) { return Err(issue("Canvas layout coordinates are not representable")); }
+    let mut pages = Vec::new();
+    let mut bounds = HashMap::<String, Box2>::new();
+    for item in items.iter() {
+        let b = item.source;
+        let right = b.x + b.width.max(1.);
+        let bottom = b.y + b.height.max(1.);
+        if ![b.x, b.y, right, bottom].iter().all(|v| v.is_finite()) {
+            return Err(issue("Canvas layout coordinates are not representable"));
+        }
+        let entry = bounds.entry(item.page_id.clone()).or_insert_with(|| {
+            pages.push(item.page_id.clone());
+            Box2 { width: b.width.max(1.), height: b.height.max(1.), ..b }
+        });
+        let x = entry.x.min(b.x);
+        let y = entry.y.min(b.y);
+        entry.width = (entry.x + entry.width).max(right) - x;
+        entry.height = (entry.y + entry.height).max(bottom) - y;
+        entry.x = x;
+        entry.y = y;
     }
-    let height = y + row_height + gap;
-    if !height.is_finite() { return Err(issue("Canvas layout coordinates are not representable")); }
-    Ok(Box2 { x: 0., y: 0., width: right.max(1.), height: height.max(1.) })
+    let Some(first) = pages.first().map(|id| bounds[id]) else {
+        return Ok(Box2 { width: 1., height: 1., ..Box2::default() });
+    };
+    // Pack whole pages in their authored order. Every root of one page
+    // receives the same translation, including intentional overlaps.
+    let widest = pages.iter().map(|id| bounds[id].width + gap).fold(1_f64, f64::max);
+    let area: f64 = pages.iter().map(|id| { let b = bounds[id]; (b.width + gap) * (b.height + gap) }).sum();
+    let line_width = if area.is_finite() { area.sqrt().max(widest) } else { widest };
+    let mut offsets = HashMap::new();
+    let (mut x, mut y, mut row_height, mut right) = (first.x, first.y, 0_f64, first.x);
+    for page in pages {
+        let b = bounds[&page];
+        if x > first.x && x + b.width > first.x + line_width {
+            x = first.x;
+            y += row_height + gap;
+            row_height = 0.;
+        }
+        offsets.insert(page, (x - b.x, y - b.y));
+        right = right.max(x + b.width);
+        row_height = row_height.max(b.height);
+        x += b.width + gap;
+    }
+    for item in items {
+        let (dx, dy) = offsets[&item.page_id];
+        item.placed = Box2 { x: item.source.x + dx, y: item.source.y + dy, ..item.source };
+    }
+    let result = Box2 { x: first.x - gap, y: first.y - gap,
+        width: right - first.x + 2. * gap, height: y + row_height - first.y + 2. * gap };
+    if ![result.x, result.y, result.width, result.height].iter().all(|v| v.is_finite()) {
+        return Err(issue("Canvas layout coordinates are not representable"));
+    }
+    Ok(result)
+}
+
+pub(super) fn page_order(s: &Session) -> Result<Vec<usize>> {
+    let available: Vec<_> = s.parts.iter().enumerate().filter(|(_, p)| p.name.starts_with("pages/")
+        && p.index.entries.first().is_some_and(|e| e.kind == "page")).map(|(i, _)| i).collect();
+    let Some(header) = s.parts.iter().position(|p| p.name == "document.json") else { return Ok(available); };
+    let Ok(bytes) = projection::field(s, header, 0, "pages") else { return Ok(available); };
+    let refs: Vec<Value> = serde_json::from_slice(&bytes).map_err(issue)?;
+    let mut ordered = Vec::new();
+    for reference in refs {
+        let name = reference["_ref"].as_str().ok_or_else(|| issue("Invalid source page reference"))?;
+        let path = format!("{}.json", name.trim_end_matches(".json"));
+        let index = available.iter().find(|&&i| s.parts[i].name == path)
+            .ok_or_else(|| issue("Source page reference is unavailable"))?;
+        if ordered.contains(index) { return Err(issue("Duplicate source page reference")); }
+        ordered.push(*index);
+    }
+    Ok(ordered)
 }
 pub(super) fn build(s: &Session, cancel: &AtomicBool) -> Result<Layout> {
     if s.format != "sketch" { return Err(issue("This source does not contain Sketch canvas pages")); }
     let mut items = Vec::new();
-    for (p, part) in s.parts.iter().enumerate() {
+    for p in page_order(s)? {
+        let part = &s.parts[p];
         let Some(page) = part.index.entries.first().filter(|row| row.kind == "page" && part.name.starts_with("pages/")) else { continue; };
         let mut records = part.index.records(&s.directory)?;
         let entry = records.entry(0)?;
@@ -105,16 +162,24 @@ pub(super) fn list(s: &mut Session, request: Request, cancel: &AtomicBool) -> Re
 mod tests {
     use super::*;
     #[test]
-    fn all_source_roots_are_placed_without_overlap_or_count_cutoff() {
+    fn all_roots_keep_source_order_and_relative_positions_on_one_canvas() {
         let mut items: Vec<_> = (0..10_001).map(|i| Item { key: i.to_string(), id: i.to_string(), name: i.to_string(), kind: "frame".into(),
-            page_id: "p".into(), page_name: "page".into(), source: Box2 { x: -300., y: 700., width: 140., height: 80. }, placed: Box2::default(), bytes: 1 }).collect();
+            page_id: if i < 5000 { "first" } else { "second" }.into(), page_name: "page".into(),
+            source: Box2 { x: (i % 5000) as f64 * 240. - 300., y: (i % 3) as f64 * 120. - 700., width: 140., height: 80. },
+            placed: Box2::default(), bytes: 1 }).collect();
+        let source = items.clone();
         let bounds = arrange(&mut items).unwrap();
         assert_eq!(items.len(), 10_001);
-        for pair in items.windows(2) {
-            let (a,b) = (pair[0].placed,pair[1].placed);
-            assert!(b.x >= a.x+a.width || b.y >= a.y+a.height);
+        for (old, new) in source.iter().zip(&items) {
+            assert_eq!(old.key, new.key);
+            assert_eq!(old.source, new.source);
+            if old.page_id == "first" { assert_eq!(old.source, new.placed); }
+            assert!(new.placed.x >= bounds.x && new.placed.y >= bounds.y);
+            assert!(new.placed.x + new.placed.width <= bounds.x + bounds.width);
+            assert!(new.placed.y + new.placed.height <= bounds.y + bounds.height);
         }
-        assert!(items.iter().all(|item| item.placed.x >= 0. && item.placed.y >= 0. && item.placed.x+item.placed.width <= bounds.width && item.placed.y+item.placed.height <= bounds.height));
-        assert!(items.iter().all(|item| item.source.x == -300. && item.source.y == 700.));
+        let offset = items[5000].placed.x - items[5000].source.x;
+        assert!(offset > 0. || items[5000].placed.y > items[5000].source.y);
+        assert!(items[5000..].iter().all(|item| item.placed.x - item.source.x == offset));
     }
 }

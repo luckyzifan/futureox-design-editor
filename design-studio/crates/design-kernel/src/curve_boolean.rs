@@ -399,6 +399,49 @@ fn resolve_with_cache(doc: &mut Document, cache: &mut crate::curve_boolean_cache
     Ok(())
 }
 
+/// An operand pose can leave the resolved outline unchanged (for example an
+/// open contour in a union). Evaluate that complete, bounded Boolean again
+/// before reporting zero page damage. Never infer this from its bounds.
+pub(crate) fn operand_keeps_outline(doc: &Document, parent: &str, operand: &str, pose: Transform) -> bool {
+    let Some(group) = doc.nodes.get(parent) else { return false; };
+    if group.boolean_operation.is_none() || group.children.len() > 32 || !group.children.iter().any(|id| id == operand) {
+        return false;
+    }
+    let geometry_items = |n: &crate::scene::Node| {
+        n.network.as_ref().map_or(0, |g| g.vertices.len()+g.edges.len()) +
+            n.vector_geometry.as_ref().map_or(0, |g| g.fill.len()+g.stroke.as_ref().map_or(0,Vec::len))
+    };
+    let mut total = geometry_items(group);
+    if total > 4096 { return false; }
+    let Some(page) = doc.pages.first() else { return false; };
+    let mut island = Document {
+        fd_compatibility: None, reviews: vec![], design_system: None, prototype: None,
+        schema_version: doc.schema_version, color_management: doc.color_management,
+        raster_profile: doc.raster_profile, id: doc.id.clone(), name: doc.name.clone(),
+        pages: vec![crate::scene::Page { id: page.id.clone(), name: page.name.clone(), background: page.background.clone(),
+            guides: vec![], children: vec![parent.to_owned()] }],
+        nodes: Default::default(), fonts: Default::default(), animations: vec![],
+    };
+    for id in &group.children {
+        let Some(node) = doc.nodes.get(id) else { return false; };
+        if !node.children.is_empty() || node.kind == "text" || node.boolean_operation.is_some() ||
+            node.network.as_ref().is_some_and(|net| net.edges.len()>512) ||
+            node.vector_geometry.as_ref().is_some_and(|geometry|geometry.fill.len()>512) { return false; }
+        total = total.saturating_add(geometry_items(node));
+        if total > 4096 { return false; }
+        let mut copy = node.clone();
+        if id == operand { copy.transform = pose; }
+        island.nodes.insert(id.clone(),copy);
+    }
+    island.nodes.insert(parent.to_owned(),group.clone());
+    if resolve(&mut island).is_err() { return false; }
+    let next=&island.nodes[parent];
+    if next.network != group.network || next.vector_geometry != group.vector_geometry { return false; }
+    // PartialEq collapses signed zero. Keep the same serialized coordinate bits
+    // for the no-damage receipt as for geometry/packet identity.
+    let shape = |n: &crate::scene::Node| serde_json::to_vec(&(&n.network,&n.vector_geometry)).ok();
+    shape(next).is_some_and(|encoded| shape(group).as_ref()==Some(&encoded))
+}
 #[cfg(test)]
 mod memo_tests {
     use super::*;

@@ -283,7 +283,7 @@ test('an admitted thumbnail catalogue avoids a full scene and only refines the r
  const items=['first','second','third'].map((name,i)=>({id:name,name,kind:'artboard',pageId:i<2?'first':'third',pageName:i<2?'first':'third',source:rect,placed:{...rect,x:i*250},key:'1:'+i,bytes:1024}))
  let finish!:(value:unknown)=>void
  const canvasSnapshot=vi.fn(async(request:{materialKeys?:string[]})=>({status:'ok',owner,revision:0,token:'detail',materialKeys:request.materialKeys,bytes:123,nodes:3,roots:request.materialKeys?.length||3,pageId:'p',stageId:'s',bounds,warnings:[],rasterProfile:'figma',colorManaged:true}))
- const bridge={open:()=>new Promise(resolve=>{finish=resolve}),openingView:async()=>({status:'ok',phase:'available',owner,bounds,revision:0,total:3,
+ const bridge={cancel:vi.fn(async()=>({status:'ok'})),open:()=>new Promise(resolve=>{finish=resolve}),openingView:async()=>({status:'ok',phase:'available',owner,bounds,revision:0,total:3,
   items:items.map((item,i)=>({...item,key:'preview-'+i})),pages:[['first','first',2],['third','third',1]],offset:0,nextOffset:3,cursor:3,images:[{index:0,png:'a'},{index:1,png:'b'},{index:2,png:'c'}],moreImages:false,finished:true,rendered:0,cacheHit:true}),
   canvasLayout:async()=>({status:'ok',items,total:3,hasMore:false}),canvasSnapshot} as unknown as LargeDocumentBridge
  await act(async()=>root.render(<LargeDocumentWorkspace renderWorkbench={s=><div ref={s.canvas}>{workbench(s)}</div>} bridge={bridge} parentEditor={parent} onExit={()=>{}} onWindowClose={async()=>{}}/>))
@@ -304,6 +304,18 @@ test('an admitted thumbnail catalogue avoids a full scene and only refines the r
  expect(binding.source!.parkNative).toBe(false)
  expect(canvasSnapshot).toHaveBeenCalledTimes(1)
  expect(document.querySelectorAll('.source-page-entry')).toHaveLength(3)
+ // The old [0] request was cancelled when [2] appeared. Its late rejection
+ // must not blacklist a new [0] demand after the camera reverses.
+ let rejectPending!:()=>void
+ canvasSnapshot.mockImplementationOnce(()=>new Promise<never>((_,reject)=>{rejectPending=()=>reject(Error('Large document operation cancelled'))}))
+ await act(async()=>binding.source!.onDetail!([0]))
+ expect(binding.source!.parkNative).toBe(true)
+ expect(binding.source!.hideNative).toBe(true)
+ await act(async()=>binding.source!.onDetail!([2]))
+ await act(async()=>binding.source!.onDetail!([0]))
+ await act(async()=>rejectPending())
+ expect(binding.source!.nativeCanvas!.snapshot.materialKeys).toEqual(['1:0'])
+ expect(canvasSnapshot.mock.calls.filter(([req])=>req.materialKeys?.join(',')==='1:0')).toHaveLength(2)
  const picker=document.querySelector('select[aria-label="素材页面"]') as HTMLSelectElement
  await act(async()=>{picker.value='first';picker.dispatchEvent(new Event('change',{bubbles:true}))})
  await act(async()=>button('精修当前页').click())

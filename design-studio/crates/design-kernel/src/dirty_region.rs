@@ -80,11 +80,16 @@ pub struct PatchDamage {
 /// are not a proof for text/path/connector/backdrop/layout dependencies.
 /// Parent chain index for mask-chain checks: child id -> parent id.
 fn parent_index(doc: &Document) -> BTreeMap<&str, &str> {
+    parent_index_pages(doc, None)
+}
+fn parent_index_pages<'a>(doc: &'a Document, only: Option<&std::collections::BTreeSet<&'a str>>) -> BTreeMap<&'a str, &'a str> {
     let mut parents = BTreeMap::new();
     for page in &doc.pages {
+        if only.is_some_and(|pages| !pages.contains(page.id.as_str())) { continue; }
         let mut stack: Vec<&String> = page.children.iter().collect();
         while let Some(id) = stack.pop() {
             if let Some(node) = doc.nodes.get(id) {
+                note_indexed();
                 for child in &node.children {
                     parents.insert(child.as_str(), id.as_str());
                 }
@@ -93,6 +98,99 @@ fn parent_index(doc: &Document) -> BTreeMap<&str, &str> {
         }
     }
     parents
+}
+
+struct DamageContext<'a> {
+    document: &'a Document,
+    pages: Option<std::collections::BTreeSet<&'a str>>,
+    parents: BTreeMap<&'a str, &'a str>,
+    with_pages: std::cell::OnceCell<BTreeMap<&'a str, &'a str>>,
+}
+impl<'a> DamageContext<'a> {
+    fn new(document: &'a Document, pages: Option<&std::collections::BTreeSet<&'a str>>) -> Self {
+        Self { document, pages: pages.cloned(), parents: parent_index_pages(document, pages),
+            with_pages: std::cell::OnceCell::new() }
+    }
+    fn including_pages(&self) -> &BTreeMap<&'a str, &'a str> {
+        self.with_pages.get_or_init(|| {
+            // The optical map includes page roots. The mask-chain map does
+            // not. Preserve the original traversal for ambiguous raw graphs.
+            let selected = |page: &&crate::scene::Page| self.pages.as_ref().is_none_or(|ids| ids.contains(page.id.as_str()));
+            if self.document.pages.iter().filter(selected).any(|page|
+                self.document.nodes.contains_key(&page.id) || page.children.iter().any(|id| self.parents.contains_key(id.as_str()))) {
+                return parent_map_pages(self.document, self.pages.as_ref());
+            }
+            #[cfg(test)]
+            PARENT_MAP_CONSTRUCTIONS.with(|count| count.set(count.get() + 1));
+            let mut parents = self.parents.clone();
+            for page in self.document.pages.iter().filter(selected) {
+                for id in &page.children { parents.insert(id.as_str(), page.id.as_str()); }
+            }
+            parents
+        })
+    }
+}
+/// Pages that own every edited id. None means an id is not under any page, so
+/// the caller keeps the full index.
+fn edited_pages<'a>(doc: &'a Document, ids: &[&str]) -> Option<std::collections::BTreeSet<&'a str>> {
+    let mut pending: std::collections::BTreeSet<&str> = ids.iter().copied().filter(|id| doc.nodes.contains_key(*id)).collect();
+    let mut pages = std::collections::BTreeSet::new();
+    if pending.is_empty() { return Some(pages); }
+    for page in &doc.pages {
+        if pending.is_empty() { break; }
+        let mut stack: Vec<&str> = page.children.iter().map(String::as_str).collect();
+        let mut guard = 0usize;
+        while let Some(id) = stack.pop() {
+            guard += 1;
+            if guard > doc.nodes.len() { return None; }
+            if pending.remove(id) { pages.insert(page.id.as_str()); }
+            if let Some(node) = doc.nodes.get(id) {
+                stack.extend(node.children.iter().map(String::as_str));
+            }
+        }
+    }
+    pending.is_empty().then_some(pages)
+}
+fn foreign_connector_targets(doc: &Document, pages: &std::collections::BTreeSet<&str>, parents: &BTreeMap<&str, &str>, edited: &[&str]) -> bool {
+    for page in &doc.pages {
+        if pages.contains(page.id.as_str()) { continue; }
+        let mut stack: Vec<&str> = page.children.iter().map(String::as_str).collect();
+        while let Some(id) = stack.pop() {
+            let Some(node) = doc.nodes.get(id) else { continue; };
+            if let Some(connector) = &node.connector {
+                for endpoint in [connector.from.node_id.as_deref(), connector.to.node_id.as_deref()].into_iter().flatten() {
+                    if edited.iter().any(|id| inside_edited_subtree(parents, endpoint, id)) { return true; }
+                }
+            }
+            stack.extend(node.children.iter().map(String::as_str));
+        }
+    }
+    false
+}
+fn each_page_node<'a>(doc: &'a Document, pages: Option<&std::collections::BTreeSet<&str>>, mut visit: impl FnMut(&'a str, &'a Node) -> bool) -> bool {
+    for page in &doc.pages {
+        if pages.is_some_and(|set| !set.contains(page.id.as_str())) { continue; }
+        let mut stack: Vec<&str> = page.children.iter().map(String::as_str).collect();
+        let mut guard = 0usize;
+        while let Some(id) = stack.pop() {
+            guard += 1;
+            if guard > doc.nodes.len() { return false; }
+            let Some(node) = doc.nodes.get(id) else { continue; };
+            if !visit(id, node) { return false; }
+            stack.extend(node.children.iter().map(String::as_str));
+        }
+    }
+    true
+}
+fn inside_edited_subtree(parents: &BTreeMap<&str, &str>, endpoint: &str, edited: &str) -> bool {
+    let mut cursor = endpoint;
+    loop {
+        if cursor == edited { return true; }
+        match parents.get(cursor) {
+            Some(parent) => cursor = parent,
+            None => return false,
+        }
+    }
 }
 
 pub fn patch_damage(
@@ -265,8 +363,18 @@ fn patch_damage_impl(
     {
         return full("doc-level:structural-field");
     }
-    let parents_before = parent_index(before);
-    let parents_after = parent_index(after);
+    let edited_ids: Vec<&str> = patch.nodes.keys().map(String::as_str).collect();
+    let same_document = std::ptr::eq(before, after);
+    let scoped_pages = edited_pages(before, &edited_ids).and_then(|mut pages| {
+        if same_document { return Some(pages); }
+        let after_pages = edited_pages(after, &edited_ids)?;
+        pages.extend(after_pages);
+        Some(pages)
+    });
+    let before_context = DamageContext::new(before, scoped_pages.as_ref());
+    let after_context = (!same_document).then(|| DamageContext::new(after, scoped_pages.as_ref()));
+    let parents_before = &before_context.parents;
+    let parents_after = &after_context.as_ref().unwrap_or(&before_context).parents;
     // An edit can only repaint outside its own subtree when geometry
     // propagates up the ancestor chain: an auto-layout frame reflows when a
     // descendant's outer size changes, and a hug-sized frame resizes with
@@ -307,40 +415,36 @@ fn patch_damage_impl(
     // moves. Ordinary backdrop blur has finite read support in the
     // propagation below; glass/refraction keeps the full fallback until its
     // nonlocal sampling dependency has a separate certificate.
-    let edited: Vec<&str> = patch.nodes.keys().map(String::as_str).collect();
+    let edited: Vec<&str> = edited_ids;
     let glass = |doc: &Document, parents: &BTreeMap<&str, &str>| {
-        doc.nodes
-            .iter()
-            .any(|(id,n)| n.backdrop_effect().is_some_and(|e| e.kind != "background-blur") &&
-                backdrop_reads_edited_scope(doc,parents,id,&edited))
+        let mut hit = false;
+        let _ = each_page_node(doc, scoped_pages.as_ref(), |id, n| {
+            if n.backdrop_effect().is_some_and(|e| e.kind != "background-blur") &&
+                backdrop_reads_edited_scope(doc, parents, id, &edited) { hit = true; return false; }
+            true
+        });
+        hit
     };
-    fn attached_endpoints<'a>(doc: &'a Document) -> Vec<&'a str> {
-        let mut endpoints: Vec<&'a str> = doc
-            .nodes
-            .values()
-            .filter_map(|n| n.connector.as_ref())
-            .flat_map(|c| [c.from.node_id.as_deref(), c.to.node_id.as_deref()])
-            .flatten()
-            .collect();
+    fn attached_endpoints<'a>(doc: &'a Document, pages: Option<&std::collections::BTreeSet<&str>>) -> Vec<&'a str> {
+        let mut endpoints = Vec::new();
+        let _ = each_page_node(doc, pages, |_id, n| {
+            if let Some(connector) = &n.connector {
+                if let Some(id) = connector.from.node_id.as_deref() { endpoints.push(id); }
+                if let Some(id) = connector.to.node_id.as_deref() { endpoints.push(id); }
+            }
+            true
+        });
         endpoints.sort_unstable();
         endpoints.dedup();
         endpoints
     }
-    let inside_edited_subtree =
-        |parents: &BTreeMap<&str, &str>, endpoint: &str, edited: &str| -> bool {
-            let mut cursor = endpoint;
-            loop {
-                if cursor == edited {
-                    return true;
-                }
-                match parents.get(cursor) {
-                    Some(parent) => cursor = parent,
-                    None => return false,
-                }
-            }
-        };
-    let attached_before = attached_endpoints(before);
-    let attached_after = attached_endpoints(after);
+    let attached_before = attached_endpoints(before, scoped_pages.as_ref());
+    let attached_after = attached_endpoints(after, scoped_pages.as_ref());
+    if scoped_pages.as_ref().is_some_and(|pages|
+        foreign_connector_targets(before, pages, &parents_before, &edited) ||
+        foreign_connector_targets(after, pages, &parents_after, &edited)) {
+        return full("attached-endpoint");
+    }
     if glass(before, &parents_before) || glass(after, &parents_after) {
         // Non-background-blur backdrop sampling has no finite read
         // certificate yet.
@@ -404,13 +508,18 @@ fn patch_damage_impl(
             rects: None,
         };
     }
-    let region = dirty_region_with_fonts(
+    let before_map = before_context.including_pages();
+    let after_map = after_context.as_ref().unwrap_or(&before_context).including_pages();
+    let region = dirty_region_prepared(
         before,
         after,
         &ops,
         &TileGrid::new(1., [0.; 2], 512),
         [-1e9, -1e9, 2e9, 2e9],
         fonts,
+        &before_map,
+        &after_map,
+        scoped_pages.as_ref(),
     );
     if region.full {
         return full(region.reason.unwrap_or("dirty-region:unbounded"));
@@ -462,9 +571,36 @@ fn full() -> DirtyRegion {
 std::thread_local! {
     // A source-construction counter, not physical allocation or elapsed time.
     static PARENT_MAP_CONSTRUCTIONS: std::cell::Cell<usize> = std::cell::Cell::new(0);
+    static INDEXED_NODES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
+#[cfg(not(test))]
+fn note_indexed() {}
+#[cfg(test)]
+fn note_indexed() { INDEXED_NODES.with(|count| count.set(count.get() + 1)); }
 
 /// child id -> parent id, from page children lists and node children lists.
+fn parent_map_pages<'a>(doc: &'a Document, only: Option<&std::collections::BTreeSet<&'a str>>) -> BTreeMap<&'a str, &'a str> {
+    #[cfg(test)]
+    PARENT_MAP_CONSTRUCTIONS.with(|count| count.set(count.get() + 1));
+    let mut map = BTreeMap::new();
+    for page in &doc.pages {
+        if only.is_some_and(|pages| !pages.contains(page.id.as_str())) { continue; }
+        for child in &page.children { map.insert(child.as_str(), page.id.as_str()); }
+        if let Some(node) = doc.nodes.get(&page.id) {
+            for child in &node.children { map.insert(child.as_str(), page.id.as_str()); }
+        }
+        let mut stack: Vec<&str> = page.children.iter().map(String::as_str).collect();
+        while let Some(id) = stack.pop() {
+            let Some(node) = doc.nodes.get(id) else { continue; };
+            note_indexed();
+            for child in &node.children {
+                map.insert(child.as_str(), id);
+                stack.push(child.as_str());
+            }
+        }
+    }
+    map
+}
 fn parent_map(doc: &Document) -> BTreeMap<&str, &str> {
     #[cfg(test)]
     PARENT_MAP_CONSTRUCTIONS.with(|count| count.set(count.get() + 1));
@@ -808,6 +944,7 @@ fn propagate_background_reads<'a>(
     ops: &[Op],
     caches: &mut [BoundsCache; 2],
     parent_maps: Option<[&BTreeMap<&'a str, &'a str>; 2]>,
+    pages: Option<&std::collections::BTreeSet<&'a str>>,
 ) -> bool {
     if region
         .world_bounds
@@ -827,35 +964,33 @@ fn propagate_background_reads<'a>(
     };
     let mut candidates = Vec::new();
     let edited: Vec<_> = ops.iter().flat_map(op_targets).collect();
+    let mut failed = false;
     for (revision, doc) in docs.iter().enumerate() {
-        for (id, node) in &doc.nodes {
-            if node
-                .backdrop_effect()
-                .is_some_and(|e| e.kind == "background-blur")
-            {
-                let is_descendant = |edited: &str| {
-                    let mut cursor=Some(edited);
-                    while let Some(at)=cursor {
-                        if at==id { return true; }
-                        cursor=parents[revision].get(at).copied();
-                    }
-                    false
-                };
-                if ops.iter().flat_map(op_targets).all(is_descendant) { continue; }
-                if !backdrop_reads_edited_scope(doc, parents[revision], id, &edited) { continue; }
-                if candidates.len() >= 512 {
-                    return false;
+        if failed { break; }
+        let ok = each_page_node(doc, pages, |id, node| {
+            if !node.backdrop_effect().is_some_and(|e| e.kind == "background-blur") { return true; }
+            let is_descendant = |edited: &str| {
+                let mut cursor = Some(edited);
+                while let Some(at) = cursor {
+                    if at == id { return true; }
+                    cursor = parents[revision].get(at).copied();
                 }
-                let Some(read) = cached_subtree_bounds(doc, &parents[revision], id, fonts, &mut caches[revision]) else {
-                    return false;
-                };
-                if !read.iter().all(|v| v.is_finite()) {
-                    return false;
-                }
-                candidates.push((revision, id.as_str(), read, false));
-            }
-        }
+                false
+            };
+            if ops.iter().flat_map(op_targets).all(is_descendant) { return true; }
+            if !backdrop_reads_edited_scope(doc, parents[revision], id, &edited) { return true; }
+            if candidates.len() >= 512 { failed = true; return false; }
+            let Some(read) = cached_subtree_bounds(doc, parents[revision], id, fonts, &mut caches[revision]) else {
+                failed = true;
+                return false;
+            };
+            if !read.iter().all(|v| v.is_finite()) { failed = true; return false; }
+            candidates.push((revision, id, read, false));
+            true
+        });
+        if !ok { failed = true; }
     }
+    if failed { return false; }
     loop {
         let mut expanded = false;
         for (revision, id, read, activated) in &mut candidates {
@@ -904,7 +1039,7 @@ pub(crate) fn clipped_translation_damage(doc: &Document, rects: Vec<[f64;4]>, id
     }
     if doc.nodes.values().any(|n|n.backdrop_effect().is_some()) {
         let ops:Vec<_>=ids.into_iter().map(|id|Op::SetTransform{id,matrix:Transform::default().0}).collect();
-        if !propagate_background_reads(doc,doc,&mut region,Some(fonts),&ops,&mut Default::default(),None) {
+        if !propagate_background_reads(doc,doc,&mut region,Some(fonts),&ops,&mut Default::default(),None,None) {
             return full("unbounded-background-read");
         }
     }
@@ -964,10 +1099,23 @@ fn dirty_region_with_fonts(
     viewport_world: [f64; 4],
     fonts: Option<&Fonts>,
 ) -> DirtyRegion {
-    let mut region = full();
-    let mut caches = [BoundsCache::new(), BoundsCache::new()];
     let before_parents = parent_map(before);
     let after_parents = parent_map(after);
+    dirty_region_prepared(before, after, ops, grid, viewport_world, fonts, &before_parents, &after_parents, None)
+}
+fn dirty_region_prepared<'a>(
+    before: &'a Document,
+    after: &'a Document,
+    ops: &[Op],
+    grid: &TileGrid,
+    viewport_world: [f64; 4],
+    fonts: Option<&Fonts>,
+    before_parents: &BTreeMap<&'a str, &'a str>,
+    after_parents: &BTreeMap<&'a str, &'a str>,
+    pages: Option<&std::collections::BTreeSet<&'a str>>,
+) -> DirtyRegion {
+    let mut region = full();
+    let mut caches = [BoundsCache::new(), BoundsCache::new()];
     let mut missing = false;
     for op in ops {
         for id in op_targets(op) {
@@ -989,7 +1137,7 @@ fn dirty_region_with_fonts(
         return DirtyRegion::everything("op target missing from both revisions");
     }
     if !propagate_background_reads(before, after, &mut region, fonts, ops, &mut caches,
-        Some([&before_parents, &after_parents])) {
+        Some([before_parents, after_parents]), pages) {
         return DirtyRegion::everything("unbounded background-blur dependency");
     }
     let Some(mut bounds) = region.world_bounds else {
@@ -1228,6 +1376,30 @@ mod tests {
             "an auto-layout frame outside the edited subtree cannot move its pixels"
         );
         assert!(damage.bounds.unwrap()[2] < 100.);
+        assert_changed_pixels_inside(&before, &after, damage, None);
+    }
+
+    #[test]
+    fn damage_index_ignores_cold_asset_pages() {
+        let mut before = document(json!(["a", "b"]));
+        let mut cold = Vec::new();
+        for index in 0..200 {
+            let id = format!("asset{index}");
+            cold.push(id.clone());
+            before.nodes.insert(id.clone(), serde_json::from_value(json!({
+                "id": id, "kind": "rectangle", "width": 8., "height": 8.,
+                "fills": [{"kind": "solid", "color": "#cccccc"}]
+            })).unwrap());
+        }
+        before.pages.push(crate::scene::Page { guides: Vec::new(), id: "assets".into(), name: "assets".into(),
+            children: cold, background: "#ffffff".into() });
+        let mut after = before.clone();
+        after.nodes.get_mut("a").unwrap().fills[0].color = "#112233".into();
+        INDEXED_NODES.with(|count| count.set(0));
+        let damage = patch_damage(&before, &after, &patch(&before, &after));
+        let indexed = INDEXED_NODES.with(|count| count.get());
+        assert!(!damage.full, "{}", damage.reason.unwrap_or("local"));
+        assert!(indexed < 40, "cold asset pages were indexed: {indexed}");
         assert_changed_pixels_inside(&before, &after, damage, None);
     }
 
@@ -2304,10 +2476,10 @@ mod parent_map_reuse_tests {
             }
             let mut supplied = owned.clone();
             let owned_result = propagate_background_reads(&before, &after, &mut owned, None, &ops,
-                &mut Default::default(), None);
+                &mut Default::default(), None, None);
             reset_constructions();
             let supplied_result = propagate_background_reads(&before, &after, &mut supplied, None, &ops,
-                &mut Default::default(), Some([&before_parents, &after_parents]));
+                &mut Default::default(), Some([&before_parents, &after_parents]), None);
             assert_eq!(supplied_result, owned_result);
             assert_eq!(supplied, owned, "same arithmetic, activation order and output damage");
             assert_eq!(constructions(), 0, "borrowed exact maps are not reconstructed");

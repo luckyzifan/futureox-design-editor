@@ -90,14 +90,15 @@ export function MultiStylePanel({ editor, nodes, field, readUnits = propertyUnit
         {choice('join', `${title}连接`, [['miter', '尖角'], ['round', '圆角'], ['bevel', '斜角']])}
       </>}
       {field === 'effects' && <>
-        {slot.kind !== 'zoom-blur' && number('radius', `${title}模糊`, 0, 1000, true)}
+        {slot.kind === 'glass' && number('radius', `${title}磨砂`, 0, 1000, true)}
+        {slot.kind !== 'zoom-blur' && slot.kind !== 'glass' && number('radius', `${title}模糊`, 0, 1000, true)}
         {['shadow', 'inner-shadow'].includes(slot.kind) && <>{color('color', `${title}阴影颜色`)}{number('x', `${title}偏移 X`, -1000, 1000, true)}{number('y', `${title}偏移 Y`, -1000, 1000, true)}{number('spread', `${title}扩展`, -1000, 1000, true)}</>}
-        {slot.kind !== 'zoom-blur' && number('opacity', `${title}强度 %`, 0, 100, false, true)}
-        {['glass', 'texture', 'noise'].includes(slot.kind) && number('amount', `${title}幅度`, 0, 1000)}
+        {slot.kind !== 'zoom-blur' && slot.kind !== 'glass' && number('opacity', `${title}${['shadow', 'inner-shadow'].includes(slot.kind) ? '不透明度 %' : '强度 %'}`, 0, 100, false, true)}
+        {['texture', 'noise'].includes(slot.kind) && number('amount', `${title}幅度`, 0, 1000)}
         {number('zoomBlur.amount', `${title}缩放模糊强度`, 0, 1000)}
         {number('zoomBlur.center.0', `${title}焦点 X %`, -1e8, 1e8, false, true)}
         {number('zoomBlur.center.1', `${title}焦点 Y %`, -1e8, 1e8, false, true)}
-        {(['depth', 'bevelSize', 'refraction', 'dispersion', 'lightAngle', 'lightIntensity'] as const).map(key => {
+        {(['refraction', 'depth', 'dispersion', 'lightAngle', 'lightIntensity', 'bevelSize'] as const).map(key => {
           const percent = ['refraction', 'dispersion', 'lightIntensity'].includes(key)
           const label = {depth:'深度',bevelSize:'倒角宽度',refraction:'折射',dispersion:'色散',lightAngle:'光线角度',lightIntensity:'照明'}[key]
           return number(`glass.${key}`, `${title}${label}${percent ? ' %' : ''}`, key === 'lightAngle' ? -360 : key === 'depth' ? 1 : key === 'bevelSize' ? .001 : 0, percent ? 100 : key === 'lightAngle' ? 360 : 1000, ['depth', 'bevelSize'].includes(key), percent)

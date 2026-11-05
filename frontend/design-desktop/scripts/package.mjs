@@ -1,3 +1,4 @@
+import { stageMcp } from './mcp-bundle.mjs'
 import { packager } from '@electron/packager'
 import { cp, mkdir, rm, readFile, writeFile } from 'node:fs/promises'
 import { createReadStream, existsSync } from 'node:fs'
@@ -54,6 +55,8 @@ await writeFile(
 )
 // Package only for this machine: the bundled Rust executable must match the OS/CPU.
 // Code signing, notarization and installers are separate release work on each target OS.
+const mcp = path.join(root, 'dist/design-mcp')
+await stageMcp(path.resolve(root, '../..'), mcp)
 const outputs = await packager({
   dir: staging,
   name: packageName,
@@ -77,6 +80,6 @@ const outputs = await packager({
   overwrite: true,
   asar: true,
   prune: false,
-  extraResource: [path.join(root, 'dist/sidecar'), path.join(root, 'dist/bin'), path.join(root, 'dist/fonts')],
+  extraResource: [mcp, path.join(root, 'dist/sidecar'), path.join(root, 'dist/bin'), path.join(root, 'dist/fonts')],
 })
 for (const output of outputs) console.log(`Unsigned native development bundle: ${output}`)

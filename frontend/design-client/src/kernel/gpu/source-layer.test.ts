@@ -34,6 +34,16 @@ describe('source layer programs', () => {
     n.effects[0].x=1
     expect(sourceLayer(n,()=>0,colour)!.data[0][effects+3]).toBe(-1)
   })
+  it('only omits a zero-field source without brushes and with finite encoded operands',()=>{
+    const n=fixture()
+    n.effects=[{kind:'inner-shadow',visible:true,radius:2,spread:0,x:0,y:0,color:'#ffffff',opacity:1} as GpuNode['effects'][number]]
+    n.sourceFilterField={factor:2,effectIndex:0,sharpHalo:0,radius:1,gaussian:false,input:bounds,output:bounds,masks:[]}
+    expect(sourceLayer(n,()=>17,colour)?.transparentOnZeroFields).toBe(false)
+    n.fill.count=0
+    expect(sourceLayer(n,()=>17,colour)?.transparentOnZeroFields).toBe(true)
+    n.effects[0].x=Number.MAX_VALUE
+    expect(sourceLayer(n,()=>17,colour)?.transparentOnZeroFields).toBe(false)
+  })
   it('computes unclamped radial coordinates for the four original coverage phases', () => {
     const n=fixture(),paint={kind:'radial'} as GpuPaint
     const values=radialCorners(n,paint,0)!

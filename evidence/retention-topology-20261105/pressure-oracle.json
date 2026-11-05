@@ -1,0 +1,52 @@
+{
+  "originalTileSize": 512,
+  "referenceTileSize": 128,
+  "admission": {
+    "B-1024": {
+      "exit": 1,
+      "error": "Error: \"Compositing memory budget exceeded\""
+    },
+    "C-1024": {
+      "exit": 0,
+      "error": "",
+      "hash": "a1abed0fb1944ea1993856ff5e7c05bffbf0e26ddac37492794e72604f564b22",
+      "bytes": 16777216
+    },
+    "B-2048": {
+      "exit": 1,
+      "error": "Error: \"Compositing memory budget exceeded\""
+    },
+    "C-2048": {
+      "exit": 0,
+      "error": "",
+      "hash": "1e67cb46c4da6a31b808fa3e76e6527716a7e0ea00dd162b9394018b742a3b6d",
+      "bytes": 67108864
+    }
+  },
+  "pixelOracle": {
+    "C-1024": {
+      "exit": 0,
+      "error": "",
+      "hash": "a1abed0fb1944ea1993856ff5e7c05bffbf0e26ddac37492794e72604f564b22",
+      "bytes": 16777216
+    },
+    "original128-1024": {
+      "exit": 0,
+      "error": "",
+      "hash": "a1abed0fb1944ea1993856ff5e7c05bffbf0e26ddac37492794e72604f564b22",
+      "bytes": 16777216
+    },
+    "C-2048": {
+      "exit": 0,
+      "error": "",
+      "hash": "1e67cb46c4da6a31b808fa3e76e6527716a7e0ea00dd162b9394018b742a3b6d",
+      "bytes": 67108864
+    },
+    "original128-2048": {
+      "exit": 0,
+      "error": "",
+      "hash": "1e67cb46c4da6a31b808fa3e76e6527716a7e0ea00dd162b9394018b742a3b6d",
+      "bytes": 67108864
+    }
+  }
+}

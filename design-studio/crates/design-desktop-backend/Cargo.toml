@@ -16,6 +16,7 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 base64.workspace = true
+png.workspace = true
 zip.workspace = true
 # Use the portable SIMD inflater for the desktop ZIP reader. The WASM graph is separate.
 flate2 = { version = "=1.1.10", default-features = false, features = ["zlib-rs"] }

@@ -11,6 +11,7 @@ struct Fixture {
     doc: Document,
     images: Images,
     prepared: HashMap<String, Prepared>,
+    concealed_glass: std::collections::HashSet<String>,
     stats: Stats,
 }
 
@@ -33,6 +34,7 @@ impl Fixture {
             // Loading the document configures the real Images color settings.
             images: engine.images,
             prepared: HashMap::new(),
+            concealed_glass: Default::default(),
             stats: Stats {
                 effect_layers: 2,
                 backdrop_reads: 3,
@@ -49,7 +51,7 @@ impl Fixture {
 
     fn painter(&mut self, extent: Rect, compatible: bool, sample: Option<usize>) -> Painter<'_> {
         Painter {
-            concealed_glass: Default::default(),
+            concealed_glass: &self.concealed_glass,
             doc: &self.doc,
             prepared: &self.prepared,
             images: &mut self.images,
@@ -65,6 +67,7 @@ impl Fixture {
                 crate::fidelity::RasterProfile::Analytic
             },
             interactive_effects: false,
+            display_degrade: false,
             sample,
             raster_workspace: RasterWorkspace::default(),
         }

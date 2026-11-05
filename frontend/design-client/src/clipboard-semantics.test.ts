@@ -83,7 +83,7 @@ describe('portable clipboard behavior preservation',()=>{
       for(const timeMs of [0,30,137,500,863,1030]) {
         const a=JSON.parse(engine.animation_document(JSON.stringify(source),JSON.stringify({clipId:f.clip.id,timeMs}))) as DesignDocument
         const b=JSON.parse(engine.animation_document(JSON.stringify(copied),JSON.stringify({clipId:clip.id,timeMs}))) as DesignDocument
-        const expected=multiply(translate(inPlace?0:24,inPlace?0:24),worldMatrix(a,f.child.id)), actual=worldMatrix(b,id)
+        const expected=multiply(translate(inPlace?0:10,inPlace?0:10),worldMatrix(a,f.child.id)), actual=worldMatrix(b,id)
         actual.forEach((value,index)=>expect(value).toBeCloseTo(expected[index],11))
       }
     } finally { engine.free() }

@@ -1,7 +1,7 @@
 import type { Editor } from './engine'
 import { defaultTextStyle, type DesignDocument, type DesignNode } from './model'
 import { commitPendingEdits } from './pending-edits'
-import { preserveUnmatchedSourceRuns, sourceFonts, type FontResource } from './font-matching'
+import { preserveUnmatchedSourceRuns, sourceFonts, sourceNameResolved, type FontResource } from './font-matching'
 
 export const FONT_PAGE_SIZE = 40
 export type FontChoice = { id: string; family: string; style?: string; postscript?: string }
@@ -65,10 +65,10 @@ export function unmatchedEditableSourceFonts(doc: DesignDocument): string[] {
   const names = new Set<string>()
   for (const target of fontTargets(doc, { kind: 'document' }).targets) {
     const n = doc.nodes[target.id], source = sourceFonts(doc, n), base = n.textStyle?.fontId ?? 'default'
-    if (target.style && typeof source.style === 'string' && base === 'default') names.add(source.style)
+    if (target.style && typeof source.style === 'string' && base === 'default' && !sourceNameResolved(source, source.style)) names.add(source.style)
     if (target.runs) for (const [index, name] of Object.entries(source.runs || {})) {
       const run = n.textRuns?.[Number(index)]
-      if (run && typeof name === 'string' && (run.fontId ?? base) === 'default') names.add(name)
+      if (run && typeof name === 'string' && (run.fontId ?? base) === 'default' && !sourceNameResolved(source, name)) names.add(name)
     }
   }
   return [...names]

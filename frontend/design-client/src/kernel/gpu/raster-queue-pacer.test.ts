@@ -25,6 +25,17 @@ test('completed prefixes need no redundant observation or device-wide wait', asy
   await p.yield(13, 13, observe)
   expect(observe).toHaveBeenCalledOnce()
 })
+test('timing measures just the awaited prefix and never creates a second fence',async()=>{
+  const p=new RasterQueuePacer(),a=fence(),b=fence(),observe=vi.fn(()=>a.promise)
+  const block=vi.fn((wait:()=>Promise<void>)=>wait())
+  await p.yield(1,0,observe,block)
+  expect(block).not.toHaveBeenCalled()
+  const next=p.yield(2,0,()=>b.promise,block)
+  expect(block).toHaveBeenCalledOnce()
+  a.resolve();await next
+  expect(observe).toHaveBeenCalledOnce()
+  b.resolve()
+})
 test('background completion failure is retained and cannot become success or an unhandled rejection', async () => {
   const p = new RasterQueuePacer(), a = fence(), error = Error('device queue rejected')
   await p.yield(1, 0, () => a.promise)

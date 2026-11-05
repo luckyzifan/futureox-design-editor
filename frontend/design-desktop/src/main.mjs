@@ -5,7 +5,9 @@ import { createPetHost } from './pet/host.mjs'
 import { diagnosticFileAdapter } from './diagnostic-file.mjs'
 import { forwardNativeEditorShortcut } from './keyboard-shortcuts.mjs'
 import { registerAutomationBridge } from './automation-bridge.mjs'
+import { desktopMcpPaths, desktopMcpClientConfig, startDesktopFigmaMcp } from './figma-mcp-host.mjs'
 import { SketchSessionHost } from './sketch-session.mjs'
+import { serveSourceBitmap } from './source-bitmap.mjs'
 import { LargeDocumentHost } from './large-document.mjs'
 import { readDesignClipboard, writeDesignClipboard } from './clipboard.mjs'
 import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, clipboard, screen, nativeImage, ClipboardItem, powerMonitor } from 'electron'
@@ -28,7 +30,9 @@ import {
   validHandle,
 } from './security.mjs'
 import { Sidecar } from './sidecar.mjs'
+import { createWorkspaceSqliteCodec, SQLITE_OFFTHREAD_BYTES } from './workspace-sqlite-worker-host.mjs'
 import { DOCUMENT_MEMORY_BYTES } from './document-capacity.mjs'
+import { registerVideoEncode } from './ffmpeg-encode.mjs'
 import { registerNativeRender } from './native-render.mjs'
 import { registerNativePreparation } from './preparation.mjs'
 import { formatForNativePath, sketchInspection } from './kernel-admission.mjs'
@@ -38,6 +42,8 @@ import { planLegacyUserDataMigration, runLegacyUserDataMigration } from './legac
 import { renderCheckConfig, renderCheckHandler } from './render-check.mjs'
 import { WorkspaceRoots, workspaceRootError } from './workspace-roots.mjs'
 import { parseGpuWorkingBudgetMiB } from './gpu-working-budget.mjs'
+import { createPluginDirectoryHost, scanDeclaredPlugins } from './plugin-package.mjs'
+import { createPluginUiHost } from './plugin-ui.mjs'
 
 let interfaceLocale = 'zh-CN'
 let rebuildApplicationMenu = () => {}
@@ -143,12 +149,13 @@ const MIME = {
 }
 let window
 let backend
+const sqliteCodec = createWorkspaceSqliteCodec()
 let pendingWorkspaceRoot
 const workspaceRoots = new WorkspaceRoots({
   profileRoot: app.getPath('userData'), dialog, getWindow: () => window,
   canSwitch: () => peerWindowId === undefined && localChildren.size === 0 && pendingPeerLaunches === 0,
   probe: async ({ recoveryDir, catalogDb, workspaceDb }) => {
-    const candidate = new Sidecar(executable, recoveryDir, { catalogDb, workspaceDb })
+    const candidate = new Sidecar(executable, recoveryDir, { catalogDb, workspaceDb, sqliteCodec })
     try {
       const health = await candidate.request('health')
       if (health.protocolVersion !== 1 || health.documentCapacity?.memoryBytes !== DOCUMENT_MEMORY_BYTES || health.documentTransferVersion !== 1) throw new Error('Backend protocol mismatch')
@@ -169,6 +176,9 @@ const automationBridge = registerAutomationBridge({
     activate: selectionId => activateWorkspaceRoot(selectionId),
   },
   ipcMain, getWindow: () => window, assertSender, dialog, clipboard,
+  openPermissions: () => sendCommand('automation-settings'),
+  figmaMcp: config => startDesktopFigmaMcp(config, app.isPackaged ? process.resourcesPath : undefined),
+  clientConfig: config => desktopMcpClientConfig(config, desktopMcpPaths(app.isPackaged ? process.resourcesPath : undefined).cli),
   storage: (method, params) => backend.request(method, params),
   audit: entry => backend.request('automation.audit.append', {
     event: entry.event === 'edit' ? 'edit' : entry.method === 'bridge.enable' ? 'grant' : entry.method === 'bridge.disable' ? 'revoke' : 'execute',
@@ -322,7 +332,83 @@ function getPetHost() {
 }
 register('pet-configure', mode => getPetHost().configure(mode), false)
 register('pet-event', event => petHost ? petHost.event(event) : { ok: true, accepted: false }, false)
+let pluginDirectories = null
+let pluginUi = null
+let localPlugins = []
+let pendingPluginLaunch = null
+function pluginDirectoryHost() {
+  if (!pluginDirectories) pluginDirectories = createPluginDirectoryHost()
+  return pluginDirectories
+}
+function publicDeclaredPlugin(plugin) {
+  return { grant: plugin.grant, id: plugin.id, name: plugin.name, displayName: plugin.displayName, manifestText: plugin.manifestText }
+}
+async function loadDeclaredPlugins() {
+  localPlugins = []
+  try {
+    const scanned = await scanDeclaredPlugins(path.join(app.getPath('userData'), 'plugins'))
+    localPlugins = pluginDirectoryHost().enableDeclared(scanned.plugins)
+    if (localPlugins.length || scanned.skipped || scanned.truncated) {
+      console.log(`LOCAL_PLUGINS_ENABLED ${localPlugins.length}${scanned.skipped ? ` skipped ${scanned.skipped}` : ''}${scanned.truncated ? ' truncated' : ''}`)
+    }
+  } catch {
+    localPlugins = []
+    console.warn('Local plugin scan skipped')
+  }
+}
+function pluginUiHost() {
+  if (!pluginUi) pluginUi = createPluginUiHost({
+    BrowserWindow, session, ipcMain,
+    preloadPath: path.join(here, 'plugin-ui-preload.cjs'),
+    send: (channel, value) => { if (window && !window.isDestroyed()) window.webContents.send(channel, value) },
+  })
+  return pluginUi
+}
+register('plugins-pick', async () => {
+  const selected = await dialog.showOpenDialog({
+    title: desktopText[interfaceLocale].openPlugin,
+    properties: ['openDirectory'],
+  })
+  if (selected.canceled || selected.filePaths.length !== 1) return { status: 'cancelled' }
+  return { status: 'ok', ...await pluginDirectoryHost().take(selected.filePaths[0]) }
+}, false)
+register('plugins-list', async value => {
+  if (value !== undefined) throw new Error('Unexpected arguments')
+  return { status: 'ok', plugins: localPlugins.map(publicDeclaredPlugin) }
+}, false)
+register('plugins-read', async value => {
+  record(value, ['grant', 'paths'])
+  return { status: 'ok', ...await pluginDirectoryHost().read(value.grant, value.paths) }
+}, false)
+register('plugins-ui-open', async value => {
+  record(value, ['html', 'width', 'height', 'title'])
+  await pluginUiHost().open({ ...value, parent: window })
+  return { status: 'ok' }
+}, false)
+register('plugins-ui-post', async value => {
+  record(value, ['pluginMessage'])
+  pluginUiHost().post(value.pluginMessage)
+  return { status: 'ok' }
+}, false)
+register('plugins-ui-close', async value => {
+  if (value !== undefined) throw new Error('Unexpected arguments')
+  if (pluginUi) pluginUi.close()
+  return { status: 'ok' }
+}, false)
 
+function flushPluginLaunch() {
+  if (!pendingPluginLaunch || !window || window.isDestroyed() || !rendererReady) return
+  const grant = pendingPluginLaunch
+  pendingPluginLaunch = null
+  window.webContents.send('design-desktop:plugin-launch', { grant })
+}
+function launchDeclaredPlugin(grant) {
+  if (!localPlugins.some(plugin => plugin.grant === grant)) return
+  if (closePending || quitRequested || shutdownComplete) return
+  pendingPluginLaunch = grant
+  sendCommand('plugins')
+  flushPluginLaunch()
+}
 function sendCommand(command) {
   if (closePending || quitRequested || shutdownComplete) return
   if (!window || window.isDestroyed() || !rendererReady) {
@@ -345,6 +431,7 @@ register('renderer-ready', (value) => {
   if (value !== undefined) throw new Error('Unexpected arguments')
   rendererReady = true
   for (const command of pendingCommands.splice(0)) sendCommand(command)
+  flushPluginLaunch()
   return { status: 'ok' }
 }, false)
 
@@ -360,6 +447,14 @@ const closeNativePreparation = registerNativePreparation(ipcMain, {
   resourcesRoot: app.isPackaged ? process.resourcesPath : assets,
   assertSender: event => assertSender(event, window),
   resolveSourceSnapshot: (token, senderId) => largeDocuments.resolveCanvasSnapshot(token, senderId),
+  sourceBitmaps: senderId=>largeDocuments.bitmapGrant(senderId,workspaceRoots.config(workspaceRoots.current).recoveryDir),
+})
+registerVideoEncode(ipcMain, {
+  packaged: () => app.isPackaged,
+  resourcesPath: () => process.resourcesPath,
+  resourcesRoot: assets,
+  getSidecar: () => backend,
+  assertSender: event => assertSender(event, window),
 })
 
 async function nativeOpenMenu() {
@@ -457,15 +552,27 @@ register('workspace-list', async (value) => {
   if (r.includeDeleted !== undefined && typeof r.includeDeleted !== 'boolean') throw new Error('Invalid workspace filter')
   return { status: 'ok', ...await backend.request('workspace.list', r) }
 }, false)
+// Tab switches read an already-admitted workspace row. They must not take the
+// file-dialog/write gate, or an in-progress import/open reports BUSY and the
+// current canvas cannot change. The sidecar still admits the read on its own queue.
 register('workspace-open', async (value) => {
   const r = record(value, ['id', 'revision'])
   workspaceIdentity(r.id)
   if (r.revision !== undefined) workspaceRevision(r.revision)
   return workspacePublic(await backend.request('workspace.open', r))
-})
+}, false)
 register('workspace-commit', async (value) => {
   const r = record(value, ['documentJson', 'expectedRevision', 'mutationId'])
   workspaceRevision(r.expectedRevision, true); workspaceIdentity(r.mutationId)
+  // Large saves parse and frame on the SQLite worker. The main thread only
+  // forwards the finished bytes, so the window stays responsive during the write.
+  if (typeof r.documentJson === 'string' && Buffer.byteLength(r.documentJson) >= SQLITE_OFFTHREAD_BYTES) {
+    const id = randomUUID()
+    const encoded = await sqliteCodec.encodeRequest(id, 'workspace.commit', {
+      documentJson: r.documentJson, expectedRevision: r.expectedRevision, mutationId: r.mutationId,
+    })
+    return workspacePublic(await backend.requestFrame('workspace.commit', id, encoded.frame, encoded.wireBytes))
+  }
   return workspacePublic(await backend.request('workspace.commit', {
     document: documentFromString(r.documentJson), expectedRevision: r.expectedRevision, mutationId: r.mutationId,
   }))
@@ -936,7 +1043,7 @@ async function buildWindow() {
       )
       .join('')
       .slice(0, 200)
-      const allowed = ['.png', '.svg', '.jpg', '.jpeg', '.webp', '.pdf', '.json', '.fdlib', '.sketch'].includes(
+      const allowed = ['.png', '.svg', '.svgz', '.jpg', '.jpeg', '.webp', '.pdf', '.json', '.fdlib', '.sketch'].includes(
       path.extname(name).toLowerCase(),
     )
     if (
@@ -1007,6 +1114,9 @@ async function buildWindow() {
   })
   await isolated.protocol.handle('design-app', async (request) => {
     try {
+      if(isAppResource(request.url)&&new URL(request.url).pathname.startsWith('/source-image/')){
+        return await serveSourceBitmap(request,owner=>largeDocuments.bitmapOwner(owner),workspaceRoots.config(workspaceRoots.current).recoveryDir)
+      }
       if (renderCheck && isAppResource(request.url)) {
         const response = await serveRenderCheck(request)
         if (response) return response
@@ -1039,7 +1149,7 @@ async function buildWindow() {
     minHeight: placement.minHeight,
     title: applicationName,
     show: false,
-    backgroundColor: '#191919',
+    backgroundColor: '#e8eaee',
     webPreferences: {
       preload: path.join(here, 'preload.cjs'),
       additionalArguments: [
@@ -1125,11 +1235,14 @@ async function buildWindow() {
   })
   window.on('closed', () => {
     designAi.dispose()
+    if (pluginUi) pluginUi.close()
+    if (pluginDirectories) pluginDirectories.clear()
     clearTimeout(closeTimer)
     clearTimeout(windowStateTimer)
     window = undefined
     rendererReady = false
     pendingCommands.length = 0
+    pendingPluginLaunch = null
     activeHandle = undefined
     grants.clear(); recoveryGrants.clear(); recoveredSources.clear()
     recoveryId = randomUUID()
@@ -1187,6 +1300,17 @@ async function buildWindow() {
       { label: 'Object', submenu: [
         { label: 'Group', accelerator: 'CmdOrCtrl+G', click: () => sendCommand('group') },
         { label: 'Ungroup', accelerator: 'CmdOrCtrl+Shift+G', click: () => sendCommand('ungroup') },
+      ] },
+      { label: 'Plugins', submenu: [
+        { label: 'Open plugin host…', click: () => sendCommand('plugins') },
+        ...(localPlugins.length ? [
+          { type: 'separator' },
+          ...localPlugins.map(plugin => ({
+            label: plugin.name,
+            preserveLabel: true,
+            click: () => launchDeclaredPlugin(plugin.grant),
+          })),
+        ] : []),
       ] },
       {
         label: 'View',
@@ -1252,7 +1376,7 @@ else {
       }
       const { recoveryDir, catalogDb, workspaceDb } = workspaceRoots.config(workspaceRoots.current)
       await mkdir(recoveryDir, { recursive: true, mode: 0o700 })
-      backend = new Sidecar(executable, recoveryDir, { catalogDb, workspaceDb })
+      backend = new Sidecar(executable, recoveryDir, { catalogDb, workspaceDb, sqliteCodec })
       let startupError
       try {
         const health = await backend.request('health')
@@ -1262,6 +1386,7 @@ else {
         startupError = error
       }
       hostReady = true
+      await loadDeclaredPlugins()
       const constrainWindow = () => constrainWindowToDisplays(window, screen.getAllDisplays(), screen.getPrimaryDisplay())
       screen.on('display-removed', constrainWindow)
       screen.on('display-metrics-changed', constrainWindow)
@@ -1280,6 +1405,7 @@ else {
     .catch(async (error) => {
       console.error('Desktop startup failed:', error.message)
       await backend?.stop()
+      await sqliteCodec.close()
       app.exit(1)
     })
 }
@@ -1297,6 +1423,7 @@ async function shutdown() {
       if(backend)try{await Promise.race([backend.request('workspace.leave',{id:localSessionId}),new Promise((_,reject)=>{leaseTimer=setTimeout(()=>reject(new Error('Local lease cleanup timed out')),3000)})])}catch(error){console.warn('Local presence lease will expire:',error.message)}finally{clearTimeout(leaseTimer)}
       if (backend && !(await backend.stop()))
         console.error('Backend termination did not complete within the timeout')
+      await sqliteCodec.close()
       await directoryGrants.clear()
       grants.clear()
       recoveryGrants.clear()

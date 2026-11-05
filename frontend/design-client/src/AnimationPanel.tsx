@@ -27,6 +27,14 @@ import { KernelClient, type KernelOptions } from './kernel/client'
 import { kernelModuleReady } from './kernel/module'
 import { scene, unionBounds } from './geometry'
 import { fitBounds } from './canvas-camera'
+import { desktopBridge } from './desktop'
+import {
+  encodeDesktopFrames,
+  motionFileName,
+  motionPreviewTimes,
+  MOTION_PREVIEW_FPS,
+  useVideoEncodeAvailable,
+} from './motion-video'
 import './animation.css'
 
 function EasingControls({ value, onChange }: { value: Easing; onChange: (value: Easing) => void }) {
@@ -375,6 +383,7 @@ export function AnimationPreview({
   const [epoch, setEpoch] = useState(0),
     [exporting, setExporting] = useState(false)
   const exportClient = useRef<KernelClient | null>(null)
+  const videoReady = useVideoEncodeAvailable()
   const modal = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const previous = window.document.activeElement
@@ -513,6 +522,49 @@ export function AnimationPreview({
       setAsset({
         url: URL.createObjectURL(new Blob([new Uint8Array(frame.bytes)], { type: 'image/png' })),
         name: `${clip.name}-${Math.round(time)}ms.png`,
+      })
+      setError('')
+    } catch (e) {
+      if (exportClient.current === client) setError(String(e))
+    } finally {
+      client.dispose()
+      if (exportClient.current === client) {
+        exportClient.current = null
+        setExporting(false)
+      }
+    }
+  }
+  async function exportVideo(format: 'mp4' | 'webm') {
+    const bridge = desktopBridge()?.videoEncode
+    if (!bridge) {
+      setError('桌面未提供 FFmpeg 编码')
+      return
+    }
+    const client = new KernelClient()
+    exportClient.current = client
+    setExporting(true)
+    try {
+      const times = motionPreviewTimes(clip.delayMs + clip.durationMs)
+      const frames: Uint8Array[] = []
+      for (const timeMs of times) {
+        if (exportClient.current !== client) return
+        const frame = await client.render(document, {
+          ...size,
+          pageId: clip.pageId,
+          view,
+          grid: false,
+          transparent: false,
+          rasterProfile: document.rasterProfile || 'analytic',
+          animation: { clipId: clip.id, timeMs },
+        }, true)
+        frames.push(frame.bytes)
+      }
+      if (exportClient.current !== client) return
+      const encoded = await encodeDesktopFrames(bridge, { format, fps: MOTION_PREVIEW_FPS, frames })
+      if (exportClient.current !== client) return
+      setAsset({
+        url: URL.createObjectURL(new Blob([encoded.bytes], { type: encoded.mime })),
+        name: motionFileName(clip.name, format),
       })
       setError('')
     } catch (e) {
@@ -687,9 +739,19 @@ export function AnimationPreview({
           <button type="button" disabled={exporting} onClick={() => void exportFrame()}>
             导出当前帧 PNG
           </button>
+          {videoReady && (
+            <>
+              <button type="button" disabled={exporting} onClick={() => void exportVideo('mp4')}>
+                导出 MP4
+              </button>
+              <button type="button" disabled={exporting} onClick={() => void exportVideo('webm')}>
+                导出 WebM
+              </button>
+            </>
+          )}
           {asset && (
             <a href={asset.url} download={asset.name}>
-              下载当前帧
+              下载 {asset.name}
             </a>
           )}
         </div>

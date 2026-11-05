@@ -1,0 +1,32 @@
+{
+  "kernelLib": {
+    "exit": 0,
+    "passed": 877,
+    "ignored": 10
+  },
+  "integrationTests": {
+    "exit": 0,
+    "passed": 32,
+    "suites": [
+      "color",
+      "glass",
+      "mask_precision",
+      "optics",
+      "zoom_blur"
+    ]
+  },
+  "allFeaturesAllTargets": {
+    "exit": 0,
+    "packages": [
+      "futureox-design-kernel",
+      "futureox-design-gpu",
+      "futureox-design-desktop-backend"
+    ]
+  },
+  "portableWasm": {
+    "buildExit": 0,
+    "pixelProbeExit": 0,
+    "sha256": "c08552fef2234971fe48bf8a7e6009f99e3d3d948a9a284a2f2b08278ab43fdf"
+  },
+  "firstLibCompile": "A test fixture borrowed a temporary empty set. The fixture now owns the set; the complete rerun passed."
+}

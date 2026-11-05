@@ -140,16 +140,16 @@ test('production Canvas preserves history/page/same-ID reopen, ownership and dis
   const reopened=editor.state.doc,session=editor.sessionGeneration
   await act(async()=>editor.load(reopened));expect(editor.sessionGeneration).toBe(session+1);expect(editor.state.doc.id).toBe(initial.id);check('same-id-reopen')
   const target=original.scene(editor.state.doc,editor.state.page).find(e=>e.id===id(1001))!,point={x:target.bounds.x+1,y:target.bounds.y+1}
-  await present();await act(async()=>vi.advanceTimersByTime(151));const spy=vi.spyOn(editor,'hoverHit')
+  await present();await act(async()=>vi.advanceTimersByTime(151));const spy=vi.spyOn(editor,'selectionHit')
   const screen=worldToScreen(observed.surface!.view,point)
   await act(async()=>{
     const host=mount.querySelector('[data-testid="canvas"]')!;const event=new MouseEvent('pointermove',{bubbles:true,clientX:screen.x,clientY:screen.y});Object.defineProperties(event,{pointerId:{value:7},isPrimary:{value:true}});host.dispatchEvent(event)
   })
   await act(async()=>{for(const [id,fn] of [...frames]){frames.delete(id);fn(performance.now())}})
   expect(spy).toHaveBeenCalled()
-  const [hitPoint,hitIndex,zoom,hitSnapshot]=spy.mock.calls.at(-1)!
+  const [hitPoint,,hitIndex,zoom,hitSnapshot]=spy.mock.calls.at(-1)!
   expect(hitSnapshot!.document).toBe(editor.state.doc)
-  expect(editor.hoverHit(hitPoint,hitIndex,zoom,hitSnapshot)).toBe(editor.hoverHit(hitPoint,new original.SpatialIndex(original.scene(hitSnapshot!.document,hitSnapshot!.pageId)),zoom,hitSnapshot))
+  expect(editor.selectionHit(hitPoint,false,hitIndex,zoom,hitSnapshot)).toBe(editor.selectionHit(hitPoint,false,new original.SpatialIndex(original.scene(hitSnapshot!.document,hitSnapshot!.pageId)),zoom,hitSnapshot))
   expect(digest(initial)).toBe(initialHash);report({kind:'history-page-reopen',checkpoints});spy.mockRestore()
 })
 

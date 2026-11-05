@@ -6,6 +6,8 @@ import { paint } from './model'
 import { commitPendingEdits } from './pending-edits'
 import { desktopBridge } from './desktop'
 import { clearWholeTextRunColor } from './text'
+import { eyedropperReadout, type ColorNotation } from './color-field'
+import { rememberedPaintChannel } from './eyedropper-target'
 
 export type SampleColorModel = 'HEX' | 'RGB' | 'HSL' | 'HSB'
 export const sampleColorModels: SampleColorModel[] = ['HEX','RGB','HSL','HSB']
@@ -65,13 +67,20 @@ export async function pickSelectionColor(editor: Editor, signal?: AbortSignal) {
   if(signal?.aborted||session!==editor.sessionGeneration||version!==editor.state.version||page!==editor.state.page||selection!==editor.state.selection.join(','))return
   if(ids.length)editor.updateProperties(ids,n=>{
     if(n.kind==='slice')return
+    if(rememberedPaintChannel(editor)==='stroke'){
+      const strokeAt=n.strokes.findIndex(s=>s.visible&&s.paint.visible)
+      if(strokeAt>=0){
+        n.strokes[strokeAt].paint={...n.strokes[strokeAt].paint,kind:'solid',color:sRGBHex,transform:undefined}
+        return
+      }
+    }
     const at=n.fills.findIndex(p=>p.visible)
     if(at<0)n.fills.push(paint(sRGBHex))
     else n.fills[at]={...n.fills[at],kind:'solid',color:sRGBHex,transform:undefined}
     clearWholeTextRunColor(n)
   },'画布取色')
   else {
-    const text=sampleColorLabel(sRGBHex,models.get(editor)||'HEX'), clipboard=desktopBridge()?.clipboard
+    const text=eyedropperReadout(sRGBHex,(models.get(editor)||'HSB') as ColorNotation), clipboard=desktopBridge()?.clipboard
     if(clipboard){const result=await clipboard.write({text});if(result.status!=='ok')throw new Error(result.status==='cancelled'?'复制颜色已取消':result.message)}
     else if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(text)
     else throw new Error('当前环境不能写入剪贴板')
@@ -86,15 +95,78 @@ function visible(element: HTMLElement) {
   return true
 }
 const gpuReadback = new WeakMap<HTMLCanvasElement, CanvasRenderingContext2D>()
-function pixelHex(pixel:ArrayLike<number>,canvas:HTMLCanvasElement) {
-  let alpha=pixel[3]/255,rgb=[pixel[0]*alpha,pixel[1]*alpha,pixel[2]*alpha]
-  for(let p:HTMLElement|null=canvas;p&&alpha<1;p=p.parentElement){
-    const match=getComputedStyle(p).backgroundColor.match(/^rgba?\(\s*([\d.]+)[, ]+([\d.]+)[, ]+([\d.]+)(?:\s*[,/]\s*([\d.]+))?\s*\)$/)
-    if(!match)continue
-    const a=match[4]===undefined?1:Number(match[4]),weight=(1-alpha)*a
-    rgb=rgb.map((v,i)=>v+Number(match[i+1])*weight);alpha+=weight
+const gridReadback = new WeakMap<HTMLCanvasElement, CanvasRenderingContext2D>()
+type Backdrop = { rgb: [number, number, number]; a: number }
+function backdropLayers(canvas: HTMLCanvasElement): Backdrop[] {
+  const layers: Backdrop[] = []
+  for (let node: HTMLElement | null = canvas; node; node = node.parentElement) {
+    const match = getComputedStyle(node).backgroundColor.match(/^rgba?\(\s*([\d.]+)[, ]+([\d.]+)[, ]+([\d.]+)(?:\s*[,/]\s*([\d.]+))?\s*\)$/)
+    if (!match) continue
+    layers.push({ rgb: [Number(match[1]), Number(match[2]), Number(match[3])], a: match[4] === undefined ? 1 : Number(match[4]) })
   }
-  return '#'+rgb.map(v=>Math.round(Math.max(0,Math.min(255,v+255*(1-alpha)))).toString(16).padStart(2,'0')).join('')
+  return layers
+}
+function compositeHex(pixel: ArrayLike<number>, layers: readonly Backdrop[]) {
+  let alpha = pixel[3] / 255, rgb = [pixel[0] * alpha, pixel[1] * alpha, pixel[2] * alpha]
+  for (const layer of layers) {
+    if (alpha >= 1) break
+    const weight = (1 - alpha) * layer.a
+    rgb = rgb.map((value, index) => value + layer.rgb[index] * weight)
+    alpha += weight
+  }
+  return '#' + rgb.map(value => Math.round(Math.max(0, Math.min(255, value + 255 * (1 - alpha)))).toString(16).padStart(2, '0')).join('')
+}
+function pixelHex(pixel: ArrayLike<number>, canvas: HTMLCanvasElement) {
+  return compositeHex(pixel, backdropLayers(canvas))
+}
+export const LOUPE_SPAN = 9
+function locatePublished(host: HTMLElement, x: number, y: number) {
+  const viewport = host.getBoundingClientRect()
+  if (x < viewport.left || y < viewport.top || x >= viewport.right || y >= viewport.bottom) return null
+  for (const canvas of [...host.querySelectorAll<HTMLCanvasElement>('canvas[data-frame-visible="true"]')].reverse()) {
+    const rect = canvas.getBoundingClientRect()
+    if (!canvas.width || !canvas.height || !rect.width || !rect.height || x < rect.left || y < rect.top || x >= rect.right || y >= rect.bottom || !visible(canvas)) continue
+    return {
+      canvas,
+      ix: Math.min(canvas.width - 1, Math.max(0, Math.floor((x - rect.left) * canvas.width / rect.width))),
+      iy: Math.min(canvas.height - 1, Math.max(0, Math.floor((y - rect.top) * canvas.height / rect.height))),
+    }
+  }
+  return undefined
+}
+function readDeviceBlock(canvas: HTMLCanvasElement, x: number, y: number, width: number, height: number) {
+  const out = new Uint8ClampedArray(width * height * 4)
+  const x0 = Math.max(0, x), y0 = Math.max(0, y)
+  const x1 = Math.min(canvas.width, x + width), y1 = Math.min(canvas.height, y + height)
+  if (x1 <= x0 || y1 <= y0) return out
+  const sw = x1 - x0, sh = y1 - y0, dx = x0 - x, dy = y0 - y
+  const context2d = canvas.dataset.compositor ? null : canvas.getContext('2d')
+  if (context2d) {
+    const slice = context2d.getImageData(x0, y0, sw, sh).data
+    for (let row = 0; row < sh; row++) out.set(slice.subarray(row * sw * 4, (row + 1) * sw * 4), ((dy + row) * width + dx) * 4)
+    return out
+  }
+  let context = gridReadback.get(canvas) || null
+  if (!context || context.canvas.width < width || context.canvas.height < height) {
+    const copy = document.createElement('canvas')
+    copy.width = width; copy.height = height
+    context = copy.getContext('2d', { willReadFrequently: true })
+    if (context) gridReadback.set(canvas, context)
+  }
+  if (!context) return out
+  context.clearRect(0, 0, context.canvas.width, context.canvas.height)
+  context.drawImage(canvas, x0, y0, sw, sh, dx, dy, sw, sh)
+  return context.getImageData(0, 0, width, height).data
+}
+/** Magnified published pixels around the pointer. The center cell is the sampled pixel. */
+export function canvasPixelGrid(host: HTMLElement, x: number, y: number, span = LOUPE_SPAN): string[] {
+  const hit = locatePublished(host, x, y)
+  if (hit === null) throw new Error('请在画布内取色')
+  if (!hit) throw new Error('当前画面尚无可读取的 sRGB 像素；请等待绘制完成')
+  const radius = (span - 1) >> 1
+  const pixels = readDeviceBlock(hit.canvas, hit.ix - radius, hit.iy - radius, span, span)
+  const layers = backdropLayers(hit.canvas)
+  return Array.from({ length: span * span }, (_, index) => compositeHex(pixels.subarray(index * 4, index * 4 + 4), layers))
 }
 export async function canvasContentPixelAt(host:HTMLElement,x:number,y:number):Promise<string> {
   const viewport=host.getBoundingClientRect()
@@ -135,8 +207,8 @@ export function canvasPixelAt(host: HTMLElement, x:number, y:number): string {
 }
 
 export function useCanvasColorPicker(editor: Editor, host: RefObject<HTMLElement|null>) {
-  const [hover,setHover]=useState<{x:number;y:number;color:string}|null>(null)
-  const [model,setModel]=useState<SampleColorModel>(models.get(editor)||'HEX')
+  const [hover,setHover]=useState<{x:number;y:number;color:string;cells:string[]}|null>(null)
+  const [model,setModel]=useState<SampleColorModel>(models.get(editor)||'HSB')
   const pointer=useRef<{x:number;y:number}|null>(null)
   useLayoutEffect(()=>{
     const r=pending.get(editor)
@@ -151,7 +223,10 @@ export function useCanvasColorPicker(editor: Editor, host: RefObject<HTMLElement
       try{while(alive&&queued&&editor.state.tool==='eyedropper'&&!sampling){
         const p=queued;queued=null
         try{const target=host.current;if(!target)return;const color=await canvasContentPixelAt(target,p.x,p.y)
-          if(alive&&!queued&&!sampling&&editor.state.tool==='eyedropper'){const r=target.getBoundingClientRect();setHover({x:p.x-r.left,y:p.y-r.top,color})}
+          let cells:string[]
+          try{cells=canvasPixelGrid(target,p.x,p.y)}catch{cells=Array(LOUPE_SPAN*LOUPE_SPAN).fill(color)}
+          cells[(LOUPE_SPAN*LOUPE_SPAN-1)/2]=color
+          if(alive&&!queued&&!sampling&&editor.state.tool==='eyedropper'){const r=target.getBoundingClientRect();setHover({x:p.x-r.left,y:p.y-r.top,color,cells})}
         }catch{if(alive&&!queued)setHover(null)}
       }}finally{previewBusy=false}
     }
@@ -196,7 +271,7 @@ export function useCanvasColorPicker(editor: Editor, host: RefObject<HTMLElement
       }
       if(editor.state.tool==='eyedropper'&&event.key==='Tab'){
         event.preventDefault();event.stopImmediatePropagation()
-        const current=sampleColorModels.indexOf(models.get(editor)||'HEX'), next=sampleColorModels[(current+(event.shiftKey?3:1))%4]
+        const current=sampleColorModels.indexOf(models.get(editor)||'HSB'), next=sampleColorModels[(current+(event.shiftKey?3:1))%4]
         models.set(editor,next);setModel(next);return
       }
       if(event.key==='Escape'&&(pending.has(editor)||editor.state.tool==='eyedropper')){event.preventDefault();event.stopImmediatePropagation();cancelCanvasColorPicker(editor);if(editor.state.tool==='eyedropper')editor.set({tool:'select'})}
@@ -204,5 +279,5 @@ export function useCanvasColorPicker(editor: Editor, host: RefObject<HTMLElement
     window.addEventListener('pointermove',move,true);window.addEventListener('pointerdown',down,true);window.addEventListener('keydown',key,true)
     return()=>{alive=false;queued=null;window.removeEventListener('pointermove',move,true);window.removeEventListener('pointerdown',down,true);window.removeEventListener('keydown',key,true);cancelCanvasColorPicker(editor)}
   },[editor,host])
-  return hover?{...hover,label:sampleColorLabel(hover.color,model),model}:null
+  return hover?{...hover,label:eyedropperReadout(hover.color,model),model,span:LOUPE_SPAN,center:(LOUPE_SPAN*LOUPE_SPAN-1)/2}:null
 }

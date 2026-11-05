@@ -6,6 +6,7 @@ import path from 'node:path'
 
 export const BUILD_DIRECTORIES = [
   'frontend/design-desktop/src',
+  'frontend/design-mcp/src',
   'frontend/design-desktop/assets',
   'frontend/design-desktop/scripts',
   'frontend/design-client/src',
@@ -27,6 +28,7 @@ export const BUILD_FILES = [
   'frontend/design-client/tsconfig.json',
   'frontend/design-client/index.html',
   'frontend/design-desktop/package.json',
+  'docs/ELECTRON_LOCAL_MCP.zh-CN.md',
   'design-studio/Cargo.toml',
   'design-studio/Cargo.lock',
   'design-studio/crates/design-kernel/Cargo.toml',
@@ -39,6 +41,15 @@ export const BUILD_FILES = [
   'vendor/flo_curves/Cargo.toml',
   'vendor/flo_curves/LICENSE',
   'vendor/flo_curves/PATCHES.md',
+  'frontend/design-desktop/vendor/ffmpeg/README.md',
+  'frontend/design-desktop/vendor/ffmpeg/linux-x64/ffmpeg',
+  'frontend/design-desktop/vendor/ffmpeg/linux-x64/LICENSE.txt',
+  'frontend/design-desktop/vendor/ffmpeg/linux-x64/COPYING.GPLv3',
+  'frontend/design-desktop/vendor/ffmpeg/linux-x64/COPYING.LGPLv2.1',
+  'frontend/design-desktop/vendor/ffmpeg/linux-x64/source.json',
+  'frontend/design-desktop/vendor/ffmpeg/darwin-arm64/README.md',
+  'frontend/design-desktop/vendor/ffmpeg/darwin-x64/README.md',
+  'frontend/design-desktop/vendor/ffmpeg/win32-x64/README.md',
 ]
 
 export function buildProfile(args) {

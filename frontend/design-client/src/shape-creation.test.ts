@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { blank, uid, validateDocument } from './model'
-import { createShapeSeed, creationPointCount, resolveShapeCreation, type ShapeCreationKind } from './shape-creation'
+import { createShapeSeed, creationGhostNode, creationPointCount, creationPreviewPoints, creationToolStaysArmed, creationVisiblePaint, resolveShapeCreation, translateCreationAnchor, type ShapeCreationKind } from './shape-creation'
 
 const anchor = { x: 10.25, y: -9.75 }
 const options = { anchor, pointer: { x: 31.875, y: 5.125 }, screenDistance: 30, snap: false }
@@ -34,6 +34,20 @@ for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const snap of [false, t
   })
 }
 
+test('Space translates the creation anchor without changing the span', () => {
+  const anchor = { x: 40.25, y: 18.5 }
+  const origin = { x: 90.75, y: 48.25 }
+  const pointer = { x: 130.125, y: 70.75 }
+  const moved = translateCreationAnchor(anchor, origin, pointer)
+  expect(moved).toEqual({ x: 79.625, y: 41 })
+  const before = resolveShapeCreation(createShapeSeed('rectangle', 'space'), { anchor, pointer: origin, screenDistance: 40 })
+  const after = resolveShapeCreation(createShapeSeed('rectangle', 'space'), { anchor: moved, pointer, screenDistance: 40 })
+  expect(after.bounds.width).toBeCloseTo(before.bounds.width, 8)
+  expect(after.bounds.height).toBeCloseTo(before.bounds.height, 8)
+  expect(after.bounds.x - before.bounds.x).toBeCloseTo(pointer.x - origin.x, 8)
+  expect(after.bounds.y - before.bounds.y).toBeCloseTo(pointer.y - origin.y, 8)
+})
+
 test('click threshold uses CSS screen distance; narrow and returning drags never become defaults', () => {
   const seed = createShapeSeed('rectangle', 'narrow')
   const click = resolveShapeCreation(seed, { ...options, screenDistance: 2.99 })
@@ -44,14 +58,35 @@ test('click threshold uses CSS screen distance; narrow and returning drags never
   expect(returning.click).toBe(false); expect(returning.bounds.width).toBe(0.01)
 })
 
-test('click defaults retain frame dimensions and centre creation retains the anchor', () => {
+test('click defaults are 100 squares for frames and shapes; centre creation retains the anchor', () => {
   for (const kind of ['rectangle', 'ellipse', 'frame', 'text'] as const) {
     const result = resolveShapeCreation(createShapeSeed(kind), { ...options, screenDistance: 0, alt: true, snap: true })
-    expect(result.bounds.width).toBe(kind === 'frame' ? 400 : 100)
-    expect(result.bounds.height).toBe(kind === 'frame' ? 300 : 100)
+    expect(result.bounds.width).toBe(100)
+    expect(result.bounds.height).toBe(100)
     expect(result.bounds.x + result.bounds.width / 2).toBe(10)
     expect(result.bounds.y + result.bounds.height / 2).toBe(-10)
   }
+})
+
+test('a frame click and a frame drag share one fill, and the drag keeps the pointer span', () => {
+  const seed = createShapeSeed('frame', 'frame')
+  const click = resolveShapeCreation(seed, { ...options, screenDistance: 0 })
+  const drag = resolveShapeCreation(seed, options)
+  expect(click.bounds).toMatchObject({ width: 100, height: 100 })
+  expect(drag.bounds).toEqual({ x: 10.25, y: -9.75, width: 21.625, height: 14.875 })
+  expect(creationVisiblePaint(click.node)).toBe('#ffffff')
+  expect(creationVisiblePaint(drag.node)).toBe(creationVisiblePaint(click.node))
+  expect(drag.node.fills).toEqual(click.node.fills)
+  expect(creationVisiblePaint(createShapeSeed('rectangle'))).toBe('#d9d9d9')
+  expect(creationPreviewPoints(createShapeSeed('polygon'))).toBeTruthy()
+})
+
+test('the creation fill stays until the committed document is the presented frame', () => {
+  const node = { id: 'new' }
+  expect(creationGhostNode(node, null, () => false)).toBe(node)
+  expect(creationGhostNode(null, node, () => false)).toBe(node)
+  expect(creationGhostNode(null, node, () => true)).toBeNull()
+  expect(creationGhostNode(null, null, () => false)).toBeNull()
 })
 
 test('line clicks create a 100px horizontal path with stable endpoints and compatibility height', () => {
@@ -84,6 +119,13 @@ test('a nearly vertical line keeps its authored fractional endpoints', () => {
   expect(result.node.network!.vertices[1].y).toBe(300)
 })
 
+test('rectangle, ellipse, polygon and frame stay armed; text and select do not', () => {
+  for (const tool of ['rectangle', 'ellipse', 'polygon', 'frame', 'sticky']) expect(creationToolStaysArmed(tool)).toBe(true)
+  expect(creationToolStaysArmed('text')).toBe(false)
+  expect(creationToolStaysArmed('select')).toBe(false)
+  expect(creationToolStaysArmed('pen')).toBe(false)
+})
+
 test('polygon creation defaults to three vertices and arrow changes are bounded', () => {
   expect(createShapeSeed('polygon').points).toBe(3)
   expect(createShapeSeed('star').points).toBe(5)
@@ -91,6 +133,20 @@ test('polygon creation defaults to three vertices and arrow changes are bounded'
   expect(creationPointCount(3, 1)).toBe(4)
   expect(creationPointCount(60, 1)).toBe(60)
   expect(creationPointCount(60, -1)).toBe(59)
+})
+
+test('the creation ghost keeps the seed fill until the committed node is presented', () => {
+  const seed = createShapeSeed('rectangle', 'ghost')
+  const preview = resolveShapeCreation(seed, { ...options, screenDistance: 0 })
+  expect(creationVisiblePaint(preview.node)).toBe('#d9d9d9')
+  expect(creationGhostNode(preview.node, null, () => true)?.id).toBe('ghost')
+  expect(creationGhostNode(null, preview.node, () => false)?.id).toBe('ghost')
+  expect(creationGhostNode(null, preview.node, () => true)).toBeNull()
+  const frame = resolveShapeCreation(createShapeSeed('frame', 'board'), { ...options, screenDistance: 0 })
+  expect(frame.bounds).toEqual({ x: 10.25, y: -9.75, width: 100, height: 100 })
+  expect(creationVisiblePaint(frame.node)).toBe('#ffffff')
+  expect(creationPreviewPoints(createShapeSeed('star', 'star'))).toContain(',')
+  expect(creationPreviewPoints(preview.node)).toBeNull()
 })
 
 test('a resolved line remains a valid portable design node', () => {

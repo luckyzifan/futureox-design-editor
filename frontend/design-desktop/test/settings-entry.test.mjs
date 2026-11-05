@@ -30,7 +30,7 @@ test('Settings retains text despite shared icon-only header styling and uses dis
   const rule=css.match(/\.editor-shell \.header-right > \.app-settings-button \{([^}]+)\}/)?.[1]
   assert.ok(rule);assert.match(rule,/font-size:\s*12px/);assert.match(rule,/flex-shrink:\s*0/)
   assert.ok(css.indexOf('.editor-shell .header-right > .app-settings-button')>css.indexOf('.editor-shell .header-right > button'))
-  assert.match(app,/<SettingsIcon size=\{16\} \/><span>设置<\/span>/)
+  assert.match(app,/<SettingsIcon size=\{16\} \/><span>\{panelText\.settingsTitle\}<\/span>/)
   assert.match(app,/正在处理设计文件，完成后可打开设置/)
 })
 test('all Settings routes share the guarded callback with current Home dependencies', () => {
