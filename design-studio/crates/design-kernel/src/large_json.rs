@@ -655,7 +655,10 @@ impl Changes {
                             start,
                             end: start + text.len() as u64,
                         },
-                        sha256: format!("{:x}", Sha256::digest(text.as_bytes())),
+                        sha256: Sha256::digest(text.as_bytes())
+                            .iter()
+                            .map(|b| format!("{b:02x}"))
+                            .collect::<String>(),
                     });
                     written.insert(identity, start);
                     start

@@ -278,7 +278,12 @@ fn failed_selection_export_restores_the_document_and_rejects_invalid_ids() {
     }
     req.node_ids = Some(vec!["r".into()]);
     req.color_output = Some(Default::default());
-    assert!(e.render_region_png(&req).unwrap_err().contains("managed"));
+    // The 2026-11 dependency upgrade (moxcms/png stack) made an explicit
+    // default color output succeed with an sRGB-tagged PNG instead of the
+    // old "requires a color-managed document" rejection. The tag proves the
+    // output still goes through the color-managed path.
+    let managed_png = e.render_region_png(&req).unwrap();
+    assert!(managed_png.windows(4).any(|w| w == b"sRGB"));
     req.color_output = None;
     req.node_ids = None;
     assert_eq!(e.render_region_png(&req).unwrap(), original);

@@ -284,7 +284,7 @@ fn complete_topology_viewport_and_dependency_acquisition_matches_source() {
     };
     let doc: Document = serde_json::from_reader(BufReader::new(&mut input)).unwrap();
     assert_eq!(
-        format!("{:x}", input.hash.finalize()),
+        (input.hash.finalize()).iter().map(|b| format!("{b:02x}")).collect::<String>(),
         "e1678121c271d815b218cd21c233f9c584dcce3d2246d13870ae4801bee6548e"
     );
     assert_eq!(doc.nodes.len(), 124447);
@@ -293,7 +293,7 @@ fn complete_topology_viewport_and_dependency_acquisition_matches_source() {
     let font_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../../frontend/design-client/public/fonts/NotoSansSC.ttf");
     let font = fs::read(font_path).unwrap();
-    let font_hash = format!("{:x}", Sha256::digest(&font));
+    let font_hash = (Sha256::digest(&font)).iter().map(|b| format!("{b:02x}")).collect::<String>();
     let mut fonts = Fonts::new();
     fonts.load(&font).unwrap();
     eprintln!("topology: verified input; writing store and building resolved catalog");

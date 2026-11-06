@@ -125,7 +125,7 @@ fn dither_matches_independent_native_math_readbacks() {
     }
     // Digest of all 262144 raw native float32 values, generated without PNGs.
     assert_eq!(
-        format!("{:x}", full_grid.finalize()),
+        (full_grid.finalize()).iter().map(|b| format!("{b:02x}")).collect::<String>(),
         "2caf992618c5684f762ad7fc376ba4ff1076e5cead5c7066ae80d5864987ac62"
     );
 }
@@ -465,7 +465,7 @@ fn large_offset_and_isolated_phase_controls_match_all_284121_pixels() {
     ] {
         let original = std::fs::read(directory.join(format!("{name}.png"))).unwrap();
         assert_eq!(
-            format!("{:x}", Sha256::digest(&original)),
+            (Sha256::digest(&original)).iter().map(|b| format!("{b:02x}")).collect::<String>(),
             sha256,
             "original Figma PNG changed: {name}"
         );

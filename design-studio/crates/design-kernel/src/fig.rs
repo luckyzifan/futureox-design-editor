@@ -287,14 +287,28 @@ fn zlib_inflate(raw: &[u8]) -> Result<Vec<u8>, Error> {
         .map_err(|e| Error::Io(format!("inflate: {e:?}")))
 }
 
+/// Decompress a `.fig` message chunk with a hard output ceiling (the zlib
+/// path has always been capped; ruzstd <0.9.1 plus an unbounded read was the
+/// RUSTSEC-2026-0344 decompression-bomb window). The decoder writes into a
+/// caller-sized buffer, so a tiny input can never allocate past the cap.
 fn zstd_decompress(raw: &[u8]) -> Result<Vec<u8>, Error> {
-    use std::io::Read;
-    let mut out = Vec::new();
-    ruzstd::StreamingDecoder::new(std::io::Cursor::new(raw))
-        .map_err(|e| Error::Io(e.to_string()))?
-        .read_to_end(&mut out)
-        .map_err(|e| Error::Io(e.to_string()))?;
-    Ok(out)
+    use ruzstd::decoding::FrameDecoder;
+    const LIMIT: usize = 256 << 20;
+    let mut decoder = FrameDecoder::new();
+    let mut capacity = 1usize << 20;
+    loop {
+        let mut out = vec![0u8; capacity];
+        match decoder.decode_all(raw, &mut out) {
+            Ok(written) => {
+                out.truncate(written);
+                return Ok(out);
+            }
+            Err(ruzstd::decoding::errors::FrameDecoderError::TargetTooSmall) if capacity < LIMIT => {
+                capacity = (capacity * 2).min(LIMIT);
+            }
+            Err(e) => return Err(Error::Io(format!("zstd: {e}"))),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

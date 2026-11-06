@@ -385,7 +385,7 @@ fn complete_topology_native_entry_compiles_demand_against_full_source_oracle() {
     {
         let bytes = fs::read(path).unwrap();
         assert_eq!(
-            format!("{:x}", Sha256::digest(&bytes)),
+            (Sha256::digest(&bytes)).iter().map(|b| format!("{b:02x}")).collect::<String>(),
             "d41ef73ea643d31c5a83a017755c1ac1024bbfcadca02d66a3bbd8680fc68c36"
         );
         let descriptor: Value = serde_json::from_slice(&bytes).unwrap();
@@ -425,7 +425,7 @@ fn complete_topology_native_entry_compiles_demand_against_full_source_oracle() {
         };
         let document: Document = serde_json::from_reader(BufReader::new(&mut input)).unwrap();
         assert_eq!(
-            format!("{:x}", input.hash.finalize()),
+            (input.hash.finalize()).iter().map(|b| format!("{b:02x}")).collect::<String>(),
             "e1678121c271d815b218cd21c233f9c584dcce3d2246d13870ae4801bee6548e"
         );
         let path = std::env::temp_dir().join(format!(
@@ -448,7 +448,7 @@ fn complete_topology_native_entry_compiles_demand_against_full_source_oracle() {
     let stage = document.pages[0].children[0].clone();
     assert_eq!(document.nodes[&stage].children.len(), 306);
     let font = bundled_font();
-    let font_hash = format!("{:x}", Sha256::digest(&font));
+    let font_hash = (Sha256::digest(&font)).iter().map(|b| format!("{b:02x}")).collect::<String>();
     let mut native = crate::preparation::Preparation::new(&font).unwrap();
     eprintln!("topology: source verified and indexed; loading both compiler owners");
     native

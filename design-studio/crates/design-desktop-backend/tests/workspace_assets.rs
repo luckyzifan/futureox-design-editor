@@ -44,7 +44,7 @@ fn document(data: &str) -> Value {
         "extensionData":{"text":"{\"$asset\":\"must stay literal\"}","unknownImage":"data:image/png;base64,AAAA","numeric":[-0.0,1.23456789012345]}})
 }
 fn sha(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    (Sha256::digest(bytes)).iter().map(|b| format!("{b:02x}")).collect::<String>()
 }
 
 #[tokio::test]

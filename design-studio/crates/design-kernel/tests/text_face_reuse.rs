@@ -28,7 +28,7 @@ fn forty_weight_rich_text_preserves_baseline_geometry_and_outlines() {
     let layout = fonts.node_layout(&n, Some(n.width)).unwrap();
     // Exact pre-optimization release-WASM output for the pinned repository font.
     assert_eq!(
-        format!("{:x}", Sha256::digest(serde_json::to_vec(&layout).unwrap())),
+        (Sha256::digest(serde_json::to_vec(&layout).unwrap())).iter().map(|b| format!("{b:02x}")).collect::<String>(),
         "5ea0e9e19b71b82493ce2feda0096e29aaae7221df82ae23dca395bd752ee1f2"
     );
     assert_eq!(

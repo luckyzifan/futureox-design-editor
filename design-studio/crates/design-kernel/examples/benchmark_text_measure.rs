@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 use std::{hint::black_box, time::Instant};
 
 fn digest(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    (Sha256::digest(bytes)).iter().map(|b| format!("{b:02x}")).collect::<String>()
 }
 fn main() {
     let bytes = std::fs::read(concat!(

@@ -1,3 +1,4 @@
+use crate::digest_hex;
 use crate::{
     BackendError, MAX_PATH_BYTES, Result, document_byte_limit, document_bytes, hash, validate_hash,
 };
@@ -250,7 +251,7 @@ pub(crate) fn file_hash(path: &Path, limit: usize) -> Result<Option<String>> {
         digest.update(&chunk[..count]);
     }
     checked_metadata(path)?;
-    Ok(Some(format!("{:x}", digest.finalize())))
+    Ok(Some(digest_hex((digest.finalize()).as_slice())))
 }
 
 fn check_expected(path: &Path, expected: Option<&str>, limit: usize) -> Result<()> {

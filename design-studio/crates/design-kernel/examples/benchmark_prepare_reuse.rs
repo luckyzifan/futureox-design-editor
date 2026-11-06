@@ -18,7 +18,7 @@ fn fixture(count: usize) -> Value {
     json!({"schemaVersion":1,"id":"prepare-reuse","name":"Prepare reuse",
         "pages":[{"id":"p","name":"Page","children":children,"background":"#ffffff"}],"nodes":nodes})
 }
-fn hash(bytes: &[u8]) -> String { format!("{:x}", Sha256::digest(bytes)) }
+fn hash(bytes: &[u8]) -> String { (Sha256::digest(bytes)).iter().map(|b| format!("{b:02x}")).collect::<String>() }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rows = Vec::new();
     for count in [3500, 10000] {
