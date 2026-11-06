@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0"
+	xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
+	xmlns:dc="http://purl.org/dc/elements/1.1/">
+	<channel>
+		<title>IconScout</title>
+		<link>https://raw.githubusercontent.com/Iconscout/iconscout-plugins/master/.appcast.xml</link>
+		<description>Get access to 4.4 Million+ Icons, Illustrations &amp; 3D Assets right into Sketch App</description>
+		<language>en</language>
+		<item>
+			<title>Sketch Plugin with New Branding</title>
+			<enclosure url="hhttps://github.com/Iconscout/iconscout-plugins/releases/download/v2.4.2/IconScout.sketchplugin.zip" sparkle:version="2.4.2"/>
+		</item>
+	</channel>
+</rss>

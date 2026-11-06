@@ -1,0 +1,13 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2019",
+    "lib": ["ES2019"],
+    "strict": true,
+    "types": ["@figma/plugin-typings"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "resolveJsonModule": true
+  }
+}

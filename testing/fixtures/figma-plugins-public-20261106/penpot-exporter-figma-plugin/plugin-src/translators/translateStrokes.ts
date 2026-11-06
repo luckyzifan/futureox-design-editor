@@ -1,0 +1,141 @@
+import { translateFill } from '@plugin/translators/fills';
+
+import type { Stroke, StrokeAlignment, StrokeCaps } from '@ui/lib/types/utils/stroke';
+
+export const translateStrokes = (
+  node: MinimalStrokesMixin | (MinimalStrokesMixin & IndividualStrokesMixin),
+  strokeCaps: (stroke: Stroke) => Stroke = stroke => stroke
+): Stroke[] => {
+  const sharedStrokeProperties: Stroke = {
+    strokeWidth: translateStrokeWeight(node),
+    ...translateStrokeSides(node),
+    strokeAlignment: translateStrokeAlignment(node.strokeAlign),
+    strokeStyle: node.dashPattern.length ? 'dashed' : 'solid'
+  };
+
+  const penpotStrokes: Stroke[] = [];
+
+  for (let index = 0; index < node.strokes.length; index++) {
+    const stroke = node.strokes[index];
+    const penpotStroke = translateStroke(stroke, sharedStrokeProperties, strokeCaps, index === 0);
+
+    if (!penpotStroke) {
+      continue;
+    }
+
+    penpotStrokes.push(penpotStroke);
+  }
+
+  // strokes are applied in reverse order in Figma
+  return penpotStrokes.reverse();
+};
+
+export const translateStroke = (
+  paint: Paint,
+  sharedStrokeProperties: Stroke,
+  strokeCaps: (stroke: Stroke) => Stroke,
+  firstStroke: boolean
+): Stroke | undefined => {
+  const fill = translateFill(paint);
+  let stroke: Stroke = { ...sharedStrokeProperties };
+
+  if (!fill) {
+    return;
+  }
+
+  stroke.strokeOpacity = fill.fillOpacity;
+
+  if (fill.fillColorGradient) {
+    stroke.strokeColorGradient = fill.fillColorGradient;
+  }
+
+  if (fill.fillColor) {
+    stroke.strokeColor = fill.fillColor;
+  }
+
+  if (fill.fillImage) {
+    stroke.strokeImage = fill.fillImage;
+  }
+
+  if (firstStroke) {
+    stroke = strokeCaps(stroke);
+  }
+
+  return stroke;
+};
+
+export const translateStrokeCap = (vertex: VectorVertex): StrokeCaps | undefined => {
+  switch (vertex.strokeCap as StrokeCap | ConnectorStrokeCap) {
+    case 'ROUND':
+      return 'round';
+    case 'ARROW_EQUILATERAL':
+    case 'TRIANGLE_FILLED':
+      return 'triangle-arrow';
+    case 'SQUARE':
+      return 'square';
+    case 'CIRCLE_FILLED':
+      return 'circle-marker';
+    case 'DIAMOND_FILLED':
+      return 'diamond-marker';
+    case 'ARROW_LINES':
+      return 'line-arrow';
+    case 'NONE':
+    default:
+      return;
+  }
+};
+
+const translateStrokeWeight = (
+  node: MinimalStrokesMixin | (MinimalStrokesMixin & IndividualStrokesMixin)
+): number => {
+  if (node.strokeWeight !== figma.mixed) {
+    return node.strokeWeight;
+  }
+
+  if (!isIndividualStrokes(node)) {
+    return 1;
+  }
+
+  return Math.max(
+    node.strokeTopWeight,
+    node.strokeRightWeight,
+    node.strokeBottomWeight,
+    node.strokeLeftWeight
+  );
+};
+
+// Penpot keeps `strokeWidth` as the fallback for renderers without per-side support
+const translateStrokeSides = (
+  node: MinimalStrokesMixin | (MinimalStrokesMixin & IndividualStrokesMixin)
+): Stroke => {
+  if (node.strokeWeight !== figma.mixed || !isIndividualStrokes(node)) {
+    return {};
+  }
+
+  return {
+    strokePerSide: true,
+    strokeWidthTop: node.strokeTopWeight,
+    strokeWidthRight: node.strokeRightWeight,
+    strokeWidthBottom: node.strokeBottomWeight,
+    strokeWidthLeft: node.strokeLeftWeight
+  };
+};
+
+const isIndividualStrokes = (
+  node: MinimalStrokesMixin | IndividualStrokesMixin
+): node is IndividualStrokesMixin => {
+  return 'strokeTopWeight' in node;
+};
+
+const translateStrokeAlignment = (
+  strokeAlign: 'CENTER' | 'INSIDE' | 'OUTSIDE'
+): StrokeAlignment => {
+  switch (strokeAlign) {
+    case 'CENTER':
+      return 'center';
+    case 'INSIDE':
+      return 'inner';
+    case 'OUTSIDE':
+      return 'outer';
+  }
+};

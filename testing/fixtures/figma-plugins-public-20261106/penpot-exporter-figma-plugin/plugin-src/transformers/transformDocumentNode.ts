@@ -1,0 +1,49 @@
+import { toObject } from '@common/map';
+
+import {
+  componentProperties,
+  components,
+  degradedLayers,
+  externalLibraries,
+  missingFonts,
+  missingPageIds
+} from '@plugin/libraries';
+import {
+  processAssets,
+  processPages,
+  processTokens,
+  registerPaintStyles,
+  registerTextStyles
+} from '@plugin/processors';
+import { isSharedLibrary } from '@plugin/transformers';
+
+import type { ExportScope, PenpotDocument } from '@ui/types';
+
+export const transformDocumentNode = async (
+  node: DocumentNode,
+  scope: ExportScope,
+  pageIds: string[] = []
+): Promise<PenpotDocument> => {
+  const tokens = await processTokens();
+
+  await registerPaintStyles();
+  await registerTextStyles();
+
+  const children = await processPages(node, scope, pageIds);
+  const [paintStyles, textStyles] = await processAssets();
+
+  return {
+    name: node.name,
+    children,
+    paintStyles,
+    textStyles,
+    tokens,
+    components: toObject(components),
+    componentProperties: toObject(componentProperties),
+    externalLibraries: toObject(externalLibraries),
+    missingFonts: Array.from(missingFonts),
+    missingPageIds: Array.from(missingPageIds),
+    degradedLayers: Array.from(degradedLayers.values()),
+    isShared: isSharedLibrary
+  };
+};

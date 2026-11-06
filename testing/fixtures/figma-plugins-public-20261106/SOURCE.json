@@ -1,0 +1,19 @@
+{
+  "note": "Open-source Figma plugin sources for static compatibility triage, cloned 2026-11-06. Plugin code is NEVER executed by the analyzer; fixtures are untrusted downloads kept in their own directories. Git metadata was removed. `thomas-lowry/figmotion` failed to clone and is absent.",
+  "method": "testing/run_figmaplugin_coverage_20261106.mjs scans each manifest's main/ui (falling back to the plugin source tree when main points at unbuilt dist artifacts) for figma.* chains and node-property access, then classifies each against frontend/design-client/src/plugins/rich-host/coverage.ts. Static scanning underestimates aliased/dynamically-accessed APIs and cannot prove runtime behavior.",
+  "sources": [
+    { "name": "plugin-samples", "repository": "https://github.com/figma/plugin-samples", "license": "MIT (Figma)" },
+    { "name": "community-resources", "repository": "https://github.com/figma/community-resources", "license": "See repository; official community collection" },
+    { "name": "code-snippet-editor-plugin", "repository": "https://github.com/figma/code-snippet-editor-plugin", "license": "MIT (Figma)" },
+    { "name": "figma-html", "repository": "https://github.com/BuilderIO/figma-html", "license": "MIT (Builder.io)" },
+    { "name": "design-tokens", "repository": "https://github.com/lukasoppermann/design-tokens", "license": "See repository" },
+    { "name": "create-figma-plugin", "repository": "https://github.com/yuanqing/create-figma-plugin", "license": "MIT (Lim Yuan Qing)" },
+    { "name": "figma-plugins", "repository": "https://github.com/yuanqing/figma-plugins", "license": "MIT (Lim Yuan Qing)" },
+    { "name": "penpot-exporter-figma-plugin", "repository": "https://github.com/penpot/penpot-exporter-figma-plugin", "license": "MPL-2.0 (Penpot)" },
+    { "name": "figma-to-json", "repository": "https://github.com/yagudaev/figma-to-json", "license": "See repository" },
+    { "name": "figma-tailwindcss", "repository": "https://github.com/jan-dh/figma-tailwindcss", "license": "See repository" },
+    { "name": "Sigma", "repository": "https://github.com/bannzai/Sigma", "license": "MIT (bannzai)" },
+    { "name": "figma_autoname_client_app", "repository": "https://github.com/Hugo-Dz/figma_autoname_client_app", "license": "See repository" },
+    { "name": "iconscout-plugins", "repository": "https://github.com/Iconscout/iconscout-plugins", "license": "See repository" }
+  ]
+}
