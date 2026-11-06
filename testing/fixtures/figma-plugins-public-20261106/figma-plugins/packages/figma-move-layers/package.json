@@ -1,0 +1,50 @@
+{
+  "name": "figma-move-layers",
+  "version": "1.6.0",
+  "description": "A Figma plugin to precisely move layers",
+  "keywords": [
+    "create-figma-plugin",
+    "figma",
+    "figma-plugin",
+    "figma-plugins"
+  ],
+  "license": "MIT",
+  "author": "Yuan Qing Lim",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/yuanqing/figma-plugins.git",
+    "directory": "packages/figma-move-layers"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "prebuild": "npm run clean",
+    "build": "build-figma-plugin --typecheck --minify",
+    "clean": "rimraf '*.log' build 'src/**/*.css.d.ts'",
+    "fix": "concurrently npm:fix:js npm:fix:json",
+    "fix:js": "eslint --fix 'src/**/*.{ts,tsx}'",
+    "fix:json": "prettier --log-level error --write '*.json'",
+    "lint": "eslint 'src/**/*.{ts,tsx}'",
+    "prewatch": "npm run clean",
+    "watch": "build-figma-plugin --typecheck --watch"
+  },
+  "dependencies": {
+    "@create-figma-plugin/ui": "4.0.1",
+    "@create-figma-plugin/utilities": "4.0.1",
+    "preact": "10.26.9"
+  },
+  "figma-plugin": {
+    "name": "Move Layers",
+    "id": "767379204511357902",
+    "editorType": [
+      "figma"
+    ],
+    "main": "src/main.ts",
+    "ui": "src/ui.ts"
+  }
+}

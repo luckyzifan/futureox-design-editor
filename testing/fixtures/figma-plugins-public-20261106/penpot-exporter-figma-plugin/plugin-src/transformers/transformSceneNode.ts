@@ -1,0 +1,94 @@
+import {
+  transformBooleanNode,
+  transformComponentNode,
+  transformComponentSetNode,
+  transformConnectorNode,
+  transformEllipseNode,
+  transformFrameNode,
+  transformGroupNode,
+  transformInstanceNode,
+  transformLineNode,
+  transformPathNode,
+  transformRectangleNode,
+  transformShapeWithTextNode,
+  transformSlideNode,
+  transformStickyNode,
+  transformTableNode,
+  transformTextNode,
+  transformVectorNode
+} from '@plugin/transformers';
+import { reportProgress } from '@plugin/utils';
+
+import type { PenpotNode } from '@ui/types';
+
+export const transformSceneNode = async (node: SceneNode): Promise<PenpotNode | undefined> => {
+  let penpotNode: PenpotNode | undefined;
+
+  reportProgress({
+    type: 'PROGRESS_CURRENT_ITEM',
+    data: node.name
+  });
+
+  switch (node.type) {
+    case 'RECTANGLE':
+      penpotNode = transformRectangleNode(node);
+      break;
+    case 'ELLIPSE':
+      penpotNode = transformEllipseNode(node);
+      break;
+    case 'COMPONENT_SET':
+      penpotNode = await transformComponentSetNode(node);
+      break;
+    case 'SECTION':
+    case 'FRAME':
+    case 'SLOT':
+      penpotNode = await transformFrameNode(node);
+      break;
+    case 'GROUP':
+      penpotNode = await transformGroupNode(node);
+      break;
+    case 'TEXT':
+      penpotNode = transformTextNode(node);
+      break;
+    case 'VECTOR':
+      penpotNode = transformVectorNode(node);
+      break;
+    case 'LINE':
+      penpotNode = transformLineNode(node);
+      break;
+    case 'STAR':
+    case 'POLYGON':
+      penpotNode = transformPathNode(node);
+      break;
+    case 'BOOLEAN_OPERATION':
+      penpotNode = await transformBooleanNode(node);
+      break;
+    case 'COMPONENT':
+      penpotNode = await transformComponentNode(node);
+      break;
+    case 'INSTANCE':
+      penpotNode = await transformInstanceNode(node);
+      break;
+    case 'SLIDE':
+      penpotNode = await transformSlideNode(node);
+      break;
+    case 'TABLE':
+      penpotNode = await transformTableNode(node);
+      break;
+    case 'SHAPE_WITH_TEXT':
+      penpotNode = await transformShapeWithTextNode(node);
+      break;
+    case 'STICKY':
+      penpotNode = transformStickyNode(node);
+      break;
+    case 'CONNECTOR':
+      penpotNode = await transformConnectorNode(node);
+      break;
+  }
+
+  if (penpotNode === undefined) {
+    console.warn(`Unsupported node type: ${node.type}`);
+  }
+
+  return penpotNode;
+};

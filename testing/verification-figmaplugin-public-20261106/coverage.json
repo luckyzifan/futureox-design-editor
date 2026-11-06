@@ -1,0 +1,1236 @@
+{
+  "generated": "2026-11-06T01:36:29.515Z",
+  "totals": {
+    "supported": 289,
+    "partial": 210,
+    "unsupported": 16,
+    "unknown": 19
+  },
+  "blockers": [
+    [
+      "figma.codegen",
+      2
+    ],
+    [
+      "SceneNode.reactions",
+      1
+    ],
+    [
+      "figma.loadAllPagesAsync",
+      4
+    ],
+    [
+      "TextNode.getStyledTextSegments",
+      2
+    ],
+    [
+      "figma.teamLibrary",
+      1
+    ],
+    [
+      "figma.parameters",
+      4
+    ],
+    [
+      "figma.payments",
+      1
+    ],
+    [
+      "figma.createVector",
+      1
+    ]
+  ],
+  "plugins": [
+    {
+      "repo": "Sigma",
+      "plugin": "Sigma",
+      "scanned": 81,
+      "fromSource": true,
+      "uiMessaging": false,
+      "used": 42,
+      "supported": [
+        "PageNode.name",
+        "SceneNode.appendChild",
+        "SceneNode.children",
+        "SceneNode.height",
+        "SceneNode.id",
+        "SceneNode.name",
+        "SceneNode.opacity",
+        "SceneNode.parent",
+        "SceneNode.type",
+        "SceneNode.width",
+        "SceneNode.x",
+        "SceneNode.y",
+        "TextNode.characters",
+        "TextNode.fontSize",
+        "figma.createComponent",
+        "figma.createFrame",
+        "figma.createRectangle",
+        "figma.createText",
+        "figma.currentPage.selection",
+        "figma.ui.postMessage"
+      ],
+      "partial": [
+        "FrameNode.counterAxisAlignItems",
+        "FrameNode.counterAxisSizingMode",
+        "FrameNode.itemSpacing",
+        "FrameNode.layoutMode",
+        "FrameNode.paddingBottom",
+        "FrameNode.paddingLeft",
+        "FrameNode.paddingRight",
+        "FrameNode.paddingTop",
+        "FrameNode.primaryAxisAlignItems",
+        "FrameNode.primaryAxisSizingMode",
+        "SceneNode.cornerRadius",
+        "SceneNode.effects",
+        "SceneNode.fills",
+        "SceneNode.layoutAlign",
+        "SceneNode.layoutGrow",
+        "SceneNode.resize",
+        "SceneNode.strokes",
+        "TextNode.fontName",
+        "TextNode.textDecoration",
+        "figma.loadFontAsync",
+        "figma.mixed",
+        "figma.showUI"
+      ],
+      "unsupported": [],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "code-snippet-editor-plugin",
+      "plugin": "Code Snippet Editor",
+      "scanned": 1,
+      "fromSource": false,
+      "uiMessaging": false,
+      "used": 31,
+      "supported": [
+        "PageNode.name",
+        "SceneNode.children",
+        "SceneNode.getSharedPluginData",
+        "SceneNode.id",
+        "SceneNode.name",
+        "SceneNode.parent",
+        "SceneNode.setSharedPluginData",
+        "SceneNode.type",
+        "SceneNode.visible",
+        "TextNode.characters",
+        "figma.clientStorage",
+        "figma.currentPage",
+        "figma.currentPage.selection",
+        "figma.getNodeById",
+        "figma.notify",
+        "figma.ui.postMessage"
+      ],
+      "partial": [
+        "SceneNode.boundVariables",
+        "SceneNode.exportAsync",
+        "SceneNode.textStyleId",
+        "figma.getStyleById",
+        "figma.mixed",
+        "figma.mode",
+        "figma.on",
+        "figma.showUI",
+        "figma.ui.on",
+        "figma.variables",
+        "figma.viewport.zoom"
+      ],
+      "unsupported": [
+        "figma.codegen"
+      ],
+      "unknown": [
+        "figma.children",
+        "figma.svg"
+      ],
+      "namespace": [
+        "figma.viewport"
+      ],
+      "unsupportedNotes": [
+        "Absent."
+      ]
+    },
+    {
+      "repo": "community-resources",
+      "plugin": "(repo-level source scan)",
+      "scanned": 0,
+      "fromSource": true,
+      "uiMessaging": false,
+      "used": 0,
+      "supported": [],
+      "partial": [],
+      "unsupported": [],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "create-figma-plugin",
+      "plugin": "Extract UI3 Icons",
+      "scanned": 1,
+      "fromSource": false,
+      "uiMessaging": false,
+      "used": 6,
+      "supported": [
+        "PageNode.name",
+        "SceneNode.name",
+        "SceneNode.parent",
+        "SceneNode.type",
+        "figma.closePlugin",
+        "figma.currentPage.selection"
+      ],
+      "partial": [],
+      "unsupported": [],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "design-tokens",
+      "plugin": "Design Tokens",
+      "scanned": 2,
+      "fromSource": false,
+      "uiMessaging": true,
+      "used": 58,
+      "supported": [
+        "PageNode.name",
+        "SceneNode.appendChild",
+        "SceneNode.bottomLeftRadius",
+        "SceneNode.bottomRightRadius",
+        "SceneNode.children",
+        "SceneNode.getPluginData",
+        "SceneNode.height",
+        "SceneNode.id",
+        "SceneNode.name",
+        "SceneNode.opacity",
+        "SceneNode.parent",
+        "SceneNode.remove",
+        "SceneNode.setPluginData",
+        "SceneNode.topLeftRadius",
+        "SceneNode.topRightRadius",
+        "SceneNode.type",
+        "SceneNode.visible",
+        "SceneNode.width",
+        "SceneNode.x",
+        "SceneNode.y",
+        "TextNode.fontSize",
+        "figma.clientStorage",
+        "figma.closePlugin",
+        "figma.notify",
+        "figma.root",
+        "figma.ui.hide",
+        "figma.ui.onmessage",
+        "figma.ui.postMessage",
+        "figma.ui.resize",
+        "figma.ui.show"
+      ],
+      "partial": [
+        "FrameNode.paddingBottom",
+        "FrameNode.paddingLeft",
+        "FrameNode.paddingRight",
+        "FrameNode.paddingTop",
+        "SceneNode.blendMode",
+        "SceneNode.clone",
+        "SceneNode.cornerRadius",
+        "SceneNode.dashPattern",
+        "SceneNode.effects",
+        "SceneNode.findAll",
+        "SceneNode.resize",
+        "SceneNode.strokeAlign",
+        "SceneNode.strokeCap",
+        "SceneNode.strokeJoin",
+        "SceneNode.strokeWeight",
+        "SceneNode.strokes",
+        "TextNode.fontName",
+        "TextNode.letterSpacing",
+        "TextNode.lineHeight",
+        "TextNode.paragraphIndent",
+        "TextNode.paragraphSpacing",
+        "TextNode.textCase",
+        "TextNode.textDecoration",
+        "figma.command",
+        "figma.showUI",
+        "figma.variables"
+      ],
+      "unsupported": [
+        "SceneNode.reactions",
+        "figma.loadAllPagesAsync"
+      ],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": [
+        "Absent. Prototype reactions are not edited from this host.",
+        "Throws unsupported_api. The open document is already local; this call is not required."
+      ]
+    },
+    {
+      "repo": "figma-html",
+      "plugin": "(repo-level source scan)",
+      "scanned": 12,
+      "fromSource": true,
+      "uiMessaging": false,
+      "used": 3,
+      "supported": [
+        "SceneNode.appendChild",
+        "SceneNode.id"
+      ],
+      "partial": [],
+      "unsupported": [],
+      "unknown": [
+        "figma.json"
+      ],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "figma-plugins",
+      "plugin": "(repo-level source scan)",
+      "scanned": 200,
+      "fromSource": true,
+      "uiMessaging": false,
+      "used": 81,
+      "supported": [
+        "ComponentNode.createInstance",
+        "PageNode.name",
+        "SceneNode.appendChild",
+        "SceneNode.bottomLeftRadius",
+        "SceneNode.bottomRightRadius",
+        "SceneNode.children",
+        "SceneNode.clipsContent",
+        "SceneNode.getPluginData",
+        "SceneNode.height",
+        "SceneNode.id",
+        "SceneNode.insertChild",
+        "SceneNode.locked",
+        "SceneNode.name",
+        "SceneNode.opacity",
+        "SceneNode.parent",
+        "SceneNode.remove",
+        "SceneNode.setPluginData",
+        "SceneNode.topLeftRadius",
+        "SceneNode.topRightRadius",
+        "SceneNode.type",
+        "SceneNode.visible",
+        "SceneNode.width",
+        "SceneNode.x",
+        "SceneNode.y",
+        "TextNode.characters",
+        "TextNode.fontSize",
+        "figma.closePlugin",
+        "figma.createComponent",
+        "figma.createFrame",
+        "figma.createRectangle",
+        "figma.createText",
+        "figma.currentPage",
+        "figma.currentPage.selection",
+        "figma.getNodeById",
+        "figma.notify",
+        "figma.root"
+      ],
+      "partial": [
+        "FrameNode.counterAxisSizingMode",
+        "FrameNode.itemSpacing",
+        "FrameNode.layoutMode",
+        "SceneNode.absoluteTransform",
+        "SceneNode.blendMode",
+        "SceneNode.clone",
+        "SceneNode.constraints",
+        "SceneNode.cornerRadius",
+        "SceneNode.dashPattern",
+        "SceneNode.effectStyleId",
+        "SceneNode.effects",
+        "SceneNode.exportAsync",
+        "SceneNode.fillStyleId",
+        "SceneNode.fills",
+        "SceneNode.findAll",
+        "SceneNode.layoutAlign",
+        "SceneNode.layoutPositioning",
+        "SceneNode.resize",
+        "SceneNode.resizeWithoutConstraints",
+        "SceneNode.rotation",
+        "SceneNode.strokeAlign",
+        "SceneNode.strokeCap",
+        "SceneNode.strokeJoin",
+        "SceneNode.strokeWeight",
+        "SceneNode.strokes",
+        "SceneNode.textStyleId",
+        "TextNode.fontName",
+        "TextNode.letterSpacing",
+        "TextNode.lineHeight",
+        "TextNode.paragraphIndent",
+        "TextNode.paragraphSpacing",
+        "TextNode.textAutoResize",
+        "TextNode.textCase",
+        "TextNode.textDecoration",
+        "fetch",
+        "figma.createImage",
+        "figma.getImageByHash",
+        "figma.group",
+        "figma.mixed",
+        "figma.on",
+        "figma.ui.close",
+        "figma.viewport.center",
+        "figma.viewport.scrollAndZoomIntoView"
+      ],
+      "unsupported": [
+        "TextNode.getStyledTextSegments"
+      ],
+      "unknown": [
+        "figma.createSlice"
+      ],
+      "namespace": [],
+      "unsupportedNotes": [
+        "Throws unsupported_api. Rich-text ranges are not read back as styled segments."
+      ]
+    },
+    {
+      "repo": "figma-tailwindcss",
+      "plugin": "Figma Tailwindcss",
+      "scanned": 35,
+      "fromSource": true,
+      "uiMessaging": true,
+      "used": 20,
+      "supported": [
+        "PageNode.name",
+        "SceneNode.height",
+        "SceneNode.name",
+        "SceneNode.type",
+        "SceneNode.x",
+        "SceneNode.y",
+        "TextNode.fontSize",
+        "figma.root",
+        "figma.ui.onmessage",
+        "figma.ui.postMessage",
+        "figma.ui.resize"
+      ],
+      "partial": [
+        "SceneNode.cornerRadius",
+        "SceneNode.findAll",
+        "SceneNode.resize",
+        "TextNode.fontName",
+        "figma.showUI"
+      ],
+      "unsupported": [
+        "figma.loadAllPagesAsync"
+      ],
+      "unknown": [
+        "figma.getLocalEffectStylesAsync",
+        "figma.getLocalPaintStylesAsync",
+        "figma.getLocalTextStylesAsync"
+      ],
+      "namespace": [],
+      "unsupportedNotes": [
+        "Throws unsupported_api. The open document is already local; this call is not required."
+      ]
+    },
+    {
+      "repo": "figma-to-json",
+      "plugin": "(repo-level source scan)",
+      "scanned": 16,
+      "fromSource": true,
+      "uiMessaging": false,
+      "used": 5,
+      "supported": [
+        "PageNode.name",
+        "SceneNode.appendChild",
+        "SceneNode.name",
+        "SceneNode.remove",
+        "figma.root"
+      ],
+      "partial": [],
+      "unsupported": [],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "figma_autoname_client_app",
+      "plugin": "Figma Autoname",
+      "scanned": 11,
+      "fromSource": true,
+      "uiMessaging": false,
+      "used": 32,
+      "supported": [
+        "PageNode.name",
+        "SceneNode.height",
+        "SceneNode.id",
+        "SceneNode.insertChild",
+        "SceneNode.name",
+        "SceneNode.parent",
+        "SceneNode.remove",
+        "SceneNode.type",
+        "SceneNode.width",
+        "figma.clientStorage",
+        "figma.closePlugin",
+        "figma.createFrame",
+        "figma.currentPage.selection",
+        "figma.notify",
+        "figma.root",
+        "figma.ui.onmessage",
+        "figma.ui.postMessage"
+      ],
+      "partial": [
+        "FrameNode.counterAxisAlignItems",
+        "FrameNode.counterAxisSizingMode",
+        "FrameNode.layoutMode",
+        "FrameNode.primaryAxisAlignItems",
+        "FrameNode.primaryAxisSizingMode",
+        "SceneNode.clone",
+        "SceneNode.exportAsync",
+        "SceneNode.fills",
+        "SceneNode.findAll",
+        "SceneNode.layoutAlign",
+        "SceneNode.layoutGrow",
+        "SceneNode.resize",
+        "figma.mixed",
+        "figma.showUI"
+      ],
+      "unsupported": [],
+      "unknown": [
+        "figma.findNodeById"
+      ],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "iconscout-plugins",
+      "plugin": "(repo-level source scan)",
+      "scanned": 1,
+      "fromSource": true,
+      "uiMessaging": false,
+      "used": 13,
+      "supported": [
+        "PageNode.name",
+        "SceneNode.appendChild",
+        "SceneNode.height",
+        "SceneNode.id",
+        "SceneNode.name",
+        "SceneNode.opacity",
+        "SceneNode.parent",
+        "SceneNode.remove",
+        "SceneNode.type",
+        "SceneNode.width",
+        "SceneNode.x",
+        "SceneNode.y"
+      ],
+      "partial": [
+        "SceneNode.minWidth"
+      ],
+      "unsupported": [],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "penpot-exporter-figma-plugin",
+      "plugin": "Penpot Exporter",
+      "scanned": 200,
+      "fromSource": true,
+      "uiMessaging": false,
+      "used": 86,
+      "supported": [
+        "PageNode.name",
+        "SceneNode.bottomLeftRadius",
+        "SceneNode.bottomRightRadius",
+        "SceneNode.children",
+        "SceneNode.clipsContent",
+        "SceneNode.getPluginData",
+        "SceneNode.height",
+        "SceneNode.id",
+        "SceneNode.locked",
+        "SceneNode.name",
+        "SceneNode.opacity",
+        "SceneNode.parent",
+        "SceneNode.setPluginData",
+        "SceneNode.topLeftRadius",
+        "SceneNode.topRightRadius",
+        "SceneNode.type",
+        "SceneNode.visible",
+        "SceneNode.width",
+        "SceneNode.x",
+        "SceneNode.y",
+        "TextNode.characters",
+        "TextNode.fontSize",
+        "figma.closePlugin",
+        "figma.currentPage",
+        "figma.editorType",
+        "figma.root",
+        "figma.ui.onmessage",
+        "figma.ui.postMessage",
+        "figma.ui.resize"
+      ],
+      "partial": [
+        "FrameNode.counterAxisAlignItems",
+        "FrameNode.counterAxisSpacing",
+        "FrameNode.itemSpacing",
+        "FrameNode.layoutMode",
+        "FrameNode.layoutSizingHorizontal",
+        "FrameNode.layoutSizingVertical",
+        "FrameNode.layoutWrap",
+        "FrameNode.paddingBottom",
+        "FrameNode.paddingLeft",
+        "FrameNode.paddingRight",
+        "FrameNode.paddingTop",
+        "FrameNode.primaryAxisAlignItems",
+        "SceneNode.absoluteBoundingBox",
+        "SceneNode.absoluteTransform",
+        "SceneNode.blendMode",
+        "SceneNode.boundVariables",
+        "SceneNode.constraints",
+        "SceneNode.cornerRadius",
+        "SceneNode.dashPattern",
+        "SceneNode.effectStyleId",
+        "SceneNode.effects",
+        "SceneNode.exportAsync",
+        "SceneNode.fillStyleId",
+        "SceneNode.fills",
+        "SceneNode.layoutAlign",
+        "SceneNode.layoutPositioning",
+        "SceneNode.minWidth",
+        "SceneNode.resize",
+        "SceneNode.strokeAlign",
+        "SceneNode.strokeCap",
+        "SceneNode.strokeWeight",
+        "SceneNode.strokes",
+        "SceneNode.textStyleId",
+        "TextNode.fontName",
+        "TextNode.letterSpacing",
+        "TextNode.lineHeight",
+        "TextNode.paragraphIndent",
+        "TextNode.paragraphSpacing",
+        "TextNode.textAlignHorizontal",
+        "TextNode.textAlignVertical",
+        "TextNode.textAutoResize",
+        "TextNode.textCase",
+        "TextNode.textDecoration",
+        "figma.currentUser",
+        "figma.getImageByHash",
+        "figma.mixed",
+        "figma.showUI",
+        "figma.variables"
+      ],
+      "unsupported": [
+        "TextNode.getStyledTextSegments",
+        "figma.loadAllPagesAsync",
+        "figma.teamLibrary"
+      ],
+      "unknown": [
+        "figma.getCanvasGrid",
+        "figma.getLocalEffectStylesAsync",
+        "figma.getLocalPaintStylesAsync",
+        "figma.getLocalTextStylesAsync",
+        "figma.getNodeByIdAsync",
+        "figma.getStyleByIdAsync"
+      ],
+      "namespace": [],
+      "unsupportedNotes": [
+        "Throws unsupported_api. Rich-text ranges are not read back as styled segments.",
+        "Throws unsupported_api. The open document is already local; this call is not required.",
+        "Absent. There is no team library or cloud account."
+      ]
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "Text Search Sample",
+      "scanned": 1,
+      "fromSource": true,
+      "uiMessaging": true,
+      "used": 0,
+      "supported": [],
+      "partial": [],
+      "unsupported": [],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "Sierpinski Sample",
+      "scanned": 2,
+      "fromSource": true,
+      "uiMessaging": false,
+      "used": 8,
+      "supported": [
+        "SceneNode.appendChild",
+        "SceneNode.x",
+        "SceneNode.y",
+        "figma.closePlugin",
+        "figma.createEllipse",
+        "figma.currentPage"
+      ],
+      "partial": [
+        "SceneNode.fills",
+        "SceneNode.resizeWithoutConstraints"
+      ],
+      "unsupported": [],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "Go to",
+      "scanned": 2,
+      "fromSource": true,
+      "uiMessaging": false,
+      "used": 16,
+      "supported": [
+        "PageNode.name",
+        "SceneNode.id",
+        "SceneNode.name",
+        "SceneNode.parent",
+        "SceneNode.type",
+        "figma.closePlugin",
+        "figma.currentPage.selection",
+        "figma.notify",
+        "figma.root"
+      ],
+      "partial": [
+        "SceneNode.findAll",
+        "figma.currentPage.findAll",
+        "figma.on",
+        "figma.viewport.scrollAndZoomIntoView"
+      ],
+      "unsupported": [
+        "figma.parameters"
+      ],
+      "unknown": [
+        "figma.getNodeByIdAsync",
+        "figma.setCurrentPageAsync"
+      ],
+      "namespace": [],
+      "unsupportedNotes": [
+        "Absent. Parameter UI is not collected."
+      ]
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "Invert Image Color Sample",
+      "scanned": 1,
+      "fromSource": true,
+      "uiMessaging": true,
+      "used": 3,
+      "supported": [
+        "SceneNode.height",
+        "SceneNode.parent",
+        "SceneNode.width"
+      ],
+      "partial": [],
+      "unsupported": [],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "Payments Demo",
+      "scanned": 1,
+      "fromSource": false,
+      "uiMessaging": false,
+      "used": 4,
+      "supported": [
+        "SceneNode.type",
+        "figma.closePlugin",
+        "figma.notify"
+      ],
+      "partial": [],
+      "unsupported": [
+        "figma.payments"
+      ],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": [
+        "Absent."
+      ]
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "React Sample",
+      "scanned": 7,
+      "fromSource": true,
+      "uiMessaging": true,
+      "used": 11,
+      "supported": [
+        "SceneNode.appendChild",
+        "SceneNode.type",
+        "SceneNode.x",
+        "figma.closePlugin",
+        "figma.createRectangle",
+        "figma.currentPage.appendChild",
+        "figma.currentPage.selection",
+        "figma.ui.onmessage"
+      ],
+      "partial": [
+        "SceneNode.fills",
+        "figma.showUI",
+        "figma.viewport.scrollAndZoomIntoView"
+      ],
+      "unsupported": [],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "Text Review",
+      "scanned": 1,
+      "fromSource": false,
+      "uiMessaging": false,
+      "used": 4,
+      "supported": [
+        "figma.closePlugin",
+        "figma.notify"
+      ],
+      "partial": [
+        "figma.command",
+        "figma.on"
+      ],
+      "unsupported": [],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "Vector Path Sample",
+      "scanned": 2,
+      "fromSource": true,
+      "uiMessaging": false,
+      "used": 7,
+      "supported": [
+        "SceneNode.height",
+        "SceneNode.width",
+        "SceneNode.x",
+        "SceneNode.y",
+        "figma.closePlugin"
+      ],
+      "partial": [
+        "figma.viewport.center"
+      ],
+      "unsupported": [
+        "figma.createVector"
+      ],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": [
+        "Throws unsupported_api. Vector networks are not exposed on this host."
+      ]
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "Bar Chart Sample",
+      "scanned": 1,
+      "fromSource": true,
+      "uiMessaging": true,
+      "used": 0,
+      "supported": [],
+      "partial": [],
+      "unsupported": [],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "Capital",
+      "scanned": 1,
+      "fromSource": true,
+      "uiMessaging": true,
+      "used": 8,
+      "supported": [
+        "PageNode.name",
+        "SceneNode.name",
+        "SceneNode.parent",
+        "figma.closePlugin",
+        "figma.ui.onmessage"
+      ],
+      "partial": [
+        "figma.on",
+        "figma.showUI"
+      ],
+      "unsupported": [
+        "figma.parameters"
+      ],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": [
+        "Absent. Parameter UI is not collected."
+      ]
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "Webpack + React Sample",
+      "scanned": 4,
+      "fromSource": true,
+      "uiMessaging": true,
+      "used": 13,
+      "supported": [
+        "PageNode.name",
+        "SceneNode.appendChild",
+        "SceneNode.name",
+        "SceneNode.type",
+        "SceneNode.x",
+        "figma.closePlugin",
+        "figma.createRectangle",
+        "figma.currentPage.appendChild",
+        "figma.currentPage.selection",
+        "figma.ui.onmessage"
+      ],
+      "partial": [
+        "SceneNode.fills",
+        "figma.showUI",
+        "figma.viewport.scrollAndZoomIntoView"
+      ],
+      "unsupported": [],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "Metacards",
+      "scanned": 1,
+      "fromSource": true,
+      "uiMessaging": true,
+      "used": 2,
+      "supported": [
+        "SceneNode.height",
+        "SceneNode.width"
+      ],
+      "partial": [],
+      "unsupported": [],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "Trivia",
+      "scanned": 1,
+      "fromSource": true,
+      "uiMessaging": true,
+      "used": 2,
+      "supported": [
+        "SceneNode.parent",
+        "SceneNode.type"
+      ],
+      "partial": [],
+      "unsupported": [],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "Pie Chart Sample",
+      "scanned": 1,
+      "fromSource": true,
+      "uiMessaging": true,
+      "used": 0,
+      "supported": [],
+      "partial": [],
+      "unsupported": [],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "PNG Crop",
+      "scanned": 1,
+      "fromSource": true,
+      "uiMessaging": false,
+      "used": 9,
+      "supported": [
+        "SceneNode.type",
+        "SceneNode.x",
+        "SceneNode.y",
+        "figma.createEllipse",
+        "figma.notify"
+      ],
+      "partial": [
+        "SceneNode.fills",
+        "SceneNode.resize",
+        "figma.createImage",
+        "figma.on"
+      ],
+      "unsupported": [],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "drag-and-drop-hosted",
+      "scanned": 1,
+      "fromSource": true,
+      "uiMessaging": false,
+      "used": 0,
+      "supported": [],
+      "partial": [],
+      "unsupported": [],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "Resizer",
+      "scanned": 2,
+      "fromSource": true,
+      "uiMessaging": false,
+      "used": 7,
+      "supported": [
+        "SceneNode.height",
+        "SceneNode.width",
+        "figma.closePlugin",
+        "figma.currentPage.selection"
+      ],
+      "partial": [
+        "SceneNode.resize",
+        "figma.on"
+      ],
+      "unsupported": [
+        "figma.parameters"
+      ],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": [
+        "Absent. Parameter UI is not collected."
+      ]
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "Styles to Variables",
+      "scanned": 1,
+      "fromSource": false,
+      "uiMessaging": false,
+      "used": 7,
+      "supported": [
+        "PageNode.name",
+        "SceneNode.id",
+        "SceneNode.name",
+        "figma.closePlugin",
+        "figma.notify"
+      ],
+      "partial": [
+        "figma.variables"
+      ],
+      "unsupported": [],
+      "unknown": [
+        "figma.getLocalPaintStylesAsync"
+      ],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "Conditional Plugin",
+      "scanned": 2,
+      "fromSource": true,
+      "uiMessaging": false,
+      "used": 13,
+      "supported": [
+        "SceneNode.appendChild",
+        "SceneNode.id",
+        "SceneNode.x",
+        "figma.closePlugin",
+        "figma.createRectangle",
+        "figma.currentPage.appendChild",
+        "figma.currentPage.selection",
+        "figma.editorType"
+      ],
+      "partial": [
+        "SceneNode.fills",
+        "SceneNode.strokeWeight",
+        "figma.viewport.scrollAndZoomIntoView"
+      ],
+      "unsupported": [],
+      "unknown": [
+        "figma.createConnector",
+        "figma.createShapeWithText"
+      ],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "Variables Import Export",
+      "scanned": 1,
+      "fromSource": false,
+      "uiMessaging": false,
+      "used": 9,
+      "supported": [
+        "PageNode.name",
+        "SceneNode.id",
+        "SceneNode.name",
+        "SceneNode.type",
+        "figma.ui.onmessage",
+        "figma.ui.postMessage"
+      ],
+      "partial": [
+        "figma.command",
+        "figma.showUI",
+        "figma.variables"
+      ],
+      "unsupported": [],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "Dev Mode Sample",
+      "scanned": 1,
+      "fromSource": false,
+      "uiMessaging": false,
+      "used": 4,
+      "supported": [
+        "figma.editorType"
+      ],
+      "partial": [
+        "figma.mode",
+        "figma.showUI"
+      ],
+      "unsupported": [
+        "figma.codegen"
+      ],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": [
+        "Absent."
+      ]
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "Post Message",
+      "scanned": 2,
+      "fromSource": false,
+      "uiMessaging": true,
+      "used": 3,
+      "supported": [
+        "figma.ui.onmessage",
+        "figma.ui.postMessage"
+      ],
+      "partial": [
+        "figma.showUI"
+      ],
+      "unsupported": [],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "Document Change Sample",
+      "scanned": 1,
+      "fromSource": true,
+      "uiMessaging": false,
+      "used": 0,
+      "supported": [],
+      "partial": [],
+      "unsupported": [],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "Icon Drag-and-Drop Sample",
+      "scanned": 1,
+      "fromSource": true,
+      "uiMessaging": true,
+      "used": 1,
+      "supported": [
+        "SceneNode.parent"
+      ],
+      "partial": [],
+      "unsupported": [],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "Document Statistics Sample",
+      "scanned": 1,
+      "fromSource": true,
+      "uiMessaging": false,
+      "used": 5,
+      "supported": [
+        "SceneNode.children",
+        "SceneNode.type",
+        "figma.root"
+      ],
+      "partial": [
+        "figma.showUI"
+      ],
+      "unsupported": [
+        "figma.loadAllPagesAsync"
+      ],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": [
+        "Throws unsupported_api. The open document is already local; this call is not required."
+      ]
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "Circle Text Sample",
+      "scanned": 2,
+      "fromSource": true,
+      "uiMessaging": false,
+      "used": 16,
+      "supported": [
+        "SceneNode.appendChild",
+        "SceneNode.height",
+        "SceneNode.parent",
+        "SceneNode.type",
+        "SceneNode.width",
+        "SceneNode.x",
+        "SceneNode.y",
+        "TextNode.characters",
+        "TextNode.fontSize",
+        "figma.closePlugin",
+        "figma.createText",
+        "figma.currentPage.selection"
+      ],
+      "partial": [
+        "SceneNode.relativeTransform",
+        "TextNode.fontName",
+        "figma.group",
+        "figma.loadFontAsync"
+      ],
+      "unsupported": [],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": []
+    },
+    {
+      "repo": "plugin-samples",
+      "plugin": "SVG Inserter",
+      "scanned": 1,
+      "fromSource": true,
+      "uiMessaging": false,
+      "used": 6,
+      "supported": [
+        "PageNode.name",
+        "SceneNode.name",
+        "figma.closePlugin"
+      ],
+      "partial": [
+        "figma.createNodeFromSvg",
+        "figma.on"
+      ],
+      "unsupported": [
+        "figma.parameters"
+      ],
+      "unknown": [],
+      "namespace": [],
+      "unsupportedNotes": [
+        "Absent. Parameter UI is not collected."
+      ]
+    }
+  ]
+}
