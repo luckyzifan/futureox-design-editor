@@ -6454,43 +6454,87 @@ pub fn export_sketch_baked(doc: &Document) -> Result<(Vec<u8>, usize)> {
     let mut doc: Document = source.as_ref().clone();
     let mut baked = 0usize;
     for node in doc.nodes.values_mut() {
-        if !node.children.is_empty() {
-            continue;
-        }
-        // The vector-network encoder walks stroke-preferred curves but
-        // compares closed contours against the fill, so independent stroke
-        // topology (stroke != fill, including an explicitly empty stroke)
-        // refuses. In baked mode an independent stroke collapses onto the
-        // fill outline; an empty stroke geometry with active stroke paints
-        // keeps refusing instead of drawing a stroke that never existed.
-        if let Some(geometry) = node.vector_geometry.as_ref()
-            && geometry
-                .stroke
-                .as_ref()
-                .is_some_and(|stroke| *stroke != geometry.fill)
-        {
-            let stroke_was_empty = geometry.stroke.as_ref().unwrap().is_empty();
-            if !stroke_was_empty || node.strokes.is_empty() {
-                let shared = std::sync::Arc::make_mut(node.vector_geometry.as_mut().unwrap());
-                shared.stroke = None;
-                baked += 1;
-            } else {
-                continue;
+        // Figma OUTLINE masks and Sketch outline masks (clippingMaskMode 0)
+        // clip to the path the same way. The remap is exact only when the
+        // mask shape itself paints nothing: Sketch renders a mask layer's own
+        // style while Figma ignores it. Painted outline masks and luminance
+        // masks keep the default refusal.
+        if node.mask_type.as_deref() == Some("outline") {
+            // Figma never renders an outline mask's own style; Sketch does.
+            // Disabling the paints keeps both sides rendering identically
+            // while the authored paint data survives as disabled entries.
+            for paint in node.fills.iter_mut() {
+                paint.visible = false;
             }
+            for stroke in node.strokes.iter_mut() {
+                stroke.visible = false;
+            }
+            node.mask_type = Some("shape".into());
+            baked += 1;
         }
-        // Two refusal classes are addressed for leaves: non-rigid placements
-        // (any scale or shear) and parametric arc/rounded polygons that the
-        // default exporter rejects without explicit vector conversion.
-        let needs_affine = sketch_placement(node).is_none();
-        let needs_parametric = matches!(node.kind.as_str(), "ellipse" | "star" | "polygon")
-            && (node.arc.is_some() || node.corner_radius != 0.);
-        if !needs_affine && !needs_parametric {
-            continue;
+    }
+    let roots: Vec<String> = doc
+        .pages
+        .iter()
+        .flat_map(|page| page.children.iter().cloned())
+        .collect();
+    for root in roots {
+        baked += baked_subtree(&mut doc.nodes, root.as_str(), None);
+    }
+    let bytes = export_sketch(&doc)?;
+    Ok((bytes, baked))
+}
+
+/// One node of the opt-in baked pre-pass. `pending` premultiplies the node's
+/// transform with the un-applied linear part of an ancestor so world geometry
+/// stays exact while containers become Sketch-representable:
+/// - a shear-free placement (rotation ∘ scale) keeps its rotation, rescales
+///   the box and propagates the pure scale to children;
+/// - a sheared placement without its own box paints flattens to the mapped
+///   axis-aligned bounds and propagates the full linear part;
+/// - a sheared placement with visible fills/strokes keeps the default
+///   refusal because Sketch cannot represent a sheared box losslessly;
+/// - leaves bake the linear part into curve points exactly as before.
+fn baked_subtree(doc: &mut crate::scene::DocumentNodes, id: &str, pending: Option<crate::math::Transform>) -> usize {
+    let Some(node) = doc.get_mut(id) else { return 0 };
+    if let Some(pending) = pending {
+        node.transform = pending.concat(node.transform);
+    }
+    // Independent stroke topology collapses onto the fill outline (the
+    // vector-network encoder walks stroke-preferred curves but compares the
+    // fill); an empty stroke geometry with active stroke paints keeps
+    // refusing instead of inventing a stroke.
+    if let Some(geometry) = node.vector_geometry.as_ref()
+        && geometry
+            .stroke
+            .as_ref()
+            .is_some_and(|stroke| *stroke != geometry.fill)
+    {
+        let stroke_was_empty = geometry.stroke.as_ref().unwrap().is_empty();
+        if !stroke_was_empty || node.strokes.is_empty() {
+            let shared = std::sync::Arc::make_mut(node.vector_geometry.as_mut().unwrap());
+            shared.stroke = None;
+            let children: Vec<String> = node.children.clone();
+            return 1 + children
+                .into_iter()
+                .map(|child| baked_subtree(doc, child.as_str(), None))
+                .sum::<usize>();
+        } else {
+            let children: Vec<String> = node.children.clone();
+            return children
+                .into_iter()
+                .map(|child| baked_subtree(doc, child.as_str(), None))
+                .sum::<usize>();
         }
-        if node.vector_geometry.is_none() {
-            // Parametric leaves become explicit vector geometry first,
-            // mirroring fig2sketch's shape_path conversion. Mixed corner
-            // radii fall back to sharp corners; that loss is recorded here.
+    }
+    let children: Vec<String> = node.children.clone();
+    let rigid = sketch_placement(node).is_some();
+    let parametric = matches!(node.kind.as_str(), "ellipse" | "star" | "polygon")
+        && (node.arc.is_some() || node.corner_radius != 0.);
+    if !node.vector_geometry.is_none() || (!rigid && children.is_empty()) || parametric {
+        // Parametric leaves and non-rigid leaves become explicit vector
+        // geometry first (kappa arc approximation, exporter point math).
+        if node.vector_geometry.is_none() && (children.is_empty() || parametric) {
             let corners = [
                 crate::math::Point::new(0., 0.),
                 crate::math::Point::new(node.width, 0.),
@@ -6516,8 +6560,6 @@ pub fn export_sketch_baked(doc: &Document) -> Result<(Vec<u8>, usize)> {
                     node.arc.unwrap_or(crate::scene::EllipseArc { start_angle: 0., sweep_angle: std::f64::consts::TAU, inner_radius: 0. }),
                 ),
                 "star" | "polygon" => {
-                    // Pixel-space equivalent of the exporter's normalized
-                    // star/polygon point math (interop.rs shape emission).
                     let count = node.points.clamp(3, 128) * if node.kind == "star" { 2 } else { 1 };
                     let star = node.kind == "star";
                     let ring: Vec<crate::math::Point> = (0..count)
@@ -6541,89 +6583,139 @@ pub fn export_sketch_baked(doc: &Document) -> Result<(Vec<u8>, usize)> {
                         }
                     }
                 }
-                _ => continue,
+                _ => crate::path::Path::default(),
             };
-            match crate::vector_geometry::encode(&baked_explicit_path(&path)) {
-                Ok(fill) => {
-                    node.kind = "vector".into();
-                    node.vector_geometry = Some(std::sync::Arc::new(crate::vector_geometry::VectorGeometry {
-                        fill_rule: "nonzero".into(),
-                        fill,
-                        stroke: None,
-                    }));
-                }
-                Err(_) => continue,
+            if let Ok(fill) = crate::vector_geometry::encode(&baked_explicit_path(&path)) {
+                node.kind = "vector".into();
+                node.vector_geometry = Some(std::sync::Arc::new(crate::vector_geometry::VectorGeometry {
+                    fill_rule: "nonzero".into(),
+                    fill,
+                    stroke: None,
+                }));
             }
         }
-        // The exporter's parametric guard keys on the node kind, so an
-        // ellipse/star/polygon that already carries explicit geometry still
-        // needs the vector kind to export.
-        if needs_parametric {
-            node.kind = "vector".into();
+    }
+    if parametric {
+        node.kind = "vector".into();
+    }
+    if rigid && !parametric {
+        return children
+            .into_iter()
+            .map(|child| baked_subtree(doc, child.as_str(), None))
+            .sum::<usize>()
+            + usize::from(pending.is_some());
+    }
+    let [a, b, c, d, x, y] = node.transform.0;
+    let determinant = a * d - b * c;
+    let recurse_plain = |doc: &mut crate::scene::DocumentNodes, children: &[String]| {
+        children
+            .iter()
+            .map(|child| baked_subtree(doc, child, None))
+            .sum::<usize>()
+    };
+    if !determinant.is_finite() || determinant.abs() < 1e-12 {
+        return recurse_plain(doc, &children); // singular: keep the explicit refusal
+    }
+    let scale_x = (a * a + b * b).sqrt();
+    let scale_y = (c * c + d * d).sqrt();
+    let shear_free = (a * c + b * d).abs() < 1e-9 * (scale_x * scale_y).max(1.);
+    let paints_box = node
+        .fills
+        .iter()
+        .any(|paint| paint.visible)
+        || node.strokes.iter().any(|stroke| stroke.visible);
+    if !children.is_empty() {
+        if shear_free && scale_x.is_finite() && scale_y.is_finite() && scale_x > 1e-12 && scale_y > 1e-12 {
+            // Keep the rotation on the container, rescale the box, and hand
+            // the pure scale to the children: R∘S∘K = R∘(S∘K).
+            let scale = crate::math::Transform([scale_x, 0., 0., scale_y, 0., 0.]);
+            let rotation = crate::math::Transform([a / scale_x, b / scale_x, c / scale_y, d / scale_y, x, y]);
+            if let Some(geometry) = node.vector_geometry.as_mut() {
+                let shared = std::sync::Arc::make_mut(geometry);
+                let sx = scale_x;
+                let sy = scale_y;
+                shared.scale(sx.max(1e-12), sy.max(1e-12));
+            }
+            node.transform = rotation;
+            node.width *= scale_x;
+            node.height *= scale_y;
+            node.corner_radius = 0.;
+            return 1 + children
+                .into_iter()
+                .map(|child| baked_subtree(doc, child.as_str(), Some(scale)))
+                .sum::<usize>();
         }
-        if !needs_affine {
-            baked += 1; // explicit-conversion case: geometry now Sketch-editable
-            continue;
+        if paints_box {
+            // A sheared box with its own paint cannot be represented
+            // losslessly; keep the default refusal for this node.
+            return recurse_plain(doc, &children);
         }
-        let [a, b, c, d, x, y] = node.transform.0;
-        let determinant = a * d - b * c;
-        if !determinant.is_finite() || determinant.abs() < 1e-12 {
-            continue; // singular: keep the explicit refusal instead of collapsing
-        }
-        let corners = [
-            (a * 0. + c * 0., b * 0. + d * 0.),
-            (a * node.width, c * node.width),
-            (a * node.width + c * node.height, b * node.width + d * node.height),
-            (c * node.height, d * node.height),
-        ];
-        let min_x = corners.iter().map(|p| p.0).fold(f64::INFINITY, f64::min);
-        let min_y = corners.iter().map(|p| p.1).fold(f64::INFINITY, f64::min);
-        let max_x = corners.iter().map(|p| p.0).fold(f64::NEG_INFINITY, f64::max);
-        let max_y = corners.iter().map(|p| p.1).fold(f64::NEG_INFINITY, f64::max);
-        let geometry = node.vector_geometry.take().unwrap();
+    }
+    // Flatten to the mapped axis-aligned bounds (leaf curves or a paint-free
+    // container): every curve point is mapped exactly, the frame becomes the
+    // mapped unit-box bounds, and children carry [L | -min].
+    let corners = [
+        (c * node.height, d * node.height),
+        (a * node.width, c * node.width),
+        (a * node.width + c * node.height, b * node.width + d * node.height),
+        (0., 0.),
+    ];
+    let min_x = corners.iter().map(|p| p.0).fold(f64::INFINITY, f64::min);
+    let min_y = corners.iter().map(|p| p.1).fold(f64::INFINITY, f64::min);
+    let max_x = corners.iter().map(|p| p.0).fold(f64::NEG_INFINITY, f64::max);
+    let max_y = corners.iter().map(|p| p.1).fold(f64::NEG_INFINITY, f64::max);
+    let mut baked = usize::from(pending.is_some());
+    if let Some(geometry) = node.vector_geometry.take() {
         let mut geometry = (*geometry).clone();
         let bake = |values: &mut [f64], offset: usize| {
             let (px, py) = (values[offset], values[offset + 1]);
             values[offset] = a * px + c * py - min_x;
             values[offset + 1] = b * px + d * py - min_y;
         };
-        fn bake_curves(
-            curves: &mut [crate::vector_geometry::Curve],
-            bake: &impl Fn(&mut [f64], usize),
-        ) {
-            for curve in curves.iter_mut() {
-                match curve {
-                    crate::vector_geometry::Curve::Move(p)
-                    | crate::vector_geometry::Curve::Line(p) => bake(p, 0),
-                    crate::vector_geometry::Curve::Quad(p) => {
-                        bake(p, 0);
-                        bake(p, 2);
-                    }
-                    crate::vector_geometry::Curve::Cubic(p) => {
-                        bake(p, 0);
-                        bake(p, 2);
-                        bake(p, 4);
-                    }
-                    crate::vector_geometry::Curve::Close => {}
-                }
-            }
-        }
         let mut fills = std::mem::take(&mut geometry.fill);
-        bake_curves(&mut fills, &bake);
+        baked_curves(&mut fills, &bake);
         geometry.fill = fills;
         if let Some(strokes) = geometry.stroke.as_mut() {
             let mut moved = std::mem::take(strokes);
-            bake_curves(&mut moved, &bake);
+            baked_curves(&mut moved, &bake);
             geometry.stroke = Some(moved);
         }
-        node.transform = crate::math::Transform([1., 0., 0., 1., x + min_x, y + min_y]);
-        node.width = max_x - min_x;
-        node.height = max_y - min_y;
         node.vector_geometry = Some(std::sync::Arc::new(geometry));
-        baked += 1;
+        baked = 1;
     }
-    let bytes = export_sketch(&doc)?;
-    Ok((bytes, baked))
+    node.transform = crate::math::Transform([1., 0., 0., 1., x + min_x, y + min_y]);
+    node.width = max_x - min_x;
+    node.height = max_y - min_y;
+    node.corner_radius = 0.;
+    if children.is_empty() {
+        return baked.max(1);
+    }
+    let child_pending = crate::math::Transform([a, b, c, d, -min_x, -min_y]);
+    baked + children
+        .into_iter()
+        .map(|child| baked_subtree(doc, child.as_str(), Some(child_pending)))
+        .sum::<usize>()
+}
+
+fn baked_curves(
+    curves: &mut [crate::vector_geometry::Curve],
+    bake: &impl Fn(&mut [f64], usize),
+) {
+    for curve in curves.iter_mut() {
+        match curve {
+            crate::vector_geometry::Curve::Move(p) | crate::vector_geometry::Curve::Line(p) => bake(p, 0),
+            crate::vector_geometry::Curve::Quad(p) => {
+                bake(p, 0);
+                bake(p, 2);
+            }
+            crate::vector_geometry::Curve::Cubic(p) => {
+                bake(p, 0);
+                bake(p, 2);
+                bake(p, 4);
+            }
+            crate::vector_geometry::Curve::Close => {}
+        }
+    }
 }
 
 /// Export the kernel document as a `.sketch` bundle Sketch can open.
