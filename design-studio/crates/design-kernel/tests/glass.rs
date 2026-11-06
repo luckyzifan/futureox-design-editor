@@ -239,7 +239,7 @@ fn sdr_glass_keeps_the_cross_backend_materialization_baseline() {
         .into_iter()
         .map(|profile| {
             let rgba = engine(&doc).render(&options(profile, 1)).unwrap();
-            format!("{profile}:{:x}", Sha256::digest(&rgba))
+            (Sha256::digest(&rgba)).iter().map(|b| format!("{b:02x}")).collect::<String>()
         })
         .collect();
     // The fine profiles materialize refraction and light separately. Their

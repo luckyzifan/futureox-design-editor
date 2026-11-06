@@ -15,11 +15,11 @@ fn assets_are_fixed_and_baseline_roots_are_independently_correctly_rounded() {
     assert_eq!(residuals.len(), 4_164_661);
     assert_eq!(roots.len() + residuals.len(), clip_weight::TOTAL_BYTES);
     assert_eq!(
-        format!("{:x}", Sha256::digest(roots)),
+        (Sha256::digest(roots)).iter().map(|b| format!("{b:02x}")).collect::<String>(),
         clip_weight::BASELINE_SHA256
     );
     assert_eq!(
-        format!("{:x}", Sha256::digest(residuals)),
+        (Sha256::digest(residuals)).iter().map(|b| format!("{b:02x}")).collect::<String>(),
         clip_weight::RESIDUAL_SHA256
     );
     assert_eq!(residuals.last().unwrap() >> 4, 0);
@@ -52,7 +52,7 @@ fn all_ordered_pairs_reconstruct_the_native_scalar_function_exactly() {
     assert_eq!(ordered, 16_654_561);
     // Digest of the full real-Metal triangle in high-major/low-minor order.
     assert_eq!(
-        format!("{:x}", triangle_digest.finalize()),
+        (triangle_digest.finalize()).iter().map(|b| format!("{b:02x}")).collect::<String>(),
         "60d716e013367ca21b44b0da630cd1a3c5e16f0ba511022f0798a0492d84382d"
     );
 }

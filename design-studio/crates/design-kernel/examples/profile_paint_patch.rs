@@ -19,7 +19,7 @@ fn main()->Result<(),Box<dyn std::error::Error>> {
         let patch=DocumentPatch {nodes:[(root.clone(),Some(doc.nodes[&root].clone()))].into_iter().collect(),fields:Default::default()};
         let at=Instant::now();engine.apply_document_patch_with_damage(&patch)?;let patch_ms=at.elapsed().as_secs_f64()*1000.;
         let at=Instant::now();let packet=engine.compile_gpu(&options)?.into_packet()?;
-        rows.push(serde_json::json!({"patchMs":patch_ms,"compileMs":at.elapsed().as_secs_f64()*1000.,"packetBytes":packet.len(),"sha256":format!("{:x}",Sha256::digest(&packet))}));
+        rows.push(serde_json::json!({"patchMs":patch_ms,"compileMs":at.elapsed().as_secs_f64()*1000.,"packetBytes":packet.len(),"sha256":(Sha256::digest(&packet)).iter().map(|b| format!("{b:02x}")).collect::<String>()}));
     }
     println!("{}",serde_json::to_string_pretty(&serde_json::json!({"nodes":doc.nodes.len(),"root":root,"rows":rows}))?);Ok(())
 }

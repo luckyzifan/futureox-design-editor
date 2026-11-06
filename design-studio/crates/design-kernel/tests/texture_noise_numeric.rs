@@ -141,13 +141,13 @@ fn mathematical_assets_are_sha_bound() {
     let bytes = include_bytes!("../src/texture_noise/sine-q19.bin");
     assert_eq!(bytes.len(), texture_noise::LUT_BYTES);
     assert_eq!(
-        format!("{:x}", Sha256::digest(bytes)),
+        (Sha256::digest(bytes)).iter().map(|b| format!("{b:02x}")).collect::<String>(),
         texture_noise::LUT_SHA256
     );
     let mut total = bytes.len();
     for asset in texture_noise::RESIDUAL_ASSETS {
         assert_eq!(
-            format!("{:x}", Sha256::digest(asset.bytes)),
+            (Sha256::digest(asset.bytes)).iter().map(|b| format!("{b:02x}")).collect::<String>(),
             asset.sha256,
             "{}",
             asset.name
@@ -165,7 +165,7 @@ fn mathematical_assets_are_sha_bound() {
     }
     assert_eq!(seed_bytes.len(), 72);
     assert_eq!(
-        format!("{:x}", Sha256::digest(seed_bytes)),
+        (Sha256::digest(seed_bytes)).iter().map(|b| format!("{b:02x}")).collect::<String>(),
         texture_noise::SEED_PLAN_SHA256
     );
 }
@@ -289,7 +289,7 @@ fn wide_gradient_lattice_matches_independent_identity_metal_digest() {
         }
     }
     assert_eq!(
-        format!("{:x}", digest.finalize()),
+        (digest.finalize()).iter().map(|b| format!("{b:02x}")).collect::<String>(),
         "9544440731665ecb3881995f5aa2a0b6ac36ae5a11376a38a95cfd47f6f01b0d"
     );
 }

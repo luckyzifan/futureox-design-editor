@@ -35,7 +35,7 @@ fn unpack(bytes: &[u8]) -> BTreeMap<String, Vec<u8>> {
         let mut f = z.by_index(i).unwrap();
         let mut b = Vec::new();
         f.read_to_end(&mut b).unwrap();
-        out.insert(f.name().to_owned(), b);
+        out.insert(String::from_utf8_lossy(f.name_raw()).into_owned(), b);
     }
     out
 }

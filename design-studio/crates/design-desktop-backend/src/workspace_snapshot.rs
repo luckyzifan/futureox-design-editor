@@ -1,5 +1,6 @@
 //! Private SQLite encoding. References live in a versioned envelope and are
 //! interpreted only at schema-known asset leaves, never in arbitrary user text.
+use crate::digest_hex;
 use crate::{BackendError, Result, bounded_json, document_byte_limit};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -65,7 +66,7 @@ pub fn asset_hash(kind: Kind, value: &[u8]) -> String {
     digest.update(kind.label().as_bytes());
     digest.update([0]);
     digest.update(value);
-    format!("{:x}", digest.finalize())
+    digest_hex((digest.finalize()).as_slice())
 }
 fn base64(value: &str) -> bool {
     if value.is_empty() || !value.len().is_multiple_of(4) {

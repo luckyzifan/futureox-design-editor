@@ -6,7 +6,7 @@ use sha2::{Digest,Sha256};
   (vec![b'a';1_000_000],"cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0")]{
   for chunk in [1,7,63,64,65,4096,65536]{
    let mut hash=Sha256::new();for part in bytes.chunks(chunk){hash.update(part);}
-   assert_eq!(format!("{:x}",hash.finalize()),expected);
+   assert_eq!((hash.finalize()).iter().map(|b| format!("{b:02x}")).collect::<String>(),expected);
   }
  }
 }

@@ -8,6 +8,12 @@ mod automation;
 pub mod catalog;
 mod font_collection;
 pub mod fonts;
+
+/// Lowercase hex for a digest; sha2 0.11 dropped LowerHex on Array outputs.
+pub(crate) fn digest_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
 pub mod protocol;
 mod recovery;
 pub mod runtime;
@@ -219,7 +225,7 @@ impl Backend {
 }
 
 pub(crate) fn hash(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    digest_hex((Sha256::digest(bytes)).as_slice())
 }
 
 pub(crate) fn unique_id() -> String {

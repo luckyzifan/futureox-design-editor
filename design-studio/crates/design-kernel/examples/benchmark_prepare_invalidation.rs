@@ -32,7 +32,7 @@ fn stats(mut values: Vec<f64>) -> Value {
     json!({"p50Ms":values[values.len()/2],"p95Ms":values[(values.len()-1)*95/100],"samplesMs":values})
 }
 
-fn hash(bytes: &[u8]) -> String { format!("{:x}", Sha256::digest(bytes)) }
+fn hash(bytes: &[u8]) -> String { (Sha256::digest(bytes)).iter().map(|b| format!("{b:02x}")).collect::<String>() }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rows = Vec::new();

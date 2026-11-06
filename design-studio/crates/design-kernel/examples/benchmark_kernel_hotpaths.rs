@@ -16,7 +16,7 @@ fn measure(mut f: impl FnMut(), samples: usize, batch: usize) -> Value {
     times.sort_by(f64::total_cmp);
     json!({"p50Ms":times[times.len()/2],"p95Ms":times[(times.len()*95/100).min(times.len()-1)],"samples":times,"batch":batch})
 }
-fn hash(bytes: &[u8]) -> String { format!("{:x}", Sha256::digest(bytes)) }
+fn hash(bytes: &[u8]) -> String { (Sha256::digest(bytes)).iter().map(|b| format!("{b:02x}")).collect::<String>() }
 fn fixture(count: usize) -> String {
     let mut nodes=serde_json::Map::new(); let mut children=Vec::new();
     for i in 0..count {

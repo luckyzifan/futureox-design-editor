@@ -1,5 +1,6 @@
 //! File-backed source JSON. Renderer requests carry opaque identities and small
 //! fragments; paths are supplied only by the trusted native-dialog host.
+use crate::digest_hex;
 use crate::{BackendError, Result};
 use futureox_design_kernel::large_json::{
     self, Addition, Changes, MAX_FRAGMENT_BYTES, Span,
@@ -89,7 +90,7 @@ impl<R:Read,W:Write> Read for IndexedSpool<'_,R,W>{
     }
 }
 fn digest(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    digest_hex((Sha256::digest(bytes)).as_slice())
 }
 #[cfg(test)]
 fn hash_file(path: &Path, cancel: &AtomicBool) -> io::Result<String> {
@@ -116,7 +117,7 @@ fn hash_range(path: &Path, span: Span, cancel: &AtomicBool) -> io::Result<String
         }
         hash.update(&bytes[..n]);
     }
-    Ok(format!("{:x}", hash.finalize()))
+    Ok(digest_hex((hash.finalize()).as_slice()))
 }
 fn identity(value: &str) -> bool {
     !value.is_empty()
@@ -418,7 +419,7 @@ impl Sessions {
             }
             self.progress.phase("validate", 0);
             check_cancel(cancel).map_err(issue)?;
-            let source_hash = format!("{:x}",source_digest.finalize());
+            let source_hash = digest_hex((source_digest.finalize()).as_slice());
             let owner=Owner{document_id:request.document_id.clone(),session_epoch:request.session_epoch};
             let previews=request.opening_preview && extension=="sketch";
             let mut checked_cache=false;
@@ -478,7 +479,10 @@ impl Sessions {
                 for i in 0..archive.len() {
                     check_cancel(cancel).map_err(issue)?;
                     let mut entry = archive.by_index(i).map_err(issue)?;
-                    let name = entry.name().trim_end_matches('/').to_owned();
+                    let name = {
+                        let raw = entry.name_raw();
+                        String::from_utf8_lossy(raw.strip_suffix(b"/").unwrap_or(raw)).into_owned()
+                    };
                     if !safe_member(&name)
                         || !names.insert(name.clone())
                         || entry.unix_mode().is_some_and(|m| m & 0o170000 == 0o120000)
@@ -530,7 +534,7 @@ impl Sessions {
                         if copied!=declared||index.as_ref().is_some_and(|i|i.bytes!=declared){return Err(issue("Sketch member length changed"));}
                         target.flush().map_err(issue)?;
                         target.get_ref().sync_all().map_err(issue)?;
-                        let hash=format!("{:x}",hash.finalize());
+                        let hash=digest_hex((hash.finalize()).as_slice());
                         if let Some(index)=index {parts.push(Part{name,file,hash,base_bytes:declared,index,additions:Vec::new()})}
                         else {staged.push((opening::Part{name,file,bytes:declared},hash));}
                     } else {
@@ -1532,7 +1536,7 @@ fn write_export(
                     .parts
                     .iter()
                     .enumerate()
-                    .find(|(_, p)| p.name == entry.name())
+                    .find(|(_, p)| p.name.as_bytes() == entry.name_raw())
                 {
                     if hash_range(
                         &s.directory.join(&part.file),
@@ -2040,9 +2044,9 @@ mod tests {
         let path = f.root.join("four-gib-structured.json");
         let mut archive = zip::ZipArchive::new(File::open(source).unwrap()).unwrap();
         let pages: Vec<String> = archive
-            .file_names()
-            .filter(|name| name.starts_with("pages/") && name.ends_with(".json"))
-            .map(str::to_owned)
+            .file_names_raw()
+            .filter(|name| name.starts_with(b"pages/") && name.ends_with(b".json"))
+            .map(|name| String::from_utf8_lossy(name).into_owned())
             .collect();
         let mut output = BufWriter::new(File::create(&path).unwrap());
         let mut written = 0u64;
@@ -2293,10 +2297,10 @@ mod tests {
         fn content_hash(mut source: impl Read) -> String {
             let mut digest = Sha256::new(); let mut bytes = [0u8; 64 * 1024];
             loop { let count = source.read(&mut bytes).unwrap(); if count == 0 { break; } digest.update(&bytes[..count]); }
-            format!("{:x}", digest.finalize())
+            digest_hex((digest.finalize()).as_slice())
         }
         for i in 0..original.len() {
-            let member = original.by_index(i).unwrap(); let name = member.name().to_owned();
+            let member = original.by_index(i).unwrap(); let name = String::from_utf8_lossy(member.name_raw()).into_owned();
             assert_eq!(content_hash(member), content_hash(exported.by_name(&name).unwrap()), "{name}");
         }
         println!("{}",json!({"sourceSha256":source_hash,"roots":items.len(),"pages":pages,"kinds":kinds,"bounds":bounds,"byteIdenticalExportMembers":exported.len()}));
@@ -2498,11 +2502,11 @@ mod tests {
                 }
                 hash.update(&bytes[..n]);
             }
-            format!("{:x}", hash.finalize())
+            digest_hex((hash.finalize()).as_slice())
         }
         for i in 0..before.len() {
             let entry = before.by_index(i).unwrap();
-            let name = entry.name().to_string();
+            let name = String::from_utf8_lossy(entry.name_raw()).into_owned();
             if name == part_name {
                 continue;
             }

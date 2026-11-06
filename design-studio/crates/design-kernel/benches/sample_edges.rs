@@ -52,7 +52,7 @@ fn verify(
             }
         }
     }
-    (format!("{:x}", sha.finalize()), differences)
+    ((sha.finalize()).iter().map(|b| format!("{b:02x}")).collect::<String>(), differences)
 }
 fn main() {
     for (name, count) in [

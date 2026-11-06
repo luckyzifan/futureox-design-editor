@@ -26,7 +26,7 @@ fn patch_native_blur(bytes: &[u8], radius: f64) -> Vec<u8> {
     let mut output = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     for i in 0..input.len() {
         let mut file = input.by_index(i).unwrap();
-        let name = file.name().to_owned();
+        let name = String::from_utf8_lossy(file.name_raw()).into_owned();
         let mut data = Vec::new();
         file.read_to_end(&mut data).unwrap();
         if name.starts_with("pages/") {
@@ -164,9 +164,10 @@ fn current_sketch_blur_array_is_read_and_roundtripped() {
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(exported)).unwrap();
     let name = archive
         .file_names()
+        .filter_map(Result::ok)
         .find(|n| n.starts_with("pages/"))
-        .unwrap()
-        .to_owned();
+        .map(|n| n.into_owned())
+        .unwrap();
     let page: Value = serde_json::from_reader(archive.by_name(&name).unwrap()).unwrap();
     for board in page["layers"].as_array().unwrap() {
         let blurs = &board["layers"][0]["style"]["blurs"];
