@@ -6457,6 +6457,27 @@ pub fn export_sketch_baked(doc: &Document) -> Result<(Vec<u8>, usize)> {
         if !node.children.is_empty() {
             continue;
         }
+        // The vector-network encoder walks stroke-preferred curves but
+        // compares closed contours against the fill, so independent stroke
+        // topology (stroke != fill, including an explicitly empty stroke)
+        // refuses. In baked mode an independent stroke collapses onto the
+        // fill outline; an empty stroke geometry with active stroke paints
+        // keeps refusing instead of drawing a stroke that never existed.
+        if let Some(geometry) = node.vector_geometry.as_ref()
+            && geometry
+                .stroke
+                .as_ref()
+                .is_some_and(|stroke| *stroke != geometry.fill)
+        {
+            let stroke_was_empty = geometry.stroke.as_ref().unwrap().is_empty();
+            if !stroke_was_empty || node.strokes.is_empty() {
+                let shared = std::sync::Arc::make_mut(node.vector_geometry.as_mut().unwrap());
+                shared.stroke = None;
+                baked += 1;
+            } else {
+                continue;
+            }
+        }
         // Two refusal classes are addressed for leaves: non-rigid placements
         // (any scale or shear) and parametric arc/rounded polygons that the
         // default exporter rejects without explicit vector conversion.
