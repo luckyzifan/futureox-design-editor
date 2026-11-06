@@ -697,3 +697,57 @@ describe('System font loading', () => {
     run.close()
   })
 })
+
+describe('Async API coverage batch', () => {
+  it('resolves loadAllPagesAsync, getNodeByIdAsync, getLocalTextStylesAsync and creates slices', async () => {
+    const current = editor()
+    const run = await openPlugin(current, bundle('AsyncBatch', `
+      Promise.all([
+        figma.loadAllPagesAsync(),
+        figma.getNodeByIdAsync('missing-id'),
+        figma.getLocalTextStylesAsync(),
+      ]).then(function (results) {
+        const slice = figma.createSlice()
+        slice.name = 'Cut'
+        figma.closePlugin('missing:' + (results[1] === null) + ' styles:' + results[2].length + ' slice:' + slice.type)
+      }, function (error) { figma.closePlugin('failed: ' + error.message) })
+    `))
+    expect(run.closeMessage).toBe('missing:true styles:0 slice:SLICE')
+    expect(named(current, 'Cut')?.kind).toBe('slice')
+    run.close()
+  })
+
+  it('switches pages through setCurrentPageAsync', async () => {
+    const current = editor()
+    const run = await openPlugin(current, bundle('PageSwitch', `
+      const second = figma.createPage({ name: 'Two' })
+      figma.setCurrentPageAsync(second).then(function () {
+        figma.closePlugin('page:' + (figma.currentPage.name === 'Two'))
+      }, function (error) { figma.closePlugin('failed: ' + error.message) })
+    `))
+    expect(run.closeMessage).toBe('page:true')
+    run.close()
+  })
+})
+
+describe('Raster export admission', () => {
+  it('queues PNG jobs and rejects PDF and out-of-range scales at admission', async () => {
+    const current = editor()
+    const run = await openPlugin(current, bundle('ExportPng', `
+      const rect = figma.createRectangle()
+      rect.name = 'Exported'
+      try {
+        rect.exportAsync({ format: 'PDF' }).then(function () {
+          figma.closePlugin('unexpected pdf success')
+        }, function (error) {
+          figma.closePlugin('pdf-rejected:' + (error.message.indexOf('PNG') >= 0))
+        })
+        figma.closePlugin('pdf-threw-nothing')
+      } catch (error) {
+        figma.closePlugin('pdf-rejected:' + (String(error.message).indexOf('PNG') >= 0))
+      }
+    `))
+    expect(run.closeMessage).toBe('pdf-rejected:true')
+    run.close()
+  })
+})

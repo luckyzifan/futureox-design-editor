@@ -1,4 +1,5 @@
----
+
+2026-11-06 [插件扩覆盖第二轮](../../../testing/verification-figmaplugin-public-20261106/README.md)：补 `loadAllPagesAsync`、`getNodeByIdAsync`、`setCurrentPageAsync`、`getStyleByIdAsync`、`getLocal*StylesAsync`、`createSlice`，`exportAsync` 增 PNG/JPG（产品 CPU 光栅经异步侧车道，base64 上限 500k 字符，PDF 仍拒绝）；字体会话别名改按 family|weight 键控且按 catalog face id 去重（变量 face 嵌入一次、渲染时 wght 由 weight 字段驱动），斜体因文档模型无 italic 字段维持拒绝；快照宿主维持仅文档字体并在 coverage 与文档如实标注。公开插件静态兼容率 96.9%→97.7%。覆盖矩阵有守卫测试：每条 API 必须出现在 FIGMA_PLUGIN_HOST_V1.md。PNG 全链路依赖渲染 Worker，测试环境只验准入层。---
 name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---

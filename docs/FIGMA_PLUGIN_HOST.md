@@ -90,7 +90,7 @@ The table below is the earlier worker subset. The Plugins panel list is the rich
 | `figma.showUI` | supported | Desktop opens a sandboxed window. Inline HTML is capped at 200000 characters. |
 | `figma.ui.postMessage` | supported | JSON values up to 64 KiB. The desktop UI window receives pluginMessage. |
 | `figma.ui.onmessage` | supported | Receives the pluginMessage value. figma.ui.on("message") assigns the same handler. |
-| `figma.loadFontAsync` | partial | Resolves after recording the family. It does not load or embed a font file. |
+| `figma.loadFontAsync` | partial | Snapshot worker: resolves document families only and embeds nothing. The rich QuickJS host loads desktop system-catalog families through `font.import` admission. |
 | `figma.util.rgb` | supported | Returns {r,g,b}. Other figma.util helpers throw. |
 | `node.id` | supported | Stable document id. |
 | `node.type` | supported | Figma-style names such as RECTANGLE, TEXT, FRAME, PAGE, and DOCUMENT. |
