@@ -162,12 +162,12 @@ export class PluginController {
         throw errorFromGuest(message)
       }
       this.drain()
-      if (this.session.hasNetwork() || this.session.hasFontJobs()) return this.finishAsync()
+      if (this.session.hasNetwork() || this.session.hasFontJobs() || this.session.hasExportJobs()) return this.finishAsync()
     } finally { evaluated.dispose() }
   }
 
   private async finishAsync() {
-    while (this.session.hasNetwork() || this.session.hasFontJobs()) {
+    while (this.session.hasNetwork() || this.session.hasFontJobs() || this.session.hasExportJobs()) {
       if (this.session.hasNetwork()) {
         const job = this.session.takeNetwork()
         if (!job) break
@@ -180,10 +180,22 @@ export class PluginController {
         this.drain()
         continue
       }
-      const job = this.session.takeFontJobs()
+      if (this.session.hasFontJobs()) {
+        const job = this.session.takeFontJobs()
+        if (!job) break
+        const payload = await this.loadSystemFont(job)
+        this.inject(`globalThis.__finishFont(${JSON.stringify(job.id)}, ${JSON.stringify(payload)})`)
+        this.drain()
+        continue
+      }
+      const job = this.session.takeExportJobs()
       if (!job) break
-      const payload = await this.loadSystemFont(job)
-      this.inject(`globalThis.__finishFont(${JSON.stringify(job.id)}, ${JSON.stringify(payload)})`)
+      let payload: Record<string, unknown>
+      try { payload = { ok: true, ...(await this.session.captureRasterExport(job)) } }
+      catch (error) {
+        payload = { ok: false, code: error instanceof PluginApiError ? error.code : 'export_failed', message: (error instanceof Error ? error.message : String(error)).slice(0, 500) }
+      }
+      this.inject(`globalThis.__finishExport(${JSON.stringify(job.id)}, ${JSON.stringify(payload)})`)
       this.drain()
     }
   }

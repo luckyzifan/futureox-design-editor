@@ -1,4 +1,5 @@
 import { createEditorDesignAutomation } from '../../automation'
+import { captureDesignPreview } from '../../automation/export'
 import { apply, bounds, worldMatrix } from '../../geometry'
 import type { Editor } from '../../engine'
 import {
@@ -78,6 +79,7 @@ export type PluginSystemFonts = {
   read(request: { id: string }): Promise<{ face: PluginSystemFontFace; data: string } | null>
 }
 export type PluginFontJob = { id: string; family: string; style: string }
+export type PluginExportJob = { id: string; nodeId: string; pageId: string; format: 'png' | 'jpeg'; scale: number }
 
 const KINDS = new Set<Kind>(['slice', 'frame', 'section', 'group', 'rectangle', 'ellipse', 'polygon', 'star', 'line', 'vector', 'text'])
 const TRANSFORM_KEYS = new Set(['x', 'y', 'rotation'])
@@ -314,9 +316,12 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   const imageUrls = new Map<string, string>()
   const networkJobs: { id: number; url: string; method: string; headers: Record<string, string>; body: string | null }[] = []
   const fontJobs: PluginFontJob[] = []
+  const exportJobs: PluginExportJob[] = []
   const systemFonts = options.systemFonts
   const systemFontAliases = new Map<string, string>()
+  const systemFaceImports = new Map<string, string>()
   let fontJobSerial = 0
+  let exportJobSerial = 0
   const documentId = editor.state.doc.id
   const sessionId = editor.sessionGeneration
   const commands: Command[] = []
@@ -404,14 +409,22 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     }
     return fontFamilies
   }
-  function resolveFamily(family: string): string | null {
+  function resolveFamilyDoc(family: string): string | null {
     const wanted = family.trim()
     if (wanted.toLowerCase() === 'noto sans sc') return 'default'
-    const alias = systemFontAliases.get(wanted.toLowerCase())
-    if (alias) return alias
     for (const [id, font] of Object.entries(families()))
       if (font.family === wanted || font.family.toLowerCase() === wanted.toLowerCase()) return id
     return null
+  }
+  /** Session imports alias per family+weight so static families keep separate
+   * faces per weight while variable families share one embedded face. */
+  function aliasFor(family: string, weight: number): string | null {
+    return systemFontAliases.get(`${family.trim().toLowerCase()}|${weight}`) ?? null
+  }
+  function familyLoaded(family: string): string | null {
+    const prefix = `${family.trim().toLowerCase()}|`
+    for (const [key, fontId] of systemFontAliases) if (key.startsWith(prefix)) return fontId
+    return resolveFamilyDoc(family)
   }
   /** Catalog face matching mirrors Figma's family+style request: exact family
    * (case-insensitive), then the named style, then the weight, then the
@@ -431,25 +444,43 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
    * other caller: face parsing, embedding rights, and the 24 MiB document
    * budget. Rejections surface to the plugin's loadFontAsync promise. */
   function importSystemFont(job: PluginFontJob, data: string, face: PluginSystemFontFace) {
-    const slug = (text: string) => text.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'font'
-    const result = execute('font.import', {
-      id: `font:sys:${slug(job.family)}-${slug(job.style)}`,
-      data,
-      faceIndex: face.index ?? 0,
-      embeddingAllowed: true,
-    }, true) as { id?: string; operations?: { method: string; result?: { id?: string } }[] }
-    // Mutating registry calls answer with the batch envelope, not the bare result.
-    const fontId = result.id ?? result.operations?.find(op => op.method === 'font.import')?.result?.id
-    if (!fontId) throw new PluginApiError('font_failed', 'font.import did not return a font id')
-    systemFontAliases.set(job.family.trim().toLowerCase(), fontId)
-    fontFamilies = null
+    const weight = WEIGHTS[job.style.trim().toLowerCase()] ?? 400
+    // One catalog face imports once; later weights of the same variable face
+    // reuse it (the text weight field drives the wght axis at render time).
+    let fontId = systemFaceImports.get(face.id)
+    if (!fontId) {
+      const slug = (text: string) => text.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'font'
+      // Mutating registry calls answer with the batch envelope, not the bare result.
+      const result = execute('font.import', {
+        id: `font:sys:${slug(job.family)}-${slug(job.style)}`,
+        data,
+        faceIndex: face.index ?? 0,
+        embeddingAllowed: true,
+      }, true) as { id?: string; operations?: { method: string; result?: { id?: string } }[] }
+      fontId = result.id ?? result.operations?.find(op => op.method === 'font.import')?.result?.id
+      if (!fontId) throw new PluginApiError('font_failed', 'font.import did not return a font id')
+      systemFaceImports.set(face.id, fontId)
+      fontFamilies = null
+    }
+    systemFontAliases.set(`${job.family.trim().toLowerCase()}|${weight}`, fontId)
     return { id: fontId }
+  }
+  /** Product CPU raster export (the same path as the export panel preview).
+   * The QuickJS transport caps the base64 payload, so large rasters reject. */
+  async function captureRasterExport(job: PluginExportJob) {
+    failIfReplaced()
+    const preview = await captureDesignPreview(editor.state.doc, { pageId: job.pageId, nodeIds: [job.nodeId], format: job.format, scale: job.scale })
+    const dataUrl = String(preview?.dataUrl ?? '')
+    const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
+    if (!base64) throw new PluginApiError('export_failed', 'Raster export did not return image bytes')
+    if (base64.length > PLUGIN_LIMITS.payloadBytes / 2) throw new PluginApiError('export_limit', `Raster export exceeds the plugin transport; lower the scale or use SVG`)
+    return { base64 }
   }
   function requireFont(family: string, style: string) {
     if (/italic/i.test(style)) throw new PluginApiError('unsupported_api', `Italic styles are not available (${style})`)
     const weight = WEIGHTS[style.trim().toLowerCase()]
     if (!weight) throw new PluginApiError('font_unavailable', `Font style ${style} is not available`)
-    const fontId = resolveFamily(family)
+    const fontId = aliasFor(family, weight) ?? resolveFamilyDoc(family)
     if (!fontId) throw new PluginApiError('font_unavailable', `Font ${family} is not loaded in this document`)
     return { fontId, weight }
   }
@@ -1089,8 +1120,11 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     takeNetwork: () => networkJobs.shift() ?? null,
     hasFontJobs: () => fontJobs.length > 0,
     takeFontJobs: () => fontJobs.shift() ?? null,
+    hasExportJobs: () => exportJobs.length > 0,
+    takeExportJobs: () => exportJobs.shift() ?? null,
     matchSystemFont,
     importSystemFont,
+    captureRasterExport,
     call(op: string, payload: unknown): unknown {
       if (closed) throw new PluginClosed(closeMessage)
       calls += 1
@@ -1230,7 +1264,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         if (/italic/i.test(style)) throw new PluginApiError('unsupported_api', `Italic styles are not available (${style})`)
         const weight = WEIGHTS[style.trim().toLowerCase()]
         if (!weight) throw new PluginApiError('font_unavailable', `Font style ${style} is not available`)
-        if (resolveFamily(family)) return { loaded: true }
+        if (familyLoaded(family)) return { loaded: true }
         if (systemFonts) {
           fontJobSerial += 1
           const id = `font-${fontJobSerial}`
@@ -1241,7 +1275,7 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
       }
       if (op === 'create') {
         const kind = body.kind
-        if (typeof kind !== 'string' || !KINDS.has(kind as Kind) || kind === 'slice' || kind === 'vector' || kind === 'group')
+        if (typeof kind !== 'string' || !KINDS.has(kind as Kind) || kind === 'vector' || kind === 'group')
           throw new PluginApiError('unsupported_api', `Cannot create ${String(kind)}`)
         ensureRoom()
         const id = crypto.randomUUID()
@@ -1418,6 +1452,20 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         const size = imageSize(stored.bytes, stored.mime)
         if (!size.width || !size.height) throw new PluginApiError('unsupported_api', 'Image size is available for PNG, JPEG, and GIF bytes')
         return size
+      }
+      if (op === 'loadAllPages') { flush(); execute('document.get', {}, false); return null }
+      if (op === 'exportBegin') {
+        flush()
+        const id = shortText(body.id, 'id', 80)
+        const format = String(body.format || 'PNG').toUpperCase()
+        if (format !== 'PNG' && format !== 'JPG') throw new PluginApiError('unsupported_api', 'Raster exportAsync supports PNG and JPG. PDF is not available.')
+        const scale = body.scale === undefined ? 1 : finite(body.scale, 'scale', 0.1, 4)
+        const result = execute('node.get', { id }, false) as { pageId?: string } | null
+        if (!result || typeof result.pageId !== 'string') throw new PluginApiError('invalid_value', `Node ${id} was not found`)
+        exportJobSerial += 1
+        const jobId = `export-${exportJobSerial}`
+        exportJobs.push({ id: jobId, nodeId: id, pageId: result.pageId, format: format === 'JPG' ? 'jpeg' : 'png', scale })
+        return { pending: jobId }
       }
       if (op === 'export') {
         flush()
