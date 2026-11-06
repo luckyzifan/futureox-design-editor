@@ -1,0 +1,628 @@
+import dataclasses
+from unittest.mock import ANY
+
+from converter import tree
+from converter.context import context
+from converter.style import *
+from figformat import fig2tree
+from sketchformat.layer_group import AbstractLayerGroup, Group
+from sketchformat.layer_shape import Oval, Rectangle
+from sketchformat.serialize.json import convert_object
+
+from .base import *
+
+
+def walk_layers(layer):
+    yield layer
+    if isinstance(layer, AbstractLayerGroup):
+        for child in layer.layers:
+            yield from walk_layers(child)
+
+
+def walk_json_layers(layer):
+    yield layer
+    for child in layer.get("layers", []):
+        yield from walk_json_layers(child)
+
+
+class TestConvertColor:
+    def test_color(self):
+        color = convert_color(FIG_COLOR[0])
+        assert color == SKETCH_COLOR[0]
+
+    def test_opacity(self):
+        color = convert_color(FIG_COLOR[0], 0.3)
+        assert color == dataclasses.replace(SKETCH_COLOR[0], alpha=0.3)
+
+
+class TestConvertFill:
+    def test_solid(self):
+        fill = convert_fill(
+            {},
+            {"type": "SOLID", "color": FIG_COLOR[0], "visible": True, "opacity": 0.9},
+        )
+        assert fill.color == SKETCH_COLOR[0]
+        assert fill.fillType == FillType.COLOR
+
+    def test_disabled(self):
+        fill = convert_fill(
+            {},
+            {"type": "SOLID", "color": FIG_COLOR[0], "visible": False, "opacity": 0.9},
+        )
+        assert fill.isEnabled == False
+
+    def test_image(self):
+        fill = convert_fill(
+            {},
+            {
+                "type": "IMAGE",
+                "image": {"filename": "abcdef"},
+                "visible": True,
+                "imageScaleMode": "FIT",
+            },
+        )
+        assert fill.fillType == FillType.PATTERN
+        assert fill.isEnabled
+        assert fill.image._ref == "images/abcdef"
+        assert fill.patternFillType == PatternFillType.FIT
+
+    def test_transparent_image(self):
+        fill = convert_fill(
+            {},
+            {
+                "type": "IMAGE",
+                "image": {"filename": "abcdef"},
+                "visible": True,
+                "imageScaleMode": "FIT",
+                "opacity": 0.5,
+            },
+        )
+        assert fill.fillType == FillType.PATTERN
+        assert fill.isEnabled
+        assert fill.image._ref == "images/abcdef"
+        assert fill.patternFillType == PatternFillType.FIT
+        assert fill.contextSettings.opacity == 0.5
+
+    def test_linear_gradient(self):
+        fill = convert_fill(
+            {},
+            {
+                "type": "GRADIENT_LINEAR",
+                "transform": Matrix([[0.7071, -0.7071, 0.6], [0.7071, 0.7071, -0.1]]),
+                "stops": [
+                    {"color": FIG_COLOR[0], "position": 0},
+                    {"color": FIG_COLOR[1], "position": 0.4},
+                    {"color": FIG_COLOR[2], "position": 1},
+                ],
+                "visible": True,
+            },
+        )
+        assert fill.fillType == FillType.GRADIENT
+        assert fill.isEnabled
+        assert fill.gradient.gradientType == GradientType.LINEAR
+        assert fill.gradient.to == Point(0.7071135624381276, 0.1414227124876255)
+        assert getattr(fill.gradient, "from") == Point(0, 0.8485362749257531)
+
+        assert fill.gradient.stops == [
+            GradientStop(color=SKETCH_COLOR[0], position=0),
+            GradientStop(color=SKETCH_COLOR[1], position=0.4),
+            GradientStop(color=SKETCH_COLOR[2], position=1),
+        ]
+
+    def test_radial_gradient(self):
+        fill = convert_fill(
+            {"size": {"x": 10, "y": 5}},
+            {
+                "type": "GRADIENT_RADIAL",
+                "transform": Matrix([[0.7071, -0.7071, 0.6], [0.7071, 0.7071, -0.1]]),
+                "stops": [
+                    {"color": FIG_COLOR[0], "position": 0},
+                    {"color": FIG_COLOR[1], "position": 0.4},
+                    {"color": FIG_COLOR[2], "position": 1},
+                ],
+                "visible": True,
+            },
+        )
+        assert fill.fillType == FillType.GRADIENT
+        assert fill.isEnabled
+        assert fill.gradient.gradientType == GradientType.RADIAL
+        assert fill.gradient.to == Point(0.7071135624381276, 0.1414227124876255)
+        assert getattr(fill.gradient, "from") == Point(0.3535567812190638, 0.4949794937066893)
+        assert fill.gradient.elipseLength == 1
+        assert fill.gradient.stops == [
+            GradientStop(color=SKETCH_COLOR[0], position=0),
+            GradientStop(color=SKETCH_COLOR[1], position=0.4),
+            GradientStop(color=SKETCH_COLOR[2], position=1),
+        ]
+
+    def test_angular_gradient(self):
+        fill = convert_fill(
+            {"size": {"x": 10, "y": 5}},
+            {
+                "type": "GRADIENT_ANGULAR",
+                "transform": Matrix([[0.7071, -0.7071, 0.6], [0.7071, 0.7071, -0.1]]),
+                "stops": [
+                    {"color": FIG_COLOR[0], "position": 0},
+                    {"color": FIG_COLOR[1], "position": 0.4},
+                    {"color": FIG_COLOR[2], "position": 1},
+                ],
+                "visible": True,
+            },
+        )
+        assert fill.fillType == FillType.GRADIENT
+        assert fill.isEnabled
+        assert fill.gradient.gradientType == GradientType.ANGULAR
+        assert fill.gradient.stops == [
+            GradientStop(color=SKETCH_COLOR[0], position=0.875),
+            GradientStop(color=SKETCH_COLOR[1], position=0.275),
+            GradientStop(color=SKETCH_COLOR[2], position=0.87499),
+        ]
+
+    def test_offset_gradient(self):
+        """A gradient with the first stop position != 0 or last stop != 1.
+
+        In .fig this is interpreted as stretching that color up to the start, while in
+        Sketch this causes the size of the gradient to change. We fix it by adding a fake
+        stop at 0. Same for the last position
+        """
+        fill = convert_fill(
+            {"size": {"x": 10, "y": 5}},
+            {
+                "type": "GRADIENT_RADIAL",
+                "transform": Matrix([[0.7071, -0.7071, 0.6], [0.7071, 0.7071, -0.1]]),
+                "stops": [
+                    {"color": FIG_COLOR[1], "position": 0.4},
+                    {"color": FIG_COLOR[2], "position": 0.8},
+                ],
+                "visible": True,
+            },
+        )
+        assert fill.gradient.stops == [
+            GradientStop(color=SKETCH_COLOR[1], position=0),
+            GradientStop(color=SKETCH_COLOR[1], position=0.4),
+            GradientStop(color=SKETCH_COLOR[2], position=0.8),
+            GradientStop(color=SKETCH_COLOR[2], position=1),
+        ]
+
+
+class TestConvertBorder:
+    def test_convert_border(self):
+        border = convert_border(
+            {
+                "strokeAlign": "CENTER",
+                "strokeWeight": 5,
+            },
+            {"type": "SOLID", "color": FIG_COLOR[0], "visible": True, "opacity": 0.9},
+        )
+        assert border.fillType == FillType.COLOR
+        assert border.isEnabled
+        assert border.color == SKETCH_COLOR[0]
+        assert border.thickness == 5
+        assert border.position == BorderPosition.CENTER
+
+    def test_convert_border_without_align(self):
+        border = convert_border(
+            {
+                "strokeWeight": 5,
+            },
+            {"type": "SOLID", "color": FIG_COLOR[0], "visible": True, "opacity": 0.9},
+        )
+        assert border.fillType == FillType.COLOR
+        assert border.isEnabled
+        assert border.color == SKETCH_COLOR[0]
+        assert border.thickness == 5
+        assert border.position == BorderPosition.CENTER
+
+    def test_convert_individual_borders(self):
+        border = convert_border(
+            {
+                "strokeAlign": "INSIDE",
+                "strokeWeight": 1,
+                "borderStrokeWeightsIndependent": True,
+                "borderLeftWeight": 2,
+                "borderTopWeight": 4,
+                "borderRightWeight": 8,
+                "borderBottomWeight": 16,
+            },
+            {"type": "SOLID", "color": FIG_COLOR[0], "visible": True, "opacity": 0.9},
+        )
+        assert border.fillType == FillType.COLOR
+        assert border.isEnabled
+        assert border.color == SKETCH_COLOR[0]
+        assert border.thickness == 16
+        assert border.position == BorderPosition.INSIDE
+        assert border.sides == BorderSides(
+            leftInset=14,
+            topInset=12,
+            rightInset=8,
+            bottomInset=0,
+        )
+
+    def test_disabled_border(self):
+        border = convert_border(
+            {
+                "strokeAlign": "CENTER",
+                "strokeWeight": 5,
+            },
+            {"type": "SOLID", "color": FIG_COLOR[0], "visible": False, "opacity": 0.9},
+        )
+        assert border.isEnabled == False
+
+    def test_border_gradient(self):
+        border = convert_border(
+            {
+                "size": {"x": 50, "y": 0},
+                "strokeAlign": "CENTER",
+                "strokeWeight": 1,
+            },
+            {
+                "type": "GRADIENT_RADIAL",
+                "transform": Matrix([[1, 0, 0.5], [0, 1, 2]]),
+                "stops": [
+                    {"color": FIG_COLOR[0], "position": 0},
+                    {"color": FIG_COLOR[1], "position": 1},
+                ],
+                "visible": True,
+            },
+        )
+        assert border.fillType == FillType.GRADIENT
+        assert border.isEnabled
+        assert border.gradient.gradientType == GradientType.RADIAL
+        assert border.gradient.to == Point(0.5, -1.5)
+        assert getattr(border.gradient, "from") == Point(0, -1.5)
+
+        # (width+2*stroke) / (height+2*stroke)
+        assert border.gradient.elipseLength == 2 / 52
+
+
+class TestConvertCorners:
+    def test_non_top_left_independent_corner_is_not_dropped(self):
+        style = convert(
+            {
+                **FIG_BASE,
+                "type": "ROUNDED_RECTANGLE",
+                "rectangleTopRightCornerRadius": 8,
+            }
+        )
+
+        assert style.corners.radii == [0, 8, 0, 0]
+
+    def test_uniform_independent_rectangle_corners_do_not_collapse_to_zero(self):
+        style = convert(
+            {
+                **FIG_BASE,
+                "type": "ROUNDED_RECTANGLE",
+                "rectangleTopLeftCornerRadius": 8,
+                "rectangleTopRightCornerRadius": 8,
+                "rectangleBottomRightCornerRadius": 8,
+                "rectangleBottomLeftCornerRadius": 8,
+            }
+        )
+
+        assert style.corners.radii == [8]
+
+    def test_preserves_smoothing_amount(self):
+        style = convert(
+            {**FIG_BASE, "type": "ROUNDED_RECTANGLE", "cornerRadius": 25, "cornerSmoothing": 0.6}
+        )
+
+        assert style.corners == StyleCorners(
+            radii=[25],
+            style=CornerStyle.SMOOTH,
+            prefersConcentric=False,
+            smoothing=0.6,
+        )
+
+        assert convert_object(style)["corners"] == {
+            "_class": "MSImmutableStyleCorners",
+            "radii": [25],
+            "style": CornerStyle.SMOOTH.value,
+            "prefersConcentric": False,
+            "smoothing": 0.6,
+        }
+
+    def test_uniform_vectors_use_compact_radii(self):
+        style = convert({**FIG_BASE, "type": "VECTOR", "cornerRadius": 25, "cornerSmoothing": 1})
+
+        assert style.corners.radii == [25]
+
+    def test_normalizes_float32_smoothing_noise(self):
+        style = convert(
+            {
+                **FIG_BASE,
+                "type": "ROUNDED_RECTANGLE",
+                "cornerRadius": 25,
+                "cornerSmoothing": 0.6000000238418579,
+            }
+        )
+
+        assert style.corners.smoothing == 0.6
+
+
+class TestConvertContextSettings:
+    def test_blend(self):
+        cs = context_settings({"blendMode": "DARKEN", "opacity": 0.7})
+        assert cs.blendMode == BlendMode.DARKEN
+        assert cs.opacity == 0.7
+
+    def test_pass_through(self):
+        cs = context_settings({"blendMode": "NORMAL", "opacity": 0.5})
+        assert cs.blendMode == BlendMode.NORMAL
+        assert cs.opacity == 0.5
+
+    def test_solid(self):
+        cs = context_settings({"blendMode": "NORMAL", "opacity": 1})
+        assert cs.blendMode == BlendMode.NORMAL
+        assert cs.opacity == 0.99
+
+
+class TestConvertEffects:
+    def test_inner_shadow(self):
+        effects = convert_effects(
+            {
+                "effects": [
+                    {
+                        "type": "INNER_SHADOW",
+                        "radius": 5,
+                        "offset": {"x": 3, "y": 6},
+                        "spread": 2,
+                        "color": FIG_COLOR[1],
+                        "visible": True,
+                    }
+                ]
+            }
+        )
+        [shadow] = effects["shadows"]
+        assert shadow.blurRadius == 5
+        assert shadow.offsetX == 3
+        assert shadow.offsetY == 6
+        assert shadow.spread == 2
+        assert shadow.color == SKETCH_COLOR[1]
+
+    def test_shadow(self):
+        effects = convert_effects(
+            {
+                "effects": [
+                    {
+                        "type": "DROP_SHADOW",
+                        "radius": 5,
+                        "offset": {"x": 3, "y": 6},
+                        "spread": 2,
+                        "color": FIG_COLOR[1],
+                        "visible": True,
+                    }
+                ]
+            }
+        )
+        [shadow] = effects["shadows"]
+        assert shadow.blurRadius == 5
+        assert shadow.offsetX == 3
+        assert shadow.offsetY == 6
+        assert shadow.spread == 2
+        assert shadow.color == SKETCH_COLOR[1]
+        assert shadow.isEnabled
+
+    def test_hidden_shadow(self):
+        effects = convert_effects(
+            {
+                "effects": [
+                    {
+                        "type": "DROP_SHADOW",
+                        "radius": 5,
+                        "offset": {"x": 3, "y": 6},
+                        "spread": 2,
+                        "color": FIG_COLOR[1],
+                        "visible": False,
+                    }
+                ]
+            }
+        )
+        [shadow] = effects["shadows"]
+        assert shadow.blurRadius == 5
+        assert shadow.offsetX == 3
+        assert shadow.offsetY == 6
+        assert shadow.spread == 2
+        assert shadow.color == SKETCH_COLOR[1]
+        assert not shadow.isEnabled
+
+    def test_shadow_spread_is_optional(self):
+        effects = convert_effects(
+            {
+                "effects": [
+                    {
+                        "type": "DROP_SHADOW",
+                        "radius": 5,
+                        "offset": {"x": 3, "y": 6},
+                        "color": FIG_COLOR[1],
+                        "visible": True,
+                    }
+                ]
+            }
+        )
+        [shadow] = effects["shadows"]
+        assert shadow.blurRadius == 5
+        assert shadow.offsetX == 3
+        assert shadow.offsetY == 6
+        assert shadow.spread == 0
+        assert shadow.color == SKETCH_COLOR[1]
+
+    def test_blur(self):
+        effects = convert_effects(
+            {
+                "effects": [
+                    {
+                        "type": "FOREGROUND_BLUR",
+                        "radius": 5,
+                    }
+                ]
+            }
+        )
+        blur = effects["blurs"][0]
+        assert blur.isEnabled
+        assert blur.type == BlurType.GAUSSIAN
+        assert blur.radius == 2.5
+
+    def test_bg_blur(self):
+        effects = convert_effects(
+            {
+                "effects": [
+                    {
+                        "type": "BACKGROUND_BLUR",
+                        "radius": 5,
+                    }
+                ]
+            }
+        )
+        blur = effects["blurs"][0]
+        assert blur.isEnabled
+        assert blur.type == BlurType.BACKGROUND
+        assert blur.radius == 2.5
+
+    def test_zero_radius_blur(self):
+        effects = convert_effects(
+            {
+                "effects": [
+                    {
+                        "type": "BACKGROUND_BLUR",
+                        "radius": 0,
+                        "visible": True,
+                    }
+                ]
+            }
+        )
+        blur = effects["blurs"][0]
+        assert blur.isEnabled
+        assert blur.type == BlurType.BACKGROUND
+        assert blur.radius == 0
+        assert not blur.isProgressive
+
+    def test_zero_radius_progressive_blur(self):
+        effects = convert_effects(
+            {
+                "effects": [
+                    {
+                        "type": "FOREGROUND_BLUR",
+                        "radius": 0,
+                        "blurOpType": "PROGRESSIVE",
+                        "startRadius": 4,
+                        "startOffset": {"x": 0, "y": 0},
+                        "endOffset": {"x": 0, "y": 1},
+                    }
+                ]
+            }
+        )
+        blur = effects["blurs"][0]
+        assert blur.radius == 0
+        assert blur.isProgressive
+        assert [s.color.alpha for s in blur.gradient.stops] == [1, 1]
+
+    def test_unsupported_effect_is_ignored(self, warnings):
+        effects = convert_effects(
+            {
+                **FIG_BASE,
+                "effects": [
+                    {
+                        "type": "NOISE",
+                    }
+                ],
+            }
+        )
+
+        assert effects == {"blurs": [], "shadows": []}
+        warnings.assert_called_once_with("STY006", ANY, props=["NOISE"])
+
+
+class TestConvertImageFill:
+    def test_cropped_image(self):
+        image_filled = {
+            **FIG_BASE,
+            "type": "ELLIPSE",
+            "fillPaints": [
+                {
+                    "type": "IMAGE",
+                    "image": {"filename": "abcdef"},
+                    "visible": True,
+                    "imageScaleMode": "FIT",
+                    "transform": Matrix([[2, 0, 1], [0, 0.5, -2], [0, 0, 1]]),
+                    "originalImageWidth": 100,
+                    "originalImageHeight": 100,
+                },
+                {"type": "SOLID", "color": FIG_COLOR[0], "visible": True, "opacity": 0.9},
+            ],
+        }
+        group = tree.convert_node(image_filled, "CANVAS")
+
+        assert isinstance(group, Group)
+        layer = group.layers[0]
+        image = group.layers[1]
+
+        assert isinstance(layer, Oval)
+        assert len(layer.style.fills) == 1
+        layer_fill = layer.style.fills[0]
+        assert layer_fill.color == SKETCH_COLOR[0]
+
+        assert isinstance(image, Rectangle)
+        assert len(image.style.fills) == 1
+        image_fill = image.style.fills[0]
+        assert image_fill.image._ref == "images/abcdef"
+        assert image_fill.patternFillType == PatternFillType.FIT
+
+        assert image.frame.width == 50
+        assert image.frame.height == 200
+        assert image.frame.x == -50
+        assert image.frame.y == 400
+
+
+class TestUnsupportedEffectsInTree:
+    def test_layer_is_not_skipped_when_effect_is_unsupported(self, warnings):
+        layer = tree.convert_node(
+            {
+                **FIG_BASE,
+                "type": "RECTANGLE",
+                "effects": [
+                    {
+                        "type": "GRAIN",
+                    }
+                ],
+            },
+            "CANVAS",
+        )
+
+        assert isinstance(layer, Rectangle)
+        assert layer.style.blurs == []
+        assert layer.style.shadows == []
+        warnings.assert_called_once_with("STY006", ANY, props=["GRAIN"])
+
+    def test_layer_is_not_skipped_when_blur_radius_is_zero(self, warnings):
+        layer = tree.convert_node(
+            {
+                **FIG_BASE,
+                "type": "ROUNDED_RECTANGLE",
+                "effects": [
+                    {
+                        "type": "BACKGROUND_BLUR",
+                        "radius": 0.0,
+                        "visible": True,
+                    }
+                ],
+            },
+            "CANVAS",
+        )
+
+        assert isinstance(layer, Rectangle)
+        assert [b.radius for b in layer.style.blurs] == [0]
+        warnings.assert_not_called()
+
+    def test_noise_and_grain_doc_keeps_text_layers(self, warnings):
+        figtree, id_map = fig2tree.convert_fig("tests/data/noise_and_grain.fig", None)
+        context.init(None, id_map, "DISPLAY_P3")
+        figpage = figtree["document"]["children"][0]
+        page = tree.convert_node(figpage, "DOCUMENT")
+        serialized_page = convert_object(page)
+        text_layers = [
+            layer for layer in walk_json_layers(serialized_page) if layer["_class"] == "text"
+        ]
+
+        assert len(text_layers) == 2
+        warnings.assert_any_call("STY006", ANY, props=["NOISE"])
+        warnings.assert_any_call("STY006", ANY, props=["GRAIN"])

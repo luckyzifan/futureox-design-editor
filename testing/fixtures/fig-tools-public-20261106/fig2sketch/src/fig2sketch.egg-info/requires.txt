@@ -1,0 +1,13 @@
+Pillow==12.3.0
+fonttools==4.61.0
+appdirs==1.4.4
+zstd==1.5.5.1
+
+[dev]
+black==26.10.1
+mypy==1.20.2
+pytest==9.0.3
+fig-kiwi==0.1.2
+
+[fast]
+fig-kiwi==0.1.2

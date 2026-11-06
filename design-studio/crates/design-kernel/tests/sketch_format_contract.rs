@@ -48,3 +48,21 @@ fn mixed_name_and_unrepresented_image_edit_is_rejected_by_source_codec(){
  after.validate().unwrap();
  let error=interop::export_sketch_layer_edit(&before,&after,ID).unwrap_err();assert!(error.to_string().contains("imagePaint"));assert_eq!(before.nodes[ID].name,"Original");
 }
+
+#[test]
+fn baked_export_converts_scaled_leaves_the_default_export_refuses(){
+ let mut doc=interop::import_sketch_report(&archive(json!({"_class":"rectangle","do_objectID":ID,"name":"Scaled","frame":{"x":10,"y":5,"width":40,"height":40},"style":{"fills":[{"isEnabled":true,"fillType":0,"color":{"red":0,"green":0,"blue":1,"alpha":1}}]}}))).unwrap().document;
+ let node=doc.nodes.get_mut(ID).unwrap();
+ node.transform=futureox_design_kernel::math::Transform([2.,0.,0.,1.,10.,5.]);
+ assert!(interop::export_sketch(&doc).is_err(),"default export must keep refusing scaled placements");
+ let (bytes,baked)=interop::export_sketch_baked(&doc).unwrap();
+ assert_eq!(baked,1,"exactly the scaled leaf is baked");
+ let back=interop::import_sketch(&bytes).unwrap();
+ let baked_node=back.nodes.values().find(|n|n.name=="Scaled").expect("baked node reimported");
+ // World geometry is preserved: 40x40 with scaleX 2 becomes an 80-wide
+ // explicit vector at the same world origin.
+ assert!((baked_node.width-80.).abs()<1e-6,"width {}",baked_node.width);
+ assert!((baked_node.height-40.).abs()<1e-6,"height {}",baked_node.height);
+ assert!((baked_node.transform.0[4]-10.).abs()<1e-6,"x {}",baked_node.transform.0[4]);
+ assert!((baked_node.transform.0[5]-5.).abs()<1e-6,"y {}",baked_node.transform.0[5]);
+}

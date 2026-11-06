@@ -1,0 +1,470 @@
+from .base import *
+from converter import tree, symbol, utils
+from converter.config import config
+from sketchformat.layer_group import (
+    ClippingBehavior,
+    GroupBehavior,
+    VariantProperty,
+    VariantPropertyValue,
+)
+from sketchformat.layer_shape import Rectangle
+import pytest
+from converter.context import context
+
+
+@pytest.fixture
+def enable_variants(monkeypatch):
+    monkeypatch.setattr(config, "import_variants", True)
+
+
+FIG_SYMBOL = {
+    **FIG_BASE,
+    "type": "SYMBOL",
+    "children": [],
+}
+
+FIG_COMPONENT_SET = {
+    **FIG_BASE,
+    "type": "FRAME",
+    "name": "Button",
+    "guid": (10, 10),
+    "isStateGroup": True,
+    "resizeToFit": False,
+    "stateGroupPropertyValueOrders": [
+        {"property": "Size", "values": ["Small", "Large"]},
+        {"property": "State", "values": ["Default", "Hover"]},
+    ],
+    "componentPropDefs": [
+        {"id": (100, 1), "name": "Size", "type": "VARIANT"},
+        {"id": (100, 2), "name": "State", "type": "VARIANT"},
+    ],
+    "children": [
+        {
+            **FIG_BASE,
+            "type": "SYMBOL",
+            "name": "Size=Small, State=Default",
+            "guid": (11, 11),
+            "children": [],
+            "parent": {"guid": (10, 10)},
+            "variantPropSpecs": [
+                {"propDefId": (100, 1), "value": "Small"},
+                {"propDefId": (100, 2), "value": "Default"},
+            ],
+        },
+        {
+            **FIG_BASE,
+            "type": "SYMBOL",
+            "name": "Size=Large, State=Hover",
+            "guid": (12, 12),
+            "children": [],
+            "parent": {"guid": (10, 10)},
+            "variantPropSpecs": [
+                {"propDefId": (100, 1), "value": "Large"},
+                {"propDefId": (100, 2), "value": "Hover"},
+            ],
+        },
+    ],
+    "parent": {"guid": (1, 1)},
+}
+
+
+@pytest.fixture
+def empty_context(monkeypatch):
+    context.init(None, {}, "DISPLAY_P3")
+
+
+def test_rounded_corners(no_prototyping, empty_context):
+    master = tree.convert_node(
+        {**FIG_SYMBOL, "rectangleTopLeftCornerRadius": 5},
+        "",
+    )
+
+    assert master._class == "symbolMaster"
+    assert master.style.corners.radii[0] == 5
+
+
+def test_master_clips_to_bounds(no_prototyping, empty_context):
+    master = tree.convert_node(FIG_SYMBOL, "")
+
+    assert master.clippingBehavior == ClippingBehavior.CLIP_TO_BOUNDS
+
+
+def test_master_does_not_clip_when_mask_disabled(no_prototyping, empty_context):
+    master = tree.convert_node({**FIG_SYMBOL, "frameMaskDisabled": True}, "")
+
+    assert master.clippingBehavior == ClippingBehavior.NONE
+
+
+def test_inner_shadows_children_of_symbol(no_prototyping, empty_context):
+    g = tree.convert_node(
+        {
+            **FIG_SYMBOL,
+            "effects": [
+                {
+                    "type": "INNER_SHADOW",
+                    "radius": 4,
+                    "spread": 0,
+                    "offset": {"x": 1, "y": 3},
+                    "color": FIG_COLOR[1],
+                    "visible": True,
+                }
+            ],
+            "children": [{**FIG_BASE, "type": "ROUNDED_RECTANGLE"}],
+        },
+        "",
+    )
+
+    assert g._class == "symbolMaster"
+    assert g.style.shadows == [
+        Shadow(
+            blurRadius=4, offsetX=1, offsetY=3, spread=0, color=SKETCH_COLOR[1], isInnerShadow=True
+        )
+    ]
+
+
+def test_variant_name_uses_fig_name_as_is(no_prototyping, empty_context, enable_variants):
+    variants = {
+        **FIG_BASE,
+        "type": "FRAME",
+        "name": "Starch",
+        "guid": (22, 22),
+        "isStateGroup": True,
+        "stateGroupPropertyValueOrders": [
+            {"property": "Property 1", "values": ["Potato", "Orange"]},
+            {"property": "Property 2", "values": ["Something", "Another"]},
+        ],
+        "children": [{**FIG_SYMBOL, "name": "Property 1=Potato, Property 2=Another"}],
+        "parent": {"guid": (22, 22)},
+    }
+    context._node_by_id[(22, 22)] = variants
+
+    master = tree.convert_node(variants["children"][0], "FRAME")
+
+    assert master.name == "Property 1=Potato, Property 2=Another"
+
+
+# --- build_variant_properties ---
+
+
+def test_build_variant_properties():
+    props = symbol.build_variant_properties(FIG_COMPONENT_SET)
+
+    assert len(props) == 2
+    assert props[0].name == "Size"
+    assert [v.name for v in props[0].values] == ["Small", "Large"]
+    assert props[1].name == "State"
+    assert [v.name for v in props[1].values] == ["Default", "Hover"]
+
+
+def test_build_variant_properties_ids_are_deterministic():
+    props_a = symbol.build_variant_properties(FIG_COMPONENT_SET)
+    props_b = symbol.build_variant_properties(FIG_COMPONENT_SET)
+
+    assert props_a[0].do_objectID == props_b[0].do_objectID
+    assert props_a[0].values[0].do_objectID == props_b[0].values[0].do_objectID
+
+
+# --- Full pipeline: variant data on converted layers ---
+
+
+@pytest.fixture
+def component_set_context(monkeypatch):
+    page = {
+        **FIG_BASE,
+        "type": "CANVAS",
+        "name": "Page",
+        "guid": (1, 1),
+        "children": [FIG_COMPONENT_SET],
+        "parent": {"guid": (0, 0)},
+        "backgroundEnabled": False,
+        "backgrounds": [],
+    }
+    id_map = {}
+    _collect_ids(page, id_map)
+    context.init(None, id_map, "DISPLAY_P3")
+
+
+def _collect_ids(node, id_map):
+    id_map[tuple(node["guid"])] = node
+    for child in node.get("children", []):
+        _collect_ids(child, id_map)
+
+
+def test_variant_specs_on_symbol_master(no_prototyping, component_set_context, enable_variants):
+    master = tree.convert_node(FIG_COMPONENT_SET["children"][0], "FRAME")
+
+    assert master.variantSpecs is not None
+    assert len(master.variantSpecs) == 2
+
+
+def test_variant_ids_match(no_prototyping, component_set_context, enable_variants):
+    master = tree.convert_node(FIG_COMPONENT_SET["children"][0], "FRAME")
+
+    props = symbol.build_variant_properties(FIG_COMPONENT_SET)
+
+    prop_ids = {p.do_objectID for p in props}
+    val_ids = {v.do_objectID for p in props for v in p.values}
+
+    for prop_id, val_id in master.variantSpecs.items():
+        assert prop_id in prop_ids
+        assert val_id in val_ids
+
+
+def test_variant_name_preserved(no_prototyping, component_set_context, enable_variants):
+    master = tree.convert_node(FIG_COMPONENT_SET["children"][0], "FRAME")
+
+    assert master.name == "Size=Small, State=Default"
+
+
+def test_non_variant_symbol_unaffected(no_prototyping, empty_context):
+    master = tree.convert_node({**FIG_SYMBOL}, "")
+
+    assert master.variantSpecs is None
+
+
+def test_variant_properties_on_frame(no_prototyping, component_set_context, enable_variants):
+    sketch_frame = tree.convert_node(FIG_COMPONENT_SET, "CANVAS")
+
+    assert sketch_frame.groupBehavior == 3
+    assert sketch_frame.variantProperties is not None
+    assert len(sketch_frame.variantProperties) == 2
+    assert sketch_frame.variantProperties[0].name == "Size"
+    assert sketch_frame.variantProperties[1].name == "State"
+
+
+def _styled_component_set(color, opacity, with_fill=False, weight=1.0):
+    styled = {
+        **FIG_COMPONENT_SET,
+        "strokePaints": [{"type": "SOLID", "color": color, "opacity": opacity, "visible": True}],
+        "strokeWeight": weight,
+    }
+    if with_fill:
+        styled["fillPaints"] = [
+            {"type": "SOLID", "color": FIG_COLOR[0], "opacity": 0.9, "visible": True}
+        ]
+    return styled
+
+
+FIG_DEFAULT_VARIANT_SET_STROKE = {
+    "r": 0.5921568870544434,
+    "g": 0.278431385755539,
+    "b": 1.0,
+    "a": 1,
+}
+
+
+def test_variant_set_default_styling_stripped(
+    no_prototyping, component_set_context, enable_variants
+):
+    """A variant set arrives with a purple stroke and no fill.
+
+    Sketch's overlay draws that same appearance for an unstyled variant set, so
+    dropping it is visually neutral and leaves the layer clean.
+    """
+    styled_set = _styled_component_set(FIG_DEFAULT_VARIANT_SET_STROKE, 1)
+
+    sketch_frame = tree.convert_node(styled_set, "CANVAS")
+
+    assert sketch_frame.groupBehavior == GroupBehavior.VARIANT_SET
+    assert sketch_frame.style.borders == []
+
+
+def test_variant_set_custom_styling_kept(no_prototyping, component_set_context, enable_variants):
+    """Styling the user chose is theirs, so only the fig default is dropped."""
+    styled_set = _styled_component_set(FIG_COLOR[1], 0.7)
+
+    sketch_frame = tree.convert_node(styled_set, "CANVAS")
+
+    assert sketch_frame.groupBehavior == GroupBehavior.VARIANT_SET
+    assert sketch_frame.style.borders[0].color == SKETCH_COLOR[1]
+
+
+def test_variant_set_default_color_but_wider_stroke_kept(
+    no_prototyping, component_set_context, enable_variants
+):
+    """Widening the stroke is styling too, even though the color is still the
+    default."""
+    styled_set = _styled_component_set(FIG_DEFAULT_VARIANT_SET_STROKE, 1, weight=13.0)
+
+    sketch_frame = tree.convert_node(styled_set, "CANVAS")
+
+    assert len(sketch_frame.style.borders) == 1
+    assert sketch_frame.style.borders[0].thickness == 13.0
+
+
+def test_variant_set_default_stroke_with_fill_kept(
+    no_prototyping, component_set_context, enable_variants
+):
+    """A fill means the user styled the variant set, so the stroke stays too."""
+    styled_set = _styled_component_set(FIG_DEFAULT_VARIANT_SET_STROKE, 1, with_fill=True)
+
+    sketch_frame = tree.convert_node(styled_set, "CANVAS")
+
+    assert sketch_frame.style.fills[0].color == SKETCH_COLOR[0]
+    assert len(sketch_frame.style.borders) == 1
+
+
+def test_variant_set_styling_kept_when_variants_disabled(no_prototyping, component_set_context):
+    """With variant import off the frame is not a variant set, so nothing is dropped."""
+    styled_set = _styled_component_set(FIG_DEFAULT_VARIANT_SET_STROKE, 1)
+
+    sketch_frame = tree.convert_node(styled_set, "CANVAS")
+
+    assert sketch_frame.groupBehavior == GroupBehavior.FRAME
+    assert len(sketch_frame.style.borders) == 1
+
+
+def test_hidden_component_set_emits_variant_set(no_prototyping, empty_context, enable_variants):
+    component_set = {**FIG_COMPONENT_SET, "parent": {"guid": (2, 2)}}
+    components_page = {
+        **FIG_BASE,
+        "type": "CANVAS",
+        "name": "Internal Only Canvas",
+        "guid": (2, 2),
+        "internalOnly": True,
+        "children": [component_set],
+        "parent": {"guid": (0, 0)},
+    }
+    fig_instance = {
+        **FIG_BASE,
+        "type": "INSTANCE",
+        "name": "Button instance",
+        "guid": (20, 20),
+        "symbolData": {
+            "symbolID": FIG_COMPONENT_SET["children"][0]["guid"],
+            "symbolOverrides": [],
+        },
+        "derivedSymbolData": [],
+        "resizeToFit": True,
+    }
+    id_map = {}
+    _collect_ids(components_page, id_map)
+    context.init(components_page, id_map, "DISPLAY_P3")
+
+    sketch_instance = tree.convert_node(fig_instance, "FRAME")
+
+    assert sketch_instance._class == "symbolInstance"
+    assert len(context.symbols_page.layers) == 1
+
+    variant_set = context.symbols_page.layers[0]
+    assert variant_set._class == "group"
+    assert variant_set.name == "Button"
+    assert variant_set.groupBehavior == 3
+    assert variant_set.variantProperties is not None
+    assert len(variant_set.layers) == 2
+
+    variant_master = variant_set.layers[0]
+    assert variant_master._class == "symbolMaster"
+    assert variant_master.variantSpecs is not None
+    assert sketch_instance.symbolID == variant_master.symbolID
+
+
+def test_symbol_in_non_variant_frame_imported_with_flag_on(
+    no_prototyping, empty_context, enable_variants
+):
+    """With variant import on, a symbol nested in a regular (non-isStateGroup) frame on the
+    hidden components page is still imported: its master is hoisted to the Symbols page as a
+    plain symbol master (not a variant set) and the instance links to it."""
+    inner_symbol = {
+        **FIG_BASE,
+        "type": "SYMBOL",
+        "name": "Icon",
+        "guid": (30, 30),
+        "children": [],
+        "parent": {"guid": (31, 31)},
+    }
+    regular_frame = {
+        **FIG_BASE,
+        "type": "FRAME",
+        "name": "Group",
+        "guid": (31, 31),
+        "resizeToFit": False,
+        "children": [inner_symbol],
+        "parent": {"guid": (2, 2)},
+    }
+    components_page = {
+        **FIG_BASE,
+        "type": "CANVAS",
+        "name": "Internal Only Canvas",
+        "guid": (2, 2),
+        "internalOnly": True,
+        "children": [regular_frame],
+        "parent": {"guid": (0, 0)},
+    }
+    fig_instance = {
+        **FIG_BASE,
+        "type": "INSTANCE",
+        "name": "Icon instance",
+        "guid": (40, 40),
+        "symbolData": {"symbolID": (30, 30), "symbolOverrides": []},
+        "derivedSymbolData": [],
+        "resizeToFit": True,
+    }
+    id_map = {}
+    _collect_ids(components_page, id_map)
+    context.init(components_page, id_map, "DISPLAY_P3")
+
+    sketch_instance = tree.convert_node(fig_instance, "FRAME")
+
+    assert sketch_instance._class == "symbolInstance"
+    assert context.symbols_page is not None
+    masters = [layer for layer in context.symbols_page.layers if layer._class == "symbolMaster"]
+    assert len(masters) == 1
+    assert masters[0].name == "Icon"
+    assert masters[0].variantSpecs is None
+    assert sketch_instance.symbolID == masters[0].symbolID
+
+
+def test_variant_specs_from_variantPropSpecs(
+    no_prototyping, component_set_context, enable_variants
+):
+    """variantSpecs are built from variantPropSpecs + componentPropDefs, not name parsing."""
+    master = tree.convert_node(FIG_COMPONENT_SET["children"][0], "FRAME")
+    props = symbol.build_variant_properties(FIG_COMPONENT_SET)
+
+    prop_by_name = {p.name: p for p in props}
+    val_by_name = {(p.name, v.name): v for p in props for v in p.values}
+
+    size_prop_id = prop_by_name["Size"].do_objectID
+    small_val_id = val_by_name[("Size", "Small")].do_objectID
+    state_prop_id = prop_by_name["State"].do_objectID
+    default_val_id = val_by_name[("State", "Default")].do_objectID
+
+    assert master.variantSpecs[size_prop_id] == small_val_id
+    assert master.variantSpecs[state_prop_id] == default_val_id
+
+
+def test_non_variant_frame_keeps_default_group_behavior(no_prototyping, empty_context):
+    fig_frame = {**FIG_BASE, "type": "FRAME", "resizeToFit": False, "children": []}
+    sketch_frame = tree.convert_node(fig_frame, "CANVAS")
+
+    assert sketch_frame.groupBehavior == 1
+
+
+def test_variants_disabled_member_stays_a_symbol_in_place(no_prototyping, component_set_context):
+    """With the flag off, a component-set member on a visible page stays a symbol master in
+    place — it is not turned into an instance — and carries no variant metadata."""
+    master = tree.convert_node(FIG_COMPONENT_SET["children"][0], "FRAME")
+
+    assert master._class == "symbolMaster"
+    assert master.variantSpecs is None
+
+
+def test_variants_disabled_uses_pre_variant_slash_path_name(no_prototyping, component_set_context):
+    """With the flag off, members keep the pre-variant "<Set>/<value>/<value>" naming
+    instead of the bare variant-assignment name, so they stay uniquely named."""
+    master = tree.convert_node(FIG_COMPONENT_SET["children"][0], "FRAME")
+
+    assert master.name == "Button/Small/Default"
+
+
+def test_variants_disabled_state_group_is_regular_group(no_prototyping, component_set_context):
+    """With the flag off, an isStateGroup frame on a visible page imports as a regular group:
+    default groupBehavior, no variant properties, and its members stay as symbol masters in
+    place (not moved to the Symbols page as instances)."""
+    sketch_frame = tree.convert_node(FIG_COMPONENT_SET, "CANVAS")
+
+    assert sketch_frame.groupBehavior == 1
+    assert sketch_frame.variantProperties is None
+    assert {layer._class for layer in sketch_frame.layers} == {"symbolMaster"}
+    assert context.symbols_page is None

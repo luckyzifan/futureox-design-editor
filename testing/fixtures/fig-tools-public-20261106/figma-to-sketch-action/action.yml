@@ -1,0 +1,19 @@
+name: 'Figma to sketch conversion'
+description: 'Figma to sketch conversion'
+author: 'italia'
+
+inputs:
+  files:
+    description: 'Figma files to convert'
+    required: true
+  output_files:
+    description: 'Sketch files to produce'
+    required: true
+
+runs:
+  using: 'docker'
+  image: 'Dockerfile'
+
+branding:
+  icon: 'activity'
+  color: 'white'

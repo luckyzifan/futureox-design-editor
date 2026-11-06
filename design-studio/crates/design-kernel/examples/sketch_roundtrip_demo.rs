@@ -22,7 +22,7 @@ fn main() {
         .nth(1)
         .expect("usage: <in.sketch> <out.sketch> [kinds...]");
     let out_path = std::env::args().nth(2).expect("out path");
-    let args: Vec<String> = std::env::args().skip(3).collect();
+    let args: Vec<String> = std::env::args().skip(3).filter(|a| a != "--bake").collect();
     let top_n: Option<usize> = args
         .first()
         .and_then(|a| a.strip_prefix("top:"))
@@ -155,7 +155,15 @@ fn main() {
         doc
     };
 
-    let exported = futureox_design_kernel::interop::export_sketch(&doc).expect("export");
+    let bake = std::env::args().any(|a| a == "--bake");
+    let (exported, baked) = if bake {
+        futureox_design_kernel::interop::export_sketch_baked(&doc).expect("export")
+    } else {
+        (futureox_design_kernel::interop::export_sketch(&doc).expect("export"), 0)
+    };
+    if bake {
+        eprintln!("[bake] baked {baked} leaf vector nodes");
+    }
     std::fs::write(&out_path, &exported).unwrap();
     let back = futureox_design_kernel::interop::import_sketch(&exported).expect("reimport");
     let texts: usize = back

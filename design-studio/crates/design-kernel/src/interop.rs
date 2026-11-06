@@ -6398,6 +6398,213 @@ pub fn validate_sketch_new_layer_for_source_save(node: &Node) -> Result<()> {
     Ok(())
 }
 
+/// Opt-in affine baking for the compatibility exporter, mirroring sketch-hq
+/// fig2sketch's `apply_transform`: a leaf vector node whose placement Sketch
+/// cannot represent (any scale or shear) keeps its visual geometry by baking
+/// the linear transform into the curve points and recomputing the frame from
+/// the mapped unit box. This trades the editable transform for
+/// convertibility; `export_sketch` keeps refusing such nodes. Non-vector
+/// kinds, nodes with children, and singular matrices still take the default
+/// refusal path so nothing is silently distorted. Returns the archive and the
+/// number of baked nodes.
+
+/// Approximate a parametric arc with cubic segments (standard k = 4/3·tan(Δ/4)),
+/// used only by the opt-in `export_sketch_baked` pre-pass so arc-authored
+/// leaves can become explicit vector geometry. The default exporter keeps
+/// refusing parametric arcs instead of approximating silently.
+fn baked_arc_commands(center: [f64; 2], radius: [f64; 2], start: f64, sweep: f64) -> Vec<crate::path::Command> {
+    let segments = ((sweep.abs() / std::f64::consts::FRAC_PI_2).ceil() as usize).clamp(1, 32);
+    let delta = sweep / segments as f64;
+    let k = (4. / 3.) * (delta / 4.).tan();
+    let direction = delta.signum();
+    let point = |angle: f64| crate::math::Point::new(center[0] + angle.cos() * radius[0], center[1] + angle.sin() * radius[1]);
+    let tangent = |angle: f64| crate::math::Point::new(-angle.sin() * radius[0] * direction, angle.cos() * radius[1] * direction);
+    let mut commands = Vec::with_capacity(segments);
+    for index in 0..segments {
+        let a0 = start + delta * index as f64;
+        let a1 = a0 + delta;
+        let p0 = point(a0);
+        let p3 = point(a1);
+        let t0 = tangent(a0);
+        let t1 = tangent(a1);
+        commands.push(crate::path::Command::Cubic(
+            crate::math::Point::new(p0.x + t0.x * k, p0.y + t0.y * k),
+            crate::math::Point::new(p3.x - t1.x * k, p3.y - t1.y * k),
+            p3,
+        ));
+    }
+    commands
+}
+
+fn baked_explicit_path(path: &crate::path::Path) -> crate::path::Path {
+    let mut commands = Vec::with_capacity(path.commands.len() * 2);
+    for command in &path.commands {
+        match command {
+            crate::path::Command::Arc { center, radius, start, sweep } => {
+                commands.extend(baked_arc_commands([center.x, center.y], [radius.x, radius.y], *start, *sweep))
+            }
+            other => commands.push(other.clone()),
+        }
+    }
+    crate::path::Path { commands }
+}
+
+pub fn export_sketch_baked(doc: &Document) -> Result<(Vec<u8>, usize)> {
+    let source = boolean_worksets::source_view(doc)?;
+    let mut doc: Document = source.as_ref().clone();
+    let mut baked = 0usize;
+    for node in doc.nodes.values_mut() {
+        if !node.children.is_empty() {
+            continue;
+        }
+        // Two refusal classes are addressed for leaves: non-rigid placements
+        // (any scale or shear) and parametric arc/rounded polygons that the
+        // default exporter rejects without explicit vector conversion.
+        let needs_affine = sketch_placement(node).is_none();
+        let needs_parametric = matches!(node.kind.as_str(), "ellipse" | "star" | "polygon")
+            && (node.arc.is_some() || node.corner_radius != 0.);
+        if !needs_affine && !needs_parametric {
+            continue;
+        }
+        if node.vector_geometry.is_none() {
+            // Parametric leaves become explicit vector geometry first,
+            // mirroring fig2sketch's shape_path conversion. Mixed corner
+            // radii fall back to sharp corners; that loss is recorded here.
+            let corners = [
+                crate::math::Point::new(0., 0.),
+                crate::math::Point::new(node.width, 0.),
+                crate::math::Point::new(node.width, node.height),
+                crate::math::Point::new(0., node.height),
+            ];
+            let path = match node.kind.as_str() {
+                "rect" | "rectangle" if node.radii.iter().all(|r| (r - node.radii[0]).abs() < 1e-9) && node.radii[0] > 0. => {
+                    crate::authoring_shapes::rounded_polygon(&corners, node.radii[0])
+                }
+                "rect" | "rectangle" => crate::path::Path {
+                    commands: vec![
+                        crate::path::Command::Move(corners[0]),
+                        crate::path::Command::Line(corners[1]),
+                        crate::path::Command::Line(corners[2]),
+                        crate::path::Command::Line(corners[3]),
+                        crate::path::Command::Close,
+                    ],
+                },
+                "ellipse" => crate::authoring_shapes::ellipse_arc(
+                    node.width,
+                    node.height,
+                    node.arc.unwrap_or(crate::scene::EllipseArc { start_angle: 0., sweep_angle: std::f64::consts::TAU, inner_radius: 0. }),
+                ),
+                "star" | "polygon" => {
+                    // Pixel-space equivalent of the exporter's normalized
+                    // star/polygon point math (interop.rs shape emission).
+                    let count = node.points.clamp(3, 128) * if node.kind == "star" { 2 } else { 1 };
+                    let star = node.kind == "star";
+                    let ring: Vec<crate::math::Point> = (0..count)
+                        .map(|i| {
+                            let angle = i as f64 * std::f64::consts::TAU / count as f64 - std::f64::consts::FRAC_PI_2;
+                            let radius = if star && i % 2 != 0 { node.inner_radius } else { 1. };
+                            crate::math::Point::new(
+                                node.width / 2. + node.width / 2. * radius * angle.cos(),
+                                node.height / 2. + node.height / 2. * radius * angle.sin(),
+                            )
+                        })
+                        .collect();
+                    if node.corner_radius > 0. {
+                        crate::authoring_shapes::rounded_polygon(&ring, node.corner_radius)
+                    } else {
+                        crate::path::Path {
+                            commands: std::iter::once(crate::path::Command::Move(ring[0]))
+                                .chain(ring[1..].iter().map(|p| crate::path::Command::Line(*p)))
+                                .chain(std::iter::once(crate::path::Command::Close))
+                                .collect(),
+                        }
+                    }
+                }
+                _ => continue,
+            };
+            match crate::vector_geometry::encode(&baked_explicit_path(&path)) {
+                Ok(fill) => {
+                    node.kind = "vector".into();
+                    node.vector_geometry = Some(std::sync::Arc::new(crate::vector_geometry::VectorGeometry {
+                        fill_rule: "nonzero".into(),
+                        fill,
+                        stroke: None,
+                    }));
+                }
+                Err(_) => continue,
+            }
+        }
+        // The exporter's parametric guard keys on the node kind, so an
+        // ellipse/star/polygon that already carries explicit geometry still
+        // needs the vector kind to export.
+        if needs_parametric {
+            node.kind = "vector".into();
+        }
+        if !needs_affine {
+            baked += 1; // explicit-conversion case: geometry now Sketch-editable
+            continue;
+        }
+        let [a, b, c, d, x, y] = node.transform.0;
+        let determinant = a * d - b * c;
+        if !determinant.is_finite() || determinant.abs() < 1e-12 {
+            continue; // singular: keep the explicit refusal instead of collapsing
+        }
+        let corners = [
+            (a * 0. + c * 0., b * 0. + d * 0.),
+            (a * node.width, c * node.width),
+            (a * node.width + c * node.height, b * node.width + d * node.height),
+            (c * node.height, d * node.height),
+        ];
+        let min_x = corners.iter().map(|p| p.0).fold(f64::INFINITY, f64::min);
+        let min_y = corners.iter().map(|p| p.1).fold(f64::INFINITY, f64::min);
+        let max_x = corners.iter().map(|p| p.0).fold(f64::NEG_INFINITY, f64::max);
+        let max_y = corners.iter().map(|p| p.1).fold(f64::NEG_INFINITY, f64::max);
+        let geometry = node.vector_geometry.take().unwrap();
+        let mut geometry = (*geometry).clone();
+        let bake = |values: &mut [f64], offset: usize| {
+            let (px, py) = (values[offset], values[offset + 1]);
+            values[offset] = a * px + c * py - min_x;
+            values[offset + 1] = b * px + d * py - min_y;
+        };
+        fn bake_curves(
+            curves: &mut [crate::vector_geometry::Curve],
+            bake: &impl Fn(&mut [f64], usize),
+        ) {
+            for curve in curves.iter_mut() {
+                match curve {
+                    crate::vector_geometry::Curve::Move(p)
+                    | crate::vector_geometry::Curve::Line(p) => bake(p, 0),
+                    crate::vector_geometry::Curve::Quad(p) => {
+                        bake(p, 0);
+                        bake(p, 2);
+                    }
+                    crate::vector_geometry::Curve::Cubic(p) => {
+                        bake(p, 0);
+                        bake(p, 2);
+                        bake(p, 4);
+                    }
+                    crate::vector_geometry::Curve::Close => {}
+                }
+            }
+        }
+        let mut fills = std::mem::take(&mut geometry.fill);
+        bake_curves(&mut fills, &bake);
+        geometry.fill = fills;
+        if let Some(strokes) = geometry.stroke.as_mut() {
+            let mut moved = std::mem::take(strokes);
+            bake_curves(&mut moved, &bake);
+            geometry.stroke = Some(moved);
+        }
+        node.transform = crate::math::Transform([1., 0., 0., 1., x + min_x, y + min_y]);
+        node.width = max_x - min_x;
+        node.height = max_y - min_y;
+        node.vector_geometry = Some(std::sync::Arc::new(geometry));
+        baked += 1;
+    }
+    let bytes = export_sketch(&doc)?;
+    Ok((bytes, baked))
+}
+
 /// Export the kernel document as a `.sketch` bundle Sketch can open.
 pub fn export_sketch(doc: &Document) -> Result<Vec<u8>> {
     let source = boolean_worksets::source_view(doc)?;
