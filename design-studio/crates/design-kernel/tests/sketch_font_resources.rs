@@ -67,12 +67,12 @@ fn replace_document_with_parts(bytes: &[u8], document: &Value, parts: &[(&str, &
         let mut entry = source.by_index(i).unwrap();
         let mut data = Vec::new();
         entry.read_to_end(&mut data).unwrap();
-        if entry.name() == "document.json" {
+        if entry.name_raw() == b"document.json" {
             data = serde_json::to_vec(document).unwrap();
         }
         output
             .start_file(
-                entry.name(),
+                String::from_utf8_lossy(entry.name_raw()),
                 zip::write::SimpleFileOptions::default()
                     .compression_method(zip::CompressionMethod::Deflated),
             )

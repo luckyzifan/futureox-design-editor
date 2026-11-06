@@ -101,7 +101,10 @@ pub(crate) fn read(bytes: &[u8]) -> Result<BTreeMap<String, Vec<u8>>> {
         let mut file = zip
             .by_index(index)
             .map_err(|e| Error::Archive(e.to_string()))?;
-        let name = file.name().to_owned();
+        let name = file
+            .name()
+            .map_err(|e| Error::Archive(e.to_string()))?
+            .into_owned();
         let path = name.strip_suffix('/').unwrap_or(&name);
         if !safe_path(path) || !names.insert(path.to_owned()) {
             return Err(Error::Invalid(format!(

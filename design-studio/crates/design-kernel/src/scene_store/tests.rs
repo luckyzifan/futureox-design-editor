@@ -304,7 +304,7 @@ fn full_topology_model_supports_random_reads_and_complete_semantic_roundtrip() {
         cancel: &cancel,
     };
     let document: Document = serde_json::from_reader(BufReader::new(&mut input)).unwrap();
-    let source_hash = format!("{:x}", input.hash.finalize());
+    let source_hash = (input.hash.finalize()).iter().map(|b| format!("{b:02x}")).collect::<String>();
     assert_eq!(source_hash, expected);
     assert_eq!(document.nodes.len(), 124447);
     let stage = &document.nodes[&document.pages[0].children[0]];

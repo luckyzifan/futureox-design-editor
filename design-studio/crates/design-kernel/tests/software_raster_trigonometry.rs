@@ -37,12 +37,12 @@ fn assert_oracle(name: &str, inputs: impl IntoIterator<Item = f32>) {
     }
     assert_eq!(count, expected["count"].as_u64().unwrap(), "{name}");
     assert_eq!(
-        format!("{:x}", input_hash.finalize()),
+        (input_hash.finalize()).iter().map(|b| format!("{b:02x}")).collect::<String>(),
         expected["inputSha256"].as_str().unwrap(),
         "{name}: oracle input identity"
     );
     assert_eq!(
-        format!("{:x}", output_hash.finalize()),
+        (output_hash.finalize()).iter().map(|b| format!("{b:02x}")).collect::<String>(),
         expected["expectedOutputSha256"].as_str().unwrap(),
         "{name}: independently generated output bits"
     );

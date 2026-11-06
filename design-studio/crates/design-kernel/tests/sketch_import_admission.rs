@@ -536,7 +536,7 @@ fn native_text_behaviour_uses_shared_sizing_and_retains_source_text_metadata() {
         let mut zip = zip::ZipArchive::new(std::io::Cursor::new(exported)).unwrap();
         let mut json = String::new();
         use std::io::Read;
-        let name = zip.file_names().find(|name| name.starts_with("pages/") && name.ends_with(".json")).unwrap().to_owned();
+        let name = zip.file_names().filter_map(Result::ok).find(|name| name.starts_with("pages/") && name.ends_with(".json")).unwrap().into_owned();
         zip.by_name(&name).unwrap().read_to_string(&mut json).unwrap();
         let value: Value = serde_json::from_str(&json).unwrap();
         let layer = &value["layers"][0];
@@ -566,7 +566,7 @@ fn native_text_behaviour_uses_shared_sizing_and_retains_source_text_metadata() {
         futureox_design_kernel::layout::resolve(&mut measured, &fonts).unwrap();
         let exported = interop::export_sketch(&measured).unwrap();
         let mut zip = zip::ZipArchive::new(std::io::Cursor::new(exported)).unwrap();
-        let name = zip.file_names().find(|name| name.starts_with("pages/") && name.ends_with(".json")).unwrap().to_owned();
+        let name = zip.file_names().filter_map(Result::ok).find(|name| name.starts_with("pages/") && name.ends_with(".json")).unwrap().into_owned();
         let mut page_json = String::new();
         zip.by_name(&name).unwrap().read_to_string(&mut page_json).unwrap();
         let page: Value = serde_json::from_str(&page_json).unwrap();

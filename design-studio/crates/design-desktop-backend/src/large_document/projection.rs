@@ -359,7 +359,7 @@ pub(super) fn import_source_roots(roots: Vec<Value>, masters: BTreeMap<String,Va
         let mut image_bytes=0u64;
         for i in 0..archive.len() {
             let file=archive.by_index_raw(i).map_err(issue)?;
-            if file.name().starts_with("images/"){image_bytes=image_bytes.saturating_add(file.size());}
+            if file.name_raw().starts_with(b"images/"){image_bytes=image_bytes.saturating_add(file.size());}
             if image_bytes>16*1024*1024{break;}
         }
         let large=image_bytes>16*1024*1024;

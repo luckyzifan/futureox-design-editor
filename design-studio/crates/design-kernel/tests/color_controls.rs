@@ -33,7 +33,7 @@ fn sketch_bitmap_colors_match_native_reference_and_roundtrip_edits() {
     // importer also accepts old basename-only refs, so a self-roundtrip alone
     // cannot catch a missing images/ prefix or a lost native bitmap class.
     let mut archive=zip::ZipArchive::new(std::io::Cursor::new(&encoded)).unwrap();
-    let page=archive.file_names().find(|n|n.starts_with("pages/") && n.ends_with(".json")).unwrap().to_owned();
+    let page=archive.file_names().filter_map(Result::ok).find(|n|n.starts_with("pages/") && n.ends_with(".json")).unwrap().into_owned();
     let value:serde_json::Value=serde_json::from_reader(archive.by_name(&page).unwrap()).unwrap();
     for board in value["layers"].as_array().unwrap() {
         let bitmap=&board["layers"][0];

@@ -1,4 +1,5 @@
 //! Modeled Sketch source-storage regressions, not real-device/GPU acceptance.
+use crate::digest_hex;
 use super::*;
 use std::sync::atomic::AtomicUsize;
 
@@ -22,7 +23,7 @@ fn indexed_spool_preserves_exact_bytes_and_hash_across_short_reads() {
     let mut tee=IndexedSpool{inner:Short(std::io::Cursor::new(bytes.to_vec())),output:&mut output,hash:&mut hash,bytes:&mut count};
     let index=large_json::scan(&mut tee,1024*1024,|_,_|Ok(())).unwrap();
     assert_eq!(count,bytes.len() as u64);assert_eq!(index.bytes,count);assert_eq!(output,bytes);
-    assert_eq!(format!("{:x}",hash.finalize()),digest(bytes));
+    assert_eq!(digest_hex((hash.finalize()).as_slice()),digest(bytes));
 }
 
 struct Fixture {
@@ -100,7 +101,7 @@ impl Fixture {
         let mut archive = zip::ZipArchive::new(File::open(output).unwrap()).unwrap();
         (0..archive.len()).map(|i| {
             let mut member = archive.by_index(i).unwrap();
-            let name = member.name().to_owned();
+            let name = String::from_utf8_lossy(member.name_raw()).into_owned();
             let mut bytes = Vec::new();
             member.read_to_end(&mut bytes).unwrap();
             (name, bytes)
@@ -239,7 +240,7 @@ fn complete_topology_batched_canvas_matches_individual_conversion() {
         fn write(&mut self,b:&[u8])->io::Result<usize>{self.0.update(b);Ok(b.len())}
         fn flush(&mut self)->io::Result<()>{Ok(())}
     }
-    let hash=|doc:&Document|{let mut h=JsonHash(Sha256::new());serde_json::to_writer(&mut h,doc).unwrap();format!("{:x}",h.0.finalize())};
+    let hash=|doc:&Document|{let mut h=JsonHash(Sha256::new());serde_json::to_writer(&mut h,doc).unwrap();digest_hex((h.0.finalize()).as_slice())};
     let before=hash(&old.0);let after=hash(&new.0);
     eprintln!("full authored model sha256 before={before} after={after}");
     if before!=after {
