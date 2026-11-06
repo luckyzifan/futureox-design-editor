@@ -1,4 +1,6 @@
 
+2026-11-06 fig2sketch 第五轮：归档准入取消固定上限、改按进程内存预算动态推导（entry=budget/8、document=budget/4、total=input=budget，各自钳位；200:1 比例守卫、前端 1GiB 业务下限、capacity 文档准入保留）；修复 frame_placement 的 f32 旋转误判（1e-12→1e-6，FIG 45° 旋转 0.70710677 曾被当缩放拒绝）；烘焙递归补 visited 集合覆盖孤儿森林。预算断言测试集中到独立进程文件 sketch_archive_admission.rs（configure 与环境变量初始化在同进程并行下有竞态）。四份有料素材全通（最大 19,402 节点→3.44MB、15 页，sketchtool 打开 78 画板）；147 项契约全过。
+
 2026-11-06 fig2sketch 第四轮：`export_sketch_baked` 改为递归子树传播（剪切自由=保留旋转+纯缩放下传；剪切+无盒面填充=塌缩 AABB+全线性下传；剪切+有填充=保持拒绝），FIG OUTLINE 遮罩重映射为 Sketch outline 遮罩并禁用遮罩自身填充/描边（Figma 不渲染遮罩样式而 Sketch 渲染，禁用后两侧一致、数据保留）；luminance 仍拒绝。「有料素材」9k–19k 节点文件语义障碍清空，最后卡导出 16 MiB/条目预算（2026-10-23 记录的政策，未擅自翻转）。148 项契约全过，默认导出政策未动。
 
 2026-11-06 fig2sketch 对照第三轮收口：矢量网络编码器按 stroke 优先走曲线却比对 fill（vector_geometry.rs `network()`），独立描边拓扑一律拒绝；`export_sketch_baked` 新增规范化把独立描边塌缩到填充轮廓（空描边+活跃描边 paint 仍拒绝）。381 节点真实 .fig 全链贯通：18 节点烘焙 → 51KB .sketch → 原生 sketchtool 打开（4 页 11 画板）。新增独立描边单测；sketch+fig 契约 147 项全过。默认导出三类 fail-loud 政策未动。

@@ -27,11 +27,16 @@ pub fn frame_placement(
 ) -> Option<([f64; 4], f64, [bool; 2])> {
     let [a, b, c, d, x, y] = transform.0;
     let determinant = a * d - b * c;
+    // FIG sources carry f32-authored matrices: a 45-degree rotation arrives
+    // as 0.7071067690849304 with ~6e-8 orthonormality error, so the rigid
+    // test must tolerate f32 precision instead of demanding exact f64
+    // orthonormality. Genuine scale/shear stay far above this window.
+    const EPSILON: f64 = 1e-6;
     if [a, b, c, d, x, y].iter().any(|value| !value.is_finite())
-        || (a * a + b * b - 1.).abs() > 1e-12
-        || (c * c + d * d - 1.).abs() > 1e-12
-        || (a * c + b * d).abs() > 1e-12
-        || (determinant.abs() - 1.).abs() > 1e-12
+        || (a * a + b * b - 1.).abs() > EPSILON
+        || (c * c + d * d - 1.).abs() > EPSILON
+        || (a * c + b * d).abs() > EPSILON
+        || (determinant.abs() - 1.).abs() > EPSILON
     {
         return None;
     }

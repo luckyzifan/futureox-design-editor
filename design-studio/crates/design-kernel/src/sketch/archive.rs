@@ -3,21 +3,39 @@ use std::collections::{BTreeMap, HashSet};
 use std::io::{Cursor, Read, Write};
 
 pub(crate) const MAX_ENTRIES: usize = 4096;
-pub(crate) const MAX_ENTRY_BYTES: u64 = 16 * 1024 * 1024;
-// Official MSFontData is inline base64 in document.json: 24 MiB of
-// bounded font data needs 32 MiB before document metadata. Other entries
-// keep the tighter limit; the total archive budget still applies.
-pub(crate) const MAX_DOCUMENT_BYTES: u64 = 40 * 1024 * 1024;
-fn entry_limit(name: &str) -> u64 {
-    if name == "document.json" { MAX_DOCUMENT_BYTES } else { MAX_ENTRY_BYTES }
+/// Archive admission derives from the trusted process memory budget instead
+/// of fixed caps: bigger hosts admit bigger single-page archives and
+/// CORE_DOCUMENT_MEMORY_BYTES overrides everything. The zip-bomb ratio guard
+/// and the encoded-input floor still apply, and capacity's document
+/// admission (budget/16 serialized reserve) remains the final word, so these
+/// are windows, not walls. Floors keep tiny pinned test budgets from
+/// admitting nothing; ceilings stay inside WASM addressability.
+pub(crate) fn max_entry_bytes() -> u64 {
+    (crate::capacity::memory_budget_bytes() / 8).clamp(4 * 1024 * 1024, 1024 * 1024 * 1024)
 }
-// Compressed-file admission policy, independent of expansion and export safety.
-// Must match frontend import-input-policy.ts IMPORT_INPUT_MAX_BYTES.
-pub(crate) const MAX_INPUT_BYTES: usize = 1024 * 1024 * 1024;
-pub(crate) const MAX_TOTAL_BYTES: u64 = 64 * 1024 * 1024;
+/// document.json legitimately carries inline MSFontData: 24 MiB of bounded
+/// font bytes base64 needs 32 MiB before metadata, so it keeps a wider
+/// window than ordinary entries.
+pub(crate) fn max_document_bytes() -> u64 {
+    (crate::capacity::memory_budget_bytes() / 4).clamp(16 * 1024 * 1024, 2 * 1024 * 1024 * 1024)
+}
+fn entry_limit(name: &str) -> u64 {
+    if name == "document.json" { max_document_bytes() } else { max_entry_bytes() }
+}
+/// Encoded input floor matches frontend import-input-policy.ts
+/// IMPORT_INPUT_MAX_BYTES; the process memory budget can widen it.
+pub(crate) fn max_input_bytes() -> usize {
+    crate::capacity::memory_budget_bytes()
+        .clamp(1024 * 1024 * 1024, crate::capacity::WASM_ADDRESS_BYTES)
+        as usize
+}
+pub(crate) fn max_total_bytes() -> u64 {
+    crate::capacity::memory_budget_bytes()
+        .clamp(16 * 1024 * 1024, crate::capacity::WASM_ADDRESS_BYTES)
+}
 
 fn check_input_len(len: usize) -> Result<()> {
-    if len > MAX_INPUT_BYTES {
+    if len > max_input_bytes() {
         return Err(Error::Limit("archive input"));
     }
     Ok(())
@@ -105,7 +123,7 @@ pub(crate) fn read(bytes: &[u8]) -> Result<BTreeMap<String, Vec<u8>>> {
             return Err(Error::Limit("compression ratio"));
         }
         total = total.checked_add(size).ok_or(Error::Limit("total bytes"))?;
-        if total > MAX_TOTAL_BYTES {
+        if total > max_total_bytes() {
             return Err(Error::Limit("total bytes"));
         }
         let mut data = Vec::new();
@@ -139,7 +157,7 @@ pub(crate) fn write(files: &BTreeMap<String, Vec<u8>>) -> Result<Vec<u8>> {
             return Err(Error::Limit("entry bytes"));
         }
         total += data.len() as u64;
-        if total > MAX_TOTAL_BYTES {
+        if total > max_total_bytes() {
             return Err(Error::Limit("total bytes"));
         }
         writer
@@ -153,7 +171,7 @@ pub(crate) fn write(files: &BTreeMap<String, Vec<u8>>) -> Result<Vec<u8>> {
         .finish()
         .map_err(|e| Error::Archive(e.to_string()))?
         .into_inner();
-    if bytes.len() as u64 > MAX_TOTAL_BYTES {
+    if bytes.len() as u64 > max_total_bytes() {
         return Err(Error::Limit("archive output"));
     }
     Ok(bytes)
@@ -166,23 +184,25 @@ mod input_policy_tests {
     #[test]
     fn compressed_input_admission_boundaries_without_allocation() {
         for len in [0, 32 * 1024 * 1024 - 1, 32 * 1024 * 1024,
-            32 * 1024 * 1024 + 1, MAX_INPUT_BYTES - 1, MAX_INPUT_BYTES] {
+            1024 * 1024 * 1024 - 1, max_input_bytes()] {
             assert!(check_input_len(len).is_ok(), "admission rejected {len}");
         }
-        for len in [MAX_INPUT_BYTES + 1, usize::MAX] {
-            assert!(matches!(check_input_len(len), Err(Error::Limit("archive input"))));
-        }
+        assert!(matches!(check_input_len(max_input_bytes() + 1), Err(Error::Limit("archive input"))));
+        assert!(matches!(check_input_len(usize::MAX), Err(Error::Limit("archive input"))));
         // Admission is not proof that an archive is valid or can be expanded.
         assert!(read(&[]).is_err());
     }
 
     #[test]
-    fn expansion_and_export_limits_remain_independent() {
-        assert_eq!(MAX_INPUT_BYTES, 1_073_741_824);
-        assert_eq!(MAX_TOTAL_BYTES, 67_108_864);
-        assert_eq!(MAX_ENTRY_BYTES, 16_777_216);
-        assert_eq!(MAX_DOCUMENT_BYTES, 41_943_040);
+    fn limits_derive_from_the_process_memory_budget() {
+        let budget = crate::capacity::memory_budget_bytes();
+        assert_eq!(max_input_bytes() as u64, budget.clamp(1_073_741_824, crate::capacity::WASM_ADDRESS_BYTES));
+        assert_eq!(max_total_bytes(), budget.clamp(16_777_216, crate::capacity::WASM_ADDRESS_BYTES));
+        assert_eq!(max_entry_bytes(), (budget / 8).clamp(4_194_304, 1_073_741_824));
+        assert_eq!(max_document_bytes(), (budget / 4).clamp(16_777_216, 2_147_483_648));
         assert_eq!(MAX_ENTRIES, 4096);
         assert_eq!(MAX_RATIO, 200);
+        // document.json keeps its wider window at every budget.
+        assert!(entry_limit("document.json") >= entry_limit("pages/x.json"));
     }
 }
