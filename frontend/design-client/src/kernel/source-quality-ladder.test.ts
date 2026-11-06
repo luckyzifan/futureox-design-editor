@@ -1,4 +1,4 @@
-import {expect,test} from 'vitest'
+import {describe,expect,test} from 'vitest'
 import {SourceQualityLadder} from './source-quality-ladder'
 import {backingCoversSettledSource,coveredSourceDetail,improvesSourceZoom,retainedZoomOut,sourceTileBringsDetail,visibleSourceDensity} from './source-viewport-plan'
 import type {ResidentAcknowledgement} from './resident-presentation'
@@ -78,4 +78,34 @@ test('zooming out reuses only resident pixels covering the full viewport at devi
  expect(retainedZoomOut([left,{...right,x:16}],view,size,2)).toBeUndefined()
  expect(retainedZoomOut([left,right],view,size,3)).toBeUndefined()
  expect(retainedZoomOut([left,right],{...view,x:-1},size,2)).toBeUndefined()
+})
+
+describe('proactive outward seed', () => {
+  test('floors the ladder without a rejected raster and escalates bounded', () => {
+    const ladder = new SourceQualityLadder()
+    ladder.seed(0.6, 2.4)
+    expect(ladder.scale).toBe(0.6)
+    // Presenting the seeded tier escalates toward the original, never past it.
+    expect(ladder.presented(0.6)).toBe(true)
+    expect(ladder.scale!).toBeGreaterThan(0.6)
+    expect(ladder.scale!).toBeLessThanOrEqual(2.4)
+    while (!ladder.limited) {
+      const next = ladder.scale!
+      if (!ladder.presented(next)) break
+      expect(ladder.scale!).toBeLessThanOrEqual(2.4)
+    }
+    expect(ladder.limited).toBe(true)
+  })
+  test('a rejected seeded tier halves further instead of resetting to full', () => {
+    const ladder = new SourceQualityLadder()
+    ladder.seed(0.6, 2.4)
+    expect(ladder.rejected(0.6, new Error('GPU surface budget exceeded'))).toBe(true)
+    expect(ladder.scale!).toBeLessThan(0.6)
+    expect(ladder.scale!).toBeGreaterThanOrEqual(0.001)
+  })
+  test('seeds above the original are ignored', () => {
+    const ladder = new SourceQualityLadder()
+    ladder.seed(3, 2)
+    expect(ladder.scale).toBeUndefined()
+  })
 })

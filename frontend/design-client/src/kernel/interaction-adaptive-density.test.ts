@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { INTERACTION_ADAPTIVE_DENSITY_BUDGET, interactionAdaptiveDensityEnabled, interactionAdaptiveScale } from './interaction-adaptive-density'
+import { INTERACTION_ADAPTIVE_DENSITY_BUDGET, interactionAdaptiveDensityEnabled, interactionAdaptiveScale, outwardInteractionScale } from './interaction-adaptive-density'
 
 const BUDGET = INTERACTION_ADAPTIVE_DENSITY_BUDGET
 
@@ -55,5 +55,21 @@ describe('interaction adaptive gesture density (Figma viewer §2.4 stepping)', (
     expect(bounds.width * bounds.height * scale * scale).toBeLessThanOrEqual(BUDGET)
     // divisor is a power of two times sqrt-scaled: 4^ceil keeps the lattice stable
     expect([49.6 / 8, 49.6 / 16, 49.6 / 4]).toContain(scale)
+  })
+})
+
+describe('wheel zoom-out lane', () => {
+  test('seeds the stepped density without the global pointer-gesture flag', () => {
+    vi.stubEnv('VITE_DESIGN_INTERACTION_ADAPTIVE_DENSITY', '0')
+    const wide = { width: 2560, height: 1440 }
+    const full = 2.4 // ~5.5x the 8M pixel budget
+    // The pointer lane stays untouched when the flag is off.
+    expect(interactionAdaptiveScale(full, wide, true, false)).toBe(full)
+    // The outward lane steps down without the flag.
+    const stepped = outwardInteractionScale(full, wide.width, wide.height)
+    expect(stepped).toBeLessThan(full)
+    expect(wide.width * wide.height * stepped * stepped).toBeLessThanOrEqual(BUDGET)
+    // Within the budget nothing is reduced in either lane.
+    expect(outwardInteractionScale(0.5, wide.width, wide.height)).toBe(0.5)
   })
 })

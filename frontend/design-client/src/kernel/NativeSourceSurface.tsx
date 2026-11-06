@@ -16,6 +16,7 @@ import {cpuTileBlitOrigin} from './cpu-tile-frame'
 import {SourceRenderWork} from './source-render-work'
 import {sourceTileRetirement} from './source-tile-retirement'
 import {SourceQualityLadder,sourceRasterLimit} from './source-quality-ladder'
+import { outwardInteractionScale } from './interaction-adaptive-density'
 import {useDevicePixelRatio} from './presentation'
 import type {ResidentAcknowledgement} from './resident-presentation'
 import type {ResidentFrame} from './gpu/resident-presenter'
@@ -678,6 +679,16 @@ export function NativeSourceSurface(props:Props){
         continuousZoom=false;zoomingIn=false
       }
       priorView=currentView
+      // Proactive outward density: the reactive ladder only finds a viable
+      // density after a rejected full-density raster; a continuous wheel
+      // zoom-out demands (zoom*DPR)^2 pixels over a growing area, so seed the
+      // stepped density up front. Settled escalation and the pointer-gesture
+      // opt-in lane are unchanged.
+      if(continuousZoom&&!zoomingIn){
+        const outward=latest.current,full=outward.view.zoom*density.current
+        const stepped=outwardInteractionScale(full,outward.width,outward.height)
+        if(stepped<full&&(quality.scale===undefined||quality.scale>stepped))quality.seed(stepped,full)
+      }
       lastInputAt=performance.now();optionalNotBefore=0;clearTimeout(optionalTimer)
       moving=!releasedPan;clearTimeout(idleTimer)
       cpuRepairs.clear();clearTimeout(repairTimer)
