@@ -80,20 +80,22 @@ struct ArchiveLimits {
     total: u64,
 }
 
-const ARCHIVE_LIMITS: ArchiveLimits = ArchiveLimits {
-    input: crate::sketch::archive::MAX_INPUT_BYTES,
-    entries: crate::sketch::archive::MAX_ENTRIES,
-    entry: crate::sketch::archive::MAX_ENTRY_BYTES,
-    document_entry: crate::sketch::archive::MAX_DOCUMENT_BYTES,
-    total: crate::sketch::archive::MAX_TOTAL_BYTES,
-};
+fn archive_limits() -> ArchiveLimits {
+    ArchiveLimits {
+        input: crate::sketch::archive::max_input_bytes(),
+        entries: crate::sketch::archive::MAX_ENTRIES,
+        entry: crate::sketch::archive::max_entry_bytes(),
+        document_entry: crate::sketch::archive::max_document_bytes(),
+        total: crate::sketch::archive::max_total_bytes(),
+    }
+}
 
 fn archive_limit(message: &str) -> Error {
     Error::Unsupported(format!("archive resource limit: {message}"))
 }
 
 fn read_zip(bytes: &[u8]) -> Result<BTreeMap<String, Vec<u8>>> {
-    read_zip_bounded(bytes, ARCHIVE_LIMITS)
+    read_zip_bounded(bytes, archive_limits())
 }
 
 fn read_zip_bounded(bytes: &[u8], limits: ArchiveLimits) -> Result<BTreeMap<String, Vec<u8>>> {
@@ -215,7 +217,7 @@ fn write_zip(entries: &[(String, Vec<u8>)]) -> Result<Vec<u8>> {
     // enforces, so an oversized payload fails loudly at export instead of
     // producing an archive this codec (and the strict Sketch adapter) would
     // refuse to reopen.
-    let limits = ARCHIVE_LIMITS;
+    let limits = archive_limits();
     if entries.len() > limits.entries {
         return Err(archive_limit("entry count"));
     }
@@ -6478,8 +6480,20 @@ pub fn export_sketch_baked(doc: &Document) -> Result<(Vec<u8>, usize)> {
         .iter()
         .flat_map(|page| page.children.iter().cloned())
         .collect();
+    let mut visited = std::collections::BTreeSet::new();
     for root in roots {
-        baked += baked_subtree(&mut doc.nodes, root.as_str(), None);
+        baked += baked_subtree(&mut doc.nodes, root.as_str(), None, &mut visited);
+    }
+    // The exporter's refusal walk covers every node, including ones detached
+    // from the page tree; bake those forests as extra roots.
+    loop {
+        let orphan = doc
+            .nodes
+            .keys()
+            .find(|id| !visited.contains(*id))
+            .cloned();
+        let Some(orphan) = orphan else { break };
+        baked += baked_subtree(&mut doc.nodes, orphan.as_str(), None, &mut visited);
     }
     let bytes = export_sketch(&doc)?;
     Ok((bytes, baked))
@@ -6495,7 +6509,10 @@ pub fn export_sketch_baked(doc: &Document) -> Result<(Vec<u8>, usize)> {
 /// - a sheared placement with visible fills/strokes keeps the default
 ///   refusal because Sketch cannot represent a sheared box losslessly;
 /// - leaves bake the linear part into curve points exactly as before.
-fn baked_subtree(doc: &mut crate::scene::DocumentNodes, id: &str, pending: Option<crate::math::Transform>) -> usize {
+fn baked_subtree(doc: &mut crate::scene::DocumentNodes, id: &str, pending: Option<crate::math::Transform>, visited: &mut std::collections::BTreeSet<String>) -> usize {
+    if !visited.insert(id.to_owned()) {
+        return 0;
+    }
     let Some(node) = doc.get_mut(id) else { return 0 };
     if let Some(pending) = pending {
         node.transform = pending.concat(node.transform);
@@ -6517,13 +6534,13 @@ fn baked_subtree(doc: &mut crate::scene::DocumentNodes, id: &str, pending: Optio
             let children: Vec<String> = node.children.clone();
             return 1 + children
                 .into_iter()
-                .map(|child| baked_subtree(doc, child.as_str(), None))
+                .map(|child| baked_subtree(doc, child.as_str(), None, visited))
                 .sum::<usize>();
         } else {
             let children: Vec<String> = node.children.clone();
             return children
                 .into_iter()
-                .map(|child| baked_subtree(doc, child.as_str(), None))
+                .map(|child| baked_subtree(doc, child.as_str(), None, visited))
                 .sum::<usize>();
         }
     }
@@ -6601,20 +6618,20 @@ fn baked_subtree(doc: &mut crate::scene::DocumentNodes, id: &str, pending: Optio
     if rigid && !parametric {
         return children
             .into_iter()
-            .map(|child| baked_subtree(doc, child.as_str(), None))
+            .map(|child| baked_subtree(doc, child.as_str(), None, visited))
             .sum::<usize>()
             + usize::from(pending.is_some());
     }
     let [a, b, c, d, x, y] = node.transform.0;
     let determinant = a * d - b * c;
-    let recurse_plain = |doc: &mut crate::scene::DocumentNodes, children: &[String]| {
+    let recurse_plain = |doc: &mut crate::scene::DocumentNodes, children: &[String], visited: &mut std::collections::BTreeSet<String>| {
         children
             .iter()
-            .map(|child| baked_subtree(doc, child, None))
+            .map(|child| baked_subtree(doc, child, None, visited))
             .sum::<usize>()
     };
     if !determinant.is_finite() || determinant.abs() < 1e-12 {
-        return recurse_plain(doc, &children); // singular: keep the explicit refusal
+        return recurse_plain(doc, &children, visited); // singular: keep the explicit refusal
     }
     let scale_x = (a * a + b * b).sqrt();
     let scale_y = (c * c + d * d).sqrt();
@@ -6642,13 +6659,13 @@ fn baked_subtree(doc: &mut crate::scene::DocumentNodes, id: &str, pending: Optio
             node.corner_radius = 0.;
             return 1 + children
                 .into_iter()
-                .map(|child| baked_subtree(doc, child.as_str(), Some(scale)))
+                .map(|child| baked_subtree(doc, child.as_str(), Some(scale), visited))
                 .sum::<usize>();
         }
         if paints_box {
             // A sheared box with its own paint cannot be represented
             // losslessly; keep the default refusal for this node.
-            return recurse_plain(doc, &children);
+            return recurse_plain(doc, &children, visited);
         }
     }
     // Flatten to the mapped axis-aligned bounds (leaf curves or a paint-free
@@ -6693,7 +6710,7 @@ fn baked_subtree(doc: &mut crate::scene::DocumentNodes, id: &str, pending: Optio
     let child_pending = crate::math::Transform([a, b, c, d, -min_x, -min_y]);
     baked + children
         .into_iter()
-        .map(|child| baked_subtree(doc, child.as_str(), Some(child_pending)))
+        .map(|child| baked_subtree(doc, child.as_str(), Some(child_pending), visited))
         .sum::<usize>()
 }
 
@@ -7196,7 +7213,7 @@ fn import_fig_via_converter_at(bytes: &[u8], helper: &std::path::Path) -> Result
         return Err(Error::Fig2Sketch(format!("exit {:?}: {}",status.status.code(),String::from_utf8_lossy(&status.stderr).chars().take(400).collect::<String>())));
     }
     let size=std::fs::metadata(&output).map_err(|e|Error::Fig2Sketch(format!("no output file: {e}")))?.len();
-    if size>ARCHIVE_LIMITS.input as u64 {return Err(archive_limit("converted FIG input bytes"));}
+    if size>archive_limits().input as u64 {return Err(archive_limit("converted FIG input bytes"));}
     let sketch_bytes=std::fs::read(&output).map_err(|e|Error::Fig2Sketch(format!("cannot read converter output: {e}")))?;
     import_sketch_report(&sketch_bytes)
 }
@@ -7374,7 +7391,7 @@ mod tests {
     }
     #[test]
     fn import_input_policy_does_not_raise_expansion_budget() {
-        assert_eq!(ARCHIVE_LIMITS.input, 1_073_741_824);
+        assert_eq!(archive_limits().input as u64, crate::capacity::memory_budget_bytes().clamp(1_073_741_824, crate::capacity::WASM_ADDRESS_BYTES));
         assert_eq!(ARCHIVE_LIMITS.total, 67_108_864);
         assert_eq!(ARCHIVE_LIMITS.entry, 16_777_216);
         assert_eq!(ARCHIVE_LIMITS.document_entry, 41_943_040);

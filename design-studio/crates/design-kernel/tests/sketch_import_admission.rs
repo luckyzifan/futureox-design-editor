@@ -582,12 +582,11 @@ fn native_text_behaviour_uses_shared_sizing_and_retains_source_text_metadata() {
     }
 }
 
-// A zip-shaped Sketch bundle that exceeds the per-entry expansion budget must
-// surface the archive resource limit from import_any instead of the generic
-// marker-sniff message that hides the real rejection reason (a real 18 MiB
-// single-page public logo kit first reported "markers not found").
 #[test]
 fn import_any_reports_archive_limits_instead_of_marker_miss() {
+    // Archive admission scales with the process memory budget; pin a small
+    // one so this binary deterministically refuses the oversized entry.
+    let _ = futureox_design_kernel::capacity::configure(64 * 1024 * 1024);
     let oversized = vec![b' '; 17 * 1024 * 1024];
     let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     for (name, body) in [
