@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Editor } from '../../engine'
 import type { DesktopBridge } from '../../desktop'
+import { desktopBridge } from '../../desktop'
 import { modalKeyDown } from '../../modal-keyboard'
 import { useInterfacePreferences } from '../../interface-preference'
 import { pluginApiCoverage, pluginBundleFromFiles, pluginBundleFromZip, pluginEditorEvents, pluginUiMessage, pluginUiSrcdoc, samplePluginBundle, sampleUiPluginBundle, openPlugin, PluginApiError, type PluginBundle, type PluginController } from './index'
@@ -88,7 +89,14 @@ export function PluginHostDialog({ editor, desktop, onClose }: { editor: Editor;
       setNetworkNote(bundle.manifest.networkIgnored ? text.network : '')
       if (!command && bundle.manifest.commands.length) { setPending(bundle); return }
       pluginId.current = bundle.manifest.id
-      const next = await openPlugin(editor, bundle, { onPostMessage: postToFrame, onUi: setUi, command, storage: undefined })
+      const desktop = desktopBridge()
+      const next = await openPlugin(editor, bundle, {
+        onPostMessage: postToFrame, onUi: setUi, command, storage: undefined,
+        systemFonts: desktop?.fonts ? {
+          list: async () => { const listed = await desktop.fonts!.list(); return listed.status === 'ok' ? listed.fonts : null },
+          read: async request => { const read = await desktop.fonts!.read(request); return read.status === 'ok' ? { face: read.font, data: read.data } : null },
+        } : undefined,
+      })
       controller.current = next.closed ? null : next
       setLog([...next.notifications, ...next.logs])
       setUi(next.closed ? null : next.ui)
