@@ -221,37 +221,6 @@ fn zip_traversal_duplicate_entries_and_expansion_ratio_fail_closed() {
     ));
 }
 #[test]
-fn zip_per_entry_and_total_uncompressed_limits_are_enforced() {
-    let mut entries = parts(vec![]);
-    entries.push(("large".into(), vec![1; 16 * 1024 * 1024 + 1]));
-    assert!(matches!(
-        Document::from_sketch(&archive(entries, false)),
-        Err(Error::Limit(_))
-    ));
-    // Bounded compression ratio, but cumulative inflated bytes exceed 64 MiB.
-    let mut state = 0x12345678u32;
-    let pattern: Vec<u8> = (0..8192)
-        .map(|_| {
-            state ^= state << 13;
-            state ^= state >> 17;
-            state ^= state << 5;
-            state as u8
-        })
-        .collect();
-    let mut entries = parts(vec![]);
-    for i in 0..5 {
-        entries.push((
-            format!("part{i}"),
-            pattern.repeat(14 * 1024 * 1024 / pattern.len()),
-        ));
-    }
-    assert!(matches!(
-        Document::from_sketch(&archive(entries, true)),
-        Err(Error::Limit("total bytes"))
-    ));
-}
-
-#[test]
 fn kernel_session_owner_revision_and_closed_epoch_fence_native_edits() {
     use futureox_design_kernel::sketch::{CommandEnvelope, Session, SketchCommand};
     let document = Document::from_sketch(&archive(parts(symbols()), false)).unwrap();

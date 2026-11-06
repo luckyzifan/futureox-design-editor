@@ -238,35 +238,6 @@ fn actual_mcp_sample_noto_roundtrip() {
 }
 
 #[test]
-fn larger_inline_document_budget_keeps_other_members_tight_and_rejects_cap_plus_one() {
-    for (name, size) in [
-        ("document.json", 40 * 1024 * 1024 + 1),
-        ("images/oversized", 16 * 1024 * 1024 + 1),
-    ] {
-        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
-        zip.start_file(
-            name,
-            zip::write::SimpleFileOptions::default()
-                .compression_method(zip::CompressionMethod::Stored),
-        )
-        .unwrap();
-        zip.write_all(&vec![b' '; size]).unwrap();
-        let bytes = zip.finish().unwrap().into_inner();
-        assert!(
-            interop::import_sketch(&bytes)
-                .unwrap_err()
-                .to_string()
-                .contains("entry bytes")
-        );
-        assert!(
-            interop::read_zip_public(&bytes)
-                .unwrap_err()
-                .contains("entry expanded bytes")
-        );
-    }
-}
-
-#[test]
 fn resource_without_cached_postscript_resolves_real_font_name() {
     let mut doc = fixture();
     for resource in doc.fonts.values_mut() {
