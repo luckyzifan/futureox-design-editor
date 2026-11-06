@@ -197,3 +197,20 @@ fn figma_document_pages_styles_component_set_and_save_open() {
     assert_eq!(opened.nodes["fig-2-8"].style_refs, doc.nodes["fig-2-8"].style_refs);
     opened.validate().unwrap();
 }
+
+#[test]
+fn fig_rewrite_round_trips_the_message_against_the_embedded_schema() {
+    let bytes = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../testing/fixtures/design/fig-interop-v106.fig")).unwrap();
+    let (before, images_before, _) = futureox_design_kernel::fig::read_fig(&bytes).unwrap();
+    let rewritten = futureox_design_kernel::fig::rewrite_fig(&bytes).unwrap();
+    let (after, images_after, _) = futureox_design_kernel::fig::read_fig(&rewritten).unwrap();
+    assert_eq!(serde_json::to_string(&before).unwrap(), serde_json::to_string(&after).unwrap(), "decoded tree must be identical");
+    assert_eq!(images_before.len(), images_after.len(), "image blobs survive the rebuild");
+    let doc_before = futureox_design_kernel::fig::import_fig_native(&bytes).unwrap();
+    let doc_after = futureox_design_kernel::fig::import_fig_native(&rewritten).unwrap();
+    assert_eq!(
+        serde_json::to_string(&doc_before).unwrap(),
+        serde_json::to_string(&doc_after).unwrap(),
+        "imported documents must be identical"
+    );
+}
