@@ -66,3 +66,17 @@ fn baked_export_converts_scaled_leaves_the_default_export_refuses(){
  assert!((baked_node.transform.0[4]-10.).abs()<1e-6,"x {}",baked_node.transform.0[4]);
  assert!((baked_node.transform.0[5]-5.).abs()<1e-6,"y {}",baked_node.transform.0[5]);
 }
+
+#[test]
+fn baked_export_collapses_independent_stroke_topology(){
+ use futureox_design_kernel::vector_geometry::{Curve,VectorGeometry};
+ let mut doc=interop::import_sketch_report(&archive(json!({"_class":"rectangle","do_objectID":ID,"name":"Stroked","frame":{"x":0,"y":0,"width":40,"height":40},"style":{"fills":[{"isEnabled":true,"fillType":0,"color":{"red":0,"green":1,"blue":0,"alpha":1}}]}}))).unwrap().document;
+ let node=doc.nodes.get_mut(ID).unwrap();
+ let fill=vec![Curve::Move([0.,0.]),Curve::Line([40.,0.]),Curve::Line([40.,40.]),Curve::Line([0.,40.]),Curve::Close];
+ node.kind="vector".into();
+ node.vector_geometry=Some(std::sync::Arc::new(VectorGeometry{fill_rule:"nonzero".into(),fill:fill.clone(),stroke:Some(vec![Curve::Move([5.,5.]),Curve::Line([35.,5.]),Curve::Close])}));
+ assert!(interop::export_sketch(&doc).is_err(),"default export keeps refusing independent stroke topology");
+ let (bytes,baked)=interop::export_sketch_baked(&doc).unwrap();
+ assert_eq!(baked,1,"the independent stroke collapses onto the fill outline");
+ interop::import_sketch(&bytes).unwrap();
+}

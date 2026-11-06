@@ -10,7 +10,7 @@
 | 文件 | fig2sketch（官方 CLI） | 本仓库 fig→sketch 链（默认） | 本仓库 `export_sketch_baked`（本轮新增） |
 |---|---|---|---|
 | fig-interop-v106.fig | ❌ KeyError `thumbnail.png`（生成语料无缩略图，属夹具差异） | ✅ 4,492 字节，原生 sketchtool 可打开 | ✅ 同字节（0 节点需烘焙） |
-| figma-materials-native（381 节点） | ✅ 1,174,543 字节 | ❌ 拒绝：缩放/剪切仿射（`fig-44-11`，rectangle） | ⚠️ 前进两关后仍拒绝：弧线椭圆 `fig-44-9` 的矢量网络发射不变量（Independent fill geometry） |
+| figma-materials-native（381 节点） | ✅ 1,174,543 字节 | ❌ 拒绝：缩放/剪切仿射（`fig-44-11`，rectangle） | ✅ **51,072 字节，18 节点烘焙，原生 sketchtool 打开（4 页 11 画板），再导入 381→385** |
 
 两者架构同构：都解码 `.fig` 内嵌 kiwi schema（schema 随 Figma 版本漂移，读写不写死版本）。我们的语义验证覆盖到 v106（>106 解码但警告未测试）。
 
@@ -29,3 +29,9 @@
 - `figma-materials-native` 烘焙链最后卡在弧线椭圆（饼/环）的矢量网络发射不变量 `fill != closed`（vector_geometry.rs:283）——需要发射侧接受多环/饼形填充，或烘焙侧拆分为独立闭环。
 - 未处理 `.deck`（Slides）与 `fig-makee`（Make）签名（openfig 研究笔记）；无夹具不盲加。
 - fig2sketch 的实例 override detach、字体特性等 15.5k 行语义面未逐项对账；本轮只对齐了几何放置与参数化两类最高频拒绝。
+
+## 追加（同日第三轮）：独立描边拓扑规范化——381 节点文件全通
+
+第三类拒绝根因定位：矢量网络编码器 `network()`（vector_geometry.rs）走 **stroke 优先**曲线构建闭合轮廓，却不变量比对 **fill**——任何独立描边拓扑（stroke≠fill，含显式空描边）都会拒绝，与弧线无关（此前推测有误，实测为独立描边）。烘焙模式新增规范化：独立描边几何塌缩到填充轮廓（有损）；「空描边几何 + 活跃描边 paint」保持拒绝，避免画出原本不存在的描边。
+
+结果：`figma-materials-native-2026-10-08.fig --bake` → 18 节点烘焙 → 51,072 字节 → 再导入 381→385 节点/4 页 → 原生 sketchtool 打开成功（4 页 11 画板）。新增单测 `baked_export_collapses_independent_stroke_topology`（默认拒绝、烘焙成功、再导入通过）；sketch+fig 契约 25 目标 **147 项全过**。默认 `export_sketch` 的三类 fail-loud 政策均未改变。
