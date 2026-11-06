@@ -1,4 +1,6 @@
 
+2026-11-06 fig2sketch 第六轮（FIG 写侧）：按 openfig-core encoder 蓝图新增 `fig::rewrite_fig/rewrite_canvas/encode_canvas_message`——内嵌 schema 块字节级原样保留、message 重编码（varint/zigzag/varfloat 旋转+零低字节逃逸/NUL 串/枚举名→序数均镜像读侧位级实现）、zip 其余条目重建；message 块 deflate（读侧与 openfig-core 均接受，真 zstd 编码器待显式决策）。v106/materials/19k 有料素材三档树+文档双一致，openfig-core 外部解析通过；148 项契约全过。这是编解码级保真重写，Document→NodeChanges 语义导出是下一增量。
+
 2026-11-06 fig2sketch 第五轮：归档准入取消固定上限、改按进程内存预算动态推导（entry=budget/8、document=budget/4、total=input=budget，各自钳位；200:1 比例守卫、前端 1GiB 业务下限、capacity 文档准入保留）；修复 frame_placement 的 f32 旋转误判（1e-12→1e-6，FIG 45° 旋转 0.70710677 曾被当缩放拒绝）；烘焙递归补 visited 集合覆盖孤儿森林。预算断言测试集中到独立进程文件 sketch_archive_admission.rs（configure 与环境变量初始化在同进程并行下有竞态）。四份有料素材全通（最大 19,402 节点→3.44MB、15 页，sketchtool 打开 78 画板）；147 项契约全过。
 
 2026-11-06 fig2sketch 第四轮：`export_sketch_baked` 改为递归子树传播（剪切自由=保留旋转+纯缩放下传；剪切+无盒面填充=塌缩 AABB+全线性下传；剪切+有填充=保持拒绝），FIG OUTLINE 遮罩重映射为 Sketch outline 遮罩并禁用遮罩自身填充/描边（Figma 不渲染遮罩样式而 Sketch 渲染，禁用后两侧一致、数据保留）；luminance 仍拒绝。「有料素材」9k–19k 节点文件语义障碍清空，最后卡导出 16 MiB/条目预算（2026-10-23 记录的政策，未擅自翻转）。148 项契约全过，默认导出政策未动。
