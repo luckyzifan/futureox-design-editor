@@ -80,3 +80,32 @@ fn baked_export_collapses_independent_stroke_topology(){
  assert_eq!(baked,1,"the independent stroke collapses onto the fill outline");
  interop::import_sketch(&bytes).unwrap();
 }
+
+#[test]
+fn baked_export_propagates_container_scale_losslessly(){
+ // A frame scaled 2x containing a 40x40 rect: the frame keeps its identity
+ // (box doubled), the child absorbs the scale and is baked to an 80-wide
+ // explicit vector, preserving the world geometry exactly.
+ let mut doc=interop::import_sketch_report(&archive(json!({"_class":"frame","do_objectID":ID,"name":"Holder","frame":{"x":100,"y":50,"width":40,"height":40},
+   "style":{"fills":[{"isEnabled":true,"fillType":0,"color":{"red":1,"green":1,"blue":0,"alpha":1}}]},
+   "layers":[{"_class":"rectangle","do_objectID":"c1","name":"Inner","frame":{"x":0,"y":0,"width":40,"height":40},
+     "style":{"fills":[{"isEnabled":true,"fillType":0,"color":{"red":0,"green":0,"blue":1,"alpha":1}}]}}]}))).unwrap().document;
+ let frame=doc.nodes.get_mut(ID).unwrap();
+ frame.transform=futureox_design_kernel::math::Transform([2.,0.,0.,2.,100.,50.]);
+ assert!(interop::export_sketch(&doc).is_err(),"default export refuses the scaled container");
+ let (bytes,baked)=interop::export_sketch_baked(&doc).unwrap();
+ assert!(baked>=2,"container and child are adjusted: {baked}");
+ let back=interop::import_sketch(&bytes).unwrap();
+ let holder=back.nodes.values().find(|n|n.name=="Holder").unwrap();
+ let inner=back.nodes.values().find(|n|n.name=="Inner").unwrap();
+ // Frame box doubles under scaleX/Y=2; the child's world footprint is the
+ // same 80x80 region at the same origin.
+ assert!((holder.width-80.).abs()<1e-6,"holder width {}",holder.width);
+ assert!((holder.height-80.).abs()<1e-6);
+ assert!((inner.width-80.).abs()<1e-6,"inner width {}",inner.width);
+ // The child stays frame-local; its world origin is holder.x + 0 = 100.
+ assert!(inner.transform.0[4].abs()<1e-6,"inner local x {}",inner.transform.0[4]);
+ assert!(inner.transform.0[5].abs()<1e-6,"inner local y {}",inner.transform.0[5]);
+ assert!((holder.transform.0[4]-100.).abs()<1e-6,"holder x {}",holder.transform.0[4]);
+ assert!((holder.transform.0[5]-50.).abs()<1e-6,"holder y {}",holder.transform.0[5]);
+}
