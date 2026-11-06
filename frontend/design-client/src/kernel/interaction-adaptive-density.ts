@@ -10,16 +10,16 @@
  * the low-zoom reduced tier. Strict opt-in until whole-editor acceptance. */
 export const INTERACTION_ADAPTIVE_DENSITY_BUDGET = 8_000_000
 
-export function interactionAdaptiveDensityEnabled() {
-  return import.meta.env.VITE_DESIGN_INTERACTION_ADAPTIVE_DENSITY === '1'
+export function interactionAdaptiveDensityEnabled(zoomOut = false) {
+  return import.meta.env.VITE_DESIGN_INTERACTION_ADAPTIVE_DENSITY === '1' || zoomOut
 }
 
 /** Returns the capture scale for this gesture sample. Unchanged full density
  * whenever the flag is off, the gesture is not active, the low-zoom reduced
  * tier already applies, or demand fits the budget. */
 export function interactionAdaptiveScale(residentScale: number, bounds: { width: number; height: number },
-  active: boolean, reduced: boolean) {
-  if (reduced || !active || !interactionAdaptiveDensityEnabled()) return residentScale
+  active: boolean, reduced: boolean, zoomOut = false) {
+  if (reduced || !active || !interactionAdaptiveDensityEnabled(zoomOut)) return residentScale
   const demand = bounds.width * bounds.height * residentScale * residentScale
   if (demand <= INTERACTION_ADAPTIVE_DENSITY_BUDGET) return residentScale
   // 4^ceil(log4(ratio)) >= ratio, so the first divisor already lands within
@@ -30,4 +30,13 @@ export function interactionAdaptiveScale(residentScale: number, bounds: { width:
   if (bounds.width * bounds.height * scale * scale > INTERACTION_ADAPTIVE_DENSITY_BUDGET)
     scale = residentScale / (divisor * 2)
   return Number.isFinite(scale) && scale > 0 ? scale : residentScale
+}
+
+/** Wheel zoom-out lane: the same stepped density without the global
+ * pointer-gesture opt-in flag. A continuous outward zoom multiplies the
+ * demanded pixels over a growing area, so the source lane seeds this scale
+ * proactively instead of discovering it through rejected full-density
+ * rasters (2026-11 reverse-zoom-out measured 9.4 s to ready). */
+export function outwardInteractionScale(residentScale: number, width: number, height: number) {
+  return interactionAdaptiveScale(residentScale, { width, height }, true, false, true)
 }

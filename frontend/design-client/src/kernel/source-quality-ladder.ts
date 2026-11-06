@@ -13,6 +13,15 @@ export class SourceQualityLadder{
   private retriedOriginal=false
   limited=false
   reset(){this.scale=undefined;this.upper=Infinity;this.best=0;this.steps=0;this.original=0;this.retriedOriginal=false;this.limited=false;this.reason=''}
+  /** Proactive outward floor: a continuous wheel zoom-out seeds the ladder at
+   * an interaction-density step instead of paying a rejected full-density
+   * raster to discover it. Escalation stays bounded by the original scale. */
+  seed(scale:number,original:number){
+    if(!(scale>0)||!(original>0)||scale>=original)return
+    this.scale=scale
+    if(this.upper===Infinity)this.upper=original
+    if(!this.original)this.original=original
+  }
   rejected(scale:number,error:unknown){
     if(!sourceRasterLimit(error))return false
     this.reason=String(error).replace(/^Error: /,'');this.upper=Math.min(scale,this.upper)
