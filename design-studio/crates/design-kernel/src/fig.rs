@@ -298,6 +298,207 @@ fn zstd_decompress(raw: &[u8]) -> Result<Vec<u8>, Error> {
 }
 
 // ---------------------------------------------------------------------------
+// .fig writer: re-encode the message against the file's own embedded schema.
+// The embedded schema chunk travels verbatim, so a rewritten canvas.fig keeps
+// the exact type table of its source. The message chunk is deflate-compressed
+// (the reader accepts both zlib and zstd; external Figma tooling expects zstd,
+// which needs a zstd encoder dependency and stays an explicit follow-up).
+// ---------------------------------------------------------------------------
+
+struct Writer(Vec<u8>);
+
+impl Writer {
+    fn byte(&mut self, b: u8) {
+        self.0.push(b);
+    }
+    fn uint(&mut self, mut v: u64) {
+        loop {
+            let b = (v & 0x7f) as u8;
+            v >>= 7;
+            if v == 0 {
+                self.byte(b);
+                return;
+            }
+            self.byte(b | 0x80);
+        }
+    }
+    fn int(&mut self, v: i64) {
+        self.uint(((v << 1) ^ (v >> 63)) as u64);
+    }
+    fn float(&mut self, v: f64) {
+        let bits = (v as f32).to_bits();
+        if bits == 0 {
+            self.byte(0);
+            return;
+        }
+        let rotated = bits.rotate_left(9);
+        if rotated & 0xff == 0 {
+            // kiwi's lossy escape: a zero low byte decodes back as 0.0
+            self.byte(0);
+            return;
+        }
+        self.byte((rotated & 0xff) as u8);
+        self.byte(((rotated >> 8) & 0xff) as u8);
+        self.byte(((rotated >> 16) & 0xff) as u8);
+        self.byte(((rotated >> 24) & 0xff) as u8);
+    }
+    fn string(&mut self, s: &str) {
+        self.0.extend_from_slice(s.as_bytes());
+        self.byte(0);
+    }
+}
+
+fn encode_value(
+    w: &mut Writer,
+    types: &[TypeDef],
+    type_id: i64,
+    array: bool,
+    v: &Value,
+) -> Result<(), Error> {
+    if array {
+        let items = v
+            .as_array()
+            .ok_or_else(|| Error::Malformed("expected array".into()))?;
+        w.uint(items.len() as u64);
+        for item in items {
+            encode_value(w, types, type_id, false, item)?;
+        }
+        return Ok(());
+    }
+    if type_id < 0 {
+        match -type_id {
+            1 => w.byte(u8::from(v.as_bool().unwrap_or(false))),
+            2 => w.byte((v.as_i64().unwrap_or(0).rem_euclid(256)) as u8),
+            3 | 7 => w.int(v.as_i64().ok_or_else(|| Error::Malformed("expected int".into()))?),
+            4 | 8 => w.uint(v.as_u64().ok_or_else(|| Error::Malformed("expected uint".into()))?),
+            5 => w.float(v.as_f64().unwrap_or(0.)),
+            6 => w.string(v.as_str().ok_or_else(|| Error::Malformed("expected string".into()))?),
+            other => return Err(Error::Malformed(format!("bad builtin {other}"))),
+        }
+        return Ok(());
+    }
+    let ty = types
+        .get(type_id as usize)
+        .ok_or_else(|| Error::Malformed(format!("type {type_id} out of range")))?;
+    let mut ordered: Vec<&FieldDef> = ty.fields.iter().collect();
+    ordered.sort_by_key(|f| f.ordinal);
+    match ty.kind {
+        0 => {
+            let name = v.as_str().unwrap_or("");
+            let ordinal = ordered
+                .iter()
+                .find(|f| f.name == name)
+                .map(|f| f.ordinal)
+                .ok_or_else(|| Error::Malformed(format!("enum member {name} not in {}", ty.name)))?;
+            w.uint(ordinal);
+        }
+        1 => {
+            for f in ordered {
+                let value = v
+                    .get(&f.name)
+                    .ok_or_else(|| Error::Malformed(format!("struct field {} missing in {}", f.name, ty.name)))?;
+                encode_value(w, types, f.type_id, f.array, value)?;
+            }
+        }
+        _ => {
+            for f in ordered {
+                if let Some(value) = v.get(&f.name) {
+                    w.uint(f.ordinal);
+                    encode_value(w, types, f.type_id, f.array, value)?;
+                }
+            }
+            w.uint(0);
+        }
+    }
+    Ok(())
+}
+
+/// Encode a decoded canvas tree back into the kiwi message body.
+pub fn encode_canvas_message(types: &[TypeDef], tree: &Value) -> Result<Vec<u8>, Error> {
+    let root_id = types
+        .iter()
+        .position(|t| t.name == "Message")
+        .unwrap_or(0) as i64;
+    let mut w = Writer(Vec::new());
+    encode_value(&mut w, types, root_id, false, tree)?;
+    Ok(w.0)
+}
+
+/// Re-encode `tree` into a canvas.fig binary that keeps the source file's
+/// embedded schema chunk byte-for-byte. Trailing chunks pass through.
+pub fn rewrite_canvas(original: &[u8], tree: &Value) -> Result<Vec<u8>, Error> {
+    if original.len() < 16 || &original[..8] != b"fig-kiwi" {
+        return Err(Error::NotAFig("canvas.fig magic missing".into()));
+    }
+    let version = u32::from_le_bytes([original[8], original[9], original[10], original[11]]);
+    let segment = |p: &mut usize| -> Result<&[u8], Error> {
+        let size = u32::from_le_bytes(
+            original
+                .get(*p..*p + 4)
+                .and_then(|s| s.try_into().ok())
+                .ok_or_else(|| Error::Malformed("segment header".into()))?,
+        ) as usize;
+        *p += 4;
+        let raw = original
+            .get(*p..*p + size)
+            .ok_or_else(|| Error::Malformed("segment body".into()))?;
+        *p += size;
+        Ok(raw)
+    };
+    let mut p = 12usize;
+    let schema_raw = segment(&mut p)?.to_vec();
+    let _message_raw = segment(&mut p)?;
+    let schema_data = if schema_raw.starts_with(&[0x28, 0xB5, 0x2F, 0xFD]) {
+        zstd_decompress(&schema_raw)?
+    } else {
+        zlib_inflate(&schema_raw)?
+    };
+    let types = parse_schema(&schema_data)?;
+    if types.is_empty() {
+        return Err(Error::Malformed("empty schema".into()));
+    }
+    let message = encode_canvas_message(&types, tree)?;
+    let mut out = Vec::with_capacity(original.len());
+    out.extend_from_slice(b"fig-kiwi");
+    out.extend_from_slice(&version.to_le_bytes());
+    out.extend_from_slice(&(schema_raw.len() as u32).to_le_bytes());
+    out.extend_from_slice(&schema_raw);
+    let deflated = miniz_oxide::deflate::compress_to_vec(&message, 6);
+    out.extend_from_slice(&(deflated.len() as u32).to_le_bytes());
+    out.extend_from_slice(&deflated);
+    out.extend_from_slice(&original[p..]);
+    Ok(out)
+}
+
+/// Full `.fig` rewrite: decode, re-encode the canvas message against the
+/// file's own schema, and rebuild the bundle with every other entry verbatim.
+/// This closes a byte-level FIG round trip through this codec without a
+/// document-model mapping; `import_fig_native` on the output must reproduce
+/// the same document.
+pub fn rewrite_fig(bytes: &[u8]) -> Result<Vec<u8>, Error> {
+    let (tree, _, _) = read_fig(bytes)?;
+    if bytes.starts_with(b"fig-kiwi") {
+        return rewrite_canvas(bytes, &tree);
+    }
+    let files = crate::interop::read_zip_public(bytes).map_err(|e| Error::Io(e.to_string()))?;
+    let canvas = files
+        .get("canvas.fig")
+        .ok_or_else(|| Error::NotAFig("canvas.fig missing".into()))?;
+    let rewritten = rewrite_canvas(canvas, &tree)?;
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    for (name, data) in &files {
+        let payload = if name == "canvas.fig" { &rewritten } else { data };
+        zip.start_file(name.as_str(), zip::write::SimpleFileOptions::default())
+            .map_err(|e| Error::Io(e.to_string()))?;
+        std::io::Write::write_all(&mut zip, payload).map_err(|e| Error::Io(e.to_string()))?;
+    }
+    Ok(zip
+        .finish()
+        .map_err(|e| Error::Io(e.to_string()))?
+        .into_inner())
+}
+
+// ---------------------------------------------------------------------------
 // .fig container
 // ---------------------------------------------------------------------------
 

@@ -56,3 +56,16 @@
 测试重组：预算相关断言从三个文件迁入独立进程的 `tests/sketch_archive_admission.rs`（`capacity::configure(64MiB)` 钉住后验证条目/文档条目/总量拒绝与 import_any 透明报错）——原先在同进程并行用例下 `configure` 与环境变量初始化竞态。被迁走的三个原测试删除预算断言部分（比率守卫用例保留原位）。
 
 实测终验：**四份「有料素材」全部贯通**——9,064 节点×3（1.72MB，1,382 文本，3 页）与 **19,402 节点**（3.44MB，2,638 文本，15 页，2,368 节点烘焙）；19k 产物**原生 sketchtool 打开成功（15 页 78 画板）**；sketch+fig 契约 + 新准入测试 **147 项全过**；默认导出政策未变。
+
+## 追加（同日第六轮）：FIG 写侧基础设施——保真重写器（参考 openfig-core encoder）
+
+内核此前只有 kiwi 读取侧。本轮按 openfig-core `encoder.ts` 的蓝图补齐**写侧**（生产级，非测试代码）：
+
+- `fig::rewrite_canvas`：**内嵌 schema 块原样保留**（字节级保真），仅对 message 树重编码；头部/版本/尾随块透传。message 块用 deflate 压缩（读侧本就 zlib/zstd 双探测；外部工具 openfig-core 实测同样接受；真 zstd 编码器是后续显式依赖决策）。
+- `fig::encode_canvas_message` / `encode_value`：kiwi 消息编码器——varint/zigzag、**varfloat 旋转 23 位与零低字节逃逸**、NUL 字符串、枚举名→序数、struct 全字段按序、message 现存字段按序 + 0 终止，全部镜像读取侧的位级实现。
+- `fig::rewrite_fig`：整档重写——canvas.fig 重编码、zip 内其余条目（images 等）原样重建。
+- `examples/fig_rewrite_demo`：解码→重写→树对比→文档对比。
+
+**验证**：v106 语料、materials（381 节点 4 页）、19k 有料素材（19,402 节点 15 页，649KB→980KB，deflate 压缩率低于原 zstd 属预期）三档全部**树一致 + import_fig_native 文档一致**；重写产物经 **openfig-core（外部独立解析器）解析成功**（14/386/19,293 节点，header 版本一致）。新增 `fig_interop_contract` 往返单测；全量契约 **148 项通过**。
+
+**边界**：这是编解码器级保真重写（同 schema 同树），还不是文档模型→FIG 的语义导出（`Document → NodeChanges` 映射是下一增量）；`.fig` 官方不承诺格式稳定，schema 原样保留策略天然免疫版本漂移。
