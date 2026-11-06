@@ -1,0 +1,442 @@
+import { exportStream } from '@penpot/library';
+import * as Sentry from '@sentry/react';
+import { useEffect, useRef, useState } from 'preact/hooks';
+
+import { type MessageData, createInMemoryWritable, sendMessage } from '@ui/context';
+import { identify, track } from '@ui/metrics/mixpanel';
+import { parse, skippedImages } from '@ui/parser';
+import { PROGRESS_STEPS } from '@ui/types';
+import type {
+  DocumentPage,
+  ErrorOrigin,
+  ErrorPayload,
+  ExportScope,
+  ExternalLibrary,
+  Steps
+} from '@ui/types';
+import {
+  extractFileIdFromPenpotUrl,
+  fileSizeInMB,
+  formatExportTime,
+  isBenignWindowError
+} from '@ui/utils';
+
+const buildUiErrorPayload = (reason: unknown, origin: ErrorOrigin): ErrorPayload => ({
+  message: reason instanceof Error ? reason.message : String(reason),
+  stack: reason instanceof Error ? reason.stack : undefined,
+  origin
+});
+
+export type FormValues = {
+  externalLibraries: ExternalLibrary[];
+};
+
+export type UseFigmaHook = {
+  missingFonts: string[] | undefined;
+  missingPageIds: string[];
+  degradedLayers: string[] | undefined;
+  skippedImages: number;
+  exporting: boolean;
+  summary: boolean;
+  error: ErrorPayload | null;
+  step: Steps;
+  stepLabel: string | undefined;
+  stepName: string | undefined;
+  editorType: 'figma' | 'slides' | 'figjam' | 'dev' | 'buzz';
+  progress: {
+    currentItem: string;
+    currentPage: string;
+    totalItems: number;
+    processedItems: number;
+  };
+  progressPercentage: number;
+  exportedBlob: { blob: Blob; filename: string } | null;
+  exportTime: number | null;
+  exportScope: ExportScope;
+  exportLibraries: string[];
+  documentPages: DocumentPage[];
+  selectedPageIds: string[];
+  setExportScope: (scope: ExportScope) => void;
+  setSelectedPageIds: (pageIds: string[]) => void;
+  retry: () => void;
+  cancel: () => void;
+  exportPenpot: (data: FormValues) => void;
+  downloadBlob: () => void;
+};
+
+export const useFigma = (): UseFigmaHook => {
+  const [missingFonts, setMissingFonts] = useState<string[]>();
+  const [missingPageIds, setMissingPageIds] = useState<string[]>([]);
+  const [degradedLayers, setDegradedLayers] = useState<string[]>();
+  const [skippedImagesCount, setSkippedImagesCount] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const [summary, setSummary] = useState(false);
+  const [error, setError] = useState<ErrorPayload | null>(null);
+  const [exportedBlob, setExportedBlob] = useState<{ blob: Blob; filename: string } | null>(null);
+  const [exportTime, setExportTime] = useState<number | null>(null);
+  const [exportScope, setExportScope] = useState<ExportScope>('all');
+  const [exportLibraries, setExportLibraries] = useState<string[]>([]);
+  const [documentPages, setDocumentPages] = useState<DocumentPage[]>([]);
+  const [selectedPageIds, setSelectedPageIds] = useState<string[]>([]);
+  const [editorType, setEditorType] = useState<UseFigmaHook['editorType']>('figma');
+  const defaultPageIdsRef = useRef<string[]>([]);
+  const exportStartTimeRef = useRef<number | null>(null);
+  // Keep the latest step available to the effect's stable error handlers.
+  const currentStepRef = useRef<Steps | undefined>(undefined);
+  const collectedImagesRef = useRef<Record<string, Uint8Array<ArrayBuffer>>>({});
+
+  const [step, setStep] = useState<Steps>('processing');
+  const [stepLabel, setStepLabel] = useState<string | undefined>(undefined);
+  const [stepName, setStepName] = useState<string | undefined>(undefined);
+  const totalItemsRef = useRef<number>(0);
+  const [currentItem, setCurrentItem] = useState('');
+  const [currentProcessedPage, setCurrentProcessedPage] = useState('');
+  const [processedItems, setProcessedItems] = useState(0);
+  const [progressPercentage, setProgressPercentage] = useState(0);
+
+  const editorTypeRef = useRef(editorType);
+  editorTypeRef.current = editorType;
+
+  const postMessage = (type: string, data?: unknown): void => {
+    parent.postMessage({ pluginMessage: { type, data } }, '*');
+  };
+
+  const handleError = (payload: ErrorPayload): void => {
+    const step = payload.step ?? currentStepRef.current;
+    setError({ ...payload, step });
+    setExporting(false);
+    track('Error', {
+      'Error Message': payload.message,
+      'Error Origin': payload.origin,
+      'Error Step': step ?? 'idle',
+      'Error Layer': payload.layer
+    });
+
+    if (payload.origin === 'plugin' && !payload.expected) {
+      const sentryError = new Error(payload.message);
+      if (payload.stack) sentryError.stack = payload.stack;
+      Sentry.captureException(sentryError, {
+        tags: {
+          errorOrigin: payload.origin,
+          errorStep: step ?? 'unknown'
+        },
+        extra: {
+          layer: payload.layer,
+          editorType: editorTypeRef.current
+        }
+      });
+    }
+  };
+
+  const calculatePercentage = (item: number, total: number): number => {
+    return Math.round((item / total) * 100);
+  };
+
+  const onMessage = async (event: MessageEvent<MessageData>): Promise<void> => {
+    if (!event.data.pluginMessage) return;
+
+    const { pluginMessage } = event.data;
+
+    switch (pluginMessage.type) {
+      case 'EXTERNAL_LIBRARIES': {
+        setExportLibraries(pluginMessage.data);
+        break;
+      }
+      case 'DOCUMENT_PAGES': {
+        const { pages, currentPageId } = pluginMessage.data;
+        // Preselect the page the user is standing on, so switching to the
+        // "Choose pages" scope always starts from a valid selection.
+        const defaultPageIds = pages.some(page => page.id === currentPageId)
+          ? [currentPageId]
+          : pages.slice(0, 1).map(page => page.id);
+
+        defaultPageIdsRef.current = defaultPageIds;
+
+        setDocumentPages(pages);
+        setSelectedPageIds(defaultPageIds);
+        break;
+      }
+      case 'EDITOR_TYPE': {
+        setEditorType(pluginMessage.data);
+        if (pluginMessage.data === 'slides' || pluginMessage.data === 'figjam') {
+          setExportScope('all');
+        }
+        break;
+      }
+      case 'USER_DATA': {
+        identify({ userId: pluginMessage.data.userId });
+        track('Plugin Loaded');
+
+        break;
+      }
+      case 'RELOAD': {
+        setMissingFonts(undefined);
+        setMissingPageIds([]);
+        setDegradedLayers(undefined);
+        setSkippedImagesCount(0);
+        setExporting(false);
+        setSummary(false);
+        setError(null);
+        setExportedBlob(null);
+        setExportTime(null);
+        setExportScope('all');
+        setSelectedPageIds(defaultPageIdsRef.current);
+        setStep('processing');
+        currentStepRef.current = undefined;
+        setCurrentItem('');
+        setCurrentProcessedPage('');
+
+        totalItemsRef.current = 0;
+        exportStartTimeRef.current = null;
+        collectedImagesRef.current = {};
+
+        track('Plugin Reloaded');
+
+        break;
+      }
+      case 'PENPOT_IMAGE': {
+        collectedImagesRef.current[pluginMessage.data.key] = pluginMessage.data.bytes;
+
+        break;
+      }
+      case 'PENPOT_DOCUMENT': {
+        setMissingPageIds(pluginMessage.data.missingPageIds ?? []);
+        if (pluginMessage.data.missingFonts) {
+          setMissingFonts(pluginMessage.data.missingFonts);
+        }
+        if (pluginMessage.data.degradedLayers) {
+          setDegradedLayers(pluginMessage.data.degradedLayers);
+        }
+
+        // Images arrive streamed as PENPOT_IMAGE messages before this document;
+        // attach the collected bytes so the parser sees the full asset record.
+        pluginMessage.data.images = collectedImagesRef.current;
+        collectedImagesRef.current = {};
+
+        const context = await parse(pluginMessage.data);
+        setSkippedImagesCount(skippedImages.size);
+
+        sendMessage({
+          type: 'PROGRESS_STEP',
+          data: {
+            step: 'exporting',
+            total: Infinity
+          }
+        });
+
+        const { writable, getBlob } = createInMemoryWritable();
+
+        await exportStream(context, writable, {
+          onProgress: ({ item, total }) => {
+            sendMessage({
+              type: 'PROGRESS_EXPORT',
+              data: {
+                current: item,
+                total: total
+              }
+            });
+          }
+        });
+
+        const blob = getBlob();
+        const filename = `${pluginMessage.data.name}.penpot`;
+
+        setExportedBlob({ blob, filename });
+
+        let duration: number | undefined = undefined;
+
+        if (exportStartTimeRef.current !== null) {
+          const endTime = Date.now();
+          duration = endTime - exportStartTimeRef.current;
+
+          setExportTime(duration);
+        }
+
+        track('File Exported', {
+          'Exported File Size': fileSizeInMB(blob.size),
+          'Export Time': duration !== undefined ? formatExportTime(duration) : undefined,
+          'Exported File Size (bytes)': blob.size,
+          'Export Time (ms)': duration,
+          'Skipped Images': skippedImages.size
+        });
+
+        currentStepRef.current = undefined;
+        exportStartTimeRef.current = null;
+
+        setExporting(false);
+        setSummary(true);
+        setStep('processing');
+
+        break;
+      }
+      case 'PROGRESS_STEP': {
+        const { step } = pluginMessage.data;
+        if (exportStartTimeRef.current !== null && currentStepRef.current !== step) {
+          currentStepRef.current = step;
+          track('File Export Step', {
+            'Export Step': step,
+            'Export Step Index': PROGRESS_STEPS.indexOf(step) + 1,
+            'Export Elapsed Time (ms)': Date.now() - exportStartTimeRef.current
+          });
+        }
+        setStep(pluginMessage.data.step);
+        setStepLabel(pluginMessage.data.label);
+        setStepName(pluginMessage.data.name);
+        setProgressPercentage(0);
+        setProcessedItems(0);
+
+        totalItemsRef.current = pluginMessage.data.total;
+
+        break;
+      }
+      case 'PROGRESS_CURRENT_ITEM': {
+        setCurrentItem(pluginMessage.data);
+
+        break;
+      }
+      case 'PROGRESS_CURRENT_PAGE': {
+        setCurrentProcessedPage(pluginMessage.data);
+        // The layer of the previous page would otherwise linger until the new
+        // page reports its first one.
+        setCurrentItem('');
+
+        break;
+      }
+      case 'PROGRESS_PROCESSED_ITEMS': {
+        setProcessedItems(pluginMessage.data);
+        setProgressPercentage(calculatePercentage(pluginMessage.data, totalItemsRef.current));
+
+        break;
+      }
+      case 'PROGRESS_EXPORT': {
+        setProgressPercentage(
+          calculatePercentage(pluginMessage.data.current, pluginMessage.data.total)
+        );
+
+        break;
+      }
+      case 'ERROR': {
+        collectedImagesRef.current = {};
+        handleError(pluginMessage.data);
+
+        break;
+      }
+    }
+  };
+
+  const download = (blob: Blob, name: string): void => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+
+    a.href = url;
+    a.download = name;
+
+    a.click();
+
+    window.URL.revokeObjectURL(url);
+
+    track('File Downloaded');
+  };
+
+  const downloadBlob = (): void => {
+    if (exportedBlob) {
+      download(exportedBlob.blob, exportedBlob.filename);
+    }
+  };
+
+  const retry = (): void => {
+    track('Plugin Retry');
+
+    postMessage('retry');
+  };
+
+  const cancel = (): void => {
+    track('Plugin Closed');
+
+    postMessage('cancel');
+  };
+
+  const exportPenpot = (data: FormValues): void => {
+    const pageIds = exportScope === 'selection' ? selectedPageIds : [];
+
+    // Guarded in the UI too, but never start an export that has nothing to do.
+    if (exportScope === 'selection' && pageIds.length === 0) return;
+
+    setExporting(true);
+    setSkippedImagesCount(0);
+    exportStartTimeRef.current = Date.now();
+    currentStepRef.current = undefined;
+    collectedImagesRef.current = {};
+
+    track('File Export Started', {
+      'scope': exportScope,
+      'Selected Pages': exportScope === 'selection' ? pageIds.length : undefined
+    });
+
+    const libraries = data.externalLibraries
+      .map(lib => ({
+        name: lib.name,
+        uuid: extractFileIdFromPenpotUrl(lib.uuid)
+      }))
+      .filter((lib): lib is ExternalLibrary => lib.uuid !== undefined);
+
+    postMessage('export', { scope: exportScope, libraries, pageIds });
+  };
+
+  useEffect(() => {
+    const onWindowError = (event: ErrorEvent): void => {
+      if (isBenignWindowError(event.message)) return;
+
+      handleError(buildUiErrorPayload(event.error ?? event.message, 'ui'));
+    };
+
+    const onUnhandledRejection = (event: PromiseRejectionEvent): void => {
+      handleError(buildUiErrorPayload(event.reason, 'unhandled-rejection'));
+    };
+
+    window.addEventListener('message', onMessage);
+    window.addEventListener('error', onWindowError);
+    window.addEventListener('unhandledrejection', onUnhandledRejection);
+
+    postMessage('ready');
+
+    return (): void => {
+      window.removeEventListener('message', onMessage);
+      window.removeEventListener('error', onWindowError);
+      window.removeEventListener('unhandledrejection', onUnhandledRejection);
+    };
+  }, []);
+
+  return {
+    missingFonts,
+    missingPageIds,
+    degradedLayers,
+    skippedImages: skippedImagesCount,
+    exporting,
+    summary,
+    error,
+    step,
+    stepLabel,
+    stepName,
+    editorType,
+    progress: {
+      currentItem,
+      currentPage: currentProcessedPage,
+      totalItems: totalItemsRef.current,
+      processedItems
+    },
+    progressPercentage,
+    exportedBlob,
+    exportTime,
+    exportScope,
+    exportLibraries,
+    documentPages,
+    selectedPageIds,
+    setExportScope,
+    setSelectedPageIds,
+    retry,
+    cancel,
+    exportPenpot,
+    downloadBlob
+  };
+};

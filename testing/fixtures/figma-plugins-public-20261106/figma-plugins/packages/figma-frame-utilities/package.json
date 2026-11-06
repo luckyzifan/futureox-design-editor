@@ -1,0 +1,70 @@
+{
+  "name": "figma-frame-utilities",
+  "version": "0.0.0",
+  "description": "",
+  "keywords": [
+    "create-figma-plugin",
+    "figma",
+    "figma-plugin",
+    "figma-plugins"
+  ],
+  "license": "MIT",
+  "author": "Yuan Qing Lim",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/yuanqing/figma-plugins.git",
+    "directory": "packages/figma-frame-utilities"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "prebuild": "npm run clean",
+    "build": "build-figma-plugin --typecheck --minify",
+    "clean": "rimraf '*.log' build 'src/**/*.css.d.ts'",
+    "fix": "concurrently npm:fix:js npm:fix:json",
+    "fix:js": "eslint --fix 'src/**/*.{ts,tsx}'",
+    "fix:json": "prettier --log-level error --write '*.json'",
+    "lint": "eslint 'src/**/*.{ts,tsx}'",
+    "prewatch": "npm run clean",
+    "watch": "build-figma-plugin --typecheck --watch"
+  },
+  "dependencies": {
+    "@create-figma-plugin/ui": "4.0.1",
+    "@create-figma-plugin/utilities": "4.0.1",
+    "preact": "10.26.9"
+  },
+  "figma-plugin": {
+    "name": "Frame Utilities",
+    "id": "1183770332911989857",
+    "editorType": [
+      "figma"
+    ],
+    "menu": [
+      {
+        "name": "Frame Selection With Padding",
+        "main": "src/frame-selection-with-padding/main.ts",
+        "ui": "src/frame-selection-with-padding/ui.ts"
+      },
+      {
+        "name": "Set Frame Padding",
+        "main": "src/set-frame-padding/main.ts",
+        "ui": "src/set-frame-padding/ui.ts"
+      }
+    ],
+    "relaunchButtons": {
+      "updateFramePadding": {
+        "name": "Update Frame Padding",
+        "main": "src/update-frame-padding/main.ts",
+        "multipleSelection": true
+      },
+      "editFramePadding": {
+        "name": "Edit Frame Padding",
+        "main": "src/set-frame-padding/main.ts",
+        "ui": "src/set-frame-padding/ui.ts",
+        "multipleSelection": true
+      }
+    }
+  }
+}
