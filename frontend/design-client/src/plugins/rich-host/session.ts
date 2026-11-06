@@ -68,7 +68,16 @@ export type PluginSessionOptions = {
   networkDomains?: readonly string[]
   fetch?: PluginFetch
   hooks?: Hooks
+  systemFonts?: PluginSystemFonts
 }
+
+/** One face from the host font catalog (desktop `fonts.list`). The web build has none. */
+export type PluginSystemFontFace = { id: string; family: string; style: string; index: number; weight?: number; italic?: boolean }
+export type PluginSystemFonts = {
+  list(): Promise<readonly PluginSystemFontFace[] | null>
+  read(request: { id: string }): Promise<{ face: PluginSystemFontFace; data: string } | null>
+}
+export type PluginFontJob = { id: string; family: string; style: string }
 
 const KINDS = new Set<Kind>(['slice', 'frame', 'section', 'group', 'rectangle', 'ellipse', 'polygon', 'star', 'line', 'vector', 'text'])
 const TRANSFORM_KEYS = new Set(['x', 'y', 'rotation'])
@@ -304,6 +313,10 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   const images = new Map<string, PluginImage>()
   const imageUrls = new Map<string, string>()
   const networkJobs: { id: number; url: string; method: string; headers: Record<string, string>; body: string | null }[] = []
+  const fontJobs: PluginFontJob[] = []
+  const systemFonts = options.systemFonts
+  const systemFontAliases = new Map<string, string>()
+  let fontJobSerial = 0
   const documentId = editor.state.doc.id
   const sessionId = editor.sessionGeneration
   const commands: Command[] = []
@@ -394,9 +407,43 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
   function resolveFamily(family: string): string | null {
     const wanted = family.trim()
     if (wanted.toLowerCase() === 'noto sans sc') return 'default'
+    const alias = systemFontAliases.get(wanted.toLowerCase())
+    if (alias) return alias
     for (const [id, font] of Object.entries(families()))
       if (font.family === wanted || font.family.toLowerCase() === wanted.toLowerCase()) return id
     return null
+  }
+  /** Catalog face matching mirrors Figma's family+style request: exact family
+   * (case-insensitive), then the named style, then the weight, then the
+   * nearest non-italic weight. Italic faces never match. */
+  function matchSystemFont(faces: readonly PluginSystemFontFace[], family: string, style: string): PluginSystemFontFace | null {
+    if (/italic/i.test(style)) return null
+    const wanted = family.trim().toLowerCase()
+    const candidates = faces.filter(face => !face.italic && face.family.trim().toLowerCase() === wanted)
+    if (!candidates.length) return null
+    const named = style.trim().toLowerCase()
+    const weight = WEIGHTS[named] ?? 400
+    return candidates.find(face => face.style.trim().toLowerCase() === named)
+      ?? candidates.find(face => (face.weight ?? 400) === weight)
+      ?? candidates.reduce((best, face) => Math.abs((face.weight ?? 400) - weight) < Math.abs((best.weight ?? 400) - weight) ? face : best)
+  }
+  /** Registers catalog bytes through the same `font.import` admission as any
+   * other caller: face parsing, embedding rights, and the 24 MiB document
+   * budget. Rejections surface to the plugin's loadFontAsync promise. */
+  function importSystemFont(job: PluginFontJob, data: string, face: PluginSystemFontFace) {
+    const slug = (text: string) => text.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'font'
+    const result = execute('font.import', {
+      id: `font:sys:${slug(job.family)}-${slug(job.style)}`,
+      data,
+      faceIndex: face.index ?? 0,
+      embeddingAllowed: true,
+    }, true) as { id?: string; operations?: { method: string; result?: { id?: string } }[] }
+    // Mutating registry calls answer with the batch envelope, not the bare result.
+    const fontId = result.id ?? result.operations?.find(op => op.method === 'font.import')?.result?.id
+    if (!fontId) throw new PluginApiError('font_failed', 'font.import did not return a font id')
+    systemFontAliases.set(job.family.trim().toLowerCase(), fontId)
+    fontFamilies = null
+    return { id: fontId }
   }
   function requireFont(family: string, style: string) {
     if (/italic/i.test(style)) throw new PluginApiError('unsupported_api', `Italic styles are not available (${style})`)
@@ -1040,6 +1087,10 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
     flush,
     hasNetwork: () => networkJobs.length > 0,
     takeNetwork: () => networkJobs.shift() ?? null,
+    hasFontJobs: () => fontJobs.length > 0,
+    takeFontJobs: () => fontJobs.shift() ?? null,
+    matchSystemFont,
+    importSystemFont,
     call(op: string, payload: unknown): unknown {
       if (closed) throw new PluginClosed(closeMessage)
       calls += 1
@@ -1174,8 +1225,19 @@ export function createPluginSession(editor: Editor, options: PluginSessionOption
         ...Object.values(families()).map(font => ({ fontName: { family: font.family, style: 'Regular' } })),
       ] }
       if (op === 'loadFont') {
-        requireFont(shortText(body.family, 'family', 200), shortText(body.style ?? 'Regular', 'style', 80))
-        return null
+        const family = shortText(body.family, 'family', 200)
+        const style = shortText(body.style ?? 'Regular', 'style', 80)
+        if (/italic/i.test(style)) throw new PluginApiError('unsupported_api', `Italic styles are not available (${style})`)
+        const weight = WEIGHTS[style.trim().toLowerCase()]
+        if (!weight) throw new PluginApiError('font_unavailable', `Font style ${style} is not available`)
+        if (resolveFamily(family)) return { loaded: true }
+        if (systemFonts) {
+          fontJobSerial += 1
+          const id = `font-${fontJobSerial}`
+          fontJobs.push({ id, family, style })
+          return { pending: id }
+        }
+        throw new PluginApiError('font_unavailable', `Font ${family} is not loaded in this document`)
       }
       if (op === 'create') {
         const kind = body.kind

@@ -60,7 +60,7 @@ Behavior follows the [Figma Plugin API](https://www.figma.com/plugin-docs/api/ap
 
 ## Still blocked
 
-These calls still throw or are absent: `createImageAsync`, vector networks, PNG/JPG/PDF `exportAsync`, remote variable libraries and variable aliases, `importStyleByKeyAsync`, payments, parameters, codegen, annotations, rich text ranges, reactions, relaunch buttons, `strokeStyleId`, UI-frame network, positive `setTimeout`, and `setInterval`. `loadFontAsync` does not download a font. `figma.currentUser` is null. Viewport center is the camera origin, not the visual center, and `scrollAndZoomIntoView` does not change zoom. `documentchange` does not list the changed nodes. Plugin data lives in FD extension metadata, so a document that has it cannot be appended into another file. `createImage` accepts 256 KiB of PNG, JPEG, or WebP. GIF bytes are refused. There is no collaboration server. This is not Figma and not a published-plugin catalog.
+These calls still throw or are absent: `createImageAsync`, vector networks, PNG/JPG/PDF `exportAsync`, remote variable libraries and variable aliases, `importStyleByKeyAsync`, payments, parameters, codegen, annotations, rich text ranges, reactions, relaunch buttons, `strokeStyleId`, UI-frame network, positive `setTimeout`, and `setInterval`. `loadFontAsync` embeds desktop system-catalog families through `font.import` admission; it never downloads a font. `figma.currentUser` is null. Viewport center is the camera origin, not the visual center, and `scrollAndZoomIntoView` does not change zoom. `documentchange` does not list the changed nodes. Plugin data lives in FD extension metadata, so a document that has it cannot be appended into another file. `createImage` accepts 256 KiB of PNG, JPEG, or WebP. GIF bytes are refused. There is no collaboration server. This is not Figma and not a published-plugin catalog.
 
 ## API coverage
 
@@ -109,7 +109,7 @@ These calls still throw or are absent: `createImageAsync`, vector networks, PNG/
 | `figma.ui.onmessage` | supported | Called when the UI posts { pluginMessage }. |
 | `figma.ui.on` | partial | Only the message event is accepted. |
 | `figma.ui.resize` | supported | Updates the host frame size. It does not reflow the document. |
-| `figma.loadFontAsync` | partial | Resolves Noto Sans SC weight styles and document font families. Italic and unknown families reject. Network fonts are not fetched. |
+| `figma.loadFontAsync` | partial | Document families and Noto Sans SC weights resolve immediately; on desktop other families load from the system catalog through font.import admission and missing or restricted fonts reject. Web has no catalog. Italic rejects; network fonts are not fetched. |
 | `figma.listAvailableFontsAsync` | partial | Lists built-in weight styles and document families. It does not scan the operating system. |
 | `SceneNode.id` | supported | Document UUID. |
 | `SceneNode.name` | supported | At most 200 characters. |

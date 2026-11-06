@@ -642,3 +642,58 @@ describe('Figma plugin host', () => {
     expect(new Set(ids).size).toBe(ids.length)
   })
 })
+
+describe('System font loading', () => {
+  const ttf = () => readFileSync(new URL('../../../public/fonts/NotoSansSC.ttf', import.meta.url))
+
+  it('loads a catalog family through loadFontAsync and applies it to created text', async () => {
+    const current = editor()
+    const face = { id: 'sys-editor-sans', family: 'Editor Sans', style: 'Regular', index: 0, weight: 400, italic: false }
+    const run = await openPlugin(current, bundle('Font', `
+      figma.loadFontAsync({ family: 'Editor Sans', style: 'Regular' }).then(function () {
+        const text = figma.createText()
+        text.name = 'Loaded'
+        text.fontName = { family: 'Editor Sans', style: 'Regular' }
+        text.characters = 'Hi'
+        figma.closePlugin('done')
+      }, function (error) { figma.closePlugin('failed: ' + error.message) })
+    `), { systemFonts: {
+      list: async () => [face],
+      read: async () => ({ face, data: ttf().toString('base64') }),
+    } })
+    expect(run.closeMessage).toBe('done')
+    const text = named(current, 'Loaded')
+    expect(text?.kind).toBe('text')
+    expect(text?.text).toBe('Hi')
+    const fontId = (text?.textStyle as { fontId?: string } | undefined)?.fontId
+    expect(fontId).toBeTruthy()
+    expect(fontId).not.toBe('default')
+    expect(Object.keys(current.state.doc.fonts ?? {})).toContain(fontId)
+    run.close()
+  })
+
+  it('rejects loadFontAsync when the family is absent from document and catalog', async () => {
+    const current = editor()
+    const run = await openPlugin(current, bundle('FontMiss', `
+      figma.loadFontAsync({ family: 'No Such Family', style: 'Regular' }).then(function () {
+        figma.closePlugin('unexpected success')
+      }, function (error) { figma.closePlugin('rejected: ' + error.message) })
+    `), { systemFonts: { list: async () => [], read: async () => null } })
+    expect(run.closeMessage).toContain('rejected')
+    expect(run.closeMessage).toContain('No Such Family')
+    expect(Object.keys(current.state.doc.fonts ?? {})).toHaveLength(0)
+    run.close()
+  })
+
+  it('keeps the document-font-only rejection on the web build without a catalog', async () => {
+    const current = editor()
+    const run = await openPlugin(current, bundle('FontWeb', `
+      figma.loadFontAsync({ family: 'Inter', style: 'Regular' }).then(function () {
+        figma.closePlugin('unexpected success')
+      }, function (error) { figma.closePlugin('rejected: ' + error.message) })
+    `))
+    expect(run.closeMessage).toContain('not loaded in this document')
+    expect(Object.keys(current.state.doc.fonts ?? {})).toHaveLength(0)
+    run.close()
+  })
+})

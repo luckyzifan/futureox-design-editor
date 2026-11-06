@@ -3,6 +3,8 @@ name: futureox-design-development
 description: Develop, review, or test this Futureox Design local-first editor, its Rust/WASM kernel, Electron host, FD format, or shared MCP operation API. Use for changes in this repository, not unrelated projects or remote design-service automation.
 ---
 
+2026-11-06 [公开插件静态兼容率与字体真加载](../../../testing/verification-figmaplugin-public-20261106/README.md)：13 仓库 39 个开源 Figma 插件做静态 `figma.*` 用法扫描（不执行插件代码），对富宿主覆盖矩阵的静态兼容率 96.9%（supported 289 / partial 210 / unsupported 16 / unknown 19）；阻断榜 `loadAllPagesAsync`、`parameters`、`codegen`、`getStyledTextSegments`，未收录榜 `getLocal*StylesAsync` 等。同轮 `loadFontAsync` 接桌面 `fonts.list/read` 目录，经 `font.import` 注册表准入（解析、嵌入权限、24 MiB 预算）真加载，斜体/未装字体拒绝、Web 无目录维持原报错、不下载网络字体。变更类注册表调用返回 batch 信封而非裸结果需按信封解析。不改快照宿主、MCP 注册表语义或渲染预算；静态兼容率不是运行验收。
+
 2026-11-02 添加交互写入 300ms `ease-out` 时，编辑器把文档升到 schema 12，内核才接受这条曲线。空白文档不再报 `Invalid prototype easing curve`。见[记录](../../../testing/verification-plugin-animation-20261102/README.md)。不是 33/100ms 或完整 G2/G5。
 2026-11-02 [插件与原型动效](../../../testing/verification-plugin-animation-20261102/README.md)补快照宿主的本地 clientStorage、本地组件实例、图片哈希、SVG `exportAsync` 子集、ungroup 和自动布局对齐。不支持的 paint 会抛错并留下原来的填充。缺省过渡是 300ms ease-out。采样失败不弹红条。玻璃和模糊的中间帧仍按主线封顶后采样，落定帧用原稿。没有下载商店插件。不是 33/100ms 或完整 G2/G5。
 2026-11-02 [吸管与取色](../../../testing/verification-eyedropper-color-picker-20261102/README.md)按 Mac gaps6：色块、不带 # 的 HEX 和透明度一行。弹层有自定义/资料库、类型图标、饱和度方块、色相和透明度，以及 Hex/RGB/CSS→HSL|HSB。I 和 Mac Control+C 打开紧凑像素网格，读数是 `HSB H° S B`。不改光栅、瓦片或预算。33/100ms 与完整 G2/G5 未通过。
