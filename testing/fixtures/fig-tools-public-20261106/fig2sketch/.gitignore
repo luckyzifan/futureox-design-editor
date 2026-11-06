@@ -1,0 +1,11 @@
+__pycache__/
+.venv
+.python-version
+.DS_Store
+.vscode
+version.py
+example/
+output/
+*.egg-info
+dist
+build

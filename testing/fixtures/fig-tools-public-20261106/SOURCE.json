@@ -1,0 +1,8 @@
+{
+  "note": "Open-source FIG/Sketch conversion tools cloned 2026-11-06 for oracle comparison and Rust alignment. fig2sketch venv and git metadata removed; the venv can be recreated with python3.11 -m venv && pip install -e fig2sketch.",
+  "sources": [
+    { "name": "fig2sketch", "repository": "https://github.com/sketch-hq/fig2sketch", "license": "MIT (Sketch)", "note": "Official Sketch CLI converting .fig to .sketch; 15.5k lines Python; reads the embedded kiwi schema" },
+    { "name": "figma-to-sketch-action", "repository": "https://github.com/italia/figma-to-sketch-action", "license": "See repository", "note": "CI wrapper around fig2sketch" },
+    { "name": "openfig-core", "repository": "https://github.com/OpenFig-org/openfig-core", "license": "See repository", "note": "Format research notes: .fig is a ZIP with canvas.fig (fig-kiwi header, embedded schema, zlib+zstd); 534+ kiwi types; .deck (Slides) and fig-makee (Make) signatures" }
+  ]
+}
