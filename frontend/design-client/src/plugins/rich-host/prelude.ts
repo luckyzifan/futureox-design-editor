@@ -447,7 +447,13 @@ const figma = {
     },
   },
   loadFontAsync: function (fontName) {
-    return Promise.resolve().then(function () { return host('loadFont', { family: fontName.family, style: fontName.style }) })
+    return new Promise(function (resolve, reject) {
+      let result
+      try { result = host('loadFont', { family: fontName.family, style: fontName.style }) }
+      catch (error) { reject(error); return }
+      if (result && result.pending) fontWaiters[result.pending] = { resolve: resolve, reject: reject }
+      else resolve(undefined)
+    })
   },
   listAvailableFontsAsync: function () { return Promise.resolve().then(function () { return host('fonts', null) }) },
   createImage: function (data) {
@@ -528,6 +534,14 @@ globalThis.console = {
 }
 const fetchWaiters = {}
 let fetchSerial = 1
+const fontWaiters = {}
+globalThis.__finishFont = function (id, payload) {
+  const waiter = fontWaiters[id]
+  delete fontWaiters[id]
+  if (!waiter) return
+  if (!payload || payload.ok === false) waiter.reject(new Error((payload && payload.code || 'font_unavailable') + ': ' + (payload && payload.message || 'Font did not load')))
+  else waiter.resolve(undefined)
+}
 globalThis.fetch = function (input, init) {
   const url = typeof input === 'string' ? input : input && input.url
   const method = init && init.method || 'GET'

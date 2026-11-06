@@ -5,7 +5,7 @@ import { matchNetworkAccess, type PluginFetch } from './network'
 import { PLUGIN_LIMITS } from './limits'
 import { assertPluginBundle, type PluginBundle } from './manifest'
 import { PLUGIN_PRELUDE } from './prelude'
-import { createPluginSession, type PluginUiState } from './session'
+import { createPluginSession, type PluginFontJob, type PluginSystemFonts, type PluginUiState } from './session'
 
 const CLOSED_PREFIX = '__futureox_plugin_closed__:'
 let quickJsModule: ReturnType<typeof getQuickJS> | null = null
@@ -42,6 +42,8 @@ export type PluginHooks = {
   storage?: PluginStorage
   /** Test double for declared-domain fetch. Production uses the platform fetch. */
   fetch?: PluginFetch
+  /** Host font catalog. Production reads the desktop `fonts` bridge; the web build has none. */
+  systemFonts?: PluginSystemFonts
 }
 
 export class PluginController {
@@ -49,12 +51,14 @@ export class PluginController {
   readonly logs: readonly string[]
   private runtime: QuickJSRuntime | null
   private context: QuickJSContext | null
+  private systemFaces: Promise<readonly import('./session').PluginSystemFontFace[] | null> | null = null
   private constructor(
     private readonly session: ReturnType<typeof createPluginSession>,
     runtime: QuickJSRuntime,
     context: QuickJSContext,
     private readonly fetchImpl: PluginFetch | undefined,
     private readonly networkDomains: readonly string[],
+    private readonly systemFonts: PluginSystemFonts | undefined,
   ) {
     this.runtime = runtime
     this.context = context
@@ -77,9 +81,10 @@ export class PluginController {
       storage: hooks?.storage,
       networkDomains: bundle.manifest.networkDomains,
       fetch: hooks?.fetch,
+      systemFonts: hooks?.systemFonts,
       hooks,
     })
-    const controller = new PluginController(session, runtime, context, hooks?.fetch, bundle.manifest.networkDomains)
+    const controller = new PluginController(session, runtime, context, hooks?.fetch, bundle.manifest.networkDomains, hooks?.systemFonts)
     const host = context.newFunction('__host', (opHandle, payloadHandle) => {
       try {
         const op = context.getString(opHandle)
@@ -157,21 +162,50 @@ export class PluginController {
         throw errorFromGuest(message)
       }
       this.drain()
-      if (this.session.hasNetwork()) return this.finishNetwork()
+      if (this.session.hasNetwork() || this.session.hasFontJobs()) return this.finishAsync()
     } finally { evaluated.dispose() }
   }
 
-  private async finishNetwork() {
-    while (this.session.hasNetwork()) {
-      const job = this.session.takeNetwork()
-      if (!job) break
-      let payload: Record<string, unknown>
-      try { payload = await performPluginFetch(job, this.fetchImpl, this.networkDomains) }
-      catch (error) {
-        payload = { ok: false, code: error instanceof PluginApiError ? error.code : 'network_denied', message: error instanceof Error ? error.message : String(error) }
+  private async finishAsync() {
+    while (this.session.hasNetwork() || this.session.hasFontJobs()) {
+      if (this.session.hasNetwork()) {
+        const job = this.session.takeNetwork()
+        if (!job) break
+        let payload: Record<string, unknown>
+        try { payload = await performPluginFetch(job, this.fetchImpl, this.networkDomains) }
+        catch (error) {
+          payload = { ok: false, code: error instanceof PluginApiError ? error.code : 'network_denied', message: error instanceof Error ? error.message : String(error) }
+        }
+        this.inject(`globalThis.__finishFetch(${job.id}, ${JSON.stringify(payload)})`)
+        this.drain()
+        continue
       }
-      this.inject(`globalThis.__finishFetch(${job.id}, ${JSON.stringify(payload)})`)
+      const job = this.session.takeFontJobs()
+      if (!job) break
+      const payload = await this.loadSystemFont(job)
+      this.inject(`globalThis.__finishFont(${JSON.stringify(job.id)}, ${JSON.stringify(payload)})`)
       this.drain()
+    }
+  }
+  /** Resolves one loadFontAsync miss: catalog match, byte read, then the same
+   * `font.import` admission (parsing, embedding rights, budgets) as any other
+   * caller. The plugin promise resolves only after the document owns the font. */
+  private async loadSystemFont(job: PluginFontJob): Promise<Record<string, unknown>> {
+    try {
+      if (!this.systemFonts) return { ok: false, code: 'font_unavailable', message: `Font ${job.family} is not loaded in this document` }
+      this.systemFaces ??= this.systemFonts.list()
+      const faces = await this.systemFaces
+      if (!faces) return { ok: false, code: 'font_unavailable', message: 'No system font catalog is available in this build' }
+      const face = this.session.matchSystemFont(faces, job.family, job.style)
+      if (!face) return { ok: false, code: 'font_unavailable', message: `Font ${job.family} ${job.style} is not installed` }
+      const bytes = await this.systemFonts.read({ id: face.id })
+      if (!bytes) return { ok: false, code: 'font_unavailable', message: `Font ${job.family} could not be read` }
+      this.session.importSystemFont(job, bytes.data, bytes.face ?? face)
+      return { ok: true }
+    } catch (error) {
+      const code = error instanceof PluginApiError ? error.code : 'font_failed'
+      const message = error instanceof Error ? error.message : String(error)
+      return { ok: false, code, message: message.slice(0, 500) }
     }
   }
 

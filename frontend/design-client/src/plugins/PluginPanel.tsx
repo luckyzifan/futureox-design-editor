@@ -119,6 +119,10 @@ export function PluginPanel({ editor, desktop = desktopBridge(), launch = null, 
       const manifest = bundle.manifest
       const next = await openPlugin(editor, bundle, {
         command: manifest.commands[0]?.command,
+        systemFonts: desktop?.fonts ? {
+          list: async () => { const listed = await desktop.fonts!.list(); return listed.status === 'ok' ? listed.fonts : null },
+          read: async request => { const read = await desktop.fonts!.read(request); return read.status === 'ok' ? { face: read.font, data: read.data } : null },
+        } : undefined,
         onNotify: message => { if (token === generation.current) setStatus(message) },
         onUi: ui => {
           if (token !== generation.current || !ui.visible) return
