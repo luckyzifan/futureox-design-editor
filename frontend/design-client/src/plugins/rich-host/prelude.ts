@@ -147,14 +147,29 @@ function wrap(id) {
       if (prop === 'exportAsync') return function (settings) {
         const format = settings && settings.format || 'PNG'
         const constraint = settings && settings.constraint
-        return Promise.resolve().then(function () {
-          const result = host('export', { id: nodeId, format: format, scale: constraint && constraint.type === 'SCALE' ? constraint.value : undefined })
+        const scale = constraint && constraint.type === 'SCALE' ? constraint.value : undefined
+        const normalized = String(format).toUpperCase()
+        if (normalized === 'SVG') return Promise.resolve().then(function () {
+          const result = host('export', { id: nodeId, format: 'SVG', scale: scale })
           if (typeof TextEncoder === 'function') return new TextEncoder().encode(result.text)
           const encoded = unescape(encodeURIComponent(result.text))
           const bytes = new Uint8Array(encoded.length)
           for (let i = 0; i < encoded.length; i++) bytes[i] = encoded.charCodeAt(i)
           return bytes
         })
+        if (normalized === 'PNG' || normalized === 'JPG') {
+          return new Promise(function (resolve, reject) {
+            let result
+            try { result = host('exportBegin', { id: nodeId, format: normalized, scale: scale }) }
+            catch (error) { reject(error); return }
+            if (result && result.pending) exportWaiters[result.pending] = { resolve: resolve, reject: reject }
+            else resolve(null)
+          }).then(function (payload) {
+            if (!payload) return null
+            return new Uint8Array(figma.base64Decode(payload.base64 || ''))
+          })
+        }
+        throw new Error('unsupported_api: exportAsync supports SVG, PNG and JPG in this host')
       }
       if (prop === 'setBoundVariable') return function (field, variable) {
         host('variableBind', { id: nodeId, field: field, variableId: variable ? variable.id : null })
@@ -299,6 +314,7 @@ const figma = {
   createPolygon: function () { return create('polygon') },
   createStar: function () { return create('star') },
   createLine: function () { return create('line') },
+  createSlice: function () { return create('slice') },
   createText: function () { return create('text') },
   createComponent: function () { return wrap(host('component', null).id) },
   createComponentFromNode: function (node) { return wrap(host('componentFromNode', { id: node.id }).id) },
@@ -502,7 +518,13 @@ const figma = {
     return Uint8Array.from(bytes)
   },
   createVector: function () { unsupported('figma.createVector') },
-  loadAllPagesAsync: function () { unsupported('figma.loadAllPagesAsync') },
+  loadAllPagesAsync: function () { return Promise.resolve(host('loadAllPages', null)) },
+  getNodeByIdAsync: function (id) { return Promise.resolve(figma.getNodeById(id)) },
+  setCurrentPageAsync: function (page) { return Promise.resolve(host('setPage', { id: page && page.id })) },
+  getStyleByIdAsync: function (id) { return Promise.resolve(figma.getStyleById(id)) },
+  getLocalPaintStylesAsync: function () { return Promise.resolve(figma.getLocalPaintStyles()) },
+  getLocalTextStylesAsync: function () { return Promise.resolve(figma.getLocalTextStyles()) },
+  getLocalEffectStylesAsync: function () { return Promise.resolve(figma.getLocalEffectStyles()) },
   importComponentByKeyAsync: function () { unsupported('figma.importComponentByKeyAsync') },
   createGridStyle: function () { unsupported('figma.createGridStyle') },
   ui: {
@@ -533,6 +555,14 @@ globalThis.console = {
   error: function () { host('log', { level: 'error', message: Array.prototype.join.call(arguments, ' ') }) },
 }
 const fetchWaiters = {}
+const exportWaiters = {}
+globalThis.__finishExport = function (id, payload) {
+  const waiter = exportWaiters[id]
+  delete exportWaiters[id]
+  if (!waiter) return
+  if (!payload || payload.ok === false) waiter.reject(new Error((payload && payload.code || 'export_failed') + ': ' + (payload && payload.message || 'Raster export failed')))
+  else waiter.resolve({ base64: payload.base64 || '' })
+}
 let fetchSerial = 1
 const fontWaiters = {}
 globalThis.__finishFont = function (id, payload) {

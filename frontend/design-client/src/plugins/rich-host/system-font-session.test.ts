@@ -10,9 +10,10 @@ afterEach(() => { for (const editor of editors.splice(0)) editor.dispose() })
 // Session-level checks for the system-font side channel behind loadFontAsync:
 // the pending job hand-off, the font.import envelope handling, and the family
 // alias that later fontName writes resolve against.
+const ttf = () => readFileSync(new URL('../../../public/fonts/NotoSansSC.ttf', import.meta.url))
+
 describe('system font session', () => {
   const face = { id: 'sys-1', family: 'Editor Sans', style: 'Regular', index: 0, weight: 400, italic: false }
-  const ttf = () => readFileSync(new URL('../../../public/fonts/NotoSansSC.ttf', import.meta.url))
 
   function session(systemFonts?: Parameters<typeof createPluginSession>[1]['systemFonts']) {
     const editor = new Editor(blank('System fonts'))
@@ -54,5 +55,29 @@ describe('system font session', () => {
     expect(value.matchSystemFont(faces, 'Editor Sans', 'Thin')?.id).toBe('a')
     expect(value.matchSystemFont(faces, 'Editor Sans', 'Italic')).toBeNull()
     expect(value.matchSystemFont(faces, 'Missing Sans', 'Regular')).toBeNull()
+  })
+})
+
+describe('system font per-weight aliases', () => {
+  const regular = { id: 'f-regular', family: 'Static Sans', style: 'Regular', index: 0, weight: 400, italic: false }
+  const bold = { id: 'f-bold', family: 'Static Sans', style: 'Bold', index: 0, weight: 700, italic: false }
+  const regularBytes = () => readFileSync(new URL('../../../public/fonts/poppins/Poppins-Regular.ttf', import.meta.url)).toString('base64')
+  const boldBytes = () => readFileSync(new URL('../../../public/fonts/poppins/Poppins-Bold.ttf', import.meta.url)).toString('base64')
+
+  it('keeps separate faces per weight and reuses one catalog face across styles', () => {
+    const editor = new Editor(blank('Static fonts'))
+    editors.push(editor)
+    const value = createPluginSession(editor, { name: 't', pluginId: 't', uiHtml: null })
+    const data = regularBytes()
+    const regularImport = value.importSystemFont({ id: 'j1', family: 'Static Sans', style: 'Regular' }, data, regular)
+    const boldImport = value.importSystemFont({ id: 'j2', family: 'Static Sans', style: 'Bold' }, boldBytes(), bold)
+    expect(regularImport.id).not.toBe(boldImport.id)
+    // Semi Bold lands on the Bold catalog face: no third import, shared fontId.
+    const semiBold = value.importSystemFont({ id: 'j3', family: 'Static Sans', style: 'Semi Bold' }, boldBytes(), bold)
+    expect(semiBold.id).toBe(boldImport.id)
+    expect(Object.keys(editor.state.doc.fonts ?? {})).toHaveLength(2)
+    // Both weights resolve without another job.
+    expect(value.call('loadFont', { family: 'Static Sans', style: 'Bold' })).toEqual({ loaded: true })
+    expect(value.call('loadFont', { family: 'Static Sans', style: 'Semi Bold' })).toEqual({ loaded: true })
   })
 })

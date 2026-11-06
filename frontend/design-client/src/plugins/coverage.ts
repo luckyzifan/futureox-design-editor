@@ -28,7 +28,7 @@ export const pluginApiCoverage: readonly PluginCoverageEntry[] = [
   { api: 'figma.showUI', status: 'supported', note: 'Desktop opens a sandboxed window. Inline HTML is capped at 200000 characters.' },
   { api: 'figma.ui.postMessage', status: 'supported', note: 'JSON values up to 64 KiB. The desktop UI window receives pluginMessage.' },
   { api: 'figma.ui.onmessage', status: 'supported', note: 'Receives the pluginMessage value. figma.ui.on("message") assigns the same handler.' },
-  { api: 'figma.loadFontAsync', status: 'partial', note: 'Resolves after recording the family. It does not load or embed a font file.' },
+  { api: 'figma.loadFontAsync', status: 'partial', note: 'Snapshot host: resolves document families only and embeds nothing. The rich QuickJS host (Plugins panel) additionally loads desktop system-catalog families through font.import admission.' },
   { api: 'figma.util.rgb', status: 'supported', note: 'Returns {r,g,b}. Other figma.util helpers throw.' },
   { api: 'node.id', status: 'supported', note: 'Stable document id.' },
   { api: 'node.type', status: 'supported', note: 'Figma-style names such as RECTANGLE, TEXT, FRAME, PAGE, and DOCUMENT.' },

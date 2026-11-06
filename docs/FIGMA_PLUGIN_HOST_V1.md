@@ -197,13 +197,20 @@ These calls still throw or are absent: `createImageAsync`, vector networks, PNG/
 | `figma.skipInvisibleInstanceChildren` | partial | The flag is stored. findAll does not skip invisible instance children. |
 | `setTimeout` | partial | Only a zero delay during the current turn. A positive delay throws. setInterval throws. |
 | `fetch` | partial | Main-thread fetch only, and only to origins declared in networkAccess. https except an explicit localhost origin. Private networks, metadata hosts, credentials, and the UI frame stay blocked. |
-| `figma.loadAllPagesAsync` | unsupported | Throws unsupported_api. The open document is already local; this call is not required. |
+| `figma.loadAllPagesAsync` | supported | Resolves immediately; every page of the local document is always loaded. |
+| `figma.getNodeByIdAsync` | supported | Async form of `getNodeById`. Missing ids resolve null. |
+| `figma.setCurrentPageAsync` | supported | Async form of the `currentPage` assignment. |
+| `figma.getStyleByIdAsync` | supported | Async form of `getStyleById`. Local styles only. |
+| `figma.getLocalPaintStylesAsync` | supported | Async form of `getLocalPaintStyles`. Remote library styles are absent. |
+| `figma.getLocalTextStylesAsync` | supported | Async form of `getLocalTextStyles`. |
+| `figma.getLocalEffectStylesAsync` | supported | Async form of `getLocalEffectStyles`. |
+| `figma.createSlice` | supported | Creates a slice node on the current page. |
 | `figma.importComponentByKeyAsync` | unsupported | Throws unsupported_api. Remote component keys are not imported. |
 | `figma.createPaintStyle` | partial | Creates a local paint style. name and paints can be set. No cloud library or style key. |
 | `figma.createTextStyle` | partial | Creates a local text style. fontName, lineHeight, letterSpacing, textCase, and paragraph spacing can be set. fontSize and textDecoration are kept on the node, not the style. |
 | `figma.createEffectStyle` | partial | Creates a local effect style. name and effects can be set. No cloud library. |
 | `figma.createGridStyle` | unsupported | Throws unsupported_api. |
-| `SceneNode.exportAsync` | partial | SVG markup bytes only. PNG, JPG, and PDF stay on the editor export panel. |
+| `SceneNode.exportAsync` | partial | SVG markup bytes resolve inline. PNG and JPG rasterize through the product CPU export path with scale 0.1–4 and a 500,000-character base64 transport cap; larger rasters reject with export_limit. PDF is not available. |
 | `SceneNode.getPluginData` | supported | String values for this manifest id. A missing key returns "". Pages and the document root use the same methods. Stored in the fdCompatibility extension design.futureox/plugin-data and undone with the edit. |
 | `SceneNode.setPluginData` | supported | Up to 50 keys and 10000 characters. An empty string deletes the key. The same limits apply to pages and figma.root. |
 | `SceneNode.getSharedPluginData` | supported | Reads a namespace another plugin on this file could also read. Missing keys return "". |
