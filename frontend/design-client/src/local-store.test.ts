@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { SaveCoordinator, type LocalRecord, type SaveStatus } from './local-store'
 import { blank } from './model'
 
@@ -90,4 +90,21 @@ test('snapshot failure rejects before queueing any commit and does not poison th
   await saver.save(valid, 1)
   expect(writes).toBe(1)
   expect(saver.dirty).toBe(false)
+})
+
+test('a privately immutable snapshot does not need another structured clone', async () => {
+  const { captureImmutable } = await import('./immutable-document')
+  const document = captureImmutable(blank('Immutable snapshot'))!
+  const clone = vi.spyOn(globalThis, 'structuredClone')
+  let saved: ReturnType<typeof blank> | undefined
+  const saver = new SaveCoordinator(async snapshot => {
+    saved = snapshot
+    return { document: snapshot, revision: 1, updatedAt: 1 }
+  })
+  try {
+    saver.observe(document, 1)
+    await saver.save(document, 1)
+    expect(saved).toBe(document)
+    expect(clone).not.toHaveBeenCalled()
+  } finally { clone.mockRestore() }
 })

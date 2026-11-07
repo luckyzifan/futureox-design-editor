@@ -31,3 +31,9 @@ export function nearOverviewTiles(tiles: readonly RasterTile[], view: CanvasCame
     (tile.y + tile.height/2 - (tile.phaseY ?? 0))/tile.zoom-y)
   return [...tiles].sort((a,b)=>distance(a)-distance(b))
 }
+
+/** One optional overview request shares the established two-tile pipeline. */
+export function overviewWarmBatch(tiles: readonly RasterTile[], view: CanvasCamera, width: number, height: number,
+  available: (tile: RasterTile) => boolean) {
+  return nearOverviewTiles(tiles,view,width,height).filter(available).slice(0,2)
+}

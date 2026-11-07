@@ -130,7 +130,7 @@ describe('layer selection follows displayed tree order', () => {
     expect(editor.state.selection).toEqual([third, ids[1], ids[0]])
     row(ids[1]).props.onClick({ shiftKey: false, metaKey: true, ctrlKey: false })
     expect(editor.state.selection).toEqual([third, ids[0]])
-    row(ids[1]).props.onDoubleClick()
+    find(row(ids[1]), value=>value.props?.className==='layer-name').props.onDoubleClick({stopPropagation(){}})
     const rename = find(render(), (value) => value.props?.['aria-label'] === '重命名图层')
     expect(rename.props.autoFocus).toBe(true)
     rename.props.onCommit('已命名图层')

@@ -47,14 +47,14 @@ function fixture(initial = blank()) {
 afterEach(() => { sessions.splice(0).forEach(session => session.dispose()); vi.unstubAllGlobals(); vi.useRealTimers() })
 
 describe('desktop data integrity independent review', () => {
-  it('opening the active library document after choosing Save never replaces the new head with the previously read old snapshot', async () => {
+  it('opening the active library document autosaves without replacing the new head with the previously read old snapshot', async () => {
     vi.useFakeTimers()
     const f = fixture(); await f.session.start()
     f.rename('version one'); await f.session.save()
     const id = f.editor.state.doc.id
     f.rename('version two pending')
     expect(await f.session.openWorkspace(id)).toBe(true)
-    expect(f.confirm).toHaveBeenCalledWith('open')
+    expect(f.confirm).not.toHaveBeenCalled()
     expect(f.rows.get(id)?.name).toBe('version two pending')
     expect(f.editor.state.doc.name).toBe('version two pending')
     expect(f.session.status).toMatchObject({ dirty: false, revision: 2 })

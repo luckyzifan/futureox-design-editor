@@ -245,7 +245,7 @@ test('ordinary navigation retains same-content coverage over quiet without certi
     expect(pending.signal.aborted).toBe(false)
     const bitmap = await f.complete(), tile = await f.acknowledge(bitmap)
     expect(bitmap.close).not.toHaveBeenCalled()
-    expect(tile.zoom).toBe(32)
+    expect(tile.zoom).toBe(64)
     expect(tile.nativeNavigationDevice).toBeUndefined()
     expect(f.container.querySelector('[data-detail-ready="true"]')).toBeNull()
     expect(f.props.onFallback).not.toHaveBeenCalled()

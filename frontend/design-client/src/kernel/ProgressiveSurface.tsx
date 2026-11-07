@@ -598,7 +598,8 @@ export function ProgressiveSurfaceImpl(
   latestNativeNavigation.current = nativeNavigation
   const navigationZoom = useNavigationZoom(view, identity, singleCanvas && !props.paused && props.visible !== false &&
     !sharpNavigation && !gestureHeadroom && !nativeVisibleTiles && !props.interaction?.active && !props.grid && !props.checkerboard && !props.pixelPreview && !hdrCompositing,
-    residentDisplay && filteredContent, props.panGestureActive === true, nativeNavigation)
+    residentDisplay && filteredContent, props.panGestureActive === true, nativeNavigation,
+    import.meta.env.VITE_DESIGN_NAVIGATION_ADAPTIVE_QUIET!=='0' && residentDisplay && !filteredContent)
   const latestNavigationZoom = useRef(navigationZoom)
   latestNavigationZoom.current = navigationZoom
   const frameZooming=useZoomActivity(view.zoom,identity)
@@ -1021,15 +1022,21 @@ export function ProgressiveSurfaceImpl(
     })
     const hasReadyCoverage = () => navigationHasCoverage(validCoverage(), requestedView, width, height,
       navigationReadyDensity(requestedView.zoom, dpr, width, height, nativeNavigation))
+    // At quiet, a same-owner coarse image already supplies continuity. Spend
+    // the next turn on exact detail, not a second intermediate-resolution copy.
+    // This does not authorize skipping the sharper moving-camera preview.
+    const hasRepairBacking = () => import.meta.env.VITE_DESIGN_PROGRESSIVE_NATIVE_REPAIR==='1'&&
+      residentDisplay&&!navigationZoom.active&&syncedDoc.current===doc&&
+      navigationHasCoverage(validCoverage(),requestedView,width,height)
     // A large reversal can leave a costly zoom-in capture occupying the sole
-    // raster lane after its crop stopped covering the current view. Already
-    // acknowledged current-content coverage supplies continuity, so revoke
-    // that optional capture now rather than waiting for pointer quiet. Small
-    // reversals and uncovered views still let useful work finish.
-    if (navigationZoom.active && zoomOutCoverage && hasReadyCoverage()) {
+    // raster lane after its crop stopped covering the current view. Keep
+    // accepted pixels, but revoke that optional job without waiting for quiet.
+    // Cold views tolerate small reversals; a fourfold change makes the old
+    // crop too narrow even before replacement coverage has arrived.
+    if (navigationZoom.active && zoomOutCoverage) {
       const flight = coverageFlight.current
       if (flight?.contract === contract && flight.generation === generation)
-        flight.cancelObsoleteZoomOut(requestedView, width, height, 2)
+        flight.cancelObsoleteZoomOut(requestedView, width, height, hasReadyCoverage() ? 2 : 4)
     }
     const pendingCoverage = () => {
       const flight = coverageFlight.current, tile = flight?.tile
@@ -1581,7 +1588,7 @@ export function ProgressiveSurfaceImpl(
         if (navigationZoom.active&&!nativePanRepair) {
           const sample = navigationZoom.sample
           if (!sample) return
-          const ratio = navigationPreviewDensity(dpr, width, height, nativeNavigation), scale = sample.view.zoom * ratio
+          const ratio = navigationPreviewDensity(dpr, width, height, nativeNavigation, sample.view.zoom), scale = sample.view.zoom * ratio
           const w = Math.max(1, Math.ceil(width * ratio)), h = Math.max(1, Math.ceil(height * ratio))
           const camera = { x: sample.view.x * ratio, y: sample.view.y * ratio, zoom: scale }
           const identity = previewIdentity('navigation-preview', camera, w, h), cached = cachedPreview(identity)
@@ -1644,7 +1651,8 @@ export function ProgressiveSurfaceImpl(
           // the viewport at the sampling density this sample would produce.
           // Keep low-density pixels visible while that bounded refresh runs.
           const retained = filteredContent && !nativeNavigation ? validCoverage() : []
-          if (retained.length && tilesCoverBounds(retained, viewport, scale)) {
+          if (retained.length && tilesCoverBounds(retained, viewport,
+              navigationReadyDensity(sample.view.zoom,dpr,width,height))) {
             // Only the optional continuity capture is superseded. A channel-
             // wide cancel also revokes the native tile currently filling this
             // same camera, repeatedly starving detail during continuous zoom.
@@ -1688,7 +1696,9 @@ export function ProgressiveSurfaceImpl(
             transparent: false, grid: false, rasterProfile, livePreview: true, renderIntent: 'preview' as const,
             // Keep the same physical camera when a whole-frame halo cannot
             // fit: the worker already assembles bounded regions privately.
-            ...(nativeNavigation ? { previewTileFallback: true } : {}),
+            ...(nativeNavigation || ratio === dpr && residentDisplay &&
+              usesDesktopDisplay(renderExecutionPolicy,{renderIntent:'preview',rasterProfile})
+              ? { previewTileFallback: true } : {}),
           }
           // Begin ownership only when the latest queued goal actually starts.
           // An intermediate sample must not abort the useful capture ahead of
@@ -1992,7 +2002,7 @@ export function ProgressiveSurfaceImpl(
         const continuityAllowed = !retainedEditViewport && !nativePanRepair && !sharpNavigation && !gestureHeadroom && !nativeNavigation && !nativeVisibleTiles && singleCanvas &&
           !hdrCompositing && !props.grid && !props.checkerboard && !props.pixelPreview && !props.interaction?.active
         if (!needsStartupPreview && continuityAllowed &&
-            !hasReadyCoverage() && !pendingCoverage() && !plan.every(tile => tileRef.current.has(tile.key) && ready.current.has(tile.key))) {
+            !hasReadyCoverage() && !hasRepairBacking() && !pendingCoverage() && !plan.every(tile => tileRef.current.has(tile.key) && ready.current.has(tile.key))) {
           const target = { ...requestedView }, ratio = navigationPreviewDensity(dpr, width, height)
           const w = Math.max(1, Math.ceil(width * ratio)), h = Math.max(1, Math.ceil(height * ratio))
           const stillRequested = () => {
@@ -2029,7 +2039,7 @@ export function ProgressiveSurfaceImpl(
         // A bounded page overview covers large zoom-outs and previously unseen
         // portions of a board. It owns real world pixels, not a viewport crop.
         // Preserve it through cache pressure until its content is invalidated.
-        const currentCoverage = () => hasReadyCoverage() || pendingCoverage()
+        const currentCoverage = () => hasReadyCoverage() || pendingCoverage() || hasRepairBacking()
         // A committed drag keeps its kernel-rendered interaction layer above
         // the previous complete page until exact tiles take over. That is
         // already a covering preview; don't queue an overview and another LOD
@@ -2308,7 +2318,13 @@ export function ProgressiveSurfaceImpl(
   const canRefine = !displayed || reusableFrame || fullPlanReady
   const startupPreview = !displayed && visible.some(tile => tile.viewportPreview &&
     tile.document === doc && tile.revision === contract.revision && ready.current.has(tile.key))
-  const fineTile = (tile: PaintedTile) => tileRef.current.get(tile.key) === tile && fullPlanReady &&
+  const partialDetail=import.meta.env.VITE_DESIGN_PROGRESSIVE_NATIVE_REPAIR==='1'&&residentDisplay&&reusableFrame&&currentPlan&&
+    !hdrCompositing&&!cameraDependent&&!props.grid&&!props.checkerboard&&!props.pixelPreview&&!props.interaction?.active&&syncedDoc.current===doc
+  const fineTile = (tile: PaintedTile) => tileRef.current.get(tile.key) === tile &&
+    (fullPlanReady||partialDetail&&tile.document===doc&&tile.revision===contract.revision&&
+      tile.zoom>=detailLevel&&tileHasNativePhase(tile,requestedView,dpr)&&
+      !!tile.gpuTile&&previewDevice.current.client===rasterClient&&!!previewDevice.current.key&&
+      (!tile.residentDevice||tile.residentDevice.client===rasterClient&&tile.residentDevice.key===previewDevice.current.key))&&
     !!plan?.ids.has(tile.key) && ready.current.has(tile.key) &&
     (syncedDoc.current === doc || tile.document === doc)
   // A lower-density preview may also hand off as a whole viewport. A cache

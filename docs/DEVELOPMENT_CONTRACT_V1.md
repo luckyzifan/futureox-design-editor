@@ -75,6 +75,12 @@ Validate schemas and all batch wrapper/leaf permissions before mutation callback
 
 ## Local storage and readable history
 
+2026-11-06 用户明确要求：编辑自动保存到独立工作副本，导入原文件始终不改写。普通桌面工作区和大型源文件编辑都在输入/手势提交后自动持久化；切换/关闭等待当前回执，失败保留编辑，不要求手动保存或放弃修改。导出是独立动作，不能选择输入原件或指向它的链接。见[验证记录](../testing/verification-zoom-autosave-20261106/README.md)。
+
+2026-11-06 [连续手势与恢复验证](../testing/verification-fluid-priority-20261106/README.md)补充：独立 Sketch 工作副本用 v2 检查点保存原格式不能直接表达的精确编组矩阵，旧版本须拒绝不能理解的检查点，完整源绘制与重开应用相同矩阵。位图存储域与新会话身份分别验证并随窗口/会话撤销。非刚性矩阵不能无损导出为 Sketch 时明确拒绝导出，不能以保存成功掩盖格式损失。渲染调度不得把历史已完成相机当作当前清晰覆盖；局部旋转每次输入重验后续背景读取范围，取消过时捕获保留已完成像素和资源 fence。实际 CPU、GUI、像素和剩余停顿分别报告，完整 G2/G5 仍未关闭。
+
+2026-11-07 [定向性能与保存增量](../testing/verification-integrated-performance-20261106/README.md)：大源保存使用已有完整不可变差量，变化字段仍由原生源事务权威验收；私有不可变浏览器快照免重复克隆，可变输入保留克隆。组件位姿证明默认开启并保留 `0` 回退，拒绝时继续原布局/组件路径。缩出驻留预览不替代当前精修，总览预热最多两块一批且不增加 GPU owner 或预算。33/100ms 和完整 G2/G5 未关闭。
+
 - SQLite workspace/catalog pools use one connection each. Desktop runtime bounds admission to eight business requests and the trusted document transfer byte budget. Ordinary workspace mutations retain one FIFO worker; large source-file work has a separate single-worker lane, limited to two admitted long requests. Four blocking slots leave room for stdio/parsing alongside the two business workers. Blocking file preflight/parsing belongs in bounded blocking work; SQLx SQLite executes on connection workers. Production `workspace.*`, `automation.*`, and `catalog.list` turns run on one dedicated FIFO thread that drives those futures, so a SQLite wait does not occupy a Tokio blocking slot. Electron frames and decodes workspace document payloads of at least 32 KiB on a Node worker; smaller payloads stay inline. Direct library callers must bound their own concurrency. See [the 2026-11-02 SQLite worker note](../testing/verification-electron-sqlite-worker-20261102/README.md). Queue/start receipts separate waiting from execution deadlines without implying a commit.
 - Workspace WAL and synchronous=FULL, with BEGIN IMMEDIATE, atomically publish head, snapshot, resources/references and durable mutation receipt. Storage expected revision is separate from editor expectedRevision. BUSY/LOCKED and pool acquisition timeout report WORKSPACE_BUSY; no blind retry with changed content or a new mutation identity after uncertainty.
 - Queued cancellation can prevent execution; cancellation after commit cannot promise rollback. EOF drains admitted work. A missing response can mean a successful durable write: reconcile or retry the exact identity/content.

@@ -139,13 +139,15 @@ describe('Rust workspace persistence session',()=>{
       expect(f.session.dirty).toBe(false)
     } finally { unregister() }
   })
-  it('approved close stops a known busy retry without writing discarded changes', async () => {
+  it('close flushes a known busy autosave and never prompts to discard edits', async () => {
     vi.useFakeTimers(); const f = fixture(); await f.session.start(); await f.session.save()
     vi.mocked(f.store.commit).mockResolvedValueOnce({ status: 'error', code: 'BUSY', message: 'busy' })
-    f.rename('Discard on close'); await vi.advanceTimersByTimeAsync(600)
+    f.rename('Keep on close'); await vi.advanceTimersByTimeAsync(600)
     expect(await f.session.requestClose()).toBe(true)
     await vi.advanceTimersByTimeAsync(60_000)
-    expect(f.store.commit).toHaveBeenCalledTimes(2)
+    expect(f.store.commit).toHaveBeenCalledTimes(3)
+    expect(f.rows.get(f.editor.state.doc.id)?.name).toBe('Keep on close')
+    expect(f.confirm).not.toHaveBeenCalled()
   })
   it.each(['transport', 'invalid-ack'] as const)('a %s failure after BUSY stops automatic retry and preserves its pending receipt', async failure => {
     vi.useFakeTimers(); const f = fixture(); await f.session.start(); await f.session.save()
@@ -190,12 +192,22 @@ describe('Rust workspace persistence session',()=>{
     expect(f.bridge.saveDocument).toHaveBeenCalledWith(expect.objectContaining({saveAs:true}))
     expect(f.session.dirty).toBe(true)
   })
-  it('opening a library document respects pending-edit cancellation',async()=>{
+  it('opening a library document first autosaves the current working copy without a prompt',async()=>{
     const f=fixture();await f.session.start();f.rename('Keep');const doc=blank('Other')
+    const previous=f.editor.state.doc.id
     f.rows.set(doc.id,{id:doc.id,name:doc.name,revision:1,hash:'h',updatedAt:1,deleted:false,documentJson:JSON.stringify(doc)})
-    f.confirm.mockResolvedValueOnce('cancel' as never)
-    expect(await f.session.openWorkspace(doc.id)).toBe(false)
-    expect(f.editor.state.doc.name).toBe('Keep')
+    expect(await f.session.openWorkspace(doc.id)).toBe(true)
+    expect(f.rows.get(previous)?.name).toBe('Keep')
+    expect(f.editor.state.doc.name).toBe('Other')
+    expect(f.confirm).not.toHaveBeenCalled()
+  })
+  it('failed automatic close keeps the document and never offers to discard it',async()=>{
+    const f=fixture();await f.session.start();f.rename('Keep after disk failure')
+    vi.mocked(f.store.commit).mockResolvedValue({status:'error',code:'WORKSPACE_UNAVAILABLE',message:'disk full'})
+    expect(await f.session.requestClose()).toBe(false)
+    expect(f.session.dirty).toBe(true)
+    expect(f.editor.state.doc.name).toBe('Keep after disk failure')
+    expect(f.confirm).not.toHaveBeenCalled()
   })
   it('saving a local copy preserves both the conflicting head and the authored changes',async()=>{
     const f=fixture();await f.session.start();f.rename('Original');await f.session.save()

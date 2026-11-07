@@ -1,5 +1,6 @@
 /** Presentation only. Never translate authored names, paths, command IDs or diagnostic codes. */
 const menuLabels = {
+  'Edits are saved automatically': '编辑会自动保存', 'Export copy…': '导出副本…',
   'File': '文件', 'New': '新建', 'New Page': '新建页面', 'Open…': '打开…', 'Open Pending Finder File': '打开等待中的 Finder 文件',
   'Clear Recent': '清除最近记录', 'Save': '保存', 'Save As…': '另存为…', 'Recover unsaved design…': '恢复未保存的设计…',
   'Edit': '编辑', 'Settings… / 设置': '设置…', 'Undo': '撤销', 'Redo': '重做', 'Cut': '剪切', 'Copy': '复制',
@@ -36,7 +37,7 @@ const en = {
   replaceTitle: 'Replace existing futureox-desgin file?', replaceMessage: name => `Replace “${name}”?`,
   replaceDetail: path => `The .fd extension was added. The existing file at ${path} will be replaced.`, cancel: 'Cancel', replace: 'Replace',
   recoverTitle: 'Recover unsaved design?', recoverMessage: name => `Recover “${name}” as an unsaved copy?`,
-  recoverDetail: 'The original file will not be overwritten. Use Save As to choose where to keep the recovered design.',
+  recoverDetail: 'The recovered design is an independent working copy and will be saved automatically. The original file stays unchanged.',
   recoverCopy: 'Recover copy', nextSnapshot: 'Next snapshot',
   recoveryUnreadable: 'Recovery files were found but could not be read. They have been preserved.',
   recoveryWarning: count => `${count} recovery file(s) could not be read and have been preserved. Other snapshots are still available.\n\n`,
@@ -61,7 +62,7 @@ const zhCN = {
   replaceTitle: '替换现有的 futureox-desgin 文件？', replaceMessage: name => `替换“${name}”？`,
   replaceDetail: path => `已补充 .fd 扩展名。现有文件 ${path} 将被替换。`, cancel: '取消', replace: '替换',
   recoverTitle: '恢复未保存的设计？', recoverMessage: name => `将“${name}”恢复为未保存的副本？`,
-  recoverDetail: '不会覆盖原文件。请使用“另存为”选择恢复设计的保存位置。',
+  recoverDetail: '恢复的设计是独立工作副本，编辑会自动保存，原文件保持不变。',
   recoverCopy: '恢复副本', nextSnapshot: '下一个快照',
   recoveryUnreadable: '找到了恢复文件，但无法读取。文件已保留。',
   recoveryWarning: count => `${count} 个恢复文件无法读取，已保留。仍可使用其他快照。\n\n`,

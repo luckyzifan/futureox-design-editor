@@ -4,6 +4,7 @@ use crate::{components,curve_boolean,design_system,editing::DocumentPatch,font::
 use serde::Serialize;
 use std::collections::{BTreeMap,BTreeSet};
 mod byte_ledger;
+mod pose;
 
 pub(crate) struct Plan { pub instances:BTreeSet<String>, pub roots:BTreeSet<String> }
 fn parents(doc:&Document)->BTreeMap<String,String>{doc.nodes.iter().flat_map(|(id,n)|n.children.iter().map(move|c|(c.clone(),id.clone()))).collect()}
@@ -94,30 +95,50 @@ fn resolve_full(doc:&mut Document,fonts:&Fonts)->Result<(),String>{
 }
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
-struct Stats{scoped:bool,instance_roots:usize,layout_roots:usize,total_nodes:usize}
+struct Stats{scoped:bool,instance_roots:usize,layout_roots:usize,total_nodes:usize,#[serde(skip_serializing_if="std::ops::Not::not")]pose:bool}
 #[derive(Serialize)]
 struct Reply{nodes:BTreeMap<String,Node>,removed:Vec<String>,receipt:u32,stats:Stats}
 #[derive(Default)]
-pub struct State{document:Option<Document>,receipt:u32,ledger:Option<byte_ledger::Ledger>}
+pub struct State{document:Option<Document>,receipt:u32,ledger:Option<byte_ledger::Ledger>,font_stamp:Option<crate::font::FontSourceStamp>}
 impl State{
- pub fn clear(&mut self){self.document=None;self.ledger=None;self.receipt=self.receipt.saturating_add(1);}
+ pub fn clear(&mut self){self.document=None;self.ledger=None;self.font_stamp=None;self.receipt=self.receipt.saturating_add(1);}
  fn finish(&mut self,before:&Document,doc:Document,scope:Option<&Plan>)->Result<String,String>{
   let receipt=self.receipt.checked_add(1).ok_or("DERIVED_STATE_EXHAUSTED")?;
   let reply=Reply{nodes:doc.nodes.iter().filter(|(id,n)|before.nodes.get(*id)!=Some(*n)).map(|(id,n)|(id.clone(),n.clone())).collect(),
    removed:before.nodes.keys().filter(|id|!doc.nodes.contains_key(*id)).cloned().collect(),receipt,
-   stats:Stats{scoped:scope.is_some(),instance_roots:scope.map_or(0,|p|p.instances.len()),layout_roots:scope.map_or(doc.pages.iter().map(|p|p.children.len()).sum(),|p|p.roots.len()),total_nodes:doc.nodes.len()}};
+   stats:Stats{scoped:scope.is_some(),instance_roots:scope.map_or(0,|p|p.instances.len()),layout_roots:scope.map_or(doc.pages.iter().map(|p|p.children.len()).sum(),|p|p.roots.len()),total_nodes:doc.nodes.len(),pose:false}};
   let encoded=serde_json::to_string(&reply).map_err(|e|e.to_string())?;
   let ledger=byte_ledger::Ledger::new(&doc)?;
   self.document=Some(doc);self.receipt=receipt;self.ledger=ledger;Ok(encoded)
  }
  pub fn full(&mut self,json:&str,fonts:&Fonts)->Result<String,String>{
   crate::capacity::check_document_bytes(json.len())?;let mut doc:Document=serde_json::from_str(json).map_err(|e|e.to_string())?;doc.validate()?;
-  let before=doc.clone();let fonts=fonts.with_resources(&doc.fonts)?;resolve_full(&mut doc,&fonts)?;self.finish(&before,doc,None)
+  let stamp=fonts.source_stamp();let before=doc.clone();let fonts=fonts.with_resources(&doc.fonts)?;resolve_full(&mut doc,&fonts)?;
+  let result=self.finish(&before,doc,None);if result.is_ok(){self.font_stamp=Some(stamp)}result
  }
  pub fn patch(&mut self,json:&str,receipt:u32,fonts:&Fonts)->Result<String,String>{
+  self.patch_mode(json,receipt,fonts,false)
+ }
+ pub fn patch_pose(&mut self,json:&str,receipt:u32,fonts:&Fonts)->Result<String,String>{
+  self.patch_mode(json,receipt,fonts,true)
+ }
+ /// Declining this proof leaves normalization/full resolution with the caller.
+ /// No caller hint substitutes for the private receipt, node or font checks.
+ pub fn try_pose(&mut self,json:&str,receipt:u32,fonts:&Fonts)->Result<Option<String>,String>{
+  if receipt!=self.receipt||self.document.is_none(){return Err("DERIVED_STATE_STALE".into())}
+  crate::capacity::check_document_bytes(json.len())?;
+  if self.ledger.is_none()||self.font_stamp.as_ref()!=Some(&fonts.source_stamp()){return Ok(None)}
+  let patch:DocumentPatch=serde_json::from_str(json).map_err(|e|e.to_string())?;
+  if !pose::eligible(self.document.as_ref().unwrap(),&patch)?{return Ok(None)}
+  self.apply_pose(patch).map(Some)
+ }
+ fn patch_mode(&mut self,json:&str,receipt:u32,fonts:&Fonts,allow_pose:bool)->Result<String,String>{
   if receipt!=self.receipt||self.document.is_none(){return Err("DERIVED_STATE_STALE".into())}
   crate::capacity::check_document_bytes(json.len())?;let patch:DocumentPatch=serde_json::from_str(json).map_err(|e|e.to_string())?;
   let previous=self.document.as_ref().unwrap();
+  let same_fonts=self.font_stamp.as_ref()==Some(&fonts.source_stamp());
+  if !same_fonts{self.font_stamp=None;}
+  if allow_pose&&same_fonts&&self.ledger.is_some()&&pose::eligible(previous,&patch)? {return self.apply_pose(patch)}
   if let Some(scope)=plan_patch(previous,&patch)? { return self.patch_scoped(patch,scope,fonts); }
   let mut doc=patch.apply(previous).map_err(|e|e.to_string())?;
   let scope=plan(previous,&doc)?;let before=doc.clone();let fonts=fonts.with_resources(&doc.fonts)?;
@@ -153,7 +174,7 @@ impl State{
    let candidate=|id:&str|patch.nodes.get(id).and_then(Option::as_ref).or_else(||backup.get(id));
    let reply=Reply{nodes:current.iter().filter_map(|id|doc.nodes.get(id).filter(|n|candidate(id)!=Some(*n)).map(|n|(id.clone(),n.clone()))).collect(),
     removed:ids.iter().filter(|id|!doc.nodes.contains_key(*id)).cloned().collect(),receipt,
-    stats:Stats{scoped:true,instance_roots:scope.instances.len(),layout_roots:scope.roots.len(),total_nodes:doc.nodes.len()}};
+    stats:Stats{scoped:true,instance_roots:scope.instances.len(),layout_roots:scope.roots.len(),total_nodes:doc.nodes.len(),pose:false}};
    serde_json::to_string(&reply).map_err(|e|e.to_string())
   })();
   if result.is_err(){
@@ -161,6 +182,29 @@ impl State{
    doc.nodes.extend(backup);
   }else{if let (Some(ledger),Some(update))=(&mut self.ledger,ledger_update){if !ledger.commit(update){self.ledger=None;}}self.receipt=receipt;}
   self.document=Some(doc);result
+ }
+
+ fn apply_pose(&mut self,patch:DocumentPatch)->Result<String,String>{
+  let receipt=self.receipt.checked_add(1).ok_or("DERIVED_STATE_EXHAUSTED")?;
+  let doc=self.document.as_mut().unwrap();
+  // All non-transform fields and all graph/reference edges equal the validated
+  // resident model. Still run the original node-body validation and exact byte
+  // ledger; publication remains atomic and receipt-owned.
+  doc.validate_nodes(patch.nodes.iter().map(|(id,node)|(id,node.as_ref().unwrap())))?;
+  let changed=patch.nodes.keys().cloned().collect();
+  let backup:Vec<_>=patch.nodes.keys().map(|id|(id.clone(),doc.nodes[id].clone())).collect();
+  for(id,node)in patch.nodes{doc.nodes.insert(id,node.unwrap());}
+  let result=(||{
+   let update=self.ledger.as_ref().unwrap().prepare(doc,&changed)?;
+   let reply=Reply{nodes:BTreeMap::new(),removed:Vec::new(),receipt,
+    stats:Stats{scoped:true,instance_roots:0,layout_roots:0,total_nodes:doc.nodes.len(),pose:true}};
+   let encoded=serde_json::to_string(&reply).map_err(|e|e.to_string())?;
+   Ok((update,encoded))
+  })();
+  match result {
+   Ok((update,encoded))=>{if !self.ledger.as_mut().unwrap().commit(update){self.ledger=None;}self.receipt=receipt;Ok(encoded)},
+   Err(error)=>{doc.nodes.extend(backup);Err(error)}
+  }
  }
 
 }

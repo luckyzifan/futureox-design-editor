@@ -39,6 +39,10 @@ export class SourceQualityLadder{
    * advance it. A raster completion or a timer alone proves no visible detail. */
   presented(scale:number){
     if(this.scale===undefined||Math.abs(scale/this.scale-1)>1e-8)return false
+    // A speculative preview is not evidence that native rendering failed.
+    // After its first covered presentation request the original quality,
+    // without spending several geometric steps or declaring a false limit.
+    if(!this.reason){this.reset();return true}
     this.best=Math.max(this.best,scale)
     if(this.limited)return false
     if(this.steps>=5||this.upper/this.best<1.25){
@@ -49,4 +53,5 @@ export class SourceQualityLadder{
     }
     this.steps++;this.scale=Math.sqrt(this.best*this.upper);return true
   }
+  settle(){if(this.scale!==undefined&&!this.reason)this.reset()}
 }

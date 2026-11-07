@@ -1,4 +1,4 @@
-import {compactSourceAxes,readSourceGrid,readDenseSourceGrid} from './source-bitmap-grid'
+import {compactSourceAxes,readSourceGrid,readDenseSourceGrid,readDenseSourceGridBytes} from './source-bitmap-grid'
 import {sourceBitmap} from '../../source-bitmap'
 import {DENSE_PAINT_MODE} from './dense-paint-shader'
 import {SOURCE_LAYER_MODE,SOURCE_IMAGE_LAYER_MODE,SOURCE_LAYER_FLOATS,sourceLayer,radialCorners, type SourceLayerProgram} from './source-layer'
@@ -2363,11 +2363,17 @@ export class GpuRenderer {
       new Uint32Array([ref.width,ref.height]),paint,phase,0,new Int32Array([0,0]))
     const grid=compactSourceAxes(axes,b,ref.width,ref.height)
     const w=grid?grid.xs.length:2*b.w,h=grid?grid.ys.length:2*b.h
-    if(this.overBudget(w*h*16,w,h))throw this.budgetError('GPU 原图采样区域超出可用内存',4)
+    const byteSource=import.meta.env.VITE_DESIGN_DENSE_SOURCE_BYTES==='1'&&!grid&&this.scene.nativeInteraction===true&&
+      this.scene.interactionRetained===true&&!this.scene.sourceDetailTile&&!this.scene.softwareRaster&&
+      this.driver.name==='webgpu'&&!this.driver.hdr&&!this.driver.displayMath&&!imageAdjustActive(p.adjust)&&
+      !!this.driver.uploadStraightSrgb8&&w>=256&&!this.overBudget(w*(h+2)*4,w,h+2)
+    if(!byteSource&&this.overBudget(w*h*16,w,h))throw this.budgetError('GPU 原图采样区域超出可用内存',4)
     const tag=['file-source-texels',uri,b,source.matrix,n.size,paint,phase,p.adjust]
     const coords=grid?axes:image_sampling_grid_placed(JSON.stringify(b),new Float64Array(source.matrix),new Float64Array(n.size),
       new Uint32Array([ref.width,ref.height]),paint,phase,0,new Int32Array([0,0]))
-    const image=this.materialField(tag,rect(0,0,w,h),()=>{
+    const image=byteSource?this.materialField(['file-source-bytes',...tag],rect(0,0,w,h),
+      ()=>readDenseSourceGridBytes(uri,coords,b,ref.width,ref.height),this.driver.uploadStraightSrgb8!,undefined,w*(h+2)*4,false):
+      this.materialField(tag,rect(0,0,w,h),()=>{
       const lut=this.straightSourceTransfer()
       const pixels=grid?readSourceGrid(uri,grid.xs,grid.ys,lut):readDenseSourceGrid(uri,coords,b,ref.width,ref.height,lut)
       return imageAdjustActive(p.adjust)?adjustLinearPremultiplied(pixels,p.adjust):pixels

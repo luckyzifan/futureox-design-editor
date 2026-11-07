@@ -369,6 +369,13 @@ pub struct Fonts {
     /// quantisation, the crisp-text case Sketch presents at 100%.
     quantize_glyph_origins: bool,
 }
+/// Small immutable identity of the font inputs, independent of mutable caches.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct FontSourceStamp {
+    default: [u8; 32],
+    named: BTreeMap<String, ([u8; 32], u32)>,
+    quantized: bool,
+}
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum OutlineOutput {
     None,
@@ -659,6 +666,10 @@ impl Fonts {
     }
     pub fn glyph_origin_quantization(&self) -> bool {
         self.quantize_glyph_origins
+    }
+    pub(crate) fn source_stamp(&self) -> FontSourceStamp {
+        FontSourceStamp { default:self.data_digest, quantized:self.quantize_glyph_origins,
+            named:self.named.iter().map(|(id,font)|(id.clone(),(font.digest,font.index))).collect() }
     }
     pub fn load(&mut self, data: &[u8]) -> Result<(), String> {
         check_font(data)?;

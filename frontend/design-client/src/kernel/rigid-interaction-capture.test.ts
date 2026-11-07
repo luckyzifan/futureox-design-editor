@@ -21,6 +21,19 @@ test('rigid capture encloses old and rotated support while avoiding a full viewp
   expect(point.x).toBeLessThanOrEqual(b.x+b.width);expect(point.y).toBeLessThanOrEqual(b.y+b.height)
  }
 })
+test('guarded rotation excludes both old/new support, including touching and invalid backdrop envelopes',()=>{
+ const f=fixture(),pose:Matrix=[0,1,-1,0,380,260]
+ const current={...f.document,nodes:{...f.document.nodes,[f.selected.id]:{...f.selected,transform:pose}}}
+ const capture=(exclusions:import('../model').Bounds[])=>rigidInteractionCapture(f.plan,current,
+  f.scope.rootBounds,f.scope.localizedBounds,f.scope.fixedBounds,f.scope.parentMatrices,2,exclusions)
+ const far={x:900,y:800,width:100,height:100},local=capture([far])!
+ expect(local).toBeDefined()
+ expect(capture([{x:300,y:200,width:1,height:1}])).toBeUndefined()
+ expect(capture([{x:370,y:270,width:1,height:1}])).toBeUndefined()
+ expect(capture([{x:local.x+local.width,y:local.y,width:1,height:1}])).toBeUndefined()
+ expect(capture([{...far,x:NaN}])).toBeUndefined()
+ expect(capture([{...far,width:-1}])).toBeUndefined()
+})
 test.each(['scale','shear','missing','fixed','nested-effect','radial'])('unsupported %s retains the full native capture',kind=>{
  const f=fixture();let pose:Matrix=[0,1,-1,0,300,200]
  if(kind==='scale')pose=[0,2,-2,0,300,200]

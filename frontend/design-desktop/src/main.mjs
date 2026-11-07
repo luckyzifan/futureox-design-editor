@@ -9,6 +9,7 @@ import { desktopMcpPaths, desktopMcpClientConfig, startDesktopFigmaMcp } from '.
 import { SketchSessionHost } from './sketch-session.mjs'
 import { serveSourceBitmap } from './source-bitmap.mjs'
 import { LargeDocumentHost } from './large-document.mjs'
+import { assertIndependentExport } from './independent-export.mjs'
 import { readDesignClipboard, writeDesignClipboard } from './clipboard.mjs'
 import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, clipboard, screen, nativeImage, ClipboardItem, powerMonitor } from 'electron'
 import path from 'node:path'
@@ -230,14 +231,14 @@ const recoveredSources = new Map()
 const fileFilters = () => [{ name: desktopText[interfaceLocale].designFileFilter, extensions: ['fd'] }]
 let sketchInspectionEpoch = 0
 
-function grant(filePath, hash, directoryHandle, pendingPath) {
+function grant(filePath, hash, directoryHandle, pendingPath, sourcePath = filePath) {
   const handle = randomUUID()
   // Bound retained grants; old renderer capabilities are not accepted forever.
   if (grants.size >= 9) {
     const unused = [...grants.keys()].find((key) => key !== activeHandle)
     if (unused) grants.delete(unused)
   }
-  grants.set(handle, { path: filePath, hash, directoryHandle, pendingPath })
+  grants.set(handle, { path: filePath, hash, directoryHandle, pendingPath, sourcePath })
   return handle
 }
 async function lookup(handle, metadataOnly = false) {
@@ -776,11 +777,12 @@ register('save', async (value) => {
     throw new Error('Invalid file handle')
   const document = documentFromString(params.documentJson)
   let target = params.handle ? await lookup(params.handle, params.saveAs === true) : null
+  const sourcePath = target?.sourcePath
   let handle = params.handle
-  if (params.saveAs || !target) {
+  if (params.saveAs || !target || target.path === sourcePath) {
     const selection = await dialog.showSaveDialog(window, {
       title: desktopText[interfaceLocale].saveDesign,
-      defaultPath: target?.path || 'Untitled.fd',
+      defaultPath: target?.path ? target.path.replace(/\.fd$/i,'-copy.fd') : 'Untitled.fd',
       filters: fileFilters(),
       properties: ['showOverwriteConfirmation', 'createDirectory'],
     })
@@ -788,6 +790,7 @@ register('save', async (value) => {
     let selected = selection.filePath
     if (!path.extname(selected)) selected += '.fd'
     requireFd(selected)
+    await assertIndependentExport(selected,sourcePath)
     const current = await backend.request('stat', { path: selected })
     if (selected !== selection.filePath && current.hash !== null) {
       const overwrite = await dialog.showMessageBox(window, {
@@ -803,9 +806,10 @@ register('save', async (value) => {
       if (overwrite.response !== 1) return cancelled()
     }
     // Dialog owns overwrite consent; stat supplies a precise CAS baseline for the sidecar.
-    target = { path: current.path, hash: current.hash }
+    target = { path: current.path, hash: current.hash, sourcePath }
     handle = undefined
   }
+  await assertIndependentExport(target.path,sourcePath)
   const saved = await backend.request('save', {
     path: target.path,
     document,
@@ -813,7 +817,7 @@ register('save', async (value) => {
     ...(target.directoryHandle ? { directoryId: (await directoryGrants.lookup(target.directoryHandle)).directoryId } : {}),
   })
   if (handle) grants.set(handle, { ...target, path: saved.path, hash: saved.hash })
-  else handle = grant(saved.path, saved.hash)
+  else handle = grant(saved.path, saved.hash, undefined, undefined, sourcePath ?? null)
   activeHandle = handle
   noteRecent(saved.path)
   return {
@@ -1264,9 +1268,9 @@ async function buildWindow() {
             { label: 'Clear Recent', role: 'clearRecentDocuments' },
           ] }] : []),
           { type: 'separator' },
-          { label: 'Save', accelerator: 'CmdOrCtrl+S', click: () => sendCommand('save') },
+          { label: 'Edits are saved automatically', enabled: false },
           {
-            label: 'Save As…',
+            label: 'Export copy…',
             accelerator: 'CmdOrCtrl+Shift+S',
             click: () => sendCommand('saveAs'),
           },

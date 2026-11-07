@@ -1031,6 +1031,12 @@ export class DesktopSession {
       return this.generation
     // A brand-new, untouched blank during startup has no prior editing session to discard.
     if (!this.started && this.generation === 0) return this.generation
+    // The local library is the working copy. Navigation/close flush it
+    // automatically; a failed or superseded write keeps this editor open.
+    if (this.supportsWorkspace) {
+      if (!(await this.saveCurrent()) || this.dirty) return null
+      return this.generation
+    }
     const confirmedSnapshot = this.generation
     const decision = await this.confirmLeave(reason)
     if (decision === 'cancel') return null
@@ -1153,19 +1159,19 @@ export class DesktopSession {
       }
       if (result.status !== 'ok' && result.status !== 'cancelled') {
         if (this.recoveryError !== result.message)
-          this.editor.notify(`恢复副本写入失败；请手动保存设计：${result.message}`)
+          this.editor.notify(`自动保存失败，当前修改已保留：${result.message}`)
         this.recoveryError = result.message
       } else {
         this.recoveryError = undefined
         const warning = result.status === 'ok' ? result.warning : undefined
         if (warning && this.recoveryWarning !== warning)
-          this.editor.notify(`恢复副本已写入，但持久化确认有警告：${warning}；请手动保存设计`)
+          this.editor.notify(`工作副本已写入，但持久化确认有警告：${warning}`)
         this.recoveryWarning = warning
         this.publish()
       }
     })).catch((error: unknown) => {
       this.workspaceBusyRetries = 0
-      this.editor.notify(`恢复副本写入失败；请手动保存设计：${String(error)}`)
+      this.editor.notify(`自动保存失败，当前修改已保留：${String(error)}`)
     }).finally(() => {
       // A known-busy retry may meet a draft/gesture/busy gate without writing.
       // Keep its bounded retry alive; cancel-only gestures need not emit a new

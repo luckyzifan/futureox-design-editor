@@ -37,6 +37,7 @@ mod canvas_snapshot;
 mod navigation_image;
 mod opening;
 mod window_cache;
+mod working_groups;
 #[cfg(test)]
 #[path = "large_document/fragment_validation_tests.rs"]
 mod fragment_validation_tests;
@@ -154,6 +155,14 @@ struct Part {
 #[derive(Clone, Default, Serialize, Deserialize)]
 struct State {
     changes: Vec<Changes>,
+    #[serde(default, skip_serializing_if="BTreeMap::is_empty")]
+    group_placements: working_groups::Placements,
+}
+impl State {
+    fn retained_bytes(&self) -> usize {
+        self.changes.iter().map(Changes::retained_bytes).sum::<usize>()+
+            working_groups::retained_bytes(&self.group_placements)
+    }
 }
 #[derive(Serialize, Deserialize)]
 struct Session {
@@ -589,6 +598,7 @@ impl Sessions {
                 max_expanded_bytes: source_limit,
                 state: State {
                     changes: vec![Changes::default(); parts.len()],
+                    group_placements: Default::default(),
                 },
                 parts,
                 undo: Vec::new(),
@@ -729,7 +739,10 @@ fn status(s: &Session) -> Value {
                 .unwrap_or(s.max_expanded_bytes)
         })
         .sum();
-    json!({"owner":s.owner,"revision":s.revision,"name":s.name,"format":s.format,"expandedBytes":s.expanded_bytes-json_bytes+changed,"maxExpandedBytes":s.max_expanded_bytes,"indexedObjects":s.parts.iter().map(|p| p.index.entries.len()).sum::<usize>(),"dirty":s.revision!=s.saved_revision,"undoCount":s.undo.len(),"redoCount":s.redo.len()})
+    // Recovery rebinds the session owner while retaining its durable source
+    // directory. Bitmap URLs name that storage scope, not the new RPC epoch.
+    let bitmap_scope=s.directory.file_name().and_then(|name|name.to_str());
+    json!({"owner":s.owner,"revision":s.revision,"name":s.name,"format":s.format,"bitmapScope":bitmap_scope,"expandedBytes":s.expanded_bytes-json_bytes+changed,"maxExpandedBytes":s.max_expanded_bytes,"indexedObjects":s.parts.iter().map(|p| p.index.entries.len()).sum::<usize>(),"dirty":s.revision!=s.saved_revision,"undoCount":s.undo.len(),"redoCount":s.redo.len()})
 }
 fn location(s: &Session, key: Option<&str>) -> Result<(usize, usize)> {
     let (part, node) = key
@@ -873,6 +886,11 @@ fn apply(s: &mut Session, request: Request, cancel: &AtomicBool) -> Result<Value
     // keys, even when that object is not selected for source navigation.
     large_json::validate_fragment(text.as_bytes()).map_err(issue)?;
     let new: BTreeMap<String, Box<RawValue>> = serde_json::from_str(text).map_err(issue)?;
+    if working_groups::source(&s.state,p,&s.parts[p].index.entries[n].id).is_some() &&
+        ["frame","rotation","isFlippedHorizontal","isFlippedVertical"].iter().any(|key|
+            old.get(*key).map(|v|v.get())!=new.get(*key).map(|v|v.get())) {
+        return Err(issue("Edit the working-copy group placement through the canvas"));
+    }
     if old.keys().ne(new.keys()) {
         return Err(issue(
             "Edit existing properties here; select children separately",
@@ -915,8 +933,7 @@ fn apply(s: &mut Session, request: Request, cancel: &AtomicBool) -> Result<Value
     while undo.len() > HISTORY_LIMIT
         || undo
             .iter()
-            .flat_map(|s| &s.changes)
-            .map(Changes::retained_bytes)
+            .map(State::retained_bytes)
             .sum::<usize>()
             > HISTORY_BYTES
     {
@@ -978,6 +995,7 @@ fn commit(
     index: Option<(usize, DiskIndex)>,
     cancel: &AtomicBool,
 ) -> Result<Value> {
+    working_groups::validate(&next.group_placements,s.parts.len())?;
     let source_json: u64 = s.parts.iter().map(|p| p.base_bytes).sum();
     let current_json = s
         .parts
@@ -1126,7 +1144,7 @@ fn recover_with_opening(
         if checkpoint.source_hash != source_hash {
             continue;
         }
-        if checkpoint.version != 1
+        if !matches!(checkpoint.version,1|2)
             || checkpoint.expanded_bytes > source_limit
             || !identity(&checkpoint.owner.document_id)
             || !matches!(checkpoint.format.as_str(), "json" | "sketch")
@@ -1135,8 +1153,14 @@ fn recover_with_opening(
         {
             return Err(issue("Retained large document checkpoint is invalid"));
         }
+        for state in std::iter::once(&checkpoint.state).chain(&checkpoint.undo).chain(&checkpoint.redo) {
+            working_groups::validate(&state.group_placements,state.changes.len())?;
+            if checkpoint.version==1 && !state.group_placements.is_empty() {
+                return Err(issue("Working-copy placement requires checkpoint version 2"));
+            }
+        }
         if checkpoint.revision==0 && checkpoint.saved_revision==0 && checkpoint.undo.is_empty() && checkpoint.redo.is_empty() &&
-            checkpoint.additions.iter().all(Vec::is_empty) && checkpoint.state.changes.iter().all(Changes::is_pristine) && on_pristine() {
+            checkpoint.state.group_placements.is_empty() && checkpoint.additions.iter().all(Vec::is_empty) && checkpoint.state.changes.iter().all(Changes::is_pristine) && on_pristine() {
             return Ok(None);
         }
         let index_path = directory.join("index.json");
@@ -1242,7 +1266,7 @@ fn recover_with_opening(
             )?;
         }
         return Ok(Some(Session {
-            version: 1,
+            version: checkpoint.version,
             owner: checkpoint.owner,
             name: checkpoint.name,
             format: checkpoint.format,
@@ -1268,7 +1292,10 @@ fn recover_with_opening(
 }
 fn persist(s: &Session) -> Result<Option<&'static str>> {
     let metadata = Checkpoint {
-        version: s.version,
+        // Older readers reject this capability instead of silently dropping
+        // independent authored transforms during recovery or rollback.
+        version: if std::iter::once(&s.state).chain(&s.undo).chain(&s.redo)
+            .any(|state|!state.group_placements.is_empty()) {2} else {s.version},
         owner: &s.owner,
         name: &s.name,
         format: &s.format,
@@ -1378,6 +1405,9 @@ impl Sessions {
                 .ok_or_else(|| issue("No large document is open"))?;
             if s.owner != request.owner || s.revision != request.expected_revision {
                 return Err(issue("Stale or foreign large document revision"));
+            }
+            if !s.state.group_placements.is_empty() {
+                return Err(issue("The working copy is saved, but Sketch cannot represent its group transforms losslessly; export an image or restore a rigid placement before Sketch export"));
             }
             let selection = request.selection.as_ref().map(|target| {
                 selection_export::Archive::capture(s, target, request.request_id.as_deref(), cancel)

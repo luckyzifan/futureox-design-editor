@@ -264,3 +264,35 @@ test('a focus scope cannot acknowledge the rest of the viewport as ready',async(
  expect(statuses.some(status=>status.phase==='ready')).toBe(false)
  expect(document.querySelector('.native-source-content')?.getAttribute('data-source-ready-camera')).toBeNull()
 })
+
+test('a seeded zoom-out still presents an already resident sharper viewport before refinement',async()=>{
+ const {SourceQualityLadder}=await import('./source-quality-ladder'),seed=vi.spyOn(SourceQualityLadder.prototype,'seed'),{retainedZoomOut}=await import('./source-viewport-plan')
+ vi.stubGlobal('OffscreenCanvas',class {});vi.stubGlobal('ImageBitmapRenderingContext',class {})
+ Object.defineProperty(dom.window.HTMLCanvasElement.prototype,'getContext',{configurable:true,value:()=>({transferFromImageBitmap(){}})})
+ const material={...source,materialKeys:['a']}
+ const drawWheel=(view:{x:number;y:number;zoom:number},wheel=false)=>act(async()=>{
+  root.render(<NativeSourceSurface source={material} view={view} wheelView={wheel?view:undefined} width={4000} height={3000} onStatus={value=>statuses.push(value)}/>);await pause()
+ })
+ const deliverLarge=(job:Job,id:number)=>{
+  const tile=job.options.tileViewport![id],index=Number(tile.key.split(':').at(-1))
+  job.receive({...tile,x:(index%2)*3998-1,y:Math.floor(index/2)*3998-1,width:4000,height:4000,gpuTile:500+index} as TileResult)
+ }
+ await drawWheel({x:0,y:0,zoom:32})
+ const first=state.jobs[0]
+ await act(async()=>{for(let i=0;i<first.options.tileViewport!.length;i++)deliverLarge(first,i);first.finish();await pause()})
+ const second=state.jobs[1]
+ await act(async()=>{for(let i=0;i<second.options.tileViewport!.length;i++)deliverLarge(second,i);second.finish();await pause();paint()})
+ const resident=state.frames.at(-1)!.items.map((item,index)=>({...item.tile,used:index}))
+ const retained=retainedZoomOut(resident,{x:0,y:0,zoom:28},{width:4000,height:3000},1,true)
+ expect(retained).toHaveLength(2)
+ const ids=retained?.map(tile=>tile.gpuTile)
+ const jobs=state.jobs.length
+ await drawWheel({x:0,y:0,zoom:28},true)
+ await act(async()=>{paint();await pause()})
+ expect(seed).toHaveBeenCalledWith(14,28)
+ if(state.jobs.length>jobs)expect(state.jobs.at(-1)?.options.view.zoom).toBe(14)
+ expect(state.frames.at(-1)?.view.zoom).toBe(28)
+ expect(state.frames.at(-1)?.items.map(item=>item.tile.gpuTile)).toEqual(ids)
+ expect(statuses.at(-1)?.phase).toBe('refining')
+ seed.mockRestore()
+})

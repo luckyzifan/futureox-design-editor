@@ -96,6 +96,17 @@ export function retainedZoomOut<T extends RasterTile & {used:number}>(cache:Iter
   if(tilesCoverBounds(visible,bounds,scale))return visible.sort((a,b)=>a.zoom-b.zoom||a.used-b.used)
 }
 
+/** Reproject an already completed return view while exact work continues.
+ * Wheel roundtrips can differ by a few float scroll-input bits. Limit the
+ * density difference to less than 1/256 device pixel over the whole viewport.
+ * This never satisfies native demand or skips the current exact raster. */
+export function retainedSourceReturn<T extends RasterTile & {used:number}>(cache:Iterable<T>,view:CanvasCamera,
+  size:{width:number;height:number},dpr:number,wholeTier=false):T[]|undefined {
+  const pixels=Math.max(size.width,size.height)*dpr
+  if(!Number.isFinite(pixels)||pixels<=0)return
+  return retainedZoomOut(cache,view,size,dpr*(1-1/(256*Math.max(1,pixels))),wholeTier)
+}
+
 export function sourceTileBringsDetail(tile:RasterTile,view:CanvasCamera,size:{width:number;height:number},resident:Iterable<RasterTile>){
   const box=(t:RasterTile)=>{
     const g=t.gutter??1,x=(t.x+g-(t.phaseX??0))/t.zoom,y=(t.y+g-(t.phaseY??0))/t.zoom

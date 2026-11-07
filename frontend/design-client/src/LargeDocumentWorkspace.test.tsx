@@ -9,6 +9,7 @@ import { Editor } from './engine'
 import { blank, node } from './model'
 import type { LargeDocumentBridge } from './desktop'
 import * as preparation from './prepared-document'
+import { registerPendingEdit, pendingEditsChanged } from './pending-edits'
 const binding=vi.hoisted(()=>({editor:null as Editor|null,source:null as SourceWorkspace|null}))
 const bootstrap=await vi.hoisted(async()=>{
  // @ts-expect-error jsdom runtime dependency
@@ -137,6 +138,102 @@ async function loadFixture(f:ReturnType<typeof sourceFixture>,onExit=()=>{}){
  await act(async()=>button('载入页面 Full page').click())
  return binding.editor!
 }
+
+test('source edits and undo are saved automatically without a save button or export', async () => {
+ const f=sourceFixture(), editor=await loadFixture(f)
+ vi.useFakeTimers()
+ try {
+  await act(async()=>editor.updateProperties([f.layer.id],n=>{n.width=180}))
+  await act(async()=>vi.advanceTimersByTimeAsync(650))
+  expect(f.sceneCommit).toHaveBeenCalledTimes(1)
+  expect(JSON.parse(f.sceneCommit.mock.calls[0][0].json)[f.layer.id].patch.width).toBe(180)
+  expect(binding.source!.dirty).toBe(false)
+  await act(async()=>editor.undo())
+  await act(async()=>vi.advanceTimersByTimeAsync(650))
+  expect(f.sceneCommit).toHaveBeenCalledTimes(2)
+  expect(JSON.parse(f.sceneCommit.mock.calls[1][0].json)[f.layer.id].patch.width).toBe(f.layer.width)
+  expect(binding.source!.dirty).toBe(false)
+ } finally { vi.useRealTimers() }
+})
+
+test('a source edit arriving during autosave follows the acknowledged revision in a second automatic commit',async()=>{
+ const f=sourceFixture(),editor=await loadFixture(f)
+ let finish!:(value:any)=>void
+ f.sceneCommit.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve}))
+ vi.useFakeTimers()
+ try {
+  await act(async()=>editor.updateProperties([f.layer.id],n=>{n.width=180}))
+  await act(async()=>vi.advanceTimersByTimeAsync(650))
+  expect(f.sceneCommit).toHaveBeenCalledOnce()
+  await act(async()=>editor.updateProperties([f.layer.id],n=>{n.width=210}))
+  await act(async()=>finish({status:'ok',...f.live,revision:++f.live.revision,key:'1:9'}))
+  expect(binding.source!.dirty).toBe(true)
+  await act(async()=>vi.advanceTimersByTimeAsync(650))
+  expect(f.sceneCommit).toHaveBeenCalledTimes(2)
+  const next=f.sceneCommit.mock.calls[1][0]
+  expect(next.expectedRevision).toBe(2)
+  expect(next.key).toBe('1:9')
+  expect(JSON.parse(next.json)[f.layer.id].patch.width).toBe(210)
+  expect(binding.source!.dirty).toBe(false)
+  expect(binding.source!.error).toBe('')
+ } finally { vi.useRealTimers() }
+})
+
+test('source autosave waits for a draft to end without committing the input itself',async()=>{
+ const f=sourceFixture(),editor=await loadFixture(f),commit=vi.fn(()=>false)
+ let pending=true
+ const off=registerPendingEdit(editor,{dirty:()=>pending,commit})
+ vi.useFakeTimers()
+ try {
+  await act(async()=>editor.updateProperties([f.layer.id],n=>{n.width=180}))
+  await act(async()=>vi.advanceTimersByTimeAsync(650))
+  expect(f.sceneCommit).not.toHaveBeenCalled();expect(commit).not.toHaveBeenCalled()
+  await act(async()=>{pending=false;pendingEditsChanged(editor)})
+  await act(async()=>vi.advanceTimersByTimeAsync(650))
+  expect(f.sceneCommit).toHaveBeenCalledOnce()
+  expect(binding.source!.dirty).toBe(false)
+ } finally { off();vi.useRealTimers() }
+})
+
+test('leaving while source autosave is writing waits for its receipt and preserves the newest edit',async()=>{
+ const f=sourceFixture(),exit=vi.fn(),editor=await loadFixture(f,exit)
+ let finish!:(value:any)=>void
+ f.sceneCommit.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve}))
+ vi.useFakeTimers()
+ try {
+  await act(async()=>editor.updateProperties([f.layer.id],n=>{n.width=180}))
+  await act(async()=>vi.advanceTimersByTimeAsync(650))
+  await act(async()=>editor.updateProperties([f.layer.id],n=>{n.width=210}))
+  let leaving!:Promise<void>
+  await act(async()=>{leaving=binding.source!.leave()})
+  expect(exit).not.toHaveBeenCalled();expect(f.close).not.toHaveBeenCalled()
+  await act(async()=>{finish({status:'ok',...f.live,revision:++f.live.revision,key:'1:9'});await leaving})
+  expect(f.sceneCommit).toHaveBeenCalledTimes(2)
+  expect(f.close).toHaveBeenCalledWith({owner:f.live.owner,expectedRevision:3})
+  expect(exit).toHaveBeenCalledOnce()
+ } finally { vi.useRealTimers() }
+})
+
+test('correcting a rejected source edit resumes autosave without a manual save or dismissal',async()=>{
+ const f=sourceFixture(),editor=await loadFixture(f)
+ f.sceneCommit.mockRejectedValueOnce(Error('Sketch cannot preserve this edited geometry'))
+ vi.useFakeTimers()
+ try {
+  await act(async()=>editor.updateProperties([f.layer.id],n=>{n.width=180}))
+  await act(async()=>vi.advanceTimersByTimeAsync(650))
+  expect(binding.source!.dirty).toBe(true)
+  expect(binding.source!.error).toContain('edited geometry')
+  await act(async()=>vi.advanceTimersByTimeAsync(5000))
+  expect(f.sceneCommit).toHaveBeenCalledOnce()
+  await act(async()=>editor.undo())
+  await act(async()=>vi.advanceTimersByTimeAsync(650))
+  expect(binding.source!.error).toBe('')
+  await act(async()=>editor.updateProperties([f.layer.id],n=>{n.transform[4]+=1}))
+  await act(async()=>vi.advanceTimersByTimeAsync(650))
+  expect(f.sceneCommit).toHaveBeenCalledTimes(2)
+  expect(binding.source!.dirty).toBe(false)
+ } finally {vi.useRealTimers()}
+})
 
 test('a late source-history reply cannot discard edits made after the clean snapshot',async()=>{
  const f=sourceFixture(),loaded=await loadFixture(f)
