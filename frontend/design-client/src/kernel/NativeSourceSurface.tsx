@@ -14,7 +14,7 @@ import {acceptTranslatedCoverage,coverageBeyondBacking,retainInFlightTile,select
 import {prioritizeUncoveredTiles} from './coverage-priority'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
 import {tileIntersectsView, tilePlacementAtView} from './tile-preview'
-import {cpuTileBlitOrigin} from './cpu-tile-frame'
+import {cpuTileBlitOrigin,pasteboardCoverageColor} from './cpu-tile-frame'
 import {SourceRenderWork} from './source-render-work'
 import {sourceTileRetirement,rememberSourceTier} from './source-tile-retirement'
 import {SourceQualityLadder,sourceRasterLimit} from './source-quality-ladder'
@@ -241,13 +241,14 @@ export function NativeSourceSurface(props:Props){
       const pixelWidth=Math.max(1,Math.ceil(p.width*dpr)),pixelHeight=Math.max(1,Math.ceil(p.height*dpr))
       if(cpuContext&&(element.width!==pixelWidth||element.height!==pixelHeight)){element.width=pixelWidth;element.height=pixelHeight}
       let drewStrip=false
+      const pasteboard=viewportExtendsPastPage(source.bounds,p.view,p)
       if(cpuContext){
         cpuContext.setTransform(1,0,0,1,0,0)
         cpuContext.fillStyle='#ffffff'
         cpuContext.fillRect(0,0,element.width,element.height)
         const visible=[...cache.values()].filter(tile=>tile.cpuDivisor!==0 && tileIntersectsView(tile,p.view,p))
           .sort((a,b)=>a.zoom/(a.cpuDivisor||1)-b.zoom/(b.cpuDivisor||1)||a.used-b.used)
-        drewStrip=visible.some(tile=>stripOverview?.tiles.some(base=>base.key===tile.key))
+        drewStrip=visible.some(tile=>stripOverview?.tiles.some(base=>base.key===tile.key))||pasteboard
         for(const tile of visible){
           tile.used=++tick
           const place=tilePlacementAtView(tile,p.view), divisor=tile.cpuDivisor || 1
@@ -270,6 +271,28 @@ export function NativeSourceSurface(props:Props){
             cpuContext.drawImage(cpuScratch,0,0,sw,sh,dx,dy,dw,dh)
           }
         }
+        // Viewport tiles clear unused world to white. Put that white back
+        // under the page and leave the pan strip as the coverage field.
+        // putImageData ignores clipping, so this pass runs after the tiles.
+        if(pasteboard&&source.bounds.width>0&&source.bounds.height>0){
+          const z=p.view.zoom
+          const x0=Math.max(0,Math.floor((source.bounds.x*z+p.view.x)*dpr))
+          const y0=Math.max(0,Math.floor((source.bounds.y*z+p.view.y)*dpr))
+          const x1=Math.min(pixelWidth,Math.ceil(((source.bounds.x+source.bounds.width)*z+p.view.x)*dpr))
+          const y1=Math.min(pixelHeight,Math.ceil(((source.bounds.y+source.bounds.height)*z+p.view.y)*dpr))
+          const cell=8
+          const stamp=(x:number,y:number,w:number,h:number)=>{
+            if(w<=0||h<=0)return
+            for(let yy=y;yy<y+h;yy+=cell)for(let xx=x;xx<x+w;xx+=cell){
+              cpuContext.fillStyle=pasteboardCoverageColor(xx,yy,cell)
+              cpuContext.fillRect(xx,yy,Math.min(cell,x+w-xx),Math.min(cell,y+h-yy))
+            }
+          }
+          stamp(0,0,pixelWidth,y0)
+          stamp(0,y1,pixelWidth,pixelHeight-y1)
+          stamp(0,y0,x0,y1-y0)
+          stamp(x1,y0,pixelWidth-x1,y1-y0)
+        }
       }
       const keys=new Set(tiles.map(tile=>tile.key))
       const keep=Math.max(32,tiles.length*3)
@@ -281,7 +304,11 @@ export function NativeSourceSurface(props:Props){
       const done=tiles.filter(tile=>cache.has(tile.key) && (cache.get(tile.key)?.cpuDivisor ?? 1)===1).length
       const complete=exact && done===tiles.length && tiles.length>0
       const panned=!!cpuView&&cpuView.zoom===p.view.zoom&&(cpuView.x!==p.view.x||cpuView.y!==p.view.y)
-      if(panned&&drewStrip)element.dataset.sourceCoverageExtend='pan'
+      if(panned&&(drewStrip||pasteboard)){
+        element.dataset.sourceCoverageExtend='pan'
+        const surface=element.parentElement?.parentElement
+        if(surface)surface.dataset.sourceCoverageExtend='pan'
+      }
       if(drewStrip||complete){
         cpuView={...p.view}
         // CPU never receives a GPU acknowledgement, so the opening thumbnail

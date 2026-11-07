@@ -1,4 +1,6 @@
 
+2026-11-07 [CPU 平移条不再是清屏白](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：页面外的平移条改为覆盖场，不再留着 CPU 清屏白。不是 33/100ms 或完整 G2/G5。
+
 2026-11-07 [CPU 平移条不再被裁成灰](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：CPU 打开预览不再挡住画板外的粗瓦片，缩得很小时不再把原生画布裁掉。不是 33/100ms 或完整 G2/G5。
 
 2026-11-07 [8% 画板外的平移条](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：画板外的粘贴板用一张粗页瓦片盖住；平移时把这张瓦片合成进新条，并标 `data-source-coverage-extend="pan"`。不是 33/100ms 或完整 G2/G5。

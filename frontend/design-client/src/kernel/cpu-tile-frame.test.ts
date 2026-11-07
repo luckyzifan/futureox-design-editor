@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { cpuDisplayPressure, cpuTileBlitOrigin, cpuTileFrameOptions, sampleCpuTile } from './cpu-tile-frame'
+import { PASTEBOARD_COVERAGE, cpuDisplayPressure, cpuTileBlitOrigin, cpuTileFrameOptions, pasteboardCoverageColor, sampleCpuTile } from './cpu-tile-frame'
 
 test('cpu tile camera shifts the gpu viewport origin to device zero', () => {
   const frame = cpuTileFrameOptions(
@@ -35,6 +35,17 @@ test('CPU previews sample the same world origin and keep a separate exact-densit
   const reject=async()=>{throw Error('Compositing memory budget exceeded')}
   await expect(sampleCpuTile(frame,reject,()=>true,false)).rejects.toThrow(/budget/)
   expect(await sampleCpuTile(frame,reject,()=>true,true)).toMatchObject({divisor:0,bytes:new Uint8Array(0)})
+})
+
+test('pasteboard coverage is a field, not an unpainted white or gray clear', () => {
+  const rgb = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16))
+  for (const hex of PASTEBOARD_COVERAGE) {
+    expect(hex).not.toBe('#ffffff')
+    expect(hex).not.toBe('#f5f5f5')
+    expect(rgb(hex).every(channel => channel <= 240)).toBe(true)
+  }
+  expect(pasteboardCoverageColor(0, 0)).not.toBe(pasteboardCoverageColor(8, 0))
+  expect(pasteboardCoverageColor(0, 0)).toBe(pasteboardCoverageColor(16, 16))
 })
 
 test('adjacent cpu tile blits do not round open a pasteboard seam', () => {

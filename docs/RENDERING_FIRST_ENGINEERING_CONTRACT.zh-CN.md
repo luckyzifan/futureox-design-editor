@@ -1,5 +1,7 @@
 # Futureox Design Core：渲染优先工程与验收规范
 
+2026-11-07 的[CPU 清屏白](../testing/verification-zoom-coverage-continuity-20261107/README.md)在页面矩形以外、瓦片绘制之后铺覆盖场，避免平移条只剩 `fillRect` 的纯白。不提高预算，不关闭 33/100ms 或完整 G2/G5。盒上复测未做。
+
 2026-11-07 的[CPU 粘贴板平移](../testing/verification-zoom-coverage-continuity-20261107/README.md)让 `--core-cpu-only` 也画出粗页瓦片，并在画板缩得很小时不再把原生画布裁成缩略图。不提高预算，不关闭 33/100ms 或完整 G2/G5。盒上复测未做。
 
 2026-11-07 的[8% 粘贴板平移](../testing/verification-zoom-coverage-continuity-20261107/README.md)在视口大于页面时先排一张粗页瓦片，平移时用它填新露出的条，并写下 `data-source-coverage-extend="pan"`。不提高预算，不关闭 33/100ms 或完整 G2/G5。

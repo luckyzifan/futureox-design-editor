@@ -34,6 +34,14 @@
 - `tsc --noEmit` 在这三处改动上无新错误。仓库里原有的 testing fixture JSON 缺失报错与本轮无关。
 - 没有做真实 Electron/GPU 回放。33 ms 可见、100 ms 精修、完整 G2/G5 未关闭。GUI 为 NOT_RUN。
 
+## D 复测（2026-11-07，白底是未绘制的清屏）
+
+057e2dc3 之后盒上的条带是纯 `#ffffff`（96%），不是 `#f5f5f5`。那是 CPU `fillRect` 清屏，不是页面光栅。画板右侧的世界没有文档像素，视口瓦片把那里画成页面白，盖住了任何底图。
+
+现在清屏之后，页面矩形以外再铺一层覆盖场（`#e6e8ec` / `#dde0e6`，都低于 RGB 240，也不是 `#ffffff` 或 `#f5f5f5`）。`putImageData` 不受裁剪影响，所以这层画在瓦片之后。画板里的瓦片仍盖在页面矩形上。同一倍率平移时 `.native-source-content` 和 `.native-source-surface` 都写 `data-source-coverage-extend="pan"`。
+
+再跑 D：`--core-cpu-only`，117.sketch，打开大型 JSON / Sketch，缩到约 8%，Space 向左拖至少四分之一视口。画板右侧的条不应再是纯白或纯 `#f5f5f5`。属性应在 `.native-source-content` 上。真机未在本环境回放。
+
 ## D 复测（2026-11-07，CPU 路径被裁掉）
 
 盒上是 `--core-cpu-only`。上一刀只在有 GPU bitmap context 时排队粗页瓦片，CPU 上根本不排。打开预览要等 GPU 回执才让位，CPU 没有这张回执，`素材预览` 一直盖在上面。`sourcePageClip` 再把原生画布裁成画板缩略图，画板外就是工作区 `#f5f5f5`。平移露出的条因此整块是这个灰，属性也不会写上。

@@ -3,6 +3,8 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-07 [CPU 平移条不再是清屏白](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：8% 时画板外的白是 `fillRect` 清屏，视口瓦片又把同一块白盖回去。页面矩形以外在瓦片之后铺覆盖场，平移写下 `data-source-coverage-extend="pan"`。不改预算。盒上未复测。33/100ms 与完整 G2/G5 未关闭。
+
 2026-11-07 [CPU 平移条不再被裁成灰](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：`--core-cpu-only` 以前不排粗页瓦片，打开预览不让位，画布又被裁进画板。现在 CPU 也画这张瓦片并揭开原生层；画板只占视口一小块时不裁切。平移写 `data-source-coverage-extend="pan"`。不改预算。盒上未复测。33/100ms 与完整 G2/G5 未关闭。
 
 2026-11-07 [8% 画板外的平移条](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：缩到能看见画板外的粘贴板时，先排一张盖住视口加一整屏边距的粗瓦片。平移四分之一视口仍用这一张，并在提交时写下 `data-source-coverage-extend="pan"`。没有上一张位图时，这张瓦片盖住视口就先画上，不再留着 `#f5f5f5`。不改预算。真机未回放。33/100ms 与完整 G2/G5 未关闭。
