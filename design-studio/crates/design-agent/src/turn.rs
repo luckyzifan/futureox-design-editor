@@ -1,0 +1,317 @@
+//! One user turn. The loop follows Codex `RegularTask::run_turns`
+//! (`codex-rs/core/src/tasks/regular.rs`) and `run_turn` / `needs_follow_up`
+//! (`codex-rs/core/src/session/turn.rs`) at commit
+//! `c4f0e09912fd4c1173258ccd17e33284a876e826`: sample the model, run tool
+//! calls, append the outputs, and sample again while a follow-up is needed.
+//! Independent read-only tools in one model step run together. Mutations stay
+//! in order because later operations share one document batch.
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
+use serde_json::json;
+use tokio::task::JoinSet;
+
+use crate::assistant::{local_turn, remote_turn, ModelTurn, ToolCall};
+use crate::items::{item_id, McpToolCallStatus, MessagePhase, TurnItem};
+use crate::operations::{expand_tool, DesignContext, Operation};
+use crate::providers::{Provider, ProviderKind};
+use crate::skills::SkillId;
+
+#[derive(Debug)]
+pub struct TurnOutcome {
+    pub items: Vec<TurnItem>,
+    pub operations: Vec<Operation>,
+    pub skills: Vec<SkillId>,
+    pub target_page_id: String,
+    pub assistant: String,
+    pub summary: String,
+}
+
+pub async fn run_turn(
+    http: &reqwest::Client,
+    provider: &Provider,
+    message: &str,
+    earlier: &str,
+    ctx: &DesignContext,
+    prior: &[TurnItem],
+    cancel: &AtomicBool,
+) -> Result<TurnOutcome, String> {
+    if message.trim().is_empty() || message.chars().count() > 4000 {
+        return Err("message must be 1–4000 characters".into());
+    }
+    let skills = crate::assistant::skills_for(message, earlier, ctx);
+    let mut items = prior.to_vec();
+    items.push(TurnItem::UserMessage { id: item_id(), text: message.to_string() });
+    let mut operations = Vec::new();
+    let mut assistant_name = assistant_label(provider);
+    let mut target = ctx.target_page_id.clone().unwrap_or_else(|| ctx.current_page_id.clone());
+    let mut summary = String::new();
+    for _step in 0..4 {
+        if cancel.load(Ordering::Relaxed) {
+            return Err("cancelled".into());
+        }
+        let sampled = sample(http, provider, message, earlier, &items, &skills).await;
+        let (turn, used_local) = match sampled {
+            Ok(turn) => (turn, provider.kind == ProviderKind::Local),
+            Err(error) => {
+                assistant_name = format!("{assistant_name}-fallback-local");
+                let _ = error;
+                (local_turn(message, earlier, &items, &skills), true)
+            }
+        };
+        if !used_local && provider.kind != ProviderKind::Local {
+            assistant_name = assistant_label(provider);
+        }
+        if let Some(plan) = turn.plan {
+            items.push(TurnItem::Plan { id: item_id(), text: plan });
+        }
+        if let Some(text) = turn.message.clone() {
+            items.push(TurnItem::AgentMessage {
+                id: item_id(),
+                text: text.clone(),
+                phase: if turn.tool_calls.is_empty() { MessagePhase::Final } else { MessagePhase::Commentary },
+            });
+            summary = text;
+        }
+        if turn.tool_calls.is_empty() {
+            break;
+        }
+        let (expanded_items, expanded_ops, next_target, next_summary) = execute_calls(&turn.tool_calls, message, ctx, cancel).await?;
+        if let Some(page) = next_target {
+            target = page;
+        }
+        if !next_summary.is_empty() {
+            summary = next_summary;
+        }
+        items.extend(expanded_items);
+        operations.extend(expanded_ops);
+    }
+    Ok(TurnOutcome { items, operations, skills, target_page_id: target, assistant: assistant_name, summary })
+}
+
+async fn sample(http: &reqwest::Client, provider: &Provider, message: &str, earlier: &str, items: &[TurnItem], skills: &[SkillId]) -> Result<ModelTurn, String> {
+    if provider.kind == ProviderKind::Local {
+        return Ok(local_turn(message, earlier, items, skills));
+    }
+    remote_turn(http, provider, message, skills, items).await
+}
+
+async fn execute_calls(calls: &[ToolCall], message: &str, ctx: &DesignContext, cancel: &AtomicBool) -> Result<(Vec<TurnItem>, Vec<Operation>, Option<String>, String), String> {
+    let mut index = 0;
+    let mut items = Vec::new();
+    let mut operations = Vec::new();
+    let mut target = None;
+    let mut summary = String::new();
+    while index < calls.len() {
+        if cancel.load(Ordering::Relaxed) {
+            return Err("cancelled".into());
+        }
+        if is_read_only(&calls[index].name) {
+            let mut batch = Vec::new();
+            while index < calls.len() && is_read_only(&calls[index].name) {
+                batch.push(calls[index].clone());
+                index += 1;
+            }
+            let parallel = run_parallel(&batch, message, ctx).await;
+            for (call, result) in parallel {
+                let (item_pair, ops, page, text) = finish_call(&call, result);
+                items.extend(item_pair);
+                operations.extend(ops);
+                target = page.or(target);
+                if !text.is_empty() {
+                    summary = text;
+                }
+            }
+        } else {
+            let call = &calls[index];
+            index += 1;
+            let result = expand_tool(&call.name, &call.arguments, message, ctx);
+            let (item_pair, ops, page, text) = finish_call(call, result);
+            items.extend(item_pair);
+            operations.extend(ops);
+            target = page.or(target);
+            if !text.is_empty() {
+                summary = text;
+            }
+        }
+    }
+    Ok((items, operations, target, summary))
+}
+
+async fn run_parallel(calls: &[ToolCall], message: &str, ctx: &DesignContext) -> Vec<(ToolCall, Result<crate::operations::ToolExpansion, String>)> {
+    let message = message.to_string();
+    let ctx = ctx.clone();
+    let mut set = JoinSet::new();
+    for (index, call) in calls.iter().cloned().enumerate() {
+        let message = message.clone();
+        let ctx = ctx.clone();
+        set.spawn(async move {
+            let result = expand_tool(&call.name, &call.arguments, &message, &ctx);
+            (index, call, result)
+        });
+    }
+    let mut finished = Vec::new();
+    while let Some(joined) = set.join_next().await {
+        if let Ok(item) = joined {
+            finished.push(item);
+        }
+    }
+    finished.sort_by_key(|(index, _, _)| *index);
+    finished.into_iter().map(|(_, call, result)| (call, result)).collect()
+}
+
+fn finish_call(call: &ToolCall, result: Result<crate::operations::ToolExpansion, String>) -> (Vec<TurnItem>, Vec<Operation>, Option<String>, String) {
+    match result {
+        Ok(expanded) => {
+            let output = json!({ "summary": expanded.summary, "operations": expanded.operations.len(), "readOnly": expanded.read_only });
+            (
+                vec![
+                    TurnItem::McpToolCall {
+                        id: call.id.clone(),
+                        server: "futureox-design".into(),
+                        tool: call.name.clone(),
+                        arguments: call.arguments.clone(),
+                        status: McpToolCallStatus::Completed,
+                        result: Some(output.clone()),
+                        error: None,
+                    },
+                    TurnItem::FunctionCallOutput { id: item_id(), name: call.name.clone(), output: output.to_string() },
+                ],
+                expanded.operations,
+                Some(expanded.target_page_id),
+                expanded.summary,
+            )
+        }
+        Err(error) => (
+            vec![TurnItem::McpToolCall {
+                id: call.id.clone(),
+                server: "futureox-design".into(),
+                tool: call.name.clone(),
+                arguments: call.arguments.clone(),
+                status: McpToolCallStatus::Failed,
+                result: None,
+                error: Some(error.clone()),
+            }],
+            Vec::new(),
+            None,
+            error,
+        ),
+    }
+}
+
+fn is_read_only(name: &str) -> bool {
+    matches!(name, "design_agent_read" | "design_agent_critique")
+}
+
+fn assistant_label(provider: &Provider) -> String {
+    match provider.kind {
+        ProviderKind::Local => "grok-local".into(),
+        ProviderKind::Api => "api".into(),
+        ProviderKind::TokenPlan => "token-plan".into(),
+        ProviderKind::CcSwitch => "ccswitch".into(),
+    }
+}
+
+pub fn new_cancel() -> Arc<AtomicBool> {
+    Arc::new(AtomicBool::new(false))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::providers::{Provider, Wire};
+    use std::sync::atomic::AtomicUsize;
+
+    fn local() -> Provider {
+        Provider {
+            id: "local".into(),
+            name: "local".into(),
+            kind: ProviderKind::Local,
+            base_url: String::new(),
+            secret: String::new(),
+            model: "grok-local".into(),
+            wire: Wire::OpenaiChat,
+        }
+    }
+
+    #[tokio::test]
+    async fn local_turn_plans_and_generates_a_page() {
+        let http = reqwest::Client::new();
+        let outcome = run_turn(
+            &http,
+            &local(),
+            "做一个咖啡品牌落地页，标题秋日特惠，副标题手冲咖啡本周上新，卖点：产地、烘焙、门店",
+            "",
+            &DesignContext::default(),
+            &[],
+            &AtomicBool::new(false),
+        )
+        .await
+        .unwrap();
+        assert!(outcome.items.iter().any(|item| matches!(item, TurnItem::Plan { .. })));
+        assert!(outcome.items.iter().any(|item| matches!(item, TurnItem::McpToolCall { status: McpToolCallStatus::Completed, .. })));
+        assert!(outcome.operations.iter().any(|op| op.method == "page.create"));
+        assert!(outcome.summary.contains("秋日特惠") || outcome.items.iter().any(|item| matches!(item, TurnItem::AgentMessage { text, .. } if text.contains("秋日") || text.contains("技能"))));
+    }
+
+    #[tokio::test]
+    async fn remote_openai_and_token_plan_are_contacted_in_parallel() {
+        let hits = Arc::new(AtomicUsize::new(0));
+        let app_hits = hits.clone();
+        let app = axum::Router::new().route(
+            "/v1/chat/completions",
+            axum::routing::post(move |headers: axum::http::HeaderMap, body: String| {
+                let hits = app_hits.clone();
+                async move {
+                    hits.fetch_add(1, Ordering::SeqCst);
+                    let auth = headers.get(axum::http::header::AUTHORIZATION).and_then(|value| value.to_str().ok()).unwrap_or("").to_string();
+                    let _ = body;
+                    axum::Json(json!({
+                        "choices": [{ "message": { "role": "assistant", "content": format!("auth:{auth}"), "tool_calls": [] } }]
+                    }))
+                }
+            }),
+        );
+        let listener_a = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let listener_b = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr_a = listener_a.local_addr().unwrap();
+        let addr_b = listener_b.local_addr().unwrap();
+        let second = app.clone();
+        tokio::spawn(async move { axum::serve(listener_a, app).await.unwrap() });
+        tokio::spawn(async move { axum::serve(listener_b, second).await.unwrap() });
+        let http = reqwest::Client::new();
+        let api = Provider {
+            id: "api".into(),
+            name: "API".into(),
+            kind: ProviderKind::Api,
+            base_url: format!("http://{addr_a}/v1"),
+            secret: "api-key".into(),
+            model: "m".into(),
+            wire: Wire::OpenaiChat,
+        };
+        let plan = Provider {
+            id: "plan".into(),
+            name: "Plan".into(),
+            kind: ProviderKind::TokenPlan,
+            base_url: format!("http://{addr_b}/v1"),
+            secret: "plan-token".into(),
+            model: "m".into(),
+            wire: Wire::OpenaiChat,
+        };
+        let empty = DesignContext::default();
+        let cancel_a = AtomicBool::new(false);
+        let cancel_b = AtomicBool::new(false);
+        let (left, right) = tokio::join!(
+            run_turn(&http, &api, "评价一下这一页", "", &empty, &[], &cancel_a),
+            run_turn(&http, &plan, "评价一下这一页", "", &empty, &[], &cancel_b),
+        );
+        let left = left.unwrap();
+        assert_eq!(left.assistant, "api");
+        assert!(left.summary.contains("api-key"), "{}", left.summary);
+        let right = right.unwrap();
+        assert_eq!(right.assistant, "token-plan");
+        assert!(right.summary.contains("plan-token"));
+        assert!(hits.load(Ordering::SeqCst) >= 2);
+    }
+}
