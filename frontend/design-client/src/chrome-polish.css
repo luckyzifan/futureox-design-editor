@@ -1,6 +1,6 @@
 /* Shared web and Electron chrome. Accent stays #3459d4. Motion is limited to entrance and in-progress activity. */
 :root {
-  --workspace-canvas: #e8eaee;
+  --workspace-canvas: #f5f5f5;
   --workspace-panel: #fbfbfd;
   --workspace-text: #1c212b;
   --workspace-muted: #5d6673;

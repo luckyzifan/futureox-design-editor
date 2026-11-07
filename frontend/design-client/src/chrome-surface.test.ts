@@ -8,7 +8,7 @@ test('chrome keeps the blue accent and warms the neutral surfaces', () => {
   const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8')
   expect(css).toMatch(/--workspace-accent:\s*#3459d4;/)
   expect(css).toMatch(/--workspace-accent-hover:\s*#2747b6;/)
-  expect(css).toContain('--workspace-canvas: #f3eee6;')
+  expect(css).toContain('--workspace-canvas: #f5f5f5;')
   expect(css).toContain('--workspace-panel: #fffcf9;')
   expect(css).toContain('.selection-chrome-frame')
   expect(css).toContain('.selection-size-pill { fill: #4597f7; stroke: none; }')
