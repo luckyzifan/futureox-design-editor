@@ -1,5 +1,7 @@
 # Futureox Design Core：渲染优先工程与验收规范
 
+2026-11-07 的[大目录先画第一张](../testing/verification-large-sketch-open-20261107/README.md)让已解码且下标落在已到达条目前缀里的缩略图先出现。不提高预算，不关闭 33/100ms 或完整 G2/G5。100–240MB 整份导入仍开放。
+
 2026-11-07 的[冷缩出粗覆盖](../testing/verification-cold-zoom-seed-20261107/README.md)在大源首屏已有像素且用户停手时先排一张页级总览瓦片。不提高预算，不关闭 33/100ms 或完整 G2/G5。
 
 2026-11-07 的[打开预览盖住平移条](../testing/verification-zoom-coverage-continuity-20261107/README.md)在画板只占视口一小块时把打开预览放到原生画布上面，条带用覆盖场。不提高预算，不关闭 33/100ms 或完整 G2/G5。盒上复测未做。

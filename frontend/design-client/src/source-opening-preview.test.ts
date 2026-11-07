@@ -72,6 +72,27 @@ test('a large catalogue only vouches for loaded artwork within its mounted windo
  }finally{await act(()=>root.unmount());vi.unstubAllGlobals()}
 })
 
+test('the first decoded board paints before the rest of a large catalogue arrives',async()=>{
+  const host=document.createElement('div'),root=createRoot(host)
+  vi.useFakeTimers();vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true)
+  const owner=source.owner
+  const openingView=async({offset,cursor}:{offset:number;cursor:number})=>{
+    if(offset===0)return {status:'ok',phase:'available',owner,revision:0,bounds:source.bounds,total:4,offset,items:items.slice(0,2),
+      pages:[],nextOffset:2,cursor:1,images:cursor?[]:[{index:0,png:'first'}],moreImages:false,finished:false,rendered:1,cacheHit:false,indexing:true}
+    return {status:'ok',phase:'available',owner,revision:0,bounds:source.bounds,total:4,offset,items:items.slice(2,4),
+      pages:[],nextOffset:4,cursor:1,images:[],moreImages:false,finished:true,rendered:1,cacheHit:false,indexing:false}
+  }
+  const bridge={openingView} as unknown as import('./desktop').LargeDocumentBridge
+  const seen:number[]=[]
+  function Probe(){const q=useSourceOpening(bridge,1);if(q.view)seen.push(q.view.items.length);return createElement('div',null,q.view?.images.get(0)??'')}
+  try{
+    await act(()=>root.render(createElement(Probe)))
+    await act(()=>vi.advanceTimersByTimeAsync(50))
+    expect(seen[0]).toBe(2)
+    expect(host.textContent).toBe('data:image/png;base64,first')
+  }finally{await act(()=>root.unmount());vi.useRealTimers();vi.unstubAllGlobals()}
+})
+
 test('a finished base catalogue continues to receive sharper images for several visible boards',async()=>{
  const host=document.createElement('div'),root=createRoot(host)
  vi.useFakeTimers();vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true)

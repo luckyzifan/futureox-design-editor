@@ -63,8 +63,12 @@ export function useSourceOpening(bridge:LargeDocumentBridge, generation:number|u
               lastDisplay?.openingMaterial===selected ? lastDisplay : undefined
           const displayChanged=display?.token!==lastDisplay?.token
           lastDisplay=display
-          if(items.length===reply.total && (displayChanged || reply.items.length || reply.images.length || reply.detail || evicted || reply.finished!==finished || !reply.total))
-            setValue({generation,view:{owner,bounds:reply.bounds,items,pages,materialDisplay:display,images:new Map(images),finished:reply.finished,cacheHit:reply.cacheHit,rendered:reply.rendered}})
+          // The first decoded boards can paint before the rest of a 100MB+
+          // catalogue has been copied. Indices still match the catalogue, so
+          // an image only appears once its placement row has arrived.
+          const prefixReady=items.length>0&&[...images.keys()].some(index=>index<items.length)
+          if((items.length===reply.total||prefixReady) && (displayChanged || reply.items.length || reply.images.length || reply.detail || evicted || reply.finished!==finished || !reply.total))
+            setValue({generation,view:{owner,bounds:reply.bounds,items:[...items],pages,materialDisplay:display,images:new Map(images),finished:reply.finished&&items.length===reply.total,cacheHit:reply.cacheHit,rendered:reply.rendered}})
           finished=reply.finished
           if(reply.finished&&!reply.indexing&&!reply.moreDetails&&!reply.detailPending&&!reply.detail&&items.length===reply.total){
             delay=undefined

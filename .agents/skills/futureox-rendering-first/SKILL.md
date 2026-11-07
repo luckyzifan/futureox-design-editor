@@ -3,6 +3,8 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-07 [大目录先画第一张](../../../testing/verification-large-sketch-open-20261107/README.md)：打开预览在目录传完前就能画已解码、且下标落在已到达条目前缀里的第一张图。`finished` 仍等条目和图片都齐。不改预算。100–240MB 整份导入仍开放。不是 33/100ms 或完整 G2/G5。
+
 2026-11-07 [冷缩出先排一张页级粗瓦片](../../../testing/verification-cold-zoom-seed-20261107/README.md)：大源在首屏有像素且用户停手时先排一张 `navigationOverview` 瓦片，第一次缩出不必等现场光栅。素材文件不再在空闲时直接停掉。不改预算。不是 33/100ms 或完整 G2/G5。
 
 2026-11-07 [打开预览盖住平移条](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：覆盖场画在原生画布上时，打开预览和页面灰仍在最上面。缩得很小时预览层改到上面，底用同一块场，缩略图画在场上。不改预算。盒上未复测。33/100ms 与完整 G2/G5 未关闭。
