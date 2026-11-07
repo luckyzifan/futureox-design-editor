@@ -130,6 +130,7 @@ export function NativeSourceSurface(props:Props){
     let moving=false,serial=0,submission=0,acknowledged=0,tick=0,lastStatus='',lastStatusAt=-Infinity
     let lastZoom=latest.current.view.zoom,zoomingIn=false,lastZoomAt=-Infinity,continuousZoom=false
     let priorView=latest.current.view,panHeld=!!latest.current.panGestureActive
+    let cpuView:CanvasCamera|undefined
     const workQueue=new SourceRenderWork<RasterTile>(overviewMode?8:SOURCE_PIPELINE_TILES)
     let wanted:{id:string;sequence:number;view:CanvasCamera;width:number;height:number;dpr:number;scale:number;complete:boolean;mixed:boolean;demand:string;ids:Set<number>}|undefined
     const hover=latest.current.hover
@@ -239,12 +240,14 @@ export function NativeSourceSurface(props:Props){
       const dpr=density.current
       const pixelWidth=Math.max(1,Math.ceil(p.width*dpr)),pixelHeight=Math.max(1,Math.ceil(p.height*dpr))
       if(cpuContext&&(element.width!==pixelWidth||element.height!==pixelHeight)){element.width=pixelWidth;element.height=pixelHeight}
+      let drewStrip=false
       if(cpuContext){
         cpuContext.setTransform(1,0,0,1,0,0)
         cpuContext.fillStyle='#ffffff'
         cpuContext.fillRect(0,0,element.width,element.height)
         const visible=[...cache.values()].filter(tile=>tile.cpuDivisor!==0 && tileIntersectsView(tile,p.view,p))
           .sort((a,b)=>a.zoom/(a.cpuDivisor||1)-b.zoom/(b.cpuDivisor||1)||a.used-b.used)
+        drewStrip=visible.some(tile=>stripOverview?.tiles.some(base=>base.key===tile.key))
         for(const tile of visible){
           tile.used=++tick
           const place=tilePlacementAtView(tile,p.view), divisor=tile.cpuDivisor || 1
@@ -277,6 +280,14 @@ export function NativeSourceSurface(props:Props){
       }
       const done=tiles.filter(tile=>cache.has(tile.key) && (cache.get(tile.key)?.cpuDivisor ?? 1)===1).length
       const complete=exact && done===tiles.length && tiles.length>0
+      const panned=!!cpuView&&cpuView.zoom===p.view.zoom&&(cpuView.x!==p.view.x||cpuView.y!==p.view.y)
+      if(panned&&drewStrip)element.dataset.sourceCoverageExtend='pan'
+      if(drewStrip||complete){
+        cpuView={...p.view}
+        // CPU never receives a GPU acknowledgement, so the opening thumbnail
+        // stayed on top and the pasteboard remained the workspace gray.
+        latest.current.onPresented?.({view:{...p.view},width:p.width,height:p.height,dpr,interaction:false,ids:[]},true)
+      }
       emit(complete?{phase:'ready',done,total:tiles.length}:{phase:'refining',done,total:tiles.length})
       if (!moving && !complete && done<tiles.length && tiles.every(tile=>cache.has(tile.key)) && repairDemand!==demandKey()) {
         clearTimeout(repairTimer)
@@ -431,14 +442,14 @@ export function NativeSourceSurface(props:Props){
         while(alive&&!failed&&!suspended&&!latest.current.parked){
           const {p,ratio,raster,tiles,prefetch}=plan(),missing=tiles.filter(tile=>!cache.has(tile.key)||cpuRepairs.has(tile.key))
           const optional=missing.length===0
-          const strip=bitmapContext&&!zoomingIn?panStripOverview(source.bounds,p.view,p):undefined
+          const strip=(bitmapContext||renderExecutionPolicy.cpuOnly)&&!zoomingIn?panStripOverview(source.bounds,p.view,p):undefined
           stripOverview=strip
           const stripTile=strip?.tiles[0]
           const pasteboard=!!stripTile&&viewportExtendsPastPage(source.bounds,p.view,p)
           const translated=!!backing&&backing.view.zoom===p.view.zoom&&(backing.view.x!==p.view.x||backing.view.y!==p.view.y)
           // The artboard lattice does not cover pasteboard. One coarse page
           // tile does, and a quarter-viewport pan stays inside the same tile.
-          const wantStrip=!!stripTile&&!cache.has(stripTile.key)&&pasteboard&&(translated||(!moving&&!continuousZoom))
+          const wantStrip=!!stripTile&&!cache.has(stripTile.key)&&pasteboard&&(renderExecutionPolicy.cpuOnly||translated||(!moving&&!continuousZoom))
           if(!wantStrip&&!optional&&outwardCover()){schedulePaint();break}
           if(!wantStrip&&optional && source.materialKeys && (moving||!prefetch.length))break
           if(!wantStrip&&optional&&prefetchReady!==demandKey()){schedulePaint();break}

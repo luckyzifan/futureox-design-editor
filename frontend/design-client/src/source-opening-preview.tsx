@@ -194,16 +194,21 @@ export function SourceOpeningSurface({source,view,width,height,pageId,focused,on
 // The full source lays out independent roots with spacing. Exclude adjacent
 // pages from a page-specific view while retaining the gutter around each root.
 export function sourcePageClip(boxes:readonly SourceCanvasBox[]|undefined,view:CanvasCamera,width:number,height:number) {
-  if(!boxes)return undefined
+  if(!boxes?.length||!(width>0)||!(height>0))return undefined
   const rects:string[]=[]
+  let unionL=Infinity,unionT=Infinity,unionR=-Infinity,unionB=-Infinity
   for(const b of boxes){
     const left=Math.max(0,(b.x-MATERIAL_MARGIN)*view.zoom+view.x),top=Math.max(0,(b.y-MATERIAL_MARGIN)*view.zoom+view.y)
     const right=Math.min(width,(b.x+b.width+MATERIAL_MARGIN)*view.zoom+view.x),bottom=Math.min(height,(b.y+b.height+MATERIAL_MARGIN)*view.zoom+view.y)
-    if(left===0&&top===0&&right===width&&bottom===height)return undefined
-    if(right>left&&bottom>top){
-      if(boxes.length===1)return `inset(${top}px ${width-right}px ${height-bottom}px ${left}px)`
-      rects.push(`M${left} ${top}H${right}V${bottom}H${left}Z`)
-    }
+    if(!(right>left)||!(bottom>top))continue
+    unionL=Math.min(unionL,left);unionT=Math.min(unionT,top);unionR=Math.max(unionR,right);unionB=Math.max(unionB,bottom)
+    if(boxes.length!==1)rects.push(`M${left} ${top}H${right}V${bottom}H${left}Z`)
   }
-  return rects.length?`path("${rects.join(' ')}")`:'inset(100%)'
+  // A zoomed-out artboard is a small island. Clipping the native surface to
+  // it leaves the pasteboard as the workspace gray, so a pan exposes a solid
+  // #f5f5f5 strip no matter what the coarse tile painted.
+  if(!(unionR>unionL)||!(unionB>unionT)||(unionR-unionL)*(unionB-unionT)<width*height*0.8)return undefined
+  if(unionL===0&&unionT===0&&unionR===width&&unionB===height)return undefined
+  if(boxes.length===1)return `inset(${unionT}px ${width-unionR}px ${height-unionB}px ${unionL}px)`
+  return rects.length?`path("${rects.join(' ')}")`:undefined
 }

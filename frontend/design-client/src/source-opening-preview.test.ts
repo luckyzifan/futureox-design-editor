@@ -2,7 +2,7 @@
 import {act,createElement} from 'react'
 import {createRoot} from 'react-dom/client'
 import {expect,test,vi} from 'vitest'
-import {SourceOpeningSurface,useSourceOpening,visibleMaterialDetail,type OpeningView,type SourceThumbnailCoverage} from './source-opening-preview'
+import {SourceOpeningSurface,sourcePageClip,useSourceOpening,visibleMaterialDetail,type OpeningView,type SourceThumbnailCoverage} from './source-opening-preview'
 
 const items=Array.from({length:36},(_,i)=>{
   const rect={x:(i%6)*120,y:Math.floor(i/6)*120,width:100,height:80}
@@ -10,6 +10,13 @@ const items=Array.from({length:36},(_,i)=>{
 })
 const source:OpeningView={owner:{documentId:'a',sessionEpoch:1},bounds:{x:0,y:0,width:700,height:680},pages:[['A','A',18],['B','B',18]],items,
   images:new Map(items.map((_,i)=>[i,'rendered'])),finished:true,cacheHit:false,rendered:36}
+test('a zoomed-out artboard does not clip the native surface down to the thumbnail',()=>{
+  const artboard={x:0,y:0,width:1900,height:1060}
+  const view={x:460,y:300,zoom:0.07}
+  expect(sourcePageClip([artboard],view,1000,700)).toBeUndefined()
+  expect(sourcePageClip([{x:0,y:0,width:900,height:700}],{x:0,y:0,zoom:1},1000,800)).toContain('inset(')
+})
+
 test('a fit overview schedules no exact scene; a close view prepares only visible roots of its page',()=>{
   expect(visibleMaterialDetail(source,{x:20,y:10,zoom:0.8},800,600,2)).toEqual([])
   expect(visibleMaterialDetail(source,{x:0,y:0,zoom:4},800,600,2,'A',0)).toEqual([0])

@@ -34,6 +34,14 @@
 - `tsc --noEmit` 在这三处改动上无新错误。仓库里原有的 testing fixture JSON 缺失报错与本轮无关。
 - 没有做真实 Electron/GPU 回放。33 ms 可见、100 ms 精修、完整 G2/G5 未关闭。GUI 为 NOT_RUN。
 
+## D 复测（2026-11-07，CPU 路径被裁掉）
+
+盒上是 `--core-cpu-only`。上一刀只在有 GPU bitmap context 时排队粗页瓦片，CPU 上根本不排。打开预览要等 GPU 回执才让位，CPU 没有这张回执，`素材预览` 一直盖在上面。`sourcePageClip` 再把原生画布裁成画板缩略图，画板外就是工作区 `#f5f5f5`。平移露出的条因此整块是这个灰，属性也不会写上。
+
+现在：CPU 同样排那张粗页瓦片，画进 2D 画布；盖住视口后用 `onPresented` 揭开原生层。缩到画板只占视口一小块时不再裁切。平移后 `.native-source-content` 写 `data-source-coverage-extend="pan"`。条带是这张瓦片（底下先铺白），不是工作区灰。
+
+再跑 D 仍用 `--core-cpu-only`、117.sketch、打开大型 JSON / Sketch、缩到约 7–8%、Space 拖至少四分之一视口。新条不应再是纯 `#f5f5f5`。属性应在 `.native-source-content` 上。真机未在本环境回放。
+
 ## D 复测（2026-11-07，8% 粘贴板）
 
 117.sketch 缩到 8% 时，画板大约 153×85，视口比页面大。居民瓦片只覆盖画板，画板外没有可合成的粗像素。平移不提交新帧，`data-source-coverage-extend="pan"` 不会出现，新条由 `CameraReprojection` 涂成 `#f5f5f5`。
