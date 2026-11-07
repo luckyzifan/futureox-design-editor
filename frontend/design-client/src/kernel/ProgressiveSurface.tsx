@@ -51,6 +51,7 @@ import { isTileAdmissionBudgetError, planTileAdmission, retireRejectedTile, Hand
   replacementTileBudget, tileAdmissionDiagnostic, type TileAdmissionDiagnostic } from './tile-admission'
 import { CompositeFrameWitness } from './composite-frame-witness'
 import { prioritizeUncoveredTiles } from './coverage-priority'
+import { selectCoverageUnderlay } from './coverage-stack'
 import {
   prioritizeTileFill,
   TileFillScheduler,
@@ -2346,6 +2347,26 @@ export function ProgressiveSurfaceImpl(
   const cachedPreviewTile = (tile: PaintedTile) => tile === cachedViewport
   const baseTile = (tile: PaintedTile) => !fullPlanReady && !coarseCohort && !cachedViewport &&
     displayed?.residents.get(tile.key) === tile
+  // The previous frame is one camera. Zoom-out and a pan during zoom expose
+  // world the frame does not own. Ready overview and coarser tiles already in
+  // memory paint those pixels in the same present; they are not a new density.
+  const continuityUnderlay = (() => {
+    if (previewReplacement || fullPlanReady || !residentDisplay) return [] as PaintedTile[]
+    const shown = visible.filter(tile => !inactiveSet.has(tile) && (fineTile(tile) || baseTile(tile) || coarseTile(tile) || cachedPreviewTile(tile)))
+    const world = { x: -requestedView.x / requestedView.zoom, y: -requestedView.y / requestedView.zoom,
+      width: width / requestedView.zoom, height: height / requestedView.zoom }
+    if (tilesCoverBounds(shown, world)) return [] as PaintedTile[]
+    const device = previewDevice.current
+    if (device.client !== rasterClient || !device.key) return [] as PaintedTile[]
+    // A whole-viewport preview has its own admission. A mismatched capture must
+    // not sneak back in as underlay; ordinary world tiles are the coverage stack.
+    const candidates = visible.filter(tile => !tile.viewportPreview && !inactiveSet.has(tile) && tileRef.current.get(tile.key) === tile &&
+      tile.document === doc && tile.revision === contract.revision && ready.current.has(tile.key) &&
+      tile.gpuTile !== undefined && (!tile.residentDevice ||
+        tile.residentDevice.client === rasterClient && tile.residentDevice.key === device.key))
+    return selectCoverageUnderlay(candidates, requestedView, { width, height }, shown, 24)
+  })()
+  const continuityKeys = new Set(continuityUnderlay.map(tile => tile.key))
   // One frame description owns both actual composition and cache-use proof.
   // Intersecting history that contributes no physical fragment stays evictable.
   const compositeItems = visible.map(tile => {
@@ -2353,8 +2374,9 @@ export function ProgressiveSurfaceImpl(
     // source-over a translucent new page onto old-revision pixels.
     if (previewReplacement) return { tile, gutter: tile.gutter ?? 1, active: tile === previewReplacement, layer: 2 }
     const fine = !inactiveSet.has(tile) && fineTile(tile), base = !inactiveSet.has(tile) && baseTile(tile),
-      coarse = !inactiveSet.has(tile) && coarseTile(tile), cached = !inactiveSet.has(tile) && cachedPreviewTile(tile)
-    return { tile, gutter: tile.gutter ?? 1, active: fine || base || coarse || cached,
+      coarse = !inactiveSet.has(tile) && coarseTile(tile), cached = !inactiveSet.has(tile) && cachedPreviewTile(tile),
+      continuity = continuityKeys.has(tile.key)
+    return { tile, gutter: tile.gutter ?? 1, active: fine || base || coarse || cached || continuity,
       layer: progressiveTileLayer({ fine, cached, coarse, refining: !complete && canRefine, cameraDependent,
         nativeDensity: tile.zoom >= requestedView.zoom * dpr,
         nativePhase:tileHasNativePhase(tile,requestedView,dpr),
@@ -2485,6 +2507,7 @@ export function ProgressiveSurfaceImpl(
         data-progressive-tiles={fineVisibleCount}
         data-failed-tiles={failedTiles.current.size}
         data-cached-preview-tiles={cachedPreviewCount}
+        data-coverage-underlay={continuityUnderlay.length}
         data-overview-tiles={visible.filter(tile => tile.overview && ready.current.has(tile.key)).length}
         data-overview-reuses={overviewReuses.current}
         data-resident-eligible={String(residentDisplay)}

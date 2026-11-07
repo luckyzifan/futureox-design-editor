@@ -1,5 +1,17 @@
 # Futureox Design Core：渲染优先工程与验收规范
 
+2026-11-07 的[打开预览盖住平移条](../testing/verification-zoom-coverage-continuity-20261107/README.md)在画板只占视口一小块时把打开预览放到原生画布上面，条带用覆盖场。不提高预算，不关闭 33/100ms 或完整 G2/G5。盒上复测未做。
+
+2026-11-07 的[CPU 清屏白](../testing/verification-zoom-coverage-continuity-20261107/README.md)在页面矩形以外、瓦片绘制之后铺覆盖场，避免平移条只剩 `fillRect` 的纯白。不提高预算，不关闭 33/100ms 或完整 G2/G5。盒上复测未做。
+
+2026-11-07 的[CPU 粘贴板平移](../testing/verification-zoom-coverage-continuity-20261107/README.md)让 `--core-cpu-only` 也画出粗页瓦片，并在画板缩得很小时不再把原生画布裁成缩略图。不提高预算，不关闭 33/100ms 或完整 G2/G5。盒上复测未做。
+
+2026-11-07 的[8% 粘贴板平移](../testing/verification-zoom-coverage-continuity-20261107/README.md)在视口大于页面时先排一张粗页瓦片，平移时用它填新露出的条，并写下 `data-source-coverage-extend="pan"`。不提高预算，不关闭 33/100ms 或完整 G2/G5。
+
+2026-11-07 的[平移条粗覆盖](../testing/verification-zoom-coverage-continuity-20261107/README.md)在提交平移帧时写下 `data-source-coverage-extend="pan"`，回执只核对该帧自己的瓦片。连续平移不再整段丢掉已覆盖的粗条。不提高预算，不关闭 33/100ms 或完整 G2/G5。
+
+2026-11-07 的[连续缩放覆盖](../testing/verification-zoom-coverage-continuity-20261107/README.md)只改变缩放时哪些已有瓦片可以留在画面上、哪些在途瓦片算过期。不提高预算，不把预览密度改成永久 1x，不关闭 33/100ms 或完整 G2/G5。
+
 2026-11-02 的[吸管与取色](../testing/verification-eyedropper-color-picker-20261102/README.md)只改颜色界面。不改瓦片、预算或实验开关，不关闭 33/100ms 或完整 G2/G5。
 
 2026-11-02 的[选区、框选与测距](../testing/verification-figma-canvas-chrome-marquee-20261102/README.md)只改画布交互叠层。gaps5：选区、悬停和框选边是整像素上的 1px `#4597F7`，框选填充 `#DCE9F5`，间距 `#E05634`。不改瓦片、预算或实验开关，不关闭 33/100ms 或完整 G2/G5。
