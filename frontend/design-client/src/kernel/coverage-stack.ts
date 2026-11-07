@@ -122,7 +122,7 @@ export function acceptTranslatedCoverage(input: {
  *  flight even when the new lattice is many times coarser. */
 export function retainInFlightTile(tile: RasterTile, view: CanvasCamera, size: { width: number; height: number },
   resident: Iterable<RasterTile>, wanted: ReadonlySet<string>, prefetch: ReadonlySet<string>,
-  continuousZoomIn: boolean, targetScale: number) {
+  continuousZoomIn: boolean, targetScale: number, settling = false) {
   if (tile.prefetch) return wanted.has(tile.key) || prefetch.has(tile.key)
   if (!tileIntersectsView(tile, view, size) || !(targetScale > 0) || !(tile.zoom > 0)) return false
   if (wanted.has(tile.key)) return true
@@ -132,6 +132,9 @@ export function retainInFlightTile(tile: RasterTile, view: CanvasCamera, size: {
   // the tile that would. Coverage tiles are kept at any size.
   if ((tile.width > 514 || tile.height > 514) && continuousZoomIn && !hole) return false
   if (hole) return true
+  // The gesture can keep a nearby density. Once it stops, a covered viewport
+  // must release the single raster owner for the exact phase.
+  if (settling) return false
   const relative = targetScale / tile.zoom
   if (relative <= 2 && relative >= 0.5) return true
   return continuousZoomIn && relative > 2 && relative <= 8 && bringsSamplingDetail(tile, view, size, painted)
