@@ -129,6 +129,7 @@ export function NativeSourceSurface(props:Props){
     let suspended=document.visibilityState==='hidden'
     let moving=false,serial=0,submission=0,acknowledged=0,tick=0,lastStatus='',lastStatusAt=-Infinity
     let lastZoom=latest.current.view.zoom,zoomingIn=false,lastZoomAt=-Infinity,continuousZoom=false
+    let coldBudget=1
     let priorView=latest.current.view,panHeld=!!latest.current.panGestureActive
     let cpuView:CanvasCamera|undefined
     const workQueue=new SourceRenderWork<RasterTile>(overviewMode?8:SOURCE_PIPELINE_TILES)
@@ -464,7 +465,7 @@ export function NativeSourceSurface(props:Props){
         const missing=next.tiles.some(tile=>!cache.has(tile.key))
         workQueue.demand(covered&&!optional,tile=>{
           if(stripOverview?.tiles.some(base=>base.key===tile.key))return !zoomingIn
-          if(overview?.tiles.some(base=>base.key===tile.key))return !moving && !missing
+          if(overview?.tiles.some(base=>base.key===tile.key))return !moving
           if(tile.prefetch)return next.keys.has(tile.key)||!missing&&next.prefetchKeys.has(tile.key)
           return retainInFlightTile(tile,next.p.view,next.p,cache.values(),next.keys,next.prefetchKeys,zoomingIn&&continuousZoom,next.raster.scale)
         })
@@ -486,8 +487,8 @@ export function NativeSourceSurface(props:Props){
           // tile does, and a quarter-viewport pan stays inside the same tile.
           const wantStrip=!!stripTile&&!cache.has(stripTile.key)&&pasteboard&&(renderExecutionPolicy.cpuOnly||translated||(!moving&&!continuousZoom))
           if(!wantStrip&&!optional&&outwardCover()){schedulePaint();break}
-          if(!wantStrip&&optional && source.materialKeys && (moving||!prefetch.length))break
-          if(!wantStrip&&optional&&prefetchReady!==demandKey()){schedulePaint();break}
+          if(!wantStrip&&optional && source.materialKeys && moving)break
+          if(!wantStrip&&optional&&moving&&prefetchReady!==demandKey()){schedulePaint();break}
           // We already have real pixels for this entire source. An expensive
           // optional overview cannot fill another hole. Give the next input
           // first use of the raster owner before warming native neighbours.
@@ -501,11 +502,20 @@ export function NativeSourceSurface(props:Props){
               break
             }
           }
-          if (optional && !source.materialKeys && !costlyOverview && !moving && !overview) overview = navigationOverview(source.bounds,1,source.nodes)
-          const warmBase = optional && !costlyOverview && !moving && overview ? overviewWarmBatch(overview.tiles,p.view,p.width,p.height,
+          const shownCount=tiles.filter(tile=>cache.has(tile.key)&&tileIntersectsView(tile,p.view,p)).length
+          const largeSource=source.nodes>=3000||!!source.materialKeys||Math.max(source.bounds.width,source.bounds.height)>=8000
+          if(!overview&&shownCount>0&&(largeSource||optional))overview=navigationOverview(source.bounds,1,source.nodes)
+          // After the first visible pixels, one coarse page tile is built while
+          // the user is still. The first zoom-out then already has coverage.
+          // Material files used to stop here and never build that page.
+          const coldTile=!moving&&!zoomingIn&&coldBudget>0&&largeSource&&shownCount*2>=Math.max(1,tiles.length)&&overview
+            ?overviewWarmBatch(overview.tiles,p.view,p.width,p.height,tile=>!cache.has(tile.key)&&!skippedPrefetch.has(tile.key))[0]
+            :undefined
+          const warmBase = !coldTile && optional && !costlyOverview && !moving && overview ? overviewWarmBatch(overview.tiles,p.view,p.width,p.height,
             tile=>!cache.has(tile.key) && !skippedPrefetch.has(tile.key)) : undefined
-          const candidates=wantStrip&&stripTile?[stripTile]:warmBase?.length ? warmBase.map(tile=>({...tile,prefetch:true as const})) :
+          const candidates=wantStrip&&stripTile?[stripTile]:coldTile?[{...coldTile,prefetch:true as const}]:warmBase?.length ? warmBase.map(tile=>({...tile,prefetch:true as const})) :
             optional?prefetch.filter(tile=>!cache.has(tile.key)&&!skippedPrefetch.has(tile.key)):missing
+          if(coldTile&&!(wantStrip&&stripTile))coldBudget--
           if(!candidates.length)break
           // The full visible cohort shares the bounded preparation pipeline,
           // including inward zoom. There is still a single raster owner.
@@ -522,13 +532,14 @@ export function NativeSourceSurface(props:Props){
           const batch=holeFirst.slice(0,wantStrip||source.materialKeys && moving && zoomingIn && continuousZoom && backing ? 1 : limit)
           diagnostics.record('cache',{count:batch.length,prefetch:optional?1:0,reasonCode:optional?7:5})
           const work=workQueue.begin(batch,limit)
+          const overviewBatch=!!(!wantStrip&&(coldTile||warmBase?.length))
           if(wantStrip&&translated)element.dataset.sourceCoverageExtend='pan'
-          const camera = wantStrip&&strip ? strip.view : warmBase && overview ? overview.view : raster.camera
+          const camera = wantStrip&&strip ? strip.view : overviewBatch && overview ? overview.view : raster.camera
           const batchStarted=performance.now()
           try{
             await client.renderSource(source,{pageId:source.pageId,width:Math.ceil(p.width*ratio),height:Math.ceil(p.height*ratio),
               view:camera,transparent:false,grid:false,rasterProfile:profile,
-              sourceMaterialOverview:overviewMode||undefined,tileViewport:batch,tilePrepareViewport:tileBatchPrepareViewport(wantStrip||optional||source.materialKeys&&moving&&zoomingIn&&continuousZoom?[]:tiles,[],batch,camera),renderIntent:'preview',
+              sourceMaterialOverview:overviewMode||undefined,tileViewport:batch,tilePrepareViewport:tileBatchPrepareViewport(wantStrip||overviewBatch||optional||source.materialKeys&&moving&&zoomingIn&&continuousZoom?[]:tiles,[],batch,camera),renderIntent:'preview',
               tileOwner:{documentId:source.owner.documentId,sessionEpoch:source.owner.sessionEpoch}},tile=>{
                 // Stage each accepted tile while the rest of its viewport is being drawn.
                 if(!alive||!workQueue.accepts(work,tile.key)){
