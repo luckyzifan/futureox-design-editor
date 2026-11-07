@@ -321,7 +321,9 @@ fn sketch_roots_in(s:&Session,roots:Vec<Value>,facts:RootFacts,mut source_bytes:
             return Err(issue("Select a smaller component dependency working set"));
         }
     }
-    import_source_roots(roots, masters, images, document, &s.directory.join("source"), false)
+    let (mut document,warnings)=import_source_roots(roots, masters, images, document, &s.directory.join("source"), false)?;
+    working_groups::apply(s,&mut document)?;
+    Ok((document,warnings))
 }
 
 pub(super) fn preview_dependencies(root: &Value) -> (HashSet<String>, HashSet<String>) {
@@ -990,6 +992,9 @@ pub(super) fn commit_canvas(
     request: Request,
     cancel: &AtomicBool,
 ) -> Result<Value> {
+    if !s.state.group_placements.is_empty() {
+        return Err(issue("Use the source canvas property session while independent group placements are present"));
+    }
     let (p, n) = location(s, request.key.as_deref())?;
     let root_id = s.parts[p].index.entries[n].id.clone();
     let projection = s

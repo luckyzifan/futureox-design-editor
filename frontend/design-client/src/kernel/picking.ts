@@ -1,5 +1,5 @@
 import { CpuStage, measureCpuStage } from '../cpu-stage-diagnostics'
-import { documentPatch, equalValue } from '../document-patch'
+import { documentPatch, equalValue, peekChangedNodes } from '../document-patch'
 import {
   noise_fill_preset_json,
   hit_test_json,
@@ -368,6 +368,39 @@ export function booleanPoseUnchanged(doc:DesignDocument,roots:ReadonlySet<string
 }
 
 export function kernelLayout(input: DesignDocument, previous?: DesignDocument, residentDiff=false): DesignDocument {
+  if(import.meta.env.VITE_DESIGN_COMPONENT_POSE!=='0'&&previous&&ready&&layoutEngine&&componentBase?.engine===layoutEngine&&
+      (componentBase.document===previous||residentDiff&&componentBase.document.id===input.id)){
+    const base=componentBase
+    if(base?.engine===layoutEngine){
+      // The native receipt owns the complete validated model. Its exact pose
+      // proof can accept a mask without granting any pixel-cache shortcut.
+      // A decline still runs all existing normalization/derivation below.
+      const changed=peekChangedNodes(base.document,input)
+      const ids=Object.keys(changed)
+      const sameBody=(id:string)=>{
+        const before=base.document.nodes[id],next=changed[id]
+        return !!before&&!!next&&Object.keys(before).length===Object.keys(next).length&&
+          Object.keys(next).every(key=>key==='transform'||Object.is(next[key as keyof DesignNode],before[key as keyof DesignNode]))
+      }
+      const fields=Object.keys(input) as (keyof DesignDocument)[]
+      const sameFields=fields.length===Object.keys(base.document).length&&fields.every(key=>
+        key==='nodes'||key==='id'||input[key]===base.document[key])
+      if(sameFields&&ids.length>0&&ids.length<=16&&ids.every(sameBody)){
+        const patch=documentPatch(base.document,input)
+        activateDocumentFonts(input)
+        try{
+          const encoded=measureCpuStage(CpuStage.resolveComponents,()=>layoutEngine!.resolve_components_pose_patch(JSON.stringify(patch),base.receipt))
+          if(encoded){
+            const result=JSON.parse(encoded) as {receipt:number;nodes:Record<string,unknown>;removed:string[];stats:{pose?:boolean}}
+            if(!Number.isSafeInteger(result.receipt)||result.receipt<1||result.stats?.pose!==true||
+                Object.keys(result.nodes).length||result.removed.length)throw Error('无效的变换派生回执')
+            componentBase={document:input,engine:layoutEngine,receipt:result.receipt}
+            return input
+          }
+        }catch(error){if(String(error)!=='DERIVED_STATE_STALE')throw error;componentBase=undefined}
+      }
+    }
+  }
   if (previous) {
     const scope = pageEditScope(previous, input)
     if (scope && !scope.layout) {

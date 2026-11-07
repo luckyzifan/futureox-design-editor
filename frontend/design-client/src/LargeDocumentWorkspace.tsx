@@ -9,7 +9,7 @@ import type {SourceCanvasSnapshot,SourceCanvasItem} from './desktop'
 import type {NativeSourceStatus} from './kernel/NativeSourceSurface'
 import {includesMaterials,materialScope,thumbnailScale,visibleMaterialWindow,firstVisibleMaterialKeys,smallerMaterialRequest} from './source-material-scope'
 import {fitBounds}from'./canvas-camera'
-import { commitPendingEdits, hasPendingEdits, registerPendingEdit, pendingEditsChanged } from './pending-edits'
+import { commitPendingEdits, hasPendingEdits, registerPendingEdit, pendingEditsChanged, subscribePendingEdits } from './pending-edits'
 import { prepareDocumentJson, prepareDocumentJsonInWorker } from './prepared-document'
 import { documentPreparationRuntime } from './document-preparation-identity'
 import { dispatchEditorCommand, resolveDesktopEditorCommand } from './editor-commands'
@@ -17,6 +17,7 @@ import { desktopBridge, type LargeDocumentBridge, type LargeDocumentRow, type La
 import { apply, bounds, boxPoints, SpatialIndex, unionBounds } from './geometry'
 import { sourceNodeEdit,type SourceNodeEdit } from './source-scene-patch'
 import { validSourceObjectKey } from './source-object-key'
+import { peekChangedNodes } from './document-patch'
 
 const admitted=<T,>(result:DesktopResult<T>):T=>{if(result.status!=='ok')throw Error(result.status==='cancelled'?'操作已取消':result.message);return result as T}
 const sameSource=(a:LargeDocumentStatus|null,b:LargeDocumentStatus|null)=>!!a&&!!b&&a.owner.documentId===b.owner.documentId&&a.owner.sessionEpoch===b.owner.sessionEpoch&&a.revision===b.revision
@@ -97,6 +98,8 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   const itemsForSnapshot=useRef<SourceCanvasItem[]>([]),catalogueStatus=useRef<LargeDocumentStatus|null>(null);
   const nativeSnapshotRef=useRef(nativeSnapshot);nativeSnapshotRef.current=nativeSnapshot
   const [busy,setBusy]=useState(false),busyRef=useRef(false),[error,setError]=useState(''),[notice,setNotice]=useState('')
+  const autosave=useRef<Promise<void>|undefined>(undefined)
+  const rejectedAutosave=useRef<DesignDocument|undefined>(undefined)
   const [viewTab,setViewTab]=useState<'source'|'layers'>('source')
   const [editorLocked,setEditorLocked]=useState(false),[warnings,setWarnings]=useState<string[]>([])
   const navigationIntent=useRef(0),preparingOverview=useRef(false)
@@ -135,6 +138,10 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     try{await work()}catch(error){if(alive.current&&!(queuedLoad.current&&(/取消|cancel|abort/i.test(String(error)))))setError(error instanceof Error?error.message:String(error))}
     finally{busyRef.current=false;if(alive.current){setBusy(false);setEditorLocked(false);if(queuedLoad.current&&!drainingLoads.current)queueMicrotask(()=>void drainLoads())}}
   }
+  const afterAutosave=async(work:()=>Promise<void>,lockEditor=false)=>{
+    await autosave.current
+    if(alive.current)await run(work,lockEditor)
+  }
   async function drainLoads(){
     if(drainingLoads.current||busyRef.current)return
     drainingLoads.current=true
@@ -147,8 +154,9 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     if(preparingSource.current||preparingOverview.current||detailRunning.current){abort.current?.abort();void bridge.cancel().catch(()=>{})}
     void drainLoads()
   }
-  const save=async()=>{
-    if(!commitPendingEdits(editor)||editor.interactionActive)throw Error('请先完成当前输入或画布操作。')
+  const save=async(automatic=false)=>{
+    if(automatic){if(hasPendingEdits(editor)||editor.interactionActive||editor.state.busy)return}
+    else if(!commitPendingEdits(editor)||editor.interactionActive)throw Error('请先完成当前输入或画布操作。')
     const original=baseline.current,current=editor.authoredDocument,row=activeRef.current
     if(!row||!original||current===original)return
     if(statusRef.current?.format==='json') {
@@ -156,15 +164,19 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
       if(!validSourceObjectKey(next.key))throw Error('保存回执缺少有效的源对象位置；当前画布已保留，请刷新源文件状态后重选。')
       updateStatus(next);const rebound={...row,key:next.key};activeRef.current=rebound;setActive(rebound)
       baseline.current=current
-      if(editor.authoredDocument!==current||hasPendingEdits(editor))throw Error('保存期间产生了新修改，请再次保存。')
+      if(!automatic&&(editor.authoredDocument!==current||hasPendingEdits(editor)))throw Error('编辑仍在进行，自动保存完成后可切换。')
       return
     }
     const {nodes:a,...aMeta}=original,{nodes:b,...bMeta}=current
-    if(JSON.stringify(aMeta)!==JSON.stringify(bMeta)||Object.keys(a).length!==Object.keys(b).length)throw Error('此页面会话支持已有图层的属性编辑；结构修改请先撤销，再进入局部对象编辑。')
+    const metaKeys=new Set([...Object.keys(aMeta),...Object.keys(bMeta)])
+    const metaIdentical=[...metaKeys].every(key=>Object.is((aMeta as Record<string,unknown>)[key],(bMeta as Record<string,unknown>)[key]))
+    if(!metaIdentical&&JSON.stringify(aMeta)!==JSON.stringify(bMeta))throw Error('此页面会话支持已有图层的属性编辑；结构修改请先撤销，再进入局部对象编辑。')
     const changes:Record<string,SourceNodeEdit>={}
-    for(const [id,node]of Object.entries(b)){
-      if(!a[id])throw Error('新增图层需要局部对象编辑会话。')
-      if(node!==a[id]){const edit=sourceNodeEdit(a[id],node);if(edit)changes[id]=edit}
+    for(const [id,node]of Object.entries(peekChangedNodes(original,current))){
+      if(!node)throw Error('此页面会话支持已有图层的属性编辑；结构修改请先撤销，再进入局部对象编辑。')
+      const before=a[id]
+      if(!before)throw Error('新增图层需要局部对象编辑会话。')
+      const edit=sourceNodeEdit(before,node);if(edit)changes[id]=edit
     }
     const json=JSON.stringify(changes)
     if(new TextEncoder().encode(json).length>2*1024**2)throw Error('本次修改超过 2 MiB，请减少同时修改的图层。')
@@ -176,8 +188,8 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
       updateStatus(next);const rebound={...row,key:next.key};activeRef.current=rebound;setActive(rebound)
     }
     baseline.current=current
-    if(editor.authoredDocument!==current||hasPendingEdits(editor))throw Error('保存期间产生了新修改，请再次保存。')
-    setNotice('画布修改已保存到源文件缓存。导出会包含全部未加载内容。')
+    if(!automatic&&(editor.authoredDocument!==current||hasPendingEdits(editor)))throw Error('编辑仍在进行，自动保存完成后可切换。')
+    if(!automatic)setNotice('修改已自动保存到独立工作副本，原文件不变。')
   }
   const fit=()=>{
     const doc=editor.state.doc,host=canvas.current,page=doc.pages.find(p=>p.id===editor.state.page)
@@ -426,9 +438,40 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     return()=>{current=false}
   },[status,parents,offset,filter,busy,nativeSnapshot,opening?.owner.documentId])
   useEffect(()=>{const timer=setTimeout(()=>{setFilter(query.trim());setOffset(0)},180);return()=>clearTimeout(timer)},[query])
+  useEffect(()=>{
+    let timer:ReturnType<typeof setTimeout>|undefined
+    const schedule=()=>{
+      clearTimeout(timer)
+      if(!alive.current||!activeRef.current||busyRef.current)return
+      if(error){
+        // Do not repeatedly retry a rejected snapshot. A corrected edit or
+        // undo owns a new attempt without requiring a manual Save action.
+        if(rejectedAutosave.current&&editor.authoredDocument!==rejectedAutosave.current){
+          rejectedAutosave.current=undefined;setError('')
+        }
+        return
+      }
+      if(editor.authoredDocument===baseline.current)return
+      timer=setTimeout(()=>{
+        if(!alive.current||busyRef.current||editor.authoredDocument===baseline.current)return
+        // Drafts and live gestures are never persisted as committed edits.
+        // Their release/cancellation publishes another editor/draft event.
+        if(hasPendingEdits(editor)||editor.interactionActive||editor.state.busy)return
+        const snapshot=editor.authoredDocument
+        const writing=run(async()=>{
+          try{await save(true);rejectedAutosave.current=undefined}
+          catch(error){rejectedAutosave.current=snapshot;throw error}
+        });autosave.current=writing
+        void writing.finally(()=>{if(autosave.current===writing)autosave.current=undefined})
+      },600)
+    }
+    const off=editor.subscribe(schedule),offDrafts=subscribePendingEdits(editor,schedule)
+    schedule()
+    return()=>{clearTimeout(timer);off();offDrafts()}
+  },[editor,bridge,active,busy,error,state.version])
   useEffect(()=>{const release=registerPendingEdit(parentEditor,{dirty:()=>true,commit:()=>false});pendingEditsChanged(parentEditor);return release},[parentEditor])
-  const leave=()=>run(async()=>{await save();if(statusRef.current)admitted(await bridge.close(request()));onExit()},true)
-  const exportFile=()=>run(async()=>{await save();const result=await bridge.export(request());if(result.status==='cancelled')return;const next=admitted(result);updateStatus(next);setNotice(`完整文件已导出：${next.displayName}`)})
+  const leave=()=>afterAutosave(async()=>{await save();if(statusRef.current)admitted(await bridge.close(request()));onExit()},true)
+  const exportFile=()=>afterAutosave(async()=>{await save();const result=await bridge.export(request());if(result.status==='cancelled')return;const next=admitted(result);updateStatus(next);setNotice(`完整文件已导出：${next.displayName}`)})
   useEffect(()=>{
     const desktop=desktopBridge()
     const off=desktop?.onCommand(command=>{
@@ -439,7 +482,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     })
     const key=(event:KeyboardEvent)=>{if(event.defaultPrevented||event.isComposing||event.repeat||!(event.metaKey||event.ctrlKey)||event.key.toLowerCase()!=='s')return;event.preventDefault();if(event.shiftKey)void exportFile();else void run(save)}
     window.addEventListener('keydown',key)
-    const close=desktop?.onCloseRequested(({requestId})=>{void run(async()=>{await save();if(statusRef.current)admitted(await bridge.close(request()));flushSync(onExit);await onWindowClose(requestId)},true).then(()=>{if(alive.current)void desktop.respondToClose({requestId,allow:false})})})
+    const close=desktop?.onCloseRequested(({requestId})=>{void afterAutosave(async()=>{await save();if(statusRef.current)admitted(await bridge.close(request()));flushSync(onExit);await onWindowClose(requestId)},true).then(()=>{if(alive.current)void desktop.respondToClose({requestId,allow:false})})})
     return()=>{off?.();close?.();window.removeEventListener('keydown',key)}
   },[editor,bridge,onExit,onWindowClose])
   const history=(kind:'undo'|'redo')=>run(async()=>{
@@ -448,7 +491,7 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     requireCleanCanvas();updateStatus(next);invalidateCanvas()
     if(nativeSnapshotRef.current){setOverview(false);await enterOverview()}
   },true)
-  const openFile=(file:File)=>run(async()=>{
+  const openFile=(file:File)=>afterAutosave(async()=>{
     await save()
     if(statusRef.current)admitted(await bridge.close(request()))
     if(!/\.(json|sketch)$/i.test(file.name)){flushSync(()=>onExit(file));return}

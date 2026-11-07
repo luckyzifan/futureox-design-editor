@@ -12,6 +12,12 @@ import {
 
 const camera = (zoom: number, x = 0, y = 0) => ({ x, y, zoom })
 
+test('normal zoom previews retain physical Retina density without experimental flags', () => {
+  for (const zoom of [.26, .5, 1, 16, 32])
+    expect(navigationPreviewDensity(2, 855, 888, false, zoom)).toBe(2)
+  expect(navigationPreviewDensity(2, 855, 888, false, .25)).toBe(1)
+})
+
 function journal(owner: NavigationZoom) {
   const samples: { at: number; value: NavigationZoomSample }[] = []
   let sequence = owner.sample.sequence

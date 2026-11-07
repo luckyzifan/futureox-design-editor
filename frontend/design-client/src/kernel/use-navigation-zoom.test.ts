@@ -31,13 +31,13 @@ function harness() {
   owners.push(dispose)
   return {
     render(zoom: number, identity = 'document', enabled = true,
-      pan: { enabled?: boolean; held?: boolean; x?: number; y?: number; sampleOnFrame?: boolean } = {}) {
+      pan: { enabled?: boolean; held?: boolean; x?: number; y?: number; sampleOnFrame?: boolean; adaptiveQuiet?: boolean } = {}) {
       state = ref = effect = 0; layouts = []
       const internal = (React as any).__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE
       const previous = internal.H
       let value: ReturnType<typeof useNavigationZoom>
       try { internal.H = dispatcher; value = useNavigationZoom({ x: pan.x || 0, y: pan.y || 0, zoom },
-        identity, enabled, pan.enabled === true, pan.held === true, pan.sampleOnFrame === true) }
+        identity, enabled, pan.enabled === true, pan.held === true, pan.sampleOnFrame === true, pan.adaptiveQuiet === true) }
       finally { internal.H = previous }
       layouts.forEach(run => run()); return value!
     },
@@ -58,6 +58,24 @@ test('first changed input suppresses exact work before the sampled preview layou
   h.frame(160); expect(h.render(32).active).toBe(true)
   h.frame(176); expect(h.render(32).active).toBe(false)
   expect(h.pending).toBe(0)
+})
+
+test('dense opt-in input begins final refinement after measured cadence without the fixed 160ms tail',()=>{
+ const h=harness(),options={adaptiveQuiet:true}
+ h.render(1,'document',true,options)
+ for(let i=1;i<=9;i++){h.frame(i*20);h.render(1+i/10,'document',true,options)}
+ h.frame(239);expect(h.render(1.9,'document',true,options).active).toBe(true)
+ h.frame(240);expect(h.render(1.9,'document',true,options).active).toBe(false)
+ expect(h.pending).toBe(0)
+})
+
+test('changing quiet policy retires the old scheduled callback',()=>{
+ const h=harness();h.render(1,'document',true,{adaptiveQuiet:true});h.render(2,'document',true,{adaptiveQuiet:true})
+ const old=h.pendingCallbacks()
+ h.render(2,'document',true,{adaptiveQuiet:false})
+ old.forEach(fn=>fn(1000))
+ expect(h.render(2,'document',true,{adaptiveQuiet:false}).active).toBe(false)
+ expect(h.pending).toBe(0)
 })
 
 test('pointer pan blocks exact admission from pointerdown and admits final camera on release without quiet delay', () => {

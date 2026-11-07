@@ -17,6 +17,23 @@ test('native storage-derived capacity accepts sources above 4 GiB and rejects un
     assert.throws(()=>admitLargeStatus({...status(owner),maxExpandedBytes}))
   assert.throws(()=>admitLargeStatus(status(owner),{...owner,sessionEpoch:2}))
 })
+test('recovered bitmap storage remains bound to the current window and closes with its new session',async()=>{
+ const window={isDestroyed:()=>false,webContents:{id:7}};let live
+ const host=new LargeDocumentHost(async(method,params)=>{
+  if(method==='large.open')return live={...status({documentId:params.documentId,sessionEpoch:params.sessionEpoch}),format:'sketch',bitmapScope:'original-source-1'}
+  if(method==='large.close')return {}
+  throw Error(method)
+ },{showOpenDialog:async()=>({canceled:false,filePaths:['/approved/source.sketch']})},()=>window)
+ const opened=await host.open()
+ // The source scope is minted by native recovery, never supplied by the renderer.
+ assert.equal(host.bitmapOwner('original-source-1'),true)
+ assert.equal(host.bitmapOwner('unrelated-1'),false)
+ assert.equal(host.bitmapGrant(8,'/cache'),undefined)
+ assert.deepEqual(host.bitmapGrant(7,'/cache'),{owner:'original-source-1',directory:'/cache/large-documents/original-source-1/bitmaps'})
+ await host.close({owner:opened.owner,expectedRevision:opened.revision})
+ assert.equal(host.bitmapOwner('original-source-1'),false)
+ for(const bitmapScope of ['../other','a/b','',3,{},'x'.repeat(161)])assert.throws(()=>admitLargeStatus({...status(owner),bitmapScope}))
+})
 test('only native-picked paths enter open/export; renderer paths and stale edit owners fail before RPC',async()=>{
   const f=fixture(),opened=await f.host.open()
   assert.equal(f.calls[0].params.path,'/approved/sample.json')
@@ -27,6 +44,21 @@ test('only native-picked paths enter open/export; renderer paths and stale edit 
   await f.host.export(request)
   assert.equal(f.calls.at(-1).params.path,'/approved/exported.json')
   assert.equal(f.calls.at(-1).method,'large.export')
+})
+test('choosing the imported source as the export destination never dispatches a write',async()=>{
+  const calls=[],window={isDestroyed:()=>false};let live
+  const request=async(method,params)=>{
+    calls.push(method)
+    if(method==='large.open')return live=status({documentId:params.documentId,sessionEpoch:params.sessionEpoch})
+    throw Error('Unexpected write: '+method)
+  }
+  const host=new LargeDocumentHost(request,{
+    showOpenDialog:async()=>({canceled:false,filePaths:['/approved/original.json']}),
+    showSaveDialog:async()=>({canceled:false,filePath:'/approved/original.json'}),
+  },()=>window)
+  const opened=await host.open()
+  await assert.rejects(()=>host.export({owner:opened.owner,expectedRevision:0}),/原文件保持不变/)
+  assert.deepEqual(calls,['large.open'])
 })
 test('property commits advance one owner revision and reject an older request without replay',async()=>{
   const f=fixture(),opened=await f.host.open();const old={owner:opened.owner,expectedRevision:0,key:'0:1',json:'{"name":"edit"}',expectedHash:'a'.repeat(64)}

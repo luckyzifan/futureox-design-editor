@@ -63,7 +63,6 @@ import {
   Settings as SettingsIcon,
   ChevronDown,
   Download,
-  Save,
   FolderOpen,
   Plus,
   ArrowUpToLine,
@@ -485,7 +484,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
   const [saver] = useState(
     () =>
       new SaveCoordinator(undefined, (status) => {
-        setSaved(status.error ? '本地保存失败' : status.dirty ? '保存中…' : '已保存到本机')
+        setSaved(status.error ? '自动保存失败' : status.dirty ? '自动保存中…' : '已自动保存到工作副本')
         if (status.error) { const detail = status.error; editor.notify(`保存失败，当前画布已保留：${detail}`, { key: 'saveFailedCanvasRetained', error: detail }) }
       }),
   )
@@ -590,7 +589,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
     preserveCurrent = true,
     request?: ImportRequest,
   ) {
-    if(source){editor.notify('当前源文件仍在编辑，请先保存并返回文档列表。');return false}
+    if(source){editor.notify('当前正在编辑独立工作副本，请先返回文档列表。');return false}
     const trace = beginEditorAction(editor, CanvasAction.import, ActionSource.lifecycle, 314)
     trace.result(ActionOutcome.cancelled, ActionReason.unobserved)
     try {
@@ -1023,18 +1022,16 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           </details>
           <span
             className={`save-status ${(desktopSession ? desktopStatus.error || desktopStatus.warning || desktopStatus.recoveryWarning : saved.includes('失败')) ? 'error' : ''}`}
-            title={desktopSession ? desktopStatus.warning || desktopStatus.recoveryWarning || desktopStatus.displayName || (desktopSession.supportsWorkspace ? '编辑后自动保存到本机文档库' : '尚未保存到文件') : undefined}
+            title={source?'编辑自动保存到独立工作副本，原文件保持不变':desktopSession ? desktopStatus.warning || desktopStatus.recoveryWarning || '编辑自动保存到独立工作副本，原文件保持不变' : undefined}
             role="status"
           >
             {desktopSession && desktopStatus.dirty ? <span aria-hidden="true">●</span> : <Check size={13} />}
-            {source?(source.error?'保存或加载失败':source.busy?'处理中…':source.dirty?'待保存':'已保存到源文件缓存'):desktopSession ? (!ready ? '载入中' : desktopStatus.operation === 'save' ? '保存中…'
+            {source?(source.error?'自动保存或加载失败':source.busy?'处理中…':source.dirty?'自动保存中…':'已自动保存到工作副本'):desktopSession ? (!ready ? '载入中' : desktopStatus.operation === 'save' ? '自动保存中…'
               : desktopStatus.conflict ? (desktopSession.supportsWorkspace ? '本机库存在新版本' : '文件已被外部修改') : desktopStatus.error ? '操作失败，修改已保留'
-              : desktopStatus.dirty ? (desktopStatus.recoveryWarning ? '未保存，恢复副本有警告' : desktopSession.supportsWorkspace ? '待保存到本机' : '未保存到文件') : desktopStatus.warning ? '已写入，有持久化警告' : desktopSession.supportsWorkspace ? '已保存到本机' : '已保存到文件') : saved}
+              : desktopStatus.dirty ? (desktopStatus.recoveryWarning ? '自动保存有警告' : desktopSession.supportsWorkspace ? '自动保存中…' : '未保存到文件') : desktopStatus.warning ? '已写入，有持久化警告' : desktopSession.supportsWorkspace ? '已自动保存到工作副本' : '已保存到文件') : saved}
           </span>
           {desktopSession&&ready&&<LocalWindowControl editor={editor} session={desktopSession} live={localWindows}/>}
-          {source?<button type="button" disabled={!ready||source.busy||!source.ready} onClick={()=>void source.save()}><Save size={16}/>{menuText.save}</button>:desktopSession ? <button type="button" disabled={!ready || desktopStatus.busy} onClick={() => void desktopSession.save()}>
-            <Save size={16} />{menuText.save}
-          </button> : <button type="button" disabled={!ready} onClick={() => void openLocalFiles()}>
+          {!source&&!desktopSession&&<button type="button" disabled={!ready} onClick={() => void openLocalFiles()}>
             <FolderOpen size={16} />{panelText.localFiles}
           </button>}
           <label className="locale-switch" data-locale-switch>
@@ -1141,7 +1138,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               }}
             >
               <Plus size={15} />
-              {source?menuText.exportFull:desktopSession ? menuText.saveAs : menuText.saveCopy}
+              {source?menuText.exportFull:locale==='en'?'Export copy…':'导出副本…'}
             </button>
             <button
               onClick={() => {
@@ -1167,17 +1164,6 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               file.current?.click()
               setMenu(false)
             }}><Plus size={15} />{menuText.appendCanvas}</button>
-            <button
-              onClick={() => {
-                if(source)void source.save()
-                else if (desktopSession) void desktopSession.save()
-                else if (editor.settleOwnedPropertyPreview('save') && !editor.interactionActive && commitPendingEdits(editor)) exportDocument(editor.authoredDocument)
-                setMenu(false)
-              }}
-            >
-              <Download size={15} />
-              {source?menuText.saveChanges:desktopSession?.supportsWorkspace ? menuText.saveToLibrary : menuText.saveDesign} <kbd>{formatShortcutCombo('Mod+S', shortcutContext.platform)}</kbd>
-            </button>
             <hr />
             <button
               onClick={() => {

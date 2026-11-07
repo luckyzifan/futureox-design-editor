@@ -135,6 +135,7 @@ export class InteractionRenderer {
   private liveRequestedOrder = -1
   private livePending?: DesignDocument | (()=>DesignDocument)
   private liveRunning = false
+  private liveCapture?: {resident:ResidentInteraction;generation:number;foreground:boolean}
   private liveRequested?: DesignDocument
   private liveCancelled = false
   private liveDeferred = false
@@ -257,7 +258,7 @@ export class InteractionRenderer {
         const r=this.resident,v=this.viewport
         if(import.meta.env.VITE_DESIGN_ACTIVE_GESTURE_PRIORITY!=='0'&&import.meta.env.VITE_DESIGN_RETAINED_INPUT_PRIORITY!=='0'&&
             this.sharedClient&&r?.active&&!this.error&&!this.endedDocument&&!this.handoff&&this.sameIds(ids)&&
-            this.settledViewportMatches(document,view))return true
+            (this.lastSettledDocument===document||r.inputPriority===true)&&this.settledViewportMatches(document,view))return true
         if(import.meta.env.VITE_DESIGN_RETAINED_INPUT_PRIORITY!=='1')return false
         return !!this.sharedClient&&!!r&&r.active&&!r.live&&!r.affine&&!this.error&&!this.endedDocument&&!this.handoff&&
           !!v&&v.view.x===view.x&&v.view.y===view.y&&v.view.zoom===view.zoom&&r.scale>=view.zoom*v.dpr&&
@@ -282,11 +283,6 @@ export class InteractionRenderer {
           if(r.affinePlan?.plan!==r.plan)r.affinePlan=new InteractionAffinePlan(r.plan)
           if(!r.affinePlan.accepts(patches)){this.poseEvent(7,13,0,0,trace);return null}
         }
-        if (r.foregroundExclusions && guardedForegroundSafe(r.foregroundExclusions,r.rootBounds,r.plan.ids,
-            offsets,r.parentLinear,r.scale) !== r.foregroundCapture && !this.inlineDisabled) {
-          this.inlineDisabled = true; r.captureBounds = undefined
-          if (r.tiles[0]?.gpuTile) this.sharedClient?.stopResidentInteraction(r.tiles[0].gpuTile)
-        }
         // Never affine-transform retained bitmap pixels. The first affine pose
         // promotes to a fresh native capture with compiler-owned halos.
         if (affine && !r.affine) {
@@ -295,6 +291,26 @@ export class InteractionRenderer {
           if (!r.parentMatrices) Object.assign(r, buildInteractionDependencyScope(document, r.plan.pageId,
             this.props?.scene?.entriesFor(document,r.plan.pageId,this.props.epoch) ?? scene(document,r.plan.pageId),
             r.plan.ids, { zoom: this.qualityZoom, dpr: this.viewport?.dpr || 1, allowFixedBackdrop: false }))
+        }
+        // The warm worker knows the fixed capture, not later backdrop readers.
+        // Check this input's complete old/new support before forwarding a pose.
+        const guardedCandidate=r.affine&&r.foregroundExclusions&&import.meta.env.VITE_DESIGN_GUARDED_ROTATION_CAPTURE!=='0'
+          ?interactionPatchedDocument(document,patches):undefined
+        const foregroundSafe=this.foregroundSafeFor(r,guardedCandidate||document,offsets)
+        const capture=this.liveCapture
+        if(r.foregroundExclusions&&foregroundSafe&&this.liveRunning&&capture?.resident===r&&
+            capture.generation===this.generation&&!capture.foreground){
+          // The pointer has returned outside every later backdrop reader.
+          // Its obsolete whole-viewport capture must not hold a small latest
+          // pose behind seconds of work. Revoke this request only; completed
+          // pixels stay visible until the replacement is actually accepted.
+          this.nextGeneration();this.liveRequested=undefined
+          this.inlineDisabled=true;r.captureBounds=undefined
+          if(r.tiles[0]?.gpuTile)this.sharedClient?.stopResidentInteraction(r.tiles[0].gpuTile)
+        }
+        if (r.foregroundExclusions && foregroundSafe !== r.foregroundCapture && !this.inlineDisabled) {
+          this.inlineDisabled = true; r.captureBounds = undefined
+          if (r.tiles[0]?.gpuTile) this.sharedClient?.stopResidentInteraction(r.tiles[0].gpuTile)
         }
         // A useful same-context capture can finish into the first/latest pose
         // handoff. Only an unstarted idle timer is cancelled by this gesture.
@@ -309,9 +325,10 @@ export class InteractionRenderer {
         }
         this.liveAuthored=document
         this.latestPatch={document,patches:Object.fromEntries(r.plan.ids.map(id=>[id,{transform:transforms[id]}]))}
-        this.latestCandidate=fast?undefined:interactionPatchedDocument(document,patches)
+        this.latestCandidate=guardedCandidate||(fast?undefined:interactionPatchedDocument(document,patches))
         const wasActive = r.active
         const newGesture=!wasActive||committedHandoff
+        if(newGesture)r.inputPriority=false
         const retainedRebase = !r.live && (affine || !!offsets && !this.retainedOffsetsReusable(r, offsets))
         if (!retainedRebase && offsets) r.offsets = offsets
         r.active = true; this.moves++
@@ -517,8 +534,22 @@ export class InteractionRenderer {
     // do not snap the pointer or translate old antialiasing samples instead.
     r.displayedOffsets = new Map(r.offsets)
     r.live = true; r.retainedFallback = true
+    if (this.viewport) {
+      // Retained pixels keep their own tile.zoom after a camera change. New
+      // native poses must instead use the current viewport density: using a
+      // previous 32x capture to raster the wider 1x view wastes up to 1024x
+      // the pixel work and can reject an otherwise ordinary rotation.
+      r.scale = this.viewport.view.zoom * this.viewport.dpr
+      r.requestedScale = r.scale; r.captureBounds = undefined
+    }
     this.liveAuthored = this.latestPatch?.document || this.props?.document
     this.renderLive(document)
+  }
+
+  private foregroundSafeFor(r:ResidentInteraction,document:DesignDocument,offsets:ReturnType<typeof interactionOffsets>) {
+    if(r.foregroundExclusions&&r.affine&&import.meta.env.VITE_DESIGN_GUARDED_ROTATION_CAPTURE!=='0')
+      return !!rigidInteractionCapture(r.plan,document,r.rootBounds,r.localizedBounds,r.fixedBounds,r.parentMatrices,r.scale,r.foregroundExclusions)
+    return guardedForegroundSafe(r.foregroundExclusions,r.rootBounds,r.plan.ids,offsets,r.parentLinear,r.scale)
   }
 
   private readonly planSelections = new WeakMap<InteractionPlan, ReadonlySet<string>>()
@@ -632,6 +663,11 @@ export class InteractionRenderer {
       previousViewport.view.x !== view.x || previousViewport.view.y !== view.y || previousViewport.dpr !== dpr ||
       previousViewport.width !== size.width || previousViewport.height !== size.height)
     if (cameraChanged) this.viewportRevision++
+    // A historical ready camera is not proof that its exact pixels survived
+    // navigation/eviction. Only a gesture that actually began on a complete
+    // current page may keep suspending its background work.
+    if(this.resident&&(cameraChanged||!props?.active&&(!this.resident.active||this.endedDocument===props?.document)&&
+        settledDocument!==props?.document))this.resident.inputPriority=false
     const navigationPriority=import.meta.env.VITE_DESIGN_NAVIGATION_CAPTURE_PRIORITY==='1'&&!!this.sharedClient&&!!size
     if(navigationPriority&&(props?.navigating||cameraChanged&&previousViewport))this.lastNavigationAt=performance.now()
     this.lastSettledDocument = settledDocument
@@ -1270,8 +1306,8 @@ export class InteractionRenderer {
           const offsets = interactionOffsets(resident.plan, document)
           const capturedCommands=this.captureMoveOverlay(document,resident,offsets)
           const roots = resident.rootBounds
-          const foregroundSafe = guardedForegroundSafe(resident.foregroundExclusions,roots,resident.plan.ids,
-            offsets,resident.parentLinear,resident.scale)
+          const foregroundSafe = this.foregroundSafeFor(resident,document,offsets)
+          this.liveCapture={resident,generation:token,foreground:foregroundSafe}
           if (resident.foregroundExclusions && foregroundSafe !== resident.foregroundCaptureBounds) {
             resident.captureBounds = undefined; resident.foregroundCaptureBounds = foregroundSafe
           }
@@ -1282,8 +1318,8 @@ export class InteractionRenderer {
             : unionBounds(scene(document, resident.plan.pageId).map(e => e.bounds))
           const pad = this.viewport ? 16 : Math.max(16, ...Object.values(document.nodes).flatMap(n => n.effects.filter(e => e.visible)
             .map(e => e.radius * 3 + Math.abs(e.x || 0) + Math.abs(e.y || 0) + Math.abs(e.spread || 0))))
-          const rotationBounds=this.viewport&&resident.affine&&!resident.foregroundExclusions?rigidInteractionCapture(resident.plan,document,roots,
-            resident.localizedBounds,resident.fixedBounds,resident.parentMatrices,resident.scale):undefined
+          const rotationBounds=this.viewport&&resident.affine&&(!resident.foregroundExclusions||import.meta.env.VITE_DESIGN_GUARDED_ROTATION_CAPTURE!=='0')?rigidInteractionCapture(resident.plan,document,roots,
+            resident.localizedBounds,resident.fixedBounds,resident.parentMatrices,resident.scale,resident.foregroundExclusions):undefined
           if(rotationBounds){
             const x=Math.max(bounds.x,rotationBounds.x-pad),y=Math.max(bounds.y,rotationBounds.y-pad)
             const right=Math.min(bounds.x+bounds.width,rotationBounds.x+rotationBounds.width+pad)
@@ -1416,7 +1452,7 @@ export class InteractionRenderer {
                 this.viewport.width,this.viewport.height,{rasterProfile:this.profile,samplingScale:scale,exactPhase:nativeDensity}):undefined
               const worldCapture=!!this.sharedClient && !reduced && this.profile!=='figma' && this.profile!=='figmaSoftware' &&
                 canonical?.camera.x===0 && canonical?.camera.y===0
-              const canonicalCapture=(import.meta.env.VITE_DESIGN_CANONICAL_CAPTURE==='1'||exactInnerShadowGesture(resident)||!!resident.foregroundExclusions&&foregroundSafe)&&this.allowIdleWarm&&!!this.sharedClient&&nativeDensity&&
+              const canonicalCapture=(import.meta.env.VITE_DESIGN_CANONICAL_CAPTURE==='1'||exactInnerShadowGesture(resident)||!!resident.foregroundExclusions&&foregroundSafe&&!resident.affine)&&this.allowIdleWarm&&!!this.sharedClient&&nativeDensity&&
                 this.profile==='figmaSubpixel'&&!!canonical
               phaseX = canonical?.phase.x || 0; phaseY = canonical?.phase.y || 0
               const captureCamera=canonicalCapture?canonical!.camera:{x:worldCapture?0:-originX+phaseX,y:worldCapture?0:-originY+phaseY,zoom:scale}
@@ -1535,8 +1571,7 @@ export class InteractionRenderer {
               pendingInput.sequence > input.sequence && current() &&
               this.viewportRevision === viewportRevision && resident.workerPoses &&
               !this.inlineDisabled && this.sharedClient && result.gpuTile &&
-              guardedForegroundSafe(resident.foregroundExclusions,resident.rootBounds,resident.plan.ids,
-                interactionOffsets(resident.plan,pending),resident.parentLinear,resident.scale) === foregroundSafe &&
+              this.foregroundSafeFor(resident,pending,interactionOffsets(resident.plan,pending)) === foregroundSafe &&
               interactionTransformsOnly({ ...resident.plan, document }, pending)) {
             // Inputs arriving during the first capture already belong to its
             // warmed worker session. Send their absolute transforms there;
@@ -1607,6 +1642,7 @@ export class InteractionRenderer {
       }
       finally {
         this.liveRunning = false
+        if(this.liveCapture?.generation===token)this.liveCapture=undefined
         if (this.idleWarmCapture?.generation === token && this.idleWarmCapture.resident === resident)
           this.idleWarmCapture = undefined
         // Keep the warmed WASM/font state for the next input sample. The client

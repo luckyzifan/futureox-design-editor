@@ -7,7 +7,8 @@
  *
  * This is the transient interaction lane only: it changes what a still-moving
  * gesture capture rasterizes at, never the settled exact tiles, exports or
- * the low-zoom reduced tier. Strict opt-in until whole-editor acceptance. */
+ * the low-zoom reduced tier. Pointer gestures remain opt-in; the separately
+ * verified outward-wheel lane uses the same budget and explicit density seed. */
 export const INTERACTION_ADAPTIVE_DENSITY_BUDGET = 8_000_000
 
 export function interactionAdaptiveDensityEnabled(zoomOut = false) {
@@ -32,11 +33,10 @@ export function interactionAdaptiveScale(residentScale: number, bounds: { width:
   return Number.isFinite(scale) && scale > 0 ? scale : residentScale
 }
 
-/** Wheel zoom-out lane: the same stepped density without the global
- * pointer-gesture opt-in flag. A continuous outward zoom multiplies the
- * demanded pixels over a growing area, so the source lane seeds this scale
- * proactively instead of discovering it through rejected full-density
- * rasters (2026-11 reverse-zoom-out measured 9.4 s to ready). */
-export function outwardInteractionScale(residentScale: number, width: number, height: number) {
-  return interactionAdaptiveScale(residentScale, { width, height }, true, false, true)
+/** Viewport dimensions are CSS pixels; raster scale is pixels per world unit.
+ * Convert the viewport to world units before estimating demand. At native
+ * density zoom cancels: a 3200% viewport costs the same pixels as a 100% one. */
+export function outwardInteractionScale(residentScale: number, width: number, height: number, zoom = 1) {
+  if (!Number.isFinite(zoom) || zoom <= 0) return residentScale
+  return interactionAdaptiveScale(residentScale, { width: width / zoom, height: height / zoom }, true, false, true)
 }

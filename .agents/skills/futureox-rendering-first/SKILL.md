@@ -3,6 +3,12 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-07 [提交、缩出、总览与自动保存优化](../../../testing/verification-integrated-performance-20261106/README.md)：Rust 回执位姿证明默认启用并保留 `VITE_DESIGN_COMPONENT_POSE=0` 回退；候选预检不污染非位姿布局。缩出播种后仍可展示完整驻留清晰瓦片，总览预热最多两块一批且单 raster owner。源保存只处理完整差量，不可变浏览器快照免重复克隆。真实 FIG 三轮 A/B 的就绪中位约 295.3→233.1ms，但最终构建仍有 141ms 长任务和秒级精修；33/100ms 与完整 G2/G5 未关闭。
+
+2026-11-06 [连续手势与源副本收尾](../../../testing/verification-fluid-priority-20261106/README.md)：保留当前密度、源返回视图和已验的无滤镜输入节奏；旋转仅在旧/新支持范围避开后续背景读取时局部原生重绘，每个输入及晚到输入均重验。拖回时取消过时整屏捕获，历史相机不再冻结当前背景精修。已验三项调度/捕获策略默认启用并保留 `0` 回退；同倍率源平移复用和缩窄整屏捕获的失败候选已移除。自动保存的 Sketch 编组宽度修改可关闭重开，原件不变。475 项前端、19 项 host 检查和真实素材回放分别记录；大 FIG 精修仍约 2 秒且有一次 275ms 提交停顿，33/100ms 与完整 G2/G5 未关闭。按用户要求不再录制。
+
+2026-11-06 [缩放与自动保存修复](../../../testing/verification-zoom-autosave-20261106/README.md)：缩出需求按世界范围计算，避免将 CSS 视口重复乘缩放；没有真实失败的预览不进入受限质量状态。普通倍率相机预览请求设备密度，大幅缩回取消不再覆盖目标的旧捕获。现有 GPU/缓存预算、效果与实验开关不变。大源编辑自动提交独立工作副本，关闭等待保存；导出拒绝原文件及其链接。定向测试与真实源重开记录分别报告，不关闭 33/100ms 或完整 G2/G5。
+
 2026-11-02 原型「添加交互」把带 `ease-out` 的文档升到 schema 12。不改光栅、瓦片或预算。不是 33/100ms 或完整 G2/G5。
 2026-11-02 [插件与原型动效](../../../testing/verification-plugin-animation-20261102/README.md)不改光栅、瓦片或预算。采样失败不弹红条。玻璃和模糊的中间帧仍按主线封顶，落定帧用原稿。不是 33/100ms 或完整 G2/G5。
 2026-11-02 [吸管与取色](../../../testing/verification-eyedropper-color-picker-20261102/README.md)只改颜色行、取色弹层和吸管提示。不改像素、瓦片或预算。33/100ms 与完整 G2/G5 仍未通过。

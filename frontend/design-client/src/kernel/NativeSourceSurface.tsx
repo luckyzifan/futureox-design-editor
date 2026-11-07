@@ -4,17 +4,17 @@ import {useLayoutEffect,useMemo,useRef} from 'react'
 import {SourceOverviewHandoff,type OverviewMaterial} from './source-overview-handoff'
 import {sourceOverviewWindow} from './source-overview-window'
 import {desktopBridge,type SourceCanvasSnapshot} from '../desktop'
-import {navigationOverview,nearOverviewTiles} from './navigation-overview'
+import {navigationOverview,nearOverviewTiles,overviewWarmBatch} from './navigation-overview'
 import {NAVIGATION_BACKING_BYTES} from './navigation-backing'
 import type {CanvasCamera} from '../canvas-camera'
 import {KernelClient,backendPreference,renderExecutionPolicy,type TileResult} from './client'
 import {canvasSamplingProfile} from './render-policy'
-import {SourceViewportPlanner,backingCoversSettledSource,coveredSourceDetail,retainedZoomOut,improvesSourceZoom,sourceTileBringsDetail,visibleSourceDensity} from './source-viewport-plan'
+import {SourceViewportPlanner,backingCoversSettledSource,coveredSourceDetail,retainedZoomOut,retainedSourceReturn,improvesSourceZoom,sourceTileBringsDetail,visibleSourceDensity} from './source-viewport-plan'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
 import {tileIntersectsView, tilePlacementAtView} from './tile-preview'
 import {cpuTileBlitOrigin} from './cpu-tile-frame'
 import {SourceRenderWork} from './source-render-work'
-import {sourceTileRetirement} from './source-tile-retirement'
+import {sourceTileRetirement,rememberSourceTier} from './source-tile-retirement'
 import {SourceQualityLadder,sourceRasterLimit} from './source-quality-ladder'
 import { outwardInteractionScale } from './interaction-adaptive-density'
 import {useDevicePixelRatio} from './presentation'
@@ -110,6 +110,7 @@ export function NativeSourceSurface(props:Props){
     // needed to prove the next zoom frame preserves all visible detail.
     const submittedPlacements=new Map<number,{tiles:Placement[];wheel:boolean;outward:boolean;mixed:boolean;regions?:OverviewMaterial[];view:CanvasCamera;width:number;height:number;dpr:number}>()
     const recentNative=new Map<number,Set<string>>()
+    const returnReuse=import.meta.env.VITE_DESIGN_SOURCE_RETURN_REUSE!=='0'
     let deferredOutward='',wheelInterval=SOURCE_WHEEL_QUIET_MS
     let backingTiles:Placement[]=[]
     let alive=true,initialized=false,running=false,failed=false,frameHandle=0,idleTimer:ReturnType<typeof setTimeout>|undefined
@@ -178,7 +179,7 @@ export function NativeSourceSurface(props:Props){
       return {...planned,p,focal:false}
     }
     const outwardCover=()=>source.materialKeys&&source.colorManaged&&profile==='figmaSubpixel'&&moving&&continuousZoom&&!zoomingIn&&backing&&bitmapContext&&
-      quality.scale===undefined&&deferredOutward!==demandKey()
+      deferredOutward!==demandKey()
       ?retainedZoomOut(cache.values(),latest.current.view,latest.current,density.current,backing.view.zoom*density.current>=8):undefined
     const requestOverview = async () => {
       const bridge = desktopBridge()?.largeDocument
@@ -301,7 +302,9 @@ export function NativeSourceSurface(props:Props){
         const keep=Math.max(32,tiles.length*3)
         const preferLast=import.meta.env.VITE_DESIGN_SOURCE_RETURN_PRIORITY!=='0' && moving &&
           !!p.overviewBoxes && !!source.materialKeys && raster.scale<=1
-        for(const tile of cache.size>keep?sourceTileRetirement(cache.values(),recentNative.values(),preferLast):[]){
+        const wider=returnReuse&&p.view.zoom*density.current>=2
+          ?[...recentNative].sort((a,b)=>a[0]-b[0])[0]?.[1]:undefined
+        for(const tile of cache.size>keep?sourceTileRetirement(cache.values(),recentNative.values(),preferLast,wider):[]){
           if(cache.size<=keep)break
           if(keys.has(tile.key) || overview?.tiles.some(base=>base.key===tile.key))continue
           cache.delete(tile.key);retire(tile)
@@ -310,7 +313,13 @@ export function NativeSourceSurface(props:Props){
         const wheel=!!(source.materialKeys && backing && !partialMaterials && bitmapContext && quality.scale===undefined &&
           (moving&&continuousZoom&&zoomingIn || overviewMode&&exact&&p.view.zoom>=backing.view.zoom))
         const refining=done<tiles.length
-        const stored=refining?outwardCover():undefined
+        // A zoom-out can already be covered by the native return
+        // cohort plus newly arrived edge tiles. Present that complete mosaic
+        // while the current phase refines; its receipt stays preview-only.
+        const returned=returnReuse&&refining&&source.materialKeys&&backing&&bitmapContext&&!partialMaterials&&
+          !zoomingIn&&backing.view.zoom>p.view.zoom&&quality.scale===undefined
+          ?retainedSourceReturn(cache.values(),p.view,p,ratio,p.view.zoom*ratio>=8):undefined
+        const stored=refining?outwardCover()??returned:undefined
         let visible:Tile[],partialTiles:Tile[]|undefined,regions:OverviewMaterial[]|undefined
         if((refining||focal)&&done&&exact&&p.overviewBoxes?.length&&bitmapContext&&(!backing||partialMaterials||focal)){
           const ready=tiles.flatMap(tile=>{const entry=cache.get(tile.key);return entry?[entry]:[]})
@@ -414,9 +423,9 @@ export function NativeSourceSurface(props:Props){
             }
           }
           if (optional && !source.materialKeys && !costlyOverview && !moving && !overview) overview = navigationOverview(source.bounds,1,source.nodes)
-          const warmBase = optional && !costlyOverview && !moving && overview ? nearOverviewTiles(overview.tiles,p.view,p.width,p.height)
-            .find(tile=>!cache.has(tile.key) && !skippedPrefetch.has(tile.key)) : undefined
-          const candidates=warmBase ? [{...warmBase,prefetch:true as const}] :
+          const warmBase = optional && !costlyOverview && !moving && overview ? overviewWarmBatch(overview.tiles,p.view,p.width,p.height,
+            tile=>!cache.has(tile.key) && !skippedPrefetch.has(tile.key)) : undefined
+          const candidates=warmBase?.length ? warmBase.map(tile=>({...tile,prefetch:true as const})) :
             optional?prefetch.filter(tile=>!cache.has(tile.key)&&!skippedPrefetch.has(tile.key)):missing
           if(!candidates.length)break
           // The full visible cohort shares the bounded preparation pipeline,
@@ -580,6 +589,7 @@ export function NativeSourceSurface(props:Props){
           const mixed=shownTiles.some(t=>t.zoom!==first.zoom||(t.phaseX??0)!==(first.phaseX??0)||(t.phaseY??0)!==(first.phaseY??0))
           element.dataset.sourceShownCoverage=source.viewportSubset?'focal-preview':regional?'material-regions':mixed?'complete-mosaic':'complete-lattice'
           element.dataset.sourceBitmapScale=String(actual.view.zoom*actual.dpr)
+          element.dataset.sourceMinimumTexelScale=String(Math.min(...shownTiles.map(t=>t.zoom)))
         }
         // A real tile can already be visible through camera reprojection
         // before this older submission qualifies for exact-camera readiness.
@@ -621,9 +631,13 @@ export function NativeSourceSurface(props:Props){
       if(complete){
         if(source.materialKeys){
           const scale=actual.view.zoom*actual.dpr
-          recentNative.delete(scale)
-          if(recentNative.size>=2)recentNative.delete(recentNative.keys().next().value!)
-          recentNative.set(scale,new Set(shownTiles.map(t=>t.key)))
+          const keys=new Set(shownTiles.map(t=>t.key))
+          if(returnReuse)rememberSourceTier(recentNative,scale,keys)
+          else{
+            recentNative.delete(scale)
+            if(recentNative.size>=2)recentNative.delete(recentNative.keys().next().value!)
+            recentNative.set(scale,keys)
+          }
         }
         quality.reset()
         element.dataset.sourceReadyCamera=JSON.stringify(actual.view)
@@ -679,14 +693,11 @@ export function NativeSourceSurface(props:Props){
         continuousZoom=false;zoomingIn=false
       }
       priorView=currentView
-      // Proactive outward density: the reactive ladder only finds a viable
-      // density after a rejected full-density raster; a continuous wheel
-      // zoom-out demands (zoom*DPR)^2 pixels over a growing area, so seed the
-      // stepped density up front. Settled escalation and the pointer-gesture
-      // opt-in lane are unchanged.
+      // Estimate the physical viewport once, in world units. Zoom must not
+      // multiply an already screen-sized viewport a second time.
       if(continuousZoom&&!zoomingIn){
         const outward=latest.current,full=outward.view.zoom*density.current
-        const stepped=outwardInteractionScale(full,outward.width,outward.height)
+        const stepped=outwardInteractionScale(full,outward.width,outward.height,outward.view.zoom)
         if(stepped<full&&(quality.scale===undefined||quality.scale>stepped))quality.seed(stepped,full)
       }
       lastInputAt=performance.now();optionalNotBefore=0;clearTimeout(optionalTimer)
@@ -715,6 +726,7 @@ export function NativeSourceSurface(props:Props){
       idleTimer=moving&&!panHeld?setTimeout(()=>{
         if(!alive||failed||suspended)return
         moving=false
+        quality.settle()
         try{
           const native=plan(false)
           // Preserve accepted history, but stop pending work that cannot

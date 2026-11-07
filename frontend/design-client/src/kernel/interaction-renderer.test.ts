@@ -1100,6 +1100,26 @@ test('a live rotation prioritizes input only while the exact current page still 
  expect(f.owner.control.blocksCanvasRefinement?.(f.doc,[f.child.id],f.view)).toBe(false)
 })
 
+test('returning to an old camera cannot freeze a coarse background behind the next local gesture',()=>{
+ const f=pendingRetainedFixture(),cancel=vi.spyOn(f.shared,'cancelPreview')
+ const prepare=(view=f.view,settled:typeof f.doc|undefined=undefined,active=false)=>
+  f.owner.prepare({...f.props,active},f.doc.pages[0].id,view,2,'figmaSubpixel','webgpu',settled,{width:240,height:180})
+ prepare(f.view,f.doc)
+ prepare({...f.view,zoom:32})
+ prepare(f.view)
+ f.owner.control.apply(f.doc,{[f.child.id]:{transform:[0,1,-1,0,60,40]}})
+ expect(cancel.mock.calls.filter(([channel])=>channel==='canvas')).toHaveLength(0)
+ expect(f.owner.control.blocksCanvasRefinement?.(f.doc,[f.child.id],f.view)).toBe(false)
+ // Once the *current* background completes, input can own the queue and
+ // retain that proof across the deliberate suspension of the exact plan.
+ prepare(f.view,f.doc,true)
+ f.owner.control.apply(f.doc,{[f.child.id]:{transform:[0,1,-1,0,62,40]}})
+ expect(f.owner.control.blocksCanvasRefinement?.(f.doc,[f.child.id],f.view)).toBe(true)
+ prepare(f.view,undefined,true)
+ expect(f.owner.control.blocksCanvasRefinement?.(f.doc,[f.child.id],f.view)).toBe(true)
+ f.shared.dispose()
+})
+
 test('first retained capture transfers its latest queued pure translation to the same worker slot without a second capture', async () => {
   const f = pendingRetainedFixture(), original = JSON.stringify(f.doc), first = worker.jobs[0]
   expect(first.options.retainInteractionGraph).toBe(true)
@@ -1496,8 +1516,53 @@ test('inactive root selection leaves incomplete zoom coverage to canvas while pr
   expect(f.owner.ready).toBe(true)
 })
 
-function idleRootWarmFixture(layered = false) {
-  const doc = blank(), root = node('frame', 0, 0, 100, 100)
+test.each(['during','after'])('guarded native rotation rechecks a later backdrop %s capture before forwarding a worker pose',async timing=>{
+ vi.stubEnv('VITE_DESIGN_GUARDED_ROTATION_CAPTURE','1')
+ const doc=blank(),root=node('frame',0,0,1200,900),child=node('rectangle',40,40,30,20),reader=node('rectangle',400,300,80,80)
+ root.blend=reader.blend=child.blend='normal';reader.effects=[{...effect('background-blur'),radius:4}]
+ root.children=[child.id,reader.id];doc.nodes=Object.fromEntries([root,child,reader].map(n=>[n.id,n]));doc.pages[0].children=[root.id]
+ const client=new KernelClient(),owner=new InteractionRenderer(vi.fn(),client);owners.push(owner)
+ const props:InteractionProps={document:doc,selection:[child.id],active:true,epoch:1,control:{current:null},onReady(){}}
+ owner.prepare(props,doc.pages[0].id,{x:0,y:0,zoom:1},1,'analytic','webgpu',undefined,{width:640,height:480})
+ await vi.waitFor(()=>expect(worker.jobs).toHaveLength(1))
+ worker.jobs[0].resolve({gpuTile:1095,residentInteraction:true,bytes:new Uint8Array()})
+ await vi.waitFor(()=>expect(owner.ready).toBe(true))
+ owner.control.apply(doc,{[child.id]:{transform:[0,1,-1,0,70,40]}})
+ await vi.waitFor(()=>expect(worker.jobs).toHaveLength(2))
+ const local=worker.jobs[1].options.width*worker.jobs[1].options.height
+ expect(local).toBeLessThan(640*480)
+ if(timing==='after'){
+  worker.jobs[1].resolve({gpuTile:1096,residentInteraction:true,bytes:new Uint8Array()})
+  await vi.waitFor(()=>expect(owner.tiles[0]?.gpuTile).toBe(1096))
+  const count=worker.poses.length
+  owner.control.apply(doc,{[child.id]:{transform:[1,0,0,1,80,40]}})
+  expect(worker.poses).toHaveLength(count+1)
+  expect(worker.jobs).toHaveLength(2)
+ }
+ const forwarded=worker.poses.length
+ owner.control.apply(doc,{[child.id]:{transform:[1,0,0,1,450,330]}})
+ if(timing==='during')worker.jobs[1].resolve({gpuTile:1096,residentInteraction:true,bytes:new Uint8Array()})
+ else expect(worker.stops).toContain(1096)
+ await vi.waitFor(()=>expect(worker.jobs).toHaveLength(3))
+ expect(worker.poses).toHaveLength(forwarded)
+ expect(worker.jobs[2].options.width*worker.jobs[2].options.height).toBeGreaterThan(local)
+ expect(worker.jobs[2].options.width*worker.jobs[2].options.height).toBeGreaterThanOrEqual(640*480)
+ // A quick reversal must not wait for this obsolete global backdrop capture.
+ const held=owner.tiles
+ owner.control.apply(doc,{[child.id]:{transform:[1,0,0,1,80,40]}})
+ expect(worker.jobs[2].signal.aborted).toBe(true)
+ expect(owner.tiles).toBe(held)
+ worker.jobs[2].resolve({gpuTile:1097,residentInteraction:true,bytes:new Uint8Array()})
+ await vi.waitFor(()=>expect(worker.jobs).toHaveLength(4))
+ expect(worker.released).toContain(1097)
+ expect(worker.released).not.toContain(1096)
+ expect(worker.jobs[3].options.width*worker.jobs[3].options.height).toBeLessThan(640*480)
+ expect(owner.error).toBe('')
+ client.dispose()
+})
+
+function idleRootWarmFixture(layered = false, edge = 100) {
+  const doc = blank(), root = node('frame', 0, 0, edge, edge)
   root.blend = 'normal'; doc.nodes[root.id] = root; doc.pages[0].children = [root.id]
   if (layered) {
     const before = node('frame', 20, 20, 100, 100), after = node('frame', 40, 40, 100, 100)
@@ -1516,6 +1581,24 @@ function idleRootWarmFixture(layered = false) {
   expect(worker.jobs[0].options.interactionBranch).toBe(1)
   return { doc, root, shared, owner, props, view, prepare, flush }
 }
+
+test.each([1,.25])('rotation after zooming from 32x to %s requests the current density while retaining old pixels',async zoom=>{
+ const f=idleRootWarmFixture(false,24)
+ worker.jobs[0].resolve({gpuTile:1090,bytes:new Uint8Array()});await f.flush()
+ f.prepare({...f.view,zoom:32})
+ await vi.waitFor(()=>expect(worker.jobs).toHaveLength(2))
+ worker.jobs[1].resolve({gpuTile:1091,bytes:new Uint8Array()});await f.flush()
+ const held=f.owner.tiles
+ f.owner.prepare(f.props,f.doc.pages[0].id,{...f.view,zoom},1,'analytic','webgpu',undefined,{width:320,height:240})
+ expect(f.owner.tiles).toBe(held)
+ const angle=.2,c=Math.cos(angle),s=Math.sin(angle)
+ expect(f.owner.control.apply(f.doc,{[f.root.id]:{transform:[c,s,-s,c,10,12]}})).not.toBeNull()
+ await vi.waitFor(()=>expect(worker.jobs).toHaveLength(3))
+ expect(worker.jobs[2].options.view.zoom).toBe(zoom)
+ expect(worker.jobs[2].options.width*worker.jobs[2].options.height).toBeLessThanOrEqual(8_000_000)
+ expect(worker.released).not.toContain(1091)
+})
+
 
 test.each(['camera', 'canvas-repair'] as const)('idle root warm yields its private capture to %s without a replacement warming loop', async reason => {
   const f = idleRootWarmFixture(), old = worker.jobs[0]
