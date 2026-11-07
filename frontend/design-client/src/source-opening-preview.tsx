@@ -1,4 +1,5 @@
 import {MATERIAL_MARGIN} from './kernel/source-overview-window'
+import {PASTEBOARD_COVERAGE} from './kernel/cpu-tile-frame'
 import {memo,useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type RefObject} from 'react'
 import type {CanvasCamera} from './canvas-camera'
 import type {LargeDocumentBridge, LargeDocumentOwner, OpeningPage, SourceCanvasSnapshot, SourceCanvasBox, SourceCanvasItem} from './desktop'
@@ -182,9 +183,32 @@ export function SourceOpeningSurface({source,view,width,height,pageId,focused,on
       onDetail(visibleMaterialDetail(source,view,width,height,window.devicePixelRatio||1,pageId,focused))
     },SOURCE_DETAIL_SAMPLE_MS)
   },[source.owner.documentId,source.owner.sessionEpoch,source.items,view.x,view.y,view.zoom,width,height,pageId,focused,onDetail,onViewport,source.finished])
+  const panRef=useRef(view)
+  const panned=panRef.current.zoom===view.zoom&&(panRef.current.x!==view.x||panRef.current.y!==view.y)
+  panRef.current=view
+  let cover=0
+  for(const item of source.items){
+    const b=item.placed,x=b.x*view.zoom+view.x,y=b.y*view.zoom+view.y,w=b.width*view.zoom,h=b.height*view.zoom
+    const l=Math.max(0,x),t=Math.max(0,y),r=Math.min(width,x+w),bo=Math.min(height,y+h)
+    if(r>l&&bo>t)cover+=(r-l)*(bo-t)
+  }
+  // Above the native canvas while the artboard is a small island. Otherwise
+  // the native bitmap's page fill (#f5f5f5) is the top layer and the pan
+  // strip never shows this field.
+  const aboveNative=width>0&&height>0&&cover<width*height*0.8
+  const patternId=useMemo(()=>`pasteboard-${source.owner.documentId}-${source.owner.sessionEpoch}`,[source.owner.documentId,source.owner.sessionEpoch])
   return <svg className="source-opening-surface" aria-label="源文件素材预览" data-material-count={source.items.length}
     data-rendered-materials={source.images.size} data-source-owner={source.owner.documentId}
-    width={width} height={height} style={{position:'absolute',inset:0,overflow:'hidden',pointerEvents:'none'}}>
+    data-source-coverage-extend={panned?'pan':undefined}
+    width={width} height={height} style={{position:'absolute',inset:0,overflow:'hidden',pointerEvents:'none',zIndex:aboveNative?3:0}}>
+    <defs>
+      <pattern id={patternId} width="8" height="8" patternUnits="userSpaceOnUse">
+        <rect width="8" height="8" fill={PASTEBOARD_COVERAGE[0]}/>
+        <rect width="4" height="4" fill={PASTEBOARD_COVERAGE[1]}/>
+        <rect x="4" y="4" width="4" height="4" fill={PASTEBOARD_COVERAGE[1]}/>
+      </pattern>
+    </defs>
+    <rect width={width} height={height} fill={`url(#${patternId})`}/>
     <g transform={`translate(${view.x} ${view.y}) scale(${view.zoom})`}>
       {images}
     </g>
@@ -194,16 +218,21 @@ export function SourceOpeningSurface({source,view,width,height,pageId,focused,on
 // The full source lays out independent roots with spacing. Exclude adjacent
 // pages from a page-specific view while retaining the gutter around each root.
 export function sourcePageClip(boxes:readonly SourceCanvasBox[]|undefined,view:CanvasCamera,width:number,height:number) {
-  if(!boxes)return undefined
+  if(!boxes?.length||!(width>0)||!(height>0))return undefined
   const rects:string[]=[]
+  let unionL=Infinity,unionT=Infinity,unionR=-Infinity,unionB=-Infinity
   for(const b of boxes){
     const left=Math.max(0,(b.x-MATERIAL_MARGIN)*view.zoom+view.x),top=Math.max(0,(b.y-MATERIAL_MARGIN)*view.zoom+view.y)
     const right=Math.min(width,(b.x+b.width+MATERIAL_MARGIN)*view.zoom+view.x),bottom=Math.min(height,(b.y+b.height+MATERIAL_MARGIN)*view.zoom+view.y)
-    if(left===0&&top===0&&right===width&&bottom===height)return undefined
-    if(right>left&&bottom>top){
-      if(boxes.length===1)return `inset(${top}px ${width-right}px ${height-bottom}px ${left}px)`
-      rects.push(`M${left} ${top}H${right}V${bottom}H${left}Z`)
-    }
+    if(!(right>left)||!(bottom>top))continue
+    unionL=Math.min(unionL,left);unionT=Math.min(unionT,top);unionR=Math.max(unionR,right);unionB=Math.max(unionB,bottom)
+    if(boxes.length!==1)rects.push(`M${left} ${top}H${right}V${bottom}H${left}Z`)
   }
-  return rects.length?`path("${rects.join(' ')}")`:'inset(100%)'
+  // A zoomed-out artboard is a small island. Clipping the native surface to
+  // it leaves the pasteboard as the workspace gray, so a pan exposes a solid
+  // #f5f5f5 strip no matter what the coarse tile painted.
+  if(!(unionR>unionL)||!(unionB>unionT)||(unionR-unionL)*(unionB-unionT)<width*height*0.8)return undefined
+  if(unionL===0&&unionT===0&&unionR===width&&unionB===height)return undefined
+  if(boxes.length===1)return `inset(${unionT}px ${width-unionR}px ${height-unionB}px ${unionL}px)`
+  return rects.length?`path("${rects.join(' ')}")`:undefined
 }

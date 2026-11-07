@@ -102,14 +102,19 @@ test('a batch resolving without its second tile fails instead of certifying a pa
  expect(state.jobs).toHaveLength(1)
 })
 
-test('a camera reversal cancels the remaining batch and late tiles cannot enter the latest frame',async()=>{
+test('a large zoom-in keeps the in-flight tile that still paints the empty viewport',async()=>{
  await draw();const old=state.jobs[0]
  await draw({x:0,y:0,zoom:8})
- expect(old.signal?.aborted).toBe(true)
+ // The first coarse tile is the only paint for this tighter view. Cancelling
+ // it to start the sharp lattice immediately is what left the canvas blank.
+ // The one-ahead neighbour no longer intersects that view, so it is stale.
+ expect(old.signal?.aborted).toBe(false)
+ expect(state.jobs.at(-1)?.options.view.zoom).toBe(1)
+ await act(async()=>{deliver(old,0,31);deliver(old,1,32);old.finish();await pause();paint()})
+ expect(state.released).not.toContain(31)
+ expect(state.released).toContain(32)
+ expect(statuses.some(value=>value.phase==='ready')).toBe(false)
  expect(state.jobs.at(-1)?.options.view.zoom).toBe(8)
- await act(async()=>{deliver(old,0,31);deliver(old,1,32);paint()})
- expect(state.released).toEqual([31,32])
- expect(state.frames.flatMap(frame=>frame.items).some(item=>item.tile.gpuTile===31||item.tile.gpuTile===32)).toBe(false)
  expect(state.maxActive).toBe(1)
  expect(statuses.some(value=>value.phase==='error')).toBe(false)
 })
@@ -200,17 +205,18 @@ test('returning to an exact cached viewport cancels an unfinished zoom-out tier'
  expect(state.frames.at(-1)?.allowEmpty).not.toBe(true)
 })
 
-test('quiet input cancels an unfinished zoom-out tier that cannot certify the native phase',async()=>{
+test('quiet input keeps a zoom-out tier that still paints uncovered pixels, then asks for the native phase',async()=>{
  await draw();const a=state.jobs[0]
  await act(async()=>{deliver(a,0,211);deliver(a,1,212);a.finish();await pause()})
  const b=state.jobs[1]
  await act(async()=>{deliver(b,0,213);deliver(b,1,214);b.finish();await pause();paint()})
  state.motionMultiplier=1.125
- await draw({x:0,y:0,zoom:.75});const obsolete=state.jobs.at(-1)!
- expect(obsolete.options.view.zoom).toBe(.84375)
+ await draw({x:0,y:0,zoom:.75});const coverage=state.jobs.at(-1)!
+ expect(coverage.options.view.zoom).toBe(.84375)
  // Controlled transport only; real pixel latency is measured by the replay.
  await act(async()=>{await new Promise(r=>setTimeout(r,60));paint()})
- expect(obsolete.signal?.aborted).toBe(true)
+ expect(coverage.signal?.aborted).toBe(false)
+ await act(async()=>{deliver(coverage,0,221);deliver(coverage,1,222);coverage.finish();await pause();paint()})
  expect(state.jobs.at(-1)?.options.view.zoom).toBe(.75)
  expect(state.maxActive).toBe(1)
  expect(statuses.some(s=>s.phase==='error')).toBe(false)
@@ -295,4 +301,33 @@ test('a seeded zoom-out still presents an already resident sharper viewport befo
  expect(state.frames.at(-1)?.items.map(item=>item.tile.gpuTile)).toEqual(ids)
  expect(statuses.at(-1)?.phase).toBe('refining')
  seed.mockRestore()
+})
+
+test('pasteboard at 8% queues one coarse page tile and a pan publishes it',async()=>{
+ vi.stubGlobal('OffscreenCanvas',class {})
+ vi.stubGlobal('ImageBitmapRenderingContext',class {})
+ Object.defineProperty(dom.window.HTMLCanvasElement.prototype,'getContext',{configurable:true,value:()=>({transferFromImageBitmap(){}})})
+ const page={...source,bounds:{x:0,y:0,width:400,height:220}}
+ const render=(view:{x:number;y:number;zoom:number})=>act(async()=>{
+  root.render(<NativeSourceSurface source={page} view={view} width={1000} height={700} onStatus={value=>statuses.push(value)}/>)
+  await pause()
+ })
+ await render({x:460,y:300,zoom:0.08})
+ await act(async()=>{
+  for(let guard=0;guard<6 && !state.jobs.at(-1)?.options.tileViewport?.[0].key.startsWith('navigation-overview:');guard++){
+   const job=state.jobs.at(-1)
+   if(!job?.active)break
+   job.options.tileViewport!.forEach((_,index)=>deliver(job,index,700+guard*10+index))
+   job.finish()
+   await new Promise(resolve=>setTimeout(resolve,40))
+  }
+ })
+ const strip=state.jobs.find(job=>job.options.tileViewport?.[0].key.startsWith('navigation-overview:'))
+ expect(strip?.options.tileViewport).toHaveLength(1)
+ expect(strip?.options.view.zoom).toBeLessThan(0.08)
+ await act(async()=>{deliver(strip!,0,901);strip!.finish();await pause();paint()})
+  await render({x:210,y:300,zoom:0.08})
+  await act(async()=>{paint();await pause()})
+  expect(document.querySelector('.native-source-content')?.getAttribute('data-source-coverage-extend')).toBe('pan')
+ expect(state.frames.at(-1)?.items.some(item=>item.tile.gpuTile===901)).toBe(true)
 })

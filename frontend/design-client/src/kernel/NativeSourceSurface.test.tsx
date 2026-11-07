@@ -47,7 +47,7 @@ test('a permanent render failure cannot restart itself when its error banner res
  expect(calls.disposed).toBe(1)
 })
 
-test('a large camera jump cancels obsolete raster work and starts the latest viewport',async()=>{
+test('a large camera jump keeps in-flight coverage of the empty viewport',async()=>{
  const dom=new JSDOM('<div id="root"></div>')
  for(const name of ['window','document','navigator'])vi.stubGlobal(name,name==='window'?dom.window:dom.window[name])
  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);vi.stubGlobal('requestAnimationFrame',()=>1);vi.stubGlobal('cancelAnimationFrame',()=>{})
@@ -60,7 +60,9 @@ test('a large camera jump cancels obsolete raster work and starts the latest vie
   await act(async()=>root.render(draw(1)))
   expect(calls.jobs).toHaveLength(1);expect(calls.jobs[0].signal?.aborted).toBe(false)
   await act(async()=>root.render(draw(8)))
-  expect(calls.jobs[0].signal?.aborted).toBe(true);expect(calls.jobs.at(-1)?.zoom).toBe(8)
+  // The zoom-1 tile still paints this tighter, otherwise empty view. Cancelling
+  // it would start the sharp lattice with nothing on screen. Unmount aborts it.
+  expect(calls.jobs[0].signal?.aborted).toBe(false);expect(calls.jobs).toHaveLength(1)
   expect(statuses.some(status=>status.phase==='error')).toBe(false)
  }finally{await act(async()=>root.unmount());dom.window.close();vi.unstubAllGlobals();calls.defer=false}
  expect(calls.jobs.every(job=>job.signal?.aborted)).toBe(true)
