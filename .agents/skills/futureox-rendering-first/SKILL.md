@@ -3,6 +3,8 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-07 [8% 画板外的平移条](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：缩到能看见画板外的粘贴板时，先排一张盖住视口加一整屏边距的粗瓦片。平移四分之一视口仍用这一张，并在提交时写下 `data-source-coverage-extend="pan"`。没有上一张位图时，这张瓦片盖住视口就先画上，不再留着 `#f5f5f5`。不改预算。真机未回放。33/100ms 与完整 G2/G5 未关闭。
+
 2026-11-07 [平移条必须换上粗覆盖](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：`data-source-coverage-extend="pan"` 在提交平移帧时就写上。回执只核对该帧自己的瓦片，连续平移不再把每一帧都丢掉。静止但位图仍停在旧相机时也补覆盖栈。不改预算。GUI 复测 D 仍待盒上重跑。33/100ms 与完整 G2/G5 未关闭。
 
 2026-11-07 [缩放中平移的灰条](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：平移曾清掉缩出密度并只挪裁过的位图，新条被涂成 `#f5f5f5`。现当居民瓦片盖住新视口且画出旧位图以外时提交覆盖栈，纯平移不重置密度，晚到的同倍率覆盖帧仍收下。不改预算。GUI 复测 D 未在本环境做。33/100ms 与完整 G2/G5 未关闭。

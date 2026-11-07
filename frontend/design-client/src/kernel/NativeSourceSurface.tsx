@@ -4,13 +4,13 @@ import {useLayoutEffect,useMemo,useRef} from 'react'
 import {SourceOverviewHandoff,type OverviewMaterial} from './source-overview-handoff'
 import {sourceOverviewWindow} from './source-overview-window'
 import {desktopBridge,type SourceCanvasSnapshot} from '../desktop'
-import {navigationOverview,nearOverviewTiles,overviewWarmBatch} from './navigation-overview'
+import {navigationOverview,nearOverviewTiles,overviewWarmBatch,panStripOverview,viewportExtendsPastPage} from './navigation-overview'
 import {NAVIGATION_BACKING_BYTES} from './navigation-backing'
 import type {CanvasCamera} from '../canvas-camera'
 import {KernelClient,backendPreference,renderExecutionPolicy,type TileResult} from './client'
 import {canvasSamplingProfile} from './render-policy'
 import {SourceViewportPlanner,backingCoversSettledSource,coveredSourceDetail,retainedZoomOut,retainedSourceReturn,improvesSourceZoom,visibleSourceDensity} from './source-viewport-plan'
-import {acceptTranslatedCoverage,coverageBeyondBacking,retainInFlightTile} from './coverage-stack'
+import {acceptTranslatedCoverage,coverageBeyondBacking,retainInFlightTile,selectCoverageStack} from './coverage-stack'
 import {prioritizeUncoveredTiles} from './coverage-priority'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
 import {tileIntersectsView, tilePlacementAtView} from './tile-preview'
@@ -78,6 +78,7 @@ export function NativeSourceSurface(props:Props){
     const planner=new SourceViewportPlanner(profile,source.colorManaged,!!source.materialKeys,overviewMode)
     const quality=new SourceQualityLadder()
     let overview: ReturnType<typeof navigationOverview>
+    let stripOverview: ReturnType<typeof panStripOverview>
     element.className='kernel-compositor native-source-content'
     element.setAttribute('aria-label','全源画板')
     Object.assign(element.style,{position:'absolute',inset:'0',pointerEvents:'none'})
@@ -271,7 +272,7 @@ export function NativeSourceSurface(props:Props){
       const keep=Math.max(32,tiles.length*3)
       for(const tile of [...cache.values()].sort((a,b)=>a.used-b.used)){
         if(cache.size<=keep)break
-        if(keys.has(tile.key) || overview?.tiles.some(base=>base.key===tile.key))continue
+        if(keys.has(tile.key) || overview?.tiles.some(base=>base.key===tile.key) || stripOverview?.tiles.some(base=>base.key===tile.key))continue
         cache.delete(tile.key);retire(tile)
       }
       const done=tiles.filter(tile=>cache.has(tile.key) && (cache.get(tile.key)?.cpuDivisor ?? 1)===1).length
@@ -308,7 +309,7 @@ export function NativeSourceSurface(props:Props){
           ?[...recentNative].sort((a,b)=>a[0]-b[0])[0]?.[1]:undefined
         for(const tile of cache.size>keep?sourceTileRetirement(cache.values(),recentNative.values(),preferLast,wider):[]){
           if(cache.size<=keep)break
-          if(keys.has(tile.key) || overview?.tiles.some(base=>base.key===tile.key))continue
+          if(keys.has(tile.key) || overview?.tiles.some(base=>base.key===tile.key) || stripOverview?.tiles.some(base=>base.key===tile.key))continue
           cache.delete(tile.key);retire(tile)
         }
         release()
@@ -325,17 +326,25 @@ export function NativeSourceSurface(props:Props){
         // coarse overview together with any sharper residents as soon as that
         // union covers the viewport; until then the previous image stays.
         const continuityCover=()=>{
+          if(!bitmapContext)return
+          const resident=[...cache.values()].filter(tile=>tile.gpuTile&&tile.placement)
           const shown=backing
+          // No bitmap yet. A page tile that already covers the viewport,
+          // including pasteboard, is the picture. Waiting for the artboard
+          // lattice is what leaves the rest of the screen #f5f5f5.
+          if(!shown)return selectCoverageStack(resident,p.view,p,48)
           // Pan and zoom-out both expose world outside the cropped bitmap.
           // Coarser residents already in cache have to be drawn there; CSS
           // only shifts the crop and fills the rest with the canvas gray.
-          if(!bitmapContext||!shown)return
           const translated=p.view.zoom===shown.view.zoom&&(p.view.x!==shown.view.x||p.view.y!==shown.view.y)
           if(!moving&&!translated)return
-          const resident=[...cache.values()].filter(tile=>tile.gpuTile&&tile.placement)
           return coverageBeyondBacking(resident,p.view,p,{view:shown.view,width:shown.width,height:shown.height},48)
         }
-        const stored=refining?outwardCover()??returned??continuityCover():undefined
+        const translatedNow=!!backing&&backing.view.zoom===p.view.zoom&&(backing.view.x!==p.view.x||backing.view.y!==p.view.y)
+        // A same-zoom pan has to publish the coarse page tile even when the
+        // planner still calls the artboard lattice complete. Otherwise the
+        // cropped bitmap only shifts and the new strip stays #f5f5f5.
+        const stored=(refining||translatedNow)?outwardCover()??returned??continuityCover():undefined
         let visible:Tile[],partialTiles:Tile[]|undefined,regions:OverviewMaterial[]|undefined
         if((refining||focal)&&done&&exact&&p.overviewBoxes?.length&&bitmapContext&&(!backing||partialMaterials||focal)){
           const ready=tiles.flatMap(tile=>{const entry=cache.get(tile.key);return entry?[entry]:[]})
@@ -408,6 +417,7 @@ export function NativeSourceSurface(props:Props){
         const optional=[...workQueue.current.pending.values()].every(tile=>tile.prefetch===true)
         const missing=next.tiles.some(tile=>!cache.has(tile.key))
         workQueue.demand(covered&&!optional,tile=>{
+          if(stripOverview?.tiles.some(base=>base.key===tile.key))return !zoomingIn
           if(overview?.tiles.some(base=>base.key===tile.key))return !moving && !missing
           if(tile.prefetch)return next.keys.has(tile.key)||!missing&&next.prefetchKeys.has(tile.key)
           return retainInFlightTile(tile,next.p.view,next.p,cache.values(),next.keys,next.prefetchKeys,zoomingIn&&continuousZoom,next.raster.scale)
@@ -421,14 +431,22 @@ export function NativeSourceSurface(props:Props){
         while(alive&&!failed&&!suspended&&!latest.current.parked){
           const {p,ratio,raster,tiles,prefetch}=plan(),missing=tiles.filter(tile=>!cache.has(tile.key)||cpuRepairs.has(tile.key))
           const optional=missing.length===0
-          if(!optional&&outwardCover()){schedulePaint();break}
-          if(optional && source.materialKeys && (moving||!prefetch.length))break
-          if(optional&&prefetchReady!==demandKey()){schedulePaint();break}
+          const strip=bitmapContext&&!zoomingIn?panStripOverview(source.bounds,p.view,p):undefined
+          stripOverview=strip
+          const stripTile=strip?.tiles[0]
+          const pasteboard=!!stripTile&&viewportExtendsPastPage(source.bounds,p.view,p)
+          const translated=!!backing&&backing.view.zoom===p.view.zoom&&(backing.view.x!==p.view.x||backing.view.y!==p.view.y)
+          // The artboard lattice does not cover pasteboard. One coarse page
+          // tile does, and a quarter-viewport pan stays inside the same tile.
+          const wantStrip=!!stripTile&&!cache.has(stripTile.key)&&pasteboard&&(translated||(!moving&&!continuousZoom))
+          if(!wantStrip&&!optional&&outwardCover()){schedulePaint();break}
+          if(!wantStrip&&optional && source.materialKeys && (moving||!prefetch.length))break
+          if(!wantStrip&&optional&&prefetchReady!==demandKey()){schedulePaint();break}
           // We already have real pixels for this entire source. An expensive
           // optional overview cannot fill another hole. Give the next input
           // first use of the raster owner before warming native neighbours.
           const costlyOverview = seededOverview && projection.history.completeFrame && nativeTileMs > SOURCE_QUIET_MS
-          if (optional) {
+          if (!wantStrip && optional) {
             const nextOptional = Math.max(optionalNotBefore, source.materialKeys ? lastInputAt+200 : 0, costlyOverview ? lastInputAt+Math.min(nativeTileMs,1000) : 0)
             const wait = nextOptional-performance.now()
             if (wait > 0) {
@@ -440,12 +458,12 @@ export function NativeSourceSurface(props:Props){
           if (optional && !source.materialKeys && !costlyOverview && !moving && !overview) overview = navigationOverview(source.bounds,1,source.nodes)
           const warmBase = optional && !costlyOverview && !moving && overview ? overviewWarmBatch(overview.tiles,p.view,p.width,p.height,
             tile=>!cache.has(tile.key) && !skippedPrefetch.has(tile.key)) : undefined
-          const candidates=warmBase?.length ? warmBase.map(tile=>({...tile,prefetch:true as const})) :
+          const candidates=wantStrip&&stripTile?[stripTile]:warmBase?.length ? warmBase.map(tile=>({...tile,prefetch:true as const})) :
             optional?prefetch.filter(tile=>!cache.has(tile.key)&&!skippedPrefetch.has(tile.key)):missing
           if(!candidates.length)break
           // The full visible cohort shares the bounded preparation pipeline,
           // including inward zoom. There is still a single raster owner.
-          const ordered=p.overviewBoxes?.length&&!optional&&raster.scale===p.view.zoom*ratio?
+          const ordered=!wantStrip&&p.overviewBoxes?.length&&!optional&&raster.scale===p.view.zoom*ratio?
             orderMaterialTiles(candidates,materialRegions(p.overviewBoxes,p,ratio),planner.focus(p.view,p.width,p.height)):candidates
           // Newly exposed world comes first. The centre can keep its sharper
           // residents; waiting for it before the margin is what leaves a blank band.
@@ -455,15 +473,16 @@ export function NativeSourceSurface(props:Props){
           // A settled overview can stream its visible cohort in one request.
           // The worker still prepares just one tile ahead of its GPU raster.
           const limit=overviewMode&&!optional&&!moving&&raster.scale<=1?8:SOURCE_PIPELINE_TILES
-          const batch=holeFirst.slice(0,source.materialKeys && moving && zoomingIn && continuousZoom && backing ? 1 : limit)
+          const batch=holeFirst.slice(0,wantStrip||source.materialKeys && moving && zoomingIn && continuousZoom && backing ? 1 : limit)
           diagnostics.record('cache',{count:batch.length,prefetch:optional?1:0,reasonCode:optional?7:5})
           const work=workQueue.begin(batch,limit)
-          const camera = warmBase && overview ? overview.view : raster.camera
+          if(wantStrip&&translated)element.dataset.sourceCoverageExtend='pan'
+          const camera = wantStrip&&strip ? strip.view : warmBase && overview ? overview.view : raster.camera
           const batchStarted=performance.now()
           try{
             await client.renderSource(source,{pageId:source.pageId,width:Math.ceil(p.width*ratio),height:Math.ceil(p.height*ratio),
               view:camera,transparent:false,grid:false,rasterProfile:profile,
-              sourceMaterialOverview:overviewMode||undefined,tileViewport:batch,tilePrepareViewport:tileBatchPrepareViewport(optional||source.materialKeys&&moving&&zoomingIn&&continuousZoom?[]:tiles,[],batch,camera),renderIntent:'preview',
+              sourceMaterialOverview:overviewMode||undefined,tileViewport:batch,tilePrepareViewport:tileBatchPrepareViewport(wantStrip||optional||source.materialKeys&&moving&&zoomingIn&&continuousZoom?[]:tiles,[],batch,camera),renderIntent:'preview',
               tileOwner:{documentId:source.owner.documentId,sessionEpoch:source.owner.sessionEpoch}},tile=>{
                 // Stage each accepted tile while the rest of its viewport is being drawn.
                 if(!alive||!workQueue.accepts(work,tile.key)){
@@ -492,8 +511,8 @@ export function NativeSourceSurface(props:Props){
             }
             throw error
           }finally{workQueue.release(work)}
-          if(work.pending.size){
-            if(!optional && !warmBase)throw Error('源画板瓦片未返回，已保留当前画面')
+            if(work.pending.size){
+            if(!optional && !warmBase && !wantStrip)throw Error('源画板瓦片未返回，已保留当前画面')
             for(const key of work.pending.keys())skippedPrefetch.add(key)
           }
           // Rejections stay bounded to this revision's current warm set.

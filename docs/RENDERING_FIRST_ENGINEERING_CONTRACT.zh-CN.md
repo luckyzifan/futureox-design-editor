@@ -1,5 +1,7 @@
 # Futureox Design Core：渲染优先工程与验收规范
 
+2026-11-07 的[8% 粘贴板平移](../testing/verification-zoom-coverage-continuity-20261107/README.md)在视口大于页面时先排一张粗页瓦片，平移时用它填新露出的条，并写下 `data-source-coverage-extend="pan"`。不提高预算，不关闭 33/100ms 或完整 G2/G5。
+
 2026-11-07 的[平移条粗覆盖](../testing/verification-zoom-coverage-continuity-20261107/README.md)在提交平移帧时写下 `data-source-coverage-extend="pan"`，回执只核对该帧自己的瓦片。连续平移不再整段丢掉已覆盖的粗条。不提高预算，不关闭 33/100ms 或完整 G2/G5。
 
 2026-11-07 的[连续缩放覆盖](../testing/verification-zoom-coverage-continuity-20261107/README.md)只改变缩放时哪些已有瓦片可以留在画面上、哪些在途瓦片算过期。不提高预算，不把预览密度改成永久 1x，不关闭 33/100ms 或完整 G2/G5。

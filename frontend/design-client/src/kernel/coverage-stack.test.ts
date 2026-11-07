@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
 import { acceptTranslatedCoverage, coverageBeyondBacking, coversUnpaintedViewport, retainInFlightTile, selectCoverageStack, selectCoverageUnderlay } from './coverage-stack'
+import { panStripBounds, panStripOverview, viewportExtendsPastPage } from './navigation-overview'
 import type { RasterTile } from './tile-cache'
 
 const view = { x: 0, y: 0, zoom: 1 }
@@ -55,6 +56,26 @@ test('a pan past the displayed bitmap keeps the coarse tile that paints the new 
   const stack = coverageBeyondBacking([sharp, coarse], panned, size, previous)
   expect(stack?.map(item => item.key)).toContain('coarse')
   expect(coverageBeyondBacking([sharp, coarse], { x: 0, y: 0, zoom: 4 }, size, previous)).toBeUndefined()
+})
+
+test('an 8% pasteboard pan reuses one coarse page tile that covers the new strip', () => {
+  const page = { x: 0, y: 0, width: 1912, height: 1062 }
+  const size = { width: 1000, height: 700 }
+  const view = { x: 460, y: 300, zoom: 0.08 }
+  expect(viewportExtendsPastPage(page, view, size)).toBe(true)
+  const bounds = panStripBounds(view, size, page)
+  expect(bounds).toBeTruthy()
+  const panned = { ...view, x: view.x - 250 }
+  expect(panStripBounds(panned, size, page)).toEqual(bounds)
+  const overview = panStripOverview(page, view, size)
+  expect(overview?.tiles).toHaveLength(1)
+  const tile = overview!.tiles[0]
+  expect(tile.width).toBeLessThanOrEqual(514)
+  expect(tile.height).toBeLessThanOrEqual(514)
+  const previous = { view, width: size.width, height: size.height }
+  const stack = coverageBeyondBacking([tile], panned, size, previous)
+  expect(stack?.map(item => item.key)).toEqual([tile.key])
+  expect(viewportExtendsPastPage(page, { x: 0, y: 0, zoom: 1 }, { width: 800, height: 600 })).toBe(false)
 })
 
 test('a coverage frame is kept when the pan moves before its acknowledgement', () => {

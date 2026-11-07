@@ -34,6 +34,14 @@
 - `tsc --noEmit` 在这三处改动上无新错误。仓库里原有的 testing fixture JSON 缺失报错与本轮无关。
 - 没有做真实 Electron/GPU 回放。33 ms 可见、100 ms 精修、完整 G2/G5 未关闭。GUI 为 NOT_RUN。
 
+## D 复测（2026-11-07，8% 粘贴板）
+
+117.sketch 缩到 8% 时，画板大约 153×85，视口比页面大。居民瓦片只覆盖画板，画板外没有可合成的粗像素。平移不提交新帧，`data-source-coverage-extend="pan"` 不会出现，新条由 `CameraReprojection` 涂成 `#f5f5f5`。
+
+现在：视口伸出页面时排一张粗页瓦片，范围是当前视口再加一整屏，并按视口格子量化，所以平移至少四分之一视口仍落在同一张上。这张瓦片一盖住视口就发布，不必等画板格子齐。平移时再按新相机合成它，提交时写上 `data-source-coverage-extend="pan"`。条带是这张瓦片的像素，不是缺口 div。
+
+再跑 D：117.sketch，打开大型 JSON / Sketch，缩到 8%，手势平移至少四分之一视口（约 230–250px）。新露出的一侧应是这张粗页瓦片，而不是整条 `#f5f5f5`。`.native-source-content` 上有 `data-source-coverage-extend="pan"`。停下后仍应收锐。
+
 ## D 复测（2026-11-07 平移条）
 
 平移（含缩放过程中平移，以及缩放出更粗覆盖之后立刻平移）把 `continuousZoom` 清掉，并且任何姿态变化都 `quality.reset()`，缩出播下的粗密度被丢掉。新露出的一条不进覆盖栈。已发布的画面是裁过的视口位图，CSS 一移，条带就由 `CameraReprojection` 涂成 `#f5f5f5`。晚到的覆盖帧还因为实时相机会变而被丢掉。

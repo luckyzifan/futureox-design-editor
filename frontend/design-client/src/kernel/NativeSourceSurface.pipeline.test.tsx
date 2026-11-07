@@ -302,3 +302,32 @@ test('a seeded zoom-out still presents an already resident sharper viewport befo
  expect(statuses.at(-1)?.phase).toBe('refining')
  seed.mockRestore()
 })
+
+test('pasteboard at 8% queues one coarse page tile and a pan publishes it',async()=>{
+ vi.stubGlobal('OffscreenCanvas',class {})
+ vi.stubGlobal('ImageBitmapRenderingContext',class {})
+ Object.defineProperty(dom.window.HTMLCanvasElement.prototype,'getContext',{configurable:true,value:()=>({transferFromImageBitmap(){}})})
+ const page={...source,bounds:{x:0,y:0,width:400,height:220}}
+ const render=(view:{x:number;y:number;zoom:number})=>act(async()=>{
+  root.render(<NativeSourceSurface source={page} view={view} width={1000} height={700} onStatus={value=>statuses.push(value)}/>)
+  await pause()
+ })
+ await render({x:460,y:300,zoom:0.08})
+ await act(async()=>{
+  for(let guard=0;guard<6 && !state.jobs.at(-1)?.options.tileViewport?.[0].key.startsWith('navigation-overview:');guard++){
+   const job=state.jobs.at(-1)
+   if(!job?.active)break
+   job.options.tileViewport!.forEach((_,index)=>deliver(job,index,700+guard*10+index))
+   job.finish()
+   await new Promise(resolve=>setTimeout(resolve,40))
+  }
+ })
+ const strip=state.jobs.find(job=>job.options.tileViewport?.[0].key.startsWith('navigation-overview:'))
+ expect(strip?.options.tileViewport).toHaveLength(1)
+ expect(strip?.options.view.zoom).toBeLessThan(0.08)
+ await act(async()=>{deliver(strip!,0,901);strip!.finish();await pause();paint()})
+  await render({x:210,y:300,zoom:0.08})
+  await act(async()=>{paint();await pause()})
+  expect(document.querySelector('.native-source-content')?.getAttribute('data-source-coverage-extend')).toBe('pan')
+ expect(state.frames.at(-1)?.items.some(item=>item.tile.gpuTile===901)).toBe(true)
+})
