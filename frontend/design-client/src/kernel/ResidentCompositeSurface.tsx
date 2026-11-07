@@ -98,8 +98,7 @@ export function ResidentCompositeSurface(props: {
       backing.actual.dpr===p.dpr&&backing.source.displayCapability===p.presentation?.displayCapability&&
       !p.presentation?.managed&&!p.presentation?.grid&&!p.presentation?.checkerboard&&!p.presentation?.pixelPreview&&
       backing.source.animation===p.presentation?.animation&&
-      !backing.actual.interaction&&!p.interaction?.active&&!backing.source.managed&&!backing.source.grid&&!backing.source.checkerboard&&!backing.source.pixelPreview&&
-      (!backing.source.gpuOverlay||backing.source.gpuOverlayIdentity===p.overlay?.uiIdentity)
+      !backing.actual.interaction&&!p.interaction?.active&&!backing.source.managed&&!backing.source.grid&&!backing.source.checkerboard&&!backing.source.pixelPreview
     // Starting an edit must not suddenly undo a projection of the still-visible
     // backing. Freeze that projection until a worker receipt replaces its basis;
     // never publish new camera/content authority across this boundary.

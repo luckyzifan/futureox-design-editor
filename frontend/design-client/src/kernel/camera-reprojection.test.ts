@@ -65,6 +65,16 @@ test('cold zoom-out keeps the visible image until real pixels cover newly expose
  f.projection.dispose()
 })
 
+test('a lower-density navigation preview still follows horizontal and upward wheel cameras',()=>{
+ const f=fixture(),backing={...f.backing,preview:true,dpr:1,view:{x:0,y:0,zoom:.25}}
+ f.projection.update(backing,backing.view,100,80,true)
+ const target={x:-32,y:32,zoom:.25}
+ f.projection.update(backing,target,100,80,true)
+ expect(f.canvas.style.transform).toBe('translate(-32px, 32px) scale(1)')
+ expect(JSON.parse(f.canvas.dataset.projectedCamera!)).toEqual(target)
+ f.projection.dispose()
+})
+
 test('a late worker camera is reprojected to the current view, and exact arrival clears the projection',()=>{
  const f=fixture(),view={x:42,y:20,zoom:1}
  f.projection.update(f.backing,view,100,80,true)
