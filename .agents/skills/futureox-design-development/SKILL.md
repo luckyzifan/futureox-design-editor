@@ -1,4 +1,6 @@
 
+2026-11-07 [冷缩出先排一张页级粗瓦片](../../../testing/verification-cold-zoom-seed-20261107/README.md)：大源停手后先排一张页级粗覆盖，第一次缩出不用从零等。不是 33/100ms 或完整 G2/G5。
+
 2026-11-07 [打开预览盖住平移条](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：低倍时打开预览盖在原生画布上，条带用覆盖场而不是页面灰。不是 33/100ms 或完整 G2/G5。
 
 2026-11-07 [CPU 平移条不再是清屏白](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：页面外的平移条改为覆盖场，不再留着 CPU 清屏白。不是 33/100ms 或完整 G2/G5。
