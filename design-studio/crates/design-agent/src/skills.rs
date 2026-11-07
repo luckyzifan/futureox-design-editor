@@ -1,9 +1,12 @@
 //! Default design skills for this editor. They are always loaded.
-//! Routing uses the conversation text only (not pointer drawing, pixels, or a separate mode flag).
+//! Routing uses the conversation and the current page's nodes (names, kinds, text).
+//! It does not use pointer strokes or pixels.
 //! The wording is written for Futureox pages, frames, and the shared operation API.
 //! It is not a copy of an upstream skill file.
 
 use serde::{Deserialize, Serialize};
+
+use crate::operations::DesignContext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -63,22 +66,42 @@ pub fn default_skills() -> &'static [SkillId] {
     ]
 }
 
-/// Pick skills from the latest user utterance, then the rest of the conversation
-/// if the latest line is only a follow-up fragment.
-pub fn route_skills(latest: &str, earlier: &str) -> Vec<SkillId> {
+/// Pick skills from the latest utterance, earlier turns, then the page the
+/// user is looking at. A short edit on a page that already has a frame is
+/// detail adjustment, not a new page.
+pub fn route_skills(latest: &str, earlier: &str, ctx: &DesignContext) -> Vec<SkillId> {
     let mut picked = matches_in(latest);
     if picked.is_empty() {
         picked = matches_in(&format!("{earlier}\n{latest}"));
     }
+    let has_design = target_has_design(ctx);
+    if has_design {
+        if latest.contains('色') && !picked.contains(&SkillId::Style) && !picked.contains(&SkillId::OneClickGenerate) {
+            picked.push(SkillId::Style);
+        }
+        if picked.is_empty() && (latest.contains('改') || latest.contains('调') || latest.contains("这个") || latest.contains("这一页") || latest.contains("它")) {
+            picked.push(SkillId::DetailAdjust);
+        }
+    }
     if picked.is_empty() {
         if looks_like_question(latest) {
             picked.push(SkillId::Critique);
+        } else if has_design {
+            picked.push(SkillId::DetailAdjust);
         } else {
             picked.push(SkillId::OneClickGenerate);
         }
     }
     picked.truncate(3);
     picked
+}
+
+fn target_has_design(ctx: &DesignContext) -> bool {
+    let target = ctx.target_page_id.clone().filter(|id| !id.is_empty()).unwrap_or_else(|| ctx.current_page_id.clone());
+    ctx.nodes.iter().any(|node| {
+        (target.is_empty() || node.page_id == target)
+            && (node.kind == "frame" || node.kind == "text" || node.name.contains("标题") || node.name == "画板")
+    })
 }
 
 fn matches_in(text: &str) -> Vec<SkillId> {
@@ -117,19 +140,46 @@ mod tests {
 
     #[test]
     fn routes_from_the_latest_conversation_line() {
-        let skills = route_skills("细节调整：把标题改成秋日特惠", "一键出图 咖啡");
+        let skills = route_skills("细节调整：把标题改成秋日特惠", "一键出图 咖啡", &DesignContext::default());
         assert_eq!(skills, vec![SkillId::DetailAdjust]);
     }
 
     #[test]
     fn falls_back_to_earlier_turns_when_the_latest_line_is_vague() {
-        let skills = route_skills("再具体一点", "帮我一键出图一张咖啡落地页");
+        let skills = route_skills("再具体一点", "帮我一键出图一张咖啡落地页", &DesignContext::default());
         assert!(skills.contains(&SkillId::OneClickGenerate));
     }
 
     #[test]
-    fn does_not_read_a_drawing_signal() {
-        let skills = route_skills("评价一下这一页", "");
+    fn critique_does_not_use_pointer_strokes() {
+        let skills = route_skills("评价一下这一页", "", &DesignContext::default());
         assert_eq!(skills, vec![SkillId::Critique]);
+    }
+
+    #[test]
+    fn an_existing_frame_turns_a_short_edit_into_detail_adjust() {
+        let ctx = DesignContext {
+            current_page_id: "page-1".into(),
+            target_page_id: Some("page-1".into()),
+            pages: vec![crate::operations::PageRef { id: "page-1".into(), name: "秋日特惠".into() }],
+            nodes: vec![crate::operations::NodeRef {
+                id: "frame".into(),
+                page_id: "page-1".into(),
+                parent_id: None,
+                name: "画板".into(),
+                kind: "frame".into(),
+                x: 0.0,
+                y: 0.0,
+                width: 100.0,
+                height: 100.0,
+                text: None,
+                fill: Some("#f3e6d8".into()),
+            }],
+        };
+        let skills = route_skills("改一下", "", &ctx);
+        assert!(skills.contains(&SkillId::DetailAdjust), "{skills:?}");
+        assert!(!skills.contains(&SkillId::OneClickGenerate));
+        let empty = route_skills("改一下", "", &DesignContext::default());
+        assert_eq!(empty, vec![SkillId::OneClickGenerate]);
     }
 }

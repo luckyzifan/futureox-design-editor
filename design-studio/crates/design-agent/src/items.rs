@@ -1,7 +1,9 @@
 //! Conversation items adapted from OpenAI Codex `codex-rs/protocol/src/items.rs`
 //! (`TurnItem`: UserMessage, AgentMessage, Plan, McpToolCall) at
 //! `c4f0e09912fd4c1173258ccd17e33284a876e826`.
-//! Shell, review, compaction, and image-generation items are not included.
+//! Shell, review, and image-generation items are not included.
+//! `ContextCompaction` follows Codex `ContextCompactionItem`: older turns are
+//! summarized instead of being deleted.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -35,8 +37,16 @@ pub enum TurnItem {
     },
     FunctionCallOutput {
         id: String,
+        /// Provider tool-call id (`tool_call_id` / `tool_use_id`), not the tool name.
+        #[serde(default)]
+        call_id: String,
         name: String,
         output: String,
+    },
+    /// Summary of turns that no longer fit in the live window.
+    ContextCompaction {
+        id: String,
+        summary: String,
     },
 }
 
