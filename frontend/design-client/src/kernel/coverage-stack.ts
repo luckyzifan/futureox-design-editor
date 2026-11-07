@@ -76,6 +76,43 @@ export function selectCoverageStack<T extends RasterTile>(candidates: readonly T
   return tilesCoverBounds(stack, world) ? stack : undefined
 }
 
+/** World rectangle of a viewport bitmap. Pan and zoom-out expose area outside it. */
+export function backingWorld(view: CanvasCamera, size: { width: number; height: number }) {
+  return { x: -view.x / view.zoom, y: -view.y / view.zoom, width: size.width / view.zoom, height: size.height / view.zoom }
+}
+
+/** Stack for a camera that has moved outside the displayed bitmap. It must
+ *  cover the new viewport and paint world the previous bitmap does not contain.
+ *  A zoom-in that stays inside the old bitmap returns undefined: CSS already
+ *  shows those pixels, and publishing again would only resample them. */
+export function coverageBeyondBacking<T extends RasterTile>(candidates: readonly T[], view: CanvasCamera,
+  size: { width: number; height: number }, previous: { view: CanvasCamera; width: number; height: number }, limit = 48): T[] | undefined {
+  if (!(previous.view.zoom > 0) || !(previous.width > 0) || !(previous.height > 0)) return
+  const stack = selectCoverageStack(candidates, view, size, limit)
+  if (!stack) return
+  const old = backingWorld(previous.view, previous)
+  const tol = 1 / Math.max(view.zoom, 1e-6)
+  const spills = stack.some(tile => {
+    const rect = tileVisibleWorld(tile, view, size)
+    if (!rect) return false
+    return rect.x < old.x - tol || rect.y < old.y - tol ||
+      rect.x + rect.width > old.x + old.width + tol || rect.y + rect.height > old.y + old.height + tol
+  })
+  return spills ? stack : undefined
+}
+
+/** A coverage frame may arrive after the pointer has already panned. Accept it
+ *  when it is the frame we submitted, at the live zoom and pixel size, even
+ *  if x/y have since moved. A zoom change is a different frame. */
+export function acceptTranslatedCoverage(input: {
+  outward: boolean; preview: boolean; idsMatch: boolean; tileCount: number; shownCount: number
+  sentZoom: number; liveZoom: number; samePixels: boolean; matchesSubmission: boolean
+}) {
+  return input.outward && !input.preview && input.idsMatch && input.tileCount > 0 &&
+    input.tileCount === input.shownCount && input.sentZoom === input.liveZoom &&
+    input.samePixels && input.matchesSubmission
+}
+
 /** Whether an in-flight tile still belongs to the current camera.
  *  A scale change is not staleness. The tile is stale once resident pixels
  *  already paint its viewport rect and it is neither the requested key nor a

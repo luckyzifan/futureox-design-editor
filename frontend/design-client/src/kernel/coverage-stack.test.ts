@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { coversUnpaintedViewport, retainInFlightTile, selectCoverageStack, selectCoverageUnderlay } from './coverage-stack'
+import { acceptTranslatedCoverage, coverageBeyondBacking, coversUnpaintedViewport, retainInFlightTile, selectCoverageStack, selectCoverageUnderlay } from './coverage-stack'
 import type { RasterTile } from './tile-cache'
 
 const view = { x: 0, y: 0, zoom: 1 }
@@ -44,6 +44,27 @@ test('a nearby density stays in flight when the cache already paints it, includi
   const nearby = tile('nearby', 2, 0, 0, 256)
   expect(retainInFlightTile(nearby, view, size, [resident], new Set(), new Set(), false, 1)).toBe(true)
   expect(retainInFlightTile({ ...nearby, prefetch: true }, view, size, [resident], new Set(), new Set(), false, 1)).toBe(false)
+})
+
+test('a pan past the displayed bitmap keeps the coarse tile that paints the new strip', () => {
+  const previous = { view: { x: 0, y: 0, zoom: 1 }, width: 800, height: 600 }
+  const panned = { x: -120, y: 0, zoom: 1 }
+  const sharp = tile('sharp', 4, 0, 0, 128)
+  const coarse = tile('coarse', 0.5, 0, 0)
+  expect(coverageBeyondBacking([sharp], panned, size, previous)).toBeUndefined()
+  const stack = coverageBeyondBacking([sharp, coarse], panned, size, previous)
+  expect(stack?.map(item => item.key)).toContain('coarse')
+  expect(coverageBeyondBacking([sharp, coarse], { x: 0, y: 0, zoom: 4 }, size, previous)).toBeUndefined()
+})
+
+test('a coverage frame is kept when the pan moves before its acknowledgement', () => {
+  const frame = { outward: true, preview: false, idsMatch: true, tileCount: 3, shownCount: 3,
+    sentZoom: 1, liveZoom: 1, samePixels: true, matchesSubmission: true }
+  expect(acceptTranslatedCoverage(frame)).toBe(true)
+  expect(acceptTranslatedCoverage({ ...frame, liveZoom: 2 })).toBe(false)
+  expect(acceptTranslatedCoverage({ ...frame, preview: true })).toBe(false)
+  expect(acceptTranslatedCoverage({ ...frame, matchesSubmission: false })).toBe(false)
+  expect(acceptTranslatedCoverage({ ...frame, idsMatch: false })).toBe(false)
 })
 
 test('zoom-in still drops a large capture that does not fill a hole, and keeps a large hole filler', () => {
