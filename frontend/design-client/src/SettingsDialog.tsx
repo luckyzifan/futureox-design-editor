@@ -15,11 +15,12 @@ import { shortcutPreference } from './shortcut-preference'
 import { settingsPreference, useSettingsPersistence, type CanvasSetting } from './settings-preference'
 import { pageMemoryPreference, useRenderMemoryTier } from './page-memory-preference'
 import { validRenderMemoryTier } from './kernel/page-memory-policy'
+import { AgentSettings } from './design-ai/AgentSettings'
 import './settings-dialog.css'
 
-type SettingsSection = 'input' | 'canvas' | 'saving' | 'companion' | 'diagnostics'
+type SettingsSection = 'input' | 'canvas' | 'saving' | 'companion' | 'agent' | 'diagnostics'
 const sections: { id: SettingsSection; label: InterfaceMessageKey }[] = [
-  { id: 'input', label: 'inputTab' }, { id: 'canvas', label: 'canvasTab' }, { id: 'saving', label: 'savingTab' }, { id: 'companion', label: 'companionTab' }, { id: 'diagnostics', label: 'diagnosticsTab' },
+  { id: 'input', label: 'inputTab' }, { id: 'canvas', label: 'canvasTab' }, { id: 'saving', label: 'savingTab' }, { id: 'companion', label: 'companionTab' }, { id: 'agent', label: 'agentTab' }, { id: 'diagnostics', label: 'diagnosticsTab' },
 ]
 const canvasControls: { key: CanvasSetting; label: InterfaceMessageKey; detail: InterfaceMessageKey }[] = [
   { key: 'snap', label: 'snap', detail: 'snapHelp' },
@@ -211,6 +212,9 @@ export function SettingsDialog({ editor, onClose, desktop = false, returnFocus, 
                 const saved = desktopPet.configure('off'); setMessage(saved ? 'companionDisabled' : 'companionTemporary')
               }}>{text.disableCompanion}</button>}
             </> : <p>{text.companionDesktopOnly}</p>}
+          </section>
+          <section role="tabpanel" id={`${id}-panel-agent`} aria-labelledby={`${id}-tab-agent`} hidden={section !== 'agent'}>
+            {section === 'agent' && <AgentSettings />}
           </section>
           <section role="tabpanel" id={`${id}-panel-diagnostics`} aria-labelledby={`${id}-tab-diagnostics`} hidden={section !== 'diagnostics'}>
             {section === 'diagnostics' && <LocalDiagnosticsPanel />}

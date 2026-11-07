@@ -141,6 +141,14 @@ export interface VideoEncodeBridge {
   encode(request: { format: 'mp4' | 'webm'; fps: number; frames: Uint8Array[] }): Promise<VideoEncodeResult>
 }
 export interface DesktopBridge {
+  readonly designAgent?: {
+    status(): Promise<DesktopResult<{ providers: Array<{ id: string; name: string; kind: string; model: string; base_url: string; active: boolean; has_secret: boolean }>; ccswitch?: { present?: boolean; proxy?: string | null; detail?: string; providers?: Array<{ id: string; name: string; app_type: string; current: boolean }> } }>>
+    turn(body: unknown): Promise<DesktopResult<{ turn: unknown }>>
+    upsert(body: unknown): Promise<DesktopResult>
+    activate(body: { id: string }): Promise<DesktopResult>
+    remove(body: { id: string }): Promise<DesktopResult>
+    cancel(body: { sessionId: string }): Promise<DesktopResult>
+  }
   readonly designAi?: import('./design-ai/types').DesignAiBridge
   readonly renderDiagnostics?:boolean
   readonly renderDiagnosticsDetail?:boolean
