@@ -522,7 +522,7 @@ export function ReferenceSurface(
           position: 'absolute',
           inset: 0,
           pointerEvents: 'none',
-          background: document.pages.find((page) => page.id === pageId)?.background || '#eeeff3',
+          background: document.pages.find((page) => page.id === pageId)?.background || '#f5f5f5',
           visibility: props.visible === false ? 'hidden' : 'visible',
         }}
       />
@@ -727,7 +727,7 @@ export function KernelSurface(props: SurfaceProps) {
           document/export pixels. Transparent pages and a cold/failed renderer
           must still have a stable, opaque surface beneath their content. */}
       <div className="kernel-workspace-backdrop" aria-hidden="true"
-        style={{ position: 'absolute', inset: 0, pointerEvents: 'none', backgroundColor: '#ffffff' }} />
+        style={{ position: 'absolute', inset: 0, pointerEvents: 'none', backgroundColor: '#f5f5f5' }} />
       {[...gpuSources].map((source) => {
         const held = holdGpu && presented?.computeBackend === source
         return <ProgressiveSurface key={`gpu:${source}`}
