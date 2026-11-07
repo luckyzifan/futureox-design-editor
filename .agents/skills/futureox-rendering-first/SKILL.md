@@ -3,6 +3,8 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-07 [缩放中平移的灰条](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：平移曾清掉缩出密度并只挪裁过的位图，新条被涂成 `#f5f5f5`。现当居民瓦片盖住新视口且画出旧位图以外时提交覆盖栈，纯平移不重置密度，晚到的同倍率覆盖帧仍收下。不改预算。GUI 复测 D 未在本环境做。33/100ms 与完整 G2/G5 未关闭。
+
 2026-11-07 [连续缩放覆盖连续性](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：大块空白来自只发布同密度整组瓦片，以及缩放比变化时取消仍在补洞的在途瓦片；已有更粗瓦片没有画进当前帧。覆盖栈在并集盖住视口时才发布，否则留着上一张图。不改预算、落定密度或普通倍率预览 DPR。真机回放未做。33/100ms 与完整 G2/G5 未关闭。
 
 2026-11-07 [提交、缩出、总览与自动保存优化](../../../testing/verification-integrated-performance-20261106/README.md)：Rust 回执位姿证明默认启用并保留 `VITE_DESIGN_COMPONENT_POSE=0` 回退；候选预检不污染非位姿布局。缩出播种后仍可展示完整驻留清晰瓦片，总览预热最多两块一批且单 raster owner。源保存只处理完整差量，不可变浏览器快照免重复克隆。真实 FIG 三轮 A/B 的就绪中位约 295.3→233.1ms，但最终构建仍有 141ms 长任务和秒级精修；33/100ms 与完整 G2/G5 未关闭。

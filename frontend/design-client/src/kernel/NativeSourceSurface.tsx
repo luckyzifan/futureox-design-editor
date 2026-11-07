@@ -10,7 +10,7 @@ import type {CanvasCamera} from '../canvas-camera'
 import {KernelClient,backendPreference,renderExecutionPolicy,type TileResult} from './client'
 import {canvasSamplingProfile} from './render-policy'
 import {SourceViewportPlanner,backingCoversSettledSource,coveredSourceDetail,retainedZoomOut,retainedSourceReturn,improvesSourceZoom,visibleSourceDensity} from './source-viewport-plan'
-import {retainInFlightTile,selectCoverageStack} from './coverage-stack'
+import {acceptTranslatedCoverage,coverageBeyondBacking,retainInFlightTile} from './coverage-stack'
 import {prioritizeUncoveredTiles} from './coverage-priority'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
 import {tileIntersectsView, tilePlacementAtView} from './tile-preview'
@@ -326,11 +326,12 @@ export function NativeSourceSurface(props:Props){
         // union covers the viewport; until then the previous image stays.
         const continuityCover=()=>{
           const shown=backing
-          if(!bitmapContext||!shown||zoomingIn||!moving)return
+          // Pan and zoom-out both expose world outside the cropped bitmap.
+          // Coarser residents already in cache have to be drawn there; CSS
+          // only shifts the crop and fills the rest with the canvas gray.
+          if(!bitmapContext||!shown||!moving)return
           const resident=[...cache.values()].filter(tile=>tile.gpuTile&&tile.placement)
-          const stack=selectCoverageStack(resident,p.view,p,48)
-          if(!stack?.some(tile=>tile.zoom+1e-9<shown.view.zoom*shown.dpr))return
-          return stack
+          return coverageBeyondBacking(resident,p.view,p,{view:shown.view,width:shown.width,height:shown.height},48)
         }
         const stored=refining?outwardCover()??returned??continuityCover():undefined
         let visible:Tile[],partialTiles:Tile[]|undefined,regions:OverviewMaterial[]|undefined
@@ -444,7 +445,7 @@ export function NativeSourceSurface(props:Props){
             orderMaterialTiles(candidates,materialRegions(p.overviewBoxes,p,ratio),planner.focus(p.view,p.width,p.height)):candidates
           // Newly exposed world comes first. The centre can keep its sharper
           // residents; waiting for it before the margin is what leaves a blank band.
-          const holeFirst=!optional&&moving&&continuousZoom&&!zoomingIn
+          const holeFirst=!optional&&moving&&!zoomingIn
             ?prioritizeUncoveredTiles(ordered,[...cache.values()],{x:-p.view.x/p.view.zoom,y:-p.view.y/p.view.zoom,width:p.width/p.view.zoom,height:p.height/p.view.zoom})
             :ordered
           // A settled overview can stream its visible cohort in one request.
@@ -540,7 +541,8 @@ export function NativeSourceSurface(props:Props){
         actual.width===expected.width&&actual.height===expected.height&&actual.dpr===expected.dpr&&
         actual.view.x===p.view.x&&actual.view.y===p.view.y&&actual.view.zoom===p.view.zoom&&
         actual.width===p.width&&actual.height===p.height&&actual.dpr===density.current&&expected.demand===demandKey()
-      const allIds=current&&[...expected.ids].every(id=>ids.has(id))
+      const idsMatch=!!expected&&[...expected.ids].every(id=>ids.has(id))
+      const allIds=current&&idsMatch
       const terminal=allIds&&expected.complete&&!actual.preview
       if(current&&expected.complete&&!terminal&&planner.retryNativeCoverage(p.view,actual.dpr,p.width,p.height)){
         // Coverage is checked by the presenter. Keep the displayed bitmap
@@ -560,14 +562,26 @@ export function NativeSourceSurface(props:Props){
         actual.width===sent.width && actual.height===sent.height && actual.dpr===sent.dpr &&
         improvesSourceZoom(backing,actual,p,shownTiles,backingTiles)
       const outwardAdvance=sent?.outward && current && allIds && bitmap && bitmapContext && sent.tiles.length===shownTiles.length
+      // The pointer can pan again before this GPU frame is acknowledged.
+      // Keeping the frame still fills the strip it was built for; project()
+      // then follows the newer camera. A zoom change is not this frame.
+      const translationAdvance=acceptTranslatedCoverage({
+        outward:!!sent?.outward,preview:!!actual.preview,idsMatch,tileCount:sent?.tiles.length??0,
+        shownCount:shownTiles.length,sentZoom:sent?.view.zoom??NaN,liveZoom:p.view.zoom,
+        samePixels:actual.dpr===density.current&&actual.width===p.width&&actual.height===p.height&&
+          actual.dpr===sent?.dpr&&actual.width===sent?.width&&actual.height===sent?.height,
+        matchesSubmission:!!sent&&actual.view.x===sent.view.x&&actual.view.y===sent.view.y&&
+          actual.view.zoom===sent.view.zoom&&actual.dpr===sent.dpr&&actual.width===sent.width&&actual.height===sent.height,
+      })
       const planned=sent?.regions
       const accepted=planned&&current&&bitmap&&bitmapContext&&(!actual.preview||actual.previewGaps)&&
         completeMaterialRegions(materialRegions(planned,p,actual.dpr),shownTiles,actual.view.zoom*actual.dpr,actual.previewGaps)
       const regional=!!(accepted&&accepted.length===planned?.length&&retainsVisibleMaterials(partialMaterials,accepted,p,actual.dpr))
-      if((actual.preview&&!regional) || ((sent?.mixed || !current || !allIds) && !wheelAdvance && !outwardAdvance && !regional)){
+      if((actual.preview&&!regional) || ((sent?.mixed || !current || !allIds) && !wheelAdvance && !outwardAdvance && !translationAdvance && !regional)){
         if(wanted?.id===actual.presentationId)wanted=undefined
         return
       }
+      if(translationAdvance)element.dataset.sourceCoverageExtend='pan'
       if (bitmap && bitmapContext && startupPreview) {
         seededOverview=projection.history.seed(source,source.bounds,element,startupPreview.scale,actual)
         if (!seededOverview) previewRequested=false
@@ -694,9 +708,16 @@ export function NativeSourceSurface(props:Props){
         if(!suspended)project()
         clearTimeout(optionalTimer);clearTimeout(idleTimer);workQueue.demand(true,()=>false);return
       }
-      if(qualityPose!==poseKey()){qualityPose=poseKey();quality.reset()}
       const currentView=latest.current.view,releasedPan=panHeld&&!latest.current.panGestureActive
       panHeld=!!latest.current.panGestureActive
+      if(qualityPose!==poseKey()){
+        const zoomChanged=currentView.zoom!==lastZoom
+        qualityPose=poseKey()
+        // A pan is not a new density. Resetting here dropped the zoom-out seed,
+        // so the newly exposed strip was scheduled at full density and the
+        // coarse residents never got composited into it.
+        if(zoomChanged)quality.reset()
+      }
       if(currentView.zoom!==lastZoom){
         const now=performance.now(),inward=latest.current.view.zoom>lastZoom
         wheelInterval=now-lastZoomAt
@@ -705,7 +726,9 @@ export function NativeSourceSurface(props:Props){
           inward===zoomingIn && now-lastZoomAt<180
         zoomingIn=inward;lastZoom=latest.current.view.zoom;lastZoomAt=now
       }else if(panHeld || currentView.x!==priorView.x || currentView.y!==priorView.y){
-        continuousZoom=false;zoomingIn=false
+        // A pan during the zoom gesture has to keep the outward ladder. Clearing
+        // it made the margin a full-density miss and a gray gap.
+        if(performance.now()-lastZoomAt>=180){continuousZoom=false;zoomingIn=false}
       }
       priorView=currentView
       // Estimate the physical viewport once, in world units. Zoom must not
