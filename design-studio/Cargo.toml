@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/design-server", "crates/design-kernel", "crates/design-gpu", "crates/design-desktop-backend"]
+members = ["crates/design-server", "crates/design-kernel", "crates/design-gpu", "crates/design-desktop-backend", "crates/design-agent"]
 
 [workspace.package]
 edition = "2024"
