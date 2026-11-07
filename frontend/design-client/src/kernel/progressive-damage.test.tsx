@@ -1219,13 +1219,18 @@ test('settled native repair refines coarse-only edges before an already-sharp ce
   const overview: RasterTile = { key: 'overview:coarse', x: 0, y: 0, width: 48, height: 16, zoom: 1 / 32, gutter: 0 }
   const h = harness([overview, { ...center, key: 'old-sharp-center' }])
   h.render({ backend: 'webgl2', width: bounds.width, height: bounds.height, view: { x: 0, y: 0, zoom: 1 } })
-  await vi.waitFor(() => expect(worker.calls).toHaveLength(1)); worker.calls[0].resolve()
-  await vi.waitFor(() => expect(worker.calls).toHaveLength(2))
-  const ordered = worker.calls[1].options.tileViewport as RasterTile[]
+  // Startup/coverage requests can precede native repair. Resolve those actual
+  // requests instead of assuming that the second call is a tile fill.
+  await vi.waitFor(async()=>{
+    await flushRasterWork()
+    expect(worker.calls.some(call=>call.options.renderIntent==='canvas'&&call.options.tileViewport?.length)).toBe(true)
+  })
+  const repair=worker.calls.find(call=>call.options.renderIntent==='canvas'&&call.options.tileViewport?.length)!
+  const ordered = repair.options.tileViewport as RasterTile[]
   expect(ordered.at(-1)?.key).toBe(center.key)
   expect(ordered).toHaveLength(worker.plan.length)
   expect(ordered.every(tile => tile.zoom === 1)).toBe(true)
-  expect(worker.calls[1].options.renderIntent).toBe('canvas')
+  expect(repair.options.renderIntent).toBe('canvas')
 })
 
 const compileBudget = () => markRenderFailure(new Error('PREVIEW_BUDGET: GPU surface budget exceeded'), { failureCategory: 3, failureCode: 64, failureStage: 5 })
@@ -1304,6 +1309,25 @@ test('real Editor page switching drives Surface reuse without new raster work or
 })
 
 
+
+test('a cold 3200% capture yields to a fourfold zoom-out before coverage is ready',async()=>{
+  vi.stubGlobal('WebGL2RenderingContext', class {})
+  vi.stubGlobal('navigator',{gpu:{}})
+  vi.stubGlobal('requestAnimationFrame',()=>1);vi.stubGlobal('cancelAnimationFrame',()=>{})
+  const h=harness(false),first={x:0,y:0,zoom:32},next={x:0,y:0,zoom:1}
+  worker.navigation={active:true,suspended:false,sample:{active:true,sequence:1,view:first}}
+  h.render({backend:'webgpu',view:first});await settleRejected()
+  const running=worker.calls[0]
+  worker.navigation={active:true,suspended:false,sample:{active:true,sequence:2,view:next}}
+  h.render({backend:'webgpu',view:next});await settleRejected()
+  expect(running.signal.aborted).toBe(true)
+  expect(worker.calls).toHaveLength(1)
+  const close=vi.fn();running.resolve({gpuTile:1818,bitmap:{close}});await settleRejected()
+  expect(close).toHaveBeenCalledOnce()
+  expect(worker.calls).toHaveLength(2)
+  expect(worker.calls[1].options.view).toEqual(next)
+  expect(surfaceParts(h.render({backend:'webgpu',view:next})).compositor.props.items.some((item:any)=>item.tile.gpuTile===1818)).toBe(false)
+})
 
 test.each(['webgl2', 'webgpu'] as const)('pending %s preview survives raw pan and later samples, then starts only the latest waiting camera', async backend => {
   vi.stubGlobal('WebGL2RenderingContext', class {})
@@ -1476,12 +1500,14 @@ test.each([['0', '0', false], ['1', '0', false], ['0', '1', false], ['true', '1'
   expect(output.wrapper.props['data-native-navigation']).toBe(String(expected))
   expect(worker.navigationFrameSampling.at(-1)).toBe(expected)
   expect(worker.calls).toHaveLength(1)
-  const ratio = expected ? 2 : 1
+  // Normal zoom now requests physical density on the ordinary path as well;
+  // the experimental scheduling/capture-handoff flags stay independently off.
+  const ratio = 2
   expect(worker.calls[0].options.width).toBe(855 * ratio); expect(worker.calls[0].options.height).toBe(888 * ratio)
   expect(worker.calls[0].options.view).toEqual({ x: view.x * ratio, y: view.y * ratio, zoom: view.zoom * ratio })
   expect(worker.calls[0].options.tileViewport).toBeUndefined()
   expect(worker.calls[0].options.renderIntent).toBe('preview')
-  expect(worker.calls[0].options.previewTileFallback).toBe(expected ? true : undefined)
+  expect(worker.calls[0].options.previewTileFallback).toBe(true)
 })
 
 test.each(['cpu', 'webgl2', 'hdr', 'grid', 'checkerboard', 'pixelPreview', 'figmaSoftware', 'object-edit',
@@ -2416,7 +2442,8 @@ test('transparent current-revision viewport replaces old color without drawing b
   expect(surfaceParts(f.h.render(f.next)).wrapper.props['data-revision']).toBe(2)
 })
 
-test('cold resident preview holds its accepted whole image while exact tiles are incomplete', async () => {
+test.each(['0','1'])('cold resident preview repairs by replacement while exact tiles are incomplete (progressive=%s)', async flag => {
+  vi.stubEnv('VITE_DESIGN_PROGRESSIVE_NATIVE_REPAIR',flag)
   vi.stubGlobal('WebGL2RenderingContext', class {})
   vi.stubGlobal('navigator', { gpu: {} })
   worker.plan = planTiles({ x: 0, y: 0, width: 512, height: 256 }, 4)
@@ -2447,7 +2474,7 @@ test('cold resident preview holds its accepted whole image while exact tiles are
   parts.compositor.props.onReady(fine.key, fine.serial, false)
   parts = surfaceParts(h.render(options))
   const draws = compositeDrawPlan(parts.compositor.props.items, options.view, options.width, options.height)
-  expect(draws.some(row => row.item.tile === fine)).toBe(false)
+  expect(draws.some(row => row.item.tile === fine)).toBe(flag==='1')
   expect(draws.some(row => row.item.tile === preview)).toBe(true)
   expect(draws.every(row => row.item.blend !== true)).toBe(true)
   // Replacement clips, not source-over of the same translucent content twice.
@@ -2467,9 +2494,30 @@ test('cold resident preview holds its accepted whole image while exact tiles are
     parts.compositor.props.onReady(imported.key, imported.serial, false)
     parts = surfaceParts(h.render(options))
     const current = parts.compositor.props.items.filter((item: any) => item.active).map((item: any) => item.tile.gpuTile)
-    expect(new Set(current)).toEqual(new Set(index + 1 === targets.length ? ids : [121]))
+    expect(new Set(current)).toEqual(new Set(index + 1 === targets.length ? ids : flag==='1'?[121,...ids]:[121]))
   }
   expect(parts.wrapper.props['data-detail-ready']).toBe('false')
+})
+
+test.each(['0','1'])('quiet native repair does not redraw a covering coarse frame first (candidate=%s)',async flag=>{
+  nativeNavigationHost();vi.stubEnv('VITE_DESIGN_NATIVE_NAVIGATION','0');vi.stubEnv('VITE_DESIGN_PROGRESSIVE_NATIVE_REPAIR',flag)
+  worker.dynamicPlan=true
+  const first={x:0,y:0,zoom:2},size={width:512,height:256}
+  const seeds=planTiles({x:0,y:0,width:256,height:128},4).map((tile,index)=>({...tile,gpuTile:19000+index}))
+  const h=harness(seeds),options={...size,view:first,rasterProfile:'figmaSubpixel'}
+  h.render(options);await flushRasterWork()
+  const ready=surfaceParts(h.render(options)).compositor
+  ready.props.onPresented({view:first,...size,dpr:2,interaction:false,ids:seeds.map(t=>t.gpuTile)},undefined,
+    {client:worker.clients[0],deviceWorkerScope:11,deviceIncarnation:1,deviceOwner:1})
+  h.render(options);const before=worker.calls.length
+  const next={...options,view:{...first,zoom:8}}
+  h.render(next);await vi.waitFor(()=>expect(worker.calls.length).toBeGreaterThan(before))
+  const request=worker.calls[before]
+  if(flag==='1'){
+    expect(request.options.renderIntent).toBe('canvas');expect(request.options.tileViewport.length).toBeGreaterThan(0)
+    expect(request.options.tileViewport.every((tile:RasterTile)=>tile.zoom===16)).toBe(true)
+  }else expect(request.options.livePreview).toBe(true)
+  expect(surfaceParts(h.render(next)).wrapper.props['data-detail-ready']).toBe('false')
 })
 
 test('whole-page translation fills original native world misses through the bounded existing canvas owner',async()=>{

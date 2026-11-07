@@ -2,6 +2,7 @@ import { validateDocument, type DesignDocument } from './model'
 import { admitDocument } from './document-admission'
 import { BINARY_DOCUMENT_FORMAT, decodeDocumentBinary, encodeDocumentBinary } from './kernel/binfmt'
 import { initializeKernelModule } from './kernel/module'
+import { immutableDocument } from './immutable-document'
 
 export type LocalRecord = { document: DesignDocument; revision: number; updatedAt: number }
 /**
@@ -346,7 +347,7 @@ export class SaveCoordinator {
     const documentId = document.id
     let snapshot: DesignDocument
     try {
-      snapshot = structuredClone(document)
+      snapshot = immutableDocument(document) ? document : structuredClone(document)
     } catch (error) {
       if (this.current?.document.id === documentId) this.emit(String(error))
       return Promise.reject(error)

@@ -1,9 +1,11 @@
 import { randomUUID, createHash } from 'node:crypto'
 import path from 'node:path'
+import { assertIndependentExport } from './independent-export.mjs'
 import { DOCUMENT_BYTE_LIMIT } from './document-capacity.mjs'
 
 const object = value => value && typeof value === 'object' && !Array.isArray(value)
 const integer = value => Number.isSafeInteger(value) && value >= 0
+const bitmapScope = value => typeof value==='string' && /^[a-zA-Z0-9-]{1,160}$/.test(value)
 function fields(value, allowed) {
   if (!object(value) || Object.keys(value).some(key => !allowed.includes(key))) throw Error('Invalid large document request')
   return value
@@ -14,6 +16,7 @@ export function admitLargeStatus(value, expected) {
       !integer(value.maxExpandedBytes) || value.maxExpandedBytes === 0 || value.expandedBytes > value.maxExpandedBytes ||
       !integer(value.indexedObjects) || typeof value.name !== 'string' || value.name.length > 4096 ||
       !['json','sketch'].includes(value.format) || typeof value.dirty !== 'boolean' || !integer(value.undoCount) || !integer(value.redoCount) ||
+      value.bitmapScope!==undefined&&!bitmapScope(value.bitmapScope) ||
       expected && (value.owner.documentId !== expected.documentId || value.owner.sessionEpoch !== expected.sessionEpoch)) throw Error('Invalid large document response')
   return value
 }
@@ -39,13 +42,13 @@ export class LargeDocumentHost {
     const active=this.#active, owner=active?.status.owner
     if(!owner || active.window!==this.window() || active.window.isDestroyed() ||
        active.window.webContents.id!==senderId || active.status.format!=='sketch')return
-    const name=owner.documentId+'-'+owner.sessionEpoch
+    const name=active.status.bitmapScope??owner.documentId+'-'+owner.sessionEpoch
     return {owner:name,directory:path.join(recoveryDir,'large-documents',name,'bitmaps')}
   }
   bitmapOwner(name) {
     const active=this.#active, owner=active?.status?.owner
     return !!owner && active.window===this.window() && !active.window.isDestroyed() && active.status.format==='sketch' &&
-      name===owner.documentId+'-'+owner.sessionEpoch
+      name===(active.status.bitmapScope??owner.documentId+'-'+owner.sessionEpoch)
   }
   async open(value, selectedPath) { return this.#exclusive(async () => {
     if (value !== undefined) throw Error('Unexpected large document open arguments')
@@ -64,7 +67,7 @@ export class LargeDocumentHost {
     if(!['json','sketch'].includes(format))throw Error('Choose a JSON or Sketch source')
     if (this.#epoch >= Number.MAX_SAFE_INTEGER) throw Error('Large document session epoch exhausted')
     const owner = { documentId:randomUUID(), sessionEpoch:++this.#epoch }
-    this.#active={window,opening:true,status:{owner,revision:0,name:path.basename(selected.filePaths[0]),format,expandedBytes:0,maxExpandedBytes:0,indexedObjects:0,dirty:false,undoCount:0,redoCount:0}}
+    this.#active={window,sourcePath:selected.filePaths[0],opening:true,status:{owner,revision:0,name:path.basename(selected.filePaths[0]),format,expandedBytes:0,maxExpandedBytes:0,indexedObjects:0,dirty:false,undoCount:0,redoCount:0}}
     let result
     try{result=admitLargeStatus(await this.request('large.open', {path:selected.filePaths[0],...owner,...(format==='sketch'?{openingPreview:true}:{})}), owner)}
     catch(error){
@@ -332,6 +335,7 @@ export class LargeDocumentHost {
     const selected=await this.dialog.showSaveDialog(window,{title:target?'导出选区为 Sketch':'导出完整文件',defaultPath,filters:[{name:active.status.format,extensions:[active.status.format]}]})
     if(selected.canceled||!selected.filePath||window!==this.window()||window.isDestroyed())return {status:'cancelled'}
     this.#check(value,fieldsAllowed)
+    await assertIndependentExport(selected.filePath,active.sourcePath)
     const result=await this.request('large.export',{owner:value.owner,expectedRevision:value.expectedRevision,...(target?{selection:target}:{}),path:selected.filePath,requestId:randomUUID()})
     if(result.exported!==true)throw Error('Large document export was not confirmed')
     active.status=admitLargeStatus(result.document,active.status.owner)

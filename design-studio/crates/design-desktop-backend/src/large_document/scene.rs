@@ -522,11 +522,14 @@ pub(super) fn commit_nodes(
         }
         let mut edits = Vec::new();
         let mut added_fields = false;
+        let mut next = s.state.clone();
+        let codec=working_groups::codec_views(s,p,&source_nodes,&baseline,&scene.document,&mut next)?;
+        let (codec_before,codec_after)=codec.as_ref().map(|(a,b)|(a,b)).unwrap_or((&baseline,&scene.document));
         for (id, n) in source_nodes {
             check_cancel(cancel).map_err(issue)?;
             if baseline.nodes[&id] == scene.document.nodes[&id] { continue; }
             let (before, after) =
-                futureox_design_kernel::interop::export_sketch_layer_edit(&baseline, &scene.document, &id)
+                futureox_design_kernel::interop::export_sketch_layer_edit(codec_before, codec_after, &id)
                     .map_err(issue)?;
             let (original, omitted) = properties(s, p, n)?;
             let normalized = if before.get("_class").and_then(Value::as_str) == Some("shapePath") {
@@ -638,14 +641,13 @@ pub(super) fn commit_nodes(
                 added_fields = true;
             }
         }
-        if edits.is_empty() && hierarchy.is_empty() {
+        if edits.is_empty() && hierarchy.is_empty() && next.group_placements==s.state.group_placements {
             return Err(issue("Source edit has no lossless Sketch representation; keep the draft or save a native document"));
         }
         edits.sort_by_key(|(span, _)| std::cmp::Reverse(span.start));
         if edits.windows(2).any(|pair| pair[1].0.end > pair[0].0.start) {
             return Err(issue("Overlapping source edits"));
         }
-        let mut next = s.state.clone();
         for (span, bytes) in &edits {
             if span.start == span.end || bytes.is_empty() {
                 // A member insertion is not a standalone JSON value. The
@@ -679,8 +681,7 @@ pub(super) fn commit_nodes(
         while undo.len() > HISTORY_LIMIT
             || undo
                 .iter()
-                .flat_map(|s| &s.changes)
-                .map(Changes::retained_bytes)
+                .map(State::retained_bytes)
                 .sum::<usize>()
                 > HISTORY_BYTES
         {

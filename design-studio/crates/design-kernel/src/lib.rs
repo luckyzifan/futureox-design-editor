@@ -2018,6 +2018,9 @@ mod wasm {
         pub fn resolve_components_patch(&mut self, patch:&str, receipt:u32)->Result<String,JsValue>{
             self.component_updates.patch(patch,receipt,&self.inner.fonts).map_err(|e|JsValue::from_str(&e))
         }
+        pub fn resolve_components_pose_patch(&mut self, patch:&str, receipt:u32)->Result<Option<String>,JsValue>{
+            self.component_updates.try_pose(patch,receipt,&self.inner.fonts).map_err(|e|JsValue::from_str(&e))
+        }
         pub fn resolve_components(&self, document: &str) -> Result<String, JsValue> {
             components::changes(document, &self.inner.fonts).map_err(|e| JsValue::from_str(&e))
         }

@@ -1,4 +1,5 @@
 import type { CanvasCamera } from '../canvas-camera'
+import { allowsReducedSampling } from './render-quality'
 
 /** Navigation-only timing. A wheel/pinch burst keeps one latest target rather
  * than refining every intermediate camera. Expensive filtered panning may opt
@@ -99,12 +100,14 @@ export class NavigationZoom {
   }
 }
 
-/** Normal temporary previews retain their cap; a separately admitted native
- * navigation candidate uses real DPR. Final/document/export rules are unchanged. */
-export function navigationPreviewDensity(dpr: number, width: number, height: number, native = false) {
-  // Strict opt-in screen navigation keeps the actual physical sampling rate.
-  // Normal viewport/device/working-set admission still runs in the existing
+/** Normal-zoom camera previews use physical DPR. Overview/continuity captures
+ * without a camera keep their bounded tier. Final/export rules are unchanged. */
+export function navigationPreviewDensity(dpr: number, width: number, height: number, native = false, zoom?: number) {
+  // Existing viewport/device/working-set admission still runs in the
   // client/kernel/driver; a rejected native request is never relabelled 1x.
-  if (native) return dpr
+  // Normal-zoom navigation uses the physical display lattice too. The small
+  // continuity tier remains available for overviews and callers without a
+  // camera, but must not turn Retina wheel input into a permanent 1x image.
+  if (native || zoom !== undefined && !allowsReducedSampling(zoom)) return dpr
   return Math.min(dpr, 1, Math.sqrt(1_048_576 / Math.max(1, width * height)), 2048 / Math.max(1, width, height))
 }

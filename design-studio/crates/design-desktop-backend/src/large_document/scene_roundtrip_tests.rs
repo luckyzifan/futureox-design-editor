@@ -113,6 +113,101 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn source_working_group_transform_survives_reopen_and_full_canvas_without_touching_original() {
+    use futureox_design_kernel::{Engine, RenderOptions, math::Transform};
+    const GROUP: &str = "10000000-0000-4000-8000-000000000030";
+    let mut page: Value = serde_json::from_str(SOURCE_PAGE).unwrap();
+    let mut child = page["layers"][0].take();
+    child["style"] = json!({"fills":[{"_class":"fill","isEnabled":true,"fillType":0,
+        "color":{"_class":"color","red":0.2,"green":0.6,"blue":0.8,"alpha":1.0}}]});
+    page["layers"][0] = json!({"_class":"group","do_objectID":GROUP,"name":"scaled group",
+        "frame":{"x":0,"y":0,"width":100,"height":80},"layers":[child]});
+    let (f, status) = Fixture::new(&page.to_string());
+    let original_bytes = fs::read(&f.source).unwrap();
+    let key = f.key(GROUP);
+    f.call(&status, "large.scene", json!({"key":key})).unwrap();
+    let mut expected = f.sessions.current.lock().unwrap().as_ref().unwrap().scene.as_ref().unwrap().document.clone();
+    let transform = Transform([1.25, 0., 0., 1.125, 3.125, -2.5]);
+    expected.nodes.get_mut(GROUP).unwrap().transform = transform;
+    let saved = f.call(&status, "large.sceneCommit", json!({"key":key,"requestId":"group-scale",
+        "json":json!({GROUP:{"patch":{"transform":transform}}}).to_string()})).unwrap();
+    assert_eq!(saved["revision"], 1);
+    f.call(&saved, "large.scene", json!({"key":saved["key"]})).unwrap();
+    let reopened = f.sessions.current.lock().unwrap().as_ref().unwrap().scene.as_ref().unwrap().document.clone();
+    assert_eq!(reopened.nodes[GROUP].transform, transform);
+    let options: RenderOptions = serde_json::from_value(json!({"pageId":expected.pages[0].id,
+        "width":180,"height":120,"view":{"x":10,"y":10,"zoom":1},"rasterProfile":"figma"})).unwrap();
+    let render = |doc: &futureox_design_kernel::scene::Document| {
+        let mut engine = Engine::new();
+        engine.load_document(&serde_json::to_string(doc).unwrap()).unwrap();
+        engine.render(&options).unwrap()
+    };
+    assert_eq!(render(&reopened), render(&expected));
+    let snapshot = f.call(&saved, "large.canvasSnapshot", json!({})).unwrap();
+    let (full, _) = futureox_design_kernel::scene_store::Reader::open(
+        Path::new(snapshot["path"].as_str().unwrap()), &serde_json::from_value(snapshot["store"].clone()).unwrap(),
+        &AtomicBool::new(false)).unwrap().into_document(&AtomicBool::new(false)).unwrap();
+    assert_eq!(full.nodes[GROUP].transform, transform);
+    assert!(full.nodes.contains_key(OTHER));
+    let output = f.root.join("refused-lossy-export.sketch");
+    assert!(f.call(&saved, "large.export", json!({"path":output})).is_err());
+    assert!(!output.exists());
+    f.call(&saved, "large.close", json!({})).unwrap();
+    let reopened_status = f.sessions.open(Open {opening_preview:false,path:f.source.clone(),
+        document_id:"group-reopen".into(),session_epoch:2}, &AtomicBool::new(false)).unwrap();
+    assert_eq!(reopened_status["revision"], 1);
+    assert_eq!(reopened_status["bitmapScope"],status["bitmapScope"]);
+    assert_ne!(reopened_status["owner"],status["owner"]);
+    let key = f.key(GROUP);
+    f.call(&reopened_status, "large.scene", json!({"key":key})).unwrap();
+    assert_eq!(f.sessions.current.lock().unwrap().as_ref().unwrap().scene.as_ref().unwrap().document.nodes[GROUP].transform, transform);
+    let undone = f.call(&reopened_status, "large.undo", json!({})).unwrap();
+    assert_eq!(f.export_members(&undone, "undone-group.sketch"), f.members);
+    let redone = f.call(&undone, "large.redo", json!({})).unwrap();
+    f.call(&redone, "large.scene", json!({"key":f.key(GROUP)})).unwrap();
+    assert_eq!(f.sessions.current.lock().unwrap().as_ref().unwrap().scene.as_ref().unwrap().document.nodes[GROUP].transform, transform);
+    assert_eq!(fs::read(&f.source).unwrap(), original_bytes);
+}
+
+#[test]
+fn source_working_group_retains_matrix_across_property_edits_and_validates_checkpoint_owner() {
+    use futureox_design_kernel::math::Transform;
+    const GROUP: &str = "10000000-0000-4000-8000-000000000031";
+    let mut page: Value=serde_json::from_str(SOURCE_PAGE).unwrap();
+    let child=page["layers"][0].take();
+    page["layers"][0]=json!({"_class":"group","do_objectID":GROUP,"name":"group",
+        "frame":{"x":0,"y":0,"width":100,"height":80},"layers":[child]});
+    let (f,status)=Fixture::new(&page.to_string());
+    let key=f.key(GROUP);
+    f.call(&status,"large.scene",json!({"key":key})).unwrap();
+    let transform=Transform([1.25,0.1,0.125,1.125,3.125,-2.5]);
+    let saved=f.call(&status,"large.sceneCommit",json!({"key":key,"requestId":"matrix",
+        "json":json!({GROUP:{"patch":{"transform":transform}}}).to_string()})).unwrap();
+    let next=f.call(&saved,"large.sceneCommit",json!({"key":saved["key"],"requestId":"opacity",
+        "json":json!({GROUP:{"patch":{"opacity":0.75}}}).to_string()})).unwrap();
+    f.call(&next,"large.scene",json!({"key":next["key"]})).unwrap();
+    let journal={
+        let slot=f.sessions.current.lock().unwrap();let s=slot.as_ref().unwrap();
+        let doc=&s.scene.as_ref().unwrap().document;
+        assert_eq!(doc.nodes[GROUP].transform,transform);
+        assert_eq!(doc.nodes[GROUP].opacity,0.75);
+        s.directory.join("journal.json")
+    };
+    let before=f.snapshot();
+    let bad=f.call(&next,"large.sceneCommit",json!({"key":next["key"],"requestId":"invalid",
+        "json":json!({GROUP:{"patch":{"transform":[null,0,0,1,0,0]}}}).to_string()}));
+    assert!(bad.is_err());let after=f.snapshot();assert_eq!(before.0,after.0);assert_eq!(before.1,after.1);assert_eq!(before.2,after.2);
+    let mut checkpoint:Value=serde_json::from_slice(&fs::read(&journal).unwrap()).unwrap();
+    assert_eq!(checkpoint["version"],2);
+    checkpoint["state"]["group_placements"][GROUP]["part"]=json!(usize::MAX);
+    fs::write(&journal,serde_json::to_vec(&checkpoint).unwrap()).unwrap();
+    f.call(&next,"large.close",json!({})).unwrap();
+    let error=f.sessions.open(Open {opening_preview:false,path:f.source.clone(),document_id:"bad-group".into(),session_epoch:2},
+        &AtomicBool::new(false)).unwrap_err();
+    assert!(error.message.contains("Invalid working-copy group placement"));
+}
+
+#[test]
 fn native_canvas_snapshot_has_one_artboard_and_keeps_all_original_subtrees() {
     let (f, status)=Fixture::new(SOURCE_PAGE);
     let before=f.snapshot();

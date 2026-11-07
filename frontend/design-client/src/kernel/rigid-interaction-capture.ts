@@ -7,7 +7,8 @@ import { interactionPoseMatrices, type InteractionPlan } from './interaction-lay
  * output support cannot be bounded locally retain the full viewport capture. */
 export function rigidInteractionCapture(plan:InteractionPlan,current:DesignDocument,
   roots:ReadonlyMap<string,Bounds>|undefined,localized:ReadonlySet<string>|undefined,
-  fixed:ReadonlySet<string>|undefined,parents:ReadonlyMap<string,Matrix>|undefined,scale:number):Bounds|undefined {
+  fixed:ReadonlySet<string>|undefined,parents:ReadonlyMap<string,Matrix>|undefined,scale:number,
+  exclusions?:readonly Bounds[]):Bounds|undefined {
   if(import.meta.env.VITE_DESIGN_LOCAL_ROTATION_CAPTURE==='0'||!roots||!localized||!Number.isFinite(scale)||scale<=0)return
   if(!plan.ids.every(id=>localized.has(id)&&!fixed?.has(id)&&roots.has(id)))return
   if(plan.ids.some(id=>!plan.document.nodes[id]||!current.nodes[id]))return
@@ -36,5 +37,12 @@ export function rigidInteractionCapture(plan:InteractionPlan,current:DesignDocum
     output.push(source,moved)
   }
   const box=unionBounds(output),edge=2/scale
-  return{x:box.x-edge,y:box.y-edge,width:box.width+2*edge,height:box.height+2*edge}
+  const capture={x:box.x-edge,y:box.y-edge,width:box.width+2*edge,height:box.height+2*edge}
+  // These are compiler-independent conservative read envelopes, supplied
+  // only by the existing foreground dependency proof. Include both erased
+  // and newly painted support. Touching a later reader still needs the full
+  // viewport; rotating cached pixels or ignoring its halo is never allowed.
+  if(exclusions?.some(r=>!Object.values(r).every(Number.isFinite)||r.width<0||r.height<0||
+      !(capture.x+capture.width<r.x||capture.y+capture.height<r.y||capture.x>r.x+r.width||capture.y>r.y+r.height)))return
+  return capture
 }

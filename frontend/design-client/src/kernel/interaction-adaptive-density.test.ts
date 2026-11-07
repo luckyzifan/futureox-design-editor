@@ -59,6 +59,13 @@ describe('interaction adaptive gesture density (Figma viewer §2.4 stepping)', (
 })
 
 describe('wheel zoom-out lane', () => {
+  afterEach(() => vi.unstubAllEnvs())
+  test('viewport demand stays at physical screen area from 3200% down to 25%', () => {
+    for (const zoom of [32, 16, 8, 4, 1, .25]) {
+      const scale = outwardInteractionScale(zoom * 2, 855, 888, zoom)
+      expect(scale).toBe(zoom * 2)
+    }
+  })
   test('seeds the stepped density without the global pointer-gesture flag', () => {
     vi.stubEnv('VITE_DESIGN_INTERACTION_ADAPTIVE_DENSITY', '0')
     const wide = { width: 2560, height: 1440 }

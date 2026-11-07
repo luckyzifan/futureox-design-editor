@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, test, vi } from 'vitest'
 import { NavigationBacking, NAVIGATION_BACKING_BYTES } from './navigation-backing'
-import { navigationOverview, nearOverviewTiles } from './navigation-overview'
+import { navigationOverview, nearOverviewTiles, overviewWarmBatch } from './navigation-overview'
 import { tilePlacementAtView } from './tile-preview'
 
 afterEach(()=>vi.restoreAllMocks())
@@ -25,6 +25,8 @@ test('a large page prepares bounded regional jobs and can seed a distant viewpor
   expect(plan.tiles.every(tile=>tile.width<=514 && tile.height<=514)).toBe(true)
   const near=nearOverviewTiles(plan.tiles,{x:0,y:0,zoom:1},800,600)
   expect(near[0].x).toBeLessThan(plan.tiles[0].x)
+  const warm=overviewWarmBatch(plan.tiles,{x:0,y:0,zoom:1},800,600,tile=>tile!==near[0])
+  expect(warm).toEqual(near.slice(1,3))
 })
 
 test('a late tile from another revision never paints the navigation backing', async () => {

@@ -32,15 +32,16 @@ test('dimension-changing islands use the acknowledged native delta and match ful
  const f=fixture(),shape=node('vector',80,20,40,40),a=node('rectangle',0,0,20,20),b=node('rectangle',10,10,20,20)
  f.doc.schemaVersion=4;shape.booleanOperation='union';shape.children=[a.id,b.id];f.root.children.push(shape.id)
  for(const n of [shape,a,b])f.doc.nodes[n.id]=n
- const editor=new Editor(f.doc),full=vi.spyOn(VectorEngine.prototype,'resolve_components_full'),patch=vi.spyOn(VectorEngine.prototype,'resolve_components_patch')
+ const editor=new Editor(f.doc),full=vi.spyOn(VectorEngine.prototype,'resolve_components_full'),patch=vi.spyOn(VectorEngine.prototype,'resolve_components_patch'),pose=vi.spyOn(VectorEngine.prototype,'resolve_components_pose_patch')
  try{
   const before=editor.state.doc;editor.select([f.child.id])
   for(const transform of [[0,1,-1,0,20,30],[.8,.6,-.6,.8,15,20]] as typeof a.transform[]){
-   editor.begin('Rotate');full.mockClear();patch.mockClear()
+   editor.begin('Rotate');full.mockClear();patch.mockClear();pose.mockClear()
    const width=before.nodes[f.child.id].width+5
    expect(editor.preview({[f.child.id]:{transform,width}})).toBe(true)
-   expect(full).not.toHaveBeenCalled();expect(patch).toHaveBeenCalled()
-   const after=editor.state.doc,wire=JSON.parse(patch.mock.calls.at(-1)![0])
+   expect(full).not.toHaveBeenCalled();expect(patch.mock.calls.length+pose.mock.calls.length).toBeGreaterThan(0)
+   const after=editor.state.doc,calls=patch.mock.calls.length?patch.mock.calls:pose.mock.calls
+   const wire=JSON.parse(calls.at(-1)![0])
    expect(Object.keys(wire.nodes).length).toBeLessThanOrEqual(3)
    const oracle=kernelLayout({...before,nodes:{...before.nodes,[f.child.id]:{...before.nodes[f.child.id],transform,width}}})
    expect(after).toEqual(oracle)
@@ -49,7 +50,7 @@ test('dimension-changing islands use the acknowledged native delta and match ful
    // preview must diff that complete snapshot, not trust a document ID alone.
    kernelLayout({...before,pages:before.pages.map(p=>({...p,children:[f.staticRoot.id]})),nodes:{[f.staticRoot.id]:before.nodes[f.staticRoot.id]}})
   }
- }finally{full.mockRestore();patch.mockRestore();editor.dispose()}
+ }finally{full.mockRestore();patch.mockRestore();pose.mockRestore();editor.dispose()}
 })
 
 test('a whole-page resize island does not invalidate native global state with unchanged page fields',()=>{

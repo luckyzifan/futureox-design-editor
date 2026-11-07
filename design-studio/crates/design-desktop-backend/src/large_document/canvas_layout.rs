@@ -137,8 +137,11 @@ pub(super) fn build(s: &Session, cancel: &AtomicBool) -> Result<Layout> {
             if row.span.start < layers.start || row.span.end > layers.end { continue; }
             let entry = records.entry(n)?;
             items.try_reserve(1).map_err(issue)?;
+            let source_bounds=if let Some(placement)=working_groups::source(&s.state,p,&row.id) {
+                working_groups::bounds(placement)?
+            } else {frame(s,p,&entry,&mut source,cancel)?};
             items.push(Item { key: format!("{p}:{n}"), id: row.id.clone(), name: row.name.clone(), kind: row.kind.clone(),
-                page_id: page.id.clone(), page_name: page.name.clone(), source: frame(s, p, &entry, &mut source, cancel)?, placed: Box2::default(), bytes: row.span.len() });
+                page_id: page.id.clone(), page_name: page.name.clone(), source: source_bounds, placed: Box2::default(), bytes: row.span.len() });
         }
     }
     let bounds = arrange(&mut items)?;

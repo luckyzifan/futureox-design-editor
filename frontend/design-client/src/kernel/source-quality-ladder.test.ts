@@ -1,6 +1,6 @@
 import {describe,expect,test} from 'vitest'
 import {SourceQualityLadder} from './source-quality-ladder'
-import {backingCoversSettledSource,coveredSourceDetail,improvesSourceZoom,retainedZoomOut,sourceTileBringsDetail,visibleSourceDensity} from './source-viewport-plan'
+import {backingCoversSettledSource,coveredSourceDetail,improvesSourceZoom,retainedZoomOut,retainedSourceReturn,sourceTileBringsDetail,visibleSourceDensity} from './source-viewport-plan'
 import type {ResidentAcknowledgement} from './resident-presentation'
 test('settled source priority requires full acknowledged coverage at the current device density',()=>{
  const backing={view:{x:0,y:0,zoom:4},width:100,height:80,dpr:2,ids:[1],interaction:false} as ResidentAcknowledgement
@@ -80,21 +80,46 @@ test('zooming out reuses only resident pixels covering the full viewport at devi
  expect(retainedZoomOut([left,right],{...view,x:-1},size,2)).toBeUndefined()
 })
 
+test('a scroll roundtrip can show its retained viewport while remaining ineligible for native readiness',()=>{
+ const view={x:0,y:0,zoom:1.0000001922},size={width:855,height:928}
+ const tile={key:'return',x:-1,y:-1,width:2048,height:2048,gutter:1,zoom:2.000000041,used:1}
+ expect(retainedSourceReturn([tile],view,size,2)).toEqual([tile])
+ expect(retainedZoomOut([tile],view,size,2)).toBeUndefined()
+ expect(retainedSourceReturn([{...tile,zoom:1.99}],view,size,2)).toBeUndefined()
+ expect(retainedSourceReturn([{...tile,width:500}],view,size,2)).toBeUndefined()
+ expect(retainedSourceReturn([tile],view,{...size,width:Infinity},2)).toBeUndefined()
+})
+
+test('a pan reuses a full-density mosaic only after its newly exposed edge is covered',()=>{
+ const view={x:-2.25,y:0,zoom:1},size={width:8,height:4}
+ const held={key:'held',x:-1,y:-1,width:18,height:10,gutter:1,zoom:2,used:1}
+ const edge={...held,key:'edge',x:15,width:8,used:2}
+ expect(retainedSourceReturn([held],view,size,2)).toBeUndefined()
+ expect(retainedSourceReturn([held,edge],view,size,2)).toEqual([held,edge])
+ expect(retainedSourceReturn([held,{...edge,x:15.25}],view,size,2)).toBeUndefined()
+ expect(retainedSourceReturn([held,{...edge,zoom:1.5}],view,size,2)).toBeUndefined()
+})
+
 describe('proactive outward seed', () => {
-  test('floors the ladder without a rejected raster and escalates bounded', () => {
+  test('a successful proactive preview returns to native density without manufacturing a resource limit', () => {
+    const ladder = new SourceQualityLadder()
+    ladder.seed(1, 4)
+    expect(ladder.presented(1)).toBe(true)
+    expect(ladder.scale).toBeUndefined()
+    expect(ladder.limited).toBe(false)
+  })
+  test('a quiet gesture drops a speculative floor but retains a real resource failure', () => {
     const ladder = new SourceQualityLadder()
     ladder.seed(0.6, 2.4)
     expect(ladder.scale).toBe(0.6)
-    // Presenting the seeded tier escalates toward the original, never past it.
-    expect(ladder.presented(0.6)).toBe(true)
-    expect(ladder.scale!).toBeGreaterThan(0.6)
-    expect(ladder.scale!).toBeLessThanOrEqual(2.4)
-    while (!ladder.limited) {
-      const next = ladder.scale!
-      if (!ladder.presented(next)) break
-      expect(ladder.scale!).toBeLessThanOrEqual(2.4)
-    }
-    expect(ladder.limited).toBe(true)
+    ladder.settle()
+    expect(ladder.scale).toBeUndefined()
+    ladder.seed(.6,2.4)
+    ladder.rejected(.6,Error('GPU surface budget exceeded'))
+    const reduced=ladder.scale
+    ladder.settle()
+    expect(ladder.scale).toBe(reduced)
+    expect(ladder.reason).toContain('GPU surface budget exceeded')
   })
   test('a rejected seeded tier halves further instead of resetting to full', () => {
     const ladder = new SourceQualityLadder()
