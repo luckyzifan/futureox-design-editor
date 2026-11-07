@@ -1,4 +1,20 @@
 
+2026-11-07 [冷缩出先排一张页级粗瓦片](../../../testing/verification-cold-zoom-seed-20261107/README.md)：大源停手后先排一张页级粗覆盖，第一次缩出不用从零等。不是 33/100ms 或完整 G2/G5。
+
+2026-11-07 [打开预览盖住平移条](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：低倍时打开预览盖在原生画布上，条带用覆盖场而不是页面灰。不是 33/100ms 或完整 G2/G5。
+
+2026-11-07 [CPU 平移条不再是清屏白](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：页面外的平移条改为覆盖场，不再留着 CPU 清屏白。不是 33/100ms 或完整 G2/G5。
+
+2026-11-07 [CPU 平移条不再被裁成灰](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：CPU 打开预览不再挡住画板外的粗瓦片，缩得很小时不再把原生画布裁掉。不是 33/100ms 或完整 G2/G5。
+
+2026-11-07 [8% 画板外的平移条](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：画板外的粘贴板用一张粗页瓦片盖住；平移时把这张瓦片合成进新条，并标 `data-source-coverage-extend="pan"`。不是 33/100ms 或完整 G2/G5。
+
+2026-11-07 [平移条必须换上粗覆盖](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：平移帧提交时即标 `data-source-coverage-extend="pan"`；回执按该帧瓦片核对，不因下一帧平移而丢掉已画好的粗条。不是 33/100ms 或完整 G2/G5。
+
+2026-11-07 [缩放中平移的灰条](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：平移不再清掉缩出密度，新露出的世界若已被更粗瓦片盖住就提交该覆盖栈；晚到的同倍率帧仍收下。不是 33/100ms 或完整 G2/G5。
+
+2026-11-07 [连续缩放覆盖连续性](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：缩出密度播种之后，快慢缩放仍会大块留白。原因是目标格子未齐就不发布，且密度跳变会取消补洞瓦片；总览只进 CSS 图集。现改为视口并集盖住才换帧，粗层垫在锐层下，在途瓦片按是否还在画洞决定去留。预算、落定精确瓦片和物理 DPR 预览不变。不是 33/100ms 或完整 G2/G5。
+
 2026-11-07 设计助手：桌面版用 Tokio `futureox-design-agent` 跑对话、一键出图和细节调整，经 MCP `batch.apply` 写入现有编辑器。设置里可保存 API、Token plan 和 CC Switch。页面悬停才出现定向修改。Fig/Sketch 只做结构差距，不改光栅。见 [DESIGN_AGENT.md](../../../docs/DESIGN_AGENT.md)。
 
 2026-11-06 [滚轮缩小卡住分析与缩出密度播种](../../../testing/verification-zoom-out-density-20261106/README.md)：反向缩小就绪 9.4s（11-04 实测）、拓扑冷视口 35s 为既有开放项；机制=瓦片平方爆炸+高倍效果设备像素代价+**缩入/缩出不对称**（滚轮快道只对 zoomingIn 开放，且 SourceQualityLadder 反应式降档要先付一次失败全量光栅）+总览串行解码；另滚轮不开交互事务，指针手势自适应密度 flag 从未覆盖滚轮通道。修复：`outwardInteractionScale`（同一 8M 阶梯除数，缩出方向免 flag）+ `SourceQualityLadder.seed`（种在阶梯密度、original 为升级上界）+ NativeSourceSurface 连续缩出时逐 tick 播种；指针通道/落定精确瓦片/预算常量不变。4 测试文件 36/36、tsc 干净；真机收益按 11-03 固定回放复测待做；B（缩出预取）/C（总览金字塔）列后续。

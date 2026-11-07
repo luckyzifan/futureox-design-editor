@@ -3,6 +3,22 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-07 [冷缩出先排一张页级粗瓦片](../../../testing/verification-cold-zoom-seed-20261107/README.md)：大源在首屏有像素且用户停手时先排一张 `navigationOverview` 瓦片，第一次缩出不必等现场光栅。素材文件不再在空闲时直接停掉。不改预算。不是 33/100ms 或完整 G2/G5。
+
+2026-11-07 [打开预览盖住平移条](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：覆盖场画在原生画布上时，打开预览和页面灰仍在最上面。缩得很小时预览层改到上面，底用同一块场，缩略图画在场上。不改预算。盒上未复测。33/100ms 与完整 G2/G5 未关闭。
+
+2026-11-07 [CPU 平移条不再是清屏白](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：8% 时画板外的白是 `fillRect` 清屏，视口瓦片又把同一块白盖回去。页面矩形以外在瓦片之后铺覆盖场，平移写下 `data-source-coverage-extend="pan"`。不改预算。盒上未复测。33/100ms 与完整 G2/G5 未关闭。
+
+2026-11-07 [CPU 平移条不再被裁成灰](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：`--core-cpu-only` 以前不排粗页瓦片，打开预览不让位，画布又被裁进画板。现在 CPU 也画这张瓦片并揭开原生层；画板只占视口一小块时不裁切。平移写 `data-source-coverage-extend="pan"`。不改预算。盒上未复测。33/100ms 与完整 G2/G5 未关闭。
+
+2026-11-07 [8% 画板外的平移条](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：缩到能看见画板外的粘贴板时，先排一张盖住视口加一整屏边距的粗瓦片。平移四分之一视口仍用这一张，并在提交时写下 `data-source-coverage-extend="pan"`。没有上一张位图时，这张瓦片盖住视口就先画上，不再留着 `#f5f5f5`。不改预算。真机未回放。33/100ms 与完整 G2/G5 未关闭。
+
+2026-11-07 [平移条必须换上粗覆盖](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：`data-source-coverage-extend="pan"` 在提交平移帧时就写上。回执只核对该帧自己的瓦片，连续平移不再把每一帧都丢掉。静止但位图仍停在旧相机时也补覆盖栈。不改预算。GUI 复测 D 仍待盒上重跑。33/100ms 与完整 G2/G5 未关闭。
+
+2026-11-07 [缩放中平移的灰条](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：平移曾清掉缩出密度并只挪裁过的位图，新条被涂成 `#f5f5f5`。现当居民瓦片盖住新视口且画出旧位图以外时提交覆盖栈，纯平移不重置密度，晚到的同倍率覆盖帧仍收下。不改预算。GUI 复测 D 未在本环境做。33/100ms 与完整 G2/G5 未关闭。
+
+2026-11-07 [连续缩放覆盖连续性](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：大块空白来自只发布同密度整组瓦片，以及缩放比变化时取消仍在补洞的在途瓦片；已有更粗瓦片没有画进当前帧。覆盖栈在并集盖住视口时才发布，否则留着上一张图。不改预算、落定密度或普通倍率预览 DPR。真机回放未做。33/100ms 与完整 G2/G5 未关闭。
+
 2026-11-07 [提交、缩出、总览与自动保存优化](../../../testing/verification-integrated-performance-20261106/README.md)：Rust 回执位姿证明默认启用并保留 `VITE_DESIGN_COMPONENT_POSE=0` 回退；候选预检不污染非位姿布局。缩出播种后仍可展示完整驻留清晰瓦片，总览预热最多两块一批且单 raster owner。源保存只处理完整差量，不可变浏览器快照免重复克隆。真实 FIG 三轮 A/B 的就绪中位约 295.3→233.1ms，但最终构建仍有 141ms 长任务和秒级精修；33/100ms 与完整 G2/G5 未关闭。
 
 2026-11-06 [连续手势与源副本收尾](../../../testing/verification-fluid-priority-20261106/README.md)：保留当前密度、源返回视图和已验的无滤镜输入节奏；旋转仅在旧/新支持范围避开后续背景读取时局部原生重绘，每个输入及晚到输入均重验。拖回时取消过时整屏捕获，历史相机不再冻结当前背景精修。已验三项调度/捕获策略默认启用并保留 `0` 回退；同倍率源平移复用和缩窄整屏捕获的失败候选已移除。自动保存的 Sketch 编组宽度修改可关闭重开，原件不变。475 项前端、19 项 host 检查和真实素材回放分别记录；大 FIG 精修仍约 2 秒且有一次 275ms 提交停顿，33/100ms 与完整 G2/G5 未关闭。按用户要求不再录制。
