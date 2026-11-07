@@ -1,5 +1,7 @@
 # Futureox Design Core：渲染优先工程与验收规范
 
+2026-11-07 的[冷缩出粗覆盖](../testing/verification-cold-zoom-seed-20261107/README.md)在大源首屏已有像素且用户停手时先排一张页级总览瓦片。不提高预算，不关闭 33/100ms 或完整 G2/G5。
+
 2026-11-07 的[打开预览盖住平移条](../testing/verification-zoom-coverage-continuity-20261107/README.md)在画板只占视口一小块时把打开预览放到原生画布上面，条带用覆盖场。不提高预算，不关闭 33/100ms 或完整 G2/G5。盒上复测未做。
 
 2026-11-07 的[CPU 清屏白](../testing/verification-zoom-coverage-continuity-20261107/README.md)在页面矩形以外、瓦片绘制之后铺覆盖场，避免平移条只剩 `fillRect` 的纯白。不提高预算，不关闭 33/100ms 或完整 G2/G5。盒上复测未做。
