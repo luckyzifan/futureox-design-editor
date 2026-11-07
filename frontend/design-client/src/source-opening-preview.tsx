@@ -1,4 +1,5 @@
 import {MATERIAL_MARGIN} from './kernel/source-overview-window'
+import {PASTEBOARD_COVERAGE} from './kernel/cpu-tile-frame'
 import {memo,useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type RefObject} from 'react'
 import type {CanvasCamera} from './canvas-camera'
 import type {LargeDocumentBridge, LargeDocumentOwner, OpeningPage, SourceCanvasSnapshot, SourceCanvasBox, SourceCanvasItem} from './desktop'
@@ -182,9 +183,32 @@ export function SourceOpeningSurface({source,view,width,height,pageId,focused,on
       onDetail(visibleMaterialDetail(source,view,width,height,window.devicePixelRatio||1,pageId,focused))
     },SOURCE_DETAIL_SAMPLE_MS)
   },[source.owner.documentId,source.owner.sessionEpoch,source.items,view.x,view.y,view.zoom,width,height,pageId,focused,onDetail,onViewport,source.finished])
+  const panRef=useRef(view)
+  const panned=panRef.current.zoom===view.zoom&&(panRef.current.x!==view.x||panRef.current.y!==view.y)
+  panRef.current=view
+  let cover=0
+  for(const item of source.items){
+    const b=item.placed,x=b.x*view.zoom+view.x,y=b.y*view.zoom+view.y,w=b.width*view.zoom,h=b.height*view.zoom
+    const l=Math.max(0,x),t=Math.max(0,y),r=Math.min(width,x+w),bo=Math.min(height,y+h)
+    if(r>l&&bo>t)cover+=(r-l)*(bo-t)
+  }
+  // Above the native canvas while the artboard is a small island. Otherwise
+  // the native bitmap's page fill (#f5f5f5) is the top layer and the pan
+  // strip never shows this field.
+  const aboveNative=width>0&&height>0&&cover<width*height*0.8
+  const patternId=useMemo(()=>`pasteboard-${source.owner.documentId}-${source.owner.sessionEpoch}`,[source.owner.documentId,source.owner.sessionEpoch])
   return <svg className="source-opening-surface" aria-label="源文件素材预览" data-material-count={source.items.length}
     data-rendered-materials={source.images.size} data-source-owner={source.owner.documentId}
-    width={width} height={height} style={{position:'absolute',inset:0,overflow:'hidden',pointerEvents:'none'}}>
+    data-source-coverage-extend={panned?'pan':undefined}
+    width={width} height={height} style={{position:'absolute',inset:0,overflow:'hidden',pointerEvents:'none',zIndex:aboveNative?3:0}}>
+    <defs>
+      <pattern id={patternId} width="8" height="8" patternUnits="userSpaceOnUse">
+        <rect width="8" height="8" fill={PASTEBOARD_COVERAGE[0]}/>
+        <rect width="4" height="4" fill={PASTEBOARD_COVERAGE[1]}/>
+        <rect x="4" y="4" width="4" height="4" fill={PASTEBOARD_COVERAGE[1]}/>
+      </pattern>
+    </defs>
+    <rect width={width} height={height} fill={`url(#${patternId})`}/>
     <g transform={`translate(${view.x} ${view.y}) scale(${view.zoom})`}>
       {images}
     </g>

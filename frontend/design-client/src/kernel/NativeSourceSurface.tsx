@@ -27,7 +27,7 @@ import {createRenderDiagnostics,PREFIX} from '../../../design-desktop/src/render
 import {CameraReprojection,atomicPresentationContext,consumePresentationBitmap} from './camera-reprojection'
 
 export type NativeSourceStatus={phase:'loading'|'refining'|'ready'|'limited'|'error';done:number;total:number;error?:string}
-type Props={hover?:import('../source-hover-detail').SourceHoverHub;overviewBoxes?:readonly OverviewMaterial[];hidden?:boolean;parked?:boolean;panGestureActive?:boolean;underlay?:import('../source-opening-preview').SourceThumbnailCoverage;clipPath?:string;source?:SourceCanvasSnapshot;warm?:boolean;wheelView?:CanvasCamera;view:CanvasCamera;width:number;height:number;
+type Props={hover?:import('../source-hover-detail').SourceHoverHub;overviewBoxes?:readonly OverviewMaterial[];contentFrames?:readonly {x:number;y:number;width:number;height:number}[];hidden?:boolean;parked?:boolean;panGestureActive?:boolean;underlay?:import('../source-opening-preview').SourceThumbnailCoverage;clipPath?:string;source?:SourceCanvasSnapshot;warm?:boolean;wheelView?:CanvasCamera;view:CanvasCamera;width:number;height:number;
   onStatus?:(status:NativeSourceStatus)=>void;onPresented?:(frame:ResidentAcknowledgement,complete:boolean)=>void}
 type Placement=RasterTile & {gpuTile:number}
 type Tile=TileResult&{serial:number;used:number;lastSubmission:number;placement?:Placement}
@@ -271,15 +271,23 @@ export function NativeSourceSurface(props:Props){
             cpuContext.drawImage(cpuScratch,0,0,sw,sh,dx,dy,dw,dh)
           }
         }
-        // Viewport tiles clear unused world to white. Put that white back
-        // under the page and leave the pan strip as the coverage field.
-        // putImageData ignores clipping, so this pass runs after the tiles.
-        if(pasteboard&&source.bounds.width>0&&source.bounds.height>0){
+        // putImageData ignores clipping and writes the page background (#f5f5f5)
+        // across any viewport tile. Repaint outside the artboard afterwards so
+        // that gray cannot stay in the pan strip. The opening SVG carries the
+        // same field underneath, in case this canvas is not the top layer.
+        const frames=latest.current.contentFrames?.filter(box=>box.width>0&&box.height>0)
+        const boxes=frames?.length?frames:[source.bounds]
+        if(pasteboard&&boxes.length){
           const z=p.view.zoom
-          const x0=Math.max(0,Math.floor((source.bounds.x*z+p.view.x)*dpr))
-          const y0=Math.max(0,Math.floor((source.bounds.y*z+p.view.y)*dpr))
-          const x1=Math.min(pixelWidth,Math.ceil(((source.bounds.x+source.bounds.width)*z+p.view.x)*dpr))
-          const y1=Math.min(pixelHeight,Math.ceil(((source.bounds.y+source.bounds.height)*z+p.view.y)*dpr))
+          let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity
+          for(const box of boxes){
+            x0=Math.min(x0,(box.x*z+p.view.x)*dpr)
+            y0=Math.min(y0,(box.y*z+p.view.y)*dpr)
+            x1=Math.max(x1,((box.x+box.width)*z+p.view.x)*dpr)
+            y1=Math.max(y1,((box.y+box.height)*z+p.view.y)*dpr)
+          }
+          const left=Math.max(0,Math.floor(x0)),top=Math.max(0,Math.floor(y0))
+          const right=Math.min(pixelWidth,Math.ceil(x1)),bottom=Math.min(pixelHeight,Math.ceil(y1))
           const cell=8
           const stamp=(x:number,y:number,w:number,h:number)=>{
             if(w<=0||h<=0)return
@@ -288,10 +296,10 @@ export function NativeSourceSurface(props:Props){
               cpuContext.fillRect(xx,yy,Math.min(cell,x+w-xx),Math.min(cell,y+h-yy))
             }
           }
-          stamp(0,0,pixelWidth,y0)
-          stamp(0,y1,pixelWidth,pixelHeight-y1)
-          stamp(0,y0,x0,y1-y0)
-          stamp(x1,y0,pixelWidth-x1,y1-y0)
+          stamp(0,0,pixelWidth,top)
+          stamp(0,bottom,pixelWidth,pixelHeight-bottom)
+          stamp(0,top,left,bottom-top)
+          stamp(right,top,pixelWidth-right,bottom-top)
         }
       }
       const keys=new Set(tiles.map(tile=>tile.key))
@@ -893,7 +901,7 @@ export function NativeSourceSurface(props:Props){
   useLayoutEffect(()=>{props.hover?.refresh?.()},[props.hover,props.hidden,park,props.source?.token,props.panGestureActive])
   useLayoutEffect(()=>wake.current(),[props.view.x,props.view.y,props.view.zoom,props.width,props.height,props.panGestureActive,park,crop?.x,crop?.y,crop?.width,crop?.height,dpr])
   useLayoutEffect(()=>{handoff.project(props.source,props.overviewBoxes,props.view,props.width,props.height,dpr)},[props.source,props.overviewBoxes,props.view,props.width,props.height,dpr,handoff])
-  return <div ref={outer} className="native-source-surface" style={{position:'absolute',inset:0,pointerEvents:'none',overflow:'hidden',visibility:props.hidden||outsideScope?'hidden':undefined,clipPath:props.clipPath}}>
+  return <div ref={outer} className="native-source-surface" style={{position:'absolute',inset:0,zIndex:1,pointerEvents:'none',overflow:'hidden',visibility:props.hidden||outsideScope?'hidden':undefined,clipPath:props.clipPath,backgroundColor:'#e6e8ec',backgroundImage:'repeating-conic-gradient(#dde0e6 0% 25%, #e6e8ec 0% 50%)',backgroundSize:'8px 8px'}}>
     <div ref={host} style={{position:'absolute',inset:0,overflow:'hidden'}}/>
   </div>
 }

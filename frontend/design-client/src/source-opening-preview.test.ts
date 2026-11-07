@@ -10,6 +10,21 @@ const items=Array.from({length:36},(_,i)=>{
 })
 const source:OpeningView={owner:{documentId:'a',sessionEpoch:1},bounds:{x:0,y:0,width:700,height:680},pages:[['A','A',18],['B','B',18]],items,
   images:new Map(items.map((_,i)=>[i,'rendered'])),finished:true,cacheHit:false,rendered:36}
+test('a zoomed-out opening preview keeps the pasteboard field above the native page fill',async()=>{
+  const host=document.createElement('div'),root=createRoot(host)
+  const one:OpeningView={...source,items:[items[0]],images:new Map([[0,'rendered']])}
+  const draw=(x:number)=>act(()=>root.render(createElement(SourceOpeningSurface,{source:one,view:{x,y:200,zoom:0.08},width:1000,height:700})))
+  try{
+    await draw(400)
+    const svg=host.querySelector('.source-opening-surface')!
+    expect(svg.innerHTML).toContain('#e6e8ec')
+    expect(svg.innerHTML).toContain('#dde0e6')
+    expect(svg.style.zIndex).toBe('3')
+    await draw(80)
+    expect(host.querySelector('.source-opening-surface')?.getAttribute('data-source-coverage-extend')).toBe('pan')
+  }finally{await act(()=>root.unmount())}
+})
+
 test('a zoomed-out artboard does not clip the native surface down to the thumbnail',()=>{
   const artboard={x:0,y:0,width:1900,height:1060}
   const view={x:460,y:300,zoom:0.07}

@@ -1,4 +1,6 @@
 
+2026-11-07 [打开预览盖住平移条](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：低倍时打开预览盖在原生画布上，条带用覆盖场而不是页面灰。不是 33/100ms 或完整 G2/G5。
+
 2026-11-07 [CPU 平移条不再是清屏白](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：页面外的平移条改为覆盖场，不再留着 CPU 清屏白。不是 33/100ms 或完整 G2/G5。
 
 2026-11-07 [CPU 平移条不再被裁成灰](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：CPU 打开预览不再挡住画板外的粗瓦片，缩得很小时不再把原生画布裁掉。不是 33/100ms 或完整 G2/G5。

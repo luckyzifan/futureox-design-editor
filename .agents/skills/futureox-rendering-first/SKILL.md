@@ -3,6 +3,8 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-07 [打开预览盖住平移条](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：覆盖场画在原生画布上时，打开预览和页面灰仍在最上面。缩得很小时预览层改到上面，底用同一块场，缩略图画在场上。不改预算。盒上未复测。33/100ms 与完整 G2/G5 未关闭。
+
 2026-11-07 [CPU 平移条不再是清屏白](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：8% 时画板外的白是 `fillRect` 清屏，视口瓦片又把同一块白盖回去。页面矩形以外在瓦片之后铺覆盖场，平移写下 `data-source-coverage-extend="pan"`。不改预算。盒上未复测。33/100ms 与完整 G2/G5 未关闭。
 
 2026-11-07 [CPU 平移条不再被裁成灰](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：`--core-cpu-only` 以前不排粗页瓦片，打开预览不让位，画布又被裁进画板。现在 CPU 也画这张瓦片并揭开原生层；画板只占视口一小块时不裁切。平移写 `data-source-coverage-extend="pan"`。不改预算。盒上未复测。33/100ms 与完整 G2/G5 未关闭。
