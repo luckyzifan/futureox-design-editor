@@ -1,0 +1,99 @@
+import type { CanvasCamera } from '../canvas-camera'
+import { tilesCoverBounds, type RasterTile } from './tile-cache'
+import { tileIntersectsView } from './tile-preview'
+
+/** World rectangle of a tile's owned core that actually intersects the viewport.
+ *  Gutters are not content. Undefined when the core misses the view. */
+export function tileVisibleWorld(tile: RasterTile, view: CanvasCamera, size: { width: number; height: number }) {
+  const g = tile.gutter ?? 1
+  const x0 = (tile.x + g - (tile.phaseX ?? 0)) / tile.zoom
+  const y0 = (tile.y + g - (tile.phaseY ?? 0)) / tile.zoom
+  const x1 = (tile.x + tile.width - g - (tile.phaseX ?? 0)) / tile.zoom
+  const y1 = (tile.y + tile.height - g - (tile.phaseY ?? 0)) / tile.zoom
+  const left = Math.max(x0, -view.x / view.zoom)
+  const top = Math.max(y0, -view.y / view.zoom)
+  const right = Math.min(x1, (size.width - view.x) / view.zoom)
+  const bottom = Math.min(y1, (size.height - view.y) / view.zoom)
+  if (!(right > left) || !(bottom > top)) return
+  return { x: left, y: top, width: right - left, height: bottom - top }
+}
+
+/** True when this tile would paint a viewport pixel that `resident` does not
+ *  already paint at any density. Scale ratio is not a reason to ignore it. */
+export function coversUnpaintedViewport(tile: RasterTile, view: CanvasCamera, size: { width: number; height: number },
+  resident: Iterable<RasterTile>) {
+  const rect = tileVisibleWorld(tile, view, size)
+  if (!rect) return false
+  return !tilesCoverBounds([...resident], rect)
+}
+
+/** Finer than every resident that already paints this rect. Same predicate as
+ *  sourceTileBringsDetail, kept here so coverage selection does not import the
+ *  viewport planner (and its kernel address binding) at module load. */
+function bringsSamplingDetail(tile: RasterTile, view: CanvasCamera, size: { width: number; height: number },
+  resident: readonly RasterTile[]) {
+  const rect = tileVisibleWorld(tile, view, size)
+  if (!rect) return false
+  return !tilesCoverBounds([...resident], rect, tile.zoom)
+}
+
+/** Coarsest residents that still paint a hole in `shown`. Drawn underneath the
+ *  sharper set: a zoom scale change must not hide a wider LOD that is already
+ *  in memory. One wide overview beats a stack of fragments that cover less. */
+export function selectCoverageUnderlay<T extends RasterTile>(candidates: readonly T[], view: CanvasCamera,
+  size: { width: number; height: number }, shown: readonly RasterTile[], limit = 24): T[] {
+  if (!Number.isSafeInteger(limit) || limit < 1) return []
+  const shownSet = new Set(shown)
+  const pool = candidates.filter(tile => !shownSet.has(tile) && tileIntersectsView(tile, view, size))
+    .sort((a, b) => a.zoom - b.zoom || a.x - b.x || a.y - b.y)
+    .slice(0, 64)
+  const chosen: T[] = []
+  for (const tile of pool) {
+    if (chosen.length >= limit) break
+    if (!coversUnpaintedViewport(tile, view, size, [...shown, ...chosen])) continue
+    chosen.push(tile)
+  }
+  return chosen
+}
+
+/** Underlay plus every finer resident that actually raises detail, but only
+ *  when the union covers the viewport. Otherwise the caller keeps the previous
+ *  image instead of publishing a holed frame. */
+export function selectCoverageStack<T extends RasterTile>(candidates: readonly T[], view: CanvasCamera,
+  size: { width: number; height: number }, limit = 48): T[] | undefined {
+  if (![view.x, view.y, view.zoom, size.width, size.height].every(Number.isFinite) || view.zoom <= 0) return
+  const under = selectCoverageUnderlay(candidates, view, size, [], limit)
+  const detail: T[] = []
+  const rest = candidates.filter(tile => !under.includes(tile) && tileIntersectsView(tile, view, size))
+    .sort((a, b) => b.zoom - a.zoom || a.x - b.x || a.y - b.y)
+  for (const tile of rest) {
+    if (under.length + detail.length >= limit) break
+    if (!bringsSamplingDetail(tile, view, size, [...under, ...detail])) continue
+    detail.push(tile)
+  }
+  const stack = [...under, ...detail]
+  const world = { x: -view.x / view.zoom, y: -view.y / view.zoom, width: size.width / view.zoom, height: size.height / view.zoom }
+  return tilesCoverBounds(stack, world) ? stack : undefined
+}
+
+/** Whether an in-flight tile still belongs to the current camera.
+ *  A scale change is not staleness. The tile is stale once resident pixels
+ *  already paint its viewport rect and it is neither the requested key nor a
+ *  nearby density the exact phase may still need. Zoom-out holes stay in
+ *  flight even when the new lattice is many times coarser. */
+export function retainInFlightTile(tile: RasterTile, view: CanvasCamera, size: { width: number; height: number },
+  resident: Iterable<RasterTile>, wanted: ReadonlySet<string>, prefetch: ReadonlySet<string>,
+  continuousZoomIn: boolean, targetScale: number) {
+  if (tile.prefetch) return wanted.has(tile.key) || prefetch.has(tile.key)
+  if (!tileIntersectsView(tile, view, size) || !(targetScale > 0) || !(tile.zoom > 0)) return false
+  if (wanted.has(tile.key)) return true
+  const painted = [...resident]
+  const hole = coversUnpaintedViewport(tile, view, size, painted)
+  // A speculative full-viewport capture that does not fill a hole only delays
+  // the tile that would. Coverage tiles are kept at any size.
+  if ((tile.width > 514 || tile.height > 514) && continuousZoomIn && !hole) return false
+  if (hole) return true
+  const relative = targetScale / tile.zoom
+  if (relative <= 2 && relative >= 0.5) return true
+  return continuousZoomIn && relative > 2 && relative <= 8 && bringsSamplingDetail(tile, view, size, painted)
+}
