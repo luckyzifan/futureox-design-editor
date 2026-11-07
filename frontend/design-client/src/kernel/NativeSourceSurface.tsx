@@ -127,7 +127,8 @@ export function NativeSourceSurface(props:Props){
     const demandKey=()=>[poseKey(),moving,quality.scale].join('/')
     let suspended=document.visibilityState==='hidden'
     let moving=false,serial=0,submission=0,acknowledged=0,tick=0,lastStatus='',lastStatusAt=-Infinity
-    let lastZoom=latest.current.view.zoom,zoomingIn=false,lastZoomAt=-Infinity,continuousZoom=false
+    let lastZoom=latest.current.view.zoom,zoomingIn=false,lastZoomAt=-Infinity,continuousZoom=false,panned=false
+    let coldBudget=1
     let priorView=latest.current.view,panHeld=!!latest.current.panGestureActive
     const workQueue=new SourceRenderWork<RasterTile>(overviewMode?8:SOURCE_PIPELINE_TILES)
     let wanted:{id:string;sequence:number;view:CanvasCamera;width:number;height:number;dpr:number;scale:number;complete:boolean;mixed:boolean;demand:string;ids:Set<number>}|undefined
@@ -404,7 +405,7 @@ export function NativeSourceSurface(props:Props){
         const optional=[...workQueue.current.pending.values()].every(tile=>tile.prefetch===true)
         const missing=next.tiles.some(tile=>!cache.has(tile.key))
         workQueue.demand(covered&&!optional,tile=>{
-          if(overview?.tiles.some(base=>base.key===tile.key))return !moving && !missing
+          if(overview?.tiles.some(base=>base.key===tile.key))return !moving
           if(tile.prefetch)return next.keys.has(tile.key)||!missing&&next.prefetchKeys.has(tile.key)
           return retainInFlightTile(tile,next.p.view,next.p,cache.values(),next.keys,next.prefetchKeys,zoomingIn&&continuousZoom,next.raster.scale)
         })
@@ -418,8 +419,8 @@ export function NativeSourceSurface(props:Props){
           const {p,ratio,raster,tiles,prefetch}=plan(),missing=tiles.filter(tile=>!cache.has(tile.key)||cpuRepairs.has(tile.key))
           const optional=missing.length===0
           if(!optional&&outwardCover()){schedulePaint();break}
-          if(optional && source.materialKeys && (moving||!prefetch.length))break
-          if(optional&&prefetchReady!==demandKey()){schedulePaint();break}
+          if(optional && source.materialKeys && moving)break
+          if(optional&&moving&&prefetchReady!==demandKey()){schedulePaint();break}
           // We already have real pixels for this entire source. An expensive
           // optional overview cannot fill another hole. Give the next input
           // first use of the raster owner before warming native neighbours.
@@ -433,11 +434,20 @@ export function NativeSourceSurface(props:Props){
               break
             }
           }
-          if (optional && !source.materialKeys && !costlyOverview && !moving && !overview) overview = navigationOverview(source.bounds,1,source.nodes)
-          const warmBase = optional && !costlyOverview && !moving && overview ? overviewWarmBatch(overview.tiles,p.view,p.width,p.height,
+          const shownCount=tiles.filter(tile=>cache.has(tile.key)&&tileIntersectsView(tile,p.view,p)).length
+          const largeSource=source.nodes>=3000||!!source.materialKeys||Math.max(source.bounds.width,source.bounds.height)>=8000
+          if(!overview&&shownCount>0&&(largeSource||optional))overview=navigationOverview(source.bounds,1,source.nodes)
+          // After the first visible pixels, one coarse page tile is built while
+          // the user is still. The first zoom-out then already has coverage.
+          // Material files used to stop here and never build that page.
+          const coldTile=!moving&&!zoomingIn&&coldBudget>0&&largeSource&&shownCount*2>=Math.max(1,tiles.length)&&overview
+            ?overviewWarmBatch(overview.tiles,p.view,p.width,p.height,tile=>!cache.has(tile.key)&&!skippedPrefetch.has(tile.key))[0]
+            :undefined
+          const warmBase = !coldTile && optional && !costlyOverview && !moving && overview ? overviewWarmBatch(overview.tiles,p.view,p.width,p.height,
             tile=>!cache.has(tile.key) && !skippedPrefetch.has(tile.key)) : undefined
-          const candidates=warmBase?.length ? warmBase.map(tile=>({...tile,prefetch:true as const})) :
+          const candidates=coldTile?[{...coldTile,prefetch:true as const}]:warmBase?.length ? warmBase.map(tile=>({...tile,prefetch:true as const})) :
             optional?prefetch.filter(tile=>!cache.has(tile.key)&&!skippedPrefetch.has(tile.key)):missing
+          if(coldTile)coldBudget--
           if(!candidates.length)break
           // The full visible cohort shares the bounded preparation pipeline,
           // including inward zoom. There is still a single raster owner.
@@ -451,15 +461,17 @@ export function NativeSourceSurface(props:Props){
           // A settled overview can stream its visible cohort in one request.
           // The worker still prepares just one tile ahead of its GPU raster.
           const limit=overviewMode&&!optional&&!moving&&raster.scale<=1?8:SOURCE_PIPELINE_TILES
-          const batch=holeFirst.slice(0,source.materialKeys && moving && zoomingIn && continuousZoom && backing ? 1 : limit)
+          const coverMotion=moving&&!zoomingIn&&(continuousZoom||panned)
+          const batch=holeFirst.slice(0,(source.materialKeys && moving && zoomingIn && continuousZoom && backing)||coverMotion?1:limit)
           diagnostics.record('cache',{count:batch.length,prefetch:optional?1:0,reasonCode:optional?7:5})
           const work=workQueue.begin(batch,limit)
-          const camera = warmBase && overview ? overview.view : raster.camera
+          const overviewBatch=!!(coldTile||warmBase?.length)
+          const camera = overviewBatch && overview ? overview.view : raster.camera
           const batchStarted=performance.now()
           try{
             await client.renderSource(source,{pageId:source.pageId,width:Math.ceil(p.width*ratio),height:Math.ceil(p.height*ratio),
               view:camera,transparent:false,grid:false,rasterProfile:profile,
-              sourceMaterialOverview:overviewMode||undefined,tileViewport:batch,tilePrepareViewport:tileBatchPrepareViewport(optional||source.materialKeys&&moving&&zoomingIn&&continuousZoom?[]:tiles,[],batch,camera),renderIntent:'preview',
+              sourceMaterialOverview:overviewMode||undefined,tileViewport:batch,tilePrepareViewport:tileBatchPrepareViewport(overviewBatch||optional||source.materialKeys&&moving&&zoomingIn&&continuousZoom?[]:tiles,[],batch,camera),renderIntent:'preview',
               tileOwner:{documentId:source.owner.documentId,sessionEpoch:source.owner.sessionEpoch}},tile=>{
                 // Stage each accepted tile while the rest of its viewport is being drawn.
                 if(!alive||!workQueue.accepts(work,tile.key)){
@@ -730,6 +742,7 @@ export function NativeSourceSurface(props:Props){
         // it made the margin a full-density miss and a gray gap.
         if(performance.now()-lastZoomAt>=180){continuousZoom=false;zoomingIn=false}
       }
+      panned=currentView.x!==priorView.x||currentView.y!==priorView.y
       priorView=currentView
       // Estimate the physical viewport once, in world units. Zoom must not
       // multiply an already screen-sized viewport a second time.
@@ -779,7 +792,7 @@ export function NativeSourceSurface(props:Props){
             backingCoversSettledSource(backing,native.p,density.current)
           workQueue.demand(false,tile=>!(coveredDetail && tile.prefetch!==true && tile.zoom*4<=native.raster.scale) &&
             (native.keys.has(tile.key)||!missing&&tile.prefetch===true&&native.prefetchKeys.has(tile.key)||
-            retainInFlightTile(tile,native.p.view,native.p,cache.values(),native.keys,native.prefetchKeys,zoomingIn&&continuousZoom,native.raster.scale)))
+            retainInFlightTile(tile,native.p.view,native.p,cache.values(),native.keys,native.prefetchKeys,zoomingIn&&continuousZoom,native.raster.scale,true)))
           schedulePaint();void run()
         }catch(error){fail(error)}
       },continuousZoom&&lastInputAt-lastZoomAt<180?Math.min(SOURCE_WHEEL_QUIET_MS,Math.max(56,wheelInterval*2+8)):SOURCE_QUIET_MS):undefined

@@ -39,6 +39,15 @@ test('a fast zoom-out keeps the in-flight tile that paints the hole and drops on
   expect(retainInFlightTile(centre, view, size, [edge], wanted, new Set(), false, 0.25)).toBe(false)
 })
 
+test('settle releases a covered nearby density and keeps a tile that still paints a hole', () => {
+  const resident = tile('native', 1, 0, 0, 256)
+  const nearby = tile('nearby', 1, 0, 0, 200)
+  const edge = tile('edge', 1, 400, 0, 256)
+  expect(retainInFlightTile(nearby, view, size, [resident], new Set(), new Set(), false, 1)).toBe(true)
+  expect(retainInFlightTile(nearby, view, size, [resident], new Set(), new Set(), false, 1, true)).toBe(false)
+  expect(retainInFlightTile(edge, view, size, [resident], new Set(), new Set(), false, 1, true)).toBe(true)
+})
+
 test('a nearby density stays in flight when the cache already paints it, including an inexact return', () => {
   const resident = tile('native', 1, 0, 0, 1024)
   const nearby = tile('nearby', 2, 0, 0, 256)
