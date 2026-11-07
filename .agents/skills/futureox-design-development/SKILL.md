@@ -1,4 +1,6 @@
 
+2026-11-07 [平移条必须换上粗覆盖](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：平移帧提交时即标 `data-source-coverage-extend="pan"`；回执按该帧瓦片核对，不因下一帧平移而丢掉已画好的粗条。不是 33/100ms 或完整 G2/G5。
+
 2026-11-07 [缩放中平移的灰条](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：平移不再清掉缩出密度，新露出的世界若已被更粗瓦片盖住就提交该覆盖栈；晚到的同倍率帧仍收下。不是 33/100ms 或完整 G2/G5。
 
 2026-11-07 [连续缩放覆盖连续性](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：缩出密度播种之后，快慢缩放仍会大块留白。原因是目标格子未齐就不发布，且密度跳变会取消补洞瓦片；总览只进 CSS 图集。现改为视口并集盖住才换帧，粗层垫在锐层下，在途瓦片按是否还在画洞决定去留。预算、落定精确瓦片和物理 DPR 预览不变。不是 33/100ms 或完整 G2/G5。

@@ -63,6 +63,7 @@ test('a coverage frame is kept when the pan moves before its acknowledgement', (
   expect(acceptTranslatedCoverage(frame)).toBe(true)
   expect(acceptTranslatedCoverage({ ...frame, liveZoom: 2 })).toBe(false)
   expect(acceptTranslatedCoverage({ ...frame, preview: true })).toBe(false)
+  expect(acceptTranslatedCoverage({ ...frame, idsMatch: true, tileCount: 2, shownCount: 2 })).toBe(true)
   expect(acceptTranslatedCoverage({ ...frame, matchesSubmission: false })).toBe(false)
   expect(acceptTranslatedCoverage({ ...frame, idsMatch: false })).toBe(false)
 })

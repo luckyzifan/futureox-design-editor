@@ -329,7 +329,9 @@ export function NativeSourceSurface(props:Props){
           // Pan and zoom-out both expose world outside the cropped bitmap.
           // Coarser residents already in cache have to be drawn there; CSS
           // only shifts the crop and fills the rest with the canvas gray.
-          if(!bitmapContext||!shown||!moving)return
+          if(!bitmapContext||!shown)return
+          const translated=p.view.zoom===shown.view.zoom&&(p.view.x!==shown.view.x||p.view.y!==shown.view.y)
+          if(!moving&&!translated)return
           const resident=[...cache.values()].filter(tile=>tile.gpuTile&&tile.placement)
           return coverageBeyondBacking(resident,p.view,p,{view:shown.view,width:shown.width,height:shown.height},48)
         }
@@ -370,6 +372,8 @@ export function NativeSourceSurface(props:Props){
         const items:ResidentFrame['items']=visible.map(tile=>({active:true,layer:exact&&keys.has(tile.key)?4:1,
           tile:{key:tile.key,serial:tile.serial,gpuTile:tile.gpuTile!,x:tile.x,y:tile.y,width:tile.width,height:tile.height,zoom:tile.zoom,phaseX:tile.phaseX,phaseY:tile.phaseY}}))
         wanted={id,sequence,view:{...p.view},width:p.width,height:p.height,dpr:ratio,scale:raster.scale,complete,mixed:refining,demand,ids}
+        if(backing&&backing.view.zoom===p.view.zoom&&(backing.view.x!==p.view.x||backing.view.y!==p.view.y))
+          element.dataset.sourceCoverageExtend='pan'
         // The presenter independently checks actual textures and physical coverage.
         emit({phase:'refining',done,total:tiles.length})
         client.present({presentationId:id,view:p.view,width:p.width,height:p.height,dpr:ratio,items,allowBackground:!refining,...(regions?{cameraPreview:{anchor:visible[0].gpuTile!}}:{})})
@@ -541,6 +545,7 @@ export function NativeSourceSurface(props:Props){
         actual.width===expected.width&&actual.height===expected.height&&actual.dpr===expected.dpr&&
         actual.view.x===p.view.x&&actual.view.y===p.view.y&&actual.view.zoom===p.view.zoom&&
         actual.width===p.width&&actual.height===p.height&&actual.dpr===density.current&&expected.demand===demandKey()
+      const submittedMatch=!!sent?.tiles.length&&sent.tiles.every(tile=>ids.has(tile.gpuTile))&&shownTiles.length===sent.tiles.length
       const idsMatch=!!expected&&[...expected.ids].every(id=>ids.has(id))
       const allIds=current&&idsMatch
       const terminal=allIds&&expected.complete&&!actual.preview
@@ -566,7 +571,7 @@ export function NativeSourceSurface(props:Props){
       // Keeping the frame still fills the strip it was built for; project()
       // then follows the newer camera. A zoom change is not this frame.
       const translationAdvance=acceptTranslatedCoverage({
-        outward:!!sent?.outward,preview:!!actual.preview,idsMatch,tileCount:sent?.tiles.length??0,
+        outward:!!sent?.outward,preview:!!actual.preview,idsMatch:submittedMatch,tileCount:sent?.tiles.length??0,
         shownCount:shownTiles.length,sentZoom:sent?.view.zoom??NaN,liveZoom:p.view.zoom,
         samePixels:actual.dpr===density.current&&actual.width===p.width&&actual.height===p.height&&
           actual.dpr===sent?.dpr&&actual.width===sent?.width&&actual.height===sent?.height,

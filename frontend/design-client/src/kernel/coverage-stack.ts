@@ -108,6 +108,8 @@ export function acceptTranslatedCoverage(input: {
   outward: boolean; preview: boolean; idsMatch: boolean; tileCount: number; shownCount: number
   sentZoom: number; liveZoom: number; samePixels: boolean; matchesSubmission: boolean
 }) {
+  // idsMatch is this submission's own tiles, not whichever frame is newest.
+  // A later pan must not drop the bitmap that already paints the previous strip.
   return input.outward && !input.preview && input.idsMatch && input.tileCount > 0 &&
     input.tileCount === input.shownCount && input.sentZoom === input.liveZoom &&
     input.samePixels && input.matchesSubmission
