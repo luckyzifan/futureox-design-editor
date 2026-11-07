@@ -2547,7 +2547,8 @@ export function ProgressiveSurfaceImpl(
           overviewTiles={[...new Set([...overviewKeys.current,...(nativePageBacking.current?.keys || [])])].flatMap(key=>{
             const tile=tileRef.current.get(key)
             return tile && tile.document===doc && tile.revision===contract.revision && ready.current.has(key) &&
-              tile.residentDevice?.client===rasterClient && tile.residentDevice.key===previewDevice.current.key ? [tile] : []
+              previewDevice.current.client===rasterClient && !!previewDevice.current.key &&
+              (!tile.residentDevice || tile.residentDevice.client===rasterClient && tile.residentDevice.key===previewDevice.current.key) ? [tile] : []
           })}
           allowPanPreview={import.meta.env.VITE_DESIGN_PAN_PRESENT_PREVIEW!=='0'}
           panBacking={reusableFrame&&displayed&&!displayed.preview?displayed:undefined}

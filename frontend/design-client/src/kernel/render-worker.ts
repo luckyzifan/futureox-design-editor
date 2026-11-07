@@ -464,7 +464,7 @@ function schedulePose(){
         if(!ids.length||ids.length>16||ids.some(id=>!session.scene.nodes[id]||!session.document.nodes[id]||!Array.isArray(pose.transforms[id])||
           pose.transforms[id].length!==6||!Array.from(pose.transforms[id]).every(Number.isFinite))){rebasePose(pose);break}
         const documentStarted=performance.now()
-        const document=session.patch?undefined:{...session.document,nodes:{...session.document.nodes,...Object.fromEntries(ids.map(id=>
+        const document=session.patch||session.native&&!pose.terminal?undefined:{...session.document,nodes:{...session.document.nodes,...Object.fromEntries(ids.map(id=>
           [id,{...session.document.nodes[id],transform:pose.transforms[id]}]))}}
         const documentMs=performance.now()-documentStarted
         const scale=session.scene.view.zoom,base=session.window
@@ -614,7 +614,7 @@ function schedulePose(){
           next.gestureSoftEffects = result.gestureBlurPixels > 0
           session.scene=next
           if(session.patch)session.patch.accept(next,pose.transforms)
-          else {session.document=document!;laneState.interactionDocument=document;laneState.deferredInteractionDocument=document}
+          else if(!session.native||pose.terminal){session.document=document!;laneState.interactionDocument=document;laneState.deferredInteractionDocument=document}
           laneState.compiledScene={revision:laneState.loadedRevision,options:session.options,scene:next}
           const content=visible??window
           const bounds={x:(content.x-next.view.x)/scale,y:(content.y-next.view.y)/scale,width:content.w/scale,height:content.h/scale}
