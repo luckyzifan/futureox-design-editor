@@ -1,5 +1,7 @@
 # Futureox Design Core：渲染优先工程与验收规范
 
+2026-11-07 的[连续缩放覆盖](../testing/verification-zoom-coverage-continuity-20261107/README.md)只改变缩放时哪些已有瓦片可以留在画面上、哪些在途瓦片算过期。不提高预算，不把预览密度改成永久 1x，不关闭 33/100ms 或完整 G2/G5。
+
 2026-11-02 的[吸管与取色](../testing/verification-eyedropper-color-picker-20261102/README.md)只改颜色界面。不改瓦片、预算或实验开关，不关闭 33/100ms 或完整 G2/G5。
 
 2026-11-02 的[选区、框选与测距](../testing/verification-figma-canvas-chrome-marquee-20261102/README.md)只改画布交互叠层。gaps5：选区、悬停和框选边是整像素上的 1px `#4597F7`，框选填充 `#DCE9F5`，间距 `#E05634`。不改瓦片、预算或实验开关，不关闭 33/100ms 或完整 G2/G5。

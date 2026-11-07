@@ -3,6 +3,8 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-07 [连续缩放覆盖连续性](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：大块空白来自只发布同密度整组瓦片，以及缩放比变化时取消仍在补洞的在途瓦片；已有更粗瓦片没有画进当前帧。覆盖栈在并集盖住视口时才发布，否则留着上一张图。不改预算、落定密度或普通倍率预览 DPR。真机回放未做。33/100ms 与完整 G2/G5 未关闭。
+
 2026-11-07 [提交、缩出、总览与自动保存优化](../../../testing/verification-integrated-performance-20261106/README.md)：Rust 回执位姿证明默认启用并保留 `VITE_DESIGN_COMPONENT_POSE=0` 回退；候选预检不污染非位姿布局。缩出播种后仍可展示完整驻留清晰瓦片，总览预热最多两块一批且单 raster owner。源保存只处理完整差量，不可变浏览器快照免重复克隆。真实 FIG 三轮 A/B 的就绪中位约 295.3→233.1ms，但最终构建仍有 141ms 长任务和秒级精修；33/100ms 与完整 G2/G5 未关闭。
 
 2026-11-06 [连续手势与源副本收尾](../../../testing/verification-fluid-priority-20261106/README.md)：保留当前密度、源返回视图和已验的无滤镜输入节奏；旋转仅在旧/新支持范围避开后续背景读取时局部原生重绘，每个输入及晚到输入均重验。拖回时取消过时整屏捕获，历史相机不再冻结当前背景精修。已验三项调度/捕获策略默认启用并保留 `0` 回退；同倍率源平移复用和缩窄整屏捕获的失败候选已移除。自动保存的 Sketch 编组宽度修改可关闭重开，原件不变。475 项前端、19 项 host 检查和真实素材回放分别记录；大 FIG 精修仍约 2 秒且有一次 275ms 提交停顿，33/100ms 与完整 G2/G5 未关闭。按用户要求不再录制。

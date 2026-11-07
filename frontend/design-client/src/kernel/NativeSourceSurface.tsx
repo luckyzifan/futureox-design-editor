@@ -9,7 +9,9 @@ import {NAVIGATION_BACKING_BYTES} from './navigation-backing'
 import type {CanvasCamera} from '../canvas-camera'
 import {KernelClient,backendPreference,renderExecutionPolicy,type TileResult} from './client'
 import {canvasSamplingProfile} from './render-policy'
-import {SourceViewportPlanner,backingCoversSettledSource,coveredSourceDetail,retainedZoomOut,retainedSourceReturn,improvesSourceZoom,sourceTileBringsDetail,visibleSourceDensity} from './source-viewport-plan'
+import {SourceViewportPlanner,backingCoversSettledSource,coveredSourceDetail,retainedZoomOut,retainedSourceReturn,improvesSourceZoom,visibleSourceDensity} from './source-viewport-plan'
+import {retainInFlightTile,selectCoverageStack} from './coverage-stack'
+import {prioritizeUncoveredTiles} from './coverage-priority'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
 import {tileIntersectsView, tilePlacementAtView} from './tile-preview'
 import {cpuTileBlitOrigin} from './cpu-tile-frame'
@@ -319,7 +321,18 @@ export function NativeSourceSurface(props:Props){
         const returned=returnReuse&&refining&&source.materialKeys&&backing&&bitmapContext&&!partialMaterials&&
           !zoomingIn&&backing.view.zoom>p.view.zoom&&quality.scale===undefined
           ?retainedSourceReturn(cache.values(),p.view,p,ratio,p.view.zoom*ratio>=8):undefined
-        const stored=refining?outwardCover()??returned:undefined
+        // A zoom-out must not wait for the whole target lattice. Publish the
+        // coarse overview together with any sharper residents as soon as that
+        // union covers the viewport; until then the previous image stays.
+        const continuityCover=()=>{
+          const shown=backing
+          if(!bitmapContext||!shown||zoomingIn||!moving)return
+          const resident=[...cache.values()].filter(tile=>tile.gpuTile&&tile.placement)
+          const stack=selectCoverageStack(resident,p.view,p,48)
+          if(!stack?.some(tile=>tile.zoom+1e-9<shown.view.zoom*shown.dpr))return
+          return stack
+        }
+        const stored=refining?outwardCover()??returned??continuityCover():undefined
         let visible:Tile[],partialTiles:Tile[]|undefined,regions:OverviewMaterial[]|undefined
         if((refining||focal)&&done&&exact&&p.overviewBoxes?.length&&bitmapContext&&(!backing||partialMaterials||focal)){
           const ready=tiles.flatMap(tile=>{const entry=cache.get(tile.key);return entry?[entry]:[]})
@@ -392,10 +405,7 @@ export function NativeSourceSurface(props:Props){
         workQueue.demand(covered&&!optional,tile=>{
           if(overview?.tiles.some(base=>base.key===tile.key))return !moving && !missing
           if(tile.prefetch)return next.keys.has(tile.key)||!missing&&next.prefetchKeys.has(tile.key)
-          if(moving&&continuousZoom&&zoomingIn&&!next.keys.has(tile.key)&&(tile.width>514||tile.height>514))return false
-          const relative=next.raster.scale/tile.zoom
-          return relative<=2&&relative>=.5&&tileIntersectsView(tile,next.p.view,next.p) ||
-            zoomingIn&&continuousZoom&&relative>2&&relative<=8&&sourceTileBringsDetail(tile,next.p.view,next.p,cache.values())
+          return retainInFlightTile(tile,next.p.view,next.p,cache.values(),next.keys,next.prefetchKeys,zoomingIn&&continuousZoom,next.raster.scale)
         })
       }
     }
@@ -432,10 +442,15 @@ export function NativeSourceSurface(props:Props){
           // including inward zoom. There is still a single raster owner.
           const ordered=p.overviewBoxes?.length&&!optional&&raster.scale===p.view.zoom*ratio?
             orderMaterialTiles(candidates,materialRegions(p.overviewBoxes,p,ratio),planner.focus(p.view,p.width,p.height)):candidates
+          // Newly exposed world comes first. The centre can keep its sharper
+          // residents; waiting for it before the margin is what leaves a blank band.
+          const holeFirst=!optional&&moving&&continuousZoom&&!zoomingIn
+            ?prioritizeUncoveredTiles(ordered,[...cache.values()],{x:-p.view.x/p.view.zoom,y:-p.view.y/p.view.zoom,width:p.width/p.view.zoom,height:p.height/p.view.zoom})
+            :ordered
           // A settled overview can stream its visible cohort in one request.
           // The worker still prepares just one tile ahead of its GPU raster.
           const limit=overviewMode&&!optional&&!moving&&raster.scale<=1?8:SOURCE_PIPELINE_TILES
-          const batch=ordered.slice(0,source.materialKeys && moving && zoomingIn && continuousZoom && backing ? 1 : limit)
+          const batch=holeFirst.slice(0,source.materialKeys && moving && zoomingIn && continuousZoom && backing ? 1 : limit)
           diagnostics.record('cache',{count:batch.length,prefetch:optional?1:0,reasonCode:optional?7:5})
           const work=workQueue.begin(batch,limit)
           const camera = warmBase && overview ? overview.view : raster.camera
@@ -739,10 +754,9 @@ export function NativeSourceSurface(props:Props){
           const coveredDetail=import.meta.env.VITE_DESIGN_SETTLED_SOURCE_PRIORITY!=='0' &&
             missing && source.materialKeys && zoomingIn && continuousZoom && native.raster.scale>1 &&
             backingCoversSettledSource(backing,native.p,density.current)
-          workQueue.demand(false,tile=>native.keys.has(tile.key)||!missing&&tile.prefetch===true&&native.prefetchKeys.has(tile.key)||
-            missing&&zoomingIn&&continuousZoom&&!tile.prefetch&&tile.zoom<native.raster.scale&&tile.zoom>=native.raster.scale/8&&
-            !(coveredDetail && tile.zoom*4<=native.raster.scale) &&
-            sourceTileBringsDetail(tile,native.p.view,native.p,cache.values()))
+          workQueue.demand(false,tile=>!(coveredDetail && tile.prefetch!==true && tile.zoom*4<=native.raster.scale) &&
+            (native.keys.has(tile.key)||!missing&&tile.prefetch===true&&native.prefetchKeys.has(tile.key)||
+            retainInFlightTile(tile,native.p.view,native.p,cache.values(),native.keys,native.prefetchKeys,zoomingIn&&continuousZoom,native.raster.scale)))
           schedulePaint();void run()
         }catch(error){fail(error)}
       },continuousZoom&&lastInputAt-lastZoomAt<180?Math.min(SOURCE_WHEEL_QUIET_MS,Math.max(56,wheelInterval*2+8)):SOURCE_QUIET_MS):undefined
