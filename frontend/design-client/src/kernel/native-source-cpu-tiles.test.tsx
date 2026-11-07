@@ -4,7 +4,7 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, test, vi } from 'vitest'
 
-const calls = vi.hoisted(() => ({ requests: 0, attached: 0, presented: 0, frames: 0 }))
+const calls = vi.hoisted(() => ({ requests: 0, attached: 0, presented: 0, frames: 0, keys: [] as string[] }))
 vi.mock('./client', () => ({
   backendPreference: () => 'cpu',
   renderExecutionPolicy: { desktopFullMath: true, desktopDisplay: true, cpuOnly: true, hdrCompositing: false },
@@ -13,6 +13,7 @@ vi.mock('./client', () => ({
     renderSource(_source: unknown, options: { tileViewport?: { key: string; x: number; y: number; width: number; height: number; zoom: number; gutter?: number }[] }, progress?: (tile: object) => void) {
       calls.requests++
       const tile = options.tileViewport?.[0]
+      if (tile) calls.keys.push(tile.key)
       if (!tile) return Promise.resolve({ bytes: new Uint8Array() })
       progress?.({
         ...tile,
@@ -70,6 +71,7 @@ test('cpu-only source overview draws bitmap tiles without a gpu texture or a ful
     calls.requests = 0
     calls.attached = 0
     calls.presented = 0
+    calls.keys = []
     await act(async () => root.render(<NativeSourceSurface source={source} view={{ x: 12, y: 8, zoom: 0.05 }} width={800} height={600} onStatus={status => statuses.push(status)} />))
     // Motion coverage remains a preview until the quiet camera requests its native lattice.
     await act(async () => { await vi.waitFor(() => expect(statuses.at(-1)?.phase).toBe('ready')) })
@@ -81,6 +83,36 @@ test('cpu-only source overview draws bitmap tiles without a gpu texture or a ful
     expect(statuses.some(status => status.phase === 'error')).toBe(false)
     expect(statuses.at(-1)).toMatchObject({ phase: 'ready', done: 1, total: 1 })
     expect(dom.window.document.querySelector('.kernel-status')?.textContent).toBe('CPU · 已显示')
+  } finally {
+    await act(async () => root.unmount())
+    dom.window.close()
+    vi.unstubAllGlobals()
+  }
+})
+
+test('cpu-only pan of a zoomed-out artboard paints the coarse page tile into the strip', async () => {
+  const dom = new JSDOM('<div id="root"></div>')
+  dom.window.HTMLCanvasElement.prototype.getContext = (type: string) => type === '2d' ? { setTransform() {}, fillRect() {}, drawImage() {}, putImageData() {} } : null
+  for (const name of ['window', 'document', 'navigator'] as const) vi.stubGlobal(name, name === 'window' ? dom.window : dom.window[name])
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => { calls.frames++; queueMicrotask(() => fn(0)); return calls.frames })
+  vi.stubGlobal('cancelAnimationFrame', () => {})
+  const root = createRoot(document.getElementById('root')!)
+  const source: SourceCanvasSnapshot = {
+    owner: { documentId: 'source', sessionEpoch: 1 }, revision: 0, token: 'source-token',
+    bytes: 1000, nodes: 753, roots: 1, pageId: 'page', stageId: 'stage',
+    bounds: { x: 0, y: 0, width: 400, height: 220 }, warnings: [], rasterProfile: 'figma', colorManaged: true,
+  }
+  const presented: { x: number; y: number; zoom: number }[] = []
+  calls.keys = []
+  try {
+    const paint = (view: { x: number; y: number; zoom: number }) => root.render(<NativeSourceSurface source={source} view={view} width={1000} height={700} onPresented={frame => presented.push(frame.view)} />)
+    await act(async () => paint({ x: 460, y: 300, zoom: 0.08 }))
+    await act(async () => { await vi.waitFor(() => expect(calls.keys.some(key => key.startsWith('navigation-overview:'))).toBe(true)) })
+    await act(async () => paint({ x: 180, y: 300, zoom: 0.08 }))
+    await act(async () => { await vi.waitFor(() => expect(dom.window.document.querySelector('.native-source-content')?.getAttribute('data-source-coverage-extend')).toBe('pan')) })
+    expect(presented.some(view => view.zoom === 0.08 && view.x === 180)).toBe(true)
+    expect(dom.window.document.querySelector('.native-source-surface')?.style.clipPath ?? '').toBe('')
   } finally {
     await act(async () => root.unmount())
     dom.window.close()

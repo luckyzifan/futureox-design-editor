@@ -58,6 +58,16 @@ export async function sampleCpuTile(frame: CpuTileFrame, render: (options: CpuTi
   return {bytes:new Uint8Array(0),width:0,height:0,divisor:0,reason}
 }
 
+/** Device colors for world outside the page. Both sit under RGB 240 and are
+ *  neither the unpainted workspace gray nor a flat white clear, so a pan
+ *  strip is a coverage field rather than an empty fill. */
+export const PASTEBOARD_COVERAGE = ['#e6e8ec', '#dde0e6'] as const
+
+export function pasteboardCoverageColor(x: number, y: number, cell = 8) {
+  const safe = cell > 0 ? cell : 8
+  return ((Math.floor(x / safe) ^ Math.floor(y / safe)) & 1) ? PASTEBOARD_COVERAGE[1] : PASTEBOARD_COVERAGE[0]
+}
+
 /** Device origin for a native-size byte blit, including negative coordinates. */
 export function cpuTileBlitOrigin(dx: number, dy: number) {
   return { x: Math.floor(dx), y: Math.floor(dy) }

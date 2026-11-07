@@ -32,6 +32,46 @@ export function nearOverviewTiles(tiles: readonly RasterTile[], view: CanvasCame
   return [...tiles].sort((a,b)=>distance(a)-distance(b))
 }
 
+/** The live viewport is larger than the page, so pasteboard is on screen. */
+export function viewportExtendsPastPage(page: Bounds, view: CanvasCamera, size: { width: number; height: number }) {
+  if (!(page.width > 0) || !(page.height > 0) || !(view.zoom > 0)) return false
+  if (![page.x, page.y, page.width, page.height, view.x, view.y, view.zoom, size.width, size.height].every(Number.isFinite)) return false
+  const left = -view.x / view.zoom, top = -view.y / view.zoom
+  const right = left + size.width / view.zoom, bottom = top + size.height / view.zoom
+  const tol = 1 / view.zoom
+  return left < page.x - tol || top < page.y - tol || right > page.x + page.width + tol || bottom > page.y + page.height + tol
+}
+
+/** One coarse tile covering the viewport plus a full viewport of margin.
+ *  A pan of at least a quarter of the screen stays inside it, including
+ *  pasteboard outside the page. Quantized so that pan reuses the same tile. */
+export function panStripBounds(view: CanvasCamera, size: { width: number; height: number }, page?: Bounds) {
+  if (!(view.zoom > 0) || !(size.width > 0) || !(size.height > 0)) return
+  if (![view.x, view.y, view.zoom, size.width, size.height].every(Number.isFinite)) return
+  const vw = size.width / view.zoom, vh = size.height / view.zoom
+  const vx = -view.x / view.zoom, vy = -view.y / view.zoom
+  let x0 = Math.floor((vx - vw) / vw) * vw
+  let y0 = Math.floor((vy - vh) / vh) * vh
+  let x1 = Math.ceil((vx + vw * 2) / vw) * vw
+  let y1 = Math.ceil((vy + vh * 2) / vh) * vh
+  if (page && page.width > 0 && page.height > 0 && page.width * page.height < vw * vh * 64 &&
+      [page.x, page.y, page.width, page.height].every(Number.isFinite)) {
+    x0 = Math.min(x0, Math.floor(page.x / vw) * vw)
+    y0 = Math.min(y0, Math.floor(page.y / vh) * vh)
+    x1 = Math.max(x1, Math.ceil((page.x + page.width) / vw) * vw)
+    y1 = Math.max(y1, Math.ceil((page.y + page.height) / vh) * vh)
+  }
+  if (!(x1 > x0) || !(y1 > y0)) return
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }
+}
+
+/** Page-level coarse tile for the pasteboard around a zoomed-out artboard.
+ *  nodes is forced to 0 so a large file stays one tile, not a regional grid. */
+export function panStripOverview(page: Bounds, view: CanvasCamera, size: { width: number; height: number }) {
+  const bounds = panStripBounds(view, size, page)
+  return bounds ? navigationOverview(bounds, 1, 0) : undefined
+}
+
 /** One optional overview request shares the established two-tile pipeline. */
 export function overviewWarmBatch(tiles: readonly RasterTile[], view: CanvasCamera, width: number, height: number,
   available: (tile: RasterTile) => boolean) {
