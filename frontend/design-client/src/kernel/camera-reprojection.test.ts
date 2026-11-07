@@ -49,6 +49,7 @@ test('camera motion does not wait for worker completion and marks only newly exp
  const gaps=[...f.host.querySelectorAll('div')].filter(e=>e.style.display!=='none')
  expect(gaps.map(e=>[e.style.left,e.style.top,e.style.width,e.style.height])).toEqual([
   ['0px','0px','20px','80px'],['20px','0px','80px','5px']])
+ expect(gaps.every(e=>e.style.background==='rgb(245, 245, 245)')).toBe(true)
  expect(f.projection.update(f.backing,view,100,80,true).changed).toBe(false)
  expect(f.backing.view).toEqual({x:10,y:20,zoom:1})
 })

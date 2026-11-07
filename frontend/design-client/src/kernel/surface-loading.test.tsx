@@ -51,7 +51,7 @@ test.each([0, 1] as const)('cold surface has noninteractive opaque UI and honest
   expect(tree.props.style.pointerEvents).toBe('none')
   const backdrop = byClass(tree, 'kernel-workspace-backdrop')
   expect(backdrop.props['aria-hidden']).toBe('true')
-  expect(backdrop.props.style).toMatchObject({ inset: 0, backgroundColor: '#eeeff3', pointerEvents: 'none' })
+  expect(backdrop.props.style).toMatchObject({ inset: 0, backgroundColor: '#f5f5f5', pointerEvents: 'none' })
   const status = byClass(tree, 'kernel-first-frame')
   expect(status.props.role).toBe('status')
   expect(status.props['aria-live']).toBe('polite')
@@ -66,7 +66,7 @@ test('transparent authored background remains untouched while workspace chrome s
   props.document.pages[0].background = '#00000000'
   const before = JSON.stringify(props.document), render = harness()
   let tree = render(props)
-  expect(byClass(tree, 'kernel-workspace-backdrop').props.style.backgroundColor).toBe('#eeeff3')
+  expect(byClass(tree, 'kernel-workspace-backdrop').props.style.backgroundColor).toBe('#f5f5f5')
   expect(child(tree, ProgressiveSurface).props.document).toBe(props.document)
   child(tree, ProgressiveSurface).props.onPresentation(exact(props))
   tree = render(props)

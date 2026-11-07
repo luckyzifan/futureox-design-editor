@@ -1,4 +1,4 @@
-import { navigationOverview, nearOverviewTiles } from './navigation-overview'
+import { navigationOverview, overviewWarmBatch } from './navigation-overview'
 import { NavigationIntentOwner } from './navigation-intent-owner'
 import { NativeNavigationHandoff, reusableNativeNavigationPreview, type NativeNavigationCapture } from './native-navigation-handoff'
 import { NavigationBudgetLatch } from './navigation-budget-latch'
@@ -1539,9 +1539,8 @@ export function ProgressiveSurfaceImpl(
           const {tiles:baseTiles,view:camera} = baseOverview
           let missing = baseTiles.filter(tile => !ready.current.has(tile.key) || tileRef.current.get(tile.key)?.document !== doc)
           if (seed) {
-            const local = nearOverviewTiles(missing,view,width,height).find(tile=>tileIntersectsView(tile,view,{width,height}))
-            if (!local) return
-            missing = [local]
+            missing = overviewWarmBatch(missing,view,width,height,tile=>tileIntersectsView(tile,view,{width,height}))
+            if (!missing.length) return
           }
           if (!missing.length) return
           if (hasRetainedOverview(tileRef.current.values(),ready.current,doc,contract.revision,extent,camera.zoom)) {
@@ -1559,11 +1558,11 @@ export function ProgressiveSurfaceImpl(
             false,backend,false,false,undefined,receive)
         }
         // The first ready frame can immediately be followed by a wheel burst.
-        // Seed one real region before native capture/viewport-cache early returns.
-        // Camera-only changes can seed a newly visited region. Edits retain the
-        // settle lane and do not pay for a page overview on pointer release.
+        // Seed bounded local coverage before capture/viewport-cache early returns,
+        // including the latest zoom-out target. Edits retain the settle lane and
+        // do not pay for a page overview on pointer release.
         if (residentDisplay && !sharpNavigation && !nativeVisibleTiles && !props.grid && !props.checkerboard &&
-            !props.pixelPreview && !props.interaction?.active && !retainedEditViewport && !navigationZoom.active &&
+            !props.pixelPreview && !props.interaction?.active && !retainedEditViewport && (!navigationZoom.active || zoomOutCoverage) &&
             (!displayed || (displayed.document === doc && displayed.revision === contract.revision && previousView &&
               (previousView.x !== view.x || previousView.y !== view.y || previousView.zoom !== view.zoom)))) {
           try { await fillOverview(true) }
@@ -2287,12 +2286,12 @@ export function ProgressiveSurfaceImpl(
     plan.pageId === pageId && plan.epoch === (props.presentationEpoch || 0)
   // Publish the target lattice together, including on camera-only changes.
   const fullPlanReady = currentPlan && !!plan?.ids.size && [...plan.ids].every(key=>ready.current.has(key)) && syncedDoc.current===doc
-  // A new revision's complete viewport preview is an atomic replacement,
-  // not a collection of partial new tiles over old-document pixels. The old
+  // A complete current viewport preview is an atomic replacement, including
+  // continuous navigation; it never mixes partial tiles over another revision. The old
   // frame stays retained until the actual resident compositor ACK below.
   // Do not treat import-ready as displayed, or geometric coverage as quality.
   const previewReplacement = residentDisplay && !hdrCompositing && !fullPlanReady &&
-    (!displayed || !reusableFrame) && props.visible !== false && !props.paused && !navigationZoom.suspended
+    (!displayed || !reusableFrame || navigationZoom.active) && props.visible !== false && !props.paused && !navigationZoom.suspended
     ? [...visible].reverse().find(tile => {
       const capture = tile.previewSource, device = previewDevice.current
       return tile.viewportPreview && tile.backend === 'webgpu' && tileRef.current.get(tile.key) === tile &&
@@ -2415,7 +2414,7 @@ export function ProgressiveSurfaceImpl(
           position: 'absolute',
           inset: 0,
           pointerEvents: 'none',
-          background: doc.pages.find((p) => p.id === pageId)?.background || '#eeeff3',
+          background: doc.pages.find((p) => p.id === pageId)?.background || '#f5f5f5',
           visibility: props.visible === false ? 'hidden' : 'visible',
         }}
       />

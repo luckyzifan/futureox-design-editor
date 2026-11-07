@@ -95,7 +95,7 @@ export function ResidentCompositeSurface(props: {
     const allowed=atomicCanvas.current&&p.allowPanPreview===true&&!!backing&&
       backing.client===p.client&&backing.source.document===p.sourceDocument&&backing.source.pageId===p.pageId&&
       backing.source.epoch===p.presentation?.epoch&&backing.source.rasterProfile===p.rasterProfile&&
-      backing.actual.dpr===p.dpr&&backing.source.displayCapability===p.presentation?.displayCapability&&
+      (backing.actual.dpr===p.dpr||backing.actual.preview===true)&&backing.source.displayCapability===p.presentation?.displayCapability&&
       !p.presentation?.managed&&!p.presentation?.grid&&!p.presentation?.checkerboard&&!p.presentation?.pixelPreview&&
       backing.source.animation===p.presentation?.animation&&
       !backing.actual.interaction&&!p.interaction?.active&&!backing.source.managed&&!backing.source.grid&&!backing.source.checkerboard&&!backing.source.pixelPreview

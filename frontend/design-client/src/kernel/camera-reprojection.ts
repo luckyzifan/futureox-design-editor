@@ -80,7 +80,7 @@ export class CameraReprojection {
         gap.setAttribute('aria-hidden', 'true')
         Object.assign(gap.style, { display: 'block', position: 'absolute', pointerEvents: 'none',
           left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px`,
-          background: '#fff' })
+          background: '#f5f5f5' })
       })
     }
     if (allowed && backing) this.history.show(backing, {view, width, height})
