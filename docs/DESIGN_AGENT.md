@@ -40,6 +40,8 @@ Anthropic Messages 把连接的 `wire` 设为 `anthropic`。
 
 一键出图会新建一页可编辑画板（导航、标题、副标题、卖点、按钮、页脚）。悬停页面行才出现 AI，用来进入该页做定向修改。主对话默认改这一页；句子里点了别的页面名，就改那一页。
 
+同一会话会把之前的用户话、助手话和工具调用整段送给模型。工具结果用真实的 `tool_call_id` / `tool_use_id`，不是工具名。超过 48 条时，较早的回合收成一条摘要，最近的回合原样保留。技能选择同时看对话和当前页上已有的画板、文字。
+
 工具调用展开成现有设计操作（`page.create`、`node.create`、`text.set`、`style.set` 等），再经 MCP `OperationBackend` 的 `design_batch_apply` 写入当前编辑器。
 
 ## Codex
