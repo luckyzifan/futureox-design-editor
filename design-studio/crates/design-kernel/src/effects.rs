@@ -1218,16 +1218,38 @@ fn color_shadow_linear_owned(
             }
             let src_a = pixel.0[3];
             let ix = rect.x + at as i32 + x_delta;
-            let b = crate::sampling::bilinear(
-                [
-                    shadow_tap(&alpha, ix, iy),
-                    shadow_tap(&alpha, ix + 1, iy),
-                    shadow_tap(&alpha, ix, iy + 1),
-                    shadow_tap(&alpha, ix + 1, iy + 1),
-                ],
-                u,
-                v,
-            );
+            // A zero horizontal fraction ignores the two right taps. Matching
+            // vertical samples cancel to that value, including the exact-zero
+            // case bilinear otherwise sends through the integer accumulator.
+            let b = if u == 0. {
+                let above = shadow_tap(&alpha, ix, iy);
+                let below = shadow_tap(&alpha, ix, iy + 1);
+                if above.to_bits() == below.to_bits() {
+                    if above == 0. { 0. } else { above }
+                } else {
+                    crate::sampling::bilinear(
+                        [
+                            above,
+                            shadow_tap(&alpha, ix + 1, iy),
+                            below,
+                            shadow_tap(&alpha, ix + 1, iy + 1),
+                        ],
+                        u,
+                        v,
+                    )
+                }
+            } else {
+                crate::sampling::bilinear(
+                    [
+                        shadow_tap(&alpha, ix, iy),
+                        shadow_tap(&alpha, ix + 1, iy),
+                        shadow_tap(&alpha, ix, iy + 1),
+                        shadow_tap(&alpha, ix + 1, iy + 1),
+                    ],
+                    u,
+                    v,
+                )
+            };
             let coverage = if inner { src_a * (1. - b) } else { b };
             *pixel = color.opacity(coverage);
         }

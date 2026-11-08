@@ -1,6 +1,6 @@
 import type { CanvasCamera } from '../canvas-camera'
 import { tilesCoverBounds, type RasterTile } from './tile-cache'
-import { previewUpscaleWithinLimit, tileIntersectsView } from './tile-preview'
+import { previewCameraScaleWithinLimit, tileIntersectsView } from './tile-preview'
 
 /** World rectangle of a tile's owned core that actually intersects the viewport.
  *  Gutters are not content. Undefined when the core misses the view. */
@@ -39,14 +39,14 @@ function bringsSamplingDetail(tile: RasterTile, view: CanvasCamera, size: { widt
 
 /** Coarsest residents that still paint a hole in `shown`. Drawn underneath the
  *  sharper set. A wider LOD already in memory may fill a zoom-out, but a
- *  bitmap more than 2× coarser than the requested zoom is an upscaled
- *  thumbnail and is not a readable frame. One wide overview beats a stack of
- *  fragments that cover less, within that sampling limit. */
+ *  bitmap more than 2× away from the requested zoom is not a readable frame.
+ *  One wide overview beats a stack of fragments that cover less, within that
+ *  sampling limit. The previous picture stays up until this stack covers. */
 export function selectCoverageUnderlay<T extends RasterTile>(candidates: readonly T[], view: CanvasCamera,
   size: { width: number; height: number }, shown: readonly RasterTile[], limit = 24): T[] {
   if (!Number.isSafeInteger(limit) || limit < 1) return []
   const shownSet = new Set(shown)
-  const pool = candidates.filter(tile => !shownSet.has(tile) && previewUpscaleWithinLimit(tile.zoom, view.zoom) &&
+  const pool = candidates.filter(tile => !shownSet.has(tile) && previewCameraScaleWithinLimit(tile.zoom, view.zoom) &&
     tileIntersectsView(tile, view, size))
     .sort((a, b) => a.zoom - b.zoom || a.x - b.x || a.y - b.y)
     .slice(0, 64)
