@@ -52,6 +52,14 @@ pub struct Decoded {
     pub vector_geometry: Option<std::sync::Arc<VectorGeometry>>,
     pub vertex_styles: Vec<u32>,
     pub region_styles: Vec<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub corner_skip: Option<String>,
+    /// FIG vertex style `strokeCap`, when every styled vertex agrees.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stroke_cap: Option<String>,
+    /// FIG vertex style `strokeJoin`, when every styled vertex agrees.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stroke_join: Option<String>,
 }
 
 /// Figma masks only the suffix after each visible mask. Multiple masks nest
@@ -62,30 +70,71 @@ pub fn mask_suffixes(flags:&[u8])->Result<Vec<u32>,String>{
     Ok(flags.iter().enumerate().rev().filter_map(|(i,v)|(*v==1).then_some(i as u32)).collect())
 }
 
-/// Bake known circular corners on a single closed straight contour. Preserve
-/// the ordinary decoder for branches, curves, paint overrides and smoothing.
-/// Those styles remain explicitly untranslated rather than guessed.
+fn uniform_style(ids: &[u32], values: &std::collections::HashMap<u32, String>) -> Option<String> {
+    let mut chosen: Option<&str> = None;
+    for id in ids {
+        if *id == 0 { continue; }
+        let Some(value) = values.get(id) else { continue };
+        if chosen.is_some_and(|previous| previous != value) { return None; }
+        chosen = Some(value);
+    }
+    chosen.map(str::to_string)
+}
+
+/// Bake known circular corners on a single closed straight contour.
+/// Handle mirroring is already stored on the edge tangents. A vertex style
+/// that only carries that mirroring, a zero radius, or one shared stroke
+/// cap/join is consumed instead of left as an untranslated override.
+/// Paint keys and a non-zero radius on a curve or branch stay untranslated.
 pub fn round_network(decoded:&mut Decoded,radius:f64,smoothing:f64,styles:&serde_json::Value)->Result<bool,String>{
     if !radius.is_finite()||radius<0.||!smoothing.is_finite(){return Err("Invalid FIG corner radius".into());}
-    if decoded.region_styles.iter().any(|id|*id!=0){return Ok(false);}
-    let Some(network)=&decoded.network else{return Ok(false)};
-    if network.vertices.len()<3||network.vertices.len()!=network.edges.len()||
-        network.edges.iter().any(|e|e.c1.is_some()||e.c2.is_some()){return Ok(false);}
     let mut overrides=std::collections::HashMap::new();
+    let mut caps=std::collections::HashMap::new();
+    let mut joins=std::collections::HashMap::new();
     if let Some(styles)=styles.as_array(){
         for style in styles{
-            let Some(map)=style.as_object() else{return Ok(false)};
-            if map.keys().any(|key|!matches!(key.as_str(),"styleID"|"cornerRadius")){return Ok(false);}
-            let Some(id)=style.get("styleID").and_then(serde_json::Value::as_u64).and_then(|n|u32::try_from(n).ok()) else{return Ok(false)};
-            let Some(r)=style.get("cornerRadius").and_then(serde_json::Value::as_f64) else{return Ok(false)};
+            let Some(map)=style.as_object() else{decoded.corner_skip=Some("style-shape".into());return Ok(false)};
+            if map.keys().any(|key|!matches!(key.as_str(),"styleID"|"cornerRadius"|"cornerSmoothing"|"handleMirroring"|"strokeCap"|"strokeJoin")){
+                decoded.corner_skip=Some("paint-style".into());return Ok(false);
+            }
+            let Some(id)=style.get("styleID").and_then(serde_json::Value::as_u64).and_then(|n|u32::try_from(n).ok()) else{decoded.corner_skip=Some("style-id".into());return Ok(false)};
+            let r=style.get("cornerRadius").and_then(serde_json::Value::as_f64).unwrap_or(radius);
             if !r.is_finite()||r<0.{return Err("Invalid FIG vertex radius".into());}
-            if overrides.insert(id,r).is_some(){return Ok(false);}
+            if overrides.insert(id,r).is_some(){decoded.corner_skip=Some("duplicate-style".into());return Ok(false);}
+            if let Some(cap)=style.get("strokeCap").and_then(serde_json::Value::as_str){caps.insert(id,cap.to_string());}
+            if let Some(join)=style.get("strokeJoin").and_then(serde_json::Value::as_str){joins.insert(id,join.to_string());}
         }
     }
+    let Some(network)=decoded.network.as_ref() else{decoded.corner_skip=Some("no-network".into());return Ok(false);};
+    let mut vertex_radii=Vec::with_capacity(decoded.vertex_styles.len());
+    for style in &decoded.vertex_styles{
+        let r=if *style==0{radius}else{let Some(r)=overrides.get(style) else{decoded.corner_skip=Some("missing-style".into());return Ok(false)};*r};
+        vertex_radii.push(r);
+    }
+    let metadata=||{
+        (uniform_style(&decoded.vertex_styles,&caps), uniform_style(&decoded.vertex_styles,&joins))
+    };
+    let region_styled=decoded.region_styles.iter().any(|id|*id!=0);
+    let straight_loop=network.vertices.len()>=3 && network.vertices.len()==network.edges.len()
+        && network.edges.iter().all(|edge|edge.c1.is_none()&&edge.c2.is_none());
+    if region_styled || !straight_loop {
+        if !region_styled && vertex_radii.iter().all(|r|*r==0.) {
+            let (cap,join)=metadata();
+            if caps.len()>0 && cap.is_none() || joins.len()>0 && join.is_none() {
+                decoded.corner_skip=Some("mixed-stroke-style".into());
+                return Ok(false);
+            }
+            decoded.stroke_cap=cap;
+            decoded.stroke_join=join;
+            decoded.vertex_styles.fill(0);
+            return Ok(true);
+        }
+        decoded.corner_skip=Some(if region_styled{"region-style"}else{"contour"}.into());
+        return Ok(false);
+    }
     let mut corners=std::collections::HashMap::new();
-    for (vertex,style) in network.vertices.iter().zip(&decoded.vertex_styles){
-        let r=if *style==0{radius}else{let Some(r)=overrides.get(style) else{return Ok(false)};*r};
-        if corners.insert((vertex.x.to_bits(),vertex.y.to_bits()),r).is_some(){return Ok(false);}
+    for (vertex,r) in network.vertices.iter().zip(&vertex_radii){
+        if corners.insert((vertex.x.to_bits(),vertex.y.to_bits()),*r).is_some(){decoded.corner_skip=Some("coincident".into());return Ok(false);}
     }
     if let Some(faces)=&network.filled_faces{
         if faces.len()!=1||faces[0].len()!=network.edges.len()||
@@ -105,6 +154,7 @@ pub fn round_network(decoded:&mut Decoded,radius:f64,smoothing:f64,styles:&serde
     if !closed||points.len()!=network.vertices.len(){return Ok(false);}
     let radii:Option<Vec<_>>=points.iter().map(|p|corners.get(&(p.x.to_bits(),p.y.to_bits())).copied()).collect();
     let Some(radii)=radii else{return Ok(false)};
+    let (stroke_cap, stroke_join) = metadata();
     let circular=crate::authoring_shapes::rounded_polygon_radii_smoothed(&points,&radii,smoothing.clamp(0.,1.))?;
     // Native Figma circular vector corners export as cubic Beziers (the
     // quarter-circle control length is radius * 4/3*tan(pi/8)). Convert only
@@ -129,6 +179,8 @@ pub fn round_network(decoded:&mut Decoded,radius:f64,smoothing:f64,styles:&serde
     }
     decoded.vector_geometry=Some(VectorGeometry::from_paths(&path,&path,&network.fill_rule)?.into());
     decoded.network=None;
+    decoded.stroke_cap=stroke_cap;
+    decoded.stroke_join=stroke_join;
     decoded.vertex_styles.fill(0);
     Ok(true)
 }
@@ -318,6 +370,9 @@ pub fn decode_network(bytes: &[u8], sx: f64, sy: f64) -> Result<Decoded, String>
             vector_geometry: None,
             vertex_styles,
             region_styles,
+            corner_skip: None,
+            stroke_cap: None,
+            stroke_join: None,
         });
     }
     // Large, nonbranching contours have a linear render representation. Branch
@@ -345,6 +400,9 @@ pub fn decode_network(bytes: &[u8], sx: f64, sy: f64) -> Result<Decoded, String>
         vector_geometry: Some(geometry.into()),
         vertex_styles,
         region_styles,
+        corner_skip: None,
+        stroke_cap: None,
+        stroke_join: None,
     })
 }
 

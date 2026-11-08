@@ -1627,6 +1627,23 @@ impl FigImporter {
             }
             node.network = decoded.network.map(Into::into);
             node.vector_geometry = decoded.vector_geometry;
+            if let Some(name) = decoded.stroke_cap.as_deref() {
+                let cap = Self::stroke_cap(Some(name));
+                for stroke in &mut node.strokes {
+                    stroke.cap = cap.0.into();
+                    stroke.end_marker = cap.1;
+                }
+            }
+            if let Some(name) = decoded.stroke_join.as_deref() {
+                let join = match name {
+                    "ROUND" => "round",
+                    "BEVEL" => "bevel",
+                    _ => "miter",
+                };
+                for stroke in &mut node.strokes {
+                    stroke.join = join.into();
+                }
+            }
         }
         if fig_type == "VECTOR"
             && let Some(entries) = change

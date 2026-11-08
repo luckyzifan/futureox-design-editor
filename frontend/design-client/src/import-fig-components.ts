@@ -1,4 +1,4 @@
-import type { ComponentProperty, DesignDocument, Paint } from './model'
+import type { ComponentProperty, DesignDocument, Paint, Stroke } from './model'
 const guid = (g: any): string => typeof g === 'string' ? g : g ? `${g.sessionID}:${g.localID}` : ''
 function literal(kind: ComponentProperty['kind'], value: any, ids: Map<string,string>): string | boolean {
   if (kind === 'boolean' && typeof value?.boolValue === 'boolean') return value.boolValue
@@ -7,7 +7,8 @@ function literal(kind: ComponentProperty['kind'], value: any, ids: Map<string,st
   throw new Error('FIG 组件属性缺少可执行的常量值；原文件未修改')
 }
 /** Resolve after assembly so property references name actual template layers. */
-export function importFigComponents(doc: DesignDocument, records: Map<string,any>, ids: Map<string,string>, toPaint: (p:any)=>Paint, warnings?: { add(message: string): unknown }) {
+const NULL_STYLE = '4294967295:4294967295'
+export function importFigComponents(doc: DesignDocument, records: Map<string,any>, ids: Map<string,string>, toPaint: (p:any)=>Paint, strokesOf: (record:any)=>Stroke[], warnings?: { add(message: string): unknown }) {
   for (const [sourceId, r] of records) {
     const n=doc.nodes[ids.get(sourceId)!]
     if (!n || r.type!=='SYMBOL') continue
@@ -28,9 +29,27 @@ export function importFigComponents(doc: DesignDocument, records: Map<string,any
       const field={boolean:'VISIBLE',text:'TEXT_DATA','instance-swap':'OVERRIDDEN_SYMBOL_ID'}[kind],key=guid(def.id)
       const targets=[...records].filter(([source,record])=>descendants.has(ids.get(source)!) &&
         record.componentPropRefs?.some((ref:any)=>!ref.isDeleted && guid(ref.defID)===key && ref.componentPropNodeField===field))
-      if(targets.length!==1){warnings?.add(`FIG 组件属性 ${def.name||key} 没有唯一目标（${targets.length}），定义已跳过`);continue}
-      const target=doc.nodes[ids.get(targets[0][0])!]
-      n.component.properties[key]={name:def.name||key,kind,targetKey:target.componentKey||target.id,defaultValue:literal(kind,def.initialValue,ids)}
+      let defaultValue: string | boolean
+      try { defaultValue = literal(kind, def.initialValue, ids) }
+      catch (error) { warnings?.add(error instanceof Error ? error.message : String(error)); continue }
+      if (!targets.length) {
+        n.component.properties[key] = { name: def.name || key, kind, targetKey: '', unbound: true, defaultValue }
+        continue
+      }
+      const depth = new Map<string, number>()
+      const walk = (id: string, level: number) => {
+        if (depth.has(id) || level > 64) return
+        depth.set(id, level)
+        for (const child of doc.nodes[id]?.children || []) walk(child, level + 1)
+      }
+      walk(n.id, 0)
+      const ordered = targets.map(([source]) => doc.nodes[ids.get(source)!]).filter(Boolean)
+        .sort((a, b) => (depth.get(a.id) ?? 0) - (depth.get(b.id) ?? 0))
+      const keyOf = (target: { componentKey?: string; id: string }) => target.componentKey || target.id
+      const [primary, ...rest] = ordered
+      const property: ComponentProperty = { name: def.name || key, kind, targetKey: keyOf(primary), defaultValue }
+      if (rest.length) property.alsoTargets = [...new Set(rest.map(keyOf))].filter(item => item !== property.targetKey)
+      n.component.properties[key] = property
     }
   }
   for(const [sourceId,r] of records) {
@@ -52,11 +71,25 @@ export function importFigComponents(doc: DesignDocument, records: Map<string,any
     for(const override of r.symbolData?.symbolOverrides||[]) {
       const sourcePath=override.guidPath?.guids || (override.overrideKey?[override.overrideKey]:[])
       const path=sourcePath.map((g:any)=>ids.get(guid(g))||guid(g)).join('/')||'$root',fields:Record<string,unknown>={}
+      const strokeInputs=new Set(['strokeWeight','strokeAlign','strokeCap','strokeJoin','dashPattern','borderStrokeWeightsIndependent','borderTopWeight','borderRightWeight','borderBottomWeight','borderLeftWeight'])
       for(const [key,value] of Object.entries(override)) {
+        if(Array.isArray(override.strokePaints) && strokeInputs.has(key)) continue
         if(['guidPath','overrideKey','styleID'].includes(key))continue
         if(['name','visible','opacity','fontSize'].includes(key))fields[key]=value
         else if(key==='textData')fields.text=(value as any)?.characters??''
         else if(key==='fillPaints')fields.fills=(value as any[]).map(toPaint)
+        else if(key==='strokePaints')fields.strokes=strokesOf(override)
+        else if(key==='styleIdForFill' || key==='styleIdForStrokeFill'){
+          if(key==='styleIdForFill'){
+            const id=guid((value as any)?.guid ?? value)
+            if(id && id!==NULL_STYLE && id!=='0:0'){
+              const resolved=ids.get(id)
+              const style=resolved && doc.designSystem?.styles?.[resolved]
+              if(style?.kind==='paint') fields.styleRefs={...(fields.styleRefs as Record<string,string>||{}), fills: resolved}
+              else warnings?.add(`FIG 实例覆盖 styleIdForFill 未能对应到已导入填充样式`)
+            }
+          }
+        }
         else if(key==='symbolID')fields.swapComponent=ids.get(guid(value))
         else warnings?.add(`FIG 实例覆盖 ${key} 暂不能执行，其余覆盖已保留`)
       }

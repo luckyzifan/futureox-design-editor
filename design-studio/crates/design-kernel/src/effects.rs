@@ -395,7 +395,12 @@ fn box_pass_in_place_domain<const CHANNELS: usize>(input: &mut Surface, r: i32, 
                 }
                 Some(out)
             };
-            let written = if let Some(values) = certified(&sum, since_sync) {
+            // A window of exact zeros is an exact zero. The error interval
+            // around zero is not a single f32, so the certified path used to
+            // fall through to a full rational convolution on every empty pixel.
+            let written = if sum.iter().all(|value| *value == 0.) {
+                Some([0_f32; CHANNELS])
+            } else if let Some(values) = certified(&sum, since_sync) {
                 Some(values)
             } else {
                 sum = [0.; CHANNELS];
