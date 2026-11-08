@@ -3,6 +3,8 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-08 [外阴影着色只插值 alpha](../../../testing/verification-render-shadow-color-20261108/README.md)：和原来的双线性同一条公式，只算 alpha。34 帧像素哈希没变。云端同一条阶梯上 zoom 3.2 从 622.258 ms 到 555.251 ms，zoom 0.8 从 558.769 ms 到 541.471 ms。zoom 6.4 是 191.854 ms，zoom 32 是 195.769 ms。新 WASM `8ae67279280e1f9d1f39f2dc9f8a4e8797c88cca9824063bbf1cff9e02a1125e`。字节高斯的 GPU 滑动和没有在这台机器上出像素。不是 33/100ms 或完整 G2/G5。
+
 2026-11-08 [高倍缩放不再把低分辨率预览留在画面上](../../../testing/verification-high-zoom-preview-20261108/README.md)：超过 2 倍的旧位图、整页图集和覆盖底层不再显示。居中所选使用世界盒子。嵌套的 664×707 组在 zoom 24 居中后，zoom 1、24、32 的中心像素是卡片填充，不是画板网格。内核没改，WASM 仍是 `e544c39626befb1d875f0219f7d7f574c665947175c01598790bb7d84c7edec1`，zoom 3.2 仍是 626.522 ms。不是 33/100ms 或完整 G2/G5。
 
 2026-11-08 [离屏裁剪画板不再准备子树](../../../testing/verification-render-frame-cull-20261108/README.md)：zoom 3.2 的准备里曲线展平只有 5 ms。够不着守卫的裁剪画板不再建子树。zoom 3.2 从 843.736 ms 降到 626.522 ms，zoom 0.8 从 780.249 ms 降到 564.702 ms。zoom 6.4 是 194.914 ms。素材 zoom 2 是 84.354 ms 和 76.543 ms。不是 33/100ms 或完整 G2/G5。

@@ -71,3 +71,17 @@ export function validColor(value: unknown, managed = false): boolean {
     p.slice(1, 4).every((v) => Number(v) >= 0 && Number(v) <= 1)
   )
 }
+
+/** Opaque sRGB and #rrggbb for the inspector swatch. Other spaces stay stored as-is. */
+export function displayColorHex(value: string): string | null {
+  const hex = /^#([0-9a-f]{6})$/i.exec(value)
+  if (hex) return `#${hex[1].toUpperCase()}`
+  const match = /^color\(srgb\s+([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)(?:\s*\/\s*([0-9.]+))?\s*\)$/i.exec(value)
+  if (!match) return null
+  const alpha = match[4] === undefined ? 1 : Number(match[4])
+  if (!(alpha >= 0.999)) return null
+  const channels = [match[1], match[2], match[3]].map(Number)
+  if (channels.some(n => !Number.isFinite(n) || n < 0 || n > 1)) return null
+  const byte = (n: number) => Math.round(n * 255).toString(16).padStart(2, '0').toUpperCase()
+  return `#${channels.map(byte).join('')}`
+}

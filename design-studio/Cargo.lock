@@ -709,6 +709,7 @@ dependencies = [
  "base64 0.23.1",
  "futureox-design-kernel",
  "half",
+ "naga",
  "png",
  "serde",
  "serde_json",
