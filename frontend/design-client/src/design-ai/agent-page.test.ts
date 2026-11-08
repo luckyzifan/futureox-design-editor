@@ -58,7 +58,7 @@ test('a complete brief generates a real page, then a named page can be adjusted'
   expect(editor.state.doc.pages.some(page => page.name === '秋日特惠')).toBe(false)
   expect(editor.canRedo).toBe(true)
   editor.redo()
-  const saver = new SaveCoordinator(async () => {})
+  const saver = new SaveCoordinator(async document => ({ document, revision: 1, updatedAt: 1 }))
   saver.open({ document: editor.state.doc, revision: 1, updatedAt: 1 }, 0)
   saver.observe(editor.state.doc, editor.state.version)
   expect(saver.dirty).toBe(true)
