@@ -1300,7 +1300,7 @@ export class Editor {
     this.transaction = null
     this.set({
       doc,
-      page:saved?.pageId || (preserveView&&doc.pages.some(p=>p.id===previous.page)?previous.page:doc.pages[0].id),
+      page:saved?.pageId && userPages(doc).some(p=>p.id===saved.pageId) ? saved.pageId : (preserveView&&userPages(doc).some(p=>p.id===previous.page)?previous.page:(userPages(doc)[0]?.id || doc.pages[0].id)),
       selection:preserveView?previous.selection.filter(id=>!!doc.nodes[id]):[],
       hover: null,
       hoverSource: null,

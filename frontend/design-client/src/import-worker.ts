@@ -64,8 +64,14 @@ self.onmessage = async (event: MessageEvent<FileJob & { memoryBytes?: number }>)
       const fonts=await matchBundledImportFonts(result.document)
       result.warnings=result.warnings.filter(warning=>{
         const family=/^字体 (.+) 尚需匹配，已保留文字内容$/.exec(warning)?.[1]
-        return !family||!fonts.families.includes(family)||fonts.missing.some(name=>name===family||name.startsWith(family+'-')||name.startsWith(family+' '))
+        if(!family) return true
+        if(fonts.substitutions.some(item=>item.from===family||item.from.startsWith(family+' ')||item.from.startsWith(family+'-'))) return false
+        return !fonts.families.includes(family)||fonts.missing.some(name=>name===family||name.startsWith(family+'-')||name.startsWith(family+' '))
       })
+      for(const item of fonts.substitutions){
+        const message=`字体 ${item.from} 没有嵌入文件，已用 ${item.face} 显示`
+        if(!result.warnings.includes(message)) result.warnings.push(message)
+      }
       self.postMessage({ result })
     } else throw new Error('不支持的导入格式')
   } catch (error) {

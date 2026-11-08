@@ -1,3 +1,4 @@
+import { userPages } from '../fig-document'
 import { import_sketch_json } from '../generated/design-kernel/design_kernel'
 import { importFig } from '../import-fig'
 import type { DesignDocument, DesignNode } from '../model'
@@ -9,7 +10,7 @@ export type DesignGap = { code: 'missing-text' | 'extra-text' | 'missing-frame' 
 
 export function outlineDocument(doc: DesignDocument): DesignOutline {
   return {
-    pages: doc.pages.map(page => {
+    pages: userPages(doc).map(page => {
       const frames: string[] = []
       const texts: string[] = []
       const visit = (id: string) => {

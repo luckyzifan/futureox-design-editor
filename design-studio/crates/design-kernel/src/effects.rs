@@ -358,18 +358,14 @@ fn box_pass_in_place_domain<const CHANNELS: usize>(input: &mut Surface, r: i32, 
         let sample = |at: i32| {
             if at >= 0 && at < len { source_line[at as usize] } else { [0.; CHANNELS] }
         };
-        // Higham's gamma_n bound for an ordered sum: at most n operations
-        // over n terms of magnitude <= M. 8*eps*n^2*M also encloses the
-        // endpoint/division rounding below. Accept only when both interval
-        // endpoints round to the same binary32; otherwise use exact rationals.
-        let magnitude = (0..len).fold([0_f64; CHANNELS], |mut m, at| {
-            for (c, value) in sample(at).iter().enumerate() {
-                m[c] = m[c].max(f64::from(*value).abs());
-            }
-            m
-        });
-        let operations = f64::from(2 * r + 1 + 2 * len);
-        let error = magnitude.map(|m| 8. * f64::EPSILON * operations * operations * m);
+        // A sliding f64 sum of f32 samples is exact enough to round back to
+        // the same binary32 as the rational kernel while the accumulated
+        // error stays under half an ulp. The previous bound used (window+line)²
+        // and rejected every wide kernel, so each pixel recomputed the full
+        // radius. That is what made a zoomed shadow take seconds and then
+        // miss the compositing budget. Resync from the source line when the
+        // bound is no longer conclusive; only a genuine tie uses rationals.
+        let window = f64::from(2 * r + 1);
         let mut sum = [0_f64; CHANNELS];
         for k in -r..=r {
             let p = sample(k);
@@ -377,23 +373,53 @@ fn box_pass_in_place_domain<const CHANNELS: usize>(input: &mut Surface, r: i32, 
                 *s += f64::from(p[i]);
             }
         }
+        let mut since_sync = 0_i32;
         for at in 0..len {
             let index = if horizontal {
                 line as usize * rect.w as usize + at as usize
             } else {
                 at as usize * rect.w as usize + line as usize
             };
-            for c in 0..CHANNELS {
-                let lo = domain((sum[c] - error[c]) / denominator) as f32;
-                let hi = domain((sum[c] + error[c]) / denominator) as f32;
-                input.pixels[index].0[4 - CHANNELS + c] = if lo.to_bits() == hi.to_bits() {
-                    lo
-                } else {
+            let certified = |sum: &[f64; CHANNELS], steps: i32| -> Option<[f32; CHANNELS]> {
+                let steps = f64::from(steps.max(0));
+                let mut out = [0_f32; CHANNELS];
+                for c in 0..CHANNELS {
+                    let err = (window + 2. * steps) * f64::EPSILON * sum[c].abs().max(1.) * 8.;
+                    let center = sum[c] / denominator;
+                    let lo = domain(center - err / denominator) as f32;
+                    let hi = domain(center + err / denominator) as f32;
+                    if lo.to_bits() != hi.to_bits() {
+                        return None;
+                    }
+                    out[c] = lo;
+                }
+                Some(out)
+            };
+            let written = if let Some(values) = certified(&sum, since_sync) {
+                Some(values)
+            } else {
+                sum = [0.; CHANNELS];
+                for k in -r..=r {
+                    let p = sample(at + k);
+                    for (i, s) in sum.iter_mut().enumerate() {
+                        *s += f64::from(p[i]);
+                    }
+                }
+                since_sync = 0;
+                certified(&sum, 0)
+            };
+            if let Some(values) = written {
+                for c in 0..CHANNELS {
+                    input.pixels[index].0[4 - CHANNELS + c] = values[c];
+                }
+            } else {
+                for c in 0..CHANNELS {
                     for (i, tap) in taps.iter_mut().enumerate() {
                         *tap = sample(at - r + i as i32)[c];
                     }
-                    domain(f64::from(kernel.convolve(&taps)?)) as f32
-                };
+                    input.pixels[index].0[4 - CHANNELS + c] =
+                        domain(f64::from(kernel.convolve(&taps)?)) as f32;
+                }
             }
             let remove = sample(at - r);
             let add = sample(at + r + 1);
@@ -401,6 +427,7 @@ fn box_pass_in_place_domain<const CHANNELS: usize>(input: &mut Surface, r: i32, 
                 *s += f64::from(add[i]);
                 *s -= f64::from(remove[i]);
             }
+            since_sync += 1;
         }
     }
     Ok(())

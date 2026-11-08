@@ -91,6 +91,12 @@ export type PatternTile = {
   offset: [number, number]
   /** Preserved native pattern alignment; it does not alter tile sampling yet. */
   alignment?: ['start'|'center'|'end', 'start'|'center'|'end']
+  /** Uniform scale of the native image. Omitted means 1. Explicit `size` is not scaled again. */
+  scale?: number
+  /** Pattern rotation in degrees, applied before the repeat. */
+  rotation?: number
+  /** Transparent gap after the scaled image, in node-local pixels. */
+  spacing?: [number, number]
 }
 export const defaultPatternTile = (): PatternTile => ({ mode: 'grid', size: [0, 0], offset: [0, 0] })
 export type Paint = {
@@ -904,7 +910,7 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
     (a.highlightShadowThreshold === undefined || finite(a.highlightShadowThreshold, 0, 1))
   const validTile = (t: unknown) =>
     isObject(t) &&
-    Object.keys(t).every((k) => ['mode', 'size', 'offset', 'alignment'].includes(k)) &&
+    Object.keys(t).every((k) => ['mode', 'size', 'offset', 'alignment', 'scale', 'rotation', 'spacing'].includes(k)) &&
     ['mode', 'size', 'offset'].every((k) => Object.hasOwn(t, k)) &&
     ['none', 'grid', 'stagger_horizontal', 'stagger_vertical'].includes(t.mode as string) &&
     Array.isArray(t.size) && t.size.length === 2 &&
@@ -912,7 +918,10 @@ export function validateDocument(value: unknown, scope?: DocumentValidationScope
     (t.size as unknown[]).every((v) => finite(v, 0)) &&
     (t.offset as unknown[]).every((v) => finite(v)) &&
     (t.alignment === undefined || (Array.isArray(t.alignment) && t.alignment.length === 2 &&
-      t.alignment.every(value => ['start','center','end'].includes(value))))
+      t.alignment.every(value => ['start','center','end'].includes(value)))) &&
+    (t.scale === undefined || finite(t.scale, Number.MIN_VALUE, 1e6)) &&
+    (t.rotation === undefined || finite(t.rotation, -1e6, 1e6)) &&
+    (t.spacing === undefined || (Array.isArray(t.spacing) && t.spacing.length === 2 && t.spacing.every(value => finite(value, 0, 1e7))))
   const validPaint = (p: Paint) =>
     p &&
     ['solid', 'linear', 'radial', 'image', 'angular', 'diamond'].includes(p.kind) &&
