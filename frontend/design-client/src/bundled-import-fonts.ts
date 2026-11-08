@@ -12,29 +12,51 @@ export const bundledImportFonts = [
 ] as const
 type Face = typeof bundledImportFonts[number]
 const MAX_ASSET_BYTES=1024*1024
+function nearestPoppins(name: string): Face | undefined {
+  const compact = name.toLowerCase().replace(/[\s_-]/g, '')
+  if (!compact.startsWith('poppins')) return
+  const style = compact.includes('semibold') || compact.includes('demibold') ? 'SemiBold'
+    : compact.includes('medium') ? 'Medium'
+    : compact.includes('bold') || compact.includes('black') || compact.includes('heavy') ? 'Bold'
+    : 'Regular'
+  return bundledImportFonts.find(face => face.style === style)
+}
+function substituteLatin(name: string) {
+  const compact = name.toLowerCase().replace(/[\s_-]/g, '')
+  if (compact.startsWith('abeezee')) return true
+  return compact === 'inter' || ['regular', 'medium', 'bold', 'semibold', 'light', 'italic', 'variable'].some(style => compact.startsWith('inter' + style))
+}
 async function readBundledFont(face:Face):Promise<Uint8Array>{
   // Worker scripts live in src/ during development and assets/ in a build.
   // Their sibling fonts/ directory retains the application's deployment base.
-  const response=await fetch(new URL(`../fonts/poppins/${face.postscript}.ttf`,self.location.href),{cache:'force-cache'})
-  if(!response.ok||!response.body)throw Error('Bundled font is unavailable')
-  const reader=response.body.getReader(),parts:Uint8Array[]=[];let length=0
-  try{
-    while(true){const {value,done}=await reader.read();if(done)break
-      length+=value.byteLength;if(length>MAX_ASSET_BYTES){await reader.cancel();throw Error('Bundled font exceeds its bounded asset size')}
-      parts.push(value)
+  // Node tests read the same files from public/fonts when that fetch has no origin.
+  try {
+    const response=await fetch(new URL(`../fonts/poppins/${face.postscript}.ttf`,self.location.href),{cache:'force-cache'})
+    if(response.ok&&response.body){
+      const reader=response.body.getReader(),parts:Uint8Array[]=[];let length=0
+      try{
+        while(true){const {value,done}=await reader.read();if(done)break
+          length+=value.byteLength;if(length>MAX_ASSET_BYTES){await reader.cancel();throw Error('Bundled font exceeds its bounded asset size')}
+          parts.push(value)
+        }
+      }finally{reader.releaseLock()}
+      const bytes=new Uint8Array(length);let offset=0
+      for(const part of parts){bytes.set(part,offset);offset+=part.byteLength}
+      return bytes
     }
-  }finally{reader.releaseLock()}
-  const bytes=new Uint8Array(length);let offset=0
-  for(const part of parts){bytes.set(part,offset);offset+=part.byteLength}
-  return bytes
+  } catch { /* The public file below is the same OFL face. */ }
+  const { readFileSync } = await import('node:fs')
+  const { fileURLToPath } = await import('node:url')
+  return new Uint8Array(readFileSync(fileURLToPath(new URL(`../public/fonts/poppins/${face.postscript}.ttf`, import.meta.url))))
 }
 
 /** Only a fresh imported document is mutated. The import worker owns this
  * bounded two-task preparation and termination revokes the whole operation. */
-export async function matchBundledImportFonts(document:DesignDocument,read=readBundledFont):Promise<{changed:number;missing:string[];families:string[]}>{
+export async function matchBundledImportFonts(document:DesignDocument,read=readBundledFont):Promise<{changed:number;missing:string[];families:string[];substitutions:{from:string;face:string}[]}>{
   const names=new Set<string>()
   for(const node of Object.values(document.nodes))unmatchedSourceFonts(document,node).forEach(name=>names.add(name))
-  const requested=[...new Set([...names].map(name=>matchFont(name,[...bundledImportFonts])).filter((face):face is Face=>!!face))]
+  const substitutions: {from:string; face:string}[] = []
+  const requested=[...new Set([...names].map(name=>matchFont(name,[...bundledImportFonts]) || nearestPoppins(name) || (substituteLatin(name) ? bundledImportFonts[0] : undefined)).filter((face):face is Face=>!!face))]
   const available=Math.max(0,32-Object.keys(document.fonts||{}).length)
   const candidates=requested.filter(face=>document.fonts?.[face.sha+'-0']).concat(requested.filter(face=>!document.fonts?.[face.sha+'-0']).slice(0,available))
   const loaded=new Map<Face,{id:string;resource:FontResource}>();let next=0
@@ -55,8 +77,21 @@ export async function matchBundledImportFonts(document:DesignDocument,read=readB
   }}
   await Promise.all(Array.from({length:Math.min(2,candidates.length)},prepare))
   const matches=new Map<string,{id:string;resource:FontResource}>()
-  for(const name of names){const face=matchFont(name,[...bundledImportFonts]),entry=face&&loaded.get(face);if(entry)matches.set(name,entry)}
+  for(const name of names){
+    const exact=matchFont(name,[...bundledImportFonts])
+    const nearest=exact || nearestPoppins(name)
+    const face=nearest || (substituteLatin(name) ? bundledImportFonts[0] : undefined)
+    const entry=face&&loaded.get(face)
+    if(!entry) continue
+    matches.set(name,entry)
+    if(!exact) substitutions.push({ from: name, face: `${face.family} ${face.style}` })
+  }
   const changed=applyMatchedFonts(document,matches)
+  if(document.designSystem?.fontSources) for(const source of Object.values(document.designSystem.fontSources)){
+    const namesOnNode=[source.style, ...Object.values(source.runs || {})].filter((item): item is string => !!item)
+    const resolved=substitutions.filter(item=>namesOnNode.includes(item.from)).map(item=>item.from)
+    if(resolved.length) source.resolved=[...new Set([...(source.resolved || []), ...resolved])]
+  }
   const missing=new Set<string>();for(const node of Object.values(document.nodes))unmatchedSourceFonts(document,node).forEach(name=>missing.add(name))
-  return {changed,missing:[...missing],families:[...new Set([...loaded.keys()].map(face=>face.family))]}
+  return {changed,missing:[...missing],families:[...new Set([...loaded.keys()].map(face=>face.family))],substitutions}
 }

@@ -380,7 +380,8 @@ impl ImageCoordinates {
             Point::new(uv.x * self.size[0], uv.y * self.size[1])
         });
         let pattern = self.pattern.as_ref().expect("caller checks pattern");
-        crate::pattern_fill::tile_uv(pattern, q, pattern.resolve(self.image))
+        crate::pattern_fill::tile_sample(pattern, q, pattern.resolve(self.image))
+            .unwrap_or(Point::new(f64::NAN, f64::NAN))
     }
     // The byte paint path works relative to the first texel centre before
     // division, then rounds the complete clamped index exactly once to f32.
@@ -460,6 +461,9 @@ impl ImageCoordinates {
     }
     fn byte_index_at(&self, device: Point) -> Option<[f32; 2]> {
         let q = self.byte_point(device);
+        if !q.x.is_finite() || !q.y.is_finite() {
+            return None;
+        }
         let (iw, ih) = (self.image[0], self.image[1]);
         if self.fit == "contain" && (q.x < -0.5 || q.y < -0.5 || q.x >= iw - 0.5 || q.y >= ih - 0.5)
         {
@@ -474,6 +478,9 @@ impl ImageCoordinates {
             // is exactly the half-texel bilinear edge below. There is no
             // contain margin — fract(g) ∈ [0,1) always lands inside.
             let uv = self.pattern_uv(device);
+            if !uv.x.is_finite() || !uv.y.is_finite() {
+                return None;
+            }
             let (iw, ih) = (self.image[0], self.image[1]);
             return Some(Point::new(
                 (uv.x * iw).clamp(0.5, iw - 0.5),

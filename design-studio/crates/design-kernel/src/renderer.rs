@@ -52,6 +52,48 @@ fn fill_rgba8(buffer: &mut [u8], pixel: [u8; 4]) {
     }
 }
 
+/// Outer effects do not change pixels deep inside an opaque fill. A zoomed
+/// view of a shadowed frame used to expand the whole frame by `blur * zoom`
+/// and allocate that device buffer. Interior cameras keep the fill and a
+/// zero halo; an edge that can actually show the shadow keeps the reach.
+fn effect_halo_in_view(node: &crate::scene::Node, prepared: &crate::geometry_snapshot::Prepared, viewport: Rect) -> i32 {
+    let halo = prepared.halo;
+    if halo <= 0 || prepared.bounds.intersect(viewport).empty() {
+        return 0;
+    }
+    let affects_interior = node.effects.iter().any(|effect| {
+        effect.visible
+            && matches!(
+                effect.kind.as_str(),
+                "blur"
+                    | "gaussian-blur"
+                    | "motion-blur"
+                    | "zoom-blur"
+                    | "background-blur"
+                    | "glass"
+                    | "inner-shadow"
+            )
+    });
+    if affects_interior {
+        return halo;
+    }
+    let shape = if prepared.fill_program_bounds.empty() {
+        prepared.bounds.expand(-(halo + 2))
+    } else {
+        prepared.fill_program_bounds
+    };
+    let interior = shape.expand(-halo);
+    if !interior.empty()
+        && viewport.x >= interior.x
+        && viewport.y >= interior.y
+        && viewport.right() <= interior.right()
+        && viewport.bottom() <= interior.bottom()
+    {
+        return 0;
+    }
+    halo
+}
+
 fn fitted_display_halo(viewport: Rect, mut halo: i32) -> i32 {
     let cap = display_surface_pixel_cap();
     while halo > 0 {
@@ -1655,9 +1697,13 @@ impl Engine {
         }
         // Expand before clipping so offscreen content can contribute to filters.
         let max_halo = prepared
-            .values()
-            .filter(|p| !p.bounds.intersect(viewport).empty())
-            .map(|p| p.halo)
+            .iter()
+            .map(|(id, prepared_node)| {
+                doc.nodes
+                    .get(id)
+                    .map(|node| effect_halo_in_view(node, prepared_node, viewport))
+                    .unwrap_or(0)
+            })
             .max()
             .unwrap_or(0);
         let mut used_halo = max_halo.saturating_add(extra_halo);
@@ -1677,6 +1723,18 @@ impl Engine {
             } else {
                 return Err("Combined zoom source dependency halo exceeds 2048 device pixels".into());
             }
+        }
+        // Target, layer, filter and shadow each need a surface. A halo that
+        // scales with zoom can ask for more than the 256 MiB ledger even when
+        // the effect itself is still visible. Fit the halo to that ledger
+        // instead of failing the frame or dropping the effect.
+        let slot = std::mem::size_of::<Pixel>() as u64;
+        let pixels = u64::from(extent.w).saturating_mul(u64::from(extent.h));
+        if zoom_guard.is_none()
+            && pixels.saturating_mul(slot).saturating_mul(4) > COMPOSITING_BYTES as u64
+        {
+            used_halo = fitted_display_halo(viewport, used_halo);
+            extent = viewport.expand(used_halo);
         }
         // The linear caller consumes only viewport pixels. A single normal,
         // unpainted root isolates its children on transparent planes, so its

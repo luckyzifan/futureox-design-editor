@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
+import { matchBundledImportFonts } from '../bundled-import-fonts'
+import { validateDocument } from '../model'
+import { userPages } from '../fig-document'
 import { decodeFig, importFig } from '../import-fig'
 import type { DesignDocument } from '../model'
 import { outlineDocument } from './format-gap'
@@ -19,8 +22,9 @@ function tally(doc: DesignDocument) {
   const outline = outlineDocument(doc)
   const linked = Object.values(doc.nodes).filter(node => node.instance || node.component)
   return {
-    pages: doc.pages.map(page => page.name),
-    pageCount: doc.pages.length,
+    pages: userPages(doc).map(page => page.name),
+    pageCount: userPages(doc).length,
+    hiddenPages: doc.pages.filter(page => !userPages(doc).some(visible => visible.id === page.id)).map(page => page.name),
     nodeCount: Object.keys(doc.nodes).length,
     kinds,
     frames: outline.pages.flatMap(page => page.frames).slice(0, 24),
@@ -31,6 +35,8 @@ function tally(doc: DesignDocument) {
     components: linked.filter(node => node.component).length,
     instances: linked.filter(node => node.instance).length,
     instancesMissingComponent: linked.filter(node => node.instance && !node.instance.componentId).length,
+    variableCount: Object.keys(doc.designSystem?.variables || {}).length,
+    collectionCount: Object.keys(doc.designSystem?.collections || {}).length,
   }
 }
 
@@ -57,7 +63,7 @@ function sourceInventory(bytes: Uint8Array) {
   return { sourceRecords: records.size, sourceTypes: types, internalOnly, canvases, sourceTexts: texts.slice(0, 24) }
 }
 
-function rowFor(file: string, payload: Uint8Array) {
+async function rowFor(file: string, payload: Uint8Array) {
   const base = {
     file,
     bytes: payload.byteLength,
@@ -68,11 +74,27 @@ function rowFor(file: string, payload: Uint8Array) {
   const started = performance.now()
   try {
     const imported = importFig(payload, file)
+    const fonts = await matchBundledImportFonts(imported.document)
+    const warnings = imported.warnings.filter(warning => {
+      const family = /^字体 (.+) 尚需匹配，已保留文字内容$/.exec(warning)?.[1]
+      if (!family) return true
+      if (fonts.substitutions.some(item => item.from === family || item.from.startsWith(family + ' ') || item.from.startsWith(family + '-'))) return false
+      return !fonts.families.includes(family) || fonts.missing.some(name => name === family || name.startsWith(family + '-') || name.startsWith(family + ' '))
+    })
+    for (const item of fonts.substitutions) {
+      const message = `字体 ${item.from} 没有嵌入文件，已用 ${item.face} 显示`
+      if (!warnings.includes(message)) warnings.push(message)
+    }
+    let validation: string | undefined
+    try { validateDocument(imported.document) } catch (error) { validation = error instanceof Error ? error.message : String(error) }
     return {
       ...base,
       importMs: performance.now() - started,
       backend: imported.backend,
-      warnings: imported.warnings,
+      warnings,
+      validation,
+      fontSubstitutions: fonts.substitutions,
+      fontMissing: fonts.missing,
       ...source,
       ...tally(imported.document),
     }
@@ -86,10 +108,10 @@ function rowFor(file: string, payload: Uint8Array) {
   }
 }
 
-test('report structural import of the real Fig fixtures', () => {
-  const rows = repoFiles.map(([name, relative]) => rowFor(name, new Uint8Array(readFileSync(new URL(relative, import.meta.url)))))
+test('report structural import of the real Fig fixtures', async () => {
+  const rows = await Promise.all(repoFiles.map(([name, relative]) => rowFor(name, new Uint8Array(readFileSync(new URL(relative, import.meta.url))))))
   const extra = process.env.FIG_STRUCTURE_REPORT && existsSync(extraRoot)
-    ? readdirSync(extraRoot).filter(name => name.endsWith('.fig')).sort().map(name => rowFor(name, new Uint8Array(readFileSync(`${extraRoot}/${name}`))))
+    ? await Promise.all(readdirSync(extraRoot).filter(name => name.endsWith('.fig')).sort().map(name => rowFor(name, new Uint8Array(readFileSync(`${extraRoot}/${name}`)))))
     : []
   const report = process.env.FIG_STRUCTURE_REPORT
   if (report) {

@@ -10,6 +10,7 @@ import { canvasContextItems, clampContextMenu, lockedSelectionIds, moveToPageInd
 import { useShortcutProfile } from './shortcut-preference'
 import { shortcutPlatform } from './shortcut-profiles'
 import { desktopBridge } from './desktop'
+import { userPages } from './fig-document'
 import { pluginLaunchGrant, requestOpenPlugins } from './plugins/open-plugins'
 
 export type CanvasLayerCandidate = { id: string; name: string; locked: boolean }
@@ -138,7 +139,7 @@ export function CanvasContextMenu({ editor, x, y, worldPoint, candidates, onClos
     </> : pages ? <>
       <button type="button" role="menuitem" className="context-back" onClick={() => setPages(false)}><ChevronLeft size={14} /><span>{text.moveToPage}</span></button>
       <div role="separator" />
-      {state.doc.pages.map(page => <button type="button" role="menuitem" key={page.id} disabled={page.id === state.page} onClick={() => action('move-to-page', page.id)}>{page.name}</button>)}
+      {userPages(state.doc).map(page => <button type="button" role="menuitem" key={page.id} disabled={page.id === state.page} onClick={() => action('move-to-page', page.id)}>{page.name}</button>)}
     </> : plugins ? <>
       <button type="button" role="menuitem" className="context-back" onClick={() => setPlugins(false)}><ChevronLeft size={14} /><span>{text.plugins}</span></button>
       <div role="separator" />
