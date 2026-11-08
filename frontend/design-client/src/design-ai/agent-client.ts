@@ -32,6 +32,7 @@ export function snapshotContext(editor: Editor, targetPageId: string) {
       opacity: node.opacity === 1 ? undefined : node.opacity,
       corner_radius: cornerRadius(node.radii),
       font_size: node.kind === 'text' ? node.fontSize : undefined,
+      font_id: node.kind === 'text' ? node.textStyle?.fontId : undefined,
     })
     if (depth < 3) node.children.forEach(child => visit(pageId, child, id, depth + 1))
   }
