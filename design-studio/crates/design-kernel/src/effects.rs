@@ -1204,17 +1204,17 @@ fn color_shadow_linear_owned(
     for line in 0..rect.h as i32 {
         let y = if dy > 0. { rect.bottom() - 1 - line } else { rect.y + line };
         let src_row = (y - rect.y) as usize * width;
+        row.copy_from_slice(&surface.pixels[src_row..src_row + width]);
         for (at, pixel) in row.iter_mut().enumerate() {
-            let src = surface.pixels[src_row + at];
             // Outer shadow is painted under the source. An opaque source pixel
-            // hides that shadow, so the colored sample is never visible.
-            if !inner && src.0[3] == 1. {
-                *pixel = src;
+            // hides that shadow, so the copied source pixel stays.
+            if !inner && pixel.0[3] == 1. {
                 continue;
             }
+            let src_a = pixel.0[3];
             let x = rect.x + at as i32;
             let b = shadow_alpha_sample(&alpha, f64::from(x) + 0.5 - dx, f64::from(y) + 0.5 - dy);
-            let coverage = if inner { src.0[3] * (1. - b) } else { b };
+            let coverage = if inner { src_a * (1. - b) } else { b };
             *pixel = color.opacity(coverage);
         }
         alpha.pixels[src_row..src_row + width].copy_from_slice(&row);
