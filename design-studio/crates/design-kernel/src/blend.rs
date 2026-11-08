@@ -480,6 +480,52 @@ impl Surface {
             }
         }
     }
+    /// Source-over of a layer whose mask is identically one. Same `over_mode`
+    /// formula as `composite`. A Normal, fully opaque source run is the source
+    /// pixel, so those spans are copied.
+    pub fn composite_unmasked(&mut self, source: &Self, mode: &str, opacity: f32) {
+        let r = self.rect.intersect(source.rect);
+        if r.empty() {
+            return;
+        }
+        let mode = BlendMode::from_name(mode);
+        let width = r.w as usize;
+        if mode == BlendMode::Normal && opacity == 1. {
+            for y in r.y..r.bottom() {
+                let dst = self.rect.index(r.x, y).expect("intersection");
+                let src = source.rect.index(r.x, y).expect("intersection");
+                let dst_row = &mut self.pixels[dst..dst + width];
+                let src_row = &source.pixels[src..src + width];
+                let mut x = 0;
+                while x < width {
+                    if src_row[x].0[3] == 1. {
+                        let start = x;
+                        x += 1;
+                        while x < width && src_row[x].0[3] == 1. {
+                            x += 1;
+                        }
+                        dst_row[start..x].copy_from_slice(&src_row[start..x]);
+                    } else if src_row[x].0[3] <= 0. {
+                        x += 1;
+                    } else {
+                        dst_row[x] = over_mode(dst_row[x], src_row[x], BlendMode::Normal);
+                        x += 1;
+                    }
+                }
+            }
+            return;
+        }
+        for y in r.y..r.bottom() {
+            let dst = self.rect.index(r.x, y).expect("intersection");
+            let src = source.rect.index(r.x, y).expect("intersection");
+            for (dst, src) in self.pixels[dst..dst + width]
+                .iter_mut()
+                .zip(&source.pixels[src..src + width])
+            {
+                *dst = over_mode(*dst, src.opacity(opacity), mode);
+            }
+        }
+    }
     pub fn composite_rgba8(&mut self, source: &Self, opacity: f32, mask: impl Fn(i32, i32) -> f32) {
         let r=self.rect.intersect(source.rect);
         if r.empty(){return;}

@@ -50,6 +50,10 @@ pub struct NodeRef {
     /// Layer opacity when it is not fully opaque.
     #[serde(default)]
     pub opacity: Option<f64>,
+    /// Corner radius when any corner is rounded. One number when all four
+    /// match, otherwise the four values separated by commas.
+    #[serde(default)]
+    pub corner_radius: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -512,6 +516,7 @@ mod tests {
                 stroke_join: None,
                 stroke_dash: None,
                 opacity: None,
+                corner_radius: None,
             }],
             selection: Vec::new(),
         };
