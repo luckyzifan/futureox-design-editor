@@ -3,6 +3,7 @@ import { canvasText } from './canvas-interface-messages'
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, FolderOpen, Layers, Shapes, SlidersHorizontal, Variable } from 'lucide-react'
+import { clampAnchoredMenu } from './anchored-menu'
 
 /** Canvas and toolbelt form a two-region F6 cycle. Text fields, open menus,
  * modal dialogs and active gestures retain ownership of their own input. */
@@ -172,11 +173,9 @@ export function ToolPopover({ label, children, open, onOpenChange, icon, primary
     focusPending.current = true
     const place = () => {
       if (!host.current || !menu.current) return
-      const anchor = host.current.getBoundingClientRect(), bounds = menu.current.getBoundingClientRect(), margin = 8
-      const left = Math.max(margin, Math.min(anchor.left, window.innerWidth - bounds.width - margin))
-      const above = anchor.top - bounds.height - margin
-      const top = Math.max(margin, Math.min(above >= margin ? above : anchor.bottom + margin, window.innerHeight - bounds.height - margin))
-      setPosition(old => old?.left === left && old.top === top ? old : { left, top })
+      const anchor = host.current.getBoundingClientRect(), bounds = menu.current.getBoundingClientRect()
+      const next = clampAnchoredMenu(anchor, bounds)
+      setPosition(old => old?.left === next.left && old.top === next.top ? old : next)
     }
     place()
     const observer = new ResizeObserver(place)

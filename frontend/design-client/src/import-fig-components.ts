@@ -84,8 +84,8 @@ export function importFigComponents(doc: DesignDocument, records: Map<string,any
             const id=guid((value as any)?.guid ?? value)
             if(id && id!==NULL_STYLE && id!=='0:0'){
               const resolved=ids.get(id)
-              const style=resolved && doc.designSystem?.styles?.[resolved]
-              if(style?.kind==='paint') fields.styleRefs={...(fields.styleRefs as Record<string,string>||{}), fills: resolved}
+              const style=resolved ? doc.designSystem?.styles?.[resolved] : undefined
+              if(style?.kind==='paint' && resolved) fields.styleRefs={...(fields.styleRefs as Record<string,string>||{}), fills: resolved}
               else warnings?.add(`FIG 实例覆盖 styleIdForFill 未能对应到已导入填充样式`)
             }
           }

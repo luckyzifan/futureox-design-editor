@@ -3,6 +3,18 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-08 [外阴影着色只插值 alpha](../../../testing/verification-render-shadow-color-20261108/README.md)：和原来的双线性同一条公式，只算 alpha。34 帧像素哈希没变。云端同一条阶梯上 zoom 3.2 从 622.258 ms 到 555.251 ms，zoom 0.8 从 558.769 ms 到 541.471 ms。zoom 6.4 是 191.854 ms，zoom 32 是 195.769 ms。新 WASM `8ae67279280e1f9d1f39f2dc9f8a4e8797c88cca9824063bbf1cff9e02a1125e`。字节高斯的 GPU 滑动和没有在这台机器上出像素。不是 33/100ms 或完整 G2/G5。
+
+2026-11-08 [高倍缩放不再把低分辨率预览留在画面上](../../../testing/verification-high-zoom-preview-20261108/README.md)：超过 2 倍的旧位图、整页图集和覆盖底层不再显示。居中所选使用世界盒子。嵌套的 664×707 组在 zoom 24 居中后，zoom 1、24、32 的中心像素是卡片填充，不是画板网格。内核没改，WASM 仍是 `e544c39626befb1d875f0219f7d7f574c665947175c01598790bb7d84c7edec1`，zoom 3.2 仍是 626.522 ms。不是 33/100ms 或完整 G2/G5。
+
+2026-11-08 [离屏裁剪画板不再准备子树](../../../testing/verification-render-frame-cull-20261108/README.md)：zoom 3.2 的准备里曲线展平只有 5 ms。够不着守卫的裁剪画板不再建子树。zoom 3.2 从 843.736 ms 降到 626.522 ms，zoom 0.8 从 780.249 ms 降到 564.702 ms。zoom 6.4 是 194.914 ms。素材 zoom 2 是 84.354 ms 和 76.543 ms。不是 33/100ms 或完整 G2/G5。
+
+2026-11-08 [展平微优化没有留下](../../../testing/verification-render-flatten-inline-20261108/README.md)：固定数组堆和 `inline(always)` 的点运算都没有让孤立 zoom 3.2 低于玻璃边缘基线的 557.421–564.007 ms。哈希没变。正式最慢帧仍是 zoom 3.2 的 843.736 ms。不是 33/100ms 或完整 G2/G5。
+
+2026-11-08 [玻璃边缘色散落在同一取样点时只读一次](../../../testing/verification-render-glass-edge-20261108/README.md)：边框几何仍逐像素计算。色散两端和中心取样二进制位相同时，边像素只读一次背景，原来的加权和还在。zoom 0.8 从 901.767 ms 降到 780.249 ms。zoom 3.2 是 843.736 ms。zoom 6.4 是 406.724 ms。素材 zoom 2 是 72.602 ms 和 76.618 ms。不是 33/100ms 或完整 G2/G5。
+
+2026-11-08 [满覆盖合成直接盖上不透明行](../../../testing/verification-render-unmasked-composite-20261108/README.md)：蒙版恒为 1 时不再逐像素调用蒙版函数，Normal 且完全不透明的一段直接复制。zoom 3.2 从 1037.807 ms 降到 838.310 ms，zoom 0.8 从 938.417 ms 降到 901.767 ms。zoom 6.4 是 390.355 ms。zoom 32 平移最大从 543.596 ms 降到 395.677 ms。素材 zoom 2 同一次 WASM 上是 110.019、92.891、79.577 ms。不是 33/100ms 或完整 G2/G5。
+
 2026-11-08 [单通道阴影模糊不再走通用盒循环](../../../testing/verification-render-unit-alpha-20261108/README.md)：阴影 alpha 用单独的滑动和，舍入式和有理核回退不变。zoom 3.2 从 1150.370 ms 降到 1037.807 ms，zoom 0.8 从 993.806 ms 降到 938.417 ms。zoom 6.4 是 510.383 ms。zoom 2 的素材帧是 80.532 ms，同一次导入比上一轮慢 360.416 ms。不是 33/100ms 或完整 G2/G5。
 
 2026-11-08 [盒模糊的舍入检查提到像素循环外面](../../../testing/verification-render-blur-hoist-20261108/README.md)：同一次盒半径只做一次舍入区间检查，扫描行按下标读取。zoom 3.2 从 1234.440 ms 降到 1150.370 ms，zoom 0.8 从 1030.585 ms 降到 993.806 ms。zoom 6.4 是 526.612 ms。zoom 2 的素材帧是 75.235 ms。不是 33/100ms 或完整 G2/G5。

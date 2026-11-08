@@ -9,7 +9,8 @@ test('Inter, ABeeZee, and Poppins import names attach the bundled files', async 
   text.text = 'Ag'
   text.textStyle = defaultTextStyle()
   doc.nodes = { [text.id]: text }
-  doc.designSystem = { ...emptySystem(), fontSources: { [text.id]: { style: 'Inter Regular' } } }
+  const fontSources: NonNullable<ReturnType<typeof emptySystem>['fontSources']> = { [text.id]: { style: 'Inter Regular' } }
+  doc.designSystem = { ...emptySystem(), fontSources }
   const abeezee = node('text', 0, 20, 80, 24)
   abeezee.text = 'Bee'
   abeezee.textStyle = defaultTextStyle()
@@ -18,8 +19,8 @@ test('Inter, ABeeZee, and Poppins import names attach the bundled files', async 
   poppins.text = 'Hi'
   poppins.textStyle = defaultTextStyle()
   doc.nodes[poppins.id] = poppins
-  doc.designSystem.fontSources[abeezee.id] = { style: 'ABeeZee Regular' }
-  doc.designSystem.fontSources[poppins.id] = { style: 'Poppins' }
+  fontSources[abeezee.id] = { style: 'ABeeZee Regular' }
+  fontSources[poppins.id] = { style: 'Poppins' }
   const matched = await matchBundledImportFonts(doc)
   expect(matched.families).toEqual(expect.arrayContaining(['Inter', 'ABeeZee', 'Poppins']))
   expect(text.textStyle.fontId).toMatch(/^[0-9a-f]{64}-0$/)
@@ -33,7 +34,7 @@ test('Inter, ABeeZee, and Poppins import names attach the bundled files', async 
   italic.text = 'It'
   italic.textStyle = defaultTextStyle()
   doc.nodes[italic.id] = italic
-  doc.designSystem.fontSources[italic.id] = { style: 'Poppins BoldItalic' }
+  fontSources[italic.id] = { style: 'Poppins BoldItalic' }
   const again = await matchBundledImportFonts(doc)
   expect(again.missing).not.toContain('Poppins BoldItalic')
   expect(again.substitutions.some(item => item.from === 'Poppins BoldItalic')).toBe(false)

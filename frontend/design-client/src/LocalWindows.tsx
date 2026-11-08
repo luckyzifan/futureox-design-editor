@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Users } from 'lucide-react'
+import { AnchoredMenu } from './anchored-menu'
 import type { Editor } from './engine'
 import type { DesktopSession } from './desktop-session'
 import { desktopBridge, type LocalPeer, type WorkspaceDocument } from './desktop'
@@ -115,6 +117,7 @@ export function LocalWindowControl({
   const [open, setOpen] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState('')
+  const trigger = useRef<HTMLButtonElement>(null)
   const bridge = desktopBridge()?.live
   if (!bridge) return null
   async function newWindow() {
@@ -134,11 +137,11 @@ export function LocalWindowControl({
   }
   return (
     <div className="local-window-control" data-local-peers={live.peers.length}>
-      <button type="button" aria-label="本机窗口" title={`本机窗口：${live.peers.length + 1}`} aria-expanded={open} onClick={() => setOpen(!open)}>
+      <button ref={trigger} type="button" aria-label="本机窗口" title={`本机窗口：${live.peers.length + 1}`} aria-expanded={open} onClick={() => setOpen(!open)}>
         <Users size={16} aria-hidden="true"/><span>{live.peers.length + 1}</span>
       </button>
-      {open && (
-        <div className="local-window-popover" role="dialog" aria-label="本机多窗口">
+      {open && createPortal(
+        <AnchoredMenu anchor={trigger.current} className="local-window-popover" prefer="below" role="dialog" label="本机多窗口">
           <strong>本机窗口</strong>
           <button
             type="button"
@@ -161,7 +164,8 @@ export function LocalWindowControl({
           <button type="button" onClick={() => setOpen(false)}>
             关闭
           </button>
-        </div>
+        </AnchoredMenu>,
+        document.body,
       )}
       {(live.error || error) && (
         <span role="alert" title={live.error || error}>
