@@ -10,6 +10,7 @@ import { desktopMcpPaths, desktopMcpClientConfig, startDesktopFigmaMcp } from '.
 import { SketchSessionHost } from './sketch-session.mjs'
 import { serveSourceBitmap } from './source-bitmap.mjs'
 import { LargeDocumentHost } from './large-document.mjs'
+import { publishedDocumentJson } from './document-json.mjs'
 import { assertIndependentExport } from './independent-export.mjs'
 import { readDesignClipboard, writeDesignClipboard } from './clipboard.mjs'
 import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, clipboard, screen, nativeImage, ClipboardItem, powerMonitor } from 'electron'
@@ -493,8 +494,9 @@ function workspaceRevision(value, nullable = false) {
   return value
 }
 function workspacePublic(result) {
-  const { document, ...metadata } = result
-  return { status: 'ok', ...metadata, ...(document ? { documentJson: JSON.stringify(document) } : {}) }
+  const { document, documentJson, ...metadata } = result
+  const json = publishedDocumentJson({ document, documentJson })
+  return { status: 'ok', ...metadata, ...(json ? { documentJson: json } : {}) }
 }
 // Selection is an opaque native capability. A complete process restart is the
 // storage boundary; no live renderer or callback ever sees a swapped backend.
@@ -677,10 +679,11 @@ register('catalog-open', async (value) => {
   const opened = await backend.request('open', { path: selected.path, directoryId: selected.entry.directoryId })
   await directoryGrants.lookup(selected.entry.handle)
   return { status: 'ok', handle: grant(opened.path, opened.hash, selected.entry.handle),
-    displayName: path.basename(opened.path), documentJson: JSON.stringify(opened.document) }
+    displayName: path.basename(opened.path), documentJson: publishedDocumentJson({ document: opened.document }) }
 })
 
 register('sketch-session-open', value => sketchSessions.open(value))
+register('large-document-status', value => largeDocuments.status(value), false)
 register('large-document-open', value => largeDocuments.open(value), false)
 register('large-document-open-file', value => {
   const selected = record(value, ['path'])
@@ -751,7 +754,7 @@ register('open', async (value) => {
     status: 'ok',
     handle: grant(opened.path, opened.hash),
     displayName: path.basename(opened.path),
-    documentJson: JSON.stringify(opened.document),
+    documentJson: publishedDocumentJson({ document: opened.document }),
   }
 })
 register('open-pending', async (value) => {
@@ -767,7 +770,7 @@ register('open-pending', async (value) => {
     throw error
   }
   return { status: 'ok', handle: grant(opened.path, opened.hash, undefined, selected),
-    displayName: path.basename(opened.path), documentJson: JSON.stringify(opened.document), pendingCount: pendingFiles.length - 1 }
+    displayName: path.basename(opened.path), documentJson: publishedDocumentJson({ document: opened.document }), pendingCount: pendingFiles.length - 1 }
 })
 register('document-accept', async (value) => {
   const params = record(value, ['handle'])
@@ -914,7 +917,7 @@ register('recovery-read', async (value) => {
       status: 'ok',
       recoveryHandle,
       displayName: `${String(restored.name).slice(0, 160)} (Recovered)`,
-      documentJson: JSON.stringify(restored.document),
+      documentJson: publishedDocumentJson({ document: restored.document }),
     }
   }
   return cancelled()

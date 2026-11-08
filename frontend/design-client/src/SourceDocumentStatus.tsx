@@ -2,16 +2,8 @@ import { useEffect, useState, type CSSProperties } from 'react'
 import { AlertCircle, CheckCircle2, LoaderCircle, X } from 'lucide-react'
 import { importWarningText } from './ImportNotice'
 import type { SourceWorkspace } from './LargeDocumentWorkspace'
-
-export function sourceErrorSummary(error:string):string {
-  const memory=/(\d+)-byte working-memory budget/.exec(error)
-  if(memory&&Number(memory[1])<64*1024**2)
-    return `当前启动内存预算仅为 ${(Number(memory[1])/1024**2).toLocaleString(undefined,{maximumFractionDigits:1})} MiB，无法载入这些内容。请检查启动配置并重新打开应用。`
-  if(/DOCUMENT_(RESOURCE_LIMIT|TOO_LARGE)|working.set|conversion window/i.test(error))
-    return '本次处理未能分配所需内存。当前内容已保留，可释放其他应用的内存后重试。'
-  if(/cancel|abort|取消/i.test(error))return '操作已取消，可以重新选择页面继续。'
-  return /[\u4e00-\u9fff]/.test(error)?error:'此操作未能完成。当前内容已保留，可展开技术详情查看原因。'
-}
+import { sourceErrorSummary } from './source-error-text'
+export { sourceErrorSummary }
 
 /** Compact status uses the existing workbench tokens; native details stay available. */
 export function SourceDocumentStatus({source}:{source:SourceWorkspace}) {

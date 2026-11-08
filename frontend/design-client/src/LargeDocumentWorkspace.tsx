@@ -11,6 +11,7 @@ import {includesMaterials,materialScope,thumbnailScale,visibleMaterialWindow,fir
 import {fitBounds}from'./canvas-camera'
 import { commitPendingEdits, hasPendingEdits, registerPendingEdit, pendingEditsChanged, subscribePendingEdits } from './pending-edits'
 import { prepareDocumentJson, prepareDocumentJsonInWorker } from './prepared-document'
+import { nativeDesignJson } from './native-design-json'
 import { documentPreparationRuntime } from './document-preparation-identity'
 import { dispatchEditorCommand, resolveDesktopEditorCommand } from './editor-commands'
 import { desktopBridge, type LargeDocumentBridge, type LargeDocumentRow, type LargeDocumentPageRange, type LargeDocumentStatus, type DesktopResult } from './desktop'
@@ -20,6 +21,7 @@ import { validSourceObjectKey } from './source-object-key'
 import { peekChangedNodes } from './document-patch'
 
 const admitted=<T,>(result:DesktopResult<T>):T=>{if(result.status!=='ok')throw Error(result.status==='cancelled'?'操作已取消':result.message);return result as T}
+const PREPARING_NOTICE='正在准备这个素材的原始图层…'
 const sameSource=(a:LargeDocumentStatus|null,b:LargeDocumentStatus|null)=>!!a&&!!b&&a.owner.documentId===b.owner.documentId&&a.owner.sessionEpoch===b.owner.sessionEpoch&&a.revision===b.revision
 type CanvasSelection=LargeDocumentRow&{afterLoad?:(id:string)=>void;catalogueMaterial?:boolean;sceneOffset?:number;sceneLimit?:number;previousRanges?:{offset:number;limit:number}[];pageId?:string}
 const sceneRequest=(row:CanvasSelection)=>({key:row.key,...(row.sceneOffset?{offset:row.sceneOffset}:{}),...(row.sceneLimit===undefined?{}:{limit:row.sceneLimit})})
@@ -105,6 +107,9 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   const navigationIntent=useRef(0),preparingOverview=useRef(false)
   const queuedLoad=useRef<CanvasSelection|null>(null),drainingLoads=useRef(false),preparingSource=useRef(false)
   const alive=useRef(true),started=useRef(false),baseline=useRef<DesignDocument|null>(null),canvas=useRef<HTMLDivElement>(null),abort=useRef<AbortController|null>(null)
+  const admittedOpen=useRef<LargeDocumentStatus|null>(null)
+  const openOutcome=useRef<'idle'|'pending'|'ok'|'cancelled'|'error'>('idle')
+  const rebindTried=useRef(false)
   const activeRef=useRef(active);activeRef.current=active
   const clearNavigation=()=>{setRows([]);setParents([]);setOffset(0);setTotal(0);setFilter('');setQuery('')}
   const updateStatus=(next:LargeDocumentStatus)=>{
@@ -135,8 +140,8 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   const request=()=>{const value=statusRef.current;if(!value)throw Error('源文件尚未打开');return {owner:value.owner,expectedRevision:value.revision}}
   const run=async(work:()=>Promise<void>,lockEditor=false)=>{
     if(busyRef.current)return;busyRef.current=true;setBusy(true);setEditorLocked(lockEditor);setError('')
-    try{await work()}catch(error){if(alive.current&&!(queuedLoad.current&&(/取消|cancel|abort/i.test(String(error)))))setError(error instanceof Error?error.message:String(error))}
-    finally{busyRef.current=false;if(alive.current){setBusy(false);setEditorLocked(false);if(queuedLoad.current&&!drainingLoads.current)queueMicrotask(()=>void drainLoads())}}
+    try{await work()}catch(error){if(alive.current&&!(queuedLoad.current&&(/取消|cancel|abort/i.test(String(error))))){setError(error instanceof Error?error.message:String(error));setNotice(current=>current===PREPARING_NOTICE?'':current)}}
+    finally{busyRef.current=false;if(alive.current){setBusy(false);setEditorLocked(false);if(queuedLoad.current&&!drainingLoads.current)queueMicrotask(()=>void drainLoads())}else queueMicrotask(()=>{if(alive.current)setBusy(false)})}
   }
   const afterAutosave=async(work:()=>Promise<void>,lockEditor=false)=>{
     await autosave.current
@@ -230,8 +235,9 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     const controller=new AbortController();abort.current=controller
     const current=()=>alive.current&&navigationIntent.current===intent&&!queuedLoad.current&&statusRef.current?.owner===owner.owner&&statusRef.current.revision===owner.expectedRevision
     let prepared:ReturnType<typeof prepareDocumentJson>
+    const sourceJson=nativeDesignJson(result.json)
     try {
-      prepared=documentPreparationRuntime()?await prepareDocumentJsonInWorker(result.json,{documentId:owner.owner.documentId,version:owner.expectedRevision,generation:editor.sessionGeneration,session:owner.owner.sessionEpoch},controller.signal,current):prepareDocumentJson(result.json)
+      prepared=documentPreparationRuntime()?await prepareDocumentJsonInWorker(sourceJson,{documentId:owner.owner.documentId,version:owner.expectedRevision,generation:editor.sessionGeneration,session:owner.owner.sessionEpoch},controller.signal,current):prepareDocumentJson(sourceJson)
     } catch (error) {
       const range=result.pageRange, count=range?range.end-range.offset:0
       // Authored source bytes can fit while resolved component children do
@@ -418,19 +424,52 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     if(row){await load(row);setViewTab('source')}
     else setNotice('此文件没有可显示的页面或画板。')
   }
+  const ensureStatus=async()=>{
+    if(statusRef.current)return statusRef.current
+    if(admittedOpen.current){updateStatus(admittedOpen.current);return statusRef.current}
+    if(!bridge.status)return null
+    try{
+      const result=await bridge.status()
+      if(!alive.current||result.status!=='ok'||statusRef.current)return statusRef.current
+      admittedOpen.current=result;openOutcome.current='ok';updateStatus(result);return result
+    }catch{return null}
+  }
   useEffect(()=>{
     alive.current=true
-    if(!started.current){started.current=true;void run(async()=>{
-      const result=await openSelectedFile(initialFile);if(result.status==='cancelled'){onExit();return}
-      const next=admitted(result);if(!alive.current)return;updateStatus(next)
-      await openInitialCanvas()
+    if(!started.current){started.current=true;openOutcome.current='pending';void run(async()=>{
+      try{
+        const result=await openSelectedFile(initialFile)
+        if(result.status==='cancelled'){openOutcome.current='cancelled';if(alive.current)onExit();return}
+        const next=admitted(result);admittedOpen.current=next;openOutcome.current='ok'
+        if(!alive.current)return
+        updateStatus(next)
+        await openInitialCanvas()
+      }catch(error){openOutcome.current='error';throw error}
     },true)}
     return()=>{alive.current=false;queueMicrotask(()=>{if(!alive.current){queuedLoad.current=null;abort.current?.abort();editor.dispose()}})}
   },[])
   useEffect(()=>{
+    if(status||busy)return
+    let cancel=false
+    const recover=async()=>{
+      if(admittedOpen.current&&!statusRef.current){updateStatus(admittedOpen.current);setNotice(current=>current===PREPARING_NOTICE?'':current);return}
+      if(openOutcome.current!=='error'||!bridge.status||rebindTried.current)return
+      rebindTried.current=true
+      try{
+        const result=await bridge.status()
+        if(cancel||!alive.current||statusRef.current||result.status!=='ok')return
+        admittedOpen.current=result;openOutcome.current='ok';updateStatus(result)
+        setNotice(current=>current===PREPARING_NOTICE?'':current)
+        if(!openingRef.current&&result.format==='sketch')setOpeningGeneration(++openingSerial.current)
+      }catch{/* A missing status probe leaves the visible error in place. */}
+    }
+    void recover()
+    return()=>{cancel=true}
+  },[status,busy,bridge])
+  useEffect(()=>{
     // The host admits one source operation at a time. Auto-entry, save and
     // history own that lane; sidebar refresh starts after their receipt.
-    if(!status||busy||nativeSnapshot||opening)return
+    if(!status||busy||nativeSnapshot||opening||(status.format==='sketch'&&typeof bridge.canvasSnapshot==='function'))return
     let current=true
     const listedSource=status
     setRows([])
@@ -495,14 +534,26 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
     await save()
     if(statusRef.current)admitted(await bridge.close(request()))
     if(!/\.(json|sketch)$/i.test(file.name)){flushSync(()=>onExit(file));return}
+    admittedOpen.current=null;openOutcome.current='pending';rebindTried.current=false
     baseline.current=null;activeRef.current=null;setActive(null);setPageRange(null);itemsForSnapshot.current=[]
     editor.setMutationRestriction(undefined);editor.load(blank(),true);editor.setMutationRestriction('正在准备源文件，暂时只能浏览。');editor.set({tool:'hand',selection:[]})
     openingRef.current=undefined;statusRef.current=null;setStatus(null)
     nativeSnapshotRef.current=null;setNativeSnapshot(null);setCatalogue([]);setOverview(false);setSourcePage('')
     nativePresentedToken.current=undefined
     pageDetailIntent.current=undefined;setFocusedMaterial(undefined);setSelectedMaterialId(undefined);requestDetail([]);pendingMaterial.current=null;fittedOpening.current='';exactView.current=undefined;setShowOpening(true);setOpeningGeneration(++openingSerial.current)
-    const next=admitted(await openSelectedFile(file));if(!alive.current)return
-    baseline.current=null;activeRef.current=null;setActive(null);setPageRange(null);nativeSnapshotRef.current=null;setNativeSnapshot(null);setCatalogue([]);setOverview(false);updateStatus(next)
+    let next:LargeDocumentStatus
+    try{next=admitted(await openSelectedFile(file))}
+    catch(error){
+      openOutcome.current='error'
+      const bound=await ensureStatus()
+      if(!bound)throw error
+      setError(error instanceof Error?error.message:String(error))
+      setNotice(current=>current===PREPARING_NOTICE?'':current)
+      if(!openingRef.current&&bound.format==='sketch')setOpeningGeneration(++openingSerial.current)
+      return
+    }
+    if(!alive.current){admittedOpen.current=next;return}
+    baseline.current=null;activeRef.current=null;setActive(null);setPageRange(null);nativeSnapshotRef.current=null;setNativeSnapshot(null);setCatalogue([]);setOverview(false);admittedOpen.current=next;openOutcome.current='ok';updateStatus(next)
     await openInitialCanvas()
   },true)
   const allPages=()=>{setParents([]);setOffset(0);setFilter('');setQuery('')}
@@ -532,8 +583,19 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
   }
   const editMaterial=(row:SourceCanvasItem,afterLoad?:(id:string)=>void)=>{
     const exact=itemsForSnapshot.current.find(item=>item.id===row.id&&item.pageId===row.pageId)
-    if(!exact||!statusRef.current){pendingMaterial.current={id:row.id,pageId:row.pageId,afterLoad};setNotice('正在准备这个素材的原始图层…');return}
-    openMaterial(exact,afterLoad)
+    if(exact&&statusRef.current){openMaterial(exact,afterLoad);return}
+    pendingMaterial.current={id:row.id,pageId:row.pageId,afterLoad}
+    setNotice(PREPARING_NOTICE)
+    void (async()=>{
+      if(!statusRef.current){
+        const bound=await ensureStatus()
+        if(!alive.current)return
+        if(!bound){pendingMaterial.current=null;setNotice('');setError('源文件尚未绑定，原始图层无法准备。');return}
+      }
+      const ready=itemsForSnapshot.current.find(item=>item.id===row.id&&item.pageId===row.pageId)
+      if(ready&&statusRef.current){pendingMaterial.current=null;setNotice('');openMaterial(ready,afterLoad);return}
+      await run(()=>enterOverview(),true)
+    })()
   }
   const materialIndex=useMemo(()=>new SpatialIndex(materialRows.filter(row=>!sourcePage||row.pageId===sourcePage)
     .map(row=>({id:row.key,bounds:row.placed,row}))),[materialRows,sourcePage])
@@ -594,12 +656,12 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
           pageDetailIntent.current=indices.join(',')
           requestDetail(indices,true)
         }}>精修当前页</button>}
-      <button className="source-overview-back" disabled={busy||!status} onClick={()=>void run(()=>enterOverview(true),true)}>精修完整画板</button>
+      <button className="source-overview-back" disabled={busy} onClick={()=>void run(async()=>{if(!statusRef.current){const bound=await ensureStatus();if(!bound)throw Error('源文件尚未打开')};setNotice(current=>current===PREPARING_NOTICE?'':current);await enterOverview(true)},true)}>精修完整画板</button>
     </>}
     {!browsing&&<button className="source-overview-back" disabled={busy} onClick={()=>void run(enterOverview,true)}><ArrowLeft size={14}/>返回完整画板</button>}
     <form className="layer-search source-search" onSubmit={event=>event.preventDefault()}><Search size={13}/><input aria-label="搜索素材" placeholder="搜索素材…" value={query} onChange={event=>setQuery(event.target.value)}/></form>
     <div className="source-workspace-rows" role="list" aria-label="全部素材">{materialRows.filter(item=>(!sourcePage||item.pageId===sourcePage)&&`${item.name} ${item.pageName}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())).map(item=><div className="source-page-row" data-active={browsing?selectedMaterialId===item.id:active?.id===item.id} role="listitem" key={item.key}>
-      <button className="source-page-entry" data-source-material-id={item.id} disabled={busy&&!browsing} title={`${item.pageName} · ${item.name}；双击编辑`} onClick={event=>{if(browsing)navigate(sourcePage,item);else if(event.detail<2)editMaterial(item)}} onDoubleClick={()=>{if(browsing)editMaterial(item)}}><span className="source-row-icon"><Frame size={14}/></span><span className="source-row-name">{item.name}</span><small className="source-row-page">{item.pageName}</small></button>
+      <button className="source-page-entry" data-source-material-id={item.id} disabled={busy&&!browsing} title={`${item.pageName} · ${item.name}；双击编辑`} onClick={event=>{if(browsing)navigate(sourcePage,item);else if(event.detail<2)editMaterial(item)}} onDoubleClick={()=>{if(browsing)editMaterial(item)}}><span className="source-row-icon"><Frame size={14}/></span><span className="source-row-copy"><span className="source-row-name">{item.name}</span><small className="source-row-page">{item.pageName}</small></span></button>
     </div>)}</div>
     <footer className="source-history"><span>完整源文件保留全部内容</span><button aria-label="撤销已保存修改" disabled={busy||!status?.undoCount} onClick={()=>void history('undo')}><Undo2 size={14}/></button><button aria-label="重做已保存修改" disabled={busy||!status?.redoCount} onClick={()=>void history('redo')}><Redo2 size={14}/></button></footer>
   </section>
@@ -643,9 +705,9 @@ export function LargeDocumentWorkspace({bridge,initialFile,parentEditor,onExit,o
       const wanted=detailIndices.map(i=>itemsForSnapshot.current[i]?.key)
       const matches=!keys||wanted.length>0&&(nativeSnapshotRef.current?.viewportSubset?
         viewportDemand.current&&wanted.some(key=>keys.includes(key)):includesMaterials(keys,wanted))
-      if(matches&&view.x===v.x&&view.y===v.y&&view.zoom===v.zoom)setShowOpening(false)
+      if(matches&&Math.abs(view.x-v.x)<0.5&&Math.abs(view.y-v.y)<0.5&&Math.abs(view.zoom-v.zoom)<0.0005)setShowOpening(false)
     },
-    nativeCanvas:overview&&nativeSnapshot?{snapshot:nativeSnapshot,status:nativeRenderStatus,onStatus:status=>{if(nativeRenderError.current&&status.phase==='ready'){nativeRenderError.current=false;setError('');setNativeRenderStatus(status);}if(status.phase==='error')nativeRenderError.current=true;if(nativePresentedToken.current===nativeSnapshot.token&&status.phase!=='error')return;if(status.phase==='ready')nativePresentedToken.current=nativeSnapshot.token;setNativeRenderStatus(status);if(status.phase==='error')setError(status.error??'画板绘制未完成');else if(status.phase==='ready')setNotice(nativeSnapshot.materialKeys?`当前视口已精修。`:`完整画板已显示：${nativeSnapshot.roots} 个素材。双击素材进入编辑。`);else setNotice(status.phase==='loading'?'正在准备完整画板显示…':`正在绘制完整画板 ${status.done} / ${status.total}…`)},openPoint:point=>{if(busyRef.current)return;const item=pickMaterial(point);if(item)openMaterial(item)}}:earlyDisplay?{
+    nativeCanvas:overview&&nativeSnapshot?{snapshot:nativeSnapshot,status:nativeRenderStatus,onStatus:status=>{if(status.phase==='ready'||status.phase==='refining')setShowOpening(false);if(nativeRenderError.current&&status.phase==='ready'){nativeRenderError.current=false;setError('');setNativeRenderStatus(status);}if(status.phase==='error')nativeRenderError.current=true;if(nativePresentedToken.current===nativeSnapshot.token&&status.phase!=='error')return;if(status.phase==='ready')nativePresentedToken.current=nativeSnapshot.token;setNativeRenderStatus(status);if(status.phase==='error')setError(status.error??'画板绘制未完成');else if(status.phase==='ready')setNotice(nativeSnapshot.materialKeys?`当前视口已精修。`:`完整画板已显示：${nativeSnapshot.roots} 个素材。双击素材进入编辑。`);else setNotice(status.phase==='loading'?'正在准备完整画板显示…':`正在绘制完整画板 ${status.done} / ${status.total}…`)},openPoint:point=>{if(busyRef.current)return;const item=pickMaterial(point);if(item)openMaterial(item)}}:earlyDisplay?{
       snapshot:earlyDisplay,
       onStatus:status=>{if(status.phase==='error'){setFailedOpeningToken(earlyDisplay.token);setShowOpening(true)}},
       openPoint:openPreviewPoint,
