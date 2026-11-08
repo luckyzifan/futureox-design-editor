@@ -2,6 +2,7 @@ import {beforeAll,expect,test} from 'vitest'
 import {initializeKernelModule} from './module'
 import {SourceViewportPlanner,coveredSourceDetail} from './source-viewport-plan'
 import {tilesCoverBounds} from './tile-cache'
+import {tileIntersectsView} from './tile-preview'
 beforeAll(()=>initializeKernelModule())
 test('long diagonal travel resumes wide bands with complete, stable world coverage',()=>{
  const planner=new SourceViewportPlanner('figmaSubpixel',true,true)
@@ -197,18 +198,25 @@ test('a high-density material pan reuses its accepted bands through drag, settle
  expect(planner.plan(fractional,dpr,width,height,false).keys).not.toEqual(start.keys)
 })
 
-test('an overview narrows the existing global tiles and restores the full set if physical coverage is declined',()=>{
+test('a wide low-zoom overview keeps every viewport tile and paints the visible band first',()=>{
  const v={x:-1290.7641421142123,y:319.62935841138074,zoom:.20763036280235658}
  const requested=new SourceViewportPlanner('figmaSubpixel',true,true,true)
  const reference=new SourceViewportPlanner('figmaSubpixel',true,true)
  const all=reference.plan(v,2,855,888,false)
  const window={x:0,y:256,width:855,height:288}
  const local=requested.plan(v,2,855,888,false,undefined,false,window)
- expect(local.raster).toEqual(all.raster);expect(local.tiles.length).toBeLessThan(all.tiles.length)
- expect(local.tiles.every(t=>all.tiles.some(original=>original.key===t.key&&original.width===t.width&&original.height===t.height))).toBe(true)
+ const world={x:-v.x/v.zoom,y:-v.y/v.zoom,width:855/v.zoom,height:888/v.zoom}
+ expect(local.raster).toEqual(all.raster)
+ expect(local.tiles.map(t=>t.key).sort()).toEqual(all.tiles.map(t=>t.key).sort())
+ expect(tilesCoverBounds(local.tiles,world,local.raster.scale)).toBe(true)
+ const clipped={...v,x:v.x-window.x,y:v.y-window.y}
+ const firstOutside=local.tiles.findIndex(t=>!tileIntersectsView(t,clipped,window))
+ expect(firstOutside).toBeGreaterThan(0)
+ expect(local.tiles.slice(0,firstOutside).every(t=>tileIntersectsView(t,clipped,window))).toBe(true)
  expect(requested.retryNativeCoverage(v,2,855,888)).toBe(true)
  const retry=requested.plan(v,2,855,888,false,undefined,false,window)
- expect(retry.tiles).toEqual(all.tiles)
+ expect(retry.tiles.map(t=>t.key).sort()).toEqual(all.tiles.map(t=>t.key).sort())
+ expect(tilesCoverBounds(retry.tiles,world,retry.raster.scale)).toBe(true)
 })
 
 
