@@ -284,6 +284,7 @@ mod session_tests {
                     id: "title".into(), page_id: "page-1".into(), parent_id: None, name: "标题".into(), kind: "text".into(),
                     x: 0.0, y: 0.0, width: 80.0, height: 40.0, text: Some("秋日特惠".into()), fill: None,
                 }],
+                selection: vec!["title".into()],
             },
         };
         core.turn(second).await.expect("second turn");

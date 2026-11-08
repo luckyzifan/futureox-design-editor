@@ -32,6 +32,7 @@ export function snapshotContext(editor: Editor, targetPageId: string) {
     target_page_id: targetPageId,
     pages: doc.pages.map(page => ({ id: page.id, name: page.name })),
     nodes,
+    selection: editor.state.selection,
   }
 }
 

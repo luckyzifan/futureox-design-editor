@@ -40,6 +40,9 @@ pub struct DesignContext {
     pub pages: Vec<PageRef>,
     #[serde(default)]
     pub nodes: Vec<NodeRef>,
+    /// Node ids the user has selected on the canvas. Empty means nothing selected.
+    #[serde(default)]
+    pub selection: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -482,6 +485,7 @@ mod tests {
                 text: Some("旧标题".into()),
                 fill: None,
             }],
+            selection: Vec::new(),
         };
         let expanded = expand_tool("design_agent_adjust", &json!({}), "把设置页的标题改成账户", &ctx).unwrap();
         assert_eq!(expanded.target_page_id, settings);
