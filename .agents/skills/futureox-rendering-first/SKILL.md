@@ -3,6 +3,8 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-08 [外阴影的实色内部不再做盒卷积](../../../testing/verification-render-shadow-core-20261108/README.md)：zoom 3.2 的探针里玻璃是 0 ms，外阴影模糊是 359 ms。方形邻域全是 1 的矩形直接写成 1。最慢帧从 1294.959 ms 降到 1234.440 ms，zoom 0.8 从 1078.573 ms 降到 1030.585 ms。zoom 6.4 是 515.155 ms。zoom 2 的素材帧是 73.973 ms。条带复制再模糊的做法更慢，没有留下。不是 33/100ms 或完整 G2/G5。
+
 2026-11-08 [玻璃只着色覆盖得到的像素](../../../testing/verification-render-glass-shade-20261108/README.md)：zoom 0.8 的探针里玻璃着色是 447 ms，分析覆盖光栅是 18 ms。覆盖为 0 的像素不再做色散取样，内部在偏移相同时只读一次背景。效果开启的 zoom 0.8 从 1734.559 ms 降到 1078.573 ms。最慢帧现在是 zoom 3.2 的 1294.959 ms。zoom 6.4 是 510.957 ms。zoom 2 的素材帧是 76.525 ms。不是 33/100ms 或完整 G2/G5。
 
 2026-11-08 [覆盖跨度里整像素一次加上 1/8](../../../testing/verification-render-coverage-span-20261108/README.md)：分析剖面的 `area()` 对完全盖住的像素直接加 0.125，边像素仍用原来的区间公式。效果关掉的放大最慢从 541.837 ms 降到 310.057 ms。效果开启的 zoom 6.4 从 938.307 ms 降到 508.878 ms，zoom 0.8 从 1939.159 ms 降到 1734.559 ms。zoom 2 的素材帧是 75.979 ms。不是 33/100ms 或完整 G2/G5。

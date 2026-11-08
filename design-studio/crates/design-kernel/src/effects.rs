@@ -327,6 +327,11 @@ fn tent_blur_impl(
 // Shadow inputs have zero RGB. The one-channel specialization uses exactly
 // the same sums, rounding proof and rational fallback for their alpha.
 fn box_pass_in_place_domain<const CHANNELS: usize>(input: &mut Surface, r: i32, horizontal: bool, bounded: bool) -> Result<(), String> {
+    box_pass_in_place_domain_core::<CHANNELS>(input, r, horizontal, bounded, None)
+}
+fn box_pass_in_place_domain_core<const CHANNELS: usize>(
+    input: &mut Surface, r: i32, horizontal: bool, bounded: bool, solid_core: Option<Rect>,
+) -> Result<(), String> {
     let domain = |value: f64| if bounded { value.clamp(0., 1.) } else { value };
     let rect = input.rect;
     if r <= 0 {
@@ -374,7 +379,52 @@ fn box_pass_in_place_domain<const CHANNELS: usize>(input: &mut Surface, r: i32, 
             }
         }
         let mut since_sync = 0_i32;
-        for at in 0..len {
+        // A proved solid-one core stays one for this radius. Write that span
+        // and restart the sum after it; this is not a per-window constant test.
+        let skip = solid_core.and_then(|core| {
+            if horizontal {
+                let y = rect.y + line;
+                if y < core.y || y >= core.bottom() { return None; }
+                let x0 = (core.x - rect.x).clamp(0, len);
+                let x1 = (core.right() - rect.x).clamp(0, len);
+                (x0 < x1).then_some((x0, x1))
+            } else {
+                let x = rect.x + line;
+                if x < core.x || x >= core.right() { return None; }
+                let y0 = (core.y - rect.y).clamp(0, len);
+                let y1 = (core.bottom() - rect.y).clamp(0, len);
+                (y0 < y1).then_some((y0, y1))
+            }
+        });
+        let mut at = 0;
+        while at < len {
+            if let Some((x0, x1)) = skip {
+                if at == x0 {
+                    for fill in at..x1 {
+                        let index = if horizontal {
+                            line as usize * rect.w as usize + fill as usize
+                        } else {
+                            fill as usize * rect.w as usize + line as usize
+                        };
+                        for c in 0..CHANNELS {
+                            input.pixels[index].0[4 - CHANNELS + c] = 1.;
+                        }
+                    }
+                    at = x1;
+                    if at >= len {
+                        break;
+                    }
+                    sum = [0.; CHANNELS];
+                    for k in -r..=r {
+                        let p = sample(at + k);
+                        for (i, s) in sum.iter_mut().enumerate() {
+                            *s += f64::from(p[i]);
+                        }
+                    }
+                    since_sync = 0;
+                    continue;
+                }
+            }
             let index = if horizontal {
                 line as usize * rect.w as usize + at as usize
             } else {
@@ -433,6 +483,7 @@ fn box_pass_in_place_domain<const CHANNELS: usize>(input: &mut Surface, r: i32, 
                 *s -= f64::from(remove[i]);
             }
             since_sync += 1;
+            at += 1;
         }
     }
     Ok(())
@@ -700,9 +751,119 @@ pub(crate) fn shadow_alpha(
     match filter {
         // Alpha is no longer needed after filtering. Consume it rather than
         // retaining an additional full surface through all six Gaussian passes.
-        BlurFilter::Gaussian(sigma) => blur_owned::<1>(alpha, sigma),
+        BlurFilter::Gaussian(sigma) => blur_alpha_outside_solid_core(alpha, sigma),
         _ => filter.apply(&alpha),
     }
+}
+
+/// A square of exact ones stays one through every box pass. Blur only the
+/// band that can see a non-one sample, and write the proved interior as one.
+fn blur_alpha_outside_solid_core(alpha: Surface, sigma: f64) -> Result<Surface, String> {
+    let support = match gaussian_box_radii(sigma) {
+        Ok(radii) => radii.into_iter().sum::<u32>() as i32,
+        Err(_) => return blur_owned::<1>(alpha, sigma),
+    };
+    let pixels = alpha.rect.pixels();
+    if support <= 0 || pixels < 160 * 120 {
+        return blur_owned::<1>(alpha, sigma);
+    }
+    let Some(core) = solid_alpha_core(&alpha, support) else {
+        return blur_owned::<1>(alpha, sigma);
+    };
+    if core.pixels() < pixels / 2 {
+        return blur_owned::<1>(alpha, sigma);
+    }
+    let mut out = alpha;
+    for radius in gaussian_box_radii(sigma)? {
+        if radius == 0 {
+            continue;
+        }
+        box_pass_in_place_domain_core::<1>(&mut out, radius as i32, true, true, Some(core))?;
+        box_pass_in_place_domain_core::<1>(&mut out, radius as i32, false, true, Some(core))?;
+    }
+    Ok(out)
+}
+
+/// Largest axis-aligned block whose square neighborhood of radius `support`
+/// is exact alpha 1, including samples outside the surface as zero.
+fn solid_alpha_core(alpha: &Surface, support: i32) -> Option<Rect> {
+    let rect = alpha.rect;
+    let w = rect.w as usize;
+    let h = rect.h as usize;
+    if w == 0 || h == 0 || support < 0 {
+        return None;
+    }
+    let mut row_clear = vec![false; w * h];
+    let mut dist = vec![0i32; w];
+    for y in 0..h {
+        let row = y * w;
+        let mut last = -1i32;
+        for x in 0..w {
+            if alpha.pixels[row + x].0[3] != 1. {
+                last = x as i32;
+            }
+            dist[x] = x as i32 - last;
+        }
+        let mut next = w as i32;
+        for x in (0..w).rev() {
+            if alpha.pixels[row + x].0[3] != 1. {
+                next = x as i32;
+            }
+            row_clear[row + x] = dist[x].min(next - x as i32) > support;
+        }
+    }
+    let mut safe = vec![false; w * h];
+    let mut prefix = vec![0i32; h + 1];
+    for x in 0..w {
+        for y in 0..h {
+            prefix[y + 1] = prefix[y] + i32::from(row_clear[y * w + x]);
+        }
+        for y in 0..h {
+            let y_i = y as i32;
+            if y_i < support || y_i + support >= h as i32 {
+                continue;
+            }
+            let lo = (y_i - support) as usize;
+            let hi = (y_i + support) as usize;
+            safe[y * w + x] = prefix[hi + 1] - prefix[lo] == (hi - lo + 1) as i32;
+        }
+    }
+    let mut height = vec![0u32; w];
+    let mut stack = Vec::<usize>::new();
+    let mut best_area = 0u64;
+    let mut best: Option<(i32, i32, u32, u32)> = None;
+    for y in 0..h {
+        for x in 0..w {
+            height[x] = if safe[y * w + x] { height[x] + 1 } else { 0 };
+        }
+        stack.clear();
+        for x in 0..=w {
+            let current = if x == w { 0 } else { height[x] };
+            while let Some(&top) = stack.last() {
+                if height[top] <= current {
+                    break;
+                }
+                stack.pop();
+                let bar = height[top] as u64;
+                let left = stack.last().map(|i| i + 1).unwrap_or(0);
+                let width = (x - left) as u64;
+                let area = bar * width;
+                if area > best_area {
+                    best_area = area;
+                    best = Some((
+                        rect.x + left as i32,
+                        rect.y + y as i32 - height[top] as i32 + 1,
+                        width as u32,
+                        height[top],
+                    ));
+                }
+            }
+            if x < w {
+                stack.push(x);
+            }
+        }
+    }
+    best.filter(|_| best_area > 0).map(|(x, y, w, h)| Rect::new(x, y, w, h))
 }
 
 /// Keep the filter boundary in byte space until the final quantization. Going
