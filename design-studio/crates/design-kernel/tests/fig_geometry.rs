@@ -127,3 +127,42 @@ fn declared_fill_streams_close_subpaths_without_changing_generic_strokes(){
  let Command::Move(point)=source[0]else{panic!()};assert_eq!(point.y.to_bits(),(-0.0f64).to_bits());
  assert!(decode_fill_commands(&bytes[..bytes.len()-1]).is_err());
 }
+#[test]
+fn handle_mirroring_and_round_caps_are_consumed_without_inventing_corners(){
+ use futureox_design_kernel::fig_geometry::round_network;
+ use serde_json::json;
+ let mut curve=Vec::new();
+ for word in [4u32,3,0]{curve.extend(word.to_le_bytes());}
+ for (i,(x,y)) in [(0f32,0f32),(10.,0.),(20.,8.),(30.,8.)].into_iter().enumerate(){
+  curve.extend(if i==1 {1u32} else {0}.to_le_bytes());
+  curve.extend(x.to_le_bytes());curve.extend(y.to_le_bytes());
+ }
+ for (i,(a,b)) in [(0u32,1u32),(1,2),(2,3)].into_iter().enumerate(){
+  curve.extend(0u32.to_le_bytes());curve.extend(a.to_le_bytes());
+  if i==0 { curve.extend(4f32.to_le_bytes());curve.extend(2f32.to_le_bytes()); }
+  else { curve.extend([0u8;8]); }
+  curve.extend(b.to_le_bytes());
+  if i==0 { curve.extend(4f32.to_le_bytes());curve.extend(2f32.to_le_bytes()); }
+  else { curve.extend([0u8;8]); }
+ }
+ let mut decoded=decode_network(&curve,1.,1.).unwrap();
+ let before=decoded.network.clone();
+ assert!(round_network(&mut decoded,0.,0.,&json!([{"styleID":1,"handleMirroring":"ANGLE"}])).unwrap());
+ assert_eq!(decoded.vertex_styles,vec![0;4]);
+ assert_eq!(decoded.network,before);
+ let mut open=Vec::new();
+ for word in [4u32,2,0]{open.extend(word.to_le_bytes());}
+ for (i,(x,y)) in [(0f32,0f32),(8.,0.),(0.,8.),(8.,8.)].into_iter().enumerate(){
+  open.extend(if i%2==0 {1u32} else {0}.to_le_bytes());
+  open.extend(x.to_le_bytes());open.extend(y.to_le_bytes());
+ }
+ for (a,b) in [(0u32,1u32),(2,3)]{
+  open.extend(0u32.to_le_bytes());open.extend(a.to_le_bytes());open.extend([0u8;8]);open.extend(b.to_le_bytes());open.extend([0u8;8]);
+ }
+ let mut decoded=decode_network(&open,1.,1.).unwrap();
+ assert!(round_network(&mut decoded,0.,0.,&json!([{"styleID":1,"cornerRadius":0,"strokeCap":"ROUND","strokeJoin":"MITER","handleMirroring":"NONE"}])).unwrap());
+ assert_eq!(decoded.stroke_cap.as_deref(),Some("ROUND"));
+ assert_eq!(decoded.stroke_join.as_deref(),Some("MITER"));
+ assert!(decoded.network.is_some());
+ assert!(decoded.vertex_styles.iter().all(|id|*id==0));
+}

@@ -57,7 +57,7 @@ fn canonical_components_keys_properties_variants_and_overrides_survive_real_zip_
     let mut doc = interop::import_sketch_report(&archive(native_symbols())).unwrap().document;
     doc.nodes.get_mut("main").unwrap().component.as_mut().unwrap().variants.insert("State".into(), "Default".into());
     doc.nodes.get_mut("main").unwrap().component.as_mut().unwrap().properties.insert("title".into(), components::Property {
-        name: "Title".into(), kind: components::PropertyKind::Text, target_key: "label".into(), default_value: json!("Original"),
+        name: "Title".into(), kind: components::PropertyKind::Text, target_key: "label".into(), also_targets: Vec::new(), unbound: false, default_value: json!("Original"),
     });
     doc.nodes.get_mut("nested").unwrap().instance.as_mut().unwrap().property_values.insert("title".into(), json!("Property value"));
     let bytes = interop::export_sketch(&doc).unwrap();

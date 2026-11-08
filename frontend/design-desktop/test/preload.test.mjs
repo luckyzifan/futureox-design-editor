@@ -56,6 +56,7 @@ test('preload exposes a frozen narrow API and no Node, raw IPC, filesystem, or s
       'live',
       'clipboard',
       'designAi',
+      'designAgent',
       'fonts',
       'performTextCommand',
       'renderPolicy',

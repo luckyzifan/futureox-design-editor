@@ -1,7 +1,7 @@
 //! Resolve native component GUIDs only after the complete template tree exists.
 use super::{Error, FigImporter, bool_of, guid_string, str_of};
 use crate::{components::{Component, Instance, Property, PropertyKind}, scene::Document};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
 fn property_value(kind: &PropertyKind, value: &Value) -> Option<Value> {
@@ -39,17 +39,32 @@ pub(super) fn import(doc: &mut Document, records: &BTreeMap<String,Value>, impor
             };
             let key=def.get("id").map(guid_string).ok_or_else(||Error::Malformed("component property id missing".into()))?;
             let field=match kind {PropertyKind::Boolean=>"VISIBLE",PropertyKind::Text=>"TEXT_DATA",PropertyKind::InstanceSwap=>"OVERRIDDEN_SYMBOL_ID"};
-            let targets:Vec<_>=descendants.iter().filter(|target| records.get(*target).is_some_and(|r| {
+            let mut targets:Vec<_>=descendants.iter().filter(|target| records.get(*target).is_some_and(|r| {
                 r.get("componentPropRefs").and_then(Value::as_array).into_iter().flatten().any(|reference| {
                     !bool_of(reference,"isDeleted").unwrap_or(false) && reference.get("defID").map(guid_string).as_ref()==Some(&key)
                         && str_of(reference,"componentPropNodeField")==Some(field)
                 })
-            })).collect();
-            if targets.len()!=1 {return Err(Error::Unsupported(format!("component property {key} has {} targets; requires one explicit componentPropRef",targets.len())));}
-            let target=&doc.nodes[targets[0]];
+            })).cloned().collect();
             let default_value=property_value(&kind,&def["initialValue"]).ok_or_else(||Error::Unsupported(format!("component property {key} has no literal default")))?;
+            if targets.is_empty() {
+                properties.insert(key.clone(),Property {name:str_of(def,"name").unwrap_or(&key).into(),kind,
+                    target_key:String::new(),also_targets:Vec::new(),unbound:true,default_value});
+                continue;
+            }
+            let mut parent_of=BTreeMap::<&str,&str>::new();
+            for node in doc.nodes.values() {
+                for child in &node.children { parent_of.insert(child.as_str(), node.id.as_str()); }
+            }
+            let depth=|id:&str| { let mut at=id; let mut n=0usize; while let Some(parent)=parent_of.get(at){ at=parent; n+=1; if n>64{break;} } n };
+            targets.sort_by_key(|id| depth(id.as_str()));
+            let primary=&doc.nodes[&targets[0]];
+            let primary_key=primary.component_key.as_ref().unwrap_or(&primary.id).clone();
+            let also_targets=targets[1..].iter().map(|id| {
+                let node=&doc.nodes[id];
+                node.component_key.as_ref().unwrap_or(&node.id).clone()
+            }).collect();
             properties.insert(key.clone(),Property {name:str_of(def,"name").unwrap_or(&key).into(),kind,
-                target_key:target.component_key.as_ref().unwrap_or(&target.id).clone(),default_value});
+                target_key:primary_key,also_targets,unbound:false,default_value});
         }
         doc.nodes.get_mut(id).unwrap().component=Some((Component {properties,..Default::default()}).into());
     }
@@ -72,7 +87,9 @@ pub(super) fn import(doc: &mut Document, records: &BTreeMap<String,Value>, impor
                 .map(|gs|gs.iter().map(guid_string).collect::<Vec<_>>().join("/"))
                 .or_else(||ov.get("overrideKey").map(guid_string)).unwrap_or_else(||"$root".into());
             let mut fields=BTreeMap::new();
+            let stroke_inputs=["strokeWeight","strokeAlign","strokeCap","strokeJoin","dashPattern","borderStrokeWeightsIndependent","borderTopWeight","borderRightWeight","borderBottomWeight","borderLeftWeight"];
             for (key,value) in ov.as_object().into_iter().flatten() {
+                if ov.get("strokePaints").and_then(Value::as_array).is_some() && stroke_inputs.contains(&key.as_str()) { continue; }
                 match key.as_str() {
                     "guidPath"|"overrideKey"|"styleID"=>{},
                     "name"|"visible"|"opacity"|"fontSize"=>{fields.insert(key.clone(),value.clone());},
@@ -81,6 +98,27 @@ pub(super) fn import(doc: &mut Document, records: &BTreeMap<String,Value>, impor
                         let mut notes=Vec::new();
                         let fills:Vec<_>=value.as_array().into_iter().flatten().filter_map(|p|importer.paint(p,&mut notes)).collect();
                         fields.insert("fills".into(),serde_json::to_value(fills).unwrap());
+                    },
+                    "strokePaints"=>{
+                        let weight=ov.get("strokeWeight").and_then(Value::as_f64).unwrap_or(1.);
+                        let cap=match str_of(ov,"strokeCap") { Some("ROUND")=>"round", Some("SQUARE")=>"square", _=>"butt" };
+                        let join=match str_of(ov,"strokeJoin") { Some("ROUND")=>"round", Some("BEVEL")=>"bevel", _=>"miter" };
+                        let align=match str_of(ov,"strokeAlign") { Some("INSIDE")=>"inside", Some("OUTSIDE")=>"outside", _=>"center" };
+                        let mut notes=Vec::new();
+                        let strokes:Vec<_>=value.as_array().into_iter().flatten().filter_map(|paint| importer.paint(paint,&mut notes)).map(|paint| json!({
+                            "paint":paint,"width":weight,"cap":cap,"join":join,"align":align,"dash":"","visible":true
+                        })).collect();
+                        fields.insert("strokes".into(),Value::Array(strokes));
+                    },
+                    "styleIdForFill"|"styleIdForStrokeFill"=>{
+                        if key=="styleIdForFill" {
+                            let id=guid_string(value.get("guid").unwrap_or(value));
+                            if id!="4294967295:4294967295" && id!="0:0" && doc.design_system.as_ref().is_some_and(|system| system.styles.contains_key(&id)) {
+                                let mut refs=fields.get("styleRefs").cloned().unwrap_or_else(|| json!({}));
+                                if let Some(object)=refs.as_object_mut() { object.insert("fills".into(), Value::String(id)); }
+                                fields.insert("styleRefs".into(), refs);
+                            }
+                        }
                     },
                     "symbolID"=>{fields.insert("swapComponent".into(),Value::String(guid_string(value)));},
                     other=>return Err(Error::Unsupported(format!("component override {other}"))),

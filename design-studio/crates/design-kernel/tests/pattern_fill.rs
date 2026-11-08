@@ -71,6 +71,7 @@ fn tile(mode: &str, size: [f64; 2], offset: [f64; 2]) -> PatternTile {
             pattern_fill::ALIGN_START.into(),
             pattern_fill::ALIGN_START.into(),
         ],
+        ..PatternTile::native()
     }
 }
 
