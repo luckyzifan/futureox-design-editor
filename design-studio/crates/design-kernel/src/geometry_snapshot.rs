@@ -8,6 +8,15 @@ use crate::{
     stroke,
 };
 use std::{collections::HashMap, sync::Arc};
+fn subtree_effect_halo(doc: &Document, node: &Node, matrix: Transform) -> i32 {
+    let mut halo = effect_halo(node, matrix);
+    for child_id in node.render_children() {
+        let Some(child) = doc.nodes.get(child_id) else { continue };
+        if !child.visible { continue; }
+        halo = halo.max(subtree_effect_halo(doc, child, matrix.concat(child.transform)));
+    }
+    halo
+}
 fn account_segments(total:&mut usize,additional:usize)->Result<(),String>{
     let next=total.checked_add(additional).ok_or("Scene path address overflow")?;
     if next>crate::capacity::scene_path_limit(){return Err("Scene path budget exceeded".into());}
@@ -116,6 +125,33 @@ fn prepare_node_geometry_supported<const FRAME: bool>(
                         fill_program_bounds:Rect::default(),strokes:Vec::new(),stroke_program_bounds:Vec::new(),
                         bounds:Rect::default(),halo:0,segments:0});
                     return Ok(Rect::default());
+                }
+            }
+        }
+    }
+    // A clipped frame cannot expose descendants outside its own clip. The
+    // prepare guard already contains the page's effect halo, so a frame box
+    // that misses the guard also misses with its own shadow or blur. Stroke
+    // padding is not part of that halo. Reject the branch before shaping text.
+    if n.kind == "frame" && n.clip && !n.mask && n.blend == "normal"
+        && n.boolean_operation.is_none()
+    {
+        if let Some(bounds) = crate::geometry_support::primitive_device_box(n, matrix) {
+            let stroke = n.strokes.iter().filter(|s| s.visible)
+                .map(|s| stroke::maximum_width(s) * 4. * scale).fold(0., f64::max);
+            if stroke.is_finite() {
+                let padding = (stroke.ceil() as i32).saturating_add(2);
+                // Descendant effects can extend past the clip by their own
+                // device halo. The box already misses the guard; add that
+                // reach before skipping the branch.
+                if bounds.expand(padding).intersect(guard).empty() {
+                    let reach = subtree_effect_halo(doc, n, matrix);
+                    if bounds.expand(padding.saturating_add(reach)).intersect(guard).empty() {
+                        if FRAME && let Some(cache) = reuse.as_deref_mut() { cache.cull(n, matrix, bounds); }
+                        prepared.insert(id.to_owned(), Prepared { support_culled:false,fill_bounds: None, matrix,
+                            fill: Arc::new(Vec::new()), fill_program_bounds:Rect::default(),strokes: Vec::new(),stroke_program_bounds:Vec::new(), bounds: Rect::default(), halo: 0, segments: 0 });
+                        return Ok(Rect::default());
+                    }
                 }
             }
         }
@@ -332,5 +368,21 @@ mod early_support_tests {
             assert_eq!(a["n0"].bounds,b["n0"].bounds);
             assert_eq!(serde_json::to_vec(&*a["n0"].fill).unwrap(),serde_json::to_vec(&*b["n0"].fill).unwrap());
         }}
+    }
+    #[test]
+    fn a_distant_clip_frame_with_a_shadow_does_not_build_descendant_paths() {
+        let mut doc: Document = serde_json::from_value(json!({"schemaVersion":16,"id":"d","name":"support",
+            "pages":[{"id":"p","name":"p","children":["frame"],"background":"#ffffff"}],"nodes":{}})).unwrap();
+        let mut frame: Node = serde_json::from_value(json!({"id":"frame","kind":"frame","width":100,"height":80,"clip":true,
+            "effects":[{"kind":"shadow","visible":true,"radius":8,"x":4,"y":6,"color":"#000000"}]})).unwrap();
+        frame.children.push("child".into());
+        frame.transform = Transform([1., 0., 0., 1., 5000., 5000.]);
+        let child: Node = serde_json::from_value(json!({"id":"child","kind":"rectangle","width":40,"height":20})).unwrap();
+        doc.nodes.insert(frame.id.clone(), frame);
+        doc.nodes.insert(child.id.clone(), child);
+        let (prepared, paths) = prepare(&doc, Transform::default(), Rect::new(0, 0, 64, 64), true);
+        assert_eq!(paths, 0, "descendant geometry was built");
+        assert!(prepared["frame"].fill.is_empty());
+        assert!(prepared["frame"].bounds.empty());
     }
 }
