@@ -778,8 +778,15 @@ fn color_shadow_linear_owned(
         let y = if dy > 0. { rect.bottom() - 1 - line } else { rect.y + line };
         for (at, pixel) in row.iter_mut().enumerate() {
             let x = rect.x + at as i32;
+            let src = surface.at(x, y);
+            // Outer shadow is painted under the source. An opaque source pixel
+            // hides that shadow, so the colored sample is never visible.
+            if !inner && src.0[3] == 1. {
+                *pixel = src;
+                continue;
+            }
             let b = alpha.sample_linear(f64::from(x) + 0.5 - dx, f64::from(y) + 0.5 - dy).0[3];
-            let coverage = if inner { surface.at(x, y).0[3] * (1. - b) } else { b };
+            let coverage = if inner { src.0[3] * (1. - b) } else { b };
             *pixel = color.opacity(coverage);
         }
         let start = (y - rect.y) as usize * rect.w as usize;
