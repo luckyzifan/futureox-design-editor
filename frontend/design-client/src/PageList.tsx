@@ -6,12 +6,17 @@ import { useInterfaceText } from './interface-preference'
 import { commitPendingEdits } from './pending-edits'
 import { modalKeyDown } from './modal-keyboard'
 import { userPages } from './fig-document'
+import { requestAgentTarget } from './design-ai/target-event'
+import './design-ai/design-agent.css'
 
 export function PageList({ editor, onRename }: { editor: Editor; onRename: (id: string) => void }) {
   const text = useInterfaceText()
   const listId = useId()
   const state = useSyncExternalStore(editor.subscribe, editor.panelSnapshot)
   const [open, setOpen] = useState(true)
+  const [hoverPage, setHoverPage] = useState<string | null>(null)
+  const [agentFor, setAgentFor] = useState<{ id: string; name: string; x: number; y: number } | null>(null)
+  const [agentPrompt, setAgentPrompt] = useState('')
   const [search, setSearch] = useState('')
   const [menu, setMenu] = useState<{ id: string; session: number; document: string; x: number; y: number } | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -49,6 +54,7 @@ export function PageList({ editor, onRename }: { editor: Editor; onRename: (id: 
     <nav className="pages" aria-label={text.pageList}>
       {userPages(state.doc).filter(page => page.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())).map(page => {
         return <div className="page-row" key={page.id} draggable
+          onMouseOver={() => setHoverPage(page.id)} onMouseLeave={() => setHoverPage(current => current === page.id ? null : current)}
           onDragStart={event => {
             if (!canMutatePages() || !commitPendingEdits(editor) || !canMutatePages()) { event.preventDefault(); return }
             dragging.current = { id: page.id, session: editor.sessionGeneration, document: editor.state.doc.id }
@@ -66,6 +72,11 @@ export function PageList({ editor, onRename }: { editor: Editor; onRename: (id: 
           <button className={state.page === page.id ? 'page active' : 'page'} onClick={() => editor.switchPage(page.id)} onDoubleClick={() => onRename(page.id)}>
             <span className="page-name">{page.name}</span>{state.page === page.id && <span className="page-dot" />}
           </button>
+          {hoverPage === page.id && <button type="button" className="page-ai" aria-label={`用 AI 修改 ${page.name}`} onMouseDown={event => event.stopPropagation()} onClick={event => {
+            event.stopPropagation()
+            const box = event.currentTarget.getBoundingClientRect()
+            setAgentPrompt(''); setAgentFor({ id: page.id, name: page.name, x: Math.max(8, box.left), y: Math.min(box.bottom + 6, window.innerHeight - 180) })
+          }}>AI</button>}
           <button className="page-options" aria-label={`${text.pageActions}：${page.name}`} onClick={event => {
             if (!commitPendingEdits(editor)) return
             const box = event.currentTarget.getBoundingClientRect()
@@ -76,6 +87,14 @@ export function PageList({ editor, onRename }: { editor: Editor; onRename: (id: 
       {!userPages(state.doc).some(page => page.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())) && <p className="muted">{text.noMatchingPages}</p>}
     </nav>
     </div>
+    {agentFor && createPortal(<form className="page-ai-pop" role="dialog" aria-label={`定向修改 ${agentFor.name}`} style={{ left: agentFor.x, top: agentFor.y }}
+      onSubmit={event => { event.preventDefault(); const prompt = agentPrompt.trim() || `细节调整：修改「${agentFor.name}」`; editor.switchPage(agentFor.id); requestAgentTarget({ pageId: agentFor.id, prompt }); setAgentFor(null) }}>
+      <strong>修改「{agentFor.name}」</strong>
+      <p>主对话默认改这一页，也可以在句子里点名其他页面。</p>
+      <textarea aria-label="定向修改" rows={3} value={agentPrompt} onChange={event => setAgentPrompt(event.target.value)} placeholder="例如：把标题改成秋日特惠" />
+      <button type="submit">定向修改</button>
+      <button type="button" onClick={() => setAgentFor(null)}>取消</button>
+    </form>, document.body)}
     {menu && createPortal(<div ref={menuRef} className="page-menu" role="menu" aria-label={text.pageActions} tabIndex={-1}
       style={{ position: 'fixed', left: menu.x, top: menu.y }} onKeyDown={event => modalKeyDown(event, () => setMenu(null))}>
       <button role="menuitem" onClick={() => action(onRename)}>{text.renamePage}</button>

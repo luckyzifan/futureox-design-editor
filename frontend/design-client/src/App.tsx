@@ -1041,6 +1041,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
               <option value="en">English</option>
             </select>
           </label>
+          <DesignAgentLauncher editor={editor} desktop={desktop} disabled={!ready || switching || s.busy} onImport={(file, mode) => void importDesignFile(file, mode)} />
           <button type="button" className="prototype-preview-button" aria-label={locale === 'en' ? 'Preview prototype' : '预览原型'} title={locale === 'en' ? 'Preview prototype' : '预览原型'}
             disabled={!s.doc.pages.some((page) => page.children.length)} onClick={() => setShowPrototype(true)}><Play size={16} /><span>{locale === 'en' ? 'Preview' : '预览'}</span></button>
           <button

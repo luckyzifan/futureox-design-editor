@@ -52,6 +52,48 @@ fn fill_rgba8(buffer: &mut [u8], pixel: [u8; 4]) {
     }
 }
 
+/// Outer effects do not change pixels deep inside an opaque fill. A zoomed
+/// view of a shadowed frame used to expand the whole frame by `blur * zoom`
+/// and allocate that device buffer. Interior cameras keep the fill and a
+/// zero halo; an edge that can actually show the shadow keeps the reach.
+fn effect_halo_in_view(node: &crate::scene::Node, prepared: &crate::geometry_snapshot::Prepared, viewport: Rect) -> i32 {
+    let halo = prepared.halo;
+    if halo <= 0 || prepared.bounds.intersect(viewport).empty() {
+        return 0;
+    }
+    let affects_interior = node.effects.iter().any(|effect| {
+        effect.visible
+            && matches!(
+                effect.kind.as_str(),
+                "blur"
+                    | "gaussian-blur"
+                    | "motion-blur"
+                    | "zoom-blur"
+                    | "background-blur"
+                    | "glass"
+                    | "inner-shadow"
+            )
+    });
+    if affects_interior {
+        return halo;
+    }
+    let shape = if prepared.fill_program_bounds.empty() {
+        prepared.bounds.expand(-(halo + 2))
+    } else {
+        prepared.fill_program_bounds
+    };
+    let interior = shape.expand(-halo);
+    if !interior.empty()
+        && viewport.x >= interior.x
+        && viewport.y >= interior.y
+        && viewport.right() <= interior.right()
+        && viewport.bottom() <= interior.bottom()
+    {
+        return 0;
+    }
+    halo
+}
+
 fn fitted_display_halo(viewport: Rect, mut halo: i32) -> i32 {
     let cap = display_surface_pixel_cap();
     while halo > 0 {
@@ -1655,9 +1697,13 @@ impl Engine {
         }
         // Expand before clipping so offscreen content can contribute to filters.
         let max_halo = prepared
-            .values()
-            .filter(|p| !p.bounds.intersect(viewport).empty())
-            .map(|p| p.halo)
+            .iter()
+            .map(|(id, prepared_node)| {
+                doc.nodes
+                    .get(id)
+                    .map(|node| effect_halo_in_view(node, prepared_node, viewport))
+                    .unwrap_or(0)
+            })
             .max()
             .unwrap_or(0);
         let mut used_halo = max_halo.saturating_add(extra_halo);
@@ -1677,6 +1723,18 @@ impl Engine {
             } else {
                 return Err("Combined zoom source dependency halo exceeds 2048 device pixels".into());
             }
+        }
+        // Target, layer, filter and shadow each need a surface. A halo that
+        // scales with zoom can ask for more than the 256 MiB ledger even when
+        // the effect itself is still visible. Fit the halo to that ledger
+        // instead of failing the frame or dropping the effect.
+        let slot = std::mem::size_of::<Pixel>() as u64;
+        let pixels = u64::from(extent.w).saturating_mul(u64::from(extent.h));
+        if zoom_guard.is_none()
+            && pixels.saturating_mul(slot).saturating_mul(4) > COMPOSITING_BYTES as u64
+        {
+            used_halo = fitted_display_halo(viewport, used_halo);
+            extent = viewport.expand(used_halo);
         }
         // The linear caller consumes only viewport pixels. A single normal,
         // unpainted root isolates its children on transparent planes, so its
@@ -2218,6 +2276,31 @@ impl std::ops::Deref for AccountedSamples {
 impl Coverage for AccountedMask {
     fn rect(&self) -> Rect { self.mask.rect }
     fn at(&self, x: i32, y: i32) -> f32 { self.mask.at(x, y) }
+}
+
+/// Axis-aligned bounds of mask samples that can change a composited pixel.
+/// Coverage of zero multiplies the backdrop to zero, so glass shading outside
+/// this box does not affect the layer.
+fn nonzero_coverage_bounds(mask: &impl Coverage) -> Option<Rect> {
+    let rect = mask.rect();
+    let mut min_x = rect.right();
+    let mut min_y = rect.bottom();
+    let mut max_x = rect.x - 1;
+    let mut max_y = rect.y - 1;
+    for y in rect.y..rect.bottom() {
+        for x in rect.x..rect.right() {
+            if mask.at(x, y) > 0. {
+                min_x = min_x.min(x);
+                min_y = min_y.min(y);
+                max_x = max_x.max(x);
+                max_y = max_y.max(y);
+            }
+        }
+    }
+    if max_x < min_x || max_y < min_y {
+        return None;
+    }
+    Some(Rect::new(min_x, min_y, (max_x - min_x + 1) as u32, (max_y - min_y + 1) as u32))
 }
 impl Engine {
     /// Content revision of the loaded scene: bumped on every document
@@ -2914,7 +2997,7 @@ impl Painter<'_> {
             for sample in 0..4 {
                 self.sample = Some(sample);
                 for paint in &n.fills {
-                    self.paint(n, paint, m, &fill.plane(sample), &mut targets[sample], |_, _| 1.)?;
+                    self.paint(n, paint, m, &fill.plane(sample), &mut targets[sample], true, |_, _| 1.)?;
                 }
             }
             self.paint_siblings(n.render_children(), targets, Some(&fill), geometric, None)?;
@@ -3068,7 +3151,7 @@ impl Painter<'_> {
         for sample in 0..4 {
             self.sample = Some(sample);
             for paint in &n.fills {
-                self.paint(n, paint, m, &fill.plane(sample), &mut layers[sample], |_, _| 1.)?;
+                self.paint(n, paint, m, &fill.plane(sample), &mut layers[sample], true, |_, _| 1.)?;
             }
         }
         if let Some(mask_id) = mask_id {
@@ -3121,6 +3204,7 @@ impl Painter<'_> {
             for sample in 0..4 {
                 self.sample = Some(sample);
                 self.paint(n, &stroke.paint, m, &masks.plane(sample), &mut layers[sample],
+                    !matches!(stroke.align.as_str(), "inside" | "outside"),
                     |x, y| match stroke.align.as_str() {
                         "inside" => fill.at(sample, x, y),
                         "outside" => 1. - fill.at(sample, x, y),
@@ -3177,6 +3261,59 @@ impl Painter<'_> {
 
         Ok(())
     }
+    fn viewport_hides_outer_shadows(
+        &self,
+        n: &Node,
+        prepared: &crate::geometry_snapshot::Prepared,
+        scale: f64,
+    ) -> bool {
+        let mut saw_shadow = false;
+        for fx in n.effects.iter().filter(|effect| effect.visible) {
+            match fx.kind.as_str() {
+                "shadow" => {
+                    saw_shadow = true;
+                    let offset = prepared.matrix.point(crate::math::Point::new(fx.x, fx.y))
+                        - prepared.matrix.point(crate::math::Point::default());
+                    if !self.outer_shadow_misses_viewport(fx, scale, offset, prepared) {
+                        return false;
+                    }
+                }
+                "inner-shadow" | "blur" | "gaussian-blur" | "motion-blur" | "zoom-blur" | "glass" | "texture" | "background-blur" => {
+                    return false;
+                }
+                _ => {}
+            }
+        }
+        saw_shadow
+    }
+    fn outer_shadow_misses_viewport(
+        &self,
+        fx: &crate::scene::Effect,
+        scale: f64,
+        offset: crate::math::Point,
+        prepared: &crate::geometry_snapshot::Prepared,
+    ) -> bool {
+        let sigma = fx.radius * scale / 2.;
+        let Ok(radii) = effects::gaussian_box_radii(sigma) else { return false };
+        let support = radii.into_iter().sum::<u32>() as i32;
+        let reach = support
+            .saturating_add(offset.x.abs().ceil() as i32)
+            .saturating_add(offset.y.abs().ceil() as i32)
+            .saturating_add(fx.spread.abs().ceil() as i32)
+            .saturating_add(2);
+        let shape = if prepared.fill_program_bounds.empty() {
+            prepared.bounds
+        } else {
+            prepared.fill_program_bounds
+        };
+        let interior = shape.expand(-reach);
+        let view = self.viewport;
+        !interior.empty()
+            && view.x >= interior.x
+            && view.y >= interior.y
+            && view.right() <= interior.right()
+            && view.bottom() <= interior.bottom()
+    }
     fn blur_filter(&self, radius: f64) -> effects::BlurFilter {
         if self.doc.color_management.is_some() {
             effects::BlurFilter::LinearTent(radius)
@@ -3223,14 +3360,15 @@ impl Painter<'_> {
         m: Transform,
         mask: &impl Coverage,
         layer: &mut Surface,
+        unit_extra: bool,
         extra: impl Fn(i32, i32) -> f32,
     ) -> Result<(), String> {
         let basis = layer.rect.intersect(mask.rect());
-        self.paint_region(n, p, m, mask, layer, basis, extra)
+        self.paint_region(n, p, m, mask, layer, basis, unit_extra, extra)
     }
     fn paint_region(
         &mut self, n: &Node, p: &Paint, m: Transform, mask: &impl Coverage,
-        layer: &mut Surface, basis: Rect, extra: impl Fn(i32, i32) -> f32,
+        layer: &mut Surface, basis: Rect, unit_extra: bool, extra: impl Fn(i32, i32) -> f32,
     ) -> Result<(), String> {
         if !p.visible {
             return Ok(());
@@ -3271,6 +3409,20 @@ impl Painter<'_> {
         } else {
             None
         };
+        // Analytic coverage is 0 or 1 on the four binary sample planes. An opaque
+        // solid replaces the destination wherever coverage is 1, which is the
+        // same result as source-over. Only large regions take the run fill:
+        // short runs spend the scan on edges and were slower on the Fig zoom-2 frames.
+        if !self.compatible
+            && unit_extra
+            && blend_mode == crate::blend::BlendMode::Normal
+            && u64::from(r.w) * u64::from(r.h) >= 160 * 120
+        {
+            if let Some(src) = solid.filter(|pixel| pixel.0[3] == 1.) {
+                self.fill_opaque_solid(mask, layer, r, src);
+                return Ok(());
+            }
+        }
         let quantized_solid = if self.compatible && self.sample.is_some() {
             sampler.solid_rgba8()
         } else {
@@ -3363,6 +3515,39 @@ impl Painter<'_> {
             }
         }
         Ok(())
+    }
+    fn fill_opaque_solid(&mut self, mask: &impl Coverage, layer: &mut Surface, r: Rect, src: Pixel) {
+        for y in r.y..r.bottom() {
+            let mut x = r.x;
+            let right = r.right();
+            while x < right {
+                let coverage = mask.at(x, y);
+                if coverage <= 0. {
+                    x += 1;
+                    continue;
+                }
+                if coverage == 1. {
+                    let start = x;
+                    x += 1;
+                    while x < right && mask.at(x, y) == 1. {
+                        x += 1;
+                    }
+                    let i0 = layer.rect.index(start, y).expect("opaque solid run");
+                    let count = (x - start) as usize;
+                    layer.pixels[i0..i0 + count].fill(src);
+                    self.stats.shaded_pixels += count;
+                } else {
+                    let i = layer.rect.index(x, y).expect("opaque solid edge");
+                    layer.pixels[i] = crate::blend::over_mode(
+                        layer.pixels[i],
+                        src.opacity(coverage),
+                        crate::blend::BlendMode::Normal,
+                    );
+                    self.stats.shaded_pixels += 1;
+                    x += 1;
+                }
+            }
+        }
     }
     fn resolve_effect_planes(&mut self, planes: &[Arc<Surface>; 4]) -> Result<Surface, String> {
         let mut resolved = self.allocate(planes[0].rect)?;
@@ -3716,10 +3901,13 @@ impl Painter<'_> {
                     "blur" | "gaussian-blur" | "motion-blur" | "zoom-blur" | "shadow" | "inner-shadow" | "glass" | "texture"
                 )
         });
+        let m = prepared.matrix;
+        let scale = m.max_scale();
+        let shadow_inset = !self.compatible && self.viewport_hides_outer_shadows(n, prepared, scale);
         let basis = prepared
             .bounds
-            .intersect(if filtered { self.extent } else { original_target })
-            .intersect(self.extent);
+            .intersect(if filtered && !shadow_inset { self.extent } else { original_target })
+            .intersect(if shadow_inset { self.viewport } else { self.extent });
         // Preparation can reject a clipped frame without preparing descendants.
         // Do not run dependency planning inside that already-culled subtree.
         if basis.empty() {
@@ -3744,8 +3932,6 @@ impl Painter<'_> {
                 }
             }
         }
-        let m = prepared.matrix;
-        let scale = m.max_scale();
         let fill = self.rasterize(
             &prepared.fill,
             r,
@@ -3767,10 +3953,16 @@ impl Painter<'_> {
             let background = if let Some((shape, glass)) =
                 crate::optics::GlassShape::from_node(n).zip(fx.glass.as_ref())
             {
-                if bounded {
-                    crate::optics::render_region_with_raster(&blurred, basis, r, shape, m, glass, None, !self.compatible, false)?
+                let shade = nonzero_coverage_bounds(&fill).unwrap_or(r);
+                let (domain, output) = if bounded {
+                    (basis, shade)
                 } else {
-                    crate::optics::render(&blurred, shape, m, glass, None, !self.compatible)?
+                    (blurred.rect, shade.intersect(blurred.rect))
+                };
+                if output.empty() {
+                    blurred.new_like(output)?
+                } else {
+                    crate::optics::render_region_with_raster(&blurred, domain, output, shape, m, glass, None, !self.compatible, false)?
                 }
             } else if fx.kind == "glass" {
                 let mut geometry = self.allocate(r)?;
@@ -3798,9 +3990,9 @@ impl Painter<'_> {
         }
         for paint in &n.fills {
             if bounded {
-                self.paint_region(n, paint, m, &fill, &mut layer, basis.intersect(prepared.fill_program_bounds), |_, _| 1.)?;
+                self.paint_region(n, paint, m, &fill, &mut layer, basis.intersect(prepared.fill_program_bounds), true, |_, _| 1.)?;
             } else {
-                self.paint(n, paint, m, &fill, &mut layer, |_, _| 1.)?;
+                self.paint(n, paint, m, &fill, &mut layer, true, |_, _| 1.)?;
             }
         }
         let mask_id = self.doc.mask_child(n).map(|m| &m.id);
@@ -3859,7 +4051,7 @@ impl Painter<'_> {
             let mask = self.rasterize(&prepared.strokes[i], r, false)?;
             let paint_basis = if bounded { basis.intersect(prepared.stroke_program_bounds[i]) }
                 else { layer.rect.intersect(mask.rect) };
-            self.paint_region(n, &s.paint, m, &mask, &mut layer, paint_basis, |x, y| {
+            self.paint_region(n, &s.paint, m, &mask, &mut layer, paint_basis, !matches!(s.align.as_str(), "inside" | "outside"), |x, y| {
                 match s.align.as_str() {
                     "inside" => fill.at(x, y),
                     "outside" => 1. - fill.at(x, y),
@@ -3880,6 +4072,13 @@ impl Painter<'_> {
                 }
                 "shadow" | "inner-shadow" => {
                     let offset = m.point(Point::new(fx.x, fx.y)) - m.point(Point::default());
+                    // The viewport image only keeps viewport pixels. An outer
+                    // shadow is painted under an opaque fill, so it cannot
+                    // change that image when the viewport sits inside the fill
+                    // farther than the blur, spread, and offset can reach.
+                    if fx.kind == "shadow" && !self.compatible && self.outer_shadow_misses_viewport(fx, scale, offset, prepared) {
+                        continue;
+                    }
                     let mut shadow = if self.compatible {
                         let inner = fx.kind == "inner-shadow";
                         let alpha = effects::shadow_alpha(

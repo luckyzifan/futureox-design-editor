@@ -55,7 +55,7 @@ pub fn rounded_polygon(points: &[Point], radius: f64) -> Path {
     if radius <= 0. || points.len() < 3 {
         return Path::polygon(points, true);
     }
-    rounded_polygon_with(points, |_|radius)
+    rounded_polygon_with(points, |_|radius, 0.)
 }
 
 /// Explicit imported per-vertex circular corners. Zero keeps a sharp vertex.
@@ -64,10 +64,24 @@ pub fn rounded_polygon_radii(points:&[Point],radii:&[f64])->Result<Path,String>{
         return Err("Invalid polygon corner radii".into());
     }
     if points.len()<3{return Ok(Path::polygon(points,true));}
-    Ok(rounded_polygon_with(points,|i|radii[i]))
+    Ok(rounded_polygon_with(points,|i|radii[i], 0.))
 }
 
-fn rounded_polygon_with(points:&[Point],radius:impl Fn(usize)->f64)->Path {
+/// Same fillets as [`rounded_polygon_radii`], with Figma corner smoothing in
+/// `0..=1`. Zero smoothing keeps the circular arc. A positive value starts the
+/// curve farther along each edge and lengthens the cubic handles.
+pub fn rounded_polygon_radii_smoothed(points:&[Point],radii:&[f64],smoothing:f64)->Result<Path,String>{
+    if !smoothing.is_finite() || !(0. ..=1.).contains(&smoothing) {
+        return Err("Invalid polygon corner smoothing".into());
+    }
+    if points.len()!=radii.len() || radii.iter().any(|r|!r.is_finite()||*r<0.) {
+        return Err("Invalid polygon corner radii".into());
+    }
+    if points.len()<3{return Ok(Path::polygon(points,true));}
+    Ok(rounded_polygon_with(points,|i|radii[i], smoothing))
+}
+
+fn rounded_polygon_with(points:&[Point],radius:impl Fn(usize)->f64, smoothing:f64)->Path {
     let mut corners = Vec::with_capacity(points.len());
     for (i, &at) in points.iter().enumerate() {
         let radius=radius(i);
@@ -91,8 +105,9 @@ fn rounded_polygon_with(points:&[Point],radius:impl Fn(usize)->f64)->Path {
             corners.push((at, at, None));
             continue;
         }
-        let distance = (radius / half.tan()).min(l1 / 2.).min(l2 / 2.);
-        let r = distance * half.tan();
+        let spread = 1. + smoothing.clamp(0., 1.);
+        let distance = (radius * spread / half.tan()).min(l1 / 2.).min(l2 / 2.);
+        let r = distance * half.tan() / spread;
         let entry = Point::new(at.x + u.x * distance, at.y + u.y * distance);
         let exit = Point::new(at.x + v.x * distance, at.y + v.y * distance);
         let reach = r / half.sin();
@@ -102,16 +117,30 @@ fn rounded_polygon_with(points:&[Point],radius:impl Fn(usize)->f64)->Path {
         );
         let start = (entry.y - center.y).atan2(entry.x - center.x);
         let sweep = -(std::f64::consts::PI - 2. * half).copysign(cross);
-        corners.push((
-            entry,
-            exit,
-            Some(Command::Arc {
+        let curve = if smoothing <= 0. {
+            Command::Arc {
                 center,
                 radius: Point::new(r, r),
                 start,
                 sweep,
-            }),
-        ));
+            }
+        } else {
+            let k = 4. / 3. * (sweep.abs() / 4.).tan() * r * spread;
+            let sign = sweep.signum();
+            let tangent = |p: Point| {
+                let dx = p.x - center.x;
+                let dy = p.y - center.y;
+                Point::new(-dy * sign, dx * sign)
+            };
+            let unit = |p: Point| {
+                let len = p.x.hypot(p.y).max(1e-12);
+                Point::new(p.x / len * k, p.y / len * k)
+            };
+            let tin = unit(tangent(entry));
+            let tout = unit(tangent(exit));
+            Command::Cubic(Point::new(entry.x + tin.x, entry.y + tin.y), Point::new(exit.x - tout.x, exit.y - tout.y), exit)
+        };
+        corners.push((entry, exit, Some(curve)));
     }
     let mut commands = vec![Command::Move(corners[0].0)];
     for (i, (entry, exit, curve)) in corners.into_iter().enumerate() {

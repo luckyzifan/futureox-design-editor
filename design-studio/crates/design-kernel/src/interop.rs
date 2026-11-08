@@ -1164,6 +1164,7 @@ impl<'a> Importer<'a> {
                                 crate::pattern_fill::ALIGN_START.into(),
                                 crate::pattern_fill::ALIGN_START.into(),
                             ],
+                            ..crate::pattern_fill::PatternTile::native()
                         })
                     }
                     // 1 (Fill) is the kernel image-paint default (cover)

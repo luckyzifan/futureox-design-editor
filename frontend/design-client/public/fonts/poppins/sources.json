@@ -34,5 +34,33 @@
     "url": "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-SemiBold.ttf",
     "bytes": 157312,
     "sha256": "d3bf1bdaf0550e83da9ac0b1d1d9fe6db086835a83aa28578e609a394b9a0286"
+  },
+  {
+    "name": "Poppins-Italic.ttf",
+    "url": "https://github.com/google/fonts/raw/main/ofl/poppins/Poppins-Italic.ttf",
+    "bytes": 184544,
+    "sha256": "4fa76ae75b40f926420514044722cb97f32186cafd3b38263cc34dad7174d46d",
+    "license": "OFL-1.1"
+  },
+  {
+    "name": "Poppins-MediumItalic.ttf",
+    "url": "https://github.com/google/fonts/raw/main/ofl/poppins/Poppins-MediumItalic.ttf",
+    "bytes": 183012,
+    "sha256": "765addf6c7c11ec3c54325cacd68cabd05df8e4b6455302d812a9b9bafd1c614",
+    "license": "OFL-1.1"
+  },
+  {
+    "name": "Poppins-SemiBoldItalic.ttf",
+    "url": "https://github.com/google/fonts/raw/main/ofl/poppins/Poppins-SemiBoldItalic.ttf",
+    "bytes": 181108,
+    "sha256": "16bb118aa232c9a13fa238027d24d7854dd1a1d9cbaf99b17fec4388d56b432c",
+    "license": "OFL-1.1"
+  },
+  {
+    "name": "Poppins-BoldItalic.ttf",
+    "url": "https://github.com/google/fonts/raw/main/ofl/poppins/Poppins-BoldItalic.ttf",
+    "bytes": 179108,
+    "sha256": "3572ac8116a0ac7317d342262b29937bcbaf94d8f03f90df6fe666fa7e2fb43a",
+    "license": "OFL-1.1"
   }
 ]

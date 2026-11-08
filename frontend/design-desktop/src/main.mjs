@@ -1,5 +1,6 @@
 import { desktopText, localizeNativeMenu } from './native-locale.mjs'
 import { createDesignAiHost } from './design-ai.mjs'
+import { createDesignAgentHost } from './design-agent-host.mjs'
 import { createRenderDiagnostics, sanitizeRecord, sanitizeBatch, PREFIX } from './render-terminal-diagnostics.mjs'
 import { createPetHost } from './pet/host.mjs'
 import { diagnosticFileAdapter } from './diagnostic-file.mjs'
@@ -317,6 +318,17 @@ register('design-ai-status', () => designAi.status(), false)
 register('design-ai-configure', value => designAi.configure(value), false)
 register('design-ai-run', value => designAi.run(value), false)
 register('design-ai-cancel', value => designAi.cancel(value), false)
+const designAgentBin = process.env.DESIGN_AGENT_BIN || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../design-studio/target/debug/futureox-design-agent')
+const designAgent = createDesignAgentHost({
+  bin: designAgentBin,
+  storePath: () => path.join(app.getPath('userData'), 'design-agent-providers.json'),
+})
+register('design-agent-status', () => designAgent.status(), false)
+register('design-agent-turn', value => designAgent.turn(value), false)
+register('design-agent-upsert', value => designAgent.upsert(value), false)
+register('design-agent-activate', value => designAgent.activate(value), false)
+register('design-agent-remove', value => designAgent.remove(value), false)
+register('design-agent-cancel', value => designAgent.cancel(value), false)
 register('set-interface-locale', value => {
   if (value !== 'en' && value !== 'zh-CN') throw new TypeError('Unsupported interface locale')
   interfaceLocale = value
@@ -1239,6 +1251,7 @@ async function buildWindow() {
   })
   window.on('closed', () => {
     designAi.dispose()
+    designAgent.dispose()
     if (pluginUi) pluginUi.close()
     if (pluginDirectories) pluginDirectories.clear()
     clearTimeout(closeTimer)
