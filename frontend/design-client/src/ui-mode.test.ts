@@ -29,6 +29,12 @@ test('layout chords switch the shell and the matching editor shortcut profile', 
   expect(interfaceLayoutFromShortcut({ key: 'f', metaKey: true, ctrlKey: false, altKey: false, shiftKey: false })).toBeNull()
   expect(interfaceLayoutFromShortcut({ key: 'f', metaKey: true, ctrlKey: true, altKey: true, shiftKey: false })).toBeNull()
   expect(interfaceLayoutFromShortcut({ key: 's', metaKey: true, ctrlKey: false, altKey: true, shiftKey: true })).toBeNull()
+  // US Mac Option+F / Option+S: key is ƒ / ß, code stays KeyF / KeyS.
+  expect(interfaceLayoutFromShortcut({ key: 'ƒ', code: 'KeyF', metaKey: true, ctrlKey: false, altKey: true, shiftKey: false })).toBe('figma')
+  expect(interfaceLayoutFromShortcut({ key: 'ß', code: 'KeyS', metaKey: true, ctrlKey: false, altKey: true, shiftKey: false })).toBe('sketch')
+  expect(interfaceLayoutFromShortcut({ key: 'ƒ', metaKey: true, ctrlKey: false, altKey: true, shiftKey: false })).toBeNull()
+  expect(interfaceLayoutFromShortcut({ key: '©', code: 'KeyG', metaKey: true, ctrlKey: false, altKey: true, shiftKey: false })).toBeNull()
+  expect(interfaceLayoutFromShortcut({ key: 'Ï', code: 'KeyF', metaKey: true, ctrlKey: false, altKey: true, shiftKey: true })).toBeNull()
   applyInterfaceLayout('sketch')
   expect(interfacePreference.getSnapshot().uiMode).toBe('sketch')
   expect(shortcutPreference.getSnapshot()).toBe('sketch-like')
