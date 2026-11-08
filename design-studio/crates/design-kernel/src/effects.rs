@@ -366,21 +366,6 @@ fn box_pass_unit_alpha(input: &mut Surface, r: i32, horizontal: bool, solid_core
     let mut source_line = vec![0_f32; len as usize];
     let width = rect.w as usize;
     for line in 0..lines {
-        if horizontal {
-            let row = line as usize * width;
-            for at in 0..len as usize {
-                source_line[at] = input.pixels[row + at].0[3];
-            }
-        } else {
-            for at in 0..len as usize {
-                source_line[at] = input.pixels[at * width + line as usize].0[3];
-            }
-        }
-        let mut sum = 0_f64;
-        for k in -r..=r {
-            sum += f64::from(unit_line_at(&source_line, k));
-        }
-        let mut since_sync = 0_i32;
         let skip = solid_core.and_then(|core| {
             if horizontal {
                 let y = rect.y + line;
@@ -396,6 +381,33 @@ fn box_pass_unit_alpha(input: &mut Surface, r: i32, horizontal: bool, solid_core
                 (y0 < y1).then_some((y0, y1))
             }
         });
+        // The proved core is exact alpha 1 on every pass. A horizontal line
+        // can paint that span into the scratch without reading it back.
+        if horizontal {
+            let row = line as usize * width;
+            if let Some((x0, x1)) = skip {
+                for at in 0..x0 as usize {
+                    source_line[at] = input.pixels[row + at].0[3];
+                }
+                source_line[x0 as usize..x1 as usize].fill(1.);
+                for at in x1 as usize..len as usize {
+                    source_line[at] = input.pixels[row + at].0[3];
+                }
+            } else {
+                for at in 0..len as usize {
+                    source_line[at] = input.pixels[row + at].0[3];
+                }
+            }
+        } else {
+            for at in 0..len as usize {
+                source_line[at] = input.pixels[at * width + line as usize].0[3];
+            }
+        }
+        let mut sum = 0_f64;
+        for k in -r..=r {
+            sum += f64::from(unit_line_at(&source_line, k));
+        }
+        let mut since_sync = 0_i32;
         let mut at = 0;
         while at < len {
             if let Some((x0, x1)) = skip {
