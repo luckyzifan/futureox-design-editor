@@ -142,7 +142,7 @@ export interface VideoEncodeBridge {
 }
 export interface DesktopBridge {
   readonly designAgent?: {
-    status(): Promise<DesktopResult<{ providers: Array<{ id: string; name: string; kind: string; model: string; base_url: string; active: boolean; has_secret: boolean }>;     ccswitch?: { present?: boolean; proxy?: string | null; failover?: boolean; detail?: string; providers?: Array<{ id: string; name: string; app_type: string; current: boolean; kind?: string; model?: string; has_secret?: boolean }> } }>>
+    status(): Promise<DesktopResult<{ providers: Array<{ id: string; name: string; kind: string; model: string; base_url: string; active: boolean; has_secret: boolean }>;     ccswitch?: { present?: boolean; detail?: string; providers?: Array<{ id: string; name: string; app_type: string; current: boolean; kind?: string; model?: string; has_secret?: boolean }> } }>>
     turn(body: unknown): Promise<DesktopResult<{ turn: unknown }>>
     upsert(body: unknown): Promise<DesktopResult>
     activate(body: { id: string; profile_id?: string }): Promise<DesktopResult>
