@@ -3236,6 +3236,59 @@ impl Painter<'_> {
 
         Ok(())
     }
+    fn viewport_hides_outer_shadows(
+        &self,
+        n: &Node,
+        prepared: &crate::geometry_snapshot::Prepared,
+        scale: f64,
+    ) -> bool {
+        let mut saw_shadow = false;
+        for fx in n.effects.iter().filter(|effect| effect.visible) {
+            match fx.kind.as_str() {
+                "shadow" => {
+                    saw_shadow = true;
+                    let offset = prepared.matrix.point(crate::math::Point::new(fx.x, fx.y))
+                        - prepared.matrix.point(crate::math::Point::default());
+                    if !self.outer_shadow_misses_viewport(fx, scale, offset, prepared) {
+                        return false;
+                    }
+                }
+                "inner-shadow" | "blur" | "gaussian-blur" | "motion-blur" | "zoom-blur" | "glass" | "texture" | "background-blur" => {
+                    return false;
+                }
+                _ => {}
+            }
+        }
+        saw_shadow
+    }
+    fn outer_shadow_misses_viewport(
+        &self,
+        fx: &crate::scene::Effect,
+        scale: f64,
+        offset: crate::math::Point,
+        prepared: &crate::geometry_snapshot::Prepared,
+    ) -> bool {
+        let sigma = fx.radius * scale / 2.;
+        let Ok(radii) = effects::gaussian_box_radii(sigma) else { return false };
+        let support = radii.into_iter().sum::<u32>() as i32;
+        let reach = support
+            .saturating_add(offset.x.abs().ceil() as i32)
+            .saturating_add(offset.y.abs().ceil() as i32)
+            .saturating_add(fx.spread.abs().ceil() as i32)
+            .saturating_add(2);
+        let shape = if prepared.fill_program_bounds.empty() {
+            prepared.bounds
+        } else {
+            prepared.fill_program_bounds
+        };
+        let interior = shape.expand(-reach);
+        let view = self.viewport;
+        !interior.empty()
+            && view.x >= interior.x
+            && view.y >= interior.y
+            && view.right() <= interior.right()
+            && view.bottom() <= interior.bottom()
+    }
     fn blur_filter(&self, radius: f64) -> effects::BlurFilter {
         if self.doc.color_management.is_some() {
             effects::BlurFilter::LinearTent(radius)
@@ -3823,10 +3876,13 @@ impl Painter<'_> {
                     "blur" | "gaussian-blur" | "motion-blur" | "zoom-blur" | "shadow" | "inner-shadow" | "glass" | "texture"
                 )
         });
+        let m = prepared.matrix;
+        let scale = m.max_scale();
+        let shadow_inset = !self.compatible && self.viewport_hides_outer_shadows(n, prepared, scale);
         let basis = prepared
             .bounds
-            .intersect(if filtered { self.extent } else { original_target })
-            .intersect(self.extent);
+            .intersect(if filtered && !shadow_inset { self.extent } else { original_target })
+            .intersect(if shadow_inset { self.viewport } else { self.extent });
         // Preparation can reject a clipped frame without preparing descendants.
         // Do not run dependency planning inside that already-culled subtree.
         if basis.empty() {
@@ -3851,8 +3907,6 @@ impl Painter<'_> {
                 }
             }
         }
-        let m = prepared.matrix;
-        let scale = m.max_scale();
         let fill = self.rasterize(
             &prepared.fill,
             r,
@@ -3987,6 +4041,13 @@ impl Painter<'_> {
                 }
                 "shadow" | "inner-shadow" => {
                     let offset = m.point(Point::new(fx.x, fx.y)) - m.point(Point::default());
+                    // The viewport image only keeps viewport pixels. An outer
+                    // shadow is painted under an opaque fill, so it cannot
+                    // change that image when the viewport sits inside the fill
+                    // farther than the blur, spread, and offset can reach.
+                    if fx.kind == "shadow" && !self.compatible && self.outer_shadow_misses_viewport(fx, scale, offset, prepared) {
+                        continue;
+                    }
                     let mut shadow = if self.compatible {
                         let inner = fx.kind == "inner-shadow";
                         let alpha = effects::shadow_alpha(
