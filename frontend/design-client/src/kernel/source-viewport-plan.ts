@@ -272,14 +272,16 @@ export class SourceViewportPlanner {
         return {...tile,x,y,width:w,height:h,key:[tile.key,'crop',x,y,w,h].join('/')}
       })
     }
-    // The original global tile coordinates and computation camera are also
-    // the exact numerical reference. Catalogue bounds only prioritize work.
-    // The presenter must independently prove pending gaps are paint-free
-    // page background, or retryNativeCoverage draws the complete old lattice.
+    // Catalogue bounds only change order. Dropping tiles outside a material
+    // window left screen-aligned holes: at 25% the art can cover less than
+    // 80% of the viewport, the omitted lattice never gets scheduled, and the
+    // presenter then paints those gaps as page background through the
+    // isometric faces. A declined coverage retry still asks for the full set.
     if(window&&this.overview&&!this.coverageRetry&&raster.scale<8){
       const clipped={...view,x:view.x-window.x,y:view.y-window.y}
-      const priority=viewport.filter(tile=>tileIntersectsView(tile,clipped,window))
-      if(priority.length)viewport=priority
+      const hits:typeof viewport=[],rest:typeof viewport=[]
+      for(const tile of viewport)(tileIntersectsView(tile,clipped,window)?hits:rest).push(tile)
+      if(hits.length&&rest.length)viewport=[...hits,...rest]
     }
     const tiles=viewport.map(rekey)
     let rim=addressed.rim.map(rekey)
