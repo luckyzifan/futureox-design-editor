@@ -3,6 +3,8 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-08 [展平微优化没有留下](../../../testing/verification-render-flatten-inline-20261108/README.md)：固定数组堆和 `inline(always)` 的点运算都没有让孤立 zoom 3.2 低于玻璃边缘基线的 557.421–564.007 ms。哈希没变。正式最慢帧仍是 zoom 3.2 的 843.736 ms。不是 33/100ms 或完整 G2/G5。
+
 2026-11-08 [玻璃边缘色散落在同一取样点时只读一次](../../../testing/verification-render-glass-edge-20261108/README.md)：边框几何仍逐像素计算。色散两端和中心取样二进制位相同时，边像素只读一次背景，原来的加权和还在。zoom 0.8 从 901.767 ms 降到 780.249 ms。zoom 3.2 是 843.736 ms。zoom 6.4 是 406.724 ms。素材 zoom 2 是 72.602 ms 和 76.618 ms。不是 33/100ms 或完整 G2/G5。
 
 2026-11-08 [满覆盖合成直接盖上不透明行](../../../testing/verification-render-unmasked-composite-20261108/README.md)：蒙版恒为 1 时不再逐像素调用蒙版函数，Normal 且完全不透明的一段直接复制。zoom 3.2 从 1037.807 ms 降到 838.310 ms，zoom 0.8 从 938.417 ms 降到 901.767 ms。zoom 6.4 是 390.355 ms。zoom 32 平移最大从 543.596 ms 降到 395.677 ms。素材 zoom 2 同一次 WASM 上是 110.019、92.891、79.577 ms。不是 33/100ms 或完整 G2/G5。
