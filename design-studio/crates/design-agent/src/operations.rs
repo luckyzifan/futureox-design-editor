@@ -57,6 +57,9 @@ pub struct NodeRef {
     /// Font size of a text layer, in the node's units.
     #[serde(default)]
     pub font_size: Option<f64>,
+    /// Font id of a text layer, when the snapshot has one.
+    #[serde(default)]
+    pub font_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -521,6 +524,7 @@ mod tests {
                 opacity: None,
                 corner_radius: None,
                 font_size: None,
+                font_id: None,
             }],
             selection: Vec::new(),
         };
