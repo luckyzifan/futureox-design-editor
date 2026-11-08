@@ -26,6 +26,11 @@ test('an overview already covered by the shown frame is not stacked again', () =
   expect(coversUnpaintedViewport(overview, view, size, [full])).toBe(false)
 })
 
+test('a bitmap more than 2× finer is not published as the covering underlay', () => {
+  const fine = tile('fine', 8, 0, 0, 4096)
+  expect(selectCoverageUnderlay([fine], view, size, [])).toEqual([])
+})
+
 test('a shown sharp crop still receives the overview that paints the newly exposed margin', () => {
   const crop = tile('crop', 4, 0, 0, 128)
   const overview = tile('overview', 0.5, 0, 0)
