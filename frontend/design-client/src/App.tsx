@@ -22,6 +22,7 @@ import { alignmentAvailability, alignSelection } from './alignment-availability'
 import { SettingsDialog } from './SettingsDialog'
 import { PanelResizeHandle, useAdaptivePanels } from './AdaptivePanels'
 import { interfaceText, interfacePreference, useInterfacePreferences } from './interface-preference'
+import { applyInterfaceLayout, interfaceLayoutFromShortcut } from './interface-layout'
 import { bindEditorSettings } from './settings-preference'
 import { WorkspaceRootControls, chooseWorkspaceRoot } from './WorkspaceRootControls'
 import { useShortcutProfile } from './shortcut-preference'
@@ -753,6 +754,13 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         if (command) void dispatchEditorCommand(editor, command)
       }
     }
+    const layout = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.isComposing || e.keyCode === 229 || shortcutTargetOwnsKeyboard(e.target)) return
+      const mode = interfaceLayoutFromShortcut(e)
+      if (!mode) return
+      e.preventDefault()
+      applyInterfaceLayout(mode)
+    }
     const shortcut = (e: KeyboardEvent) => {
       if (largeDocument || source) return
       const settingsMod = shortcutPlatform() === 'mac' ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey
@@ -773,6 +781,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
         e.preventDefault(); command('new')
       }
     }
+    window.addEventListener('keydown', layout)
     window.addEventListener('keydown', shortcut)
     const offCommand = desktop?.onCommand(command)
     const offLaunch = desktop?.plugins?.onLaunch?.(({ grant }) => {
@@ -800,7 +809,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
           editor.notify(`关闭请求失败，设计已保留：${detail}`, { key: 'closeFailedDocumentRetained', error: detail })
         })
     })
-    return () => { window.removeEventListener('keydown', shortcut); offCommand?.(); offLaunch?.(); offClose?.() }
+    return () => { window.removeEventListener('keydown', layout); window.removeEventListener('keydown', shortcut); offCommand?.(); offLaunch?.(); offClose?.() }
   }, [editor, desktopSession, desktop, ready, fileImports, openSettings, showHome, switching, desktopStatus.busy, desktopStatus.transitioning, largeDocument, source])
   function resumeEditor() {
     if (!ready) return
