@@ -1170,18 +1170,19 @@ pub(crate) fn color_shadow_rgba8(
     Ok(out)
 }
 
-/// One channel of `Surface::sample_linear`. Shadow coloring only reads alpha,
-/// so the other three bilinear products are not evaluated.
-fn shadow_alpha_sample(alpha: &Surface, x: f64, y: f64) -> f32 {
-    let (x, y) = (x - 0.5, y - 0.5);
-    let (ix, iy) = (x.floor() as i32, y.floor() as i32);
-    let (u, v) = ((x - x.floor()) as f32, (y - y.floor()) as f32);
-    let channel = |x: i32, y: i32| alpha.at(x, y).0[3];
-    crate::sampling::bilinear(
-        [channel(ix, iy), channel(ix + 1, iy), channel(ix, iy + 1), channel(ix + 1, iy + 1)],
-        u,
-        v,
-    )
+fn sample_delta(offset: f64) -> (i32, f32) {
+    let shifted = -offset;
+    let base = shifted.floor();
+    (base as i32, (shifted - base) as f32)
+}
+
+#[inline(always)]
+fn shadow_tap(alpha: &Surface, x: i32, y: i32) -> f32 {
+    let rect = alpha.rect;
+    if x < rect.x || y < rect.y || x >= rect.right() || y >= rect.bottom() {
+        return 0.;
+    }
+    alpha.pixels[(y - rect.y) as usize * rect.w as usize + (x - rect.x) as usize].0[3]
 }
 
 // The alpha buffer has no further readers in shadow_with_filter. Traverse
@@ -1201,9 +1202,13 @@ fn color_shadow_linear_owned(
     let width = rect.w as usize;
     let _scratch = alpha.reserve_scratch::<Pixel>(width)?;
     let mut row = vec![Pixel::default(); width];
+    // Every integer pixel center shares one bilinear offset.
+    let (x_delta, u) = sample_delta(dx);
+    let (y_delta, v) = sample_delta(dy);
     for line in 0..rect.h as i32 {
         let y = if dy > 0. { rect.bottom() - 1 - line } else { rect.y + line };
         let src_row = (y - rect.y) as usize * width;
+        let iy = y + y_delta;
         row.copy_from_slice(&surface.pixels[src_row..src_row + width]);
         for (at, pixel) in row.iter_mut().enumerate() {
             // Outer shadow is painted under the source. An opaque source pixel
@@ -1212,8 +1217,17 @@ fn color_shadow_linear_owned(
                 continue;
             }
             let src_a = pixel.0[3];
-            let x = rect.x + at as i32;
-            let b = shadow_alpha_sample(&alpha, f64::from(x) + 0.5 - dx, f64::from(y) + 0.5 - dy);
+            let ix = rect.x + at as i32 + x_delta;
+            let b = crate::sampling::bilinear(
+                [
+                    shadow_tap(&alpha, ix, iy),
+                    shadow_tap(&alpha, ix + 1, iy),
+                    shadow_tap(&alpha, ix, iy + 1),
+                    shadow_tap(&alpha, ix + 1, iy + 1),
+                ],
+                u,
+                v,
+            );
             let coverage = if inner { src_a * (1. - b) } else { b };
             *pixel = color.opacity(coverage);
         }
