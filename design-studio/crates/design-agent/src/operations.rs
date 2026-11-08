@@ -47,6 +47,9 @@ pub struct NodeRef {
     /// Dash pattern of that stroke, when one is authored.
     #[serde(default)]
     pub stroke_dash: Option<String>,
+    /// Layer opacity when it is not fully opaque.
+    #[serde(default)]
+    pub opacity: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -508,6 +511,7 @@ mod tests {
                 stroke_cap: None,
                 stroke_join: None,
                 stroke_dash: None,
+                opacity: None,
             }],
             selection: Vec::new(),
         };

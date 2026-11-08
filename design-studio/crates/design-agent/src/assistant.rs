@@ -166,11 +166,12 @@ pub fn design_context_text(ctx: &DesignContext) -> String {
     };
     let layers = ctx.nodes.iter().take(24).map(|node| {
         format!(
-            "{}（{}）{}{}{}",
+            "{}（{}）{}{}{}{}",
             node.name,
             node.kind,
             node.text.as_ref().map(|text| format!(" 文字「{text}」")).unwrap_or_default(),
             node.fill.as_ref().map(|fill| format!(" 填充 {fill}")).unwrap_or_default(),
+            node.opacity.map(|opacity| format!(" 不透明度 {opacity}")).unwrap_or_default(),
             node.stroke.as_ref().map(|stroke| format!(
                 " 描边 {stroke}{}{}{}{}{}",
                 node.stroke_width.map(|width| format!(" {width}px")).unwrap_or_default(),
@@ -199,11 +200,12 @@ pub fn answer_design_question(latest: &str, items: &[TurnItem], ctx: &DesignCont
     let mentioned = ctx.nodes.iter().find(|node| latest.contains(node.name.as_str()) || (latest.contains("按钮") && node.name.contains("按钮")) || (latest.contains("标题") && (node.name.contains("标题") || node.kind == "text")));
     let about = if let Some(node) = mentioned {
         format!(
-            "提到的图层是「{}」，类型 {}{}{}{}。",
+            "提到的图层是「{}」，类型 {}{}{}{}{}。",
             node.name,
             node.kind,
             node.text.as_ref().map(|text| format!("，文字「{text}」")).unwrap_or_default(),
             node.fill.as_ref().map(|fill| format!("，填充 {fill}")).unwrap_or_default(),
+            node.opacity.map(|opacity| format!("，不透明度 {opacity}")).unwrap_or_default(),
             node.stroke.as_ref().map(|stroke| format!(
                 "，描边 {stroke}{}{}{}{}{}",
                 node.stroke_width.map(|width| format!(" {width}px")).unwrap_or_default(),
@@ -462,7 +464,7 @@ mod tests {
             pages: vec![crate::operations::PageRef { id: "page-1".into(), name: "秋日特惠".into() }],
             nodes: vec![crate::operations::NodeRef {
                 id: "button".into(), page_id: "page-1".into(), parent_id: None, name: "按钮".into(), kind: "rectangle".into(),
-                x: 0.0, y: 0.0, width: 80.0, height: 32.0, text: None, fill: Some("#3459d4".into()), stroke: Some("#e05634".into()), stroke_width: Some(2.0), stroke_align: Some("inside".into()), stroke_cap: Some("round".into()), stroke_join: Some("miter".into()), stroke_dash: Some("4 2".into()),
+                x: 0.0, y: 0.0, width: 80.0, height: 32.0, text: None, fill: Some("#3459d4".into()), stroke: Some("#e05634".into()), stroke_width: Some(2.0), stroke_align: Some("inside".into()), stroke_cap: Some("round".into()), stroke_join: Some("miter".into()), stroke_dash: Some("4 2".into()), opacity: Some(0.5),
             }],
             selection: vec!["button".into()],
         };
@@ -483,6 +485,7 @@ mod tests {
         assert!(message.contains("round"), "{message}");
         assert!(message.contains("miter"), "{message}");
         assert!(message.contains("4 2"), "{message}");
+        assert!(message.contains("不透明度 0.5"), "{message}");
         assert!(message.contains("秋日特惠"), "{message}");
         let with_tool = {
             let mut items = items.clone();

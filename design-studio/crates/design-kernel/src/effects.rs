@@ -329,9 +329,138 @@ fn tent_blur_impl(
 fn box_pass_in_place_domain<const CHANNELS: usize>(input: &mut Surface, r: i32, horizontal: bool, bounded: bool) -> Result<(), String> {
     box_pass_in_place_domain_core::<CHANNELS>(input, r, horizontal, bounded, None)
 }
+
+/// One-channel alpha, clamped to the unit interval. Same sums and the same
+/// rounding test as the generic pass, without a per-sample closure.
+#[inline(always)]
+fn unit_line_at(line: &[f32], at: i32) -> f32 {
+    if at >= 0 && (at as usize) < line.len() { line[at as usize] } else { 0. }
+}
+
+#[inline(always)]
+fn certify_unit(sum: f64, steps: i32, window: f64, denominator: f64) -> Option<f32> {
+    let steps = f64::from(steps.max(0));
+    let err = (window + 2. * steps) * f64::EPSILON * sum.abs().max(1.) * 8.;
+    let center = sum / denominator;
+    let lo = (center - err / denominator).clamp(0., 1.) as f32;
+    let hi = (center + err / denominator).clamp(0., 1.) as f32;
+    if lo.to_bits() == hi.to_bits() { Some(lo) } else { None }
+}
+
+fn box_pass_unit_alpha(input: &mut Surface, r: i32, horizontal: bool, solid_core: Option<Rect>) -> Result<(), String> {
+    let rect = input.rect;
+    if r <= 0 {
+        return Ok(());
+    }
+    let (lines, len) = if horizontal {
+        (rect.h as i32, rect.w as i32)
+    } else {
+        (rect.w as i32, rect.h as i32)
+    };
+    let denominator = f64::from(2 * r + 1);
+    let window = denominator;
+    let kernel = crate::rational_filter::RationalKernel::uniform_box(r as u32)?;
+    let _scratch = input.reserve_scratch::<f32>((2 * r + 1) as usize)?;
+    let mut taps = vec![0.; (2 * r + 1) as usize];
+    let _line_allocation = input.reserve_scratch::<f32>(len as usize)?;
+    let mut source_line = vec![0_f32; len as usize];
+    let width = rect.w as usize;
+    for line in 0..lines {
+        if horizontal {
+            let row = line as usize * width;
+            for at in 0..len as usize {
+                source_line[at] = input.pixels[row + at].0[3];
+            }
+        } else {
+            for at in 0..len as usize {
+                source_line[at] = input.pixels[at * width + line as usize].0[3];
+            }
+        }
+        let mut sum = 0_f64;
+        for k in -r..=r {
+            sum += f64::from(unit_line_at(&source_line, k));
+        }
+        let mut since_sync = 0_i32;
+        let skip = solid_core.and_then(|core| {
+            if horizontal {
+                let y = rect.y + line;
+                if y < core.y || y >= core.bottom() { return None; }
+                let x0 = (core.x - rect.x).clamp(0, len);
+                let x1 = (core.right() - rect.x).clamp(0, len);
+                (x0 < x1).then_some((x0, x1))
+            } else {
+                let x = rect.x + line;
+                if x < core.x || x >= core.right() { return None; }
+                let y0 = (core.y - rect.y).clamp(0, len);
+                let y1 = (core.bottom() - rect.y).clamp(0, len);
+                (y0 < y1).then_some((y0, y1))
+            }
+        });
+        let mut at = 0;
+        while at < len {
+            if let Some((x0, x1)) = skip {
+                if at == x0 {
+                    for fill in at..x1 {
+                        let index = if horizontal {
+                            line as usize * width + fill as usize
+                        } else {
+                            fill as usize * width + line as usize
+                        };
+                        input.pixels[index].0[3] = 1.;
+                    }
+                    at = x1;
+                    if at >= len {
+                        break;
+                    }
+                    sum = 0.;
+                    for k in -r..=r {
+                        sum += f64::from(unit_line_at(&source_line, at + k));
+                    }
+                    since_sync = 0;
+                    continue;
+                }
+            }
+            let index = if horizontal {
+                line as usize * width + at as usize
+            } else {
+                at as usize * width + line as usize
+            };
+            let written = if sum == 0. {
+                Some(0_f32)
+            } else if let Some(value) = certify_unit(sum, since_sync, window, denominator) {
+                Some(value)
+            } else {
+                sum = 0.;
+                for k in -r..=r {
+                    sum += f64::from(unit_line_at(&source_line, at + k));
+                }
+                since_sync = 0;
+                certify_unit(sum, 0, window, denominator)
+            };
+            if let Some(value) = written {
+                input.pixels[index].0[3] = value;
+            } else {
+                for (i, tap) in taps.iter_mut().enumerate() {
+                    *tap = unit_line_at(&source_line, at - r + i as i32);
+                }
+                input.pixels[index].0[3] = f64::from(kernel.convolve(&taps)?).clamp(0., 1.) as f32;
+            }
+            let add = unit_line_at(&source_line, at + r + 1);
+            let remove = unit_line_at(&source_line, at - r);
+            sum += f64::from(add);
+            sum -= f64::from(remove);
+            since_sync += 1;
+            at += 1;
+        }
+    }
+    Ok(())
+}
 fn box_pass_in_place_domain_core<const CHANNELS: usize>(
     input: &mut Surface, r: i32, horizontal: bool, bounded: bool, solid_core: Option<Rect>,
 ) -> Result<(), String> {
+    if CHANNELS == 1 && bounded {
+        return box_pass_unit_alpha(input, r, horizontal, solid_core);
+    }
     let domain = |value: f64| if bounded { value.clamp(0., 1.) } else { value };
     let rect = input.rect;
     if r <= 0 {
