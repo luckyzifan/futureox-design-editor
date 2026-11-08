@@ -25,6 +25,27 @@ test('a page thumbnail is not a readable frame after a large zoom-in', () => {
   expect(selectCoverageUnderlay([coarse], view, { width: 800, height: 600 }, [])).toEqual([])
 })
 
+test('a low-zoom fit with no earlier frame keeps the only bitmap on screen', () => {
+  const dom = new JSDOM('<div><canvas></canvas></div>')
+  vi.stubGlobal('document', dom.window.document)
+  const host = document.querySelector('div')!
+  const canvas = document.querySelector('canvas')!
+  const projection = new CameraReprojection(canvas, host)
+  const page = {
+    presentationId: 'fit', view: { x: 0, y: 0, zoom: 1 },
+    width: 800, height: 600, dpr: 2, interaction: false, ids: [1],
+  }
+  const shown = projection.update(page, { x: 40, y: 20, zoom: 0.15 }, 800, 600, true)
+  expect(shown.active).toBe(true)
+  expect(canvas.style.visibility).not.toBe('hidden')
+  expect(canvas.style.transform).toContain('scale(')
+  expect(canvas.style.imageRendering).toBe('auto')
+  expect(canvas.dataset.previewUpscaleRejected).toBe('true')
+  expect(canvas.dataset.cameraReprojected).toBe('true')
+  projection.dispose()
+  dom.window.close()
+})
+
 test('a zoom jump past 2× keeps the previous image until a covering replacement exists', () => {
   expect(showRetainedPreview({ sourceZoom: 256, viewZoom: 1.197, intersects: true, replacementCovers: false })).toBe(true)
   expect(showRetainedPreview({ sourceZoom: 1, viewZoom: 8, intersects: true, replacementCovers: false })).toBe(true)

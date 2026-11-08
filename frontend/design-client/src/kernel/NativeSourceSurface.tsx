@@ -152,7 +152,10 @@ export function NativeSourceSurface(props:Props){
     if(hover){hover.pick=pick;hover.refresh?.()}
     const emit=(status:NativeSourceStatus)=>{
       if(!alive)return
-      const signature=`${status.phase}/${status.done}/${status.total}/${status.error??''}`,now=performance.now()
+      const requested=latest.current.view.zoom*(backing?.dpr||density.current||1)
+      const farTiles=backingTiles.some(tile=>!previewCameraScaleWithinLimit(tile.zoom,requested))
+      const holed=!!backing?.preview||(backing?.previewGaps?.length??0)>0
+      const signature=`${status.phase}/${status.done}/${status.total}/${status.error??''}/${Number(farTiles)}/${Number(holed)}`,now=performance.now()
       // A single visible decoded board is enough to keep routine status quiet.
       // Reprojection and final receipts separately require full coverage.
       const p=latest.current
@@ -164,8 +167,9 @@ export function NativeSourceSurface(props:Props){
       const cpu=renderExecutionPolicy.cpuOnly
       badge.textContent=nativeSourceBadgeText(status,{
         cpu, openingMaterial:source.openingMaterial!==undefined,
-        previewRejected:element.dataset.previewUpscaleRejected==='true',
+        previewRejected:element.dataset.previewUpscaleRejected==='true'||farTiles,
         holdingFrame:element.dataset.cameraReprojected==='true'||!!backing,
+        holed:!!backing?.preview||(backing?.previewGaps?.length??0)>0,
       })
       badge.title=status.error??'当前视口完成全部瓦片与采样密度校验后显示清晰'
       diagnostics.record('viewport-state',{state:status.phase==='loading'?0:status.phase==='refining'?1:status.phase==='ready'?2:3,
