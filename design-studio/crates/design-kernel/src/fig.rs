@@ -1627,6 +1627,23 @@ impl FigImporter {
             }
             node.network = decoded.network.map(Into::into);
             node.vector_geometry = decoded.vector_geometry;
+            if let Some(name) = decoded.stroke_cap.as_deref() {
+                let cap = Self::stroke_cap(Some(name));
+                for stroke in &mut node.strokes {
+                    stroke.cap = cap.0.into();
+                    stroke.end_marker = cap.1;
+                }
+            }
+            if let Some(name) = decoded.stroke_join.as_deref() {
+                let join = match name {
+                    "ROUND" => "round",
+                    "BEVEL" => "bevel",
+                    _ => "miter",
+                };
+                for stroke in &mut node.strokes {
+                    stroke.join = join.into();
+                }
+            }
         }
         if fig_type == "VECTOR"
             && let Some(entries) = change
@@ -2617,6 +2634,7 @@ pub fn document_from_canvas(
         doc.design_system.get_or_insert_with(Default::default).sketch_containers.insert("nodeMetadata".into(), Value::Object(metadata));
         version=version.max(4);
     }
+    document::import_variables(&mut doc, &records);
     document::write_receipt(&mut doc, &records, tree, &internal_pages, &document_notes);
     document::raise_schema(&doc, &mut version);
     doc.schema_version = version;

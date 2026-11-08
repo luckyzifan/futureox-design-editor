@@ -15,6 +15,10 @@
 
 2026-11-07 [连续缩放覆盖连续性](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：缩出密度播种之后，快慢缩放仍会大块留白。原因是目标格子未齐就不发布，且密度跳变会取消补洞瓦片；总览只进 CSS 图集。现改为视口并集盖住才换帧，粗层垫在锐层下，在途瓦片按是否还在画洞决定去留。预算、落定精确瓦片和物理 DPR 预览不变。不是 33/100ms 或完整 G2/G5。
 
+2026-11-08 CC Switch：只接入切换上游。一条供应商是地址、密钥，以及 API 或 Token plan。设计助手打到选中的那一条。见 [DESIGN_AGENT.md](../../../docs/DESIGN_AGENT.md) 和 [记录](../../../testing/verification-ccswitch-integration-20261108/README.md)。
+
+2026-11-07 设计助手：桌面版用 Tokio `futureox-design-agent` 跑对话、一键出图和细节调整，经 MCP `batch.apply` 写入现有编辑器。设置里可保存 API、Token plan 和 CC Switch。页面悬停才出现定向修改。Fig/Sketch 只做结构差距，不改光栅。见 [DESIGN_AGENT.md](../../../docs/DESIGN_AGENT.md)。
+
 2026-11-06 [滚轮缩小卡住分析与缩出密度播种](../../../testing/verification-zoom-out-density-20261106/README.md)：反向缩小就绪 9.4s（11-04 实测）、拓扑冷视口 35s 为既有开放项；机制=瓦片平方爆炸+高倍效果设备像素代价+**缩入/缩出不对称**（滚轮快道只对 zoomingIn 开放，且 SourceQualityLadder 反应式降档要先付一次失败全量光栅）+总览串行解码；另滚轮不开交互事务，指针手势自适应密度 flag 从未覆盖滚轮通道。修复：`outwardInteractionScale`（同一 8M 阶梯除数，缩出方向免 flag）+ `SourceQualityLadder.seed`（种在阶梯密度、original 为升级上界）+ NativeSourceSurface 连续缩出时逐 tick 播种；指针通道/落定精确瓦片/预算常量不变。4 测试文件 36/36、tsc 干净；真机收益按 11-03 固定回放复测待做；B（缩出预取）/C（总览金字塔）列后续。
 
 2026-11-06 [Rust 全量依赖升级与安全公告清零](../../../testing/verification-dependency-upgrade-20261106/README.md)：工具链 1.96.1→1.99.1（rust-toolchain.toml 改锁 + wasm32 target 重装）；ruzstd 0.9.1 + zstd 解压 256MiB 输出上限（修 RUSTSEC-2026-0344 解压炸弹，此前 message 块解压无上限）；zip 2→9.4.1（API 迁移 name()/name_raw()/file_names()/start_file，zip 9 原生声明尺寸校验成第一道防线、预算门退居第二道）；sha2 0.11（asm 特性移除，aarch64 回退可移植路径；digest 去 LowerHex 全部改显式 hex）；miniz 0.9/moxcms 0.9/base64 0.23/lz4 0.14/utoipa 6/tokio 1.54.1 等；wasm-bindgen =0.2.130 + WASM 重建。cargo audit 16 公告→0 漏洞（7 失维警告列 P3）。Rust 全量 1252/0；前端 typecheck 绿、已知绿集合 81/81 对照通过（全量首跑 132 失败=fontTools 等环境缺件+无基线存量，非升级破坏）；color_output 默认值新行为=产出 sRGB 标记 PNG（export_regions 断言已随实更新）。磁盘曾被旧工具链指纹撑到 97%，cargo clean 回收 103.5G。

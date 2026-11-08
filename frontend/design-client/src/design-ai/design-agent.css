@@ -1,15 +1,26 @@
-.design-agent-panel { width:min(880px,94vw); max-height:90vh; overflow:auto; }
-.design-agent-panel h2 { display:flex; align-items:center; justify-content:space-between; gap:16px; }
-.design-agent-panel p { line-height:1.6; }
-.design-agent-panel label { display:flex; flex-direction:column; gap:7px; }
-.design-agent-panel textarea { width:100%; resize:vertical; min-height:90px; font:inherit; padding:12px; box-sizing:border-box; }
-.design-agent-panel select,.design-agent-panel input { font:inherit; padding:8px; min-width:0; }
-.design-agent-panel small { display:block; opacity:.72; line-height:1.6; margin:8px 0; }
-.design-agent-panel details { border:1px solid #8884; border-radius:8px; padding:12px; margin:12px 0; }
-.design-ai-key-row,.design-ai-actions,.design-ai-options { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin:14px 0; }
-.design-ai-key-row input { flex:1; }
-.design-ai-options label { flex:1; min-width:140px; }
-.design-agent-panel .design-ai-check { flex-direction:row; align-items:center; margin:14px 0; }
-.design-ai-image-preview { position:relative; width:100%; max-width:600px; margin:16px auto; overflow:hidden; background:#fff; border:1px solid #8884; }
-.design-ai-image-preview img { position:absolute; object-fit:fill; }
-.design-agent-panel [role=alert] { color:#ba3535; }
+.design-agent-panel { width: min(880px, 94vw); max-height: 90vh; display: flex; flex-direction: column; }
+.design-agent-panel h2 { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.design-agent-panel p, .design-agent-panel li { line-height: 1.6; }
+.design-agent-panel label { display: flex; flex-direction: column; gap: 7px; }
+.design-agent-panel textarea, .design-agent-panel select, .design-agent-panel input { font: inherit; padding: 8px; min-width: 0; }
+.design-agent-panel textarea { width: 100%; resize: vertical; min-height: 72px; box-sizing: border-box; }
+.design-agent-log { min-height: 180px; max-height: 42vh; overflow: auto; display: flex; flex-direction: column; gap: 8px; margin: 8px 0; padding: 8px; background: var(--workspace-field); border: 1px solid var(--workspace-border); border-radius: 12px; }
+.design-agent-empty { margin: 0; }
+.design-agent-row { display: grid; grid-template-columns: 48px 1fr; gap: 8px; align-items: start; }
+.design-agent-row span { color: var(--workspace-muted); font-size: 11px; }
+.design-agent-row p { margin: 0; white-space: pre-wrap; }
+.design-agent-row.is-user p { background: var(--workspace-selected); border-radius: 10px; padding: 8px 10px; }
+.design-agent-row.is-plan p, .design-agent-row.is-tool p { border-left: 2px solid var(--workspace-accent); padding-left: 8px; }
+.design-ai-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+.design-agent-panel .primary { background: var(--workspace-accent); color: white; border: 0; border-radius: 8px; padding: 8px 12px; }
+.design-agent-compare { border-top: 1px solid var(--workspace-border); margin-top: 8px; padding-top: 8px; }
+.design-agent-compare ul { margin: 8px 0 0; padding-left: 18px; max-height: 140px; overflow: auto; }
+.design-agent-file { font-size: 12px; }
+.page-ai { margin-left: auto; border: 1px solid var(--workspace-accent); color: var(--workspace-accent); background: var(--workspace-panel); border-radius: 999px; padding: 0 8px; height: 22px; }
+.page-ai-pop { position: fixed; z-index: 50; width: min(280px, calc(100vw - 16px)); padding: 12px; background: var(--workspace-panel); border: 1px solid var(--workspace-border); border-radius: 12px; box-shadow: var(--workspace-shadow); }
+.page-ai-pop textarea { width: 100%; box-sizing: border-box; margin: 8px 0; font: inherit; }
+.agent-settings { display: flex; flex-direction: column; gap: 10px; }
+.agent-settings label { display: flex; flex-direction: column; gap: 4px; }
+.agent-settings input, .agent-settings select { min-height: 32px; padding: 6px 10px; border: 1px solid var(--workspace-border); border-radius: 6px; background: var(--workspace-field); color: var(--workspace-text); }
+.agent-settings ul { margin: 0; padding-left: 18px; }
+.design-agent-panel [role=alert] { color: var(--workspace-danger); }

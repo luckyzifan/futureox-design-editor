@@ -10,6 +10,7 @@ export function includeFigRecord(record: FigRecord | undefined, records?: Map<st
   if (!record) return false
   if (record.type === 'DOCUMENT') return false
   if (record.type === 'CANVAS') return true
+  if (record.type === 'VARIABLE' || record.type === 'VARIABLE_SET') return false
   if (record.internalOnly === true) return false
   // Style definitions parented to the document, or to nothing, are library entries.
   if (STYLE_TYPES.has(record.styleType)) {
@@ -194,6 +195,86 @@ export function applyFigDocumentSemantics(
   if (notes.length) receipt.notes = notes
   system(doc).sketchContainers!.figDocument = receipt
   for (const note of notes) warnings.add(`FIG document: ${note}`)
+}
+
+const guidText = (value: any): string =>
+  typeof value === 'string' ? value : value && value.sessionID !== undefined ? `${value.sessionID}:${value.localID}` : ''
+
+function variableColor(color: any): string | undefined {
+  const channel = (key: string) => color?.[key]
+  const [r, g, b] = ['r', 'g', 'b'].map(channel)
+  if ([r, g, b].some(value => typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1)) return
+  const a = typeof color?.a === 'number' && Number.isFinite(color.a) ? color.a : 1
+  if (a < 0 || a > 1) return
+  if (a === 1) return '#' + [r, g, b].map(value => Math.round(value * 255).toString(16).padStart(2, '0')).join('')
+  return `color(srgb ${r} ${g} ${b} / ${a})`
+}
+
+/** VARIABLE_SET / VARIABLE records are design-system data, not layers. */
+export function importFigVariableNodes(doc: DesignDocument, records: Map<string, FigRecord>) {
+  const modeNames = new Map<string, string>()
+  const systemDoc = system(doc)
+  for (const [id, record] of records) {
+    if (record.type !== 'VARIABLE_SET') continue
+    const collectionId = typeof record.key === 'string' && record.key ? record.key : id
+    const modes: string[] = []
+    for (const mode of record.variableSetModes || []) {
+      const name = typeof mode?.name === 'string' && mode.name ? mode.name : 'Mode'
+      const modeId = guidText(mode?.id)
+      if (modeId) modeNames.set(modeId, name)
+      if (!modes.includes(name)) modes.push(name)
+    }
+    if (!modes.length) modes.push('Default')
+    if (modes.length > 32) continue
+    systemDoc.collections[collectionId] = { name: record.name || 'Variables', modes, defaultMode: modes[0] }
+    systemDoc.activeModes[collectionId] = modes[0]
+  }
+  for (const [id, record] of records) {
+    if (record.type !== 'VARIABLE') continue
+    const collection = record.variableSetID?.assetRef?.key || guidText(record.variableSetID) || id
+    if (!systemDoc.collections[collection]) {
+      systemDoc.collections[collection] = { name: collection, modes: ['Default'], defaultMode: 'Default' }
+      systemDoc.activeModes[collection] = 'Default'
+    }
+    const resolved = String(record.variableResolvedType || '')
+    const kind = resolved === 'COLOR' ? 'color' : resolved === 'BOOLEAN' ? 'boolean' : resolved === 'STRING' ? 'string' : 'number'
+    const values: Record<string, string | number | boolean | { alias: string }> = {}
+    for (const entry of record.variableDataValues?.entries || []) {
+      const mode = modeNames.get(guidText(entry?.modeID)) || 'Default'
+      const data = entry?.variableData
+      const alias = guidText(data?.value?.alias || data?.value?.variableAlias)
+      if (alias && alias !== '0:0') { values[mode] = { alias }; continue }
+      if (kind === 'color') {
+        const color = variableColor(data?.value?.colorValue)
+        if (color) values[mode] = color
+      } else if (kind === 'boolean' && typeof data?.value?.boolValue === 'boolean') values[mode] = data.value.boolValue
+      else if (kind === 'string' && typeof data?.value?.textValue?.characters === 'string') values[mode] = data.value.textValue.characters
+      else if (typeof data?.value?.floatValue === 'number' && Number.isFinite(data.value.floatValue)) values[mode] = data.value.floatValue
+    }
+    const modes = systemDoc.collections[collection].modes
+    if (modes.length > 32) continue
+    const fallback = kind === 'boolean' ? false : kind === 'number' ? 0 : kind === 'color' ? '#000000' : ''
+    if (!Object.keys(values).length) values[modes[0]] = fallback
+    for (const mode of modes) if (values[mode] === undefined) values[mode] = values[modes[0]] ?? fallback
+    for (const key of Object.keys(values)) if (!modes.includes(key)) delete values[key]
+    systemDoc.variables[id] = { name: String(record.name || 'Variable').slice(0, 512), collection, kind, values }
+  }
+  const known = new Set(Object.keys(systemDoc.variables))
+  const linked = (value: unknown, field = ''): Array<[string, string]> => {
+    if (!value || typeof value !== 'object') return []
+    if ('sessionID' in value && 'localID' in value) {
+      const id = guidText(value)
+      return field && known.has(id) ? [[field, id]] : []
+    }
+    return Object.entries(value).flatMap(([key, child]) => linked(child, field || key))
+  }
+  for (const node of Object.values(doc.nodes)) {
+    const raw = node.bindings?.figBoundVariables
+    if (!raw) continue
+    let parsed: unknown
+    try { parsed = JSON.parse(raw) } catch { continue }
+    for (const [field, id] of linked(parsed)) node.bindings = { ...node.bindings, [field]: id }
+  }
 }
 
 export function storeFigVariables(doc: DesignDocument, tree: FigRecord) {

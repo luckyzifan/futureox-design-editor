@@ -327,6 +327,140 @@ fn tent_blur_impl(
 // Shadow inputs have zero RGB. The one-channel specialization uses exactly
 // the same sums, rounding proof and rational fallback for their alpha.
 fn box_pass_in_place_domain<const CHANNELS: usize>(input: &mut Surface, r: i32, horizontal: bool, bounded: bool) -> Result<(), String> {
+    box_pass_in_place_domain_core::<CHANNELS>(input, r, horizontal, bounded, None)
+}
+
+/// One-channel alpha, clamped to the unit interval. Same sums and the same
+/// rounding test as the generic pass, without a per-sample closure.
+#[inline(always)]
+fn unit_line_at(line: &[f32], at: i32) -> f32 {
+    if at >= 0 && (at as usize) < line.len() { line[at as usize] } else { 0. }
+}
+
+#[inline(always)]
+fn certify_unit(sum: f64, steps: i32, window: f64, denominator: f64) -> Option<f32> {
+    let steps = f64::from(steps.max(0));
+    let err = (window + 2. * steps) * f64::EPSILON * sum.abs().max(1.) * 8.;
+    let center = sum / denominator;
+    let lo = (center - err / denominator).clamp(0., 1.) as f32;
+    let hi = (center + err / denominator).clamp(0., 1.) as f32;
+    if lo.to_bits() == hi.to_bits() { Some(lo) } else { None }
+}
+
+fn box_pass_unit_alpha(input: &mut Surface, r: i32, horizontal: bool, solid_core: Option<Rect>) -> Result<(), String> {
+    let rect = input.rect;
+    if r <= 0 {
+        return Ok(());
+    }
+    let (lines, len) = if horizontal {
+        (rect.h as i32, rect.w as i32)
+    } else {
+        (rect.w as i32, rect.h as i32)
+    };
+    let denominator = f64::from(2 * r + 1);
+    let window = denominator;
+    let kernel = crate::rational_filter::RationalKernel::uniform_box(r as u32)?;
+    let _scratch = input.reserve_scratch::<f32>((2 * r + 1) as usize)?;
+    let mut taps = vec![0.; (2 * r + 1) as usize];
+    let _line_allocation = input.reserve_scratch::<f32>(len as usize)?;
+    let mut source_line = vec![0_f32; len as usize];
+    let width = rect.w as usize;
+    for line in 0..lines {
+        if horizontal {
+            let row = line as usize * width;
+            for at in 0..len as usize {
+                source_line[at] = input.pixels[row + at].0[3];
+            }
+        } else {
+            for at in 0..len as usize {
+                source_line[at] = input.pixels[at * width + line as usize].0[3];
+            }
+        }
+        let mut sum = 0_f64;
+        for k in -r..=r {
+            sum += f64::from(unit_line_at(&source_line, k));
+        }
+        let mut since_sync = 0_i32;
+        let skip = solid_core.and_then(|core| {
+            if horizontal {
+                let y = rect.y + line;
+                if y < core.y || y >= core.bottom() { return None; }
+                let x0 = (core.x - rect.x).clamp(0, len);
+                let x1 = (core.right() - rect.x).clamp(0, len);
+                (x0 < x1).then_some((x0, x1))
+            } else {
+                let x = rect.x + line;
+                if x < core.x || x >= core.right() { return None; }
+                let y0 = (core.y - rect.y).clamp(0, len);
+                let y1 = (core.bottom() - rect.y).clamp(0, len);
+                (y0 < y1).then_some((y0, y1))
+            }
+        });
+        let mut at = 0;
+        while at < len {
+            if let Some((x0, x1)) = skip {
+                if at == x0 {
+                    for fill in at..x1 {
+                        let index = if horizontal {
+                            line as usize * width + fill as usize
+                        } else {
+                            fill as usize * width + line as usize
+                        };
+                        input.pixels[index].0[3] = 1.;
+                    }
+                    at = x1;
+                    if at >= len {
+                        break;
+                    }
+                    sum = 0.;
+                    for k in -r..=r {
+                        sum += f64::from(unit_line_at(&source_line, at + k));
+                    }
+                    since_sync = 0;
+                    continue;
+                }
+            }
+            let index = if horizontal {
+                line as usize * width + at as usize
+            } else {
+                at as usize * width + line as usize
+            };
+            let written = if sum == 0. {
+                Some(0_f32)
+            } else if let Some(value) = certify_unit(sum, since_sync, window, denominator) {
+                Some(value)
+            } else {
+                sum = 0.;
+                for k in -r..=r {
+                    sum += f64::from(unit_line_at(&source_line, at + k));
+                }
+                since_sync = 0;
+                certify_unit(sum, 0, window, denominator)
+            };
+            if let Some(value) = written {
+                input.pixels[index].0[3] = value;
+            } else {
+                for (i, tap) in taps.iter_mut().enumerate() {
+                    *tap = unit_line_at(&source_line, at - r + i as i32);
+                }
+                input.pixels[index].0[3] = f64::from(kernel.convolve(&taps)?).clamp(0., 1.) as f32;
+            }
+            let add = unit_line_at(&source_line, at + r + 1);
+            let remove = unit_line_at(&source_line, at - r);
+            sum += f64::from(add);
+            sum -= f64::from(remove);
+            since_sync += 1;
+            at += 1;
+        }
+    }
+    Ok(())
+}
+fn box_pass_in_place_domain_core<const CHANNELS: usize>(
+    input: &mut Surface, r: i32, horizontal: bool, bounded: bool, solid_core: Option<Rect>,
+) -> Result<(), String> {
+    if CHANNELS == 1 && bounded {
+        return box_pass_unit_alpha(input, r, horizontal, solid_core);
+    }
     let domain = |value: f64| if bounded { value.clamp(0., 1.) } else { value };
     let rect = input.rect;
     if r <= 0 {
@@ -346,30 +480,48 @@ fn box_pass_in_place_domain<const CHANNELS: usize>(input: &mut Surface, r: i32, 
     // instead of a second full RGBA32F surface. Outside samples remain transparent.
     let _line_allocation = input.reserve_scratch::<[f32; CHANNELS]>(len as usize)?;
     let mut source_line = vec![[0.; CHANNELS]; len as usize];
+    let width = rect.w as usize;
+    // Same rounding test for every pixel of this pass. Building it inside the
+    // pixel loop repeats the same captures on each sample.
+    let window = f64::from(2 * r + 1);
+    let certified = |sum: &[f64; CHANNELS], steps: i32| -> Option<[f32; CHANNELS]> {
+        let steps = f64::from(steps.max(0));
+        let mut out = [0_f32; CHANNELS];
+        for c in 0..CHANNELS {
+            let err = (window + 2. * steps) * f64::EPSILON * sum[c].abs().max(1.) * 8.;
+            let center = sum[c] / denominator;
+            let lo = domain(center - err / denominator) as f32;
+            let hi = domain(center + err / denominator) as f32;
+            if lo.to_bits() != hi.to_bits() {
+                return None;
+            }
+            out[c] = lo;
+        }
+        Some(out)
+    };
     for line in 0..lines {
-        for at in 0..len {
-            let pixel = if horizontal {
-                input.at(rect.x + at, rect.y + line)
-            } else {
-                input.at(rect.x + line, rect.y + at)
-            };
-            source_line[at as usize] = std::array::from_fn(|c| pixel.0[4 - CHANNELS + c]);
+        if horizontal {
+            let row = line as usize * width;
+            for at in 0..len as usize {
+                let pixel = input.pixels[row + at].0;
+                source_line[at] = std::array::from_fn(|c| pixel[4 - CHANNELS + c]);
+            }
+        } else {
+            for at in 0..len as usize {
+                let pixel = input.pixels[at * width + line as usize].0;
+                source_line[at] = std::array::from_fn(|c| pixel[4 - CHANNELS + c]);
+            }
         }
         let sample = |at: i32| {
             if at >= 0 && at < len { source_line[at as usize] } else { [0.; CHANNELS] }
         };
-        // Higham's gamma_n bound for an ordered sum: at most n operations
-        // over n terms of magnitude <= M. 8*eps*n^2*M also encloses the
-        // endpoint/division rounding below. Accept only when both interval
-        // endpoints round to the same binary32; otherwise use exact rationals.
-        let magnitude = (0..len).fold([0_f64; CHANNELS], |mut m, at| {
-            for (c, value) in sample(at).iter().enumerate() {
-                m[c] = m[c].max(f64::from(*value).abs());
-            }
-            m
-        });
-        let operations = f64::from(2 * r + 1 + 2 * len);
-        let error = magnitude.map(|m| 8. * f64::EPSILON * operations * operations * m);
+        // A sliding f64 sum of f32 samples is exact enough to round back to
+        // the same binary32 as the rational kernel while the accumulated
+        // error stays under half an ulp. The previous bound used (window+line)²
+        // and rejected every wide kernel, so each pixel recomputed the full
+        // radius. That is what made a zoomed shadow take seconds and then
+        // miss the compositing budget. Resync from the source line when the
+        // bound is no longer conclusive; only a genuine tie uses rationals.
         let mut sum = [0_f64; CHANNELS];
         for k in -r..=r {
             let p = sample(k);
@@ -377,23 +529,88 @@ fn box_pass_in_place_domain<const CHANNELS: usize>(input: &mut Surface, r: i32, 
                 *s += f64::from(p[i]);
             }
         }
-        for at in 0..len {
-            let index = if horizontal {
-                line as usize * rect.w as usize + at as usize
+        let mut since_sync = 0_i32;
+        // A proved solid-one core stays one for this radius. Write that span
+        // and restart the sum after it; this is not a per-window constant test.
+        let skip = solid_core.and_then(|core| {
+            if horizontal {
+                let y = rect.y + line;
+                if y < core.y || y >= core.bottom() { return None; }
+                let x0 = (core.x - rect.x).clamp(0, len);
+                let x1 = (core.right() - rect.x).clamp(0, len);
+                (x0 < x1).then_some((x0, x1))
             } else {
-                at as usize * rect.w as usize + line as usize
+                let x = rect.x + line;
+                if x < core.x || x >= core.right() { return None; }
+                let y0 = (core.y - rect.y).clamp(0, len);
+                let y1 = (core.bottom() - rect.y).clamp(0, len);
+                (y0 < y1).then_some((y0, y1))
+            }
+        });
+        let mut at = 0;
+        while at < len {
+            if let Some((x0, x1)) = skip {
+                if at == x0 {
+                    for fill in at..x1 {
+                        let index = if horizontal {
+                            line as usize * rect.w as usize + fill as usize
+                        } else {
+                            fill as usize * rect.w as usize + line as usize
+                        };
+                        for c in 0..CHANNELS {
+                            input.pixels[index].0[4 - CHANNELS + c] = 1.;
+                        }
+                    }
+                    at = x1;
+                    if at >= len {
+                        break;
+                    }
+                    sum = [0.; CHANNELS];
+                    for k in -r..=r {
+                        let p = sample(at + k);
+                        for (i, s) in sum.iter_mut().enumerate() {
+                            *s += f64::from(p[i]);
+                        }
+                    }
+                    since_sync = 0;
+                    continue;
+                }
+            }
+            let index = if horizontal {
+                line as usize * width + at as usize
+            } else {
+                at as usize * width + line as usize
             };
-            for c in 0..CHANNELS {
-                let lo = domain((sum[c] - error[c]) / denominator) as f32;
-                let hi = domain((sum[c] + error[c]) / denominator) as f32;
-                input.pixels[index].0[4 - CHANNELS + c] = if lo.to_bits() == hi.to_bits() {
-                    lo
-                } else {
+            // A window of exact zeros is an exact zero. The error interval
+            // around zero is not a single f32, so the certified path used to
+            // fall through to a full rational convolution on every empty pixel.
+            let written = if sum.iter().all(|value| *value == 0.) {
+                Some([0_f32; CHANNELS])
+            } else if let Some(values) = certified(&sum, since_sync) {
+                Some(values)
+            } else {
+                sum = [0.; CHANNELS];
+                for k in -r..=r {
+                    let p = sample(at + k);
+                    for (i, s) in sum.iter_mut().enumerate() {
+                        *s += f64::from(p[i]);
+                    }
+                }
+                since_sync = 0;
+                certified(&sum, 0)
+            };
+            if let Some(values) = written {
+                for c in 0..CHANNELS {
+                    input.pixels[index].0[4 - CHANNELS + c] = values[c];
+                }
+            } else {
+                for c in 0..CHANNELS {
                     for (i, tap) in taps.iter_mut().enumerate() {
                         *tap = sample(at - r + i as i32)[c];
                     }
-                    domain(f64::from(kernel.convolve(&taps)?)) as f32
-                };
+                    input.pixels[index].0[4 - CHANNELS + c] =
+                        domain(f64::from(kernel.convolve(&taps)?)) as f32;
+                }
             }
             let remove = sample(at - r);
             let add = sample(at + r + 1);
@@ -401,6 +618,8 @@ fn box_pass_in_place_domain<const CHANNELS: usize>(input: &mut Surface, r: i32, 
                 *s += f64::from(add[i]);
                 *s -= f64::from(remove[i]);
             }
+            since_sync += 1;
+            at += 1;
         }
     }
     Ok(())
@@ -668,9 +887,119 @@ pub(crate) fn shadow_alpha(
     match filter {
         // Alpha is no longer needed after filtering. Consume it rather than
         // retaining an additional full surface through all six Gaussian passes.
-        BlurFilter::Gaussian(sigma) => blur_owned::<1>(alpha, sigma),
+        BlurFilter::Gaussian(sigma) => blur_alpha_outside_solid_core(alpha, sigma),
         _ => filter.apply(&alpha),
     }
+}
+
+/// A square of exact ones stays one through every box pass. Blur only the
+/// band that can see a non-one sample, and write the proved interior as one.
+fn blur_alpha_outside_solid_core(alpha: Surface, sigma: f64) -> Result<Surface, String> {
+    let support = match gaussian_box_radii(sigma) {
+        Ok(radii) => radii.into_iter().sum::<u32>() as i32,
+        Err(_) => return blur_owned::<1>(alpha, sigma),
+    };
+    let pixels = alpha.rect.pixels();
+    if support <= 0 || pixels < 160 * 120 {
+        return blur_owned::<1>(alpha, sigma);
+    }
+    let Some(core) = solid_alpha_core(&alpha, support) else {
+        return blur_owned::<1>(alpha, sigma);
+    };
+    if core.pixels() < pixels / 2 {
+        return blur_owned::<1>(alpha, sigma);
+    }
+    let mut out = alpha;
+    for radius in gaussian_box_radii(sigma)? {
+        if radius == 0 {
+            continue;
+        }
+        box_pass_in_place_domain_core::<1>(&mut out, radius as i32, true, true, Some(core))?;
+        box_pass_in_place_domain_core::<1>(&mut out, radius as i32, false, true, Some(core))?;
+    }
+    Ok(out)
+}
+
+/// Largest axis-aligned block whose square neighborhood of radius `support`
+/// is exact alpha 1, including samples outside the surface as zero.
+fn solid_alpha_core(alpha: &Surface, support: i32) -> Option<Rect> {
+    let rect = alpha.rect;
+    let w = rect.w as usize;
+    let h = rect.h as usize;
+    if w == 0 || h == 0 || support < 0 {
+        return None;
+    }
+    let mut row_clear = vec![false; w * h];
+    let mut dist = vec![0i32; w];
+    for y in 0..h {
+        let row = y * w;
+        let mut last = -1i32;
+        for x in 0..w {
+            if alpha.pixels[row + x].0[3] != 1. {
+                last = x as i32;
+            }
+            dist[x] = x as i32 - last;
+        }
+        let mut next = w as i32;
+        for x in (0..w).rev() {
+            if alpha.pixels[row + x].0[3] != 1. {
+                next = x as i32;
+            }
+            row_clear[row + x] = dist[x].min(next - x as i32) > support;
+        }
+    }
+    let mut safe = vec![false; w * h];
+    let mut prefix = vec![0i32; h + 1];
+    for x in 0..w {
+        for y in 0..h {
+            prefix[y + 1] = prefix[y] + i32::from(row_clear[y * w + x]);
+        }
+        for y in 0..h {
+            let y_i = y as i32;
+            if y_i < support || y_i + support >= h as i32 {
+                continue;
+            }
+            let lo = (y_i - support) as usize;
+            let hi = (y_i + support) as usize;
+            safe[y * w + x] = prefix[hi + 1] - prefix[lo] == (hi - lo + 1) as i32;
+        }
+    }
+    let mut height = vec![0u32; w];
+    let mut stack = Vec::<usize>::new();
+    let mut best_area = 0u64;
+    let mut best: Option<(i32, i32, u32, u32)> = None;
+    for y in 0..h {
+        for x in 0..w {
+            height[x] = if safe[y * w + x] { height[x] + 1 } else { 0 };
+        }
+        stack.clear();
+        for x in 0..=w {
+            let current = if x == w { 0 } else { height[x] };
+            while let Some(&top) = stack.last() {
+                if height[top] <= current {
+                    break;
+                }
+                stack.pop();
+                let bar = height[top] as u64;
+                let left = stack.last().map(|i| i + 1).unwrap_or(0);
+                let width = (x - left) as u64;
+                let area = bar * width;
+                if area > best_area {
+                    best_area = area;
+                    best = Some((
+                        rect.x + left as i32,
+                        rect.y + y as i32 - height[top] as i32 + 1,
+                        width as u32,
+                        height[top],
+                    ));
+                }
+            }
+            if x < w {
+                stack.push(x);
+            }
+        }
+    }
+    best.filter(|_| best_area > 0).map(|(x, y, w, h)| Rect::new(x, y, w, h))
 }
 
 /// Keep the filter boundary in byte space until the final quantization. Going
@@ -746,8 +1075,15 @@ fn color_shadow_linear_owned(
         let y = if dy > 0. { rect.bottom() - 1 - line } else { rect.y + line };
         for (at, pixel) in row.iter_mut().enumerate() {
             let x = rect.x + at as i32;
+            let src = surface.at(x, y);
+            // Outer shadow is painted under the source. An opaque source pixel
+            // hides that shadow, so the colored sample is never visible.
+            if !inner && src.0[3] == 1. {
+                *pixel = src;
+                continue;
+            }
             let b = alpha.sample_linear(f64::from(x) + 0.5 - dx, f64::from(y) + 0.5 - dy).0[3];
-            let coverage = if inner { surface.at(x, y).0[3] * (1. - b) } else { b };
+            let coverage = if inner { src.0[3] * (1. - b) } else { b };
             *pixel = color.opacity(coverage);
         }
         let start = (y - rect.y) as usize * rect.w as usize;
