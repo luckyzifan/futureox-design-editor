@@ -54,6 +54,9 @@ pub struct NodeRef {
     /// match, otherwise the four values separated by commas.
     #[serde(default)]
     pub corner_radius: Option<String>,
+    /// Font size of a text layer, in the node's units.
+    #[serde(default)]
+    pub font_size: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -517,6 +520,7 @@ mod tests {
                 stroke_dash: None,
                 opacity: None,
                 corner_radius: None,
+                font_size: None,
             }],
             selection: Vec::new(),
         };
