@@ -75,6 +75,9 @@ pub fn route_skills(latest: &str, earlier: &str, ctx: &DesignContext) -> Vec<Ski
         picked = matches_in(&format!("{earlier}\n{latest}"));
     }
     let has_design = target_has_design(ctx);
+    if looks_like_question(latest) && !looks_like_mutation(latest) {
+        return vec![SkillId::Critique];
+    }
     if has_design {
         if latest.contains('色') && !picked.contains(&SkillId::Style) && !picked.contains(&SkillId::OneClickGenerate) {
             picked.push(SkillId::Style);
@@ -129,9 +132,19 @@ fn matches_in(text: &str) -> Vec<SkillId> {
     out
 }
 
-fn looks_like_question(text: &str) -> bool {
+pub(crate) fn looks_like_mutation(text: &str) -> bool {
+    ["改成", "换成", "修改", "生成", "出图", "做一页", "做个", "做一个", "调整", "新建", "删除", "对齐"]
+        .iter()
+        .any(|needle| text.contains(needle))
+}
+
+pub(crate) fn looks_like_question(text: &str) -> bool {
     let trimmed = text.trim();
-    trimmed.ends_with('?') || trimmed.ends_with('？') || trimmed.starts_with("为什么") || trimmed.starts_with("怎么")
+    trimmed.ends_with('?')
+        || trimmed.ends_with('？')
+        || ["为什么", "怎么", "什么", "哪个", "哪些", "吗", "解释", "介绍", "说明一下"]
+            .iter()
+            .any(|needle| trimmed.contains(needle))
 }
 
 #[cfg(test)]
@@ -175,9 +188,12 @@ mod tests {
                 text: None,
                 fill: Some("#f3e6d8".into()),
             }],
+            selection: vec!["frame".into()],
         };
         let skills = route_skills("改一下", "", &ctx);
         assert!(skills.contains(&SkillId::DetailAdjust), "{skills:?}");
+        let question = route_skills("这个按钮是什么颜色？", "", &ctx);
+        assert_eq!(question, vec![SkillId::Critique]);
         assert!(!skills.contains(&SkillId::OneClickGenerate));
         let empty = route_skills("改一下", "", &DesignContext::default());
         assert_eq!(empty, vec![SkillId::OneClickGenerate]);

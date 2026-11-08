@@ -68,11 +68,29 @@ zoom 6.4 仍是 3715.349 ms，和修之前的 3273.237 ms 同一量级。这一�
 | `01有料素材.fig` | 3 个用户页，1382/1382 条文本，37 个实例。 |
 | `06-02有料素材.fig` | 3 个用户页，1374/1374 条文本，45 个实例。 |
 
+## 同一 WASM 再测一轮
+
+光栅代码没有再改。同一台机器、同一份 `d352c6da4decf7f06e5a47c90c26a6c4ff9fa0c6d219d3a72e3d24a6774a4c8b`，又跑了一轮。数字和上一轮同一量级，没有当成变快。
+
+效果开启，34 帧都完成：zoom 0.1 为 1050.318 ms，0.2 为 962.840 ms，0.4 为 1218.311 ms，0.8 为 2238.968 ms，1.6 为 1747.015 ms，3.2 为 2709.166 ms，6.4 为 3296.299 ms，12.8 为 1599.925 ms，25.6 为 1801.746 ms，32 为 1840.720 ms。zoom 32 平移 p95 1862.839 ms，最大 1868.679 ms。
+
+效果关掉：第一帧 367.225 ms，放大最慢 699.216 ms，平移 p95 688.642 ms、最大 714.248 ms。从 32 缩回：25.6 为 767.989 ms，12.8 为 698.884 ms，6.4 为 586.143 ms，3.2 为 524.238 ms，1.6 为 379.191 ms，0.8 为 363.057 ms，0.4 为 278.963 ms，0.2 为 302.312 ms，0.1 为 306.779 ms。p95 和最大都是 767.989 ms。
+
+`01有料素材.fig`：importFig 1078.688 ms，字体加载 562.281 ms，load_document 1306.884 ms，第一帧 zoom 0.1 为 3269.409 ms。放大 0.25 / 0.5 / 1 / 2 为 568.574 / 306.558 / 187.863 / 86.512 ms。zoom 2 的四次平移为 87.286、86.002、91.443、85.174 ms。缩回 1 / 0.5 / 0.25 / 0.1 为 188.977 / 299.776 / 657.809 / 954.059 ms。页名是 Meher Admin Dashboard Ui Kit Light，文件里 4 页、9063 个节点。
+
+## 字体再导入
+
+同一轮 `importFig` 加 `matchBundledImportFonts`（`/tmp/fig-structure-fonts.json`）：
+
+- `structure.fig`、`01有料素材.fig`、`01有料素材 (Copy).fig`、`01有料素材 (Copy) (1).fig`、`06-02有料素材.fig`、`gold-preview.fig` 的 `fontSubstitutions` 和 `fontMissing` 都是空的。Inter、ABeeZee、Poppins 对上了捆绑文件，不再落到 Poppins 顶替。
+- `06-01有料素材.fig` 仍有一条：`Poppins-BoldItalic` 没有斜体文件，显示为 Poppins Bold。
+- `01有料素材.fig` 这条报告的警告数是 0。`(Copy) (1)` 仍有矢量圆角轮廓/平滑/样式，以及独立顶点或区域样式。
+- `gold-preview.fig` 仍打开：用户页 Page 1，Internal Only Canvas 隐藏，320 个变量，文本节点 87，用户页大纲文本 8，实例 1504，组件 1293，校验通过。警告 117 条，其中包括没有唯一目标的组件属性（Input 0、Label 2、Placeholder 2、Tags 2、Date Range List 3、Time 2）和矢量样式。
+
 ## 仍然存在的差距
 
-- Inter Regular、ABeeZee Regular 没有随产品提供字体文件，显示为 Poppins Regular，并写进 `fontSources.resolved`。
 - Poppins-BoldItalic 没有斜体文件，显示为 Poppins Bold。
 - 大素材和 `gold-preview.fig` 里，仍有矢量圆角的轮廓、平滑或顶点样式没有全部烘焙，警告保留。`corners.fig` 这一份已经不再警告。
 - `gold-preview.fig` 里 Input、Label 等组件属性没有唯一目标，定义被跳过并写进警告。实例覆盖 `styleIdForFill`、`strokePaints` 还不能执行。
-- 效果关掉时的 600 ms 级帧，以及 `01有料素材.fig` 约 3.3 秒的首帧，这次没有降下来。
-- 33 ms 可见、100 ms 精修、完整 G2/G5 没有测。
+- 效果关掉时的高倍帧仍约 700 ms。`01有料素材.fig` 首帧这一轮是 3269.409 ms。效果开启、阴影还在视口边上时，zoom 6.4 这一轮是 3296.299 ms。
+- 33 ms 可见、100 ms 精修、完整 G2/G5 没有测。Electron、GPU 和上屏延迟没有测。
