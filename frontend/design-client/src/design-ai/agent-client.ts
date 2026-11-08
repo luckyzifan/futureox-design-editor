@@ -24,6 +24,7 @@ export function snapshotContext(editor: Editor, targetPageId: string) {
       text: node.kind === 'text' ? node.text : undefined,
       fill: node.fills.find(fill => fill.visible && fill.kind === 'solid')?.color,
       stroke: node.strokes.find(stroke => stroke.visible && stroke.paint.kind === 'solid')?.paint.color,
+      stroke_width: node.strokes.find(stroke => stroke.visible)?.width,
     })
     if (depth < 3) node.children.forEach(child => visit(pageId, child, id, depth + 1))
   }
