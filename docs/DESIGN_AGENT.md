@@ -2,7 +2,7 @@
 
 桌面版优先。页面上的「设计助手」对话、页面列表悬停后的 AI，以及设置里的「设计助手」，都走本机 Rust + Tokio 进程 `futureox-design-agent`。
 
-渲染管线不在这次改动里。
+画布复测和导入差距写在 `testing/verification-fix-regression-20261108`、`testing/verification-figma-sketch-gap-20261108`。自动保存和撤销的现状写在 `testing/verification-autosave-undo-20261108`。
 
 ## 启动
 
@@ -42,11 +42,13 @@ Anthropic Messages 把连接的 `wire` 设为 `anthropic`。
 
 同一会话会把之前的用户话、助手话和工具调用整段送给模型。工具结果用真实的 `tool_call_id` / `tool_use_id`，不是工具名。超过 48 条时，较早的回合收成一条摘要，最近的回合原样保留。技能选择同时看对话和当前页上已有的画板、文字。
 
+普通设计提问同样看整段会话，不只是带工具的那一轮。提问带上之前的用户话、助手话、计划、工具结果，以及当前页、目标页、选中和图层的文字、填充。本地助手据此回答，不改画布。远程模型的系统提示里有同一段设计上下文。范围只是设计，不写代码。这段上下文组装对应 Codex `c4f0e09912fd4c1173258ccd17e33284a876e826` 里 `clone_history` 在采样前交回整段会话的做法，按本产品的页面和图层重写，没有带入 CLI、沙箱或通用编程工具。
+
 工具调用展开成现有设计操作（`page.create`、`node.create`、`text.set`、`style.set` 等），再经 MCP `OperationBackend` 的 `design_batch_apply` 写入当前编辑器。
 
 ## Codex
 
-只改编了 OpenAI Codex `c4f0e09912fd4c1173258ccd17e33284a876e826` 里和这一轮有关的部分：`codex-rs/core/src/tasks/regular.rs` 的 `run_turns`，`codex-rs/core/src/session/turn.rs` 的 `needs_follow_up`，以及 `codex-rs/protocol/src/items.rs` 的用户消息、助手消息、计划和 MCP 工具项。CLI、TUI、沙箱、压缩、Guardian、图像生成没有带进来。上游许可证是 Apache-2.0。
+只改编了 OpenAI Codex `c4f0e09912fd4c1173258ccd17e33284a876e826` 里和这一轮有关的部分：`codex-rs/core/src/tasks/regular.rs` 的 `run_turns`，`codex-rs/core/src/session/turn.rs` 的 `needs_follow_up`，`codex-rs/core/src/session/mod.rs` 的 `clone_history`（采样前交回整段会话），以及 `codex-rs/protocol/src/items.rs` 的用户消息、助手消息、计划和 MCP 工具项。普通提问用这段会话加上当前页、目标页、选中和图层，不另起一条只有最新用户句的请求。CLI、TUI、沙箱、压缩、Guardian、图像生成和任意第三方 MCP 没有带进来。上游许可证是 Apache-2.0。Qoder 只作为多轮对话、工具循环和上下文连续的风格参照，没有拷贝厂商代码。
 
 ## Fig / Sketch
 

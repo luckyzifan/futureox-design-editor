@@ -51,13 +51,13 @@ pub async fn run_turn(
         if cancel.load(Ordering::Relaxed) {
             return Err("cancelled".into());
         }
-        let sampled = sample(http, provider, message, earlier, &items, &skills).await;
+        let sampled = sample(http, provider, message, earlier, &items, &skills, ctx).await;
         let (turn, used_local) = match sampled {
             Ok(turn) => (turn, provider.kind == ProviderKind::Local),
             Err(error) => {
                 assistant_name = format!("{assistant_name}-fallback-local");
                 let _ = error;
-                (local_turn(message, earlier, &items, &skills), true)
+                (local_turn(message, earlier, &items, &skills, ctx), true)
             }
         };
         if !used_local && provider.kind != ProviderKind::Local {
@@ -90,11 +90,11 @@ pub async fn run_turn(
     Ok(TurnOutcome { items, operations, skills, target_page_id: target, assistant: assistant_name, summary })
 }
 
-async fn sample(http: &reqwest::Client, provider: &Provider, message: &str, earlier: &str, items: &[TurnItem], skills: &[SkillId]) -> Result<ModelTurn, String> {
+async fn sample(http: &reqwest::Client, provider: &Provider, message: &str, earlier: &str, items: &[TurnItem], skills: &[SkillId], ctx: &DesignContext) -> Result<ModelTurn, String> {
     if provider.kind == ProviderKind::Local {
-        return Ok(local_turn(message, earlier, items, skills));
+        return Ok(local_turn(message, earlier, items, skills, ctx));
     }
-    remote_turn(http, provider, message, skills, items).await
+    remote_turn(http, provider, message, skills, items, ctx).await
 }
 
 async fn execute_calls(calls: &[ToolCall], message: &str, ctx: &DesignContext, cancel: &AtomicBool) -> Result<(Vec<TurnItem>, Vec<Operation>, Option<String>, String), String> {

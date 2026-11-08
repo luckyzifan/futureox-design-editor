@@ -25,8 +25,15 @@ pub struct ModelTurn {
     pub tool_calls: Vec<ToolCall>,
 }
 
-pub fn local_turn(latest: &str, earlier: &str, items: &[TurnItem], skills: &[SkillId]) -> ModelTurn {
+pub fn local_turn(latest: &str, earlier: &str, items: &[TurnItem], skills: &[SkillId], ctx: &DesignContext) -> ModelTurn {
     let current_turn = items.iter().rev().take_while(|item| !matches!(item, TurnItem::UserMessage { .. }));
+    if skills.iter().all(|skill| *skill == SkillId::Critique) && !crate::skills::looks_like_mutation(latest) {
+        return ModelTurn {
+            plan: None,
+            message: Some(answer_design_question(latest, items, ctx)),
+            tool_calls: Vec::new(),
+        };
+    }
     if current_turn.clone().any(|item| matches!(item, TurnItem::FunctionCallOutput { .. })) {
         let notes = current_turn.filter_map(|item| match item {
             TurnItem::McpToolCall { result: Some(result), .. } => result.get("summary").and_then(Value::as_str),
@@ -40,19 +47,21 @@ pub fn local_turn(latest: &str, earlier: &str, items: &[TurnItem], skills: &[Ski
         .into_iter()
         .map(|name| ToolCall { id: format!("local-{name}"), name: name.into(), arguments: json!({}) })
         .collect();
-    let _ = (latest, earlier);
+    let _ = (latest, earlier, ctx);
     ModelTurn { plan: Some(plan), message: Some("按对话里选中的技能执行。".into()), tool_calls }
 }
 
-pub async fn remote_turn(http: &reqwest::Client, provider: &Provider, latest: &str, skills: &[SkillId], items: &[TurnItem]) -> Result<ModelTurn, String> {
+pub async fn remote_turn(http: &reqwest::Client, provider: &Provider, latest: &str, skills: &[SkillId], items: &[TurnItem], ctx: &DesignContext) -> Result<ModelTurn, String> {
     if provider.kind == ProviderKind::Local || provider.base_url.is_empty() {
         return Err("local provider has no endpoint".into());
     }
     let system = format!(
-        "你是 Futureox 的页面设计助手。只通过工具改画布。技能已经按这段对话选好：{}。\n{}",
+        "你是 Futureox 的页面设计助手。只回答和修改设计：页面、画板、文字、颜色、字体、布局。不要写程序，不要建议代码。技能已经按这段对话选好：{}。\n{}\n{}",
         skills.iter().map(|skill| skill.as_str()).collect::<Vec<_>>().join(", "),
-        skills.iter().map(|skill| skill.guide()).collect::<Vec<_>>().join("\n")
+        skills.iter().map(|skill| skill.guide()).collect::<Vec<_>>().join("\n"),
+        design_context_text(ctx)
     );
+    let _ = latest;
     match provider.wire {
         Wire::OpenaiChat => openai_turn(http, provider, &system, latest, items).await,
         Wire::Anthropic => anthropic_turn(http, provider, &system, latest, items).await,
@@ -141,6 +150,57 @@ async fn anthropic_turn(http: &reqwest::Client, provider: &Provider, system: &st
 
 pub fn skills_for(latest: &str, earlier: &str, ctx: &DesignContext) -> Vec<SkillId> {
     route_skills(latest, earlier, ctx)
+}
+
+/// Codex `clone_history` sends the stored session back to the model. This is
+/// the design-only slice of that: prior turns plus the live page, selection,
+/// and node fields. It is not a coding transcript.
+pub fn design_context_text(ctx: &DesignContext) -> String {
+    let page_name = ctx.pages.iter().find(|page| page.id == ctx.current_page_id).map(|page| page.name.as_str()).unwrap_or("未命名");
+    let target_id = ctx.target_page_id.clone().filter(|id| !id.is_empty()).unwrap_or_else(|| ctx.current_page_id.clone());
+    let target_name = ctx.pages.iter().find(|page| page.id == target_id).map(|page| page.name.as_str()).unwrap_or(page_name);
+    let selection = if ctx.selection.is_empty() {
+        "无".into()
+    } else {
+        ctx.selection.iter().map(|id| ctx.nodes.iter().find(|node| &node.id == id).map(|node| node.name.as_str()).unwrap_or(id.as_str())).collect::<Vec<_>>().join("、")
+    };
+    let layers = ctx.nodes.iter().take(24).map(|node| {
+        format!(
+            "{}（{}）{}{}",
+            node.name,
+            node.kind,
+            node.text.as_ref().map(|text| format!(" 文字「{text}」")).unwrap_or_default(),
+            node.fill.as_ref().map(|fill| format!(" 填充 {fill}")).unwrap_or_default()
+        )
+    }).collect::<Vec<_>>().join("；");
+    format!("当前页「{page_name}」。目标页「{target_name}」。选中：{selection}。图层：{layers}")
+}
+
+pub fn answer_design_question(latest: &str, items: &[TurnItem], ctx: &DesignContext) -> String {
+    let prior_users = items.iter().filter_map(|item| match item {
+        TurnItem::UserMessage { text, .. } if text != latest => Some(text.as_str()),
+        _ => None,
+    }).collect::<Vec<_>>();
+    let prior_assistants = items.iter().filter_map(|item| match item {
+        TurnItem::AgentMessage { text, .. } => Some(text.as_str()),
+        TurnItem::Plan { text, .. } => Some(text.as_str()),
+        _ => None,
+    }).collect::<Vec<_>>();
+    let mentioned = ctx.nodes.iter().find(|node| latest.contains(node.name.as_str()) || (latest.contains("按钮") && node.name.contains("按钮")) || (latest.contains("标题") && (node.name.contains("标题") || node.kind == "text")));
+    let about = if let Some(node) = mentioned {
+        format!(
+            "提到的图层是「{}」，类型 {}{}{}。",
+            node.name,
+            node.kind,
+            node.text.as_ref().map(|text| format!("，文字「{text}」")).unwrap_or_default(),
+            node.fill.as_ref().map(|fill| format!("，填充 {fill}")).unwrap_or_default()
+        )
+    } else {
+        "当前上下文里没有和这句话同名的图层。".into()
+    };
+    let earlier = if prior_users.is_empty() { "这是这次会话的第一句。".into() } else { format!("之前你说过：{}。", prior_users.join(" / ")) };
+    let said = if prior_assistants.is_empty() { String::new() } else { format!("助手说过：{}。", prior_assistants.join(" / ")) };
+    format!("{earlier}{said}{} {about}这只讨论设计，不写代码。", design_context_text(ctx))
 }
 
 /// Full session transcript for OpenAI Chat Completions. Tool results use the
@@ -374,5 +434,36 @@ mod tests {
         let user = messages.iter().find(|message| message["role"] == "user" && message["content"].as_array().is_some_and(|blocks| blocks.iter().any(|block| block["type"] == "tool_result"))).unwrap();
         let tool_result = user["content"].as_array().unwrap().iter().find(|block| block["type"] == "tool_result").unwrap();
         assert_eq!(tool_result["tool_use_id"], "call_gen_1");
+    }
+
+    #[test]
+    fn a_follow_up_design_question_uses_earlier_turns_and_the_live_canvas() {
+        let ctx = crate::operations::DesignContext {
+            current_page_id: "page-1".into(),
+            target_page_id: Some("page-1".into()),
+            pages: vec![crate::operations::PageRef { id: "page-1".into(), name: "秋日特惠".into() }],
+            nodes: vec![crate::operations::NodeRef {
+                id: "button".into(), page_id: "page-1".into(), parent_id: None, name: "按钮".into(), kind: "rectangle".into(),
+                x: 0.0, y: 0.0, width: 80.0, height: 32.0, text: None, fill: Some("#3459d4".into()),
+            }],
+            selection: vec!["button".into()],
+        };
+        let items = vec![
+            TurnItem::UserMessage { id: "u1".into(), text: "标题先用秋日特惠".into() },
+            TurnItem::AgentMessage { id: "a1".into(), text: "已把标题写成秋日特惠。".into(), phase: MessagePhase::Final },
+            TurnItem::UserMessage { id: "u2".into(), text: "这个按钮是什么颜色？".into() },
+        ];
+        let turn = local_turn("这个按钮是什么颜色？", "标题先用秋日特惠", &items, &[crate::skills::SkillId::Critique], &ctx);
+        assert!(turn.tool_calls.is_empty());
+        let message = turn.message.unwrap();
+        assert!(message.contains("标题先用秋日特惠"), "{message}");
+        assert!(message.contains("已把标题写成秋日特惠"), "{message}");
+        assert!(message.contains("#3459d4"), "{message}");
+        assert!(message.contains("秋日特惠"), "{message}");
+        assert!(!message.contains("fn ") && !message.contains("function "), "{message}");
+        let system = design_context_text(&ctx);
+        let messages = openai_messages(&system, &items);
+        let blob = serde_json::to_string(&messages).unwrap();
+        assert!(blob.contains("标题先用秋日特惠") && blob.contains("这个按钮是什么颜色") && blob.contains("#3459d4"), "{blob}");
     }
 }

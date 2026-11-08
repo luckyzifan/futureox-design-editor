@@ -82,7 +82,7 @@ async function rowFor(file: string, payload: Uint8Array) {
       return !fonts.families.includes(family) || fonts.missing.some(name => name === family || name.startsWith(family + '-') || name.startsWith(family + ' '))
     })
     for (const item of fonts.substitutions) {
-      const message = `字体 ${item.from} 没有嵌入文件，已用 ${item.face} 显示`
+      const message = `字体 ${item.from} 没有同名文件，已用 ${item.face} 显示`
       if (!warnings.includes(message)) warnings.push(message)
     }
     let validation: string | undefined
