@@ -82,7 +82,7 @@ export class CameraReprojection {
     this.canvas.style.transformOrigin = '0 0'
     this.canvas.style.transform = placed && transform ? `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})` : ''
     this.canvas.style.visibility = active && !placed ? 'hidden' : ''
-    this.canvas.style.imageRendering = ''
+    this.canvas.style.imageRendering = placed ? 'auto' : ''
     this.canvas.dataset.cameraReprojected = String(!!placed)
     this.canvas.dataset.previewUpscaleRejected = String(active && !scaleOk)
     this.canvas.dataset.projectedCamera = JSON.stringify(active ? view : backing?.view || view)
