@@ -38,6 +38,9 @@ pub struct NodeRef {
     /// Stroke alignment: inside, center, or outside.
     #[serde(default)]
     pub stroke_align: Option<String>,
+    /// Stroke cap: butt, round, or square.
+    #[serde(default)]
+    pub stroke_cap: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -496,6 +499,7 @@ mod tests {
                 stroke: None,
                 stroke_width: None,
                 stroke_align: None,
+                stroke_cap: None,
             }],
             selection: Vec::new(),
         };

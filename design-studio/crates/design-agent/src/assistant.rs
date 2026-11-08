@@ -172,9 +172,10 @@ pub fn design_context_text(ctx: &DesignContext) -> String {
             node.text.as_ref().map(|text| format!(" 文字「{text}」")).unwrap_or_default(),
             node.fill.as_ref().map(|fill| format!(" 填充 {fill}")).unwrap_or_default(),
             node.stroke.as_ref().map(|stroke| format!(
-                " 描边 {stroke}{}{}",
+                " 描边 {stroke}{}{}{}",
                 node.stroke_width.map(|width| format!(" {width}px")).unwrap_or_default(),
-                node.stroke_align.as_ref().map(|align| format!(" {align}")).unwrap_or_default()
+                node.stroke_align.as_ref().map(|align| format!(" {align}")).unwrap_or_default(),
+                node.stroke_cap.as_ref().map(|cap| format!(" {cap}")).unwrap_or_default()
             )).unwrap_or_default()
         )
     }).collect::<Vec<_>>().join("；");
@@ -202,9 +203,10 @@ pub fn answer_design_question(latest: &str, items: &[TurnItem], ctx: &DesignCont
             node.text.as_ref().map(|text| format!("，文字「{text}」")).unwrap_or_default(),
             node.fill.as_ref().map(|fill| format!("，填充 {fill}")).unwrap_or_default(),
             node.stroke.as_ref().map(|stroke| format!(
-                "，描边 {stroke}{}{}",
+                "，描边 {stroke}{}{}{}",
                 node.stroke_width.map(|width| format!(" {width}px")).unwrap_or_default(),
-                node.stroke_align.as_ref().map(|align| format!(" {align}")).unwrap_or_default()
+                node.stroke_align.as_ref().map(|align| format!(" {align}")).unwrap_or_default(),
+                node.stroke_cap.as_ref().map(|cap| format!(" {cap}")).unwrap_or_default()
             )).unwrap_or_default()
         )
     } else {
@@ -456,7 +458,7 @@ mod tests {
             pages: vec![crate::operations::PageRef { id: "page-1".into(), name: "秋日特惠".into() }],
             nodes: vec![crate::operations::NodeRef {
                 id: "button".into(), page_id: "page-1".into(), parent_id: None, name: "按钮".into(), kind: "rectangle".into(),
-                x: 0.0, y: 0.0, width: 80.0, height: 32.0, text: None, fill: Some("#3459d4".into()), stroke: Some("#e05634".into()), stroke_width: Some(2.0), stroke_align: Some("inside".into()),
+                x: 0.0, y: 0.0, width: 80.0, height: 32.0, text: None, fill: Some("#3459d4".into()), stroke: Some("#e05634".into()), stroke_width: Some(2.0), stroke_align: Some("inside".into()), stroke_cap: Some("round".into()),
             }],
             selection: vec!["button".into()],
         };
@@ -474,6 +476,7 @@ mod tests {
         assert!(message.contains("#e05634"), "{message}");
         assert!(message.contains("2px"), "{message}");
         assert!(message.contains("inside"), "{message}");
+        assert!(message.contains("round"), "{message}");
         assert!(message.contains("秋日特惠"), "{message}");
         let with_tool = {
             let mut items = items.clone();

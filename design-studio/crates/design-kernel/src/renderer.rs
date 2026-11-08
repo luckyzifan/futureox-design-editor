@@ -2277,6 +2277,31 @@ impl Coverage for AccountedMask {
     fn rect(&self) -> Rect { self.mask.rect }
     fn at(&self, x: i32, y: i32) -> f32 { self.mask.at(x, y) }
 }
+
+/// Axis-aligned bounds of mask samples that can change a composited pixel.
+/// Coverage of zero multiplies the backdrop to zero, so glass shading outside
+/// this box does not affect the layer.
+fn nonzero_coverage_bounds(mask: &impl Coverage) -> Option<Rect> {
+    let rect = mask.rect();
+    let mut min_x = rect.right();
+    let mut min_y = rect.bottom();
+    let mut max_x = rect.x - 1;
+    let mut max_y = rect.y - 1;
+    for y in rect.y..rect.bottom() {
+        for x in rect.x..rect.right() {
+            if mask.at(x, y) > 0. {
+                min_x = min_x.min(x);
+                min_y = min_y.min(y);
+                max_x = max_x.max(x);
+                max_y = max_y.max(y);
+            }
+        }
+    }
+    if max_x < min_x || max_y < min_y {
+        return None;
+    }
+    Some(Rect::new(min_x, min_y, (max_x - min_x + 1) as u32, (max_y - min_y + 1) as u32))
+}
 impl Engine {
     /// Content revision of the loaded scene: bumped on every document
     /// install (load, patch, animation sample) and font change. This is the
@@ -3928,10 +3953,16 @@ impl Painter<'_> {
             let background = if let Some((shape, glass)) =
                 crate::optics::GlassShape::from_node(n).zip(fx.glass.as_ref())
             {
-                if bounded {
-                    crate::optics::render_region_with_raster(&blurred, basis, r, shape, m, glass, None, !self.compatible, false)?
+                let shade = nonzero_coverage_bounds(&fill).unwrap_or(r);
+                let (domain, output) = if bounded {
+                    (basis, shade)
                 } else {
-                    crate::optics::render(&blurred, shape, m, glass, None, !self.compatible)?
+                    (blurred.rect, shade.intersect(blurred.rect))
+                };
+                if output.empty() {
+                    blurred.new_like(output)?
+                } else {
+                    crate::optics::render_region_with_raster(&blurred, domain, output, shape, m, glass, None, !self.compatible, false)?
                 }
             } else if fx.kind == "glass" {
                 let mut geometry = self.allocate(r)?;
