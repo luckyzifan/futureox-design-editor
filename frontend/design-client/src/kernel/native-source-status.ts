@@ -12,9 +12,11 @@ export function nativeSourceBadgeText(status: NativeSourceBadgeStatus, flags: {
   openingMaterial: boolean
   previewRejected: boolean
   holdingFrame: boolean
+  /** Preview gaps or a synthetic background fill are still holes, even when the camera matches. */
+  holed?: boolean
 }) {
   if (status.phase === 'ready') {
-    if (flags.previewRejected) return '计算中'
+    if (flags.previewRejected || flags.holed) return '计算中'
     if (flags.openingMaterial) return '素材清晰 · 源文件仍在索引'
     return flags.cpu ? 'CPU · 已显示' : 'WebGPU · 清晰'
   }
