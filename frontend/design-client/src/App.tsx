@@ -17,6 +17,7 @@ import { BatchRenameDialog } from './BatchRenameDialog'
 import { NativeSketchDialog } from './NativeSketchDialog'
 import { LargeDocumentWorkspace, type SourceWorkspace } from './LargeDocumentWorkspace'
 import { SourceDocumentStatus } from './SourceDocumentStatus'
+import { SourcePageInspector } from './SourcePageInspector'
 import { nativeSketchCapabilities } from './native-sketch-capabilities'
 import { alignmentAvailability, alignSelection } from './alignment-availability'
 import { SettingsDialog } from './SettingsDialog'
@@ -1385,7 +1386,7 @@ export default function App({sourceWorkspace:source}:{sourceWorkspace?:SourceWor
             </div><div ref={setZoomHost} className="properties-zoom" />
           </div>
           <div className="properties-content" id={`${propertiesTab}-properties`} role="tabpanel" aria-labelledby={`${propertiesTab}-properties-tab`}>
-            {source?.nativeCanvas?<section className="source-overview-info"><h3>完整画板</h3><p>{source.nativeCanvas.snapshot.roots} 个素材 · {source.nativeCanvas.snapshot.nodes.toLocaleString()} 个节点</p><p>拖动或滚动浏览，双击素材进入细节编辑。</p></section>:['comments','annotate'].includes(s.tool) ? <ReviewsPanel editor={editor}/> : propertiesTab === 'design' ? <PendingEditContext.Provider value={editor} key={`${editor.sessionGeneration}:${s.selection.join(',')}`}><Inspector editor={editor} /></PendingEditContext.Provider>
+            {source && !source.showLayers ? <SourcePageInspector source={source} editor={editor} /> : ['comments','annotate'].includes(s.tool) ? <ReviewsPanel editor={editor}/> : propertiesTab === 'design' ? <PendingEditContext.Provider value={editor} key={`${editor.sessionGeneration}:${s.selection.join(',')}`}><Inspector editor={editor} /></PendingEditContext.Provider>
               : <DesignTools editor={editor} initialTab="prototype" embedded onClose={() => setPropertiesTab('design')} />}
           </div>
           <DesignAgentDock editor={editor} desktop={desktop} onImport={(file, mode) => void importDesignFile(file, mode)} />

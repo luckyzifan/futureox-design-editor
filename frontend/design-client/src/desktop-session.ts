@@ -8,6 +8,8 @@ import type { Editor } from './engine'
 import type { WorkspaceAutomationGuard } from './automation/workspace-bridge'
 import { prepareDocument, prepareDocumentJson, prepareDocumentJsonInWorker, takePreparedDocument, forkPreparedDocument, ensurePreparedDocument, preparedDocumentAdoptionOwner, preparedDocumentEncoding, type PreparedDocument } from './prepared-document'
 import { documentStage, documentStageAsync, DocumentStage } from './document-lifecycle-diagnostics'
+import { nativeDesignJson } from './native-design-json'
+import { unwrapSourceError } from './source-error-text'
 import { interfacePreference } from './interface-preference'
 import { blank, type DesignDocument } from './model'
 import { consumeDocumentJsonSyntaxFailure } from './document-admission'
@@ -203,9 +205,14 @@ export class DesktopSession {
     return false
   }
   private rememberWorkspace(opened: WorkspaceOpened) {
-    if (opened.deleted || typeof opened.documentJson !== 'string') { this.workspaceCache.delete(opened.id); return }
+    let documentJson = opened.documentJson
+    if (typeof documentJson !== 'string') {
+      try { documentJson = nativeDesignJson(documentJson) }
+      catch { this.workspaceCache.delete(opened.id); return }
+    }
+    if (opened.deleted || !documentJson) { this.workspaceCache.delete(opened.id); return }
     this.workspaceCache.delete(opened.id)
-    this.workspaceCache.set(opened.id, { revision: opened.revision, name: opened.name, hash: opened.hash, updatedAt: opened.updatedAt, documentJson: opened.documentJson })
+    this.workspaceCache.set(opened.id, { revision: opened.revision, name: opened.name, hash: opened.hash, updatedAt: opened.updatedAt, documentJson })
     while (this.workspaceCache.size > 8) {
       const victim = [...this.workspaceCache.keys()].find(key => key !== opened.id && key !== this.currentDocument.id)
       if (!victim) break
@@ -781,8 +788,8 @@ export class DesktopSession {
     return task
   }
 
-  private async parse(json: unknown) {
-    if (typeof json !== 'string') throw new Error('原生文件响应缺少设计内容')
+  private async parse(input: unknown) {
+    const json = nativeDesignJson(input)
     const codec = Object.getOwnPropertyDescriptor(this.bridge, 'documentCodec')?.value as DesktopBridge['documentCodec']
     // Only this installed, frozen version1 preload declares exact JSON.parse.
     // Unknown/custom/foreign codec owners retain their original decode contract.
@@ -1091,12 +1098,13 @@ export class DesktopSession {
 
   private failed(result: Exclude<DesktopResult, { status: 'ok' } | { status: 'cancelled' }>): false {
     desktopPet.event('error')
-    this.error = result.message
+    const message = unwrapSourceError(result.message)
+    this.error = message
     this.conflict = result.status === 'conflict' || result.code === 'CONFLICT' || result.code === 'WORKSPACE_CONFLICT'
     this.publish()
     this.editor.notify(this.conflict
-      ? `文件已被外部修改。当前画布已保留，请另存为，或重新打开磁盘文件：${result.message}`
-      : `操作失败，当前画布已保留：${result.message}`)
+      ? `文件已被外部修改。当前画布已保留，请另存为，或重新打开磁盘文件：${message}`
+      : `操作失败，当前画布已保留：${message}`)
     return false
   }
 
