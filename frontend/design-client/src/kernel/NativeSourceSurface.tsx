@@ -13,6 +13,7 @@ import {SourceViewportPlanner,backingCoversSettledSource,coveredSourceDetail,ret
 import {acceptTranslatedCoverage,coverageBeyondBacking,retainInFlightTile,selectCoverageStack} from './coverage-stack'
 import {prioritizeUncoveredTiles} from './coverage-priority'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
+import {nativeSourceBadgeText} from './native-source-status'
 import {previewCameraScaleWithinLimit, tileIntersectsView, tilePlacementAtView} from './tile-preview'
 import {cpuTileBlitOrigin,pasteboardCoverageColor} from './cpu-tile-frame'
 import {SourceRenderWork} from './source-render-work'
@@ -98,6 +99,7 @@ export function NativeSourceSurface(props:Props){
         // A large zoom still shows that picture until the worker frame exists;
         // it is not certified past the preview ratio.
         element.style.visibility=''
+        element.style.imageRendering='auto'
         element.dataset.previewUpscaleRejected=String(!previewCameraScaleWithinLimit(startupPreview.scale,p.view.zoom))
         const zoom=p.view.zoom/startupPreview.scale
         element.style.width=element.width*zoom+'px'
@@ -160,7 +162,11 @@ export function NativeSourceSurface(props:Props){
       if(status.phase==='refining'&&lastStatus.startsWith('refining/')&&now-lastStatusAt<120)return
       lastStatus=signature;lastStatusAt=now
       const cpu=renderExecutionPolicy.cpuOnly
-      badge.textContent=status.phase==='ready'?(source.openingMaterial!==undefined?'素材清晰 · 源文件仍在索引':cpu?'CPU · 已显示':'WebGPU · 清晰'):status.phase==='limited'?'当前倍率为预览精度':status.phase==='error'?'画板绘制未完成':status.phase==='loading'?'正在准备完整画板…':`正在绘制 ${status.done} / ${status.total}`
+      badge.textContent=nativeSourceBadgeText(status,{
+        cpu, openingMaterial:source.openingMaterial!==undefined,
+        previewRejected:element.dataset.previewUpscaleRejected==='true',
+        holdingFrame:element.dataset.cameraReprojected==='true'||!!backing,
+      })
       badge.title=status.error??'当前视口完成全部瓦片与采样密度校验后显示清晰'
       diagnostics.record('viewport-state',{state:status.phase==='loading'?0:status.phase==='refining'?1:status.phase==='ready'?2:3,
         previewTiles:status.done,count:status.total,zoom:latest.current.view.zoom,dpr:density.current,
@@ -742,7 +748,11 @@ export function NativeSourceSurface(props:Props){
       const hasRequestedDensity=visibleTiles.some(t=>t.zoom===expected.scale)
       element.dataset.sourceRenderScale=String(Math.max(0,...visibleTiles.map(t=>t.zoom)))
       element.dataset.sourceVisibleDemandScale=hasRequestedDensity?String(expected.scale):''
-      if(complete){
+        if(complete && !previewCameraScaleWithinLimit(actual.view.zoom, p.view.zoom)){
+          const total=plan().tiles.length
+          const arrived=plan().tiles.filter(tile=>cache.has(tile.key)).length
+          emit({phase:'refining',done:arrived,total})
+        }else if(complete){
         if(source.materialKeys){
           const scale=actual.view.zoom*actual.dpr
           const keys=new Set(shownTiles.map(t=>t.key))
@@ -803,7 +813,9 @@ export function NativeSourceSurface(props:Props){
         // coarse residents never got composited into it.
         if(zoomChanged)quality.reset()
       }
+      let zoomChanged=false
       if(currentView.zoom!==lastZoom){
+        zoomChanged=true
         const now=performance.now(),inward=latest.current.view.zoom>lastZoom
         wheelInterval=now-lastZoomAt
         const wheel=latest.current.wheelView, view=latest.current.view
@@ -827,6 +839,14 @@ export function NativeSourceSurface(props:Props){
       moving=!releasedPan;clearTimeout(idleTimer)
       cpuRepairs.clear();clearTimeout(repairTimer)
       project()
+      if(zoomChanged&&initialized){
+        const native=plan(true)
+        const arrived=native.tiles.filter(tile=>cache.has(tile.key)).length
+        const rejected=element.dataset.previewUpscaleRejected==='true'
+        emit(!rejected&&native.tiles.length>0&&arrived===native.tiles.length
+          ?{phase:'ready',done:arrived,total:arrived}
+          :{phase:'refining',done:arrived,total:native.tiles.length})
+      }
       try{
       // Motion headroom is optional work. An already complete exact native
       // demand may present immediately, without waiting for a quiet timer or
