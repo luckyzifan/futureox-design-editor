@@ -27,6 +27,7 @@ export function snapshotContext(editor: Editor, targetPageId: string) {
       stroke_width: node.strokes.find(stroke => stroke.visible)?.width,
       stroke_align: node.strokes.find(stroke => stroke.visible)?.align,
       stroke_cap: node.strokes.find(stroke => stroke.visible)?.cap,
+      stroke_join: node.strokes.find(stroke => stroke.visible)?.join,
     })
     if (depth < 3) node.children.forEach(child => visit(pageId, child, id, depth + 1))
   }
