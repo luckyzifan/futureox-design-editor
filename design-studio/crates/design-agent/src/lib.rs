@@ -285,7 +285,7 @@ mod session_tests {
                 pages: vec![operations::PageRef { id: "page-1".into(), name: "秋日特惠".into() }],
                 nodes: vec![operations::NodeRef {
                     id: "title".into(), page_id: "page-1".into(), parent_id: None, name: "标题".into(), kind: "text".into(),
-                    x: 0.0, y: 0.0, width: 80.0, height: 40.0, text: Some("秋日特惠".into()), fill: None, stroke: None, stroke_width: None, stroke_align: None,
+                    x: 0.0, y: 0.0, width: 80.0, height: 40.0, text: Some("秋日特惠".into()), fill: None, stroke: None, stroke_width: None, stroke_align: None, stroke_cap: None,
                 }],
                 selection: vec!["title".into()],
             },
