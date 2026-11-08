@@ -31,6 +31,7 @@ export function snapshotContext(editor: Editor, targetPageId: string) {
       stroke_dash: node.strokes.find(stroke => stroke.visible)?.dash || undefined,
       opacity: node.opacity === 1 ? undefined : node.opacity,
       corner_radius: cornerRadius(node.radii),
+      font_size: node.kind === 'text' ? node.fontSize : undefined,
     })
     if (depth < 3) node.children.forEach(child => visit(pageId, child, id, depth + 1))
   }
