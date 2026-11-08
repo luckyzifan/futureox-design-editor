@@ -3,6 +3,8 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-08 [离屏裁剪画板不再准备子树](../../../testing/verification-render-frame-cull-20261108/README.md)：zoom 3.2 的准备里曲线展平只有 5 ms。够不着守卫的裁剪画板不再建子树。zoom 3.2 从 843.736 ms 降到 626.522 ms，zoom 0.8 从 780.249 ms 降到 564.702 ms。zoom 6.4 是 194.914 ms。素材 zoom 2 是 84.354 ms 和 76.543 ms。不是 33/100ms 或完整 G2/G5。
+
 2026-11-08 [展平微优化没有留下](../../../testing/verification-render-flatten-inline-20261108/README.md)：固定数组堆和 `inline(always)` 的点运算都没有让孤立 zoom 3.2 低于玻璃边缘基线的 557.421–564.007 ms。哈希没变。正式最慢帧仍是 zoom 3.2 的 843.736 ms。不是 33/100ms 或完整 G2/G5。
 
 2026-11-08 [玻璃边缘色散落在同一取样点时只读一次](../../../testing/verification-render-glass-edge-20261108/README.md)：边框几何仍逐像素计算。色散两端和中心取样二进制位相同时，边像素只读一次背景，原来的加权和还在。zoom 0.8 从 901.767 ms 降到 780.249 ms。zoom 3.2 是 843.736 ms。zoom 6.4 是 406.724 ms。素材 zoom 2 是 72.602 ms 和 76.618 ms。不是 33/100ms 或完整 G2/G5。
