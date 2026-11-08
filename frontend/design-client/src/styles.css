@@ -1007,9 +1007,9 @@ footer button {
   padding: 3px 5px;
 }
 .file-menu {
-  position: absolute;
-  top: 52px;
-  left: 15px;
+  position: fixed;
+  top: auto;
+  left: auto;
   z-index: 21;
   width: 220px;
   background: white;
@@ -1746,7 +1746,7 @@ footer button {
 .editor-shell .view-menu-body .number-field, .editor-shell .view-menu-body select { background: var(--workspace-field); color: var(--workspace-text); }
 .zoom-steps { display: flex; gap: 8px; }
 .zoom-steps button { flex: 1; }
-.editor-shell > footer { position: absolute; grid-column: 3; grid-row: 3; bottom: 6px; left: 14px; height: 18px; max-width: calc(100% - 28px); padding: 0; background: transparent; border: 0; pointer-events: none; z-index: 21; }
+.editor-shell > footer { position: absolute; grid-column: 3; grid-row: 3; bottom: 78px; left: 14px; height: auto; max-width: min(360px, 46%); padding: 2px 8px; background: color-mix(in srgb, var(--workspace-panel) 92%, transparent); border: 0; border-radius: 8px; pointer-events: none; z-index: 6; }
 .editor-shell > footer > div { display: none; }
 .editor-shell .floating-toolbar { bottom: 12px; }
 .editor-shell > .animation-panel { grid-column: 1 / -1; grid-row: 4; }
@@ -1813,7 +1813,7 @@ footer button {
 .properties-tabs button[aria-selected=true] { background: transparent; color: var(--workspace-accent); border-radius: 0; box-shadow: inset 0 -2px 0 var(--workspace-accent); font-weight: 600; }
 .floating-toolbar { box-shadow: 0 6px 24px #18233014, 0 1px 4px #1823300a; }
 .tool-popover-content > button, .canvas-context-menu button { font-size: 12px; min-height: 30px; }
-.file-menu { top: 48px; left: 10px; border-color: var(--workspace-border); }
+.file-menu { border-color: var(--workspace-border); }
 .file-menu kbd { color: var(--workspace-muted); }
 .primary:hover { background: var(--workspace-accent-hover); }
 .secondary { min-height: 32px; padding: 7px 10px; background: var(--workspace-field); border: 1px solid var(--workspace-border); }
@@ -2281,3 +2281,92 @@ html[data-reduced-motion=true] .animation-modal * {
 .export-region-prompt {position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;padding:7px 12px;border-radius:8px;background:#292929;color:white;box-shadow:0 2px 10px #0003;cursor:default;font-size:12px;}
 .export-region-prompt button {color:inherit;text-decoration:underline;}
 .export-region-outline {position:absolute;pointer-events:none;box-sizing:border-box;border:1px solid #4597f7;background:#4597f71c;}
+
+/* Left column keeps its chrome inside the grid cell. The active list scrolls; the footer does not. */
+.editor-shell .adaptive-layers-shell { overflow: hidden; min-width: 0; height: 100%; }
+.editor-shell .adaptive-layers-shell .layers-panel { width: 100%; height: 100%; min-width: 0; max-width: none; overflow: hidden; }
+.layers-pages { flex: none; display: flex; flex-direction: column; min-height: 0; max-height: 34%; overflow: hidden; }
+.layers-pages .pages { flex: 1 1 auto; min-height: 0; max-height: none; }
+.pages-actions { flex: none; }
+.pages-actions button { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; white-space: nowrap; }
+.workspace-title > div { min-width: 0; }
+.workspace-title b, .workspace-title small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.layer-heading { flex: none; min-width: 0; gap: 8px; }
+.layer-tabs { display: flex; flex: 1; min-width: 0; gap: 8px; }
+.layer-tabs button { white-space: nowrap; }
+.layer-heading > span, .layer-heading > button { flex: none; }
+.layers-tabpanel { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; min-width: 0; overflow: hidden; }
+.layers-tabpanel[hidden] { display: none !important; }
+.layer-footer { flex: none; }
+.layer-footer button { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.component-asset { min-width: 0; box-sizing: border-box; }
+.component-asset strong, .component-asset small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.color-readout { font-size: 12px; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; white-space: nowrap; }
+.empty-inspector { padding: 8px 0 0 !important; text-align: left !important; }
+.empty-inspector p { max-width: none; margin: 0; }
+.editor-shell .canvas-workspace .kernel-status { top: auto !important; bottom: 78px; max-width: min(240px, 36%); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 8px; border-radius: 8px; background: color-mix(in srgb, var(--workspace-panel) 94%, transparent); border: 1px solid var(--workspace-border); z-index: 6; }
+.editor-shell .header-right .ui-mode-switch { flex: none; display: inline-flex; border: 1px solid var(--workspace-border); border-radius: 8px; overflow: hidden; }
+.editor-shell .header-right .ui-mode-switch button { height: 26px; padding: 0 8px; font-size: 11px; white-space: nowrap; color: var(--workspace-muted); background: transparent; }
+.editor-shell .header-right .ui-mode-switch button[aria-pressed=true] { color: var(--workspace-text); background: var(--workspace-selected); }
+.editor-shell .header-right .locale-switch { flex: none; }
+.editor-shell .header-right .locale-switch select { max-width: 76px; }
+.editor-shell.design-agent-open .properties-workspace { display: flex; }
+.editor-shell.design-agent-open .properties-tabs,
+.editor-shell.design-agent-open .properties-content { display: none; }
+.local-window-popover { position: fixed; top: auto; right: auto; }
+
+/* Figma: left rail, bottom floating tools, white panels, design-tab inspector. */
+.editor-shell[data-ui-mode="figma"] {
+  --workspace-accent: #0d99ff;
+  --workspace-accent-hover: #0b86e0;
+  --workspace-selected: #e5f4ff;
+  --workspace-panel: #ffffff;
+  --workspace-canvas: #e5e5e5;
+  --workspace-border: #e6e6e6;
+  --workspace-hover: #f5f5f5;
+  --workspace-field: #f5f5f5;
+  --workspace-text: #333333;
+  --workspace-muted: #888888;
+}
+.editor-shell[data-ui-mode="figma"] .floating-toolbar { bottom: 12px; left: 50%; transform: translateX(-50%); border-radius: 12px; }
+.editor-shell[data-ui-mode="figma"] .layers-pages { max-height: 28%; }
+.editor-shell[data-ui-mode="figma"] .properties-content .inspector > section { border-bottom: 1px solid var(--workspace-border); }
+
+/* Sketch: macOS document toolbar across the top of the canvas, no left tool rail,
+   page list above layers, inspector sections as grouped white cards. */
+.editor-shell[data-ui-mode="sketch"].chrome-hide-layers { grid-template-columns: 0 0 minmax(0, 1fr) var(--workspace-inspector-width); }
+.editor-shell[data-ui-mode="sketch"].chrome-hide-inspector { grid-template-columns: 0 max-content minmax(0, 1fr) 0; }
+.editor-shell[data-ui-mode="sketch"].design-agent-open { grid-template-columns: 0 max-content minmax(0, 1fr) var(--workspace-inspector-width); }
+.editor-shell[data-ui-mode="sketch"] {
+  --workspace-accent: #007aff;
+  --workspace-accent-hover: #0063cc;
+  --workspace-selected: #d6e8ff;
+  --workspace-panel: #f2f2f2;
+  --workspace-canvas: #c8c8c8;
+  --workspace-border: #c6c6c6;
+  --workspace-hover: #e8e8e8;
+  --workspace-field: #ffffff;
+  --workspace-text: #1d1d1f;
+  --workspace-muted: #6e6e73;
+  grid-template-columns: 0 max-content minmax(0, 1fr) var(--workspace-inspector-width);
+}
+.editor-shell[data-ui-mode="sketch"] .workspace-rail { display: none; }
+.editor-shell[data-ui-mode="sketch"] .editor-header > .brand { grid-column: 2; width: auto; height: 40px; padding: 6px 10px; }
+.editor-shell[data-ui-mode="sketch"] .canvas-workspace { padding-top: 56px; }
+.editor-shell[data-ui-mode="sketch"] .floating-toolbar {
+  top: 8px; bottom: auto; left: 12px; right: 12px; transform: none; width: auto; max-width: none;
+  height: 40px; border-radius: 8px; justify-content: flex-start;
+  background: #f7f7f7; box-shadow: inset 0 0 0 1px #d5d5d5, 0 1px 2px #00000014;
+}
+.editor-shell[data-ui-mode="sketch"] .layers-pages { max-height: 46%; background: #ffffff; }
+.editor-shell[data-ui-mode="sketch"] .layer-heading { background: #ececec; }
+.editor-shell[data-ui-mode="sketch"] .properties-workspace { background: #ececec; padding-top: 48px; }
+.editor-shell[data-ui-mode="sketch"] .properties-tabs { background: #e6e6e6; }
+.editor-shell[data-ui-mode="sketch"] .properties-content .inspector > section,
+.editor-shell[data-ui-mode="sketch"] .properties-content .property-card {
+  margin: 8px; padding: 8px; background: #ffffff; border: 1px solid #d0d0d0; border-radius: 6px;
+}
+.editor-shell[data-ui-mode="sketch"] .properties-content .inspector h3,
+.editor-shell[data-ui-mode="sketch"] .properties-content .inspector h4 {
+  font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: #6e6e73;
+}

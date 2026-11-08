@@ -15,6 +15,7 @@ import {
 import type { BackendPreference } from './gpu/types'
 import { canReplaceFallback, frameTransform, presentationMatches, presentationContentMatches, referencePresentationPolicy, surfaceMetrics, useDevicePixelRatio, useDisplayCapability, type ExactPresentation } from './presentation'
 import { previewCameraScaleWithinLimit, previewPlacementIntersects } from './tile-preview'
+import { canvasStatusLabel } from '../canvas-status-label'
 type Request = {
   epoch: number
   backend: BackendPreference
@@ -562,7 +563,7 @@ export function ReferenceSurface(
       {!props.paused && <div
         className={`kernel-status ${error ? 'error' : ''}`}
         role="status"
-        title={detail}
+        title={canvasStatusLabel(detail)}
         style={{
           position: 'absolute',
           right: 14,
@@ -573,7 +574,7 @@ export function ReferenceSurface(
           zIndex: 4,
         }}
       >
-        {status}
+        {canvasStatusLabel(status)}
 
       </div>}
     </div>
