@@ -1,5 +1,8 @@
 import { expect, test } from 'vitest'
-import { createInterfacePreference, DEFAULT_INTERFACE_PREFERENCES } from './interface-preference'
+import { createInterfacePreference, DEFAULT_INTERFACE_PREFERENCES, interfacePreference } from './interface-preference'
+import { applyInterfaceLayout, interfaceLayoutFromShortcut, FIGMA_LAYOUT_COMBO, SKETCH_LAYOUT_COMBO } from './interface-layout'
+import { shortcutPreference } from './shortcut-preference'
+import { shortcutBindings } from './shortcut-profiles'
 import { displayColorHex } from './color'
 import { canvasStatusLabel } from './canvas-status-label'
 import { clampAnchoredMenu } from './anchored-menu'
@@ -18,6 +21,31 @@ test('ui mode is remembered and unknown values stay on Figma', () => {
   const bogus = createInterfacePreference(() => ({ getItem: () => JSON.stringify({ uiMode: 'photoshop' }), setItem() {} }))
   expect(bogus.getSnapshot().uiMode).toBe('figma')
   expect(DEFAULT_INTERFACE_PREFERENCES.uiMode).toBe('figma')
+})
+
+test('layout chords switch the shell and the matching editor shortcut profile', () => {
+  expect(interfaceLayoutFromShortcut({ key: 'f', metaKey: true, ctrlKey: false, altKey: true, shiftKey: false })).toBe('figma')
+  expect(interfaceLayoutFromShortcut({ key: 's', metaKey: false, ctrlKey: true, altKey: true, shiftKey: false })).toBe('sketch')
+  expect(interfaceLayoutFromShortcut({ key: 'f', metaKey: true, ctrlKey: false, altKey: false, shiftKey: false })).toBeNull()
+  expect(interfaceLayoutFromShortcut({ key: 'f', metaKey: true, ctrlKey: true, altKey: true, shiftKey: false })).toBeNull()
+  expect(interfaceLayoutFromShortcut({ key: 's', metaKey: true, ctrlKey: false, altKey: true, shiftKey: true })).toBeNull()
+  // US Mac Option+F / Option+S: key is ƒ / ß, code stays KeyF / KeyS.
+  expect(interfaceLayoutFromShortcut({ key: 'ƒ', code: 'KeyF', metaKey: true, ctrlKey: false, altKey: true, shiftKey: false })).toBe('figma')
+  expect(interfaceLayoutFromShortcut({ key: 'ß', code: 'KeyS', metaKey: true, ctrlKey: false, altKey: true, shiftKey: false })).toBe('sketch')
+  expect(interfaceLayoutFromShortcut({ key: 'ƒ', metaKey: true, ctrlKey: false, altKey: true, shiftKey: false })).toBeNull()
+  expect(interfaceLayoutFromShortcut({ key: '©', code: 'KeyG', metaKey: true, ctrlKey: false, altKey: true, shiftKey: false })).toBeNull()
+  expect(interfaceLayoutFromShortcut({ key: 'Ï', code: 'KeyF', metaKey: true, ctrlKey: false, altKey: true, shiftKey: true })).toBeNull()
+  applyInterfaceLayout('sketch')
+  expect(interfacePreference.getSnapshot().uiMode).toBe('sketch')
+  expect(shortcutPreference.getSnapshot()).toBe('sketch-like')
+  applyInterfaceLayout('figma')
+  expect(interfacePreference.getSnapshot().uiMode).toBe('figma')
+  expect(shortcutPreference.getSnapshot()).toBe('figma-like')
+  for (const profile of ['figma-like', 'sketch-like'] as const) {
+    const combos = shortcutBindings({ profile, platform: 'mac', desktop: true }).map(binding => binding.combo)
+    expect(combos).not.toContain(FIGMA_LAYOUT_COMBO)
+    expect(combos).not.toContain(SKETCH_LAYOUT_COMBO)
+  }
 })
 
 test('opaque srgb page background displays as hex', () => {

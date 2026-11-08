@@ -55,6 +55,12 @@ test('cpu overlay chrome follows the live zoom instead of the pre-rotation frame
   const presented = { x: 0, y: 0, zoom: 1.25 }
   expect(referenceOverlayCamera({ cpu: true, live, presented, scopeMatches: true, editPreview: false })).toEqual(live)
   expect(referenceOverlayCamera({ cpu: false, live, presented, scopeMatches: true, editPreview: false })).toEqual(presented)
+  const held = { x: 12, y: -4, zoom: 24 }
+  const page = { x: 0, y: 0, zoom: 1 }
+  expect(referenceOverlayCamera({
+    cpu: false, live: held, presented: page, scopeMatches: true, editPreview: false,
+    viewport: { width: 800, height: 600 },
+  })).toEqual(held)
   expect(referenceOverlayCamera({ cpu: false, live, presented: null, scopeMatches: false, editPreview: false })).toEqual(live)
 })
 
