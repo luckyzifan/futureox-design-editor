@@ -35,6 +35,9 @@ pub struct NodeRef {
     /// Width of that stroke, in the node's units.
     #[serde(default)]
     pub stroke_width: Option<f64>,
+    /// Stroke alignment: inside, center, or outside.
+    #[serde(default)]
+    pub stroke_align: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -492,6 +495,7 @@ mod tests {
                 fill: None,
                 stroke: None,
                 stroke_width: None,
+                stroke_align: None,
             }],
             selection: Vec::new(),
         };
