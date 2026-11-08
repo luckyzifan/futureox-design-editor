@@ -9,7 +9,7 @@ import { CameraReprojection } from './camera-reprojection'
 import { selectCoverageUnderlay } from './coverage-stack'
 import { NavigationBacking, NAVIGATION_BACKING_BYTES } from './navigation-backing'
 import { referenceOverlayCamera } from './reference-zoom-frame'
-import { previewCameraScaleWithinLimit, previewUpscaleWithinLimit } from './tile-preview'
+import { previewCameraScaleWithinLimit, previewUpscaleWithinLimit, showRetainedPreview } from './tile-preview'
 import type { RasterTile } from './tile-cache'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -25,7 +25,12 @@ test('a page thumbnail is not a readable frame after a large zoom-in', () => {
   expect(selectCoverageUnderlay([coarse], view, { width: 800, height: 600 }, [])).toEqual([])
 })
 
-test('a zoom jump past 2× does not keep an upscaled bitmap on the canvas', () => {
+test('a zoom jump past 2× keeps the previous image until a covering replacement exists', () => {
+  expect(showRetainedPreview({ sourceZoom: 256, viewZoom: 1.197, intersects: true, replacementCovers: false })).toBe(true)
+  expect(showRetainedPreview({ sourceZoom: 1, viewZoom: 8, intersects: true, replacementCovers: false })).toBe(true)
+  expect(showRetainedPreview({ sourceZoom: 256, viewZoom: 1.197, intersects: true, replacementCovers: true })).toBe(false)
+  expect(showRetainedPreview({ sourceZoom: 1, viewZoom: 1.5, intersects: true, replacementCovers: false })).toBe(true)
+  expect(showRetainedPreview({ sourceZoom: 1, viewZoom: 8, intersects: false, replacementCovers: false })).toBe(false)
   const dom = new JSDOM('<div><canvas></canvas></div>')
   vi.stubGlobal('document', dom.window.document)
   const host = document.querySelector('div')!
@@ -40,14 +45,30 @@ test('a zoom jump past 2× does not keep an upscaled bitmap on the canvas', () =
     width: 800, height: 600, dpr: 2, interaction: false, ids: [1],
   }
   projection.update(backing, backing.view, 800, 600, true)
-  const landed = projection.update(backing, { x: 40, y: 40, zoom: 1.197 }, 800, 600, true)
-  expect(landed.active).toBe(false)
-  expect(canvas.style.transform).toBe('')
-  expect(canvas.style.visibility).toBe('hidden')
+  const zoomedOut = projection.update(backing, { x: 40, y: 40, zoom: 1.197 }, 800, 600, true)
+  expect(zoomedOut.active).toBe(true)
+  expect(canvas.style.visibility).not.toBe('hidden')
+  expect(canvas.style.transform).toContain('scale(')
+  expect(canvas.dataset.cameraReprojected).toBe('true')
   expect(canvas.dataset.previewUpscaleRejected).toBe('true')
   expect(settled).not.toHaveBeenCalled()
   vi.advanceTimersByTime(0)
   expect(settled).toHaveBeenCalledOnce()
+  const page = {
+    presentationId: 'accepted', view: { x: 0, y: 0, zoom: 1 },
+    width: 800, height: 600, dpr: 2, interaction: false, ids: [1],
+  }
+  projection.update(page, page.view, 800, 600, true)
+  const zoomedIn = projection.update(page, { x: 0, y: 0, zoom: 8 }, 800, 600, true)
+  expect(zoomedIn.active).toBe(true)
+  expect(canvas.style.visibility).not.toBe('hidden')
+  expect(canvas.style.transform).toContain('scale(')
+  expect(canvas.dataset.previewUpscaleRejected).toBe('true')
+  const covered = projection.update(page, { x: 0, y: 0, zoom: 8 }, 800, 600, true, undefined, true)
+  expect(covered.active).toBe(false)
+  expect(canvas.style.visibility).toBe('hidden')
+  expect(canvas.style.transform).toBe('')
+  expect(canvas.dataset.previewUpscaleRejected).toBe('true')
   } finally {
     projection?.dispose()
     vi.useRealTimers()

@@ -2425,6 +2425,7 @@ export function ProgressiveSurfaceImpl(
     setAcceptedBacking(old => old?.identity === identity && old.client === owner ? old : { identity, client:owner })
   }
   const hasAcceptedBacking = singleCanvas && acceptedBacking?.identity === identity && acceptedBacking.client === rasterClient
+  const retainedFrame = !!displayed || hasAcceptedBacking || cachedPreviewCount > 0 || !!previewReplacement
   useLayoutEffect(() => {
     // Offscreen GPU submission is asynchronous. Only its reply can publish
     // the camera; synchronous CSS/WebGL placement keeps this immediate path.
@@ -2539,13 +2540,14 @@ export function ProgressiveSurfaceImpl(
           left: 0,
           top: 0,
           transformOrigin: '0 0',
-          transform: singleCanvas || !previewCameraOk ? undefined : `translate(${cameraTransform.x}px,${cameraTransform.y}px) scale(${cameraTransform.scale})`,
+          transform: singleCanvas || !(previewCameraOk || retainedFrame) ? undefined : `translate(${cameraTransform.x}px,${cameraTransform.y}px) scale(${cameraTransform.scale})`,
           // Upload/acknowledge tiles while hidden. The first visible canvas
           // must have a complete acknowledged viewport, including on a page
-          // change. Later camera previews keep the previous complete frame.
-          // A real accepted preview stays visible while tile categories/plan
-          // generations change. Readiness counters cannot hide its backbuffer.
-          visibility: props.visible === false || !previewCameraOk || !hasAcceptedBacking && !displayed && cachedPreviewCount === 0 && !previewReplacement ? 'hidden' : 'visible',
+          // change. Later camera previews keep the previous complete frame,
+          // including a jump past the preview scale limit. Hiding that bitmap
+          // before a closer frame covers is the blank pasteboard. Readiness
+          // counters cannot hide its backbuffer.
+          visibility: props.visible === false || !retainedFrame ? 'hidden' : 'visible',
           pointerEvents: 'none',
         }}
       >
@@ -2741,7 +2743,7 @@ export function ProgressiveSurfaceImpl(
         }}
       >
         {failure ? canvasStatusLabel(failure) :
-          `${stats.actualBackend === 'webgl2' ? 'WebGL 2' : 'WebGPU'} · ${props.interaction?.active ? '编辑预览' : complete ? '清晰' : '计算中'}${stats.managed ? ' · 浮点' : ''}`}
+          `${stats.actualBackend === 'webgl2' ? 'WebGL 2' : 'WebGPU'} · ${props.interaction?.active ? '编辑预览' : complete && previewCameraOk ? '清晰' : '计算中'}${stats.managed ? ' · 浮点' : ''}`}
 
       </div>}
     </>

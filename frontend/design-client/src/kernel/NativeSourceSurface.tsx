@@ -95,13 +95,10 @@ export function NativeSourceSurface(props:Props){
       if (startupPreview && !backing) {
         // The host PNG occupies the ordinary display canvas until its first
         // worker bitmap. Only real GPU acknowledgements can mark it ready.
-        // A large zoom change must not stretch that thumbnail across the card.
-        if(!previewCameraScaleWithinLimit(startupPreview.scale,p.view.zoom)){
-          element.style.visibility='hidden'
-          element.style.transform=''
-          return {active:false,changed:true}
-        }
+        // A large zoom still shows that picture until the worker frame exists;
+        // it is not certified past the preview ratio.
         element.style.visibility=''
+        element.dataset.previewUpscaleRejected=String(!previewCameraScaleWithinLimit(startupPreview.scale,p.view.zoom))
         const zoom=p.view.zoom/startupPreview.scale
         element.style.width=element.width*zoom+'px'
         element.style.height=element.height*zoom+'px'
