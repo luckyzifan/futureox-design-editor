@@ -84,9 +84,10 @@ export function referenceOverlayCamera(input: {
   presented: CanvasCamera | null
   scopeMatches: boolean
   editPreview: boolean
-  /** When the presented bitmap cannot appear in this viewport, chrome follows
-   * the live camera. A 2400% pasteboard frame must not keep drawing its grid
-   * after Center Selection has moved onto the group. */
+  /** A bitmap held past the preview ratio is CSS-reprojected into the live
+   * camera, so the blue box uses that same live camera and stays on the
+   * picture. A 2400% pasteboard frame must not keep drawing its grid after
+   * Center Selection has moved onto the group. */
   viewport?: CanvasSize
 }): CanvasCamera {
   if (input.cpu || input.editPreview || !input.scopeMatches || !input.presented) return input.live
