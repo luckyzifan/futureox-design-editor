@@ -19,6 +19,8 @@ export function applyInterfaceLayout(mode: UiMode) {
 
 export function interfaceLayoutFromShortcut(event: {
   key: string
+  /** Physical key. US Mac Option+F / Option+S produce ƒ (U+0192) and ß (U+00DF), so `key` is not "f" / "s". */
+  code?: string
   metaKey: boolean
   ctrlKey: boolean
   altKey: boolean
@@ -27,8 +29,13 @@ export function interfaceLayoutFromShortcut(event: {
 }): UiMode | null {
   if (event.repeat || event.shiftKey || !event.altKey) return null
   if (!(event.metaKey || event.ctrlKey) || (event.metaKey && event.ctrlKey)) return null
+  // Accept the physical F/S keys, and the plain letters tests and other platforms produce.
+  // Do not map other Option symbols; an unknown character without KeyF/KeyS is not this chord.
   const key = event.key.toLowerCase()
-  if (key === 'f') return 'figma'
-  if (key === 's') return 'sketch'
+  const letter = event.code === 'KeyF' || event.code === 'KeyS'
+    ? (event.code === 'KeyF' ? 'f' : 's')
+    : key === 'f' || key === 's' ? key : ''
+  if (letter === 'f') return 'figma'
+  if (letter === 's') return 'sketch'
   return null
 }
