@@ -1,4 +1,5 @@
 import { tilesCoverBounds, type RasterTile } from './tile-cache'
+import { MAX_PREVIEW_SCALE_RATIO, previewCameraScaleWithinLimit } from './tile-preview'
 import type { CanvasCamera } from '../canvas-camera'
 import type { ResidentAcknowledgement } from './resident-presentation'
 
@@ -67,6 +68,7 @@ function missingOnPage(frame: ResidentAcknowledgement, target: CameraWindow, bou
 export function keepCompleteCameraBacking(backing: ResidentAcknowledgement | undefined, next: ResidentAcknowledgement,
   allowed: boolean, zooming = false, target?: CameraWindow, history?: CameraWindow) {
   if (!allowed || !backing || backing.preview || backing.interaction || next.interaction) return false
+  if (!previewCameraScaleWithinLimit(backing.view.zoom, next.view.zoom)) return false
   if (!target) return !!next.preview || zooming && next.view.zoom > backing.view.zoom
   const old = intersect(screen(target), project(backing, target))
   if (!old) return false
@@ -323,6 +325,14 @@ export class NavigationBacking {
   show(backing: ResidentAcknowledgement, target: CameraWindow) {
     if (!this.frame || !this.clip || !this.surface) return
     const rect = project(this.frame, target)
+    // The atlas stores a whole page in at most 1024px. Stretching that bitmap
+    // across a closer camera turns the card into a mosaic. Leave the hole
+    // empty until a frame sampled near the requested zoom arrives.
+    if (this.surface && (rect.width / this.surface.width > MAX_PREVIEW_SCALE_RATIO ||
+        rect.height / this.surface.height > MAX_PREVIEW_SCALE_RATIO)) {
+      this.hide()
+      return
+    }
     const holes = missing(backing, target)
     const covered = this.coverage(target)
     const repairs = holes?.flatMap(hole => covered.flatMap(region => intersect(region,hole) ?? []))

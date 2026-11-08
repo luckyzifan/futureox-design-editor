@@ -13,7 +13,7 @@ import {SourceViewportPlanner,backingCoversSettledSource,coveredSourceDetail,ret
 import {acceptTranslatedCoverage,coverageBeyondBacking,retainInFlightTile,selectCoverageStack} from './coverage-stack'
 import {prioritizeUncoveredTiles} from './coverage-priority'
 import {tileBatchPrepareViewport} from './tile-prepare-viewport'
-import {tileIntersectsView, tilePlacementAtView} from './tile-preview'
+import {previewCameraScaleWithinLimit, tileIntersectsView, tilePlacementAtView} from './tile-preview'
 import {cpuTileBlitOrigin,pasteboardCoverageColor} from './cpu-tile-frame'
 import {SourceRenderWork} from './source-render-work'
 import {sourceTileRetirement,rememberSourceTier} from './source-tile-retirement'
@@ -95,6 +95,13 @@ export function NativeSourceSurface(props:Props){
       if (startupPreview && !backing) {
         // The host PNG occupies the ordinary display canvas until its first
         // worker bitmap. Only real GPU acknowledgements can mark it ready.
+        // A large zoom change must not stretch that thumbnail across the card.
+        if(!previewCameraScaleWithinLimit(startupPreview.scale,p.view.zoom)){
+          element.style.visibility='hidden'
+          element.style.transform=''
+          return {active:false,changed:true}
+        }
+        element.style.visibility=''
         const zoom=p.view.zoom/startupPreview.scale
         element.style.width=element.width*zoom+'px'
         element.style.height=element.height*zoom+'px'
