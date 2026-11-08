@@ -44,6 +44,9 @@ pub struct NodeRef {
     /// Stroke join: miter, round, or bevel.
     #[serde(default)]
     pub stroke_join: Option<String>,
+    /// Dash pattern of that stroke, when one is authored.
+    #[serde(default)]
+    pub stroke_dash: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -504,6 +507,7 @@ mod tests {
                 stroke_align: None,
                 stroke_cap: None,
                 stroke_join: None,
+                stroke_dash: None,
             }],
             selection: Vec::new(),
         };

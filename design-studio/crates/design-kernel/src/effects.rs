@@ -351,14 +351,37 @@ fn box_pass_in_place_domain_core<const CHANNELS: usize>(
     // instead of a second full RGBA32F surface. Outside samples remain transparent.
     let _line_allocation = input.reserve_scratch::<[f32; CHANNELS]>(len as usize)?;
     let mut source_line = vec![[0.; CHANNELS]; len as usize];
+    let width = rect.w as usize;
+    // Same rounding test for every pixel of this pass. Building it inside the
+    // pixel loop repeats the same captures on each sample.
+    let window = f64::from(2 * r + 1);
+    let certified = |sum: &[f64; CHANNELS], steps: i32| -> Option<[f32; CHANNELS]> {
+        let steps = f64::from(steps.max(0));
+        let mut out = [0_f32; CHANNELS];
+        for c in 0..CHANNELS {
+            let err = (window + 2. * steps) * f64::EPSILON * sum[c].abs().max(1.) * 8.;
+            let center = sum[c] / denominator;
+            let lo = domain(center - err / denominator) as f32;
+            let hi = domain(center + err / denominator) as f32;
+            if lo.to_bits() != hi.to_bits() {
+                return None;
+            }
+            out[c] = lo;
+        }
+        Some(out)
+    };
     for line in 0..lines {
-        for at in 0..len {
-            let pixel = if horizontal {
-                input.at(rect.x + at, rect.y + line)
-            } else {
-                input.at(rect.x + line, rect.y + at)
-            };
-            source_line[at as usize] = std::array::from_fn(|c| pixel.0[4 - CHANNELS + c]);
+        if horizontal {
+            let row = line as usize * width;
+            for at in 0..len as usize {
+                let pixel = input.pixels[row + at].0;
+                source_line[at] = std::array::from_fn(|c| pixel[4 - CHANNELS + c]);
+            }
+        } else {
+            for at in 0..len as usize {
+                let pixel = input.pixels[at * width + line as usize].0;
+                source_line[at] = std::array::from_fn(|c| pixel[4 - CHANNELS + c]);
+            }
         }
         let sample = |at: i32| {
             if at >= 0 && at < len { source_line[at as usize] } else { [0.; CHANNELS] }
@@ -370,7 +393,6 @@ fn box_pass_in_place_domain_core<const CHANNELS: usize>(
         // radius. That is what made a zoomed shadow take seconds and then
         // miss the compositing budget. Resync from the source line when the
         // bound is no longer conclusive; only a genuine tie uses rationals.
-        let window = f64::from(2 * r + 1);
         let mut sum = [0_f64; CHANNELS];
         for k in -r..=r {
             let p = sample(k);
@@ -426,24 +448,9 @@ fn box_pass_in_place_domain_core<const CHANNELS: usize>(
                 }
             }
             let index = if horizontal {
-                line as usize * rect.w as usize + at as usize
+                line as usize * width + at as usize
             } else {
-                at as usize * rect.w as usize + line as usize
-            };
-            let certified = |sum: &[f64; CHANNELS], steps: i32| -> Option<[f32; CHANNELS]> {
-                let steps = f64::from(steps.max(0));
-                let mut out = [0_f32; CHANNELS];
-                for c in 0..CHANNELS {
-                    let err = (window + 2. * steps) * f64::EPSILON * sum[c].abs().max(1.) * 8.;
-                    let center = sum[c] / denominator;
-                    let lo = domain(center - err / denominator) as f32;
-                    let hi = domain(center + err / denominator) as f32;
-                    if lo.to_bits() != hi.to_bits() {
-                        return None;
-                    }
-                    out[c] = lo;
-                }
-                Some(out)
+                at as usize * width + line as usize
             };
             // A window of exact zeros is an exact zero. The error interval
             // around zero is not a single f32, so the certified path used to
