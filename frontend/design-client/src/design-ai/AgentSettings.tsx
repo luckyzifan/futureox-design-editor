@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react'
-import { desktopBridge } from '../desktop'
+import { desktopBridge, type DesktopResult } from '../desktop'
+
+function refused(result: Exclude<DesktopResult, { status: 'ok' }>) {
+  return result.status === 'cancelled' ? '已取消' : result.message
+}
 
 type ProviderView = { id: string; name: string; kind: string; model: string; base_url: string; active: boolean; has_secret: boolean }
 type CcSwitch = { present?: boolean; detail?: string; providers?: Array<{ id: string; name: string; app_type: string; current: boolean; kind?: string; model?: string; has_secret?: boolean }> }
@@ -18,7 +22,7 @@ export function AgentSettings() {
   const refresh = async () => {
     if (!desktop?.designAgent) { setMessage('桌面版会连接本机 Rust 助手。网页预览需要先启动 design-agent。'); return }
     const status = await desktop.designAgent.status()
-    if (status.status !== 'ok') { setMessage(status.message); return }
+    if (status.status !== 'ok') { setMessage(refused(status)); return }
     setProviders(status.providers || [])
     setCcswitch(status.ccswitch || null)
     setMessage('')
@@ -28,7 +32,7 @@ export function AgentSettings() {
   const useSwitch = async (provider: { id: string; app_type: string; name: string }) => {
     if (!desktop?.designAgent) { setMessage('请在桌面版里选择 CC Switch 供应商。'); return }
     const result = await desktop.designAgent.activate({ id: 'ccswitch', profile_id: `${provider.app_type}:${provider.id}` })
-    if (result.status !== 'ok') { setMessage(result.message); return }
+    if (result.status !== 'ok') { setMessage(refused(result)); return }
     await refresh()
     setMessage(`已改用 CC Switch 的「${provider.name}」。密钥仍留在 CC Switch 数据库里。`)
   }
@@ -39,7 +43,7 @@ export function AgentSettings() {
     const result = await desktop.designAgent.upsert({
       id, name: name.trim(), kind, base_url: baseUrl.trim(), model: model.trim(), secret, wire: 'openai_chat',
     })
-    if (result.status !== 'ok') { setMessage(result.message); return }
+    if (result.status !== 'ok') { setMessage(refused(result)); return }
     setSecret('')
     await desktop.designAgent.activate({ id })
     await refresh()
