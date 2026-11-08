@@ -189,6 +189,7 @@ mod tests {
                 fill: Some("#f3e6d8".into()),
                 stroke: None,
                 stroke_width: None,
+                stroke_align: None,
             }],
             selection: vec!["frame".into()],
         };

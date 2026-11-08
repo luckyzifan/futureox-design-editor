@@ -280,33 +280,79 @@ impl RasterWorkspace {
             return Ok(mask);
         }
         if let Some(bounds) = crate::coverage::rectangle(cs) {
-            for y in
-                rect.y.max(bounds[1].floor() as i32)..rect.bottom().min(bounds[3].ceil() as i32)
-            {
+            let [x0, y0, x1, y1] = bounds;
+            let y_lo = rect.y.max(y0.floor() as i32);
+            let y_hi = rect.bottom().min(y1.ceil() as i32);
+            let x_lo = rect.x.max(x0.floor() as i32);
+            let x_hi = rect.right().min(x1.ceil() as i32);
+            // rectangle_pixel is 1 exactly when the pixel square sits inside the edges.
+            let full_y0 = y0.ceil() as i32;
+            let full_y1 = (y1 - 1.).floor() as i32;
+            let full_x0 = x0.ceil() as i32;
+            let full_x1 = (x1 - 1.).floor() as i32;
+            for y in y_lo..y_hi {
                 checkpoint()?;
-                for x in
-                    rect.x.max(bounds[0].floor() as i32)..rect.right().min(bounds[2].ceil() as i32)
-                {
-                    if (x - rect.x) % 4096 == 0 {
-                        checkpoint()?;
-                    }
-                    let i = (y - rect.y) as usize * rect.w as usize + (x - rect.x) as usize;
-                    mask.data[i] =
-                        crate::coverage::rectangle_pixel(bounds, x as f64, y as f64) as f32;
+                let row = (y - rect.y) as usize * rect.w as usize;
+                let inside_y = y >= full_y0 && y <= full_y1;
+                let ix0 = if inside_y { x_lo.max(full_x0) } else { x_hi };
+                let ix1 = if inside_y { (x_hi - 1).min(full_x1) } else { x_lo - 1 };
+                for x in x_lo..ix0.max(x_lo).min(x_hi) {
+                    let i = row + (x - rect.x) as usize;
+                    mask.data[i] = crate::coverage::rectangle_pixel(bounds, x as f64, y as f64) as f32;
+                }
+                if ix1 >= ix0 && ix0 >= x_lo && ix1 < x_hi {
+                    let i0 = row + (ix0 - rect.x) as usize;
+                    mask.data[i0..i0 + (ix1 - ix0 + 1) as usize].fill(1.);
+                }
+                for x in (ix1 + 1).max(x_lo)..x_hi {
+                    let i = row + (x - rect.x) as usize;
+                    mask.data[i] = crate::coverage::rectangle_pixel(bounds, x as f64, y as f64) as f32;
                 }
             }
             return Ok(mask);
         }
         self.area_spans(cs, rect, even_odd, |row, left, right| {
-            for px in left.floor() as i32..right.ceil() as i32 {
-                if (px - rect.x) % 4096 == 0 {
-                    checkpoint()?;
+            let y = rect.y + (row / 8) as i32;
+            let row_base = (y - rect.y) as usize * rect.w as usize;
+            let x_min = rect.x;
+            let x_max = rect.right();
+            let mut start = left.floor() as i32;
+            let mut end = right.ceil() as i32;
+            if start < x_min {
+                start = x_min;
+            }
+            if end > x_max {
+                end = x_max;
+            }
+            // A pixel square is covered exactly when left <= px and px + 1 <= right.
+            let mut full_lo = left.ceil() as i32;
+            let mut full_hi = (right - 1.).floor() as i32;
+            if full_lo < x_min {
+                full_lo = x_min;
+            }
+            if full_hi >= x_max {
+                full_hi = x_max - 1;
+            }
+            let mut px = start;
+            while px < end && px < full_lo {
+                let coverage =
+                    (right.min(f64::from(px) + 1.) - left.max(f64::from(px))).max(0.) / 8.;
+                mask.data[row_base + (px - rect.x) as usize] += coverage as f32;
+                px += 1;
+            }
+            if full_lo <= full_hi && full_lo < end && full_hi >= start {
+                let i0 = row_base + (full_lo - rect.x) as usize;
+                let count = (full_hi - full_lo + 1) as usize;
+                for sample in &mut mask.data[i0..i0 + count] {
+                    *sample += 0.125;
                 }
-                if let Some(i) = rect.index(px, rect.y + (row / 8) as i32) {
-                    let coverage =
-                        (right.min(f64::from(px) + 1.) - left.max(f64::from(px))).max(0.) / 8.;
-                    mask.data[i] += coverage as f32;
-                }
+                px = full_hi + 1;
+            }
+            while px < end {
+                let coverage =
+                    (right.min(f64::from(px) + 1.) - left.max(f64::from(px))).max(0.) / 8.;
+                mask.data[row_base + (px - rect.x) as usize] += coverage as f32;
+                px += 1;
             }
             Ok(true)
         })?;
