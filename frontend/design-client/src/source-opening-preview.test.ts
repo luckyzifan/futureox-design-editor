@@ -16,7 +16,8 @@ test('a zoomed-out opening preview keeps the pasteboard field above the native p
   const draw=(x:number)=>act(()=>root.render(createElement(SourceOpeningSurface,{source:one,view:{x,y:200,zoom:0.08},width:1000,height:700})))
   try{
     await draw(400)
-    const svg=host.querySelector('.source-opening-surface')!
+    const svg=host.querySelector<SVGElement>('.source-opening-surface')
+    if(!svg) throw new Error('opening surface missing')
     expect(svg.innerHTML).toContain('#e6e8ec')
     expect(svg.innerHTML).toContain('#dde0e6')
     expect(svg.style.zIndex).toBe('3')

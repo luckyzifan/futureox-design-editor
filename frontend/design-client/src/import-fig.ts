@@ -189,7 +189,7 @@ const bytesData = (bytes: Uint8Array) => {
 }
 function vectorBlob(bytes: Uint8Array, sx: number, sy: number, warnings: {add(message:string):unknown},record:any): Pick<DesignNode,'network'|'vectorGeometry'> & { strokeCap?: string; strokeJoin?: string } {
   const rounded=record.cornerRadius>0||record.vectorData?.styleOverrideTable!==undefined
-  const decoded=JSON.parse(rounded?decode_fig_rounded_network_json(bytes,sx,sy,record.cornerRadius??0,record.cornerSmoothing??0,JSON.stringify(record.vectorData?.styleOverrideTable??null)):decode_fig_network_json(bytes,sx,sy)) as Pick<DesignNode,'network'|'vectorGeometry'>&{vertexStyles:number[];regionStyles:number[];cornersApplied?:boolean}
+  const decoded=JSON.parse(rounded?decode_fig_rounded_network_json(bytes,sx,sy,record.cornerRadius??0,record.cornerSmoothing??0,JSON.stringify(record.vectorData?.styleOverrideTable??null)):decode_fig_network_json(bytes,sx,sy)) as Pick<DesignNode,'network'|'vectorGeometry'>&{vertexStyles:number[];regionStyles:number[];cornersApplied?:boolean;strokeCap?:string;strokeJoin?:string}
   if(rounded&&!decoded.cornersApplied)warnings.add('FIG 矢量圆角包含尚不支持的轮廓、平滑或样式覆盖；源样式需要核对')
   if(decoded.vertexStyles.some(id=>id!==0)||decoded.regionStyles.some(id=>id!==0))warnings.add('FIG 矢量包含独立顶点或区域样式；几何与区域引用已保留，样式覆盖需要核对')
   return {
