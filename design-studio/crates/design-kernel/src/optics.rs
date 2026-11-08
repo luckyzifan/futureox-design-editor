@@ -431,6 +431,15 @@ pub fn field_region_with_raster(
     crate::sampling::parameter_grid(rect, |x, y| Ok(geometry.at(x, y, glass)))
 }
 
+fn edge_factors_share_center(offset: [f32; 2], params: [f32; 4], dispersion: f32) -> bool {
+    let span = if dispersion < 0.001 { 0. } else { dispersion };
+    (0..2).all(|i| {
+        let at = |factor: f32| offset[i] + params[i] * factor;
+        let center = at(1.);
+        at(1. - span).to_bits() == center.to_bits() && at(1. + span).to_bits() == center.to_bits()
+    })
+}
+
 fn shade(
     params: [f32; 4],
     dispersion: f32,
@@ -574,6 +583,13 @@ pub(crate) fn render_region_with_raster(
                 ))
             };
             let pixel = if inside {
+                let once = ray(1.);
+                shade(params, dispersion, false, |_| once)
+            } else if edge_factors_share_center(geometry.offset, params, dispersion) {
+                // Same certificate as the interior: the extreme dispersion
+                // factors land on the center sample's bits, so one backdrop
+                // read feeds the original weighted sum. The border geometry
+                // is still evaluated per pixel.
                 let once = ray(1.);
                 shade(params, dispersion, false, |_| once)
             } else {

@@ -195,6 +195,7 @@ mod tests {
                 stroke_dash: None,
                 opacity: None,
                 corner_radius: None,
+                font_size: None,
             }],
             selection: vec!["frame".into()],
         };
