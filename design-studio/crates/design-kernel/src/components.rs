@@ -150,7 +150,15 @@ pub enum PropertyKind {
 pub struct Property {
     pub name: String,
     pub kind: PropertyKind,
+    /// First layer this property writes. Empty when `unbound` is set.
     pub target_key: String,
+    /// Additional layers that receive the same value. Figma boolean props
+    /// often bind both a group and the layer inside it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub also_targets: Vec<String>,
+    /// The definition is kept, but the file has no componentPropRef for it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unbound: bool,
     pub default_value: Value,
 }
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -437,24 +445,35 @@ pub fn validate(d: &Document) -> Result<(), String> {
             let mut names = BTreeSet::new();
             let mut bindings = BTreeSet::new();
             for (id, p) in &c.properties {
-                let target = keys
-                    .get(&p.target_key)
-                    .and_then(|id| d.nodes.get(id))
-                    .ok_or("Property target is missing from component")?;
                 if !valid_key(id)
                     || p.name.trim().is_empty()
                     || p.name.len() > 128
                     || !names.insert(&p.name)
-                    || !bindings.insert((&p.target_key, format!("{:?}", p.kind)))
                     || !property_value(d, p, &p.default_value)
-                    || p.target_key == "$root"
+                    || p.also_targets.len() > 32
                 {
                     return Err("Invalid component property binding".into());
                 }
-                if (p.kind == PropertyKind::Text && target.kind != "text")
-                    || (p.kind == PropertyKind::InstanceSwap && target.instance.is_none())
-                {
-                    return Err("Component property type does not match its layer".into());
+                if p.unbound {
+                    if !p.also_targets.is_empty() || p.target_key == "$root" {
+                        return Err("Invalid component property binding".into());
+                    }
+                    continue;
+                }
+                let targets = std::iter::once(&p.target_key).chain(&p.also_targets);
+                for target_key in targets {
+                    let target = keys
+                        .get(target_key)
+                        .and_then(|id| d.nodes.get(id))
+                        .ok_or("Property target is missing from component")?;
+                    if !bindings.insert((target_key, format!("{:?}", p.kind))) || target_key == "$root" {
+                        return Err("Invalid component property binding".into());
+                    }
+                    if (p.kind == PropertyKind::Text && target.kind != "text")
+                        || (p.kind == PropertyKind::InstanceSwap && target.instance.is_none())
+                    {
+                        return Err("Component property type does not match its layer".into());
+                    }
                 }
             }
         }
@@ -598,10 +617,13 @@ fn bound_overrides(
             PropertyKind::Boolean => "visible",
             PropertyKind::InstanceSwap => "swapComponent",
         };
-        result
-            .entry(qualify(prefix, &p.target_key))
-            .or_default()
-            .insert(field.into(), v.clone());
+        if p.unbound { continue; }
+        for target in std::iter::once(&p.target_key).chain(&p.also_targets) {
+            result
+                .entry(qualify(prefix, target))
+                .or_default()
+                .insert(field.into(), v.clone());
+        }
     }
     Ok(result)
 }
@@ -877,7 +899,10 @@ pub(crate) fn resolve_roots_budgeted(doc:&mut Document, selected:Option<&BTreeSe
             .properties
             .clone();
         for p in properties.values() {
-            let n = source.to_mut().nodes.get_mut(&keys[&p.target_key]).unwrap();
+            if p.unbound { continue; }
+            let targets: Vec<_> = std::iter::once(&p.target_key).chain(&p.also_targets).cloned().collect();
+            for target in targets {
+            let n = source.to_mut().nodes.get_mut(&keys[&target]).unwrap();
             match p.kind {
                 PropertyKind::Text => {
                     crate::mutation::replace_text(n, p.default_value.as_str().unwrap().into())
@@ -887,6 +912,7 @@ pub(crate) fn resolve_roots_budgeted(doc:&mut Document, selected:Option<&BTreeSe
                     n.instance.as_mut().unwrap().component_id =
                         p.default_value.as_str().unwrap().into()
                 }
+            }
             }
         }
     }

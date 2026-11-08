@@ -3,6 +3,8 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-08 [空窗模糊不再走整段有理核](../../../testing/verification-leftover-deep-20261108/README.md)：精确为零的模糊窗口直接写成 0。效果关掉的高倍帧和 `01有料素材.fig` 首帧有下降，效果开启的 zoom 6.4 仍是 3445.129 ms。不是 33/100ms 或完整 G2/G5。
+
 2026-11-08 [高倍缩放的合成内存和宽模糊](../../../testing/verification-fix-regression-20261108/README.md)：效果开启时 zoom 32 不再因合成内存超限失败，平移能跑完。宽模糊不再对每个像素重算整段核。内页阴影不在视口里时不再按全分辨率扩缓冲。不是 33/100ms 或完整 G2/G5。
 
 2026-11-07 [冷缩出先排一张页级粗瓦片](../../../testing/verification-cold-zoom-seed-20261107/README.md)：大源在首屏有像素且用户停手时先排一张 `navigationOverview` 瓦片，第一次缩出不必等现场光栅。素材文件不再在空闲时直接停掉。不改预算。不是 33/100ms 或完整 G2/G5。

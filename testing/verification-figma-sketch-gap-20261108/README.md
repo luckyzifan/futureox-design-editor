@@ -1,5 +1,7 @@
 # 和 Figma、Sketch 的差距（2026-11-08）
 
+后续深测和还没对齐的项写在 `testing/verification-leftover-deep-20261108/README.md`。下面是这一轮当时的数字。
+
 这台云端电脑是 Linux，没有装 Figma 桌面版，也没有 Sketch（Sketch 是 macOS 应用）。下面没有它们的帧时间。我们自己的数字来自同一台机器上的开发 WASM `d352c6da4decf7f06e5a47c90c26a6c4ff9fa0c6d219d3a72e3d24a6774a4c8b`、640×480、`render_rgba`。修复后的第一轮和同一 WASM 的再测都写在 `testing/verification-fix-regression-20261108/README.md`。没有做像素对比。
 
 ## 我们测到的渲染

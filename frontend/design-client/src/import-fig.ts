@@ -187,12 +187,17 @@ const bytesData = (bytes: Uint8Array) => {
     binary += String.fromCharCode(...bytes.subarray(i, i + 32768))
   return btoa(binary)
 }
-function vectorBlob(bytes: Uint8Array, sx: number, sy: number, warnings: {add(message:string):unknown},record:any): Pick<DesignNode,'network'|'vectorGeometry'> {
+function vectorBlob(bytes: Uint8Array, sx: number, sy: number, warnings: {add(message:string):unknown},record:any): Pick<DesignNode,'network'|'vectorGeometry'> & { strokeCap?: string; strokeJoin?: string } {
   const rounded=record.cornerRadius>0||record.vectorData?.styleOverrideTable!==undefined
   const decoded=JSON.parse(rounded?decode_fig_rounded_network_json(bytes,sx,sy,record.cornerRadius??0,record.cornerSmoothing??0,JSON.stringify(record.vectorData?.styleOverrideTable??null)):decode_fig_network_json(bytes,sx,sy)) as Pick<DesignNode,'network'|'vectorGeometry'>&{vertexStyles:number[];regionStyles:number[];cornersApplied?:boolean}
   if(rounded&&!decoded.cornersApplied)warnings.add('FIG 矢量圆角包含尚不支持的轮廓、平滑或样式覆盖；源样式需要核对')
   if(decoded.vertexStyles.some(id=>id!==0)||decoded.regionStyles.some(id=>id!==0))warnings.add('FIG 矢量包含独立顶点或区域样式；几何与区域引用已保留，样式覆盖需要核对')
-  return {...(decoded.network?{network:decoded.network}:{}),...(decoded.vectorGeometry?{vectorGeometry:decoded.vectorGeometry}:{})}
+  return {
+    ...(decoded.network?{network:decoded.network}:{}),
+    ...(decoded.vectorGeometry?{vectorGeometry:decoded.vectorGeometry}:{}),
+    ...(decoded.strokeCap?{strokeCap:decoded.strokeCap as string}:{}),
+    ...(decoded.strokeJoin?{strokeJoin:decoded.strokeJoin as string}:{}),
+  }
 }
 
 /** The field names and enum values here come from the embedded native FIG schema,
@@ -702,7 +707,16 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
         return Number.isFinite(value)&&value>0?value:1
       }
       const sx=axis(n.width,normalized?.x),sy=axis(n.height,normalized?.y)
-      try{Object.assign(n,vectorBlob(getBlob(r.vectorData.vectorNetworkBlob),sx,sy,warnings,r))}
+      try{
+        const piece=vectorBlob(getBlob(r.vectorData.vectorNetworkBlob),sx,sy,warnings,r)
+        if(piece.strokeCap||piece.strokeJoin){
+          const cap=piece.strokeCap?figStrokeCap(piece.strokeCap,warnings):undefined
+          const join=piece.strokeJoin?figStrokeJoin(piece.strokeJoin):undefined
+          n.strokes=n.strokes.map(item=>({...item,...(cap?{cap:cap.cap,...(cap.endMarker?{endMarker:cap.endMarker}:{})}:{}),...(join?{join}:{})}))
+        }
+        const {strokeCap: _strokeCap, strokeJoin: _strokeJoin, ...geometry}=piece
+        Object.assign(n,geometry)
+      }
       catch(error){warnings.add(`FIG 矢量 ${n.name||n.id} 的网络几何未能解码，已保留包围盒：${error instanceof Error?error.message:error}`)}
     }
     if(r.type==='VECTOR'&&Array.isArray(r.fillGeometry)&&r.fillGeometry.length){
@@ -785,7 +799,7 @@ export function importFig(bytes: Uint8Array, name = '导入 FIG'): ImportedDesig
     receipts.set(id, bindings)
   }
   if (!doc.pages.length) throw new Error('FIG 文件没有可导入页面')
-  importFigComponents(doc, records, ids, toPaint, warnings)
+  importFigComponents(doc, records, ids, toPaint, strokesOf, warnings)
   // The shared model's direct mask owns its whole container. Native FIG masks
   // only following siblings. Explicit identity groups keep all original node
   // IDs, local coordinates, order and component override keys intact.

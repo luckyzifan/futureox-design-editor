@@ -9,6 +9,10 @@ export const bundledImportFonts = [
   {family:'Poppins',style:'Medium',postscript:'Poppins-Medium',sha:'90373e7d838d32468438fc3e152dca0bdb12edcab99ea639f158790b1ba1fd05'},
   {family:'Poppins',style:'Bold',postscript:'Poppins-Bold',sha:'983676516167748b74de6f4771fb384c664fd913acb8b471122ecacf5da5ea6c'},
   {family:'Poppins',style:'SemiBold',postscript:'Poppins-SemiBold',sha:'d3bf1bdaf0550e83da9ac0b1d1d9fe6db086835a83aa28578e609a394b9a0286'},
+  {family:'Poppins',style:'Italic',postscript:'Poppins-Italic',sha:'4fa76ae75b40f926420514044722cb97f32186cafd3b38263cc34dad7174d46d'},
+  {family:'Poppins',style:'Medium Italic',postscript:'Poppins-MediumItalic',sha:'765addf6c7c11ec3c54325cacd68cabd05df8e4b6455302d812a9b9bafd1c614'},
+  {family:'Poppins',style:'SemiBold Italic',postscript:'Poppins-SemiBoldItalic',sha:'16bb118aa232c9a13fa238027d24d7854dd1a1d9cbaf99b17fec4388d56b432c'},
+  {family:'Poppins',style:'Bold Italic',postscript:'Poppins-BoldItalic',sha:'3572ac8116a0ac7317d342262b29937bcbaf94d8f03f90df6fe666fa7e2fb43a'},
   {family:'Inter',style:'Regular',postscript:'Inter-Regular',sha:'40d692fce188e4471e2b3cba937be967878f631ad3ebbbdcd587687c7ebe0c82'},
   {family:'Inter',style:'Medium',postscript:'Inter-Medium',sha:'97ad806f526e41546d46365bb3a393145f75b7b1568913db74549ad8b8dba872'},
   {family:'Inter',style:'SemiBold',postscript:'Inter-SemiBold',sha:'78a843fade9d4612a5567302fb595b56976eb5fcebf4fea5a5912d638bafcde3'},
@@ -42,11 +46,13 @@ function nearestBundled(name: string): Face | undefined {
     : compact.startsWith('dejavusans') ? 'DejaVu Sans'
     : ''
   if (!family) return
-  const style = family === 'ABeeZee' || family === 'DejaVu Sans' ? 'Regular'
+  const italic = compact.includes('italic') || compact.includes('oblique')
+  const weight = family === 'ABeeZee' || family === 'DejaVu Sans' ? 'Regular'
     : compact.includes('semibold') || compact.includes('demibold') ? 'SemiBold'
     : compact.includes('medium') ? 'Medium'
     : compact.includes('bold') || compact.includes('black') || compact.includes('heavy') ? 'Bold'
     : 'Regular'
+  const style = !italic || family === 'ABeeZee' || family === 'DejaVu Sans' ? weight : weight === 'Regular' ? 'Italic' : `${weight} Italic`
   return bundledImportFonts.find(face => face.family === family && face.style === style)
 }
 async function readBundledFont(face:Face):Promise<Uint8Array>{

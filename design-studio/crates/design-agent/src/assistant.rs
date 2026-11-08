@@ -184,6 +184,8 @@ pub fn answer_design_question(latest: &str, items: &[TurnItem], ctx: &DesignCont
     let prior_assistants = items.iter().filter_map(|item| match item {
         TurnItem::AgentMessage { text, .. } => Some(text.as_str()),
         TurnItem::Plan { text, .. } => Some(text.as_str()),
+        TurnItem::FunctionCallOutput { output, .. } => Some(output.as_str()),
+        TurnItem::McpToolCall { result: Some(result), .. } => result.get("summary").and_then(Value::as_str),
         _ => None,
     }).collect::<Vec<_>>();
     let mentioned = ctx.nodes.iter().find(|node| latest.contains(node.name.as_str()) || (latest.contains("按钮") && node.name.contains("按钮")) || (latest.contains("标题") && (node.name.contains("标题") || node.kind == "text")));
@@ -460,8 +462,25 @@ mod tests {
         assert!(message.contains("已把标题写成秋日特惠"), "{message}");
         assert!(message.contains("#3459d4"), "{message}");
         assert!(message.contains("秋日特惠"), "{message}");
+        let with_tool = {
+            let mut items = items.clone();
+            items.insert(2, TurnItem::Plan { id: "p1".into(), text: "先改标题，再看按钮。".into() });
+            items.insert(3, TurnItem::McpToolCall {
+                id: "call_style_1".into(), server: "design".into(), tool: "design_agent_adjust".into(),
+                arguments: json!({}), status: crate::items::McpToolCallStatus::Completed,
+                result: Some(json!({ "summary": "按钮填充已写成 #3459d4" })), error: None,
+            });
+            items.insert(4, TurnItem::FunctionCallOutput { id: "out".into(), call_id: "call_style_1".into(), name: "design_agent_adjust".into(), output: "按钮填充已写成 #3459d4".into() });
+            items
+        };
+        let followed = local_turn("这个按钮是什么颜色？", "标题先用秋日特惠", &with_tool, &[crate::skills::SkillId::Critique], &ctx);
+        assert!(followed.tool_calls.is_empty());
+        let followed_message = followed.message.unwrap();
+        assert!(followed_message.contains("先改标题，再看按钮"), "{followed_message}");
+        assert!(followed_message.contains("按钮填充已写成 #3459d4"), "{followed_message}");
         assert!(!message.contains("fn ") && !message.contains("function "), "{message}");
         let system = design_context_text(&ctx);
+        assert!(openai_messages(&system, &with_tool).iter().any(|message| message["tool_call_id"] == "call_style_1"));
         let messages = openai_messages(&system, &items);
         let blob = serde_json::to_string(&messages).unwrap();
         assert!(blob.contains("标题先用秋日特惠") && blob.contains("这个按钮是什么颜色") && blob.contains("#3459d4"), "{blob}");

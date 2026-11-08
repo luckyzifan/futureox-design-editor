@@ -237,7 +237,7 @@ export function captureOverrides(before: DesignDocument, d: DesignDocument, scop
       for (const [id, p] of Object.entries(props)) {
         const field =
           p.kind === 'text' ? 'text' : p.kind === 'boolean' ? 'visible' : 'swapComponent'
-        if (p.targetKey === key && field in changed) {
+        if ((p.targetKey === key || p.alsoTargets?.includes(key)) && field in changed) {
           const value = changed[field] as string | boolean
           editInstance(d, owner, (i) => {
             i.propertyValues[id] = value
@@ -690,7 +690,7 @@ function overrideComponent(
       const value = values[id] ?? property.defaultValue
       if (
         property.kind === 'instance-swap' &&
-        property.targetKey === key &&
+        (property.targetKey === key || property.alsoTargets?.includes(key)) &&
         typeof value === 'string'
       )
         componentId = value
