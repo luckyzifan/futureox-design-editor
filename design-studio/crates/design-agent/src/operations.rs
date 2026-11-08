@@ -41,6 +41,9 @@ pub struct NodeRef {
     /// Stroke cap: butt, round, or square.
     #[serde(default)]
     pub stroke_cap: Option<String>,
+    /// Stroke join: miter, round, or bevel.
+    #[serde(default)]
+    pub stroke_join: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -500,6 +503,7 @@ mod tests {
                 stroke_width: None,
                 stroke_align: None,
                 stroke_cap: None,
+                stroke_join: None,
             }],
             selection: Vec::new(),
         };

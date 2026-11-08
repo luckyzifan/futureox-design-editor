@@ -191,6 +191,7 @@ mod tests {
                 stroke_width: None,
                 stroke_align: None,
                 stroke_cap: None,
+                stroke_join: None,
             }],
             selection: vec!["frame".into()],
         };
