@@ -30,6 +30,7 @@ export function snapshotContext(editor: Editor, targetPageId: string) {
       stroke_join: node.strokes.find(stroke => stroke.visible)?.join,
       stroke_dash: node.strokes.find(stroke => stroke.visible)?.dash || undefined,
       opacity: node.opacity === 1 ? undefined : node.opacity,
+      corner_radius: cornerRadius(node.radii),
     })
     if (depth < 3) node.children.forEach(child => visit(pageId, child, id, depth + 1))
   }
@@ -41,6 +42,12 @@ export function snapshotContext(editor: Editor, targetPageId: string) {
     nodes,
     selection: editor.state.selection,
   }
+}
+
+function cornerRadius(radii: [number, number, number, number]) {
+  const [a, b, c, d] = radii
+  if (!a && !b && !c && !d) return undefined
+  return a === b && b === c && c === d ? String(a) : `${a},${b},${c},${d}`
 }
 
 export async function requestTurn(desktop: DesktopBridge | null | undefined, endpoint: string | undefined, body: Record<string, unknown>): Promise<AgentTurn> {

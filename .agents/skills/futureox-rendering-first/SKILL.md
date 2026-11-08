@@ -3,6 +3,8 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-08 [满覆盖合成直接盖上不透明行](../../../testing/verification-render-unmasked-composite-20261108/README.md)：蒙版恒为 1 时不再逐像素调用蒙版函数，Normal 且完全不透明的一段直接复制。zoom 3.2 从 1037.807 ms 降到 838.310 ms，zoom 0.8 从 938.417 ms 降到 901.767 ms。zoom 6.4 是 390.355 ms。zoom 32 平移最大从 543.596 ms 降到 395.677 ms。素材 zoom 2 同一次 WASM 上是 110.019、92.891、79.577 ms。不是 33/100ms 或完整 G2/G5。
+
 2026-11-08 [单通道阴影模糊不再走通用盒循环](../../../testing/verification-render-unit-alpha-20261108/README.md)：阴影 alpha 用单独的滑动和，舍入式和有理核回退不变。zoom 3.2 从 1150.370 ms 降到 1037.807 ms，zoom 0.8 从 993.806 ms 降到 938.417 ms。zoom 6.4 是 510.383 ms。zoom 2 的素材帧是 80.532 ms，同一次导入比上一轮慢 360.416 ms。不是 33/100ms 或完整 G2/G5。
 
 2026-11-08 [盒模糊的舍入检查提到像素循环外面](../../../testing/verification-render-blur-hoist-20261108/README.md)：同一次盒半径只做一次舍入区间检查，扫描行按下标读取。zoom 3.2 从 1234.440 ms 降到 1150.370 ms，zoom 0.8 从 1030.585 ms 降到 993.806 ms。zoom 6.4 是 526.612 ms。zoom 2 的素材帧是 75.235 ms。不是 33/100ms 或完整 G2/G5。
