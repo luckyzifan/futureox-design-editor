@@ -1,7 +1,7 @@
 import type { CanvasCamera } from '../canvas-camera'
 import { frameTransform } from './presentation'
 import type { ResidentAcknowledgement } from './resident-presentation'
-import { previewCameraScaleWithinLimit } from './tile-preview'
+import { previewCameraScaleWithinLimit, showRetainedPreview } from './tile-preview'
 
 import { NavigationBacking, type ScreenRect } from './navigation-backing'
 export { keepCompleteCameraBacking } from './navigation-backing'
@@ -42,8 +42,8 @@ export class CameraReprojection {
         // Preserve the wide immutable basis across wheel reversals. Two quiet
         // animation frames can occur between individual wheel events; accepting
         // a narrow crop there makes the next zoom-out expose a white rectangle.
-        // A jump past the preview scale limit is not that burst: ask for the
-        // exact frame on the next turn instead of holding the old bitmap.
+        // A jump past the preview scale limit still asks for the exact frame
+        // immediately, and the old bitmap stays up until that frame covers.
         const jump=!previewCameraScaleWithinLimit(this.zoom,view.zoom)
         this.zooming=!jump;clearTimeout(this.zoomTimer)
         this.zoomTimer=setTimeout(()=>{this.zoomTimer=undefined;this.zooming=false;this.zoomSettled?.()},jump?0:80)
@@ -64,7 +64,16 @@ export class CameraReprojection {
     const active = !!backing && allowed && (backing.view.x !== view.x || backing.view.y !== view.y ||
       backing.view.zoom !== view.zoom || backing.width !== width || backing.height !== height)
     const scaleOk = !backing || !active || previewCameraScaleWithinLimit(backing.view.zoom, view.zoom)
-    const transform = active && scaleOk && backing ? frameTransform(view, backing.view) : undefined
+    // A far bitmap is not a certified frame, but hiding it before a closer
+    // image covers the viewport is the blank pasteboard. Memory declines and
+    // in-flight refines both keep this last picture, CSS-reprojected.
+    const holdPrevious = !!backing && active && showRetainedPreview({
+      sourceZoom: backing.view.zoom,
+      viewZoom: view.zoom,
+      intersects: true,
+      replacementCovers: hasUnderlay,
+    })
+    const transform = active && backing && (scaleOk || holdPrevious) ? frameTransform(view, backing.view) : undefined
     const placed = !!transform
     const key = JSON.stringify([active, transform, width, height, backing?.width, backing?.height])
     const changed = key !== this.key; this.key = key
