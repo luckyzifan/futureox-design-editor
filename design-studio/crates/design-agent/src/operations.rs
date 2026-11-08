@@ -32,6 +32,9 @@ pub struct NodeRef {
     /// Visible solid stroke color, when the page snapshot has one.
     #[serde(default)]
     pub stroke: Option<String>,
+    /// Width of that stroke, in the node's units.
+    #[serde(default)]
+    pub stroke_width: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -488,6 +491,7 @@ mod tests {
                 text: Some("旧标题".into()),
                 fill: None,
                 stroke: None,
+                stroke_width: None,
             }],
             selection: Vec::new(),
         };
