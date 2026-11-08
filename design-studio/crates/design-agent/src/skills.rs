@@ -190,6 +190,7 @@ mod tests {
                 stroke: None,
                 stroke_width: None,
                 stroke_align: None,
+                stroke_cap: None,
             }],
             selection: vec!["frame".into()],
         };
