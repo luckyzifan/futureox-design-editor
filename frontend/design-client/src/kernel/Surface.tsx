@@ -14,6 +14,7 @@ import {
 } from './client'
 import type { BackendPreference } from './gpu/types'
 import { canReplaceFallback, frameTransform, presentationMatches, presentationContentMatches, referencePresentationPolicy, surfaceMetrics, useDevicePixelRatio, useDisplayCapability, type ExactPresentation } from './presentation'
+import { previewCameraScaleWithinLimit, previewPlacementIntersects } from './tile-preview'
 type Request = {
   epoch: number
   backend: BackendPreference
@@ -488,9 +489,11 @@ export function ReferenceSurface(
     props.fallbackFrom,
     props.paused,
   ])
-  const { x, y, scale } = displayed
-    ? frameTransform(props.requestedView || view, displayed.view)
-    : { x: 0, y: 0, scale: 1 }
+  const liveCamera = props.requestedView || view
+  const placed = displayed ? frameTransform(liveCamera, displayed.view) : { x: 0, y: 0, scale: 1 }
+  const showPlaced = !displayed || previewCameraScaleWithinLimit(displayed.view.zoom, liveCamera.zoom) &&
+    previewPlacementIntersects(placed, displayed.width, displayed.height, width, height)
+  const { x, y, scale } = showPlaced ? placed : { x: 0, y: 0, scale: 1 }
   const frameValid =
     displayed?.request.document.id === document.id &&
     displayed.request.options.pageId === pageId &&
@@ -539,7 +542,8 @@ export function ReferenceSurface(
               className={activeSlot ? 'kernel-surface' : 'kernel-surface-buffer'}
               aria-label={managed ? '广色域 HDR 显示输出' : '自研矢量渲染输出'}
               aria-hidden={!visible}
-              data-frame-visible={String(visible)}
+              data-frame-visible={String(visible && showPlaced)}
+              data-preview-upscale-rejected={String(!!displayed && !showPlaced)}
               style={{
                 position: 'absolute',
                 left: 0,
@@ -548,8 +552,8 @@ export function ReferenceSurface(
                 width: displayed?.width || width,
                 height: displayed?.height || height,
                 transformOrigin: '0 0',
-                transform: `translate(${x}px,${y}px) scale(${scale})`,
-                visibility: visible ? 'visible' : 'hidden',
+                transform: showPlaced ? `translate(${x}px,${y}px) scale(${scale})` : '',
+                visibility: visible && showPlaced ? 'visible' : 'hidden',
               }}
             />
           )

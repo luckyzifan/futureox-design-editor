@@ -1,6 +1,7 @@
 import type { CanvasCamera } from '../canvas-camera'
 import { frameTransform } from './presentation'
 import type { ResidentAcknowledgement } from './resident-presentation'
+import { previewCameraScaleWithinLimit } from './tile-preview'
 
 import { NavigationBacking, type ScreenRect } from './navigation-backing'
 export { keepCompleteCameraBacking } from './navigation-backing'
@@ -41,33 +42,43 @@ export class CameraReprojection {
         // Preserve the wide immutable basis across wheel reversals. Two quiet
         // animation frames can occur between individual wheel events; accepting
         // a narrow crop there makes the next zoom-out expose a white rectangle.
-        this.zooming=true;clearTimeout(this.zoomTimer)
-        this.zoomTimer=setTimeout(()=>{this.zoomTimer=undefined;this.zooming=false;this.zoomSettled?.()},80)
+        // A jump past the preview scale limit is not that burst: ask for the
+        // exact frame on the next turn instead of holding the old bitmap.
+        const jump=!previewCameraScaleWithinLimit(this.zoom,view.zoom)
+        this.zooming=!jump;clearTimeout(this.zoomTimer)
+        this.zoomTimer=setTimeout(()=>{this.zoomTimer=undefined;this.zooming=false;this.zoomSettled?.()},jump?0:80)
       }
       this.zoom=view.zoom
     }
     if (allowed && backing && bounds && !hasUnderlay && view.zoom < backing.view.zoom &&
+        previewCameraScaleWithinLimit(backing.view.zoom, view.zoom) &&
         !this.history.canProject(backing,{view,width,height},bounds)) {
       // Preserve the last visible camera if the overview is still cold or its
       // budget was declined. Warming a tile or accepting a frame retries it.
+      // A large zoom-out is not this case: pinning the old camera there leaves
+      // the high-zoom crop on screen after Actual Size or zoom-to-selection.
       if (this.displayedBacking === backing && sameSize) return {active:false,changed:false}
       view = backing.view
     }
     this.displayedBacking = backing
     const active = !!backing && allowed && (backing.view.x !== view.x || backing.view.y !== view.y ||
       backing.view.zoom !== view.zoom || backing.width !== width || backing.height !== height)
-    const transform = active ? frameTransform(view, backing.view) : undefined
+    const scaleOk = !backing || !active || previewCameraScaleWithinLimit(backing.view.zoom, view.zoom)
+    const transform = active && scaleOk && backing ? frameTransform(view, backing.view) : undefined
+    const placed = !!transform
     const key = JSON.stringify([active, transform, width, height, backing?.width, backing?.height])
     const changed = key !== this.key; this.key = key
-    this.canvas.style.width = `${active ? backing.width : width}px`
-    this.canvas.style.height = `${active ? backing.height : height}px`
+    this.canvas.style.width = `${active && backing ? backing.width : width}px`
+    this.canvas.style.height = `${active && backing ? backing.height : height}px`
     this.canvas.style.transformOrigin = '0 0'
-    this.canvas.style.transform = transform ? `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})` : ''
+    this.canvas.style.transform = placed && transform ? `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})` : ''
+    this.canvas.style.visibility = active && !placed ? 'hidden' : ''
     this.canvas.style.imageRendering = ''
-    this.canvas.dataset.cameraReprojected = String(active)
+    this.canvas.dataset.cameraReprojected = String(!!placed)
+    this.canvas.dataset.previewUpscaleRejected = String(active && !scaleOk)
     this.canvas.dataset.projectedCamera = JSON.stringify(active ? view : backing?.view || view)
     this.gaps.forEach(gap => { gap.style.display = 'none' })
-    if (active && !hasUnderlay) {
+    if (placed && backing && !hasUnderlay) {
       const scale = view.zoom / backing.view.zoom
       const left = Math.max(0, Math.min(width, view.x - backing.view.x * scale))
       const top = Math.max(0, Math.min(height, view.y - backing.view.y * scale))
@@ -83,9 +94,9 @@ export class CameraReprojection {
           background: '#f5f5f5' })
       })
     }
-    if (allowed && backing) this.history.show(backing, {view, width, height})
+    if (placed && backing) this.history.show(backing, {view, width, height})
     else this.history.hide()
-    return { active, changed }
+    return { active: !!placed, changed }
   }
-  dispose() { this.history.dispose(); clearTimeout(this.zoomTimer);this.zoomTimer=undefined;this.zooming=false;this.gaps.forEach(gap => gap.remove()); this.gaps = []; this.canvas.style.transform = ''; this.canvas.style.imageRendering = '' }
+  dispose() { this.history.dispose(); clearTimeout(this.zoomTimer);this.zoomTimer=undefined;this.zooming=false;this.gaps.forEach(gap => gap.remove()); this.gaps = []; this.canvas.style.transform = ''; this.canvas.style.visibility = ''; this.canvas.style.imageRendering = '' }
 }

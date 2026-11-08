@@ -10,12 +10,12 @@ import type { Editor } from './engine'
 import { desktopBridge } from './desktop'
 import { assertClipboardSize as assertSize, CLIPBOARD_TEXT_PREFIX as TEXT_PREFIX, readEditorClipboard as readClipboard, writeWebGraphClipboard } from './clipboard-adapter'
 import { commitPendingEdits } from './pending-edits'
-import { blank, node, paint, type DesignDocument, type Point } from './model'
+import { blank, node, paint, type Bounds, type DesignDocument, type Point } from './model'
 import { lockedSelectionIds } from './canvas-menu-model'
 import { fitBounds, zoomAt, zoomStep } from './canvas-camera'
 import { jumpFrame, jumpPage, jumpToNode } from './canvas-navigation'
 import { togglePrototypeTab } from './prototype-chrome'
-import { unionBounds } from './geometry'
+import { allParents, apply, bounds, unionBounds, worldMatrix } from './geometry'
 import {querySelection,type SelectionQuery} from './selection-queries'
 import { dimensionNudgeCommands, isDimensionNudgeCommand, nudgeSelectionDimensions, selectAllCanvasIds, type DimensionNudgeCommand } from './canvas-workflow-shortcuts'
 import { activateDocumentFonts } from './kernel/picking'
@@ -36,6 +36,41 @@ export function resolveDesktopEditorCommand(name: string): EditorCommand | undef
 }
 const copiedPackets = new WeakMap<Editor, string>()
 function packet(document: DesignDocument) { return JSON.stringify({ format:'forma-nodes', version:1, document, roots:document.pages[0].children }) }
+function finiteBox(box: Bounds | undefined): box is Bounds {
+  return !!box && [box.x, box.y, box.width, box.height].every(Number.isFinite) && box.width > 0 && box.height > 0
+}
+function nodeWorldBox(editor: Editor, id: string, parents = allParents(editor.state.doc)): Bounds | undefined {
+  const node = editor.state.doc.nodes[id]
+  if (!node || !node.visible) return
+  const matrix = worldMatrix(editor.state.doc, id, parents)
+  return bounds([{ x: 0, y: 0 }, { x: node.width, y: 0 }, { x: 0, y: node.height }, { x: node.width, y: node.height }].map(point => apply(matrix, point)))
+}
+/** World bounds of the selection. Scene entries are the usual source. A box
+ * that does not contain the node's world center is a local or stale box and
+ * cannot be used to center a high-zoom camera: that is how a 664×707 group
+ * nested in a distant frame stays off the pasteboard. */
+export function selectionCameraBox(editor: Editor): Bounds | undefined {
+  const ids = editor.state.selection.filter(id => editor.state.doc.nodes[id]?.visible)
+  if (!ids.length) return
+  const selected = new Set(ids)
+  const entries = editor.entries().filter(entry => selected.has(entry.id))
+  const sceneBox = entries.length ? unionBounds(entries.map(entry => entry.bounds)) : undefined
+  const parents = allParents(editor.state.doc)
+  const directBoxes = ids.flatMap(id => {
+    const box = nodeWorldBox(editor, id, parents)
+    return box ? [box] : []
+  })
+  const direct = directBoxes.length ? unionBounds(directBoxes) : undefined
+  if (finiteBox(sceneBox) && finiteBox(direct)) {
+    const covers = directBoxes.every(box => {
+      const cx = box.x + box.width / 2, cy = box.y + box.height / 2
+      return cx >= sceneBox.x - 1 && cx <= sceneBox.x + sceneBox.width + 1 &&
+        cy >= sceneBox.y - 1 && cy <= sceneBox.y + sceneBox.height + 1
+    })
+    if (covers) return sceneBox
+  }
+  return finiteBox(direct) ? direct : finiteBox(sceneBox) ? sceneBox : undefined
+}
 export async function dispatchEditorCommand(editor: Editor, command: EditorCommand, options: { worldPoint?: Point; pageId?: string; nodeId?: string; zoomAnchor?: Point; shortcutProfile?: ShortcutProfile; actionSource?: ActionSourceCode } = {}): Promise<void> {
   const category = command === 'copy' ? CanvasAction.copy : command === 'cut' ? CanvasAction.cut : command.startsWith('paste') ? CanvasAction.paste : command === 'undo' ? CanvasAction.undo : command === 'redo' ? CanvasAction.redo : command === 'delete' ? CanvasAction.delete : command === 'duplicate' ? CanvasAction.duplicate : command === 'group' || command === 'frame-selection' ? CanvasAction.group : command === 'ungroup' ? CanvasAction.ungroup : command === 'select-all' ? CanvasAction.selectAll : CanvasAction.command
   const action = beginEditorAction(editor, category, options.actionSource ?? ActionSource.unknown, editorCommands.indexOf(command) + 1)
@@ -199,11 +234,8 @@ export async function dispatchEditorCommand(editor: Editor, command: EditorComma
       return
     }
     if (command === 'center-selection') {
-      const selected = new Set(editor.state.selection)
-      const entries = editor.entries().filter(entry => selected.has(entry.id))
-      if (!entries.length) return
-      const box = unionBounds(entries.map(entry => entry.bounds))
-      if (![box.x, box.y, box.width, box.height].every(Number.isFinite)) return
+      const box = selectionCameraBox(editor)
+      if (!box) return
       const host = typeof document === 'undefined' ? null : document.querySelector('[data-testid=canvas]')
       const width = host?.clientWidth || 800, height = host?.clientHeight || 600
       const view = editor.flushPendingView()
