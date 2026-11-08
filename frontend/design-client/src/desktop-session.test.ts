@@ -207,6 +207,25 @@ describe('native document lifecycle', () => {
     expect(f.confirm).not.toHaveBeenCalled()
     expect(f.bridge.clearRecovery).not.toHaveBeenCalled()
   })
+  test('an already parsed document or utf-8 bytes is admitted instead of reporting missing design content', async () => {
+    const f = fixture(); await f.session.start()
+    f.bridge.openDocument.mockResolvedValue({ ...savedFile, documentJson: blank('Object source') as unknown as string })
+    expect(await f.session.open()).toBe(true)
+    expect(f.editor.state.doc.name).toBe('Object source')
+    const bytes = new TextEncoder().encode(JSON.stringify(blank('Byte source')))
+    f.bridge.openDocument.mockResolvedValue({ ...savedFile, documentJson: bytes as unknown as string })
+    expect(await f.session.open()).toBe(true)
+    expect(f.editor.state.doc.name).toBe('Byte source')
+    expect(f.editor.state.message).not.toContain('原生文件响应缺少设计内容')
+  })
+  test('a missing native document reports the design-content reason without an English Error wrapper', async () => {
+    const f = fixture(); await f.session.start()
+    f.bridge.openDocument.mockResolvedValue({ ...savedFile, documentJson: undefined as unknown as string })
+    expect(await f.session.open()).toBe(false)
+    expect(f.editor.state.doc.name).toBe('Original')
+    expect(f.editor.state.message).toContain('原生文件响应缺少设计内容')
+    expect(f.editor.state.message).not.toContain('Error:')
+  })
   test.each(['{broken', JSON.stringify({ schemaVersion: 6, nodes: {} })])('invalid native input is rejected before any discard prompt: %s', async (documentJson) => {
     const f = fixture(); await f.session.start()
     const before = f.editor.state.doc
