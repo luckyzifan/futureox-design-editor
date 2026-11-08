@@ -3,6 +3,8 @@ name: futureox-rendering-first
 description: Plan, implement, benchmark, review, or package Futureox Design Core rendering, canvas interaction, Rust kernel, and game-art editor increments. Use to enforce rendering-first priority and evidence gates in this repository; not as a claim that an existing candidate has passed.
 ---
 
+2026-11-08 [不透明处不再采样外阴影](../../../testing/verification-render-shadow-cover-20261108/README.md)：`render_rgba` 的分析剖面是单张表面，不是四张采样面。外阴影盖在不透明像素下面时不再做双线性取样。效果开启的 zoom 6.4 从 3374.923 ms 降到 2184.554 ms。效果关掉的放大最慢这次是 590.710 ms，没有比实色行填充那次的 535.402 ms 更快。常量 0/1 模糊窗口测过，帧时间没有下降，没有留下。不是 33/100ms 或完整 G2/G5。
+
 2026-11-08 [大块不透明实色按行填充](../../../testing/verification-render-solid-span-20261108/README.md)：分析剖面里，面积至少 160×120 的不透明实色不再逐像素做 source-over。效果关掉的放大最慢从 637.388 ms 降到 535.402 ms，仍高于 100 ms。效果开启的 zoom 6.4 这次是 3374.923 ms，没有比当场基线 3248.950 ms 更快。整块覆盖的另一次尝试没有留下。不是 33/100ms 或完整 G2/G5。
 
 2026-11-08 [空窗模糊不再走整段有理核](../../../testing/verification-leftover-deep-20261108/README.md)：精确为零的模糊窗口直接写成 0。效果关掉的高倍帧和 `01有料素材.fig` 首帧有下降，效果开启的 zoom 6.4 仍是 3445.129 ms。不是 33/100ms 或完整 G2/G5。

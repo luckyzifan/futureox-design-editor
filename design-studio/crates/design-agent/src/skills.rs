@@ -187,6 +187,7 @@ mod tests {
                 height: 100.0,
                 text: None,
                 fill: Some("#f3e6d8".into()),
+                stroke: None,
             }],
             selection: vec!["frame".into()],
         };
