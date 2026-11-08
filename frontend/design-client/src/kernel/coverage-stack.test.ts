@@ -26,9 +26,20 @@ test('an overview already covered by the shown frame is not stacked again', () =
   expect(coversUnpaintedViewport(overview, view, size, [full])).toBe(false)
 })
 
+test('a low-zoom fit keeps the only finer bitmap and drops it once a closer tile covers the view', () => {
+  const fitted = { x: 0, y: 0, zoom: 0.15 }
+  const fittedSize = { width: 800, height: 600 }
+  const only = tile('page', 1, 0, 0, 5400)
+  expect(selectCoverageUnderlay([only], fitted, fittedSize, [])).toEqual([only])
+  expect(selectCoverageStack([only], fitted, fittedSize)?.map(item => item.key)).toEqual(['page'])
+  const closer = tile('fit', 0.2, 0, 0, 1200)
+  expect(selectCoverageUnderlay([only, closer], fitted, fittedSize, []).map(item => item.key)).toEqual(['fit'])
+  expect(selectCoverageUnderlay([only], fitted, fittedSize, [closer])).toEqual([])
+})
+
 test('a bitmap more than 2× finer is not published as the covering underlay', () => {
   const fine = tile('fine', 8, 0, 0, 4096)
-  expect(selectCoverageUnderlay([fine], view, size, [])).toEqual([])
+  expect(selectCoverageUnderlay([fine], view, size, [tile('native', 1, 0, 0, 1024)])).toEqual([])
 })
 
 test('a shown sharp crop still receives the overview that paints the newly exposed margin', () => {
