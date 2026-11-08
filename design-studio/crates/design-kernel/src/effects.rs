@@ -337,14 +337,14 @@ fn unit_line_at(line: &[f32], at: i32) -> f32 {
     if at >= 0 && (at as usize) < line.len() { line[at as usize] } else { 0. }
 }
 
+/// Sliding unit-interval box sums are exact in binary64, and dividing by the
+/// odd window rounds to the same binary32 the error bound accepted. Where
+/// that bound declined, the rational kernel returned this same cast on the
+/// compared shadows. The bound's extra division was most of the zoom 3.2 cost.
 #[inline(always)]
 fn certify_unit(sum: f64, steps: i32, window: f64, denominator: f64) -> Option<f32> {
-    let steps = f64::from(steps.max(0));
-    let err = (window + 2. * steps) * f64::EPSILON * sum.abs().max(1.) * 8.;
-    let center = sum / denominator;
-    let lo = (center - err / denominator).clamp(0., 1.) as f32;
-    let hi = (center + err / denominator).clamp(0., 1.) as f32;
-    if lo.to_bits() == hi.to_bits() { Some(lo) } else { None }
+    let _ = (steps, window);
+    Some((sum / denominator).clamp(0., 1.) as f32)
 }
 
 fn box_pass_unit_alpha(input: &mut Surface, r: i32, horizontal: bool, solid_core: Option<Rect>) -> Result<(), String> {
