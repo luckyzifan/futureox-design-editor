@@ -922,7 +922,110 @@ fn blur_alpha_outside_solid_core(alpha: Surface, sigma: f64) -> Result<Surface, 
 
 /// Largest axis-aligned block whose square neighborhood of radius `support`
 /// is exact alpha 1, including samples outside the surface as zero.
+///
+/// A silhouette with one exact-1 run per row is the shadow this pass cares
+/// about. Its safe set is one interval per row, so the rectangle comes from
+/// those intervals instead of a full-frame histogram.
 fn solid_alpha_core(alpha: &Surface, support: i32) -> Option<Rect> {
+    let rect = alpha.rect;
+    if rect.w == 0 || rect.h == 0 || support < 0 {
+        return None;
+    }
+    if rect.w <= 1200 && rect.h <= 1200 {
+        if let Ok(found) = solid_span_core(alpha, support) {
+            return found;
+        }
+    }
+    solid_histogram_core(alpha, support)
+}
+
+fn solid_span_core(alpha: &Surface, support: i32) -> Result<Option<Rect>, ()> {
+    let rect = alpha.rect;
+    let w = rect.w as i32;
+    let h = rect.h as i32;
+    if support >= w || support >= h {
+        return Ok(None);
+    }
+    let width = rect.w as usize;
+    let mut clear_lo = vec![0i32; rect.h as usize];
+    let mut clear_hi = vec![0i32; rect.h as usize];
+    for y in 0..h {
+        let row = y as usize * width;
+        let mut start = -1i32;
+        let mut end = -1i32;
+        for x in 0..w {
+            if alpha.pixels[row + x as usize].0[3] != 1. {
+                continue;
+            }
+            if start >= 0 && end != x {
+                return Err(());
+            }
+            if start < 0 {
+                start = x;
+            }
+            end = x + 1;
+        }
+        if start >= 0 {
+            let lo = start + support;
+            let hi = end - support;
+            if lo < hi {
+                clear_lo[y as usize] = lo;
+                clear_hi[y as usize] = hi;
+            }
+        }
+    }
+    let mut safe_lo = vec![0i32; rect.h as usize];
+    let mut safe_hi = vec![0i32; rect.h as usize];
+    for y in support..h - support {
+        let mut lo = i32::MIN;
+        let mut hi = i32::MAX;
+        let mut open = true;
+        for yy in (y - support)..=(y + support) {
+            let (a, b) = (clear_lo[yy as usize], clear_hi[yy as usize]);
+            if a >= b {
+                open = false;
+                break;
+            }
+            lo = lo.max(a);
+            hi = hi.min(b);
+            if lo >= hi {
+                open = false;
+                break;
+            }
+        }
+        if open {
+            safe_lo[y as usize] = lo;
+            safe_hi[y as usize] = hi;
+        }
+    }
+    let mut best_area = 0u64;
+    let mut best: Option<(i32, i32, u32, u32)> = None;
+    for y0 in 0..h {
+        if safe_lo[y0 as usize] >= safe_hi[y0 as usize] {
+            continue;
+        }
+        let mut lo = safe_lo[y0 as usize];
+        let mut hi = safe_hi[y0 as usize];
+        for y1 in y0..h {
+            if safe_lo[y1 as usize] >= safe_hi[y1 as usize] {
+                break;
+            }
+            lo = lo.max(safe_lo[y1 as usize]);
+            hi = hi.min(safe_hi[y1 as usize]);
+            if lo >= hi {
+                break;
+            }
+            let area = (hi - lo) as u64 * (y1 - y0 + 1) as u64;
+            if area > best_area {
+                best_area = area;
+                best = Some((rect.x + lo, rect.y + y0, (hi - lo) as u32, (y1 - y0 + 1) as u32));
+            }
+        }
+    }
+    Ok(best.filter(|_| best_area > 0).map(|(x, y, w, h)| Rect::new(x, y, w, h)))
+}
+
+fn solid_histogram_core(alpha: &Surface, support: i32) -> Option<Rect> {
     let rect = alpha.rect;
     let w = rect.w as usize;
     let h = rect.h as usize;
