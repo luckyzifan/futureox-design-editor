@@ -1963,9 +1963,13 @@ impl Compositor<'_, '_, '_> {
                 }
                 let kernel = self.blur_kernels[&key];
                 for axis in [0., 1.] {
-                    let next = self.frame.run(22., input.rect, &[current, kernel], |u| {
-                        u[36..40].copy_from_slice(&[r as f32, axis, 0., if gaussian { 2. } else { 1. }]);
-                    })?;
+                    let next = if gaussian && self.frame.byte_targets() {
+                        self.frame.slide_uniform_box(current, input.rect, r as f32, axis, false)?
+                    } else {
+                        self.frame.run(22., input.rect, &[current, kernel], |u| {
+                            u[36..40].copy_from_slice(&[r as f32, axis, 0., if gaussian { 2. } else { 1. }]);
+                        })?
+                    };
                     if current.id != input.id {
                         self.frame.release(&[current]);
                     }

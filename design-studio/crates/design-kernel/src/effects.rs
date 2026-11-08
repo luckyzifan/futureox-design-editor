@@ -1055,6 +1055,20 @@ pub(crate) fn color_shadow_rgba8(
     Ok(out)
 }
 
+/// One channel of `Surface::sample_linear`. Shadow coloring only reads alpha,
+/// so the other three bilinear products are not evaluated.
+fn shadow_alpha_sample(alpha: &Surface, x: f64, y: f64) -> f32 {
+    let (x, y) = (x - 0.5, y - 0.5);
+    let (ix, iy) = (x.floor() as i32, y.floor() as i32);
+    let (u, v) = ((x - x.floor()) as f32, (y - y.floor()) as f32);
+    let channel = |x: i32, y: i32| alpha.at(x, y).0[3];
+    crate::sampling::bilinear(
+        [channel(ix, iy), channel(ix + 1, iy), channel(ix, iy + 1), channel(ix + 1, iy + 1)],
+        u,
+        v,
+    )
+}
+
 // The alpha buffer has no further readers in shadow_with_filter. Traverse
 // against the vertical translation so all nonzero bilinear taps are still
 // original alpha. Stage a complete output row before overwriting any horizontal
@@ -1082,7 +1096,7 @@ fn color_shadow_linear_owned(
                 *pixel = src;
                 continue;
             }
-            let b = alpha.sample_linear(f64::from(x) + 0.5 - dx, f64::from(y) + 0.5 - dy).0[3];
+            let b = shadow_alpha_sample(&alpha, f64::from(x) + 0.5 - dx, f64::from(y) + 0.5 - dy);
             let coverage = if inner { src.0[3] * (1. - b) } else { b };
             *pixel = color.opacity(coverage);
         }

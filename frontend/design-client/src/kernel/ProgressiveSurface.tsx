@@ -23,6 +23,7 @@ import { pageHasFilteredContent } from './canvas-effect-sampling'
 import { frameTransform, presentationMatches, useDevicePixelRatio, useDisplayCapability } from './presentation'
 import { LodSnapshotCache } from './lod-snapshot-cache'
 import { previewCameraScaleWithinLimit, tileHasNativePhase, tileIntersectsView, tilePlacementAtView, tilePreviewContractMatches } from './tile-preview'
+import { canvasStatusLabel } from '../canvas-status-label'
 import { useRasterDensity } from './use-raster-density'
 import { useZoomActivity, useCameraActivity } from './use-zoom-activity'
 import { useSharpZoomActivity } from './use-sharp-zoom-activity'
@@ -2728,7 +2729,7 @@ export function ProgressiveSurfaceImpl(
       {!props.paused && <div
         className={`kernel-status ${failure ? 'error' : ''}`}
         role="status"
-        title={failure || '画布高清显示'}
+        title={failure ? canvasStatusLabel(failure) : '画布高清显示'}
         style={{
           position: 'absolute',
           right: 14,
@@ -2739,7 +2740,7 @@ export function ProgressiveSurfaceImpl(
           zIndex: 4,
         }}
       >
-        {failure ||
+        {failure ? canvasStatusLabel(failure) :
           `${stats.actualBackend === 'webgl2' ? 'WebGL 2' : 'WebGPU'} · ${props.interaction?.active ? '编辑预览' : complete ? '清晰' : '计算中'}${stats.managed ? ' · 浮点' : ''}`}
 
       </div>}
