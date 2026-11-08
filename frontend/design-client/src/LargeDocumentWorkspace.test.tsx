@@ -385,6 +385,8 @@ test('an admitted thumbnail catalogue avoids a full scene and only refines the r
   canvasLayout:async()=>({status:'ok',items,total:3,hasMore:false}),canvasSnapshot} as unknown as LargeDocumentBridge
  await act(async()=>root.render(<LargeDocumentWorkspace renderWorkbench={s=><div ref={s.canvas}>{workbench(s)}</div>} bridge={bridge} parentEditor={parent} onExit={()=>{}} onWindowClose={async()=>{}}/>))
  expect(document.querySelectorAll('.source-page-entry')).toHaveLength(3)
+ expect(document.querySelector('.source-row-copy .source-row-name')!.textContent).toBe('first')
+ expect(document.querySelector('.source-row-copy .source-row-page')!.textContent).toBe('first')
  await act(async()=>finish({status:'ok',...status}))
  expect(canvasSnapshot).not.toHaveBeenCalled();expect(binding.source!.nativeCanvas).toBeUndefined()
  await act(async()=>binding.source!.onDetail!([1]))
@@ -423,4 +425,32 @@ test('an admitted thumbnail catalogue avoids a full scene and only refines the r
  expect(canvasSnapshot).toHaveBeenCalledTimes(afterPage)
  expect(binding.source!.nativeCanvas!.snapshot.roots).toBe(2)
 
+})
+
+test('a failed open rebinds the host document so refine can show a native frame',async()=>{
+ const owner={documentId:'3ab8effd-5db9-4ec9-80b9-ee76a9cb89d2',sessionEpoch:1}
+ const status={owner,revision:0,name:'topology-verified-20261027.sketch',format:'sketch' as const,expandedBytes:100,maxExpandedBytes:1e12,indexedObjects:124000,dirty:false,undoCount:0,redoCount:0}
+ const bounds={x:0,y:0,width:140,height:140}
+ const item={id:'m',name:'140x140pt 30个（黑色）',kind:'artboard',pageId:'p',pageName:'浅色',source:bounds,placed:bounds,key:'1:1',bytes:100}
+ const hostStatus=vi.fn(async()=>({status:'ok' as const,...status}))
+ const canvasLayout=vi.fn(async()=>({status:'ok' as const,items:[item],total:1,hasMore:false,boundsAreLayoutHints:true as const,bounds}))
+ const canvasSnapshot=vi.fn(async()=>({status:'ok' as const,owner,revision:0,token:'sharp',bytes:10,nodes:2,roots:1,pageId:'p',stageId:'s',bounds,warnings:[],rasterProfile:'figma' as const,colorManaged:true}))
+ const bridge={open:vi.fn(async()=>{throw new Error('原生文件响应缺少设计内容')}),status:hostStatus,canvasLayout,canvasSnapshot,children:async()=>({status:'ok',items:[],total:0,hasMore:false}),openingView:async()=>({status:'ok',phase:'available',owner,revision:0,bounds,total:1,items:[{...item,key:'preview-0'}],pages:[['p','浅色',1]],offset:0,nextOffset:1,cursor:0,images:[],moreImages:false,finished:true,rendered:0,cacheHit:true})} as unknown as LargeDocumentBridge
+ await act(async()=>root.render(<LargeDocumentWorkspace renderWorkbench={s=><div ref={s.canvas}>{workbench(s)}</div>} bridge={bridge} parentEditor={parent} onExit={()=>{}} onWindowClose={async()=>{}}/>))
+ await act(async()=>{await hostStatus.mock.results[0]?.value})
+ expect(hostStatus).toHaveBeenCalled()
+ expect(binding.source!.error).toContain('原生文件响应缺少设计内容')
+ expect(binding.source!.notice).not.toContain('正在准备这个素材的原始图层')
+ const refine=[...document.querySelectorAll('button')].find(button=>button.textContent==='精修完整画板')
+ expect(refine).toBeTruthy()
+ expect((refine as HTMLButtonElement).disabled).toBe(false)
+ await act(async()=>binding.source!.dismissError?.())
+ expect(binding.source!.error).toBe('')
+ expect(binding.source!.notice).not.toContain('正在准备这个素材的原始图层')
+ expect((refine as HTMLButtonElement).disabled).toBe(false)
+ await act(async()=>{(refine as HTMLButtonElement).click()})
+ expect(binding.source!.nativeCanvas?.snapshot.token).toBe('sharp')
+ await act(async()=>binding.source!.nativeCanvas!.onStatus({phase:'ready',done:1,total:1}))
+ expect(binding.source!.hideNative).toBe(false)
+ expect(document.querySelector('.source-row-name')!.textContent).toBe('140x140pt 30个（黑色）')
 })

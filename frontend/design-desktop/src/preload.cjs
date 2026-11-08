@@ -183,6 +183,7 @@ contextBridge.exposeInMainWorld(
     openDocument: () => invoke('open'),
     inspectSketch: () => invoke('sketch-inspect'),
     largeDocument: Object.freeze({
+      status: () => invoke('large-document-status'),
       open: () => invoke('large-document-open'),
       // webUtils validates a real browser File. Renderer-constructed Files have
       // no native path; arbitrary path strings are never accepted by this API.

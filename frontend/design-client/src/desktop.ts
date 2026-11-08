@@ -83,6 +83,8 @@ export type SourceOpeningResult = {phase:'pending'|'unavailable'} | {
   offset:number;items:SourceCanvasItem[];nextOffset:number;cursor:number;moreImages:boolean;images:{index:number;png:string}[];finished:boolean
 }
 export interface LargeDocumentBridge {
+  /** Read the host document when the renderer binding was dropped. Absent on older preloads. */
+  status?():Promise<DesktopResult<LargeDocumentStatus>>
   progress():Promise<DesktopResult<{phase:string;processedBytes:number;totalBytes:number}>>
   cancel():Promise<DesktopResult<{requested:number;running:boolean;cancelled:boolean}>>
   open():Promise<DesktopResult<LargeDocumentStatus>>

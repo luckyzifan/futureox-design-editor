@@ -1,4 +1,6 @@
 
+2026-11-08 [源文件清晰与 Figma/Sketch 外壳](../../../testing/verification-source-clarity-layout-20261108/README.md)：原生设计内容可以是 JSON 字符串、已解析对象或 UTF-8 字节；英文 `Error:` 包装不再盖住中文原因。宿主文档仍开着时，丢掉的源状态会重新绑定，精修可以再打开清晰画面。Sketch 的 F 标记单独占一列，素材名和页面检查器按桌面结构分开。不是 33/100ms 或完整 G2/G5。
+
 2026-11-07 [冷缩出先排一张页级粗瓦片](../../../testing/verification-cold-zoom-seed-20261107/README.md)：大源停手后先排一张页级粗覆盖，第一次缩出不用从零等。不是 33/100ms 或完整 G2/G5。
 
 2026-11-07 [打开预览盖住平移条](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：低倍时打开预览盖在原生画布上，条带用覆盖场而不是页面灰。不是 33/100ms 或完整 G2/G5。
