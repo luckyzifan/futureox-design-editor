@@ -5,9 +5,9 @@ import type { RasterTile } from './tile-cache'
 
 export const CAMERA_REFINE_IDLE_MS = 120
 
-/** A displayed bitmap may be resampled by at most this factor. A larger
- * jump is a different picture: the previous pixels are not a readable frame
- * of the requested camera, and must not stay on screen as an upscaled thumbnail. */
+/** A displayed bitmap may be resampled by at most this factor before it counts
+ * as a certified frame of the requested camera. A larger jump stays on screen,
+ * CSS-reprojected, until a closer image covers the viewport. */
 export const MAX_PREVIEW_SCALE_RATIO = 2
 
 export function previewUpscaleWithinLimit(sourceZoom: number, viewZoom: number) {
@@ -21,6 +21,19 @@ export function previewUpscaleWithinLimit(sourceZoom: number, viewZoom: number) 
 export function previewCameraScaleWithinLimit(sourceZoom: number, viewZoom: number) {
   if (!previewUpscaleWithinLimit(sourceZoom, viewZoom)) return false
   return sourceZoom / viewZoom <= MAX_PREVIEW_SCALE_RATIO
+}
+
+/** The last complete bitmap stays visible past the preview ratio until a closer
+ * image covers the viewport. Failing the ratio still refuses to certify it. */
+export function showRetainedPreview(input: {
+  sourceZoom: number
+  viewZoom: number
+  intersects: boolean
+  replacementCovers: boolean
+}) {
+  if (!input.intersects) return false
+  if (input.replacementCovers && !previewCameraScaleWithinLimit(input.sourceZoom, input.viewZoom)) return false
+  return true
 }
 
 export function previewPlacementIntersects(

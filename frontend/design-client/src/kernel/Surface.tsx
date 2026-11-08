@@ -14,7 +14,7 @@ import {
 } from './client'
 import type { BackendPreference } from './gpu/types'
 import { canReplaceFallback, frameTransform, presentationMatches, presentationContentMatches, referencePresentationPolicy, surfaceMetrics, useDevicePixelRatio, useDisplayCapability, type ExactPresentation } from './presentation'
-import { previewCameraScaleWithinLimit, previewPlacementIntersects } from './tile-preview'
+import { previewCameraScaleWithinLimit, previewPlacementIntersects, showRetainedPreview } from './tile-preview'
 import { canvasStatusLabel } from '../canvas-status-label'
 type Request = {
   epoch: number
@@ -492,8 +492,13 @@ export function ReferenceSurface(
   ])
   const liveCamera = props.requestedView || view
   const placed = displayed ? frameTransform(liveCamera, displayed.view) : { x: 0, y: 0, scale: 1 }
-  const showPlaced = !displayed || previewCameraScaleWithinLimit(displayed.view.zoom, liveCamera.zoom) &&
-    previewPlacementIntersects(placed, displayed.width, displayed.height, width, height)
+  const scaleOk = !displayed || previewCameraScaleWithinLimit(displayed.view.zoom, liveCamera.zoom)
+  const showPlaced = !displayed || showRetainedPreview({
+    sourceZoom: displayed.view.zoom,
+    viewZoom: liveCamera.zoom,
+    intersects: previewPlacementIntersects(placed, displayed.width, displayed.height, width, height),
+    replacementCovers: false,
+  })
   const { x, y, scale } = showPlaced ? placed : { x: 0, y: 0, scale: 1 }
   const frameValid =
     displayed?.request.document.id === document.id &&
@@ -543,8 +548,8 @@ export function ReferenceSurface(
               className={activeSlot ? 'kernel-surface' : 'kernel-surface-buffer'}
               aria-label={managed ? '广色域 HDR 显示输出' : '自研矢量渲染输出'}
               aria-hidden={!visible}
-              data-frame-visible={String(visible && showPlaced)}
-              data-preview-upscale-rejected={String(!!displayed && !showPlaced)}
+              data-frame-visible={String(visible && showPlaced && scaleOk)}
+              data-preview-upscale-rejected={String(!!displayed && !scaleOk)}
               style={{
                 position: 'absolute',
                 left: 0,
