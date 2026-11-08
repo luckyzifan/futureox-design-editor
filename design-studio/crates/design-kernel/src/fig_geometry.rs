@@ -67,7 +67,7 @@ pub fn mask_suffixes(flags:&[u8])->Result<Vec<u32>,String>{
 /// Those styles remain explicitly untranslated rather than guessed.
 pub fn round_network(decoded:&mut Decoded,radius:f64,smoothing:f64,styles:&serde_json::Value)->Result<bool,String>{
     if !radius.is_finite()||radius<0.||!smoothing.is_finite(){return Err("Invalid FIG corner radius".into());}
-    if smoothing!=0.||decoded.region_styles.iter().any(|id|*id!=0){return Ok(false);}
+    if decoded.region_styles.iter().any(|id|*id!=0){return Ok(false);}
     let Some(network)=&decoded.network else{return Ok(false)};
     if network.vertices.len()<3||network.vertices.len()!=network.edges.len()||
         network.edges.iter().any(|e|e.c1.is_some()||e.c2.is_some()){return Ok(false);}
@@ -105,7 +105,7 @@ pub fn round_network(decoded:&mut Decoded,radius:f64,smoothing:f64,styles:&serde
     if !closed||points.len()!=network.vertices.len(){return Ok(false);}
     let radii:Option<Vec<_>>=points.iter().map(|p|corners.get(&(p.x.to_bits(),p.y.to_bits())).copied()).collect();
     let Some(radii)=radii else{return Ok(false)};
-    let circular=crate::authoring_shapes::rounded_polygon_radii(&points,&radii)?;
+    let circular=crate::authoring_shapes::rounded_polygon_radii_smoothed(&points,&radii,smoothing.clamp(0.,1.))?;
     // Native Figma circular vector corners export as cubic Beziers (the
     // quarter-circle control length is radius * 4/3*tan(pi/8)). Convert only
     // these imported corner commands explicitly; generic native Arc encoding

@@ -7,7 +7,7 @@ function literal(kind: ComponentProperty['kind'], value: any, ids: Map<string,st
   throw new Error('FIG 组件属性缺少可执行的常量值；原文件未修改')
 }
 /** Resolve after assembly so property references name actual template layers. */
-export function importFigComponents(doc: DesignDocument, records: Map<string,any>, ids: Map<string,string>, toPaint: (p:any)=>Paint) {
+export function importFigComponents(doc: DesignDocument, records: Map<string,any>, ids: Map<string,string>, toPaint: (p:any)=>Paint, warnings?: { add(message: string): unknown }) {
   for (const [sourceId, r] of records) {
     const n=doc.nodes[ids.get(sourceId)!]
     if (!n || r.type!=='SYMBOL') continue
@@ -24,11 +24,11 @@ export function importFigComponents(doc: DesignDocument, records: Map<string,any
       if(def.type==='VARIANT')continue
       const kinds={BOOL:'boolean',TEXT:'text',INSTANCE_SWAP:'instance-swap'} as const
       const kind=kinds[def.type as keyof typeof kinds]
-      if(!kind)throw new Error(`FIG 组件属性 ${def.type} 暂不支持；原文件未修改`)
+      if(!kind){warnings?.add(`FIG 组件属性 ${def.type} 暂不能执行，组件已保留`);continue}
       const field={boolean:'VISIBLE',text:'TEXT_DATA','instance-swap':'OVERRIDDEN_SYMBOL_ID'}[kind],key=guid(def.id)
       const targets=[...records].filter(([source,record])=>descendants.has(ids.get(source)!) &&
         record.componentPropRefs?.some((ref:any)=>!ref.isDeleted && guid(ref.defID)===key && ref.componentPropNodeField===field))
-      if(targets.length!==1)throw new Error(`FIG 组件属性 ${def.name} 需要一个明确目标，当前为 ${targets.length}；原文件未修改`)
+      if(targets.length!==1){warnings?.add(`FIG 组件属性 ${def.name||key} 没有唯一目标（${targets.length}），定义已跳过`);continue}
       const target=doc.nodes[ids.get(targets[0][0])!]
       n.component.properties[key]={name:def.name||key,kind,targetKey:target.componentKey||target.id,defaultValue:literal(kind,def.initialValue,ids)}
     }
@@ -37,12 +37,17 @@ export function importFigComponents(doc: DesignDocument, records: Map<string,any
     const n=doc.nodes[ids.get(sourceId)!]
     if(!n || r.type!=='INSTANCE')continue
     const componentId=ids.get(guid(r.symbolData?.symbolID)),component=componentId && doc.nodes[componentId]?.component
-    if(!componentId || !component)throw new Error('FIG 实例缺少嵌入的主组件；原文件未修改')
+    if(!componentId || !component){
+      warnings?.add('FIG 实例缺少嵌入的主组件，已按普通画板保留')
+      n.instance={componentId:componentId||'',overrides:{},propertyValues:{}}
+      continue
+    }
     n.instance={componentId,overrides:{},propertyValues:{}}
     for(const assignment of r.componentPropAssignments||r.symbolData?.componentPropAssignments||[]) {
       const key=guid(assignment.defID),property=component.properties[key]
-      if(!property)throw new Error(`FIG 组件属性赋值 ${key} 缺少定义；原文件未修改`)
-      n.instance.propertyValues[key]=literal(property.kind,assignment.value,ids)
+      if(!property){warnings?.add(`FIG 组件属性赋值 ${key} 缺少定义，已跳过`);continue}
+      try{n.instance.propertyValues[key]=literal(property.kind,assignment.value,ids)}
+      catch(error){warnings?.add(error instanceof Error?error.message:String(error))}
     }
     for(const override of r.symbolData?.symbolOverrides||[]) {
       const sourcePath=override.guidPath?.guids || (override.overrideKey?[override.overrideKey]:[])
@@ -53,7 +58,7 @@ export function importFigComponents(doc: DesignDocument, records: Map<string,any
         else if(key==='textData')fields.text=(value as any)?.characters??''
         else if(key==='fillPaints')fields.fills=(value as any[]).map(toPaint)
         else if(key==='symbolID')fields.swapComponent=ids.get(guid(value))
-        else throw new Error(`FIG 实例覆盖 ${key} 暂不支持；原文件未修改`)
+        else warnings?.add(`FIG 实例覆盖 ${key} 暂不能执行，其余覆盖已保留`)
       }
       n.instance.overrides[path]=fields
     }

@@ -2617,6 +2617,7 @@ pub fn document_from_canvas(
         doc.design_system.get_or_insert_with(Default::default).sketch_containers.insert("nodeMetadata".into(), Value::Object(metadata));
         version=version.max(4);
     }
+    document::import_variables(&mut doc, &records);
     document::write_receipt(&mut doc, &records, tree, &internal_pages, &document_notes);
     document::raise_schema(&doc, &mut version);
     doc.schema_version = version;
