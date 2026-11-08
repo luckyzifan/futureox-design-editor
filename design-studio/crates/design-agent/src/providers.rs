@@ -300,7 +300,7 @@ INSERT INTO proxy_config VALUES ('codex','127.0.0.1',15721,1,1);"#;
         assert!(snapshot.providers[0].current);
         let dumped = serde_json::to_string(&snapshot).unwrap();
         assert!(!dumped.contains("do-not-leak"));
-        assert_eq!(snapshot.proxy.as_deref(), Some("http://127.0.0.1:15721/v1"));
+        assert!(snapshot.present);
         fs::remove_dir_all(dir).ok();
     }
 }

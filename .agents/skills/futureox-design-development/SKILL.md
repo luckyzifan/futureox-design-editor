@@ -15,7 +15,7 @@
 
 2026-11-07 [连续缩放覆盖连续性](../../../testing/verification-zoom-coverage-continuity-20261107/README.md)：缩出密度播种之后，快慢缩放仍会大块留白。原因是目标格子未齐就不发布，且密度跳变会取消补洞瓦片；总览只进 CSS 图集。现改为视口并集盖住才换帧，粗层垫在锐层下，在途瓦片按是否还在画洞决定去留。预算、落定精确瓦片和物理 DPR 预览不变。不是 33/100ms 或完整 G2/G5。
 
-2026-11-08 CC Switch：从 farion1231/cc-switch `b184a88`（MIT）接入供应商行、当前/故障转移顺序和 Token plan / API 凭证。设计助手直接请求选中的上游，不依赖它的桌面代理。见 [DESIGN_AGENT.md](../../../docs/DESIGN_AGENT.md) 和 [记录](../../../testing/verification-ccswitch-integration-20261108/README.md)。
+2026-11-08 CC Switch：只接入切换上游。一条供应商是地址、密钥，以及 API 或 Token plan。设计助手打到选中的那一条。见 [DESIGN_AGENT.md](../../../docs/DESIGN_AGENT.md) 和 [记录](../../../testing/verification-ccswitch-integration-20261108/README.md)。
 
 2026-11-07 设计助手：桌面版用 Tokio `futureox-design-agent` 跑对话、一键出图和细节调整，经 MCP `batch.apply` 写入现有编辑器。设置里可保存 API、Token plan 和 CC Switch。页面悬停才出现定向修改。Fig/Sketch 只做结构差距，不改光栅。见 [DESIGN_AGENT.md](../../../docs/DESIGN_AGENT.md)。
 

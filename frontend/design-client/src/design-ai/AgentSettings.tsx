@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { desktopBridge } from '../desktop'
 
 type ProviderView = { id: string; name: string; kind: string; model: string; base_url: string; active: boolean; has_secret: boolean }
-type CcSwitch = { present?: boolean; proxy?: string | null; failover?: boolean; detail?: string; providers?: Array<{ id: string; name: string; app_type: string; current: boolean; kind?: string; model?: string; has_secret?: boolean }> }
+type CcSwitch = { present?: boolean; detail?: string; providers?: Array<{ id: string; name: string; app_type: string; current: boolean; kind?: string; model?: string; has_secret?: boolean }> }
 
 export function AgentSettings() {
   const desktop = desktopBridge()
@@ -48,7 +48,7 @@ export function AgentSettings() {
 
   return <div className="agent-settings">
     <h3>模型连接</h3>
-    <p className="settings-help">可以同时保存多个 API 或 Token plan。CC Switch 的供应商配置读自本机数据库，设计助手按选中的 API 或 Token plan 直接请求上游，不要求另开 CC Switch 代理。配了 Grok 地址和密钥时，启动后仍先用那条连接。没有密钥时，对话用本机规则直接改页面。</p>
+    <p className="settings-help">可以在本机 Grok、已保存的 API、Token plan，以及 CC Switch 里的一条上游之间切换。选中哪一条，下一轮设计对话就打到哪一条。没有密钥时，对话用本机规则直接改页面。</p>
     <label>类型<select aria-label="连接类型" value={kind} onChange={event => setKind(event.target.value as typeof kind)}>
       <option value="api">API</option>
       <option value="token_plan">Token plan</option>
@@ -61,7 +61,7 @@ export function AgentSettings() {
     <button type="button" onClick={() => void save()}>保存并使用</button>
     {!!providers.length && <ul aria-label="已保存的连接">{providers.map(provider => <li key={provider.id}>{provider.active ? '使用中 · ' : ''}{provider.name} · {provider.kind} · {provider.model}{provider.has_secret ? ' · 已保存密钥' : ''}</li>)}</ul>}
     {ccswitch && <div>
-      <p role="status">CC Switch 数据库{ccswitch.present ? '已找到' : '未找到'}。{ccswitch.failover ? '故障转移队列会在选中的连接失败后继续试。' : ''}{ccswitch.proxy ? `记录的监听地址 ${ccswitch.proxy}。` : ''}{ccswitch.detail || ''}</p>
+      <p role="status">CC Switch 数据库{ccswitch.present ? '已找到' : '未找到'}。{ccswitch.detail || ''}</p>
       {!!ccswitch.providers?.length && <ul aria-label="CC Switch 供应商">{ccswitch.providers.map(provider => <li key={`${provider.app_type}:${provider.id}`}>{provider.current ? '当前 · ' : ''}{provider.name} · {provider.kind || provider.app_type} · {provider.model || '未写模型'}{provider.has_secret ? ' · 已有密钥' : ' · 缺少可执行地址或密钥'} <button type="button" onClick={() => void useSwitch(provider)}>用这条连接</button></li>)}</ul>}
     </div>}
     {message && <p role="status">{message}</p>}

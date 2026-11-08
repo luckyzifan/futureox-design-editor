@@ -356,43 +356,54 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_ccswitch_profile_sends_the_design_turn_to_the_selected_token_plan_then_fails_over() {
-        let plan_hits = Arc::new(AtomicUsize::new(0));
-        let plan_auth = plan_hits.clone();
-        let plan = axum::Router::new().route("/v1/chat/completions", axum::routing::post(move |headers: axum::http::HeaderMap| {
-            let plan_auth = plan_auth.clone();
-            async move {
-                plan_auth.fetch_add(1, Ordering::SeqCst);
-                let auth = headers.get(axum::http::header::AUTHORIZATION).and_then(|value| value.to_str().ok()).unwrap_or("").to_string();
-                axum::Json(json!({ "choices": [{ "message": { "role": "assistant", "content": format!("plan:{auth}"), "tool_calls": [] } }] }))
-            }
-        }));
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = listener.local_addr().unwrap();
-        tokio::spawn(async move { axum::serve(listener, plan).await.unwrap() });
+    async fn switching_the_proxy_sends_the_design_turn_to_that_endpoint_only() {
+        async fn listen(label: &'static str) -> (std::net::SocketAddr, Arc<AtomicUsize>) {
+            let hits = Arc::new(AtomicUsize::new(0));
+            let seen = hits.clone();
+            let app = axum::Router::new().route("/v1/chat/completions", axum::routing::post(move |headers: axum::http::HeaderMap| {
+                let seen = seen.clone();
+                async move {
+                    seen.fetch_add(1, Ordering::SeqCst);
+                    let auth = headers.get(axum::http::header::AUTHORIZATION).and_then(|value| value.to_str().ok()).unwrap_or("");
+                    axum::Json(json!({ "choices": [{ "message": { "role": "assistant", "content": format!("{label}:{auth}"), "tool_calls": [] } }] }))
+                }
+            }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            (address, hits)
+        }
+        let (api_addr, api_hits) = listen("api").await;
+        let (plan_addr, plan_hits) = listen("plan").await;
         let dir = std::env::temp_dir().join(format!("ccswitch-turn-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let db = dir.join("cc-switch.db");
         let sql = format!(
             r#"CREATE TABLE providers (
                 id TEXT NOT NULL, app_type TEXT NOT NULL, name TEXT NOT NULL, settings_config TEXT NOT NULL,
-                meta TEXT NOT NULL DEFAULT '{{}}', is_current INTEGER NOT NULL DEFAULT 0,
-                in_failover_queue INTEGER NOT NULL DEFAULT 0, sort_index INTEGER, PRIMARY KEY (id, app_type));
-            INSERT INTO providers VALUES ('dead','codex','Dead API','{{"base_url":"http://127.0.0.1:1/v1","api_key":"dead-key","model":"dead"}}','{{}}',1,1,1);
-            INSERT INTO providers VALUES ('plan','codex','Shop plan','{{"base_url":"http://{address}/v1","api_key":"plan-secret","model":"plan-model"}}','{{"usageScript":{{"templateType":"token_plan"}}}}',0,1,2);
-            CREATE TABLE proxy_config (app_type TEXT PRIMARY KEY, listen_address TEXT, listen_port INTEGER, enabled INTEGER, auto_failover_enabled INTEGER);
-            INSERT INTO proxy_config VALUES ('codex','127.0.0.1',15721,1,1);"#
+                meta TEXT NOT NULL DEFAULT '{{}}', is_current INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (id, app_type));
+            INSERT INTO providers VALUES ('api','codex','Shop API','{{"base_url":"http://{api_addr}/v1","api_key":"api-secret","model":"api-model"}}','{{}}',1);
+            INSERT INTO providers VALUES ('plan','codex','Shop plan','{{"base_url":"http://{plan_addr}/v1","api_key":"plan-secret","model":"plan-model"}}','{{"usageScript":{{"templateType":"token_plan"}}}}',0);"#
         );
         assert!(std::process::Command::new("sqlite3").arg(&db).arg(sql).status().unwrap().success());
-        let switch = Provider {
+        let mut switch = Provider {
             id: "ccswitch".into(), name: "CC Switch".into(), kind: ProviderKind::CcSwitch,
-            base_url: "http://127.0.0.1:15721/v1".into(), secret: String::new(), model: "gpt-5.4".into(),
-            wire: Wire::OpenaiChat, profile_id: "codex:dead".into(),
+            base_url: String::new(), secret: String::new(), model: "unused".into(),
+            wire: Wire::OpenaiChat, profile_id: "codex:api".into(),
         };
-        let outcome = run_turn_db(&reqwest::Client::new(), &switch, "评价一下这一页", "", &DesignContext::default(), &[], &AtomicBool::new(false), &db).await.unwrap();
-        assert!(outcome.assistant.contains("token-plan"), "{}", outcome.assistant);
-        assert!(outcome.summary.contains("plan:Bearer plan-secret"), "{}", outcome.summary);
-        assert!(!outcome.summary.contains("dead-key"));
+        let http = reqwest::Client::new();
+        let empty = DesignContext::default();
+        let api_turn = run_turn_db(&http, &switch, "评价一下这一页", "", &empty, &[], &AtomicBool::new(false), &db).await.unwrap();
+        assert!(api_turn.assistant.contains("api"), "{}", api_turn.assistant);
+        assert!(api_turn.summary.contains("api:Bearer api-secret"), "{}", api_turn.summary);
+        assert_eq!(api_hits.load(Ordering::SeqCst), 1);
+        assert_eq!(plan_hits.load(Ordering::SeqCst), 0);
+        switch.profile_id = "codex:plan".into();
+        let plan_turn = run_turn_db(&http, &switch, "评价一下这一页", "", &empty, &[], &AtomicBool::new(false), &db).await.unwrap();
+        assert!(plan_turn.assistant.contains("token-plan"), "{}", plan_turn.assistant);
+        assert!(plan_turn.summary.contains("plan:Bearer plan-secret"), "{}", plan_turn.summary);
+        assert!(!plan_turn.summary.contains("api-secret"));
+        assert_eq!(api_hits.load(Ordering::SeqCst), 1);
         assert_eq!(plan_hits.load(Ordering::SeqCst), 1);
         std::fs::remove_dir_all(dir).ok();
     }
